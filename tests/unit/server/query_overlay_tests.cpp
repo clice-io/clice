@@ -140,11 +140,11 @@ protocol::Position position_of(llvm::StringRef name) {
 
 TEST_CASE(DefinitionFromOverlayOnly) {
     add_file("foo.h", R"(
-inline void @def[foo]() {}
+inline void §(def)⟦foo⟧() {}
 )");
     add_main("main.cpp", R"(
 #include "foo.h"
-int main() { @ref[$(ref)foo](); return 0; }
+int main() { §(ref)⟦§(ref)foo⟧(); return 0; }
 )");
     open_with_overlay();
 
@@ -160,12 +160,12 @@ int main() { @ref[$(ref)foo](); return 0; }
 
 TEST_CASE(ReferencesUnionWithDedup) {
     add_file("foo.h", R"(
-inline void @def[foo]() {}
-inline void bar() { @href[$(href)foo](); }
+inline void §(def)⟦foo⟧() {}
+inline void bar() { §(href)⟦§(href)foo⟧(); }
 )");
     add_main("main.cpp", R"(
 #include "foo.h"
-int main() { @ref[$(ref)foo](); return 0; }
+int main() { §(ref)⟦§(ref)foo⟧(); return 0; }
 )");
     open_with_overlay();
     // The header's disk shard and the overlay now both carry the
@@ -191,7 +191,7 @@ int main() { @ref[$(ref)foo](); return 0; }
 }
 
 TEST_CASE(PreambleMacroCursor) {
-    add_main("main.cpp", R"(#define @macro[$(macro)FOO] 1
+    add_main("main.cpp", R"(#define §(macro)⟦§(macro)FOO⟧ 1
 int main() { return 0; }
 )");
     open_with_overlay();
@@ -210,12 +210,12 @@ int main() { return 0; }
 
 TEST_CASE(OverlaySymbolInfo) {
     add_file("foo.h", R"(
-inline void @def[foo]() {}
-inline void @bardef[bar]() { foo(); }
+inline void §(def)⟦foo⟧() {}
+inline void §(bardef)⟦bar⟧() { foo(); }
 )");
     add_main("main.cpp", R"(
 #include "foo.h"
-int main() { @ref[foo](); return 0; }
+int main() { §(ref)⟦foo⟧(); return 0; }
 )");
     open_with_overlay();
 
@@ -236,12 +236,12 @@ int main() { @ref[foo](); return 0; }
 
 TEST_CASE(OpenHeaderExcluded) {
     add_file("foo.h", R"(
-inline void @def[foo]() {}
-inline void bar() { @href[foo](); }
+inline void §(def)⟦foo⟧() {}
+inline void bar() { §(href)⟦foo⟧(); }
 )");
     add_main("main.cpp", R"(
 #include "foo.h"
-int main() { @ref[$(ref)foo](); return 0; }
+int main() { §(ref)⟦§(ref)foo⟧(); return 0; }
 )");
     open_with_overlay();
 
@@ -260,12 +260,12 @@ int main() { @ref[$(ref)foo](); return 0; }
 
 TEST_CASE(IncomingCallsDedup) {
     add_file("foo.h", R"(
-inline void @def[callee]() {}
-inline void caller() { @call[callee](); }
+inline void §(def)⟦callee⟧() {}
+inline void caller() { §(call)⟦callee⟧(); }
 )");
     add_main("main.cpp", R"(
 #include "foo.h"
-int main() { @mcall[$(mcall)callee](); return 0; }
+int main() { §(mcall)⟦§(mcall)callee⟧(); return 0; }
 )");
     open_with_overlay();
     // The header call site now exists in both its disk shard and the
@@ -281,11 +281,11 @@ int main() { @mcall[$(mcall)callee](); return 0; }
 
 TEST_CASE(OpenHeaderTargetsExcluded) {
     add_file("base.h", R"(
-struct @b[Base] {};
+struct §(b)⟦Base⟧ {};
 )");
     add_file("derived.h", R"(
 #include "base.h"
-struct @d[Derived] : Base {};
+struct §(d)⟦Derived⟧ : Base {};
 )");
     add_main("main.cpp", R"(
 #include "derived.h"
@@ -307,11 +307,11 @@ Derived instance;
 
 TEST_CASE(StaleHeaderSuppressed) {
     add_file("foo.h", R"(
-inline void @def[foo]() {}
+inline void §(def)⟦foo⟧() {}
 )");
     add_main("main.cpp", R"(
 #include "foo.h"
-int main() { @ref[foo](); return 0; }
+int main() { §(ref)⟦foo⟧(); return 0; }
 )");
     open_with_overlay();
 
@@ -326,7 +326,7 @@ int main() { @ref[foo](); return 0; }
 }
 
 TEST_CASE(MacroDefinitionText) {
-    add_main("main.cpp", R"(#define @macro[FOO] 1
+    add_main("main.cpp", R"(#define §(macro)⟦FOO⟧ 1
 int main() { return 0; }
 )");
     ASSERT_TRUE(compile());
@@ -341,7 +341,7 @@ int main() { return 0; }
 }
 
 TEST_CASE(SharedPreambleScoped) {
-    add_main("main.cpp", R"(#define @macro[$(macro)FOO] 1
+    add_main("main.cpp", R"(#define §(macro)⟦§(macro)FOO⟧ 1
 #if FOO
 #endif
 int main() { return 0; }
@@ -370,7 +370,7 @@ int main() { return 0; }
 }
 
 TEST_CASE(DirtyPreambleServed) {
-    add_main("main.cpp", R"(#define @macro[FOO] 1
+    add_main("main.cpp", R"(#define §(macro)⟦FOO⟧ 1
 int main() { return 0; }
 )");
     open_with_overlay();
@@ -387,7 +387,7 @@ int main() { return 0; }
 }
 
 TEST_CASE(PreambleDriftSkipped) {
-    add_main("main.cpp", R"(#define @macro[FOO] 1
+    add_main("main.cpp", R"(#define §(macro)⟦FOO⟧ 1
 int main() { return 0; }
 )");
     open_with_overlay();
@@ -404,11 +404,11 @@ int main() { return 0; }
 
 TEST_CASE(OverlayOutranksDisk) {
     add_file("foo.h", R"(
-inline void @def[foo]() {}
+inline void §(def)⟦foo⟧() {}
 )");
     add_main("main.cpp", R"(
 #include "foo.h"
-int main() { @ref[foo](); return 0; }
+int main() { §(ref)⟦foo⟧(); return 0; }
 )");
     open_with_overlay();
 
@@ -434,11 +434,11 @@ int main() { @ref[foo](); return 0; }
 TEST_CASE(SynthesizedArtifactSkipped) {
     workspace.config.project.cache_dir = TestVFS::root();
     add_file("header_context/gen.h", R"(
-inline void @def[gen]() {}
+inline void §(def)⟦gen⟧() {}
 )");
     add_main("main.cpp", R"(
 #include "header_context/gen.h"
-int main() { @ref[gen](); return 0; }
+int main() { §(ref)⟦gen⟧(); return 0; }
 )");
     open_with_overlay();
 

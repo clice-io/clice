@@ -2,8 +2,24 @@
 
 #include <cctype>
 
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
+
 namespace clice::testing {
 
+/// The annotation grammar reserves no ASCII character: the sigil is `§`
+/// (U+00A7) and range bodies are delimited by `⟦` / `⟧` (U+27E6 / U+27E7),
+/// none of which occur in real C++, Doxygen, Markdown, CMake or LSP
+/// snippet content. ASCII parentheses are safe for names because they only
+/// have meaning directly after the sigil:
+///
+///   §              nameless point       §(name)          named point
+///   §⟦...⟧         nameless range       §(name)⟦...⟧     named range
+///
+/// Ranges may nest. Everything else — Doxygen tags, array subscripts,
+/// `${1:...}` snippet placeholders — is ordinary source text and passes
+/// through untouched. A stray `⟦` or `⟧` is a hard error so that typos
+/// fail loudly instead of silently shifting offsets.
 AnnotatedSource AnnotatedSource::from(llvm::StringRef content) {
     std::string source;
     source.reserve(content.size());
@@ -12,95 +28,70 @@ AnnotatedSource AnnotatedSource::from(llvm::StringRef content) {
     llvm::StringMap<LocalSourceRange> ranges;
     std::vector<std::uint32_t> nameless_offsets;
 
+    constexpr llvm::StringRef sigil = "§";
+    constexpr llvm::StringRef open_mark = "⟦";
+    constexpr llvm::StringRef close_mark = "⟧";
+
+    struct OpenSpan {
+        llvm::StringRef key;
+        std::uint32_t begin;
+    };
+
+    llvm::SmallVector<OpenSpan, 4> stack;
+
     std::uint32_t offset = 0;
     std::uint32_t i = 0;
 
-    auto try_parse_point_annotation = [&]() -> bool {
-        if(content[i] != '$') {
-            return false;
-        }
+    while(i < content.size()) {
+        llvm::StringRef rest = content.substr(i);
 
-        if(i + 1 < content.size() && content[i + 1] == '(') {
-            std::uint32_t key_start = i + 2;
-            std::size_t key_end = content.find(')', key_start);
+        if(rest.starts_with(sigil)) {
+            i += sigil.size();
 
-            if(key_end == llvm::StringRef::npos) {
-                return false;
+            llvm::StringRef key;
+            if(i < content.size() && content[i] == '(') {
+                std::size_t key_end = content.find(')', i + 1);
+                assert(key_end != llvm::StringRef::npos && "Unterminated §(name).");
+                key = content.slice(i + 1, key_end);
+                // A name must be a plain identifier (or empty): `§` directly
+                // before a real parenthesized expression is ambiguous — write
+                // the explicit nameless form `§()` in front of it instead.
+                assert(llvm::all_of(key,
+                                    [](char c) {
+                                        return std::isalnum(static_cast<unsigned char>(c)) ||
+                                               c == '_';
+                                    }) &&
+                       "§(name) requires an identifier name; use §() for a nameless point.");
+                i = static_cast<std::uint32_t>(key_end) + 1;
             }
 
-            llvm::StringRef key = content.slice(key_start, key_end);
-            if(key.empty()) {
+            if(content.substr(i).starts_with(open_mark)) {
+                stack.push_back({key, offset});
+                i += open_mark.size();
+            } else if(key.empty()) {
                 nameless_offsets.emplace_back(offset);
-                i += 1;
             } else {
                 offsets.try_emplace(key, offset);
-                i = key_end + 1;
             }
-            return true;
-        } else {
-            nameless_offsets.emplace_back(offset);
-            i += 1;
-            return true;
-        }
-    };
-
-    while(i < content.size()) {
-        if(try_parse_point_annotation()) {
             continue;
         }
 
-        char c = content[i];
-
-        if(c == '@') {
-            i += 1;
-
-            const char open_bracket = '[';
-            const char close_bracket = ']';
-
-            llvm::StringRef key = content.substr(i).take_until(
-                [&](char ch) { return isspace(ch) || ch == open_bracket; });
-            i += key.size();
-
-            while(i < content.size() && isspace(content[i])) {
-                i++;
-            }
-
-            assert(i < content.size() && content[i] == open_bracket &&
-                   "Expect @key[...] for ranges.");
-            i += 1;
-
-            std::uint32_t begin_offset = offset;
-            int bracket_level = 1;
-
-            while(i < content.size() && bracket_level > 0) {
-                if(try_parse_point_annotation()) {
-                    continue;
-                }
-
-                char inner_c = content[i];
-                if(inner_c == open_bracket) {
-                    bracket_level++;
-                } else if(inner_c == close_bracket) {
-                    bracket_level--;
-                }
-
-                if(bracket_level > 0) {
-                    source += inner_c;
-                    offset += 1;
-                    i += 1;
-                } else {
-                    i += 1;
-                }
-            }
-
-            ranges.try_emplace(key, LocalSourceRange{begin_offset, offset});
+        if(rest.starts_with(close_mark)) {
+            assert(!stack.empty() && "`⟧` without a matching `§⟦`.");
+            OpenSpan span = stack.pop_back_val();
+            ranges.try_emplace(span.key, LocalSourceRange{span.begin, offset});
+            i += close_mark.size();
             continue;
         }
 
-        source += c;
+        assert(!rest.starts_with(open_mark) && "`⟦` must follow `§` or `§(name)`.");
+
+        source += content[i];
         offset += 1;
         i += 1;
     }
+
+    assert(stack.empty() && "Unclosed `§⟦` annotation at end of input.");
 
     return AnnotatedSource{
         std::move(source),

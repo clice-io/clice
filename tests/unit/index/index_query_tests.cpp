@@ -113,12 +113,12 @@ std::vector<index::Relation> find_relations(index::SymbolHash symbol, RelationKi
 TEST_CASE(GoToDefinition) {
     reset();
     build_and_merge(R"(
-        int $(decl)foo();
+        int §(decl)foo();
 
-        int @def[$(def)foo]() { return 42; }
+        int §(def)⟦§(def)foo⟧() { return 42; }
 
         int main() {
-            return $(use)foo();
+            return §(use)foo();
         }
     )");
 
@@ -135,12 +135,12 @@ TEST_CASE(GoToDefinition) {
 TEST_CASE(FindReferences) {
     reset();
     build_and_merge(R"(
-        int $(decl)foo();
+        int §(decl)foo();
 
-        int $(def)foo() { return 42; }
+        int §(def)foo() { return 42; }
 
         int bar() {
-            return $(ref1)foo() + $(ref2)foo();
+            return §(ref1)foo() + §(ref2)foo();
         }
     )");
 
@@ -154,8 +154,8 @@ TEST_CASE(FindReferences) {
 TEST_CASE(DeclAndDef) {
     reset();
     build_and_merge(R"(
-        int $(decl)foo();
-        int @def[$(def)foo]() { return 42; }
+        int §(decl)foo();
+        int §(def)⟦§(def)foo⟧() { return 42; }
     )");
 
     auto hash = lookup_symbol("decl");
@@ -174,10 +174,10 @@ TEST_CASE(DeclAndDef) {
 TEST_CASE(CallerCallee) {
     reset();
     build_and_merge(R"(
-        void $(callee_def)callee() {}
+        void §(callee_def)callee() {}
 
-        void $(caller_def)caller() {
-            $(call_site)callee();
+        void §(caller_def)caller() {
+            §(call_site)callee();
         }
     )");
 
@@ -198,11 +198,11 @@ TEST_CASE(OverrideRelation) {
     reset();
     build_and_merge(R"(
         struct Base {
-            virtual void $(base_method)method() {}
+            virtual void §(base_method)method() {}
         };
 
         struct Derived : Base {
-            void $(derived_method)method() override {}
+            void §(derived_method)method() override {}
         };
     )");
 
@@ -224,11 +224,11 @@ TEST_CASE(OverrideRelation) {
 TEST_CASE(BaseAndDerived) {
     reset();
     build_and_merge(R"(
-        struct $(base_cls)Animal {
+        struct §(base_cls)Animal {
             virtual void speak() {}
         };
 
-        struct $(derived_cls)Dog : $(base_ref)Animal {
+        struct §(derived_cls)Dog : §(base_ref)Animal {
             void speak() override {}
         };
     )");
@@ -251,9 +251,9 @@ TEST_CASE(ClassTemplate) {
     reset();
     build_and_merge(R"(
         template <typename T>
-        struct @primary[$(primary)foo] {};
+        struct §(primary)⟦§(primary)foo⟧ {};
 
-        $(use)foo<int> x;
+        §(use)foo<int> x;
     )");
 
     auto hash = lookup_symbol("use");
@@ -266,9 +266,9 @@ TEST_CASE(ClassTemplate) {
 TEST_CASE(SymbolKinds) {
     reset();
     build_and_merge(R"(
-        struct $(cls)MyClass {};
-        void $(func)myFunc() {}
-        int $(var)myVar = 0;
+        struct §(cls)MyClass {};
+        void §(func)myFunc() {}
+        int §(var)myVar = 0;
     )");
 
     auto cls_hash = lookup_symbol("cls");
@@ -292,8 +292,8 @@ TEST_CASE(SymbolKinds) {
 TEST_CASE(ReferenceFiles) {
     reset();
     build_and_merge(R"(
-        int $(target)target = 42;
-        int a = $(ref)target + 1;
+        int §(target)target = 42;
+        int a = §(ref)target + 1;
     )");
 
     auto hash = lookup_symbol("target");
@@ -311,13 +311,13 @@ TEST_CASE(CrossFileQuery) {
 
     add_file("header.h", R"(
         #pragma once
-        int $(hdr_decl)helper();
+        int §(hdr_decl)helper();
     )");
     add_main("main.cpp", R"(
         #include "header.h"
 
         int main() {
-            return $(use_helper)helper();
+            return §(use_helper)helper();
         }
     )");
     ASSERT_TRUE(compile());
@@ -372,13 +372,13 @@ TEST_CASE(ImplementationDirection) {
     reset();
     build_and_merge(R"(
         struct Base {
-            virtual void $(base)draw();
+            virtual void §(base)draw();
         };
         struct Circle : Base {
-            void $(circle)draw() override;
+            void §(circle)draw() override;
         };
         struct Square : Circle {
-            void $(square)draw() override;
+            void §(square)draw() override;
         };
     )");
 
@@ -413,12 +413,12 @@ TEST_CASE(TypeDefinitionTargets) {
     /// relations at variable declarations carry the type's symbol hash.
     reset();
     build_and_merge(R"(
-        struct $(widget)Widget {};
-        using $(alias)Alias = Widget;
+        struct §(widget)Widget {};
+        using §(alias)Alias = Widget;
 
-        Widget $(plain)w;
-        Alias $(aliased)a;
-        auto $(deduced)b = Widget{};
+        Widget §(plain)w;
+        Alias §(aliased)a;
+        auto §(deduced)b = Widget{};
     )");
 
     auto widget = lookup_symbol("widget");

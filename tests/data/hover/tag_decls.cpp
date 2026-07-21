@@ -7,7 +7,7 @@ namespace ns1 {
   struct MyClass {};
 } // namespace ns1
 int main() {
-  ns1::$(01_struct)MyClass* Params;
+  ns1::§(01_struct)MyClass* Params;
 }
 }
 
@@ -17,7 +17,7 @@ namespace ns1 {
   class MyClass {};
 } // namespace ns1
 int main() {
-  ns1::$(02_class)MyClass* Params;
+  ns1::§(02_class)MyClass* Params;
 }
 }
 
@@ -27,7 +27,7 @@ namespace ns1 {
   union MyUnion { int x; int y; };
 } // namespace ns1
 int main() {
-  ns1::$(03_union)MyUnion Params;
+  ns1::§(03_union)MyUnion Params;
 }
 }
 
@@ -35,7 +35,7 @@ namespace forward_decl {
 // Forward class declaration
 class Foo;
 class Foo {};
-$(04_forward_class)Foo* foo();
+§(04_forward_class)Foo* foo();
 }
 
 namespace enum_def {
@@ -44,7 +44,7 @@ enum Hello {
   ONE, TWO, THREE,
 };
 void foo() {
-  $(05_enum)Hello hello = ONE;
+  §(05_enum)Hello hello = ONE;
 }
 }
 
@@ -54,7 +54,7 @@ enum Hello {
   ONE, TWO, THREE,
 };
 void foo() {
-  Hello hello = $(06_enumerator)ONE;
+  Hello hello = §(06_enumerator)ONE;
 }
 }
 
@@ -65,7 +65,7 @@ enum class Hello {
 };
 void foo() {
   using enum Hello;
-  Hello hello = $(07_using_enum)ONE;
+  Hello hello = §(07_using_enum)ONE;
 }
 }
 
@@ -75,7 +75,7 @@ enum {
   ONE, TWO, THREE,
 };
 void foo() {
-  int hello = $(08_anon_enumerator)ONE;
+  int hello = §(08_anon_enumerator)ONE;
 }
 }
 
@@ -83,7 +83,7 @@ namespace typedef_decl {
 // Typedef
 typedef int Foo;
 int main() {
-  $(09_typedef)Foo bar;
+  §(09_typedef)Foo bar;
 }
 }
 
@@ -91,7 +91,7 @@ namespace typedef_embedded {
 // Typedef with embedded definition
 typedef struct Bar {} Foo;
 int main() {
-  $(10_typedef_embedded)Foo bar;
+  §(10_typedef_embedded)Foo bar;
 }
 }
 
@@ -100,7 +100,7 @@ namespace ns_decl {
 namespace ns {
 struct Foo { static void bar(); };
 } // namespace ns
-int main() { $(11_namespace)ns::Foo::bar(); }
+int main() { §(11_namespace)ns::Foo::bar(); }
 }
 
 // Field in anonymous struct.
@@ -109,7 +109,7 @@ static struct {
   int hello;
 } s;
 void foo() {
-  s.$(12_anon_struct_field)hello++;
+  s.§(12_anon_struct_field)hello++;
 }
 }
 
@@ -120,7 +120,7 @@ struct outer {
     int abc, def;
   } v;
 };
-void g() { struct outer o; o.v.$(13_anon_union_field)def++; }
+void g() { struct outer o; o.v.§(13_anon_union_field)def++; }
 }
 
 namespace templated_fn {
@@ -129,7 +129,7 @@ template <typename T>
 T foo() {
   return 17;
 }
-void g() { auto x = $(14_templated_function)foo<int>(); }
+void g() { auto x = §(14_templated_function)foo<int>(); }
 }
 
 // Should not crash on dependent method call.
@@ -138,17 +138,17 @@ template <class T> struct cls {
   int method();
 };
 
-auto test = cls<int>().$(15_template_method)method();
+auto test = cls<int>().§(15_template_method)method();
 }
 
 // Type of nested templates: the variable.
 namespace nested_templates_var {
 template <class T> struct cls {};
-cls<cls<cls<int>>> fo$(16_nested_template_var)o;
+cls<cls<cls<int>>> fo§(16_nested_template_var)o;
 }
 
 namespace nested_templates_class {
 // type of nested templates.
 template <class T> struct cls {};
-$(17_nested_template_class)cls<cls<cls<int>>> foo;
+§(17_nested_template_class)cls<cls<cls<int>>> foo;
 }

@@ -43,7 +43,7 @@ auto find_item(llvm::StringRef label) {
 TEST_CASE(Score) {
     code_complete(R"cpp(
 int foooo(int x);
-int x = fo$(pos)
+int x = fo§(pos)
 )cpp");
 
     auto it = find_item("foooo");
@@ -55,7 +55,7 @@ int x = fo$(pos)
 TEST_CASE(Signature) {
     code_complete(R"cpp(
 int foooo(int x, float y);
-int x = fo$(pos)
+int x = fo§(pos)
 )cpp");
 
     auto it = find_item("foooo");
@@ -71,7 +71,7 @@ int x = fo$(pos)
 TEST_CASE(ReturnType) {
     code_complete(R"cpp(
 double foooo(int x);
-int x = fo$(pos)
+int x = fo§(pos)
 )cpp");
 
     auto it = find_item("foooo");
@@ -85,7 +85,7 @@ int x = fo$(pos)
 
 TEST_CASE(Snippet) {
     code_complete(R"cpp(
-int x = tru$(pos)
+int x = tru§(pos)
 )cpp");
 
     ASSERT_TRUE(!items.empty());
@@ -95,7 +95,7 @@ TEST_CASE(Overload) {
     code_complete(R"cpp(
 int foooo(int x);
 int foooo(int x, int y);
-int x = fooo$(pos)
+int x = fooo§(pos)
 )cpp");
 
     ASSERT_TRUE(!items.empty());
@@ -118,7 +118,7 @@ TEST_CASE(FilterUnderscore) {
     code_complete(R"cpp(
 int _private_thing;
 int public_thing;
-int x = pu$(pos)
+int x = pu§(pos)
 )cpp");
 
     // _private_thing should be filtered when prefix doesn't start with _.
@@ -132,7 +132,7 @@ int x = pu$(pos)
 TEST_CASE(FilterUnderscoreExplicit) {
     code_complete(R"cpp(
 int _private_thing;
-int x = _p$(pos)
+int x = _p§(pos)
 )cpp");
 
     // When user types _, underscore-prefixed symbols should appear.
@@ -148,7 +148,7 @@ struct Foo {
 
 void bar() {
     Foo f;
-    f.ba$(pos);
+    f.ba§(pos);
 }
 )cpp");
 
@@ -175,7 +175,7 @@ template <typename T>
 Foo(T) -> Foo<T>;
 
 void bar() {
-    Fo$(pos)
+    Fo§(pos)
 }
 )cpp");
 
@@ -210,7 +210,7 @@ template <typename T>
 Bazzz(T) -> Bazzz<T, int>;
 
 void bar() {
-    Ba$(pos)
+    Ba§(pos)
 }
 )cpp",
                   opts);
@@ -236,7 +236,7 @@ void bar() {
 TEST_CASE(DeprecatedTag) {
     code_complete(R"cpp(
 [[deprecated]] int foooo(int x);
-int z = fo$(pos)
+int z = fo§(pos)
 )cpp");
 
     auto it = find_item("foooo");
@@ -249,7 +249,7 @@ int z = fo$(pos)
 TEST_CASE(NotDeprecated) {
     code_complete(R"cpp(
 int foooo(int x);
-int z = fo$(pos)
+int z = fo§(pos)
 )cpp");
 
     auto it = find_item("foooo");
@@ -267,7 +267,7 @@ TEST_CASE(NoBundleOverloads) {
 int foooo(int x);
 int foooo(int x, int y);
 double foooo(double d);
-int x = fooo$(pos)
+int x = fooo§(pos)
 )cpp",
                   opts);
 
@@ -293,7 +293,7 @@ TEST_CASE(NoBundleNoDeduplicate) {
 int foooo(int x);
 int foooo(int x, int y);
 double foooo(double d);
-int x = fooo$(pos)
+int x = fooo§(pos)
 )cpp",
                   opts);
 
@@ -311,7 +311,7 @@ TEST_CASE(SnippetFunctionArgs) {
     opts.enable_function_arguments_snippet = true;
     code_complete(R"cpp(
 int foooo(int x, float y);
-int z = fo$(pos)
+int z = fo§(pos)
 )cpp",
                   opts);
 
@@ -334,7 +334,7 @@ TEST_CASE(SnippetNoArgs) {
     opts.enable_function_arguments_snippet = true;
     code_complete(R"cpp(
 void foooo();
-void bar() { fo$(pos) }
+void bar() { fo§(pos) }
 )cpp",
                   opts);
 
@@ -351,7 +351,7 @@ TEST_CASE(SnippetDisabled) {
     opts.enable_function_arguments_snippet = false;
     code_complete(R"cpp(
 int foooo(int x, float y);
-int z = fo$(pos)
+int z = fo§(pos)
 )cpp",
                   opts);
 
@@ -370,7 +370,7 @@ TEST_CASE(SnippetBundleMode) {
     code_complete(R"cpp(
 int foooo(int x);
 int foooo(int x, int y);
-int z = fo$(pos)
+int z = fo§(pos)
 )cpp",
                   opts);
 
@@ -390,7 +390,7 @@ struct Foo {
 };
 void bar() {
     Foo f;
-    f.ba$(pos);
+    f.ba§(pos);
 }
 )cpp",
                   opts);
@@ -411,7 +411,7 @@ struct Account {
 
 void bar() {
     Account acc;
-    acc.$(pos)
+    acc.§(pos)
 }
 )cpp");
 
@@ -437,7 +437,7 @@ struct Box {
 
 void bar() {
     Box<int> b;
-    b.$(pos)
+    b.§(pos)
 }
 )cpp");
 
@@ -459,7 +459,7 @@ struct Account {
 
 void bar() {
     Account acc;
-    acc.$(pos)
+    acc.§(pos)
 }
 )cpp");
 
@@ -478,7 +478,7 @@ struct Account {
 
 void bar() {
     Account acc;
-    acc.$(pos)
+    acc.§(pos)
 }
 )cpp");
 
@@ -494,7 +494,7 @@ namespace A {
 }
 
 void bar() {
-    fo$(pos)
+    fo§(pos)
 }
 )cpp");
 }
@@ -507,7 +507,7 @@ struct X {
 
 void bar() {
     X foo;
-    fo$(pos);
+    fo§(pos);
 }
 )cpp");
 }
@@ -516,7 +516,7 @@ TEST_CASE(Lambda) {
     code_complete(R"cpp(
 void bar() {
     auto foo = [](int x){ };
-    fo$(pos);
+    fo§(pos);
 }
 )cpp");
 }

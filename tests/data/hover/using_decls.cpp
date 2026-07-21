@@ -8,7 +8,7 @@ namespace ns {
 }
 int main() {
   using ns::foo;
-  $(01_using_function)foo();
+  §(01_using_function)foo();
 }
 }
 
@@ -16,5 +16,5 @@ int main() {
 namespace using_overloads {
 namespace ns { void foo(int); void foo(char); }
 using ns::foo;
-template <typename T> void bar() { $(02_using_overloads)foo(T{}); }
+template <typename T> void bar() { §(02_using_overloads)foo(T{}); }
 }

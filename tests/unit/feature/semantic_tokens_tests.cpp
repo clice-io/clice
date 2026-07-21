@@ -176,9 +176,9 @@ void EXPECT_TOKEN_AT(llvm::StringRef name, std::uint64_t line, std::uint64_t sta
 
 TEST_CASE(BasicLexicalKinds) {
     run_utf8(R"cpp(
-@d1[#define] @m0[FOO]
-@k0[int] main() { @k1[return] 0; }
-@c0[// comment]
+§(d1)⟦#define⟧ §(m0)⟦FOO⟧
+§(k0)⟦int⟧ main() { §(k1)⟦return⟧ 0; }
+§(c0)⟦// comment⟧
 )cpp");
 
     EXPECT_TOKEN("d1", SymbolKind::Directive);
@@ -191,7 +191,7 @@ TEST_CASE(BasicLexicalKinds) {
 TEST_CASE(IncludeDirective) {
     add_file("fake.h", "// fake header\n");
     add_main("main.cpp", R"cpp(
-@d0[#include] @h0["fake.h"]
+§(d0)⟦#include⟧ §(h0)⟦"fake.h"⟧
 int main() { return 0; }
 )cpp");
     ASSERT_TRUE(compile_with_pch());
@@ -205,9 +205,9 @@ int main() { return 0; }
 TEST_CASE(LegacyIncludeForms) {
     add_file("fake.h", "// fake header\n");
     add_main("main.cpp", R"cpp(
-@i0[#include] @h0["fake.h"]
-@i1[#include] @h1["fake.h"]
-@i2[#] @i3[include] @h2["fake.h"]
+§(i0)⟦#include⟧ §(h0)⟦"fake.h"⟧
+§(i1)⟦#include⟧ §(h1)⟦"fake.h"⟧
+§(i2)⟦#⟧ §(i3)⟦include⟧ §(h2)⟦"fake.h"⟧
 )cpp");
     ASSERT_TRUE(compile_with_pch());
     tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
@@ -224,7 +224,7 @@ TEST_CASE(LegacyIncludeForms) {
 
 TEST_CASE(LegacyComment) {
     run_utf8(R"cpp(
-@line[/// line comment]
+§(line)⟦/// line comment⟧
 int x = 1;
 )cpp");
 
@@ -233,8 +233,8 @@ int x = 1;
 
 TEST_CASE(LegacyKeyword) {
     run_utf8(R"cpp(
-@k0[int] main() {
-    @k1[return] 0;
+§(k0)⟦int⟧ main() {
+    §(k1)⟦return⟧ 0;
 }
 )cpp");
 
@@ -244,7 +244,7 @@ TEST_CASE(LegacyKeyword) {
 
 TEST_CASE(LegacyMacro) {
     run_utf8(R"cpp(
-@directive[#define] @macro[FOO]
+§(directive)⟦#define⟧ §(macro)⟦FOO⟧
 )cpp");
 
     EXPECT_TOKEN("directive", SymbolKind::Directive);
@@ -253,18 +253,18 @@ TEST_CASE(LegacyMacro) {
 
 TEST_CASE(LegacyFinalAndOverride) {
     run_utf8(R"cpp(
-struct A @final[final] {};
+struct A §(final)⟦final⟧ {};
 
 struct B {
     virtual void foo();
 };
 
 struct C : B {
-    void foo() @override[override];
+    void foo() §(override)⟦override⟧;
 };
 
 struct D : C {
-    void foo() @final2[final];
+    void foo() §(final2)⟦final⟧;
 };
 )cpp");
 
@@ -275,17 +275,17 @@ struct D : C {
 
 TEST_CASE(DeclarationAndTemplateModifiers) {
     run_utf8(R"cpp(
-extern int @x1[x];
-int @x2[x] = 0;
+extern int §(x1)⟦x⟧;
+int §(x2)⟦x⟧ = 0;
 
 template <typename T>
-extern int @y1[y];
+extern int §(y1)⟦y⟧;
 
 template <typename T>
-int @y2[y] = 0;
+int §(y2)⟦y⟧ = 0;
 
 int main() {
-    @x3[x] = 1;
+    §(x3)⟦x⟧ = 1;
 }
 )cpp");
 
@@ -307,7 +307,7 @@ struct S {};
 S operator+(S lhs, S rhs);
 
 void use(S lhs, S rhs) {
-    (void)(lhs @plus[+] rhs);
+    (void)(lhs §(plus)⟦+⟧ rhs);
 }
 )cpp");
 
@@ -317,14 +317,14 @@ void use(S lhs, S rhs) {
 TEST_CASE(ConstructorAndDestructorNamesRemainHighlighted) {
     run_utf8(R"cpp(
 struct S {
-    @ctor_decl[S]();
-    @dtor_decl[~]S();
+    §(ctor_decl)⟦S⟧();
+    §(dtor_decl)⟦~⟧S();
 };
 
-S::@ctor_def[S]() {}
+S::§(ctor_def)⟦S⟧() {}
 
 void use(S* value) {
-    value->@dtor_ref[~]S();
+    value->§(dtor_ref)⟦~⟧S();
 }
 )cpp");
 
@@ -340,27 +340,27 @@ void use(S* value) {
 
 TEST_CASE(LegacyVarDeclTemplates) {
     run_utf8(R"cpp(
-extern int @x1[x];
+extern int §(x1)⟦x⟧;
 
-int @x2[x] = 1;
-
-template <typename T, typename U>
-extern int @y1[y];
+int §(x2)⟦x⟧ = 1;
 
 template <typename T, typename U>
-int @y2[y] = 2;
+extern int §(y1)⟦y⟧;
+
+template <typename T, typename U>
+int §(y2)⟦y⟧ = 2;
 
 template<typename T>
-extern int @y3[y]<T, int>;
+extern int §(y3)⟦y⟧<T, int>;
 
 template<typename T>
-int @y4[y]<T, int> = 4;
+int §(y4)⟦y⟧<T, int> = 4;
 
 template<>
-int @y5[y]<int, int> = 5;
+int §(y5)⟦y⟧<int, int> = 5;
 
 int main() {
-    @x3[x] = 6;
+    §(x3)⟦x⟧ = 6;
 }
 )cpp");
 
@@ -380,17 +380,17 @@ int main() {
 
 TEST_CASE(LegacyFunctionDecl) {
     run_utf8(R"cpp(
-extern int @foo1[foo]();
+extern int §(foo1)⟦foo⟧();
 
-int @foo2[foo]() {
+int §(foo2)⟦foo⟧() {
     return 0;
 }
 
 template <typename T>
-extern int @bar1[bar]();
+extern int §(bar1)⟦bar⟧();
 
 template <typename T>
-int @bar2[bar]() {
+int §(bar2)⟦bar⟧() {
     return 1;
 }
 )cpp");
@@ -407,17 +407,17 @@ int @bar2[bar]() {
 
 TEST_CASE(LegacyRecordDecl) {
     run_utf8(R"cpp(
-class @a1[A];
+class §(a1)⟦A⟧;
 
-class @a2[A] {};
+class §(a2)⟦A⟧ {};
 
-struct @b1[B];
+struct §(b1)⟦B⟧;
 
-struct @b2[B] {};
+struct §(b2)⟦B⟧ {};
 
-union @c1[C];
+union §(c1)⟦C⟧;
 
-union @c2[C] {};
+union §(c2)⟦C⟧ {};
 )cpp");
 
     auto declaration = modifier_mask({SymbolModifiers::Declaration});
@@ -434,7 +434,7 @@ union @c2[C] {};
 TEST_CASE(UTF16LengthDiffersFromUTF8) {
     add_main("main.cpp", R"cpp(
 int main() {
-@lit[u8"你"];
+§(lit)⟦u8"你"⟧;
 }
 )cpp");
     ASSERT_TRUE(compile_with_pch());
@@ -501,7 +501,7 @@ TEST_CASE(CodeAfterRawString) {
     run_utf8(R"cpp(
 const char* s = R"(line1
 line2
-)"; @k0[int] @x[x] = 1;
+)"; §(k0)⟦int⟧ §(x)⟦x⟧ = 1;
 )cpp");
 
     EXPECT_TOKENS_WITHIN_LINES();
@@ -513,7 +513,7 @@ line2
 TEST_CASE(CodeAfterMultilineComment) {
     run_utf8(R"cpp(
     /* first
-second */ @k0[int] @x[x] = 1;
+second */ §(k0)⟦int⟧ §(x)⟦x⟧ = 1;
 )cpp");
 
     EXPECT_TOKENS_WITHIN_LINES();
@@ -524,7 +524,7 @@ second */ @k0[int] @x[x] = 1;
 
 TEST_CASE(ModuleDeclaration) {
     add_main("main.cpp", R"cpp(
-export @kw[module] @mod[foo];
+export §(kw)⟦module⟧ §(mod)⟦foo⟧;
 )cpp");
     ASSERT_TRUE(compile("-std=c++20"));
     tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
@@ -536,7 +536,7 @@ export @kw[module] @mod[foo];
 
 TEST_CASE(ModuleDeclarationDotted) {
     add_main("main.cpp", R"cpp(
-export @kw[module] @m0[foo].@m1[bar];
+export §(kw)⟦module⟧ §(m0)⟦foo⟧.§(m1)⟦bar⟧;
 )cpp");
     ASSERT_TRUE(compile("-std=c++20"));
     tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
@@ -554,7 +554,7 @@ export module foo;
 export int x = 42;
 
 #[main.cpp]
-@kw[import] @mod[foo];
+§(kw)⟦import⟧ §(mod)⟦foo⟧;
 int y = x;
 )");
     ASSERT_TRUE(compile_with_modules());
@@ -567,7 +567,7 @@ int y = x;
 
 TEST_CASE(ModulePartition) {
     add_main("main.cpp", R"cpp(
-export module @m0[foo]:@m1[bar];
+export module §(m0)⟦foo⟧:§(m1)⟦bar⟧;
 )cpp");
     ASSERT_TRUE(compile("-std=c++20"));
     tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
@@ -585,7 +585,7 @@ export int x = 42;
 
 #[main.cppm]
 export module bar;
-export @kw[import] @mod[foo];
+export §(kw)⟦import⟧ §(mod)⟦foo⟧;
 )");
     ASSERT_TRUE(compile_with_modules());
     tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
@@ -598,7 +598,7 @@ export @kw[import] @mod[foo];
 TEST_CASE(GlobalModuleFragment) {
     add_main("main.cpp", R"cpp(
 module;
-export module @mod[foo];
+export module §(mod)⟦foo⟧;
 )cpp");
     ASSERT_TRUE(compile("-std=c++20"));
     tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
@@ -609,7 +609,7 @@ export module @mod[foo];
 
 TEST_CASE(PrivateModuleFragment) {
     add_main("main.cpp", R"cpp(
-export module @mod[foo];
+export module §(mod)⟦foo⟧;
 module :private;
 int x = 1;
 )cpp");
@@ -623,10 +623,10 @@ int x = 1;
 TEST_CASE(ModuleKeywordAsIdentifier) {
     run_utf8(R"cpp(
 void f() {
-    struct @s0[module] {};
-    @s1[module] @v0[m];
-    int @v1[import] = 1;
-    int @v2[module] = 2;
+    struct §(s0)⟦module⟧ {};
+    §(s1)⟦module⟧ §(v0)⟦m⟧;
+    int §(v1)⟦import⟧ = 1;
+    int §(v2)⟦module⟧ = 2;
 }
 )cpp");
 

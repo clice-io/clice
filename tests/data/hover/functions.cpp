@@ -5,7 +5,7 @@ namespace fn_via_pointer {
 // Function definition via pointer
 void foo(int) {}
 int main() {
-  auto *X = &$(01_fn_via_pointer)foo;
+  auto *X = &§(01_fn_via_pointer)foo;
 }
 }
 
@@ -13,14 +13,14 @@ namespace fn_via_call {
 // Function declaration via call
 int foo(int);
 int main() {
-  return $(02_fn_via_call)foo(42);
+  return §(02_fn_via_call)foo(42);
 }
 }
 
 namespace fn_decl {
 // Function declaration
 void foo();
-void g() { $(03_fn_decl)foo(); }
+void g() { §(03_fn_decl)foo(); }
 void foo() {}
 }
 
@@ -28,6 +28,6 @@ void foo() {}
 namespace fn_default_tmpl_arg {
 template <typename T = int>
 void foo(const T& = T()) {
-  $(04_fn_default_tmpl_arg)foo<>(3);
+  §(04_fn_default_tmpl_arg)foo<>(3);
 }
 }

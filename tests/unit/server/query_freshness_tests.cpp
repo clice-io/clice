@@ -117,7 +117,7 @@ TEST_CASE(PendingGateSplitsRows) {
     add_main("main.cpp", R"(
         #include "header.h"
         int main() {
-            return $(use)helper();
+            return §(use)helper();
         }
     )");
     ASSERT_TRUE(compile());

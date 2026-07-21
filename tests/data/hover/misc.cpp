@@ -12,14 +12,14 @@ template <bool X, typename T, typename F>
 using type = typename cond<X, T, F>::type;
 
 void foo() {
-  using f$(02_typedef_chain)oo = type<true, int, double>;
+  using f§(02_typedef_chain)oo = type<true, int, double>;
 }
 }
 
 struct FwdFoo;
 int fwd_bar;
-auto fwd_baz = (Fwd$(01_forward_struct_value)Foo*)&fwd_bar;
+auto fwd_baz = (Fwd§(01_forward_struct_value)Foo*)&fwd_bar;
 
 #define A(x) x, x, x, x
 #define B(x) A(A(A(A(x))))
-int a$(03_big_initializer)rr[] = {B(0)};
+int a§(03_big_initializer)rr[] = {B(0)};

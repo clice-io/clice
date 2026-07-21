@@ -110,12 +110,12 @@ TEST_CASE(Include) {
 #endif
 
 #[main.cpp]
-#$(0)include "test.h"
-#$(1)include "test.h"
-#$(2)include "pragma_once.h"
-#$(3)include "pragma_once.h"
-#$(4)include "guard_macro.h"
-#$(5)include "guard_macro.h"
+#§(0)include "test.h"
+#§(1)include "test.h"
+#§(2)include "pragma_once.h"
+#§(3)include "pragma_once.h"
+#§(4)include "guard_macro.h"
+#§(5)include "guard_macro.h"
 )cpp");
 
     ASSERT_EQ(includes.size(), 6U);
@@ -135,10 +135,10 @@ TEST_CASE(HasInclude) {
 
 #[main.cpp]
 #include "test.h"
-#if __has_include($(0)"test.h")
+#if __has_include(§(0)"test.h")
 #endif
 
-#if __has_include($(1)"test2.h")
+#if __has_include(§(1)"test2.h")
 #endif
 )cpp");
 
@@ -150,15 +150,15 @@ TEST_CASE(HasInclude) {
 TEST_CASE(Condition) {
     run(R"cpp(
 #[main.cpp]
-#$(0)if 0
-#$(1)elif 1
-#$(2)else
-#$(3)endif
+#§(0)if 0
+#§(1)elif 1
+#§(2)else
+#§(3)endif
 
-#$(4)ifdef name
-#$(5)elifdef name
-#$(6)else
-#$(7)endif
+#§(4)ifdef name
+#§(5)elifdef name
+#§(6)else
+#§(7)endif
 )cpp");
 
     ASSERT_EQ(conditions.size(), 8U);
@@ -175,21 +175,21 @@ TEST_CASE(Condition) {
 TEST_CASE(Macro) {
     run(R"cpp(
 #[main.cpp]
-#define $(0)expr(v) v
+#define §(0)expr(v) v
 
-#ifdef $(1)expr
-int x = $(2)expr(1);
+#ifdef §(1)expr
+int x = §(2)expr(1);
 #endif
 
-#undef $(3)expr
+#undef §(3)expr
 
-#define $(4)expr(v) v
+#define §(4)expr(v) v
 
-#ifdef $(5)expr
-int y = $(6)expr($(7)expr(1));
+#ifdef §(5)expr
+int y = §(6)expr(§(7)expr(1));
 #endif
 
-#undef $(8)expr
+#undef §(8)expr
 
 )cpp");
 
@@ -208,9 +208,9 @@ int y = $(6)expr($(7)expr(1));
 TEST_CASE(Pragma) {
     run(R"cpp(
 #[main.cpp]
-$(0)#pragma GCC poison printf sprintf fprintf
-$(1)#pragma region
-$(2)#pragma endregion
+§(0)#pragma GCC poison printf sprintf fprintf
+§(1)#pragma region
+§(2)#pragma endregion
 )cpp");
 
     ASSERT_EQ(pragmas.size(), 3U);
@@ -229,23 +229,23 @@ ABCDE
 
 #[main.cpp]
 const char e0 = {
-$(0)#embed "bytes10.bin"
+§(0)#embed "bytes10.bin"
 };
 
 const char e1 = {
-$(1)#embed "bytes10.bin"
+§(1)#embed "bytes10.bin"
 };
 
 const char e2 = {
-$(2)#embed "bytes5.bin"
+§(2)#embed "bytes5.bin"
 };
 
 const char e3 = {
-$(3)#embed "bytes5.bin"
+§(3)#embed "bytes5.bin"
 };
 
 const char e4 = {
-$(4)#embed "non-existed.bin"
+§(4)#embed "non-existed.bin"
 };
 
 )cpp");
@@ -266,10 +266,10 @@ TEST_CASE(HasEmbed) {
 #[main.cpp]
 #embed "test.bin"
 
-#if __has_embed$(0)("test.bin")
+#if __has_embed§(0)("test.bin")
 #endif
 
-#if __has_embed$(1)("non-existed.bin")
+#if __has_embed§(1)("non-existed.bin")
 #endif
 )cpp");
 

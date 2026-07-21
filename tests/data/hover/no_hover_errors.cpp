@@ -7,6 +7,6 @@ struct Foo {
   int xyz = 0;
 };
 class Bar {};
-constexpr Foo s = $(01_invalid_init_list){
+constexpr Foo s = §(01_invalid_init_list){
   .xyz = Bar(),
 };
