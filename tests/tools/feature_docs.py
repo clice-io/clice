@@ -284,6 +284,8 @@ def rewrite_doc(
             continue
 
         section = match.group(1).strip()
+        if section in doc_sections:
+            problems.append(f"{doc_path}: duplicate region '{section}'")
         doc_sections.add(section)
         end = idx + 1
         while end < len(lines) and lines[end] != END_MARKER:
