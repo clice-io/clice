@@ -1,8 +1,8 @@
 #pragma once
 
-#include <cassert>
 #include <vector>
 
+#include "support/logging.h"
 #include "syntax/token.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -19,6 +19,8 @@ namespace clice::testing {
 /// A feature's snapshot transform keeps only result entries fully contained
 /// in one of the marked regions; a file without markers snapshots
 /// everything. Regions may not nest, and a named end must match its begin.
+/// Malformed markers abort in every build mode so that typos fail loudly
+/// instead of silently producing misleading snapshots.
 inline std::vector<LocalSourceRange> extract_snap_regions(llvm::StringRef content) {
     std::vector<LocalSourceRange> regions;
 
@@ -39,26 +41,35 @@ inline std::vector<LocalSourceRange> extract_snap_regions(llvm::StringRef conten
 
         llvm::StringRef line = raw_line.trim();
         // Any line starting with `/// <snap:` is claimed by the marker
-        // grammar, so a typo fails loudly instead of being skipped.
+        // grammar.
         if(llvm::StringRef marker = line; marker.consume_front("/// <snap:")) {
             bool is_begin = marker.consume_front("begin");
             bool is_end = !is_begin && marker.consume_front("end");
-            assert((is_begin || is_end) && "Expect <snap:begin ...> or <snap:end ...>.");
-            [[maybe_unused]] bool closed = marker.consume_back(">");
-            assert(closed && "Snap marker must end with `>`.");
-            assert((marker.empty() || marker.starts_with(" ")) &&
-                   "Snap marker name must be separated by a space.");
+            if(!is_begin && !is_end) {
+                LOG_FATAL("Expect <snap:begin ...> or <snap:end ...>, got: {}", line);
+            }
+            if(!marker.consume_back(">")) {
+                LOG_FATAL("Snap marker must end with `>`: {}", line);
+            }
+            if(!marker.empty() && !marker.starts_with(" ")) {
+                LOG_FATAL("Snap marker name must be separated by a space: {}", line);
+            }
             llvm::StringRef name = marker.trim();
 
             if(is_begin) {
-                assert(!open && "<snap:begin> may not nest.");
+                if(open) {
+                    LOG_FATAL("<snap:begin> may not nest.");
+                }
                 open = true;
                 open_name = name;
                 region_begin = next_line_start;
             } else {
-                assert(open && "<snap:end> without a matching <snap:begin>.");
-                assert((name.empty() || name == open_name) &&
-                       "<snap:end NAME> must match its <snap:begin NAME>.");
+                if(!open) {
+                    LOG_FATAL("<snap:end> without a matching <snap:begin>.");
+                }
+                if(!name.empty() && name != open_name) {
+                    LOG_FATAL("<snap:end {}> does not match <snap:begin {}>.", name, open_name);
+                }
                 regions.emplace_back(region_begin, line_start);
                 open = false;
             }
@@ -67,7 +78,9 @@ inline std::vector<LocalSourceRange> extract_snap_regions(llvm::StringRef conten
         line_start = next_line_start;
     }
 
-    assert(!open && "Unclosed <snap:begin> at end of file.");
+    if(open) {
+        LOG_FATAL("Unclosed <snap:begin> at end of file.");
+    }
     return regions;
 }
 
