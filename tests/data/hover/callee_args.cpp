@@ -6,7 +6,7 @@ namespace fn_call {
 void fun(int arg_a, int &arg_b) {};
 void code() {
   int a = 1, b = 2;
-  fun(a, $(01_arg_by_ref)b);
+  fun(a, §(01_arg_by_ref)b);
 }
 }
 
@@ -23,7 +23,7 @@ T make(Args&&... args)
 
 void code() {
   int a = 1;
-  auto foo = make<Foo>($(02_forwarded_arg)a);
+  auto foo = make<Foo>(§(02_forwarded_arg)a);
 }
 }
 
@@ -32,7 +32,7 @@ namespace converted_arg {
 void foobar(const float &arg);
 int main() {
   int a = 0;
-  foobar($(03_converted_arg)a);
+  foobar(§(03_converted_arg)a);
 }
 }
 
@@ -43,7 +43,7 @@ struct Foo {
 };
 int main() {
   int a = 0;
-  Foo foo($(04_converted_ctor_arg)a);
+  Foo foo(§(04_converted_ctor_arg)a);
 }
 }
 
@@ -52,7 +52,7 @@ namespace literal_arg {
 void fun(int arg_a, const int &arg_b) {};
 void code() {
   int a = 1;
-  fun(a, $(05_literal_arg)2);
+  fun(a, §(05_literal_arg)2);
 }
 }
 
@@ -61,7 +61,7 @@ namespace expression_arg {
 void fun(int arg_a, const int &arg_b) {};
 void code() {
   int a = 1;
-  fun(a, 1 $(06_expression_arg)+ 2);
+  fun(a, 1 §(06_expression_arg)+ 2);
 }
 }
 
@@ -69,7 +69,7 @@ void code() {
 namespace expression_by_value {
 int add(int lhs, int rhs);
 int main() {
-  add(1 $(07_expression_by_value)+ 2, 3);
+  add(1 §(07_expression_by_value)+ 2, 3);
 }
 }
 
@@ -77,7 +77,7 @@ int main() {
 namespace converted_literal {
 void foobar(const float &arg);
 int main() {
-  foobar($(08_converted_literal)0);
+  foobar(§(08_converted_literal)0);
 }
 }
 
@@ -90,7 +90,7 @@ class C {
 void code() {
   int a = 1, b = 2;
   C c;
-  c.fun($(09_method_arg_default)a, b);
+  c.fun(§(09_method_arg_default)a, b);
 }
 }
 
@@ -102,6 +102,6 @@ struct Foo {
 void foo(Foo);
 void bar() {
   const int x = 0;
-  foo($(10_converting_ctor_arg)x);
+  foo(§(10_converting_ctor_arg)x);
 }
 }

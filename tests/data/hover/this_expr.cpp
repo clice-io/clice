@@ -5,7 +5,7 @@
 namespace ns {
   class Foo1 {
     Foo1* bar() {
-      return t$(01_this_class)his;
+      return t§(01_this_class)his;
     }
   };
 }
@@ -15,7 +15,7 @@ namespace ns {
   template <typename T>
   class Foo2 {
     Foo2* bar() const {
-      return t$(02_this_template_class)his;
+      return t§(02_this_template_class)his;
     }
   };
 }
@@ -26,7 +26,7 @@ namespace ns {
   template <>
   struct Foo3<int> {
     Foo3* bar() {
-      return thi$(03_this_specialization)s;
+      return thi§(03_this_specialization)s;
     }
   };
 }
@@ -37,7 +37,7 @@ namespace ns {
   template <typename F>
   struct Foo4<int, F> {
     Foo4* bar() const {
-      return thi$(04_this_partial_specialization)s;
+      return thi§(04_this_partial_specialization)s;
     }
   };
 }

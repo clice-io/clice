@@ -6,7 +6,7 @@ namespace ptr_to_lambda {
 void foo() {
   auto lamb = [](int T, bool B) -> bool { return T && B; };
   auto *b = &lamb;
-  auto *$(01_lambda_ptr_ptr)c = &b;
+  auto *§(01_lambda_ptr_ptr)c = &b;
 }
 }
 
@@ -14,7 +14,7 @@ void foo() {
 namespace decltype_ref_param {
 auto lamb = [](int T, bool B) -> bool { return T && B; };
 void foo(decltype(lamb)& bar) {
-  ba$(02_lambda_decltype_ref_param)r(0, false);
+  ba§(02_lambda_decltype_ref_param)r(0, false);
 }
 }
 
@@ -22,7 +22,7 @@ void foo(decltype(lamb)& bar) {
 namespace decltype_param {
 auto lamb = [](int T, bool B) -> bool { return T && B; };
 void foo(decltype(lamb) bar) {
-  ba$(03_lambda_decltype_param)r(0, false);
+  ba§(03_lambda_decltype_param)r(0, false);
 }
 }
 
@@ -31,13 +31,13 @@ namespace lambda_variable {
 void foo() {
   int bar = 5;
   auto lamb = [&bar](int T, bool B) -> bool { return T && B && bar; };
-  bool res = lam$(04_lambda_variable)b(bar, false);
+  bool res = lam§(04_lambda_variable)b(bar, false);
 }
 }
 
 // Local variable in lambda.
 namespace local_in_lambda {
 void foo() {
-  auto lamb = []{int te$(05_local_in_lambda)st;};
+  auto lamb = []{int te§(05_local_in_lambda)st;};
 }
 }

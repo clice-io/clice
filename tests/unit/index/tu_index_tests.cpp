@@ -102,10 +102,10 @@ void GO_TO_DEFINITION(llvm::StringRef pos,
 
 TEST_CASE(Basic) {
     build_index(R"(
-            int @1[f$(1)oo]();
+            int §(1)⟦f§(1)oo⟧();
 
-            int @2[b$(2)ar]() {
-                return @3[fo$(3)o]() + 1;
+            int §(2)⟦b§(2)ar⟧() {
+                return §(3)⟦fo§(3)o⟧() + 1;
             }
         )");
 
@@ -121,33 +121,33 @@ TEST_CASE(Basic) {
 TEST_CASE(ClassTemplate) {
     build_index(R"(
             template <typename T, typename U>
-            struct $(primary_decl)foo;
+            struct §(primary_decl)foo;
 
-            /// using type = $(forward_full)foo<int, int>;
+            /// using type = §(forward_full)foo<int, int>;
 
             template <typename T, typename U>
-            struct @primary[foo] {};
+            struct §(primary)⟦foo⟧ {};
 
             template <typename T>
-            struct $(partial_spec_decl)foo<T, T>;
+            struct §(partial_spec_decl)foo<T, T>;
 
             template <typename T>
-            struct @partial_spec[foo]<T, T> {};
+            struct §(partial_spec)⟦foo⟧<T, T> {};
 
             template <>
-            struct $(full_spec_decl)foo<int, int>;
+            struct §(full_spec_decl)foo<int, int>;
 
             template <>
-            struct @full_spec[foo]<int, int> {};
+            struct §(full_spec)⟦foo⟧<int, int> {};
 
-            template struct $(explicit_primary)foo<char, int>;
+            template struct §(explicit_primary)foo<char, int>;
 
-            template struct $(explicit_partial)foo<char, char>;
+            template struct §(explicit_partial)foo<char, char>;
 
-            $(implicit_primary_1)foo<int, char> b;
-            $(implicit_primary_2)foo<char, int> c;
-            $(implicit_partial)foo<char, char> d;
-            $(implicit_full)foo<int, int> a;
+            §(implicit_primary_1)foo<int, char> b;
+            §(implicit_primary_2)foo<char, int> c;
+            §(implicit_partial)foo<char, char> d;
+            §(implicit_full)foo<int, int> a;
         )");
 
     GO_TO_DEFINITION("primary_decl", "primary");
@@ -165,19 +165,19 @@ TEST_CASE(ClassTemplate) {
 
 TEST_CASE(FunctionTemplate) {
     build_index(R"(
-            template <typename T> void $(primary_decl)foo();
+            template <typename T> void §(primary_decl)foo();
 
-            template <typename T> void @primary[foo]() {}
+            template <typename T> void §(primary)⟦foo⟧() {}
 
-            template <> void $(spec_decl)foo<int>();
+            template <> void §(spec_decl)foo<int>();
 
-            template <> void @spec[foo]<int>() {}
+            template <> void §(spec)⟦foo⟧<int>() {}
 
-            template void $(explicit_primary)foo<char>();
+            template void §(explicit_primary)foo<char>();
 
             int main() {
-                $(implicit_primary)foo<char>();
-                $(implicit_spec)foo<int>();
+                §(implicit_primary)foo<char>();
+                §(implicit_spec)foo<int>();
             }
         )");
 
@@ -193,9 +193,9 @@ TEST_CASE(FunctionTemplate) {
 TEST_CASE(AliasTemplate) {
     build_index(R"(
             template <typename T>
-            using @primary[foo] = T;
+            using §(primary)⟦foo⟧ = T;
 
-            $(implicit_primary)foo<int> a;
+            §(implicit_primary)foo<int> a;
         )");
 
     GO_TO_DEFINITION("implicit_primary", "primary");
@@ -204,29 +204,29 @@ TEST_CASE(AliasTemplate) {
 TEST_CASE(VarTemplate) {
     build_index(R"(
             template <typename T, typename U>
-            extern int $(primary_decl)foo;
+            extern int §(primary_decl)foo;
 
             template <typename T, typename U>
-            int @primary[foo] = 1;
+            int §(primary)⟦foo⟧ = 1;
 
             template <typename T>
-            extern int $(partial_spec_decl)foo<T, T>;
+            extern int §(partial_spec_decl)foo<T, T>;
 
             template <typename T>
-            int @partial_spec[foo]<T, T> = 2;
+            int §(partial_spec)⟦foo⟧<T, T> = 2;
 
             template <>
-            float @full_spec[foo]<int, int> = 1.0f;
+            float §(full_spec)⟦foo⟧<int, int> = 1.0f;
 
-            template int $(explicit_primary)foo<char, int>;
+            template int §(explicit_primary)foo<char, int>;
 
-            template int $(explicit_partial)foo<char, char>;
+            template int §(explicit_partial)foo<char, char>;
 
             int main() {
-                $(implicit_primary_1)foo<int, char> = 1;
-                $(implicit_primary_2)foo<char, int> = 2;
-                $(implicit_partial)foo<char, char> = 3;
-                $(implicit_full)foo<int, int> = 4;
+                §(implicit_primary_1)foo<int, char> = 1;
+                §(implicit_primary_2)foo<char, int> = 2;
+                §(implicit_partial)foo<char, char> = 3;
+                §(implicit_full)foo<int, int> = 4;
                 return 0;
             }
         )");
@@ -244,11 +244,11 @@ TEST_CASE(VarTemplate) {
 TEST_CASE(Concept) {
     build_index(R"(
             template <typename T>
-            concept @primary[$(primary)foo] = true;
+            concept §(primary)⟦§(primary)foo⟧ = true;
 
-            static_assert($(implicit)foo<int>);
+            static_assert(§(implicit)foo<int>);
 
-            $(implicit2)foo auto bar = 1;
+            §(implicit2)foo auto bar = 1;
         )");
 
     GO_TO_DEFINITION("primary", "primary");
@@ -258,10 +258,10 @@ TEST_CASE(Concept) {
 
 TEST_CASE(Reference) {
     build_index(R"(
-            int $(decl)foo = 42;
+            int §(decl)foo = 42;
 
             int bar() {
-                return $(ref)foo + 1;
+                return §(ref)foo + 1;
             }
         )");
 
@@ -324,10 +324,10 @@ TEST_CASE(BaseAndDerived) {
 
 TEST_CASE(CallerAndCallee) {
     build_index(R"(
-            void $(callee_def)callee() {}
+            void §(callee_def)callee() {}
 
-            void $(caller_def)caller() {
-                $(call_site)callee();
+            void §(caller_def)caller() {
+                §(call_site)callee();
             }
         )");
 
@@ -408,9 +408,9 @@ TEST_CASE(OverrideRelation) {
 
 TEST_CASE(DeclarationAndDefinition) {
     build_index(R"(
-            int $(decl)foo();
+            int §(decl)foo();
 
-            int @def[$(def)foo]() { return 42; }
+            int §(def)⟦§(def)foo⟧() { return 42; }
         )");
 
     auto& index = tu_index.main_file_index;
@@ -440,13 +440,13 @@ TEST_CASE(DeclarationAndDefinition) {
 TEST_CASE(CrossFileHeaderIndex) {
     add_file("header.h", R"(
             #pragma once
-            int @hdr_func[$(hdr_func)helper]();
+            int §(hdr_func)⟦§(hdr_func)helper⟧();
         )");
     add_main("main.cpp", R"(
             #include "header.h"
 
             int main() {
-                return $(use_helper)helper();
+                return §(use_helper)helper();
             }
         )");
     ASSERT_TRUE(compile());
@@ -489,11 +489,11 @@ TEST_CASE(CrossFileHeaderIndex) {
 
 TEST_CASE(SymbolKinds) {
     build_index(R"(
-            struct $(cls)MyClass {};
-            enum $(enm)MyEnum { A, B };
-            void $(func)myFunc() {}
-            int $(var)myVar = 0;
-            namespace $(ns)MyNS {}
+            struct §(cls)MyClass {};
+            enum §(enm)MyEnum { A, B };
+            void §(func)myFunc() {}
+            int §(var)myVar = 0;
+            namespace §(ns)MyNS {}
         )");
 
     auto check_kind = [&](llvm::StringRef name, SymbolKind expected) {
@@ -575,8 +575,8 @@ TEST_CASE(snapshot) {
 
 TEST_CASE(LookupOccurrence) {
     build_index(R"(
-        int @x[fo$(x)o]();
-        int @ref[fo$(ref)o]() { return 0; }
+        int §(x)⟦fo§(x)o⟧();
+        int §(ref)⟦fo§(ref)o⟧() { return 0; }
     )");
 
     auto& fi = tu_index.main_file_index;
@@ -610,8 +610,8 @@ TEST_CASE(LookupOccurrence) {
 
 TEST_CASE(LookupRelation) {
     build_index(R"(
-        void @decl[fo$(decl)o]();
-        void @def[fo$(def)o]() {}
+        void §(decl)⟦fo§(decl)o⟧();
+        void §(def)⟦fo§(def)o⟧() {}
     )");
 
     auto& fi = tu_index.main_file_index;
@@ -717,7 +717,7 @@ struct Foo {
 )");
     add_main("main.cpp", R"(
 #include "foo.h"
-int Foo::@def[$(1)find](int x) const { return 0; }
+int Foo::§(def)⟦§(1)find⟧(int x) const { return 0; }
 )");
     ASSERT_TRUE(compile_with_pch());
 
@@ -778,7 +778,7 @@ TEST_CASE(HeaderMacroDropped) {
 )");
     add_main("main.cpp", R"(
 #include "baz.h"
-int x = $(1)BAZ;
+int x = §(1)BAZ;
 )");
     ASSERT_TRUE(compile());
 

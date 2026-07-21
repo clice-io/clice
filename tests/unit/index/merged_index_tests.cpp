@@ -110,8 +110,8 @@ TEST_CASE(RevisionAndFlipBack) {
 
 TEST_CASE(LookupByOffset) {
     build_index(R"(
-            int @func[$(func)foo]() { return 42; }
-            int bar() { return @ref[$(ref)foo](); }
+            int §(func)⟦§(func)foo⟧() { return 42; }
+            int bar() { return §(ref)⟦§(ref)foo⟧(); }
         )");
 
     // Merge the main file index into a MergedIndex.
@@ -133,8 +133,8 @@ TEST_CASE(LookupByOffset) {
 
 TEST_CASE(LookupBySymbolAndKind) {
     build_index(R"(
-            void $(target)target_func() {}
-            void caller() { $(call)target_func(); }
+            void §(target)target_func() {}
+            void caller() { §(call)target_func(); }
         )");
 
     index::MergedIndex merged;
@@ -392,7 +392,7 @@ TEST_CASE(RemergePreservesOtherTus) {
 
 TEST_CASE(CompactionDropsMasked) {
     build_index(R"(
-            int $(target)foo() { return 42; }
+            int §(target)foo() { return 42; }
         )");
 
     // Merge as compilation context, then remove: the rows are masked.
@@ -455,7 +455,7 @@ TEST_CASE(HasContributionTracking) {
 
 TEST_CASE(LookupFiltersRemoved) {
     build_index(R"(
-            int $(target)foo() { return 42; }
+            int §(target)foo() { return 42; }
         )");
 
     // Merge as compilation context.
@@ -487,7 +487,7 @@ TEST_CASE(LookupFiltersRemoved) {
 
 TEST_CASE(CacheInvalidatedAfterMerge) {
     build_index(R"(
-            int $(first)foo() { return 42; }
+            int §(first)foo() { return 42; }
         )");
 
     // Merge first TU as header context.
@@ -507,7 +507,7 @@ TEST_CASE(CacheInvalidatedAfterMerge) {
 
     // Build a second TU with different content.
     build_index(R"(
-            int $(second)bar() { return 99; }
+            int §(second)bar() { return 99; }
         )");
 
     // Merge second TU.

@@ -6,7 +6,7 @@ namespace field_access {
 struct Foo { int x; };
 int main() {
   Foo bar;
-  (void)bar.$(01_field)x;
+  (void)bar.§(01_field)x;
 }
 }
 
@@ -15,7 +15,7 @@ namespace field_init {
 struct Foo { int x = 5; };
 int main() {
   Foo bar;
-  (void)bar.$(02_field_init)x;
+  (void)bar.§(02_field_init)x;
 }
 }
 
@@ -23,7 +23,7 @@ int main() {
 namespace static_field {
 struct Foo { static int x; };
 int main() {
-  (void)Foo::$(03_static_field)x;
+  (void)Foo::§(03_static_field)x;
 }
 }
 
@@ -31,7 +31,7 @@ int main() {
 namespace member_initializer {
 struct Foo {
   int x;
-  Foo() : $(04_member_initializer)x(0) {}
+  Foo() : §(04_member_initializer)x(0) {}
 };
 }
 
@@ -39,7 +39,7 @@ struct Foo {
 namespace gnu_designator {
 struct Foo { int x; };
 int main() {
-  Foo bar = { $(05_gnu_designator)x : 1 };
+  Foo bar = { §(05_gnu_designator)x : 1 };
 }
 }
 
@@ -47,7 +47,7 @@ int main() {
 namespace field_designator {
 struct Foo { int x; int y; };
 int main() {
-  Foo bar = { .$(06_field_designator)x = 2, .y = 2 };
+  Foo bar = { .§(06_field_designator)x = 2, .y = 2 };
 }
 }
 
@@ -56,7 +56,7 @@ namespace method_call {
 struct Foo { int x(); };
 int main() {
   Foo bar;
-  bar.$(07_method_call)x();
+  bar.§(07_method_call)x();
 }
 }
 
@@ -64,6 +64,6 @@ int main() {
 namespace static_method_call {
 struct Foo { static int x(); };
 int main() {
-  Foo::$(08_static_method_call)x();
+  Foo::§(08_static_method_call)x();
 }
 }

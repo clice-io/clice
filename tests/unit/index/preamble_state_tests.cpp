@@ -58,7 +58,7 @@ index::SymbolHash hash_of(llvm::StringRef name,
 }
 
 TEST_CASE(ForcedIncludeServed) {
-    add_file("forced.h", R"(int @def[forced_value] = 1;)");
+    add_file("forced.h", R"(int §(def)⟦forced_value⟧ = 1;)");
     add_main("main.cpp", R"(int x = forced_value;)");
 
     // A compile-command forced include: clang records its include edge in
@@ -99,12 +99,12 @@ TEST_CASE(ForcedIncludeServed) {
 
 TEST_CASE(HeaderRelationLookup) {
     add_file("foo.h", R"(
-inline void @def[foo]() {}
-inline void bar() { @href[foo](); }
+inline void §(def)⟦foo⟧() {}
+inline void bar() { §(href)⟦foo⟧(); }
 )");
     add_main("main.cpp", R"(
 #include "foo.h"
-int main() { @ref[foo](); return 0; }
+int main() { §(ref)⟦foo⟧(); return 0; }
 )");
     build_state();
 
@@ -141,11 +141,11 @@ int main() { @ref[foo](); return 0; }
 
 TEST_CASE(PreambleLookup) {
     add_file("foo.h", R"(
-inline void @def[foo]() {}
+inline void §(def)⟦foo⟧() {}
 )");
     add_main("main.cpp", R"(
 #include "foo.h"
-int main() { @ref[$(ref)foo](); return 0; }
+int main() { §(ref)⟦§(ref)foo⟧(); return 0; }
 )");
     build_state();
 
@@ -173,11 +173,11 @@ int main() { @ref[$(ref)foo](); return 0; }
 
 TEST_CASE(SymbolTableLookup) {
     add_file("foo.h", R"(
-inline void @def[foo]() {}
+inline void §(def)⟦foo⟧() {}
 )");
     add_main("main.cpp", R"(
 #include "foo.h"
-int main() { @ref[foo](); return 0; }
+int main() { §(ref)⟦foo⟧(); return 0; }
 )");
     build_state();
 

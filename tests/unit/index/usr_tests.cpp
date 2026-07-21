@@ -81,13 +81,13 @@ TEST_SUITE(USR) {
 /// template <typename T> struct A;
 ///
 /// template <typename T> requires (__is_same(T, float))
-/// struct $(1)A<T>;
+/// struct §(1)A<T>;
 ///
 /// template <typename T> requires (__is_same(T, int))
-/// struct $(2)A<T>;
+/// struct §(2)A<T>;
 ///
 /// template <typename T> requires (std::same_as<T, double>)
-/// struct $(3)A<T> {};
+/// struct §(3)A<T> {};
 /// )cpp";
 ///
 ///     USRTester tester("main.cpp", content);
@@ -107,18 +107,18 @@ TEST_CASE(USRTemplateClassRequireClauseComplex) {
 template <typename T> struct A;
 
 template <typename T> requires (__is_same(T, float))
-struct $(1)A<T>;
+struct §(1)A<T>;
 
 using FLOAT = float;
 template <typename T> requires (__is_same(T, FLOAT))
-struct $(2)A<T>;
+struct §(2)A<T>;
 
 template <typename T> requires (__is_same(T, A<int>))
-struct $(11)A<T>;
+struct §(11)A<T>;
 template <typename T> requires (__is_same(T, A<float>))
-struct $(12)A<T>;
+struct §(12)A<T>;
 template <typename T> requires (__is_same(T, A<FLOAT>))
-struct $(13)A<T>;
+struct §(13)A<T>;
 )cpp";
 
     USRTester tester("main.cpp", content);
@@ -145,10 +145,10 @@ template<typename T, typename U>
 struct A;
 
 template<typename T, C U>
-struct $(1)A<T, U>;
+struct §(1)A<T, U>;
 
 template<C T, typename U>
-struct $(2)A<T, U>;
+struct §(2)A<T, U>;
 )cpp";
 
     USRTester tester("main.cpp", content);
@@ -163,14 +163,14 @@ struct $(2)A<T, U>;
 TEST_CASE(USRTemplateClassConceptConstraintPack) {
     llvm::StringRef content1 = R"cpp(
 template<typename... Ts>
-struct $(1)A;
+struct §(1)A;
 )cpp";
 
     llvm::StringRef content2 = R"cpp(
 template<typename T>
 concept C = requires(T t) { true; };
 template<C... Ts>
-struct $(2)A;
+struct §(2)A;
 )cpp";
 
     USRTester tester1("main.cpp", content1);
@@ -188,9 +188,9 @@ TEST_CASE(USRTemplateArgumentExpr) {
     llvm::StringRef content = R"cpp(
 template <typename T, int N> struct C;
 
-template <int N> struct $(1)C<float, N>;
-template <int M> struct $(2)C<float, M>;
-template <char c> struct $(3)C<float, c>;
+template <int N> struct §(1)C<float, N>;
+template <int M> struct §(2)C<float, M>;
+template <char c> struct §(3)C<float, c>;
 )cpp";
 
     USRTester tester("main.cpp", content);
@@ -207,10 +207,10 @@ template <char c> struct $(3)C<float, c>;
 TEST_CASE(USRTemplateFunctionRequireClause) {
     llvm::StringRef content = R"cpp(
 template<typename T>
-void $(1)func(T t) requires (sizeof(T) == 4) {};
+void §(1)func(T t) requires (sizeof(T) == 4) {};
 
 template<typename T>
-void $(2)func(T t) requires (sizeof(T) == 8) {};
+void §(2)func(T t) requires (sizeof(T) == 8) {};
 )cpp";
 
     USRTester tester("main.cpp", content);
@@ -225,14 +225,14 @@ void $(2)func(T t) requires (sizeof(T) == 8) {};
 TEST_CASE(USRTemplateVarConceptConstraint) {
     llvm::StringRef content1 = R"cpp(
 template <typename T>
-constexpr T $(1)pi = 3.14;
+constexpr T §(1)pi = 3.14;
 )cpp";
 
     llvm::StringRef content2 = R"cpp(
 template <typename T>
 concept integral = requires (T t) { t + 1; };
 template <integral T>
-constexpr T $(2)pi = 3;
+constexpr T §(2)pi = 3;
 )cpp";
 
     USRTester tester1("main.cpp", content1);
@@ -251,7 +251,7 @@ TEST_CASE(USRCTAD) {
 template<typename T>
 struct array {};
 template<typename U, array arr>
-struct $(1)L;
+struct §(1)L;
 )cpp";
 
     USRTester tester("main.cpp", content);
@@ -269,8 +269,8 @@ template<typename T> struct array {
   int x;
 };
 template<array U> struct L;
-template<> struct $(1)L<{1}>;
-template<> struct $(2)L<{2}>;
+template<> struct §(1)L<{1}>;
+template<> struct §(2)L<{2}>;
 )cpp";
 
     USRTester tester("main.cpp", content);
@@ -284,12 +284,12 @@ template<> struct $(2)L<{2}>;
 
 TEST_CASE(USRNTTPConstraint) {
     llvm::StringRef content1 = R"cpp(
-template<auto N> struct $(1)M;
+template<auto N> struct §(1)M;
 )cpp";
 
     llvm::StringRef content2 = R"cpp(
 template<typename T> concept C = requires {requires true;};
-template<C auto N> struct $(2)M;
+template<C auto N> struct §(2)M;
 )cpp";
 
     USRTester tester1("main.cpp", content1);
@@ -311,10 +311,10 @@ struct X {
     class Y;
 
     template <>
-    class $(1)Y<MetaFun::template apply>;
+    class §(1)Y<MetaFun::template apply>;
 
     template <>
-    class $(2)Y<MetaFun::template apply2>;
+    class §(2)Y<MetaFun::template apply2>;
 };
 )cpp";
 
@@ -332,10 +332,10 @@ TEST_CASE(USRDeducingThis) {
 class A {
 public:
     template <typename Self>
-    void $(1)foo(this Self&& s);
+    void §(1)foo(this Self&& s);
 
     template <typename Self>
-    void $(2)foo(Self&& s);
+    void §(2)foo(Self&& s);
 };
 )cpp";
 

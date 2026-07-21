@@ -219,8 +219,8 @@ void compile_only(llvm::StringRef code) {
 }
 
 /// Compile the code and compute hover info on the (single) annotated point.
-/// The point is either a nameless `$` marker or a named `$(p)` marker, and the
-/// expected highlighted token may be wrapped in a `@sym[...]` range.
+/// The point is either a nameless `§` marker or a named `§(p)` marker, and the
+/// expected highlighted token may be wrapped in a `§(sym)⟦...⟧` range.
 void run_info(llvm::StringRef code,
               const feature::HoverOptions& options = {},
               llvm::StringRef standard = "-std=c++20") {
@@ -278,7 +278,7 @@ void expect_hover(const HoverInfo& expected) {
 }
 
 void check_sym_range() {
-    if(!info || !current_code.contains("@sym[")) {
+    if(!info || !current_code.contains("§(sym)⟦")) {
         return;
     }
 
@@ -308,7 +308,7 @@ void check_cases(llvm::ArrayRef<HoverCase> cases, llvm::StringRef standard = "-s
 
 TEST_CASE(namespace_decl) {
     run(R"cpp(
-namespace $A {
+namespace §A {
 }
 )cpp");
 
@@ -321,7 +321,7 @@ namespace $A {
 TEST_CASE(function_reference) {
     run(R"cpp(
 int foo() { return 0; }
-int x = $foo();
+int x = §foo();
 )cpp");
 
     ASSERT_TRUE(result.has_value());
@@ -430,34 +430,34 @@ void f() {
 
 TEST_CASE(auto_and_decltype) {
     compile_only(R"cpp(
-$(a1)aut$(a2)o$(a3) i = -1;
+§(a1)aut§(a2)o§(a3) i = -1;
 
-$(d1)dec$(d2)ltype$(d3)(i) j = 2;
+§(d1)dec§(d2)ltype§(d3)(i) j = 2;
 
 struct A { int x; };
 
-aut$(a4)o va$(a5)r = A{};
+aut§(a4)o va§(a5)r = A{};
 
-a$(fa)uto f1() { return 1; }
+a§(fa)uto f1() { return 1; }
 
-de$(fn_decltype)cltype(au$(fn_decltype_auto)to) f2() {}
+de§(fn_decltype)cltype(au§(fn_decltype_auto)to) f2() {}
 
-int f3(au$(fn_para_auto)to x) {}
+int f3(au§(fn_para_auto)to x) {}
 )cpp");
 }
 
 TEST_CASE(expr) {
     compile_only(R"cpp(
 int xxxx = 1;
-int yyyy = xx$(e1)xx;
+int yyyy = xx§(e1)xx;
 
 struct A {
     int function(int param) {
-        return thi$(e2)s$(e3)->$(e4)funct$(e5)ion(para$(e6)m);
+        return thi§(e2)s§(e3)->§(e4)funct§(e5)ion(para§(e6)m);
     }
 
     int fn(int param) {
-        return static$(e7)_cast<A*>(nul$(e8)lptr)->function(par$(e9)am);
+        return static§(e7)_cast<A*>(nul§(e8)lptr)->function(par§(e9)am);
     }
 };
 )cpp");
@@ -468,7 +468,7 @@ TEST_CASE(structured_no_crash) {
         // Field type initializer.
         {R"cpp(
           struct X { int x = 2; };
-          X @sym[$x];
+          X §(sym)⟦§x⟧;
           )cpp",
          [](HoverInfo& hi) {
              hi.name = "x";
@@ -478,7 +478,7 @@ TEST_CASE(structured_no_crash) {
              hi.type = "X";
          }},
         // Don't crash on null types.
-        {R"cpp(auto [@sym[$x]] = 1; /*error-ok*/)cpp",
+        {R"cpp(auto [§(sym)⟦§x⟧] = 1; /*error-ok*/)cpp",
          [](HoverInfo& hi) {
              hi.name = "x";
              hi.kind = SymbolKind::Variable;
@@ -490,7 +490,7 @@ TEST_CASE(structured_no_crash) {
          }},
         // Don't crash on invalid decl with invalid init expr.
         {R"cpp(
-          Unknown @sym[$abc] = invalid;
+          Unknown §(sym)⟦§abc⟧ = invalid;
           // error-ok
           )cpp",
          [](HoverInfo& hi) {
@@ -505,7 +505,7 @@ TEST_CASE(structured_no_crash) {
         {R"cpp(
         // error-ok
         struct Foo {
-          Bar @sym[x$x];
+          Bar §(sym)⟦x§x⟧;
         };)cpp",
          [](HoverInfo& hi) {
              hi.name = "xx";
@@ -520,7 +520,7 @@ TEST_CASE(structured_no_crash) {
         // error-ok
         struct Foo {
           Bar xx;
-          int @sym[y$y];
+          int §(sym)⟦y§y⟧;
         };)cpp",
          [](HoverInfo& hi) {
              hi.name = "yy";
@@ -537,7 +537,7 @@ TEST_CASE(structured_no_crash) {
             int a[10];
           };
           constexpr Foo k2 = {
-            @sym[${]1} // FIXME: why the hover range is 1 character?
+            §(sym)⟦§{⟧1} // FIXME: why the hover range is 1 character?
           };
          )cpp",
          [](HoverInfo& hi) {
@@ -554,7 +554,7 @@ TEST_CASE(all_no_crash) {
     HoverCase cases[] = {
         {R"cpp(// Should not crash when evaluating the initializer.
             struct Test {};
-            void test() { Test && @sym[te$st] = {}; }
+            void test() { Test && §(sym)⟦te§st⟧ = {}; }
           )cpp",
          [](HoverInfo& hi) {
              hi.name = "test";
@@ -567,7 +567,7 @@ TEST_CASE(all_no_crash) {
         {R"cpp(// Shouldn't crash when evaluating the initializer.
             struct Bar {}; // error-ok
             struct Foo { void foo(Bar x = y); }
-            void Foo::foo(Bar @sym[$x]) {})cpp",
+            void Foo::foo(Bar §(sym)⟦§x⟧) {})cpp",
          [](HoverInfo& hi) {
              hi.name = "x";
              hi.kind = SymbolKind::Parameter;
@@ -598,7 +598,7 @@ TEST_CASE(spaceship_doc_no_crash) {
     // Foo bar baz
     friend auto operator<=>(S, S) = default;
   };
-  static_assert(S<void>() =$= S<void>());
+  static_assert(S<void>() =§= S<void>());
     )cpp");
 
     ASSERT_TRUE(info.has_value());
@@ -610,14 +610,14 @@ TEST_CASE(invalid_default_args) {
     run_info(R"cpp(
         // error-ok testing behavior on invalid decl
         class Foo {};
-        void foo(Foo p$aram = nullptr);
+        void foo(Foo p§aram = nullptr);
         )cpp");
     ASSERT_TRUE(info.has_value());
     EXPECT_FALSE(info->value.has_value());
 
     run_info(R"cpp(
         class Foo {};
-        void foo(Foo *p$aram = nullptr);
+        void foo(Foo *p§aram = nullptr);
         )cpp");
     ASSERT_TRUE(info.has_value());
     EXPECT_EQ(dump(info->value), "nullptr");
@@ -629,7 +629,7 @@ TEST_CASE(disable_show_aka) {
 
     run_info(R"cpp(
     using m_int = int;
-    m_int @sym[$a];
+    m_int §(sym)⟦§a⟧;
   )cpp",
              options,
              "-std=c++17");
@@ -643,14 +643,14 @@ TEST_CASE(big_ints_no_crash) {
     // APInt64 wrap around.
     run_info(R"cpp(
     constexpr unsigned long value = -1; // wrap around
-    void foo() { va$lue; }
+    void foo() { va§lue; }
   )cpp");
     ASSERT_TRUE(info.has_value());
 
     // __int128_t value printing.
     run_info(R"cpp(
     constexpr __int128_t value = -4;
-    void foo() { va$lue; }
+    void foo() { va§lue; }
   )cpp");
     ASSERT_TRUE(info.has_value());
     EXPECT_EQ(dump(info->value), "-4 (0xfffffffc)");
@@ -664,7 +664,7 @@ TEST_CASE(global_casts_no_crash) {
     enum Test : uintptr_t {};
     unsigned global_var;
     void foo() {
-      Test v$al = static_cast<Test>(reinterpret_cast<uintptr_t>(&global_var));
+      Test v§al = static_cast<Test>(reinterpret_cast<uintptr_t>(&global_var));
     }
   )cpp");
     ASSERT_TRUE(info.has_value());
@@ -674,7 +674,7 @@ TEST_CASE(global_casts_no_crash) {
     using uintptr_t = unsigned long long;
     unsigned global_var;
     void foo() {
-      uintptr_t a$ddress = reinterpret_cast<uintptr_t>(&global_var);
+      uintptr_t a§ddress = reinterpret_cast<uintptr_t>(&global_var);
     }
   )cpp");
     ASSERT_TRUE(info.has_value());
@@ -687,7 +687,7 @@ TEST_CASE(setter_heuristic_no_crash) {
     template<typename T> T foo(T);
 
     // Setter variable heuristic might fail if the callexpr is broken.
-    struct X { int Y; void @sym[$setY](float) { Y = foo(undefined); } };)cpp");
+    struct X { int Y; void §(sym)⟦§setY⟧(float) { Y = foo(undefined); } };)cpp");
     ASSERT_TRUE(info.has_value());
 }
 
@@ -981,7 +981,7 @@ TEST_CASE(parse_documentation) {
 
 TEST_CASE(plaintext_content) {
     add_main("main.cpp", R"cpp(
-int $foo = 1;
+int §foo = 1;
 )cpp");
     ASSERT_TRUE(compile());
 
@@ -998,7 +998,7 @@ int $foo = 1;
 
 TEST_CASE(protocol_range) {
     run(R"cpp(
-int $foo = 1;
+int §foo = 1;
 )cpp");
 
     ASSERT_TRUE(result.has_value());
@@ -1013,7 +1013,7 @@ int $foo = 1;
 
 TEST_CASE(scoped_attribute) {
     run_info(R"cpp(
-[[gnu::no$inline]] void foo();
+[[gnu::no§inline]] void foo();
 )cpp");
 
     ASSERT_TRUE(info.has_value());
@@ -1025,7 +1025,7 @@ TEST_CASE(scoped_attribute) {
 TEST_CASE(whitespace_no_hover) {
     add_main("main.cpp", R"cpp(
 int x = 1;
-$(p)
+§(p)
 int y = 2;
 )cpp");
     ASSERT_TRUE(compile());

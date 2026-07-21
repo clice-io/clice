@@ -19,4 +19,4 @@ struct Foo
   auto operator<=>(const Foo&) const = default;
 };
 
-bool x = Foo(1) !$(01_spaceship_neq)= Foo(2);
+bool x = Foo(1) !§(01_spaceship_neq)= Foo(2);

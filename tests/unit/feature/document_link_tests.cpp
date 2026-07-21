@@ -44,12 +44,12 @@ TEST_CASE(Include) {
 #endif
 
 #[main.cpp]
-#include @0["test.h"$]
-#include @1["test.h"$]
-#include @2["pragma_once.h"$]
-#include @3["pragma_once.h"$]
-#include @4["guard_macro.h"$]
-#include @5["guard_macro.h"$]
+#include §(0)⟦"test.h"§⟧
+#include §(1)⟦"test.h"§⟧
+#include §(2)⟦"pragma_once.h"§⟧
+#include §(3)⟦"pragma_once.h"§⟧
+#include §(4)⟦"guard_macro.h"§⟧
+#include §(5)⟦"guard_macro.h"§⟧
 )cpp");
 
     ASSERT_EQ(links.size(), 6U);
@@ -66,9 +66,9 @@ TEST_CASE(HasInclude) {
 #[test.h]
 
 #[main.cpp]
-#include @0["test.h"]
+#include §(0)⟦"test.h"⟧
 
-#if __has_include(@1["test.h"])
+#if __has_include(§(1)⟦"test.h"⟧)
 #endif
 
 #if __has_include("test2.h")
@@ -86,7 +86,7 @@ TEST_CASE(MacroInclude) {
 
 #[main.cpp]
 #define HEADER "test.h"
-#include @0[HEADER$]
+#include §(0)⟦HEADER§⟧
 )cpp");
 
     ASSERT_EQ(links.size(), 1U);
@@ -100,7 +100,7 @@ TEST_CASE(Embed) {
 
 #[main.cpp]
 const char e[] = {
-#embed @0["bytes.bin"$]
+#embed §(0)⟦"bytes.bin"§⟧
 };
 )cpp",
         "-std=c++23");
@@ -115,7 +115,7 @@ TEST_CASE(HasEmbed) {
 ABCDE
 
 #[main.cpp]
-#if __has_embed(@0["data.bin"$])
+#if __has_embed(§(0)⟦"data.bin"§⟧)
 #endif
 
 #if __has_embed("non_existent.bin")
@@ -130,8 +130,8 @@ ABCDE
 TEST_CASE(IncludeDefinition) {
     add_file("test.h", "#pragma once\n");
     add_main("main.cpp", R"(
-#include @arg["test.h"]
-$(inside)
+#include §(arg)⟦"test.h"⟧
+§(inside)
 int x = 0;
 )");
     ASSERT_TRUE(compile());
