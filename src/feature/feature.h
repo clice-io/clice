@@ -28,12 +28,14 @@ using kota::ipc::lsp::PositionEncoding;
 inline auto to_uri(llvm::StringRef file) -> std::string {
     const auto file_view = std::string_view(file.data(), file.size());
 
-    if(auto parsed = kota::ipc::lsp::URI::parse(file_view)) {
-        return parsed->str();
-    }
-
+    // Convert as a path first: a Windows drive prefix like "F:" would
+    // otherwise be accepted by URI::parse as a single-letter scheme.
     if(auto uri = kota::ipc::lsp::URI::from_file_path(file_view)) {
         return uri->str();
+    }
+
+    if(auto parsed = kota::ipc::lsp::URI::parse(file_view)) {
+        return parsed->str();
     }
 
     return file.str();
