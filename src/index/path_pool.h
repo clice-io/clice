@@ -16,6 +16,10 @@ namespace clice::index {
 /// path tables of serialized index artifacts: every persisted path id is an
 /// index into its artifact's own table, never a runtime pool id (those are
 /// per-session).
+///
+/// FIXME: like the runtime pool (support/path_pool.h), only
+/// separators are normalized — case-variant spellings of one file intern
+/// (and persist) as distinct paths.
 struct PathPool {
     llvm::BumpPtrAllocator allocator;
 

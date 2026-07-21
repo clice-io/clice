@@ -14,6 +14,21 @@
 namespace clice {
 
 /// Intern pool that maps file paths to compact uint32_t IDs.
+///
+/// Paths are opaque byte strings; the only normalization applied is
+/// backslash-to-slash replacement.
+///
+/// FIXME: character case is not normalized, so case-variant
+/// spellings of one file on a case-insensitive filesystem intern to
+/// different IDs. The practical instance is the drive letter: VS Code
+/// sends lowercase ("file:///f%3A/...") while the CDB and clang report
+/// "F:/...", so the same file can receive two IDs when both sources feed
+/// one pool.
+///
+/// FIXME: paths are assumed to be valid UTF-8. POSIX filenames
+/// are raw bytes; a non-UTF-8 path survives interning but breaks
+/// downstream where it is embedded into JSON (worker IPC, the agentic
+/// protocol) or percent-decoded by clients that interpret URIs as UTF-8.
 struct PathPool {
     llvm::BumpPtrAllocator allocator;
     llvm::SmallVector<llvm::StringRef> paths;

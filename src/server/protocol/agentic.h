@@ -9,6 +9,12 @@
 
 namespace clice::agentic {
 
+/// The `path`/`file` fields of the agentic protocol carry raw filesystem
+/// paths, not URIs.
+///
+/// FIXME: they are serialized into JSON verbatim, so a
+/// non-UTF-8 path (possible on POSIX, where filenames are raw bytes)
+/// produces invalid JSON. Non-UTF-8 paths are currently unsupported.
 struct CompileCommandParams {
     std::string path;
 };

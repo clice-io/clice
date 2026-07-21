@@ -283,6 +283,9 @@ std::optional<std::size_t> CompilationDatabase::load(llvm::StringRef path) {
 
         // Resolve relative file paths against the directory so that entries
         // from different directories don't collide in the PathPool.
+        // TODO: remove_dots here — a "file" carrying "./" or "../" segments
+        // interns under a spelling that clang's realpath'd paths never use,
+        // so lookups against clang-reported paths miss the entry.
         std::string file_abs;
         if(!path::is_absolute(file_ref)) {
             file_abs = path::join(dir_ref, file_ref);
