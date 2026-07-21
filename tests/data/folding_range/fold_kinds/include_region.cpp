@@ -1,7 +1,7 @@
-/// section: Fold Kinds
-/// title: Include region folding — consecutive `#include` directives
-/// status: unsupported
-/// order: 8
+/// # Include region folding — consecutive `#include` directives
+///
+/// - status: unsupported
+/// - order: 8
 
 #include <vector>       // ┐
 #include <string>       // │ foldable region

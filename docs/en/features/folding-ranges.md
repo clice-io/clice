@@ -7,7 +7,7 @@
 
 ## Fold Kinds
 
-<!-- BEGIN GENERATED ITEMS: Fold Kinds -->
+<!-- BEGIN GENERATED ITEMS: fold_kinds -->
 
 - [x] Block folding — functions, classes, structs, unions, enums, namespaces, lambdas
 
@@ -191,7 +191,7 @@
 
 ## Refinements
 
-<!-- BEGIN GENERATED ITEMS: Refinements -->
+<!-- BEGIN GENERATED ITEMS: refinements -->
 
 - [x] `collapsedText` placeholder (LSP 3.17) — show a summary when folded ([clangd#2667](https://github.com/clangd/clangd/issues/2667))
 

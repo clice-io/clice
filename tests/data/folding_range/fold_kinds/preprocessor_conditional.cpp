@@ -1,8 +1,8 @@
-/// section: Fold Kinds
-/// title: Preprocessor conditional folding (`#if` / `#ifdef` / `#ifndef` ... `#endif`)
-/// status: partial
-/// issues: clangd#1661, clangd#2059
-/// order: 5
+/// # Preprocessor conditional folding (`#if` / `#ifdef` / `#ifndef` ... `#endif`)
+///
+/// - status: partial
+/// - issues: clangd#1661, clangd#2059
+/// - order: 5
 ///
 /// Branch regions delimited by `#else` fold today; a bare `#if ... #endif`
 /// block without an `#else` does not fold yet. clangd#2059 is a duplicate

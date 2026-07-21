@@ -4,21 +4,25 @@
 
 namespace clice::testing {
 
-/// Fixture files under tests/data/<feature>/ may begin with a frontmatter
-/// key block consumed by the feature-doc generator (tests/tools/feature_docs.py):
+/// Fixture files under tests/data/<feature>/ may begin with a doc header
+/// consumed by the feature-doc generator (tests/tools/feature_docs.py):
 ///
-///     /// section: Fold Kinds
-///     /// title: Block folding
-///     /// status: supported
+///     /// # Block folding
+///     ///
+///     /// - status: supported
+///     /// - issues: clangd#1455
 ///     ///
 ///     /// Optional markdown description after a bare `///` separator.
 ///
-/// Returns the value of `key` inside the leading key block, or an empty
-/// StringRef when the file has no frontmatter or the key is absent. The
-/// block ends at the first bare `///`, non-comment or non-`key: value`
-/// line, and only line-leading keys match — there is no grammar here that
-/// could drift from the Python parser.
+/// A file has a header iff its first line (trimmed) starts with `/// #`.
+/// Returns the value of the metadata list entry `- key: value` inside the
+/// leading run of `///` lines, or an empty StringRef when the file has no
+/// header or the key is absent. This is a deliberately trivial scan; the
+/// Python parser is the authority on the full grammar.
 inline llvm::StringRef fixture_frontmatter(llvm::StringRef content, llvm::StringRef key) {
+    if(!content.ltrim().starts_with("/// #")) {
+        return {};
+    }
     while(!content.empty()) {
         auto parts = content.split('\n');
         content = parts.second;
@@ -27,8 +31,8 @@ inline llvm::StringRef fixture_frontmatter(llvm::StringRef content, llvm::String
             break;
         }
         line = line.drop_front(3).trim();
-        if(line.empty() || !line.contains(':')) {
-            break;
+        if(!line.consume_front("- ") || !line.contains(':')) {
+            continue;
         }
         auto kv = line.split(':');
         if(kv.first.trim() == key) {

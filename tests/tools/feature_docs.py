@@ -1,31 +1,40 @@
 """Generate feature-doc checklist sections from snapshot fixtures.
 
-Each fixture .cpp under tests/data/<feature>/ may begin with a frontmatter
-block whose keys describe one checklist capability. This tool renders those
-blocks into the GENERATED regions of docs/en/features/*.md, so the fixtures
-are the single source of truth and the doc checklist is derived from them.
+Each fixture .cpp under tests/data/<feature>/ may begin with a doc header
+describing one checklist capability. This tool renders those headers into
+the GENERATED regions of docs/en/features/*.md, so the fixtures are the
+single source of truth and the doc checklist is derived from them.
 
-Fixture frontmatter:
+Fixture doc header:
 
-    /// section: Fold Kinds
-    /// title: Block folding — functions, classes, ...
-    /// status: supported
-    /// issues: clangd#1455, vscode#70794
-    /// order: 1
+    /// # Block folding — functions, classes, ...
+    ///
+    /// - status: supported
+    /// - issues: clangd#1455, vscode#70794
+    /// - order: 1
     ///
     /// Optional markdown description after a bare `///` separator.
 
-A file is a doc item iff its first line is a `/// <known-key>: ...` line;
-anything else is a supplementary edge-case test, excluded from docs. The
-key block ends at the first bare `///` (or non-comment) line; every line
-inside it must be a known key. section, title and status are required;
-status is `supported`, `partial` or `unsupported`. `partial` items render
-unchecked with a _(partial)_ marker but are still compiled and
-snapshotted, so the snapshot records the current partial behavior; only
-`unsupported` fixtures are skipped by the snapshot glob (via
-test/fixture.h, which reads the same key block). Everything after the
-frontmatter and description (trimmed of blank lines) is the example code,
-rendered verbatim into the doc.
+A file is a doc item iff its first line (after stripping `/// `) starts
+with `# ` — the h1 text is the item title. Anything else is a
+supplementary edge-case test, excluded from docs. A blank `///` separates
+the title from a metadata list of `/// - key: value` lines; the known keys
+are `status` (required; `supported`, `partial` or `unsupported`), `issues`
+(optional) and `order` (optional integer). A bare `///` then separates the
+metadata from an optional markdown description; everything after the last
+`///` line (trimmed of blank lines) is the example code.
+
+The section a doc item belongs to comes from its directory: the fixture's
+path relative to tests/data/<feature>/ must be exactly one subdirectory
+deep (e.g. fold_kinds/block_folding.cpp → section "fold_kinds"), and the
+generated regions are keyed by that directory name
+(`<!-- BEGIN GENERATED ITEMS: fold_kinds -->`). A doc-item fixture at the
+top level is a problem; supplementary fixtures may live anywhere.
+
+`partial` items render unchecked with a _(partial)_ marker but are still
+compiled and snapshotted, so the snapshot records the current partial
+behavior; only `unsupported` fixtures are skipped by the snapshot glob (via
+test/fixture.h, which reads the same header).
 
 Usage:
     python tests/tools/feature_docs.py update   # rewrite generated regions
@@ -52,8 +61,7 @@ ISSUE_TRACKERS = {
     "vscode": "https://github.com/microsoft/vscode/issues/",
 }
 
-REQUIRED_KEYS = ("section", "title", "status")
-KNOWN_KEYS = ("section", "title", "status", "issues", "order")
+KNOWN_KEYS = ("status", "issues", "order")
 VALID_STATUS = ("supported", "partial", "unsupported")
 
 # Markers must occupy their own unindented line, so marker text embedded in
@@ -62,6 +70,8 @@ VALID_STATUS = ("supported", "partial", "unsupported")
 BEGIN_RE = re.compile(r"^<!-- BEGIN GENERATED ITEMS: (.+?) -->$")
 END_MARKER = "<!-- END GENERATED ITEMS -->"
 ISSUE_RE = re.compile(r"^([a-z]+)#(\d+)$")
+# A metadata list entry: `- key: value`.
+META_RE = re.compile(r"-\s+(\w+):\s*(.*)")
 
 
 @dataclass
@@ -92,66 +102,76 @@ def trim_blank(lines: list[str]) -> list[str]:
     return lines
 
 
-def parse_fixture(path: Path, problems: list[str]) -> Fixture | None:
-    """Parse a fixture's frontmatter. Returns None for supplementary files."""
+def parse_fixture(path: Path, feature_dir: Path, problems: list[str]) -> Fixture | None:
+    """Parse a fixture's doc header. Returns None for supplementary files."""
     text = path.read_text(encoding="utf-8")
     lines = text.splitlines()
 
-    def key_line(line: str) -> re.Match | None:
-        if not line.lstrip().startswith("///"):
+    def comment(i: int) -> str | None:
+        """Stripped `///` text at line i, or None if it is not a `///` line."""
+        if i >= len(lines) or not lines[i].lstrip().startswith("///"):
             return None
-        return re.match(r"(\w+):\s*(.*)", strip_comment(line).strip())
+        return strip_comment(lines[i])
 
-    first = key_line(lines[0]) if lines else None
-    if not first:
-        # First line is not a key line: supplementary fixture, not a doc item.
+    first = comment(0)
+    if first is None or not first.startswith("# "):
+        # Not an h1 title line: supplementary fixture, not a doc item.
         return None
-    if first.group(1) not in KNOWN_KEYS:
-        # A typo in the first key would otherwise silently demote the file
-        # to a supplementary fixture and drop it from the docs.
+    title = first[2:].strip()
+    if not title:
+        problems.append(f"{path}: empty title")
+
+    # Section is the fixture's immediate subdirectory under the feature dir.
+    rel = path.relative_to(feature_dir)
+    section = rel.parts[0] if len(rel.parts) >= 2 else ""
+    if len(rel.parts) == 1:
         problems.append(
-            f"{path}: first line looks like a frontmatter key but "
-            f"'{first.group(1)}' is unknown; doc items must start with a "
-            "known key and supplementary fixtures must not start with a "
-            "'word:' comment line"
+            f"{path}: doc-item fixture must live in a section subdirectory, "
+            f"not at the top level of {feature_dir.name}"
         )
-        return None
+    elif len(rel.parts) > 2:
+        problems.append(
+            f"{path}: doc-item fixture must be exactly one subdirectory deep "
+            f"(found '{rel.as_posix()}')"
+        )
+
+    # A blank `///` separates the title from the metadata list.
+    i = 1
+    if comment(i) == "":
+        i += 1
 
     keys: dict[str, str] = {}
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-        if not line.lstrip().startswith("///") or strip_comment(line).strip() == "":
-            break
-        match = key_line(line)
+    while (line := comment(i)) is not None and line.strip():
+        match = META_RE.fullmatch(line.strip())
         if not match:
             problems.append(
-                f"{path}: malformed frontmatter line '{strip_comment(line).strip()}' "
-                "(separate the description with a bare ///)"
+                f"{path}: malformed metadata line '{line.strip()}' "
+                "(expected '- key: value'; separate the description with a bare ///)"
             )
-            break
+            i += 1
+            continue
         key = match.group(1)
-        if key in keys:
+        if key not in KNOWN_KEYS:
+            problems.append(f"{path}: unknown key '{key}'")
+        elif key in keys:
             problems.append(f"{path}: duplicate {key}")
         keys[key] = match.group(2).strip()
         i += 1
 
+    # Everything from the trailing bare `///` up to the first non-comment
+    # line is the markdown description.
     desc: list[str] = []
-    while i < len(lines) and lines[i].lstrip().startswith("///"):
-        desc.append(strip_comment(lines[i]))
+    while (line := comment(i)) is not None:
+        desc.append(line)
         i += 1
     body_start = i
 
-    for key in REQUIRED_KEYS:
-        if key not in keys:
-            problems.append(f"{path}: missing required key '{key}'")
-        elif not keys[key]:
-            problems.append(f"{path}: empty key '{key}'")
-    for key in keys:
-        if key not in KNOWN_KEYS:
-            problems.append(f"{path}: unknown key '{key}'")
+    if "status" not in keys:
+        problems.append(f"{path}: missing required key 'status'")
+    elif not keys["status"]:
+        problems.append(f"{path}: empty key 'status'")
     status = keys.get("status", "")
-    if "status" in keys and status not in VALID_STATUS:
+    if "status" in keys and status and status not in VALID_STATUS:
         problems.append(
             f"{path}: invalid status '{status}' (expected one of {', '.join(VALID_STATUS)})"
         )
@@ -175,12 +195,12 @@ def parse_fixture(path: Path, problems: list[str]) -> Fixture | None:
 
     example = "\n".join(trim_blank(lines[body_start:]))
     if not example.strip():
-        problems.append(f"{path}: spec fixture has no example code")
+        problems.append(f"{path}: doc-item fixture has no example code")
 
     return Fixture(
         path=path,
-        section=keys.get("section", ""),
-        title=keys.get("title", ""),
+        section=section,
+        title=title,
         status=status,
         issues=issues,
         order=order,
@@ -229,7 +249,7 @@ def collect_fixtures(feature: str, problems: list[str]) -> list[Fixture]:
     fixtures: list[Fixture] = []
     titles: dict[str, Path] = {}
     for path in sorted(data_dir.glob("**/*.cpp")):
-        fx = parse_fixture(path, problems)
+        fx = parse_fixture(path, data_dir, problems)
         if fx is None:
             continue
         if fx.title in titles:

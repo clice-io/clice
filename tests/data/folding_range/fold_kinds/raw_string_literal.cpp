@@ -1,7 +1,7 @@
-/// section: Fold Kinds
-/// title: Raw string literal folding
-/// status: unsupported
-/// order: 9
+/// # Raw string literal folding
+///
+/// - status: unsupported
+/// - order: 9
 
 auto sql = R"(
     SELECT *

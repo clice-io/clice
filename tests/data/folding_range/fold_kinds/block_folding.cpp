@@ -1,7 +1,7 @@
-/// section: Fold Kinds
-/// title: Block folding — functions, classes, structs, unions, enums, namespaces, lambdas
-/// status: supported
-/// order: 1
+/// # Block folding — functions, classes, structs, unions, enums, namespaces, lambdas
+///
+/// - status: supported
+/// - order: 1
 
 namespace geometry {
 
