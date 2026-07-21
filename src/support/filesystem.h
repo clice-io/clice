@@ -3,10 +3,8 @@
 #include <cassert>
 #include <chrono>
 #include <cstdint>
-#include <cstdlib>
 #include <expected>
 #include <memory>
-#include <print>
 #include <string>
 
 #include "support/format.h"
@@ -26,16 +24,6 @@ template <typename... Args>
 std::string join(Args&&... args) {
     llvm::SmallString<128> path;
     ((path::append(path, std::forward<Args>(args))), ...);
-    return path.str().str();
-}
-
-inline std::string real_path(llvm::StringRef file) {
-    llvm::SmallString<128> path;
-    auto error = llvm::sys::fs::real_path(file, path);
-    if(error) {
-        std::println("Failed to get real path of {}: {}", file, error.message());
-        std::abort();
-    }
     return path.str().str();
 }
 
