@@ -20,7 +20,15 @@ namespace clice::testing {
 /// header or the key is absent. This is a deliberately trivial scan; the
 /// Python parser is the authority on the full grammar.
 inline llvm::StringRef fixture_frontmatter(llvm::StringRef content, llvm::StringRef key) {
-    if(!content.ltrim().starts_with("/// #")) {
+    // Mirror parse_fixture's title grammar exactly: strip `///` plus one
+    // space, then require `# ` — so `///#x`, `/// ## h2` or extra-indented
+    // variants are supplementary content on both sides.
+    llvm::StringRef first = content.split('\n').first.trim();
+    if(!first.consume_front("///")) {
+        return {};
+    }
+    first.consume_front(" ");
+    if(!first.starts_with("# ")) {
         return {};
     }
     while(!content.empty()) {
