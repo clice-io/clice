@@ -78,8 +78,8 @@ AnnotatedSource AnnotatedSource::from(llvm::StringRef content) {
                 i += open_mark.size();
             } else if(key.empty()) {
                 nameless_offsets.emplace_back(offset);
-            } else {
-                offsets.try_emplace(key, offset);
+            } else if(!offsets.try_emplace(key, offset).second) {
+                LOG_FATAL("Duplicate point annotation §({}).", key);
             }
             continue;
         }
@@ -89,7 +89,12 @@ AnnotatedSource AnnotatedSource::from(llvm::StringRef content) {
                 LOG_FATAL("`⟧` without a matching `§⟦` in annotated source.");
             }
             OpenSpan span = stack.pop_back_val();
-            ranges.try_emplace(span.key, LocalSourceRange{span.begin, offset});
+            if(!ranges.try_emplace(span.key, LocalSourceRange{span.begin, offset}).second) {
+                if(span.key.empty()) {
+                    LOG_FATAL("Multiple nameless ranges in one source; name them instead.");
+                }
+                LOG_FATAL("Duplicate range annotation §({})⟦...⟧.", span.key);
+            }
             i += close_mark.size();
             continue;
         }
