@@ -1,5 +1,9 @@
 module;
 
+// clang20 floor: MSVC STL befriends std::get, so it cannot be re-exported
+// there; qualified std::get<I> calls need the textual declaration.
+#include <tuple>
+
 #include "schema_generated.h"
 
 module clice;

@@ -71,9 +71,12 @@ export module stdlib;
 // for the befriended free comparison operators). Do NOT add them to the
 // using-lists below — the build will break.
 //
-// Affected names: make_shared, copy, and the free comparison operators
+// Affected names: make_shared, copy, the free comparison operators
 // (operator== / operator<=> over std::optional, std::variant, std::vector,
-// std::string, std::error_code, reverse_iterator, and std::bitset's &/|/^).
+// std::string, std::error_code, reverse_iterator, and std::bitset's &/|/^),
+// and std::get (befriended by the MSVC STL's std::tuple; libstdc++/libc++ do
+// not befriend it, so this one only clashes on Windows — the floor is
+// uniform across platforms anyway).
 export namespace std {
 
 using ::std::abort;
@@ -107,8 +110,13 @@ using ::std::formatter;
 using ::std::forward;
 using ::std::function;
 using ::std::generic_category;
-using ::std::get;
 using ::std::get_if;
+#ifndef _MSVC_STL_VERSION
+// std::get: free non-friend on libstdc++/libc++ (pair/tuple structured
+// bindings need the export); befriended by MSVC STL's tuple (export would
+// clash), where friend-ADL finds it instead.
+using ::std::get;
+#endif
 using ::std::getenv;
 using ::std::greater;
 using ::std::hash;
@@ -282,6 +290,18 @@ using ::__gnu_cxx::operator==;
 using ::__gnu_cxx::operator<=>;
 
 }  // namespace __gnu_cxx
+#elif defined(_LIBCPP_VERSION)
+// libc++ declares the same iterator operators as free function templates in
+// namespace std over __wrap_iter (not hidden friends), so they need the same
+// re-export. Safe here, unlike on libstdc++: libc++ does not befriend these
+// operator names from its class templates.
+export namespace std {
+
+using ::std::operator-;
+using ::std::operator==;
+using ::std::operator<=>;
+
+}  // namespace std
 #endif
 
 // std.compat-style: C library names at global scope.
