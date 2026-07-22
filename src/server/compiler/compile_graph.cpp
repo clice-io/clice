@@ -1,10 +1,9 @@
-#include "server/compiler/compile_graph.h"
+module;
 
-#include <algorithm>
 #include <cassert>
+#include <memory>  // native std::make_shared (not re-exported by stdlib; befriend clash)
 
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/DenseSet.h"
+module clice;
 
 namespace clice {
 

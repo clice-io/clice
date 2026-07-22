@@ -2,8 +2,6 @@ module;
 
 #include <cassert>
 
-#include "index/usr.h"
-
 module clice;
 
 namespace clice {

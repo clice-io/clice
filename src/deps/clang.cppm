@@ -85,6 +85,7 @@ using ::clang::ASTRecordLayout;
 using ::clang::ASTTemplateArgumentListInfo;
 using ::clang::AccessSpecDecl;
 using ::clang::ArraySizeModifier;
+using ::clang::ArrayType;
 using ::clang::ArrayTypeLoc;
 using ::clang::Attr;
 using ::clang::AttributedStmt;
@@ -93,6 +94,7 @@ using ::clang::AutoType;
 using ::clang::BO_Assign;
 using ::clang::BinaryOperator;
 using ::clang::BindingDecl;
+using ::clang::BlockPointerType;
 using ::clang::BuiltinTemplateDecl;
 using ::clang::BuiltinType;
 using ::clang::BuiltinTypeLoc;
@@ -141,12 +143,15 @@ using ::clang::CodeCompletionString;
 using ::clang::CodeCompletionTUInfo;
 using ::clang::CompilerInstance;
 using ::clang::CompilerInvocation;
+using ::clang::ComplexType;
 using ::clang::CompoundLiteralExpr;
 using ::clang::CompoundStmt;
 using ::clang::ConceptDecl;
 using ::clang::ConceptReference;
 using ::clang::ConceptSpecializationExpr;
+using ::clang::ConstDeclVisitor;
 using ::clang::ConstStmtVisitor;
+using ::clang::ConstantArrayType;
 using ::clang::ConstantArrayTypeLoc;
 using ::clang::CreateInvocationOptions;
 using ::clang::Decl;
@@ -184,6 +189,7 @@ using ::clang::EnumDecl;
 using ::clang::EnumType;
 using ::clang::Expr;
 using ::clang::ExprWithCleanups;
+using ::clang::ExternalSourceSymbolAttr;
 using ::clang::FieldDecl;
 using ::clang::FileEntryRef;
 using ::clang::FileID;
@@ -223,6 +229,8 @@ using ::clang::LangOptions;
 using ::clang::LexEmbedParametersResult;
 using ::clang::Lexer;
 using ::clang::Linkage;
+using ::clang::LinkageSpecDecl;
+using ::clang::MSGuidDecl;
 using ::clang::MSPropertyDecl;
 using ::clang::MacroArgs;
 using ::clang::MacroDefinition;
@@ -239,15 +247,21 @@ using ::clang::NamespaceDecl;
 using ::clang::NestedNameSpecifier;
 using ::clang::NestedNameSpecifierLoc;
 using ::clang::NonTypeTemplateParmDecl;
+using ::clang::ODRHash;
 using ::clang::OO_Call;
 using ::clang::OO_Equal;
 using ::clang::OO_Subscript;
+using ::clang::ObjCCategoryDecl;
 using ::clang::ObjCCategoryImplDecl;
 using ::clang::ObjCImplementationDecl;
+using ::clang::ObjCInterfaceDecl;
 using ::clang::ObjCInterfaceType;
+using ::clang::ObjCIvarDecl;
 using ::clang::ObjCIvarRefExpr;
 using ::clang::ObjCMessageExpr;
 using ::clang::ObjCMethodDecl;
+using ::clang::ObjCObjectPointerType;
+using ::clang::ObjCObjectType;
 using ::clang::ObjCPropertyDecl;
 using ::clang::ObjCPropertyRefExpr;
 using ::clang::ObjCProtocolExpr;
@@ -255,10 +269,12 @@ using ::clang::ObjCProtocolLoc;
 using ::clang::OpaqueValueExpr;
 using ::clang::OptionalFileEntryRef;
 using ::clang::OverloadExpr;
+using ::clang::OverloadableAttr;
 using ::clang::OverloadedOperatorKind;
 using ::clang::OverrideAttr;
 using ::clang::PPCallbacks;
 using ::clang::PackExpansionExpr;
+using ::clang::PackExpansionType;
 using ::clang::ParenType;
 using ::clang::ParenTypeLoc;
 using ::clang::ParmVarDecl;
@@ -274,6 +290,7 @@ using ::clang::PseudoObjectExpr;
 using ::clang::QualType;
 using ::clang::QualifiedTypeLoc;
 using ::clang::Qualifiers;
+using ::clang::RValueReferenceType;
 using ::clang::RawComment;
 using ::clang::RecordDecl;
 using ::clang::RecursiveASTVisitor;
@@ -283,6 +300,7 @@ using ::clang::ReturnStmt;
 using ::clang::Sema;
 using ::clang::ShowIncludesDestination;
 using ::clang::SizeOfPackExpr;
+using ::clang::SmallVectorImpl;
 using ::clang::SourceLocation;
 using ::clang::SourceManager;
 using ::clang::SourceRange;
@@ -300,8 +318,10 @@ using ::clang::TSK_ImplicitInstantiation;
 using ::clang::TSK_Undeclared;
 using ::clang::TagDecl;
 using ::clang::TagType;
+using ::clang::TagTypeKind;
 using ::clang::TagTypeLoc;
 using ::clang::TemplateArgument;
+using ::clang::TemplateArgumentList;
 using ::clang::TemplateArgumentListInfo;
 using ::clang::TemplateArgumentLoc;
 using ::clang::TemplateArgumentLocContainerIterator;
@@ -309,6 +329,7 @@ using ::clang::TemplateDecl;
 using ::clang::TemplateDeductionResult;
 using ::clang::TemplateDiffTypes;
 using ::clang::TemplateName;
+using ::clang::TemplateParamObjectDecl;
 using ::clang::TemplateParameterList;
 using ::clang::TemplateSpecializationKind;
 using ::clang::TemplateSpecializationType;
@@ -327,6 +348,7 @@ using ::clang::TypeDecl;
 using ::clang::TypeLoc;
 using ::clang::TypeLocBuilder;
 using ::clang::TypeVisitor;
+using ::clang::TypedefDecl;
 using ::clang::TypedefNameDecl;
 using ::clang::TypedefType;
 using ::clang::TypedefTypeLoc;
@@ -348,6 +370,7 @@ using ::clang::VarDecl;
 using ::clang::VarTemplateDecl;
 using ::clang::VarTemplatePartialSpecializationDecl;
 using ::clang::VarTemplateSpecializationDecl;
+using ::clang::VectorType;
 using ::clang::WhileStmt;
 using ::clang::WrapperFrontendAction;
 using ::clang::cast;
@@ -527,7 +550,9 @@ using ::clang::tok::wide_string_literal;
 export namespace clang::tooling {
 
 using ::clang::tooling::Range;
+using ::clang::tooling::Replacements;
 using ::clang::tooling::applyAllReplacements;
+using ::clang::tooling::calculateRangesAfterReplacements;
 
 }  // namespace clang::tooling
 
@@ -563,3 +588,37 @@ template <::std::size_t I>
 }
 
 }  // namespace clang
+
+// Diagnostic ID enumerators: each Diagnostic*Kinds.inc component declares its
+// own ANONYMOUS unscoped enum in clang::diag, so the enumerators cannot be
+// exported by name lists or a named using-enum. CWG 2621 (DR against C++20)
+// allows using-enum through an alias, and decltype of one representative
+// enumerator names the anonymous type — one alias + using-enum per component.
+export namespace clang::diag {
+
+using ASTDiags = decltype(err_asm_empty_symbolic_operand_name);
+using enum ASTDiags;
+using CommentDiags = decltype(note_add_deprecation_attr);
+using enum CommentDiags;
+using CommonDiags = decltype(err_aix_musttail_unsupported);
+using enum CommonDiags;
+using CrossTUDiags = decltype(err_ctu_error_opening);
+using enum CrossTUDiags;
+using DriverDiags = decltype(err_analyzer_checker_incompatible_analyzer_option);
+using enum DriverDiags;
+using FrontendDiags = decltype(err_alias_to_common);
+using enum FrontendDiags;
+using InstallAPIDiags = decltype(err_allowable_clients_mismatch);
+using enum InstallAPIDiags;
+using LexDiags = decltype(backslash_newline_space);
+using enum LexDiags;
+using ParseDiags = decltype(compat_cxx11_enum_fixed_underlying_type);
+using enum ParseDiags;
+using RefactoringDiags = decltype(err_refactor_code_outside_of_function);
+using enum RefactoringDiags;
+using SemaDiags = decltype(compat_cxx11_nonclass_type_friend);
+using enum SemaDiags;
+using SerializationDiags = decltype(err_ast_file_diagopt_mismatch);
+using enum SerializationDiags;
+
+}  // namespace clang::diag

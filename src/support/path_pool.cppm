@@ -1,5 +1,6 @@
 module;
 
+#include <algorithm>  // std::copy (not re-exported by stdlib; befriend clash)
 #include <cassert>
 
 export module clice:support.path_pool;

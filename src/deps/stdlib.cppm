@@ -70,7 +70,11 @@ using ::std::bitset;
 using ::std::byte;
 using ::std::clamp;
 using ::std::convertible_to;
-using ::std::copy;
+// std::copy is intentionally NOT re-exported: it is befriended by
+// std::ostreambuf_iterator, and a using-declaration cannot be the target of a
+// friend declaration ("cannot befriend target of using declaration") when that
+// iterator is instantiated in an importer (e.g. via std::format of chrono
+// types). Call sites include <algorithm> in their global module fragment.
 using ::std::cout;
 using ::std::deque;
 using ::std::destroy_at;
@@ -106,7 +110,11 @@ using ::std::lock_guard;
 using ::std::make_error_code;
 using ::std::make_move_iterator;
 using ::std::make_pair;
-using ::std::make_shared;
+// std::make_shared is intentionally NOT re-exported: it is befriended by
+// std::shared_ptr, and a using-declaration cannot be the target of a friend
+// declaration ("cannot befriend target of using declaration") when shared_ptr<T>
+// is instantiated in an importer. Call sites include <memory> in their global
+// module fragment to get the native declaration instead.
 using ::std::make_unique;
 using ::std::map;
 using ::std::max;
@@ -219,6 +227,7 @@ using ::std::ranges::lower_bound;
 using ::std::ranges::move;
 using ::std::ranges::none_of;
 using ::std::ranges::range_value_t;
+using ::std::ranges::remove;
 using ::std::ranges::replace;
 using ::std::ranges::reverse;
 using ::std::ranges::size;
@@ -233,6 +242,12 @@ export namespace std {
 namespace views = ::std::ranges::views;
 
 }
+
+export namespace std::ranges::views {
+
+using ::std::ranges::views::zip;
+
+}  // namespace std::ranges::views
 
 export namespace std::literals {
 

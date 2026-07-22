@@ -6,7 +6,6 @@ import clice;
 #include "test/fixture.h"
 #include "test/test.h"
 #include "test/tester.h"
-#include "feature/feature.h"
 
 namespace clice::testing {
 

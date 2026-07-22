@@ -1,17 +1,8 @@
-import clice;
-
-#include "server/state/file_tracker.h"
-
-#include <algorithm>
-#include <chrono>
-#include <utility>
+module;
 
 #include "support/logging.h"
 
-#include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/ScopeExit.h"
-#include "llvm/Support/Chrono.h"
-#include "llvm/Support/FileSystem.h"
+module clice;
 
 namespace clice {
 

@@ -1,24 +1,9 @@
-import clice;
+module;
 
-#include <algorithm>
 #include <cassert>
-#include <cstdint>
-#include <format>
-#include <optional>
-#include <string>
-#include <unordered_map>
-#include <utility>
-#include <vector>
+#include <memory>  // native std::make_shared (not re-exported by stdlib; befriend clash)
 
-#include "feature/feature.h"
-
-#include "llvm/ADT/SmallString.h"
-#include "llvm/Support/raw_ostream.h"
-#include "clang/AST/DeclCXX.h"
-#include "clang/AST/DeclTemplate.h"
-#include "clang/Basic/CharInfo.h"
-#include "clang/Sema/CodeCompleteConsumer.h"
-#include "clang/Sema/Sema.h"
+module clice;
 
 namespace clice::feature {
 

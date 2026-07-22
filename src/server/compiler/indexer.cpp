@@ -1,28 +1,11 @@
-import clice;
+module;
 
-#include "server/compiler/indexer.h"
-
-#include <algorithm>
 #include <cassert>
-#include <format>
-#include <optional>
-#include <string>
-#include <vector>
+#include <memory>  // native std::make_shared (not re-exported by stdlib; befriend clash)
 
-#include "index/tu_index.h"
-#include "server/compiler/context_resolver.h"
-#include "server/protocol/worker.h"
-#include "server/state/session_store.h"
-#include "server/worker/worker_pool.h"
 #include "support/logging.h"
 
-#include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/StringSet.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/Path.h"
-#include "llvm/Support/raw_ostream.h"
-#include "llvm/Support/xxhash.h"
+module clice;
 
 namespace clice {
 

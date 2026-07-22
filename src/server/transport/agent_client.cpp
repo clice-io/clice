@@ -1,23 +1,12 @@
-import clice;
+module;
 
-#include "server/transport/agent_client.h"
-
-#include <algorithm>
-#include <expected>
-#include <format>
-#include <ranges>
-#include <string>
-#include <vector>
-
-#include "server/protocol/agentic.h"
-#include "server/transport/master_server.h"
 #include "support/logging.h"
 
-#include "kota/ipc/lsp/position.h"
-#include "kota/ipc/lsp/uri.h"
-#include "kota/meta/enum.h"
-#include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/SmallVector.h"
+// kota/ipc/codec/json stays textual: JsonPeer's explicit template
+// instantiation cannot be shared through the kota wrapper's GMF.
+#include "kota/ipc/codec/json.h"
+
+module clice;
 
 namespace clice {
 

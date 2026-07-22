@@ -1,7 +1,8 @@
+import clice;
+
 #include <chrono>
 
 #include "test/test.h"
-#include "server/state/quarantine.h"
 
 namespace clice::testing {
 

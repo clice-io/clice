@@ -49,6 +49,7 @@
 
 module;
 
+#include <algorithm>  // std::copy (not re-exported by stdlib; befriend clash)
 #include <cassert>
 
 module clice;

@@ -1,0 +1,87 @@
+module;
+
+#include "schema_generated.h"
+
+export module clice:index.serialization;
+
+import stdlib;
+import llvm;
+import :support.bitmap;
+
+namespace clice::index {
+
+namespace fbs = flatbuffers;
+
+/// On-disk MergedIndex shard schema version. Bump this whenever `schema.fbs`
+/// changes the shard layout so that `MergedIndex::load` silently discards any
+/// shard carrying a different value — including version-less shards written by
+/// older builds, which read back the field's default of 0.
+constexpr inline std::uint32_t index_format_version = 1;
+
+/// Serialization helpers. Hoisted out of an anonymous namespace so the index
+/// implementation units share one module-linkage copy: an anonymous namespace
+/// in an interface unit is private to this unit and would be invisible to
+/// in-module users. Non-exported, so importers outside the module do not see
+/// these names.
+
+template <typename Range>
+concept sequence_range = std::ranges::input_range<Range> &&
+                         !requires { typename Range::key_type; } && requires(const Range& r) {
+                             r.data();
+                             r.size();
+                         };
+
+template <typename T>
+using Offsets = llvm::SmallVector<fbs::Offset<T>, 0>;
+
+template <typename U, typename V>
+const U* safe_cast(const V* v) {
+    static_assert(sizeof(U) == sizeof(V), "size mismatch");
+    static_assert(alignof(U) == alignof(V), "alignment mismatch");
+    static_assert(std::is_trivially_copyable_v<U> && std::is_trivially_copyable_v<V>,
+                  "requires trivially copyable");
+    /// If aliasing issues arise, prefer copying into a temporary SmallVector<U>.
+    return reinterpret_cast<const U*>(v);
+}
+
+auto CreateString(fbs::FlatBufferBuilder& builder, llvm::StringRef string) {
+    return builder.CreateString(string.data(), string.size());
+}
+
+template <sequence_range Range>
+auto CreateVector(fbs::FlatBufferBuilder& builder, const Range& range) {
+    return builder.CreateVector(range.data(), range.size());
+}
+
+auto CreateVector(fbs::FlatBufferBuilder& builder, const llvm::SmallVector<char, 1024>& range) {
+    return builder.CreateVector(reinterpret_cast<const std::uint8_t*>(range.data()), range.size());
+}
+
+template <typename U, sequence_range Range>
+auto CreateStructVector(fbs::FlatBufferBuilder& builder, const Range& range) {
+    using V = std::ranges::range_value_t<Range>;
+    (void)sizeof(V);
+    return builder.CreateVectorOfStructs(safe_cast<U>(range.data()), range.size());
+}
+
+template <typename Range, typename Functor>
+auto transform(const Range& range, const Functor& functor) {
+    using V = std::ranges::range_value_t<Range>;
+    using R = std::invoke_result_t<Functor, V>;
+
+    llvm::SmallVector<R, 0> result;
+    result.resize_for_overwrite(std::ranges::size(range));
+
+    auto i = 0;
+    for(auto&& v: range) {
+        result[i] = functor(v);
+        i += 1;
+    }
+    return result;
+}
+
+Bitmap read_bitmap(const fbs::Vector<uint8_t>* buffer) {
+    return Bitmap::read(reinterpret_cast<const char*>(buffer->data()), false);
+}
+
+}  // namespace clice::index

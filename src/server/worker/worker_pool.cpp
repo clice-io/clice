@@ -1,16 +1,12 @@
-import clice;
+module;
 
-#include "server/worker/worker_pool.h"
-
-#include <algorithm>
 #include <csignal>
-#include <string>
+#include <memory>  // native std::make_shared (not re-exported by stdlib; befriend clash)
 
 #include "support/anomaly.h"
 #include "support/logging.h"
 
-#include "kota/async/io/system.h"
-#include "kota/ipc/transport.h"
+module clice;
 
 namespace clice {
 

@@ -4,7 +4,6 @@ import clice;
 #include <vector>
 
 #include "test/test.h"
-#include "server/protocol/worker.h"
 #include "server/worker_test_helpers.h"
 
 namespace clice::testing {

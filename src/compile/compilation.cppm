@@ -1,6 +1,7 @@
 module;
 
 #include <cassert>
+#include <memory>  // native std::make_shared (not re-exported by stdlib; befriend clash)
 
 export module clice:compile.compilation;
 

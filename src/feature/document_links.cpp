@@ -1,10 +1,4 @@
-import clice;
-
-#include <cstdint>
-#include <string>
-#include <vector>
-
-#include "feature/feature.h"
+module clice;
 
 namespace clice::feature {
 

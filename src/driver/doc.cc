@@ -1,3 +1,5 @@
+import clice;
+
 #include "driver/driver.h"
 
 namespace clice::driver {

@@ -1,10 +1,8 @@
-import clice;
+module;
 
-#include "index/project_index.h"
+#include "schema_generated.h"
 
-#include "index/serialization.h"
-
-#include "llvm/ADT/DenseMap.h"
+module clice;
 
 namespace clice::index {
 

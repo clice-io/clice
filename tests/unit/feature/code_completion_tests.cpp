@@ -5,7 +5,6 @@ import clice;
 
 #include "test/annotation.h"
 #include "test/test.h"
-#include "feature/feature.h"
 
 namespace clice::testing {
 

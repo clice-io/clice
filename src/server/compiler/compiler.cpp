@@ -1,33 +1,16 @@
-import clice;
+module;
 
-#include "server/compiler/compiler.h"
+#include <memory>  // native std::make_shared (not re-exported by stdlib; befriend clash)
 
-#include <algorithm>
-#include <chrono>
-#include <format>
-#include <ranges>
-#include <string>
-#include <utility>
-
-#include "index/preamble_state.h"
-#include "index/tu_index.h"
-#include "server/compiler/context_resolver.h"
-#include "server/protocol/extension.h"
-#include "server/protocol/position.h"
-#include "server/protocol/worker.h"
 #include "support/anomaly.h"
 #include "support/logging.h"
 
-#include "kota/async/async.h"
+// kota/codec/json stays textual: to_json/from_json + lsp_config drive
+// diagnostics serialization and cannot cross the module boundary.
 #include "kota/codec/json/json.h"
-#include "kota/ipc/lsp/position.h"
-#include "kota/ipc/lsp/uri.h"
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/Path.h"
-#include "llvm/Support/xxhash.h"
-#include "clang/Basic/Version.h"
+#include "kota/ipc/codec/json.h"
+
+module clice;
 
 namespace clice {
 

@@ -1,29 +1,15 @@
-import clice;
-
-#include "server/transport/master_server.h"
-
-#include <list>
-#include <memory>
-#include <string>
-#include <vector>
+module;
 
 #include "version.h"
-#include "server/protocol/worker.h"
-#include "server/state/file_tracker.h"
-#include "server/transport/agent_client.h"
-#include "server/transport/lsp_client.h"
 #include "support/anomaly.h"
 #include "support/logging.h"
 
-#include "kota/async/async.h"
+// kota/codec/json + kota/ipc/codec/json stay textual: explicit template
+// instantiations that cannot be shared through the kota wrapper's GMF.
 #include "kota/codec/json/json.h"
 #include "kota/ipc/codec/json.h"
-#include "kota/ipc/recording_transport.h"
-#include "kota/ipc/transport.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Path.h"
-#include "llvm/Support/Process.h"
+
+module clice;
 
 namespace clice {
 

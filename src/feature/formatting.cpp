@@ -1,14 +1,8 @@
-import clice;
+module;
 
-#include <expected>
-#include <format>
-#include <string>
-#include <vector>
-
-#include "feature/feature.h"
 #include "support/logging.h"
 
-#include "clang/Format/Format.h"
+module clice;
 
 namespace clice::feature {
 

@@ -6,12 +6,6 @@ import clice;
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "test/tester.h"
-#include "index/preamble_state.h"
-#include "server/compiler/context_resolver.h"
-#include "server/compiler/indexer.h"
-#include "server/service/query.h"
-#include "server/state/session_store.h"
-#include "server/worker/worker_pool.h"
 
 #include "kota/ipc/lsp/text.h"
 #include "llvm/Support/Path.h"

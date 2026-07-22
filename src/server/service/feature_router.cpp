@@ -1,23 +1,15 @@
-import clice;
+module;
 
-#include "server/service/feature_router.h"
-
-#include <algorithm>
-#include <format>
-#include <iterator>
-#include <optional>
-#include <string>
-#include <utility>
-#include <vector>
-
-#include "server/compiler/compiler.h"
-#include "server/compiler/context_resolver.h"
-#include "server/compiler/indexer.h"
-#include "server/protocol/serialize.h"
-#include "server/protocol/worker.h"
 #include "support/format.h"
 
+// kota/codec/json + kota/ipc/codec/json stay textual: explicit template
+// instantiations that cannot be shared through the kota wrapper's GMF.
+#include "server/protocol/serialize.h"  // to_raw (textual: depends on textual json codec)
+
 #include "kota/codec/json/json.h"
+#include "kota/ipc/codec/json.h"
+
+module clice;
 
 namespace clice {
 

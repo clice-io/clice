@@ -9,7 +9,6 @@
 #endif
 
 #include "test/temp_dir.h"
-#include "server/protocol/worker.h"
 
 #include "kota/async/async.h"
 #include "kota/ipc/codec/bincode.h"

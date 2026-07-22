@@ -2,6 +2,14 @@
 
 /// Shared JSON serialization helper for master and worker processes.
 
+// kota/codec/json stays textual: its decode.h emits explicit template
+// instantiations (over simdjson) that cannot be shared through a module.
+// to_raw's template body needs to_json + lsp_config, so this header — and
+// therefore its consumers — stays textual too: making it a module partition
+// would leak those explicit instantiations into every clice importer and
+// collide with the copy the zest test framework pulls in textually.
+#include <utility>
+
 #include "kota/codec/json/json.h"
 #include "kota/ipc/codec/json.h"
 

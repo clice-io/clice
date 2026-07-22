@@ -1,28 +1,10 @@
-import clice;
+module;
 
-#include "server/service/query.h"
+#include <memory>    // std::shared_ptr vs nullptr comparison (ADL; not re-exported by stdlib)
+#include <optional>  // std::optional comparison operators (ADL; not re-exported by stdlib)
+#include <string>    // std::string comparison operators (ADL; not re-exported by stdlib)
 
-#include <algorithm>
-#include <bit>
-#include <format>
-#include <string>
-#include <tuple>
-#include <variant>
-#include <vector>
-
-#include "index/preamble_state.h"
-#include "index/tu_index.h"
-#include "server/compiler/compiler.h"
-#include "server/compiler/indexer.h"
-#include "server/state/session.h"
-#include "server/state/session_store.h"
-
-#include "kota/ipc/lsp/position.h"
-#include "kota/ipc/lsp/protocol.h"
-#include "kota/ipc/lsp/uri.h"
-#include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/StringSet.h"
-#include "llvm/Support/Path.h"
+module clice;
 
 namespace clice {
 

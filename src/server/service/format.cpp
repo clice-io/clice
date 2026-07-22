@@ -1,17 +1,12 @@
-import clice;
+module;
 
-#include "server/service/format.h"
-
-#include <algorithm>
-#include <format>
-#include <ranges>
-#include <string>
-#include <vector>
-
-#include "server/compiler/context_resolver.h"
 #include "support/logging.h"
 
+// kota/codec/json stays textual: it defines explicit template instantiations
+// that cannot be shared through the kota wrapper's GMF.
 #include "kota/codec/json/json.h"
+
+module clice;
 
 namespace clice {
 

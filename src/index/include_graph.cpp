@@ -1,10 +1,8 @@
-import clice;
-
-#include "index/include_graph.h"
+module;
 
 #include "support/logging.h"
 
-#include "llvm/Support/xxhash.h"
+module clice;
 
 namespace clice::index {
 

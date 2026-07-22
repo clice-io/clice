@@ -1,16 +1,8 @@
-import clice;
+module;
 
-#include "index/preamble_state.h"
+#include "schema_generated.h"
 
-#include <algorithm>
-#include <string_view>
-#include <utility>
-#include <vector>
-
-#include "index/serialization.h"
-
-#include "kota/ipc/lsp/text.h"
-#include "llvm/ADT/SmallVector.h"
+module clice;
 
 namespace clice::index {
 

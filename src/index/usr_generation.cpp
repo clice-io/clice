@@ -1,12 +1,10 @@
-#include "index/usr.h"
+module;
 
-#include "clang/AST/ASTContext.h"
-#include "clang/AST/Attr.h"
-#include "clang/AST/DeclCXX.h"
-#include "clang/AST/DeclTemplate.h"
-#include "clang/AST/DeclVisitor.h"
-#include "clang/AST/ODRHash.h"
-#include "clang/Basic/SourceManager.h"
+#include <cassert>
+
+#include "llvm/Support/ErrorHandling.h"  // llvm_unreachable (macro; does not cross module boundary)
+
+module clice;
 
 using namespace clang;
 

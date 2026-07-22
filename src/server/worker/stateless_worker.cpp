@@ -1,26 +1,18 @@
-import clice;
+module;
 
-#include "server/worker/stateless_worker.h"
+#include <memory>  // native std::make_shared (not re-exported by stdlib; befriend clash)
 
-#include <atomic>
-#include <cstdlib>
-#include <format>
-#include <optional>
-
-#include "feature/feature.h"
-#include "feature/inactive_regions.h"
-#include "index/preamble_state.h"
-#include "index/tu_index.h"
-#include "server/protocol/worker.h"
-#include "server/worker/worker_common.h"
 #include "support/logging.h"
 #include "support/stderr_sink.h"
 
-#include "kota/async/async.h"
-#include "kota/ipc/codec/bincode.h"
-#include "kota/ipc/peer.h"
-#include "kota/ipc/transport.h"
-#include "llvm/Support/raw_ostream.h"
+// kota/codec/json stays textual: to_raw serializes results through
+// to_json + lsp_config, which cannot cross the module boundary.
+#include "server/protocol/serialize.h"  // to_raw (textual: depends on textual json codec)
+
+#include "kota/codec/json/json.h"
+#include "kota/ipc/codec/json.h"
+
+module clice;
 
 namespace clice {
 

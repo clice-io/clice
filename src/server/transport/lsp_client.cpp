@@ -1,31 +1,17 @@
-import clice;
-
-#include "server/transport/lsp_client.h"
-
-#include <algorithm>
-#include <chrono>
-#include <format>
-#include <string>
-#include <type_traits>
-#include <variant>
+module;
 
 #include "version.h"
-#include "server/compiler/context_resolver.h"
-#include "server/protocol/extension.h"
-#include "server/protocol/serialize.h"
-#include "server/service/format.h"
-#include "server/state/file_tracker.h"
-#include "server/transport/master_server.h"
 #include "support/anomaly.h"
 #include "support/logging.h"
 
+// kota/codec/json + kota/ipc/codec/json stay textual: explicit template
+// instantiations that cannot be shared through the kota wrapper's GMF.
+#include "server/protocol/serialize.h"  // to_raw (textual: depends on textual json codec)
+
 #include "kota/codec/json/json.h"
-#include "kota/ipc/lsp/position.h"
-#include "kota/ipc/lsp/protocol.h"
-#include "kota/ipc/lsp/uri.h"
-#include "kota/meta/enum.h"
-#include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/Process.h"
+#include "kota/ipc/codec/json.h"
+
+module clice;
 
 namespace clice {
 

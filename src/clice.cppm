@@ -1,7 +1,7 @@
 /// Primary interface of module clice. Re-exports the third-party wrapper
 /// modules (src/deps/) and every partition; implementation units see all of
-/// this through their implicit import. Waves append partitions here, sorted
-/// by path.
+/// this through their implicit import. Regenerated from the partition glob —
+/// keep sorted by path.
 export module clice;
 
 export import stdlib;
@@ -20,6 +20,18 @@ export import :compile.diagnostic;
 export import :compile.directive;
 export import :compile.implement;
 export import :compile.tidy_checker;
+export import :feature.document_link;
+export import :feature.feature;
+export import :feature.inactive_regions;
+export import :index.include_graph;
+export import :index.merged_index;
+export import :index.path_pool;
+export import :index.preamble_state;
+export import :index.project_index;
+export import :index.serialization;
+export import :index.shared;
+export import :index.tu_index;
+export import :index.usr;
 export import :semantic.ast_utility;
 export import :semantic.filtered_ast_visitor;
 export import :semantic.find_target;
@@ -29,6 +41,33 @@ export import :semantic.selection;
 export import :semantic.semantic_visitor;
 export import :semantic.symbol_id;
 export import :semantic.symbol_kind;
+export import :server.compiler.compile_graph;
+export import :server.compiler.compiler;
+export import :server.compiler.context_cache;
+export import :server.compiler.context_resolver;
+export import :server.compiler.indexer;
+export import :server.protocol.agentic;
+export import :server.protocol.extension;
+export import :server.protocol.position;
+export import :server.protocol.worker;
+export import :server.service.feature_router;
+export import :server.service.format;
+export import :server.service.query;
+export import :server.state.config;
+export import :server.state.file_tracker;
+export import :server.state.invalidator;
+export import :server.state.quarantine;
+export import :server.state.session;
+export import :server.state.session_store;
+export import :server.state.workspace;
+export import :server.transport.agent_client;
+export import :server.transport.agentic;
+export import :server.transport.lsp_client;
+export import :server.transport.master_server;
+export import :server.worker.stateful_worker;
+export import :server.worker.stateless_worker;
+export import :server.worker.worker_common;
+export import :server.worker.worker_pool;
 export import :support.bitmap;
 export import :support.cache_store;
 export import :support.doxygen;

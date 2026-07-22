@@ -1,15 +1,10 @@
-import clice;
+module;
 
-#include "index/tu_index.h"
+#include <cassert>
 
-#include <algorithm>
-#include <tuple>
+#include "schema_generated.h"
 
-#include "index/serialization.h"
-
-#include "llvm/Support/SHA256.h"
-#include "llvm/Support/xxhash.h"
-#include "clang/AST/DeclCXX.h"
+module clice;
 
 namespace clice::index {
 

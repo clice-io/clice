@@ -1,8 +1,4 @@
-import clice;
-
-#include "feature/inactive_regions.h"
-
-#include "llvm/ADT/SmallVector.h"
+module clice;
 
 namespace clice::feature {
 

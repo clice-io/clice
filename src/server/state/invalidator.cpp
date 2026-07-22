@@ -1,11 +1,8 @@
-import clice;
+module;
 
-#include "server/state/invalidator.h"
+#include <string>  // std::string comparison operators (ADL; not re-exported by stdlib)
 
-#include <utility>
-
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/Support/MemoryBuffer.h"
+module clice;
 
 namespace clice {
 

@@ -4,12 +4,6 @@ import clice;
 
 #include "test/temp_dir.h"
 #include "test/test.h"
-#include "index/tu_index.h"
-#include "server/compiler/context_resolver.h"
-#include "server/compiler/indexer.h"
-#include "server/state/session_store.h"
-#include "server/state/workspace.h"
-#include "server/worker/worker_pool.h"
 
 #include "llvm/Support/raw_ostream.h"
 

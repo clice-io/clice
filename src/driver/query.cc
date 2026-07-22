@@ -1,5 +1,6 @@
+import clice;
+
 #include "driver/driver.h"
-#include "server/transport/agentic.h"
 
 namespace clice::driver {
 

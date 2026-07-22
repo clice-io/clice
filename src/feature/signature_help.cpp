@@ -1,9 +1,8 @@
-import clice;
+module;
 
-#include "feature/feature.h"
+#include <memory>  // native std::make_shared (not re-exported by stdlib; befriend clash)
 
-#include "clang/Sema/CodeCompleteConsumer.h"
-#include "clang/Sema/Sema.h"
+module clice;
 
 namespace clice::feature {
 

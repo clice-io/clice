@@ -6,6 +6,7 @@
 
 module;
 
+#include <algorithm>  // std::copy (not re-exported by stdlib; befriend clash)
 #include <cassert>
 
 #include "support/format.h"

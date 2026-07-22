@@ -6,7 +6,6 @@ import clice;
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "test/tester.h"
-#include "index/merged_index.h"
 
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/xxhash.h"

@@ -1,12 +1,4 @@
-import clice;
-
-#include <optional>
-#include <string>
-#include <vector>
-
-#include "feature/feature.h"
-
-#include "kota/ipc/lsp/uri.h"
+module clice;
 
 namespace clice::feature {
 

@@ -1,13 +1,12 @@
 import clice;
 
 #include <format>
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "test/temp_dir.h"
 #include "test/test.h"
-#include "server/compiler/compiler.h"
-#include "server/compiler/context_resolver.h"
 #include "server/worker_test_helpers.h"
 #include "support/anomaly.h"
 

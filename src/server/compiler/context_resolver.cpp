@@ -1,24 +1,8 @@
-import clice;
+module;
 
-#include "server/compiler/context_resolver.h"
-
-#include <algorithm>
-#include <chrono>
-#include <format>
-#include <optional>
-#include <string>
-#include <vector>
-
-#include "server/state/session_store.h"
 #include "support/logging.h"
 
-#include "kota/ipc/lsp/uri.h"
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/ADT/StringSet.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/Path.h"
-#include "llvm/Support/xxhash.h"
+module clice;
 
 namespace clice {
 

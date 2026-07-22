@@ -1,7 +1,6 @@
 import clice;
 
 #include "test/test.h"
-#include "index/project_index.h"
 
 #include "llvm/Support/raw_ostream.h"
 

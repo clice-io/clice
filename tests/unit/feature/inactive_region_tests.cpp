@@ -2,7 +2,6 @@ import clice;
 
 #include "test/test.h"
 #include "test/tester.h"
-#include "feature/inactive_regions.h"
 
 namespace clice::testing {
 

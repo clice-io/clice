@@ -1,16 +1,8 @@
-import clice;
+module;
 
-#include <algorithm>
 #include <cassert>
-#include <cstdint>
-#include <utility>
-#include <vector>
 
-#include "feature/feature.h"
-
-#include "clang/AST/Attr.h"
-#include "clang/Basic/IdentifierTable.h"
-#include "clang/Basic/Module.h"
+module clice;
 
 namespace clice::feature {
 

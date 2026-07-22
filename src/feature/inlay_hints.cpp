@@ -1,21 +1,10 @@
-import clice;
+module;
 
-#include <algorithm>
 #include <cassert>
-#include <cstdint>
-#include <format>
-#include <optional>
-#include <ranges>
-#include <string>
-#include <tuple>
-#include <vector>
 
-#include "feature/feature.h"
 #include "support/format.h"
 
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/Support/Casting.h"
-#include "clang/Lex/Lexer.h"
+module clice;
 
 namespace clice::feature {
 

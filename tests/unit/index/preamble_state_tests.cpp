@@ -4,7 +4,6 @@ import clice;
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "test/tester.h"
-#include "index/preamble_state.h"
 
 #include "llvm/Support/raw_ostream.h"
 

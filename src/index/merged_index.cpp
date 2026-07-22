@@ -1,83 +1,8 @@
-import clice;
+module;
 
-#include "index/merged_index.h"
+#include "schema_generated.h"
 
-#include <atomic>
-#include <ranges>
-#include <tuple>
-
-#include "index/path_pool.h"
-#include "index/serialization.h"
-
-#include "kota/ipc/lsp/position.h"
-#include "llvm/ADT/DenseSet.h"
-#include "llvm/Support/raw_os_ostream.h"
-#include "llvm/Support/xxhash.h"
-
-namespace llvm {
-
-template <typename... Ts>
-unsigned dense_hash(const Ts&... ts) {
-    return llvm::DenseMapInfo<std::tuple<Ts...>>::getHashValue(std::tuple{ts...});
-}
-
-template <>
-struct DenseMapInfo<clice::index::Occurrence> {
-    using R = clice::LocalSourceRange;
-    using V = clice::index::Occurrence;
-
-    inline static V getEmptyKey() {
-        return V(R(-1, 0), 0);
-    }
-
-    inline static V getTombstoneKey() {
-        return V(R(-2, 0), 0);
-    }
-
-    static auto getHashValue(const V& v) {
-        return dense_hash(v.range.begin, v.range.end, v.target);
-    }
-
-    static bool isEqual(const V& lhs, const V& rhs) {
-        return lhs.range == rhs.range && lhs.target == rhs.target;
-    }
-};
-
-template <>
-struct DenseMapInfo<clice::index::Relation> {
-    using R = clice::index::Relation;
-
-    inline static R getEmptyKey() {
-        return R{
-            .kind = clice::RelationKind(),
-            .range = clice::LocalSourceRange(-1, 0),
-            .target_symbol = 0,
-        };
-    }
-
-    inline static R getTombstoneKey() {
-        return R{
-            .kind = clice::RelationKind(),
-            .range = clice::LocalSourceRange(-2, 0),
-            .target_symbol = 0,
-        };
-    }
-
-    /// Contextual doesn’t take part in hashing and equality.
-    static auto getHashValue(const R& relation) {
-        return dense_hash(relation.kind.value(),
-                          relation.range.begin,
-                          relation.range.end,
-                          relation.target_symbol);
-    }
-
-    static bool isEqual(const R& lhs, const R& rhs) {
-        return lhs.kind == rhs.kind && lhs.range == rhs.range &&
-               lhs.target_symbol == rhs.target_symbol;
-    }
-};
-
-}  // namespace llvm
+module clice;
 
 namespace clice::index {
 

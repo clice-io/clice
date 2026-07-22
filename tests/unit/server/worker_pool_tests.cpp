@@ -3,8 +3,6 @@ import clice;
 #include <chrono>
 
 #include "test/test.h"
-#include "server/protocol/worker.h"
-#include "server/worker/worker_pool.h"
 #include "server/worker_test_helpers.h"
 #include "support/anomaly.h"
 

@@ -1,7 +1,6 @@
 import clice;
 
 #include "test/test.h"
-#include "server/state/workspace.h"
 
 namespace clice::testing {
 namespace {

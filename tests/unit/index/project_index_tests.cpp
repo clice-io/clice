@@ -2,7 +2,6 @@ import clice;
 
 #include "test/test.h"
 #include "test/tester.h"
-#include "index/project_index.h"
 
 namespace clice::testing {
 namespace {

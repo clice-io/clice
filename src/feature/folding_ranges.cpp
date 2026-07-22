@@ -1,16 +1,8 @@
-import clice;
+module;
 
-#include <algorithm>
-#include <cstdint>
-#include <limits>
-#include <optional>
-#include <string>
-#include <utility>
-#include <vector>
+#include <iterator>  // std::reverse_iterator comparison operators (ADL; not re-exported by stdlib)
 
-#include "feature/feature.h"
-
-#include "clang/AST/ExprCXX.h"
+module clice;
 
 namespace clice::feature {
 

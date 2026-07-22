@@ -1,17 +1,8 @@
-import clice;
+module;
 
-#include <algorithm>
-#include <memory>
-#include <string>
-#include <utility>
-#include <vector>
+#include <memory>  // native std::make_shared (not re-exported by stdlib; befriend clash)
 
-#include "feature/feature.h"
-
-#include "llvm/Support/Casting.h"
-#include "clang/AST/DeclCXX.h"
-#include "clang/AST/DeclTemplate.h"
-#include "clang/AST/PrettyPrinter.h"
+module clice;
 
 namespace clice::feature {
 

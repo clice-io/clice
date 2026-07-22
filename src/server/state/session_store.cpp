@@ -1,15 +1,10 @@
-import clice;
+module;
 
-#include "server/state/session_store.h"
+#include <memory>  // native std::make_shared (not re-exported by stdlib; befriend clash)
 
-#include <type_traits>
-#include <utility>
-#include <variant>
-
-#include "server/protocol/position.h"
 #include "support/logging.h"
 
-#include "kota/ipc/lsp/position.h"
+module clice;
 
 namespace clice {
 

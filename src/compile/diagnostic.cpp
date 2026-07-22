@@ -4,14 +4,6 @@ module;
 
 #include "support/format.h"
 
-// Textual carriers: the switch below X-macro-includes the Diagnostic*Kinds.inc
-// tables, which name clang::diag enumerators by qualified id. Those enumerators
-// must be *visible* (not merely reachable via import), so the diag-enum headers
-// stay textual in the global module fragment.
-#include "clang/Basic/AllDiagnostics.h"
-#include "clang/Basic/Diagnostic.h"
-#include "clang/Basic/DiagnosticIDs.h"
-
 module clice;
 
 namespace clice {

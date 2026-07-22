@@ -7,12 +7,6 @@ import clice;
 
 #include "test/test.h"
 #include "test/tester.h"
-#include "index/tu_index.h"
-#include "server/compiler/context_resolver.h"
-#include "server/compiler/indexer.h"
-#include "server/service/query.h"
-#include "server/state/session_store.h"
-#include "server/worker/worker_pool.h"
 
 #include "llvm/Support/Path.h"
 
