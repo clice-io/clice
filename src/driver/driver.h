@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+#include <cctype>
 #include <print>
 #include <sstream>
 #include <string>
@@ -26,8 +28,14 @@ void add_format(kota::deco::cli::SubCommander& root, int& exit_code);
 /// Set the global log level from a user-supplied string; complains and
 /// returns false on an unknown level.
 inline bool apply_log_level(const std::string& level_str) {
-    auto level = spdlog::level::from_str(level_str);
-    if(level == spdlog::level::off && level_str != "off") {
+    // from_str accepts mixed case, so the "off" sentinel comparison must
+    // be case-insensitive too or `OFF` gets rejected as unknown.
+    std::string lowered = level_str;
+    std::ranges::transform(lowered, lowered.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    auto level = spdlog::level::from_str(lowered);
+    if(level == spdlog::level::off && lowered != "off") {
         std::println(stderr,
                      "unknown log level '{}', valid: trace, debug, info, warn, error, off",
                      level_str);
