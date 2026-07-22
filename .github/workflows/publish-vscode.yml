@@ -151,12 +151,14 @@ jobs:
   # one extension land concurrently, and parallel release uploads race on
   # the same release. Packaging stays parallel above; this single job
   # uploads and publishes the collected vsix files one at a time.
+  # No job-level permissions block: startup validation checks every nested
+  # job against the caller's grant even when the job will be skipped, and
+  # the PR-check caller grants read-only. The publishing callers pass
+  # contents: write at the call site.
   publish-release:
     needs: publish-vscode
     if: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || inputs.release_tag != '' }}
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
