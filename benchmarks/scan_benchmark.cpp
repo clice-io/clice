@@ -233,8 +233,12 @@ int main(int argc, const char** argv) {
     }
 
     // Configure logging.
-    auto level = spdlog::level::from_str(*opts.log_level);
-    clice::logging::options.level = level;
+    auto level = clice::logging::parse_level(*opts.log_level);
+    if(!level) {
+        std::println(stderr, "unknown log level '{}'", *opts.log_level);
+        return 1;
+    }
+    clice::logging::options.level = *level;
     clice::logging::stderr_logger("scan_benchmark", clice::logging::options);
 
     // resource_dir() is self-initializing (lazy static) — no setup needed.
@@ -266,7 +270,12 @@ int main(int argc, const char** argv) {
 
     CompilationDatabase cdb;
     Toolchain toolchain;
-    auto count = cdb.load(cdb_path);
+    auto loaded = cdb.load(cdb_path);
+    if(!loaded) {
+        std::println(stderr, "failed to load compilation database: {}", cdb_path);
+        return 1;
+    }
+    auto count = *loaded;
 
     auto t1 = std::chrono::steady_clock::now();
     auto load_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
