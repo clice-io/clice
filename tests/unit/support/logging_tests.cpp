@@ -26,6 +26,16 @@ TEST_CASE(MainExecutableBase) {
 #endif
 }
 
+TEST_CASE(ParseLevel) {
+    using logging::Level;
+    EXPECT_EQ(logging::parse_level("info").value(), Level::info);
+    // Mixed case is accepted, including the `off` sentinel that from_str
+    // also uses for unknown names.
+    EXPECT_EQ(logging::parse_level("INFO").value(), Level::info);
+    EXPECT_EQ(logging::parse_level("OFF").value(), Level::off);
+    EXPECT_FALSE(logging::parse_level("bogus").has_value());
+}
+
 };  // TEST_SUITE(Logging)
 
 }  // namespace
