@@ -17,7 +17,6 @@ import clice;
 #include "server/protocol/worker.h"
 #include "support/anomaly.h"
 #include "support/logging.h"
-#include "syntax/scan.h"
 
 #include "kota/async/async.h"
 #include "kota/codec/json/json.h"

@@ -1,5 +1,6 @@
+import clice;
+
 #include "test/test.h"
-#include "syntax/preamble_synthesis.h"
 
 #include "llvm/ADT/StringMap.h"
 

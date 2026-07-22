@@ -2,8 +2,6 @@ import clice;
 
 #include "test/temp_dir.h"
 #include "test/test.h"
-#include "syntax/include_resolver.h"
-#include "syntax/scan.h"
 
 namespace clice::testing {
 namespace {

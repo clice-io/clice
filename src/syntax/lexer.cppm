@@ -1,21 +1,11 @@
-#pragma once
+export module clice:syntax.lexer;
 
-#include <memory>
-#include <optional>
+import stdlib;
+import llvm;
+import clang;
+import :syntax.token;
 
-#include "syntax/token.h"
-
-#include "llvm/ADT/STLFunctionalExtras.h"
-#include "llvm/ADT/StringRef.h"
-#include "clang/Basic/LangOptions.h"
-
-namespace clang {
-
-class Lexer;
-
-}
-
-namespace clice {
+export namespace clice {
 
 class Lexer {
 public:

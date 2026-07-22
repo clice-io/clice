@@ -1,3 +1,5 @@
+import clice;
+
 #include "index/include_graph.h"
 
 #include "compile/compilation_unit.h"

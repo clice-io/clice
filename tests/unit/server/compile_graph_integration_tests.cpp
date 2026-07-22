@@ -5,8 +5,6 @@ import clice;
 #include "test/test.h"
 #include "compile/compilation.h"
 #include "server/compiler/compile_graph.h"
-#include "syntax/dependency_graph.h"
-#include "syntax/scan.h"
 
 namespace clice::testing {
 namespace {

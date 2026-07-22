@@ -11,8 +11,6 @@ import clice;
 
 #include "server/state/session_store.h"
 #include "support/logging.h"
-#include "syntax/include_resolver.h"
-#include "syntax/preamble_synthesis.h"
 
 #include "kota/ipc/lsp/uri.h"
 #include "llvm/ADT/StringExtras.h"

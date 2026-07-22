@@ -5,8 +5,6 @@ import clice;
 #include <cassert>
 #include <format>
 
-#include "syntax/scan.h"
-
 namespace clice::testing {
 
 namespace {

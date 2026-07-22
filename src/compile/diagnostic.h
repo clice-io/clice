@@ -4,8 +4,6 @@
 #include <optional>
 #include <string>
 
-#include "syntax/token.h"
-
 #include "llvm/ADT/StringRef.h"
 
 namespace clice {

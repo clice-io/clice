@@ -1,6 +1,7 @@
+import clice;
+
 #include "module_scan_fixture.h"
 #include "test/test.h"
-#include "syntax/scan.h"
 
 namespace clice::testing {
 namespace {

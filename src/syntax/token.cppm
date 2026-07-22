@@ -1,13 +1,16 @@
-#pragma once
+module;
 
 #include <cassert>
-#include <cstdint>
-#include <tuple>
 
-#include "llvm/ADT/StringRef.h"
-#include "clang/Basic/SourceLocation.h"
-#include "clang/Lex/Token.h"
+export module clice:syntax.token;
 
+import stdlib;
+import llvm;
+import clang;
+
+// Structured-binding support for clang::SourceRange. Specializations of std
+// templates stay in module purview, outside any export block — they are found
+// by reachability, and `export` on a specialization is ill-formed/useless.
 namespace std {
 
 template <>
@@ -25,7 +28,7 @@ struct tuple_element<1, clang::SourceRange> {
 
 }  // namespace std
 
-namespace clang {
+export namespace clang {
 
 template <std::size_t I>
 clang::SourceLocation get(clang::SourceRange range) {
@@ -38,7 +41,7 @@ clang::SourceLocation get(clang::SourceRange range) {
 
 }  // namespace clang
 
-namespace clice {
+export namespace clice {
 
 struct LocalSourceRange {
     std::uint32_t begin = static_cast<std::uint32_t>(-1);

@@ -1,6 +1,4 @@
-#include "syntax/lexer.h"
-
-#include "clang/Lex/Lexer.h"
+module clice;
 
 namespace clice {
 

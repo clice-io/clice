@@ -1,16 +1,10 @@
-#pragma once
+export module clice:syntax.completion;
 
-#include <cstdint>
-#include <string>
-#include <vector>
+import stdlib;
+import llvm;
+import :syntax.include_resolver;
 
-#include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/StringRef.h"
-
-namespace clice {
-
-struct ResolvedSearchConfig;
-struct DirListingCache;
+export namespace clice {
 
 /// What kind of preamble-level completion is being requested.
 enum class CompletionContext : std::uint8_t {

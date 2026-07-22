@@ -19,7 +19,6 @@ import clice;
 #include "server/transport/master_server.h"
 #include "support/anomaly.h"
 #include "support/logging.h"
-#include "syntax/preamble_synthesis.h"
 
 #include "kota/codec/json/json.h"
 #include "kota/ipc/lsp/position.h"

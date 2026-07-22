@@ -1,17 +1,10 @@
-#pragma once
+export module clice:syntax.scan;
 
-#include <cstdint>
-#include <string>
-#include <vector>
+import stdlib;
+import llvm;
+import clang;
 
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/IntrusiveRefCntPtr.h"
-#include "llvm/ADT/StringMap.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/VirtualFileSystem.h"
-#include "clang/Lex/DependencyDirectivesScanner.h"
-
-namespace clice {
+export namespace clice {
 
 struct ScanResult {
     /// Module name (empty if not a module unit).

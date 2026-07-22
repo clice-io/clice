@@ -3,7 +3,6 @@ import clice;
 #include "test/cdb_helper.h"
 #include "test/temp_dir.h"
 #include "test/test.h"
-#include "syntax/dependency_graph.h"
 
 namespace clice::testing {
 namespace {

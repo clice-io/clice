@@ -18,8 +18,6 @@ import clice;
 #include "server/protocol/serialize.h"
 #include "server/protocol/worker.h"
 #include "support/format.h"
-#include "syntax/completion.h"
-#include "syntax/include_resolver.h"
 
 #include "kota/codec/json/json.h"
 

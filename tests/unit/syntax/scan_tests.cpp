@@ -1,5 +1,6 @@
+import clice;
+
 #include "test/test.h"
-#include "syntax/scan.h"
 
 namespace clice::testing {
 namespace {

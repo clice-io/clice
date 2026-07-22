@@ -18,7 +18,6 @@
 #include "server/compiler/compile_graph.h"
 #include "server/state/config.h"
 #include "server/state/quarantine.h"
-#include "syntax/dependency_graph.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"

@@ -12,7 +12,6 @@
 #include "compile/diagnostic.h"
 #include "compile/directive.h"
 #include "semantic/resolver.h"
-#include "syntax/token.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"

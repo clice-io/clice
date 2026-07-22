@@ -1,8 +1,9 @@
+import clice;
+
 #include <cstddef>
 #include <vector>
 
 #include "test/test.h"
-#include "syntax/lexer.h"
 
 namespace clice::testing {
 namespace {

@@ -1,14 +1,9 @@
-#pragma once
+export module clice:syntax.preamble_synthesis;
 
-#include <cstdint>
-#include <optional>
-#include <string>
+import stdlib;
+import llvm;
 
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/STLFunctionalExtras.h"
-#include "llvm/ADT/StringRef.h"
-
-namespace clice {
+export namespace clice {
 
 /// One file along an include chain, from the host source file down to the
 /// direct includer of the target header. The target itself is not part of

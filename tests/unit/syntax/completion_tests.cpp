@@ -1,5 +1,6 @@
+import clice;
+
 #include "test/test.h"
-#include "syntax/completion.h"
 
 #include "llvm/ADT/DenseMap.h"
 

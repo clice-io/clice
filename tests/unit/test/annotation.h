@@ -1,7 +1,5 @@
 #pragma once
 
-#include "syntax/token.h"
-
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 

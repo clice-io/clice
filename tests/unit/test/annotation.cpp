@@ -1,3 +1,5 @@
+import clice;
+
 #include "test/annotation.h"
 
 #include <cctype>

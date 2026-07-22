@@ -1,3 +1,5 @@
+import clice;
+
 #include "compile/diagnostic.h"
 
 #include "compile/implement.h"

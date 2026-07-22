@@ -1,13 +1,4 @@
-import clice;
-
-#include "syntax/completion.h"
-
-#include "syntax/include_resolver.h"
-
-#include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/StringSet.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Path.h"
+module clice;
 
 namespace clice {
 

@@ -23,7 +23,6 @@ import clice;
 #include <thread>
 
 #include "support/logging.h"
-#include "syntax/dependency_graph.h"
 
 #include "kota/codec/json/json.h"
 #include "kota/deco/deco.h"

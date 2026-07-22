@@ -1,3 +1,5 @@
+import clice;
+
 #include "feature/inactive_regions.h"
 
 #include "compile/directive.h"

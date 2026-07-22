@@ -8,7 +8,6 @@ import clice;
 #include "index/preamble_state.h"
 #include "server/protocol/worker.h"
 #include "server/worker_test_helpers.h"
-#include "syntax/scan.h"
 
 namespace clice::testing {
 

@@ -1,3 +1,5 @@
+import clice;
+
 #include "compile/implement.h"
 #include "semantic/ast_utility.h"
 #include "support/logging.h"

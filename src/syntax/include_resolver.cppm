@@ -1,15 +1,10 @@
-#pragma once
+export module clice:syntax.include_resolver;
 
-#include <cstdint>
-#include <optional>
+import stdlib;
+import llvm;
+import :command.search_config;
 
-#include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringMap.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/ADT/StringSet.h"
-
-namespace clice {
+export namespace clice {
 
 struct ResolveResult {
     /// The resolved absolute path (stack-allocated for paths < 256 chars).

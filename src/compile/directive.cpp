@@ -1,3 +1,5 @@
+import clice;
+
 #include "compile/directive.h"
 
 #include "compile/implement.h"

@@ -389,6 +389,19 @@ export namespace clang::dependency_directives_scan {
 
 using ::clang::dependency_directives_scan::Directive;
 using ::clang::dependency_directives_scan::Token;
+using ::clang::dependency_directives_scan::cxx_export_module_decl;
+using ::clang::dependency_directives_scan::cxx_module_decl;
+using ::clang::dependency_directives_scan::pp___include_macros;
+using ::clang::dependency_directives_scan::pp_elif;
+using ::clang::dependency_directives_scan::pp_elifdef;
+using ::clang::dependency_directives_scan::pp_elifndef;
+using ::clang::dependency_directives_scan::pp_else;
+using ::clang::dependency_directives_scan::pp_endif;
+using ::clang::dependency_directives_scan::pp_if;
+using ::clang::dependency_directives_scan::pp_ifdef;
+using ::clang::dependency_directives_scan::pp_ifndef;
+using ::clang::dependency_directives_scan::pp_include;
+using ::clang::dependency_directives_scan::pp_include_next;
 
 }  // namespace clang::dependency_directives_scan
 

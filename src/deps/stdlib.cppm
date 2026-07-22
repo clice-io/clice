@@ -149,6 +149,8 @@ using ::std::tie;
 using ::std::to_string;
 using ::std::tolower;
 using ::std::tuple;
+using ::std::tuple_element;
+using ::std::tuple_size;
 using ::std::type_identity_t;
 using ::std::uint16_t;
 using ::std::uint32_t;

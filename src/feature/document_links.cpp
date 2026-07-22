@@ -5,7 +5,6 @@ import clice;
 #include <vector>
 
 #include "feature/feature.h"
-#include "syntax/lexer.h"
 
 namespace clice::feature {
 

@@ -2,8 +2,6 @@
 
 #include <stack>
 
-#include "syntax/token.h"
-
 #include "llvm/ADT/SmallVector.h"
 #include "clang/AST/ASTTypeTraits.h"
 #include "clang/AST/PrettyPrinter.h"

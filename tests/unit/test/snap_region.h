@@ -3,7 +3,6 @@
 #include <vector>
 
 #include "support/logging.h"
-#include "syntax/token.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"

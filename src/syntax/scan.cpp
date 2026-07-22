@@ -1,21 +1,4 @@
-#include "syntax/scan.h"
-
-#include <deque>
-
-#include "syntax/lexer.h"
-
-#include "llvm/ADT/StringSet.h"
-#include "llvm/Support/MemoryBuffer.h"
-#include "clang/Basic/DiagnosticOptions.h"
-#include "clang/Basic/FileEntry.h"
-#include "clang/Basic/FileManager.h"
-#include "clang/Basic/SourceManager.h"
-#include "clang/Frontend/CompilerInstance.h"
-#include "clang/Frontend/FrontendActions.h"
-#include "clang/Lex/PPCallbacks.h"
-#include "clang/Lex/Preprocessor.h"
-#include "clang/Lex/PreprocessorOptions.h"
-#include "clang/Tooling/CompilationDatabase.h"
+module clice;
 
 namespace clice {
 

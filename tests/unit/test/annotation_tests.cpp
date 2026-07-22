@@ -1,3 +1,5 @@
+import clice;
+
 #include <vector>
 
 #include "test/annotation.h"

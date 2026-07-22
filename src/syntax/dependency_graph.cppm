@@ -1,20 +1,15 @@
-#pragma once
+export module clice:syntax.dependency_graph;
 
-#include <cstdint>
-#include <functional>
-#include <string>
-#include <vector>
+import stdlib;
+import llvm;
+import :command.command;
+import :command.search_config;
+import :command.toolchain;
+import :support.path_pool;
+import :syntax.include_resolver;
+import :syntax.scan;
 
-#include "syntax/include_resolver.h"
-#include "syntax/scan.h"
-
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringMap.h"
-#include "llvm/ADT/StringRef.h"
-
-namespace clice {
+export namespace clice {
 
 class DependencyGraph {
 public:

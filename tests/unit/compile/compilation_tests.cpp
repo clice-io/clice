@@ -7,7 +7,6 @@ import clice;
 #include "test/test.h"
 #include "test/tester.h"
 #include "compile/compilation.h"
-#include "syntax/scan.h"
 
 #include "llvm/Support/xxhash.h"
 

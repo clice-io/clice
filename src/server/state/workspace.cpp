@@ -9,9 +9,6 @@ import clice;
 
 #include "server/compiler/context_resolver.h"
 #include "support/logging.h"
-#include "syntax/include_resolver.h"
-#include "syntax/preamble_synthesis.h"
-#include "syntax/scan.h"
 
 #include "kota/codec/json/json.h"
 #include "llvm/Support/Chrono.h"

@@ -9,7 +9,6 @@
 
 #include "compile/dep_file.h"
 #include "feature/document_link.h"
-#include "syntax/token.h"
 
 #include "kota/codec/json/json.h"
 #include "kota/ipc/lsp/protocol.h"

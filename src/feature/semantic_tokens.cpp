@@ -10,7 +10,6 @@ import clice;
 #include "semantic/ast_utility.h"
 #include "semantic/semantic_visitor.h"
 #include "semantic/symbol_kind.h"
-#include "syntax/lexer.h"
 
 #include "clang/AST/Attr.h"
 #include "clang/Basic/IdentifierTable.h"

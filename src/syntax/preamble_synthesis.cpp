@@ -1,9 +1,14 @@
-#include "syntax/preamble_synthesis.h"
+module;
 
-#include "syntax/scan.h"
+// std::string and std::reverse_iterator comparison operators are free functions
+// in namespace std that module ADL cannot reach (std::operator== cannot be
+// re-exported without colliding with textual hidden friends); include the
+// declaring headers textually for the `!=` on include paths and the range-for
+// over llvm::reverse() below.
+#include <iterator>
+#include <string>
 
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/Path.h"
+module clice;
 
 namespace clice {
 

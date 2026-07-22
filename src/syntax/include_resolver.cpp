@@ -1,13 +1,8 @@
-import clice;
-
-#include "syntax/include_resolver.h"
-
-#include <chrono>
+module;
 
 #include "support/logging.h"
 
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Path.h"
+module clice;
 
 namespace clice {
 

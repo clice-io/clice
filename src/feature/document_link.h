@@ -2,8 +2,6 @@
 
 #include <string>
 
-#include "syntax/token.h"
-
 namespace clice::feature {
 
 /// A resolved document link: the argument range of an include-like

@@ -1,3 +1,5 @@
+import clice;
+
 #include "semantic/selection.h"
 
 #include <algorithm>
