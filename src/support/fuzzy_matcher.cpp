@@ -47,12 +47,15 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "support/fuzzy_matcher.h"
+module;
 
 #include <algorithm>
 #include <cassert>
+#include <cstdint>
+#include <optional>
+#include <string>
 
-#include "llvm/Support/Format.h"
+module clice;
 
 namespace clice {
 

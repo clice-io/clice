@@ -148,6 +148,11 @@ if(CLICE_ENABLE_TEST)
     target_compile_definitions(clice_options INTERFACE CLICE_ENABLE_TEST=1)
 endif()
 
+# The abi-breaking.h weak-variable canary is defined by header inclusion, so a
+# TU that imports a module whose GMF saw it AND includes an LLVM header
+# textually would define it twice. We pin our LLVM build, so drop the canary.
+target_compile_definitions(clice_options INTERFACE LLVM_DISABLE_ABI_BREAKING_CHECKS_ENFORCING=1)
+
 if(CLICE_CI_ENVIRONMENT)
     target_compile_definitions(clice_options INTERFACE CLICE_CI_ENVIRONMENT=1)
 endif()
@@ -207,8 +212,17 @@ add_custom_target(generate_version_header
 )
 
 file(GLOB_RECURSE CLICE_CORE_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/*.cpp")
+file(GLOB_RECURSE CLICE_MODULE_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/*.cppm")
 add_library(clice-core STATIC ${CLICE_CORE_SOURCES})
 add_library(clice::core ALIAS clice-core)
+# Module partitions of `module clice`; scanning stays off globally so
+# third-party deps skip the scan step, and on for first-party targets.
+target_sources(clice-core PUBLIC
+    FILE_SET CXX_MODULES
+    BASE_DIRS "${PROJECT_SOURCE_DIR}/src"
+    FILES ${CLICE_MODULE_SOURCES}
+)
+set_target_properties(clice-core PROPERTIES CXX_SCAN_FOR_MODULES ON)
 add_dependencies(clice-core generate_flatbuffers_schema generate_version_header)
 
 target_include_directories(clice-core PUBLIC
@@ -230,6 +244,7 @@ target_link_libraries(clice-core PUBLIC
 file(GLOB CLICE_DRIVER_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/driver/*.cc")
 add_executable(clice "${PROJECT_SOURCE_DIR}/src/clice.cc" ${CLICE_DRIVER_SOURCES})
 target_link_libraries(clice PRIVATE clice::core kota::deco)
+set_target_properties(clice PROPERTIES CXX_SCAN_FOR_MODULES ON)
 add_dependencies(clice generate_version_header)
 install(TARGETS clice RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
@@ -263,6 +278,7 @@ if(CLICE_ENABLE_TEST)
         "${PROJECT_SOURCE_DIR}/tests/unit"
     )
     target_link_libraries(unit_tests PRIVATE clice::core kota::zest kota::deco)
+    set_target_properties(unit_tests PROPERTIES CXX_SCAN_FOR_MODULES ON)
     # The generated/ include dir propagates through clice::core, but the
     # generation order does not — depend explicitly so a test including
     # version.h cannot race the generator on a clean parallel build.
@@ -277,6 +293,7 @@ if(CLICE_ENABLE_BENCHMARK)
         "${PROJECT_SOURCE_DIR}/src"
     )
     target_link_libraries(scan_benchmark PRIVATE clice::core kota::deco)
+    set_target_properties(scan_benchmark PROPERTIES CXX_SCAN_FOR_MODULES ON)
 endif()
 
 include("${PROJECT_SOURCE_DIR}/cmake/release.cmake")

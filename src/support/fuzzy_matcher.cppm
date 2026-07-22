@@ -1,13 +1,12 @@
-#pragma once
+module;
 
 #include <optional>
 
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/raw_ostream.h"
+export module clice:support.fuzzy_matcher;
 
-namespace clice {
+import llvm;
+
+export namespace clice {
 
 // Utilities for word segmentation.
 // FuzzyMatcher already incorporates this logic, so most users don't need this.
