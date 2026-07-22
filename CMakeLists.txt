@@ -233,7 +233,8 @@ target_link_libraries(clice-core PUBLIC
     simdjson::simdjson
 )
 
-add_executable(clice "${PROJECT_SOURCE_DIR}/src/clice.cc")
+file(GLOB CLICE_DRIVER_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/driver/*.cc")
+add_executable(clice "${PROJECT_SOURCE_DIR}/src/clice.cc" ${CLICE_DRIVER_SOURCES})
 target_link_libraries(clice PRIVATE clice::core kota::deco)
 add_dependencies(clice generate_version_header)
 install(TARGETS clice RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
