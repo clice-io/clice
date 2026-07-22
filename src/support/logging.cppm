@@ -1,16 +1,12 @@
-#pragma once
-
-#include <concepts>
-#include <cstdint>
-#include <cstdlib>
-#include <format>
-#include <source_location>
-#include <string_view>
-#include <type_traits>
-
-#include "support/format.h"
+module;
 
 #include "spdlog/spdlog.h"
+
+export module clice:support.logging;
+
+import stdlib;
+import llvm;
+export import :support.format;
 
 /// # Logging & error-feedback design
 ///
@@ -20,8 +16,8 @@
 ///
 ///   situation                                   → channel
 ///   ─────────────────────────────────────────────────────────────────────
-///   a clice invariant broke (a bug in clice)    → LOG_ANOMALY   (anomaly.h)
-///   the user must fix their setup or config     → LOG_GUIDANCE  (anomaly.h)
+///   a clice invariant broke (a bug in clice)    → LOG_ANOMALY (anomaly.cppm)
+///   the user must fix their setup or config     → LOG_GUIDANCE (anomaly.cppm)
 ///     ... and it is tied to a specific file     →   + a published diagnostic
 ///   a request cannot be served                  → LSP error response
 ///   an operation failed but is expected in       → LOG_WARN / LOG_ERROR
@@ -29,6 +25,10 @@
 ///     windows, cancellations)
 ///   a measurement for profiling                 → LOG_PERF
 ///   the narrative of what the server did        → LOG_INFO/DEBUG/TRACE
+///
+/// The macros themselves live in support/prelude.h, force-included into every
+/// TU (macros cannot cross a module import boundary). This partition owns the
+/// transport those macros call.
 ///
 /// Two hard rules fall out of this:
 /// - LOG_ANOMALY is a soft assertion. If a condition is reachable through
@@ -39,12 +39,11 @@
 ///   classify them structurally (has_user_errors, dispatch_errc) and log
 ///   them as warn/error instead.
 ///
-/// The anomaly/guidance channels live in support/anomaly.h, deliberately
-/// NOT in this header: they are reporting policy (trap, per-id rate limit,
+/// The anomaly/guidance channels live in support/anomaly.cppm, deliberately
+/// NOT in this partition: they are reporting policy (trap, per-id rate limit,
 /// client notify hook, test hooks) layered on top of this transport, and
-/// their AnomalyId enum evolves — this header is included by every TU, so
-/// keeping the enum out of it keeps "add an anomaly id" from recompiling
-/// the whole project.
+/// their AnomalyId enum evolves — keeping the enum in its own partition keeps
+/// "add an anomaly id" from recompiling everything that logs.
 ///
 /// ## Levels — LOG_TRACE .. LOG_FATAL
 /// - trace: extremely verbose, per-token / per-payload detail.
@@ -75,7 +74,7 @@
 /// best-effort: clients are expected to drain stderr (editors do), and
 /// one that stops reading costs log lines, never liveness — once the
 /// pipe fills, lines are dropped and the gap is reported when the client
-/// drains again (see support/stderr_sink.h). Workers log ONLY to
+/// drains again (see support/stderr_sink.cppm). Workers log ONLY to
 /// their own <session>/<worker>.log (mirror_stderr = false): a worker's
 /// stderr is reserved for unexpected third-party output — assertion
 /// failures, sanitizer reports — which the pool relays line-by-line into the
@@ -85,7 +84,7 @@
 /// ONLY to its own log file, while the master's is also printed to stderr.
 /// Before file_logger runs, backtraces reach stderr only (master) or are
 /// lost (workers without a log dir).
-namespace clice::logging {
+export namespace clice::logging {
 
 using Level = spdlog::level::level_enum;
 
@@ -122,6 +121,16 @@ void install_crash_handler(std::string_view log_path, bool stderr_trace = true);
 /// it from an ASLR-shifted frame address yields the address symbolizers
 /// expect against the released symbol file (scripts/symbolize.py).
 uintptr_t main_executable_base();
+
+/// Report a failed CLICE_ASSERT (the prelude macro): log
+/// "assertion failed: <expr>" at critical level through the same transport as
+/// LOG_FATAL — the crash handler captures it and the log is flushed — then
+/// abort. Never returns.
+[[noreturn]] void assert_fail(llvm::StringRef expr, std::source_location location);
+
+/// Parse a level name (case-insensitive: trace/debug/info/warn/error/off).
+/// Returns nullopt for an unrecognized name.
+std::optional<Level> parse_level(llvm::StringRef name);
 
 template <typename... Args>
 struct logging_rformat {
@@ -188,33 +197,3 @@ void critical [[noreturn]] (logging_format<Args...> fmt, Args&&... args) {
 }
 
 }  // namespace clice::logging
-
-#define LOG_MESSAGE(name, fmt, ...)                                                                \
-    do {                                                                                           \
-        if(clice::logging::options.level <= clice::logging::Level::name) {                         \
-            clice::logging::name(fmt __VA_OPT__(, ) __VA_ARGS__);                                  \
-        }                                                                                          \
-    } while(0)
-
-#define LOG_TRACE(fmt, ...) LOG_MESSAGE(trace, fmt, __VA_ARGS__)
-#define LOG_DEBUG(fmt, ...) LOG_MESSAGE(debug, fmt, __VA_ARGS__)
-#define LOG_INFO(fmt, ...) LOG_MESSAGE(info, fmt, __VA_ARGS__)
-#define LOG_WARN(fmt, ...) LOG_MESSAGE(warn, fmt, __VA_ARGS__)
-#define LOG_ERROR(fmt, ...) LOG_MESSAGE(err, fmt, __VA_ARGS__)
-#define LOG_FATAL(fmt, ...) clice::logging::critical(fmt __VA_OPT__(, ) __VA_ARGS__);
-
-/// Performance measurement line (see the taxonomy above): `topic` must be a
-/// string literal, the message should be stable key=value pairs.
-#define LOG_PERF(topic, fmt, ...) LOG_INFO("[perf:" topic "] " fmt __VA_OPT__(, ) __VA_ARGS__)
-
-#define LOG_MESSAGE_RET(ret, name, fmt, ...)                                                       \
-    do {                                                                                           \
-        LOG_MESSAGE(name, fmt, __VA_ARGS__);                                                       \
-        return ret;                                                                                \
-    } while(0);
-
-#define LOG_TRACE_RET(ret, fmt, ...) LOG_MESSAGE_RET(ret, trace, fmt, __VA_ARGS__)
-#define LOG_DEBUG_RET(ret, fmt, ...) LOG_MESSAGE_RET(ret, debug, fmt, __VA_ARGS__)
-#define LOG_INFO_RET(ret, fmt, ...) LOG_MESSAGE_RET(ret, info, fmt, __VA_ARGS__)
-#define LOG_WARN_RET(ret, fmt, ...) LOG_MESSAGE_RET(ret, warn, fmt, __VA_ARGS__)
-#define LOG_ERROR_RET(ret, fmt, ...) LOG_MESSAGE_RET(ret, err, fmt, __VA_ARGS__)

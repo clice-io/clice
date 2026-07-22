@@ -1,11 +1,11 @@
 module;
 
-#include <cassert>
-#include <memory>  // native std::make_shared (not re-exported by stdlib; befriend clash)
+#include <memory>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
 
 export module clice:support.signal;
 
 import stdlib;
+import :support.logging;
 
 export namespace clice {
 
@@ -65,7 +65,7 @@ public:
             if(!locked) {
                 return;
             }
-            assert(!locked->emitting && "disconnect during emit is not allowed");
+            CLICE_ASSERT(!locked->emitting && "disconnect during emit is not allowed");
             std::erase_if(locked->slots, [this](const Slot& slot) { return slot.id == id; });
         }
 
@@ -85,7 +85,7 @@ public:
     Signal& operator=(const Signal&) = delete;
 
     [[nodiscard]] Connection connect(std::function<void(Args...)> handler) {
-        assert(!state->emitting && "connect during emit is not allowed");
+        CLICE_ASSERT(!state->emitting && "connect during emit is not allowed");
         auto id = state->next_id++;
         state->slots.push_back(Slot{id, std::move(handler)});
         return Connection(state, id);
@@ -93,7 +93,7 @@ public:
 
     /// Invoke all connected handlers synchronously, in connect order.
     void emit(Args... args) const {
-        assert(!state->emitting && "reentrant emit is not allowed");
+        CLICE_ASSERT(!state->emitting && "reentrant emit is not allowed");
         state->emitting = true;
         for(const auto& slot: state->slots) {
             slot.handler(args...);

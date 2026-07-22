@@ -4,7 +4,6 @@ import clice;
 
 #include "test/test.h"
 #include "server/worker_test_helpers.h"
-#include "support/anomaly.h"
 
 #include "kota/async/async.h"
 

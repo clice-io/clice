@@ -1,11 +1,8 @@
-module;
-
-#include <cassert>
-
 export module clice:support.object_pool;
 
 import stdlib;
 import llvm;
+import :support.logging;
 
 export namespace clice {
 
@@ -45,7 +42,7 @@ public:
     }
 
     llvm::StringRef get(ID id) {
-        assert(id < strings.size());
+        CLICE_ASSERT(id < strings.size());
         return strings[id];
     }
 
@@ -143,7 +140,7 @@ public:
     }
 
     object_ptr<T> get(ID id) {
-        assert(id < objects.size());
+        CLICE_ASSERT(id < objects.size());
         return objects[id];
     }
 

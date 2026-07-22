@@ -1,11 +1,6 @@
-import clice;
+module;
 
-#include "support/logging.h"
-
-#include <array>
-#include <chrono>
-#include <memory>
-#include <string>
+#include <memory>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
 
 #if defined(__linux__)
 #include <link.h>
@@ -19,12 +14,12 @@ import clice;
 #endif
 
 #include "version.h"
-#include "support/stderr_sink.h"
 
 #include "spdlog/sinks/basic_file_sink.h"
 #include "spdlog/sinks/ringbuffer_sink.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/Signals.h"
+#include "spdlog/spdlog.h"
+
+module clice;
 
 namespace clice::logging {
 
@@ -180,6 +175,25 @@ void install_crash_handler(std::string_view log_path, bool stderr_trace) {
     if(stderr_trace) {
         llvm::sys::PrintStackTraceOnErrorSignal("clice");
     }
+}
+
+void assert_fail(llvm::StringRef expr, std::source_location location) {
+    // Mirror LOG_FATAL: route through the transport at critical level (the
+    // crash handler captures it and the log is flushed), then abort.
+    logging::log(spdlog::level::critical, location, "assertion failed: {}", expr);
+    spdlog::shutdown();
+    std::abort();
+}
+
+std::optional<Level> parse_level(llvm::StringRef name) {
+    // from_str accepts mixed case, so the "off" sentinel comparison must be
+    // case-insensitive too or `OFF` gets rejected as unknown.
+    std::string lowered = name.lower();
+    auto level = spdlog::level::from_str(lowered);
+    if(level == spdlog::level::off && lowered != "off") {
+        return std::nullopt;
+    }
+    return level;
 }
 
 }  // namespace clice::logging

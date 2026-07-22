@@ -1,7 +1,3 @@
-module;
-
-#include <cstdint>  // UINT32_MAX (macro; does not cross module boundary)
-
 export module clice:server.protocol.worker;
 
 import stdlib;
@@ -17,7 +13,7 @@ namespace protocol = kota::ipc::protocol;
 /// Error codes attached to master-side dispatch failures. They mark expected
 /// operational conditions — memory-pressure preemption and crash/restart
 /// windows — as opposed to real IPC breakage: callers must not classify them
-/// as anomalies (see support/anomaly.h). The crash itself is already reported
+/// as anomalies (see support/anomaly.cppm). The crash itself is already reported
 /// as a WorkerCrash anomaly by the pool.
 namespace dispatch_errc {
 
@@ -204,9 +200,9 @@ struct BuildParams {
     /// it; the master commits both blobs together.
     std::string index_output_path;
 
-    std::string module_name;               ///< BuildPCM
-    uint32_t preamble_bound = UINT32_MAX;  ///< BuildPCH
-    LocalSourceRange format_range;         ///< Format (default = full document)
+    std::string module_name;                                              ///< BuildPCM
+    uint32_t preamble_bound = std::numeric_limits<std::uint32_t>::max();  ///< BuildPCH
+    LocalSourceRange format_range;  ///< Format (default = full document)
 };
 
 /// Unified result for stateless build tasks.

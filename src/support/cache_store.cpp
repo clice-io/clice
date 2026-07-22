@@ -1,7 +1,5 @@
 module;
 
-#include <cassert>
-
 #ifdef _WIN32
 // The defines keep windows.h from spilling the min/max macros (and other
 // clutter) that break LLVM and standard headers; any direct include of
@@ -14,8 +12,6 @@ module;
 #include <signal.h>
 #include <unistd.h>
 #endif
-
-#include "support/logging.h"
 
 // kota/codec/json stays textual: it defines explicit template instantiations
 // (over simdjson) that cannot be shared through the kota wrapper's GMF.
@@ -232,7 +228,7 @@ CacheStore::~CacheStore() = default;
 
 std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root,
                                                             std::uint32_t version) {
-    assert(!root.empty() && "cache root must not be empty");
+    CLICE_ASSERT(!root.empty() && "cache root must not be empty");
 
     auto state = std::make_unique<State>();
     state->self_pid = static_cast<std::uint32_t>(llvm::sys::Process::getProcessId());
@@ -301,7 +297,7 @@ void CacheStore::register_namespace(CacheNamespace ns) {
     llvm::sys::fs::create_directories(ns_dir);
 
     auto [it, inserted] = state->namespaces.try_emplace(ns.name);
-    assert(inserted && "namespace registered twice");
+    CLICE_ASSERT(inserted && "namespace registered twice");
     if(!inserted) {
         return;
     }
@@ -432,7 +428,7 @@ CacheStore::PendingEntry CacheStore::begin_store(llvm::StringRef ns, llvm::Strin
     std::lock_guard guard(state->mutex);
 
     auto* ns_state = state->find_namespace(ns);
-    assert(ns_state && "begin_store on unregistered namespace");
+    CLICE_ASSERT(ns_state && "begin_store on unregistered namespace");
     if(!ns_state) {
         LOG_ERROR("CacheStore: begin_store on unregistered namespace {}", ns);
         return {};
@@ -453,7 +449,7 @@ CacheStore::PendingEntry CacheStore::begin_store_aux(llvm::StringRef ns, llvm::S
     std::lock_guard guard(state->mutex);
 
     auto* ns_state = state->find_namespace(ns);
-    assert(ns_state && "begin_store_aux on unregistered namespace");
+    CLICE_ASSERT(ns_state && "begin_store_aux on unregistered namespace");
     if(!ns_state) {
         LOG_ERROR("CacheStore: begin_store_aux on unregistered namespace {}", ns);
         return {};

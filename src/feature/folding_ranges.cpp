@@ -1,6 +1,6 @@
 module;
 
-#include <iterator>  // std::reverse_iterator comparison operators (ADL; not re-exported by stdlib)
+#include <iterator>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
 
 module clice;
 

@@ -1,12 +1,12 @@
 module;
 
-#include <algorithm>  // std::copy (not re-exported by stdlib; befriend clash)
-#include <cassert>
+#include <algorithm>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
 
 export module clice:support.path_pool;
 
 import stdlib;
 import llvm;
+import :support.logging;
 
 export namespace clice {
 
@@ -57,7 +57,7 @@ struct PathPool {
     }
 
     llvm::StringRef resolve(std::uint32_t id) const {
-        assert(id < paths.size());
+        CLICE_ASSERT(id < paths.size());
         return paths[id];
     }
 

@@ -1,9 +1,3 @@
-module;
-
-#include <cassert>
-
-#include "support/logging.h"
-
 module clice;
 
 namespace clice {
@@ -366,7 +360,7 @@ CompilationUnit compile(CompilationParams& params) {
 }
 
 CompilationUnit compile(CompilationParams& params, PCHInfo& out) {
-    assert(!params.output_file.empty() && "PCH file path cannot be empty");
+    CLICE_ASSERT(!params.output_file.empty() && "PCH file path cannot be empty");
 
     return run_clang(
         params,
@@ -392,7 +386,7 @@ CompilationUnit compile(CompilationParams& params, PCHInfo& out) {
 }
 
 CompilationUnit compile(CompilationParams& params, PCMInfo& out) {
-    assert(!params.output_file.empty() && "PCM file path cannot be empty");
+    CLICE_ASSERT(!params.output_file.empty() && "PCM file path cannot be empty");
 
     return run_clang(
         params,
@@ -429,7 +423,7 @@ CompilationUnit complete(CompilationParams& params, clang::CodeCompleteConsumer*
     std::uint32_t column = 1;
 
     /// FIXME:
-    assert(params.buffers.size() == 1);
+    CLICE_ASSERT(params.buffers.size() == 1);
     llvm::StringRef content = params.buffers.begin()->second->getBuffer();
 
     for(auto c: content.substr(0, offset)) {

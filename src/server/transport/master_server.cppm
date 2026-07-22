@@ -1,7 +1,5 @@
 module;
 
-#include "support/anomaly.h"
-
 #include "kota/deco/deco.h"
 
 export module clice:server.transport.master_server;
@@ -21,6 +19,7 @@ import :server.state.session;
 import :server.state.session_store;
 import :server.state.workspace;
 import :server.worker.worker_pool;
+import :support.anomaly;
 import :support.signal;
 
 namespace clice {

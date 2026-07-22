@@ -3,10 +3,9 @@ import clice;
 #include <string>
 
 #include "test/test.h"
-#include "support/anomaly.h"
-#include "support/logging.h"
 
 #include "kota/async/async.h"
+#include "spdlog/spdlog.h"  // direct spdlog level control for the retention test
 
 namespace clice::testing {
 namespace {

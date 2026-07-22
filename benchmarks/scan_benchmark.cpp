@@ -22,8 +22,6 @@ import clice;
 #include <set>
 #include <thread>
 
-#include "support/logging.h"
-
 #include "kota/codec/json/json.h"
 #include "kota/deco/deco.h"
 #include "llvm/Support/FileSystem.h"

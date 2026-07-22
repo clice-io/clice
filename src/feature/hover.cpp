@@ -2,10 +2,6 @@
 /// project, licensed under Apache License v2.0 with LLVM Exceptions.
 /// See https://llvm.org/LICENSE.txt for license information.
 
-module;
-
-#include <cassert>
-
 module clice;
 
 namespace clice::feature {
@@ -192,7 +188,7 @@ auto print_type(const clang::TemplateTemplateParmDecl* param,
 auto fetch_template_parameters(const clang::TemplateParameterList* params,
                                const clang::PrintingPolicy& policy,
                                const HoverOptions& options) -> std::vector<Param> {
-    assert(params);
+    CLICE_ASSERT(params);
     std::vector<Param> result;
 
     for(const clang::Decl* decl: *params) {
@@ -369,7 +365,7 @@ void fill_function_type_and_params(HoverInfo& info,
 ///   -2    => 0xfffffffe
 ///   -2^32 => 0xffffffff00000000
 auto print_hex(const llvm::APSInt& value) -> llvm::FormattedNumber {
-    assert(value.getSignificantBits() <= 64 && "Can't print more than 64 bits.");
+    CLICE_ASSERT(value.getSignificantBits() <= 64 && "Can't print more than 64 bits.");
     std::uint64_t bits =
         value.getBitWidth() > 64 ? value.trunc(64).getZExtValue() : value.getZExtValue();
     if(value.isNegative() && value.getSignificantBits() <= 32) {
@@ -502,7 +498,7 @@ auto field_name(const clang::Expr* expr) -> std::optional<llvm::StringRef> {
 /// If the method is of the form `T foo() { return FieldName; }` then returns
 /// "FieldName".
 auto getter_variable_name(const clang::CXXMethodDecl* method) -> std::optional<llvm::StringRef> {
-    assert(method->hasBody());
+    CLICE_ASSERT(method->hasBody());
     if(method->getNumParams() != 0 || method->isVariadic()) {
         return std::nullopt;
     }
@@ -525,7 +521,7 @@ auto getter_variable_name(const clang::CXXMethodDecl* method) -> std::optional<l
 ///   R foo(T arg) { FieldName = std::move(arg); return *this; }
 /// then returns "FieldName".
 auto setter_variable_name(const clang::CXXMethodDecl* method) -> std::optional<llvm::StringRef> {
-    assert(method->hasBody());
+    CLICE_ASSERT(method->hasBody());
     if(method->isConst() || method->getNumParams() != 1 || method->isVariadic()) {
         return std::nullopt;
     }
@@ -1150,7 +1146,7 @@ auto symbol_kind_string(SymbolKind kind) -> llvm::StringRef {
 /// If the backtick at the offset starts a probable quoted range, return the
 /// range (including the quotes).
 auto backtick_quote_range(llvm::StringRef line, unsigned offset) -> std::optional<llvm::StringRef> {
-    assert(line[offset] == '`');
+    CLICE_ASSERT(line[offset] == '`');
 
     /// The open-quote is usually preceded by whitespace.
     llvm::StringRef prefix = line.substr(0, offset);
@@ -1338,7 +1334,7 @@ markup::Document HoverInfo::present() const {
     if(auto kind_string = symbol_kind_string(kind); !kind_string.empty()) {
         header.append_text(kind_string).append_space();
     }
-    assert(!name.empty() && "hover triggered on a nameless symbol");
+    CLICE_ASSERT(!name.empty() && "hover triggered on a nameless symbol");
     header.append_code(name);
 
     /// Put a linebreak after header to increase readability.
@@ -1390,7 +1386,7 @@ markup::Document HoverInfo::present() const {
     }
 
     if(callee_arg_info) {
-        assert(call_pass_type);
+        CLICE_ASSERT(call_pass_type);
         std::string buffer;
         llvm::raw_string_ostream os(buffer);
         os << "Passed ";

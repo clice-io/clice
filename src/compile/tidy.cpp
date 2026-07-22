@@ -1,9 +1,5 @@
 module;
 
-#include <cassert>
-
-#include "support/logging.h"
-
 // clang-tidy is not part of the clang wrapper module; keep its headers textual.
 #include "clang-tidy/ClangTidyCheck.h"
 #include "clang-tidy/ClangTidyDiagnosticConsumer.h"
@@ -17,10 +13,10 @@ namespace clice::tidy {
 using namespace clang::tidy;
 
 bool is_registered_tidy_check(llvm::StringRef check) {
-    assert(!check.empty());
-    assert(!check.contains('*') && !check.contains(',') &&
-           "is_registered_tidy_check doesn't support globs");
-    assert(check.ltrim().front() != '-');
+    CLICE_ASSERT(!check.empty());
+    CLICE_ASSERT(!check.contains('*') && !check.contains(',') &&
+                 "is_registered_tidy_check doesn't support globs");
+    CLICE_ASSERT(check.ltrim().front() != '-');
 
     const static llvm::StringSet<llvm::BumpPtrAllocator> all_checks = [] {
         llvm::StringSet<llvm::BumpPtrAllocator> result;

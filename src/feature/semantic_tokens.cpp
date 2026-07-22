@@ -1,7 +1,3 @@
-module;
-
-#include <cassert>
-
 module clice;
 
 namespace clice::feature {
@@ -265,7 +261,7 @@ public:
     void handleAttrOccurrence(const clang::Attr* attr, clang::SourceRange range) {
         auto [begin, end] = range;
         if(llvm::isa<clang::FinalAttr, clang::OverrideAttr>(attr)) {
-            assert(begin == end && "attribute token should be one location");
+            CLICE_ASSERT(begin == end && "attribute token should be one location");
             add_token(begin, SymbolKind::Keyword, 0);
         }
     }

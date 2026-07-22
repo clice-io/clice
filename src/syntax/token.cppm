@@ -1,12 +1,9 @@
-module;
-
-#include <cassert>
-
 export module clice:syntax.token;
 
 import stdlib;
 import llvm;
 import clang;
+import :support.logging;
 
 export namespace clice {
 
@@ -50,7 +47,7 @@ struct Token {
     }
 
     llvm::StringRef text(llvm::StringRef content) const {
-        assert(range.valid() && "Invalid source range");
+        CLICE_ASSERT(range.valid() && "Invalid source range");
         return content.substr(range.begin, range.end - range.begin);
     }
 

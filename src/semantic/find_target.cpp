@@ -4,7 +4,6 @@
 
 module;
 
-#include <cassert>
 // std::reverse_iterator's comparison operators (used by llvm::reverse ranges)
 // are hidden friends the stdlib wrapper cannot re-export; include <iterator>.
 #include <iterator>
@@ -209,7 +208,7 @@ public:
         }
 
         if(const clang::Decl* pattern = template_pattern(decl)) {
-            assert(pattern != decl);
+            CLICE_ASSERT(pattern != decl);
             add(pattern, flags | Rel::TemplatePattern);
             /// Now continue with the instantiation.
             flags |= Rel::TemplateInstantiation;
@@ -618,8 +617,8 @@ auto explicit_reference_targets(clang::DynTypedNode node,
                                 DeclRelationSet mask,
                                 const clang::HeuristicResolver* resolver)
     -> llvm::SmallVector<const clang::NamedDecl*, 1> {
-    assert(!(mask & (DeclRelation::TemplatePattern | DeclRelation::TemplateInstantiation)) &&
-           "explicit_reference_targets handles templates on its own");
+    CLICE_ASSERT(!(mask & (DeclRelation::TemplatePattern | DeclRelation::TemplateInstantiation)) &&
+                 "explicit_reference_targets handles templates on its own");
     auto decls = all_target_decls(node, resolver);
 
     /// We prefer to return template instantiation, but fallback to template

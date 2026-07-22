@@ -1,8 +1,9 @@
+import clice;
+
 #include <string>
 #include <string_view>
 
 #include "test/platform.h"
-#include "support/logging.h"
 
 #include "kota/deco/deco.h"
 #include "kota/zest/zest.h"

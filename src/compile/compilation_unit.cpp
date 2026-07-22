@@ -1,7 +1,3 @@
-module;
-
-#include <cassert>
-
 module clice;
 
 namespace clice {
@@ -29,15 +25,15 @@ auto CompilationUnitRef::file_id(llvm::StringRef file) -> clang::FileID {
 
 auto CompilationUnitRef::decompose_location(clang::SourceLocation location)
     -> std::pair<clang::FileID, std::uint32_t> {
-    assert(location.isFileID() && "Decompose macro location is meaningless!");
+    CLICE_ASSERT(location.isFileID() && "Decompose macro location is meaningless!");
     return self->SM().getDecomposedLoc(location);
 }
 
 auto CompilationUnitRef::decompose_range(clang::SourceRange range)
     -> std::pair<clang::FileID, LocalSourceRange> {
     auto [begin, end] = range;
-    assert(begin.isValid() && end.isValid() && "Invalid source range");
-    assert(begin.isFileID() && end.isValid() && "Input source range should be a file range");
+    CLICE_ASSERT(begin.isValid() && end.isValid() && "Invalid source range");
+    CLICE_ASSERT(begin.isFileID() && end.isValid() && "Input source range should be a file range");
 
     if(begin == end) {
         auto [fid, offset] = decompose_location(begin);
@@ -108,7 +104,7 @@ auto CompilationUnitRef::file_path(clang::FileEntryRef entry) -> llvm::StringRef
     } else {
         path = real;
     }
-    assert(!path.empty() && "Invalid file path");
+    CLICE_ASSERT(!path.empty() && "Invalid file path");
 
     /// Allocate the path in the storage.
     auto size = path.size();
@@ -117,15 +113,15 @@ auto CompilationUnitRef::file_path(clang::FileEntryRef entry) -> llvm::StringRef
     data[size] = '\0';
 
     auto [it, inserted] = self->path_cache.try_emplace(entry, llvm::StringRef(data, size));
-    assert(inserted && "File path already exists");
+    CLICE_ASSERT(inserted && "File path already exists");
     return it->second;
 }
 
 auto CompilationUnitRef::file_path(clang::FileID fid) -> llvm::StringRef {
-    assert(fid.isValid() && "file_path: invalid fid");
+    CLICE_ASSERT(fid.isValid() && "file_path: invalid fid");
 
     auto entry = self->SM().getFileEntryRefForID(fid);
-    assert(entry && "file_path: fid has no backing file entry, check is_builtin_file first");
+    CLICE_ASSERT(entry && "file_path: fid has no backing file entry, check is_builtin_file first");
     if(!entry) {
         /// Callers violating the contract get a degraded result in release
         /// builds; the worker must not crash on it.
@@ -398,7 +394,7 @@ llvm::DenseMap<clang::FileID, Directive>& CompilationUnitRef::directives() {
 }
 
 TemplateResolver& CompilationUnitRef::resolver() {
-    assert(self->resolver && "Template resolver is not available");
+    CLICE_ASSERT(self->resolver && "Template resolver is not available");
     return *self->resolver;
 }
 

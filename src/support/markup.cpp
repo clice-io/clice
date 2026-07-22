@@ -2,10 +2,6 @@
 /// project, licensed under Apache License v2.0 with LLVM Exceptions.
 /// See https://llvm.org/LICENSE.txt for license information.
 
-module;
-
-#include <cassert>
-
 module clice;
 
 namespace clice::markup {
@@ -65,7 +61,7 @@ bool looks_like_tag(llvm::StringRef contents) {
 /// The strategy is to escape the first character of anything that might start
 /// a markdown grammar construct.
 bool needs_leading_escape(char c, llvm::StringRef before, llvm::StringRef after, bool starts_line) {
-    assert(before.take_while(llvm::isSpace).empty());
+    CLICE_ASSERT(before.take_while(llvm::isSpace).empty());
 
     auto ruler_length = [&]() -> unsigned {
         if(!starts_line || !before.empty()) {
@@ -323,7 +319,7 @@ private:
 /// Inserts two spaces after each `\n` to indent each line. First line is not
 /// indented.
 std::string indent_lines(llvm::StringRef input) {
-    assert(!input.ends_with("\n") && "Input should've been trimmed.");
+    CLICE_ASSERT(!input.ends_with("\n") && "Input should've been trimmed.");
     std::string indented;
     // We'll add 2 spaces after each new line.
     indented.reserve(input.size() + input.count('\n') * 2);
@@ -522,7 +518,7 @@ void Document::add_code_block(std::string code, std::string language) {
 }
 
 Paragraph& Document::add_heading(std::size_t level) {
-    assert(level > 0);
+    CLICE_ASSERT(level > 0);
     children.emplace_back(std::make_unique<Heading>(level));
     return *static_cast<Paragraph*>(children.back().get());
 }

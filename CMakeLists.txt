@@ -140,6 +140,21 @@ else()
     )
 endif()
 
+# Force-include the macro prelude (LOG_*, LOG_ANOMALY/GUIDANCE, CLICE_ASSERT)
+# into every first-party TU. Macros cannot cross a module import boundary, so
+# module units get them this way instead of a textual header. prelude.h is
+# ZERO-TOKEN (pure #define) by law: it is injected ahead of the `module;` /
+# `export module` declaration in module units, where any token before the module
+# declaration is ill-formed — it must never gain an #include or a declaration.
+# GNU-driver clang uses -include; an MSVC frontend (clang-cl) would need /FI (no
+# current CI toolchain uses it).
+if(MSVC OR (CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND
+         CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC"))
+    target_compile_options(clice_options INTERFACE /FI${PROJECT_SOURCE_DIR}/src/support/prelude.h)
+else()
+    target_compile_options(clice_options INTERFACE -include ${PROJECT_SOURCE_DIR}/src/support/prelude.h)
+endif()
+
 if(WIN32)
     target_link_libraries(clice_options INTERFACE version ntdll)
 endif()

@@ -1,30 +1,31 @@
-#pragma once
-
-#include <format>
-#include <string>
-#include <string_view>
-#include <system_error>
-#include <type_traits>
+module;
 
 #include "kota/meta/enum.h"
 #include "kota/meta/struct.h"
 #include "kota/support/ranges.h"
 #include "kota/support/type_traits.h"
-#include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/Error.h"
-#include "llvm/Support/raw_ostream.h"
 
-namespace clice {
+export module clice:support.format;
+
+import stdlib;
+import llvm;
+
+export namespace clice {
 
 template <typename Object>
 std::string dump(const Object& object);
 
 }  // namespace clice
 
+// The std::formatter specializations below live in the module purview, OUTSIDE
+// any export block: specializations are found by reachability in importers, and
+// `export` on an explicit specialization is ill-formed. This mirrors the
+// third-party adapter pattern in deps/clang.cppm (std::tuple_size<SourceRange>).
+namespace std {
+
 template <>
-struct std::formatter<llvm::StringRef> : std::formatter<std::string_view> {
-    using Base = std::formatter<std::string_view>;
+struct formatter<llvm::StringRef> : formatter<std::string_view> {
+    using Base = formatter<std::string_view>;
 
     template <typename ParseContext>
     constexpr auto parse(ParseContext& ctx) {
@@ -38,8 +39,8 @@ struct std::formatter<llvm::StringRef> : std::formatter<std::string_view> {
 };
 
 template <std::size_t N>
-struct std::formatter<llvm::SmallString<N>> : std::formatter<llvm::StringRef> {
-    using Base = std::formatter<llvm::StringRef>;
+struct formatter<llvm::SmallString<N>> : formatter<llvm::StringRef> {
+    using Base = formatter<llvm::StringRef>;
 
     template <typename ParseContext>
     constexpr auto parse(ParseContext& ctx) {
@@ -53,8 +54,8 @@ struct std::formatter<llvm::SmallString<N>> : std::formatter<llvm::StringRef> {
 };
 
 template <>
-struct std::formatter<llvm::Error> : std::formatter<llvm::StringRef> {
-    using Base = std::formatter<llvm::StringRef>;
+struct formatter<llvm::Error> : formatter<llvm::StringRef> {
+    using Base = formatter<llvm::StringRef>;
 
     template <typename ParseContext>
     constexpr auto parse(ParseContext& ctx) {
@@ -71,8 +72,8 @@ struct std::formatter<llvm::Error> : std::formatter<llvm::StringRef> {
 };
 
 template <>
-struct std::formatter<std::error_code> : std::formatter<std::string_view> {
-    using Base = std::formatter<std::string_view>;
+struct formatter<std::error_code> : formatter<std::string_view> {
+    using Base = formatter<std::string_view>;
 
     template <typename ParseContext>
     constexpr auto parse(ParseContext& ctx) {
@@ -86,8 +87,8 @@ struct std::formatter<std::error_code> : std::formatter<std::string_view> {
 };
 
 template <kota::meta::enum_type E>
-struct std::formatter<E> : std::formatter<std::string> {
-    using Base = std::formatter<std::string>;
+struct formatter<E> : formatter<std::string> {
+    using Base = formatter<std::string>;
 
     template <typename ParseContext>
     constexpr auto parse(ParseContext& ctx) {
@@ -105,13 +106,19 @@ struct std::formatter<E> : std::formatter<std::string> {
     }
 };
 
-template <typename T>
+}  // namespace std
+
+// Named helper (public gate for the reflective struct formatter below), so it
+// is exported for importers that reference it directly.
+export template <typename T>
 concept clice_reflectable_class = kota::meta::reflectable_class<T> && !kota::sequence_range<T> &&
                                   !kota::set_range<T> && !kota::map_range<T>;
 
+namespace std {
+
 template <clice_reflectable_class T>
-struct std::formatter<T> : std::formatter<std::string> {
-    using Base = std::formatter<std::string>;
+struct formatter<T> : formatter<std::string> {
+    using Base = formatter<std::string>;
 
     template <typename ParseContext>
     constexpr auto parse(ParseContext& ctx) {
@@ -124,7 +131,9 @@ struct std::formatter<T> : std::formatter<std::string> {
     }
 };
 
-namespace clice {
+}  // namespace std
+
+export namespace clice {
 
 template <typename Object>
 std::string dump(const Object& object) {

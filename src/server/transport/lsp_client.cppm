@@ -1,6 +1,6 @@
 module;
 
-#include <memory>  // native std::make_shared (not re-exported by stdlib; befriend clash)
+#include <memory>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
 
 // kota::ipc::JsonPeer is Peer<JsonCodec>. Forward-declare it instead of including
 // kota/ipc/codec/json.h, whose decode.h emits explicit template instantiations

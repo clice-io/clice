@@ -49,8 +49,7 @@
 
 module;
 
-#include <algorithm>  // std::copy (not re-exported by stdlib; befriend clash)
-#include <cassert>
+#include <algorithm>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
 
 module clice;
 
@@ -164,7 +163,7 @@ static T packed_lookup(const uint8_t* Data, int I) {
 }
 
 CharTypeSet calculate_roles(llvm::StringRef text, llvm::MutableArrayRef<CharRole> roles) {
-    assert(text.size() == roles.size());
+    CLICE_ASSERT(text.size() == roles.size());
     if(text.size() == 0) {
         return 0;
     }
@@ -309,7 +308,7 @@ int FuzzyMatcher::skip_penalty(int W, Action Last) const {
 }
 
 int FuzzyMatcher::match_bonus(int P, int W, Action last) const {
-    assert(low_pat[P] == low_word[W]);
+    CLICE_ASSERT(low_pat[P] == low_word[W]);
     int S = 1;
     bool is_pat_single_case = (pat_type_set == 1 << Lower) || (pat_type_set == 1 << Upper);
     // Bonus: case matches, or a Head in the pattern aligns with one in the word.
@@ -340,7 +339,7 @@ int FuzzyMatcher::match_bonus(int P, int W, Action last) const {
         S -= 4;
     }
 
-    assert(S <= PerfectBonus);
+    CLICE_ASSERT(S <= PerfectBonus);
     return S;
 }
 

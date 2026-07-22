@@ -1,7 +1,5 @@
 module;
 
-#include "support/logging.h"
-
 // kota/codec/json + kota/ipc/codec/json stay textual: explicit template
 // instantiations that cannot be shared through the kota wrapper's GMF.
 #include "kota/codec/json/json.h"

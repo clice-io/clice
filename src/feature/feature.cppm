@@ -1,7 +1,7 @@
 module;
 
-// LOG_ANOMALY macro; support/anomaly.h stays textual until the endgame.
-#include "support/anomaly.h"
+#include <optional>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
+#include <string>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
 
 export module clice:feature.feature;
 
@@ -12,6 +12,7 @@ import :compile.compilation;
 import :compile.compilation_unit;
 import :feature.document_link;
 import :semantic.symbol_kind;
+import :support.anomaly;
 import :support.markup;
 import :syntax.token;
 

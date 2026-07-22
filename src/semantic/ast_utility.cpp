@@ -6,10 +6,7 @@
 
 module;
 
-#include <algorithm>  // std::copy (not re-exported by stdlib; befriend clash)
-#include <cassert>
-
-#include "support/format.h"
+#include <algorithm>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
 
 // clang/AST/Type.h stays textual: the TypeNodes.inc X-macro below expands to
 // case labels and casts naming every clang::*Type class and Type::TypeClass
@@ -527,9 +524,9 @@ auto get_only_instantiation(clang::ParmVarDecl* decl) -> clang::ParmVarDecl* {
             break;
         ++ParamIdx;
     }
-    assert(ParamIdx < TemplateFunction->getNumParams() && "Couldn't find param in list?");
-    assert(ParamIdx < InstantiatedFunction->getNumParams() &&
-           "Instantiated function has fewer (non-pack) parameters?");
+    CLICE_ASSERT(ParamIdx < TemplateFunction->getNumParams() && "Couldn't find param in list?");
+    CLICE_ASSERT(ParamIdx < InstantiatedFunction->getNumParams() &&
+                 "Instantiated function has fewer (non-pack) parameters?");
     return InstantiatedFunction->getParamDecl(ParamIdx);
 }
 
@@ -843,7 +840,7 @@ private:
     // in the given arguments, if it is there.
     std::optional<size_t> findPack(typename clang::CallExpr::arg_range Args) {
         // find the argument directly referring to the first parameter
-        assert(Parameters.size() <= static_cast<size_t>(llvm::size(Args)));
+        CLICE_ASSERT(Parameters.size() <= static_cast<size_t>(llvm::size(Args)));
         for(auto Begin = Args.begin(), End = Args.end() - Parameters.size() + 1; Begin != End;
             ++Begin) {
             if(const auto* RefArg = unwrapForward(*Begin)) {
@@ -995,7 +992,7 @@ auto resolve_forwarding_params(const clang::FunctionDecl* D, unsigned MaxDepth)
 
         // Fill in the remaining unresolved pack parameters
         HeadIt = std::copy(Pack.begin(), Pack.end(), HeadIt);
-        assert(TailIt.base() == HeadIt);
+        CLICE_ASSERT(TailIt.base() == HeadIt);
         return Result;
     }
     return {params.begin(), params.end()};
@@ -1141,7 +1138,7 @@ std::string print_qualified_name(const clang::NamedDecl& decl) {
     /// mostly noise.
     policy.AnonymousTagLocations = false;
     decl.printQualifiedName(os, policy);
-    assert(!llvm::StringRef(name).starts_with("::"));
+    CLICE_ASSERT(!llvm::StringRef(name).starts_with("::"));
     return name;
 }
 
@@ -1415,7 +1412,7 @@ public:
 
         int index = param_index(*template_decl, *auto_loc.getDecl());
         if(index < 0) {
-            assert(false && "auto TTP is not from enclosing function?");
+            CLICE_ASSERT(false && "auto TTP is not from enclosing function?");
             return true;
         }
 

@@ -1,7 +1,6 @@
 import clice;
 
 #include "test/test.h"
-#include "support/anomaly.h"
 
 namespace clice::testing {
 

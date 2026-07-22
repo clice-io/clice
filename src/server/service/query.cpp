@@ -1,8 +1,8 @@
 module;
 
-#include <memory>    // std::shared_ptr vs nullptr comparison (ADL; not re-exported by stdlib)
-#include <optional>  // std::optional comparison operators (ADL; not re-exported by stdlib)
-#include <string>    // std::string comparison operators (ADL; not re-exported by stdlib)
+#include <memory>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
+#include <optional>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
+#include <string>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
 
 module clice;
 

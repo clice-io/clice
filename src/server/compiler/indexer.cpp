@@ -1,9 +1,6 @@
 module;
 
-#include <cassert>
-#include <memory>  // native std::make_shared (not re-exported by stdlib; befriend clash)
-
-#include "support/logging.h"
+#include <memory>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
 
 module clice;
 
@@ -762,8 +759,8 @@ kota::task<> Indexer::run_background_indexing() {
     // Files enqueued while we awaited the workers keep the queue alive for
     // the next scheduled round.
     if(index_queue_pos >= index_queue.size()) {
-        assert(pending_ids.empty() && "drained queue must have no pending ids");
-        assert(reindex_reasons.empty() && "drained queue must have no pending reasons");
+        CLICE_ASSERT(pending_ids.empty() && "drained queue must have no pending ids");
+        CLICE_ASSERT(reindex_reasons.empty() && "drained queue must have no pending reasons");
         index_queue.clear();
         index_queue_pos = 0;
     }

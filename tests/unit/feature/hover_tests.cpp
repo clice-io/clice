@@ -6,6 +6,7 @@ import clice;
 
 #include <functional>
 #include <optional>
+#include <string>  // clang20+libstdc++ floor: std::string comparison operators are not re-exported by stdlib (see deps/stdlib.cppm)
 
 #include "test/test.h"
 #include "test/tester.h"

@@ -1,7 +1,6 @@
 module;
 
-#include <cassert>
-#include <memory>  // native std::make_shared (not re-exported by stdlib; befriend clash)
+#include <memory>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
 
 module clice;
 
@@ -56,7 +55,7 @@ struct CompileGraph::UnitGuard {
         round->outcome = outcome;
 
         auto& unit = graph.units.find(path_id)->second;
-        assert(unit.compiling && unit.round == round && "unit round bookkeeping out of sync");
+        CLICE_ASSERT(unit.compiling && unit.round == round && "unit round bookkeeping out of sync");
         unit.compiling = false;
 
         for(auto dep_id: acquired) {
@@ -100,7 +99,7 @@ void CompileGraph::acquire(std::uint32_t path_id) {
 
 void CompileGraph::release(std::uint32_t path_id) {
     auto& unit = units.find(path_id)->second;
-    assert(unit.refcount > 0 && "released more interest than acquired");
+    CLICE_ASSERT(unit.refcount > 0 && "released more interest than acquired");
     unit.refcount -= 1;
 
     // No interest left in an in-flight round. The drop is often transient —
@@ -142,7 +141,7 @@ void CompileGraph::cancel_round(CompileUnit& unit) {
 
 bool CompileGraph::spawn_unit(std::uint32_t path_id) {
     auto& unit = units.find(path_id)->second;
-    assert(!unit.compiling && "spawn requested while a round is in flight");
+    CLICE_ASSERT(!unit.compiling && "spawn requested while a round is in flight");
     unit.compiling = true;
     unit.round = std::make_shared<CompileUnit::Round>();
     auto round = unit.round;

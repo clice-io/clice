@@ -1,17 +1,12 @@
 module;
 
-#include <cassert>
-// error_code/error_condition comparison operators are free functions in
-// namespace std that module ADL cannot reach, and re-exporting std::operator==
-// collides with textual <variant>'s hidden-friend operators; include the
-// header textually here (GMF stays private to this unit) for remove_all's
-// `== std::errc::no_such_file_or_directory` check.
-#include <system_error>
+#include <system_error>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
 
 export module clice:support.filesystem;
 
 import stdlib;
 import llvm;
+import :support.logging;
 
 export namespace clice {
 
@@ -147,7 +142,7 @@ public:
     class VolatileFile : public vfs::File {
     public:
         explicit VolatileFile(std::unique_ptr<vfs::File> wrapped) : wrapped(std::move(wrapped)) {
-            assert(this->wrapped);
+            CLICE_ASSERT(this->wrapped);
         }
 
         llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> getBuffer(const llvm::Twine& Name,

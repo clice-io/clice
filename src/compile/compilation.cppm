@@ -1,7 +1,6 @@
 module;
 
-#include <cassert>
-#include <memory>  // native std::make_shared (not re-exported by stdlib; befriend clash)
+#include <memory>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
 
 export module clice:compile.compilation;
 
@@ -9,6 +8,7 @@ import stdlib;
 import llvm;
 import clang;
 import :support.filesystem;
+import :support.logging;
 import :compile.compilation_unit;
 import :compile.dep_file;
 
@@ -91,7 +91,7 @@ struct CompilationParams {
                            llvm::StringRef content,
                            std::uint32_t bound = -1) {
         if(bound != -1) {
-            assert(bound <= content.size());
+            CLICE_ASSERT(bound <= content.size());
             content = content.substr(0, bound);
         }
         buffers.try_emplace(path, llvm::MemoryBuffer::getMemBufferCopy(content));

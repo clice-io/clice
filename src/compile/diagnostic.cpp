@@ -1,9 +1,3 @@
-module;
-
-#include <cassert>
-
-#include "support/format.h"
-
 module clice;
 
 namespace clice {
@@ -177,7 +171,7 @@ public:
 
         /// Make sure the location is file location.
         location = unit.file_location(location);
-        assert(location.isFileID());
+        CLICE_ASSERT(location.isFileID());
 
         auto [fid, offset] = unit.decompose_location(location);
 

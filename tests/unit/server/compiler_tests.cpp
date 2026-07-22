@@ -8,7 +8,6 @@ import clice;
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "server/worker_test_helpers.h"
-#include "support/anomaly.h"
 
 namespace clice::testing {
 

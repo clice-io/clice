@@ -1,10 +1,7 @@
 module;
 
 #include <csignal>
-#include <memory>  // native std::make_shared (not re-exported by stdlib; befriend clash)
-
-#include "support/anomaly.h"
-#include "support/logging.h"
+#include <memory>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
 
 module clice;
 
@@ -300,8 +297,8 @@ std::size_t WorkerPool::assign_worker(std::uint32_t path_id) {
 
     // New assignment: pick the least-loaded live worker.
     auto selected = pick_least_loaded();
-    if(selected == SIZE_MAX)
-        return SIZE_MAX;
+    if(selected == std::numeric_limits<std::size_t>::max())
+        return std::numeric_limits<std::size_t>::max();
     owner[path_id] = selected;
     stateful_workers[selected].owned_documents += 1;
     return selected;
@@ -344,7 +341,7 @@ std::size_t WorkerPool::assign_expendable(std::uint32_t path_id) {
     if(stateful_workers.size() == 1 && stateful_workers[0].state == SlotState::Alive) {
         return take(0);
     }
-    return SIZE_MAX;
+    return std::numeric_limits<std::size_t>::max();
 }
 
 std::size_t WorkerPool::pick_least_loaded() {
@@ -353,21 +350,22 @@ std::size_t WorkerPool::pick_least_loaded() {
     // other live worker exists — a probe crash must not take a freshly
     // opened healthy document with it.
     for(bool allow_suspect: {false, true}) {
-        std::size_t best = SIZE_MAX;
+        std::size_t best = std::numeric_limits<std::size_t>::max();
         for(std::size_t i = 0; i < stateful_workers.size(); ++i) {
             auto& w = stateful_workers[i];
             if(w.state != SlotState::Alive)
                 continue;
             if(!allow_suspect && w.suspect_inflight > 0)
                 continue;
-            if(best == SIZE_MAX || w.owned_documents < stateful_workers[best].owned_documents) {
+            if(best == std::numeric_limits<std::size_t>::max() ||
+               w.owned_documents < stateful_workers[best].owned_documents) {
                 best = i;
             }
         }
-        if(best != SIZE_MAX)
+        if(best != std::numeric_limits<std::size_t>::max())
             return best;
     }
-    return SIZE_MAX;
+    return std::numeric_limits<std::size_t>::max();
 }
 
 void WorkerPool::remove_owner(std::uint32_t path_id) {
@@ -674,14 +672,14 @@ kota::task<std::size_t> WorkerPool::acquire_stateless_slot(worker::Priority prio
     using P = worker::Priority;
     while(true) {
         if(stop_scope.cancelled() || !has_future_capacity())
-            co_return SIZE_MAX;
+            co_return std::numeric_limits<std::size_t>::max();
 
         // Claim directly only when no earlier request is queued (FIFO
         // fairness); high priority never waits behind queued low.
         bool fifo_clear =
             priority == P::High ? high_queue.empty() : high_queue.empty() && low_queue.empty();
         if(fifo_clear && (priority == P::High || low_busy_count() < effective_low_limit())) {
-            if(auto idx = pick_idle_stateless(); idx != SIZE_MAX)
+            if(auto idx = pick_idle_stateless(); idx != std::numeric_limits<std::size_t>::max())
                 co_return claim_stateless(idx, priority);
         }
 
@@ -695,10 +693,10 @@ kota::task<std::size_t> WorkerPool::acquire_stateless_slot(worker::Priority prio
 
         co_await pending.ready.wait();
 
-        if(pending.assigned_worker == SIZE_MAX)
+        if(pending.assigned_worker == std::numeric_limits<std::size_t>::max())
             continue;
 
-        auto idx = std::exchange(pending.assigned_worker, SIZE_MAX);
+        auto idx = std::exchange(pending.assigned_worker, std::numeric_limits<std::size_t>::max());
         // If the claimed worker died between dispatch and resume, the claim
         // was already cleaned up with the slot — go around again.
         if(stateless_workers[idx].generation != pending.assigned_gen)
@@ -729,7 +727,7 @@ void WorkerPool::try_dispatch_pending() {
             if(priority == worker::Priority::Low && low_busy_count() >= effective_low_limit())
                 break;
             auto idx = pick_idle_stateless();
-            if(idx == SIZE_MAX)
+            if(idx == std::numeric_limits<std::size_t>::max())
                 break;
             auto* next = queue.front();
             queue.pop_front();
@@ -751,7 +749,7 @@ void WorkerPool::try_dispatch_pending() {
 }
 
 void WorkerPool::fail_pending_requests() {
-    // Waiters are woken without a claim (assigned_worker stays SIZE_MAX);
+    // Waiters are woken without a claim (assigned_worker stays the max-size_t sentinel);
     // they re-check the pool state and return an error.
     auto drain = [](std::deque<PendingStateless*>& queue) {
         while(!queue.empty()) {
@@ -771,7 +769,7 @@ std::size_t WorkerPool::pick_idle_stateless() {
         if(w.state == SlotState::Alive && !w.busy && !w.retiring)
             return i;
     }
-    return SIZE_MAX;
+    return std::numeric_limits<std::size_t>::max();
 }
 
 kota::task<> WorkerPool::monitor_loop() {

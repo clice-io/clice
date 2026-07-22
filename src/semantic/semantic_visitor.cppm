@@ -1,7 +1,3 @@
-module;
-
-#include <cassert>
-
 export module clice:semantic.semantic_visitor;
 
 import stdlib;
@@ -14,6 +10,7 @@ import :semantic.filtered_ast_visitor;
 import :semantic.relation_kind;
 import :semantic.resolver;
 import :semantic.symbol_kind;
+import :support.logging;
 
 export namespace clice {
 
@@ -42,11 +39,11 @@ public:
             return;
         }
 
-        assert(kind.is_one_of(RelationKind::Declaration,
-                              RelationKind::Definition,
-                              RelationKind::Reference,
-                              RelationKind::WeakReference) &&
-               "Invalid kind");
+        CLICE_ASSERT(kind.is_one_of(RelationKind::Declaration,
+                                    RelationKind::Definition,
+                                    RelationKind::Reference,
+                                    RelationKind::WeakReference) &&
+                     "Invalid kind");
 
         /// Forwards to the derived class. Check whether the derived class has
         /// its own implementation to avoid infinite recursion.
@@ -60,9 +57,10 @@ public:
     void handleMacroOccurrence(const clang::MacroInfo* def,
                                RelationKind kind,
                                clang::SourceLocation location) {
-        assert(def && "Invalid macro");
-        assert(kind.is_one_of(RelationKind::Definition, RelationKind::Reference) && "Invalid kind");
-        assert(location.isValid() && "Invalid location");
+        CLICE_ASSERT(def && "Invalid macro");
+        CLICE_ASSERT(kind.is_one_of(RelationKind::Definition, RelationKind::Reference) &&
+                     "Invalid kind");
+        CLICE_ASSERT(location.isValid() && "Invalid location");
 
         if constexpr(!std::same_as<decltype(&SemanticVisitor::handleMacroOccurrence),
                                    decltype(&Derived::handleMacroOccurrence)>) {
@@ -75,7 +73,7 @@ public:
     /// @param identifiers Tokens that make up the module name.
     void handleModuleOccurrence(clang::SourceLocation keyword,
                                 llvm::ArrayRef<clang::syntax::Token> identifiers) {
-        assert(keyword.isValid() && keyword.isFileID() && "Invalid keyword location");
+        CLICE_ASSERT(keyword.isValid() && keyword.isFileID() && "Invalid keyword location");
 
         /// FIXME: Check whether identifiers are valid.
 
@@ -157,9 +155,9 @@ public:
         /// FIXME:
         // auto tokens = TB.expandedTokens(decl->getSourceRange());
         //
-        // assert(tokens.size() >= 2 && tokens[0].kind() == clang::tok::identifier &&
+        // CLICE_ASSERT(tokens.size() >= 2 && tokens[0].kind() == clang::tok::identifier &&
         //       tokens[0].text(SM) == "import" && "Invalid import declaration");
-        // assert([&]() {
+        // CLICE_ASSERT([&]() {
         //    auto range = tokens.drop_front(1);
         //    for(auto iter = range.begin(); iter != range.end(); ++iter) {
         //        if(iter->kind() == clang::tok::identifier) {
@@ -603,7 +601,7 @@ public:
             }
 
             case clang::NestedNameSpecifier::Identifier: {
-                assert(NNS->isDependent() && "Identifier NNS should be dependent");
+                CLICE_ASSERT(NNS->isDependent() && "Identifier NNS should be dependent");
                 // FIXME: use TemplateResolver here.
                 break;
             }
@@ -651,8 +649,8 @@ public:
             ///  - implicit constructor
             ///  - implicit conversion operator
 
-            assert((llvm::isa<clang::CXXConstructorDecl, clang::CXXConversionDecl>(decl)) &&
-                   "Invalid member location");
+            CLICE_ASSERT((llvm::isa<clang::CXXConstructorDecl, clang::CXXConversionDecl>(decl)) &&
+                         "Invalid member location");
 
             return true;
         }

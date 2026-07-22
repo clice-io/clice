@@ -1,13 +1,12 @@
-#pragma once
-
-#include <atomic>
-#include <cstddef>
-#include <mutex>
-#include <string>
+module;
 
 #include "spdlog/sinks/base_sink.h"
 
-namespace clice::logging {
+export module clice:support.stderr_sink;
+
+import stdlib;
+
+export namespace clice::logging {
 
 /// A stderr sink that buffers, then drops — never blocks.
 ///

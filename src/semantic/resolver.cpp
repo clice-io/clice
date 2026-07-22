@@ -1,8 +1,6 @@
 module;
 
-#include <cassert>
-
-#include "support/logging.h"
+#include <iterator>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
 
 module clice;
 
@@ -402,7 +400,7 @@ public:
             static_assert(dependent_false<Decl>, "Unknown declaration type");
         }
 
-        assert(list && "No template parameters found");
+        CLICE_ASSERT(list && "No template parameters found");
 
         TemplateDeductionInfo info = {clang::SourceLocation(), list->getDepth()};
         llvm::SmallVector<clang::DeducedTemplateArgument, 4> deduced(list->size());

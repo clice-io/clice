@@ -1,10 +1,6 @@
 module;
 
-// std::reverse_iterator's comparison operators are free functions in namespace
-// std that module ADL cannot reach (and std::operator== cannot be re-exported
-// without colliding with textual <variant>); include textually for the
-// range-for over llvm::reverse() below.
-#include <iterator>
+#include <iterator>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
 
 module clice;
 

@@ -1,7 +1,6 @@
 module;
 
-#include <cassert>
-#include <memory>  // native std::make_shared (not re-exported by stdlib; befriend clash)
+#include <memory>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
 
 module clice;
 
@@ -14,7 +13,7 @@ struct CompletionPrefix {
     llvm::StringRef spelling;
 
     static auto from(llvm::StringRef content, std::uint32_t offset) -> CompletionPrefix {
-        assert(offset <= content.size());
+        CLICE_ASSERT(offset <= content.size());
 
         auto start = offset;
         while(start > 0 && clang::isAsciiIdentifierContinue(content[start - 1])) {

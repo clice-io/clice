@@ -6,6 +6,5 @@
 #include <vector>
 
 #include "test/platform.h"
-#include "support/format.h"
 
 #include "kota/zest/zest.h"

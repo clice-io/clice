@@ -1,8 +1,6 @@
 module;
 
 #include "version.h"
-#include "support/anomaly.h"
-#include "support/logging.h"
 
 // kota/codec/json + kota/ipc/codec/json stay textual: explicit template
 // instantiations that cannot be shared through the kota wrapper's GMF.
@@ -29,7 +27,7 @@ MasterServer::MasterServer(kota::event_loop& loop, std::string self_path) :
     // depend on the server; the composition root owns it for the server's
     // lifetime and turns reports into state (notify_log) plus a wake-up
     // signal. Master-side reports only ever fire on the event-loop thread
-    // (see support/anomaly.h), so no synchronization is needed here.
+    // (see support/anomaly.cppm), so no synchronization is needed here.
     // The loaded-state budget follows the open-document count; Workspace
     // cannot see SessionStore, so the master wires the provider.
     workspace.open_documents = [this] {

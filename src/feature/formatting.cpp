@@ -1,7 +1,3 @@
-module;
-
-#include "support/logging.h"
-
 module clice;
 
 namespace clice::feature {

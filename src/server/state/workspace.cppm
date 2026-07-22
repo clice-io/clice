@@ -1,7 +1,3 @@
-module;
-
-#include <cstdint>  // UINT32_MAX (macro; does not cross module boundary)
-
 export module clice:server.state.workspace;
 
 import stdlib;
@@ -329,8 +325,9 @@ struct Workspace {
     /// Build path_to_module reverse mapping from dep_graph.
     void build_module_map();
     /// Fill PCM paths for all built modules, excluding exclude_path_id.
-    void fill_pcm_deps(std::unordered_map<std::string, std::string>& pcms,
-                       std::uint32_t exclude_path_id = UINT32_MAX) const;
+    void fill_pcm_deps(
+        std::unordered_map<std::string, std::string>& pcms,
+        std::uint32_t exclude_path_id = std::numeric_limits<std::uint32_t>::max()) const;
     /// Cancel all in-flight compilations.
     void cancel_all();
 };

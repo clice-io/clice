@@ -1,6 +1,6 @@
 module;
 
-#include <memory>  // std::operator== over std::unique_ptr vs nullptr (ADL; not re-exported by stdlib)
+#include <memory>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
 
 export module clice:index.merged_index;
 

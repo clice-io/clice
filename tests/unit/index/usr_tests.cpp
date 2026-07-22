@@ -2,7 +2,6 @@ import clice;
 
 #include "test/test.h"
 #include "test/tester.h"
-#include "support/logging.h"
 
 #include "clang/AST/DeclBase.h"
 #include "clang/AST/RecursiveASTVisitor.h"

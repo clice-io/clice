@@ -1,7 +1,5 @@
 module;
 
-#include <cassert>
-
 #include "llvm/Support/ErrorHandling.h"  // llvm_unreachable (macro; does not cross module boundary)
 
 module clice;
@@ -106,7 +104,7 @@ public:
         Out << "@UD@";
 
         bool EmittedDeclName = !EmitDeclName(D);
-        assert(EmittedDeclName && "EmitDeclName can not fail for UsingDecls");
+        CLICE_ASSERT(EmittedDeclName && "EmitDeclName can not fail for UsingDecls");
         (void)EmittedDeclName;
     }
 
@@ -425,7 +423,7 @@ void USRGenerator::VisitTagDecl(const TagDecl* D) {
     }
 
     Out << '@';
-    assert(Buf.size() > 0);
+    CLICE_ASSERT(Buf.size() > 0);
     const unsigned off = Buf.size() - 1;
 
     if(EmitDeclName(D)) {

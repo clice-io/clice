@@ -7,7 +7,6 @@
 
 #include "test/annotation.h"
 #include "test/test.h"
-#include "support/logging.h"
 
 namespace clice::testing {
 

@@ -55,6 +55,25 @@ module;
 
 export module stdlib;
 
+// clang20 + libstdc++ befriend floor — the authoritative note.
+//
+// A `using ::std::NAME;` re-export is permanently impossible for a handful of
+// std names: libstdc++ declares them as friends of a class template (e.g.
+// std::shared_ptr befriends std::make_shared, std::ostreambuf_iterator
+// befriends std::copy), and a using-declaration cannot be the target of a
+// friend declaration — clang errors "cannot befriend target of using
+// declaration" wherever that template gets instantiated. The instantiation can
+// arrive either through a textual include OR through a module BMI that carried
+// it, so the clash cannot be avoided at this wrapper. These names are therefore
+// NOT re-exported; call sites include the specific declaring std header in
+// their own global module fragment instead (<memory> for make_shared,
+// <algorithm> for copy, <system_error>/<variant>/<vector>/<optional>/<memory>
+// for the befriended free comparison operators). Do NOT add them to the
+// using-lists below — the build will break.
+//
+// Affected names: make_shared, copy, and the free comparison operators
+// (operator== / operator<=> over std::optional, std::variant, std::vector,
+// std::string, std::error_code, and reverse_iterator).
 export namespace std {
 
 using ::std::hash;
@@ -70,11 +89,7 @@ using ::std::bitset;
 using ::std::byte;
 using ::std::clamp;
 using ::std::convertible_to;
-// std::copy is intentionally NOT re-exported: it is befriended by
-// std::ostreambuf_iterator, and a using-declaration cannot be the target of a
-// friend declaration ("cannot befriend target of using declaration") when that
-// iterator is instantiated in an importer (e.g. via std::format of chrono
-// types). Call sites include <algorithm> in their global module fragment.
+// std::copy omitted — see the befriend-floor note at the top of this module.
 using ::std::cout;
 using ::std::deque;
 using ::std::destroy_at;
@@ -110,11 +125,7 @@ using ::std::lock_guard;
 using ::std::make_error_code;
 using ::std::make_move_iterator;
 using ::std::make_pair;
-// std::make_shared is intentionally NOT re-exported: it is befriended by
-// std::shared_ptr, and a using-declaration cannot be the target of a friend
-// declaration ("cannot befriend target of using declaration") when shared_ptr<T>
-// is instantiated in an importer. Call sites include <memory> in their global
-// module fragment to get the native declaration instead.
+// std::make_shared omitted — see the befriend-floor note at the top of this module.
 using ::std::make_unique;
 using ::std::map;
 using ::std::max;
@@ -199,6 +210,7 @@ using ::std::chrono::microseconds;
 using ::std::chrono::milliseconds;
 using ::std::chrono::minutes;
 using ::std::chrono::nanoseconds;
+using ::std::chrono::operator*;
 using ::std::chrono::operator+;
 using ::std::chrono::operator-;
 using ::std::chrono::operator==;

@@ -1,13 +1,10 @@
-module;
-
-#include <cassert>
-
 export module clice:index.include_graph;
 
 import stdlib;
 import llvm;
 import clang;
 import :compile.compilation_unit;
+import :support.logging;
 
 export namespace clice::index {
 
@@ -62,7 +59,7 @@ struct IncludeGraph {
                              llvm::ArrayRef<clang::FileID> indexed_fids = {});
 
     llvm::StringRef path(std::uint32_t path_ref) const {
-        assert(path_ref < paths.size());
+        CLICE_ASSERT(path_ref < paths.size());
         return paths[path_ref];
     }
 

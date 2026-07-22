@@ -1,8 +1,6 @@
 module;
 
-#include <cassert>
-
-#include "support/logging.h"
+#include <iterator>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
 
 #include "llvm/Support/ErrorHandling.h"
 
@@ -23,7 +21,7 @@ std::vector<const clang::Attr*> get_attributes(const clang::DynTypedNode& node) 
             if(const clang::Attr* A = atl.getAttr()) {
                 attrs.push_back(A);
             }
-            assert(!atl.getModifiedLoc().isNull());
+            CLICE_ASSERT(!atl.getModifiedLoc().isNull());
         }
     }
 
@@ -372,7 +370,7 @@ public:
             auto batch = expanded_tokens.take_while([&](const clang::syntax::Token& T) {
                 return T.location() >= start && T.location() < limit;
             });
-            assert(!batch.empty());
+            CLICE_ASSERT(!batch.empty());
             expanded_tokens = expanded_tokens.drop_front(batch.size());
 
             update(result, test_chunk(fid, batch));
@@ -478,7 +476,7 @@ private:
 
                 // Shouldn't happen: once we've seen tokens traceable to the main
                 // file, there shouldn't be any more implicit inclusions.
-                assert(false && "Expanded token could not be resolved to main file!");
+                CLICE_ASSERT(false && "Expanded token could not be resolved to main file!");
                 end_invalid = true;
                 return true;  // conservatively assume this token can overlap
             });
@@ -492,7 +490,7 @@ private:
     // Hit-test a consecutive range of tokens from a single file ID.
     SelectionTree::SelectionKind test_chunk(clang::FileID fid,
                                             llvm::ArrayRef<clang::syntax::Token> batch) const {
-        assert(!batch.empty());
+        CLICE_ASSERT(!batch.empty());
         clang::SourceLocation start_loc = batch.front().location();
         // There are several possible categories of FileID depending on how the
         // preprocessor was used to generate these tokens:
@@ -519,7 +517,7 @@ private:
             return no_tokens;
         }
 
-        assert(start_loc.isMacroID());
+        CLICE_ASSERT(start_loc.isMacroID());
         // Handle tokens that were passed as a macro argument.
         clang::SourceLocation arg_start = SM.getTopMacroCallerLoc(start_loc);
         if(auto arg_offset = offset_in_sel_file(arg_start)) {
@@ -543,7 +541,7 @@ private:
 
     // Is the closed token range [Begin, End] selected?
     SelectionTree::SelectionKind test_token_range(unsigned begin, unsigned end) const {
-        assert(begin <= end);
+        CLICE_ASSERT(begin <= end);
         // Outside the selection entirely?
         if(end < selected_spelled.front().offset || begin > selected_spelled.back().offset) {
             return SelectionTree::Unselected;
@@ -701,8 +699,8 @@ public:
                                     clang::FileID fid) {
         SelectionVisitor V(unit, printing_policy, range, fid);
         V.TraverseAST(unit.context());
-        assert(V.stack.size() == 1 && "Unpaired push/pop?");
-        assert(V.stack.top() == &V.nodes.front());
+        CLICE_ASSERT(V.stack.size() == 1 && "Unpaired push/pop?");
+        CLICE_ASSERT(V.stack.top() == &V.nodes.front());
         return std::move(V.nodes);
     }
 
@@ -984,7 +982,7 @@ private:
             N.parent->children.push_back(&N);
         } else {
             // Neither N any children are selected, it doesn't belong in the tree.
-            assert(&N == &nodes.back());
+            CLICE_ASSERT(&N == &nodes.back());
             nodes.pop_back();
         }
 
@@ -1111,7 +1109,7 @@ private:
     std::string indent(int offset = 0) {
         // Cast for signed arithmetic.
         int amount = int(stack.size()) + offset;
-        assert(amount >= 0);
+        CLICE_ASSERT(amount >= 0);
         return std::string(amount, ' ');
     }
 

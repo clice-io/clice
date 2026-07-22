@@ -1,7 +1,5 @@
 module;
 
-#include <cassert>
-
 #include "schema_generated.h"
 
 module clice;
@@ -140,7 +138,7 @@ public:
             if(source_range.isValid()) {
                 auto [fid2, definition_range] =
                     unit.decompose_expansion_range(decl->getSourceRange());
-                assert(fid == fid2 && "Invalid definition location");
+                CLICE_ASSERT(fid == fid2 && "Invalid definition location");
                 relation.set_definition_range(definition_range);
             }
         } else if(kind.isReference()) {

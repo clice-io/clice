@@ -1,8 +1,3 @@
-module;
-
-// UINT32_MAX macro used as a default argument below.
-#include <cstdint>
-
 export module clice:feature.inactive_regions;
 
 import stdlib;
@@ -33,6 +28,6 @@ struct InactiveScan {
 InactiveScan inactive_regions(CompilationUnitRef unit,
                               llvm::ArrayRef<std::uint8_t> open_stack = {},
                               std::uint32_t resume_offset = 0,
-                              std::uint32_t end_offset = UINT32_MAX);
+                              std::uint32_t end_offset = std::numeric_limits<std::uint32_t>::max());
 
 }  // namespace clice::feature

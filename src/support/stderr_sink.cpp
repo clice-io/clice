@@ -1,6 +1,6 @@
-#include "support/stderr_sink.h"
+module;
 
-#include <format>
+#include "spdlog/sinks/base_sink.h"
 
 #ifdef _WIN32
 #include <io.h>
@@ -15,6 +15,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #endif
+
+module clice;
 
 namespace clice::logging {
 

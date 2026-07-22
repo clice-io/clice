@@ -1,9 +1,3 @@
-module;
-
-#include <cstdint>  // UINT32_MAX
-
-#include "support/logging.h"
-
 module clice;
 
 namespace clice {
@@ -647,7 +641,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                     if(cache_it != include_cache.end()) {
                         report.include_cache_hits++;
                         auto& cached = cache_it->second;
-                        if(cached.path_id == UINT32_MAX) {
+                        if(cached.path_id == std::numeric_limits<std::uint32_t>::max()) {
                             report.unresolved.push_back({
                                 std::move(inc.path),
                                 std::string(path_pool.resolve(scan_result.path_id)),
@@ -690,8 +684,9 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                     std::chrono::duration_cast<std::chrono::microseconds>(r_t1 - r_t0).count();
                 if(!resolved.has_value()) {
                     if(cache_eligible) {
-                        include_cache.try_emplace(cache_key,
-                                                  ScanCache::CachedInclude{UINT32_MAX, 0});
+                        include_cache.try_emplace(
+                            cache_key,
+                            ScanCache::CachedInclude{std::numeric_limits<std::uint32_t>::max(), 0});
                     }
                     report.unresolved.push_back({
                         std::move(inc.path),

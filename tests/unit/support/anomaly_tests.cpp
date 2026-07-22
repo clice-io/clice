@@ -1,9 +1,9 @@
+import clice;
+
 #include <string>
 #include <vector>
 
 #include "test/test.h"
-#include "support/anomaly.h"
-#include "support/logging.h"
 
 namespace clice::testing {
 namespace {

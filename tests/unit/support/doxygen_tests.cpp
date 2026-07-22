@@ -6,7 +6,6 @@ import clice;
 #include <string>
 
 #include "test/test.h"
-#include "support/logging.h"
 
 namespace clice::testing {
 namespace {

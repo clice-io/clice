@@ -1,7 +1,6 @@
 module;
 
-#include <cstdint>  // SIZE_MAX (macro; does not cross module boundary)
-#include <memory>   // native std::make_shared (not re-exported by stdlib; befriend clash)
+#include <memory>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
 
 namespace clice::testing {
 
@@ -260,7 +259,7 @@ private:
     llvm::DenseMap<std::uint32_t, std::size_t> owner;  // path_id -> worker index
 
     /// Returns the worker owning path_id, assigning the least-loaded live
-    /// worker on first use. SIZE_MAX when no stateful worker is alive.
+    /// worker on first use. the max-size_t sentinel when no stateful worker is alive.
     std::size_t assign_worker(std::uint32_t path_id);
     void clear_owner(std::size_t worker_index);
     std::size_t pick_least_loaded();
@@ -279,9 +278,9 @@ private:
         /// Signalled by try_dispatch_pending().
         kota::event ready{};
 
-        /// Set to the claimed worker before signalling ready; stays SIZE_MAX
+        /// Set to the claimed worker before signalling ready; stays the max-size_t sentinel
         /// when the waiter is woken only to observe pool death or stop.
-        std::size_t assigned_worker = SIZE_MAX;
+        std::size_t assigned_worker = std::numeric_limits<std::size_t>::max();
 
         /// Generation of the claimed worker at dispatch time.
         unsigned assigned_gen = 0;
@@ -299,7 +298,7 @@ private:
         ~PendingStateless() {
             if(queue) {
                 std::erase(*queue, this);
-            } else if(assigned_worker != SIZE_MAX &&
+            } else if(assigned_worker != std::numeric_limits<std::size_t>::max() &&
                       pool.stateless_workers[assigned_worker].generation == assigned_gen) {
                 pool.release_stateless_slot(assigned_worker);
             }
@@ -385,7 +384,7 @@ private:
         return std::min(low_limit, max_low_limit());
     }
 
-    /// Wait for an idle stateless worker. Returns SIZE_MAX when no slot can
+    /// Wait for an idle stateless worker. Returns the max-size_t sentinel when no slot can
     /// serve the request anymore (pool stopped or all slots given up).
     kota::task<std::size_t> acquire_stateless_slot(worker::Priority priority);
     void release_stateless_slot(std::size_t worker_index);
@@ -516,7 +515,7 @@ private:
 
     /// A stateful worker that may be sacrificed to a suspect compile:
     /// alive and hosting no document other than `path_id` itself, which is
-    /// reassigned to it. SIZE_MAX when every live worker hosts others.
+    /// reassigned to it. the max-size_t sentinel when every live worker hosts others.
     std::size_t assign_expendable(std::uint32_t path_id);
 
     void install_evict_handler(WorkerProcess& worker, std::size_t index);
@@ -537,7 +536,7 @@ RequestResult<Params> WorkerPool::send_stateful(std::uint32_t path_id,
     // tries again later instead of risking one. An in-place suspect stays
     // with the owner — the AST it queries lives there.
     auto idx = suspect == Suspect::Isolated ? assign_expendable(path_id) : assign_worker(path_id);
-    if(idx == SIZE_MAX) {
+    if(idx == std::numeric_limits<std::size_t>::max()) {
         co_return kota::outcome_error(kota::ipc::Error{
             worker::dispatch_errc::worker_unavailable,
             suspect == Suspect::Isolated ? "No expendable stateful worker for quarantined probe"
@@ -609,7 +608,7 @@ template <typename Params>
 RequestResult<Params> WorkerPool::send_stateless(const Params& params,
                                                  kota::ipc::request_options opts) {
     auto idx = co_await acquire_stateless_slot(params.priority);
-    if(idx == SIZE_MAX) {
+    if(idx == std::numeric_limits<std::size_t>::max()) {
         co_return kota::outcome_error(kota::ipc::Error{worker::dispatch_errc::worker_unavailable,
                                                        "No stateless workers available"});
     }

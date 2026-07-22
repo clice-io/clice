@@ -1,12 +1,7 @@
 module;
 
-// std::string and std::reverse_iterator comparison operators are free functions
-// in namespace std that module ADL cannot reach (std::operator== cannot be
-// re-exported without colliding with textual hidden friends); include the
-// declaring headers textually for the `!=` on include paths and the range-for
-// over llvm::reverse() below.
-#include <iterator>
-#include <string>
+#include <iterator>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
+#include <string>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
 
 module clice;
 

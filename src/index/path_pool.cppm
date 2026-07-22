@@ -1,12 +1,12 @@
 module;
 
-#include <cassert>
-#include <vector>  // std::operator== over std::vector (ADL; not re-exported by stdlib)
+#include <vector>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
 
 export module clice:index.path_pool;
 
 import stdlib;
 import llvm;
+import :support.logging;
 
 export namespace clice::index {
 
@@ -33,7 +33,7 @@ struct PathPool {
     }
 
     auto path_id(llvm::StringRef path) {
-        assert(!path.empty());
+        CLICE_ASSERT(!path.empty());
 
         // Normalize backslashes to forward slashes so that paths from different
         // sources (URI decoding, CDB, clang FileManager) compare equal on

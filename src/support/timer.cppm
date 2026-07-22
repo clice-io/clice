@@ -4,7 +4,7 @@ import stdlib;
 
 export namespace clice {
 
-/// Wall-clock timer for perf log lines (see LOG_PERF in support/logging.h).
+/// Wall-clock timer for perf log lines (see LOG_PERF in support/prelude.h).
 struct ScopedTimer {
     std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
 

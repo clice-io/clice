@@ -1,8 +1,6 @@
 module;
 
 #include "version.h"
-#include "support/anomaly.h"
-#include "support/logging.h"
 
 // kota/codec/json + kota/ipc/codec/json stay textual: explicit template
 // instantiations that cannot be shared through the kota wrapper's GMF.

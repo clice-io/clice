@@ -1,6 +1,7 @@
+import clice;
+
 #include "version.h"
 #include "test/test.h"
-#include "support/logging.h"
 
 namespace clice::testing {
 namespace {

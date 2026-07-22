@@ -1,8 +1,7 @@
 module;
 
-#include <cassert>
-
-#include "support/format.h"
+#include <string>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
+#include <tuple>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
 
 module clice;
 
@@ -301,7 +300,7 @@ public:
     void add_params(Callee callee,
                     clang::SourceLocation rpunc_location,
                     llvm::ArrayRef<const clang::Expr*> args) {
-        assert(callee.decl || callee.loc);
+        CLICE_ASSERT(callee.decl || callee.loc);
 
         if((!options.parameters && !options.default_arguments) || args.size() == 0) {
             return;
@@ -464,7 +463,7 @@ public:
         // We shouldn't get as far as adding a hint if the category is disabled.
         // We'd like to disable as much of the analysis as possible above instead.
         // Assert in debug mode but add a dynamic check in production.
-        assert(options.enabled && "Shouldn't get here if disabled!");
+        CLICE_ASSERT(options.enabled && "Shouldn't get here if disabled!");
 
         std::uint32_t offset = side == HintSide::Left ? range.begin : range.end;
         if(restrict_range.valid() && !restrict_range.contains(offset))
@@ -840,7 +839,7 @@ public:
         // form of the init-list has nested init-lists for these.
         // getUnwrittenDesignators will look at the semantic form to determine the
         // labels.
-        assert(expr->isSyntacticForm() && "RAV should not visit implicit code!");
+        CLICE_ASSERT(expr->isSyntacticForm() && "RAV should not visit implicit code!");
         if(!options.designators) {
             return true;
         }

@@ -1,7 +1,5 @@
 module;
 
-#include "support/logging.h"
-
 // kota/deco stays textual: the option CLI surface is not in the kota wrapper.
 #include "kota/deco/option.h"
 

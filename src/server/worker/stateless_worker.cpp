@@ -1,9 +1,6 @@
 module;
 
-#include <memory>  // native std::make_shared (not re-exported by stdlib; befriend clash)
-
-#include "support/logging.h"
-#include "support/stderr_sink.h"
+#include <memory>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
 
 // kota/codec/json stays textual: to_raw serializes results through
 // to_json + lsp_config, which cannot cross the module boundary.
