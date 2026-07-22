@@ -3,12 +3,12 @@ export module clice:compile.compilation_unit;
 import stdlib;
 import llvm;
 import clang;
-import :syntax.token;
 import :compile.dep_file;
 import :compile.diagnostic;
 import :compile.directive;
 import :semantic.resolver;
 import :semantic.symbol_id;
+import :syntax.token;
 
 export namespace clice {
 

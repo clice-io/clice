@@ -4,10 +4,7 @@
 
 module;
 
-// std::bitset's free operators (&, |, ^) are hidden friends that the stdlib
-// wrapper cannot re-export; include <bitset> textually so DeclRelationSet's
-// bitfield arithmetic resolves.
-#include <bitset>
+#include <bitset>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
 
 export module clice:semantic.find_target;
 

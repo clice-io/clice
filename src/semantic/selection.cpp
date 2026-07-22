@@ -2,7 +2,7 @@ module;
 
 #include <iterator>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
 
-#include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/ErrorHandling.h"  // llvm_unreachable (macro; does not cross module boundary)
 
 module clice;
 

@@ -73,10 +73,9 @@ export module stdlib;
 //
 // Affected names: make_shared, copy, and the free comparison operators
 // (operator== / operator<=> over std::optional, std::variant, std::vector,
-// std::string, std::error_code, and reverse_iterator).
+// std::string, std::error_code, reverse_iterator, and std::bitset's &/|/^).
 export namespace std {
 
-using ::std::hash;
 using ::std::abort;
 using ::std::accumulate;
 using ::std::array;
@@ -112,6 +111,7 @@ using ::std::get;
 using ::std::get_if;
 using ::std::getenv;
 using ::std::greater;
+using ::std::hash;
 using ::std::initializer_list;
 using ::std::int64_t;
 using ::std::integral_constant;

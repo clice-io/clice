@@ -3,8 +3,8 @@ export module clice:semantic.selection;
 import stdlib;
 import llvm;
 import clang;
-import :syntax.token;
 import :compile.compilation_unit;
+import :syntax.token;
 
 export namespace clice {
 

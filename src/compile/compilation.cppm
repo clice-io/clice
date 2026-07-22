@@ -7,10 +7,10 @@ export module clice:compile.compilation;
 import stdlib;
 import llvm;
 import clang;
-import :support.filesystem;
-import :support.logging;
 import :compile.compilation_unit;
 import :compile.dep_file;
+import :support.filesystem;
+import :support.logging;
 
 export namespace clice {
 
