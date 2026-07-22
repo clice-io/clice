@@ -146,20 +146,68 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - name: Upload .vsix to Release
-        uses: softprops/action-gh-release@v3
-        if: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || inputs.release_tag != '' }}
+  # Publishing runs apart from the packaging matrix: the Marketplace
+  # intermittently throws internal errors (TF400898) when six publishes for
+  # one extension land concurrently, and parallel release uploads race on
+  # the same release. Packaging stays parallel above; this single job
+  # uploads and publishes the collected vsix files one at a time.
+  publish-release:
+    needs: publish-vscode
+    if: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || inputs.release_tag != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
         with:
-          files: "editors/vscode/*.vsix"
-          tag_name: ${{ inputs.release_tag || github.ref }}
+          ref: ${{ inputs.release_tag || github.ref }}
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: node
+
+      - name: Download vsix packages
+        uses: actions/download-artifact@v8
+        with:
+          pattern: vsix-${{ inputs.source }}-*
+          merge-multiple: true
+          path: vsix
+
+      - name: Upload .vsix to Release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ inputs.release_tag || github.ref_name }}" \
+            --repo "$GITHUB_REPOSITORY" --clobber vsix/*.vsix
 
       - name: Publish to Marketplace
-        if: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || inputs.release_tag != '' }}
         env:
           VSCE_PAT: ${{ secrets.VSCODE_EXTENSION }}
         run: |
           FLAG="${{ (inputs.prerelease || contains(github.ref_name, '-')) && '--pre-release' || '' }}"
-          pixi run publish-vscode -p "$VSCE_PAT" $FLAG \
-            --packagePath "$GITHUB_WORKSPACE/$(ls editors/vscode/*.vsix)"
+          FAILED=""
+          for f in vsix/*.vsix; do
+            OK=""
+            for ATTEMPT in 1 2 3; do
+              # --skip-duplicate: a rerun meets versions an earlier attempt
+              # already published; that is success, not an error.
+              if pixi run publish-vscode -p "$VSCE_PAT" $FLAG --skip-duplicate \
+                  --packagePath "$GITHUB_WORKSPACE/$f"; then
+                OK=1
+                break
+              fi
+              if [ "$ATTEMPT" -lt 3 ]; then
+                echo "publish failed for $f (attempt $ATTEMPT); retrying in 30s"
+                sleep 30
+              fi
+            done
+            if [ -z "$OK" ]; then
+              FAILED="$FAILED $f"
+            fi
+          done
+          if [ -n "$FAILED" ]; then
+            echo "::error::marketplace publish failed after retries:$FAILED"
+            exit 1
+          fi

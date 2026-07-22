@@ -34,6 +34,14 @@ prunes odd-minor pre-releases older than 30 days. Promotion fails loudly
 if no packaged green run exists. A failed nightly just means no nightly
 that day — fix main and rerun via dispatch.
 
+The vsix packaging matrix runs in parallel, but release upload and
+Marketplace publishing happen in one serial job (`publish-release`) with
+3 attempts per vsix — concurrent publishes trip Marketplace internal
+errors (TF400898). The job is rerun-safe: `gh run rerun <id> --failed`
+re-uploads with `--clobber` and skips already-published versions, so a
+transient Marketplace failure is recovered by rerunning just that job —
+never by a new tag.
+
 The binary embeds its build identity (`git describe`: nearest tag + commit
 hash), not the release tag — the tag is applied after the build. Match crash
 logs to releases by the commit hash; the release notes state the hash.
