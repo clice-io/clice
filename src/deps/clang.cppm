@@ -1,5 +1,8 @@
 module;
 
+#include <cstddef>
+#include <utility>
+
 #include "clang/AST/ASTConcept.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/ASTDiagnostic.h"
@@ -512,3 +515,36 @@ using ::clang::tooling::Range;
 using ::clang::tooling::applyAllReplacements;
 
 }  // namespace clang::tooling
+
+// Adapter shims: clice's structured-binding support for clang::SourceRange.
+// The std specializations live in purview (found by reachability); the get
+// helper is exported so ADL finds it in every importer.
+namespace std {
+
+template <>
+struct tuple_size<::clang::SourceRange> : integral_constant<size_t, 2> {};
+
+template <>
+struct tuple_element<0, ::clang::SourceRange> {
+    using type = ::clang::SourceLocation;
+};
+
+template <>
+struct tuple_element<1, ::clang::SourceRange> {
+    using type = ::clang::SourceLocation;
+};
+
+}  // namespace std
+
+export namespace clang {
+
+template <::std::size_t I>
+::clang::SourceLocation get(::clang::SourceRange range) {
+    if constexpr(I == 0) {
+        return range.getBegin();
+    } else {
+        return range.getEnd();
+    }
+}
+
+}  // namespace clang

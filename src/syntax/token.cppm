@@ -8,39 +8,6 @@ import stdlib;
 import llvm;
 import clang;
 
-// Structured-binding support for clang::SourceRange. Specializations of std
-// templates stay in module purview, outside any export block — they are found
-// by reachability, and `export` on a specialization is ill-formed/useless.
-namespace std {
-
-template <>
-struct tuple_size<clang::SourceRange> : std::integral_constant<std::size_t, 2> {};
-
-template <>
-struct tuple_element<0, clang::SourceRange> {
-    using type = clang::SourceLocation;
-};
-
-template <>
-struct tuple_element<1, clang::SourceRange> {
-    using type = clang::SourceLocation;
-};
-
-}  // namespace std
-
-export namespace clang {
-
-template <std::size_t I>
-clang::SourceLocation get(clang::SourceRange range) {
-    if constexpr(I == 0) {
-        return range.getBegin();
-    } else {
-        return range.getEnd();
-    }
-}
-
-}  // namespace clang
-
 export namespace clice {
 
 struct LocalSourceRange {
