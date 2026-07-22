@@ -7,6 +7,7 @@ export module clice;
 export import stdlib;
 export import llvm;
 export import clang;
+export import kota;
 
 export import :command.argument_parser;
 export import :command.command;

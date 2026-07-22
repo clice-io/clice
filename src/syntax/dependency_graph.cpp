@@ -4,8 +4,6 @@ module;
 
 #include "support/logging.h"
 
-#include "kota/async/async.h"
-
 module clice;
 
 namespace clice {

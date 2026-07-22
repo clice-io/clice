@@ -2,9 +2,8 @@ module;
 
 #include "support/logging.h"
 
-#include "kota/async/async.h"
+// kota/deco stays textual: the option CLI surface is not in the kota wrapper.
 #include "kota/deco/option.h"
-#include "kota/meta/enum.h"
 
 #ifndef _WIN32
 #include <unistd.h>

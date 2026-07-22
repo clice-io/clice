@@ -11,6 +11,7 @@ module;
 #include <chrono>
 #include <compare>
 #include <concepts>
+#include <coroutine>
 #include <csignal>
 #include <cstddef>
 #include <cstdint>
@@ -164,6 +165,21 @@ using ::std::unreachable;
 using ::std::vector;
 using ::std::visit;
 using ::std::weak_ptr;
+
+}  // namespace std
+
+// C++20 coroutine support. Module units that define coroutines over kota's
+// async types (task/event_loop, from the kota wrapper) need
+// std::coroutine_traits and std::coroutine_handle reachable by qualified name
+// for the co_await lowering; otherwise the <coroutine> vocabulary is only
+// pulled in textually inside the wrapper GMFs and stays invisible here.
+export namespace std {
+
+using ::std::coroutine_handle;
+using ::std::coroutine_traits;
+using ::std::noop_coroutine;
+using ::std::suspend_always;
+using ::std::suspend_never;
 
 }  // namespace std
 
