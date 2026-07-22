@@ -4,6 +4,7 @@
 /// by path.
 export module clice;
 
+export import stdlib;
 export import llvm;
 export import clang;
 
