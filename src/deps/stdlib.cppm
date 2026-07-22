@@ -261,17 +261,20 @@ using ::std::ranges::views::zip;
 
 }  // namespace std::ranges::views
 
-export namespace std::literals {
+export namespace std::inline literals {
 
 using ::std::literals::string_literals::operator""s;
 using ::std::literals::string_view_literals::operator""sv;
 
-}  // namespace std::literals
+}  // namespace std::inline literals
 
 // libstdc++ defines the container-iterator comparison/difference operators as
 // free functions in __gnu_cxx (not hidden friends), so module ADL cannot find
 // them; re-export the C++20 primitives used by range-for and iterator
-// arithmetic over std::vector/std::string in module units.
+// arithmetic over std::vector/std::string in module units. libc++ and the
+// MSVC STL have no __gnu_cxx and structure these operators differently, so
+// the block is libstdc++-only.
+#ifdef __GLIBCXX__
 export namespace __gnu_cxx {
 
 using ::__gnu_cxx::operator-;
@@ -279,6 +282,7 @@ using ::__gnu_cxx::operator==;
 using ::__gnu_cxx::operator<=>;
 
 }  // namespace __gnu_cxx
+#endif
 
 // std.compat-style: C library names at global scope.
 export using ::abort;
@@ -288,7 +292,9 @@ export using ::int64_t;
 export using ::isalnum;
 export using ::memcpy;
 export using ::size_t;
-export using ::ssize_t;
+#ifndef _WIN32
+export using ::ssize_t;  // POSIX-only; Windows has no global ssize_t
+#endif
 export using ::system;
 export using ::tolower;
 export using ::uint16_t;
