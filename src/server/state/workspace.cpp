@@ -1,5 +1,7 @@
 module;
 
+#include <utility>  // clang20 floor: MSVC STL pair get is not friend-ADL-findable; structured bindings over std::pair need the textual declaration (see deps/stdlib.cppm)
+
 // kota/codec/json stays textual: it defines explicit template instantiations
 // that cannot be shared through the kota wrapper's GMF.
 #include "kota/codec/json/json.h"

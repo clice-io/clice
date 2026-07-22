@@ -1,9 +1,8 @@
 #pragma once
 
-#include <print>
-#include <sstream>
-#include <string>
-
+// No textual std includes here: driver TUs import clice, and mixing textual
+// libc++ headers with the module BMI trips abi_tag redeclaration errors on
+// macOS. std names resolve through the stdlib wrapper exports.
 #include "kota/deco/deco.h"
 
 namespace clice::driver {

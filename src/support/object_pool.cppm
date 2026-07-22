@@ -1,3 +1,7 @@
+module;
+
+#include <utility>  // clang20 floor: MSVC STL pair get is not friend-ADL-findable; structured bindings over std::pair need the textual declaration (see deps/stdlib.cppm)
+
 export module clice:support.object_pool;
 
 import stdlib;

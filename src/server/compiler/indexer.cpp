@@ -1,6 +1,7 @@
 module;
 
 #include <memory>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
+#include <utility>  // clang20 floor: MSVC STL pair get is not friend-ADL-findable; structured bindings over std::pair need the textual declaration (see deps/stdlib.cppm)
 
 module clice;
 
