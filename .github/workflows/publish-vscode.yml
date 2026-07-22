@@ -178,8 +178,9 @@ jobs:
       - name: Upload .vsix to Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
         run: |
-          gh release upload "${{ inputs.release_tag || github.ref_name }}" \
+          gh release upload "$RELEASE_TAG" \
             --repo "$GITHUB_REPOSITORY" --clobber vsix/*.vsix
 
       - name: Publish to Marketplace

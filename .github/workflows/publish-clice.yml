@@ -97,12 +97,13 @@ jobs:
       - name: Upload assets to the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           cd pkg
           mv clice.tar.gz "${{ matrix.asset_name }}" 2>/dev/null || mv clice.zip "${{ matrix.asset_name }}"
           mv clice-symbol.tar.xz "${{ matrix.symbol_asset_name }}" 2>/dev/null \
             || mv clice-symbol.zip "${{ matrix.symbol_asset_name }}"
-          gh release upload "${{ inputs.release_tag }}" --repo "$GITHUB_REPOSITORY" \
+          gh release upload "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
             --clobber "${{ matrix.asset_name }}" "${{ matrix.symbol_asset_name }}"
 
       # Bridge for publish-vscode.yml: make the package available as an
