@@ -11,7 +11,6 @@ import clice;
 #include <vector>
 
 #include "feature/feature.h"
-#include "semantic/ast_utility.h"
 
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/raw_ostream.h"

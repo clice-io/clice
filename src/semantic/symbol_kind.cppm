@@ -1,11 +1,9 @@
-#pragma once
+export module clice:semantic.symbol_kind;
 
-#include <cstdint>
+import stdlib;
+import clang;
 
-#include "clang/AST/Decl.h"
-#include "clang/Basic/TokenKinds.h"
-
-namespace clice {
+export namespace clice {
 
 /// In the LSP, there are several different kinds, such as `SemanticTokenType`,
 /// `CompletionItemKind`, and `SymbolKind`. Unfortunately, these kinds do not cover all the semantic

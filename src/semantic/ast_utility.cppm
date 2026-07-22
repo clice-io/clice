@@ -1,9 +1,10 @@
-#pragma once
+export module clice:semantic.ast_utility;
 
-#include "clang/AST/Decl.h"
-#include "clang/AST/TypeLoc.h"
+import stdlib;
+import llvm;
+import clang;
 
-namespace clice::ast {
+export namespace clice::ast {
 
 /// is this decl a definition?
 bool is_definition(const clang::Decl* decl);

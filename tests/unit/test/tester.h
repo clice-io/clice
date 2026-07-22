@@ -7,7 +7,6 @@
 
 #include "test/annotation.h"
 #include "test/test.h"
-#include "compile/compilation.h"
 #include "feature/feature.h"
 #include "support/logging.h"
 

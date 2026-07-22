@@ -7,7 +7,6 @@ import clice;
 #include <utility>
 #include <vector>
 
-#include "compile/compilation_unit.h"
 #include "index/serialization.h"
 
 #include "kota/ipc/lsp/text.h"

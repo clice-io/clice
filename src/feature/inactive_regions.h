@@ -3,8 +3,6 @@
 #include <cstdint>
 #include <vector>
 
-#include "compile/compilation_unit.h"
-
 #include "llvm/ADT/ArrayRef.h"
 
 namespace clice::feature {

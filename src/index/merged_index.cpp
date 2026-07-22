@@ -6,7 +6,6 @@ import clice;
 #include <ranges>
 #include <tuple>
 
-#include "compile/dep_file.h"
 #include "index/path_pool.h"
 #include "index/serialization.h"
 

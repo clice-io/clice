@@ -1,12 +1,11 @@
-#pragma once
+export module clice:semantic.filtered_ast_visitor;
 
-#include <concepts>
+import stdlib;
+import llvm;
+import clang;
+import :compile.compilation_unit;
 
-#include "compile/compilation_unit.h"
-
-#include "clang/AST/RecursiveASTVisitor.h"
-
-namespace clice {
+export namespace clice {
 
 /// A visitor class that extends clang::RecursiveASTVisitor to traverse
 /// AST nodes with an additional filtering mechanism.

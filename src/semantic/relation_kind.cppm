@@ -1,8 +1,8 @@
-#pragma once
+export module clice:semantic.relation_kind;
 
-#include <cstdint>
+import stdlib;
 
-namespace clice {
+export namespace clice {
 
 struct RelationKind {
     enum Kind : std::uint32_t {

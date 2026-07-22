@@ -5,10 +5,7 @@
 #include <string>
 #include <vector>
 
-#include "compile/compilation.h"
-#include "compile/compilation_unit.h"
 #include "feature/document_link.h"
-#include "semantic/symbol_kind.h"
 #include "support/anomaly.h"
 
 #include "kota/ipc/lsp/position.h"

@@ -1,18 +1,10 @@
-import clice;
+module;
 
-#include "compile/compilation.h"
+#include <cassert>
 
-#include "compile/diagnostic.h"
-#include "compile/implement.h"
-#include "semantic/ast_utility.h"
 #include "support/logging.h"
 
-#include "llvm/Support/Error.h"
-#include "llvm/Support/xxhash.h"
-#include "clang/Basic/Stack.h"
-#include "clang/Frontend/MultiplexConsumer.h"
-#include "clang/Frontend/TextDiagnosticPrinter.h"
-#include "clang/Lex/PreprocessorOptions.h"
+module clice;
 
 namespace clice {
 

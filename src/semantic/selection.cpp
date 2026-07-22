@@ -1,31 +1,12 @@
-import clice;
+module;
 
-#include "semantic/selection.h"
+#include <cassert>
 
-#include <algorithm>
-#include <optional>
-#include <set>
-#include <string>
-
-#include "compile/compilation_unit.h"
 #include "support/logging.h"
 
-#include "llvm/ADT/BitVector.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/Support/raw_ostream.h"
-#include "clang/AST/ASTConcept.h"
-#include "clang/AST/ASTTypeTraits.h"
-#include "clang/AST/Decl.h"
-#include "clang/AST/DeclCXX.h"
-#include "clang/AST/Expr.h"
-#include "clang/AST/ExprCXX.h"
-#include "clang/AST/PrettyPrinter.h"
-#include "clang/AST/RecursiveASTVisitor.h"
-#include "clang/AST/TypeLoc.h"
-#include "clang/Basic/OperatorKinds.h"
-#include "clang/Basic/TokenKinds.h"
-#include "clang/Tooling/Syntax/Tokens.h"
+#include "llvm/Support/ErrorHandling.h"
+
+module clice;
 
 namespace clice {
 

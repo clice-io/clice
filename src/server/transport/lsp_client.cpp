@@ -10,7 +10,6 @@ import clice;
 #include <variant>
 
 #include "version.h"
-#include "semantic/symbol_kind.h"
 #include "server/compiler/context_resolver.h"
 #include "server/protocol/extension.h"
 #include "server/protocol/serialize.h"

@@ -1,33 +1,16 @@
-#pragma once
+export module clice:compile.compilation_unit;
 
-#include <chrono>
-#include <cstdint>
-#include <optional>
-#include <span>
-#include <string>
-#include <utility>
-#include <vector>
+import stdlib;
+import llvm;
+import clang;
+import :syntax.token;
+import :compile.dep_file;
+import :compile.diagnostic;
+import :compile.directive;
+import :semantic.resolver;
+import :semantic.symbol_id;
 
-#include "compile/dep_file.h"
-#include "compile/diagnostic.h"
-#include "compile/directive.h"
-#include "semantic/resolver.h"
-
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/DenseMap.h"
-#include "clang/Tooling/Syntax/Tokens.h"
-
-namespace clice {
-
-namespace index {
-
-// Temporary in-header definition during migration.
-struct SymbolID {
-    std::uint64_t hash;
-    std::string name;
-};
-
-}  // namespace index
+export namespace clice {
 
 enum class CompilationKind : std::uint8_t {
     /// From preprocessing the source file. Therefore directives

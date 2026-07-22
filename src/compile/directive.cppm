@@ -1,13 +1,10 @@
-#pragma once
+export module clice:compile.directive;
 
-#include <cstdint>
-#include <string>
-#include <vector>
+import stdlib;
+import llvm;
+import clang;
 
-#include "llvm/ADT/DenseMap.h"
-#include "clang/Lex/MacroInfo.h"
-
-namespace clice {
+export namespace clice {
 
 /// Information about `#include` directive.
 struct Include {

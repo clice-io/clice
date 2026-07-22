@@ -4,7 +4,6 @@ import clice;
 
 #include "test/temp_dir.h"
 #include "test/test.h"
-#include "compile/compilation.h"
 #include "index/tu_index.h"
 #include "server/compiler/context_resolver.h"
 #include "server/compiler/indexer.h"

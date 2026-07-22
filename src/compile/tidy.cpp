@@ -1,19 +1,16 @@
-import clice;
+module;
 
-#include "compile/implement.h"
-#include "semantic/ast_utility.h"
+#include <cassert>
+
 #include "support/logging.h"
 
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/ADT/StringSet.h"
-#include "llvm/Support/Allocator.h"
-#include "llvm/Support/Process.h"
-#include "llvm/Support/StringSaver.h"
-#include "clang/Frontend/CompilerInstance.h"
+// clang-tidy is not part of the clang wrapper module; keep its headers textual.
 #include "clang-tidy/ClangTidyCheck.h"
 #include "clang-tidy/ClangTidyDiagnosticConsumer.h"
 #include "clang-tidy/ClangTidyModuleRegistry.h"
 #include "clang-tidy/ClangTidyOptions.h"
+
+module clice;
 
 namespace clice::tidy {
 

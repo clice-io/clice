@@ -6,8 +6,6 @@
 #include <string>
 #include <vector>
 
-#include "semantic/relation_kind.h"
-#include "semantic/symbol_kind.h"
 #include "server/protocol/agentic.h"
 #include "server/state/workspace.h"
 

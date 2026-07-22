@@ -10,8 +10,6 @@ import clice;
 #include <utility>
 #include <vector>
 
-#include "semantic/relation_kind.h"
-#include "semantic/symbol_kind.h"
 #include "server/compiler/compiler.h"
 #include "server/compiler/context_resolver.h"
 #include "server/compiler/indexer.h"

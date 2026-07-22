@@ -1,9 +1,8 @@
-#pragma once
+export module clice:compile.dep_file;
 
-#include <cstdint>
-#include <string>
+import stdlib;
 
-namespace clice {
+export namespace clice {
 
 /// One compile input paired with the hash of the bytes the compiler actually
 /// consumed for it — taken from the compiler's own in-memory buffers at build

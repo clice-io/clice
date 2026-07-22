@@ -6,7 +6,6 @@ import clice;
 
 #include "test/test.h"
 #include "test/tester.h"
-#include "semantic/selection.h"
 
 #include "clang/Lex/Lexer.h"
 

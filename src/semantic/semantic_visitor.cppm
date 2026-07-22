@@ -1,12 +1,21 @@
-#pragma once
+module;
 
-#include "semantic/ast_utility.h"
-#include "semantic/filtered_ast_visitor.h"
-#include "semantic/relation_kind.h"
-#include "semantic/resolver.h"
-#include "semantic/symbol_kind.h"
+#include <cassert>
 
-namespace clice {
+export module clice:semantic.semantic_visitor;
+
+import stdlib;
+import llvm;
+import clang;
+import :compile.compilation_unit;
+import :compile.directive;
+import :semantic.ast_utility;
+import :semantic.filtered_ast_visitor;
+import :semantic.relation_kind;
+import :semantic.resolver;
+import :semantic.symbol_kind;
+
+export namespace clice {
 
 template <typename Derived>
 class SemanticVisitor : public FilteredASTVisitor<SemanticVisitor<Derived>> {

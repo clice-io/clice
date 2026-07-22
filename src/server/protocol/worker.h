@@ -7,7 +7,6 @@
 #include <utility>
 #include <vector>
 
-#include "compile/dep_file.h"
 #include "feature/document_link.h"
 
 #include "kota/codec/json/json.h"

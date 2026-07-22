@@ -2,7 +2,6 @@ import clice;
 
 #include "index/include_graph.h"
 
-#include "compile/compilation_unit.h"
 #include "support/logging.h"
 
 #include "llvm/Support/xxhash.h"

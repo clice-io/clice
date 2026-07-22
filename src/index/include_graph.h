@@ -8,12 +8,6 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 
-namespace clice {
-
-class CompilationUnitRef;
-
-}
-
 namespace clice::index {
 
 struct IncludeLocation {

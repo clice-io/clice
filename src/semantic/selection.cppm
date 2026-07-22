@@ -1,15 +1,12 @@
-#pragma once
+export module clice:semantic.selection;
 
-#include <stack>
+import stdlib;
+import llvm;
+import clang;
+import :syntax.token;
+import :compile.compilation_unit;
 
-#include "llvm/ADT/SmallVector.h"
-#include "clang/AST/ASTTypeTraits.h"
-#include "clang/AST/PrettyPrinter.h"
-#include "clang/Tooling/Syntax/Tokens.h"
-
-namespace clice {
-
-class CompilationUnitRef;
+export namespace clice {
 
 /// A selection can partially or completely cover several AST nodes.
 /// The SelectionTree contains nodes that are covered, and their parents.

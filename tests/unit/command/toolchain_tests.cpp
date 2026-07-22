@@ -4,7 +4,6 @@ import clice;
 #include <optional>
 
 #include "test/test.h"
-#include "compile/compilation.h"
 #include "support/logging.h"
 
 namespace clice::testing {

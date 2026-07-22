@@ -6,8 +6,6 @@ import clice;
 #include <tuple>
 
 #include "index/serialization.h"
-#include "semantic/ast_utility.h"
-#include "semantic/semantic_visitor.h"
 
 #include "llvm/Support/SHA256.h"
 #include "llvm/Support/xxhash.h"

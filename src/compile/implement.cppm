@@ -1,49 +1,13 @@
-#pragma once
+export module clice:compile.implement;
 
-#include "compile/compilation_unit.h"
-#include "compile/diagnostic.h"
-
-#include "clang/Frontend/CompilerInstance.h"
-#include "clang/Frontend/FrontendActions.h"
-#include "clang-tidy/ClangTidyCheck.h"
-#include "clang-tidy/ClangTidyModuleRegistry.h"
-#include "clang-tidy/ClangTidyOptions.h"
-
-namespace clice::tidy {
-
-using namespace clang::tidy;
-
-bool is_registered_tidy_check(llvm::StringRef check);
-
-std::optional<bool> is_fast_tidy_check(llvm::StringRef check);
-
-struct TidyParams {};
-
-class ClangTidyChecker;
-
-/// Configure to run clang-tidy on the given file.
-std::unique_ptr<ClangTidyChecker> configure(clang::CompilerInstance& instance,
-                                            const TidyParams& params);
-
-class ClangTidyChecker {
-public:
-    /// The context of the clang-tidy checker.
-    ClangTidyContext context;
-
-    /// The instances of checks that are enabled for the current Language.
-    std::vector<std::unique_ptr<ClangTidyCheck>> checks;
-
-    /// The match finder to run clang-tidy on ASTs.
-    clang::ast_matchers::MatchFinder finder;
-
-    ClangTidyChecker(std::unique_ptr<ClangTidyOptionsProvider> provider);
-
-    clang::DiagnosticsEngine::Level adjust_level(clang::DiagnosticsEngine::Level level,
-                                                 const clang::Diagnostic& diag);
-    void adjust_diag(Diagnostic& diag);
-};
-
-}  // namespace clice::tidy
+import stdlib;
+import llvm;
+import clang;
+import :compile.compilation_unit;
+import :compile.diagnostic;
+import :compile.directive;
+import :compile.tidy_checker;
+import :semantic.resolver;
 
 namespace clice {
 

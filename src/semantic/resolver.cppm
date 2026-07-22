@@ -1,15 +1,9 @@
-#pragma once
+export module clice:semantic.resolver;
 
-#include "clang/AST/ExprCXX.h"
-#include "clang/AST/Type.h"
+import llvm;
+import clang;
 
-namespace clang {
-
-class Sema;
-
-}
-
-namespace clice {
+export namespace clice {
 
 /// This class is used to resolve dependent names in the unit.
 /// For dependent names, we cannot know the any information about the name until

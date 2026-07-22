@@ -7,7 +7,6 @@ import clice;
 #include <format>
 #include <optional>
 
-#include "compile/compilation.h"
 #include "feature/feature.h"
 #include "feature/inactive_regions.h"
 #include "index/preamble_state.h"

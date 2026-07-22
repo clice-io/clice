@@ -1,18 +1,18 @@
-import clice;
+module;
 
-#include "compile/diagnostic.h"
+#include <cassert>
 
-#include "compile/implement.h"
 #include "support/format.h"
 
-#include "clang/AST/Decl.h"
-#include "clang/AST/DeclCXX.h"
-#include "clang/AST/Type.h"
+// Textual carriers: the switch below X-macro-includes the Diagnostic*Kinds.inc
+// tables, which name clang::diag enumerators by qualified id. Those enumerators
+// must be *visible* (not merely reachable via import), so the diag-enum headers
+// stay textual in the global module fragment.
 #include "clang/Basic/AllDiagnostics.h"
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/DiagnosticIDs.h"
-#include "clang/Basic/SourceManager.h"
-#include "clang/Lex/Preprocessor.h"
+
+module clice;
 
 namespace clice {
 

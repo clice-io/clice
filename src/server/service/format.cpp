@@ -8,7 +8,6 @@ import clice;
 #include <string>
 #include <vector>
 
-#include "compile/diagnostic.h"
 #include "server/compiler/context_resolver.h"
 #include "support/logging.h"
 

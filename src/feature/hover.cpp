@@ -9,9 +9,6 @@ import clice;
 #include <vector>
 
 #include "feature/feature.h"
-#include "semantic/ast_utility.h"
-#include "semantic/find_target.h"
-#include "semantic/selection.h"
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"

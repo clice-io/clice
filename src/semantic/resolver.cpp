@@ -1,13 +1,10 @@
-#include "semantic/resolver.h"
+module;
 
-#include <format>
-#include <ranges>
+#include <cassert>
 
 #include "support/logging.h"
 
-#include "clang/Sema/Template.h"
-#include "clang/Sema/TemplateDeduction.h"
-#include "clang/Sema/TreeTransform.h"
+module clice;
 
 /// Template Resolver — pseudo-instantiation of dependent C++ types.
 ///

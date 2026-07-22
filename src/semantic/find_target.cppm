@@ -2,21 +2,20 @@
 /// project, licensed under Apache License v2.0 with LLVM Exceptions.
 /// See https://llvm.org/LICENSE.txt for license information.
 
-#pragma once
+module;
 
+// std::bitset's free operators (&, |, ^) are hidden friends that the stdlib
+// wrapper cannot re-export; include <bitset> textually so DeclRelationSet's
+// bitfield arithmetic resolves.
 #include <bitset>
-#include <utility>
 
-#include "llvm/ADT/SmallVector.h"
-#include "clang/AST/ASTTypeTraits.h"
+export module clice:semantic.find_target;
 
-namespace clang {
+import stdlib;
+import llvm;
+import clang;
 
-class HeuristicResolver;
-
-}
-
-namespace clice::ast {
+export namespace clice::ast {
 
 /// Describes the link between an AST node and a Decl it refers to.
 enum class DeclRelation : unsigned {

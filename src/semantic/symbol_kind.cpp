@@ -1,7 +1,4 @@
-#include "semantic/symbol_kind.h"
-
-#include "clang/AST/DeclCXX.h"
-#include "clang/AST/DeclTemplate.h"
+module clice;
 
 namespace clice {
 

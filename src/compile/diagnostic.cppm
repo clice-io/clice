@@ -1,12 +1,11 @@
-#pragma once
+export module clice:compile.diagnostic;
 
-#include <cstdint>
-#include <optional>
-#include <string>
+import stdlib;
+import llvm;
+import clang;
+import :syntax.token;
 
-#include "llvm/ADT/StringRef.h"
-
-namespace clice {
+export namespace clice {
 
 enum class DiagnosticLevel : std::uint8_t {
     Ignored,

@@ -5,7 +5,6 @@
 #include <string>
 #include <vector>
 
-#include "compile/compilation.h"
 #include "server/protocol/serialize.h"
 #include "server/protocol/worker.h"
 

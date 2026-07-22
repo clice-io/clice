@@ -1,13 +1,4 @@
-import clice;
-
-#include "compile/directive.h"
-
-#include "compile/implement.h"
-
-#include "clang/Basic/Module.h"
-#include "clang/Lex/MacroArgs.h"
-#include "clang/Lex/MacroInfo.h"
-#include "clang/Lex/Preprocessor.h"
+module clice;
 
 namespace clice {
 

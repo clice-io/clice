@@ -1,4 +1,4 @@
-#include "semantic/resolver.h"
+import clice;
 
 // NOTE:
 // The original TemplateResolver behavior suite depends on the compiler pipeline

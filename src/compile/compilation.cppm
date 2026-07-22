@@ -1,27 +1,17 @@
-#pragma once
+module;
 
-#include <atomic>
 #include <cassert>
-#include <cstdint>
-#include <memory>
-#include <string>
-#include <tuple>
-#include <utility>
-#include <vector>
 
-#include "compile/compilation_unit.h"
-#include "compile/dep_file.h"
+export module clice:compile.compilation;
 
-#include "llvm/ADT/StringMap.h"
-#include "llvm/ADT/StringRef.h"
+import stdlib;
+import llvm;
+import clang;
+import :support.filesystem;
+import :compile.compilation_unit;
+import :compile.dep_file;
 
-namespace clang {
-
-class CodeCompleteConsumer;
-
-}
-
-namespace clice {
+export namespace clice {
 
 struct PCHInfo {
     /// The path of the output PCH file.

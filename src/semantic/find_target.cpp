@@ -2,38 +2,16 @@
 /// project, licensed under Apache License v2.0 with LLVM Exceptions.
 /// See https://llvm.org/LICENSE.txt for license information.
 
-#include "semantic/find_target.h"
+module;
 
 #include <cassert>
-#include <cstddef>
-#include <utility>
+// std::reverse_iterator's comparison operators (used by llvm::reverse ranges)
+// are hidden friends the stdlib wrapper cannot re-export; include <iterator>.
+#include <iterator>
 
-#include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/Casting.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "clang/AST/ASTConcept.h"
-#include "clang/AST/ASTContext.h"
-#include "clang/AST/ASTTypeTraits.h"
-#include "clang/AST/Decl.h"
-#include "clang/AST/DeclBase.h"
-#include "clang/AST/DeclCXX.h"
-#include "clang/AST/DeclObjC.h"
-#include "clang/AST/DeclTemplate.h"
-#include "clang/AST/DeclarationName.h"
-#include "clang/AST/Expr.h"
-#include "clang/AST/ExprCXX.h"
-#include "clang/AST/ExprConcepts.h"
-#include "clang/AST/ExprObjC.h"
-#include "clang/AST/NestedNameSpecifier.h"
-#include "clang/AST/StmtVisitor.h"
-#include "clang/AST/TemplateBase.h"
-#include "clang/AST/Type.h"
-#include "clang/AST/TypeLoc.h"
-#include "clang/AST/TypeVisitor.h"
-#include "clang/Basic/Specifiers.h"
-#include "clang/Sema/HeuristicResolver.h"
+
+module clice;
 
 namespace clice::ast {
 

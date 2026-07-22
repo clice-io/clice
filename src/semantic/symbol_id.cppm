@@ -1,9 +1,8 @@
-#pragma once
+export module clice:semantic.symbol_id;
 
-#include <cstdint>
-#include <string>
+import stdlib;
 
-namespace clice::index {
+export namespace clice::index {
 
 /// An ID used to determine whether symbols from
 /// different translation units are identical.

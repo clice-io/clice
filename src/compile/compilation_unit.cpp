@@ -1,10 +1,10 @@
-import clice;
+module;
 
-#include "compile/implement.h"
+#include <cassert>
+
 #include "index/usr.h"
-#include "semantic/ast_utility.h"
 
-#include "kota/ipc/lsp/text.h"
+module clice;
 
 namespace clice {
 

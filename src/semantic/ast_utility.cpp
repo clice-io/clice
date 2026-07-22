@@ -4,27 +4,18 @@
 /// License v2.0 with LLVM Exceptions. See https://llvm.org/LICENSE.txt
 /// for license information.
 
-#include "semantic/ast_utility.h"
+module;
+
+#include <cassert>
 
 #include "support/format.h"
 
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallSet.h"
-#include "llvm/Support/JSON.h"
-#include "llvm/Support/SaveAndRestore.h"
-#include "llvm/Support/ScopedPrinter.h"
-#include "clang/AST/ASTDiagnostic.h"
-#include "clang/AST/Decl.h"
-#include "clang/AST/DeclCXX.h"
-#include "clang/AST/DeclObjC.h"
-#include "clang/AST/DeclTemplate.h"
-#include "clang/AST/RawCommentList.h"
-#include "clang/AST/RecursiveASTVisitor.h"
-#include "clang/AST/StmtVisitor.h"
+// clang/AST/Type.h stays textual: the TypeNodes.inc X-macro below expands to
+// case labels and casts naming every clang::*Type class and Type::TypeClass
+// enumerator, which must be visible (not merely reachable via import clang).
 #include "clang/AST/Type.h"
-#include "clang/Basic/CharInfo.h"
-#include "clang/Basic/SourceManager.h"
-#include "clang/Sema/CodeCompleteConsumer.h"
+
+module clice;
 
 namespace clice::ast {
 

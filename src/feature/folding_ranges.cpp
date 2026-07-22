@@ -9,7 +9,6 @@ import clice;
 #include <vector>
 
 #include "feature/feature.h"
-#include "semantic/filtered_ast_visitor.h"
 
 #include "clang/AST/ExprCXX.h"
 
