@@ -1,3 +1,5 @@
+import clice;
+
 #include "server/worker/stateless_worker.h"
 
 #include <atomic>

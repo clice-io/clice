@@ -5,8 +5,6 @@
 #include <string>
 #include <vector>
 
-#include "support/glob_pattern.h"
-
 #include "kota/meta/annotation.h"
 #include "llvm/ADT/StringRef.h"
 

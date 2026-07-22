@@ -9,10 +9,7 @@
 #endif
 
 #include "test/temp_dir.h"
-#include "command/argument_parser.h"
-#include "command/command.h"
 #include "server/protocol/worker.h"
-#include "support/filesystem.h"
 
 #include "kota/async/async.h"
 #include "kota/ipc/codec/bincode.h"

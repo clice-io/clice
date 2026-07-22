@@ -5,7 +5,6 @@
 #include <string>
 #include <vector>
 
-#include "command/command.h"
 #include "server/compiler/context_cache.h"
 #include "server/protocol/extension.h"
 #include "server/state/session.h"

@@ -5,8 +5,6 @@
 #include <string>
 #include <vector>
 
-#include "command/command.h"
-#include "support/path_pool.h"
 #include "syntax/include_resolver.h"
 #include "syntax/scan.h"
 
@@ -17,8 +15,6 @@
 #include "llvm/ADT/StringRef.h"
 
 namespace clice {
-
-class Toolchain;
 
 class DependencyGraph {
 public:

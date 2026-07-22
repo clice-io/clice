@@ -1,3 +1,5 @@
+import clice;
+
 #include "test/test.h"
 #include "feature/feature.h"
 #include "support/anomaly.h"

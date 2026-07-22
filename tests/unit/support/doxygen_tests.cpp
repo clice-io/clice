@@ -1,10 +1,11 @@
+import clice;
+
 #include <format>
 #include <map>
 #include <set>
 #include <string>
 
 #include "test/test.h"
-#include "support/doxygen.h"
 #include "support/logging.h"
 
 namespace clice::testing {

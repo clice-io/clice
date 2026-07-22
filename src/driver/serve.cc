@@ -1,3 +1,5 @@
+import clice;
+
 #include "driver/driver.h"
 #include "server/transport/master_server.h"
 

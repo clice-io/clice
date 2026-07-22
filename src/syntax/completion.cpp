@@ -1,3 +1,5 @@
+import clice;
+
 #include "syntax/completion.h"
 
 #include "syntax/include_resolver.h"

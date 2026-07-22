@@ -2,19 +2,13 @@
 /// project, licensed under Apache License v2.0 with LLVM Exceptions.
 /// See https://llvm.org/LICENSE.txt for license information.
 
-#pragma once
+export module clice:support.markup;
 
-#include <cstddef>
-#include <cstdint>
-#include <memory>
-#include <string>
-#include <vector>
-
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/raw_ostream.h"
+import stdlib;
+import llvm;
 
 /// A model of formatted text that can be rendered to plaintext or markdown.
-namespace clice::markup {
+export namespace clice::markup {
 
 /// Holds text and knows how to lay it out. Multiple blocks can be grouped to
 /// form a document. Blocks include their own trailing newlines, container

@@ -1,7 +1,8 @@
+import clice;
+
 #include <iostream>
 
 #include "test/test.h"
-#include "support/glob_pattern.h"
 
 namespace clice::testing {
 

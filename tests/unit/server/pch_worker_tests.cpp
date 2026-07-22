@@ -1,3 +1,5 @@
+import clice;
+
 #include <algorithm>
 #include <string>
 #include <vector>

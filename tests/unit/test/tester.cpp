@@ -1,3 +1,5 @@
+import clice;
+
 #include "test/tester.h"
 
 #include <cassert>

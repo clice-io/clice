@@ -1,17 +1,9 @@
-#pragma once
+export module clice:support.cache_store;
 
-#include <cstdint>
-#include <expected>
-#include <memory>
-#include <optional>
-#include <string>
-#include <system_error>
-#include <vector>
+import stdlib;
+import llvm;
 
-#include "llvm/ADT/STLFunctionalExtras.h"
-#include "llvm/ADT/StringRef.h"
-
-namespace clice {
+export namespace clice {
 
 /// Lifecycle policy for a cache namespace.
 enum class CachePolicy : std::uint8_t {

@@ -10,7 +10,6 @@
 #include "feature/document_link.h"
 #include "semantic/symbol_kind.h"
 #include "support/anomaly.h"
-#include "support/markup.h"
 
 #include "kota/ipc/lsp/position.h"
 #include "kota/ipc/lsp/protocol.h"

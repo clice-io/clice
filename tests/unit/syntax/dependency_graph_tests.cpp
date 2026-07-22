@@ -1,9 +1,8 @@
+import clice;
+
 #include "test/cdb_helper.h"
 #include "test/temp_dir.h"
 #include "test/test.h"
-#include "command/command.h"
-#include "command/toolchain.h"
-#include "support/path_pool.h"
 #include "syntax/dependency_graph.h"
 
 namespace clice::testing {

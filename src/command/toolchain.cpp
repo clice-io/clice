@@ -1,32 +1,17 @@
-#include "command/toolchain.h"
+module;
 
-#include <expected>
-#include <format>
-#include <ranges>
-#include <string>
-#include <vector>
-
-#include "command/argument_parser.h"
-#include "command/command.h"
-#include "support/filesystem.h"
 #include "support/logging.h"
 
 #include "kota/async/async.h"
+#include "kota/deco/option.h"
 #include "kota/meta/enum.h"
-#include "llvm/ADT/ScopeExit.h"
-#include "llvm/Support/CommandLine.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Path.h"
-#include "llvm/Support/Program.h"
-#include "llvm/TargetParser/Host.h"
-#include "clang/Driver/Compilation.h"
-#include "clang/Driver/Driver.h"
-#include "clang/Driver/Tool.h"
 
 #ifndef _WIN32
 #include <unistd.h>
 extern char** environ;
 #endif
+
+module clice;
 
 namespace clice {
 

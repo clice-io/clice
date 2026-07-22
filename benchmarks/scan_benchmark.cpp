@@ -1,3 +1,5 @@
+import clice;
+
 /// Benchmark for scan_dependency_graph on a real compilation database.
 ///
 /// Usage:
@@ -20,11 +22,7 @@
 #include <set>
 #include <thread>
 
-#include "command/command.h"
-#include "command/toolchain.h"
-#include "support/filesystem.h"
 #include "support/logging.h"
-#include "support/path_pool.h"
 #include "syntax/dependency_graph.h"
 
 #include "kota/codec/json/json.h"

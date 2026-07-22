@@ -1,20 +1,19 @@
-#pragma once
+module;
 
 #include <cassert>
-#include <chrono>
-#include <cstdint>
-#include <expected>
-#include <memory>
-#include <string>
+// error_code/error_condition comparison operators are free functions in
+// namespace std that module ADL cannot reach, and re-exporting std::operator==
+// collides with textual <variant>'s hidden-friend operators; include the
+// header textually here (GMF stays private to this unit) for remove_all's
+// `== std::errc::no_such_file_or_directory` check.
+#include <system_error>
 
-#include "support/format.h"
+export module clice:support.filesystem;
 
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/Path.h"
-#include "llvm/Support/VirtualFileSystem.h"
+import stdlib;
+import llvm;
 
-namespace clice {
+export namespace clice {
 
 namespace path {
 

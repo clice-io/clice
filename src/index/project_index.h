@@ -4,7 +4,6 @@
 #include <optional>
 
 #include "index/tu_index.h"
-#include "support/path_pool.h"
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"

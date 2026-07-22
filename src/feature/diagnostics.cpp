@@ -1,3 +1,5 @@
+import clice;
+
 #include <optional>
 #include <string>
 #include <vector>

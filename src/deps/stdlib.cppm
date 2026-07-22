@@ -119,6 +119,7 @@ using ::std::nullopt;
 using ::std::nullptr_t;
 using ::std::numeric_limits;
 using ::std::ofstream;
+using ::std::operator+;
 using ::std::optional;
 using ::std::ostringstream;
 using ::std::pair;
@@ -172,6 +173,10 @@ using ::std::chrono::microseconds;
 using ::std::chrono::milliseconds;
 using ::std::chrono::minutes;
 using ::std::chrono::nanoseconds;
+using ::std::chrono::operator+;
+using ::std::chrono::operator-;
+using ::std::chrono::operator==;
+using ::std::chrono::operator<=>;
 using ::std::chrono::seconds;
 using ::std::chrono::steady_clock;
 using ::std::chrono::system_clock;
@@ -186,6 +191,8 @@ using ::std::ranges::contains;
 using ::std::ranges::copy;
 using ::std::ranges::count;
 using ::std::ranges::count_if;
+using ::std::ranges::equal;
+using ::std::ranges::equal_range;
 using ::std::ranges::find;
 using ::std::ranges::find_if;
 using ::std::ranges::for_each;
@@ -215,6 +222,18 @@ using ::std::literals::string_literals::operator""s;
 using ::std::literals::string_view_literals::operator""sv;
 
 }  // namespace std::literals
+
+// libstdc++ defines the container-iterator comparison/difference operators as
+// free functions in __gnu_cxx (not hidden friends), so module ADL cannot find
+// them; re-export the C++20 primitives used by range-for and iterator
+// arithmetic over std::vector/std::string in module units.
+export namespace __gnu_cxx {
+
+using ::__gnu_cxx::operator-;
+using ::__gnu_cxx::operator==;
+using ::__gnu_cxx::operator<=>;
+
+}  // namespace __gnu_cxx
 
 // std.compat-style: C library names at global scope.
 export using ::abort;

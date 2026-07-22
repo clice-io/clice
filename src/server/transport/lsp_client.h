@@ -5,8 +5,6 @@
 #include <optional>
 #include <string>
 
-#include "support/signal.h"
-
 #include "kota/async/async.h"
 #include "kota/codec/json/json.h"
 #include "kota/ipc/codec/json.h"

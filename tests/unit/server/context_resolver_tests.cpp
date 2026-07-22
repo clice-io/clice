@@ -1,7 +1,8 @@
+import clice;
+
 #include "test/cdb_helper.h"
 #include "test/temp_dir.h"
 #include "test/test.h"
-#include "command/argument_parser.h"
 #include "server/compiler/context_resolver.h"
 #include "server/state/session_store.h"
 

@@ -1,11 +1,8 @@
-#include "command/search_config.h"
+module;
 
-#include "command/argument_parser.h"
+#include "kota/deco/option.h"
 
-#include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/StringSet.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Path.h"
+module clice;
 
 namespace clice {
 

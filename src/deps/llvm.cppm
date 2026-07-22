@@ -94,6 +94,7 @@ using ::llvm::format;
 using ::llvm::format_hex;
 using ::llvm::formatv;
 using ::llvm::function_ref;
+using ::llvm::get;
 using ::llvm::hash_combine;
 using ::llvm::hash_combine_range;
 using ::llvm::isAlnum;
@@ -174,6 +175,7 @@ using ::llvm::sys::fs::CD_OpenExisting;
 using ::llvm::sys::fs::FA_Write;
 using ::llvm::sys::fs::OF_Append;
 using ::llvm::sys::fs::OF_None;
+using ::llvm::sys::fs::can_execute;
 using ::llvm::sys::fs::closeFile;
 using ::llvm::sys::fs::createTemporaryFile;
 using ::llvm::sys::fs::createUniqueDirectory;
@@ -209,11 +211,24 @@ using ::llvm::sys::path::stem;
 
 }  // namespace llvm::sys::path
 
+// LLVM overloads std::swap for SmallVector/SmallVectorImpl (cross-inline-size
+// swaps route through the SmallVectorImpl overload). These live in namespace
+// std inside SmallVector.h; re-export so module units that swap SmallVectors
+// without a textual include still resolve them.
+export namespace std {
+
+using ::std::swap;
+
+}  // namespace std
+
 export namespace llvm::vfs {
 
+using ::llvm::vfs::File;
 using ::llvm::vfs::FileSystem;
 using ::llvm::vfs::InMemoryFileSystem;
 using ::llvm::vfs::OverlayFileSystem;
+using ::llvm::vfs::ProxyFileSystem;
+using ::llvm::vfs::Status;
 using ::llvm::vfs::createPhysicalFileSystem;
 using ::llvm::vfs::getRealFileSystem;
 

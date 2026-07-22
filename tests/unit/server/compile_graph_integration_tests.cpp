@@ -1,11 +1,10 @@
+import clice;
+
 #include "test/cdb_helper.h"
 #include "test/temp_dir.h"
 #include "test/test.h"
-#include "command/command.h"
-#include "command/toolchain.h"
 #include "compile/compilation.h"
 #include "server/compiler/compile_graph.h"
-#include "support/path_pool.h"
 #include "syntax/dependency_graph.h"
 #include "syntax/scan.h"
 

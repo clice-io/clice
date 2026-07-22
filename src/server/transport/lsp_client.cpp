@@ -1,3 +1,5 @@
+import clice;
+
 #include "server/transport/lsp_client.h"
 
 #include <algorithm>
@@ -8,7 +10,6 @@
 #include <variant>
 
 #include "version.h"
-#include "command/argument_parser.h"
 #include "semantic/symbol_kind.h"
 #include "server/compiler/context_resolver.h"
 #include "server/protocol/extension.h"
@@ -17,7 +18,6 @@
 #include "server/state/file_tracker.h"
 #include "server/transport/master_server.h"
 #include "support/anomaly.h"
-#include "support/filesystem.h"
 #include "support/logging.h"
 #include "syntax/preamble_synthesis.h"
 

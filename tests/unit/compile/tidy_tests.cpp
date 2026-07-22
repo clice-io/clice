@@ -1,3 +1,5 @@
+import clice;
+
 #include "test/test.h"
 #include "compile/compilation.h"
 

@@ -1,3 +1,5 @@
+import clice;
+
 #include "index/project_index.h"
 
 #include "index/serialization.h"

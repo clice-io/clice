@@ -1,6 +1,7 @@
+import clice;
+
 #include "test/test.h"
 #include "test/tester.h"
-#include "support/filesystem.h"
 
 namespace clice::testing {
 

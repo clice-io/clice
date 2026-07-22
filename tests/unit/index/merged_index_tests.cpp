@@ -1,3 +1,5 @@
+import clice;
+
 #include <filesystem>
 
 #include "schema_generated.h"

@@ -1,3 +1,5 @@
+import clice;
+
 #include "server/worker/worker_pool.h"
 
 #include <algorithm>
@@ -5,7 +7,6 @@
 #include <string>
 
 #include "support/anomaly.h"
-#include "support/filesystem.h"
 #include "support/logging.h"
 
 #include "kota/async/io/system.h"

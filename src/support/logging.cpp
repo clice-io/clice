@@ -1,3 +1,5 @@
+import clice;
+
 #include "support/logging.h"
 
 #include <array>
@@ -17,7 +19,6 @@
 #endif
 
 #include "version.h"
-#include "support/filesystem.h"
 #include "support/stderr_sink.h"
 
 #include "spdlog/sinks/basic_file_sink.h"

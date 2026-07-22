@@ -1,18 +1,13 @@
-#include "command/command.h"
+module;
 
-#include <algorithm>
-#include <array>
 #include <cassert>
-#include <cctype>
-#include <ranges>
-#include <string_view>
 
 #include "simdjson.h"
-#include "support/filesystem.h"
 #include "support/logging.h"
 
-#include "llvm/Support/CommandLine.h"
-#include "llvm/Support/StringSaver.h"
+#include "kota/deco/option.h"
+
+module clice;
 
 namespace clice {
 

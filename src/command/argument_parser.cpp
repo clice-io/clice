@@ -1,19 +1,8 @@
-#include "command/argument_parser.h"
-
-#include <format>
-#include <span>
-#include <string_view>
-#include <utility>
+module;
 
 #include <kota/deco/option.h>
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/ADT/StringTable.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Path.h"
-#include "llvm/Support/raw_ostream.h"
-#include "llvm/Support/xxhash.h"
-#include "clang/Driver/Driver.h"
-#include "clang/Driver/Types.h"
+
+module clice;
 
 namespace clice {
 

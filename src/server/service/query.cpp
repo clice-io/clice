@@ -1,3 +1,5 @@
+import clice;
+
 #include "server/service/query.h"
 
 #include <algorithm>
@@ -14,7 +16,6 @@
 #include "server/compiler/indexer.h"
 #include "server/state/session.h"
 #include "server/state/session_store.h"
-#include "support/filesystem.h"
 
 #include "kota/ipc/lsp/position.h"
 #include "kota/ipc/lsp/protocol.h"

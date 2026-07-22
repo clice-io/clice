@@ -412,6 +412,15 @@ using ::clang::driver::JobList;
 
 }  // namespace clang::driver
 
+export namespace clang::driver::types {
+
+using ::clang::driver::types::ID;
+using ::clang::driver::types::TY_INVALID;
+using ::clang::driver::types::isAcceptedByClang;
+using ::clang::driver::types::lookupTypeForExtension;
+
+}  // namespace clang::driver::types
+
 export namespace clang::format {
 
 using ::clang::format::DefaultFallbackStyle;

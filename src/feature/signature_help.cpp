@@ -1,3 +1,5 @@
+import clice;
+
 #include "feature/feature.h"
 
 #include "clang/Sema/CodeCompleteConsumer.h"

@@ -1,3 +1,5 @@
+import clice;
+
 #include "syntax/include_resolver.h"
 
 #include <chrono>

@@ -1,3 +1,5 @@
+import clice;
+
 #include <format>
 
 #include "test/temp_dir.h"

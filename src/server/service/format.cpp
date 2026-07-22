@@ -1,3 +1,5 @@
+import clice;
+
 #include "server/service/format.h"
 
 #include <algorithm>

@@ -1,3 +1,5 @@
+import clice;
+
 #include "index/preamble_state.h"
 
 #include <algorithm>

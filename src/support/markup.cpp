@@ -2,20 +2,11 @@
 /// project, licensed under Apache License v2.0 with LLVM Exceptions.
 /// See https://llvm.org/LICENSE.txt for license information.
 
-#include "support/markup.h"
+module;
 
-#include <algorithm>
 #include <cassert>
-#include <cstddef>
-#include <iterator>
-#include <memory>
-#include <string>
 
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/raw_ostream.h"
+module clice;
 
 namespace clice::markup {
 

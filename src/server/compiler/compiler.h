@@ -7,11 +7,9 @@
 #include <unordered_map>
 #include <vector>
 
-#include "command/command.h"
 #include "server/state/session.h"
 #include "server/state/workspace.h"
 #include "server/worker/worker_pool.h"
-#include "support/signal.h"
 
 #include "kota/async/async.h"
 #include "kota/codec/json/json.h"

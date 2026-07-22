@@ -1,14 +1,9 @@
-#pragma once
+export module clice:support.glob_pattern;
 
-#include <bitset>
-#include <expected>
-#include <string>
+import stdlib;
+import llvm;
 
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringRef.h"
-
-namespace clice {
+export namespace clice {
 
 using GlobCharSet = std::bitset<256>;
 

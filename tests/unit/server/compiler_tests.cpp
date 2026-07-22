@@ -1,3 +1,5 @@
+import clice;
+
 #include <format>
 #include <string>
 #include <vector>
@@ -8,7 +10,6 @@
 #include "server/compiler/context_resolver.h"
 #include "server/worker_test_helpers.h"
 #include "support/anomaly.h"
-#include "support/cache_store.h"
 
 namespace clice::testing {
 

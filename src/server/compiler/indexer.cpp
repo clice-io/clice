@@ -1,3 +1,5 @@
+import clice;
+
 #include "server/compiler/indexer.h"
 
 #include <algorithm>
@@ -12,9 +14,7 @@
 #include "server/protocol/worker.h"
 #include "server/state/session_store.h"
 #include "server/worker/worker_pool.h"
-#include "support/filesystem.h"
 #include "support/logging.h"
-#include "support/timer.h"
 
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringSet.h"

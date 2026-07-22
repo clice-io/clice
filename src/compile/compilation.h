@@ -11,7 +11,6 @@
 
 #include "compile/compilation_unit.h"
 #include "compile/dep_file.h"
-#include "support/filesystem.h"
 
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"

@@ -1,19 +1,13 @@
-#pragma once
+module;
 
 #include <cassert>
-#include <compare>
-#include <concepts>
-#include <cstdint>
-#include <cstring>
-#include <memory>
-#include <vector>
 
-#include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/Allocator.h"
+export module clice:support.object_pool;
 
-namespace clice {
+import stdlib;
+import llvm;
+
+export namespace clice {
 
 class StringSet {
 public:

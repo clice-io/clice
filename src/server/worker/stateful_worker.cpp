@@ -1,3 +1,5 @@
+import clice;
+
 #include "server/worker/stateful_worker.h"
 
 #include <algorithm>

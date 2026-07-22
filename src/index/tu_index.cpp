@@ -1,3 +1,5 @@
+import clice;
+
 #include "index/tu_index.h"
 
 #include <algorithm>

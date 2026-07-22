@@ -1,17 +1,13 @@
-#pragma once
+module;
 
-#include <algorithm>
 #include <cassert>
-#include <cstdint>
-#include <optional>
 
-#include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringMap.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/Allocator.h"
+export module clice:support.path_pool;
 
-namespace clice {
+import stdlib;
+import llvm;
+
+export namespace clice {
 
 /// Intern pool that maps file paths to compact uint32_t IDs.
 ///

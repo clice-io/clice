@@ -1,13 +1,12 @@
+import clice;
+
 #include <algorithm>
 #include <thread>
 
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "test/tester.h"
-#include "command/command.h"
-#include "command/toolchain.h"
 #include "compile/compilation.h"
-#include "support/filesystem.h"
 #include "syntax/scan.h"
 
 #include "llvm/Support/xxhash.h"

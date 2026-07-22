@@ -8,4 +8,18 @@ export import stdlib;
 export import llvm;
 export import clang;
 
+export import :command.argument_parser;
+export import :command.command;
+export import :command.search_config;
+export import :command.toolchain;
+export import :support.bitmap;
+export import :support.cache_store;
+export import :support.doxygen;
+export import :support.filesystem;
 export import :support.fuzzy_matcher;
+export import :support.glob_pattern;
+export import :support.markup;
+export import :support.object_pool;
+export import :support.path_pool;
+export import :support.signal;
+export import :support.timer;

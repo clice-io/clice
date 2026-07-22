@@ -1,3 +1,5 @@
+import clice;
+
 #include "server/transport/agent_client.h"
 
 #include <algorithm>
@@ -9,7 +11,6 @@
 
 #include "server/protocol/agentic.h"
 #include "server/transport/master_server.h"
-#include "support/filesystem.h"
 #include "support/logging.h"
 
 #include "kota/ipc/lsp/position.h"

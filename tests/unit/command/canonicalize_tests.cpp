@@ -1,8 +1,9 @@
+import clice;
+
 #include <string>
 #include <vector>
 
 #include "test/test.h"
-#include "command/argument_parser.h"
 
 namespace clice::testing {
 

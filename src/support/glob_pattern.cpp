@@ -1,7 +1,12 @@
-#include "support/glob_pattern.h"
+module;
 
-#include <format>
-#include <limits>
+// std::reverse_iterator's comparison operators are free functions in namespace
+// std that module ADL cannot reach (and std::operator== cannot be re-exported
+// without colliding with textual <variant>); include textually for the
+// range-for over llvm::reverse() below.
+#include <iterator>
+
+module clice;
 
 namespace clice {
 

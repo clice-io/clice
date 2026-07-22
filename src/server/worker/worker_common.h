@@ -8,7 +8,6 @@
 #include "compile/compilation.h"
 #include "server/protocol/serialize.h"
 #include "server/protocol/worker.h"
-#include "support/timer.h"
 
 namespace clice {
 

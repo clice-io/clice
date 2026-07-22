@@ -1,3 +1,5 @@
+import clice;
+
 #include <cstdlib>
 #include <format>
 #include <print>
@@ -8,8 +10,6 @@
 
 #include "test/temp_dir.h"
 #include "test/test.h"
-#include "support/cache_store.h"
-#include "support/filesystem.h"
 
 #include "llvm/Support/Process.h"
 

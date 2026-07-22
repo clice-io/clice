@@ -1,12 +1,9 @@
-#pragma once
+export module clice:command.search_config;
 
-#include <string>
-#include <vector>
+import stdlib;
+import llvm;
 
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/StringRef.h"
-
-namespace clice {
+export namespace clice {
 
 struct SearchDir {
     std::string path;

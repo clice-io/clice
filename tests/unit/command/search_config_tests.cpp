@@ -1,6 +1,7 @@
+import clice;
+
 #include "test/temp_dir.h"
 #include "test/test.h"
-#include "command/search_config.h"
 
 namespace clice::testing {
 

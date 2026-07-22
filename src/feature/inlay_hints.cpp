@@ -1,3 +1,5 @@
+import clice;
+
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
@@ -11,6 +13,7 @@
 #include "feature/feature.h"
 #include "semantic/ast_utility.h"
 #include "semantic/filtered_ast_visitor.h"
+#include "support/format.h"
 
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Casting.h"

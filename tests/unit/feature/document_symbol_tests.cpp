@@ -1,3 +1,5 @@
+import clice;
+
 #include <cstddef>
 #include <cstdint>
 #include <format>

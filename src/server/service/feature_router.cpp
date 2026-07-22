@@ -1,3 +1,5 @@
+import clice;
+
 #include "server/service/feature_router.h"
 
 #include <algorithm>
@@ -8,7 +10,6 @@
 #include <utility>
 #include <vector>
 
-#include "command/search_config.h"
 #include "semantic/relation_kind.h"
 #include "semantic/symbol_kind.h"
 #include "server/compiler/compiler.h"
@@ -16,6 +17,7 @@
 #include "server/compiler/indexer.h"
 #include "server/protocol/serialize.h"
 #include "server/protocol/worker.h"
+#include "support/format.h"
 #include "syntax/completion.h"
 #include "syntax/include_resolver.h"
 

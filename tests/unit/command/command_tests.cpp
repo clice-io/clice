@@ -1,7 +1,6 @@
+import clice;
+
 #include "test/test.h"
-#include "command/argument_parser.h"
-#include "command/command.h"
-#include "support/filesystem.h"
 
 #include "llvm/Support/raw_ostream.h"
 

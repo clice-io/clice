@@ -1,23 +1,13 @@
-#pragma once
+export module clice:command.command;
 
-#include <cstdint>
-#include <memory>
-#include <optional>
-#include <string>
-#include <vector>
+import stdlib;
+import llvm;
 
-#include "command/argument_parser.h"
-#include "support/object_pool.h"
-#include "support/path_pool.h"
+import :command.argument_parser;
+import :support.object_pool;
+import :support.path_pool;
 
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/Hashing.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringMap.h"
-#include "llvm/ADT/StringRef.h"
-
-namespace clice {
+export namespace clice {
 
 struct CommandOptions {
     /// Inject our resource dir into the flags if not already present.
@@ -161,7 +151,7 @@ struct DenseMapInfo<clice::CompilationInfo> {
 
 }  // namespace llvm
 
-namespace clice {
+export namespace clice {
 
 /// Per-file delta of a compilation database reload. Path ids are this
 /// database's own pool ids (stable across reloads).

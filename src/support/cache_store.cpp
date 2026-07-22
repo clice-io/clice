@@ -1,12 +1,6 @@
-#include "support/cache_store.h"
+module;
 
-#include <algorithm>
 #include <cassert>
-#include <chrono>
-#include <format>
-#include <mutex>
-#include <utility>
-#include <vector>
 
 #ifdef _WIN32
 // The defines keep windows.h from spilling the min/max macros (and other
@@ -21,15 +15,11 @@
 #include <unistd.h>
 #endif
 
-#include "support/filesystem.h"
 #include "support/logging.h"
 
 #include "kota/codec/json/json.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringMap.h"
-#include "llvm/Support/Error.h"
-#include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/Process.h"
+
+module clice;
 
 namespace clice {
 

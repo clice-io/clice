@@ -1,7 +1,8 @@
+import clice;
+
 #include <vector>
 
 #include "test/test.h"
-#include "support/signal.h"
 
 namespace clice::testing {
 namespace {

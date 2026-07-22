@@ -1,3 +1,5 @@
+import clice;
+
 #include "index/merged_index.h"
 
 #include <atomic>
@@ -7,7 +9,6 @@
 #include "compile/dep_file.h"
 #include "index/path_pool.h"
 #include "index/serialization.h"
-#include "support/filesystem.h"
 
 #include "kota/ipc/lsp/position.h"
 #include "llvm/ADT/DenseSet.h"

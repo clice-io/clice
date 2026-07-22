@@ -1,13 +1,12 @@
-#pragma once
+module;
 
 #include <cassert>
-#include <cstdint>
-#include <functional>
-#include <memory>
-#include <utility>
-#include <vector>
 
-namespace clice {
+export module clice:support.signal;
+
+import stdlib;
+
+export namespace clice {
 
 /// A typed multi-subscriber signal for domain→transport notification.
 ///

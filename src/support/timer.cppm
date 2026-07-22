@@ -1,8 +1,8 @@
-#pragma once
+export module clice:support.timer;
 
-#include <chrono>
+import stdlib;
 
-namespace clice {
+export namespace clice {
 
 /// Wall-clock timer for perf log lines (see LOG_PERF in support/logging.h).
 struct ScopedTimer {

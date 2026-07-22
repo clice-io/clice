@@ -1,14 +1,13 @@
-#pragma once
-
-#include <cstdint>
-#include <string>
+module;
 
 #include <kota/deco/option.h>
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/StringRef.h"
 
-namespace clice {
+export module clice:command.argument_parser;
+
+import stdlib;
+import llvm;
+
+export namespace clice {
 
 namespace option {
 

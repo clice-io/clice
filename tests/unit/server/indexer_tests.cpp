@@ -1,8 +1,9 @@
+import clice;
+
 #include <limits>
 
 #include "test/temp_dir.h"
 #include "test/test.h"
-#include "command/argument_parser.h"
 #include "compile/compilation.h"
 #include "index/tu_index.h"
 #include "server/compiler/context_resolver.h"

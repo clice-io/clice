@@ -1,3 +1,5 @@
+import clice;
+
 #include "server/compiler/compiler.h"
 
 #include <algorithm>
@@ -7,7 +9,6 @@
 #include <string>
 #include <utility>
 
-#include "command/argument_parser.h"
 #include "index/preamble_state.h"
 #include "index/tu_index.h"
 #include "server/compiler/context_resolver.h"
@@ -15,9 +16,7 @@
 #include "server/protocol/position.h"
 #include "server/protocol/worker.h"
 #include "support/anomaly.h"
-#include "support/filesystem.h"
 #include "support/logging.h"
-#include "support/timer.h"
 #include "syntax/scan.h"
 
 #include "kota/async/async.h"

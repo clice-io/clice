@@ -1,3 +1,5 @@
+import clice;
+
 #include <chrono>
 
 #include "test/test.h"

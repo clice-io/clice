@@ -1,10 +1,10 @@
+import clice;
+
 #include "syntax/dependency_graph.h"
 
 #include <algorithm>
 #include <chrono>
 
-#include "command/search_config.h"
-#include "command/toolchain.h"
 #include "support/logging.h"
 #include "syntax/include_resolver.h"
 #include "syntax/scan.h"

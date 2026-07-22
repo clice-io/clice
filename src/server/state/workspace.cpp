@@ -1,3 +1,5 @@
+import clice;
+
 #include "server/state/workspace.h"
 
 #include <algorithm>
@@ -5,9 +7,7 @@
 #include <ranges>
 #include <tuple>
 
-#include "command/search_config.h"
 #include "server/compiler/context_resolver.h"
-#include "support/filesystem.h"
 #include "support/logging.h"
 #include "syntax/include_resolver.h"
 #include "syntax/preamble_synthesis.h"

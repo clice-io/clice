@@ -1,20 +1,12 @@
-#pragma once
+export module clice:command.toolchain;
 
-#include <expected>
-#include <memory>
-#include <string>
-#include <vector>
+import stdlib;
+import llvm;
 
-#include "support/object_pool.h"
+import :command.command;
+import :support.object_pool;
 
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/StringMap.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/Allocator.h"
-
-namespace clice {
-
-struct CompileCommand;
+export namespace clice {
 
 enum class CompilerFamily {
     Unknown,

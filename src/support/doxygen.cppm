@@ -1,17 +1,9 @@
-#pragma once
+export module clice:support.doxygen;
 
-#include <cstdint>
-#include <memory>
-#include <optional>
-#include <string>
-#include <utility>
-#include <vector>
+import stdlib;
+import llvm;
 
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/StringRef.h"
-
-namespace clice {
+export namespace clice {
 
 class DoxygenInfo {
 public:

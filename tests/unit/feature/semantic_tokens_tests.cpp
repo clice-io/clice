@@ -1,3 +1,5 @@
+import clice;
+
 #include <cassert>
 #include <cstdint>
 #include <initializer_list>

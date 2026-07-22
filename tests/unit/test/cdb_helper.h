@@ -5,7 +5,6 @@
 #include <vector>
 
 #include "test/temp_dir.h"
-#include "command/command.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"

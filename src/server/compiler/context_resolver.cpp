@@ -1,3 +1,5 @@
+import clice;
+
 #include "server/compiler/context_resolver.h"
 
 #include <algorithm>
@@ -7,10 +9,7 @@
 #include <string>
 #include <vector>
 
-#include "command/argument_parser.h"
-#include "command/search_config.h"
 #include "server/state/session_store.h"
-#include "support/filesystem.h"
 #include "support/logging.h"
 #include "syntax/include_resolver.h"
 #include "syntax/preamble_synthesis.h"

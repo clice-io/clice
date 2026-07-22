@@ -18,7 +18,6 @@
 #include "server/state/workspace.h"
 #include "server/worker/worker_pool.h"
 #include "support/anomaly.h"
-#include "support/signal.h"
 
 #include "kota/async/async.h"
 #include "kota/deco/deco.h"

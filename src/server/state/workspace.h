@@ -9,8 +9,6 @@
 #include <utility>
 #include <vector>
 
-#include "command/command.h"
-#include "command/toolchain.h"
 #include "compile/dep_file.h"
 #include "feature/document_link.h"
 #include "index/merged_index.h"
@@ -20,8 +18,6 @@
 #include "server/compiler/compile_graph.h"
 #include "server/state/config.h"
 #include "server/state/quarantine.h"
-#include "support/cache_store.h"
-#include "support/path_pool.h"
 #include "syntax/dependency_graph.h"
 
 #include "llvm/ADT/ArrayRef.h"
