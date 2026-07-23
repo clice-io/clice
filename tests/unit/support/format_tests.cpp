@@ -1,6 +1,5 @@
 import clice;
 
-#include <map>
 
 #include "test/test.h"
 

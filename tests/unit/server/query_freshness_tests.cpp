@@ -1,9 +1,5 @@
 import clice;
 
-#include <algorithm>
-#include <cstdint>
-#include <string>
-#include <vector>
 
 #include "test/test.h"
 #include "test/tester.h"

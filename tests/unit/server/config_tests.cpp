@@ -1,6 +1,5 @@
 import clice;
 
-#include <cstdlib>
 
 #include "test/temp_dir.h"
 #include "test/test.h"

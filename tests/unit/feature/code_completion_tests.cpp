@@ -1,7 +1,5 @@
 import clice;
 
-#include <algorithm>
-#include <vector>
 
 #include "test/annotation.h"
 #include "test/test.h"

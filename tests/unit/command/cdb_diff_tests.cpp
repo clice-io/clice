@@ -1,7 +1,5 @@
 import clice;
 
-#include <algorithm>
-#include <cstdint>
 
 #include "test/cdb_helper.h"
 #include "test/temp_dir.h"

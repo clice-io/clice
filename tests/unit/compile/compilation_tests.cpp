@@ -1,8 +1,5 @@
 import clice;
 
-#include <algorithm>
-#include <memory>
-#include <thread>
 
 #include "test/temp_dir.h"
 #include "test/test.h"

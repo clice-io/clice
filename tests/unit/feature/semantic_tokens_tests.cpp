@@ -1,10 +1,5 @@
 import clice;
 
-#include <cassert>
-#include <cstdint>
-#include <initializer_list>
-#include <optional>
-#include <vector>
 
 #include "test/test.h"
 #include "test/tester.h"

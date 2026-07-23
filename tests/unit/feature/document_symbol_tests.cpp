@@ -1,13 +1,5 @@
 import clice;
 
-#include <cstddef>
-#include <cstdint>
-#include <format>
-#include <functional>
-#include <memory>
-#include <span>
-#include <string_view>
-#include <vector>
 
 #include "test/test.h"
 #include "test/tester.h"

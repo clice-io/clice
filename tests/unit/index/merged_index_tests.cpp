@@ -1,6 +1,5 @@
 import clice;
 
-#include <filesystem>
 
 #include "schema_generated.h"
 #include "test/temp_dir.h"

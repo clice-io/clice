@@ -1,6 +1,5 @@
 import clice;
 
-#include <vector>
 
 #include "test/test.h"
 #include "test/tester.h"

@@ -1,7 +1,5 @@
 import clice;
 
-#include <cstdint>
-#include <vector>
 
 #include "test/fixture.h"
 #include "test/test.h"

@@ -4,9 +4,6 @@ import clice;
 /// project, licensed under Apache License v2.0 with LLVM Exceptions.
 /// See https://llvm.org/LICENSE.txt for license information.
 
-#include <functional>
-#include <optional>
-#include <string>  // clang20+libstdc++ floor: std::string comparison operators are not re-exported by stdlib (see deps/stdlib.cppm)
 
 #include "test/test.h"
 #include "test/tester.h"

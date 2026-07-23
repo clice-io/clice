@@ -53,6 +53,12 @@ module;
 #include <variant>
 #include <vector>
 
+#ifndef _WIN32
+#include <fcntl.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#endif
+
 export module stdlib;
 
 // clang20 + libstdc++ befriend floor — the authoritative note.
@@ -297,6 +303,32 @@ using ::std::operator==;
 using ::std::operator<=>;
 
 }  // namespace std
+#endif
+
+export namespace std::filesystem {
+
+using ::std::filesystem::current_path;
+using ::std::filesystem::directory_iterator;
+using ::std::filesystem::exists;
+using ::std::filesystem::file_time_type;
+using ::std::filesystem::last_write_time;
+using ::std::filesystem::path;
+using ::std::filesystem::remove;
+using ::std::filesystem::remove_all;
+using ::std::filesystem::rename;
+
+}  // namespace std::filesystem
+
+// POSIX system headers, re-exported for module units.
+#ifndef _WIN32
+export using ::close;
+export using ::dup2;
+export using ::fcntl;
+export using ::open;
+export using ::pipe;
+export using ::read;
+export using ::socketpair;
+export using ::write;
 #endif
 
 // std.compat-style: C library names at global scope.

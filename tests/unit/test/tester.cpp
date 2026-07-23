@@ -2,8 +2,6 @@ import clice;
 
 #include "test/tester.h"
 
-#include <cassert>
-#include <format>
 
 namespace clice::testing {
 
