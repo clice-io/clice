@@ -161,6 +161,15 @@ jobs:
           echo "Cloning LLVM ${VERSION}..."
           git clone --branch "llvmorg-${VERSION}" --depth 1 https://github.com/llvm/llvm-project.git .llvm
 
+      - name: Patch LLVM source
+        shell: bash
+        run: |
+          cd .llvm
+          # PR #160804: replace illegal std::less/equal_to specializations
+          # with custom types (fixes libc++ 22 static_assert on macOS).
+          git fetch origin d1a5331f39a96b6eab5e8e2beabac4d7b3e20ae3 --depth=1
+          git cherry-pick --no-commit d1a5331f39a96b6eab5e8e2beabac4d7b3e20ae3
+
       - name: Build LLVM (install-distribution)
         shell: bash
         run: |
