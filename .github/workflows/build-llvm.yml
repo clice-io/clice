@@ -167,8 +167,7 @@ jobs:
           cd .llvm
           # PR #160804: replace illegal std::less/equal_to specializations
           # with custom types (fixes libc++ 22 static_assert on macOS).
-          git fetch origin d1a5331f39a96b6eab5e8e2beabac4d7b3e20ae3 --depth=1
-          git cherry-pick --no-commit d1a5331f39a96b6eab5e8e2beabac4d7b3e20ae3
+          curl -fsSL https://github.com/llvm/llvm-project/commit/d1a5331f39a96b6eab5e8e2beabac4d7b3e20ae3.patch | git apply
 
       - name: Build LLVM (install-distribution)
         shell: bash
