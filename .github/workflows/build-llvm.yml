@@ -114,12 +114,6 @@ jobs:
           free -h
           df -h
 
-      - name: Pin MSVC toolset
-        if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          toolset: "14.42"
-
       - uses: ./.github/actions/setup-pixi
         with:
           environments: ${{ matrix.pixi_env || 'package' }}
@@ -183,7 +177,7 @@ jobs:
           if [ -d "$PATCH_DIR" ] && ls "$PATCH_DIR"/*.patch >/dev/null 2>&1; then
             for patch in "$PATCH_DIR"/*.patch; do
               echo "Applying $(basename "$patch")..."
-              git -C .llvm apply "$patch"
+              git -C .llvm apply "$(pwd)/$patch"
             done
           else
             echo "No patches for LLVM ${VERSION}"
