@@ -114,6 +114,7 @@ jobs:
         uses: ilammy/msvc-dev-cmd@v1
         with:
           toolset: "14.44"
+          arch: ${{ matrix.target_triple == 'aarch64-pc-windows-msvc' && 'amd64_arm64' || 'x64' }}
 
       - uses: ./.github/actions/setup-pixi
         with:
