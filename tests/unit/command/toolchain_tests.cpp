@@ -212,6 +212,14 @@ TEST_CASE(ParseCC1DropsUnknown) {
     EXPECT_EQ(args, expected);
 }
 
+TEST_CASE(ParseCC1DropsCodegen) {
+    auto args = Toolchain::parse_cc1(
+        R"( "/usr/bin/clang-22" "-cc1" "-mframe-pointer=non-leaf-no-reserve" "-std=c++23")");
+
+    std::vector<std::string> expected = {"/usr/bin/clang-22", "-cc1", "-std=c++23"};
+    EXPECT_EQ(args, expected);
+}
+
 /// Canned `-###` output covering version-skew hardening: an unknown future
 /// flag with a value, plus BMI emission flags that query() must strip.
 constexpr static llvm::StringRef fake_cc1_line =

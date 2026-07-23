@@ -227,6 +227,7 @@ bool is_codegen_option(unsigned id) {
         case OPT_fno_pie:
 
         /// Frame pointer and unwind tables — pure codegen.
+        case OPT_mframe_pointer_EQ:
         case OPT_fomit_frame_pointer:
         case OPT_fno_omit_frame_pointer:
         case OPT_funwind_tables:

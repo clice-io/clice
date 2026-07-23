@@ -207,6 +207,12 @@ std::vector<std::string> parse_cc1_output(llvm::StringRef content) {
         for(auto& r: option::table().parse(raw, options)) {
             if(!r.has_value() || r->id == option::OPT_UNKNOWN)
                 continue;
+            // A newer external driver may emit known options with values our
+            // linked clang cannot parse (e.g. -mframe-pointer=non-leaf-no-reserve).
+            // Codegen options are irrelevant for syntax analysis; stripping them
+            // avoids CompilerInvocation::CreateFromArgs failures on new values.
+            if(is_codegen_option(r->id))
+                continue;
             for(std::uint32_t i = r->index; i < r->next_index; ++i)
                 cc1_args.emplace_back(raw[i]);
         }

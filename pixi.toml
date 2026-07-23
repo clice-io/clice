@@ -37,12 +37,12 @@ platforms = ["win-64", "linux-64", "osx-arm64", "osx-64", "linux-aarch64"]
 python = ">=3.13"
 cmake = ">=3.30"
 ninja = "*"
-clang = "==20.1.8"
-clangxx = "==20.1.8"
-lld = "==20.1.8"
-llvm-tools = "==20.1.8"
-clang-tools = "==20.1.8"
-compiler-rt = "==20.1.8"
+clang = "==22.1.8"
+clangxx = "==22.1.8"
+lld = "==22.1.8"
+llvm-tools = "==22.1.8"
+clang-tools = "==22.1.8"
+compiler-rt = "==22.1.8"
 flatbuffers = "==25.9.23"
 # cmake/archive.cmake pipes tar through xz for the symbol archives.
 xz = ">=5.8.1,<6"
@@ -52,8 +52,8 @@ sccache = "*"
 
 [feature.build.target.linux-64.dependencies]
 sysroot_linux-64 = "==2.17"
-gcc = "==14.2.0"
-gxx = "==14.2.0"
+gcc = "==15.1.0"
+gxx = "==15.1.0"
 ccache = "*"
 
 [feature.build.target.osx-arm64.dependencies]
@@ -74,8 +74,8 @@ scripts = ["scripts/activate_cross_macos.sh"]
 # Linux arm64 (from x64): needs the aarch64 sysroot and cross gcc for libstdc++.
 [feature.cross-linux-arm64.target.linux-64.dependencies]
 sysroot_linux-aarch64 = "==2.17"
-gcc_linux-aarch64 = "==14.2.0"
-gxx_linux-aarch64 = "==14.2.0"
+gcc_linux-aarch64 = "==15.1.0"
+gxx_linux-aarch64 = "==15.1.0"
 
 [feature.cross-linux-arm64.target.linux-64.activation]
 scripts = ["scripts/activate_cross_linux.sh"]
@@ -93,31 +93,31 @@ python = ">=3.13"
 # (<print>), so the test env must provide the same pinned gcc the build
 # env uses — runner system gcc is too old.
 [feature.test.target.linux-64.dependencies]
-gcc = "==14.2.0"
-gxx = "==14.2.0"
+gcc = "==15.1.0"
+gxx = "==15.1.0"
 # The symbolization round-trip test replays the release strip/GSYM flow
 # (linux-only, like the crash tests it builds on).
-llvm-tools = "==20.1.8"
+llvm-tools = "==22.1.8"
 
 # The linux-aarch64 cross-test job runs the integration suite on a native
 # arm64 runner, so the symbolization test needs the same tools there.
 [feature.test.target.linux-aarch64.dependencies]
-llvm-tools = "==20.1.8"
+llvm-tools = "==22.1.8"
 
 # On macOS, the system Apple clang emits vendor-specific flags that upstream
 # LLVM cannot parse.  Providing upstream clang + lld in PATH prevents
 # fallback to /usr/bin/clang++ and satisfies toolchain.cmake's -fuse-ld=lld.
 [feature.test.target.osx-64.dependencies]
-clang = "==20.1.8"
-clangxx = "==20.1.8"
-lld = "==20.1.8"
-compiler-rt = "==20.1.8"
+clang = "==22.1.8"
+clangxx = "==22.1.8"
+lld = "==22.1.8"
+compiler-rt = "==22.1.8"
 
 [feature.test.target.osx-arm64.dependencies]
-clang = "==20.1.8"
-clangxx = "==20.1.8"
-lld = "==20.1.8"
-compiler-rt = "==20.1.8"
+clang = "==22.1.8"
+clangxx = "==22.1.8"
+lld = "==22.1.8"
+compiler-rt = "==22.1.8"
 
 # Debug builds are ASAN-instrumented; macOS links the ASAN runtime as a
 # dylib resolved against the build env, which artifact-based test jobs
@@ -216,16 +216,16 @@ python = ">=3.13"
 # Same mitigation as feature.test: editor-prepare configures fixtures with
 # toolchain.cmake's -fuse-ld=lld, which Apple system clang rejects.
 [feature.editor.target.osx-arm64.dependencies]
-clang = "==20.1.8"
-clangxx = "==20.1.8"
-lld = "==20.1.8"
-compiler-rt = "==20.1.8"
+clang = "==22.1.8"
+clangxx = "==22.1.8"
+lld = "==22.1.8"
+compiler-rt = "==22.1.8"
 
 [feature.editor.target.osx-64.dependencies]
-clang = "==20.1.8"
-clangxx = "==20.1.8"
-lld = "==20.1.8"
-compiler-rt = "==20.1.8"
+clang = "==22.1.8"
+clangxx = "==22.1.8"
+lld = "==22.1.8"
+compiler-rt = "==22.1.8"
 
 # Fixture list kept in sync with editors/vscode/.vscode-test.mjs.
 [feature.editor.tasks.editor-prepare]
@@ -269,7 +269,7 @@ pnpm = ">=10,<11"
 # The instant-build packaging strips test binaries before bundling them
 # into the vsix (an unstripped ELF carries ~700MB of DWARF).
 [feature.node.target.linux-64.dependencies]
-llvm-tools = "==20.1.8"
+llvm-tools = "==22.1.8"
 
 [feature.node.tasks]
 build-vscode = { cwd = "editors/vscode", cmd = "pnpm run package", depends-on = ["install-vscode"] }
@@ -293,7 +293,7 @@ tombi = "*"
 stylua = "*"
 fd-find = "*"
 prettier = "*"
-clang-format = "==21.1.7"
+clang-format = "==22.1.8"
 
 [feature.format.tasks]
 format-cpp = "fd -H -e cpp -e h -e cc -e hpp -e cppm -x clang-format -i"

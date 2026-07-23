@@ -27,8 +27,12 @@ if(NOT MSVC)
 endif()
 
 if(APPLE)
-    # https://conda-forge.org/docs/maintainer/knowledge_base/#newer-c-features-with-old-sdk
-    add_compile_definitions(_LIBCPP_DISABLE_AVAILABILITY=1)
+    # conda-forge clang ships libc++ headers without vendor availability
+    # annotations, so all _LIBCPP_INTRODUCED_IN_LLVM_* default to 1 — the
+    # headers assume every dylib symbol exists. On macOS the system libc++
+    # is older, so enable vendor annotations to let the deployment-target
+    # gates select inline fallbacks (e.g. __hash_memory, LLVM#77653).
+    add_compile_definitions(_LIBCPP_HAS_VENDOR_AVAILABILITY_ANNOTATIONS=1)
 endif()
 
 # Keyed on the target OS, not the compiler frontend: CI links Windows with
