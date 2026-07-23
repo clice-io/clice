@@ -7,6 +7,11 @@ on:
         description: "LLVM version to build (e.g., 21.1.8)"
         required: true
         type: string
+      patch_ref:
+        description: "clice-llvm ref for patches (default: main). Set to a release tag (e.g., 21.1.8+r2) to reproduce a previous build."
+        required: false
+        default: "main"
+        type: string
 
 concurrency:
   group: build-llvm-${{ github.ref }}
@@ -165,7 +170,15 @@ jobs:
         shell: bash
         run: |
           VERSION="${{ inputs.llvm_version || '21.1.8' }}"
-          git clone --depth 1 https://github.com/clice-io/clice-llvm.git .clice-llvm
+          REF="${{ inputs.patch_ref || 'main' }}"
+
+          if git clone --branch "$REF" --depth 1 https://github.com/clice-io/clice-llvm.git .clice-llvm 2>/dev/null; then
+            echo "Using patches from clice-llvm@$REF"
+          else
+            echo "Ref '$REF' not found, falling back to main"
+            git clone --depth 1 https://github.com/clice-io/clice-llvm.git .clice-llvm
+          fi
+
           PATCH_DIR=".clice-llvm/patches/${VERSION}"
           if [ -d "$PATCH_DIR" ] && ls "$PATCH_DIR"/*.patch >/dev/null 2>&1; then
             for patch in "$PATCH_DIR"/*.patch; do
