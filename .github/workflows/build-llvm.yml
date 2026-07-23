@@ -161,13 +161,20 @@ jobs:
           echo "Cloning LLVM ${VERSION}..."
           git clone --branch "llvmorg-${VERSION}" --depth 1 https://github.com/llvm/llvm-project.git .llvm
 
-      - name: Patch LLVM source
+      - name: Apply patches
         shell: bash
         run: |
-          cd .llvm
-          # PR #160804: replace illegal std::less/equal_to specializations
-          # with custom types (fixes libc++ 22 static_assert on macOS).
-          curl -fsSL https://github.com/llvm/llvm-project/pull/160804.patch | git apply
+          VERSION="${{ inputs.llvm_version || '21.1.8' }}"
+          git clone --depth 1 https://github.com/clice-io/clice-llvm.git .clice-llvm
+          PATCH_DIR=".clice-llvm/patches/${VERSION}"
+          if [ -d "$PATCH_DIR" ]; then
+            for patch in "$PATCH_DIR"/*.patch; do
+              echo "Applying $(basename "$patch")..."
+              git -C .llvm apply "$patch"
+            done
+          else
+            echo "No patches for LLVM ${VERSION}"
+          fi
 
       - name: Build LLVM (install-distribution)
         shell: bash
