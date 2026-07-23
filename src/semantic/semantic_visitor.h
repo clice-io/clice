@@ -21,6 +21,15 @@ public:
         return static_cast<Derived&>(*this);
     }
 
+    template <typename Traverse>
+    bool on_traverse_decl(clang::Decl* decl, Traverse traverse) {
+        if constexpr(requires(Derived& derived) { derived.filter_traverse_decl(decl, traverse); }) {
+            return getDerived().filter_traverse_decl(decl, traverse);
+        } else {
+            return (this->*traverse)(decl);
+        }
+    }
+
     /// Invoked when a declaration occur is seen in source code.
     /// @param decl The decl corresponding to the symbol.
     /// @param kind The kind of the occurrence, such as declaration, definition, reference.
