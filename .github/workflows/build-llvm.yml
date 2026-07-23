@@ -167,7 +167,7 @@ jobs:
           VERSION="${{ inputs.llvm_version || '21.1.8' }}"
           git clone --depth 1 https://github.com/clice-io/clice-llvm.git .clice-llvm
           PATCH_DIR=".clice-llvm/patches/${VERSION}"
-          if [ -d "$PATCH_DIR" ]; then
+          if [ -d "$PATCH_DIR" ] && ls "$PATCH_DIR"/*.patch >/dev/null 2>&1; then
             for patch in "$PATCH_DIR"/*.patch; do
               echo "Applying $(basename "$patch")..."
               git -C .llvm apply "$patch"
