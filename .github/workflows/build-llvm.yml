@@ -110,10 +110,9 @@ jobs:
           df -h
 
       - name: Pin MSVC toolset
-        if: runner.os == 'Windows' && !matrix.target_triple
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          toolset: "14.44"
+        if: runner.os == 'Windows'
+        shell: bash
+        run: echo "VCToolsVersion=14.44.35207" >> "$GITHUB_ENV"
 
       - uses: ./.github/actions/setup-pixi
         with:
