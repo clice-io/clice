@@ -1,6 +1,5 @@
 import clice;
 
-
 #ifndef _WIN32
 #include <fcntl.h>
 #include <sys/socket.h>

@@ -1,6 +1,5 @@
 import clice;
 
-
 #include "test/fixture.h"
 #include "test/test.h"
 #include "test/tester.h"

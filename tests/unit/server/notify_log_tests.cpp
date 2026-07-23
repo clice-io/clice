@@ -1,6 +1,5 @@
 import clice;
 
-
 #include "test/test.h"
 
 #include "kota/async/async.h"

@@ -1,6 +1,5 @@
 import clice;
 
-
 #include "test/test.h"
 
 namespace clice::testing {

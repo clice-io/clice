@@ -1,6 +1,5 @@
 import clice;
 
-
 #include "test/test.h"
 #include "server/worker_test_helpers.h"
 

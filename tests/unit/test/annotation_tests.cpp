@@ -1,6 +1,5 @@
 import clice;
 
-
 #include "test/annotation.h"
 #include "test/snap_region.h"
 #include "test/test.h"
