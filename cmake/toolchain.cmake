@@ -41,6 +41,20 @@ if(LLVM_RANLIB_PATH)
     set(CMAKE_CXX_COMPILER_RANLIB "${LLVM_RANLIB_PATH}" CACHE FILEPATH "")
 endif()
 
+# On macOS, CMake's Ninja generator uses libtool instead of ar for static
+# libraries. Apple's libtool cannot read bitcode from newer LLVM versions
+# (e.g. attribute kind 102 from LLVM 22), breaking LTO builds. Use LLVM's
+# llvm-libtool-darwin if available; otherwise suppress CMAKE_LIBTOOL so
+# CMake falls back to CMAKE_AR (llvm-ar handles bitcode correctly).
+if(APPLE)
+    find_program(LLVM_LIBTOOL_PATH "llvm-libtool-darwin")
+    if(LLVM_LIBTOOL_PATH)
+        set(CMAKE_LIBTOOL "${LLVM_LIBTOOL_PATH}" CACHE FILEPATH "")
+    else()
+        set(CMAKE_LIBTOOL "CMAKE_LIBTOOL-NOTFOUND" CACHE FILEPATH "")
+    endif()
+endif()
+
 find_program(LLVM_NM_PATH "llvm-nm")
 if(LLVM_NM_PATH)
     set(CMAKE_NM "${LLVM_NM_PATH}" CACHE FILEPATH "")
