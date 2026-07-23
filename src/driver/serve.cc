@@ -1,8 +1,22 @@
-import clice;
+module;
 
-#include "driver/driver.h"
+#include "kota/deco/deco.h"
+
+module clice;
 
 namespace clice::driver {
+
+bool apply_log_level(const std::string& level_str) {
+    auto level = logging::parse_level(level_str);
+    if(!level) {
+        std::println(stderr,
+                     "unknown log level '{}', valid: trace, debug, info, warn, error, off",
+                     level_str);
+        return false;
+    }
+    logging::options.level = *level;
+    return true;
+}
 
 namespace {
 

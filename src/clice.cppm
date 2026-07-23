@@ -10,6 +10,7 @@ export import clang;
 export import kota;
 
 export import :command.argument_parser;
+export import :driver;
 export import :command.command;
 export import :command.search_config;
 export import :command.toolchain;

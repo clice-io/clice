@@ -1,8 +1,10 @@
-import clice;
+module;
 
 #include <cstdint>
 
-#include "driver/driver.h"
+#include "kota/deco/deco.h"
+
+module clice;
 
 namespace clice::driver {
 

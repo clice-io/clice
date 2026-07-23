@@ -1,6 +1,8 @@
-import clice;
+module;
 
-#include "driver/driver.h"
+#include "kota/deco/deco.h"
+
+module clice;
 
 namespace clice::driver {
 
