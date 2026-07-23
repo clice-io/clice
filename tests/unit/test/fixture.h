@@ -1,7 +1,5 @@
 #pragma once
 
-#include "llvm/ADT/StringRef.h"
-
 namespace clice::testing {
 
 /// Fixture files under tests/data/<feature>/ may begin with a doc header

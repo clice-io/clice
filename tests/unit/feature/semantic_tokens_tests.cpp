@@ -1,9 +1,9 @@
-import clice;
-
-#include "test/test.h"
-#include "test/tester.h"
+module;
 
 #include "kota/meta/enum.h"
+#include "kota/zest/macro.h"
+
+module clice;
 
 namespace clice::testing {
 

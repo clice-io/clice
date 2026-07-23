@@ -1,9 +1,9 @@
-import clice;
+module;
 
-#include "test/temp_dir.h"
-#include "test/test.h"
-
+#include "kota/zest/macro.h"
 #include "llvm/Support/FileSystem.h"
+
+module clice;
 
 namespace clice::testing {
 namespace {

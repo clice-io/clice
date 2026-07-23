@@ -1,9 +1,9 @@
-import clice;
-
-#include "test/test.h"
-#include "server/worker_test_helpers.h"
+module;
 
 #include "kota/codec/bincode/bincode.h"
+#include "kota/zest/macro.h"
+
+module clice;
 
 namespace clice::testing {
 

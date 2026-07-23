@@ -2,18 +2,18 @@ module;
 
 #include <memory>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
 
-namespace clice::testing {
-
-struct WorkerPoolFixture;
-
-}
-
 export module clice:server.worker.worker_pool;
 
 import stdlib;
 import llvm;
 import kota;
 import :server.protocol.worker;
+
+namespace clice::testing {
+
+struct WorkerPoolFixture;
+
+}
 
 export namespace clice {
 

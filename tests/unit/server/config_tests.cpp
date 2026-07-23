@@ -1,10 +1,10 @@
-import clice;
-
-#include "test/temp_dir.h"
-#include "test/test.h"
+module;
 
 #include "kota/codec/json/json.h"
 #include "kota/codec/toml/toml.h"
+#include "kota/zest/macro.h"
+
+module clice;
 
 namespace clice::testing {
 

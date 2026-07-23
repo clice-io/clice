@@ -1,6 +1,8 @@
-import clice;
+module;
 
-#include "test/test.h"
+#include "kota/zest/macro.h"
+
+module clice;
 
 namespace clice::testing {
 namespace {

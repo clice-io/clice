@@ -1,13 +1,6 @@
 #pragma once
 
-#include <cstddef>
-#include <string>
-#include <vector>
-
 #include "test/temp_dir.h"
-
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/StringRef.h"
 
 namespace clice::testing {
 

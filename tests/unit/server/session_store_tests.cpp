@@ -1,8 +1,9 @@
-import clice;
-
-#include "test/test.h"
+module;
 
 #include "kota/ipc/lsp/text.h"
+#include "kota/zest/macro.h"
+
+module clice;
 
 namespace clice::testing {
 namespace {

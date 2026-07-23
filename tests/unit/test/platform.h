@@ -1,9 +1,4 @@
-#include <string>
-
-#include "llvm/ADT/SmallString.h"
-#include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/Path.h"
-#include "llvm/Support/VirtualFileSystem.h"
+#pragma once
 
 namespace clice::testing {
 

@@ -1,12 +1,13 @@
-import clice;
+module;
 
 #include <string>
 #include <string_view>
 
-#include "test/platform.h"
-
 #include "kota/deco/deco.h"
+#include "kota/zest/macro.h"
 #include "kota/zest/zest.h"
+
+module clice;
 
 namespace {
 

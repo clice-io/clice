@@ -1,12 +1,12 @@
-import clice;
+module;
 
 #include "schema_generated.h"
-#include "test/temp_dir.h"
-#include "test/test.h"
-#include "test/tester.h"
 
+#include "kota/zest/macro.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/xxhash.h"
+
+module clice;
 
 namespace clice::testing {
 

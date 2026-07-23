@@ -1,11 +1,5 @@
 module;
 
-namespace clice::testing {
-
-struct CompilerFixture;
-
-}
-
 export module clice:server.compiler.compiler;
 
 import stdlib;
@@ -19,6 +13,12 @@ import :server.state.session;
 import :server.state.workspace;
 import :server.worker.worker_pool;
 import :support.signal;
+
+namespace clice::testing {
+
+struct CompilerFixture;
+
+}
 
 export namespace clice {
 

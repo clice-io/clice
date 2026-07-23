@@ -1,10 +1,5 @@
 #pragma once
 
-#include <vector>
-
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/StringRef.h"
-
 namespace clice::testing {
 
 /// Snapshot fixtures may bracket parts of the file with whole-line markers:

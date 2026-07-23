@@ -1,10 +1,9 @@
-import clice;
-
-#include "test/temp_dir.h"
-#include "test/test.h"
-#include "server/worker_test_helpers.h"
+module;
 
 #include "kota/async/async.h"
+#include "kota/zest/macro.h"
+
+module clice;
 
 namespace clice::testing {
 namespace {

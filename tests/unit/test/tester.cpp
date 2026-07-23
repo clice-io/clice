@@ -1,6 +1,9 @@
-import clice;
+module;
 
-#include "test/tester.h"
+#include "kota/zest/macro.h"
+#include "llvm/Config/llvm-config.h"
+
+module clice;
 
 namespace clice::testing {
 

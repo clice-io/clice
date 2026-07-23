@@ -194,6 +194,11 @@ using ::llvm::sys::fs::real_path;
 using ::llvm::sys::fs::remove;
 using ::llvm::sys::fs::rename;
 using ::llvm::sys::fs::setLastAccessAndModificationTime;
+using enum ::llvm::sys::fs::perms;
+using ::llvm::sys::fs::operator|;
+using ::llvm::sys::fs::operator&;
+using ::llvm::sys::fs::perms;
+using ::llvm::sys::fs::setPermissions;
 using ::llvm::sys::fs::status;
 
 }  // namespace llvm::sys::fs
@@ -201,6 +206,7 @@ using ::llvm::sys::fs::status;
 export namespace llvm::sys::path {
 
 using ::llvm::sys::path::append;
+using ::llvm::sys::path::convert_to_slash;
 using ::llvm::sys::path::extension;
 using ::llvm::sys::path::filename;
 using ::llvm::sys::path::is_absolute;

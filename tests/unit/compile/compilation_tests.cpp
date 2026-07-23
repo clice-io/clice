@@ -1,10 +1,9 @@
-import clice;
+module;
 
-#include "test/temp_dir.h"
-#include "test/test.h"
-#include "test/tester.h"
-
+#include "kota/zest/macro.h"
 #include "llvm/Support/xxhash.h"
+
+module clice;
 
 namespace clice::testing {
 

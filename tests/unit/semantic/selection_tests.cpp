@@ -1,9 +1,9 @@
-import clice;
+module;
 
-#include "test/test.h"
-#include "test/tester.h"
-
+#include "kota/zest/macro.h"
 #include "clang/Lex/Lexer.h"
+
+module clice;
 
 namespace clice {
 

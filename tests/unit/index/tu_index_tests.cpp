@@ -1,11 +1,11 @@
-import clice;
-
-#include "test/test.h"
-#include "test/tester.h"
+module;
 
 #include "kota/meta/enum.h"
+#include "kota/zest/macro.h"
 #include "llvm/Support/thread.h"
 #include "clang/Basic/Stack.h"
+
+module clice;
 
 namespace clice::testing {
 

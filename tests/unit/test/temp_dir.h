@@ -1,15 +1,5 @@
 #pragma once
 
-#include <deque>
-#include <string>
-
-#include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Path.h"
-#include "llvm/Support/Process.h"
-#include "llvm/Support/raw_ostream.h"
-
 namespace clice::testing {
 
 /// RAII helper for a temporary directory tree.

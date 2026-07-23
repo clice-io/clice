@@ -1,13 +1,12 @@
-import clice;
+module;
 
+#include "kota/zest/macro.h"
 #ifndef _WIN32
 #include <unistd.h>
 #endif
-
-#include "test/temp_dir.h"
-#include "test/test.h"
-
 #include "llvm/Support/Process.h"
+
+module clice;
 
 namespace clice::testing {
 

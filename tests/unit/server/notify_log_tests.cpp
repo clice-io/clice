@@ -1,9 +1,10 @@
-import clice;
-
-#include "test/test.h"
+module;
 
 #include "kota/async/async.h"
+#include "kota/zest/macro.h"
 #include "spdlog/spdlog.h"  // direct spdlog level control for the retention test
+
+module clice;
 
 namespace clice::testing {
 namespace {

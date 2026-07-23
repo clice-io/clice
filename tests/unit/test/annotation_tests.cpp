@@ -1,8 +1,8 @@
-import clice;
+module;
 
-#include "test/annotation.h"
-#include "test/snap_region.h"
-#include "test/test.h"
+#include "kota/zest/macro.h"
+
+module clice;
 
 namespace clice::testing {
 namespace {

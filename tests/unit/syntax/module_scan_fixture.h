@@ -1,7 +1,5 @@
 #pragma once
 
-#include "test/test.h"
-
 namespace clice::testing {
 
 /// Helper that sets up a TestVFS with a main file and optional extra files,

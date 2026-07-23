@@ -1,7 +1,8 @@
-import clice;
+module;
 
-#include "module_scan_fixture.h"
-#include "test/test.h"
+#include "kota/zest/macro.h"
+
+module clice;
 
 namespace clice::testing {
 namespace {

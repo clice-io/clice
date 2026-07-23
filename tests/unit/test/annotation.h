@@ -1,8 +1,5 @@
 #pragma once
 
-#include "llvm/ADT/StringMap.h"
-#include "llvm/ADT/StringRef.h"
-
 namespace clice::testing {
 
 struct AnnotatedSource {

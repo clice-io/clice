@@ -1,11 +1,5 @@
 module;
 
-namespace clice::testing {
-
-struct IndexerFixture;
-
-}
-
 export module clice:server.compiler.indexer;
 
 import stdlib;
@@ -16,6 +10,12 @@ import :server.state.session_store;
 import :server.state.workspace;
 import :server.worker.worker_pool;
 import :support.signal;
+
+namespace clice::testing {
+
+struct IndexerFixture;
+
+}
 
 export namespace clice {
 

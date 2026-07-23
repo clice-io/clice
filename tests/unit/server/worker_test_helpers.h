@@ -1,23 +1,6 @@
 #pragma once
 
-#include <csignal>
-#include <string>
-
-#ifndef _WIN32
-#include <fcntl.h>
-#include <unistd.h>
-#endif
-
-#include "test/temp_dir.h"
-
-#include "kota/async/async.h"
-#include "kota/ipc/codec/bincode.h"
-#include "kota/ipc/peer.h"
-#include "kota/ipc/transport.h"
-
 namespace clice::testing {
-
-namespace {
 
 /// Ignore SIGPIPE so broken pipes from exited workers don't kill the test binary.
 struct SigpipeGuard {
@@ -118,7 +101,5 @@ struct WorkerHandle {
         loop.run();
     }
 };
-
-}  // namespace
 
 }  // namespace clice::testing

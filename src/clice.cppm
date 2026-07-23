@@ -11,6 +11,9 @@ export import kota;
 
 export import :command.argument_parser;
 export import :driver;
+#if CLICE_ENABLE_TEST
+export import :test;
+#endif
 export import :command.command;
 export import :command.search_config;
 export import :command.toolchain;

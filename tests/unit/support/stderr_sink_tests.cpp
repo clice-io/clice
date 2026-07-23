@@ -1,15 +1,14 @@
-import clice;
+module;
 
+#include "kota/zest/macro.h"
 #ifndef _WIN32
 #include <fcntl.h>
 #include <sys/socket.h>
 #include <unistd.h>
 #endif
-
-#include "test/temp_dir.h"
-#include "test/test.h"
-
 #include "spdlog/details/log_msg.h"
+
+module clice;
 
 namespace clice::testing {
 

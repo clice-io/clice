@@ -1,9 +1,10 @@
-import clice;
+module;
 
-#include "test/annotation.h"
-
+#include "kota/zest/macro.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+
+module clice;
 
 namespace clice::testing {
 

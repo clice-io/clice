@@ -1,8 +1,8 @@
-import clice;
+module;
 
-#include "test/fixture.h"
-#include "test/test.h"
-#include "test/tester.h"
+#include "kota/zest/macro.h"
+
+module clice;
 
 namespace clice::testing {
 
@@ -242,7 +242,6 @@ void e() {};
 
 void f §(1)(
 
-
 )§(2) §(3){
 
 }§(4)
@@ -405,7 +404,6 @@ TEST_CASE(Directive) {
 
     #ifdef M2
 
-
     #endif
 
 #endif
@@ -420,9 +418,7 @@ TEST_CASE(PragmaRegion) {
 
         #§(4)pragma endregion level3
 
-
     #§(5)pragma endregion level2
-
 
 #§(6)pragma endregion level1
 

@@ -1,8 +1,9 @@
-import clice;
+module;
 
-#include "test/test.h"
-
+#include "kota/zest/macro.h"
 #include "llvm/Support/raw_ostream.h"
+
+module clice;
 
 namespace clice::testing {
 namespace {
