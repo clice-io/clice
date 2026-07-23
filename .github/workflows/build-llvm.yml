@@ -111,8 +111,9 @@ jobs:
 
       - name: Pin MSVC toolset
         if: runner.os == 'Windows'
-        shell: bash
-        run: echo "VCToolsVersion=14.44.35207" >> "$GITHUB_ENV"
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          toolset: "14.42"
 
       - uses: ./.github/actions/setup-pixi
         with:

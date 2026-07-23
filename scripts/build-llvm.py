@@ -192,6 +192,7 @@ def main():
         ]
 
     cmake_args += [
+        "-DLLVM_ENABLE_DIA_SDK=OFF",
         "-DLLVM_ENABLE_ZLIB=OFF",
         "-DLLVM_ENABLE_ZSTD=OFF",
         "-DLLVM_ENABLE_LIBXML2=OFF",
