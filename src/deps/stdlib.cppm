@@ -111,12 +111,7 @@ using ::std::forward;
 using ::std::function;
 using ::std::generic_category;
 using ::std::get_if;
-#ifndef _MSVC_STL_VERSION
-// std::get: free non-friend on libstdc++/libc++ (pair/tuple structured
-// bindings need the export); befriended by MSVC STL's tuple (export would
-// clash), where friend-ADL finds it instead.
 using ::std::get;
-#endif
 using ::std::getenv;
 using ::std::greater;
 using ::std::hash;
