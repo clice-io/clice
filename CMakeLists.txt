@@ -26,6 +26,18 @@ if(NOT MSVC)
     add_compile_options(-ffunction-sections -fdata-sections)
 endif()
 
+if(APPLE)
+    # conda-forge clang 22 ships default config files (<triple>-clang++.cfg)
+    # that inject -L/-rpath to the env's lib dir at link time, binding
+    # binaries to conda's @rpath libc++ — they then fail to load anywhere
+    # outside the build machine. Disable config files: libc++ headers are
+    # still found relative to the driver, and the link falls back to the
+    # SDK's system libc++ (safe thanks to availability annotations).
+    add_compile_options(--no-default-config)
+    string(APPEND CMAKE_EXE_LINKER_FLAGS " --no-default-config")
+    string(APPEND CMAKE_SHARED_LINKER_FLAGS " --no-default-config")
+endif()
+
 # Keyed on the target OS, not the compiler frontend: CI links Windows with
 # GNU-driver clang++ + lld-link, where the frontend variant is "GNU" but the
 # linker still speaks MSVC-style /OPT flags (see the Debug /OPT:NOICF below).
