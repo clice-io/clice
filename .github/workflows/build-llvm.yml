@@ -114,6 +114,12 @@ jobs:
           free -h
           df -h
 
+      - name: Pin MSVC toolset
+        if: runner.os == 'Windows' && !contains(matrix.target_triple, 'aarch64')
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          toolset: "14.44"
+
       - uses: ./.github/actions/setup-pixi
         with:
           environments: ${{ matrix.pixi_env || 'package' }}

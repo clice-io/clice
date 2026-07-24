@@ -14,36 +14,6 @@ MODE_MAP = {
     "releasedbg": "RelWithDebInfo",
 }
 
-MSVC_TOOLSET = "14.44"
-
-
-def setup_msvc_env(arch: str = "amd64"):
-    """Call vcvarsall.bat to set up MSVC environment for the given arch.
-
-    This sets INCLUDE, LIB, PATH etc. in os.environ so that clang-cl and
-    lld-link find the correct MSVC headers, libraries, and tools.
-    """
-    if sys.platform != "win32":
-        return
-
-    result = subprocess.check_output(
-        ["vswhere", "-latest", "-property", "installationPath"],
-        text=True,
-    ).strip()
-    vcvarsall = Path(result) / "VC" / "Auxiliary" / "Build" / "vcvarsall.bat"
-    if not vcvarsall.exists():
-        raise RuntimeError(f"vcvarsall.bat not found at {vcvarsall}")
-
-    cmd = f'"{vcvarsall}" {arch} -vcvars_ver={MSVC_TOOLSET} && set'
-    output = subprocess.check_output(cmd, shell=True, text=True)
-    for line in output.splitlines():
-        if "=" in line:
-            key, _, value = line.partition("=")
-            os.environ[key] = value
-
-    print(f"MSVC environment: arch={arch}, toolset={MSVC_TOOLSET}")
-
-
 def build_native_tools(project_root: Path, build_dir: Path) -> Path:
     """Build native host tablegen tools for cross-compilation.
 
@@ -55,8 +25,6 @@ def build_native_tools(project_root: Path, build_dir: Path) -> Path:
     native_dir = build_dir.parent / f"{build_dir.name}-native-tools"
     native_dir.mkdir(exist_ok=True)
     source_dir = project_root / "llvm"
-
-    setup_msvc_env("amd64")
 
     cxx_flags = "-w"
     if sys.platform == "darwin":
@@ -206,11 +174,6 @@ def main():
     ]
 
     if sys.platform == "win32":
-        msvc_arch = "amd64"
-        if args.target_triple and "aarch64" in args.target_triple:
-            msvc_arch = "amd64_arm64"
-        setup_msvc_env(msvc_arch)
-
         c_flags = "-w"
         if args.target_triple:
             c_flags += f" --target={args.target_triple}"
