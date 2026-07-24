@@ -98,4 +98,14 @@ if(APPLE)
     string(APPEND CMAKE_EXE_LINKER_FLAGS_INIT " --no-default-config")
     string(APPEND CMAKE_SHARED_LINKER_FLAGS_INIT " --no-default-config")
     string(APPEND CMAKE_MODULE_LINKER_FLAGS_INIT " --no-default-config")
+
+    # Debug links the prebuilt LLVM ASan dylibs, which reference conda's
+    # @rpath libc++ with rpaths baked for the machine that built them.
+    # Debug binaries are CI-internal, so resolve libc++ from the build
+    # env instead. Remove once the prebuilt is respun (its dylibs will
+    # then link the system libc++ via --no-default-config above).
+    if(DEFINED ENV{CONDA_PREFIX})
+        string(APPEND CMAKE_EXE_LINKER_FLAGS_DEBUG_INIT " -Wl,-rpath,$ENV{CONDA_PREFIX}/lib")
+        string(APPEND CMAKE_SHARED_LINKER_FLAGS_DEBUG_INIT " -Wl,-rpath,$ENV{CONDA_PREFIX}/lib")
+    endif()
 endif()
