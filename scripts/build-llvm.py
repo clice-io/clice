@@ -14,6 +14,35 @@ MODE_MAP = {
     "releasedbg": "RelWithDebInfo",
 }
 
+MSVC_TOOLSET = "14.44"
+
+
+def setup_msvc_env(arch: str = "amd64"):
+    """Call vcvarsall.bat to set up MSVC environment for the given arch.
+
+    This sets INCLUDE, LIB, PATH etc. in os.environ so that clang-cl and
+    lld-link find the correct MSVC headers, libraries, and tools.
+    """
+    if sys.platform != "win32":
+        return
+
+    result = subprocess.check_output(
+        ["vswhere", "-latest", "-property", "installationPath"],
+        text=True,
+    ).strip()
+    vcvarsall = Path(result) / "VC" / "Auxiliary" / "Build" / "vcvarsall.bat"
+    if not vcvarsall.exists():
+        raise RuntimeError(f"vcvarsall.bat not found at {vcvarsall}")
+
+    cmd = f'"{vcvarsall}" {arch} -vcvars_ver={MSVC_TOOLSET} && set'
+    output = subprocess.check_output(cmd, shell=True, text=True)
+    for line in output.splitlines():
+        if "=" in line:
+            key, _, value = line.partition("=")
+            os.environ[key] = value
+
+    print(f"MSVC environment: arch={arch}, toolset={MSVC_TOOLSET}")
+
 
 def build_native_tools(project_root: Path, build_dir: Path) -> Path:
     """Build native host tablegen tools for cross-compilation.
@@ -27,13 +56,11 @@ def build_native_tools(project_root: Path, build_dir: Path) -> Path:
     native_dir.mkdir(exist_ok=True)
     source_dir = project_root / "llvm"
 
-    c_flags = "-w"
+    setup_msvc_env("amd64")
+
     cxx_flags = "-w"
     if sys.platform == "darwin":
         cxx_flags += " -D_LIBCPP_HAS_VENDOR_AVAILABILITY_ANNOTATIONS=1"
-    elif sys.platform == "win32":
-        c_flags += " /vctoolsversion 14.44"
-        cxx_flags += " /vctoolsversion 14.44"
 
     cmake_args = [
         "-G",
@@ -42,7 +69,7 @@ def build_native_tools(project_root: Path, build_dir: Path) -> Path:
         "-DLLVM_ENABLE_PROJECTS=clang;clang-tools-extra",
         "-DLLVM_TARGETS_TO_BUILD=Native",
         "-DLLVM_DISABLE_ASSEMBLY_FILES=ON",
-        f"-DCMAKE_C_FLAGS={c_flags}",
+        "-DCMAKE_C_FLAGS=-w",
         f"-DCMAKE_CXX_FLAGS={cxx_flags}",
     ]
 
@@ -179,11 +206,12 @@ def main():
     ]
 
     if sys.platform == "win32":
-        # Use clang-cl (MSVC driver) on Windows so that LLVM's CMake
-        # generates correct MSVC-style linker flags for LTO, etc.
-        # Pin MSVC toolset via /vctoolsversion so both native and cross
-        # builds use the same v143 toolset (compatible with dev machines).
-        c_flags = "-w /vctoolsversion 14.44"
+        msvc_arch = "amd64"
+        if args.target_triple and "aarch64" in args.target_triple:
+            msvc_arch = "amd64_arm64"
+        setup_msvc_env(msvc_arch)
+
+        c_flags = "-w"
         if args.target_triple:
             c_flags += f" --target={args.target_triple}"
         cmake_args += [
