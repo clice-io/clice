@@ -85,3 +85,17 @@ else()
     set(CMAKE_SHARED_LINKER_FLAGS_INIT "-fuse-ld=lld")
     set(CMAKE_MODULE_LINKER_FLAGS_INIT "-fuse-ld=lld")
 endif()
+
+if(APPLE)
+    # conda-forge clang 22's bundled config files (<triple>-clang++.cfg)
+    # inject -L/-rpath pointing into the conda env at link time, binding
+    # binaries to conda's @rpath libc++ — they then fail to load outside
+    # the build machine. Disable config files: libc++ headers are still
+    # found relative to the driver, and links fall back to the SDK's
+    # system libc++ (safe thanks to availability annotations).
+    string(APPEND CMAKE_C_FLAGS_INIT " --no-default-config")
+    string(APPEND CMAKE_CXX_FLAGS_INIT " --no-default-config")
+    string(APPEND CMAKE_EXE_LINKER_FLAGS_INIT " --no-default-config")
+    string(APPEND CMAKE_SHARED_LINKER_FLAGS_INIT " --no-default-config")
+    string(APPEND CMAKE_MODULE_LINKER_FLAGS_INIT " --no-default-config")
+endif()
