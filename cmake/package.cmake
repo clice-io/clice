@@ -53,3 +53,29 @@ set(KOTA_ENABLE_EXCEPTIONS OFF)
 set(KOTA_ENABLE_RTTI OFF)
 
 FetchContent_MakeAvailable(kotatsu spdlog croaring flatbuffers)
+
+# kotatsu adds -D_LIBCPP_DISABLE_AVAILABILITY globally; on macOS with
+# libc++ >= 21 that makes the headers emit references to dylib-only symbols
+# (__hash_memory, llvm-project#77653) that the system libc++ lacks, breaking
+# the x64 cross link and poisoning shipped binaries. Directory COMPILE_OPTIONS
+# are copied into each target at creation time, so walk targets (not the
+# directory property) and strip the flag from every kotatsu target. Temporary
+# until the flag is removed upstream in kotatsu.
+function(clice_strip_disable_availability dir)
+    get_directory_property(targets DIRECTORY "${dir}" BUILDSYSTEM_TARGETS)
+    foreach(target IN LISTS targets)
+        get_target_property(target_type ${target} TYPE)
+        if(NOT target_type STREQUAL "INTERFACE_LIBRARY")
+            get_target_property(options ${target} COMPILE_OPTIONS)
+            if(options)
+                list(REMOVE_ITEM options "-D_LIBCPP_DISABLE_AVAILABILITY")
+                set_target_properties(${target} PROPERTIES COMPILE_OPTIONS "${options}")
+            endif()
+        endif()
+    endforeach()
+    get_directory_property(subdirs DIRECTORY "${dir}" SUBDIRECTORIES)
+    foreach(subdir IN LISTS subdirs)
+        clice_strip_disable_availability("${subdir}")
+    endforeach()
+endfunction()
+clice_strip_disable_availability("${kotatsu_SOURCE_DIR}")
