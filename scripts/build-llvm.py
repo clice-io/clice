@@ -27,6 +27,10 @@ def build_native_tools(project_root: Path, build_dir: Path) -> Path:
     native_dir.mkdir(exist_ok=True)
     source_dir = project_root / "llvm"
 
+    cxx_flags = "-w"
+    if sys.platform == "darwin":
+        cxx_flags += " -D_LIBCPP_HAS_VENDOR_AVAILABILITY_ANNOTATIONS=1"
+
     cmake_args = [
         "-G",
         "Ninja",
@@ -35,7 +39,7 @@ def build_native_tools(project_root: Path, build_dir: Path) -> Path:
         "-DLLVM_TARGETS_TO_BUILD=Native",
         "-DLLVM_DISABLE_ASSEMBLY_FILES=ON",
         "-DCMAKE_C_FLAGS=-w",
-        "-DCMAKE_CXX_FLAGS=-w",
+        f"-DCMAKE_CXX_FLAGS={cxx_flags}",
     ]
 
     if sys.platform == "win32":
