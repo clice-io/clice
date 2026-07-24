@@ -19,7 +19,6 @@ platforms = ["win-64", "linux-64", "osx-arm64", "osx-64", "linux-aarch64", "win-
 [environments]
 default = ["build", "test"]
 package = ["build", "test", "package"]
-cross-macos-x64 = ["build", "package", "cross-macos-x64"]
 cross-linux-arm64 = ["build", "package", "cross-linux-arm64"]
 cross-windows-arm64 = ["build", "package", "cross-windows-arm64"]
 node = ["node"]
@@ -64,12 +63,6 @@ scripts = ["scripts/activate_linux.sh"]
 
 [feature.build.target.win-64.activation]
 scripts = ["scripts/activate_asan.bat"]
-
-# macOS x64 (from arm64): clang natively supports cross-arch, no extra deps.
-[feature.cross-macos-x64.target.osx-arm64.dependencies]
-
-[feature.cross-macos-x64.target.osx-arm64.activation]
-scripts = ["scripts/activate_cross_macos.sh"]
 
 # Linux arm64 (from x64): needs the aarch64 sysroot and cross gcc for libstdc++.
 [feature.cross-linux-arm64.target.linux-64.dependencies]
