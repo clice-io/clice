@@ -14,6 +14,7 @@ MODE_MAP = {
     "releasedbg": "RelWithDebInfo",
 }
 
+
 def build_native_tools(project_root: Path, build_dir: Path) -> Path:
     """Build native host tablegen tools for cross-compilation.
 
