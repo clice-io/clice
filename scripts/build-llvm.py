@@ -28,8 +28,6 @@ def build_native_tools(project_root: Path, build_dir: Path) -> Path:
     source_dir = project_root / "llvm"
 
     cxx_flags = "-w"
-    if sys.platform == "darwin":
-        cxx_flags += " -D_LIBCPP_HAS_VENDOR_AVAILABILITY_ANNOTATIONS=1"
 
     cmake_args = [
         "-G",
@@ -187,8 +185,6 @@ def main():
         ]
     else:
         cxx_flags = "-w"
-        if sys.platform == "darwin":
-            cxx_flags += " -D_LIBCPP_HAS_VENDOR_AVAILABILITY_ANNOTATIONS=1"
         cmake_args += [
             f"-DCMAKE_TOOLCHAIN_FILE={toolchain_file.as_posix()}",
             "-DCMAKE_C_FLAGS=-w",

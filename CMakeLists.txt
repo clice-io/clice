@@ -26,15 +26,6 @@ if(NOT MSVC)
     add_compile_options(-ffunction-sections -fdata-sections)
 endif()
 
-if(APPLE)
-    # conda-forge clang ships libc++ headers without vendor availability
-    # annotations, so all _LIBCPP_INTRODUCED_IN_LLVM_* default to 1 — the
-    # headers assume every dylib symbol exists. On macOS the system libc++
-    # is older, so enable vendor annotations to let the deployment-target
-    # gates select inline fallbacks (e.g. __hash_memory, LLVM#77653).
-    add_compile_definitions(_LIBCPP_HAS_VENDOR_AVAILABILITY_ANNOTATIONS=1)
-endif()
-
 # Keyed on the target OS, not the compiler frontend: CI links Windows with
 # GNU-driver clang++ + lld-link, where the frontend variant is "GNU" but the
 # linker still speaks MSVC-style /OPT flags (see the Debug /OPT:NOICF below).
