@@ -27,9 +27,13 @@ def build_native_tools(project_root: Path, build_dir: Path) -> Path:
     native_dir.mkdir(exist_ok=True)
     source_dir = project_root / "llvm"
 
+    c_flags = "-w"
     cxx_flags = "-w"
     if sys.platform == "darwin":
         cxx_flags += " -D_LIBCPP_HAS_VENDOR_AVAILABILITY_ANNOTATIONS=1"
+    elif sys.platform == "win32":
+        c_flags += " /vctoolsversion 14.44"
+        cxx_flags += " /vctoolsversion 14.44"
 
     cmake_args = [
         "-G",
@@ -38,7 +42,7 @@ def build_native_tools(project_root: Path, build_dir: Path) -> Path:
         "-DLLVM_ENABLE_PROJECTS=clang;clang-tools-extra",
         "-DLLVM_TARGETS_TO_BUILD=Native",
         "-DLLVM_DISABLE_ASSEMBLY_FILES=ON",
-        "-DCMAKE_C_FLAGS=-w",
+        f"-DCMAKE_C_FLAGS={c_flags}",
         f"-DCMAKE_CXX_FLAGS={cxx_flags}",
     ]
 
@@ -177,7 +181,9 @@ def main():
     if sys.platform == "win32":
         # Use clang-cl (MSVC driver) on Windows so that LLVM's CMake
         # generates correct MSVC-style linker flags for LTO, etc.
-        c_flags = "-w"
+        # Pin MSVC toolset via /vctoolsversion so both native and cross
+        # builds use the same v143 toolset (compatible with dev machines).
+        c_flags = "-w /vctoolsversion 14.44"
         if args.target_triple:
             c_flags += f" --target={args.target_triple}"
         cmake_args += [
