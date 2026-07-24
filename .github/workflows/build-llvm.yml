@@ -24,10 +24,10 @@ jobs:
       matrix:
         include:
           # Native builds
-          - os: windows-2025
+          - os: windows-2022
             llvm_mode: RelWithDebInfo
             lto: OFF
-          - os: windows-2025
+          - os: windows-2022
             llvm_mode: RelWithDebInfo
             lto: ON
           - os: ubuntu-24.04
@@ -72,13 +72,13 @@ jobs:
             target_triple: aarch64-linux-gnu
             pixi_env: cross-linux-arm64
 
-          # Windows arm64 (from x64 windows-2025)
-          - os: windows-2025
+          # Windows arm64 (from x64 windows-2022)
+          - os: windows-2022
             llvm_mode: RelWithDebInfo
             lto: OFF
             target_triple: aarch64-pc-windows-msvc
             pixi_env: cross-windows-arm64
-          - os: windows-2025
+          - os: windows-2022
             llvm_mode: RelWithDebInfo
             lto: ON
             target_triple: aarch64-pc-windows-msvc
