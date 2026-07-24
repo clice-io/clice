@@ -184,10 +184,13 @@ def main():
             "-DLLVM_USE_LINKER=lld-link",
         ]
     else:
+        cxx_flags = "-w"
+        if sys.platform == "darwin":
+            cxx_flags += " -D_LIBCPP_HAS_VENDOR_AVAILABILITY_ANNOTATIONS=1"
         cmake_args += [
             f"-DCMAKE_TOOLCHAIN_FILE={toolchain_file.as_posix()}",
             "-DCMAKE_C_FLAGS=-w",
-            "-DCMAKE_CXX_FLAGS=-w",
+            f"-DCMAKE_CXX_FLAGS={cxx_flags}",
             "-DLLVM_USE_LINKER=lld",
         ]
 
