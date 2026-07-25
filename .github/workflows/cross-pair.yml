@@ -79,6 +79,16 @@ jobs:
           pixi run -e "${{ inputs.pixi_env }}" -- cmake --build build/RelWithDebInfo \
             --target clice-pack clice-pack-symbol
 
+      # Reject a shipped binary that links a non-system dynamic library (the
+      # conda @rpath libc++ failure mode). llvm binutils read cross-built
+      # ELF/Mach-O on the host; Windows (PE) is not covered yet.
+      - name: Check artifact dependencies
+        if: ${{ !contains(inputs.target_triple, 'windows') }}
+        shell: bash
+        run: |
+          pixi run -e "${{ inputs.pixi_env }}" -- \
+            python scripts/check_artifact_deps.py build/RelWithDebInfo/pack/clice/bin/clice
+
       - name: Upload package artifacts
         uses: actions/upload-artifact@v7
         with:
