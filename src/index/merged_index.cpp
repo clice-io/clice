@@ -1,9 +1,5 @@
 module;
 
-// MSVC STL floor: std::tuple befriends std::get there, so it cannot be
-// re-exported through the module wrapper; qualified std::get<I> calls need the
-// textual declaration on Windows (see deps/stdlib.cppm).
-
 #include "schema_generated.h"
 
 module clice.index;

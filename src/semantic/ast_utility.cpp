@@ -6,6 +6,8 @@
 
 module clice.semantic;
 
+import clice.support;
+
 namespace clice::ast {
 
 bool is_inside_main_file(clang::SourceLocation loc, const clang::SourceManager& sm) {

@@ -3,10 +3,10 @@ import stdlib;
 import llvm;
 import kota;
 import clice.test;
-import clice.server;
-import clice.support;
 import clice.command;
 import clice.compile;
+import clice.server;
+import clice.support;
 import clice.syntax;
 
 namespace clice::testing {

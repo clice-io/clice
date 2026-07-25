@@ -13,9 +13,6 @@ module;
 #include <unistd.h>
 #endif
 
-// kota/codec/json stays textual: it defines explicit template instantiations
-// (over simdjson) that cannot be shared through the kota wrapper's GMF.
-
 module clice.support;
 
 namespace clice {

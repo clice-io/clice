@@ -1,11 +1,11 @@
 module;
 
-// kota/codec/json stays textual: to_raw serializes results through
-// to_json + lsp_config, which cannot cross the module boundary.
-#include "server/protocol/serialize.h"  // to_raw (textual: depends on textual json codec)
+#include <cstdlib>  // POSIX setenv (and MSVC _putenv_s) are not std exports
 
 module clice.worker;
 
+import kota;
+import clice.protocol;
 import clice.feature;
 import clice.index;
 import clice.syntax;

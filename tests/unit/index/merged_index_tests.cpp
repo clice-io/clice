@@ -4,8 +4,8 @@ import stdlib;
 import llvm;
 import clice.test;
 import clice.index;
-import clice.support;
 import clice.semantic;
+import clice.support;
 
 namespace clice::testing {
 

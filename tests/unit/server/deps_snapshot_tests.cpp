@@ -1,7 +1,7 @@
 import clice.test;
+import clice.compile;
 import clice.server;
 import clice.support;
-import clice.compile;
 
 namespace clice::testing {
 namespace {

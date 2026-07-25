@@ -1,9 +1,8 @@
-#include <ranges>  // std floor: the range adaptors are not re-exported by import stdlib
 
-import clice.test;
 import stdlib;
 import llvm;
 import kota;
+import clice.test;
 import clice.server;
 
 namespace clice::testing {

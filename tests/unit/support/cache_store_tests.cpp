@@ -4,9 +4,9 @@
 
 #include <cstdio>  // stderr is a macro; macros do not cross a module boundary
 
+import llvm;
 import clice.test;
 import clice.support;
-import llvm;
 
 namespace clice::testing {
 

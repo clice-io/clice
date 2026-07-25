@@ -1,11 +1,11 @@
-import kota;
 import llvm;
 import clang;
+import kota;
 import clice.test;
-import clice.index;
-import clice.support;
 import clice.feature;
+import clice.index;
 import clice.semantic;
+import clice.support;
 
 namespace clice::testing {
 

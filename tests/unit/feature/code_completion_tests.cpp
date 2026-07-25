@@ -1,9 +1,8 @@
-#include <string>  // std floor: string comparison operators are not re-exported by import stdlib
 import llvm;
 import kota;
 import clice.test;
-import clice.feature;
 import clice.compile;
+import clice.feature;
 
 namespace clice::testing {
 

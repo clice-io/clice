@@ -1,10 +1,6 @@
-module;
-
-// kota/codec/json stays textual: it defines explicit template instantiations
-// that cannot be shared through the kota wrapper's GMF.
-
 module clice.server;
 
+import kota;
 namespace clice {
 
 /// Replace all occurrences of ${workspace} with the workspace root.

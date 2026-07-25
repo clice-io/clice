@@ -1,7 +1,7 @@
-import clice.test;
-import clice.compile;
 import llvm;
 import clang;
+import clice.test;
+import clice.compile;
 
 namespace clice::testing {
 

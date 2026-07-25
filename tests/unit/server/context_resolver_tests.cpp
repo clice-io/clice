@@ -1,7 +1,7 @@
 import llvm;
 import clice.test;
-import clice.server;
 import clice.command;
+import clice.server;
 
 namespace clice::testing {
 namespace {

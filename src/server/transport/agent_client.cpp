@@ -1,10 +1,6 @@
-module;
-
-// kota/ipc/codec/json stays textual: JsonPeer's explicit template
-// instantiation cannot be shared through the kota wrapper's GMF.
-
 module clice.server;
 
+import kota;
 namespace clice {
 
 using kota::ipc::RequestResult;

@@ -190,14 +190,14 @@ using ::llvm::sys::fs::is_directory;
 using ::llvm::sys::fs::make_absolute;
 using ::llvm::sys::fs::openFileForWrite;
 using ::llvm::sys::fs::openNativeFile;
+using ::llvm::sys::fs::operator&;
+using ::llvm::sys::fs::operator|;
+using ::llvm::sys::fs::perms;
+using enum ::llvm::sys::fs::perms;
 using ::llvm::sys::fs::real_path;
 using ::llvm::sys::fs::remove;
 using ::llvm::sys::fs::rename;
 using ::llvm::sys::fs::setLastAccessAndModificationTime;
-using enum ::llvm::sys::fs::perms;
-using ::llvm::sys::fs::operator|;
-using ::llvm::sys::fs::operator&;
-using ::llvm::sys::fs::perms;
 using ::llvm::sys::fs::setPermissions;
 using ::llvm::sys::fs::status;
 

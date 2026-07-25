@@ -1,10 +1,6 @@
-module;
-
-// kota/codec/json + kota/ipc/codec/json stay textual: explicit template
-// instantiations that cannot be shared through the kota wrapper's GMF.
-
 module clice.server;
 
+import kota;
 namespace clice {
 
 template <typename Params>

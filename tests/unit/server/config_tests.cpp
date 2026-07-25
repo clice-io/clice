@@ -1,10 +1,10 @@
 #include <cstdlib>  // POSIX setenv/unsetenv (and MSVC _putenv_s) are not std exports
 
 import llvm;
+import kota;
 import clice.test;
 import clice.server;
 import clice.support;
-import kota;
 
 namespace clice::testing {
 

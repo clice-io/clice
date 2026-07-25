@@ -153,7 +153,10 @@ if(MSVC OR (CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND
          CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC"))
     target_compile_options(clice_options INTERFACE /FI${PROJECT_SOURCE_DIR}/src/support/prelude.h)
 else()
-    target_compile_options(clice_options INTERFACE -include ${PROJECT_SOURCE_DIR}/src/support/prelude.h)
+    # SHELL: keeps the two tokens paired when CMake re-flattens flags for
+    # synthesized module targets (clice-core@synth_*): plain -include gets
+    # de-duplicated there, orphaning the path as a stray input file.
+    target_compile_options(clice_options INTERFACE "SHELL:-include ${PROJECT_SOURCE_DIR}/src/support/prelude.h")
 endif()
 
 # Zero-token kotatsu macro headers, force-included the same way as prelude.h but
@@ -267,7 +270,8 @@ file(GLOB_RECURSE CLICE_CORE_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/sr
 file(GLOB_RECURSE CLICE_MODULE_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/*.cppm")
 add_library(clice-core STATIC ${CLICE_CORE_SOURCES})
 add_library(clice::core ALIAS clice-core)
-# Module partitions of `module clice`; scanning stays off globally so
+# First-party C++ module units (interfaces, partitions, implementation units);
+# scanning stays off globally so
 # third-party deps skip the scan step, and on for first-party targets.
 target_sources(clice-core PUBLIC
     FILE_SET CXX_MODULES

@@ -1,8 +1,8 @@
 import llvm;
 import clang;
 import clice.test;
-import clice.visit;
 import clice.syntax;
+import clice.visit;
 
 namespace clice {
 

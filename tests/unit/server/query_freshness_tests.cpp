@@ -1,11 +1,11 @@
+import llvm;
 import kota;
 import clice.test;
-import llvm;
-import clice.server;
-import clice.protocol;
-import clice.worker;
 import clice.index;
+import clice.protocol;
 import clice.semantic;
+import clice.server;
+import clice.worker;
 
 namespace clice::testing {
 namespace {

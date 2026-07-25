@@ -1,11 +1,7 @@
-module;
-
-// kota/codec/json stays textual: to_json + lsp_config serialize diagnostics
-// and cannot cross the module boundary.
-#include "server/protocol/serialize.h"  // to_raw (textual: depends on textual json codec)
-
 module clice.worker;
 
+import kota;
+import clice.protocol;
 import clice.feature;
 import clice.index;
 import clice.syntax;

@@ -7,9 +7,7 @@ module;
 export module clice.compile:tidy_checker;
 
 // No `import stdlib`: the clang-tidy headers in the global module fragment pull
-// std names textually, and re-exporting them via stdlib collides with the
-// hidden-friend make_shared declaration in <memory> ("cannot befriend target of
-// using declaration"). Like the clang/llvm wrappers, this unit stays out of any
+// std names textually. Like the clang/llvm wrappers, this unit stays out of any
 // stdlib-importing graph — so it does not import clice partitions either, and
 // clice::Diagnostic is forward-declared instead.
 import llvm;

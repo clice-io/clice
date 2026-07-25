@@ -6,13 +6,13 @@ import stdlib;
 import llvm;
 import kota;
 import clice.compile;
-import clice.feature;
 import :compiler.context_resolver;
+import clice.feature;
 import clice.protocol;
 import :state.session;
 import :state.workspace;
-import clice.worker;
 import clice.support;
+import clice.worker;
 
 export namespace clice::testing {
 

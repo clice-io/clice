@@ -2,12 +2,10 @@ module;
 
 #include "version.h"
 
-// kota/codec/json + kota/ipc/codec/json stay textual: explicit template
-// instantiations that cannot be shared through the kota wrapper's GMF.
-#include "server/protocol/serialize.h"  // to_raw (textual: depends on textual json codec)
 
 module clice.server;
 
+import kota;
 namespace clice {
 
 namespace protocol = kota::ipc::protocol;

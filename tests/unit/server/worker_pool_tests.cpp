@@ -1,8 +1,8 @@
 import llvm;
 import kota;
 import clice.test;
-import clice.support;
 import clice.protocol;
+import clice.support;
 import clice.worker;
 
 namespace clice::testing {

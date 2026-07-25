@@ -3,9 +3,9 @@ import llvm;
 import kota;
 import clice.test;
 import clice.command;
+import clice.index;
 import clice.protocol;
 import clice.syntax;
-import clice.index;
 
 namespace clice::testing {
 

@@ -1,5 +1,5 @@
-import clice.test;
 import kota;
+import clice.test;
 import clice.server;
 
 namespace clice::testing {

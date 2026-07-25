@@ -1,10 +1,6 @@
-module;
-
-// kota/codec/json stays textual: to_json/from_json + lsp_config drive
-// diagnostics serialization and cannot cross the module boundary.
-
 module clice.server;
 
+import kota;
 import clang;
 
 namespace clice {

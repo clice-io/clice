@@ -1,6 +1,6 @@
-import clice.test;
 import llvm;
 import kota;
+import clice.test;
 import clice.command;
 
 namespace clice::testing {

@@ -1,13 +1,13 @@
 import stdlib;
-import kota;
 import llvm;
+import kota;
 import clice.test;
-import clice.server;
-import clice.support;
 import clice.command;
 import clice.compile;
-import clice.worker;
 import clice.index;
+import clice.server;
+import clice.support;
+import clice.worker;
 
 namespace clice::testing {
 

@@ -2,9 +2,6 @@ module;
 
 #include "version.h"
 
-// kota/codec/json + kota/ipc/codec/json stay textual: explicit template
-// instantiations that cannot be shared through the kota wrapper's GMF.
-
 module clice.server;
 
 namespace clice {

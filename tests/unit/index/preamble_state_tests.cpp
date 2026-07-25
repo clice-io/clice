@@ -1,11 +1,11 @@
 #include "schema_generated.h"
 
-import clice.test;
 import llvm;
-import clice.index;
-import clice.support;
+import clice.test;
 import clice.feature;
+import clice.index;
 import clice.semantic;
+import clice.support;
 import clice.syntax;
 
 namespace clice::testing {

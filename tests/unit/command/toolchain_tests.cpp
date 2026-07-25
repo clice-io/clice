@@ -1,8 +1,8 @@
 import llvm;
 import clice.test;
 import clice.command;
-import clice.support;
 import clice.compile;
+import clice.support;
 
 namespace clice::testing {
 namespace {

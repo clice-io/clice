@@ -1,5 +1,5 @@
-import clice.test;
 import llvm;
+import clice.test;
 import clice.support;
 
 /// Ported from clangd's unittests/support/MarkupTests.cpp (llvmorg-21.1.8), part of the LLVM

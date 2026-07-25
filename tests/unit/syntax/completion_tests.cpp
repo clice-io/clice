@@ -1,6 +1,6 @@
+import llvm;
 import clice.test;
 import clice.syntax;
-import llvm;
 
 namespace clice::testing {
 namespace {

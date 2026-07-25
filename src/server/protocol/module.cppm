@@ -5,4 +5,5 @@ export module clice.protocol;
 export import :agentic;
 export import :extension;
 export import :position;
+export import :serialize;
 export import :worker;

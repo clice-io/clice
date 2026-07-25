@@ -1,7 +1,6 @@
-#include <string>  // std floor: string comparison operators are not re-exported by import stdlib
+import kota;
 import clice.test;
 import clice.support;
-import kota;
 
 namespace {
 

@@ -406,8 +406,13 @@ using ::clang::operator^;
 using ::clang::operator|;
 // clang::DesiredStackSize (clang/Basic/Stack.h) has internal linkage, which a
 // using-declaration cannot export — re-export it as a copy under a distinct
-// name, initialized from the original so the value can never drift.
+// name, initialized from the original so the value can never drift. Reading a
+// constant-initialized const's value is not an odr-use, so this is not a real
+// TU-local exposure ([basic.link]); clang's warning is conservative here.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-WTU-local-entity-exposure"
 constexpr size_t desired_stack_size = ::clang::DesiredStackSize;
+#pragma clang diagnostic pop
 using ::clang::printTemplateArgumentList;
 using ::clang::scanSourceForDependencyDirectives;
 
@@ -434,9 +439,8 @@ export namespace clang::SrcMgr {
 
 using ::clang::SrcMgr::CharacteristicKind;
 
-}
+}  // namespace clang::SrcMgr
 
-export namespace clang::ast_matchers {}
 
 export namespace clang::dependency_directives_scan {
 
@@ -509,7 +513,7 @@ export namespace clang::sema {
 
 using ::clang::sema::TemplateDeductionInfo;
 
-}
+}  // namespace clang::sema
 
 export namespace clang::syntax {
 
@@ -601,7 +605,7 @@ template <::std::size_t I>
     } else {
         return range.getEnd();
     }
-}
+}  // namespace clang
 
 }  // namespace clang
 

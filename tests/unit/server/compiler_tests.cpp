@@ -1,10 +1,9 @@
-#include <memory>  // std floor: make_shared and shared_ptr comparison are not re-exported by import stdlib
 import stdlib;
 import kota;
 import clice.test;
+import clice.protocol;
 import clice.server;
 import clice.support;
-import clice.protocol;
 import clice.worker;
 
 namespace clice::testing {

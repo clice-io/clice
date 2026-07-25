@@ -1,11 +1,10 @@
-#include <optional>  // std floor: optional/vector comparison operators are not re-exported by import stdlib
 #include <vector>
 import llvm;
 import kota;
 import clice.test;
 import clice.feature;
-import clice.support;
 import clice.semantic;
+import clice.support;
 
 /// Ported from clangd's unittests/HoverTests.cpp (llvmorg-21.1.8), part of the LLVM
 /// project, licensed under Apache License v2.0 with LLVM Exceptions.

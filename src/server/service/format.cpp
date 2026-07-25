@@ -1,10 +1,6 @@
-module;
-
-// kota/codec/json stays textual: it defines explicit template instantiations
-// that cannot be shared through the kota wrapper's GMF.
-
 module clice.server;
 
+import kota;
 namespace clice {
 
 /// Clang diagnostics indicating that an input file could not be found —

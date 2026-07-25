@@ -140,13 +140,13 @@ using ::kota::deco::util::argvify;
 export namespace kota::ipc {
 
 using ::kota::ipc::BincodePeer;
-using ::kota::ipc::JsonPeer;
-using ::kota::ipc::lsp_config;
 using ::kota::ipc::Error;
+using ::kota::ipc::JsonPeer;
 using ::kota::ipc::RecordingTransport;
 using ::kota::ipc::RequestResult;
 using ::kota::ipc::StreamTransport;
 using ::kota::ipc::Transport;
+using ::kota::ipc::lsp_config;
 using ::kota::ipc::request_options;
 
 }  // namespace kota::ipc
@@ -282,7 +282,7 @@ export namespace kota::meta::attrs {
 
 using ::kota::meta::attrs::skip;
 
-}
+}  // namespace kota::meta::attrs
 
 export namespace kota::option {
 

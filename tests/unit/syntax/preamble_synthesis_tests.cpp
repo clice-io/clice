@@ -1,5 +1,5 @@
-import clice.test;
 import llvm;
+import clice.test;
 import clice.syntax;
 
 namespace clice::testing {

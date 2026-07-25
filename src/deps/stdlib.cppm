@@ -78,10 +78,8 @@ export module stdlib;
 // std header for each operator).
 //
 // Separate ledger: std::get is befriended by the MSVC STL's std::pair/tuple
-// (libstdc++ and libc++ do not befriend it). It is re-exported below and its
-// Windows verdict rides the CI matrix; a few sources that call std::get over
-// std::pair keep a textual <utility>/<tuple> include carrying that MSVC-only
-// justification.
+// (libstdc++ and libc++ do not befriend it). It is re-exported below
+// unconditionally; the Windows verdict rides the CI matrix.
 export namespace std {
 
 using ::std::abort;
@@ -109,14 +107,16 @@ using ::std::exchange;
 using ::std::expected;
 using ::std::find;
 using ::std::find_if;
+#ifndef _LIBCPP_VERSION
 using ::std::format;
+#endif
 using ::std::format_string;
 using ::std::formatter;
 using ::std::forward;
 using ::std::function;
 using ::std::generic_category;
-using ::std::get_if;
 using ::std::get;
+using ::std::get_if;
 using ::std::getenv;
 using ::std::greater;
 using ::std::hash;
@@ -270,10 +270,12 @@ using ::std::ranges::unique;
 export namespace std {
 namespace views = ::std::ranges::views;
 
-}
+}  // namespace std
 
 export namespace std::ranges::views {
 
+using ::std::ranges::views::drop;
+using ::std::ranges::views::transform;
 using ::std::ranges::views::zip;
 
 }  // namespace std::ranges::views
@@ -309,6 +311,20 @@ export namespace std {
 using ::std::operator-;
 using ::std::operator==;
 using ::std::operator<=>;
+
+}  // namespace std
+
+// libc++'s <format> under modules: exporting the raw std::format overload set
+// makes importers' overload resolution eagerly instantiate the wide-char
+// basic_format_string (lazy in textual includes), which hard-errors on the
+// deleted formatter<string, wchar_t>. Export a char-only forwarder instead of
+// the overload set; the main using-list above skips std::format on libc++.
+export namespace std {
+
+template <typename... Args>
+[[nodiscard]] string format(format_string<Args...> fmt, Args&&... args) {
+    return ::std::vformat(fmt.get(), ::std::make_format_args(args...));
+}
 
 }  // namespace std
 #endif

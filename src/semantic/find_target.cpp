@@ -6,6 +6,8 @@ module;
 
 module clice.semantic;
 
+import clice.support;
+
 namespace clice::ast {
 
 namespace {

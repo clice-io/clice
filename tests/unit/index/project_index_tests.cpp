@@ -1,4 +1,3 @@
-#include <string>  // std floor: string comparison operators are not re-exported by import stdlib
 import llvm;
 import clice.test;
 import clice.index;
