@@ -163,7 +163,11 @@ void MasterServer::initialize() {
     if(!workspace_root.empty()) {
         // Construct after the workspace load so the tracker's baseline CDB
         // stamp matches the database that was just loaded.
-        tracker = std::make_unique<FileTracker>(workspace, sessions, workspace_root);
+        tracker = std::make_unique<FileTracker>(workspace,
+                                                sessions,
+                                                workspace_root,
+                                                consumed_cdb_path,
+                                                consumed_cdb_stamp);
         auto& tracker_cfg = workspace.config.tracker;
         if(*tracker_cfg.cdb_poll_seconds > 0) {
             bg_tasks.spawn(cdb_poll_task());
@@ -316,6 +320,32 @@ void MasterServer::on_agentic_query() {
 }
 
 void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
+    // A save that did not change the file's bytes must not cascade: vim's
+    // bare :w would otherwise dirty every dependent for nothing. The
+    // tracker's baseline knows the consumed content; reseeding it here
+    // also keeps the next sweep from re-reporting a real save as an
+    // external change. Without a tracker (no workspace) every save is
+    // conservatively treated as a change.
+    // Single pass on purpose: reseed is a read-modify-write of the
+    // baseline, so it must run exactly once per save — a probing pre-pass
+    // would absorb a real change and then drop its event.
+    llvm::SmallVector<FileEvent> filtered;
+    if(tracker) {
+        filtered.reserve(events.size());
+        for(auto& event: events) {
+            if(event.kind == FileEvent::Kind::BufferSaved && !tracker->reseed(event.path_id)) {
+                LOG_DEBUG("didSave without a content change, skipping cascade: {}",
+                          workspace.path_pool.resolve(event.path_id));
+                continue;
+            }
+            filtered.push_back(event);
+        }
+        if(filtered.empty() && !events.empty()) {
+            return;
+        }
+        events = filtered;
+    }
+
     auto dirty = invalidator.apply(events);
 
     for(auto path_id: dirty.reset_trial) {
@@ -516,6 +546,10 @@ void MasterServer::load_workspace() {
     }
 
     ScopedTimer cdb_timer;
+    // Stat before the read: the tracker's baseline must describe the
+    // content this load consumes (see FileTracker::stat_file).
+    consumed_cdb_path = cdb_path;
+    consumed_cdb_stamp = FileTracker::stat_file(cdb_path);
     auto count = workspace.cdb.load(cdb_path).value_or(0);
     LOG_INFO("Loaded CDB from {} with {} entries", cdb_path, count);
     LOG_PERF("startup", "phase=cdb_load entries={} elapsed_ms={}", count, cdb_timer.ms());

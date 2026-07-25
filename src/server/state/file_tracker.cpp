@@ -17,28 +17,60 @@ namespace clice {
 
 FileTracker::FileTracker(Workspace& workspace,
                          const SessionStore& store,
-                         std::string workspace_root) :
+                         std::string workspace_root,
+                         llvm::StringRef consumed_path,
+                         CDBStamp consumed) :
     workspace(workspace), store(store), workspace_root(std::move(workspace_root)) {
     cdb_path = discover_compile_commands(workspace.config, this->workspace_root);
-    // A change landing between the workspace load and this stat is caught
-    // anyway: the stamp only gates reloads, and the reload's diff is
-    // computed from content, so it never reports spurious changes.
-    applied = stat_cdb();
+    if(!consumed_path.empty() && cdb_path == consumed_path) {
+        // The stamp of the content the workspace load actually read (see
+        // stat_file): a rewrite that landed between that read and this
+        // constructor differs from it and reloads on the first tick.
+        applied = consumed;
+    } else {
+        applied = stat_cdb();
+    }
 }
 
-FileTracker::CDBStamp FileTracker::stat_cdb() const {
+FileTracker::CDBStamp FileTracker::stat_file(llvm::StringRef path) {
     CDBStamp stamp;
-    if(cdb_path.empty()) {
+    if(path.empty()) {
         return stamp;
     }
     llvm::sys::fs::file_status status;
-    if(llvm::sys::fs::status(cdb_path, status)) {
+    if(llvm::sys::fs::status(path, status)) {
         return stamp;
     }
     stamp.exists = true;
     stamp.size = status.getSize();
     stamp.mtime_ns = fs::mtime_ns(status);
     return stamp;
+}
+
+FileTracker::CDBStamp FileTracker::stat_cdb() const {
+    return stat_file(cdb_path);
+}
+
+bool FileTracker::reseed(std::uint32_t path_id) {
+    auto path = workspace.path_pool.resolve(path_id);
+    llvm::sys::fs::file_status status;
+    if(llvm::sys::fs::status(path, status)) {
+        // Saved-then-vanished: keep the baseline so the next sweep can
+        // observe the removal and deliver DiskRemoved; the save itself
+        // still cascades conservatively.
+        return true;
+    }
+    auto hash = hash_file(path);
+    if(hash == 0) {
+        // Unreadable right now: leave the old baseline for the sweep's
+        // retry logic and let the caller cascade.
+        return true;
+    }
+    auto it = baseline.find(path_id);
+    bool changed = it == baseline.end() || it->second.missing || it->second.hash != hash;
+    baseline[path_id] =
+        FileState{.size = status.getSize(), .mtime_ns = fs::mtime_ns(status), .hash = hash};
+    return changed;
 }
 
 llvm::SmallVector<FileEvent> FileTracker::tick_cdb(bool force) {
@@ -159,18 +191,6 @@ kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
         auto batch_end = std::min(begin + batch_size, files.size());
         for(std::size_t i = begin; i < batch_end; ++i) {
             auto path_id = files[i];
-            if(store.find(path_id)) {
-                // Open buffers are the truth and didSave owns their disk
-                // sync; drop the baseline so the file re-seeds silently
-                // once it closes (BufferClosed already reindexes it).
-                // TODO: a disk change landing while the file is open (git
-                // checkout on an open header, closed without saving) is
-                // forgotten by this reset — dependents are not cascaded.
-                // Desync hardening owns that case.
-                baseline.erase(path_id);
-                continue;
-            }
-
             auto path = workspace.path_pool.resolve(path_id);
             llvm::sys::fs::file_status status;
             bool exists = !llvm::sys::fs::status(path, status);
@@ -192,6 +212,24 @@ kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
                     }
                 }
                 baseline.try_emplace(path_id, state);
+                // The seed must not absorb a change that landed before
+                // this first sweep could see the file: a TU shard records
+                // the content indexing consumed, and a mismatch means the
+                // change predates the seed — dispatch it like any other.
+                // Only CDB sources are checked: header shards carry no
+                // deps of their own (need_update is conservatively true
+                // for them), and a pre-seed header edit reaches its
+                // including TUs through their dep hashes anyway.
+                if(exists && workspace.cdb.has_entry(path)) {
+                    auto shard = workspace.merged_indices.find(path_id);
+                    if(shard != workspace.merged_indices.end() && shard->second.loaded() &&
+                       shard->second.need_update()) {
+                        LOG_INFO("Pre-seed change detected for {} (shard is stale), dispatching",
+                                 path);
+                        events.push_back(FileEvent::disk_changed(path_id));
+                        changed += 1;
+                    }
+                }
                 continue;
             }
 

@@ -12,6 +12,7 @@
 #include "server/service/feature_router.h"
 #include "server/service/query.h"
 #include "server/state/config.h"
+#include "server/state/file_tracker.h"
 #include "server/state/invalidator.h"
 #include "server/state/session.h"
 #include "server/state/session_store.h"
@@ -26,8 +27,6 @@
 #include "llvm/ADT/StringRef.h"
 
 namespace clice {
-
-class FileTracker;
 
 namespace deco = kota::deco;
 
@@ -157,6 +156,12 @@ public:
     /// workspace-less sessions); its polling loops run in bg_tasks, and the
     /// clice/internal/poll test hook drives ticks directly.
     std::unique_ptr<FileTracker> tracker;
+
+    /// The compile_commands.json path and pre-read stamp of the load the
+    /// current CDB entries came from; seeds the tracker's baseline (see
+    /// FileTracker::stat_file).
+    std::string consumed_cdb_path;
+    FileTracker::CDBStamp consumed_cdb_stamp;
 
     /// Wakes subscribers after a new message landed in notify_log. Pure
     /// wake-up per the Signal contract: subscribers keep a sequence cursor

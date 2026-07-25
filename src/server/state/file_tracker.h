@@ -10,6 +10,7 @@
 #include "kota/async/async.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 
 namespace clice {
 
@@ -31,10 +32,44 @@ namespace clice {
 /// unit-testable against plain data structures.
 class FileTracker {
 public:
-    /// Discovers the compile_commands.json itself (it may not exist yet)
-    /// and records the stamp the currently loaded CDB corresponds to.
-    /// Construct after the workspace is loaded.
-    FileTracker(Workspace& workspace, const SessionStore& store, std::string workspace_root);
+    /// (existence, size, mtime) identity of the CDB file.
+    struct CDBStamp {
+        bool exists = false;
+        std::uint64_t size = 0;
+        std::int64_t mtime_ns = 0;
+
+        friend bool operator==(const CDBStamp&, const CDBStamp&) = default;
+    };
+
+    /// Stat a CDB candidate. The workspace loader calls this BEFORE
+    /// reading the file and hands the stamp to the constructor: the
+    /// baseline must describe the content the load consumed. Statting
+    /// after the load leaves a window where a rewrite lands in between
+    /// and is never reloaded — the stamp then gates against the new file
+    /// while memory holds the old commands, permanently. The reversed
+    /// race (a rewrite between this stat and the read) only costs one
+    /// spurious reload with an empty diff.
+    static CDBStamp stat_file(llvm::StringRef path);
+
+    /// Discovers the compile_commands.json itself (it may not exist yet).
+    /// `consumed_path`/`consumed` describe the database the workspace
+    /// load actually read (see stat_file); when discovery lands on the
+    /// same path, that stamp seeds `applied`. Construct after the
+    /// workspace is loaded.
+    FileTracker(Workspace& workspace,
+                const SessionStore& store,
+                std::string workspace_root,
+                llvm::StringRef consumed_path,
+                CDBStamp consumed);
+
+    /// Refresh a file's baseline from the disk right now, silently, and
+    /// report whether its content differs from the recorded baseline.
+    /// Called on didSave: the save's cascade already handles the change,
+    /// so the next sweep must not re-report it — and a save that did not
+    /// change the bytes reports false, letting the dispatcher skip the
+    /// cascade entirely. Unknown or unreadable files report true (the
+    /// conservative direction: cascade rather than miss).
+    bool reseed(std::uint32_t path_id);
 
     /// One CDB poll tick. Stats the known compile_commands.json — or keeps
     /// discovering one when none was found yet, which is how a database
@@ -50,17 +85,21 @@ public:
     /// reload just yields an empty diff.
     llvm::SmallVector<FileEvent> tick_cdb(bool force = false);
 
-    /// One workspace sweep. Stats every file the dependency graph knows,
-    /// skipping open buffers; a (mtime, size) suspect is confirmed by
-    /// content hash before DiskChanged is emitted, so touch-only changes
-    /// (mtime bump, identical bytes) stay silent. A stat failure on a
-    /// known file emits DiskRemoved once; a transient content-read failure
-    /// emits nothing and is retried on the next tick.
+    /// One workspace sweep. Stats every file the dependency graph knows —
+    /// open buffers included: their disk state matters to dependents (who
+    /// always read the disk), so an external write to an open file emits
+    /// DiskChanged like any other. didSave keeps the baseline in step via
+    /// reseed(). A (mtime, size) suspect is confirmed by content hash
+    /// before DiskChanged is emitted, so touch-only changes (mtime bump,
+    /// identical bytes) stay silent. A stat failure on a known file emits
+    /// DiskRemoved once; a transient content-read failure emits nothing
+    /// and is retried on the next tick.
     ///
-    /// Files seen for the first time only seed the baseline and emit
+    /// Files seen for the first time seed the baseline and normally emit
     /// nothing — the first sweep after startup is silent by construction
-    /// (startup storm guard), and files entering the graph later start
-    /// tracking silently too.
+    /// (startup storm guard). One exception: a file whose index shard
+    /// exists but no longer matches the disk changed before the seed
+    /// could see it, and that change still needs dispatching.
     ///
     /// Stats run synchronously in batches, yielding to the event loop
     /// between batches; each round's duration is perf-logged.
@@ -70,15 +109,6 @@ public:
     kota::task<llvm::SmallVector<FileEvent>> tick_workspace();
 
 private:
-    /// (existence, size, mtime) identity of the CDB file.
-    struct CDBStamp {
-        bool exists = false;
-        std::uint64_t size = 0;
-        std::int64_t mtime_ns = 0;
-
-        friend bool operator==(const CDBStamp&, const CDBStamp&) = default;
-    };
-
     CDBStamp stat_cdb() const;
 
     /// Last-known on-disk state of a tracked file.

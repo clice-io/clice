@@ -8,6 +8,48 @@ namespace {
 
 TEST_SUITE(FileTracker) {
 
+TEST_CASE(StaleConsumedStampReloads) {
+    TempDir tmp;
+    tmp.touch("main.cpp", R"(int main() {})");
+    tmp.touch("lib.cpp", R"(int lib() { return 1; })");
+
+    Workspace workspace;
+    SessionStore store;
+
+    // The loader's sequence: stat first, then read. A rewrite landing
+    // between the read and the tracker's construction must look like a
+    // change against the consumed stamp — statting at construction time
+    // instead would absorb it and never reload (F03).
+    write_cdb(tmp,
+              workspace.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"), {}}
+    }));
+    auto consumed = FileTracker::stat_file(tmp.path("compile_commands.json"));
+
+    // The rewrite: lands after the load, before the tracker exists. The
+    // extra entry changes the file size, so the stamp differs from the
+    // consumed one regardless of mtime granularity.
+    tmp.touch("compile_commands.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"), {}},
+                  {tmp.root, tmp.path("lib.cpp"),  {}}
+    }));
+
+    FileTracker tracker(workspace,
+                        store,
+                        tmp.root.str().str(),
+                        tmp.path("compile_commands.json"),
+                        consumed);
+
+    // Two natural (unforced) ticks: settle, then reload.
+    ASSERT_TRUE(tracker.tick_cdb().empty());
+    auto events = tracker.tick_cdb();
+    ASSERT_EQ(events.size(), 1u);
+    ASSERT_EQ(events[0].kind, FileEvent::Kind::CDBChanged);
+    ASSERT_EQ(events[0].cdb.added.size(), 1u);
+}
+
 TEST_CASE(CDBTickDebounces) {
     TempDir tmp;
     tmp.touch("main.cpp", R"(int main() {})");
@@ -20,7 +62,7 @@ TEST_CASE(CDBTickDebounces) {
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {}}
     }));
-    FileTracker tracker(workspace, store, tmp.root.str().str());
+    FileTracker tracker(workspace, store, tmp.root.str().str(), "", {});
 
     // Rewrite with one more entry: the first tick only records the pending
     // stamp, the second sees it stable and reloads.
@@ -53,7 +95,7 @@ TEST_CASE(CDBTickForceImmediate) {
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {}}
     }));
-    FileTracker tracker(workspace, store, tmp.root.str().str());
+    FileTracker tracker(workspace, store, tmp.root.str().str(), "", {});
 
     tmp.touch("compile_commands.json",
               build_cdb_json({
@@ -72,7 +114,7 @@ TEST_CASE(CDBTickDiscoversLate) {
     Workspace workspace;
     SessionStore store;
     // No compile_commands.json at construction time.
-    FileTracker tracker(workspace, store, tmp.root.str().str());
+    FileTracker tracker(workspace, store, tmp.root.str().str(), "", {});
     ASSERT_TRUE(tracker.tick_cdb(/*force=*/true).empty());
 
     tmp.touch("compile_commands.json",
@@ -96,7 +138,7 @@ TEST_CASE(CDBTickDeleteRecreate) {
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {}}
     }));
-    FileTracker tracker(workspace, store, tmp.root.str().str());
+    FileTracker tracker(workspace, store, tmp.root.str().str(), "", {});
 
     // Deletion (mid-regeneration): keep serving the loaded entries.
     fs::remove_all(tmp.path("compile_commands.json"));
@@ -124,7 +166,7 @@ TEST_CASE(WorkspaceTickStateMachine) {
     auto header = workspace.path_pool.intern(tmp.path("header.h"));
     workspace.dep_graph.set_includes(tu, 0, {header});
     workspace.dep_graph.build_reverse_map();
-    FileTracker tracker(workspace, store, tmp.root.str().str());
+    FileTracker tracker(workspace, store, tmp.root.str().str(), "", {});
 
     auto body = [&]() -> kota::task<> {
         // First sweep seeds the baseline silently, even though main.cpp is
@@ -174,7 +216,7 @@ TEST_CASE(WorkspaceTickStateMachine) {
     loop.run();
 }
 
-TEST_CASE(WorkspaceTickSkipsOpen) {
+TEST_CASE(OpenFileChangeTracked) {
     TempDir tmp;
     tmp.touch("header.h", R"(int x = 1;)");
 
@@ -185,14 +227,29 @@ TEST_CASE(WorkspaceTickSkipsOpen) {
     workspace.dep_graph.set_includes(header, 0, {});
     workspace.dep_graph.build_reverse_map();
     store.open(header);
-    FileTracker tracker(workspace, store, tmp.root.str().str());
+    FileTracker tracker(workspace, store, tmp.root.str().str(), "", {});
 
     auto body = [&]() -> kota::task<> {
         EXPECT_TRUE((co_await tracker.tick_workspace()).empty());
 
-        // The open buffer is the truth: its disk changes are not tracked.
+        // The open buffer stays the truth for its own compile, but the
+        // disk change matters to dependents (they read the disk) — it
+        // must be tracked and dispatched, not swallowed.
         tmp.touch("header.h", R"(int x = 2;)");
+        auto events = co_await tracker.tick_workspace();
+        EXPECT_EQ(events.size(), 1u);
+        if(!events.empty()) {
+            EXPECT_EQ(events[0].kind, FileEvent::Kind::DiskChanged);
+            EXPECT_EQ(events[0].path_id, header);
+        }
+
+        // A didSave reseed absorbs the editor's own write silently.
+        tmp.touch("header.h", R"(int x = 3;)");
+        EXPECT_TRUE(tracker.reseed(header));
         EXPECT_TRUE((co_await tracker.tick_workspace()).empty());
+
+        // And a reseed over unchanged bytes reports no change.
+        EXPECT_FALSE(tracker.reseed(header));
     };
     auto task = body();
     loop.schedule(task);
