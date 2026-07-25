@@ -53,8 +53,8 @@ sccache = "*"
 
 [feature.build.target.linux-64.dependencies]
 sysroot_linux-64 = "==2.17"
-gcc = "==15.1.0"
-gxx = "==15.1.0"
+gcc = "==15.2.0"
+gxx = "==15.2.0"
 ccache = "*"
 
 [feature.build.target.osx-arm64.dependencies]
@@ -69,8 +69,8 @@ scripts = ["scripts/activate_asan.bat"]
 # Linux arm64 (from x64): needs the aarch64 sysroot and cross gcc for libstdc++.
 [feature.cross-linux-arm64.target.linux-64.dependencies]
 sysroot_linux-aarch64 = "==2.17"
-gcc_linux-aarch64 = "==15.1.0"
-gxx_linux-aarch64 = "==15.1.0"
+gcc_linux-aarch64 = "==15.2.0"
+gxx_linux-aarch64 = "==15.2.0"
 
 [feature.cross-linux-arm64.target.linux-64.activation]
 scripts = ["scripts/activate_cross_linux.sh"]
@@ -88,8 +88,8 @@ python = ">=3.13"
 # (<print>), so the test env must provide the same pinned gcc the build
 # env uses — runner system gcc is too old.
 [feature.test.target.linux-64.dependencies]
-gcc = "==15.1.0"
-gxx = "==15.1.0"
+gcc = "==15.2.0"
+gxx = "==15.2.0"
 # The symbolization round-trip test replays the release strip/GSYM flow
 # (linux-only, like the crash tests it builds on).
 llvm-tools = "==22.1.8"
