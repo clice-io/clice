@@ -238,7 +238,18 @@ target_sources(clice-core PUBLIC
     BASE_DIRS "${PROJECT_SOURCE_DIR}/src"
     FILES ${CLICE_MODULE_SOURCES}
 )
-set_target_properties(clice-core PROPERTIES CXX_SCAN_FOR_MODULES ON)
+# ccache/sccache is scoped to third-party _deps only. First-party targets clear
+# the global compiler launcher because module builds defeat the cache: interface
+# units compile as -x c++-module, which ccache reports unsupported (no caching),
+# and consumers pass -fmodule-file= whose path ccache hashes but whose .pcm
+# content it does not (nor is the .pcm in clang's depfile) — so a changed BMI
+# produces a stale cache hit against the old object. Third-party deps have no
+# such module edges and keep the global launcher.
+set_target_properties(clice-core PROPERTIES
+    CXX_SCAN_FOR_MODULES ON
+    C_COMPILER_LAUNCHER ""
+    CXX_COMPILER_LAUNCHER ""
+)
 add_dependencies(clice-core generate_flatbuffers_schema generate_version_header)
 
 target_include_directories(clice-core PUBLIC
@@ -260,7 +271,11 @@ target_link_libraries(clice-core PUBLIC
 file(GLOB CLICE_DRIVER_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/driver/*.cc")
 add_executable(clice "${PROJECT_SOURCE_DIR}/src/clice.cc" ${CLICE_DRIVER_SOURCES})
 target_link_libraries(clice PRIVATE clice::core kota::deco)
-set_target_properties(clice PROPERTIES CXX_SCAN_FOR_MODULES ON)
+set_target_properties(clice PROPERTIES
+    CXX_SCAN_FOR_MODULES ON
+    C_COMPILER_LAUNCHER ""
+    CXX_COMPILER_LAUNCHER ""
+)
 add_dependencies(clice generate_version_header)
 install(TARGETS clice RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
@@ -302,7 +317,15 @@ if(CLICE_ENABLE_TEST)
         "${PROJECT_SOURCE_DIR}/tests/unit"
     )
     target_link_libraries(unit_tests PRIVATE clice::core kota::zest kota::deco)
-    set_target_properties(unit_tests PROPERTIES CXX_SCAN_FOR_MODULES ON)
+    set_target_properties(unit_tests PROPERTIES
+        CXX_SCAN_FOR_MODULES ON
+        C_COMPILER_LAUNCHER ""
+        CXX_COMPILER_LAUNCHER ""
+    )
+    # zest declaration macros (TEST_SUITE/TEST_CASE/EXPECT_*/ASSERT_*) go on the
+    # whole test executable: every test TU expands them, and the harness module
+    # units (test.cppm/tester.cpp/annotation.cpp) tolerate the zero-token header.
+    target_compile_options(unit_tests PRIVATE ${CLICE_ZEST_MACRO_FI})
     # The generated/ include dir propagates through clice::core, but the
     # generation order does not — depend explicitly so a test including
     # version.h cannot race the generator on a clean parallel build.
@@ -317,7 +340,11 @@ if(CLICE_ENABLE_BENCHMARK)
         "${PROJECT_SOURCE_DIR}/src"
     )
     target_link_libraries(scan_benchmark PRIVATE clice::core kota::deco)
-    set_target_properties(scan_benchmark PROPERTIES CXX_SCAN_FOR_MODULES ON)
+    set_target_properties(scan_benchmark PROPERTIES
+        CXX_SCAN_FOR_MODULES ON
+        C_COMPILER_LAUNCHER ""
+        CXX_COMPILER_LAUNCHER ""
+    )
 endif()
 
 include("${PROJECT_SOURCE_DIR}/cmake/release.cmake")
