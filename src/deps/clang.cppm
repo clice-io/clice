@@ -295,6 +295,7 @@ using ::clang::RawComment;
 using ::clang::RecordDecl;
 using ::clang::RecursiveASTVisitor;
 using ::clang::ReferenceType;
+using enum ::clang::RefQualifierKind;
 using ::clang::ReferenceTypeLoc;
 using ::clang::ReturnStmt;
 using ::clang::Sema;
@@ -555,6 +556,10 @@ using ::clang::tooling::applyAllReplacements;
 using ::clang::tooling::calculateRangesAfterReplacements;
 
 }  // namespace clang::tooling
+
+// Unscoped enum values are no longer visible through unqualified lookup from
+// importers (clang 22 fix for #131058). Export the ones we use.
+export using enum ::CXAvailabilityKind;
 
 // Adapter shims: clice's structured-binding support for clang::SourceRange.
 // The std specializations live in purview (found by reachability); the get
