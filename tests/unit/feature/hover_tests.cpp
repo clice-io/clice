@@ -236,7 +236,7 @@ void run_info(llvm::StringRef code,
 
 void expect_hover(const HoverInfo& expected) {
     if(!info) {
-        std::println("no hover result for:\n{}", current_code.str());
+        clice::println("no hover result for:\n{}", current_code.str());
     }
     ASSERT_TRUE(info.has_value());
 
@@ -253,7 +253,7 @@ void expect_hover(const HoverInfo& expected) {
         info->align == expected.align && info->callee_arg_info == expected.callee_arg_info &&
         info->call_pass_type == expected.call_pass_type;
     if(!same) {
-        std::println("hover mismatch for:\n{}", current_code.str());
+        clice::println("hover mismatch for:\n{}", current_code.str());
     }
 
     EXPECT_EQ(dump(info->namespace_scope), dump(expected.namespace_scope));
@@ -284,7 +284,7 @@ void check_sym_range() {
     auto expected = range("sym");
     ASSERT_TRUE(info->symbol_range.has_value());
     if(*info->symbol_range != expected) {
-        std::println("symbol range mismatch for:\n{}", current_code.str());
+        clice::println("symbol range mismatch for:\n{}", current_code.str());
     }
     EXPECT_EQ(info->symbol_range->begin, expected.begin);
     EXPECT_EQ(info->symbol_range->end, expected.end);

@@ -23,7 +23,7 @@ constexpr const char* dead_pid = "999999999";
 /// becoming UB on a bad expected/optional access.
 void require(bool condition, const char* what) {
     if(!condition) {
-        std::println(stderr, "cache_store_tests: requirement failed: {}", what);
+        clice::println(stderr, "cache_store_tests: requirement failed: {}", what);
         std::abort();
     }
 }

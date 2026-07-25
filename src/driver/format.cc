@@ -32,8 +32,8 @@ void add_format(kota::deco::cli::SubCommander& root, int& exit_code) {
                exit_code = 0;
                return;
            }
-           std::println(stderr,
-                        "clice format is not implemented yet: it will format C++ source files.");
+           clice::println(stderr,
+                          "clice format is not implemented yet: it will format C++ source files.");
        })
         .on_error([](auto err) { LOG_ERROR("{}", err.message); });
 

@@ -124,6 +124,7 @@ using ::llvm::operator>;
 using ::llvm::operator>=;
 using ::llvm::operator^;
 using ::llvm::operator|;
+using ::llvm::errs;
 using ::llvm::outs;
 using ::llvm::partition_point;
 using ::llvm::printEscapedString;

@@ -1,5 +1,6 @@
 export module clice.driver;
 
+import clice.support;
 import stdlib;
 import kota;
 
@@ -19,7 +20,7 @@ template <typename Command>
 void print_usage(Command& cmd) {
     std::ostringstream ss;
     cmd.usage(ss);
-    std::print("{}", ss.str());
+    clice::print("{}", ss.str());
 }
 
 }  // namespace clice::driver

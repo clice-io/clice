@@ -618,7 +618,7 @@ TEST_CASE(update_resets_resolved) {
 
         co_await graph->compile(1).catch_cancel();
         EXPECT_EQ(resolve_count, 2);
-        auto tail = compiled | std::views::drop(2);
+        auto tail = std::views::drop(compiled, 2);
         EXPECT_TRUE(ranges::find(tail, 3u) != tail.end());
     });
 }

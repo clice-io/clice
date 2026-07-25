@@ -1,5 +1,7 @@
 module;
 
+#include <cstdio>  // std::FILE / stderr are the stream vocabulary of the print wrappers
+
 export module clice.support:format;
 
 import stdlib;
@@ -21,6 +23,31 @@ std::string dump(const Object& object);
 template <typename... Args>
 [[nodiscard]] std::string format(std::format_string<Args...> fmt, Args&&... args) {
     return std::vformat(fmt.get(), std::make_format_args(args...));
+}
+
+/// std::print/println stand-ins, same rationale as clice::format above (the
+/// whole std::format family instantiates basic_format_string in the caller's
+/// TU). Output rides llvm::raw_ostream, the project's sanctioned I/O.
+template <typename... Args>
+void print(std::format_string<Args...> fmt, Args&&... args) {
+    llvm::outs() << std::vformat(fmt.get(), std::make_format_args(args...));
+}
+
+template <typename... Args>
+void print(std::FILE* stream, std::format_string<Args...> fmt, Args&&... args) {
+    (stream == stderr ? llvm::errs() : llvm::outs())
+        << std::vformat(fmt.get(), std::make_format_args(args...));
+}
+
+template <typename... Args>
+void println(std::format_string<Args...> fmt, Args&&... args) {
+    llvm::outs() << std::vformat(fmt.get(), std::make_format_args(args...)) << '\n';
+}
+
+template <typename... Args>
+void println(std::FILE* stream, std::format_string<Args...> fmt, Args&&... args) {
+    (stream == stderr ? llvm::errs() : llvm::outs())
+        << std::vformat(fmt.get(), std::make_format_args(args...)) << '\n';
 }
 
 }  // namespace clice

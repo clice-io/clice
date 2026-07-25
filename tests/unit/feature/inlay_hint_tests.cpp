@@ -34,7 +34,7 @@ void run(llvm::StringRef code, std::source_location location = std::source_locat
 
     if(!unit->diagnostics().empty()) {
         for(auto& diagnostic: unit->diagnostics()) {
-            std::println("{}", diagnostic.message);
+            clice::println("{}", diagnostic.message);
         }
     }
 

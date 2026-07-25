@@ -32,7 +32,7 @@ void add_doc(kota::deco::cli::SubCommander& root, int& exit_code) {
                exit_code = 0;
                return;
            }
-           std::println(
+           clice::println(
                stderr,
                "clice doc is not implemented yet: it will generate documentation data for the workspace.");
        })

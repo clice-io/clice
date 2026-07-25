@@ -12,7 +12,7 @@ static kota::task<bool> send_and_print(kota::ipc::JsonPeer& peer, Params params)
         co_return false;
     }
     auto json = kota::codec::json::to_string<kota::ipc::lsp_config>(*result);
-    std::println("{}", json ? *json : "null");
+    clice::println("{}", json ? *json : "null");
     co_return true;
 }
 
