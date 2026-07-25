@@ -1,6 +1,4 @@
-#include "kota/ipc/lsp/text.h"
-#include "kota/zest/macro.h"
-
+import clice.test;
 import kota;
 import clice.server;
 

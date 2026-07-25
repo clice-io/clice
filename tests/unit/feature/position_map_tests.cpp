@@ -1,5 +1,4 @@
-#include "kota/zest/macro.h"
-
+import clice.test;
 import clice.feature;
 import clice.support;
 

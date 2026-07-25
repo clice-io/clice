@@ -1,5 +1,9 @@
 module;
 
+// kota/deco/option.h stays textual: this partition declares an option::ID enum
+// via the clang Options.inc X-macro and exposes kota::option::OptTable in the
+// table() signature; the option-table surface is kept textual to match the
+// implementation unit (see argument_parser.cpp).
 #include <kota/deco/option.h>
 
 export module clice.command:argument_parser;

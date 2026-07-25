@@ -156,6 +156,42 @@ else()
     target_compile_options(clice_options INTERFACE -include ${PROJECT_SOURCE_DIR}/src/support/prelude.h)
 endif()
 
+# Zero-token kotatsu macro headers, force-included the same way as prelude.h but
+# scoped to the sources that actually expand the macros. Macros cannot cross a
+# module import boundary, so a unit that imports kota / clice.test for the deco
+# and zest declarations still has to pick up the macros textually. Both headers
+# are pure #define (verified ZERO-TOKEN), so injecting them ahead of the module
+# declaration is well-formed. kotatsu_SOURCE_DIR is only set after package.cmake.
+if(MSVC OR (CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND
+         CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC"))
+    set(CLICE_DECO_MACRO_FI "/FI${kotatsu_SOURCE_DIR}/include/kota/deco/macro.h")
+    set(CLICE_ZEST_MACRO_FI "/FI${kotatsu_SOURCE_DIR}/include/kota/zest/macro.h")
+else()
+    # deco rides a per-source COMPILE_OPTIONS, evaluated separately from the
+    # target-level prelude, so a plain `-include` does not collide with it.
+    set(CLICE_DECO_MACRO_FI "-include" "${kotatsu_SOURCE_DIR}/include/kota/deco/macro.h")
+    # zest is a target-level option that WOULD de-duplicate its bare `-include`
+    # against the prelude force-include, orphaning a path as a stray input file;
+    # SHELL: keeps the flag+path together as one opaque, un-deduplicated unit.
+    set(CLICE_ZEST_MACRO_FI "SHELL:-include ${kotatsu_SOURCE_DIR}/include/kota/zest/macro.h")
+endif()
+
+# deco declaration macros (DecoFlag/DecoKV/.../DECO_CFG) live on their concrete
+# users only — driver subcommands, the two transport option surfaces, the
+# benchmark, and the unit-test entry point (which also gets zest below).
+set_source_files_properties(
+    "${PROJECT_SOURCE_DIR}/src/server/transport/agentic.cppm"
+    "${PROJECT_SOURCE_DIR}/src/server/transport/master_server.cppm"
+    "${PROJECT_SOURCE_DIR}/src/driver/doc.cc"
+    "${PROJECT_SOURCE_DIR}/src/driver/format.cc"
+    "${PROJECT_SOURCE_DIR}/src/driver/index.cc"
+    "${PROJECT_SOURCE_DIR}/src/driver/lint.cc"
+    "${PROJECT_SOURCE_DIR}/src/driver/worker.cc"
+    "${PROJECT_SOURCE_DIR}/benchmarks/scan_benchmark.cpp"
+    "${PROJECT_SOURCE_DIR}/tests/unit/unit_tests.cc"
+    PROPERTIES COMPILE_OPTIONS "${CLICE_DECO_MACRO_FI}"
+)
+
 if(WIN32)
     target_link_libraries(clice_options INTERFACE version ntdll)
 endif()

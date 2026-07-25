@@ -1,5 +1,4 @@
-#include "kota/zest/macro.h"
-
+#include <cstdint>  // std floor: UINT32_MAX is a macro, not exportable through import stdlib
 import stdlib;
 import llvm;
 import kota;

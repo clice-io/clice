@@ -1,8 +1,6 @@
-#include "kota/zest/macro.h"
-#include "llvm/Support/Path.h"
-
 import kota;
 import clice.test;
+import llvm;
 import clice.server;
 import clice.protocol;
 import clice.worker;

@@ -1,6 +1,3 @@
-#include "kota/meta/enum.h"
-#include "kota/zest/macro.h"
-
 import llvm;
 import kota;
 import clice.test;
@@ -39,7 +36,7 @@ auto compute_line_starts(llvm::StringRef content) -> std::vector<std::uint32_t> 
 
 auto decode_utf8_tokens(llvm::StringRef content, const protocol::SemanticTokens& tokens)
     -> std::vector<DecodedToken> {
-    assert(tokens.data.size() % 5 == 0 && "invalid semantic token payload");
+    CLICE_ASSERT(tokens.data.size() % 5 == 0 && "invalid semantic token payload");
 
     auto starts = compute_line_starts(content);
     std::vector<DecodedToken> result;
@@ -83,7 +80,7 @@ auto decode_utf8_tokens(llvm::StringRef content, const protocol::SemanticTokens&
 }
 
 auto decode_relative_tokens(const protocol::SemanticTokens& tokens) -> std::vector<DecodedToken> {
-    assert(tokens.data.size() % 5 == 0 && "invalid semantic token payload");
+    CLICE_ASSERT(tokens.data.size() % 5 == 0 && "invalid semantic token payload");
 
     std::vector<DecodedToken> result;
     result.reserve(tokens.data.size() / 5);

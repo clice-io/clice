@@ -4,10 +4,6 @@
 
 module;
 
-#include <iterator>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
-
-#include "llvm/Support/ErrorHandling.h"  // llvm_unreachable (macro; does not cross module boundary)
-
 module clice.semantic;
 
 namespace clice::ast {
@@ -529,7 +525,7 @@ public:
                 return;
             case clang::NestedNameSpecifier::Super: add(nns->getAsRecordDecl(), flags); return;
         }
-        llvm_unreachable("unhandled NestedNameSpecifier::SpecifierKind");
+        std::unreachable();
     }
 
     void add(const clang::CXXCtorInitializer* init, RelSet flags) {

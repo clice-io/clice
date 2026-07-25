@@ -1,5 +1,3 @@
-#include "kota/zest/macro.h"
-
 import llvm;
 import clang;
 import clice.test;

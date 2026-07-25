@@ -1,9 +1,5 @@
 module;
 
-#include "kota/zest/macro.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallVector.h"
-
 module clice.test;
 
 namespace clice::testing {

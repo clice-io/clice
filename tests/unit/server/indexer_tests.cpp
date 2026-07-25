@@ -1,8 +1,6 @@
-#include "kota/zest/macro.h"
-#include "llvm/Support/raw_ostream.h"
-
 import stdlib;
 import kota;
+import llvm;
 import clice.test;
 import clice.server;
 import clice.support;

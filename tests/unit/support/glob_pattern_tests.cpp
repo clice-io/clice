@@ -1,5 +1,4 @@
-#include "kota/zest/macro.h"
-
+import clice.test;
 import clice.support;
 
 namespace clice::testing {
@@ -12,7 +11,7 @@ namespace {
     if(!Res##NAME.has_value()) {                                                                   \
         std::cout << Res##NAME.error() << '\n';                                                    \
     }                                                                                              \
-    assert(Res##NAME.has_value());                                                                 \
+    CLICE_ASSERT(Res##NAME.has_value());                                                           \
     auto NAME = Res##NAME.value();
 
 TEST_SUITE(GlobPattern) {

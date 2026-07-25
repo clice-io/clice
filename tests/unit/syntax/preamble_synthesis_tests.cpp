@@ -1,6 +1,4 @@
-#include "kota/zest/macro.h"
-#include "llvm/ADT/StringMap.h"
-
+import clice.test;
 import llvm;
 import clice.syntax;
 

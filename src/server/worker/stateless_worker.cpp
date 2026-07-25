@@ -1,13 +1,8 @@
 module;
 
-#include <memory>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
-
 // kota/codec/json stays textual: to_raw serializes results through
 // to_json + lsp_config, which cannot cross the module boundary.
 #include "server/protocol/serialize.h"  // to_raw (textual: depends on textual json codec)
-
-#include "kota/codec/json/json.h"
-#include "kota/ipc/codec/json.h"
 
 module clice.worker;
 

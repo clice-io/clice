@@ -2,9 +2,9 @@ module;
 
 #include "simdjson.h"
 
-#include "kota/deco/option.h"
-
 module clice.command;
+
+import kota;
 
 namespace clice {
 

@@ -1,6 +1,6 @@
-#include "kota/zest/macro.h"
-#include "llvm/ADT/DenseSet.h"
+#include <ranges>  // std floor: the range adaptors are not re-exported by import stdlib
 
+import clice.test;
 import stdlib;
 import llvm;
 import kota;

@@ -1,9 +1,5 @@
 #include "schema_generated.h"
 
-#include "kota/zest/macro.h"
-#include "llvm/Support/raw_ostream.h"
-#include "llvm/Support/xxhash.h"
-
 import stdlib;
 import llvm;
 import clice.test;

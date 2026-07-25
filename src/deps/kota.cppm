@@ -2,9 +2,14 @@ module;
 
 #include "kota/async/async.h"
 #include "kota/async/io/system.h"
+#include "kota/codec/bincode/bincode.h"
+#include "kota/codec/json/json.h"
 #include "kota/codec/toml/toml.h"
 #include "kota/codec/visit/common.h"
+#include "kota/deco/deco.h"
+#include "kota/deco/option.h"
 #include "kota/ipc/codec/bincode.h"
+#include "kota/ipc/codec/json.h"
 #include "kota/ipc/lsp/position.h"
 #include "kota/ipc/lsp/progress.h"
 #include "kota/ipc/lsp/protocol.h"
@@ -59,6 +64,23 @@ using ::kota::codec::rich_error;
 
 }  // namespace kota::codec
 
+export namespace kota::codec::bincode {
+
+using ::kota::codec::bincode::from_bytes;
+using ::kota::codec::bincode::to_bytes;
+
+}  // namespace kota::codec::bincode
+
+export namespace kota::codec::json {
+
+using ::kota::codec::json::from_json;
+using ::kota::codec::json::parse;
+using ::kota::codec::json::prettify;
+using ::kota::codec::json::to_json;
+using ::kota::codec::json::to_string;
+
+}  // namespace kota::codec::json
+
 export namespace kota::codec::toml {
 
 using ::kota::codec::toml::from_toml;
@@ -66,9 +88,60 @@ using ::kota::codec::toml::parse;
 
 }  // namespace kota::codec::toml
 
+export namespace kota::deco::cli {
+
+using ::kota::deco::cli::SubCommandError;
+using ::kota::deco::cli::SubCommander;
+using ::kota::deco::cli::command;
+using ::kota::deco::cli::parse;
+using ::kota::deco::cli::write_usage_for;
+
+}  // namespace kota::deco::cli
+
+// The deco declaration types the DecoFlag/DecoKV/... macros name in their
+// expansions. The macros are force-included textually (they cannot cross a
+// module boundary); these declarations reach their users through import kota.
+export namespace kota::deco::decl {
+
+using ::kota::deco::decl::CommaJoinedAliasFields;
+using ::kota::deco::decl::CommaJoinedFields;
+using ::kota::deco::decl::ConfigFields;
+using ::kota::deco::decl::FlagAliasFields;
+using ::kota::deco::decl::FlagFields;
+using ::kota::deco::decl::FlagOption;
+using ::kota::deco::decl::InputFields;
+using ::kota::deco::decl::InputOption;
+using ::kota::deco::decl::KVAliasFields;
+using ::kota::deco::decl::KVFields;
+using ::kota::deco::decl::KVStyle;
+using ::kota::deco::decl::MultiAliasFields;
+using ::kota::deco::decl::MultiFields;
+using ::kota::deco::decl::OptionCallbackField;
+using ::kota::deco::decl::PackFields;
+using ::kota::deco::decl::ScalarOption;
+using ::kota::deco::decl::VectorOption;
+
+}  // namespace kota::deco::decl
+
+export namespace kota::deco::trait {
+
+using ::kota::deco::trait::InputResultType;
+using ::kota::deco::trait::ScalarResultType;
+using ::kota::deco::trait::VectorResultType;
+
+}  // namespace kota::deco::trait
+
+export namespace kota::deco::util {
+
+using ::kota::deco::util::argvify;
+
+}  // namespace kota::deco::util
+
 export namespace kota::ipc {
 
 using ::kota::ipc::BincodePeer;
+using ::kota::ipc::JsonPeer;
+using ::kota::ipc::lsp_config;
 using ::kota::ipc::Error;
 using ::kota::ipc::RecordingTransport;
 using ::kota::ipc::RequestResult;
@@ -210,6 +283,14 @@ export namespace kota::meta::attrs {
 using ::kota::meta::attrs::skip;
 
 }
+
+export namespace kota::option {
+
+using ::kota::option::OptTable;
+using ::kota::option::ParseOptions;
+using ::kota::option::ParsedArg;
+
+}  // namespace kota::option
 
 export namespace kota::sys {
 

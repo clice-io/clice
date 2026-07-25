@@ -1,6 +1,3 @@
-#include "kota/async/async.h"
-#include "kota/zest/macro.h"
-
 import llvm;
 import kota;
 import clice.test;
@@ -70,8 +67,8 @@ TEST_CASE(AllDeadNoAssignment) {
     WorkerPoolFixture f;
     f.add_stateful(false, 0);
     f.add_stateful(false, 0);
-    EXPECT_EQ(f.pick_least_loaded(), SIZE_MAX);
-    EXPECT_EQ(f.assign_worker(100), SIZE_MAX);
+    EXPECT_EQ(f.pick_least_loaded(), std::numeric_limits<std::size_t>::max());
+    EXPECT_EQ(f.assign_worker(100), std::numeric_limits<std::size_t>::max());
     // A failed assignment must not pin the document to a dead worker.
     EXPECT_FALSE(f.has_owner(100));
 }
@@ -181,7 +178,7 @@ TEST_CASE(PickIdleNoneAvailable) {
     WorkerPoolFixture f;
     f.add_stateless(true, true);
     f.add_stateless(false, false);
-    EXPECT_EQ(f.pick_idle(), SIZE_MAX);
+    EXPECT_EQ(f.pick_idle(), std::numeric_limits<std::size_t>::max());
 }
 
 TEST_CASE(AcquireHighImmediate) {
@@ -640,7 +637,7 @@ TEST_CASE(ExpendableSkipsHosts) {
     // With every live worker hosting someone else's document, there is
     // nothing to sacrifice: the probe stays armed instead of running.
     ASSERT_EQ(f.assign_worker(3), 0u);
-    ASSERT_EQ(f.assign_expendable(4), SIZE_MAX);
+    ASSERT_EQ(f.assign_expendable(4), std::numeric_limits<std::size_t>::max());
 }
 
 TEST_CASE(SingleWorkerProbes) {
@@ -853,7 +850,7 @@ TEST_CASE(DeadPoolReturnsError) {
     bool done = false;
     f.run([&]() -> kota::task<> {
         auto idx = co_await f.acquire_slot(worker::Priority::High);
-        EXPECT_EQ(idx, SIZE_MAX);
+        EXPECT_EQ(idx, std::numeric_limits<std::size_t>::max());
         done = true;
     });
     EXPECT_TRUE(done);
@@ -867,7 +864,7 @@ TEST_CASE(DeadPoolDrainsPending) {
 
     auto r = f.test_dead_pool_drain();
     EXPECT_TRUE(r.drained);
-    EXPECT_EQ(r.assigned_worker, SIZE_MAX);
+    EXPECT_EQ(r.assigned_worker, std::numeric_limits<std::size_t>::max());
     EXPECT_EQ(f.high_queue_size(), 0u);
 }
 

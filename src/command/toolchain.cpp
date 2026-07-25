@@ -1,8 +1,5 @@
 module;
 
-// kota/deco stays textual: the option CLI surface is not in the kota wrapper.
-#include "kota/deco/option.h"
-
 #ifndef _WIN32
 #include <unistd.h>
 extern char** environ;
@@ -170,8 +167,7 @@ std::vector<std::string> parse_cc1_output(llvm::StringRef content) {
         llvm::StringSaver saver(alloc);
         llvm::cl::TokenizeGNUCommandLine(line, saver, args);
 
-        using namespace std::string_view_literals;
-        if(args.size() < 2 || args[1] != "-cc1"sv)
+        if(args.size() < 2 || llvm::StringRef(args[1]) != "-cc1")
             continue;
 
         std::vector<std::string> cc1_args;

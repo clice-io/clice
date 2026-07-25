@@ -1,11 +1,10 @@
-#include "kota/codec/json/json.h"
-#include "kota/codec/toml/toml.h"
-#include "kota/zest/macro.h"
+#include <cstdlib>  // POSIX setenv/unsetenv (and MSVC _putenv_s) are not std exports
 
 import llvm;
 import clice.test;
 import clice.server;
 import clice.support;
+import kota;
 
 namespace clice::testing {
 

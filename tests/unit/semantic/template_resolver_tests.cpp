@@ -1,8 +1,7 @@
-#include "kota/zest/macro.h"
-#include "clang/AST/RecursiveASTVisitor.h"
-
 import clice.test;
 import clice.compile;
+import llvm;
+import clang;
 
 namespace clice::testing {
 

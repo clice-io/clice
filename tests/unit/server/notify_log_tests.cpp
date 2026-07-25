@@ -1,7 +1,7 @@
-#include "kota/async/async.h"
-#include "kota/zest/macro.h"
 #include "spdlog/spdlog.h"  // direct spdlog level control for the retention test
 
+import clice.test;
+import kota;
 import clice.server;
 import clice.support;
 

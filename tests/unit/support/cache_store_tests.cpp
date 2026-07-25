@@ -1,11 +1,12 @@
-#include "kota/zest/macro.h"
 #ifndef _WIN32
 #include <unistd.h>
 #endif
-#include "llvm/Support/Process.h"
+
+#include <cstdio>  // stderr is a macro; macros do not cross a module boundary
 
 import clice.test;
 import clice.support;
+import llvm;
 
 namespace clice::testing {
 

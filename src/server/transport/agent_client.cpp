@@ -2,7 +2,6 @@ module;
 
 // kota/ipc/codec/json stays textual: JsonPeer's explicit template
 // instantiation cannot be shared through the kota wrapper's GMF.
-#include "kota/ipc/codec/json.h"
 
 module clice.server;
 

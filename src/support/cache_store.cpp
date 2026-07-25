@@ -15,7 +15,6 @@ module;
 
 // kota/codec/json stays textual: it defines explicit template instantiations
 // (over simdjson) that cannot be shared through the kota wrapper's GMF.
-#include "kota/codec/json/json.h"
 
 module clice.support;
 

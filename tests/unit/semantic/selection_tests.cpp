@@ -1,6 +1,3 @@
-#include "kota/zest/macro.h"
-#include "clang/Lex/Lexer.h"
-
 import llvm;
 import clang;
 import clice.test;
@@ -94,7 +91,7 @@ bool isValidFileRange(const SourceManager& Mgr, SourceRange R) {
 }
 
 SourceLocation includeHashLoc(FileID IncludedFile, const SourceManager& SM) {
-    assert(SM.getLocForEndOfFile(IncludedFile).isFileID());
+    CLICE_ASSERT(SM.getLocForEndOfFile(IncludedFile).isFileID());
     FileID IncludingFile;
     unsigned Offset;
     std::tie(IncludingFile, Offset) = SM.getDecomposedExpansionLoc(SM.getIncludeLoc(IncludedFile));
@@ -105,7 +102,7 @@ SourceLocation includeHashLoc(FileID IncludedFile, const SourceManager& SM) {
     // Now buf is "...\n#include <foo>\n..."
     // and Offset points here:   ^
     // Rewind to the preceding # on the line.
-    assert(Offset < Buf.size());
+    CLICE_ASSERT(Offset < Buf.size());
     for(;; --Offset) {
         if(Buf[Offset] == '#')
             return SM.getComposedLoc(IncludingFile, Offset);
@@ -176,7 +173,7 @@ static SourceRange getTokenFileRange(SourceLocation Loc,
                                         SM.getImmediateSpellingLoc(FileRange.getEnd()),
                                         SM,
                                         LangOpts);
-            assert(SM.isWrittenInSameFile(FileRange.getBegin(), FileRange.getEnd()));
+            CLICE_ASSERT(SM.isWrittenInSameFile(FileRange.getBegin(), FileRange.getEnd()));
         } else {
             SourceRange ExpansionRangeForBegin =
                 getExpansionTokenRangeInSameFile(FileRange.getBegin(), SM, LangOpts);
@@ -184,9 +181,9 @@ static SourceRange getTokenFileRange(SourceLocation Loc,
                 getExpansionTokenRangeInSameFile(FileRange.getEnd(), SM, LangOpts);
             if(ExpansionRangeForBegin.isInvalid() || ExpansionRangeForEnd.isInvalid())
                 return SourceRange();
-            assert(SM.isWrittenInSameFile(ExpansionRangeForBegin.getBegin(),
-                                          ExpansionRangeForEnd.getBegin()) &&
-                   "Both Expansion ranges should be in same file.");
+            CLICE_ASSERT(SM.isWrittenInSameFile(ExpansionRangeForBegin.getBegin(),
+                                                ExpansionRangeForEnd.getBegin()) &&
+                         "Both Expansion ranges should be in same file.");
             FileRange = unionTokenRange(ExpansionRangeForBegin, ExpansionRangeForEnd, SM, LangOpts);
         }
     }

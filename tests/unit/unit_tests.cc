@@ -1,9 +1,7 @@
-#include "kota/deco/deco.h"
-#include "kota/zest/macro.h"
-#include "kota/zest/zest.h"
-
+#include <string>  // std floor: string comparison operators are not re-exported by import stdlib
 import clice.test;
 import clice.support;
+import kota;
 
 namespace {
 

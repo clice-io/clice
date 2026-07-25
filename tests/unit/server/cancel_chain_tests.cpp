@@ -1,6 +1,3 @@
-#include "kota/async/async.h"
-#include "kota/zest/macro.h"
-
 import kota;
 import clice.test;
 import clice.protocol;

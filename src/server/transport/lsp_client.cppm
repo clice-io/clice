@@ -1,7 +1,5 @@
 module;
 
-#include <memory>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
-
 // kota::ipc::JsonPeer is Peer<JsonCodec>. Forward-declare it instead of including
 // kota/ipc/codec/json.h, whose decode.h emits explicit template instantiations
 // that would leak into every clice importer and collide with the copy the zest

@@ -1,9 +1,7 @@
-module;
-
-#include "kota/deco/deco.h"
-
 module clice.driver;
 
+import stdlib;
+import kota;
 import clice.server;
 import clice.support;
 

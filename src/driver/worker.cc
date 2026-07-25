@@ -1,11 +1,7 @@
-module;
-
-#include <cstdint>
-
-#include "kota/deco/deco.h"
-
 module clice.driver;
 
+import stdlib;
+import kota;
 import clice.support;
 import clice.worker;
 

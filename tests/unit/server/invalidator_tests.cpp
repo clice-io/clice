@@ -1,5 +1,3 @@
-#include "kota/zest/macro.h"
-
 import stdlib;
 import llvm;
 import kota;

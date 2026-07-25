@@ -1,8 +1,5 @@
 module;
 
-#include <string>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
-#include <tuple>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
-
 module clice.feature;
 
 import clang;

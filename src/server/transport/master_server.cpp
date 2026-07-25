@@ -4,8 +4,6 @@ module;
 
 // kota/codec/json + kota/ipc/codec/json stay textual: explicit template
 // instantiations that cannot be shared through the kota wrapper's GMF.
-#include "kota/codec/json/json.h"
-#include "kota/ipc/codec/json.h"
 
 module clice.server;
 

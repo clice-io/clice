@@ -1,7 +1,3 @@
-module;
-
-#include "kota/deco/deco.h"
-
 export module clice.server:transport.master_server;
 
 import stdlib;

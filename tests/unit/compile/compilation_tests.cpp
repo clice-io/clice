@@ -1,6 +1,3 @@
-#include "kota/zest/macro.h"
-#include "llvm/Support/xxhash.h"
-
 import llvm;
 import clice.test;
 import clice.compile;

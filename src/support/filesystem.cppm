@@ -1,7 +1,5 @@
 module;
 
-#include <system_error>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
-
 export module clice.support:filesystem;
 
 import stdlib;
@@ -27,7 +25,10 @@ namespace fs {
 
 using namespace llvm::sys::fs;
 
+// The using-directive above does not export: names an importer should see
+// through clice::fs must be re-declared individually.
 using llvm::sys::fs::createTemporaryFile;
+using llvm::sys::fs::remove;
 
 inline std::expected<std::string, std::error_code> createTemporaryFile(llvm::StringRef prefix,
                                                                        llvm::StringRef suffix) {

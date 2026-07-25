@@ -1,5 +1,10 @@
 module;
 
+// kota/deco/option.h stays textual: the wrapper (import kota) re-exports only
+// kota::option::OptTable/ParseOptions/ParsedArg, but this option-table builder
+// also names the Kind / prefix / render enumerators and aggregate-initializes a
+// constant-init kota::option::Option[] table driven by the clang Options.inc
+// X-macro, so the full kota::option surface must be visible here.
 #include <kota/deco/option.h>
 
 module clice.command;

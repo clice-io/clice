@@ -1,4 +1,3 @@
-#include "kota/zest/macro.h"
 #ifndef _WIN32
 #include <fcntl.h>
 #include <sys/socket.h>

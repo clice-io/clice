@@ -1,8 +1,7 @@
-module;
-
-#include "kota/deco/deco.h"
-
 export module clice.driver;
+
+import stdlib;
+import kota;
 
 export namespace clice::driver {
 

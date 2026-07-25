@@ -1,5 +1,3 @@
-#include "kota/zest/macro.h"
-
 import clice.semantic;
 
 // NOTE:

@@ -1,9 +1,7 @@
 #include "schema_generated.h"
 
-#include "kota/zest/macro.h"
-#include "llvm/Support/raw_ostream.h"
-
 import clice.test;
+import llvm;
 import clice.index;
 import clice.support;
 import clice.feature;

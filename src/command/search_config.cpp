@@ -1,8 +1,6 @@
-module;
-
-#include "kota/deco/option.h"
-
 module clice.command;
+
+import kota;
 
 namespace clice {
 

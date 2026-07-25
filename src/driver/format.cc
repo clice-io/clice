@@ -1,9 +1,11 @@
 module;
 
-#include "kota/deco/deco.h"
+#include <cstdio>  // std floor: stderr is a macro, so import stdlib cannot supply it
 
 module clice.driver;
 
+import stdlib;
+import kota;
 import clice.support;
 
 namespace clice::driver {

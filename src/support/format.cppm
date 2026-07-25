@@ -1,14 +1,10 @@
 module;
 
-#include "kota/meta/enum.h"
-#include "kota/meta/struct.h"
-#include "kota/support/ranges.h"
-#include "kota/support/type_traits.h"
-
 export module clice.support:format;
 
 import stdlib;
 import llvm;
+import kota;
 
 export namespace clice {
 

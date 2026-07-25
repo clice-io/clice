@@ -4,15 +4,6 @@
 /// License v2.0 with LLVM Exceptions. See https://llvm.org/LICENSE.txt
 /// for license information.
 
-module;
-
-#include <algorithm>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
-
-// clang/AST/Type.h stays textual: the TypeNodes.inc X-macro below expands to
-// case labels and casts naming every clang::*Type class and Type::TypeClass
-// enumerator, which must be visible (not merely reachable via import clang).
-#include "clang/AST/Type.h"
-
 module clice.semantic;
 
 namespace clice::ast {

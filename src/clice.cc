@@ -3,10 +3,9 @@
 
 #include "version.h"
 
-#include "kota/deco/deco.h"
-
 import clice.driver;
 import clice.support;
+import kota;
 
 int main(int argc, const char** argv) {
 #ifndef _WIN32

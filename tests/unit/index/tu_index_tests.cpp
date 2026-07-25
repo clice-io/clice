@@ -1,9 +1,6 @@
-#include "kota/meta/enum.h"
-#include "kota/zest/macro.h"
-#include "llvm/Support/thread.h"
-#include "clang/Basic/Stack.h"
-
 import kota;
+import llvm;
+import clang;
 import clice.test;
 import clice.index;
 import clice.support;
@@ -844,7 +841,7 @@ TEST_CASE(DeepExpressionChain) {
     // sanitized builds (and Windows main threads only get 1MB). 32MB is
     // an empirical bound with margin, not a derived number.
     bool compiled = false;
-    llvm::thread compile_thread(std::optional<unsigned>(4 * clang::DesiredStackSize),
+    llvm::thread compile_thread(std::optional<unsigned>(4 * clang::desired_stack_size),
                                 [&] { compiled = compile(); });
     compile_thread.join();
     ASSERT_TRUE(compiled);
@@ -854,7 +851,7 @@ TEST_CASE(DeepExpressionChain) {
     // reintroduced per-node recursion crashes here deterministically
     // instead of only on production workers with deeper files.
     feature::InactiveScan scan;
-    llvm::thread index_thread(std::optional<unsigned>(clang::DesiredStackSize / 4), [&] {
+    llvm::thread index_thread(std::optional<unsigned>(clang::desired_stack_size / 4), [&] {
         // Mirror the stateful worker's post-compile sequence.
         scan = feature::inactive_regions(*unit);
         tu_index = index::TUIndex::build(*unit, true);

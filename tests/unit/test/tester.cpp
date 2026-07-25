@@ -1,6 +1,5 @@
 module;
 
-#include "kota/zest/macro.h"
 #include "llvm/Config/llvm-config.h"
 
 module clice.test;
@@ -248,11 +247,11 @@ std::uint32_t Tester::point(llvm::StringRef name, llvm::StringRef file) {
 
     auto& offsets = sources.all_files[file].offsets;
     if(name.empty()) {
-        assert(offsets.size() == 1);
+        CLICE_ASSERT(offsets.size() == 1);
         return offsets.begin()->second;
     }
 
-    assert(offsets.contains(name));
+    CLICE_ASSERT(offsets.contains(name));
     return offsets.lookup(name);
 }
 
@@ -271,11 +270,11 @@ LocalSourceRange Tester::range(llvm::StringRef name, llvm::StringRef file) {
 
     auto& ranges = sources.all_files[file].ranges;
     if(name.empty()) {
-        assert(ranges.size() == 1);
+        CLICE_ASSERT(ranges.size() == 1);
         return ranges.begin()->second;
     }
 
-    assert(ranges.contains(name));
+    CLICE_ASSERT(ranges.contains(name));
     return ranges.lookup(name);
 }
 
@@ -291,7 +290,7 @@ void Tester::prepare_driver(llvm::StringRef standard) {
     database.add_command("fake", src_path, command);
 
     auto commands = database.lookup(src_path);
-    assert(!commands.empty() && "lookup failed after add_command");
+    CLICE_ASSERT(!commands.empty() && "lookup failed after add_command");
     toolchain.resolve_or_warn(commands.front());
     params.arguments = commands.front().to_argv();
 

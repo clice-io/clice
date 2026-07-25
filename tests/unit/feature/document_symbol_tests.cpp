@@ -1,6 +1,3 @@
-#include "kota/meta/enum.h"
-#include "kota/zest/macro.h"
-
 import llvm;
 import kota;
 import clice.test;

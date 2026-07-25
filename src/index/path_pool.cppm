@@ -1,7 +1,5 @@
 module;
 
-#include <vector>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
-
 export module clice.index:path_pool;
 
 import stdlib;

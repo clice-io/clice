@@ -1,5 +1,3 @@
-#include "kota/zest/macro.h"
-
 import llvm;
 import clice.test;
 import clice.command;
@@ -9,7 +7,7 @@ import clice.compile;
 namespace clice::testing {
 namespace {
 
-using namespace std::string_view_literals;
+using namespace std::literals;
 
 TEST_SUITE(ToolchainTests) {
 

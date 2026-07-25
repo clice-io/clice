@@ -1,7 +1,5 @@
 module;
 
-#include "llvm/Support/ErrorHandling.h"  // llvm_unreachable (macro; does not cross module boundary)
-
 module clice.index;
 
 using namespace clang;
@@ -394,7 +392,7 @@ void USRGenerator::VisitTagDecl(const TagDecl* D) {
                 case TagTypeKind::Class:
                 case TagTypeKind::Struct: Out << "@ST"; break;
                 case TagTypeKind::Union: Out << "@UT"; break;
-                case TagTypeKind::Enum: llvm_unreachable("enum template");
+                case TagTypeKind::Enum: std::unreachable();
             }
             VisitTemplateParameterList(ClassTmpl->getTemplateParameters());
         } else if(const ClassTemplatePartialSpecializationDecl* PartialSpec =
@@ -406,7 +404,7 @@ void USRGenerator::VisitTagDecl(const TagDecl* D) {
                 case TagTypeKind::Class:
                 case TagTypeKind::Struct: Out << "@SP"; break;
                 case TagTypeKind::Union: Out << "@UP"; break;
-                case TagTypeKind::Enum: llvm_unreachable("enum partial specialization");
+                case TagTypeKind::Enum: std::unreachable();
             }
             VisitTemplateParameterList(PartialSpec->getTemplateParameters());
         }

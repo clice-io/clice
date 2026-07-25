@@ -4,9 +4,6 @@ module;
 // instantiations that cannot be shared through the kota wrapper's GMF.
 #include "server/protocol/serialize.h"  // to_raw (textual: depends on textual json codec)
 
-#include "kota/codec/json/json.h"
-#include "kota/ipc/codec/json.h"
-
 module clice.server;
 
 namespace clice {
