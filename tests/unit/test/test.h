@@ -8,4 +8,4 @@
 #include "test/platform.h"
 #include "support/format.h"
 
-#include "kota/zest/macro.h"
+#include "kota/zest/zest.h"
