@@ -71,6 +71,17 @@ if(WIN32)
         set(CMAKE_C_COMPILER_LAUNCHER "${SCCACHE_PATH}" CACHE FILEPATH "")
         set(CMAKE_CXX_COMPILER_LAUNCHER "${SCCACHE_PATH}" CACHE FILEPATH "")
     endif()
+    # TODO(prebuilt-respin): switch to "MultiThreaded" (/MT) so the shipped exe
+    # is self-contained. /MD makes it import MSVCP140.dll and VCRUNTIME140.dll
+    # (x64 also VCRUNTIME140_1.dll), which ship with the Visual C++
+    # redistributable rather than with Windows, so a machine without the
+    # redistributable cannot start clice. This flag cannot be flipped on its
+    # own: every object embeds /DEFAULTLIB and /FAILIFMISMATCH directives
+    # naming its CRT, so linking a /MD prebuilt LLVM into a /MT clice is a hard
+    # link error, not a warning. The prebuilt is built with this same toolchain
+    # file, so it has to be respun to /MT in the same change. Local Windows
+    # Debug builds would also need the static ASan runtime in place of the
+    # clang_rt.asan_dynamic pair linked in CMakeLists.txt.
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL" CACHE STRING "")
     set(CMAKE_EXE_LINKER_FLAGS_INIT "-fuse-ld=lld-link")
     set(CMAKE_SHARED_LINKER_FLAGS_INIT "-fuse-ld=lld-link")
@@ -87,6 +98,13 @@ else()
 endif()
 
 if(APPLE)
+    # TODO(prebuilt-respin): set an explicit CMAKE_OSX_DEPLOYMENT_TARGET. With
+    # none, the deployment target follows whatever the build machine runs, so
+    # the shipped binary is stamped minos 15.0 and refuses to launch on macOS
+    # 14 or older. Lowering it needs the prebuilt LLVM built against the same
+    # target, and needs availability annotations to stay on (see the kotatsu
+    # _LIBCPP_DISABLE_AVAILABILITY removal), so it belongs with the respin.
+
     # conda-forge clang 22's bundled config files (<triple>-clang++.cfg)
     # inject -L/-rpath pointing into the conda env at link time, binding
     # binaries to conda's @rpath libc++ — they then fail to load outside
@@ -99,11 +117,12 @@ if(APPLE)
     string(APPEND CMAKE_SHARED_LINKER_FLAGS_INIT " --no-default-config")
     string(APPEND CMAKE_MODULE_LINKER_FLAGS_INIT " --no-default-config")
 
+    # TODO(prebuilt-respin): remove this once the prebuilt is respun — its
+    # dylibs will then link the system libc++ via --no-default-config above.
     # Debug links the prebuilt LLVM ASan dylibs, which reference conda's
     # @rpath libc++ with rpaths baked for the machine that built them.
     # Debug binaries are CI-internal, so resolve libc++ from the build
-    # env instead. Remove once the prebuilt is respun (its dylibs will
-    # then link the system libc++ via --no-default-config above).
+    # env instead.
     if(DEFINED ENV{CONDA_PREFIX})
         string(APPEND CMAKE_EXE_LINKER_FLAGS_DEBUG_INIT " -Wl,-rpath,$ENV{CONDA_PREFIX}/lib")
         string(APPEND CMAKE_SHARED_LINKER_FLAGS_DEBUG_INIT " -Wl,-rpath,$ENV{CONDA_PREFIX}/lib")

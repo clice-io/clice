@@ -12,6 +12,15 @@ instead of the OS.
 
 Both branches use LLVM binutils (``llvm-otool`` / ``llvm-readelf``), which ship
 in the build env and can read Mach-O even from a Linux host.
+
+TODO: read PE too, so the two Windows artifacts stop being the blind spot. They
+are not dependency-free — both import ``MSVCP140.dll`` and ``VCRUNTIME140.dll``
+(x64 also ``VCRUNTIME140_1.dll``), which come from the Visual C++
+redistributable rather than from Windows. That is a real instance of the thing
+this script looks for, so the whitelist (Win32 system DLLs plus the
+``api-ms-win-crt-*`` UCRT forwarders, which *are* part of Windows) should treat
+them as a violation only once the build switches to a static CRT — see the
+TODO(prebuilt-respin) note in cmake/toolchain.cmake.
 """
 
 import argparse
