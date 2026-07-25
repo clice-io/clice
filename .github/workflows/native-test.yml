@@ -105,9 +105,6 @@ jobs:
         shell: bash
         run: pixi run -- cmake --build build/${{ matrix.build_type }} --target clice-pack clice-pack-symbol
 
-      # Guard against the shipped binary linking a non-system (e.g. conda
-      # @rpath libc++) dynamic library — the failure mode that once only
-      # surfaced as an editor-test timeout. Windows (PE) is not covered yet.
       - name: Check artifact dependencies
         if: ${{ matrix.asset_name && !contains(matrix.os, 'windows') }}
         shell: bash

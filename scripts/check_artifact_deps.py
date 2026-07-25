@@ -13,14 +13,10 @@ instead of the OS.
 Both branches use LLVM binutils (``llvm-otool`` / ``llvm-readelf``), which ship
 in the build env and can read Mach-O even from a Linux host.
 
-TODO: read PE too, so the two Windows artifacts stop being the blind spot. They
-are not dependency-free — both import ``MSVCP140.dll`` and ``VCRUNTIME140.dll``
-(x64 also ``VCRUNTIME140_1.dll``), which come from the Visual C++
-redistributable rather than from Windows. That is a real instance of the thing
-this script looks for, so the whitelist (Win32 system DLLs plus the
-``api-ms-win-crt-*`` UCRT forwarders, which *are* part of Windows) should treat
-them as a violation only once the build switches to a static CRT — see the
-TODO(prebuilt-respin) note in cmake/toolchain.cmake.
+TODO: read PE too. The Windows artifacts import ``MSVCP140.dll`` and
+``VCRUNTIME140.dll``, which come from the Visual C++ redistributable rather than
+from Windows; treat those as violations once the build switches to a static CRT
+(see TODO(prebuilt-respin) in cmake/toolchain.cmake).
 """
 
 import argparse
@@ -66,11 +62,8 @@ def run_tool(args: list[str]) -> str:
 def assert_parsed(count: int, tool: str, what: str) -> list[str]:
     """Fail closed when a parse yielded nothing.
 
-    Every real executable has at least one dynamic dependency, so an empty
-    parse means the tool printed something this script no longer understands
-    (an LLVM upgrade reformatting its output, say) rather than a clean binary.
-    Without this the gate would silently degrade into a rubber stamp — the
-    exact failure mode it exists to prevent.
+    Every real executable has at least one dynamic dependency, so parsing none
+    means the tool's output format changed, not that the binary is clean.
     """
     if count:
         return []
