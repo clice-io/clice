@@ -1,6 +1,7 @@
 module clice.feature;
 
 import clang;
+import clice.support;
 
 namespace clice::feature {
 
@@ -15,14 +16,14 @@ auto format_content(llvm::StringRef file, llvm::StringRef content, tooling::Rang
                                          clang::format::DefaultFallbackStyle,
                                          "");
     if(!style) {
-        return std::unexpected(std::format("{}", style.takeError()));
+        return std::unexpected(clice::format("{}", style.takeError()));
     }
 
     std::vector<tooling::Range> ranges = {range};
     auto include_replacements = clang::format::sortIncludes(*style, content, ranges, file);
     auto changed = tooling::applyAllReplacements(content, include_replacements);
     if(!changed) {
-        return std::unexpected(std::format("{}", changed.takeError()));
+        return std::unexpected(clice::format("{}", changed.takeError()));
     }
 
     return include_replacements.merge(clang::format::reformat(

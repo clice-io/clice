@@ -39,7 +39,9 @@ static std::expected<GlobCharSet, std::string> expand(llvm::StringRef s, llvm::S
                 }
                 if(c_begin > c_end) {
                     return std::unexpected{
-                        std::format("Invalid expansion: `{}` is larger than `{}`", c_begin, c_end)};
+                        clice::format("Invalid expansion: `{}` is larger than `{}`",
+                                      c_begin,
+                                      c_end)};
                 }
                 for(char c = c_begin; c <= c_end; ++c) {
                     if(c != '/') {

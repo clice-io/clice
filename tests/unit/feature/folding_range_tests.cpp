@@ -2,6 +2,7 @@ import llvm;
 import kota;
 import clice.test;
 import clice.feature;
+import clice.support;
 import clice.syntax;
 
 namespace clice::testing {
@@ -454,16 +455,16 @@ TEST_CASE(snapshot) {
                 auto end = map.to_position(r.range.end);
                 if(!start || !end)
                     continue;
-                result += std::format("- {{ range: \"{}:{}-{}:{}\"",
-                                      start->line,
-                                      start->character,
-                                      end->line,
-                                      end->character);
+                result += clice::format("- {{ range: \"{}:{}-{}:{}\"",
+                                        start->line,
+                                        start->character,
+                                        end->line,
+                                        end->character);
                 if(r.kind.has_value()) {
-                    result += std::format(", kind: {}", static_cast<const std::string&>(*r.kind));
+                    result += clice::format(", kind: {}", static_cast<const std::string&>(*r.kind));
                 }
                 if(!r.collapsed_text.empty()) {
-                    result += std::format(", collapsed_text: {}", yaml_str(r.collapsed_text));
+                    result += clice::format(", collapsed_text: {}", yaml_str(r.collapsed_text));
                 }
                 result += " }\n";
             }

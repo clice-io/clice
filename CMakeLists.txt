@@ -132,23 +132,10 @@ if(MSVC OR (CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND
          CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC"))
     target_compile_options(clice_options INTERFACE /GR- /EHs-c- /Zc:preprocessor)
 else()
-    # BMI mode is caught between two clang 22 bugs, both fixed only in clang 23:
-    # reduced BMI's merged lookup table breaks concept-constrained conversions
-    # (llvm#205361), but full BMI demotes serialized var definitions, which on
-    # libc++ eagerly re-instantiates the wide basic_format_string and hard-errors
-    # every std::format call (llvm#174858, fix llvm PR#184287). libstdc++ is
-    # immune to the latter, libc++ hits it on every format site — so Linux runs
-    # full BMI and Apple runs reduced, each dodging the bug that bites it.
-    # Collapse to one mode when the toolchain reaches clang 23.
-    if(APPLE)
-        set(CLICE_BMI_MODE_FLAG -fmodules-reduced-bmi)
-    else()
-        set(CLICE_BMI_MODE_FLAG -fno-modules-reduced-bmi)
-    endif()
     target_compile_options(clice_options INTERFACE
         -fno-rtti
         -fno-exceptions
-        ${CLICE_BMI_MODE_FLAG}
+        -fno-modules-reduced-bmi
         -Wno-deprecated-declarations
         $<$<COMPILE_LANG_AND_ID:CXX,Clang,AppleClang>:-Wno-undefined-inline>
     )

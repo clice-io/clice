@@ -428,7 +428,7 @@ std::string display_name_of(const clang::NamedDecl* decl) {
                 return "(lambda)";
             }
 
-            return std::format("(anonymous {})", cls->getKindName());
+            return clice::format("(anonymous {})", cls->getKindName());
         }
 
         if(llvm::isa<clang::EnumDecl>(decl)) {

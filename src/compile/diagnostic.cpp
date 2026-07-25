@@ -1,5 +1,7 @@
 module clice.compile;
 
+import clice.support;
+
 namespace clice {
 
 llvm::StringRef DiagnosticID::diagnostic_code() const {
@@ -52,9 +54,9 @@ std::optional<std::string> DiagnosticID::diagnostic_document_uri() const {
                 return std::nullopt;
             }
 
-            return std::format("https://clang.llvm.org/extra/clang-tidy/checks/{}/{}.html",
-                               module,
-                               check);
+            return clice::format("https://clang.llvm.org/extra/clang-tidy/checks/{}/{}.html",
+                                 module,
+                                 check);
         }
 
         case DiagnosticSource::Clice: {

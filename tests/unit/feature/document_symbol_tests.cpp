@@ -3,6 +3,7 @@ import kota;
 import clice.test;
 import clice.feature;
 import clice.semantic;
+import clice.support;
 
 namespace clice::testing {
 
@@ -194,23 +195,23 @@ void format_document_symbols(std::string& out,
             continue;
         auto sel_start = map.to_position(node.selection_range.begin);
         auto sel_end = map.to_position(node.selection_range.end);
-        out += std::format("- {}{{ name: {}, kind: {}, range: \"{}:{}-{}:{}\"",
-                           pad,
-                           yaml_str(node.name),
-                           kind,
-                           start->line,
-                           start->character,
-                           end->line,
-                           end->character);
+        out += clice::format("- {}{{ name: {}, kind: {}, range: \"{}:{}-{}:{}\"",
+                             pad,
+                             yaml_str(node.name),
+                             kind,
+                             start->line,
+                             start->character,
+                             end->line,
+                             end->character);
         if(sel_start && sel_end) {
-            out += std::format(", selection_range: \"{}:{}-{}:{}\"",
-                               sel_start->line,
-                               sel_start->character,
-                               sel_end->line,
-                               sel_end->character);
+            out += clice::format(", selection_range: \"{}:{}-{}:{}\"",
+                                 sel_start->line,
+                                 sel_start->character,
+                                 sel_end->line,
+                                 sel_end->character);
         }
         if(!node.detail.empty()) {
-            out += std::format(", detail: {}", yaml_str(node.detail));
+            out += clice::format(", detail: {}", yaml_str(node.detail));
         }
         out += " }\n";
         if(!node.children.empty()) {

@@ -491,7 +491,7 @@ TEST_CASE(CheckpointAutoTriggers) {
     // Enough commits to cross the internal change threshold; the manifest
     // must appear without an explicit checkpoint() or shutdown().
     for(int i = 0; i < 16; ++i) {
-        put(store, "pch", std::format("k{}", i), "blob");
+        put(store, "pch", clice::format("k{}", i), "blob");
     }
     auto manifest = fs::read(tmp.path("root/cache/v1/manifest.json"));
     ASSERT_TRUE(manifest.has_value());

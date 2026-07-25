@@ -5,6 +5,7 @@ module;
 module clice.server;
 
 import kota;
+import clice.support;
 
 namespace clice {
 
@@ -138,7 +139,10 @@ void LSPClient::register_lifecycle() {
             };
 
             auto to_names = [&](auto names) {
-                return std::ranges::to<std::vector>(names | std::views::transform(lower_first));
+                // Adaptor called as a function, not piped: the pipe operator's location
+                // differs per standard library (hidden friend vs free operator) and does
+                // not survive the module wrapper uniformly.
+                return std::ranges::to<std::vector>(std::views::transform(names, lower_first));
             };
 
             sem_opts.legend = protocol::SemanticTokensLegend{
@@ -783,7 +787,7 @@ void LSPClient::report_index_progress() {
                     state->reporter.reset();
                     co_return;
                 }
-                state->reporter->begin("Indexing", std::format("0/{} files", state->total), 0);
+                state->reporter->begin("Indexing", clice::format("0/{} files", state->total), 0);
                 state->token_active = true;
             }(index_progress));
             break;
@@ -792,14 +796,14 @@ void LSPClient::report_index_progress() {
             if(st.token_active) {
                 auto pct =
                     p.total > 0 ? static_cast<std::uint32_t>(p.completed * 100 / p.total) : 100;
-                st.reporter->report(std::format("{}/{} files", p.completed, p.total), pct);
+                st.reporter->report(clice::format("{}/{} files", p.completed, p.total), pct);
             }
             break;
         }
         case Stage::End: {
             st.round_active = false;
             if(st.token_active) {
-                st.reporter->end(std::format("Indexed {} files", p.dispatched));
+                st.reporter->end(clice::format("Indexed {} files", p.dispatched));
                 st.reporter.reset();
                 st.token_active = false;
             }

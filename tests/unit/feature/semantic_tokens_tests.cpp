@@ -658,11 +658,11 @@ TEST_CASE(snapshot) {
                 auto kind =
                     kota::meta::enum_name(static_cast<SymbolKind::Kind>(token.kind), "Unknown");
 
-                result += std::format("- {{ loc: \"{}:{}\", text: {}, kind: {}",
-                                      pos->line,
-                                      pos->character,
-                                      yaml_str(text),
-                                      kind);
+                result += clice::format("- {{ loc: \"{}:{}\", text: {}, kind: {}",
+                                        pos->line,
+                                        pos->character,
+                                        yaml_str(text),
+                                        kind);
 
                 std::string mods;
                 for(std::uint32_t i = 0; i < 32; ++i) {
@@ -676,7 +676,7 @@ TEST_CASE(snapshot) {
                     }
                 }
                 if(!mods.empty()) {
-                    result += std::format(", modifiers: [{}]", mods);
+                    result += clice::format(", modifiers: [{}]", mods);
                 }
                 result += " }\n";
             }

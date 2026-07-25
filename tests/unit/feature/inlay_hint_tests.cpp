@@ -2,6 +2,7 @@ import llvm;
 import kota;
 import clice.test;
 import clice.feature;
+import clice.support;
 import clice.syntax;
 
 namespace clice::testing {
@@ -1550,11 +1551,11 @@ TEST_CASE(snapshot) {
                 if(!pos)
                     continue;
                 auto kind = kota::meta::enum_name(hint.kind, "Unknown");
-                result += std::format("- {{ pos: \"{}:{}\", kind: {}, label: {}",
-                                      pos->line,
-                                      pos->character,
-                                      kind,
-                                      yaml_str(hint.label));
+                result += clice::format("- {{ pos: \"{}:{}\", kind: {}, label: {}",
+                                        pos->line,
+                                        pos->character,
+                                        kind,
+                                        yaml_str(hint.label));
                 if(hint.padding_left) {
                     result += ", padding_left: true";
                 }

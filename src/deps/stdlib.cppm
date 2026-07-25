@@ -129,6 +129,7 @@ using ::std::isalnum;
 using ::std::list;
 using ::std::lock_guard;
 using ::std::make_error_code;
+using ::std::make_format_args;
 using ::std::make_move_iterator;
 using ::std::make_pair;
 using ::std::make_shared;
@@ -197,6 +198,7 @@ using ::std::unique_ptr;
 using ::std::unordered_map;
 using ::std::unreachable;
 using ::std::vector;
+using ::std::vformat;
 using ::std::visit;
 using ::std::weak_ptr;
 
@@ -311,17 +313,6 @@ using ::std::operator==;
 using ::std::operator<=>;
 
 }  // namespace std
-#endif
-
-// The range-adaptor pipe is a free operator| in namespace std::ranges on the
-// MSVC STL (libstdc++/libc++ use hidden friends, which ADL finds through the
-// exported closure types without help).
-#ifdef _MSVC_STL_VERSION
-export namespace std::ranges {
-
-using ::std::ranges::operator|;
-
-}  // namespace std::ranges
 #endif
 
 export namespace std::filesystem {

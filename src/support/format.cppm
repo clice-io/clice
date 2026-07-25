@@ -11,6 +11,18 @@ export namespace clice {
 template <typename Object>
 std::string dump(const Object& object);
 
+/// First-party replacement for std::format in module TUs. Calling std::format
+/// makes overload resolution complete the wide-char basic_format_string; on
+/// clang 22 the module serializer demotes its member definitions and libc++
+/// hard-errors the re-instantiation at every call site (llvm#174858, fixed in
+/// clang 23 by PR#184287 — collapse this back to std::format then). vformat's
+/// overloads take concrete parameter types, so nothing wide is ever completed;
+/// the format_string parameter keeps the compile-time format check.
+template <typename... Args>
+[[nodiscard]] std::string format(std::format_string<Args...> fmt, Args&&... args) {
+    return std::vformat(fmt.get(), std::make_format_args(args...));
+}
+
 }  // namespace clice
 
 // The std::formatter specializations below live in the module purview, OUTSIDE
@@ -96,7 +108,7 @@ struct formatter<E> : formatter<std::string> {
         auto name = kota::meta::enum_name(value);
         if(name.empty()) {
             using U = std::underlying_type_t<E>;
-            return Base::format(std::format("{}", static_cast<U>(value)), ctx);
+            return Base::format(clice::format("{}", static_cast<U>(value)), ctx);
         }
         return Base::format(std::string(name), ctx);
     }
@@ -136,11 +148,11 @@ std::string dump(const Object& object) {
     using T = std::remove_cvref_t<Object>;
 
     if constexpr(std::is_same_v<T, std::string>) {
-        return std::format("\"{}\"", object);
+        return clice::format("\"{}\"", object);
     } else if constexpr(std::is_same_v<T, std::string_view>) {
-        return std::format("\"{}\"", object);
+        return clice::format("\"{}\"", object);
     } else if constexpr(std::is_same_v<T, llvm::StringRef>) {
-        return std::format("\"{}\"", object);
+        return clice::format("\"{}\"", object);
     } else if constexpr(kota::map_range<T>) {
         std::string result = "{";
         bool first = true;
@@ -149,7 +161,7 @@ std::string dump(const Object& object) {
                 result += ", ";
             }
             first = false;
-            result += std::format("{}: {}", dump(key), dump(value));
+            result += clice::format("{}: {}", dump(key), dump(value));
         }
         result += "}";
         return result;
@@ -168,10 +180,10 @@ std::string dump(const Object& object) {
     } else if constexpr(kota::meta::enum_type<T>) {
         auto name = kota::meta::enum_name(object);
         if(!name.empty()) {
-            return std::format("\"{}\"", name);
+            return clice::format("\"{}\"", name);
         }
         using U = std::underlying_type_t<T>;
-        return std::format("{}", static_cast<U>(object));
+        return clice::format("{}", static_cast<U>(object));
     } else if constexpr(clice_reflectable_class<T>) {
         std::string result = "{";
         bool first = true;
@@ -180,12 +192,12 @@ std::string dump(const Object& object) {
                 result += ", ";
             }
             first = false;
-            result += std::format("\"{}\": {}", decltype(field)::name(), dump(field.value()));
+            result += clice::format("\"{}\": {}", decltype(field)::name(), dump(field.value()));
         });
         result += "}";
         return result;
     } else if constexpr(kota::Formattable<T>) {
-        return std::format("{}", object);
+        return clice::format("{}", object);
     } else {
         return "<unformattable>";
     }

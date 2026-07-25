@@ -1,6 +1,7 @@
 module clice.server;
 
 import kota;
+import clice.support;
 
 namespace clice {
 
@@ -48,8 +49,9 @@ static std::string resolve_xdg_cache_dir(llvm::StringRef workspace_root) {
         if(!name.empty() && static_cast<unsigned char>(name.back()) >= 0xC0)
             name = name.drop_back();
     }
-    auto dir =
-        path::join(base, "clice", std::format("{}-{:08x}", name, static_cast<std::uint32_t>(hash)));
+    auto dir = path::join(base,
+                          "clice",
+                          clice::format("{}-{:08x}", name, static_cast<std::uint32_t>(hash)));
 
     if(auto ec = llvm::sys::fs::create_directories(dir)) {
         LOG_WARN("Failed to create XDG cache directory {}: {}", dir, ec.message());

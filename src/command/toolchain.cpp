@@ -9,6 +9,7 @@ module clice.command;
 
 import clang;
 import kota;
+import clice.support;
 
 namespace clice {
 
@@ -69,7 +70,7 @@ kota::task<std::expected<std::string, std::string>>
     auto spawn = kota::process::spawn(opts);
     if(!spawn.has_value()) {
         co_return std::unexpected(
-            std::format("Failed to spawn {}: {}", opts.file, spawn.error().message()));
+            clice::format("Failed to spawn {}: {}", opts.file, spawn.error().message()));
     }
     auto& s = *spawn;
 
@@ -81,13 +82,13 @@ kota::task<std::expected<std::string, std::string>>
     auto exit_result = co_await s.proc.wait();
     if(!exit_result.has_value()) {
         co_return std::unexpected(
-            std::format("Process wait failed: {}", exit_result.error().message()));
+            clice::format("Process wait failed: {}", exit_result.error().message()));
     }
 
     auto& exit = *exit_result;
     if(exit.status != 0) {
         co_return std::unexpected(
-            std::format("Process {} exited with code {}", opts.file, exit.status));
+            clice::format("Process {} exited with code {}", opts.file, exit.status));
     }
 
     co_return capture_stdout ? std::move(stdout_data) : std::move(stderr_data);
@@ -121,7 +122,7 @@ std::expected<void, std::string> query_driver(
 
     std::unique_ptr<clang::driver::Compilation> compilation(driver.BuildCompilation(arguments));
     if(!compilation) {
-        return std::unexpected(std::format("Failed to build compilation for {}", arguments[0]));
+        return std::unexpected(clice::format("Failed to build compilation for {}", arguments[0]));
     }
 
     // We expect to get back exactly one command job, if we didn't something
@@ -143,7 +144,7 @@ std::expected<void, std::string> query_driver(
         return cmd.getCreator().getName() == llvm::StringRef("clang");
     });
     if(cmd == jobs.end()) {
-        return std::unexpected(std::format("No clang job found for {}", arguments[0]));
+        return std::unexpected(clice::format("No clang job found for {}", arguments[0]));
     }
 
     callback(arguments[0], cmd->getArguments());
@@ -220,14 +221,14 @@ kota::task<std::expected<std::vector<std::string>, std::string>>
         /// If the path is not absolute path like g++, find it in the env vars.
         auto program = llvm::sys::findProgramByName(driver);
         if(!program)
-            co_return std::unexpected(std::format("Cannot find driver: {}", driver.str()));
+            co_return std::unexpected(clice::format("Cannot find driver: {}", driver.str()));
         resolved_path = *program;
         driver = resolved_path.c_str();
     }
 
     if(!fs::exists(driver) || !fs::can_execute(driver))
         co_return std::unexpected(
-            std::format("Driver {} not found or not executable", driver.str()));
+            clice::format("Driver {} not found or not executable", driver.str()));
 
     llvm::SmallVector<const char*, 256> args;
     args.emplace_back(driver.data());
@@ -240,7 +241,7 @@ kota::task<std::expected<std::vector<std::string>, std::string>>
     /// not exist in the disk.
     llvm::SmallString<64> src_path;
     if(auto e = fs::createTemporaryFile("query-toolchain", ext, src_path))
-        co_return std::unexpected(std::format("Failed to create temp file: {}", e.message()));
+        co_return std::unexpected(clice::format("Failed to create temp file: {}", e.message()));
     auto cleanup = llvm::make_scope_exit([&] {
         if(auto e = fs::remove(src_path))
             LOG_ERROR("Fail to remove temporary file: {}", e);
@@ -379,7 +380,7 @@ kota::task<std::expected<std::vector<std::string>, std::string>>
     });
 
     if(cc1_args.empty())
-        co_return std::unexpected(std::format("No cc1 args produced for {}", file.str()));
+        co_return std::unexpected(clice::format("No cc1 args produced for {}", file.str()));
 
     co_return cc1_args;
 }

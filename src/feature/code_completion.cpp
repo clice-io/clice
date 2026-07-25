@@ -3,6 +3,7 @@ module;
 module clice.feature;
 
 import clang;
+import clice.support;
 
 namespace clice::feature {
 
@@ -159,7 +160,7 @@ auto build_snippet(const clang::CodeCompletionString& ccs) -> std::string {
                 break;
             case CK::CK_Placeholder:
                 if(chunk.Text) {
-                    snippet += std::format("${{{0}:{1}}}", ++placeholder_index, chunk.Text);
+                    snippet += clice::format("${{{0}:{1}}}", ++placeholder_index, chunk.Text);
                 }
                 break;
             case CK::CK_LeftParen: snippet += '('; break;
@@ -301,7 +302,7 @@ public:
                     overload_index.try_emplace(overload_key.str(), overloads.size());
                 if(inserted) {
                     auto item = build_item(label, kind, insert_text, is_snippet);
-                    item.sort_text = std::format("{}", *score);
+                    item.sort_text = clice::format("{}", *score);
                     if(!signature.empty() || !return_type.empty()) {
                         protocol::CompletionItemLabelDetails details;
                         if(!signature.empty()) {
@@ -325,14 +326,14 @@ public:
                     existing.count += 1;
                     if(*score > existing.score) {
                         existing.score = *score;
-                        existing.item.sort_text = std::format("{}", *score);
+                        existing.item.sort_text = clice::format("{}", *score);
                     }
                 }
                 return;
             }
 
             auto item = build_item(label, kind, insert_text, is_snippet);
-            item.sort_text = std::format("{}", *score);
+            item.sort_text = clice::format("{}", *score);
             if(!signature.empty() || !return_type.empty()) {
                 protocol::CompletionItemLabelDetails details;
                 if(!signature.empty()) {
@@ -439,7 +440,7 @@ public:
         for(auto& entry: overloads) {
             if(entry.count > 1) {
                 protocol::CompletionItemLabelDetails details;
-                details.detail = std::format("(…) +{} overloads", entry.count);
+                details.detail = clice::format("(…) +{} overloads", entry.count);
                 entry.item.label_details = std::move(details);
             }
             collected.push_back(std::move(entry.item));

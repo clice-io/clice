@@ -3,6 +3,7 @@ module;
 module clice.feature;
 
 import clang;
+import clice.support;
 import clice.visit;
 
 namespace clice::feature {
@@ -372,9 +373,10 @@ public:
                         (text.size() > options.type_name_limit || text.contains("\n")) ? "..."
                                                                                        : text;
                     if(name_hint) {
-                        formatted_default_args.emplace_back(std::format("{0}: {1}", name, abbrev));
+                        formatted_default_args.emplace_back(
+                            clice::format("{0}: {1}", name, abbrev));
                     } else {
-                        formatted_default_args.emplace_back(std::format("{0}", abbrev));
+                        formatted_default_args.emplace_back(clice::format("{0}", abbrev));
                     }
                 }
             } else if(name_hint || reference_hint) {

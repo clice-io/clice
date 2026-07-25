@@ -230,7 +230,7 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
     state->self_pid = static_cast<std::uint32_t>(llvm::sys::Process::getProcessId());
 
     auto parent = path::join(root, "cache");
-    auto version_dir = std::format("v{}", version);
+    auto version_dir = clice::format("v{}", version);
     state->base = path::join(parent, version_dir);
 
     if(auto ec = llvm::sys::fs::create_directories(state->base)) {
@@ -437,7 +437,7 @@ CacheStore::PendingEntry CacheStore::begin_store(llvm::StringRef ns, llvm::Strin
         LOG_WARN("CacheStore: cannot re-create tmp dir {}: {}", state->tmp_dir, ec.message());
     }
 
-    auto tmp_name = std::format("{}{}", state->next_tmp_id++, ns_state->config.extension);
+    auto tmp_name = clice::format("{}{}", state->next_tmp_id++, ns_state->config.extension);
     return PendingEntry{ns.str(), key.str(), path::join(state->tmp_dir, tmp_name)};
 }
 
@@ -459,7 +459,7 @@ CacheStore::PendingEntry CacheStore::begin_store_aux(llvm::StringRef ns, llvm::S
         LOG_WARN("CacheStore: cannot re-create tmp dir {}: {}", state->tmp_dir, ec.message());
     }
 
-    auto tmp_name = std::format("{}{}", state->next_tmp_id++, ns_state->config.aux_extension);
+    auto tmp_name = clice::format("{}{}", state->next_tmp_id++, ns_state->config.aux_extension);
     return PendingEntry{ns.str(), key.str(), path::join(state->tmp_dir, tmp_name), /*aux=*/true};
 }
 

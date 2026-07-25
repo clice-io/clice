@@ -5,9 +5,10 @@ module;
 module clice.worker;
 
 import kota;
-import clice.protocol;
 import clice.feature;
 import clice.index;
+import clice.protocol;
+import clice.support;
 import clice.syntax;
 
 namespace clice {
@@ -73,16 +74,16 @@ static std::optional<std::string> write_preamble_state(llvm::StringRef blob,
     llvm::raw_fd_ostream os(output_path, ec);
     if(ec) {
         auto message =
-            std::format("cannot open PreambleState blob {}: {}", output_path, ec.message());
+            clice::format("cannot open PreambleState blob {}: {}", output_path, ec.message());
         LOG_ERROR("BuildPCH: {}", message);
         return message;
     }
     os << blob;
     os.flush();
     if(os.has_error()) {
-        auto message = std::format("failed writing PreambleState blob {}: {}",
-                                   output_path,
-                                   os.error().message());
+        auto message = clice::format("failed writing PreambleState blob {}: {}",
+                                     output_path,
+                                     os.error().message());
         os.clear_error();
         LOG_ERROR("BuildPCH: {}", message);
         return message;

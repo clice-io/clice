@@ -2,6 +2,8 @@ module;
 
 module clice.server;
 
+import clice.support;
+
 namespace clice {
 
 void Indexer::merge(const void* tu_index_data, std::size_t size) {
@@ -156,7 +158,7 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
 /// Stable blob key for a file's shard: runtime pool ids are per-session,
 /// so blobs are named by a hash of the path instead.
 static std::string shard_key(llvm::StringRef path) {
-    return std::format("{:016x}", llvm::xxh3_64bits(path));
+    return clice::format("{:016x}", llvm::xxh3_64bits(path));
 }
 
 /// Begin a two-phase store write and serialize the blob to its tmp path.

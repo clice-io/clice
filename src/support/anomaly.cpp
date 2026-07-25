@@ -64,9 +64,9 @@ bool anomaly_should_report(AnomalyId id) {
 
     if(previous == anomaly_report_limit) {
         auto text =
-            std::format("[anomaly:{}] report limit ({}) reached, suppressing further reports",
-                        id,
-                        anomaly_report_limit);
+            clice::format("[anomaly:{}] report limit ({}) reached, suppressing further reports",
+                          id,
+                          anomaly_report_limit);
         logging::err("{}", text);
         if(auto hook = current_notify_hook())
             hook(NotifyLevel::Error, text);
@@ -75,7 +75,7 @@ bool anomaly_should_report(AnomalyId id) {
 }
 
 void report_anomaly(AnomalyId id, std::string_view message, std::source_location location) {
-    auto text = std::format("[anomaly:{}] {}", id, message);
+    auto text = clice::format("[anomaly:{}] {}", id, message);
     logging::log(spdlog::level::err, location, "{}", text);
     if(auto hook = current_notify_hook())
         hook(NotifyLevel::Error, text);
@@ -87,7 +87,7 @@ bool guidance_should_report() {
 }
 
 void report_guidance(std::string_view message, std::source_location location) {
-    auto text = std::format("[guidance] {}", message);
+    auto text = clice::format("[guidance] {}", message);
     logging::log(spdlog::level::warn, location, "{}", text);
     if(auto hook = current_notify_hook())
         hook(NotifyLevel::Warning, text);

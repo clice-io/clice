@@ -2,6 +2,8 @@ module;
 
 module clice.server;
 
+import clice.support;
+
 namespace clice {
 
 namespace lsp = kota::ipc::lsp;
@@ -577,7 +579,7 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(std::uint32
         target_hash = llvm::xxh3_64bits(content);
         // Stat after the read, same discipline as the chain files above.
         target_stat_ok = !llvm::sys::fs::status(target_path, target_status);
-        self_snapshot_path = path::join(preamble_dir, std::format("{:016x}.self.h", target_hash));
+        self_snapshot_path = path::join(preamble_dir, clice::format("{:016x}.self.h", target_hash));
         if(!llvm::sys::fs::exists(self_snapshot_path)) {
             auto ec = llvm::sys::fs::create_directories(preamble_dir);
             if(ec) {
@@ -611,7 +613,7 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(std::uint32
 
     // Hash the preamble and write to cache directory.
     auto preamble_hash = llvm::xxh3_64bits(llvm::StringRef(preamble));
-    auto preamble_filename = std::format("{:016x}.h", preamble_hash);
+    auto preamble_filename = clice::format("{:016x}.h", preamble_hash);
     auto preamble_path = path::join(preamble_dir, preamble_filename);
 
     if(!llvm::sys::fs::exists(preamble_path)) {
@@ -640,7 +642,7 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(std::uint32
     std::string suffix_path;
     if(!synthesized->suffix.empty()) {
         auto suffix_hash = llvm::xxh3_64bits(llvm::StringRef(synthesized->suffix));
-        suffix_path = path::join(preamble_dir, std::format("{:016x}.suffix.h", suffix_hash));
+        suffix_path = path::join(preamble_dir, clice::format("{:016x}.suffix.h", suffix_hash));
         if(!llvm::sys::fs::exists(suffix_path)) {
             if(auto result = fs::write(suffix_path, synthesized->suffix); !result) {
                 LOG_WARN("resolve_header_context: cannot write suffix {}: {}",
@@ -805,7 +807,7 @@ ext::QueryContextResult ContextResolver::query_contexts(llvm::StringRef path,
             if(cmds.size() > 1) {
                 auto desc = flags_label(cmd);
                 if(!desc.empty()) {
-                    item.label = std::format("{} [{}]", item.label, desc);
+                    item.label = clice::format("{} [{}]", item.label, desc);
                 }
                 item.command_hash = hash;
             }
@@ -817,7 +819,7 @@ ext::QueryContextResult ContextResolver::query_contexts(llvm::StringRef path,
             if(occurrences > 1) {
                 for(std::uint32_t n = 0; n < occurrences; ++n) {
                     auto occ_item = item;
-                    occ_item.label = std::format("{} (#{})", item.label, n + 1);
+                    occ_item.label = clice::format("{} (#{})", item.label, n + 1);
                     occ_item.occurrence = n;
                     all_items.push_back(std::move(occ_item));
                 }
@@ -845,7 +847,7 @@ ext::QueryContextResult ContextResolver::query_contexts(llvm::StringRef path,
 
             auto desc = flags_label(cmd);
             ext::ContextItem item;
-            item.label = desc.empty() ? std::format("config #{}", i) : desc;
+            item.label = desc.empty() ? clice::format("config #{}", i) : desc;
             item.description = cmd.resolved.directory.str();
             item.uri = uri_opt->str();
             item.command_hash = std::move(hash);
@@ -875,7 +877,7 @@ ext::CurrentContextResult
             ext::ContextItem item;
             item.label = llvm::sys::path::filename(ctx_path).str();
             if(choice->occurrence.value_or(0) > 0) {
-                item.label = std::format("{} (#{})", item.label, *choice->occurrence + 1);
+                item.label = clice::format("{} (#{})", item.label, *choice->occurrence + 1);
             }
             item.description = std::string(ctx_path);
             item.uri = ctx_uri_opt->str();
@@ -890,7 +892,7 @@ ext::CurrentContextResult
         ext::ContextItem item;
         item.uri = params.uri;
         item.command_hash = choice->command_hash;
-        item.label = std::format("config {}", choice->command_hash.substr(0, 8));
+        item.label = clice::format("config {}", choice->command_hash.substr(0, 8));
         if(ws.cdb.has_entry(path)) {
             std::vector<std::string> rule_append, rule_remove;
             ws.config.match_rules(path, rule_append, rule_remove);
