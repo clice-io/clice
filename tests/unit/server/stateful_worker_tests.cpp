@@ -68,7 +68,7 @@ TEST_CASE(CancelledCompileFreesStrand) {
         std::string text;
         text.reserve(1 << 22);
         for(int i = 0; i < 200'000; ++i) {
-            text += clice::format("int v{};\n", i);
+            text += std::format("int v{};\n", i);
         }
 
         worker::CompileParams cp;
@@ -136,7 +136,7 @@ TEST_CASE(CancelNotificationInterruptsCompile) {
         std::string text;
         text.reserve(1 << 22);
         for(int i = 0; i < 200'000; ++i) {
-            text += clice::format("int v{};\n", i);
+            text += std::format("int v{};\n", i);
         }
 
         worker::CompileParams cp;

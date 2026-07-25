@@ -16,7 +16,7 @@ static kota::ipc::Error document_not_open() {
 /// an indexed symbol.
 static kota::ipc::Error item_not_resolved(llvm::StringRef kind) {
     return kota::ipc::Error{kota::ipc::protocol::ErrorCode::InvalidParams,
-                            clice::format("Failed to resolve {} item", kind)};
+                            std::format("Failed to resolve {} item", kind)};
 }
 
 std::vector<feature::DocumentLink> FeatureRouter::find_preamble_links(const Session& session) {

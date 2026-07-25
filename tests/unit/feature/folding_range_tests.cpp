@@ -455,16 +455,16 @@ TEST_CASE(snapshot) {
                 auto end = map.to_position(r.range.end);
                 if(!start || !end)
                     continue;
-                result += clice::format("- {{ range: \"{}:{}-{}:{}\"",
-                                        start->line,
-                                        start->character,
-                                        end->line,
-                                        end->character);
+                result += std::format("- {{ range: \"{}:{}-{}:{}\"",
+                                      start->line,
+                                      start->character,
+                                      end->line,
+                                      end->character);
                 if(r.kind.has_value()) {
-                    result += clice::format(", kind: {}", static_cast<const std::string&>(*r.kind));
+                    result += std::format(", kind: {}", static_cast<const std::string&>(*r.kind));
                 }
                 if(!r.collapsed_text.empty()) {
-                    result += clice::format(", collapsed_text: {}", yaml_str(r.collapsed_text));
+                    result += std::format(", collapsed_text: {}", yaml_str(r.collapsed_text));
                 }
                 result += " }\n";
             }

@@ -81,7 +81,7 @@ void MasterServer::initialize() {
         auto now = std::chrono::system_clock::now();
         auto pid = llvm::sys::Process::getProcessId();
         session_log_dir =
-            path::join(cfg.logging_dir, clice::format("{:%Y-%m-%d_%H-%M-%S}_{}", now, pid));
+            path::join(cfg.logging_dir, std::format("{:%Y-%m-%d_%H-%M-%S}_{}", now, pid));
         if(logging::file_logger("master", session_log_dir, logging::options)) {
             LOG_INFO("Session log directory: {}", session_log_dir);
         }

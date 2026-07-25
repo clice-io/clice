@@ -123,6 +123,9 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     endif()
 endif()
 
+# TODO(clang23): remove together with cmake/patch_libcxx.cmake (llvm#174858).
+include("${PROJECT_SOURCE_DIR}/cmake/patch_libcxx.cmake")
+
 include("${PROJECT_SOURCE_DIR}/cmake/package.cmake")
 
 # Project-specific options (not applied to third-party deps).

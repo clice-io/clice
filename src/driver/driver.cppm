@@ -20,7 +20,7 @@ template <typename Command>
 void print_usage(Command& cmd) {
     std::ostringstream ss;
     cmd.usage(ss);
-    clice::print("{}", ss.str());
+    std::print("{}", ss.str());
 }
 
 }  // namespace clice::driver

@@ -70,9 +70,9 @@ std::string dump(const std::optional<PassType>& pass) {
     if(!pass) {
         return "<none>";
     }
-    return clice::format("{{pass_by: {}, converted: {}}}",
-                         static_cast<int>(pass->pass_by),
-                         pass->converted);
+    return std::format("{{pass_by: {}, converted: {}}}",
+                       static_cast<int>(pass->pass_by),
+                       pass->converted);
 }
 
 std::string dump_param(const HoverParam& param) {
@@ -100,14 +100,14 @@ std::string dump_pass_type(const PassType& pass) {
 std::string yaml_block(llvm::StringRef key, llvm::StringRef text, std::size_t indent = 0) {
     std::string pad(indent, ' ');
     if(text.empty()) {
-        return clice::format("{}{}: \"\"\n", pad, key.str());
+        return std::format("{}{}: \"\"\n", pad, key.str());
     }
 
-    std::string out = clice::format("{}{}: |\n", pad, key.str());
+    std::string out = std::format("{}{}: |\n", pad, key.str());
     llvm::SmallVector<llvm::StringRef> lines;
     text.split(lines, '\n', -1, true);
     for(auto line: lines) {
-        out += line.empty() ? "\n" : clice::format("{}  {}\n", pad, line.str());
+        out += line.empty() ? "\n" : std::format("{}  {}\n", pad, line.str());
     }
     return out;
 }
@@ -120,22 +120,22 @@ std::string dump(const HoverInfo& info) {
     std::string out;
 
     auto add = [&](std::string_view key, llvm::StringRef value) {
-        out += clice::format("  {}: {}\n", key, yaml_str(value));
+        out += std::format("  {}: {}\n", key, yaml_str(value));
     };
 
     auto add_params = [&](std::string_view key, const std::vector<HoverParam>& params) {
         if(params.empty()) {
-            out += clice::format("  {}: []\n", key);
+            out += std::format("  {}: []\n", key);
             return;
         }
-        out += clice::format("  {}:\n", key);
+        out += std::format("  {}:\n", key);
         for(const auto& param: params) {
-            out += clice::format("    - {}\n", yaml_str(dump_param(param)));
+            out += std::format("    - {}\n", yaml_str(dump_param(param)));
         }
     };
 
     add("name", info.name);
-    out += clice::format(
+    out += std::format(
         "  kind: {}\n",
         kota::meta::enum_name(static_cast<SymbolKind::Kind>(info.kind.value()), "Unknown"));
     if(info.namespace_scope) {
@@ -169,27 +169,27 @@ std::string dump(const HoverInfo& info) {
         add("value", *info.value);
     }
     if(info.size) {
-        out += clice::format("  size: {}\n", *info.size);
+        out += std::format("  size: {}\n", *info.size);
     }
     if(info.offset) {
-        out += clice::format("  offset: {}\n", *info.offset);
+        out += std::format("  offset: {}\n", *info.offset);
     }
     if(info.padding) {
-        out += clice::format("  padding: {}\n", *info.padding);
+        out += std::format("  padding: {}\n", *info.padding);
     }
     if(info.align) {
-        out += clice::format("  align: {}\n", *info.align);
+        out += std::format("  align: {}\n", *info.align);
     }
     if(info.callee_arg_info) {
         add("callee_arg_info", dump_param(*info.callee_arg_info));
     }
     if(info.call_pass_type) {
-        out += clice::format("  passed: {}\n", dump_pass_type(*info.call_pass_type));
+        out += std::format("  passed: {}\n", dump_pass_type(*info.call_pass_type));
     }
     if(info.symbol_range) {
-        out += clice::format("  symbol_range: \"[{}, {})\"\n",
-                             info.symbol_range->begin,
-                             info.symbol_range->end);
+        out += std::format("  symbol_range: \"[{}, {})\"\n",
+                           info.symbol_range->begin,
+                           info.symbol_range->end);
     }
 
     out += yaml_block("markdown", info.present().as_markdown(), 2);
@@ -236,7 +236,7 @@ void run_info(llvm::StringRef code,
 
 void expect_hover(const HoverInfo& expected) {
     if(!info) {
-        clice::println("no hover result for:\n{}", current_code.str());
+        std::println("no hover result for:\n{}", current_code.str());
     }
     ASSERT_TRUE(info.has_value());
 
@@ -253,7 +253,7 @@ void expect_hover(const HoverInfo& expected) {
         info->align == expected.align && info->callee_arg_info == expected.callee_arg_info &&
         info->call_pass_type == expected.call_pass_type;
     if(!same) {
-        clice::println("hover mismatch for:\n{}", current_code.str());
+        std::println("hover mismatch for:\n{}", current_code.str());
     }
 
     EXPECT_EQ(dump(info->namespace_scope), dump(expected.namespace_scope));
@@ -284,7 +284,7 @@ void check_sym_range() {
     auto expected = range("sym");
     ASSERT_TRUE(info->symbol_range.has_value());
     if(*info->symbol_range != expected) {
-        clice::println("symbol range mismatch for:\n{}", current_code.str());
+        std::println("symbol range mismatch for:\n{}", current_code.str());
     }
     EXPECT_EQ(info->symbol_range->begin, expected.begin);
     EXPECT_EQ(info->symbol_range->end, expected.end);
@@ -709,17 +709,17 @@ TEST_CASE(snapshot) {
         }
         std::ranges::sort(points);
         for(std::size_t i = 0; i < source.nameless_offsets.size(); ++i) {
-            points.emplace_back(clice::format("nameless_{}", i), source.nameless_offsets[i]);
+            points.emplace_back(std::format("nameless_{}", i), source.nameless_offsets[i]);
         }
 
         std::string out;
         for(const auto& [name, offset]: points) {
             auto hover = feature::hover_info(*unit, offset);
             if(!hover) {
-                out += clice::format("{}: NO HOVER\n\n", name);
+                out += std::format("{}: NO HOVER\n\n", name);
                 continue;
             }
-            out += clice::format("{}:\n", name);
+            out += std::format("{}:\n", name);
             out += dump(*hover);
             out += "\n";
         }
@@ -972,10 +972,9 @@ TEST_CASE(parse_documentation) {
         markup::Document output;
         feature::parse_documentation(c.documentation, output);
 
-        ASSERT_SNAPSHOT(yaml_block("markdown", output.as_markdown()),
-                        clice::format("{}-md", c.name));
+        ASSERT_SNAPSHOT(yaml_block("markdown", output.as_markdown()), std::format("{}-md", c.name));
         ASSERT_SNAPSHOT(yaml_block("plaintext", output.as_plain_text()),
-                        clice::format("{}-plaintext", c.name));
+                        std::format("{}-plaintext", c.name));
     }
 }
 

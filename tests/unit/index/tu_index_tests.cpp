@@ -58,7 +58,7 @@ void EXPECT_SELECT(llvm::StringRef pos,
     auto occurrences = select(pos, file);
 
     ASSERT_FALSE(occurrences.empty());
-    /// << clice::format("Fail to find symbol for offset: {}, target range: {}", offset,
+    /// << std::format("Fail to find symbol for offset: {}, target range: {}", offset,
     /// dump(expected));
 
     /// FIXME: Make eq pretty print reflectable struct.
@@ -74,7 +74,7 @@ void GO_TO_DEFINITION(llvm::StringRef pos,
     auto occurrences = select(pos, file);
 
     ASSERT_EQ(occurrences.size(), 1U);
-    /// << clice::format("Fail to find symbol for offset: {}, target range: {}", offset,
+    /// << std::format("Fail to find symbol for offset: {}, target range: {}", offset,
     /// dump(expected));
 
     auto fid = file.empty() ? unit->interested_file() : unit->file_id(file);
@@ -83,7 +83,7 @@ void GO_TO_DEFINITION(llvm::StringRef pos,
 
     auto it = index.relations.find(occurrences.front().target);
     ASSERT_TRUE(it != index.relations.end());
-    ///<< clice::format("Cannot find target: {}", occurrences.front().target);
+    ///<< std::format("Cannot find target: {}", occurrences.front().target);
 
     auto& relations = it->second;
     auto target = std::ranges::find_if(relations, [](const index::Relation& relation) {
@@ -91,7 +91,7 @@ void GO_TO_DEFINITION(llvm::StringRef pos,
     });
 
     ASSERT_TRUE(target != relations.end());
-    ///   << clice::format("Fail to find definition in {}", dump(relations));
+    ///   << std::format("Fail to find definition in {}", dump(relations));
     ASSERT_EQ(dump(target->range), dump(expected));
 }
 
@@ -539,11 +539,11 @@ TEST_CASE(snapshot) {
                                               "Unknown");
                 }
 
-                result += clice::format("- {{ loc: \"{}:{}\", kind: {}, text: {}",
-                                        pos->line,
-                                        pos->character,
-                                        kind_name,
-                                        yaml_str(text));
+                result += std::format("- {{ loc: \"{}:{}\", kind: {}, text: {}",
+                                      pos->line,
+                                      pos->character,
+                                      kind_name,
+                                      yaml_str(text));
 
                 auto rel_it = idx.main_file_index.relations.find(occ.target);
                 if(rel_it != idx.main_file_index.relations.end()) {
@@ -557,7 +557,7 @@ TEST_CASE(snapshot) {
                             kota::meta::enum_name(static_cast<RelationKind::Kind>(rel.kind), "?");
                     }
                     if(!rels.empty()) {
-                        result += clice::format(", relations: [{}]", rels);
+                        result += std::format(", relations: [{}]", rels);
                     }
                 }
 
@@ -829,7 +829,7 @@ TEST_CASE(DeepExpressionChain) {
     // Regression test: indexing such an AST must not overflow the stack.
     std::string code = "#define A0 1+1\n";
     for(int i = 1; i <= 14; i++) {
-        code += clice::format("#define A{} A{}+A{}\n", i, i - 1, i - 1);
+        code += std::format("#define A{} A{}+A{}\n", i, i - 1, i - 1);
     }
     code += "int bomb = A14;\n";
     auto bomb_offset = static_cast<std::uint32_t>(code.find("bomb"));

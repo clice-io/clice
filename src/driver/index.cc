@@ -32,7 +32,7 @@ void add_index(kota::deco::cli::SubCommander& root, int& exit_code) {
                exit_code = 0;
                return;
            }
-           clice::println(
+           std::println(
                stderr,
                "clice index is not implemented yet: it will build the workspace symbol index ahead of time.");
        })

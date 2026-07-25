@@ -69,7 +69,7 @@ TEST_CASE(GCC, skip = !(CIEnvironment && (Windows || Linux))) {
     params.add_remapped_file(file->c_str(), R"(
             #include <print>
             int main() {
-                clice::println("Hello world!");
+                std::println("Hello world!");
                 return 0;
             }
         )");
@@ -103,7 +103,7 @@ TEST_CASE(Clang, skip = !CIEnvironment) {
     params.add_remapped_file(file->c_str(), R"(
             #include <print>
             int main() {
-                clice::println("Hello world!");
+                std::println("Hello world!");
                 return 0;
             }
         )");

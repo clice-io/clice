@@ -402,7 +402,7 @@ TEST_CASE(EditInterruptsStaleCompile) {
     std::string text;
     text.reserve(1 << 22);
     for(int i = 0; i < 200'000; ++i) {
-        text += clice::format("int v{};\n", i);
+        text += std::format("int v{};\n", i);
     }
     session->text = std::move(text);
 
@@ -489,7 +489,7 @@ TEST_CASE(SupersededCompileCancelled) {
     std::string text;
     text.reserve(1 << 22);
     for(int i = 0; i < 200'000; ++i) {
-        text += clice::format("int v{};\n", i);
+        text += std::format("int v{};\n", i);
     }
     session->text = std::move(text);
 
@@ -572,7 +572,7 @@ TEST_CASE(ClientCancelSparesCompile) {
     std::string text;
     text.reserve(1 << 21);
     for(int i = 0; i < 50'000; ++i) {
-        text += clice::format("int v{};\n", i);
+        text += std::format("int v{};\n", i);
     }
     session->text = std::move(text);
     session->line_starts = kota::ipc::lsp::build_line_starts(session->text);

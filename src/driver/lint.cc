@@ -32,7 +32,7 @@ void add_lint(kota::deco::cli::SubCommander& root, int& exit_code) {
                exit_code = 0;
                return;
            }
-           clice::println(
+           std::println(
                stderr,
                "clice lint is not implemented yet: it will run clang-tidy across the workspace with cross-TU caching.");
        })

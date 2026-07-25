@@ -82,7 +82,7 @@ TEST_CASE(BackpressureBuffersLines) {
     // More than the pipe holds, less than the buffer budget: a reader
     // that is merely slow loses nothing.
     for(int i = 0; i < 600; ++i) {
-        sink.log(info_msg(clice::format("line number {}", i)));
+        sink.log(info_msg(std::format("line number {}", i)));
     }
     EXPECT_TRUE(sink.dropped() == 0);
 

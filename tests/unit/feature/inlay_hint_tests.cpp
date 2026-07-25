@@ -34,7 +34,7 @@ void run(llvm::StringRef code, std::source_location location = std::source_locat
 
     if(!unit->diagnostics().empty()) {
         for(auto& diagnostic: unit->diagnostics()) {
-            clice::println("{}", diagnostic.message);
+            std::println("{}", diagnostic.message);
         }
     }
 
@@ -1551,11 +1551,11 @@ TEST_CASE(snapshot) {
                 if(!pos)
                     continue;
                 auto kind = kota::meta::enum_name(hint.kind, "Unknown");
-                result += clice::format("- {{ pos: \"{}:{}\", kind: {}, label: {}",
-                                        pos->line,
-                                        pos->character,
-                                        kind,
-                                        yaml_str(hint.label));
+                result += std::format("- {{ pos: \"{}:{}\", kind: {}, label: {}",
+                                      pos->line,
+                                      pos->character,
+                                      kind,
+                                      yaml_str(hint.label));
                 if(hint.padding_left) {
                     result += ", padding_left: true";
                 }

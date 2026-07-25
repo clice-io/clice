@@ -19,11 +19,11 @@ TEST_SUITE(FormatSupport) {
 
 TEST_CASE(FormatLLVMStringRef) {
     llvm::StringRef value = "hello";
-    EXPECT_EQ(clice::format("{}", value), "hello");
+    EXPECT_EQ(std::format("{}", value), "hello");
 }
 
 TEST_CASE(FormatEnumAndStruct) {
-    auto enum_text = clice::format("{}", ExampleEnum::Alpha);
+    auto enum_text = std::format("{}", ExampleEnum::Alpha);
     EXPECT_FALSE(enum_text.empty());
 
     auto struct_text = clice::dump(ExampleStruct{1, 2});

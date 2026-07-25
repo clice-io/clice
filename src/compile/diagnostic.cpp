@@ -54,9 +54,9 @@ std::optional<std::string> DiagnosticID::diagnostic_document_uri() const {
                 return std::nullopt;
             }
 
-            return clice::format("https://clang.llvm.org/extra/clang-tidy/checks/{}/{}.html",
-                                 module,
-                                 check);
+            return std::format("https://clang.llvm.org/extra/clang-tidy/checks/{}/{}.html",
+                               module,
+                               check);
         }
 
         case DiagnosticSource::Clice: {

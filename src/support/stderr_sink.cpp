@@ -104,8 +104,8 @@ void StderrSink::stage_note_if_due() {
     // ahead of everything and lives outside the backlog: continued
     // pressure can evict buffered lines but never the count itself.
     if(dropped_unreported > 0 && active_note.empty()) {
-        active_note = clice::format("[logging] dropped {} stderr line(s): client not draining\n",
-                                    dropped_unreported);
+        active_note = std::format("[logging] dropped {} stderr line(s): client not draining\n",
+                                  dropped_unreported);
         note_sent = 0;
         dropped_unreported = 0;
     }

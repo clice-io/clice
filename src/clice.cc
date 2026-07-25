@@ -24,7 +24,7 @@ int main(int argc, const char** argv) {
                                   "A C++ development toolkit built on LLVM/Clang");
 
     auto print_root_usage = [&] {
-        clice::println("usage: clice <command> [<args>]\n");
+        std::println("usage: clice <command> [<args>]\n");
         driver::print_usage(clice);
     };
 
@@ -46,7 +46,7 @@ int main(int argc, const char** argv) {
     });
 
     if(!args.empty() && (args[0] == "--version" || args[0] == "-v")) {
-        clice::println("clice version {}", clice::version);
+        std::println("clice version {}", clice::version);
         return 0;
     }
 

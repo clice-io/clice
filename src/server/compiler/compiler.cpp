@@ -20,11 +20,11 @@ using serde_raw = kota::codec::RawValue;
 static std::string cache_key(std::initializer_list<llvm::StringRef> parts) {
     std::string input;
     for(auto part: parts) {
-        input += clice::format("{}:", part.size());
+        input += std::format("{}:", part.size());
         input += part;
     }
     auto hash = llvm::xxh3_128bits(llvm::arrayRefFromStringRef(input));
-    return clice::format("{:016x}{:016x}", hash.high64, hash.low64);
+    return std::format("{:016x}{:016x}", hash.high64, hash.low64);
 }
 
 /// RAII completion of an in-flight PCH build registration: wakes waiters
@@ -73,7 +73,7 @@ static kota::codec::RawValue quarantine_diagnostics(unsigned crashes) {
     };
     diagnostic.severity = protocol::DiagnosticSeverity::Error;
     diagnostic.source = "clice";
-    diagnostic.message = clice::format(
+    diagnostic.message = std::format(
         "compiling this file crashed the language server worker {} times; " "the file is quarantined until it is edited",
         crashes);
     auto json = kota::codec::json::to_json<kota::ipc::lsp_config>(diagnostics);
@@ -258,13 +258,12 @@ void Compiler::init_compile_graph() {
         // the frontend-relevant subset of the compile flags.
         auto safe_module_name = module_name;
         std::ranges::replace(safe_module_name, ':', '-');
-        auto pcm_key =
-            clice::format("{}-{}",
-                          safe_module_name,
-                          cache_key({clang::getClangFullVersion(),
-                                     bp.directory,
-                                     file_path,
-                                     canonicalize(bp.arguments, ArgsProfile::Frontend)}));
+        auto pcm_key = std::format("{}-{}",
+                                   safe_module_name,
+                                   cache_key({clang::getClangFullVersion(),
+                                              bp.directory,
+                                              file_path,
+                                              canonicalize(bp.arguments, ArgsProfile::Frontend)}));
 
         // Check if cached PCM is still valid.
         llvm::StringRef pcm_miss = "no_entry";
@@ -292,9 +291,9 @@ void Compiler::init_compile_graph() {
         // preamble text), pcm_key is content-free, and a blocked budget
         // must unlock the moment the poison is edited.
         auto content = llvm::MemoryBuffer::getFile(file_path);
-        auto budget_key = clice::format("{}-{:016x}",
-                                        pcm_key,
-                                        content ? llvm::xxh3_64bits((*content)->getBuffer()) : 0);
+        auto budget_key = std::format("{}-{:016x}",
+                                      pcm_key,
+                                      content ? llvm::xxh3_64bits((*content)->getBuffer()) : 0);
         if(workspace.build_crashes.blocked(budget_key)) {
             LOG_WARN("PCM build for module {} refused: key {} keeps crashing workers",
                      module_name,

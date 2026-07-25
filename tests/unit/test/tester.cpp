@@ -288,7 +288,7 @@ void Tester::prepare_driver(llvm::StringRef standard) {
         vfs->add(file, source.content);
     }
 
-    auto command = clice::format("clang++ {} {} -fms-extensions", standard, src_path);
+    auto command = std::format("clang++ {} {} -fms-extensions", standard, src_path);
     database.add_command("fake", src_path, command);
 
     auto commands = database.lookup(src_path);

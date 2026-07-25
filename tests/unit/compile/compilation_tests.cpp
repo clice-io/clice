@@ -281,7 +281,7 @@ export int a_value() { return b_value() + 1; }
     // Build PCM for mod_b.
     cdb.add_command(tmp.root.str(),
                     tmp.path("mod_b.cppm"),
-                    clice::format("clang++ -std=c++20 {}", tmp.path("mod_b.cppm")));
+                    std::format("clang++ -std=c++20 {}", tmp.path("mod_b.cppm")));
 
     auto cmds_b = cdb.lookup(tmp.path("mod_b.cppm"));
     ASSERT_TRUE(tc.resolve(cmds_b.front()).has_value());
@@ -301,7 +301,7 @@ export int a_value() { return b_value() + 1; }
     // Build PCM for mod_a, passing B's PCM.
     cdb.add_command(tmp.root.str(),
                     tmp.path("mod_a.cppm"),
-                    clice::format("clang++ -std=c++20 {}", tmp.path("mod_a.cppm")));
+                    std::format("clang++ -std=c++20 {}", tmp.path("mod_a.cppm")));
 
     auto cmds_a = cdb.lookup(tmp.path("mod_a.cppm"));
     ASSERT_TRUE(tc.resolve(cmds_a.front()).has_value());

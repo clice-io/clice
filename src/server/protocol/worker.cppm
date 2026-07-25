@@ -52,7 +52,7 @@ inline bool is_operational_error(const protocol::Error& error) {
 /// per-content blame (Quarantine) dedups by this identity so a single death
 /// is counted at most once per document.
 inline protocol::Value death_identity(std::size_t index, unsigned generation, bool stateful) {
-    return clice::format("{}:{}:{}", stateful ? "sf" : "sl", index, generation);
+    return std::format("{}:{}:{}", stateful ? "sf" : "sl", index, generation);
 }
 
 /// The death identity attached to a worker_crashed error; empty when the

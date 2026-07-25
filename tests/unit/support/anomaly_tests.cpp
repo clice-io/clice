@@ -165,7 +165,7 @@ TEST_CASE(MarkerNamesStable) {
         "PositionMapFail",
     };
     for(std::size_t i = 0; i < logging::anomaly_id_count; ++i) {
-        EXPECT_EQ(capture.notified[i].second, clice::format("[anomaly:{}] x", expected[i]));
+        EXPECT_EQ(capture.notified[i].second, std::format("[anomaly:{}] x", expected[i]));
     }
 }
 

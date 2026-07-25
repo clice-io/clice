@@ -25,9 +25,9 @@ TEST_CASE(DoxygenInfo) {
     ASSERT_FALSE(param_non_exists.has_value());
 
     for(int i = 0; i < 3; ++i) {
-        di.add_block_command_comment("detail", clice::format("Detail{}", i));
-        di.add_block_command_comment("warning", clice::format("Warning{}", i));
-        di.add_block_command_comment("note", clice::format("Note{}", i));
+        di.add_block_command_comment("detail", std::format("Detail{}", i));
+        di.add_block_command_comment("warning", std::format("Warning{}", i));
+        di.add_block_command_comment("note", std::format("Note{}", i));
     }
 
     std::set<std::string> expected_detail = {"Detail0", "Detail1", "Detail2"};

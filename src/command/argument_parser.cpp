@@ -337,7 +337,7 @@ std::string canonical_command_hash(llvm::ArrayRef<std::string> args, llvm::Strin
     canonical += '\0';
     canonical += directory;
     auto hash = llvm::xxh3_64bits(llvm::StringRef(canonical));
-    return clice::format("{:016x}", hash);
+    return std::format("{:016x}", hash);
 }
 
 std::string print_argv(llvm::ArrayRef<const char*> args) {

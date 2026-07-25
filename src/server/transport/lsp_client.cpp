@@ -787,7 +787,7 @@ void LSPClient::report_index_progress() {
                     state->reporter.reset();
                     co_return;
                 }
-                state->reporter->begin("Indexing", clice::format("0/{} files", state->total), 0);
+                state->reporter->begin("Indexing", std::format("0/{} files", state->total), 0);
                 state->token_active = true;
             }(index_progress));
             break;
@@ -796,14 +796,14 @@ void LSPClient::report_index_progress() {
             if(st.token_active) {
                 auto pct =
                     p.total > 0 ? static_cast<std::uint32_t>(p.completed * 100 / p.total) : 100;
-                st.reporter->report(clice::format("{}/{} files", p.completed, p.total), pct);
+                st.reporter->report(std::format("{}/{} files", p.completed, p.total), pct);
             }
             break;
         }
         case Stage::End: {
             st.round_active = false;
             if(st.token_active) {
-                st.reporter->end(clice::format("Indexed {} files", p.dispatched));
+                st.reporter->end(std::format("Indexed {} files", p.dispatched));
                 st.reporter.reset();
                 st.token_active = false;
             }

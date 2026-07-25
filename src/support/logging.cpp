@@ -53,7 +53,7 @@ bool file_logger(std::string_view name,
         spdlog::error("Failed to create log directory {}: {}", std::string(dir), ec.message());
         return false;
     }
-    auto filepath = path::join(dir, clice::format("{}.log", name));
+    auto filepath = path::join(dir, std::format("{}.log", name));
     // Verify we can write to the file before constructing the sink.
     // (spdlog would throw on failure, but exceptions are disabled in this project.)
     {

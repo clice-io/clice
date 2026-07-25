@@ -27,8 +27,8 @@ static std::expected<ResolvedSymbol, kota::ipc::Error>
         return std::unexpected(kota::ipc::Error{"symbol not found"});
     if(candidates.size() > 1) {
         return std::unexpected(
-            kota::ipc::Error{clice::format("ambiguous: {} candidates, use symbolId to disambiguate",
-                                           candidates.size())});
+            kota::ipc::Error{std::format("ambiguous: {} candidates, use symbolId to disambiguate",
+                                         candidates.size())});
     }
     return std::move(candidates[0]);
 }
