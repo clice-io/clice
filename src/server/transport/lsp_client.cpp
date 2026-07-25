@@ -2,10 +2,10 @@ module;
 
 #include "version.h"
 
-
 module clice.server;
 
 import kota;
+
 namespace clice {
 
 namespace protocol = kota::ipc::protocol;

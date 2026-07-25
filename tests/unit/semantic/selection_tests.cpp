@@ -1,6 +1,7 @@
 import llvm;
 import clang;
 import clice.test;
+import clice.support;
 import clice.syntax;
 import clice.visit;
 

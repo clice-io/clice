@@ -1,6 +1,7 @@
 module clice.server;
 
 import kota;
+
 namespace clice {
 
 bool Workspace::is_synthesized_artifact(llvm::StringRef path) const {

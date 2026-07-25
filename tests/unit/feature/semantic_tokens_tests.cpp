@@ -3,6 +3,7 @@ import kota;
 import clice.test;
 import clice.feature;
 import clice.semantic;
+import clice.support;
 import clice.syntax;
 
 namespace clice::testing {

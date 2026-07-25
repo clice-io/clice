@@ -1,6 +1,7 @@
 module clice.server;
 
 import kota;
+
 namespace clice {
 
 using kota::ipc::RequestResult;

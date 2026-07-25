@@ -441,7 +441,6 @@ using ::clang::SrcMgr::CharacteristicKind;
 
 }  // namespace clang::SrcMgr
 
-
 export namespace clang::dependency_directives_scan {
 
 using ::clang::dependency_directives_scan::Directive;

@@ -1,6 +1,7 @@
 module clice.server;
 
 import kota;
+
 namespace clice {
 
 /// Replace all occurrences of ${workspace} with the workspace root.

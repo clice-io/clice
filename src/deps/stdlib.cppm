@@ -107,9 +107,7 @@ using ::std::exchange;
 using ::std::expected;
 using ::std::find;
 using ::std::find_if;
-#ifndef _LIBCPP_VERSION
 using ::std::format;
-#endif
 using ::std::format_string;
 using ::std::formatter;
 using ::std::forward;
@@ -313,20 +311,17 @@ using ::std::operator==;
 using ::std::operator<=>;
 
 }  // namespace std
+#endif
 
-// libc++'s <format> under modules: exporting the raw std::format overload set
-// makes importers' overload resolution eagerly instantiate the wide-char
-// basic_format_string (lazy in textual includes), which hard-errors on the
-// deleted formatter<string, wchar_t>. Export a char-only forwarder instead of
-// the overload set; the main using-list above skips std::format on libc++.
-export namespace std {
+// The range-adaptor pipe is a free operator| in namespace std::ranges on the
+// MSVC STL (libstdc++/libc++ use hidden friends, which ADL finds through the
+// exported closure types without help).
+#ifdef _MSVC_STL_VERSION
+export namespace std::ranges {
 
-template <typename... Args>
-[[nodiscard]] string format(format_string<Args...> fmt, Args&&... args) {
-    return ::std::vformat(fmt.get(), ::std::make_format_args(args...));
-}
+using ::std::ranges::operator|;
 
-}  // namespace std
+}  // namespace std::ranges
 #endif
 
 export namespace std::filesystem {

@@ -132,10 +132,23 @@ if(MSVC OR (CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND
          CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC"))
     target_compile_options(clice_options INTERFACE /GR- /EHs-c- /Zc:preprocessor)
 else()
+    # BMI mode is caught between two clang 22 bugs, both fixed only in clang 23:
+    # reduced BMI's merged lookup table breaks concept-constrained conversions
+    # (llvm#205361), but full BMI demotes serialized var definitions, which on
+    # libc++ eagerly re-instantiates the wide basic_format_string and hard-errors
+    # every std::format call (llvm#174858, fix llvm PR#184287). libstdc++ is
+    # immune to the latter, libc++ hits it on every format site — so Linux runs
+    # full BMI and Apple runs reduced, each dodging the bug that bites it.
+    # Collapse to one mode when the toolchain reaches clang 23.
+    if(APPLE)
+        set(CLICE_BMI_MODE_FLAG -fmodules-reduced-bmi)
+    else()
+        set(CLICE_BMI_MODE_FLAG -fno-modules-reduced-bmi)
+    endif()
     target_compile_options(clice_options INTERFACE
         -fno-rtti
         -fno-exceptions
-        -fno-modules-reduced-bmi
+        ${CLICE_BMI_MODE_FLAG}
         -Wno-deprecated-declarations
         $<$<COMPILE_LANG_AND_ID:CXX,Clang,AppleClang>:-Wno-undefined-inline>
     )
@@ -170,13 +183,10 @@ if(MSVC OR (CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND
     set(CLICE_DECO_MACRO_FI "/FI${kotatsu_SOURCE_DIR}/include/kota/deco/macro.h")
     set(CLICE_ZEST_MACRO_FI "/FI${kotatsu_SOURCE_DIR}/include/kota/zest/macro.h")
 else()
-    # deco rides a per-source COMPILE_OPTIONS, evaluated separately from the
-    # target-level prelude, so a plain `-include` does not collide with it.
+    # Both macro headers ride per-source COMPILE_OPTIONS, evaluated separately
+    # from the target-level prelude, so a plain `-include` does not collide.
     set(CLICE_DECO_MACRO_FI "-include" "${kotatsu_SOURCE_DIR}/include/kota/deco/macro.h")
-    # zest is a target-level option that WOULD de-duplicate its bare `-include`
-    # against the prelude force-include, orphaning a path as a stray input file;
-    # SHELL: keeps the flag+path together as one opaque, un-deduplicated unit.
-    set(CLICE_ZEST_MACRO_FI "SHELL:-include ${kotatsu_SOURCE_DIR}/include/kota/zest/macro.h")
+    set(CLICE_ZEST_MACRO_FI "-include" "${kotatsu_SOURCE_DIR}/include/kota/zest/macro.h")
 endif()
 
 # deco declaration macros (DecoFlag/DecoKV/.../DECO_CFG) live on their concrete
@@ -362,10 +372,22 @@ if(CLICE_ENABLE_TEST)
         C_COMPILER_LAUNCHER ""
         CXX_COMPILER_LAUNCHER ""
     )
-    # zest declaration macros (TEST_SUITE/TEST_CASE/EXPECT_*/ASSERT_*) go on the
-    # whole test executable: every test TU expands them, and the harness module
-    # units (test.cppm/tester.cpp/annotation.cpp) tolerate the zero-token header.
-    target_compile_options(unit_tests PRIVATE ${CLICE_ZEST_MACRO_FI})
+    # zest declaration macros (TEST_SUITE/TEST_CASE/EXPECT_*/ASSERT_*) ride
+    # per-source COMPILE_OPTIONS, NOT a target option: a target-level option on
+    # unit_tests would differ from clice-core's flags and make CMake synthesize
+    # a clice-core@synth target that recompiles every BMI under the test flags —
+    # doubling the module build and tripping clang-scan-deps over the prelude
+    # force-include ("cannot specify -o when generating multiple output files").
+    # Source-scoped options stay out of the BMI-compatibility calculus.
+    # APPEND: unit_tests.cc already carries the deco macro header through the
+    # per-source block above; a plain set_source_files_properties would replace it.
+    set_property(SOURCE
+        "${PROJECT_SOURCE_DIR}/tests/unit/unit_tests.cc"
+        ${CLICE_TEST_SOURCES}
+        ${CLICE_TEST_SUPPORT_SOURCES}
+        "${PROJECT_SOURCE_DIR}/tests/unit/test/test.cppm"
+        APPEND PROPERTY COMPILE_OPTIONS ${CLICE_ZEST_MACRO_FI}
+    )
     # The generated/ include dir propagates through clice::core, but the
     # generation order does not — depend explicitly so a test including
     # version.h cannot race the generator on a clean parallel build.
