@@ -155,15 +155,16 @@ endif()
 set(FBS_SCHEMA_FILE "${PROJECT_SOURCE_DIR}/src/index/schema.fbs")
 set(GENERATED_HEADER "${PROJECT_BINARY_DIR}/generated/schema_generated.h")
 
-# flatc comes from the pixi environment (conda-forge flatbuffers), pinned to
-# match the header version kotatsu fetches. We only run it to codegen the
-# schema header; the flatbuffers runtime is header-only.
+# kotatsu builds the flatbuffers runtime but not its schema compiler, so flatc
+# comes from the pixi environment (conda-forge flatbuffers). Its version must
+# match the headers kotatsu fetches — the generated header static_asserts on
+# that, so a mismatch surfaces as a compile error in schema_generated.h.
 find_program(FLATC_EXECUTABLE flatc REQUIRED)
 
 add_custom_command(
     OUTPUT "${GENERATED_HEADER}"
     COMMAND ${FLATC_EXECUTABLE} --cpp -o "${PROJECT_BINARY_DIR}/generated" "${FBS_SCHEMA_FILE}"
-    DEPENDS "${FBS_SCHEMA_FILE}"
+    DEPENDS "${FBS_SCHEMA_FILE}" "${FLATC_EXECUTABLE}"
     COMMENT "Generating C++ header from ${FBS_SCHEMA_FILE}"
 )
 

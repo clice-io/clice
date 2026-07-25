@@ -54,6 +54,23 @@ def run_tool(args: list[str]) -> str:
     return result.stdout
 
 
+def assert_parsed(count: int, tool: str, what: str) -> list[str]:
+    """Fail closed when a parse yielded nothing.
+
+    Every real executable has at least one dynamic dependency, so an empty
+    parse means the tool printed something this script no longer understands
+    (an LLVM upgrade reformatting its output, say) rather than a clean binary.
+    Without this the gate would silently degrade into a rubber stamp — the
+    exact failure mode it exists to prevent.
+    """
+    if count:
+        return []
+    return [
+        f"parsed no {what} from `{tool}` output; refusing to vouch for this "
+        f"binary (the tool's output format may have changed)"
+    ]
+
+
 def detect_format(binary: Path) -> str:
     magic = binary.read_bytes()[:4]
     if magic[:4] == b"\x7fELF":
@@ -87,25 +104,31 @@ def check_elf(binary: Path) -> list[str]:
     """
     out = run_tool(["llvm-readelf", "-d", str(binary)])
     violations = []
+    parsed = 0
     for line in out.splitlines():
         if "(NEEDED)" in line:
             m = re.search(r"Shared library: \[([^\]]+)\]", line)
-            if m and m.group(1) not in LINUX_NEEDED_WHITELIST:
+            if not m:
+                continue
+            parsed += 1
+            if m.group(1) not in LINUX_NEEDED_WHITELIST:
                 violations.append(f"unexpected NEEDED dependency: {m.group(1)}")
         elif "(RUNPATH)" in line or "(RPATH)" in line:
             m = re.search(r"\[([^\]]+)\]", line)
             if m and any(marker in m.group(1) for marker in CONDA_MARKERS):
                 print(f"note: RUNPATH references a conda/pixi env: {m.group(1)}")
 
+    violations.extend(assert_parsed(parsed, "llvm-readelf -d", "NEEDED entries"))
     return violations
 
 
 def check_macho(binary: Path) -> list[str]:
     """Return a list of violation messages for a Mach-O binary."""
     violations = []
+    parsed = 0
 
-    # Load dylib dependencies. The first line of -L output is the binary's own
-    # install name (no leading path constraint), so skip it.
+    # Load dylib dependencies. The first line of -L output is the file-path
+    # header ("<path>:"), not a dependency, so skip it.
     load_out = run_tool(["llvm-otool", "-L", str(binary)])
     lines = load_out.splitlines()
     for line in lines[1:]:
@@ -113,8 +136,11 @@ def check_macho(binary: Path) -> list[str]:
         if not line or not line.endswith(")"):
             continue
         dylib = line.split(" (", 1)[0].strip()
+        parsed += 1
         if not dylib.startswith(MACOS_SYSTEM_PREFIXES):
             violations.append(f"non-system dylib dependency: {dylib}")
+
+    violations.extend(assert_parsed(parsed, "llvm-otool -L", "dylib dependencies"))
 
     # LC_RPATH entries must not point into a conda/pixi env.
     rpath_out = run_tool(["llvm-otool", "-l", str(binary)])

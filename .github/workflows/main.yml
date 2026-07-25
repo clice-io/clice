@@ -49,6 +49,7 @@ jobs:
               - 'tests/**'
               - 'config/**'
               - 'cmake/**'
+              - 'scripts/**'
               - 'editors/nvim/**'
               - 'editors/vscode/**'
               - 'pixi.toml'

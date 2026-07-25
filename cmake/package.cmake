@@ -38,9 +38,10 @@ set(KOTA_ENABLE_TEST OFF)
 set(KOTA_CODEC_ENABLE_SIMDJSON ON)
 set(KOTA_CODEC_ENABLE_YYJSON ON)
 set(KOTA_CODEC_ENABLE_TOML ON)
-# clice uses flatbuffers header-only for index serialization; kotatsu already
-# fetches the flatbuffers headers (v25.2.10) and exposes them as an interface
-# target, so we ride on that instead of fetching/building our own copy.
+# kotatsu already fetches flatbuffers (v25.2.10) for its own codec and links the
+# runtime lib into anything that uses kota::codec, so clice rides on that copy
+# instead of fetching a second one. kotatsu does not build flatc, though, so the
+# schema compiler comes from pixi instead (see CMakeLists.txt).
 set(KOTA_CODEC_ENABLE_FLATBUFFERS ON)
 set(KOTA_ENABLE_EXCEPTIONS OFF)
 set(KOTA_ENABLE_RTTI OFF)
