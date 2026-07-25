@@ -27,17 +27,6 @@ FetchContent_Declare(
 set(ENABLE_ROARING_TESTS OFF CACHE INTERNAL "" FORCE)
 set(ENABLE_ROARING_MICROBENCHMARKS OFF CACHE INTERNAL "" FORCE)
 
-# flatbuffers
-FetchContent_Declare(
-    flatbuffers
-    GIT_REPOSITORY https://github.com/google/flatbuffers.git
-    GIT_TAG v25.9.23
-    GIT_SHALLOW TRUE
-)
-set(FLATBUFFERS_BUILD_GRPC OFF CACHE BOOL "" FORCE)
-set(FLATBUFFERS_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(FLATBUFFERS_BUILD_FLATHASH OFF CACHE BOOL "" FORCE)
-
 FetchContent_Declare(
     kotatsu
     GIT_REPOSITORY https://github.com/clice-io/kotatsu
@@ -49,10 +38,14 @@ set(KOTA_ENABLE_TEST OFF)
 set(KOTA_CODEC_ENABLE_SIMDJSON ON)
 set(KOTA_CODEC_ENABLE_YYJSON ON)
 set(KOTA_CODEC_ENABLE_TOML ON)
+# clice uses flatbuffers header-only for index serialization; kotatsu already
+# fetches the flatbuffers headers (v25.2.10) and exposes them as an interface
+# target, so we ride on that instead of fetching/building our own copy.
+set(KOTA_CODEC_ENABLE_FLATBUFFERS ON)
 set(KOTA_ENABLE_EXCEPTIONS OFF)
 set(KOTA_ENABLE_RTTI OFF)
 
-FetchContent_MakeAvailable(kotatsu spdlog croaring flatbuffers)
+FetchContent_MakeAvailable(kotatsu spdlog croaring)
 
 # kotatsu adds -D_LIBCPP_DISABLE_AVAILABILITY globally; on macOS with
 # libc++ >= 21 that makes the headers emit references to dylib-only symbols
