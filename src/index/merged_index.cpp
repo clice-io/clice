@@ -6,7 +6,9 @@ module;
 
 #include "schema_generated.h"
 
-module clice;
+module clice.index;
+
+import kota;
 
 namespace clice::index {
 

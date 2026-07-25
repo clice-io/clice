@@ -1,13 +1,13 @@
-export module clice:compile.implement;
+export module clice.compile:implement;
 
 import stdlib;
 import llvm;
 import clang;
-import :compile.compilation_unit;
-import :compile.diagnostic;
-import :compile.directive;
-import :compile.tidy_checker;
-import :semantic.resolver;
+import :compilation_unit;
+import :diagnostic;
+import :directive;
+import :tidy_checker;
+import clice.semantic;
 
 namespace clice {
 

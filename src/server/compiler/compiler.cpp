@@ -7,7 +7,9 @@ module;
 #include "kota/codec/json/json.h"
 #include "kota/ipc/codec/json.h"
 
-module clice;
+module clice.server;
+
+import clang;
 
 namespace clice {
 

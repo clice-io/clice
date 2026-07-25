@@ -2,11 +2,11 @@ module;
 
 #include "schema_generated.h"
 
-export module clice:index.serialization;
+export module clice.index:serialization;
 
 import stdlib;
 import llvm;
-import :support.bitmap;
+import clice.support;
 
 namespace clice::index {
 

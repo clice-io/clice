@@ -1,10 +1,10 @@
-export module clice:semantic.selection;
+export module clice.visit:selection;
 
 import stdlib;
 import llvm;
 import clang;
-import :compile.compilation_unit;
-import :syntax.token;
+import clice.compile;
+import clice.syntax;
 
 export namespace clice {
 

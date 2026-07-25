@@ -1,4 +1,4 @@
-export module clice:server.protocol.extension;
+export module clice.protocol:extension;
 
 import stdlib;
 import kota;

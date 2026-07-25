@@ -1,4 +1,4 @@
-export module clice:support.cache_store;
+export module clice.support:cache_store;
 
 import stdlib;
 import llvm;

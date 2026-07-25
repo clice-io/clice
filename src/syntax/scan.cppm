@@ -1,4 +1,4 @@
-export module clice:syntax.scan;
+export module clice.syntax:scan;
 
 import stdlib;
 import llvm;

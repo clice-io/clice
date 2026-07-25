@@ -1,11 +1,14 @@
-module;
-
 #include "kota/ipc/lsp/text.h"
 #include "kota/zest/macro.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/raw_ostream.h"
 
-module clice;
+import kota;
+import clice.test;
+import clice.server;
+import clice.worker;
+import clice.index;
+import clice.semantic;
 
 namespace clice::testing {
 namespace {

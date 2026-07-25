@@ -1,9 +1,10 @@
-module;
-
 #include "kota/zest/macro.h"
 #include "llvm/ADT/DenseSet.h"
 
-module clice;
+import stdlib;
+import llvm;
+import kota;
+import clice.server;
 
 namespace clice::testing {
 namespace {

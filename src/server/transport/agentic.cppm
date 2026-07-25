@@ -2,7 +2,7 @@ module;
 
 #include "kota/deco/deco.h"
 
-export module clice:server.transport.agentic;
+export module clice.server:transport.agentic;
 
 import stdlib;
 

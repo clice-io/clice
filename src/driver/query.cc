@@ -2,7 +2,10 @@ module;
 
 #include "kota/deco/deco.h"
 
-module clice;
+module clice.driver;
+
+import clice.server;
+import clice.support;
 
 namespace clice::driver {
 

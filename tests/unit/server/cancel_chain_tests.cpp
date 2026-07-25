@@ -1,9 +1,9 @@
-module;
-
 #include "kota/async/async.h"
 #include "kota/zest/macro.h"
 
-module clice;
+import kota;
+import clice.test;
+import clice.protocol;
 
 namespace clice::testing {
 namespace {

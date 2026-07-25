@@ -1,14 +1,13 @@
-export module clice:compile.compilation_unit;
+export module clice.compile:compilation_unit;
 
 import stdlib;
 import llvm;
 import clang;
-import :compile.dep_file;
-import :compile.diagnostic;
-import :compile.directive;
-import :semantic.resolver;
-import :semantic.symbol_id;
-import :syntax.token;
+import :dep_file;
+import :diagnostic;
+import :directive;
+import clice.semantic;
+import clice.syntax;
 
 export namespace clice {
 

@@ -2,7 +2,7 @@
 /// project, licensed under Apache License v2.0 with LLVM Exceptions.
 /// See https://llvm.org/LICENSE.txt for license information.
 
-export module clice:support.markup;
+export module clice.support:markup;
 
 import stdlib;
 import llvm;

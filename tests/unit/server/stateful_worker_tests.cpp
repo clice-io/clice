@@ -1,9 +1,10 @@
-module;
-
 #include "kota/codec/json/json.h"
 #include "kota/zest/macro.h"
 
-module clice;
+import stdlib;
+import kota;
+import clice.test;
+import clice.protocol;
 
 namespace clice::testing {
 

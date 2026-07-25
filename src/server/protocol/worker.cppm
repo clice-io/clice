@@ -1,10 +1,10 @@
-export module clice:server.protocol.worker;
+export module clice.protocol:worker;
 
 import stdlib;
 import kota;
-import :compile.dep_file;
-import :feature.document_link;
-import :syntax.token;
+import clice.compile;
+import clice.feature;
+import clice.syntax;
 
 export namespace clice::worker {
 

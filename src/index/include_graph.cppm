@@ -1,10 +1,10 @@
-export module clice:index.include_graph;
+export module clice.index:include_graph;
 
 import stdlib;
 import llvm;
 import clang;
-import :compile.compilation_unit;
-import :support.logging;
+import clice.compile;
+import clice.support;
 
 export namespace clice::index {
 

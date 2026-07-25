@@ -1,4 +1,4 @@
-export module clice:support.doxygen;
+export module clice.support:doxygen;
 
 import stdlib;
 import llvm;

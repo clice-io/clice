@@ -1,17 +1,17 @@
 module;
 
-export module clice:server.compiler.indexer;
+export module clice.server:compiler.indexer;
 
 import stdlib;
 import llvm;
 import kota;
-import :server.compiler.context_resolver;
-import :server.state.session_store;
-import :server.state.workspace;
-import :server.worker.worker_pool;
-import :support.signal;
+import :compiler.context_resolver;
+import :state.session_store;
+import :state.workspace;
+import clice.worker;
+import clice.support;
 
-namespace clice::testing {
+export namespace clice::testing {
 
 struct IndexerFixture;
 
@@ -312,3 +312,60 @@ private:
 };
 
 }  // namespace clice
+
+#ifdef CLICE_ENABLE_TEST
+
+/// Test fixture with friend access to Indexer internals.
+/// Defined here (attached to clice.server) rather than in the test TU: with
+/// the module split, a definition in the test executable would attach to a
+/// different module and no longer be the class the friend declaration above
+/// names.
+export namespace clice::testing {
+
+struct IndexerFixture {
+    using Verdict = Indexer::RequeueVerdict;
+
+    constexpr static unsigned budget = Indexer::max_requeue_attempts;
+
+    kota::event_loop loop;
+    Workspace workspace;
+    WorkerPool pool{loop};
+    ContextResolver contexts{workspace};
+    SessionStore sessions;
+    Indexer indexer{loop, workspace, pool, contexts, sessions};
+
+    /// Fail the entry's current dispatch: the launch ticket matches.
+    Verdict fail(std::uint32_t id, bool crashed) {
+        return indexer.note_dispatch_failure(id, ticket(id), crashed);
+    }
+
+    /// Fail a dispatch launched with an explicit (possibly stale) ticket.
+    Verdict fail_at(std::uint32_t id, std::uint64_t ticket, bool crashed) {
+        return indexer.note_dispatch_failure(id, ticket, crashed);
+    }
+
+    std::uint64_t ticket(std::uint32_t id) {
+        auto it = indexer.reindex_reasons.find(id);
+        return it == indexer.reindex_reasons.end() ? std::numeric_limits<std::uint64_t>::max()
+                                                   : it->second.ticket;
+    }
+
+    unsigned attempts(std::uint32_t id) {
+        auto it = indexer.reindex_reasons.find(id);
+        return it == indexer.reindex_reasons.end() ? 0u : it->second.requeue_attempts;
+    }
+
+    void set_attempts(std::uint32_t id, unsigned n) {
+        indexer.reindex_reasons.find(id)->second.requeue_attempts = n;
+    }
+
+    /// Consume the queued slot as a dispatch would, so a later enqueue
+    /// takes the fresh-slot (mid-flight) path.
+    void consume(std::uint32_t id) {
+        indexer.pending_ids.erase(id);
+    }
+};
+
+}  // namespace clice::testing
+
+#endif

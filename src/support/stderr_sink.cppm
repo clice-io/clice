@@ -2,7 +2,7 @@ module;
 
 #include "spdlog/sinks/base_sink.h"
 
-export module clice:support.stderr_sink;
+export module clice.support:stderr_sink;
 
 import stdlib;
 

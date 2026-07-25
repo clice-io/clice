@@ -1,22 +1,17 @@
-module;
-
 #include "kota/zest/macro.h"
 
-module clice;
+import stdlib;
+import kota;
+import clice.test;
+import clice.server;
+import clice.support;
+import clice.protocol;
+import clice.worker;
 
 namespace clice::testing {
 
-/// Reaches Compiler's private compile-preparation steps for guard tests.
-struct CompilerFixture {
-    static kota::task<bool> ensure_pch(Compiler& compiler,
-                                       Session& session,
-                                       std::uint64_t launch_generation,
-                                       std::uint64_t launch_epoch,
-                                       const std::string& directory,
-                                       const std::vector<std::string>& arguments) {
-        return compiler.ensure_pch(session, launch_generation, launch_epoch, directory, arguments);
-    }
-};
+// CompilerFixture (the befriended private-access shim) now lives in the
+// clice.server interface next to Compiler; see compiler.cppm.
 
 namespace {
 

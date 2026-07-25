@@ -1,6 +1,6 @@
 /// Shared LSP position clamping for master-side buffer access.
 
-export module clice:server.protocol.position;
+export module clice.protocol:position;
 
 import kota;
 

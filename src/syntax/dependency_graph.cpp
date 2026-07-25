@@ -1,4 +1,6 @@
-module clice;
+module clice.syntax;
+
+import kota;
 
 namespace clice {
 

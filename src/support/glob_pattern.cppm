@@ -1,4 +1,4 @@
-export module clice:support.glob_pattern;
+export module clice.support:glob_pattern;
 
 import stdlib;
 import llvm;

@@ -1,17 +1,15 @@
-export module clice:server.service.query;
+export module clice.server:service.query;
 
 import stdlib;
 import llvm;
 import kota;
-import :index.preamble_state;
-import :index.tu_index;
-import :semantic.relation_kind;
-import :semantic.symbol_kind;
-import :server.compiler.indexer;
-import :server.protocol.agentic;
-import :server.state.session;
-import :server.state.session_store;
-import :server.state.workspace;
+import clice.index;
+import clice.semantic;
+import :compiler.indexer;
+import clice.protocol;
+import :state.session;
+import :state.session_store;
+import :state.workspace;
 
 export namespace clice {
 

@@ -1,7 +1,7 @@
-export module clice:feature.document_link;
+export module clice.feature:document_link;
 
 import stdlib;
-import :syntax.token;
+import clice.syntax;
 
 export namespace clice::feature {
 

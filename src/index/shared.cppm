@@ -1,4 +1,4 @@
-export module clice:index.shared;
+export module clice.index:shared;
 
 import llvm;
 import clang;

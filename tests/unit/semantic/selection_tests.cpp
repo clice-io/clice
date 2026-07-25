@@ -1,9 +1,11 @@
-module;
-
 #include "kota/zest/macro.h"
 #include "clang/Lex/Lexer.h"
 
-module clice;
+import llvm;
+import clang;
+import clice.test;
+import clice.visit;
+import clice.syntax;
 
 namespace clice {
 

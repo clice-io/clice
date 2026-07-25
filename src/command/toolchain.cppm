@@ -1,10 +1,10 @@
-export module clice:command.toolchain;
+export module clice.command:toolchain;
 
 import stdlib;
 import llvm;
 
-import :command.command;
-import :support.object_pool;
+import :command;
+import clice.support;
 
 export namespace clice {
 

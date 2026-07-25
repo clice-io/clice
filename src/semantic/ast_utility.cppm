@@ -1,4 +1,4 @@
-export module clice:semantic.ast_utility;
+export module clice.semantic:ast_utility;
 
 import stdlib;
 import llvm;

@@ -6,7 +6,7 @@ module;
 #include "clang-tidy/ClangTidyModuleRegistry.h"
 #include "clang-tidy/ClangTidyOptions.h"
 
-module clice;
+module clice.compile;
 
 namespace clice::tidy {
 

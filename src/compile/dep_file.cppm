@@ -1,4 +1,4 @@
-export module clice:compile.dep_file;
+export module clice.compile:dep_file;
 
 import stdlib;
 

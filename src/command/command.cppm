@@ -1,11 +1,10 @@
-export module clice:command.command;
+export module clice.command:command;
 
 import stdlib;
 import llvm;
 
-import :command.argument_parser;
-import :support.object_pool;
-import :support.path_pool;
+import :argument_parser;
+import clice.support;
 
 export namespace clice {
 

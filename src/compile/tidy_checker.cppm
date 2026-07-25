@@ -4,7 +4,7 @@ module;
 #include "clang-tidy/ClangTidyModuleRegistry.h"
 #include "clang-tidy/ClangTidyOptions.h"
 
-export module clice:compile.tidy_checker;
+export module clice.compile:tidy_checker;
 
 // No `import stdlib`: the clang-tidy headers in the global module fragment pull
 // std names textually, and re-exporting them via stdlib collides with the

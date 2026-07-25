@@ -2,11 +2,11 @@ module;
 
 #include "spdlog/spdlog.h"
 
-export module clice:support.logging;
+export module clice.support:logging;
 
 import stdlib;
 import llvm;
-export import :support.format;
+export import :format;
 
 /// # Logging & error-feedback design
 ///

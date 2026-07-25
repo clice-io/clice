@@ -1,9 +1,9 @@
-export module clice:compile.diagnostic;
+export module clice.compile:diagnostic;
 
 import stdlib;
 import llvm;
 import clang;
-import :syntax.token;
+import clice.syntax;
 
 export namespace clice {
 

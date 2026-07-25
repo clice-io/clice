@@ -2,25 +2,24 @@ module;
 
 #include "kota/deco/deco.h"
 
-export module clice:server.transport.master_server;
+export module clice.server:transport.master_server;
 
 import stdlib;
 import llvm;
 import kota;
-import :server.compiler.compiler;
-import :server.compiler.context_resolver;
-import :server.compiler.indexer;
-import :server.service.feature_router;
-import :server.service.query;
-import :server.state.config;
-import :server.state.file_tracker;
-import :server.state.invalidator;
-import :server.state.session;
-import :server.state.session_store;
-import :server.state.workspace;
-import :server.worker.worker_pool;
-import :support.anomaly;
-import :support.signal;
+import :compiler.compiler;
+import :compiler.context_resolver;
+import :compiler.indexer;
+import :service.feature_router;
+import :service.query;
+import :state.config;
+import :state.file_tracker;
+import :state.invalidator;
+import :state.session;
+import :state.session_store;
+import :state.workspace;
+import clice.worker;
+import clice.support;
 
 namespace clice {
 

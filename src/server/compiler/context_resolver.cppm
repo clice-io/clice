@@ -1,13 +1,13 @@
-export module clice:server.compiler.context_resolver;
+export module clice.server:compiler.context_resolver;
 
 import stdlib;
 import llvm;
 import kota;
-import :server.compiler.context_cache;
-import :server.protocol.extension;
-import :server.state.session;
-import :server.state.session_store;
-import :server.state.workspace;
+import :compiler.context_cache;
+import clice.protocol;
+import :state.session;
+import :state.session_store;
+import :state.workspace;
 
 export namespace clice {
 

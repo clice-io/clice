@@ -1,8 +1,11 @@
-module;
-
 #include "kota/zest/macro.h"
 
-module clice;
+import llvm;
+import kota;
+import clice.test;
+import clice.feature;
+import clice.support;
+import clice.semantic;
 
 /// Ported from clangd's unittests/HoverTests.cpp (llvmorg-21.1.8), part of the LLVM
 /// project, licensed under Apache License v2.0 with LLVM Exceptions.

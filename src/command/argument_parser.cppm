@@ -2,7 +2,7 @@ module;
 
 #include <kota/deco/option.h>
 
-export module clice:command.argument_parser;
+export module clice.command:argument_parser;
 
 import stdlib;
 import llvm;

@@ -2,11 +2,11 @@ module;
 
 #include <algorithm>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
 
-export module clice:support.path_pool;
+export module clice.support:path_pool;
 
 import stdlib;
 import llvm;
-import :support.logging;
+import :logging;
 
 export namespace clice {
 

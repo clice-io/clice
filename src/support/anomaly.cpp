@@ -2,7 +2,7 @@ module;
 
 #include "spdlog/spdlog.h"
 
-module clice;
+module clice.support;
 
 namespace clice::logging {
 

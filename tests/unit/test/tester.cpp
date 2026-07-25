@@ -3,7 +3,7 @@ module;
 #include "kota/zest/macro.h"
 #include "llvm/Config/llvm-config.h"
 
-module clice;
+module clice.test;
 
 namespace clice::testing {
 

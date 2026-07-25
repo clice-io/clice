@@ -1,56 +1,20 @@
-module;
-
 #include "kota/zest/macro.h"
 #include "llvm/Support/raw_ostream.h"
 
-module clice;
+import stdlib;
+import kota;
+import clice.test;
+import clice.server;
+import clice.support;
+import clice.command;
+import clice.compile;
+import clice.worker;
+import clice.index;
 
 namespace clice::testing {
 
-/// Test fixture with friend access to Indexer internals.
-struct IndexerFixture {
-    using Verdict = Indexer::RequeueVerdict;
-
-    constexpr static unsigned budget = Indexer::max_requeue_attempts;
-
-    kota::event_loop loop;
-    Workspace workspace;
-    WorkerPool pool{loop};
-    ContextResolver contexts{workspace};
-    SessionStore sessions;
-    Indexer indexer{loop, workspace, pool, contexts, sessions};
-
-    /// Fail the entry's current dispatch: the launch ticket matches.
-    Verdict fail(std::uint32_t id, bool crashed) {
-        return indexer.note_dispatch_failure(id, ticket(id), crashed);
-    }
-
-    /// Fail a dispatch launched with an explicit (possibly stale) ticket.
-    Verdict fail_at(std::uint32_t id, std::uint64_t ticket, bool crashed) {
-        return indexer.note_dispatch_failure(id, ticket, crashed);
-    }
-
-    std::uint64_t ticket(std::uint32_t id) {
-        auto it = indexer.reindex_reasons.find(id);
-        return it == indexer.reindex_reasons.end() ? std::numeric_limits<std::uint64_t>::max()
-                                                   : it->second.ticket;
-    }
-
-    unsigned attempts(std::uint32_t id) {
-        auto it = indexer.reindex_reasons.find(id);
-        return it == indexer.reindex_reasons.end() ? 0u : it->second.requeue_attempts;
-    }
-
-    void set_attempts(std::uint32_t id, unsigned n) {
-        indexer.reindex_reasons.find(id)->second.requeue_attempts = n;
-    }
-
-    /// Consume the queued slot as a dispatch would, so a later enqueue
-    /// takes the fresh-slot (mid-flight) path.
-    void consume(std::uint32_t id) {
-        indexer.pending_ids.erase(id);
-    }
-};
+// IndexerFixture (the befriended private-access shim) now lives in the
+// clice.server interface next to Indexer; see indexer.cppm.
 
 namespace {
 

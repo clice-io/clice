@@ -1,4 +1,4 @@
-export module clice:server.compiler.compile_graph;
+export module clice.server:compiler.compile_graph;
 
 import stdlib;
 import llvm;

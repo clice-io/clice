@@ -1,9 +1,13 @@
-module;
-
 #include "kota/zest/macro.h"
 #include "llvm/Support/Path.h"
 
-module clice;
+import kota;
+import clice.test;
+import clice.server;
+import clice.protocol;
+import clice.worker;
+import clice.index;
+import clice.semantic;
 
 namespace clice::testing {
 namespace {

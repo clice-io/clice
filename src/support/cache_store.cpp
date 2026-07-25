@@ -17,7 +17,7 @@ module;
 // (over simdjson) that cannot be shared through the kota wrapper's GMF.
 #include "kota/codec/json/json.h"
 
-module clice;
+module clice.support;
 
 namespace clice {
 

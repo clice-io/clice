@@ -1,4 +1,4 @@
-export module clice:server.compiler.context_cache;
+export module clice.server:compiler.context_cache;
 
 import stdlib;
 

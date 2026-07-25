@@ -1,10 +1,10 @@
-export module clice:server.state.invalidator;
+export module clice.server:state.invalidator;
 
 import stdlib;
 import llvm;
-import :server.compiler.context_resolver;
-import :server.state.session_store;
-import :server.state.workspace;
+import :compiler.context_resolver;
+import :state.session_store;
+import :state.workspace;
 
 export namespace clice {
 

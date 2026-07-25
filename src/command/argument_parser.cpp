@@ -2,7 +2,9 @@ module;
 
 #include <kota/deco/option.h>
 
-module clice;
+module clice.command;
+
+import clang;
 
 namespace clice {
 

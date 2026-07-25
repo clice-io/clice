@@ -1,9 +1,12 @@
-module;
-
 #include "kota/zest/macro.h"
 #include "llvm/Support/xxhash.h"
 
-module clice;
+import llvm;
+import clice.test;
+import clice.compile;
+import clice.support;
+import clice.command;
+import clice.syntax;
 
 namespace clice::testing {
 

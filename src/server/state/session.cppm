@@ -1,10 +1,10 @@
-export module clice:server.state.session;
+export module clice.server:state.session;
 
 import stdlib;
 import kota;
-import :index.tu_index;
-import :server.state.quarantine;
-import :server.state.workspace;
+import clice.index;
+import :state.quarantine;
+import :state.workspace;
 
 /// Defined in server/compiler/context_resolver.h — the resolver reports where
 /// the compile command came from; Session only stores the verdict. Exported

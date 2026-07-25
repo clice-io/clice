@@ -238,14 +238,6 @@ target_sources(clice-core PUBLIC
     BASE_DIRS "${PROJECT_SOURCE_DIR}/src"
     FILES ${CLICE_MODULE_SOURCES}
 )
-if(CLICE_ENABLE_TEST)
-    target_sources(clice-core PUBLIC
-        FILE_SET CXX_MODULES
-        BASE_DIRS "${PROJECT_SOURCE_DIR}/tests/unit"
-        FILES "${PROJECT_SOURCE_DIR}/tests/unit/test/test.cppm"
-    )
-    target_include_directories(clice-core PUBLIC "${PROJECT_SOURCE_DIR}/tests/unit")
-endif()
 set_target_properties(clice-core PROPERTIES CXX_SCAN_FOR_MODULES ON)
 add_dependencies(clice-core generate_flatbuffers_schema generate_version_header)
 
@@ -296,6 +288,14 @@ if(CLICE_ENABLE_TEST)
         "${PROJECT_SOURCE_DIR}/tests/unit/unit_tests.cc"
         ${CLICE_TEST_SOURCES}
         ${CLICE_TEST_SUPPORT_SOURCES}
+    )
+    # The clice.test module (harness) is a first-party module built into the
+    # test executable rather than clice-core, so a harness change rebuilds only
+    # the tests, not the whole library.
+    target_sources(unit_tests PRIVATE
+        FILE_SET CXX_MODULES
+        BASE_DIRS "${PROJECT_SOURCE_DIR}/tests/unit"
+        FILES "${PROJECT_SOURCE_DIR}/tests/unit/test/test.cppm"
     )
     target_include_directories(unit_tests PRIVATE
         "${PROJECT_SOURCE_DIR}/src"

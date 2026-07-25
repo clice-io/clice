@@ -1,9 +1,12 @@
-module;
-
 #include "kota/codec/bincode/bincode.h"
 #include "kota/zest/macro.h"
 
-module clice;
+import stdlib;
+import llvm;
+import kota;
+import clice.test;
+import clice.command;
+import clice.protocol;
 
 namespace clice::testing {
 

@@ -4,7 +4,7 @@ module;
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 
-module clice;
+module clice.test;
 
 namespace clice::testing {
 

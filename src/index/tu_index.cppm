@@ -2,17 +2,16 @@ module;
 
 #include <string>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
 
-export module clice:index.tu_index;
+export module clice.index:tu_index;
 
 import stdlib;
 import llvm;
 import clang;
-import :compile.compilation_unit;
-import :index.include_graph;
-import :semantic.relation_kind;
-import :semantic.symbol_kind;
-import :support.bitmap;
-import :syntax.token;
+import clice.compile;
+import :include_graph;
+import clice.semantic;
+import clice.support;
+import clice.syntax;
 
 export namespace clice::index {
 

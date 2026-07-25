@@ -1,8 +1,8 @@
-export module clice:server.service.format;
+export module clice.server:service.format;
 
 import stdlib;
 import kota;
-import :server.state.session;
+import :state.session;
 
 export namespace clice {
 

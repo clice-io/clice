@@ -1,16 +1,12 @@
-export module clice:semantic.semantic_visitor;
+export module clice.visit:semantic_visitor;
 
 import stdlib;
 import llvm;
 import clang;
-import :compile.compilation_unit;
-import :compile.directive;
-import :semantic.ast_utility;
-import :semantic.filtered_ast_visitor;
-import :semantic.relation_kind;
-import :semantic.resolver;
-import :semantic.symbol_kind;
-import :support.logging;
+import clice.compile;
+import clice.semantic;
+import :filtered_ast_visitor;
+import clice.support;
 
 export namespace clice {
 

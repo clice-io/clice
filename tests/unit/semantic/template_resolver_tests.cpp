@@ -1,9 +1,8 @@
-module;
-
 #include "kota/zest/macro.h"
 #include "clang/AST/RecursiveASTVisitor.h"
 
-module clice;
+import clice.test;
+import clice.compile;
 
 namespace clice::testing {
 

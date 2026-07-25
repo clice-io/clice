@@ -1,9 +1,9 @@
-module;
-
 #include "kota/zest/macro.h"
 #include "llvm/Support/raw_ostream.h"
 
-module clice;
+import llvm;
+import clice.command;
+import clice.support;
 
 namespace clice::testing {
 

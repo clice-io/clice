@@ -1,4 +1,4 @@
-export module clice:semantic.symbol_kind;
+export module clice.semantic:symbol_kind;
 
 import stdlib;
 import clang;

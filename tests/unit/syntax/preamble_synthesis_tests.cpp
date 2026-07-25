@@ -1,9 +1,8 @@
-module;
-
 #include "kota/zest/macro.h"
 #include "llvm/ADT/StringMap.h"
 
-module clice;
+import llvm;
+import clice.syntax;
 
 namespace clice::testing {
 namespace {

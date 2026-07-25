@@ -1,4 +1,4 @@
-module clice;
+module clice.index;
 
 namespace clice::index {
 

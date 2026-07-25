@@ -8,7 +8,10 @@ module;
 extern char** environ;
 #endif
 
-module clice;
+module clice.command;
+
+import clang;
+import kota;
 
 namespace clice {
 

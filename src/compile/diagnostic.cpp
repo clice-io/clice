@@ -1,4 +1,4 @@
-module clice;
+module clice.compile;
 
 namespace clice {
 

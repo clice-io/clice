@@ -1,4 +1,4 @@
-export module clice:semantic.relation_kind;
+export module clice.semantic:relation_kind;
 
 import stdlib;
 

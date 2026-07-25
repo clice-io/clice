@@ -1,4 +1,4 @@
-export module clice:syntax.preamble_synthesis;
+export module clice.syntax:preamble_synthesis;
 
 import stdlib;
 import llvm;

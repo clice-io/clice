@@ -1,4 +1,4 @@
-export module clice:command.search_config;
+export module clice.command:search_config;
 
 import stdlib;
 import llvm;

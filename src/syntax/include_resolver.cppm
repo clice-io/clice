@@ -1,8 +1,8 @@
-export module clice:syntax.include_resolver;
+export module clice.syntax:include_resolver;
 
 import stdlib;
 import llvm;
-import :command.search_config;
+import clice.command;
 
 export namespace clice {
 

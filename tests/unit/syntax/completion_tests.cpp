@@ -1,9 +1,7 @@
-module;
-
 #include "kota/zest/macro.h"
 #include "llvm/ADT/DenseMap.h"
 
-module clice;
+import clice.syntax;
 
 namespace clice::testing {
 namespace {

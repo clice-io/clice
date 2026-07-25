@@ -1,4 +1,4 @@
-export module clice:server.protocol.agentic;
+export module clice.protocol:agentic;
 
 import stdlib;
 import kota;

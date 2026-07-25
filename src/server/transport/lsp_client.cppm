@@ -16,13 +16,13 @@ using JsonPeer = Peer<JsonCodec>;
 
 }  // namespace kota::ipc
 
-export module clice:server.transport.lsp_client;
+export module clice.server:transport.lsp_client;
 
 import stdlib;
 import kota;
-import :server.state.session;
-import :server.transport.master_server;
-import :support.signal;
+import :state.session;
+import :transport.master_server;
+import clice.support;
 
 export namespace clice {
 

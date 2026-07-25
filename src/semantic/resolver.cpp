@@ -2,7 +2,9 @@ module;
 
 #include <iterator>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
 
-module clice;
+module clice.semantic;
+
+import clice.support;
 
 /// Template Resolver — pseudo-instantiation of dependent C++ types.
 ///

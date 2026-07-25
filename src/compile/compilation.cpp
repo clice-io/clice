@@ -1,4 +1,6 @@
-module clice;
+module clice.compile;
+
+import clice.command;
 
 namespace clice {
 

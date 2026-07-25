@@ -10,90 +10,28 @@ module;
 #include "kota/zest/macro.h"
 #include "llvm/Config/llvm-config.h"
 
-export module clice:test;
+export module clice.test;
 
-import :command.argument_parser;
-import :command.command;
-import :command.search_config;
-import :command.toolchain;
-import :compile.compilation;
-import :compile.compilation_unit;
-import :compile.dep_file;
-import :compile.diagnostic;
-import :compile.directive;
-import :compile.implement;
-import :compile.tidy_checker;
-import :feature.document_link;
-import :feature.feature;
-import :feature.inactive_regions;
-import :index.include_graph;
-import :index.merged_index;
-import :index.path_pool;
-import :index.preamble_state;
-import :index.project_index;
-import :index.serialization;
-import :index.shared;
-import :index.tu_index;
-import :index.usr;
-import :semantic.ast_utility;
-import :semantic.filtered_ast_visitor;
-import :semantic.find_target;
-import :semantic.relation_kind;
-import :semantic.resolver;
-import :semantic.selection;
-import :semantic.semantic_visitor;
-import :semantic.symbol_id;
-import :semantic.symbol_kind;
-import :server.compiler.compile_graph;
-import :server.compiler.compiler;
-import :server.compiler.context_cache;
-import :server.compiler.context_resolver;
-import :server.compiler.indexer;
-import :server.protocol.agentic;
-import :server.protocol.extension;
-import :server.protocol.position;
-import :server.protocol.worker;
-import :server.service.feature_router;
-import :server.service.format;
-import :server.service.query;
-import :server.state.config;
-import :server.state.file_tracker;
-import :server.state.invalidator;
-import :server.state.quarantine;
-import :server.state.session;
-import :server.state.session_store;
-import :server.state.workspace;
-import :server.transport.agent_client;
-import :server.transport.agentic;
-import :server.transport.lsp_client;
-import :server.transport.master_server;
-import :server.worker.stateful_worker;
-import :server.worker.stateless_worker;
-import :server.worker.worker_common;
-import :server.worker.worker_pool;
-import :support.anomaly;
-import :support.bitmap;
-import :support.cache_store;
-import :support.doxygen;
-import :support.filesystem;
-import :support.format;
-import :support.fuzzy_matcher;
-import :support.glob_pattern;
-import :support.logging;
-import :support.markup;
-import :support.object_pool;
-import :support.path_pool;
-import :support.signal;
-import :support.stderr_sink;
-import :support.timer;
-import :syntax.completion;
-import :syntax.dependency_graph;
-import :syntax.include_resolver;
-import :syntax.lexer;
-import :syntax.preamble_synthesis;
-import :syntax.scan;
-import :syntax.token;
+import stdlib;
+import llvm;
+import clang;
+import kota;
+import clice.support;
+import clice.command;
+import clice.syntax;
+import clice.semantic;
+import clice.visit;
+import clice.compile;
+import clice.feature;
+import clice.index;
+import clice.protocol;
+import clice.worker;
+import clice.server;
 
+// The harness headers reference names (std/llvm/clang/clice) from the enclosing
+// module purview above and are consumed by non-module test TUs through
+// `import clice.test;`; export their declarations so importers can see them.
+export {
 #include "test/annotation.h"
 #include "test/cdb_helper.h"
 #include "test/fixture.h"
@@ -103,3 +41,4 @@ import :syntax.token;
 #include "test/tester.h"
 #include "server/worker_test_helpers.h"
 #include "syntax/module_scan_fixture.h"
+}

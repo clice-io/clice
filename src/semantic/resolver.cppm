@@ -1,4 +1,4 @@
-export module clice:semantic.resolver;
+export module clice.semantic:resolver;
 
 import llvm;
 import clang;

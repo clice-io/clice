@@ -1,4 +1,4 @@
-export module clice:server.state.quarantine;
+export module clice.server:state.quarantine;
 
 import stdlib;
 import llvm;

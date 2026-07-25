@@ -1,12 +1,11 @@
-export module clice:index.preamble_state;
+export module clice.index:preamble_state;
 
 import stdlib;
 import llvm;
-import :compile.compilation_unit;
-import :feature.document_link;
-import :index.tu_index;
-import :semantic.relation_kind;
-import :semantic.symbol_kind;
+import clice.compile;
+import clice.feature;
+import :tu_index;
+import clice.semantic;
 
 export namespace clice::index {
 

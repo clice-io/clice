@@ -1,20 +1,16 @@
-export module clice:server.state.workspace;
+export module clice.server:state.workspace;
 
 import stdlib;
 import llvm;
 import kota;
-import :command.command;
-import :command.toolchain;
-import :compile.dep_file;
-import :index.merged_index;
-import :index.preamble_state;
-import :index.project_index;
-import :server.compiler.compile_graph;
-import :server.state.config;
-import :server.state.quarantine;
-import :support.cache_store;
-import :support.path_pool;
-import :syntax.dependency_graph;
+import clice.command;
+import clice.compile;
+import clice.index;
+import :compiler.compile_graph;
+import :state.config;
+import :state.quarantine;
+import clice.support;
+import clice.syntax;
 
 // Exported forward declaration (cycle break: context_resolver imports workspace,
 // so workspace cannot import it back). Must be exported to agree with the

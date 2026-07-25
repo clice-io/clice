@@ -1,13 +1,11 @@
-export module clice:syntax.dependency_graph;
+export module clice.syntax:dependency_graph;
 
 import stdlib;
 import llvm;
-import :command.command;
-import :command.search_config;
-import :command.toolchain;
-import :support.path_pool;
-import :syntax.include_resolver;
-import :syntax.scan;
+import clice.command;
+import clice.support;
+import :include_resolver;
+import :scan;
 
 export namespace clice {
 

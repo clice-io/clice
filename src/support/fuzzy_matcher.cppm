@@ -1,4 +1,4 @@
-export module clice:support.fuzzy_matcher;
+export module clice.support:fuzzy_matcher;
 
 import stdlib;
 import llvm;

@@ -10,7 +10,11 @@ module;
 #include "kota/codec/json/json.h"
 #include "kota/ipc/codec/json.h"
 
-module clice;
+module clice.worker;
+
+import clice.feature;
+import clice.index;
+import clice.syntax;
 
 namespace clice {
 

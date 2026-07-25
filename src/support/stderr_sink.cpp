@@ -16,7 +16,7 @@ module;
 #include <unistd.h>
 #endif
 
-module clice;
+module clice.support;
 
 namespace clice::logging {
 

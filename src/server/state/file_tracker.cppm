@@ -1,11 +1,11 @@
-export module clice:server.state.file_tracker;
+export module clice.server:state.file_tracker;
 
 import stdlib;
 import llvm;
 import kota;
-import :server.state.invalidator;
-import :server.state.session_store;
-import :server.state.workspace;
+import :state.invalidator;
+import :state.session_store;
+import :state.workspace;
 
 export namespace clice {
 

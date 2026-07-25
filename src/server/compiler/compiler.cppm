@@ -1,20 +1,20 @@
 module;
 
-export module clice:server.compiler.compiler;
+export module clice.server:compiler.compiler;
 
 import stdlib;
 import llvm;
 import kota;
-import :compile.dep_file;
-import :feature.document_link;
-import :server.compiler.context_resolver;
-import :server.protocol.worker;
-import :server.state.session;
-import :server.state.workspace;
-import :server.worker.worker_pool;
-import :support.signal;
+import clice.compile;
+import clice.feature;
+import :compiler.context_resolver;
+import clice.protocol;
+import :state.session;
+import :state.workspace;
+import clice.worker;
+import clice.support;
 
-namespace clice::testing {
+export namespace clice::testing {
 
 struct CompilerFixture;
 
@@ -199,3 +199,27 @@ private:
 };
 
 }  // namespace clice
+
+#ifdef CLICE_ENABLE_TEST
+
+/// Reaches Compiler's private compile-preparation steps for guard tests.
+/// Defined here (attached to clice.server) rather than in the test TU: with
+/// the module split, a definition in the test executable would attach to a
+/// different module and no longer be the class the friend declaration above
+/// names.
+export namespace clice::testing {
+
+struct CompilerFixture {
+    static kota::task<bool> ensure_pch(Compiler& compiler,
+                                       Session& session,
+                                       std::uint64_t launch_generation,
+                                       std::uint64_t launch_epoch,
+                                       const std::string& directory,
+                                       const std::vector<std::string>& arguments) {
+        return compiler.ensure_pch(session, launch_generation, launch_epoch, directory, arguments);
+    }
+};
+
+}  // namespace clice::testing
+
+#endif

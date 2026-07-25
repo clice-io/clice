@@ -1,4 +1,4 @@
-export module clice:support.timer;
+export module clice.support:timer;
 
 import stdlib;
 

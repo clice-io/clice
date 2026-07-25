@@ -13,7 +13,7 @@ module;
 // enumerator, which must be visible (not merely reachable via import clang).
 #include "clang/AST/Type.h"
 
-module clice;
+module clice.semantic;
 
 namespace clice::ast {
 

@@ -1,4 +1,4 @@
-module clice;
+module clice.server;
 
 namespace clice {
 

@@ -1,9 +1,9 @@
-export module clice:syntax.token;
+export module clice.syntax:token;
 
 import stdlib;
 import llvm;
 import clang;
-import :support.logging;
+import clice.support;
 
 export namespace clice {
 

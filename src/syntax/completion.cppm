@@ -1,8 +1,8 @@
-export module clice:syntax.completion;
+export module clice.syntax:completion;
 
 import stdlib;
 import llvm;
-import :syntax.include_resolver;
+import :include_resolver;
 
 export namespace clice {
 

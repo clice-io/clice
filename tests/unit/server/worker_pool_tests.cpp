@@ -1,438 +1,19 @@
-module;
-
 #include "kota/async/async.h"
 #include "kota/zest/macro.h"
 
-module clice;
+import llvm;
+import kota;
+import clice.test;
+import clice.support;
+import clice.protocol;
+import clice.worker;
 
 namespace clice::testing {
 
-/// Test fixture with friend access to WorkerPool internals.
-struct WorkerPoolFixture {
-    using SlotState = WorkerPool::SlotState;
-
-    kota::event_loop loop;
-    WorkerPool pool;
-
-    std::vector<WorkerCrashInfo> crash_reports;
-
-    WorkerPoolFixture() : pool(loop) {
-        logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
-        pool.on_crash = [this](const WorkerCrashInfo& info) {
-            crash_reports.push_back(info);
-        };
-    }
-
-    ~WorkerPoolFixture() {
-        logging::reset_anomaly_for_testing();
-    }
-
-    void add_stateless(bool alive = true, bool busy = false, bool low = true) {
-        auto idx = pool.stateless_workers.size();
-        pool.stateless_workers.push_back(WorkerPool::WorkerProcess{});
-        auto& w = pool.stateless_workers.back();
-        w.name = "SL-" + std::to_string(idx);
-        w.state = alive ? SlotState::Alive : SlotState::Dead;
-        w.busy = busy;
-        w.low_priority = busy && low;
-    }
-
-    void add_stateful(bool alive = true, std::size_t owned = 0) {
-        auto idx = pool.stateful_workers.size();
-        pool.stateful_workers.push_back(WorkerPool::WorkerProcess{});
-        auto& w = pool.stateful_workers.back();
-        w.name = "SF-" + std::to_string(idx);
-        w.state = alive ? SlotState::Alive : SlotState::Dead;
-        w.owned_documents = owned;
-    }
-
-    void set_low_limit(std::size_t low) {
-        pool.low_limit = low;
-    }
-
-    void set_max_crash_streak(unsigned n) {
-        pool.options.max_crash_streak = n;
-    }
-
-    void set_crash_streak(std::size_t idx, bool stateful, unsigned streak) {
-        auto& workers = stateful ? pool.stateful_workers : pool.stateless_workers;
-        workers[idx].crash_streak = streak;
-    }
-
-    void set_uptime(std::size_t idx, bool stateful, std::chrono::milliseconds uptime) {
-        auto& workers = stateful ? pool.stateful_workers : pool.stateless_workers;
-        workers[idx].spawn_time = std::chrono::steady_clock::now() - uptime;
-    }
-
-    std::size_t pick_least_loaded() {
-        return pool.pick_least_loaded();
-    }
-
-    std::size_t assign_worker(std::uint32_t path_id) {
-        return pool.assign_worker(path_id);
-    }
-
-    std::size_t assign_expendable(std::uint32_t path_id) {
-        return pool.assign_expendable(path_id);
-    }
-
-    void remove_owner(std::uint32_t path_id) {
-        pool.remove_owner(path_id);
-    }
-
-    void clear_owner(std::size_t idx) {
-        pool.clear_owner(idx);
-    }
-
-    std::size_t pick_idle() {
-        return pool.pick_idle_stateless();
-    }
-
-    void apply_backoff() {
-        pool.apply_crash_backoff();
-    }
-
-    void release_slot(std::size_t idx) {
-        pool.release_stateless_slot(idx);
-    }
-
-    kota::task<std::size_t> acquire_slot(worker::Priority p) {
-        return pool.acquire_stateless_slot(p);
-    }
-
-    bool simulate_crash(std::size_t index, bool stateful, int exit_code = 0, int exit_signal = 9) {
-        return pool.process_crash(index, stateful, exit_code, exit_signal);
-    }
-
-    void mark_dead(std::size_t idx, bool stateful = false) {
-        pool.mark_worker_dead(idx, stateful, false);
-    }
-
-    void set_retiring(std::size_t idx) {
-        pool.stateless_workers[idx].retiring = true;
-    }
-
-    void set_suspect_inflight(std::size_t idx, bool stateful, unsigned n) {
-        auto& workers = stateful ? pool.stateful_workers : pool.stateless_workers;
-        workers[idx].suspect_inflight = n;
-    }
-
-    void set_revive_after(std::chrono::milliseconds cooldown) {
-        pool.options.revive_after = cooldown;
-    }
-
-    void set_max_stateless(std::size_t n) {
-        pool.options.max_stateless = n;
-    }
-
-    bool slot_dead(std::size_t idx, bool stateful = false) const {
-        auto& workers = stateful ? pool.stateful_workers : pool.stateless_workers;
-        return workers[idx].state == WorkerPool::SlotState::Dead;
-    }
-
-    std::size_t stateless_count() const {
-        return pool.stateless_workers.size();
-    }
-
-    /// Manually queue a waiter, as acquire_stateless_slot does when it
-    /// cannot claim directly.
-    auto enqueue_waiter(worker::Priority p) {
-        auto pending = std::make_unique<WorkerPool::PendingStateless>(pool, p);
-        auto& queue = p == worker::Priority::High ? pool.high_queue : pool.low_queue;
-        queue.push_back(pending.get());
-        pending->queue = &queue;
-        return pending;
-    }
-
-    void dispatch_pending() {
-        pool.try_dispatch_pending();
-    }
-
-    void preempt(std::size_t count) {
-        pool.preempt_low_priority(count);
-    }
-
-    void tick_memory(double ratio) {
-        pool.tick_memory(ratio);
-    }
-
-    std::chrono::milliseconds backoff_delay(unsigned streak) {
-        return pool.backoff_delay(streak);
-    }
-
-    bool scale_up() {
-        return pool.scale_up_worker();
-    }
-
-    bool start(std::uint32_t stateless = 2,
-               std::uint32_t stateful = 0,
-               std::uint32_t min_stateless = 0) {
-        WorkerPoolOptions opts;
-        opts.self_path = clice_binary();
-        opts.stateless_count = stateless;
-        opts.stateful_count = stateful;
-        opts.min_stateless = min_stateless;
-        opts.max_stateless = 8;
-        return pool.start(opts);
-    }
-
-    std::size_t min_stateless() const {
-        return pool.options.min_stateless;
-    }
-
-    void force_owner(std::uint32_t path_id, std::size_t idx) {
-        pool.owner[path_id] = idx;
-        pool.stateful_workers[idx].owned_documents += 1;
-    }
-
-    unsigned suspect_inflight(std::size_t idx, bool stateful) const {
-        auto& workers = stateful ? pool.stateful_workers : pool.stateless_workers;
-        return workers[idx].suspect_inflight;
-    }
-
-    kota::task<> stop() {
-        return pool.stop();
-    }
-
-    template <typename F>
-    void run(F&& coro_factory) {
-        loop.schedule(coro_factory());
-        loop.run();
-    }
-
-    void kill_worker(std::size_t idx) {
-        pool.stateless_workers[idx].proc.kill(9);
-    }
-
-    std::size_t low_limit() const {
-        return pool.low_limit;
-    }
-
-    std::size_t effective_low_limit() const {
-        return pool.effective_low_limit();
-    }
-
-    std::size_t max_low_limit() const {
-        return pool.max_low_limit();
-    }
-
-    std::size_t w_max() const {
-        return pool.w_max;
-    }
-
-    void set_w_max(std::size_t value) {
-        pool.w_max = value;
-    }
-
-    std::size_t alive_count() const {
-        return pool.alive_stateless();
-    }
-
-    std::size_t busy_count() const {
-        return pool.busy_stateless();
-    }
-
-    std::size_t low_busy() const {
-        return pool.low_busy_count();
-    }
-
-    std::size_t capacity() const {
-        return pool.stateless_capacity();
-    }
-
-    std::size_t stateful_owned(std::size_t idx) const {
-        return pool.stateful_workers[idx].owned_documents;
-    }
-
-    bool is_busy(std::size_t idx) const {
-        return pool.stateless_workers[idx].busy;
-    }
-
-    bool has_owner(std::uint32_t path_id) const {
-        return pool.owner.count(path_id);
-    }
-
-    std::size_t owner_of(std::uint32_t path_id) const {
-        return pool.owner.find(path_id)->second;
-    }
-
-    SlotState state(std::size_t idx, bool stateful = false) const {
-        return stateful ? pool.stateful_workers[idx].state : pool.stateless_workers[idx].state;
-    }
-
-    unsigned generation(std::size_t idx, bool stateful = false) const {
-        return stateful ? pool.stateful_workers[idx].generation
-                        : pool.stateless_workers[idx].generation;
-    }
-
-    bool preempted(std::size_t idx) const {
-        return pool.stateless_workers[idx].preempted;
-    }
-
-    unsigned crash_streak(std::size_t idx, bool stateful = false) const {
-        return stateful ? pool.stateful_workers[idx].crash_streak
-                        : pool.stateless_workers[idx].crash_streak;
-    }
-
-    bool worker_alive(std::size_t idx) const {
-        return pool.stateless_workers[idx].state == SlotState::Alive;
-    }
-
-    int worker_pid(std::size_t idx) const {
-        return pool.stateless_workers[idx].proc.pid();
-    }
-
-    unsigned get_backoff_cooldown() const {
-        return pool.backoff_cooldown;
-    }
-
-    std::size_t high_queue_size() const {
-        return pool.high_queue.size();
-    }
-
-    std::size_t low_queue_size() const {
-        return pool.low_queue.size();
-    }
-
-    struct PriorityResult {
-        bool high_dispatched;
-        bool low_dispatched;
-    };
-
-    PriorityResult test_priority_dispatch(std::size_t release_idx) {
-        auto high = std::make_unique<WorkerPool::PendingStateless>(pool, worker::Priority::High);
-        auto low = std::make_unique<WorkerPool::PendingStateless>(pool, worker::Priority::Low);
-        pool.high_queue.push_back(high.get());
-        high->queue = &pool.high_queue;
-        pool.low_queue.push_back(low.get());
-        low->queue = &pool.low_queue;
-        pool.release_stateless_slot(release_idx);
-        return {high->ready.is_set(), low->ready.is_set()};
-    }
-
-    struct LowDispatchResult {
-        std::size_t dispatched;
-
-        /// Busy count observed while the waiters still hold their claims;
-        /// destroying an unconsumed dispatched waiter releases its slot.
-        std::size_t busy_at_dispatch;
-    };
-
-    LowDispatchResult test_low_dispatch(std::size_t count) {
-        llvm::SmallVector<std::unique_ptr<WorkerPool::PendingStateless>> pending;
-        for(std::size_t i = 0; i < count; ++i) {
-            pending.push_back(
-                std::make_unique<WorkerPool::PendingStateless>(pool, worker::Priority::Low));
-            pool.low_queue.push_back(pending.back().get());
-            pending.back()->queue = &pool.low_queue;
-        }
-        pool.try_dispatch_pending();
-        std::size_t dispatched = 0;
-        for(auto& p: pending)
-            if(p->ready.is_set())
-                dispatched += 1;
-        return {dispatched, pool.busy_stateless()};
-    }
-
-    bool test_slot_raii(std::size_t idx) {
-        pool.stateless_workers[idx].busy = true;
-        { WorkerPool::StatelessSlot slot(pool, idx); }
-        return !pool.stateless_workers[idx].busy && pool.busy_stateless() == 0 &&
-               pool.low_busy_count() == 0;
-    }
-
-    struct ReleaseResult {
-        bool pending_before;
-        bool dispatched_after;
-    };
-
-    ReleaseResult test_release_dispatches() {
-        auto pending = std::make_unique<WorkerPool::PendingStateless>(pool, worker::Priority::High);
-        pool.high_queue.push_back(pending.get());
-        pending->queue = &pool.high_queue;
-        bool before = pending->ready.is_set();
-        pool.release_stateless_slot(0);
-        bool after = pending->ready.is_set();
-        return {before, after};
-    }
-
-    bool test_pending_cleanup_high() {
-        {
-            WorkerPool::PendingStateless pending(pool, worker::Priority::High);
-            pool.high_queue.push_back(&pending);
-            pending.queue = &pool.high_queue;
-            if(pool.high_queue.size() != 1)
-                return false;
-        }
-        return pool.high_queue.empty();
-    }
-
-    bool test_pending_cleanup_low() {
-        {
-            WorkerPool::PendingStateless pending(pool, worker::Priority::Low);
-            pool.low_queue.push_back(&pending);
-            pending.queue = &pool.low_queue;
-            if(pool.low_queue.size() != 1)
-                return false;
-        }
-        return pool.low_queue.empty();
-    }
-
-    struct DispatchResult {
-        bool dispatched;
-        bool queue_cleared;
-        bool queue_ptr_nulled;
-    };
-
-    struct DrainResult {
-        bool drained;
-        std::size_t assigned_worker;
-    };
-
-    DrainResult test_dead_pool_drain() {
-        auto pending = std::make_unique<WorkerPool::PendingStateless>(pool, worker::Priority::High);
-        pool.high_queue.push_back(pending.get());
-        pending->queue = &pool.high_queue;
-        simulate_crash(0, false);
-        return {pending->ready.is_set(), pending->assigned_worker};
-    }
-
-    bool test_slot_gen_guard() {
-        // Old StatelessSlot should NOT release a slot whose occupant died and
-        // was replaced (generation bumped) in the meantime.
-        {
-            WorkerPool::StatelessSlot slot(pool, 0);
-            pool.stateless_workers[0].generation += 1;
-            pool.stateless_workers[0].busy = true;
-        }
-        return pool.stateless_workers[0].busy && pool.busy_stateless() == 1;
-    }
-
-    bool test_pending_gen_guard() {
-        // A dispatched-but-unconsumed waiter must NOT release the slot if the
-        // claimed occupant died and a new claim owns it now.
-        auto pending = enqueue_waiter(worker::Priority::High);
-        pool.try_dispatch_pending();
-        if(!pending->ready.is_set() || pending->assigned_worker != 0)
-            return false;
-        pool.stateless_workers[0].generation += 1;
-        pool.stateless_workers[0].busy = true;
-        pending.reset();
-        return pool.stateless_workers[0].busy;
-    }
-
-    DispatchResult test_dispatch_clears_queue() {
-        auto pending = std::make_unique<WorkerPool::PendingStateless>(pool, worker::Priority::High);
-        pool.high_queue.push_back(pending.get());
-        pending->queue = &pool.high_queue;
-        pool.release_stateless_slot(0);
-        return {
-            pending->ready.is_set(),
-            pool.high_queue.empty(),
-            pending->queue == nullptr,
-        };
-    }
-};
+// WorkerPoolFixture (the befriended private-access shim) now lives in the
+// clice.worker interface next to WorkerPool; see worker_pool.cppm. Its
+// start() takes the clice binary path explicitly since clice_binary() is
+// part of the test harness module.
 
 namespace {
 
@@ -1481,7 +1062,7 @@ TEST_CASE(StartAndStop) {
     WorkerPoolFixture f;
     bool done = false;
     f.run([&]() -> kota::task<> {
-        CO_ASSERT_TRUE(f.start(2, 1));
+        CO_ASSERT_TRUE(f.start(clice_binary(), 2, 1));
         co_await f.stop();
         done = true;
     });
@@ -1494,7 +1075,7 @@ TEST_CASE(StopIsPrompt) {
     WorkerPoolFixture f;
     std::chrono::milliseconds elapsed{};
     f.run([&]() -> kota::task<> {
-        CO_ASSERT_TRUE(f.start(2, 0));
+        CO_ASSERT_TRUE(f.start(clice_binary(), 2, 0));
         auto begin = std::chrono::steady_clock::now();
         co_await f.stop();
         elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -1511,7 +1092,7 @@ TEST_CASE(StatelessRequest) {
     WorkerPoolFixture f;
     bool done = false;
     f.run([&]() -> kota::task<> {
-        CO_ASSERT_TRUE(f.start(2, 0));
+        CO_ASSERT_TRUE(f.start(clice_binary(), 2, 0));
         co_await kota::sleep(500);
 
         worker::BuildParams params;
@@ -1533,7 +1114,7 @@ TEST_CASE(CrashAndRestart) {
     WorkerPoolFixture f;
     bool done = false;
     f.run([&]() -> kota::task<> {
-        CO_ASSERT_TRUE(f.start(2, 0));
+        CO_ASSERT_TRUE(f.start(clice_binary(), 2, 0));
 
         auto pid = f.worker_pid(0);
         EXPECT_GT(pid, 0);
@@ -1560,7 +1141,7 @@ TEST_CASE(DeadSlotRevives) {
     WorkerPoolFixture f;
     bool done = false;
     f.run([&]() -> kota::task<> {
-        CO_ASSERT_TRUE(f.start(1, 0));
+        CO_ASSERT_TRUE(f.start(clice_binary(), 1, 0));
         f.set_revive_after(std::chrono::milliseconds(300));
         f.set_max_crash_streak(0);
         co_await kota::sleep(500);
@@ -1590,7 +1171,7 @@ TEST_CASE(InPlaceKeepsOwner) {
     WorkerPoolFixture f;
     bool done = false;
     f.run([&]() -> kota::task<> {
-        CO_ASSERT_TRUE(f.start(0, 2));
+        CO_ASSERT_TRUE(f.start(clice_binary(), 0, 2));
         co_await kota::sleep(500);
 
         // Two documents pin worker 0: it is the owner but not expendable.
@@ -1620,7 +1201,7 @@ TEST_CASE(FloorAboveStartupKept) {
         // A floor configured above the startup count survives start():
         // scale-up may grow past it later, and idle scale-down must hold
         // the configured warm set instead of shrinking back to startup.
-        CO_ASSERT_TRUE(f.start(2, 0, /*min_stateless=*/4));
+        CO_ASSERT_TRUE(f.start(clice_binary(), 2, 0, /*min_stateless=*/4));
         EXPECT_EQ(f.min_stateless(), 4u);
         co_await f.stop();
         done = true;
@@ -1632,7 +1213,7 @@ TEST_CASE(RetiringHoldsScaleUp) {
     WorkerPoolFixture f;
     bool done = false;
     f.run([&]() -> kota::task<> {
-        CO_ASSERT_TRUE(f.start(2, 0));
+        CO_ASSERT_TRUE(f.start(clice_binary(), 2, 0));
         f.set_max_stateless(2);
         f.set_retiring(0);
 
@@ -1656,7 +1237,7 @@ TEST_CASE(RevivesSlotsGate) {
 
     bool done = false;
     f.run([&]() -> kota::task<> {
-        CO_ASSERT_TRUE(f.start(1, 0));
+        CO_ASSERT_TRUE(f.start(clice_binary(), 1, 0));
         EXPECT_TRUE(f.pool.revives_slots());
         f.set_revive_after(std::chrono::milliseconds(0));
         EXPECT_FALSE(f.pool.revives_slots());
@@ -1670,7 +1251,7 @@ TEST_CASE(ScaleUpRevivesDead) {
     WorkerPoolFixture f;
     bool done = false;
     f.run([&]() -> kota::task<> {
-        CO_ASSERT_TRUE(f.start(2, 0));
+        CO_ASSERT_TRUE(f.start(clice_binary(), 2, 0));
         // Cooldown far in the future: only scale-up can bring the slot back.
         f.set_revive_after(std::chrono::minutes(10));
         f.set_max_crash_streak(0);
@@ -1702,7 +1283,7 @@ TEST_CASE(CrashNotification) {
     WorkerPoolFixture f;
     bool done = false;
     f.run([&]() -> kota::task<> {
-        CO_ASSERT_TRUE(f.start(2, 0));
+        CO_ASSERT_TRUE(f.start(clice_binary(), 2, 0));
 
         f.kill_worker(0);
 
@@ -1732,7 +1313,7 @@ TEST_CASE(CrashDuringRequest) {
     WorkerPoolFixture f;
     bool done = false;
     f.run([&]() -> kota::task<> {
-        CO_ASSERT_TRUE(f.start(2, 0));
+        CO_ASSERT_TRUE(f.start(clice_binary(), 2, 0));
         co_await kota::sleep(500);
 
         // Kill both workers, then send without yielding: the claim lands on
@@ -1766,7 +1347,7 @@ TEST_CASE(PreemptCancelsRequest) {
     WorkerPoolFixture f;
     bool done = false;
     f.run([&]() -> kota::task<> {
-        CO_ASSERT_TRUE(f.start(2, 0));
+        CO_ASSERT_TRUE(f.start(clice_binary(), 2, 0));
         co_await kota::sleep(500);
 
         worker::BuildParams params;
@@ -1815,7 +1396,7 @@ TEST_CASE(ScaleUpKeepsLimit) {
     WorkerPoolFixture f;
     bool done = false;
     f.run([&]() -> kota::task<> {
-        CO_ASSERT_TRUE(f.start(3, 0));
+        CO_ASSERT_TRUE(f.start(clice_binary(), 3, 0));
         // Simulate pressure having reduced the allowance below the ceiling.
         f.set_low_limit(1);
 

@@ -1,4 +1,4 @@
-export module clice:compile.directive;
+export module clice.compile:directive;
 
 import stdlib;
 import llvm;

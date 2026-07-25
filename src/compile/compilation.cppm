@@ -2,15 +2,14 @@ module;
 
 #include <memory>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
 
-export module clice:compile.compilation;
+export module clice.compile:compilation;
 
 import stdlib;
 import llvm;
 import clang;
-import :compile.compilation_unit;
-import :compile.dep_file;
-import :support.filesystem;
-import :support.logging;
+import :compilation_unit;
+import :dep_file;
+import clice.support;
 
 export namespace clice {
 

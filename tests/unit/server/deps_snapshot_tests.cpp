@@ -1,9 +1,10 @@
-module;
-
 #include "kota/zest/macro.h"
 #include "llvm/Support/FileSystem.h"
 
-module clice;
+import clice.test;
+import clice.server;
+import clice.support;
+import clice.compile;
 
 namespace clice::testing {
 namespace {

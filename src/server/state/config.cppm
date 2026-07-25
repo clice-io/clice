@@ -1,9 +1,9 @@
-export module clice:server.state.config;
+export module clice.server:state.config;
 
 import stdlib;
 import llvm;
 import kota;
-import :support.glob_pattern;
+import clice.support;
 
 export namespace clice {
 

@@ -1,8 +1,6 @@
-module;
-
 #include "kota/zest/macro.h"
 
-module clice;
+import clice.semantic;
 
 // NOTE:
 // The original TemplateResolver behavior suite depends on the compiler pipeline

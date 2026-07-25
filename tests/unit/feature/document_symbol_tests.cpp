@@ -1,9 +1,11 @@
-module;
-
 #include "kota/meta/enum.h"
 #include "kota/zest/macro.h"
 
-module clice;
+import llvm;
+import kota;
+import clice.test;
+import clice.feature;
+import clice.semantic;
 
 namespace clice::testing {
 

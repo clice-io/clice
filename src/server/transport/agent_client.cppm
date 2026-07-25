@@ -13,9 +13,9 @@ using JsonPeer = Peer<JsonCodec>;
 
 }  // namespace kota::ipc
 
-export module clice:server.transport.agent_client;
+export module clice.server:transport.agent_client;
 
-import :server.transport.master_server;
+import :transport.master_server;
 
 export namespace clice {
 

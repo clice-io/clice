@@ -1,4 +1,4 @@
-export module clice:semantic.symbol_id;
+export module clice.semantic:symbol_id;
 
 import stdlib;
 

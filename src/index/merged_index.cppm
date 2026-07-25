@@ -2,13 +2,12 @@ module;
 
 #include <memory>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
 
-export module clice:index.merged_index;
+export module clice.index:merged_index;
 
 import stdlib;
 import llvm;
-import :index.tu_index;
-import :semantic.relation_kind;
-import :semantic.symbol_kind;
+import :tu_index;
+import clice.semantic;
 
 export namespace clice::index {
 

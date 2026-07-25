@@ -1,4 +1,4 @@
-export module clice:index.usr;
+export module clice.index:usr;
 
 import llvm;
 import clang;

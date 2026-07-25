@@ -1,4 +1,4 @@
-module clice;
+module clice.feature;
 
 namespace clice::feature {
 

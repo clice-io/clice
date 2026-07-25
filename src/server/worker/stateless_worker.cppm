@@ -1,4 +1,4 @@
-export module clice:server.worker.stateless_worker;
+export module clice.worker:stateless_worker;
 
 import stdlib;
 

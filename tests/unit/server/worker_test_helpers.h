@@ -11,7 +11,7 @@ struct SigpipeGuard {
     }
 };
 
-static SigpipeGuard sigpipe_guard;
+inline SigpipeGuard sigpipe_guard;
 
 /// Resolve path to the clice binary for spawning workers.
 inline std::string clice_binary() {

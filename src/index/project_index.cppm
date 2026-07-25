@@ -1,9 +1,9 @@
-export module clice:index.project_index;
+export module clice.index:project_index;
 
 import stdlib;
 import llvm;
-import :index.tu_index;
-import :support.path_pool;
+import :tu_index;
+import clice.support;
 
 export namespace clice::index {
 

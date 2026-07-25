@@ -1,15 +1,15 @@
-export module clice:server.service.feature_router;
+export module clice.server:service.feature_router;
 
 import stdlib;
 import llvm;
 import kota;
-import :feature.document_link;
-import :server.compiler.compiler;
-import :server.compiler.context_resolver;
-import :server.compiler.indexer;
-import :server.service.query;
-import :server.state.session;
-import :server.state.workspace;
+import clice.feature;
+import :compiler.compiler;
+import :compiler.context_resolver;
+import :compiler.indexer;
+import :service.query;
+import :state.session;
+import :state.workspace;
 
 export namespace clice {
 

@@ -1,5 +1,3 @@
-module;
-
 #include <csignal>
 #include <print>
 
@@ -7,7 +5,8 @@ module;
 
 #include "kota/deco/deco.h"
 
-module clice;
+import clice.driver;
+import clice.support;
 
 int main(int argc, const char** argv) {
 #ifndef _WIN32

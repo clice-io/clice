@@ -1,10 +1,10 @@
 /// Shared utilities for stateful and stateless worker processes.
 
-export module clice:server.worker.worker_common;
+export module clice.worker:worker_common;
 
 import stdlib;
-import :compile.compilation;
-import :server.protocol.worker;
+import clice.compile;
+import clice.protocol;
 
 export namespace clice {
 

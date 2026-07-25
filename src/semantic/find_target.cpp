@@ -8,7 +8,7 @@ module;
 
 #include "llvm/Support/ErrorHandling.h"  // llvm_unreachable (macro; does not cross module boundary)
 
-module clice;
+module clice.semantic;
 
 namespace clice::ast {
 

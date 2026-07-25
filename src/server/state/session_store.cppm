@@ -1,9 +1,9 @@
-export module clice:server.state.session_store;
+export module clice.server:state.session_store;
 
 import stdlib;
 import llvm;
 import kota;
-import :server.state.session;
+import :state.session;
 
 export namespace clice {
 

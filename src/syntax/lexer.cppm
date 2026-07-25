@@ -1,9 +1,9 @@
-export module clice:syntax.lexer;
+export module clice.syntax:lexer;
 
 import stdlib;
 import llvm;
 import clang;
-import :syntax.token;
+import :token;
 
 export namespace clice {
 

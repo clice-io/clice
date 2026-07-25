@@ -1,8 +1,10 @@
-module;
-
 #include "kota/zest/macro.h"
 
-module clice;
+import llvm;
+import clice.test;
+import clice.command;
+import clice.support;
+import clice.compile;
 
 namespace clice::testing {
 namespace {

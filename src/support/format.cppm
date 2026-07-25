@@ -5,7 +5,7 @@ module;
 #include "kota/support/ranges.h"
 #include "kota/support/type_traits.h"
 
-export module clice:support.format;
+export module clice.support:format;
 
 import stdlib;
 import llvm;

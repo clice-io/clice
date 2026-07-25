@@ -1,8 +1,8 @@
-export module clice:feature.inactive_regions;
+export module clice.feature:inactive_regions;
 
 import stdlib;
 import llvm;
-import :compile.compilation_unit;
+import clice.compile;
 
 export namespace clice::feature {
 

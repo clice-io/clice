@@ -1,9 +1,9 @@
-export module clice:semantic.filtered_ast_visitor;
+export module clice.visit:filtered_ast_visitor;
 
 import stdlib;
 import llvm;
 import clang;
-import :compile.compilation_unit;
+import clice.compile;
 
 export namespace clice {
 

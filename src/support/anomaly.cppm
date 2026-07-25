@@ -1,4 +1,4 @@
-export module clice:support.anomaly;
+export module clice.support:anomaly;
 
 import stdlib;
 

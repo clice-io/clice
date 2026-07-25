@@ -6,7 +6,7 @@ module;
 #define ROARING_TERMINATE(message) std::abort()
 #include "roaring/roaring.hh"
 
-export module clice:support.bitmap;
+export module clice.support:bitmap;
 
 // Re-export the underlying type so consumers that name roaring::Roaring
 // directly (index serialization) resolve it through the module.

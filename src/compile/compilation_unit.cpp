@@ -1,4 +1,10 @@
-module clice;
+module clice.compile;
+
+import kota;
+// Upward implementation-unit import: clice.index sits above clice.compile in the
+// interface DAG, but this .cpp only needs index USR helpers at definition time;
+// no BMI cycle since implementation-unit BMIs are not consumed.
+import clice.index;
 
 namespace clice {
 

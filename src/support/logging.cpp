@@ -19,7 +19,7 @@ module;
 #include "spdlog/sinks/ringbuffer_sink.h"
 #include "spdlog/spdlog.h"
 
-module clice;
+module clice.support;
 
 namespace clice::logging {
 

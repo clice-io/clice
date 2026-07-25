@@ -3,18 +3,16 @@ module;
 #include <optional>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
 #include <string>  // clang20+libstdc++ floor: befriended by an instantiated std template; cannot be re-exported (see deps/stdlib.cppm)
 
-export module clice:feature.feature;
+export module clice.feature:feature;
 
 import stdlib;
 import llvm;
 import kota;
-import :compile.compilation;
-import :compile.compilation_unit;
-import :feature.document_link;
-import :semantic.symbol_kind;
-import :support.anomaly;
-import :support.markup;
-import :syntax.token;
+import clice.compile;
+import :document_link;
+import clice.semantic;
+import clice.support;
+import clice.syntax;
 
 export namespace clice::feature {
 

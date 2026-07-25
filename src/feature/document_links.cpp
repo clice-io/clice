@@ -1,4 +1,6 @@
-module clice;
+module clice.feature;
+
+import clang;
 
 namespace clice::feature {
 

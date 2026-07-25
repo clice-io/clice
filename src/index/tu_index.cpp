@@ -2,7 +2,9 @@ module;
 
 #include "schema_generated.h"
 
-module clice;
+module clice.index;
+
+import clice.visit;
 
 namespace clice::index {
 
