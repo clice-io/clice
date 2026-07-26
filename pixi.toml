@@ -89,6 +89,10 @@ scripts = ["scripts/activate_cross_windows.bat"]
 [feature.test.dependencies]
 python = ">=3.13"
 nodejs = ">=24"
+# The suite regenerates CMake-based fixture CDBs itself; CI images happen
+# to preinstall these, local machines don't.
+cmake = ">=3.30"
+ninja = "*"
 
 # ToolchainTests.GCC queries the g++ found in PATH and compiles C++23
 # (<print>), so the test env must provide the same pinned gcc the build
