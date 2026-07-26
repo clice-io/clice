@@ -7,6 +7,13 @@
     "types": ["node"],
     "strict": true,
     "noUncheckedIndexedAccess": true,
+    "noImplicitReturns": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "exactOptionalPropertyTypes": true,
     "noEmit": true,
     "allowImportingTsExtensions": true,
     "skipLibCheck": true
