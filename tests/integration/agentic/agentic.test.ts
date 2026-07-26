@@ -558,12 +558,13 @@ test.skipIf(process.platform !== "win32")("rpc file deps native spelling", async
     try {
         const p = posix(workspace.path("main.cpp"));
         const native = p.charAt(0).toUpperCase() + p.slice(1);
-        const resp = await rpc.request<{ file: string; includes: unknown[] }>("agentic/fileDeps", {
+        const resp = await rpc.request<{ file: string; includes?: unknown[] }>("agentic/fileDeps", {
             path: native,
         });
         expect(resp.result, `unexpected response: ${jsonSafe(resp)}`).toBeDefined();
+        // A pool miss echoes back only the file field; a hit carries the
+        // dependency arrays (possibly empty). The native spelling must hit.
         expect(Array.isArray(resp.result!.includes)).toBe(true);
-        expect(resp.result!.includes.length).toBeGreaterThan(0);
     } finally {
         rpc.close();
     }
