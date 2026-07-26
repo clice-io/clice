@@ -5,7 +5,7 @@
 namespace clice::testing {
 
 /// Fixture files under tests/data/<feature>/ may begin with a doc header
-/// consumed by the feature-doc generator (tests/tools/feature_docs.py):
+/// consumed by the feature-doc generator (tests/tools/feature_docs.ts):
 ///
 ///     /// # Block folding
 ///     ///
@@ -18,7 +18,7 @@ namespace clice::testing {
 /// Returns the value of the metadata list entry `- key: value` inside the
 /// leading run of `///` lines, or an empty StringRef when the file has no
 /// header or the key is absent. This is a deliberately trivial scan; the
-/// Python parser is the authority on the full grammar.
+/// feature_docs.ts parser is the authority on the full grammar.
 inline llvm::StringRef fixture_frontmatter(llvm::StringRef content, llvm::StringRef key) {
     // Mirror parse_fixture's title grammar exactly: strip `///` plus one
     // space, then require `# ` — so `///#x`, `/// ## h2` or extra-indented

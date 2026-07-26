@@ -117,8 +117,8 @@ Use **conventional commits** — enforced by CI:
 Three types of tests, all must pass before committing:
 
 - **Unit tests** (`tests/unit/`): C++ tests using the project's own test framework. Test names should be at most 4 words.
-- **Integration tests** (`tests/integration/`): Python pytest tests that start a real clice server and communicate via LSP.
-- **Smoke tests** (`tests/smoke/`): Replay recorded LSP sessions via `tests/tools/replay.py`.
+- **Integration tests** (`tests/integration/`): TypeScript vitest tests that start a real clice server and communicate via LSP (vscode-languageserver-protocol stack; harness in `tests/tools/*.ts`).
+- **Smoke tests** (`tests/smoke/`): Replay recorded LSP sessions via `tests/tools/replay.ts`.
 
 ### Integration Test Style
 

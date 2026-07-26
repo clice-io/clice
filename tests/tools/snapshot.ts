@@ -104,7 +104,7 @@ export function yamlStr(s: string): string {
 }
 
 /// Value of `- key: value` in a fixture's leading `///` doc header, or "".
-/// Mirrors tests/unit/test/fixture.h; feature_docs.py is the authority on
+/// Mirrors tests/unit/test/fixture.h; feature_docs.ts is the authority on
 /// the full grammar.
 export function fixtureFrontmatter(content: string, key: string): string {
     let first = (content.split("\n", 1)[0] ?? "").trim();
