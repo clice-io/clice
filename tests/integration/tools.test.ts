@@ -106,8 +106,12 @@ test("normalize file uri", () => {
     expect(insideUri).toContain("%20"); // the positive case exercises decoding
     expect(normalizeFileUri(insideUri, ws)).toBe("${WS}/a b.h");
 
+    const plain = path.join(ws, "plain.h");
+    fs.writeFileSync(plain, "");
+
     for (const bad of [
         inside, // raw path, no scheme
+        plain, // raw path without spaces; URI.parse would silently upgrade it
         insideUri.replaceAll("%20", " "), // missing percent-encoding
         "file:///tmp/%GG.h", // malformed percent triplet
         "https://example.com/a.h", // wrong scheme

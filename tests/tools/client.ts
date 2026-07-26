@@ -2,7 +2,9 @@
 
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import * as fs from "node:fs";
+import * as net from "node:net";
 import * as path from "node:path";
+import type { Readable, Writable } from "node:stream";
 import * as proto from "vscode-languageserver-protocol";
 import {
     createProtocolConnection,
@@ -57,9 +59,17 @@ export interface InitializeOptions {
     initializationOptions?: Record<string, unknown> | undefined;
 }
 
+interface Transport {
+    reader: Readable;
+    writer: Writable;
+}
+
 export class CliceClient {
     child: ChildProcessWithoutNullStreams;
     connection: proto.ProtocolConnection;
+    /// Non-null only in socket mode: the LSP transport rides this socket
+    /// instead of the child's stdio, and must be torn down with the client.
+    private socket: net.Socket | null = null;
 
     diagnostics = new Map<string, proto.Diagnostic[]>();
     logMessages: proto.LogMessageParams[] = [];
@@ -86,11 +96,11 @@ export class CliceClient {
     // reports and crash text arrive at exit).
     static STDERR_RETAIN_BYTES = 8 * 1024 * 1024;
 
-    private constructor(child: ChildProcessWithoutNullStreams) {
+    private constructor(child: ChildProcessWithoutNullStreams, transport: Transport) {
         this.child = child;
         this.connection = createProtocolConnection(
-            new StreamMessageReader(child.stdout),
-            new StreamMessageWriter(child.stdin),
+            new StreamMessageReader(transport.reader),
+            new StreamMessageWriter(transport.writer),
         );
         this.exited = new Promise((resolve) => {
             child.on("exit", (code) => {
@@ -156,11 +166,50 @@ export class CliceClient {
         const child = spawn(executable, options.args ?? ["serve"], {
             stdio: ["pipe", "pipe", "pipe"],
         });
-        const client = new CliceClient(child);
+        const client = new CliceClient(child, { reader: child.stdout, writer: child.stdin });
         client.stderrDrainedFromStart = options.drainStderr !== false;
         if (client.stderrDrainedFromStart) {
             client.spawnStderrPump();
         }
+        return client;
+    }
+
+    /// Spawn a server in `--mode socket` and connect the LSP transport over
+    /// TCP instead of stdio. The listener isn't ready the instant the
+    /// process starts, so poll-connect until it accepts (or the process
+    /// dies / times out). stderr stays on the child's pipe and is drained.
+    static async startSocket(
+        executable: string,
+        port: number,
+        options: { host?: string | undefined; args?: string[] | undefined } = {},
+    ): Promise<CliceClient> {
+        const host = options.host ?? "127.0.0.1";
+        const child = spawn(
+            executable,
+            options.args ?? ["serve", "--mode", "socket", "--port", String(port)],
+            { stdio: ["pipe", "pipe", "pipe"] },
+        );
+        let socket: net.Socket | null = null;
+        for (let i = 0; i < 150; i++) {
+            if (child.exitCode !== null) {
+                child.kill("SIGKILL");
+                throw new Error("server exited before accepting connections");
+            }
+            try {
+                socket = await connectSocket(host, port);
+                break;
+            } catch {
+                await new Promise((resolve) => setTimeout(resolve, 200));
+            }
+        }
+        if (socket === null) {
+            child.kill("SIGKILL");
+            throw new Error(`server did not listen on port ${port} within 30s`);
+        }
+        const client = new CliceClient(child, { reader: socket, writer: socket });
+        client.socket = socket;
+        client.stderrDrainedFromStart = true;
+        client.spawnStderrPump();
         return client;
     }
 
@@ -564,5 +613,20 @@ export class CliceClient {
         } catch {
             // Already torn down.
         }
+        if (this.socket !== null) {
+            this.socket.destroy();
+        }
     }
+}
+
+/// Open a TCP connection, resolving once connected and rejecting on error.
+function connectSocket(host: string, port: number): Promise<net.Socket> {
+    return new Promise((resolve, reject) => {
+        const socket = net.createConnection({ host, port });
+        socket.once("connect", () => {
+            socket.off("error", reject);
+            resolve(socket);
+        });
+        socket.once("error", reject);
+    });
 }

@@ -46,10 +46,14 @@ export function normalizeFileUri(uri: string, workspace: string): string {
         throw new Error(`malformed percent-encoding in URI: ${uri}`);
     }
 
-    const parsed = URI.parse(uri);
-    if (parsed.scheme !== "file") {
-        throw new Error(`not a file:// URI (scheme=${parsed.scheme}): ${uri}`);
+    // Check the scheme on the raw string: URI.parse in non-strict mode
+    // silently upgrades a bare path to a file URI, which is exactly the
+    // malformed reply this validator exists to reject.
+    const scheme = /^([A-Za-z][A-Za-z0-9+.-]*):/.exec(uri)?.[1] ?? "";
+    if (scheme !== "file") {
+        throw new Error(`not a file:// URI (scheme=${JSON.stringify(scheme)}): ${uri}`);
     }
+    const parsed = URI.parse(uri);
     if (parsed.authority) {
         throw new Error(`unexpected authority in file URI: ${uri}`);
     }

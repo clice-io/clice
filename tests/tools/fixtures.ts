@@ -101,6 +101,12 @@ export interface SessionOptions {
     /// and assert on them explicitly.
     allowAnomaly?: boolean | undefined;
     drainStderr?: boolean | undefined;
+    /// Custom server argv, e.g. the agentic side channel's
+    /// `["serve", "--host", host, "--port", port]`. Defaults to `["serve"]`.
+    args?: string[] | undefined;
+    /// When set, spawn in `--mode socket` and connect the LSP transport over
+    /// this TCP port instead of stdio (args must request socket mode).
+    socketPort?: number | undefined;
 }
 
 export interface SessionFactory {
@@ -179,9 +185,15 @@ export const test = base.extend<{ session: SessionFactory }>({
             const workspace = path.join(DATA_DIR, name);
             releases.push(await acquireWorkspaceLock(name));
             prepareWorkspace(workspace);
-            const client = CliceClient.start(cliceExecutable(), {
-                drainStderr: options.drainStderr,
-            });
+            const client =
+                options.socketPort !== undefined
+                    ? await CliceClient.startSocket(cliceExecutable(), options.socketPort, {
+                          args: options.args,
+                      })
+                    : CliceClient.start(cliceExecutable(), {
+                          drainStderr: options.drainStderr,
+                          args: options.args,
+                      });
             opened.push({
                 client,
                 workspace,

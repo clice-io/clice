@@ -1,0 +1,1286 @@
+{
+  "out_of_range_int_enums": {
+    "injected": 12,
+    "params": {
+      "capabilities": {
+        "experimental": {
+          "cliceAny": true
+        },
+        "general": {
+          "markdown": {
+            "allowedTags": ["text"],
+            "parser": "text",
+            "version": "text"
+          },
+          "positionEncodings": ["utf-8"],
+          "regularExpressions": {
+            "engine": "text",
+            "version": "text"
+          },
+          "staleRequestSupport": {
+            "cancel": true,
+            "retryOnContentModified": ["text"]
+          }
+        },
+        "notebookDocument": {
+          "synchronization": {
+            "dynamicRegistration": true,
+            "executionSummarySupport": true
+          }
+        },
+        "textDocument": {
+          "callHierarchy": {
+            "dynamicRegistration": true
+          },
+          "codeAction": {
+            "codeActionLiteralSupport": {
+              "codeActionKind": {
+                "valueSet": [""]
+              }
+            },
+            "dataSupport": true,
+            "disabledSupport": true,
+            "documentationSupport": true,
+            "dynamicRegistration": true,
+            "honorsChangeAnnotations": true,
+            "isPreferredSupport": true,
+            "resolveSupport": {
+              "properties": ["text"]
+            },
+            "tagSupport": {
+              "valueSet": [9999, 1]
+            }
+          },
+          "codeLens": {
+            "dynamicRegistration": true,
+            "resolveSupport": {
+              "properties": ["text"]
+            }
+          },
+          "colorProvider": {
+            "dynamicRegistration": true
+          },
+          "completion": {
+            "completionItem": {
+              "commitCharactersSupport": true,
+              "deprecatedSupport": true,
+              "documentationFormat": ["plaintext", "plaintext"],
+              "insertReplaceSupport": true,
+              "insertTextModeSupport": {
+                "valueSet": [9999, 1]
+              },
+              "labelDetailsSupport": true,
+              "preselectSupport": true,
+              "resolveSupport": {
+                "properties": ["text"]
+              },
+              "snippetSupport": true,
+              "tagSupport": {
+                "valueSet": [9999, 1]
+              }
+            },
+            "completionItemKind": {
+              "valueSet": [9999]
+            },
+            "completionList": {
+              "applyKindSupport": true,
+              "itemDefaults": ["text"]
+            },
+            "contextSupport": true,
+            "dynamicRegistration": true,
+            "insertTextMode": 9999
+          },
+          "declaration": {
+            "dynamicRegistration": true,
+            "linkSupport": true
+          },
+          "definition": {
+            "dynamicRegistration": true,
+            "linkSupport": true
+          },
+          "diagnostic": {
+            "codeDescriptionSupport": true,
+            "dataSupport": true,
+            "dynamicRegistration": true,
+            "relatedDocumentSupport": true,
+            "relatedInformation": true,
+            "tagSupport": {
+              "valueSet": [9999, 1]
+            }
+          },
+          "documentHighlight": {
+            "dynamicRegistration": true
+          },
+          "documentLink": {
+            "dynamicRegistration": true,
+            "tooltipSupport": true
+          },
+          "documentSymbol": {
+            "dynamicRegistration": true,
+            "hierarchicalDocumentSymbolSupport": true,
+            "labelSupport": true,
+            "symbolKind": {
+              "valueSet": [9999, 1]
+            },
+            "tagSupport": {
+              "valueSet": [9999, 1]
+            }
+          },
+          "filters": {
+            "relativePatternSupport": true
+          },
+          "foldingRange": {
+            "dynamicRegistration": true,
+            "foldingRange": {
+              "collapsedText": true
+            },
+            "foldingRangeKind": {
+              "valueSet": ["comment"]
+            },
+            "lineFoldingOnly": true,
+            "rangeLimit": 1
+          },
+          "formatting": {
+            "dynamicRegistration": true
+          },
+          "hover": {
+            "contentFormat": ["plaintext", "plaintext"],
+            "dynamicRegistration": true
+          },
+          "implementation": {
+            "dynamicRegistration": true,
+            "linkSupport": true
+          },
+          "inlayHint": {
+            "dynamicRegistration": true,
+            "resolveSupport": {
+              "properties": ["text"]
+            }
+          },
+          "inlineCompletion": {
+            "dynamicRegistration": true
+          },
+          "inlineValue": {
+            "dynamicRegistration": true
+          },
+          "linkedEditingRange": {
+            "dynamicRegistration": true
+          },
+          "moniker": {
+            "dynamicRegistration": true
+          },
+          "onTypeFormatting": {
+            "dynamicRegistration": true
+          },
+          "publishDiagnostics": {
+            "codeDescriptionSupport": true,
+            "dataSupport": true,
+            "relatedInformation": true,
+            "tagSupport": {
+              "valueSet": [9999, 1]
+            },
+            "versionSupport": true
+          },
+          "rangeFormatting": {
+            "dynamicRegistration": true,
+            "rangesSupport": true
+          },
+          "references": {
+            "dynamicRegistration": true
+          },
+          "rename": {
+            "dynamicRegistration": true,
+            "honorsChangeAnnotations": true,
+            "prepareSupport": true,
+            "prepareSupportDefaultBehavior": 9999
+          },
+          "selectionRange": {
+            "dynamicRegistration": true
+          },
+          "semanticTokens": {
+            "augmentsSyntaxTokens": true,
+            "dynamicRegistration": true,
+            "formats": ["relative", "relative"],
+            "multilineTokenSupport": true,
+            "overlappingTokenSupport": true,
+            "requests": {
+              "full": {
+                "delta": true
+              },
+              "range": true
+            },
+            "serverCancelSupport": true,
+            "tokenModifiers": ["text"],
+            "tokenTypes": ["text"]
+          },
+          "signatureHelp": {
+            "contextSupport": true,
+            "dynamicRegistration": true,
+            "signatureInformation": {
+              "activeParameterSupport": true,
+              "documentationFormat": ["plaintext", "plaintext"],
+              "noActiveParameterSupport": true,
+              "parameterInformation": {
+                "labelOffsetSupport": true
+              }
+            }
+          },
+          "synchronization": {
+            "didSave": true,
+            "dynamicRegistration": true,
+            "willSave": true,
+            "willSaveWaitUntil": true
+          },
+          "typeDefinition": {
+            "dynamicRegistration": true,
+            "linkSupport": true
+          },
+          "typeHierarchy": {
+            "dynamicRegistration": true
+          }
+        },
+        "window": {
+          "showDocument": {
+            "support": true
+          },
+          "showMessage": {
+            "messageActionItem": {
+              "additionalPropertiesSupport": true
+            }
+          },
+          "workDoneProgress": true
+        },
+        "workspace": {
+          "applyEdit": true,
+          "codeLens": {
+            "refreshSupport": true
+          },
+          "configuration": true,
+          "diagnostics": {
+            "refreshSupport": true
+          },
+          "didChangeConfiguration": {
+            "dynamicRegistration": true
+          },
+          "didChangeWatchedFiles": {
+            "dynamicRegistration": true,
+            "relativePatternSupport": true
+          },
+          "executeCommand": {
+            "dynamicRegistration": true
+          },
+          "fileOperations": {
+            "didCreate": true,
+            "didDelete": true,
+            "didRename": true,
+            "dynamicRegistration": true,
+            "willCreate": true,
+            "willDelete": true,
+            "willRename": true
+          },
+          "foldingRange": {
+            "refreshSupport": true
+          },
+          "inlayHint": {
+            "refreshSupport": true
+          },
+          "inlineValue": {
+            "refreshSupport": true
+          },
+          "semanticTokens": {
+            "refreshSupport": true
+          },
+          "symbol": {
+            "dynamicRegistration": true,
+            "resolveSupport": {
+              "properties": ["text"]
+            },
+            "symbolKind": {
+              "valueSet": [9999, 1]
+            },
+            "tagSupport": {
+              "valueSet": [9999, 1]
+            }
+          },
+          "textDocumentContent": {
+            "dynamicRegistration": true
+          },
+          "workspaceEdit": {
+            "changeAnnotationSupport": {
+              "groupsOnLabel": true
+            },
+            "documentChanges": true,
+            "failureHandling": "abort",
+            "metadataSupport": true,
+            "normalizesLineEndings": true,
+            "resourceOperations": ["create", "create"],
+            "snippetEditSupport": true
+          },
+          "workspaceFolders": true
+        }
+      },
+      "clientInfo": {
+        "name": "text",
+        "version": "text"
+      },
+      "initializationOptions": {
+        "cliceAny": true
+      },
+      "locale": "text",
+      "processId": 1,
+      "rootPath": "text",
+      "rootUri": "text",
+      "trace": "off",
+      "workDoneToken": 1,
+      "workspaceFolders": [
+        {
+          "name": "text",
+          "uri": "text"
+        }
+      ]
+    }
+  },
+  "unknown_fields": {
+    "injected": 87,
+    "params": {
+      "capabilities": {
+        "cliceUnknownField": {
+          "cliceNested": [1, "two", null]
+        },
+        "experimental": {
+          "cliceAny": true
+        },
+        "general": {
+          "cliceUnknownField": {
+            "cliceNested": [1, "two", null]
+          },
+          "markdown": {
+            "allowedTags": ["text"],
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "parser": "text",
+            "version": "text"
+          },
+          "positionEncodings": ["utf-8"],
+          "regularExpressions": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "engine": "text",
+            "version": "text"
+          },
+          "staleRequestSupport": {
+            "cancel": true,
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "retryOnContentModified": ["text"]
+          }
+        },
+        "notebookDocument": {
+          "cliceUnknownField": {
+            "cliceNested": [1, "two", null]
+          },
+          "synchronization": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "dynamicRegistration": true,
+            "executionSummarySupport": true
+          }
+        },
+        "textDocument": {
+          "callHierarchy": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "dynamicRegistration": true
+          },
+          "cliceUnknownField": {
+            "cliceNested": [1, "two", null]
+          },
+          "codeAction": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "codeActionLiteralSupport": {
+              "cliceUnknownField": {
+                "cliceNested": [1, "two", null]
+              },
+              "codeActionKind": {
+                "cliceUnknownField": {
+                  "cliceNested": [1, "two", null]
+                },
+                "valueSet": [""]
+              }
+            },
+            "dataSupport": true,
+            "disabledSupport": true,
+            "documentationSupport": true,
+            "dynamicRegistration": true,
+            "honorsChangeAnnotations": true,
+            "isPreferredSupport": true,
+            "resolveSupport": {
+              "cliceUnknownField": {
+                "cliceNested": [1, "two", null]
+              },
+              "properties": ["text"]
+            },
+            "tagSupport": {
+              "cliceUnknownField": {
+                "cliceNested": [1, "two", null]
+              },
+              "valueSet": [1, 1]
+            }
+          },
+          "codeLens": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "dynamicRegistration": true,
+            "resolveSupport": {
+              "cliceUnknownField": {
+                "cliceNested": [1, "two", null]
+              },
+              "properties": ["text"]
+            }
+          },
+          "colorProvider": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "dynamicRegistration": true
+          },
+          "completion": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "completionItem": {
+              "cliceUnknownField": {
+                "cliceNested": [1, "two", null]
+              },
+              "commitCharactersSupport": true,
+              "deprecatedSupport": true,
+              "documentationFormat": ["plaintext", "plaintext"],
+              "insertReplaceSupport": true,
+              "insertTextModeSupport": {
+                "cliceUnknownField": {
+                  "cliceNested": [1, "two", null]
+                },
+                "valueSet": [1, 1]
+              },
+              "labelDetailsSupport": true,
+              "preselectSupport": true,
+              "resolveSupport": {
+                "cliceUnknownField": {
+                  "cliceNested": [1, "two", null]
+                },
+                "properties": ["text"]
+              },
+              "snippetSupport": true,
+              "tagSupport": {
+                "cliceUnknownField": {
+                  "cliceNested": [1, "two", null]
+                },
+                "valueSet": [1, 1]
+              }
+            },
+            "completionItemKind": {
+              "cliceUnknownField": {
+                "cliceNested": [1, "two", null]
+              },
+              "valueSet": [1]
+            },
+            "completionList": {
+              "applyKindSupport": true,
+              "cliceUnknownField": {
+                "cliceNested": [1, "two", null]
+              },
+              "itemDefaults": ["text"]
+            },
+            "contextSupport": true,
+            "dynamicRegistration": true,
+            "insertTextMode": 1
+          },
+          "declaration": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "dynamicRegistration": true,
+            "linkSupport": true
+          },
+          "definition": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "dynamicRegistration": true,
+            "linkSupport": true
+          },
+          "diagnostic": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "codeDescriptionSupport": true,
+            "dataSupport": true,
+            "dynamicRegistration": true,
+            "relatedDocumentSupport": true,
+            "relatedInformation": true,
+            "tagSupport": {
+              "cliceUnknownField": {
+                "cliceNested": [1, "two", null]
+              },
+              "valueSet": [1, 1]
+            }
+          },
+          "documentHighlight": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "dynamicRegistration": true
+          },
+          "documentLink": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "dynamicRegistration": true,
+            "tooltipSupport": true
+          },
+          "documentSymbol": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "dynamicRegistration": true,
+            "hierarchicalDocumentSymbolSupport": true,
+            "labelSupport": true,
+            "symbolKind": {
+              "cliceUnknownField": {
+                "cliceNested": [1, "two", null]
+              },
+              "valueSet": [1, 1]
+            },
+            "tagSupport": {
+              "cliceUnknownField": {
+                "cliceNested": [1, "two", null]
+              },
+              "valueSet": [1, 1]
+            }
+          },
+          "filters": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "relativePatternSupport": true
+          },
+          "foldingRange": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "dynamicRegistration": true,
+            "foldingRange": {
+              "cliceUnknownField": {
+                "cliceNested": [1, "two", null]
+              },
+              "collapsedText": true
+            },
+            "foldingRangeKind": {
+              "cliceUnknownField": {
+                "cliceNested": [1, "two", null]
+              },
+              "valueSet": ["comment"]
+            },
+            "lineFoldingOnly": true,
+            "rangeLimit": 1
+          },
+          "formatting": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "dynamicRegistration": true
+          },
+          "hover": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "contentFormat": ["plaintext", "plaintext"],
+            "dynamicRegistration": true
+          },
+          "implementation": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "dynamicRegistration": true,
+            "linkSupport": true
+          },
+          "inlayHint": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "dynamicRegistration": true,
+            "resolveSupport": {
+              "cliceUnknownField": {
+                "cliceNested": [1, "two", null]
+              },
+              "properties": ["text"]
+            }
+          },
+          "inlineCompletion": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "dynamicRegistration": true
+          },
+          "inlineValue": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "dynamicRegistration": true
+          },
+          "linkedEditingRange": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "dynamicRegistration": true
+          },
+          "moniker": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "dynamicRegistration": true
+          },
+          "onTypeFormatting": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "dynamicRegistration": true
+          },
+          "publishDiagnostics": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "codeDescriptionSupport": true,
+            "dataSupport": true,
+            "relatedInformation": true,
+            "tagSupport": {
+              "cliceUnknownField": {
+                "cliceNested": [1, "two", null]
+              },
+              "valueSet": [1, 1]
+            },
+            "versionSupport": true
+          },
+          "rangeFormatting": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "dynamicRegistration": true,
+            "rangesSupport": true
+          },
+          "references": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "dynamicRegistration": true
+          },
+          "rename": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "dynamicRegistration": true,
+            "honorsChangeAnnotations": true,
+            "prepareSupport": true,
+            "prepareSupportDefaultBehavior": 1
+          },
+          "selectionRange": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "dynamicRegistration": true
+          },
+          "semanticTokens": {
+            "augmentsSyntaxTokens": true,
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "dynamicRegistration": true,
+            "formats": ["relative", "relative"],
+            "multilineTokenSupport": true,
+            "overlappingTokenSupport": true,
+            "requests": {
+              "cliceUnknownField": {
+                "cliceNested": [1, "two", null]
+              },
+              "full": {
+                "cliceUnknownField": {
+                  "cliceNested": [1, "two", null]
+                },
+                "delta": true
+              },
+              "range": true
+            },
+            "serverCancelSupport": true,
+            "tokenModifiers": ["text"],
+            "tokenTypes": ["text"]
+          },
+          "signatureHelp": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "contextSupport": true,
+            "dynamicRegistration": true,
+            "signatureInformation": {
+              "activeParameterSupport": true,
+              "cliceUnknownField": {
+                "cliceNested": [1, "two", null]
+              },
+              "documentationFormat": ["plaintext", "plaintext"],
+              "noActiveParameterSupport": true,
+              "parameterInformation": {
+                "cliceUnknownField": {
+                  "cliceNested": [1, "two", null]
+                },
+                "labelOffsetSupport": true
+              }
+            }
+          },
+          "synchronization": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "didSave": true,
+            "dynamicRegistration": true,
+            "willSave": true,
+            "willSaveWaitUntil": true
+          },
+          "typeDefinition": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "dynamicRegistration": true,
+            "linkSupport": true
+          },
+          "typeHierarchy": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "dynamicRegistration": true
+          }
+        },
+        "window": {
+          "cliceUnknownField": {
+            "cliceNested": [1, "two", null]
+          },
+          "showDocument": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "support": true
+          },
+          "showMessage": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "messageActionItem": {
+              "additionalPropertiesSupport": true,
+              "cliceUnknownField": {
+                "cliceNested": [1, "two", null]
+              }
+            }
+          },
+          "workDoneProgress": true
+        },
+        "workspace": {
+          "applyEdit": true,
+          "cliceUnknownField": {
+            "cliceNested": [1, "two", null]
+          },
+          "codeLens": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "refreshSupport": true
+          },
+          "configuration": true,
+          "diagnostics": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "refreshSupport": true
+          },
+          "didChangeConfiguration": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "dynamicRegistration": true
+          },
+          "didChangeWatchedFiles": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "dynamicRegistration": true,
+            "relativePatternSupport": true
+          },
+          "executeCommand": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "dynamicRegistration": true
+          },
+          "fileOperations": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "didCreate": true,
+            "didDelete": true,
+            "didRename": true,
+            "dynamicRegistration": true,
+            "willCreate": true,
+            "willDelete": true,
+            "willRename": true
+          },
+          "foldingRange": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "refreshSupport": true
+          },
+          "inlayHint": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "refreshSupport": true
+          },
+          "inlineValue": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "refreshSupport": true
+          },
+          "semanticTokens": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "refreshSupport": true
+          },
+          "symbol": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "dynamicRegistration": true,
+            "resolveSupport": {
+              "cliceUnknownField": {
+                "cliceNested": [1, "two", null]
+              },
+              "properties": ["text"]
+            },
+            "symbolKind": {
+              "cliceUnknownField": {
+                "cliceNested": [1, "two", null]
+              },
+              "valueSet": [1, 1]
+            },
+            "tagSupport": {
+              "cliceUnknownField": {
+                "cliceNested": [1, "two", null]
+              },
+              "valueSet": [1, 1]
+            }
+          },
+          "textDocumentContent": {
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "dynamicRegistration": true
+          },
+          "workspaceEdit": {
+            "changeAnnotationSupport": {
+              "cliceUnknownField": {
+                "cliceNested": [1, "two", null]
+              },
+              "groupsOnLabel": true
+            },
+            "cliceUnknownField": {
+              "cliceNested": [1, "two", null]
+            },
+            "documentChanges": true,
+            "failureHandling": "abort",
+            "metadataSupport": true,
+            "normalizesLineEndings": true,
+            "resourceOperations": ["create", "create"],
+            "snippetEditSupport": true
+          },
+          "workspaceFolders": true
+        }
+      },
+      "cliceUnknownField": {
+        "cliceNested": [1, "two", null]
+      },
+      "clientInfo": {
+        "cliceUnknownField": {
+          "cliceNested": [1, "two", null]
+        },
+        "name": "text",
+        "version": "text"
+      },
+      "initializationOptions": {
+        "cliceAny": true
+      },
+      "locale": "text",
+      "processId": 1,
+      "rootPath": "text",
+      "rootUri": "text",
+      "trace": "off",
+      "workDoneToken": 1,
+      "workspaceFolders": [
+        {
+          "cliceUnknownField": {
+            "cliceNested": [1, "two", null]
+          },
+          "name": "text",
+          "uri": "text"
+        }
+      ]
+    }
+  },
+  "unknown_string_enums": {
+    "injected": 10,
+    "params": {
+      "capabilities": {
+        "experimental": {
+          "cliceAny": true
+        },
+        "general": {
+          "markdown": {
+            "allowedTags": ["text"],
+            "parser": "text",
+            "version": "text"
+          },
+          "positionEncodings": ["cliceUnknownEnumValue"],
+          "regularExpressions": {
+            "engine": "text",
+            "version": "text"
+          },
+          "staleRequestSupport": {
+            "cancel": true,
+            "retryOnContentModified": ["text"]
+          }
+        },
+        "notebookDocument": {
+          "synchronization": {
+            "dynamicRegistration": true,
+            "executionSummarySupport": true
+          }
+        },
+        "textDocument": {
+          "callHierarchy": {
+            "dynamicRegistration": true
+          },
+          "codeAction": {
+            "codeActionLiteralSupport": {
+              "codeActionKind": {
+                "valueSet": ["cliceUnknownEnumValue"]
+              }
+            },
+            "dataSupport": true,
+            "disabledSupport": true,
+            "documentationSupport": true,
+            "dynamicRegistration": true,
+            "honorsChangeAnnotations": true,
+            "isPreferredSupport": true,
+            "resolveSupport": {
+              "properties": ["text"]
+            },
+            "tagSupport": {
+              "valueSet": [1, 1]
+            }
+          },
+          "codeLens": {
+            "dynamicRegistration": true,
+            "resolveSupport": {
+              "properties": ["text"]
+            }
+          },
+          "colorProvider": {
+            "dynamicRegistration": true
+          },
+          "completion": {
+            "completionItem": {
+              "commitCharactersSupport": true,
+              "deprecatedSupport": true,
+              "documentationFormat": ["cliceUnknownEnumValue", "plaintext"],
+              "insertReplaceSupport": true,
+              "insertTextModeSupport": {
+                "valueSet": [1, 1]
+              },
+              "labelDetailsSupport": true,
+              "preselectSupport": true,
+              "resolveSupport": {
+                "properties": ["text"]
+              },
+              "snippetSupport": true,
+              "tagSupport": {
+                "valueSet": [1, 1]
+              }
+            },
+            "completionItemKind": {
+              "valueSet": [1]
+            },
+            "completionList": {
+              "applyKindSupport": true,
+              "itemDefaults": ["text"]
+            },
+            "contextSupport": true,
+            "dynamicRegistration": true,
+            "insertTextMode": 1
+          },
+          "declaration": {
+            "dynamicRegistration": true,
+            "linkSupport": true
+          },
+          "definition": {
+            "dynamicRegistration": true,
+            "linkSupport": true
+          },
+          "diagnostic": {
+            "codeDescriptionSupport": true,
+            "dataSupport": true,
+            "dynamicRegistration": true,
+            "relatedDocumentSupport": true,
+            "relatedInformation": true,
+            "tagSupport": {
+              "valueSet": [1, 1]
+            }
+          },
+          "documentHighlight": {
+            "dynamicRegistration": true
+          },
+          "documentLink": {
+            "dynamicRegistration": true,
+            "tooltipSupport": true
+          },
+          "documentSymbol": {
+            "dynamicRegistration": true,
+            "hierarchicalDocumentSymbolSupport": true,
+            "labelSupport": true,
+            "symbolKind": {
+              "valueSet": [1, 1]
+            },
+            "tagSupport": {
+              "valueSet": [1, 1]
+            }
+          },
+          "filters": {
+            "relativePatternSupport": true
+          },
+          "foldingRange": {
+            "dynamicRegistration": true,
+            "foldingRange": {
+              "collapsedText": true
+            },
+            "foldingRangeKind": {
+              "valueSet": ["cliceUnknownEnumValue"]
+            },
+            "lineFoldingOnly": true,
+            "rangeLimit": 1
+          },
+          "formatting": {
+            "dynamicRegistration": true
+          },
+          "hover": {
+            "contentFormat": ["cliceUnknownEnumValue", "plaintext"],
+            "dynamicRegistration": true
+          },
+          "implementation": {
+            "dynamicRegistration": true,
+            "linkSupport": true
+          },
+          "inlayHint": {
+            "dynamicRegistration": true,
+            "resolveSupport": {
+              "properties": ["text"]
+            }
+          },
+          "inlineCompletion": {
+            "dynamicRegistration": true
+          },
+          "inlineValue": {
+            "dynamicRegistration": true
+          },
+          "linkedEditingRange": {
+            "dynamicRegistration": true
+          },
+          "moniker": {
+            "dynamicRegistration": true
+          },
+          "onTypeFormatting": {
+            "dynamicRegistration": true
+          },
+          "publishDiagnostics": {
+            "codeDescriptionSupport": true,
+            "dataSupport": true,
+            "relatedInformation": true,
+            "tagSupport": {
+              "valueSet": [1, 1]
+            },
+            "versionSupport": true
+          },
+          "rangeFormatting": {
+            "dynamicRegistration": true,
+            "rangesSupport": true
+          },
+          "references": {
+            "dynamicRegistration": true
+          },
+          "rename": {
+            "dynamicRegistration": true,
+            "honorsChangeAnnotations": true,
+            "prepareSupport": true,
+            "prepareSupportDefaultBehavior": 1
+          },
+          "selectionRange": {
+            "dynamicRegistration": true
+          },
+          "semanticTokens": {
+            "augmentsSyntaxTokens": true,
+            "dynamicRegistration": true,
+            "formats": ["cliceUnknownEnumValue", "relative"],
+            "multilineTokenSupport": true,
+            "overlappingTokenSupport": true,
+            "requests": {
+              "full": {
+                "delta": true
+              },
+              "range": true
+            },
+            "serverCancelSupport": true,
+            "tokenModifiers": ["text"],
+            "tokenTypes": ["text"]
+          },
+          "signatureHelp": {
+            "contextSupport": true,
+            "dynamicRegistration": true,
+            "signatureInformation": {
+              "activeParameterSupport": true,
+              "documentationFormat": ["cliceUnknownEnumValue", "plaintext"],
+              "noActiveParameterSupport": true,
+              "parameterInformation": {
+                "labelOffsetSupport": true
+              }
+            }
+          },
+          "synchronization": {
+            "didSave": true,
+            "dynamicRegistration": true,
+            "willSave": true,
+            "willSaveWaitUntil": true
+          },
+          "typeDefinition": {
+            "dynamicRegistration": true,
+            "linkSupport": true
+          },
+          "typeHierarchy": {
+            "dynamicRegistration": true
+          }
+        },
+        "window": {
+          "showDocument": {
+            "support": true
+          },
+          "showMessage": {
+            "messageActionItem": {
+              "additionalPropertiesSupport": true
+            }
+          },
+          "workDoneProgress": true
+        },
+        "workspace": {
+          "applyEdit": true,
+          "codeLens": {
+            "refreshSupport": true
+          },
+          "configuration": true,
+          "diagnostics": {
+            "refreshSupport": true
+          },
+          "didChangeConfiguration": {
+            "dynamicRegistration": true
+          },
+          "didChangeWatchedFiles": {
+            "dynamicRegistration": true,
+            "relativePatternSupport": true
+          },
+          "executeCommand": {
+            "dynamicRegistration": true
+          },
+          "fileOperations": {
+            "didCreate": true,
+            "didDelete": true,
+            "didRename": true,
+            "dynamicRegistration": true,
+            "willCreate": true,
+            "willDelete": true,
+            "willRename": true
+          },
+          "foldingRange": {
+            "refreshSupport": true
+          },
+          "inlayHint": {
+            "refreshSupport": true
+          },
+          "inlineValue": {
+            "refreshSupport": true
+          },
+          "semanticTokens": {
+            "refreshSupport": true
+          },
+          "symbol": {
+            "dynamicRegistration": true,
+            "resolveSupport": {
+              "properties": ["text"]
+            },
+            "symbolKind": {
+              "valueSet": [1, 1]
+            },
+            "tagSupport": {
+              "valueSet": [1, 1]
+            }
+          },
+          "textDocumentContent": {
+            "dynamicRegistration": true
+          },
+          "workspaceEdit": {
+            "changeAnnotationSupport": {
+              "groupsOnLabel": true
+            },
+            "documentChanges": true,
+            "failureHandling": "cliceUnknownEnumValue",
+            "metadataSupport": true,
+            "normalizesLineEndings": true,
+            "resourceOperations": ["cliceUnknownEnumValue", "create"],
+            "snippetEditSupport": true
+          },
+          "workspaceFolders": true
+        }
+      },
+      "clientInfo": {
+        "name": "text",
+        "version": "text"
+      },
+      "initializationOptions": {
+        "cliceAny": true
+      },
+      "locale": "text",
+      "processId": 1,
+      "rootPath": "text",
+      "rootUri": "text",
+      "trace": "cliceUnknownEnumValue",
+      "workDoneToken": 1,
+      "workspaceFolders": [
+        {
+          "name": "text",
+          "uri": "text"
+        }
+      ]
+    }
+  }
+}
