@@ -11,8 +11,8 @@ import { DATA_DIR } from "@clice/tools/compile-commands";
 import { expect, test } from "../../fixtures.ts";
 
 test("header change invalidates ast", async ({ session }) => {
-    /// Modifying a header on disk should cause recompilation on next hover,
-    /// even though didSave was never called (mtime-based detection).
+    // Modifying a header on disk should cause recompilation on next hover,
+    // even though didSave was never called (mtime-based detection).
     const { client, workspace } = session.tmp();
     // Setup: main.cpp includes header.h
     workspace.write("header.h", "inline int value() { return 1; }\n");
@@ -39,7 +39,7 @@ test("header change invalidates ast", async ({ session }) => {
 });
 
 test("header change invalidates pch", async ({ session }) => {
-    /// Modifying a preamble header on disk should trigger PCH rebuild.
+    // Modifying a preamble header on disk should trigger PCH rebuild.
     const { client, workspace } = session.tmp();
     workspace.write("header.h", "#pragma once\nstruct Foo { int x; };\n");
     workspace.write("main.cpp", '#include "header.h"\nint main() { Foo f; return f.x; }\n');
@@ -63,7 +63,7 @@ test("header change invalidates pch", async ({ session }) => {
 });
 
 test("no change skips recompile", async ({ session }) => {
-    /// When no dependency has changed, ensure_compiled should fast-path.
+    // When no dependency has changed, ensure_compiled should fast-path.
     const { client, workspace } = session.tmp();
     workspace.write("main.cpp", "int main() { return 0; }\n");
     workspace.writeCDB(["main.cpp"]);
@@ -80,8 +80,8 @@ test("no change skips recompile", async ({ session }) => {
 });
 
 test("touch without content change skips recompile", async ({ session }) => {
-    /// Layer 2: touching a header (mtime changes) without modifying content
-    /// should NOT trigger recompilation — the hash check catches this.
+    // Layer 2: touching a header (mtime changes) without modifying content
+    // should NOT trigger recompilation — the hash check catches this.
     const { client, workspace } = session.tmp();
     workspace.write("header.h", "inline int value() { return 1; }\n");
     workspace.write("main.cpp", '#include "header.h"\nint main() { return value(); }\n');
@@ -115,8 +115,8 @@ test("touch without content change skips recompile", async ({ session }) => {
 });
 
 test("header replaced with different content", async ({ session }) => {
-    /// Replacing a header file with different content should be detected
-    /// and trigger recompilation reflecting the new content.
+    // Replacing a header file with different content should be detected
+    // and trigger recompilation reflecting the new content.
     const { client, workspace } = session.tmp();
     workspace.write("header.h", "inline int value() { return 1; }\n");
     workspace.write("main.cpp", '#include "header.h"\nint main() { return value(); }\n');
@@ -138,8 +138,8 @@ test("header replaced with different content", async ({ session }) => {
 });
 
 test("fix error clears diagnostics", async ({ session }) => {
-    /// After introducing and fixing an error in a header, diagnostics
-    /// should clear on the next recompilation cycle.
+    // After introducing and fixing an error in a header, diagnostics
+    // should clear on the next recompilation cycle.
     const { client, workspace } = session.tmp();
     workspace.write("header.h", "inline int value() { return }\n"); // broken
     workspace.write("main.cpp", '#include "header.h"\nint main() { return value(); }\n');
@@ -161,8 +161,8 @@ test("fix error clears diagnostics", async ({ session }) => {
 });
 
 test("multiple files share header", async ({ session }) => {
-    /// When a shared header changes, all open files that depend on it
-    /// should detect the staleness independently.
+    // When a shared header changes, all open files that depend on it
+    // should detect the staleness independently.
     const { client, workspace } = session.tmp();
     workspace.write("shared.h", "inline int shared() { return 1; }\n");
     workspace.write("a.cpp", '#include "shared.h"\nint fa() { return shared(); }\n');
@@ -188,7 +188,7 @@ test("multiple files share header", async ({ session }) => {
 });
 
 test("transitive header change", async ({ session }) => {
-    /// A change to a transitively included header should be detected.
+    // A change to a transitively included header should be detected.
     const { client, workspace } = session.tmp();
     workspace.write("base.h", "inline int base() { return 1; }\n");
     workspace.write("mid.h", '#include "base.h"\n');
@@ -209,8 +209,8 @@ test("transitive header change", async ({ session }) => {
 });
 
 test("didchange body edit recompiles", async ({ session }) => {
-    /// Editing the body (not preamble) via didChange should trigger
-    /// recompilation and update diagnostics.
+    // Editing the body (not preamble) via didChange should trigger
+    // recompilation and update diagnostics.
     const { client, workspace } = session.tmp();
     workspace.write("main.cpp", "int main() { return 0; }\n");
     workspace.writeCDB(["main.cpp"]);
@@ -229,8 +229,8 @@ test("didchange body edit recompiles", async ({ session }) => {
 });
 
 test("didchange preamble edit recompiles", async ({ session }) => {
-    /// Changing a preamble #include via didChange should trigger PCH rebuild
-    /// and recompilation reflecting the new header's declarations.
+    // Changing a preamble #include via didChange should trigger PCH rebuild
+    // and recompilation reflecting the new header's declarations.
     const { client, workspace } = session.tmp();
     workspace.write("a.h", "#pragma once\ninline int from_a() { return 1; }\n");
     workspace.write("b.h", "#pragma once\ninline int from_b() { return 2; }\n");
@@ -252,8 +252,8 @@ test("didchange preamble edit recompiles", async ({ session }) => {
 });
 
 test("didclose then reopen", async ({ session }) => {
-    /// Closing and reopening a file should work correctly — the server
-    /// should not retain stale state from the previous session.
+    // Closing and reopening a file should work correctly — the server
+    // should not retain stale state from the previous session.
     const { client, workspace } = session.tmp();
     workspace.write("main.cpp", "int main() { return 0; }\n");
     workspace.writeCDB(["main.cpp"]);
@@ -275,7 +275,7 @@ test("didclose then reopen", async ({ session }) => {
 });
 
 test("didclose clears hover", async ({ session }) => {
-    /// After didClose, hover on the closed file should return an error.
+    // After didClose, hover on the closed file should return an error.
     const { client, workspace } = session.tmp();
     workspace.write("main.cpp", "int main() { return 0; }\n");
     workspace.writeCDB(["main.cpp"]);
@@ -291,7 +291,7 @@ test("didclose clears hover", async ({ session }) => {
 });
 
 test("didsave triggers recompile for dependents", async ({ session }) => {
-    /// didSave on a header file should mark dependent documents dirty.
+    // didSave on a header file should mark dependent documents dirty.
     const { client, workspace } = session.tmp();
     workspace.write("header.h", "inline int value() { return 1; }\n");
     workspace.write("main.cpp", '#include "header.h"\nint main() { return value(); }\n');
@@ -313,7 +313,7 @@ test("didsave triggers recompile for dependents", async ({ session }) => {
 });
 
 test("didsave with module deps", async ({ session }) => {
-    /// didSave on a module file should invalidate CompileGraph dependents.
+    // didSave on a module file should invalidate CompileGraph dependents.
     const { client, workspace } = session.tmp();
     const src = path.join(DATA_DIR, "modules", "save_recompile");
     for (const name of fs.readdirSync(src)) {
@@ -342,9 +342,9 @@ test("didsave with module deps", async ({ session }) => {
 });
 
 test("flag change invalidates pch", async ({ session }) => {
-    /// Changing a -D flag in the CDB must produce a new PCH on the next
-    /// session even though the preamble text is unchanged (flags are part of
-    /// the cache key).
+    // Changing a -D flag in the CDB must produce a new PCH on the next
+    // session even though the preamble text is unchanged (flags are part of
+    // the cache key).
     const workspace = session.tmpdir();
     workspace.pinCacheDir();
     workspace.write("header.h", "#pragma once\nstruct F { int x; };\n");
@@ -375,8 +375,8 @@ test("flag change invalidates pch", async ({ session }) => {
 });
 
 test("host change resynthesizes preamble", async ({ session }) => {
-    /// When the host source stops providing a dependency, the header's
-    /// synthesized preamble must be rebuilt from the new disk state.
+    // When the host source stops providing a dependency, the header's
+    // synthesized preamble must be rebuilt from the new disk state.
     const { client, workspace } = session.tmp();
     workspace.write("types.h", "#pragma once\nstruct Point { int x; int y; };\n");
     workspace.write("utils.h", "inline int get_x(Point p) { return p.x; }\n");
@@ -405,8 +405,8 @@ test("host change resynthesizes preamble", async ({ session }) => {
 });
 
 test("intermediate change resynthesizes preamble", async ({ session }) => {
-    /// Changing an intermediate file of the include chain (not the host)
-    /// must also invalidate the synthesized preamble.
+    // Changing an intermediate file of the include chain (not the host)
+    // must also invalidate the synthesized preamble.
     const { client, workspace } = session.tmp();
     workspace.write("wrapper.h", '#pragma once\n#define VALUE 42\n#include "target.h"\n');
     workspace.write("target.h", "inline int get() { return VALUE; }\n");
@@ -429,8 +429,8 @@ test("intermediate change resynthesizes preamble", async ({ session }) => {
 });
 
 test("saved host reinvalidates header", async ({ session }) => {
-    /// didSave on a chain file must force preamble re-validation by content
-    /// even when the file's mtime is unchanged (the pull path is blind then).
+    // didSave on a chain file must force preamble re-validation by content
+    // even when the file's mtime is unchanged (the pull path is blind then).
     const { client, workspace } = session.tmp();
     workspace.write("types.h", "#pragma once\nstruct Point { int x; int y; };\n");
     workspace.write("utils.h", "inline int get_x(Point p) { return p.x; }\n");
@@ -460,9 +460,9 @@ test("saved host reinvalidates header", async ({ session }) => {
 });
 
 test("same second save detected", async ({ session }) => {
-    /// A header saved immediately after the dependent's compile — within the
-    /// same second — must still invalidate the PCH. Deliberately no mtime sleep:
-    /// a watermark-based freshness check is blind exactly here.
+    // A header saved immediately after the dependent's compile — within the
+    // same second — must still invalidate the PCH. Deliberately no mtime sleep:
+    // a watermark-based freshness check is blind exactly here.
     const { client, workspace } = session.tmp();
     workspace.write("header.h", "#pragma once\ninline int value() { return 1; }\n");
     workspace.write("main.cpp", '#include "header.h"\nint main() { return value(); }\n');
@@ -481,9 +481,9 @@ test("same second save detected", async ({ session }) => {
 });
 
 test("backdated header change detected", async ({ session }) => {
-    /// A header whose content changes while its mtime moves backwards
-    /// (rsync -t, git-restore-mtime) must be caught by the pull-side check
-    /// alone — no didSave is sent.
+    // A header whose content changes while its mtime moves backwards
+    // (rsync -t, git-restore-mtime) must be caught by the pull-side check
+    // alone — no didSave is sent.
     const { client, workspace } = session.tmp();
     workspace.write("header.h", "#pragma once\ninline int value() { return 1; }\n");
     workspace.write("main.cpp", '#include "header.h"\nint main() { return value(); }\n');
@@ -502,8 +502,8 @@ test("backdated header change detected", async ({ session }) => {
 });
 
 test("orphan header default command", async ({ session }) => {
-    /// A header with no CDB entry and no including source falls back to the
-    /// synthesized default command and still compiles.
+    // A header with no CDB entry and no including source falls back to the
+    // synthesized default command and still compiles.
     const { client, workspace } = session.tmp();
     workspace.write("main.cpp", "int main() { return 0; }\n");
     workspace.write("orphan.h", "inline int orphan_value() { return 7; }\n");
@@ -515,9 +515,9 @@ test("orphan header default command", async ({ session }) => {
 });
 
 test("setup fail keeps dirty", async ({ session }) => {
-    /// A compile that fails before parsing (bad target triple, no PCH to
-    /// blame) must not settle: the gap is published as empty diagnostics and
-    /// the next request recompiles instead of trusting the phantom product.
+    // A compile that fails before parsing (bad target triple, no PCH to
+    // blame) must not settle: the gap is published as empty diagnostics and
+    // the next request recompiles instead of trusting the phantom product.
     const { client, workspace } = session.tmp();
     workspace.write("main.cpp", "int main() { return 0; }\n");
     const entries = [

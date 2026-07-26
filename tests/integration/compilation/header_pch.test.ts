@@ -8,8 +8,8 @@
 import { expect, test } from "../../fixtures.ts";
 
 test("prefix not reprocessed", async ({ session }) => {
-    /// A bare definition in the synthesized prefix must not be processed
-    /// twice (once in the PCH, once via -include) — that would be an error.
+    // A bare definition in the synthesized prefix must not be processed
+    // twice (once in the PCH, once via -include) — that would be an error.
     const { client, workspace } = session.tmp();
     workspace.write("utils.h", "inline int next_id() { return shared_counter + 1; }\n");
     workspace.write(
@@ -25,8 +25,8 @@ test("prefix not reprocessed", async ({ session }) => {
 });
 
 test("def file builds pch", async ({ session }) => {
-    /// An X-macro .def file has no directives of its own (bound == 0), but
-    /// the header context PCH must still be built to cache the prefix.
+    // An X-macro .def file has no directives of its own (bound == 0), but
+    // the header context PCH must still be built to cache the prefix.
     const { client, workspace } = session.tmp();
     workspace.write("errors.def", "X(ok, 0)\nX(bad, 1)\n");
     workspace.write(
@@ -51,8 +51,8 @@ test("def file builds pch", async ({ session }) => {
 });
 
 test("bare header skips pch", async ({ session }) => {
-    /// A self-contained header with no directives of its own has nothing to
-    /// precompile — no PCH must be built for it.
+    // A self-contained header with no directives of its own has nothing to
+    // precompile — no PCH must be built for it.
     const { client, workspace } = session.tmp();
     workspace.write("bare.h", "inline int bare() { return 1; }\n");
     workspace.write("main.cpp", '#include "bare.h"\nint main() { return bare(); }\n');
@@ -71,8 +71,8 @@ test("bare header skips pch", async ({ session }) => {
 });
 
 test("links merge empty pch", async ({ session }) => {
-    /// documentLink must stay valid JSON when the PCH contributes no links
-    /// (a preamble of only #defines) but the body has includes.
+    // documentLink must stay valid JSON when the PCH contributes no links
+    // (a preamble of only #defines) but the body has includes.
     const { client, workspace } = session.tmp();
     workspace.write("list.def", "X(alpha)\n");
     workspace.write(

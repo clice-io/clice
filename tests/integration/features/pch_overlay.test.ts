@@ -3,17 +3,10 @@
 /// index and faithful to the live buffer's preprocessor context.
 
 import * as fs from "node:fs";
-import * as proto from "vscode-languageserver-protocol";
-import { locationsOf, MTIME_GRANULARITY, sleep } from "@clice/tools/client";
+import { asLocations, locationsOf, MTIME_GRANULARITY, sleep } from "@clice/tools/client";
 import { test, expect } from "../../fixtures.ts";
 
 const NO_INDEXING = { project: { enable_indexing: false } };
-
-/// Narrow a definition response (which may be typed as LocationLink[]) to
-/// plain Locations; the server always returns Locations.
-function asLocations(result: unknown): proto.Location[] {
-    return locationsOf(result as proto.Location | proto.Location[] | null);
-}
 
 test("definition into unindexed header", async ({ session }) => {
     const { client, workspace } = session.tmp();

@@ -50,6 +50,12 @@ export function locationsOf<T>(result: T | T[] | null | undefined): T[] {
     return Array.isArray(result) ? result : [result];
 }
 
+/// Narrow a definition/declaration response (which may be typed as
+/// LocationLink[]) to plain Locations; the server always returns Locations.
+export function asLocations(result: unknown): proto.Location[] {
+    return locationsOf(result as proto.Location | proto.Location[] | null);
+}
+
 // Sanitizer/crash fingerprints scanned in server stderr. Detection happens
 // incrementally in the pump: a mid-session report (e.g. relayed from a
 // crashed worker) must survive the retention cap's eviction.

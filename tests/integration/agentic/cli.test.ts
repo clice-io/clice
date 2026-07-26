@@ -1,14 +1,9 @@
 /// CLI-based tests for agentic mode and CLI entry points.
 
-import * as path from "node:path";
 import { findFreePort, sleep } from "@clice/tools/client";
 import type { Workspace } from "@clice/tools/workspace";
 import { cliceExecutable, expect, test, type SessionFactory } from "../../fixtures.ts";
-import { AgenticRpcClient, runCli } from "./rpc.ts";
-
-function posix(p: string): string {
-    return p.split(path.sep).join("/");
-}
+import { AgenticRpcClient, posix, runCli } from "./rpc.ts";
 
 /// Start server with LSP+agentic, compile a file, wait for indexing.
 async function indexedServer(

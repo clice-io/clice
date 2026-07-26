@@ -90,8 +90,8 @@ async function waitResidueReleased(workspace: Workspace, deadlineMs = 20_000): P
 }
 
 test("pch written to cache dir", async ({ session }) => {
-    /// After opening a file with #include, a .pch file should appear
-    /// in .clice/cache/pch/ with a hex-hash filename.
+    // After opening a file with #include, a .pch file should appear
+    // in .clice/cache/pch/ with a hex-hash filename.
     const { client, workspace } = session.tmp();
     workspace.pinCacheDir();
     workspace.write("header.h", "#pragma once\nstruct Foo { int x; };\n");
@@ -115,7 +115,7 @@ test("pch written to cache dir", async ({ session }) => {
 });
 
 test("cache json persisted", async ({ session }) => {
-    /// After a PCH build, cache.json should be written with the entry.
+    // After a PCH build, cache.json should be written with the entry.
     const { client, workspace } = session.tmp();
     workspace.pinCacheDir();
     workspace.write("header.h", "#pragma once\nint global_val = 42;\n");
@@ -147,8 +147,8 @@ test("cache json persisted", async ({ session }) => {
 });
 
 test("pch reused on close reopen", async ({ session }) => {
-    /// Closing and reopening a file within the same session should reuse
-    /// the cached PCH — no additional .pch files should be created.
+    // Closing and reopening a file within the same session should reuse
+    // the cached PCH — no additional .pch files should be created.
     const { client, workspace } = session.tmp();
     workspace.pinCacheDir();
     workspace.write("header.h", "#pragma once\nstruct Bar { int y; };\n");
@@ -181,8 +181,8 @@ test("pch reused on close reopen", async ({ session }) => {
 });
 
 test("pch survives server restart", async ({ session }) => {
-    /// PCH cache should survive a full server restart — cache.json is
-    /// loaded on startup and the existing .pch file is reused.
+    // PCH cache should survive a full server restart — cache.json is
+    // loaded on startup and the existing .pch file is reused.
     const workspace = session.tmpdir();
     workspace.pinCacheDir();
     workspace.write("header.h", "#pragma once\nstruct Baz { int z; };\n");
@@ -226,10 +226,10 @@ test("pch survives server restart", async ({ session }) => {
 });
 
 test("old cache json upgrades", async ({ session }) => {
-    /// A cache.json written before the per-dep stat baselines (entry-level
-    /// build_at, deps as bare {path, hash}) must still load: unknown fields are
-    /// skipped, absent ones read back zeroed, and the entry revalidates by hash
-    /// instead of being dropped.
+    // A cache.json written before the per-dep stat baselines (entry-level
+    // build_at, deps as bare {path, hash}) must still load: unknown fields are
+    // skipped, absent ones read back zeroed, and the entry revalidates by hash
+    // instead of being dropped.
     const workspace = session.tmpdir();
     workspace.pinCacheDir();
     workspace.write("header.h", "#pragma once\nstruct Old { int v; };\n");
@@ -262,9 +262,9 @@ test("old cache json upgrades", async ({ session }) => {
 });
 
 test("pcm offline edit invalidates", async ({ session }) => {
-    /// Editing a module interface while the server is down must invalidate
-    /// the cached PCM on restart: the PCM key embeds no content, so only its
-    /// deps snapshot can see the change.
+    // Editing a module interface while the server is down must invalidate
+    // the cached PCM on restart: the PCM key embeds no content, so only its
+    // deps snapshot can see the change.
     const workspace = session.tmpdir();
     copySaveRecompile(workspace);
     workspace.pinCacheDir();
@@ -295,8 +295,8 @@ test("pcm offline edit invalidates", async ({ session }) => {
 });
 
 test("depless pcm entry dropped", async ({ session }) => {
-    /// A PCM cache entry with an empty deps list (written before deps were
-    /// populated) is unvalidatable and must be dropped at load, not trusted.
+    // A PCM cache entry with an empty deps list (written before deps were
+    // populated) is unvalidatable and must be dropped at load, not trusted.
     const workspace = session.tmpdir();
     copySaveRecompile(workspace);
     workspace.pinCacheDir();
@@ -329,8 +329,8 @@ test("depless pcm entry dropped", async ({ session }) => {
 });
 
 test("pcm cache entry has deps", async ({ session }) => {
-    /// cache.json PCM entries must record dependencies, including the module
-    /// source file itself — an empty list is permanently blind.
+    // cache.json PCM entries must record dependencies, including the module
+    // source file itself — an empty list is permanently blind.
     const { client, workspace } = session.tmp();
     copySaveRecompile(workspace);
     workspace.pinCacheDir();
@@ -358,8 +358,8 @@ test("pcm cache entry has deps", async ({ session }) => {
 });
 
 test("shared preamble shares pch", async ({ session }) => {
-    /// Two files with identical preambles should share the same PCH file
-    /// (content-addressed by preamble hash).
+    // Two files with identical preambles should share the same PCH file
+    // (content-addressed by preamble hash).
     const { client, workspace } = session.tmp();
     workspace.pinCacheDir();
     workspace.write("header.h", "#pragma once\nint shared_val = 1;\n");
@@ -383,7 +383,7 @@ test("shared preamble shares pch", async ({ session }) => {
 });
 
 test("different preamble different pch", async ({ session }) => {
-    /// Files with different preambles should produce different PCH files.
+    // Files with different preambles should produce different PCH files.
     const { client, workspace } = session.tmp();
     workspace.pinCacheDir();
     workspace.write("a.h", "#pragma once\nint val_a = 1;\n");
@@ -407,8 +407,8 @@ test("different preamble different pch", async ({ session }) => {
 });
 
 test("pch rebuilt on header change", async ({ session }) => {
-    /// When a preamble header changes, a new PCH should be built
-    /// (different hash → different filename). The old one remains for cleanup.
+    // When a preamble header changes, a new PCH should be built
+    // (different hash → different filename). The old one remains for cleanup.
     const { client, workspace } = session.tmp();
     workspace.pinCacheDir();
     workspace.write("header.h", "#pragma once\nstruct V1 { int a; };\n");
@@ -447,7 +447,7 @@ test("pch rebuilt on header change", async ({ session }) => {
 });
 
 test("no tmp files after build", async ({ session }) => {
-    /// After a successful PCH build, no .tmp files should remain in the cache dir.
+    // After a successful PCH build, no .tmp files should remain in the cache dir.
     const { client, workspace } = session.tmp();
     workspace.pinCacheDir();
     workspace.write("header.h", "#pragma once\nint val = 1;\n");
@@ -474,8 +474,8 @@ test("no tmp files after build", async ({ session }) => {
 });
 
 test("cache dirs created on startup", async ({ session }) => {
-    /// The versioned store directories should be created when the server
-    /// initializes a workspace.
+    // The versioned store directories should be created when the server
+    // initializes a workspace.
     const { client, workspace } = session.tmp();
     workspace.pinCacheDir();
     workspace.write("main.cpp", "int main() { return 0; }\n");
@@ -497,8 +497,8 @@ test("cache dirs created on startup", async ({ session }) => {
 });
 
 test("different flags different pch", async ({ session }) => {
-    /// Two files with identical preamble text but different -D flags must
-    /// not share a PCH.
+    // Two files with identical preamble text but different -D flags must
+    // not share a PCH.
     const { client, workspace } = session.tmp();
     workspace.pinCacheDir();
     workspace.write(
@@ -529,8 +529,8 @@ test("different flags different pch", async ({ session }) => {
 });
 
 test("kill9 recovery", async ({ session }) => {
-    /// kill -9 during compilation must not corrupt the store: a restarted
-    /// server sweeps crash residue and serves the file normally.
+    // kill -9 during compilation must not corrupt the store: a restarted
+    // server sweeps crash residue and serves the file normally.
     const workspace = session.tmpdir();
     workspace.pinCacheDir();
     workspace.write("header.h", "#pragma once\nstruct K { int x; };\n");
@@ -572,9 +572,9 @@ test("kill9 recovery", async ({ session }) => {
 test.for(["garbage", "middle"])(
     "corrupt pch rebuilt on restart %s",
     async (where, { skip, session }) => {
-        /// A .pch corrupted offline (size and mtime preserved, so freshness
-        /// checks pass) must not brick the file: the consumption failure retracts
-        /// the pair and rebuilds it, and real diagnostics come back.
+        // A .pch corrupted offline (size and mtime preserved, so freshness
+        // checks pass) must not brick the file: the consumption failure retracts
+        // the pair and rebuilds it, and real diagnostics come back.
         const workspace = session.tmpdir();
         workspace.pinCacheDir();
         workspace.write("header.h", "#pragma once\nint known_func();\n");
@@ -652,9 +652,9 @@ test.for(["garbage", "middle"])(
 );
 
 test("corrupt pch idx retracted", async ({ session }) => {
-    /// A corrupt .pch.idx detected at load must retract the on-disk pair
-    /// (not just the in-memory path): a pair that looks complete would be
-    /// re-adopted and silently degrade every later session.
+    // A corrupt .pch.idx detected at load must retract the on-disk pair
+    // (not just the in-memory path): a pair that looks complete would be
+    // re-adopted and silently degrade every later session.
     const workspace = session.tmpdir();
     workspace.pinCacheDir();
     workspace.write("header.h", "#pragma once\nstruct Idx { int v; };\n");
@@ -689,8 +689,8 @@ test("corrupt pch idx retracted", async ({ session }) => {
 });
 
 test("cache wiped while running", async ({ session }) => {
-    /// Wiping the cache directory under a running server must not wedge
-    /// PCH builds forever: the store re-creates its directories on demand.
+    // Wiping the cache directory under a running server must not wedge
+    // PCH builds forever: the store re-creates its directories on demand.
     const { client, workspace } = session.tmp();
     workspace.pinCacheDir();
     workspace.write("header.h", "#pragma once\nstruct W { int x; };\n");

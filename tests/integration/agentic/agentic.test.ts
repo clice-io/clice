@@ -1,14 +1,9 @@
 /// Tests for the agentic protocol handlers.
 
-import * as path from "node:path";
 import { findFreePort, sleep, type CliceClient } from "@clice/tools/client";
 import type { Workspace } from "@clice/tools/workspace";
 import { cliceExecutable, expect, test, type SessionFactory } from "../../fixtures.ts";
-import { AgenticRpcClient, jsonSafe, runAgentic } from "./rpc.ts";
-
-function posix(p: string): string {
-    return p.split(path.sep).join("/");
-}
+import { AgenticRpcClient, jsonSafe, posix, runAgentic } from "./rpc.ts";
 
 interface SymbolInfo {
     name: string;

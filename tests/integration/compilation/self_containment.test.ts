@@ -28,7 +28,7 @@ function prefixFiles(workspace: Workspace): string[] {
 }
 
 test("self contained skips synthesis", async ({ session }) => {
-    /// A self-contained header borrows a command but gets no prefix.
+    // A self-contained header borrows a command but gets no prefix.
     const { client, workspace } = session.tmp();
     workspace.write("types.h", "#pragma once\nstruct Point { int x; int y; };\n");
     workspace.write(
@@ -48,8 +48,8 @@ test("self contained skips synthesis", async ({ session }) => {
 });
 
 test("fallback on missing context", async ({ session }) => {
-    /// A non-self-contained header falls back to prefix synthesis
-    /// automatically; the trial's error diagnostics are never published.
+    // A non-self-contained header falls back to prefix synthesis
+    // automatically; the trial's error diagnostics are never published.
     const { client, workspace } = session.tmp();
     workspace.write("types.h", "#pragma once\nstruct Point { int x; int y; };\n");
     workspace.write("utils.h", "inline int get_x(Point p) { return p.x; }\n");
@@ -67,7 +67,7 @@ test("fallback on missing context", async ({ session }) => {
 });
 
 test("verdict persisted across sessions", async ({ session }) => {
-    /// The NeedsContext verdict lands in cache.json and survives restarts.
+    // The NeedsContext verdict lands in cache.json and survives restarts.
     const workspace = session.tmpdir();
     workspace.write("types.h", "#pragma once\nstruct Point { int x; int y; };\n");
     workspace.write("utils.h", "inline int get_x(Point p) { return p.x; }\n");
@@ -100,7 +100,7 @@ test("verdict persisted across sessions", async ({ session }) => {
 });
 
 test("choice persisted across sessions", async ({ session }) => {
-    /// A switchContext choice is restored on didOpen in a later session.
+    // A switchContext choice is restored on didOpen in a later session.
     const workspace = session.tmpdir();
     workspace.write("shared.h", "VALUE_TYPE get_value();\n");
     workspace.write(
@@ -139,8 +139,8 @@ test("choice persisted across sessions", async ({ session }) => {
 });
 
 test("ordinary error no fallback", async ({ session }) => {
-    /// A self-contained header with a benign syntax error must not trigger
-    /// prefix synthesis nor persist any verdict.
+    // A self-contained header with a benign syntax error must not trigger
+    // prefix synthesis nor persist any verdict.
     const { client, workspace } = session.tmp();
     workspace.write("typo.h", "inline int broken() { return }\n"); // syntax error
     workspace.write("main.cpp", '#include "typo.h"\nint main() { return 0; }\n');
@@ -154,8 +154,8 @@ test("ordinary error no fallback", async ({ session }) => {
 });
 
 test("header save resets verdict", async ({ session }) => {
-    /// Saving the header itself re-evaluates its self-containment: a header
-    /// that gains its own include stops using the synthesized prefix.
+    // Saving the header itself re-evaluates its self-containment: a header
+    // that gains its own include stops using the synthesized prefix.
     const workspace = session.tmpdir();
     workspace.write("types.h", "#pragma once\nstruct Point { int x; int y; };\n");
     workspace.write("utils.h", "inline int get_x(Point p) { return p.x; }\n");
@@ -192,9 +192,9 @@ test("header save resets verdict", async ({ session }) => {
 });
 
 test("dependency change retries trial", async ({ session }) => {
-    /// A header judged self-contained must be re-evaluated when one of its
-    /// own includes changes: here foo.h stops providing FOO, and only the
-    /// includer context (the host's define) can still supply it.
+    // A header judged self-contained must be re-evaluated when one of its
+    // own includes changes: here foo.h stops providing FOO, and only the
+    // includer context (the host's define) can still supply it.
     const { client, workspace } = session.tmp();
     workspace.write("foo.h", "#pragma once\n#define FOO 1\n");
     workspace.write("h.h", '#pragma once\n#include "foo.h"\ninline int get() { return FOO; }\n');
@@ -220,8 +220,8 @@ test("dependency change retries trial", async ({ session }) => {
 });
 
 test("suffix closes embedding", async ({ session }) => {
-    /// X-macro fragments embedded in an enum or a function body compile
-    /// cleanly: the synthesized suffix closes the surrounding braces.
+    // X-macro fragments embedded in an enum or a function body compile
+    // cleanly: the synthesized suffix closes the surrounding braces.
     const { client, workspace } = session.tmp();
     workspace.write("errors.def", 'X(Ok, 0, "success")\nX(NotFound, 1, "not found")\n');
     workspace.write(
@@ -242,8 +242,8 @@ test("suffix closes embedding", async ({ session }) => {
 });
 
 test("suffix function body", async ({ session }) => {
-    /// The doc's classic register_all() case: statements expanded inside a
-    /// function body, closing brace restored by the suffix.
+    // The doc's classic register_all() case: statements expanded inside a
+    // function body, closing brace restored by the suffix.
     const { client, workspace } = session.tmp();
     workspace.write("handlers.def", "X(alpha)\nX(beta)\n");
     workspace.write(
@@ -266,8 +266,8 @@ test("suffix function body", async ({ session }) => {
 });
 
 test("open synthesized artifact", async ({ session }) => {
-    /// Opening a synthesized prefix file compiles it with its host's
-    /// command (it is a fragment of that TU), not with junk context.
+    // Opening a synthesized prefix file compiles it with its host's
+    // command (it is a fragment of that TU), not with junk context.
     const { client, workspace } = session.tmp();
     workspace.write("types.h", "#pragma once\nstruct Point { int x; int y; };\n");
     workspace.write("utils.h", "inline int get_x(Point p) { return p.x; }\n");
@@ -294,9 +294,9 @@ test("open synthesized artifact", async ({ session }) => {
 });
 
 test("unbalanced brace degrades gracefully", async ({ session }) => {
-    /// A user-typed unbalanced brace in an embedded fragment steals the
-    /// suffix's closer: diagnostics must appear, and the server must keep
-    /// serving requests afterwards.
+    // A user-typed unbalanced brace in an embedded fragment steals the
+    // suffix's closer: diagnostics must appear, and the server must keep
+    // serving requests afterwards.
     const { client, workspace } = session.tmp();
     workspace.write("list.def", "X(alpha)\nvoid oops() {\n"); // unbalanced {
     workspace.write(

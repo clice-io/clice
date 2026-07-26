@@ -6,7 +6,6 @@
   "exports": {
     "./client": "./client/client.ts",
     "./workspace": "./client/workspace.ts",
-    "./checks": "./client/checks.ts",
     "./snapshot": "./snapshot/snapshot.ts",
     "./annotation": "./snapshot/annotation.ts",
     "./presenters": "./snapshot/presenters.ts",

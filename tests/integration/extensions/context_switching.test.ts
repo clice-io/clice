@@ -86,7 +86,7 @@ test("occurrence switch", async ({ session }) => {
 
     const query = await client.queryContext(defUri);
     expect(query.total, `Expected 2 occurrence contexts, got ${JSON.stringify(query)}`).toBe(2);
-    const occurrences = query.contexts.map((c) => c.occurrence).sort();
+    const occurrences = query.contexts.map((c) => c.occurrence).sort((a, b) => (a ?? 0) - (b ?? 0));
     expect(
         occurrences,
         `Expected occurrences 0 and 1, got: ${JSON.stringify(query.contexts)}`,

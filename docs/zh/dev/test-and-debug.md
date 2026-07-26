@@ -4,7 +4,7 @@
 
 clice 有三种测试：单元测试、集成测试和冒烟测试。
 
-所有测试依赖（集成套件的 node/pnpm、冒烟回放的 python）由 pixi 管理，无需单独安装。
+所有测试依赖（集成套件与工具的 node/npm、scripts/ 的 python）由 pixi 管理，无需单独安装。
 
 ### 单元测试
 

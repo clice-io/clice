@@ -81,12 +81,14 @@ scripts = ["scripts/activate_cross_linux.sh"]
 scripts = ["scripts/activate_cross_windows.bat"]
 
 # nodejs bundles npm on every platform including win-arm64 (where
-# cross-test runs this env and conda has no pnpm). python remains only
-# for scripts/symbolize.py, which the symbolization test drives; the
-# scripts/ tools are not part of the TS migration.
+# cross-test runs this env and conda has no pnpm). Floor 24: the tools
+# run as bare .ts (type stripping, default since node 23.6) and the
+# cache tests use JSON.rawJSON (21+). python remains only for
+# scripts/symbolize.py; the scripts/ tools are not part of the TS
+# migration.
 [feature.test.dependencies]
 python = ">=3.13"
-nodejs = ">=20"
+nodejs = ">=24"
 
 # ToolchainTests.GCC queries the g++ found in PATH and compiles C++23
 # (<print>), so the test env must provide the same pinned gcc the build

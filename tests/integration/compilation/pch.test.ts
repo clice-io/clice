@@ -5,7 +5,7 @@ import { cliceTest, expect } from "../../fixtures.ts";
 const test = cliceTest("pch_test");
 
 test("pch diagnostics on open", async ({ client }) => {
-    /// Opening a file with #include should trigger PCH build and return clean diagnostics.
+    // Opening a file with #include should trigger PCH build and return clean diagnostics.
     const [uri] = await client.openAndWait("main.cpp");
     expect(client.diagnostics.has(uri)).toBe(true);
     // main.cpp is well-formed, so diagnostics list should be empty (no errors).
@@ -14,7 +14,7 @@ test("pch diagnostics on open", async ({ client }) => {
 });
 
 test("pch body edit triggers recompile", async ({ client }) => {
-    /// Editing only the body (not the preamble) should trigger recompilation.
+    // Editing only the body (not the preamble) should trigger recompilation.
     const [uri, content] = await client.openAndWait("main.cpp");
 
     // Edit only the function body — preamble (#include "common.h") unchanged.
@@ -27,7 +27,7 @@ test("pch body edit triggers recompile", async ({ client }) => {
 });
 
 test("no pch for no includes", async ({ client }) => {
-    /// A file with no #include directives should compile without PCH.
+    // A file with no #include directives should compile without PCH.
     const [uri] = await client.openAndWait("no_includes.cpp");
     expect(client.diagnostics.has(uri)).toBe(true);
     client.assertCleanCompile(uri);
@@ -35,7 +35,7 @@ test("no pch for no includes", async ({ client }) => {
 });
 
 test("hover on local symbol", async ({ client }) => {
-    /// Hover on a locally defined symbol should work when PCH is active.
+    // Hover on a locally defined symbol should work when PCH is active.
     const [uri] = await client.openAndWait("main.cpp");
 
     // Hover over "add" on line 2 (0-indexed): "int add(int a, int b) {"
@@ -45,7 +45,7 @@ test("hover on local symbol", async ({ client }) => {
 });
 
 test("completion with pch", async ({ client }) => {
-    /// Completion should see symbols from PCH headers.
+    // Completion should see symbols from PCH headers.
     const [uri, content] = await client.openAndWait("main.cpp");
 
     // Add a line that starts typing "Poi" to trigger completion for Point.
@@ -63,7 +63,7 @@ test("completion with pch", async ({ client }) => {
 });
 
 test("preamble edit then hover", async ({ client }) => {
-    /// After editing the preamble (adding an #include), AST should still work.
+    // After editing the preamble (adding an #include), AST should still work.
     const [uri, content] = await client.openAndWait("main.cpp");
 
     // Verify initial state is clean.
@@ -89,7 +89,7 @@ test("preamble edit then hover", async ({ client }) => {
 });
 
 test("preamble edit multiple times", async ({ client }) => {
-    /// Multiple preamble edits should not break AST building.
+    // Multiple preamble edits should not break AST building.
     const [uri, content] = await client.openAndWait("main.cpp");
 
     for (let i = 0; i < 3; i++) {

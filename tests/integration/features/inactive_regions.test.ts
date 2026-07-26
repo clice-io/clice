@@ -36,7 +36,7 @@ function lines(regions: Range[]): [number, number][] {
 }
 
 test("inactive after bound", async ({ session }) => {
-    /// Conditions entirely past the preamble bound (no PCH involvement).
+    // Conditions entirely past the preamble bound (no PCH involvement).
     const { client, workspace } = session.tmp();
     workspace.write("main.cpp", "int a();\n#if 0\nint dead();\n#endif\nint main() { return 0; }\n");
     workspace.writeCDB(["main.cpp"]);
@@ -49,8 +49,8 @@ test("inactive after bound", async ({ session }) => {
 });
 
 test("inactive across bound", async ({ session }) => {
-    /// A #if inside the preamble bound lives in the PCH; its #elif/#endif
-    /// replay in the AST compile and resume from the PCH's open stack.
+    // A #if inside the preamble bound lives in the PCH; its #elif/#endif
+    // replay in the AST compile and resume from the PCH's open stack.
     const { client, workspace } = session.tmp();
     workspace.write(
         "render.h",
@@ -72,8 +72,8 @@ test("inactive across bound", async ({ session }) => {
 });
 
 test("inactive else branch", async ({ session }) => {
-    /// #else carries no condition value; inactivity is derived from
-    /// whether an earlier branch was taken.
+    // #else carries no condition value; inactivity is derived from
+    // whether an earlier branch was taken.
     const { client, workspace } = session.tmp();
     workspace.write(
         "main.cpp",

@@ -4,6 +4,7 @@
 
 import { execFile } from "node:child_process";
 import * as net from "node:net";
+import * as path from "node:path";
 
 export interface RpcResponse<T> {
     result?: T;
@@ -195,4 +196,10 @@ export function runCli(
         args.push(`--${key}`, String(value));
     }
     return runQuery(executable, args);
+}
+
+/// Forward-slash form of a path; the agentic side channel speaks POSIX
+/// paths on every platform.
+export function posix(p: string): string {
+    return p.split(path.sep).join("/");
 }

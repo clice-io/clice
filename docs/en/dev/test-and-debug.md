@@ -4,7 +4,7 @@
 
 clice has three types of tests: unit tests, integration tests, and smoke tests.
 
-All test dependencies (node/pnpm for the integration suite, python for smoke replay) are managed by pixi — no separate installation needed.
+All test dependencies (node/npm for the integration suite and tools, python for scripts/) are managed by pixi — no separate installation needed.
 
 ### Unit Tests
 

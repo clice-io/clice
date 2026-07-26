@@ -2,19 +2,13 @@
 /// FindReferences, CallHierarchy, TypeHierarchy, and WorkspaceSymbol.
 
 import * as proto from "vscode-languageserver-protocol";
-import { locationsOf } from "@clice/tools/client";
+import { asLocations, locationsOf } from "@clice/tools/client";
 import { cliceTest, expect } from "../../fixtures.ts";
 
 const test = cliceTest("index_features");
 
 function fileName(uri: string): string {
     return uri.split("/").pop() ?? uri;
-}
-
-/// Narrow a definition/declaration response (which may be typed as
-/// LocationLink[]) to plain Locations; the server always returns Locations.
-function asLocations(result: unknown): proto.Location[] {
-    return locationsOf(result as proto.Location | proto.Location[] | null);
 }
 
 /// Test GoToDefinition navigates from a call site to the function definition.

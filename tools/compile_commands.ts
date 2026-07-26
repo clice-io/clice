@@ -10,7 +10,7 @@ export const TESTS_DIR = path.join(REPO_ROOT, "tests");
 export const DATA_DIR = path.join(TESTS_DIR, "data");
 export const SNAPSHOTS_DIR = path.join(TESTS_DIR, "snapshots");
 
-interface CdbEntry {
+interface CDBEntry {
     directory: string;
     file: string;
     arguments: string[];
@@ -41,7 +41,7 @@ export function generateCDB(workspace: string): void {
 
 /// Generate compile_commands.json for all static test data directories.
 export function generateTestDataCDBs(dataDir: string = DATA_DIR): void {
-    const write = (directory: string, entries: CdbEntry[]) => {
+    const write = (directory: string, entries: CDBEntry[]) => {
         // Atomic write: concurrent vitest invocations (one per porting agent)
         // regenerate the same CDBs; a rename never exposes a truncated file
         // to a server reading it.
@@ -51,7 +51,7 @@ export function generateTestDataCDBs(dataDir: string = DATA_DIR): void {
         fs.renameSync(tmp, target);
     };
 
-    const entry = (directory: string, source: string, extraArgs: string[] = []): CdbEntry => ({
+    const entry = (directory: string, source: string, extraArgs: string[] = []): CDBEntry => ({
         directory: posix(directory),
         file: posix(source),
         arguments: ["clang++", "-std=c++17", "-fsyntax-only", ...extraArgs, posix(source)],

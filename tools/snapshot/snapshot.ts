@@ -49,7 +49,8 @@ export function normalizeFileUri(uri: string, workspace: string): string {
     // Check the scheme on the raw string: URI.parse in non-strict mode
     // silently upgrades a bare path to a file URI, which is exactly the
     // malformed reply this validator exists to reject.
-    const scheme = /^([A-Za-z][A-Za-z0-9+.-]*):/.exec(uri)?.[1] ?? "";
+    // Schemes are case-insensitive (RFC 3986); lowercase like urlsplit did.
+    const scheme = (/^([A-Za-z][A-Za-z0-9+.-]*):/.exec(uri)?.[1] ?? "").toLowerCase();
     if (scheme !== "file") {
         throw new Error(`not a file:// URI (scheme=${JSON.stringify(scheme)}): ${uri}`);
     }
