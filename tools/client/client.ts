@@ -437,7 +437,10 @@ export class CliceClient {
         tracker["workspace_poll_seconds"] ??= 0;
         initializationOptions["tracker"] = tracker;
 
-        const wsUri = ws.uri();
+        // Wire URIs stay percent-encoded (a '#' in the path must travel as
+        // %23, not become a fragment); the decoded ws.uri() form is for
+        // identity comparisons only.
+        const wsUri = URI.file(ws.root).toString();
         const params: proto.InitializeParams = {
             processId: process.pid,
             capabilities: {},

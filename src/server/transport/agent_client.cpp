@@ -140,10 +140,12 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
     peer.on_request(
         [&srv](RequestContext&, const FileDepsParams& params) -> RequestResult<FileDepsParams> {
             auto& ws = srv.workspace;
-            auto pool_it = ws.path_pool.cache.find(params.path);
-            if(pool_it == ws.path_pool.cache.end())
+            // find() applies the canonical spelling; a native uppercase-drive
+            // path from an agentic client must hit the same ID.
+            auto pool_id = ws.path_pool.find(params.path);
+            if(!pool_id)
                 co_return FileDepsResult{.file = params.path};
-            auto path_id = pool_it->second;
+            auto path_id = *pool_id;
             auto direction = params.direction.value_or("both");
             auto max_depth = params.depth.value_or(1);
 
@@ -194,18 +196,17 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                     llvm::DenseSet<std::uint32_t> visited;
                     visited.insert(path_id);
                     for(auto& dep: result.includers) {
-                        auto it = ws.path_pool.cache.find(dep.path);
-                        if(it != ws.path_pool.cache.end())
-                            visited.insert(it->second);
+                        if(auto id = ws.path_pool.find(dep.path))
+                            visited.insert(*id);
                     }
 
                     for(std::size_t i = 0; i < result.includers.size(); ++i) {
                         if(max_depth > 0 && result.includers[i].depth >= max_depth)
                             continue;
-                        auto dep_it = ws.path_pool.cache.find(result.includers[i].path);
-                        if(dep_it == ws.path_pool.cache.end())
+                        auto dep_id = ws.path_pool.find(result.includers[i].path);
+                        if(!dep_id)
                             continue;
-                        auto sub = ws.dep_graph.get_includers(dep_it->second);
+                        auto sub = ws.dep_graph.get_includers(*dep_id);
                         for(auto sub_id: sub) {
                             if(!visited.insert(sub_id).second)
                                 continue;
@@ -226,10 +227,10 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
         [&srv](RequestContext&,
                const ImpactAnalysisParams& params) -> RequestResult<ImpactAnalysisParams> {
             auto& ws = srv.workspace;
-            auto pool_it = ws.path_pool.cache.find(params.path);
-            if(pool_it == ws.path_pool.cache.end())
+            auto pool_id = ws.path_pool.find(params.path);
+            if(!pool_id)
                 co_return ImpactAnalysisResult{};
-            auto path_id = pool_it->second;
+            auto path_id = *pool_id;
 
             ImpactAnalysisResult result;
 

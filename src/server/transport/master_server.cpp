@@ -209,8 +209,8 @@ void MasterServer::wire() {
     };
 
     pool.on_evicted = [this](const std::string& path, std::size_t worker_index) {
-        auto it = workspace.path_pool.cache.find(path);
-        if(it == workspace.path_pool.cache.end()) {
+        auto id = workspace.path_pool.find(path);
+        if(!id) {
             LOG_WARN("Evicted path not in pool: {}", path);
             return;
         }
@@ -220,8 +220,8 @@ void MasterServer::wire() {
         // Only the current owner's eviction counts: a stale copy left
         // behind by a probe reassignment says nothing about the document
         // the new owner still holds.
-        if(pool.remove_owner_from(it->second, worker_index)) {
-            dispatch(FileEvent::document_evicted(it->second));
+        if(pool.remove_owner_from(*id, worker_index)) {
+            dispatch(FileEvent::document_evicted(*id));
         } else {
             LOG_INFO("Ignoring eviction of {} from non-owner worker {}", path, worker_index);
         }

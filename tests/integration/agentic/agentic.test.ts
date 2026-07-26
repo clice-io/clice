@@ -550,6 +550,25 @@ test("rpc file deps", async ({ session }) => {
     }
 });
 
+// Agentic clients pass native path spellings; on Windows an uppercase
+// drive must hit the same pool entry as the lowercase canonical form
+// (the lookup goes through PathPool::find, not a raw map probe).
+test.skipIf(process.platform !== "win32")("rpc file deps native spelling", async ({ session }) => {
+    const { rpc, workspace } = await indexedAgentic(session);
+    try {
+        const p = posix(workspace.path("main.cpp"));
+        const native = p.charAt(0).toUpperCase() + p.slice(1);
+        const resp = await rpc.request<{ file: string; includes: unknown[] }>("agentic/fileDeps", {
+            path: native,
+        });
+        expect(resp.result, `unexpected response: ${jsonSafe(resp)}`).toBeDefined();
+        expect(Array.isArray(resp.result!.includes)).toBe(true);
+        expect(resp.result!.includes.length).toBeGreaterThan(0);
+    } finally {
+        rpc.close();
+    }
+});
+
 test("rpc file deps direction", async ({ session }) => {
     const { rpc, workspace } = await indexedAgentic(session);
     try {
