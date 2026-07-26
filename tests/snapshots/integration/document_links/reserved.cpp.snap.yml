@@ -1,0 +1,8 @@
+---
+source: snapshots.test.ts
+created_at: 2026-07-26
+input_file: reserved.cpp
+---
+- { range: "4:9-4:24", target: "${WS}/plus+header.h" }
+- { range: "5:9-5:24", target: "${WS}/hash#header.h" }
+- { range: "6:9-6:17", target: "${WS}/café.h" }

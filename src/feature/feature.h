@@ -32,17 +32,28 @@ using kota::ipc::lsp::PositionEncoding;
 /// clients key documents by vscode-uri's lowercase-drive form — an
 /// uppercase-drive URI from the server never matches on Windows.
 inline auto to_uri(llvm::StringRef file) -> std::string {
+    // Every emitted URI carries a lowercase drive, whichever branch
+    // produced it — clients key documents by that spelling.
+    auto lower_drive = [](std::string uri) {
+        constexpr llvm::StringLiteral prefix = "file:///";
+        if(uri.size() > prefix.size() + 1 && llvm::StringRef(uri).starts_with(prefix) &&
+           llvm::isUpper(uri[prefix.size()]) && uri[prefix.size() + 1] == ':') {
+            uri[prefix.size()] = llvm::toLower(uri[prefix.size()]);
+        }
+        return uri;
+    };
+
     auto canonical = canonicalize_path(file.str());
     const auto file_view = std::string_view(canonical);
 
     // Convert as a path first: a Windows drive prefix like "f:" would
     // otherwise be accepted by URI::parse as a single-letter scheme.
     if(auto uri = kota::ipc::lsp::URI::from_file_path(file_view)) {
-        return uri->str();
+        return lower_drive(uri->str());
     }
 
     if(auto parsed = kota::ipc::lsp::URI::parse(file_view)) {
-        return parsed->str();
+        return lower_drive(parsed->str());
     }
 
     return canonical;
