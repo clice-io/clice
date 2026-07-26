@@ -1,0 +1,6 @@
+---
+source: test_snapshots.py
+created_at: 2026-07-26
+input_file: fold_kinds/nested_compound_statement.cpp
+---
+UNSUPPORTED

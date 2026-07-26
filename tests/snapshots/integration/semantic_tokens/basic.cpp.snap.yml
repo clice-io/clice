@@ -1,0 +1,50 @@
+---
+source: test_snapshots.py
+created_at: 2026-07-26
+input_file: basic.cpp
+---
+- { loc: "0:0", text: "// Seed case for the per-feature snapshot corpus: basic token kinds.", kind: comment }
+- { loc: "1:0", text: "#define", kind: directive }
+- { loc: "1:8", text: "SQUARE", kind: macro }
+- { loc: "3:0", text: "namespace", kind: keyword }
+- { loc: "3:10", text: "demo", kind: namespace, modifiers: [definition] }
+- { loc: "5:0", text: "enum", kind: keyword }
+- { loc: "5:5", text: "class", kind: keyword }
+- { loc: "5:11", text: "Color", kind: enum, modifiers: [definition] }
+- { loc: "5:19", text: "Red", kind: enumMember, modifiers: [definition, readonly] }
+- { loc: "5:24", text: "Green", kind: enumMember, modifiers: [definition, readonly] }
+- { loc: "7:0", text: "struct", kind: keyword }
+- { loc: "7:7", text: "Shape", kind: struct, modifiers: [definition] }
+- { loc: "8:4", text: "int", kind: keyword }
+- { loc: "8:8", text: "sides", kind: field, modifiers: [definition] }
+- { loc: "11:0", text: "int", kind: keyword }
+- { loc: "11:4", text: "area", kind: function, modifiers: [definition] }
+- { loc: "11:9", text: "int", kind: keyword }
+- { loc: "11:13", text: "width", kind: parameter, modifiers: [definition] }
+- { loc: "11:20", text: "int", kind: keyword }
+- { loc: "11:24", text: "height", kind: parameter, modifiers: [definition] }
+- { loc: "12:4", text: "return", kind: keyword }
+- { loc: "12:11", text: "width", kind: parameter }
+- { loc: "12:19", text: "height", kind: parameter }
+- { loc: "15:0", text: "void", kind: keyword }
+- { loc: "15:5", text: "test", kind: function, modifiers: [definition] }
+- { loc: "16:4", text: "Shape", kind: struct }
+- { loc: "16:10", text: "square", kind: variable, modifiers: [definition] }
+- { loc: "16:17", text: "4", kind: number }
+- { loc: "17:4", text: "Color", kind: enum }
+- { loc: "17:10", text: "c", kind: variable, modifiers: [definition] }
+- { loc: "17:14", text: "Color", kind: enum }
+- { loc: "17:21", text: "Red", kind: enumMember, modifiers: [readonly] }
+- { loc: "18:21", text: "int", kind: keyword }
+- { loc: "18:25", text: "a", kind: variable, modifiers: [definition] }
+- { loc: "18:29", text: "area", kind: function }
+- { loc: "18:34", text: "SQUARE", kind: macro }
+- { loc: "18:41", text: "2", kind: number }
+- { loc: "18:45", text: "square", kind: variable }
+- { loc: "18:52", text: "sides", kind: field }
+- { loc: "19:21", text: "bool", kind: keyword }
+- { loc: "19:26", text: "red", kind: variable, modifiers: [definition] }
+- { loc: "19:32", text: "c", kind: variable }
+- { loc: "19:37", text: "Color", kind: enum }
+- { loc: "19:44", text: "Red", kind: enumMember, modifiers: [readonly] }
+- { loc: "22:3", text: "// namespace demo", kind: comment }

@@ -1,0 +1,6 @@
+---
+source: test_snapshots.py
+created_at: 2026-07-26
+input_file: refinements/fold_from_declaration_line.cpp
+---
+UNSUPPORTED

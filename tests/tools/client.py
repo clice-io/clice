@@ -238,9 +238,15 @@ class CliceClient(BaseLanguageClient):
         # Wait the cancellations out so no task outlives the test teardown.
         await asyncio.gather(*self._async_tasks, return_exceptions=True)
 
-    def open(self, filepath: Path, version: int = 0) -> tuple[str, str]:
-        """Open a text document. Returns (normalized_uri, content)."""
-        content = filepath.read_bytes().decode("utf-8")
+    def open(
+        self, filepath: Path, version: int = 0, *, text: str | None = None
+    ) -> tuple[str, str]:
+        """Open a text document. Returns (normalized_uri, content).
+
+        `text` overrides the on-disk content (an editor buffer may differ
+        from disk); annotated snapshot fixtures open their stripped text
+        this way."""
+        content = filepath.read_bytes().decode("utf-8") if text is None else text
         wire_uri = filepath.as_uri()
         self.text_document_did_open(
             DidOpenTextDocumentParams(
@@ -275,10 +281,10 @@ class CliceClient(BaseLanguageClient):
         await asyncio.wait_for(event.wait(), timeout=timeout)
 
     async def open_and_wait(
-        self, filepath: Path, timeout: float = 60.0
+        self, filepath: Path, timeout: float = 60.0, *, text: str | None = None
     ) -> tuple[str, str]:
         """Open a file and trigger compilation via hover. Waits for diagnostics."""
-        uri, content = self.open(filepath)
+        uri, content = self.open(filepath, text=text)
         event = self.wait_for_diagnostics(uri)
         await self.text_document_hover_async(
             HoverParams(

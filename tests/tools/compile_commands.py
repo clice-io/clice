@@ -82,10 +82,13 @@ def generate_test_data_cdbs(data_dir: Path) -> None:
 
     # document_links
     dl_dir = data_dir / "document_links"
-    dl_main = dl_dir / "main.cpp"
-    if dl_main.exists():
+    if dl_dir.exists():
         write(
-            dl_dir, [entry(dl_dir, dl_main, [f"-I{dl_dir.as_posix()}", "-std=c++23"])]
+            dl_dir,
+            [
+                entry(dl_dir, src, [f"-I{dl_dir.as_posix()}", "-std=c++23"])
+                for src in sorted(dl_dir.glob("*.cpp"))
+            ],
         )
 
     # config_rules_toml / config_rules_no_config — rules tests must start
@@ -113,6 +116,18 @@ def generate_test_data_cdbs(data_dir: Path) -> None:
                 entries.append(entry(pt_dir, src))
         if entries:
             write(pt_dir, entries)
+
+    # Snapshot fixture corpora, shared with the unit snapshot glob tests.
+    # -std matches the unit side's compile_file default (c++20) so both
+    # layers compile each fixture identically.
+    for corpus in ["document_symbol", "folding_range", "inlay_hint", "semantic_tokens"]:
+        corpus_dir = data_dir / corpus
+        sources = sorted(corpus_dir.rglob("*.cpp")) if corpus_dir.exists() else []
+        if sources:
+            write(
+                corpus_dir,
+                [entry(corpus_dir, src, ["-std=c++20"]) for src in sources],
+            )
 
 
 def write_cdb(

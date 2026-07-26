@@ -46,6 +46,11 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         required=False,
         help="Path to the clice executable.",
     )
+    parser.addoption(
+        "--update-snapshots",
+        action="store_true",
+        help="Rewrite mismatched snapshot files instead of failing.",
+    )
 
 
 @pytest.fixture(scope="session")
