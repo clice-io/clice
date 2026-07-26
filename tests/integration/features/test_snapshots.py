@@ -1,15 +1,5 @@
-"""Wire-level snapshot tests over the shared fixture corpora.
-
-Each feature directory under tests/data/ doubles as an LSP workspace: the
-unit snapshot glob compiles the same fixtures in-process and pins the
-feature payload, while these tests open them against a real server and pin
-the client-visible reply. The presenters normalize every file reference
-through normalize_file_uri, so a malformed URI fails the test on every
-platform instead of only breaking real clients on Windows.
-
-Snapshots live in tests/snapshots/integration/<feature>/ with the same
-format and --update-snapshots workflow as the unit side.
-"""
+"""Wire-level snapshot tests over the fixture corpora shared with the unit
+snapshot glob; results are pinned under tests/snapshots/integration/."""
 
 from pathlib import Path
 
@@ -39,6 +29,8 @@ def fmt_range(range_: Range) -> str:
 
 async def present_document_links(client, uri, source, workspace):
     links = await client.document_links(uri)
+    for link in links or []:
+        assert link.target is not None, "clice always resolves link targets"
     return [
         f'- {{ range: "{fmt_range(link.range)}", '
         f"target: {yaml_str(normalize_file_uri(link.target, workspace))} }}"
@@ -88,23 +80,16 @@ async def present_document_symbols(client, uri, source, workspace):
     return out
 
 
-async def present_semantic_tokens(client, uri, source, workspace):
-    result = await client.semantic_tokens_full(uri)
-    if result is None or not result.data:
-        return []
-
-    legend = client.init_result.capabilities.semantic_tokens_provider.legend
-    lines = source.content.split("\n")
-
+def decode_semantic_tokens(data, lines, legend):
+    """Decode the LSP delta-encoded token array into presenter lines.
+    Positions are UTF-16 code units; fixtures are ASCII, where they
+    coincide with string indices."""
     out = []
-    data = result.data
     line, character = 0, 0
     for i in range(0, len(data), 5):
         delta_line, delta_start, length, kind, modifiers = data[i : i + 5]
         line += delta_line
         character = character + delta_start if delta_line == 0 else delta_start
-        # Positions are UTF-16 code units; fixtures are ASCII, where they
-        # coincide with string indices.
         text = lines[line][character : character + length]
         entry = f'- {{ loc: "{line}:{character}", text: {yaml_str(text)}, kind: {legend.token_types[kind]}'
         names = [
@@ -116,6 +101,14 @@ async def present_semantic_tokens(client, uri, source, workspace):
             entry += f", modifiers: [{', '.join(names)}]"
         out.append(entry + " }")
     return out
+
+
+async def present_semantic_tokens(client, uri, source, workspace):
+    result = await client.semantic_tokens_full(uri)
+    if result is None or not result.data:
+        return []
+    legend = client.init_result.capabilities.semantic_tokens_provider.legend
+    return decode_semantic_tokens(result.data, source.content.split("\n"), legend)
 
 
 async def present_inlay_hints(client, uri, source, workspace):

@@ -54,6 +54,8 @@ def normalize_file_uri(uri: str, workspace: Path) -> str:
         raise AssertionError(f"not a file:// URI (scheme={split.scheme!r}): {uri!r}")
     if split.netloc:
         raise AssertionError(f"unexpected authority in file URI: {uri!r}")
+    if split.query or split.fragment:
+        raise AssertionError(f"unexpected query/fragment in file URI: {uri!r}")
 
     # pygls owns the percent-decoding and Windows drive-letter handling;
     # the checks above and below are ours.

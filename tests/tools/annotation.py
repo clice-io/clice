@@ -43,7 +43,9 @@ def parse_annotations(text: str) -> AnnotatedSource:
                 if key_end < 0:
                     raise ValueError("Unterminated §(name) in annotated source.")
                 key = data[i + 1 : key_end].decode()
-                if not all(c.isalnum() or c == "_" for c in key):
+                # ASCII-only like the C++ twin's std::isalnum; str.isalnum
+                # would accept non-ASCII letters the unit Tester rejects.
+                if not all(c.isascii() and (c.isalnum() or c == "_") for c in key):
                     raise ValueError(
                         f"§({key}) is not an identifier name; use §() for a "
                         "nameless point before real parentheses."
@@ -65,7 +67,7 @@ def parse_annotations(text: str) -> AnnotatedSource:
             if not stack:
                 raise ValueError("`⟧` without a matching `§⟦` in annotated source.")
             key, begin = stack.pop()
-            if key in ranges or (not key and "" in ranges):
+            if key in ranges:
                 raise ValueError(
                     f"Duplicate range annotation §({key})⟦...⟧."
                     if key
