@@ -31,7 +31,7 @@ import {
     type StatsResult,
     type SwitchContextResult,
 } from "../protocol/protocol.ts";
-import { Workspace } from "./workspace.ts";
+import { canonicalUri, Workspace } from "./workspace.ts";
 
 // Standard timing constants — use these instead of hardcoded sleep values.
 export const MTIME_GRANULARITY = 1_100; // Filesystem mtime precision + margin
@@ -622,11 +622,7 @@ export class CliceClient {
     // === Documents =======================================================
 
     normalizeUri(uri: string): string {
-        try {
-            return decodeURIComponent(uri);
-        } catch {
-            return uri;
-        }
+        return canonicalUri(uri);
     }
 
     pathToUri(filepath: string): string {

@@ -12,6 +12,18 @@ import { generateCDB } from "../compile_commands.ts";
 /// cache_format_version in src/server/state/workspace.h.
 const CACHE_ROOT = path.join(".clice", "cache", "v4");
 
+/// The harness-wide canonical URI spelling: percent-decoded. vscode-uri
+/// encodes the drive colon (file:///c%3A/...) while the server emits it
+/// literally (file:///c:/...); both decode to one form. Every URI used
+/// as an identity — map keys, expected values — must pass through here.
+export function canonicalUri(uri: string): string {
+    try {
+        return decodeURIComponent(uri);
+    } catch {
+        return uri;
+    }
+}
+
 export interface CDBOptions {
     extraArgs?: string[] | undefined;
     std?: string | undefined;
@@ -42,9 +54,10 @@ export class Workspace {
         return path.isAbsolute(rel) ? rel : path.join(this.root, rel);
     }
 
-    /// file:// URI of a workspace-relative path.
+    /// Canonical file:// URI of a workspace-relative path — safe to compare
+    /// against client-normalized server URIs and diagnostics-map keys.
     uri(rel = ""): string {
-        return URI.file(this.path(rel)).toString();
+        return canonicalUri(URI.file(this.path(rel)).toString());
     }
 
     exists(rel: string): boolean {
