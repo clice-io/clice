@@ -4,14 +4,10 @@
 /// synthesized fallback command. If that produces file-not-found errors, a
 /// file-top warning explains the situation; an exact CDB match never gets it.
 
-import * as fs from "node:fs";
 import * as path from "node:path";
 import * as proto from "vscode-languageserver-protocol";
-import { guidanceMessages } from "../../tools/checks.ts";
-import type { CliceClient } from "../../tools/client.ts";
-import { writeCdb } from "../../tools/compile_commands.ts";
-import { expect, test } from "../../tools/fixtures.ts";
-import { shutdownClient } from "../../tools/lifecycle.ts";
+import type { CliceClient } from "@clice/tools/client";
+import { expect, test } from "../../fixtures.ts";
 
 const GUIDANCE_CODE = "inferred-compile-command";
 
@@ -27,12 +23,12 @@ function fileNotFoundDiags(client: CliceClient, uri: string): proto.Diagnostic[]
 
 test("fallback guidance lifecycle", async ({ session }) => {
     const tmp = session.tmpdir();
-    fs.writeFileSync(path.join(tmp, "main.cpp"), BROKEN_INCLUDE);
+    tmp.write("main.cpp", BROKEN_INCLUDE);
 
     // Phase 1: no CDB — fallback command, broken include → guidance at the top.
     const first = session.spawn(tmp);
     await first.initialize(tmp);
-    const [uri] = await first.openAndWait(path.join(tmp, "main.cpp"));
+    const [uri] = await first.openAndWait("main.cpp");
     expect(fileNotFoundDiags(first, uri).length, "broken include should surface").toBeGreaterThan(
         0,
     );
@@ -44,15 +40,15 @@ test("fallback guidance lifecycle", async ({ session }) => {
     expect(guidance[0]!.range.start.line).toBe(0);
     expect(guidance[0]!.source).toBe("clice");
     // The missing CDB is also announced via window/logMessage guidance.
-    expect(guidanceMessages(first).some((m) => m.includes("compile_commands.json"))).toBe(true);
+    expect(first.guidanceMessages().some((m) => m.includes("compile_commands.json"))).toBe(true);
 
     // Phase 2: provide a CDB and restart — the include error remains, the
     // guidance diagnostic must disappear (exact CDB match never gets it).
-    await shutdownClient(first);
-    writeCdb(tmp, ["main.cpp"]);
+    await first.shutdown();
+    tmp.writeCDB(["main.cpp"]);
     const second = session.spawn(tmp);
     await second.initialize(tmp);
-    const [uri2] = await second.openAndWait(path.join(tmp, "main.cpp"));
+    const [uri2] = await second.openAndWait("main.cpp");
     expect(fileNotFoundDiags(second, uri2).length, "include is still broken").toBeGreaterThan(0);
     expect(
         guidanceDiags(second, uri2).length,
@@ -64,17 +60,14 @@ test("fallback applies rule appends", async ({ session }) => {
     // Without a CDB, include paths supplied via clice.toml rules must reach
     // the synthesized fallback command.
     const { client, workspace: tmp } = session.tmp();
-    fs.mkdirSync(path.join(tmp, "inc"));
-    fs.writeFileSync(path.join(tmp, "inc", "dep.h"), "#pragma once\nconstexpr int dep = 1;\n");
-    fs.writeFileSync(path.join(tmp, "main.cpp"), '#include "dep.h"\nint main() { return dep; }\n');
-    const includeDir = path.join(tmp, "inc").split(path.sep).join("/");
-    fs.writeFileSync(
-        path.join(tmp, "clice.toml"),
-        `[[rules]]\npatterns = ["**/*.cpp"]\nappend = ["-I${includeDir}"]\n`,
-    );
+    tmp.mkdir("inc");
+    tmp.write("inc/dep.h", "#pragma once\nconstexpr int dep = 1;\n");
+    tmp.write("main.cpp", '#include "dep.h"\nint main() { return dep; }\n');
+    const includeDir = tmp.path("inc").split(path.sep).join("/");
+    tmp.write("clice.toml", `[[rules]]\npatterns = ["**/*.cpp"]\nappend = ["-I${includeDir}"]\n`);
 
     await client.initialize(tmp);
-    const [uri] = await client.openAndWait(path.join(tmp, "main.cpp"));
+    const [uri] = await client.openAndWait("main.cpp");
     expect(fileNotFoundDiags(client, uri).length, "rule -I must reach the fallback command").toBe(
         0,
     );
@@ -84,8 +77,8 @@ test("fallback applies rule appends", async ({ session }) => {
 test("fallback clean no guidance", async ({ session }) => {
     // A guessed command that works produces no guidance noise.
     const { client, workspace: tmp } = session.tmp();
-    fs.writeFileSync(path.join(tmp, "main.cpp"), "int main() { return 0; }\n");
+    tmp.write("main.cpp", "int main() { return 0; }\n");
     await client.initialize(tmp);
-    const [uri] = await client.openAndWait(path.join(tmp, "main.cpp"));
+    const [uri] = await client.openAndWait("main.cpp");
     expect(guidanceDiags(client, uri).length).toBe(0);
 });

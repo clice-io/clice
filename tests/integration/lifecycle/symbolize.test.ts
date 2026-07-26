@@ -8,10 +8,10 @@
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { anomaliesInLogMessages, sleep } from "../../tools/checks.ts";
-import { REPO_ROOT, writeCdb } from "../../tools/compile_commands.ts";
-import { cliceExecutable, expect, test } from "../../tools/fixtures.ts";
-import { makeClient, shutdownClient } from "../../tools/lifecycle.ts";
+import { CliceClient, sleep } from "@clice/tools/client";
+import { REPO_ROOT } from "@clice/tools/compile-commands";
+import { Workspace } from "@clice/tools/workspace";
+import { cliceExecutable, expect, test } from "../../fixtures.ts";
 
 function childPids(parentPid: number): number[] {
     const pids: number[] = [];
@@ -78,9 +78,9 @@ test.skipIf(process.platform !== "linux" || isDebugBuild())(
 
         const tmp = session.tmpdir();
         // Replay the clice-strip / clice-pack-symbol steps from cmake/release.cmake.
-        const stripped = path.join(tmp, "clice");
-        const debugFile = path.join(tmp, "clice.debug");
-        const gsymFile = path.join(tmp, "clice.gsym");
+        const stripped = tmp.path("clice");
+        const debugFile = tmp.path("clice.debug");
+        const gsymFile = tmp.path("clice.gsym");
         fs.copyFileSync(executable, stripped);
         fs.chmodSync(stripped, 0o755);
         runTool("llvm-objcopy", "--only-keep-debug", stripped, debugFile);
@@ -95,10 +95,9 @@ test.skipIf(process.platform !== "linux" || isDebugBuild())(
         );
         runTool("llvm-strip", "--strip-debug", "--strip-unneeded", stripped);
 
-        const workspace = path.join(tmp, "ws");
-        fs.mkdirSync(workspace);
-        fs.writeFileSync(path.join(workspace, "main.cpp"), "int main() { return 0; }\n");
-        writeCdb(workspace, ["main.cpp"]);
+        const workspace = new Workspace(tmp.path("ws"));
+        workspace.write("main.cpp", "int main() { return 0; }\n");
+        workspace.writeCDB(["main.cpp"]);
 
         // The stripped binary lives in the temp dir, so it cannot be spawned
         // through the session factory (which always runs cliceExecutable);
@@ -111,14 +110,15 @@ test.skipIf(process.platform !== "linux" || isDebugBuild())(
         process.env["CLICE_ANOMALY_NO_TRAP"] = "1";
         let client;
         try {
-            client = await makeClient(stripped, workspace);
+            client = CliceClient.start(stripped);
+            await client.initialize(workspace);
         } finally {
             delete process.env["LLVM_DISABLE_SYMBOLIZATION"];
             delete process.env["CLICE_ANOMALY_NO_TRAP"];
         }
 
         try {
-            await client.openAndWait(path.join(workspace, "main.cpp"));
+            await client.openAndWait("main.cpp");
 
             const workers = childPids(client.child.pid!);
             expect(workers.length, "server should have spawned worker processes").toBeGreaterThan(
@@ -129,16 +129,16 @@ test.skipIf(process.platform !== "linux" || isDebugBuild())(
             process.kill(workers[0]!, "SIGABRT");
 
             for (let i = 0; i < 50; i++) {
-                if (anomaliesInLogMessages(client).includes("WorkerCrash")) {
+                if (client.anomaliesInLogMessages().includes("WorkerCrash")) {
                     break;
                 }
                 await sleep(200);
             }
         } finally {
-            await shutdownClient(client);
+            await client.shutdown();
         }
 
-        const logsDir = path.join(workspace, ".clice", "logs");
+        const logsDir = workspace.path(".clice/logs");
         const crashLogs = fs
             .readdirSync(logsDir, { recursive: true, encoding: "utf8" })
             .filter((name) => name.endsWith(".log") && path.basename(name) !== "master.log")

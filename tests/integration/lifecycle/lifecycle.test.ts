@@ -1,7 +1,7 @@
 /// Lifecycle tests for the clice LSP server.
 
 import * as proto from "vscode-languageserver-protocol";
-import { cliceTest, expect } from "../../tools/fixtures.ts";
+import { cliceTest, expect } from "../../fixtures.ts";
 
 const test = cliceTest("hello_world");
 
@@ -13,7 +13,7 @@ test("initialize", ({ client }) => {
 
 test("double initialize rejected", async ({ client }) => {
     await expect(
-        client.connection.sendRequest(proto.InitializeRequest.type, {
+        client.sendRequest(proto.InitializeRequest.type, {
             processId: null,
             rootUri: null,
             capabilities: {},
@@ -23,5 +23,5 @@ test("double initialize rejected", async ({ client }) => {
 });
 
 test("shutdown", async ({ client }) => {
-    await client.connection.sendRequest(proto.ShutdownRequest.type);
+    await client.sendRequest(proto.ShutdownRequest.type);
 });

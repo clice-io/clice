@@ -2,8 +2,8 @@
 /// like pytest_configure on the xdist controller — workers would race
 /// writing the same compile_commands.json files.
 
-import { generateTestDataCdbs } from "./compile_commands.ts";
+import { generateTestDataCDBs } from "@clice/tools/compile-commands";
 
 export default function setup(): void {
-    generateTestDataCdbs();
+    generateTestDataCDBs();
 }

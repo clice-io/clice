@@ -1,10 +1,8 @@
 /// Integration tests for #include completion and import completion in clice.
 
-import * as path from "node:path";
 import * as proto from "vscode-languageserver-protocol";
-import { withTimeout } from "../../tools/client.ts";
-import { getErrors } from "../../tools/checks.ts";
-import { test, expect } from "../../tools/fixtures.ts";
+import { withTimeout } from "@clice/tools/client";
+import { test, expect } from "../../fixtures.ts";
 
 function labelsOf(result: proto.CompletionItem[] | proto.CompletionList | null): string[] {
     const items = Array.isArray(result) ? result : (result?.items ?? []);
@@ -13,8 +11,8 @@ function labelsOf(result: proto.CompletionItem[] | proto.CompletionList | null):
 
 /// Completion after #include " should list local headers.
 test("include completion quoted", async ({ session }) => {
-    const { client, workspace } = await session("include_completion");
-    const [uri] = await client.openAndWait(path.join(workspace, "main.cpp"));
+    const { client } = await session("include_completion");
+    const [uri] = await client.openAndWait("main.cpp");
 
     // Update content to trigger include completion for "my" prefix.
     client.change(uri, 1, '#include "my');
@@ -29,8 +27,8 @@ test("include completion quoted", async ({ session }) => {
 
 /// Completion for #include "subdir/ should list files in subdir.
 test("include completion subdirectory", async ({ session }) => {
-    const { client, workspace } = await session("include_completion");
-    const [uri] = await client.openAndWait(path.join(workspace, "main.cpp"));
+    const { client } = await session("include_completion");
+    const [uri] = await client.openAndWait("main.cpp");
 
     client.change(uri, 1, '#include "subdir/');
 
@@ -44,8 +42,8 @@ test("include completion subdirectory", async ({ session }) => {
 
 /// Completion after #include < should list system headers.
 test("include completion angle bracket", async ({ session }) => {
-    const { client, workspace } = await session("include_completion");
-    const [uri] = await client.openAndWait(path.join(workspace, "main.cpp"));
+    const { client } = await session("include_completion");
+    const [uri] = await client.openAndWait("main.cpp");
 
     client.change(uri, 1, "#include <cstd");
 
@@ -64,8 +62,8 @@ test("include completion angle bracket", async ({ session }) => {
 
 /// Regular code should NOT trigger include completion (goes to worker).
 test("no include completion on regular code", async ({ session }) => {
-    const { client, workspace } = await session("include_completion");
-    const [uri] = await client.openAndWait(path.join(workspace, "main.cpp"));
+    const { client } = await session("include_completion");
+    const [uri] = await client.openAndWait("main.cpp");
 
     client.change(uri, 1, "int x = ");
 
@@ -83,8 +81,8 @@ test("no include completion on regular code", async ({ session }) => {
 
 /// Completion after #include " with no prefix should list all local headers.
 test("include completion empty prefix", async ({ session }) => {
-    const { client, workspace } = await session("include_completion");
-    const [uri] = await client.openAndWait(path.join(workspace, "main.cpp"));
+    const { client } = await session("include_completion");
+    const [uri] = await client.openAndWait("main.cpp");
 
     client.change(uri, 1, '#include "');
 
@@ -100,12 +98,12 @@ test("include completion empty prefix", async ({ session }) => {
 
 /// Import completion should list known modules.
 test("import completion basic", async ({ session }) => {
-    const { client, workspace } = await session("modules/chained_modules");
+    const { client } = await session("modules/chained_modules");
     // First open mod_a to ensure it's scanned and module A is registered.
-    await client.openAndWait(path.join(workspace, "mod_a.cppm"));
+    await client.openAndWait("mod_a.cppm");
 
     // Open mod_b and change its content to an incomplete import line.
-    const [uriB] = client.open(path.join(workspace, "mod_b.cppm"));
+    const [uriB] = client.open("mod_b.cppm");
     client.change(uriB, 1, "import ");
 
     const result = await client.completionAt(uriB, 0, 7);
@@ -117,10 +115,10 @@ test("import completion basic", async ({ session }) => {
 
 /// Space-triggered completion on an import line lists modules.
 test("space trigger serves import", async ({ session }) => {
-    const { client, workspace } = await session("modules/chained_modules");
-    await client.openAndWait(path.join(workspace, "mod_a.cppm"));
+    const { client } = await session("modules/chained_modules");
+    await client.openAndWait("mod_a.cppm");
 
-    const [uriB] = client.open(path.join(workspace, "mod_b.cppm"));
+    const [uriB] = client.open("mod_b.cppm");
     client.change(uriB, 1, "import ");
 
     const result = await client.completionAt(uriB, 0, 7, { triggerCharacter: " " });
@@ -132,8 +130,8 @@ test("space trigger serves import", async ({ session }) => {
 
 /// Space-triggered completion outside import lines returns no items.
 test("space trigger gated elsewhere", async ({ session }) => {
-    const { client, workspace } = await session("modules/chained_modules");
-    const [uriB] = client.open(path.join(workspace, "mod_b.cppm"));
+    const { client } = await session("modules/chained_modules");
+    const [uriB] = client.open("mod_b.cppm");
     client.change(uriB, 1, "int main() { return 0; }");
 
     // Cursor right after "return " — a space trigger here must be answered
@@ -149,8 +147,8 @@ test("space trigger gated elsewhere", async ({ session }) => {
 
 /// Space-triggered completion in an include context returns no items.
 test("space trigger gated include", async ({ session }) => {
-    const { client, workspace } = await session("include_completion");
-    const [uri] = await client.openAndWait(path.join(workspace, "main.cpp"));
+    const { client } = await session("include_completion");
+    const [uri] = await client.openAndWait("main.cpp");
     client.change(uri, 1, "#include <vector> ");
 
     // The space gate must run before include scanning: no directory
@@ -166,12 +164,12 @@ test("space trigger gated include", async ({ session }) => {
 
 /// Import completion with prefix should filter to matching modules.
 test("import completion with prefix", async ({ session }) => {
-    const { client, workspace } = await session("modules/chained_modules");
+    const { client } = await session("modules/chained_modules");
     // Open mod_a to register module A.
-    await client.openAndWait(path.join(workspace, "mod_a.cppm"));
+    await client.openAndWait("mod_a.cppm");
 
     // Open mod_b and type 'import A' (with prefix).
-    const [uriB] = client.open(path.join(workspace, "mod_b.cppm"));
+    const [uriB] = client.open("mod_b.cppm");
     client.change(uriB, 1, "import A");
 
     const result = await client.completionAt(uriB, 0, 8);
@@ -183,13 +181,13 @@ test("import completion with prefix", async ({ session }) => {
 
 /// Import completion should return dotted module names like my.app and my.io.
 test("import completion dotted names", async ({ session }) => {
-    const { client, workspace } = await session("modules/dotted_module_name");
+    const { client } = await session("modules/dotted_module_name");
     // Open both module files to register them.
-    await client.openAndWait(path.join(workspace, "io.cppm"));
-    await client.openAndWait(path.join(workspace, "app.cppm"));
+    await client.openAndWait("io.cppm");
+    await client.openAndWait("app.cppm");
 
     // Change app.cppm to an incomplete import with dotted prefix.
-    const [uriApp] = client.open(path.join(workspace, "app.cppm"));
+    const [uriApp] = client.open("app.cppm");
     client.change(uriApp, 1, "import my.");
 
     const result = await client.completionAt(uriApp, 0, 10);
@@ -204,12 +202,12 @@ test("import completion dotted names", async ({ session }) => {
 
 /// Adding import in buffer (unsaved) should still build the needed PCM.
 test("buffer aware module deps", async ({ session }) => {
-    const { client, workspace } = await session("modules/consumer_imports_module");
+    const { client } = await session("modules/consumer_imports_module");
     // Open the module file first so it gets scanned.
-    await client.openAndWait(path.join(workspace, "math.cppm"));
+    await client.openAndWait("math.cppm");
 
     // Open main.cpp with new content that imports Math (simulating unsaved edit).
-    const [uri] = client.open(path.join(workspace, "main.cpp"));
+    const [uri] = client.open("main.cpp");
     client.change(uri, 1, "import Math;\nint x = add(1, 2);\n");
 
     // Trigger compilation via hover (pull-based model).
@@ -219,8 +217,7 @@ test("buffer aware module deps", async ({ session }) => {
     // Wait for diagnostics.
     await withTimeout(arrived, 60_000, `diagnostics ${uri}`);
 
-    const diags = client.diagnostics.get(uri) ?? [];
     // Should have no errors if Math PCM was built successfully from buffer scan.
-    const errors = getErrors(diags);
+    const errors = client.errors(uri);
     expect(errors.length, `Expected no errors, got: ${JSON.stringify(errors)}`).toBe(0);
 });

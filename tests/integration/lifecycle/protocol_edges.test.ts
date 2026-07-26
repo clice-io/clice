@@ -5,11 +5,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as proto from "vscode-languageserver-protocol";
-import { URI } from "vscode-uri";
-import { getErrors, guidanceMessages, sleep } from "../../tools/checks.ts";
-import { withTimeout, type CliceClient } from "../../tools/client.ts";
-import { writeCdb } from "../../tools/compile_commands.ts";
-import { expect, test, type SessionFactory } from "../../tools/fixtures.ts";
+import { sleep, withTimeout, type CliceClient } from "@clice/tools/client";
+import type { Workspace } from "@clice/tools/workspace";
+import { expect, test, type SessionFactory } from "../../fixtures.ts";
 
 const TEST_TOML =
     '[project]\ncache_dir = "${workspace}/.clice"\nenable_indexing = false\n' +
@@ -33,13 +31,13 @@ int main() {
 
 test("open before initialize", async ({ session }) => {
     const { client, workspace } = session.tmp();
-    fs.writeFileSync(path.join(workspace, "main.cpp"), HELLO_WORLD);
-    writeCdb(workspace, ["main.cpp"]);
+    workspace.write("main.cpp", HELLO_WORLD);
+    workspace.writeCDB(["main.cpp"]);
 
     // didOpen racing ahead of the handshake is accepted; the session must be
     // fully usable once the server becomes ready. Register the waiter before
     // the handshake so a push emitted during it cannot be missed.
-    const [uri] = client.open(path.join(workspace, "main.cpp"));
+    const [uri] = client.open(workspace.path("main.cpp"));
     const arrived = client.armDiagnostics(uri);
     await client.initialize(workspace);
 
@@ -47,15 +45,15 @@ test("open before initialize", async ({ session }) => {
     expect(hover).not.toBeNull();
     expect(hover!.contents).not.toBeNull();
     await withTimeout(arrived, 60_000, "diagnostics");
-    expect(getErrors(client.diagnostics.get(uri) ?? [])).toEqual([]);
+    expect(client.errors(uri)).toEqual([]);
 });
 
 test("close before initialize", async ({ session }) => {
     const { client, workspace } = session.tmp();
-    fs.writeFileSync(path.join(workspace, "main.cpp"), HELLO_WORLD);
-    writeCdb(workspace, ["main.cpp"]);
+    workspace.write("main.cpp", HELLO_WORLD);
+    workspace.writeCDB(["main.cpp"]);
 
-    const [uri] = client.open(path.join(workspace, "main.cpp"));
+    const [uri] = client.open(workspace.path("main.cpp"));
     client.close(uri);
     await client.initialize(workspace);
     // The pre-handshake close must not push a diagnostics clear (an ungated one
@@ -65,33 +63,33 @@ test("close before initialize", async ({ session }) => {
     await expect(client.hoverAt(uri, 0, 0)).rejects.toThrow("Document not open");
     // The file closed before ready went through the reindex queue; a normal
     // open/compile cycle must still work afterwards.
-    const [uri2] = await client.openAndWait(path.join(workspace, "main.cpp"));
-    expect(getErrors(client.diagnostics.get(uri2) ?? [])).toEqual([]);
+    const [uri2] = await client.openAndWait("main.cpp");
+    expect(client.errors(uri2)).toEqual([]);
 });
 
 test("change without open", async ({ session }) => {
     const { client, workspace } = await session("hello_world");
-    const uri = URI.file(path.join(workspace, "main.cpp")).toString();
+    const uri = workspace.uri("main.cpp");
     // No didOpen baseline: the edit must be dropped.
     client.change(uri, 1, "int broken(");
     await expect(client.hoverAt(uri, 0, 0)).rejects.toThrow("Document not open");
     // The dropped edit must not poison a later open.
-    const [uri2] = await client.openAndWait(path.join(workspace, "main.cpp"));
-    expect(getErrors(client.diagnostics.get(uri2) ?? [])).toEqual([]);
+    const [uri2] = await client.openAndWait("main.cpp");
+    expect(client.errors(uri2)).toEqual([]);
 });
 
 test("desync range clamped", async ({ session }) => {
     const { client, workspace } = session.tmp();
-    fs.writeFileSync(path.join(workspace, "main.cpp"), "int foo() { return 1; }\n");
-    writeCdb(workspace, ["main.cpp"]);
+    workspace.write("main.cpp", "int foo() { return 1; }\n");
+    workspace.writeCDB(["main.cpp"]);
     await client.initialize(workspace);
-    const [uri] = await client.openAndWait(path.join(workspace, "main.cpp"));
+    const [uri] = await client.openAndWait("main.cpp");
 
     // An incremental edit whose range lies outside the buffer: the views have
     // drifted. The range is clamped per LSP 3.17, so "oops" lands at the true
     // end of the document instead of being dropped.
     const arrived = client.armDiagnostics(uri);
-    await client.connection.sendNotification(proto.DidChangeTextDocumentNotification.type, {
+    await client.sendNotification(proto.DidChangeTextDocumentNotification.type, {
         textDocument: { uri, version: 2 },
         contentChanges: [
             {
@@ -111,9 +109,9 @@ test("desync range clamped", async ({ session }) => {
     // The appended "oops" makes the TU ill-formed: errors prove the edit was
     // applied rather than dropped.
     await withTimeout(arrived, 60_000, "diagnostics");
-    expect(getErrors(client.diagnostics.get(uri) ?? []).length).toBeGreaterThan(0);
+    expect(client.errors(uri).length).toBeGreaterThan(0);
 
-    const logsDir = path.join(workspace, ".clice", "logs");
+    const logsDir = workspace.path(".clice/logs");
     let clamped = false;
     for (let i = 0; i < 50; i++) {
         const logs = fs.existsSync(logsDir)
@@ -135,15 +133,15 @@ test("desync range clamped", async ({ session }) => {
 });
 
 test("version regression tolerated", async ({ session }) => {
-    const { client, workspace } = await session("hello_world");
-    const [uri, content] = client.open(path.join(workspace, "main.cpp"), 5);
+    const { client } = await session("hello_world");
+    const [uri, content] = client.open("main.cpp", 5);
     // A version that goes backwards is a client bug; the edit is applied anyway
     // (and warned about server-side).
     const arrived = client.armDiagnostics(uri);
     client.change(uri, 3, content + "\nint bad(\n");
     await client.hoverAt(uri, 0, 0);
     await withTimeout(arrived, 60_000, "diagnostics");
-    expect(getErrors(client.diagnostics.get(uri) ?? []).length).toBeGreaterThan(0);
+    expect(client.errors(uri).length).toBeGreaterThan(0);
 });
 
 /// Spawn a pre-initialized server bound to a fresh temp workspace via
@@ -151,12 +149,12 @@ test("version regression tolerated", async ({ session }) => {
 /// temp-directory removal.
 async function withLateHandshake(
     session: SessionFactory,
-    setup: (workspace: string) => void,
-    body: (client: CliceClient, workspace: string) => Promise<void>,
+    setup: (workspace: Workspace) => void,
+    body: (client: CliceClient, workspace: Workspace) => Promise<void>,
 ): Promise<void> {
     const workspace = session.tmpdir();
     setup(workspace);
-    const client = session.spawn(workspace, { args: ["serve", `--workspace=${workspace}`] });
+    const client = session.spawn(workspace, { args: ["serve", `--workspace=${workspace.root}`] });
     await body(client, workspace);
 }
 
@@ -164,17 +162,14 @@ test("replay after late handshake", async ({ session }) => {
     await withLateHandshake(
         session,
         (workspace) => {
-            fs.writeFileSync(
-                path.join(workspace, "main.cpp"),
-                "int add(int a, int b) { return a + b; }\n",
-            );
-            writeCdb(workspace, ["main.cpp"]);
-            fs.writeFileSync(path.join(workspace, "clice.toml"), TEST_TOML);
+            workspace.write("main.cpp", "int add(int a, int b) { return a + b; }\n");
+            workspace.writeCDB(["main.cpp"]);
+            workspace.write("clice.toml", TEST_TOML);
         },
         async (client, workspace) => {
             // The server is pre-initialized (ready); the client has not done its
             // handshake yet. Compile output materializes but must not be pushed.
-            const [uri] = client.open(path.join(workspace, "main.cpp"));
+            const [uri] = client.open(workspace.path("main.cpp"));
             const hover = await client.hoverAt(uri, 0, 4);
             expect(hover).not.toBeNull();
             // Non-vacuous: an ungated push is emitted during the compile the
@@ -186,16 +181,16 @@ test("replay after late handshake", async ({ session }) => {
             // handshake still completes with the initialized notification, which
             // replays the materialized output.
             await expect(
-                client.connection.sendRequest(proto.InitializeRequest.type, {
+                client.sendRequest(proto.InitializeRequest.type, {
                     processId: null,
-                    rootUri: URI.file(workspace).toString(),
+                    rootUri: workspace.uri(),
                     capabilities: {},
                 }),
             ).rejects.toThrow();
             const arrived = client.armDiagnostics(uri);
-            await client.connection.sendNotification(proto.InitializedNotification.type, {});
+            await client.sendNotification(proto.InitializedNotification.type, {});
             await withTimeout(arrived, 30_000, "diagnostics");
-            expect(getErrors(client.diagnostics.get(uri) ?? [])).toEqual([]);
+            expect(client.errors(uri)).toEqual([]);
         },
     );
 });
@@ -204,15 +199,12 @@ test("no stale replay", async ({ session }) => {
     await withLateHandshake(
         session,
         (workspace) => {
-            fs.writeFileSync(
-                path.join(workspace, "main.cpp"),
-                "int add(int a, int b) { return a + b; }\n",
-            );
-            writeCdb(workspace, ["main.cpp"]);
-            fs.writeFileSync(path.join(workspace, "clice.toml"), TEST_TOML);
+            workspace.write("main.cpp", "int add(int a, int b) { return a + b; }\n");
+            workspace.writeCDB(["main.cpp"]);
+            workspace.write("clice.toml", TEST_TOML);
         },
         async (client, workspace) => {
-            const [uri, content] = client.open(path.join(workspace, "main.cpp"));
+            const [uri, content] = client.open(workspace.path("main.cpp"));
             const hover = await client.hoverAt(uri, 0, 4);
             expect(hover).not.toBeNull();
             // An edit during the handshake window invalidates the materialized
@@ -220,13 +212,13 @@ test("no stale replay", async ({ session }) => {
             // results with the new text.
             client.change(uri, 1, content + "int bad(\n");
             await expect(
-                client.connection.sendRequest(proto.InitializeRequest.type, {
+                client.sendRequest(proto.InitializeRequest.type, {
                     processId: null,
-                    rootUri: URI.file(workspace).toString(),
+                    rootUri: workspace.uri(),
                     capabilities: {},
                 }),
             ).rejects.toThrow();
-            await client.connection.sendNotification(proto.InitializedNotification.type, {});
+            await client.sendNotification(proto.InitializedNotification.type, {});
             // A request round-trip orders us after the initialized processing: a
             // (wrong) replay push would already have been recorded.
             await client.queryContext(uri);
@@ -235,7 +227,7 @@ test("no stale replay", async ({ session }) => {
             const arrived = client.armDiagnostics(uri);
             await client.hoverAt(uri, 0, 4);
             await withTimeout(arrived, 30_000, "diagnostics");
-            expect(getErrors(client.diagnostics.get(uri) ?? []).length).toBeGreaterThan(0);
+            expect(client.errors(uri).length).toBeGreaterThan(0);
         },
     );
 });
@@ -244,8 +236,8 @@ test("startup guidance delivered", async ({ session }) => {
     await withLateHandshake(
         session,
         (workspace) => {
-            fs.writeFileSync(path.join(workspace, "main.cpp"), "int x = 1;\n");
-            fs.writeFileSync(path.join(workspace, "clice.toml"), TEST_TOML);
+            workspace.write("main.cpp", "int x = 1;\n");
+            workspace.write("clice.toml", TEST_TOML);
             // No compile_commands.json: the headless workspace load emits
             // guidance without waiting for any handshake; the client must still
             // receive it (drained from the server's notify log).
@@ -253,7 +245,7 @@ test("startup guidance delivered", async ({ session }) => {
         async (client) => {
             let delivered = false;
             for (let i = 0; i < 300; i++) {
-                if (guidanceMessages(client).some((m) => m.includes("compile_commands.json"))) {
+                if (client.guidanceMessages().some((m) => m.includes("compile_commands.json"))) {
                     delivered = true;
                     break;
                 }

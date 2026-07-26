@@ -2,10 +2,8 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { withTimeout } from "../../tools/client.ts";
-import { writeCdb } from "../../tools/compile_commands.ts";
-import { expect, test } from "../../tools/fixtures.ts";
-import { shutdownClient } from "../../tools/lifecycle.ts";
+import { withTimeout } from "@clice/tools/client";
+import { expect, test } from "../../fixtures.ts";
 
 const FLOOD_LINES = 3000;
 const FLOOD_SIZE = 256;
@@ -29,20 +27,11 @@ function readMasterLogs(logsDir: string): string {
 test("log flood gated", async ({ session }) => {
     const workspace = session.tmpdir();
     // The load-generating hook must not exist for ordinary clients.
-    fs.writeFileSync(path.join(workspace, "probe.cpp"), "int value = 42;\n");
-    writeCdb(workspace, ["probe.cpp"]);
+    workspace.write("probe.cpp", "int value = 42;\n");
+    workspace.writeCDB(["probe.cpp"]);
     const client = session.spawn(workspace);
     await client.initialize(workspace);
-    await expect(
-        withTimeout(
-            client.connection.sendRequest("clice/internal/logFlood", {
-                count: 1,
-                size: 16,
-            }),
-            10_000,
-            "logFlood",
-        ),
-    ).rejects.toThrow();
+    await expect(withTimeout(client.logFlood(1, 16), 10_000, "logFlood")).rejects.toThrow();
 });
 
 test("stderr flood never wedges", async ({ session }) => {
@@ -53,15 +42,15 @@ test("stderr flood never wedges", async ({ session }) => {
     // fix the event loop parked in write(2) once the pipe filled (~1000
     // info lines in) and never answered again.
     const workspace = session.tmpdir();
-    fs.writeFileSync(path.join(workspace, "probe.cpp"), "int value = 42;\n");
-    writeCdb(workspace, ["probe.cpp"]);
+    workspace.write("probe.cpp", "int value = 42;\n");
+    workspace.writeCDB(["probe.cpp"]);
 
     const client = session.spawn(workspace, { drainStderr: false });
     await client.initialize(workspace, {
         initializationOptions: { project: { test_hooks: true } },
     });
     try {
-        const [uri] = client.open(path.join(workspace, "probe.cpp"));
+        const [uri] = client.open("probe.cpp");
         // ~1MB in ten batches, far past the pipe (~196KB with asyncio's
         // reader buffer) plus the sink's 256KB buffer budget; each hover
         // in between is a bounded liveness probe.
@@ -69,10 +58,7 @@ test("stderr flood never wedges", async ({ session }) => {
             let hover: unknown;
             try {
                 await withTimeout(
-                    client.connection.sendRequest("clice/internal/logFlood", {
-                        count: Math.floor(FLOOD_LINES / 10),
-                        size: FLOOD_SIZE,
-                    }),
+                    client.logFlood(Math.floor(FLOOD_LINES / 10), FLOOD_SIZE),
                     18_000,
                     "logFlood",
                 );
@@ -92,7 +78,7 @@ test("stderr flood never wedges", async ({ session }) => {
         // report the sink emits once writes flow again. This must happen
         // before the shutdown gate below, so it stays an explicit call.
         client.spawnStderrPump();
-        await shutdownClient(client);
+        await client.shutdown();
     }
 
     // Shedding happened where intended: the mirror lost flood lines and
@@ -103,7 +89,6 @@ test("stderr flood never wedges", async ({ session }) => {
 
     // ...while the file log kept every single one: the mirror is
     // best-effort, the file log is the record.
-    const logsDir = path.join(workspace, ".clice", "logs");
-    const fileText = readMasterLogs(logsDir);
+    const fileText = readMasterLogs(workspace.path(path.join(".clice", "logs")));
     expect(floodLinesIn(fileText)).toBe(FLOOD_LINES);
 }, 600_000);

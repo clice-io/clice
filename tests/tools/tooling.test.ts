@@ -6,8 +6,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { expect, test } from "vitest";
 import { URI } from "vscode-uri";
-import { parseAnnotations } from "../tools/annotation.ts";
-import { decodeSemanticTokens } from "../tools/presenters.ts";
+import { parseAnnotations } from "@clice/tools/annotation";
+import { decodeSemanticTokens } from "@clice/tools/presenters";
 import {
     fixtureFrontmatter,
     formatSnap,
@@ -15,7 +15,7 @@ import {
     parseSnap,
     SnapshotContext,
     yamlStr,
-} from "../tools/snapshot.ts";
+} from "@clice/tools/snapshot";
 
 test("annotation passthrough", () => {
     const src = parseAnnotations("int x = 1;\n");

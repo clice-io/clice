@@ -1,9 +1,9 @@
 /// CLI-based tests for agentic mode and CLI entry points.
 
 import * as path from "node:path";
-import { sleep, waitForIndex } from "../../tools/checks.ts";
-import { cliceExecutable, expect, test, type SessionFactory } from "../../tools/fixtures.ts";
-import { findFreePort } from "../../tools/lifecycle.ts";
+import { findFreePort, sleep } from "@clice/tools/client";
+import type { Workspace } from "@clice/tools/workspace";
+import { cliceExecutable, expect, test, type SessionFactory } from "../../fixtures.ts";
 import { AgenticRpcClient, runCli } from "./rpc.ts";
 
 function posix(p: string): string {
@@ -13,7 +13,7 @@ function posix(p: string): string {
 /// Start server with LSP+agentic, compile a file, wait for indexing.
 async function indexedServer(
     session: SessionFactory,
-): Promise<{ host: string; port: number; workspace: string }> {
+): Promise<{ host: string; port: number; workspace: Workspace }> {
     const host = "127.0.0.1";
     const port = await findFreePort();
     // The first agentic query triggers a catch-up indexing round for open
@@ -23,8 +23,8 @@ async function indexedServer(
         initializationOptions: { project: { idle_timeout_ms: 10 } },
     });
 
-    const [uri] = await client.openAndWait(path.join(workspace, "main.cpp"));
-    expect(await waitForIndex(client, uri, "add"), "Index not ready").toBe(true);
+    const [uri] = await client.openAndWait("main.cpp");
+    expect(await client.waitForIndex(uri, "add"), "Index not ready").toBe(true);
 
     const rpc = new AgenticRpcClient();
     await rpc.connect(host, port);
@@ -44,7 +44,7 @@ async function indexedServer(
 
 test("cli compile command", async ({ session }) => {
     const { host, port, workspace } = await indexedServer(session);
-    const p = posix(path.join(workspace, "main.cpp"));
+    const p = posix(workspace.path("main.cpp"));
     const r = await runCli(cliceExecutable(), host, port, "compileCommand", { path: p });
     expect(r.status, `stderr: ${r.stderr}`).toBe(0);
     const data = JSON.parse(r.stdout) as { file: string; arguments: string[] };
@@ -83,7 +83,7 @@ test("cli definition", async ({ session }) => {
 
 test("cli definition by position", async ({ session }) => {
     const { host, port, workspace } = await indexedServer(session);
-    const p = posix(path.join(workspace, "main.cpp"));
+    const p = posix(workspace.path("main.cpp"));
     const r = await runCli(cliceExecutable(), host, port, "definition", { path: p, line: 19 });
     expect(r.status, `stderr: ${r.stderr}`).toBe(0);
     const data = JSON.parse(r.stdout) as { name: string };
@@ -116,7 +116,7 @@ test("cli read symbol", async ({ session }) => {
 
 test("cli document symbols", async ({ session }) => {
     const { host, port, workspace } = await indexedServer(session);
-    const p = posix(path.join(workspace, "main.cpp"));
+    const p = posix(workspace.path("main.cpp"));
     const r = await runCli(cliceExecutable(), host, port, "documentSymbols", { path: p });
     expect(r.status, `stderr: ${r.stderr}`).toBe(0);
     const data = JSON.parse(r.stdout) as { symbols: { name: string }[] };

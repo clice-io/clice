@@ -8,14 +8,12 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { assertCleanCompile, sleep, waitForRecompile } from "../../tools/checks.ts";
-import { writeCdb, writeEntries } from "../../tools/compile_commands.ts";
-import { expect, test } from "../../tools/fixtures.ts";
-import { shutdownClient } from "../../tools/lifecycle.ts";
-import { readCacheJson } from "../../tools/workspace.ts";
+import { sleep } from "@clice/tools/client";
+import type { Workspace } from "@clice/tools/workspace";
+import { expect, test } from "../../fixtures.ts";
 
-function prefixFiles(workspace: string): string[] {
-    const prefixDir = path.join(workspace, ".clice", "header_context");
+function prefixFiles(workspace: Workspace): string[] {
+    const prefixDir = workspace.path(path.join(".clice", "header_context"));
     if (!fs.existsSync(prefixDir)) {
         return [];
     }
@@ -32,24 +30,18 @@ function prefixFiles(workspace: string): string[] {
 test("self contained skips synthesis", async ({ session }) => {
     /// A self-contained header borrows a command but gets no prefix.
     const { client, workspace } = session.tmp();
-    fs.writeFileSync(
-        path.join(workspace, "types.h"),
-        "#pragma once\nstruct Point { int x; int y; };\n",
-    );
-    fs.writeFileSync(
-        path.join(workspace, "helper.h"),
+    workspace.write("types.h", "#pragma once\nstruct Point { int x; int y; };\n");
+    workspace.write(
+        "helper.h",
         '#pragma once\n#include "types.h"\ninline int get_x(Point p) { return p.x; }\n',
     );
-    fs.writeFileSync(
-        path.join(workspace, "main.cpp"),
-        '#include "helper.h"\nint main() { return get_x({1, 2}); }\n',
-    );
-    writeCdb(workspace, ["main.cpp"]);
+    workspace.write("main.cpp", '#include "helper.h"\nint main() { return get_x({1, 2}); }\n');
+    workspace.writeCDB(["main.cpp"]);
     await client.initialize(workspace);
 
-    await client.openAndWait(path.join(workspace, "main.cpp"));
-    const [helperUri] = await client.openAndWait(path.join(workspace, "helper.h"));
-    assertCleanCompile(client, helperUri);
+    await client.openAndWait("main.cpp");
+    const [helperUri] = await client.openAndWait("helper.h");
+    client.assertCleanCompile(helperUri);
     expect(prefixFiles(workspace), "Self-contained headers must not synthesize a prefix").toEqual(
         [],
     );
@@ -59,52 +51,40 @@ test("fallback on missing context", async ({ session }) => {
     /// A non-self-contained header falls back to prefix synthesis
     /// automatically; the trial's error diagnostics are never published.
     const { client, workspace } = session.tmp();
-    fs.writeFileSync(
-        path.join(workspace, "types.h"),
-        "#pragma once\nstruct Point { int x; int y; };\n",
-    );
-    fs.writeFileSync(
-        path.join(workspace, "utils.h"),
-        "inline int get_x(Point p) { return p.x; }\n",
-    );
-    fs.writeFileSync(
-        path.join(workspace, "main.cpp"),
+    workspace.write("types.h", "#pragma once\nstruct Point { int x; int y; };\n");
+    workspace.write("utils.h", "inline int get_x(Point p) { return p.x; }\n");
+    workspace.write(
+        "main.cpp",
         '#include "types.h"\n#include "utils.h"\nint main() { return get_x({1, 2}); }\n',
     );
-    writeCdb(workspace, ["main.cpp"]);
+    workspace.writeCDB(["main.cpp"]);
     await client.initialize(workspace);
 
-    await client.openAndWait(path.join(workspace, "main.cpp"));
-    const [utilsUri] = await client.openAndWait(path.join(workspace, "utils.h"));
-    assertCleanCompile(client, utilsUri);
+    await client.openAndWait("main.cpp");
+    const [utilsUri] = await client.openAndWait("utils.h");
+    client.assertCleanCompile(utilsUri);
     expect(prefixFiles(workspace).length, "Fallback must synthesize exactly one prefix").toBe(1);
 });
 
 test("verdict persisted across sessions", async ({ session }) => {
     /// The NeedsContext verdict lands in cache.json and survives restarts.
     const workspace = session.tmpdir();
-    fs.writeFileSync(
-        path.join(workspace, "types.h"),
-        "#pragma once\nstruct Point { int x; int y; };\n",
-    );
-    fs.writeFileSync(
-        path.join(workspace, "utils.h"),
-        "inline int get_x(Point p) { return p.x; }\n",
-    );
-    fs.writeFileSync(
-        path.join(workspace, "main.cpp"),
+    workspace.write("types.h", "#pragma once\nstruct Point { int x; int y; };\n");
+    workspace.write("utils.h", "inline int get_x(Point p) { return p.x; }\n");
+    workspace.write(
+        "main.cpp",
         '#include "types.h"\n#include "utils.h"\nint main() { return get_x({1, 2}); }\n',
     );
-    writeCdb(workspace, ["main.cpp"]);
+    workspace.writeCDB(["main.cpp"]);
 
     const c1 = session.spawn(workspace);
     await c1.initialize(workspace);
-    await c1.openAndWait(path.join(workspace, "main.cpp"));
-    const [utilsUri] = await c1.openAndWait(path.join(workspace, "utils.h"));
-    assertCleanCompile(c1, utilsUri);
-    await shutdownClient(c1);
+    await c1.openAndWait("main.cpp");
+    const [utilsUri] = await c1.openAndWait("utils.h");
+    c1.assertCleanCompile(utilsUri);
+    await c1.shutdown();
 
-    const cache = readCacheJson(workspace);
+    const cache = workspace.readCacheJson();
     expect(cache, `Expected a persisted header mode, got: ${JSON.stringify(cache)}`).not.toBeNull();
     expect(
         ((cache!["header_modes"] ?? []) as unknown[]).length,
@@ -113,64 +93,61 @@ test("verdict persisted across sessions", async ({ session }) => {
 
     const c2 = session.spawn(workspace);
     await c2.initialize(workspace);
-    await c2.openAndWait(path.join(workspace, "main.cpp"));
-    const [utilsUri2] = await c2.openAndWait(path.join(workspace, "utils.h"));
-    assertCleanCompile(c2, utilsUri2);
-    await shutdownClient(c2);
+    await c2.openAndWait("main.cpp");
+    const [utilsUri2] = await c2.openAndWait("utils.h");
+    c2.assertCleanCompile(utilsUri2);
+    await c2.shutdown();
 });
 
 test("choice persisted across sessions", async ({ session }) => {
     /// A switchContext choice is restored on didOpen in a later session.
     const workspace = session.tmpdir();
-    fs.writeFileSync(path.join(workspace, "shared.h"), "VALUE_TYPE get_value();\n");
-    fs.writeFileSync(
-        path.join(workspace, "a.cpp"),
+    workspace.write("shared.h", "VALUE_TYPE get_value();\n");
+    workspace.write(
+        "a.cpp",
         '#define VALUE_TYPE int\n#include "shared.h"\nint main() { return 0; }\n',
     );
-    fs.writeFileSync(
-        path.join(workspace, "b.cpp"),
+    workspace.write(
+        "b.cpp",
         '#define VALUE_TYPE float\n#include "shared.h"\nfloat f() { return 0; }\n',
     );
-    writeEntries(workspace, [
+    workspace.writeEntries([
         ["a.cpp", []],
         ["b.cpp", []],
     ]);
 
     const c1 = session.spawn(workspace);
     await c1.initialize(workspace);
-    await c1.openAndWait(path.join(workspace, "a.cpp"));
-    await c1.openAndWait(path.join(workspace, "b.cpp"));
-    const [sharedUri] = c1.open(path.join(workspace, "shared.h"));
-    const bUri = c1.pathToUri(path.join(workspace, "b.cpp"));
-    const sw = (await c1.switchContext(sharedUri, bUri)) as { success?: boolean };
+    await c1.openAndWait("a.cpp");
+    await c1.openAndWait("b.cpp");
+    const [sharedUri] = c1.open("shared.h");
+    const bUri = workspace.uri("b.cpp");
+    const sw = await c1.switchContext(sharedUri, bUri);
     expect(sw.success).toBe(true);
-    await shutdownClient(c1);
+    await c1.shutdown();
 
     const c2 = session.spawn(workspace);
     await c2.initialize(workspace);
-    const [sharedUri2] = c2.open(path.join(workspace, "shared.h"));
-    const current = (await c2.currentContext(sharedUri2)) as { context?: { uri: string } | null };
+    const [sharedUri2] = c2.open("shared.h");
+    const current = await c2.currentContext(sharedUri2);
     const ctx = current.context;
     expect(
         ctx?.uri.includes("b.cpp") ?? false,
         `Persisted context choice should be restored on didOpen, got: ${JSON.stringify(current)}`,
     ).toBe(true);
-    await shutdownClient(c2);
+    await c2.shutdown();
 });
 
 test("ordinary error no fallback", async ({ session }) => {
     /// A self-contained header with a benign syntax error must not trigger
     /// prefix synthesis nor persist any verdict.
     const { client, workspace } = session.tmp();
-    fs.writeFileSync(path.join(workspace, "typo.h"), "inline int broken() { return }\n"); // syntax error
-    fs.writeFileSync(
-        path.join(workspace, "main.cpp"),
-        '#include "typo.h"\nint main() { return 0; }\n',
-    );
-    writeCdb(workspace, ["main.cpp"]);
+    workspace.write("typo.h", "inline int broken() { return }\n"); // syntax error
+    workspace.write("main.cpp", '#include "typo.h"\nint main() { return 0; }\n');
+    workspace.writeCDB(["main.cpp"]);
     await client.initialize(workspace);
 
-    const [typoUri] = await client.openAndWait(path.join(workspace, "typo.h"));
+    const [typoUri] = await client.openAndWait("typo.h");
     const diags = client.diagnostics.get(typoUri) ?? [];
     expect(diags.length, "The syntax error must be published").toBeGreaterThan(0);
     expect(prefixFiles(workspace), "Ordinary errors must not trigger prefix synthesis").toEqual([]);
@@ -180,38 +157,34 @@ test("header save resets verdict", async ({ session }) => {
     /// Saving the header itself re-evaluates its self-containment: a header
     /// that gains its own include stops using the synthesized prefix.
     const workspace = session.tmpdir();
-    fs.writeFileSync(
-        path.join(workspace, "types.h"),
-        "#pragma once\nstruct Point { int x; int y; };\n",
-    );
-    const utilsH = path.join(workspace, "utils.h");
-    fs.writeFileSync(utilsH, "inline int get_x(Point p) { return p.x; }\n");
-    fs.writeFileSync(
-        path.join(workspace, "main.cpp"),
+    workspace.write("types.h", "#pragma once\nstruct Point { int x; int y; };\n");
+    workspace.write("utils.h", "inline int get_x(Point p) { return p.x; }\n");
+    workspace.write(
+        "main.cpp",
         '#include "types.h"\n#include "utils.h"\nint main() { return get_x({1, 2}); }\n',
     );
-    writeCdb(workspace, ["main.cpp"]);
+    workspace.writeCDB(["main.cpp"]);
 
     const c = session.spawn(workspace);
     await c.initialize(workspace);
-    await c.openAndWait(path.join(workspace, "main.cpp"));
-    const [utilsUri] = await c.openAndWait(utilsH);
-    assertCleanCompile(c, utilsUri);
+    await c.openAndWait("main.cpp");
+    const [utilsUri] = await c.openAndWait("utils.h");
+    c.assertCleanCompile(utilsUri);
     expect(prefixFiles(workspace).length, "Initial verdict: needs context").toBe(1);
 
     // Make the header self-contained on disk and in the buffer, then save.
     await sleep(1_100);
     const newText = '#include "types.h"\ninline int get_x(Point p) { return p.x; }\n';
-    fs.writeFileSync(utilsH, newText);
+    workspace.write("utils.h", newText);
     c.change(utilsUri, 2, newText);
     c.save(utilsUri);
 
-    await waitForRecompile(c, utilsUri);
-    assertCleanCompile(c, utilsUri);
-    await shutdownClient(c);
+    await c.waitForRecompile(utilsUri);
+    c.assertCleanCompile(utilsUri);
+    await c.shutdown();
 
     // After shutdown the persisted verdict must be gone.
-    const cache = readCacheJson(workspace);
+    const cache = workspace.readCacheJson();
     expect(
         (cache?.["header_modes"] ?? []) as unknown[],
         `Verdict should be reset after the header was saved, got: ${JSON.stringify(cache)}`,
@@ -223,29 +196,23 @@ test("dependency change retries trial", async ({ session }) => {
     /// own includes changes: here foo.h stops providing FOO, and only the
     /// includer context (the host's define) can still supply it.
     const { client, workspace } = session.tmp();
-    fs.writeFileSync(path.join(workspace, "foo.h"), "#pragma once\n#define FOO 1\n");
-    fs.writeFileSync(
-        path.join(workspace, "h.h"),
-        '#pragma once\n#include "foo.h"\ninline int get() { return FOO; }\n',
-    );
-    fs.writeFileSync(
-        path.join(workspace, "main.cpp"),
-        '#define FOO 2\n#include "h.h"\nint main() { return get(); }\n',
-    );
-    writeCdb(workspace, ["main.cpp"]);
+    workspace.write("foo.h", "#pragma once\n#define FOO 1\n");
+    workspace.write("h.h", '#pragma once\n#include "foo.h"\ninline int get() { return FOO; }\n');
+    workspace.write("main.cpp", '#define FOO 2\n#include "h.h"\nint main() { return get(); }\n');
+    workspace.writeCDB(["main.cpp"]);
     await client.initialize(workspace);
 
-    await client.openAndWait(path.join(workspace, "main.cpp"));
-    const [hUri] = await client.openAndWait(path.join(workspace, "h.h"));
-    assertCleanCompile(client, hUri);
+    await client.openAndWait("main.cpp");
+    const [hUri] = await client.openAndWait("h.h");
+    client.assertCleanCompile(hUri);
     expect(prefixFiles(workspace), "Initially self-contained").toEqual([]);
 
     // foo.h stops defining FOO; only the host's #define can provide it now.
     await sleep(1_100);
-    fs.writeFileSync(path.join(workspace, "foo.h"), "#pragma once\n");
+    workspace.write("foo.h", "#pragma once\n");
 
-    await waitForRecompile(client, hUri);
-    assertCleanCompile(client, hUri);
+    await client.waitForRecompile(hUri);
+    client.assertCleanCompile(hUri);
     expect(
         prefixFiles(workspace).length,
         "Dependency change must re-run the trial and fall back to synthesis",
@@ -256,12 +223,9 @@ test("suffix closes embedding", async ({ session }) => {
     /// X-macro fragments embedded in an enum or a function body compile
     /// cleanly: the synthesized suffix closes the surrounding braces.
     const { client, workspace } = session.tmp();
-    fs.writeFileSync(
-        path.join(workspace, "errors.def"),
-        'X(Ok, 0, "success")\nX(NotFound, 1, "not found")\n',
-    );
-    fs.writeFileSync(
-        path.join(workspace, "main.cpp"),
+    workspace.write("errors.def", 'X(Ok, 0, "success")\nX(NotFound, 1, "not found")\n');
+    workspace.write(
+        "main.cpp",
         "#define X(name, code, msg) name = code,\n" +
             "enum ErrorCode {\n" +
             '#include "errors.def"\n' +
@@ -269,21 +233,21 @@ test("suffix closes embedding", async ({ session }) => {
             "#undef X\n" +
             "int main() { return Ok; }\n",
     );
-    writeCdb(workspace, ["main.cpp"]);
+    workspace.writeCDB(["main.cpp"]);
     await client.initialize(workspace);
 
-    await client.openAndWait(path.join(workspace, "main.cpp"));
-    const [defUri] = await client.openAndWait(path.join(workspace, "errors.def"));
-    assertCleanCompile(client, defUri);
+    await client.openAndWait("main.cpp");
+    const [defUri] = await client.openAndWait("errors.def");
+    client.assertCleanCompile(defUri);
 });
 
 test("suffix function body", async ({ session }) => {
     /// The doc's classic register_all() case: statements expanded inside a
     /// function body, closing brace restored by the suffix.
     const { client, workspace } = session.tmp();
-    fs.writeFileSync(path.join(workspace, "handlers.def"), "X(alpha)\nX(beta)\n");
-    fs.writeFileSync(
-        path.join(workspace, "main.cpp"),
+    workspace.write("handlers.def", "X(alpha)\nX(beta)\n");
+    workspace.write(
+        "main.cpp",
         "inline void handle(int) {}\n" +
             "enum Ids { alpha, beta };\n" +
             "void register_all() {\n" +
@@ -293,44 +257,38 @@ test("suffix function body", async ({ session }) => {
             "}\n" +
             "int main() { register_all(); return 0; }\n",
     );
-    writeCdb(workspace, ["main.cpp"]);
+    workspace.writeCDB(["main.cpp"]);
     await client.initialize(workspace);
 
-    await client.openAndWait(path.join(workspace, "main.cpp"));
-    const [defUri] = await client.openAndWait(path.join(workspace, "handlers.def"));
-    assertCleanCompile(client, defUri);
+    await client.openAndWait("main.cpp");
+    const [defUri] = await client.openAndWait("handlers.def");
+    client.assertCleanCompile(defUri);
 });
 
 test("open synthesized artifact", async ({ session }) => {
     /// Opening a synthesized prefix file compiles it with its host's
     /// command (it is a fragment of that TU), not with junk context.
     const { client, workspace } = session.tmp();
-    fs.writeFileSync(
-        path.join(workspace, "types.h"),
-        "#pragma once\nstruct Point { int x; int y; };\n",
-    );
-    fs.writeFileSync(
-        path.join(workspace, "utils.h"),
-        "inline int get_x(Point p) { return p.x; }\n",
-    );
-    fs.writeFileSync(
-        path.join(workspace, "main.cpp"),
+    workspace.write("types.h", "#pragma once\nstruct Point { int x; int y; };\n");
+    workspace.write("utils.h", "inline int get_x(Point p) { return p.x; }\n");
+    workspace.write(
+        "main.cpp",
         '#include "types.h"\n#include "utils.h"\nint main() { return get_x({1, 2}); }\n',
     );
-    writeCdb(workspace, ["main.cpp"]);
+    workspace.writeCDB(["main.cpp"]);
     await client.initialize(workspace);
 
-    await client.openAndWait(path.join(workspace, "main.cpp"));
-    const [utilsUri] = await client.openAndWait(path.join(workspace, "utils.h"));
-    assertCleanCompile(client, utilsUri);
+    await client.openAndWait("main.cpp");
+    const [utilsUri] = await client.openAndWait("utils.h");
+    client.assertCleanCompile(utilsUri);
 
     const prefixes = prefixFiles(workspace);
     expect(prefixes.length).toBe(1);
     const [prefixUri] = await client.openAndWait(prefixes[0]!);
-    assertCleanCompile(client, prefixUri);
+    client.assertCleanCompile(prefixUri);
 
     // No context of its own, and no further synthesis chained off it.
-    const q = (await client.queryContext(prefixUri)) as { total: number };
+    const q = await client.queryContext(prefixUri);
     expect(q.total, JSON.stringify(q)).toBe(0);
     expect(prefixFiles(workspace).length, "Opening an artifact must not synthesize more").toBe(1);
 });
@@ -340,9 +298,9 @@ test("unbalanced brace degrades gracefully", async ({ session }) => {
     /// suffix's closer: diagnostics must appear, and the server must keep
     /// serving requests afterwards.
     const { client, workspace } = session.tmp();
-    fs.writeFileSync(path.join(workspace, "list.def"), "X(alpha)\nvoid oops() {\n"); // unbalanced {
-    fs.writeFileSync(
-        path.join(workspace, "main.cpp"),
+    workspace.write("list.def", "X(alpha)\nvoid oops() {\n"); // unbalanced {
+    workspace.write(
+        "main.cpp",
         "#define X(name) int name;\n" +
             "enum Ids {\n" +
             '#include "list.def"\n' +
@@ -350,15 +308,15 @@ test("unbalanced brace degrades gracefully", async ({ session }) => {
             "#undef X\n" +
             "int main() { return 0; }\n",
     );
-    writeCdb(workspace, ["main.cpp"]);
+    workspace.writeCDB(["main.cpp"]);
     await client.initialize(workspace);
 
-    await client.openAndWait(path.join(workspace, "main.cpp"));
-    const [defUri] = await client.openAndWait(path.join(workspace, "list.def"));
+    await client.openAndWait("main.cpp");
+    const [defUri] = await client.openAndWait("list.def");
     const diags = client.diagnostics.get(defUri) ?? [];
     expect(diags.length, "The imbalance must surface as diagnostics").toBeGreaterThan(0);
 
     // The server stays healthy: a follow-up request still answers.
-    const q = (await client.queryContext(defUri)) as { total: number };
+    const q = await client.queryContext(defUri);
     expect(q.total).toBeGreaterThanOrEqual(1);
 });

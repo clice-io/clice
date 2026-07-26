@@ -3,18 +3,9 @@
 /// index and faithful to the live buffer's preprocessor context.
 
 import * as fs from "node:fs";
-import * as path from "node:path";
 import * as proto from "vscode-languageserver-protocol";
-import {
-    locationsOf,
-    MTIME_GRANULARITY,
-    sleep,
-    waitForIndex,
-    waitForRecompile,
-} from "../../tools/checks.ts";
-import { writeCdb } from "../../tools/compile_commands.ts";
-import { test, expect } from "../../tools/fixtures.ts";
-import { shutdownClient } from "../../tools/lifecycle.ts";
+import { locationsOf, MTIME_GRANULARITY, sleep } from "@clice/tools/client";
+import { test, expect } from "../../fixtures.ts";
 
 const NO_INDEXING = { project: { enable_indexing: false } };
 
@@ -24,57 +15,14 @@ function asLocations(result: unknown): proto.Location[] {
     return locationsOf(result as proto.Location | proto.Location[] | null);
 }
 
-// Versioned root of the unified cache store; bump together with
-// cache_format_version in src/server/state/workspace.h.
-const CACHE_ROOT = path.join(".clice", "cache", "v4");
-
-function cacheRoot(workspace: string): string {
-    return path.join(workspace, CACHE_ROOT);
-}
-
-function listPchFiles(workspace: string): string[] {
-    const dir = path.join(cacheRoot(workspace), "pch");
-    if (!fs.existsSync(dir)) {
-        return [];
-    }
-    return fs
-        .readdirSync(dir)
-        .filter((name) => name.endsWith(".pch"))
-        .sort()
-        .map((name) => path.join(dir, name));
-}
-
-function listPchIdxFiles(workspace: string): string[] {
-    const dir = path.join(cacheRoot(workspace), "pch");
-    if (!fs.existsSync(dir)) {
-        return [];
-    }
-    return fs
-        .readdirSync(dir)
-        .filter((name) => name.endsWith(".pch.idx"))
-        .sort()
-        .map((name) => path.join(dir, name));
-}
-
-/// Write a clice.toml that pins cache_dir to <workspace>/.clice/.
-function pinCacheToWorkspace(workspace: string): void {
-    fs.writeFileSync(
-        path.join(workspace, "clice.toml"),
-        '[project]\ncache_dir = "${workspace}/.clice"\n',
-    );
-}
-
 test("definition into unindexed header", async ({ session }) => {
     const { client, workspace } = session.tmp();
-    fs.writeFileSync(path.join(workspace, "foo.h"), "inline void foo() {}\n");
-    fs.writeFileSync(
-        path.join(workspace, "main.cpp"),
-        '#include "foo.h"\nint main() { foo(); return 0; }\n',
-    );
-    writeCdb(workspace, ["main.cpp"]);
+    workspace.write("foo.h", "inline void foo() {}\n");
+    workspace.write("main.cpp", '#include "foo.h"\nint main() { foo(); return 0; }\n');
+    workspace.writeCDB(["main.cpp"]);
     await client.initialize(workspace, { initializationOptions: NO_INDEXING });
 
-    const [uri] = await client.openAndWait(path.join(workspace, "main.cpp"));
+    const [uri] = await client.openAndWait("main.cpp");
     // With background indexing off, only the PCH overlay knows the header.
     const locs = asLocations(await client.definitionAt(uri, 1, 13));
     expect(locs.some((loc) => loc.uri.endsWith("foo.h") && loc.range.start.line === 0)).toBe(true);
@@ -82,18 +30,12 @@ test("definition into unindexed header", async ({ session }) => {
 
 test("references include header rows", async ({ session }) => {
     const { client, workspace } = session.tmp();
-    fs.writeFileSync(
-        path.join(workspace, "foo.h"),
-        "inline void foo() {}\ninline void bar() { foo(); }\n",
-    );
-    fs.writeFileSync(
-        path.join(workspace, "main.cpp"),
-        '#include "foo.h"\nint main() { foo(); return 0; }\n',
-    );
-    writeCdb(workspace, ["main.cpp"]);
+    workspace.write("foo.h", "inline void foo() {}\ninline void bar() { foo(); }\n");
+    workspace.write("main.cpp", '#include "foo.h"\nint main() { foo(); return 0; }\n');
+    workspace.writeCDB(["main.cpp"]);
     await client.initialize(workspace, { initializationOptions: NO_INDEXING });
 
-    const [uri] = await client.openAndWait(path.join(workspace, "main.cpp"));
+    const [uri] = await client.openAndWait("main.cpp");
     const refs = locationsOf(await client.referencesAt(uri, 1, 13));
     expect(refs.some((r) => r.uri.endsWith("foo.h") && r.range.start.line === 1)).toBe(true);
     expect(refs.some((r) => r.uri.endsWith("main.cpp"))).toBe(true);
@@ -101,17 +43,17 @@ test("references include header rows", async ({ session }) => {
 
 test("buffer context overrides disk", async ({ session }) => {
     const { client, workspace } = session.tmp();
-    fs.writeFileSync(
-        path.join(workspace, "crypto.h"),
+    workspace.write(
+        "crypto.h",
         "#ifdef USE_A\ninline void only_a() {}\n#else\ninline void only_b() {}\n#endif\n",
     );
     const diskText = '#include "crypto.h"\nint main() { only_b(); return 0; }\n';
-    fs.writeFileSync(path.join(workspace, "main.cpp"), diskText);
-    writeCdb(workspace, ["main.cpp"]);
+    workspace.write("main.cpp", diskText);
+    workspace.writeCDB(["main.cpp"]);
     await client.initialize(workspace);
 
-    const [uri] = await client.openAndWait(path.join(workspace, "main.cpp"));
-    expect(await waitForIndex(client, uri, "only_b"), "Index not ready after 30s").toBe(true);
+    const [uri] = await client.openAndWait("main.cpp");
+    expect(await client.waitForIndex(uri, "only_b"), "Index not ready after 30s").toBe(true);
 
     // The buffer's preamble now activates the branch no disk context has
     // ever seen; only the rebuilt PCH's overlay can resolve only_a.
@@ -120,7 +62,7 @@ test("buffer context overrides disk", async ({ session }) => {
         2,
         '#define USE_A 1\n#include "crypto.h"\nint main() { only_a(); return 0; }\n',
     );
-    await waitForRecompile(client, uri);
+    await client.waitForRecompile(uri);
 
     const locs = asLocations(await client.definitionAt(uri, 2, 13));
     expect(locs.some((loc) => loc.uri.endsWith("crypto.h") && loc.range.start.line === 1)).toBe(
@@ -130,25 +72,16 @@ test("buffer context overrides disk", async ({ session }) => {
 
 test("no duplicate reference rows", async ({ session }) => {
     const { client, workspace } = session.tmp();
-    fs.writeFileSync(
-        path.join(workspace, "foo.h"),
-        "inline void foo() {}\ninline void bar() { foo(); }\n",
-    );
-    fs.writeFileSync(
-        path.join(workspace, "main.cpp"),
-        '#include "foo.h"\nint main() { foo(); return 0; }\n',
-    );
-    fs.writeFileSync(
-        path.join(workspace, "other.cpp"),
-        '#include "foo.h"\nint other() { return 0; }\n',
-    );
-    writeCdb(workspace, ["main.cpp", "other.cpp"]);
+    workspace.write("foo.h", "inline void foo() {}\ninline void bar() { foo(); }\n");
+    workspace.write("main.cpp", '#include "foo.h"\nint main() { foo(); return 0; }\n');
+    workspace.write("other.cpp", '#include "foo.h"\nint other() { return 0; }\n');
+    workspace.writeCDB(["main.cpp", "other.cpp"]);
     await client.initialize(workspace);
 
-    const [uri] = await client.openAndWait(path.join(workspace, "main.cpp"));
+    const [uri] = await client.openAndWait("main.cpp");
     // Open files are skipped by background indexing; the closed other.cpp
     // is what carries foo.h's rows into the disk index.
-    expect(await waitForIndex(client, uri, "bar"), "Index not ready after 30s").toBe(true);
+    expect(await client.waitForIndex(uri, "bar"), "Index not ready after 30s").toBe(true);
 
     // The header's rows exist in both its disk shard and the overlay; the
     // union must collapse them.
@@ -162,14 +95,11 @@ test("no duplicate reference rows", async ({ session }) => {
 
 test("preamble macro definition", async ({ session }) => {
     const { client, workspace } = session.tmp();
-    fs.writeFileSync(
-        path.join(workspace, "main.cpp"),
-        "#define ANSWER 42\nint main() { return ANSWER; }\n",
-    );
-    writeCdb(workspace, ["main.cpp"]);
+    workspace.write("main.cpp", "#define ANSWER 42\nint main() { return ANSWER; }\n");
+    workspace.writeCDB(["main.cpp"]);
     await client.initialize(workspace, { initializationOptions: NO_INDEXING });
 
-    const [uri] = await client.openAndWait(path.join(workspace, "main.cpp"));
+    const [uri] = await client.openAndWait("main.cpp");
     // The #define lives in the preamble region swallowed by the PCH; its
     // definition is served from the overlay's main-file entry.
     const locs = asLocations(await client.definitionAt(uri, 1, 20));
@@ -180,60 +110,53 @@ test("preamble macro definition", async ({ session }) => {
 
 test("preamble links survive restart", async ({ session }) => {
     const workspace = session.tmpdir();
-    pinCacheToWorkspace(workspace);
-    fs.writeFileSync(path.join(workspace, "foo.h"), "inline void foo() {}\n");
-    fs.writeFileSync(
-        path.join(workspace, "main.cpp"),
-        '#include "foo.h"\nint main() { foo(); return 0; }\n',
-    );
-    writeCdb(workspace, ["main.cpp"]);
+    workspace.pinCacheDir();
+    workspace.write("foo.h", "inline void foo() {}\n");
+    workspace.write("main.cpp", '#include "foo.h"\nint main() { foo(); return 0; }\n');
+    workspace.writeCDB(["main.cpp"]);
 
     const c1 = session.spawn(workspace);
     await c1.initialize(workspace);
-    const [uri] = await c1.openAndWait(path.join(workspace, "main.cpp"));
+    const [uri] = await c1.openAndWait("main.cpp");
     const links = await c1.documentLinks(uri);
     expect((links ?? []).some((link) => (link.target ?? "").endsWith("foo.h"))).toBe(true);
-    const pchMtime = fs.statSync(listPchFiles(workspace)[0]!).mtimeMs;
-    await shutdownClient(c1);
+    const pchMtime = fs.statSync(workspace.pchFiles()[0]!).mtimeMs;
+    await c1.shutdown();
 
     // Session 2 hits the persisted PCH pair: the preamble's links must be
     // served from the reloaded blob, not lost with the process.
     const c2 = session.spawn(workspace);
     await c2.initialize(workspace);
-    const [uri2] = await c2.openAndWait(path.join(workspace, "main.cpp"));
+    const [uri2] = await c2.openAndWait("main.cpp");
     const links2 = await c2.documentLinks(uri2);
     expect(
         (links2 ?? []).some((link) => (link.target ?? "").endsWith("foo.h")),
         "preamble document links lost across restart",
     ).toBe(true);
-    expect(
-        fs.statSync(listPchFiles(workspace)[0]!).mtimeMs,
-        "PCH was rebuilt instead of reused",
-    ).toBe(pchMtime);
-    await shutdownClient(c2);
+    expect(fs.statSync(workspace.pchFiles()[0]!).mtimeMs, "PCH was rebuilt instead of reused").toBe(
+        pchMtime,
+    );
+    await c2.shutdown();
 });
 
 test("missing idx rebuilds pair", async ({ session }) => {
     const workspace = session.tmpdir();
-    pinCacheToWorkspace(workspace);
-    fs.writeFileSync(path.join(workspace, "foo.h"), "inline void foo() {}\n");
-    fs.writeFileSync(
-        path.join(workspace, "main.cpp"),
-        '#include "foo.h"\nint main() { foo(); return 0; }\n',
-    );
-    writeCdb(workspace, ["main.cpp"]);
+    workspace.pinCacheDir();
+    workspace.write("foo.h", "inline void foo() {}\n");
+    workspace.write("main.cpp", '#include "foo.h"\nint main() { foo(); return 0; }\n');
+    workspace.writeCDB(["main.cpp"]);
 
     const c1 = session.spawn(workspace);
     await c1.initialize(workspace);
-    const [uri] = await c1.openAndWait(path.join(workspace, "main.cpp"));
+    const [uri] = await c1.openAndWait("main.cpp");
     const locs = asLocations(await c1.definitionAt(uri, 1, 13));
     expect(locs.some((loc) => loc.uri.endsWith("foo.h"))).toBe(true);
-    const pchMtime = fs.statSync(listPchFiles(workspace)[0]!).mtimeMs;
-    await shutdownClient(c1);
+    const pchMtime = fs.statSync(workspace.pchFiles()[0]!).mtimeMs;
+    await c1.shutdown();
 
     // Half the pair vanishes (crash residue, external cleanup): the next
     // session must treat the PCH as a miss and rebuild both blobs.
-    const idxFiles = listPchIdxFiles(workspace);
+    const idxFiles = workspace.pchIdxFiles();
     expect(idxFiles.length, "expected a committed .pch.idx next to the PCH").toBeGreaterThan(0);
     for (const idx of idxFiles) {
         fs.rmSync(idx);
@@ -242,42 +165,38 @@ test("missing idx rebuilds pair", async ({ session }) => {
 
     const c2 = session.spawn(workspace);
     await c2.initialize(workspace);
-    const [uri2] = await c2.openAndWait(path.join(workspace, "main.cpp"));
+    const [uri2] = await c2.openAndWait("main.cpp");
     const locs2 = asLocations(await c2.definitionAt(uri2, 1, 13));
     expect(
         locs2.some((loc) => loc.uri.endsWith("foo.h")),
         "overlay dead after losing the idx half of the pair",
     ).toBe(true);
     expect(
-        fs.statSync(listPchFiles(workspace)[0]!).mtimeMs,
+        fs.statSync(workspace.pchFiles()[0]!).mtimeMs,
         "PCH pair should have been rebuilt",
     ).not.toBe(pchMtime);
-    expect(
-        listPchIdxFiles(workspace).length,
-        "rebuilt pair is missing its idx blob",
-    ).toBeGreaterThan(0);
-    await shutdownClient(c2);
+    expect(workspace.pchIdxFiles().length, "rebuilt pair is missing its idx blob").toBeGreaterThan(
+        0,
+    );
+    await c2.shutdown();
 });
 
 test("header edit refreshes overlay", async ({ session }) => {
     const { client, workspace } = session.tmp();
-    fs.writeFileSync(path.join(workspace, "foo.h"), "inline void foo() {}\n");
-    fs.writeFileSync(
-        path.join(workspace, "main.cpp"),
-        '#include "foo.h"\nint main() { foo(); return 0; }\n',
-    );
-    writeCdb(workspace, ["main.cpp"]);
+    workspace.write("foo.h", "inline void foo() {}\n");
+    workspace.write("main.cpp", '#include "foo.h"\nint main() { foo(); return 0; }\n');
+    workspace.writeCDB(["main.cpp"]);
     await client.initialize(workspace, { initializationOptions: NO_INDEXING });
 
-    const [uri] = await client.openAndWait(path.join(workspace, "main.cpp"));
+    const [uri] = await client.openAndWait("main.cpp");
     let locs = asLocations(await client.definitionAt(uri, 1, 13));
     expect(locs.some((loc) => loc.range.start.line === 0)).toBe(true);
 
     // Same preamble text, so the PCH key is unchanged; the header edit must
     // still refresh the pair (deps_changed) and the served overlay with it.
     await sleep(MTIME_GRANULARITY);
-    fs.writeFileSync(path.join(workspace, "foo.h"), "// moved\ninline void foo() {}\n");
-    await waitForRecompile(client, uri);
+    workspace.write("foo.h", "// moved\ninline void foo() {}\n");
+    await client.waitForRecompile(uri);
 
     locs = asLocations(await client.definitionAt(uri, 1, 13));
     expect(locs.some((loc) => loc.uri.endsWith("foo.h") && loc.range.start.line === 1)).toBe(true);

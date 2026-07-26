@@ -1,11 +1,9 @@
 /// Tests for the agentic protocol handlers.
 
-import * as fs from "node:fs";
 import * as path from "node:path";
-import { sleep, waitForIndex } from "../../tools/checks.ts";
-import { CliceClient } from "../../tools/client.ts";
-import { cliceExecutable, expect, test, type SessionFactory } from "../../tools/fixtures.ts";
-import { assertServerExitedCleanly, findFreePort } from "../../tools/lifecycle.ts";
+import { findFreePort, sleep, type CliceClient } from "@clice/tools/client";
+import type { Workspace } from "@clice/tools/workspace";
+import { cliceExecutable, expect, test, type SessionFactory } from "../../fixtures.ts";
 import { AgenticRpcClient, jsonSafe, runAgentic } from "./rpc.ts";
 
 function posix(p: string): string {
@@ -31,7 +29,7 @@ async function agenticServer(
     session: SessionFactory,
     name: string,
     initializationOptions?: Record<string, unknown>,
-): Promise<{ host: string; port: number; client: CliceClient; workspace: string }> {
+): Promise<{ host: string; port: number; client: CliceClient; workspace: Workspace }> {
     const host = "127.0.0.1";
     const port = await findFreePort();
     const { client, workspace } = await session(name, {
@@ -45,15 +43,15 @@ async function agenticServer(
 /// hand back a connected RPC client.
 async function indexedAgentic(
     session: SessionFactory,
-): Promise<{ rpc: AgenticRpcClient; client: CliceClient; workspace: string; uri: string }> {
+): Promise<{ rpc: AgenticRpcClient; client: CliceClient; workspace: Workspace; uri: string }> {
     // The first agentic query triggers a catch-up indexing round for open
     // files; the default 3s idle timer would dominate every fixture setup.
     const { host, port, client, workspace } = await agenticServer(session, "index_features", {
         project: { idle_timeout_ms: 10 },
     });
 
-    const [uri] = await client.openAndWait(path.join(workspace, "main.cpp"));
-    expect(await waitForIndex(client, uri, "add"), "Index not ready").toBe(true);
+    const [uri] = await client.openAndWait("main.cpp");
+    expect(await client.waitForIndex(uri, "add"), "Index not ready").toBe(true);
 
     const rpc = new AgenticRpcClient();
     await rpc.connect(host, port);
@@ -78,7 +76,7 @@ async function indexedAgentic(
 
 test("compile command", async ({ session }) => {
     const { host, port, workspace } = await agenticServer(session, "hello_world");
-    const mainCpp = posix(path.join(workspace, "main.cpp"));
+    const mainCpp = posix(workspace.path("main.cpp"));
     const result = await runAgentic(cliceExecutable(), host, port, mainCpp);
     expect(result.status, `stderr: ${result.stderr}`).toBe(0);
     const data = JSON.parse(result.stdout) as {
@@ -87,7 +85,7 @@ test("compile command", async ({ session }) => {
         arguments: string[];
     };
     expect(data.file).toBe(mainCpp);
-    expect(data.directory).toBe(posix(workspace));
+    expect(data.directory).toBe(posix(workspace.root));
     expect(data.arguments.length).toBeGreaterThan(0);
 });
 
@@ -101,7 +99,7 @@ test("compile command fallback", async ({ session }) => {
 
 test("multiple requests", async ({ session }) => {
     const { host, port, workspace } = await agenticServer(session, "hello_world");
-    const mainCpp = posix(path.join(workspace, "main.cpp"));
+    const mainCpp = posix(workspace.path("main.cpp"));
     for (let i = 0; i < 3; i++) {
         const result = await runAgentic(cliceExecutable(), host, port, mainCpp);
         expect(result.status, `stderr: ${result.stderr}`).toBe(0);
@@ -118,7 +116,7 @@ test("connection refused", async () => {
 
 test("concurrent connections", async ({ session }) => {
     const { host, port, workspace } = await agenticServer(session, "hello_world");
-    const mainCpp = posix(path.join(workspace, "main.cpp"));
+    const mainCpp = posix(workspace.path("main.cpp"));
     const results = await Promise.all(
         [0, 1, 2, 3].map(() => runAgentic(cliceExecutable(), host, port, mainCpp)),
     );
@@ -132,7 +130,7 @@ test("concurrent connections", async ({ session }) => {
 test("rpc compile command", async ({ session }) => {
     const { rpc, workspace } = await indexedAgentic(session);
     try {
-        const p = posix(path.join(workspace, "main.cpp"));
+        const p = posix(workspace.path("main.cpp"));
         const resp = await rpc.request<{ file: string; arguments: string[] }>(
             "agentic/compileCommand",
             { path: p },
@@ -274,7 +272,7 @@ test("rpc read symbol by id", async ({ session }) => {
 test("rpc document symbols", async ({ session }) => {
     const { rpc, workspace } = await indexedAgentic(session);
     try {
-        const p = posix(path.join(workspace, "main.cpp"));
+        const p = posix(workspace.path("main.cpp"));
         const resp = await rpc.request<{ symbols: { name: string; kind: string }[] }>(
             "agentic/documentSymbols",
             { path: p },
@@ -320,7 +318,7 @@ test("rpc definition", async ({ session }) => {
 test("rpc definition by position", async ({ session }) => {
     const { rpc, workspace } = await indexedAgentic(session);
     try {
-        const p = posix(path.join(workspace, "main.cpp"));
+        const p = posix(workspace.path("main.cpp"));
         const resp = await rpc.request<{ name: string }>("agentic/definition", {
             path: p,
             line: 19,
@@ -497,7 +495,7 @@ test("rpc shutdown", async ({ session }) => {
     rpc.notify("agentic/shutdown", {});
     rpc.close();
 
-    await assertServerExitedCleanly(client);
+    await client.assertExitedCleanly();
     // The server is already gone; drop the stdio transport so the session
     // teardown's shutdown request cannot write to a destroyed stream.
     client.dispose();
@@ -542,7 +540,7 @@ test("rpc symbol id roundtrip", async ({ session }) => {
 test("rpc file deps", async ({ session }) => {
     const { rpc, workspace } = await indexedAgentic(session);
     try {
-        const p = posix(path.join(workspace, "main.cpp"));
+        const p = posix(workspace.path("main.cpp"));
         const resp = await rpc.request<{ file: string; includes: unknown[]; includers: unknown[] }>(
             "agentic/fileDeps",
             { path: p },
@@ -560,7 +558,7 @@ test("rpc file deps", async ({ session }) => {
 test("rpc file deps direction", async ({ session }) => {
     const { rpc, workspace } = await indexedAgentic(session);
     try {
-        const p = posix(path.join(workspace, "main.cpp"));
+        const p = posix(workspace.path("main.cpp"));
         const resp = await rpc.request<{ includers: unknown[] }>("agentic/fileDeps", {
             path: p,
             direction: "includes",
@@ -590,7 +588,7 @@ test("rpc file deps unknown", async ({ session }) => {
 test("rpc impact analysis", async ({ session }) => {
     const { rpc, workspace } = await indexedAgentic(session);
     try {
-        const p = posix(path.join(workspace, "main.cpp"));
+        const p = posix(workspace.path("main.cpp"));
         const resp = await rpc.request<{
             directDependents: unknown[];
             transitiveDependents: unknown[];
@@ -624,20 +622,21 @@ test("shutdown during indexing", async ({ session }) => {
     const workspace = session.tmpdir();
     const entries: { directory: string; file: string; arguments: string[] }[] = [];
     for (let i = 0; i < 20; i++) {
-        const src = path.join(workspace, `file_${i}.cpp`);
-        fs.writeFileSync(
-            src,
+        const name = `file_${i}.cpp`;
+        workspace.write(
+            name,
             `struct Type_${i} { int v = ${i}; void m() {} };\n` +
                 `int func_${i}(int x) { return x + ${i}; }\n` +
                 `int caller_${i}() { return func_${i}(${i}); }\n`,
         );
+        const src = posix(workspace.path(name));
         entries.push({
-            directory: posix(workspace),
-            file: posix(src),
-            arguments: ["clang++", "-std=c++17", "-fsyntax-only", posix(src)],
+            directory: posix(workspace.root),
+            file: src,
+            arguments: ["clang++", "-std=c++17", "-fsyntax-only", src],
         });
     }
-    fs.writeFileSync(path.join(workspace, "compile_commands.json"), JSON.stringify(entries));
+    workspace.write("compile_commands.json", JSON.stringify(entries));
 
     const host = "127.0.0.1";
     const port = await findFreePort();
@@ -652,7 +651,7 @@ test("shutdown during indexing", async ({ session }) => {
             });
         } catch (exc) {
             if (client.child.exitCode !== null) {
-                await assertServerExitedCleanly(client, 15_000);
+                await client.assertExitedCleanly(15_000);
             }
             throw exc;
         }
@@ -665,7 +664,7 @@ test("shutdown during indexing", async ({ session }) => {
         rpc.notify("agentic/shutdown", {});
         rpc.close();
 
-        await assertServerExitedCleanly(client, 15_000);
+        await client.assertExitedCleanly(15_000);
     } finally {
         // The server is already gone; drop the stdio transport so the session
         // teardown's shutdown request cannot write to a destroyed stream.

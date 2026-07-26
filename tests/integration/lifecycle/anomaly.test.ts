@@ -6,10 +6,8 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { anomaliesInLogFiles, anomaliesInLogMessages, sleep } from "../../tools/checks.ts";
-import { writeCdb } from "../../tools/compile_commands.ts";
-import { expect, test } from "../../tools/fixtures.ts";
-import { shutdownClient } from "../../tools/lifecycle.ts";
+import { anomaliesInLogFiles, sleep } from "@clice/tools/client";
+import { expect, test } from "../../fixtures.ts";
 
 export function childPids(parentPid: number): number[] {
     const pids: number[] = [];
@@ -39,8 +37,8 @@ export function childPids(parentPid: number): number[] {
 
 test.skipIf(process.platform !== "linux")("worker crash reported", async ({ session }) => {
     const workspace = session.tmpdir();
-    fs.writeFileSync(path.join(workspace, "main.cpp"), "int main() { return 0; }\n");
-    writeCdb(workspace, ["main.cpp"]);
+    workspace.write("main.cpp", "int main() { return 0; }\n");
+    workspace.writeCDB(["main.cpp"]);
 
     // Debug builds abort on anomalies by design; disable the trap so this
     // test can observe the report-and-continue (Release) behavior everywhere.
@@ -55,7 +53,7 @@ test.skipIf(process.platform !== "linux")("worker crash reported", async ({ sess
     }
 
     try {
-        await client.openAndWait(path.join(workspace, "main.cpp"));
+        await client.openAndWait("main.cpp");
 
         const serverPid = client.child.pid!;
         const workers = childPids(serverPid);
@@ -67,31 +65,31 @@ test.skipIf(process.platform !== "linux")("worker crash reported", async ({ sess
         process.kill(workers[0]!, "SIGABRT");
 
         for (let i = 0; i < 50; i++) {
-            if (anomaliesInLogMessages(client).includes("WorkerCrash")) {
+            if (client.anomaliesInLogMessages().includes("WorkerCrash")) {
                 break;
             }
             await sleep(200);
         }
         expect(
-            anomaliesInLogMessages(client).includes("WorkerCrash"),
+            client.anomaliesInLogMessages().includes("WorkerCrash"),
             `expected WorkerCrash anomaly, got messages: ${JSON.stringify(
                 client.logMessages.map((m) => m.message),
             )}`,
         ).toBe(true);
     } finally {
-        await shutdownClient(client);
+        await client.shutdown();
     }
 
     // The same marker must be greppable in the log files (this is what
     // assertNoAnomaly relies on for worker-side anomalies).
-    expect(anomaliesInLogFiles(workspace).some((entry) => entry.includes("WorkerCrash"))).toBe(
+    expect(anomaliesInLogFiles(workspace.root).some((entry) => entry.includes("WorkerCrash"))).toBe(
         true,
     );
 
     // The abort also exercises the crash handler: the worker's backtrace
     // must land in its own log file — and ONLY there, never relayed into
     // the master log.
-    const logsDir = path.join(workspace, ".clice", "logs");
+    const logsDir = workspace.path(".clice/logs");
     const logNames = fs.readdirSync(logsDir, { recursive: true, encoding: "utf8" });
     const workerTexts = logNames
         .filter((name) => name.endsWith(".log") && path.basename(name) !== "master.log")

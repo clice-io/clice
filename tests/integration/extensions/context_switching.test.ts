@@ -6,39 +6,8 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import {
-    getErrors,
-    MTIME_GRANULARITY,
-    SETTLE_TIME,
-    sleep,
-    waitForRecompile,
-    assertCleanCompile,
-    assertHasErrors,
-} from "../../tools/checks.ts";
-import { writeCdb, writeEntries } from "../../tools/compile_commands.ts";
-import { expect, test } from "../../tools/fixtures.ts";
-
-interface ContextEntry {
-    uri: string;
-    label: string;
-    commandHash: string;
-    occurrence: number;
-}
-
-interface QueryContextResult {
-    total: number;
-    contexts: ContextEntry[];
-    epoch: number;
-}
-
-interface CurrentContextResult {
-    context: ContextEntry | null;
-}
-
-interface SwitchContextResult {
-    success: boolean;
-    stale?: boolean;
-}
+import { MTIME_GRANULARITY, SETTLE_TIME, sleep } from "@clice/tools/client";
+import { expect, test } from "../../fixtures.ts";
 
 /// Snapshot the artifact directory as name -> mtime (nanoseconds), matching
 /// the Python st_mtime_ns comparison.
@@ -54,57 +23,53 @@ function snapshotMtimes(dir: string): Record<string, bigint> {
 /// under the selected flags.
 test("source command switch", async ({ session }) => {
     const { client, workspace } = session.tmp();
-    fs.writeFileSync(
-        path.join(workspace, "main.cpp"),
+    workspace.write(
+        "main.cpp",
         "#ifndef EXPECTED\n#error missing EXPECTED\n#endif\nint main() { return 0; }\n",
     );
-    writeEntries(workspace, [
+    workspace.writeEntries([
         ["main.cpp", ["-DEXPECTED"]],
         ["main.cpp", []],
     ]);
     await client.initialize(workspace);
 
     // Default entry is the first one: EXPECTED defined, clean.
-    const [mainUri] = await client.openAndWait(path.join(workspace, "main.cpp"));
-    assertCleanCompile(client, mainUri);
+    const [mainUri] = await client.openAndWait("main.cpp");
+    client.assertCleanCompile(mainUri);
 
-    const query = (await client.queryContext(mainUri)) as QueryContextResult;
+    const query = await client.queryContext(mainUri);
     expect(query.total).toBe(2);
     const contexts = query.contexts;
     expect(
-        contexts.every((c) => c.commandHash.length > 0),
+        contexts.every((c) => c.commandHash!.length > 0),
         `Source contexts must carry commandHash, got: ${JSON.stringify(contexts)}`,
     ).toBe(true);
-    const plainHash = contexts.find((c) => !c.label.includes("-DEXPECTED"))!.commandHash;
-    const definedHash = contexts.find((c) => c.label.includes("-DEXPECTED"))!.commandHash;
+    const plainHash = contexts.find((c) => !c.label.includes("-DEXPECTED"))!.commandHash!;
+    const definedHash = contexts.find((c) => c.label.includes("-DEXPECTED"))!.commandHash!;
 
     // Switch to the entry without the define: the #error must fire.
-    let switched = (await client.switchContext(mainUri, mainUri, {
-        commandHash: plainHash,
-    })) as SwitchContextResult;
+    let switched = await client.switchContext(mainUri, mainUri, { commandHash: plainHash });
     expect(switched.success).toBe(true);
-    await waitForRecompile(client, mainUri);
-    assertHasErrors(client, mainUri, "Expected #error without -DEXPECTED");
+    await client.waitForRecompile(mainUri);
+    client.assertHasErrors(mainUri, "Expected #error without -DEXPECTED");
 
-    const current = (await client.currentContext(mainUri)) as CurrentContextResult;
+    const current = await client.currentContext(mainUri);
     expect(current.context!.commandHash).toBe(plainHash);
 
     // And back.
-    switched = (await client.switchContext(mainUri, mainUri, {
-        commandHash: definedHash,
-    })) as SwitchContextResult;
+    switched = await client.switchContext(mainUri, mainUri, { commandHash: definedHash });
     expect(switched.success).toBe(true);
-    await waitForRecompile(client, mainUri);
-    assertCleanCompile(client, mainUri);
+    await client.waitForRecompile(mainUri);
+    client.assertCleanCompile(mainUri);
 });
 
 /// A guard-less header included twice by one host provides one context
 /// per include occurrence.
 test("occurrence switch", async ({ session }) => {
     const { client, workspace } = session.tmp();
-    fs.writeFileSync(path.join(workspace, "list.def"), "X(alpha)\n");
-    fs.writeFileSync(
-        path.join(workspace, "main.cpp"),
+    workspace.write("list.def", "X(alpha)\n");
+    workspace.write(
+        "main.cpp",
         "#define X(name) int name;\n" +
             '#include "list.def"\n' +
             "#undef X\n" +
@@ -113,13 +78,13 @@ test("occurrence switch", async ({ session }) => {
             "#undef X\n" +
             "int main() { return alpha; }\n",
     );
-    writeCdb(workspace, ["main.cpp"]);
+    workspace.writeCDB(["main.cpp"]);
     await client.initialize(workspace);
 
-    const [mainUri] = await client.openAndWait(path.join(workspace, "main.cpp"));
-    const [defUri] = await client.openAndWait(path.join(workspace, "list.def"));
+    const [mainUri] = await client.openAndWait("main.cpp");
+    const [defUri] = await client.openAndWait("list.def");
 
-    const query = (await client.queryContext(defUri)) as QueryContextResult;
+    const query = await client.queryContext(defUri);
     expect(query.total, `Expected 2 occurrence contexts, got ${JSON.stringify(query)}`).toBe(2);
     const occurrences = query.contexts.map((c) => c.occurrence).sort();
     expect(
@@ -129,14 +94,12 @@ test("occurrence switch", async ({ session }) => {
 
     // Pin each occurrence; both must compile cleanly and be reported back.
     for (const occ of [0, 1]) {
-        const switched = (await client.switchContext(defUri, mainUri, {
-            occurrence: occ,
-        })) as SwitchContextResult;
+        const switched = await client.switchContext(defUri, mainUri, { occurrence: occ });
         expect(switched.success, `switch to occurrence ${occ}`).toBe(true);
-        await waitForRecompile(client, defUri);
-        assertCleanCompile(client, defUri);
+        await client.waitForRecompile(defUri);
+        client.assertCleanCompile(defUri);
 
-        const current = (await client.currentContext(defUri)) as CurrentContextResult;
+        const current = await client.currentContext(defUri);
         expect(current.context!.occurrence).toBe(occ);
     }
 });
@@ -145,22 +108,19 @@ test("occurrence switch", async ({ session }) => {
 /// the representative is the best-ranked host (matching stem wins).
 test("context dedup and ranking", async ({ session }) => {
     const { client, workspace } = session.tmp();
-    fs.writeFileSync(path.join(workspace, "widget.h"), "inline int widget_size() { return 4; }\n");
+    workspace.write("widget.h", "inline int widget_size() { return 4; }\n");
     for (const name of ["zzz.cpp", "widget.cpp", "aaa.cpp"]) {
-        fs.writeFileSync(
-            path.join(workspace, name),
-            `#include "widget.h"\nint ${name[0]!}() { return widget_size(); }\n`,
-        );
+        workspace.write(name, `#include "widget.h"\nint ${name[0]!}() { return widget_size(); }\n`);
     }
-    writeCdb(workspace, ["zzz.cpp", "widget.cpp", "aaa.cpp"]);
+    workspace.writeCDB(["zzz.cpp", "widget.cpp", "aaa.cpp"]);
     await client.initialize(workspace);
 
-    await client.openAndWait(path.join(workspace, "widget.cpp"));
+    await client.openAndWait("widget.cpp");
     // Dedup requires a confirmed self-contained verdict, earned by the
     // header's own trial compile — wait for it.
-    const [widgetUri] = await client.openAndWait(path.join(workspace, "widget.h"));
+    const [widgetUri] = await client.openAndWait("widget.h");
 
-    const query = (await client.queryContext(widgetUri)) as QueryContextResult;
+    const query = await client.queryContext(widgetUri);
     expect(
         query.total,
         `Identical flags must dedupe to one context, got: ${JSON.stringify(query)}`,
@@ -174,70 +134,62 @@ test("context dedup and ranking", async ({ session }) => {
 /// Switching a header to a source that does not include it must fail.
 test("switch rejects non includer", async ({ session }) => {
     const { client, workspace } = session.tmp();
-    fs.writeFileSync(path.join(workspace, "utils.h"), "inline int util() { return 1; }\n");
-    fs.writeFileSync(
-        path.join(workspace, "main.cpp"),
-        '#include "utils.h"\nint main() { return util(); }\n',
-    );
-    fs.writeFileSync(path.join(workspace, "other.cpp"), "int other() { return 2; }\n");
-    writeCdb(workspace, ["main.cpp", "other.cpp"]);
+    workspace.write("utils.h", "inline int util() { return 1; }\n");
+    workspace.write("main.cpp", '#include "utils.h"\nint main() { return util(); }\n');
+    workspace.write("other.cpp", "int other() { return 2; }\n");
+    workspace.writeCDB(["main.cpp", "other.cpp"]);
     await client.initialize(workspace);
 
-    await client.openAndWait(path.join(workspace, "main.cpp"));
-    const [utilsUri] = client.open(path.join(workspace, "utils.h"));
+    await client.openAndWait("main.cpp");
+    const [utilsUri] = client.open("utils.h");
 
-    const otherUri = client.pathToUri(path.join(workspace, "other.cpp"));
-    const switched = (await client.switchContext(utilsUri, otherUri)) as SwitchContextResult;
+    const otherUri = workspace.uri("other.cpp");
+    const switched = await client.switchContext(utilsUri, otherUri);
     expect(switched.success, "Switching to a non-including host must be rejected").toBe(false);
 });
 
 /// Pinning an occurrence beyond the include count must be rejected.
 test("occurrence out of range", async ({ session }) => {
     const { client, workspace } = session.tmp();
-    fs.writeFileSync(path.join(workspace, "list.def"), "X(alpha)\n");
-    fs.writeFileSync(
-        path.join(workspace, "main.cpp"),
+    workspace.write("list.def", "X(alpha)\n");
+    workspace.write(
+        "main.cpp",
         "#define X(name) int name;\n" +
             '#include "list.def"\n' +
             "#undef X\n" +
             "int main() { return alpha; }\n",
     );
-    writeCdb(workspace, ["main.cpp"]);
+    workspace.writeCDB(["main.cpp"]);
     await client.initialize(workspace);
 
-    const [mainUri] = await client.openAndWait(path.join(workspace, "main.cpp"));
-    const [defUri] = client.open(path.join(workspace, "list.def"));
+    const [mainUri] = await client.openAndWait("main.cpp");
+    const [defUri] = client.open("list.def");
 
-    const switched = (await client.switchContext(defUri, mainUri, {
-        occurrence: 5,
-    })) as SwitchContextResult;
+    const switched = await client.switchContext(defUri, mainUri, { occurrence: 5 });
     expect(switched.success, "Out-of-range occurrence must be rejected").toBe(false);
 });
 
 /// queryContext pages results: 12 distinct configs yield 10 + 2.
 test("query context pagination", async ({ session }) => {
     const { client, workspace } = session.tmp();
-    fs.writeFileSync(path.join(workspace, "common.h"), "inline int common() { return 1; }\n");
+    workspace.write("common.h", "inline int common() { return 1; }\n");
     const entries: [string, string[]][] = [];
     for (let n = 0; n < 12; n++) {
         const name = `s${String(n).padStart(2, "0")}.cpp`;
-        fs.writeFileSync(
-            path.join(workspace, name),
-            `#include "common.h"\nint f${n}() { return common() + FLAVOR; }\n`,
-        );
+        workspace.write(name, `#include "common.h"\nint f${n}() { return common() + FLAVOR; }\n`);
         entries.push([name, [`-DFLAVOR=${n}`]]);
     }
-    writeEntries(workspace, entries);
+    workspace.writeEntries(entries);
     await client.initialize(workspace);
 
-    await client.openAndWait(path.join(workspace, "s00.cpp"));
-    const [commonUri] = client.open(path.join(workspace, "common.h"));
+    await client.openAndWait("s00.cpp");
+    const [commonUri] = client.open("common.h");
 
-    const first = (await client.queryContext(commonUri)) as QueryContextResult;
+    const first = await client.queryContext(commonUri);
     expect(first.total).toBe(12);
     expect(first.contexts.length).toBe(10);
 
-    const second = (await client.queryContext(commonUri, { offset: 10 })) as QueryContextResult;
+    const second = await client.queryContext(commonUri, { offset: 10 });
     expect(second.total).toBe(12);
     expect(second.contexts.length).toBe(2);
 
@@ -251,18 +203,18 @@ test("query context pagination", async ({ session }) => {
 /// with stale=true; re-querying yields a fresh epoch that works.
 test("stale epoch rejected", async ({ session }) => {
     const { client, workspace } = session.tmp();
-    fs.writeFileSync(path.join(workspace, "shared.h"), "VALUE_TYPE get_value();\n");
-    fs.writeFileSync(
-        path.join(workspace, "main.cpp"),
+    workspace.write("shared.h", "VALUE_TYPE get_value();\n");
+    workspace.write(
+        "main.cpp",
         '#define VALUE_TYPE int\n#include "shared.h"\nint main() { return 0; }\n',
     );
-    writeCdb(workspace, ["main.cpp"]);
+    workspace.writeCDB(["main.cpp"]);
     await client.initialize(workspace);
 
-    const [mainUri] = await client.openAndWait(path.join(workspace, "main.cpp"));
-    const [sharedUri] = client.open(path.join(workspace, "shared.h"));
+    const [mainUri] = await client.openAndWait("main.cpp");
+    const [sharedUri] = client.open("shared.h");
 
-    const query = (await client.queryContext(sharedUri)) as QueryContextResult;
+    const query = await client.queryContext(sharedUri);
     const oldEpoch = query.epoch;
     expect(
         oldEpoch,
@@ -273,16 +225,12 @@ test("stale epoch rejected", async ({ session }) => {
     client.save(mainUri);
     await sleep(500);
 
-    let switched = (await client.switchContext(sharedUri, mainUri, {
-        epoch: oldEpoch,
-    })) as SwitchContextResult;
+    let switched = await client.switchContext(sharedUri, mainUri, { epoch: oldEpoch });
     expect(switched.success).toBe(false);
     expect(switched.stale, `Expected stale rejection, got: ${JSON.stringify(switched)}`).toBe(true);
 
-    const fresh = (await client.queryContext(sharedUri)) as QueryContextResult;
-    switched = (await client.switchContext(sharedUri, mainUri, {
-        epoch: fresh.epoch,
-    })) as SwitchContextResult;
+    const fresh = await client.queryContext(sharedUri);
+    switched = await client.switchContext(sharedUri, mainUri, { epoch: fresh.epoch });
     expect(switched.success, `Fresh epoch must work, got: ${JSON.stringify(switched)}`).toBe(true);
 });
 
@@ -290,8 +238,8 @@ test("stale epoch rejected", async ({ session }) => {
 /// CDB entry, switchable by command hash.
 test("multi config host", async ({ session }) => {
     const { client, workspace } = session.tmp();
-    fs.writeFileSync(
-        path.join(workspace, "render.h"),
+    workspace.write(
+        "render.h",
         "#pragma once\n" +
             "#if defined(USE_VULKAN)\n" +
             'inline const char* backend() { return "vk"; }\n' +
@@ -299,38 +247,33 @@ test("multi config host", async ({ session }) => {
             'inline const char* backend() { return "mt"; }\n' +
             "#endif\n",
     );
-    fs.writeFileSync(
-        path.join(workspace, "host.cpp"),
-        '#include "render.h"\nint main() { return backend()[0]; }\n',
-    );
-    writeEntries(workspace, [
+    workspace.write("host.cpp", '#include "render.h"\nint main() { return backend()[0]; }\n');
+    workspace.writeEntries([
         ["host.cpp", ["-DUSE_VULKAN"]],
         ["host.cpp", ["-DUSE_METAL"]],
     ]);
     await client.initialize(workspace);
 
-    await client.openAndWait(path.join(workspace, "host.cpp"));
-    const [renderUri] = await client.openAndWait(path.join(workspace, "render.h"));
+    await client.openAndWait("host.cpp");
+    const [renderUri] = await client.openAndWait("render.h");
 
-    const query = (await client.queryContext(renderUri)) as QueryContextResult;
+    const query = await client.queryContext(renderUri);
     expect(query.total, JSON.stringify(query)).toBe(2);
     const contexts = query.contexts;
     const hashes = contexts.map((c) => c.commandHash);
     expect(
-        hashes.every((h) => h.length > 0) && new Set(hashes).size === 2,
+        hashes.every((h) => h !== undefined && h.length > 0) && new Set(hashes).size === 2,
         JSON.stringify(contexts),
     ).toBe(true);
 
-    const metalHash = contexts.find((c) => c.label.includes("USE_METAL"))!.commandHash;
-    const hostUri = client.pathToUri(path.join(workspace, "host.cpp"));
-    const switched = (await client.switchContext(renderUri, hostUri, {
-        commandHash: metalHash,
-    })) as SwitchContextResult;
+    const metalHash = contexts.find((c) => c.label.includes("USE_METAL"))!.commandHash!;
+    const hostUri = workspace.uri("host.cpp");
+    const switched = await client.switchContext(renderUri, hostUri, { commandHash: metalHash });
     expect(switched.success, JSON.stringify(switched)).toBe(true);
 
-    await waitForRecompile(client, renderUri);
-    assertCleanCompile(client, renderUri);
-    const current = (await client.currentContext(renderUri)) as CurrentContextResult;
+    await client.waitForRecompile(renderUri);
+    client.assertCleanCompile(renderUri);
+    const current = await client.currentContext(renderUri);
     expect(current.context!.commandHash, JSON.stringify(current)).toBe(metalHash);
 });
 
@@ -338,25 +281,24 @@ test("multi config host", async ({ session }) => {
 /// in queryContext: the include graph is rescanned on didSave.
 test("saved include updates hosts", async ({ session }) => {
     const { client, workspace } = session.tmp();
-    fs.writeFileSync(path.join(workspace, "lonely.h"), "inline int lonely() { return 1; }\n");
-    const mainCpp = path.join(workspace, "main.cpp");
-    fs.writeFileSync(mainCpp, "int main() { return 0; }\n");
-    writeCdb(workspace, ["main.cpp"]);
+    workspace.write("lonely.h", "inline int lonely() { return 1; }\n");
+    workspace.write("main.cpp", "int main() { return 0; }\n");
+    workspace.writeCDB(["main.cpp"]);
     await client.initialize(workspace);
 
-    const [mainUri] = await client.openAndWait(mainCpp);
-    const [lonelyUri] = client.open(path.join(workspace, "lonely.h"));
+    const [mainUri] = await client.openAndWait("main.cpp");
+    const [lonelyUri] = client.open("lonely.h");
 
-    let query = (await client.queryContext(lonelyUri)) as QueryContextResult;
+    let query = await client.queryContext(lonelyUri);
     expect(query.total, "No includers yet").toBe(0);
 
     // Include the header and save.
     const newText = '#include "lonely.h"\nint main() { return lonely(); }\n';
-    fs.writeFileSync(mainCpp, newText);
+    workspace.write("main.cpp", newText);
     client.change(mainUri, 2, newText);
     client.save(mainUri);
 
-    query = (await client.queryContext(lonelyUri)) as QueryContextResult;
+    query = await client.queryContext(lonelyUri);
     expect(query.total, `New host must appear after save: ${JSON.stringify(query)}`).toBe(1);
     expect(query.contexts[0]!.uri).toContain("main.cpp");
 });
@@ -365,9 +307,9 @@ test("saved include updates hosts", async ({ session }) => {
 /// the synthesized preamble instead of re-synthesizing it.
 test("reopen reuses preamble", async ({ session }) => {
     const { client, workspace } = session.tmp();
-    fs.writeFileSync(path.join(workspace, "list.def"), "X(alpha)\nX(beta)\n");
-    fs.writeFileSync(
-        path.join(workspace, "main.cpp"),
+    workspace.write("list.def", "X(alpha)\nX(beta)\n");
+    workspace.write(
+        "main.cpp",
         "#define X(name) int name = 1;\n" +
             '#include "list.def"\n' +
             "#undef X\n" +
@@ -376,19 +318,17 @@ test("reopen reuses preamble", async ({ session }) => {
             "#undef X\n" +
             "int main() { return alpha; }\n",
     );
-    writeCdb(workspace, ["main.cpp"]);
+    workspace.writeCDB(["main.cpp"]);
     await client.initialize(workspace);
 
-    const [mainUri] = await client.openAndWait(path.join(workspace, "main.cpp"));
-    let [defUri] = await client.openAndWait(path.join(workspace, "list.def"));
+    const [mainUri] = await client.openAndWait("main.cpp");
+    let [defUri] = await client.openAndWait("list.def");
 
-    const switched = (await client.switchContext(defUri, mainUri, {
-        occurrence: 1,
-    })) as SwitchContextResult;
+    const switched = await client.switchContext(defUri, mainUri, { occurrence: 1 });
     expect(switched.success).toBe(true);
-    await waitForRecompile(client, defUri);
+    await client.waitForRecompile(defUri);
 
-    const artifactDir = path.join(workspace, ".clice", "header_context");
+    const artifactDir = workspace.path(path.join(".clice", "header_context"));
     const snapshot = snapshotMtimes(artifactDir);
     expect(Object.keys(snapshot).length, "expected synthesized preamble artifacts").toBeGreaterThan(
         0,
@@ -397,8 +337,8 @@ test("reopen reuses preamble", async ({ session }) => {
     client.close(defUri);
     await sleep(MTIME_GRANULARITY);
 
-    [defUri] = await client.openAndWait(path.join(workspace, "list.def"));
-    const current = (await client.currentContext(defUri)) as CurrentContextResult;
+    [defUri] = await client.openAndWait("list.def");
+    const current = await client.currentContext(defUri);
     expect(current.context!.occurrence).toBe(1);
 
     const after = snapshotMtimes(artifactDir);
@@ -409,9 +349,9 @@ test("reopen reuses preamble", async ({ session }) => {
 /// reuse the stale preamble — the chain content is embedded in it.
 test("chain change resynthesizes", async ({ session }) => {
     const { client, workspace } = session.tmp();
-    fs.writeFileSync(path.join(workspace, "list.def"), "X(alpha)\nX(beta)\n");
-    fs.writeFileSync(
-        path.join(workspace, "main.cpp"),
+    workspace.write("list.def", "X(alpha)\nX(beta)\n");
+    workspace.write(
+        "main.cpp",
         "#define X(name) int name = 1;\n" +
             '#include "list.def"\n' +
             "#undef X\n" +
@@ -420,19 +360,17 @@ test("chain change resynthesizes", async ({ session }) => {
             "#undef X\n" +
             "int main() { return alpha; }\n",
     );
-    writeCdb(workspace, ["main.cpp"]);
+    workspace.writeCDB(["main.cpp"]);
     await client.initialize(workspace);
 
-    const [mainUri] = await client.openAndWait(path.join(workspace, "main.cpp"));
-    let [defUri] = await client.openAndWait(path.join(workspace, "list.def"));
+    const [mainUri] = await client.openAndWait("main.cpp");
+    let [defUri] = await client.openAndWait("list.def");
 
-    const switched = (await client.switchContext(defUri, mainUri, {
-        occurrence: 1,
-    })) as SwitchContextResult;
+    const switched = await client.switchContext(defUri, mainUri, { occurrence: 1 });
     expect(switched.success).toBe(true);
-    await waitForRecompile(client, defUri);
+    await client.waitForRecompile(defUri);
 
-    const artifactDir = path.join(workspace, ".clice", "header_context");
+    const artifactDir = workspace.path(path.join(".clice", "header_context"));
     const snapshot = snapshotMtimes(artifactDir);
     expect(Object.keys(snapshot).length, "expected synthesized preamble artifacts").toBeGreaterThan(
         0,
@@ -442,8 +380,8 @@ test("chain change resynthesizes", async ({ session }) => {
     await sleep(MTIME_GRANULARITY);
     // The chain file (the includer) changes on disk while the header is
     // closed: the embedded preamble content is now stale.
-    fs.writeFileSync(
-        path.join(workspace, "main.cpp"),
+    workspace.write(
+        "main.cpp",
         "#define X(name) int name = 2;\n" +
             '#include "list.def"\n' +
             "#undef X\n" +
@@ -453,8 +391,8 @@ test("chain change resynthesizes", async ({ session }) => {
             "int main() { return alpha; }\n",
     );
 
-    [defUri] = await client.openAndWait(path.join(workspace, "list.def"));
-    const current = (await client.currentContext(defUri)) as CurrentContextResult;
+    [defUri] = await client.openAndWait("list.def");
+    const current = await client.currentContext(defUri);
     expect(current.context!.occurrence).toBe(1);
 
     const after = snapshotMtimes(artifactDir);
@@ -466,29 +404,29 @@ test("chain change resynthesizes", async ({ session }) => {
 /// the session); the reopened compile runs under the persisted choice.
 test("switched context survives reopen", async ({ session }) => {
     const { client, workspace } = session.tmp();
-    fs.writeFileSync(
-        path.join(workspace, "main.cpp"),
+    workspace.write(
+        "main.cpp",
         "#ifdef USE_B\nint broken() { return undefined_b_symbol; }\n#endif\n" +
             "int main() { return 0; }\n",
     );
-    writeEntries(workspace, [
+    workspace.writeEntries([
         ["main.cpp", ["-DUSE_A"]],
         ["main.cpp", ["-DUSE_B"]],
     ]);
     await client.initialize(workspace);
 
-    const [uri] = await client.openAndWait(path.join(workspace, "main.cpp"));
-    assertCleanCompile(client, uri);
+    const [uri] = await client.openAndWait("main.cpp");
+    client.assertCleanCompile(uri);
 
-    const query = (await client.queryContext(uri)) as QueryContextResult;
+    const query = await client.queryContext(uri);
     const contexts = query.contexts;
     expect(query.total, `expected both entries: ${JSON.stringify(contexts)}`).toBe(2);
-    const targetHash = contexts.find((c) => (c.label || "").includes("USE_B"))!.commandHash;
+    const targetHash = contexts.find((c) => (c.label || "").includes("USE_B"))!.commandHash!;
 
-    const switched = (await client.switchContext(uri, uri, {
+    const switched = await client.switchContext(uri, uri, {
         commandHash: targetHash,
         epoch: query.epoch,
-    })) as SwitchContextResult;
+    });
     expect(switched.success, `switch failed: ${JSON.stringify(switched)}`).toBe(true);
 
     client.close(uri);
@@ -497,9 +435,9 @@ test("switched context survives reopen", async ({ session }) => {
 
     // The close publishes an empty retract that can race the reopen's
     // first publish; poll past it for the real compile's errors.
-    const [uri2] = await client.openAndWait(path.join(workspace, "main.cpp"));
+    const [uri2] = await client.openAndWait("main.cpp");
     for (let i = 0; i < 50; i++) {
-        if (getErrors(client.diagnostics.get(uri2) ?? []).length > 0) {
+        if (client.errors(uri2).length > 0) {
             break;
         }
         await sleep(200);
@@ -513,7 +451,7 @@ test("switched context survives reopen", async ({ session }) => {
         `expected the USE_B error after reopen: ${JSON.stringify(client.diagnostics.get(uri2) ?? [])}`,
     ).toBe(true);
 
-    const current = (await client.currentContext(uri2)) as CurrentContextResult;
+    const current = await client.currentContext(uri2);
     expect(
         current.context!.commandHash,
         `persisted choice must survive the reopen: ${JSON.stringify(current)}`,

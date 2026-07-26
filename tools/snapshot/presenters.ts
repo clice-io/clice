@@ -5,14 +5,15 @@
 
 import * as proto from "vscode-languageserver-protocol";
 import type { AnnotatedSource } from "./annotation.ts";
-import type { CliceClient } from "./client.ts";
+import type { CliceClient } from "../client/client.ts";
+import type { Workspace } from "../client/workspace.ts";
 import { normalizeFileUri, yamlStr } from "./snapshot.ts";
 
 export type Presenter = (
     client: CliceClient,
     uri: string,
     source: AnnotatedSource,
-    workspace: string,
+    workspace: Workspace,
 ) => Promise<string[]>;
 
 export function fmtPos(pos: proto.Position): string {
@@ -40,7 +41,7 @@ export const presentDocumentLinks: Presenter = async (client, uri, _source, work
         }
         return (
             `- { range: "${fmtRange(link.range)}", ` +
-            `target: ${yamlStr(normalizeFileUri(link.target, workspace))} }`
+            `target: ${yamlStr(normalizeFileUri(link.target, workspace.root))} }`
         );
     });
 };

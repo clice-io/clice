@@ -5,11 +5,8 @@
 /// requeues them, and a follow-up round indexes every file.
 
 import * as fs from "node:fs";
-import * as path from "node:path";
-import { sleep } from "../../tools/checks.ts";
-import type { CliceClient } from "../../tools/client.ts";
-import { writeCdb } from "../../tools/compile_commands.ts";
-import { expect, test } from "../../tools/fixtures.ts";
+import { sleep, type CliceClient } from "@clice/tools/client";
+import { expect, test } from "../../fixtures.ts";
 
 const FILE_COUNT = 20;
 
@@ -52,15 +49,15 @@ test.skipIf(process.platform !== "linux")("crash during indexing", async ({ sess
     const files: string[] = [];
     for (let i = 0; i < FILE_COUNT; i++) {
         const name = `file_${i}.cpp`;
-        fs.writeFileSync(
-            path.join(workspace, name),
+        workspace.write(
+            name,
             `#include <vector>\n#include <string>\n` +
                 `int func_${i}() { return (int)std::string("${i}").size(); }\n`,
         );
         files.push(name);
     }
-    fs.writeFileSync(path.join(workspace, "main.cpp"), "int main() { return 0; }\n");
-    writeCdb(workspace, [...files, "main.cpp"]);
+    workspace.write("main.cpp", "int main() { return 0; }\n");
+    workspace.writeCDB([...files, "main.cpp"]);
 
     // The kills below surface as WorkerCrash anomalies; Debug builds abort on
     // anomalies by design, so disable the trap like anomaly.test does. The
@@ -74,7 +71,7 @@ test.skipIf(process.platform !== "linux")("crash during indexing", async ({ sess
         delete process.env["CLICE_ANOMALY_NO_TRAP"];
     }
 
-    await client.openAndWait(path.join(workspace, "main.cpp"));
+    await client.openAndWait("main.cpp");
 
     // Wait until the round demonstrably started (first symbols merged),
     // then kill a stateless worker mid-round.

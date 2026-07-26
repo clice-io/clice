@@ -5,8 +5,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const TESTS_DIR = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-export const REPO_ROOT = path.dirname(TESTS_DIR);
+export const REPO_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+export const TESTS_DIR = path.join(REPO_ROOT, "tests");
 export const DATA_DIR = path.join(TESTS_DIR, "data");
 export const SNAPSHOTS_DIR = path.join(TESTS_DIR, "snapshots");
 
@@ -21,7 +21,7 @@ function posix(p: string): string {
 }
 
 /// Generate compile_commands.json using CMake with Ninja backend.
-export function generateCdb(workspace: string): void {
+export function generateCDB(workspace: string): void {
     const toolchain = path.join(REPO_ROOT, "cmake", "toolchain.cmake");
     execFileSync(
         "cmake",
@@ -40,7 +40,7 @@ export function generateCdb(workspace: string): void {
 }
 
 /// Generate compile_commands.json for all static test data directories.
-export function generateTestDataCdbs(dataDir: string = DATA_DIR): void {
+export function generateTestDataCDBs(dataDir: string = DATA_DIR): void {
     const write = (directory: string, entries: CdbEntry[]) => {
         // Atomic write: concurrent vitest invocations (one per porting agent)
         // regenerate the same CDBs; a rename never exposes a truncated file
@@ -136,38 +136,4 @@ export function generateTestDataCdbs(dataDir: string = DATA_DIR): void {
             );
         }
     }
-}
-
-/// Write a compile_commands.json for the given source files.
-export function writeCdb(
-    workspace: string,
-    files: string[],
-    options: { extraArgs?: string[]; std?: string } = {},
-): void {
-    const entries = files.map((f) => ({
-        directory: workspace,
-        file: path.join(workspace, f),
-        arguments: [
-            "clang++",
-            `-std=${options.std ?? "c++17"}`,
-            "-fsyntax-only",
-            ...(options.extraArgs ?? []),
-            path.join(workspace, f),
-        ],
-    }));
-    fs.writeFileSync(
-        path.join(workspace, "compile_commands.json"),
-        JSON.stringify(entries, null, 2),
-    );
-}
-
-/// Write a compile_commands.json with per-file extra arguments; a file may
-/// appear multiple times to model multi-configuration projects.
-export function writeEntries(workspace: string, entries: [string, string[]][]): void {
-    const data = entries.map(([f, args]) => ({
-        directory: workspace,
-        file: path.join(workspace, f),
-        arguments: ["clang++", "-std=c++17", "-fsyntax-only", ...args, path.join(workspace, f)],
-    }));
-    fs.writeFileSync(path.join(workspace, "compile_commands.json"), JSON.stringify(data));
 }

@@ -1,9 +1,7 @@
 /// Integration tests for rapid editing: ensure no hang and correct hover results.
 
-import * as path from "node:path";
-import { SETTLE_TIME, sleep } from "../../tools/checks.ts";
-import { withTimeout } from "../../tools/client.ts";
-import { cliceTest, expect } from "../../tools/fixtures.ts";
+import { SETTLE_TIME, sleep, withTimeout } from "@clice/tools/client";
+import { cliceTest, expect } from "../../fixtures.ts";
 
 const test = cliceTest("hello_world");
 
@@ -11,9 +9,8 @@ const test = cliceTest("hello_world");
 ///
 /// The file has #include <iostream> so PCH build is non-trivial.
 /// This must not hang and the final hover must return correct results.
-test("rapid edits with hover", async ({ client, workspace }) => {
-    const mainCpp = path.join(workspace, "main.cpp");
-    const [uri, content] = await client.openAndWait(mainCpp);
+test("rapid edits with hover", async ({ client }) => {
+    const [uri, content] = await client.openAndWait("main.cpp");
 
     // Hover on 'add' (line 2, char 4) to verify initial state.
     const hover = await withTimeout(client.hoverAt(uri, 2, 4), 30_000, "hover");

@@ -1,11 +1,8 @@
 /// Navigation right after an edit must resolve against the edited buffer:
 /// the server settles the file's compile before answering, with no timeout.
 
-import * as fs from "node:fs";
-import * as path from "node:path";
 import * as proto from "vscode-languageserver-protocol";
-import { writeCdb } from "../../tools/compile_commands.ts";
-import { expect, test } from "../../tools/fixtures.ts";
+import { expect, test } from "../../fixtures.ts";
 
 const SOURCE_V1 = "int foo() { return 1; }\nint main() { return foo(); }\n";
 
@@ -15,11 +12,11 @@ const SOURCE_V2 = "// shift\nint foo() { return 1; }\nint main() { return foo();
 
 test("navigation after change", async ({ session }) => {
     const { client, workspace } = session.tmp();
-    fs.writeFileSync(path.join(workspace, "main.cpp"), SOURCE_V1);
-    writeCdb(workspace, ["main.cpp"]);
+    workspace.write("main.cpp", SOURCE_V1);
+    workspace.writeCDB(["main.cpp"]);
     await client.initialize(workspace);
 
-    const [uri] = await client.openAndWait(path.join(workspace, "main.cpp"));
+    const [uri] = await client.openAndWait("main.cpp");
 
     // No wait after the edit: the requests below must settle the compile
     // themselves before resolving the cursor.

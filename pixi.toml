@@ -170,30 +170,34 @@ depends-on = [{ task = "lint-cpp", args = ["{{ type }}"] }]
 
 [feature.test.tasks.unit-test]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
-cmd = './build/{{ type }}/bin/unit_tests --test-dir="./tests/data" --snapshot-dir="./tests/snapshots/unit" --verbose && node tests/tools/feature_docs.ts check'
+cmd = './build/{{ type }}/bin/unit_tests --test-dir="./tests/data" --snapshot-dir="./tests/snapshots/unit" --verbose && node tools/feature_docs.ts check'
 
+# npm workspaces: install runs at the repo root and covers tools/ + tests/.
 [feature.test.tasks.install-tests]
-cwd = "tests"
 cmd = "npm install"
-inputs = ["tests/package.json", "tests/package-lock.json"]
-outputs = ["tests/node_modules/.package-lock.json"]
+inputs = [
+    "package.json",
+    "package-lock.json",
+    "tools/package.json",
+    "tests/package.json",
+]
+outputs = ["node_modules/.package-lock.json"]
 
 # npm run check (tsc strict + ESLint) gates every run, then vitest: files
 # run in parallel worker processes (one per file, like xdist -n auto);
 # tests within a file are sequential.
 [feature.test.tasks.integration-test]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
-cwd = "tests"
 cmd = """
 npm run check && \
-CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/clice npm test
+CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/clice npm test --workspace tests
 """
 depends-on = ["install-tests"]
 
 [feature.test.tasks.smoke-test]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 cmd = """
-node tests/tools/replay.ts tests/smoke/*.jsonl \
+node tools/replay.ts tests/smoke/*.jsonl \
     --clice=./build/{{ type }}/bin/clice
 """
 
@@ -228,7 +232,7 @@ compiler-rt = "==22.1.8"
 
 # Fixture list kept in sync with editors/vscode/.vscode-test.mjs.
 [feature.editor.tasks.editor-prepare]
-cmd = "node tests/tools/prepare.ts hello_world modules/hover_on_imported_symbol header_context"
+cmd = "node tools/prepare.ts hello_world modules/hover_on_imported_symbol header_context"
 
 # Requires nvim (stable) on PATH.
 [feature.editor.tasks.nvim-e2e]

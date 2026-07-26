@@ -3,7 +3,7 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
     test: {
-        include: ["integration/**/*.test.ts"],
+        include: ["integration/**/*.test.ts", "tools/**/*.test.ts"],
         pool: "forks",
         // Tests within one file run sequentially; files run in parallel, one
         // worker process per file — the same model as pytest-xdist's -n auto
@@ -20,6 +20,6 @@ export default defineConfig({
         },
         testTimeout: 60_000,
         hookTimeout: 60_000,
-        globalSetup: ["./tools/global_setup.ts"],
+        globalSetup: ["./global_setup.ts"],
     },
 });

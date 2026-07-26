@@ -1,12 +1,8 @@
 /// Client $/cancelRequest reaches the worker (end-to-end cancellation).
 
-import * as fs from "node:fs";
-import * as path from "node:path";
 import * as proto from "vscode-languageserver-protocol";
-import { withTimeout, type CliceClient } from "../../tools/client.ts";
-import { sleep } from "../../tools/checks.ts";
-import { writeCdb } from "../../tools/compile_commands.ts";
-import { test, expect } from "../../tools/fixtures.ts";
+import { sleep, withTimeout, type CliceClient } from "@clice/tools/client";
+import { test, expect } from "../../fixtures.ts";
 
 // Two hundred thousand trivial declarations: slow to parse on any hardware,
 // cheap to abandon (the worker polls the stop flag per declaration).
@@ -27,7 +23,7 @@ async function cancelAndExpect(
     timeout = 30_000,
 ): Promise<void> {
     const source = new proto.CancellationTokenSource();
-    const task = client.connection.sendRequest<unknown>(method, params, source.token);
+    const task = client.sendRequest(method, params, source.token);
     await sleep(100);
     source.cancel();
     const err: unknown = await withTimeout(task, timeout, `${method} cancel`).then(
@@ -45,12 +41,12 @@ function doc(uri: string): proto.TextDocumentIdentifier {
 
 test("cancelled completion replies", async ({ session }) => {
     const { client, workspace } = session.tmp();
-    fs.writeFileSync(path.join(workspace, "slow.cpp"), SLOW);
-    fs.writeFileSync(path.join(workspace, "tiny.cpp"), "int value = 42;\n");
-    writeCdb(workspace, ["slow.cpp", "tiny.cpp"]);
+    workspace.write("slow.cpp", SLOW);
+    workspace.write("tiny.cpp", "int value = 42;\n");
+    workspace.writeCDB(["slow.cpp", "tiny.cpp"]);
     await client.initialize(workspace);
 
-    const [uri] = client.open(path.join(workspace, "slow.cpp"));
+    const [uri] = client.open("slow.cpp");
 
     // Complete at the LAST line: clang truncates the parse at the
     // completion point, so a point at the top would skip the slow body
@@ -63,7 +59,7 @@ test("cancelled completion replies", async ({ session }) => {
     // The server survives the cancellation and still answers. Hover a
     // small file: the slow one would recompile from scratch here and
     // can brush the 30s client timeout on a debug CI runner.
-    const [tinyUri] = client.open(path.join(workspace, "tiny.cpp"));
+    const [tinyUri] = client.open("tiny.cpp");
     const hover = await client.hoverAt(tinyUri, 0, 5);
     expect(hover).not.toBeNull();
 }, 120_000);
@@ -73,19 +69,19 @@ test("cancelled signature help", async ({ session }) => {
     // site sits past the slow body, so reaching it means a full parse.
     const text = SLOW + "void take(int a, int b);\nint use() { return take(1, 2); }\n";
     const { client, workspace } = session.tmp();
-    fs.writeFileSync(path.join(workspace, "sig.cpp"), text);
-    fs.writeFileSync(path.join(workspace, "tiny.cpp"), "int value = 42;\n");
-    writeCdb(workspace, ["sig.cpp", "tiny.cpp"]);
+    workspace.write("sig.cpp", text);
+    workspace.write("tiny.cpp", "int value = 42;\n");
+    workspace.writeCDB(["sig.cpp", "tiny.cpp"]);
     await client.initialize(workspace);
 
-    const [uri] = client.open(path.join(workspace, "sig.cpp"));
+    const [uri] = client.open("sig.cpp");
 
     await cancelAndExpect(client, "textDocument/signatureHelp", {
         textDocument: doc(uri),
         position: { line: LAST_LINE + 2, character: 26 },
     });
 
-    const [tinyUri] = client.open(path.join(workspace, "tiny.cpp"));
+    const [tinyUri] = client.open("tiny.cpp");
     const hover = await client.hoverAt(tinyUri, 0, 5);
     expect(hover).not.toBeNull();
 }, 120_000);
@@ -97,11 +93,11 @@ test("cancelled requests while compiling", async ({ session }) => {
     // and the 0.1s cancel window never depends on how much of a previous
     // parse is left (a fast runner finished the shared parse mid-sweep).
     const { client, workspace } = session.tmp();
-    fs.writeFileSync(path.join(workspace, "slow.cpp"), SLOW);
-    writeCdb(workspace, ["slow.cpp"]);
+    workspace.write("slow.cpp", SLOW);
+    workspace.writeCDB(["slow.cpp"]);
     await client.initialize(workspace);
 
-    const [uri] = client.open(path.join(workspace, "slow.cpp"));
+    const [uri] = client.open("slow.cpp");
     const td = doc(uri);
     const head: proto.Range = {
         start: { line: 0, character: 0 },
@@ -150,11 +146,11 @@ test("edit supersedes compile", async ({ session }) => {
     // that launched it resolves promptly (null — the editor re-queries
     // after an edit), and the next request answers on the new content.
     const { client, workspace } = session.tmp();
-    fs.writeFileSync(path.join(workspace, "edited.cpp"), SLOW);
-    writeCdb(workspace, ["edited.cpp"]);
+    workspace.write("edited.cpp", SLOW);
+    workspace.writeCDB(["edited.cpp"]);
     await client.initialize(workspace);
 
-    const [uri] = client.open(path.join(workspace, "edited.cpp"));
+    const [uri] = client.open("edited.cpp");
 
     const first = client.hoverAt(uri, 0, 4);
     await sleep(300);

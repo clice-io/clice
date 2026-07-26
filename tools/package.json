@@ -1,0 +1,32 @@
+{
+  "name": "@clice/tools",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./client": "./client/client.ts",
+    "./workspace": "./client/workspace.ts",
+    "./checks": "./client/checks.ts",
+    "./snapshot": "./snapshot/snapshot.ts",
+    "./annotation": "./snapshot/annotation.ts",
+    "./presenters": "./snapshot/presenters.ts",
+    "./protocol": "./protocol/protocol.ts",
+    "./compile-commands": "./compile_commands.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "check": "npm run typecheck && npm run lint"
+  },
+  "dependencies": {
+    "vscode-jsonrpc": "^8.2.1",
+    "vscode-languageserver-protocol": "^3.17.5",
+    "vscode-uri": "^3.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "~25.0.3",
+    "eslint": "^10.8.0",
+    "typescript": "~5.5.4",
+    "typescript-eslint": "^8.65.0"
+  }
+}

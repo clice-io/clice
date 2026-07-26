@@ -5,7 +5,7 @@
 namespace clice::testing {
 
 /// Fixture files under tests/data/<feature>/ may begin with a doc header
-/// consumed by the feature-doc generator (tests/tools/feature_docs.ts):
+/// consumed by the feature-doc generator (tools/feature_docs.ts):
 ///
 ///     /// # Block folding
 ///     ///

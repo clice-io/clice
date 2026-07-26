@@ -18,5 +18,5 @@
     "allowImportingTsExtensions": true,
     "skipLibCheck": true
   },
-  "include": ["*.ts", "tools/**/*.ts", "integration/**/*.ts"]
+  "include": ["client/**/*.ts", "snapshot/**/*.ts", "protocol/**/*.ts", "*.ts"]
 }

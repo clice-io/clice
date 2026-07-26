@@ -1,6 +1,5 @@
-import * as path from "node:path";
 import * as proto from "vscode-languageserver-protocol";
-import { test, expect } from "../../tools/fixtures.ts";
+import { test, expect } from "../../fixtures.ts";
 
 const UNFORMATTED = "int    add(   int   a  ,  int   b  ) {\nreturn   a+b ;\n}\n";
 const FORMATTED = "int add(int a, int b) { return a + b; }\n";
@@ -31,8 +30,8 @@ function applyEdits(text: string, edits: proto.TextEdit[]): string {
 }
 
 test("format document", async ({ session }) => {
-    const { client, workspace } = await session("formatting");
-    const [uri] = await client.openAndWait(path.join(workspace, "main.cpp"));
+    const { client } = await session("formatting");
+    const [uri] = await client.openAndWait("main.cpp");
 
     client.change(uri, 1, UNFORMATTED);
     const edits = await client.formatDocument(uri);
@@ -46,8 +45,8 @@ test("format document", async ({ session }) => {
 });
 
 test("format range", async ({ session }) => {
-    const { client, workspace } = await session("formatting");
-    const [uri] = await client.openAndWait(path.join(workspace, "main.cpp"));
+    const { client } = await session("formatting");
+    const [uri] = await client.openAndWait("main.cpp");
 
     client.change(uri, 1, UNFORMATTED);
     const edits = await client.formatRange(uri, {
@@ -62,8 +61,8 @@ test("format range", async ({ session }) => {
 });
 
 test("format already formatted", async ({ session }) => {
-    const { client, workspace } = await session("formatting");
-    const [uri] = await client.openAndWait(path.join(workspace, "main.cpp"));
+    const { client } = await session("formatting");
+    const [uri] = await client.openAndWait("main.cpp");
 
     client.change(uri, 1, FORMATTED);
     const edits = await client.formatDocument(uri);

@@ -11,7 +11,7 @@ Filtering specific tests:
 
 - Unit tests: `pixi run unit-test [type] --test-filter=SuiteName.CaseName`
 - Integration tests: `cd tests && CLICE_EXECUTABLE=../build/[type]/bin/clice npx vitest run integration/features/some.test.ts`
-- Smoke tests: `pixi run node tests/tools/replay.ts tests/smoke/specific.jsonl --clice=./build/[type]/bin/clice`
+- Smoke tests: `pixi run node tools/replay.ts tests/smoke/specific.jsonl --clice=./build/[type]/bin/clice`
 
 Example usage:
 

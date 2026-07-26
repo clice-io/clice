@@ -1,0 +1,11 @@
+{
+  "name": "clice-workspace",
+  "private": true,
+  "workspaces": [
+    "tools",
+    "tests"
+  ],
+  "scripts": {
+    "check": "npm run check --workspaces --if-present"
+  }
+}

@@ -1,11 +1,9 @@
 /// Integration tests for the clice MasterServer.
 
 import { execFileSync } from "node:child_process";
-import * as path from "node:path";
 import * as proto from "vscode-languageserver-protocol";
-import { withTimeout } from "../../tools/client.ts";
-import { sleep, SETTLE_TIME } from "../../tools/checks.ts";
-import { cliceExecutable, cliceTest, expect } from "../../tools/fixtures.ts";
+import { sleep, SETTLE_TIME, withTimeout } from "@clice/tools/client";
+import { cliceExecutable, cliceTest, expect } from "../../fixtures.ts";
 
 const test = cliceTest("hello_world");
 
@@ -80,24 +78,24 @@ test("semantic token modifier legend", ({ client }) => {
     ]);
 });
 
-test("did open close cycle", async ({ client, workspace }) => {
-    const [uri] = client.open(path.join(workspace, "main.cpp"));
+test("did open close cycle", async ({ client }) => {
+    const [uri] = client.open("main.cpp");
     await sleep(SETTLE_TIME);
     client.close(uri);
 });
 
 test("shutdown exit", async ({ client }) => {
-    await client.connection.sendRequest(proto.ShutdownRequest.type);
+    await client.sendRequest(proto.ShutdownRequest.type);
 });
 
-test("feature requests after close", async ({ client, workspace }) => {
-    const [uri] = client.open(path.join(workspace, "main.cpp"));
+test("feature requests after close", async ({ client }) => {
+    const [uri] = client.open("main.cpp");
     client.close(uri);
     await expect(client.hoverAt(uri, 0, 0)).rejects.toThrow("Document not open");
 });
 
-test("incremental change", async ({ client, workspace }) => {
-    const [uri, initial] = client.open(path.join(workspace, "main.cpp"));
+test("incremental change", async ({ client }) => {
+    const [uri, initial] = client.open("main.cpp");
     let content = initial;
     for (let i = 0; i < 5; i++) {
         content += `\n// change ${i}`;
@@ -108,67 +106,67 @@ test("incremental change", async ({ client, workspace }) => {
     client.close(uri);
 });
 
-test("diagnostics received", async ({ client, workspace }) => {
-    const [uri] = await client.openAndWait(path.join(workspace, "main.cpp"));
+test("diagnostics received", async ({ client }) => {
+    const [uri] = await client.openAndWait("main.cpp");
     expect(client.diagnostics.has(uri)).toBe(true);
     client.close(uri);
 });
 
-test("close clears diagnostics", async ({ client, workspace }) => {
-    const [uri] = await client.openAndWait(path.join(workspace, "main.cpp"));
+test("close clears diagnostics", async ({ client }) => {
+    const [uri] = await client.openAndWait("main.cpp");
     const arrived = client.armDiagnostics(uri);
     client.close(uri);
     await withTimeout(arrived, 10_000, `diagnostics ${uri}`);
     expect(client.diagnostics.get(uri)).toEqual([]);
 });
 
-test("hover before compile", async ({ client, workspace }) => {
-    const [uri] = client.open(path.join(workspace, "main.cpp"));
+test("hover before compile", async ({ client }) => {
+    const [uri] = client.open("main.cpp");
     await client.hoverAt(uri, 0, 0);
     client.close(uri);
 }, 90_000);
 
-test("completion request", async ({ client, workspace }) => {
-    const [uri] = await client.openAndWait(path.join(workspace, "main.cpp"));
+test("completion request", async ({ client }) => {
+    const [uri] = await client.openAndWait("main.cpp");
     await client.completionAt(uri, 0, 0);
     client.close(uri);
 });
 
-test("signature help request", async ({ client, workspace }) => {
-    const [uri] = await client.openAndWait(path.join(workspace, "main.cpp"));
+test("signature help request", async ({ client }) => {
+    const [uri] = await client.openAndWait("main.cpp");
     await client.signatureHelpAt(uri, 0, 0);
     client.close(uri);
 });
 
-test("definition request", async ({ client, workspace }) => {
-    const [uri] = await client.openAndWait(path.join(workspace, "main.cpp"));
+test("definition request", async ({ client }) => {
+    const [uri] = await client.openAndWait("main.cpp");
     await client.definitionAt(uri, 2, 4);
     client.close(uri);
 });
 
-test("document symbol request", async ({ client, workspace }) => {
-    const [uri] = await client.openAndWait(path.join(workspace, "main.cpp"));
+test("document symbol request", async ({ client }) => {
+    const [uri] = await client.openAndWait("main.cpp");
     const result = await client.documentSymbols(uri);
     expect(result).not.toBeNull();
     client.close(uri);
 });
 
-test("folding range request", async ({ client, workspace }) => {
-    const [uri] = await client.openAndWait(path.join(workspace, "main.cpp"));
+test("folding range request", async ({ client }) => {
+    const [uri] = await client.openAndWait("main.cpp");
     const result = await client.foldingRanges(uri);
     expect(result).not.toBeNull();
     client.close(uri);
 });
 
-test("semantic tokens request", async ({ client, workspace }) => {
-    const [uri] = await client.openAndWait(path.join(workspace, "main.cpp"));
+test("semantic tokens request", async ({ client }) => {
+    const [uri] = await client.openAndWait("main.cpp");
     const result = await client.semanticTokensFull(uri);
     expect(result).not.toBeNull();
     client.close(uri);
 });
 
-test("inlay hint request", async ({ client, workspace }) => {
-    const [uri] = await client.openAndWait(path.join(workspace, "main.cpp"));
+test("inlay hint request", async ({ client }) => {
+    const [uri] = await client.openAndWait("main.cpp");
     await client.inlayHints(uri, {
         start: { line: 0, character: 0 },
         end: { line: 10, character: 0 },
@@ -176,8 +174,8 @@ test("inlay hint request", async ({ client, workspace }) => {
     client.close(uri);
 });
 
-test("code action request", async ({ client, workspace }) => {
-    const [uri] = await client.openAndWait(path.join(workspace, "main.cpp"));
+test("code action request", async ({ client }) => {
+    const [uri] = await client.openAndWait("main.cpp");
     await client.codeActions(uri, {
         start: { line: 0, character: 0 },
         end: { line: 0, character: 10 },
@@ -185,15 +183,15 @@ test("code action request", async ({ client, workspace }) => {
     client.close(uri);
 });
 
-test("document link request", async ({ client, workspace }) => {
-    const [uri] = await client.openAndWait(path.join(workspace, "main.cpp"));
+test("document link request", async ({ client }) => {
+    const [uri] = await client.openAndWait("main.cpp");
     const result = await client.documentLinks(uri);
     expect(result).not.toBeNull();
     client.close(uri);
 });
 
-test("rapid changes stress", async ({ client, workspace }) => {
-    const [uri, initial] = client.open(path.join(workspace, "main.cpp"));
+test("rapid changes stress", async ({ client }) => {
+    const [uri, initial] = client.open("main.cpp");
     let content = initial;
     for (let i = 0; i < 20; i++) {
         content += `\n// stress change ${i}\n`;
@@ -203,8 +201,8 @@ test("rapid changes stress", async ({ client, workspace }) => {
     client.close(uri);
 });
 
-test("save notification", async ({ client, workspace }) => {
-    const [uri] = client.open(path.join(workspace, "main.cpp"));
+test("save notification", async ({ client }) => {
+    const [uri] = client.open("main.cpp");
     await sleep(SETTLE_TIME);
     client.save(uri);
     await sleep(SETTLE_TIME);
@@ -217,15 +215,15 @@ test("hover on unknown file", async ({ client }) => {
     );
 });
 
-test("hover out of range position", async ({ client, workspace }) => {
+test("hover out of range position", async ({ client }) => {
     // Positions beyond the document clamp to the end of content (LSP spec).
-    const [uri] = await client.openAndWait(path.join(workspace, "main.cpp"));
+    const [uri] = await client.openAndWait("main.cpp");
     await client.hoverAt(uri, 99999, 0);
 });
 
-test("format range out of range", async ({ client, workspace }) => {
+test("format range out of range", async ({ client }) => {
     // Range endpoints beyond the document clamp as well (forward_format path).
-    const [uri] = await client.openAndWait(path.join(workspace, "main.cpp"));
+    const [uri] = await client.openAndWait("main.cpp");
     await client.formatRange(uri, {
         start: { line: 0, character: 999 },
         end: { line: 9999, character: 0 },
@@ -233,8 +231,8 @@ test("format range out of range", async ({ client, workspace }) => {
 });
 
 /// Exercise all feature requests after compilation completes.
-test("all features after compile wait", async ({ client, workspace }) => {
-    const [uri] = await client.openAndWait(path.join(workspace, "main.cpp"));
+test("all features after compile wait", async ({ client }) => {
+    const [uri] = await client.openAndWait("main.cpp");
 
     const hover = await client.hoverAt(uri, 2, 4);
     expect(hover).not.toBeNull();

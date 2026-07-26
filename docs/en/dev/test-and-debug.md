@@ -59,7 +59,7 @@ pixi run smoke-test Debug    # debug build
 Equivalent to:
 
 ```bash
-node tests/tools/replay.ts tests/smoke/*.jsonl \
+node tools/replay.ts tests/smoke/*.jsonl \
     --clice=./build/RelWithDebInfo/bin/clice
 ```
 

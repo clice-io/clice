@@ -7,12 +7,9 @@
 /// builder's own tally, asserted here against the same floor.
 
 import * as fs from "node:fs";
-import * as path from "node:path";
 import * as proto from "vscode-languageserver-protocol";
-import { URI } from "vscode-uri";
-import { withTimeout } from "../../tools/client.ts";
-import { writeCdb } from "../../tools/compile_commands.ts";
-import { expect, test } from "../../tools/fixtures.ts";
+import { withTimeout } from "@clice/tools/client";
+import { expect, test } from "../../fixtures.ts";
 
 const INJECTION_FLOOR = 5;
 
@@ -34,28 +31,28 @@ test.for(MODES)("initialize hostile params %s", async (mode, { session }) => {
     );
 
     const { client, workspace } = session.tmp();
-    fs.writeFileSync(path.join(workspace, "main.cpp"), "int main() { return 0; }\n");
-    writeCdb(workspace, ["main.cpp"]);
+    workspace.write("main.cpp", "int main() { return 0; }\n");
+    workspace.writeCDB(["main.cpp"]);
 
-    const wsUri = URI.file(workspace).toString();
+    const wsUri = workspace.uri();
     const hostileParams = {
         ...params,
         processId: 12345,
-        rootPath: workspace,
+        rootPath: workspace.root,
         rootUri: wsUri,
         workspaceFolders: [{ uri: wsUri, name: "test" }],
-        initializationOptions: { project: { cache_dir: path.join(workspace, ".clice") } },
+        initializationOptions: { project: { cache_dir: workspace.path(".clice") } },
     };
 
     const result = await withTimeout(
-        client.connection.sendRequest<proto.InitializeResult>("initialize", hostileParams),
+        client.sendRequest("initialize", hostileParams) as Promise<proto.InitializeResult>,
         30_000,
         "initialize",
     );
     expect(result.serverInfo?.name).toBe("clice");
     expect(result.capabilities).toBeDefined();
 
-    await client.connection.sendNotification(proto.InitializedNotification.type, {});
+    await client.sendNotification(proto.InitializedNotification.type, {});
     // Teardown gates a clean shutdown/exit — the whole handshake must survive
     // the hostile params.
 });

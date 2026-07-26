@@ -1,15 +1,14 @@
 /// vitest fixtures: the `session` factory spawns clice servers bound to
-/// test-data workspaces, with the teardown gates every test must pass
-/// (clean shutdown, no anomalies).
+/// workspaces, with the teardown gates every test must pass (clean
+/// shutdown, no anomalies).
 
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { CliceClient, type InitializeOptions, type StartOptions } from "@clice/tools/client";
+import { DATA_DIR, generateCDB } from "@clice/tools/compile-commands";
+import { Workspace } from "@clice/tools/workspace";
 import { test as base } from "vitest";
-import { assertNoAnomaly } from "./checks.ts";
-import { CliceClient } from "./client.ts";
-import { DATA_DIR, generateCdb } from "./compile_commands.ts";
-import { shutdownClient } from "./lifecycle.ts";
 
 export { expect } from "vitest";
 
@@ -91,19 +90,14 @@ async function acquireWorkspaceLock(name: string): Promise<() => void> {
 
 export interface Session {
     client: CliceClient;
-    workspace: string;
+    workspace: Workspace;
 }
 
-export interface SessionOptions {
-    initializationOptions?: Record<string, unknown> | undefined;
+export interface SessionOptions extends InitializeOptions, StartOptions {
     /// Anomalies are internal clice bugs — every test session must end
     /// without one. Tests that intentionally trigger anomalies opt out here
     /// and assert on them explicitly.
     allowAnomaly?: boolean | undefined;
-    drainStderr?: boolean | undefined;
-    /// Custom server argv, e.g. the agentic side channel's
-    /// `["serve", "--host", host, "--port", port]`. Defaults to `["serve"]`.
-    args?: string[] | undefined;
     /// When set, spawn in `--mode socket` and connect the LSP transport over
     /// this TCP port instead of stdio (args must request socket mode).
     socketPort?: number | undefined;
@@ -111,41 +105,41 @@ export interface SessionOptions {
 
 /// The session factory doubles as the test's resource manager — the
 /// fixture-teardown equivalent of a destructor. Every server it spawns
-/// and every temp directory it mints is registered and reclaimed
+/// and every temp workspace it mints is registered and reclaimed
 /// automatically (shutdown gate, anomaly gate, removal), so tests never
 /// write try/finally cleanup. A client already shut down explicitly via
-/// shutdownClient (restart tests) is skipped by the teardown.
+/// client.shutdown() (restart tests) is skipped by the teardown.
 export interface SessionFactory {
     /// Spawn a server initialized on tests/data/<name>. Acquire sessions for
     /// multiple workspaces in alphabetical order to avoid lock cycles.
     (name: string, options?: SessionOptions): Promise<Session>;
     /// Spawn a bare server with no workspace/initialize.
-    bare(options?: SessionOptions & { args?: string[] | undefined }): CliceClient;
+    bare(options?: SessionOptions): CliceClient;
     /// Spawn a server bound to a fresh, empty temp workspace, without
-    /// initializing. The caller writes fixture files (and a
-    /// compile_commands.json) then calls client.initialize(workspace). The
-    /// whole temp directory is removed in teardown.
+    /// initializing. The caller writes fixture files (and a CDB) then calls
+    /// client.initialize(workspace). The whole temp directory is removed in
+    /// teardown.
     tmp(options?: SessionOptions): Session;
-    /// A fresh temp directory with no server, removed in teardown.
-    tmpdir(): string;
-    /// Spawn a tracked server against an existing directory (e.g. a second
-    /// session over a tmpdir() workspace in restart tests), without
-    /// initializing. The directory's lifetime is not affected.
-    spawn(workspace: string | null, options?: SessionOptions): CliceClient;
+    /// A fresh temp workspace with no server, removed in teardown.
+    tmpdir(): Workspace;
+    /// Spawn a tracked server against an existing workspace (e.g. a second
+    /// session over a tmpdir() in restart tests), without initializing. The
+    /// workspace's lifetime is not affected.
+    spawn(workspace: Workspace | null, options?: SessionOptions): CliceClient;
 }
 
 interface OpenedSession {
     client: CliceClient;
-    workspace: string | null;
+    workspace: Workspace | null;
     allowAnomaly: boolean;
 }
 
-function prepareWorkspace(workspace: string): void {
-    if (fs.existsSync(path.join(workspace, "CMakeLists.txt"))) {
-        generateCdb(workspace);
+function prepareWorkspace(workspace: Workspace): void {
+    if (workspace.exists("CMakeLists.txt")) {
+        generateCDB(workspace.root);
     }
     // Clean up persisted index/cache so each test starts fresh.
-    fs.rmSync(path.join(workspace, ".clice"), { recursive: true, force: true });
+    workspace.rm(".clice");
 }
 
 /// The zero-boilerplate form for files whose tests all target one
@@ -175,7 +169,7 @@ export function cliceTest(name: string, options: SessionOptions = {}) {
         },
         workspace: async (
             { bound }: { bound: Session },
-            use: (workspace: string) => Promise<void>,
+            use: (workspace: Workspace) => Promise<void>,
         ) => {
             await use(bound.workspace);
         },
@@ -188,11 +182,27 @@ export const test = base.extend<{ session: SessionFactory }>({
         use: (factory: SessionFactory) => Promise<void>,
     ) => {
         const opened: OpenedSession[] = [];
-        const tempDirs: string[] = [];
+        const tempDirs: Workspace[] = [];
         const releases: (() => void)[] = [];
 
+        const spawnTracked = (
+            workspace: Workspace | null,
+            options: SessionOptions = {},
+        ): CliceClient => {
+            const client = CliceClient.start(cliceExecutable(), {
+                drainStderr: options.drainStderr,
+                args: options.args,
+            });
+            opened.push({
+                client,
+                workspace,
+                allowAnomaly: options.allowAnomaly ?? false,
+            });
+            return client;
+        };
+
         const factory = async (name: string, options: SessionOptions = {}): Promise<Session> => {
-            const workspace = path.join(DATA_DIR, name);
+            const workspace = new Workspace(path.join(DATA_DIR, name));
             releases.push(await acquireWorkspaceLock(name));
             prepareWorkspace(workspace);
             const client =
@@ -214,29 +224,16 @@ export const test = base.extend<{ session: SessionFactory }>({
             });
             return { client, workspace };
         };
-        factory.bare = (
-            options: SessionOptions & { args?: string[] | undefined } = {},
-        ): CliceClient => factory.spawn(null, options);
-        factory.tmpdir = (): string => {
-            const dir = fs.mkdtempSync(path.join(os.tmpdir(), "clice-test-"));
-            tempDirs.push(dir);
-            return dir;
-        };
-        factory.spawn = (workspace: string | null, options: SessionOptions = {}): CliceClient => {
-            const client = CliceClient.start(cliceExecutable(), {
-                drainStderr: options.drainStderr,
-                args: options.args,
-            });
-            opened.push({
-                client,
-                workspace,
-                allowAnomaly: options.allowAnomaly ?? false,
-            });
-            return client;
+        factory.bare = (options: SessionOptions = {}): CliceClient => spawnTracked(null, options);
+        factory.spawn = spawnTracked;
+        factory.tmpdir = (): Workspace => {
+            const workspace = Workspace.tmp();
+            tempDirs.push(workspace);
+            return workspace;
         };
         factory.tmp = (options: SessionOptions = {}): Session => {
             const workspace = factory.tmpdir();
-            const client = factory.spawn(workspace, options);
+            const client = spawnTracked(workspace, options);
             return { client, workspace };
         };
 
@@ -252,14 +249,14 @@ export const test = base.extend<{ session: SessionFactory }>({
                     // A client the test already shut down explicitly (restart
                     // tests) has passed its exit gate; don't shut it down twice.
                     if (!session.client.disposed) {
-                        await shutdownClient(session.client, { verbose: failed });
+                        await session.client.shutdown({ verbose: failed });
                     }
                 } catch (exc) {
                     teardownErrors.push(exc);
                 } finally {
                     try {
                         if (!session.allowAnomaly) {
-                            assertNoAnomaly(session.client, session.workspace);
+                            session.client.assertNoAnomaly(session.workspace?.root ?? null);
                         }
                     } catch (exc) {
                         teardownErrors.push(exc);
@@ -270,14 +267,11 @@ export const test = base.extend<{ session: SessionFactory }>({
             // above read .clice/logs, and a live server may still write.
             for (const session of opened) {
                 if (session.workspace !== null && !tempDirs.includes(session.workspace)) {
-                    fs.rmSync(path.join(session.workspace, ".clice"), {
-                        recursive: true,
-                        force: true,
-                    });
+                    session.workspace.rm(".clice");
                 }
             }
             for (const dir of tempDirs.reverse()) {
-                fs.rmSync(dir, { recursive: true, force: true });
+                dir.remove();
             }
             releases.reverse().forEach((release) => {
                 release();

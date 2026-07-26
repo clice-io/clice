@@ -3,9 +3,9 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { parseAnnotations } from "../../tools/annotation.ts";
-import { DATA_DIR, SNAPSHOTS_DIR } from "../../tools/compile_commands.ts";
-import { test } from "../../tools/fixtures.ts";
+import { parseAnnotations } from "@clice/tools/annotation";
+import { DATA_DIR, SNAPSHOTS_DIR } from "@clice/tools/compile-commands";
+import { test } from "../../fixtures.ts";
 import {
     presentDocumentLinks,
     presentDocumentSymbols,
@@ -13,8 +13,8 @@ import {
     presentInlayHints,
     presentSemanticTokens,
     type Presenter,
-} from "../../tools/presenters.ts";
-import { fixtureFrontmatter, SnapshotContext } from "../../tools/snapshot.ts";
+} from "@clice/tools/presenters";
+import { fixtureFrontmatter, SnapshotContext } from "@clice/tools/snapshot";
 
 const FEATURES: Record<string, Presenter> = {
     document_links: presentDocumentLinks,
@@ -44,7 +44,7 @@ for (const [feature, present] of Object.entries(FEATURES)) {
 
             const { client, workspace } = await session(feature);
             const source = parseAnnotations(content);
-            const [uri] = await client.openAndWait(path.join(workspace, rel), 60_000, {
+            const [uri] = await client.openAndWait(rel, 60_000, {
                 text: source.content,
             });
             const body = await present(client, uri, source, workspace);

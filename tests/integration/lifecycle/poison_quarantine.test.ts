@@ -5,12 +5,9 @@
 /// file carries an explanatory diagnostic instead of an empty list, and an edit
 /// that fixes it earns a probe that brings it back.
 
-import * as fs from "node:fs";
-import * as path from "node:path";
 import type * as proto from "vscode-languageserver-protocol";
-import { sleep } from "../../tools/checks.ts";
-import { writeCdb } from "../../tools/compile_commands.ts";
-import { expect, test } from "../../tools/fixtures.ts";
+import { sleep } from "@clice/tools/client";
+import { expect, test } from "../../fixtures.ts";
 
 function poison(n: number): string {
     return `int add(int a, int b) { return a + b; }\n// edit ${n}\n#pragma clang __debug crash\n`;
@@ -34,9 +31,9 @@ function isQuarantined(diags: proto.Diagnostic[]): boolean {
 
 test("poison quarantine", async ({ session }) => {
     const workspace = session.tmpdir();
-    fs.writeFileSync(path.join(workspace, "healthy.cpp"), HEALTHY);
-    fs.writeFileSync(path.join(workspace, "poison.cpp"), poison(0));
-    writeCdb(workspace, ["healthy.cpp", "poison.cpp"]);
+    workspace.write("healthy.cpp", HEALTHY);
+    workspace.write("poison.cpp", poison(0));
+    workspace.writeCDB(["healthy.cpp", "poison.cpp"]);
 
     // Worker crashes are the point of this test, so the session opts out of
     // the anomaly gate; Debug builds trap anomalies with abort() unless told
@@ -50,8 +47,8 @@ test("poison quarantine", async ({ session }) => {
         delete process.env["CLICE_ANOMALY_NO_TRAP"];
     }
 
-    const [healthyUri] = client.open(path.join(workspace, "healthy.cpp"));
-    const [poisonUri] = client.open(path.join(workspace, "poison.cpp"));
+    const [healthyUri] = client.open("healthy.cpp");
+    const [poisonUri] = client.open("poison.cpp");
 
     const hover = await client.hoverAt(healthyUri, 0, 5);
     expect(hover, "healthy baseline hover failed").not.toBeNull();
@@ -111,9 +108,9 @@ test("poison quarantine", async ({ session }) => {
 
 test("poison preamble quarantine", async ({ session }) => {
     const workspace = session.tmpdir();
-    fs.writeFileSync(path.join(workspace, "healthy.cpp"), HEALTHY);
-    fs.writeFileSync(path.join(workspace, "poison.cpp"), poisonPreamble(0));
-    writeCdb(workspace, ["healthy.cpp", "poison.cpp"]);
+    workspace.write("healthy.cpp", HEALTHY);
+    workspace.write("poison.cpp", poisonPreamble(0));
+    workspace.writeCDB(["healthy.cpp", "poison.cpp"]);
 
     process.env["CLICE_ANOMALY_NO_TRAP"] = "1";
     let client;
@@ -124,8 +121,8 @@ test("poison preamble quarantine", async ({ session }) => {
         delete process.env["CLICE_ANOMALY_NO_TRAP"];
     }
 
-    const [healthyUri] = client.open(path.join(workspace, "healthy.cpp"));
-    const [poisonUri] = client.open(path.join(workspace, "poison.cpp"));
+    const [healthyUri] = client.open("healthy.cpp");
+    const [poisonUri] = client.open("poison.cpp");
 
     // PCH-build crashes count toward the same streak as compile crashes,
     // so a poison preamble must still reach quarantine.
