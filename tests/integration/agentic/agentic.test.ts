@@ -1,7 +1,6 @@
 /// Tests for the agentic protocol handlers.
 
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { sleep, waitForIndex } from "../../tools/checks.ts";
 import { CliceClient } from "../../tools/client.ts";
@@ -621,57 +620,55 @@ test("rpc impact analysis unknown", async ({ session }) => {
 });
 
 /// Shutdown during active background indexing must exit cleanly.
-test("shutdown during indexing", async () => {
-    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "clice-test-"));
-    try {
-        const entries: { directory: string; file: string; arguments: string[] }[] = [];
-        for (let i = 0; i < 20; i++) {
-            const src = path.join(workspace, `file_${i}.cpp`);
-            fs.writeFileSync(
-                src,
-                `struct Type_${i} { int v = ${i}; void m() {} };\n` +
-                    `int func_${i}(int x) { return x + ${i}; }\n` +
-                    `int caller_${i}() { return func_${i}(${i}); }\n`,
-            );
-            entries.push({
-                directory: posix(workspace),
-                file: posix(src),
-                arguments: ["clang++", "-std=c++17", "-fsyntax-only", posix(src)],
-            });
-        }
-        fs.writeFileSync(path.join(workspace, "compile_commands.json"), JSON.stringify(entries));
-
-        const host = "127.0.0.1";
-        const port = await findFreePort();
-        const client = CliceClient.start(cliceExecutable(), {
-            args: ["serve", "--host", host, "--port", String(port)],
+test("shutdown during indexing", async ({ session }) => {
+    const workspace = session.tmpdir();
+    const entries: { directory: string; file: string; arguments: string[] }[] = [];
+    for (let i = 0; i < 20; i++) {
+        const src = path.join(workspace, `file_${i}.cpp`);
+        fs.writeFileSync(
+            src,
+            `struct Type_${i} { int v = ${i}; void m() {} };\n` +
+                `int func_${i}(int x) { return x + ${i}; }\n` +
+                `int caller_${i}() { return func_${i}(${i}); }\n`,
+        );
+        entries.push({
+            directory: posix(workspace),
+            file: posix(src),
+            arguments: ["clang++", "-std=c++17", "-fsyntax-only", posix(src)],
         });
+    }
+    fs.writeFileSync(path.join(workspace, "compile_commands.json"), JSON.stringify(entries));
 
+    const host = "127.0.0.1";
+    const port = await findFreePort();
+    const client = session.spawn(workspace, {
+        args: ["serve", "--host", host, "--port", String(port)],
+    });
+
+    try {
         try {
-            try {
-                await client.initialize(workspace, {
-                    initializationOptions: { project: { idle_timeout_ms: 0 } },
-                });
-            } catch (exc) {
-                if (client.child.exitCode !== null) {
-                    await assertServerExitedCleanly(client, 15_000);
-                }
-                throw exc;
+            await client.initialize(workspace, {
+                initializationOptions: { project: { idle_timeout_ms: 0 } },
+            });
+        } catch (exc) {
+            if (client.child.exitCode !== null) {
+                await assertServerExitedCleanly(client, 15_000);
             }
-
-            // Give indexing a moment to start, then send shutdown.
-            await sleep(500);
-
-            const rpc = new AgenticRpcClient();
-            await rpc.connect(host, port);
-            rpc.notify("agentic/shutdown", {});
-            rpc.close();
-
-            await assertServerExitedCleanly(client, 15_000);
-        } finally {
-            client.dispose();
+            throw exc;
         }
+
+        // Give indexing a moment to start, then send shutdown.
+        await sleep(500);
+
+        const rpc = new AgenticRpcClient();
+        await rpc.connect(host, port);
+        rpc.notify("agentic/shutdown", {});
+        rpc.close();
+
+        await assertServerExitedCleanly(client, 15_000);
     } finally {
-        fs.rmSync(workspace, { recursive: true, force: true });
+        // The server is already gone; drop the stdio transport so the session
+        // teardown's shutdown request cannot write to a destroyed stream.
+        client.dispose();
     }
 });

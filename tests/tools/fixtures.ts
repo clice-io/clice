@@ -109,6 +109,12 @@ export interface SessionOptions {
     socketPort?: number | undefined;
 }
 
+/// The session factory doubles as the test's resource manager — the
+/// fixture-teardown equivalent of a destructor. Every server it spawns
+/// and every temp directory it mints is registered and reclaimed
+/// automatically (shutdown gate, anomaly gate, removal), so tests never
+/// write try/finally cleanup. A client already shut down explicitly via
+/// shutdownClient (restart tests) is skipped by the teardown.
 export interface SessionFactory {
     /// Spawn a server initialized on tests/data/<name>. Acquire sessions for
     /// multiple workspaces in alphabetical order to avoid lock cycles.
@@ -120,15 +126,18 @@ export interface SessionFactory {
     /// compile_commands.json) then calls client.initialize(workspace). The
     /// whole temp directory is removed in teardown.
     tmp(options?: SessionOptions): Session;
+    /// A fresh temp directory with no server, removed in teardown.
+    tmpdir(): string;
+    /// Spawn a tracked server against an existing directory (e.g. a second
+    /// session over a tmpdir() workspace in restart tests), without
+    /// initializing. The directory's lifetime is not affected.
+    spawn(workspace: string | null, options?: SessionOptions): CliceClient;
 }
 
 interface OpenedSession {
     client: CliceClient;
     workspace: string | null;
     allowAnomaly: boolean;
-    /// Temp workspaces are removed whole; static data workspaces keep only
-    /// their .clice/ dropped.
-    isTemp: boolean;
 }
 
 function prepareWorkspace(workspace: string): void {
@@ -179,6 +188,7 @@ export const test = base.extend<{ session: SessionFactory }>({
         use: (factory: SessionFactory) => Promise<void>,
     ) => {
         const opened: OpenedSession[] = [];
+        const tempDirs: string[] = [];
         const releases: (() => void)[] = [];
 
         const factory = async (name: string, options: SessionOptions = {}): Promise<Session> => {
@@ -198,7 +208,6 @@ export const test = base.extend<{ session: SessionFactory }>({
                 client,
                 workspace,
                 allowAnomaly: options.allowAnomaly ?? false,
-                isTemp: false,
             });
             await client.initialize(workspace, {
                 initializationOptions: options.initializationOptions,
@@ -207,30 +216,27 @@ export const test = base.extend<{ session: SessionFactory }>({
         };
         factory.bare = (
             options: SessionOptions & { args?: string[] | undefined } = {},
-        ): CliceClient => {
+        ): CliceClient => factory.spawn(null, options);
+        factory.tmpdir = (): string => {
+            const dir = fs.mkdtempSync(path.join(os.tmpdir(), "clice-test-"));
+            tempDirs.push(dir);
+            return dir;
+        };
+        factory.spawn = (workspace: string | null, options: SessionOptions = {}): CliceClient => {
             const client = CliceClient.start(cliceExecutable(), {
                 drainStderr: options.drainStderr,
                 args: options.args,
             });
             opened.push({
                 client,
-                workspace: null,
+                workspace,
                 allowAnomaly: options.allowAnomaly ?? false,
-                isTemp: false,
             });
             return client;
         };
         factory.tmp = (options: SessionOptions = {}): Session => {
-            const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "clice-test-"));
-            const client = CliceClient.start(cliceExecutable(), {
-                drainStderr: options.drainStderr,
-            });
-            opened.push({
-                client,
-                workspace,
-                allowAnomaly: options.allowAnomaly ?? false,
-                isTemp: true,
-            });
+            const workspace = factory.tmpdir();
+            const client = factory.spawn(workspace, options);
             return { client, workspace };
         };
 
@@ -243,7 +249,11 @@ export const test = base.extend<{ session: SessionFactory }>({
                 // The anomaly gate must run even when shutdown itself fails — a
                 // crashed server is exactly when the anomaly evidence matters most.
                 try {
-                    await shutdownClient(session.client, { verbose: failed });
+                    // A client the test already shut down explicitly (restart
+                    // tests) has passed its exit gate; don't shut it down twice.
+                    if (!session.client.disposed) {
+                        await shutdownClient(session.client, { verbose: failed });
+                    }
                 } catch (exc) {
                     teardownErrors.push(exc);
                 } finally {
@@ -254,15 +264,20 @@ export const test = base.extend<{ session: SessionFactory }>({
                     } catch (exc) {
                         teardownErrors.push(exc);
                     }
-                    if (session.workspace !== null) {
-                        fs.rmSync(
-                            session.isTemp
-                                ? session.workspace
-                                : path.join(session.workspace, ".clice"),
-                            { recursive: true, force: true },
-                        );
-                    }
                 }
+            }
+            // Directories go after every server is down: the anomaly gates
+            // above read .clice/logs, and a live server may still write.
+            for (const session of opened) {
+                if (session.workspace !== null && !tempDirs.includes(session.workspace)) {
+                    fs.rmSync(path.join(session.workspace, ".clice"), {
+                        recursive: true,
+                        force: true,
+                    });
+                }
+            }
+            for (const dir of tempDirs.reverse()) {
+                fs.rmSync(dir, { recursive: true, force: true });
             }
             releases.reverse().forEach((release) => {
                 release();

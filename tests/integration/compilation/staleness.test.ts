@@ -17,9 +17,9 @@ import {
 } from "../../tools/checks.ts";
 import { withTimeout } from "../../tools/client.ts";
 import { DATA_DIR, generateCdb, writeCdb } from "../../tools/compile_commands.ts";
-import { cliceExecutable, expect, test } from "../../tools/fixtures.ts";
-import { makeClient, shutdownClient } from "../../tools/lifecycle.ts";
-import { listPchFiles, makeTempWorkspace, pinCacheToWorkspace } from "../../tools/workspace.ts";
+import { expect, test } from "../../tools/fixtures.ts";
+import { shutdownClient } from "../../tools/lifecycle.ts";
+import { listPchFiles, pinCacheToWorkspace } from "../../tools/workspace.ts";
 
 test("header change invalidates ast", async ({ session }) => {
     /// Modifying a header on disk should cause recompilation on next hover,
@@ -394,11 +394,11 @@ test("didsave with module deps", async ({ session }) => {
     assertCleanCompile(client, midUri);
 });
 
-test("flag change invalidates pch", async () => {
+test("flag change invalidates pch", async ({ session }) => {
     /// Changing a -D flag in the CDB must produce a new PCH on the next
     /// session even though the preamble text is unchanged (flags are part of
     /// the cache key).
-    const { workspace, track } = makeTempWorkspace();
+    const workspace = session.tmpdir();
     pinCacheToWorkspace(workspace);
     fs.writeFileSync(path.join(workspace, "header.h"), "#pragma once\nstruct F { int x; };\n");
     fs.writeFileSync(
@@ -408,7 +408,8 @@ test("flag change invalidates pch", async () => {
 
     // Session 1: build with -DFOO=1.
     writeCdb(workspace, ["main.cpp"], { extraArgs: ["-DFOO=1"] });
-    const c1 = track(await makeClient(cliceExecutable(), workspace));
+    const c1 = session.spawn(workspace);
+    await c1.initialize(workspace);
     const [uri] = await c1.openAndWait(path.join(workspace, "main.cpp"));
     assertCleanCompile(c1, uri);
     expect(listPchFiles(workspace).length).toBe(1);
@@ -417,7 +418,8 @@ test("flag change invalidates pch", async () => {
 
     // Session 2: same preamble text, different flag — must not reuse.
     writeCdb(workspace, ["main.cpp"], { extraArgs: ["-DFOO=2"] });
-    const c2 = track(await makeClient(cliceExecutable(), workspace));
+    const c2 = session.spawn(workspace);
+    await c2.initialize(workspace);
     const [uri2] = await c2.openAndWait(path.join(workspace, "main.cpp"));
     assertCleanCompile(c2, uri2);
     expect(

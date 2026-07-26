@@ -606,8 +606,13 @@ export class CliceClient {
         this.child.kill("SIGKILL");
     }
 
+    /// True once dispose() ran — the session teardown uses it to skip
+    /// clients a test already shut down explicitly.
+    disposed = false;
+
     /// Tear down client-side IO without contacting the server.
     dispose(): void {
+        this.disposed = true;
         try {
             this.connection.dispose();
         } catch {

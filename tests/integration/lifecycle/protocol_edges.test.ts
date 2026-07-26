@@ -3,15 +3,13 @@
 /// client handshake completed.
 
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import * as proto from "vscode-languageserver-protocol";
 import { URI } from "vscode-uri";
-import { assertNoAnomaly, getErrors, guidanceMessages, sleep } from "../../tools/checks.ts";
-import { CliceClient, withTimeout } from "../../tools/client.ts";
+import { getErrors, guidanceMessages, sleep } from "../../tools/checks.ts";
+import { withTimeout, type CliceClient } from "../../tools/client.ts";
 import { writeCdb } from "../../tools/compile_commands.ts";
-import { cliceExecutable, expect, test } from "../../tools/fixtures.ts";
-import { shutdownClient } from "../../tools/lifecycle.ts";
+import { expect, test, type SessionFactory } from "../../tools/fixtures.ts";
 
 const TEST_TOML =
     '[project]\ncache_dir = "${workspace}/.clice"\nenable_indexing = false\n' +
@@ -148,39 +146,23 @@ test("version regression tolerated", async ({ session }) => {
     expect(getErrors(client.diagnostics.get(uri) ?? []).length).toBeGreaterThan(0);
 });
 
-function mkTmp(): string {
-    return fs.mkdtempSync(path.join(os.tmpdir(), "clice-test-"));
-}
-
-/// Spawn a pre-initialized server bound to `workspace` via --workspace, with
-/// teardown that gates shutdown and anomalies and removes the temp workspace.
+/// Spawn a pre-initialized server bound to a fresh temp workspace via
+/// --workspace. The session factory owns the shutdown gate, anomaly gate and
+/// temp-directory removal.
 async function withLateHandshake(
+    session: SessionFactory,
     setup: (workspace: string) => void,
     body: (client: CliceClient, workspace: string) => Promise<void>,
 ): Promise<void> {
-    const workspace = mkTmp();
-    try {
-        setup(workspace);
-        const client = CliceClient.start(cliceExecutable(), {
-            args: ["serve", `--workspace=${workspace}`],
-        });
-        try {
-            await body(client, workspace);
-        } finally {
-            client.workspace = workspace;
-            try {
-                await shutdownClient(client);
-            } finally {
-                assertNoAnomaly(client, workspace);
-            }
-        }
-    } finally {
-        fs.rmSync(workspace, { recursive: true, force: true });
-    }
+    const workspace = session.tmpdir();
+    setup(workspace);
+    const client = session.spawn(workspace, { args: ["serve", `--workspace=${workspace}`] });
+    await body(client, workspace);
 }
 
-test("replay after late handshake", async () => {
+test("replay after late handshake", async ({ session }) => {
     await withLateHandshake(
+        session,
         (workspace) => {
             fs.writeFileSync(
                 path.join(workspace, "main.cpp"),
@@ -218,8 +200,9 @@ test("replay after late handshake", async () => {
     );
 });
 
-test("no stale replay", async () => {
+test("no stale replay", async ({ session }) => {
     await withLateHandshake(
+        session,
         (workspace) => {
             fs.writeFileSync(
                 path.join(workspace, "main.cpp"),
@@ -257,8 +240,9 @@ test("no stale replay", async () => {
     );
 });
 
-test("startup guidance delivered", async () => {
+test("startup guidance delivered", async ({ session }) => {
     await withLateHandshake(
+        session,
         (workspace) => {
             fs.writeFileSync(path.join(workspace, "main.cpp"), "int x = 1;\n");
             fs.writeFileSync(path.join(workspace, "clice.toml"), TEST_TOML);

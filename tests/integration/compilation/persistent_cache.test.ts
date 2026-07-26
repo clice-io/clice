@@ -17,8 +17,8 @@ import {
     waitForRecompile,
 } from "../../tools/checks.ts";
 import { DATA_DIR, generateCdb, writeCdb } from "../../tools/compile_commands.ts";
-import { cliceExecutable, expect, test } from "../../tools/fixtures.ts";
-import { makeClient, shutdownClient } from "../../tools/lifecycle.ts";
+import { expect, test } from "../../tools/fixtures.ts";
+import { shutdownClient } from "../../tools/lifecycle.ts";
 import {
     cacheRoot,
     type CacheJson,
@@ -26,7 +26,6 @@ import {
     listPchIdxFiles,
     listPcmFiles,
     listTmpFiles,
-    makeTempWorkspace,
     pinCacheToWorkspace,
     readCacheJson,
 } from "../../tools/workspace.ts";
@@ -209,10 +208,10 @@ test("pch reused on close reopen", async ({ session }) => {
     );
 });
 
-test("pch survives server restart", async () => {
+test("pch survives server restart", async ({ session }) => {
     /// PCH cache should survive a full server restart — cache.json is
     /// loaded on startup and the existing .pch file is reused.
-    const { workspace, track } = makeTempWorkspace();
+    const workspace = session.tmpdir();
     pinCacheToWorkspace(workspace);
     fs.writeFileSync(path.join(workspace, "header.h"), "#pragma once\nstruct Baz { int z; };\n");
     fs.writeFileSync(
@@ -222,7 +221,8 @@ test("pch survives server restart", async () => {
     writeCdb(workspace, ["main.cpp"]);
 
     // Session 1: build PCH.
-    const c1 = track(await makeClient(cliceExecutable(), workspace));
+    const c1 = session.spawn(workspace);
+    await c1.initialize(workspace);
     const [uri] = await c1.openAndWait(path.join(workspace, "main.cpp"));
     assertCleanCompile(c1, uri);
 
@@ -237,7 +237,8 @@ test("pch survives server restart", async () => {
     await shutdownClient(c1);
 
     // Session 2: restart server, reopen file.
-    const c2 = track(await makeClient(cliceExecutable(), workspace));
+    const c2 = session.spawn(workspace);
+    await c2.initialize(workspace);
     const [uri2] = await c2.openAndWait(path.join(workspace, "main.cpp"));
     assertCleanCompile(c2, uri2);
 
@@ -255,12 +256,12 @@ test("pch survives server restart", async () => {
     await shutdownClient(c2);
 });
 
-test("old cache json upgrades", async () => {
+test("old cache json upgrades", async ({ session }) => {
     /// A cache.json written before the per-dep stat baselines (entry-level
     /// build_at, deps as bare {path, hash}) must still load: unknown fields are
     /// skipped, absent ones read back zeroed, and the entry revalidates by hash
     /// instead of being dropped.
-    const { workspace, track } = makeTempWorkspace();
+    const workspace = session.tmpdir();
     pinCacheToWorkspace(workspace);
     fs.writeFileSync(path.join(workspace, "header.h"), "#pragma once\nstruct Old { int v; };\n");
     fs.writeFileSync(
@@ -269,7 +270,8 @@ test("old cache json upgrades", async () => {
     );
     writeCdb(workspace, ["main.cpp"]);
 
-    const c1 = track(await makeClient(cliceExecutable(), workspace));
+    const c1 = session.spawn(workspace);
+    await c1.initialize(workspace);
     const [uri] = await c1.openAndWait(path.join(workspace, "main.cpp"));
     assertCleanCompile(c1, uri);
     const pchMtimeS1 = fs.statSync(listPchFiles(workspace)[0]!).mtimeMs;
@@ -284,7 +286,8 @@ test("old cache json upgrades", async () => {
     }
     writeCacheJsonLossless(cachePath, cache);
 
-    const c2 = track(await makeClient(cliceExecutable(), workspace));
+    const c2 = session.spawn(workspace);
+    await c2.initialize(workspace);
     const [uri2] = await c2.openAndWait(path.join(workspace, "main.cpp"));
     assertCleanCompile(c2, uri2);
     // Loaded, hash-validated, reused — not rebuilt.
@@ -292,17 +295,18 @@ test("old cache json upgrades", async () => {
     await shutdownClient(c2);
 });
 
-test("pcm offline edit invalidates", async () => {
+test("pcm offline edit invalidates", async ({ session }) => {
     /// Editing a module interface while the server is down must invalidate
     /// the cached PCM on restart: the PCM key embeds no content, so only its
     /// deps snapshot can see the change.
-    const { workspace, track } = makeTempWorkspace();
+    const workspace = session.tmpdir();
     copySaveRecompile(workspace);
     pinCacheToWorkspace(workspace);
     generateCdb(workspace);
 
     // Session 1: importer compiles clean, PCM cached.
-    const c1 = track(await makeClient(cliceExecutable(), workspace));
+    const c1 = session.spawn(workspace);
+    await c1.initialize(workspace);
     const [midUri] = await c1.openAndWait(path.join(workspace, "mid.cppm"));
     assertCleanCompile(c1, midUri);
     expect(listPcmFiles(workspace).length).toBeGreaterThanOrEqual(1);
@@ -317,21 +321,23 @@ test("pcm offline edit invalidates", async () => {
 
     // Session 2: mid.cppm calls leaf(), which no longer exists — a stale
     // PCM would compile it clean.
-    const c2 = track(await makeClient(cliceExecutable(), workspace));
+    const c2 = session.spawn(workspace);
+    await c2.initialize(workspace);
     const [midUri2] = await c2.openAndWait(path.join(workspace, "mid.cppm"));
     assertHasErrors(c2, midUri2, "Expected errors after offline interface edit");
     await shutdownClient(c2);
 });
 
-test("depless pcm entry dropped", async () => {
+test("depless pcm entry dropped", async ({ session }) => {
     /// A PCM cache entry with an empty deps list (written before deps were
     /// populated) is unvalidatable and must be dropped at load, not trusted.
-    const { workspace, track } = makeTempWorkspace();
+    const workspace = session.tmpdir();
     copySaveRecompile(workspace);
     pinCacheToWorkspace(workspace);
     generateCdb(workspace);
 
-    const c1 = track(await makeClient(cliceExecutable(), workspace));
+    const c1 = session.spawn(workspace);
+    await c1.initialize(workspace);
     const [midUri] = await c1.openAndWait(path.join(workspace, "mid.cppm"));
     assertCleanCompile(c1, midUri);
     await shutdownClient(c1);
@@ -349,7 +355,8 @@ test("depless pcm entry dropped", async () => {
         "export module Leaf;\n\nexport int renamed_leaf() {\n    return 1;\n}\n",
     );
 
-    const c2 = track(await makeClient(cliceExecutable(), workspace));
+    const c2 = session.spawn(workspace);
+    await c2.initialize(workspace);
     const [midUri2] = await c2.openAndWait(path.join(workspace, "mid.cppm"));
     assertHasErrors(c2, midUri2, "Expected errors after offline interface edit");
     await shutdownClient(c2);
@@ -577,10 +584,10 @@ test("different flags different pch", async ({ session }) => {
     ).toBe(2);
 });
 
-test("kill9 recovery", async () => {
+test("kill9 recovery", async ({ session }) => {
     /// kill -9 during compilation must not corrupt the store: a restarted
     /// server sweeps crash residue and serves the file normally.
-    const { workspace, track } = makeTempWorkspace();
+    const workspace = session.tmpdir();
     pinCacheToWorkspace(workspace);
     fs.writeFileSync(path.join(workspace, "header.h"), "#pragma once\nstruct K { int x; };\n");
     fs.writeFileSync(
@@ -591,7 +598,8 @@ test("kill9 recovery", async () => {
 
     // Session 1: open the file and kill the server; the short delay makes it
     // likely (not guaranteed) the first build is still in flight.
-    const c1 = track(await makeClient(cliceExecutable(), workspace));
+    const c1 = session.spawn(workspace);
+    await c1.initialize(workspace);
     c1.open(path.join(workspace, "main.cpp"));
     await sleep(300);
     c1.killServer();
@@ -600,7 +608,8 @@ test("kill9 recovery", async () => {
 
     // Session 2: its startup sweeps the dead instance's tmp directory, and
     // the cache must be usable again.
-    const c2 = track(await makeClient(cliceExecutable(), workspace));
+    const c2 = session.spawn(workspace);
+    await c2.initialize(workspace);
     const [uri] = await c2.openAndWait(path.join(workspace, "main.cpp"));
     assertCleanCompile(c2, uri);
     const pchFiles = listPchFiles(workspace);
@@ -619,82 +628,91 @@ test("kill9 recovery", async () => {
     expect(listTmpFiles(workspace), "tmp residue should be swept").toEqual([]);
 });
 
-test.for(["garbage", "middle"])("corrupt pch rebuilt on restart %s", async (where, { skip }) => {
-    /// A .pch corrupted offline (size and mtime preserved, so freshness
-    /// checks pass) must not brick the file: the consumption failure retracts
-    /// the pair and rebuilds it, and real diagnostics come back.
-    const { workspace, track } = makeTempWorkspace();
-    pinCacheToWorkspace(workspace);
-    fs.writeFileSync(path.join(workspace, "header.h"), "#pragma once\nint known_func();\n");
-    // The body has a real error: a bricked file publishes an empty list
-    // instead, so the error is the recovery signal.
-    fs.writeFileSync(
-        path.join(workspace, "main.cpp"),
-        '#include "header.h"\nint main() { return undeclared_symbol; }\n',
-    );
-    writeCdb(workspace, ["main.cpp"]);
+test.for(["garbage", "middle"])(
+    "corrupt pch rebuilt on restart %s",
+    async (where, { skip, session }) => {
+        /// A .pch corrupted offline (size and mtime preserved, so freshness
+        /// checks pass) must not brick the file: the consumption failure retracts
+        /// the pair and rebuilds it, and real diagnostics come back.
+        const workspace = session.tmpdir();
+        pinCacheToWorkspace(workspace);
+        fs.writeFileSync(path.join(workspace, "header.h"), "#pragma once\nint known_func();\n");
+        // The body has a real error: a bricked file publishes an empty list
+        // instead, so the error is the recovery signal.
+        fs.writeFileSync(
+            path.join(workspace, "main.cpp"),
+            '#include "header.h"\nint main() { return undeclared_symbol; }\n',
+        );
+        writeCdb(workspace, ["main.cpp"]);
 
-    const c1 = track(await makeClient(cliceExecutable(), workspace));
-    const [uri] = await c1.openAndWait(path.join(workspace, "main.cpp"));
-    assertHasErrors(c1, uri, "Baseline session should report the body error");
-    expect(listPchFiles(workspace).length).toBe(1);
-    assertNoAnomaly(c1, workspace);
-    await shutdownClient(c1);
+        // The middle shape may crash a worker, an intentional anomaly, so those
+        // sessions opt out of the manager's anomaly gate (and the garbage case
+        // still asserts cleanliness explicitly below).
+        const allowAnomaly = where === "middle";
+        const c1 = session.spawn(workspace, { allowAnomaly });
+        await c1.initialize(workspace);
+        const [uri] = await c1.openAndWait(path.join(workspace, "main.cpp"));
+        assertHasErrors(c1, uri, "Baseline session should report the body error");
+        expect(listPchFiles(workspace).length).toBe(1);
+        assertNoAnomaly(c1, workspace);
+        await shutdownClient(c1);
 
-    const corrupted = corruptPreservingStat(listPchFiles(workspace)[0]!, where);
+        const corrupted = corruptPreservingStat(listPchFiles(workspace)[0]!, where);
 
-    // The middle shape may crash a worker; Debug builds trap anomalies
-    // with abort() unless told otherwise (same as test_crash_recovery.py).
-    if (where === "middle") {
-        process.env["CLICE_ANOMALY_NO_TRAP"] = "1";
-    }
-    let c2;
-    try {
-        c2 = track(await makeClient(cliceExecutable(), workspace));
-    } finally {
-        delete process.env["CLICE_ANOMALY_NO_TRAP"];
-    }
-    const [uri2] = await c2.openAndWait(path.join(workspace, "main.cpp"));
-    if (getErrors(c2.diagnostics.get(uri2) ?? []).length === 0) {
-        // The crash shape ends its round with a versionless empty publish
-        // after retracting the pair; the next request rebuilds it.
-        c2.diagnostics.delete(uri2);
-        await waitForRecompile(c2, uri2);
-    }
-    // The specific body error, not just any error: a quarantine notice or
-    // a still-standing corruption fatal must not count as recovery.
-    expect(
-        getErrors(c2.diagnostics.get(uri2) ?? []).some((d) =>
-            (typeof d.message === "string" ? d.message : d.message.value).includes(
-                "undeclared_symbol",
+        // Debug builds trap anomalies with abort() unless told otherwise
+        // (same as test_crash_recovery.py).
+        if (where === "middle") {
+            process.env["CLICE_ANOMALY_NO_TRAP"] = "1";
+        }
+        let c2;
+        try {
+            c2 = session.spawn(workspace, { allowAnomaly });
+            await c2.initialize(workspace);
+        } finally {
+            delete process.env["CLICE_ANOMALY_NO_TRAP"];
+        }
+        const [uri2] = await c2.openAndWait(path.join(workspace, "main.cpp"));
+        if (getErrors(c2.diagnostics.get(uri2) ?? []).length === 0) {
+            // The crash shape ends its round with a versionless empty publish
+            // after retracting the pair; the next request rebuilds it.
+            c2.diagnostics.delete(uri2);
+            await waitForRecompile(c2, uri2);
+        }
+        // The specific body error, not just any error: a quarantine notice or
+        // a still-standing corruption fatal must not count as recovery.
+        expect(
+            getErrors(c2.diagnostics.get(uri2) ?? []).some((d) =>
+                (typeof d.message === "string" ? d.message : d.message.value).includes(
+                    "undeclared_symbol",
+                ),
             ),
-        ),
-        `Real diagnostics must recover, got: ${JSON.stringify(c2.diagnostics.get(uri2) ?? [])}`,
-    ).toBe(true);
-    const pchFiles = listPchFiles(workspace);
-    expect(pchFiles.length, "The pair must be rebuilt, not abandoned").toBe(1);
-    if (where === "middle" && fs.readFileSync(pchFiles[0]!).equals(corrupted)) {
-        // The flip landed in semantically dead bytes on this LLVM build
-        // (PCH blobs carry no whole-file checksum): the reader consumed
-        // the blob untouched and there is nothing to heal.
+            `Real diagnostics must recover, got: ${JSON.stringify(c2.diagnostics.get(uri2) ?? [])}`,
+        ).toBe(true);
+        const pchFiles = listPchFiles(workspace);
+        expect(pchFiles.length, "The pair must be rebuilt, not abandoned").toBe(1);
+        if (where === "middle" && fs.readFileSync(pchFiles[0]!).equals(corrupted)) {
+            // The flip landed in semantically dead bytes on this LLVM build
+            // (PCH blobs carry no whole-file checksum): the reader consumed
+            // the blob untouched and there is nothing to heal.
+            await shutdownClient(c2);
+            skip("mid-file flip was semantically dead on this build");
+        }
+        expect(
+            fs.readFileSync(pchFiles[0]!).equals(corrupted),
+            "The corrupt .pch must be rebuilt, not trusted forever",
+        ).toBe(false);
+        if (where === "garbage") {
+            assertNoAnomaly(c2, workspace);
+        }
         await shutdownClient(c2);
-        skip("mid-file flip was semantically dead on this build");
-    }
-    expect(
-        fs.readFileSync(pchFiles[0]!).equals(corrupted),
-        "The corrupt .pch must be rebuilt, not trusted forever",
-    ).toBe(false);
-    if (where === "garbage") {
-        assertNoAnomaly(c2, workspace);
-    }
-    await shutdownClient(c2);
-});
+    },
+);
 
-test("corrupt pch idx retracted", async () => {
+test("corrupt pch idx retracted", async ({ session }) => {
     /// A corrupt .pch.idx detected at load must retract the on-disk pair
     /// (not just the in-memory path): a pair that looks complete would be
     /// re-adopted and silently degrade every later session.
-    const { workspace, track } = makeTempWorkspace();
+    const workspace = session.tmpdir();
     pinCacheToWorkspace(workspace);
     fs.writeFileSync(path.join(workspace, "header.h"), "#pragma once\nstruct Idx { int v; };\n");
     fs.writeFileSync(
@@ -703,7 +721,8 @@ test("corrupt pch idx retracted", async () => {
     );
     writeCdb(workspace, ["main.cpp"]);
 
-    const c1 = track(await makeClient(cliceExecutable(), workspace));
+    const c1 = session.spawn(workspace);
+    await c1.initialize(workspace);
     const [uri] = await c1.openAndWait(path.join(workspace, "main.cpp"));
     assertCleanCompile(c1, uri);
     expect(listPchIdxFiles(workspace).length).toBe(1);
@@ -715,7 +734,8 @@ test("corrupt pch idx retracted", async () => {
     // Recovery rides the .pch artifact gate: detecting the corrupt idx
     // retracts the whole pair from the store mid-round, the compile then
     // setup-fails on the now-missing .pch, and the gate rebuilds both.
-    const c2 = track(await makeClient(cliceExecutable(), workspace));
+    const c2 = session.spawn(workspace);
+    await c2.initialize(workspace);
     const [uri2] = await c2.openAndWait(path.join(workspace, "main.cpp"));
     assertCleanCompile(c2, uri2);
     const idxFiles = listPchIdxFiles(workspace);

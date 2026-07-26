@@ -5,17 +5,11 @@
 /// clean; otherwise an undeclared-identifier diagnostic surfaces.
 
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import * as proto from "vscode-languageserver-protocol";
-import {
-    assertCleanCompile,
-    assertHasErrors,
-    assertNoAnomaly,
-    getErrors,
-} from "../../tools/checks.ts";
-import { cliceExecutable, expect, test } from "../../tools/fixtures.ts";
-import { makeClient, shutdownClient } from "../../tools/lifecycle.ts";
+import { assertCleanCompile, assertHasErrors, getErrors } from "../../tools/checks.ts";
+import { expect, test } from "../../tools/fixtures.ts";
+import { shutdownClient } from "../../tools/lifecycle.ts";
 
 function messageText(d: proto.Diagnostic): string {
     return typeof d.message === "string" ? d.message : d.message.value;
@@ -76,125 +70,80 @@ test("rules pattern mismatch", async ({ session }) => {
     assertHasErrors(client, uri, "Rule pattern should not have matched main.cpp");
 });
 
-function mkTmp(): string {
-    return fs.mkdtempSync(path.join(os.tmpdir(), "clice-test-"));
-}
-
-test("config type error diagnostic", async () => {
+test("config type error diagnostic", async ({ session }) => {
     // Wrong value type → Error diagnostic on the clice.toml URI; the config
     // falls back to defaults. (Line/column pinpointing awaits the kotatsu
     // TOML error-location feature — see config_tests.cpp.)
-    const workspace = mkTmp();
-    try {
-        fs.writeFileSync(path.join(workspace, "clice.toml"), '[project]\nclang_tidy = "yes"\n');
-        fs.writeFileSync(path.join(workspace, "main.cpp"), "int main() { return 0; }\n");
-        const client = await makeClient(cliceExecutable(), workspace);
-        try {
-            const tomlUri = client.pathToUri(path.join(workspace, "clice.toml"));
-            await client.waitDiagnostics(tomlUri, 10_000);
-            const diags = client.diagnostics.get(tomlUri) ?? [];
-            expect(diags.length, `expected one config diagnostic: ${JSON.stringify(diags)}`).toBe(
-                1,
-            );
-            expect(diags[0]!.severity).toBe(proto.DiagnosticSeverity.Error);
-            expect(diags[0]!.message).toContain("clang_tidy");
-            assertNoAnomaly(client, workspace);
-        } finally {
-            await shutdownClient(client);
-        }
-    } finally {
-        fs.rmSync(workspace, { recursive: true, force: true });
-    }
+    const workspace = session.tmpdir();
+    fs.writeFileSync(path.join(workspace, "clice.toml"), '[project]\nclang_tidy = "yes"\n');
+    fs.writeFileSync(path.join(workspace, "main.cpp"), "int main() { return 0; }\n");
+    const client = session.spawn(workspace);
+    await client.initialize(workspace);
+    const tomlUri = client.pathToUri(path.join(workspace, "clice.toml"));
+    await client.waitDiagnostics(tomlUri, 10_000);
+    const diags = client.diagnostics.get(tomlUri) ?? [];
+    expect(diags.length, `expected one config diagnostic: ${JSON.stringify(diags)}`).toBe(1);
+    expect(diags[0]!.severity).toBe(proto.DiagnosticSeverity.Error);
+    expect(diags[0]!.message).toContain("clang_tidy");
 });
 
-test("config unknown key diagnostic", async () => {
+test("config unknown key diagnostic", async ({ session }) => {
     // Typo'd key → Warning diagnostic; the rest of the config still applies.
-    const workspace = mkTmp();
-    try {
-        fs.writeFileSync(path.join(workspace, "clice.toml"), "[project]\nclang_tdy = true\n");
-        fs.writeFileSync(path.join(workspace, "main.cpp"), "int main() { return 0; }\n");
-        const client = await makeClient(cliceExecutable(), workspace);
-        try {
-            const tomlUri = client.pathToUri(path.join(workspace, "clice.toml"));
-            await client.waitDiagnostics(tomlUri, 10_000);
-            const diags = client.diagnostics.get(tomlUri) ?? [];
-            expect(diags.length, `expected one config diagnostic: ${JSON.stringify(diags)}`).toBe(
-                1,
-            );
-            expect(diags[0]!.severity).toBe(proto.DiagnosticSeverity.Warning);
-            expect(diags[0]!.message).toContain("clang_tdy");
-            assertNoAnomaly(client, workspace);
-        } finally {
-            await shutdownClient(client);
-        }
-    } finally {
-        fs.rmSync(workspace, { recursive: true, force: true });
-    }
+    const workspace = session.tmpdir();
+    fs.writeFileSync(path.join(workspace, "clice.toml"), "[project]\nclang_tdy = true\n");
+    fs.writeFileSync(path.join(workspace, "main.cpp"), "int main() { return 0; }\n");
+    const client = session.spawn(workspace);
+    await client.initialize(workspace);
+    const tomlUri = client.pathToUri(path.join(workspace, "clice.toml"));
+    await client.waitDiagnostics(tomlUri, 10_000);
+    const diags = client.diagnostics.get(tomlUri) ?? [];
+    expect(diags.length, `expected one config diagnostic: ${JSON.stringify(diags)}`).toBe(1);
+    expect(diags[0]!.severity).toBe(proto.DiagnosticSeverity.Warning);
+    expect(diags[0]!.message).toContain("clang_tdy");
 });
 
-test("config diagnostic clears after fix", async () => {
-    const workspace = mkTmp();
-    try {
-        fs.writeFileSync(path.join(workspace, "clice.toml"), '[project]\nclang_tidy = "yes"\n');
-        fs.writeFileSync(path.join(workspace, "main.cpp"), "int main() { return 0; }\n");
-        let client = await makeClient(cliceExecutable(), workspace);
-        try {
-            const tomlUri = client.pathToUri(path.join(workspace, "clice.toml"));
-            await client.waitDiagnostics(tomlUri, 10_000);
-            expect(
-                (client.diagnostics.get(tomlUri) ?? []).length,
-                "broken config should be diagnosed",
-            ).toBeGreaterThan(0);
-            assertNoAnomaly(client, workspace);
-        } finally {
-            await shutdownClient(client);
-        }
+test("config diagnostic clears after fix", async ({ session }) => {
+    const workspace = session.tmpdir();
+    const tomlPath = path.join(workspace, "clice.toml");
+    fs.writeFileSync(tomlPath, '[project]\nclang_tidy = "yes"\n');
+    fs.writeFileSync(path.join(workspace, "main.cpp"), "int main() { return 0; }\n");
+    let client = session.spawn(workspace);
+    await client.initialize(workspace);
+    const tomlUri = client.pathToUri(tomlPath);
+    await client.waitDiagnostics(tomlUri, 10_000);
+    expect(
+        (client.diagnostics.get(tomlUri) ?? []).length,
+        "broken config should be diagnosed",
+    ).toBeGreaterThan(0);
+    await shutdownClient(client);
 
-        // Fix the config and restart — the new session publishes an empty list
-        // for the config URI so stale markers clear.
-        fs.writeFileSync(path.join(workspace, "clice.toml"), "[project]\nclang_tidy = true\n");
-        client = await makeClient(cliceExecutable(), workspace);
-        try {
-            const tomlUri = client.pathToUri(path.join(workspace, "clice.toml"));
-            await client.waitDiagnostics(tomlUri, 10_000);
-            expect(client.diagnostics.get(tomlUri), "fixed config must clear diagnostics").toEqual(
-                [],
-            );
-            assertNoAnomaly(client, workspace);
-        } finally {
-            await shutdownClient(client);
-        }
-    } finally {
-        fs.rmSync(workspace, { recursive: true, force: true });
-    }
+    // Fix the config and restart — the new session publishes an empty list
+    // for the config URI so stale markers clear.
+    fs.writeFileSync(tomlPath, "[project]\nclang_tidy = true\n");
+    client = session.spawn(workspace);
+    await client.initialize(workspace);
+    await client.waitDiagnostics(tomlUri, 10_000);
+    expect(client.diagnostics.get(tomlUri), "fixed config must clear diagnostics").toEqual([]);
 });
 
-test("config dump logged", async () => {
+test("config dump logged", async ({ session }) => {
     // The startup log is the discoverable record of the resolved paths.
-    const workspace = mkTmp();
-    try {
-        const client = await makeClient(cliceExecutable(), workspace);
-        try {
-            assertNoAnomaly(client, workspace);
-        } finally {
-            await shutdownClient(client);
-        }
+    const workspace = session.tmpdir();
+    const client = session.spawn(workspace);
+    await client.initialize(workspace);
+    // Shut down before reading so the startup log is fully flushed to disk.
+    await shutdownClient(client);
 
-        const logsDir = path.join(workspace, ".clice", "logs");
-        const names = fs
-            .readdirSync(logsDir, { recursive: true, encoding: "utf8" })
-            .filter((name) => path.basename(name) === "master.log");
-        expect(names.length, "expected a master.log").toBeGreaterThan(0);
-        const text = names
-            .map((name) => fs.readFileSync(path.join(logsDir, name), "utf8"))
-            .join("");
-        expect(text).toContain("Session log directory:");
-        // All three config layers are dumped: file, overlay, merged result.
-        expect(text).toContain("Configuration file");
-        expect(text).toContain("initializationOptions");
-        expect(text).toContain("Effective configuration:");
-        expect(text).toContain('"cache_dir"');
-    } finally {
-        fs.rmSync(workspace, { recursive: true, force: true });
-    }
+    const logsDir = path.join(workspace, ".clice", "logs");
+    const names = fs
+        .readdirSync(logsDir, { recursive: true, encoding: "utf8" })
+        .filter((name) => path.basename(name) === "master.log");
+    expect(names.length, "expected a master.log").toBeGreaterThan(0);
+    const text = names.map((name) => fs.readFileSync(path.join(logsDir, name), "utf8")).join("");
+    expect(text).toContain("Session log directory:");
+    // All three config layers are dumped: file, overlay, merged result.
+    expect(text).toContain("Configuration file");
+    expect(text).toContain("initializationOptions");
+    expect(text).toContain("Effective configuration:");
+    expect(text).toContain('"cache_dir"');
 });

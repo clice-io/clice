@@ -3,7 +3,6 @@
 /// index and faithful to the live buffer's preprocessor context.
 
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import * as proto from "vscode-languageserver-protocol";
 import {
@@ -14,8 +13,8 @@ import {
     waitForRecompile,
 } from "../../tools/checks.ts";
 import { writeCdb } from "../../tools/compile_commands.ts";
-import { cliceExecutable, test, expect } from "../../tools/fixtures.ts";
-import { makeClient, shutdownClient } from "../../tools/lifecycle.ts";
+import { test, expect } from "../../tools/fixtures.ts";
+import { shutdownClient } from "../../tools/lifecycle.ts";
 
 const NO_INDEXING = { project: { enable_indexing: false } };
 
@@ -179,89 +178,85 @@ test("preamble macro definition", async ({ session }) => {
     );
 });
 
-test("preamble links survive restart", async () => {
-    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "clice-test-"));
-    try {
-        pinCacheToWorkspace(workspace);
-        fs.writeFileSync(path.join(workspace, "foo.h"), "inline void foo() {}\n");
-        fs.writeFileSync(
-            path.join(workspace, "main.cpp"),
-            '#include "foo.h"\nint main() { foo(); return 0; }\n',
-        );
-        writeCdb(workspace, ["main.cpp"]);
+test("preamble links survive restart", async ({ session }) => {
+    const workspace = session.tmpdir();
+    pinCacheToWorkspace(workspace);
+    fs.writeFileSync(path.join(workspace, "foo.h"), "inline void foo() {}\n");
+    fs.writeFileSync(
+        path.join(workspace, "main.cpp"),
+        '#include "foo.h"\nint main() { foo(); return 0; }\n',
+    );
+    writeCdb(workspace, ["main.cpp"]);
 
-        const c1 = await makeClient(cliceExecutable(), workspace);
-        const [uri] = await c1.openAndWait(path.join(workspace, "main.cpp"));
-        const links = await c1.documentLinks(uri);
-        expect((links ?? []).some((link) => (link.target ?? "").endsWith("foo.h"))).toBe(true);
-        const pchMtime = fs.statSync(listPchFiles(workspace)[0]!).mtimeMs;
-        await shutdownClient(c1);
+    const c1 = session.spawn(workspace);
+    await c1.initialize(workspace);
+    const [uri] = await c1.openAndWait(path.join(workspace, "main.cpp"));
+    const links = await c1.documentLinks(uri);
+    expect((links ?? []).some((link) => (link.target ?? "").endsWith("foo.h"))).toBe(true);
+    const pchMtime = fs.statSync(listPchFiles(workspace)[0]!).mtimeMs;
+    await shutdownClient(c1);
 
-        // Session 2 hits the persisted PCH pair: the preamble's links must be
-        // served from the reloaded blob, not lost with the process.
-        const c2 = await makeClient(cliceExecutable(), workspace);
-        const [uri2] = await c2.openAndWait(path.join(workspace, "main.cpp"));
-        const links2 = await c2.documentLinks(uri2);
-        expect(
-            (links2 ?? []).some((link) => (link.target ?? "").endsWith("foo.h")),
-            "preamble document links lost across restart",
-        ).toBe(true);
-        expect(
-            fs.statSync(listPchFiles(workspace)[0]!).mtimeMs,
-            "PCH was rebuilt instead of reused",
-        ).toBe(pchMtime);
-        await shutdownClient(c2);
-    } finally {
-        fs.rmSync(workspace, { recursive: true, force: true });
-    }
+    // Session 2 hits the persisted PCH pair: the preamble's links must be
+    // served from the reloaded blob, not lost with the process.
+    const c2 = session.spawn(workspace);
+    await c2.initialize(workspace);
+    const [uri2] = await c2.openAndWait(path.join(workspace, "main.cpp"));
+    const links2 = await c2.documentLinks(uri2);
+    expect(
+        (links2 ?? []).some((link) => (link.target ?? "").endsWith("foo.h")),
+        "preamble document links lost across restart",
+    ).toBe(true);
+    expect(
+        fs.statSync(listPchFiles(workspace)[0]!).mtimeMs,
+        "PCH was rebuilt instead of reused",
+    ).toBe(pchMtime);
+    await shutdownClient(c2);
 });
 
-test("missing idx rebuilds pair", async () => {
-    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "clice-test-"));
-    try {
-        pinCacheToWorkspace(workspace);
-        fs.writeFileSync(path.join(workspace, "foo.h"), "inline void foo() {}\n");
-        fs.writeFileSync(
-            path.join(workspace, "main.cpp"),
-            '#include "foo.h"\nint main() { foo(); return 0; }\n',
-        );
-        writeCdb(workspace, ["main.cpp"]);
+test("missing idx rebuilds pair", async ({ session }) => {
+    const workspace = session.tmpdir();
+    pinCacheToWorkspace(workspace);
+    fs.writeFileSync(path.join(workspace, "foo.h"), "inline void foo() {}\n");
+    fs.writeFileSync(
+        path.join(workspace, "main.cpp"),
+        '#include "foo.h"\nint main() { foo(); return 0; }\n',
+    );
+    writeCdb(workspace, ["main.cpp"]);
 
-        const c1 = await makeClient(cliceExecutable(), workspace);
-        const [uri] = await c1.openAndWait(path.join(workspace, "main.cpp"));
-        const locs = asLocations(await c1.definitionAt(uri, 1, 13));
-        expect(locs.some((loc) => loc.uri.endsWith("foo.h"))).toBe(true);
-        const pchMtime = fs.statSync(listPchFiles(workspace)[0]!).mtimeMs;
-        await shutdownClient(c1);
+    const c1 = session.spawn(workspace);
+    await c1.initialize(workspace);
+    const [uri] = await c1.openAndWait(path.join(workspace, "main.cpp"));
+    const locs = asLocations(await c1.definitionAt(uri, 1, 13));
+    expect(locs.some((loc) => loc.uri.endsWith("foo.h"))).toBe(true);
+    const pchMtime = fs.statSync(listPchFiles(workspace)[0]!).mtimeMs;
+    await shutdownClient(c1);
 
-        // Half the pair vanishes (crash residue, external cleanup): the next
-        // session must treat the PCH as a miss and rebuild both blobs.
-        const idxFiles = listPchIdxFiles(workspace);
-        expect(idxFiles.length, "expected a committed .pch.idx next to the PCH").toBeGreaterThan(0);
-        for (const idx of idxFiles) {
-            fs.rmSync(idx);
-        }
-        await sleep(MTIME_GRANULARITY);
-
-        const c2 = await makeClient(cliceExecutable(), workspace);
-        const [uri2] = await c2.openAndWait(path.join(workspace, "main.cpp"));
-        const locs2 = asLocations(await c2.definitionAt(uri2, 1, 13));
-        expect(
-            locs2.some((loc) => loc.uri.endsWith("foo.h")),
-            "overlay dead after losing the idx half of the pair",
-        ).toBe(true);
-        expect(
-            fs.statSync(listPchFiles(workspace)[0]!).mtimeMs,
-            "PCH pair should have been rebuilt",
-        ).not.toBe(pchMtime);
-        expect(
-            listPchIdxFiles(workspace).length,
-            "rebuilt pair is missing its idx blob",
-        ).toBeGreaterThan(0);
-        await shutdownClient(c2);
-    } finally {
-        fs.rmSync(workspace, { recursive: true, force: true });
+    // Half the pair vanishes (crash residue, external cleanup): the next
+    // session must treat the PCH as a miss and rebuild both blobs.
+    const idxFiles = listPchIdxFiles(workspace);
+    expect(idxFiles.length, "expected a committed .pch.idx next to the PCH").toBeGreaterThan(0);
+    for (const idx of idxFiles) {
+        fs.rmSync(idx);
     }
+    await sleep(MTIME_GRANULARITY);
+
+    const c2 = session.spawn(workspace);
+    await c2.initialize(workspace);
+    const [uri2] = await c2.openAndWait(path.join(workspace, "main.cpp"));
+    const locs2 = asLocations(await c2.definitionAt(uri2, 1, 13));
+    expect(
+        locs2.some((loc) => loc.uri.endsWith("foo.h")),
+        "overlay dead after losing the idx half of the pair",
+    ).toBe(true);
+    expect(
+        fs.statSync(listPchFiles(workspace)[0]!).mtimeMs,
+        "PCH pair should have been rebuilt",
+    ).not.toBe(pchMtime);
+    expect(
+        listPchIdxFiles(workspace).length,
+        "rebuilt pair is missing its idx blob",
+    ).toBeGreaterThan(0);
+    await shutdownClient(c2);
 });
 
 test("header edit refreshes overlay", async ({ session }) => {

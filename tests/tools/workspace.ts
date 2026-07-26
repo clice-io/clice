@@ -1,10 +1,7 @@
-/// On-disk workspace helpers: temp workspaces, cache-store inspection.
+/// On-disk workspace helpers: cache-store inspection.
 
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
-import { onTestFinished } from "vitest";
-import { CliceClient } from "./client.ts";
 
 /// Versioned root of the unified cache store; bump together with
 /// cache_format_version in src/server/state/workspace.h.
@@ -100,35 +97,4 @@ export function readCacheJson(workspace: string): CacheJson | null {
         return null;
     }
     return JSON.parse(fs.readFileSync(p, "utf8")) as CacheJson;
-}
-
-export interface TempWorkspace {
-    workspace: string;
-    /// Register a client so a failed test cannot orphan its server: any that
-    /// has not exited is killed, then the whole temp directory is removed.
-    track: (client: CliceClient) => CliceClient;
-}
-
-/// Create a fresh temp workspace and register teardown for it. The TS stand-in
-/// for pytest's `tmp_path` builtin: multi-session tests write fixture files,
-/// spawn their own servers via makeClient, and clean up here.
-export function makeTempWorkspace(): TempWorkspace {
-    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "clice-test-"));
-    const clients: CliceClient[] = [];
-    onTestFinished(() => {
-        for (const client of clients) {
-            if (client.child.exitCode === null && client.child.signalCode === null) {
-                client.killServer();
-            }
-            client.dispose();
-        }
-        fs.rmSync(workspace, { recursive: true, force: true });
-    });
-    return {
-        workspace,
-        track: (client) => {
-            clients.push(client);
-            return client;
-        },
-    };
 }
