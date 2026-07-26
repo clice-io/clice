@@ -36,15 +36,15 @@ official vscode-languageserver-protocol stack. Equivalent to:
 
 ```bash
 cd tests
-pnpm check   # typecheck (tsc strict) + lint (ESLint)
-CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/clice pnpm test
+npm run check   # typecheck (tsc strict) + lint (ESLint)
+CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/clice npm test
 ```
 
 Useful variants:
 
 ```bash
-pnpm vitest run integration/features/document_links.test.ts   # one file
-UPDATE_SNAPSHOTS=1 pnpm test    # accept wire-snapshot changes
+npx vitest run integration/features/document_links.test.ts   # one file
+UPDATE_SNAPSHOTS=1 npm test    # accept wire-snapshot changes
 ```
 
 ### Smoke Tests

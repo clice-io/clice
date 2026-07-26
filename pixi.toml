@@ -80,9 +80,8 @@ scripts = ["scripts/activate_cross_linux.sh"]
 [feature.cross-windows-arm64.target.win-64.activation]
 scripts = ["scripts/activate_cross_windows.bat"]
 
-# nodejs (not conda pnpm: no win-arm64 build exists, and cross-test runs
-# this env there) — pnpm is bootstrapped per-version through npx, which
-# ships with node everywhere.
+# nodejs bundles npm on every platform including win-arm64 (where
+# cross-test runs this env and conda has no pnpm).
 [feature.test.dependencies]
 python = ">=3.13"
 nodejs = ">=20"
@@ -179,19 +178,19 @@ cmd = './build/{{ type }}/bin/unit_tests --test-dir="./tests/data" --snapshot-di
 
 [feature.test.tasks.install-tests]
 cwd = "tests"
-cmd = "npx -y pnpm@10 install"
-inputs = ["tests/package.json", "tests/pnpm-lock.yaml"]
-outputs = ["tests/node_modules/.modules.yaml"]
+cmd = "npm install"
+inputs = ["tests/package.json", "tests/package-lock.json"]
+outputs = ["tests/node_modules/.package-lock.json"]
 
-# pnpm check (tsc strict + ESLint) gates every run, then vitest: files run
-# in parallel worker processes (one per file, like xdist -n auto); tests
-# within a file are sequential.
+# npm run check (tsc strict + ESLint) gates every run, then vitest: files
+# run in parallel worker processes (one per file, like xdist -n auto);
+# tests within a file are sequential.
 [feature.test.tasks.integration-test]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 cwd = "tests"
 cmd = """
-npx -y pnpm@10 check && \
-CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/clice npx -y pnpm@10 test
+npm run check && \
+CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/clice npm test
 """
 depends-on = ["install-tests"]
 

@@ -36,15 +36,15 @@ vscode-languageserver-protocol 栈与 server 通信。等价于：
 
 ```bash
 cd tests
-pnpm check   # 类型检查（tsc strict）+ lint（ESLint）
-CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/clice pnpm test
+npm run check   # 类型检查（tsc strict）+ lint（ESLint）
+CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/clice npm test
 ```
 
 常用变体：
 
 ```bash
-pnpm vitest run integration/features/document_links.test.ts   # 单文件
-UPDATE_SNAPSHOTS=1 pnpm test    # 接受 wire 快照变更
+npx vitest run integration/features/document_links.test.ts   # 单文件
+UPDATE_SNAPSHOTS=1 npm test    # 接受 wire 快照变更
 ```
 
 ### 冒烟测试
