@@ -166,7 +166,16 @@ export class Workspace {
         return fs
             .readdirSync(tmpDir, { recursive: true, encoding: "utf8" })
             .map((name) => path.join(tmpDir, name))
-            .filter((p) => fs.statSync(p).isFile())
+            .filter((p) => {
+                // A live server may commit or remove a blob between the
+                // readdir and this stat; a vanished entry is simply not an
+                // in-flight file.
+                try {
+                    return fs.statSync(p).isFile();
+                } catch {
+                    return false;
+                }
+            })
             .sort();
     }
 

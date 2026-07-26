@@ -69,7 +69,7 @@ export class AgenticRpcClient {
     private socket = new net.Socket();
     private requestId = 0;
     private buffer = Buffer.alloc(0);
-    private waiters: ((frame: string) => void)[] = [];
+    private waiters: { resolve: (frame: string) => void; reject: (err: Error) => void }[] = [];
 
     connect(host: string, port: number): Promise<void> {
         return new Promise((resolve, reject) => {
@@ -77,10 +77,27 @@ export class AgenticRpcClient {
             this.socket.on("data", (data: Buffer) => {
                 this.onData(data);
             });
+            // A close with requests outstanding (e.g. the server crashed)
+            // must reject them, not leave their promises hanging until the
+            // test timeout.
+            this.socket.on("close", () => {
+                this.failWaiters(new Error("agentic socket closed with a request outstanding"));
+            });
+            this.socket.on("error", (err) => {
+                this.failWaiters(err instanceof Error ? err : new Error(String(err)));
+            });
             this.socket.connect(port, host, () => {
                 this.socket.off("error", reject);
                 resolve();
             });
+        });
+    }
+
+    private failWaiters(err: Error): void {
+        const waiters = this.waiters;
+        this.waiters = [];
+        waiters.forEach((waiter) => {
+            waiter.reject(err);
         });
     }
 
@@ -92,7 +109,7 @@ export class AgenticRpcClient {
                 return;
             }
             const waiter = this.waiters.shift();
-            waiter?.(frame);
+            waiter?.resolve(frame);
         }
     }
 
@@ -125,9 +142,12 @@ export class AgenticRpcClient {
             method,
             params,
         });
-        return new Promise((resolve) => {
-            this.waiters.push((frame) => {
-                resolve(parseLossless(frame) as RpcResponse<T>);
+        return new Promise((resolve, reject) => {
+            this.waiters.push({
+                resolve: (frame) => {
+                    resolve(parseLossless(frame) as RpcResponse<T>);
+                },
+                reject,
             });
             this.socket.write(`Content-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`);
         });

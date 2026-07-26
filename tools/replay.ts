@@ -1,9 +1,9 @@
 /// Replay recorded LSP traces against clice to detect hangs and crashes.
 ///
-/// Usage: node tests/tools/replay.ts tests/smoke/session.jsonl --clice build/clice
+/// Usage: node tools/replay.ts tests/smoke/session.jsonl --clice build/clice
 ///
 /// Node builtins only — no npm dependencies — so it runs standalone with
-/// `node tests/tools/replay.ts ...`. LSP framing, response defaults and the
+/// `node tools/replay.ts ...`. LSP framing, response defaults and the
 /// pass/fail rules mirror the former replay.py 1:1.
 
 import { spawn } from "node:child_process";
