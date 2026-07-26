@@ -80,8 +80,12 @@ scripts = ["scripts/activate_cross_linux.sh"]
 [feature.cross-windows-arm64.target.win-64.activation]
 scripts = ["scripts/activate_cross_windows.bat"]
 
+# nodejs (not conda pnpm: no win-arm64 build exists, and cross-test runs
+# this env there) — pnpm is bootstrapped per-version through npx, which
+# ships with node everywhere.
 [feature.test.dependencies]
 python = ">=3.13"
+nodejs = ">=20"
 
 # ToolchainTests.GCC queries the g++ found in PATH and compiles C++23
 # (<print>), so the test env must provide the same pinned gcc the build
@@ -123,11 +127,9 @@ scripts = ["scripts/activate_asan_macos.sh"]
 [feature.test.target.osx-arm64.activation]
 scripts = ["scripts/activate_asan_macos.sh"]
 
+# pygls/lsprotocol only serve the manual stress driver
+# (tests/tools/stress.py); the integration suite itself is TypeScript.
 [feature.test.pypi-dependencies]
-pytest = "*"
-pytest-asyncio = ">=1.1.0"
-pytest-timeout = "*"
-pytest-xdist = "*"
 pygls = ">=2.0.0"
 lsprotocol = ">=2024.0.0"
 
@@ -175,12 +177,23 @@ depends-on = [{ task = "lint-cpp", args = ["{{ type }}"] }]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 cmd = './build/{{ type }}/bin/unit_tests --test-dir="./tests/data" --snapshot-dir="./tests/snapshots/unit" --verbose && python tests/tools/feature_docs.py check'
 
+[feature.test.tasks.install-tests]
+cwd = "tests"
+cmd = "npx -y pnpm@10 install"
+inputs = ["tests/package.json", "tests/pnpm-lock.yaml"]
+outputs = ["tests/node_modules/.modules.yaml"]
+
+# pnpm check (tsc strict + ESLint) gates every run, then vitest: files run
+# in parallel worker processes (one per file, like xdist -n auto); tests
+# within a file are sequential.
 [feature.test.tasks.integration-test]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
+cwd = "tests"
 cmd = """
-pytest -n auto --dist loadgroup --timeout=300 --timeout-method=thread \
-    tests/integration --executable=./build/{{ type }}/bin/clice
+npx -y pnpm@10 check && \
+CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/clice npx -y pnpm@10 test
 """
+depends-on = ["install-tests"]
 
 [feature.test.tasks.smoke-test]
 args = [{ arg = "type", default = "RelWithDebInfo" }]

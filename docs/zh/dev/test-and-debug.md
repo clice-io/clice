@@ -4,7 +4,7 @@
 
 clice 有三种测试：单元测试、集成测试和冒烟测试。
 
-所有测试依赖（pytest、pygls 等）由 pixi 管理，无需单独安装。
+所有测试依赖（集成套件的 node/pnpm、冒烟回放的 python）由 pixi 管理，无需单独安装。
 
 ### 单元测试
 
@@ -31,11 +31,20 @@ pixi run integration-test          # 默认 RelWithDebInfo
 pixi run integration-test Debug    # debug 构建
 ```
 
-等价于：
+集成套件是基于 vitest 的 TypeScript（`tests/`），通过官方
+vscode-languageserver-protocol 栈与 server 通信。等价于：
 
 ```bash
-pytest -s --log-cli-level=INFO --timeout=300 --timeout-method=thread \
-    tests/integration --executable=./build/RelWithDebInfo/bin/clice
+cd tests
+pnpm check   # 类型检查（tsc strict）+ lint（ESLint）
+CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/clice pnpm test
+```
+
+常用变体：
+
+```bash
+pnpm vitest run integration/features/document_links.test.ts   # 单文件
+UPDATE_SNAPSHOTS=1 pnpm test    # 接受 wire 快照变更
 ```
 
 ### 冒烟测试

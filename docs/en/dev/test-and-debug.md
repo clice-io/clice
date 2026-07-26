@@ -4,7 +4,7 @@
 
 clice has three types of tests: unit tests, integration tests, and smoke tests.
 
-All test dependencies (pytest, pygls, etc.) are managed by pixi — no separate installation needed.
+All test dependencies (node/pnpm for the integration suite, python for smoke replay) are managed by pixi — no separate installation needed.
 
 ### Unit Tests
 
@@ -31,11 +31,20 @@ pixi run integration-test          # default RelWithDebInfo
 pixi run integration-test Debug    # debug build
 ```
 
-Equivalent to:
+The suite is TypeScript on vitest (`tests/`), speaking LSP through the
+official vscode-languageserver-protocol stack. Equivalent to:
 
 ```bash
-pytest -s --log-cli-level=INFO --timeout=300 --timeout-method=thread \
-    tests/integration --executable=./build/RelWithDebInfo/bin/clice
+cd tests
+pnpm check   # typecheck (tsc strict) + lint (ESLint)
+CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/clice pnpm test
+```
+
+Useful variants:
+
+```bash
+pnpm vitest run integration/features/document_links.test.ts   # one file
+UPDATE_SNAPSHOTS=1 pnpm test    # accept wire-snapshot changes
 ```
 
 ### Smoke Tests
