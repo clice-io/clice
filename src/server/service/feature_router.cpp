@@ -95,7 +95,7 @@ kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
         if(!range)
             return;
         protocol::DocumentLink out{.range = *range};
-        out.target = link.target;
+        out.target = feature::to_uri(link.target);
         links.push_back(std::move(out));
     };
     std::ranges::for_each(find_preamble_links(*session), append);
