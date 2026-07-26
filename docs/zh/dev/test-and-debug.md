@@ -18,7 +18,7 @@ pixi run unit-test Debug    # debug 构建
 ```bash
 ./build/RelWithDebInfo/bin/unit_tests \
     --test-dir="./tests/data" \
-    --snapshot-dir="./tests/snapshots" \
+    --snapshot-dir="./tests/snapshots/unit" \
     --verbose
 ```
 
