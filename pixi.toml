@@ -90,14 +90,19 @@ scripts = ["scripts/activate_cross_windows.bat"]
 python = ">=3.13"
 nodejs = ">=24"
 # The suite regenerates CMake-based fixture CDBs itself; CI images happen
-# to preinstall these, local machines don't.
-cmake = ">=3.30"
+# to preinstall the tools, local machines don't. cmake sits in per-target
+# sections below: conda-forge ships none for win-arm64, where the
+# cross-test runner's preinstalled cmake covers it.
 ninja = "*"
+
+[feature.test.target.win-64.dependencies]
+cmake = ">=3.30"
 
 # ToolchainTests.GCC queries the g++ found in PATH and compiles C++23
 # (<print>), so the test env must provide the same pinned gcc the build
 # env uses — runner system gcc is too old.
 [feature.test.target.linux-64.dependencies]
+cmake = ">=3.30"
 gcc = "==15.2.0"
 gxx = "==15.2.0"
 # The symbolization round-trip test replays the release strip/GSYM flow
@@ -107,18 +112,21 @@ llvm-tools = "==22.1.8"
 # The linux-aarch64 cross-test job runs the integration suite on a native
 # arm64 runner, so the symbolization test needs the same tools there.
 [feature.test.target.linux-aarch64.dependencies]
+cmake = ">=3.30"
 llvm-tools = "==22.1.8"
 
 # On macOS, the system Apple clang emits vendor-specific flags that upstream
 # LLVM cannot parse.  Providing upstream clang + lld in PATH prevents
 # fallback to /usr/bin/clang++ and satisfies toolchain.cmake's -fuse-ld=lld.
 [feature.test.target.osx-64.dependencies]
+cmake = ">=3.30"
 clang = "==22.1.8"
 clangxx = "==22.1.8"
 lld = "==22.1.8"
 compiler-rt = "==22.1.8"
 
 [feature.test.target.osx-arm64.dependencies]
+cmake = ">=3.30"
 clang = "==22.1.8"
 clangxx = "==22.1.8"
 lld = "==22.1.8"

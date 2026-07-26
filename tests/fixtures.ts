@@ -52,7 +52,27 @@ async function acquireWorkspaceLock(name: string): Promise<() => void> {
     fs.mkdirSync(LOCKS_DIR, { recursive: true });
     const lock = path.join(LOCKS_DIR, name.replaceAll(/[\\/]/g, "__"));
     const pidFile = path.join(lock, "pid");
+    const startedAt = Date.now();
+    let warned = false;
     for (;;) {
+        // A silent multi-minute wait here looks like a hung suite; surface
+        // contention early and fail loudly instead of starving forever.
+        const waited = Date.now() - startedAt;
+        if (!warned && waited > 5_000) {
+            warned = true;
+            console.warn(`[session] waiting on workspace lock ${name} (${waited}ms)`);
+        }
+        if (waited > 240_000) {
+            let holder = "unknown";
+            try {
+                holder = fs.readFileSync(pidFile, "utf8");
+            } catch {
+                // Holder mid-transition; report what we have.
+            }
+            throw new Error(
+                `workspace lock ${name} starved for ${waited}ms (holder pid ${holder})`,
+            );
+        }
         try {
             fs.mkdirSync(lock);
         } catch {
