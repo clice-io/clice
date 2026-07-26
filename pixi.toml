@@ -95,8 +95,15 @@ nodejs = ">=24"
 # cross-test runner's preinstalled cmake covers it.
 ninja = "*"
 
+# clang/lld mirror the osx sections: fixture CDB generation configures
+# with toolchain.cmake, which wants our pinned clang — CI images happen
+# to preinstall LLVM, local machines don't. (The real fix is decoupling
+# fixture CDBs from toolchain.cmake; tracked separately.)
 [feature.test.target.win-64.dependencies]
 cmake = ">=3.30"
+clang = "==22.1.8"
+clangxx = "==22.1.8"
+lld = "==22.1.8"
 
 # ToolchainTests.GCC queries the g++ found in PATH and compiles C++23
 # (<print>), so the test env must provide the same pinned gcc the build
