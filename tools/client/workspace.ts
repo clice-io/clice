@@ -22,8 +22,15 @@ export class Workspace {
 
     /// A fresh temp-directory workspace. Removal is the creator's business —
     /// the session fixture registers it for teardown.
+    ///
+    /// realpath matters: macOS's tmpdir is a symlink (/var/folders ->
+    /// /private/var), and the server canonicalizes discovered TU paths, so
+    /// un-resolved test URIs would miss every closed-TU lookup. pytest's
+    /// tmp_path resolved too — this is parity, not a workaround.
     static tmp(): Workspace {
-        return new Workspace(fs.mkdtempSync(path.join(os.tmpdir(), "clice-test-")));
+        return new Workspace(
+            fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "clice-test-"))),
+        );
     }
 
     toString(): string {

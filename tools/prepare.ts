@@ -1,6 +1,6 @@
 /// Prepare test data fixtures for editor E2E tests.
 ///
-/// Usage: node tests/tools/prepare.ts <fixture> [<fixture> ...]
+/// Usage: node tools/prepare.ts <fixture> [<fixture> ...]
 ///
 /// Each fixture is a subdirectory of tests/data. Fixtures with a
 /// CMakeLists.txt get compile_commands.json generated via CMake; plain
@@ -11,7 +11,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { DATA_DIR, generateCDB, generateTestDataCDBs } from "./compile_commands.ts";
 
-const USAGE = "Usage: node tests/tools/prepare.ts <fixture> [<fixture> ...]";
+const USAGE = "Usage: node tools/prepare.ts <fixture> [<fixture> ...]";
 
 /// The XDG cache base clice would use — mirrors resolve_xdg_cache_dir() in
 /// src/server/state/config.cpp: $XDG_CACHE_HOME/clice/<basename>-<hash8>

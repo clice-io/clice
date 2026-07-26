@@ -37,8 +37,8 @@
 /// test/fixture.h, which reads the same header).
 ///
 /// Usage:
-///     node tests/tools/feature_docs.ts update   # rewrite generated regions
-///     node tests/tools/feature_docs.ts check    # fail if regions are stale
+///     node tools/feature_docs.ts update   # rewrite generated regions
+///     node tools/feature_docs.ts check    # fail if regions are stale
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -432,7 +432,9 @@ function processFeature(
         }
     }
 
-    const current = fs.readFileSync(docPath, "utf8");
+    // Windows runners check out docs as CRLF (only tests/data/** is pinned
+    // to LF); normalize so the $-anchored marker regexes match.
+    const current = fs.readFileSync(docPath, "utf8").replaceAll("\r\n", "\n");
     const updated = rewriteDoc(current, sections, docPath, problems);
     return [docPath, current, updated];
 }

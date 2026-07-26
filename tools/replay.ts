@@ -13,8 +13,8 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Readable, Writable } from "node:stream";
 
-// tools/ -> tests/ -> repo root (matches Path(__file__).resolve().parents[2]).
-const REPO_ROOT = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
+// tools/ -> repo root.
+const REPO_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
 // Server->client requests are answered with these results; anything not
 // listed is answered with null.

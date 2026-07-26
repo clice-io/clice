@@ -3,7 +3,7 @@
 <!-- The checklist sections below are generated from the snapshot fixtures in
      tests/data/folding_range/. Do not edit the regions between the GENERATED
      markers by hand — edit the fixture spec headers and run
-     `node tests/tools/feature_docs.ts update`. -->
+     `node tools/feature_docs.ts update`. -->
 
 ## Fold Kinds
 

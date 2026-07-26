@@ -18,7 +18,9 @@ export default defineConfig({
                 minForks: 1,
             },
         },
-        testTimeout: 60_000,
+        // Match the old pytest --timeout=300; slow tests (modules, stress)
+        // legitimately exceed one minute on loaded CI runners.
+        testTimeout: 300_000,
         hookTimeout: 60_000,
         globalSetup: ["./global_setup.ts"],
     },

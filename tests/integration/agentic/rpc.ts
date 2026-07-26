@@ -140,7 +140,9 @@ export class AgenticRpcClient {
     }
 
     close(): void {
-        this.socket.destroy();
+        // end() flushes queued writes (a just-sent notify) before FIN;
+        // destroy() could drop them and hang the exit gate.
+        this.socket.end();
     }
 }
 

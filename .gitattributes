@@ -7,3 +7,5 @@ tests/data/** text eol=lf
 
 # Treat trace files as binary to suppress text diffs
 tests/smoke/*.jsonl linguist-generated=true binary
+# Generated feature docs are parsed by tools/feature_docs.ts marker regexes.
+docs/**/*.md text eol=lf
