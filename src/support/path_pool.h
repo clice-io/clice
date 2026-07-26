@@ -4,6 +4,7 @@
 #include <cassert>
 #include <cstdint>
 #include <optional>
+#include <string>
 
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
@@ -14,14 +15,26 @@
 
 namespace clice {
 
+/// Canonical spelling for path identity: forward slashes and a lowercase
+/// drive letter. Lowercase is not a free choice — vscode-uri and every
+/// LSP client key documents by lowercase-drive URIs, so pool-resolved
+/// strings must be directly URI-emittable in that form; uppercase URIs
+/// from the server would never match a client's document identity.
+inline std::string canonicalize_path(std::string path) {
+    std::replace(path.begin(), path.end(), '\\', '/');
+    if(path.size() >= 2 && path[1] == ':' && llvm::isUpper(path[0])) {
+        path[0] = llvm::toLower(path[0]);
+    }
+    return path;
+}
+
 /// Intern pool that maps file paths to compact uint32_t IDs.
 ///
-/// Paths are opaque byte strings; the normalizations applied are
-/// backslash-to-slash replacement and drive-letter uppercasing, so the
-/// URI spelling VS Code sends ("file:///f%3A/...") and the "F:/..." form
-/// the CDB and clang report intern to one ID. Without the latter every
-/// CDB lookup on Windows missed and compiles fell back to guessed
-/// commands.
+/// Paths are opaque byte strings; the normalization applied is the
+/// canonical spelling above, so the URI form VS Code sends
+/// ("file:///f%3A/...") and the "F:/..." form the CDB and clang report
+/// intern to one ID. Without it every CDB lookup on Windows missed and
+/// compiles fell back to guessed commands.
 ///
 /// FIXME: other path components keep their case, so case-variant
 /// spellings of one file on a case-insensitive filesystem can still
@@ -36,22 +49,21 @@ struct PathPool {
     llvm::SmallVector<llvm::StringRef> paths;
     llvm::StringMap<std::uint32_t> cache;
 
-    /// True for "x:..." drive prefixes with a lowercase letter.
-    static bool has_lower_drive(llvm::StringRef path) {
-        return path.size() >= 2 && path[1] == ':' && llvm::isLower(path[0]);
+    /// True for "X:..." drive prefixes with an uppercase letter.
+    static bool has_upper_drive(llvm::StringRef path) {
+        return path.size() >= 2 && path[1] == ':' && llvm::isUpper(path[0]);
     }
 
     std::uint32_t intern(llvm::StringRef path) {
-        // Normalize backslashes to forward slashes and uppercase the drive
-        // letter so that paths from different sources (URI decoding, CDB,
-        // include resolution) compare equal on Windows.
+        // Apply the canonical spelling so that paths from different sources
+        // (URI decoding, CDB, include resolution) compare equal on Windows.
         llvm::SmallString<256> normalized;
-        bool needs_normalize = path.contains('\\') || has_lower_drive(path);
+        bool needs_normalize = path.contains('\\') || has_upper_drive(path);
         if(needs_normalize) {
             normalized = path;
             std::replace(normalized.begin(), normalized.end(), '\\', '/');
-            if(has_lower_drive(normalized)) {
-                normalized[0] = llvm::toUpper(normalized[0]);
+            if(has_upper_drive(normalized)) {
+                normalized[0] = llvm::toLower(normalized[0]);
             }
             path = normalized;
         }
@@ -78,11 +90,11 @@ struct PathPool {
     /// normalization as intern().
     std::optional<std::uint32_t> find(llvm::StringRef path) const {
         llvm::SmallString<256> normalized;
-        if(path.contains('\\') || has_lower_drive(path)) {
+        if(path.contains('\\') || has_upper_drive(path)) {
             normalized = path;
             std::replace(normalized.begin(), normalized.end(), '\\', '/');
-            if(has_lower_drive(normalized)) {
-                normalized[0] = llvm::toUpper(normalized[0]);
+            if(has_upper_drive(normalized)) {
+                normalized[0] = llvm::toLower(normalized[0]);
             }
             path = normalized;
         }

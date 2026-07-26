@@ -96,7 +96,10 @@ void LSPClient::register_lifecycle() {
 
         auto& init = params.lsp__initialize_params;
         if(init.root_uri.has_value()) {
-            srv.workspace_root = uri_to_path(*init.root_uri);
+            // Canonicalize so downstream prefix checks (cache_dir,
+            // ${workspace} expansion, artifact detection) compare against
+            // the same spelling the path pool stores.
+            srv.workspace_root = canonicalize_path(uri_to_path(*init.root_uri));
         }
 
         if(init.initialization_options.has_value()) {

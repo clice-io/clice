@@ -11,6 +11,7 @@
 #include "semantic/symbol_kind.h"
 #include "support/anomaly.h"
 #include "support/markup.h"
+#include "support/path_pool.h"
 
 #include "kota/ipc/lsp/position.h"
 #include "kota/ipc/lsp/protocol.h"
@@ -25,10 +26,16 @@ using kota::ipc::lsp::LineMap;
 using kota::ipc::lsp::PositionEncoding;
 
 /// Render a file path (or an already-formed URI) as an LSP URI string.
+///
+/// The path is canonicalized first (lowercase drive, forward slashes):
+/// clang reports whatever spelling the -I dirs and CDB used, while LSP
+/// clients key documents by vscode-uri's lowercase-drive form — an
+/// uppercase-drive URI from the server never matches on Windows.
 inline auto to_uri(llvm::StringRef file) -> std::string {
-    const auto file_view = std::string_view(file.data(), file.size());
+    auto canonical = canonicalize_path(file.str());
+    const auto file_view = std::string_view(canonical);
 
-    // Convert as a path first: a Windows drive prefix like "F:" would
+    // Convert as a path first: a Windows drive prefix like "f:" would
     // otherwise be accepted by URI::parse as a single-letter scheme.
     if(auto uri = kota::ipc::lsp::URI::from_file_path(file_view)) {
         return uri->str();
@@ -38,7 +45,7 @@ inline auto to_uri(llvm::StringRef file) -> std::string {
         return parsed->str();
     }
 
-    return file.str();
+    return canonical;
 }
 
 inline auto to_position(const LineMap& map, std::uint32_t offset)

@@ -8,6 +8,7 @@
 #include <variant>
 #include <vector>
 
+#include "feature/feature.h"
 #include "index/preamble_state.h"
 #include "index/tu_index.h"
 #include "server/compiler/compiler.h"
@@ -330,12 +331,12 @@ std::vector<protocol::Location> IndexQuery::query_relations(llvm::StringRef path
                      [&](const index::PreambleState::File& file, const index::Relation& r) {
                          if(!should_serve_overlay_file(file.path) || file.line_starts.empty())
                              return true;
-                         auto uri = lsp::URI::from_file_path(file.path);
-                         if(!uri)
-                             return true;
+                         // to_uri canonicalizes clang's raw spelling (drive
+                         // case) before emitting.
+                         auto uri = feature::to_uri(file.path);
                          lsp::LineMap map(file.content, file.line_starts);
                          if(auto range = map.to_range(r.range.begin, r.range.end))
-                             locations.push_back({uri->str(), *range});
+                             locations.push_back({uri, *range});
                          return true;
                      });
         return true;
@@ -444,12 +445,10 @@ std::optional<protocol::Location> IndexQuery::find_definition_location(index::Sy
                      [&](const index::PreambleState::File& file, const index::Relation& r) {
                          if(!should_serve_overlay_file(file.path) || file.line_starts.empty())
                              return true;
-                         auto uri = lsp::URI::from_file_path(file.path);
-                         if(!uri)
-                             return true;
+                         auto uri = feature::to_uri(file.path);
                          lsp::LineMap map(file.content, file.line_starts);
                          if(auto range = map.to_range(r.range.begin, r.range.end)) {
-                             overlay_result = protocol::Location{uri->str(), *range};
+                             overlay_result = protocol::Location{uri, *range};
                              return false;
                          }
                          return true;

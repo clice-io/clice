@@ -16,11 +16,18 @@ TEST_CASE(DriveCaseNormalized) {
     // VS Code sends lowercase drive URIs while the CDB and clang report
     // uppercase; both spellings must intern to one ID or every CDB
     // lookup on Windows misses and compiles fall back to guessed
-    // commands.
+    // commands. Lowercase wins: clients key documents by vscode-uri's
+    // lowercase-drive form, so resolved strings must emit as-is.
     PathPool pool;
     EXPECT_EQ(pool.intern("c:/a/b.h"), pool.intern(R"(C:\a\b.h)"));
-    EXPECT_EQ(pool.resolve(pool.intern("c:/a/b.h")), "C:/a/b.h");
+    EXPECT_EQ(pool.resolve(pool.intern("C:/a/b.h")), "c:/a/b.h");
     EXPECT_EQ(pool.find(R"(c:\a\b.h)"), pool.find("C:/a/b.h"));
+}
+
+TEST_CASE(CanonicalizeHelper) {
+    EXPECT_EQ(canonicalize_path(R"(D:\ws\x.h)"), "d:/ws/x.h");
+    EXPECT_EQ(canonicalize_path("d:/ws/x.h"), "d:/ws/x.h");
+    EXPECT_EQ(canonicalize_path("/usr/X.h"), "/usr/X.h");
 }
 
 TEST_CASE(PosixCaseKept) {
