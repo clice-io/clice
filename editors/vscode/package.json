@@ -246,7 +246,8 @@
     "ts-loader": "^9.5.4",
     "typescript": "~5.5.4",
     "webpack": "^5.104.1",
-    "webpack-cli": "^6.0.1"
+    "webpack-cli": "^6.0.1",
+    "@clice/tools": "file:../../tools"
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"

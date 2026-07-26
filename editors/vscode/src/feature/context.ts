@@ -1,17 +1,15 @@
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/node";
+// Protocol shapes come from the shared definition in tools/protocol —
+// type-only, so the extension bundle carries no runtime dependency on it.
+import type {
+    ContextItem,
+    CurrentContextResult,
+    QueryContextResult,
+    SwitchContextResult,
+} from "@clice/tools/protocol" with { "resolution-mode": "import" };
 
-export type ContextItem = {
-    label: string;
-    description: string;
-    uri: string;
-    occurrence?: number;
-    commandHash?: string;
-};
-
-type QueryContextResult = { contexts: ContextItem[]; total: number; epoch: number };
-type CurrentContextResult = { context: ContextItem | null };
-type SwitchContextResult = { success: boolean; stale?: boolean };
+export type { ContextItem };
 
 function isCppEditor(editor: vscode.TextEditor | undefined): editor is vscode.TextEditor {
     const language = editor?.document.languageId;

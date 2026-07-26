@@ -1,12 +1,9 @@
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/node";
-
-type LspRange = {
-    start: { line: number; character: number };
-    end: { line: number; character: number };
+// Shared protocol shape — type-only, no runtime dependency.
+import type { InactiveRegionsParams } from "@clice/tools/protocol" with {
+    "resolution-mode": "import",
 };
-
-type InactiveRegionsParams = { uri: string; regions: LspRange[] };
 
 /// Renders clice/inactiveRegions: preprocessor-inactive regions pushed by
 /// the server after each compile, dimmed like unreachable code. Switching
