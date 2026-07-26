@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cassert>
 #include <chrono>
 #include <cstdint>
@@ -9,6 +10,7 @@
 
 #include "support/format.h"
 
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
@@ -25,6 +27,52 @@ std::string join(Args&&... args) {
     llvm::SmallString<128> path;
     ((path::append(path, std::forward<Args>(args))), ...);
     return path.str().str();
+}
+
+/// Path identity on Windows is separator-agnostic and drive-case
+/// insensitive; LSP clients (vscode-uri) key documents by the
+/// lowercase-drive, forward-slash spelling, so that spelling is the
+/// canonical form for identity and URI emission. On POSIX identity is
+/// the raw bytes — '\' and "C:" are ordinary filename characters — and
+/// canonicalization must not touch paths there.
+
+/// True when `p` deviates from the Windows canonical spelling.
+inline bool needs_canonical(llvm::StringRef p) {
+    return p.contains('\\') || (p.size() >= 2 && p[1] == ':' && llvm::isUpper(p[0]));
+}
+
+/// The rewrite itself, in place. Platform-independent on purpose so the
+/// logic is unit-testable on any host; production code reaches it only
+/// through the gated entry points below.
+inline void make_canonical(llvm::MutableArrayRef<char> p) {
+    std::replace(p.begin(), p.end(), '\\', '/');
+    if(p.size() >= 2 && p[1] == ':' && llvm::isUpper(p[0])) {
+        p[0] = llvm::toLower(p[0]);
+    }
+}
+
+/// Canonical view of `p`: on Windows, `p` itself when already canonical,
+/// otherwise the rewrite materialized in `storage`; on POSIX always `p`.
+inline llvm::StringRef canonical(llvm::StringRef p,
+                                 [[maybe_unused]] llvm::SmallVectorImpl<char>& storage) {
+#ifdef _WIN32
+    if(needs_canonical(p)) {
+        storage.assign(p.begin(), p.end());
+        make_canonical(storage);
+        return llvm::StringRef(storage.data(), storage.size());
+    }
+#endif
+    return p;
+}
+
+/// In-place canonicalization of an owned string (config dirs, the
+/// workspace root). No-op on POSIX.
+inline void canonicalize([[maybe_unused]] std::string& p) {
+#ifdef _WIN32
+    if(needs_canonical(p)) {
+        make_canonical(llvm::MutableArrayRef(p.data(), p.size()));
+    }
+#endif
 }
 
 }  // namespace path

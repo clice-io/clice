@@ -10,8 +10,8 @@
 #include "feature/document_link.h"
 #include "semantic/symbol_kind.h"
 #include "support/anomaly.h"
+#include "support/filesystem.h"
 #include "support/markup.h"
-#include "support/path_pool.h"
 
 #include "kota/ipc/lsp/position.h"
 #include "kota/ipc/lsp/protocol.h"
@@ -27,36 +27,36 @@ using kota::ipc::lsp::PositionEncoding;
 
 /// Render a file path (or an already-formed URI) as an LSP URI string.
 ///
-/// The path is canonicalized first (lowercase drive, forward slashes):
-/// clang reports whatever spelling the -I dirs and CDB used, while LSP
-/// clients key documents by vscode-uri's lowercase-drive form — an
-/// uppercase-drive URI from the server never matches on Windows.
+/// On Windows the path is canonicalized first (lowercase drive, forward
+/// slashes): clang reports whatever spelling the -I dirs and CDB used,
+/// while LSP clients key documents by vscode-uri's lowercase-drive form
+/// — an uppercase-drive URI from the server never matches there.
 inline auto to_uri(llvm::StringRef file) -> std::string {
-    // Every emitted URI carries a lowercase drive, whichever branch
-    // produced it — clients key documents by that spelling.
-    auto lower_drive = [](std::string uri) {
-        constexpr llvm::StringLiteral prefix = "file:///";
-        if(uri.size() > prefix.size() + 1 && llvm::StringRef(uri).starts_with(prefix) &&
-           llvm::isUpper(uri[prefix.size()]) && uri[prefix.size() + 1] == ':') {
-            uri[prefix.size()] = llvm::toLower(uri[prefix.size()]);
-        }
-        return uri;
-    };
-
-    auto canonical = canonicalize_path(file.str());
-    const auto file_view = std::string_view(canonical);
+    llvm::SmallString<256> storage;
+    file = path::canonical(file, storage);
+    const auto file_view = std::string_view(file.data(), file.size());
 
     // Convert as a path first: a Windows drive prefix like "f:" would
     // otherwise be accepted by URI::parse as a single-letter scheme.
     if(auto uri = kota::ipc::lsp::URI::from_file_path(file_view)) {
-        return lower_drive(uri->str());
+        return uri->str();
     }
 
     if(auto parsed = kota::ipc::lsp::URI::parse(file_view)) {
-        return lower_drive(parsed->str());
+        auto str = parsed->str();
+#ifdef _WIN32
+        // An already-formed file URI can carry an uppercase drive;
+        // canonicalize it like the path branch would have.
+        constexpr std::size_t at = sizeof("file:///") - 1;
+        if(str.size() > at + 1 && llvm::StringRef(str).starts_with("file:///") &&
+           llvm::isUpper(str[at]) && str[at + 1] == ':') {
+            str[at] = llvm::toLower(str[at]);
+        }
+#endif
+        return str;
     }
 
-    return canonical;
+    return file.str();
 }
 
 inline auto to_position(const LineMap& map, std::uint32_t offset)

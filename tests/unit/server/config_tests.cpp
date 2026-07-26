@@ -4,7 +4,6 @@
 #include "test/test.h"
 #include "server/state/config.h"
 #include "support/filesystem.h"
-#include "support/path_pool.h"
 
 #include "kota/codec/json/json.h"
 #include "kota/codec/toml/toml.h"
@@ -240,10 +239,11 @@ TEST_CASE(XdgCacheDir) {
     config.apply_defaults("/some/ws");
     unset_env("XDG_CACHE_HOME");
 
-    // Compare in the canonical spelling (forward slashes, lowercase
-    // drive) — cache_dir is canonicalized by apply_defaults.
+    // Compare in the canonical spelling — apply_defaults canonicalizes
+    // cache_dir (a no-op on POSIX).
     std::string cache = path::convert_to_slash(std::string_view(config.project.cache_dir));
-    std::string base = canonicalize_path(path::convert_to_slash(cache_base));
+    std::string base = path::convert_to_slash(cache_base);
+    path::canonicalize(base);
     EXPECT_TRUE(llvm::StringRef(cache).starts_with(base));
     EXPECT_TRUE(cache.find("/clice/") != std::string::npos);
 }
@@ -387,7 +387,8 @@ TEST_CASE(HomeFallback) {
         set_env("HOME", prior_home.c_str());
 
     std::string cache = path::convert_to_slash(std::string_view(config.project.cache_dir));
-    std::string home_posix = canonicalize_path(path::convert_to_slash(home));
+    std::string home_posix = path::convert_to_slash(home);
+    path::canonicalize(home_posix);
     EXPECT_TRUE(llvm::StringRef(cache).starts_with(home_posix + "/.cache/clice/"));
 }
 

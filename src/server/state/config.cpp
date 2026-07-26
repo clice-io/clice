@@ -5,7 +5,6 @@
 #include "support/filesystem.h"
 #include "support/glob_pattern.h"
 #include "support/logging.h"
-#include "support/path_pool.h"
 
 #include "kota/async/io/system.h"
 #include "kota/codec/json/json.h"
@@ -111,8 +110,8 @@ void Config::apply_defaults(llvm::StringRef workspace_root) {
     // Client-supplied dirs arrive in native spelling (backslashes, any
     // drive case); canonicalize so artifact-prefix checks against
     // pool-resolved paths hold.
-    p.cache_dir = canonicalize_path(std::move(p.cache_dir));
-    p.logging_dir = canonicalize_path(std::move(p.logging_dir));
+    path::canonicalize(p.cache_dir);
+    path::canonicalize(p.logging_dir);
     for(auto& entry: p.compile_commands_paths)
         substitute_workspace(entry, workspace_root);
 

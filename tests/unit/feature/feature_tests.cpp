@@ -8,9 +8,12 @@ namespace {
 
 TEST_SUITE(ToUri) {
 
+#ifdef _WIN32
 TEST_CASE(WindowsDrivePath) {
     // A drive letter must not be mistaken for a URI scheme, and it is
-    // emitted lowercase — the form LSP clients key documents by.
+    // emitted lowercase — the form LSP clients key documents by. The
+    // rewrite only applies on Windows; these inputs are ordinary (odd)
+    // filenames elsewhere.
     ASSERT_EQ(feature::to_uri("F:/C++/cmake/clice/main.cpp"),
               "file:///f:/C++/cmake/clice/main.cpp");
 }
@@ -25,6 +28,7 @@ TEST_CASE(FormedUriDriveLowered) {
     // not leak through no matter which shape a caller hands in.
     ASSERT_EQ(feature::to_uri("file:///C:/x.cpp"), "file:///c:/x.cpp");
 }
+#endif
 
 TEST_CASE(PlusStaysLiteral) {
     // kota keeps '+' unencoded; clients percent-encode it. canonicalUri on
