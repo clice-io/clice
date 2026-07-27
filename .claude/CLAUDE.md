@@ -114,11 +114,18 @@ Use **conventional commits** — enforced by CI:
 
 ## Tests
 
-Three types of tests, all must pass before committing:
+Four types of tests, all must pass before committing:
 
 - **Unit tests** (`tests/unit/`): C++ tests using the project's own test framework. Test names should be at most 4 words.
 - **Integration tests** (`tests/integration/`): TypeScript vitest tests that start a real clice server and communicate via LSP (vscode-languageserver-protocol stack; harness in the `tools/` workspace package (`@clice/tools`), vitest glue in `tests/fixtures.ts`).
 - **Smoke tests** (`tests/smoke/`): Replay recorded LSP sessions via `tools/replay.ts`.
+- **Snap tests** (`tests/snap/`): Feature snapshot corpora, sources and snapshots side by side. `tests/snap/snap.test.ts` drives `clice inspect` (standalone, no server, no PCH); the wire suite (`tests/integration/features/snapshots.test.ts`) replays the same fixtures through a real server. A fixture defaults to `snap: shared` — both paths must render byte-identically into one `<name>.snap.yml`. `snap: separate` (declared in the fixture's `///` header, with a `// snap:` comment explaining why) pins the wire reply in its own `<name>.wire.snap.yml`; `snap: skip` marks a known-wrong divergence between the two paths — both suites skip the fixture and it keeps no snapshot until fixed.
+
+### Snap Test Rules
+
+- When updating snapshots, run `snap-test` before `integration-test`: the standalone suite owns shared snapshot bodies.
+- A **shared** snapshot mismatch in the integration suite is a real divergence between the server pipeline and the direct feature call. Investigate it; NEVER `UPDATE_SNAPSHOTS=1` over it. Either fix the divergence, or mark the fixture with an explanatory `// snap:` comment: `snap: separate` if the difference is a genuine known property, `snap: skip` if it is simply wrong and unsupported for now.
+- Fixture meta keys are validated strictly (unknown keys are errors) by `tools/snapshot/inspect.ts` and `tools/feature_docs.ts`.
 
 ### Integration Test Style
 
@@ -140,10 +147,11 @@ Each agent should read the full diff (`git diff main...HEAD`) and report issues.
 Before committing code, you MUST:
 
 1. **Run `pixi run format`** to format all source files.
-2. **Pass all three types of tests:**
+2. **Pass all four types of tests:**
    - Unit tests: `pixi run unit-test [type]`
    - Integration tests: `pixi run integration-test [type]`
    - Smoke tests: `pixi run smoke-test [type]`
+   - Snap tests: `pixi run snap-test [type]`
 3. **All test failures must be fixed before committing.** This is a HARD REQUIREMENT with NO exceptions:
    - If a test fails, it MUST be fixed before you commit. Do NOT commit with known failures.
    - Do NOT skip, disable, or mark tests as expected-failure to work around breakage.

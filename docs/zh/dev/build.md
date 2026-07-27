@@ -16,7 +16,7 @@ clice 依赖 C++23 特性，需要使用高版本的 C++ 编译器。同时，�
 # configure && build（默认 RelWithDebInfo）
 pixi run build
 
-# 单元测试 + 集成测试 + 冒烟测试
+# 单元测试 + 集成测试 + 冒烟测试 + 快照测试
 pixi run test
 ```
 
@@ -28,6 +28,7 @@ pixi run cmake-build Debug
 pixi run unit-test Debug
 pixi run integration-test Debug
 pixi run smoke-test Debug
+pixi run snap-test Debug
 ```
 
 > [!TIP]

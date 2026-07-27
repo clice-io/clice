@@ -16,7 +16,7 @@ We ship several tasks; the commands below configure, build, and run tests:
 # configure && build (default RelWithDebInfo)
 pixi run build
 
-# unit + integration + smoke tests
+# unit + integration + smoke + snap tests
 pixi run test
 ```
 
@@ -28,6 +28,7 @@ pixi run cmake-build Debug
 pixi run unit-test Debug
 pixi run integration-test Debug
 pixi run smoke-test Debug
+pixi run snap-test Debug
 ```
 
 > [!TIP]
