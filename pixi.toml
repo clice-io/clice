@@ -203,13 +203,13 @@ node tools/replay.ts tests/smoke/*.jsonl \
     --clice=./build/{{ type }}/bin/clice
 """
 
-# Standalone feature snapshots: `clice inspect` over tests/snap corpora,
-# rendered and pinned by the runner (no server involved), one inspect
-# process per fixture in parallel.
+# Standalone feature snapshots: `clice inspect` over tests/snap corpora
+# (no server involved). Driver logic lives in tools/snap.ts; the vitest
+# glue schedules one inspect process per fixture concurrently.
 [feature.test.tasks.snap-test]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 cmd = """
-node tools/snap.ts --clice=./build/{{ type }}/bin/clice
+CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/clice npm run snap --workspace tests
 """
 depends-on = ["install-tests"]
 

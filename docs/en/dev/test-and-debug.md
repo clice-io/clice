@@ -65,7 +65,7 @@ node tools/replay.ts tests/smoke/*.jsonl \
 
 ### Snap Tests
 
-Feature snapshot corpora under `tests/snap/<feature>/`, with sources and snapshots side by side. The standalone runner (`tools/snap.ts`, one `clice inspect` process per fixture in parallel — no server involved) pins the rendered results; the wire-level suite (part of the integration tests) replays the same fixtures through a real server.
+Feature snapshot corpora under `tests/snap/<feature>/`, with sources and snapshots side by side. The standalone suite (`tests/snap.test.ts`, driver library in `tools/snap.ts`) spawns one `clice inspect` process per fixture — no server involved — and pins the rendered results; the wire-level suite (part of the integration tests) replays the same fixtures through a real server.
 
 ```bash
 pixi run snap-test          # default RelWithDebInfo
@@ -75,12 +75,13 @@ pixi run snap-test Debug    # debug build
 Equivalent to:
 
 ```bash
-node tools/snap.ts --clice=./build/RelWithDebInfo/bin/clice
+cd tests
+CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/clice npm run snap
 ```
 
 By default a fixture is `snap: shared`: the standalone and wire results must render byte-identically and are pinned by one `<name>.snap.yml`. A fixture whose two paths legitimately differ declares `- snap: separate` in its `///` doc header (with a `// snap:` comment explaining why) and the wire reply is pinned in its own `<name>.wire.snap.yml`. A known-wrong divergence is declared as `- snap: skip`: both suites skip the fixture and it keeps no snapshot until the two paths agree.
 
-When updating snapshots (`--update` or `UPDATE_SNAPSHOTS=1`), run the snap runner before the integration suite: shared snapshot bodies are owned by the standalone run. A shared snapshot mismatch reported by the integration suite is a real divergence between the server pipeline and the direct feature call — investigate it instead of regenerating over it.
+When updating snapshots (`UPDATE_SNAPSHOTS=1`), run the snap suite before the integration suite: shared snapshot bodies are owned by the standalone run. A shared snapshot mismatch reported by the integration suite is a real divergence between the server pipeline and the direct feature call — investigate it instead of regenerating over it.
 
 ### Run All Tests
 

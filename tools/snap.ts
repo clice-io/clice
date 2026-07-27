@@ -1,10 +1,8 @@
-/// Standalone snap-test runner: drives `clice inspect` over the tests/snap
-/// corpora — no server involved — and pins the rendered payloads next to
-/// their sources, replay.ts-style. One inspect process per fixture, fanned
-/// out through p-limit up to the core count, so the suite stays parallel
-/// without a test framework around it.
-///
-/// Usage: node tools/snap.ts --clice build/RelWithDebInfo/bin/clice [--update]
+/// Snap-test driver library: everything needed to pin `clice inspect`
+/// results over a tests/snap corpus — fixture enumeration, per-fixture
+/// execution (spawn, hash handshake, render, snapshot compare) and orphan
+/// detection. The vitest glue (tests/snap.test.ts) only enumerates and
+/// schedules; concurrency belongs to the test framework.
 ///
 /// Fixtures default to `snap: shared`, where the wire suite
 /// (tests/integration/features/snapshots.test.ts) compares the server's
@@ -13,11 +11,8 @@
 /// an update run.
 
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
-import { parseArgs } from "node:util";
-import pLimit from "p-limit";
-import { generateSnapCDBs, SNAP_DIR } from "./compile_commands.ts";
+import { SNAP_DIR } from "./compile_commands.ts";
 import { parseAnnotations } from "./snapshot/annotation.ts";
 import {
     parseFixtureMeta,
@@ -26,7 +21,6 @@ import {
     runInspectAsync,
     sha256,
     type FixtureMeta,
-    type InspectFileEntry,
     type RawRenderer,
 } from "./snapshot/inspect.ts";
 import { SnapshotContext } from "./snapshot/snapshot.ts";
@@ -36,168 +30,113 @@ const RENDERERS: Record<string, RawRenderer> = {
     semantic_tokens: renderRawSemanticTokens,
 };
 
-function usageError(message: string): never {
-    console.error(message);
-    console.error("usage: snap.ts --clice CLICE [--update]");
-    process.exit(2);
-}
-
-function parseRunnerArgs(): { clice: string; update: boolean } {
-    let parsed;
-    try {
-        parsed = parseArgs({
-            options: {
-                clice: { type: "string" },
-                update: { type: "boolean", default: false },
-            },
-        });
-    } catch (error) {
-        usageError(error instanceof Error ? error.message : String(error));
-    }
-    const clice = parsed.values.clice;
-    if (clice === undefined) {
-        usageError("argument --clice is required");
-    }
-    if (!fs.existsSync(clice)) {
-        usageError(`clice executable not found at '${clice}'`);
-    }
-    const update = parsed.values.update || process.env["UPDATE_SNAPSHOTS"] === "1";
-    return { clice: path.resolve(clice), update };
-}
-
-interface Job {
-    feature: string;
+export interface SnapFixture {
     rel: string;
     content: string;
     meta: FixtureMeta;
-    entry?: InspectFileEntry | undefined;
-    spawnError?: string | undefined;
+    /// False for `status: unsupported` and `snap: skip` fixtures, which
+    /// both suites skip and which keep no snapshot.
+    active: boolean;
 }
 
-async function inspectAll(clice: string, jobs: Job[]): Promise<void> {
-    const limit = pLimit(Math.max(1, os.availableParallelism()));
-    await Promise.all(
-        jobs.map((job) =>
-            limit(async () => {
-                const file = path.join(SNAP_DIR, job.feature, job.rel);
-                try {
-                    const output = await runInspectAsync(clice, job.feature, file);
-                    job.entry = output.files[path.basename(file)];
-                } catch (error) {
-                    job.spawnError = error instanceof Error ? error.message : String(error);
-                }
-            }),
-        ),
-    );
+export interface SnapCorpus {
+    feature: string;
+    corpus: string;
+    fixtures: SnapFixture[];
 }
 
-const { clice, update } = parseRunnerArgs();
-generateSnapCDBs();
-
-let passed = 0;
-let skipped = 0;
-const failures: string[] = [];
-
-const fail = (name: string, message: string) => {
-    failures.push(name);
-    console.error(`FAIL ${name}\n${message}`);
-};
-
-const jobs: Job[] = [];
-const features: string[] = [];
-for (const feature of fs.readdirSync(SNAP_DIR).sort()) {
-    const corpus = path.join(SNAP_DIR, feature);
-    if (!fs.statSync(corpus).isDirectory()) {
-        continue;
-    }
-    // A corpus directory without a renderer would otherwise be silently
-    // skipped and its fixtures never run.
-    if (!RENDERERS[feature]) {
-        throw new Error(`no raw renderer registered for tests/snap/${feature}`);
-    }
-    features.push(feature);
-
-    const fixtures = fs
-        .readdirSync(corpus, { recursive: true, encoding: "utf8" })
-        .filter((name) => name.endsWith(".cpp"))
-        .sort()
-        .map((name) => name.split(path.sep).join("/"));
-    for (const rel of fixtures) {
-        const content = fs.readFileSync(path.join(corpus, rel), "utf8");
-        const meta = parseFixtureMeta(content, `${feature}/${rel}`);
-        if (meta.status === "unsupported" || meta.snap === "skip") {
-            skipped += 1;
+/// Enumerate the corpora under tests/snap. A corpus directory without a
+/// registered renderer would otherwise be silently skipped and its
+/// fixtures never run, so that is an error.
+export function snapCorpora(): SnapCorpus[] {
+    const corpora: SnapCorpus[] = [];
+    for (const feature of fs.readdirSync(SNAP_DIR).sort()) {
+        const corpus = path.join(SNAP_DIR, feature);
+        if (!fs.statSync(corpus).isDirectory()) {
             continue;
         }
-        jobs.push({ feature, rel, content, meta });
+        if (!RENDERERS[feature]) {
+            throw new Error(`no raw renderer registered for tests/snap/${feature}`);
+        }
+        const fixtures = fs
+            .readdirSync(corpus, { recursive: true, encoding: "utf8" })
+            .filter((name) => name.endsWith(".cpp"))
+            .sort()
+            .map((name) => name.split(path.sep).join("/"))
+            .map((rel) => {
+                const content = fs.readFileSync(path.join(corpus, rel), "utf8");
+                const meta = parseFixtureMeta(content, `${feature}/${rel}`);
+                const active = meta.status !== "unsupported" && meta.snap !== "skip";
+                return { rel, content, meta, active };
+            });
+        corpora.push({ feature, corpus, fixtures });
     }
+    return corpora;
 }
 
-await inspectAll(clice, jobs);
-
-for (const feature of features) {
-    const corpus = path.join(SNAP_DIR, feature);
+/// Run one fixture end to end: spawn `clice inspect`, verify the C++/TS
+/// stripper twins via the content hash, render, and compare against the
+/// colocated snapshot. Throws on any failure (including a snapshot
+/// mismatch), so a test wrapper needs no extra assertions.
+export async function checkSnapFixture(
+    clice: string,
+    { feature, corpus }: SnapCorpus,
+    fixture: SnapFixture,
+): Promise<void> {
     const render = RENDERERS[feature];
     if (!render) {
-        continue;
+        throw new Error(`no raw renderer registered for tests/snap/${feature}`);
     }
-    const snapshots = new SnapshotContext(corpus, { update, colocated: true });
-    const allowedSnaps = new Set<string>();
-
-    for (const job of jobs.filter((j) => j.feature === feature)) {
-        const name = `${feature}/${job.rel}`;
-        const base = job.rel.replace(/\.cpp$/, "");
-        allowedSnaps.add(`${base}.snap.yml`);
-        if (job.meta.snap === "separate") {
-            allowedSnaps.add(`${base}.wire.snap.yml`);
-        }
-
-        if (job.spawnError !== undefined || job.entry === undefined) {
-            fail(name, job.spawnError ?? "clice inspect returned no entry");
-            continue;
-        }
-        const entry = job.entry;
-
-        const source = parseAnnotations(job.content);
-        const stripped = Buffer.from(source.content);
-        // Hash equality proves the C++ and TS annotation strippers still
-        // agree on the coordinate space of every offset below.
-        if (entry.stripped_hash !== sha256(stripped)) {
-            fail(name, "stripped-content hash mismatch: C++/TS stripper twins have drifted");
-            continue;
-        }
-
-        try {
-            if (entry.error) {
-                // Diagnostics carry machine-dependent paths; pin only the
-                // stable marker and surface the details on the console.
-                console.error(`[snap] ${name}: ${entry.error}`);
-                for (const diag of entry.diagnostics ?? []) {
-                    console.error(`[snap]   ${diag}`);
-                }
-                snapshots.check(job.rel, "COMPILE_ERROR");
-            } else {
-                snapshots.check(job.rel, render(entry.result, stripped).join("\n"));
-            }
-            passed += 1;
-        } catch (error) {
-            fail(name, error instanceof Error ? error.message : String(error));
-        }
+    const file = path.join(corpus, fixture.rel);
+    const entry = (await runInspectAsync(clice, feature, file)).files[path.basename(file)];
+    if (!entry) {
+        throw new Error(`clice inspect returned no entry for ${fixture.rel}`);
     }
 
-    // Snapshots follow their sources: a stale `.snap.yml` whose fixture was
-    // renamed, deleted, marked unsupported/skip — or a `.wire` variant left
-    // behind after a separate fixture went shared — must not linger as if
-    // it still pinned anything.
-    const orphans = fs
+    const source = parseAnnotations(fixture.content);
+    const stripped = Buffer.from(source.content);
+    // Hash equality proves the C++ and TS annotation strippers still agree
+    // on the coordinate space of every offset below.
+    if (entry.stripped_hash !== sha256(stripped)) {
+        throw new Error(
+            `${feature}/${fixture.rel}: stripped-content hash mismatch: ` +
+                "C++/TS stripper twins have drifted",
+        );
+    }
+
+    const snapshots = new SnapshotContext(corpus, { colocated: true });
+    if (entry.error) {
+        // Diagnostics carry machine-dependent paths; pin only the stable
+        // marker and surface the details on the console.
+        console.error(`[snap] ${feature}/${fixture.rel}: ${entry.error}`);
+        for (const diag of entry.diagnostics ?? []) {
+            console.error(`[snap]   ${diag}`);
+        }
+        snapshots.check(fixture.rel, "COMPILE_ERROR");
+        return;
+    }
+    snapshots.check(fixture.rel, render(entry.result, stripped).join("\n"));
+}
+
+/// Snapshots follow their sources: a stale `.snap.yml` whose fixture was
+/// renamed, deleted, marked unsupported/skip — or a `.wire` variant left
+/// behind after a separate fixture went shared — must not linger as if it
+/// still pinned anything.
+export function orphanSnapshots({ corpus, fixtures }: SnapCorpus): string[] {
+    const allowed = new Set<string>();
+    for (const fixture of fixtures) {
+        if (!fixture.active) {
+            continue;
+        }
+        const base = fixture.rel.replace(/\.cpp$/, "");
+        allowed.add(`${base}.snap.yml`);
+        if (fixture.meta.snap === "separate") {
+            allowed.add(`${base}.wire.snap.yml`);
+        }
+    }
+    return fs
         .readdirSync(corpus, { recursive: true, encoding: "utf8" })
         .filter((name) => name.endsWith(".snap.yml"))
         .map((name) => name.split(path.sep).join("/"))
-        .filter((rel) => !allowedSnaps.has(rel));
-    for (const orphan of orphans) {
-        fail(`${feature}/${orphan}`, "orphan snapshot: no active fixture pins it");
-    }
+        .filter((rel) => !allowed.has(rel));
 }
-
-console.log(`${passed} passed, ${skipped} skipped, ${failures.length} failed`);
-process.exit(failures.length > 0 ? 1 : 0);
