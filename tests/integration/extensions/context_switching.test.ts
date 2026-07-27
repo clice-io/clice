@@ -7,7 +7,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { MTIME_GRANULARITY, SETTLE_TIME, sleep } from "@clice/tools/client";
-import { expect, test } from "../../fixtures.ts";
+import { expect, test } from "../fixtures.ts";
 
 /// Snapshot the artifact directory as name -> mtime (nanoseconds), matching
 /// the Python st_mtime_ns comparison.

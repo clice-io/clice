@@ -10,7 +10,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { sleep } from "@clice/tools/client";
 import type { Workspace } from "@clice/tools/workspace";
-import { expect, test } from "../../fixtures.ts";
+import { expect, test } from "../fixtures.ts";
 
 function prefixFiles(workspace: Workspace): string[] {
     const prefixDir = workspace.path(path.join(".clice", "header_context"));

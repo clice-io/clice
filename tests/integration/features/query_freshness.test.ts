@@ -2,7 +2,7 @@
 /// the server settles the file's compile before answering, with no timeout.
 
 import * as proto from "vscode-languageserver-protocol";
-import { expect, test } from "../../fixtures.ts";
+import { expect, test } from "../fixtures.ts";
 
 const SOURCE_V1 = "int foo() { return 1; }\nint main() { return foo(); }\n";
 

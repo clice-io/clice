@@ -1,7 +1,7 @@
 /// File operation tests for the clice LSP server.
 
 import { IDLE_TIMEOUT, sleep } from "@clice/tools/client";
-import { test, expect } from "../../fixtures.ts";
+import { test, expect } from "../fixtures.ts";
 
 test("did open", async ({ session }) => {
     const { client } = await session("hello_world");

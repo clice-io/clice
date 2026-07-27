@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { cliceExecutable, expect, test } from "../../fixtures.ts";
+import { cliceExecutable, expect, test } from "../fixtures.ts";
 
 const SUBCOMMANDS = ["serve", "query", "worker", "index", "doc", "lint", "format"];
 const STUBS = ["index", "doc", "lint", "format"];

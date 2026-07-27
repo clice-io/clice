@@ -1,5 +1,5 @@
 import * as proto from "vscode-languageserver-protocol";
-import { test, expect } from "../../fixtures.ts";
+import { test, expect } from "../fixtures.ts";
 
 const UNFORMATTED = "int    add(   int   a  ,  int   b  ) {\nreturn   a+b ;\n}\n";
 const FORMATTED = "int add(int a, int b) { return a + b; }\n";

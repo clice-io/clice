@@ -5,7 +5,7 @@
 /// subsumes the -include on reuse (no double processing), and a header with
 /// no directives of its own (bound == 0) still gets a PCH.
 
-import { expect, test } from "../../fixtures.ts";
+import { expect, test } from "../fixtures.ts";
 
 test("prefix not reprocessed", async ({ session }) => {
     // A bare definition in the synthesized prefix must not be processed

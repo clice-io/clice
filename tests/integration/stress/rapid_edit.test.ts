@@ -1,7 +1,7 @@
 /// Integration tests for rapid editing: ensure no hang and correct hover results.
 
 import { SETTLE_TIME, sleep, withTimeout } from "@clice/tools/client";
-import { cliceTest, expect } from "../../fixtures.ts";
+import { cliceTest, expect } from "../fixtures.ts";
 
 const test = cliceTest("hello_world");
 

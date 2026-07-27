@@ -3,7 +3,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { withTimeout } from "@clice/tools/client";
-import { expect, test } from "../../fixtures.ts";
+import { expect, test } from "../fixtures.ts";
 
 const FLOOD_LINES = 3000;
 const FLOOD_SIZE = 256;

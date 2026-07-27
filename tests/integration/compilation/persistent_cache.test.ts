@@ -9,7 +9,7 @@ import * as path from "node:path";
 import { MTIME_GRANULARITY, SETTLE_TIME, sleep } from "@clice/tools/client";
 import { DATA_DIR } from "@clice/tools/compile-commands";
 import type { CacheJson, Workspace } from "@clice/tools/workspace";
-import { expect, test } from "../../fixtures.ts";
+import { expect, test } from "../fixtures.ts";
 
 function copySaveRecompile(workspace: Workspace): void {
     const src = path.join(DATA_DIR, "modules", "save_recompile");

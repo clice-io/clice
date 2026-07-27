@@ -24,6 +24,6 @@ export default defineConfig({
         // per-test (crash recovery under ASan, stderr backpressure).
         testTimeout: 120_000,
         hookTimeout: 60_000,
-        globalSetup: ["./global_setup.ts"],
+        globalSetup: ["./integration/global_setup.ts"],
     },
 });

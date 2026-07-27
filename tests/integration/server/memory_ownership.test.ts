@@ -7,7 +7,7 @@
 
 import { MTIME_GRANULARITY, sleep, type CliceClient } from "@clice/tools/client";
 import type { StatsResult } from "@clice/tools/protocol";
-import { expect, test } from "../../fixtures.ts";
+import { expect, test } from "../fixtures.ts";
 
 /// Poll clice/internal/stats until predicate(stats) holds.
 async function waitStats(

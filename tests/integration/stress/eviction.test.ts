@@ -1,7 +1,7 @@
 /// Worker document eviction: opening more files than a stateful worker's
 /// LRU cap must not silently break features on the evicted documents.
 
-import { expect, test } from "../../fixtures.ts";
+import { expect, test } from "../fixtures.ts";
 
 const FILE_COUNT = 18; // one stateful worker holds at most 16 compiled documents
 

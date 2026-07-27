@@ -9,7 +9,7 @@
 import * as fs from "node:fs";
 import * as proto from "vscode-languageserver-protocol";
 import { withTimeout } from "@clice/tools/client";
-import { expect, test } from "../../fixtures.ts";
+import { expect, test } from "../fixtures.ts";
 
 const INJECTION_FLOOR = 5;
 

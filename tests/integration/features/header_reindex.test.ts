@@ -1,7 +1,7 @@
 /// Saving a header must reindex the closed TUs that include it.
 
 import { MTIME_GRANULARITY, sleep } from "@clice/tools/client";
-import { expect, test } from "../../fixtures.ts";
+import { expect, test } from "../fixtures.ts";
 
 const HEADER_V1 = `#define TARGET alpha
 inline int alpha() { return 1; }

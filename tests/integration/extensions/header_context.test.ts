@@ -10,7 +10,7 @@
 
 import * as proto from "vscode-languageserver-protocol";
 import { withTimeout } from "@clice/tools/client";
-import { expect, test } from "../../fixtures.ts";
+import { expect, test } from "../fixtures.ts";
 
 /// clice/queryContext on a header should return source files that include it.
 test("query context returns host sources", async ({ session }) => {

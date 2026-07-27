@@ -3,7 +3,7 @@
 import { execFileSync } from "node:child_process";
 import * as proto from "vscode-languageserver-protocol";
 import { sleep, SETTLE_TIME, withTimeout } from "@clice/tools/client";
-import { cliceExecutable, cliceTest, expect } from "../../fixtures.ts";
+import { cliceExecutable, cliceTest, expect } from "../fixtures.ts";
 
 const test = cliceTest("hello_world");
 

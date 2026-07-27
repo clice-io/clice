@@ -2,7 +2,7 @@
 
 import { findFreePort, sleep } from "@clice/tools/client";
 import type { Workspace } from "@clice/tools/workspace";
-import { cliceExecutable, expect, test, type SessionFactory } from "../../fixtures.ts";
+import { cliceExecutable, expect, test, type SessionFactory } from "../fixtures.ts";
 import { AgenticRpcClient, posix, runCli } from "./rpc.ts";
 
 /// Start server with LSP+agentic, compile a file, wait for indexing.

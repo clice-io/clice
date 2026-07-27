@@ -7,7 +7,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { anomaliesInLogFiles, sleep } from "@clice/tools/client";
-import { expect, test } from "../../fixtures.ts";
+import { expect, test } from "../fixtures.ts";
 
 export function childPids(parentPid: number): number[] {
     const pids: number[] = [];

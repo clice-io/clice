@@ -25,6 +25,49 @@ import {
 } from "./inspect.ts";
 import { SnapshotContext } from "./snapshot.ts";
 
+/// CDBs for the tests/snap corpora. Both drivers read the same file:
+/// `clice inspect` finds it next to the fixtures and the wire driver
+/// initializes its workspace on the corpus directory, so the two paths
+/// cannot drift in compile flags.
+function posix(p: string): string {
+    return p.split(path.sep).join("/");
+}
+
+export function generateSnapCDBs(snapDir: string = SNAP_DIR): void {
+    if (!fs.existsSync(snapDir)) {
+        return;
+    }
+    for (const corpus of fs.readdirSync(snapDir)) {
+        const corpusDir = path.join(snapDir, corpus);
+        if (!fs.statSync(corpusDir).isDirectory()) {
+            continue;
+        }
+        const sources = fs
+            .readdirSync(corpusDir, { recursive: true, encoding: "utf8" })
+            .filter((name) => name.endsWith(".cpp"))
+            .sort()
+            .map((name) => path.join(corpusDir, name));
+        if (sources.length === 0) {
+            continue;
+        }
+        const target = path.join(corpusDir, "compile_commands.json");
+        const tmp = `${target}.tmp-${process.pid}`;
+        fs.writeFileSync(
+            tmp,
+            JSON.stringify(
+                sources.map((src) => ({
+                    directory: posix(corpusDir),
+                    file: posix(src),
+                    arguments: ["clang++", "-std=c++20", "-fsyntax-only", posix(src)],
+                })),
+                null,
+                2,
+            ),
+        );
+        fs.renameSync(tmp, target);
+    }
+}
+
 const RENDERERS: Record<string, RawRenderer> = {
     folding_range: renderRawFoldingRanges,
     semantic_tokens: renderRawSemanticTokens,

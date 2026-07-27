@@ -7,7 +7,7 @@ import * as path from "node:path";
 import * as proto from "vscode-languageserver-protocol";
 import { sleep, withTimeout, type CliceClient } from "@clice/tools/client";
 import type { Workspace } from "@clice/tools/workspace";
-import { expect, test, type SessionFactory } from "../../fixtures.ts";
+import { expect, test, type SessionFactory } from "../fixtures.ts";
 
 const TEST_TOML =
     '[project]\ncache_dir = "${workspace}/.clice"\nenable_indexing = false\n' +

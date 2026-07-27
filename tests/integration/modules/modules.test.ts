@@ -11,7 +11,7 @@ import {
     type CliceClient,
 } from "@clice/tools/client";
 import { DATA_DIR } from "@clice/tools/compile-commands";
-import { expect, test } from "../../fixtures.ts";
+import { expect, test } from "../fixtures.ts";
 
 /// URIs of the definition locations at a position.
 async function definitionUris(

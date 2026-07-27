@@ -7,7 +7,7 @@
 import * as path from "node:path";
 import * as proto from "vscode-languageserver-protocol";
 import type { CliceClient } from "@clice/tools/client";
-import { expect, test } from "../../fixtures.ts";
+import { expect, test } from "../fixtures.ts";
 
 const GUIDANCE_CODE = "inferred-compile-command";
 

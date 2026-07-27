@@ -6,7 +6,7 @@
 
 import * as fs from "node:fs";
 import { sleep, type CliceClient } from "@clice/tools/client";
-import { expect, test } from "../../fixtures.ts";
+import { expect, test } from "../fixtures.ts";
 
 const FILE_COUNT = 20;
 

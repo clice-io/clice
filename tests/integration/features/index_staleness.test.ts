@@ -5,7 +5,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { MTIME_GRANULARITY, sleep } from "@clice/tools/client";
 import { Workspace } from "@clice/tools/workspace";
-import { expect, test } from "../../fixtures.ts";
+import { expect, test } from "../fixtures.ts";
 
 const HEADER = "#pragma once\ninline int alpha() { return 1; }\n";
 const CLOSED_TU = '#include "header.h"\nint use() { return alpha(); }\n';

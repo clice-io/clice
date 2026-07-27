@@ -8,7 +8,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { MTIME_GRANULARITY, SETTLE_TIME, sleep, withTimeout } from "@clice/tools/client";
 import { DATA_DIR } from "@clice/tools/compile-commands";
-import { expect, test } from "../../fixtures.ts";
+import { expect, test } from "../fixtures.ts";
 
 test("header change invalidates ast", async ({ session }) => {
     // Modifying a header on disk should cause recompilation on next hover,

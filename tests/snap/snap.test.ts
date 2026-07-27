@@ -6,7 +6,12 @@
 
 import { beforeAll, describe } from "vitest";
 import { generateTestDataCDBs } from "@clice/tools/compile-commands";
-import { checkSnapFixture, orphanSnapshots, snapCorpora } from "@clice/tools/snap/standalone";
+import {
+    checkSnapFixture,
+    generateSnapCDBs,
+    orphanSnapshots,
+    snapCorpora,
+} from "@clice/tools/snap/standalone";
 import {
     checkLegacyWireFixture,
     checkWireSnapFixture,
@@ -16,6 +21,9 @@ import {
 import { cliceExecutable, expect, test } from "./fixtures.ts";
 
 beforeAll(() => {
+    // Corpus CDBs for the standalone/wire drivers, plus the legacy
+    // tests/data corpora the wire-only path still replays.
+    generateSnapCDBs();
     generateTestDataCDBs();
 });
 

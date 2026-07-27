@@ -11,7 +11,7 @@ import * as path from "node:path";
 import { CliceClient, sleep } from "@clice/tools/client";
 import { REPO_ROOT } from "@clice/tools/compile-commands";
 import { Workspace } from "@clice/tools/workspace";
-import { cliceExecutable, expect, test } from "../../fixtures.ts";
+import { cliceExecutable, expect, test } from "../fixtures.ts";
 
 function childPids(parentPid: number): number[] {
     const pids: number[] = [];

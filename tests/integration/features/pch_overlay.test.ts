@@ -4,7 +4,7 @@
 
 import * as fs from "node:fs";
 import { asLocations, locationsOf, MTIME_GRANULARITY, sleep } from "@clice/tools/client";
-import { test, expect } from "../../fixtures.ts";
+import { test, expect } from "../fixtures.ts";
 
 const NO_INDEXING = { project: { enable_indexing: false } };
 

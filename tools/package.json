@@ -6,6 +6,7 @@
   "exports": {
     "./client": "./client/client.ts",
     "./workspace": "./client/workspace.ts",
+    "./session": "./client/session.ts",
     "./snap/annotation": "./snap/annotation.ts",
     "./snap/snapshot": "./snap/snapshot.ts",
     "./snap/inspect": "./snap/inspect.ts",

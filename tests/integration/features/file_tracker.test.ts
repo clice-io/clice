@@ -3,7 +3,7 @@
 /// seeds the stat baseline, so tests poll once before mutating the disk.
 
 import { MTIME_GRANULARITY, sleep, type CliceClient } from "@clice/tools/client";
-import { test, expect } from "../../fixtures.ts";
+import { test, expect } from "../fixtures.ts";
 
 const GATED_MAIN = `#ifndef FEATURE
 #error missing FEATURE

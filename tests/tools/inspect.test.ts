@@ -9,7 +9,7 @@ import { expect, test } from "vitest";
 import { SNAP_DIR } from "@clice/tools/compile-commands";
 import { parseFixtureMeta, renderRawSemanticTokens, runInspect } from "@clice/tools/snap/inspect";
 import { decodeSemanticTokens } from "@clice/tools/snap/presenters";
-import { cliceExecutable } from "../fixtures.ts";
+import { cliceExecutable } from "@clice/tools/session";
 
 test("fixture meta parsing", () => {
     const header = "/// # Title\n///\n/// - status: partial\n/// - snap: separate\nint x;\n";

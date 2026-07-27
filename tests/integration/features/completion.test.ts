@@ -2,7 +2,7 @@
 
 import * as proto from "vscode-languageserver-protocol";
 import { withTimeout } from "@clice/tools/client";
-import { test, expect } from "../../fixtures.ts";
+import { test, expect } from "../fixtures.ts";
 
 function labelsOf(result: proto.CompletionItem[] | proto.CompletionList | null): string[] {
     const items = Array.isArray(result) ? result : (result?.items ?? []);

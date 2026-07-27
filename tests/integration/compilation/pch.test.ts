@@ -1,6 +1,6 @@
 /// Integration tests for PCH (precompiled header) functionality in MasterServer.
 
-import { cliceTest, expect } from "../../fixtures.ts";
+import { cliceTest, expect } from "../fixtures.ts";
 
 const test = cliceTest("pch_test");
 

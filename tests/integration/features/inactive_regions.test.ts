@@ -8,7 +8,7 @@
 import type { Range } from "vscode-languageserver-protocol";
 import { sleep, type CliceClient } from "@clice/tools/client";
 import { InactiveRegionsNotification, type InactiveRegionsParams } from "@clice/tools/protocol";
-import { expect, test } from "../../fixtures.ts";
+import { expect, test } from "../fixtures.ts";
 
 async function waitRegions(captured: InactiveRegionsParams[], timeout = 15_000): Promise<Range[]> {
     const deadline = Date.now() + timeout;

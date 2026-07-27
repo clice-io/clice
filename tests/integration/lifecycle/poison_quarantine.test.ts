@@ -7,7 +7,7 @@
 
 import type * as proto from "vscode-languageserver-protocol";
 import { sleep } from "@clice/tools/client";
-import { expect, test } from "../../fixtures.ts";
+import { expect, test } from "../fixtures.ts";
 
 function poison(n: number): string {
     return `int add(int a, int b) { return a + b; }\n// edit ${n}\n#pragma clang __debug crash\n`;

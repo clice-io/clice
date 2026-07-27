@@ -3,8 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "vitest run",
-    "snap": "vitest run --config vitest.snap.config.ts",
+    "test": "vitest run --config integration/vitest.config.ts",
+    "snap": "vitest run --config snap/vitest.config.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "check": "npm run typecheck && npm run lint"

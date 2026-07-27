@@ -6,7 +6,7 @@ description: How to write clice integration tests (TypeScript/vitest) — fixtur
 # Writing clice integration tests
 
 The suite is TypeScript on vitest. Harness = the `@clice/tools` workspace
-package (`tools/`); vitest glue = `tests/fixtures.ts`. Tests live in
+package (`tools/`, session machinery in `tools/client/session.ts`); each suite binds it in its own fixture file (`tests/integration/fixtures.ts`, `tests/snap/fixtures.ts`). Tests live in
 `tests/integration/<area>/*.test.ts`; tests of the tooling itself in
 `tests/tools/`. Run: `cd tests && CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/clice npx vitest run <file>`;
 gates: `npm run check` at the repo root (tsc strict + ESLint, zero tolerance).
@@ -17,7 +17,7 @@ gates: `npm run check` at the repo root (tsc strict + ESLint, zero tolerance).
    form — zero boilerplate, teardown fully automatic.
 
    ```ts
-   import { cliceTest, expect } from "../../fixtures.ts";
+   import { cliceTest, expect } from "../fixtures.ts";
    const test = cliceTest("document_links");
 
    test("links with pch", async ({ client, workspace }) => {
@@ -32,7 +32,7 @@ gates: `npm run check` at the repo root (tsc strict + ESLint, zero tolerance).
    gate, directory removal); never write try/finally cleanup.
 
    ```ts
-   import { expect, test } from "../../fixtures.ts";
+   import { expect, test } from "../fixtures.ts";
 
    test("rebuild after restart", async ({ session }) => {
        const ws = session.tmpdir();              // auto-removed Workspace

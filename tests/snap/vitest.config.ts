@@ -8,7 +8,7 @@ import { defineConfig } from "vitest/config";
 /// maxConcurrency — not file parallelism — is the throttle.
 export default defineConfig({
     test: {
-        include: ["snap.test.ts"],
+        include: ["snap/**/*.test.ts"],
         pool: "forks",
         maxConcurrency: Math.max(1, os.availableParallelism()),
         testTimeout: 120_000,

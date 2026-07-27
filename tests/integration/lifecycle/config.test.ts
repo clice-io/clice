@@ -7,7 +7,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as proto from "vscode-languageserver-protocol";
-import { expect, test } from "../../fixtures.ts";
+import { expect, test } from "../fixtures.ts";
 
 function messageText(d: proto.Diagnostic): string {
     return typeof d.message === "string" ? d.message : d.message.value;

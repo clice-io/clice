@@ -122,12 +122,11 @@ export function generateTestDataCDBs(dataDir: string = DATA_DIR): void {
         }
     }
 
-    // Snapshot fixture corpora still living under tests/data, shared with
-    // the unit snapshot glob tests. -std matches the unit side's
-    // compile_file default (c++20) so both layers compile each fixture
-    // identically. Keep in sync with FEATURES in
-    // tests/integration/features/snapshots.test.ts (document_links has its
-    // own block above; migrated corpora live in tests/snap).
+    // Legacy snapshot corpora still living under tests/data (consumed by
+    // the unit snapshot glob and the snap suite's legacy wire driver).
+    // -std matches the unit side's compile_file default (c++20) so both
+    // layers compile each fixture identically. Migrated corpora live in
+    // tests/snap with their own generator (tools/snap/standalone.ts).
     for (const corpus of ["document_symbol", "inlay_hint"]) {
         const corpusDir = path.join(dataDir, corpus);
         const sources = sourcesIn(corpusDir, true);
@@ -137,46 +136,5 @@ export function generateTestDataCDBs(dataDir: string = DATA_DIR): void {
                 sources.map((src) => entry(corpusDir, src, ["-std=c++20"])),
             );
         }
-    }
-
-    generateSnapCDBs();
-}
-
-/// CDBs for the tests/snap corpora. Both consumers read the same file:
-/// `clice inspect` finds it next to the fixtures and the wire suite
-/// initializes its workspace on the corpus directory, so the two paths
-/// cannot drift in compile flags.
-export function generateSnapCDBs(snapDir: string = SNAP_DIR): void {
-    if (!fs.existsSync(snapDir)) {
-        return;
-    }
-    for (const corpus of fs.readdirSync(snapDir)) {
-        const corpusDir = path.join(snapDir, corpus);
-        if (!fs.statSync(corpusDir).isDirectory()) {
-            continue;
-        }
-        const sources = fs
-            .readdirSync(corpusDir, { recursive: true, encoding: "utf8" })
-            .filter((name) => name.endsWith(".cpp"))
-            .sort()
-            .map((name) => path.join(corpusDir, name));
-        if (sources.length === 0) {
-            continue;
-        }
-        const target = path.join(corpusDir, "compile_commands.json");
-        const tmp = `${target}.tmp-${process.pid}`;
-        fs.writeFileSync(
-            tmp,
-            JSON.stringify(
-                sources.map((src) => ({
-                    directory: posix(corpusDir),
-                    file: posix(src),
-                    arguments: ["clang++", "-std=c++20", "-fsyntax-only", posix(src)],
-                })),
-                null,
-                2,
-            ),
-        );
-        fs.renameSync(tmp, target);
     }
 }

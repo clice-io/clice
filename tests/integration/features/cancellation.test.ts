@@ -2,7 +2,7 @@
 
 import * as proto from "vscode-languageserver-protocol";
 import { sleep, withTimeout, type CliceClient } from "@clice/tools/client";
-import { test, expect } from "../../fixtures.ts";
+import { test, expect } from "../fixtures.ts";
 
 // Two hundred thousand trivial declarations: slow to parse on any hardware,
 // cheap to abandon (the worker polls the stop flag per declaration).
