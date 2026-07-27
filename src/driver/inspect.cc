@@ -113,11 +113,14 @@ std::optional<std::string> find_cdb(llvm::StringRef start) {
         if(fs::exists(candidate)) {
             return std::string(candidate);
         }
+        // parent_path returns a prefix into dir's own buffer; truncate in
+        // place instead of assign, which trips the SmallVector
+        // self-reference assert in Debug LLVM.
         llvm::StringRef parent = path::parent_path(dir);
-        if(parent == dir) {
+        if(parent.size() == dir.size()) {
             break;
         }
-        dir.assign(parent);
+        dir.truncate(parent.size());
     }
     return std::nullopt;
 }
