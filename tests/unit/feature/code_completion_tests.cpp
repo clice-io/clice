@@ -1,9 +1,9 @@
 #include <algorithm>
 #include <vector>
 
-#include "test/annotation.h"
 #include "test/test.h"
 #include "feature/feature.h"
+#include "syntax/annotation.h"
 
 namespace clice::testing {
 

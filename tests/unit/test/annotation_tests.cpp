@@ -1,8 +1,8 @@
 #include <vector>
 
-#include "test/annotation.h"
 #include "test/snap_region.h"
 #include "test/test.h"
+#include "syntax/annotation.h"
 
 namespace clice::testing {
 namespace {

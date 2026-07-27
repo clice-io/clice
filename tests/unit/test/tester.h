@@ -5,13 +5,13 @@
 #include <string>
 #include <vector>
 
-#include "test/annotation.h"
 #include "test/test.h"
 #include "command/command.h"
 #include "command/toolchain.h"
 #include "compile/compilation.h"
 #include "feature/feature.h"
 #include "support/logging.h"
+#include "syntax/annotation.h"
 
 namespace clice::testing {
 

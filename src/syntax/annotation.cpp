@@ -1,4 +1,4 @@
-#include "test/annotation.h"
+#include "syntax/annotation.h"
 
 #include <cctype>
 
@@ -7,7 +7,7 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 
-namespace clice::testing {
+namespace clice {
 
 /// The annotation grammar reserves no ASCII character: the sigil is `§`
 /// (U+00A7) and range bodies are delimited by `⟦` / `⟧` (U+27E6 / U+27E7),
@@ -155,4 +155,4 @@ void AnnotatedSources::add_sources(llvm::StringRef content) {
     save_previous_file();
 }
 
-}  // namespace clice::testing
+}  // namespace clice

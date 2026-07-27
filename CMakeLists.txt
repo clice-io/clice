@@ -249,7 +249,6 @@ if(CLICE_ENABLE_TEST)
         "${PROJECT_SOURCE_DIR}/tests/unit/*/*_tests.cpp"
     )
     set(CLICE_TEST_SUPPORT_SOURCES
-        "${PROJECT_SOURCE_DIR}/tests/unit/test/annotation.cpp"
         "${PROJECT_SOURCE_DIR}/tests/unit/test/tester.cpp"
     )
 
