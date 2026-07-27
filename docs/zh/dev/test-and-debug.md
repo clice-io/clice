@@ -43,8 +43,7 @@ CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/clice npm test
 常用变体：
 
 ```bash
-npx vitest run integration/features/document_links.test.ts   # 单文件
-UPDATE_SNAPSHOTS=1 npm test    # 接受 wire 快照变更
+npx vitest run integration/server/memory_ownership.test.ts   # 单文件
 ```
 
 ### 冒烟测试
@@ -65,7 +64,7 @@ node tools/replay.ts tests/smoke/*.jsonl \
 
 ### 快照测试
 
-Feature 快照语料位于 `tests/snap/<feature>/`，源文件与快照并排存放。standalone 套件（`tests/snap.test.ts`，驱动库在 `tools/snap.ts`）为每个 fixture 起一个 `clice inspect` 进程——不经过 server——并固定渲染结果；wire 层套件（属于集成测试）把同一批 fixture 通过真实 server 回放。
+Feature 快照语料位于 `tests/snap/<feature>/`，源文件与快照并排存放。snap 套件（`tests/snap.test.ts`，领域逻辑在 `tools/snap/`）从两条路径固定每个 fixture：standalone（每个 fixture 一个 `clice inspect` 进程，不经过 server）与 wire（通过真实 server 回放）。集成套件不参与任何快照。
 
 ```bash
 pixi run snap-test          # 默认 RelWithDebInfo
@@ -81,7 +80,7 @@ CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/clice npm run snap
 
 fixture 默认是 `snap: shared`：standalone 与 wire 两路结果必须渲染成逐字节一致的同一份 `<name>.snap.yml`。两路确有合理差异的 fixture 在 `///` 文档头部声明 `- snap: separate`（并用 `// snap:` 注释说明原因），wire 结果单独固定在 `<name>.wire.snap.yml`。两路分歧属于明确错误（尚不支持）的，声明 `- snap: skip`：两个套件都跳过该 fixture，且在两路一致之前不保留任何快照。
 
-更新快照（`UPDATE_SNAPSHOTS=1`）时先跑 snap 套件再跑集成套件：共享快照内容由 standalone 一侧生成。如果集成套件报告共享快照不匹配，那是 server 管线与直接调用 feature 之间的真实分歧——应当排查，而不是重新生成把它盖掉。
+`UPDATE_SNAPSHOTS=1` 一次跑完即可完成全部更新：standalone 测试先执行并拥有共享快照内容；wire 一侧只能更新 `.wire.snap.yml` 变体。wire 侧报告共享快照不匹配 = server 管线与直接调用 feature 之间的真实分歧——应当排查，而不是重新生成把它盖掉。
 
 ### 运行全部测试
 

@@ -1,5 +1,5 @@
 /// Tests for the snapshot format, layouts and the URI validator
-/// (tools/snapshot/snapshot.ts).
+/// (tools/snap/snapshot.ts).
 
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -13,7 +13,7 @@ import {
     parseSnap,
     SnapshotContext,
     yamlStr,
-} from "@clice/tools/snapshot";
+} from "@clice/tools/snap/snapshot";
 
 test("snap format round trip", () => {
     const text = formatSnap("f.cpp", "body\n", "2026-01-01");

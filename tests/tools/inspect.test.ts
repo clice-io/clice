@@ -1,4 +1,4 @@
-/// Tests for the inspect driver helpers (tools/snapshot/inspect.ts):
+/// Tests for the inspect driver helpers (tools/snap/inspect.ts):
 /// fixture metadata, the raw renderers, and the `clice inspect` modes the
 /// snap runner itself never takes.
 
@@ -7,8 +7,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { expect, test } from "vitest";
 import { SNAP_DIR } from "@clice/tools/compile-commands";
-import { parseFixtureMeta, renderRawSemanticTokens, runInspect } from "@clice/tools/inspect";
-import { decodeSemanticTokens } from "@clice/tools/presenters";
+import { parseFixtureMeta, renderRawSemanticTokens, runInspect } from "@clice/tools/snap/inspect";
+import { decodeSemanticTokens } from "@clice/tools/snap/presenters";
 import { cliceExecutable } from "../fixtures.ts";
 
 test("fixture meta parsing", () => {

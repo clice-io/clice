@@ -10,7 +10,7 @@ namespace clice {
 /// A source file with inline `§` annotations stripped out. The stripped
 /// text is the canonical coordinate space: every offset refers to the
 /// content as the compiler sees it. The parser is mirrored byte-for-byte
-/// by tools/snapshot/annotation.ts; grammar changes must land on both
+/// by tools/snap/annotation.ts; grammar changes must land on both
 /// sides.
 struct AnnotatedSource {
     std::string content;

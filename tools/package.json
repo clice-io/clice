@@ -6,13 +6,14 @@
   "exports": {
     "./client": "./client/client.ts",
     "./workspace": "./client/workspace.ts",
-    "./snapshot": "./snapshot/snapshot.ts",
-    "./annotation": "./snapshot/annotation.ts",
-    "./inspect": "./snapshot/inspect.ts",
-    "./presenters": "./snapshot/presenters.ts",
+    "./snap/annotation": "./snap/annotation.ts",
+    "./snap/snapshot": "./snap/snapshot.ts",
+    "./snap/inspect": "./snap/inspect.ts",
+    "./snap/presenters": "./snap/presenters.ts",
+    "./snap/standalone": "./snap/standalone.ts",
+    "./snap/wire": "./snap/wire.ts",
     "./protocol": "./protocol/protocol.ts",
-    "./compile-commands": "./compile_commands.ts",
-    "./snap": "./snap.ts"
+    "./compile-commands": "./compile_commands.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

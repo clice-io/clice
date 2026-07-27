@@ -12,8 +12,8 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { SNAP_DIR } from "./compile_commands.ts";
-import { parseAnnotations } from "./snapshot/annotation.ts";
+import { SNAP_DIR } from "../compile_commands.ts";
+import { parseAnnotations } from "./annotation.ts";
 import {
     parseFixtureMeta,
     renderRawFoldingRanges,
@@ -22,8 +22,8 @@ import {
     sha256,
     type FixtureMeta,
     type RawRenderer,
-} from "./snapshot/inspect.ts";
-import { SnapshotContext } from "./snapshot/snapshot.ts";
+} from "./inspect.ts";
+import { SnapshotContext } from "./snapshot.ts";
 
 const RENDERERS: Record<string, RawRenderer> = {
     folding_range: renderRawFoldingRanges,

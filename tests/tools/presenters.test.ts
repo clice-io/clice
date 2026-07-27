@@ -1,7 +1,7 @@
-/// Tests for the wire presenters (tools/snapshot/presenters.ts).
+/// Tests for the wire presenters (tools/snap/presenters.ts).
 
 import { expect, test } from "vitest";
-import { decodeSemanticTokens } from "@clice/tools/presenters";
+import { decodeSemanticTokens } from "@clice/tools/snap/presenters";
 
 test("semantic token decoding", () => {
     const legend = {

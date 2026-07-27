@@ -18,5 +18,5 @@
     "allowImportingTsExtensions": true,
     "skipLibCheck": true
   },
-  "include": ["client/**/*.ts", "snapshot/**/*.ts", "protocol/**/*.ts", "*.ts"]
+  "include": ["client/**/*.ts", "snap/**/*.ts", "protocol/**/*.ts", "*.ts"]
 }

@@ -1,18 +1,26 @@
-/// Standalone snap suite: thin vitest glue over the driver library in
-/// tools/snap.ts. No server involved — each fixture spawns one
-/// `clice inspect`; test.concurrent lets vitest own the parallelism
-/// (maxConcurrency in vitest.snap.config.ts).
+/// The snap suite: thin vitest glue over the snap domain in tools/snap/.
+/// Each corpus is pinned from both paths — standalone (`clice inspect`,
+/// one concurrent process per fixture, no server) and wire (replayed
+/// through a real server) — plus the not-yet-migrated legacy corpora,
+/// wire-only. The integration suite plays no part in snapshots.
 
-import { beforeAll, describe, expect, test } from "vitest";
-import { generateSnapCDBs } from "@clice/tools/compile-commands";
-import { checkSnapFixture, orphanSnapshots, snapCorpora } from "@clice/tools/snap";
-import { cliceExecutable } from "./fixtures.ts";
+import { beforeAll, describe } from "vitest";
+import { generateTestDataCDBs } from "@clice/tools/compile-commands";
+import { checkSnapFixture, orphanSnapshots, snapCorpora } from "@clice/tools/snap/standalone";
+import {
+    checkLegacyWireFixture,
+    checkWireSnapFixture,
+    legacyCorpora,
+    wirePresenter,
+} from "@clice/tools/snap/wire";
+import { cliceExecutable, expect, test } from "./fixtures.ts";
 
 beforeAll(() => {
-    generateSnapCDBs();
+    generateTestDataCDBs();
 });
 
 for (const corpus of snapCorpora()) {
+    wirePresenter(corpus.feature); // both drivers must cover every corpus
     describe(`snap/${corpus.feature}`, () => {
         for (const fixture of corpus.fixtures) {
             test.skipIf(!fixture.active).concurrent(
@@ -25,10 +33,31 @@ for (const corpus of snapCorpora()) {
                     ).resolves.toBeUndefined();
                 },
             );
+
+            test.skipIf(!fixture.active)(
+                `${corpus.feature}/${fixture.rel} (wire)`,
+                async ({ session }) => {
+                    await checkWireSnapFixture(
+                        await session(`snap/${corpus.feature}`),
+                        corpus,
+                        fixture,
+                    );
+                },
+            );
         }
 
         test("no orphan snapshots", () => {
             expect(orphanSnapshots(corpus)).toEqual([]);
         });
+    });
+}
+
+for (const corpus of legacyCorpora()) {
+    describe(`snap/${corpus.feature} (legacy wire)`, () => {
+        for (const rel of corpus.fixtures) {
+            test(`${corpus.feature}/${rel}`, async ({ session }) => {
+                await checkLegacyWireFixture(() => session(corpus.feature), corpus, rel);
+            });
+        }
     });
 }

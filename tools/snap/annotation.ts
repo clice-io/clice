@@ -1,4 +1,4 @@
-/// Annotated-source parser mirroring tests/unit/test/annotation.cpp.
+/// Annotated-source parser mirroring src/syntax/annotation.cpp.
 ///
 /// Fixture files may carry inline annotations: `§` / `§(name)` points and
 /// `§⟦...⟧` / `§(name)⟦...⟧` ranges (nesting allowed). The unit Tester strips

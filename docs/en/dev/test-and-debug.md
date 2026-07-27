@@ -43,8 +43,7 @@ CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/clice npm test
 Useful variants:
 
 ```bash
-npx vitest run integration/features/document_links.test.ts   # one file
-UPDATE_SNAPSHOTS=1 npm test    # accept wire-snapshot changes
+npx vitest run integration/server/memory_ownership.test.ts   # one file
 ```
 
 ### Smoke Tests
@@ -65,7 +64,7 @@ node tools/replay.ts tests/smoke/*.jsonl \
 
 ### Snap Tests
 
-Feature snapshot corpora under `tests/snap/<feature>/`, with sources and snapshots side by side. The standalone suite (`tests/snap.test.ts`, driver library in `tools/snap.ts`) spawns one `clice inspect` process per fixture — no server involved — and pins the rendered results; the wire-level suite (part of the integration tests) replays the same fixtures through a real server.
+Feature snapshot corpora under `tests/snap/<feature>/`, with sources and snapshots side by side. The snap suite (`tests/snap.test.ts`, domain logic in `tools/snap/`) pins every fixture from both paths: standalone (one `clice inspect` process per fixture, no server involved) and wire (replayed through a real server). The integration suite plays no part in snapshots.
 
 ```bash
 pixi run snap-test          # default RelWithDebInfo
@@ -81,7 +80,7 @@ CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/clice npm run snap
 
 By default a fixture is `snap: shared`: the standalone and wire results must render byte-identically and are pinned by one `<name>.snap.yml`. A fixture whose two paths legitimately differ declares `- snap: separate` in its `///` doc header (with a `// snap:` comment explaining why) and the wire reply is pinned in its own `<name>.wire.snap.yml`. A known-wrong divergence is declared as `- snap: skip`: both suites skip the fixture and it keeps no snapshot until the two paths agree.
 
-When updating snapshots (`UPDATE_SNAPSHOTS=1`), run the snap suite before the integration suite: shared snapshot bodies are owned by the standalone run. A shared snapshot mismatch reported by the integration suite is a real divergence between the server pipeline and the direct feature call — investigate it instead of regenerating over it.
+`UPDATE_SNAPSHOTS=1` updates everything in one run: standalone tests run first and own shared snapshot bodies; the wire side can only update `.wire.snap.yml` variants. A shared snapshot mismatch on the wire side is a real divergence between the server pipeline and the direct feature call — investigate it instead of regenerating over it.
 
 ### Run All Tests
 

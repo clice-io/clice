@@ -56,7 +56,7 @@ const ISSUE_TRACKERS: Record<string, string> = {
     vscode: "https://github.com/microsoft/vscode/issues/",
 };
 
-// `snap` is consumed by the snapshot suites (tools/snapshot/inspect.ts),
+// `snap` is consumed by the snapshot suites (tools/snap/inspect.ts),
 // not rendered into docs.
 const KNOWN_KEYS: readonly string[] = ["status", "issues", "order", "snap"];
 const VALID_STATUS: readonly string[] = ["supported", "partial", "unsupported"];

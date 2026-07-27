@@ -55,13 +55,15 @@ gates: `npm run check` at the repo root (tsc strict + ESLint, zero tolerance).
    explicitly), `drainStderr: false` (backpressure tests), `args`,
    `socketPort`.
 
-3. **Wire snapshot tests** (whole-document feature output): don't write
-   assertions at all — add a fixture to the corpus `tests/data/<feature>/`
-   and the driver `tests/integration/features/snapshots.test.ts` pins the
-   reply under `tests/snapshots/integration/`. Position-dependent fixtures
-   carry `§(name)` annotations (see `@clice/tools/annotation`). Accept
-   intentional changes with `UPDATE_SNAPSHOTS=1 npx vitest run ...` and
-   review the diff like code.
+3. **Snap tests** (whole-document feature output): don't write
+   assertions at all — add a fixture to the corpus `tests/snap/<feature>/`
+   (or a legacy corpus `tests/data/<feature>/`) and the snap suite
+   (`tests/snap.test.ts`, domain logic in `tools/snap/`) pins the reply
+   from both the standalone and the wire path. Position-dependent fixtures
+   carry `§(name)` annotations (see `@clice/tools/snap/annotation`).
+   Accept intentional changes with `UPDATE_SNAPSHOTS=1 npm run snap` and
+   review the diff like code; a shared-snapshot mismatch on the wire side
+   is a real divergence, not something to update over.
 
 ## API cheat sheet
 
@@ -94,7 +96,7 @@ deterministic waits (`poll("cdb")`, `armDiagnostics`) over sleeping.
 - **Never** `.skip` / `.fails` / `.todo`, never weaken an assertion to get
   green, never add retries around flakiness — fix the root cause.
 - URIs in server replies are validated strictly (see
-  `@clice/tools/snapshot` normalizeFileUri). Do not "normalize away" a
+  `@clice/tools/snap/snapshot` normalizeFileUri). Do not "normalize away" a
   malformed URI; a raw path or unencoded space is a server bug.
 - `allowAnomaly` requires the test to assert the expected anomaly itself.
 - Comments: `///` for doc comments, `//` inline; explain constraints the

@@ -1,8 +1,8 @@
-/// Tests for the TS annotation parser (tools/snapshot/annotation.ts), the
+/// Tests for the TS annotation parser (tools/snap/annotation.ts), the
 /// byte-identical twin of src/syntax/annotation.cpp.
 
 import { expect, test } from "vitest";
-import { parseAnnotations } from "@clice/tools/annotation";
+import { parseAnnotations } from "@clice/tools/snap/annotation";
 
 test("annotation passthrough", () => {
     const src = parseAnnotations("int x = 1;\n");
