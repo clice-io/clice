@@ -43,6 +43,13 @@ struct InspectOptions {
         required = false)
     <std::vector<std::string>> inputs;
 
+    DecoFlag(
+        names = {"--annotations"},
+        help =
+            "Treat inputs as annotated fixture sources: strip inline " "§-markers before compiling (the snap-test grammar)",
+        required = false)
+    annotations;
+
     DecoKVStyled(kota::deco::decl::KVStyle::JoinedOrSeparate,
                  names = {"--log-level", "--log-level="},
                  help = "Log level: trace, debug, info, warn, error, off",
@@ -123,11 +130,13 @@ std::vector<std::string> error_messages(CompilationUnit& unit) {
 /// server uses: a shared snapshot pins that the PCH split does not change
 /// feature results, so any divergence between the two paths surfaces as a
 /// snapshot mismatch instead of hiding in the preamble. Nothing is written
-/// to disk.
+/// to disk. `database` is the one nearest to the file, or null when no
+/// compile_commands.json exists above it.
 FileEntry process_file(const std::string& file,
                        llvm::StringRef feature,
-                       CompilationDatabase& database,
-                       Toolchain& toolchain) {
+                       CompilationDatabase* database,
+                       Toolchain& toolchain,
+                       bool annotations) {
     FileEntry entry;
 
     auto buffer = llvm::MemoryBuffer::getFile(file);
@@ -137,7 +146,15 @@ FileEntry process_file(const std::string& file,
         return entry;
     }
 
-    auto source = AnnotatedSource::from((*buffer)->getBuffer());
+    // Only fixture sources carry the §-annotation grammar; ordinary code
+    // may legitimately contain `§` (in strings or comments) and must reach
+    // the compiler verbatim.
+    AnnotatedSource source;
+    if(annotations) {
+        source = AnnotatedSource::from((*buffer)->getBuffer());
+    } else {
+        source.content = (*buffer)->getBuffer().str();
+    }
     entry.stripped_hash = sha256_hex(source.content);
 
     CompilationParams params;
@@ -145,8 +162,10 @@ FileEntry process_file(const std::string& file,
 
     /// Owns the fallback cc1 strings so params.arguments stays valid.
     std::vector<std::string> owned_args;
-    auto commands = database.lookup(file);
-    if(!commands.empty()) {
+    // lookup() synthesizes a default command for unknown files, so an
+    // explicit entry check decides between the CDB and our fallback.
+    if(database != nullptr && database->has_entry(file)) {
+        auto commands = database->lookup(file);
         auto& command = commands.front();
         toolchain.resolve_or_warn(command);
         params.arguments = command.to_argv();
@@ -236,22 +255,35 @@ int run_inspect(const InspectOptions& opts) {
         files.emplace_back(path::filename(abs_path).str(), std::string(abs_path));
     }
 
-    // Files without a CDB entry fall back to a per-file toolchain query in
-    // process_file; a missing database just means every file takes it.
-    CompilationDatabase database;
-    llvm::StringRef cdb_root = is_dir ? llvm::StringRef(abs_path) : path::parent_path(abs_path);
-    if(auto cdb = find_cdb(cdb_root)) {
-        if(!database.load(*cdb)) {
-            LOG_ERROR("failed to load {}", *cdb);
-            return 1;
+    // Each file resolves against the compile_commands.json nearest to it,
+    // so a directory spanning nested projects picks up every inner
+    // database. Files without a CDB entry fall back to a per-file
+    // toolchain query in process_file.
+    std::map<std::string, CompilationDatabase> databases;
+    auto database_for = [&](llvm::StringRef file) -> CompilationDatabase* {
+        auto cdb = find_cdb(path::parent_path(file));
+        if(!cdb) {
+            return nullptr;
         }
-    }
+        auto [it, inserted] = databases.try_emplace(*cdb);
+        if(inserted && !it->second.load(*cdb)) {
+            // Keep the empty entry so the failure is logged once; its files
+            // take the default-flags fallback.
+            LOG_WARN("failed to load {}", *cdb);
+        }
+        return &it->second;
+    };
 
     Toolchain toolchain;
     InspectOutput output;
     output.feature = feature.str();
     for(auto& [rel, abs]: files) {
-        output.files.emplace(rel, process_file(abs, feature, database, toolchain));
+        output.files.emplace(rel,
+                             process_file(abs,
+                                          feature,
+                                          database_for(abs),
+                                          toolchain,
+                                          static_cast<bool>(opts.annotations)));
     }
 
     auto json = kota::codec::json::to_string<InspectJsonConfig>(output);

@@ -23,8 +23,11 @@ export interface InspectOutput {
     files: Record<string, InspectFileEntry>;
 }
 
+/// Both helpers pass --annotations: they exist to drive fixture corpora,
+/// where inline §-markers are part of the grammar. Plain `clice inspect`
+/// (no flag) compiles sources verbatim.
 export function runInspect(executable: string, feature: string, path: string): InspectOutput {
-    const stdout = execFileSync(executable, ["inspect", feature, path], {
+    const stdout = execFileSync(executable, ["inspect", "--annotations", feature, path], {
         encoding: "utf8",
         maxBuffer: 64 * 1024 * 1024,
         timeout: 300_000,
@@ -38,11 +41,15 @@ export async function runInspectAsync(
     feature: string,
     path: string,
 ): Promise<InspectOutput> {
-    const { stdout } = await promisify(execFile)(executable, ["inspect", feature, path], {
-        encoding: "utf8",
-        maxBuffer: 64 * 1024 * 1024,
-        timeout: 300_000,
-    });
+    const { stdout } = await promisify(execFile)(
+        executable,
+        ["inspect", "--annotations", feature, path],
+        {
+            encoding: "utf8",
+            maxBuffer: 64 * 1024 * 1024,
+            timeout: 300_000,
+        },
+    );
     return JSON.parse(stdout) as InspectOutput;
 }
 
