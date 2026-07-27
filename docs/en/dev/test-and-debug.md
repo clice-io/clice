@@ -43,7 +43,7 @@ CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/clice npm test
 Useful variants:
 
 ```bash
-npx vitest run integration/server/memory_ownership.test.ts   # one file
+npx vitest run --config integration/vitest.config.ts integration/server/memory_ownership.test.ts   # one file
 ```
 
 ### Smoke Tests

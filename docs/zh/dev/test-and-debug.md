@@ -43,7 +43,7 @@ CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/clice npm test
 常用变体：
 
 ```bash
-npx vitest run integration/server/memory_ownership.test.ts   # 单文件
+npx vitest run --config integration/vitest.config.ts integration/server/memory_ownership.test.ts   # 单文件
 ```
 
 ### 冒烟测试

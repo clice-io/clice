@@ -8,7 +8,7 @@ description: How to write clice integration tests (TypeScript/vitest) — fixtur
 The suite is TypeScript on vitest. Harness = the `@clice/tools` workspace
 package (`tools/`, session machinery in `tools/client/session.ts`); each suite binds it in its own fixture file (`tests/integration/fixtures.ts`, `tests/snap/fixtures.ts`). Tests live in
 `tests/integration/<area>/*.test.ts`; tests of the tooling itself in
-`tests/tools/`. Run: `cd tests && CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/clice npx vitest run <file>`;
+`tests/tools/`. Run: `cd tests && CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/clice npx vitest run --config integration/vitest.config.ts <file>`;
 gates: `npm run check` at the repo root (tsc strict + ESLint, zero tolerance).
 
 ## Choosing a fixture form

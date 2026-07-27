@@ -188,6 +188,10 @@ FileEntry process_file(const std::string& file,
         std::vector<const char*> driver_args;
         if(type != types::TY_INVALID && types::isCXX(type)) {
             driver_args = {"clang++", "-std=c++20", "-fsyntax-only", file.c_str()};
+        } else if(type == types::TY_CHeader) {
+            // An ambiguous header is C++ by default, like clangd; -x forces
+            // TU semantics instead of a precompiled-header job.
+            driver_args = {"clang++", "-x", "c++", "-std=c++20", "-fsyntax-only", file.c_str()};
         } else {
             driver_args = {"clang", "-fsyntax-only", file.c_str()};
         }

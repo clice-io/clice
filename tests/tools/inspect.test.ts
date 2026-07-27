@@ -52,6 +52,20 @@ test("inspect single file without CDB", () => {
     }
 });
 
+test("inspect treats bare headers as C++ in the fallback", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "clice-inspect-"));
+    try {
+        // Namespaces are C++-only: an ambiguous .h must default to C++
+        // (clangd convention), not the C driver its extension suggests.
+        const file = path.join(tmp, "single.h");
+        fs.writeFileSync(file, "namespace demo {\ninline int one() {\n    return 1;\n}\n}\n");
+        const { files } = runInspect(cliceExecutable(), "folding_range", file);
+        expect(files["single.h"]?.error ?? null).toBeNull();
+    } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+    }
+});
+
 test("inspect keeps C sources C in the fallback", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "clice-inspect-"));
     try {

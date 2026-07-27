@@ -30,6 +30,9 @@ beforeAll(() => {
 for (const corpus of snapCorpora()) {
     wirePresenter(corpus.feature); // both drivers must cover every corpus
     describe(`snap/${corpus.feature}`, () => {
+        // All standalone cases register contiguously: vitest closes a
+        // concurrent batch at the first sequential test, so interleaving
+        // them with the wire cases would serialize the inspect processes.
         for (const fixture of corpus.fixtures) {
             test.skipIf(!fixture.active).concurrent(
                 `${corpus.feature}/${fixture.rel}`,
@@ -41,7 +44,9 @@ for (const corpus of snapCorpora()) {
                     ).resolves.toBeUndefined();
                 },
             );
+        }
 
+        for (const fixture of corpus.fixtures) {
             test.skipIf(!fixture.active)(
                 `${corpus.feature}/${fixture.rel} (wire)`,
                 async ({ session }) => {
