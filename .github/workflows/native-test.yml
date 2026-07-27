@@ -97,6 +97,10 @@ jobs:
         timeout-minutes: 5
         run: pixi run -e test-run smoke-test ${{ matrix.build_type }}
 
+      - name: Snap tests
+        timeout-minutes: 10
+        run: pixi run -e test-run snap-test ${{ matrix.build_type }}
+
       # Package the exact binary the suites above just validated. These
       # artifacts are what releases promote — there is no separate release
       # build.
