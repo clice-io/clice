@@ -32,6 +32,10 @@ test("fixture meta parsing", () => {
     expect(() => parseFixtureMeta("/// # T\n///\n/// - snap: shred\n", "f")).toThrow(
         "invalid snap mode",
     );
+    // A repeated key must not silently let the later value win.
+    expect(() =>
+        parseFixtureMeta("/// # T\n///\n/// - snap: shared\n/// - snap: skip\n", "f"),
+    ).toThrow("duplicate fixture meta key");
 });
 
 // The snap runner always passes single files with a CDB next to them; pin
@@ -95,6 +99,36 @@ test("inspect headers borrow the nearest TU command", () => {
         );
         const { files } = runInspect(cliceExecutable(), "folding_range", path.join(tmp, "lib.h"));
         expect(files["lib.h"]?.error ?? null).toBeNull();
+    } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+    }
+});
+
+test("inspect header donors are language compatible", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "clice-inspect-"));
+    try {
+        // The C entry comes first in the database; a C++ header must still
+        // pick the C++ TU as its donor (with that TU's define).
+        fs.writeFileSync(path.join(tmp, "main.c"), "int main(void) { return 0; }\n");
+        fs.writeFileSync(path.join(tmp, "app.cpp"), '#include "lib.hpp"\n');
+        fs.writeFileSync(
+            path.join(tmp, "lib.hpp"),
+            "#if !defined(NEED)\n#error missing project define\n#endif\nnamespace demo {\ninline int one() {\n    return NEED;\n}\n}\n",
+        );
+        const entry = (file: string, driver: string, extra: string[]) => ({
+            directory: tmp,
+            file: path.join(tmp, file),
+            arguments: [driver, ...extra, "-fsyntax-only", path.join(tmp, file)],
+        });
+        fs.writeFileSync(
+            path.join(tmp, "compile_commands.json"),
+            JSON.stringify([
+                entry("main.c", "clang", []),
+                entry("app.cpp", "clang++", ["-std=c++20", "-DNEED=1"]),
+            ]),
+        );
+        const { files } = runInspect(cliceExecutable(), "folding_range", path.join(tmp, "lib.hpp"));
+        expect(files["lib.hpp"]?.error ?? null).toBeNull();
     } finally {
         fs.rmSync(tmp, { recursive: true, force: true });
     }

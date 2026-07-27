@@ -94,6 +94,7 @@ export function parseFixtureMeta(content: string, filePath: string): FixtureMeta
     // bulleted `word:` lines (feature_docs renders it) — mirroring
     // parseFixture in tools/feature_docs.ts, they are not metadata.
     let inMeta = false;
+    const seen = new Set<string>();
     for (let line of content.split("\n")) {
         line = line.trim();
         if (!line.startsWith("///")) {
@@ -122,6 +123,12 @@ export function parseFixtureMeta(content: string, filePath: string): FixtureMeta
         if (!META_KEYS.includes(key)) {
             throw new Error(`${filePath}: unknown fixture meta key '${key}'`);
         }
+        // A repeated key (merge leftovers, copy/paste) must not silently
+        // let the later value win — it could flip a snap mode unnoticed.
+        if (seen.has(key)) {
+            throw new Error(`${filePath}: duplicate fixture meta key '${key}'`);
+        }
+        seen.add(key);
         if (key === "status") {
             if (value !== "supported" && value !== "partial" && value !== "unsupported") {
                 throw new Error(`${filePath}: invalid status '${value}'`);

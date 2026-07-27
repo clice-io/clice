@@ -147,17 +147,18 @@ export async function checkSnapFixture(
         );
     }
 
-    const snapshots = new SnapshotContext(corpus, { colocated: true });
     if (entry.error) {
-        // Diagnostics carry machine-dependent paths; pin only the stable
-        // marker and surface the details on the console.
-        console.error(`[snap] ${feature}/${fixture.rel}: ${entry.error}`);
-        for (const diag of entry.diagnostics ?? []) {
-            console.error(`[snap]   ${diag}`);
-        }
-        snapshots.check(fixture.rel, "COMPILE_ERROR");
-        return;
+        // An active fixture that does not compile is a failing test, never
+        // snapshot content: pinning a marker would let an update run
+        // silently accept a transient toolchain or compile failure.
+        const diagnostics = (entry.diagnostics ?? []).join("\n  ");
+        throw new Error(
+            `${feature}/${fixture.rel}: clice inspect failed (${entry.error})` +
+                (diagnostics ? `\n  ${diagnostics}` : ""),
+        );
     }
+
+    const snapshots = new SnapshotContext(corpus, { colocated: true });
     snapshots.check(fixture.rel, render(entry.result, stripped).join("\n"));
 }
 

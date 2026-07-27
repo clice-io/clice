@@ -170,6 +170,36 @@ FileEntry process_file(const std::string& file,
                             : types::lookupTypeForExtension(llvm::StringRef(ext).drop_front());
     bool is_header = type == types::TY_CHeader || type == types::TY_CXXHeader;
 
+    // A header without its own entry borrows the command of the nearest
+    // language-compatible translation unit in the database — the server
+    // resolves header contexts from host sources the same way, and generic
+    // default flags would drop the project's -I/-D/-std. Ranking: a C++
+    // donor beats a C one (a C++ header never takes a C command; an
+    // ambiguous .h prefers C++ but accepts C in a pure-C project), longest
+    // common path prefix breaks ties.
+    llvm::StringRef donor;
+    if(is_header && database != nullptr && !database->has_entry(file)) {
+        std::pair<int, std::size_t> best{-1, 0};
+        for(auto& candidate: database->get_entries()) {
+            llvm::StringRef donor_path = database->resolve_path(candidate.file);
+            auto donor_ext = path::extension(donor_path);
+            auto donor_type = donor_ext.empty()
+                                  ? types::TY_INVALID
+                                  : types::lookupTypeForExtension(donor_ext.drop_front());
+            bool donor_cxx = donor_type != types::TY_INVALID && types::isCXX(donor_type);
+            if(type == types::TY_CXXHeader && !donor_cxx) {
+                continue;
+            }
+            auto [it, _] = std::ranges::mismatch(donor_path, file);
+            std::pair<int, std::size_t> score{donor_cxx ? 1 : 0,
+                                              static_cast<std::size_t>(it - donor_path.begin())};
+            if(donor.empty() || score > best) {
+                best = score;
+                donor = donor_path;
+            }
+        }
+    }
+
     /// Owns the fallback cc1 strings so params.arguments stays valid.
     std::vector<std::string> owned_args;
     // lookup() synthesizes a default command for unknown files, so an
@@ -180,22 +210,7 @@ FileEntry process_file(const std::string& file,
         toolchain.resolve_or_warn(command);
         params.arguments = command.to_argv();
         params.directory = command.resolved.directory.str();
-    } else if(is_header && database != nullptr && !database->get_entries().empty()) {
-        // A header without its own entry borrows the command of the
-        // nearest translation unit in the database — the server resolves
-        // header contexts from host sources the same way, and generic
-        // default flags would drop the project's -I/-D/-std.
-        llvm::StringRef donor;
-        std::size_t best = 0;
-        for(auto& candidate: database->get_entries()) {
-            llvm::StringRef donor_path = database->resolve_path(candidate.file);
-            auto [it, _] = std::ranges::mismatch(donor_path, file);
-            auto common = static_cast<std::size_t>(it - donor_path.begin());
-            if(donor.empty() || common > best) {
-                best = common;
-                donor = donor_path;
-            }
-        }
+    } else if(!donor.empty()) {
         auto commands = database->lookup(donor);
         auto& command = commands.front();
         toolchain.resolve_or_warn(command);
