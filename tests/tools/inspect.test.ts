@@ -52,6 +52,23 @@ test("inspect single file without CDB", () => {
     }
 });
 
+test("inspect keeps C sources C in the fallback", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "clice-inspect-"));
+    try {
+        // _Generic is C-only: this compiles iff the fallback picks a C
+        // driver instead of forcing clang++ onto every extension.
+        const file = path.join(tmp, "single.c");
+        fs.writeFileSync(
+            file,
+            "int pick(int x) {\n    return _Generic(x, int: 1, default: 0);\n}\n",
+        );
+        const { files } = runInspect(cliceExecutable(), "folding_range", file);
+        expect(files["single.c"]?.error ?? null).toBeNull();
+    } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+    }
+});
+
 test("multiline token split matches wire decode", () => {
     // A token spanning a blank line: the server splits it per line and the
     // blank interior piece still encodes (its newline counts), so both

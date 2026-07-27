@@ -13,6 +13,7 @@
 
 #include "kota/codec/json/json.h"
 #include "llvm/Support/SHA256.h"
+#include "clang/Driver/Types.h"
 
 namespace kota::codec {
 
@@ -173,12 +174,20 @@ FileEntry process_file(const std::string& file,
     } else {
         // No CDB entry for this file: query the toolchain with default
         // flags. Uncached, but this path only runs for files outside any
-        // compilation database.
+        // compilation database. C++ inputs pin the corpus-aligned c++20;
+        // other C-family languages keep their driver defaults so a .c or
+        // .m file is not misparsed as C++.
         LOG_WARN("no compile command for {}; using default flags", file);
-        std::vector<const char*> driver_args = {"clang++",
-                                                "-std=c++20",
-                                                "-fsyntax-only",
-                                                file.c_str()};
+        namespace types = clang::driver::types;
+        auto ext = path::extension(file);
+        auto type = ext.empty() ? types::TY_INVALID
+                                : types::lookupTypeForExtension(llvm::StringRef(ext).drop_front());
+        std::vector<const char*> driver_args;
+        if(type != types::TY_INVALID && types::isCXX(type)) {
+            driver_args = {"clang++", "-std=c++20", "-fsyntax-only", file.c_str()};
+        } else {
+            driver_args = {"clang", "-fsyntax-only", file.c_str()};
+        }
         auto cc1 = Toolchain::query(driver_args, file);
         if(!cc1) {
             entry.error = "toolchain_error";
