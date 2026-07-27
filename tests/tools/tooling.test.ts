@@ -7,7 +7,9 @@ import * as path from "node:path";
 import { expect, test } from "vitest";
 import { URI } from "vscode-uri";
 import { parseAnnotations } from "@clice/tools/annotation";
-import { parseFixtureMeta, renderRawSemanticTokens } from "@clice/tools/inspect";
+import { SNAP_DIR } from "@clice/tools/compile-commands";
+import { parseFixtureMeta, renderRawSemanticTokens, runInspect } from "@clice/tools/inspect";
+import { cliceExecutable } from "../fixtures.ts";
 import { decodeSemanticTokens } from "@clice/tools/presenters";
 import {
     fixtureFrontmatter,
@@ -178,6 +180,24 @@ test("fixture frontmatter", () => {
     expect(fixtureFrontmatter(header, "status")).toBe("unsupported");
     expect(fixtureFrontmatter(header, "missing")).toBe("");
     expect(fixtureFrontmatter("int x;\n", "status")).toBe("");
+});
+
+// The snap runner always passes single files with a CDB next to them; pin
+// the other documented inspect modes — a lone file with the default-flags
+// fallback when no compile_commands.json exists anywhere above the input.
+test("inspect single file without CDB", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "clice-inspect-"));
+    try {
+        const file = path.join(tmp, "single.cpp");
+        fs.copyFileSync(path.join(SNAP_DIR, "folding_range", "block_folding.cpp"), file);
+        const { files } = runInspect(cliceExecutable(), "folding_range", file);
+        const entry = files["single.cpp"];
+        expect(entry?.error ?? null).toBeNull();
+        const result = entry?.result;
+        expect(Array.isArray(result) && result.length > 0).toBe(true);
+    } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+    }
 });
 
 test("multiline token split matches wire decode", () => {

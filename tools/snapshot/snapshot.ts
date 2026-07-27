@@ -195,13 +195,14 @@ function diffLines(oldBody: string, newBody: string): string {
 /// `<input>.snap.yml` (source extension replaced) next to the source
 /// itself, with an optional variant infix: `<input>.wire.snap.yml`.
 export class SnapshotContext {
+    readonly directory: string;
     readonly update: boolean;
     readonly colocated: boolean;
 
-    constructor(
-        readonly directory: string,
-        options: { update?: boolean; colocated?: boolean } = {},
-    ) {
+    // Plain field assignments: parameter properties are not erasable
+    // syntax, and tools/ scripts run under bare `node` in strip-only mode.
+    constructor(directory: string, options: { update?: boolean; colocated?: boolean } = {}) {
+        this.directory = directory;
         this.update = options.update ?? process.env["UPDATE_SNAPSHOTS"] === "1";
         this.colocated = options.colocated ?? false;
     }

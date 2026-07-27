@@ -4,7 +4,6 @@
   "type": "module",
   "scripts": {
     "test": "vitest run",
-    "snap": "vitest run --config vitest.snap.config.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "check": "npm run typecheck && npm run lint"

@@ -6,8 +6,9 @@
 /// here independently, so a `snap: shared` fixture pins both paths against
 /// one file and a divergence fails the suite instead of hiding.
 
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import * as crypto from "node:crypto";
+import { promisify } from "node:util";
 import { yamlStr } from "./snapshot.ts";
 
 export interface InspectFileEntry {
@@ -24,6 +25,20 @@ export interface InspectOutput {
 
 export function runInspect(executable: string, feature: string, path: string): InspectOutput {
     const stdout = execFileSync(executable, ["inspect", feature, path], {
+        encoding: "utf8",
+        maxBuffer: 64 * 1024 * 1024,
+        timeout: 300_000,
+    });
+    return JSON.parse(stdout) as InspectOutput;
+}
+
+/// Async variant for callers that fan inspect processes out in parallel.
+export async function runInspectAsync(
+    executable: string,
+    feature: string,
+    path: string,
+): Promise<InspectOutput> {
+    const { stdout } = await promisify(execFile)(executable, ["inspect", feature, path], {
         encoding: "utf8",
         maxBuffer: 64 * 1024 * 1024,
         timeout: 300_000,
@@ -117,8 +132,12 @@ export function parseFixtureMeta(content: string, filePath: string): FixtureMeta
 /// line, matching the server's default position encoding.
 export class OffsetConverter {
     private lineStarts: number[] = [0];
+    private data: Buffer;
 
-    constructor(private data: Buffer) {
+    // Plain field assignment: parameter properties are not erasable syntax,
+    // and tools/ scripts run under bare `node` in strip-only TS mode.
+    constructor(data: Buffer) {
+        this.data = data;
         for (let i = 0; i < data.length; i++) {
             if (data[i] === 0x0a) {
                 this.lineStarts.push(i + 1);

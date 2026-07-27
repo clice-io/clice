@@ -13,7 +13,7 @@ Filtering specific tests:
 - Unit tests: `pixi run unit-test [type] --test-filter=SuiteName.CaseName`
 - Integration tests: `cd tests && CLICE_EXECUTABLE=../build/[type]/bin/clice npx vitest run integration/features/some.test.ts`
 - Smoke tests: `pixi run node tools/replay.ts tests/smoke/specific.jsonl --clice=./build/[type]/bin/clice`
-- Snap tests: `cd tests && CLICE_EXECUTABLE=../build/[type]/bin/clice npm run snap` (add `UPDATE_SNAPSHOTS=1` to accept changes; run before integration when updating shared snapshots)
+- Snap tests: `node tools/snap.ts --clice=./build/[type]/bin/clice` (add `--update` to accept changes; run before integration when updating shared snapshots)
 
 Example usage:
 
