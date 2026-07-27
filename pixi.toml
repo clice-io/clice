@@ -203,12 +203,23 @@ node tools/replay.ts tests/smoke/*.jsonl \
     --clice=./build/{{ type }}/bin/clice
 """
 
+# Standalone feature snapshots: `clice inspect` over tests/snap corpora,
+# rendered and pinned by the TS suite (no server involved).
+[feature.test.tasks.snap-test]
+args = [{ arg = "type", default = "RelWithDebInfo" }]
+cmd = """
+npm run check && \
+CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/clice npm run snap --workspace tests
+"""
+depends-on = ["install-tests"]
+
 [feature.test.tasks.test]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 depends-on = [
     { task = "unit-test", args = ["{{ type }}"] },
     { task = "integration-test", args = ["{{ type }}"] },
     { task = "smoke-test", args = ["{{ type }}"] },
+    { task = "snap-test", args = ["{{ type }}"] },
 ]
 
 # ============================================================================== #

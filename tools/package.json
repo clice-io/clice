@@ -8,6 +8,7 @@
     "./workspace": "./client/workspace.ts",
     "./snapshot": "./snapshot/snapshot.ts",
     "./annotation": "./snapshot/annotation.ts",
+    "./inspect": "./snapshot/inspect.ts",
     "./presenters": "./snapshot/presenters.ts",
     "./protocol": "./protocol/protocol.ts",
     "./compile-commands": "./compile_commands.ts"

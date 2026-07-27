@@ -130,7 +130,8 @@ export interface SessionOptions extends InitializeOptions, StartOptions {
 /// write try/finally cleanup. A client already shut down explicitly via
 /// client.shutdown() (restart tests) is skipped by the teardown.
 export interface SessionFactory {
-    /// Spawn a server initialized on tests/data/<name>. Acquire sessions for
+    /// Spawn a server initialized on tests/data/<name>, or tests/snap/<feature>
+    /// for names of the form "snap/<feature>". Acquire sessions for
     /// multiple workspaces in alphabetical order to avoid lock cycles.
     (name: string, options?: SessionOptions): Promise<Session>;
     /// Spawn a bare server with no workspace/initialize.
@@ -222,7 +223,13 @@ export const test = base.extend<{ session: SessionFactory }>({
         };
 
         const factory = async (name: string, options: SessionOptions = {}): Promise<Session> => {
-            const workspace = new Workspace(path.join(DATA_DIR, name));
+            // Names resolve under tests/data/ except the snapshot corpora,
+            // addressed explicitly as "snap/<feature>" (tests/snap/).
+            const workspace = new Workspace(
+                name.startsWith("snap/")
+                    ? path.join(path.dirname(DATA_DIR), name)
+                    : path.join(DATA_DIR, name),
+            );
             releases.push(await acquireWorkspaceLock(name));
             prepareWorkspace(workspace);
             const client =

@@ -1,7 +1,0 @@
----
-source: test_snapshots.py
-created_at: 2026-07-26
-input_file: refinements/collapsed_text.cpp
----
-- { range: "12:14-15:1", kind: struct, collapsed_text: "{...}" }
-- { range: "19:36-21:1", kind: functionBody, collapsed_text: "{...}" }

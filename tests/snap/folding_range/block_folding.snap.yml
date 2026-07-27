@@ -1,0 +1,11 @@
+---
+created_at: 2026-07-27
+input_file: block_folding.cpp
+---
+- { range: "7:19-36:1", kind: namespace, collapsed_text: "{...}" }
+- { range: "9:17-13:1", kind: enum, collapsed_text: "{...}" }
+- { range: "15:13-18:1", kind: struct, collapsed_text: "{...}" }
+- { range: "20:12-23:1", kind: union, collapsed_text: "{...}" }
+- { range: "25:13-34:1", kind: class, collapsed_text: "{...}" }
+- { range: "28:15-33:5", kind: functionBody, collapsed_text: "{...}" }
+- { range: "29:36-31:9", kind: compoundStmt, collapsed_text: "{...}" }

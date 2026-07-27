@@ -1,0 +1,6 @@
+---
+created_at: 2026-07-27
+input_file: collapsed_text.cpp
+---
+- { range: "14:14-17:1", kind: struct, collapsed_text: "{...}" }
+- { range: "21:36-23:1", kind: functionBody, collapsed_text: "{...}" }

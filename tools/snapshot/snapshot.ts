@@ -1,10 +1,9 @@
-/// Snapshot assertions for integration tests, mirroring zest's semantics.
+/// Snapshot assertions for the TS test suites, mirroring zest's semantics.
 ///
-/// File format, layout and update workflow follow the C++ side
-/// (kota::zest snapshot support) so both layers share one muscle memory:
+/// File format and update workflow follow the C++ side (kota::zest
+/// snapshot support) so both layers share one muscle memory:
 ///
 ///     ---
-///     source: snapshots.test.ts
 ///     created_at: 2026-07-26
 ///     input_file: fold_kinds/block_folding.cpp
 ///     ---
@@ -159,19 +158,14 @@ export function parseSnap(text: string): Snapshot | null {
     return null;
 }
 
-export function formatSnap(
-    source: string,
-    inputFile: string,
-    body: string,
-    createdAt = "",
-): string {
+export function formatSnap(inputFile: string, body: string, createdAt = ""): string {
     if (!createdAt) {
         createdAt = new Date().toISOString().slice(0, 10);
     }
     if (body && !body.endsWith("\n")) {
         body += "\n";
     }
-    return `---\nsource: ${source}\ncreated_at: ${createdAt}\ninput_file: ${inputFile}\n---\n${body}`;
+    return `---\ncreated_at: ${createdAt}\ninput_file: ${inputFile}\n---\n${body}`;
 }
 
 function diffLines(oldBody: string, newBody: string): string {
@@ -195,20 +189,38 @@ function diffLines(oldBody: string, newBody: string): string {
 }
 
 /// One feature's snapshot directory plus the run-wide update flag.
+///
+/// Legacy layout stores `<input>.cpp.snap.yml` under a snapshot tree that
+/// mirrors the corpus; the colocated layout used by tests/snap/ stores
+/// `<input>.snap.yml` (source extension replaced) next to the source
+/// itself, with an optional variant infix: `<input>.wire.snap.yml`.
 export class SnapshotContext {
+    readonly update: boolean;
+    readonly colocated: boolean;
+
     constructor(
         readonly directory: string,
-        readonly update: boolean = process.env["UPDATE_SNAPSHOTS"] === "1",
-        readonly source = "snapshots.test.ts",
-    ) {}
+        options: { update?: boolean; colocated?: boolean } = {},
+    ) {
+        this.update = options.update ?? process.env["UPDATE_SNAPSHOTS"] === "1";
+        this.colocated = options.colocated ?? false;
+    }
 
-    check(inputFile: string, body: string): void {
+    snapPath(inputFile: string, variant = ""): string {
+        const suffix = (variant ? `.${variant}` : "") + ".snap.yml";
+        const name = this.colocated
+            ? inputFile.replace(/\.(cpp|cc|cxx)$/, "") + suffix
+            : inputFile + suffix;
+        return path.join(this.directory, name);
+    }
+
+    check(inputFile: string, body: string, variant = ""): void {
         body = body.replaceAll("\r\n", "\n");
         if (body && !body.endsWith("\n")) {
             body += "\n";
         }
 
-        const snapPath = path.join(this.directory, `${inputFile}.snap.yml`);
+        const snapPath = this.snapPath(inputFile, variant);
         const newPath = `${snapPath}.new`;
 
         const existing = fs.existsSync(snapPath)
@@ -216,7 +228,7 @@ export class SnapshotContext {
             : null;
         if (existing === null) {
             fs.mkdirSync(path.dirname(snapPath), { recursive: true });
-            fs.writeFileSync(snapPath, formatSnap(this.source, inputFile, body));
+            fs.writeFileSync(snapPath, formatSnap(inputFile, body));
             console.log(`[snapshot] created ${snapPath}`);
             return;
         }
@@ -227,16 +239,13 @@ export class SnapshotContext {
         }
 
         if (this.update) {
-            fs.writeFileSync(
-                snapPath,
-                formatSnap(this.source, inputFile, body, existing.createdAt),
-            );
+            fs.writeFileSync(snapPath, formatSnap(inputFile, body, existing.createdAt));
             fs.rmSync(newPath, { force: true });
             console.log(`[snapshot] updated ${snapPath}`);
             return;
         }
 
-        fs.writeFileSync(newPath, formatSnap(this.source, inputFile, body));
+        fs.writeFileSync(newPath, formatSnap(inputFile, body));
         throw new Error(
             `snapshot mismatch: ${snapPath}\n` +
                 `new result written to ${newPath}\n` +

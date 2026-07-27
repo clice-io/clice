@@ -7,7 +7,9 @@
 ///
 /// Fixture doc header:
 ///
-///     /// # Block folding — functions, classes, ...
+///     /// # Fold Kinds
+///     ///
+///     /// ## Block folding — functions, classes, ...
 ///     ///
 ///     /// - status: supported
 ///     /// - issues: clangd#1455, vscode#70794
@@ -16,20 +18,19 @@
 ///     /// Optional markdown description after a bare `///` separator.
 ///
 /// A file is a doc item iff its first line (after stripping `/// `) starts
-/// with `# ` — the h1 text is the item title. Anything else is a
-/// supplementary edge-case test, excluded from docs. A blank `///` separates
-/// the title from a metadata list of `/// - key: value` lines; the known keys
-/// are `status` (required; `supported`, `partial` or `unsupported`), `issues`
-/// (optional) and `order` (optional integer). A bare `///` then separates the
-/// metadata from an optional markdown description; everything after the last
-/// `///` line (trimmed of blank lines) is the example code.
-///
-/// The section a doc item belongs to comes from its directory: the fixture's
-/// path relative to tests/data/<feature>/ must be exactly one subdirectory
-/// deep (e.g. fold_kinds/block_folding.cpp → section "fold_kinds"), and the
-/// generated regions are keyed by that directory name
-/// (`<!-- BEGIN GENERATED ITEMS: fold_kinds -->`). A doc-item fixture at the
-/// top level is a problem; supplementary fixtures may live anywhere.
+/// with `# `. Anything else is a supplementary edge-case test, excluded
+/// from docs. The heading hierarchy is plain markdown: with an `## item
+/// title` under the h1, the h1 names the doc section the item belongs to —
+/// matched verbatim against the doc page's generated-region key
+/// (`<!-- BEGIN GENERATED ITEMS: Fold Kinds -->`); an h1 alone is the item
+/// title, with the fixture's subdirectory as the legacy section fallback.
+/// A blank `///` separates the headings from a metadata list of
+/// `/// - key: value` lines; the known keys are `status` (required;
+/// `supported`, `partial` or `unsupported`), `issues` (optional), `order`
+/// (optional integer) and `snap` (snapshot suites, not rendered). A bare
+/// `///` then separates the metadata from an optional markdown
+/// description; everything after the last `///` line (trimmed of blank
+/// lines) is the example code.
 ///
 /// `partial` items render unchecked with a _(partial)_ marker but are still
 /// compiled and snapshotted, so the snapshot records the current partial
@@ -55,7 +56,9 @@ const ISSUE_TRACKERS: Record<string, string> = {
     vscode: "https://github.com/microsoft/vscode/issues/",
 };
 
-const KNOWN_KEYS: readonly string[] = ["status", "issues", "order"];
+// `snap` is consumed by the snapshot suites (tools/snapshot/inspect.ts),
+// not rendered into docs.
+const KNOWN_KEYS: readonly string[] = ["status", "issues", "order", "snap"];
 const VALID_STATUS: readonly string[] = ["supported", "partial", "unsupported"];
 
 // Markers must occupy their own unindented line, so marker text embedded in
@@ -137,33 +140,48 @@ function parseFixture(filePath: string, featureDir: string, problems: string[]):
 
     const first = comment(0);
     if (!first?.startsWith("# ")) {
-        // Not an h1 title line: supplementary fixture, not a doc item.
+        // Not an h1 line: supplementary fixture, not a doc item.
         return null;
     }
-    const title = first.slice(2).trim();
-    if (!title) {
-        problems.push(`${filePath}: empty title`);
-    }
 
-    // Section is the fixture's immediate subdirectory under the feature dir.
     const relParts = path.relative(featureDir, filePath).split(path.sep);
-    const section = relParts.length >= 2 ? (relParts[0] ?? "") : "";
-    if (relParts.length === 1) {
+    if (relParts.length > 2) {
         problems.push(
-            `${filePath}: doc-item fixture must live in a section subdirectory, ` +
-                `not at the top level of ${path.basename(featureDir)}`,
-        );
-    } else if (relParts.length > 2) {
-        problems.push(
-            `${filePath}: doc-item fixture must be exactly one subdirectory deep ` +
+            `${filePath}: doc-item fixture must be at most one subdirectory deep ` +
                 `(found '${relParts.join("/")}')`,
         );
     }
 
-    // A blank `///` separates the title from the metadata list.
+    // The heading hierarchy is plain markdown: an `## item title` after the
+    // h1 makes the h1 the section (matched verbatim against the doc page's
+    // `<!-- BEGIN GENERATED ITEMS: ... -->` key); an h1 alone is the item
+    // title with the fixture's subdirectory as the legacy section fallback.
     let i = 1;
     if (comment(i) === "") {
         i += 1;
+    }
+    let section = "";
+    let title = "";
+    const second = comment(i);
+    if (second?.startsWith("## ")) {
+        section = first.slice(2).trim();
+        title = second.slice(3).trim();
+        i += 1;
+        if (comment(i) === "") {
+            i += 1;
+        }
+    } else {
+        title = first.slice(2).trim();
+        section = relParts.length >= 2 ? (relParts[0] ?? "") : "";
+    }
+    if (!title) {
+        problems.push(`${filePath}: empty title`);
+    }
+    if (!section) {
+        problems.push(
+            `${filePath}: doc-item fixture needs an '# section' heading above its ` +
+                "'## title' (or a section subdirectory)",
+        );
     }
 
     const keys = new Map<string, string>();
@@ -243,7 +261,20 @@ function parseFixture(filePath: string, featureDir: string, problems: string[]):
         }
     }
 
-    const example = trimBlank(lines.slice(bodyStart)).join("\n");
+    // A plain `//` comment block opening with `// snap:` directly after the
+    // header explains the fixture's snapshot mode to maintainers; it is not
+    // part of the rendered example code. (A bare leading `//` comment stays:
+    // e.g. the comment-folding example is itself a comment.)
+    let exampleStart = bodyStart;
+    while ((lines[exampleStart] ?? "").trim() === "" && exampleStart < lines.length) {
+        exampleStart += 1;
+    }
+    if ((lines[exampleStart] ?? "").trim().startsWith("// snap:")) {
+        while ((lines[exampleStart] ?? "").trim().startsWith("//")) {
+            exampleStart += 1;
+        }
+    }
+    const example = trimBlank(lines.slice(exampleStart)).join("\n");
     if (!example.trim()) {
         problems.push(`${filePath}: doc-item fixture has no example code`);
     }
@@ -303,7 +334,12 @@ function renderItem(fx: Fixture): string {
 }
 
 function collectFixtures(feature: string, problems: string[]): Fixture[] {
-    const dataDir = path.join(REPO_ROOT, "tests", "data", feature);
+    // Snapshot corpora migrated to tests/snap/ keep feeding the docs from
+    // their new home; the rest still live under tests/data/.
+    const snapDir = path.join(REPO_ROOT, "tests", "snap", feature);
+    const dataDir = fs.existsSync(snapDir)
+        ? snapDir
+        : path.join(REPO_ROOT, "tests", "data", feature);
     const fixtures: Fixture[] = [];
     const titles = new Map<string, string>();
     for (const filePath of globCpp(dataDir)) {

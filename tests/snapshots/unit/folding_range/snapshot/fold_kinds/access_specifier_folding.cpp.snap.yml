@@ -1,9 +1,0 @@
----
-source: folding_range_tests.cpp
-created_at: 2026-07-21
-input_file: fold_kinds/access_specifier_folding.cpp
----
-- { range: "6:13-13:1", kind: class, collapsed_text: "{...}" }
-- { range: "7:6-10:7", kind: accessSpecifier }
-- { range: "10:7-13:1", kind: accessSpecifier }
-

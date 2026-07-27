@@ -433,50 +433,6 @@ TEST_CASE(PragmaRegion) {
 )cpp");
 }
 
-TEST_CASE(snapshot) {
-    ASSERT_SNAPSHOT_GLOB(
-        test_dir + "/folding_range",
-        "**/*.cpp",
-        [&](std::string_view path) -> std::string {
-            // `status: unsupported` fixtures are pinned to an explicit
-            // UNSUPPORTED marker instead of being compiled: zest's glob
-            // has no per-file skip. Everything else compiles verbatim —
-            // the frontmatter is an ordinary comment to the compiler.
-            auto buffer = llvm::MemoryBuffer::getFile(path);
-            if(!buffer)
-                return "COMPILE_ERROR";
-            if(fixture_frontmatter((*buffer)->getBuffer(), "status") == "unsupported")
-                return "UNSUPPORTED";
-
-            if(!compile_file(path))
-                return "COMPILE_ERROR";
-            auto ranges = feature::folding_ranges(*unit);
-            auto content = unit->interested_content();
-            auto line_starts = unit->line_starts();
-            lsp::LineMap map(content, line_starts, feature::PositionEncoding::UTF8);
-            std::string result;
-            for(auto& r: ranges) {
-                auto start = map.to_position(r.range.begin);
-                auto end = map.to_position(r.range.end);
-                if(!start || !end)
-                    continue;
-                result += std::format("- {{ range: \"{}:{}-{}:{}\"",
-                                      start->line,
-                                      start->character,
-                                      end->line,
-                                      end->character);
-                if(r.kind.has_value()) {
-                    result += std::format(", kind: {}", static_cast<const std::string&>(*r.kind));
-                }
-                if(!r.collapsed_text.empty()) {
-                    result += std::format(", collapsed_text: {}", yaml_str(r.collapsed_text));
-                }
-                result += " }\n";
-            }
-            return result;
-        });
-}
-
 };  // TEST_SUITE(folding_range)
 
 }  // namespace

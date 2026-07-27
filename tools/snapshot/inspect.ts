@@ -1,0 +1,251 @@
+/// Driver for `clice inspect`: run a feature over a fixture corpus without
+/// a server and render the raw payloads into the same snapshot lines the
+/// wire presenters produce. Raw results carry byte offsets into the
+/// annotation-stripped source; every conversion the server performs on the
+/// reply edge (position mapping, delta encoding, vocabulary) is re-derived
+/// here independently, so a `snap: shared` fixture pins both paths against
+/// one file and a divergence fails the suite instead of hiding.
+
+import { execFileSync } from "node:child_process";
+import * as crypto from "node:crypto";
+import { yamlStr } from "./snapshot.ts";
+
+export interface InspectFileEntry {
+    stripped_hash: string;
+    result?: unknown;
+    error?: string | null;
+    diagnostics?: string[] | null;
+}
+
+export interface InspectOutput {
+    feature: string;
+    files: Record<string, InspectFileEntry>;
+}
+
+export function runInspect(executable: string, feature: string, path: string): InspectOutput {
+    const stdout = execFileSync(executable, ["inspect", feature, path], {
+        encoding: "utf8",
+        maxBuffer: 64 * 1024 * 1024,
+        timeout: 300_000,
+    });
+    return JSON.parse(stdout) as InspectOutput;
+}
+
+export function sha256(data: Buffer): string {
+    return crypto.createHash("sha256").update(data).digest("hex");
+}
+
+/// Fixture doc-header metadata that controls the snap suites. Parsing is
+/// strict: an unknown key is an error, not a silently ignored typo — a
+/// misspelled `snap:` would otherwise disable the shared-snapshot
+/// assertion for that fixture without anyone noticing.
+export interface FixtureMeta {
+    status: "supported" | "partial" | "unsupported";
+    /// shared: standalone and wire results must render identically and are
+    /// pinned by one snapshot file. separate: the difference is a known
+    /// property of the feature; each path pins its own file. skip: the two
+    /// paths disagree in a way that is simply wrong (not yet supported) —
+    /// both suites skip the fixture and no snapshot exists until fixed.
+    snap: "shared" | "separate" | "skip";
+}
+
+const META_KEYS = ["status", "issues", "order", "snap"];
+
+export function parseFixtureMeta(content: string, filePath: string): FixtureMeta {
+    const meta: FixtureMeta = { status: "supported", snap: "shared" };
+
+    let first = (content.split("\n", 1)[0] ?? "").trim();
+    if (!first.startsWith("///")) {
+        return meta;
+    }
+    first = first.slice(3);
+    if (first.startsWith(" ")) {
+        first = first.slice(1);
+    }
+    if (!first.startsWith("# ")) {
+        return meta;
+    }
+
+    // Scan only the metadata list: heading lines and at most one blank
+    // separator before it, then `- key: value` lines until the next blank
+    // `///`. The markdown description after that may legitimately contain
+    // bulleted `word:` lines (feature_docs renders it) — mirroring
+    // parseFixture in tools/feature_docs.ts, they are not metadata.
+    let inMeta = false;
+    for (let line of content.split("\n")) {
+        line = line.trim();
+        if (!line.startsWith("///")) {
+            break;
+        }
+        line = line.slice(3).trim();
+        if (line.startsWith("#")) {
+            continue;
+        }
+        if (line === "") {
+            if (inMeta) {
+                break;
+            }
+            continue;
+        }
+        const match = /^- ([a-z_]+):(.*)$/.exec(line);
+        if (!match) {
+            break;
+        }
+        inMeta = true;
+        const key = match[1] ?? "";
+        const value = (match[2] ?? "").trim();
+        if (!META_KEYS.includes(key)) {
+            throw new Error(`${filePath}: unknown fixture meta key '${key}'`);
+        }
+        if (key === "status") {
+            if (value !== "supported" && value !== "partial" && value !== "unsupported") {
+                throw new Error(`${filePath}: invalid status '${value}'`);
+            }
+            meta.status = value;
+        } else if (key === "snap") {
+            if (value !== "shared" && value !== "separate" && value !== "skip") {
+                throw new Error(`${filePath}: invalid snap mode '${value}'`);
+            }
+            meta.snap = value;
+        }
+    }
+    return meta;
+}
+
+/// Byte offset -> LSP position over the stripped source. Lines are byte
+/// ranges split at '\n'; characters count UTF-16 code units within the
+/// line, matching the server's default position encoding.
+export class OffsetConverter {
+    private lineStarts: number[] = [0];
+
+    constructor(private data: Buffer) {
+        for (let i = 0; i < data.length; i++) {
+            if (data[i] === 0x0a) {
+                this.lineStarts.push(i + 1);
+            }
+        }
+    }
+
+    position(offset: number): { line: number; character: number } {
+        let lo = 0;
+        let hi = this.lineStarts.length - 1;
+        while (lo < hi) {
+            const mid = (lo + hi + 1) >> 1;
+            if ((this.lineStarts[mid] ?? 0) <= offset) {
+                lo = mid;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        const start = this.lineStarts[lo] ?? 0;
+        return { line: lo, character: this.data.subarray(start, offset).toString("utf8").length };
+    }
+}
+
+interface RawRange {
+    begin: number;
+    end: number;
+}
+
+interface RawFoldingRange {
+    range: RawRange;
+    kind?: string | null;
+    collapsed_text: string;
+}
+
+interface RawSemanticToken {
+    range: RawRange;
+    kind: string;
+    modifiers: number;
+}
+
+/// C++ enum names arrive PascalCase; the server's semantic-tokens legend
+/// lowercases the first letter, and snapshots use that wire spelling.
+export function lowerFirst(name: string): string {
+    return name.slice(0, 1).toLowerCase() + name.slice(1);
+}
+
+/// Twin of SymbolModifiers::Kind (src/semantic/symbol_kind.h), in bit
+/// order. Drift is caught by any shared semantic-tokens snapshot: the wire
+/// side renders through the server's live legend, this table renders the
+/// standalone side, and the two stop agreeing the moment they differ.
+const SYMBOL_MODIFIERS = [
+    "Declaration",
+    "Definition",
+    "Const",
+    "Overloaded",
+    "Typed",
+    "Templated",
+    "Deprecated",
+    "Deduced",
+    "Readonly",
+    "Static",
+    "Abstract",
+    "Virtual",
+    "DependentName",
+    "DefaultLibrary",
+    "UsedAsMutableReference",
+    "UsedAsMutablePointer",
+    "ConstructorOrDestructor",
+    "UserDefined",
+];
+
+export type RawRenderer = (result: unknown, stripped: Buffer) => string[];
+
+export const renderRawFoldingRanges: RawRenderer = (result, stripped) => {
+    const map = new OffsetConverter(stripped);
+    const out: string[] = [];
+    for (const r of result as RawFoldingRange[]) {
+        const start = map.position(r.range.begin);
+        const end = map.position(r.range.end);
+        let line = `- { range: "${start.line}:${start.character}-${end.line}:${end.character}"`;
+        if (r.kind != null) {
+            line += `, kind: ${r.kind}`;
+        }
+        if (r.collapsed_text) {
+            line += `, collapsed_text: ${yamlStr(r.collapsed_text)}`;
+        }
+        out.push(line + " }");
+    }
+    return out;
+};
+
+export const renderRawSemanticTokens: RawRenderer = (result, stripped) => {
+    const map = new OffsetConverter(stripped);
+    const out: string[] = [];
+    for (const token of result as RawSemanticToken[]) {
+        if (token.range.end <= token.range.begin || token.range.end > stripped.length) {
+            continue;
+        }
+        const kind = lowerFirst(token.kind);
+        const modifiers = SYMBOL_MODIFIERS.filter((_name, bit) => token.modifiers & (1 << bit));
+        const suffix =
+            `, kind: ${kind}` +
+            (modifiers.length > 0 ? `, modifiers: [${modifiers.map(lowerFirst).join(", ")}]` : "") +
+            " }";
+
+        // LSP semantic tokens are single-line; the server splits multiline
+        // tokens into per-line pieces on the reply edge, so mirror that
+        // split here to keep shared snapshots comparable.
+        const chunk = stripped.subarray(token.range.begin, token.range.end);
+        let pieceStart = 0;
+        let { line, character } = map.position(token.range.begin);
+        for (let i = 0; i <= chunk.length; i++) {
+            if (i !== chunk.length && chunk[i] !== 0x0a) {
+                continue;
+            }
+            const text = chunk.subarray(pieceStart, i).toString("utf8");
+            // A newline-terminated piece always encodes with length >= 1 (the
+            // newline itself), so the server emits it even for a blank
+            // interior line and the wire decoder reconstructs text: "". Only
+            // the final, unterminated piece is dropped when empty.
+            if (i !== chunk.length || text.length > 0) {
+                out.push(`- { loc: "${line}:${character}", text: ${yamlStr(text)}${suffix}`);
+            }
+            line += 1;
+            character = 0;
+            pieceStart = i + 1;
+        }
+    }
+    return out;
+};

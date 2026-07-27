@@ -7,6 +7,7 @@ import * as path from "node:path";
 import { expect, test } from "vitest";
 import { URI } from "vscode-uri";
 import { parseAnnotations } from "@clice/tools/annotation";
+import { parseFixtureMeta, renderRawSemanticTokens } from "@clice/tools/inspect";
 import { decodeSemanticTokens } from "@clice/tools/presenters";
 import {
     fixtureFrontmatter,
@@ -66,7 +67,7 @@ test.for([
 });
 
 test("snap format round trip", () => {
-    const text = formatSnap("s.ts", "f.cpp", "body\n", "2026-01-01");
+    const text = formatSnap("f.cpp", "body\n", "2026-01-01");
     expect(parseSnap(text)).toEqual({ createdAt: "2026-01-01", body: "body\n" });
     expect(parseSnap("no frontmatter")).toBeNull();
 });
@@ -75,7 +76,7 @@ test("snapshot check flows", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "snap-"));
     const snapPath = path.join(dir, "a.cpp.snap.yml");
 
-    const ctx = new SnapshotContext(dir, false);
+    const ctx = new SnapshotContext(dir, { update: false });
     ctx.check("a.cpp", "one\n"); // first run creates
     const createdAt = parseSnap(fs.readFileSync(snapPath, "utf8"))!.createdAt;
     ctx.check("a.cpp", "one\n"); // match passes
@@ -85,13 +86,39 @@ test("snapshot check flows", () => {
     }).toThrow("snapshot mismatch");
     expect(fs.existsSync(`${snapPath}.new`)).toBe(true);
 
-    new SnapshotContext(dir, true).check("a.cpp", "two\n");
+    new SnapshotContext(dir, { update: true }).check("a.cpp", "two\n");
     expect(parseSnap(fs.readFileSync(snapPath, "utf8"))).toEqual({
         createdAt,
         body: "two\n",
     });
     expect(fs.existsSync(`${snapPath}.new`)).toBe(false);
     ctx.check("a.cpp", "two\n");
+});
+
+test("colocated snapshot layout", () => {
+    const ctx = new SnapshotContext("/corpus", { colocated: true });
+    expect(ctx.snapPath("group/a.cpp")).toBe(path.join("/corpus", "group/a.snap.yml"));
+    expect(ctx.snapPath("group/a.cpp", "wire")).toBe(path.join("/corpus", "group/a.wire.snap.yml"));
+    expect(new SnapshotContext("/dir").snapPath("a.cpp")).toBe(path.join("/dir", "a.cpp.snap.yml"));
+});
+
+test("fixture meta parsing", () => {
+    const header = "/// # Title\n///\n/// - status: partial\n/// - snap: separate\nint x;\n";
+    expect(parseFixtureMeta(header, "f")).toEqual({ status: "partial", snap: "separate" });
+    expect(parseFixtureMeta("/// # T\n///\n/// - snap: skip\n", "f").snap).toBe("skip");
+    // Bulleted lines in the markdown description after the blank `///`
+    // separator are prose, not metadata.
+    const withDesc =
+        "/// # T\n///\n/// ## I\n///\n/// - status: partial\n///\n/// - lorem: prose\nint x;\n";
+    expect(parseFixtureMeta(withDesc, "f")).toEqual({ status: "partial", snap: "shared" });
+    // No header: defaults, and shared is the default mode.
+    expect(parseFixtureMeta("int x;\n", "f")).toEqual({ status: "supported", snap: "shared" });
+    expect(() => parseFixtureMeta("/// # T\n///\n/// - snpa: separate\n", "f")).toThrow(
+        "unknown fixture meta key",
+    );
+    expect(() => parseFixtureMeta("/// # T\n///\n/// - snap: shred\n", "f")).toThrow(
+        "invalid snap mode",
+    );
 });
 
 test("normalize file uri", () => {
@@ -151,6 +178,23 @@ test("fixture frontmatter", () => {
     expect(fixtureFrontmatter(header, "status")).toBe("unsupported");
     expect(fixtureFrontmatter(header, "missing")).toBe("");
     expect(fixtureFrontmatter("int x;\n", "status")).toBe("");
+});
+
+test("multiline token split matches wire decode", () => {
+    // A token spanning a blank line: the server splits it per line and the
+    // blank interior piece still encodes (its newline counts), so both
+    // renderers must emit the empty-text entry identically.
+    const content = "/*x\n\ny*/\nint a;\n";
+    const raw = [{ range: { begin: 0, end: 8 }, kind: "Comment", modifiers: 0 }];
+    const standalone = renderRawSemanticTokens(raw, Buffer.from(content));
+    const legend = { tokenTypes: ["comment"], tokenModifiers: [] };
+    const wire = decodeSemanticTokens(
+        [0, 0, 4, 0, 0, 1, 0, 1, 0, 0, 1, 0, 3, 0, 0],
+        content.split("\n"),
+        legend,
+    );
+    expect(standalone).toEqual(wire);
+    expect(standalone[1]).toBe('- { loc: "1:0", text: "", kind: comment }');
 });
 
 test("semantic token decoding", () => {
