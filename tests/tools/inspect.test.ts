@@ -66,6 +66,40 @@ test("inspect treats bare headers as C++ in the fallback", () => {
     }
 });
 
+test("inspect headers borrow the nearest TU command", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "clice-inspect-"));
+    try {
+        // The header only compiles with the TU's -D flag, so passing means
+        // the CDB-less header inherited the donor command instead of the
+        // generic fallback.
+        fs.writeFileSync(path.join(tmp, "main.cpp"), '#include "lib.h"\n');
+        fs.writeFileSync(
+            path.join(tmp, "lib.h"),
+            "#if !defined(NEED)\n#error missing project define\n#endif\nnamespace demo {\ninline int one() {\n    return NEED;\n}\n}\n",
+        );
+        fs.writeFileSync(
+            path.join(tmp, "compile_commands.json"),
+            JSON.stringify([
+                {
+                    directory: tmp,
+                    file: path.join(tmp, "main.cpp"),
+                    arguments: [
+                        "clang++",
+                        "-std=c++20",
+                        "-DNEED=1",
+                        "-fsyntax-only",
+                        path.join(tmp, "main.cpp"),
+                    ],
+                },
+            ]),
+        );
+        const { files } = runInspect(cliceExecutable(), "folding_range", path.join(tmp, "lib.h"));
+        expect(files["lib.h"]?.error ?? null).toBeNull();
+    } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+    }
+});
+
 test("inspect keeps C sources C in the fallback", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "clice-inspect-"));
     try {

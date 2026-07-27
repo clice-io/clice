@@ -164,6 +164,12 @@ FileEntry process_file(const std::string& file,
     CompilationParams params;
     params.kind = CompilationKind::Content;
 
+    namespace types = clang::driver::types;
+    auto ext = path::extension(file);
+    auto type = ext.empty() ? types::TY_INVALID
+                            : types::lookupTypeForExtension(llvm::StringRef(ext).drop_front());
+    bool is_header = type == types::TY_CHeader || type == types::TY_CXXHeader;
+
     /// Owns the fallback cc1 strings so params.arguments stays valid.
     std::vector<std::string> owned_args;
     // lookup() synthesizes a default command for unknown files, so an
@@ -174,6 +180,30 @@ FileEntry process_file(const std::string& file,
         toolchain.resolve_or_warn(command);
         params.arguments = command.to_argv();
         params.directory = command.resolved.directory.str();
+    } else if(is_header && database != nullptr && !database->get_entries().empty()) {
+        // A header without its own entry borrows the command of the
+        // nearest translation unit in the database — the server resolves
+        // header contexts from host sources the same way, and generic
+        // default flags would drop the project's -I/-D/-std.
+        llvm::StringRef donor;
+        std::size_t best = 0;
+        for(auto& candidate: database->get_entries()) {
+            llvm::StringRef donor_path = database->resolve_path(candidate.file);
+            auto [it, _] = std::ranges::mismatch(donor_path, file);
+            auto common = static_cast<std::size_t>(it - donor_path.begin());
+            if(donor.empty() || common > best) {
+                best = common;
+                donor = donor_path;
+            }
+        }
+        auto commands = database->lookup(donor);
+        auto& command = commands.front();
+        toolchain.resolve_or_warn(command);
+        // The donor's resolved flags (including its -x language) apply to
+        // the header itself; to_argv() re-derives -main-file-name from it.
+        command.source_file = file.c_str();
+        params.arguments = command.to_argv();
+        params.directory = command.resolved.directory.str();
     } else {
         // No CDB entry for this file: query the toolchain with default
         // flags. Uncached, but this path only runs for files outside any
@@ -181,10 +211,6 @@ FileEntry process_file(const std::string& file,
         // other C-family languages keep their driver defaults so a .c or
         // .m file is not misparsed as C++.
         LOG_WARN("no compile command for {}; using default flags", file);
-        namespace types = clang::driver::types;
-        auto ext = path::extension(file);
-        auto type = ext.empty() ? types::TY_INVALID
-                                : types::lookupTypeForExtension(llvm::StringRef(ext).drop_front());
         std::vector<const char*> driver_args;
         if(type != types::TY_INVALID && types::isCXX(type)) {
             driver_args = {"clang++", "-std=c++20", "-fsyntax-only", file.c_str()};
