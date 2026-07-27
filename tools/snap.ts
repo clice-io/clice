@@ -1,8 +1,8 @@
 /// Standalone snap-test runner: drives `clice inspect` over the tests/snap
 /// corpora — no server involved — and pins the rendered payloads next to
 /// their sources, replay.ts-style. One inspect process per fixture, fanned
-/// out up to the core count, so the suite stays parallel without a test
-/// framework around it.
+/// out through the shared tools/parallel.ts pool, so the suite stays
+/// parallel without a test framework around it.
 ///
 /// Usage: node tools/snap.ts --clice build/RelWithDebInfo/bin/clice [--update]
 ///
@@ -13,9 +13,9 @@
 /// an update run.
 
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { generateSnapCDBs, SNAP_DIR } from "./compile_commands.ts";
+import { mapParallel } from "./parallel.ts";
 import { parseAnnotations } from "./snapshot/annotation.ts";
 import {
     parseFixtureMeta,
@@ -74,24 +74,15 @@ interface Job {
 }
 
 async function inspectAll(clice: string, jobs: Job[]): Promise<void> {
-    let next = 0;
-    const worker = async () => {
-        for (;;) {
-            const job = jobs[next++];
-            if (!job) {
-                return;
-            }
-            const file = path.join(SNAP_DIR, job.feature, job.rel);
-            try {
-                const output = await runInspectAsync(clice, job.feature, file);
-                job.entry = output.files[path.basename(file)];
-            } catch (error) {
-                job.spawnError = error instanceof Error ? error.message : String(error);
-            }
+    await mapParallel(jobs, async (job) => {
+        const file = path.join(SNAP_DIR, job.feature, job.rel);
+        try {
+            const output = await runInspectAsync(clice, job.feature, file);
+            job.entry = output.files[path.basename(file)];
+        } catch (error) {
+            job.spawnError = error instanceof Error ? error.message : String(error);
         }
-    };
-    const width = Math.min(jobs.length, Math.max(1, os.availableParallelism()));
-    await Promise.all(Array.from({ length: width }, worker));
+    });
 }
 
 const { clice, update } = parseArgs(process.argv.slice(2));

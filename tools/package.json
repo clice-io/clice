@@ -11,7 +11,8 @@
     "./inspect": "./snapshot/inspect.ts",
     "./presenters": "./snapshot/presenters.ts",
     "./protocol": "./protocol/protocol.ts",
-    "./compile-commands": "./compile_commands.ts"
+    "./compile-commands": "./compile_commands.ts",
+    "./parallel": "./parallel.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
