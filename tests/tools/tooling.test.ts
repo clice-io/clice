@@ -118,6 +118,10 @@ test("fixture meta parsing", () => {
     expect(() => parseFixtureMeta("/// # T\n///\n/// - snpa: separate\n", "f")).toThrow(
         "unknown fixture meta key",
     );
+    // Near-miss spellings must error too, not silently end the block.
+    expect(() => parseFixtureMeta("/// # T\n///\n/// - Snap: shared\n", "f")).toThrow(
+        "unknown fixture meta key",
+    );
     expect(() => parseFixtureMeta("/// # T\n///\n/// - snap: shred\n", "f")).toThrow(
         "invalid snap mode",
     );

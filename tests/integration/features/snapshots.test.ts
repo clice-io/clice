@@ -83,11 +83,15 @@ for (const [feature, present] of Object.entries(SNAP_FEATURES)) {
                 });
                 const body = await present(client, uri, source, workspace);
                 client.close(uri);
-                new SnapshotContext(corpus, { colocated: true }).check(
-                    rel,
-                    body.join("\n"),
-                    meta.snap === "shared" ? "" : "wire",
-                );
+                // Shared snapshot bodies are owned by the standalone runner;
+                // even under UPDATE_SNAPSHOTS the wire side must never
+                // overwrite one — that would paper over the exact cross-path
+                // divergence the shared file exists to catch.
+                const snapshots =
+                    meta.snap === "shared"
+                        ? new SnapshotContext(corpus, { colocated: true, update: false })
+                        : new SnapshotContext(corpus, { colocated: true });
+                snapshots.check(rel, body.join("\n"), meta.snap === "shared" ? "" : "wire");
             },
         );
     }

@@ -2,6 +2,7 @@
 #include <print>
 #include <ranges>
 
+#include "command/argument_parser.h"
 #include "command/command.h"
 #include "command/toolchain.h"
 #include "compile/compilation.h"
@@ -123,7 +124,7 @@ std::vector<std::string> error_messages(CompilationUnit& unit) {
 /// feature results, so any divergence between the two paths surfaces as a
 /// snapshot mismatch instead of hiding in the preamble. Nothing is written
 /// to disk.
-FileEntry process_file(llvm::StringRef file,
+FileEntry process_file(const std::string& file,
                        llvm::StringRef feature,
                        CompilationDatabase& database,
                        Toolchain& toolchain) {
@@ -139,18 +140,38 @@ FileEntry process_file(llvm::StringRef file,
     auto source = AnnotatedSource::from((*buffer)->getBuffer());
     entry.stripped_hash = sha256_hex(source.content);
 
-    auto commands = database.lookup(file);
-    if(commands.empty()) {
-        entry.error = "no_compile_command";
-        return entry;
-    }
-    auto& command = commands.front();
-    toolchain.resolve_or_warn(command);
-
     CompilationParams params;
-    params.arguments = command.to_argv();
-    params.directory = command.resolved.directory.str();
     params.kind = CompilationKind::Content;
+
+    /// Owns the fallback cc1 strings so params.arguments stays valid.
+    std::vector<std::string> owned_args;
+    auto commands = database.lookup(file);
+    if(!commands.empty()) {
+        auto& command = commands.front();
+        toolchain.resolve_or_warn(command);
+        params.arguments = command.to_argv();
+        params.directory = command.resolved.directory.str();
+    } else {
+        // No CDB entry for this file: query the toolchain with default
+        // flags. Uncached, but this path only runs for files outside any
+        // compilation database.
+        LOG_WARN("no compile command for {}; using default flags", file);
+        std::vector<const char*> driver_args = {"clang++",
+                                                "-std=c++20",
+                                                "-fsyntax-only",
+                                                file.c_str()};
+        auto cc1 = Toolchain::query(driver_args, file);
+        if(!cc1) {
+            entry.error = "toolchain_error";
+            entry.diagnostics = {std::move(cc1.error())};
+            return entry;
+        }
+        owned_args = std::move(*cc1);
+        for(auto& arg: owned_args) {
+            params.arguments.push_back(arg.c_str());
+        }
+        params.directory = path::parent_path(file).str();
+    }
 
     params.add_remapped_file(file, source.content);
 
@@ -170,11 +191,6 @@ FileEntry process_file(llvm::StringRef file,
         entry.error = "serialize_error";
     }
     return entry;
-}
-
-bool is_source_file(llvm::StringRef file) {
-    auto ext = path::extension(file);
-    return ext == ".cpp" || ext == ".cc" || ext == ".cxx";
 }
 
 int run_inspect(const InspectOptions& opts) {
@@ -203,7 +219,7 @@ int run_inspect(const InspectOptions& opts) {
         std::error_code ec;
         for(llvm::sys::fs::recursive_directory_iterator it(abs_path, ec), end; it != end && !ec;
             it.increment(ec)) {
-            if(!is_source_file(it->path())) {
+            if(!is_c_family_file(it->path())) {
                 continue;
             }
             llvm::StringRef rel = it->path();
@@ -220,19 +236,14 @@ int run_inspect(const InspectOptions& opts) {
         files.emplace_back(path::filename(abs_path).str(), std::string(abs_path));
     }
 
+    // Files without a CDB entry fall back to a per-file toolchain query in
+    // process_file; a missing database just means every file takes it.
     CompilationDatabase database;
     llvm::StringRef cdb_root = is_dir ? llvm::StringRef(abs_path) : path::parent_path(abs_path);
     if(auto cdb = find_cdb(cdb_root)) {
         if(!database.load(*cdb)) {
             LOG_ERROR("failed to load {}", *cdb);
             return 1;
-        }
-    } else {
-        LOG_WARN("no compile_commands.json above {}; using default flags", cdb_root);
-        for(auto& [rel, abs]: files) {
-            database.add_command(path::parent_path(abs),
-                                 abs,
-                                 std::format("clang++ -std=c++20 -fsyntax-only {}", abs));
         }
     }
 

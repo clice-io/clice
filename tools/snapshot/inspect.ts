@@ -102,12 +102,15 @@ export function parseFixtureMeta(content: string, filePath: string): FixtureMeta
             }
             continue;
         }
-        const match = /^- ([a-z_]+):(.*)$/.exec(line);
+        // Any `- something:` at the metadata position is treated as a key so
+        // that a misspelling (`- Snap:`, `- snap :`) errors instead of
+        // silently ending the block on defaults.
+        const match = /^- ([^:]+):(.*)$/.exec(line);
         if (!match) {
             break;
         }
         inMeta = true;
-        const key = match[1] ?? "";
+        const key = (match[1] ?? "").trim();
         const value = (match[2] ?? "").trim();
         if (!META_KEYS.includes(key)) {
             throw new Error(`${filePath}: unknown fixture meta key '${key}'`);
