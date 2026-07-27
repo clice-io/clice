@@ -1,8 +1,8 @@
 /// Standalone snap-test runner: drives `clice inspect` over the tests/snap
 /// corpora — no server involved — and pins the rendered payloads next to
 /// their sources, replay.ts-style. One inspect process per fixture, fanned
-/// out through the shared tools/parallel.ts pool, so the suite stays
-/// parallel without a test framework around it.
+/// out through p-limit up to the core count, so the suite stays parallel
+/// without a test framework around it.
 ///
 /// Usage: node tools/snap.ts --clice build/RelWithDebInfo/bin/clice [--update]
 ///
@@ -13,9 +13,11 @@
 /// an update run.
 
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
+import { parseArgs } from "node:util";
+import pLimit from "p-limit";
 import { generateSnapCDBs, SNAP_DIR } from "./compile_commands.ts";
-import { mapParallel } from "./parallel.ts";
 import { parseAnnotations } from "./snapshot/annotation.ts";
 import {
     parseFixtureMeta,
@@ -40,27 +42,26 @@ function usageError(message: string): never {
     process.exit(2);
 }
 
-function parseArgs(argv: string[]): { clice: string; update: boolean } {
-    let clice = "";
-    let update = process.env["UPDATE_SNAPSHOTS"] === "1";
-    for (let i = 0; i < argv.length; i++) {
-        const a = argv[i] ?? "";
-        if (a === "--clice") {
-            clice = argv[++i] ?? usageError("argument --clice: expected one argument");
-        } else if (a.startsWith("--clice=")) {
-            clice = a.slice("--clice=".length);
-        } else if (a === "--update") {
-            update = true;
-        } else {
-            usageError(`unrecognized argument: ${a}`);
-        }
+function parseRunnerArgs(): { clice: string; update: boolean } {
+    let parsed;
+    try {
+        parsed = parseArgs({
+            options: {
+                clice: { type: "string" },
+                update: { type: "boolean", default: false },
+            },
+        });
+    } catch (error) {
+        usageError(error instanceof Error ? error.message : String(error));
     }
-    if (!clice) {
+    const clice = parsed.values.clice;
+    if (clice === undefined) {
         usageError("argument --clice is required");
     }
     if (!fs.existsSync(clice)) {
         usageError(`clice executable not found at '${clice}'`);
     }
+    const update = parsed.values.update || process.env["UPDATE_SNAPSHOTS"] === "1";
     return { clice: path.resolve(clice), update };
 }
 
@@ -74,18 +75,23 @@ interface Job {
 }
 
 async function inspectAll(clice: string, jobs: Job[]): Promise<void> {
-    await mapParallel(jobs, async (job) => {
-        const file = path.join(SNAP_DIR, job.feature, job.rel);
-        try {
-            const output = await runInspectAsync(clice, job.feature, file);
-            job.entry = output.files[path.basename(file)];
-        } catch (error) {
-            job.spawnError = error instanceof Error ? error.message : String(error);
-        }
-    });
+    const limit = pLimit(Math.max(1, os.availableParallelism()));
+    await Promise.all(
+        jobs.map((job) =>
+            limit(async () => {
+                const file = path.join(SNAP_DIR, job.feature, job.rel);
+                try {
+                    const output = await runInspectAsync(clice, job.feature, file);
+                    job.entry = output.files[path.basename(file)];
+                } catch (error) {
+                    job.spawnError = error instanceof Error ? error.message : String(error);
+                }
+            }),
+        ),
+    );
 }
 
-const { clice, update } = parseArgs(process.argv.slice(2));
+const { clice, update } = parseRunnerArgs();
 generateSnapCDBs();
 
 let passed = 0;

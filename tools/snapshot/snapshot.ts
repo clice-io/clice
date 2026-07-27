@@ -15,6 +15,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { diffLines } from "diff";
 import { URI } from "vscode-uri";
 
 export const WORKSPACE_PLACEHOLDER = "${WS}";
@@ -168,21 +169,26 @@ export function formatSnap(inputFile: string, body: string, createdAt = ""): str
     return `---\ncreated_at: ${createdAt}\ninput_file: ${inputFile}\n---\n${body}`;
 }
 
-function diffLines(oldBody: string, newBody: string): string {
-    // Line-by-line diff, zest-style: paired -/+ up to the longer side.
-    const oldLines = oldBody.split("\n");
-    const newLines = newBody.split("\n");
-    const max = Math.max(oldLines.length, newLines.length);
+function renderDiff(oldBody: string, newBody: string): string {
+    // jsdiff owns the diffing; render changed lines only, capped so a
+    // wholesale mismatch stays readable.
     const out: string[] = [];
-    for (let i = 0; i < max && out.length < 40; i++) {
-        if (oldLines[i] === newLines[i]) {
+    for (const part of diffLines(oldBody, newBody)) {
+        if (!part.added && !part.removed) {
             continue;
         }
-        if (i < oldLines.length) {
-            out.push(`-  ${oldLines[i]}`);
+        const prefix = part.added ? "+  " : "-  ";
+        const lines = part.value.split("\n");
+        // Newline-terminated hunks split with a trailing empty element;
+        // dropping only that keeps genuinely blank changed lines visible.
+        if (lines[lines.length - 1] === "") {
+            lines.pop();
         }
-        if (i < newLines.length) {
-            out.push(`+  ${newLines[i]}`);
+        for (const line of lines) {
+            out.push(prefix + line);
+            if (out.length >= 40) {
+                return out.join("\n");
+            }
         }
     }
     return out.join("\n");
@@ -250,7 +256,7 @@ export class SnapshotContext {
         throw new Error(
             `snapshot mismatch: ${snapPath}\n` +
                 `new result written to ${newPath}\n` +
-                `${diffLines(existing.body, body)}\n` +
+                `${renderDiff(existing.body, body)}\n` +
                 "run with UPDATE_SNAPSHOTS=1 to accept",
         );
     }
