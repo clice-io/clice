@@ -1,6 +1,0 @@
----
-source: test_snapshots.py
-created_at: 2026-07-26
-input_file: escapes.cpp
----
-- { range: "2:9-2:35", target: "${WS}/sub dir/escaped header.h" }

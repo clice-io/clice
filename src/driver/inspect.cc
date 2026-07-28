@@ -1,3 +1,4 @@
+#include <format>
 #include <map>
 #include <print>
 #include <ranges>
@@ -40,7 +41,8 @@ struct InspectOptions {
 
     DecoInput(
         meta_var = "<FEATURE> <PATH>",
-        help = "Feature to run (folding_range, semantic_tokens) and a source file or directory",
+        help =
+            "Feature to run (document_links, document_symbol, folding_range, hover, " "inlay_hint, semantic_tokens) and a source file or directory",
         required = false)
     <std::vector<std::string>> inputs;
 
@@ -58,8 +60,6 @@ struct InspectOptions {
     <std::string> log_level;
 };
 
-constexpr std::array feature_names = {"folding_range", "semantic_tokens"};
-
 /// JSON layout of the inspect output. Field names stay snake_case (the
 /// project's native spelling) and enums serialize as their C++ value
 /// names; the TS side owns any mapping to LSP vocabulary.
@@ -73,8 +73,15 @@ struct FileEntry {
     /// at the same hash, or the two implementations have drifted.
     std::string stripped_hash;
 
-    /// The raw feature payload, absent when compilation failed.
+    /// The whole-document feature payload, absent when compilation failed
+    /// or the feature is marker-driven.
     std::optional<kota::codec::RawValue> result;
+
+    /// Marker-driven payloads, keyed by annotation name (`nameless_<i>`
+    /// for unnamed markers): position features run once per `§` point,
+    /// range features once per `§⟦...⟧` range. A null value records a
+    /// position with no result (e.g. hover on whitespace).
+    std::optional<std::map<std::string, kota::codec::RawValue>> markers;
 
     std::optional<std::string> error;
     std::optional<std::vector<std::string>> diagnostics;
@@ -96,6 +103,96 @@ std::optional<kota::codec::RawValue> to_raw_json(const T& value) {
         return std::nullopt;
     }
     return kota::codec::RawValue{std::move(*json)};
+}
+
+/// Marker payload for hover: the feature-layer reply before the edge —
+/// markdown produced by the same rendering code the server uses, with the
+/// symbol range still in byte offsets.
+struct HoverResult {
+    std::optional<LocalSourceRange> range;
+    std::string contents;
+};
+
+std::optional<kota::codec::RawValue> run_folding_ranges(CompilationUnitRef unit) {
+    return to_raw_json(feature::folding_ranges(unit));
+}
+
+std::optional<kota::codec::RawValue> run_semantic_tokens(CompilationUnitRef unit) {
+    return to_raw_json(feature::semantic_tokens(unit));
+}
+
+std::optional<kota::codec::RawValue> run_document_symbols(CompilationUnitRef unit) {
+    return to_raw_json(feature::document_symbols(unit));
+}
+
+std::optional<kota::codec::RawValue> run_document_links(CompilationUnitRef unit) {
+    return to_raw_json(feature::document_links(unit));
+}
+
+std::optional<kota::codec::RawValue> run_inlay_hints(CompilationUnitRef unit,
+                                                     LocalSourceRange range) {
+    return to_raw_json(feature::inlay_hints(unit, range));
+}
+
+kota::codec::RawValue run_hover(CompilationUnitRef unit, std::uint32_t offset) {
+    auto info = feature::hover_info(unit, offset);
+    if(!info) {
+        // An empty RawValue serializes as null: a marker with no hover.
+        return {};
+    }
+    HoverResult result{info->symbol_range, info->present().as_markdown()};
+    auto json = to_raw_json(result);
+    return json.has_value() ? std::move(*json) : kota::codec::RawValue{};
+}
+
+/// A feature runs in exactly one shape: whole-document (`run`), once per
+/// `§` point (`run_at`), or once per `§⟦...⟧` range with a whole-document
+/// default (`run_over`).
+struct FeatureSpec {
+    llvm::StringRef name;
+    std::optional<kota::codec::RawValue> (*run)(CompilationUnitRef) = nullptr;
+    kota::codec::RawValue (*run_at)(CompilationUnitRef, std::uint32_t) = nullptr;
+    std::optional<kota::codec::RawValue> (*run_over)(CompilationUnitRef,
+                                                     LocalSourceRange) = nullptr;
+};
+
+constexpr std::array features = {
+    FeatureSpec{.name = "document_links",  .run = run_document_links  },
+    FeatureSpec{.name = "document_symbol", .run = run_document_symbols},
+    FeatureSpec{.name = "folding_range",   .run = run_folding_ranges  },
+    FeatureSpec{.name = "hover",           .run_at = run_hover        },
+    FeatureSpec{.name = "inlay_hint",      .run_over = run_inlay_hints},
+    FeatureSpec{.name = "semantic_tokens", .run = run_semantic_tokens },
+};
+
+const FeatureSpec* find_feature(llvm::StringRef name) {
+    auto it = std::ranges::find(features, name, &FeatureSpec::name);
+    return it != features.end() ? &*it : nullptr;
+}
+
+/// Named markers sorted by name, then unnamed ones as `nameless_<i>` in
+/// source order — the key order snapshots render in.
+std::vector<std::pair<std::string, std::uint32_t>> marker_points(const AnnotatedSource& source) {
+    std::vector<std::pair<std::string, std::uint32_t>> points;
+    for(const auto& entry: source.offsets) {
+        points.emplace_back(entry.getKey().str(), entry.getValue());
+    }
+    std::ranges::sort(points);
+    for(std::size_t i = 0; i < source.nameless_offsets.size(); ++i) {
+        points.emplace_back(std::format("nameless_{}", i), source.nameless_offsets[i]);
+    }
+    return points;
+}
+
+std::vector<std::pair<std::string, LocalSourceRange>> marker_ranges(const AnnotatedSource& source) {
+    std::vector<std::pair<std::string, LocalSourceRange>> ranges;
+    for(const auto& entry: source.ranges) {
+        // The single allowed nameless range is stored under the empty key.
+        auto name = entry.getKey().empty() ? std::string("nameless_0") : entry.getKey().str();
+        ranges.emplace_back(std::move(name), entry.getValue());
+    }
+    std::ranges::sort(ranges, {}, [](const auto& pair) { return pair.first; });
+    return ranges;
 }
 
 std::string sha256_hex(llvm::StringRef content) {
@@ -258,22 +355,60 @@ FileEntry process_file(const std::string& file,
         return entry;
     }
 
-    if(feature == "folding_range") {
-        entry.result = to_raw_json(feature::folding_ranges(unit));
-    } else if(feature == "semantic_tokens") {
-        entry.result = to_raw_json(feature::semantic_tokens(unit));
+    const auto& spec = *find_feature(feature);
+    if(spec.run != nullptr) {
+        entry.result = spec.run(unit);
+        if(!entry.result.has_value()) {
+            entry.error = "serialize_error";
+        }
+        return entry;
     }
-    if(!entry.result.has_value()) {
-        entry.error = "serialize_error";
+
+    if(spec.run_at != nullptr) {
+        // Position feature: run once per `§` point. A fixture without any
+        // point has nothing to pin — that is a broken fixture, not an
+        // empty result.
+        auto points = marker_points(source);
+        if(points.empty()) {
+            entry.error = "no_markers";
+            return entry;
+        }
+        std::map<std::string, kota::codec::RawValue> markers;
+        for(auto& [name, offset]: points) {
+            markers.emplace(name, spec.run_at(unit, offset));
+        }
+        entry.markers = std::move(markers);
+        return entry;
     }
+
+    // Range feature: run once per `§⟦...⟧` range, or over the whole
+    // document when the fixture marks none.
+    auto ranges = marker_ranges(source);
+    if(ranges.empty()) {
+        entry.result =
+            spec.run_over(unit,
+                          LocalSourceRange(0, static_cast<std::uint32_t>(source.content.size())));
+        if(!entry.result.has_value()) {
+            entry.error = "serialize_error";
+        }
+        return entry;
+    }
+    std::map<std::string, kota::codec::RawValue> markers;
+    for(auto& [name, range]: ranges) {
+        auto value = spec.run_over(unit, range);
+        markers.emplace(name, value.has_value() ? std::move(*value) : kota::codec::RawValue{});
+    }
+    entry.markers = std::move(markers);
     return entry;
 }
 
 int run_inspect(const InspectOptions& opts) {
     auto& inputs = *opts.inputs;
     llvm::StringRef feature = inputs[0];
-    if(!llvm::is_contained(feature_names, feature)) {
-        LOG_ERROR("unknown feature '{}', valid: {}", feature, feature_names);
+    if(find_feature(feature) == nullptr) {
+        LOG_ERROR("unknown feature '{}', valid: {}",
+                  feature,
+                  features | std::views::transform(&FeatureSpec::name));
         return 1;
     }
 
