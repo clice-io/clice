@@ -18,7 +18,6 @@
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/PrettyPrinter.h"
 #include "clang/AST/TypeLoc.h"
-#include "clang/Basic/TokenKinds.h"
 
 namespace clice {
 
@@ -184,7 +183,7 @@ SelectionTree::SelectionTree(CompilationUnitRef unit, LocalSourceRange range) :
     nodes.back().data = clang::DynTypedNode::create(*unit.context().getTranslationUnitDecl());
     nodes.back().parent = nullptr;
     nodes.back().selected = SelectionTree::Unselected;
-    m_root = &nodes.front();
+    root_node = &nodes.front();
 
     // Find the spelled tokens overlapping the selection, and fold their
     // per-token selectedness into the nodes owning them.
@@ -266,7 +265,7 @@ SelectionTree::SelectionTree(CompilationUnitRef unit, LocalSourceRange range) :
 }
 
 const Node* SelectionTree::common_ancestor() const {
-    const Node* ancestor = m_root;
+    const Node* ancestor = root_node;
     while(ancestor->children.size() == 1 && !ancestor->selected) {
         ancestor = ancestor->children.front();
     }
@@ -274,7 +273,7 @@ const Node* SelectionTree::common_ancestor() const {
     // Returning nullptr here is a bit unprincipled, but it makes the API safer:
     // the TranslationUnitDecl contains all of the preamble, so traversing it is a
     // performance cliff. Callers can check for null and use root() if they want.
-    return ancestor != m_root ? ancestor : nullptr;
+    return ancestor != root_node ? ancestor : nullptr;
 }
 
 const clang::DeclContext& SelectionTree::Node::decl_context() const {

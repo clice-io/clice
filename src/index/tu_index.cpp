@@ -161,7 +161,9 @@ public:
                            RelationKind kind,
                            const clang::NamedDecl* target,
                            clang::SourceRange anchor) {
-        auto [fid, range] = unit.decompose_expansion_range(anchor);
+        /// The anchor only routes the row to a file's index; symbol pairs
+        /// carry no range of their own.
+        auto fid = unit.decompose_expansion_range(anchor).first;
         auto* index = file_index(fid);
         if(!index) {
             return;

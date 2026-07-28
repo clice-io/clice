@@ -1,9 +1,12 @@
 #include "semantic/semantics.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <optional>
 #include <ranges>
 #include <set>
+#include <utility>
+#include <vector>
 
 #include "compile/compilation_unit.h"
 #include "semantic/ast_utility.h"

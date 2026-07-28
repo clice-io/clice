@@ -15,9 +15,8 @@ class CompilationUnitRef;
 
 /// A selection can partially or completely cover several AST nodes.
 /// The SelectionTree contains nodes that are covered, and their parents.
-/// SelectionTree does not contain all AST nodes, rather only:
-///   Decl, Stmt, TypeLoc, NestedNamespaceSpecifierLoc, CXXCtorInitializer.
-/// (These are the nodes with source ranges that fit in DynTypedNode).
+/// SelectionTree does not contain all AST nodes, only the kinds the
+/// Semantics map records (see SemanticNode::Kind's AST slots).
 ///
 /// Usually commonAncestor() is the place to start:
 ///  - it's the simplest answer to "what node is under the cursor"
@@ -43,12 +42,14 @@ class CompilationUnitRef;
 /// selected ancestor chains.
 class SelectionTree {
 public:
-    /// Create selection trees for the given range, and pass them to Func.
+    /// Create selection trees for the given range, and pass them to the
+    /// callback.
     ///
     /// There may be multiple possible selection trees:
     /// - if the range is empty and borders two tokens, a tree for the right token
     ///   and a tree for the left token will be yielded.
-    /// - Func should return true on success (stop) and false on failure (continue)
+    /// - the callback should return true on success (stop) and false on
+    ///   failure (continue)
     ///
     /// Always yields at least one tree. If no tokens are touched, it is empty.
     static bool create_each(CompilationUnitRef unit,
@@ -130,7 +131,7 @@ public:
 
     // The selection node corresponding to TranslationUnitDecl.
     const Node& root() const {
-        return *m_root;
+        return *root_node;
     }
 
     void print(llvm::raw_ostream& os, const Node& node, int indent) const;
@@ -148,7 +149,7 @@ private:
     // Stable-pointer storage.
     std::deque<Node> nodes;
 
-    const Node* m_root;
+    const Node* root_node;
 
     clang::PrintingPolicy print_policy;
 };
