@@ -134,15 +134,15 @@ std::optional<kota::codec::RawValue> run_inlay_hints(CompilationUnitRef unit,
     return to_raw_json(feature::inlay_hints(unit, range));
 }
 
-kota::codec::RawValue run_hover(CompilationUnitRef unit, std::uint32_t offset) {
+/// nullopt = serialization failure; an empty RawValue serializes as null
+/// and records a marker with no hover.
+std::optional<kota::codec::RawValue> run_hover(CompilationUnitRef unit, std::uint32_t offset) {
     auto info = feature::hover_info(unit, offset);
     if(!info) {
-        // An empty RawValue serializes as null: a marker with no hover.
-        return {};
+        return kota::codec::RawValue{};
     }
     HoverResult result{info->symbol_range, info->present().as_markdown()};
-    auto json = to_raw_json(result);
-    return json.has_value() ? std::move(*json) : kota::codec::RawValue{};
+    return to_raw_json(result);
 }
 
 /// A feature runs in exactly one shape: whole-document (`run`), once per
@@ -151,7 +151,7 @@ kota::codec::RawValue run_hover(CompilationUnitRef unit, std::uint32_t offset) {
 struct FeatureSpec {
     llvm::StringRef name;
     std::optional<kota::codec::RawValue> (*run)(CompilationUnitRef) = nullptr;
-    kota::codec::RawValue (*run_at)(CompilationUnitRef, std::uint32_t) = nullptr;
+    std::optional<kota::codec::RawValue> (*run_at)(CompilationUnitRef, std::uint32_t) = nullptr;
     std::optional<kota::codec::RawValue> (*run_over)(CompilationUnitRef,
                                                      LocalSourceRange) = nullptr;
 };
@@ -375,7 +375,12 @@ FileEntry process_file(const std::string& file,
         }
         std::map<std::string, kota::codec::RawValue> markers;
         for(auto& [name, offset]: points) {
-            markers.emplace(name, spec.run_at(unit, offset));
+            auto value = spec.run_at(unit, offset);
+            if(!value.has_value()) {
+                entry.error = "serialize_error";
+                return entry;
+            }
+            markers.emplace(name, std::move(*value));
         }
         entry.markers = std::move(markers);
         return entry;
@@ -396,7 +401,11 @@ FileEntry process_file(const std::string& file,
     std::map<std::string, kota::codec::RawValue> markers;
     for(auto& [name, range]: ranges) {
         auto value = spec.run_over(unit, range);
-        markers.emplace(name, value.has_value() ? std::move(*value) : kota::codec::RawValue{});
+        if(!value.has_value()) {
+            entry.error = "serialize_error";
+            return entry;
+        }
+        markers.emplace(name, std::move(*value));
     }
     entry.markers = std::move(markers);
     return entry;

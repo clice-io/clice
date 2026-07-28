@@ -70,6 +70,15 @@ AnnotatedSource AnnotatedSource::from(llvm::StringRef content) {
                         "§({}) is not an identifier name; use §() for a nameless " "point before real parentheses.",
                         key);
                 }
+                // `nameless_<i>` is how unnamed markers key their results;
+                // a real annotation with such a name would collide.
+                if(llvm::StringRef rest = key;
+                   rest.consume_front("nameless_") && !rest.empty() &&
+                   llvm::all_of(rest, [](char c) {
+                       return std::isdigit(static_cast<unsigned char>(c)) != 0;
+                   })) {
+                    LOG_FATAL("§({}) collides with generated nameless keys; rename it.", key);
+                }
                 i = static_cast<std::uint32_t>(key_end) + 1;
             }
 

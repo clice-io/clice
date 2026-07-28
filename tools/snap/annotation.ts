@@ -50,6 +50,11 @@ export function parseAnnotations(text: string): AnnotatedSource {
                             "nameless point before real parentheses.",
                     );
                 }
+                // `nameless_<i>` is how unnamed markers key their results; a
+                // real annotation with such a name would collide.
+                if (/^nameless_\d+$/.test(key)) {
+                    throw new Error(`§(${key}) collides with generated nameless keys; rename it.`);
+                }
                 i = keyEnd + 1;
             }
 
@@ -117,10 +122,11 @@ export function markerPoints(source: AnnotatedSource): [string, number][] {
 }
 
 export function markerRanges(source: AnnotatedSource): [string, [number, number]][] {
-    return [...source.ranges.entries()]
-        .map(([name, range]): [string, [number, number]] => [
-            name === "" ? "nameless_0" : name,
-            range,
-        ])
+    // Named ranges sorted by name; the single allowed nameless range comes
+    // last, matching the named-then-nameless order everywhere else.
+    const named = [...source.ranges.entries()]
+        .filter(([name]) => name !== "")
         .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    const nameless = source.ranges.get("");
+    return nameless ? [...named, ["nameless_0", nameless]] : named;
 }

@@ -379,7 +379,11 @@ export const renderRawInlayHints = (result: unknown, stripped: Buffer): string[]
     for (const hint of result as RawInlayHint[]) {
         const pos = map.position(hint.offset);
         let line = `- { pos: "${pos.line}:${pos.character}"`;
-        line += `, kind: ${LSP_INLAY_KIND[hint.kind] ?? hint.kind}`;
+        const kind = LSP_INLAY_KIND[hint.kind];
+        if (kind === undefined) {
+            throw new Error(`unmapped inlay hint kind '${hint.kind}'; extend LSP_INLAY_KIND`);
+        }
+        line += `, kind: ${kind}`;
         line += `, label: ${yamlStr(hint.label)}`;
         if (hint.padding_left) {
             line += ", padding_left: true";

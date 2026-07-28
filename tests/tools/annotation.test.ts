@@ -47,6 +47,7 @@ test.for([
     "§(d)⟦x⟧ §(d)⟦y⟧",
     "bare ⟦",
     "§⟦unclosed",
+    "§(nameless_0)x", // collides with generated keys for unnamed markers
 ])("annotation rejects %s", (text) => {
     expect(() => parseAnnotations(text)).toThrow();
 });
