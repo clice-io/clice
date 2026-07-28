@@ -4,9 +4,11 @@
 #include <vector>
 
 #include "compile/directive.h"
+#include "semantic/relation_kind.h"
 #include "syntax/token.h"
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SmallVector.h"
 #include "clang/AST/ASTTypeTraits.h"
 #include "clang/AST/TypeLoc.h"
 #include "clang/Tooling/Syntax/Tokens.h"
@@ -19,6 +21,7 @@ class Attr;
 class ConceptReference;
 class CXXCtorInitializer;
 class CXXBaseSpecifier;
+class NamedDecl;
 
 }  // namespace clang
 
@@ -179,6 +182,23 @@ private:
 /// cvr-qualifiers (the AST does not model their locations).
 bool should_ignore_token(const clang::syntax::Token& token);
 
+/// A name occurrence a node gives rise to: the decl the written name refers
+/// to, its role, and the name token's location.
+struct NameOccurrence {
+    const clang::NamedDecl* decl;
+
+    RelationKind kind;
+
+    clang::SourceLocation location;
+};
+
+/// The name occurrences of `node` — the single implementation of "node →
+/// referenced decl" (the distilled content of the former SemanticVisitor
+/// visit methods), shared by semantic tokens and the index projection.
+/// Nodes from implicit instantiations and dependent contexts currently
+/// produce no occurrences, mirroring the previous behavior.
+llvm::SmallVector<NameOccurrence, 2> resolve_occurrences(const SemanticNode& node);
+
 /// The semantic map of the interested file, built once after a successful
 /// parse and serving every consumer that used to run its own traversal:
 /// selection, semantic tokens, hover and the TUIndex projection.
@@ -241,9 +261,10 @@ public:
     }
 
     /// The spelled tokens of the interested file (a view into the unit's
-    /// TokenBuffer, not a copy). With a preamble PCH the preamble region has
-    /// no tokens here — that is how PCH works; preamble information travels
-    /// through PreambleState instead.
+    /// TokenBuffer, not a copy). They cover the whole file even under a
+    /// preamble PCH — what the PCH consumes is the preamble's AST and
+    /// directives (those travel through PreambleState instead), not its
+    /// spelling.
     llvm::ArrayRef<clang::syntax::Token> spelled_tokens() const {
         return tokens;
     }

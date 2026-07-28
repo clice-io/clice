@@ -6,7 +6,6 @@
 #include "compile/compilation_unit.h"
 #include "index/serialization.h"
 #include "semantic/ast_utility.h"
-#include "semantic/resolve.h"
 #include "semantic/semantics.h"
 #include "syntax/lexer.h"
 
@@ -301,22 +300,161 @@ public:
         }
     }
 
-    /// The nearest enclosing plain FunctionDecl of node `i`, for Caller/Callee
-    /// facts. Deliberately not `isa<FunctionDecl>`: the previous traversal only
-    /// tracked exact FunctionDecls (methods took a different traversal path),
-    /// and the serialized rows pin that behavior.
-    /// FIXME: methods should count as callers too; fix together with the
-    /// index format.
+    /// The nearest enclosing function of node `index`, for call edges. Methods
+    /// count as callers too (the previous traversal-stack implementation
+    /// missed them: methods take a different RAV path than TraverseFunctionDecl).
     const clang::NamedDecl* enclosing_function(const Semantics& semantics, std::uint32_t index) {
         for(auto p = semantics.node(index).parent; p != Semantics::invalid;
             p = semantics.node(p).parent) {
             if(auto* decl = semantics.node(p).node.get<clang::FunctionDecl>()) {
-                if(decl->getKind() == clang::Decl::Function) {
-                    return decl;
-                }
+                return decl;
             }
         }
         return nullptr;
+    }
+
+    /// Decl-pair relation facts: type definitions, inheritance, overrides,
+    /// constructor/destructor ownership and call edges. Only the index
+    /// consumes these, so they live here rather than in the semantic layer.
+    void project_relations(const Semantics& semantics, std::uint32_t index) {
+        const SemanticNode& node = semantics.node(index).node;
+
+        if(auto* CE = node.get<clang::CallExpr>()) {
+            const clang::NamedDecl* caller = enclosing_function(semantics, index);
+            const clang::NamedDecl* callee =
+                llvm::dyn_cast_if_present<clang::NamedDecl>(CE->getCalleeDecl());
+            if(caller && callee) {
+                handleRelation(caller, RelationKind::Callee, callee, CE->getSourceRange());
+                handleRelation(callee, RelationKind::Caller, caller, CE->getSourceRange());
+            }
+            return;
+        }
+
+        auto* D = node.get<clang::Decl>();
+        if(!D) {
+            return;
+        }
+
+        /// The type of a value declaration, for go-to-type-definition.
+        if(llvm::isa<clang::FieldDecl,
+                     clang::BindingDecl,
+                     clang::NonTypeTemplateParmDecl,
+                     clang::VarDecl>(D)) {
+            if(auto* VTSD = llvm::dyn_cast<clang::VarTemplateSpecializationDecl>(D)) {
+                switch(VTSD->getSpecializationKind()) {
+                    case clang::TSK_ImplicitInstantiation:
+                    case clang::TSK_ExplicitInstantiationDeclaration:
+                    case clang::TSK_ExplicitInstantiationDefinition: {
+                        return;
+                    }
+
+                    case clang::TSK_Undeclared:
+                    case clang::TSK_ExplicitSpecialization: {
+                        break;
+                    }
+                }
+            }
+
+            auto* VD = llvm::cast<clang::ValueDecl>(D);
+            if(auto target = ast::decl_of(VD->getType())) {
+                handleRelation(VD, RelationKind::TypeDefinition, target, VD->getLocation());
+            }
+            return;
+        }
+
+        if(auto* ECD = llvm::dyn_cast<clang::EnumConstantDecl>(D)) {
+            handleRelation(ECD,
+                           RelationKind::TypeDefinition,
+                           llvm::cast<clang::NamedDecl>(ECD->getDeclContext()),
+                           ECD->getLocation());
+            return;
+        }
+
+        if(auto* TND = llvm::dyn_cast<clang::TypedefNameDecl>(D)) {
+            if(auto target = ast::decl_of(TND->getUnderlyingType())) {
+                handleRelation(TND, RelationKind::TypeDefinition, target, TND->getLocation());
+            }
+            return;
+        }
+
+        /// Base/derived edges, recorded at the defining declaration.
+        if(auto* TD = llvm::dyn_cast<clang::TagDecl>(D)) {
+            if(auto* CTSD = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(TD)) {
+                switch(CTSD->getSpecializationKind()) {
+                    case clang::TSK_Undeclared:
+                    case clang::TSK_ImplicitInstantiation:
+                    case clang::TSK_ExplicitInstantiationDeclaration:
+                    case clang::TSK_ExplicitInstantiationDefinition: {
+                        return;
+                    }
+
+                    case clang::TSK_ExplicitSpecialization: {
+                        break;
+                    }
+                }
+            }
+
+            if(auto* CRD = llvm::dyn_cast<clang::CXXRecordDecl>(TD)) {
+                if(auto* def = CRD->getDefinition()) {
+                    for(auto& base: CRD->bases()) {
+                        /// FIXME: Handle dependent base class.
+                        if(auto target = ast::decl_of(base.getType())) {
+                            handleRelation(def, RelationKind::Base, target, base.getSourceRange());
+                            handleRelation(target,
+                                           RelationKind::Derived,
+                                           def,
+                                           base.getSourceRange());
+                        }
+                    }
+                }
+            }
+            return;
+        }
+
+        if(auto* FD = llvm::dyn_cast<clang::FunctionDecl>(D)) {
+            switch(FD->getTemplateSpecializationKind()) {
+                case clang::TSK_ImplicitInstantiation:
+                case clang::TSK_ExplicitInstantiationDeclaration:
+                case clang::TSK_ExplicitInstantiationDefinition: {
+                    return;
+                }
+
+                case clang::TSK_Undeclared:
+                case clang::TSK_ExplicitSpecialization: {
+                    break;
+                }
+            }
+
+            if(auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(FD)) {
+                for(auto* base: method->overridden_methods()) {
+                    handleRelation(method, RelationKind::Interface, base, FD->getLocation());
+                    handleRelation(base, RelationKind::Implementation, method, FD->getLocation());
+                }
+
+                if(auto* ctor = llvm::dyn_cast<clang::CXXConstructorDecl>(method)) {
+                    handleRelation(ctor,
+                                   RelationKind::TypeDefinition,
+                                   ctor->getParent(),
+                                   FD->getLocation());
+                    handleRelation(ctor->getParent(),
+                                   RelationKind::Constructor,
+                                   ctor,
+                                   FD->getLocation());
+                }
+
+                if(auto* dtor = llvm::dyn_cast<clang::CXXDestructorDecl>(method)) {
+                    handleRelation(dtor,
+                                   RelationKind::TypeDefinition,
+                                   dtor->getParent(),
+                                   FD->getLocation());
+                    handleRelation(dtor->getParent(),
+                                   RelationKind::Destructor,
+                                   dtor,
+                                   FD->getLocation());
+                }
+            }
+            return;
+        }
     }
 
     void project_semantics() {
@@ -337,21 +475,18 @@ public:
                 continue;
             }
 
-            const clang::NamedDecl* enclosing = nullptr;
-            if(node.get<clang::CallExpr>()) {
-                enclosing = enclosing_function(semantics, i);
+            for(auto& occurrence: resolve_occurrences(node)) {
+                handleDeclOccurrence(occurrence.decl, occurrence.kind, occurrence.location);
+
+                /// Every occurrence is mirrored as a self-relation, so
+                /// find-references on the occurring decl finds this row.
+                handleRelation(occurrence.decl,
+                               occurrence.kind,
+                               occurrence.decl,
+                               occurrence.location);
             }
 
-            resolve_facts(
-                node,
-                [&](const clang::NamedDecl* decl,
-                    RelationKind kind,
-                    clang::SourceLocation location) { handleDeclOccurrence(decl, kind, location); },
-                [&](const clang::NamedDecl* decl,
-                    RelationKind kind,
-                    const clang::NamedDecl* target,
-                    clang::SourceRange range) { handleRelation(decl, kind, target, range); },
-                enclosing);
+            project_relations(semantics, i);
         }
 
         for(auto& [fid, directive]: unit.directives()) {

@@ -6,11 +6,13 @@
 #include <set>
 
 #include "compile/compilation_unit.h"
+#include "semantic/ast_utility.h"
 
 #include "llvm/ADT/STLExtras.h"
 #include "clang/AST/Attr.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclCXX.h"
+#include "clang/AST/DeclTemplate.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/ExprConcepts.h"
@@ -904,6 +906,338 @@ Semantics Semantics::build(CompilationUnitRef unit, bool interested_only) {
     Semantics semantics;
     SemanticsBuilder::build(semantics, unit, interested_only);
     return semantics;
+}
+
+namespace {
+
+using Occurrences = llvm::SmallVector<NameOccurrence, 2>;
+
+void occur(Occurrences& out,
+           const clang::NamedDecl* decl,
+           RelationKind kind,
+           clang::SourceLocation location) {
+    if(decl && location.isValid()) {
+        out.push_back({decl, kind, location});
+    }
+}
+
+/// The per-decl-kind extraction below is ported verbatim from the former
+/// SemanticVisitor: the same decls, the same roles, the same name locations.
+void decl_occurrences(const clang::Decl* D, Occurrences& out) {
+    /// namespace Foo = Bar
+    ///            ^     ^~~~ reference
+    ///            ^~~~ definition
+    if(auto* NAD = llvm::dyn_cast<clang::NamespaceAliasDecl>(D)) {
+        occur(out, NAD, RelationKind::Definition, NAD->getLocation());
+        occur(out, NAD->getNamespace(), RelationKind::Reference, NAD->getTargetNameLoc());
+        return;
+    }
+
+    /// namespace Foo { }
+    ///            ^~~~ definition
+    if(auto* ND = llvm::dyn_cast<clang::NamespaceDecl>(D)) {
+        occur(out, ND, RelationKind::Definition, ND->getLocation());
+        return;
+    }
+
+    /// using namespace Foo
+    ///                  ^~~~~~~ reference
+    if(auto* UDD = llvm::dyn_cast<clang::UsingDirectiveDecl>(D)) {
+        occur(out, UDD->getNominatedNamespace(), RelationKind::Reference, UDD->getLocation());
+        return;
+    }
+
+    /// label:
+    ///   ^~~~ definition
+    if(auto* LD = llvm::dyn_cast<clang::LabelDecl>(D)) {
+        occur(out, LD, RelationKind::Definition, LD->getLocation());
+        return;
+    }
+
+    /// struct X { int foo; };
+    ///                 ^~~~ definition
+    if(auto* FD = llvm::dyn_cast<clang::FieldDecl>(D)) {
+        occur(out, FD, RelationKind::Definition, FD->getLocation());
+        return;
+    }
+
+    /// enum Foo { bar };
+    ///             ^~~~ definition
+    if(auto* ECD = llvm::dyn_cast<clang::EnumConstantDecl>(D)) {
+        occur(out, ECD, RelationKind::Definition, ECD->getLocation());
+        return;
+    }
+
+    /// using Foo::bar;
+    ///             ^~~~ reference
+    if(auto* UD = llvm::dyn_cast<clang::UsingDecl>(D)) {
+        for(auto* shadow: UD->shadows()) {
+            occur(out, shadow, RelationKind::WeakReference, UD->getLocation());
+        }
+        return;
+    }
+
+    /// auto [a, b] = std::make_tuple(1, 2);
+    ///       ^~~~ definition
+    ///
+    /// template <typename T> / template <int N>
+    ///                    ^~~~ definition
+    if(llvm::isa<clang::BindingDecl,
+                 clang::TemplateTypeParmDecl,
+                 clang::TemplateTemplateParmDecl,
+                 clang::NonTypeTemplateParmDecl>(D)) {
+        auto* ND = llvm::cast<clang::NamedDecl>(D);
+        occur(out, ND, RelationKind::Definition, ND->getLocation());
+        return;
+    }
+
+    /// template <typename T> concept Foo = ...;
+    ///                                ^~~~ definition
+    if(auto* CD = llvm::dyn_cast<clang::ConceptDecl>(D)) {
+        occur(out, CD, RelationKind::Definition, CD->getLocation());
+        return;
+    }
+
+    /// The template decl itself produces no occurrence; the templated decl
+    /// inside it does.
+    if(llvm::isa<clang::ClassTemplateDecl, clang::FunctionTemplateDecl, clang::VarTemplateDecl>(
+           D)) {
+        return;
+    }
+
+    /// struct/class/union/enum Foo { ... };
+    ///                          ^~~~ declaration/definition
+    if(auto* TD = llvm::dyn_cast<clang::TagDecl>(D)) {
+        if(auto* CTSD = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(TD)) {
+            switch(CTSD->getSpecializationKind()) {
+                /// Unlike the old filtered traversal, the semantic map may
+                /// record implicit instantiations; they produce no written
+                /// occurrence.
+                case clang::TSK_Undeclared:
+                case clang::TSK_ImplicitInstantiation: {
+                    return;
+                }
+
+                case clang::TSK_ExplicitSpecialization: {
+                    break;
+                }
+
+                case clang::TSK_ExplicitInstantiationDeclaration:
+                case clang::TSK_ExplicitInstantiationDefinition: {
+                    occur(out,
+                          ast::instantiated_from(CTSD),
+                          RelationKind::Reference,
+                          CTSD->getLocation());
+                    return;
+                }
+            }
+        }
+
+        RelationKind kind = TD->isThisDeclarationADefinition() ? RelationKind::Definition
+                                                               : RelationKind::Declaration;
+        occur(out, TD, kind, TD->getLocation());
+        return;
+    }
+
+    /// void foo() { ... }
+    ///       ^~~~ declaration/definition
+    if(auto* FD = llvm::dyn_cast<clang::FunctionDecl>(D)) {
+        switch(FD->getTemplateSpecializationKind()) {
+            case clang::TSK_ImplicitInstantiation:
+            /// FIXME: Clang currently doesn't record source location of explicit
+            /// instantiation of function template correctly. Skip it temporarily.
+            case clang::TSK_ExplicitInstantiationDeclaration:
+            case clang::TSK_ExplicitInstantiationDefinition: {
+                return;
+            }
+
+            case clang::TSK_Undeclared:
+            case clang::TSK_ExplicitSpecialization: {
+                break;
+            }
+        }
+
+        RelationKind kind = FD->isThisDeclarationADefinition() ? RelationKind::Definition
+                                                               : RelationKind::Declaration;
+        occur(out, FD, kind, FD->getLocation());
+        return;
+    }
+
+    /// using Foo = int;
+    ///        ^~~~ definition
+    if(auto* TND = llvm::dyn_cast<clang::TypedefNameDecl>(D)) {
+        occur(out, TND, RelationKind::Definition, TND->getLocation());
+        return;
+    }
+
+    /// int foo = 2;
+    ///      ^~~~ declaration/definition
+    if(auto* VD = llvm::dyn_cast<clang::VarDecl>(D)) {
+        if(auto* VTSD = llvm::dyn_cast<clang::VarTemplateSpecializationDecl>(VD)) {
+            switch(VTSD->getSpecializationKind()) {
+                case clang::TSK_ImplicitInstantiation:
+                /// FIXME: Clang currently doesn't record source location of explicit
+                /// instantiation of variable template correctly. Skip it temporarily.
+                case clang::TSK_ExplicitInstantiationDeclaration:
+                case clang::TSK_ExplicitInstantiationDefinition: {
+                    return;
+                }
+
+                case clang::TSK_Undeclared:
+                case clang::TSK_ExplicitSpecialization: {
+                    break;
+                }
+            }
+        }
+
+        RelationKind kind = VD->isThisDeclarationADefinition() ? RelationKind::Definition
+                                                               : RelationKind::Declaration;
+        occur(out, VD, kind, VD->getLocation());
+        return;
+    }
+}
+
+void type_loc_occurrences(clang::TypeLoc TL, Occurrences& out) {
+    /// struct Foo foo;
+    ///         ^~~~ reference
+    if(auto TTL = TL.getAs<clang::TagTypeLoc>()) {
+        occur(out, TTL.getDecl(), RelationKind::Reference, TTL.getNameLoc());
+        return;
+    }
+
+    /// using Foo = int; Foo foo;
+    ///                   ^~~~ reference
+    if(auto TTL = TL.getAs<clang::TypedefTypeLoc>()) {
+        occur(out, TTL.getTypedefNameDecl(), RelationKind::Reference, TTL.getNameLoc());
+        return;
+    }
+
+    /// template <typename T> void foo(T t)
+    ///                                ^~~~ reference
+    if(auto TTPL = TL.getAs<clang::TemplateTypeParmTypeLoc>()) {
+        occur(out, TTPL.getDecl(), RelationKind::Reference, TTPL.getNameLoc());
+        return;
+    }
+
+    /// std::vector<int>
+    ///        ^~~~ reference
+    if(auto TSTL = TL.getAs<clang::TemplateSpecializationTypeLoc>()) {
+        if(TSTL.getTypePtr()->isDependentType()) {
+            /// FIXME: for dependent type, use the template resolver to
+            /// resolve the template decl.
+            return;
+        }
+
+        occur(out,
+              ast::decl_of(TSTL.getType()),
+              RelationKind::Reference,
+              TSTL.getTemplateNameLoc());
+        return;
+    }
+
+    /// std::vector<T>::value_type / std::allocator<T>::rebind<U>
+    /// FIXME: dependent names await the template resolver.
+}
+
+void nns_occurrences(clang::NestedNameSpecifierLoc NNSL, Occurrences& out) {
+    auto* NNS = NNSL.getNestedNameSpecifier();
+    switch(NNS->getKind()) {
+        case clang::NestedNameSpecifier::Namespace: {
+            occur(out, NNS->getAsNamespace(), RelationKind::Reference, NNSL.getLocalBeginLoc());
+            break;
+        }
+
+        case clang::NestedNameSpecifier::NamespaceAlias: {
+            occur(out,
+                  NNS->getAsNamespaceAlias(),
+                  RelationKind::Reference,
+                  NNSL.getLocalBeginLoc());
+            break;
+        }
+
+        case clang::NestedNameSpecifier::Identifier: {
+            assert(NNS->isDependent() && "Identifier NNS should be dependent");
+            // FIXME: use TemplateResolver here.
+            break;
+        }
+
+        case clang::NestedNameSpecifier::TypeSpec:
+        case clang::NestedNameSpecifier::Global:
+        case clang::NestedNameSpecifier::Super: {
+            break;
+        };
+    }
+}
+
+void stmt_occurrences(const clang::Stmt* S, Occurrences& out) {
+    /// foo = 1
+    ///  ^~~~ reference
+    if(auto* DRE = llvm::dyn_cast<clang::DeclRefExpr>(S)) {
+        occur(out, DRE->getDecl(), RelationKind::Reference, DRE->getLocation());
+        return;
+    }
+
+    /// foo.bar
+    ///      ^~~~ reference
+    if(auto* ME = llvm::dyn_cast<clang::MemberExpr>(S)) {
+        auto location = ME->getMemberLoc();
+        if(location.isInvalid()) {
+            /// An invalid member location means an implicit member expr, e.g.
+            /// the implicit `operator bool` call in `if(x)`.
+            return;
+        }
+
+        occur(out, ME->getMemberDecl(), RelationKind::Reference, location);
+        return;
+    }
+
+    /// std::is_same<T, U>::value etc.
+    /// FIXME: dependent expressions await the template resolver.
+}
+
+}  // namespace
+
+llvm::SmallVector<NameOccurrence, 2> resolve_occurrences(const SemanticNode& node) {
+    llvm::SmallVector<NameOccurrence, 2> out;
+
+    switch(node.kind()) {
+        case SemanticNode::Kind::Decl: {
+            decl_occurrences(node.get<clang::Decl>(), out);
+            break;
+        }
+
+        case SemanticNode::Kind::Stmt: {
+            stmt_occurrences(node.get<clang::Stmt>(), out);
+            break;
+        }
+
+        case SemanticNode::Kind::TypeLoc: {
+            type_loc_occurrences(*node.get<clang::TypeLoc>(), out);
+            break;
+        }
+
+        case SemanticNode::Kind::NestedNameSpecifierLoc: {
+            nns_occurrences(*node.get<clang::NestedNameSpecifierLoc>(), out);
+            break;
+        }
+
+        case SemanticNode::Kind::ConceptReference: {
+            /// requires Foo<T>;
+            ///            ^~~~ reference
+            auto* reference = node.get<clang::ConceptReference>();
+            occur(out,
+                  reference->getNamedConcept(),
+                  RelationKind::Reference,
+                  reference->getConceptNameLoc());
+            break;
+        }
+
+        default: {
+            break;
+        }
+    }
+
+    return out;
 }
 
 }  // namespace clice
