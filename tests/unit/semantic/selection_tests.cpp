@@ -567,6 +567,23 @@ TEST_CASE(Attributes) {
                   "BuiltinTypeLoc");
 }
 
+TEST_CASE(PartialCoverage) {
+    select_right(R"(void foo(int); void bar() { foo§()(1§()); })", [&](SelectionTree& tree) {
+        auto* node = tree.common_ancestor();
+        ASSERT_TRUE(node != nullptr);
+        ASSERT_EQ(node->kind(), std::string("CallExpr"));
+        // The call owns `(` and `)`, and only `(` is selected.
+        ASSERT_EQ(node->selected, SelectionTree::Partial);
+    });
+
+    select_right(R"(void foo(int); void bar() { foo§()(1)§(); })", [&](SelectionTree& tree) {
+        auto* node = tree.common_ancestor();
+        ASSERT_TRUE(node != nullptr);
+        ASSERT_EQ(node->kind(), std::string("CallExpr"));
+        ASSERT_EQ(node->selected, SelectionTree::Complete);
+    });
+}
+
 TEST_CASE(Macros) {
     EXPECT_SELECT(R"(
             int x(int);

@@ -291,8 +291,12 @@ TEST_CASE(BaseAndDerived) {
         )");
 
     auto& index = tu_index.main_file_index;
-    auto base_hash = select("base").front().target;
-    auto derived_hash = select("derived").front().target;
+    auto base_occs = select("base");
+    auto derived_occs = select("derived");
+    ASSERT_FALSE(base_occs.empty());
+    ASSERT_FALSE(derived_occs.empty());
+    auto base_hash = base_occs.front().target;
+    auto derived_hash = derived_occs.front().target;
 
     auto has_pair = [&](index::SymbolHash source, RelationKind kind, index::SymbolHash target) {
         auto it = index.relations.find(source);
@@ -452,8 +456,13 @@ TEST_CASE(TypeDefinitionRelations) {
     auto& index = tu_index.main_file_index;
 
     auto has_type_definition = [&](llvm::StringRef source, llvm::StringRef target) {
-        auto source_hash = select(source).front().target;
-        auto target_hash = select(target).front().target;
+        auto source_occs = select(source);
+        auto target_occs = select(target);
+        if(source_occs.empty() || target_occs.empty()) {
+            return false;
+        }
+        auto source_hash = source_occs.front().target;
+        auto target_hash = target_occs.front().target;
         auto it = index.relations.find(source_hash);
         if(it == index.relations.end()) {
             return false;
@@ -481,8 +490,12 @@ TEST_CASE(ConstructorDestructorRelations) {
         )");
 
     auto& index = tu_index.main_file_index;
-    auto class_hash = select("s").front().target;
-    auto ctor_hash = select("ctor").front().target;
+    auto class_occs = select("s");
+    auto ctor_occs = select("ctor");
+    ASSERT_FALSE(class_occs.empty());
+    ASSERT_FALSE(ctor_occs.empty());
+    auto class_hash = class_occs.front().target;
+    auto ctor_hash = ctor_occs.front().target;
 
     auto it = index.relations.find(class_hash);
     ASSERT_TRUE(it != index.relations.end());

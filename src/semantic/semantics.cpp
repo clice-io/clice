@@ -512,14 +512,17 @@ private:
         semantics.pp_ignored.resize(semantics.tokens.size(), false);
 
         // Tokens preprocessed to nothing (e.g. a disabled region or an empty
-        // macro invocation) never contribute to a selection.
-        for(const clang::syntax::TokenBuffer::Expansion& expansion:
-            unit.expansions_overlapping(semantics.tokens)) {
-            if(expansion.Expanded.empty()) {
-                for(const clang::syntax::Token& token: expansion.Spelled) {
-                    std::size_t i = &token - semantics.tokens.data();
-                    if(i < semantics.pp_ignored.size()) {
-                        semantics.pp_ignored[i] = true;
+        // macro invocation) never contribute to a selection. Only relevant
+        // when token ownership is recorded at all.
+        if(interested_only) {
+            for(const clang::syntax::TokenBuffer::Expansion& expansion:
+                unit.expansions_overlapping(semantics.tokens)) {
+                if(expansion.Expanded.empty()) {
+                    for(const clang::syntax::Token& token: expansion.Spelled) {
+                        std::size_t i = &token - semantics.tokens.data();
+                        if(i < semantics.pp_ignored.size()) {
+                            semantics.pp_ignored[i] = true;
+                        }
                     }
                 }
             }
@@ -669,7 +672,16 @@ private:
 
     // Claim all unclaimed expanded tokens in S for node `self`, and attribute
     // each claimed token back to the main file.
+    //
+    // The whole-TU shape only feeds the index projection, which never queries
+    // token ownership — skip the claim machinery entirely. This matters: the
+    // preamble-state build runs a whole-TU pass over the preamble unit, and
+    // claiming its entire expanded stream would be paid on every PCH build.
     void claim_range(clang::SourceRange S, std::uint32_t self) {
+        if(!interested_only) {
+            return;
+        }
+
         for(const auto& claimed: unclaimed_expanded_tokens.erase(unit.expanded_tokens(S))) {
             attribute_tokens(claimed, self);
         }
@@ -763,9 +775,10 @@ private:
     std::uint32_t first_token_at(unsigned offset) const {
         auto count = static_cast<std::uint32_t>(semantics.tokens.size());
         auto range = std::views::iota(0u, count);
-        return *std::ranges::partition_point(range, [&](std::uint32_t i) {
+        auto it = std::ranges::partition_point(range, [&](std::uint32_t i) {
             return semantics.token_offset(i) < offset;
         });
+        return static_cast<std::uint32_t>(it - range.begin());
     }
 
     // Add ownership entries for every countable spelled token whose offset

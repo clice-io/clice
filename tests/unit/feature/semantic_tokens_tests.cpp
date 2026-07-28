@@ -253,6 +253,18 @@ int x = 1;
     EXPECT_NO_TOKEN("d3");
 }
 
+TEST_CASE(MacroArgumentTokens) {
+    run_utf8(R"cpp(
+int value = 1;
+#define ID(x) x
+int §(use)⟦y⟧ = ID(§(arg)⟦value⟧);
+)cpp");
+
+    // A name written as a macro argument keeps its semantic classification.
+    EXPECT_TOKEN("use", SymbolKind::Variable, modifier_mask({SymbolModifiers::Definition}));
+    EXPECT_TOKEN("arg", SymbolKind::Variable);
+}
+
 TEST_CASE(LegacyComment) {
     run_utf8(R"cpp(
 §(line)⟦/// line comment⟧

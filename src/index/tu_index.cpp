@@ -147,8 +147,13 @@ public:
             auto source_range = decl->getSourceRange();
             if(source_range.isValid()) {
                 auto [def_fid, definition_range] = unit.decompose_expansion_range(source_range);
-                assert(fid == def_fid && "Invalid definition location");
-                relation.set_definition_range(definition_range);
+                /// A declaration can begin in another file, e.g. when a
+                /// header-defined macro spells its leading tokens. Such a
+                /// range is meaningless in this file's coordinates; leave
+                /// the definition range empty instead of storing it.
+                if(fid == def_fid) {
+                    relation.set_definition_range(definition_range);
+                }
             }
         }
 

@@ -283,9 +283,10 @@ private:
         auto offset = semantics.token_offset(index);
         LocalSourceRange range(offset, offset + token.length());
 
-        /// A newline between tokens ends any directive context.
+        /// A logical newline between tokens ends any directive context; a
+        /// backslash-newline splice continues the directive.
         if(offset > previous_end &&
-           content.substr(previous_end, offset - previous_end).contains('\n')) {
+           has_logical_newline(content.substr(previous_end, offset - previous_end))) {
             directive_context = DirectiveContext::None;
         }
         previous_end = range.end;
@@ -360,6 +361,14 @@ private:
                     directive_context = DirectiveContext::InDirective;
                 } else if(clang::tok::getKeywordSpelling(token.kind())) {
                     lexical.kind = SymbolKind::Keyword;
+                } else if(auto* punctuator = clang::tok::getPunctuatorSpelling(token.kind())) {
+                    /// Alternative operator spellings (and, or, not, ...) lex
+                    /// as their punctuator kinds but are written as words.
+                    auto spelling = content.substr(offset, token.length());
+                    if(!spelling.empty() && llvm::isAlpha(spelling.front()) &&
+                       spelling != punctuator) {
+                        lexical.kind = SymbolKind::Keyword;
+                    }
                 }
                 break;
             }
@@ -367,8 +376,23 @@ private:
 
         /// The filename of an #include: either a string literal or the
         /// `<vector>` token sequence; adjacent merging joins the pieces.
+        /// The header context ends with the filename, so directive operands
+        /// after it (e.g. #embed parameters) keep their own classification.
         if(directive_context == DirectiveContext::InIncludeName &&
            lexical.kind != SymbolKind::Directive) {
+            if(token.kind() == clang::tok::less) {
+                directive_context = DirectiveContext::InAngledName;
+                lexical = {SymbolKind::Header, 0};
+            } else if(lexical.kind == SymbolKind::String) {
+                directive_context = DirectiveContext::InDirective;
+                lexical = {SymbolKind::Header, 0};
+            } else {
+                directive_context = DirectiveContext::InDirective;
+            }
+        } else if(directive_context == DirectiveContext::InAngledName) {
+            if(token.kind() == clang::tok::greater) {
+                directive_context = DirectiveContext::InDirective;
+            }
             lexical = {SymbolKind::Header, 0};
         }
 
@@ -422,10 +446,16 @@ private:
 
                     default: {
                         /// Declaration names anchored exactly at this token.
-                        /// Occurrences inside macro expansions carry macro
-                        /// locations and never match a spelled token here.
+                        /// Names written as macro arguments carry expansion
+                        /// locations whose spelling is the argument token
+                        /// itself; names spelled inside macro definitions
+                        /// have no owner here and stay lexical.
                         for(auto& occurrence: resolve_occurrences(node)) {
-                            if(occurrence.location == token.location()) {
+                            auto location = occurrence.location;
+                            if(location.isMacroID()) {
+                                location = unit.spelling_location(location);
+                            }
+                            if(location == token.location()) {
                                 combine(semantic, classify_decl(occurrence.decl, occurrence.kind));
                             }
                         }
@@ -496,6 +526,24 @@ private:
         }
     }
 
+    static bool has_logical_newline(llvm::StringRef text) {
+        for(std::size_t i = 0; i < text.size(); i++) {
+            if(text[i] != '\n') {
+                continue;
+            }
+
+            auto j = i;
+            if(j > 0 && text[j - 1] == '\r') {
+                j--;
+            }
+            if(j > 0 && text[j - 1] == '\\') {
+                continue;
+            }
+            return true;
+        }
+        return false;
+    }
+
     void emit(LocalSourceRange range, SymbolKind kind, std::uint32_t modifiers) {
         if(!tokens.empty()) {
             auto& last = tokens.back();
@@ -513,6 +561,7 @@ private:
         AfterHash,
         InDirective,
         InIncludeName,
+        InAngledName,
         AfterDefine,
     };
 

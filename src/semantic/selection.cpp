@@ -189,9 +189,10 @@ SelectionTree::SelectionTree(CompilationUnitRef unit, LocalSourceRange range) :
     // per-token selectedness into the nodes owning them.
     auto count = static_cast<std::uint32_t>(tokens.size());
     auto indices = std::views::iota(0u, count);
-    std::uint32_t first = *std::ranges::partition_point(indices, [&](std::uint32_t i) {
+    auto lower = std::ranges::partition_point(indices, [&](std::uint32_t i) {
         return semantics.token_offset(i) + tokens[i].length() <= begin;
     });
+    auto first = static_cast<std::uint32_t>(lower - indices.begin());
     // A token is ignored by the algorithm if it can never contribute to any
     // selection: comments, semicolons, cvr-qualifiers, tokens preprocessed
     // to nothing.
