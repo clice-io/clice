@@ -20,6 +20,8 @@
 
 namespace clice {
 
+class Semantics;
+
 namespace index {
 
 // Temporary in-header definition during migration.
@@ -249,6 +251,10 @@ public:
     clang::syntax::TokenBuffer& token_buffer();
 
     TemplateResolver& resolver();
+
+    /// The semantic map of the interested file (token → owning node), built
+    /// lazily on first use and cached for the unit's lifetime.
+    const Semantics& semantics();
 
     llvm::DenseMap<clang::FileID, Directive>& directives();
 

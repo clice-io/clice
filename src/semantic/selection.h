@@ -1,6 +1,6 @@
 #pragma once
 
-#include <stack>
+#include <deque>
 
 #include "syntax/token.h"
 
@@ -37,6 +37,10 @@ class CompilationUnitRef;
 ///
 /// The SelectionTree owns the Node structures, but the ASTNode attributes
 /// point back into the AST it was constructed with.
+///
+/// Queries are served by the unit's Semantics (built once per compilation);
+/// constructing a tree is a couple of binary searches plus materializing the
+/// selected ancestor chains.
 class SelectionTree {
 public:
     /// Create selection trees for the given range, and pass them to Func.
@@ -141,7 +145,7 @@ private:
     // The range includes bytes [Start, End).
     SelectionTree(CompilationUnitRef unit, LocalSourceRange range);
 
-    // Stable-pointer storage, FIXME: use memory pool instead?
+    // Stable-pointer storage.
     std::deque<Node> nodes;
 
     const Node* m_root;

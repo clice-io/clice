@@ -2,6 +2,7 @@
 
 #include "compile/compilation_unit.h"
 #include "compile/diagnostic.h"
+#include "semantic/semantics.h"
 
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Frontend/FrontendActions.h"
@@ -70,6 +71,9 @@ struct CompilationUnitRef::Self {
 
     /// The template resolver used to resolve dependent name.
     std::optional<TemplateResolver> resolver;
+
+    /// Lazily built semantic map, see CompilationUnitRef::semantics().
+    std::unique_ptr<Semantics> semantics_cache;
 
     /// Token information collected during the preprocessing.
     std::optional<clang::syntax::TokenBuffer> buffer;

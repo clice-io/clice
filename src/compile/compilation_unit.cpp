@@ -403,6 +403,13 @@ TemplateResolver& CompilationUnitRef::resolver() {
     return *self->resolver;
 }
 
+const Semantics& CompilationUnitRef::semantics() {
+    if(!self->semantics_cache) {
+        self->semantics_cache = std::make_unique<Semantics>(Semantics::build(*this));
+    }
+    return *self->semantics_cache;
+}
+
 clang::ASTContext& CompilationUnitRef::context() {
     return self->instance->getASTContext();
 }
