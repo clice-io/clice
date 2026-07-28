@@ -7,6 +7,7 @@
 #include "feature/feature.h"
 #include "feature/inactive_regions.h"
 #include "index/tu_index.h"
+#include "semantic/selection.h"
 
 #include "kota/meta/enum.h"
 #include "llvm/Support/thread.h"
@@ -1071,6 +1072,14 @@ TEST_CASE(DeepExpressionChain) {
         // Mirror the stateful worker's post-compile sequence.
         scan = feature::inactive_regions(*unit);
         tu_index = index::TUIndex::build(*unit, true);
+
+        // The semantic map must also serve token classification and a
+        // selection at the giant expansion's invocation on this stack:
+        // per-token ancestor walks and recursive tree materialization
+        // both used to degrade on chains this deep.
+        feature::semantic_tokens(*unit);
+        auto use_offset = static_cast<std::uint32_t>(code.rfind("A14"));
+        SelectionTree::create_right(*unit, LocalSourceRange(use_offset, use_offset));
     });
     index_thread.join();
 

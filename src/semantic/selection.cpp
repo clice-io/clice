@@ -242,22 +242,29 @@ SelectionTree::SelectionTree(CompilationUnitRef unit, LocalSourceRange range) :
     std::ranges::sort(selected);
     llvm::DenseMap<std::uint32_t, Node*> materialized;
 
-    auto materialize = [&](this auto& materialize, std::uint32_t i) -> Node* {
-        if(auto it = materialized.find(i); it != materialized.end()) {
-            return it->second;
+    /// Iterative on purpose: a selected leaf under a deep expression chain
+    /// (tens of thousands of nodes) would otherwise recurse once per level
+    /// and overflow the stack.
+    auto materialize = [&](std::uint32_t index) -> Node* {
+        llvm::SmallVector<std::uint32_t> chain;
+        auto i = index;
+        while(i != Semantics::invalid && !materialized.contains(i)) {
+            chain.push_back(i);
+            i = semantics.node(i).parent;
         }
 
-        auto& entry = semantics.node(i);
-        Node* parent =
-            entry.parent == Semantics::invalid ? &nodes.front() : materialize(entry.parent);
-        nodes.emplace_back();
-        Node& node = nodes.back();
-        node.data = entry.node.dyn_typed();
-        node.parent = parent;
-        node.selected = SelectionTree::Unselected;
-        parent->children.push_back(&node);
-        materialized[i] = &node;
-        return &node;
+        Node* parent = i == Semantics::invalid ? &nodes.front() : materialized[i];
+        for(auto it = chain.rbegin(); it != chain.rend(); ++it) {
+            nodes.emplace_back();
+            Node& node = nodes.back();
+            node.data = semantics.node(*it).node.dyn_typed();
+            node.parent = parent;
+            node.selected = SelectionTree::Unselected;
+            parent->children.push_back(&node);
+            materialized[*it] = &node;
+            parent = &node;
+        }
+        return parent;
     };
 
     for(std::uint32_t i: selected) {

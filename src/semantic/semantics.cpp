@@ -863,13 +863,28 @@ private:
         }
 
         for(auto& import: directive.imports) {
+            /// An import spelled through a macro carries macro locations;
+            /// name tokens written as macro arguments still resolve to
+            /// spelled main-file tokens.
+            Row row{0, SemanticNode(&import), {}};
+            std::optional<unsigned> anchor;
             if(auto offset = offset_in_main_file(import.location)) {
-                Row row{*offset, SemanticNode(&import), {}};
-                for(auto loc: import.name_locations) {
-                    if(auto name_offset = offset_in_main_file(loc)) {
-                        row.extra_offsets.push_back(*name_offset);
-                    }
+                anchor = *offset;
+                row.extra_offsets.push_back(*offset);
+            }
+            for(auto loc: import.name_locations) {
+                if(loc.isMacroID()) {
+                    loc = SM.getSpellingLoc(loc);
                 }
+                if(auto name_offset = offset_in_main_file(loc)) {
+                    if(!anchor) {
+                        anchor = *name_offset;
+                    }
+                    row.extra_offsets.push_back(*name_offset);
+                }
+            }
+            if(anchor) {
+                row.offset = *anchor;
                 rows.push_back(std::move(row));
             }
         }

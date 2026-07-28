@@ -333,14 +333,30 @@ public:
     /// The nearest enclosing function of node `index`, for call edges. Methods
     /// count as callers too (the previous traversal-stack implementation
     /// missed them: methods take a different RAV path than TraverseFunctionDecl).
+    ///
+    /// Memoized with path compression: calls nested under a deep expression
+    /// chain would otherwise each rescan thousands of the same ancestors.
     const clang::NamedDecl* enclosing_function(const Semantics& semantics, std::uint32_t index) {
+        llvm::SmallVector<std::uint32_t> path;
+        const clang::NamedDecl* result = nullptr;
+
         for(auto p = semantics.node(index).parent; p != Semantics::invalid;
             p = semantics.node(p).parent) {
-            if(auto* decl = semantics.node(p).node.get<clang::FunctionDecl>()) {
-                return decl;
+            if(auto it = enclosing_cache.find(p); it != enclosing_cache.end()) {
+                result = it->second;
+                break;
             }
+            if(auto* decl = semantics.node(p).node.get<clang::FunctionDecl>()) {
+                result = decl;
+                break;
+            }
+            path.push_back(p);
         }
-        return nullptr;
+
+        for(auto p: path) {
+            enclosing_cache.try_emplace(p, result);
+        }
+        return result;
     }
 
     /// Decl-pair relation facts: type definitions, inheritance, overrides,
@@ -598,6 +614,7 @@ private:
     TUIndex& result;
     CompilationUnitRef unit;
     bool interested_only;
+    llvm::DenseMap<std::uint32_t, const clang::NamedDecl*> enclosing_cache;
 };
 
 }  // namespace

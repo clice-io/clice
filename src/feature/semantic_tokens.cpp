@@ -266,6 +266,7 @@ public:
 
     auto collect() -> std::vector<SemanticToken> {
         precompute_module_declaration();
+        precompute_semantics();
         scan_comments();
 
         auto spelled = semantics.spelled_tokens();
@@ -298,7 +299,10 @@ private:
         }
 
         Classified lexical = classify_lexical(token, offset);
-        Classified semantic = classify_semantic(index, token);
+        Classified semantic;
+        if(auto it = token_semantics.find(index); it != token_semantics.end()) {
+            semantic = it->second;
+        }
 
         /// Semantic classification beats the lexical directive kinds; any
         /// other disagreement is a Conflict, matching the historical rule.
@@ -402,70 +406,95 @@ private:
     /// Ownership-based classification: walk the owner chain, collecting
     /// preprocessor entities directly and declaration names anchored exactly
     /// at this token.
-    Classified classify_semantic(std::uint32_t index, const clang::syntax::Token& token) {
-        Classified semantic;
+    /// Semantic classification per spelled token, computed in one pass over
+    /// the node table. Iterating nodes and anchoring their names to tokens is
+    /// linear; the previous per-token owner-chain walk degraded quadratically
+    /// on pathological inputs (a macro expanding to tens of thousands of
+    /// nodes attributes all of them to one spelled invocation token).
+    void precompute_semantics() {
+        auto spelled = semantics.spelled_tokens();
 
-        for(auto owner: semantics.owners(index)) {
-            for(auto n = owner; n != Semantics::invalid; n = semantics.node(n).parent) {
-                const SemanticNode& node = semantics.node(n).node;
-                switch(node.kind()) {
-                    case SemanticNode::Kind::MacroDefine: {
-                        combine(semantic,
-                                {SymbolKind::Macro,
-                                 SymbolModifiers::to_mask(SymbolModifiers::Definition)});
-                        break;
-                    }
+        /// Anchor a candidate at the spelled token written at `location`.
+        /// Macro locations resolve to their spelling: names written as macro
+        /// arguments classify the argument token itself. With allow_ignored,
+        /// tokens preprocessed away (directive regions) still classify —
+        /// preprocessor names live there; declaration names never do, which
+        /// keeps macro definition bodies lexical.
+        auto anchor =
+            [&](clang::SourceLocation location, Classified candidate, bool allow_ignored) {
+                if(location.isInvalid() || candidate.kind == SymbolKind::Invalid) {
+                    return;
+                }
+                if(location.isMacroID()) {
+                    location = unit.spelling_location(location);
+                }
 
-                    case SemanticNode::Kind::MacroReference:
-                    case SemanticNode::Kind::MacroUndef: {
-                        combine(semantic, {SymbolKind::Macro, 0});
-                        break;
-                    }
+                auto it = std::partition_point(
+                    spelled.begin(),
+                    spelled.end(),
+                    [&](const clang::syntax::Token& token) { return token.location() < location; });
+                if(it == spelled.end() || it->location() != location) {
+                    return;
+                }
 
-                    case SemanticNode::Kind::Include: {
-                        combine(semantic, {SymbolKind::Directive, 0});
-                        break;
-                    }
+                auto index = static_cast<std::uint32_t>(it - spelled.begin());
+                if(!allow_ignored && semantics.token_preprocessed_away(index)) {
+                    return;
+                }
+                combine(token_semantics[index], candidate);
+            };
 
-                    case SemanticNode::Kind::Import: {
-                        auto* import = node.get<Import>();
-                        bool is_keyword = import->location == token.location();
-                        combine(semantic,
-                                {is_keyword ? SymbolKind::Keyword : SymbolKind::Module, 0});
-                        break;
-                    }
+        for(const auto& entry: semantics.node_entries()) {
+            const SemanticNode& node = entry.node;
+            switch(node.kind()) {
+                case SemanticNode::Kind::MacroDefine: {
+                    anchor(
+                        node.get<MacroRef>()->loc,
+                        {SymbolKind::Macro, SymbolModifiers::to_mask(SymbolModifiers::Definition)},
+                        true);
+                    break;
+                }
 
-                    case SemanticNode::Kind::Attr: {
-                        /// `final` and `override` are contextual keywords.
-                        if(llvm::isa<clang::FinalAttr, clang::OverrideAttr>(
-                               node.get<clang::Attr>())) {
-                            combine(semantic, {SymbolKind::Keyword, 0});
-                        }
-                        break;
-                    }
+                case SemanticNode::Kind::MacroReference:
+                case SemanticNode::Kind::MacroUndef: {
+                    anchor(node.get<MacroRef>()->loc, {SymbolKind::Macro, 0}, true);
+                    break;
+                }
 
-                    default: {
-                        /// Declaration names anchored exactly at this token.
-                        /// Names written as macro arguments carry expansion
-                        /// locations whose spelling is the argument token
-                        /// itself; names spelled inside macro definitions
-                        /// have no owner here and stay lexical.
-                        for(auto& occurrence: resolve_occurrences(node)) {
-                            auto location = occurrence.location;
-                            if(location.isMacroID()) {
-                                location = unit.spelling_location(location);
-                            }
-                            if(location == token.location()) {
-                                combine(semantic, classify_decl(occurrence.decl, occurrence.kind));
-                            }
-                        }
-                        break;
+                case SemanticNode::Kind::Include: {
+                    anchor(node.get<Include>()->location, {SymbolKind::Directive, 0}, true);
+                    break;
+                }
+
+                case SemanticNode::Kind::Import: {
+                    auto* import = node.get<Import>();
+                    anchor(import->location, {SymbolKind::Keyword, 0}, true);
+                    for(auto location: import->name_locations) {
+                        anchor(location, {SymbolKind::Module, 0}, true);
                     }
+                    break;
+                }
+
+                case SemanticNode::Kind::Attr: {
+                    /// `final` and `override` are contextual keywords.
+                    if(llvm::isa<clang::FinalAttr, clang::OverrideAttr>(node.get<clang::Attr>())) {
+                        anchor(node.get<clang::Attr>()->getRange().getBegin(),
+                               {SymbolKind::Keyword, 0},
+                               false);
+                    }
+                    break;
+                }
+
+                default: {
+                    for(auto& occurrence: resolve_occurrences(node)) {
+                        anchor(occurrence.location,
+                               classify_decl(occurrence.decl, occurrence.kind),
+                               false);
+                    }
+                    break;
                 }
             }
         }
-
-        return semantic;
     }
 
     /// The module declaration has no AST node or directive record; locate its
@@ -474,6 +503,19 @@ private:
         auto* mod = unit.context().getCurrentNamedModule();
         if(!mod) {
             return;
+        }
+
+        /// The global module fragment (`module;`) precedes DefinitionLoc and
+        /// its contextual `module` lexes as a plain identifier.
+        {
+            auto spelled = semantics.spelled_tokens();
+            if(!spelled.empty() && spelled.front().kind() == clang::tok::identifier &&
+               spelled.size() > 1 && spelled[1].kind() == clang::tok::semi) {
+                auto offset = semantics.token_offset(0);
+                if(content.substr(offset, spelled.front().length()) == "module") {
+                    module_tokens[0] = SymbolKind::Keyword;
+                }
+            }
         }
 
         auto def_loc = mod->DefinitionLoc;
@@ -528,6 +570,17 @@ private:
 
     static bool has_logical_newline(llvm::StringRef text) {
         for(std::size_t i = 0; i < text.size(); i++) {
+            /// A block comment is whitespace to the preprocessor, however
+            /// many lines it spans.
+            if(text[i] == '/' && i + 1 < text.size() && text[i + 1] == '*') {
+                auto end = text.find("*/", i + 2);
+                if(end == llvm::StringRef::npos) {
+                    return true;
+                }
+                i = end + 1;
+                continue;
+            }
+
             if(text[i] != '\n') {
                 continue;
             }
@@ -571,6 +624,7 @@ private:
     DirectiveContext directive_context = DirectiveContext::None;
     std::uint32_t previous_end = 0;
     llvm::DenseMap<std::uint32_t, SymbolKind> module_tokens;
+    llvm::DenseMap<std::uint32_t, Classified> token_semantics;
     std::vector<LocalSourceRange> comments;
     std::size_t next_comment = 0;
     std::vector<SemanticToken> tokens;
