@@ -1,5 +1,3 @@
-#include <algorithm>
-#include <cassert>
 #include <cstdint>
 #include <utility>
 #include <vector>
@@ -20,20 +18,23 @@ namespace clice::feature {
 
 namespace {
 
-void add_modifier(std::uint32_t& modifiers, SymbolModifiers::Kind kind) {
-    modifiers |= SymbolModifiers::to_mask(kind);
-}
+/// The classification of one token: a kind and its modifiers.
+struct Classified {
+    SymbolKind kind = SymbolKind::Invalid;
+    std::uint32_t modifiers = 0;
+};
 
-auto type_index(SymbolKind kind) -> std::uint32_t {
-    return kind.value_of();
-}
-
-auto encode_modifiers(std::uint32_t modifiers) -> std::uint32_t {
-    return modifiers;
-}
-
-bool is_dependent(const clang::Decl* D) {
-    return isa<clang::UnresolvedUsingValueDecl>(D);
+/// Merge a candidate into the running classification: first one wins on
+/// equal kinds, differing kinds collapse to Conflict.
+void combine(Classified& result, Classified candidate) {
+    if(candidate.kind == SymbolKind::Invalid || result.kind == SymbolKind::Conflict) {
+        return;
+    }
+    if(result.kind == SymbolKind::Invalid) {
+        result = candidate;
+    } else if(result.kind != candidate.kind) {
+        result.kind = SymbolKind::Conflict;
+    }
 }
 
 /// Whether a declaration name is backed by source text that should be highlighted.
@@ -186,6 +187,68 @@ bool is_virtual(const clang::Decl* decl) {
     return false;
 }
 
+/// The classification a decl occurrence contributes: the decl's symbol kind
+/// plus modifiers derived from the decl and the occurrence role.
+Classified classify_decl(const clang::NamedDecl* decl, RelationKind relation) {
+    if(relation.isReference() && !can_highlight_name(decl->getDeclName())) {
+        return {};
+    }
+
+    auto mask = [](SymbolModifiers::Kind kind) {
+        return SymbolModifiers::to_mask(kind);
+    };
+
+    std::uint32_t modifiers = 0;
+    if(relation.is_one_of(RelationKind::Definition)) {
+        // todo: clangd add both Declaration and Definition modifiers for definitions.
+        modifiers |= mask(SymbolModifiers::Definition);
+    } else if(relation.is_one_of(RelationKind::Declaration)) {
+        modifiers |= mask(SymbolModifiers::Declaration);
+    }
+
+    if(ast::is_templated(decl)) {
+        modifiers |= mask(SymbolModifiers::Templated);
+    }
+
+    auto kind = SymbolKind::from(decl);
+
+    // Apply attribute-style modifiers to the underlying declaration.
+    // The attribute tests don't want to look at the template.
+    if(const auto* template_decl = llvm::dyn_cast<clang::TemplateDecl>(decl)) {
+        if(const auto* templated_decl = template_decl->getTemplatedDecl())
+            decl = templated_decl;
+    }
+
+    // TODO: add scope-based modifiers once the local model supports them.
+
+    if(is_const(decl)) {
+        modifiers |= mask(SymbolModifiers::Readonly);
+    }
+    if(is_static(decl)) {
+        modifiers |= mask(SymbolModifiers::Static);
+    }
+    if(is_abstract(decl)) {
+        modifiers |= mask(SymbolModifiers::Abstract);
+    }
+    if(is_virtual(decl)) {
+        modifiers |= mask(SymbolModifiers::Virtual);
+    }
+    if(is_default_library(decl)) {
+        modifiers |= mask(SymbolModifiers::DefaultLibrary);
+    }
+    if(decl->isDeprecated()) {
+        modifiers |= mask(SymbolModifiers::Deprecated);
+    }
+    if(llvm::isa<clang::UnresolvedUsingValueDecl>(decl)) {
+        modifiers |= mask(SymbolModifiers::DependentName);
+    }
+    if(llvm::isa<clang::CXXConstructorDecl, clang::CXXDestructorDecl>(decl)) {
+        modifiers |= mask(SymbolModifiers::ConstructorOrDestructor);
+    }
+
+    return {kind, modifiers};
+}
+
 /// Classifies every spelled token of the interested file in one ordered
 /// pass over the semantic map: lexical kinds straight from the token kind,
 /// macros/includes/imports/attributes from the owning SemanticNode, and
@@ -216,51 +279,6 @@ public:
     }
 
 private:
-    /// The spelled token stream does not retain comments; one slim raw scan
-    /// collects them (and nothing else).
-    void scan_comments() {
-        auto& lang_opts = unit.lang_options();
-        Lexer lexer(content, false, &lang_opts);
-
-        while(true) {
-            Token token = lexer.advance();
-            if(token.is_eof()) {
-                break;
-            }
-
-            if(token.kind == clang::tok::comment) {
-                comments.push_back(token.range);
-            }
-        }
-    }
-
-    void flush_comments(std::uint32_t until) {
-        while(next_comment < comments.size() && comments[next_comment].begin < until) {
-            emit(comments[next_comment], SymbolKind::Comment, 0);
-            next_comment++;
-        }
-    }
-
-private:
-    /// The classification of one token: a kind and its modifiers.
-    struct Classified {
-        SymbolKind kind = SymbolKind::Invalid;
-        std::uint32_t modifiers = 0;
-    };
-
-    /// Merge a candidate into the running classification: first one wins on
-    /// equal kinds, differing kinds collapse to Conflict.
-    static void combine(Classified& result, SymbolKind kind, std::uint32_t modifiers) {
-        if(kind == SymbolKind::Invalid || result.kind == SymbolKind::Conflict) {
-            return;
-        }
-        if(result.kind == SymbolKind::Invalid) {
-            result = {kind, modifiers};
-        } else if(result.kind != kind) {
-            result.kind = SymbolKind::Conflict;
-        }
-    }
-
     void classify(std::uint32_t index, const clang::syntax::Token& token) {
         auto offset = semantics.token_offset(index);
         LocalSourceRange range(offset, offset + token.length());
@@ -272,11 +290,37 @@ private:
         }
         previous_end = range.end;
 
-        /// Lexical classification from the token kind. The spelled stream is
-        /// produced by a real lexer: keywords are resolved and comments kept.
+        /// The module declaration (`export module foo.bar;`), precomputed.
+        if(auto it = module_tokens.find(index); it != module_tokens.end()) {
+            emit(range, it->second, 0);
+            return;
+        }
+
+        Classified lexical = classify_lexical(token, offset);
+        Classified semantic = classify_semantic(index, token);
+
+        /// Semantic classification beats the lexical directive kinds; any
+        /// other disagreement is a Conflict, matching the historical rule.
+        Classified result = semantic;
+        if(result.kind == SymbolKind::Invalid) {
+            result = lexical;
+        } else if(lexical.kind != SymbolKind::Invalid && lexical.kind != SymbolKind::Directive &&
+                  lexical.kind != SymbolKind::Header && lexical.kind != result.kind) {
+            result.kind = SymbolKind::Conflict;
+        }
+
+        if(result.kind != SymbolKind::Invalid) {
+            emit(range, result.kind, result.modifiers);
+        }
+    }
+
+    /// Lexical classification from the token kind (the spelled stream is
+    /// produced by a real lexer, so keywords are already resolved), plus a
+    /// small state machine for preprocessor directive context.
+    Classified classify_lexical(const clang::syntax::Token& token, std::uint32_t offset) {
         Classified lexical;
+
         switch(token.kind()) {
-            case clang::tok::comment: lexical.kind = SymbolKind::Comment; break;
             case clang::tok::numeric_constant: lexical.kind = SymbolKind::Number; break;
             case clang::tok::char_constant:
             case clang::tok::wide_char_constant:
@@ -328,42 +372,42 @@ private:
             lexical = {SymbolKind::Header, 0};
         }
 
-        /// The module declaration (`export module foo.bar;`), precomputed.
-        if(auto it = module_tokens.find(index); it != module_tokens.end()) {
-            emit(range, it->second, 0);
-            return;
-        }
+        return lexical;
+    }
 
-        /// Ownership-based classification: walk the owner chain, collecting
-        /// preprocessor entities directly and declaration names anchored
-        /// exactly at this token.
+    /// Ownership-based classification: walk the owner chain, collecting
+    /// preprocessor entities directly and declaration names anchored exactly
+    /// at this token.
+    Classified classify_semantic(std::uint32_t index, const clang::syntax::Token& token) {
         Classified semantic;
+
         for(auto owner: semantics.owners(index)) {
             for(auto n = owner; n != Semantics::invalid; n = semantics.node(n).parent) {
                 const SemanticNode& node = semantics.node(n).node;
                 switch(node.kind()) {
                     case SemanticNode::Kind::MacroDefine: {
-                        std::uint32_t modifiers = 0;
-                        add_modifier(modifiers, SymbolModifiers::Definition);
-                        combine(semantic, SymbolKind::Macro, modifiers);
+                        combine(semantic,
+                                {SymbolKind::Macro,
+                                 SymbolModifiers::to_mask(SymbolModifiers::Definition)});
                         break;
                     }
 
                     case SemanticNode::Kind::MacroReference:
                     case SemanticNode::Kind::MacroUndef: {
-                        combine(semantic, SymbolKind::Macro, 0);
+                        combine(semantic, {SymbolKind::Macro, 0});
                         break;
                     }
 
                     case SemanticNode::Kind::Include: {
-                        combine(semantic, SymbolKind::Directive, 0);
+                        combine(semantic, {SymbolKind::Directive, 0});
                         break;
                     }
 
                     case SemanticNode::Kind::Import: {
                         auto* import = node.get<Import>();
                         bool is_keyword = import->location == token.location();
-                        combine(semantic, is_keyword ? SymbolKind::Keyword : SymbolKind::Module, 0);
+                        combine(semantic,
+                                {is_keyword ? SymbolKind::Keyword : SymbolKind::Module, 0});
                         break;
                     }
 
@@ -371,7 +415,7 @@ private:
                         /// `final` and `override` are contextual keywords.
                         if(llvm::isa<clang::FinalAttr, clang::OverrideAttr>(
                                node.get<clang::Attr>())) {
-                            combine(semantic, SymbolKind::Keyword, 0);
+                            combine(semantic, {SymbolKind::Keyword, 0});
                         }
                         break;
                     }
@@ -382,7 +426,7 @@ private:
                         /// locations and never match a spelled token here.
                         for(auto& occurrence: resolve_occurrences(node)) {
                             if(occurrence.location == token.location()) {
-                                classify_decl(semantic, occurrence.decl, occurrence.kind);
+                                combine(semantic, classify_decl(occurrence.decl, occurrence.kind));
                             }
                         }
                         break;
@@ -391,76 +435,7 @@ private:
             }
         }
 
-        /// Semantic classification beats the lexical directive kinds; any
-        /// other disagreement is a Conflict, matching the historical rule.
-        Classified result = semantic;
-        if(result.kind == SymbolKind::Invalid) {
-            result = lexical;
-        } else if(lexical.kind != SymbolKind::Invalid && lexical.kind != SymbolKind::Directive &&
-                  lexical.kind != SymbolKind::Header && lexical.kind != result.kind) {
-            result.kind = SymbolKind::Conflict;
-        }
-
-        if(result.kind != SymbolKind::Invalid) {
-            emit(range, result.kind, result.modifiers);
-        }
-    }
-
-    void classify_decl(Classified& result, const clang::NamedDecl* decl, RelationKind relation) {
-        if(relation.isReference() && !can_highlight_name(decl->getDeclName())) {
-            return;
-        }
-
-        std::uint32_t modifiers = 0;
-        if(relation.is_one_of(RelationKind::Definition)) {
-            // todo: clangd add both Declaration and Definition modifiers for definitions.
-            // add_modifier(modifiers, SymbolModifiers::Declaration);
-            add_modifier(modifiers, SymbolModifiers::Definition);
-        } else if(relation.is_one_of(RelationKind::Declaration)) {
-            add_modifier(modifiers, SymbolModifiers::Declaration);
-        }
-
-        if(ast::is_templated(decl)) {
-            add_modifier(modifiers, SymbolModifiers::Templated);
-        }
-        // Apply attribute-style modifiers to the underlying declaration.
-        // The attribute tests don't want to look at the template.
-        if(const auto* template_decl = llvm::dyn_cast<clang::TemplateDecl>(decl)) {
-            if(const auto* templated_decl = template_decl->getTemplatedDecl())
-                decl = templated_decl;
-        }
-
-        // TODO: add scope-based modifiers once the local model supports them.
-        // if (auto Mod = scopeModifier(Decl))
-        //     Tok.addModifier(*Mod);
-
-        if(is_const(decl)) {
-            add_modifier(modifiers, SymbolModifiers::Readonly);
-        }
-        if(is_static(decl)) {
-            add_modifier(modifiers, SymbolModifiers::Static);
-        }
-        if(is_abstract(decl)) {
-            add_modifier(modifiers, SymbolModifiers::Abstract);
-        }
-        if(is_virtual(decl)) {
-            add_modifier(modifiers, SymbolModifiers::Virtual);
-        }
-        if(is_default_library(decl)) {
-            add_modifier(modifiers, SymbolModifiers::DefaultLibrary);
-        }
-        if(decl->isDeprecated()) {
-            add_modifier(modifiers, SymbolModifiers::Deprecated);
-        }
-        if(is_dependent(decl)) {
-            add_modifier(modifiers, SymbolModifiers::DependentName);
-        }
-        if(llvm::isa<clang::CXXConstructorDecl>(decl) ||
-           llvm::isa<clang::CXXDestructorDecl>(decl)) {
-            add_modifier(modifiers, SymbolModifiers::ConstructorOrDestructor);
-        }
-
-        combine(result, SymbolKind::from(decl), modifiers);
+        return semantic;
     }
 
     /// The module declaration has no AST node or directive record; locate its
@@ -493,6 +468,31 @@ private:
             if(spelled[i].kind() == clang::tok::identifier) {
                 module_tokens[i] = SymbolKind::Module;
             }
+        }
+    }
+
+    /// The spelled token stream does not retain comments; one slim raw scan
+    /// collects them (and nothing else).
+    void scan_comments() {
+        auto& lang_opts = unit.lang_options();
+        Lexer lexer(content, false, &lang_opts);
+
+        while(true) {
+            Token token = lexer.advance();
+            if(token.is_eof()) {
+                break;
+            }
+
+            if(token.kind == clang::tok::comment) {
+                comments.push_back(token.range);
+            }
+        }
+    }
+
+    void flush_comments(std::uint32_t until) {
+        while(next_comment < comments.size() && comments[next_comment].begin < until) {
+            emit(comments[next_comment], SymbolKind::Comment, 0);
+            next_comment++;
         }
     }
 
@@ -605,8 +605,8 @@ private:
         output.data.push_back(delta_line);
         output.data.push_back(delta_start);
         output.data.push_back(token_length);
-        output.data.push_back(type_index(kind));
-        output.data.push_back(encode_modifiers(modifiers));
+        output.data.push_back(kind.value_of());
+        output.data.push_back(modifiers);
 
         last_line = line;
         last_start_character = character;

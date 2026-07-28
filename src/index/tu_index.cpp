@@ -46,9 +46,9 @@ public:
         return &result.file_indices[fid];
     }
 
-    void handleDeclOccurrence(const clang::NamedDecl* decl,
-                              RelationKind kind,
-                              clang::SourceLocation location) {
+    void add_occurrence(const clang::NamedDecl* decl,
+                        RelationKind kind,
+                        clang::SourceLocation location) {
         decl = ast::normalize(decl);
 
         if(location.isMacroID()) {
@@ -82,9 +82,7 @@ public:
         index->occurrences.emplace_back(range, symbol_id.hash);
     }
 
-    void handleMacroOccurrence(const clang::MacroInfo* def,
-                               RelationKind kind,
-                               clang::SourceLocation location) {
+    void add_macro(const clang::MacroInfo* def, RelationKind kind, clang::SourceLocation location) {
         /// FIXME: Figure out when location is MacroID.
         if(location.isMacroID()) {
             return;
@@ -130,44 +128,69 @@ public:
         index->relations[symbol_id.hash].emplace_back(relation);
     }
 
-    void handleRelation(const clang::NamedDecl* decl,
-                        RelationKind kind,
-                        const clang::NamedDecl* target,
-                        clang::SourceRange range) {
+    /// A Definition/Declaration/Reference row mirroring an occurrence: it
+    /// lands at the name's expansion location, and decl/def rows also carry
+    /// the declaration's full extent for definition-text consumers.
+    void add_self_relation(const clang::NamedDecl* decl,
+                           RelationKind kind,
+                           clang::SourceLocation location) {
+        auto [fid, range] = unit.decompose_expansion_range(location);
+        auto* index = file_index(fid);
+        if(!index) {
+            return;
+        }
+
+        Relation relation{.kind = kind, .range = range, .target_symbol = 0};
+
+        if(kind.isDeclOrDef()) {
+            /// FIXME: why definition or declaration has invalid source range? implicit node?
+            auto source_range = decl->getSourceRange();
+            if(source_range.isValid()) {
+                auto [def_fid, definition_range] = unit.decompose_expansion_range(source_range);
+                assert(fid == def_fid && "Invalid definition location");
+                relation.set_definition_range(definition_range);
+            }
+        }
+
+        index->relations[unit.getSymbolID(ast::normalize(decl)).hash].emplace_back(relation);
+    }
+
+    /// A symbol-to-symbol row (type-of, inheritance, overrides, ctor/dtor
+    /// ownership); `anchor` decides which file's index receives it.
+    void add_pair_relation(const clang::NamedDecl* decl,
+                           RelationKind kind,
+                           const clang::NamedDecl* target,
+                           clang::SourceRange anchor) {
+        auto [fid, range] = unit.decompose_expansion_range(anchor);
+        auto* index = file_index(fid);
+        if(!index) {
+            return;
+        }
+
+        Relation relation{
+            .kind = kind,
+            .target_symbol = unit.getSymbolID(ast::normalize(target)).hash,
+        };
+        index->relations[unit.getSymbolID(ast::normalize(decl)).hash].emplace_back(relation);
+    }
+
+    /// A call edge, landing at the call expression's location.
+    void add_call_relation(const clang::NamedDecl* decl,
+                           RelationKind kind,
+                           const clang::NamedDecl* target,
+                           clang::SourceRange range) {
         auto [fid, relation_range] = unit.decompose_expansion_range(range);
         auto* index = file_index(fid);
         if(!index) {
             return;
         }
 
-        Relation relation{.kind = kind};
-
-        if(kind.isDeclOrDef()) {
-            relation.range = relation_range;
-            /// FIXME: why definition or declaration has invalid source range? implicit node?
-            auto source_range = decl->getSourceRange();
-            if(source_range.isValid()) {
-                auto [fid2, definition_range] =
-                    unit.decompose_expansion_range(decl->getSourceRange());
-                assert(fid == fid2 && "Invalid definition location");
-                relation.set_definition_range(definition_range);
-            }
-        } else if(kind.isReference()) {
-            relation.range = relation_range;
-            relation.target_symbol = 0;
-        } else if(kind.isBetweenSymbol()) {
-            auto symbol_id = unit.getSymbolID(ast::normalize(target));
-            relation.target_symbol = symbol_id.hash;
-        } else if(kind.isCall()) {
-            auto symbol_id = unit.getSymbolID(ast::normalize(target));
-            relation.range = relation_range;
-            relation.target_symbol = symbol_id.hash;
-        } else {
-            std::unreachable();
-        }
-
-        auto symbol_id = unit.getSymbolID(ast::normalize(decl));
-        index->relations[symbol_id.hash].emplace_back(relation);
+        Relation relation{
+            .kind = kind,
+            .range = relation_range,
+            .target_symbol = unit.getSymbolID(ast::normalize(target)).hash,
+        };
+        index->relations[unit.getSymbolID(ast::normalize(decl)).hash].emplace_back(relation);
     }
 
     /// Module names are indexed like macro names: an occurrence plus a
@@ -324,8 +347,8 @@ public:
             const clang::NamedDecl* callee =
                 llvm::dyn_cast_if_present<clang::NamedDecl>(CE->getCalleeDecl());
             if(caller && callee) {
-                handleRelation(caller, RelationKind::Callee, callee, CE->getSourceRange());
-                handleRelation(callee, RelationKind::Caller, caller, CE->getSourceRange());
+                add_call_relation(caller, RelationKind::Callee, callee, CE->getSourceRange());
+                add_call_relation(callee, RelationKind::Caller, caller, CE->getSourceRange());
             }
             return;
         }
@@ -357,22 +380,22 @@ public:
 
             auto* VD = llvm::cast<clang::ValueDecl>(D);
             if(auto target = ast::decl_of(VD->getType())) {
-                handleRelation(VD, RelationKind::TypeDefinition, target, VD->getLocation());
+                add_pair_relation(VD, RelationKind::TypeDefinition, target, VD->getLocation());
             }
             return;
         }
 
         if(auto* ECD = llvm::dyn_cast<clang::EnumConstantDecl>(D)) {
-            handleRelation(ECD,
-                           RelationKind::TypeDefinition,
-                           llvm::cast<clang::NamedDecl>(ECD->getDeclContext()),
-                           ECD->getLocation());
+            add_pair_relation(ECD,
+                              RelationKind::TypeDefinition,
+                              llvm::cast<clang::NamedDecl>(ECD->getDeclContext()),
+                              ECD->getLocation());
             return;
         }
 
         if(auto* TND = llvm::dyn_cast<clang::TypedefNameDecl>(D)) {
             if(auto target = ast::decl_of(TND->getUnderlyingType())) {
-                handleRelation(TND, RelationKind::TypeDefinition, target, TND->getLocation());
+                add_pair_relation(TND, RelationKind::TypeDefinition, target, TND->getLocation());
             }
             return;
         }
@@ -399,11 +422,14 @@ public:
                     for(auto& base: CRD->bases()) {
                         /// FIXME: Handle dependent base class.
                         if(auto target = ast::decl_of(base.getType())) {
-                            handleRelation(def, RelationKind::Base, target, base.getSourceRange());
-                            handleRelation(target,
-                                           RelationKind::Derived,
-                                           def,
-                                           base.getSourceRange());
+                            add_pair_relation(def,
+                                              RelationKind::Base,
+                                              target,
+                                              base.getSourceRange());
+                            add_pair_relation(target,
+                                              RelationKind::Derived,
+                                              def,
+                                              base.getSourceRange());
                         }
                     }
                 }
@@ -427,30 +453,33 @@ public:
 
             if(auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(FD)) {
                 for(auto* base: method->overridden_methods()) {
-                    handleRelation(method, RelationKind::Interface, base, FD->getLocation());
-                    handleRelation(base, RelationKind::Implementation, method, FD->getLocation());
+                    add_pair_relation(method, RelationKind::Interface, base, FD->getLocation());
+                    add_pair_relation(base,
+                                      RelationKind::Implementation,
+                                      method,
+                                      FD->getLocation());
                 }
 
                 if(auto* ctor = llvm::dyn_cast<clang::CXXConstructorDecl>(method)) {
-                    handleRelation(ctor,
-                                   RelationKind::TypeDefinition,
-                                   ctor->getParent(),
-                                   FD->getLocation());
-                    handleRelation(ctor->getParent(),
-                                   RelationKind::Constructor,
-                                   ctor,
-                                   FD->getLocation());
+                    add_pair_relation(ctor,
+                                      RelationKind::TypeDefinition,
+                                      ctor->getParent(),
+                                      FD->getLocation());
+                    add_pair_relation(ctor->getParent(),
+                                      RelationKind::Constructor,
+                                      ctor,
+                                      FD->getLocation());
                 }
 
                 if(auto* dtor = llvm::dyn_cast<clang::CXXDestructorDecl>(method)) {
-                    handleRelation(dtor,
-                                   RelationKind::TypeDefinition,
-                                   dtor->getParent(),
-                                   FD->getLocation());
-                    handleRelation(dtor->getParent(),
-                                   RelationKind::Destructor,
-                                   dtor,
-                                   FD->getLocation());
+                    add_pair_relation(dtor,
+                                      RelationKind::TypeDefinition,
+                                      dtor->getParent(),
+                                      FD->getLocation());
+                    add_pair_relation(dtor->getParent(),
+                                      RelationKind::Destructor,
+                                      dtor,
+                                      FD->getLocation());
                 }
             }
             return;
@@ -476,14 +505,11 @@ public:
             }
 
             for(auto& occurrence: resolve_occurrences(node)) {
-                handleDeclOccurrence(occurrence.decl, occurrence.kind, occurrence.location);
+                add_occurrence(occurrence.decl, occurrence.kind, occurrence.location);
 
                 /// Every occurrence is mirrored as a self-relation, so
                 /// find-references on the occurring decl finds this row.
-                handleRelation(occurrence.decl,
-                               occurrence.kind,
-                               occurrence.decl,
-                               occurrence.location);
+                add_self_relation(occurrence.decl, occurrence.kind, occurrence.location);
             }
 
             project_relations(semantics, i);
@@ -493,13 +519,13 @@ public:
             for(auto& macro: directive.macros) {
                 switch(macro.kind) {
                     case MacroRef::Kind::Def: {
-                        handleMacroOccurrence(macro.macro, RelationKind::Definition, macro.loc);
+                        add_macro(macro.macro, RelationKind::Definition, macro.loc);
                         break;
                     }
 
                     case MacroRef::Kind::Ref:
                     case MacroRef::Kind::Undef: {
-                        handleMacroOccurrence(macro.macro, RelationKind::Reference, macro.loc);
+                        add_macro(macro.macro, RelationKind::Reference, macro.loc);
                         break;
                     }
                 }
