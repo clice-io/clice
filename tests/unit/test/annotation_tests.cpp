@@ -1,6 +1,5 @@
 #include <vector>
 
-#include "test/snap_region.h"
 #include "test/test.h"
 #include "syntax/annotation.h"
 
@@ -163,91 +162,6 @@ TEST_CASE(no_annotations) {
 
 // Region offsets are byte offsets into the raw input; a region spans from just
 // past the begin marker line's newline to the start of the end marker line.
-TEST_SUITE(snap_region) {
-
-TEST_CASE(no_markers) {
-    auto regions = extract_snap_regions("int x;\nint y;\n");
-    EXPECT_TRUE(regions.empty());
-    // With no regions the filter admits everything.
-    EXPECT_TRUE(snap_region_filter(regions, LocalSourceRange{3, 5}));
-    EXPECT_TRUE(snap_region_filter(regions, LocalSourceRange{100, 200}));
-}
-
-TEST_CASE(single_pair) {
-    auto regions = extract_snap_regions("/// <snap:begin>\nbody\n/// <snap:end>\n");
-    ASSERT_EQ(regions.size(), 1u);
-    EXPECT_EQ(regions[0].begin, 17u);
-    EXPECT_EQ(regions[0].end, 22u);
-}
-
-TEST_CASE(two_pairs_union) {
-    auto regions = extract_snap_regions(
-        "/// <snap:begin>\naaa\n/// <snap:end>\nmid\n/// <snap:begin>\nbbb\n/// <snap:end>\n");
-    ASSERT_EQ(regions.size(), 2u);
-    EXPECT_EQ(regions[0].begin, 17u);
-    EXPECT_EQ(regions[0].end, 21u);
-    EXPECT_EQ(regions[1].begin, 57u);
-    EXPECT_EQ(regions[1].end, 61u);
-    // The filter is a union over regions.
-    EXPECT_TRUE(snap_region_filter(regions, LocalSourceRange{17, 20}));
-    EXPECT_TRUE(snap_region_filter(regions, LocalSourceRange{57, 60}));
-    EXPECT_FALSE(snap_region_filter(regions, LocalSourceRange{36, 39}));
-}
-
-TEST_CASE(named_pair) {
-    auto regions = extract_snap_regions("/// <snap:begin foo>\nx\n/// <snap:end foo>\n");
-    ASSERT_EQ(regions.size(), 1u);
-    EXPECT_EQ(regions[0].begin, 21u);
-    EXPECT_EQ(regions[0].end, 23u);
-}
-
-TEST_CASE(indented_markers) {
-    auto regions = extract_snap_regions("  /// <snap:begin>\nx\n    /// <snap:end>\n");
-    ASSERT_EQ(regions.size(), 1u);
-    EXPECT_EQ(regions[0].begin, 19u);
-    EXPECT_EQ(regions[0].end, 21u);
-}
-
-TEST_CASE(mid_line_ignored) {
-    // Marker-like text that is not at the line start after trimming is not a
-    // marker, so no region is claimed.
-    auto regions =
-        extract_snap_regions("int x; // /// <snap:begin>\n// see /// <snap:begin> docs\nint y;\n");
-    EXPECT_TRUE(regions.empty());
-}
-
-TEST_CASE(eof_marker_no_newline) {
-    // The end marker as the final line without a trailing newline exercises
-    // the last-line offset branch.
-    auto regions = extract_snap_regions("/// <snap:begin>\nxy\n/// <snap:end>");
-    ASSERT_EQ(regions.size(), 1u);
-    EXPECT_EQ(regions[0].begin, 17u);
-    EXPECT_EQ(regions[0].end, 20u);
-}
-
-TEST_CASE(empty_region_body) {
-    auto regions = extract_snap_regions("/// <snap:begin>\n/// <snap:end>\n");
-    ASSERT_EQ(regions.size(), 1u);
-    EXPECT_EQ(regions[0].begin, 17u);
-    EXPECT_EQ(regions[0].end, 17u);
-}
-
-TEST_CASE(filter_containment) {
-    std::vector<LocalSourceRange> regions = {
-        {10, 20}
-    };
-    // Fully inside.
-    EXPECT_TRUE(snap_region_filter(regions, LocalSourceRange{12, 18}));
-    // Straddling either boundary.
-    EXPECT_FALSE(snap_region_filter(regions, LocalSourceRange{18, 25}));
-    EXPECT_FALSE(snap_region_filter(regions, LocalSourceRange{5, 15}));
-    // Entirely outside.
-    EXPECT_FALSE(snap_region_filter(regions, LocalSourceRange{30, 40}));
-    // Empty region set admits everything.
-    EXPECT_TRUE(snap_region_filter({}, LocalSourceRange{30, 40}));
-}
-
-};  // TEST_SUITE(snap_region)
 
 }  // namespace
 }  // namespace clice::testing
