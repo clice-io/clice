@@ -3,9 +3,11 @@
 #include <algorithm>
 #include <tuple>
 
+#include "compile/compilation_unit.h"
 #include "index/serialization.h"
 #include "semantic/ast_utility.h"
-#include "semantic/semantic_visitor.h"
+#include "semantic/resolve.h"
+#include "semantic/semantics.h"
 #include "syntax/lexer.h"
 
 #include "llvm/Support/SHA256.h"
@@ -25,10 +27,12 @@ SymbolScope classify_scope(const clang::NamedDecl* decl) {
     return SymbolScope::External;
 }
 
-class Builder : public SemanticVisitor<Builder> {
+/// Projects the unit's semantic map into TUIndex rows: occurrences and
+/// relations from the resolve facts, macros from the preprocessor directives.
+class Projector {
 public:
-    Builder(TUIndex& result, CompilationUnitRef unit, bool interested_only) :
-        SemanticVisitor<Builder>(unit, interested_only), result(result) {}
+    Projector(TUIndex& result, CompilationUnitRef unit, bool interested_only) :
+        result(result), unit(unit), interested_only(interested_only) {}
 
     /// The only gate through which rows enter `file_indices`. With
     /// interested_only, the index covers just the interested file — yet
@@ -297,8 +301,79 @@ public:
         }
     }
 
+    /// The nearest enclosing plain FunctionDecl of node `i`, for Caller/Callee
+    /// facts. Deliberately not `isa<FunctionDecl>`: the previous traversal only
+    /// tracked exact FunctionDecls (methods took a different traversal path),
+    /// and the serialized rows pin that behavior.
+    /// FIXME: methods should count as callers too; fix together with the
+    /// index format.
+    const clang::NamedDecl* enclosing_function(const Semantics& semantics, std::uint32_t index) {
+        for(auto p = semantics.node(index).parent; p != Semantics::invalid;
+            p = semantics.node(p).parent) {
+            if(auto* decl = semantics.node(p).node.get<clang::FunctionDecl>()) {
+                if(decl->getKind() == clang::Decl::Function) {
+                    return decl;
+                }
+            }
+        }
+        return nullptr;
+    }
+
+    void project_semantics() {
+        /// The interested-only shape is the one features share, cached on the
+        /// unit; the whole-TU shape is transient — projected and dropped.
+        std::optional<Semantics> full;
+        if(!interested_only) {
+            full.emplace(Semantics::build(unit, false));
+        }
+        const Semantics& semantics = interested_only ? unit.semantics() : *full;
+        auto entries = semantics.node_entries();
+
+        for(std::uint32_t i = 0; i < entries.size(); i++) {
+            const SemanticNode& node = entries[i].node;
+            /// Macros are projected from the directives below; includes and
+            /// imports have their own pipelines.
+            if(!node.is_ast()) {
+                continue;
+            }
+
+            const clang::NamedDecl* enclosing = nullptr;
+            if(node.get<clang::CallExpr>()) {
+                enclosing = enclosing_function(semantics, i);
+            }
+
+            resolve_facts(
+                node,
+                [&](const clang::NamedDecl* decl,
+                    RelationKind kind,
+                    clang::SourceLocation location) { handleDeclOccurrence(decl, kind, location); },
+                [&](const clang::NamedDecl* decl,
+                    RelationKind kind,
+                    const clang::NamedDecl* target,
+                    clang::SourceRange range) { handleRelation(decl, kind, target, range); },
+                enclosing);
+        }
+
+        for(auto& [fid, directive]: unit.directives()) {
+            for(auto& macro: directive.macros) {
+                switch(macro.kind) {
+                    case MacroRef::Kind::Def: {
+                        handleMacroOccurrence(macro.macro, RelationKind::Definition, macro.loc);
+                        break;
+                    }
+
+                    case MacroRef::Kind::Ref:
+                    case MacroRef::Kind::Undef: {
+                        handleMacroOccurrence(macro.macro, RelationKind::Reference, macro.loc);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
     void build() {
-        run();
+        project_semantics();
 
         index_modules();
 
@@ -353,6 +428,8 @@ public:
 
 private:
     TUIndex& result;
+    CompilationUnitRef unit;
+    bool interested_only;
 };
 
 }  // namespace
@@ -416,8 +493,8 @@ TUIndex TUIndex::build(CompilationUnitRef unit, bool interested_only) {
     TUIndex index;
     index.built_at = unit.build_at();
 
-    Builder builder(index, unit, interested_only);
-    builder.build();
+    Projector projector(index, unit, interested_only);
+    projector.build();
 
     return index;
 }

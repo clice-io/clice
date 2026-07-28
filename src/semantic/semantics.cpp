@@ -313,8 +313,8 @@ clang::SourceRange claimed_source_range(const SemanticNode& node) {
 // VarDecl in the selection tree.
 class SemanticsBuilder : public clang::RecursiveASTVisitor<SemanticsBuilder> {
 public:
-    static void build(Semantics& semantics, CompilationUnitRef unit) {
-        SemanticsBuilder builder(semantics, unit);
+    static void build(Semantics& semantics, CompilationUnitRef unit, bool interested_only) {
+        SemanticsBuilder builder(semantics, unit, interested_only);
         builder.TraverseAST(unit.context());
         assert(builder.stack.size() == 1 && "Unpaired push/pop?");
         builder.append_directives();
@@ -332,12 +332,16 @@ public:
     bool TraverseDecl(clang::Decl* X) {
         if(llvm::isa_and_nonnull<clang::TranslationUnitDecl>(X)) {
             /// The TU decl is not stored; its children become roots.
-            for(auto decl: unit.top_level_decls()) {
-                if(!TraverseDecl(decl)) {
-                    return false;
+            if(interested_only) {
+                for(auto decl: unit.top_level_decls()) {
+                    if(!TraverseDecl(decl)) {
+                        return false;
+                    }
                 }
+                return true;
             }
-            return true;
+
+            return Base::TraverseDecl(X);
         }
 
         // Base::TraverseDecl will suppress children, but not this node itself.
@@ -491,9 +495,9 @@ public:
 private:
     using Base = RecursiveASTVisitor<SemanticsBuilder>;
 
-    SemanticsBuilder(Semantics& semantics, CompilationUnitRef unit) :
-        semantics(semantics), unit(unit), SM(unit.context().getSourceManager()),
-        unclaimed_expanded_tokens(unit.expanded_tokens()) {
+    SemanticsBuilder(Semantics& semantics, CompilationUnitRef unit, bool interested_only) :
+        semantics(semantics), unit(unit), interested_only(interested_only),
+        SM(unit.context().getSourceManager()), unclaimed_expanded_tokens(unit.expanded_tokens()) {
         main_fid = unit.interested_file();
         main_file_range =
             clang::SourceRange(SM.getLocForStartOfFile(main_fid), SM.getLocForEndOfFile(main_fid));
@@ -885,6 +889,7 @@ private:
 
     Semantics& semantics;
     CompilationUnitRef unit;
+    bool interested_only;
     clang::SourceManager& SM;
     clang::FileID main_fid;
     clang::SourceRange main_file_range;
@@ -895,9 +900,9 @@ private:
     std::vector<std::pair<std::uint32_t, std::uint32_t>> entries;
 };
 
-Semantics Semantics::build(CompilationUnitRef unit) {
+Semantics Semantics::build(CompilationUnitRef unit, bool interested_only) {
     Semantics semantics;
-    SemanticsBuilder::build(semantics, unit);
+    SemanticsBuilder::build(semantics, unit, interested_only);
     return semantics;
 }
 

@@ -4,13 +4,16 @@
 #include <utility>
 #include <vector>
 
+#include "compile/compilation_unit.h"
 #include "feature/feature.h"
 #include "semantic/ast_utility.h"
-#include "semantic/semantic_visitor.h"
+#include "semantic/resolve.h"
+#include "semantic/semantics.h"
 #include "semantic/symbol_kind.h"
 #include "syntax/lexer.h"
 
 #include "clang/AST/Attr.h"
+#include "clang/AST/DeclObjC.h"
 #include "clang/Basic/IdentifierTable.h"
 #include "clang/Basic/Module.h"
 
@@ -184,16 +187,61 @@ bool is_virtual(const clang::Decl* decl) {
     return false;
 }
 
-class SemanticTokensCollector : public SemanticVisitor<SemanticTokensCollector> {
+class SemanticTokensCollector {
 public:
-    explicit SemanticTokensCollector(CompilationUnitRef unit) : SemanticVisitor(unit, true) {}
+    explicit SemanticTokensCollector(CompilationUnitRef unit) : unit(unit) {}
 
     auto collect() -> std::vector<SemanticToken> {
         highlight_lexical(unit.interested_file());
-        run();
+        highlight_semantics();
         highlight_modules();
         merge_tokens();
         return std::move(tokens);
+    }
+
+private:
+    /// Walk the unit's semantic map: decl occurrences come from the resolve
+    /// family, macros and attributes are nodes of their own.
+    void highlight_semantics() {
+        for(const auto& entry: unit.semantics().node_entries()) {
+            const SemanticNode& node = entry.node;
+            switch(node.kind()) {
+                case SemanticNode::Kind::Attr: {
+                    handleAttrOccurrence(node.get<clang::Attr>(), node.source_range());
+                    break;
+                }
+
+                case SemanticNode::Kind::MacroDefine: {
+                    std::uint32_t modifiers = 0;
+                    add_modifier(modifiers, SymbolModifiers::Definition);
+                    add_token(node.get<MacroRef>()->loc, SymbolKind::Macro, modifiers);
+                    break;
+                }
+
+                case SemanticNode::Kind::MacroReference:
+                case SemanticNode::Kind::MacroUndef: {
+                    add_token(node.get<MacroRef>()->loc, SymbolKind::Macro, 0);
+                    break;
+                }
+
+                case SemanticNode::Kind::Include:
+                case SemanticNode::Kind::Import: {
+                    /// Includes are lexical (header name), imports are handled
+                    /// by highlight_modules.
+                    break;
+                }
+
+                default: {
+                    resolve_occurrences(node,
+                                        [&](const clang::NamedDecl* decl,
+                                            RelationKind kind,
+                                            clang::SourceLocation location) {
+                                            handleDeclOccurrence(decl, kind, location);
+                                        });
+                    break;
+                }
+            }
+        }
     }
 
     void handleDeclOccurrence(const clang::NamedDecl* decl,
@@ -254,23 +302,6 @@ public:
 
         add_token(location, SymbolKind::from(decl), modifiers);
     }
-
-    void handleMacroOccurrence(const clang::MacroInfo*,
-                               RelationKind relation,
-                               clang::SourceLocation location) {
-        std::uint32_t modifiers = 0;
-        if(relation.is_one_of(RelationKind::Definition)) {
-            add_modifier(modifiers, SymbolModifiers::Definition);
-        } else if(relation.is_one_of(RelationKind::Declaration)) {
-            add_modifier(modifiers, SymbolModifiers::Declaration);
-        }
-
-        add_token(location, SymbolKind::Macro, modifiers);
-    }
-
-    // handleModuleOccurrence
-
-    // handleRelation
 
     void handleAttrOccurrence(const clang::Attr* attr, clang::SourceRange range) {
         auto [begin, end] = range;
@@ -474,6 +505,8 @@ private:
     }
 
 public:
+    CompilationUnitRef unit;
+
     std::vector<SemanticToken> tokens;
 };
 

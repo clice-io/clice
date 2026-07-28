@@ -219,10 +219,15 @@ public:
         NodeFlags flags;
     };
 
-    /// Build the semantics of the unit's interested file: one full traversal
-    /// claiming tokens innermost-first, plus one pass over the preprocessor
-    /// directives.
-    static Semantics build(CompilationUnitRef unit);
+    /// Build the semantics of the unit: one full traversal claiming tokens
+    /// innermost-first, plus one pass over the preprocessor directives.
+    ///
+    /// With interested_only (the shape features consume, cached on the unit)
+    /// only the interested file's top-level decls are traversed. Without it
+    /// the whole TU is traversed — the transient shape the full index
+    /// projection uses; token ownership still only covers the interested
+    /// file's spelled tokens.
+    static Semantics build(CompilationUnitRef unit, bool interested_only = true);
 
     /// All recorded nodes in one index space: first the AST segment in DFS
     /// pre-order (a parent always precedes its children), then preprocessor
