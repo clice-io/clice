@@ -1,0 +1,179 @@
+---
+created_at: 2026-07-28
+input_file: decltype.cpp
+---
+01_decltype_auto: { range: "6:2-6:10" }
+### type `decltype`  
+
+---
+```cpp
+int
+```
+
+02_const_decltype_auto: { range: "14:2-14:10" }
+### type `decltype`  
+
+---
+```cpp
+const int
+```
+
+03_const_ref_decltype_auto: { range: "23:2-23:10" }
+### type `decltype`  
+
+---
+```cpp
+const int &
+```
+
+04_ref_decltype_auto: { range: "32:2-32:10" }
+### type `decltype`  
+
+---
+```cpp
+int &
+```
+
+05_decltype_auto_fn_return: { range: "39:0-39:8" }
+### type `decltype`  
+
+---
+decltype(auto) in function return  
+
+---
+```cpp
+Bar
+```
+
+06_decltype_auto_ref_return: { range: "46:0-46:8" }
+### type `decltype`  
+
+---
+```cpp
+int &
+```
+
+07_decltype_lvalue: { range: "56:2-56:10" }
+### type `decltype`  
+
+---
+```cpp
+int
+```
+
+08_decltype_lvalue_ref: { range: "65:2-65:10" }
+### type `decltype`  
+
+---
+```cpp
+int &
+```
+
+09_decltype_paren_lvalue: { range: "73:2-73:10" }
+### type `decltype`  
+
+---
+```cpp
+int &
+```
+
+10_decltype_rvalue_ref: { range: "81:2-81:10" }
+### type `decltype`  
+
+---
+```cpp
+int &&
+```
+
+11_decltype_rvalue_call: { range: "90:2-90:10" }
+### type `decltype`  
+
+---
+```cpp
+int &&
+```
+
+12_decltype_trailing_return: { range: "101:2-101:10" }
+### type `decltype`  
+
+---
+decltype of function with trailing return type.  
+
+---
+```cpp
+Bar
+```
+
+13_decltype_of_decltype: { range: "110:2-110:10" }
+### type `decltype`  
+
+---
+```cpp
+int
+```
+
+14_decltype_dependent: { range: "118:12-118:20" }
+### type `decltype`  
+
+---
+```cpp
+<dependent type>
+```
+
+15_undeduced_decltype_auto: { range: "125:0-125:8" }
+### type `decltype`  
+
+---
+```cpp
+/* not deduced */
+```
+
+16_var_decltype_type: { range: "133:12-133:13" }
+### variable `b`  
+
+---
+Type: `int`  
+
+---
+```cpp
+// In namespace var_with_decltype
+decltype(a) b = a
+```
+
+17_var_decltype_chain: { range: "140:12-140:13" }
+### variable `b`  
+
+---
+Type: `int`  
+
+---
+```cpp
+// In namespace var_with_decltype_chain
+decltype(c) b = a
+```
+
+18_var_const_decltype: { range: "146:18-146:19" }
+### variable `b`  
+
+---
+Type: `int`  
+
+---
+```cpp
+// In namespace var_with_const_decltype
+const decltype(a) b = a
+```
+
+19_fn_decltype_signature: { range: "152:5-152:8" }
+### function `foo`  
+
+---
+→ `int`  
+Parameters:  
+- `int x`
+
+---
+```cpp
+// In namespace fn_with_decltype
+auto foo(decltype(a) x) -> decltype(a)
+```

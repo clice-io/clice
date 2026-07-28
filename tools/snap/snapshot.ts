@@ -80,6 +80,26 @@ export function normalizeFileUri(uri: string, workspace: string): string {
     return `${WORKSPACE_PLACEHOLDER}/${rel.split(path.sep).join("/")}`;
 }
 
+/// Validate a raw filesystem path from a feature payload and rewrite it
+/// to the platform-independent `${WS}/...` form — the path-domain sibling
+/// of normalizeFileUri, for payloads the reply edge has not yet converted
+/// to URIs (e.g. raw document links).
+export function normalizeFilePath(target: string, workspace: string): string {
+    if (!path.isAbsolute(target)) {
+        throw new Error(`link target is not an absolute path: ${target}`);
+    }
+    if (!fs.existsSync(target)) {
+        throw new Error(`link target does not exist on disk: ${target}`);
+    }
+    const resolved = fs.realpathSync.native(target);
+    const ws = fs.realpathSync.native(workspace);
+    const rel = path.relative(ws, resolved);
+    if (rel.startsWith("..") || path.isAbsolute(rel)) {
+        throw new Error(`link target escapes the workspace ${ws}: ${target}`);
+    }
+    return `${WORKSPACE_PLACEHOLDER}/${rel.split(path.sep).join("/")}`;
+}
+
 /// Quote a string exactly like tests/unit/test/tester.h yaml_str, so
 /// snapshot bodies read identically across the layers.
 export function yamlStr(s: string): string {

@@ -9,7 +9,6 @@ export const REPO_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url
 export const TESTS_DIR = path.join(REPO_ROOT, "tests");
 export const DATA_DIR = path.join(TESTS_DIR, "data");
 export const SNAP_DIR = path.join(TESTS_DIR, "snap");
-export const SNAPSHOTS_DIR = path.join(TESTS_DIR, "snapshots");
 
 interface CDBEntry {
     directory: string;
@@ -58,17 +57,6 @@ export function generateTestDataCDBs(dataDir: string = DATA_DIR): void {
         arguments: ["clang++", "-std=c++17", "-fsyntax-only", ...extraArgs, posix(source)],
     });
 
-    const sourcesIn = (dir: string, recursive: boolean): string[] => {
-        if (!fs.existsSync(dir)) {
-            return [];
-        }
-        return fs
-            .readdirSync(dir, { recursive, encoding: "utf8" })
-            .filter((name) => name.endsWith(".cpp"))
-            .sort()
-            .map((name) => path.join(dir, name));
-    };
-
     const single = (name: string, extraArgs: string[] = []) => {
         const dir = path.join(dataDir, name);
         const main = path.join(dir, "main.cpp");
@@ -92,16 +80,6 @@ export function generateTestDataCDBs(dataDir: string = DATA_DIR): void {
 
     single("include_completion", ["-I."]);
 
-    // document_links
-    const dlDir = path.join(dataDir, "document_links");
-    const dlSources = sourcesIn(dlDir, false);
-    if (dlSources.length > 0) {
-        write(
-            dlDir,
-            dlSources.map((src) => entry(dlDir, src, [`-I${posix(dlDir)}`, "-std=c++23"])),
-        );
-    }
-
     // config_rules_toml / config_rules_no_config — rules tests must start
     // from a CDB that does NOT include the flag the rule will append, so the
     // rule's effect is observable through diagnostics.
@@ -119,22 +97,6 @@ export function generateTestDataCDBs(dataDir: string = DATA_DIR): void {
             .map((src) => entry(ptDir, src));
         if (entries.length > 0) {
             write(ptDir, entries);
-        }
-    }
-
-    // Legacy snapshot corpora still living under tests/data (consumed by
-    // the unit snapshot glob and the snap suite's legacy wire driver).
-    // -std matches the unit side's compile_file default (c++20) so both
-    // layers compile each fixture identically. Migrated corpora live in
-    // tests/snap with their own generator (tools/snap/standalone.ts).
-    for (const corpus of ["document_symbol", "inlay_hint"]) {
-        const corpusDir = path.join(dataDir, corpus);
-        const sources = sourcesIn(corpusDir, true);
-        if (sources.length > 0) {
-            write(
-                corpusDir,
-                sources.map((src) => entry(corpusDir, src, ["-std=c++20"])),
-            );
         }
     }
 }

@@ -1,0 +1,115 @@
+---
+created_at: 2026-07-28
+input_file: callee_args.cpp
+---
+01_arg_by_ref: { range: "8:9-8:10" }
+### variable `b`  
+
+---
+Type: `int`  
+Value = `2`  
+Passed by reference as arg_b  
+
+---
+```cpp
+// In code
+int b = 2
+```
+
+02_forwarded_arg: { range: "25:23-25:24" }
+### variable `a`  
+
+---
+Type: `int`  
+Value = `1`  
+Passed as arg_a  
+
+---
+```cpp
+// In code
+int a = 1
+```
+
+03_converted_arg: { range: "34:9-34:10" }
+### variable `a`  
+
+---
+Type: `int`  
+Value = `0`  
+Passed as arg (converted to const float &)  
+
+---
+```cpp
+// In main
+int a = 0
+```
+
+04_converted_ctor_arg: { range: "45:10-45:11" }
+### variable `a`  
+
+---
+Type: `int`  
+Value = `0`  
+Passed as arg (converted to const float &)  
+
+---
+```cpp
+// In main
+int a = 0
+```
+
+05_literal_arg: { range: "54:9-54:10" }
+### `literal`  
+
+---
+Passed by const reference as arg_b
+
+06_expression_arg: { range: "63:11-63:12" }
+### `expression`  
+
+---
+Type: `int`  
+Value = `3`  
+Passed by const reference as arg_b
+
+07_expression_by_value: { range: "71:8-71:9" }
+### `expression`  
+
+---
+Type: `int`  
+Value = `3`  
+Passed as lhs
+
+08_converted_literal: { range: "79:9-79:10" }
+### `literal`  
+
+---
+Passed as arg (converted to const float &)
+
+09_method_arg_default: { range: "92:8-92:9" }
+### variable `a`  
+
+---
+Type: `int`  
+Value = `1`  
+Passed as arg_a  
+
+---
+```cpp
+// In code
+int a = 1
+```
+
+10_converting_ctor_arg: { range: "104:6-104:7" }
+### variable `x`  
+
+---
+Type: `const int`  
+Value = `0`  
+Passed by const reference (converted to Foo)  
+
+---
+```cpp
+// In bar
+const int x = 0
+```

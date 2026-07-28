@@ -1,0 +1,5 @@
+---
+created_at: 2026-07-28
+input_file: escapes.cpp
+---
+- { range: "2:9-2:35", target: "${WS}/sub dir/escaped header.h" }

@@ -6,21 +6,19 @@
 /// server pipeline and the direct feature call, never something to paper
 /// over with UPDATE_SNAPSHOTS.
 
-import * as fs from "node:fs";
-import * as path from "node:path";
 import type { CliceClient } from "../client/client.ts";
 import type { Workspace } from "../client/workspace.ts";
-import { DATA_DIR, SNAPSHOTS_DIR } from "../compile_commands.ts";
 import { parseAnnotations } from "./annotation.ts";
 import {
     presentDocumentLinks,
     presentDocumentSymbols,
     presentFoldingRanges,
+    presentHover,
     presentInlayHints,
     presentSemanticTokens,
     type Presenter,
 } from "./presenters.ts";
-import { fixtureFrontmatter, SnapshotContext } from "./snapshot.ts";
+import { SnapshotContext } from "./snapshot.ts";
 import type { SnapCorpus, SnapFixture } from "./standalone.ts";
 
 export interface WireSession {
@@ -29,7 +27,11 @@ export interface WireSession {
 }
 
 const WIRE_PRESENTERS: Record<string, Presenter> = {
+    document_links: presentDocumentLinks,
+    document_symbol: presentDocumentSymbols,
     folding_range: presentFoldingRanges,
+    hover: presentHover,
+    inlay_hint: presentInlayHints,
     semantic_tokens: presentSemanticTokens,
 };
 
@@ -65,57 +67,4 @@ export async function checkWireSnapFixture(
         ? new SnapshotContext(corpus.corpus, { colocated: true, update: false })
         : new SnapshotContext(corpus.corpus, { colocated: true });
     snapshots.check(fixture.rel, body.join("\n"), shared ? "" : "wire");
-}
-
-/// Corpora under tests/data that have not migrated to tests/snap yet; their
-/// wire replies pin under tests/snapshots/integration/<feature>/.
-const LEGACY_FEATURES: Record<string, Presenter> = {
-    document_links: presentDocumentLinks,
-    document_symbol: presentDocumentSymbols,
-    inlay_hint: presentInlayHints,
-};
-
-export interface LegacyCorpus {
-    feature: string;
-    corpus: string;
-    fixtures: string[];
-}
-
-export function legacyCorpora(): LegacyCorpus[] {
-    return Object.keys(LEGACY_FEATURES).map((feature) => {
-        const corpus = path.join(DATA_DIR, feature);
-        const fixtures = fs
-            .readdirSync(corpus, { recursive: true, encoding: "utf8" })
-            .filter((name) => name.endsWith(".cpp"))
-            .sort()
-            .map((name) => name.split(path.sep).join("/"));
-        return { feature, corpus, fixtures };
-    });
-}
-
-/// Legacy behavior: `status: unsupported` fixtures pin a literal
-/// UNSUPPORTED marker instead of being replayed.
-export async function checkLegacyWireFixture(
-    session: () => Promise<WireSession>,
-    { feature, corpus }: LegacyCorpus,
-    rel: string,
-): Promise<void> {
-    const present = LEGACY_FEATURES[feature];
-    if (!present) {
-        throw new Error(`no legacy presenter registered for ${feature}`);
-    }
-    const snapshots = new SnapshotContext(path.join(SNAPSHOTS_DIR, "integration", feature));
-
-    const content = fs.readFileSync(path.join(corpus, rel), "utf8");
-    if (fixtureFrontmatter(content, "status") === "unsupported") {
-        snapshots.check(rel, "UNSUPPORTED");
-        return;
-    }
-
-    const { client, workspace } = await session();
-    const source = parseAnnotations(content);
-    const [uri] = await client.openAndWait(rel, 60_000, { text: source.content });
-    const body = await present(client, uri, source, workspace);
-    client.close(uri);
-    snapshots.check(rel, body.join("\n"));
 }

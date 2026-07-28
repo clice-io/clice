@@ -1,0 +1,339 @@
+---
+created_at: 2026-07-28
+input_file: pass_types.cpp
+---
+01_int_value_var: { range: "33:15-33:20" }
+### variable `int_x`  
+
+---
+Type: `int`  
+Passed as x  
+
+---
+```cpp
+// In fun
+int int_x
+```
+
+02_int_value_literal: { range: "34:15-34:18" }
+### `literal`  
+
+---
+Passed as x
+
+03_int_ref_var: { range: "35:13-35:18" }
+### variable `int_x`  
+
+---
+Type: `int`  
+Passed by reference as x  
+
+---
+```cpp
+// In fun
+int int_x
+```
+
+04_int_const_ref_var: { range: "36:19-36:24" }
+### variable `int_x`  
+
+---
+Type: `int`  
+Passed by const reference as x  
+
+---
+```cpp
+// In fun
+int int_x
+```
+
+05_int_const_ref_literal: { range: "37:19-37:22" }
+### `literal`  
+
+---
+Passed by const reference as x
+
+06_int_value_from_ref: { range: "38:15-38:22" }
+### variable `int_ref`  
+
+---
+Type: `int &`  
+Passed as x  
+
+---
+```cpp
+// In fun
+int &int_ref = int_x
+```
+
+07_int_const_ref_from_ref: { range: "39:19-39:26" }
+### variable `int_ref`  
+
+---
+Type: `int &`  
+Passed by const reference as x  
+
+---
+```cpp
+// In fun
+int &int_ref = int_x
+```
+
+08_int_const_ref_from_const_ref: { range: "40:19-40:32" }
+### variable `int_const_ref`  
+
+---
+Type: `const int &`  
+Passed by const reference as x  
+
+---
+```cpp
+// In fun
+const int &int_const_ref = int_x
+```
+
+09_base_ref: { range: "42:14-42:18" }
+### variable `base`  
+
+---
+Type: `Base`  
+Passed by reference as x  
+
+---
+```cpp
+// In fun
+Base base
+```
+
+10_base_const_ref: { range: "43:20-43:24" }
+### variable `base`  
+
+---
+Type: `Base`  
+Passed by const reference as x  
+
+---
+```cpp
+// In fun
+Base base
+```
+
+11_base_const_ref_from_const_ref: { range: "44:20-44:34" }
+### variable `base_const_ref`  
+
+---
+Type: `const Base &`  
+Passed by const reference as x  
+
+---
+```cpp
+// In fun
+const Base &base_const_ref = base
+```
+
+12_base_value: { range: "45:16-45:20" }
+### variable `base`  
+
+---
+Type: `Base`  
+Passed as x  
+
+---
+```cpp
+// In fun
+Base base
+```
+
+13_base_value_from_const_ref: { range: "46:16-46:30" }
+### variable `base_const_ref`  
+
+---
+Type: `const Base &`  
+Passed as x  
+
+---
+```cpp
+// In fun
+const Base &base_const_ref = base
+```
+
+14_derived_to_base_ref: { range: "47:14-47:21" }
+### variable `derived`  
+
+---
+Type: `Derived`  
+Passed by reference as x  
+
+---
+```cpp
+// In fun
+Derived derived
+```
+
+15_derived_to_base_const_ref: { range: "48:20-48:27" }
+### variable `derived`  
+
+---
+Type: `Derived`  
+Passed by const reference as x  
+
+---
+```cpp
+// In fun
+Derived derived
+```
+
+16_derived_to_base_value: { range: "49:16-49:23" }
+### variable `derived`  
+
+---
+Type: `Derived`  
+Passed as x  
+
+---
+```cpp
+// In fun
+Derived derived
+```
+
+17_ctor_base_const_ref: { range: "51:17-51:21" }
+### variable `base`  
+
+---
+Type: `Base`  
+Passed by const reference as x  
+
+---
+```cpp
+// In fun
+Base base
+```
+
+18_new_ctor_base_const_ref: { range: "52:28-52:32" }
+### variable `base`  
+
+---
+Type: `Base`  
+Passed by const reference as x  
+
+---
+```cpp
+// In fun
+Base base
+```
+
+19_ctor_int_ref: { range: "53:17-53:22" }
+### variable `int_x`  
+
+---
+Type: `int`  
+Passed by reference as x  
+
+---
+```cpp
+// In fun
+int int_x
+```
+
+20_ctor_int_value: { range: "54:24-54:29" }
+### variable `int_x`  
+
+---
+Type: `int`  
+Passed as y  
+
+---
+```cpp
+// In fun
+int int_x
+```
+
+21_converted_int_var: { range: "56:17-56:22" }
+### variable `int_x`  
+
+---
+Type: `int`  
+Passed as x (converted to float)  
+
+---
+```cpp
+// In fun
+int int_x
+```
+
+22_converted_int_ref: { range: "57:17-57:24" }
+### variable `int_ref`  
+
+---
+Type: `int &`  
+Passed as x (converted to float)  
+
+---
+```cpp
+// In fun
+int &int_ref = int_x
+```
+
+23_converted_int_const_ref: { range: "58:17-58:30" }
+### variable `int_const_ref`  
+
+---
+Type: `const int &`  
+Passed as x (converted to float)  
+
+---
+```cpp
+// In fun
+const int &int_const_ref = int_x
+```
+
+24_float_literal: { range: "59:17-59:23" }
+### `literal`  
+
+---
+Passed as x
+
+25_converted_int_literal: { range: "60:17-60:20" }
+### `literal`  
+
+---
+Passed as x (converted to float)
+
+26_converted_custom_from_int: { range: "61:18-61:23" }
+### variable `int_x`  
+
+---
+Type: `int`  
+Passed by reference as x (converted to CustomClass)  
+
+---
+```cpp
+// In fun
+int int_x
+```
+
+27_converted_custom_from_float: { range: "62:18-62:25" }
+### variable `float_x`  
+
+---
+Type: `float`  
+Passed as x (converted to CustomClass)  
+
+---
+```cpp
+// In fun
+float float_x
+```
+
+28_converted_custom_from_base: { range: "63:18-63:22" }
+### variable `base`  
+
+---
+Type: `Base`  
+Passed by const reference as x (converted to CustomClass)  
+
+---
+```cpp
+// In fun
+Base base
+```

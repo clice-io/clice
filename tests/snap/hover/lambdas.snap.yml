@@ -1,0 +1,77 @@
+---
+created_at: 2026-07-28
+input_file: lambdas.cpp
+---
+01_lambda_ptr_ptr: { range: "8:8-8:9" }
+### variable `c`  
+
+---
+→ `bool`  
+Parameters:  
+- `int T`
+- `bool B`
+
+---
+```cpp
+// In foo
+auto *c = &b
+```
+
+02_lambda_decltype_ref_param: { range: "16:2-16:5" }
+### parameter `bar`  
+
+---
+→ `bool`  
+Parameters:  
+- `int T`
+- `bool B`
+
+---
+```cpp
+// In foo
+decltype(lamb) &bar
+```
+
+03_lambda_decltype_param: { range: "24:2-24:5" }
+### parameter `bar`  
+
+---
+→ `bool`  
+Parameters:  
+- `int T`
+- `bool B`
+
+Value = `false`  
+
+---
+```cpp
+// In foo
+decltype(lamb) bar
+```
+
+04_lambda_variable: { range: "33:13-33:17" }
+### variable `lamb`  
+
+---
+→ `bool`  
+Parameters:  
+- `int T`
+- `bool B`
+
+---
+```cpp
+// In foo
+auto lamb = [&bar](int T, bool B) -> bool {}
+```
+
+05_local_in_lambda: { range: "40:21-40:25" }
+### variable `test`  
+
+---
+Type: `int`  
+
+---
+```cpp
+// In foo::(anonymous class)::operator()
+int test
+```

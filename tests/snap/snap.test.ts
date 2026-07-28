@@ -12,12 +12,7 @@ import {
     orphanSnapshots,
     snapCorpora,
 } from "@clice/tools/snap/standalone";
-import {
-    checkLegacyWireFixture,
-    checkWireSnapFixture,
-    legacyCorpora,
-    wirePresenter,
-} from "@clice/tools/snap/wire";
+import { checkWireSnapFixture, wirePresenter } from "@clice/tools/snap/wire";
 import { cliceExecutable, expect, test } from "./fixtures.ts";
 
 beforeAll(() => {
@@ -62,15 +57,5 @@ for (const corpus of snapCorpora()) {
         test("no orphan snapshots", () => {
             expect(orphanSnapshots(corpus)).toEqual([]);
         });
-    });
-}
-
-for (const corpus of legacyCorpora()) {
-    describe(`snap/${corpus.feature} (legacy wire)`, () => {
-        for (const rel of corpus.fixtures) {
-            test(`${corpus.feature}/${rel}`, async ({ session }) => {
-                await checkLegacyWireFixture(() => session(corpus.feature), corpus, rel);
-            });
-        }
     });
 }

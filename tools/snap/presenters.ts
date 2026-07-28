@@ -4,9 +4,10 @@
 /// Windows. Output must stay byte-identical to the snapshot corpus.
 
 import * as proto from "vscode-languageserver-protocol";
-import type { AnnotatedSource } from "./annotation.ts";
+import { markerPoints, markerRanges, type AnnotatedSource } from "./annotation.ts";
 import type { CliceClient } from "../client/client.ts";
 import type { Workspace } from "../client/workspace.ts";
+import { OffsetConverter } from "./inspect.ts";
 import { normalizeFileUri, yamlStr } from "./snapshot.ts";
 
 export type Presenter = (
@@ -136,13 +137,9 @@ export const presentSemanticTokens: Presenter = async (client, uri, source) => {
     return decodeSemanticTokens(result.data, source.content.split("\n"), provider.legend);
 };
 
-export const presentInlayHints: Presenter = async (client, uri, source) => {
-    const wholeFile: proto.Range = {
-        start: { line: 0, character: 0 },
-        end: { line: source.content.split("\n").length, character: 0 },
-    };
+function fmtInlayHints(hints: proto.InlayHint[]): string[] {
     const out: string[] = [];
-    for (const hint of (await client.inlayHints(uri, wholeFile)) ?? []) {
+    for (const hint of hints) {
         const label =
             typeof hint.label === "string"
                 ? hint.label
@@ -161,4 +158,81 @@ export const presentInlayHints: Presenter = async (client, uri, source) => {
         out.push(line + " }");
     }
     return out;
+}
+
+export const presentInlayHints: Presenter = async (client, uri, source) => {
+    // A fixture may scope the request with `§⟦...⟧` range markers — one
+    // section per marker; without them the whole document is requested.
+    const ranges = markerRanges(source);
+    if (ranges.length === 0) {
+        const wholeFile: proto.Range = {
+            start: { line: 0, character: 0 },
+            end: { line: source.content.split("\n").length, character: 0 },
+        };
+        return fmtInlayHints((await client.inlayHints(uri, wholeFile)) ?? []);
+    }
+    const map = new OffsetConverter(Buffer.from(source.content));
+    const out: string[] = [];
+    for (const [name, [begin, end]] of ranges) {
+        if (out.length > 0) {
+            out.push("");
+        }
+        out.push(`${name}:`);
+        const range: proto.Range = {
+            start: map.position(begin),
+            end: map.position(end),
+        };
+        out.push(...fmtInlayHints((await client.inlayHints(uri, range)) ?? []));
+    }
+    return out;
+};
+
+/// One rendered hover block per marker, shared by the wire presenter and
+/// the standalone renderer so `snap: shared` fixtures compare byte-equal:
+///
+///     name: { range: "1:4-1:9" }
+///     <markdown>
+///
+///     other: NO HOVER
+export function hoverBlocks(
+    items: [string, { rangeText: string | null; contents: string } | null][],
+): string[] {
+    const out: string[] = [];
+    for (const [name, item] of items) {
+        if (out.length > 0) {
+            out.push("");
+        }
+        if (item === null) {
+            out.push(`${name}: NO HOVER`);
+            continue;
+        }
+        out.push(`${name}:${item.rangeText === null ? "" : ` { range: "${item.rangeText}" }`}`);
+        out.push(...item.contents.split("\n"));
+    }
+    return out;
+}
+
+export const presentHover: Presenter = async (client, uri, source) => {
+    const items: [string, { rangeText: string | null; contents: string } | null][] = [];
+    const map = new OffsetConverter(Buffer.from(source.content));
+    for (const [name, offset] of markerPoints(source)) {
+        const pos = map.position(offset);
+        const hover = await client.hoverAt(uri, pos.line, pos.character);
+        if (!hover) {
+            items.push([name, null]);
+            continue;
+        }
+        const contents = hover.contents;
+        if (typeof contents === "string" || Array.isArray(contents)) {
+            throw new Error("clice always replies with MarkupContent hover contents");
+        }
+        items.push([
+            name,
+            {
+                rangeText: hover.range ? fmtRange(hover.range) : null,
+                contents: contents.value,
+            },
+        ]);
+    }
+    return hoverBlocks(items);
 };

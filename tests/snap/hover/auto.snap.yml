@@ -1,0 +1,240 @@
+---
+created_at: 2026-07-28
+input_file: auto.cpp
+---
+01_structured_bindings: { range: "13:2-13:6" }
+### type `auto`  
+
+---
+```cpp
+S
+```
+
+02_undeduced_auto: { range: "21:2-21:6" }
+### type `auto`  
+
+---
+```cpp
+/* not deduced */
+```
+
+03_constrained_auto: { range: "28:2-28:6" }
+### type `auto`  
+
+---
+```cpp
+int
+```
+
+04_auto_lambda: { range: "34:2-34:6" }
+### type `auto`  
+
+---
+```cpp
+class(lambda)
+```
+
+05_auto_instantiation: { range: "42:2-42:6" }
+### type `auto`  
+
+---
+```cpp
+Foo<int>
+```
+
+06_auto_specialized: { range: "51:2-51:6" }
+### type `auto`  
+
+---
+```cpp
+Foo<int>
+```
+
+07_simple_auto: { range: "58:2-58:6" }
+### type `auto`  
+
+---
+```cpp
+int
+```
+
+08_const_auto: { range: "65:8-65:12" }
+### type `auto`  
+
+---
+```cpp
+int
+```
+
+09_const_auto_ref: { range: "72:8-72:12" }
+### type `auto`  
+
+---
+```cpp
+int
+```
+
+10_auto_ref: { range: "80:2-80:6" }
+### type `auto`  
+
+---
+```cpp
+int
+```
+
+11_auto_ptr: { range: "88:2-88:6" }
+### type `auto`  
+
+---
+```cpp
+int
+```
+
+12_auto_from_pointer: { range: "96:2-96:6" }
+### type `auto`  
+
+---
+```cpp
+int *
+```
+
+13_auto_init_list: { range: "103:2-103:6" }
+### type `auto`  
+
+---
+```cpp
+std::initializer_list<int>
+```
+
+14_auto_conversion: { range: "110:11-110:15" }
+### type `auto`  
+
+---
+```cpp
+int
+```
+
+15_auto_trailing_return: { range: "116:0-116:4" }
+### type `auto`  
+
+---
+```cpp
+int
+```
+
+16_auto_trailing_decltype: { range: "124:0-124:4" }
+### type `auto`  
+
+---
+auto function return with trailing type  
+
+---
+```cpp
+Bar
+```
+
+17_auto_fn_return: { range: "132:0-132:4" }
+### type `auto`  
+
+---
+auto in function return  
+
+---
+```cpp
+Bar
+```
+
+18_auto_ref_fn_return: { range: "140:0-140:4" }
+### type `auto`  
+
+---
+auto& in function return  
+
+---
+```cpp
+Bar
+```
+
+19_auto_ptr_fn_return: { range: "149:0-149:4" }
+### type `auto`  
+
+---
+auto\* in function return  
+
+---
+```cpp
+Bar
+```
+
+20_const_auto_ref_fn_return: { range: "158:6-158:10" }
+### type `auto`  
+
+---
+const auto& in function return  
+
+---
+```cpp
+Bar
+```
+
+21_auto_fn_pointer: { range: "167:0-167:4" }
+### type `auto`  
+
+---
+```cpp
+int
+```
+
+22_auto_alias_int: { range: "173:0-173:4" }
+### type `auto`  
+
+---
+```cpp
+int_type // aka: int
+```
+
+23_auto_alias_class: { range: "180:0-180:4" }
+### type `auto`  
+
+---
+auto on alias  
+
+---
+```cpp
+cls_type // aka: alias_class::cls
+```
+
+24_auto_alias_template: { range: "187:0-187:4" }
+### type `auto`  
+
+---
+auto on alias  
+
+---
+```cpp
+templ<int>
+```
+
+25_undeduced_auto_decl: { range: "194:2-194:6" }
+### type `auto`  
+
+---
+```cpp
+/* not deduced */
+```
+
+26_undeduced_auto_return: { range: "201:0-201:4" }
+### type `auto`  
+
+---
+```cpp
+/* not deduced */
+```
+
+27_template_auto_param: { range: "208:9-208:13" }
+### type `auto`  
+
+---
+```cpp
+/* not deduced */
+```

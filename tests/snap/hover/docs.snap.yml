@@ -1,0 +1,149 @@
+---
+created_at: 2026-07-28
+input_file: docs.cpp
+---
+01_auto_class_doc: { range: "12:2-12:6" }
+### type `auto`  
+
+---
+doc  
+
+---
+```cpp
+X<int>
+```
+
+02_class_ref_doc: { range: "13:2-13:3" }
+### class `X<int>`  
+
+---
+doc  
+
+---
+```cpp
+// In namespace docs_ast
+template <> class X<int> {}
+```
+
+03_function_doc: { range: "14:2-14:5" }
+### function `bar`  
+
+---
+→ `void`  
+doc  
+
+---
+```cpp
+// In namespace docs_ast
+template <> void bar<int>()
+```
+
+04_auto_var_tmpl_doc: { range: "15:2-15:6" }
+### type `auto`  
+
+---
+doc  
+
+---
+```cpp
+docs_ast::X<int>
+```
+
+05_var_tmpl_ref_doc: { range: "15:11-15:14" }
+### variable `baz<X<int>>`  
+
+---
+Type: `docs_ast::X<int>`  
+doc  
+
+---
+```cpp
+// In namespace docs_ast
+docs_ast::X<int> baz
+```
+
+06_var_tmpl_assign_doc: { range: "16:2-16:5" }
+### variable `baz<int>`  
+
+---
+Type: `int`  
+doc  
+
+---
+```cpp
+// In namespace docs_ast
+int baz
+```
+
+07_primary_doc: { range: "23:28-23:29" }
+### class `X`  
+
+---
+doc1  
+
+---
+```cpp
+// In namespace docs_special
+template <typename T> class X {}
+```
+
+08_full_spec_doc: { range: "25:18-25:19" }
+### class `X<int>`  
+
+---
+Size: 1 byte, alignment 1 byte  
+doc2  
+
+---
+```cpp
+// In namespace docs_special
+template <> class X<int> {}
+```
+
+09_partial_spec_doc: { range: "27:28-27:29" }
+### class `X<T *>`  
+
+---
+doc3  
+
+---
+```cpp
+// In namespace docs_special
+template <typename T> class X<T *> {}
+```
+
+10_primary_ref_doc: { range: "29:2-29:3" }
+### class `X<char>`  
+
+---
+doc1  
+
+---
+```cpp
+// In namespace docs_special
+template <> class X<char> {}
+```
+
+11_full_spec_ref_doc: { range: "30:2-30:3" }
+### class `X<int>`  
+
+---
+doc2  
+
+---
+```cpp
+// In namespace docs_special
+template <> class X<int> {}
+```
+
+12_partial_spec_ref_doc: { range: "31:2-31:3" }
+### class `X<int *>`  
+
+---
+doc3  
+
+---
+```cpp
+// In namespace docs_special
+template <> class X<int *> {}
+```

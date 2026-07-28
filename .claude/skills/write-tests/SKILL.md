@@ -57,7 +57,7 @@ gates: `npm run check` at the repo root (tsc strict + ESLint, zero tolerance).
 
 3. **Snap tests** (whole-document feature output): don't write
    assertions at all — add a fixture to the corpus `tests/snap/<feature>/`
-   (or a legacy corpus `tests/data/<feature>/`) and the snap suite
+   and the snap suite
    (`tests/snap.test.ts`, domain logic in `tools/snap/`) pins the reply
    from both the standalone and the wire path. Position-dependent fixtures
    carry `§(name)` annotations (see `@clice/tools/snap/annotation`).

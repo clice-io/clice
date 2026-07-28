@@ -1,6 +1,6 @@
 import { cliceTest, expect } from "../fixtures.ts";
 
-const test = cliceTest("document_links");
+const test = cliceTest("snap/document_links");
 
 function targetName(target: string): string {
     return target.split("/").pop() ?? target;

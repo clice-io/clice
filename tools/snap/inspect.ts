@@ -9,11 +9,14 @@
 import { execFile, execFileSync } from "node:child_process";
 import * as crypto from "node:crypto";
 import { promisify } from "node:util";
-import { yamlStr } from "./snapshot.ts";
+import { normalizeFilePath, yamlStr } from "./snapshot.ts";
 
 export interface InspectFileEntry {
     stripped_hash: string;
     result?: unknown;
+    /// Marker-driven payloads keyed by annotation name; null records a
+    /// marker with no result (e.g. hover on whitespace).
+    markers?: Record<string, unknown> | null;
     error?: string | null;
     diagnostics?: string[] | null;
 }
@@ -285,3 +288,147 @@ export const renderRawSemanticTokens: RawRenderer = (result, stripped) => {
     }
     return out;
 };
+
+interface RawDocumentSymbol {
+    name: string;
+    detail: string;
+    kind: string;
+    range: RawRange;
+    selection_range: RawRange;
+    children: RawDocumentSymbol[];
+}
+
+/// Twin of to_protocol_symbol_kind (src/feature/document_symbols.cpp):
+/// clice SymbolKind names to the LSP SymbolKind names the wire presenter
+/// prints. Anything unlisted maps to Variable, like the C++ default.
+const LSP_SYMBOL_KIND: Record<string, string> = {
+    Module: "Module",
+    Namespace: "Namespace",
+    Class: "Class",
+    Struct: "Struct",
+    Union: "Class",
+    Enum: "Enum",
+    Type: "TypeParameter",
+    Concept: "TypeParameter",
+    Field: "Field",
+    EnumMember: "EnumMember",
+    Function: "Function",
+    Method: "Method",
+    Macro: "Function",
+    Comment: "String",
+    Character: "String",
+    String: "String",
+    Header: "String",
+    Number: "Number",
+    Operator: "Operator",
+    Paren: "Operator",
+    Bracket: "Operator",
+    Brace: "Operator",
+    Angle: "Operator",
+};
+
+export const renderRawDocumentSymbols = (result: unknown, stripped: Buffer): string[] => {
+    const map = new OffsetConverter(stripped);
+    const fmt = (range: RawRange): string => {
+        const start = map.position(range.begin);
+        const end = map.position(range.end);
+        return `${start.line}:${start.character}-${end.line}:${end.character}`;
+    };
+    const out: string[] = [];
+    const walk = (symbol: RawDocumentSymbol, depth: number): void => {
+        let line =
+            `-${" ".repeat(1 + 2 * depth)}{ name: ${yamlStr(symbol.name)}, ` +
+            `kind: ${LSP_SYMBOL_KIND[symbol.kind] ?? "Variable"}, ` +
+            `range: "${fmt(symbol.range)}", ` +
+            `selection_range: "${fmt(symbol.selection_range)}"`;
+        if (symbol.detail) {
+            line += `, detail: ${yamlStr(symbol.detail)}`;
+        }
+        out.push(line + " }");
+        for (const child of symbol.children) {
+            walk(child, depth + 1);
+        }
+    };
+    for (const symbol of result as RawDocumentSymbol[]) {
+        walk(symbol, 0);
+    }
+    return out;
+};
+
+interface RawInlayHint {
+    offset: number;
+    kind: string;
+    label: string;
+    padding_left: boolean;
+    padding_right: boolean;
+}
+
+/// Twin of the HintCategory -> protocol::InlayHintKind switch in
+/// src/feature/inlay_hints.cpp.
+const LSP_INLAY_KIND: Record<string, string> = {
+    Parameter: "Parameter",
+    DefaultArgument: "Parameter",
+    Type: "Type",
+    Designator: "Type",
+    BlockEnd: "Type",
+};
+
+export const renderRawInlayHints = (result: unknown, stripped: Buffer): string[] => {
+    const map = new OffsetConverter(stripped);
+    const out: string[] = [];
+    for (const hint of result as RawInlayHint[]) {
+        const pos = map.position(hint.offset);
+        let line = `- { pos: "${pos.line}:${pos.character}"`;
+        line += `, kind: ${LSP_INLAY_KIND[hint.kind] ?? hint.kind}`;
+        line += `, label: ${yamlStr(hint.label)}`;
+        if (hint.padding_left) {
+            line += ", padding_left: true";
+        }
+        if (hint.padding_right) {
+            line += ", padding_right: true";
+        }
+        out.push(line + " }");
+    }
+    return out;
+};
+
+interface RawDocumentLink {
+    range: RawRange;
+    target: string;
+}
+
+export const renderRawDocumentLinks = (
+    result: unknown,
+    stripped: Buffer,
+    corpus: string,
+): string[] => {
+    const map = new OffsetConverter(stripped);
+    return (result as RawDocumentLink[]).map((link) => {
+        const start = map.position(link.range.begin);
+        const end = map.position(link.range.end);
+        return (
+            `- { range: "${start.line}:${start.character}-${end.line}:${end.character}", ` +
+            `target: ${yamlStr(normalizeFilePath(link.target, corpus))} }`
+        );
+    });
+};
+
+export interface RawHoverResult {
+    range: RawRange | null;
+    contents: string;
+}
+
+/// Marker payloads ordered like the C++ side emitted them: named markers
+/// sorted byte-wise, then `nameless_<i>` numerically.
+export function sortedMarkers(markers: Record<string, unknown>): [string, unknown][] {
+    const named: string[] = [];
+    const nameless: string[] = [];
+    for (const key of Object.keys(markers)) {
+        (/^nameless_\d+$/.test(key) ? nameless : named).push(key);
+    }
+    named.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    nameless.sort(
+        (a, b) => Number(a.slice("nameless_".length)) - Number(b.slice("nameless_".length)),
+    );
+    return [...named, ...nameless].map((key) => [key, markers[key]]);
+}

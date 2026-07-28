@@ -1,0 +1,19 @@
+---
+created_at: 2026-07-28
+input_file: spaceship.cpp
+---
+01_spaceship_neq: { range: "21:16-21:18" }
+### `operator==`  
+
+---
+→ `bool`  
+Parameters:  
+- `const Foo &`
+
+Value = `true`  
+
+---
+```cpp
+// In Foo
+public: bool operator==(const Foo &) const noexcept = default
+```

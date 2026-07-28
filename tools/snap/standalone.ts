@@ -15,20 +15,35 @@ import * as path from "node:path";
 import { SNAP_DIR } from "../compile_commands.ts";
 import { parseAnnotations } from "./annotation.ts";
 import {
+    OffsetConverter,
     parseFixtureMeta,
+    renderRawDocumentLinks,
+    renderRawDocumentSymbols,
     renderRawFoldingRanges,
+    renderRawInlayHints,
     renderRawSemanticTokens,
     runInspectAsync,
     sha256,
+    sortedMarkers,
     type FixtureMeta,
-    type RawRenderer,
+    type InspectFileEntry,
+    type RawHoverResult,
 } from "./inspect.ts";
+import { hoverBlocks } from "./presenters.ts";
 import { SnapshotContext } from "./snapshot.ts";
 
 /// CDBs for the tests/snap corpora. Both drivers read the same file:
 /// `clice inspect` finds it next to the fixtures and the wire driver
 /// initializes its workspace on the corpus directory, so the two paths
 /// cannot drift in compile flags.
+/// Per-corpus compile flags; everything else defaults to plain c++20.
+/// hover pins the target triple because HoverInfo carries sizeof/alignof
+/// facts that differ between LP64 and LLP64 hosts.
+const CORPUS_FLAGS: Record<string, (corpus: string) => string[]> = {
+    document_links: (corpus) => [`-I${posix(corpus)}`, "-std=c++23"],
+    hover: () => ["-std=c++20", "--target=x86_64-unknown-linux-gnu"],
+};
+
 function posix(p: string): string {
     return p.split(path.sep).join("/");
 }
@@ -50,6 +65,7 @@ export function generateSnapCDBs(snapDir: string = SNAP_DIR): void {
         if (sources.length === 0) {
             continue;
         }
+        const flags = CORPUS_FLAGS[corpus] ?? (() => ["-std=c++20"]);
         const target = path.join(corpusDir, "compile_commands.json");
         const tmp = `${target}.tmp-${process.pid}`;
         fs.writeFileSync(
@@ -58,7 +74,7 @@ export function generateSnapCDBs(snapDir: string = SNAP_DIR): void {
                 sources.map((src) => ({
                     directory: posix(corpusDir),
                     file: posix(src),
-                    arguments: ["clang++", "-std=c++20", "-fsyntax-only", posix(src)],
+                    arguments: ["clang++", ...flags(corpusDir), "-fsyntax-only", posix(src)],
                 })),
                 null,
                 2,
@@ -68,9 +84,54 @@ export function generateSnapCDBs(snapDir: string = SNAP_DIR): void {
     }
 }
 
-const RENDERERS: Record<string, RawRenderer> = {
-    folding_range: renderRawFoldingRanges,
-    semantic_tokens: renderRawSemanticTokens,
+/// Renders one inspect file entry into snapshot lines. Whole-document
+/// features read `entry.result`; marker features read `entry.markers`.
+type EntryRenderer = (entry: InspectFileEntry, stripped: Buffer, corpus: string) => string[];
+
+function markerSections(
+    entry: InspectFileEntry,
+    renderOne: (value: unknown) => string[],
+): string[] {
+    const out: string[] = [];
+    for (const [name, value] of sortedMarkers(entry.markers ?? {})) {
+        if (out.length > 0) {
+            out.push("");
+        }
+        out.push(`${name}:`);
+        out.push(...renderOne(value));
+    }
+    return out;
+}
+
+const RENDERERS: Record<string, EntryRenderer> = {
+    document_links: (entry, stripped, corpus) =>
+        renderRawDocumentLinks(entry.result, stripped, corpus),
+    document_symbol: (entry, stripped) => renderRawDocumentSymbols(entry.result, stripped),
+    folding_range: (entry, stripped) => renderRawFoldingRanges(entry.result, stripped),
+    hover: (entry, stripped) => {
+        const map = new OffsetConverter(stripped);
+        const items: [string, { rangeText: string | null; contents: string } | null][] = [];
+        for (const [name, value] of sortedMarkers(entry.markers ?? {})) {
+            if (value === null) {
+                items.push([name, null]);
+                continue;
+            }
+            const hover = value as RawHoverResult;
+            let rangeText: string | null = null;
+            if (hover.range !== null) {
+                const start = map.position(hover.range.begin);
+                const end = map.position(hover.range.end);
+                rangeText = `${start.line}:${start.character}-${end.line}:${end.character}`;
+            }
+            items.push([name, { rangeText, contents: hover.contents }]);
+        }
+        return hoverBlocks(items);
+    },
+    inlay_hint: (entry, stripped) =>
+        entry.markers != null
+            ? markerSections(entry, (value) => renderRawInlayHints(value, stripped))
+            : renderRawInlayHints(entry.result, stripped),
+    semantic_tokens: (entry, stripped) => renderRawSemanticTokens(entry.result, stripped),
 };
 
 export interface SnapFixture {
@@ -159,7 +220,7 @@ export async function checkSnapFixture(
     }
 
     const snapshots = new SnapshotContext(corpus, { colocated: true });
-    snapshots.check(fixture.rel, render(entry.result, stripped).join("\n"));
+    snapshots.check(fixture.rel, render(entry, stripped, corpus).join("\n"));
 }
 
 /// Snapshots follow their sources: a stale `.snap.yml` whose fixture was

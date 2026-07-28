@@ -1,0 +1,64 @@
+---
+created_at: 2026-07-28
+input_file: getter_setter.cpp
+---
+01_getter: { range: "7:24-7:25" }
+### method `y`  
+
+---
+→ `float`  
+Trivial accessor for `Y`.  
+
+---
+```cpp
+// In X
+public: float y()
+```
+
+02_setter: { range: "12:23-12:27" }
+### method `setY`  
+
+---
+→ `void`  
+Parameters:  
+- `float v`
+
+Trivial setter for `Y`.  
+
+---
+```cpp
+// In X
+public: void setY(float v)
+```
+
+03_setter_builder: { range: "17:21-17:25" }
+### method `setY`  
+
+---
+→ `X &`  
+Parameters:  
+- `float v`
+
+Trivial setter for `Y`.  
+
+---
+```cpp
+// In X
+public: X &setY(float v)
+```
+
+04_setter_move: { range: "22:23-22:27" }
+### method `setY`  
+
+---
+→ `void`  
+Parameters:  
+- `float v`
+
+Trivial setter for `Y`.  
+
+---
+```cpp
+// In X
+public: void setY(float v)
+```

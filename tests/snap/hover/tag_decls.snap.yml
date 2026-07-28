@@ -1,0 +1,202 @@
+---
+created_at: 2026-07-28
+input_file: tag_decls.cpp
+---
+01_struct: { range: "9:7-9:14" }
+### struct `MyClass`  
+
+---
+```cpp
+// In namespace struct_decl::ns1
+struct MyClass {}
+```
+
+02_class: { range: "19:7-19:14" }
+### class `MyClass`  
+
+---
+```cpp
+// In namespace class_decl::ns1
+class MyClass {}
+```
+
+03_union: { range: "29:7-29:14" }
+### union `MyUnion`  
+
+---
+```cpp
+// In namespace union_decl::ns1
+union MyUnion {}
+```
+
+04_forward_class: { range: "37:0-37:3" }
+### class `Foo`  
+
+---
+Forward class declaration  
+
+---
+```cpp
+// In namespace forward_decl
+class Foo {}
+```
+
+05_enum: { range: "46:2-46:7" }
+### enum `Hello`  
+
+---
+Enum declaration  
+
+---
+```cpp
+// In namespace enum_def
+enum Hello {}
+```
+
+06_enumerator: { range: "56:16-56:19" }
+### enumerator `ONE`  
+
+---
+Type: `enum enumerator::Hello`  
+Value = `0`  
+
+---
+```cpp
+// In Hello
+ONE
+```
+
+07_using_enum: { range: "67:16-67:19" }
+### enumerator `ONE`  
+
+---
+Type: `enum using_enum::Hello`  
+Value = `0`  
+
+---
+```cpp
+// In Hello
+ONE
+```
+
+08_anon_enumerator: { range: "77:14-77:17" }
+### enumerator `ONE`  
+
+---
+Type: `enum anon_enum::(unnamed)`  
+Value = `0`  
+
+---
+```cpp
+// In namespace anon_enum
+ONE
+```
+
+09_typedef: { range: "85:2-85:5" }
+### type `Foo`  
+
+---
+Type: `int`  
+Typedef  
+
+---
+```cpp
+// In namespace typedef_decl
+typedef int Foo
+```
+
+10_typedef_embedded: { range: "93:2-93:5" }
+### type `Foo`  
+
+---
+Type: `struct typedef_embedded::Bar`  
+Typedef with embedded definition  
+
+---
+```cpp
+// In namespace typedef_embedded
+typedef struct Bar Foo
+```
+
+11_namespace: { range: "102:13-102:15" }
+### namespace `ns`  
+
+---
+```cpp
+// In namespace ns_decl
+namespace ns {}
+```
+
+12_anon_struct_field: { range: "111:4-111:9" }
+### field `hello`  
+
+---
+Type: `int`  
+
+---
+```cpp
+// In (anonymous struct)
+public: int hello
+```
+
+13_anon_union_field: { range: "122:31-122:34" }
+### field `def`  
+
+---
+Type: `int`  
+
+---
+```cpp
+// In outer::(anonymous union)
+public: int def
+```
+
+14_templated_function: { range: "131:20-131:23" }
+### function `foo`  
+
+---
+→ `int`  
+Templated function  
+
+---
+```cpp
+// In namespace templated_fn
+template <> int foo<int>()
+```
+
+15_template_method: { range: "140:23-140:29" }
+### method `method`  
+
+---
+→ `int`  
+
+---
+```cpp
+// In cls<int>
+public: int method()
+```
+
+16_nested_template_var: { range: "146:19-146:22" }
+### variable `foo`  
+
+---
+Type: `cls<cls<cls<int>>>`  
+
+---
+```cpp
+// In namespace nested_templates_var
+cls<cls<cls<int>>> foo
+```
+
+17_nested_template_class: { range: "152:0-152:3" }
+### struct `cls<nested_templates_class::cls<nested_templates_class::cls<int>>>`  
+
+---
+type of nested templates.  
+
+---
+```cpp
+// In namespace nested_templates_class
+template <>
+struct cls<nested_templates_class::cls<nested_templates_class::cls<int>>> {}
+```

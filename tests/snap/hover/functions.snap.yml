@@ -1,0 +1,62 @@
+---
+created_at: 2026-07-28
+input_file: functions.cpp
+---
+01_fn_via_pointer: { range: "7:13-7:16" }
+### function `foo`  
+
+---
+→ `void`  
+Parameters:  
+- `int`
+
+Function definition via pointer  
+
+---
+```cpp
+// In namespace fn_via_pointer
+void foo(int)
+```
+
+02_fn_via_call: { range: "15:9-15:12" }
+### function `foo`  
+
+---
+→ `int`  
+Parameters:  
+- `int`
+
+Function declaration via call  
+
+---
+```cpp
+// In namespace fn_via_call
+int foo(int)
+```
+
+03_fn_decl: { range: "22:11-22:14" }
+### function `foo`  
+
+---
+→ `void`  
+Function declaration  
+
+---
+```cpp
+// In namespace fn_decl
+void foo()
+```
+
+04_fn_default_tmpl_arg: { range: "30:2-30:5" }
+### function `foo`  
+
+---
+→ `void`  
+Parameters:  
+- `const int & = T()`
+
+---
+```cpp
+// In namespace fn_default_tmpl_arg
+template <> void foo<int>(const int &)
+```

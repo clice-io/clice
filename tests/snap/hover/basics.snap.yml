@@ -1,0 +1,135 @@
+---
+created_at: 2026-07-28
+input_file: basics.cpp
+---
+01_global_func: { range: "4:5-4:8" }
+### function `foo`  
+
+---
+→ `void`  
+Best foo ever.  
+
+---
+```cpp
+void foo()
+```
+
+02_ns_func: { range: "8:7-8:10" }
+### function `foo`  
+
+---
+→ `void`  
+Best foo ever.  
+
+---
+```cpp
+// In namespace ns1::ns2
+void foo()
+```
+
+03_field: { range: "13:9-13:12" }
+### field `bar`  
+
+---
+Type: `char`  
+Offset: 0 bytes  
+Size: 1 byte (+7 bytes padding), alignment 1 byte  
+
+---
+```cpp
+// In Foo
+private: char bar
+```
+
+04_union_field: { range: "19:7-19:10" }
+### field `bar`  
+
+---
+Type: `char`  
+Size: 1 byte (+15 bytes padding), alignment 1 byte  
+
+---
+```cpp
+// In FooUnion
+public: char bar
+```
+
+05_bitfield: { range: "24:6-24:7" }
+### field `x`  
+
+---
+Type: `int`  
+Offset: 0 bytes  
+Size: 1 bit, alignment 4 bytes  
+
+---
+```cpp
+// In FooBits1
+public: int x : 1
+```
+
+06_bitfield_padding: { range: "30:7-30:8" }
+### field `y`  
+
+---
+Type: `char`  
+Offset: 1 byte  
+Size: 1 bit (+23 bits padding), alignment 1 byte  
+
+---
+```cpp
+// In FooBits2
+public: char y : 1
+```
+
+07_method_local: { range: "37:10-37:13" }
+### variable `bar`  
+
+---
+Type: `int`  
+
+---
+```cpp
+// In Bar::foo
+int bar
+```
+
+08_anon_struct_field: { range: "44:9-44:12" }
+### field `bar`  
+
+---
+Type: `char`  
+Offset: 0 bytes  
+Size: 1 byte, alignment 1 byte  
+
+---
+```cpp
+// In (anonymous struct)
+public: char bar
+```
+
+09_struct_size: { range: "48:7-48:8" }
+### struct `X`  
+
+---
+Size: 1 byte, alignment 1 byte  
+
+---
+```cpp
+struct X {}
+```
+
+10_predefined_var: { range: "51:2-51:10" }
+### variable `__func__`  
+
+---
+Type: `const char[4]`  
+Value = `"pf1"`  
+Name of the current function (predefined variable)
+
+11_predefined_var_dependent: { range: "55:2-55:10" }
+### variable `__func__`  
+
+---
+Type: `const char[]`  
+Name of the current function (predefined variable)

@@ -1,0 +1,229 @@
+---
+created_at: 2026-07-28
+input_file: templates.cpp
+---
+01_var_of_template_type: { range: "6:21-6:24" }
+### variable `foo`  
+
+---
+Type: `Foo<int, char, bool>`  
+
+---
+```cpp
+// In namespace var_tmpl_type
+Foo<int, char, bool> foo = Foo<int, char, bool>(5)
+```
+
+02_implicit_instantiation: { range: "12:0-12:6" }
+### class `vector<int>`  
+
+---
+```cpp
+// In namespace implicit_instantiation
+template <> class vector<int> {}
+```
+
+03_class_template: { range: "23:0-23:3" }
+### class `Foo`  
+
+---
+```cpp
+// In namespace class_template
+template <template <typename, bool...> class C, typename = char, int = 0,
+          bool Q = false, class... Ts>
+class Foo final {}
+```
+
+04_function_template: { range: "36:2-36:5" }
+### function `foo`  
+
+---
+→ `void`  
+
+---
+```cpp
+// In namespace function_template
+template <> void foo<function_template::Foo, char, 0, false, <>>()
+```
+
+05_function_decl: { range: "46:2-46:5" }
+### function `foo`  
+
+---
+→ `Foo<bool, true, false>`  
+Parameters:  
+- `int`
+- `bool T = false`
+
+---
+```cpp
+// In namespace function_decl
+Foo<bool, true, false> foo(int, bool T = false)
+```
+
+06_partial_specialization: { range: "53:28-53:29" }
+### class `X<T *>`  
+
+---
+```cpp
+// In namespace partial_spec
+template <typename T> class X<T *> {}
+```
+
+07_partial_spec_constructor: { range: "59:35-59:36" }
+### method `X`  
+
+---
+```cpp
+// In X<T *>
+public: X()
+```
+
+08_destructor: { range: "63:10-63:11" }
+### method `~X`  
+
+---
+```cpp
+// In X
+private: ~X()
+```
+
+09_conversion_operator: { range: "67:10-67:18" }
+### method `operator int`  
+
+---
+```cpp
+// In X
+private: operator int()
+```
+
+10_conversion_target: { range: "71:19-71:20" }
+### class `X`  
+
+---
+```cpp
+// In namespace conversion_target
+class X {}
+```
+
+11_primary_template_doc: { range: "81:2-81:5" }
+### class `Foo<int *>`  
+
+---
+comment from primary  
+
+---
+```cpp
+// In namespace primary_fallback
+template <> class Foo<int *>
+```
+
+12_variable_template: { range: "89:26-89:29" }
+### variable `arr`  
+
+---
+Type: `m_int[Size] (aka int[Size])`  
+
+---
+```cpp
+// In namespace var_template
+template <int Size> m_int arr[Size]
+```
+
+13_variable_template_spec: { range: "98:18-98:21" }
+### variable `arr<4>`  
+
+---
+Type: `m_int[4] (aka int[4])`  
+
+---
+```cpp
+// In namespace var_template_spec
+m_int arr[4]
+```
+
+14_canonical_type: { range: "109:23-109:24" }
+### variable `a`  
+
+---
+Type: `TestHover<int>::Type (aka int)`  
+
+---
+```cpp
+// In code
+TestHover<int>::Type a
+```
+
+15_function_template_type: { range: "116:5-116:8" }
+### function `foo`  
+
+---
+→ `void`  
+Parameters:  
+- `T arg`
+
+---
+```cpp
+// In namespace canonical_tmpl_type
+template <typename T> void foo(T arg)
+```
+
+16_alias_template: { range: "122:6-122:11" }
+### type `alias`  
+
+---
+Type: `T`  
+
+---
+```cpp
+// In namespace alias_template
+template <typename T> using alias = T
+```
+
+17_alias_template_chain: { range: "131:6-131:8" }
+### type `AA`  
+
+---
+Type: `A<T> (aka T)`  
+
+---
+```cpp
+// In namespace alias_chain
+template <typename T> using AA = A<T>
+```
+
+18_constant_array: { range: "138:6-138:9" }
+### variable `arr`  
+
+---
+Type: `m_int[10] (aka int[10])`  
+
+---
+```cpp
+// In namespace constant_array
+m_int arr[10]
+```
+
+19_incomplete_array: { range: "145:13-145:16" }
+### variable `arr`  
+
+---
+Type: `m_int[] (aka int[])`  
+
+---
+```cpp
+// In namespace incomplete_array
+extern m_int arr[]
+```
+
+20_dependent_size_array: { range: "154:8-154:11" }
+### field `arr`  
+
+---
+Type: `m_int[Size] (aka int[Size])`  
+
+---
+```cpp
+// In Test<Size>
+public: m_int arr[Size]
+```

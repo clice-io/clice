@@ -1,0 +1,31 @@
+---
+created_at: 2026-07-28
+input_file: expressions.cpp
+---
+01_char_literal: { range: "4:9-4:12" }
+### `expression`  
+
+---
+Type: `char`  
+Value = `65 (0x41)`
+
+02_string_literal: { range: "7:9-7:24" }
+### `string-literal`  
+
+---
+Type: `const char[14]`  
+Size: 14 bytes
+
+03_sizeof_expr: { range: "11:8-11:14" }
+### `expression`  
+
+---
+Type: `unsigned long`  
+Value = `1`
+
+04_alignof_expr: { range: "16:8-16:15" }
+### `expression`  
+
+---
+Type: `unsigned long`  
+Value = `1`

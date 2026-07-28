@@ -1,0 +1,65 @@
+---
+created_at: 2026-07-28
+input_file: variables.cpp
+---
+01_local_var: { range: "7:2-7:9" }
+### variable `bonjour`  
+
+---
+Type: `int`  
+
+---
+```cpp
+// In main
+int bonjour
+```
+
+02_method_local_var: { range: "17:4-17:11" }
+### variable `bonjour`  
+
+---
+Type: `int`  
+
+---
+```cpp
+// In s::method
+int bonjour
+```
+
+03_global_var: { range: "25:2-25:5" }
+### variable `hey`  
+
+---
+Type: `int`  
+Value = `10 (0xa)`  
+Global variable  
+
+---
+```cpp
+static int hey = 10
+```
+
+04_ns_global_var: { range: "32:7-32:10" }
+### variable `hey`  
+
+---
+Type: `long long`  
+Value = `-36637162602497 (0xffffdeadbeefffff)`  
+
+---
+```cpp
+// In namespace ns1
+static long long hey = -36637162602497
+```
+
+05_anon_ns_var: { range: "40:17-40:20" }
+### variable `foo`  
+
+---
+Type: `int`  
+
+---
+```cpp
+// In namespace ns
+int foo
+```

@@ -691,45 +691,6 @@ TEST_CASE(setter_heuristic_no_crash) {
     ASSERT_TRUE(info.has_value());
 }
 
-TEST_CASE(snapshot) {
-    /// Pin the target triple so type widths, sizes and layout are identical
-    /// on every host platform; otherwise e.g. `sizeof` has type
-    /// `unsigned long` on LP64 but `unsigned long long` on LLP64 (Windows)
-    /// and the snapshots would diverge.
-    triple = "x86_64-unknown-linux-gnu";
-
-    auto transform = [&](std::string_view path) -> std::string {
-        if(!compile_file(path)) {
-            return "COMPILE_ERROR";
-        }
-
-        auto& source = sources.all_files[src_path];
-        std::vector<std::pair<std::string, std::uint32_t>> points;
-        for(const auto& entry: source.offsets) {
-            points.emplace_back(entry.getKey().str(), entry.getValue());
-        }
-        std::ranges::sort(points);
-        for(std::size_t i = 0; i < source.nameless_offsets.size(); ++i) {
-            points.emplace_back(std::format("nameless_{}", i), source.nameless_offsets[i]);
-        }
-
-        std::string out;
-        for(const auto& [name, offset]: points) {
-            auto hover = feature::hover_info(*unit, offset);
-            if(!hover) {
-                out += std::format("{}: NO HOVER\n\n", name);
-                continue;
-            }
-            out += std::format("{}:\n", name);
-            out += dump(*hover);
-            out += "\n";
-        }
-        return out;
-    };
-
-    ASSERT_SNAPSHOT_GLOB(test_dir + "/hover", "**/*.cpp", transform);
-}
-
 TEST_CASE(present) {
     struct {
         std::string_view name;

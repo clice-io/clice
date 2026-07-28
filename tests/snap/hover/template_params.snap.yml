@@ -1,0 +1,39 @@
+---
+created_at: 2026-07-28
+input_file: template_params.cpp
+---
+01_type_param: { range: "5:19-5:20" }
+### type `T`  
+
+---
+Type: `typename`  
+
+---
+```cpp
+// In foo
+public: typename T = int
+```
+
+02_template_template_param: { range: "10:35-10:36" }
+### type `T`  
+
+---
+Type: `template <typename> class`  
+
+---
+```cpp
+// In foo
+public: template <typename> class T
+```
+
+03_non_type_param: { range: "15:14-15:15" }
+### variable `T`  
+
+---
+Type: `int`  
+
+---
+```cpp
+// In foo
+public: int T = 5
+```

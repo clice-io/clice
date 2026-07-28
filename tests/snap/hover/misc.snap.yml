@@ -1,0 +1,38 @@
+---
+created_at: 2026-07-28
+input_file: misc.cpp
+---
+01_forward_struct_value: { range: "20:16-20:22" }
+### struct `FwdFoo`  
+
+---
+Value = `&fwd_bar`  
+
+---
+```cpp
+struct FwdFoo
+```
+
+02_typedef_chain: { range: "14:8-14:11" }
+### type `foo`  
+
+---
+Type: `int`  
+
+---
+```cpp
+// In foo
+using foo = type<true, int, double>
+```
+
+03_big_initializer: { range: "24:4-24:7" }
+### variable `arr`  
+
+---
+Type: `int[256]`  
+Value = `{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ...}`  
+
+---
+```cpp
+int arr[]
+```

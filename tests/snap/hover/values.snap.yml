@@ -1,0 +1,136 @@
+---
+created_at: 2026-07-28
+input_file: values.cpp
+---
+01_constexpr_call_value: { range: "6:4-6:7" }
+### variable `bar`  
+
+---
+Type: `int`  
+Value = `3`  
+
+---
+```cpp
+// In namespace constexpr_call
+int bar = add(1, 2)
+```
+
+02_sizeof_value: { range: "11:4-11:7" }
+### variable `bar`  
+
+---
+Type: `int`  
+Value = `1`  
+
+---
+```cpp
+// In namespace sizeof_value
+int bar = sizeof(char)
+```
+
+03_template_member_value: { range: "19:4-19:7" }
+### variable `bar`  
+
+---
+Type: `int`  
+Value = `3`  
+
+---
+```cpp
+// In namespace template_member
+int bar = Add<1, 2>::result
+```
+
+04_enumerator_value: { range: "25:10-25:15" }
+### enumerator `GREEN`  
+
+---
+Type: `enum enumerator_value::Color`  
+Value = `5`  
+
+---
+```cpp
+// In Color
+GREEN = 5
+```
+
+05_enum_var_value: { range: "32:10-32:11" }
+### variable `x`  
+
+---
+Type: `Color`  
+Value = `RED (0xffffff85)`  
+
+---
+```cpp
+// In namespace enum_var_value
+Color x = RED
+```
+
+06_static_member_value: { range: "40:21-40:27" }
+### variable `result`  
+
+---
+Type: `const int`  
+Value = `3`  
+
+---
+```cpp
+// In Add<1, 2>
+public: static constexpr int result = a + b
+```
+
+07_constexpr_fn_value: { range: "47:8-47:14" }
+### function `answer`  
+
+---
+→ `my_int (aka int)`  
+Value = `42 (0x2a)`  
+
+---
+```cpp
+// In namespace aliased_return
+constexpr my_int answer()
+```
+
+08_string_pointer_value: { range: "52:12-52:15" }
+### variable `bar`  
+
+---
+Type: `const char *`  
+Value = `&"1234"[0]`  
+
+---
+```cpp
+// In namespace string_pointer
+const char *bar = "1234"
+```
+
+09_dependent_ctor_arg: { range: "64:14-64:18" }
+### parameter `name`  
+
+---
+Type: `int`  
+
+---
+```cpp
+// In boom
+int name
+```
+
+10_skip_inline_anon_ns: { range: "83:12-83:15" }
+### class `Foo`  
+
+---
+```cpp
+// In namespace ns::a::b
+class Foo {}
+```
+
+11_auto_incomplete_arg: { range: "92:2-92:6" }
+### type `auto`  
+
+---
+```cpp
+Foo<X>
+```
