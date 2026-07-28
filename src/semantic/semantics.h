@@ -207,6 +207,11 @@ llvm::SmallVector<NameOccurrence, 2> resolve_occurrences(const SemanticNode& nod
 /// belongs to which node. Everything semantic (referenced decls, relations,
 /// symbol identity) is derived on demand by the resolve_* function family:
 /// the AST itself remains the single source of truth.
+///
+/// The map deliberately covers only what the live AST covers. Content the
+/// compile consumed as immutable state (the preamble under a PCH) is served
+/// by results precomputed at PCH build time and merged per feature. Do not
+/// try to reconstruct it here: serialized rows cannot become AST nodes.
 class Semantics {
 public:
     constexpr static std::uint32_t invalid = static_cast<std::uint32_t>(-1);

@@ -36,6 +36,12 @@ constexpr inline std::uint32_t preamble_format_version = 3;
 /// Lifecycle equals the PCH's: the pair is committed, hit and evicted
 /// together, so no separate invalidation is needed — a preamble change or
 /// a stale dependency rebuilds both.
+///
+/// The preamble cannot change while its PCH lives, so feature results are
+/// computed once here — by the only live AST that ever sees the preamble —
+/// and replayed on every request. New preamble-region features add
+/// precomputed rows to this blob and define a per-feature merge with the
+/// live results of the rest of the file.
 class PreambleState {
 public:
     /// A file entry handed to lookup callbacks: everything needed to turn
