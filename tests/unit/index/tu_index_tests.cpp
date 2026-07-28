@@ -368,6 +368,85 @@ TEST_CASE(CallerAndCallee) {
     ASSERT_TRUE(found_caller);
 }
 
+TEST_CASE(MethodCallerCallee) {
+    build_index(R"(
+            void §(callee_def)callee() {}
+
+            struct S {
+                void §(method_def)method() {
+                    §(call_site)callee();
+                }
+            };
+        )");
+
+    auto& index = tu_index.main_file_index;
+
+    // Calls inside a method body produce call edges, with the method as
+    // the caller.
+    auto method_occs = select("method_def");
+    ASSERT_FALSE(method_occs.empty());
+    auto method_hash = method_occs.front().target;
+
+    auto callee_occs = select("callee_def");
+    ASSERT_FALSE(callee_occs.empty());
+    auto callee_hash = callee_occs.front().target;
+
+    auto method_it = index.relations.find(method_hash);
+    ASSERT_TRUE(method_it != index.relations.end());
+
+    bool found_callee = false;
+    for(auto& r: method_it->second) {
+        if(r.kind.value() == static_cast<std::uint32_t>(RelationKind::Callee) &&
+           r.target_symbol == callee_hash) {
+            found_callee = true;
+            break;
+        }
+    }
+    ASSERT_TRUE(found_callee);
+
+    auto callee_it = index.relations.find(callee_hash);
+    ASSERT_TRUE(callee_it != index.relations.end());
+
+    bool found_caller = false;
+    for(auto& r: callee_it->second) {
+        if(r.kind.value() == static_cast<std::uint32_t>(RelationKind::Caller) &&
+           r.target_symbol == method_hash) {
+            found_caller = true;
+            break;
+        }
+    }
+    ASSERT_TRUE(found_caller);
+}
+
+TEST_CASE(UsingRelationKey) {
+    build_index(R"(
+            namespace ns { void §(target)foo(); }
+            using ns::§(use)⟦§(use)foo⟧;
+        )");
+
+    auto& index = tu_index.main_file_index;
+
+    // The relation row of a using declaration is keyed by the same symbol
+    // its occurrence references, so looking the occurrence's symbol up in
+    // the relations always finds the using site.
+    auto use_occs = select("use");
+    ASSERT_FALSE(use_occs.empty());
+    auto hash = use_occs.front().target;
+
+    auto it = index.relations.find(hash);
+    ASSERT_TRUE(it != index.relations.end());
+
+    bool found_use = false;
+    for(auto& r: it->second) {
+        if(r.kind.value() == static_cast<std::uint32_t>(RelationKind::WeakReference) &&
+           r.range == range("use")) {
+            found_use = true;
+            break;
+        }
+    }
+    ASSERT_TRUE(found_use);
+}
+
 TEST_CASE(OverrideRelation) {
     build_index(R"(
             struct Base {

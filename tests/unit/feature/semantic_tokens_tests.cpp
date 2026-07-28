@@ -251,6 +251,21 @@ TEST_CASE(LegacyMacro) {
     EXPECT_TOKEN("macro", SymbolKind::Macro);
 }
 
+TEST_CASE(MacroBodyTokens) {
+    run_utf8(R"cpp(
+void foo();
+#define §(name)⟦CALL⟧ §(body)⟦foo⟧()
+void bar() { §(use)⟦CALL⟧; }
+)cpp");
+
+    // The definition name and every expansion site are macros; tokens inside
+    // the macro body keep lexical kinds only — semantic highlighting of the
+    // expansion belongs to the future expansion-preview feature.
+    EXPECT_TOKEN("name", SymbolKind::Macro, modifier_mask({SymbolModifiers::Definition}));
+    EXPECT_TOKEN("use", SymbolKind::Macro);
+    EXPECT_NO_TOKEN("body");
+}
+
 TEST_CASE(LegacyFinalAndOverride) {
     run_utf8(R"cpp(
 struct A §(final)⟦final⟧ {};
