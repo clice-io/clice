@@ -3,12 +3,6 @@
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/Type.h"
 
-namespace clang {
-
-class Sema;
-
-}
-
 namespace clice {
 
 /// This class is used to resolve dependent names in the unit.
@@ -18,25 +12,17 @@ namespace clice {
 /// some heuristics to simplify the dependent names as normal type/expression.
 /// For example, `std::vector<T>::value_type` can be simplified as `T`.
 ///
+/// Resolution is pure AST computation: it never enters Sema, so speculative
+/// lookups cannot emit diagnostics, register specializations, or otherwise
+/// mutate the unit's semantic state.
+///
 /// Thread safety: NOT thread-safe. Each compilation unit should have its own resolver.
 /// The `resolved` cache persists across multiple resolve() calls on the same unit.
 class TemplateResolver {
 public:
-    explicit TemplateResolver(clang::Sema& sema) : sema(sema) {}
+    explicit TemplateResolver(clang::ASTContext& context) : context(context) {}
 
     clang::QualType resolve(clang::QualType type);
-
-    void resolve(clang::CXXUnresolvedConstructExpr* expr);
-
-    void resolve(clang::UnresolvedLookupExpr* expr);
-
-    // TODO: Use a clearer approach for resolving UnresolvedLookupExpr.
-
-    void resolve(clang::UnresolvedUsingType* type);
-
-    /// Resugar the canonical `TemplateTypeParmType` with given template context.
-    /// `decl` should be the declaration that the type is in.
-    clang::QualType resugar(clang::QualType type, clang::Decl* decl);
 
     using lookup_result = clang::DeclContext::lookup_result;
 
@@ -91,7 +77,7 @@ public:
     }
 
 private:
-    clang::Sema& sema;
+    clang::ASTContext& context;
 
     /// Cache of resolved dependent types, keyed by AST node pointer.
     /// Shared across resolve() calls within the same TU for performance.

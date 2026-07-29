@@ -320,8 +320,8 @@ CompilationStatus CompilationUnitRef::Self::run_clang(
 
     self.run_tidy();
 
-    if(instance.hasSema()) {
-        self.resolver.emplace(instance.getSema());
+    if(instance.hasASTContext()) {
+        self.resolver.emplace(instance.getASTContext());
     }
 
     return CompilationStatus::Completed;

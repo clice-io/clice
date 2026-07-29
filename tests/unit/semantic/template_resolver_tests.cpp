@@ -417,6 +417,54 @@ TEST_CASE(DefaultArgument) {
     )code");
 }
 
+TEST_CASE(NttpDefaultArgument) {
+    run(R"code(
+        template <typename T, int N = 0>
+        struct S {
+            using type = T;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename S<X>::type;
+            using expect = X;
+        };
+    )code");
+}
+
+TEST_CASE(NttpArraySize) {
+    run(R"code(
+        template <typename T, unsigned long N>
+        struct S {
+            using type = T[N];
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename S<X, 3>::type;
+            using expect = X[3];
+        };
+    )code");
+}
+
+TEST_CASE(MultiElementPack) {
+    run(R"code(
+        template <typename... Ts>
+        struct type_list {};
+
+        template <typename... Us>
+        struct A {
+            using type = type_list<int, Us...>;
+        };
+
+        template <typename X, typename Y>
+        struct test {
+            using input = typename A<X, Y>::type;
+            using expect = type_list<int, X, Y>;
+        };
+    )code");
+}
+
 TEST_CASE(PackExpansion) {
     run(R"code(
         template <typename... Ts>
