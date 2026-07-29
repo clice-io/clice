@@ -354,3 +354,49 @@ Type: `int`
 // In Base<T>
 public: int field
 ```
+
+32_fixed_base: { range: "223:45-223:49" }
+### type `type`  
+
+---
+Type: `int`  
+
+---
+```cpp
+// In Fixed
+public: using type = int
+```
+
+33_partial_order: { range: "231:47-231:52" }
+### variable `value`  
+
+---
+Type: `const int`  
+Value = `2`  
+
+---
+```cpp
+// In X<A *, A *>
+public: static constexpr int value = 2
+```
+
+34_arrow_chain: { range: "238:41-238:47" }
+### method `method`  
+
+---
+→ `void`  
+
+---
+```cpp
+// In Node<T>
+public: void method()
+```
+
+35_unresolved_using_use: { range: "246:2-246:6" }
+### `type`  
+
+---
+```cpp
+// In D2<T>
+public: using typename B2<T>::type
+```

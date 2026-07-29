@@ -108,3 +108,31 @@ Parameters:
 // In Pool
 public: Pool(int)
 ```
+
+10_op_call: { range: "62:20-62:21" }
+### `operator()`  
+
+---
+→ `int`  
+Parameters:  
+- `int`
+
+---
+```cpp
+// In F
+public: int operator()(int)
+```
+
+11_op_subscript: { range: "62:27-62:28" }
+### `operator[]`  
+
+---
+→ `int`  
+Parameters:  
+- `int`
+
+---
+```cpp
+// In F
+public: int operator[](int)
+```

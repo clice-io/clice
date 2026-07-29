@@ -216,3 +216,34 @@ template <typename T> struct Derived : Base<T> {
   int g() { return this->§(31_dependent_field)field; }
 };
 }
+
+// Dependent lookup through a nondependent base.
+namespace fixed_base {
+struct Fixed { using type = int; };
+template <class T> struct FixedDerived : Fixed {};
+template <class T> typename FixedDerived<T>::§(32_fixed_base)type h();
+}
+
+// Most specialized partial wins.
+namespace partial_order {
+template <class A, class B> struct X { static constexpr int value = 0; };
+template <class A, class B> struct X<A*, B> { static constexpr int value = 1; };
+template <class A> struct X<A*, A*> { static constexpr int value = 2; };
+template <class T> int g() { return X<T*, T*>::§(33_partial_order)value; }
+}
+
+// Overloaded arrow chain.
+namespace arrow_chain {
+template <class T> struct Node { void method(); };
+template <class T> struct Ptr { Node<T> *operator->(); };
+template <class T> void f(Ptr<T> p) { p->§(34_arrow_chain)method(); }
+}
+
+// Use site of a dependent using-typename.
+namespace unresolved_using_use {
+template <class T> struct B2 { using type = T; };
+template <class T> struct D2 : B2<T> {
+  using typename B2<T>::type;
+  §(35_unresolved_using_use)type x;
+};
+}

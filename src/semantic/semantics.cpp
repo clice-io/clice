@@ -1188,6 +1188,21 @@ void type_loc_occurrences(clang::TypeLoc TL, Occurrences& out, TemplateResolver*
         return;
     }
 
+    /// using typename B<T>::type; type x; — the dependent flavor keeps the
+    /// unresolved-using declaration itself, resolved further when possible.
+    if(auto UUTL = TL.getAs<clang::UnresolvedUsingTypeLoc>()) {
+        auto* UD = UUTL.getTypePtr()->getDecl();
+        occur(out, UD, RelationKind::WeakReference, UUTL.getNameLoc());
+        if(resolver) {
+            if(auto* UUT = llvm::dyn_cast<clang::UnresolvedUsingTypenameDecl>(UD)) {
+                for(auto* target: resolver->lookup(UUT)) {
+                    occur(out, target, RelationKind::WeakReference, UUTL.getNameLoc());
+                }
+            }
+        }
+        return;
+    }
+
     /// using B::value_type; value_type x; — the written type resolves
     /// through the using shadow to the imported type.
     if(auto UTL = TL.getAs<clang::UsingTypeLoc>()) {
@@ -1454,6 +1469,23 @@ void stmt_occurrences(const clang::Stmt* S, Occurrences& out, TemplateResolver* 
         }
         for(const auto* UD: introducers) {
             occur(out, UD, RelationKind::WeakReference, OE->getNameLoc());
+        }
+        return;
+    }
+
+    /// obj(args) / obj[i] with overloaded operators — the traversal skips
+    /// these calls' implicit callee references, so the punctuation token has
+    /// no other occurrence source.
+    if(auto* OCE = llvm::dyn_cast<clang::CXXOperatorCallExpr>(S)) {
+        auto op = OCE->getOperator();
+        if(op == clang::OO_Call || op == clang::OO_Subscript) {
+            /// The callee reference sits on the opening token and
+            /// getOperatorLoc on the closing one; anchor both.
+            occur(out,
+                  OCE->getDirectCallee(),
+                  RelationKind::Reference,
+                  OCE->getCallee()->getExprLoc());
+            occur(out, OCE->getDirectCallee(), RelationKind::Reference, OCE->getOperatorLoc());
         }
         return;
     }

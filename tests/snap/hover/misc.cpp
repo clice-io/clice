@@ -53,3 +53,12 @@ struct Pool {
 Pool *p = ::§(08_global_new)new Pool(0);
 Pool value§(09_ctor_paren)(1);
 }
+
+// Overloaded call and subscript punctuation.
+namespace op_punct {
+struct F {
+  int operator()(int);
+  int operator[](int);
+};
+int u(F f) { return f§(10_op_call)(1) + f§(11_op_subscript)[2]; }
+}

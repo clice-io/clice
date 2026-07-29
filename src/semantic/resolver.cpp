@@ -628,7 +628,8 @@ public:
         }
 
         for(auto base: CRD->bases()) {
-            if(auto type = base.getType(); type->isDependentType()) {
+            auto type = base.getType();
+            if(type->isDependentType()) {
                 auto stack_size = stack.data.size();
                 auto resolved_type = substitute(type);
                 if(!resolved_type.isNull()) {
@@ -643,6 +644,15 @@ public:
                 }
                 while(stack.data.size() > stack_size) {
                     stack.pop();
+                }
+            } else if(auto* record = type->getAsCXXRecordDecl()) {
+                /// A dependent derived class may still inherit a fixed base;
+                /// plain lookup suffices there.
+                if(auto members = record->lookup(name); !members.empty()) {
+                    return members;
+                }
+                if(auto members = lookup_in_bases(record, name); !members.empty()) {
+                    return members;
                 }
             }
         }
@@ -686,23 +696,37 @@ public:
             CTD->getNameAsString(),
             partials.size());
         ++indent;
+        /// Deduction alone may match several overlapping partials; pick the
+        /// most specialized one, as real instantiation would.
+        clang::ClassTemplatePartialSpecializationDecl* best = nullptr;
         for(auto partial: partials) {
             if(deduce_template_arguments(partial, arguments)) {
-                LOG_DEBUG("{}" "matched partial '{}'", pad(), partial->getNameAsString());
-                if(auto members = partial->lookup(name); !members.empty()) {
-                    LOG_DEBUG("{}" "found in 'partial'", pad());
-                    --indent;
-                    return members;
-                }
-
-                if(auto members = lookup_in_bases(partial, name); !members.empty()) {
-                    LOG_DEBUG("{}" "found in 'base'", pad());
-                    --indent;
-                    return members;
-                }
-
                 stack.pop();
+                if(!best) {
+                    best = partial;
+                } else if(auto* winner = sema.getMoreSpecializedPartialSpecialization(
+                              partial,
+                              best,
+                              clang::SourceLocation())) {
+                    best = winner;
+                }
             }
+        }
+        if(best && deduce_template_arguments(best, arguments)) {
+            LOG_DEBUG("{}" "matched partial '{}'", pad(), best->getNameAsString());
+            if(auto members = best->lookup(name); !members.empty()) {
+                LOG_DEBUG("{}" "found in 'partial'", pad());
+                --indent;
+                return members;
+            }
+
+            if(auto members = lookup_in_bases(best, name); !members.empty()) {
+                LOG_DEBUG("{}" "found in 'base'", pad());
+                --indent;
+                return members;
+            }
+
+            stack.pop();
         }
 
         if(deduce_template_arguments(CTD, arguments)) {
@@ -1226,13 +1250,35 @@ TemplateResolver::lookup_result TemplateResolver::lookup(const clang::NestedName
 TemplateResolver::lookup_result
     TemplateResolver::lookup(const clang::CXXDependentScopeMemberExpr* expr) {
     auto type = expr->getBaseType();
-    if(expr->isArrow() && !type.isNull()) {
-        if(auto* PT = type->getAs<clang::PointerType>()) {
-            type = PT->getPointeeType();
-        }
-    }
     if(type.isNull()) {
         return {};
+    }
+
+    DiagnosticSilencer silencer(sema);
+    if(expr->isArrow()) {
+        /// Follow overloaded operator-> chains (smart pointers) until a raw
+        /// pointer appears; bounded, cycles just stop resolving.
+        auto arrow = sema.getASTContext().DeclarationNames.getCXXOperatorName(clang::OO_Arrow);
+        for(unsigned hop = 0; hop < 8; hop++) {
+            if(auto* PT = type->getAs<clang::PointerType>()) {
+                type = PT->getPointeeType();
+                break;
+            }
+            PseudoInstantiator instantiator(sema, resolved);
+            const clang::CXXMethodDecl* method = nullptr;
+            for(auto* candidate: instantiator.lookup(type, arrow)) {
+                if((method = llvm::dyn_cast<clang::CXXMethodDecl>(candidate))) {
+                    break;
+                }
+            }
+            if(!method) {
+                break;
+            }
+            type = method->getReturnType();
+            if(type.isNull()) {
+                return {};
+            }
+        }
     }
 
     /// Inside the class's own definition `this` is the injected class name;
@@ -1242,7 +1288,6 @@ TemplateResolver::lookup_result
         type = ICNT->getInjectedSpecializationType();
     }
 
-    DiagnosticSilencer silencer(sema);
     PseudoInstantiator instantiator(sema, resolved);
     return instantiator.lookup(type, expr->getMemberNameInfo().getName());
 }
