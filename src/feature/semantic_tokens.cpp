@@ -486,7 +486,7 @@ private:
                 }
 
                 default: {
-                    for(auto& occurrence: resolve_occurrences(node)) {
+                    for(auto& occurrence: resolve_occurrences(node, &unit.resolver())) {
                         anchor(occurrence.location,
                                classify_decl(occurrence.decl, occurrence.kind),
                                false);

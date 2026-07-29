@@ -1126,20 +1126,50 @@ private:
     }
 };
 
+/// Pseudo-instantiation drives Sema on speculative inputs, so its failures
+/// are expected and must not leak error-level diagnostics into the unit.
+/// Only the consumer is swapped out: error counting stays untouched because
+/// Sema's error limit is what stops runaway instantiations.
+class DiagnosticSilencer {
+public:
+    explicit DiagnosticSilencer(clang::Sema& sema) : engine(sema.getDiagnostics()) {
+        client = engine.getClient();
+        owned = engine.takeClient();
+        engine.setClient(&ignoring, false);
+    }
+
+    ~DiagnosticSilencer() {
+        if(owned) {
+            engine.setClient(owned.release(), true);
+        } else {
+            engine.setClient(client, false);
+        }
+    }
+
+private:
+    clang::DiagnosticsEngine& engine;
+    clang::DiagnosticConsumer* client;
+    std::unique_ptr<clang::DiagnosticConsumer> owned;
+    clang::IgnoringDiagConsumer ignoring;
+};
+
 }  // namespace
 
 clang::QualType TemplateResolver::resolve(clang::QualType type) {
+    DiagnosticSilencer silencer(sema);
     PseudoInstantiator instantiator(sema, resolved);
     return instantiator.TransformType(type);
 }
 
 clang::QualType TemplateResolver::resugar(clang::QualType type, clang::Decl* decl) {
+    DiagnosticSilencer silencer(sema);
     ResugarOnly resugar(sema, decl);
     return resugar.TransformType(type);
 }
 
 TemplateResolver::lookup_result TemplateResolver::lookup(const clang::NestedNameSpecifier* NNS,
                                                          clang::DeclarationName name) {
+    DiagnosticSilencer silencer(sema);
     PseudoInstantiator instantiator(sema, resolved);
     return instantiator.lookup(NNS, name);
 }

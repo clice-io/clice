@@ -29,6 +29,7 @@ class NamedDecl;
 namespace clice {
 
 class CompilationUnitRef;
+class TemplateResolver;
 
 /// The single currency for "what a token belongs to": the AST node kinds our
 /// traversal records, plus preprocessor entities, flattened into one tagged
@@ -153,8 +154,8 @@ public:
     /// keyword-to-name range for imports.
     clang::SourceRange source_range() const;
 
-    /// Bridge for consumers still speaking clang::DynTypedNode (find_target,
-    /// hover). Only valid for AST kinds; removed once they migrate.
+    /// Bridge for consumers still speaking clang::DynTypedNode (the
+    /// selection tree's node payload). Only valid for AST kinds.
     clang::DynTypedNode dyn_typed() const;
 
     /// Visit the active alternative with a callable set.
@@ -195,10 +196,15 @@ struct NameOccurrence {
 
 /// The name occurrences of `node` — the single implementation of "node →
 /// referenced decl" (the distilled content of the former SemanticVisitor
-/// visit methods), shared by semantic tokens and the index projection.
-/// Nodes from implicit instantiations and dependent contexts currently
-/// produce no occurrences, mirroring the previous behavior.
-llvm::SmallVector<NameOccurrence, 2> resolve_occurrences(const SemanticNode& node);
+/// visit methods), shared by semantic tokens, the index projection and
+/// hover.
+///
+/// Dependent names (typename T::type, unresolved lookups, dependent using
+/// declarations) resolve through the template resolver into WeakReference
+/// occurrences; without a resolver they produce nothing. Nodes from
+/// implicit instantiations never produce occurrences.
+llvm::SmallVector<NameOccurrence, 2> resolve_occurrences(const SemanticNode& node,
+                                                         TemplateResolver* resolver = nullptr);
 
 /// The semantic map of the interested file, built once after a successful
 /// parse and serving every consumer that used to run its own traversal:

@@ -441,6 +441,91 @@ TEST_CASE(UsingRelationKey) {
     ASSERT_TRUE(found_use);
 }
 
+TEST_CASE(CtorInitMemberRef) {
+    build_index(R"(
+            struct S {
+                int §(def)⟦x⟧;
+                S() : §(use)x(1) {}
+            };
+        )");
+
+    GO_TO_DEFINITION("use", "def");
+}
+
+TEST_CASE(DesignatedInitRef) {
+    build_index(R"(
+            struct Point {
+                int §(def)⟦x⟧;
+                int y;
+            };
+
+            Point p = {.§(use)x = 1};
+        )");
+
+    GO_TO_DEFINITION("use", "def");
+}
+
+TEST_CASE(RewrittenOperatorRef) {
+    build_index(R"(
+            namespace std {
+            struct strong_ordering {
+                int n;
+                constexpr operator int() const { return n; }
+                static const strong_ordering equal, greater, less;
+            };
+            constexpr strong_ordering strong_ordering::equal = {0};
+            constexpr strong_ordering strong_ordering::greater = {1};
+            constexpr strong_ordering strong_ordering::less = {-1};
+            }
+
+            struct S {
+                int v;
+                auto §(def)⟦operator⟧<=>(const S&) const = default;
+            };
+
+            bool lt(S a, S b) { return a §(use)< b; }
+        )");
+
+    /// a < b is rewritten to (a <=> b) < 0; the operator token references
+    /// the rewritten-to operator.
+    GO_TO_DEFINITION("use", "def");
+}
+
+TEST_CASE(DependentWeakReference) {
+    build_index(R"(
+            template <typename T>
+            struct Base {
+                static constexpr int §(target)value = 1;
+            };
+
+            template <typename T>
+            int use() { return Base<T>::§(use)⟦§(use)value⟧; }
+        )");
+
+    auto& index = tu_index.main_file_index;
+
+    /// The dependent name resolves through the template resolver to the
+    /// pattern's member; both sites share one symbol.
+    auto use_occs = select("use");
+    ASSERT_FALSE(use_occs.empty());
+    auto target_occs = select("target");
+    ASSERT_FALSE(target_occs.empty());
+    ASSERT_EQ(use_occs.front().target, target_occs.front().target);
+
+    auto it = index.relations.find(use_occs.front().target);
+    ASSERT_TRUE(it != index.relations.end());
+
+    bool found_weak = false;
+    for(auto& r: it->second) {
+        if(r.kind.value() == static_cast<std::uint32_t>(RelationKind::WeakReference) &&
+           r.range == range("use")) {
+            found_weak = true;
+            break;
+        }
+    }
+    ASSERT_TRUE(found_weak);
+}
+
 TEST_CASE(TypeDefinitionRelations) {
     build_index(R"(
             struct §(s)⟦§(s)S⟧ {};

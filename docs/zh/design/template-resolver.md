@@ -180,7 +180,7 @@ ResugarOnly 是一个独立的 TreeTransform，它沿着声明的外围模板上
 
 - **TemplateResolver 和 Clang 的 HeuristicResolver 是什么关系？**
 
-  两者解决的是同一类问题，但深度不同。`HeuristicResolver` 做浅层查找——在主模板中直接查找成员名称，不处理偏特化、不做参数推导、不展开 typedef 链。它的优点是简单且不容易出错。TemplateResolver 做深层的伪实例化——追踪参数传播、匹配偏特化、展开 typedef 链，能覆盖更多场景，但复杂度也高得多。目前 clice 在部分功能中（如 hover 的声明目标查找）仍使用 `HeuristicResolver`，因为那部分代码来源于 clangd 的 find_target 逻辑。TemplateResolver 的集成正在逐步推进。
+  两者解决的是同一类问题，但深度不同。`HeuristicResolver` 做浅层查找——在主模板中直接查找成员名称，不处理偏特化、不做参数推导、不展开 typedef 链。它的优点是简单且不容易出错。TemplateResolver 做深层的伪实例化——追踪参数传播、匹配偏特化、展开 typedef 链，能覆盖更多场景，但复杂度也高得多。clice 曾在来源于 clangd 的 hover 目标查找代码中使用 `HeuristicResolver`；这部分代码已被移除，依赖名称统一由 TemplateResolver 在语义层解析。
 
 - **为什么不用单阶段设计？**
 

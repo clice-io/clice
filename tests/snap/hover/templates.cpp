@@ -155,3 +155,18 @@ struct Test {
   m_int §(20_dependent_size_array)arr[Size];
 };
 }
+
+// Dependent names resolved through the template resolver.
+namespace dependent_names {
+template <typename T> struct Base {
+  using type = T;
+  static constexpr int value = 1;
+};
+
+template <typename T> struct Derived : Base<T> {
+  typename Base<T>::§(21_dependent_type)type x;
+  static constexpr int y = Base<T>::§(22_dependent_value)value;
+  using typename Base<T>::§(23_using_typename)type;
+  using Base<T>::§(24_using_value)value;
+};
+}

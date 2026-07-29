@@ -8,10 +8,11 @@
 
 #include "feature/feature.h"
 #include "semantic/ast_utility.h"
-#include "semantic/find_target.h"
 #include "semantic/selection.h"
+#include "semantic/semantics.h"
 
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -35,7 +36,6 @@
 #include "clang/Basic/Specifiers.h"
 #include "clang/Basic/TokenKinds.h"
 #include "clang/Format/Format.h"
-#include "clang/Sema/HeuristicResolver.h"
 #include "clang/Tooling/Core/Replacement.h"
 #include "clang/Tooling/Syntax/Tokens.h"
 
@@ -1102,6 +1102,64 @@ void add_layout_info(const clang::NamedDecl& decl, HoverInfo& info) {
     }
 }
 
+/// The declarations the hovered token refers to, straight from the semantic
+/// map: names anchored at the token are collected from its owner chain (the
+/// emitting node is always an ancestor-or-self of the token's innermost
+/// owner). Rightmost touched token wins, matching the selection bias.
+auto decls_at(CompilationUnitRef unit, llvm::ArrayRef<clang::syntax::Token> touched)
+    -> llvm::SmallVector<const clang::NamedDecl*, 4> {
+    const Semantics& semantics = unit.semantics();
+    auto spelled = semantics.spelled_tokens();
+    llvm::SmallVector<const clang::NamedDecl*, 4> decls;
+
+    for(const auto& token: llvm::reverse(touched)) {
+        if(should_ignore_token(token)) {
+            continue;
+        }
+
+        auto it = std::ranges::partition_point(spelled, [&](const clang::syntax::Token& t) {
+            return t.location() < token.location();
+        });
+        if(it == spelled.end() || it->location() != token.location()) {
+            continue;
+        }
+        auto index = static_cast<std::uint32_t>(it - spelled.begin());
+
+        llvm::DenseSet<std::uint32_t> visited;
+        llvm::SmallPtrSet<const clang::NamedDecl*, 4> seen;
+        for(auto owner: semantics.owners(index)) {
+            for(auto n = owner; n != Semantics::invalid; n = semantics.node(n).parent) {
+                /// Owners of a macro token share ancestors; scan each chain
+                /// segment once.
+                if(!visited.insert(n).second) {
+                    break;
+                }
+
+                const SemanticNode& sem_node = semantics.node(n).node;
+                if(!sem_node.is_ast()) {
+                    continue;
+                }
+
+                for(auto& occurrence: resolve_occurrences(sem_node, &unit.resolver())) {
+                    auto location = occurrence.location;
+                    if(location.isMacroID()) {
+                        location = unit.spelling_location(location);
+                    }
+                    if(location == token.location() && seen.insert(occurrence.decl).second) {
+                        decls.push_back(occurrence.decl);
+                    }
+                }
+            }
+        }
+
+        if(!decls.empty()) {
+            break;
+        }
+    }
+
+    return decls;
+}
+
 auto pick_decl_to_use(llvm::ArrayRef<const clang::NamedDecl*> candidates)
     -> const clang::NamedDecl* {
     if(candidates.empty()) {
@@ -1553,9 +1611,7 @@ auto hover_info(CompilationUnitRef unit, std::uint32_t offset, const HoverOption
         /// our selection tree should be biased right.
         auto tree = SelectionTree::create_right(unit, LocalSourceRange(offset, offset));
         if(const SelectionTree::Node* node = tree.common_ancestor()) {
-            clang::HeuristicResolver resolver(context);
-            auto decls =
-                ast::explicit_reference_targets(node->data, ast::DeclRelation::Alias, &resolver);
+            auto decls = decls_at(unit, tokens);
             if(const auto* decl = pick_decl_to_use(decls)) {
                 info = decl_hover(decl, policy, unit.token_buffer(), options);
 

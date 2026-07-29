@@ -227,3 +227,53 @@ Type: `m_int[Size] (aka int[Size])`
 // In Test<Size>
 public: m_int arr[Size]
 ```
+
+21_dependent_type: { range: "166:20-166:24" }
+### type `type`  
+
+---
+Type: `T`  
+
+---
+```cpp
+// In Base<T>
+public: using type = T
+```
+
+22_dependent_value: { range: "167:36-167:41" }
+### variable `value`  
+
+---
+Type: `const int`  
+Value = `1`  
+
+---
+```cpp
+// In Base<T>
+public: static constexpr int value = 1
+```
+
+23_using_typename: { range: "168:26-168:30" }
+### type `type`  
+
+---
+Type: `T`  
+
+---
+```cpp
+// In Base<T>
+public: using type = T
+```
+
+24_using_value: { range: "169:17-169:22" }
+### variable `value`  
+
+---
+Type: `const int`  
+Value = `1`  
+
+---
+```cpp
+// In Base<T>
+public: static constexpr int value = 1
+```
