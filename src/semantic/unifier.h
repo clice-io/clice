@@ -32,7 +32,7 @@ public:
 
     /// The deduced arguments, indexed by parameter index. Unbound parameters
     /// hold a null TemplateArgument.
-    llvm::ArrayRef<clang::TemplateArgument> results() const {
+    TemplateArguments results() const {
         return bindings;
     }
 
@@ -66,10 +66,9 @@ private:
 };
 
 /// Deduce the arguments of `params` at its own depth by matching `patterns`
-/// against `arguments`; then fill remaining parameters from default arguments
-/// where representable (type defaults are returned still containing template
-/// parameters — the caller substitutes them with its instantiation stack).
-/// Returns false if any parameter ends up unbound and defaultless.
+/// against `arguments`. An unbound pack deduces as empty; any other unbound
+/// parameter fails the deduction. Default arguments are not consulted here —
+/// the caller fills them (with its own instantiation stack) before deducing.
 ///
 /// `patterns` and `params` come in the same pairings the resolver already
 /// uses: injected arguments for primary templates and alias templates,

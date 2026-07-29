@@ -1978,6 +1978,32 @@ TEST_CASE(NamespaceOverloadLookup) {
     EXPECT_EQ(std::ranges::distance(members), 2);
 }
 
+TEST_CASE(RecursiveDetectorProbe) {
+    run(R"code(
+        template <typename... Ts>
+        using void_t = void;
+
+        template <typename... Ts>
+        struct type_list {};
+
+        template <typename T, typename = void>
+        struct wrap {
+            using type = type_list<T>;
+        };
+
+        template <typename T>
+        struct wrap<T*, void_t<typename wrap<T>::type>> {
+            using type = typename wrap<T>::type;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename wrap<X*>::type;
+            using expect = type_list<X>;
+        };
+    )code");
+}
+
 TEST_CASE(CallArityFilter) {
     add_main("main.cpp", R"code(
         template <typename T>
@@ -1998,6 +2024,65 @@ TEST_CASE(CallArityFilter) {
 
         bool VisitCallExpr(clang::CallExpr* e) {
             if(llvm::isa<clang::UnresolvedMemberExpr>(e->getCallee()->IgnoreParenImpCasts())) {
+                expr = e;
+            }
+            return true;
+        }
+    } finder;
+
+    finder.TraverseAST(unit->context());
+    ASSERT_TRUE(finder.expr != nullptr);
+
+    /// One argument: `foo(int, int)` is filtered out, both single-parameter
+    /// overloads survive.
+    auto candidates = unit->resolver().lookup(finder.expr);
+    EXPECT_EQ(candidates.size(), 2u);
+}
+
+TEST_CASE(RedeclSplitDefinition) {
+    /// `A<X>` is parsed while only the forward declaration is visible, so the
+    /// DTST's TemplateName points at the redecl whose parameter list differs
+    /// from the defining declaration that owns `type`.
+    run(R"code(
+        template <typename T>
+        struct A;
+
+        template <typename X>
+        struct test {
+            using input = typename A<X>::type;
+            using expect = X*;
+        };
+
+        template <typename T>
+        struct A {
+            using type = T*;
+        };
+    )code");
+}
+
+TEST_CASE(QualifiedCallArity) {
+    add_main("main.cpp", R"code(
+        template <typename T>
+        struct base {
+            static int foo(int);
+            static int foo(int, int);
+            static int foo(T);
+        };
+
+        template <typename T>
+        struct S {
+            void call(T t) {
+                base<T>::foo(t);
+            }
+        };
+    )code");
+    ASSERT_TRUE(compile());
+
+    struct Finder : clang::RecursiveASTVisitor<Finder> {
+        const clang::CallExpr* expr = nullptr;
+
+        bool VisitCallExpr(clang::CallExpr* e) {
+            if(llvm::isa<clang::DependentScopeDeclRefExpr>(e->getCallee()->IgnoreParenImpCasts())) {
                 expr = e;
             }
             return true;

@@ -1,6 +1,5 @@
 #include "semantic/resolver.h"
 
-#include <format>
 #include <ranges>
 
 #include "semantic/unifier.h"
@@ -208,7 +207,7 @@ public:
             return type;
         }
         steps += 1;
-        if(depth > 16 || steps > 4096) {
+        if(depth > 16 || steps > step_budget) {
             return type;
         }
         depth += 1;
@@ -547,6 +546,9 @@ public:
         // would infinitely recurse through lookup_in_bases.
         auto ctd_key = std::make_pair(static_cast<const void*>(CTD), name.getAsOpaquePtr());
         if(!active_ctd_lookups.insert(ctd_key).second) {
+            /// The empty result here means "already in flight", not "absent";
+            /// the pseudo-SFINAE probe must not read it as a proof of absence.
+            ctd_guard_tripped = true;
             return lookup_result();
         }
 
@@ -1282,12 +1284,28 @@ private:
 
     /// Resolve `scope` and ask whether it is a known template or record that
     /// definitely has no member called `name`. Unknown scopes return false.
+    ///
+    /// "Definitely" requires a clean verdict: an empty lookup caused by the
+    /// CTD recursion guard or by step-budget exhaustion proves nothing, and
+    /// treating it as absence would prune a partial that real SFINAE keeps —
+    /// a wrong answer, not a degradation. Those cases stay Unknown.
     bool scope_lacks(const clang::NestedNameSpecifier* scope, clang::DeclarationName name) {
         if(!scope) {
             return false;
         }
 
         auto stack_size = stack.data.size();
+
+        /// The flag is save/reset/restored rather than just read: `scope_lacks`
+        /// reenters itself through lookup's partial probing, and a nested clean
+        /// probe must not wash out a trip observed by an in-flight outer one.
+        /// Restoring with `saved || tripped` propagates any trip outwards, so
+        /// every enclosing probe also stays Unknown. The reset sits before
+        /// `rewrite_specifier` because resolving the scope prefix can trip the
+        /// guard too.
+        bool saved = ctd_guard_tripped;
+        ctd_guard_tripped = false;
+
         auto resolved_scope = rewrite_specifier(scope, Policy::Resolve);
 
         bool lacks = false;
@@ -1304,6 +1322,11 @@ private:
                 }
             }
         }
+
+        if(ctd_guard_tripped || steps > step_budget) {
+            lacks = false;
+        }
+        ctd_guard_tripped = saved || ctd_guard_tripped;
 
         while(stack.data.size() > stack_size) {
             stack.pop();
@@ -1474,6 +1497,11 @@ private:
     unsigned depth = 0;
     unsigned steps = 0;
     unsigned probing = 0;
+    bool ctd_guard_tripped = false;
+
+    /// Hard ceiling on rewrite steps per query; bounds the total work
+    /// including pseudo-SFINAE probes over rejected branches.
+    constexpr static unsigned step_budget = 4096;
     unsigned indent = 0;
 
     std::string pad() const {
