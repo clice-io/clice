@@ -36,3 +36,21 @@ Value = `{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ...}`
 ```cpp
 int arr[]
 ```
+
+04_goto_label: { range: "29:14-29:18" }
+### label `done`  
+
+---
+```cpp
+// In f
+done:
+```
+
+05_label_def: { range: "31:0-31:4" }
+### label `done`  
+
+---
+```cpp
+// In f
+done:
+```

@@ -1022,9 +1022,11 @@ void decl_occurrences(const clang::Decl* D, Occurrences& out, TemplateResolver* 
 
     /// using Foo::bar;
     ///             ^~~~ reference
+    /// Shadows are synthetic; reference their underlying targets so hover
+    /// and the index see the real declarations.
     if(auto* UD = llvm::dyn_cast<clang::UsingDecl>(D)) {
         for(auto* shadow: UD->shadows()) {
-            occur(out, shadow, RelationKind::WeakReference, UD->getLocation());
+            occur(out, shadow->getTargetDecl(), RelationKind::WeakReference, UD->getLocation());
         }
         return;
     }
@@ -1173,6 +1175,17 @@ void type_loc_occurrences(clang::TypeLoc TL, Occurrences& out, TemplateResolver*
 
     /// std::vector<int>
     ///        ^~~~ reference
+    /// Box b(1); with CTAD — the written name is a deduced placeholder;
+    /// reference the class template's pattern.
+    if(auto DTSTL = TL.getAs<clang::DeducedTemplateSpecializationTypeLoc>()) {
+        if(auto* TD = DTSTL.getTypePtr()->getTemplateName().getAsTemplateDecl()) {
+            auto* target = TD->getTemplatedDecl() ? TD->getTemplatedDecl()
+                                                  : static_cast<clang::NamedDecl*>(TD);
+            occur(out, target, RelationKind::Reference, DTSTL.getTemplateNameLoc());
+        }
+        return;
+    }
+
     if(auto TSTL = TL.getAs<clang::TemplateSpecializationTypeLoc>()) {
         auto* TST = TSTL.getTypePtr();
         if(TST->isDependentType()) {
@@ -1271,6 +1284,21 @@ void stmt_occurrences(const clang::Stmt* S, Occurrences& out, TemplateResolver* 
         return;
     }
 
+    /// goto done; / done: ... / &&done
+    ///      ^~~~ reference / definition / reference
+    if(auto* GS = llvm::dyn_cast<clang::GotoStmt>(S)) {
+        occur(out, GS->getLabel(), RelationKind::Reference, GS->getLabelLoc());
+        return;
+    }
+    if(auto* LS = llvm::dyn_cast<clang::LabelStmt>(S)) {
+        occur(out, LS->getDecl(), RelationKind::Definition, LS->getIdentLoc());
+        return;
+    }
+    if(auto* ALE = llvm::dyn_cast<clang::AddrLabelExpr>(S)) {
+        occur(out, ALE->getLabel(), RelationKind::Reference, ALE->getLabelLoc());
+        return;
+    }
+
     /// a == b rewritten from operator<=> / defaulted operator==
     ///   ^~~~ reference to the rewritten-to operator
     if(auto* RBO = llvm::dyn_cast<clang::CXXRewrittenBinaryOperator>(S)) {
@@ -1325,24 +1353,24 @@ void stmt_occurrences(const clang::Stmt* S, Occurrences& out, TemplateResolver* 
         return;
     }
 
-    /// foo(...) where foo names an overload set — clang already stores the
-    /// candidates.
-    if(auto* ULE = llvm::dyn_cast<clang::UnresolvedLookupExpr>(S)) {
+    /// foo(...) / obj.foo(...) where foo names an overload set — clang
+    /// already stores the candidates.
+    if(auto* OE = llvm::dyn_cast<clang::OverloadExpr>(S)) {
         /// Unwrap using shadows to the underlying functions, then reference
         /// each introducing using-declaration once: hover picks it when the
         /// overload set is otherwise ambiguous.
         llvm::SmallPtrSet<const clang::UsingDecl*, 2> introducers;
-        for(auto* target: ULE->decls()) {
+        for(auto* target: OE->decls()) {
             if(auto* shadow = llvm::dyn_cast<clang::UsingShadowDecl>(target)) {
                 if(auto* UD = llvm::dyn_cast<clang::UsingDecl>(shadow->getIntroducer())) {
                     introducers.insert(UD);
                 }
                 target = shadow->getTargetDecl();
             }
-            occur(out, target, RelationKind::WeakReference, ULE->getNameLoc());
+            occur(out, target, RelationKind::WeakReference, OE->getNameLoc());
         }
         for(const auto* UD: introducers) {
-            occur(out, UD, RelationKind::WeakReference, ULE->getNameLoc());
+            occur(out, UD, RelationKind::WeakReference, OE->getNameLoc());
         }
         return;
     }
@@ -1395,6 +1423,21 @@ llvm::SmallVector<NameOccurrence, 2> resolve_occurrences(const SemanticNode& nod
                       init->getAnyMember(),
                       RelationKind::Reference,
                       init->getMemberLocation());
+            }
+            break;
+        }
+
+        case SemanticNode::Kind::TemplateArgumentLoc: {
+            /// Foo<Bar> where the argument is itself a template name
+            ///      ^~~~ reference
+            auto& TAL = *node.get<clang::TemplateArgumentLoc>();
+            auto kind = TAL.getArgument().getKind();
+            if(kind == clang::TemplateArgument::Template ||
+               kind == clang::TemplateArgument::TemplateExpansion) {
+                auto template_name = TAL.getArgument().getAsTemplateOrTemplatePattern();
+                if(auto* TD = template_name.getAsTemplateDecl()) {
+                    occur(out, TD, RelationKind::Reference, TAL.getTemplateNameLoc());
+                }
             }
             break;
         }

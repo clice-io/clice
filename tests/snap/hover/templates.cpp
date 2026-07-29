@@ -170,3 +170,25 @@ template <typename T> struct Derived : Base<T> {
   using Base<T>::§(24_using_value)value;
 };
 }
+
+// Template-template argument.
+namespace template_template_arg {
+template <typename> struct X {};
+template <template <typename> class TT> struct Apply {};
+Apply<§(25_template_template_arg)X> a;
+}
+
+// CTAD placeholder.
+namespace ctad {
+template <typename T> struct Box { Box(T); };
+§(26_ctad)Box b(1);
+}
+
+// Unresolved member overload set with dependent argument.
+namespace unresolved_member {
+struct A {
+  void f(int);
+  void f(char);
+};
+template <typename T> void g(A a, T t) { a.§(27_unresolved_member)f(t); }
+}

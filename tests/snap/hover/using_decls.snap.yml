@@ -22,3 +22,17 @@ void foo()
 // In namespace using_overloads
 using ns::foo
 ```
+
+03_using_decl_site: { range: "24:10-24:13" }
+### function `bar`  
+
+---
+→ `void`  
+Parameters:  
+- `int`
+
+---
+```cpp
+// In namespace using_decl_site::ns
+void bar(int)
+```

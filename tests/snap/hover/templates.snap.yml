@@ -277,3 +277,35 @@ Value = `1`
 // In Base<T>
 public: static constexpr int value = 1
 ```
+
+25_template_template_arg: { range: "177:6-177:7" }
+### `X`  
+
+---
+```cpp
+// In namespace template_template_arg
+template <typename> struct X {}
+```
+
+26_ctad: { range: "183:0-183:3" }
+### struct `Box`  
+
+---
+```cpp
+// In namespace ctad
+template <typename T> struct Box {}
+```
+
+27_unresolved_member: { range: "192:43-192:44" }
+### method `f`  
+
+---
+→ `void`  
+Parameters:  
+- `int`
+
+---
+```cpp
+// In A
+public: void f(int)
+```

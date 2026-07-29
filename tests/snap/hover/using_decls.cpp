@@ -18,3 +18,9 @@ namespace ns { void foo(int); void foo(char); }
 using ns::foo;
 template <typename T> void bar() { §(02_using_overloads)foo(T{}); }
 }
+
+// Hover at the declaration site of a using declaration.
+namespace using_decl_site {
+namespace ns { void bar(int); }
+using ns::§(03_using_decl_site)bar;
+}

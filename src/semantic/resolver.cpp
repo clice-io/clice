@@ -69,15 +69,33 @@ void visit_template_decl_contexts(clang::Decl* decl, const Callback& callback) {
 }
 
 /// Resugar canonical TemplateTypeParmType with original parameter declarations.
+/// TreeTransform's TransformType(QualType) materializes a trivial
+/// TypeSourceInfo at getBaseLocation(). That location must be valid:
+/// keyword-carrying dependent types (e.g. `typename T::type`) otherwise
+/// produce a TypeLoc whose keyword is set but whose KeywordLoc is invalid,
+/// tripping Sema::CheckTypenameType's assertion (and reading garbage
+/// location data in release builds).
+inline clang::SourceLocation transform_base_location(clang::Sema& sema) {
+    auto& SM = sema.getSourceManager();
+    return SM.getLocForStartOfFile(SM.getMainFileID());
+}
+
 class ResugarOnly : public clang::TreeTransform<ResugarOnly> {
 public:
     ResugarOnly(clang::Sema& sema, clang::Decl* decl) :
-        TreeTransform(sema), context(sema.getASTContext()) {
+        TreeTransform(sema), context(sema.getASTContext()),
+        base_location(transform_base_location(sema)) {
         visit_template_decl_contexts(decl,
                                      [&](clang::Decl* decl, clang::TemplateParameterList* params) {
                                          lists.push_back(params);
                                      });
         std::ranges::reverse(lists);
+    }
+
+    /// TreeTransform's setBase is a no-op; the CRTP contract is to override
+    /// getBaseLocation. See transform_base_location for why it must be valid.
+    clang::SourceLocation getBaseLocation() {
+        return base_location;
     }
 
     clang::QualType TransformTemplateTypeParmType(clang::TypeLocBuilder& TLB,
@@ -100,6 +118,7 @@ public:
 
 private:
     clang::ASTContext& context;
+    clang::SourceLocation base_location;
     llvm::SmallVector<clang::TemplateParameterList*> lists;
 };
 
@@ -186,7 +205,12 @@ class SubstituteOnly : public clang::TreeTransform<SubstituteOnly> {
 
 public:
     SubstituteOnly(clang::Sema& sema, InstantiationStack& stack) :
-        Base(sema), context(sema.getASTContext()), stack(stack) {}
+        Base(sema), context(sema.getASTContext()), stack(stack),
+        base_location(transform_base_location(sema)) {}
+
+    clang::SourceLocation getBaseLocation() {
+        return base_location;
+    }
 
     using Base::TransformType;
 
@@ -213,7 +237,7 @@ public:
                     if(auto ET = llvm::dyn_cast<clang::ElaboratedType>(type)) {
                         type = ET->getNamedType();
                     }
-                    TLB.pushTrivial(context, type, {});
+                    TLB.pushTrivial(context, type, getBaseLocation());
                     return type;
                 }
             }
@@ -227,7 +251,7 @@ public:
         if(type.isNull()) {
             return Base::TransformElaboratedType(TLB, TL);
         }
-        TLB.pushTrivial(context, type, {});
+        TLB.pushTrivial(context, type, getBaseLocation());
         return type;
     }
 
@@ -238,7 +262,7 @@ public:
         if(type.isNull()) {
             return Base::TransformInjectedClassNameType(TLB, TL);
         }
-        TLB.pushTrivial(context, type, {});
+        TLB.pushTrivial(context, type, getBaseLocation());
         return type;
     }
 
@@ -249,7 +273,7 @@ public:
         if(TL.getTypePtr()->isTypeAlias()) {
             clang::QualType type = TransformType(TL.getTypePtr()->desugar());
             if(!type.isNull()) {
-                TLB.pushTrivial(context, type, {});
+                TLB.pushTrivial(context, type, getBaseLocation());
                 return type;
             }
         }
@@ -294,6 +318,7 @@ public:
 
 private:
     clang::ASTContext& context;
+    clang::SourceLocation base_location;
     InstantiationStack& stack;
     unsigned depth = 0;
 };
@@ -322,7 +347,11 @@ public:
                        llvm::DenseMap<const void*, clang::QualType>& resolved,
                        unsigned parent_indent = 0) :
         Base(sema), sema(sema), context(sema.getASTContext()), resolved(resolved),
-        indent(parent_indent) {}
+        indent(parent_indent), base_location(transform_base_location(sema)) {}
+
+    clang::SourceLocation getBaseLocation() {
+        return base_location;
+    }
 
 public:
     /// Use SubstituteOnly to expand typedefs and substitute parameters without doing lookup.
@@ -751,9 +780,12 @@ public:
                 prefix = clang::NestedNameSpecifier::Create(context, prefix, DTST.getTypePtr());
 
                 auto other = sema.getPreprocessor().getIdentifierInfo("other");
-                auto DNT = context.getDependentNameType(clang::ElaboratedTypeKeyword::Typename,
-                                                        prefix,
-                                                        other);
+                /// Keyword must stay None: the synthesized type is transformed
+                /// through a trivial TypeSourceInfo whose KeywordLoc is invalid,
+                /// and Sema::CheckTypenameType asserts (Keyword != None) ==
+                /// KeywordLoc.isValid().
+                auto DNT =
+                    context.getDependentNameType(clang::ElaboratedTypeKeyword::None, prefix, other);
 
                 auto result = PseudoInstantiator(sema, resolved, indent).TransformType(DNT);
                 if(!result.isNull() && !result->isDependentType()) {
@@ -846,7 +878,7 @@ public:
                 if(argument.getKind() == clang::TemplateArgument::Type) {
                     clang::QualType type = TransformType(argument.getAsType());
                     if(!type.isNull()) {
-                        TLB.pushTrivial(context, type, clang::SourceLocation());
+                        TLB.pushTrivial(context, type, getBaseLocation());
                         return type;
                     }
                 }
@@ -868,7 +900,7 @@ public:
         if(auto iter = resolved.find(DNT); iter != resolved.end()) {
             LOG_DEBUG("{}" "→ '{}' (cached)", pad(), iter->second.getAsString());
             --indent;
-            TLB.pushTrivial(context, iter->second, {});
+            TLB.pushTrivial(context, iter->second, getBaseLocation());
             return iter->second;
         }
 
@@ -949,7 +981,7 @@ public:
             LOG_DEBUG("{}" "→ '{}'", pad(), result.getAsString());
             --indent;
             resolved.try_emplace(DNT, result);
-            TLB.pushTrivial(context, result, {});
+            TLB.pushTrivial(context, result, getBaseLocation());
             return result;
         }
 
@@ -981,7 +1013,7 @@ public:
 
         if(auto iter = resolved.find(DTST); iter != resolved.end()) {
             --indent;
-            TLB.pushTrivial(context, iter->second, {});
+            TLB.pushTrivial(context, iter->second, getBaseLocation());
             return iter->second;
         }
 
@@ -1018,7 +1050,7 @@ public:
             LOG_DEBUG("{}" "hole: '{}' → '{}'", pad(), name->getName().str(), result.getAsString());
             --indent;
             resolved.try_emplace(DTST, result);
-            TLB.pushTrivial(context, result, {});
+            TLB.pushTrivial(context, result, getBaseLocation());
             return result;
         }
 
@@ -1038,7 +1070,7 @@ public:
                         LOG_DEBUG("{}" "→ '{}' (alias)", pad(), type.getAsString());
                         --indent;
                         resolved.try_emplace(DTST, type);
-                        TLB.pushTrivial(context, type, {});
+                        TLB.pushTrivial(context, type, getBaseLocation());
                         return type;
                     }
                 }
@@ -1057,7 +1089,7 @@ public:
                 LOG_DEBUG("{}" "→ TST '{}' (class)", pad(), result.getAsString());
                 --indent;
                 resolved.try_emplace(DTST, result);
-                TLB.pushTrivial(context, result, {});
+                TLB.pushTrivial(context, result, getBaseLocation());
                 return result;
             }
         }
@@ -1085,7 +1117,7 @@ public:
                     if(auto ET = llvm::dyn_cast<clang::ElaboratedType>(type)) {
                         type = ET->getNamedType();
                     }
-                    TLB.pushTrivial(context, type, {});
+                    TLB.pushTrivial(context, type, getBaseLocation());
                     return type;
                 }
             }
@@ -1102,7 +1134,7 @@ public:
             if(auto decl = DRE->getDecl(); llvm::isa<clang::VarDecl>(decl)) {
                 auto type = TransformType(decl->getType());
                 if(!type.isNull()) {
-                    TLB.pushTrivial(context, type, {});
+                    TLB.pushTrivial(context, type, getBaseLocation());
                     return type;
                 }
             }
@@ -1120,6 +1152,7 @@ private:
     llvm::DenseSet<std::pair<const void*, void*>> active_ctd_lookups;
     unsigned depth = 0;
     unsigned indent = 0;
+    clang::SourceLocation base_location;
 
     std::string pad() const {
         return std::string(indent * 2, ' ');

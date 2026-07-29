@@ -23,3 +23,13 @@ auto fwd_baz = (Fwd§(01_forward_struct_value)Foo*)&fwd_bar;
 #define A(x) x, x, x, x
 #define B(x) A(A(A(A(x))))
 int a§(03_big_initializer)rr[] = {B(0)};
+
+// Labels.
+namespace labels {
+inline int f(int x) {
+  if (x) goto §(04_goto_label)done;
+  x += 1;
+§(05_label_def)done:
+  return x;
+}
+}
