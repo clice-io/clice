@@ -200,12 +200,14 @@ public:
     /// - Null types (return as-is)
     /// - Non-dependent types (no transformation needed)
     /// - Excessive recursion depth (bail out to prevent runaway recursion)
+    /// - Exhausted step budget (bounds the total work of one query, including
+    ///   pseudo-SFINAE probes that explore rejected branches)
     /// - Null results (return original type instead)
     clang::QualType rewrite(clang::QualType type, Policy policy) {
         if(type.isNull() || !type->isDependentType()) {
             return type;
         }
-        if(depth > 16) {
+        if(depth > 16 || ++steps > 4096) {
             return type;
         }
         ++depth;
@@ -562,11 +564,21 @@ public:
             partials.size());
         ++indent;
         /// Deduction alone may match several overlapping partials; pick the
-        /// most specialized one, as real instantiation would.
+        /// most specialized one, as real instantiation would — but only among
+        /// partials whose dependent pattern constraints survive the
+        /// pseudo-SFINAE probe (see member_absent).
         clang::ClassTemplatePartialSpecializationDecl* best = nullptr;
         for(auto partial: partials) {
             if(deduce_template_arguments(partial, arguments)) {
+                bool viable = satisfies_pattern(partial);
                 stack.pop();
+                if(!viable) {
+                    LOG_DEBUG(
+                        "{}" "pruned partial '{}' (member absent)",
+                        pad(),
+                        partial->getNameAsString());
+                    continue;
+                }
                 if(!best || more_specialized(context, partial, best)) {
                     best = partial;
                 }
@@ -926,7 +938,26 @@ private:
             canonical.emplace_back(context.getCanonicalTemplateArgument(arguments[i]));
         }
 
-        return context.getTemplateSpecializationType(name, arguments, canonical);
+        /// Fully concrete results should compare equal to the same type
+        /// written in source, whose canonical form is the specialization
+        /// decl's record type. findSpecialization is a read-only registry
+        /// query — if the TU never named this specialization, we keep the
+        /// bare canonical TST rather than fabricating a declaration.
+        clang::QualType underlying;
+        bool concrete = std::ranges::none_of(canonical, [](const clang::TemplateArgument& arg) {
+            return arg.isDependent();
+        });
+        if(concrete) {
+            if(auto CTD =
+                   llvm::dyn_cast_or_null<clang::ClassTemplateDecl>(name.getAsTemplateDecl())) {
+                void* pos = nullptr;
+                if(auto CTSD = CTD->findSpecialization(canonical, pos)) {
+                    underlying = context.getTypeDeclType(CTSD);
+                }
+            }
+        }
+
+        return context.getTemplateSpecializationType(name, arguments, canonical, underlying);
     }
 
     clang::QualType rewrite_template(const clang::TemplateSpecializationType* TST, Policy policy) {
@@ -937,12 +968,27 @@ private:
             return rewrite(TST->desugar(), policy);
         }
 
+        /// A bound template template parameter in the head is substituted
+        /// with its deduced template, e.g. `TT<U, Ts...>` after matching
+        /// `replace_first<TT<T, Ts...>, U>` against `box<X>`.
+        auto name = TST->getTemplateName();
+        bool head_changed = false;
+        if(auto TTP =
+               llvm::dyn_cast_or_null<clang::TemplateTemplateParmDecl>(name.getAsTemplateDecl())) {
+            if(auto* bound = stack.find_argument(TTP, TTP->getDepth(), TTP->getIndex());
+               bound && bound->getKind() == clang::TemplateArgument::Template) {
+                name = bound->getAsTemplate();
+                head_changed = true;
+            }
+        }
+
         llvm::SmallVector<clang::TemplateArgument, 4> arguments;
-        if(!rewrite_arguments(TST->template_arguments(), arguments, policy)) {
+        bool args_changed = rewrite_arguments(TST->template_arguments(), arguments, policy);
+        if(!head_changed && !args_changed) {
             return clang::QualType();
         }
 
-        return make_specialization(TST->getTemplateName(), arguments);
+        return make_specialization(name, arguments);
     }
 
     /// Rewrite a template argument list. Returns true if anything changed.
@@ -1065,6 +1111,176 @@ private:
                 return NNS;
             }
         }
+    }
+
+    /// Pseudo-SFINAE: decide whether a partial specialization's dependent
+    /// pattern constraints (e.g. the `void_t<typename A::rebind<U>::other>`
+    /// idiom) are satisfiable under the current bindings.
+    ///
+    /// Real SFINAE substitutes and rejects on ill-formedness. We approximate
+    /// with a three-way probe on each dependent member access in the pattern:
+    ///   - member resolves → constraint holds, keep the partial
+    ///   - qualifier resolves to a known template/record but the member does
+    ///     not exist there → constraint provably fails, prune the partial
+    ///   - qualifier unknown (bare parameter etc.) → benefit of the doubt,
+    ///     keep the partial; never guess a concrete answer from uncertainty
+    bool satisfies_pattern(clang::ClassTemplatePartialSpecializationDecl* partial) {
+        if(probing > 4) {
+            return true;
+        }
+
+        /// The probe expression only survives in the as-written arguments:
+        /// the converted list has already desugared `void_t<...>` to `void`.
+        auto written = partial->getTemplateArgsAsWritten();
+        if(!written) {
+            return true;
+        }
+
+        ++probing;
+        bool viable = true;
+        for(const clang::TemplateArgumentLoc& loc: written->arguments()) {
+            auto& argument = loc.getArgument();
+            if(argument.getKind() == clang::TemplateArgument::Type &&
+               member_absent(argument.getAsType(), 0)) {
+                viable = false;
+                break;
+            }
+        }
+        --probing;
+        return viable;
+    }
+
+    /// Walk the written form of `type` (through alias sugar arguments, which
+    /// is where `void_t` hides its probe expression) and report whether any
+    /// dependent member access provably names a non-existent member.
+    bool member_absent(clang::QualType type, unsigned guard) {
+        /// Note: `void_t<DNT>` canonically IS `void`, so this must test
+        /// instantiation dependence, not type dependence.
+        if(type.isNull() || guard > 16 || !type->isInstantiationDependentType()) {
+            return false;
+        }
+
+        const clang::Type* T = type.getLocalUnqualifiedType().getTypePtr();
+        switch(T->getTypeClass()) {
+            case clang::Type::DependentName: {
+                auto DNT = llvm::cast<clang::DependentNameType>(T);
+                return specifier_absent(DNT->getQualifier(), guard) ||
+                       scope_lacks(DNT->getQualifier(), DNT->getIdentifier());
+            }
+
+            case clang::Type::DependentTemplateSpecialization: {
+                auto DTST = llvm::cast<clang::DependentTemplateSpecializationType>(T);
+                auto& template_name = DTST->getDependentTemplateName();
+                auto identifier = template_name.getName().getIdentifier();
+                auto qualifier = template_name.getQualifier();
+                if(specifier_absent(qualifier, guard)) {
+                    return true;
+                }
+                return identifier && scope_lacks(qualifier, identifier);
+            }
+
+            case clang::Type::TemplateSpecialization: {
+                auto TST = llvm::cast<clang::TemplateSpecializationType>(T);
+                /// Check the arguments as written: alias sugar (`void_t<...>`)
+                /// desugars to a type that no longer contains the probe.
+                for(auto& argument: TST->template_arguments()) {
+                    if(argument.getKind() == clang::TemplateArgument::Type &&
+                       member_absent(argument.getAsType(), guard + 1)) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            case clang::Type::Elaborated: {
+                return member_absent(llvm::cast<clang::ElaboratedType>(T)->getNamedType(),
+                                     guard + 1);
+            }
+            case clang::Type::Paren: {
+                return member_absent(llvm::cast<clang::ParenType>(T)->getInnerType(), guard + 1);
+            }
+            case clang::Type::Pointer: {
+                return member_absent(llvm::cast<clang::PointerType>(T)->getPointeeType(),
+                                     guard + 1);
+            }
+            case clang::Type::LValueReference:
+            case clang::Type::RValueReference: {
+                return member_absent(llvm::cast<clang::ReferenceType>(T)->getPointeeType(),
+                                     guard + 1);
+            }
+            case clang::Type::PackExpansion: {
+                return member_absent(llvm::cast<clang::PackExpansionType>(T)->getPattern(),
+                                     guard + 1);
+            }
+
+            default: {
+                return false;
+            }
+        }
+    }
+
+    /// Does any link of the specifier chain provably name a missing member?
+    bool specifier_absent(const clang::NestedNameSpecifier* NNS, unsigned guard) {
+        if(!NNS || guard > 16) {
+            return false;
+        }
+        if(specifier_absent(NNS->getPrefix(), guard + 1)) {
+            return true;
+        }
+
+        switch(NNS->getKind()) {
+            case clang::NestedNameSpecifier::Identifier: {
+                return scope_lacks(NNS->getPrefix(), NNS->getAsIdentifier());
+            }
+            case clang::NestedNameSpecifier::TypeSpec: {
+                const clang::Type* T = NNS->getAsType();
+                if(auto DTST = llvm::dyn_cast<clang::DependentTemplateSpecializationType>(T)) {
+                    auto& template_name = DTST->getDependentTemplateName();
+                    auto scope = template_name.getQualifier() ? template_name.getQualifier()
+                                                              : NNS->getPrefix();
+                    auto identifier = template_name.getName().getIdentifier();
+                    return identifier && scope_lacks(scope, identifier);
+                }
+                if(auto DNT = llvm::dyn_cast<clang::DependentNameType>(T)) {
+                    return scope_lacks(DNT->getQualifier(), DNT->getIdentifier());
+                }
+                return false;
+            }
+            default: {
+                return false;
+            }
+        }
+    }
+
+    /// Resolve `scope` and ask whether it is a known template or record that
+    /// definitely has no member called `name`. Unknown scopes return false.
+    bool scope_lacks(const clang::NestedNameSpecifier* scope, clang::DeclarationName name) {
+        if(!scope) {
+            return false;
+        }
+
+        auto stack_size = stack.data.size();
+        auto resolved_scope = rewrite_specifier(scope, Policy::Resolve);
+
+        bool lacks = false;
+        if(resolved_scope && resolved_scope->getKind() == clang::NestedNameSpecifier::TypeSpec) {
+            auto type = resolve(clang::QualType(resolved_scope->getAsType(), 0));
+            if(!type.isNull()) {
+                if(auto TST = type->getAs<clang::TemplateSpecializationType>()) {
+                    if(llvm::isa_and_nonnull<clang::ClassTemplateDecl>(
+                           TST->getTemplateName().getAsTemplateDecl())) {
+                        lacks = lookup(type, name).empty();
+                    }
+                } else if(auto RD = type->getAsCXXRecordDecl()) {
+                    lacks = RD->lookup(name).empty() && lookup_in_bases(RD, name).empty();
+                }
+            }
+        }
+
+        while(stack.data.size() > stack_size) {
+            stack.pop();
+        }
+        return lacks;
     }
 
     clang::QualType resolve_dependent_name(const clang::DependentNameType* DNT) {
@@ -1228,6 +1444,8 @@ private:
     llvm::SmallPtrSet<const void*, 8> active_resolutions;
     llvm::DenseSet<std::pair<const void*, void*>> active_ctd_lookups;
     unsigned depth = 0;
+    unsigned steps = 0;
+    unsigned probing = 0;
     unsigned indent = 0;
 
     std::string pad() const {

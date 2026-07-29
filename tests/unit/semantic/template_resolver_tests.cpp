@@ -417,6 +417,98 @@ TEST_CASE(DefaultArgument) {
     )code");
 }
 
+TEST_CASE(TemplateTemplateReplace) {
+    run(R"code(
+        template <typename T>
+        struct box {};
+
+        template <typename A, typename U>
+        struct replace_first {};
+
+        template <template <typename, typename...> typename TT,
+                  typename U,
+                  typename T,
+                  typename... Ts>
+        struct replace_first<TT<T, Ts...>, U> {
+            using type = TT<U, Ts...>;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename replace_first<box<X>, int>::type;
+            using expect = box<int>;
+        };
+    )code");
+}
+
+TEST_CASE(SfinaeRebindPresent) {
+    run(R"code(
+        template <typename... Ts>
+        using void_t = void;
+
+        template <typename T>
+        struct alloc {
+            template <typename U>
+            struct rebind {
+                using other = alloc<U>;
+            };
+        };
+
+        template <typename A, typename U, typename = void>
+        struct rebind_helper {
+            using type = int;
+        };
+
+        template <typename A, typename U>
+        struct rebind_helper<A, U, void_t<typename A::template rebind<U>::other>> {
+            using type = typename A::template rebind<U>::other;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename rebind_helper<alloc<X>, float>::type;
+            using expect = alloc<float>;
+        };
+    )code");
+}
+
+TEST_CASE(SfinaeRebindAbsent) {
+    run(R"code(
+        template <typename... Ts>
+        using void_t = void;
+
+        template <typename T>
+        struct plain {};
+
+        template <typename A, typename U>
+        struct replace_first {};
+
+        template <template <typename, typename...> typename TT,
+                  typename U,
+                  typename T,
+                  typename... Ts>
+        struct replace_first<TT<T, Ts...>, U> {
+            using type = TT<U, Ts...>;
+        };
+
+        template <typename A, typename U, typename = void>
+        struct rebind_helper {
+            using type = typename replace_first<A, U>::type;
+        };
+
+        template <typename A, typename U>
+        struct rebind_helper<A, U, void_t<typename A::template rebind<U>::other>> {
+            using type = typename A::template rebind<U>::other;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename rebind_helper<plain<X>, int>::type;
+            using expect = plain<int>;
+        };
+    )code");
+}
+
 TEST_CASE(NttpDefaultArgument) {
     run(R"code(
         template <typename T, int N = 0>
