@@ -2039,6 +2039,55 @@ TEST_CASE(CallArityFilter) {
     EXPECT_EQ(candidates.size(), 2u);
 }
 
+TEST_CASE(AliasTemplateHead) {
+    /// A template template parameter bound to an alias template: after head
+    /// substitution the rebuilt specialization names an alias, so its aliased
+    /// type must be computed — assertion-enabled clang aborts otherwise.
+    run(R"code(
+        template <typename T, typename U>
+        struct pair {};
+
+        template <typename T, typename U>
+        using alias_pair = pair<T, U>;
+
+        template <template <typename, typename> class TT, typename A, typename B>
+        struct apply {
+            using type = TT<A, B>;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename apply<alias_pair, X, int>::type;
+            using expect = pair<X, int>;
+        };
+    )code");
+}
+
+TEST_CASE(AliasPackExpanded) {
+    /// `listify<Us...>` carries no aliased type (its arguments hold an
+    /// unexpanded pack), so rewriting the pack away must compute the aliased
+    /// type before the specialization can be rebuilt — assertion-enabled
+    /// clang aborts otherwise.
+    run(R"code(
+        template <typename... Ts>
+        struct type_list {};
+
+        template <typename... Ts>
+        using listify = type_list<Ts...>;
+
+        template <typename... Us>
+        struct A {
+            using type = listify<Us...>;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename A<X, int>::type;
+            using expect = type_list<X, int>;
+        };
+    )code");
+}
+
 TEST_CASE(RedeclSplitDefinition) {
     /// `A<X>` is parsed while only the forward declaration is visible, so the
     /// DTST's TemplateName points at the redecl whose parameter list differs

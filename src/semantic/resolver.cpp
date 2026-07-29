@@ -971,6 +971,30 @@ private:
             }
         }
 
+        /// An alias specialization must carry its aliased type unless the
+        /// arguments still hold unexpanded packs (clang asserts on this).
+        /// This arises when a template template parameter got substituted
+        /// with an alias template: the head is ours, so the aliasing is ours
+        /// to compute. Failure degrades to an unrewritten (null) result.
+        if(auto TATD =
+               llvm::dyn_cast_or_null<clang::TypeAliasTemplateDecl>(name.getAsTemplateDecl())) {
+            bool expansions =
+                std::ranges::any_of(canonical, [](const clang::TemplateArgument& arg) {
+                    return arg.isPackExpansion();
+                });
+            if(!expansions) {
+                clang::QualType aliased;
+                if(deduce_template_arguments(TATD, arguments)) {
+                    aliased = substitute(TATD->getTemplatedDecl()->getUnderlyingType());
+                    stack.pop();
+                }
+                if(aliased.isNull()) {
+                    return clang::QualType();
+                }
+                return context.getTemplateSpecializationType(name, arguments, canonical, aliased);
+            }
+        }
+
         return context.getTemplateSpecializationType(name, arguments, canonical, underlying);
     }
 
