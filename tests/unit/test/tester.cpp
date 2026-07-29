@@ -105,11 +105,20 @@ bool Tester::compile_with_pch(llvm::StringRef standard) {
         }
     }
 
-    // Phase 2: Compile content using the PCH.
+    // Phase 2: Compile content using the PCH. Re-add the buffers phase 1
+    // consumed: content compiles read the sources through remapping too.
     params.output_file.clear();
     params.kind = CompilationKind::Content;
     params.pch = {info.path, static_cast<std::uint32_t>(info.preamble.size())};
     params.buffers.clear();
+    for(auto& [file, source]: sources.all_files) {
+        if(file == src_path) {
+            params.add_remapped_file(file, source.content);
+        } else {
+            std::string path = path::is_absolute(file) ? file.str() : path::join(".", file);
+            params.add_remapped_file(path, source.content);
+        }
+    }
 
     return try_compile();
 }
@@ -353,11 +362,20 @@ bool Tester::compile_driver_with_pch(llvm::StringRef standard) {
         }
     }
 
-    // Phase 2: Compile content using the PCH.
+    // Phase 2: Compile content using the PCH. Re-add the buffers phase 1
+    // consumed: content compiles read the sources through remapping too.
     params.output_file.clear();
     params.kind = CompilationKind::Content;
     params.pch = {info.path, static_cast<std::uint32_t>(info.preamble.size())};
     params.buffers.clear();
+    for(auto& [file, source]: sources.all_files) {
+        if(file == src_path) {
+            params.add_remapped_file(file, source.content);
+        } else {
+            std::string path = path::is_absolute(file) ? file.str() : path::join(".", file);
+            params.add_remapped_file(path, source.content);
+        }
+    }
 
     return try_compile();
 }

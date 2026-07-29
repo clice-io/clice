@@ -53,6 +53,48 @@ async function acquireWorkspaceLock(name: string): Promise<() => void> {
     const pidFile = path.join(lock, "pid");
     const startedAt = Date.now();
     let warned = false;
+
+    // The mkdir lock alone is unfair: a worker whose tests run back-to-back
+    // releases and re-acquires within microseconds, while cross-process
+    // waiters poll on a 100ms clock and lose that window essentially every
+    // time (observed as 120s starvation of a single test in CI). A FIFO
+    // ticket queue in front of the mutex restores fairness: only the oldest
+    // live ticket may take the lock. Tickets of dead processes are removed
+    // by whoever notices them.
+    const queue = `${lock}.queue`;
+    fs.mkdirSync(queue, { recursive: true });
+    const ticketName = `${String(Date.now()).padStart(15, "0")}-${String(process.pid).padStart(8, "0")}`;
+    const ticket = path.join(queue, ticketName);
+    fs.writeFileSync(ticket, String(process.pid));
+    const dropTicket = () => {
+        fs.rmSync(ticket, { force: true });
+    };
+
+    const isMyTurn = (): boolean => {
+        let entries: string[];
+        try {
+            entries = fs.readdirSync(queue).sort();
+        } catch {
+            return true;
+        }
+        for (const entry of entries) {
+            if (entry === ticketName) {
+                return true;
+            }
+            let owner = Number.NaN;
+            try {
+                owner = Number(fs.readFileSync(path.join(queue, entry), "utf8"));
+            } catch {
+                continue; // Ticket vanished between readdir and read.
+            }
+            if (pidAlive(owner)) {
+                return false; // A live earlier ticket goes first.
+            }
+            fs.rmSync(path.join(queue, entry), { force: true });
+        }
+        return true;
+    };
+
     for (;;) {
         // A silent multi-minute wait here looks like a hung suite; surface
         // contention early and fail loudly instead of starving forever.
@@ -68,9 +110,14 @@ async function acquireWorkspaceLock(name: string): Promise<() => void> {
             } catch {
                 // Holder mid-transition; report what we have.
             }
+            dropTicket();
             throw new Error(
                 `workspace lock ${name} starved for ${waited}ms (holder pid ${holder})`,
             );
+        }
+        if (!isMyTurn()) {
+            await sleep(100);
+            continue;
         }
         try {
             fs.mkdirSync(lock);
@@ -98,6 +145,7 @@ async function acquireWorkspaceLock(name: string): Promise<() => void> {
         try {
             if (Number(fs.readFileSync(pidFile, "utf8")) === process.pid) {
                 return () => {
+                    dropTicket();
                     fs.rmSync(lock, { recursive: true, force: true });
                 };
             }
