@@ -50,9 +50,19 @@ private:
 
     bool bind(unsigned index, const clang::TemplateArgument& argument);
 
+    /// Record one element of a pack parameter's binding while matching a
+    /// structured pack expansion pattern (`box<Us>...`) element-wise.
+    bool collect(unsigned index, const clang::TemplateArgument& argument);
+
     clang::ASTContext& context;
     unsigned depth;
     llvm::SmallVector<clang::TemplateArgument, 4> bindings;
+
+    /// Element-wise matching state for a structured pack expansion pattern:
+    /// while `expanding`, pack parameters accumulate one element per matched
+    /// argument instead of binding directly.
+    bool expanding = false;
+    llvm::SmallVector<llvm::SmallVector<clang::TemplateArgument, 2>, 2> elements;
 };
 
 /// Deduce the arguments of `params` at its own depth by matching `patterns`

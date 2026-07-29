@@ -207,12 +207,13 @@ public:
         if(type.isNull() || !type->isDependentType()) {
             return type;
         }
-        if(depth > 16 || ++steps > 4096) {
+        steps += 1;
+        if(depth > 16 || steps > 4096) {
             return type;
         }
-        ++depth;
+        depth += 1;
         auto result = rewrite_type(type, policy);
-        --depth;
+        depth -= 1;
         return result.isNull() ? type : result;
     }
 
@@ -243,7 +244,7 @@ public:
             out.emplace_back(arg);
         }
 
-        for(auto i = out.size(); i < list->size(); ++i) {
+        for(auto i = out.size(); i < list->size(); i += 1) {
             auto param = list->getParam(i);
 
             if(auto TTPD = llvm::dyn_cast<clang::TemplateTypeParmDecl>(param);
@@ -360,7 +361,7 @@ public:
             }(),
             [&] {
                 std::string mapping;
-                for(unsigned j = 0; j < deduced.size(); ++j) {
+                for(unsigned j = 0; j < deduced.size(); j += 1) {
                     if(j > 0)
                         mapping += ", ";
                     if(j < list->size()) {
@@ -471,9 +472,20 @@ public:
                 return lookup(clang::QualType(NNS->getAsType(), 0), name);
             }
 
-            case clang::NestedNameSpecifier::Global:
-            case clang::NestedNameSpecifier::Namespace:
-            case clang::NestedNameSpecifier::NamespaceAlias:
+            /// Namespaces and the global scope are ordinary declaration
+            /// contexts; a plain lookup returns the full overload set.
+            case clang::NestedNameSpecifier::Namespace: {
+                return NNS->getAsNamespace()->lookup(name);
+            }
+
+            case clang::NestedNameSpecifier::NamespaceAlias: {
+                return NNS->getAsNamespaceAlias()->getNamespace()->lookup(name);
+            }
+
+            case clang::NestedNameSpecifier::Global: {
+                return context.getTranslationUnitDecl()->lookup(name);
+            }
+
             case clang::NestedNameSpecifier::Super: {
                 return {};
             }
@@ -562,7 +574,7 @@ public:
             name.getAsString(),
             CTD->getNameAsString(),
             partials.size());
-        ++indent;
+        indent += 1;
         /// Deduction alone may match several overlapping partials; pick the
         /// most specialized one, as real instantiation would — but only among
         /// partials whose dependent pattern constraints survive the
@@ -588,13 +600,13 @@ public:
             LOG_DEBUG("{}" "matched partial '{}'", pad(), best->getNameAsString());
             if(auto members = best->lookup(name); !members.empty()) {
                 LOG_DEBUG("{}" "found in 'partial'", pad());
-                --indent;
+                indent -= 1;
                 return members;
             }
 
             if(auto members = lookup_in_bases(best, name); !members.empty()) {
                 LOG_DEBUG("{}" "found in 'base'", pad());
-                --indent;
+                indent -= 1;
                 return members;
             }
 
@@ -606,20 +618,20 @@ public:
             auto CRD = CTD->getTemplatedDecl();
             if(auto members = CRD->lookup(name); !members.empty()) {
                 LOG_DEBUG("{}" "found in 'primary'", pad());
-                --indent;
+                indent -= 1;
                 return members;
             }
 
             if(auto members = lookup_in_bases(CRD, name); !members.empty()) {
                 LOG_DEBUG("{}" "found in 'base'", pad());
-                --indent;
+                indent -= 1;
                 return members;
             }
 
             stack.pop();
         }
 
-        --indent;
+        indent -= 1;
         return lookup_result();
     }
 
@@ -919,7 +931,7 @@ private:
                         i += 1;
                     } else {
                         llvm::SmallVector<clang::TemplateArgument, 4> pack;
-                        for(; i < arguments.size(); ++i) {
+                        for(; i < arguments.size(); i += 1) {
                             pack.emplace_back(context.getCanonicalTemplateArgument(arguments[i]));
                         }
                         canonical.emplace_back(
@@ -934,7 +946,7 @@ private:
                 i += 1;
             }
         }
-        for(; i < arguments.size(); ++i) {
+        for(; i < arguments.size(); i += 1) {
             canonical.emplace_back(context.getCanonicalTemplateArgument(arguments[i]));
         }
 
@@ -1152,7 +1164,7 @@ private:
             return true;
         }
 
-        ++probing;
+        probing += 1;
         bool viable = true;
         for(const clang::TemplateArgumentLoc& loc: written->arguments()) {
             auto& argument = loc.getArgument();
@@ -1162,7 +1174,7 @@ private:
                 break;
             }
         }
-        --probing;
+        probing -= 1;
         return viable;
     }
 
@@ -1301,19 +1313,19 @@ private:
 
     clang::QualType resolve_dependent_name(const clang::DependentNameType* DNT) {
         LOG_DEBUG("{}" "resolve '{}'", pad(), clang::QualType(DNT, 0).getAsString());
-        ++indent;
+        indent += 1;
 
         // Check cache.
         if(auto iter = resolved.find(DNT); iter != resolved.end()) {
             LOG_DEBUG("{}" "→ '{}' (cached)", pad(), iter->second.getAsString());
-            --indent;
+            indent -= 1;
             return iter->second;
         }
 
         // Cycle detection: if we're already resolving this DNT, bail out.
         if(!active_resolutions.insert(DNT).second) {
             LOG_DEBUG("{}→ <cycle detected, returning original>", pad());
-            --indent;
+            indent -= 1;
             return clang::QualType(DNT, 0);
         }
 
@@ -1360,13 +1372,13 @@ private:
 
         if(!result.isNull()) {
             LOG_DEBUG("{}" "→ '{}'", pad(), result.getAsString());
-            --indent;
+            indent -= 1;
             resolved.try_emplace(DNT, result);
             return result;
         }
 
         LOG_DEBUG("{}→ <unresolved>", pad());
-        --indent;
+        indent -= 1;
         return clang::QualType(DNT, 0);
     }
 
@@ -1377,14 +1389,14 @@ private:
         resolve_dependent_template(const clang::DependentTemplateSpecializationType* DTST,
                                    const clang::NestedNameSpecifier* scope = nullptr) {
         LOG_DEBUG("{}" "resolve DTST '{}'", pad(), clang::QualType(DTST, 0).getAsString());
-        ++indent;
+        indent += 1;
 
         auto& template_name = DTST->getDependentTemplateName();
         bool cacheable = template_name.getQualifier() != nullptr || !scope;
 
         if(cacheable) {
             if(auto iter = resolved.find(DTST); iter != resolved.end()) {
-                --indent;
+                indent -= 1;
                 return iter->second;
             }
         }
@@ -1400,7 +1412,7 @@ private:
         auto* name = template_name.getName().getIdentifier();
         if(!name) {
             LOG_DEBUG("{}→ <unresolved DTST>", pad());
-            --indent;
+            indent -= 1;
             return clang::QualType(DTST, 0);
         }
 
@@ -1418,7 +1430,7 @@ private:
                     }
                     if(!type.isNull()) {
                         LOG_DEBUG("{}" "→ '{}' (alias)", pad(), type.getAsString());
-                        --indent;
+                        indent -= 1;
                         if(cacheable) {
                             resolved.try_emplace(DTST, type);
                         }
@@ -1433,7 +1445,7 @@ private:
                 // processing A<X>::B<Y>::C<Z>) needs them for parameter substitution.
                 auto result = make_specialization(clang::TemplateName(CTD), arguments);
                 LOG_DEBUG("{}" "→ TST '{}' (class)", pad(), result.getAsString());
-                --indent;
+                indent -= 1;
                 if(cacheable) {
                     resolved.try_emplace(DTST, result);
                 }
@@ -1445,7 +1457,7 @@ private:
         }
 
         LOG_DEBUG("{}→ <unresolved DTST>", pad());
-        --indent;
+        indent -= 1;
         auto fallback = clang::QualType(DTST, 0);
         if(cacheable) {
             resolved.try_emplace(DTST, fallback);
@@ -1482,25 +1494,29 @@ TemplateResolver::lookup_result TemplateResolver::lookup(const clang::NestedName
     return instantiator.lookup(NNS, name);
 }
 
-TemplateResolver::lookup_result
-    TemplateResolver::lookup(const clang::CXXDependentScopeMemberExpr* expr) {
-    auto type = expr->getBaseType();
+/// Shared base-type member resolution for dependent member expressions.
+static TemplateResolver::lookup_result
+    lookup_member(clang::ASTContext& context,
+                  llvm::DenseMap<const void*, clang::QualType>& resolved,
+                  clang::QualType type,
+                  bool arrow,
+                  clang::DeclarationName name) {
     if(type.isNull()) {
         return {};
     }
 
-    if(expr->isArrow()) {
+    if(arrow) {
         /// Follow overloaded operator-> chains (smart pointers) until a raw
         /// pointer appears; bounded, cycles just stop resolving.
-        auto arrow = context.DeclarationNames.getCXXOperatorName(clang::OO_Arrow);
-        for(unsigned hop = 0; hop < 8; hop++) {
+        auto arrow_name = context.DeclarationNames.getCXXOperatorName(clang::OO_Arrow);
+        for(unsigned hop = 0; hop < 8; hop += 1) {
             if(auto* PT = type->getAs<clang::PointerType>()) {
                 type = PT->getPointeeType();
                 break;
             }
             PseudoInstantiator instantiator(context, resolved);
             const clang::CXXMethodDecl* method = nullptr;
-            for(auto* candidate: instantiator.lookup(type, arrow)) {
+            for(auto* candidate: instantiator.lookup(type, arrow_name)) {
                 if((method = llvm::dyn_cast<clang::CXXMethodDecl>(candidate))) {
                     break;
                 }
@@ -1523,7 +1539,105 @@ TemplateResolver::lookup_result
     }
 
     PseudoInstantiator instantiator(context, resolved);
-    return instantiator.lookup(type, expr->getMemberNameInfo().getName());
+    return instantiator.lookup(type, name);
+}
+
+TemplateResolver::lookup_result
+    TemplateResolver::lookup(const clang::CXXDependentScopeMemberExpr* expr) {
+    return lookup_member(context,
+                         resolved,
+                         expr->getBaseType(),
+                         expr->isArrow(),
+                         expr->getMemberNameInfo().getName());
+}
+
+TemplateResolver::lookup_result TemplateResolver::lookup(const clang::UnresolvedMemberExpr* expr) {
+    return lookup_member(context,
+                         resolved,
+                         expr->getBaseType(),
+                         expr->isArrow(),
+                         expr->getMemberName());
+}
+
+TemplateResolver::lookup_result
+    TemplateResolver::lookup(const clang::DependentTemplateSpecializationType* type) {
+    auto& template_name = type->getDependentTemplateName();
+    auto name = template_name.getName();
+    if(auto identifier = name.getIdentifier()) {
+        return lookup(template_name.getQualifier(), identifier);
+    }
+    return lookup(template_name.getQualifier(),
+                  context.DeclarationNames.getCXXOperatorName(name.getOperator()));
+}
+
+TemplateResolver::lookup_result TemplateResolver::lookup(const clang::UnresolvedLookupExpr* expr) {
+    /// A qualified name resolves through its scope, which yields the full
+    /// overload set from the named context.
+    if(auto NNS = expr->getQualifier()) {
+        if(auto members = lookup(NNS, expr->getName()); !members.empty()) {
+            return members;
+        }
+    }
+
+    /// TODO: Unqualified overload sets cannot be returned as a lookup_result
+    /// (the candidates have no contiguous storage); fall back to the first
+    /// template declaration.
+    for(auto decl: expr->decls()) {
+        if(auto TD = llvm::dyn_cast<clang::TemplateDecl>(decl)) {
+            return lookup_result(TD);
+        }
+    }
+
+    return {};
+}
+
+/// Can `FD` accept a call with `count` arguments? Default arguments lower the
+/// minimum; C-style variadics and parameter packs lift the maximum.
+static bool arity_viable(const clang::FunctionDecl* FD, unsigned count) {
+    if(count < FD->getMinRequiredArguments()) {
+        return false;
+    }
+    if(count <= FD->getNumParams() || FD->isVariadic()) {
+        return true;
+    }
+    return std::ranges::any_of(FD->parameters(), [](const clang::ParmVarDecl* param) {
+        return param->isParameterPack();
+    });
+}
+
+llvm::SmallVector<clang::NamedDecl*, 4> TemplateResolver::lookup(const clang::CallExpr* expr) {
+    llvm::SmallVector<clang::NamedDecl*, 4> candidates;
+
+    auto callee = expr->getCallee()->IgnoreParenImpCasts();
+    if(auto OE = llvm::dyn_cast<clang::OverloadExpr>(callee)) {
+        for(auto decl: OE->decls()) {
+            candidates.push_back(decl);
+        }
+    } else if(auto DSME = llvm::dyn_cast<clang::CXXDependentScopeMemberExpr>(callee)) {
+        for(auto decl: lookup(DSME)) {
+            candidates.push_back(decl);
+        }
+    } else if(auto DSDRE = llvm::dyn_cast<clang::DependentScopeDeclRefExpr>(callee)) {
+        for(auto decl: lookup(DSDRE)) {
+            candidates.push_back(decl);
+        }
+    }
+
+    auto removed = std::ranges::remove_if(candidates, [&](clang::NamedDecl* decl) {
+        auto target = decl;
+        if(auto shadow = llvm::dyn_cast<clang::UsingShadowDecl>(target)) {
+            target = shadow->getTargetDecl();
+        }
+        if(auto FTD = llvm::dyn_cast<clang::FunctionTemplateDecl>(target)) {
+            target = FTD->getTemplatedDecl();
+        }
+        /// Non-function candidates (e.g. a callable object's variable) stay:
+        /// arity says nothing about them.
+        auto FD = llvm::dyn_cast<clang::FunctionDecl>(target);
+        return FD && !arity_viable(FD, expr->getNumArgs());
+    });
+    candidates.erase(removed.begin(), removed.end());
+    return candidates;
 }
 
 }  // namespace clice

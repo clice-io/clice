@@ -33,35 +33,25 @@ public:
         return lookup(type->getQualifier(), type->getIdentifier());
     }
 
-    lookup_result lookup(const clang::DependentTemplateSpecializationType* type) {
-        auto& template_name = type->getDependentTemplateName();
-        auto identifier = template_name.getName().getIdentifier();
-        if(identifier) {
-            return lookup(template_name.getQualifier(), identifier);
-        } else {
-            /// TODO: Operators don't have an IdentifierInfo; need DeclarationName-based lookup.
-            return {};
-        }
-    }
+    lookup_result lookup(const clang::DependentTemplateSpecializationType* type);
 
     lookup_result lookup(const clang::DependentScopeDeclRefExpr* expr) {
         return lookup(expr->getQualifier(), expr->getNameInfo().getName());
     }
 
-    lookup_result lookup(const clang::UnresolvedLookupExpr* expr) {
-        /// TODO: Only returns the first TemplateDecl; should handle overloaded lookups.
-        for(auto decl: expr->decls()) {
-            if(auto TD = llvm::dyn_cast<clang::TemplateDecl>(decl)) {
-                return lookup_result(TD);
-            }
-        }
+    lookup_result lookup(const clang::UnresolvedLookupExpr* expr);
 
-        return {};
-    }
+    /// Resolve the base type through pseudo-instantiation, then look the
+    /// member up in the resolved record. Complements the candidates clang
+    /// already stores on the expression: pseudo-instantiation can reach
+    /// members of matching partial specializations.
+    lookup_result lookup(const clang::UnresolvedMemberExpr* expr);
 
-    lookup_result lookup(const clang::UnresolvedMemberExpr* expr) {
-        return {};
-    }
+    /// Resolve a dependent call's candidate set, filtered down to overloads
+    /// whose parameter list can accept the call's argument count. Full
+    /// overload resolution needs conversion rules (Sema territory); arity is
+    /// the safe, conversion-free subset of it.
+    llvm::SmallVector<clang::NamedDecl*, 4> lookup(const clang::CallExpr* expr);
 
     /// Resolve the base type through pseudo-instantiation, then look the
     /// member up in the resolved record (e.g. `this->foo()` inherited from

@@ -105,6 +105,17 @@ bool TypeUnifier::bind(unsigned index, const clang::TemplateArgument& argument) 
     return true;
 }
 
+bool TypeUnifier::collect(unsigned index, const clang::TemplateArgument& argument) {
+    if(index >= bindings.size()) {
+        return false;
+    }
+    if(elements.size() < bindings.size()) {
+        elements.resize(bindings.size());
+    }
+    elements[index].push_back(argument);
+    return true;
+}
+
 bool TypeUnifier::template_id(clang::QualType type,
                               clang::TemplateName& name,
                               TemplateArguments& arguments) const {
@@ -154,7 +165,16 @@ bool TypeUnifier::unify(clang::QualType pattern, clang::QualType argument) {
         auto remaining = argument_quals;
         remaining.removeQualifiers(pattern_quals);
         auto bound = context.getQualifiedType(argument, remaining);
+        if(expanding && TTPT->isParameterPack()) {
+            return collect(TTPT->getIndex(), clang::TemplateArgument(bound));
+        }
         return bind(TTPT->getIndex(), clang::TemplateArgument(bound));
+    }
+
+    /// A pack expansion on the argument side cannot be matched structurally
+    /// (its element count is unknown); treat it as non-deduced.
+    if(llvm::isa<clang::PackExpansionType>(argument)) {
+        return true;
     }
 
     /// Anything else matches structurally: qualifiers must agree exactly.
@@ -196,7 +216,9 @@ bool TypeUnifier::unify(clang::QualType pattern, clang::QualType argument) {
             if(auto TTP = llvm::dyn_cast_or_null<clang::TemplateTemplateParmDecl>(
                    pattern_name.getAsTemplateDecl());
                TTP && TTP->getDepth() == depth) {
-                if(!bind(TTP->getIndex(), clang::TemplateArgument(argument_name))) {
+                auto head = clang::TemplateArgument(argument_name);
+                if(expanding && TTP->isParameterPack() ? !collect(TTP->getIndex(), head)
+                                                       : !bind(TTP->getIndex(), head)) {
                     return false;
                 }
             } else if(!context.hasSameTemplateName(pattern_name, argument_name)) {
@@ -277,6 +299,9 @@ bool TypeUnifier::unify(const clang::TemplateArgument& pattern,
                         }
                     }
                 }
+                if(expanding && NTTP->isParameterPack()) {
+                    return collect(NTTP->getIndex(), bound);
+                }
                 return bind(NTTP->getIndex(), bound);
             }
             return true;
@@ -346,21 +371,36 @@ bool TypeUnifier::unify(TemplateArguments patterns, TemplateArguments arguments)
     unsigned i = 0;
     for(auto& pattern: flat_patterns) {
         if(pattern.isPackExpansion()) {
-            /// A trailing pack absorbs all remaining arguments. Only a bare
-            /// pack parameter binds; a structured pattern (`vector<Us>...`)
-            /// is treated as non-deduced.
+            /// A trailing pack expansion matches all remaining arguments
+            /// element-wise: pack parameters inside the pattern accumulate
+            /// one binding per argument (`box<Us>...` against
+            /// `box<int>, box<X>` deduces `Us = {int, X}`), while non-pack
+            /// parameters must deduce consistently across elements. Nested
+            /// expansions stay non-deduced.
+            if(expanding) {
+                return true;
+            }
+
             auto inner = pattern.getPackExpansionPattern();
-            if(inner.getKind() == clang::TemplateArgument::Type) {
-                clang::Qualifiers quals;
-                auto type = peel(inner.getAsType(), quals);
-                if(auto TTPT = llvm::dyn_cast<clang::TemplateTypeParmType>(type);
-                   TTPT && TTPT->getDepth() == depth && !quals.hasQualifiers()) {
-                    auto pack =
-                        clang::TemplateArgument::CreatePackCopy(context,
-                                                                llvm::ArrayRef(flat).drop_front(i));
-                    if(!bind(TTPT->getIndex(), pack)) {
-                        return false;
-                    }
+            elements.clear();
+            elements.resize(bindings.size());
+            expanding = true;
+            bool matched = true;
+            for(unsigned j = i; j < flat.size(); j += 1) {
+                if(!unify(inner, flat[j])) {
+                    matched = false;
+                    break;
+                }
+            }
+            expanding = false;
+            if(!matched) {
+                return false;
+            }
+
+            for(auto [index, group]: llvm::enumerate(elements)) {
+                if(!group.empty() &&
+                   !bind(index, clang::TemplateArgument::CreatePackCopy(context, group))) {
+                    return false;
                 }
             }
             return true;

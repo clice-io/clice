@@ -1868,6 +1868,151 @@ TEST_CASE(RecursivePointerPeel) {
     )code");
 }
 
+TEST_CASE(StructuredPackDeduce) {
+    run(R"code(
+        template <typename... Ts>
+        struct type_list {};
+
+        template <typename T>
+        struct box {};
+
+        template <typename T>
+        struct unbox {};
+
+        template <typename... Us>
+        struct unbox<type_list<box<Us>...>> {
+            using type = type_list<Us...>;
+        };
+
+        template <typename X, typename Y>
+        struct test {
+            using input = typename unbox<type_list<box<X>, box<Y>>>::type;
+            using expect = type_list<X, Y>;
+        };
+    )code");
+}
+
+TEST_CASE(PackZipDeduce) {
+    run(R"code(
+        template <typename... Ts>
+        struct type_list {};
+
+        template <typename A, typename B>
+        struct pair {};
+
+        template <typename T>
+        struct split {};
+
+        template <typename... As, typename... Bs>
+        struct split<type_list<pair<As, Bs>...>> {
+            using type = type_list<As..., Bs...>;
+        };
+
+        template <typename X, typename Y>
+        struct test {
+            using input = typename split<type_list<pair<X, int>, pair<Y, float>>>::type;
+            using expect = type_list<X, Y, int, float>;
+        };
+    )code");
+}
+
+TEST_CASE(UnresolvedMemberLookup) {
+    add_main("main.cpp", R"code(
+        template <typename T>
+        struct S {
+            int foo(int);
+            int foo(char);
+
+            void call(T t) {
+                foo(t);
+            }
+        };
+    )code");
+    ASSERT_TRUE(compile());
+
+    struct Finder : clang::RecursiveASTVisitor<Finder> {
+        const clang::UnresolvedMemberExpr* expr = nullptr;
+
+        bool VisitUnresolvedMemberExpr(clang::UnresolvedMemberExpr* e) {
+            expr = e;
+            return true;
+        }
+    } finder;
+
+    finder.TraverseAST(unit->context());
+    ASSERT_TRUE(finder.expr != nullptr);
+
+    auto members = unit->resolver().lookup(finder.expr);
+    EXPECT_EQ(std::ranges::distance(members), 2);
+}
+
+TEST_CASE(NamespaceOverloadLookup) {
+    add_main("main.cpp", R"code(
+        namespace ns {
+            template <typename T>
+            int f(T);
+
+            int f(int);
+        }
+
+        template <typename T>
+        void g(T t) {
+            ns::f<T>(t);
+        }
+    )code");
+    ASSERT_TRUE(compile());
+
+    struct Finder : clang::RecursiveASTVisitor<Finder> {
+        const clang::UnresolvedLookupExpr* expr = nullptr;
+
+        bool VisitUnresolvedLookupExpr(clang::UnresolvedLookupExpr* e) {
+            expr = e;
+            return true;
+        }
+    } finder;
+
+    finder.TraverseAST(unit->context());
+    ASSERT_TRUE(finder.expr != nullptr);
+
+    auto members = unit->resolver().lookup(finder.expr);
+    EXPECT_EQ(std::ranges::distance(members), 2);
+}
+
+TEST_CASE(CallArityFilter) {
+    add_main("main.cpp", R"code(
+        template <typename T>
+        struct S {
+            int foo(int);
+            int foo(int, int);
+            int foo(T);
+
+            void call(T t) {
+                foo(t);
+            }
+        };
+    )code");
+    ASSERT_TRUE(compile());
+
+    struct Finder : clang::RecursiveASTVisitor<Finder> {
+        const clang::CallExpr* expr = nullptr;
+
+        bool VisitCallExpr(clang::CallExpr* e) {
+            if(llvm::isa<clang::UnresolvedMemberExpr>(e->getCallee()->IgnoreParenImpCasts())) {
+                expr = e;
+            }
+            return true;
+        }
+    } finder;
+
+    finder.TraverseAST(unit->context());
+    ASSERT_TRUE(finder.expr != nullptr);
+
+    /// One argument: `foo(int, int)` is filtered out, both single-parameter
+    /// overloads survive.
+    auto candidates = unit->resolver().lookup(finder.expr);
+    EXPECT_EQ(candidates.size(), 2u);
+}
+
 TEST_CASE(ConditionalFalseType) {
     run(R"code(
         template <bool B, typename T, typename F>
