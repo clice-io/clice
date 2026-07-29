@@ -611,90 +611,6 @@ public:
         return lookup_result();
     }
 
-    /// Short-circuit resolution for `std::allocator_traits::rebind_alloc`.
-    ///
-    /// libstdc++'s allocator rebind chain (vector → __alloc_traits → allocator_traits →
-    /// allocator::rebind) creates deeply nested dependent types that are hard to resolve
-    /// generically. This function intercepts `allocator_traits<Alloc>::rebind_alloc<T>`
-    /// and attempts direct resolution.
-    ///
-    /// Strategy:
-    ///   1. Try Alloc::rebind<T>::other (the standard allocator rebind protocol)
-    ///   2. If that fails (e.g. C++20 removed allocator::rebind), fall back to
-    ///      replacing the first template argument: allocator<U> → allocator<T>
-    ///
-    /// TODO: Replace with a general mechanism for resolving well-known standard
-    /// library patterns, or improve the resolver to handle these chains naturally.
-    clang::QualType hole(const clang::NestedNameSpecifier* NNS,
-                         const clang::IdentifierInfo* member,
-                         TemplateArguments arguments) {
-        if(!NNS || NNS->getKind() != clang::NestedNameSpecifier::TypeSpec) {
-            return clang::QualType();
-        }
-
-        auto TST = NNS->getAsType()->getAs<clang::TemplateSpecializationType>();
-        if(!TST) {
-            return clang::QualType();
-        }
-
-        auto TD = TST->getTemplateName().getAsTemplateDecl();
-        if(!TD)
-            return clang::QualType();
-        if(!TD->getDeclContext()->isStdNamespace()) {
-            return clang::QualType();
-        }
-
-        if(TD->getName() == "allocator_traits") {
-            if(TST->template_arguments().size() != 1) {
-                return clang::QualType();
-            }
-            auto Alloc = TST->template_arguments()[0].getAsType();
-
-            if(member->getName() == "rebind_alloc") {
-                if(arguments.empty())
-                    return clang::QualType();
-                auto T = arguments[0].getAsType();
-
-                auto prefix =
-                    clang::NestedNameSpecifier::Create(context, nullptr, Alloc.getTypePtr());
-
-                auto rebind = &context.Idents.get("rebind");
-
-                auto DTST = context.getDependentTemplateSpecializationType(
-                    clang::ElaboratedTypeKeyword::None,
-                    clang::DependentTemplateStorage(prefix, rebind, false),
-                    arguments);
-
-                prefix = clang::NestedNameSpecifier::Create(context, prefix, DTST.getTypePtr());
-
-                auto other = &context.Idents.get("other");
-                auto DNT =
-                    context.getDependentNameType(clang::ElaboratedTypeKeyword::None, prefix, other);
-
-                auto result = PseudoInstantiator(context, resolved, indent).resolve(DNT);
-                if(!result.isNull() && !result->isDependentType()) {
-                    LOG_DEBUG(
-                        "{}" "hole: 'allocator_traits::rebind_alloc' → '{}'",
-                        pad(),
-                        result.getAsString());
-                    return result;
-                }
-
-                if(auto TST = Alloc->getAs<clang::TemplateSpecializationType>()) {
-                    llvm::SmallVector<clang::TemplateArgument, 1> replaceArguments = {T};
-                    auto result = make_specialization(TST->getTemplateName(), replaceArguments);
-                    LOG_DEBUG(
-                        "{}" "hole: 'allocator_traits::rebind_alloc' → '{}'",
-                        pad(),
-                        result.getAsString());
-                    return result;
-                }
-            }
-        }
-
-        return clang::QualType();
-    }
-
 private:
     /// Per-kind dispatch. Whitelist of type classes the resolver understands;
     /// anything else passes through unchanged, which downstream treats as
@@ -1254,15 +1170,6 @@ private:
             LOG_DEBUG("{}→ <unresolved DTST>", pad());
             --indent;
             return clang::QualType(DTST, 0);
-        }
-
-        if(auto result = hole(NNS, name, arguments); !result.isNull()) {
-            LOG_DEBUG("{}" "hole: '{}' → '{}'", pad(), name->getName().str(), result.getAsString());
-            --indent;
-            if(cacheable) {
-                resolved.try_emplace(DTST, result);
-            }
-            return result;
         }
 
         auto stack_size = stack.data.size();
