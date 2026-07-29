@@ -43,3 +43,13 @@ struct Pool {
 Pool *p = §(06_operator_new)new Pool;
 inline void f() { §(07_operator_delete)delete p; }
 }
+
+// Globally qualified allocation and construction punctuation.
+namespace global_alloc {
+struct Pool {
+  static void *operator new(unsigned long n);
+  Pool(int);
+};
+Pool *p = ::§(08_global_new)new Pool(0);
+Pool value§(09_ctor_paren)(1);
+}

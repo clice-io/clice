@@ -25,6 +25,7 @@
 #include "clang/AST/Stmt.h"
 #include "clang/Basic/OperatorKinds.h"
 #include "clang/Basic/TokenKinds.h"
+#include "clang/Lex/Lexer.h"
 #include "clang/Tooling/Syntax/Tokens.h"
 
 namespace clice {
@@ -1304,6 +1305,20 @@ void nns_occurrences(clang::NestedNameSpecifierLoc NNSL,
     }
 }
 
+/// `::new` / `::delete` begin at the `::` token; anchor the occurrence on
+/// the keyword itself so hover's exact-location match finds it.
+clang::SourceLocation keyword_after_scope(const clang::Decl* decl,
+                                          clang::SourceLocation begin,
+                                          bool global_qualified) {
+    if(!global_qualified || begin.isInvalid() || begin.isMacroID()) {
+        return begin;
+    }
+    auto& context = decl->getASTContext();
+    auto token =
+        clang::Lexer::findNextToken(begin, context.getSourceManager(), context.getLangOpts());
+    return token ? token->getLocation() : begin;
+}
+
 void stmt_occurrences(const clang::Stmt* S, Occurrences& out, TemplateResolver* resolver) {
     /// foo = 1
     ///  ^~~~ reference
@@ -1322,11 +1337,33 @@ void stmt_occurrences(const clang::Stmt* S, Occurrences& out, TemplateResolver* 
     /// new Foo / delete p with class-provided allocation functions
     /// ^~~~ reference to operator new / operator delete
     if(auto* NE = llvm::dyn_cast<clang::CXXNewExpr>(S)) {
-        occur(out, NE->getOperatorNew(), RelationKind::Reference, NE->getBeginLoc());
+        if(auto* op = NE->getOperatorNew()) {
+            occur(out,
+                  op,
+                  RelationKind::Reference,
+                  keyword_after_scope(op, NE->getBeginLoc(), NE->isGlobalNew()));
+        }
         return;
     }
     if(auto* DE = llvm::dyn_cast<clang::CXXDeleteExpr>(S)) {
-        occur(out, DE->getOperatorDelete(), RelationKind::Reference, DE->getBeginLoc());
+        if(auto* op = DE->getOperatorDelete()) {
+            occur(out,
+                  op,
+                  RelationKind::Reference,
+                  keyword_after_scope(op, DE->getBeginLoc(), DE->isGlobalDelete()));
+        }
+        return;
+    }
+
+    /// Foo value(1); / Foo value{};
+    ///          ^~~~ reference to the selected constructor
+    if(auto* CE = llvm::dyn_cast<clang::CXXConstructExpr>(S)) {
+        /// Implicit constructions have no written parens; the invalid
+        /// location drops the occurrence.
+        occur(out,
+              CE->getConstructor(),
+              RelationKind::Reference,
+              CE->getParenOrBraceRange().getBegin());
         return;
     }
 
@@ -1421,8 +1458,8 @@ void stmt_occurrences(const clang::Stmt* S, Occurrences& out, TemplateResolver* 
         return;
     }
 
-    /// foo.T::value
-    ///          ^~~~ weak reference (the resolver does not support these yet)
+    /// t.foo / this->foo where the base type is dependent
+    ///   ^~~~ weak reference, resolved through the template resolver
     if(auto* DSME = llvm::dyn_cast<clang::CXXDependentScopeMemberExpr>(S)) {
         if(resolver) {
             for(auto* target: resolver->lookup(DSME)) {

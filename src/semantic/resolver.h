@@ -77,10 +77,10 @@ public:
         return {};
     }
 
-    /// TODO: Implement dependent member expression lookup (e.g. `x.template foo<T>()`).
-    lookup_result lookup(const clang::CXXDependentScopeMemberExpr* expr) {
-        return {};
-    }
+    /// Resolve the base type through pseudo-instantiation, then look the
+    /// member up in the resolved record (e.g. `this->foo()` inherited from
+    /// `Base<T>`).
+    lookup_result lookup(const clang::CXXDependentScopeMemberExpr* expr);
 
     lookup_result lookup(const clang::UnresolvedUsingValueDecl* decl) {
         return lookup(decl->getQualifier(), decl->getDeclName());

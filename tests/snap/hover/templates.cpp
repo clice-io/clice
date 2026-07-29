@@ -204,3 +204,15 @@ template <class T> struct Node {
   §(29_injected_class_name)Node *next;
 };
 }
+
+// Dependent member access through the current instantiation.
+namespace dependent_member {
+template <typename T> struct Base {
+  void method();
+  int field;
+};
+template <typename T> struct Derived : Base<T> {
+  void f() { this->§(30_dependent_method)method(); }
+  int g() { return this->§(31_dependent_field)field; }
+};
+}

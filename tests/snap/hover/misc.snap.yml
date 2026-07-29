@@ -82,3 +82,29 @@ Parameters:
 // In Pool
 public: static void operator delete(void *p) noexcept
 ```
+
+08_global_new: { range: "52:12-52:15" }
+### `operator new`  
+
+---
+→ `void *`  
+Parameters:  
+- `unsigned long`
+
+---
+```cpp
+void *operator new(unsigned long)
+```
+
+09_ctor_paren: { range: "53:5-53:10" }
+### method `Pool`  
+
+---
+Parameters:  
+- `int`
+
+---
+```cpp
+// In Pool
+public: Pool(int)
+```

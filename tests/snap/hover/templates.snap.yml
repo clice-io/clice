@@ -330,3 +330,27 @@ public: class... Ts
 // In namespace injected_class_name
 template <class T> struct Node {}
 ```
+
+30_dependent_method: { range: "214:19-214:25" }
+### method `method`  
+
+---
+→ `void`  
+
+---
+```cpp
+// In Base<T>
+public: void method()
+```
+
+31_dependent_field: { range: "215:25-215:30" }
+### field `field`  
+
+---
+Type: `int`  
+
+---
+```cpp
+// In Base<T>
+public: int field
+```

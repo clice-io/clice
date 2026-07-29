@@ -1216,4 +1216,28 @@ TemplateResolver::lookup_result TemplateResolver::lookup(const clang::NestedName
     return instantiator.lookup(NNS, name);
 }
 
+TemplateResolver::lookup_result
+    TemplateResolver::lookup(const clang::CXXDependentScopeMemberExpr* expr) {
+    auto type = expr->getBaseType();
+    if(expr->isArrow() && !type.isNull()) {
+        if(auto* PT = type->getAs<clang::PointerType>()) {
+            type = PT->getPointeeType();
+        }
+    }
+    if(type.isNull()) {
+        return {};
+    }
+
+    /// Inside the class's own definition `this` is the injected class name;
+    /// unwrap it to the equivalent template specialization the lookup
+    /// understands.
+    if(auto* ICNT = type->getAs<clang::InjectedClassNameType>()) {
+        type = ICNT->getInjectedSpecializationType();
+    }
+
+    DiagnosticSilencer silencer(sema);
+    PseudoInstantiator instantiator(sema, resolved);
+    return instantiator.lookup(type, expr->getMemberNameInfo().getName());
+}
+
 }  // namespace clice
