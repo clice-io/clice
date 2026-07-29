@@ -1181,6 +1181,13 @@ public:
     }
 
     ~DiagnosticSilencer() {
+        /// Deliberate trade-off: error counting is left to accumulate across
+        /// lookups. Once the engine's error limit trips, later speculative
+        /// lookups on this unit degrade (Sema bails out of instantiations) —
+        /// but resetting the counters per lookup hands every pathological
+        /// instantiation chain a fresh budget, which measures as minutes of
+        /// resolver time on STL-heavy TUs. Until the resolver carries its
+        /// own work budget, the shared limit is both the brake and the cap.
         if(owned) {
             engine.setClient(owned.release(), true);
         } else {
