@@ -106,14 +106,18 @@ public:
         if(!TTPT->getDecl()) {
             auto depth = TTPT->getDepth();
             if(depth >= lists.size()) {
-                return TLB.push<clang::TemplateTypeParmTypeLoc>(type).getType();
+                auto NewTL = TLB.push<clang::TemplateTypeParmTypeLoc>(type);
+                NewTL.setNameLoc(getBaseLocation());
+                return NewTL.getType();
             }
             auto index = TTPT->getIndex();
             auto isPack = TTPT->isParameterPack();
             auto param = llvm::cast<clang::TemplateTypeParmDecl>(lists[depth]->getParam(index));
             type = context.getTemplateTypeParmType(depth, index, isPack, param);
         }
-        return TLB.push<clang::TemplateTypeParmTypeLoc>(type).getType();
+        auto NewTL = TLB.push<clang::TemplateTypeParmTypeLoc>(type);
+        NewTL.setNameLoc(getBaseLocation());
+        return NewTL.getType();
     }
 
 private:
@@ -308,7 +312,7 @@ public:
         }
 
         // No substitution: return original type unchanged.
-        TLB.push<clang::TemplateTypeParmTypeLoc>(TL.getType());
+        TLB.push<clang::TemplateTypeParmTypeLoc>(TL.getType()).setNameLoc(TL.getNameLoc());
         return TL.getType();
     }
 
@@ -864,7 +868,7 @@ public:
                 return type;
             }
 
-            TLB.push<clang::TemplateTypeParmTypeLoc>(TL.getType());
+            TLB.push<clang::TemplateTypeParmTypeLoc>(TL.getType()).setNameLoc(TL.getNameLoc());
             return TL.getType();
         }
 
@@ -885,7 +889,7 @@ public:
             }
         }
 
-        TLB.push<clang::TemplateTypeParmTypeLoc>(TL.getType());
+        TLB.push<clang::TemplateTypeParmTypeLoc>(TL.getType()).setNameLoc(TL.getNameLoc());
         return TL.getType();
     }
 
@@ -1000,8 +1004,13 @@ public:
     clang::QualType rebuild_dtst(clang::TypeLocBuilder& TLB,
                                  clang::DependentTemplateSpecializationTypeLoc TL) {
         auto* DTST = TL.getTypePtr();
-        return TLB.push<clang::DependentTemplateSpecializationTypeLoc>(clang::QualType(DTST, 0))
-            .getType();
+        /// push() returns an uninitialized record; the qualifier slot is a
+        /// pointer, so leaving it garbage crashes any later getSourceRange
+        /// (e.g. Sema::CheckTemplateArgument on a transformed argument).
+        auto NewTL =
+            TLB.push<clang::DependentTemplateSpecializationTypeLoc>(clang::QualType(DTST, 0));
+        NewTL.initializeLocal(context, getBaseLocation());
+        return NewTL.getType();
     }
 
     clang::QualType TransformDependentTemplateSpecializationType(

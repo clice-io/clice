@@ -192,3 +192,15 @@ struct A {
 };
 template <typename T> void g(A a, T t) { a.§(27_unresolved_member)f(t); }
 }
+
+// sizeof...(pack).
+namespace sizeof_pack {
+template <class... Ts> constexpr auto n = sizeof...(§(28_sizeof_pack)Ts);
+}
+
+// Injected class name.
+namespace injected_class_name {
+template <class T> struct Node {
+  §(29_injected_class_name)Node *next;
+};
+}

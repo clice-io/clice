@@ -309,3 +309,24 @@ Parameters:
 // In A
 public: void f(int)
 ```
+
+28_sizeof_pack: { range: "197:52-197:54" }
+### type `Ts`  
+
+---
+Type: `class`  
+
+---
+```cpp
+// In namespace sizeof_pack
+public: class... Ts
+```
+
+29_injected_class_name: { range: "203:2-203:6" }
+### struct `Node`  
+
+---
+```cpp
+// In namespace injected_class_name
+template <class T> struct Node {}
+```

@@ -1179,6 +1179,29 @@ TEST_CASE(DeepExpressionChain) {
     ASSERT_TRUE(bomb != occurrences.end());
 }
 
+TEST_CASE(SuperQualifierRef) {
+    add_main("main.cpp", R"(
+            struct Base {
+                void m();
+            };
+            struct §(def)⟦Derived⟧ : Base {
+                void f() { §(use)__super::m(); }
+            };
+        )");
+    prepare("-std=c++20");
+    /// __super needs Microsoft extensions; splice the flag in before the
+    /// trailing source path.
+    owned_args.insert(owned_args.end() - 1, "-fms-extensions");
+    params.arguments.clear();
+    for(auto& arg: owned_args) {
+        params.arguments.push_back(arg.c_str());
+    }
+    ASSERT_TRUE(try_compile());
+    tu_index = index::TUIndex::build(*unit);
+
+    GO_TO_DEFINITION("use", "def");
+}
+
 };  // TEST_SUITE(tu_index)
 
 }  // namespace

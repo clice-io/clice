@@ -54,3 +54,31 @@ done:
 // In f
 done:
 ```
+
+06_operator_new: { range: "42:10-42:13" }
+### `operator new`  
+
+---
+→ `void *`  
+Parameters:  
+- `unsigned long n`
+
+---
+```cpp
+// In Pool
+public: static void *operator new(unsigned long n)
+```
+
+07_operator_delete: { range: "43:18-43:24" }
+### `operator delete`  
+
+---
+→ `void`  
+Parameters:  
+- `void * p`
+
+---
+```cpp
+// In Pool
+public: static void operator delete(void *p) noexcept
+```

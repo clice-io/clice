@@ -36,3 +36,24 @@ Parameters:
 // In namespace using_decl_site::ns
 void bar(int)
 ```
+
+04_using_type: { range: "32:2-32:12" }
+### type `value_type`  
+
+---
+Type: `int`  
+
+---
+```cpp
+// In B
+public: using value_type = int
+```
+
+05_alias_directive: { range: "40:16-40:21" }
+### namespace `alias`  
+
+---
+```cpp
+// In namespace alias_directive
+namespace alias = original
+```

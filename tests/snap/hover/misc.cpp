@@ -33,3 +33,13 @@ inline int f(int x) {
   return x;
 }
 }
+
+// Class-provided allocation functions.
+namespace class_new_delete {
+struct Pool {
+  static void *operator new(unsigned long n);
+  static void operator delete(void *p);
+};
+Pool *p = §(06_operator_new)new Pool;
+inline void f() { §(07_operator_delete)delete p; }
+}

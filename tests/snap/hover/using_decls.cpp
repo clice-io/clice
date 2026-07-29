@@ -24,3 +24,19 @@ namespace using_decl_site {
 namespace ns { void bar(int); }
 using ns::§(03_using_decl_site)bar;
 }
+
+// Type imported through a using declaration.
+namespace using_type {
+struct B { using value_type = int; };
+struct D : B {
+  using B::value_type;
+  §(04_using_type)value_type x;
+};
+}
+
+// Using directive through a namespace alias.
+namespace alias_directive {
+namespace original { }
+namespace alias = original;
+using namespace §(05_alias_directive)alias;
+}

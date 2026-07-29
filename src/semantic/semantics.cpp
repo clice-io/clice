@@ -976,7 +976,12 @@ void decl_occurrences(const clang::Decl* D, Occurrences& out, TemplateResolver* 
     /// using namespace Foo
     ///                  ^~~~~~~ reference
     if(auto* UDD = llvm::dyn_cast<clang::UsingDirectiveDecl>(D)) {
-        occur(out, UDD->getNominatedNamespace(), RelationKind::Reference, UDD->getLocation());
+        /// As-written: `using namespace Alias` references the alias, not the
+        /// underlying namespace.
+        occur(out,
+              UDD->getNominatedNamespaceAsWritten(),
+              RelationKind::Reference,
+              UDD->getLocation());
         return;
     }
 
@@ -1175,6 +1180,23 @@ void type_loc_occurrences(clang::TypeLoc TL, Occurrences& out, TemplateResolver*
 
     /// std::vector<int>
     ///        ^~~~ reference
+    /// X *next; inside the definition of template<class T> struct X — the
+    /// written X is the injected class name.
+    if(auto ICNTL = TL.getAs<clang::InjectedClassNameTypeLoc>()) {
+        occur(out, ICNTL.getDecl(), RelationKind::Reference, ICNTL.getNameLoc());
+        return;
+    }
+
+    /// using B::value_type; value_type x; — the written type resolves
+    /// through the using shadow to the imported type.
+    if(auto UTL = TL.getAs<clang::UsingTypeLoc>()) {
+        occur(out,
+              UTL.getTypePtr()->getFoundDecl()->getTargetDecl(),
+              RelationKind::Reference,
+              UTL.getNameLoc());
+        return;
+    }
+
     /// Box b(1); with CTAD — the written name is a deduced placeholder;
     /// reference the class template's pattern.
     if(auto DTSTL = TL.getAs<clang::DeducedTemplateSpecializationTypeLoc>()) {
@@ -1268,9 +1290,15 @@ void nns_occurrences(clang::NestedNameSpecifierLoc NNSL,
             break;
         }
 
-        case clang::NestedNameSpecifier::TypeSpec:
-        case clang::NestedNameSpecifier::Global:
         case clang::NestedNameSpecifier::Super: {
+            /// __super::member (MS extension) — the qualifier names the base
+            /// record.
+            occur(out, NNS->getAsRecordDecl(), RelationKind::Reference, NNSL.getLocalBeginLoc());
+            break;
+        }
+
+        case clang::NestedNameSpecifier::TypeSpec:
+        case clang::NestedNameSpecifier::Global: {
             break;
         };
     }
@@ -1281,6 +1309,24 @@ void stmt_occurrences(const clang::Stmt* S, Occurrences& out, TemplateResolver* 
     ///  ^~~~ reference
     if(auto* DRE = llvm::dyn_cast<clang::DeclRefExpr>(S)) {
         occur(out, DRE->getDecl(), RelationKind::Reference, DRE->getLocation());
+        return;
+    }
+
+    /// sizeof...(Ts)
+    ///           ^~~~ reference to the pack declaration
+    if(auto* SOPE = llvm::dyn_cast<clang::SizeOfPackExpr>(S)) {
+        occur(out, SOPE->getPack(), RelationKind::Reference, SOPE->getPackLoc());
+        return;
+    }
+
+    /// new Foo / delete p with class-provided allocation functions
+    /// ^~~~ reference to operator new / operator delete
+    if(auto* NE = llvm::dyn_cast<clang::CXXNewExpr>(S)) {
+        occur(out, NE->getOperatorNew(), RelationKind::Reference, NE->getBeginLoc());
+        return;
+    }
+    if(auto* DE = llvm::dyn_cast<clang::CXXDeleteExpr>(S)) {
+        occur(out, DE->getOperatorDelete(), RelationKind::Reference, DE->getBeginLoc());
         return;
     }
 
