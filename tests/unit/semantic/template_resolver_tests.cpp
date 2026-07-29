@@ -2039,6 +2039,157 @@ TEST_CASE(CallArityFilter) {
     EXPECT_EQ(candidates.size(), 2u);
 }
 
+TEST_CASE(AliasDefaultArgument) {
+    run(R"code(
+        template <typename T, typename U>
+        struct pair {};
+
+        template <typename T, typename U = int>
+        using alias_pair = pair<T, U>;
+
+        template <template <typename> class TT, typename A>
+        struct apply {
+            using type = TT<A>;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename apply<alias_pair, X>::type;
+            using expect = pair<X, int>;
+        };
+    )code");
+}
+
+TEST_CASE(FunctionTypePattern) {
+    run(R"code(
+        template <typename T>
+        struct trait {
+            using type = void;
+        };
+
+        template <typename R, typename... As>
+        struct trait<R(As...)> {
+            using type = R;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename trait<X(int)>::type;
+            using expect = X;
+        };
+    )code");
+}
+
+TEST_CASE(MemberPointerPattern) {
+    run(R"code(
+        template <typename T>
+        struct trait {
+            using type = void;
+        };
+
+        template <typename R, typename C>
+        struct trait<R C::*> {
+            using type = R;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename trait<int X::*>::type;
+            using expect = int;
+        };
+    )code");
+}
+
+TEST_CASE(MemberPointerRewrite) {
+    run(R"code(
+        template <typename T>
+        struct A {
+            using type = T A::*;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename A<X>::type;
+            using expect = X A<X>::*;
+        };
+    )code");
+}
+
+TEST_CASE(PackPatternExpansion) {
+    run(R"code(
+        template <typename T>
+        struct box {};
+
+        template <typename... Ts>
+        struct type_list {};
+
+        template <typename... Us>
+        struct A {
+            using type = type_list<box<Us>...>;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename A<X, int>::type;
+            using expect = type_list<box<X>, box<int>>;
+        };
+    )code");
+}
+
+TEST_CASE(OuterParamMismatch) {
+    /// The partial's pattern `pair<O, U>` pins Outer's own parameter: for a
+    /// mismatching first element it must not match, keeping the primary.
+    run(R"code(
+        template <typename A, typename B>
+        struct pair {};
+
+        template <typename O>
+        struct Outer {
+            template <typename T>
+            struct Inner {
+                using type = void;
+            };
+
+            template <typename U>
+            struct Inner<pair<O, U>> {
+                using type = U;
+            };
+        };
+
+        template <typename X, typename Y>
+        struct test {
+            using input = typename Outer<X>::template Inner<pair<Y, int>>::type;
+            using expect = void;
+        };
+    )code");
+}
+
+TEST_CASE(OuterParamMatch) {
+    run(R"code(
+        template <typename A, typename B>
+        struct pair {};
+
+        template <typename O>
+        struct Outer {
+            template <typename T>
+            struct Inner {
+                using type = void;
+            };
+
+            template <typename U>
+            struct Inner<pair<O, U>> {
+                using type = U;
+            };
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename Outer<X>::template Inner<pair<X, int>>::type;
+            using expect = int;
+        };
+    )code");
+}
+
 TEST_CASE(AliasTemplateHead) {
     /// A template template parameter bound to an alias template: after head
     /// substitution the rebuilt specialization names an alias, so its aliased

@@ -9,6 +9,7 @@
 #include "llvm/ADT/SmallPtrSet.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/DeclTemplate.h"
+#include "clang/AST/RecursiveASTVisitor.h"
 
 /// Template Resolver — pseudo-instantiation of dependent C++ types.
 ///
@@ -142,6 +143,25 @@ struct InstantiationStack {
 
     const clang::TemplateArgument* find_argument(const clang::TemplateTypeParmType* T) const {
         return find_argument(T->getDecl(), T->getDepth(), T->getIndex());
+    }
+
+    /// Mutable view of a binding, for element-wise pack expansion which
+    /// temporarily narrows a Pack binding to one of its elements.
+    clang::TemplateArgument* find_mutable_argument(const clang::TemplateTypeParmType* T) {
+        return const_cast<clang::TemplateArgument*>(find_argument(T));
+    }
+};
+
+/// Collect every template type parameter pack referenced anywhere inside a
+/// type, for element-wise expansion of structured pack patterns.
+struct PackParmCollector : clang::RecursiveASTVisitor<PackParmCollector> {
+    llvm::SmallVector<const clang::TemplateTypeParmType*, 2> packs;
+
+    bool VisitTemplateTypeParmType(clang::TemplateTypeParmType* T) {
+        if(T->isParameterPack() && !llvm::is_contained(packs, T)) {
+            packs.push_back(T);
+        }
+        return true;
     }
 };
 
@@ -325,6 +345,27 @@ public:
         }
 
         assert(list && "No template parameters found");
+
+        /// Patterns may reference parameters of enclosing templates (a member
+        /// partial specialization pinning an outer parameter, e.g.
+        /// `Inner<pair<O, U>>`). Those are concrete from this deduction's
+        /// point of view: substitute the current bindings in first so the
+        /// unifier compares them structurally instead of guessing.
+        ///
+        /// The parameters being deduced must stay free, yet an enclosing
+        /// in-flight deduction of this same template may have them bound on
+        /// the stack (recursive chains like allocator_traits' rebind). An
+        /// empty-argument frame masks them: decl matching stops at it and
+        /// reports "unbound", while enclosing templates' frames still apply.
+        llvm::SmallVector<clang::TemplateArgument, 4> substituted;
+        if(!stack.empty()) {
+            stack.push(decl, list, {});
+            bool changed = rewrite_arguments(patterns, substituted, Policy::Substitute);
+            stack.pop();
+            if(changed) {
+                patterns = substituted;
+            }
+        }
 
         llvm::SmallVector<clang::TemplateArgument, 4> deduced;
         if(!deduce_arguments(context, list, patterns, arguments, deduced)) {
@@ -761,6 +802,26 @@ private:
                 break;
             }
 
+            case clang::Type::MemberPointer: {
+                auto MPT = llvm::cast<clang::MemberPointerType>(T);
+                auto cls = MPT->getQualifier() ? MPT->getQualifier()->getAsType() : nullptr;
+                if(!cls) {
+                    break;
+                }
+                auto pointee = rewrite(MPT->getPointeeType(), policy);
+                auto rewritten_cls = rewrite(clang::QualType(cls, 0), policy);
+                if(pointee == MPT->getPointeeType() && rewritten_cls.getTypePtr() == cls) {
+                    break;
+                }
+                auto qualifier = clang::NestedNameSpecifier::Create(context,
+                                                                    nullptr,
+                                                                    rewritten_cls.getTypePtr());
+                result = context.getMemberPointerType(pointee,
+                                                      qualifier,
+                                                      rewritten_cls->getAsCXXRecordDecl());
+                break;
+            }
+
             case clang::Type::PackExpansion: {
                 auto PET = llvm::cast<clang::PackExpansionType>(T);
                 auto pattern = rewrite(PET->getPattern(), policy);
@@ -983,8 +1044,16 @@ private:
                     return arg.isPackExpansion();
                 });
             if(!expansions) {
+                /// A head bound through a template template parameter may
+                /// carry fewer arguments than the alias declares (defaulted
+                /// trailing parameters); fill the defaults before deducing.
+                llvm::SmallVector<clang::TemplateArgument, 4> full;
+                if(!check_template_arguments(TATD, arguments, full)) {
+                    return clang::QualType();
+                }
+
                 clang::QualType aliased;
-                if(deduce_template_arguments(TATD, arguments)) {
+                if(deduce_template_arguments(TATD, full)) {
                     aliased = substitute(TATD->getTemplatedDecl()->getUnderlyingType());
                     stack.pop();
                 }
@@ -1054,6 +1123,17 @@ private:
                             }
                         }
 
+                        /// A pattern that merely contains bound packs
+                        /// (`box<Us>...`) expands element-wise: rewrite it
+                        /// once per element with every referenced pack
+                        /// temporarily narrowed to its k-th element. Packs
+                        /// expand in lockstep, so their lengths must agree.
+                        if(auto expanded = expand_pack_pattern(pattern, policy)) {
+                            out.append(expanded->begin(), expanded->end());
+                            changed = true;
+                            continue;
+                        }
+
                         auto rewritten = rewrite(pattern, policy);
                         if(rewritten != pattern) {
                             changed = true;
@@ -1113,6 +1193,62 @@ private:
         }
 
         return changed;
+    }
+
+    /// Element-wise expansion of a structured pack pattern: if every pack
+    /// parameter referenced in `pattern` is bound to a Pack of one common
+    /// length, rewrite the pattern once per element and return the list.
+    /// Returns nullopt when the pattern has no bound packs, lengths disagree,
+    /// or an element fails to rewrite cleanly — callers then fall back to
+    /// rewriting the pattern as a whole.
+    std::optional<llvm::SmallVector<clang::TemplateArgument, 4>>
+        expand_pack_pattern(clang::QualType pattern, Policy policy) {
+        PackParmCollector collector;
+        collector.TraverseType(pattern);
+        if(collector.packs.empty()) {
+            return std::nullopt;
+        }
+
+        llvm::SmallVector<clang::TemplateArgument*, 2> slots;
+        unsigned length = 0;
+        for(auto TTPT: collector.packs) {
+            auto* bound = stack.find_mutable_argument(TTPT);
+            if(!bound || bound->getKind() != clang::TemplateArgument::Pack) {
+                return std::nullopt;
+            }
+            if(!slots.empty() && bound->pack_size() != length) {
+                return std::nullopt;
+            }
+            length = bound->pack_size();
+            if(!llvm::is_contained(slots, bound)) {
+                slots.push_back(bound);
+            }
+        }
+
+        llvm::SmallVector<clang::TemplateArgument, 2> saved(
+            llvm::map_range(slots, [](auto* slot) { return *slot; }));
+
+        bool ok = true;
+        llvm::SmallVector<clang::TemplateArgument, 4> expanded;
+        for(unsigned k = 0; k < length && ok; k += 1) {
+            for(auto [slot, pack]: llvm::zip(slots, saved)) {
+                *slot = pack.pack_begin()[k];
+            }
+            auto element = rewrite(pattern, policy);
+            ok = element != pattern && !element->containsUnexpandedParameterPack();
+            if(ok) {
+                expanded.emplace_back(element);
+            }
+        }
+
+        for(auto [slot, pack]: llvm::zip(slots, saved)) {
+            *slot = pack;
+        }
+
+        if(!ok) {
+            return std::nullopt;
+        }
+        return expanded;
     }
 
     const clang::NestedNameSpecifier* rewrite_specifier(const clang::NestedNameSpecifier* NNS,
@@ -1506,7 +1642,11 @@ private:
         LOG_DEBUG("{}→ <unresolved DTST>", pad());
         indent -= 1;
         auto fallback = clang::QualType(DTST, 0);
-        if(cacheable) {
+        /// Only a conclusive failure may be cached: an exhausted step budget
+        /// or a tripped recursion guard proves nothing, and the cache is
+        /// TU-wide — a truncated query must not poison this node for later
+        /// queries that could still resolve it.
+        if(cacheable && steps <= step_budget && !ctd_guard_tripped) {
             resolved.try_emplace(DTST, fallback);
         }
         return fallback;

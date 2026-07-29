@@ -155,10 +155,13 @@ bool TypeUnifier::unify(clang::QualType pattern, clang::QualType argument) {
 
     /// `cv-list T`: the parameter absorbs the qualifiers the pattern doesn't
     /// mention, so its qualifiers must be a subset of the argument's.
-    if(auto TTPT = llvm::dyn_cast<clang::TemplateTypeParmType>(pattern)) {
-        if(TTPT->getDepth() != depth) {
-            return true;
-        }
+    ///
+    /// Only parameters at the deduction depth bind; a parameter of an
+    /// enclosing template is a concrete type from this deduction's point of
+    /// view and falls through to structural comparison below — treating it
+    /// as a wildcard would let `Inner<pair<O, U>>` match any first element.
+    if(auto TTPT = llvm::dyn_cast<clang::TemplateTypeParmType>(pattern);
+       TTPT && TTPT->getDepth() == depth) {
         if(!argument_quals.isStrictSupersetOf(pattern_quals) && argument_quals != pattern_quals) {
             return false;
         }
@@ -226,6 +229,44 @@ bool TypeUnifier::unify(clang::QualType pattern, clang::QualType argument) {
             }
 
             return unify(pattern_args, argument_args);
+        }
+
+        case clang::Type::FunctionProto: {
+            auto PF = llvm::cast<clang::FunctionProtoType>(pattern);
+            auto AF = llvm::dyn_cast<clang::FunctionProtoType>(argument);
+            if(!AF || PF->isVariadic() != AF->isVariadic()) {
+                return false;
+            }
+            if(!unify(PF->getReturnType(), AF->getReturnType())) {
+                return false;
+            }
+
+            /// Parameter lists reuse the argument-list machinery so a trailing
+            /// `As...` deduces element-wise like a trailing pack argument.
+            llvm::SmallVector<clang::TemplateArgument, 4> pattern_params;
+            for(auto type: PF->getParamTypes()) {
+                pattern_params.emplace_back(type);
+            }
+            llvm::SmallVector<clang::TemplateArgument, 4> argument_params;
+            for(auto type: AF->getParamTypes()) {
+                argument_params.emplace_back(type);
+            }
+            return unify(pattern_params, argument_params);
+        }
+
+        case clang::Type::MemberPointer: {
+            auto PM = llvm::cast<clang::MemberPointerType>(pattern);
+            auto AM = llvm::dyn_cast<clang::MemberPointerType>(argument);
+            if(!AM) {
+                return false;
+            }
+            auto pattern_cls = PM->getQualifier() ? PM->getQualifier()->getAsType() : nullptr;
+            auto argument_cls = AM->getQualifier() ? AM->getQualifier()->getAsType() : nullptr;
+            if(!pattern_cls || !argument_cls) {
+                return false;
+            }
+            return unify(clang::QualType(pattern_cls, 0), clang::QualType(argument_cls, 0)) &&
+                   unify(PM->getPointeeType(), AM->getPointeeType());
         }
 
         case clang::Type::ConstantArray: {
