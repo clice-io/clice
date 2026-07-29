@@ -1022,6 +1022,895 @@ TEST_CASE(MultiplePacks) {
     )code");
 }
 
+TEST_CASE(ConstPointerMember) {
+    run(R"code(
+        template <typename T>
+        struct A {
+            using type = const T*;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename A<X>::type;
+            using expect = const X*;
+        };
+    )code");
+}
+
+TEST_CASE(PointerConstMember) {
+    run(R"code(
+        template <typename T>
+        struct A {
+            using type = T* const;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename A<X>::type;
+            using expect = X* const;
+        };
+    )code");
+}
+
+TEST_CASE(ConstRefTypedef) {
+    run(R"code(
+        template <typename T>
+        struct A {
+            using c = const T;
+            using type = c&;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename A<X>::type;
+            using expect = const X&;
+        };
+    )code");
+}
+
+TEST_CASE(PointerChainRef) {
+    run(R"code(
+        template <typename T>
+        struct A {
+            using p = T*;
+            using pp = p*;
+            using type = pp&;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename A<X>::type;
+            using expect = X**&;
+        };
+    )code");
+}
+
+TEST_CASE(TypedefChainFourTemplates) {
+    run(R"code(
+        template <typename... Ts>
+        struct type_list {};
+
+        template <typename T1>
+        struct A {
+            using type = type_list<T1>;
+        };
+
+        template <typename T2>
+        struct B {
+            using type = typename A<T2>::type;
+        };
+
+        template <typename T3>
+        struct C {
+            using type = typename B<T3>::type;
+        };
+
+        template <typename T4>
+        struct D {
+            using type = typename C<T4>::type;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename D<X>::type;
+            using expect = type_list<X>;
+        };
+    )code");
+}
+
+TEST_CASE(NonDependentBase) {
+    run(R"code(
+        struct Base {
+            using type = int;
+        };
+
+        template <typename T>
+        struct Derived : Base {};
+
+        template <typename X>
+        struct test {
+            using input = typename Derived<X>::type;
+            using expect = int;
+        };
+    )code");
+}
+
+TEST_CASE(ThreeLevelInheritance) {
+    run(R"code(
+        template <typename... Ts>
+        struct type_list {};
+
+        template <typename T>
+        struct L1 {
+            using type = type_list<T>;
+        };
+
+        template <typename T>
+        struct L2 : L1<T> {};
+
+        template <typename T>
+        struct L3 : L2<T> {};
+
+        template <typename T>
+        struct L4 : L3<T> {};
+
+        template <typename X>
+        struct test {
+            using input = typename L4<X>::type;
+            using expect = type_list<X>;
+        };
+    )code");
+}
+
+TEST_CASE(InjectedClassName) {
+    run(R"code(
+        template <typename T>
+        struct A {
+            using type = T;
+            using self = A;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename A<X>::self::type;
+            using expect = X;
+        };
+    )code");
+}
+
+TEST_CASE(NestedMemberDepthMix) {
+    run(R"code(
+        template <typename... Ts>
+        struct type_list {};
+
+        template <typename T>
+        struct Outer {
+            using outer_type = T*;
+
+            template <typename U>
+            struct Inner {
+                using type = type_list<outer_type, U>;
+            };
+        };
+
+        template <typename X, typename Y>
+        struct test {
+            using input = typename Outer<X>::template Inner<Y>::type;
+            using expect = type_list<X*, Y>;
+        };
+    )code");
+}
+
+TEST_CASE(DefaultArgEarlierParam) {
+    run(R"code(
+        template <typename T, typename U = T*>
+        struct A {
+            using type = U;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename A<X>::type;
+            using expect = X*;
+        };
+    )code");
+}
+
+TEST_CASE(AliasTemplateChain) {
+    run(R"code(
+        template <typename T>
+        using first = T;
+
+        template <typename T>
+        using second = first<T>;
+
+        template <typename T>
+        struct A {
+            using type = second<T>;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename A<X>::type;
+            using expect = X;
+        };
+    )code");
+}
+
+TEST_CASE(ClassTemplateAliasTarget) {
+    run(R"code(
+        template <typename T>
+        struct Impl {
+            using type = T;
+        };
+
+        template <typename T>
+        using Alias = Impl<T>;
+
+        template <typename X>
+        struct test {
+            using input = typename Alias<X>::type;
+            using expect = X;
+        };
+    )code");
+}
+
+TEST_CASE(PackLeadingFixed) {
+    run(R"code(
+        template <typename... Ts>
+        struct type_list {};
+
+        template <typename A, typename B, typename... Rest>
+        struct pick {
+            using type = type_list<Rest..., A, B>;
+        };
+
+        template <typename X, typename Y, typename Z, typename W>
+        struct test {
+            using input = typename pick<X, Y, Z, W>::type;
+            using expect = type_list<Z, W, X, Y>;
+        };
+    )code");
+}
+
+TEST_CASE(EmptyPackDeduced) {
+    run(R"code(
+        template <typename... Ts>
+        struct type_list {};
+
+        template <typename A, typename... Rest>
+        struct pick {
+            using type = type_list<A, Rest...>;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename pick<X>::type;
+            using expect = type_list<X>;
+        };
+    )code");
+}
+
+TEST_CASE(PackThroughTwoLayers) {
+    run(R"code(
+        template <typename... Ts>
+        struct type_list {};
+
+        template <typename... Us>
+        struct Inner {
+            using type = type_list<Us...>;
+        };
+
+        template <typename... Vs>
+        struct Outer {
+            using type = typename Inner<Vs...>::type;
+        };
+
+        template <typename... Ts>
+        struct test {
+            using input = typename Outer<Ts...>::type;
+            using expect = type_list<Ts...>;
+        };
+    )code");
+}
+
+TEST_CASE(PackDefaultInterplay) {
+    run(R"code(
+        template <typename... Ts>
+        struct type_list {};
+
+        template <typename T, typename U = int, typename... Vs>
+        struct A {
+            using type = type_list<T, U, Vs...>;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename A<X>::type;
+            using expect = type_list<X, int>;
+        };
+    )code");
+}
+
+TEST_CASE(MixedPackElements) {
+    run(R"code(
+        template <typename... Ts>
+        struct type_list {};
+
+        template <typename... Us>
+        struct A {
+            using type = type_list<Us...>;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename A<int, X, float>::type;
+            using expect = type_list<int, X, float>;
+        };
+    )code");
+}
+
+TEST_CASE(NttpPassthrough) {
+    run(R"code(
+        template <typename T, int N>
+        struct box {};
+
+        template <typename T, int N>
+        struct S {
+            using type = box<T, N>;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename S<X, 5>::type;
+            using expect = box<X, 5>;
+        };
+    )code");
+}
+
+TEST_CASE(NttpBoolValue) {
+    run(R"code(
+        template <typename T, bool B>
+        struct box {};
+
+        template <typename T, bool B>
+        struct S {
+            using type = box<T, B>;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename S<X, true>::type;
+            using expect = box<X, true>;
+        };
+    )code");
+}
+
+TEST_CASE(NttpEnumValue) {
+    run(R"code(
+        enum Color { Red, Green, Blue };
+
+        template <typename T, Color C>
+        struct box {};
+
+        template <typename T, Color C>
+        struct S {
+            using type = box<T, C>;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename S<X, Green>::type;
+            using expect = box<X, Green>;
+        };
+    )code");
+}
+
+TEST_CASE(MultiDimArray) {
+    run(R"code(
+        template <typename T, unsigned long N>
+        struct S {
+            using type = T[N][3];
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename S<X, 4>::type;
+            using expect = X[4][3];
+        };
+    )code");
+}
+
+TEST_CASE(ArrayOfPointer) {
+    run(R"code(
+        template <typename T, unsigned long N>
+        struct S {
+            using type = T*[N];
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename S<X, 2>::type;
+            using expect = X*[2];
+        };
+    )code");
+}
+
+TEST_CASE(RebindTrailingArgs) {
+    run(R"code(
+        template <typename A, typename B, typename C>
+        struct triple {};
+
+        template <typename Old, typename New>
+        struct replace_first {};
+
+        template <template <typename...> typename TT,
+                  typename New,
+                  typename T,
+                  typename... Rest>
+        struct replace_first<TT<T, Rest...>, New> {
+            using type = TT<New, Rest...>;
+        };
+
+        template <typename X, typename Y>
+        struct test {
+            using input = typename replace_first<triple<int, X, Y>, float>::type;
+            using expect = triple<float, X, Y>;
+        };
+    )code");
+}
+
+TEST_CASE(TemplatePackExtract) {
+    run(R"code(
+        template <typename... Ts>
+        struct type_list {};
+
+        template <typename T>
+        struct wrap {};
+
+        template <template <typename...> typename TT, typename... Us>
+        struct wrap<TT<Us...>> {
+            using type = TT<Us...>;
+        };
+
+        template <typename X, typename Y>
+        struct test {
+            using input = typename wrap<type_list<X, Y>>::type;
+            using expect = type_list<X, Y>;
+        };
+    )code");
+}
+
+TEST_CASE(TemplateSwapArgs) {
+    run(R"code(
+        template <typename A, typename B>
+        struct pair {};
+
+        template <typename T>
+        struct first_of {};
+
+        template <template <typename, typename> typename TT, typename A, typename B>
+        struct first_of<TT<A, B>> {
+            using type = TT<B, A>;
+        };
+
+        template <typename X, typename Y>
+        struct test {
+            using input = typename first_of<pair<X, Y>>::type;
+            using expect = pair<Y, X>;
+        };
+    )code");
+}
+
+TEST_CASE(PointerCvOrdering) {
+    run(R"code(
+        template <typename... Ts>
+        struct type_list {};
+
+        template <typename T>
+        struct trait {
+            using type = type_list<T>;
+        };
+
+        template <typename T>
+        struct trait<T*> {
+            using type = type_list<T, T>;
+        };
+
+        template <typename T>
+        struct trait<const T*> {
+            using type = type_list<T, T, T>;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename trait<const X*>::type;
+            using expect = type_list<X, X, X>;
+        };
+    )code");
+}
+
+TEST_CASE(PointerDoubleOrdering) {
+    run(R"code(
+        template <typename... Ts>
+        struct type_list {};
+
+        template <typename T>
+        struct rank {
+            using type = type_list<T>;
+        };
+
+        template <typename T>
+        struct rank<T*> {
+            using type = type_list<T, T>;
+        };
+
+        template <typename T>
+        struct rank<T**> {
+            using type = type_list<T, T, T>;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename rank<X**>::type;
+            using expect = type_list<X, X, X>;
+        };
+    )code");
+}
+
+TEST_CASE(RefPartialOrdering) {
+    run(R"code(
+        template <typename... Ts>
+        struct type_list {};
+
+        template <typename T>
+        struct classify {
+            using type = type_list<T>;
+        };
+
+        template <typename T>
+        struct classify<T*> {
+            using type = type_list<T, T>;
+        };
+
+        template <typename T>
+        struct classify<T&> {
+            using type = type_list<T, T, T>;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename classify<X*>::type;
+            using expect = type_list<X, X>;
+        };
+    )code");
+}
+
+TEST_CASE(PartialSecondArg) {
+    run(R"code(
+        template <typename... Ts>
+        struct type_list {};
+
+        template <typename A, typename B>
+        struct combine {
+            using type = A;
+        };
+
+        template <typename A, typename B>
+        struct combine<A, B*> {
+            using type = type_list<A, B>;
+        };
+
+        template <typename X, typename Y>
+        struct test {
+            using input = typename combine<X, Y*>::type;
+            using expect = type_list<X, Y>;
+        };
+    )code");
+}
+
+TEST_CASE(TemplateIdPartial) {
+    run(R"code(
+        template <typename... Ts>
+        struct type_list {};
+
+        template <typename T>
+        struct vec {};
+
+        template <typename T>
+        struct unwrap {
+            using type = T;
+        };
+
+        template <typename T>
+        struct unwrap<vec<T>> {
+            using type = type_list<T>;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename unwrap<vec<X>>::type;
+            using expect = type_list<X>;
+        };
+    )code");
+}
+
+TEST_CASE(DetectorMemberPresent) {
+    run(R"code(
+        template <typename... Ts>
+        using void_t = void;
+
+        template <typename... Ts>
+        struct type_list {};
+
+        template <typename T, typename = void>
+        struct detect {
+            using type = int;
+        };
+
+        template <typename T>
+        struct detect<T, void_t<typename T::element>> {
+            using type = typename T::element;
+        };
+
+        template <typename T>
+        struct has_elem {
+            using element = type_list<T>;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename detect<has_elem<X>>::type;
+            using expect = type_list<X>;
+        };
+    )code");
+}
+
+TEST_CASE(DetectorMemberAbsent) {
+    run(R"code(
+        template <typename... Ts>
+        using void_t = void;
+
+        template <typename... Ts>
+        struct type_list {};
+
+        template <typename T, typename = void>
+        struct detect {
+            using type = type_list<T>;
+        };
+
+        template <typename T>
+        struct detect<T, void_t<typename T::element>> {
+            using type = typename T::element;
+        };
+
+        template <typename T>
+        struct no_elem {
+            using other = int;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename detect<no_elem<X>>::type;
+            using expect = type_list<no_elem<X>>;
+        };
+    )code");
+}
+
+TEST_CASE(DetectorViaBase) {
+    run(R"code(
+        template <typename... Ts>
+        using void_t = void;
+
+        template <typename... Ts>
+        struct type_list {};
+
+        template <typename T, typename = void>
+        struct detect {
+            using type = int;
+        };
+
+        template <typename T>
+        struct detect<T, void_t<typename T::element>> {
+            using type = typename T::element;
+        };
+
+        template <typename T>
+        struct elem_base {
+            using element = type_list<T>;
+        };
+
+        template <typename T>
+        struct elem_derived : elem_base<T> {};
+
+        template <typename X>
+        struct test {
+            using input = typename detect<elem_derived<X>>::type;
+            using expect = type_list<X>;
+        };
+    )code");
+}
+
+TEST_CASE(NestedRebindDetector) {
+    run(R"code(
+        template <typename... Ts>
+        using void_t = void;
+
+        template <typename T>
+        struct alloc {
+            template <typename U>
+            struct rebind {
+                using other = alloc<U>;
+            };
+        };
+
+        template <typename A, typename U, typename = void>
+        struct rebind_inner {
+            using type = int;
+        };
+
+        template <typename A, typename U>
+        struct rebind_inner<A, U, void_t<typename A::template rebind<U>::other>> {
+            using type = typename A::template rebind<U>::other;
+        };
+
+        template <typename A, typename U>
+        struct rebind_outer {
+            using type = typename rebind_inner<A, U>::type;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename rebind_outer<alloc<X>, float>::type;
+            using expect = alloc<float>;
+        };
+    )code");
+}
+
+TEST_CASE(PartialMemberViaBase) {
+    run(R"code(
+        template <typename... Ts>
+        struct type_list {};
+
+        template <typename T>
+        struct holder {
+            using type = type_list<T>;
+        };
+
+        template <typename T>
+        struct picker {
+            using type = int;
+        };
+
+        template <typename T>
+        struct picker<T*> : holder<T> {};
+
+        template <typename X>
+        struct test {
+            using input = typename picker<X*>::type;
+            using expect = type_list<X>;
+        };
+    )code");
+}
+
+TEST_CASE(CrtpPartialSpec) {
+    run(R"code(
+        template <typename... Ts>
+        struct type_list {};
+
+        template <typename D>
+        struct facade {
+            using type = typename D::value;
+        };
+
+        template <typename T>
+        struct widget;
+
+        template <typename T>
+        struct widget<T*> : facade<widget<T*>> {
+            using value = type_list<T>;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename widget<X*>::type;
+            using expect = type_list<X>;
+        };
+    )code");
+}
+
+TEST_CASE(InheritanceThroughPartial) {
+    run(R"code(
+        template <typename... Ts>
+        struct type_list {};
+
+        template <typename T>
+        struct groot {
+            using type = type_list<T>;
+        };
+
+        template <typename T>
+        struct mid {
+            using type = int;
+        };
+
+        template <typename T>
+        struct mid<T*> : groot<T> {};
+
+        template <typename T>
+        struct topc : mid<T*> {};
+
+        template <typename X>
+        struct test {
+            using input = typename topc<X>::type;
+            using expect = type_list<X>;
+        };
+    )code");
+}
+
+TEST_CASE(RecursivePointerPeel) {
+    run(R"code(
+        template <typename T>
+        struct strip {
+            using type = T;
+        };
+
+        template <typename T>
+        struct strip<T*> {
+            using type = typename strip<T>::type;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename strip<X***>::type;
+            using expect = X;
+        };
+    )code");
+}
+
+TEST_CASE(ConditionalFalseType) {
+    run(R"code(
+        template <bool B, typename T, typename F>
+        struct pick {
+            using type = T;
+        };
+
+        template <typename T, typename F>
+        struct pick<false, T, F> {
+            using type = F;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename pick<false, int, X>::type;
+            using expect = X;
+        };
+    )code");
+}
+
+TEST_CASE(TemplateThroughLayer) {
+    run(R"code(
+        template <typename... Ts>
+        struct type_list {};
+
+        template <template <typename...> typename TT, typename... Us>
+        struct apply {
+            using type = TT<Us...>;
+        };
+
+        template <template <typename...> typename TT, typename... Us>
+        struct indirect {
+            using type = typename apply<TT, Us...>::type;
+        };
+
+        template <typename X, typename Y>
+        struct test {
+            using input = typename indirect<type_list, X, Y>::type;
+            using expect = type_list<X, Y>;
+        };
+    )code");
+}
+
 TEST_CASE(StandardMap) {
     add_main("main.cpp", R"code(
         #include <map>

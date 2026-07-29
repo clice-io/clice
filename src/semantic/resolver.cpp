@@ -1051,6 +1051,22 @@ private:
                     break;
                 }
 
+                case clang::TemplateArgument::Template: {
+                    /// A template template parameter forwarded as an argument
+                    /// (`apply<TT, Us...>`) is substituted with its binding.
+                    if(auto TTP = llvm::dyn_cast_or_null<clang::TemplateTemplateParmDecl>(
+                           argument.getAsTemplate().getAsTemplateDecl())) {
+                        auto* bound = stack.find_argument(TTP, TTP->getDepth(), TTP->getIndex());
+                        if(bound && bound->getKind() == clang::TemplateArgument::Template) {
+                            out.push_back(*bound);
+                            changed = true;
+                            continue;
+                        }
+                    }
+                    out.push_back(argument);
+                    break;
+                }
+
                 default: {
                     out.push_back(argument);
                     break;

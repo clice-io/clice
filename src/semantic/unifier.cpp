@@ -286,6 +286,17 @@ bool TypeUnifier::unify(const clang::TemplateArgument& pattern,
             if(argument.getKind() == clang::TemplateArgument::Integral) {
                 return llvm::APSInt::isSameValue(pattern.getAsIntegral(), argument.getAsIntegral());
             }
+            /// As-written value arguments (`pick<false, ...>`) arrive as
+            /// expressions; evaluate constants so value-specialized partials
+            /// can match.
+            if(argument.getKind() == clang::TemplateArgument::Expression) {
+                auto expr = argument.getAsExpr();
+                if(!expr->isValueDependent()) {
+                    if(auto value = expr->getIntegerConstantExpr(context)) {
+                        return llvm::APSInt::isSameValue(pattern.getAsIntegral(), *value);
+                    }
+                }
+            }
             return false;
         }
 
