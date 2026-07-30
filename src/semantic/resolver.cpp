@@ -359,7 +359,21 @@ public:
 
             if(auto TTPD = llvm::dyn_cast<clang::TemplateTemplateParmDecl>(param);
                TTPD && TTPD->hasDefaultArgument()) {
-                out.emplace_back(TTPD->getDefaultArgument().getArgument());
+                auto& fallback = TTPD->getDefaultArgument().getArgument();
+
+                /// A default naming an earlier parameter (`U = TT`) takes
+                /// that parameter's already-supplied argument.
+                if(fallback.getKind() == clang::TemplateArgument::Template) {
+                    if(auto prev = llvm::dyn_cast_or_null<clang::TemplateTemplateParmDecl>(
+                           fallback.getAsTemplate().getAsTemplateDecl());
+                       prev && prev->getDepth() == list->getDepth() &&
+                       prev->getIndex() < out.size()) {
+                        out.emplace_back(out[prev->getIndex()]);
+                        continue;
+                    }
+                }
+
+                out.emplace_back(fallback);
                 continue;
             }
 
@@ -1072,6 +1086,10 @@ private:
                     params.push_back(context.getAdjustedParameterType(rewritten));
                 }
                 if(!representable) {
+                    break;
+                }
+                /// Functions cannot return arrays or functions; degrade.
+                if(ret->isArrayType() || ret->isFunctionType()) {
                     break;
                 }
                 if(changed) {

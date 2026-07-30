@@ -482,6 +482,13 @@ bool TypeUnifier::unify(TemplateArguments patterns, TemplateArguments arguments)
     unsigned i = 0;
     for(auto& pattern: flat_patterns) {
         if(pattern.isPackExpansion()) {
+            /// Only a trailing pack expansion is deduced. A non-trailing one
+            /// (`void(Ts..., int)`) must reject the match rather than greedily
+            /// consuming the suffix and mis-selecting the specialization.
+            if(&pattern != &flat_patterns.back()) {
+                return false;
+            }
+
             /// A trailing pack expansion matches all remaining arguments
             /// element-wise: pack parameters inside the pattern accumulate
             /// one binding per argument (`box<Us>...` against

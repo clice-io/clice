@@ -2674,6 +2674,77 @@ TEST_CASE(QualifiedCallArity) {
     EXPECT_EQ(candidates.size(), 2u);
 }
 
+TEST_CASE(TemplateDefaultForward) {
+    run(R"code(
+        template <typename T>
+        struct box {};
+
+        template <template <typename> class TT, template <typename> class U = TT>
+        struct A {
+            template <typename X>
+            using type = U<X>;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename A<box>::template type<X>;
+            using expect = box<X>;
+        };
+    )code");
+}
+
+TEST_CASE(NonTrailingPack) {
+    /// A non-trailing pack expansion is non-deduced: the partial must not
+    /// greedily swallow the trailing `int` and mis-select itself.
+    run(R"code(
+        template <typename... Ts>
+        struct type_list {};
+
+        template <typename A, typename B>
+        struct trait {
+            using type = void;
+        };
+
+        template <typename... Ts>
+        struct trait<type_list<Ts...>, void(Ts..., int)> {
+            using type = int;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename trait<type_list<X>, void(X)>::type;
+            using expect = void;
+        };
+    )code");
+}
+
+TEST_CASE(FunctionReturnArray) {
+    /// `A<int[2], X>::type` would be an array-returning function type; the
+    /// resolver must degrade rather than fabricate it.
+    add_main("main.cpp", R"code(
+        template <typename T, typename U>
+        struct A {
+            using type = T();
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename A<int[2], X>::type;
+            using expect = void;
+        };
+    )code");
+    ASSERT_TRUE(compile());
+
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
+
+    auto input = unit->resolver().resolve(finder.input);
+    ASSERT_FALSE(input.isNull());
+    if(auto FPT = input->getAs<clang::FunctionProtoType>()) {
+        EXPECT_FALSE(FPT->getReturnType()->isArrayType());
+    }
+}
+
 TEST_CASE(DefaultsInCanonical) {
     /// A class template bound through a template template parameter: the
     /// rebuilt specialization's canonical arguments must include the bound
