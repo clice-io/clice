@@ -2039,6 +2039,77 @@ TEST_CASE(CallArityFilter) {
     EXPECT_EQ(candidates.size(), 2u);
 }
 
+TEST_CASE(PackElementCache) {
+    /// Each element of `box<Ts>::type...` resolves the same dependent-name
+    /// node under a different binding; a node-keyed cache hit would repeat
+    /// the first element for every later one.
+    run(R"code(
+        template <typename T>
+        struct box {
+            using type = T;
+        };
+
+        template <typename... Ts>
+        struct type_list {};
+
+        template <typename... Ts>
+        struct A {
+            using type = type_list<typename box<Ts>::type...>;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename A<X, int>::type;
+            using expect = type_list<X, int>;
+        };
+    )code");
+}
+
+TEST_CASE(InheritedDefaultArgument) {
+    run(R"code(
+        template <typename T, typename U = T>
+        struct A;
+
+        template <typename T, typename U>
+        struct A {
+            using type = U;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename A<X>::type;
+            using expect = X;
+        };
+    )code");
+}
+
+TEST_CASE(VoidReference) {
+    /// `A<void, X>::type` would be `void&` — ill-formed; the resolver must
+    /// degrade rather than fabricate the reference.
+    add_main("main.cpp", R"code(
+        template <typename T, typename X>
+        struct A {
+            using type = T&;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename A<void, X>::type;
+            using expect = void;
+        };
+    )code");
+    ASSERT_TRUE(compile());
+
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
+
+    auto input = unit->resolver().resolve(finder.input);
+    ASSERT_FALSE(input.isNull());
+    if(input->isReferenceType()) {
+        EXPECT_FALSE(input->getPointeeType()->isVoidType());
+    }
+}
+
 TEST_CASE(ValuePackSplice) {
     run(R"code(
         template <int... Ns>

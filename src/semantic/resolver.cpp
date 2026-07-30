@@ -286,9 +286,27 @@ public:
                TTPD && TTPD->hasDefaultArgument()) {
                 auto type = TTPD->getDefaultArgument().getArgument().getAsType();
 
+                /// A default inherited from an earlier redeclaration still
+                /// references that declaration's parameter decls; push every
+                /// redecl's list (sharing the same arguments) so decl-pointer
+                /// matching finds them wherever the default was written.
+                auto frames = stack.data.size();
+                if(auto RTD = llvm::dyn_cast<clang::RedeclarableTemplateDecl>(TD)) {
+                    for(auto redecl: RTD->redecls()) {
+                        auto params =
+                            llvm::cast<clang::TemplateDecl>(redecl)->getTemplateParameters();
+                        if(params != list) {
+                            stack.push(TD, params, out);
+                        }
+                    }
+                }
                 stack.push(TD, list, out);
+
                 auto result = substitute(type);
-                stack.pop();
+
+                while(stack.data.size() > frames) {
+                    stack.pop();
+                }
 
                 if(result.isNull()) {
                     return false;
@@ -458,7 +476,7 @@ public:
         } else if(auto DTST = type->getAs<clang::DependentTemplateSpecializationType>()) {
             // If this DTST was already resolved (possibly to itself when unresolvable),
             // skip the redundant lookup.
-            if(resolved.count(DTST)) {
+            if(pack_narrowing == 0 && resolved.count(DTST)) {
                 return lookup_result();
             }
 
@@ -498,8 +516,10 @@ public:
             return lookup_result();
         }
 
-        if(auto iter = resolved.find(NNS); iter != resolved.end()) {
-            return lookup(iter->second, name);
+        if(pack_narrowing == 0) {
+            if(auto iter = resolved.find(NNS); iter != resolved.end()) {
+                return lookup(iter->second, name);
+            }
         }
 
         // Handle each NestedNameSpecifier kind:
@@ -518,7 +538,9 @@ public:
                     stack.pop();
                 }
                 if(!type.isNull()) {
-                    resolved.try_emplace(NNS, type);
+                    if(pack_narrowing == 0) {
+                        resolved.try_emplace(NNS, type);
+                    }
                     return lookup(type, name);
                 }
                 return {};
@@ -811,10 +833,15 @@ private:
             }
 
             /// Substituted reference pointees collapse per the language
-            /// rules: `&` wins over anything, `&& &&` stays `&&`.
+            /// rules: `&` wins over anything, `&& &&` stays `&&`. Pointees a
+            /// reference cannot bind to (`void`, qualified function types)
+            /// degrade instead of fabricating an invalid node.
             case clang::Type::LValueReference: {
                 auto pointee =
                     rewrite(llvm::cast<clang::ReferenceType>(T)->getPointeeType(), policy);
+                if(!pointee.getNonReferenceType().isReferenceable()) {
+                    break;
+                }
                 result = context.getLValueReferenceType(pointee.getNonReferenceType());
                 break;
             }
@@ -822,6 +849,9 @@ private:
             case clang::Type::RValueReference: {
                 auto pointee =
                     rewrite(llvm::cast<clang::ReferenceType>(T)->getPointeeType(), policy);
+                if(!pointee.getNonReferenceType().isReferenceable()) {
+                    break;
+                }
                 if(pointee->isLValueReferenceType()) {
                     result = context.getLValueReferenceType(pointee.getNonReferenceType());
                 } else {
@@ -1361,6 +1391,10 @@ private:
         llvm::SmallVector<clang::TemplateArgument, 2> saved(
             llvm::map_range(slots, [](auto* slot) { return *slot; }));
 
+        /// While narrowed, node-pointer-keyed caches are bypassed: the same
+        /// pattern node resolves differently per element, and a cached first
+        /// element would silently repeat for every later one.
+        pack_narrowing += 1;
         bool ok = true;
         llvm::SmallVector<clang::TemplateArgument, 4> expanded;
         for(unsigned k = 0; k < length && ok; k += 1) {
@@ -1373,6 +1407,7 @@ private:
                 expanded.emplace_back(element);
             }
         }
+        pack_narrowing -= 1;
 
         for(auto [slot, pack]: llvm::zip(slots, saved)) {
             *slot = pack;
@@ -1659,10 +1694,12 @@ private:
         indent += 1;
 
         // Check cache.
-        if(auto iter = resolved.find(DNT); iter != resolved.end()) {
-            LOG_DEBUG("{}" "→ '{}' (cached)", pad(), iter->second.getAsString());
-            indent -= 1;
-            return iter->second;
+        if(pack_narrowing == 0) {
+            if(auto iter = resolved.find(DNT); iter != resolved.end()) {
+                LOG_DEBUG("{}" "→ '{}' (cached)", pad(), iter->second.getAsString());
+                indent -= 1;
+                return iter->second;
+            }
         }
 
         // Cycle detection: if we're already resolving this DNT, bail out.
@@ -1716,7 +1753,9 @@ private:
         if(!result.isNull()) {
             LOG_DEBUG("{}" "→ '{}'", pad(), result.getAsString());
             indent -= 1;
-            resolved.try_emplace(DNT, result);
+            if(pack_narrowing == 0) {
+                resolved.try_emplace(DNT, result);
+            }
             return result;
         }
 
@@ -1735,7 +1774,9 @@ private:
         indent += 1;
 
         auto& template_name = DTST->getDependentTemplateName();
-        bool cacheable = template_name.getQualifier() != nullptr || !scope;
+        /// Scope-threaded and pack-narrowed resolutions both depend on
+        /// context the node pointer does not capture; neither may be cached.
+        bool cacheable = (template_name.getQualifier() != nullptr || !scope) && pack_narrowing == 0;
 
         if(cacheable) {
             if(auto iter = resolved.find(DTST); iter != resolved.end()) {
@@ -1821,6 +1862,9 @@ private:
     unsigned depth = 0;
     unsigned steps = 0;
     unsigned probing = 0;
+    /// Non-zero while a pack element rewrite has a Pack binding narrowed to
+    /// one element; node-pointer-keyed caches are bypassed for the duration.
+    unsigned pack_narrowing = 0;
     bool ctd_guard_tripped = false;
 
     /// Hard ceiling on rewrite steps per query; bounds the total work
