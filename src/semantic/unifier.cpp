@@ -65,6 +65,19 @@ clang::QualType peel(clang::QualType type, clang::Qualifiers& quals) {
     }
 }
 
+/// Can `TD` be bound to the template template parameter `TTP`? Approximated
+/// by arity (defaults and packs included): a unary parameter must not accept
+/// a binary template. Parameter-kind agreement is not checked.
+bool template_compatible(const clang::TemplateTemplateParmDecl* TTP, clang::TemplateDecl* TD) {
+    auto params = TTP->getTemplateParameters();
+    auto candidate = TD->getTemplateParameters();
+    if(params->hasParameterPack()) {
+        return true;
+    }
+    return params->size() >= candidate->getMinRequiredArguments() &&
+           (params->size() <= candidate->size() || candidate->hasParameterPack());
+}
+
 }  // namespace
 
 const clang::NonTypeTemplateParmDecl* referenced_nttp(const clang::Expr* expr) {
@@ -250,6 +263,10 @@ bool TypeUnifier::unify(clang::QualType pattern, clang::QualType argument) {
             if(auto TTP = llvm::dyn_cast_or_null<clang::TemplateTemplateParmDecl>(
                    pattern_name.getAsTemplateDecl());
                TTP && TTP->getDepth() == depth) {
+                if(auto TD = argument_name.getAsTemplateDecl();
+                   TD && !template_compatible(TTP, TD)) {
+                    return false;
+                }
                 auto head = clang::TemplateArgument(argument_name);
                 if(expanding && TTP->isParameterPack() ? !collect(TTP->getIndex(), head)
                                                        : !bind(TTP->getIndex(), head)) {
@@ -269,6 +286,12 @@ bool TypeUnifier::unify(clang::QualType pattern, clang::QualType argument) {
                 return false;
             }
 
+            /// The calling convention is part of the function type: an
+            /// ABI-specific pattern must not accept the default convention.
+            if(PF->getExtInfo().getCC() != AF->getExtInfo().getCC()) {
+                return false;
+            }
+
             /// noexcept participates in the function type; a mismatch rejects
             /// the match unless either side's specification is still value
             /// dependent (`noexcept(B)` with unbound B).
@@ -276,6 +299,28 @@ bool TypeUnifier::unify(clang::QualType pattern, clang::QualType argument) {
                AF->getExceptionSpecType() != clang::EST_DependentNoexcept &&
                PF->isNothrow() != AF->isNothrow()) {
                 return false;
+            }
+
+            /// `noexcept(B)` with a bare parameter deduces B from the
+            /// argument's specification, like an array bound.
+            if(PF->getExceptionSpecType() == clang::EST_DependentNoexcept) {
+                if(auto NTTP = referenced_nttp(PF->getNoexceptExpr());
+                   NTTP && NTTP->getDepth() == depth) {
+                    clang::TemplateArgument bound;
+                    if(AF->getExceptionSpecType() == clang::EST_DependentNoexcept &&
+                       AF->getNoexceptExpr()) {
+                        bound = clang::TemplateArgument(AF->getNoexceptExpr(),
+                                                        /*IsCanonical=*/false);
+                    } else if(!NTTP->getType()->isDependentType()) {
+                        bound = clang::TemplateArgument(
+                            context,
+                            llvm::APSInt(llvm::APInt(1, AF->isNothrow() ? 1 : 0), true),
+                            NTTP->getType());
+                    }
+                    if(!bound.isNull() && !bind(NTTP->getIndex(), bound)) {
+                        return false;
+                    }
+                }
             }
 
             /// Method cv/ref qualifiers are part of the type as well:
@@ -442,6 +487,12 @@ bool TypeUnifier::unify(const clang::TemplateArgument& pattern,
             if(auto TTP = llvm::dyn_cast_or_null<clang::TemplateTemplateParmDecl>(
                    pattern.getAsTemplate().getAsTemplateDecl());
                TTP && TTP->getDepth() == depth) {
+                if(argument.getKind() == clang::TemplateArgument::Template) {
+                    if(auto TD = argument.getAsTemplate().getAsTemplateDecl();
+                       TD && !template_compatible(TTP, TD)) {
+                        return false;
+                    }
+                }
                 if(expanding && TTP->isParameterPack()) {
                     return collect(TTP->getIndex(), argument);
                 }

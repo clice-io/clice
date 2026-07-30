@@ -2674,6 +2674,111 @@ TEST_CASE(QualifiedCallArity) {
     EXPECT_EQ(candidates.size(), 2u);
 }
 
+TEST_CASE(NoexceptDeduce) {
+    run(R"code(
+        template <bool B>
+        struct flag {};
+
+        template <typename T>
+        struct trait {
+            using type = void;
+        };
+
+        template <bool B>
+        struct trait<void() noexcept(B)> {
+            using type = flag<B>;
+        };
+
+        template <typename X, bool P>
+        struct test {
+            using input = typename trait<void() noexcept(P)>::type;
+            using expect = flag<P>;
+        };
+    )code");
+}
+
+TEST_CASE(TemplateArityMismatch) {
+    /// `binary` needs two arguments; a unary template template parameter
+    /// cannot accept it, so the primary applies.
+    run(R"code(
+        template <typename A, typename B>
+        struct binary {};
+
+        template <typename T>
+        struct trait {
+            using type = void;
+        };
+
+        template <template <typename> class TT, typename... Us>
+        struct trait<TT<Us...>> {
+            using type = int;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename trait<binary<X, int>>::type;
+            using expect = void;
+        };
+    )code");
+}
+
+TEST_CASE(VoidFunctionParam) {
+    /// `A<void, X>::type` would be a function taking a void parameter; the
+    /// resolver must degrade rather than fabricate it.
+    add_main("main.cpp", R"code(
+        template <typename T, typename U>
+        struct A {
+            using type = void(T);
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename A<void, X>::type;
+            using expect = void;
+        };
+    )code");
+    ASSERT_TRUE(compile());
+
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
+
+    auto input = unit->resolver().resolve(finder.input);
+    ASSERT_FALSE(input.isNull());
+    if(auto FPT = input->getAs<clang::FunctionProtoType>()) {
+        for(auto param: FPT->getParamTypes()) {
+            EXPECT_FALSE(param->isVoidType());
+        }
+    }
+}
+
+TEST_CASE(VoidMemberPointee) {
+    /// `void C::*` is not a valid member pointer; degrade.
+    add_main("main.cpp", R"code(
+        struct C {};
+
+        template <typename T, typename U>
+        struct A {
+            using type = T C::*;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename A<void, X>::type;
+            using expect = void;
+        };
+    )code");
+    ASSERT_TRUE(compile());
+
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
+
+    auto input = unit->resolver().resolve(finder.input);
+    ASSERT_FALSE(input.isNull());
+    if(auto MPT = input->getAs<clang::MemberPointerType>()) {
+        EXPECT_FALSE(MPT->getPointeeType()->isVoidType());
+    }
+}
+
 TEST_CASE(ArraySizeForward) {
     run(R"code(
         template <typename T, unsigned long N>

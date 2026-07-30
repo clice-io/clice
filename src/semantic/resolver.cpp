@@ -930,9 +930,10 @@ private:
                 if(pointee == MPT->getPointeeType() && rewritten_cls.getTypePtr() == cls) {
                     break;
                 }
-                /// Pointers to reference members do not exist, and the owner
-                /// must stay a class type (or still-dependent); degrade.
-                if(pointee->isReferenceType()) {
+                /// Pointers to reference or void members do not exist, and
+                /// the owner must stay a class type (or still-dependent);
+                /// degrade.
+                if(pointee->isReferenceType() || pointee->isVoidType()) {
                     break;
                 }
                 if(!rewritten_cls->isDependentType() && !rewritten_cls->isRecordType()) {
@@ -1062,7 +1063,8 @@ private:
                     if(auto PET = param->getAs<clang::PackExpansionType>()) {
                         auto splice = [&](llvm::ArrayRef<clang::TemplateArgument> elements) {
                             for(auto& element: elements) {
-                                if(element.getKind() != clang::TemplateArgument::Type) {
+                                if(element.getKind() != clang::TemplateArgument::Type ||
+                                   element.getAsType()->isVoidType()) {
                                     representable = false;
                                     return;
                                 }
@@ -1091,7 +1093,12 @@ private:
                     changed |= rewritten != param;
                     /// Parameters decay (`void(T)` with `T = int[2]` is
                     /// `void(int*)`), so a substituted type must be adjusted
-                    /// before it enters the prototype.
+                    /// before it enters the prototype; a substituted `void`
+                    /// parameter cannot exist and degrades.
+                    if(rewritten->isVoidType()) {
+                        representable = false;
+                        break;
+                    }
                     params.push_back(context.getAdjustedParameterType(rewritten));
                 }
                 if(!representable) {
