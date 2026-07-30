@@ -2674,6 +2674,58 @@ TEST_CASE(QualifiedCallArity) {
     EXPECT_EQ(candidates.size(), 2u);
 }
 
+TEST_CASE(TypedValueMismatch) {
+    /// Value deduction requires the parameter and argument types to agree:
+    /// the bool partial never matches an int argument.
+    run(R"code(
+        template <auto V>
+        struct A {
+            using type = void;
+        };
+
+        template <bool B>
+        struct A<B> {
+            using type = int;
+        };
+
+        template <int X>
+        struct test {
+            using input = typename A<X>::type;
+            using expect = void;
+        };
+    )code");
+}
+
+TEST_CASE(PrivateMemberProbe) {
+    /// Access participates in SFINAE: a private `secret` fails the probe
+    /// and keeps the primary.
+    run(R"code(
+        template <typename... Ts>
+        using void_t = void;
+
+        template <typename T, typename = void>
+        struct detect {
+            using type = void;
+        };
+
+        template <typename T>
+        struct detect<T, void_t<typename T::secret>> {
+            using type = int;
+        };
+
+        template <typename T>
+        class wrap {
+            using secret = int;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename detect<wrap<X>>::type;
+            using expect = void;
+        };
+    )code");
+}
+
 TEST_CASE(UnboundedArgument) {
     /// The bounded pattern `U[N]` must not absorb the unbounded `X[]`.
     run(R"code(

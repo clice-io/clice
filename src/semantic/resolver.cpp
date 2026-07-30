@@ -1818,6 +1818,11 @@ private:
         if(llvm::isa<clang::ValueDecl, clang::FunctionTemplateDecl, clang::VarTemplateDecl>(decl)) {
             return true;
         }
+        /// Access participates in SFINAE: the probe models a use from
+        /// outside the class, where a non-public member never resolves.
+        if(decl->getAccess() == clang::AS_private || decl->getAccess() == clang::AS_protected) {
+            return true;
+        }
         return wants_template && llvm::isa<clang::TypeDecl>(decl);
     }
 

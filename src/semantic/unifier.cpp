@@ -528,6 +528,15 @@ bool TypeUnifier::unify(const clang::TemplateArgument& pattern,
                 auto bound = argument;
                 if(argument.getKind() == clang::TemplateArgument::Expression) {
                     auto expr = argument.getAsExpr();
+
+                    /// Value deduction requires the types to agree: a `bool`
+                    /// pattern parameter never matches an `int` argument, no
+                    /// matter the eventual value.
+                    if(!NTTP->getType()->isDependentType() && !expr->getType()->isDependentType() &&
+                       !context.hasSameUnqualifiedType(NTTP->getType(), expr->getType())) {
+                        return false;
+                    }
+
                     /// An integral TemplateArgument requires a concrete type;
                     /// a parameter typed by an earlier parameter (`T N`) stays
                     /// an expression until that type is substituted.
