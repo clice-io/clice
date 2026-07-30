@@ -2674,6 +2674,99 @@ TEST_CASE(QualifiedCallArity) {
     EXPECT_EQ(candidates.size(), 2u);
 }
 
+TEST_CASE(MixedPackCandidate) {
+    /// A type pack cannot cover `mixed`'s non-type slot, so the primary
+    /// applies even though one type argument would satisfy the defaults.
+    run(R"code(
+        template <typename T, int N = 0>
+        struct mixed {};
+
+        template <typename T>
+        struct trait {
+            using type = void;
+        };
+
+        template <template <typename...> class TT, typename... Us>
+        struct trait<TT<Us...>> {
+            using type = int;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename trait<mixed<X>>::type;
+            using expect = void;
+        };
+    )code");
+}
+
+TEST_CASE(AtomicRewrite) {
+    run(R"code(
+        template <typename T>
+        struct A {
+            using type = _Atomic(T);
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename A<X>::type;
+            using expect = _Atomic(X);
+        };
+    )code");
+}
+
+TEST_CASE(DependentBaseProbe) {
+    /// `D<T>` inherits from the dependent `T`: `foo` may appear after
+    /// instantiation, so the probe stays Unknown and keeps the detector.
+    run(R"code(
+        template <typename... Ts>
+        using void_t = void;
+
+        template <typename T>
+        struct D : T {};
+
+        template <typename T, typename = void>
+        struct detect {
+            using type = void;
+        };
+
+        template <typename T>
+        struct detect<T, void_t<typename D<T>::foo>> {
+            using type = int;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename detect<X>::type;
+            using expect = int;
+        };
+    )code");
+}
+
+TEST_CASE(NegativeArrayBound) {
+    /// `U[-1]` is ill-formed; the resolver must degrade rather than
+    /// fabricate an array from the wrapped-around extent.
+    add_main("main.cpp", R"code(
+        template <int N, typename U>
+        struct A {
+            using type = U[N];
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename A<-1, X>::type;
+            using expect = void;
+        };
+    )code");
+    ASSERT_TRUE(compile());
+
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
+
+    auto input = unit->resolver().resolve(finder.input);
+    ASSERT_FALSE(input.isNull());
+    EXPECT_FALSE(input->isConstantArrayType());
+}
+
 TEST_CASE(DecayedParameter) {
     run(R"code(
         template <typename T>

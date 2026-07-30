@@ -87,7 +87,20 @@ bool template_compatible(const clang::TemplateTemplateParmDecl* TTP, clang::Temp
     };
 
     if(params->hasParameterPack()) {
-        return kinds_match(std::min(params->size(), candidate->size()));
+        /// The pack absorbs every candidate slot past the fixed prefix, so
+        /// each of those slots must agree with the pack's kind (a type pack
+        /// cannot cover a non-type slot, defaulted or not).
+        unsigned fixed = params->size() - 1;
+        if(!kinds_match(std::min(fixed, candidate->size()))) {
+            return false;
+        }
+        auto pack_kind = params->getParam(params->size() - 1)->getKind();
+        for(unsigned i = fixed; i < candidate->size(); i += 1) {
+            if(candidate->getParam(i)->getKind() != pack_kind) {
+                return false;
+            }
+        }
+        return true;
     }
     if(params->size() < candidate->getMinRequiredArguments() ||
        (params->size() > candidate->size() && !candidate->hasParameterPack())) {

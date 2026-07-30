@@ -926,6 +926,15 @@ private:
                 break;
             }
 
+            case clang::Type::Atomic: {
+                auto AT = llvm::cast<clang::AtomicType>(T);
+                auto value = rewrite(AT->getValueType(), policy);
+                if(value != AT->getValueType()) {
+                    result = context.getAtomicType(value);
+                }
+                break;
+            }
+
             case clang::Type::Decayed: {
                 /// A parameter written as a dependent array or function type
                 /// stores its adjusted form in a DecayedType; rebuild from
@@ -1040,6 +1049,12 @@ private:
                 if(auto NTTP = referenced_nttp(DSAT->getSizeExpr())) {
                     auto* argument = stack.find_argument(NTTP, NTTP->getDepth(), NTTP->getIndex());
                     if(argument && argument->getKind() == clang::TemplateArgument::Integral) {
+                        /// A negative bound is ill-formed; fabricating an
+                        /// array from its two's-complement bits would be a
+                        /// wrong answer. Degrade.
+                        if(argument->getAsIntegral().isNegative()) {
+                            break;
+                        }
                         result = context.getConstantArrayType(element,
                                                               argument->getAsIntegral(),
                                                               nullptr,
@@ -1821,6 +1836,20 @@ private:
     /// CTD recursion guard or by step-budget exhaustion proves nothing, and
     /// treating it as absence would prune a partial that real SFINAE keeps —
     /// a wrong answer, not a degradation. Those cases stay Unknown.
+    /// Does `record`'s definition inherit from a still-dependent base? Such
+    /// a base may contribute the probed member only after instantiation, so
+    /// absence is never conclusive through it. An undefined record proves
+    /// nothing either.
+    static bool has_dependent_base(const clang::CXXRecordDecl* record) {
+        auto definition = record->getDefinition();
+        if(!definition) {
+            return true;
+        }
+        return std::ranges::any_of(definition->bases(), [](const clang::CXXBaseSpecifier& base) {
+            return base.getType()->isDependentType();
+        });
+    }
+
     /// Does any specialization of `CTD` — partial or explicit — declare
     /// `name`? Used to gate the Absent verdict: if some specialization has
     /// the member, an empty lookup on dependent arguments proves nothing.
@@ -1849,6 +1878,9 @@ private:
         }
         /// Access participates in SFINAE: the probe models a use from
         /// outside the class, where a non-public member never resolves.
+        /// Friendship of the probing specialization is not modeled — an
+        /// accepted approximation; detectors befriended by their subjects
+        /// degrade to the primary.
         if(decl->getAccess() == clang::AS_private || decl->getAccess() == clang::AS_protected) {
             return true;
         }
@@ -1903,9 +1935,16 @@ private:
                            any_specialization_declares(CTD, name)) {
                             lacks = false;
                         }
+
+                        /// A dependent base (`struct D : T`) may contribute
+                        /// the member after instantiation.
+                        if(lacks && has_dependent_base(CTD->getTemplatedDecl())) {
+                            lacks = false;
+                        }
                     }
                 } else if(auto RD = type->getAsCXXRecordDecl()) {
-                    lacks = conclusive(RD->lookup(name)) && conclusive(lookup_in_bases(RD, name));
+                    lacks = conclusive(RD->lookup(name)) && conclusive(lookup_in_bases(RD, name)) &&
+                            !has_dependent_base(RD);
                 }
             }
         }
