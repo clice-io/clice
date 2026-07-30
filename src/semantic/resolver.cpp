@@ -1108,8 +1108,31 @@ private:
                 if(ret->isArrayType() || ret->isFunctionType()) {
                     break;
                 }
+
+                auto EPI = FPT->getExtProtoInfo();
+
+                /// `noexcept(B)` with a bound bare parameter substitutes at
+                /// the specification level: an expression binding replaces
+                /// the operand whole, a value binding selects the concrete
+                /// specification — no expression is ever rebuilt.
+                if(FPT->getExceptionSpecType() == clang::EST_DependentNoexcept) {
+                    if(auto NTTP = referenced_nttp(FPT->getNoexceptExpr())) {
+                        auto* bound = stack.find_argument(NTTP, NTTP->getDepth(), NTTP->getIndex());
+                        if(bound && bound->getKind() == clang::TemplateArgument::Integral) {
+                            EPI.ExceptionSpec = {};
+                            EPI.ExceptionSpec.Type = bound->getAsIntegral().getBoolValue()
+                                                         ? clang::EST_BasicNoexcept
+                                                         : clang::EST_None;
+                            changed = true;
+                        } else if(bound &&
+                                  bound->getKind() == clang::TemplateArgument::Expression) {
+                            EPI.ExceptionSpec.NoexceptExpr = bound->getAsExpr();
+                            changed = true;
+                        }
+                    }
+                }
+
                 if(changed) {
-                    auto EPI = FPT->getExtProtoInfo();
                     /// Splicing changes the arity; per-parameter ABI info
                     /// cannot be carried over.
                     if(params.size() != FPT->getNumParams()) {

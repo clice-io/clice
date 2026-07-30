@@ -2674,6 +2674,23 @@ TEST_CASE(QualifiedCallArity) {
     EXPECT_EQ(candidates.size(), 2u);
 }
 
+TEST_CASE(NoexceptSubstitute) {
+    /// The leading X offsets P's parameter index so the unsubstituted `B`
+    /// cannot accidentally compare canonically equal.
+    run(R"code(
+        template <bool B>
+        struct A {
+            using type = void() noexcept(B);
+        };
+
+        template <typename X, bool P>
+        struct test {
+            using input = typename A<P>::type;
+            using expect = void() noexcept(P);
+        };
+    )code");
+}
+
 TEST_CASE(NoexceptDeduce) {
     run(R"code(
         template <bool B>
