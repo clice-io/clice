@@ -2674,6 +2674,120 @@ TEST_CASE(QualifiedCallArity) {
     EXPECT_EQ(candidates.size(), 2u);
 }
 
+TEST_CASE(PackArgumentCall) {
+    /// `foo(us...)` may expand to any arity; the filter must keep every
+    /// overload.
+    add_main("main.cpp", R"code(
+        template <typename T>
+        struct S {
+            int foo(int);
+            int foo(int, int);
+
+            template <typename... Us>
+            void call(Us... us) {
+                foo(us...);
+            }
+        };
+    )code");
+    ASSERT_TRUE(compile());
+
+    struct Finder : clang::RecursiveASTVisitor<Finder> {
+        const clang::CallExpr* expr = nullptr;
+
+        bool VisitCallExpr(clang::CallExpr* e) {
+            if(llvm::isa<clang::UnresolvedMemberExpr>(e->getCallee()->IgnoreParenImpCasts())) {
+                expr = e;
+            }
+            return true;
+        }
+    } finder;
+
+    finder.TraverseAST(unit->context());
+    ASSERT_TRUE(finder.expr != nullptr);
+
+    auto candidates = unit->resolver().lookup(finder.expr);
+    EXPECT_EQ(candidates.size(), 2u);
+}
+
+TEST_CASE(AtomicReference) {
+    /// `_Atomic(int&)` does not exist; the resolver must degrade.
+    add_main("main.cpp", R"code(
+        template <typename T, typename U>
+        struct A {
+            using type = _Atomic(T);
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename A<int&, X>::type;
+            using expect = void;
+        };
+    )code");
+    ASSERT_TRUE(compile());
+
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
+
+    auto input = unit->resolver().resolve(finder.input);
+    ASSERT_FALSE(input.isNull());
+    if(auto AT = input->getAs<clang::AtomicType>()) {
+        EXPECT_FALSE(AT->getValueType()->isReferenceType());
+    }
+}
+
+TEST_CASE(ConstrainedPartial) {
+    /// `requires false` cannot be evaluated here; the structurally matching
+    /// partial is unverifiable and the member must stay unresolved.
+    add_main("main.cpp", R"code(
+        template <typename T>
+        struct P {
+            using type = void;
+        };
+
+        template <typename T>
+            requires false
+        struct P<T*> {
+            using type = int;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename P<X*>::type;
+            using expect = void;
+        };
+    )code");
+    ASSERT_TRUE(compile());
+
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
+
+    auto input = unit->resolver().resolve(finder.input);
+    ASSERT_FALSE(input.isNull());
+    EXPECT_TRUE(input->isDependentType());
+    EXPECT_FALSE(input->isBuiltinType());
+}
+
+TEST_CASE(BoolArrayBound) {
+    /// `bool N` cannot represent the bound 2, so the primary applies.
+    run(R"code(
+        template <typename T>
+        struct trait {
+            using type = void;
+        };
+
+        template <bool N, typename U>
+        struct trait<U[N]> {
+            using type = U;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename trait<X[2]>::type;
+            using expect = void;
+        };
+    )code");
+}
+
 TEST_CASE(PackPrefixArity) {
     /// `TT` requires two fixed parameters before its pack; the unary
     /// template cannot supply them, so the primary applies.

@@ -480,7 +480,15 @@ bool TypeUnifier::unify(clang::QualType pattern, clang::QualType argument) {
                     }
                     llvm::APSInt size(AA->getSize());
                     size.setIsUnsigned(type->isUnsignedIntegerType());
-                    if(!bind(NTTP->getIndex(), clang::TemplateArgument(context, size, type))) {
+
+                    /// The bound must be representable in the parameter's
+                    /// type: `bool N` never deduces from `U[2]`.
+                    auto converted = size.extOrTrunc(context.getIntWidth(type));
+                    if(!llvm::APSInt::isSameValue(converted.extOrTrunc(size.getBitWidth()), size)) {
+                        return false;
+                    }
+
+                    if(!bind(NTTP->getIndex(), clang::TemplateArgument(context, converted, type))) {
                         return false;
                     }
                     return unify(PA->getElementType(), AA->getElementType());
@@ -488,10 +496,17 @@ bool TypeUnifier::unify(clang::QualType pattern, clang::QualType argument) {
             }
 
             /// `T[N]` against another dependent-sized array deduces N from
-            /// the argument's bound expression.
+            /// the argument's bound expression; the types must agree for the
+            /// value to survive conversion.
             if(auto NTTP = referenced_nttp(PA->getSizeExpr()); NTTP && NTTP->getDepth() == depth) {
                 if(auto AA = llvm::dyn_cast<clang::DependentSizedArrayType>(argument);
                    AA && AA->getSizeExpr()) {
+                    if(!NTTP->getType()->isDependentType() &&
+                       !AA->getSizeExpr()->getType()->isDependentType() &&
+                       !context.hasSameUnqualifiedType(NTTP->getType(),
+                                                       AA->getSizeExpr()->getType())) {
+                        return false;
+                    }
                     if(!bind(NTTP->getIndex(),
                              clang::TemplateArgument(AA->getSizeExpr(), /*IsCanonical=*/false))) {
                         return false;

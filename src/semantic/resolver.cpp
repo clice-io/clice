@@ -732,6 +732,15 @@ public:
             }
         }
 
+        /// Constraint satisfaction is not evaluated (`requires false` would
+        /// need subsumption machinery); a structurally matching constrained
+        /// partial is therefore unverifiable — degrade rather than trust it.
+        if(best && best->getTemplateParameters()->hasAssociatedConstraints()) {
+            LOG_DEBUG("{}" "constrained partial; degrading", pad());
+            indent -= 1;
+            return lookup_result();
+        }
+
         if(best && deduce_template_arguments(best, arguments)) {
             LOG_DEBUG("{}" "matched partial '{}'", pad(), best->getNameAsString());
             if(auto members = best->lookup(name); !members.empty()) {
@@ -929,9 +938,16 @@ private:
             case clang::Type::Atomic: {
                 auto AT = llvm::cast<clang::AtomicType>(T);
                 auto value = rewrite(AT->getValueType(), policy);
-                if(value != AT->getValueType()) {
-                    result = context.getAtomicType(value);
+                if(value == AT->getValueType()) {
+                    break;
                 }
+                /// Atomic operands must be unqualified, non-reference object
+                /// types; anything else degrades.
+                if(value->isReferenceType() || value->isArrayType() || value->isFunctionType() ||
+                   value->isAtomicType() || value.hasQualifiers()) {
+                    break;
+                }
+                result = context.getAtomicType(value);
                 break;
             }
 
@@ -2313,6 +2329,16 @@ llvm::SmallVector<clang::NamedDecl*, 4> TemplateResolver::lookup(const clang::Ca
         for(auto decl: lookup(DSDRE)) {
             candidates.push_back(decl);
         }
+    }
+
+    /// An argument pack (`f(xs...)`) may instantiate to any number of
+    /// arguments; fixed-arity filtering would remove viable overloads.
+    bool has_pack_argument =
+        std::ranges::any_of(expr->arguments(), [](const clang::Expr* argument) {
+            return llvm::isa<clang::PackExpansionExpr>(argument);
+        });
+    if(has_pack_argument) {
+        return candidates;
     }
 
     auto removed = std::ranges::remove_if(candidates, [&](clang::NamedDecl* decl) {
