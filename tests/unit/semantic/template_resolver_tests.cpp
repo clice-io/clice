@@ -2674,6 +2674,88 @@ TEST_CASE(QualifiedCallArity) {
     EXPECT_EQ(candidates.size(), 2u);
 }
 
+TEST_CASE(DefaultsInCanonical) {
+    /// A class template bound through a template template parameter: the
+    /// rebuilt specialization's canonical arguments must include the bound
+    /// template's defaults, or it never compares equal to `target<X>`.
+    run(R"code(
+        template <typename T, typename U = int>
+        struct target {};
+
+        template <template <typename> class TT, typename A>
+        struct apply {
+            using type = TT<A>;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename apply<target, X>::type;
+            using expect = target<X>;
+        };
+    )code");
+}
+
+TEST_CASE(ValuePackExpansion) {
+    run(R"code(
+        template <int N>
+        struct value {};
+
+        template <typename... Ts>
+        struct type_list {};
+
+        template <int... Ns>
+        struct A {
+            using type = type_list<value<Ns>...>;
+        };
+
+        template <int X>
+        struct test {
+            using input = typename A<X, 2>::type;
+            using expect = type_list<value<X>, value<2>>;
+        };
+    )code");
+}
+
+TEST_CASE(AutoValueType) {
+    /// `auto` parameter identity includes the value's type: the int-literal
+    /// partial must not swallow a long argument.
+    run(R"code(
+        template <auto A, auto B>
+        struct trait {
+            using type = void;
+        };
+
+        template <auto B>
+        struct trait<1, B> {
+            using type = int;
+        };
+
+        template <auto Y>
+        struct test {
+            using input = typename trait<1L, Y>::type;
+            using expect = void;
+        };
+    )code");
+}
+
+TEST_CASE(DependentTypedValue) {
+    /// `N` is typed by the earlier parameter `T`: its argument must stay an
+    /// expression until `T` is known — normalizing it against the dependent
+    /// type would violate integral-argument invariants.
+    run(R"code(
+        template <typename T, T N>
+        struct A {
+            using type = T;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename A<X, 1>::type;
+            using expect = X;
+        };
+    )code");
+}
+
 TEST_CASE(ParamDecayAdjust) {
     run(R"code(
         template <typename T, typename U>

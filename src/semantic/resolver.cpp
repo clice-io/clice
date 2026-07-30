@@ -163,10 +163,19 @@ struct InstantiationStack {
 struct PackParmCollector : clang::RecursiveASTVisitor<PackParmCollector> {
     llvm::SmallVector<const clang::TemplateTypeParmType*, 2> packs;
     llvm::SmallVector<const clang::TemplateTemplateParmDecl*, 2> template_packs;
+    llvm::SmallVector<const clang::NonTypeTemplateParmDecl*, 2> value_packs;
 
     bool VisitTemplateTypeParmType(clang::TemplateTypeParmType* T) {
         if(T->isParameterPack() && !llvm::is_contained(packs, T)) {
             packs.push_back(T);
+        }
+        return true;
+    }
+
+    bool VisitDeclRefExpr(clang::DeclRefExpr* expr) {
+        if(auto NTTP = llvm::dyn_cast<clang::NonTypeTemplateParmDecl>(expr->getDecl());
+           NTTP && NTTP->isParameterPack() && !llvm::is_contained(value_packs, NTTP)) {
+            value_packs.push_back(NTTP);
         }
         return true;
     }
@@ -244,6 +253,7 @@ public:
         }
         steps += 1;
         if(depth > 16 || steps > step_budget) {
+            truncated = true;
             return type;
         }
         depth += 1;
@@ -546,7 +556,7 @@ public:
                     stack.pop();
                 }
                 if(!type.isNull()) {
-                    if(pack_narrowing == 0) {
+                    if(pack_narrowing == 0 && !truncated && !ctd_guard_tripped) {
                         resolved.try_emplace(NNS, type);
                     }
                     return lookup(type, name);
@@ -1147,9 +1157,21 @@ private:
 
         llvm::SmallVector<clang::TemplateArgument, 4> canonical;
 
+        /// A head bound through a template template parameter may carry fewer
+        /// arguments than the template declares (defaulted trailing
+        /// parameters). The canonical list must include the defaults or the
+        /// result never compares equal to a parsed `target<X>`; an argument
+        /// list the parameters cannot accept degrades.
+        llvm::SmallVector<clang::TemplateArgument, 4> full;
         clang::TemplateParameterList* params = nullptr;
         if(auto TD = name.getAsTemplateDecl()) {
             params = TD->getTemplateParameters();
+            if(arguments.size() < params->size()) {
+                if(!check_template_arguments(TD, arguments, full)) {
+                    return clang::QualType();
+                }
+                arguments = full;
+            }
         }
 
         unsigned i = 0;
@@ -1213,16 +1235,8 @@ private:
                     return arg.isPackExpansion();
                 });
             if(!expansions) {
-                /// A head bound through a template template parameter may
-                /// carry fewer arguments than the alias declares (defaulted
-                /// trailing parameters); fill the defaults before deducing.
-                llvm::SmallVector<clang::TemplateArgument, 4> full;
-                if(!check_template_arguments(TATD, arguments, full)) {
-                    return clang::QualType();
-                }
-
                 clang::QualType aliased;
-                if(deduce_template_arguments(TATD, full)) {
+                if(deduce_template_arguments(TATD, arguments)) {
                     aliased = substitute(TATD->getTemplatedDecl()->getUnderlyingType());
                     stack.pop();
                 }
@@ -1339,10 +1353,14 @@ private:
                     }
 
                     /// Substitute a bound non-type parameter at the argument
-                    /// level; expressions themselves are never rebuilt.
+                    /// level; expressions themselves are never rebuilt. A
+                    /// Pack binding is only usable inside a narrowed element
+                    /// rewrite (where the slot holds one element) — splicing
+                    /// it here as a single argument would be malformed.
                     if(auto NTTP = referenced_nttp(argument.getAsExpr())) {
                         auto* bound = stack.find_argument(NTTP, NTTP->getDepth(), NTTP->getIndex());
-                        if(bound && !bound->isNull()) {
+                        if(bound && !bound->isNull() &&
+                           bound->getKind() != clang::TemplateArgument::Pack) {
                             out.push_back(*bound);
                             changed = true;
                             continue;
@@ -1388,7 +1406,8 @@ private:
         expand_pack_pattern(clang::QualType pattern, Policy policy) {
         PackParmCollector collector;
         collector.TraverseType(pattern);
-        if(collector.packs.empty() && collector.template_packs.empty()) {
+        if(collector.packs.empty() && collector.template_packs.empty() &&
+           collector.value_packs.empty()) {
             return std::nullopt;
         }
 
@@ -1415,6 +1434,11 @@ private:
         }
         for(auto TTP: collector.template_packs) {
             if(!admit(stack.find_mutable_argument(TTP, TTP->getDepth(), TTP->getIndex()))) {
+                return std::nullopt;
+            }
+        }
+        for(auto NTTP: collector.value_packs) {
+            if(!admit(stack.find_mutable_argument(NTTP, NTTP->getDepth(), NTTP->getIndex()))) {
                 return std::nullopt;
             }
         }
@@ -1709,7 +1733,7 @@ private:
             }
         }
 
-        if(ctd_guard_tripped || steps > step_budget) {
+        if(ctd_guard_tripped || truncated) {
             lacks = false;
         }
         ctd_guard_tripped = saved || ctd_guard_tripped;
@@ -1784,7 +1808,7 @@ private:
         if(!result.isNull()) {
             LOG_DEBUG("{}" "→ '{}'", pad(), result.getAsString());
             indent -= 1;
-            if(pack_narrowing == 0) {
+            if(pack_narrowing == 0 && !truncated && !ctd_guard_tripped) {
                 resolved.try_emplace(DNT, result);
             }
             return result;
@@ -1846,7 +1870,7 @@ private:
                     if(!type.isNull()) {
                         LOG_DEBUG("{}" "→ '{}' (alias)", pad(), type.getAsString());
                         indent -= 1;
-                        if(cacheable) {
+                        if(cacheable && !truncated && !ctd_guard_tripped) {
                             resolved.try_emplace(DTST, type);
                         }
                         return type;
@@ -1861,7 +1885,7 @@ private:
                 auto result = make_specialization(clang::TemplateName(CTD), arguments);
                 LOG_DEBUG("{}" "→ TST '{}' (class)", pad(), result.getAsString());
                 indent -= 1;
-                if(cacheable) {
+                if(cacheable && !truncated && !ctd_guard_tripped) {
                     resolved.try_emplace(DTST, result);
                 }
                 return result;
@@ -1878,7 +1902,7 @@ private:
         /// or a tripped recursion guard proves nothing, and the cache is
         /// TU-wide — a truncated query must not poison this node for later
         /// queries that could still resolve it.
-        if(cacheable && steps <= step_budget && !ctd_guard_tripped) {
+        if(cacheable && !truncated && !ctd_guard_tripped) {
             resolved.try_emplace(DTST, fallback);
         }
         return fallback;
@@ -1897,6 +1921,10 @@ private:
     /// one element; node-pointer-keyed caches are bypassed for the duration.
     unsigned pack_narrowing = 0;
     bool ctd_guard_tripped = false;
+    /// Sticky: some rewrite in this query hit the depth or step limit. A
+    /// truncated result is not conclusive and must never enter the TU-wide
+    /// cache — a later query with a fresh budget could still resolve it.
+    bool truncated = false;
 
     /// Hard ceiling on rewrite steps per query; bounds the total work
     /// including pseudo-SFINAE probes over rejected branches.

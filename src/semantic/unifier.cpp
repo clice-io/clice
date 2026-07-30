@@ -395,7 +395,10 @@ bool TypeUnifier::unify(const clang::TemplateArgument& pattern,
                 auto bound = argument;
                 if(argument.getKind() == clang::TemplateArgument::Expression) {
                     auto expr = argument.getAsExpr();
-                    if(!expr->isValueDependent()) {
+                    /// An integral TemplateArgument requires a concrete type;
+                    /// a parameter typed by an earlier parameter (`T N`) stays
+                    /// an expression until that type is substituted.
+                    if(!expr->isValueDependent() && !NTTP->getType()->isDependentType()) {
                         if(auto value = expr->getIntegerConstantExpr(context)) {
                             bound = clang::TemplateArgument(context, *value, NTTP->getType());
                         }
@@ -411,14 +414,17 @@ bool TypeUnifier::unify(const clang::TemplateArgument& pattern,
 
         case clang::TemplateArgument::Integral: {
             if(argument.getKind() == clang::TemplateArgument::Integral) {
-                return llvm::APSInt::isSameValue(pattern.getAsIntegral(), argument.getAsIntegral());
+                return context.hasSameType(pattern.getIntegralType(), argument.getIntegralType()) &&
+                       llvm::APSInt::isSameValue(pattern.getAsIntegral(), argument.getAsIntegral());
             }
             /// As-written value arguments (`pick<false, ...>`) arrive as
             /// expressions; evaluate constants so value-specialized partials
-            /// can match.
+            /// can match. The value's type is part of the identity for `auto`
+            /// parameters (`trait<1, B>` must not swallow `trait<1L, Y>`).
             if(argument.getKind() == clang::TemplateArgument::Expression) {
                 auto expr = argument.getAsExpr();
-                if(!expr->isValueDependent()) {
+                if(!expr->isValueDependent() &&
+                   context.hasSameType(pattern.getIntegralType(), expr->getType())) {
                     if(auto value = expr->getIntegerConstantExpr(context)) {
                         return llvm::APSInt::isSameValue(pattern.getAsIntegral(), *value);
                     }
