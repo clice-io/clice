@@ -60,8 +60,11 @@ private:
 
     /// Element-wise matching state for a structured pack expansion pattern:
     /// while `expanding`, pack parameters accumulate one element per matched
-    /// argument instead of binding directly.
+    /// argument instead of binding directly. `element_ordinal` is the index
+    /// of the argument currently being matched, so repeated pack references
+    /// within one element are checked for consistency instead of appended.
     bool expanding = false;
+    unsigned element_ordinal = 0;
     llvm::SmallVector<llvm::SmallVector<clang::TemplateArgument, 2>, 2> elements;
 };
 

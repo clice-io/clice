@@ -122,7 +122,23 @@ bool TypeUnifier::collect(unsigned index, const clang::TemplateArgument& argumen
     if(elements.size() < bindings.size()) {
         elements.resize(bindings.size());
     }
-    elements[index].push_back(argument);
+
+    auto& group = elements[index];
+
+    /// A pack referenced twice in one expansion element (`pair<Ts, Ts>...`)
+    /// must see the same value at every occurrence.
+    if(group.size() == element_ordinal + 1) {
+        auto lhs = context.getCanonicalTemplateArgument(group.back());
+        auto rhs = context.getCanonicalTemplateArgument(argument);
+        return lhs.structurallyEquals(rhs);
+    }
+
+    /// A pack that skipped an earlier element cannot re-synchronize.
+    if(group.size() != element_ordinal) {
+        return false;
+    }
+
+    group.push_back(argument);
     return true;
 }
 
@@ -324,6 +340,19 @@ bool TypeUnifier::unify(clang::QualType pattern, clang::QualType argument) {
                 }
             }
 
+            /// `T[N]` against another dependent-sized array deduces N from
+            /// the argument's bound expression.
+            if(auto NTTP = referenced_nttp(PA->getSizeExpr()); NTTP && NTTP->getDepth() == depth) {
+                if(auto AA = llvm::dyn_cast<clang::DependentSizedArrayType>(argument);
+                   AA && AA->getSizeExpr()) {
+                    if(!bind(NTTP->getIndex(),
+                             clang::TemplateArgument(AA->getSizeExpr(), /*IsCanonical=*/false))) {
+                        return false;
+                    }
+                    return unify(PA->getElementType(), AA->getElementType());
+                }
+            }
+
             if(auto AA = llvm::dyn_cast<clang::ArrayType>(argument)) {
                 return unify(PA->getElementType(), AA->getElementType());
             }
@@ -463,6 +492,7 @@ bool TypeUnifier::unify(TemplateArguments patterns, TemplateArguments arguments)
             expanding = true;
             bool matched = true;
             for(unsigned j = i; j < flat.size(); j += 1) {
+                element_ordinal = j - i;
                 if(!unify(inner, flat[j])) {
                     matched = false;
                     break;

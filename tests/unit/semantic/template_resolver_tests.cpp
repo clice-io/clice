@@ -2039,6 +2039,119 @@ TEST_CASE(CallArityFilter) {
     EXPECT_EQ(candidates.size(), 2u);
 }
 
+TEST_CASE(DependentArrayBound) {
+    run(R"code(
+        template <typename T>
+        struct trait {
+            using type = void;
+        };
+
+        template <typename T, unsigned long N>
+        struct trait<T[N]> {
+            using type = T;
+        };
+
+        template <typename X, unsigned long M>
+        struct test {
+            using input = typename trait<X[M]>::type;
+            using expect = X;
+        };
+    )code");
+}
+
+TEST_CASE(RepeatedPackElement) {
+    /// `pair<Ts, Ts>...` requires both occurrences to agree in each element;
+    /// the mismatching first pair must fall back to the primary.
+    run(R"code(
+        template <typename A, typename B>
+        struct pair {};
+
+        template <typename... Ts>
+        struct type_list {};
+
+        template <typename T>
+        struct trait {
+            using type = void;
+        };
+
+        template <typename... Ts>
+        struct trait<type_list<pair<Ts, Ts>...>> {
+            using type = int;
+        };
+
+        template <typename X, typename Y>
+        struct test {
+            using input = typename trait<type_list<pair<X, Y>, pair<Y, Y>>>::type;
+            using expect = void;
+        };
+    )code");
+}
+
+TEST_CASE(TemplatePackExpansion) {
+    run(R"code(
+        template <typename T>
+        struct box {};
+
+        template <typename... Ts>
+        struct type_list {};
+
+        template <template <typename> class... Fs>
+        struct A {
+            using type = type_list<Fs<int>...>;
+        };
+
+        template <template <typename> class TX>
+        struct test {
+            using input = typename A<TX, box>::type;
+            using expect = type_list<TX<int>, box<int>>;
+        };
+    )code");
+}
+
+TEST_CASE(ReferenceCollapse) {
+    run(R"code(
+        template <typename T>
+        struct R {
+            using type = T&;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename R<X&&>::type;
+            using expect = X&;
+        };
+    )code");
+}
+
+TEST_CASE(PointerToReference) {
+    /// `P<X&>::type` would be `X& *` — ill-formed. The resolver must leave
+    /// the name unresolved rather than fabricate a malformed pointer node.
+    add_main("main.cpp", R"code(
+        template <typename T>
+        struct P {
+            using type = T*;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename P<X&>::type;
+            using expect = void;
+        };
+    )code");
+    ASSERT_TRUE(compile());
+
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
+
+    auto input = unit->resolver().resolve(finder.input);
+    ASSERT_FALSE(input.isNull());
+    EXPECT_TRUE(input->isDependentType());
+    /// Degrading returns the written `T*`; fabricating `X& *` would not.
+    if(input->isPointerType()) {
+        EXPECT_FALSE(input->getPointeeType()->isReferenceType());
+    }
+}
+
 TEST_CASE(UnboundArrayPattern) {
     run(R"code(
         template <typename T>

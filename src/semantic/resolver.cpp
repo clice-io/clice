@@ -150,18 +150,34 @@ struct InstantiationStack {
     clang::TemplateArgument* find_mutable_argument(const clang::TemplateTypeParmType* T) {
         return const_cast<clang::TemplateArgument*>(find_argument(T));
     }
+
+    clang::TemplateArgument* find_mutable_argument(const clang::NamedDecl* decl,
+                                                   unsigned depth,
+                                                   unsigned index) {
+        return const_cast<clang::TemplateArgument*>(find_argument(decl, depth, index));
+    }
 };
 
 /// Collect every template type parameter pack referenced anywhere inside a
 /// type, for element-wise expansion of structured pack patterns.
 struct PackParmCollector : clang::RecursiveASTVisitor<PackParmCollector> {
     llvm::SmallVector<const clang::TemplateTypeParmType*, 2> packs;
+    llvm::SmallVector<const clang::TemplateTemplateParmDecl*, 2> template_packs;
 
     bool VisitTemplateTypeParmType(clang::TemplateTypeParmType* T) {
         if(T->isParameterPack() && !llvm::is_contained(packs, T)) {
             packs.push_back(T);
         }
         return true;
+    }
+
+    bool TraverseTemplateName(clang::TemplateName name) {
+        if(auto TTP =
+               llvm::dyn_cast_or_null<clang::TemplateTemplateParmDecl>(name.getAsTemplateDecl());
+           TTP && TTP->isParameterPack() && !llvm::is_contained(template_packs, TTP)) {
+            template_packs.push_back(TTP);
+        }
+        return RecursiveASTVisitor::TraverseTemplateName(name);
     }
 };
 
@@ -784,21 +800,33 @@ private:
 
             case clang::Type::Pointer: {
                 auto pointee = rewrite(llvm::cast<clang::PointerType>(T)->getPointeeType(), policy);
+                /// A substituted reference pointee makes the pointer
+                /// ill-formed (`P<X&>::type` with `type = T*`); degrade
+                /// rather than fabricate a malformed node.
+                if(pointee->isReferenceType()) {
+                    break;
+                }
                 result = context.getPointerType(pointee);
                 break;
             }
 
+            /// Substituted reference pointees collapse per the language
+            /// rules: `&` wins over anything, `&& &&` stays `&&`.
             case clang::Type::LValueReference: {
                 auto pointee =
                     rewrite(llvm::cast<clang::ReferenceType>(T)->getPointeeType(), policy);
-                result = context.getLValueReferenceType(pointee);
+                result = context.getLValueReferenceType(pointee.getNonReferenceType());
                 break;
             }
 
             case clang::Type::RValueReference: {
                 auto pointee =
                     rewrite(llvm::cast<clang::ReferenceType>(T)->getPointeeType(), policy);
-                result = context.getRValueReferenceType(pointee);
+                if(pointee->isLValueReferenceType()) {
+                    result = context.getLValueReferenceType(pointee.getNonReferenceType());
+                } else {
+                    result = context.getRValueReferenceType(pointee.getNonReferenceType());
+                }
                 break;
             }
 
@@ -838,6 +866,10 @@ private:
                 auto pointee = rewrite(MPT->getPointeeType(), policy);
                 auto rewritten_cls = rewrite(clang::QualType(cls, 0), policy);
                 if(pointee == MPT->getPointeeType() && rewritten_cls.getTypePtr() == cls) {
+                    break;
+                }
+                /// Pointers to reference members do not exist; degrade.
+                if(pointee->isReferenceType()) {
                     break;
                 }
                 auto qualifier = clang::NestedNameSpecifier::Create(context,
@@ -881,6 +913,10 @@ private:
             case clang::Type::DependentSizedArray: {
                 auto DSAT = llvm::cast<clang::DependentSizedArrayType>(T);
                 auto element = rewrite(DSAT->getElementType(), policy);
+                /// Arrays of references do not exist; degrade.
+                if(element->isReferenceType()) {
+                    break;
+                }
 
                 /// `T[N]` with a known N collapses to a constant array.
                 if(auto NTTP = referenced_nttp(DSAT->getSizeExpr())) {
@@ -908,6 +944,9 @@ private:
             case clang::Type::ConstantArray: {
                 auto CAT = llvm::cast<clang::ConstantArrayType>(T);
                 auto element = rewrite(CAT->getElementType(), policy);
+                if(element->isReferenceType()) {
+                    break;
+                }
                 if(element != CAT->getElementType()) {
                     result = context.getConstantArrayType(element,
                                                           CAT->getSize(),
@@ -921,6 +960,9 @@ private:
             case clang::Type::IncompleteArray: {
                 auto IAT = llvm::cast<clang::IncompleteArrayType>(T);
                 auto element = rewrite(IAT->getElementType(), policy);
+                if(element->isReferenceType()) {
+                    break;
+                }
                 if(element != IAT->getElementType()) {
                     result = context.getIncompleteArrayType(element,
                                                             IAT->getSizeModifier(),
@@ -1232,23 +1274,34 @@ private:
         expand_pack_pattern(clang::QualType pattern, Policy policy) {
         PackParmCollector collector;
         collector.TraverseType(pattern);
-        if(collector.packs.empty()) {
+        if(collector.packs.empty() && collector.template_packs.empty()) {
             return std::nullopt;
         }
 
         llvm::SmallVector<clang::TemplateArgument*, 2> slots;
         unsigned length = 0;
-        for(auto TTPT: collector.packs) {
-            auto* bound = stack.find_mutable_argument(TTPT);
+        auto admit = [&](clang::TemplateArgument* bound) {
             if(!bound || bound->getKind() != clang::TemplateArgument::Pack) {
-                return std::nullopt;
+                return false;
             }
             if(!slots.empty() && bound->pack_size() != length) {
-                return std::nullopt;
+                return false;
             }
             length = bound->pack_size();
             if(!llvm::is_contained(slots, bound)) {
                 slots.push_back(bound);
+            }
+            return true;
+        };
+
+        for(auto TTPT: collector.packs) {
+            if(!admit(stack.find_mutable_argument(TTPT))) {
+                return std::nullopt;
+            }
+        }
+        for(auto TTP: collector.template_packs) {
+            if(!admit(stack.find_mutable_argument(TTP, TTP->getDepth(), TTP->getIndex()))) {
+                return std::nullopt;
             }
         }
 
