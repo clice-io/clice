@@ -444,7 +444,7 @@ private:
                 combine(token_semantics[index], candidate);
             };
 
-        for(const auto& entry: semantics.node_entries()) {
+        for(auto [entry_index, entry]: llvm::enumerate(semantics.node_entries())) {
             const SemanticNode& node = entry.node;
             switch(node.kind()) {
                 case SemanticNode::Kind::MacroDefine: {
@@ -486,7 +486,10 @@ private:
                 }
 
                 default: {
-                    for(auto& occurrence: resolve_occurrences(node, &unit.resolver())) {
+                    for(auto& occurrence:
+                        resolve_occurrences(semantics,
+                                            static_cast<std::uint32_t>(entry_index),
+                                            &unit.resolver())) {
                         anchor(occurrence.location,
                                classify_decl(occurrence.decl, occurrence.kind),
                                false);

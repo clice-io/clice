@@ -318,4 +318,11 @@ private:
     std::vector<std::uint32_t> owner_nodes;
 };
 
+/// resolve_occurrences with tree context: a dependent name that is the
+/// callee of a call (found through the node's parent chain) has its
+/// candidate set filtered by the call's arity.
+llvm::SmallVector<NameOccurrence, 2> resolve_occurrences(const Semantics& semantics,
+                                                         std::uint32_t index,
+                                                         TemplateResolver* resolver = nullptr);
+
 }  // namespace clice

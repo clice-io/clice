@@ -1140,7 +1140,7 @@ auto decls_at(CompilationUnitRef unit, llvm::ArrayRef<clang::syntax::Token> touc
                     continue;
                 }
 
-                for(auto& occurrence: resolve_occurrences(sem_node, &unit.resolver())) {
+                for(auto& occurrence: resolve_occurrences(semantics, n, &unit.resolver())) {
                     auto location = occurrence.location;
                     if(location.isMacroID()) {
                         location = unit.spelling_location(location);

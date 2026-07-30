@@ -898,8 +898,12 @@ private:
                 if(pointee == MPT->getPointeeType() && rewritten_cls.getTypePtr() == cls) {
                     break;
                 }
-                /// Pointers to reference members do not exist; degrade.
+                /// Pointers to reference members do not exist, and the owner
+                /// must stay a class type (or still-dependent); degrade.
                 if(pointee->isReferenceType()) {
+                    break;
+                }
+                if(!rewritten_cls->isDependentType() && !rewritten_cls->isRecordType()) {
                     break;
                 }
                 auto qualifier = clang::NestedNameSpecifier::Create(context,
@@ -943,8 +947,10 @@ private:
             case clang::Type::DependentSizedArray: {
                 auto DSAT = llvm::cast<clang::DependentSizedArrayType>(T);
                 auto element = rewrite(DSAT->getElementType(), policy);
-                /// Arrays of references do not exist; degrade.
-                if(element->isReferenceType()) {
+                /// Array elements must be object types (no references,
+                /// void, or function types); degrade otherwise.
+                if(element->isReferenceType() || element->isVoidType() ||
+                   element->isFunctionType()) {
                     break;
                 }
 
@@ -974,7 +980,8 @@ private:
             case clang::Type::ConstantArray: {
                 auto CAT = llvm::cast<clang::ConstantArrayType>(T);
                 auto element = rewrite(CAT->getElementType(), policy);
-                if(element->isReferenceType()) {
+                if(element->isReferenceType() || element->isVoidType() ||
+                   element->isFunctionType()) {
                     break;
                 }
                 if(element != CAT->getElementType()) {
@@ -990,7 +997,8 @@ private:
             case clang::Type::IncompleteArray: {
                 auto IAT = llvm::cast<clang::IncompleteArrayType>(T);
                 auto element = rewrite(IAT->getElementType(), policy);
-                if(element->isReferenceType()) {
+                if(element->isReferenceType() || element->isVoidType() ||
+                   element->isFunctionType()) {
                     break;
                 }
                 if(element != IAT->getElementType()) {
@@ -1114,6 +1122,17 @@ private:
     /// trailing arguments of a parameter pack are grouped into a single Pack
     /// argument, while the specified list stays flat as written.
     clang::QualType make_specialization(clang::TemplateName name, TemplateArguments arguments) {
+        /// A template template parameter can be bound to a dependent template
+        /// name (libc++ binds `_Alloc::template rebind` this way). A
+        /// TemplateSpecializationType cannot carry those (clang asserts);
+        /// rebuild the dependent form with the substituted arguments instead.
+        if(auto dependent = name.getAsDependentTemplateName()) {
+            return context.getDependentTemplateSpecializationType(
+                clang::ElaboratedTypeKeyword::None,
+                *dependent,
+                arguments);
+        }
+
         llvm::SmallVector<clang::TemplateArgument, 4> canonical;
 
         clang::TemplateParameterList* params = nullptr;

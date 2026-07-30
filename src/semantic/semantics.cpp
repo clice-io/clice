@@ -1334,7 +1334,10 @@ clang::SourceLocation keyword_after_scope(const clang::Decl* decl,
     return token ? token->getLocation() : begin;
 }
 
-void stmt_occurrences(const clang::Stmt* S, Occurrences& out, TemplateResolver* resolver) {
+void stmt_occurrences(const clang::Stmt* S,
+                      Occurrences& out,
+                      TemplateResolver* resolver,
+                      const clang::CallExpr* call = nullptr) {
     /// foo = 1
     ///  ^~~~ reference
     if(auto* DRE = llvm::dyn_cast<clang::DeclRefExpr>(S)) {
@@ -1444,8 +1447,14 @@ void stmt_occurrences(const clang::Stmt* S, Occurrences& out, TemplateResolver* 
     ///                       ^~~~ weak reference
     if(auto* DSDRE = llvm::dyn_cast<clang::DependentScopeDeclRefExpr>(S)) {
         if(resolver) {
-            for(auto* target: resolver->lookup(DSDRE)) {
-                occur(out, target, RelationKind::WeakReference, DSDRE->getNameInfo().getLoc());
+            if(call) {
+                for(auto* target: resolver->lookup(call)) {
+                    occur(out, target, RelationKind::WeakReference, DSDRE->getNameInfo().getLoc());
+                }
+            } else {
+                for(auto* target: resolver->lookup(DSDRE)) {
+                    occur(out, target, RelationKind::WeakReference, DSDRE->getNameInfo().getLoc());
+                }
             }
         }
         return;
@@ -1454,11 +1463,20 @@ void stmt_occurrences(const clang::Stmt* S, Occurrences& out, TemplateResolver* 
     /// foo(...) / obj.foo(...) where foo names an overload set — clang
     /// already stores the candidates.
     if(auto* OE = llvm::dyn_cast<clang::OverloadExpr>(S)) {
+        /// As a callee, the candidate set shrinks to the overloads that can
+        /// accept the call's argument count.
+        llvm::SmallVector<clang::NamedDecl*, 4> candidates;
+        if(call && resolver) {
+            candidates = resolver->lookup(call);
+        } else {
+            candidates.append(OE->decls_begin(), OE->decls_end());
+        }
+
         /// Unwrap using shadows to the underlying functions, then reference
         /// each introducing using-declaration once: hover picks it when the
         /// overload set is otherwise ambiguous.
         llvm::SmallPtrSet<const clang::UsingDecl*, 2> introducers;
-        for(auto* target: OE->decls()) {
+        for(auto* target: candidates) {
             if(auto* shadow = llvm::dyn_cast<clang::UsingShadowDecl>(target)) {
                 if(auto* UD = llvm::dyn_cast<clang::UsingDecl>(shadow->getIntroducer())) {
                     introducers.insert(UD);
@@ -1494,8 +1512,14 @@ void stmt_occurrences(const clang::Stmt* S, Occurrences& out, TemplateResolver* 
     ///   ^~~~ weak reference, resolved through the template resolver
     if(auto* DSME = llvm::dyn_cast<clang::CXXDependentScopeMemberExpr>(S)) {
         if(resolver) {
-            for(auto* target: resolver->lookup(DSME)) {
-                occur(out, target, RelationKind::WeakReference, DSME->getMemberLoc());
+            if(call) {
+                for(auto* target: resolver->lookup(call)) {
+                    occur(out, target, RelationKind::WeakReference, DSME->getMemberLoc());
+                }
+            } else {
+                for(auto* target: resolver->lookup(DSME)) {
+                    occur(out, target, RelationKind::WeakReference, DSME->getMemberLoc());
+                }
             }
         }
         return;
@@ -1503,6 +1527,41 @@ void stmt_occurrences(const clang::Stmt* S, Occurrences& out, TemplateResolver* 
 }
 
 }  // namespace
+
+llvm::SmallVector<NameOccurrence, 2> resolve_occurrences(const Semantics& semantics,
+                                                         std::uint32_t index,
+                                                         TemplateResolver* resolver) {
+    auto& entry = semantics.node(index);
+
+    /// A dependent name used as a callee resolves against the call, so the
+    /// candidate set can be filtered by arity. Walk up through the wrapper
+    /// nodes the tree keeps for parent chains.
+    if(auto* S = entry.node.get<clang::Stmt>();
+       S && llvm::isa<clang::OverloadExpr,
+                      clang::DependentScopeDeclRefExpr,
+                      clang::CXXDependentScopeMemberExpr>(S)) {
+        for(auto parent = entry.parent; parent != Semantics::invalid;
+            parent = semantics.node(parent).parent) {
+            auto* PS = semantics.node(parent).node.get<clang::Stmt>();
+            if(!PS) {
+                break;
+            }
+            if(auto* CE = llvm::dyn_cast<clang::CallExpr>(PS)) {
+                if(CE->getCallee()->IgnoreParenImpCasts() == S) {
+                    llvm::SmallVector<NameOccurrence, 2> out;
+                    stmt_occurrences(S, out, resolver, CE);
+                    return out;
+                }
+                break;
+            }
+            if(!llvm::isa<clang::ParenExpr, clang::ImplicitCastExpr>(PS)) {
+                break;
+            }
+        }
+    }
+
+    return resolve_occurrences(entry.node, resolver);
+}
 
 llvm::SmallVector<NameOccurrence, 2> resolve_occurrences(const SemanticNode& node,
                                                          TemplateResolver* resolver) {

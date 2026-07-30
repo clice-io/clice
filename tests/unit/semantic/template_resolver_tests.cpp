@@ -1,5 +1,6 @@
 #include "test/test.h"
 #include "test/tester.h"
+#include "semantic/semantics.h"
 
 #include "clang/AST/RecursiveASTVisitor.h"
 
@@ -2673,6 +2674,37 @@ TEST_CASE(QualifiedCallArity) {
     EXPECT_EQ(candidates.size(), 2u);
 }
 
+TEST_CASE(CallArityOccurrences) {
+    /// The production occurrence path must apply the arity filter: the
+    /// two-argument overload never appears for a one-argument call.
+    add_main("main.cpp", R"code(
+        template <typename T>
+        struct S {
+            int foo(int);
+            int foo(int, int);
+            int foo(T);
+
+            void call(T t) {
+                foo(t);
+            }
+        };
+    )code");
+    ASSERT_TRUE(compile());
+
+    auto semantics = Semantics::build(*unit);
+    auto entries = semantics.node_entries();
+
+    bool found = false;
+    for(std::uint32_t i = 0; i < entries.size(); i += 1) {
+        if(entries[i].node.get<clang::UnresolvedMemberExpr>()) {
+            auto occurrences = resolve_occurrences(semantics, i, &unit->resolver());
+            EXPECT_EQ(occurrences.size(), 2);
+            found = true;
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
 TEST_CASE(ConditionalFalseType) {
     run(R"code(
         template <bool B, typename T, typename F>
@@ -2778,6 +2810,33 @@ TEST_CASE(Standard) {
     ASSERT_FALSE(input.isNull() || target.isNull());
     EXPECT_EQ(input.getCanonicalType(), target.getCanonicalType());
 };
+
+TEST_CASE(DependentTemplateHead) {
+    /// A template template argument that is itself a dependent name (libc++
+    /// binds `_Alloc::template rebind` this way): the rebuilt head must be a
+    /// dependent specialization, never a TemplateSpecializationType —
+    /// assertion-enabled clang aborts on the latter.
+    add_main("main.cpp", R"code(
+        template <template <typename> class TT>
+        struct apply {
+            using type = TT<int>;
+        };
+
+        template <typename T>
+        struct test {
+            using input = typename apply<T::template tmpl>::type;
+            using expect = void;
+        };
+    )code");
+    ASSERT_TRUE(compile());
+
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
+
+    auto input = unit->resolver().resolve(finder.input);
+    ASSERT_FALSE(input.isNull());
+    EXPECT_TRUE(input->isDependentType());
+}
 
 TEST_CASE(BrokenCodeSweep) {
     /// Error-recovery ASTs are the resolver's everyday hostile input in an

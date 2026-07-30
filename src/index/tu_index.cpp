@@ -527,7 +527,7 @@ public:
                 continue;
             }
 
-            for(auto& occurrence: resolve_occurrences(node, &unit.resolver())) {
+            for(auto& occurrence: resolve_occurrences(semantics, i, &unit.resolver())) {
                 add_occurrence(occurrence.decl, occurrence.kind, occurrence.location);
 
                 /// Every occurrence is mirrored as a self-relation, so
