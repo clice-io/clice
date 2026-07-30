@@ -2039,6 +2039,84 @@ TEST_CASE(CallArityFilter) {
     EXPECT_EQ(candidates.size(), 2u);
 }
 
+TEST_CASE(NoexceptFunctionPattern) {
+    /// The partial pins `noexcept`; a plain function type must keep the
+    /// primary rather than matching with the specification ignored.
+    run(R"code(
+        template <typename T>
+        struct trait {
+            using type = void;
+        };
+
+        template <typename R, typename... As>
+        struct trait<R(As...) noexcept> {
+            using type = R;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename trait<X(int)>::type;
+            using expect = void;
+        };
+    )code");
+}
+
+TEST_CASE(UnderlyingTypeTransform) {
+    run(R"code(
+        enum class E : short {};
+
+        template <typename T>
+        struct wrap {
+            using held = E;
+        };
+
+        template <typename T>
+        struct A {
+            using type = __underlying_type(typename wrap<T>::held);
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename A<X>::type;
+            using expect = short;
+        };
+    )code");
+}
+
+TEST_CASE(DependentScopeInconclusive) {
+    /// `A<X>::foo` is unknowable while X is: the primary lacks `foo` but the
+    /// pointer partial declares it, so the probe must stay Unknown and keep
+    /// the detector partial.
+    run(R"code(
+        template <typename... Ts>
+        using void_t = void;
+
+        template <typename T>
+        struct A {};
+
+        template <typename T>
+        struct A<T*> {
+            using foo = int;
+        };
+
+        template <typename T, typename = void>
+        struct detect {
+            using type = void;
+        };
+
+        template <typename T>
+        struct detect<T, void_t<typename A<T>::foo>> {
+            using type = int;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename detect<X>::type;
+            using expect = int;
+        };
+    )code");
+}
+
 TEST_CASE(AliasDefaultArgument) {
     run(R"code(
         template <typename T, typename U>

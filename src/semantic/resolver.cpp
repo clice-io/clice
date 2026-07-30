@@ -802,6 +802,25 @@ private:
                 break;
             }
 
+            case clang::Type::UnaryTransform: {
+                auto UTT = llvm::cast<clang::UnaryTransformType>(T);
+                auto base = rewrite(UTT->getBaseType(), policy);
+                if(base == UTT->getBaseType()) {
+                    break;
+                }
+                /// A resolved enum operand computes the transform directly.
+                if(UTT->getUTTKind() == clang::UnaryTransformType::EnumUnderlyingType) {
+                    if(auto ET = base->getAs<clang::EnumType>()) {
+                        if(auto definition = ET->getDecl()->getDefinition()) {
+                            result = definition->getIntegerType();
+                            break;
+                        }
+                    }
+                }
+                result = context.getUnaryTransformType(base, base, UTT->getUTTKind());
+                break;
+            }
+
             case clang::Type::MemberPointer: {
                 auto MPT = llvm::cast<clang::MemberPointerType>(T);
                 auto cls = MPT->getQualifier() ? MPT->getQualifier()->getAsType() : nullptr;
@@ -1449,6 +1468,22 @@ private:
     /// CTD recursion guard or by step-budget exhaustion proves nothing, and
     /// treating it as absence would prune a partial that real SFINAE keeps —
     /// a wrong answer, not a degradation. Those cases stay Unknown.
+    /// Does any specialization of `CTD` — partial or explicit — declare
+    /// `name`? Used to gate the Absent verdict: if some specialization has
+    /// the member, an empty lookup on dependent arguments proves nothing.
+    bool any_specialization_declares(clang::ClassTemplateDecl* CTD, clang::DeclarationName name) {
+        auto declares = [&](clang::CXXRecordDecl* record) {
+            auto* definition = record->getDefinition();
+            return definition && (!definition->lookup(name).empty() ||
+                                  !lookup_in_bases(definition, name).empty());
+        };
+
+        llvm::SmallVector<clang::ClassTemplatePartialSpecializationDecl*, 4> partials;
+        CTD->getPartialSpecializations(partials);
+        return std::ranges::any_of(partials, declares) ||
+               std::ranges::any_of(CTD->specializations(), declares);
+    }
+
     bool scope_lacks(const clang::NestedNameSpecifier* scope, clang::DeclarationName name) {
         if(!scope) {
             return false;
@@ -1473,9 +1508,20 @@ private:
             auto type = resolve(clang::QualType(resolved_scope->getAsType(), 0));
             if(!type.isNull()) {
                 if(auto TST = type->getAs<clang::TemplateSpecializationType>()) {
-                    if(llvm::isa_and_nonnull<clang::ClassTemplateDecl>(
+                    if(auto CTD = llvm::dyn_cast_or_null<clang::ClassTemplateDecl>(
                            TST->getTemplateName().getAsTemplateDecl())) {
                         lacks = lookup(type, name).empty();
+
+                        /// With dependent arguments the selection above is
+                        /// provisional — a specialization rejected against a
+                        /// bare parameter may apply once it instantiates. An
+                        /// empty result is then conclusive only if no
+                        /// specialization of the template declares the member
+                        /// at all.
+                        if(lacks && TST->isDependentType() &&
+                           any_specialization_declares(CTD, name)) {
+                            lacks = false;
+                        }
                     }
                 } else if(auto RD = type->getAsCXXRecordDecl()) {
                     lacks = RD->lookup(name).empty() && lookup_in_bases(RD, name).empty();

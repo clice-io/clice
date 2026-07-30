@@ -237,6 +237,15 @@ bool TypeUnifier::unify(clang::QualType pattern, clang::QualType argument) {
             if(!AF || PF->isVariadic() != AF->isVariadic()) {
                 return false;
             }
+
+            /// noexcept participates in the function type; a mismatch rejects
+            /// the match unless either side's specification is still value
+            /// dependent (`noexcept(B)` with unbound B).
+            if(PF->getExceptionSpecType() != clang::EST_DependentNoexcept &&
+               AF->getExceptionSpecType() != clang::EST_DependentNoexcept &&
+               PF->isNothrow() != AF->isNothrow()) {
+                return false;
+            }
             if(!unify(PF->getReturnType(), AF->getReturnType())) {
                 return false;
             }
