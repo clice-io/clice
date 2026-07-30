@@ -520,7 +520,13 @@ bool TypeUnifier::unify(const clang::TemplateArgument& pattern,
 
         case clang::TemplateArgument::Expression: {
             /// A bare reference to an NTTP deduces it; any other expression
-            /// is a non-deduced context. Constant expression arguments are
+            /// is a non-deduced context.
+            /// TODO(nttp-expr): compound expression patterns (`P<N, N + 1>`)
+            /// are accepted without post-deduction validation, which can keep
+            /// a partial real deduction would reject. Validating requires
+            /// evaluating dependent expressions under bindings; deliberately
+            /// deferred — the failure mode must stay mis-selection between
+            /// declared specializations, never a crash. Constant expression arguments are
             /// normalized to Integral so downstream substitution (e.g. array
             /// bounds) sees a value, not an expression.
             if(auto NTTP = referenced_nttp(pattern.getAsExpr());

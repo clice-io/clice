@@ -1438,8 +1438,13 @@ private:
                     }
 
                     /// Substitute a bound non-type parameter at the argument
-                    /// level; expressions themselves are never rebuilt. A
-                    /// Pack binding is only usable inside a narrowed element
+                    /// level; expressions themselves are never rebuilt.
+                    /// TODO(nttp-expr): compound expressions (`value<N + 1>`)
+                    /// therefore keep referencing the original parameter and
+                    /// degrade to unresolved downstream — never a wrong
+                    /// answer, never a crash. Rebuilding them needs an
+                    /// expression substitution engine; deliberately deferred.
+                    /// A Pack binding is only usable inside a narrowed element
                     /// rewrite (where the slot holds one element) — splicing
                     /// it here as a single argument would be malformed.
                     if(auto NTTP = referenced_nttp(argument.getAsExpr())) {

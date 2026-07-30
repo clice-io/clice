@@ -2674,6 +2674,35 @@ TEST_CASE(QualifiedCallArity) {
     EXPECT_EQ(candidates.size(), 2u);
 }
 
+TEST_CASE(CompoundValueDegrade) {
+    /// TODO(nttp-expr): compound NTTP expressions are not substituted; this
+    /// pins that they degrade cleanly (assertion-enabled clang would abort
+    /// on a fabricated node) rather than crash.
+    add_main("main.cpp", R"code(
+        template <int N>
+        struct value {};
+
+        template <int N>
+        struct A {
+            using type = value<N + 1>;
+        };
+
+        template <int X>
+        struct test {
+            using input = typename A<X>::type;
+            using expect = void;
+        };
+    )code");
+    ASSERT_TRUE(compile());
+
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
+
+    auto input = unit->resolver().resolve(finder.input);
+    ASSERT_FALSE(input.isNull());
+    EXPECT_TRUE(input->isDependentType());
+}
+
 TEST_CASE(TypedValueMismatch) {
     /// Value deduction requires the parameter and argument types to agree:
     /// the bool partial never matches an int argument.
