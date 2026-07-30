@@ -2674,6 +2674,79 @@ TEST_CASE(QualifiedCallArity) {
     EXPECT_EQ(candidates.size(), 2u);
 }
 
+TEST_CASE(ArraySizeForward) {
+    run(R"code(
+        template <typename T, unsigned long N>
+        struct S {
+            using type = T[N];
+        };
+
+        template <typename X, unsigned long M>
+        struct test {
+            using input = typename S<X, M>::type;
+            using expect = X[M];
+        };
+    )code");
+}
+
+TEST_CASE(RepeatedValuePack) {
+    run(R"code(
+        template <int A, int B>
+        struct pairv {};
+
+        template <typename... Ts>
+        struct type_list {};
+
+        template <typename T>
+        struct trait {
+            using type = void;
+        };
+
+        template <int... Ns>
+        struct trait<type_list<pairv<Ns, Ns>...>> {
+            using type = int;
+        };
+
+        template <int X>
+        struct test {
+            using input = typename trait<type_list<pairv<X, X>>>::type;
+            using expect = int;
+        };
+    )code");
+}
+
+TEST_CASE(SurplusArguments) {
+    /// A variadic template template parameter bound to a one-parameter
+    /// template, applied with two arguments: rebuilding `target<X, int>`
+    /// would fabricate an invalid specialization — it must degrade.
+    add_main("main.cpp", R"code(
+        template <typename T>
+        struct target {};
+
+        template <template <typename...> class TT, typename A>
+        struct apply {
+            using type = TT<A, int>;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename apply<target, X>::type;
+            using expect = void;
+        };
+    )code");
+    ASSERT_TRUE(compile());
+
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
+
+    auto input = unit->resolver().resolve(finder.input);
+    ASSERT_FALSE(input.isNull());
+    if(auto TST = input->getAs<clang::TemplateSpecializationType>()) {
+        auto TD = TST->getTemplateName().getAsTemplateDecl();
+        EXPECT_FALSE(TD && TD->getName() == "target" && TST->template_arguments().size() > 1);
+    }
+}
+
 TEST_CASE(TemplateDefaultForward) {
     run(R"code(
         template <typename T>

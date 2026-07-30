@@ -48,6 +48,11 @@ private:
                      clang::TemplateName& name,
                      TemplateArguments& arguments) const;
 
+    /// Argument equality for repeated bindings: canonical structural
+    /// equality, with bare references to the same NTTP compared by decl
+    /// (canonical dependent expressions keep distinct node identities).
+    bool equivalent(const clang::TemplateArgument& lhs, const clang::TemplateArgument& rhs) const;
+
     bool bind(unsigned index, const clang::TemplateArgument& argument);
 
     /// Record one element of a pack parameter's binding while matching a

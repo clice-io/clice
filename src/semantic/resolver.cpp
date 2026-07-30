@@ -986,16 +986,25 @@ private:
                     break;
                 }
 
-                /// `T[N]` with a known N collapses to a constant array.
+                /// `T[N]` with a known N collapses to a constant array; a
+                /// bound that is itself a dependent expression (`N = M` from
+                /// deduction) is threaded through instead of left stale.
                 if(auto NTTP = referenced_nttp(DSAT->getSizeExpr())) {
-                    if(auto* argument =
-                           stack.find_argument(NTTP, NTTP->getDepth(), NTTP->getIndex());
-                       argument && argument->getKind() == clang::TemplateArgument::Integral) {
+                    auto* argument = stack.find_argument(NTTP, NTTP->getDepth(), NTTP->getIndex());
+                    if(argument && argument->getKind() == clang::TemplateArgument::Integral) {
                         result = context.getConstantArrayType(element,
                                                               argument->getAsIntegral(),
                                                               nullptr,
                                                               DSAT->getSizeModifier(),
                                                               DSAT->getIndexTypeCVRQualifiers());
+                        break;
+                    }
+                    if(argument && argument->getKind() == clang::TemplateArgument::Expression) {
+                        result =
+                            context.getDependentSizedArrayType(element,
+                                                               argument->getAsExpr(),
+                                                               DSAT->getSizeModifier(),
+                                                               DSAT->getIndexTypeCVRQualifiers());
                         break;
                     }
                 }
@@ -1175,21 +1184,19 @@ private:
 
         llvm::SmallVector<clang::TemplateArgument, 4> canonical;
 
-        /// A head bound through a template template parameter may carry fewer
-        /// arguments than the template declares (defaulted trailing
-        /// parameters). The canonical list must include the defaults or the
-        /// result never compares equal to a parsed `target<X>`; an argument
-        /// list the parameters cannot accept degrades.
+        /// A head bound through a template template parameter may carry an
+        /// argument list the parameters cannot accept — too few (defaulted
+        /// trailing parameters must be filled or the canonical list never
+        /// compares equal to a parsed `target<X>`) or too many (rebuilding
+        /// would fabricate an invalid specialization; degrade instead).
         llvm::SmallVector<clang::TemplateArgument, 4> full;
         clang::TemplateParameterList* params = nullptr;
         if(auto TD = name.getAsTemplateDecl()) {
             params = TD->getTemplateParameters();
-            if(arguments.size() < params->size()) {
-                if(!check_template_arguments(TD, arguments, full)) {
-                    return clang::QualType();
-                }
-                arguments = full;
+            if(!check_template_arguments(TD, arguments, full)) {
+                return clang::QualType();
             }
+            arguments = full;
         }
 
         unsigned i = 0;

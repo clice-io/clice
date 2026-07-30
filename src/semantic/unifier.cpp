@@ -77,6 +77,24 @@ const clang::NonTypeTemplateParmDecl* referenced_nttp(const clang::Expr* expr) {
     return nullptr;
 }
 
+bool TypeUnifier::equivalent(const clang::TemplateArgument& lhs,
+                             const clang::TemplateArgument& rhs) const {
+    if(context.getCanonicalTemplateArgument(lhs).structurallyEquals(
+           context.getCanonicalTemplateArgument(rhs))) {
+        return true;
+    }
+
+    /// Dependent expression arguments keep distinct node identities even
+    /// when they spell the same thing; two bare references to one
+    /// parameter (`A<X, X>`) are the same value.
+    if(lhs.getKind() == clang::TemplateArgument::Expression &&
+       rhs.getKind() == clang::TemplateArgument::Expression) {
+        auto* left = referenced_nttp(lhs.getAsExpr());
+        return left && left == referenced_nttp(rhs.getAsExpr());
+    }
+    return false;
+}
+
 bool TypeUnifier::bind(unsigned index, const clang::TemplateArgument& argument) {
     if(index >= bindings.size()) {
         return false;
@@ -88,19 +106,7 @@ bool TypeUnifier::bind(unsigned index, const clang::TemplateArgument& argument) 
         return true;
     }
 
-    auto lhs = context.getCanonicalTemplateArgument(existing);
-    auto rhs = context.getCanonicalTemplateArgument(argument);
-    if(!lhs.structurallyEquals(rhs)) {
-        /// Dependent expression arguments keep distinct node identities even
-        /// when they spell the same thing; two bare references to one
-        /// parameter (`A<X, X>`) are the same value.
-        if(existing.getKind() == clang::TemplateArgument::Expression &&
-           argument.getKind() == clang::TemplateArgument::Expression) {
-            auto* left = referenced_nttp(existing.getAsExpr());
-            if(left && left == referenced_nttp(argument.getAsExpr())) {
-                return true;
-            }
-        }
+    if(!equivalent(existing, argument)) {
         return false;
     }
 
@@ -108,7 +114,8 @@ bool TypeUnifier::bind(unsigned index, const clang::TemplateArgument& argument) 
     if(existing.getKind() == clang::TemplateArgument::Type &&
        argument.getKind() == clang::TemplateArgument::Type) {
         auto type = existing.getAsType();
-        if(type == type.getCanonicalType() && argument.getAsType() != rhs.getAsType()) {
+        if(type == type.getCanonicalType() &&
+           argument.getAsType() != argument.getAsType().getCanonicalType()) {
             existing = argument;
         }
     }
@@ -128,9 +135,7 @@ bool TypeUnifier::collect(unsigned index, const clang::TemplateArgument& argumen
     /// A pack referenced twice in one expansion element (`pair<Ts, Ts>...`)
     /// must see the same value at every occurrence.
     if(group.size() == element_ordinal + 1) {
-        auto lhs = context.getCanonicalTemplateArgument(group.back());
-        auto rhs = context.getCanonicalTemplateArgument(argument);
-        return lhs.structurallyEquals(rhs);
+        return equivalent(group.back(), argument);
     }
 
     /// A pack that skipped an earlier element cannot re-synchronize.
