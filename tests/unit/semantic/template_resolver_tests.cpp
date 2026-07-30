@@ -2674,6 +2674,69 @@ TEST_CASE(QualifiedCallArity) {
     EXPECT_EQ(candidates.size(), 2u);
 }
 
+TEST_CASE(NonTrailingSuffix) {
+    /// `void(Ts..., int)` has a fixed suffix: the expansion's length follows
+    /// from the arity, so `void(X, int)` matches with `Ts = {X}` while
+    /// `void(X)` (missing the suffix) falls back to the primary.
+    run(R"code(
+        template <typename... Ts>
+        struct type_list {};
+
+        template <typename A, typename B>
+        struct trait {
+            using type = void;
+        };
+
+        template <typename... Ts>
+        struct trait<type_list<Ts...>, void(Ts..., int)> {
+            using type = int;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename trait<type_list<X>, void(X, int)>::type;
+            using expect = int;
+        };
+    )code");
+}
+
+TEST_CASE(ArgumentPackMismatch) {
+    /// The argument-side expansion `void(Us*...)` only produces pointer
+    /// parameters; the fixed `void(int)` partial can never match it.
+    run(R"code(
+        template <typename A, typename B>
+        struct trait {
+            using type = void;
+        };
+
+        template <typename T>
+        struct trait<T, void(int)> {
+            using type = int;
+        };
+
+        template <typename... Us>
+        struct test {
+            using input = typename trait<int, void(Us*...)>::type;
+            using expect = void;
+        };
+    )code");
+}
+
+TEST_CASE(AttributedRewrite) {
+    run(R"code(
+        template <typename T>
+        struct A {
+            using type = T __attribute__((address_space(1)))*;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename A<X>::type;
+            using expect = X __attribute__((address_space(1)))*;
+        };
+    )code");
+}
+
 TEST_CASE(AutoArrayBound) {
     run(R"code(
         template <typename T>

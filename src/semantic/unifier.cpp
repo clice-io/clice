@@ -235,10 +235,11 @@ bool TypeUnifier::unify(clang::QualType pattern, clang::QualType argument) {
         return bind(TTPT->getIndex(), clang::TemplateArgument(bound));
     }
 
-    /// A pack expansion on the argument side cannot be matched structurally
-    /// (its element count is unknown); treat it as non-deduced.
-    if(llvm::isa<clang::PackExpansionType>(argument)) {
-        return true;
+    /// A pack expansion on the argument side has an unknown element count,
+    /// but a fixed pattern must still be structurally admissible against one
+    /// element (`void(int)` can never match `void(Us*...)`).
+    if(auto APET = llvm::dyn_cast<clang::PackExpansionType>(argument)) {
+        return unify(pattern, APET->getPattern());
     }
 
     /// Anything else matches structurally: qualifiers must agree exactly.
@@ -558,31 +559,39 @@ bool TypeUnifier::unify(TemplateArguments patterns, TemplateArguments arguments)
     }
 
     unsigned i = 0;
-    for(auto& pattern: flat_patterns) {
+    for(unsigned p = 0; p < flat_patterns.size(); p += 1) {
+        auto& pattern = flat_patterns[p];
         if(pattern.isPackExpansion()) {
-            /// Only a trailing pack expansion is deduced. A non-trailing one
-            /// (`void(Ts..., int)`) must reject the match rather than greedily
-            /// consuming the suffix and mis-selecting the specialization.
-            if(&pattern != &flat_patterns.back()) {
-                return false;
-            }
-
-            /// A trailing pack expansion matches all remaining arguments
-            /// element-wise: pack parameters inside the pattern accumulate
-            /// one binding per argument (`box<Us>...` against
-            /// `box<int>, box<X>` deduces `Us = {int, X}`), while non-pack
-            /// parameters must deduce consistently across elements. Nested
-            /// expansions stay non-deduced.
+            /// Nested expansions stay non-deduced.
             if(expanding) {
                 return true;
             }
+
+            /// A pack expansion matches arguments element-wise: pack
+            /// parameters inside the pattern accumulate one binding per
+            /// element (`box<Us>...` against `box<int>, box<X>` deduces
+            /// `Us = {int, X}`), while non-pack parameters must deduce
+            /// consistently across elements. The element count is fixed by
+            /// the arity — whatever the fixed suffix (`void(Ts..., int)`)
+            /// does not claim belongs to the expansion. A second expansion
+            /// has no unique split and rejects.
+            unsigned suffix = flat_patterns.size() - p - 1;
+            for(unsigned q = p + 1; q < flat_patterns.size(); q += 1) {
+                if(flat_patterns[q].isPackExpansion()) {
+                    return false;
+                }
+            }
+            if(flat.size() < i + suffix) {
+                return false;
+            }
+            unsigned length = flat.size() - i - suffix;
 
             auto inner = pattern.getPackExpansionPattern();
             elements.clear();
             elements.resize(bindings.size());
             expanding = true;
             bool matched = true;
-            for(unsigned j = i; j < flat.size(); j += 1) {
+            for(unsigned j = i; j < i + length; j += 1) {
                 element_ordinal = j - i;
                 if(!unify(inner, flat[j])) {
                     matched = false;
@@ -600,7 +609,8 @@ bool TypeUnifier::unify(TemplateArguments patterns, TemplateArguments arguments)
                     return false;
                 }
             }
-            return true;
+            i += length;
+            continue;
         }
 
         if(i >= flat.size()) {

@@ -892,6 +892,17 @@ private:
                 break;
             }
 
+            case clang::Type::Attributed: {
+                auto AT = llvm::cast<clang::AttributedType>(T);
+                auto modified = rewrite(AT->getModifiedType(), policy);
+                auto equivalent = rewrite(AT->getEquivalentType(), policy);
+                if(modified == AT->getModifiedType() && equivalent == AT->getEquivalentType()) {
+                    break;
+                }
+                result = context.getAttributedType(AT->getAttrKind(), modified, equivalent);
+                break;
+            }
+
             case clang::Type::UnaryTransform: {
                 auto UTT = llvm::cast<clang::UnaryTransformType>(T);
                 auto base = rewrite(UTT->getBaseType(), policy);
