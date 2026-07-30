@@ -58,6 +58,23 @@ test.skipIf(process.platform !== "linux")("worker crash reported", async ({ sess
         const serverPid = client.child.pid!;
         const workers = childPids(serverPid);
         expect(workers.length, "server should have spawned worker processes").toBeGreaterThan(0);
+
+        // The crash handler is installed when the worker opens its log file;
+        // killing a worker before that point produces no backtrace. Wait for
+        // a non-master worker log to appear so the injection lands after
+        // handler installation.
+        const logsDir = workspace.path(".clice/logs");
+        for (let i = 0; i < 50; i++) {
+            const names = fs.existsSync(logsDir)
+                ? fs.readdirSync(logsDir, { recursive: true, encoding: "utf8" })
+                : [];
+            if (
+                names.some((name) => name.endsWith(".log") && path.basename(name) !== "master.log")
+            ) {
+                break;
+            }
+            await sleep(200);
+        }
         // SIGABRT: dies via the same signal path as clice's own Debug traps,
         // exercises the crash handler, and is not intercepted by ASan
         // (handle_abort=0), unlike SIGSEGV which ASan turns into its own
