@@ -1884,6 +1884,10 @@ private:
         if(decl->getAccess() == clang::AS_private || decl->getAccess() == clang::AS_protected) {
             return true;
         }
+        /// `typename X::m` cannot name an unspecialized template either.
+        if(!wants_template && llvm::isa<clang::TemplateDecl>(decl)) {
+            return true;
+        }
         return wants_template && llvm::isa<clang::TypeDecl>(decl);
     }
 
@@ -2178,11 +2182,15 @@ static TemplateResolver::lookup_result
 
     if(arrow) {
         /// Follow overloaded operator-> chains (smart pointers) until a raw
-        /// pointer appears; bounded, cycles just stop resolving.
+        /// pointer appears; bounded. A chain that never dereferences to a
+        /// pointer (no operator->, or a cycle) makes the arrow ill-formed —
+        /// treating it like a dot access would fabricate candidates.
         auto arrow_name = context.DeclarationNames.getCXXOperatorName(clang::OO_Arrow);
+        bool dereferenced = false;
         for(unsigned hop = 0; hop < 8; hop += 1) {
             if(auto* PT = type->getAs<clang::PointerType>()) {
                 type = PT->getPointeeType();
+                dereferenced = true;
                 break;
             }
             PseudoInstantiator instantiator(context, resolved);
@@ -2199,6 +2207,9 @@ static TemplateResolver::lookup_result
             if(type.isNull()) {
                 return {};
             }
+        }
+        if(!dereferenced) {
+            return {};
         }
     }
 

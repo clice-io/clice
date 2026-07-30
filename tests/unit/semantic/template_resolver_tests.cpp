@@ -2674,6 +2674,98 @@ TEST_CASE(QualifiedCallArity) {
     EXPECT_EQ(candidates.size(), 2u);
 }
 
+TEST_CASE(PackPrefixArity) {
+    /// `TT` requires two fixed parameters before its pack; the unary
+    /// template cannot supply them, so the primary applies.
+    run(R"code(
+        template <typename T>
+        struct unary {};
+
+        template <template <typename...> class G>
+        struct token {};
+
+        template <typename T, typename U>
+        struct P {
+            using type = void;
+        };
+
+        template <template <typename, typename, typename...> class TT, typename U>
+        struct P<token<TT>, U> {
+            using type = int;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename P<token<unary>, X>::type;
+            using expect = void;
+        };
+    )code");
+}
+
+TEST_CASE(TemplateMemberProbe) {
+    /// `typename T::foo` cannot name an unspecialized class template; the
+    /// probe must fail and keep the primary.
+    run(R"code(
+        template <typename... Ts>
+        using void_t = void;
+
+        template <typename T, typename = void>
+        struct detect {
+            using type = void;
+        };
+
+        template <typename T>
+        struct detect<T, void_t<typename T::foo>> {
+            using type = int;
+        };
+
+        template <typename T>
+        struct wrap {
+            template <typename U>
+            struct foo {};
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename detect<wrap<X>>::type;
+            using expect = void;
+        };
+    )code");
+}
+
+TEST_CASE(ArrowWithoutPointer) {
+    /// `p->value` on a class with no `operator->` is ill-formed; the lookup
+    /// must produce no candidates instead of pretending it was a dot access.
+    add_main("main.cpp", R"code(
+        template <typename T>
+        struct P {
+            int value;
+
+            void f(P p) {
+                p->value;
+            }
+        };
+    )code");
+    ASSERT_TRUE(compile());
+
+    struct Finder : clang::RecursiveASTVisitor<Finder> {
+        const clang::CXXDependentScopeMemberExpr* expr = nullptr;
+
+        bool VisitCXXDependentScopeMemberExpr(clang::CXXDependentScopeMemberExpr* e) {
+            if(e->isArrow()) {
+                expr = e;
+            }
+            return true;
+        }
+    } finder;
+
+    finder.TraverseAST(unit->context());
+    ASSERT_TRUE(finder.expr != nullptr);
+
+    auto candidates = unit->resolver().lookup(finder.expr);
+    EXPECT_TRUE(candidates.empty());
+}
+
 TEST_CASE(MixedPackCandidate) {
     /// A type pack cannot cover `mixed`'s non-type slot, so the primary
     /// applies even though one type argument would satisfy the defaults.
