@@ -114,47 +114,54 @@ struct InstantiationStack {
     ///
     /// Canonical parameters carry no declaration; those fall back to matching
     /// the frame's parameter list depth.
-    const clang::TemplateArgument* find_argument(const clang::NamedDecl* decl,
-                                                 unsigned depth,
-                                                 unsigned index) const {
+    /// Stable handle to a binding: (frame index, argument index). Pointers
+    /// into the frame vector go stale whenever a nested rewrite pushes a
+    /// frame and the vector reallocates; indices survive because pushes only
+    /// append and the walk never outlives the frames below it.
+    using Slot = std::pair<unsigned, unsigned>;
+
+    std::optional<Slot> find_slot(const clang::NamedDecl* decl,
+                                  unsigned depth,
+                                  unsigned index) const {
         if(decl) {
-            for(const auto& frame: std::ranges::reverse_view(data)) {
+            for(unsigned f = data.size(); f > 0; f -= 1) {
+                const auto& frame = data[f - 1];
                 if(frame.params && index < frame.params->size() &&
                    frame.params->getParam(index) == decl) {
                     if(index < frame.arguments.size()) {
-                        return &frame.arguments[index];
+                        return Slot{f - 1, index};
                     }
-                    return nullptr;
+                    return std::nullopt;
                 }
             }
-            return nullptr;
+            return std::nullopt;
         }
 
-        for(const auto& frame: std::ranges::reverse_view(data)) {
+        for(unsigned f = data.size(); f > 0; f -= 1) {
+            const auto& frame = data[f - 1];
             if(frame.params && frame.params->getDepth() == depth) {
                 if(index < frame.arguments.size()) {
-                    return &frame.arguments[index];
+                    return Slot{f - 1, index};
                 }
-                return nullptr;
+                return std::nullopt;
             }
         }
-        return nullptr;
+        return std::nullopt;
+    }
+
+    clang::TemplateArgument& slot(Slot handle) {
+        return data[handle.first].arguments[handle.second];
+    }
+
+    const clang::TemplateArgument* find_argument(const clang::NamedDecl* decl,
+                                                 unsigned depth,
+                                                 unsigned index) const {
+        auto handle = find_slot(decl, depth, index);
+        return handle ? &data[handle->first].arguments[handle->second] : nullptr;
     }
 
     const clang::TemplateArgument* find_argument(const clang::TemplateTypeParmType* T) const {
         return find_argument(T->getDecl(), T->getDepth(), T->getIndex());
-    }
-
-    /// Mutable view of a binding, for element-wise pack expansion which
-    /// temporarily narrows a Pack binding to one of its elements.
-    clang::TemplateArgument* find_mutable_argument(const clang::TemplateTypeParmType* T) {
-        return const_cast<clang::TemplateArgument*>(find_argument(T));
-    }
-
-    clang::TemplateArgument* find_mutable_argument(const clang::NamedDecl* decl,
-                                                   unsigned depth,
-                                                   unsigned index) {
-        return const_cast<clang::TemplateArgument*>(find_argument(decl, depth, index));
     }
 };
 
@@ -919,6 +926,19 @@ private:
                 break;
             }
 
+            case clang::Type::Decayed: {
+                /// A parameter written as a dependent array or function type
+                /// stores its adjusted form in a DecayedType; rebuild from
+                /// the substituted original.
+                auto DT = llvm::cast<clang::DecayedType>(T);
+                auto original = rewrite(DT->getOriginalType(), policy);
+                if(original == DT->getOriginalType()) {
+                    break;
+                }
+                result = context.getAdjustedParameterType(original);
+                break;
+            }
+
             case clang::Type::UnaryTransform: {
                 auto UTT = llvm::cast<clang::UnaryTransformType>(T);
                 auto base = rewrite(UTT->getBaseType(), policy);
@@ -1534,40 +1554,44 @@ private:
             return std::nullopt;
         }
 
-        llvm::SmallVector<clang::TemplateArgument*, 2> slots;
+        llvm::SmallVector<InstantiationStack::Slot, 2> slots;
         unsigned length = 0;
-        auto admit = [&](clang::TemplateArgument* bound) {
-            if(!bound || bound->getKind() != clang::TemplateArgument::Pack) {
+        auto admit = [&](std::optional<InstantiationStack::Slot> handle) {
+            if(!handle) {
                 return false;
             }
-            if(!slots.empty() && bound->pack_size() != length) {
+            auto& bound = stack.slot(*handle);
+            if(bound.getKind() != clang::TemplateArgument::Pack) {
                 return false;
             }
-            length = bound->pack_size();
-            if(!llvm::is_contained(slots, bound)) {
-                slots.push_back(bound);
+            if(!slots.empty() && bound.pack_size() != length) {
+                return false;
+            }
+            length = bound.pack_size();
+            if(!llvm::is_contained(slots, *handle)) {
+                slots.push_back(*handle);
             }
             return true;
         };
 
         for(auto TTPT: collector.packs) {
-            if(!admit(stack.find_mutable_argument(TTPT))) {
+            if(!admit(stack.find_slot(TTPT->getDecl(), TTPT->getDepth(), TTPT->getIndex()))) {
                 return std::nullopt;
             }
         }
         for(auto TTP: collector.template_packs) {
-            if(!admit(stack.find_mutable_argument(TTP, TTP->getDepth(), TTP->getIndex()))) {
+            if(!admit(stack.find_slot(TTP, TTP->getDepth(), TTP->getIndex()))) {
                 return std::nullopt;
             }
         }
         for(auto NTTP: collector.value_packs) {
-            if(!admit(stack.find_mutable_argument(NTTP, NTTP->getDepth(), NTTP->getIndex()))) {
+            if(!admit(stack.find_slot(NTTP, NTTP->getDepth(), NTTP->getIndex()))) {
                 return std::nullopt;
             }
         }
 
         llvm::SmallVector<clang::TemplateArgument, 2> saved(
-            llvm::map_range(slots, [](auto* slot) { return *slot; }));
+            llvm::map_range(slots, [&](auto handle) { return stack.slot(handle); }));
 
         /// While narrowed, node-pointer-keyed caches are bypassed: the same
         /// pattern node resolves differently per element, and a cached first
@@ -1576,8 +1600,8 @@ private:
         bool ok = true;
         llvm::SmallVector<clang::TemplateArgument, 4> expanded;
         for(unsigned k = 0; k < length && ok; k += 1) {
-            for(auto [slot, pack]: llvm::zip(slots, saved)) {
-                *slot = pack.pack_begin()[k];
+            for(auto [handle, pack]: llvm::zip(slots, saved)) {
+                stack.slot(handle) = pack.pack_begin()[k];
             }
             auto element = rewrite(pattern, policy);
             ok = element != pattern && !element->containsUnexpandedParameterPack();
@@ -1587,8 +1611,8 @@ private:
         }
         pack_narrowing -= 1;
 
-        for(auto [slot, pack]: llvm::zip(slots, saved)) {
-            *slot = pack;
+        for(auto [handle, pack]: llvm::zip(slots, saved)) {
+            stack.slot(handle) = pack;
         }
 
         if(!ok) {

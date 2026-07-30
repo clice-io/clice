@@ -2674,6 +2674,44 @@ TEST_CASE(QualifiedCallArity) {
     EXPECT_EQ(candidates.size(), 2u);
 }
 
+TEST_CASE(DecayedParameter) {
+    run(R"code(
+        template <typename T>
+        struct A {
+            using type = void(T[]);
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename A<X>::type;
+            using expect = void(X*);
+        };
+    )code");
+}
+
+TEST_CASE(RedeclAliasForward) {
+    /// The dependent name is formed through an alias declared while only the
+    /// forward declaration of `A` was visible.
+    run(R"code(
+        template <typename T>
+        struct A;
+
+        template <typename T>
+        using ref = A<T>;
+
+        template <typename X>
+        struct test {
+            using input = typename ref<X>::type;
+            using expect = X*;
+        };
+
+        template <typename T>
+        struct A {
+            using type = T*;
+        };
+    )code");
+}
+
 TEST_CASE(CompoundValueDegrade) {
     /// TODO(nttp-expr): compound NTTP expressions are not substituted; this
     /// pins that they degrade cleanly (assertion-enabled clang would abort
