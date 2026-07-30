@@ -1,6 +1,7 @@
 #include "semantic/unifier.h"
 
 #include "clang/AST/ExprCXX.h"
+#include "clang/AST/RecursiveASTVisitor.h"
 
 namespace clice {
 
@@ -94,6 +95,61 @@ bool template_compatible(const clang::TemplateTemplateParmDecl* TTP, clang::Temp
     }
     return kinds_match(std::min(params->size(), candidate->size()));
 }
+
+/// Indices of the deduction-depth parameter packs referenced inside an
+/// expansion pattern; a zero-length expansion must still bind them (to the
+/// empty pack) so cardinality conflicts with other occurrences surface.
+struct PackIndexCollector : clang::RecursiveASTVisitor<PackIndexCollector> {
+    unsigned depth;
+    llvm::SmallVector<unsigned, 2> indices;
+
+    explicit PackIndexCollector(unsigned depth) : depth(depth) {}
+
+    bool VisitTemplateTypeParmType(clang::TemplateTypeParmType* T) {
+        if(T->isParameterPack() && T->getDepth() == depth) {
+            indices.push_back(T->getIndex());
+        }
+        return true;
+    }
+
+    bool VisitDeclRefExpr(clang::DeclRefExpr* expr) {
+        if(auto NTTP = llvm::dyn_cast<clang::NonTypeTemplateParmDecl>(expr->getDecl());
+           NTTP && NTTP->isParameterPack() && NTTP->getDepth() == depth) {
+            indices.push_back(NTTP->getIndex());
+        }
+        return true;
+    }
+
+    bool TraverseTemplateName(clang::TemplateName name) {
+        if(auto TTP =
+               llvm::dyn_cast_or_null<clang::TemplateTemplateParmDecl>(name.getAsTemplateDecl());
+           TTP && TTP->isParameterPack() && TTP->getDepth() == depth) {
+            indices.push_back(TTP->getIndex());
+        }
+        return RecursiveASTVisitor::TraverseTemplateName(name);
+    }
+
+    void traverse(const clang::TemplateArgument& argument) {
+        switch(argument.getKind()) {
+            case clang::TemplateArgument::Type: {
+                TraverseType(argument.getAsType());
+                break;
+            }
+            case clang::TemplateArgument::Expression: {
+                TraverseStmt(argument.getAsExpr());
+                break;
+            }
+            case clang::TemplateArgument::Template:
+            case clang::TemplateArgument::TemplateExpansion: {
+                TraverseTemplateName(argument.getAsTemplateOrTemplatePattern());
+                break;
+            }
+            default: {
+                break;
+            }
+        }
+    }
+};
 
 }  // namespace
 
@@ -304,9 +360,10 @@ bool TypeUnifier::unify(clang::QualType pattern, clang::QualType argument) {
                 return false;
             }
 
-            /// The calling convention is part of the function type: an
-            /// ABI-specific pattern must not accept the default convention.
-            if(PF->getExtInfo().getCC() != AF->getExtInfo().getCC()) {
+            /// The extended info (calling convention, regparm, ...) is part
+            /// of the function type: an ABI-specific pattern must not accept
+            /// the default ABI.
+            if(PF->getExtInfo() != AF->getExtInfo()) {
                 return false;
             }
 
@@ -426,8 +483,11 @@ bool TypeUnifier::unify(clang::QualType pattern, clang::QualType argument) {
                 }
             }
 
-            if(auto AA = llvm::dyn_cast<clang::ArrayType>(argument)) {
-                return unify(PA->getElementType(), AA->getElementType());
+            /// A bounded pattern (`U[N]`) only matches arrays that have a
+            /// bound; `X[]` stays with the primary.
+            if(llvm::isa<clang::ConstantArrayType, clang::DependentSizedArrayType>(argument)) {
+                return unify(PA->getElementType(),
+                             llvm::cast<clang::ArrayType>(argument)->getElementType());
             }
             return false;
         }
@@ -603,6 +663,20 @@ bool TypeUnifier::unify(TemplateArguments patterns, TemplateArguments arguments)
                 return false;
             }
 
+            /// A zero-length expansion collected nothing, but its packs must
+            /// still bind to the empty pack: `tuple<Ts...>` against `tuple<>`
+            /// conflicts with `Ts = {X}` from another occurrence. With a
+            /// non-zero length, empty groups belong to packs guarded away by
+            /// nested expansions and stay unbound.
+            if(length == 0) {
+                PackIndexCollector collector(depth);
+                collector.traverse(inner);
+                for(auto index: collector.indices) {
+                    if(!bind(index, clang::TemplateArgument::CreatePackCopy(context, {}))) {
+                        return false;
+                    }
+                }
+            }
             for(auto [index, group]: llvm::enumerate(elements)) {
                 if(!group.empty() &&
                    !bind(index, clang::TemplateArgument::CreatePackCopy(context, group))) {

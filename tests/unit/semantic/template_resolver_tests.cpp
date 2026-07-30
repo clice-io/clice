@@ -2674,6 +2674,55 @@ TEST_CASE(QualifiedCallArity) {
     EXPECT_EQ(candidates.size(), 2u);
 }
 
+TEST_CASE(UnboundedArgument) {
+    /// The bounded pattern `U[N]` must not absorb the unbounded `X[]`.
+    run(R"code(
+        template <int N, typename B>
+        struct P {
+            using type = void;
+        };
+
+        template <int N, typename U>
+        struct P<N, U[N]> {
+            using type = U;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename P<3, X[]>::type;
+            using expect = void;
+        };
+    )code");
+}
+
+TEST_CASE(EmptyPackConflict) {
+    /// `Ts` deduces `{X}` from the first argument; the empty `tuple<>` in
+    /// the second is a cardinality conflict, so the primary applies.
+    run(R"code(
+        template <typename... Ts>
+        struct list {};
+
+        template <typename... Ts>
+        struct tuple {};
+
+        template <typename A, typename B>
+        struct P {
+            using type = void;
+        };
+
+        template <typename... Ts>
+        struct P<list<Ts...>, tuple<Ts...>> {
+            using type = int;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename P<list<X>, tuple<>>::type;
+            using expect = void;
+        };
+    )code");
+}
+
 TEST_CASE(AmbiguousPartials) {
     /// `trait<X*, Y*>` matches both partials and neither dominates: real
     /// instantiation is ambiguous, so the member must stay unresolved.
