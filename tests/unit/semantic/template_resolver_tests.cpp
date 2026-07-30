@@ -2779,6 +2779,116 @@ TEST_CASE(Standard) {
     EXPECT_EQ(input.getCanonicalType(), target.getCanonicalType());
 };
 
+TEST_CASE(BrokenCodeSweep) {
+    /// Error-recovery ASTs are the resolver's everyday hostile input in an
+    /// LSP; resolving anything in a broken TU must degrade, never crash.
+    add_main("main.cpp", R"code(
+        template <typename T>
+        struct A {
+            using type = typename T::missing;
+            using bad = typename unknown_ns::thing<T>::nested;
+            using worse = typename A<typename T::gone>::type;
+            T member;
+
+            void f() {
+                auto x = undeclared_function(member);
+                member.no_such_member();
+            }
+        };
+
+        template <typename T>
+        struct A<T*>;
+
+        template <typename... Ts>
+        struct B {
+            using type = typename A<mistyped<Ts...>>::type;
+            using other = typename B::unknown;
+        };
+
+        struct C : A<not_a_type> {
+            using inherited = typename A<not_a_type>::type;
+        };
+    )code");
+    prepare();
+    ASSERT_TRUE(try_compile());
+
+    struct Sweeper : clang::RecursiveASTVisitor<Sweeper> {
+        TemplateResolver& resolver;
+        unsigned visited = 0;
+
+        Sweeper(TemplateResolver& resolver) : resolver(resolver) {}
+
+        bool VisitTypedefNameDecl(clang::TypedefNameDecl* decl) {
+            auto type = decl->getUnderlyingType();
+            if(!type.isNull() && type->isDependentType()) {
+                resolver.resolve(type);
+                visited += 1;
+            }
+            return true;
+        }
+
+        bool VisitCXXDependentScopeMemberExpr(clang::CXXDependentScopeMemberExpr* expr) {
+            resolver.lookup(expr);
+            visited += 1;
+            return true;
+        }
+
+        bool VisitDependentScopeDeclRefExpr(clang::DependentScopeDeclRefExpr* expr) {
+            resolver.lookup(expr);
+            visited += 1;
+            return true;
+        }
+    } sweeper(unit->resolver());
+
+    sweeper.TraverseAST(unit->context());
+    EXPECT_TRUE(sweeper.visited > 0);
+}
+
+TEST_CASE(StandardSweep) {
+    /// Crash-safety sweep: feed every dependent typedef and dependent
+    /// expression in a libstdc++-heavy TU through the resolver. Results are
+    /// irrelevant — under the assertion-enabled ASan Debug build, surviving
+    /// the sweep is the assertion.
+    add_main("main.cpp", R"code(
+        #include <functional>
+        #include <map>
+        #include <memory>
+        #include <vector>
+    )code");
+    ASSERT_TRUE(compile_driver());
+
+    struct Sweeper : clang::RecursiveASTVisitor<Sweeper> {
+        TemplateResolver& resolver;
+        unsigned visited = 0;
+
+        Sweeper(TemplateResolver& resolver) : resolver(resolver) {}
+
+        bool VisitTypedefNameDecl(clang::TypedefNameDecl* decl) {
+            auto type = decl->getUnderlyingType();
+            if(!type.isNull() && type->isDependentType()) {
+                resolver.resolve(type);
+                visited += 1;
+            }
+            return true;
+        }
+
+        bool VisitCXXDependentScopeMemberExpr(clang::CXXDependentScopeMemberExpr* expr) {
+            resolver.lookup(expr);
+            visited += 1;
+            return true;
+        }
+
+        bool VisitDependentScopeDeclRefExpr(clang::DependentScopeDeclRefExpr* expr) {
+            resolver.lookup(expr);
+            visited += 1;
+            return true;
+        }
+    } sweeper(unit->resolver());
+
+    sweeper.TraverseAST(unit->context());
+    EXPECT_TRUE(sweeper.visited > 0);
+}
+
 };  // TEST_SUITE(TemplateResolver)
 
 }  // namespace
