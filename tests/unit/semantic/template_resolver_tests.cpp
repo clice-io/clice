@@ -2674,6 +2674,73 @@ TEST_CASE(QualifiedCallArity) {
     EXPECT_EQ(candidates.size(), 2u);
 }
 
+TEST_CASE(ParamDecayAdjust) {
+    run(R"code(
+        template <typename T, typename U>
+        struct A {
+            using type = void(T);
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename A<int[2], X>::type;
+            using expect = void(int*);
+        };
+    )code");
+}
+
+TEST_CASE(DependentValueDefault) {
+    run(R"code(
+        template <int N>
+        struct value {};
+
+        template <int N, int M = N>
+        struct A {
+            using type = value<M>;
+        };
+
+        template <int X>
+        struct test {
+            using input = typename A<X>::type;
+            using expect = value<X>;
+        };
+    )code");
+}
+
+TEST_CASE(ExplicitObjectArity) {
+    add_main("main.cpp", R"code(
+        template <typename T>
+        struct S {
+            int foo(this S&, int);
+            int foo(this S&, int, int);
+
+            void call(T t) {
+                this->foo(t);
+            }
+        };
+    )code");
+    ASSERT_TRUE(compile("-std=c++23"));
+
+    struct Finder : clang::RecursiveASTVisitor<Finder> {
+        const clang::CallExpr* expr = nullptr;
+
+        bool VisitCallExpr(clang::CallExpr* e) {
+            if(llvm::isa<clang::UnresolvedMemberExpr>(e->getCallee()->IgnoreParenImpCasts())) {
+                expr = e;
+            }
+            return true;
+        }
+    } finder;
+
+    finder.TraverseAST(unit->context());
+    ASSERT_TRUE(finder.expr != nullptr);
+
+    /// One written argument plus the unspelled object: only the
+    /// two-parameter explicit-object overload survives.
+    auto candidates = unit->resolver().lookup(finder.expr);
+    EXPECT_EQ(candidates.size(), 1u);
+}
+
 TEST_CASE(CallArityOccurrences) {
     /// The production occurrence path must apply the arity filter: the
     /// two-argument overload never appears for a one-argument call.

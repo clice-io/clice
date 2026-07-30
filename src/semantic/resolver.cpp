@@ -336,6 +336,14 @@ public:
                         continue;
                     }
                 }
+                /// A default naming an earlier parameter (`M = N`) takes that
+                /// parameter's already-supplied argument, which may itself
+                /// still be dependent. Compound expressions stay unfilled.
+                if(auto NTTP = referenced_nttp(expr);
+                   NTTP && NTTP->getIndex() < out.size() && NTTP->getDepth() == list->getDepth()) {
+                    out.emplace_back(out[NTTP->getIndex()]);
+                    continue;
+                }
                 break;
             }
 
@@ -1025,7 +1033,8 @@ private:
                                     representable = false;
                                     return;
                                 }
-                                params.push_back(element.getAsType());
+                                params.push_back(
+                                    context.getAdjustedParameterType(element.getAsType()));
                             }
                             changed = true;
                         };
@@ -1047,7 +1056,10 @@ private:
 
                     auto rewritten = rewrite(param, policy);
                     changed |= rewritten != param;
-                    params.push_back(rewritten);
+                    /// Parameters decay (`void(T)` with `T = int[2]` is
+                    /// `void(int*)`), so a substituted type must be adjusted
+                    /// before it enters the prototype.
+                    params.push_back(context.getAdjustedParameterType(rewritten));
                 }
                 if(!representable) {
                     break;
@@ -2008,7 +2020,15 @@ TemplateResolver::lookup_result TemplateResolver::lookup(const clang::Unresolved
 
 /// Can `FD` accept a call with `count` arguments? Default arguments lower the
 /// minimum; C-style variadics and parameter packs lift the maximum.
-static bool arity_viable(const clang::FunctionDecl* FD, unsigned count) {
+static bool arity_viable(const clang::FunctionDecl* FD, unsigned count, bool member_call) {
+    /// A member-syntax call does not spell the explicit object argument
+    /// (`s.foo(1)` with `foo(this S&, int)`), but the declaration counts it.
+    if(member_call) {
+        if(auto method = llvm::dyn_cast<clang::CXXMethodDecl>(FD);
+           method && method->isExplicitObjectMemberFunction()) {
+            count += 1;
+        }
+    }
     if(count < FD->getMinRequiredArguments()) {
         return false;
     }
@@ -2024,6 +2044,8 @@ llvm::SmallVector<clang::NamedDecl*, 4> TemplateResolver::lookup(const clang::Ca
     llvm::SmallVector<clang::NamedDecl*, 4> candidates;
 
     auto callee = expr->getCallee()->IgnoreParenImpCasts();
+    bool member_call =
+        llvm::isa<clang::UnresolvedMemberExpr, clang::CXXDependentScopeMemberExpr>(callee);
     if(auto OE = llvm::dyn_cast<clang::OverloadExpr>(callee)) {
         for(auto decl: OE->decls()) {
             candidates.push_back(decl);
@@ -2049,7 +2071,7 @@ llvm::SmallVector<clang::NamedDecl*, 4> TemplateResolver::lookup(const clang::Ca
         /// Non-function candidates (e.g. a callable object's variable) stay:
         /// arity says nothing about them.
         auto FD = llvm::dyn_cast<clang::FunctionDecl>(target);
-        return FD && !arity_viable(FD, expr->getNumArgs());
+        return FD && !arity_viable(FD, expr->getNumArgs(), member_call);
     });
     candidates.erase(removed.begin(), removed.end());
     return candidates;
