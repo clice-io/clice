@@ -693,6 +693,7 @@ public:
         /// partials whose dependent pattern constraints survive the
         /// pseudo-SFINAE probe (see member_absent).
         clang::ClassTemplatePartialSpecializationDecl* best = nullptr;
+        llvm::SmallVector<clang::ClassTemplatePartialSpecializationDecl*, 4> matched;
         for(auto partial: partials) {
             if(deduce_template_arguments(partial, arguments)) {
                 bool viable = satisfies_pattern(partial);
@@ -704,11 +705,26 @@ public:
                         partial->getNameAsString());
                     continue;
                 }
+                matched.push_back(partial);
                 if(!best || more_specialized(context, partial, best)) {
                     best = partial;
                 }
             }
         }
+
+        /// Real instantiation diagnoses ambiguity: if the winner does not
+        /// dominate every other match, neither a partial nor the primary may
+        /// be chosen — degrade to unresolved rather than picking arbitrarily.
+        if(best && matched.size() > 1) {
+            for(auto partial: matched) {
+                if(partial != best && !more_specialized(context, best, partial)) {
+                    LOG_DEBUG("{}" "ambiguous partials; degrading", pad());
+                    indent -= 1;
+                    return lookup_result();
+                }
+            }
+        }
+
         if(best && deduce_template_arguments(best, arguments)) {
             LOG_DEBUG("{}" "matched partial '{}'", pad(), best->getNameAsString());
             if(auto members = best->lookup(name); !members.empty()) {
@@ -1447,6 +1463,39 @@ private:
                         auto* bound = stack.find_argument(TTP, TTP->getDepth(), TTP->getIndex());
                         if(bound && bound->getKind() == clang::TemplateArgument::Template) {
                             out.push_back(*bound);
+                            changed = true;
+                            continue;
+                        }
+                    }
+
+                    /// A dependent name (`apply<T::template tmpl>`) carries
+                    /// its qualifier inside the TemplateName; rewrite it so
+                    /// the frame's bindings do not go stale.
+                    if(auto dependent = argument.getAsTemplate().getAsDependentTemplateName()) {
+                        auto qualifier = rewrite_specifier(dependent->getQualifier(), policy);
+                        if(qualifier != dependent->getQualifier()) {
+                            auto name =
+                                context.getDependentTemplateName(clang::DependentTemplateStorage(
+                                    const_cast<clang::NestedNameSpecifier*>(qualifier),
+                                    dependent->getName(),
+                                    dependent->hasTemplateKeyword()));
+                            out.emplace_back(name);
+                            changed = true;
+                            continue;
+                        }
+                    }
+                    out.push_back(argument);
+                    break;
+                }
+
+                case clang::TemplateArgument::TemplateExpansion: {
+                    /// `Fs...` splices its bound template pack, symmetric
+                    /// with the type and expression pack paths.
+                    if(auto TTP = llvm::dyn_cast_or_null<clang::TemplateTemplateParmDecl>(
+                           argument.getAsTemplateOrTemplatePattern().getAsTemplateDecl())) {
+                        auto* bound = stack.find_argument(TTP, TTP->getDepth(), TTP->getIndex());
+                        if(bound && bound->getKind() == clang::TemplateArgument::Pack) {
+                            out.append(bound->pack_begin(), bound->pack_end());
                             changed = true;
                             continue;
                         }

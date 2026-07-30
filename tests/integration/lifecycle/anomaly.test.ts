@@ -60,17 +60,19 @@ test.skipIf(process.platform !== "linux")("worker crash reported", async ({ sess
         expect(workers.length, "server should have spawned worker processes").toBeGreaterThan(0);
 
         // The crash handler is installed when the worker opens its log file;
-        // killing a worker before that point produces no backtrace. Wait for
-        // a non-master worker log to appear so the injection lands after
-        // handler installation.
+        // killing a worker before that point produces no backtrace. Wait
+        // until every spawned worker has a log file — the log names carry
+        // worker names, not pids, so per-process association is impossible
+        // and readiness of the whole fleet is the usable condition.
         const logsDir = workspace.path(".clice/logs");
         for (let i = 0; i < 50; i++) {
             const names = fs.existsSync(logsDir)
                 ? fs.readdirSync(logsDir, { recursive: true, encoding: "utf8" })
                 : [];
-            if (
-                names.some((name) => name.endsWith(".log") && path.basename(name) !== "master.log")
-            ) {
+            const workerLogs = names.filter(
+                (name) => name.endsWith(".log") && path.basename(name) !== "master.log",
+            );
+            if (workerLogs.length >= workers.length) {
                 break;
             }
             await sleep(200);

@@ -2674,6 +2674,81 @@ TEST_CASE(QualifiedCallArity) {
     EXPECT_EQ(candidates.size(), 2u);
 }
 
+TEST_CASE(AmbiguousPartials) {
+    /// `trait<X*, Y*>` matches both partials and neither dominates: real
+    /// instantiation is ambiguous, so the member must stay unresolved.
+    add_main("main.cpp", R"code(
+        template <typename A, typename B>
+        struct trait {
+            using type = void;
+        };
+
+        template <typename T, typename U>
+        struct trait<T*, U> {
+            using type = int;
+        };
+
+        template <typename T, typename U>
+        struct trait<T, U*> {
+            using type = char;
+        };
+
+        template <typename X, typename Y>
+        struct test {
+            using input = typename trait<X*, Y*>::type;
+            using expect = void;
+        };
+    )code");
+    ASSERT_TRUE(compile());
+
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
+
+    auto input = unit->resolver().resolve(finder.input);
+    ASSERT_FALSE(input.isNull());
+    EXPECT_TRUE(input->isDependentType());
+    EXPECT_FALSE(input->isVoidType() || input->isBuiltinType());
+}
+
+TEST_CASE(DependentNameArgument) {
+    run(R"code(
+        template <template <typename> class TT>
+        struct apply {};
+
+        template <typename T>
+        struct A {
+            using type = apply<T::template tmpl>;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename A<X>::type;
+            using expect = apply<X::template tmpl>;
+        };
+    )code");
+}
+
+TEST_CASE(TemplateExpansionSplice) {
+    run(R"code(
+        template <typename T>
+        struct box {};
+
+        template <template <typename> class... Gs>
+        struct tlist {};
+
+        template <template <typename> class... Fs>
+        struct A {
+            using type = tlist<Fs...>;
+        };
+
+        template <template <typename> class TX>
+        struct test {
+            using input = typename A<TX, box>::type;
+            using expect = tlist<TX, box>;
+        };
+    )code");
+}
+
 TEST_CASE(NonTrailingSuffix) {
     /// `void(Ts..., int)` has a fixed suffix: the expansion's length follows
     /// from the arity, so `void(X, int)` matches with `Ts = {X}` while
