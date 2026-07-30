@@ -2039,6 +2039,86 @@ TEST_CASE(CallArityFilter) {
     EXPECT_EQ(candidates.size(), 2u);
 }
 
+TEST_CASE(UnboundArrayPattern) {
+    run(R"code(
+        template <typename T>
+        struct trait {
+            using type = void;
+        };
+
+        template <typename T>
+        struct trait<T[]> {
+            using type = T;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename trait<X[]>::type;
+            using expect = X;
+        };
+    )code");
+}
+
+TEST_CASE(ConstMethodPattern) {
+    /// The const-qualified member-function partial must not swallow a
+    /// non-const member function pointer.
+    run(R"code(
+        template <typename T>
+        struct trait {
+            using type = void;
+        };
+
+        template <typename R, typename C, typename... As>
+        struct trait<R (C::*)(As...) const> {
+            using type = R;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename trait<int (X::*)(char)>::type;
+            using expect = void;
+        };
+    )code");
+}
+
+TEST_CASE(RepeatedValuePattern) {
+    run(R"code(
+        template <int A, int B>
+        struct P {
+            using type = void;
+        };
+
+        template <int N>
+        struct P<N, N> {
+            using type = int;
+        };
+
+        template <int X>
+        struct test {
+            using input = typename P<X, X>::type;
+            using expect = int;
+        };
+    )code");
+}
+
+TEST_CASE(TemplatePackDeduce) {
+    run(R"code(
+        template <typename T>
+        struct box {};
+
+        template <template <typename> class... TTs>
+        struct A {
+            using type = int;
+        };
+
+        template <template <typename> class TX>
+        struct test {
+            using input = typename A<TX, box>::type;
+            using expect = int;
+        };
+    )code");
+}
+
 TEST_CASE(NoexceptFunctionPattern) {
     /// The partial pins `noexcept`; a plain function type must keep the
     /// primary rather than matching with the specification ignored.

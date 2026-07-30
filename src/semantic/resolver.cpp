@@ -817,6 +817,14 @@ private:
                         }
                     }
                 }
+                /// Rebuilding with a non-dependent operand would fabricate a
+                /// node whose canonical type is the operand itself — a wrong
+                /// answer for every transform (Sema computes the result type
+                /// and we do not, except for the enum case above). Degrade to
+                /// the unrewritten node instead.
+                if(!base->isDependentType()) {
+                    break;
+                }
                 result = context.getUnaryTransformType(base, base, UTT->getUTTKind());
                 break;
             }

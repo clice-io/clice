@@ -91,6 +91,16 @@ bool TypeUnifier::bind(unsigned index, const clang::TemplateArgument& argument) 
     auto lhs = context.getCanonicalTemplateArgument(existing);
     auto rhs = context.getCanonicalTemplateArgument(argument);
     if(!lhs.structurallyEquals(rhs)) {
+        /// Dependent expression arguments keep distinct node identities even
+        /// when they spell the same thing; two bare references to one
+        /// parameter (`A<X, X>`) are the same value.
+        if(existing.getKind() == clang::TemplateArgument::Expression &&
+           argument.getKind() == clang::TemplateArgument::Expression) {
+            auto* left = referenced_nttp(existing.getAsExpr());
+            if(left && left == referenced_nttp(argument.getAsExpr())) {
+                return true;
+            }
+        }
         return false;
     }
 
@@ -246,6 +256,13 @@ bool TypeUnifier::unify(clang::QualType pattern, clang::QualType argument) {
                PF->isNothrow() != AF->isNothrow()) {
                 return false;
             }
+
+            /// Method cv/ref qualifiers are part of the type as well:
+            /// `R (C::*)(As...) const` must not accept a non-const one.
+            if(PF->getMethodQuals() != AF->getMethodQuals() ||
+               PF->getRefQualifier() != AF->getRefQualifier()) {
+                return false;
+            }
             if(!unify(PF->getReturnType(), AF->getReturnType())) {
                 return false;
             }
@@ -283,6 +300,12 @@ bool TypeUnifier::unify(clang::QualType pattern, clang::QualType argument) {
             auto AA = llvm::dyn_cast<clang::ConstantArrayType>(argument);
             return AA && PA->getSize() == AA->getSize() &&
                    unify(PA->getElementType(), AA->getElementType());
+        }
+
+        case clang::Type::IncompleteArray: {
+            auto AA = llvm::dyn_cast<clang::IncompleteArrayType>(argument);
+            return AA && unify(llvm::cast<clang::IncompleteArrayType>(pattern)->getElementType(),
+                               AA->getElementType());
         }
 
         case clang::Type::DependentSizedArray: {
@@ -379,6 +402,9 @@ bool TypeUnifier::unify(const clang::TemplateArgument& pattern,
             if(auto TTP = llvm::dyn_cast_or_null<clang::TemplateTemplateParmDecl>(
                    pattern.getAsTemplate().getAsTemplateDecl());
                TTP && TTP->getDepth() == depth) {
+                if(expanding && TTP->isParameterPack()) {
+                    return collect(TTP->getIndex(), argument);
+                }
                 return bind(TTP->getIndex(), argument);
             }
             if(argument.getKind() != clang::TemplateArgument::Template) {
