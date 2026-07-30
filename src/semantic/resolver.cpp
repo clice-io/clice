@@ -1151,7 +1151,10 @@ private:
         if(result.isNull()) {
             return clang::QualType();
         }
-        if(quals.hasQualifiers()) {
+        /// cv-qualifiers applied through substitution are ignored when the
+        /// substituted type is a reference or function type (`const T` with
+        /// `T = X&` is just `X&`).
+        if(quals.hasQualifiers() && !result->isReferenceType() && !result->isFunctionType()) {
             result = context.getQualifiedType(result, quals);
         }
         return result;
@@ -1633,7 +1636,9 @@ private:
             case clang::Type::DependentName: {
                 auto DNT = llvm::cast<clang::DependentNameType>(T);
                 return specifier_absent(DNT->getQualifier(), guard) ||
-                       scope_lacks(DNT->getQualifier(), DNT->getIdentifier());
+                       scope_lacks(DNT->getQualifier(),
+                                   DNT->getIdentifier(),
+                                   /*wants_template=*/false);
             }
 
             case clang::Type::DependentTemplateSpecialization: {
@@ -1644,7 +1649,7 @@ private:
                 if(specifier_absent(qualifier, guard)) {
                     return true;
                 }
-                return identifier && scope_lacks(qualifier, identifier);
+                return identifier && scope_lacks(qualifier, identifier, /*wants_template=*/true);
             }
 
             case clang::Type::TemplateSpecialization: {
@@ -1707,7 +1712,7 @@ private:
                     auto scope = template_name.getQualifier() ? template_name.getQualifier()
                                                               : NNS->getPrefix();
                     auto identifier = template_name.getName().getIdentifier();
-                    return identifier && scope_lacks(scope, identifier);
+                    return identifier && scope_lacks(scope, identifier, /*wants_template=*/true);
                 }
                 if(auto DNT = llvm::dyn_cast<clang::DependentNameType>(T)) {
                     return scope_lacks(DNT->getQualifier(), DNT->getIdentifier());
@@ -1743,10 +1748,33 @@ private:
                std::ranges::any_of(CTD->specializations(), declares);
     }
 
-    bool scope_lacks(const clang::NestedNameSpecifier* scope, clang::DeclarationName name) {
+    /// Is `decl` provably unusable for the probe's usage form? `typename
+    /// X::m` cannot name a value; `X::template m<...>` cannot name a value
+    /// or a plain type. Unknown declaration kinds stay presumed viable.
+    static bool unusable_member(clang::Decl* decl, bool wants_template) {
+        if(auto shadow = llvm::dyn_cast<clang::UsingShadowDecl>(decl)) {
+            decl = shadow->getTargetDecl();
+        }
+        if(llvm::isa<clang::ValueDecl, clang::FunctionTemplateDecl, clang::VarTemplateDecl>(decl)) {
+            return true;
+        }
+        return wants_template && llvm::isa<clang::TypeDecl>(decl);
+    }
+
+    bool scope_lacks(const clang::NestedNameSpecifier* scope,
+                     clang::DeclarationName name,
+                     bool wants_template = false) {
         if(!scope) {
             return false;
         }
+
+        /// Empty lookups and lookups whose every candidate is provably
+        /// unusable both fail the probe conclusively.
+        auto conclusive = [&](lookup_result members) {
+            return std::ranges::all_of(members, [&](clang::Decl* decl) {
+                return unusable_member(decl, wants_template);
+            });
+        };
 
         auto stack_size = stack.data.size();
 
@@ -1769,7 +1797,7 @@ private:
                 if(auto TST = type->getAs<clang::TemplateSpecializationType>()) {
                     if(auto CTD = llvm::dyn_cast_or_null<clang::ClassTemplateDecl>(
                            TST->getTemplateName().getAsTemplateDecl())) {
-                        lacks = lookup(type, name).empty();
+                        lacks = conclusive(lookup(type, name));
 
                         /// With dependent arguments the selection above is
                         /// provisional — a specialization rejected against a
@@ -1783,7 +1811,7 @@ private:
                         }
                     }
                 } else if(auto RD = type->getAsCXXRecordDecl()) {
-                    lacks = RD->lookup(name).empty() && lookup_in_bases(RD, name).empty();
+                    lacks = conclusive(RD->lookup(name)) && conclusive(lookup_in_bases(RD, name));
                 }
             }
         }

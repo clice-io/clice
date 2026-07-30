@@ -66,16 +66,33 @@ clang::QualType peel(clang::QualType type, clang::Qualifiers& quals) {
 }
 
 /// Can `TD` be bound to the template template parameter `TTP`? Approximated
-/// by arity (defaults and packs included): a unary parameter must not accept
-/// a binary template. Parameter-kind agreement is not checked.
+/// by arity (defaults and packs included) plus positional parameter kinds: a
+/// unary parameter must not accept a binary template, and a type slot must
+/// not accept a non-type one. Nested template-template lists are not
+/// compared recursively.
 bool template_compatible(const clang::TemplateTemplateParmDecl* TTP, clang::TemplateDecl* TD) {
     auto params = TTP->getTemplateParameters();
     auto candidate = TD->getTemplateParameters();
-    if(params->hasParameterPack()) {
+
+    auto kinds_match = [&](unsigned count) {
+        for(unsigned i = 0; i < count; i += 1) {
+            auto lhs = params->getParam(i);
+            auto rhs = candidate->getParam(i);
+            if(lhs->getKind() != rhs->getKind()) {
+                return false;
+            }
+        }
         return true;
+    };
+
+    if(params->hasParameterPack()) {
+        return kinds_match(std::min(params->size(), candidate->size()));
     }
-    return params->size() >= candidate->getMinRequiredArguments() &&
-           (params->size() <= candidate->size() || candidate->hasParameterPack());
+    if(params->size() < candidate->getMinRequiredArguments() ||
+       (params->size() > candidate->size() && !candidate->hasParameterPack())) {
+        return false;
+    }
+    return kinds_match(std::min(params->size(), candidate->size()));
 }
 
 }  // namespace
@@ -377,13 +394,18 @@ bool TypeUnifier::unify(clang::QualType pattern, clang::QualType argument) {
         case clang::Type::DependentSizedArray: {
             auto PA = llvm::cast<clang::DependentSizedArrayType>(pattern);
 
-            /// `T[N]`: deduce N from a constant array bound.
+            /// `T[N]`: deduce N from a constant array bound. An integral
+            /// argument needs a concrete type: `auto` bounds deduce as the
+            /// array bound type per the language rules.
             if(auto NTTP = referenced_nttp(PA->getSizeExpr()); NTTP && NTTP->getDepth() == depth) {
                 if(auto AA = llvm::dyn_cast<clang::ConstantArrayType>(argument)) {
+                    auto type = NTTP->getType();
+                    if(type->isDependentType()) {
+                        type = context.getSizeType();
+                    }
                     llvm::APSInt size(AA->getSize());
-                    size.setIsUnsigned(NTTP->getType()->isUnsignedIntegerType());
-                    if(!bind(NTTP->getIndex(),
-                             clang::TemplateArgument(context, size, NTTP->getType()))) {
+                    size.setIsUnsigned(type->isUnsignedIntegerType());
+                    if(!bind(NTTP->getIndex(), clang::TemplateArgument(context, size, type))) {
                         return false;
                     }
                     return unify(PA->getElementType(), AA->getElementType());

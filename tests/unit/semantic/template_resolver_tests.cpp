@@ -2674,6 +2674,72 @@ TEST_CASE(QualifiedCallArity) {
     EXPECT_EQ(candidates.size(), 2u);
 }
 
+TEST_CASE(AutoArrayBound) {
+    run(R"code(
+        template <typename T>
+        struct trait {
+            using type = void;
+        };
+
+        template <typename U, auto N>
+        struct trait<U[N]> {
+            using type = U;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename trait<X[3]>::type;
+            using expect = X;
+        };
+    )code");
+}
+
+TEST_CASE(ConstReferenceDrop) {
+    /// cv-qualifiers applied to a substituted reference are ignored.
+    run(R"code(
+        template <typename T>
+        struct A {
+            using type = const T;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename A<X&>::type;
+            using expect = X&;
+        };
+    )code");
+}
+
+TEST_CASE(ValueMemberProbe) {
+    /// `typename T::value` requires a type; a static data member named
+    /// `value` must fail the probe and keep the primary.
+    run(R"code(
+        template <typename... Ts>
+        using void_t = void;
+
+        template <typename T, typename = void>
+        struct detect {
+            using type = void;
+        };
+
+        template <typename T>
+        struct detect<T, void_t<typename T::value>> {
+            using type = int;
+        };
+
+        template <typename T>
+        struct wrap {
+            static constexpr int value = 1;
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename detect<wrap<X>>::type;
+            using expect = void;
+        };
+    )code");
+}
+
 TEST_CASE(NoexceptSubstitute) {
     /// The leading X offsets P's parameter index so the unsubstituted `B`
     /// cannot accidentally compare canonically equal.
