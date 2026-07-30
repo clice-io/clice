@@ -976,13 +976,52 @@ private:
                 auto ret = rewrite(FPT->getReturnType(), policy);
                 llvm::SmallVector<clang::QualType, 4> params;
                 bool changed = ret != FPT->getReturnType();
+                bool representable = true;
                 for(auto param: FPT->getParamTypes()) {
+                    /// A parameter pack (`void(Ts...)`) splices its bound
+                    /// elements into the parameter list.
+                    if(auto PET = param->getAs<clang::PackExpansionType>()) {
+                        auto splice = [&](llvm::ArrayRef<clang::TemplateArgument> elements) {
+                            for(auto& element: elements) {
+                                if(element.getKind() != clang::TemplateArgument::Type) {
+                                    representable = false;
+                                    return;
+                                }
+                                params.push_back(element.getAsType());
+                            }
+                            changed = true;
+                        };
+
+                        auto pattern = PET->getPattern();
+                        const clang::TemplateArgument* bound = nullptr;
+                        if(auto TTPT = pattern->getAs<clang::TemplateTypeParmType>()) {
+                            bound = stack.find_argument(TTPT);
+                        }
+                        if(bound && bound->getKind() == clang::TemplateArgument::Pack) {
+                            splice(bound->getPackAsArray());
+                            continue;
+                        }
+                        if(auto expanded = expand_pack_pattern(pattern, policy)) {
+                            splice(*expanded);
+                            continue;
+                        }
+                    }
+
                     auto rewritten = rewrite(param, policy);
                     changed |= rewritten != param;
                     params.push_back(rewritten);
                 }
+                if(!representable) {
+                    break;
+                }
                 if(changed) {
-                    result = context.getFunctionType(ret, params, FPT->getExtProtoInfo());
+                    auto EPI = FPT->getExtProtoInfo();
+                    /// Splicing changes the arity; per-parameter ABI info
+                    /// cannot be carried over.
+                    if(params.size() != FPT->getNumParams()) {
+                        EPI.ExtParameterInfos = nullptr;
+                    }
+                    result = context.getFunctionType(ret, params, EPI);
                 }
                 break;
             }
@@ -1224,6 +1263,20 @@ private:
                 }
 
                 case clang::TemplateArgument::Expression: {
+                    /// An expression pack expansion (`Ns...`) splices its
+                    /// bound pack, mirroring the type-pack path above.
+                    if(auto PEE = llvm::dyn_cast<clang::PackExpansionExpr>(argument.getAsExpr())) {
+                        if(auto NTTP = referenced_nttp(PEE->getPattern())) {
+                            auto* bound =
+                                stack.find_argument(NTTP, NTTP->getDepth(), NTTP->getIndex());
+                            if(bound && bound->getKind() == clang::TemplateArgument::Pack) {
+                                out.append(bound->pack_begin(), bound->pack_end());
+                                changed = true;
+                                continue;
+                            }
+                        }
+                    }
+
                     /// Substitute a bound non-type parameter at the argument
                     /// level; expressions themselves are never rebuilt.
                     if(auto NTTP = referenced_nttp(argument.getAsExpr())) {

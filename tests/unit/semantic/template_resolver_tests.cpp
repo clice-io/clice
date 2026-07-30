@@ -2039,6 +2039,39 @@ TEST_CASE(CallArityFilter) {
     EXPECT_EQ(candidates.size(), 2u);
 }
 
+TEST_CASE(ValuePackSplice) {
+    run(R"code(
+        template <int... Ns>
+        struct values {};
+
+        template <int... Ns>
+        struct A {
+            using type = values<Ns...>;
+        };
+
+        template <int X>
+        struct test {
+            using input = typename A<1, X>::type;
+            using expect = values<1, X>;
+        };
+    )code");
+}
+
+TEST_CASE(FunctionParamPack) {
+    run(R"code(
+        template <typename... Ts>
+        struct A {
+            using type = void(Ts...);
+        };
+
+        template <typename X>
+        struct test {
+            using input = typename A<X, int>::type;
+            using expect = void(X, int);
+        };
+    )code");
+}
+
 TEST_CASE(DependentArrayBound) {
     run(R"code(
         template <typename T>
