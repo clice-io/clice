@@ -1,0 +1,6 @@
+---
+created_at: 2026-07-31
+input_file: template_template_params.cpp
+---
+- { loc: "10:36", text: "Container", kind: type, modifiers: [definition, templated] }
+- { loc: "12:4", text: "Container", kind: type, modifiers: [templated] }

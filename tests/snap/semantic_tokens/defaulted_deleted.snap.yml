@@ -1,0 +1,8 @@
+---
+created_at: 2026-07-31
+input_file: defaulted_deleted.cpp
+---
+- { loc: "8:4", text: "Session", kind: method, modifiers: [definition, constructorOrDestructor] }
+- { loc: "9:4", text: "Session", kind: method, modifiers: [definition, constructorOrDestructor] }
+- { loc: "10:4", text: "~", kind: method, modifiers: [definition, constructorOrDestructor] }
+- { loc: "10:5", text: "Session", kind: struct }

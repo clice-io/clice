@@ -4,6 +4,7 @@
 ///
 /// - status: supported
 /// - snap: skip
+/// - order: 1
 
 // snap: skip because the server compiles the `#define` inside the
 // preamble PCH, where SQUARE stays a plain `macro` token; the standalone

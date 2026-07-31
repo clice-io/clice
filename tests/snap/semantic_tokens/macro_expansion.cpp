@@ -3,7 +3,7 @@
 /// ## Expansion sites and arguments — expansion names are macros, written arguments keep their semantics, definition bodies stay lexical
 ///
 /// - status: supported
-/// - order: 3
+/// - order: 2
 
 int value = 1;
 

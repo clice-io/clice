@@ -3,7 +3,7 @@
 /// ## Type vs variable — a name naming both renders as `conflict`
 ///
 /// - status: supported
-/// - order: 4
+/// - order: 2
 
 namespace mixed {
 struct Thing {};

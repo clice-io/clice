@@ -4,11 +4,12 @@ input_file: readonly_modifier.cpp
 ---
 - { loc: "10:19", text: "High", kind: enumMember, modifiers: [definition, readonly] }
 - { loc: "12:10", text: "limit", kind: variable, modifiers: [definition, readonly] }
-- { loc: "15:8", text: "read", kind: method, modifiers: [declaration, readonly] }
-- { loc: "16:9", text: "write", kind: method, modifiers: [declaration] }
-- { loc: "19:22", text: "bound", kind: parameter, modifiers: [definition, readonly] }
-- { loc: "19:40", text: "pointee_const", kind: parameter, modifiers: [definition, readonly] }
-- { loc: "19:66", text: "self_const", kind: parameter, modifiers: [definition, readonly] }
-- { loc: "21:10", text: "read", kind: method, modifiers: [readonly] }
-- { loc: "22:10", text: "write", kind: method }
-- { loc: "22:16", text: "limit", kind: variable, modifiers: [readonly] }
+- { loc: "13:14", text: "bound", kind: variable, modifiers: [definition, readonly] }
+- { loc: "16:8", text: "read", kind: method, modifiers: [declaration, readonly] }
+- { loc: "17:9", text: "write", kind: method, modifiers: [declaration] }
+- { loc: "20:22", text: "in", kind: parameter, modifiers: [definition, readonly] }
+- { loc: "20:37", text: "pointee_const", kind: parameter, modifiers: [definition, readonly] }
+- { loc: "20:63", text: "self_const", kind: parameter, modifiers: [definition, readonly] }
+- { loc: "22:10", text: "read", kind: method, modifiers: [readonly] }
+- { loc: "23:10", text: "write", kind: method }
+- { loc: "23:16", text: "limit", kind: variable, modifiers: [readonly] }

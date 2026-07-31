@@ -1,6 +1,6 @@
 /// # Declarations & References
 ///
-/// ## `sizeof...` — the pack parameter highlighted as a template parameter
+/// ## `sizeof...` — the pack parameter keeps its type-parameter token
 ///
 /// - status: supported
 /// - issues: clangd#213

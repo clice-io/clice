@@ -1,0 +1,6 @@
+---
+created_at: 2026-07-31
+input_file: dependent_using.cpp
+---
+- { loc: "12:13", text: "value", kind: none }
+- { loc: "15:15", text: "value", kind: none }

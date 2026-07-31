@@ -17,6 +17,7 @@ input_file: modules.cpp
 - { loc: "11:7", text: "int", kind: keyword }
 - { loc: "11:11", text: "exported_value", kind: variable, modifiers: [definition] }
 - { loc: "11:28", text: "1", kind: number }
+- { loc: "13:0", text: "module", kind: keyword }
 - { loc: "13:8", text: "private", kind: keyword }
 - { loc: "15:0", text: "int", kind: keyword }
 - { loc: "15:4", text: "private_value", kind: variable, modifiers: [definition] }

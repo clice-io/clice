@@ -1,6 +1,6 @@
 /// # Token Modifiers
 ///
-/// ## Readonly — const values, const methods and enum members
+/// ## Readonly — const and constexpr values, const methods and enum members
 ///
 /// - status: supported
 /// - order: 3
@@ -11,13 +11,14 @@
 enum class Level { §High };
 
 const int §limit = 10;
+constexpr int §bound = 4;
 
 struct Gauge {
     int §read() const;
     void §write(int value);
 };
 
-void probe(const int& §bound, const int* §pointee_const, int* const §self_const) {
+void probe(const int& §in, const int* §pointee_const, int* const §self_const) {
     Gauge gauge;
     gauge.§read();
     gauge.§write(§limit);

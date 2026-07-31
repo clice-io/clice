@@ -1,0 +1,7 @@
+---
+created_at: 2026-07-31
+input_file: out_of_line_methods.cpp
+---
+- { loc: "12:4", text: "Gauge", kind: struct }
+- { loc: "12:11", text: "read", kind: method, modifiers: [definition, readonly] }
+- { loc: "16:12", text: "reset", kind: method, modifiers: [definition, static] }

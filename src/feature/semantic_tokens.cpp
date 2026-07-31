@@ -555,6 +555,25 @@ private:
             }
         }
 
+        /// `module :private;` — the private fragment's contextual `module`
+        /// also lexes as a plain identifier. The identifier-colon-`private`
+        /// token sequence is not valid C++ anywhere else, so locate it
+        /// lexically like the global module fragment above.
+        {
+            auto spelled = semantics.spelled_tokens();
+            for(std::uint32_t i = 0; i + 2 < spelled.size(); i += 1) {
+                if(spelled[i].kind() != clang::tok::identifier ||
+                   spelled[i + 1].kind() != clang::tok::colon ||
+                   spelled[i + 2].kind() != clang::tok::kw_private) {
+                    continue;
+                }
+                auto offset = semantics.token_offset(i);
+                if(content.substr(offset, spelled[i].length()) == "module") {
+                    module_tokens[i] = SymbolKind::Keyword;
+                }
+            }
+        }
+
         auto def_loc = mod->DefinitionLoc;
         if(!def_loc.isValid() || !def_loc.isFileID() ||
            unit.file_id(def_loc) != unit.interested_file()) {

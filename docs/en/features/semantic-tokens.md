@@ -342,7 +342,7 @@ Names classified by the declaration they define or reference.
   };
   ```
 
-- [x] `sizeof...` — the pack parameter highlighted as a template parameter ([clangd#213](https://github.com/clangd/clangd/issues/213))
+- [x] `sizeof...` — the pack parameter keeps its type-parameter token ([clangd#213](https://github.com/clangd/clangd/issues/213))
 
   ```cpp
   template <typename... Ts>
@@ -433,6 +433,123 @@ Names classified by the declaration they define or reference.
   int pair_value<int, int> = 5;
   ```
 
+- [x] Out-of-line member definitions — qualified names keep method kinds and modifiers
+
+  ```cpp
+  struct Gauge {
+      int read() const;
+      static void reset();
+  };
+
+  int Gauge::read() const {
+      return 0;
+  }
+
+  void Gauge::reset() {}
+  ```
+
+- [x] Alias templates — the alias name carries the type kind and the `templated` modifier
+
+  ```cpp
+  template <typename T>
+  using Ptr = T*;
+
+  template <typename T>
+  struct Box {};
+
+  template <typename T>
+  using BoxPtr = Box<T>*;
+
+  Ptr<int> pointer = nullptr;
+  ```
+
+- [x] Template template parameters — declared and used as types
+
+  ```cpp
+  template <typename T>
+  struct Holder {};
+
+  template <template <typename> class Container, typename T>
+  struct Adaptor {
+      Container<T> value;
+  };
+
+  Adaptor<Holder, int> adaptor;
+  ```
+
+- [x] Lambda captures — by-copy and by-reference captures reference the captured variable; `this` stays a keyword
+
+  ```cpp
+  struct S {
+      int field;
+
+      int compute() {
+          int local = 1;
+          auto by_copy = [local, this] {
+              return local + this->field;
+          };
+          auto by_reference = [&local] {
+              return local;
+          };
+          return by_copy() + by_reference();
+      }
+  };
+  ```
+
+- [x] Range-based for — the loop variable at definition and use
+
+  ```cpp
+  struct List {
+      int* begin();
+      int* end();
+  };
+
+  void iterate(List items) {
+      for (auto& item : items) {
+          item = 0;
+      }
+  }
+  ```
+
+- [x] Enum underlying types — the enum-base reference keeps its type kind
+
+  ```cpp
+  using Byte = unsigned char;
+
+  enum class Flags : Byte { A, B };
+
+  Flags flags = Flags::A;
+  ```
+
+- [x] Friend declarations — befriended names resolve to their targets; inline friends define
+
+  ```cpp
+  struct Widget;
+  void ping();
+
+  struct Host {
+      friend struct Widget;
+      friend void ping();
+      friend void inline_friend() {}
+  };
+  ```
+
+- [ ] Dependent using declarations — `using T::name` in a template body _(partial)_
+
+  The introduced name and its uses currently get no token; the reserved
+  dependent-name modifier is not emitted yet.
+
+  ```cpp
+  template <typename T>
+  struct Derived : T {
+      using T::value;
+
+      int use() {
+          return value;
+      }
+  };
+  ```
+
 <!-- END GENERATED ITEMS -->
 
 ## Modules
@@ -508,7 +625,7 @@ Names classified by the declaration they define or reference.
   }
   ```
 
-- [x] Readonly — const values, const methods and enum members
+- [x] Readonly — const and constexpr values, const methods and enum members
 
   Readonly is currently value-based: a pointer to const counts as
   readonly even though the pointer itself can change.
@@ -517,13 +634,14 @@ Names classified by the declaration they define or reference.
   enum class Level { High };
 
   const int limit = 10;
+  constexpr int bound = 4;
 
   struct Gauge {
       int read() const;
       void write(int value);
   };
 
-  void probe(const int& bound, const int* pointee_const, int* const self_const) {
+  void probe(const int& in, const int* pointee_const, int* const self_const) {
       Gauge gauge;
       gauge.read();
       gauge.write(limit);
@@ -633,7 +751,7 @@ which clients typically display in a neutral color.
 
 <!-- BEGIN GENERATED ITEMS: Conflict & Ambiguity -->
 
-- [x] Mixed-kind names — a name naming entities of different kinds renders as `conflict`
+- [x] Type vs function — a name naming both renders as `conflict`
 
   ```cpp
   namespace shop {
@@ -644,19 +762,15 @@ which clients typically display in a neutral color.
   using shop::Widget;
   ```
 
-- [x] Injected class name — the class name used as a constructor call inside the class
-
-  The written name renders as the class; the constructor reference it
-  implies paints nothing extra — the `(` stays token-free.
+- [x] Type vs variable — a name naming both renders as `conflict`
 
   ```cpp
-  struct Widget {
-      Widget(int size);
+  namespace mixed {
+  struct Thing {};
+  int Thing;
+  }
 
-      Widget create() {
-          return Widget(42);
-      }
-  };
+  using mixed::Thing;
   ```
 
 - [x] Same-kind overload sets — a name naming only functions is no conflict
@@ -675,15 +789,19 @@ which clients typically display in a neutral color.
   }
   ```
 
-- [x] Type vs variable — a name naming both renders as `conflict`
+- [x] Injected class name — the class name used as a constructor call inside the class
+
+  The written name renders as the class; the constructor reference it
+  implies paints nothing extra — the `(` stays token-free.
 
   ```cpp
-  namespace mixed {
-  struct Thing {};
-  int Thing;
-  }
+  struct Widget {
+      Widget(int size);
 
-  using mixed::Thing;
+      Widget create() {
+          return Widget(42);
+      }
+  };
   ```
 
 <!-- END GENERATED ITEMS -->
@@ -770,13 +888,23 @@ Shapes clice pins deliberately, including issues clangd got wrong.
   }
   ```
 
-- [x] Pseudo-destructor on a template parameter — nothing to resolve, nothing painted
+- [x] Pseudo-destructor on a template parameter — the `~` paints nothing; the type name keeps its kind
 
   ```cpp
   template <typename T>
   void reset(T* value) {
       value->~T();
   }
+  ```
+
+- [x] Defaulted and deleted members — special-member names keep their definition tokens
+
+  ```cpp
+  struct Session {
+      Session() = default;
+      Session(const Session&) = delete;
+      ~Session() = default;
+  };
   ```
 
 <!-- END GENERATED ITEMS -->
@@ -804,13 +932,12 @@ them from their expansions belongs to a future expansion-preview feature.
 
 <!-- BEGIN GENERATED ITEMS: Macros -->
 
-- [ ] Object-like vs function-like macros — distinct highlighting for the two forms ([clangd#2649](https://github.com/clangd/clangd/issues/2649))
+- [x] Macro definition and expansion
 
   ```cpp
-  #define MAX_SIZE 1024
-  #define CHECK(x) ((x) ? 1 : 0)
+  #define SQUARE(x) ((x) * (x))
 
-  int checked = CHECK(MAX_SIZE);
+  [[maybe_unused]] static int squared = SQUARE(4);
   ```
 
 - [x] Expansion sites and arguments — expansion names are macros, written arguments keep their semantics, definition bodies stay lexical
@@ -830,12 +957,13 @@ them from their expansions belongs to a future expansion-preview feature.
   }
   ```
 
-- [x] Macro definition and expansion
+- [ ] Object-like vs function-like macros — distinct highlighting for the two forms ([clangd#2649](https://github.com/clangd/clangd/issues/2649))
 
   ```cpp
-  #define SQUARE(x) ((x) * (x))
+  #define MAX_SIZE 1024
+  #define CHECK(x) ((x) ? 1 : 0)
 
-  [[maybe_unused]] static int squared = SQUARE(4);
+  int checked = CHECK(MAX_SIZE);
   ```
 
 <!-- END GENERATED ITEMS -->

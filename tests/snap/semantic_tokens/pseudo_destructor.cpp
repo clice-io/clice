@@ -1,6 +1,6 @@
 /// # Token Correctness
 ///
-/// ## Pseudo-destructor on a template parameter — nothing to resolve, nothing painted
+/// ## Pseudo-destructor on a template parameter — the `~` paints nothing; the type name keeps its kind
 ///
 /// - status: supported
 /// - order: 6

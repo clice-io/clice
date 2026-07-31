@@ -3,7 +3,7 @@
 /// ## Injected class name — the class name used as a constructor call inside the class
 ///
 /// - status: supported
-/// - order: 2
+/// - order: 4
 ///
 /// The written name renders as the class; the constructor reference it
 /// implies paints nothing extra — the `(` stays token-free.

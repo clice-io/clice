@@ -1,6 +1,6 @@
 /// # Conflict & Ambiguity
 ///
-/// ## Mixed-kind names — a name naming entities of different kinds renders as `conflict`
+/// ## Type vs function — a name naming both renders as `conflict`
 ///
 /// - status: supported
 /// - order: 1
