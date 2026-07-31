@@ -1,0 +1,25 @@
+---
+created_at: 2026-07-31
+input_file: declaration_tokens.cpp
+---
+- { loc: "0:0", text: "// Marker-free canary over declaration syntax: the snapshot pins every", kind: comment }
+- { loc: "1:0", text: "// token, so a stray token appearing anywhere in these declarations fails", kind: comment }
+- { loc: "2:0", text: "// the suite even where nobody thought to place a marker.", kind: comment }
+- { loc: "4:0", text: "namespace", kind: keyword }
+- { loc: "4:10", text: "demo", kind: namespace, modifiers: [definition] }
+- { loc: "6:0", text: "enum", kind: keyword }
+- { loc: "6:5", text: "class", kind: keyword }
+- { loc: "6:11", text: "Color", kind: enum, modifiers: [definition] }
+- { loc: "6:19", text: "Red", kind: enumMember, modifiers: [definition, readonly] }
+- { loc: "6:24", text: "Green", kind: enumMember, modifiers: [definition, readonly] }
+- { loc: "8:0", text: "struct", kind: keyword }
+- { loc: "8:7", text: "Shape", kind: struct, modifiers: [definition] }
+- { loc: "9:4", text: "int", kind: keyword }
+- { loc: "9:8", text: "sides", kind: field, modifiers: [definition] }
+- { loc: "12:0", text: "int", kind: keyword }
+- { loc: "12:4", text: "area", kind: function, modifiers: [declaration] }
+- { loc: "12:9", text: "int", kind: keyword }
+- { loc: "12:13", text: "width", kind: parameter, modifiers: [definition] }
+- { loc: "12:20", text: "int", kind: keyword }
+- { loc: "12:24", text: "height", kind: parameter, modifiers: [definition] }
+- { loc: "14:3", text: "// namespace demo", kind: comment }
