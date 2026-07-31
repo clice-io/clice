@@ -13,10 +13,9 @@ instead of the OS.
 Both branches use LLVM binutils (``llvm-otool`` / ``llvm-readelf``), which ship
 in the build env and can read Mach-O even from a Linux host.
 
-TODO: read PE too. The Windows artifacts import ``MSVCP140.dll`` and
-``VCRUNTIME140.dll``, which come from the Visual C++ redistributable rather than
-from Windows; treat those as violations once the build switches to a static CRT
-(see TODO(prebuilt-respin) in cmake/toolchain.cmake).
+TODO: read PE too. With the /MT switch (static CRT), the Windows artifacts
+should no longer import ``MSVCP140.dll`` or ``VCRUNTIME140.dll``; add PE
+support to verify this.
 """
 
 import argparse
@@ -25,7 +24,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-# Linux NEEDED whitelist, derived from the real packaged x64-linux-gnu binary.
+# Linux NEEDED whitelist, derived from the real packaged x86_64-unknown-linux-gnu binary.
 # clice statically links libstdc++/libgcc, so a portable build only pulls in the
 # glibc runtime pieces. Notably libstdc++.so.6 / libc++.so are absent: if either
 # ever appears it would resolve from the conda RUNPATH (see check_elf), which is
