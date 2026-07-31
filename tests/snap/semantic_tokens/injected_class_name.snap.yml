@@ -3,4 +3,4 @@ created_at: 2026-07-31
 input_file: injected_class_name.cpp
 ---
 - { loc: "14:15", text: "Widget", kind: struct }
-- { loc: "14:21", text: "(", kind: method, modifiers: [constructorOrDestructor] }
+- { loc: "14:21", text: "(", kind: none }

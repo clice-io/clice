@@ -284,10 +284,10 @@ Names classified by the declaration they define or reference.
   }
   ```
 
-- [ ] Structured bindings — binding names at definition and use _(partial)_
+- [x] Structured bindings — binding names at definition and use
 
-  The binding-name token currently leaks onto the opening `[` and merges
-  with the first name, so the definition renders as one `[a` token.
+  The opening `[` deliberately carries no token; only the binding names
+  themselves are highlighted.
 
   ```cpp
   struct Pair {
@@ -638,10 +638,10 @@ which clients typically display in a neutral color.
   using shop::Widget;
   ```
 
-- [ ] Injected class name — the class name used as a constructor call inside the class _(partial)_
+- [x] Injected class name — the class name used as a constructor call inside the class
 
-  The name itself renders as the class; the constructor reference
-  currently emits a stray token on the following `(`.
+  The written name renders as the class; the constructor reference it
+  implies paints nothing extra — the `(` stays token-free.
 
   ```cpp
   struct Widget {
@@ -680,21 +680,20 @@ Shapes clice pins deliberately, including issues clangd got wrong.
   }
   ```
 
-- [ ] Anonymous parameters — unnamed parameters must not produce tokens _(partial)_
+- [x] Anonymous parameters — unnamed parameters produce no tokens
 
-  An unnamed parameter currently emits a stray one-byte `parameter`
-  token on the punctuation that follows its type.
+  The punctuation after an unnamed parameter's type stays token-free.
 
   ```cpp
   void take_one(int) {}
   void take_two(int, char* c) {}
   ```
 
-- [ ] Operator names — `operator` in a declaration keeps the method kind _(partial)_
+- [x] Operator names — the `operator` keyword and call-site punctuation stay plain
 
-  The `operator` token of a declaration currently renders as `conflict`
-  (its keyword nature collides with the declared method). Operator call
-  sites correctly emit no token on the punctuation.
+  An operator's written name is keyword plus punctuation, so no name
+  token is painted: `operator` keeps its keyword classification and
+  call sites emit nothing on the operator symbol.
 
   ```cpp
   struct Value {

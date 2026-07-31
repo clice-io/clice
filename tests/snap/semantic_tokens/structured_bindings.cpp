@@ -2,17 +2,17 @@
 ///
 /// ## Structured bindings — binding names at definition and use
 ///
-/// - status: partial
+/// - status: supported
 /// - order: 8
 ///
-/// The binding-name token currently leaks onto the opening `[` and merges
-/// with the first name, so the definition renders as one `[a` token.
+/// The opening `[` deliberately carries no token; only the binding names
+/// themselves are highlighted.
 
 struct Pair {
     int first, second;
 };
 
 void unpack() {
-    auto §[a, §b] = Pair{1, 2};
+    auto §[§a, §b] = Pair{1, 2};
     int sum = §a + §b;
 }

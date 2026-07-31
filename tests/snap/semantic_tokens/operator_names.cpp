@@ -1,13 +1,13 @@
 /// # Token Correctness
 ///
-/// ## Operator names — `operator` in a declaration keeps the method kind
+/// ## Operator names — the `operator` keyword and call-site punctuation stay plain
 ///
-/// - status: partial
+/// - status: supported
 /// - order: 3
 ///
-/// The `operator` token of a declaration currently renders as `conflict`
-/// (its keyword nature collides with the declared method). Operator call
-/// sites correctly emit no token on the punctuation.
+/// An operator's written name is keyword plus punctuation, so no name
+/// token is painted: `operator` keeps its keyword classification and
+/// call sites emit nothing on the operator symbol.
 
 struct Value {
     Value& §operator=(const Value& other);

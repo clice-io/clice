@@ -1,12 +1,11 @@
 /// # Token Correctness
 ///
-/// ## Anonymous parameters — unnamed parameters must not produce tokens
+/// ## Anonymous parameters — unnamed parameters produce no tokens
 ///
-/// - status: partial
+/// - status: supported
 /// - order: 2
 ///
-/// An unnamed parameter currently emits a stray one-byte `parameter`
-/// token on the punctuation that follows its type.
+/// The punctuation after an unnamed parameter's type stays token-free.
 
 void take_one(int§) {}
 void take_two(int§, char* c) {}

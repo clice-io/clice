@@ -2,11 +2,11 @@
 ///
 /// ## Injected class name — the class name used as a constructor call inside the class
 ///
-/// - status: partial
+/// - status: supported
 /// - order: 2
 ///
-/// The name itself renders as the class; the constructor reference
-/// currently emits a stray token on the following `(`.
+/// The written name renders as the class; the constructor reference it
+/// implies paints nothing extra — the `(` stays token-free.
 
 struct Widget {
     Widget(int size);
