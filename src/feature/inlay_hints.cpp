@@ -8,15 +8,21 @@
 #include <tuple>
 #include <vector>
 
+#include "compile/compilation_unit.h"
 #include "feature/feature.h"
 #include "semantic/decls.h"
 #include "semantic/display.h"
-#include "semantic/filtered_ast_visitor.h"
 #include "semantic/resolver.h"
+#include "semantic/semantics.h"
 #include "semantic/types.h"
 
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Casting.h"
+#include "clang/AST/Decl.h"
+#include "clang/AST/DeclCXX.h"
+#include "clang/AST/Expr.h"
+#include "clang/AST/ExprCXX.h"
 #include "clang/Lex/Lexer.h"
 #include "clang-tidy/utils/DesignatedInitializers.h"
 
@@ -115,13 +121,50 @@ struct Callee {
     clang::FunctionProtoTypeLoc loc;
 };
 
-class Builder {
+/// Collects hints by walking the unit's cached Semantics node table — the
+/// DFS pre-order record of the interested file's written AST — instead of
+/// running another RecursiveASTVisitor over the TU. The table stores only
+/// structure; everything a hint needs is derived from the recorded node.
+class Collector {
 public:
-    Builder(std::vector<InlayHint>& result,
-            CompilationUnitRef unit,
-            LocalSourceRange restrict_range,
-            const InlayHintsOptions& options) :
+    Collector(std::vector<InlayHint>& result,
+              CompilationUnitRef unit,
+              LocalSourceRange restrict_range,
+              const InlayHintsOptions& options) :
         result(result), unit(unit), restrict_range(restrict_range), options(options) {}
+
+    void run() {
+        auto nodes = unit.semantics().node_entries();
+        std::uint32_t index = 0;
+        while(index < nodes.size()) {
+            const Semantics::Node& entry = nodes[index];
+
+            // The preprocessor segment follows the AST segment; directives
+            // produce no hints.
+            if(!entry.node.is_ast()) {
+                break;
+            }
+
+            switch(entry.node.kind()) {
+                case SemanticNode::Kind::Decl: handle_decl(entry.node.get<clang::Decl>()); break;
+
+                case SemanticNode::Kind::Stmt:
+                    if(!handle_stmt(entry.node.get<clang::Stmt>())) {
+                        index = entry.subtree_end;
+                        continue;
+                    }
+                    break;
+
+                case SemanticNode::Kind::TypeLoc:
+                    handle_type_loc(*entry.node.get<clang::TypeLoc>());
+                    break;
+
+                default: break;
+            }
+
+            index += 1;
+        }
+    }
 
 private:
     // Get the range of the main file that *exactly* corresponds to R.
@@ -310,7 +353,6 @@ private:
         return param_names;
     }
 
-public:
     void add_params(Callee callee,
                     clang::SourceLocation rpunc_location,
                     llvm::ArrayRef<const clang::Expr*> args) {
@@ -551,7 +593,7 @@ public:
         }
     }
 
-    void add_return_type_hint(clang::FunctionDecl* decl, clang::SourceRange range) {
+    void add_return_type_hint(const clang::FunctionDecl* decl, clang::SourceRange range) {
         auto* type = decl->getReturnType()->getContainedAutoType();
         if(!type || type->getDeducedType().isNull()) {
             return;
@@ -559,43 +601,19 @@ public:
         add_type_hint(range, decl->getReturnType(), /*Prefix=*/"-> ");
     }
 
-private:
-    std::vector<InlayHint>& result;
-    CompilationUnitRef unit;
-    LocalSourceRange restrict_range;
-    const InlayHintsOptions& options;
-
-    // The sugared type is more useful in some cases, and the canonical
-    // type in other cases. Suppress scopes to keep type names short;
-    // anonymous tag locations stay off so lambda locations don't print.
-    // Not setting PrintCanonicalTypes for "auto" allows
-    // SuppressDefaultTemplateArgs (set by default) to have an effect.
-    display::Options display_options = {.suppress_scope = true};
-};
-
-class Visitor : public FilteredASTVisitor<Visitor> {
-public:
-    using Base = FilteredASTVisitor<Visitor>;
-
-    Visitor(Builder& builder,
-            CompilationUnitRef unit,
-            std::optional<LocalSourceRange> restrict_range,
-            const InlayHintsOptions& options) :
-        Base(unit, true), builder(builder), unit(unit), options(options) {}
-
-public:
-    // Carefully recurse into PseudoObjectExprs, which typically incorporate
-    // a syntactic expression and several semantic expressions.
-    bool TraversePseudoObjectExpr(clang::PseudoObjectExpr* expr) {
-        clang::Expr* syntactic_expr = expr->getSyntacticForm();
+    // A PseudoObjectExpr typically incorporates a syntactic expression and
+    // several semantic expressions; the table records only the syntactic
+    // subtree. Returns false to skip that subtree.
+    bool handle_pseudo_object(const clang::PseudoObjectExpr* expr) {
+        const clang::Expr* syntactic_expr = expr->getSyntacticForm();
         if(llvm::isa<clang::CallExpr>(syntactic_expr)) {
             // Since the counterpart semantics usually get the identical source
             // locations as the syntactic one, visiting those would end up presenting
             // confusing hints e.g., __builtin_dump_struct.
-            // Thus, only traverse the syntactic forms if this is written as a
+            // Thus, only visit the syntactic forms if this is written as a
             // CallExpr. This leaves the door open in case the arguments in the
             // syntactic form could possibly get parameter names.
-            return Base::TraverseStmt(syntactic_expr);
+            return true;
         }
 
         // We don't want the hints for some of the MS property extensions.
@@ -606,27 +624,75 @@ public:
         //   void Work(int y) { x = y; } // Bad: `x = y: y`.
         // };
         if(llvm::isa<clang::BinaryOperator>(syntactic_expr)) {
-            return true;
+            return false;
         }
 
-        // FIXME: Handle other forms of a pseudo object expression.
-        return Base::TraversePseudoObjectExpr(expr);
-    }
-
-    bool VisitNamespaceDecl(clang::NamespaceDecl* decl) {
-        if(options.block_end) {
-            // For namespace, the range actually starts at the namespace keyword. But
-            // it should be fine since it's usually very short.
-            // Anonymous namespaces hint as plain "// namespace".
-            builder.add_block_end_hint(decl->getSourceRange(),
-                                       "namespace",
-                                       display::identifier_of(decl),
-                                       "");
+        // Other forms (an MS property subscript read `s.x[1][2]`) execute an
+        // accessor call that exists only in the semantic expressions, so its
+        // parameter hints are derived here. The written arguments appear in
+        // both forms as the same OpaqueValueExprs, so everything below the
+        // call is already covered by the recorded syntactic subtree.
+        for(const clang::Expr* semantic_expr: expr->semantics()) {
+            if(auto* call = dyn_cast<clang::CallExpr>(semantic_expr)) {
+                handle_call(call);
+            }
         }
         return true;
     }
 
-    bool VisitTagDecl(clang::TagDecl* decl) {
+    void handle_decl(const clang::Decl* decl) {
+        if(auto* ns = dyn_cast<clang::NamespaceDecl>(decl)) {
+            handle_namespace(ns);
+        } else if(auto* tag = dyn_cast<clang::TagDecl>(decl)) {
+            handle_tag(tag);
+        } else if(auto* function = dyn_cast<clang::FunctionDecl>(decl)) {
+            handle_function(function);
+        } else if(auto* var = dyn_cast<clang::VarDecl>(decl)) {
+            handle_var(var);
+        }
+    }
+
+    /// Returns false to skip the node's recorded subtree.
+    bool handle_stmt(const clang::Stmt* stmt) {
+        if(auto* expr = dyn_cast<clang::PseudoObjectExpr>(stmt)) {
+            return handle_pseudo_object(expr);
+        }
+
+        if(auto* expr = dyn_cast<clang::CallExpr>(stmt)) {
+            handle_call(expr);
+        } else if(auto* expr = dyn_cast<clang::CXXConstructExpr>(stmt)) {
+            handle_construct(expr);
+        } else if(auto* expr = dyn_cast<clang::LambdaExpr>(stmt)) {
+            handle_lambda(expr);
+        } else if(auto* expr = dyn_cast<clang::InitListExpr>(stmt)) {
+            handle_init_list(expr);
+        } else if(auto* for_stmt = dyn_cast<clang::ForStmt>(stmt)) {
+            handle_for(for_stmt);
+        } else if(auto* range_for = dyn_cast<clang::CXXForRangeStmt>(stmt)) {
+            handle_range_for(range_for);
+        } else if(auto* while_stmt = dyn_cast<clang::WhileStmt>(stmt)) {
+            handle_while(while_stmt);
+        } else if(auto* switch_stmt = dyn_cast<clang::SwitchStmt>(stmt)) {
+            handle_switch(switch_stmt);
+        } else if(auto* if_stmt = dyn_cast<clang::IfStmt>(stmt)) {
+            handle_if(if_stmt);
+        }
+        return true;
+    }
+
+    void handle_namespace(const clang::NamespaceDecl* decl) {
+        if(options.block_end) {
+            // For namespace, the range actually starts at the namespace keyword. But
+            // it should be fine since it's usually very short.
+            // Anonymous namespaces hint as plain "// namespace".
+            add_block_end_hint(decl->getSourceRange(),
+                               "namespace",
+                               display::identifier_of(decl),
+                               "");
+        }
+    }
+
+    void handle_tag(const clang::TagDecl* decl) {
         if(options.block_end && decl->isThisDeclarationADefinition()) {
             std::string prefix = decl->getKindName().str();
 
@@ -637,19 +703,15 @@ public:
             };
 
             // Anonymous tags hint with the bare kind, e.g. "// struct".
-            builder.add_block_end_hint(decl->getBraceRange(),
-                                       prefix,
-                                       display::identifier_of(decl),
-                                       ";");
+            add_block_end_hint(decl->getBraceRange(), prefix, display::identifier_of(decl), ";");
         }
-        return true;
     }
 
-    bool VisitFunctionDecl(clang::FunctionDecl* decl) {
+    void handle_function(const clang::FunctionDecl* decl) {
         if(auto* proto_type = llvm::dyn_cast<clang::FunctionProtoType>(decl->getType())) {
             if(!proto_type->hasTrailingReturn()) {
                 if(auto FTL = decl->getFunctionTypeLoc()) {
-                    builder.add_return_type_hint(decl, FTL.getRParenLoc());
+                    add_return_type_hint(decl, FTL.getRParenLoc());
                 }
             }
         }
@@ -658,14 +720,12 @@ public:
             // We use `printName` here to properly print name of ctor/dtor/operator
             // overload.
             if(const clang::Stmt* body = decl->getBody()) {
-                builder.add_block_end_hint(body->getSourceRange(), "", display::name_of(decl), "");
+                add_block_end_hint(body->getSourceRange(), "", display::name_of(decl), "");
             }
         }
-
-        return true;
     }
 
-    bool VisitVarDecl(clang::VarDecl* var) {
+    void handle_var(const clang::VarDecl* var) {
         // Do not show hints for the aggregate in a structured binding,
         // but show hints for the individual bindings.
         if(auto* decl = dyn_cast<clang::DecompositionDecl>(var)) {
@@ -674,12 +734,12 @@ public:
                 // because for bindings that use the tuple_element protocol, the
                 // non-canonical types would be "tuple_element<I, A>::type".
                 if(auto type = binding->getType(); !type.isNull() && !type->isDependentType()) {
-                    builder.add_type_hint(binding->getLocation(),
-                                          type.getCanonicalType(),
-                                          /*Prefix=*/": ");
+                    add_type_hint(binding->getLocation(),
+                                  type.getCanonicalType(),
+                                  /*Prefix=*/": ");
                 }
             }
-            return true;
+            return;
         }
 
         auto type = var->getType();
@@ -690,7 +750,7 @@ public:
                 // (e.g. for `const auto& x = 42`, print `const int&`).
                 // Alternatively, we could place the hint on the `auto`
                 // (and then just print the type deduced for the `auto`).
-                builder.add_type_hint(var->getLocation(), var->getType(), /*Prefix=*/": ");
+                add_type_hint(var->getLocation(), var->getType(), /*Prefix=*/": ");
             }
         }
 
@@ -700,46 +760,46 @@ public:
                 auto unwrapped = types::unwrap(var->getTypeSourceInfo()->getTypeLoc());
                 if(auto type = unwrapped.getAs<clang::TemplateTypeParmTypeLoc>()) {
                     if(auto decl = type.getDecl(); decl && decl->isImplicit()) {
-                        if(auto* IPVD = decls::only_instantiation(param)) {
-                            builder.add_type_hint(var->getLocation(),
-                                                  IPVD->getType(),
-                                                  /*Prefix=*/": ");
+                        // The helper keeps its clangd signature, which speaks
+                        // mutable pointers; it only reads through them.
+                        if(auto* IPVD =
+                               decls::only_instantiation(const_cast<clang::ParmVarDecl*>(param))) {
+                            add_type_hint(var->getLocation(),
+                                          IPVD->getType(),
+                                          /*Prefix=*/": ");
                         }
                     }
                 }
             }
         }
-
-        return true;
     }
 
-    bool VisitCXXConstructExpr(clang::CXXConstructExpr* expr) {
+    void handle_construct(const clang::CXXConstructExpr* expr) {
         // Weed out constructor calls that don't look like a function call with
         // an argument list, by checking the validity of getParenOrBraceRange().
         // Also weed out std::initializer_list constructors as there are no names
         // for the individual arguments.
         if(!expr->getParenOrBraceRange().isValid() || expr->isStdInitListInitialization()) {
-            return true;
+            return;
         }
 
         Callee callee;
         callee.decl = expr->getConstructor();
         if(!callee.decl) {
-            return true;
+            return;
         }
 
-        builder.add_params(callee,
-                           expr->getParenOrBraceRange().getEnd(),
-                           {expr->getArgs(), expr->getNumArgs()});
-        return true;
+        add_params(callee,
+                   expr->getParenOrBraceRange().getEnd(),
+                   {expr->getArgs(), expr->getNumArgs()});
     }
 
-    bool VisitCallExpr(clang::CallExpr* expr) {
+    void handle_call(const clang::CallExpr* expr) {
         if(!options.parameters && !options.default_arguments) {
-            return true;
+            return;
         }
 
-        auto isFunctionObjectCallExpr = [](clang::CallExpr* E) {
+        auto isFunctionObjectCallExpr = [](const clang::CallExpr* E) {
             if(auto* call_expr = dyn_cast<clang::CXXOperatorCallExpr>(E)) {
                 return call_expr->getOperator() == clang::OverloadedOperatorKind::OO_Call;
             }
@@ -755,7 +815,7 @@ public:
         // argument and then we'd get two hints side by side).
         if((llvm::isa<clang::CXXOperatorCallExpr>(expr) && !is_functor) ||
            llvm::isa<clang::UserDefinedLiteral>(expr))
-            return true;
+            return;
 
         Callee callee;
         bool dependent_callee = false;
@@ -767,7 +827,7 @@ public:
             // several overloads left we must not pick one arbitrarily.
             auto candidates = unit.resolver().lookup(expr);
             if(candidates.size() != 1) {
-                return true;
+                return;
             }
 
             auto* target = candidates.front();
@@ -780,17 +840,20 @@ public:
                 callee.decl = dyn_cast<clang::FunctionDecl>(target);
             }
             if(!callee.decl) {
-                return true;
+                return;
             }
         } else if(const auto* FD = dyn_cast_or_null<clang::FunctionDecl>(expr->getCalleeDecl())) {
             callee.decl = FD;
         } else if(const auto* FTD =
                       dyn_cast_or_null<clang::FunctionTemplateDecl>(expr->getCalleeDecl())) {
             callee.decl = FTD->getTemplatedDecl();
-        } else if(clang::FunctionProtoTypeLoc loc = decls::proto_type_loc(expr->getCallee())) {
+        } else if(clang::FunctionProtoTypeLoc loc =
+                      // The helper keeps its clangd signature, which speaks
+                      // mutable pointers; it only reads through them.
+                  decls::proto_type_loc(const_cast<clang::Expr*>(expr->getCallee()))) {
             callee.loc = loc;
         } else {
-            return true;
+            return;
         }
 
         // N4868 [over.call.object]p3 says,
@@ -815,11 +878,10 @@ public:
             }
         }
 
-        builder.add_params(callee, expr->getRParenLoc(), args);
-        return true;
+        add_params(callee, expr->getRParenLoc(), args);
     }
 
-    bool VisitForStmt(clang::ForStmt* S) {
+    void handle_for(const clang::ForStmt* S) {
         if(options.block_end) {
             std::string name;
             // Common case: for (int I = 0; I < N; I++). Use "I" as the name.
@@ -829,37 +891,32 @@ public:
             } else if(const auto* cond = S->getCond()) {
                 name = display::summarize(cond);
             }
-            builder.mark_block_end(S->getBody(), "for", name);
+            mark_block_end(S->getBody(), "for", name);
         }
-        return true;
     }
 
-    bool VisitCXXForRangeStmt(clang::CXXForRangeStmt* S) {
+    void handle_range_for(const clang::CXXForRangeStmt* S) {
         if(options.block_end) {
             // Decomposition loop variables have no identifier: plain "// for".
-            builder.mark_block_end(S->getBody(),
-                                   "for",
-                                   display::identifier_of(S->getLoopVariable()));
+            mark_block_end(S->getBody(), "for", display::identifier_of(S->getLoopVariable()));
         }
-        return true;
     }
 
-    bool VisitWhileStmt(clang::WhileStmt* S) {
+    void handle_while(const clang::WhileStmt* S) {
         if(options.block_end) {
-            builder.mark_block_end(S->getBody(), "while", display::summarize(S->getCond()));
+            mark_block_end(S->getBody(), "while", display::summarize(S->getCond()));
         }
-        return true;
     }
 
-    bool VisitSwitchStmt(clang::SwitchStmt* S) {
+    void handle_switch(const clang::SwitchStmt* S) {
         if(options.block_end) {
-            builder.mark_block_end(S->getBody(), "switch", display::summarize(S->getCond()));
+            mark_block_end(S->getBody(), "switch", display::summarize(S->getCond()));
         }
-        return true;
     }
 
-    bool VisitIfStmt(clang::IfStmt* S) {
+    void handle_if(const clang::IfStmt* S) {
         if(options.block_end) {
+            // Pre-order guarantees the outer if is handled before its else-if.
             if(const auto* else_if = llvm::dyn_cast_or_null<clang::IfStmt>(S->getElse())) {
                 else_ifs.insert(else_if);
             }
@@ -872,17 +929,16 @@ public:
                 if(const auto* cond = S->getCond(); cond && !else_ifs.contains(S)) {
                     name = display::summarize(cond);
                 }
-                builder.add_block_end_hint({S->getThen()->getBeginLoc(), if_end->getRBracLoc()},
-                                           "if",
-                                           name,
-                                           "");
+                add_block_end_hint({S->getThen()->getBeginLoc(), if_end->getRBracLoc()},
+                                   "if",
+                                   name,
+                                   "");
             }
         }
-        return true;
     }
 
-    bool VisitLambdaExpr(clang::LambdaExpr* expr) {
-        clang::FunctionDecl* decl = expr->getCallOperator();
+    void handle_lambda(const clang::LambdaExpr* expr) {
+        const clang::FunctionDecl* decl = expr->getCallOperator();
         if(!expr->hasExplicitResultType()) {
             clang::SourceLocation type_hint_loc;
             if(!expr->hasExplicitParameters()) {
@@ -892,45 +948,53 @@ public:
             }
 
             if(type_hint_loc.isValid()) {
-                builder.add_return_type_hint(decl, type_hint_loc);
+                add_return_type_hint(decl, type_hint_loc);
             }
         }
-        return true;
     }
 
-    bool VisitInitListExpr(clang::InitListExpr* expr) {
-        // We receive the syntactic form here (shouldVisitImplicitCode() is false).
-        // This is the one we will ultimately attach designators to.
-        // It may have subobject initializers inlined without braces. The *semantic*
-        // form of the init-list has nested init-lists for these.
-        // getUnwrittenDesignators will look at the semantic form to determine the
-        // labels.
-        assert(expr->isSyntacticForm() && "RAV should not visit implicit code!");
+    void handle_init_list(const clang::InitListExpr* expr) {
+        // The table records the form the enclosing AST node stores, which for
+        // the outermost list is the *semantic* form. Designators attach to the
+        // syntactic form — the written one, which may have subobject
+        // initializers inlined without braces where the semantic form has
+        // nested init-lists. getUnwrittenDesignators will look at the semantic
+        // form to determine the labels.
+        if(const auto* syntactic = expr->getSyntacticForm()) {
+            expr = syntactic;
+        }
+
         if(!options.designators) {
-            return true;
+            return;
         }
 
         if(expr->isIdiomaticZeroInitializer(unit.lang_options())) {
-            return true;
+            return;
         }
 
-        builder.add_designators(expr);
-        return true;
+        add_designators(expr);
     }
 
-    bool VisitTypeLoc(clang::TypeLoc TL) {
+    void handle_type_loc(clang::TypeLoc TL) {
         if(const auto* DT = llvm::dyn_cast<clang::DecltypeType>(TL.getType()))
             if(clang::QualType UT = DT->getUnderlyingType(); !UT->isDependentType())
-                builder.add_type_hint(TL.getSourceRange(), UT, ": ");
-        return true;
+                add_type_hint(TL.getSourceRange(), UT, ": ");
     }
 
     // FIXME: Handle RecoveryExpr to try to hint some invalid calls.
 
 private:
-    Builder& builder;
+    std::vector<InlayHint>& result;
     CompilationUnitRef unit;
+    LocalSourceRange restrict_range;
     const InlayHintsOptions& options;
+
+    // The sugared type is more useful in some cases, and the canonical
+    // type in other cases. Suppress scopes to keep type names short;
+    // anonymous tag locations stay off so lambda locations don't print.
+    // Not setting PrintCanonicalTypes for "auto" allows
+    // SuppressDefaultTemplateArgs (set by default) to have an effect.
+    display::Options display_options = {.suppress_scope = true};
 
     // If/else chains are tricky.
     //   if (cond1) {
@@ -951,9 +1015,8 @@ auto inlay_hints(CompilationUnitRef unit, LocalSourceRange target, const InlayHi
 
     std::vector<InlayHint> raw_hints;
 
-    Builder builder(raw_hints, unit, target, options);
-    Visitor visitor(builder, unit, target, options);
-    visitor.TraverseDecl(unit.tu());
+    Collector collector(raw_hints, unit, target, options);
+    collector.run();
 
     std::ranges::sort(raw_hints, [](const InlayHint& lhs, const InlayHint& rhs) {
         return std::tie(lhs.offset, lhs.label, lhs.kind, lhs.padding_left, lhs.padding_right) <

@@ -425,7 +425,7 @@ clice renders inline annotations for the information the code leaves implicit: p
   }
   ```
 
-- [x] Operators and literals — operator syntax and user-defined literals stay bare; member initializers hint
+- [x] Operators and literals — operator syntax and user-defined literals stay bare; member and default member initializers hint
 
   ```cpp
   struct S {
@@ -438,6 +438,7 @@ clice renders inline annotations for the information the code leaves implicit: p
 
   struct Holder {
       S member;
+      S defaulted{3};
       Holder() : member(42) {}
   };
 
