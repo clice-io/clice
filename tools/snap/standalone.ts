@@ -245,10 +245,11 @@ export async function checkSnapFixture(
     // The AST builds even for broken sources, so a compile that "succeeds"
     // may still carry error diagnostics — e.g. a mistyped annotation that
     // swallowed real code. Never pin such a fixture. A fixture that tests
-    // behavior on broken code opts out with a comment starting `error-ok`
-    // (the clangd convention the ported corpora already carry); prose that
-    // merely mentions the convention must not opt out.
-    if (entry.diagnostics?.length && !/\/\/\s*error-ok\b/.test(fixture.content)) {
+    // behavior on broken code opts out with a `// error-ok` line comment
+    // (the clangd convention the ported corpora already carry); the
+    // directive must open its own line so prose or string literals that
+    // merely mention the convention cannot opt out.
+    if (entry.diagnostics?.length && !/^\s*\/\/\s*error-ok\b/m.test(fixture.content)) {
         throw new Error(
             `${feature}/${fixture.rel}: fixture does not compile cleanly:\n  ` +
                 entry.diagnostics.join("\n  "),
