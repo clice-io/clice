@@ -7,7 +7,12 @@ import * as proto from "vscode-languageserver-protocol";
 import { markerPoints, markerRanges, type AnnotatedSource } from "./annotation.ts";
 import type { CliceClient } from "../client/client.ts";
 import type { Workspace } from "../client/workspace.ts";
-import { OffsetConverter } from "./inspect.ts";
+import {
+    focusSemanticTokens,
+    OffsetConverter,
+    semanticTokenFocusOffsets,
+    type TokenPiece,
+} from "./inspect.ts";
 import { normalizeFileUri, yamlStr } from "./snapshot.ts";
 
 export type Presenter = (
@@ -90,15 +95,15 @@ export const presentDocumentSymbols: Presenter = async (client, uri) => {
     return out;
 };
 
-/// Decode the LSP delta-encoded token array into presenter lines.
+/// Decode the LSP delta-encoded token array into rendered pieces.
 /// Positions are UTF-16 code units; fixtures are ASCII, where they
 /// coincide with string indices.
-export function decodeSemanticTokens(
+export function decodeSemanticTokenPieces(
     data: number[],
     lines: string[],
     legend: proto.SemanticTokensLegend,
-): string[] {
-    const out: string[] = [];
+): TokenPiece[] {
+    const out: TokenPiece[] = [];
     let line = 0;
     let character = 0;
     for (let i = 0; i + 4 < data.length; i += 5) {
@@ -118,23 +123,40 @@ export function decodeSemanticTokens(
         if (names.length > 0) {
             entry += `, modifiers: [${names.join(", ")}]`;
         }
-        out.push(entry + " }");
+        out.push({ line, character, length: text.length, rendered: entry + " }" });
     }
     return out;
 }
 
+export function decodeSemanticTokens(
+    data: number[],
+    lines: string[],
+    legend: proto.SemanticTokensLegend,
+): string[] {
+    return decodeSemanticTokenPieces(data, lines, legend).map((piece) => piece.rendered);
+}
+
 export const presentSemanticTokens: Presenter = async (client, uri, source) => {
     const result = await client.semanticTokensFull(uri);
-    if (!result || result.data.length === 0) {
-        return [];
-    }
     const provider = client.initResult?.capabilities.semanticTokensProvider as
         | proto.SemanticTokensOptions
         | undefined;
     if (!provider) {
         throw new Error("server did not advertise a semantic tokens legend");
     }
-    return decodeSemanticTokens(result.data, source.content.split("\n"), provider.legend);
+    const pieces = decodeSemanticTokenPieces(
+        result?.data ?? [],
+        source.content.split("\n"),
+        provider.legend,
+    );
+    // §-markers focus the snapshot on the marked tokens; a marker no token
+    // covers must still render (as `kind: none`), so this cannot early-out
+    // on an empty reply.
+    const offsets = semanticTokenFocusOffsets(source);
+    if (offsets.length > 0) {
+        return focusSemanticTokens(pieces, offsets, Buffer.from(source.content));
+    }
+    return pieces.map((piece) => piece.rendered);
 };
 
 function fmtInlayHints(hints: proto.InlayHint[]): string[] {

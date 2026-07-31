@@ -1,4 +1,6 @@
-/// # Macro definition and expansion
+/// # Macros
+///
+/// ## Macro definition and expansion
 ///
 /// - status: supported
 /// - snap: skip

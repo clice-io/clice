@@ -1,0 +1,7 @@
+---
+created_at: 2026-07-31
+input_file: conflict_using.cpp
+---
+- { loc: "8:7", text: "Widget", kind: struct, modifiers: [definition] }
+- { loc: "9:5", text: "Widget", kind: function, modifiers: [declaration] }
+- { loc: "12:12", text: "Widget", kind: conflict }

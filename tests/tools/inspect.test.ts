@@ -7,8 +7,16 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { expect, test } from "vitest";
 import { SNAP_DIR } from "@clice/tools/compile-commands";
-import { parseFixtureMeta, renderRawSemanticTokens, runInspect } from "@clice/tools/snap/inspect";
-import { decodeSemanticTokens } from "@clice/tools/snap/presenters";
+import { parseAnnotations } from "@clice/tools/snap/annotation";
+import {
+    focusSemanticTokens,
+    parseFixtureMeta,
+    rawSemanticTokenPieces,
+    renderRawSemanticTokens,
+    runInspect,
+    semanticTokenFocusOffsets,
+} from "@clice/tools/snap/inspect";
+import { decodeSemanticTokenPieces, decodeSemanticTokens } from "@clice/tools/snap/presenters";
 import { cliceExecutable } from "@clice/tools/session";
 
 test("fixture meta parsing", () => {
@@ -149,6 +157,85 @@ test("inspect keeps C sources C in the fallback", () => {
     } finally {
         fs.rmSync(tmp, { recursive: true, force: true });
     }
+});
+
+test("inspect surfaces errors on completed compiles", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "clice-inspect-"));
+    try {
+        // A type name used as an expression: the AST still builds (no
+        // `error` in the entry), but the error diagnostics must surface —
+        // the snap harness's does-not-compile-cleanly gate depends on it.
+        const file = path.join(tmp, "broken.cpp");
+        fs.writeFileSync(file, "struct W { W(int); W make() { return W; } };\n");
+        const { files } = runInspect(cliceExecutable(), "semantic_tokens", file);
+        const entry = files["broken.cpp"];
+        expect(entry?.error ?? null).toBeNull();
+        expect((entry?.diagnostics ?? []).length).toBeGreaterThan(0);
+    } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+    }
+});
+
+test("marker focus filters tokens and pins misses", () => {
+    // A named and a nameless marker on the same offset collapse to one
+    // entry; the marker on `=` (no token there) must render an explicit
+    // `kind: none` line so the absence itself is snapshot content.
+    const source = parseAnnotations("int §(v)§a §= done;\n");
+    const stripped = Buffer.from(source.content);
+    const raw = [
+        { range: { begin: 0, end: 3 }, kind: "Keyword", modifiers: 0 },
+        { range: { begin: 4, end: 5 }, kind: "Variable", modifiers: 0 },
+    ];
+    const offsets = semanticTokenFocusOffsets(source);
+    expect(offsets).toEqual([4, 6]);
+    const focused = focusSemanticTokens(rawSemanticTokenPieces(raw, stripped), offsets, stripped);
+    expect(focused).toEqual([
+        '- { loc: "0:4", text: "a", kind: variable }',
+        '- { loc: "0:6", text: "=", kind: none }',
+    ]);
+
+    // A marker on an identifier no token covers keeps the identifier as
+    // the miss label, so a later fix flips kind while the text stays put.
+    const bare = parseAnnotations("goto §done;\n");
+    const none = focusSemanticTokens(
+        [],
+        semanticTokenFocusOffsets(bare),
+        Buffer.from(bare.content),
+    );
+    expect(none).toEqual(['- { loc: "0:5", text: "done", kind: none }']);
+
+    // Range markers have no focus meaning; silently pinning the full dump
+    // would hide the author's intent, so they are rejected.
+    expect(() => semanticTokenFocusOffsets(parseAnnotations("§⟦int⟧ x;\n"))).toThrow(
+        "point markers",
+    );
+});
+
+test("marker focus agrees between standalone and wire pieces", () => {
+    const source = parseAnnotations("int §a = §1;\n");
+    const stripped = Buffer.from(source.content);
+    const raw = [
+        { range: { begin: 0, end: 3 }, kind: "Keyword", modifiers: 0 },
+        { range: { begin: 4, end: 5 }, kind: "Variable", modifiers: 0 },
+        { range: { begin: 8, end: 9 }, kind: "Number", modifiers: 0 },
+    ];
+    const legend = { tokenTypes: ["keyword", "variable", "number"], tokenModifiers: [] };
+    const wire = decodeSemanticTokenPieces(
+        [0, 0, 3, 0, 0, 0, 4, 1, 1, 0, 0, 4, 1, 2, 0],
+        source.content.split("\n"),
+        legend,
+    );
+    const offsets = semanticTokenFocusOffsets(source);
+    const standalone = focusSemanticTokens(
+        rawSemanticTokenPieces(raw, stripped),
+        offsets,
+        stripped,
+    );
+    expect(standalone).toEqual(focusSemanticTokens(wire, offsets, stripped));
+    expect(standalone).toEqual([
+        '- { loc: "0:4", text: "a", kind: variable }',
+        '- { loc: "0:8", text: "1", kind: number }',
+    ]);
 });
 
 test("multiline token split matches wire decode", () => {

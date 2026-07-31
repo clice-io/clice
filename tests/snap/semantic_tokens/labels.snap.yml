@@ -1,0 +1,6 @@
+---
+created_at: 2026-07-31
+input_file: labels.cpp
+---
+- { loc: "8:9", text: "done", kind: label }
+- { loc: "9:0", text: "done", kind: label, modifiers: [definition] }

@@ -249,9 +249,21 @@ export const renderRawFoldingRanges: RawRenderer = (result, stripped) => {
     return out;
 };
 
-export const renderRawSemanticTokens: RawRenderer = (result, stripped) => {
+/// One rendered semantic token piece (multiline tokens arrive pre-split):
+/// its position in line/UTF-16-character coordinates plus the finished
+/// snapshot line, so marker-focus filtering works on the exact shape both
+/// the standalone and the wire renderer produce.
+export interface TokenPiece {
+    line: number;
+    character: number;
+    /// UTF-16 length of the piece text (0 for a blank interior line).
+    length: number;
+    rendered: string;
+}
+
+export function rawSemanticTokenPieces(result: unknown, stripped: Buffer): TokenPiece[] {
     const map = new OffsetConverter(stripped);
-    const out: string[] = [];
+    const out: TokenPiece[] = [];
     for (const token of result as RawSemanticToken[]) {
         if (token.range.end <= token.range.begin || token.range.end > stripped.length) {
             continue;
@@ -279,7 +291,12 @@ export const renderRawSemanticTokens: RawRenderer = (result, stripped) => {
             // interior line and the wire decoder reconstructs text: "". Only
             // the final, unterminated piece is dropped when empty.
             if (i !== chunk.length || text.length > 0) {
-                out.push(`- { loc: "${line}:${character}", text: ${yamlStr(text)}${suffix}`);
+                out.push({
+                    line,
+                    character,
+                    length: text.length,
+                    rendered: `- { loc: "${line}:${character}", text: ${yamlStr(text)}${suffix}`,
+                });
             }
             line += 1;
             character = 0;
@@ -287,7 +304,75 @@ export const renderRawSemanticTokens: RawRenderer = (result, stripped) => {
         }
     }
     return out;
-};
+}
+
+export const renderRawSemanticTokens: RawRenderer = (result, stripped) =>
+    rawSemanticTokenPieces(result, stripped).map((piece) => piece.rendered);
+
+/// The identifier (or single character) written at `offset`, for labelling
+/// a marker that no token covers.
+function wordAt(stripped: Buffer, offset: number): string {
+    const isWord = (byte: number | undefined): boolean =>
+        byte !== undefined &&
+        ((byte >= 0x30 && byte <= 0x39) ||
+            (byte >= 0x41 && byte <= 0x5a) ||
+            (byte >= 0x61 && byte <= 0x7a) ||
+            byte === 0x5f);
+    let end = offset;
+    while (isWord(stripped[end])) {
+        end += 1;
+    }
+    if (end === offset) {
+        return offset < stripped.length ? String.fromCharCode(stripped[offset] ?? 0) : "";
+    }
+    let begin = offset;
+    while (begin > 0 && isWord(stripped[begin - 1])) {
+        begin -= 1;
+    }
+    return stripped.subarray(begin, end).toString("utf8");
+}
+
+/// Marker points that focus a semantic-tokens snapshot, in source order.
+/// Ranges have no meaning here — reject them so a fixture doesn't silently
+/// pin the full dump its author meant to focus.
+export function semanticTokenFocusOffsets(source: {
+    offsets: Map<string, number>;
+    ranges: Map<string, [number, number]>;
+    namelessOffsets: number[];
+}): number[] {
+    if (source.ranges.size > 0) {
+        throw new Error("semantic_tokens fixtures take § point markers, not §⟦...⟧ ranges");
+    }
+    return [...new Set([...source.offsets.values(), ...source.namelessOffsets])].sort(
+        (a, b) => a - b,
+    );
+}
+
+/// Focused snapshot body: one line per marker — the covering token piece,
+/// or an explicit `kind: none` entry so a missing token is pinned visibly
+/// and its fix flips the snapshot instead of appearing from nothing.
+/// Markers are placed on the first character of the token of interest.
+export function focusSemanticTokens(
+    pieces: TokenPiece[],
+    offsets: number[],
+    stripped: Buffer,
+): string[] {
+    const map = new OffsetConverter(stripped);
+    return offsets.map((offset) => {
+        const pos = map.position(offset);
+        const hit = pieces.find(
+            (piece) =>
+                piece.line === pos.line &&
+                piece.character <= pos.character &&
+                pos.character < piece.character + piece.length,
+        );
+        if (hit) {
+            return hit.rendered;
+        }
+        const text = yamlStr(wordAt(stripped, offset));
+        return `- { loc: "${pos.line}:${pos.character}", text: ${text}, kind: none }`;
+    });
+}
 
 interface RawDocumentSymbol {
     name: string;

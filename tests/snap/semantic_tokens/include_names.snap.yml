@@ -1,0 +1,20 @@
+---
+created_at: 2026-07-31
+input_file: include_names.cpp
+---
+- { loc: "0:0", text: "/// # Lexical Tokens", kind: comment }
+- { loc: "1:0", text: "///", kind: comment }
+- { loc: "2:0", text: "/// ## Header names — quoted and angled `#include` filenames, including the split `# include` form", kind: comment }
+- { loc: "3:0", text: "///", kind: comment }
+- { loc: "4:0", text: "/// - status: supported", kind: comment }
+- { loc: "5:0", text: "/// - order: 5", kind: comment }
+- { loc: "7:0", text: "#include", kind: directive }
+- { loc: "7:9", text: "\"inc/angled.h\"", kind: header }
+- { loc: "8:0", text: "#include", kind: directive }
+- { loc: "8:9", text: "<angled.h>", kind: header }
+- { loc: "9:0", text: "#", kind: directive }
+- { loc: "9:2", text: "include", kind: directive }
+- { loc: "9:10", text: "\"inc/angled.h\"", kind: header }
+- { loc: "11:0", text: "int", kind: keyword }
+- { loc: "11:4", text: "after_includes", kind: variable, modifiers: [definition] }
+- { loc: "11:21", text: "0", kind: number }

@@ -222,9 +222,12 @@ std::optional<std::string> find_cdb(llvm::StringRef start) {
     return std::nullopt;
 }
 
-std::vector<std::string> error_messages(CompilationUnit& unit) {
-    return std::ranges::to<std::vector>(unit.diagnostics() |
-                                        std::views::transform(&Diagnostic::message));
+std::vector<std::string> error_messages(CompilationUnit& unit, bool errors_only = false) {
+    auto messages = unit.diagnostics() | std::views::filter([&](const Diagnostic& diagnostic) {
+                        return !errors_only || diagnostic.id.level >= DiagnosticLevel::Error;
+                    }) |
+                    std::views::transform(&Diagnostic::message);
+    return std::ranges::to<std::vector>(messages);
 }
 
 /// Compile `file` in one pass, deliberately without the preamble PCH the
@@ -353,6 +356,14 @@ FileEntry process_file(const std::string& file,
         entry.error = "compile_error";
         entry.diagnostics = error_messages(unit);
         return entry;
+    }
+
+    // The AST builds even for broken sources (a language server must keep
+    // working on them), so error diagnostics are surfaced separately: the
+    // snap harness rejects fixtures whose code or annotations silently
+    // broke instead of pinning garbage.
+    if(auto errors = error_messages(unit, /*errors_only=*/true); !errors.empty()) {
+        entry.diagnostics = std::move(errors);
     }
 
     const auto& spec = *find_feature(feature);

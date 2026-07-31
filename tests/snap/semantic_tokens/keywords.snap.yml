@@ -1,0 +1,10 @@
+---
+created_at: 2026-07-31
+input_file: keywords.cpp
+---
+- { loc: "8:13", text: "and", kind: keyword }
+- { loc: "8:19", text: "or", kind: keyword }
+- { loc: "8:22", text: "not", kind: keyword }
+- { loc: "16:12", text: "final", kind: keyword }
+- { loc: "17:15", text: "override", kind: keyword }
+- { loc: "21:15", text: "final", kind: keyword }

@@ -2,7 +2,7 @@
 created_at: 2026-07-30
 input_file: templates.cpp
 ---
-- { name: "templates", kind: Namespace, range: "5:0-52:1", selection_range: "5:10-5:19" }
+- { name: "templates", kind: Namespace, range: "5:0-57:1", selection_range: "5:10-5:19" }
 -   { name: "Box", kind: Struct, range: "8:0-12:1", selection_range: "8:7-8:10", detail: "template struct" }
 -     { name: "value", kind: Field, range: "9:4-9:11", selection_range: "9:6-9:11", detail: "T" }
 -     { name: "reset", kind: Method, range: "11:4-11:16", selection_range: "11:9-11:14", detail: "void ()" }
@@ -14,4 +14,6 @@ input_file: templates.cpp
 -   { name: "Small", kind: TypeParameter, range: "36:0-37:30", selection_range: "37:8-37:13", detail: "concept" }
 -   { name: "Guide", kind: Struct, range: "39:0-42:1", selection_range: "39:7-39:12", detail: "struct" }
 -     { name: "Guide", kind: Method, range: "41:4-41:16", selection_range: "41:4-41:9", detail: "template (T)" }
--   { name: "T", kind: Variable, range: "45:0-45:9", selection_range: "45:6-45:7", detail: "template Guide" }
+-   { name: "Deduced", kind: Struct, range: "45:0-47:1", selection_range: "45:7-45:14", detail: "template struct" }
+-     { name: "Deduced", kind: Method, range: "46:4-46:18", selection_range: "46:4-46:11", detail: "(T)" }
+-   { name: "<deduction guide for Deduced>", kind: Function, range: "50:0-50:25", selection_range: "50:0-50:7", detail: "template auto (T *) -> Deduced<T>" }

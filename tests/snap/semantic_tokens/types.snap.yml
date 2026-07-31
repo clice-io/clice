@@ -1,0 +1,17 @@
+---
+created_at: 2026-07-31
+input_file: types.cpp
+---
+- { loc: "7:6", text: "Widget", kind: class, modifiers: [definition] }
+- { loc: "8:7", text: "Point", kind: struct, modifiers: [definition] }
+- { loc: "9:6", text: "Storage", kind: union, modifiers: [definition] }
+- { loc: "13:5", text: "Flags", kind: enum, modifiers: [definition] }
+- { loc: "14:11", text: "Mode", kind: enum, modifiers: [definition] }
+- { loc: "16:8", text: "Point", kind: struct }
+- { loc: "16:14", text: "PointAlias", kind: type, modifiers: [definition] }
+- { loc: "17:6", text: "WidgetAlias", kind: type, modifiers: [definition] }
+- { loc: "17:20", text: "Widget", kind: class }
+- { loc: "19:0", text: "Widget", kind: class }
+- { loc: "20:0", text: "PointAlias", kind: type }
+- { loc: "21:0", text: "Mode", kind: enum }
+- { loc: "21:15", text: "Mode", kind: enum }

@@ -1,6 +1,6 @@
-/// # Basic token kinds
-///
-/// - status: supported
+// Full-dump canary: deliberately free of marker annotations, so the
+// snapshot pins every token of the file. Focused fixtures cannot see
+// tokens appearing where nobody thought to mark; this one can.
 
 namespace demo {
 

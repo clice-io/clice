@@ -1,6 +1,11 @@
+/// Primary semantic-tokens coverage lives in the snapshot corpus
+/// (tests/snap/semantic_tokens/), which pins both the standalone and the
+/// server path. This file keeps only what that corpus cannot express:
+/// preamble state under a real PCH split, module imports (which need
+/// dependency modules), and the encoder math the snapshots decode away.
+
 #include <cassert>
 #include <cstdint>
-#include <initializer_list>
 #include <optional>
 #include <vector>
 
@@ -119,14 +124,6 @@ TEST_SUITE(semantic_tokens, Tester) {
 protocol::SemanticTokens tokens;
 std::vector<DecodedToken> decoded;
 
-auto modifier_mask(std::initializer_list<SymbolModifiers::Kind> kinds) -> std::uint32_t {
-    std::uint32_t mask = 0;
-    for(auto kind: kinds) {
-        mask |= SymbolModifiers::to_mask(kind);
-    }
-    return mask;
-}
-
 void run_utf8(llvm::StringRef code) {
     add_main("main.cpp", code);
     ASSERT_TRUE(compile_with_pch());
@@ -153,28 +150,10 @@ void EXPECT_TOKEN(llvm::StringRef name,
     ASSERT_EQ(token->modifiers, expected_modifiers);
 }
 
-void EXPECT_NO_TOKEN(llvm::StringRef name) {
-    ASSERT_TRUE(find_by_range(name) == nullptr);
-}
-
-void EXPECT_TOKENS_WITHIN_LINES() {
-    auto content = unit->interested_content();
-    auto starts = compute_line_starts(content);
-    for(const auto& token: decoded) {
-        ASSERT_TRUE(token.line < starts.size());
-        auto line_end = token.line + 1 < starts.size() ? starts[token.line + 1] : content.size();
-        ASSERT_TRUE(token.start <= line_end - starts[token.line]);
-    }
-}
-
-void EXPECT_TOKEN_AT(llvm::StringRef name, std::uint64_t line, std::uint64_t start) {
-    auto* token = find_by_range(name);
-    ASSERT_TRUE(token != nullptr);
-    ASSERT_EQ(token->line, line);
-    ASSERT_EQ(token->start, start);
-}
-
-TEST_CASE(BasicLexicalKinds) {
+TEST_CASE(PreambleDefineUnderPch) {
+    // The leading `#define` sits in the preamble, so under the PCH split no
+    // MacroDefine record exists in the main compile; the macro name must
+    // still classify through the lexical directive fallback.
     run_utf8(R"cpp(
 §(d1)⟦#define⟧ §(m0)⟦FOO⟧
 §(k0)⟦int⟧ main() { §(k1)⟦return⟧ 0; }
@@ -186,307 +165,6 @@ TEST_CASE(BasicLexicalKinds) {
     EXPECT_TOKEN("k0", SymbolKind::Keyword);
     EXPECT_TOKEN("k1", SymbolKind::Keyword);
     EXPECT_TOKEN("c0", SymbolKind::Comment);
-}
-
-TEST_CASE(IncludeDirective) {
-    add_file("fake.h", "// fake header\n");
-    add_main("main.cpp", R"cpp(
-§(d0)⟦#include⟧ §(h0)⟦"fake.h"⟧
-int main() { return 0; }
-)cpp");
-    ASSERT_TRUE(compile_with_pch());
-    tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
-    decoded = decode_utf8_tokens(unit->interested_content(), tokens);
-
-    EXPECT_TOKEN("d0", SymbolKind::Directive);
-    EXPECT_TOKEN("h0", SymbolKind::Header);
-}
-
-TEST_CASE(LegacyIncludeForms) {
-    add_file("fake.h", "// fake header\n");
-    add_main("main.cpp", R"cpp(
-§(i0)⟦#include⟧ §(h0)⟦"fake.h"⟧
-§(i1)⟦#include⟧ §(h1)⟦"fake.h"⟧
-§(i2)⟦#⟧ §(i3)⟦include⟧ §(h2)⟦"fake.h"⟧
-)cpp");
-    ASSERT_TRUE(compile_with_pch());
-    tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
-    decoded = decode_utf8_tokens(unit->interested_content(), tokens);
-
-    EXPECT_TOKEN("i0", SymbolKind::Directive);
-    EXPECT_TOKEN("h0", SymbolKind::Header);
-    EXPECT_TOKEN("i1", SymbolKind::Directive);
-    EXPECT_TOKEN("h1", SymbolKind::Header);
-    EXPECT_TOKEN("i2", SymbolKind::Directive);
-    EXPECT_TOKEN("i3", SymbolKind::Directive);
-    EXPECT_TOKEN("h2", SymbolKind::Header);
-}
-
-TEST_CASE(AngledInclude) {
-    add_main("main.cpp", R"cpp(
-§(d0)⟦#include⟧ §(h0)⟦<stddef.h>⟧
-)cpp");
-    ASSERT_TRUE(compile_driver());
-    tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
-    decoded = decode_utf8_tokens(unit->interested_content(), tokens);
-
-    EXPECT_TOKEN("d0", SymbolKind::Directive);
-    // The `<`, `stddef.h`, `>` pieces merge into one Header token.
-    EXPECT_TOKEN("h0", SymbolKind::Header);
-}
-
-TEST_CASE(ConditionalDirectives) {
-    run_utf8(R"cpp(
-int x = 1;
-#define FOO
-§(d0)⟦#ifdef⟧ §(m0)⟦FOO⟧
-§(d1)⟦#endif⟧
-§(d2)⟦#pragma⟧ §(d3)⟦once⟧
-)cpp");
-
-    EXPECT_TOKEN("d0", SymbolKind::Directive);
-    EXPECT_TOKEN("m0", SymbolKind::Macro);
-    EXPECT_TOKEN("d1", SymbolKind::Directive);
-    EXPECT_TOKEN("d2", SymbolKind::Directive);
-    // The pragma's argument is a plain identifier, not part of the
-    // directive name.
-    EXPECT_NO_TOKEN("d3");
-}
-
-TEST_CASE(MacroArgumentTokens) {
-    run_utf8(R"cpp(
-int value = 1;
-#define ID(x) x
-int §(use)⟦y⟧ = ID(§(arg)⟦value⟧);
-)cpp");
-
-    // A name written as a macro argument keeps its semantic classification.
-    EXPECT_TOKEN("use", SymbolKind::Variable, modifier_mask({SymbolModifiers::Definition}));
-    EXPECT_TOKEN("arg", SymbolKind::Variable);
-}
-
-TEST_CASE(LegacyComment) {
-    run_utf8(R"cpp(
-§(line)⟦/// line comment⟧
-int x = 1;
-)cpp");
-
-    EXPECT_TOKEN("line", SymbolKind::Comment);
-}
-
-TEST_CASE(LegacyKeyword) {
-    run_utf8(R"cpp(
-§(k0)⟦int⟧ main() {
-    §(k1)⟦return⟧ 0;
-}
-)cpp");
-
-    EXPECT_TOKEN("k0", SymbolKind::Keyword);
-    EXPECT_TOKEN("k1", SymbolKind::Keyword);
-}
-
-TEST_CASE(LegacyMacro) {
-    run_utf8(R"cpp(
-§(directive)⟦#define⟧ §(macro)⟦FOO⟧
-)cpp");
-
-    EXPECT_TOKEN("directive", SymbolKind::Directive);
-    EXPECT_TOKEN("macro", SymbolKind::Macro);
-}
-
-TEST_CASE(MacroBodyTokens) {
-    run_utf8(R"cpp(
-void foo();
-#define §(name)⟦CALL⟧ §(body)⟦foo⟧()
-void bar() { §(use)⟦CALL⟧; }
-)cpp");
-
-    // The definition name and every expansion site are macros; tokens inside
-    // the macro body keep lexical kinds only — semantic highlighting of the
-    // expansion belongs to the future expansion-preview feature.
-    EXPECT_TOKEN("name", SymbolKind::Macro, modifier_mask({SymbolModifiers::Definition}));
-    EXPECT_TOKEN("use", SymbolKind::Macro);
-    EXPECT_NO_TOKEN("body");
-}
-
-TEST_CASE(LegacyFinalAndOverride) {
-    run_utf8(R"cpp(
-struct A §(final)⟦final⟧ {};
-
-struct B {
-    virtual void foo();
-};
-
-struct C : B {
-    void foo() §(override)⟦override⟧;
-};
-
-struct D : C {
-    void foo() §(final2)⟦final⟧;
-};
-)cpp");
-
-    EXPECT_TOKEN("final", SymbolKind::Keyword);
-    EXPECT_TOKEN("override", SymbolKind::Keyword);
-    EXPECT_TOKEN("final2", SymbolKind::Keyword);
-}
-
-TEST_CASE(DeclarationAndTemplateModifiers) {
-    run_utf8(R"cpp(
-extern int §(x1)⟦x⟧;
-int §(x2)⟦x⟧ = 0;
-
-template <typename T>
-extern int §(y1)⟦y⟧;
-
-template <typename T>
-int §(y2)⟦y⟧ = 0;
-
-int main() {
-    §(x3)⟦x⟧ = 1;
-}
-)cpp");
-
-    auto declaration = modifier_mask({SymbolModifiers::Declaration});
-    auto definition = modifier_mask({SymbolModifiers::Definition});
-    auto templated = modifier_mask({SymbolModifiers::Templated});
-
-    EXPECT_TOKEN("x1", SymbolKind::Variable, declaration);
-    EXPECT_TOKEN("x2", SymbolKind::Variable, definition);
-    EXPECT_TOKEN("y1", SymbolKind::Variable, declaration | templated);
-    EXPECT_TOKEN("y2", SymbolKind::Variable, definition | templated);
-    EXPECT_TOKEN("x3", SymbolKind::Variable, 0);
-}
-
-TEST_CASE(IneligibleOperatorReferenceIsSuppressed) {
-    run_utf8(R"cpp(
-struct S {};
-
-S operator+(S lhs, S rhs);
-
-void use(S lhs, S rhs) {
-    (void)(lhs §(plus)⟦+⟧ rhs);
-}
-)cpp");
-
-    EXPECT_NO_TOKEN("plus");
-}
-
-TEST_CASE(ConstructorAndDestructorNamesRemainHighlighted) {
-    run_utf8(R"cpp(
-struct S {
-    §(ctor_decl)⟦S⟧();
-    §(dtor_decl)⟦~⟧S();
-};
-
-S::§(ctor_def)⟦S⟧() {}
-
-void use(S* value) {
-    value->§(dtor_ref)⟦~⟧S();
-}
-)cpp");
-
-    auto declaration = modifier_mask({SymbolModifiers::Declaration});
-    auto definition = modifier_mask({SymbolModifiers::Definition});
-    auto special_member = modifier_mask({SymbolModifiers::ConstructorOrDestructor});
-
-    EXPECT_TOKEN("ctor_decl", SymbolKind::Method, declaration | special_member);
-    EXPECT_TOKEN("dtor_decl", SymbolKind::Method, declaration | special_member);
-    EXPECT_TOKEN("ctor_def", SymbolKind::Method, definition | special_member);
-    EXPECT_TOKEN("dtor_ref", SymbolKind::Method, special_member);
-}
-
-TEST_CASE(LegacyVarDeclTemplates) {
-    run_utf8(R"cpp(
-extern int §(x1)⟦x⟧;
-
-int §(x2)⟦x⟧ = 1;
-
-template <typename T, typename U>
-extern int §(y1)⟦y⟧;
-
-template <typename T, typename U>
-int §(y2)⟦y⟧ = 2;
-
-template<typename T>
-extern int §(y3)⟦y⟧<T, int>;
-
-template<typename T>
-int §(y4)⟦y⟧<T, int> = 4;
-
-template<>
-int §(y5)⟦y⟧<int, int> = 5;
-
-int main() {
-    §(x3)⟦x⟧ = 6;
-}
-)cpp");
-
-    auto declaration = modifier_mask({SymbolModifiers::Declaration});
-    auto definition = modifier_mask({SymbolModifiers::Definition});
-    auto templated = modifier_mask({SymbolModifiers::Templated});
-
-    EXPECT_TOKEN("x1", SymbolKind::Variable, declaration);
-    EXPECT_TOKEN("x2", SymbolKind::Variable, definition);
-    EXPECT_TOKEN("y1", SymbolKind::Variable, declaration | templated);
-    EXPECT_TOKEN("y2", SymbolKind::Variable, definition | templated);
-    EXPECT_TOKEN("y3", SymbolKind::Variable, declaration | templated);
-    EXPECT_TOKEN("y4", SymbolKind::Variable, definition | templated);
-    EXPECT_TOKEN("y5", SymbolKind::Variable, definition);
-    EXPECT_TOKEN("x3", SymbolKind::Variable, 0);
-}
-
-TEST_CASE(LegacyFunctionDecl) {
-    run_utf8(R"cpp(
-extern int §(foo1)⟦foo⟧();
-
-int §(foo2)⟦foo⟧() {
-    return 0;
-}
-
-template <typename T>
-extern int §(bar1)⟦bar⟧();
-
-template <typename T>
-int §(bar2)⟦bar⟧() {
-    return 1;
-}
-)cpp");
-
-    auto declaration = modifier_mask({SymbolModifiers::Declaration});
-    auto definition = modifier_mask({SymbolModifiers::Definition});
-    auto templated = modifier_mask({SymbolModifiers::Templated});
-
-    EXPECT_TOKEN("foo1", SymbolKind::Function, declaration);
-    EXPECT_TOKEN("foo2", SymbolKind::Function, definition);
-    EXPECT_TOKEN("bar1", SymbolKind::Function, declaration | templated);
-    EXPECT_TOKEN("bar2", SymbolKind::Function, definition | templated);
-}
-
-TEST_CASE(LegacyRecordDecl) {
-    run_utf8(R"cpp(
-class §(a1)⟦A⟧;
-
-class §(a2)⟦A⟧ {};
-
-struct §(b1)⟦B⟧;
-
-struct §(b2)⟦B⟧ {};
-
-union §(c1)⟦C⟧;
-
-union §(c2)⟦C⟧ {};
-)cpp");
-
-    auto declaration = modifier_mask({SymbolModifiers::Declaration});
-    auto definition = modifier_mask({SymbolModifiers::Definition});
-
-    EXPECT_TOKEN("a1", SymbolKind::Class, declaration);
-    EXPECT_TOKEN("a2", SymbolKind::Class, definition);
-    EXPECT_TOKEN("b1", SymbolKind::Struct, declaration);
-    EXPECT_TOKEN("b2", SymbolKind::Struct, definition);
-    EXPECT_TOKEN("c1", SymbolKind::Union, declaration);
-    EXPECT_TOKEN("c2", SymbolKind::Union, definition);
 }
 
 TEST_CASE(UTF16LengthDiffersFromUTF8) {
@@ -528,7 +206,7 @@ int main() {
     ASSERT_TRUE(utf8_token->length > utf16_token->length);
 }
 
-TEST_CASE(MultiLineCommentSplitMatchesLegacyConverter) {
+TEST_CASE(MultiLineCommentSplit) {
     add_main("main.cpp", R"cpp(
 int main() {
 /*ab
@@ -555,56 +233,6 @@ cd*/
     ASSERT_EQ(comments[1].length, 4);
 }
 
-TEST_CASE(CodeAfterRawString) {
-    run_utf8(R"cpp(
-const char* s = R"(line1
-line2
-)"; §(k0)⟦int⟧ §(x)⟦x⟧ = 1;
-)cpp");
-
-    EXPECT_TOKENS_WITHIN_LINES();
-    EXPECT_TOKEN_AT("k0", 3, 4);
-    EXPECT_TOKEN_AT("x", 3, 8);
-    EXPECT_TOKEN("k0", SymbolKind::Keyword);
-}
-
-TEST_CASE(CodeAfterMultilineComment) {
-    run_utf8(R"cpp(
-    /* first
-second */ §(k0)⟦int⟧ §(x)⟦x⟧ = 1;
-)cpp");
-
-    EXPECT_TOKENS_WITHIN_LINES();
-    EXPECT_TOKEN_AT("k0", 2, 10);
-    EXPECT_TOKEN_AT("x", 2, 14);
-    EXPECT_TOKEN("k0", SymbolKind::Keyword);
-}
-
-TEST_CASE(ModuleDeclaration) {
-    add_main("main.cpp", R"cpp(
-export §(kw)⟦module⟧ §(mod)⟦foo⟧;
-)cpp");
-    ASSERT_TRUE(compile("-std=c++20"));
-    tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
-    decoded = decode_utf8_tokens(unit->interested_content(), tokens);
-
-    EXPECT_TOKEN("kw", SymbolKind::Keyword);
-    EXPECT_TOKEN("mod", SymbolKind::Module);
-}
-
-TEST_CASE(ModuleDeclarationDotted) {
-    add_main("main.cpp", R"cpp(
-export §(kw)⟦module⟧ §(m0)⟦foo⟧.§(m1)⟦bar⟧;
-)cpp");
-    ASSERT_TRUE(compile("-std=c++20"));
-    tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
-    decoded = decode_utf8_tokens(unit->interested_content(), tokens);
-
-    EXPECT_TOKEN("kw", SymbolKind::Keyword);
-    EXPECT_TOKEN("m0", SymbolKind::Module);
-    EXPECT_TOKEN("m1", SymbolKind::Module);
-}
-
 TEST_CASE(ModuleImport) {
     add_files("main.cpp", R"(
 #[mod.cppm]
@@ -623,18 +251,6 @@ int y = x;
     EXPECT_TOKEN("mod", SymbolKind::Module);
 }
 
-TEST_CASE(ModulePartition) {
-    add_main("main.cpp", R"cpp(
-export module §(m0)⟦foo⟧:§(m1)⟦bar⟧;
-)cpp");
-    ASSERT_TRUE(compile("-std=c++20"));
-    tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
-    decoded = decode_utf8_tokens(unit->interested_content(), tokens);
-
-    EXPECT_TOKEN("m0", SymbolKind::Module);
-    EXPECT_TOKEN("m1", SymbolKind::Module);
-}
-
 TEST_CASE(ModuleReexport) {
     add_files("main.cppm", R"(
 #[mod.cppm]
@@ -651,49 +267,6 @@ export §(kw)⟦import⟧ §(mod)⟦foo⟧;
 
     EXPECT_TOKEN("kw", SymbolKind::Keyword);
     EXPECT_TOKEN("mod", SymbolKind::Module);
-}
-
-TEST_CASE(GlobalModuleFragment) {
-    add_main("main.cpp", R"cpp(
-module;
-export module §(mod)⟦foo⟧;
-)cpp");
-    ASSERT_TRUE(compile("-std=c++20"));
-    tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
-    decoded = decode_utf8_tokens(unit->interested_content(), tokens);
-
-    EXPECT_TOKEN("mod", SymbolKind::Module);
-}
-
-TEST_CASE(PrivateModuleFragment) {
-    add_main("main.cpp", R"cpp(
-export module §(mod)⟦foo⟧;
-module :private;
-int x = 1;
-)cpp");
-    ASSERT_TRUE(compile("-std=c++20"));
-    tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
-    decoded = decode_utf8_tokens(unit->interested_content(), tokens);
-
-    EXPECT_TOKEN("mod", SymbolKind::Module);
-}
-
-TEST_CASE(ModuleKeywordAsIdentifier) {
-    run_utf8(R"cpp(
-void f() {
-    struct §(s0)⟦module⟧ {};
-    §(s1)⟦module⟧ §(v0)⟦m⟧;
-    int §(v1)⟦import⟧ = 1;
-    int §(v2)⟦module⟧ = 2;
-}
-)cpp");
-
-    auto definition = modifier_mask({SymbolModifiers::Definition});
-    EXPECT_TOKEN("s0", SymbolKind::Struct, definition);
-    EXPECT_TOKEN("s1", SymbolKind::Struct);
-    EXPECT_TOKEN("v0", SymbolKind::Variable, definition);
-    EXPECT_TOKEN("v1", SymbolKind::Variable, definition);
-    EXPECT_TOKEN("v2", SymbolKind::Variable, definition);
 }
 
 };  // TEST_SUITE(semantic_tokens)

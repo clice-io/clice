@@ -44,11 +44,13 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { REPO_ROOT } from "./compile_commands.ts";
+import { parseAnnotations } from "./snap/annotation.ts";
 
 // feature -> doc path (relative to repo root). Extend as more features
 // adopt fixture-generated docs.
 const FEATURES: Record<string, string> = {
     folding_range: "docs/en/features/folding-ranges.md",
+    semantic_tokens: "docs/en/features/semantic-tokens.md",
 };
 
 const ISSUE_TRACKERS: Record<string, string> = {
@@ -274,7 +276,8 @@ function parseFixture(filePath: string, featureDir: string, problems: string[]):
             exampleStart += 1;
         }
     }
-    const example = trimBlank(lines.slice(exampleStart)).join("\n");
+    // Snapshot-focus `§` markers are fixture metadata, not example code.
+    const example = parseAnnotations(trimBlank(lines.slice(exampleStart)).join("\n")).content;
     if (!example.trim()) {
         problems.push(`${filePath}: doc-item fixture has no example code`);
     }

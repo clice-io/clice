@@ -1,0 +1,6 @@
+---
+created_at: 2026-07-31
+input_file: deduction_guides.cpp
+---
+- { loc: "14:0", text: "Vec", kind: function, modifiers: [declaration, templated] }
+- { loc: "14:15", text: "Vec", kind: struct }

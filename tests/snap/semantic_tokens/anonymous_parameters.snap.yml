@@ -1,0 +1,6 @@
+---
+created_at: 2026-07-31
+input_file: anonymous_parameters.cpp
+---
+- { loc: "10:17", text: ")", kind: parameter, modifiers: [definition] }
+- { loc: "11:17", text: ",", kind: parameter, modifiers: [definition] }

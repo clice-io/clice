@@ -43,7 +43,12 @@ struct Guide {
 };
 
 template <typename T>
-Guide(T*) -> Guide;
+struct Deduced {
+    Deduced(T raw);
+};
+
+template <typename T>
+Deduced(T*) -> Deduced<T>;
 
 using IntBox = Box<int>;
 

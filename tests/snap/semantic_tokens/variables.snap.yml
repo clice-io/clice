@@ -1,0 +1,17 @@
+---
+created_at: 2026-07-31
+input_file: variables.cpp
+---
+- { loc: "8:8", text: "field", kind: field, modifiers: [definition] }
+- { loc: "9:15", text: "shared", kind: variable, modifiers: [declaration, static] }
+- { loc: "12:19", text: "Idle", kind: enumMember, modifiers: [definition, readonly] }
+- { loc: "14:4", text: "global_value", kind: variable, modifiers: [definition] }
+- { loc: "16:15", text: "param", kind: parameter, modifiers: [definition] }
+- { loc: "17:8", text: "local", kind: variable, modifiers: [definition] }
+- { loc: "17:16", text: "param", kind: parameter }
+- { loc: "17:24", text: "global_value", kind: variable }
+- { loc: "19:6", text: "field", kind: field }
+- { loc: "19:14", text: "local", kind: variable }
+- { loc: "20:12", text: "shared", kind: variable, modifiers: [static] }
+- { loc: "20:23", text: "field", kind: field }
+- { loc: "21:25", text: "Idle", kind: enumMember, modifiers: [readonly] }

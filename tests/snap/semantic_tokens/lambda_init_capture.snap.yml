@@ -1,0 +1,6 @@
+---
+created_at: 2026-07-31
+input_file: lambda_init_capture.cpp
+---
+- { loc: "10:11", text: "val", kind: variable, modifiers: [definition] }
+- { loc: "11:11", text: "val", kind: variable }

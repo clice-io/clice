@@ -1,0 +1,11 @@
+---
+created_at: 2026-07-31
+input_file: virtual_abstract.cpp
+---
+- { loc: "7:7", text: "Shape", kind: struct, modifiers: [definition, abstract] }
+- { loc: "8:16", text: "area", kind: method, modifiers: [declaration, virtual] }
+- { loc: "9:16", text: "perimeter", kind: method, modifiers: [declaration, abstract, virtual] }
+- { loc: "13:7", text: "Square", kind: struct, modifiers: [definition] }
+- { loc: "14:8", text: "perimeter", kind: method, modifiers: [declaration, virtual] }
+- { loc: "18:17", text: "area", kind: method, modifiers: [virtual] }
+- { loc: "18:32", text: "perimeter", kind: method, modifiers: [abstract, virtual] }

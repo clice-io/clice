@@ -1,0 +1,5 @@
+---
+created_at: 2026-07-31
+input_file: sizeof_pack.cpp
+---
+- { loc: "9:33", text: "Ts", kind: type }

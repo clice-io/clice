@@ -2,9 +2,9 @@
 created_at: 2026-07-27
 input_file: basic.cpp
 ---
-- { loc: "0:0", text: "/// # Basic token kinds", kind: comment }
-- { loc: "1:0", text: "///", kind: comment }
-- { loc: "2:0", text: "/// - status: supported", kind: comment }
+- { loc: "0:0", text: "// Full-dump canary: deliberately free of marker annotations, so the", kind: comment }
+- { loc: "1:0", text: "// snapshot pins every token of the file. Focused fixtures cannot see", kind: comment }
+- { loc: "2:0", text: "// tokens appearing where nobody thought to mark; this one can.", kind: comment }
 - { loc: "4:0", text: "namespace", kind: keyword }
 - { loc: "4:10", text: "demo", kind: namespace, modifiers: [definition] }
 - { loc: "6:0", text: "enum", kind: keyword }

@@ -1,0 +1,10 @@
+---
+created_at: 2026-07-31
+input_file: dependent_names.cpp
+---
+- { loc: "22:21", text: "value_type", kind: type }
+- { loc: "23:12", text: "reset", kind: method, modifiers: [static] }
+- { loc: "24:8", text: "size", kind: method, modifiers: [readonly] }
+- { loc: "29:16", text: "value_type", kind: none }
+- { loc: "30:7", text: "reset", kind: none }
+- { loc: "31:10", text: "size", kind: none }

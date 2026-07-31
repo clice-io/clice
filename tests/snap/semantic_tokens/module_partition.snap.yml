@@ -1,0 +1,19 @@
+---
+created_at: 2026-07-31
+input_file: module_partition.cpp
+---
+- { loc: "0:0", text: "/// # Modules", kind: comment }
+- { loc: "1:0", text: "///", kind: comment }
+- { loc: "2:0", text: "/// ## Module partitions — partition names in the module declaration", kind: comment }
+- { loc: "3:0", text: "///", kind: comment }
+- { loc: "4:0", text: "/// - status: supported", kind: comment }
+- { loc: "5:0", text: "/// - order: 2", kind: comment }
+- { loc: "7:0", text: "export", kind: keyword }
+- { loc: "7:7", text: "module", kind: keyword }
+- { loc: "7:14", text: "demo", kind: module }
+- { loc: "7:19", text: "core", kind: module }
+- { loc: "7:24", text: "part", kind: module }
+- { loc: "9:0", text: "export", kind: keyword }
+- { loc: "9:7", text: "int", kind: keyword }
+- { loc: "9:11", text: "partition_value", kind: variable, modifiers: [definition] }
+- { loc: "9:29", text: "1", kind: number }

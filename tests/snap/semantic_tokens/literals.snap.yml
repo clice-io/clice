@@ -1,0 +1,42 @@
+---
+created_at: 2026-07-31
+input_file: literals.cpp
+---
+- { loc: "0:0", text: "/// # Lexical Tokens", kind: comment }
+- { loc: "1:0", text: "///", kind: comment }
+- { loc: "2:0", text: "/// ## Literals — numbers, characters and strings, including raw strings", kind: comment }
+- { loc: "3:0", text: "///", kind: comment }
+- { loc: "4:0", text: "/// - status: supported", kind: comment }
+- { loc: "5:0", text: "/// - order: 2", kind: comment }
+- { loc: "7:0", text: "int", kind: keyword }
+- { loc: "7:4", text: "decimal", kind: variable, modifiers: [definition] }
+- { loc: "7:14", text: "42", kind: number }
+- { loc: "8:0", text: "int", kind: keyword }
+- { loc: "8:4", text: "hexadecimal", kind: variable, modifiers: [definition] }
+- { loc: "8:18", text: "0xFF", kind: number }
+- { loc: "9:0", text: "double", kind: keyword }
+- { loc: "9:7", text: "floating", kind: variable, modifiers: [definition] }
+- { loc: "9:18", text: "3.14", kind: number }
+- { loc: "10:0", text: "char", kind: keyword }
+- { loc: "10:5", text: "letter", kind: variable, modifiers: [definition] }
+- { loc: "10:14", text: "'x'", kind: character }
+- { loc: "11:0", text: "const", kind: keyword }
+- { loc: "11:6", text: "char", kind: keyword }
+- { loc: "11:12", text: "text", kind: variable, modifiers: [definition, readonly] }
+- { loc: "11:19", text: "\"hello\"", kind: string }
+- { loc: "12:0", text: "const", kind: keyword }
+- { loc: "12:6", text: "char", kind: keyword }
+- { loc: "12:12", text: "raw", kind: variable, modifiers: [definition, readonly] }
+- { loc: "12:18", text: "R\"(no \"escapes\" in here)\"", kind: string }
+- { loc: "13:0", text: "int", kind: keyword }
+- { loc: "13:4", text: "after_raw", kind: variable, modifiers: [definition] }
+- { loc: "13:16", text: "1", kind: number }
+- { loc: "15:0", text: "const", kind: keyword }
+- { loc: "15:6", text: "char", kind: keyword }
+- { loc: "15:12", text: "multiline", kind: variable, modifiers: [definition, readonly] }
+- { loc: "15:24", text: "R\"(line1", kind: string }
+- { loc: "16:0", text: "line2", kind: string }
+- { loc: "17:0", text: ")\"", kind: string }
+- { loc: "17:4", text: "int", kind: keyword }
+- { loc: "17:8", text: "after_closing", kind: variable, modifiers: [definition] }
+- { loc: "17:24", text: "2", kind: number }

@@ -1,0 +1,11 @@
+---
+created_at: 2026-07-31
+input_file: static_modifier.cpp
+---
+- { loc: "8:15", text: "total", kind: variable, modifiers: [declaration, static] }
+- { loc: "9:16", text: "bump", kind: method, modifiers: [declaration, static] }
+- { loc: "10:8", text: "current", kind: field, modifiers: [definition] }
+- { loc: "14:15", text: "calls", kind: variable, modifiers: [definition, static] }
+- { loc: "15:13", text: "bump", kind: method, modifiers: [static] }
+- { loc: "16:13", text: "total", kind: variable, modifiers: [static] }
+- { loc: "16:21", text: "calls", kind: variable, modifiers: [static] }

@@ -1,401 +1,818 @@
 # Semantic Tokens
 
+<!-- The checklist sections below are generated from the snapshot fixtures in
+     tests/snap/semantic_tokens/. Do not edit the regions between the GENERATED
+     markers by hand — edit the fixture spec headers and run
+     `node tools/feature_docs.ts update`. -->
+
+clice classifies every token of a document with its own token-kind vocabulary,
+which is richer than the standard LSP token types and consistent across all
+clice replies. Clients that prefer standard LSP kinds can map them through
+configuration.
+
 ## Lexical Tokens
 
-Emitted from a lexical pass over the source file, independent of the AST.
+Kinds derived from the token stream itself, independent of the AST.
 
-- [x] Comments
-- [x] Numbers, characters, strings
-- [x] Keywords (including `override`, `final`)
-- [x] Preprocessor directives (`#if`, `#define`, etc.)
-- [x] Header names in `#include`
-- [x] Macro names at `#define` site
-- [ ] Literal prefixes and suffixes — highlight encoding prefixes and type suffixes as distinct tokens
+<!-- BEGIN GENERATED ITEMS: Lexical Tokens -->
+
+- [x] Comments — line, block and doc comments, including multiline blocks
 
   ```cpp
-  R"(raw string)"       // R prefix
-  u8"utf-8 string"      // u8 prefix
-  L"wide string"        // L prefix
-  0xFF                   // 0x prefix
-  0b1010                 // 0b prefix
-  42u                    // u suffix
-  3.14f                  // f suffix
-  1'000'000              // digit separators
+  // A line comment.
+  /* a one-line block comment */
+  /*
+   * a block comment
+   * spanning several lines
+   */
+  /// a doc comment
+  int after_comments = 0;
+
+  /* first
+  second */ int after_block = 1;
   ```
 
-- [ ] User-defined literal suffixes — highlight the suffix as a separate token linked to the literal operator
+- [x] Literals — numbers, characters and strings, including raw strings
 
   ```cpp
-  using namespace std::chrono_literals;
-  auto d = 500ms;        // ms suffix → operator""ms
-  auto s = "hello"s;     // s suffix → operator""s
-  auto x = 3.14_deg;     // _deg suffix → operator""_deg
+  int decimal = 42;
+  int hexadecimal = 0xFF;
+  double floating = 3.14;
+  char letter = 'x';
+  const char* text = "hello";
+  const char* raw = R"(no "escapes" in here)";
+  int after_raw = 1;
+
+  const char* multiline = R"(line1
+  line2
+  )"; int after_closing = 2;
   ```
 
-- [ ] Escape sequences within string/character literals
+- [x] Keywords — including alternative operator spellings and the contextual `final` / `override`
 
   ```cpp
-  "hello\nworld"         // \n highlighted differently from surrounding text
-  '\x41'                 // \x41 highlighted as escape
-  ```
+  bool logic(bool a, bool b) {
+      return a and b or not a;
+  }
 
-- [ ] Declarator vs operator disambiguation for `&`, `*`, `&&` — distinguish pointer/reference declarators from arithmetic/logical operators ([clangd#1421](https://github.com/clangd/clangd/issues/1421))
+  struct Base {
+      virtual void act();
+      virtual ~Base();
+  };
 
-  ```cpp
-  int* p;          // * is a declarator (pointer type)
-  int x = a * b;   // * is an arithmetic operator
-  int& r = x;      // & is a declarator (reference type)
-  int y = a & b;   // & is a bitwise operator
-  ```
+  struct Leaf final : Base {
+      void act() override;
+  };
 
-## Token Types
-
-### Declarations & References
-
-- [x] Namespace and namespace alias
-- [x] Class, struct, union, enum
-- [x] Type alias (`typedef`, `using`)
-- [x] Function, method, constructor, destructor, operator
-- [x] Variable (local, global, parameter, field, binding)
-- [x] Enum member
-- [x] Template parameter (type and non-type)
-- [x] Concept
-- [x] Label (`goto` target)
-- [ ] Structured binding variables — should highlight as local variables, not global ([clangd#485](https://github.com/clangd/clangd/issues/485))
-
-  ```cpp
-  auto [x, y] = point;  // x, y should be highlighted as local variables
-  ```
-
-- [ ] Deduction guides
-
-  ```cpp
-  template<typename T>
-  vector(T, T) -> vector<T>;  // deduction guide should get a token
-  ```
-
-- [ ] `using enum` — the enum name should get a semantic token ([clangd#1283](https://github.com/clangd/clangd/issues/1283))
-
-  ```cpp
-  using enum Color;  // Color should be highlighted as enum type
-  ```
-
-- [ ] Explicit instantiation ([clangd#316](https://github.com/clangd/clangd/issues/316))
-
-  ```cpp
-  template class vector<int>;  // vector and int should be highlighted
-  ```
-
-- [ ] Member initializer list fields ([clangd#122](https://github.com/clangd/clangd/issues/122))
-
-  ```cpp
-  struct Widget {
-      int width, height;
-      Widget(int w, int h) : width(w), height(h) {}
-      //                      ^^^^^    ^^^^^^ should be highlighted as fields
+  struct Last : Base {
+      void act() final;
   };
   ```
 
-- [ ] Lambda init-capture — should consistently get a token ([clangd#868](https://github.com/clangd/clangd/issues/868))
+- [x] Preprocessor directives — `#if` chains keep directive kinds; disabled branches keep lexical kinds; pragma arguments stay plain
 
   ```cpp
-  auto f = [val = compute()] {};  // val should be highlighted as local variable
+  int before_conditional = 0;
+
+  #if 0
+  int disabled_branch;
+  #else
+  int enabled_branch = 1;
+  #endif
+
+  #define FLAG
+  #ifdef FLAG
+  int flagged = 2;
+  #endif
+
+  #pragma pack(1)
   ```
 
-- [ ] Using declarations — consistent token for the introduced name ([clangd#2619](https://github.com/clangd/clangd/issues/2619))
+- [x] Header names — quoted and angled `#include` filenames, including the split `# include` form
 
   ```cpp
-  using std::vector;  // vector should get a semantic token
+  #include "inc/angled.h"
+  #include <angled.h>
+  # include "inc/angled.h"
+
+  int after_includes = 0;
   ```
 
-- [ ] `sizeof...` — the pack parameter should get a token ([clangd#213](https://github.com/clangd/clangd/issues/213))
+- [ ] Literal prefixes and suffixes — encoding prefixes, type suffixes, digit separators and UDL suffixes as distinct tokens
 
   ```cpp
-  template<typename... Ts>
-  constexpr auto count = sizeof...(Ts);  // Ts should be highlighted as templateParameter
+  using size_type = decltype(sizeof(0));
+  constexpr size_type operator""_kb(unsigned long long n) {
+      return n * 1024;
+  }
+
+  auto wide = L"wide string";
+  auto utf8 = u8"utf-8 string";
+  auto hex = 0xFF;
+  auto binary = 0b1010;
+  auto unsigned_suffix = 42u;
+  auto float_suffix = 3.14f;
+  auto separators = 1'000'000;
+  auto udl = 4_kb;
   ```
 
-### Module Tokens
+- [ ] Escape sequences — highlighted distinctly inside string and character literals
 
-- [x] `import` / `export` / `module` keywords highlighted distinctly
-- [x] Module names in import declarations
-- [ ] Full AST-level token resolution for module declarations (currently lexical fallback)
+  ```cpp
+  const char* escaped = "hello\nworld";
+  char hex_escape = '\x41';
+  ```
 
-### Attributes
+- [ ] Declarator vs operator disambiguation — `*`, `&`, `&&` as declarators vs arithmetic/logical operators ([clangd#1421](https://github.com/clangd/clangd/issues/1421))
 
-- [ ] Attribute names should receive semantic tokens
+  ```cpp
+  int value = 1;
+  int* pointer = &value;
+  int& reference = value;
+  int product = value * value;
+  int masked = value & 1;
+  ```
+
+- [ ] Primitive token type — a distinct kind for built-in types instead of plain `keyword`
+
+  ```cpp
+  int number = 0;
+  float ratio = 0.5f;
+  void act();
+  ```
+
+- [ ] Bracket token types — matching `()`, `[]`, `{}`, `<>` pairs as distinct kinds
+
+  ```cpp
+  template <typename T>
+  struct Grid {
+      T cells[4];
+  };
+
+  Grid<int> grid{{1, 2, 3, 4}};
+  ```
+
+<!-- END GENERATED ITEMS -->
+
+## Declarations & References
+
+Names classified by the declaration they define or reference.
+
+<!-- BEGIN GENERATED ITEMS: Declarations & References -->
+
+- [x] Namespaces — definitions, references, nested namespaces and namespace aliases
+
+  ```cpp
+  namespace demo {
+  namespace inner {
+  int value = 1;
+  }
+  }
+
+  namespace demo::inner::more {}
+
+  namespace alias = demo::inner;
+
+  int use_alias = alias::value;
+  ```
+
+- [x] Types — class, struct, union, enum and type aliases, at definitions and references
+
+  ```cpp
+  class Widget {};
+  struct Point {};
+  union Storage {
+      int i;
+      float f;
+  };
+  enum Flags { FlagA };
+  enum class Mode { Fast };
+
+  typedef Point PointAlias;
+  using WidgetAlias = Widget;
+
+  Widget* make_widget();
+  PointAlias origin;
+  Mode current = Mode::Fast;
+  ```
+
+- [x] Functions and methods — declarations, definitions and call sites
+
+  ```cpp
+  int twice(int value);
+
+  int twice(int value) {
+      return value * 2;
+  }
+
+  struct Machine {
+      void start();
+      static void reset();
+  };
+
+  void drive(Machine machine) {
+      machine.start();
+      Machine::reset();
+      int four = twice(2);
+  }
+  ```
+
+- [x] Variables — globals, locals, parameters, fields and enum members
+
+  ```cpp
+  struct Holder {
+      int field;
+      static int shared;
+  };
+
+  enum class State { Idle };
+
+  int global_value = 1;
+
+  void touch(int param) {
+      int local = param + global_value;
+      Holder h;
+      h.field = local;
+      Holder::shared = h.field;
+      State state = State::Idle;
+  }
+  ```
+
+- [x] Templates — type and non-type template parameters, with the `templated` modifier on template names
+
+  ```cpp
+  template <typename T, int N>
+  struct Array {
+      T data[N];
+  };
+
+  template <typename T>
+  T identity(T value);
+
+  template <typename T>
+  T identity(T value) {
+      return value;
+  }
+
+  Array<int, 4> arr;
+  int result = identity(3);
+  ```
+
+- [x] Concepts — definitions and uses as template constraints
+
+  ```cpp
+  template <typename T>
+  concept Small = sizeof(T) <= 4;
+
+  template <Small T>
+  void use_small(T value);
+
+  template <typename T>
+      requires Small<T>
+  void require_small(T value);
+  ```
+
+- [x] Labels — `goto` targets and label definitions
+
+  ```cpp
+  void retry(bool again) {
+      goto done;
+  done:
+      if (again) {
+          goto done;
+      }
+  }
+  ```
+
+- [ ] Structured bindings — binding names at definition and use _(partial)_
+
+  The binding-name token currently leaks onto the opening `[` and merges
+  with the first name, so the definition renders as one `[a` token.
+
+  ```cpp
+  struct Pair {
+      int first, second;
+  };
+
+  void unpack() {
+      auto [a, b] = Pair{1, 2};
+      int sum = a + b;
+  }
+  ```
+
+- [x] Member initializer lists — initialized fields highlighted as fields ([clangd#122](https://github.com/clangd/clangd/issues/122))
+
+  ```cpp
+  struct Widget {
+      int width;
+      int height;
+
+      Widget(int w, int h) : width(w), height(h) {}
+  };
+  ```
+
+- [x] Using declarations — the introduced name keeps its target's kind ([clangd#2619](https://github.com/clangd/clangd/issues/2619))
+
+  ```cpp
+  namespace tools {
+  inline int helper() {
+      return 1;
+  }
+  struct Gadget {};
+  }
+
+  using tools::helper;
+  using tools::Gadget;
+
+  int used = helper();
+  Gadget gadget;
+  ```
+
+- [x] Lambda init-captures — the captured name highlighted as a variable ([clangd#868](https://github.com/clangd/clangd/issues/868))
+
+  ```cpp
+  int compute();
+
+  auto fn = [val = compute()] {
+      return val;
+  };
+  ```
+
+- [x] `sizeof...` — the pack parameter highlighted as a template parameter ([clangd#213](https://github.com/clangd/clangd/issues/213))
+
+  ```cpp
+  template <typename... Ts>
+  constexpr auto count = sizeof...(Ts);
+  ```
+
+- [x] `using enum` — the enum name highlighted at the using site ([clangd#1283](https://github.com/clangd/clangd/issues/1283))
+
+  ```cpp
+  enum class Color { Red };
+
+  void paint() {
+      using enum Color;
+      auto c = Red;
+  }
+  ```
+
+- [x] Deduction guides — the guide name and the guided template highlighted
+
+  ```cpp
+  template <typename T>
+  struct Vec {
+      template <typename It>
+      Vec(It first, It last);
+  };
+
+  template <typename It>
+  Vec(It, It) -> Vec<int>;
+  ```
+
+- [x] Explicit instantiation — the instantiated template name highlighted ([clangd#316](https://github.com/clangd/clangd/issues/316))
+
+  ```cpp
+  template <typename T>
+  struct Holder {
+      T value;
+  };
+
+  template struct Holder<int>;
+  ```
+
+- [ ] Dependent names — resolved through the primary template where one is known _(partial)_ ([clangd#154](https://github.com/clangd/clangd/issues/154), [clangd#297](https://github.com/clangd/clangd/issues/297))
+
+  Dependent members of a known template (`Box<T>`) resolve to the primary
+  template's declarations and keep their kinds. Members of a bare template
+  parameter have no candidate declaration and currently get no token;
+  heuristic coloring for such names remains open.
+
+  ```cpp
+  template <typename T>
+  struct Box {
+      using value_type = int;
+      static void reset();
+      int size() const;
+  };
+
+  template <typename T>
+  void resolved(Box<T> box) {
+      typename Box<T>::value_type item;
+      Box<T>::reset();
+      box.size();
+  }
+
+  template <typename T>
+  void unresolved(T value) {
+      typename T::value_type item;
+      T::reset();
+      value.size();
+  }
+  ```
+
+- [x] Variable templates — declarations, definitions, partial and full specializations
+
+  ```cpp
+  template <typename T, typename U>
+  extern int pair_value;
+
+  template <typename T, typename U>
+  int pair_value = 2;
+
+  template <typename T>
+  extern int pair_value<T, int>;
+
+  template <typename T>
+  int pair_value<T, int> = 4;
+
+  template <>
+  int pair_value<int, int> = 5;
+  ```
+
+<!-- END GENERATED ITEMS -->
+
+## Modules
+
+<!-- BEGIN GENERATED ITEMS: Modules -->
+
+- [x] Module declarations — the contextual `module` keyword, dotted module names and the private fragment
+
+  ```cpp
+  module;
+
+  export module demo.core;
+
+  export int exported_value = 1;
+
+  module :private;
+
+  int private_value = 2;
+  ```
+
+- [x] Module partitions — partition names in the module declaration
+
+  ```cpp
+  export module demo.core:part;
+
+  export int partition_value = 1;
+  ```
+
+- [x] `module` and `import` as identifiers — contextual keywords keep their semantic kinds outside module declarations
+
+  ```cpp
+  void f() {
+      struct module {};
+      module m;
+      int import = 1;
+      int module = 2;
+  }
+  ```
+
+<!-- END GENERATED ITEMS -->
+
+## Token Modifiers
+
+<!-- BEGIN GENERATED ITEMS: Token Modifiers -->
+
+- [x] Declaration vs definition — the modifier distinguishes the two
+
+  ```cpp
+  int measure(int value);
+
+  int measure(int value) {
+      return value;
+  }
+
+  struct Sensor;
+
+  struct Sensor {};
+  ```
+
+- [x] Static — class-level members and static locals
+
+  ```cpp
+  struct Counter {
+      static int total;
+      static void bump();
+      int current;
+  };
+
+  void count() {
+      static int calls = 0;
+      Counter::bump();
+      Counter::total = calls;
+  }
+  ```
+
+- [x] Readonly — const values, const methods and enum members
+
+  Readonly is currently value-based: a pointer to const counts as
+  readonly even though the pointer itself can change.
+
+  ```cpp
+  enum class Level { High };
+
+  const int limit = 10;
+
+  struct Gauge {
+      int read() const;
+      void write(int value);
+  };
+
+  void probe(const int& bound, const int* pointee_const, int* const self_const) {
+      Gauge gauge;
+      gauge.read();
+      gauge.write(limit);
+  }
+  ```
+
+- [x] Virtual and abstract — virtual methods, pure virtual methods and abstract classes
+
+  ```cpp
+  struct Shape {
+      virtual int area();
+      virtual int perimeter() = 0;
+      virtual ~Shape();
+  };
+
+  struct Square : Shape {
+      int perimeter() override;
+  };
+
+  int measure(Shape& shape) {
+      return shape.area() + shape.perimeter();
+  }
+  ```
+
+- [x] Deprecated — `[[deprecated]]` declarations and their uses
+
+  ```cpp
+  [[deprecated("use next_api")]] void old_api();
+  void next_api();
+
+  void migrate() {
+      old_api();
+  }
+  ```
+
+- [x] Default library — symbols declared in system headers
+
+  ```cpp
+  int before_includes = 0;
+
+  #include <syslib.h>
+
+  int used = system_helper();
+  ```
+
+- [ ] Scope modifiers — function, class, file and global scope ([clangd#352](https://github.com/clangd/clangd/issues/352))
+
+  ```cpp
+  int global_scope;
+  static int file_scope;
+
+  struct Foo {
+      int class_scope;
+
+      void bar() {
+          int function_scope = 0;
+      }
+  };
+  ```
+
+- [ ] Mutable reference and pointer — arguments passed by non-const reference or pointer ([clangd#839](https://github.com/clangd/clangd/issues/839))
+
+  ```cpp
+  void modify(int& out);
+  void inspect(const int& in);
+
+  void run() {
+      int value = 0;
+      modify(value);
+      inspect(value);
+  }
+  ```
+
+- [ ] Deduced — mark deduced types such as `auto` and `decltype`
+
+  ```cpp
+  auto deduced_int = 1;
+  decltype(deduced_int) same_type = 2;
+  ```
+
+- [ ] User-defined operators — distinguish overloaded operators from built-in ones ([clangd#1521](https://github.com/clangd/clangd/issues/1521))
+
+  ```cpp
+  struct Vec {
+      Vec operator+(const Vec& other) const;
+  };
+
+  Vec add(Vec a, Vec b) {
+      return a + b;
+  }
+
+  int add(int a, int b) {
+      return a + b;
+  }
+  ```
+
+<!-- END GENERATED ITEMS -->
+
+## Conflict & Ambiguity
+
+C++ allows structurally different entities to share one name. When a single
+written name refers to entities of different kinds at once, no single token
+type is correct; such names receive the dedicated **conflict** token type,
+which clients typically display in a neutral color.
+
+<!-- BEGIN GENERATED ITEMS: Conflict & Ambiguity -->
+
+- [x] Mixed-kind names — a name naming entities of different kinds renders as `conflict`
+
+  ```cpp
+  namespace shop {
+  struct Widget {};
+  void Widget();
+  }
+
+  using shop::Widget;
+  ```
+
+- [ ] Injected class name — the class name used as a constructor call inside the class _(partial)_
+
+  The name itself renders as the class; the constructor reference
+  currently emits a stray token on the following `(`.
+
+  ```cpp
+  struct Widget {
+      Widget(int size);
+
+      Widget create() {
+          return Widget(42);
+      }
+  };
+  ```
+
+<!-- END GENERATED ITEMS -->
+
+## Token Correctness
+
+Shapes clice pins deliberately, including issues clangd got wrong.
+
+<!-- BEGIN GENERATED ITEMS: Token Correctness -->
+
+- [x] Constructors and destructors — method tokens with the constructor/destructor modifier ([clangd#1509](https://github.com/clangd/clangd/issues/1509), [clangd#2078](https://github.com/clangd/clangd/issues/2078), [clangd#872](https://github.com/clangd/clangd/issues/872))
+
+  A destructor name renders as two tokens: the `~` carries the method
+  kind and the declaration/definition modifiers, the class name after it
+  stays a reference to the class.
+
+  ```cpp
+  struct Session {
+      Session();
+      ~Session();
+  };
+
+  Session::~Session() {}
+
+  void destroy(Session* session) {
+      session->~Session();
+  }
+  ```
+
+- [ ] Anonymous parameters — unnamed parameters must not produce tokens _(partial)_
+
+  An unnamed parameter currently emits a stray one-byte `parameter`
+  token on the punctuation that follows its type.
+
+  ```cpp
+  void take_one(int) {}
+  void take_two(int, char* c) {}
+  ```
+
+- [ ] Operator names — `operator` in a declaration keeps the method kind _(partial)_
+
+  The `operator` token of a declaration currently renders as `conflict`
+  (its keyword nature collides with the declared method). Operator call
+  sites correctly emit no token on the punctuation.
+
+  ```cpp
+  struct Value {
+      Value& operator=(const Value& other);
+      Value operator+(const Value& other) const;
+  };
+
+  void combine(Value a, Value b) {
+      a = b;
+      Value c = a + b;
+  }
+  ```
+
+<!-- END GENERATED ITEMS -->
+
+## Attributes
+
+<!-- BEGIN GENERATED ITEMS: Attributes -->
+
+- [ ] Attribute names — standard and vendor attributes, and expressions inside them ([clangd#2209](https://github.com/clangd/clangd/issues/2209))
 
   ```cpp
   [[nodiscard]] int compute();
   [[deprecated("use v2")]] void old_func();
-  [[maybe_unused]] int x;
+  [[maybe_unused]] int counter = 0;
+
+  struct [[gnu::packed]] Packed {};
   ```
 
-- [ ] Vendor-specific attribute namespaces
+<!-- END GENERATED ITEMS -->
+
+## Macros
+
+Tokens inside macro definition bodies keep their lexical kinds; highlighting
+them from their expansions belongs to a future expansion-preview feature.
+
+<!-- BEGIN GENERATED ITEMS: Macros -->
+
+- [ ] Object-like vs function-like macros — distinct highlighting for the two forms ([clangd#2649](https://github.com/clangd/clangd/issues/2649))
 
   ```cpp
-  [[gnu::packed]] struct S {};     // gnu namespace
-  [[clang::optnone]] void f();    // clang namespace
+  #define MAX_SIZE 1024
+  #define CHECK(x) ((x) ? 1 : 0)
+
+  int checked = CHECK(MAX_SIZE);
   ```
 
-- [ ] Expressions inside attributes should be fully highlighted ([clangd#2209](https://github.com/clangd/clangd/issues/2209))
+- [x] Expansion sites and arguments — expansion names are macros, written arguments keep their semantics, definition bodies stay lexical
 
   ```cpp
-  [[assume(ptr != nullptr)]];  // ptr, nullptr should get tokens
-  ```
+  int value = 1;
 
-### Additional Token Types
+  #define ID(x) x
+  #define CALL helper()
 
-- [ ] Primitive token type for built-in types (`int`, `float`, `void`, etc.)
-- [ ] Bracket token type for matching bracket pairs (`[]`, `()`, `{}`, `<>`)
+  void helper();
 
-## Token Modifiers
+  int copied = ID(value);
 
-### Implemented
-
-- [x] Declaration vs definition distinction
-- [x] Static (class static members, static local variables, static functions)
-- [x] Readonly / const
-- [x] Deprecated (`[[deprecated]]`)
-- [x] Abstract (pure virtual methods)
-- [x] Virtual
-- [x] Default library (symbols from system headers)
-- [x] Constructor / destructor marker
-- [x] Templated (clice extension, not part of the standard LSP semantic tokens protocol)
-- [x] DependentName for dependent names in templates (clice extension)
-
-### Planned
-
-- [ ] Deduced modifier for deduced types (e.g., `auto`, `decltype`)
-
-- [ ] Scope modifiers — function scope, class scope, file scope, global scope ([clangd#352](https://github.com/clangd/clangd/issues/352))
-
-  ```cpp
-  int global;                    // globalScope
-  static int file_local;         // fileScope
-  struct Foo {
-      int member;                // classScope
-      void bar() {
-          int local;             // functionScope
-      }
-  };
-  ```
-
-- [ ] Mutable reference / mutable pointer — mark arguments passed by non-const reference or pointer ([clangd#839](https://github.com/clangd/clangd/issues/839))
-
-  ```cpp
-  void modify(int& out);
-  modify(x);  // x should have usedAsMutableReference modifier
-  ```
-
-- [ ] User-defined operator modifier — distinguish built-in vs user-defined operators ([clangd#1521](https://github.com/clangd/clangd/issues/1521))
-
-  ```cpp
-  Vec a, b;
-  auto c = a + b;   // + should have userDefined modifier
-  int x = 1 + 2;    // + is built-in, no modifier
-  ```
-
-- [ ] Object-like vs function-like macro distinction — currently all macros receive the Macro token type ([clangd#2649](https://github.com/clangd/clangd/issues/2649))
-
-  ```cpp
-  #define MAX_SIZE 1024          // object-like macro (no distinct kind yet)
-  #define CHECK(x) assert(x)    // function-like macro (no distinct kind yet)
-  ```
-
-- [ ] Context-dependent readonly — `const` on the value vs on the pointer level ([clangd#1585](https://github.com/clangd/clangd/issues/1585))
-
-  ```cpp
-  const int* p;        // p itself is NOT readonly (pointer can change)
-  int* const q;        // q IS readonly (pointer is const)
-  const int* const r;  // r IS readonly
-  ```
-
-## Conflict / Ambiguity
-
-C++ allows structurally different entities to share the same name. When a single name refers to multiple entities of different kinds, the semantic token type cannot be unambiguously determined. These cases receive a special **Conflict** token type (not a modifier) and are displayed in a neutral color (e.g., gray).
-
-- [ ] Overloaded names via `using` — a name may introduce both a type and a function
-
-  ```cpp
-  namespace N {
-      struct Widget {};
-      void Widget();     // legal in C++: function shares name with struct
-  }
-  using N::Widget;       // brings both → conflict: type or function?
-  ```
-
-- [ ] Dependent name ambiguity across instantiations — a dependent call may resolve to different kinds in different instantiations
-
-  ```cpp
-  template<typename T>
-  void process(T& obj) {
-      obj.foo();  // foo could be a method or a functor data member
-  }
-
-  struct A { void foo(); };          // A::foo is a method
-  struct B { std::function<void()> foo; };  // B::foo is a variable
-
-  process(a);  // T = A → foo is a method (function color)
-  process(b);  // T = B → foo is a variable (variable color)
-  // conflict: no single correct token type
-  ```
-
-- [ ] Injected class name — inside a class, the class name can refer to both the type and the constructor
-
-  ```cpp
-  struct Widget {
-      Widget(int);
-      Widget create() {
-          return Widget(42);  // Widget here: type? constructor?
-      }
-  };
-  ```
-
-## Dependent Name Highlighting
-
-Highlighting of names in uninstantiated template bodies that depend on template parameters.
-
-- [ ] Dependent type names ([clangd#154](https://github.com/clangd/clangd/issues/154), [clangd#214](https://github.com/clangd/clangd/issues/214))
-
-  ```cpp
-  template<typename T>
-  void process() {
-      typename T::value_type val;  // value_type should be highlighted as type
-      T::static_func();            // static_func should be highlighted
+  void run() {
+      CALL;
   }
   ```
 
-- [ ] Dependent template names ([clangd#484](https://github.com/clangd/clangd/issues/484))
+- [x] Macro definition and expansion
 
   ```cpp
-  template<typename T>
-  void process(T& obj) {
-      obj.template get<int>();  // get should be highlighted as method
-  }
+  #define SQUARE(x) ((x) * (x))
+
+  [[maybe_unused]] static int squared = SQUARE(4);
   ```
 
-- [ ] Heuristic-based coloring — when a dependent name has a likely target, use that target's kind ([clangd#297](https://github.com/clangd/clangd/issues/297))
+<!-- END GENERATED ITEMS -->
 
-  ```cpp
-  template<typename T>
-  void process(std::vector<T>& v) {
-      v.push_back(val);  // push_back could be colored as method (vector's known member)
-  }
-  ```
+## Other Known Gaps
 
-- [ ] Members imported from dependent base via `using` ([clangd#686](https://github.com/clangd/clangd/issues/686))
+Curated issues without a fixture yet:
 
-  ```cpp
-  template<typename T>
-  struct Derived : Base<T> {
-      using Base<T>::member;
-      void foo() { member(); }  // member should get a token
-  };
-  ```
-
-- [ ] Dependent names with overloaded targets — when the name resolves to an overload set of mixed kinds ([clangd#1057](https://github.com/clangd/clangd/issues/1057))
+- `auto` parameters must not be highlighted as template type parameters
+  ([clangd#1390](https://github.com/clangd/clangd/issues/1390))
+- Nested name specifier in a pointer-to-member should get a token
+  ([clangd#2235](https://github.com/clangd/clangd/issues/2235))
+- `::new` should keep the `new` keyword highlighted
+  ([clangd#1627](https://github.com/clangd/clangd/issues/1627))
+- `co_yield` / `co_await` lose highlighting when the coroutine return type is
+  a template ([clangd#2437](https://github.com/clangd/clangd/issues/2437))
+- Token modifiers should apply to operands of overloaded operators
+  ([clangd#2547](https://github.com/clangd/clangd/issues/2547))
+- Dependent template names (`obj.template get<int>()`), members imported from
+  a dependent base via `using`, and dependent names with mixed-kind overload
+  sets ([clangd#484](https://github.com/clangd/clangd/issues/484),
+  [clangd#686](https://github.com/clangd/clangd/issues/686),
+  [clangd#1057](https://github.com/clangd/clangd/issues/1057))
 
 ## Inactive Code Regions
 
-- [ ] Dim inactive preprocessor branches (`#if 0`, false `#ifdef`, etc.) ([clangd#132](https://github.com/clangd/clangd/issues/132))
+Inactive preprocessor branches are reported through a separate channel, not
+as semantic tokens.
 
-  ```cpp
-  #ifdef _WIN32
-      // active code (normal highlighting)
-  #else
-      // inactive code (dimmed / grayed out)
-  #endif
-  ```
-
-- [ ] Correct inactive region boundaries with `#elif` chains ([clangd#602](https://github.com/clangd/clangd/issues/602))
-
-  ```cpp
-  #if defined(A)
-      // ...
-  #elif defined(B)
-      // the #elif directive line itself should NOT be dimmed
-  #else
-      // ...
-  #endif
-  ```
-
+- [ ] Dim inactive preprocessor branches ([clangd#132](https://github.com/clangd/clangd/issues/132))
+- [ ] Correct inactive boundaries with `#elif` chains ([clangd#602](https://github.com/clangd/clangd/issues/602))
 - [ ] Preserve syntax highlighting within inactive regions ([clangd#1664](https://github.com/clangd/clangd/issues/1664))
-
-  ```cpp
-  #if 0
-      int x = 42;     // should still have keyword/type coloring, just dimmed
-      std::string s;   // not plain gray text
-  #endif
-  ```
-
-- [ ] Don't treat inactive regions as comments — they should remain distinct from actual comment blocks ([clangd#1545](https://github.com/clangd/clangd/issues/1545))
-
-- [ ] Unreachable code dimming — code after unconditional `return`, `throw`, infinite loops, etc. ([clangd#1828](https://github.com/clangd/clangd/issues/1828))
-
-  ```cpp
-  void foo() {
-      return;
-      int x = 42;  // unreachable — should be dimmed
-  }
-  ```
+- [ ] Keep inactive regions distinct from comments ([clangd#1545](https://github.com/clangd/clangd/issues/1545))
+- [ ] Unreachable code dimming ([clangd#1828](https://github.com/clangd/clangd/issues/1828))
 
 ## Format String Highlighting
 
-- [ ] `std::format` / `std::print` format string placeholders ([clangd#1709](https://github.com/clangd/clangd/issues/1709))
-
-  ```cpp
-  std::format("Hello, {}! You are {} years old.", name, age);
-  //           ^^^^^^  ^^          ^^
-  //           string  placeholder  placeholder (different color)
-  ```
-
+- [ ] `std::format` / `std::print` placeholder highlighting ([clangd#1709](https://github.com/clangd/clangd/issues/1709))
 - [ ] Highlight invalid format specifiers as errors
 
 ## Protocol Support
 
 - [x] Full document semantic tokens (`textDocument/semanticTokens/full`)
 - [x] UTF-16 delta-encoded token positions
-- [ ] Range-based semantic tokens (`textDocument/semanticTokens/range`) — only compute tokens for the visible viewport, critical for performance on large files
-- [ ] Delta updates (`textDocument/semanticTokens/full/delta`) — send only changed tokens since the previous response, reducing payload size on incremental edits
-
-## Token Correctness
-
-Known issues from clangd that clice aims to get right from the start:
-
-- [x] Constructors and destructors use the `method` token type, not `class` ([clangd#1509](https://github.com/clangd/clangd/issues/1509))
-- [x] Destructor token covers the leading `~` character ([clangd#2078](https://github.com/clangd/clangd/issues/2078))
-- [x] Destructor token modifiers match the declaration ([clangd#872](https://github.com/clangd/clangd/issues/872))
-- [ ] Apply token modifiers to operands of overloaded operators ([clangd#2547](https://github.com/clangd/clangd/issues/2547))
-
-  ```cpp
-  void process(Vec& out);
-  out += rhs;  // out should have usedAsMutableReference modifier (via operator+=)
-  ```
-
-- [ ] Don't mark `auto` parameter in a lambda/function as `typeParameter` ([clangd#1390](https://github.com/clangd/clangd/issues/1390))
-
-  ```cpp
-  auto f = [](auto x) {};  // auto here is NOT a template type parameter
-  void g(auto y) {}         // same — abbreviated function template, not typeParameter
-  ```
-
-- [ ] Nested name specifier in pointer-to-member should get a token ([clangd#2235](https://github.com/clangd/clangd/issues/2235))
-
-  ```cpp
-  int Foo::*ptr;  // Foo should be highlighted as class
-  ```
-
-- [ ] `::new` — the `new` keyword should get a semantic token even with global scope prefix ([clangd#1627](https://github.com/clangd/clangd/issues/1627))
-
-- [ ] `co_yield` / `co_await` should not lose highlighting when the coroutine return type is a template ([clangd#2437](https://github.com/clangd/clangd/issues/2437))
-
-  ```cpp
-  template<typename T>
-  generator<T> gen(T val) {
-      co_yield val;  // co_yield should still be highlighted as keyword
-  }
-  ```
+- [ ] Range-based semantic tokens (`textDocument/semanticTokens/range`) — only
+      compute tokens for the visible viewport, critical for large files
+- [ ] Delta updates (`textDocument/semanticTokens/full/delta`) — send only
+      changes since the previous response
 
 ## Changelog
 

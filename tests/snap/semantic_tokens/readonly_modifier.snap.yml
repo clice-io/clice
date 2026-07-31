@@ -1,0 +1,14 @@
+---
+created_at: 2026-07-31
+input_file: readonly_modifier.cpp
+---
+- { loc: "10:19", text: "High", kind: enumMember, modifiers: [definition, readonly] }
+- { loc: "12:10", text: "limit", kind: variable, modifiers: [definition, readonly] }
+- { loc: "15:8", text: "read", kind: method, modifiers: [declaration, readonly] }
+- { loc: "16:9", text: "write", kind: method, modifiers: [declaration] }
+- { loc: "19:22", text: "bound", kind: parameter, modifiers: [definition, readonly] }
+- { loc: "19:40", text: "pointee_const", kind: parameter, modifiers: [definition, readonly] }
+- { loc: "19:66", text: "self_const", kind: parameter, modifiers: [definition, readonly] }
+- { loc: "21:10", text: "read", kind: method, modifiers: [readonly] }
+- { loc: "22:10", text: "write", kind: method }
+- { loc: "22:16", text: "limit", kind: variable, modifiers: [readonly] }
