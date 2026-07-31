@@ -12,11 +12,13 @@
 #include "semantic/decls.h"
 #include "semantic/display.h"
 #include "semantic/filtered_ast_visitor.h"
+#include "semantic/resolver.h"
 #include "semantic/types.h"
 
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Casting.h"
 #include "clang/Lex/Lexer.h"
+#include "clang-tidy/utils/DesignatedInitializers.h"
 
 namespace clice::feature {
 
@@ -78,10 +80,22 @@ bool is_simple_builtin(const clang::FunctionDecl* callee) {
         case clang::Builtin::BIaddressof:
         case clang::Builtin::BIas_const:
         case clang::Builtin::BIforward:
+        case clang::Builtin::BIforward_like:
         case clang::Builtin::BImove:
         case clang::Builtin::BImove_if_noexcept: return true;
-        default: return false;
+        default: break;
     }
+
+    // Freestanding compiles (-ffreestanding) strip library-builtin IDs, so
+    // match the same set by name; their arguments stay uninteresting either
+    // way.
+    if(callee->isInStdNamespace()) {
+        llvm::StringRef name = display::identifier_of(callee);
+        return name == "addressof" || name == "as_const" || name == "forward" ||
+               name == "forward_like" || name == "move" || name == "move_if_noexcept";
+    }
+
+    return false;
 }
 
 struct Callee {
@@ -508,6 +522,23 @@ public:
                        /*Suffix=*/"=");
     }
 
+    /// Hint the unwritten designators of a syntactic init list, e.g. `.x`
+    /// for the `1` in `Point{1}`. Explicitly written designators and inits
+    /// already carrying a `/*name=*/` comment stay bare.
+    void add_designators(const clang::InitListExpr* syntactic) {
+        auto designators = clang::tidy::utils::getUnwrittenDesignators(syntactic);
+        for(const clang::Expr* init: syntactic->inits()) {
+            if(llvm::isa<clang::DesignatedInitExpr>(init)) {
+                continue;
+            }
+            auto it = designators.find(init->getBeginLoc());
+            if(it == designators.end() || has_param_name_comment(init, it->second)) {
+                continue;
+            }
+            add_designator_hint(init->getSourceRange(), it->second);
+        }
+    }
+
     void add_return_type_hint(clang::FunctionDecl* decl, clang::SourceRange range) {
         auto* type = decl->getReturnType()->getContainedAutoType();
         if(!type || type->getDeducedType().isNull()) {
@@ -692,7 +723,7 @@ public:
     }
 
     bool VisitCallExpr(clang::CallExpr* expr) {
-        if(!options.parameters) {
+        if(!options.parameters && !options.default_arguments) {
             return true;
         }
 
@@ -714,17 +745,33 @@ public:
            llvm::isa<clang::UserDefinedLiteral>(expr))
             return true;
 
-        /// FIXME: Use template resolver here.
-        if(expr->isTypeDependent() || expr->isValueDependent()) {
-            return true;
-        }
-
-        auto callee_decl = expr->getCalleeDecl();
-
         Callee callee;
-        if(const auto* FD = llvm::dyn_cast<clang::FunctionDecl>(callee_decl)) {
+        if(expr->isTypeDependent() || expr->isValueDependent()) {
+            // A dependent call has no resolved callee. The template
+            // resolver's arity-filtered candidate set stands in; only a
+            // unique candidate gives trustworthy parameter names — with
+            // several overloads left we must not pick one arbitrarily.
+            auto candidates = unit.resolver().lookup(expr);
+            if(candidates.size() != 1) {
+                return true;
+            }
+
+            auto* target = candidates.front();
+            if(auto* shadow = dyn_cast<clang::UsingShadowDecl>(target)) {
+                target = shadow->getTargetDecl();
+            }
+            if(auto* FTD = dyn_cast<clang::FunctionTemplateDecl>(target)) {
+                callee.decl = FTD->getTemplatedDecl();
+            } else {
+                callee.decl = dyn_cast<clang::FunctionDecl>(target);
+            }
+            if(!callee.decl) {
+                return true;
+            }
+        } else if(const auto* FD = dyn_cast_or_null<clang::FunctionDecl>(expr->getCalleeDecl())) {
             callee.decl = FD;
-        } else if(const auto* FTD = llvm::dyn_cast<clang::FunctionTemplateDecl>(callee_decl)) {
+        } else if(const auto* FTD =
+                      dyn_cast_or_null<clang::FunctionTemplateDecl>(expr->getCalleeDecl())) {
             callee.decl = FTD->getTemplatedDecl();
         } else if(clang::FunctionProtoTypeLoc loc = decls::proto_type_loc(expr->getCallee())) {
             callee.loc = loc;
@@ -850,16 +897,7 @@ public:
             return true;
         }
 
-        /// FIXME:
-        // llvm::DenseMap<SourceLocation, std::string> Designators =
-        //     tidy::utils::getUnwrittenDesignators(Syn);
-        // for(const Expr* Init: Syn->inits()) {
-        //     if(llvm::isa<DesignatedInitExpr>(Init))
-        //         continue;
-        //     auto It = Designators.find(Init->getBeginLoc());
-        //     if(It != Designators.end() && !isPrecededByParamNameComment(Init, It->second))
-        //         addDesignatorHint(Init->getSourceRange(), It->second);
-        // }
+        builder.add_designators(expr);
         return true;
     }
 
