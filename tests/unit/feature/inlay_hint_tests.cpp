@@ -542,9 +542,45 @@ TEST_CASE(DefaultArguments) {
     EXPECT_HINT("2", ", baz: Baz{}");
     EXPECT_HINT("3", ", baz: Baz{}");
     EXPECT_HINT("4", ", baz: Baz{}");
+
+    // Default-argument hints survive with parameter hints disabled; the
+    // parameter name drops out with them.
+    run(R"c(
+            void log(int level, bool flush = true);
+            void use() { log(2§(0)); }
+        )c",
+        {.parameters = false, .default_arguments = true});
+    EXPECT_SIZE(1);
+    EXPECT_HINT("0", ", true");
 };
 
-// FIXME: flaky on some platforms, skip until root cause is identified.
+TEST_CASE(EnabledOff) {
+    run(R"c(
+            void draw(int width, int height);
+            void use() {
+                auto value = 1;
+                draw(value, 2);
+            }
+        )c",
+        {.enabled = false});
+    EXPECT_SIZE(0);
+};
+
+TEST_CASE(FreestandingBuiltins) {
+    // The tester compiles with -ffreestanding, which strips library-builtin
+    // IDs: std::forward suppression must hold through the name fallback.
+    // The snap corpus compiles hosted and only reaches the builtin-ID path.
+    run(R"c(
+            namespace std { template <typename T> T&& forward(T&); }
+            void use() {
+                int i = 0;
+                // Without the fallback this argument would carry a stray
+                // `&` reference hint.
+                int&& s = std::forward(i);
+            }
+        )c");
+    EXPECT_SIZE(0);
+};
 
 };  // TEST_SUITE(inlay_hint)
 

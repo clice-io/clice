@@ -41,8 +41,10 @@ clice renders inline annotations for the information the code leaves implicit: p
       int h = 2;
       // `width` matches the parameter spelling: only `height:` hints.
       draw(width, h);
-      // An inline comment naming the parameter serves the same purpose.
+      // An inline comment naming the parameter serves the same purpose;
+      // a comment naming something else does not.
       draw(/*width=*/1, /*height=*/2);
+      draw(/*margin=*/6, 7);
   }
 
   struct Sizes {
@@ -93,6 +95,7 @@ clice renders inline annotations for the information the code leaves implicit: p
 
   struct Config {
       void setWidth(int width);
+      void set_height(int height);
       // The parameter carries extra information beyond the setter name, so
       // it still hints.
       void setTimeout(int timeout_millis);
@@ -100,11 +103,23 @@ clice renders inline annotations for the information the code leaves implicit: p
 
   void consume(int&& sink);
 
+  // The three-argument algorithm form of std::move is a real call whose
+  // parameters deserve hints; only the single-argument cast stays bare.
+  namespace std {
+
+  template <typename T>
+  T* move(T* first, T* last, T* result);
+
+  }  // namespace std
+
   void use(Config& config) {
       config.setWidth(3);
+      config.set_height(4);
       config.setTimeout(5);
       int value = 1;
       consume(std::move(value));
+      int buffer[4];
+      std::move(buffer, buffer + 2, buffer + 2);
   }
   ```
 
@@ -229,11 +244,11 @@ clice renders inline annotations for the information the code leaves implicit: p
   }
   ```
 
-- [x] Dependent calls — unresolved callees in template bodies resolve through the template resolver
+- [x] Dependent calls — parameter names appear even when the callee is only known inside a template
 
-  The resolver's candidate set is filtered by argument count; only a
-  unique surviving candidate names the parameters, so a call that could
-  still hit several overloads stays bare rather than guessing.
+  Candidates are matched by argument count; only a unique surviving
+  candidate names the parameters, so a call that could still hit several
+  overloads stays bare rather than guessing.
 
   ```cpp
   template <typename T>

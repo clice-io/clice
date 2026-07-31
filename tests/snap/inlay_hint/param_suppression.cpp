@@ -13,8 +13,10 @@ void use() {
     int h = 2;
     // `width` matches the parameter spelling: only `height:` hints.
     draw(width, h);
-    // An inline comment naming the parameter serves the same purpose.
+    // An inline comment naming the parameter serves the same purpose;
+    // a comment naming something else does not.
     draw(/*width=*/1, /*height=*/2);
+    draw(/*margin=*/6, 7);
 }
 
 struct Sizes {

@@ -88,8 +88,10 @@ bool is_simple_builtin(const clang::FunctionDecl* callee) {
 
     // Freestanding compiles (-ffreestanding) strip library-builtin IDs, so
     // match the same set by name; their arguments stay uninteresting either
-    // way.
-    if(callee->isInStdNamespace()) {
+    // way. All of these are single-parameter cast-like forms — the check
+    // must not swallow e.g. the three-argument std::move algorithm, whose
+    // parameters are worth hinting.
+    if(callee->getNumParams() == 1 && callee->isInStdNamespace()) {
         llvm::StringRef name = display::identifier_of(callee);
         return name == "addressof" || name == "as_const" || name == "forward" ||
                name == "forward_like" || name == "move" || name == "move_if_noexcept";
@@ -746,7 +748,9 @@ public:
             return true;
 
         Callee callee;
+        bool dependent_callee = false;
         if(expr->isTypeDependent() || expr->isValueDependent()) {
+            dependent_callee = true;
             // A dependent call has no resolved callee. The template
             // resolver's arity-filtered candidate set stands in; only a
             // unique candidate gives trustworthy parameter names — with
@@ -791,9 +795,12 @@ public:
         // this correspondence...
         llvm::ArrayRef<const clang::Expr*> args = {expr->getArgs(), expr->getNumArgs()};
 
-        // We don't have the implied object argument through a function pointer either.
+        // We don't have the implied object argument through a function pointer
+        // either, nor in a dependent member call: there the object stays the
+        // member expression's base and never joins the argument list.
         if(const auto* method = llvm::dyn_cast_or_null<clang::CXXMethodDecl>(callee.decl)) {
-            if(is_functor || method->hasCXXExplicitFunctionObjectParameter()) {
+            if(is_functor ||
+               (!dependent_callee && method->hasCXXExplicitFunctionObjectParameter())) {
                 args = args.drop_front(1);
             }
         }

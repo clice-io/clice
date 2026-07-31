@@ -1,13 +1,13 @@
 /// # Parameter Hints
 ///
-/// ## Dependent calls — unresolved callees in template bodies resolve through the template resolver
+/// ## Dependent calls — parameter names appear even when the callee is only known inside a template
 ///
 /// - status: supported
 /// - order: 9
 ///
-/// The resolver's candidate set is filtered by argument count; only a
-/// unique surviving candidate names the parameters, so a call that could
-/// still hit several overloads stays bare rather than guessing.
+/// Candidates are matched by argument count; only a unique surviving
+/// candidate names the parameters, so a call that could still hit several
+/// overloads stays bare rather than guessing.
 
 template <typename T>
 void apply(T scale);
