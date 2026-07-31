@@ -250,7 +250,7 @@ public:
 
     clang::syntax::TokenBuffer& token_buffer();
 
-    TemplateResolver& resolver();
+    types::TemplateResolver& resolver();
 
     /// The semantic map of the interested file (token → owning node), built
     /// lazily on first use and cached for the unit's lifetime.

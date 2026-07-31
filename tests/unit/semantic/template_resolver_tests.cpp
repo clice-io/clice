@@ -3958,10 +3958,10 @@ TEST_CASE(BrokenCodeSweep) {
     ASSERT_TRUE(try_compile());
 
     struct Sweeper : clang::RecursiveASTVisitor<Sweeper> {
-        TemplateResolver& resolver;
+        types::TemplateResolver& resolver;
         unsigned visited = 0;
 
-        Sweeper(TemplateResolver& resolver) : resolver(resolver) {}
+        Sweeper(types::TemplateResolver& resolver) : resolver(resolver) {}
 
         bool VisitTypedefNameDecl(clang::TypedefNameDecl* decl) {
             auto type = decl->getUnderlyingType();
@@ -4003,10 +4003,10 @@ TEST_CASE(StandardSweep) {
     ASSERT_TRUE(compile_driver());
 
     struct Sweeper : clang::RecursiveASTVisitor<Sweeper> {
-        TemplateResolver& resolver;
+        types::TemplateResolver& resolver;
         unsigned visited = 0;
 
-        Sweeper(TemplateResolver& resolver) : resolver(resolver) {}
+        Sweeper(types::TemplateResolver& resolver) : resolver(resolver) {}
 
         bool VisitTypedefNameDecl(clang::TypedefNameDecl* decl) {
             auto type = decl->getUnderlyingType();

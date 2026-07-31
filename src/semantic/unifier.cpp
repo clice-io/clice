@@ -3,7 +3,7 @@
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/RecursiveASTVisitor.h"
 
-namespace clice {
+namespace clice::types {
 
 namespace {
 
@@ -180,8 +180,8 @@ const clang::NonTypeTemplateParmDecl* referenced_nttp(const clang::Expr* expr) {
     return nullptr;
 }
 
-bool TypeUnifier::equivalent(const clang::TemplateArgument& lhs,
-                             const clang::TemplateArgument& rhs) const {
+bool Unifier::equivalent(const clang::TemplateArgument& lhs,
+                         const clang::TemplateArgument& rhs) const {
     if(context.getCanonicalTemplateArgument(lhs).structurallyEquals(
            context.getCanonicalTemplateArgument(rhs))) {
         return true;
@@ -198,7 +198,7 @@ bool TypeUnifier::equivalent(const clang::TemplateArgument& lhs,
     return false;
 }
 
-bool TypeUnifier::bind(unsigned index, const clang::TemplateArgument& argument) {
+bool Unifier::bind(unsigned index, const clang::TemplateArgument& argument) {
     if(index >= bindings.size()) {
         return false;
     }
@@ -225,7 +225,7 @@ bool TypeUnifier::bind(unsigned index, const clang::TemplateArgument& argument) 
     return true;
 }
 
-bool TypeUnifier::collect(unsigned index, const clang::TemplateArgument& argument) {
+bool Unifier::collect(unsigned index, const clang::TemplateArgument& argument) {
     if(index >= bindings.size()) {
         return false;
     }
@@ -250,9 +250,9 @@ bool TypeUnifier::collect(unsigned index, const clang::TemplateArgument& argumen
     return true;
 }
 
-bool TypeUnifier::template_id(clang::QualType type,
-                              clang::TemplateName& name,
-                              TemplateArguments& arguments) const {
+bool Unifier::template_id(clang::QualType type,
+                          clang::TemplateName& name,
+                          TemplateArguments& arguments) const {
     clang::Qualifiers quals;
     type = peel(type, quals);
 
@@ -277,7 +277,7 @@ bool TypeUnifier::template_id(clang::QualType type,
     return false;
 }
 
-bool TypeUnifier::unify(clang::QualType pattern, clang::QualType argument) {
+bool Unifier::unify(clang::QualType pattern, clang::QualType argument) {
     if(pattern.isNull() || argument.isNull()) {
         return false;
     }
@@ -540,8 +540,8 @@ bool TypeUnifier::unify(clang::QualType pattern, clang::QualType argument) {
     }
 }
 
-bool TypeUnifier::unify(const clang::TemplateArgument& pattern,
-                        const clang::TemplateArgument& argument) {
+bool Unifier::unify(const clang::TemplateArgument& pattern,
+                    const clang::TemplateArgument& argument) {
     switch(pattern.getKind()) {
         case clang::TemplateArgument::Type: {
             if(argument.getKind() != clang::TemplateArgument::Type) {
@@ -642,7 +642,7 @@ bool TypeUnifier::unify(const clang::TemplateArgument& pattern,
     }
 }
 
-bool TypeUnifier::unify(TemplateArguments patterns, TemplateArguments arguments) {
+bool Unifier::unify(TemplateArguments patterns, TemplateArguments arguments) {
     /// Flatten Pack entries on both sides so positional matching lines up:
     /// converted argument lists (injected arguments, partial specialization
     /// patterns) group a pack's arguments as `Pack{...}`, and substitution
@@ -751,7 +751,7 @@ bool deduce_arguments(clang::ASTContext& context,
                       llvm::ArrayRef<clang::TemplateArgument> patterns,
                       llvm::ArrayRef<clang::TemplateArgument> arguments,
                       llvm::SmallVectorImpl<clang::TemplateArgument>& deduced) {
-    TypeUnifier unifier(context, params->getDepth(), params->size());
+    Unifier unifier(context, params->getDepth(), params->size());
     if(!unifier.unify(patterns, arguments)) {
         return false;
     }
@@ -779,7 +779,7 @@ bool more_specialized(clang::ASTContext& context,
     auto matches = [&](clang::ClassTemplatePartialSpecializationDecl* pattern,
                        clang::ClassTemplatePartialSpecializationDecl* argument) {
         auto params = pattern->getTemplateParameters();
-        TypeUnifier unifier(context, params->getDepth(), params->size());
+        Unifier unifier(context, params->getDepth(), params->size());
         return unifier.unify(pattern->getTemplateArgs().asArray(),
                              argument->getTemplateArgs().asArray());
     };
@@ -787,4 +787,4 @@ bool more_specialized(clang::ASTContext& context,
     return matches(right, left) && !matches(left, right);
 }
 
-}  // namespace clice
+}  // namespace clice::types

@@ -5,7 +5,7 @@
 #include <vector>
 
 #include "feature/feature.h"
-#include "semantic/ast_utility.h"
+#include "semantic/display.h"
 #include "semantic/filtered_ast_visitor.h"
 #include "semantic/symbol_kind.h"
 
@@ -60,11 +60,11 @@ auto to_protocol_symbol_kind(SymbolKind kind) -> protocol::SymbolKind {
 }
 
 auto symbol_detail(clang::ASTContext& context, const clang::NamedDecl& decl) -> std::string {
-    clang::PrintingPolicy policy(context.getPrintingPolicy());
-    policy.SuppressScope = true;
-    policy.SuppressUnwrittenScope = true;
-    policy.AnonymousTagLocations = false;
-    policy.PolishForDeclaration = true;
+    display::Options options = {
+        .suppress_scope = true,
+        .suppress_unwritten_scope = true,
+        .polish_for_declaration = true,
+    };
 
     std::string detail;
     llvm::raw_string_ostream stream(detail);
@@ -75,12 +75,12 @@ auto symbol_detail(clang::ASTContext& context, const clang::NamedDecl& decl) -> 
 
     if(const auto* value = llvm::dyn_cast<clang::ValueDecl>(&decl)) {
         if(llvm::isa<clang::CXXConstructorDecl>(value)) {
-            std::string type = value->getType().getAsString(policy);
+            std::string type = display::type(context, value->getType(), options).text;
             llvm::StringRef without_void = type;
             without_void.consume_front("void ");
             stream << without_void;
         } else if(!llvm::isa<clang::CXXDestructorDecl>(value)) {
-            value->getType().print(stream, policy);
+            stream << display::type(context, value->getType(), options).text;
         }
     } else if(const auto* tag = llvm::dyn_cast<clang::TagDecl>(&decl)) {
         stream << tag->getKindName();
@@ -123,7 +123,7 @@ public:
         auto* previous = result.cursor;
         auto& symbol = result.cursor->emplace_back();
         symbol.kind = SymbolKind::from(decl);
-        symbol.name = ast::display_name_of(named);
+        symbol.name = display::name_of(named);
         symbol.detail = symbol_detail(unit.context(), *named);
         symbol.selection_range = selection_range;
         symbol.range = range;

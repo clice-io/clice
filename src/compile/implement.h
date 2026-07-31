@@ -70,7 +70,7 @@ struct CompilationUnitRef::Self {
     std::unique_ptr<clang::CompilerInstance> instance;
 
     /// The template resolver used to resolve dependent name.
-    std::optional<TemplateResolver> resolver;
+    std::optional<types::TemplateResolver> resolver;
 
     /// Lazily built semantic map, see CompilationUnitRef::semantics().
     std::unique_ptr<Semantics> semantics_cache;

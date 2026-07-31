@@ -18,8 +18,8 @@ namespace {
 namespace protocol = kota::ipc::protocol;
 
 using HoverInfo = feature::HoverInfo;
-using PrintedType = feature::HoverInfo::PrintedType;
-using HoverParam = feature::HoverInfo::Param;
+using PrintedType = display::Type;
+using HoverParam = display::Param;
 using PassType = feature::HoverInfo::PassType;
 using PassMode = feature::HoverInfo::PassMode;
 

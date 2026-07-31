@@ -7,19 +7,19 @@
 #include <vector>
 
 #include "feature/feature.h"
-#include "semantic/ast_utility.h"
+#include "semantic/decls.h"
+#include "semantic/display.h"
 #include "semantic/selection.h"
 #include "semantic/semantics.h"
+#include "semantic/types.h"
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/StringExtras.h"
-#include "llvm/Support/Format.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/ScopedPrinter.h"
 #include "llvm/Support/raw_ostream.h"
 #include "clang/AST/ASTContext.h"
-#include "clang/AST/ASTDiagnostic.h"
 #include "clang/AST/ASTTypeTraits.h"
 #include "clang/AST/Attr.h"
 #include "clang/AST/Decl.h"
@@ -29,7 +29,6 @@
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/OperationKinds.h"
-#include "clang/AST/PrettyPrinter.h"
 #include "clang/AST/RecordLayout.h"
 #include "clang/AST/Type.h"
 #include "clang/Basic/CharInfo.h"
@@ -43,241 +42,10 @@ namespace clice::feature {
 
 namespace {
 
-using PrintedType = HoverInfo::PrintedType;
-using Param = HoverInfo::Param;
+using PrintedType = display::Type;
+using Param = display::Param;
 using PassType = HoverInfo::PassType;
 using PassMode = HoverInfo::PassMode;
-
-auto hover_printing_policy(clang::PrintingPolicy base) -> clang::PrintingPolicy {
-    base.AnonymousTagLocations = false;
-    base.TerseOutput = true;
-    base.PolishForDeclaration = true;
-    base.ConstantsAsWritten = true;
-    base.SuppressTemplateArgsInCXXConstructors = true;
-    return base;
-}
-
-/// Given a declaration, return a human-readable string representing the
-/// local scope in which it is declared, i.e. class(es) and method name.
-/// Returns an empty string if it is not local.
-auto local_scope(const clang::Decl* decl) -> std::string {
-    std::vector<std::string> scopes;
-
-    auto name_of_type_decl = [](const clang::TypeDecl* decl) {
-        if(!decl->getDeclName().isEmpty()) {
-            clang::PrintingPolicy policy = decl->getASTContext().getPrintingPolicy();
-            policy.SuppressScope = true;
-            return ast::declared_type(decl).getAsString(policy);
-        }
-
-        if(auto* record = llvm::dyn_cast<clang::RecordDecl>(decl)) {
-            return ("(anonymous " + record->getKindName() + ")").str();
-        }
-
-        return std::string();
-    };
-
-    const clang::DeclContext* context = decl->getDeclContext();
-    while(context) {
-        if(const auto* type_decl = llvm::dyn_cast<clang::TypeDecl>(context)) {
-            scopes.push_back(name_of_type_decl(type_decl));
-        } else if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(context)) {
-            scopes.push_back(function->getNameAsString());
-        }
-        context = context->getParent();
-    }
-
-    return llvm::join(llvm::reverse(scopes), "::");
-}
-
-/// Returns the human-readable representation for namespace containing the
-/// declaration. Returns empty if it is contained in the global namespace.
-auto namespace_scope(const clang::Decl* decl) -> std::string {
-    const clang::DeclContext* context = decl->getDeclContext();
-
-    if(const auto* tag = llvm::dyn_cast<clang::TagDecl>(context)) {
-        return namespace_scope(tag);
-    }
-
-    if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(context)) {
-        return namespace_scope(function);
-    }
-
-    if(const auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(context)) {
-        /// Skip inline/anon namespaces.
-        if(ns->isInline() || ns->isAnonymousNamespace()) {
-            return namespace_scope(ns);
-        }
-    }
-
-    if(const auto* named = llvm::dyn_cast<clang::NamedDecl>(context)) {
-        return ast::print_qualified_name(*named);
-    }
-
-    return "";
-}
-
-auto print_definition(const clang::Decl* decl,
-                      clang::PrintingPolicy policy,
-                      const clang::syntax::TokenBuffer& tb) -> std::string {
-    if(auto* var = llvm::dyn_cast<clang::VarDecl>(decl)) {
-        if(auto* init = var->getInit()) {
-            /// Initializers might be huge and result in lots of memory allocations
-            /// in some catastrophic cases. Such long lists are not useful in hover
-            /// cards anyway.
-            if(tb.expandedTokens(init->getSourceRange()).size() > 200) {
-                policy.SuppressInitializers = true;
-            }
-        }
-    }
-
-    std::string definition;
-    llvm::raw_string_ostream os(definition);
-    decl->print(os, policy);
-    return definition;
-}
-
-auto print_type(clang::QualType type,
-                clang::ASTContext& context,
-                const clang::PrintingPolicy& policy,
-                const HoverOptions& options) -> PrintedType {
-    /// TypePrinter doesn't resolve decltypes, so resolve them here.
-    /// FIXME: This doesn't handle composite types that contain a decltype in
-    /// them. We should rather have a printing policy for that.
-    while(!type.isNull() && type->isDecltypeType()) {
-        type = type->castAs<clang::DecltypeType>()->getUnderlyingType();
-    }
-
-    PrintedType result;
-    llvm::raw_string_ostream os(result.type);
-
-    /// Special case: if the outer type is a tag type without qualifiers, then
-    /// include the tag for extra clarity. This isn't very idiomatic, so don't
-    /// attempt it for complex cases, including pointers/references, template
-    /// specializations, etc.
-    if(!type.isNull() && !type.hasQualifiers() && policy.SuppressTagKeyword) {
-        if(auto* tag = llvm::dyn_cast<clang::TagType>(type.getTypePtr())) {
-            os << tag->getDecl()->getKindName() << " ";
-        }
-    }
-    type.print(os, policy);
-
-    if(!type.isNull() && options.show_aka) {
-        bool should_aka = false;
-        clang::QualType desugared = clang::desugarForDiagnostic(context, type, should_aka);
-        if(should_aka) {
-            result.aka = desugared.getAsString(policy);
-        }
-    }
-    return result;
-}
-
-auto print_type(const clang::TemplateTypeParmDecl* param) -> PrintedType {
-    PrintedType result;
-    result.type = param->wasDeclaredWithTypename() ? "typename" : "class";
-    if(param->isParameterPack()) {
-        result.type += "...";
-    }
-    return result;
-}
-
-auto print_type(const clang::NonTypeTemplateParmDecl* param,
-                const clang::PrintingPolicy& policy,
-                const HoverOptions& options) -> PrintedType {
-    auto result = print_type(param->getType(), param->getASTContext(), policy, options);
-    if(param->isParameterPack()) {
-        result.type += "...";
-        if(result.aka) {
-            *result.aka += "...";
-        }
-    }
-    return result;
-}
-
-auto print_type(const clang::TemplateTemplateParmDecl* param,
-                const clang::PrintingPolicy& policy,
-                const HoverOptions& options) -> PrintedType {
-    PrintedType result;
-    llvm::raw_string_ostream os(result.type);
-    os << "template <";
-    llvm::StringRef sep = "";
-    for(const clang::Decl* decl: *param->getTemplateParameters()) {
-        os << sep;
-        sep = ", ";
-        if(const auto* type_param = llvm::dyn_cast<clang::TemplateTypeParmDecl>(decl)) {
-            os << print_type(type_param).type;
-        } else if(const auto* non_type_param =
-                      llvm::dyn_cast<clang::NonTypeTemplateParmDecl>(decl)) {
-            os << print_type(non_type_param, policy, options).type;
-        } else if(const auto* template_param =
-                      llvm::dyn_cast<clang::TemplateTemplateParmDecl>(decl)) {
-            os << print_type(template_param, policy, options).type;
-        }
-    }
-    /// FIXME: TemplateTemplateParameter doesn't store the info on whether this
-    /// param was a "typename" or "class".
-    os << "> class";
-    return result;
-}
-
-auto fetch_template_parameters(const clang::TemplateParameterList* params,
-                               const clang::PrintingPolicy& policy,
-                               const HoverOptions& options) -> std::vector<Param> {
-    assert(params);
-    std::vector<Param> result;
-
-    for(const clang::Decl* decl: *params) {
-        Param param;
-        if(const auto* type_param = llvm::dyn_cast<clang::TemplateTypeParmDecl>(decl)) {
-            param.type = print_type(type_param);
-
-            if(!type_param->getName().empty()) {
-                param.name = type_param->getNameAsString();
-            }
-
-            if(type_param->hasDefaultArgument()) {
-                param.default_value.emplace();
-                llvm::raw_string_ostream out(*param.default_value);
-                type_param->getDefaultArgument().getArgument().print(policy,
-                                                                     out,
-                                                                     /*IncludeType=*/false);
-            }
-        } else if(const auto* non_type_param =
-                      llvm::dyn_cast<clang::NonTypeTemplateParmDecl>(decl)) {
-            param.type = print_type(non_type_param, policy, options);
-
-            if(auto* identifier = non_type_param->getIdentifier()) {
-                param.name = identifier->getName().str();
-            }
-
-            if(non_type_param->hasDefaultArgument()) {
-                param.default_value.emplace();
-                llvm::raw_string_ostream out(*param.default_value);
-                non_type_param->getDefaultArgument().getArgument().print(policy,
-                                                                         out,
-                                                                         /*IncludeType=*/false);
-            }
-        } else if(const auto* template_param =
-                      llvm::dyn_cast<clang::TemplateTemplateParmDecl>(decl)) {
-            param.type = print_type(template_param, policy, options);
-
-            if(!template_param->getName().empty()) {
-                param.name = template_param->getNameAsString();
-            }
-
-            if(template_param->hasDefaultArgument()) {
-                param.default_value.emplace();
-                llvm::raw_string_ostream out(*param.default_value);
-                template_param->getDefaultArgument().getArgument().print(policy,
-                                                                         out,
-                                                                         /*IncludeType=*/false);
-            }
-        }
-        result.push_back(std::move(param));
-    }
-
-    return result;
-}
 
 auto underlying_function(const clang::Decl* decl) -> const clang::FunctionDecl* {
     /// Extract lambda from variables.
@@ -334,43 +102,14 @@ auto decl_for_comment(const clang::NamedDecl* decl) -> const clang::NamedDecl* {
 /// Default argument might exist but be unavailable, in the case of unparsed
 /// arguments for example. This function returns the default argument if it is
 /// available.
-auto default_arg(const clang::ParmVarDecl* param) -> const clang::Expr* {
-    /// Default argument can be unparsed or uninstantiated. For the former we
-    /// can't do much, as token information is only stored in Sema and not
-    /// attached to the AST node. For the latter though, it is safe to proceed as
-    /// the expression is still valid.
-    if(!param->hasDefaultArg() || param->hasUnparsedDefaultArg()) {
-        return nullptr;
-    }
-    return param->hasUninstantiatedDefaultArg() ? param->getUninstantiatedDefaultArg()
-                                                : param->getDefaultArg();
-}
-
-auto to_hover_param(const clang::ParmVarDecl* param,
-                    const clang::PrintingPolicy& policy,
-                    const HoverOptions& options) -> Param {
-    Param result;
-    result.type = print_type(param->getType(), param->getASTContext(), policy, options);
-    if(!param->getName().empty()) {
-        result.name = param->getNameAsString();
-    }
-    if(const clang::Expr* arg = default_arg(param)) {
-        result.default_value.emplace();
-        llvm::raw_string_ostream os(*result.default_value);
-        arg->printPretty(os, nullptr, policy);
-    }
-    return result;
-}
-
 /// Populates type, return_type, and parameters for function-like decls.
 void fill_function_type_and_params(HoverInfo& info,
                                    const clang::Decl* decl,
                                    const clang::FunctionDecl* function,
-                                   const clang::PrintingPolicy& policy,
-                                   const HoverOptions& options) {
+                                   const display::Options& options) {
     info.parameters.emplace();
     for(const clang::ParmVarDecl* param: function->parameters()) {
-        info.parameters->emplace_back(to_hover_param(param, policy, options));
+        info.parameters->emplace_back(display::param(param, options));
     }
 
     /// We don't want any type info, if name already contains it. This is true
@@ -383,88 +122,14 @@ void fill_function_type_and_params(HoverInfo& info,
     }
 
     auto& context = function->getASTContext();
-    info.return_type = print_type(function->getReturnType(), context, policy, options);
+    info.return_type = display::type(context, function->getReturnType(), options);
     clang::QualType type = function->getType();
     if(const auto* var = llvm::dyn_cast<clang::VarDecl>(decl)) {
         /// Lambdas.
         type = var->getType().getDesugaredType(decl->getASTContext());
     }
-    info.type = print_type(type, decl->getASTContext(), policy, options);
+    info.type = display::type(decl->getASTContext(), type, options);
     /// FIXME: handle variadics.
-}
-
-/// Non-negative numbers are printed using min digits:
-///   0     => 0x0
-///   100   => 0x64
-/// Negative numbers are sign-extended to 32/64 bits:
-///   -2    => 0xfffffffe
-///   -2^32 => 0xffffffff00000000
-auto print_hex(const llvm::APSInt& value) -> llvm::FormattedNumber {
-    assert(value.getSignificantBits() <= 64 && "Can't print more than 64 bits.");
-    std::uint64_t bits =
-        value.getBitWidth() > 64 ? value.trunc(64).getZExtValue() : value.getZExtValue();
-    if(value.isNegative() && value.getSignificantBits() <= 32) {
-        return llvm::format_hex(static_cast<std::uint32_t>(bits), 0);
-    }
-    return llvm::format_hex(bits, 0);
-}
-
-auto print_expr_value(const clang::Expr* expr, const clang::ASTContext& context)
-    -> std::optional<std::string> {
-    /// InitListExpr has two forms, syntactic and semantic. They are the same
-    /// thing (refer to a same AST node) in most cases. When they are different,
-    /// RAV returns the syntactic form, and we should feed the semantic form to
-    /// EvaluateAsRValue.
-    if(const auto* init_list = llvm::dyn_cast<clang::InitListExpr>(expr)) {
-        if(!init_list->isSemanticForm()) {
-            expr = init_list->getSemanticForm();
-        }
-    }
-
-    /// Evaluating [[foo]]() as "&foo" isn't useful, and prevents us walking up
-    /// to the enclosing call. Evaluating an expression of void type doesn't
-    /// produce a meaningful result.
-    clang::QualType type = expr->getType();
-    if(type.isNull() || type->isFunctionType() || type->isFunctionPointerType() ||
-       type->isFunctionReferenceType() || type->isVoidType()) {
-        return std::nullopt;
-    }
-
-    clang::Expr::EvalResult constant;
-    /// Attempt to evaluate. If the expr is dependent, evaluation crashes!
-    if(expr->isValueDependent() || !expr->EvaluateAsRValue(constant, context) ||
-       /// Disable printing for record-types, as they are usually confusing and
-       /// might make clang crash while printing the expressions.
-       constant.Val.isStruct() || constant.Val.isUnion()) {
-        return std::nullopt;
-    }
-
-    /// Show enums symbolically, not numerically like APValue::printPretty().
-    if(type->isEnumeralType() && constant.Val.isInt() &&
-       constant.Val.getInt().getSignificantBits() <= 64) {
-        /// Compare to int64_t to avoid bit-width match requirements.
-        std::int64_t value = constant.Val.getInt().getExtValue();
-        for(const clang::EnumConstantDecl* enumerator:
-            type->castAs<clang::EnumType>()->getDecl()->enumerators()) {
-            if(enumerator->getInitVal() == value) {
-                return llvm::formatv("{0} ({1})",
-                                     enumerator->getNameAsString(),
-                                     print_hex(constant.Val.getInt()))
-                    .str();
-            }
-        }
-    }
-
-    /// Show hex value of integers if they're at least 10 (or negative!).
-    if(type->isIntegralOrEnumerationType() && constant.Val.isInt() &&
-       constant.Val.getInt().getSignificantBits() <= 64 && constant.Val.getInt().uge(10)) {
-        return llvm::formatv("{0} ({1})",
-                             constant.Val.getAsString(context, type),
-                             print_hex(constant.Val.getInt()))
-            .str();
-    }
-
-    return constant.Val.getAsString(context, type);
 }
 
 struct PrintExprResult {
@@ -494,7 +159,7 @@ auto print_expr_value(const SelectionTree::Node* node, const clang::ASTContext& 
                 break;
             }
 
-            if(auto value = print_expr_value(expr, context)) {
+            if(auto value = display::expr_value(context, expr)) {
                 return PrintExprResult{
                     .printed_value = std::move(value),
                     .expr = expr,
@@ -652,25 +317,24 @@ auto synthesize_documentation(const clang::NamedDecl* decl) -> std::string {
 
 /// Generate a hover info given the declaration.
 auto decl_hover(const clang::NamedDecl* decl,
-                const clang::PrintingPolicy& policy,
-                const clang::syntax::TokenBuffer& tb,
-                const HoverOptions& options) -> HoverInfo {
+                const display::Options& options,
+                const clang::syntax::TokenBuffer& tb) -> HoverInfo {
     HoverInfo info;
     auto& context = decl->getASTContext();
 
     info.access_specifier = clang::getAccessSpelling(decl->getAccess()).str();
-    info.namespace_scope = namespace_scope(decl);
+    info.namespace_scope = display::namespace_scope(decl);
     if(!info.namespace_scope->empty()) {
         info.namespace_scope->append("::");
     }
-    info.local_scope = local_scope(decl);
+    info.local_scope = display::local_scope(decl);
     if(!info.local_scope.empty()) {
         info.local_scope.append("::");
     }
 
-    info.name = ast::print_name(*decl);
+    info.name = display::name_of(decl);
     const auto* comment_decl = decl_for_comment(decl);
-    info.documentation = ast::decl_comment(context, *comment_decl);
+    info.documentation = display::comment(comment_decl);
     if(info.documentation.empty()) {
         info.documentation = synthesize_documentation(decl);
     }
@@ -680,46 +344,41 @@ auto decl_hover(const clang::NamedDecl* decl,
     /// Fill in template params.
     if(const clang::TemplateDecl* template_decl = decl->getDescribedTemplate()) {
         info.template_parameters =
-            fetch_template_parameters(template_decl->getTemplateParameters(), policy, options);
+            display::template_params(template_decl->getTemplateParameters(), options);
         decl = template_decl;
     } else if(const clang::FunctionDecl* function = decl->getAsFunction()) {
         if(const auto* function_template = function->getDescribedTemplate()) {
             info.template_parameters =
-                fetch_template_parameters(function_template->getTemplateParameters(),
-                                          policy,
-                                          options);
+                display::template_params(function_template->getTemplateParameters(), options);
             decl = function_template;
         }
     }
 
     /// Fill in types and params.
     if(const clang::FunctionDecl* function = underlying_function(decl)) {
-        fill_function_type_and_params(info, decl, function, policy, options);
+        fill_function_type_and_params(info, decl, function, options);
     } else if(const auto* value = llvm::dyn_cast<clang::ValueDecl>(decl)) {
-        info.type = print_type(value->getType(), context, policy, options);
+        info.type = display::type(context, value->getType(), options);
     } else if(const auto* type_param = llvm::dyn_cast<clang::TemplateTypeParmDecl>(decl)) {
         info.type = type_param->wasDeclaredWithTypename() ? "typename" : "class";
     } else if(const auto* template_param = llvm::dyn_cast<clang::TemplateTemplateParmDecl>(decl)) {
-        info.type = print_type(template_param, policy, options);
+        info.type = display::template_param_type(template_param, options);
     } else if(const auto* var_template = llvm::dyn_cast<clang::VarTemplateDecl>(decl)) {
-        info.type =
-            print_type(var_template->getTemplatedDecl()->getType(), context, policy, options);
+        info.type = display::type(context, var_template->getTemplatedDecl()->getType(), options);
     } else if(const auto* typedef_decl = llvm::dyn_cast<clang::TypedefNameDecl>(decl)) {
-        info.type = print_type(typedef_decl->getUnderlyingType().getDesugaredType(context),
-                               context,
-                               policy,
-                               options);
+        info.type = display::type(context,
+                                  typedef_decl->getUnderlyingType().getDesugaredType(context),
+                                  options);
     } else if(const auto* alias_template = llvm::dyn_cast<clang::TypeAliasTemplateDecl>(decl)) {
-        info.type = print_type(alias_template->getTemplatedDecl()->getUnderlyingType(),
-                               context,
-                               policy,
-                               options);
+        info.type = display::type(context,
+                                  alias_template->getTemplatedDecl()->getUnderlyingType(),
+                                  options);
     }
 
     /// Fill in value with evaluated initializer if possible.
     if(const auto* var = llvm::dyn_cast<clang::VarDecl>(decl); var && !var->isInvalidDecl()) {
         if(const clang::Expr* init = var->getInit()) {
-            info.value = print_expr_value(init, context);
+            info.value = display::expr_value(context, init);
         }
     } else if(const auto* enumerator = llvm::dyn_cast<clang::EnumConstantDecl>(decl)) {
         /// Dependent enums (e.g. nested in template classes) don't have values yet.
@@ -728,15 +387,14 @@ auto decl_hover(const clang::NamedDecl* decl,
         }
     }
 
-    info.definition = print_definition(decl, policy, tb);
+    info.definition = display::definition(decl, options, &tb);
     return info;
 }
 
 /// The standard defines __func__ as a "predefined variable".
 auto predefined_expr_hover(const clang::PredefinedExpr& expr,
                            clang::ASTContext& context,
-                           const clang::PrintingPolicy& policy,
-                           const HoverOptions& options) -> std::optional<HoverInfo> {
+                           const display::Options& options) -> std::optional<HoverInfo> {
     HoverInfo info;
     info.name = expr.getIdentKindName();
     info.kind = SymbolKind::Variable;
@@ -745,14 +403,14 @@ auto predefined_expr_hover(const clang::PredefinedExpr& expr,
         info.value.emplace();
         llvm::raw_string_ostream os(*info.value);
         name->outputString(os);
-        info.type = print_type(name->getType(), context, policy, options);
+        info.type = display::type(context, name->getType(), options);
     } else {
         /// Inside templates, the approximate type `const char[]` is still useful.
         clang::QualType string_type =
             context.getIncompleteArrayType(context.CharTy.withConst(),
                                            clang::ArraySizeModifier::Normal,
                                            /*IndexTypeQuals=*/0);
-        info.type = print_type(string_type, context, policy, options);
+        info.type = display::type(context, string_type, options);
     }
     return info;
 }
@@ -760,7 +418,7 @@ auto predefined_expr_hover(const clang::PredefinedExpr& expr,
 auto type_as_definition(const PrintedType& type) -> std::string {
     std::string result;
     llvm::raw_string_ostream os(result);
-    os << type.type;
+    os << type.text;
     if(type.aka) {
         os << " // aka: " << *type.aka;
     }
@@ -769,10 +427,9 @@ auto type_as_definition(const PrintedType& type) -> std::string {
 
 auto this_expr_hover(const clang::CXXThisExpr* expr,
                      clang::ASTContext& context,
-                     const clang::PrintingPolicy& policy,
-                     const HoverOptions& options) -> std::optional<HoverInfo> {
+                     const display::Options& options) -> std::optional<HoverInfo> {
     clang::QualType origin_this_type = expr->getType()->getPointeeType();
-    clang::QualType class_type = ast::declared_type(origin_this_type->getAsTagDecl());
+    clang::QualType class_type = types::declared_type(origin_this_type->getAsTagDecl());
 
     /// For partial specialization class, origin `this` pointee type will be
     /// parsed as `InjectedClassNameType`, which will output template arguments
@@ -783,7 +440,7 @@ auto this_expr_hover(const clang::CXXThisExpr* expr,
 
     HoverInfo info;
     info.name = "this";
-    info.definition = type_as_definition(print_type(pretty_this_type, context, policy, options));
+    info.definition = type_as_definition(display::type(context, pretty_this_type, options));
     return info;
 }
 
@@ -791,8 +448,7 @@ auto this_expr_hover(const clang::CXXThisExpr* expr,
 auto deduced_type_hover(clang::QualType type,
                         const clang::syntax::Token& token,
                         clang::ASTContext& context,
-                        const clang::PrintingPolicy& policy,
-                        const HoverOptions& options) -> HoverInfo {
+                        const display::Options& options) -> HoverInfo {
     HoverInfo info;
     /// FIXME: distinguish decltype(auto) vs decltype(expr).
     info.name = clang::tok::getTokenName(token.kind());
@@ -801,24 +457,26 @@ auto deduced_type_hover(clang::QualType type,
     if(type->isUndeducedAutoType()) {
         info.definition = "/* not deduced */";
     } else {
-        info.definition = type_as_definition(print_type(type, context, policy, options));
+        info.definition = type_as_definition(display::type(context, type, options));
 
         if(const auto* decl = type->getAsTagDecl()) {
             const auto* comment_decl = decl_for_comment(decl);
-            info.documentation = ast::decl_comment(context, *comment_decl);
+            info.documentation = display::comment(comment_decl);
         }
     }
 
     return info;
 }
 
-auto string_literal_hover(const clang::StringLiteral* literal, const clang::PrintingPolicy& policy)
-    -> HoverInfo {
+auto string_literal_hover(const clang::StringLiteral* literal,
+                          clang::ASTContext& context,
+                          const display::Options& options) -> HoverInfo {
     HoverInfo info;
     info.name = "string-literal";
     info.size = (literal->getLength() + 1) * literal->getCharByteWidth() * 8;
+    /// Only the printed type: the aka form is never useful for a literal.
     info.type.emplace();
-    info.type->type = literal->getType().getAsString(policy);
+    info.type->text = display::type(context, literal->getType(), options).text;
     return info;
 }
 
@@ -855,8 +513,7 @@ auto pass_mode(clang::QualType param_type) -> PassMode {
 /// info.callee_arg_info with information about that argument.
 void maybe_add_callee_arg_info(const SelectionTree::Node* node,
                                HoverInfo& info,
-                               const clang::PrintingPolicy& policy,
-                               const HoverOptions& options) {
+                               const display::Options& options) {
     const auto& outer = node->outer_implicit();
     if(!outer.parent) {
         return;
@@ -888,7 +545,7 @@ void maybe_add_callee_arg_info(const SelectionTree::Node* node,
 
     PassType pass_type;
 
-    auto parameters = ast::resolve_forwarding_params(callee);
+    auto parameters = decls::resolve_forwarding_params(callee);
 
     /// Find the argument index for the node.
     for(unsigned i = 0; i < args.size() && i < parameters.size(); ++i) {
@@ -898,7 +555,7 @@ void maybe_add_callee_arg_info(const SelectionTree::Node* node,
 
         /// Extract matching argument from function declaration.
         if(const clang::ParmVarDecl* param = parameters[i]) {
-            info.callee_arg_info.emplace(to_hover_param(param, policy, options));
+            info.callee_arg_info.emplace(display::param(param, options));
             if(node == &outer) {
                 pass_type.pass_by = pass_mode(param->getType());
             }
@@ -980,18 +637,17 @@ void maybe_add_callee_arg_info(const SelectionTree::Node* node,
 auto expr_hover(const SelectionTree::Node* node,
                 const clang::Expr* expr,
                 clang::ASTContext& context,
-                const clang::PrintingPolicy& policy,
-                const HoverOptions& options) -> std::optional<HoverInfo> {
+                const display::Options& options) -> std::optional<HoverInfo> {
     std::optional<HoverInfo> info;
 
     if(const auto* literal = llvm::dyn_cast<clang::StringLiteral>(expr)) {
         /// Print the type and the size for string literals.
-        info = string_literal_hover(literal, policy);
+        info = string_literal_hover(literal, context, options);
     } else if(is_literal(expr)) {
         /// There's not much value in hovering over "42" and getting a hover
         /// card saying "42 is an int", similar for most other literals.
         /// However, if we have callee_arg_info, it's still useful to show it.
-        maybe_add_callee_arg_info(node, info.emplace(), policy, options);
+        maybe_add_callee_arg_info(node, info.emplace(), options);
         if(info->callee_arg_info) {
             /// FIXME: Might want to show the expression's value here instead?
             /// E.g. if the literal is in hex it might be useful to show the
@@ -1004,24 +660,24 @@ auto expr_hover(const SelectionTree::Node* node,
 
     /// For `this` expr we currently generate hover with pointee type.
     if(const auto* this_expr = llvm::dyn_cast<clang::CXXThisExpr>(expr)) {
-        info = this_expr_hover(this_expr, context, policy, options);
+        info = this_expr_hover(this_expr, context, options);
     }
 
     if(const auto* predefined = llvm::dyn_cast<clang::PredefinedExpr>(expr)) {
-        info = predefined_expr_hover(*predefined, context, policy, options);
+        info = predefined_expr_hover(*predefined, context, options);
     }
 
     /// For expressions we currently print the type and the value, iff it is
     /// evaluatable.
-    if(auto value = print_expr_value(expr, context)) {
+    if(auto value = display::expr_value(context, expr)) {
         info.emplace();
-        info->type = print_type(expr->getType(), context, policy, options);
+        info->type = display::type(context, expr->getType(), options);
         info->value = *value;
         info->name = name_for_expr(expr).str();
     }
 
     if(info) {
-        maybe_add_callee_arg_info(node, *info, policy, options);
+        maybe_add_callee_arg_info(node, *info, options);
     }
 
     return info;
@@ -1498,7 +1154,7 @@ markup::Document HoverInfo::present() const {
         }
 
         if(call_pass_type->converted && callee_arg_info->type) {
-            os << " (converted to " << callee_arg_info->type->type << ")";
+            os << " (converted to " << callee_arg_info->type->text << ")";
         }
         output.add_paragraph().append_text(buffer);
     }
@@ -1536,34 +1192,18 @@ markup::Document HoverInfo::present() const {
     return output;
 }
 
-llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const HoverInfo::PrintedType& type) {
-    os << type.type;
-    if(type.aka) {
-        os << " (aka " << *type.aka << ")";
-    }
-    return os;
-}
-
-llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const HoverInfo::Param& param) {
-    if(param.type) {
-        os << param.type->type;
-    }
-    if(param.name) {
-        os << " " << *param.name;
-    }
-    if(param.default_value) {
-        os << " = " << *param.default_value;
-    }
-    if(param.type && param.type->aka) {
-        os << " (aka " << *param.type->aka << ")";
-    }
-    return os;
-}
-
 auto hover_info(CompilationUnitRef unit, std::uint32_t offset, const HoverOptions& options)
     -> std::optional<HoverInfo> {
     auto& context = unit.context();
-    auto policy = hover_printing_policy(context.getPrintingPolicy());
+    display::Options display_options = {
+        .terse = true,
+        .polish_for_declaration = true,
+        .constants_as_written = true,
+        .suppress_ctor_template_args = true,
+        .resolve_decltype = true,
+        .tag_keyword_prefix = true,
+        .show_aka = options.show_aka,
+    };
 
     auto location = unit.create_location(unit.interested_file(), offset);
     auto tokens = unit.spelled_tokens_touch(location);
@@ -1592,8 +1232,8 @@ auto hover_info(CompilationUnitRef unit, std::uint32_t offset, const HoverOption
             /// Prefer the identifier token as a fallback highlighting range.
             highlight_range = token_range(token);
         } else if(token.kind() == clang::tok::kw_auto || token.kind() == clang::tok::kw_decltype) {
-            if(auto deduced = ast::deduced_type(context, token.location())) {
-                info = deduced_type_hover(*deduced, token, context, policy, options);
+            if(auto deduced = types::deduced_type(context, token.location())) {
+                info = deduced_type_hover(*deduced, token, context, display_options);
                 highlight_range = token_range(token);
                 break;
             }
@@ -1611,9 +1251,9 @@ auto hover_info(CompilationUnitRef unit, std::uint32_t offset, const HoverOption
         /// our selection tree should be biased right.
         auto tree = SelectionTree::create_right(unit, LocalSourceRange(offset, offset));
         if(const SelectionTree::Node* node = tree.common_ancestor()) {
-            auto decls = decls_at(unit, tokens);
-            if(const auto* decl = pick_decl_to_use(decls)) {
-                info = decl_hover(decl, policy, unit.token_buffer(), options);
+            auto targets = decls_at(unit, tokens);
+            if(const auto* decl = pick_decl_to_use(targets)) {
+                info = decl_hover(decl, display_options, unit.token_buffer());
 
                 /// Layout info only shown when hovering on the field/class
                 /// itself.
@@ -1626,9 +1266,9 @@ auto hover_info(CompilationUnitRef unit, std::uint32_t offset, const HoverOption
                     info->value = print_expr_value(node, context).printed_value;
                 }
 
-                maybe_add_callee_arg_info(node, *info, policy, options);
+                maybe_add_callee_arg_info(node, *info, display_options);
             } else if(const auto* expr = node->get<clang::Expr>()) {
-                info = expr_hover(node, expr, context, policy, options);
+                info = expr_hover(node, expr, context, display_options);
             } else if(const auto* attr = node->get<clang::Attr>()) {
                 info = attr_hover(attr, context);
             }

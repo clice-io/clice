@@ -1,6 +1,6 @@
 #include "compile/implement.h"
 #include "index/usr.h"
-#include "semantic/ast_utility.h"
+#include "semantic/display.h"
 #include "support/filesystem.h"
 
 #include "kota/ipc/lsp/text.h"
@@ -372,7 +372,7 @@ index::SymbolID CompilationUnitRef::getSymbolID(const clang::NamedDecl* decl) {
         hash = llvm::xxh3_64bits(usr);
         self->symbol_hash_cache.try_emplace(decl, hash);
     }
-    return index::SymbolID{hash, ast::name_of(decl)};
+    return index::SymbolID{hash, display::name_of(decl, {.qualified = false})};
 }
 
 index::SymbolID CompilationUnitRef::getSymbolID(const clang::MacroInfo* macro) {
@@ -398,7 +398,7 @@ llvm::DenseMap<clang::FileID, Directive>& CompilationUnitRef::directives() {
     return self->directives;
 }
 
-TemplateResolver& CompilationUnitRef::resolver() {
+types::TemplateResolver& CompilationUnitRef::resolver() {
     assert(self->resolver && "Template resolver is not available");
     return *self->resolver;
 }

@@ -3,7 +3,7 @@
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/Type.h"
 
-namespace clice {
+namespace clice::types {
 
 /// This class is used to resolve dependent names in the unit.
 /// For dependent names, we cannot know the any information about the name until
@@ -78,4 +78,4 @@ private:
     llvm::DenseMap<const void*, clang::QualType> resolved;
 };
 
-}  // namespace clice
+}  // namespace clice::types

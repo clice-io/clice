@@ -3,7 +3,7 @@
 #include "command/command.h"
 #include "compile/diagnostic.h"
 #include "compile/implement.h"
-#include "semantic/ast_utility.h"
+#include "semantic/decls.h"
 #include "support/logging.h"
 
 #include "llvm/Support/Error.h"
@@ -182,7 +182,7 @@ public:
         }
 
         if(const clang::NamedDecl* named_decl = dyn_cast<clang::NamedDecl>(decl)) {
-            if(ast::is_implicit_template_instantiation(named_decl)) {
+            if(decls::is_implicit_instantiation(named_decl)) {
                 return;
             }
         }

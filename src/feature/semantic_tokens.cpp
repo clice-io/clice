@@ -4,7 +4,7 @@
 
 #include "compile/compilation_unit.h"
 #include "feature/feature.h"
-#include "semantic/ast_utility.h"
+#include "semantic/decls.h"
 #include "semantic/semantics.h"
 #include "semantic/symbol_kind.h"
 #include "syntax/lexer.h"
@@ -206,7 +206,7 @@ Classified classify_decl(const clang::NamedDecl* decl, RelationKind relation) {
         modifiers |= mask(SymbolModifiers::Declaration);
     }
 
-    if(ast::is_templated(decl)) {
+    if(decls::is_templated(decl)) {
         modifiers |= mask(SymbolModifiers::Templated);
     }
 

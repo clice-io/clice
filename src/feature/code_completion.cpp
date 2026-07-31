@@ -9,7 +9,7 @@
 #include <vector>
 
 #include "feature/feature.h"
-#include "semantic/ast_utility.h"
+#include "semantic/display.h"
 #include "support/fuzzy_matcher.h"
 
 #include "llvm/ADT/SmallString.h"
@@ -405,7 +405,7 @@ public:
                                   llvm::dyn_cast<clang::CXXDeductionGuideDecl>(declaration)) {
                         label = guide->getDeducedTemplate()->getName().str();
                     } else {
-                        label = ast::name_of(declaration);
+                        label = display::name_of(declaration, {.qualified = false});
                     }
 
                     llvm::SmallString<256> qualified_name;

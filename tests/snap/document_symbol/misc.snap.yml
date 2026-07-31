@@ -1,0 +1,33 @@
+---
+created_at: 2026-07-30
+input_file: misc.cpp
+---
+- { name: "(anonymous namespace)", kind: Namespace, range: "4:0-8:1", selection_range: "4:10-4:11" }
+-   { name: "hidden_counter", kind: Variable, range: "6:0-6:22", selection_range: "6:4-6:18", detail: "int" }
+- { name: "misc", kind: Namespace, range: "10:0-51:1", selection_range: "10:10-10:14" }
+-   { name: "v1", kind: Namespace, range: "12:0-16:1", selection_range: "12:17-12:19" }
+-     { name: "versioned", kind: Function, range: "14:0-14:15", selection_range: "14:4-14:13", detail: "int ()" }
+-   { name: "Outer", kind: Struct, range: "18:0-27:1", selection_range: "18:7-18:12", detail: "struct" }
+-     { name: "(anonymous struct)", kind: Struct, range: "19:4-21:5", selection_range: "19:4-19:10", detail: "struct" }
+-       { name: "anonymous_member", kind: Field, range: "20:8-20:28", selection_range: "20:12-20:28", detail: "int" }
+-     { name: "(anonymous union)", kind: Class, range: "23:4-26:5", selection_range: "23:4-23:9", detail: "union" }
+-       { name: "as_int", kind: Field, range: "24:8-24:18", selection_range: "24:12-24:18", detail: "int" }
+-       { name: "as_float", kind: Field, range: "25:8-25:22", selection_range: "25:14-25:22", detail: "float" }
+-   { name: "Value", kind: Class, range: "29:0-32:1", selection_range: "29:6-29:11", detail: "union" }
+-     { name: "i", kind: Field, range: "30:4-30:9", selection_range: "30:8-30:9", detail: "int" }
+-     { name: "f", kind: Field, range: "31:4-31:11", selection_range: "31:10-31:11", detail: "float" }
+-   { name: "Flags", kind: Enum, range: "34:0-34:27", selection_range: "34:5-34:10", detail: "enum" }
+-     { name: "FlagA", kind: EnumMember, range: "34:13-34:18", selection_range: "34:13-34:18", detail: "Flags" }
+-     { name: "FlagB", kind: EnumMember, range: "34:20-34:25", selection_range: "34:20-34:25", detail: "Flags" }
+-   { name: "Mode", kind: Enum, range: "36:0-36:46", selection_range: "36:11-36:15", detail: "enum" }
+-     { name: "Fast", kind: EnumMember, range: "36:34-36:38", selection_range: "36:34-36:38", detail: "Mode" }
+-     { name: "Safe", kind: EnumMember, range: "36:40-36:44", selection_range: "36:40-36:44", detail: "Mode" }
+-   { name: "Pair", kind: Struct, range: "38:0-41:1", selection_range: "38:7-38:11", detail: "struct" }
+-     { name: "first", kind: Field, range: "39:4-39:13", selection_range: "39:8-39:13", detail: "int" }
+-     { name: "second", kind: Field, range: "40:4-40:14", selection_range: "40:8-40:14", detail: "int" }
+-   { name: "make_pair", kind: Function, range: "43:0-43:16", selection_range: "43:5-43:14", detail: "Pair ()" }
+-   { name: "bound_first", kind: Variable, range: "45:6-45:17", selection_range: "45:6-45:17", detail: "int" }
+-   { name: "bound_first", kind: Variable, range: "45:6-45:17", selection_range: "45:6-45:17", detail: "int" }
+-   { name: "bound_second", kind: Variable, range: "45:19-45:31", selection_range: "45:19-45:31", detail: "int" }
+-   { name: "bound_second", kind: Variable, range: "45:19-45:31", selection_range: "45:19-45:31", detail: "int" }
+-   { name: "lambda", kind: Variable, range: "47:0-49:1", selection_range: "47:5-47:11", detail: "(lambda)" }

@@ -1,0 +1,18 @@
+---
+created_at: 2026-07-30
+input_file: members.cpp
+---
+- { name: "members", kind: Namespace, range: "4:0-28:1", selection_range: "4:10-4:17" }
+-   { name: "Widget", kind: Struct, range: "6:0-20:1", selection_range: "6:7-6:13", detail: "struct" }
+-     { name: "Widget", kind: Method, range: "7:4-7:12", selection_range: "7:4-7:10", detail: "()" }
+-     { name: "Widget", kind: Method, range: "8:4-8:29", selection_range: "8:13-8:19", detail: "(int)" }
+-     { name: "~Widget", kind: Method, range: "9:4-9:13", selection_range: "9:4-9:5" }
+-     { name: "operator=", kind: Operator, range: "11:4-11:42", selection_range: "11:12-11:20", detail: "Widget &(const Widget &)" }
+-     { name: "operator==", kind: Operator, range: "12:4-12:46", selection_range: "12:9-12:17", detail: "bool (const Widget &) const" }
+-     { name: "operator bool", kind: Method, range: "13:4-13:25", selection_range: "13:4-13:12", detail: "bool () const" }
+-     { name: "instances", kind: Method, range: "15:4-15:26", selection_range: "15:15-15:24", detail: "int ()" }
+-     { name: "size", kind: Field, range: "17:4-17:12", selection_range: "17:8-17:12", detail: "int" }
+-     { name: "bits", kind: Field, range: "18:4-18:21", selection_range: "18:13-18:17", detail: "unsigned int" }
+-     { name: "name", kind: Field, range: "19:4-19:31", selection_range: "19:16-19:20", detail: "const char *" }
+-   { name: "Widget::Widget", kind: Method, range: "22:0-22:49", selection_range: "22:8-22:14", detail: "(int)" }
+-   { name: "Widget::instances", kind: Method, range: "24:0-26:1", selection_range: "24:12-24:21", detail: "int ()" }

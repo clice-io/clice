@@ -27,11 +27,11 @@
 /// so it can never re-enter heuristic lookup. Violating this causes
 /// typedef ↔ lookup infinite cycles.
 ///
-/// Everything is pure AST computation (TypeUnifier + ASTContext node
+/// Everything is pure AST computation (Unifier + ASTContext node
 /// construction); Sema and TreeTransform are deliberately not used, so
 /// resolution cannot emit diagnostics or mutate the unit's semantic state.
 
-namespace clice {
+namespace clice::types {
 
 namespace {
 
@@ -2358,4 +2358,4 @@ llvm::SmallVector<clang::NamedDecl*, 4> TemplateResolver::lookup(const clang::Ca
     return candidates;
 }
 
-}  // namespace clice
+}  // namespace clice::types

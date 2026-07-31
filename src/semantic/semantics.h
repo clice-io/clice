@@ -29,7 +29,12 @@ class NamedDecl;
 namespace clice {
 
 class CompilationUnitRef;
+
+namespace types {
+
 class TemplateResolver;
+
+}
 
 /// The single currency for "what a token belongs to": the AST node kinds our
 /// traversal records, plus preprocessor entities, flattened into one tagged
@@ -203,8 +208,8 @@ struct NameOccurrence {
 /// declarations) resolve through the template resolver into WeakReference
 /// occurrences; without a resolver they produce nothing. Nodes from
 /// implicit instantiations never produce occurrences.
-llvm::SmallVector<NameOccurrence, 2> resolve_occurrences(const SemanticNode& node,
-                                                         TemplateResolver* resolver = nullptr);
+llvm::SmallVector<NameOccurrence, 2>
+    resolve_occurrences(const SemanticNode& node, types::TemplateResolver* resolver = nullptr);
 
 /// The semantic map of the interested file, built once after a successful
 /// parse and serving every consumer that used to run its own traversal:
@@ -321,8 +326,9 @@ private:
 /// resolve_occurrences with tree context: a dependent name that is the
 /// callee of a call (found through the node's parent chain) has its
 /// candidate set filtered by the call's arity.
-llvm::SmallVector<NameOccurrence, 2> resolve_occurrences(const Semantics& semantics,
-                                                         std::uint32_t index,
-                                                         TemplateResolver* resolver = nullptr);
+llvm::SmallVector<NameOccurrence, 2>
+    resolve_occurrences(const Semantics& semantics,
+                        std::uint32_t index,
+                        types::TemplateResolver* resolver = nullptr);
 
 }  // namespace clice

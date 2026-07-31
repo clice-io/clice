@@ -5,8 +5,10 @@
 
 #include "compile/compilation_unit.h"
 #include "index/serialization.h"
-#include "semantic/ast_utility.h"
+#include "semantic/decls.h"
+#include "semantic/display.h"
 #include "semantic/semantics.h"
+#include "semantic/types.h"
 #include "syntax/lexer.h"
 
 #include "llvm/Support/SHA256.h"
@@ -49,7 +51,7 @@ public:
     void add_occurrence(const clang::NamedDecl* decl,
                         RelationKind kind,
                         clang::SourceLocation location) {
-        decl = ast::normalize(decl);
+        decl = decls::normalize(decl);
 
         if(location.isMacroID()) {
             auto spelling = unit.spelling_location(location);
@@ -75,7 +77,7 @@ public:
         auto [it, success] = result.symbols.try_emplace(symbol_id.hash);
         if(success) {
             auto& symbol = it->second;
-            symbol.name = ast::display_name_of(decl);
+            symbol.name = display::name_of(decl);
             symbol.kind = SymbolKind::from(decl);
             symbol.scope = classify_scope(decl);
         }
@@ -157,7 +159,7 @@ public:
             }
         }
 
-        index->relations[unit.getSymbolID(ast::normalize(decl)).hash].emplace_back(relation);
+        index->relations[unit.getSymbolID(decls::normalize(decl)).hash].emplace_back(relation);
     }
 
     /// A symbol-to-symbol row (type-of, inheritance, overrides, ctor/dtor
@@ -176,9 +178,9 @@ public:
 
         Relation relation{
             .kind = kind,
-            .target_symbol = unit.getSymbolID(ast::normalize(target)).hash,
+            .target_symbol = unit.getSymbolID(decls::normalize(target)).hash,
         };
-        index->relations[unit.getSymbolID(ast::normalize(decl)).hash].emplace_back(relation);
+        index->relations[unit.getSymbolID(decls::normalize(decl)).hash].emplace_back(relation);
     }
 
     /// A call edge, landing at the call expression's location.
@@ -195,9 +197,9 @@ public:
         Relation relation{
             .kind = kind,
             .range = relation_range,
-            .target_symbol = unit.getSymbolID(ast::normalize(target)).hash,
+            .target_symbol = unit.getSymbolID(decls::normalize(target)).hash,
         };
-        index->relations[unit.getSymbolID(ast::normalize(decl)).hash].emplace_back(relation);
+        index->relations[unit.getSymbolID(decls::normalize(decl)).hash].emplace_back(relation);
     }
 
     /// Module names are indexed like macro names: an occurrence plus a
@@ -402,7 +404,7 @@ public:
             }
 
             auto* VD = llvm::cast<clang::ValueDecl>(D);
-            if(auto target = ast::decl_of(VD->getType())) {
+            if(auto target = types::decl_of(VD->getType())) {
                 add_pair_relation(VD, RelationKind::TypeDefinition, target, VD->getLocation());
             }
             return;
@@ -417,7 +419,7 @@ public:
         }
 
         if(auto* TND = llvm::dyn_cast<clang::TypedefNameDecl>(D)) {
-            if(auto target = ast::decl_of(TND->getUnderlyingType())) {
+            if(auto target = types::decl_of(TND->getUnderlyingType())) {
                 add_pair_relation(TND, RelationKind::TypeDefinition, target, TND->getLocation());
             }
             return;
@@ -444,7 +446,7 @@ public:
                 if(auto* def = CRD->getDefinition()) {
                     for(auto& base: CRD->bases()) {
                         /// FIXME: Handle dependent base class.
-                        if(auto target = ast::decl_of(base.getType())) {
+                        if(auto target = types::decl_of(base.getType())) {
                             add_pair_relation(def,
                                               RelationKind::Base,
                                               target,

@@ -9,8 +9,10 @@
 #include <vector>
 
 #include "feature/feature.h"
-#include "semantic/ast_utility.h"
+#include "semantic/decls.h"
+#include "semantic/display.h"
 #include "semantic/filtered_ast_visitor.h"
+#include "semantic/types.h"
 
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Casting.h"
@@ -27,7 +29,7 @@ using llvm::dyn_cast_or_null;
 enum class HintSide { Left, Right };
 
 bool is_expanded_from_param_pack(const clang::ParmVarDecl* param) {
-    return ast::underlying_pack_type(param) != nullptr;
+    return decls::underlying_pack_type(param) != nullptr;
 }
 
 // for a ParmVarDecl from a function declaration, returns the corresponding
@@ -44,29 +46,13 @@ const clang::ParmVarDecl* param_definition(const clang::ParmVarDecl* param) {
     return nullptr;
 }
 
-// If "E" spells a single unqualified identifier, return that name.
-// Otherwise, return an empty string.
-llvm::StringRef spelled_identifier_of(const clang::Expr* expr) {
-    expr = expr->IgnoreUnlessSpelledInSource();
-
-    if(auto* dre = dyn_cast<clang::DeclRefExpr>(expr))
-        if(!dre->getQualifier())
-            return ast::identifier_of(*dre->getDecl());
-
-    if(auto* me = dyn_cast<clang::MemberExpr>(expr))
-        if(!me->getQualifier() && me->isImplicitAccess())
-            return ast::identifier_of(*me->getMemberDecl());
-
-    return {};
-}
-
 bool is_setter(const clang::FunctionDecl* callee,
                const llvm::SmallVector<llvm::StringRef, 8>& names) {
     if(names.size() != 1) {
         return false;
     }
 
-    llvm::StringRef name = ast::identifier_of(*callee);
+    llvm::StringRef name = display::identifier_of(callee);
     if(!name.starts_with_insensitive("set")) {
         return false;
     }
@@ -111,15 +97,7 @@ public:
             CompilationUnitRef unit,
             LocalSourceRange restrict_range,
             const InlayHintsOptions& options) :
-        result(result), unit(unit), restrict_range(restrict_range), options(options),
-        policy(unit.context().getPrintingPolicy()) {
-        // The sugared type is more useful in some cases, and the canonical
-        // type in other cases.
-        policy.SuppressScope = true;           // keep type names short
-        policy.AnonymousTagLocations = false;  // do not print lambda locations
-        // Not setting PrintCanonicalTypes for "auto" allows
-        // SuppressDefaultTemplateArgs (set by default) to have an effect.
-    }
+        result(result), unit(unit), restrict_range(restrict_range), options(options) {}
 
 private:
     // Get the range of the main file that *exactly* corresponds to R.
@@ -233,7 +211,7 @@ private:
 
         // If the argument expression is a single name and it matches the
         // parameter name exactly, omit the name hint.
-        if(name == spelled_identifier_of(expr))
+        if(name == display::identifier_of(expr))
             return false;
 
         // Exclude argument expressions preceded by a /*paramName*/.
@@ -286,14 +264,15 @@ private:
                 // unlikely to be useful.
                 param_names.emplace_back();
             } else {
-                auto simple_name = ast::identifier_of(*param);
+                llvm::StringRef simple_name = display::identifier_of(param);
                 // If the parameter is unnamed in the declaration:
                 // attempt to get its name from the definition
                 if(simple_name.empty()) {
                     if(const auto* def = param_definition(param)) {
-                        simple_name = ast::identifier_of(*def);
+                        simple_name = display::identifier_of(def);
                     }
                 }
+                // Still unnamed: an empty entry, the hint is dropped later.
                 param_names.emplace_back(simple_name);
             }
         }
@@ -343,7 +322,7 @@ public:
 
         if(callee.decl) {
             params = remove_self_params(callee.decl->parameters());
-            forwarded_params_storage = ast::resolve_forwarding_params(callee.decl);
+            forwarded_params_storage = decls::resolve_forwarding_params(callee.decl);
             forwarded_params = remove_self_params(forwarded_params_storage);
         } else {
             params = remove_self_params(callee.loc.getParams());
@@ -497,8 +476,8 @@ public:
         if(!options.deduced_types || type.isNull())
             return;
 
-        auto desugared = ast::maybe_desugar(unit.context(), type);
-        std::string type_name = desugared.getAsString(policy);
+        auto desugared = display::maybe_desugar(unit.context(), type);
+        std::string type_name = display::type(unit.context(), desugared, display_options).text;
 
         auto should_print = [&](llvm::StringRef TypeName) {
             return options.type_name_limit == 0 || TypeName.size() < options.type_name_limit;
@@ -507,7 +486,7 @@ public:
         if(type != desugared && !should_print(type_name)) {
             // If the desugared type is too long to display, fallback to the sugared
             // type.
-            type_name = type.getAsString(policy);
+            type_name = display::type(unit.context(), type, display_options).text;
         }
 
         if(should_print(type_name)) {
@@ -542,7 +521,13 @@ private:
     CompilationUnitRef unit;
     LocalSourceRange restrict_range;
     const InlayHintsOptions& options;
-    clang::PrintingPolicy policy;
+
+    // The sugared type is more useful in some cases, and the canonical
+    // type in other cases. Suppress scopes to keep type names short;
+    // anonymous tag locations stay off so lambda locations don't print.
+    // Not setting PrintCanonicalTypes for "auto" allows
+    // SuppressDefaultTemplateArgs (set by default) to have an effect.
+    display::Options display_options = {.suppress_scope = true};
 };
 
 class Visitor : public FilteredASTVisitor<Visitor> {
@@ -589,9 +574,10 @@ public:
         if(options.block_end) {
             // For namespace, the range actually starts at the namespace keyword. But
             // it should be fine since it's usually very short.
+            // Anonymous namespaces hint as plain "// namespace".
             builder.add_block_end_hint(decl->getSourceRange(),
                                        "namespace",
-                                       ast::identifier_of(*decl),
+                                       display::identifier_of(decl),
                                        "");
         }
         return true;
@@ -607,9 +593,10 @@ public:
                 }
             };
 
+            // Anonymous tags hint with the bare kind, e.g. "// struct".
             builder.add_block_end_hint(decl->getBraceRange(),
                                        prefix,
-                                       ast::identifier_of(*decl),
+                                       display::identifier_of(decl),
                                        ";");
         }
         return true;
@@ -628,10 +615,7 @@ public:
             // We use `printName` here to properly print name of ctor/dtor/operator
             // overload.
             if(const clang::Stmt* body = decl->getBody()) {
-                builder.add_block_end_hint(body->getSourceRange(),
-                                           "",
-                                           ast::display_name_of(decl),
-                                           "");
+                builder.add_block_end_hint(body->getSourceRange(), "", display::name_of(decl), "");
             }
         }
 
@@ -670,10 +654,10 @@ public:
         // Handle templates like `int foo(auto x)` with exactly one instantiation.
         if(auto* param = llvm::dyn_cast<clang::ParmVarDecl>(var)) {
             if(var->getIdentifier() && type->isDependentType()) {
-                auto unwrapped = ast::unwrap_type(var->getTypeSourceInfo()->getTypeLoc());
+                auto unwrapped = types::unwrap(var->getTypeSourceInfo()->getTypeLoc());
                 if(auto type = unwrapped.getAs<clang::TemplateTypeParmTypeLoc>()) {
                     if(auto decl = type.getDecl(); decl && decl->isImplicit()) {
-                        if(auto* IPVD = ast::get_only_instantiation(param)) {
+                        if(auto* IPVD = decls::only_instantiation(param)) {
                             builder.add_type_hint(var->getLocation(),
                                                   IPVD->getType(),
                                                   /*Prefix=*/": ");
@@ -742,7 +726,7 @@ public:
             callee.decl = FD;
         } else if(const auto* FTD = llvm::dyn_cast<clang::FunctionTemplateDecl>(callee_decl)) {
             callee.decl = FTD->getTemplatedDecl();
-        } else if(clang::FunctionProtoTypeLoc loc = ast::proto_type_loc(expr->getCallee())) {
+        } else if(clang::FunctionProtoTypeLoc loc = decls::proto_type_loc(expr->getCallee())) {
             callee.loc = loc;
         } else {
             return true;
@@ -777,9 +761,9 @@ public:
             // Common case: for (int I = 0; I < N; I++). Use "I" as the name.
             if(auto* DS = llvm::dyn_cast_or_null<clang::DeclStmt>(S->getInit());
                DS && DS->isSingleDecl()) {
-                name = ast::identifier_of(llvm::cast<clang::NamedDecl>(*DS->getSingleDecl()));
-            } else {
-                name = ast::summarize_expr(S->getCond());
+                name = display::identifier_of(llvm::cast<clang::NamedDecl>(DS->getSingleDecl()));
+            } else if(const auto* cond = S->getCond()) {
+                name = display::summarize(cond);
             }
             builder.mark_block_end(S->getBody(), "for", name);
         }
@@ -788,21 +772,24 @@ public:
 
     bool VisitCXXForRangeStmt(clang::CXXForRangeStmt* S) {
         if(options.block_end) {
-            builder.mark_block_end(S->getBody(), "for", ast::identifier_of(*S->getLoopVariable()));
+            // Decomposition loop variables have no identifier: plain "// for".
+            builder.mark_block_end(S->getBody(),
+                                   "for",
+                                   display::identifier_of(S->getLoopVariable()));
         }
         return true;
     }
 
     bool VisitWhileStmt(clang::WhileStmt* S) {
         if(options.block_end) {
-            builder.mark_block_end(S->getBody(), "while", ast::summarize_expr(S->getCond()));
+            builder.mark_block_end(S->getBody(), "while", display::summarize(S->getCond()));
         }
         return true;
     }
 
     bool VisitSwitchStmt(clang::SwitchStmt* S) {
         if(options.block_end) {
-            builder.mark_block_end(S->getBody(), "switch", ast::summarize_expr(S->getCond()));
+            builder.mark_block_end(S->getBody(), "switch", display::summarize(S->getCond()));
         }
         return true;
     }
@@ -816,10 +803,14 @@ public:
             // Don't use markBlockEnd: the relevant range is [then.begin, else.end].
             if(const auto* if_end = llvm::dyn_cast<clang::CompoundStmt>(
                    S->getElse() ? S->getElse() : S->getThen())) {
+                std::string name;
+                // `if consteval` has no condition to summarize.
+                if(const auto* cond = S->getCond(); cond && !else_ifs.contains(S)) {
+                    name = display::summarize(cond);
+                }
                 builder.add_block_end_hint({S->getThen()->getBeginLoc(), if_end->getRBracLoc()},
                                            "if",
-                                           else_ifs.contains(S) ? ""
-                                                                : ast::summarize_expr(S->getCond()),
+                                           name,
                                            "");
             }
         }

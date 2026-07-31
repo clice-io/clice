@@ -3,7 +3,7 @@
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/DeclTemplate.h"
 
-namespace clice {
+namespace clice::types {
 
 /// Sema-free structural unification of template argument lists, replacing
 /// `Sema::DeduceTemplateArguments` and `Sema::getMoreSpecializedPartialSpecialization`
@@ -18,11 +18,11 @@ namespace clice {
 ///   - Skips conformance corners irrelevant to lookup (reference collapsing
 ///     adjustments, array bound promotion, constraint checks). Failure means
 ///     "this pattern doesn't match", which degrades to an unresolved name.
-class TypeUnifier {
+class Unifier {
 public:
     using TemplateArguments = llvm::ArrayRef<clang::TemplateArgument>;
 
-    explicit TypeUnifier(clang::ASTContext& context, unsigned depth, unsigned size) :
+    explicit Unifier(clang::ASTContext& context, unsigned depth, unsigned size) :
         context(context), depth(depth), bindings(size) {}
 
     /// Unify `patterns` (a partial specialization's argument pattern or a
@@ -97,4 +97,4 @@ bool more_specialized(clang::ASTContext& context,
 /// template parameter, return its declaration.
 const clang::NonTypeTemplateParmDecl* referenced_nttp(const clang::Expr* expr);
 
-}  // namespace clice
+}  // namespace clice::types

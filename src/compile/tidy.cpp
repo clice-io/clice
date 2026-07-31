@@ -1,5 +1,4 @@
 #include "compile/implement.h"
-#include "semantic/ast_utility.h"
 #include "support/logging.h"
 
 #include "llvm/ADT/StringExtras.h"
@@ -14,6 +13,18 @@
 #include "clang-tidy/ClangTidyOptions.h"
 
 namespace clice::tidy {
+
+namespace {
+
+bool is_inside_main_file(clang::SourceLocation loc, const clang::SourceManager& sm) {
+    if(!loc.isValid()) {
+        return false;
+    }
+    clang::FileID fid = sm.getFileID(sm.getExpansionLoc(loc));
+    return fid == sm.getMainFileID() || fid == sm.getPreambleFileID();
+}
+
+}  // namespace
 
 using namespace clang::tidy;
 
@@ -256,9 +267,8 @@ clang::DiagnosticsEngine::Level
             // shouldSuppressDiagnostic to avoid I/O.
             // We let suppression comments take precedence over warning-as-error
             // to match clang-tidy's behaviour.
-            bool in_main_file =
-                diag.hasSourceManager() &&
-                ast::is_inside_main_file(diag.getLocation(), diag.getSourceManager());
+            bool in_main_file = diag.hasSourceManager() &&
+                                is_inside_main_file(diag.getLocation(), diag.getSourceManager());
             llvm::SmallVector<clang::tooling::Diagnostic, 1> tidy_suppressed_errors;
             if(in_main_file && context.shouldSuppressDiagnostic(level,
                                                                 diag,

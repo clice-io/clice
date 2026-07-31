@@ -1,0 +1,5 @@
+---
+created_at: 2026-07-30
+input_file: designators.cpp
+---
+- { pos: "36:19", kind: Parameter, label: "amount:", padding_right: true }

@@ -8,6 +8,7 @@
 #include "compile/compilation.h"
 #include "compile/compilation_unit.h"
 #include "feature/document_link.h"
+#include "semantic/display.h"
 #include "semantic/symbol_kind.h"
 #include "support/anomaly.h"
 #include "support/filesystem.h"
@@ -99,48 +100,6 @@ struct HoverOptions {
 /// embedding clients can use the structured information to provide their own
 /// UI.
 struct HoverInfo {
-    /// Contains pretty-printed type and desugared type.
-    struct PrintedType {
-        PrintedType() = default;
-
-        PrintedType(llvm::StringRef type) : type(type.str()) {}
-
-        PrintedType(llvm::StringRef type, llvm::StringRef aka) : type(type.str()), aka(aka.str()) {}
-
-        /// Allow assigning string literals to std::optional<PrintedType>,
-        /// which would otherwise require two implicit user conversions.
-        PrintedType(const char* type) : PrintedType(llvm::StringRef(type)) {}
-
-        PrintedType(const char* type, const char* aka) :
-            PrintedType(llvm::StringRef(type), llvm::StringRef(aka)) {}
-
-        bool operator==(const PrintedType&) const = default;
-
-        /// Pretty-printed type.
-        std::string type;
-
-        /// Desugared type.
-        std::optional<std::string> aka;
-    };
-
-    /// Represents parameters of a function or a template.
-    /// For example:
-    /// - void foo(ParamType Name = DefaultValue)
-    /// - template <ParamType Name = DefaultType> class Foo {};
-    struct Param {
-        bool operator==(const Param&) const = default;
-
-        /// The printable parameter type, e.g. "int", or "typename" (in
-        /// template parameters).
-        std::optional<PrintedType> type;
-
-        /// std::nullopt for unnamed parameters.
-        std::optional<std::string> name;
-
-        /// std::nullopt if no default is provided.
-        std::optional<std::string> default_value;
-    };
-
     struct PassType {
         /// How the argument is passed to the callee.
         enum class PassMode : std::uint8_t {
@@ -195,16 +154,16 @@ struct HoverInfo {
     std::string access_specifier;
 
     /// Printable variable type. Set only for variables.
-    std::optional<PrintedType> type;
+    std::optional<display::Type> type;
 
     /// Set for functions and lambdas.
-    std::optional<PrintedType> return_type;
+    std::optional<display::Type> return_type;
 
     /// Set for functions and lambdas with parameters.
-    std::optional<std::vector<Param>> parameters;
+    std::optional<std::vector<display::Param>> parameters;
 
     /// Set for all templates (function, class, variable).
-    std::optional<std::vector<Param>> template_parameters;
+    std::optional<std::vector<display::Param>> template_parameters;
 
     /// Contains the evaluated value of the symbol if available.
     std::optional<std::string> value;
@@ -224,7 +183,7 @@ struct HoverInfo {
     /// Set when the symbol is inside a function call. Contains information
     /// extracted from the callee definition about the argument this is
     /// passed as.
-    std::optional<Param> callee_arg_info;
+    std::optional<display::Param> callee_arg_info;
 
     /// Set only if callee_arg_info is set.
     std::optional<PassType> call_pass_type;
@@ -232,10 +191,6 @@ struct HoverInfo {
     /// Produce a user-readable information.
     markup::Document present() const;
 };
-
-llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const HoverInfo::PrintedType& type);
-
-llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const HoverInfo::Param& param);
 
 /// Try to infer structure of a documentation comment (e.g. line breaks).
 void parse_documentation(llvm::StringRef input, markup::Document& output);

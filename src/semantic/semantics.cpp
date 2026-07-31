@@ -9,8 +9,9 @@
 #include <vector>
 
 #include "compile/compilation_unit.h"
-#include "semantic/ast_utility.h"
+#include "semantic/decls.h"
 #include "semantic/resolver.h"
+#include "semantic/types.h"
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
@@ -957,7 +958,7 @@ void occur(Occurrences& out,
 
 /// The per-decl-kind extraction below is ported verbatim from the former
 /// SemanticVisitor: the same decls, the same roles, the same name locations.
-void decl_occurrences(const clang::Decl* D, Occurrences& out, TemplateResolver* resolver) {
+void decl_occurrences(const clang::Decl* D, Occurrences& out, types::TemplateResolver* resolver) {
     /// namespace Foo = Bar
     ///            ^     ^~~~ reference
     ///            ^~~~ definition
@@ -1085,7 +1086,7 @@ void decl_occurrences(const clang::Decl* D, Occurrences& out, TemplateResolver* 
                 case clang::TSK_ExplicitInstantiationDeclaration:
                 case clang::TSK_ExplicitInstantiationDefinition: {
                     occur(out,
-                          ast::instantiated_from(CTSD),
+                          decls::instantiated_from(CTSD),
                           RelationKind::Reference,
                           CTSD->getLocation());
                     return;
@@ -1157,7 +1158,7 @@ void decl_occurrences(const clang::Decl* D, Occurrences& out, TemplateResolver* 
     }
 }
 
-void type_loc_occurrences(clang::TypeLoc TL, Occurrences& out, TemplateResolver* resolver) {
+void type_loc_occurrences(clang::TypeLoc TL, Occurrences& out, types::TemplateResolver* resolver) {
     /// struct Foo foo;
     ///         ^~~~ reference
     if(auto TTL = TL.getAs<clang::TagTypeLoc>()) {
@@ -1191,14 +1192,8 @@ void type_loc_occurrences(clang::TypeLoc TL, Occurrences& out, TemplateResolver*
     /// using typename B<T>::type; type x; — the dependent flavor keeps the
     /// unresolved-using declaration itself, resolved further when possible.
     if(auto UUTL = TL.getAs<clang::UnresolvedUsingTypeLoc>()) {
-        auto* UD = UUTL.getTypePtr()->getDecl();
-        occur(out, UD, RelationKind::WeakReference, UUTL.getNameLoc());
-        if(resolver) {
-            if(auto* UUT = llvm::dyn_cast<clang::UnresolvedUsingTypenameDecl>(UD)) {
-                for(auto* target: resolver->lookup(UUT)) {
-                    occur(out, target, RelationKind::WeakReference, UUTL.getNameLoc());
-                }
-            }
+        for(const auto* target: types::decls_of(UUTL.getType(), resolver)) {
+            occur(out, target, RelationKind::WeakReference, UUTL.getNameLoc());
         }
         return;
     }
@@ -1246,7 +1241,7 @@ void type_loc_occurrences(clang::TypeLoc TL, Occurrences& out, TemplateResolver*
             decl = TST->getAsCXXRecordDecl();
         }
         if(!decl) {
-            decl = ast::decl_of(TSTL.getType());
+            decl = types::decl_of(TSTL.getType());
         }
 
         occur(out, decl, RelationKind::Reference, TSTL.getTemplateNameLoc());
@@ -1256,10 +1251,8 @@ void type_loc_occurrences(clang::TypeLoc TL, Occurrences& out, TemplateResolver*
     /// std::vector<T>::value_type
     ///                      ^~~~ weak reference, resolved on the primary template
     if(auto DNTL = TL.getAs<clang::DependentNameTypeLoc>()) {
-        if(resolver) {
-            for(auto* target: resolver->lookup(DNTL.getTypePtr())) {
-                occur(out, target, RelationKind::WeakReference, DNTL.getNameLoc());
-            }
+        for(const auto* target: types::decls_of(DNTL.getType(), resolver)) {
+            occur(out, target, RelationKind::WeakReference, DNTL.getNameLoc());
         }
         return;
     }
@@ -1267,10 +1260,8 @@ void type_loc_occurrences(clang::TypeLoc TL, Occurrences& out, TemplateResolver*
     /// std::allocator<T>::rebind<U>
     ///                       ^~~~ weak reference
     if(auto DTSTL = TL.getAs<clang::DependentTemplateSpecializationTypeLoc>()) {
-        if(resolver) {
-            for(auto* target: resolver->lookup(DTSTL.getTypePtr())) {
-                occur(out, target, RelationKind::WeakReference, DTSTL.getTemplateNameLoc());
-            }
+        for(const auto* target: types::decls_of(DTSTL.getType(), resolver)) {
+            occur(out, target, RelationKind::WeakReference, DTSTL.getTemplateNameLoc());
         }
         return;
     }
@@ -1278,7 +1269,7 @@ void type_loc_occurrences(clang::TypeLoc TL, Occurrences& out, TemplateResolver*
 
 void nns_occurrences(clang::NestedNameSpecifierLoc NNSL,
                      Occurrences& out,
-                     TemplateResolver* resolver) {
+                     types::TemplateResolver* resolver) {
     auto* NNS = NNSL.getNestedNameSpecifier();
     switch(NNS->getKind()) {
         case clang::NestedNameSpecifier::Namespace: {
@@ -1336,7 +1327,7 @@ clang::SourceLocation keyword_after_scope(const clang::Decl* decl,
 
 void stmt_occurrences(const clang::Stmt* S,
                       Occurrences& out,
-                      TemplateResolver* resolver,
+                      types::TemplateResolver* resolver,
                       const clang::CallExpr* call = nullptr) {
     /// foo = 1
     ///  ^~~~ reference
@@ -1530,7 +1521,7 @@ void stmt_occurrences(const clang::Stmt* S,
 
 llvm::SmallVector<NameOccurrence, 2> resolve_occurrences(const Semantics& semantics,
                                                          std::uint32_t index,
-                                                         TemplateResolver* resolver) {
+                                                         types::TemplateResolver* resolver) {
     auto& entry = semantics.node(index);
 
     /// A dependent name used as a callee resolves against the call, so the
@@ -1564,7 +1555,7 @@ llvm::SmallVector<NameOccurrence, 2> resolve_occurrences(const Semantics& semant
 }
 
 llvm::SmallVector<NameOccurrence, 2> resolve_occurrences(const SemanticNode& node,
-                                                         TemplateResolver* resolver) {
+                                                         types::TemplateResolver* resolver) {
     llvm::SmallVector<NameOccurrence, 2> out;
 
     switch(node.kind()) {
