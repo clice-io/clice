@@ -6,7 +6,7 @@
 #include "feature/feature.h"
 #include "semantic/decls.h"
 #include "semantic/semantics.h"
-#include "semantic/symbol_kind.h"
+#include "semantic/symbol.h"
 #include "syntax/lexer.h"
 
 #include "llvm/ADT/DenseMap.h"

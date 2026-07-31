@@ -204,7 +204,7 @@ export function lowerFirst(name: string): string {
     return name.slice(0, 1).toLowerCase() + name.slice(1);
 }
 
-/// Twin of SymbolModifiers::Kind (src/semantic/symbol_kind.h), in bit
+/// Twin of SymbolModifiers::Kind (src/semantic/symbol.h), in bit
 /// order. Drift is caught by any shared semantic-tokens snapshot: the wire
 /// side renders through the server's live legend, this table renders the
 /// standalone side, and the two stop agreeing the moment they differ.

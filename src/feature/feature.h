@@ -9,7 +9,7 @@
 #include "compile/compilation_unit.h"
 #include "feature/document_link.h"
 #include "semantic/display.h"
-#include "semantic/symbol_kind.h"
+#include "semantic/symbol.h"
 #include "support/anomaly.h"
 #include "support/filesystem.h"
 #include "support/markup.h"

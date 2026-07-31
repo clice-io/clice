@@ -9,7 +9,7 @@
 
 #include "version.h"
 #include "command/argument_parser.h"
-#include "semantic/symbol_kind.h"
+#include "semantic/symbol.h"
 #include "server/compiler/context_resolver.h"
 #include "server/protocol/extension.h"
 #include "server/protocol/serialize.h"

@@ -7,7 +7,7 @@
 #include "feature/feature.h"
 #include "semantic/display.h"
 #include "semantic/filtered_ast_visitor.h"
-#include "semantic/symbol_kind.h"
+#include "semantic/symbol.h"
 
 #include "llvm/Support/Casting.h"
 #include "clang/AST/DeclCXX.h"

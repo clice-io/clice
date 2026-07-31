@@ -12,6 +12,7 @@
 #include "compile/diagnostic.h"
 #include "compile/directive.h"
 #include "semantic/resolver.h"
+#include "semantic/symbol.h"
 #include "syntax/token.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -21,16 +22,6 @@
 namespace clice {
 
 class Semantics;
-
-namespace index {
-
-// Temporary in-header definition during migration.
-struct SymbolID {
-    std::uint64_t hash;
-    std::string name;
-};
-
-}  // namespace index
 
 enum class CompilationKind : std::uint8_t {
     /// From preprocessing the source file. Therefore directives

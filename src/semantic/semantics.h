@@ -5,7 +5,7 @@
 #include <vector>
 
 #include "compile/directive.h"
-#include "semantic/relation_kind.h"
+#include "semantic/symbol.h"
 #include "syntax/token.h"
 
 #include "llvm/ADT/ArrayRef.h"

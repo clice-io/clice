@@ -16,7 +16,7 @@
 #include "index/merged_index.h"
 #include "index/preamble_state.h"
 #include "index/project_index.h"
-#include "semantic/relation_kind.h"
+#include "semantic/symbol.h"
 #include "server/compiler/compile_graph.h"
 #include "server/state/config.h"
 #include "server/state/quarantine.h"

@@ -7,7 +7,7 @@
 #include "test/test.h"
 #include "test/tester.h"
 #include "feature/feature.h"
-#include "semantic/symbol_kind.h"
+#include "semantic/symbol.h"
 
 #include "kota/meta/enum.h"
 

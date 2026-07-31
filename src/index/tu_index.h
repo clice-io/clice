@@ -8,8 +8,7 @@
 #include <vector>
 
 #include "index/include_graph.h"
-#include "semantic/relation_kind.h"
-#include "semantic/symbol_kind.h"
+#include "semantic/symbol.h"
 #include "support/bitmap.h"
 
 #include "llvm/ADT/STLFunctionalExtras.h"

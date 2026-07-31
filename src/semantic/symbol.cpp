@@ -1,4 +1,4 @@
-#include "semantic/symbol_kind.h"
+#include "semantic/symbol.h"
 
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclTemplate.h"
