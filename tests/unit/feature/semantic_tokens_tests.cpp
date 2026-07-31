@@ -251,6 +251,43 @@ int y = x;
     EXPECT_TOKEN("mod", SymbolKind::Module);
 }
 
+TEST_CASE(ModulePartitionImport) {
+    add_files("main.cppm", R"(
+#[part.cppm]
+export module foo:part;
+export int x = 42;
+
+#[main.cppm]
+export module foo;
+export §(kw)⟦import⟧ :§(part)⟦part⟧;
+)");
+    ASSERT_TRUE(compile_with_modules());
+    tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
+    decoded = decode_utf8_tokens(unit->interested_content(), tokens);
+
+    EXPECT_TOKEN("kw", SymbolKind::Keyword);
+    EXPECT_TOKEN("part", SymbolKind::Module);
+}
+
+TEST_CASE(ModuleImplementationUnit) {
+    add_files("main.cpp", R"(
+#[mod.cppm]
+export module foo;
+export int x = 42;
+
+#[main.cpp]
+§(kw)⟦module⟧ §(mod)⟦foo⟧;
+int y = §(ref)⟦x⟧;
+)");
+    ASSERT_TRUE(compile_with_modules());
+    tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
+    decoded = decode_utf8_tokens(unit->interested_content(), tokens);
+
+    EXPECT_TOKEN("kw", SymbolKind::Keyword);
+    EXPECT_TOKEN("mod", SymbolKind::Module);
+    EXPECT_TOKEN("ref", SymbolKind::Variable);
+}
+
 TEST_CASE(ModuleReexport) {
     add_files("main.cppm", R"(
 #[mod.cppm]

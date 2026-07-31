@@ -227,8 +227,17 @@ bool Tester::compile_with_modules(llvm::StringRef standard) {
         builder.params.vfs = overlay;
         builder.params.pcms = built_pcms;
 
-        if(!builder.try_compile())
+        // The plain compile overload is syntax-only and never writes the
+        // BMI; module interfaces must go through the PCM overload or every
+        // dependent compile silently runs against an empty module file.
+        PCMInfo info;
+        auto built = clice::compile(builder.params, info);
+        if(!built.completed()) {
+            for(auto& diag: built.diagnostics()) {
+                LOG_ERROR("{}", diag.message);
+            }
             return false;
+        }
 
         built_pcms.try_emplace(mod.module_name, *pcm_path);
     }
@@ -236,7 +245,21 @@ bool Tester::compile_with_modules(llvm::StringRef standard) {
     prepare(standard);
     params.vfs = overlay;
     params.pcms = std::move(built_pcms);
-    return try_compile();
+    if(!try_compile()) {
+        return false;
+    }
+
+    // The AST builds even for broken sources, so a "completed" compile can
+    // still have dropped whole subtrees (an unresolved import, a discarded
+    // initializer). Module tests assert semantics across module boundaries;
+    // running them against such an AST proves nothing, so fail loudly.
+    for(auto& diag: unit->diagnostics()) {
+        if(diag.id.level >= DiagnosticLevel::Error) {
+            LOG_ERROR("module test compile has errors: {}", diag.message);
+            return false;
+        }
+    }
+    return true;
 }
 
 bool Tester::compile_file(llvm::StringRef path, llvm::StringRef standard) {

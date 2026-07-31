@@ -505,7 +505,20 @@ private:
                     auto* import = node.get<Import>();
                     anchor(import->location, {SymbolKind::Keyword, 0}, true);
                     for(auto location: import->name_locations) {
-                        anchor(location, {SymbolKind::Module, 0}, true);
+                        auto index = spelled_index(location);
+                        if(!index) {
+                            continue;
+                        }
+                        /// A partition import (`import :part;`) reports the
+                        /// component location at its leading colon; the
+                        /// written name is the next spelled token. The colon
+                        /// itself stays unpainted, matching the module
+                        /// declaration side.
+                        if(spelled[*index].kind() == clang::tok::colon &&
+                           *index + 1 < spelled.size()) {
+                            *index += 1;
+                        }
+                        combine(token_semantics[*index], {SymbolKind::Module, 0});
                     }
                     break;
                 }
