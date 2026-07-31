@@ -1,0 +1,7 @@
+---
+created_at: 2026-07-31
+input_file: using_overloads.cpp
+---
+- { loc: "12:11", text: "apply", kind: function }
+- { loc: "15:4", text: "apply", kind: function }
+- { loc: "16:4", text: "apply", kind: function }

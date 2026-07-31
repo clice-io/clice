@@ -1,0 +1,5 @@
+---
+created_at: 2026-07-31
+input_file: conflict_type_variable.cpp
+---
+- { loc: "12:13", text: "Thing", kind: conflict }

@@ -1,0 +1,6 @@
+---
+created_at: 2026-07-31
+input_file: pseudo_destructor.cpp
+---
+- { loc: "9:11", text: "~", kind: none }
+- { loc: "9:12", text: "T", kind: type }

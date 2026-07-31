@@ -1,0 +1,9 @@
+---
+created_at: 2026-07-31
+input_file: conversion_operators.cpp
+---
+- { loc: "8:4", text: "operator", kind: keyword }
+- { loc: "9:13", text: "operator", kind: keyword }
+- { loc: "13:8", text: "ratio", kind: parameter }
+- { loc: "14:15", text: "ratio", kind: parameter }
+- { loc: "16:18", text: "ratio", kind: parameter }

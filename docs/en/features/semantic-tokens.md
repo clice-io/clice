@@ -659,6 +659,33 @@ which clients typically display in a neutral color.
   };
   ```
 
+- [x] Same-kind overload sets — a name naming only functions is no conflict
+
+  ```cpp
+  namespace ops {
+  void apply();
+  void apply(int level);
+  }
+
+  using ops::apply;
+
+  void run() {
+      apply();
+      apply(1);
+  }
+  ```
+
+- [x] Type vs variable — a name naming both renders as `conflict`
+
+  ```cpp
+  namespace mixed {
+  struct Thing {};
+  int Thing;
+  }
+
+  using mixed::Thing;
+  ```
+
 <!-- END GENERATED ITEMS -->
 
 ## Token Correctness
@@ -678,6 +705,8 @@ Shapes clice pins deliberately, including issues clangd got wrong.
       Session();
       ~Session();
   };
+
+  Session::Session() {}
 
   Session::~Session() {}
 
@@ -710,6 +739,43 @@ Shapes clice pins deliberately, including issues clangd got wrong.
   void combine(Value a, Value b) {
       a = b;
       Value c = a + b;
+  }
+  ```
+
+- [x] Destructors of class templates — the `~` shape holds under templates
+
+  ```cpp
+  template <typename T>
+  struct Holder {
+      ~Holder();
+  };
+
+  template <typename T>
+  Holder<T>::~Holder() {}
+  ```
+
+- [x] Conversion operators — written as keywords, converting uses paint nothing extra
+
+  ```cpp
+  struct Ratio {
+      operator double() const;
+      explicit operator bool() const;
+  };
+
+  double to_double(Ratio ratio) {
+      if (ratio) {
+          return ratio;
+      }
+      return double(ratio);
+  }
+  ```
+
+- [x] Pseudo-destructor on a template parameter — nothing to resolve, nothing painted
+
+  ```cpp
+  template <typename T>
+  void reset(T* value) {
+      value->~T();
   }
   ```
 

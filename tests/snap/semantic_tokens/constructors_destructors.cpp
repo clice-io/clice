@@ -15,6 +15,8 @@ struct Session {
     §~§Session();
 };
 
+Session::§Session() {}
+
 Session::§~Session() {}
 
 void destroy(Session* session) {
