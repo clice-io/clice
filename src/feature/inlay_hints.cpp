@@ -75,6 +75,14 @@ bool is_setter(const clang::FunctionDecl* callee,
 
 // Checks if the callee is one of the builtins
 // addressof, as_const, forward, move(_if_noexcept)
+//
+// The real criterion is "so common and so obvious that a parameter hint is
+// pure noise", and neither the builtin-ID check nor the name fallback below
+// expresses it well: the ID set is whatever clang happens to fold, and the
+// single-parameter guard only shields the std::move algorithm overload.
+// FIXME: Replace both with a curated suppression table (qualified name +
+// signature shape) so the set is explicit and extensible beyond cast-like
+// single-parameter forms.
 bool is_simple_builtin(const clang::FunctionDecl* callee) {
     switch(callee->getBuiltinID()) {
         case clang::Builtin::BIaddressof:
