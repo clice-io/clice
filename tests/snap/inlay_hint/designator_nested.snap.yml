@@ -1,0 +1,8 @@
+---
+created_at: 2026-07-31
+input_file: designator_nested.cpp
+---
+- { pos: "17:8", kind: Type, label: ".a=" }
+- { pos: "17:9", kind: Type, label: ".x=" }
+- { pos: "17:12", kind: Type, label: ".y=" }
+- { pos: "17:16", kind: Type, label: ".b.x=" }

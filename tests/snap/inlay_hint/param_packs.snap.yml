@@ -1,0 +1,7 @@
+---
+created_at: 2026-07-31
+input_file: param_packs.cpp
+---
+- { pos: "12:9", kind: Parameter, label: "x:", padding_right: true }
+- { pos: "18:10", kind: Parameter, label: "y:", padding_right: true }
+- { pos: "18:13", kind: Parameter, label: "z:", padding_right: true }

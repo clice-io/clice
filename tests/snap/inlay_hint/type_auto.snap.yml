@@ -1,0 +1,7 @@
+---
+created_at: 2026-07-31
+input_file: type_auto.cpp
+---
+- { pos: "10:14", kind: Type, label: ": int" }
+- { pos: "11:19", kind: Type, label: ": const int &" }
+- { pos: "12:13", kind: Type, label: ": int *" }

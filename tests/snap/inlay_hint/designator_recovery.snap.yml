@@ -1,0 +1,5 @@
+---
+created_at: 2026-07-31
+input_file: designator_recovery.cpp
+---
+- { pos: "16:21", kind: Type, label: ".b=" }

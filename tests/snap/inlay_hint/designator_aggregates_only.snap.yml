@@ -1,0 +1,6 @@
+---
+created_at: 2026-07-31
+input_file: designator_aggregates_only.cpp
+---
+- { pos: "12:20", kind: Parameter, label: "amount:", padding_right: true }
+- { pos: "18:18", kind: Type, label: ".x=" }

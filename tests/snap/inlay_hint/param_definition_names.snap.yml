@@ -1,0 +1,9 @@
+---
+created_at: 2026-07-31
+input_file: param_definition_names.cpp
+---
+- { pos: "14:11", kind: Parameter, label: "width:", padding_right: true }
+- { pos: "14:16", kind: Parameter, label: "height:", padding_right: true }
+- { pos: "15:9", kind: Parameter, label: "value:", padding_right: true }
+- { pos: "15:12", kind: Parameter, label: "count:", padding_right: true }
+- { pos: "17:10", kind: Parameter, label: "good:", padding_right: true }

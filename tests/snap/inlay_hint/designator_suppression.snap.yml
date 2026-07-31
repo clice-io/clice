@@ -1,0 +1,5 @@
+---
+created_at: 2026-07-31
+input_file: designator_suppression.cpp
+---
+- { pos: "17:39", kind: Type, label: ".e=" }

@@ -1,0 +1,7 @@
+---
+created_at: 2026-07-31
+input_file: type_sugar.cpp
+---
+- { pos: "27:16", kind: Type, label: ": Integer" }
+- { pos: "28:18", kind: Type, label: ": Compact" }
+- { pos: "32:18", kind: Type, label: ": Defaulted<float>" }

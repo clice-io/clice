@@ -44,6 +44,9 @@ import { SnapshotContext } from "./snapshot.ts";
 const CORPUS_FLAGS: Record<string, (corpus: string) => string[]> = {
     document_links: (corpus) => [`-I${posix(corpus)}`, "-std=c++23"],
     hover: () => ["-std=c++20", "--target=x86_64-unknown-linux-gnu"],
+    // c++23 for deducing-this fixtures; ms-extensions for __declspec
+    // property pseudo-object fixtures.
+    inlay_hint: () => ["-std=c++23", "-fms-extensions"],
     // inc/ backs angled-include fixtures; sys/ simulates a system header so
     // the DefaultLibrary modifier pins deterministically on every host.
     semantic_tokens: (corpus) => [

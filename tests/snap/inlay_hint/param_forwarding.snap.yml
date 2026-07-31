@@ -1,0 +1,11 @@
+---
+created_at: 2026-07-31
+input_file: param_forwarding.cpp
+---
+- { pos: "50:9", kind: Parameter, label: "first:", padding_right: true }
+- { pos: "50:12", kind: Parameter, label: "second:", padding_right: true }
+- { pos: "51:14", kind: Parameter, label: "a:", padding_right: true }
+- { pos: "51:17", kind: Parameter, label: "b:", padding_right: true }
+- { pos: "51:20", kind: Parameter, label: "c:", padding_right: true }
+- { pos: "52:10", kind: Parameter, label: "a:", padding_right: true }
+- { pos: "52:14", kind: Parameter, label: "b:", padding_right: true }

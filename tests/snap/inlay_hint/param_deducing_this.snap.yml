@@ -1,0 +1,6 @@
+---
+created_at: 2026-07-31
+input_file: param_deducing_this.cpp
+---
+- { pos: "14:13", kind: Parameter, label: "width:", padding_right: true }
+- { pos: "14:18", kind: Parameter, label: "height:", padding_right: true }

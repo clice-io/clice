@@ -1,0 +1,5 @@
+---
+created_at: 2026-07-31
+input_file: param_implicit_conversions.cpp
+---
+- { pos: "18:9", kind: Parameter, label: "duration:", padding_right: true }

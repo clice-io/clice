@@ -1,0 +1,6 @@
+---
+created_at: 2026-07-31
+input_file: type_bindings_tuple.cpp
+---
+- { pos: "43:7", kind: Type, label: ": int" }
+- { pos: "43:10", kind: Type, label: ": int" }

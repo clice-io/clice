@@ -1,0 +1,9 @@
+---
+created_at: 2026-07-31
+input_file: type_lambdas.cpp
+---
+- { pos: "11:17", kind: Type, label: ": (lambda)" }
+- { pos: "11:29", kind: Type, label: ": int" }
+- { pos: "11:49", kind: Type, label: "-> int" }
+- { pos: "14:13", kind: Type, label: ": (lambda)" }
+- { pos: "14:18", kind: Type, label: "-> double" }

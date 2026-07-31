@@ -1,0 +1,6 @@
+---
+created_at: 2026-07-31
+input_file: param_macros.cpp
+---
+- { pos: "19:11", kind: Parameter, label: "value:", padding_right: true }
+- { pos: "25:17", kind: Parameter, label: "status:", padding_right: true }

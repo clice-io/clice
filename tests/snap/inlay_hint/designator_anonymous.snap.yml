@@ -1,0 +1,5 @@
+---
+created_at: 2026-07-31
+input_file: designator_anonymous.cpp
+---
+- { pos: "17:8", kind: Type, label: ".x.y=" }

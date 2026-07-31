@@ -50,6 +50,7 @@ import { parseAnnotations } from "./snap/annotation.ts";
 // adopt fixture-generated docs.
 const FEATURES: Record<string, string> = {
     folding_range: "docs/en/features/folding-ranges.md",
+    inlay_hint: "docs/en/features/inlay-hints.md",
     semantic_tokens: "docs/en/features/semantic-tokens.md",
 };
 
