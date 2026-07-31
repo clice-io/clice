@@ -201,6 +201,25 @@ export function snapCorpora(): SnapCorpus[] {
     return corpora;
 }
 
+/// Whether the fixture's leading comment block carries the `error-ok`
+/// opt-out. Only the comment lines before the first code line count, so
+/// nothing inside the code (raw strings included) can spell it.
+function errorOkDirective(content: string): boolean {
+    for (const raw of content.split("\n")) {
+        const line = raw.trim();
+        if (line === "") {
+            continue;
+        }
+        if (!line.startsWith("//")) {
+            return false;
+        }
+        if (/^\/\/+\s*error-ok\b/.test(line)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /// Run one fixture end to end: spawn `clice inspect`, verify the C++/TS
 /// stripper twins via the content hash, render, and compare against the
 /// colocated snapshot. Throws on any failure (including a snapshot
@@ -245,11 +264,11 @@ export async function checkSnapFixture(
     // The AST builds even for broken sources, so a compile that "succeeds"
     // may still carry error diagnostics — e.g. a mistyped annotation that
     // swallowed real code. Never pin such a fixture. A fixture that tests
-    // behavior on broken code opts out with a `// error-ok` line comment
-    // (the clangd convention the ported corpora already carry); the
-    // directive must open its own line so prose or string literals that
-    // merely mention the convention cannot opt out.
-    if (entry.diagnostics?.length && !/^\s*\/\/\s*error-ok\b/m.test(fixture.content)) {
+    // behavior on broken code opts out with a `// error-ok` comment (the
+    // clangd convention the ported corpora already carry) in its leading
+    // comment block — scanning the code body would also match raw-string
+    // contents that merely spell the directive.
+    if (entry.diagnostics?.length && !errorOkDirective(fixture.content)) {
         throw new Error(
             `${feature}/${fixture.rel}: fixture does not compile cleanly:\n  ` +
                 entry.diagnostics.join("\n  "),

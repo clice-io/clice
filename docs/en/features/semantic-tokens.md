@@ -568,6 +568,10 @@ Names classified by the declaration they define or reference.
   module :private;
 
   int private_value = 2;
+
+  #if 0
+  module :private;
+  #endif
   ```
 
 - [x] Module partitions — partition names in the module declaration

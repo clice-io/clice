@@ -22,3 +22,7 @@ input_file: modules.cpp
 - { loc: "15:0", text: "int", kind: keyword }
 - { loc: "15:4", text: "private_value", kind: variable, modifiers: [definition] }
 - { loc: "15:20", text: "2", kind: number }
+- { loc: "17:0", text: "#if", kind: directive }
+- { loc: "17:4", text: "0", kind: number }
+- { loc: "18:8", text: "private", kind: keyword }
+- { loc: "19:0", text: "#endif", kind: directive }

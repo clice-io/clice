@@ -571,13 +571,16 @@ private:
         /// `module :private;` — the private fragment's contextual `module`
         /// also lexes as a plain identifier. The identifier-colon-`private`
         /// token sequence is not valid C++ anywhere else, so locate it
-        /// lexically like the global module fragment above.
+        /// lexically like the global module fragment above. Tokens
+        /// preprocessed away (a disabled branch, a macro body) spell no
+        /// fragment and keep their lexical handling.
         {
             auto spelled = semantics.spelled_tokens();
             for(std::uint32_t i = 0; i + 2 < spelled.size(); i += 1) {
                 if(spelled[i].kind() != clang::tok::identifier ||
                    spelled[i + 1].kind() != clang::tok::colon ||
-                   spelled[i + 2].kind() != clang::tok::kw_private) {
+                   spelled[i + 2].kind() != clang::tok::kw_private ||
+                   semantics.token_preprocessed_away(i)) {
                     continue;
                 }
                 auto offset = semantics.token_offset(i);
