@@ -19,15 +19,18 @@ clice renders inline annotations for the information the code leaves implicit: p
   struct Point {
       Point(int x, int y);
       Point(const Point& other);
+      Point(Point&& other);
   };
 
   void use() {
       draw(10, 20);
       Point p(1, 2);
       Point q{3, 4};
-      // Copy and move constructors stay quiet; the inner braces still hint.
+      // Copy and move constructors stay quiet; a temporary's own braces
+      // still hint (the outer prvalue construction is elided anyway).
       Point r(p);
       Point m(Point{5, 6});
+      Point s(static_cast<Point&&>(r));
   }
   ```
 
@@ -364,7 +367,7 @@ clice renders inline annotations for the information the code leaves implicit: p
   }
   ```
 
-- [x] Explicit instantiation — the instantiation declaration causes no duplicate hints ([clangd#1034](https://github.com/clangd/clangd/issues/1034))
+- [x] Explicit instantiation — an explicit instantiation definition adds no duplicate hints ([clangd#1034](https://github.com/clangd/clangd/issues/1034))
 
   ```cpp
   template <typename T>
@@ -947,7 +950,7 @@ log(2);
 
 ## Configuration
 
-The `[inlay_hints]` section of `clice.toml` (or the same keys via `initializationOptions`) controls every category: `enabled`, `parameters`, `deduced_types`, `designators`, `block_end`, `default_arguments`, and `type_name_limit`. See the [configuration guide](../guide/configuration.md#inlay-hints) for details. Options are applied per request — no recompile is needed for a change to take effect after a server restart.
+The `[inlay_hints]` section of `clice.toml` (or the same keys via `initializationOptions`) controls every category: `enabled`, `parameters`, `deduced_types`, `designators`, `block_end`, `default_arguments`, and `type_name_limit`. See the [configuration guide](../guide/configuration.md#inlay-hints) for details. Configuration changes take effect after a server restart — a recompile is never involved.
 
 ## Interactive Behavior
 

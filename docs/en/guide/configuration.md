@@ -132,7 +132,7 @@ Interval for sweeping workspace files for on-disk changes.
 
 ## Inlay Hints
 
-The `[inlay_hints]` section controls which inlay hint categories the server produces. Options are read per request, so a client-side refresh after changing them is enough — no recompile is involved (but note configuration itself only reloads on server restart).
+The `[inlay_hints]` section controls which inlay hint categories the server produces. Configuration changes take effect after a server restart; a client-side refresh then requests hints with the updated values. No recompile is involved.
 
 ### `inlay_hints.enabled`
 

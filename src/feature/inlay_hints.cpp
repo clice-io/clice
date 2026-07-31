@@ -382,9 +382,10 @@ public:
                         clang::CharSourceRange::getTokenRange(params[i]->getDefaultArgRange()),
                         unit.context().getSourceManager(),
                         unit.lang_options());
-                    const auto abbrev =
-                        (text.size() > options.type_name_limit || text.contains("\n")) ? "..."
-                                                                                       : text;
+                    // type_name_limit = 0 means unlimited, as for type hints.
+                    const bool too_long =
+                        options.type_name_limit && text.size() > options.type_name_limit;
+                    const auto abbrev = (too_long || text.contains("\n")) ? "..." : text;
                     if(name_hint) {
                         formatted_default_args.emplace_back(std::format("{0}: {1}", name, abbrev));
                     } else {
@@ -407,7 +408,8 @@ public:
             llvm::ListSeparator sep(", ");
             for(auto&& element: formatted_default_args) {
                 os << sep;
-                if(hint.size() + element.size() >= options.type_name_limit) {
+                if(options.type_name_limit &&
+                   hint.size() + element.size() >= options.type_name_limit) {
                     os << "...";
                     break;
                 }

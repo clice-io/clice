@@ -1,6 +1,6 @@
 /// # Parameter Hints
 ///
-/// ## Explicit instantiation — the instantiation declaration causes no duplicate hints
+/// ## Explicit instantiation — an explicit instantiation definition adds no duplicate hints
 ///
 /// - status: supported
 /// - issues: clangd#1034

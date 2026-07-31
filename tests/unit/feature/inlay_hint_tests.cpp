@@ -543,6 +543,16 @@ TEST_CASE(DefaultArguments) {
     EXPECT_HINT("3", ", baz: Baz{}");
     EXPECT_HINT("4", ", baz: Baz{}");
 
+    // type_name_limit = 0 means unlimited: a default longer than the
+    // usual limit still prints in full.
+    run(R"c(
+            void configure(int first, const char* name = "this default is longer than the limit");
+            void use() { configure(1§(0)); }
+        )c",
+        {.default_arguments = true, .type_name_limit = 0});
+    EXPECT_SIZE(2);
+    EXPECT_HINT("0", R"(, name: "this default is longer than the limit")");
+
     // Default-argument hints survive with parameter hints disabled; the
     // parameter name drops out with them.
     run(R"c(
