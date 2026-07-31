@@ -1392,6 +1392,20 @@ Compiler::RawResult Compiler::forward_query(worker::QueryKind kind,
     wp.kind = kind;
     wp.path = path;
 
+    if(kind == worker::QueryKind::InlayHints) {
+        // apply_defaults() has filled every field of the config section.
+        auto& ih = workspace.config.inlay_hints;
+        wp.inlay_options = {
+            .enabled = *ih.enabled,
+            .parameters = *ih.parameters,
+            .deduced_types = *ih.deduced_types,
+            .designators = *ih.designators,
+            .block_end = *ih.block_end,
+            .default_arguments = *ih.default_arguments,
+            .type_name_limit = *ih.type_name_limit,
+        };
+    }
+
     if(position) {
         wp.offset = clamped_offset(map, *position);
     }

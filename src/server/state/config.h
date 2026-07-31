@@ -46,6 +46,19 @@ struct ProjectConfig {
     defaulted<std::uint64_t> worker_memory_limit = {};
 };
 
+/// Corresponds to the `[inlay_hints]` section in clice.toml. Mirrors
+/// feature::InlayHintsOptions field by field; unset fields take that
+/// struct's defaults in apply_defaults(), so the two never disagree.
+struct InlayHintsConfig {
+    std::optional<bool> enabled;
+    std::optional<bool> parameters;
+    std::optional<bool> deduced_types;
+    std::optional<bool> designators;
+    std::optional<bool> block_end;
+    std::optional<bool> default_arguments;
+    std::optional<std::uint32_t> type_name_limit;
+};
+
 /// Corresponds to the `[tracker]` section in clice.toml: the stat-polling
 /// file tracker's intervals. 0 disables the loop (integration tests drive
 /// ticks through the clice/internal/poll hook instead).
@@ -87,6 +100,8 @@ struct Config {
     defaulted<ProjectConfig> project;
 
     defaulted<TrackerConfig> tracker;
+
+    defaulted<InlayHintsConfig> inlay_hints;
 
     defaulted<std::vector<ConfigRule>> rules;
 

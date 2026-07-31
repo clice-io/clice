@@ -2,6 +2,7 @@
 
 #include <algorithm>
 
+#include "feature/feature.h"
 #include "support/filesystem.h"
 #include "support/glob_pattern.h"
 #include "support/logging.h"
@@ -95,6 +96,24 @@ void Config::apply_defaults(llvm::StringRef workspace_root) {
         t.cdb_poll_seconds = 3;
     if(!t.workspace_poll_seconds)
         t.workspace_poll_seconds = 30;
+
+    // The feature options struct is the single source of the defaults.
+    auto& ih = inlay_hints;
+    feature::InlayHintsOptions inlay_defaults;
+    if(!ih.enabled)
+        ih.enabled = inlay_defaults.enabled;
+    if(!ih.parameters)
+        ih.parameters = inlay_defaults.parameters;
+    if(!ih.deduced_types)
+        ih.deduced_types = inlay_defaults.deduced_types;
+    if(!ih.designators)
+        ih.designators = inlay_defaults.designators;
+    if(!ih.block_end)
+        ih.block_end = inlay_defaults.block_end;
+    if(!ih.default_arguments)
+        ih.default_arguments = inlay_defaults.default_arguments;
+    if(!ih.type_name_limit)
+        ih.type_name_limit = inlay_defaults.type_name_limit;
 
     if(p.cache_dir.empty() && !workspace_root.empty()) {
         p.cache_dir = resolve_xdg_cache_dir(workspace_root);

@@ -130,6 +130,66 @@ Interval for re-checking the compilation database file.
 
 Interval for sweeping workspace files for on-disk changes.
 
+## Inlay Hints
+
+The `[inlay_hints]` section controls which inlay hint categories the server produces. Options are read per request, so a client-side refresh after changing them is enough — no recompile is involved (but note configuration itself only reloads on server restart).
+
+### `inlay_hints.enabled`
+
+| Type   | Default |
+| ------ | ------- |
+| `bool` | `true`  |
+
+Master switch: `false` disables all inlay hints.
+
+### `inlay_hints.parameters`
+
+| Type   | Default |
+| ------ | ------- |
+| `bool` | `true`  |
+
+Parameter name hints at call sites, e.g. `draw(width: 800, height: 600)`, including `&` markers for arguments passed by mutable reference.
+
+### `inlay_hints.deduced_types`
+
+| Type   | Default |
+| ------ | ------- |
+| `bool` | `true`  |
+
+Deduced type hints for `auto` variables, structured bindings, and deduced return types.
+
+### `inlay_hints.designators`
+
+| Type   | Default |
+| ------ | ------- |
+| `bool` | `true`  |
+
+Field designator hints in aggregate initialization, e.g. `Point{.x=1, .y=2}` for `Point{1, 2}`.
+
+### `inlay_hints.block_end`
+
+| Type   | Default |
+| ------ | ------- |
+| `bool` | `false` |
+
+`// name` hints after the closing brace of long blocks (functions, types, namespaces, control flow).
+
+### `inlay_hints.default_arguments`
+
+| Type   | Default |
+| ------ | ------- |
+| `bool` | `false` |
+
+Show the default arguments a call omitted, abbreviated when long.
+
+### `inlay_hints.type_name_limit`
+
+| Type     | Default |
+| -------- | ------- |
+| `uint32` | `32`    |
+
+Maximum length for printed type names; longer types fall back to a sugared spelling or are dropped. `0` means no limit.
+
 ## Rules
 
 `[[rules]]` is an array of rule objects. Rules are matched in declaration order — later rules override earlier ones.

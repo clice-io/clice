@@ -144,3 +144,46 @@ test("config dump logged", async ({ session }) => {
     expect(text).toContain("Effective configuration:");
     expect(text).toContain('"cache_dir"');
 });
+
+test("inlay hint options from config", async ({ session }) => {
+    // block_end hints are off by default and reachable only through the
+    // [inlay_hints] config section, so their appearance proves the options
+    // travel master → worker instead of the old hardcoded defaults.
+    const source = [
+        "int compute() {",
+        "    int total = 0;",
+        "    for (int i = 0; i < 10; i += 1) {",
+        "        total += i;",
+        "    }",
+        "    return total;",
+        "}",
+        "",
+    ].join("\n");
+    const wholeFile = {
+        start: { line: 0, character: 0 },
+        end: { line: 7, character: 0 },
+    };
+
+    const workspace = session.tmpdir();
+    workspace.write("main.cpp", source);
+    workspace.writeCDB(["main.cpp"]);
+    const client = session.spawn(workspace, {});
+    await client.initialize(workspace, {
+        initializationOptions: { inlay_hints: { block_end: true, deduced_types: false } },
+    });
+    const [uri] = await client.openAndWait("main.cpp");
+    const hints = (await client.inlayHints(uri, wholeFile)) ?? [];
+    const labels = hints.map((h) => (typeof h.label === "string" ? h.label : ""));
+    expect(labels, `expected a block-end hint, got: ${JSON.stringify(labels)}`).toContain(
+        "// compute",
+    );
+    await client.shutdown();
+
+    // Control: a default-config session must not produce block-end hints.
+    const control = session.spawn(workspace, {});
+    await control.initialize(workspace);
+    const [controlUri] = await control.openAndWait("main.cpp");
+    const controlHints = (await control.inlayHints(controlUri, wholeFile)) ?? [];
+    const controlLabels = controlHints.map((h) => (typeof h.label === "string" ? h.label : ""));
+    expect(controlLabels).not.toContain("// compute");
+});

@@ -388,7 +388,7 @@ void StatefulWorker::register_handlers() {
                             range = LocalSourceRange{0, static_cast<uint32_t>(doc.text.size())};
                         return to_raw(feature::inlay_hints(doc.unit,
                                                            range,
-                                                           {},
+                                                           params.inlay_options,
                                                            feature::PositionEncoding::UTF16));
                     });
                 case K::FoldingRange:

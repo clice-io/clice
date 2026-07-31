@@ -71,6 +71,20 @@ append = ["-std=c++20"]
     EXPECT_EQ(result->rules[0].patterns[0], "**/*.cpp");
 }
 
+TEST_CASE(ParseInlayHints) {
+    auto result = kota::codec::toml::parse<Config>(R"(
+[inlay_hints]
+block_end = true
+parameters = false
+type_name_limit = 64
+)");
+    EXPECT_TRUE(result.has_value());
+    EXPECT_EQ(*result->inlay_hints.block_end, true);
+    EXPECT_EQ(*result->inlay_hints.parameters, false);
+    EXPECT_EQ(*result->inlay_hints.type_name_limit, 64u);
+    EXPECT_FALSE(result->inlay_hints.designators.has_value());
+}
+
 TEST_CASE(ParseEmptyConfig) {
     auto result = kota::codec::toml::parse<Config>("");
     EXPECT_TRUE(result.has_value());
@@ -151,6 +165,13 @@ TEST_CASE(ApplyDefaults) {
     EXPECT_GE(config.project.stateless_worker_count.value, 2u);
     EXPECT_FALSE(config.project.cache_dir.empty());
     EXPECT_FALSE(config.project.logging_dir.empty());
+    EXPECT_EQ(*config.inlay_hints.enabled, true);
+    EXPECT_EQ(*config.inlay_hints.parameters, true);
+    EXPECT_EQ(*config.inlay_hints.deduced_types, true);
+    EXPECT_EQ(*config.inlay_hints.designators, true);
+    EXPECT_EQ(*config.inlay_hints.block_end, false);
+    EXPECT_EQ(*config.inlay_hints.default_arguments, false);
+    EXPECT_EQ(*config.inlay_hints.type_name_limit, 32u);
 }
 
 TEST_CASE(ApplyDefaultsEmptyWorkspace) {
@@ -164,9 +185,13 @@ TEST_CASE(ApplyDefaultsPreserveSet) {
     Config config;
     config.project.cache_dir = "/custom";
     config.project.enable_indexing = false;
+    config.inlay_hints.parameters = false;
+    config.inlay_hints.block_end = true;
     config.apply_defaults("/workspace");
     EXPECT_EQ(std::string_view(config.project.cache_dir), "/custom");
     EXPECT_EQ(*config.project.enable_indexing, false);
+    EXPECT_EQ(*config.inlay_hints.parameters, false);
+    EXPECT_EQ(*config.inlay_hints.block_end, true);
 }
 
 TEST_CASE(LoadFromJson) {

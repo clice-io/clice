@@ -9,6 +9,7 @@
 
 #include "compile/dep_file.h"
 #include "feature/document_link.h"
+#include "feature/feature.h"
 #include "syntax/token.h"
 
 #include "kota/codec/json/json.h"
@@ -100,6 +101,11 @@ struct QueryParams {
     std::string path;
     uint32_t offset = 0;  ///< Byte offset for position-sensitive queries (Hover, GoToDefinition).
     LocalSourceRange range;  ///< Byte range for range-sensitive queries (InlayHints).
+
+    /// Options for InlayHints queries, resolved from the workspace config by
+    /// the master per query — the worker holds no config state and a config
+    /// change simply shows up on the next request.
+    feature::InlayHintsOptions inlay_options;
 };
 
 /// Parameters for stateful compilation (builds AST, publishes diagnostics).
