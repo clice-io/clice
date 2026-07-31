@@ -93,6 +93,10 @@ bool more_specialized(clang::ASTContext& context,
                       clang::ClassTemplatePartialSpecializationDecl* left,
                       clang::ClassTemplatePartialSpecializationDecl* right);
 
+bool more_specialized(clang::ASTContext& context,
+                      clang::VarTemplatePartialSpecializationDecl* left,
+                      clang::VarTemplatePartialSpecializationDecl* right);
+
 /// If `expr` is a (possibly parenthesized/casted) reference to a non-type
 /// template parameter, return its declaration.
 const clang::NonTypeTemplateParmDecl* referenced_nttp(const clang::Expr* expr);

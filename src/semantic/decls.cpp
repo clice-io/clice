@@ -6,6 +6,8 @@
 
 #include "semantic/decls.h"
 
+#include "semantic/unifier.h"
+
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
 #include "clang/AST/Decl.h"
@@ -17,6 +19,7 @@
 namespace clice::decls {
 
 bool is_templated(const clang::Decl* decl) {
+    assert(decl);
     if(decl->getDescribedTemplate()) {
         return true;
     }
@@ -50,10 +53,64 @@ inline bool is_template_specialization_kind(const clang::NamedDecl* decl,
 }  // namespace
 
 bool is_implicit_instantiation(const clang::NamedDecl* decl) {
+    assert(decl);
     return is_template_specialization_kind(decl, clang::TSK_ImplicitInstantiation);
 }
 
 namespace {
+
+/// The pattern an undeclared specialization would be instantiated from:
+/// match the partial specializations against the written arguments the way
+/// real instantiation would. Falls back to the primary template when no
+/// partial matches, the match is ambiguous, or the winner is constrained
+/// (constraint satisfaction needs Sema).
+template <typename Partial, typename Spec>
+const clang::NamedDecl* undeclared_pattern(const Spec* spec) {
+    auto* primary = spec->getSpecializedTemplate();
+    auto& context = spec->getASTContext();
+    auto arguments = spec->getTemplateArgs().asArray();
+
+    llvm::SmallVector<Partial*> partials;
+    primary->getPartialSpecializations(partials);
+
+    auto matches = [&](Partial* partial) {
+        llvm::SmallVector<clang::TemplateArgument> deduced;
+        return types::deduce_arguments(context,
+                                       partial->getTemplateParameters(),
+                                       partial->getTemplateArgs().asArray(),
+                                       arguments,
+                                       deduced);
+    };
+
+    Partial* best = nullptr;
+    llvm::SmallVector<Partial*, 4> matched;
+    for(auto* partial: partials) {
+        if(matches(partial)) {
+            matched.push_back(partial);
+            if(!best || types::more_specialized(context, partial, best)) {
+                best = partial;
+            }
+        }
+    }
+
+    if(!best) {
+        return primary->getTemplatedDecl();
+    }
+
+    /// Real instantiation diagnoses ambiguity; degrade to the primary
+    /// rather than picking arbitrarily.
+    for(auto* partial: matched) {
+        if(partial != best && !types::more_specialized(context, best, partial)) {
+            return primary->getTemplatedDecl();
+        }
+    }
+
+    if(best->getTemplateParameters()->hasAssociatedConstraints()) {
+        return primary->getTemplatedDecl();
+    }
+
+    return best;
+}
 
 const clang::CXXRecordDecl* getDeclContextForTemplateInstationPattern(const clang::Decl* D) {
     if(const auto* CTSD = dyn_cast<clang::ClassTemplateSpecializationDecl>(D->getDeclContext())) {
@@ -70,13 +127,14 @@ const clang::CXXRecordDecl* getDeclContextForTemplateInstationPattern(const clan
 }  // namespace
 
 auto instantiated_from(const clang::NamedDecl* decl) -> const clang::NamedDecl* {
+    assert(decl);
     if(auto CTSD = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(decl)) {
         auto kind = CTSD->getTemplateSpecializationKind();
         if(kind == clang::TSK_Undeclared) {
-            /// The instantiation of template is lazy, in this case, the specialization is
-            /// undeclared. Temporarily return primary template of the specialization.
-            /// FIXME: Is there a better way to handle such case?
-            return CTSD->getSpecializedTemplate()->getTemplatedDecl();
+            /// Instantiation is lazy: an undeclared specialization carries no
+            /// pattern link yet. Select the pattern instantiation would use so
+            /// the identity matches the instantiated case.
+            return undeclared_pattern<clang::ClassTemplatePartialSpecializationDecl>(CTSD);
         } else if(kind == clang::TSK_ExplicitSpecialization) {
             /// If the decl is an full specialization, return itself.
             return CTSD;
@@ -94,6 +152,12 @@ auto instantiated_from(const clang::NamedDecl* decl) -> const clang::NamedDecl* 
         return FD->getTemplateInstantiationPattern();
     }
 
+    if(auto VTSD = llvm::dyn_cast<clang::VarTemplateSpecializationDecl>(decl)) {
+        if(VTSD->getSpecializationKind() == clang::TSK_Undeclared) {
+            return undeclared_pattern<clang::VarTemplatePartialSpecializationDecl>(VTSD);
+        }
+    }
+
     if(auto VD = llvm::dyn_cast<clang::VarDecl>(decl)) {
         /// If the decl is an full specialization, return itself.
         if(VD->getTemplateSpecializationKind() == clang::TSK_ExplicitSpecialization) {
@@ -104,6 +168,11 @@ auto instantiated_from(const clang::NamedDecl* decl) -> const clang::NamedDecl* 
     }
 
     if(auto CRD = llvm::dyn_cast<clang::CXXRecordDecl>(decl)) {
+        /// An explicitly specialized member (`template <> struct Outer<char>::Inner`)
+        /// is its own entity, just like a full specialization.
+        if(CRD->getTemplateSpecializationKind() == clang::TSK_ExplicitSpecialization) {
+            return CRD;
+        }
         return CRD->getInstantiatedFromMemberClass();
     }
 
@@ -125,6 +194,10 @@ auto instantiated_from(const clang::NamedDecl* decl) -> const clang::NamedDecl* 
     }
 
     if(auto ED = llvm::dyn_cast<clang::EnumDecl>(decl)) {
+        if(auto* info = ED->getMemberSpecializationInfo();
+           info && info->getTemplateSpecializationKind() == clang::TSK_ExplicitSpecialization) {
+            return ED;
+        }
         return ED->getInstantiatedFromMemberEnum();
     }
 
@@ -141,9 +214,7 @@ auto instantiated_from(const clang::NamedDecl* decl) -> const clang::NamedDecl* 
 }
 
 auto normalize(const clang::NamedDecl* decl) -> const clang::NamedDecl* {
-    if(!decl) {
-        std::abort();
-    }
+    assert(decl);
 
     decl = llvm::cast<clang::NamedDecl>(decl->getCanonicalDecl());
 
@@ -172,6 +243,7 @@ clang::NamedDecl* only_instantiation_impl(TemplateDeclTy* TD) {
 }  // namespace
 
 auto only_instantiation(clang::NamedDecl* TemplatedDecl) -> clang::NamedDecl* {
+    assert(TemplatedDecl);
     if(auto* TD = TemplatedDecl->getDescribedTemplate()) {
         if(auto* CTD = llvm::dyn_cast<clang::ClassTemplateDecl>(TD))
             return only_instantiation_impl(CTD);
@@ -184,6 +256,7 @@ auto only_instantiation(clang::NamedDecl* TemplatedDecl) -> clang::NamedDecl* {
 }
 
 auto only_instantiation(clang::ParmVarDecl* decl) -> clang::ParmVarDecl* {
+    assert(decl);
     auto* TemplateFunction = llvm::dyn_cast<clang::FunctionDecl>(decl->getDeclContext());
     if(!TemplateFunction)
         return nullptr;
@@ -241,6 +314,7 @@ auto function_pack_type(const clang::FunctionDecl* callee) -> const clang::Templ
 // from (if in the Args... or Args&... or Args&&... form), if this is the case,
 // nullptr otherwise.
 auto underlying_pack_type(const clang::ParmVarDecl* param) -> const clang::TemplateTypeParmType* {
+    assert(param);
     const auto* type = param->getType().getTypePtr();
     if(auto* ref_type = llvm::dyn_cast<clang::ReferenceType>(type)) {
         type = ref_type->getPointeeTypeAsWritten().getTypePtr();
@@ -464,6 +538,7 @@ private:
 
 auto resolve_forwarding_params(const clang::FunctionDecl* D, unsigned MaxDepth)
     -> llvm::SmallVector<const clang::ParmVarDecl*> {
+    assert(D);
     auto params = D->parameters();
 
     // If the function has a template parameter pack
@@ -526,6 +601,7 @@ auto resolve_forwarding_params(const clang::FunctionDecl* D, unsigned MaxDepth)
 }
 
 auto proto_type_loc(clang::Expr* expr) -> clang::FunctionProtoTypeLoc {
+    assert(expr);
     clang::TypeLoc target;
     clang::Expr* naked_fn = expr->IgnoreParenCasts();
 

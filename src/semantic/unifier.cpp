@@ -773,11 +773,11 @@ bool deduce_arguments(clang::ASTContext& context,
     return true;
 }
 
-bool more_specialized(clang::ASTContext& context,
-                      clang::ClassTemplatePartialSpecializationDecl* left,
-                      clang::ClassTemplatePartialSpecializationDecl* right) {
-    auto matches = [&](clang::ClassTemplatePartialSpecializationDecl* pattern,
-                       clang::ClassTemplatePartialSpecializationDecl* argument) {
+namespace {
+
+template <typename Partial>
+bool more_specialized_impl(clang::ASTContext& context, Partial* left, Partial* right) {
+    auto matches = [&](Partial* pattern, Partial* argument) {
         auto params = pattern->getTemplateParameters();
         Unifier unifier(context, params->getDepth(), params->size());
         return unifier.unify(pattern->getTemplateArgs().asArray(),
@@ -785,6 +785,20 @@ bool more_specialized(clang::ASTContext& context,
     };
 
     return matches(right, left) && !matches(left, right);
+}
+
+}  // namespace
+
+bool more_specialized(clang::ASTContext& context,
+                      clang::ClassTemplatePartialSpecializationDecl* left,
+                      clang::ClassTemplatePartialSpecializationDecl* right) {
+    return more_specialized_impl(context, left, right);
+}
+
+bool more_specialized(clang::ASTContext& context,
+                      clang::VarTemplatePartialSpecializationDecl* left,
+                      clang::VarTemplatePartialSpecializationDecl* right) {
+    return more_specialized_impl(context, left, right);
 }
 
 }  // namespace clice::types

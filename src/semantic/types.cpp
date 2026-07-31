@@ -95,8 +95,10 @@ auto decls_of(clang::QualType type, TemplateResolver* resolver)
             return {decl};
         }
 
-        if(const auto* pattern = decls::instantiated_from(TST->getAsCXXRecordDecl())) {
-            return {pattern};
+        if(const auto* record = TST->getAsCXXRecordDecl()) {
+            if(const auto* pattern = decls::instantiated_from(record)) {
+                return {pattern};
+            }
         }
         return {};
     }
@@ -143,6 +145,7 @@ auto unwrap(clang::TypeLoc type, bool unwrap_function_type) -> clang::TypeLoc {
 }
 
 auto declared_type(const clang::TypeDecl* decl) -> clang::QualType {
+    assert(decl);
     clang::ASTContext& context = decl->getASTContext();
     if(const auto* spec = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(decl)) {
         if(const auto* args = spec->getTemplateArgsAsWritten()) {
