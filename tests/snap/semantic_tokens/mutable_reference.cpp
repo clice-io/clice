@@ -7,10 +7,12 @@
 /// - order: 8
 
 void modify(int& out);
+void modify_through(int* out);
 void inspect(const int& in);
 
 void run() {
     int value = 0;
     modify(value);
+    modify_through(&value);
     inspect(value);
 }

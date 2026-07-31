@@ -204,6 +204,14 @@ test("marker focus filters tokens and pins misses", () => {
     );
     expect(none).toEqual(['- { loc: "0:5", text: "done", kind: none }']);
 
+    // A miss on a non-ASCII position labels with the whole UTF-8 sequence,
+    // not a lone byte turned into mojibake.
+    const cjk = parseAnnotations("int x; // §你好\n");
+    const cjkOffsets = semanticTokenFocusOffsets(cjk);
+    expect(focusSemanticTokens([], cjkOffsets, Buffer.from(cjk.content))).toEqual([
+        '- { loc: "0:10", text: "你", kind: none }',
+    ]);
+
     // Range markers have no focus meaning; silently pinning the full dump
     // would hide the author's intent, so they are rejected.
     expect(() => semanticTokenFocusOffsets(parseAnnotations("§⟦int⟧ x;\n"))).toThrow(

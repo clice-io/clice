@@ -150,6 +150,10 @@ Kinds derived from the token stream itself, independent of the AST.
   };
 
   Grid<int> grid{{1, 2, 3, 4}};
+
+  int first(Grid<int>& grid) {
+      return grid.cells[0];
+  }
   ```
 
 <!-- END GENERATED ITEMS -->
@@ -584,11 +588,13 @@ Names classified by the declaration they define or reference.
 
   ```cpp
   void modify(int& out);
+  void modify_through(int* out);
   void inspect(const int& in);
 
   void run() {
       int value = 0;
       modify(value);
+      modify_through(&value);
       inspect(value);
   }
   ```

@@ -11,3 +11,7 @@ struct Grid {
 };
 
 Grid<int> grid{{1, 2, 3, 4}};
+
+int first(Grid<int>& grid) {
+    return grid.cells[0];
+}

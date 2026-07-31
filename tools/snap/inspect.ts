@@ -323,7 +323,16 @@ function wordAt(stripped: Buffer, offset: number): string {
         end += 1;
     }
     if (end === offset) {
-        return offset < stripped.length ? String.fromCharCode(stripped[offset] ?? 0) : "";
+        if (offset >= stripped.length) {
+            return "";
+        }
+        // A non-word position labels with its whole UTF-8 sequence, not a
+        // lone byte turned into mojibake.
+        let sequenceEnd = offset + 1;
+        while (sequenceEnd < stripped.length && ((stripped[sequenceEnd] ?? 0) & 0xc0) === 0x80) {
+            sequenceEnd += 1;
+        }
+        return stripped.subarray(offset, sequenceEnd).toString("utf8");
     }
     let begin = offset;
     while (begin > 0 && isWord(stripped[begin - 1])) {
