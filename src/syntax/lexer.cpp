@@ -13,6 +13,10 @@ Lexer::Lexer(llvm::StringRef content, std::uint32_t start_offset, Options option
                                              content.begin(),
                                              content.begin() + start_offset,
                                              content.end())) {
+    // clang's raw lexer reads the terminator as its end sentinel; a prefix
+    // slice would make it run past the buffer end.
+    assert(content.data() != nullptr && content.data()[content.size()] == '\0' &&
+           "Lexer requires a NUL-terminated buffer");
     lexer->SetCommentRetentionState(options.keep_comments);
 }
 
@@ -76,7 +80,10 @@ void Lexer::lex(Token& token) {
     } else if(parse_pp_keyword) {
         parse_pp_keyword = false;
         auto kw = token.text(content);
-        parse_header_name = kw == "include" || kw == "include_next" || kw == "embed";
+        // `import` here is the directive form (`#import`), which takes a
+        // filename; a module import never sets parse_pp_keyword.
+        parse_header_name =
+            kw == "include" || kw == "include_next" || kw == "embed" || kw == "import";
     }
 
     // The __has_include family takes a parenthesized filename argument the

@@ -17,12 +17,6 @@ class Lexer;
 
 namespace clice {
 
-/// A pull-style wrapper over clang's raw lexer with just enough
-/// preprocessor awareness for scanning: directive lines are terminated by
-/// eod tokens, directive keywords are flagged via Token::is_pp_keyword, and
-/// header-name arguments (after #include/#embed keywords and inside the
-/// parentheses of the __has_include family) are lexed as single
-/// header_name tokens.
 struct LexerOptions {
     /// Emit comment tokens instead of dropping them.
     bool keep_comments = false;
@@ -30,6 +24,12 @@ struct LexerOptions {
     const clang::LangOptions* lang_opts = nullptr;
 };
 
+/// A pull-style wrapper over clang's raw lexer with just enough
+/// preprocessor awareness for scanning: directive lines are terminated by
+/// eod tokens, directive keywords are flagged via Token::is_pp_keyword, and
+/// header-name arguments (after #include/#embed keywords and inside the
+/// parentheses of the __has_include family) are lexed as single
+/// header_name tokens.
 class Lexer {
 public:
     using Options = LexerOptions;
