@@ -365,6 +365,18 @@ public:
             return true;
         }
 
+        if(const auto* binding = llvm::dyn_cast<clang::BindingDecl>(X)) {
+            // Namespace-scope bindings are also members of the enclosing
+            // DeclContext, so the visitor reaches them twice: through the
+            // context iteration and through DecompositionDecl's explicit
+            // bindings loop. Record them only under their DecompositionDecl.
+            std::uint32_t parent = stack.back();
+            if(parent == Semantics::invalid ||
+               semantics.nodes[parent].node.get<clang::Decl>() != binding->getDecomposedDecl()) {
+                return true;
+            }
+        }
+
         return traverse_node(SemanticNode(static_cast<const clang::Decl*>(X)),
                              [&] { return Base::TraverseDecl(X); });
     }

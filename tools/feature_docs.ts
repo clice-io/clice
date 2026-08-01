@@ -49,6 +49,7 @@ import { parseAnnotations } from "./snap/annotation.ts";
 // feature -> doc path (relative to repo root). Extend as more features
 // adopt fixture-generated docs.
 const FEATURES: Record<string, string> = {
+    document_symbol: "docs/en/features/document-symbols.md",
     folding_range: "docs/en/features/folding-ranges.md",
     inlay_hint: "docs/en/features/inlay-hints.md",
     semantic_tokens: "docs/en/features/semantic-tokens.md",

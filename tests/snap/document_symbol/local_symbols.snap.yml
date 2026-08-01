@@ -1,0 +1,14 @@
+---
+created_at: 2026-08-01
+input_file: local_symbols.cpp
+---
+- { name: "compute", kind: Function, range: "8:0-27:1", selection_range: "8:4-8:11", detail: "int ()" }
+-   { name: "local_sum", kind: Variable, range: "9:4-9:21", selection_range: "9:8-9:17", detail: "int" }
+-   { name: "Accumulator", kind: Struct, range: "11:4-13:5", selection_range: "11:11-11:22", detail: "struct" }
+-     { name: "total", kind: Field, range: "12:8-12:17", selection_range: "12:12-12:17", detail: "int" }
+-   { name: "twice", kind: Variable, range: "15:4-17:5", selection_range: "15:9-15:14", detail: "(lambda)" }
+-   { name: "Pair", kind: Struct, range: "19:4-22:5", selection_range: "19:11-19:15", detail: "struct" }
+-     { name: "a", kind: Field, range: "20:8-20:13", selection_range: "20:12-20:13", detail: "int" }
+-     { name: "b", kind: Field, range: "21:8-21:13", selection_range: "21:12-21:13", detail: "int" }
+-   { name: "first", kind: Variable, range: "24:10-24:15", selection_range: "24:10-24:15", detail: "int" }
+-   { name: "second", kind: Variable, range: "24:17-24:23", selection_range: "24:17-24:23", detail: "int" }

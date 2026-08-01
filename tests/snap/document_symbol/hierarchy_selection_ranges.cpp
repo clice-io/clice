@@ -1,6 +1,9 @@
-// Detail rendering for class members: constructors (return type stripped),
-// destructors, operators, conversion functions, statics, bitfields, and
-// out-of-line definitions.
+/// # Symbol Hierarchy
+///
+/// ## Symbol ranges and selection ranges — the range spans the whole declaration; the selection range covers the full written name, including multi-token names like `~Widget`, `operator==` and `operator bool`
+///
+/// - status: supported
+/// - order: 2
 
 namespace members {
 

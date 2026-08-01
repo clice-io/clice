@@ -402,7 +402,7 @@ const LSP_SYMBOL_KIND: Record<string, string> = {
     Struct: "Struct",
     Union: "Class",
     Enum: "Enum",
-    Type: "TypeParameter",
+    Type: "Class",
     Concept: "TypeParameter",
     Field: "Field",
     EnumMember: "EnumMember",

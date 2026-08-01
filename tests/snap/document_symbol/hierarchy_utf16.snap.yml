@@ -1,0 +1,7 @@
+---
+created_at: 2026-08-01
+input_file: hierarchy_utf16.cpp
+---
+- { name: "半径", kind: Variable, range: "8:0-8:25", selection_range: "8:17-8:19", detail: "const double" }
+- { name: "π值", kind: Variable, range: "9:0-9:29", selection_range: "9:17-9:19", detail: "const double" }
+- { name: "area", kind: Function, range: "9:31-9:44", selection_range: "9:38-9:42", detail: "double ()" }

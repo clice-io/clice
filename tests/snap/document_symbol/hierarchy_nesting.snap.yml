@@ -1,0 +1,21 @@
+---
+created_at: 2026-08-01
+input_file: hierarchy_nesting.cpp
+---
+- { name: "demo", kind: Namespace, range: "7:0-28:1", selection_range: "7:10-7:14" }
+-   { name: "Point", kind: Struct, range: "9:0-14:1", selection_range: "9:7-9:12", detail: "struct" }
+-     { name: "x", kind: Field, range: "10:4-10:9", selection_range: "10:8-10:9", detail: "int" }
+-     { name: "y", kind: Field, range: "11:4-11:9", selection_range: "11:8-11:9", detail: "int" }
+-     { name: "manhattan", kind: Method, range: "13:4-13:25", selection_range: "13:8-13:17", detail: "int () const" }
+-   { name: "Point::manhattan", kind: Method, range: "16:0-18:1", selection_range: "16:11-16:20", detail: "int () const" }
+-   { name: "Axis", kind: Enum, range: "20:0-20:24", selection_range: "20:11-20:15", detail: "enum" }
+-     { name: "X", kind: EnumMember, range: "20:18-20:19", selection_range: "20:18-20:19", detail: "Axis" }
+-     { name: "Y", kind: EnumMember, range: "20:21-20:22", selection_range: "20:21-20:22", detail: "Axis" }
+-   { name: "origin_distance", kind: Function, range: "22:0-22:35", selection_range: "22:4-22:19", detail: "int (const Point &)" }
+-   { name: "inner", kind: Namespace, range: "24:0-26:1", selection_range: "24:10-24:15" }
+-     { name: "level", kind: Variable, range: "25:0-25:23", selection_range: "25:14-25:19", detail: "const int" }
+- { name: "demo", kind: Namespace, range: "31:0-33:1", selection_range: "31:10-31:14" }
+-   { name: "reopened", kind: Function, range: "32:0-32:14", selection_range: "32:4-32:12", detail: "int ()" }
+- { name: "demo", kind: Namespace, range: "35:0-37:1", selection_range: "35:10-35:14" }
+-   { name: "nested", kind: Namespace, range: "35:14-37:1", selection_range: "35:16-35:22" }
+-     { name: "compact", kind: Function, range: "36:0-36:13", selection_range: "36:4-36:11", detail: "int ()" }

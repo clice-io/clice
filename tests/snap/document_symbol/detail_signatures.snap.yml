@@ -1,0 +1,11 @@
+---
+created_at: 2026-08-01
+input_file: detail_signatures.cpp
+---
+- { name: "detail", kind: Namespace, range: "8:0-20:1", selection_range: "8:10-8:16" }
+-   { name: "process", kind: Function, range: "10:0-10:19", selection_range: "10:5-10:12", detail: "void (int)" }
+-   { name: "process", kind: Function, range: "11:0-11:27", selection_range: "11:5-11:12", detail: "void (const char *)" }
+-   { name: "Task", kind: Struct, range: "13:0-18:1", selection_range: "13:7-13:11", detail: "struct" }
+-     { name: "Task", kind: Method, range: "14:4-14:10", selection_range: "14:4-14:8", detail: "()" }
+-     { name: "Task", kind: Method, range: "15:4-15:22", selection_range: "15:4-15:8", detail: "(int)" }
+-     { name: "run", kind: Method, range: "17:4-17:29", selection_range: "17:8-17:11", detail: "int (bool) const" }

@@ -1,0 +1,7 @@
+---
+created_at: 2026-08-01
+input_file: friend_definitions.cpp
+---
+- { name: "Owner", kind: Struct, range: "7:0-13:1", selection_range: "7:7-7:12", detail: "struct" }
+-   { name: "inline_friend", kind: Function, range: "8:4-8:42", selection_range: "8:16-8:29", detail: "void (Owner &)" }
+-   { name: "operator==", kind: Operator, range: "10:4-12:5", selection_range: "10:16-10:26", detail: "bool (const Owner &, const Owner &)" }
