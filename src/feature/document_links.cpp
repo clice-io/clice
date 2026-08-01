@@ -28,7 +28,7 @@ static std::optional<LocalSourceRange>
 
         if(token.is_identifier()) {
             auto text = token.text(content);
-            if(text == "include" || text == "include_next" || text == "embed" ||
+            if(text == "include" || text == "include_next" || text == "import" || text == "embed" ||
                text == "__has_include" || text == "__has_include_next" || text == "__has_embed") {
                 after_keyword = true;
                 continue;
