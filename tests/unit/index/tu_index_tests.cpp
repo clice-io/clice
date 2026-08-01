@@ -665,6 +665,60 @@ TEST_CASE(ModuleName) {
     ASSERT_TRUE(found_definition);
 }
 
+TEST_CASE(ModulePartitionName) {
+    build_index(R"(export module §(m)⟦§(m)foo:part⟧;)");
+
+    // The occurrence spans the whole written name, partition included.
+    auto occs = select("m");
+    ASSERT_FALSE(occs.empty());
+    ASSERT_EQ(occs.front().range, range("m"));
+
+    auto& index = tu_index.main_file_index;
+    auto it = index.relations.find(occs.front().target);
+    ASSERT_TRUE(it != index.relations.end());
+
+    bool found_definition = false;
+    for(auto& r: it->second) {
+        if(r.kind.value() == static_cast<std::uint32_t>(RelationKind::Definition)) {
+            found_definition = true;
+        }
+    }
+    ASSERT_TRUE(found_definition);
+}
+
+TEST_CASE(ImplementationUnitReference) {
+    add_files("main.cpp", R"(
+#[foo.cppm]
+export module foo;
+export int x = 1;
+
+#[main.cpp]
+module §(m)⟦§(m)foo⟧;
+)");
+    ASSERT_TRUE(compile_with_modules());
+    tu_index = index::TUIndex::build(*unit);
+
+    // An implementation unit's declaration is a Reference, not a Definition.
+    auto occs = select("m");
+    ASSERT_FALSE(occs.empty());
+    ASSERT_EQ(occs.front().range, range("m"));
+
+    auto& index = tu_index.main_file_index;
+    auto it = index.relations.find(occs.front().target);
+    ASSERT_TRUE(it != index.relations.end());
+
+    bool found_reference = false;
+    for(auto& r: it->second) {
+        if(r.kind.value() == static_cast<std::uint32_t>(RelationKind::Definition)) {
+            ASSERT_TRUE(false);
+        }
+        if(r.kind.value() == static_cast<std::uint32_t>(RelationKind::Reference)) {
+            found_reference = true;
+        }
+    }
+    ASSERT_TRUE(found_reference);
+}
+
 TEST_CASE(OverrideRelation) {
     build_index(R"(
             struct Base {

@@ -394,6 +394,11 @@ TEST_CASE(ExportModuleMissingSemicolon) {
     EXPECT_FALSE(is_preamble_complete(content, 18));
 }
 
+TEST_CASE(AngledHashImport) {
+    llvm::StringRef content = "#import <foo.h>\nint x;";
+    EXPECT_TRUE(is_preamble_complete(content, 16));
+}
+
 TEST_CASE(TrailingCommentAfterSemicolon) {
     // A trailing comment must not hide the terminating semicolon.
     llvm::StringRef content = "import std; // done\nint x;";

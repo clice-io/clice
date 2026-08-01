@@ -153,6 +153,12 @@ TEST_CASE(IncompleteDeclaration) {
     ASSERT_EQ(lexical_scan("export module ").modules.size(), 0U);
 }
 
+TEST_CASE(EmptyContent) {
+    auto info = lexical_scan("");
+    ASSERT_EQ(info.comments.size(), 0U);
+    ASSERT_EQ(info.modules.size(), 0U);
+}
+
 TEST_CASE(NegativeControls) {
     // `module` as an ordinary identifier.
     ASSERT_EQ(lexical_scan("int module = 1;\nmodule = 2;\n").modules.size(), 0U);

@@ -39,7 +39,7 @@ module :private;
     ASSERT_EQ(modules[1].name_parts.size(), 2U);
 
     // The declaration's written name tokens are owned by its Module node,
-    // so selection sees the declaration like any other node.
+    // so the ownership machinery can attribute them.
     auto index = token_index_at(semantics, range("name").begin);
     ASSERT_TRUE(index.has_value());
     auto owners = semantics.owners(*index);
@@ -70,6 +70,24 @@ TEST_CASE(CommentNodes) {
         }
     }
     ASSERT_EQ(comment_nodes, 2U);
+}
+
+TEST_CASE(DisabledDuplicateDeclaration) {
+    // A duplicate declaration in a disabled branch fails the DefinitionLoc
+    // anchor; only the live one becomes a node.
+    add_main("main.cpp", R"cpp(
+export §(live)⟦module⟧ app;
+#if 0
+export module app;
+#endif
+)cpp");
+    ASSERT_TRUE(compile());
+    auto& semantics = unit->semantics();
+
+    auto modules = semantics.module_declarations();
+    ASSERT_EQ(modules.size(), 1U);
+    ASSERT_EQ(modules[0].kind, ModuleDeclaration::Kind::Declaration);
+    ASSERT_EQ(modules[0].keyword, range("live"));
 }
 
 TEST_CASE(NoModuleNoNodes) {

@@ -145,6 +145,10 @@ TEST_CASE(EmbedArgument) {
     ASSERT_EQ(first_header_name(R"(#embed "data.bin")"), R"("data.bin")");
 }
 
+TEST_CASE(HashImportArgument) {
+    ASSERT_EQ(first_header_name("#import <Foundation/Foundation.h>"), "<Foundation/Foundation.h>");
+}
+
 TEST_CASE(MacroArgument) {
     // A macro filename argument stays an ordinary identifier.
     llvm::StringRef content = "#include HEADER";
@@ -154,6 +158,27 @@ TEST_CASE(MacroArgument) {
     ASSERT_EQ(first_header_name(content), "");
     ASSERT_TRUE(tokens[2].is_identifier());
     ASSERT_EQ(tokens[2].text(content), "HEADER");
+}
+
+TEST_CASE(CommentThenDirective) {
+    // A retained leading comment must not consume the start-of-line state
+    // the directive machinery keys on.
+    llvm::StringRef content = "/* c */ #include <x>\nint y;\n";
+    Lexer lexer(content, {.keep_comments = true});
+
+    auto comment = lexer.advance();
+    ASSERT_EQ(comment.kind, clang::tok::comment);
+
+    auto hash = lexer.advance();
+    ASSERT_EQ(hash.kind, clang::tok::hash);
+    ASSERT_TRUE(hash.is_at_start_of_line);
+
+    auto keyword = lexer.advance();
+    ASSERT_TRUE(keyword.is_pp_keyword);
+
+    auto name = lexer.advance();
+    ASSERT_TRUE(name.is_header_name());
+    ASSERT_EQ(name.text(content), "<x>");
 }
 
 TEST_CASE(SplicedInclude) {
@@ -210,6 +235,11 @@ TEST_CASE(OffsetAtNewline) {
     auto token = lexer.advance();
     ASSERT_EQ(token.text(content), "int");
     ASSERT_EQ(token.range.begin, static_cast<std::uint32_t>(content.find("int b")));
+}
+
+TEST_CASE(EmptyContent) {
+    auto lexer = Lexer::from_line("", 0);
+    ASSERT_TRUE(lexer.advance().is_eof());
 }
 
 TEST_CASE(ContinuesToEnd) {
