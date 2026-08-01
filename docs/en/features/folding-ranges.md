@@ -310,7 +310,7 @@
   NS_END
   ```
 
-- [x] Coroutine bodies — the written block folds exactly once; the coroutine transformation wrapper adds no duplicate fold
+- [x] Coroutine bodies — the written block folds exactly once and the coroutine transformation wrapper adds no duplicate fold; a coroutine lambda keeps its body fold
 
   ```cpp
   namespace std {
@@ -354,6 +354,14 @@
           steps += 1;
       }
       co_return;
+  }
+
+  void host() {
+      auto nested = []() -> Task {
+          int steps = 0;
+          steps += 1;
+          co_return;
+      };
   }
   ```
 

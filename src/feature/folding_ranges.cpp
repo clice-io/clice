@@ -159,16 +159,23 @@ private:
             // A function's body already folds as functionBody at its decl;
             // every other written block folds on its own braces. A coroutine
             // stores its written block behind a CoroutineBodyStmt wrapper
-            // sharing the same braces, so unwrap that too.
+            // sharing the same braces — suppress the compound only when that
+            // wrapper is itself a function's body; a coroutine lambda has no
+            // functionBody producer, so its block must keep folding here.
             if(parent != Semantics::invalid) {
-                const SemanticNode& parent_node = unit.semantics().node(parent).node;
-                if(const auto* function = parent_node.get<clang::FunctionDecl>();
+                const Semantics::Node& parent_entry = unit.semantics().node(parent);
+                if(const auto* function = parent_entry.node.get<clang::FunctionDecl>();
                    function && function->getBody() == compound) {
                     return;
                 }
-                if(const auto* coroutine = parent_node.get<clang::CoroutineBodyStmt>();
-                   coroutine && coroutine->getBody() == compound) {
-                    return;
+                if(const auto* coroutine = parent_entry.node.get<clang::CoroutineBodyStmt>();
+                   coroutine && coroutine->getBody() == compound &&
+                   parent_entry.parent != Semantics::invalid) {
+                    const auto* function =
+                        unit.semantics().node(parent_entry.parent).node.get<clang::FunctionDecl>();
+                    if(function && function->getBody() == coroutine) {
+                        return;
+                    }
                 }
             }
             add_range(compound->getSourceRange(), "compoundStmt", "{...}");

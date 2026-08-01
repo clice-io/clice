@@ -10,3 +10,5 @@ input_file: coroutine_body.cpp
 - { range: "33:24-39:5", kind: struct, collapsed_text: "{...}" }
 - { range: "42:12-48:1", kind: functionBody, collapsed_text: "{...}" }
 - { range: "44:20-46:5", kind: compoundStmt, collapsed_text: "{...}" }
+- { range: "50:12-56:1", kind: functionBody, collapsed_text: "{...}" }
+- { range: "51:31-55:5", kind: compoundStmt, collapsed_text: "{...}" }
