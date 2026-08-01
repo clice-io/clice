@@ -3,7 +3,7 @@
 /// ## Coroutine bodies — the written block folds exactly once and the coroutine transformation wrapper adds no duplicate fold; a coroutine lambda keeps its body fold
 ///
 /// - status: supported
-/// - order: 15
+/// - order: 16
 
 namespace std {
 

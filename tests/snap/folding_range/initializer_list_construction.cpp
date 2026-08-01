@@ -3,7 +3,7 @@
 /// ## Initializer-list constructions — the constructor's braces and the nested initializer list share delimiters and fold once; a parenthesized list argument keeps both folds
 ///
 /// - status: supported
-/// - order: 16
+/// - order: 17
 
 namespace std {
 

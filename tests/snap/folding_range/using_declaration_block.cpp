@@ -3,7 +3,7 @@
 /// ## `using` declaration blocks — consecutive using declarations/directives
 ///
 /// - status: unsupported
-/// - order: 10
+/// - order: 11
 
 using std::vector;  // ┐
 using std::string;  // │ foldable

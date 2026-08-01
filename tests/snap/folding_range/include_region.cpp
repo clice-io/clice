@@ -3,7 +3,7 @@
 /// ## Include region folding — consecutive `#include` directives
 ///
 /// - status: unsupported
-/// - order: 8
+/// - order: 9
 
 #include <vector>       // ┐
 #include <string>       // │ foldable region

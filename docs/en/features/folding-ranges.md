@@ -186,6 +186,22 @@
   #pragma endregion
   ```
 
+- [x] Pragma classification — only the first argument token decides region/endregion
+
+  ```cpp
+  // The leading declaration ends the preamble so the pragmas below reach the
+  // main-file parse on both the standalone and the wire path.
+  int before = 0;
+
+  // Neither a region name nor another pragma's argument mentioning
+  // "endregion" may close the fold early.
+  #pragma region endregion_pair
+  int retries = 3;
+  #pragma mark see endregion notes
+  int limit = 10;
+  #pragma endregion
+  ```
+
 - [ ] Comment folding — multi-line `/* */` and consecutive `//` line comments
 
   ```cpp

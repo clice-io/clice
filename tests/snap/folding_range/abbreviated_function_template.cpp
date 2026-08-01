@@ -3,7 +3,7 @@
 /// ## Abbreviated function templates — bodies of functions with `auto` or constrained `auto` parameters fold like any other function
 ///
 /// - status: supported
-/// - order: 13
+/// - order: 14
 
 template <typename T>
 concept Small = sizeof(T) <= 8;

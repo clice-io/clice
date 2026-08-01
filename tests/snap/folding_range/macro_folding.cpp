@@ -3,7 +3,7 @@
 /// ## Macro-generated folding — braces and access specifiers spelled through macros fold at the invocation site
 ///
 /// - status: supported
-/// - order: 14
+/// - order: 15
 
 #define NS_BEGIN namespace ns {
 #define NS_END }

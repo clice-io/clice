@@ -3,7 +3,7 @@
 /// ## Template specializations and instantiations — written specializations and their members fold; instantiated declarations reuse the pattern's source locations and must not fold it again
 ///
 /// - status: supported
-/// - order: 12
+/// - order: 13
 
 template <typename T>
 struct Box {
