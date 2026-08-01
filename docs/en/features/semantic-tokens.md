@@ -554,18 +554,24 @@ Names classified by the declaration they define or reference.
   };
   ```
 
-- [ ] Function and variable explicit instantiation directives — clang mislocates the directive at the pattern, leaving the instantiated name unpainted _(partial)_ ([llvm#191658](https://github.com/llvm/llvm-project/issues/191658))
+- [ ] Function and variable explicit instantiation directives — clang builds no node for the directive, so every identifier on it goes unpainted: the name, the template arguments, even the declarator's type _(partial)_ ([llvm#191658](https://github.com/llvm/llvm-project/issues/191658))
 
   ```cpp
+  struct Widget {};
+
   template <typename T>
   void convert(T value) {}
 
-  template void convert<int>(int);
+  extern template void convert<Widget>(Widget);
+
+  template void convert<Widget>(Widget);
 
   template <typename T>
   T zero = T();
 
-  template int zero<int>;
+  extern template Widget zero<Widget>;
+
+  template Widget zero<Widget>;
   ```
 
 <!-- END GENERATED ITEMS -->
