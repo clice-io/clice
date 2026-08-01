@@ -394,6 +394,18 @@ TEST_CASE(ExportModuleMissingSemicolon) {
     EXPECT_FALSE(is_preamble_complete(content, 18));
 }
 
+TEST_CASE(TrailingCommentAfterSemicolon) {
+    // A trailing comment must not hide the terminating semicolon.
+    llvm::StringRef content = "import std; // done\nint x;";
+    EXPECT_TRUE(is_preamble_complete(content, 20));
+}
+
+TEST_CASE(TrailingCommentNoSemicolon) {
+    llvm::StringRef content = "import std // ;\nint x;";
+    // The semicolon inside the comment does not terminate the statement.
+    EXPECT_FALSE(is_preamble_complete(content, 16));
+}
+
 TEST_CASE(CompleteExportImport) {
     llvm::StringRef content = "export import std;\nint x;";
     // Bound covers "export import std;\n".
