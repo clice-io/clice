@@ -502,7 +502,9 @@ bool is_preamble_complete(llvm::StringRef content, std::uint32_t bound) {
             if(line.size() < 3) {
                 return false;
             }
-            auto argument = line[2].text(content);
+            // A filename token's spelling may begin with line splices; skip
+            // them before inspecting the delimiter.
+            auto argument = line[2].text(content).ltrim("\\\r\n \t");
             if(argument.starts_with("\"")) {
                 return argument.size() >= 2 && argument.ends_with("\"");
             }

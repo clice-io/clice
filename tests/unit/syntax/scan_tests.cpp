@@ -394,6 +394,17 @@ TEST_CASE(ExportModuleMissingSemicolon) {
     EXPECT_FALSE(is_preamble_complete(content, 18));
 }
 
+TEST_CASE(SplicedIncompleteInclude) {
+    // The unterminated filename token's spelling begins with the splice.
+    llvm::StringRef content = "#include \\\n<foo\nint x;";
+    EXPECT_FALSE(is_preamble_complete(content, 16));
+}
+
+TEST_CASE(SplicedCompleteInclude) {
+    llvm::StringRef content = "#include \\\n<foo.h>\nint x;";
+    EXPECT_TRUE(is_preamble_complete(content, 19));
+}
+
 TEST_CASE(AngledHashImport) {
     llvm::StringRef content = "#import <foo.h>\nint x;";
     EXPECT_TRUE(is_preamble_complete(content, 16));
