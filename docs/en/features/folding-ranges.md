@@ -436,6 +436,7 @@
 
 ## Changelog
 
-| Date | Change                                                               | PR  |
-| ---- | -------------------------------------------------------------------- | --- |
-| —    | Block folding, list folding, access specifiers, preprocessor regions | —   |
+| Date       | Change                                                                                                                     | PR                                                 |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| 2026-08-01 | Nested compound statements, abbreviated function templates and coroutine bodies; instantiation dedup; semantics-table walk | [#568](https://github.com/clice-io/clice/pull/568) |
+| —          | Block folding, list folding, access specifiers, preprocessor regions                                                       | —                                                  |
