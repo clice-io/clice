@@ -9,3 +9,5 @@ input_file: block_folding.cpp
 - { range: "25:13-34:1", kind: class, collapsed_text: "{...}" }
 - { range: "28:15-33:5", kind: functionBody, collapsed_text: "{...}" }
 - { range: "29:36-31:9", kind: compoundStmt, collapsed_text: "{...}" }
+- { range: "39:0-45:1", kind: namespace, collapsed_text: "{...}" }
+- { range: "41:19-43:1", kind: struct, collapsed_text: "{...}" }

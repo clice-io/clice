@@ -15,4 +15,10 @@ void process(int count) {
     while (count > 0) {
         count -= 1;
     }
+
+    // A bare scope block folds too.
+    {
+        int scratch = count;
+        count = scratch + 1;
+    }
 }

@@ -42,6 +42,15 @@
   };
 
   }  // namespace geometry
+
+  namespace spaced
+  {
+
+  struct Placeholder {
+      int filler;
+  };
+
+  }  // namespace spaced
   ```
 
 - [x] Nested compound-statement folding — `if`/`for`/`while` bodies inside functions
@@ -56,6 +65,12 @@
 
       while (count > 0) {
           count -= 1;
+      }
+
+      // A bare scope block folds too.
+      {
+          int scratch = count;
+          count = scratch + 1;
       }
   }
   ```
@@ -100,6 +115,19 @@
 
       result += sum() + scale(result, 2);
   }
+
+  int accumulate(
+      int start,  // ┐
+      int step,   // │ foldable parameter list
+      int count   // ┘ on a definition
+  ) {
+      return start + step * count;
+  }
+
+  void log_all(
+      const char* format,  // ┐ variadic parameter
+      ...                  // ┘ list still folds
+  );
   ```
 
 - [x] Access-specifier section folding — `public:` / `protected:` / `private:` regions within a class ([clangd#1455](https://github.com/clangd/clangd/issues/1455))
@@ -266,6 +294,53 @@
   };
 
   NS_END
+  ```
+
+- [x] Coroutine bodies — the written block folds exactly once; the coroutine transformation wrapper adds no duplicate fold
+
+  ```cpp
+  namespace std {
+
+  template <typename Ret, typename...>
+  struct coroutine_traits {
+      using promise_type = typename Ret::promise_type;
+  };
+
+  template <typename = void>
+  struct coroutine_handle {
+      coroutine_handle() = default;
+
+      template <typename Promise>
+      coroutine_handle(coroutine_handle<Promise>) noexcept;
+
+      static coroutine_handle from_address(void*) noexcept;
+  };
+
+  struct suspend_never {
+      bool await_ready() const noexcept;
+      void await_suspend(coroutine_handle<>) const noexcept;
+      void await_resume() const noexcept;
+  };
+
+  }  // namespace std
+
+  struct Task {
+      struct promise_type {
+          Task get_return_object();
+          std::suspend_never initial_suspend();
+          std::suspend_never final_suspend() noexcept;
+          void return_void();
+          void unhandled_exception();
+      };
+  };
+
+  Task work() {
+      int steps = 0;
+      if (steps == 0) {
+          steps += 1;
+      }
+      co_return;
+  }
   ```
 
 <!-- END GENERATED ITEMS -->

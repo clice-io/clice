@@ -17,6 +17,7 @@
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
+#include "clang/AST/StmtCXX.h"
 #include "clang/Basic/Specifiers.h"
 
 namespace clice::feature {
@@ -156,11 +157,17 @@ private:
 
         if(const auto* compound = llvm::dyn_cast<clang::CompoundStmt>(stmt)) {
             // A function's body already folds as functionBody at its decl;
-            // every other written block folds on its own braces.
+            // every other written block folds on its own braces. A coroutine
+            // stores its written block behind a CoroutineBodyStmt wrapper
+            // sharing the same braces, so unwrap that too.
             if(parent != Semantics::invalid) {
-                const auto* function =
-                    unit.semantics().node(parent).node.get<clang::FunctionDecl>();
-                if(function && function->getBody() == compound) {
+                const SemanticNode& parent_node = unit.semantics().node(parent).node;
+                if(const auto* function = parent_node.get<clang::FunctionDecl>();
+                   function && function->getBody() == compound) {
+                    return;
+                }
+                if(const auto* coroutine = parent_node.get<clang::CoroutineBodyStmt>();
+                   coroutine && coroutine->getBody() == compound) {
                     return;
                 }
             }
@@ -182,11 +189,14 @@ private:
                 auto kind = tokens.back().kind();
                 if(kind == clang::tok::r_paren) {
                     depth += 1;
-                } else if(kind == clang::tok::l_paren && --depth == 0) {
-                    add_range(clang::SourceRange(tokens.back().location(), right_paren),
-                              "functionCall",
-                              "(...)");
-                    break;
+                } else if(kind == clang::tok::l_paren) {
+                    depth -= 1;
+                    if(depth == 0) {
+                        add_range(clang::SourceRange(tokens.back().location(), right_paren),
+                                  "functionCall",
+                                  "(...)");
+                        break;
+                    }
                 }
                 tokens = tokens.drop_back();
             }

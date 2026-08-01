@@ -42,3 +42,16 @@ void demo() {
 
     result += sum() + scale(result, 2);
 }
+
+int accumulate(
+    int start,  // ┐
+    int step,   // │ foldable parameter list
+    int count   // ┘ on a definition
+) {
+    return start + step * count;
+}
+
+void log_all(
+    const char* format,  // ┐ variadic parameter
+    ...                  // ┘ list still folds
+);

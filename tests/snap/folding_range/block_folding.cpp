@@ -35,3 +35,12 @@ class Canvas {
 };
 
 }  // namespace geometry
+
+namespace spaced
+{
+
+struct Placeholder {
+    int filler;
+};
+
+}  // namespace spaced

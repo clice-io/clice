@@ -10,3 +10,6 @@ input_file: multiline_list_folding.cpp
 - { range: "31:6-33:5", kind: compoundStmt, collapsed_text: "{...}" }
 - { range: "35:19-38:5", kind: functionParams, collapsed_text: "(...)" }
 - { range: "38:6-40:5", kind: compoundStmt, collapsed_text: "{...}" }
+- { range: "45:14-49:1", kind: functionParams, collapsed_text: "(...)" }
+- { range: "49:2-51:1", kind: functionBody, collapsed_text: "{...}" }
+- { range: "53:12-56:1", kind: functionParams, collapsed_text: "(...)" }
