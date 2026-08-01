@@ -22,9 +22,12 @@ bool is_implicit_instantiation(const clang::NamedDecl* decl);
 /// of the whole subtree only the explicit directive itself is written.
 ///
 /// FIXME(explicit-instantiation): clang mislocates the function and
-/// variable directive forms at the pattern; clang 23's
-/// ExplicitInstantiationDecl (llvm/llvm-project#191658) records the
-/// written directive, letting features stop skipping those forms.
+/// variable directive forms at the pattern. The class form only works as
+/// long as each written directive happens to own its own specialization
+/// redecl — the written info lives on the specialization, not the
+/// directive, so any node reuse loses a directive's locations. clang 23's
+/// ExplicitInstantiationDecl (llvm/llvm-project#191658) records each
+/// written directive, letting features stop special-casing all forms.
 bool is_instantiation(const clang::Decl* decl);
 
 /// Return the decl where it is instantiated from. It could be a template

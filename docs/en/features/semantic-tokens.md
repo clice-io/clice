@@ -373,7 +373,7 @@ Names classified by the declaration they define or reference.
   Vec(It, It) -> Vec<int>;
   ```
 
-- [x] Explicit instantiation — the instantiated template name and its written template arguments highlighted ([clangd#316](https://github.com/clangd/clangd/issues/316))
+- [x] Explicit instantiation — the instantiated template name and its written template arguments highlighted, on the extern declaration and the definition alike ([clangd#316](https://github.com/clangd/clangd/issues/316))
 
   ```cpp
   struct Widget {};
@@ -382,6 +382,8 @@ Names classified by the declaration they define or reference.
   struct Holder {
       T value;
   };
+
+  extern template struct Holder<Widget>;
 
   template struct Holder<Widget>;
   ```
