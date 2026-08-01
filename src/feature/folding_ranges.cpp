@@ -205,10 +205,7 @@ private:
 
         if(const auto* construct = llvm::dyn_cast<clang::CXXConstructExpr>(stmt)) {
             if(auto parens = construct->getParenOrBraceRange(); parens.isValid()) {
-                add_range(
-                    clang::SourceRange(parens.getBegin().getLocWithOffset(1), parens.getEnd()),
-                    "functionCall",
-                    "(...)");
+                add_range(parens, "functionCall", "(...)");
             }
             return;
         }

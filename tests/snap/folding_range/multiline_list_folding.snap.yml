@@ -13,3 +13,6 @@ input_file: multiline_list_folding.cpp
 - { range: "45:14-49:1", kind: functionParams, collapsed_text: "(...)" }
 - { range: "49:2-51:1", kind: functionBody, collapsed_text: "{...}" }
 - { range: "53:12-56:1", kind: functionParams, collapsed_text: "(...)" }
+- { range: "58:12-60:1", kind: struct, collapsed_text: "{...}" }
+- { range: "62:9-65:1", kind: functionCall, collapsed_text: "(...)" }
+- { range: "67:15-70:1", kind: functionCall, collapsed_text: "(...)" }

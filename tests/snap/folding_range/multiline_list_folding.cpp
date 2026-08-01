@@ -55,3 +55,17 @@ void log_all(
     const char* format,  // ┐ variadic parameter
     ...                  // ┘ list still folds
 );
+
+struct Rect {
+    Rect(int w, int h);
+};
+
+Rect area(
+    10,  // ┐ foldable constructor
+    20   // ┘ arguments
+);
+
+Rect brace_area{
+    30,
+    40
+};
