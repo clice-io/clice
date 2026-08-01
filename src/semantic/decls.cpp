@@ -77,6 +77,22 @@ bool is_instantiation(const clang::Decl* decl) {
     return false;
 }
 
+bool is_member_specialization(const clang::Decl* decl) {
+    if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
+        return function->getInstantiatedFromMemberFunction() != nullptr;
+    }
+    if(const auto* var = llvm::dyn_cast<clang::VarDecl>(decl)) {
+        return var->getInstantiatedFromStaticDataMember() != nullptr;
+    }
+    if(const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(decl)) {
+        return record->getInstantiatedFromMemberClass() != nullptr;
+    }
+    if(const auto* enum_decl = llvm::dyn_cast<clang::EnumDecl>(decl)) {
+        return enum_decl->getInstantiatedFromMemberEnum() != nullptr;
+    }
+    return false;
+}
+
 namespace {
 
 /// The pattern an undeclared specialization would be instantiated from:

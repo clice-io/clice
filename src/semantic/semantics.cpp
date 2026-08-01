@@ -378,32 +378,21 @@ public:
         }
 
         // An instantiation subtree reuses the pattern's source locations, so
-        // nothing under it is written here. Of an explicit instantiation
-        // directive only the member decls beneath it are instantiated: the
-        // directive's own decl and its template-argument TypeLocs are
-        // written and must stay unflagged. An implicit instantiation head is
-        // not written at all, so the flag covers it too. A member recorded
-        // directly under a directive is instantiated even though its own
-        // specialization kind repeats the directive's.
-        bool directive_member =
-            stack.back() != Semantics::invalid && stack.back() == directive_node;
-        bool head = directive_member || decls::is_instantiation(X);
-        bool written_head = head && !directive_member &&
-                            !decls::is_implicit_instantiation(llvm::cast<clang::NamedDecl>(X));
+        // nothing under it is written here. An explicit instantiation
+        // directive's own decl is the exception: the directive is written,
+        // and the traversal visits only its written template arguments (the
+        // instantiated members arrive as separate top-level decls, carrying
+        // the directive's specialization kind but written nowhere — flag
+        // their whole subtrees like any implicit instantiation).
+        bool head = decls::is_instantiation(X);
+        bool written_head = head &&
+                            !decls::is_implicit_instantiation(llvm::cast<clang::NamedDecl>(X)) &&
+                            !decls::is_member_specialization(X);
         if(head && !written_head) {
             instantiation_depth += 1;
         }
-        bool ret = traverse_node(SemanticNode(static_cast<const clang::Decl*>(X)), [&] {
-            std::uint32_t saved = directive_node;
-            if(written_head) {
-                directive_node = stack.back();
-            }
-            bool ok = Base::TraverseDecl(X);
-            if(written_head) {
-                directive_node = saved;
-            }
-            return ok;
-        });
+        bool ret = traverse_node(SemanticNode(static_cast<const clang::Decl*>(X)),
+                                 [&] { return Base::TraverseDecl(X); });
         if(head && !written_head) {
             instantiation_depth -= 1;
         }
@@ -978,11 +967,6 @@ private:
     /// Depth of enclosing instantiation subtrees; nodes pushed while it is
     /// non-zero are flagged in_instantiation.
     std::uint32_t instantiation_depth = 0;
-
-    /// Node index of the explicit instantiation directive currently being
-    /// traversed; its direct decl children are instantiated members while
-    /// its non-decl children (the written template arguments) are not.
-    std::uint32_t directive_node = Semantics::invalid;
 
     /// (spelled token index, owning node index) pairs, sorted in finalize().
     std::vector<std::pair<std::uint32_t, std::uint32_t>> entries;

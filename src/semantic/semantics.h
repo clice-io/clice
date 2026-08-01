@@ -206,8 +206,13 @@ struct NameOccurrence {
 ///
 /// Dependent names (typename T::type, unresolved lookups, dependent using
 /// declarations) resolve through the template resolver into WeakReference
-/// occurrences; without a resolver they produce nothing. Nodes from
-/// implicit instantiations never produce occurrences.
+/// occurrences; without a resolver they produce nothing. Instantiation
+/// decl heads produce no declaration occurrence (their locations repeat
+/// the pattern), but nodes inside instantiated bodies deliberately do:
+/// each instantiation acts as an implementation of the duck-typed
+/// template, so a dependent name classifies as its actual resolutions —
+/// see the "Instantiations as Implementations" section of the template
+/// resolver design doc.
 llvm::SmallVector<NameOccurrence, 2>
     resolve_occurrences(const SemanticNode& node, types::TemplateResolver* resolver = nullptr);
 

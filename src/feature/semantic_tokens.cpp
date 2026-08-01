@@ -480,12 +480,9 @@ private:
         };
 
         for(auto [entry_index, entry]: llvm::enumerate(semantics.node_entries())) {
-            // Instantiated nodes repeat the pattern's locations; the written
-            // pattern provides its own occurrences.
-            if(entry.flags.in_instantiation) {
-                continue;
-            }
-
+            // Instantiated nodes deliberately classify too: they repeat the
+            // pattern's locations, so a dependent name paints as its actual
+            // resolution — and as Conflict when instantiations disagree.
             const SemanticNode& node = entry.node;
             switch(node.kind()) {
                 case SemanticNode::Kind::MacroDefine: {

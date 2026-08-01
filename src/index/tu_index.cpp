@@ -529,12 +529,6 @@ public:
                 continue;
             }
 
-            /// Instantiated nodes repeat the pattern's locations; the written
-            /// pattern provides its own occurrences and relations.
-            if(entries[i].flags.in_instantiation) {
-                continue;
-            }
-
             for(auto& occurrence: resolve_occurrences(semantics, i, &unit.resolver())) {
                 add_occurrence(occurrence.decl, occurrence.kind, occurrence.location);
 

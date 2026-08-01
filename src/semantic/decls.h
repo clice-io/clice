@@ -30,6 +30,13 @@ bool is_implicit_instantiation(const clang::NamedDecl* decl);
 /// written directive, letting features stop special-casing all forms.
 bool is_instantiation(const clang::Decl* decl);
 
+/// Check whether the decl is a member of a class template instantiation,
+/// instantiated from the pattern's corresponding member. Such members
+/// repeat the directive's specialization kind when the instantiation is
+/// explicit, but unlike the directive's own decl nothing about them is
+/// written.
+bool is_member_specialization(const clang::Decl* decl);
+
 /// Return the decl where it is instantiated from. It could be a template
 /// decl or a member of a class template. If the decl is a full
 /// specialization, return itself.
