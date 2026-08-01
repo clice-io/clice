@@ -145,8 +145,25 @@ public:
                 break;
             }
 
+            // An instantiation subtree repeats the pattern's locations;
+            // hinting it duplicates every hint there — and with several
+            // instantiations the deduced types contradict each other. The
+            // explicit directive's own decl produces no hints either.
+            if(entry.flags.in_instantiation) {
+                index = entry.subtree_end;
+                continue;
+            }
+
             switch(entry.node.kind()) {
-                case SemanticNode::Kind::Decl: handle_decl(entry.node.get<clang::Decl>()); break;
+                case SemanticNode::Kind::Decl: {
+                    const auto* decl = entry.node.get<clang::Decl>();
+                    if(decls::is_instantiation(decl)) {
+                        index = entry.subtree_end;
+                        continue;
+                    }
+                    handle_decl(decl);
+                    break;
+                }
 
                 case SemanticNode::Kind::Stmt:
                     if(!handle_stmt(entry.node.get<clang::Stmt>())) {

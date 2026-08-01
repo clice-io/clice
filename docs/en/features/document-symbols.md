@@ -281,6 +281,28 @@ Provides the file outline and breadcrumb navigation via `textDocument/documentSy
   }  // namespace aliases
   ```
 
+- [ ] Explicit instantiation directives — the class forms appear as childless symbols; clang mislocates the function and variable forms at the pattern, so they are missing from the outline _(partial)_ ([llvm#191658](https://github.com/llvm/llvm-project/issues/191658))
+
+  ```cpp
+  template <typename T>
+  struct Box {
+      T value;
+  };
+
+  template struct Box<int>;
+  extern template struct Box<char>;
+
+  template <typename T>
+  void convert(T value) {}
+
+  template void convert<int>(int);
+
+  template <typename T>
+  T zero = T();
+
+  template int zero<int>;
+  ```
+
 <!-- END GENERATED ITEMS -->
 
 ## Symbol Detail

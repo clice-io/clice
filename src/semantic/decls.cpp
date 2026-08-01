@@ -15,6 +15,7 @@
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/AST/Type.h"
+#include "clang/Basic/Specifiers.h"
 
 namespace clice::decls {
 
@@ -55,6 +56,25 @@ inline bool is_template_specialization_kind(const clang::NamedDecl* decl,
 bool is_implicit_instantiation(const clang::NamedDecl* decl) {
     assert(decl);
     return is_template_specialization_kind(decl, clang::TSK_ImplicitInstantiation);
+}
+
+bool is_instantiation(const clang::Decl* decl) {
+    if(const auto* named = llvm::dyn_cast<clang::NamedDecl>(decl);
+       named && is_implicit_instantiation(named)) {
+        return true;
+    }
+
+    if(const auto* spec = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(decl)) {
+        return !llvm::isa<clang::ClassTemplatePartialSpecializationDecl>(spec) &&
+               clang::isTemplateInstantiation(spec->getSpecializationKind());
+    }
+    if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
+        return clang::isTemplateInstantiation(function->getTemplateSpecializationKind());
+    }
+    if(const auto* var = llvm::dyn_cast<clang::VarDecl>(decl)) {
+        return clang::isTemplateInstantiation(var->getTemplateSpecializationKind());
+    }
+    return false;
 }
 
 namespace {

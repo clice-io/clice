@@ -66,37 +66,20 @@ auto underlying_function(const clang::Decl* decl) -> const clang::FunctionDecl* 
     return decl->getAsFunction();
 }
 
-/// Returns the decl that should be used for querying comments.
+/// Returns the decl that should be used for querying comments: the written
+/// pattern an instantiation came from, the decl itself otherwise.
 auto decl_for_comment(const clang::NamedDecl* decl) -> const clang::NamedDecl* {
-    const clang::NamedDecl* result = decl;
-    if(const auto* spec = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(decl)) {
-        /// Template may not be instantiated e.g. if the type didn't need to be
-        /// complete; fallback to primary template.
-        if(spec->getTemplateSpecializationKind() == clang::TSK_Undeclared) {
-            result = spec->getSpecializedTemplate();
-        } else if(const auto* pattern = spec->getTemplateInstantiationPattern()) {
-            result = pattern;
+    /// Chase the pattern to a fixed point: a comparison operator instantiated
+    /// from a spaceship operator that is itself a template instantiation
+    /// needs two hops. Termination rests on clang's instantiation graph
+    /// being acyclic — every hop moves strictly toward a written pattern.
+    while(const auto* pattern = decls::instantiated_from(decl)) {
+        if(pattern == decl) {
+            break;
         }
-    } else if(const auto* spec = llvm::dyn_cast<clang::VarTemplateSpecializationDecl>(decl)) {
-        if(spec->getTemplateSpecializationKind() == clang::TSK_Undeclared) {
-            result = spec->getSpecializedTemplate();
-        } else if(const auto* pattern = spec->getTemplateInstantiationPattern()) {
-            result = pattern;
-        }
-    } else if(const auto* function = decl->getAsFunction()) {
-        if(const auto* pattern = function->getTemplateInstantiationPattern()) {
-            result = pattern;
-        }
+        decl = pattern;
     }
-
-    /// Ensure that decl_for_comment(decl_for_comment(X)) = decl_for_comment(X).
-    /// This is usually not needed, but in strange cases of comparison operators
-    /// being instantiated from spaceship operator, which itself is a template
-    /// instantiation the recursive call is necessary.
-    if(decl != result) {
-        result = decl_for_comment(result);
-    }
-    return result;
+    return decl;
 }
 
 /// Default argument might exist but be unavailable, in the case of unparsed

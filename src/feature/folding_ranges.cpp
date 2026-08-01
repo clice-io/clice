@@ -14,11 +14,9 @@
 #include "llvm/Support/Casting.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclCXX.h"
-#include "clang/AST/DeclTemplate.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/StmtCXX.h"
-#include "clang/Basic/Specifiers.h"
 
 namespace clice::feature {
 
@@ -48,7 +46,7 @@ public:
 
             if(entry.node.kind() == SemanticNode::Kind::Decl) {
                 const auto* decl = entry.node.get<clang::Decl>();
-                if(is_instantiation(decl)) {
+                if(decls::is_instantiation(decl)) {
                     index = entry.subtree_end;
                     continue;
                 }
@@ -92,29 +90,6 @@ public:
     }
 
 private:
-    /// Whether the decl heads a template-instantiation subtree. Instantiated
-    /// decls reuse the pattern's source locations (and explicit instantiations
-    /// have no written body), so folding them would duplicate the pattern's
-    /// folds.
-    static bool is_instantiation(const clang::Decl* decl) {
-        if(const auto* named = llvm::dyn_cast<clang::NamedDecl>(decl);
-           named && decls::is_implicit_instantiation(named)) {
-            return true;
-        }
-
-        if(const auto* spec = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(decl)) {
-            return !llvm::isa<clang::ClassTemplatePartialSpecializationDecl>(spec) &&
-                   clang::isTemplateInstantiation(spec->getSpecializationKind());
-        }
-        if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
-            return clang::isTemplateInstantiation(function->getTemplateSpecializationKind());
-        }
-        if(const auto* var = llvm::dyn_cast<clang::VarDecl>(decl)) {
-            return clang::isTemplateInstantiation(var->getTemplateSpecializationKind());
-        }
-        return false;
-    }
-
     void collect_decl(const clang::Decl* decl) {
         if(const auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(decl)) {
             // NamespaceDecl does not store its left brace location; scan for

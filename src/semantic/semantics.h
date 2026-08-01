@@ -234,7 +234,11 @@ public:
         bool implicit : 1 = false;
 
         /// The node belongs to a template instantiation rather than the
-        /// written template. Reserved: instantiations are not recorded yet.
+        /// written template, so its locations point into the pattern.
+        /// Instantiations reach the table as top-level implicit
+        /// instantiations and as subtrees of explicit instantiation
+        /// directives; the directive's own decl is written and stays
+        /// unflagged.
         bool in_instantiation : 1 = false;
     };
 

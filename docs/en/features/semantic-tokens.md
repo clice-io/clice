@@ -550,6 +550,20 @@ Names classified by the declaration they define or reference.
   };
   ```
 
+- [ ] Function and variable explicit instantiation directives — clang mislocates the directive at the pattern, leaving the instantiated name unpainted _(partial)_ ([llvm#191658](https://github.com/llvm/llvm-project/issues/191658))
+
+  ```cpp
+  template <typename T>
+  void convert(T value) {}
+
+  template void convert<int>(int);
+
+  template <typename T>
+  T zero = T();
+
+  template int zero<int>;
+  ```
+
 <!-- END GENERATED ITEMS -->
 
 ## Modules

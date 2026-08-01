@@ -287,8 +287,7 @@ private:
 
         /// A logical newline between tokens ends any directive context; a
         /// backslash-newline splice continues the directive.
-        if(offset > previous_end &&
-           has_logical_newline(content.substr(previous_end, offset - previous_end))) {
+        if(offset > previous_end && has_logical_newline(previous_end, offset)) {
             directive_context = DirectiveContext::None;
         }
         previous_end = range.end;
@@ -412,29 +411,30 @@ private:
     /// linear; the previous per-token owner-chain walk degraded quadratically
     /// on pathological inputs (a macro expanding to tens of thousands of
     /// nodes attributes all of them to one spelled invocation token).
+    /// The spelled token written at `location`, or none. Macro locations
+    /// resolve to their spelling: names written as macro arguments
+    /// classify the argument token itself.
+    auto spelled_index(clang::SourceLocation location) -> std::optional<std::uint32_t> {
+        if(location.isInvalid()) {
+            return std::nullopt;
+        }
+        if(location.isMacroID()) {
+            location = unit.spelling_location(location);
+        }
+
+        auto spelled = semantics.spelled_tokens();
+        auto it = std::partition_point(
+            spelled.begin(),
+            spelled.end(),
+            [&](const clang::syntax::Token& token) { return token.location() < location; });
+        if(it == spelled.end() || it->location() != location) {
+            return std::nullopt;
+        }
+        return static_cast<std::uint32_t>(it - spelled.begin());
+    }
+
     void precompute_semantics() {
         auto spelled = semantics.spelled_tokens();
-
-        /// The spelled token written at `location`, or none. Macro locations
-        /// resolve to their spelling: names written as macro arguments
-        /// classify the argument token itself.
-        auto spelled_index = [&](clang::SourceLocation location) -> std::optional<std::uint32_t> {
-            if(location.isInvalid()) {
-                return std::nullopt;
-            }
-            if(location.isMacroID()) {
-                location = unit.spelling_location(location);
-            }
-
-            auto it = std::partition_point(
-                spelled.begin(),
-                spelled.end(),
-                [&](const clang::syntax::Token& token) { return token.location() < location; });
-            if(it == spelled.end() || it->location() != location) {
-                return std::nullopt;
-            }
-            return static_cast<std::uint32_t>(it - spelled.begin());
-        };
 
         /// Anchor a candidate at the spelled token written at `location`.
         /// With allow_ignored, tokens preprocessed away (directive regions)
@@ -480,6 +480,12 @@ private:
         };
 
         for(auto [entry_index, entry]: llvm::enumerate(semantics.node_entries())) {
+            // Instantiated nodes repeat the pattern's locations; the written
+            // pattern provides its own occurrences.
+            if(entry.flags.in_instantiation) {
+                continue;
+            }
+
             const SemanticNode& node = entry.node;
             switch(node.kind()) {
                 case SemanticNode::Kind::MacroDefine: {
@@ -640,28 +646,32 @@ private:
         }
     }
 
-    static bool has_logical_newline(llvm::StringRef text) {
-        for(std::size_t i = 0; i < text.size(); i++) {
-            /// A block comment is whitespace to the preprocessor, however
-            /// many lines it spans.
-            if(text[i] == '/' && i + 1 < text.size() && text[i + 1] == '*') {
-                auto end = text.find("*/", i + 2);
-                if(end == llvm::StringRef::npos) {
-                    return true;
-                }
-                i = end + 1;
-                continue;
+    bool has_logical_newline(std::uint32_t begin, std::uint32_t end) {
+        /// Comment ranges come from the Lexer scan; gaps are visited in
+        /// order, so one monotonic cursor suffices.
+        auto inside_comment = [&](std::uint32_t offset) {
+            while(newline_scan_comment < comments.size() &&
+                  comments[newline_scan_comment].end <= offset) {
+                newline_scan_comment += 1;
             }
+            return newline_scan_comment < comments.size() &&
+                   comments[newline_scan_comment].begin <= offset;
+        };
 
-            if(text[i] != '\n') {
+        for(auto i = begin; i < end; i += 1) {
+            /// A newline inside a comment is invisible to the preprocessor
+            /// (a block comment is whitespace however many lines it spans;
+            /// a line comment ends only at its unspliced newline, which the
+            /// Lexer leaves outside the comment range).
+            if(content[i] != '\n' || inside_comment(i)) {
                 continue;
             }
 
             auto j = i;
-            if(j > 0 && text[j - 1] == '\r') {
-                j--;
+            if(j > begin && content[j - 1] == '\r') {
+                j -= 1;
             }
-            if(j > 0 && text[j - 1] == '\\') {
+            if(j > begin && content[j - 1] == '\\') {
                 continue;
             }
             return true;
@@ -699,6 +709,8 @@ private:
     llvm::DenseMap<std::uint32_t, Classified> token_semantics;
     std::vector<LocalSourceRange> comments;
     std::size_t next_comment = 0;
+    /// Cursor of has_logical_newline over `comments`.
+    std::size_t newline_scan_comment = 0;
     std::vector<SemanticToken> tokens;
 };
 

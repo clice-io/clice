@@ -72,7 +72,8 @@ namespace conversion_target {
 class X { operator §(10_conversion_target)X(); };
 }
 
-// Falls back to primary template, when the type is not instantiated.
+// An uninstantiated specialization documents itself with the pattern
+// instantiation would pick, not the primary template.
 namespace primary_fallback {
 // comment from primary
 template <typename T> class Foo {};
@@ -246,4 +247,15 @@ template <class T> struct D2 : B2<T> {
   using typename B2<T>::type;
   §(35_unresolved_using_use)type x;
 };
+}
+
+// An uninstantiated variable-template specialization also documents itself
+// with the pattern instantiation would pick.
+namespace var_primary_fallback {
+// comment from primary
+template <typename T> int slot = 0;
+// comment from specialization
+template <typename T> int slot<T*> = 1;
+
+using probe = decltype(sl§(36_variable_template_doc)ot<int*>);
 }

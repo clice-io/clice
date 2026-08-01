@@ -118,6 +118,13 @@ public:
 
             close_frames(index);
 
+            // Implicit instantiations (and anything below an instantiation
+            // head) are located at the pattern, not here.
+            if(entry.flags.in_instantiation) {
+                index = entry.subtree_end;
+                continue;
+            }
+
             if(entry.node.kind() == SemanticNode::Kind::Decl) {
                 if(!handle_decl(entry.node.get<clang::Decl>(), entry.subtree_end)) {
                     index = entry.subtree_end;
@@ -148,30 +155,21 @@ private:
             return true;
         }
 
-        if(decls::is_implicit_instantiation(named)) {
-            return false;
-        }
-
-        // Explicit instantiations carry no written body. The class form
-        // (`template struct Box<int>;`) gets a childless outline node — its
-        // members are instantiated decls located in the primary template.
-        // Clang records function and variable instantiations (and their
-        // instantiated members) at the primary's location, so those produce
-        // no symbol at all (mirroring resolve_occurrences).
+        // Explicit instantiation directives carry no written body (implicit
+        // instantiations never reach here — the walk skips flagged nodes).
+        // The class form (`template struct Box<int>;`) gets a childless
+        // outline node — its members are instantiated decls located in the
+        // primary template.
+        // FIXME(explicit-instantiation): clang mislocates the function and
+        // variable directive forms at the pattern, so they produce no symbol
+        // at all (mirroring resolve_occurrences) until the pin gains
+        // clang 23's ExplicitInstantiationDecl (llvm/llvm-project#191658).
         bool childless_instantiation = false;
-        if(const auto* spec = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(decl)) {
-            if(!llvm::isa<clang::ClassTemplatePartialSpecializationDecl>(spec) &&
-               clang::isTemplateInstantiation(spec->getSpecializationKind())) {
-                childless_instantiation = true;
-            }
-        } else if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
-            if(clang::isTemplateInstantiation(function->getTemplateSpecializationKind())) {
+        if(decls::is_instantiation(decl)) {
+            if(!llvm::isa<clang::ClassTemplateSpecializationDecl>(decl)) {
                 return false;
             }
-        } else if(const auto* var = llvm::dyn_cast<clang::VarDecl>(decl)) {
-            if(clang::isTemplateInstantiation(var->getTemplateSpecializationKind())) {
-                return false;
-            }
+            childless_instantiation = true;
         }
 
         if(!is_interested(decl)) {

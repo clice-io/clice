@@ -58,6 +58,7 @@ const FEATURES: Record<string, string> = {
 const ISSUE_TRACKERS: Record<string, string> = {
     clangd: "https://github.com/clangd/clangd/issues/",
     vscode: "https://github.com/microsoft/vscode/issues/",
+    llvm: "https://github.com/llvm/llvm-project/issues/",
 };
 
 // `snap` is consumed by the snapshot suites (tools/snap/inspect.ts),

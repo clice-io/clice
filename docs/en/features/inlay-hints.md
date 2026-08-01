@@ -745,6 +745,34 @@ clice renders inline annotations for the information the code leaves implicit: p
   auto [x, y] = make();
   ```
 
+- [ ] Instantiated templates — instantiated bodies repeat no hints at the pattern; dependent `auto` could reveal the deduced type while exactly one instantiation exists _(partial)_ ([clangd#2275](https://github.com/clangd/clangd/issues/2275))
+
+  ```cpp
+  void take(int first, int second);
+
+  template <typename T>
+  struct Single {
+      void reset() {
+          take(1, 2);
+          // Deducible from the only instantiation, but not yet deduced.
+          auto copy = T();
+      }
+  };
+
+  template struct Single<char>;
+
+  template <typename T>
+  struct Twice {
+      void reset() {
+          // No hint: two instantiations deduce contradicting types.
+          auto copy = T();
+      }
+  };
+
+  template struct Twice<char>;
+  template struct Twice<int>;
+  ```
+
 <!-- END GENERATED ITEMS -->
 
 ## Designator Hints

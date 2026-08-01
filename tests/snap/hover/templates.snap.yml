@@ -106,11 +106,11 @@ private: operator int()
 class X {}
 ```
 
-11_primary_template_doc: { range: "81:2-81:5" }
+11_primary_template_doc: { range: "82:2-82:5" }
 ### class `Foo<int *>`  
 
 ---
-comment from primary  
+comment from specialization  
 
 ---
 ```cpp
@@ -118,7 +118,7 @@ comment from primary
 template <> class Foo<int *>
 ```
 
-12_variable_template: { range: "89:26-89:29" }
+12_variable_template: { range: "90:26-90:29" }
 ### variable `arr`  
 
 ---
@@ -130,7 +130,7 @@ Type: `m_int[Size] (aka int[Size])`
 template <int Size> m_int arr[Size]
 ```
 
-13_variable_template_spec: { range: "98:18-98:21" }
+13_variable_template_spec: { range: "99:18-99:21" }
 ### variable `arr<4>`  
 
 ---
@@ -142,7 +142,7 @@ Type: `m_int[4] (aka int[4])`
 m_int arr[4]
 ```
 
-14_canonical_type: { range: "109:23-109:24" }
+14_canonical_type: { range: "110:23-110:24" }
 ### variable `a`  
 
 ---
@@ -154,7 +154,7 @@ Type: `TestHover<int>::Type (aka int)`
 TestHover<int>::Type a
 ```
 
-15_function_template_type: { range: "116:5-116:8" }
+15_function_template_type: { range: "117:5-117:8" }
 ### function `foo`  
 
 ---
@@ -168,7 +168,7 @@ Parameters:
 template <typename T> void foo(T arg)
 ```
 
-16_alias_template: { range: "122:6-122:11" }
+16_alias_template: { range: "123:6-123:11" }
 ### type `alias`  
 
 ---
@@ -180,7 +180,7 @@ Type: `T`
 template <typename T> using alias = T
 ```
 
-17_alias_template_chain: { range: "131:6-131:8" }
+17_alias_template_chain: { range: "132:6-132:8" }
 ### type `AA`  
 
 ---
@@ -192,7 +192,7 @@ Type: `A<T> (aka T)`
 template <typename T> using AA = A<T>
 ```
 
-18_constant_array: { range: "138:6-138:9" }
+18_constant_array: { range: "139:6-139:9" }
 ### variable `arr`  
 
 ---
@@ -204,7 +204,7 @@ Type: `m_int[10] (aka int[10])`
 m_int arr[10]
 ```
 
-19_incomplete_array: { range: "145:13-145:16" }
+19_incomplete_array: { range: "146:13-146:16" }
 ### variable `arr`  
 
 ---
@@ -216,7 +216,7 @@ Type: `m_int[] (aka int[])`
 extern m_int arr[]
 ```
 
-20_dependent_size_array: { range: "154:8-154:11" }
+20_dependent_size_array: { range: "155:8-155:11" }
 ### field `arr`  
 
 ---
@@ -228,7 +228,7 @@ Type: `m_int[Size] (aka int[Size])`
 public: m_int arr[Size]
 ```
 
-21_dependent_type: { range: "166:20-166:24" }
+21_dependent_type: { range: "167:20-167:24" }
 ### type `type`  
 
 ---
@@ -240,7 +240,7 @@ Type: `T`
 public: using type = T
 ```
 
-22_dependent_value: { range: "167:36-167:41" }
+22_dependent_value: { range: "168:36-168:41" }
 ### variable `value`  
 
 ---
@@ -253,7 +253,7 @@ Value = `1`
 public: static constexpr int value = 1
 ```
 
-23_using_typename: { range: "168:26-168:30" }
+23_using_typename: { range: "169:26-169:30" }
 ### type `type`  
 
 ---
@@ -265,7 +265,7 @@ Type: `T`
 public: using type = T
 ```
 
-24_using_value: { range: "169:17-169:22" }
+24_using_value: { range: "170:17-170:22" }
 ### variable `value`  
 
 ---
@@ -278,7 +278,7 @@ Value = `1`
 public: static constexpr int value = 1
 ```
 
-25_template_template_arg: { range: "177:6-177:7" }
+25_template_template_arg: { range: "178:6-178:7" }
 ### `X`  
 
 ---
@@ -287,7 +287,7 @@ public: static constexpr int value = 1
 template <typename> struct X {}
 ```
 
-26_ctad: { range: "183:0-183:3" }
+26_ctad: { range: "184:0-184:3" }
 ### struct `Box`  
 
 ---
@@ -296,7 +296,7 @@ template <typename> struct X {}
 template <typename T> struct Box {}
 ```
 
-27_unresolved_member: { range: "192:43-192:44" }
+27_unresolved_member: { range: "193:43-193:44" }
 ### method `f`  
 
 ---
@@ -310,7 +310,7 @@ Parameters:
 public: void f(int)
 ```
 
-28_sizeof_pack: { range: "197:52-197:54" }
+28_sizeof_pack: { range: "198:52-198:54" }
 ### type `Ts`  
 
 ---
@@ -322,7 +322,7 @@ Type: `class`
 public: class... Ts
 ```
 
-29_injected_class_name: { range: "203:2-203:6" }
+29_injected_class_name: { range: "204:2-204:6" }
 ### struct `Node`  
 
 ---
@@ -331,7 +331,7 @@ public: class... Ts
 template <class T> struct Node {}
 ```
 
-30_dependent_method: { range: "214:19-214:25" }
+30_dependent_method: { range: "215:19-215:25" }
 ### method `method`  
 
 ---
@@ -343,7 +343,7 @@ template <class T> struct Node {}
 public: void method()
 ```
 
-31_dependent_field: { range: "215:25-215:30" }
+31_dependent_field: { range: "216:25-216:30" }
 ### field `field`  
 
 ---
@@ -355,7 +355,7 @@ Type: `int`
 public: int field
 ```
 
-32_fixed_base: { range: "223:45-223:49" }
+32_fixed_base: { range: "224:45-224:49" }
 ### type `type`  
 
 ---
@@ -367,7 +367,7 @@ Type: `int`
 public: using type = int
 ```
 
-33_partial_order: { range: "231:47-231:52" }
+33_partial_order: { range: "232:47-232:52" }
 ### variable `value`  
 
 ---
@@ -380,7 +380,7 @@ Value = `2`
 public: static constexpr int value = 2
 ```
 
-34_arrow_chain: { range: "238:41-238:47" }
+34_arrow_chain: { range: "239:41-239:47" }
 ### method `method`  
 
 ---
@@ -392,11 +392,24 @@ public: static constexpr int value = 2
 public: void method()
 ```
 
-35_unresolved_using_use: { range: "246:2-246:6" }
+35_unresolved_using_use: { range: "247:2-247:6" }
 ### `type`  
 
 ---
 ```cpp
 // In D2<T>
 public: using typename B2<T>::type
+```
+
+36_variable_template_doc: { range: "259:23-259:27" }
+### variable `slot<int *>`  
+
+---
+Type: `int`  
+comment from specialization  
+
+---
+```cpp
+// In namespace var_primary_fallback
+int slot
 ```
