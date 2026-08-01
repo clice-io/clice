@@ -15,4 +15,4 @@ input_file: multiline_list_folding.cpp
 - { range: "53:12-56:1", kind: functionParams, collapsed_text: "(...)" }
 - { range: "58:12-60:1", kind: struct, collapsed_text: "{...}" }
 - { range: "62:9-65:1", kind: functionCall, collapsed_text: "(...)" }
-- { range: "67:15-70:1", kind: functionCall, collapsed_text: "(...)" }
+- { range: "67:15-70:1", kind: initializer, collapsed_text: "{...}" }

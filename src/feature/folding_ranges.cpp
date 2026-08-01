@@ -66,12 +66,27 @@ public:
             collect_pragma_region(directives_it->second.pragmas);
         }
 
+        // Order by kind and text after position so equal entries are adjacent
+        // and the output stays deterministic under the unstable sort.
         std::ranges::sort(ranges, [](const FoldingRange& lhs, const FoldingRange& rhs) {
             if(lhs.range.begin != rhs.range.begin) {
                 return lhs.range.begin < rhs.range.begin;
             }
-            return lhs.range.end < rhs.range.end;
+            if(lhs.range.end != rhs.range.end) {
+                return lhs.range.end < rhs.range.end;
+            }
+            if(lhs.kind != rhs.kind) {
+                return lhs.kind < rhs.kind;
+            }
+            return lhs.collapsed_text < rhs.collapsed_text;
         });
+
+        auto duplicates =
+            std::ranges::unique(ranges, [](const FoldingRange& lhs, const FoldingRange& rhs) {
+                return lhs.range.begin == rhs.range.begin && lhs.range.end == rhs.range.end &&
+                       lhs.kind == rhs.kind && lhs.collapsed_text == rhs.collapsed_text;
+            });
+        ranges.erase(duplicates.begin(), duplicates.end());
 
         return std::move(ranges);
     }
@@ -212,7 +227,15 @@ private:
 
         if(const auto* construct = llvm::dyn_cast<clang::CXXConstructExpr>(stmt)) {
             if(auto parens = construct->getParenOrBraceRange(); parens.isValid()) {
-                add_range(parens, "functionCall", "(...)");
+                // Brace-form construction renders as an initializer. When an
+                // initializer-list constructor is chosen, the nested
+                // InitListExpr shares these braces and produces an identical
+                // entry, which the post-sort deduplication removes.
+                if(construct->isListInitialization()) {
+                    add_range(parens, "initializer", "{...}");
+                } else {
+                    add_range(parens, "functionCall", "(...)");
+                }
             }
             return;
         }
