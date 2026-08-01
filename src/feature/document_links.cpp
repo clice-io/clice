@@ -26,7 +26,10 @@ static std::optional<LocalSourceRange>
             return std::nullopt;
         }
 
-        if(token.is_identifier()) {
+        // Only the first matching identifier is the directive keyword; a
+        // later one is a macro standing in for the filename (legal pre-C++20
+        // even for one literally named `import`).
+        if(!after_keyword && token.is_identifier()) {
             auto text = token.text(content);
             if(text == "include" || text == "include_next" || text == "import" || text == "embed" ||
                text == "__has_include" || text == "__has_include_next" || text == "__has_embed") {

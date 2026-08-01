@@ -200,6 +200,13 @@
   #pragma mark see endregion notes
   int limit = 10;
   #pragma endregion
+
+  // The tail of a multiline comment before the introducer must not hide
+  // the region either.
+  /* spans
+  a line */ #pragma region after_comment
+  int after = 1;
+  #pragma endregion
   ```
 
 - [ ] Comment folding — multi-line `/* */` and consecutive `//` line comments

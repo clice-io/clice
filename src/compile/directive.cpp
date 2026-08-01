@@ -198,8 +198,11 @@ public:
 
         // Classify by the first argument token: substring matching would
         // misfire on lines like `#pragma message("see endregion below")`.
+        // Lexing starts at the reported `#` (a suffix keeps the NUL
+        // terminator), not at the physical line start — the tail of a
+        // multiline comment may sit before the introducer.
         Pragma::Kind kind = Pragma::Other;
-        auto lexer = Lexer::from_line(content, offset, {.lang_opts = &unit.lang_options()});
+        Lexer lexer(content.substr(offset), {.lang_opts = &unit.lang_options()});
         lexer.advance();  // the introducer `#`
         lexer.advance();  // the `pragma` keyword
         if(lexer.advance_if("region")) {

@@ -93,6 +93,21 @@ TEST_CASE(MacroInclude) {
     EXPECT_LINK(0, "0", TestVFS::path("test.h"));
 }
 
+TEST_CASE(ImportNamedMacro) {
+    // Pre-C++20, even `import` is a legal macro name; as the filename
+    // argument it must link, not read as a directive keyword.
+    run(R"cpp(
+#[test.h]
+
+#[main.cpp]
+#define import "test.h"
+#include §(0)⟦import§⟧
+)cpp");
+
+    ASSERT_EQ(links.size(), 1U);
+    EXPECT_LINK(0, "0", TestVFS::path("test.h"));
+}
+
 TEST_CASE(Embed) {
     run(R"cpp(
 #[bytes.bin]
