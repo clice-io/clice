@@ -1,0 +1,10 @@
+---
+created_at: 2026-08-01
+input_file: explicit_instantiation_function.cpp
+---
+- { loc: "13:21", text: "convert", kind: none }
+- { loc: "13:29", text: "Widget", kind: none }
+- { loc: "13:37", text: "Widget", kind: none }
+- { loc: "15:14", text: "convert", kind: none }
+- { loc: "15:22", text: "Widget", kind: none }
+- { loc: "15:30", text: "Widget", kind: none }

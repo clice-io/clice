@@ -554,7 +554,7 @@ Names classified by the declaration they define or reference.
   };
   ```
 
-- [ ] Function and variable explicit instantiation directives — clang builds no node for the directive, so every identifier on it goes unpainted: the name, the template arguments, even the declarator's type _(partial)_ ([llvm#191658](https://github.com/llvm/llvm-project/issues/191658))
+- [ ] Function explicit instantiation directives — clang builds no node for the directive, so every identifier on it goes unpainted: the name, the template arguments and the parameter types _(partial)_ ([llvm#191658](https://github.com/llvm/llvm-project/issues/191658))
 
   ```cpp
   struct Widget {};
@@ -565,6 +565,12 @@ Names classified by the declaration they define or reference.
   extern template void convert<Widget>(Widget);
 
   template void convert<Widget>(Widget);
+  ```
+
+- [ ] Variable explicit instantiation directives — clang builds no node for the directive, so every identifier on it goes unpainted: the name, the template arguments, even the declarator's type _(partial)_ ([llvm#191658](https://github.com/llvm/llvm-project/issues/191658))
+
+  ```cpp
+  struct Widget {};
 
   template <typename T>
   T zero = T();

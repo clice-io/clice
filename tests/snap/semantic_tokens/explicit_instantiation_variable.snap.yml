@@ -1,0 +1,10 @@
+---
+created_at: 2026-08-01
+input_file: explicit_instantiation_variable.cpp
+---
+- { loc: "13:16", text: "Widget", kind: none }
+- { loc: "13:23", text: "zero", kind: none }
+- { loc: "13:28", text: "Widget", kind: none }
+- { loc: "15:9", text: "Widget", kind: none }
+- { loc: "15:16", text: "zero", kind: none }
+- { loc: "15:21", text: "Widget", kind: none }
