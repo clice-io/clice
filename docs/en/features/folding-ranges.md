@@ -44,15 +44,19 @@
   }  // namespace geometry
   ```
 
-- [ ] Nested compound-statement folding — `if`/`for`/`while` bodies inside functions
+- [x] Nested compound-statement folding — `if`/`for`/`while` bodies inside functions
 
   ```cpp
   void process(int count) {
-      if (count > 0) {                       // ┐
-          for (int i = 0; i < count; ++i) {  // │ nested blocks that could
-              // ... work ...                // │ fold independently of
-          }                                  // │ the enclosing function
-      }                                      // ┘
+      if (count > 0) {
+          for (int i = 0; i < count; i += 1) {
+              count -= 1;
+          }
+      }
+
+      while (count > 0) {
+          count -= 1;
+      }
   }
   ```
 
@@ -86,6 +90,15 @@
       ] {
           return first + second;
       };
+
+      auto scale = [](
+          int base,    // ┐ foldable lambda
+          int factor   // ┘ parameter list
+      ) {
+          return base * factor;
+      };
+
+      result += sum() + scale(result, 2);
   }
   ```
 
@@ -187,6 +200,74 @@
   class SortedMap { };
   ```
 
+- [x] Template specializations and instantiations — written specializations and their members fold; instantiated declarations reuse the pattern's source locations and must not fold it again
+
+  ```cpp
+  template <typename T>
+  struct Box {
+      T value;
+
+      void reset() {
+          value = T();
+      }
+  };
+
+  template <>
+  struct Box<void> {
+      void reset() {
+          // nothing stored
+      }
+  };
+
+  template <typename T>
+  struct Box<T*> {
+      T* pointee;
+  };
+
+  // Neither the implicit instantiation Box<int> nor the explicit instantiation
+  // Box<char> re-folds the primary's braces or the reset() body.
+  Box<int> implicit_use;
+  template struct Box<char>;
+  ```
+
+- [x] Abbreviated function templates — bodies of functions with `auto` or constrained `auto` parameters fold like any other function
+
+  ```cpp
+  template <typename T>
+  concept Small = sizeof(T) <= 8;
+
+  void consume(Small auto x) {
+      auto copy = x;
+      copy += 1;
+  }
+
+  void forward(auto value) {
+      consume(value);
+  }
+  ```
+
+- [x] Macro-generated folding — braces and access specifiers spelled through macros fold at the invocation site
+
+  ```cpp
+  #define NS_BEGIN namespace ns {
+  #define NS_END }
+  #define PUBLIC public:
+  #define PRIVATE private:
+
+  NS_BEGIN
+
+  class Widget {
+  PUBLIC
+      void draw();
+      void resize();
+  PRIVATE
+      int width;
+      int height;
+  };
+
+  NS_END
+  ```
+
 <!-- END GENERATED ITEMS -->
 
 ## Refinements
@@ -256,6 +337,24 @@
   #else
       // ... POSIX code (inactive, could auto-fold) ...
   #endif
+  ```
+
+- [x] Single-line constructs stay unfolded — a fold that hides nothing is noise
+
+  ```cpp
+  namespace tiny { }
+
+  struct Empty {};
+
+  enum Flags { A, B };
+
+  void noop() {}
+
+  int values[] = {1, 2, 3};
+
+  auto lambda = [](int x) { return x; };
+
+  int result = lambda(42);
   ```
 
 <!-- END GENERATED ITEMS -->

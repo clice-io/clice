@@ -1,190 +1,68 @@
 #include <algorithm>
 #include <cstdint>
-#include <limits>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
+#include "compile/compilation_unit.h"
 #include "feature/feature.h"
-#include "semantic/filtered_ast_visitor.h"
+#include "semantic/decls.h"
+#include "semantic/semantics.h"
 
+#include "llvm/Support/Casting.h"
+#include "clang/AST/Decl.h"
+#include "clang/AST/DeclCXX.h"
+#include "clang/AST/DeclTemplate.h"
+#include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
+#include "clang/Basic/Specifiers.h"
 
 namespace clice::feature {
 
 namespace {
 
-enum class FoldingKind : std::uint8_t {
-    Namespace,
-    Class,
-    Enum,
-    Struct,
-    Union,
-    LambdaCapture,
-    FunctionParams,
-    FunctionBody,
-    FunctionCall,
-    CompoundStmt,
-    AccessSpecifier,
-    ConditionDirective,
-    Initializer,
-    Region,
-};
-
-auto to_kind(FoldingKind kind) -> protocol::FoldingRangeKind {
-    switch(kind) {
-        case FoldingKind::Namespace: return "namespace";
-        case FoldingKind::Class: return "class";
-        case FoldingKind::Enum: return "enum";
-        case FoldingKind::Struct: return "struct";
-        case FoldingKind::Union: return "union";
-        case FoldingKind::LambdaCapture: return "lambdaCapture";
-        case FoldingKind::FunctionParams: return "functionParams";
-        case FoldingKind::FunctionBody: return "functionBody";
-        case FoldingKind::FunctionCall: return "functionCall";
-        case FoldingKind::CompoundStmt: return "compoundStmt";
-        case FoldingKind::AccessSpecifier: return "accessSpecifier";
-        case FoldingKind::ConditionDirective: return "conditionDirective";
-        case FoldingKind::Initializer: return "initializer";
-        case FoldingKind::Region:
-            return protocol::FoldingRangeKind(protocol::FoldingRangeKind::region);
-    }
-    return protocol::FoldingRangeKind(protocol::FoldingRangeKind::region);
-}
-
-class FoldingRangeCollector : public FilteredASTVisitor<FoldingRangeCollector> {
+/// Collects folding ranges by walking the unit's cached Semantics node table —
+/// the DFS pre-order record of the interested file's written AST — instead of
+/// running another RecursiveASTVisitor over the TU. Folding needs no nesting
+/// state: every recorded decl and stmt contributes its ranges independently.
+///
+/// Fold kinds are plain strings on the wire (LSP standardizes only `comment`,
+/// `imports` and `region`; servers may add custom values).
+class FoldingRangeCollector {
 public:
-    explicit FoldingRangeCollector(CompilationUnitRef unit) : FilteredASTVisitor(unit, true) {}
-
-    bool VisitNamespaceDecl(const clang::NamespaceDecl* decl) {
-        auto tokens = unit.expanded_tokens(decl->getSourceRange())
-                          .drop_until([](const clang::syntax::Token& token) {
-                              return token.kind() == clang::tok::l_brace;
-                          });
-
-        if(tokens.empty()) {
-            return true;
-        }
-
-        add_range(clang::SourceRange(tokens.front().location(), decl->getRBraceLoc()),
-                  to_kind(FoldingKind::Namespace),
-                  "{...}");
-        return true;
-    }
-
-    bool VisitTagDecl(const clang::TagDecl* decl) {
-        if(!decl->isThisDeclarationADefinition()) {
-            return true;
-        }
-
-        auto kind = decl->isStruct()  ? FoldingKind::Struct
-                    : decl->isClass() ? FoldingKind::Class
-                    : decl->isUnion() ? FoldingKind::Union
-                                      : FoldingKind::Enum;
-        add_range(decl->getBraceRange(), to_kind(kind), "{...}");
-
-        auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(decl);
-        if(!record || record->isLambda() || record->isImplicit()) {
-            return true;
-        }
-
-        clang::AccessSpecDecl* previous = nullptr;
-        for(auto* member: record->decls()) {
-            auto* access = llvm::dyn_cast<clang::AccessSpecDecl>(member);
-            if(!access) {
-                continue;
-            }
-
-            if(previous) {
-                add_range(
-                    clang::SourceRange(previous->getColonLoc(), access->getAccessSpecifierLoc()),
-                    to_kind(FoldingKind::AccessSpecifier),
-                    "");
-            }
-            previous = access;
-        }
-
-        if(previous) {
-            add_range(clang::SourceRange(previous->getColonLoc(), record->getBraceRange().getEnd()),
-                      to_kind(FoldingKind::AccessSpecifier),
-                      "");
-        }
-
-        return true;
-    }
-
-    bool VisitFunctionDecl(const clang::FunctionDecl* decl) {
-        if(!decl->doesThisDeclarationHaveABody()) {
-            collect_parameter_list(decl->getSourceRange());
-            return true;
-        }
-
-        collect_parameter_list(decl->getBeginLoc(), decl->getBody()->getBeginLoc());
-        add_range(decl->getBody()->getSourceRange(), to_kind(FoldingKind::FunctionBody), "{...}");
-        return true;
-    }
-
-    bool VisitLambdaExpr(const clang::LambdaExpr* lambda) {
-        add_range(lambda->getIntroducerRange(), to_kind(FoldingKind::LambdaCapture), "[...]");
-
-        if(lambda->hasExplicitParameters()) {
-            collect_parameter_list(lambda->getIntroducerRange().getEnd(),
-                                   lambda->getCompoundStmtBody()->getBeginLoc());
-        }
-
-        collect_compound_stmt(lambda->getBody());
-        return true;
-    }
-
-    bool VisitCallExpr(const clang::CallExpr* call) {
-        auto tokens = unit.expanded_tokens(call->getSourceRange());
-        if(tokens.empty() || tokens.back().kind() != clang::tok::r_paren) {
-            return true;
-        }
-
-        auto right_paren = tokens.back().location();
-        std::size_t depth = 0;
-
-        while(!tokens.empty()) {
-            auto kind = tokens.back().kind();
-            if(kind == clang::tok::r_paren) {
-                depth += 1;
-            } else if(kind == clang::tok::l_paren && --depth == 0) {
-                add_range(clang::SourceRange(tokens.back().location(), right_paren),
-                          to_kind(FoldingKind::FunctionCall),
-                          "(...)");
-                break;
-            }
-            tokens = tokens.drop_back();
-        }
-
-        return true;
-    }
-
-    bool VisitCXXConstructExpr(const clang::CXXConstructExpr* expr) {
-        if(auto paren_or_brace = expr->getParenOrBraceRange(); paren_or_brace.isValid()) {
-            add_range(clang::SourceRange(paren_or_brace.getBegin().getLocWithOffset(1),
-                                         paren_or_brace.getEnd()),
-                      to_kind(FoldingKind::FunctionCall),
-                      "(...)");
-        }
-        return true;
-    }
-
-    bool VisitInitListExpr(const clang::InitListExpr* expr) {
-        add_range(clang::SourceRange(expr->getLBraceLoc(), expr->getRBraceLoc()),
-                  to_kind(FoldingKind::Initializer),
-                  "{...}");
-        return true;
-    }
+    explicit FoldingRangeCollector(CompilationUnitRef unit) : unit(unit) {}
 
     auto collect() -> std::vector<FoldingRange> {
-        TraverseDecl(unit.tu());
+        auto nodes = unit.semantics().node_entries();
+        std::uint32_t index = 0;
+        while(index < nodes.size()) {
+            const Semantics::Node& entry = nodes[index];
+            if(!entry.node.is_ast()) {
+                // The preprocessor segment follows the AST segment; directive
+                // folds are collected from the unit's directive table below.
+                break;
+            }
+
+            if(entry.node.kind() == SemanticNode::Kind::Decl) {
+                const auto* decl = entry.node.get<clang::Decl>();
+                if(is_instantiation(decl)) {
+                    index = entry.subtree_end;
+                    continue;
+                }
+                collect_decl(decl);
+            } else if(entry.node.kind() == SemanticNode::Kind::Stmt) {
+                collect_stmt(entry.node.get<clang::Stmt>(), entry.parent);
+            }
+
+            index += 1;
+        }
 
         auto directives_it = unit.directives().find(unit.interested_file());
         if(directives_it != unit.directives().end()) {
-            collect_directives(directives_it->second);
+            collect_condition_directives(directives_it->second.conditions);
+            collect_pragma_region(directives_it->second.pragmas);
         }
 
         std::ranges::sort(ranges, [](const FoldingRange& lhs, const FoldingRange& rhs) {
@@ -198,43 +76,162 @@ public:
     }
 
 private:
-    void add_range(clang::SourceRange range,
-                   std::optional<protocol::FoldingRangeKind> kind,
-                   std::string collapsed_text) {
-        if(range.isInvalid()) {
-            return;
+    /// Whether the decl heads a template-instantiation subtree. Instantiated
+    /// decls reuse the pattern's source locations (and explicit instantiations
+    /// have no written body), so folding them would duplicate the pattern's
+    /// folds.
+    static bool is_instantiation(const clang::Decl* decl) {
+        if(const auto* named = llvm::dyn_cast<clang::NamedDecl>(decl);
+           named && decls::is_implicit_instantiation(named)) {
+            return true;
         }
 
-        auto [begin, end] = range;
-        begin = unit.expansion_location(begin);
-        end = unit.expansion_location(end);
-        if(begin == end) {
-            return;
+        if(const auto* spec = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(decl)) {
+            return !llvm::isa<clang::ClassTemplatePartialSpecializationDecl>(spec) &&
+                   clang::isTemplateInstantiation(spec->getSpecializationKind());
         }
-
-        auto [fid, local] = unit.decompose_range(clang::SourceRange(begin, end));
-        if(fid != unit.interested_file() || !local.valid() || local.end <= local.begin) {
-            return;
+        if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
+            return clang::isTemplateInstantiation(function->getTemplateSpecializationKind());
         }
+        if(const auto* var = llvm::dyn_cast<clang::VarDecl>(decl)) {
+            return clang::isTemplateInstantiation(var->getTemplateSpecializationKind());
+        }
+        return false;
+    }
 
-        auto content = unit.file_content(fid);
-        bool single_line = true;
-        for(std::uint32_t offset = local.begin; offset < local.end; ++offset) {
-            if(content[offset] == '\n') {
-                single_line = false;
-                break;
+    void collect_decl(const clang::Decl* decl) {
+        if(const auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(decl)) {
+            // NamespaceDecl does not store its left brace location; scan for
+            // it so the fold keeps the name visible.
+            auto tokens = unit.expanded_tokens(ns->getSourceRange())
+                              .drop_until([](const clang::syntax::Token& token) {
+                                  return token.kind() == clang::tok::l_brace;
+                              });
+            if(!tokens.empty()) {
+                add_range(clang::SourceRange(tokens.front().location(), ns->getRBraceLoc()),
+                          "namespace",
+                          "{...}");
             }
-        }
-
-        if(single_line) {
             return;
         }
 
-        ranges.push_back({
-            .range = local,
-            .kind = std::move(kind),
-            .collapsed_text = std::move(collapsed_text),
-        });
+        if(const auto* tag = llvm::dyn_cast<clang::TagDecl>(decl)) {
+            if(!tag->isThisDeclarationADefinition()) {
+                return;
+            }
+
+            std::string_view kind = tag->isStruct()  ? "struct"
+                                    : tag->isClass() ? "class"
+                                    : tag->isUnion() ? "union"
+                                                     : "enum";
+            add_range(tag->getBraceRange(), kind, "{...}");
+
+            if(const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(tag);
+               record && !record->isLambda() && !record->isImplicit()) {
+                collect_access_specifiers(record);
+            }
+            return;
+        }
+
+        if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
+            if(!function->doesThisDeclarationHaveABody()) {
+                collect_parameter_list(function->getSourceRange());
+                return;
+            }
+
+            collect_parameter_list(function->getBeginLoc(), function->getBody()->getBeginLoc());
+            add_range(function->getBody()->getSourceRange(), "functionBody", "{...}");
+        }
+    }
+
+    void collect_stmt(const clang::Stmt* stmt, std::uint32_t parent) {
+        if(const auto* lambda = llvm::dyn_cast<clang::LambdaExpr>(stmt)) {
+            add_range(lambda->getIntroducerRange(), "lambdaCapture", "[...]");
+            if(lambda->hasExplicitParameters()) {
+                collect_parameter_list(lambda->getIntroducerRange().getEnd(),
+                                       lambda->getCompoundStmtBody()->getBeginLoc());
+            }
+            return;
+        }
+
+        if(const auto* compound = llvm::dyn_cast<clang::CompoundStmt>(stmt)) {
+            // A function's body already folds as functionBody at its decl;
+            // every other written block folds on its own braces.
+            if(parent != Semantics::invalid) {
+                const auto* function =
+                    unit.semantics().node(parent).node.get<clang::FunctionDecl>();
+                if(function && function->getBody() == compound) {
+                    return;
+                }
+            }
+            add_range(compound->getSourceRange(), "compoundStmt", "{...}");
+            return;
+        }
+
+        if(const auto* call = llvm::dyn_cast<clang::CallExpr>(stmt)) {
+            auto tokens = unit.expanded_tokens(call->getSourceRange());
+            if(tokens.empty() || tokens.back().kind() != clang::tok::r_paren) {
+                return;
+            }
+
+            // The callee may itself contain parens; match the right paren
+            // backwards to find the argument list's left paren.
+            auto right_paren = tokens.back().location();
+            std::size_t depth = 0;
+            while(!tokens.empty()) {
+                auto kind = tokens.back().kind();
+                if(kind == clang::tok::r_paren) {
+                    depth += 1;
+                } else if(kind == clang::tok::l_paren && --depth == 0) {
+                    add_range(clang::SourceRange(tokens.back().location(), right_paren),
+                              "functionCall",
+                              "(...)");
+                    break;
+                }
+                tokens = tokens.drop_back();
+            }
+            return;
+        }
+
+        if(const auto* construct = llvm::dyn_cast<clang::CXXConstructExpr>(stmt)) {
+            if(auto parens = construct->getParenOrBraceRange(); parens.isValid()) {
+                add_range(
+                    clang::SourceRange(parens.getBegin().getLocWithOffset(1), parens.getEnd()),
+                    "functionCall",
+                    "(...)");
+            }
+            return;
+        }
+
+        if(const auto* init = llvm::dyn_cast<clang::InitListExpr>(stmt)) {
+            add_range(clang::SourceRange(init->getLBraceLoc(), init->getRBraceLoc()),
+                      "initializer",
+                      "{...}");
+        }
+    }
+
+    void collect_access_specifiers(const clang::CXXRecordDecl* record) {
+        clang::AccessSpecDecl* previous = nullptr;
+        for(auto* member: record->decls()) {
+            auto* access = llvm::dyn_cast<clang::AccessSpecDecl>(member);
+            if(!access) {
+                continue;
+            }
+
+            if(previous) {
+                add_range(
+                    clang::SourceRange(previous->getColonLoc(), access->getAccessSpecifierLoc()),
+                    "accessSpecifier",
+                    "");
+            }
+            previous = access;
+        }
+
+        if(previous) {
+            add_range(clang::SourceRange(previous->getColonLoc(), record->getBraceRange().getEnd()),
+                      "accessSpecifier",
+                      "");
+        }
     }
 
     void collect_parameter_list(clang::SourceLocation left, clang::SourceLocation right) {
@@ -258,28 +255,8 @@ private:
         }
 
         add_range(clang::SourceRange(left_paren.front().location(), right_paren->location()),
-                  to_kind(FoldingKind::FunctionParams),
+                  "functionParams",
                   "(...)");
-    }
-
-    void collect_compound_stmt(const clang::Stmt* stmt) {
-        auto* compound = llvm::dyn_cast_or_null<clang::CompoundStmt>(stmt);
-        if(!compound) {
-            return;
-        }
-
-        add_range(clang::SourceRange(compound->getLBracLoc(), compound->getRBracLoc()),
-                  to_kind(FoldingKind::CompoundStmt),
-                  "{...}");
-
-        for(const auto* child: stmt->children()) {
-            collect_compound_stmt(child);
-        }
-    }
-
-    void collect_directives(const Directive& directives) {
-        collect_condition_directives(directives.conditions);
-        collect_pragma_region(directives.pragmas);
     }
 
     void collect_condition_directives(const std::vector<Condition>& conditions) {
@@ -298,7 +275,7 @@ private:
                         auto* previous = stack.pop_back_val();
                         add_range(
                             clang::SourceRange(previous->condition_range.getEnd(), condition.loc),
-                            to_kind(FoldingKind::ConditionDirective),
+                            "conditionDirective",
                             "");
                     }
                     stack.push_back(&condition);
@@ -331,12 +308,44 @@ private:
 
             auto* previous = stack.pop_back_val();
             add_range(clang::SourceRange(previous->loc, pragma.loc),
-                      to_kind(FoldingKind::Region),
+                      protocol::FoldingRangeKind::region,
                       "");
         }
     }
 
-private:
+    void add_range(clang::SourceRange range,
+                   std::optional<protocol::FoldingRangeKind> kind,
+                   std::string collapsed_text) {
+        if(range.isInvalid()) {
+            return;
+        }
+
+        auto [begin, end] = range;
+        begin = unit.expansion_location(begin);
+        end = unit.expansion_location(end);
+        if(begin == end) {
+            return;
+        }
+
+        auto [fid, local] = unit.decompose_range(clang::SourceRange(begin, end));
+        if(fid != unit.interested_file() || !local.valid() || local.end <= local.begin) {
+            return;
+        }
+
+        // Single-line ranges are not worth folding.
+        auto content = unit.file_content(fid);
+        if(!content.substr(local.begin, local.end - local.begin).contains('\n')) {
+            return;
+        }
+
+        ranges.push_back({
+            .range = local,
+            .kind = std::move(kind),
+            .collapsed_text = std::move(collapsed_text),
+        });
+    }
+
+    CompilationUnitRef unit;
     std::vector<FoldingRange> ranges;
 };
 

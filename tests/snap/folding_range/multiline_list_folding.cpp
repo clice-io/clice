@@ -32,4 +32,13 @@ void demo() {
     ] {
         return first + second;
     };
+
+    auto scale = [](
+        int base,    // ┐ foldable lambda
+        int factor   // ┘ parameter list
+    ) {
+        return base * factor;
+    };
+
+    result += sum() + scale(result, 2);
 }
