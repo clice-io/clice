@@ -1033,6 +1033,7 @@ as semantic tokens.
 
 ## Changelog
 
-| Date | Change                                                           | PR  |
-| ---- | ---------------------------------------------------------------- | --- |
-| —    | Initial semantic token types and modifiers, full document tokens | —   |
+| Date       | Change                                                                    | PR                                                 |
+| ---------- | ------------------------------------------------------------------------- | -------------------------------------------------- |
+| —          | Initial semantic token types and modifiers, full document tokens          | —                                                  |
+| 2026-08-01 | Explicit instantiation directive names pinned as unpainted until clang 23 | [#571](https://github.com/clice-io/clice/pull/571) |

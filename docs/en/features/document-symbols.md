@@ -529,5 +529,6 @@ Provides the file outline and breadcrumb navigation via `textDocument/documentSy
 
 | Date       | Change                                                                                                                                  | PR                                                 |
 | ---------- | --------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| 2026-08-01 | Explicit instantiation directives pinned: class forms as childless symbols, function and variable forms missing until clang 23          | [#571](https://github.com/clice-io/clice/pull/571) |
 | 2026-08-01 | Template specializations, type aliases, full-name selection ranges, macro-argument names; traversal moved onto the semantics node table | [#566](https://github.com/clice-io/clice/pull/566) |
 | —          | Nested symbol hierarchy, basic symbol kinds                                                                                             | —                                                  |

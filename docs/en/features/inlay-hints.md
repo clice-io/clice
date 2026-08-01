@@ -996,7 +996,8 @@ The `[inlay_hints]` section of `clice.toml` (or the same keys via `initializatio
 
 ## Changelog
 
-| Date       | Change                                                                                                  | PR  |
-| ---------- | ------------------------------------------------------------------------------------------------------- | --- |
-| —          | Parameter name hints, type hints, range-scoped queries                                                  | —   |
-| 2026-07-31 | Designator hints, dependent-call parameter hints, `[inlay_hints]` configuration, fixture-generated docs | —   |
+| Date       | Change                                                                                                  | PR                                                 |
+| ---------- | ------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| —          | Parameter name hints, type hints, range-scoped queries                                                  | —                                                  |
+| 2026-07-31 | Designator hints, dependent-call parameter hints, `[inlay_hints]` configuration, fixture-generated docs | —                                                  |
+| 2026-08-01 | Instantiation-subtree skip: no duplicate or contradictory hints from instantiated bodies                | [#571](https://github.com/clice-io/clice/pull/571) |
