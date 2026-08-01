@@ -26,13 +26,19 @@ static std::optional<LocalSourceRange>
             return std::nullopt;
         }
 
-        // Only the first matching identifier is the directive keyword; a
-        // later one is a macro standing in for the filename (legal pre-C++20
-        // even for one literally named `import`).
-        if(!after_keyword && token.is_identifier()) {
+        if(token.is_identifier()) {
             auto text = token.text(content);
-            if(text == "include" || text == "include_next" || text == "import" || text == "embed" ||
-               text == "__has_include" || text == "__has_include_next" || text == "__has_embed") {
+            // The __has_include family are reserved operators that may recur
+            // within one #if line; every occurrence restarts the match.
+            if(text == "__has_include" || text == "__has_include_next" || text == "__has_embed") {
+                after_keyword = true;
+                continue;
+            }
+            // A directive keyword only counts before the first match; a
+            // later one is a macro standing in for the filename (legal
+            // pre-C++20 even for one literally named `import`).
+            if(!after_keyword && (text == "include" || text == "include_next" || text == "import" ||
+                                  text == "embed")) {
                 after_keyword = true;
                 continue;
             }
