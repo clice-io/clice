@@ -499,6 +499,7 @@ Provides the file outline and breadcrumb navigation via `textDocument/documentSy
 
 ## Changelog
 
-| Date | Change                                      | PR  |
-| ---- | ------------------------------------------- | --- |
-| —    | Nested symbol hierarchy, basic symbol kinds | —   |
+| Date       | Change                                                                                                                                  | PR                                                 |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| 2026-08-01 | Template specializations, type aliases, full-name selection ranges, macro-argument names; traversal moved onto the semantics node table | [#566](https://github.com/clice-io/clice/pull/566) |
+| —          | Nested symbol hierarchy, basic symbol kinds                                                                                             | —                                                  |
