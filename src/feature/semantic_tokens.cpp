@@ -25,15 +25,20 @@ struct Classified {
     std::uint32_t modifiers = 0;
 };
 
-/// Merge a candidate into the running classification: first one wins on
-/// equal kinds, differing kinds collapse to Conflict.
+/// Merge a candidate into the running classification: differing kinds
+/// collapse to Conflict, and only the modifiers every candidate agrees on
+/// survive — a token combining resolutions from several instantiations
+/// must not depend on the order the instantiations were written in.
 void combine(Classified& result, Classified candidate) {
-    if(candidate.kind == SymbolKind::Invalid || result.kind == SymbolKind::Conflict) {
+    if(candidate.kind == SymbolKind::Invalid) {
         return;
     }
     if(result.kind == SymbolKind::Invalid) {
         result = candidate;
-    } else if(result.kind != candidate.kind) {
+        return;
+    }
+    result.modifiers &= candidate.modifiers;
+    if(result.kind != candidate.kind) {
         result.kind = SymbolKind::Conflict;
     }
 }

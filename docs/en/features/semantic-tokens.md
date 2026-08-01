@@ -580,7 +580,7 @@ Names classified by the declaration they define or reference.
   template Widget zero<Widget>;
   ```
 
-- [x] Explicit instantiation member bodies — a dependent name paints as its actual resolution, and as a conflict when the instantiations disagree
+- [x] Explicit instantiation member bodies — a dependent name paints as its actual resolution: agreeing kinds keep the modifiers all instantiations share, disagreeing kinds paint a conflict
 
   ```cpp
   struct A {
@@ -589,6 +589,10 @@ Names classified by the declaration they define or reference.
 
   struct B {
       static int hit;
+  };
+
+  struct C {
+      void hit();
   };
 
   template <typename T>
@@ -600,6 +604,16 @@ Names classified by the declaration they define or reference.
 
   template struct D<A>;
   template struct D<B>;
+
+  template <typename T>
+  struct E {
+      void probe(T t) {
+          t.hit();
+      }
+  };
+
+  template struct E<A>;
+  template struct E<C>;
   ```
 
 <!-- END GENERATED ITEMS -->

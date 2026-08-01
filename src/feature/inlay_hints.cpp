@@ -21,6 +21,7 @@
 #include "llvm/Support/Casting.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclCXX.h"
+#include "clang/AST/DeclTemplate.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
 #include "clang/Lex/Lexer.h"
@@ -157,8 +158,18 @@ public:
             switch(entry.node.kind()) {
                 case SemanticNode::Kind::Decl: {
                     const auto* decl = entry.node.get<clang::Decl>();
+                    // An explicit instantiation directive produces no hints
+                    // itself. A class directive's subtree holds only its
+                    // written template arguments — hintable code (a call
+                    // inside decltype) — so walk into it; the function and
+                    // variable directives are mislocated relics until
+                    // ExplicitInstantiationDecl and are skipped whole.
                     if(decls::is_instantiation(decl)) {
-                        index = entry.subtree_end;
+                        if(llvm::isa<clang::ClassTemplateSpecializationDecl>(decl)) {
+                            index += 1;
+                        } else {
+                            index = entry.subtree_end;
+                        }
                         continue;
                     }
                     handle_decl(decl);

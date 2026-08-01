@@ -367,7 +367,7 @@ clice renders inline annotations for the information the code leaves implicit: p
   }
   ```
 
-- [x] Explicit instantiation — an explicit instantiation definition adds no duplicate hints ([clangd#1034](https://github.com/clangd/clangd/issues/1034))
+- [x] Explicit instantiation — an explicit instantiation definition adds no duplicate hints, while its written template arguments hint normally ([clangd#1034](https://github.com/clangd/clangd/issues/1034))
 
   ```cpp
   template <typename T>
@@ -378,6 +378,13 @@ clice renders inline annotations for the information the code leaves implicit: p
   void use() {
       apply(42);
   }
+
+  int measure(int amount);
+
+  template <typename T>
+  struct Box {};
+
+  template struct Box<decltype(measure(7))>;
   ```
 
 - [ ] Sloppy name matching — `aParam` does not yet suppress an argument spelled `param` _(partial)_ ([clangd#2248](https://github.com/clangd/clangd/issues/2248))
