@@ -6,6 +6,7 @@
 
 #include "compile/directive.h"
 #include "semantic/symbol.h"
+#include "syntax/lexical_scan.h"
 #include "syntax/token.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -37,10 +38,12 @@ class TemplateResolver;
 }
 
 /// The single currency for "what a token belongs to": the AST node kinds our
-/// traversal records, plus preprocessor entities, flattened into one tagged
-/// union (no nested discriminant like wrapping clang::DynTypedNode would
-/// introduce). Preprocessor payloads are pointers into the unit's Directive
-/// storage, which shares the unit's lifetime.
+/// traversal records, plus preprocessor and lexical entities, flattened into
+/// one tagged union (no nested discriminant like wrapping clang::DynTypedNode
+/// would introduce). Preprocessor payloads are pointers into the unit's
+/// Directive storage, which shares the unit's lifetime; lexical payloads
+/// (module declarations, comments) point into the Semantics' own LexicalInfo
+/// storage.
 class SemanticNode {
 public:
     enum class Kind : std::uint8_t {
@@ -64,6 +67,11 @@ public:
         Include,
         /// C++20 module import.
         Import,
+        /// A C++20 module declaration (any of its three lexical forms);
+        /// neither the AST nor the preprocessor callbacks record it.
+        Module,
+        /// A comment; the spelled token stream drops them.
+        Comment,
     };
 
     SemanticNode() = default;
@@ -91,6 +99,10 @@ public:
     explicit SemanticNode(const Include* include) : storage(include) {}
 
     explicit SemanticNode(const Import* import) : storage(import) {}
+
+    explicit SemanticNode(const LexicalInfo::ModuleDeclaration* module) : storage(module) {}
+
+    explicit SemanticNode(const LexicalInfo::Comment* comment) : storage(comment) {}
 
     Kind kind() const;
 
@@ -147,6 +159,14 @@ public:
             if(auto import = std::get_if<const Import*>(&storage)) {
                 return *import;
             }
+        } else if constexpr(std::same_as<T, LexicalInfo::ModuleDeclaration>) {
+            if(auto module = std::get_if<const LexicalInfo::ModuleDeclaration*>(&storage)) {
+                return *module;
+            }
+        } else if constexpr(std::same_as<T, LexicalInfo::Comment>) {
+            if(auto comment = std::get_if<const LexicalInfo::Comment*>(&storage)) {
+                return *comment;
+            }
         } else {
             static_assert(false, "unsupported type for SemanticNode::get");
         }
@@ -181,7 +201,9 @@ private:
                  clang::TemplateArgumentLoc,
                  const MacroRef*,
                  const Include*,
-                 const Import*>
+                 const Import*,
+                 const LexicalInfo::ModuleDeclaration*,
+                 const LexicalInfo::Comment*>
         storage;
 };
 
@@ -232,6 +254,15 @@ llvm::SmallVector<NameOccurrence, 2>
 class Semantics {
 public:
     constexpr static std::uint32_t invalid = static_cast<std::uint32_t>(-1);
+
+    Semantics() = default;
+
+    /// Move-only: nodes store payload pointers into the owned LexicalInfo,
+    /// so a copy would silently keep pointing into the original.
+    Semantics(const Semantics&) = delete;
+    Semantics& operator=(const Semantics&) = delete;
+    Semantics(Semantics&&) = default;
+    Semantics& operator=(Semantics&&) = default;
 
     struct NodeFlags {
         /// The node is implicit (e.g. an implicit cast wrapper kept for
@@ -313,6 +344,19 @@ public:
             .slice(owner_begin[index], owner_begin[index + 1] - owner_begin[index]);
     }
 
+    /// The interested file's comments in source order (the spelled token
+    /// stream drops them). The same objects back the Comment nodes.
+    llvm::ArrayRef<LexicalInfo::Comment> comments() const {
+        return lexical.comments;
+    }
+
+    /// The interested file's module declarations, already cross-checked
+    /// against the compiled module (bogus lexical matches are dropped at
+    /// build time). The same objects back the Module nodes.
+    llvm::ArrayRef<LexicalInfo::ModuleDeclaration> module_declarations() const {
+        return lexical.modules;
+    }
+
 private:
     friend class SemanticsBuilder;
 
@@ -330,6 +374,10 @@ private:
     /// owner_nodes[owner_begin[i] .. owner_begin[i + 1]).
     std::vector<std::uint32_t> owner_begin;
     std::vector<std::uint32_t> owner_nodes;
+
+    /// The lexically scanned entities; Module and Comment nodes point into
+    /// this storage.
+    LexicalInfo lexical;
 };
 
 /// resolve_occurrences with tree context: a dependent name that is the

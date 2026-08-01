@@ -24,6 +24,7 @@
 #include "clang/AST/ExprConcepts.h"
 #include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/AST/Stmt.h"
+#include "clang/Basic/Module.h"
 #include "clang/Basic/OperatorKinds.h"
 #include "clang/Basic/TokenKinds.h"
 #include "clang/Lex/Lexer.h"
@@ -62,6 +63,10 @@ clang::SourceRange SemanticNode::source_range() const {
                 return clang::SourceRange(value->location, value->name_locations.back());
             }
             return clang::SourceRange(value->location);
+        } else if constexpr(std::same_as<T, const LexicalInfo::ModuleDeclaration*> ||
+                            std::same_as<T, const LexicalInfo::Comment*>) {
+            /// Lexical payloads carry file offsets, not SourceLocations.
+            return clang::SourceRange();
         } else if constexpr(std::same_as<T, const clang::Attr*>) {
             return value->getRange();
         } else if constexpr(std::is_pointer_v<T>) {
@@ -77,8 +82,10 @@ clang::DynTypedNode SemanticNode::dyn_typed() const {
     return visit([](const auto& value) -> clang::DynTypedNode {
         using T = std::remove_cvref_t<decltype(value)>;
         if constexpr(std::same_as<T, const MacroRef*> || std::same_as<T, const Include*> ||
-                     std::same_as<T, const Import*>) {
-            llvm_unreachable("dyn_typed on a preprocessor node");
+                     std::same_as<T, const Import*> ||
+                     std::same_as<T, const LexicalInfo::ModuleDeclaration*> ||
+                     std::same_as<T, const LexicalInfo::Comment*>) {
+            llvm_unreachable("dyn_typed on a non-AST node");
         } else if constexpr(std::is_pointer_v<T>) {
             return clang::DynTypedNode::create(*value);
         } else {
@@ -866,15 +873,66 @@ private:
         return location;
     }
 
-    // Append the interested file's preprocessor directives as nodes owning
-    // their name tokens. These live outside the AST segment: parent chains do
-    // not include them (yet), and selection ignores them, but hover and
-    // document links see macros, includes and imports as first-class nodes.
-    void append_directives() {
-        auto it = unit.directives().find(main_fid);
-        if(it == unit.directives().end()) {
+    // Whether a live spelled token starts exactly at `offset` (present and
+    // not preprocessed away).
+    bool token_alive_at(unsigned offset) const {
+        auto i = first_token_at(offset);
+        return i < semantics.tokens.size() && semantics.token_offset(i) == offset &&
+               !semantics.pp_ignored[i];
+    }
+
+    // Cross-check the lexically scanned module declarations against the
+    // compiled module before they become nodes: valid code cannot spell
+    // these token patterns with another meaning, but invalid or disabled
+    // code can, and a node must never outrank the compiler.
+    void filter_module_declarations() {
+        auto& modules = semantics.lexical.modules;
+        auto* mod = unit.context().getCurrentNamedModule();
+        if(!mod) {
+            modules.clear();
             return;
         }
+
+        // The declaration form additionally anchors on the compiler's
+        // DefinitionLoc — the written `module` keyword of the real
+        // declaration. This survives macro-spelled names (the keyword is
+        // always written) and kills duplicates in disabled branches.
+        std::optional<unsigned> definition_offset;
+        if(auto def_loc = mod->DefinitionLoc; def_loc.isValid()) {
+            definition_offset = offset_in_main_file(SM.getSpellingLoc(def_loc));
+        }
+
+        std::erase_if(modules, [&](const LexicalInfo::ModuleDeclaration& module) {
+            switch(module.kind) {
+                // The introducer is necessarily the file's first token, so no
+                // conditional can disable it — and under a preamble PCH its
+                // spelled token counts as preprocessed away, so a liveness
+                // check would wrongly drop it.
+                case LexicalInfo::ModuleDeclaration::Kind::GlobalFragment: return false;
+
+                // The DefinitionLoc anchor subsumes liveness: a duplicate in
+                // a disabled branch sits at a different offset.
+                case LexicalInfo::ModuleDeclaration::Kind::Declaration:
+                    return definition_offset != module.keyword.begin;
+
+                // The private fragment has no compiler-side location to
+                // anchor on; a disabled branch can spell the same tokens, so
+                // require the keyword's spelled token to be live.
+                case LexicalInfo::ModuleDeclaration::Kind::PrivateFragment:
+                    return !token_alive_at(module.keyword.begin);
+            }
+            llvm_unreachable("unknown module declaration kind");
+        });
+    }
+
+    // Append the interested file's preprocessor directives and lexically
+    // scanned entities as nodes owning their name tokens. These live outside
+    // the AST segment: parent chains do not include them (yet), and selection
+    // ignores them, but hover and document links see macros, includes and
+    // imports as first-class nodes.
+    void append_directives() {
+        semantics.lexical = lexical_scan(unit.interested_content(), &unit.lang_options());
+        filter_module_declarations();
 
         struct Row {
             unsigned offset;
@@ -883,45 +941,76 @@ private:
         };
 
         std::vector<Row> rows;
-        auto& directive = it->second;
 
-        for(auto& macro: directive.macros) {
-            if(auto offset = offset_in_main_file(macro.loc)) {
-                rows.push_back({*offset, SemanticNode(&macro), {}});
-            }
-        }
+        if(auto it = unit.directives().find(main_fid); it != unit.directives().end()) {
+            auto& directive = it->second;
 
-        for(auto& include: directive.includes) {
-            if(auto offset = offset_in_main_file(include.location)) {
-                rows.push_back({*offset, SemanticNode(&include), {}});
-            }
-        }
-
-        for(auto& import: directive.imports) {
-            /// An import spelled through a macro carries macro locations;
-            /// name tokens written as macro arguments still resolve to
-            /// spelled main-file tokens.
-            Row row{0, SemanticNode(&import), {}};
-            std::optional<unsigned> anchor;
-            if(auto offset = offset_in_main_file(import.location)) {
-                anchor = *offset;
-                row.extra_offsets.push_back(*offset);
-            }
-            for(auto loc: import.name_locations) {
-                if(loc.isMacroID()) {
-                    loc = SM.getSpellingLoc(loc);
+            for(auto& macro: directive.macros) {
+                if(auto offset = offset_in_main_file(macro.loc)) {
+                    rows.push_back({*offset, SemanticNode(&macro), {}});
                 }
-                if(auto name_offset = offset_in_main_file(loc)) {
-                    if(!anchor) {
-                        anchor = *name_offset;
+            }
+
+            for(auto& include: directive.includes) {
+                if(auto offset = offset_in_main_file(include.location)) {
+                    rows.push_back({*offset, SemanticNode(&include), {}});
+                }
+            }
+
+            for(auto& import: directive.imports) {
+                /// An import spelled through a macro carries macro locations;
+                /// name tokens written as macro arguments still resolve to
+                /// spelled main-file tokens.
+                Row row{0, SemanticNode(&import), {}};
+                std::optional<unsigned> anchor;
+                if(auto offset = offset_in_main_file(import.location)) {
+                    anchor = *offset;
+                    row.extra_offsets.push_back(*offset);
+                }
+                for(auto loc: import.name_locations) {
+                    if(loc.isMacroID()) {
+                        loc = SM.getSpellingLoc(loc);
                     }
-                    row.extra_offsets.push_back(*name_offset);
+                    if(auto name_offset = offset_in_main_file(loc)) {
+                        if(!anchor) {
+                            anchor = *name_offset;
+                        }
+                        row.extra_offsets.push_back(*name_offset);
+                    }
+                }
+                if(anchor) {
+                    row.offset = *anchor;
+                    rows.push_back(std::move(row));
                 }
             }
-            if(anchor) {
-                row.offset = *anchor;
-                rows.push_back(std::move(row));
+        }
+
+        // A comment node owns no spelled tokens (the stream drops them); it
+        // participates by its payload range only.
+        for(auto& comment: semantics.lexical.comments) {
+            rows.push_back({comment.range.begin, SemanticNode(&comment), {}});
+        }
+
+        // A module declaration owns its written tokens: the keywords, the
+        // name parts and the partition colon; the separators stay unowned,
+        // matching imports.
+        for(auto& module: semantics.lexical.modules) {
+            Row row{module.keyword.begin, SemanticNode(&module), {}};
+            if(module.export_keyword.valid()) {
+                row.offset = module.export_keyword.begin;
+                row.extra_offsets.push_back(module.export_keyword.begin);
             }
+            row.extra_offsets.push_back(module.keyword.begin);
+            for(auto& part: module.name_parts) {
+                row.extra_offsets.push_back(part.begin);
+            }
+            if(module.colon.valid()) {
+                row.extra_offsets.push_back(module.colon.begin);
+            }
+            for(auto& part: module.partition_parts) {
+                row.extra_offsets.push_back(part.begin);
+            }
+            rows.push_back(std::move(row));
         }
 
         std::ranges::sort(rows, {}, &Row::offset);

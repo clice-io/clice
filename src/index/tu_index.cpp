@@ -9,7 +9,6 @@
 #include "semantic/display.h"
 #include "semantic/semantics.h"
 #include "semantic/types.h"
-#include "syntax/lexer.h"
 
 #include "llvm/Support/SHA256.h"
 #include "llvm/Support/xxhash.h"
@@ -258,77 +257,30 @@ public:
 
         // The module declaration of this unit: Definition in the interface
         // unit, Reference in an implementation unit. The declaration has no
-        // AST node or PP location, so locate the name with the lexer.
+        // AST node or PP location; the semantics' lexical scan located and
+        // cross-checked its written tokens. The occurrence spans the written
+        // name, partition included.
         if(!unit.is_named_module()) {
             return;
         }
         auto module_name = unit.module_name();
-        if(!module_name.empty()) {
-            // interested_content() is the full, NUL-terminated buffer; the
-            // lexer token ranges are offsets into it, i.e. file offsets.
-            llvm::StringRef content = unit.interested_content();
-            Lexer lexer(content);
-
-            auto is_identifier = [](const Token& token) {
-                return token.is_identifier();
-            };
-
-            bool found = false;
-            std::uint32_t name_begin = 0;
-            std::uint32_t name_end = 0;
-
-            // Whether the previous token was `export` at the start of a line,
-            // so a following `module` still introduces the declaration.
-            bool after_export = false;
-
-            while(true) {
-                auto token = lexer.advance();
-                if(token.is_eof())
-                    break;
-
-                // The `module` declaration keyword either starts the line or
-                // follows an `export` that starts the line (`export module M;`).
-                bool at_decl_start = token.is_at_start_of_line || after_export;
-                after_export = token.is_at_start_of_line && token.is_identifier() &&
-                               token.text(content) == "export";
-
-                // Only interested in a `module` keyword whose next token is an
-                // identifier (the name). This skips `module;` (global module
-                // fragment, next is `;`) and `module :private;` (next is `:`).
-                if(!at_decl_start || !token.is_identifier() || token.text(content) != "module")
-                    continue;
-
-                auto next = lexer.next();
-                if(!next.is_identifier())
-                    continue;
-
-                auto first = lexer.advance_if(is_identifier);
-                if(!first)
-                    continue;
-                name_begin = first->range.begin;
-                name_end = first->range.end;
-                while(true) {
-                    auto sep = lexer.advance_if([](const Token& token) {
-                        return token.kind == clang::tok::period || token.kind == clang::tok::colon;
-                    });
-                    if(!sep)
-                        break;
-                    auto part = lexer.advance_if(is_identifier);
-                    if(!part)
-                        break;
-                    name_end = part->range.end;
-                }
-                found = true;
-                break;
+        if(module_name.empty()) {
+            return;
+        }
+        for(auto& module: unit.semantics().module_declarations()) {
+            if(module.kind != LexicalInfo::ModuleDeclaration::Kind::Declaration) {
+                continue;
             }
-
-            if(found) {
-                emit(module_name,
-                     unit.interested_file(),
-                     LocalSourceRange{name_begin, name_end},
-                     unit.is_module_interface_unit() ? RelationKind::Definition
-                                                     : RelationKind::Reference);
-            }
+            auto name_begin = module.name_parts.front().begin;
+            auto name_end = (module.partition_parts.empty() ? module.name_parts.back()
+                                                            : module.partition_parts.back())
+                                .end;
+            emit(module_name,
+                 unit.interested_file(),
+                 LocalSourceRange{name_begin, name_end},
+                 unit.is_module_interface_unit() ? RelationKind::Definition
+                                                 : RelationKind::Reference);
+            break;
         }
     }
 

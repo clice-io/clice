@@ -167,6 +167,32 @@ TEST_CASE(PreambleDefineUnderPch) {
     EXPECT_TOKEN("c0", SymbolKind::Comment);
 }
 
+TEST_CASE(ModuleDeclarationUnderPch) {
+    // The whole module preamble (global fragment included) sits under the
+    // PCH split; every written module token must still classify — with a
+    // leading comment block ahead of the global fragment, like a license
+    // header.
+    run_utf8(R"cpp(// leading comment block
+// above the global module fragment
+
+§(g0)⟦module⟧;
+
+export §(k0)⟦module⟧ §(n0)⟦demo⟧.§(n1)⟦core⟧;
+
+export int exported_value = 1;
+
+§(p0)⟦module⟧ :private;
+
+int private_value = 2;
+)cpp");
+
+    EXPECT_TOKEN("g0", SymbolKind::Keyword);
+    EXPECT_TOKEN("k0", SymbolKind::Keyword);
+    EXPECT_TOKEN("n0", SymbolKind::Module);
+    EXPECT_TOKEN("n1", SymbolKind::Module);
+    EXPECT_TOKEN("p0", SymbolKind::Keyword);
+}
+
 TEST_CASE(UTF16LengthDiffersFromUTF8) {
     add_main("main.cpp", R"cpp(
 int main() {
@@ -249,6 +275,54 @@ int y = x;
 
     EXPECT_TOKEN("kw", SymbolKind::Keyword);
     EXPECT_TOKEN("mod", SymbolKind::Module);
+}
+
+TEST_CASE(ImportChannelAudit) {
+    add_files("main.cppm", R"(
+#[a.cppm]
+export module a;
+export int va = 1;
+
+#[b.cppm]
+export module b;
+export int vb = 1;
+
+#[part.cppm]
+export module foo:part;
+export int vp = 1;
+
+#[main.cppm]
+export module foo;
+import a;
+export import b;
+import :part;
+)");
+    ASSERT_TRUE(compile_with_modules());
+
+    // The preprocessor callback channel must record every import form the
+    // AST records: a named import, an export-import and a partition import
+    // (whose full name resolves through the owning module).
+    auto& imports = unit->directives()[unit->interested_file()].imports;
+    ASSERT_EQ(imports.size(), 3U);
+    ASSERT_EQ(imports[0].name, "a");
+    ASSERT_EQ(imports[1].name, "b");
+    ASSERT_EQ(imports[2].name, "foo:part");
+
+    std::size_t ast_imports = 0;
+    auto count = [&](const clang::Decl* decl, auto& self) -> void {
+        if(llvm::isa<clang::ImportDecl>(decl)) {
+            ast_imports += 1;
+        }
+        if(auto* context = llvm::dyn_cast<clang::DeclContext>(decl)) {
+            for(auto* child: context->decls()) {
+                self(child, self);
+            }
+        }
+    };
+    for(auto* decl: unit->context().getTranslationUnitDecl()->decls()) {
+        count(decl, count);
+    }
+    ASSERT_EQ(ast_imports, 3U);
 }
 
 TEST_CASE(ModulePartitionImport) {
