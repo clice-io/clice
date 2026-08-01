@@ -7,6 +7,44 @@
 
 namespace clice::feature {
 
+/// Find the range of the filename argument in a preprocessor directive line.
+/// `content` is the full source text, `offset` points at or before the
+/// directive keyword. Returns the range of the first filename-like token
+/// (header name, string literal, or macro identifier) found on the same
+/// line, or nullopt if none.
+static std::optional<LocalSourceRange>
+    find_directive_argument(llvm::StringRef content,
+                            std::uint32_t offset,
+                            const clang::LangOptions* lang_opts) {
+    auto lexer = Lexer::from_line(content, offset, {.lang_opts = lang_opts});
+    bool after_keyword = false;
+
+    while(true) {
+        auto token = lexer.advance();
+        if(token.is_eof() || token.is_eod()) {
+            return std::nullopt;
+        }
+
+        if(token.is_identifier()) {
+            auto text = token.text(content);
+            if(text == "include" || text == "include_next" || text == "embed" ||
+               text == "__has_include" || text == "__has_include_next" || text == "__has_embed") {
+                after_keyword = true;
+                continue;
+            }
+        }
+
+        if(token.range.begin < offset || !after_keyword) {
+            continue;
+        }
+
+        if(token.is_header_name() || token.kind == clang::tok::string_literal ||
+           token.is_identifier()) {
+            return token.range;
+        }
+    }
+}
+
 auto document_links(CompilationUnitRef unit) -> std::vector<DocumentLink> {
     std::vector<DocumentLink> links;
 
