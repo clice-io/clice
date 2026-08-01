@@ -38,6 +38,14 @@ TEST_CASE(CursorInsideKeyword) {
     EXPECT_EQ(detect_completion_context("import", 3).kind, CompletionContext::None);
 }
 
+TEST_CASE(CursorAtNewline) {
+    // A cursor sitting on a line's terminating newline still completes the
+    // statement that line opened.
+    auto ctx = detect_completion_context("import std\nint x;", 10);
+    EXPECT_EQ(ctx.kind, CompletionContext::Import);
+    EXPECT_EQ(ctx.prefix, "std");
+}
+
 TEST_CASE(CrlfLineEndings) {
     auto ctx = detect_completion_context("#include <a>\r\n#include <ve", 26);
     EXPECT_EQ(ctx.kind, CompletionContext::IncludeAngled);

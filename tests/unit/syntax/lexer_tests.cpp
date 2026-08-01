@@ -155,6 +155,7 @@ TEST_CASE(MacroArgument) {
     Lexer lexer(content);
     auto tokens = lex_all(lexer);
 
+    ASSERT_TRUE(tokens.size() >= 3U);
     ASSERT_EQ(first_header_name(content), "");
     ASSERT_TRUE(tokens[2].is_identifier());
     ASSERT_EQ(tokens[2].text(content), "HEADER");
@@ -275,6 +276,7 @@ TEST_CASE(UnterminatedComment) {
     llvm::StringRef content = "int x; /* abc";
     Lexer lexer(content, {.keep_comments = true});
     auto tokens = lex_all(lexer);
+    ASSERT_EQ(tokens.size(), 3U);
     ASSERT_EQ(tokens.back().kind, clang::tok::semi);
 }
 
