@@ -48,4 +48,10 @@ Deduced(T*) -> Deduced<T>;
 // Forces the implicit instantiation Box<int>, which must not appear.
 Box<int> instantiated;
 
+// An explicit class instantiation gets a childless node; the instantiated
+// members and the function instantiation (whose location clang records at
+// the primary) produce no symbols.
+template struct Box<char>;
+template long zero<long>();
+
 }  // namespace spec

@@ -152,6 +152,28 @@ private:
             return false;
         }
 
+        // Explicit instantiations carry no written body. The class form
+        // (`template struct Box<int>;`) gets a childless outline node — its
+        // members are instantiated decls located in the primary template.
+        // Clang records function and variable instantiations (and their
+        // instantiated members) at the primary's location, so those produce
+        // no symbol at all (mirroring resolve_occurrences).
+        bool childless_instantiation = false;
+        if(const auto* spec = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(decl)) {
+            if(!llvm::isa<clang::ClassTemplatePartialSpecializationDecl>(spec) &&
+               clang::isTemplateInstantiation(spec->getSpecializationKind())) {
+                childless_instantiation = true;
+            }
+        } else if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
+            if(clang::isTemplateInstantiation(function->getTemplateSpecializationKind())) {
+                return false;
+            }
+        } else if(const auto* var = llvm::dyn_cast<clang::VarDecl>(decl)) {
+            if(clang::isTemplateInstantiation(var->getTemplateSpecializationKind())) {
+                return false;
+            }
+        }
+
         if(!is_interested(decl)) {
             return true;
         }
@@ -189,6 +211,10 @@ private:
         symbol.detail = symbol_detail(unit.context(), *named);
         symbol.selection_range = selection_range;
         symbol.range = range;
+
+        if(childless_instantiation) {
+            return false;
+        }
 
         frames.push_back({subtree_end, cursor});
         cursor = &symbol.children;

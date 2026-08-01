@@ -136,7 +136,7 @@ Provides the file outline and breadcrumb navigation via `textDocument/documentSy
 
 <!-- BEGIN GENERATED ITEMS: Symbol Kinds -->
 
-- [x] Core symbol kinds — namespaces, classes, structs, unions, enums and their members, functions, variables, fields, structured bindings and lambdas each map to a distinct LSP symbol kind
+- [x] Core symbol kinds — namespaces, classes, structs, unions, enums and their members, functions, variables, fields, structured bindings and lambdas all appear in the outline with a mapped LSP symbol kind
 
   ```cpp
   namespace kinds {
@@ -247,6 +247,12 @@ Provides the file outline and breadcrumb navigation via `textDocument/documentSy
 
   // Forces the implicit instantiation Box<int>, which must not appear.
   Box<int> instantiated;
+
+  // An explicit class instantiation gets a childless node; the instantiated
+  // members and the function instantiation (whose location clang records at
+  // the primary) produce no symbols.
+  template struct Box<char>;
+  template long zero<long>();
 
   }  // namespace spec
   ```
