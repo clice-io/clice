@@ -373,15 +373,17 @@ Names classified by the declaration they define or reference.
   Vec(It, It) -> Vec<int>;
   ```
 
-- [x] Explicit instantiation — the instantiated template name highlighted ([clangd#316](https://github.com/clangd/clangd/issues/316))
+- [x] Explicit instantiation — the instantiated template name and its written template arguments highlighted ([clangd#316](https://github.com/clangd/clangd/issues/316))
 
   ```cpp
+  struct Widget {};
+
   template <typename T>
   struct Holder {
       T value;
   };
 
-  template struct Holder<int>;
+  template struct Holder<Widget>;
   ```
 
 - [ ] Dependent names — resolved through the primary template where one is known _(partial)_ ([clangd#154](https://github.com/clangd/clangd/issues/154), [clangd#297](https://github.com/clangd/clangd/issues/297))

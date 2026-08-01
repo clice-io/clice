@@ -236,9 +236,9 @@ public:
         /// The node belongs to a template instantiation rather than the
         /// written template, so its locations point into the pattern.
         /// Instantiations reach the table as top-level implicit
-        /// instantiations and as subtrees of explicit instantiation
-        /// directives; the directive's own decl is written and stays
-        /// unflagged.
+        /// instantiations and as member subtrees of explicit instantiation
+        /// directives; the directive's own decl and its written
+        /// template-argument TypeLocs stay unflagged.
         bool in_instantiation : 1 = false;
     };
 
