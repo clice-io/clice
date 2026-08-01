@@ -204,7 +204,7 @@ public:
     /// Module names are indexed like macro names: an occurrence plus a
     /// Definition/Reference relation keyed by a hash of the full module
     /// name, so navigation flows through the ordinary index pipeline.
-    void index_modules() {
+    void index_modules(const Semantics& semantics) {
         auto emit = [&](llvm::StringRef name,
                         clang::FileID fid,
                         LocalSourceRange range,
@@ -267,7 +267,7 @@ public:
         if(module_name.empty()) {
             return;
         }
-        for(auto& module: unit.semantics().module_declarations()) {
+        for(auto& module: semantics.module_declarations()) {
             if(module.kind != LexicalInfo::ModuleDeclaration::Kind::Declaration) {
                 continue;
             }
@@ -463,14 +463,7 @@ public:
         }
     }
 
-    void project_semantics() {
-        /// The interested-only shape is the one features share, cached on the
-        /// unit; the whole-TU shape is transient — projected and dropped.
-        std::optional<Semantics> full;
-        if(!interested_only) {
-            full.emplace(Semantics::build(unit, false));
-        }
-        const Semantics& semantics = interested_only ? unit.semantics() : *full;
+    void project_semantics(const Semantics& semantics) {
         auto entries = semantics.node_entries();
 
         for(std::uint32_t i = 0; i < entries.size(); i++) {
@@ -511,9 +504,18 @@ public:
     }
 
     void build() {
-        project_semantics();
+        /// The interested-only shape is the one features share, cached on the
+        /// unit; the whole-TU shape is transient — projected and dropped.
+        /// Both phases below share the one build.
+        std::optional<Semantics> full;
+        if(!interested_only) {
+            full.emplace(Semantics::build(unit, false));
+        }
+        const Semantics& semantics = interested_only ? unit.semantics() : *full;
 
-        index_modules();
+        project_semantics(semantics);
+
+        index_modules(semantics);
 
         // Build the include graph from what the index actually recorded:
         // every fid keying `file_indices` gets its include chain resolved
