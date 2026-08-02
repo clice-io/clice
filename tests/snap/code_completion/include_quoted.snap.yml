@@ -1,0 +1,7 @@
+---
+created_at: 2026-08-02
+input_file: include_quoted.cpp
+---
+pos:
+- { label: "snap_dir/", kind: File }
+- { label: "snap_header.h", kind: File }

@@ -115,6 +115,23 @@ void Config::apply_defaults(llvm::StringRef workspace_root) {
     if(!ih.type_name_limit)
         ih.type_name_limit = inlay_defaults.type_name_limit;
 
+    auto& cc = code_completion;
+    feature::CodeCompletionOptions completion_defaults;
+    if(!cc.enable_keyword_snippet)
+        cc.enable_keyword_snippet = completion_defaults.enable_keyword_snippet;
+    if(!cc.enable_function_arguments_snippet)
+        cc.enable_function_arguments_snippet =
+            completion_defaults.enable_function_arguments_snippet;
+    if(!cc.enable_template_arguments_snippet)
+        cc.enable_template_arguments_snippet =
+            completion_defaults.enable_template_arguments_snippet;
+    if(!cc.insert_paren_in_function_call)
+        cc.insert_paren_in_function_call = completion_defaults.insert_paren_in_function_call;
+    if(!cc.bundle_overloads)
+        cc.bundle_overloads = completion_defaults.bundle_overloads;
+    if(!cc.limit)
+        cc.limit = completion_defaults.limit;
+
     if(p.cache_dir.empty() && !workspace_root.empty()) {
         p.cache_dir = resolve_xdg_cache_dir(workspace_root);
         if(p.cache_dir.empty())

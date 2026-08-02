@@ -1,0 +1,6 @@
+---
+created_at: 2026-08-02
+input_file: variadic_template.cpp
+---
+pos:
+- emit(⟦Args ...args⟧) -> void

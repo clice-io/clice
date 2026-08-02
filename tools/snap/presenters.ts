@@ -209,6 +209,106 @@ export const presentInlayHints: Presenter = async (client, uri, source) => {
     return out;
 };
 
+/// The A/B body of a fixture that carries a `config:` overlay: the same
+/// markers rendered under default options and under the overlay, so the
+/// snapshot pins what the option actually changes. Blank section
+/// separators stay unindented — no trailing whitespace in snapshots.
+export function abBlocks(defaults: string[], configured: string[]): string[] {
+    const indent = (line: string): string => (line === "" ? line : `  ${line}`);
+    return ["default:", ...defaults.map(indent), "", "configured:", ...configured.map(indent)];
+}
+
+/// A completion item reduced to the fields the snapshot pins, shared by
+/// the wire presenter and the standalone renderer. `score` is the fuzzy
+/// match score the feature layer stores in sort_text.
+export interface CompletionEntry {
+    label: string;
+    kind: string | null;
+    score: number;
+    detail: string | null;
+    description: string | null;
+    edit: string | null;
+    newText: string | null;
+    snippet: boolean;
+    deprecated: boolean;
+}
+
+/// Completion and signature replies are open-ended, so a snapshot pins
+/// at most ten items — for completion the ten best by score descending,
+/// label ascending on ties (the feature layer itself returns candidates
+/// unsorted) — and announces the cut so a truncated list never reads as
+/// "nothing else matched".
+const SNAP_ITEM_LIMIT = 10;
+
+export function completionLines(entries: CompletionEntry[]): string[] {
+    const sorted = [...entries].sort(
+        (a, b) => b.score - a.score || (a.label < b.label ? -1 : a.label > b.label ? 1 : 0),
+    );
+    const out: string[] = [];
+    for (const entry of sorted.slice(0, SNAP_ITEM_LIMIT)) {
+        let line = `- { label: ${yamlStr(entry.label)}`;
+        if (entry.kind !== null) {
+            line += `, kind: ${entry.kind}`;
+        }
+        if (entry.detail !== null) {
+            line += `, detail: ${yamlStr(entry.detail)}`;
+        }
+        if (entry.description !== null) {
+            line += `, description: ${yamlStr(entry.description)}`;
+        }
+        if (entry.edit !== null) {
+            line += `, edit: "${entry.edit}"`;
+        }
+        if (entry.newText !== null && entry.newText !== entry.label) {
+            line += `, insert: ${yamlStr(entry.newText)}`;
+        }
+        if (entry.snippet) {
+            line += ", snippet: true";
+        }
+        if (entry.deprecated) {
+            line += ", deprecated: true";
+        }
+        out.push(line + " }");
+    }
+    if (sorted.length > SNAP_ITEM_LIMIT) {
+        out.push(`… +${sorted.length - SNAP_ITEM_LIMIT} more`);
+    }
+    return out;
+}
+
+/// A signature reduced to what the snapshot pins: the rendered label with
+/// the active parameter bracketed in place (`foo(int x, ⟦int y⟧)`), which
+/// pins both the parameter offsets and the active index in one line.
+export interface SignatureEntry {
+    label: string;
+    /// [begin, end) substrings of `label`, one per parameter.
+    parameters: [number, number][];
+    activeParameter: number | null;
+}
+
+export function signatureLines(signatures: SignatureEntry[]): string[] {
+    if (signatures.length === 0) {
+        return ["NO SIGNATURES"];
+    }
+    const out: string[] = [];
+    for (const signature of signatures.slice(0, SNAP_ITEM_LIMIT)) {
+        let label = signature.label;
+        const active =
+            signature.activeParameter !== null
+                ? signature.parameters[signature.activeParameter]
+                : undefined;
+        if (active !== undefined) {
+            const [begin, end] = active;
+            label = `${label.slice(0, begin)}⟦${label.slice(begin, end)}⟧${label.slice(end)}`;
+        }
+        out.push(`- ${label}`);
+    }
+    if (signatures.length > SNAP_ITEM_LIMIT) {
+        out.push(`… +${signatures.length - SNAP_ITEM_LIMIT} more`);
+    }
+    return out;
+}
+
 /// One rendered hover block per marker, shared by the wire presenter and
 /// the standalone renderer so `snap: shared` fixtures compare byte-equal:
 ///
@@ -233,6 +333,70 @@ export function hoverBlocks(
     }
     return out;
 }
+
+function wireCompletionEntry(item: proto.CompletionItem): CompletionEntry {
+    const edit = item.textEdit;
+    if (edit !== undefined && !("range" in edit)) {
+        throw new Error("clice always replies with plain TextEdit completion edits");
+    }
+    return {
+        label: item.label,
+        kind: item.kind !== undefined ? enumName(proto.CompletionItemKind, item.kind) : null,
+        score: item.sortText !== undefined ? Number.parseFloat(item.sortText) : 0,
+        detail: item.labelDetails?.detail ?? null,
+        description: item.labelDetails?.description ?? null,
+        edit: edit !== undefined ? fmtRange(edit.range) : null,
+        newText: edit !== undefined ? edit.newText : null,
+        snippet: item.insertTextFormat === proto.InsertTextFormat.Snippet,
+        deprecated: item.tags?.includes(proto.CompletionItemTag.Deprecated) ?? false,
+    };
+}
+
+export const presentCodeCompletion: Presenter = async (client, uri, source) => {
+    const map = new OffsetConverter(Buffer.from(source.content));
+    const out: string[] = [];
+    for (const [name, offset] of markerPoints(source)) {
+        const pos = map.position(offset);
+        const reply = (await client.completionAt(uri, pos.line, pos.character)) ?? [];
+        const items = Array.isArray(reply) ? reply : reply.items;
+        if (out.length > 0) {
+            out.push("");
+        }
+        out.push(`${name}:`);
+        out.push(...completionLines(items.map(wireCompletionEntry)));
+    }
+    return out;
+};
+
+function wireSignatureEntry(signature: proto.SignatureInformation): SignatureEntry {
+    const parameters: [number, number][] = [];
+    for (const parameter of signature.parameters ?? []) {
+        if (typeof parameter.label === "string") {
+            throw new Error("clice always replies with [begin, end) parameter labels");
+        }
+        parameters.push(parameter.label);
+    }
+    return {
+        label: signature.label,
+        parameters,
+        activeParameter: signature.activeParameter ?? null,
+    };
+}
+
+export const presentSignatureHelp: Presenter = async (client, uri, source) => {
+    const map = new OffsetConverter(Buffer.from(source.content));
+    const out: string[] = [];
+    for (const [name, offset] of markerPoints(source)) {
+        const pos = map.position(offset);
+        const reply = await client.signatureHelpAt(uri, pos.line, pos.character);
+        if (out.length > 0) {
+            out.push("");
+        }
+        out.push(`${name}:`);
+        out.push(...signatureLines((reply?.signatures ?? []).map(wireSignatureEntry)));
+    }
+    return out;
+};
 
 export const presentHover: Presenter = async (client, uri, source) => {
     const items: [string, { rangeText: string | null; contents: string } | null][] = [];

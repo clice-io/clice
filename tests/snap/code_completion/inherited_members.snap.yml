@@ -1,0 +1,13 @@
+---
+created_at: 2026-08-02
+input_file: inherited_members.cpp
+---
+pos:
+- { label: "Base", kind: Class, edit: "19:6-19:6" }
+- { label: "Derived", kind: Class, edit: "19:6-19:6" }
+- { label: "base_field", kind: Field, description: "int", edit: "19:6-19:6" }
+- { label: "base_method", kind: Method, detail: "()", description: "int", edit: "19:6-19:6" }
+- { label: "derived_field", kind: Field, description: "int", edit: "19:6-19:6" }
+- { label: "operator=", kind: Method, detail: "(…) +2 overloads", edit: "19:6-19:6" }
+- { label: "~Base", kind: Method, detail: "()", description: "void", edit: "19:6-19:6" }
+- { label: "~Derived", kind: Method, detail: "()", description: "void", edit: "19:6-19:6" }

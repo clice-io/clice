@@ -31,7 +31,14 @@ import {
     type InspectFileEntry,
     type RawHoverResult,
 } from "./inspect.ts";
-import { hoverBlocks } from "./presenters.ts";
+import {
+    abBlocks,
+    completionLines,
+    hoverBlocks,
+    signatureLines,
+    type CompletionEntry,
+    type SignatureEntry,
+} from "./presenters.ts";
 import { SnapshotContext } from "./snapshot.ts";
 
 /// CDBs for the tests/snap corpora. Both drivers read the same file:
@@ -42,6 +49,18 @@ import { SnapshotContext } from "./snapshot.ts";
 /// hover pins the target triple because HoverInfo carries sizeof/alignof
 /// facts that differ between LP64 and LLP64 hosts.
 const CORPUS_FLAGS: Record<string, (corpus: string) => string[]> = {
+    // Freestanding, -undef and -nostdinc keep host stdlib symbols,
+    // platform macros and system search directories out of the candidate
+    // set, so completion replies stay identical across hosts. inc/ backs
+    // the include-completion fixtures.
+    code_completion: (corpus) => [
+        `-I${posix(corpus)}/inc`,
+        "-std=c++20",
+        "-ffreestanding",
+        "-undef",
+        "-nostdinc",
+    ],
+    signature_help: () => ["-std=c++20", "-ffreestanding", "-undef"],
     document_links: (corpus) => [`-I${posix(corpus)}`, "-std=c++23"],
     hover: () => ["-std=c++20", "--target=x86_64-unknown-linux-gnu"],
     // c++23 for deducing-this fixtures; ms-extensions for __declspec
@@ -69,30 +88,75 @@ export function generateSnapCDBs(snapDir: string = SNAP_DIR): void {
         if (!fs.statSync(corpusDir).isDirectory()) {
             continue;
         }
-        const sources = fs
+        // .cppm support files (module interfaces backing wire-only import
+        // completion fixtures) get CDB entries so the server can compile
+        // and scan them; only .cpp files are fixtures.
+        const entries = fs
             .readdirSync(corpusDir, { recursive: true, encoding: "utf8" })
-            .filter((name) => name.endsWith(".cpp"))
-            .sort()
-            .map((name) => path.join(corpusDir, name));
-        if (sources.length === 0) {
-            continue;
+            .map((name) => name.split(path.sep).join("/"))
+            .filter((name) => name.endsWith(".cpp") || name.endsWith(".cppm"))
+            .sort();
+        // A subdirectory entered through main.cpp is a self-contained
+        // fixture workspace: the wire session initializes on it and
+        // inspect resolves the nearest CDB upward, so each unit gets its
+        // own CDB and its files stay out of the corpus one. Units are
+        // thereby isolated from each other — module names, for one,
+        // cannot collide across fixtures.
+        const units = new Set(
+            entries
+                .filter((name) => name.endsWith("/main.cpp"))
+                .map((name) => name.slice(0, -"/main.cpp".length)),
+        );
+        const groups = new Map<string, string[]>();
+        for (const rel of entries) {
+            const slash = rel.lastIndexOf("/");
+            const dir = slash === -1 ? "" : rel.slice(0, slash);
+            const key = units.has(dir) ? dir : "";
+            groups.set(key, [...(groups.get(key) ?? []), rel]);
         }
-        const flags = CORPUS_FLAGS[corpus] ?? (() => ["-std=c++20"]);
-        const target = path.join(corpusDir, "compile_commands.json");
-        const tmp = `${target}.tmp-${process.pid}`;
-        fs.writeFileSync(
-            tmp,
-            JSON.stringify(
-                sources.map((src) => ({
-                    directory: posix(corpusDir),
-                    file: posix(src),
-                    arguments: ["clang++", ...flags(corpusDir), "-fsyntax-only", posix(src)],
-                })),
-                null,
-                2,
+        // Stale unit CDBs must not linger: a renamed or dissolved unit
+        // would otherwise keep serving its old flags to the nearest-CDB
+        // upward walk on developer machines (CI always starts clean).
+        const targets = new Set(
+            [...groups.keys()].map((unit) =>
+                posix(
+                    path.join(
+                        unit === "" ? corpusDir : path.join(corpusDir, unit),
+                        "compile_commands.json",
+                    ),
+                ),
             ),
         );
-        fs.renameSync(tmp, target);
+        for (const rel of fs.readdirSync(corpusDir, { recursive: true, encoding: "utf8" })) {
+            const abs = path.join(corpusDir, rel);
+            if (path.basename(abs) === "compile_commands.json" && !targets.has(posix(abs))) {
+                fs.rmSync(abs, { force: true });
+            }
+        }
+        const flags = CORPUS_FLAGS[corpus] ?? (() => ["-std=c++20"]);
+        for (const [unit, rels] of groups) {
+            const unitDir = unit === "" ? corpusDir : path.join(corpusDir, unit);
+            const target = path.join(unitDir, "compile_commands.json");
+            const tmp = `${target}.tmp-${process.pid}`;
+            fs.writeFileSync(
+                tmp,
+                JSON.stringify(
+                    rels.map((rel) => ({
+                        directory: posix(unitDir),
+                        file: posix(path.join(corpusDir, rel)),
+                        arguments: [
+                            "clang++",
+                            ...flags(corpusDir),
+                            "-fsyntax-only",
+                            posix(path.join(corpusDir, rel)),
+                        ],
+                    })),
+                    null,
+                    2,
+                ),
+            );
+            fs.renameSync(tmp, target);
+        }
     }
 }
 
@@ -122,7 +186,63 @@ function markerSections(
     return out;
 }
 
+/// Raw inspect JSON for one completion item / signature: the protocol
+/// types serialized with native snake_case names and string enums, ranges
+/// already in LSP positions.
+interface RawPosition {
+    line: number;
+    character: number;
+}
+
+interface RawCompletionItem {
+    label: string;
+    kind?: string | null;
+    sort_text?: string | null;
+    label_details?: { detail?: string | null; description?: string | null } | null;
+    tags?: string[] | null;
+    insert_text_format?: string | null;
+    text_edit?: { range: { start: RawPosition; end: RawPosition }; new_text: string } | null;
+}
+
+interface RawSignature {
+    label: string;
+    parameters?: { label: [number, number] }[] | null;
+    active_parameter?: number | null;
+}
+
+function rawRange(range: { start: RawPosition; end: RawPosition }): string {
+    return (
+        `${range.start.line}:${range.start.character}-` + `${range.end.line}:${range.end.character}`
+    );
+}
+
+function rawCompletionEntry(item: RawCompletionItem): CompletionEntry {
+    return {
+        label: item.label,
+        kind: item.kind ?? null,
+        score: item.sort_text != null ? Number.parseFloat(item.sort_text) : 0,
+        detail: item.label_details?.detail ?? null,
+        description: item.label_details?.description ?? null,
+        edit: item.text_edit != null ? rawRange(item.text_edit.range) : null,
+        newText: item.text_edit?.new_text ?? null,
+        snippet: item.insert_text_format === "Snippet",
+        deprecated: item.tags?.includes("Deprecated") ?? false,
+    };
+}
+
+function rawSignatureEntry(signature: RawSignature): SignatureEntry {
+    return {
+        label: signature.label,
+        parameters: (signature.parameters ?? []).map((parameter) => parameter.label),
+        activeParameter: signature.active_parameter ?? null,
+    };
+}
+
 const RENDERERS: Record<string, EntryRenderer> = {
+    code_completion: (entry) =>
+        markerSections(entry, (value) =>
+            completionLines((value as RawCompletionItem[]).map(rawCompletionEntry)),
+        ),
     document_links: (entry, stripped, corpus) =>
         renderRawDocumentLinks(entry.result, stripped, corpus),
     document_symbol: (entry, stripped) => renderRawDocumentSymbols(entry.result, stripped),
@@ -158,6 +278,14 @@ const RENDERERS: Record<string, EntryRenderer> = {
         }
         return pieces.map((piece) => piece.rendered);
     },
+    signature_help: (entry) =>
+        markerSections(entry, (value) =>
+            signatureLines(
+                ((value as { signatures?: RawSignature[] | null }).signatures ?? []).map(
+                    rawSignatureEntry,
+                ),
+            ),
+        ),
 };
 
 export interface SnapFixture {
@@ -188,11 +316,27 @@ export function snapCorpora(): SnapCorpus[] {
         if (!RENDERERS[feature]) {
             throw new Error(`no raw renderer registered for tests/snap/${feature}`);
         }
-        const fixtures = fs
+        const entries = fs
             .readdirSync(corpus, { recursive: true, encoding: "utf8" })
+            .map((name) => name.split(path.sep).join("/"));
+        // A subdirectory entered through a main.cpp is one multi-file
+        // fixture: main.cpp is the entry and the sibling files belong to
+        // the fixture's workspace (module interfaces, extra sources) —
+        // they are not fixtures of their own.
+        const units = new Set(
+            entries
+                .filter((name) => name.endsWith("/main.cpp"))
+                .map((name) => name.slice(0, -"/main.cpp".length)),
+        );
+        const fixtures = entries
             .filter((name) => name.endsWith(".cpp"))
+            .filter((name) => {
+                const slash = name.lastIndexOf("/");
+                return (
+                    slash === -1 || !units.has(name.slice(0, slash)) || name.endsWith("/main.cpp")
+                );
+            })
             .sort()
-            .map((name) => name.split(path.sep).join("/"))
             .map((rel) => {
                 const content = fs.readFileSync(path.join(corpus, rel), "utf8");
                 const meta = parseFixtureMeta(content, `${feature}/${rel}`);
@@ -237,32 +381,39 @@ export async function checkSnapFixture(
         throw new Error(`no raw renderer registered for tests/snap/${feature}`);
     }
     const file = path.join(corpus, fixture.rel);
-    const entry = (await runInspectAsync(clice, feature, file)).files[path.basename(file)];
-    if (!entry) {
-        throw new Error(`clice inspect returned no entry for ${fixture.rel}`);
-    }
 
     const source = parseAnnotations(fixture.content);
     const stripped = Buffer.from(source.content);
-    // Hash equality proves the C++ and TS annotation strippers still agree
-    // on the coordinate space of every offset below.
-    if (entry.stripped_hash !== sha256(stripped)) {
-        throw new Error(
-            `${feature}/${fixture.rel}: stripped-content hash mismatch: ` +
-                "C++/TS stripper twins have drifted",
-        );
-    }
 
-    if (entry.error) {
-        // An active fixture that does not compile is a failing test, never
-        // snapshot content: pinning a marker would let an update run
-        // silently accept a transient toolchain or compile failure.
-        const diagnostics = (entry.diagnostics ?? []).join("\n  ");
-        throw new Error(
-            `${feature}/${fixture.rel}: clice inspect failed (${entry.error})` +
-                (diagnostics ? `\n  ${diagnostics}` : ""),
-        );
-    }
+    const inspectEntry = async (config?: string): Promise<InspectFileEntry> => {
+        const entry = (await runInspectAsync(clice, feature, file, config)).files[
+            path.basename(file)
+        ];
+        if (!entry) {
+            throw new Error(`clice inspect returned no entry for ${fixture.rel}`);
+        }
+        // Hash equality proves the C++ and TS annotation strippers still
+        // agree on the coordinate space of every offset below.
+        if (entry.stripped_hash !== sha256(stripped)) {
+            throw new Error(
+                `${feature}/${fixture.rel}: stripped-content hash mismatch: ` +
+                    "C++/TS stripper twins have drifted",
+            );
+        }
+        if (entry.error) {
+            // An active fixture that does not compile is a failing test,
+            // never snapshot content: pinning a marker would let an update
+            // run silently accept a transient toolchain or compile failure.
+            const diagnostics = (entry.diagnostics ?? []).join("\n  ");
+            throw new Error(
+                `${feature}/${fixture.rel}: clice inspect failed (${entry.error})` +
+                    (diagnostics ? `\n  ${diagnostics}` : ""),
+            );
+        }
+        return entry;
+    };
+
+    const entry = await inspectEntry();
 
     // The AST builds even for broken sources, so a compile that "succeeds"
     // may still carry error diagnostics — e.g. a mistyped annotation that
@@ -278,8 +429,17 @@ export async function checkSnapFixture(
         );
     }
 
+    // A config fixture pins both halves of the A/B: the run above is the
+    // default half, a second inspect run carries the overlay. The compile
+    // is identical, so the gates above need no second pass.
+    let body = render(entry, stripped, corpus, source);
+    if (fixture.meta.config !== undefined) {
+        const configured = await inspectEntry(fixture.meta.config);
+        body = abBlocks(body, render(configured, stripped, corpus, source));
+    }
+
     const snapshots = new SnapshotContext(corpus, { colocated: true });
-    snapshots.check(fixture.rel, render(entry, stripped, corpus, source).join("\n"));
+    snapshots.check(fixture.rel, body.join("\n"));
 }
 
 /// Snapshots follow their sources: a stale `.snap.yml` whose fixture was

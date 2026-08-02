@@ -49,10 +49,12 @@ import { parseAnnotations } from "./snap/annotation.ts";
 // feature -> doc path (relative to repo root). Extend as more features
 // adopt fixture-generated docs.
 const FEATURES: Record<string, string> = {
+    code_completion: "docs/en/features/completion.md",
     document_symbol: "docs/en/features/document-symbols.md",
     folding_range: "docs/en/features/folding-ranges.md",
     inlay_hint: "docs/en/features/inlay-hints.md",
     semantic_tokens: "docs/en/features/semantic-tokens.md",
+    signature_help: "docs/en/features/signature-help.md",
 };
 
 const ISSUE_TRACKERS: Record<string, string> = {
@@ -61,9 +63,9 @@ const ISSUE_TRACKERS: Record<string, string> = {
     llvm: "https://github.com/llvm/llvm-project/issues/",
 };
 
-// `snap` is consumed by the snapshot suites (tools/snap/inspect.ts),
-// not rendered into docs.
-const KNOWN_KEYS: readonly string[] = ["status", "issues", "order", "snap"];
+// `snap` and `config` are consumed by the snapshot suites
+// (tools/snap/inspect.ts), not rendered into docs.
+const KNOWN_KEYS: readonly string[] = ["status", "issues", "order", "snap", "config"];
 const VALID_STATUS: readonly string[] = ["supported", "partial", "unsupported"];
 
 // Markers must occupy their own unindented line, so marker text embedded in

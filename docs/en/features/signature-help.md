@@ -30,12 +30,90 @@ Registered: `(`, `)`, `{`, `}`, `<`, `>`, `,`
 
 ## Overload Signatures
 
-- [x] Function overload signatures
-- [x] Active parameter tracking
+<!-- BEGIN GENERATED ITEMS: Overload Signatures -->
+
+- [x] Function overloads — every overload of the callee, each with its parameter list and return type
+
+  ```cpp
+  void foo();
+  void foo(int x);
+  void foo(int x, int y);
+
+  int main() {
+      foo();
+  }
+  ```
+
+- [x] Active parameter tracking — the parameter under the cursor is bracketed; the point sits in the second argument
+
+  ```cpp
+  void bar(int first, double second, char third);
+
+  int main() {
+      bar(1, 2.0, 'c');
+  }
+  ```
+
+- [x] Member function overloads — a non-const receiver lists both the const and non-const overloads; the trailing const qualifier is not rendered in the label
+
+  ```cpp
+  struct Buffer {
+      int at(int index);
+      int at(int index) const;
+  };
+
+  int main() {
+      Buffer b;
+      b.at(0);
+  }
+  ```
+
+- [x] Default arguments in the label — parameters with defaults render their initializer in the signature
+
+  ```cpp
+  void configure(int width, int height = 100, bool visible = true);
+
+  int main() {
+      configure(1);
+  }
+  ```
+
+- [x] C-style variadic function — named parameters are listed while the trailing ellipsis is elided from the label
+
+  ```cpp
+  void record(int code, ...);
+
+  int main() {
+      record(0);
+  }
+  ```
+
+- [x] Variadic template pack — the parameter pack renders as the callee's uninstantiated signature
+
+  ```cpp
+  template <typename... Args>
+  void emit(Args... args);
+
+  int main() {
+      emit();
+  }
+  ```
+
+- [x] Active parameter past a shorter overload — with the cursor in the second argument, only overloads that declare a second parameter remain
+
+  ```cpp
+  void draw();
+  void draw(int x);
+  void draw(int x, int y);
+
+  int main() {
+      draw(1, 2);
+  }
+  ```
+
+<!-- END GENERATED ITEMS -->
+
 - [x] Template instantiation pattern resolution (shows template pattern, not instantiation)
-- [x] Parameter labels with types
-- [x] Return type in signature label
-- [x] Parameter label byte offsets for precise highlighting
 - [ ] Filter const/non-const overload duplicates — don't show both when only one is viable ([clangd#50](https://github.com/clangd/clangd/issues/50))
 
   ```cpp
@@ -70,21 +148,92 @@ Registered: `(`, `)`, `{`, `}`, `<`, `>`, `,`
 
 ## Special Call Contexts
 
-- [x] Template argument signature help ([clangd#299](https://github.com/clangd/clangd/issues/299), [clangd#1387](https://github.com/clangd/clangd/issues/1387))
+<!-- BEGIN GENERATED ITEMS: Special Call Contexts -->
+
+- [x] Constructors and aggregates — constructor calls render without a return arrow; aggregate initialization lists the fields in braces ([clangd#726](https://github.com/clangd/clangd/issues/726), [clangd#2541](https://github.com/clangd/clangd/issues/2541))
 
   ```cpp
-  template<typename Key, typename Value, typename Compare = less<Key>>
-  class SortedMap;
+  struct Point {
+      int x;
+      int y;
+  };
 
-  SortedMap<int, ^  // show: Key = int, Value = ?, Compare = less<Key>
+  struct Widget {
+      Widget(int a, double b);
+  };
+
+  int main() {
+      Point p{1, 2};
+      Widget w(3, 4.0);
+  }
   ```
 
-- [x] Aggregate initialization — show field names as "parameters" ([clangd#726](https://github.com/clangd/clangd/issues/726), [clangd#2541](https://github.com/clangd/clangd/issues/2541))
+- [x] Function pointer calls — the prototype's parameter names show, not just the types
 
   ```cpp
-  struct Point { int x, y, z; };
-  Point p = {1, ^  // show: .x = int, .y = int, .z = int (active: .y)
+  int main() {
+      void (*callback)(int code, double value) = nullptr;
+      callback(5, 1.5);
+  }
   ```
+
+- [x] Template argument lists — template parameters show as the signature; a class template points at its kind, not a return type ([clangd#299](https://github.com/clangd/clangd/issues/299), [clangd#1387](https://github.com/clangd/clangd/issues/1387))
+
+  ```cpp
+  template <typename T, typename U>
+  struct Pair {};
+
+  Pair<int,  double> p;
+  ```
+
+- [x] Nested calls — the inner call's help shows at the inner marker and the outer call's help at the outer marker
+
+  ```cpp
+  int inner(int a);
+  int outer(int b, int c);
+
+  int main() {
+      outer(inner(1), 2);
+  }
+  ```
+
+- [x] Functor call — invoking an object routes signature help to its operator() overload
+
+  ```cpp
+  struct Adder {
+      int operator()(int a, int b);
+  };
+
+  int main() {
+      Adder add;
+      add(1, 2);
+  }
+  ```
+
+- [x] Lambda call — calling a lambda variable offers the closure's operator() parameters
+
+  ```cpp
+  int main() {
+      auto square = [](int n) {
+          return n * n;
+      };
+      square(3);
+  }
+  ```
+
+- [x] New expression — a new-expression's constructor arguments drive signature help
+
+  ```cpp
+  struct Node {
+      Node(int value, Node* next);
+  };
+
+  int main() {
+      Node* n = new Node(0, nullptr);
+  }
+  ```
+
+<!-- END GENERATED ITEMS -->
 
 - [ ] Inherited constructors — show base class constructors when calling from derived ([clangd#1363](https://github.com/clangd/clangd/issues/1363))
 

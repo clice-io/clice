@@ -218,6 +218,11 @@ struct BuildParams {
     std::string module_name;               ///< BuildPCM
     uint32_t preamble_bound = UINT32_MAX;  ///< BuildPCH
     LocalSourceRange format_range;         ///< Format (default = full document)
+
+    /// Options for Completion builds, resolved from the workspace config by
+    /// the master per request — the worker holds no config state and a
+    /// config change simply shows up on the next request.
+    feature::CodeCompletionOptions completion_options;
 };
 
 /// Unified result for stateless build tasks.

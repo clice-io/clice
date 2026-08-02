@@ -1,0 +1,6 @@
+---
+created_at: 2026-08-02
+input_file: template_dedup.cpp
+---
+pos:
+- { label: "Foo", kind: Class, detail: "<typename T>", edit: "21:4-21:6" }

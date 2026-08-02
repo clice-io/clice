@@ -28,8 +28,10 @@ for (const corpus of snapCorpora()) {
         // All standalone cases register contiguously: vitest closes a
         // concurrent batch at the first sequential test, so interleaving
         // them with the wire cases would serialize the inspect processes.
+        // `snap: wire` fixtures exist only on the server side and skip
+        // this half entirely.
         for (const fixture of corpus.fixtures) {
-            test.skipIf(!fixture.active).concurrent(
+            test.skipIf(!fixture.active || fixture.meta.snap === "wire").concurrent(
                 `${corpus.feature}/${fixture.rel}`,
                 async () => {
                     // checkSnapFixture throws on any failure, including a
@@ -45,11 +47,7 @@ for (const corpus of snapCorpora()) {
             test.skipIf(!fixture.active)(
                 `${corpus.feature}/${fixture.rel} (wire)`,
                 async ({ session }) => {
-                    await checkWireSnapFixture(
-                        await session(`snap/${corpus.feature}`),
-                        corpus,
-                        fixture,
-                    );
+                    await checkWireSnapFixture(session, corpus, fixture);
                 },
             );
         }

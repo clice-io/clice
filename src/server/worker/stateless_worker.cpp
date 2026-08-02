@@ -300,7 +300,7 @@ static worker::BuildResult handle_completion(const worker::BuildParams& params,
     cp.completion = {params.file, params.offset};
     cp.stop = stop;
 
-    auto items = feature::code_complete(cp);
+    auto items = feature::code_complete(cp, params.completion_options);
     LOG_DEBUG("Completion done: {} items, {}ms", items.size(), timer.ms());
 
     worker::BuildResult result;

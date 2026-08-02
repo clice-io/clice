@@ -1,0 +1,8 @@
+---
+created_at: 2026-08-02
+input_file: namespace_qualified.cpp
+---
+pos:
+- { label: "Point", kind: Class, edit: "21:22-21:22" }
+- { label: "area_of", kind: Function, detail: "(int r)", description: "int", edit: "21:22-21:22" }
+- { label: "origin", kind: Variable, description: "int", edit: "21:22-21:22" }

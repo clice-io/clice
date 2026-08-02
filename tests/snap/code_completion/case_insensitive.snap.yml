@@ -1,0 +1,6 @@
+---
+created_at: 2026-08-02
+input_file: case_insensitive.cpp
+---
+pos:
+- { label: "MyLongName", kind: Variable, description: "int", edit: "11:12-11:18" }

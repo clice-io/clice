@@ -1573,6 +1573,19 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
     contexts.resolve_command(path, wp.directory, wp.arguments, session.get());
     contexts.append_suffix_include(*session, wp.text);
 
+    if(kind == worker::BuildKind::Completion) {
+        // apply_defaults() has filled every field of the config section.
+        auto& cc = workspace.config.code_completion;
+        wp.completion_options = {
+            .enable_keyword_snippet = *cc.enable_keyword_snippet,
+            .enable_function_arguments_snippet = *cc.enable_function_arguments_snippet,
+            .enable_template_arguments_snippet = *cc.enable_template_arguments_snippet,
+            .insert_paren_in_function_call = *cc.insert_paren_in_function_call,
+            .bundle_overloads = *cc.bundle_overloads,
+            .limit = *cc.limit,
+        };
+    }
+
     ScopedTimer timer;
     if(!co_await ensure_deps(*session, gen, epoch, wp.directory, wp.arguments, wp.pch, wp.pcms)) {
         LOG_WARN("forward_build: dependency preparation failed for {}", path);

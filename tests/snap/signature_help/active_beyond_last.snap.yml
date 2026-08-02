@@ -1,0 +1,6 @@
+---
+created_at: 2026-08-02
+input_file: active_beyond_last.cpp
+---
+pos:
+- draw(int x, ⟦int y⟧) -> void

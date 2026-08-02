@@ -9,6 +9,7 @@
 #include "compile/compilation.h"
 #include "driver/driver.h"
 #include "feature/feature.h"
+#include "server/state/config.h"
 #include "support/filesystem.h"
 #include "syntax/annotation.h"
 
@@ -42,7 +43,7 @@ struct InspectOptions {
     DecoInput(
         meta_var = "<FEATURE> <PATH>",
         help =
-            "Feature to run (document_links, document_symbol, folding_range, hover, " "inlay_hint, semantic_tokens) and a source file or directory",
+            "Feature to run (code_completion, document_links, document_symbol, " "folding_range, hover, inlay_hint, semantic_tokens, signature_help) " "and a source file or directory",
         required = false)
     <std::vector<std::string>> inputs;
 
@@ -52,6 +53,14 @@ struct InspectOptions {
             "Treat inputs as annotated fixture sources: strip inline " "§-markers before compiling (the snap-test grammar)",
         required = false)
     annotations;
+
+    DecoKVStyled(
+        kota::deco::decl::KVStyle::JoinedOrSeparate,
+        names = {"--config", "--config="},
+        help =
+            "Feature options overlay as a JSON object " "(only features that take options accept it)",
+        required = false)
+    <std::string> config;
 
     DecoKVStyled(kota::deco::decl::KVStyle::JoinedOrSeparate,
                  names = {"--log-level", "--log-level="},
@@ -145,24 +154,82 @@ std::optional<kota::codec::RawValue> run_hover(CompilationUnitRef unit, std::uin
     return to_raw_json(result);
 }
 
+/// Strict decode for --config: an unknown key is a typo in a fixture's
+/// meta block, not something to silently ignore.
+struct StrictJson {
+    constexpr static bool deny_unknown_fields = true;
+};
+
+/// The fixture's --config JSON overlaid on default completion options.
+/// Decoded through the same all-optional mirror the server's
+/// [code_completion] section uses, so missing keys keep the feature
+/// struct's own defaults — a partial overlay, not a full options value.
+std::optional<feature::CodeCompletionOptions> parse_completion_config(llvm::StringRef config) {
+    feature::CodeCompletionOptions options;
+    if(config.empty()) {
+        return options;
+    }
+    CodeCompletionConfig overlay;
+    if(auto result = kota::codec::json::from_json<StrictJson>(config, overlay); !result) {
+        LOG_ERROR("invalid --config: {}", result.error().message);
+        return std::nullopt;
+    }
+    options.enable_keyword_snippet =
+        overlay.enable_keyword_snippet.value_or(options.enable_keyword_snippet);
+    options.enable_function_arguments_snippet = overlay.enable_function_arguments_snippet.value_or(
+        options.enable_function_arguments_snippet);
+    options.enable_template_arguments_snippet = overlay.enable_template_arguments_snippet.value_or(
+        options.enable_template_arguments_snippet);
+    options.insert_paren_in_function_call =
+        overlay.insert_paren_in_function_call.value_or(options.insert_paren_in_function_call);
+    options.bundle_overloads = overlay.bundle_overloads.value_or(options.bundle_overloads);
+    options.limit = overlay.limit.value_or(options.limit);
+    return options;
+}
+
+/// Completion-shaped features (code completion, signature help) drive
+/// their own compilation: the offset parameterizes the parse itself, so
+/// each `§` point gets a fresh completion compile instead of a query
+/// against one shared unit. `params` arrives fully configured except for
+/// the completion offset. `config` was validated up front in run_inspect,
+/// so re-parsing here cannot fail.
+std::optional<kota::codec::RawValue> run_code_completion(CompilationParams& params,
+                                                         llvm::StringRef config) {
+    return to_raw_json(feature::code_complete(params, *parse_completion_config(config)));
+}
+
+std::optional<kota::codec::RawValue> run_signature_help(CompilationParams& params,
+                                                        [[maybe_unused]] llvm::StringRef config) {
+    return to_raw_json(feature::signature_help(params));
+}
+
 /// A feature runs in exactly one shape: whole-document (`run`), once per
-/// `§` point (`run_at`), or once per `§⟦...⟧` range with a whole-document
-/// default (`run_over`).
+/// `§` point against a shared unit (`run_at`), once per `§⟦...⟧` range
+/// with a whole-document default (`run_over`), or once per `§` point with
+/// its own completion compile (`run_complete`).
 struct FeatureSpec {
     llvm::StringRef name;
     std::optional<kota::codec::RawValue> (*run)(CompilationUnitRef) = nullptr;
     std::optional<kota::codec::RawValue> (*run_at)(CompilationUnitRef, std::uint32_t) = nullptr;
     std::optional<kota::codec::RawValue> (*run_over)(CompilationUnitRef,
                                                      LocalSourceRange) = nullptr;
+    std::optional<kota::codec::RawValue> (*run_complete)(CompilationParams&,
+                                                         llvm::StringRef) = nullptr;
+    /// Whether --config JSON applies to this feature.
+    bool accepts_config = false;
 };
 
 constexpr std::array features = {
-    FeatureSpec{.name = "document_links",  .run = run_document_links  },
+    FeatureSpec{.name = "code_completion",
+                .run_complete = run_code_completion,
+                .accepts_config = true},
+    FeatureSpec{.name = "document_links", .run = run_document_links},
     FeatureSpec{.name = "document_symbol", .run = run_document_symbols},
-    FeatureSpec{.name = "folding_range",   .run = run_folding_ranges  },
-    FeatureSpec{.name = "hover",           .run_at = run_hover        },
-    FeatureSpec{.name = "inlay_hint",      .run_over = run_inlay_hints},
-    FeatureSpec{.name = "semantic_tokens", .run = run_semantic_tokens },
+    FeatureSpec{.name = "folding_range", .run = run_folding_ranges},
+    FeatureSpec{.name = "hover", .run_at = run_hover},
+    FeatureSpec{.name = "inlay_hint", .run_over = run_inlay_hints},
+    FeatureSpec{.name = "semantic_tokens", .run = run_semantic_tokens},
+    FeatureSpec{.name = "signature_help", .run_complete = run_signature_help},
 };
 
 const FeatureSpec* find_feature(llvm::StringRef name) {
@@ -240,7 +307,8 @@ FileEntry process_file(const std::string& file,
                        llvm::StringRef feature,
                        CompilationDatabase* database,
                        Toolchain& toolchain,
-                       bool annotations) {
+                       bool annotations,
+                       llvm::StringRef config) {
     FileEntry entry;
 
     auto buffer = llvm::MemoryBuffer::getFile(file);
@@ -367,6 +435,38 @@ FileEntry process_file(const std::string& file,
     }
 
     const auto& spec = *find_feature(feature);
+
+    if(spec.run_complete != nullptr) {
+        // Completion shape: the plain compile above only serves the
+        // clean-fixture gate — the completion entry points discard their
+        // unit, so its diagnostics are the sole health signal. Each `§`
+        // point then compiles again with the offset applied; argv pointees
+        // are interned in the database (or owned_args), so copying the
+        // argument vector into fresh params is safe.
+        auto points = marker_points(source);
+        if(points.empty()) {
+            entry.error = "no_markers";
+            return entry;
+        }
+        std::map<std::string, kota::codec::RawValue> markers;
+        for(auto& [name, offset]: points) {
+            CompilationParams cp;
+            cp.kind = CompilationKind::Completion;
+            cp.arguments = params.arguments;
+            cp.directory = params.directory;
+            cp.completion = {file, offset};
+            cp.add_remapped_file(file, source.content);
+            auto value = spec.run_complete(cp, config);
+            if(!value.has_value()) {
+                entry.error = "serialize_error";
+                return entry;
+            }
+            markers.emplace(name, std::move(*value));
+        }
+        entry.markers = std::move(markers);
+        return entry;
+    }
+
     if(spec.run != nullptr) {
         entry.result = spec.run(unit);
         if(!entry.result.has_value()) {
@@ -425,11 +525,25 @@ FileEntry process_file(const std::string& file,
 int run_inspect(const InspectOptions& opts) {
     auto& inputs = *opts.inputs;
     llvm::StringRef feature = inputs[0];
-    if(find_feature(feature) == nullptr) {
+    const auto* spec = find_feature(feature);
+    if(spec == nullptr) {
         LOG_ERROR("unknown feature '{}', valid: {}",
                   feature,
                   features | std::views::transform(&FeatureSpec::name));
         return 1;
+    }
+
+    // Validate --config up front so a typo fails the whole run with a
+    // clear message instead of surfacing as a per-file feature error.
+    llvm::StringRef config = opts.config.has_value() ? llvm::StringRef(*opts.config) : "";
+    if(!config.empty()) {
+        if(!spec->accepts_config) {
+            LOG_ERROR("feature '{}' does not accept --config", feature);
+            return 1;
+        }
+        if(!parse_completion_config(config)) {
+            return 1;
+        }
     }
 
     llvm::SmallString<256> abs_path(inputs[1]);
@@ -495,7 +609,8 @@ int run_inspect(const InspectOptions& opts) {
                                           feature,
                                           database_for(abs),
                                           toolchain,
-                                          static_cast<bool>(opts.annotations)));
+                                          static_cast<bool>(opts.annotations),
+                                          config));
     }
 
     auto json = kota::codec::json::to_string<InspectJsonConfig>(output);

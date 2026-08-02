@@ -1,0 +1,6 @@
+---
+created_at: 2026-08-02
+input_file: pattern_keyword.cpp
+---
+pos:
+- { label: "true", kind: Snippet, edit: "8:8-8:11" }

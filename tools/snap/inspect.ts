@@ -39,20 +39,22 @@ export function runInspect(executable: string, feature: string, path: string): I
 }
 
 /// Async variant for callers that fan inspect processes out in parallel.
+/// `config` forwards a fixture's feature-options overlay as --config.
 export async function runInspectAsync(
     executable: string,
     feature: string,
     path: string,
+    config?: string,
 ): Promise<InspectOutput> {
-    const { stdout } = await promisify(execFile)(
-        executable,
-        ["inspect", "--annotations", feature, path],
-        {
-            encoding: "utf8",
-            maxBuffer: 64 * 1024 * 1024,
-            timeout: 300_000,
-        },
-    );
+    const args = ["inspect", "--annotations", feature, path];
+    if (config !== undefined) {
+        args.push(`--config=${config}`);
+    }
+    const { stdout } = await promisify(execFile)(executable, args, {
+        encoding: "utf8",
+        maxBuffer: 64 * 1024 * 1024,
+        timeout: 300_000,
+    });
     return JSON.parse(stdout) as InspectOutput;
 }
 
@@ -71,10 +73,17 @@ export interface FixtureMeta {
     /// property of the feature; each path pins its own file. skip: the two
     /// paths disagree in a way that is simply wrong (not yet supported) —
     /// both suites skip the fixture and no snapshot exists until fixed.
-    snap: "shared" | "separate" | "skip";
+    /// wire: the feature path only exists in the server (e.g. include and
+    /// import completion answered by the master) — the wire suite owns the
+    /// snapshot and the standalone suite skips the fixture.
+    snap: "shared" | "separate" | "skip" | "wire";
+    /// Feature-options overlay as a JSON object (the body of the feature's
+    /// config section). The snapshot pins BOTH halves: the default options
+    /// and the overlaid ones, as `default:` / `configured:` blocks.
+    config?: string;
 }
 
-const META_KEYS = ["status", "issues", "order", "snap"];
+const META_KEYS = ["status", "issues", "order", "snap", "config"];
 
 export function parseFixtureMeta(content: string, filePath: string): FixtureMeta {
     const meta: FixtureMeta = { status: "supported", snap: "shared" };
@@ -138,10 +147,26 @@ export function parseFixtureMeta(content: string, filePath: string): FixtureMeta
             }
             meta.status = value;
         } else if (key === "snap") {
-            if (value !== "shared" && value !== "separate" && value !== "skip") {
+            if (
+                value !== "shared" &&
+                value !== "separate" &&
+                value !== "skip" &&
+                value !== "wire"
+            ) {
                 throw new Error(`${filePath}: invalid snap mode '${value}'`);
             }
             meta.snap = value;
+        } else if (key === "config") {
+            let parsed: unknown;
+            try {
+                parsed = JSON.parse(value);
+            } catch {
+                throw new Error(`${filePath}: config is not valid JSON: ${value}`);
+            }
+            if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+                throw new Error(`${filePath}: config must be a JSON object`);
+            }
+            meta.config = value;
         }
     }
     return meta;

@@ -1,0 +1,7 @@
+---
+created_at: 2026-08-02
+input_file: deprecated_tag.cpp
+---
+pos:
+- { label: "new_thing", kind: Function, detail: "(int x)", description: "int", edit: "11:8-11:13" }
+- { label: "old_thing", kind: Function, detail: "(int x)", description: "int", edit: "11:8-11:13", deprecated: true }

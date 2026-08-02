@@ -1,0 +1,6 @@
+---
+created_at: 2026-08-02
+input_file: function_pointer.cpp
+---
+pos:
+- (⟦int code⟧, double value) -> void

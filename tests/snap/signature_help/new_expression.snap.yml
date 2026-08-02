@@ -1,0 +1,8 @@
+---
+created_at: 2026-08-02
+input_file: new_expression.cpp
+---
+pos:
+- Node(⟦int value⟧, Node *next)
+- Node(⟦const Node &⟧)
+- Node(⟦Node &&⟧)

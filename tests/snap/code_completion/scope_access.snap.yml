@@ -1,0 +1,12 @@
+---
+created_at: 2026-08-02
+input_file: scope_access.cpp
+---
+pos:
+- { label: "Config", kind: Class, edit: "24:20-24:20" }
+- { label: "Nested", kind: Class, edit: "24:20-24:20" }
+- { label: "instance_field", kind: Field, description: "int", edit: "24:20-24:20" }
+- { label: "make", kind: Method, detail: "(int seed)", description: "int", edit: "24:20-24:20" }
+- { label: "operator=", kind: Method, detail: "(…) +2 overloads", edit: "24:20-24:20" }
+- { label: "shared_count", kind: Variable, description: "int", edit: "24:20-24:20" }
+- { label: "~Config", kind: Method, detail: "()", description: "void", edit: "24:20-24:20" }
