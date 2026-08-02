@@ -200,6 +200,7 @@ interface RawCompletionItem {
     sort_text?: string | null;
     label_details?: { detail?: string | null; description?: string | null } | null;
     tags?: string[] | null;
+    insert_text?: string | null;
     insert_text_format?: string | null;
     text_edit?: { range: { start: RawPosition; end: RawPosition }; new_text: string } | null;
 }
@@ -224,7 +225,9 @@ function rawCompletionEntry(item: RawCompletionItem): CompletionEntry {
         detail: item.label_details?.detail ?? null,
         description: item.label_details?.description ?? null,
         edit: item.text_edit != null ? rawRange(item.text_edit.range) : null,
-        newText: item.text_edit?.new_text ?? null,
+        // Items without a text edit may still carry a bare insert_text
+        // (import completion appends the closing semicolon through it).
+        newText: item.text_edit?.new_text ?? item.insert_text ?? null,
         snippet: item.insert_text_format === "Snippet",
         deprecated: item.tags?.includes("Deprecated") ?? false,
     };

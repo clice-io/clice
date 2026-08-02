@@ -198,7 +198,12 @@ struct PCMState {
 ///   - didSave         (rescan_after_save: rescan disk, cascade invalidation)
 ///   - Background index (merge TUIndex results from stateless workers)
 struct Workspace {
-    Config config;
+    /// Defaults applied at construction so a directly-built Workspace
+    /// (unit tests, tools) already satisfies the invariant the option
+    /// fill sites rely on: every config field is engaged. The server
+    /// replaces this wholesale with the loaded user config and applies
+    /// defaults again after the initializationOptions overlay.
+    Config config = Config::with_defaults();
     CompilationDatabase cdb;
     Toolchain toolchain;
 

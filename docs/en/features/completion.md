@@ -488,14 +488,14 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
   }
   ```
 
-- [x] Local shadowing a global — both the local and the global name it shadows complete
+- [x] Local shadowing a global — the shadowed global does not appear as a duplicate entry
 
   ```cpp
   // error-ok: the completion prefix dangles as an unfinished statement.
-  int counter_global;
+  int counter = 0;
 
   void bar() {
-      int counter_local;
+      int counter = 1;
       int v = coun;
   }
   ```

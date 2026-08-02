@@ -176,6 +176,12 @@ void Config::apply_defaults(llvm::StringRef workspace_root) {
     }
 }
 
+Config Config::with_defaults() {
+    Config config;
+    config.apply_defaults("");
+    return config;
+}
+
 void Config::match_rules(llvm::StringRef file_path,
                          std::vector<std::string>& append,
                          std::vector<std::string>& remove) const {

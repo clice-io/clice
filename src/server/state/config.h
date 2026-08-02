@@ -124,6 +124,11 @@ struct Config {
     /// Compute default values for any field left at its zero/empty sentinel.
     void apply_defaults(llvm::StringRef workspace_root);
 
+    /// A fresh config with apply_defaults() already run (no workspace
+    /// root): the state every live config must reach before its option
+    /// fields are read through operator*.
+    static Config with_defaults();
+
     /// Collect append/remove flags from all rules whose patterns match `path`.
     void match_rules(llvm::StringRef path,
                      std::vector<std::string>& append,

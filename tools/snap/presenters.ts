@@ -240,38 +240,47 @@ export interface CompletionEntry {
 /// "nothing else matched".
 const SNAP_ITEM_LIMIT = 10;
 
-export function completionLines(entries: CompletionEntry[]): string[] {
-    const sorted = [...entries].sort(
-        (a, b) => b.score - a.score || (a.label < b.label ? -1 : a.label > b.label ? 1 : 0),
-    );
-    const out: string[] = [];
-    for (const entry of sorted.slice(0, SNAP_ITEM_LIMIT)) {
-        let line = `- { label: ${yamlStr(entry.label)}`;
-        if (entry.kind !== null) {
-            line += `, kind: ${entry.kind}`;
-        }
-        if (entry.detail !== null) {
-            line += `, detail: ${yamlStr(entry.detail)}`;
-        }
-        if (entry.description !== null) {
-            line += `, description: ${yamlStr(entry.description)}`;
-        }
-        if (entry.edit !== null) {
-            line += `, edit: "${entry.edit}"`;
-        }
-        if (entry.newText !== null && entry.newText !== entry.label) {
-            line += `, insert: ${yamlStr(entry.newText)}`;
-        }
-        if (entry.snippet) {
-            line += ", snippet: true";
-        }
-        if (entry.deprecated) {
-            line += ", deprecated: true";
-        }
-        out.push(line + " }");
+function renderCompletionEntry(entry: CompletionEntry): string {
+    let line = `- { label: ${yamlStr(entry.label)}`;
+    if (entry.kind !== null) {
+        line += `, kind: ${entry.kind}`;
     }
-    if (sorted.length > SNAP_ITEM_LIMIT) {
-        out.push(`… +${sorted.length - SNAP_ITEM_LIMIT} more`);
+    if (entry.detail !== null) {
+        line += `, detail: ${yamlStr(entry.detail)}`;
+    }
+    if (entry.description !== null) {
+        line += `, description: ${yamlStr(entry.description)}`;
+    }
+    if (entry.edit !== null) {
+        line += `, edit: "${entry.edit}"`;
+    }
+    if (entry.newText !== null && entry.newText !== entry.label) {
+        line += `, insert: ${yamlStr(entry.newText)}`;
+    }
+    if (entry.snippet) {
+        line += ", snippet: true";
+    }
+    if (entry.deprecated) {
+        line += ", deprecated: true";
+    }
+    return line + " }";
+}
+
+export function completionLines(entries: CompletionEntry[]): string[] {
+    // The feature layer returns candidates unsorted (clang's order is
+    // host-dependent) and scores carry architecture-dependent last bits
+    // (FMA contraction), so the snapshot order quantizes the score and
+    // then falls back to the full rendered line — deterministic on every
+    // host, unlike a raw score-then-label sort whose remaining ties kept
+    // the host-dependent input order.
+    const rendered = entries.map((entry) => ({
+        rank: Math.round(entry.score * 1e4),
+        line: renderCompletionEntry(entry),
+    }));
+    rendered.sort((a, b) => b.rank - a.rank || (a.line < b.line ? -1 : a.line > b.line ? 1 : 0));
+    const out = rendered.slice(0, SNAP_ITEM_LIMIT).map((entry) => entry.line);
+    if (rendered.length > SNAP_ITEM_LIMIT) {
+        out.push(`… +${rendered.length - SNAP_ITEM_LIMIT} more`);
     }
     return out;
 }
@@ -346,7 +355,9 @@ function wireCompletionEntry(item: proto.CompletionItem): CompletionEntry {
         detail: item.labelDetails?.detail ?? null,
         description: item.labelDetails?.description ?? null,
         edit: edit !== undefined ? fmtRange(edit.range) : null,
-        newText: edit !== undefined ? edit.newText : null,
+        // Items without a text edit may still carry a bare insertText
+        // (import completion appends the closing semicolon through it).
+        newText: edit !== undefined ? edit.newText : (item.insertText ?? null),
         snippet: item.insertTextFormat === proto.InsertTextFormat.Snippet,
         deprecated: item.tags?.includes(proto.CompletionItemTag.Deprecated) ?? false,
     };

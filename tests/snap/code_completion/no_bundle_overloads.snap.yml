@@ -8,6 +8,6 @@ default:
 
 configured:
   pos:
+  - { label: "foooo", kind: Function, detail: "(double d)", description: "double", edit: "13:8-13:12" }
   - { label: "foooo", kind: Function, detail: "(int x)", description: "int", edit: "13:8-13:12" }
   - { label: "foooo", kind: Function, detail: "(int x, int y)", description: "int", edit: "13:8-13:12" }
-  - { label: "foooo", kind: Function, detail: "(double d)", description: "double", edit: "13:8-13:12" }

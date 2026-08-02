@@ -18,8 +18,8 @@ configured:
   free_function:
   - { label: "Foo", kind: Class, edit: "18:4-18:6" }
   - { label: "Foo", kind: Constructor, detail: "()", edit: "18:4-18:6" }
-  - { label: "Foo", kind: Constructor, detail: "(const Foo &)", edit: "18:4-18:6", insert: "Foo(${1:const Foo &})", snippet: true }
   - { label: "Foo", kind: Constructor, detail: "(Foo &&)", edit: "18:4-18:6", insert: "Foo(${1:Foo &&})", snippet: true }
+  - { label: "Foo", kind: Constructor, detail: "(const Foo &)", edit: "18:4-18:6", insert: "Foo(${1:const Foo &})", snippet: true }
   - { label: "foooo", kind: Function, detail: "(int x, float y)", description: "int", edit: "18:4-18:6", insert: "foooo(${1:int x}, ${2:float y})", snippet: true }
 
   method:
