@@ -71,66 +71,36 @@ static std::string resolve_xdg_cache_dir(llvm::StringRef workspace_root) {
     return dir;
 }
 
-void Config::apply_defaults(llvm::StringRef workspace_root) {
+std::uint32_t default_stateless_worker_count() {
+    // Config is constructed on every worker request (QueryParams /
+    // BuildParams carry one); query the core count once, not per request.
+    const static std::uint32_t count = std::max(kota::sys::parallelism() / 2, 2u);
+    return count;
+}
+
+std::uint32_t default_max_stateless_worker_count() {
+    const static std::uint32_t count = kota::sys::parallelism();
+    return count;
+}
+
+void Config::finalize(llvm::StringRef workspace_root) {
     auto& p = project;
 
-    if(p.max_active_file == 0)
-        p.max_active_file = 8;
-    if(!p.enable_indexing)
-        p.enable_indexing = true;
-    if(!p.idle_timeout_ms)
-        p.idle_timeout_ms = 3000;
-
-    if(p.stateful_worker_count == 0)
-        p.stateful_worker_count = 2;
-    if(p.stateless_worker_count == 0) {
-        auto cores = kota::sys::parallelism();
-        p.stateless_worker_count = std::max(cores / 2, 2u);
-    }
-    // min/max default to 0 meaning "auto" — resolved by WorkerPool::start().
-    if(p.worker_memory_limit == 0)
-        p.worker_memory_limit = 4ULL * 1024 * 1024 * 1024;  // 4GB
-
-    auto& t = tracker;
-    if(!t.cdb_poll_seconds)
-        t.cdb_poll_seconds = 3;
-    if(!t.workspace_poll_seconds)
-        t.workspace_poll_seconds = 30;
-
-    // The feature options struct is the single source of the defaults.
-    auto& ih = inlay_hints;
-    feature::InlayHintsOptions inlay_defaults;
-    if(!ih.enabled)
-        ih.enabled = inlay_defaults.enabled;
-    if(!ih.parameters)
-        ih.parameters = inlay_defaults.parameters;
-    if(!ih.deduced_types)
-        ih.deduced_types = inlay_defaults.deduced_types;
-    if(!ih.designators)
-        ih.designators = inlay_defaults.designators;
-    if(!ih.block_end)
-        ih.block_end = inlay_defaults.block_end;
-    if(!ih.default_arguments)
-        ih.default_arguments = inlay_defaults.default_arguments;
-    if(!ih.type_name_limit)
-        ih.type_name_limit = inlay_defaults.type_name_limit;
-
-    auto& cc = code_completion;
-    feature::CodeCompletionOptions completion_defaults;
-    if(!cc.enable_keyword_snippet)
-        cc.enable_keyword_snippet = completion_defaults.enable_keyword_snippet;
-    if(!cc.enable_function_arguments_snippet)
-        cc.enable_function_arguments_snippet =
-            completion_defaults.enable_function_arguments_snippet;
-    if(!cc.enable_template_arguments_snippet)
-        cc.enable_template_arguments_snippet =
-            completion_defaults.enable_template_arguments_snippet;
-    if(!cc.insert_paren_in_function_call)
-        cc.insert_paren_in_function_call = completion_defaults.insert_paren_in_function_call;
-    if(!cc.bundle_overloads)
-        cc.bundle_overloads = completion_defaults.bundle_overloads;
-    if(!cc.limit)
-        cc.limit = completion_defaults.limit;
+    // Validation, not default-filling: zero workers or a zero memory
+    // budget is never a runnable configuration, so an explicit 0 falls
+    // back to the field's born-valid default with a warning.
+    ProjectConfig defaults;
+    auto reject_zero = [](auto& field, const auto& fallback, llvm::StringRef name) {
+        if(field.value == 0) {
+            LOG_WARN("{} = 0 is invalid; using {}", name, fallback.value);
+            field = fallback.value;
+        }
+    };
+    reject_zero(p.stateful_worker_count, defaults.stateful_worker_count, "stateful_worker_count");
+    reject_zero(p.stateless_worker_count,
+                defaults.stateless_worker_count,
+                "stateless_worker_count");
+    reject_zero(p.worker_memory_limit, defaults.worker_memory_limit, "worker_memory_limit");
 
     if(p.cache_dir.empty() && !workspace_root.empty()) {
         p.cache_dir = resolve_xdg_cache_dir(workspace_root);
@@ -174,12 +144,6 @@ void Config::apply_defaults(llvm::StringRef workspace_root) {
         compiled.remove.assign(rule.remove.begin(), rule.remove.end());
         compiled_rules.push_back(std::move(compiled));
     }
-}
-
-Config Config::with_defaults() {
-    Config config;
-    config.apply_defaults("");
-    return config;
 }
 
 void Config::match_rules(llvm::StringRef file_path,
@@ -227,7 +191,7 @@ static ConfigIssue make_issue(ConfigIssue::Severity severity,
 std::optional<Config> Config::load(llvm::StringRef path,
                                    llvm::StringRef workspace_root,
                                    std::vector<ConfigIssue>* issues,
-                                   bool with_defaults) {
+                                   bool finalized) {
     auto content = fs::read(path);
     if(!content)
         return std::nullopt;
@@ -252,8 +216,8 @@ std::optional<Config> Config::load(llvm::StringRef path,
     }
 
     auto config = std::move(*result);
-    if(with_defaults)
-        config.apply_defaults(workspace_root);
+    if(finalized)
+        config.finalize(workspace_root);
     LOG_INFO("Loaded config from {}", path);
     return config;
 }
@@ -266,7 +230,7 @@ std::optional<Config> Config::load_from_json(llvm::StringRef json, llvm::StringR
         return std::nullopt;
     }
 
-    config.apply_defaults(workspace_root);
+    config.finalize(workspace_root);
     LOG_INFO("Loaded config from initializationOptions");
     return config;
 }
@@ -274,7 +238,7 @@ std::optional<Config> Config::load_from_json(llvm::StringRef json, llvm::StringR
 Config Config::load_from_workspace(llvm::StringRef workspace_root,
                                    std::vector<ConfigIssue>* issues,
                                    std::string* loaded_path,
-                                   bool with_defaults) {
+                                   bool finalized) {
     if(loaded_path)
         loaded_path->clear();
 
@@ -287,7 +251,7 @@ Config Config::load_from_workspace(llvm::StringRef workspace_root,
             found = true;
             if(loaded_path)
                 *loaded_path = config_path;
-            if(auto config = load(config_path, workspace_root, issues, with_defaults))
+            if(auto config = load(config_path, workspace_root, issues, finalized))
                 return std::move(*config);
             // Present but malformed: fall through to defaults, but surface
             // the situation clearly so users know their config wasn't applied.
@@ -300,8 +264,8 @@ Config Config::load_from_workspace(llvm::StringRef workspace_root,
     }
 
     Config config;
-    if(with_defaults) {
-        config.apply_defaults(workspace_root);
+    if(finalized) {
+        config.finalize(workspace_root);
     }
     return config;
 }

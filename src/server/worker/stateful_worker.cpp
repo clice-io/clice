@@ -10,7 +10,6 @@
 
 #include "compile/compilation.h"
 #include "feature/feature.h"
-#include "feature/inactive_regions.h"
 #include "index/tu_index.h"
 #include "server/protocol/worker.h"
 #include "server/worker/worker_common.h"
@@ -388,7 +387,7 @@ void StatefulWorker::register_handlers() {
                             range = LocalSourceRange{0, static_cast<uint32_t>(doc.text.size())};
                         return to_raw(feature::inlay_hints(doc.unit,
                                                            range,
-                                                           params.inlay_options,
+                                                           params.config.inlay_hints,
                                                            feature::PositionEncoding::UTF16));
                     });
                 case K::FoldingRange:

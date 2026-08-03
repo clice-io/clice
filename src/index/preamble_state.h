@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#include "feature/document_link.h"
+#include "feature/feature.h"
 #include "index/tu_index.h"
 
 #include "llvm/ADT/ArrayRef.h"

@@ -612,7 +612,7 @@ void LSPClient::register_extensions() {
                         // Load-generating hook: a stray client must not be able to
                         // bloat the file log, so it only exists when the harness asked
                         // for it at initialize time.
-                        if(!this->server.workspace.config.project.test_hooks.value_or(false)) {
+                        if(!this->server.workspace.config.project.test_hooks.value) {
                             co_return kota::outcome_error(
                                 kota::ipc::Error{protocol::ErrorCode::InvalidRequest,
                                                  "test hooks are not enabled"});

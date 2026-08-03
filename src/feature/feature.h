@@ -7,7 +7,6 @@
 
 #include "compile/compilation.h"
 #include "compile/compilation_unit.h"
-#include "feature/document_link.h"
 #include "semantic/display.h"
 #include "semantic/symbol.h"
 #include "support/anomaly.h"
@@ -17,11 +16,19 @@
 #include "kota/ipc/lsp/position.h"
 #include "kota/ipc/lsp/protocol.h"
 #include "kota/ipc/lsp/uri.h"
+#include "kota/meta/annotation.h"
+#include "llvm/ADT/ArrayRef.h"
 
 namespace clice::feature {
 
 namespace lsp = kota::ipc::lsp;
 namespace protocol = kota::ipc::protocol;
+
+/// Feature options double as their clice.toml/initializationOptions config
+/// sections: `defaulted` lets a decode leave unmentioned fields at the
+/// values below, so the field initializers are the single source of every
+/// default and a config source only ever overlays what it names.
+using kota::meta::defaulted;
 
 using kota::ipc::lsp::LineMap;
 using kota::ipc::lsp::PositionEncoding;
@@ -77,13 +84,14 @@ inline auto to_range(const LineMap& map, LocalSourceRange range) -> std::optiona
     return protocol::Range{.start = *start, .end = *end};
 }
 
+/// Corresponds to the `[code_completion]` section in clice.toml.
 struct CodeCompletionOptions {
-    bool enable_keyword_snippet = false;
-    bool enable_function_arguments_snippet = false;
-    bool enable_template_arguments_snippet = false;
-    bool insert_paren_in_function_call = false;
-    bool bundle_overloads = true;
-    std::uint32_t limit = 0;
+    defaulted<bool> enable_keyword_snippet = false;
+    defaulted<bool> enable_function_arguments_snippet = false;
+    defaulted<bool> enable_template_arguments_snippet = false;
+    defaulted<bool> insert_paren_in_function_call = false;
+    defaulted<bool> bundle_overloads = true;
+    defaulted<std::uint32_t> limit = 0;
 };
 
 struct HoverOptions {
@@ -195,14 +203,15 @@ struct HoverInfo {
 /// Try to infer structure of a documentation comment (e.g. line breaks).
 void parse_documentation(llvm::StringRef input, markup::Document& output);
 
+/// Corresponds to the `[inlay_hints]` section in clice.toml.
 struct InlayHintsOptions {
-    bool enabled = true;
-    bool parameters = true;
-    bool deduced_types = true;
-    bool designators = true;
-    bool block_end = false;
-    bool default_arguments = false;
-    std::uint32_t type_name_limit = 32;
+    defaulted<bool> enabled = true;
+    defaulted<bool> parameters = true;
+    defaulted<bool> deduced_types = true;
+    defaulted<bool> designators = true;
+    defaulted<bool> block_end = false;
+    defaulted<bool> default_arguments = false;
+    defaulted<std::uint32_t> type_name_limit = 32;
 };
 
 struct SignatureHelpOptions {};
@@ -217,6 +226,30 @@ struct FoldingRange {
     LocalSourceRange range;
     std::optional<protocol::FoldingRangeKind> kind;
     std::string collapsed_text;
+};
+
+/// A resolved document link: the argument range of an include-like
+/// directive (byte offsets in the containing file) and the absolute path
+/// of the target file. Plain data — it serializes over the worker RPC and
+/// the PCH's PreambleState blob as-is and becomes an LSP DocumentLink only
+/// at the reply edge, where the session's line map does the conversion.
+struct DocumentLink {
+    LocalSourceRange range;
+    std::string target;
+};
+
+/// Result of scanning a unit for preprocessor-inactive regions.
+struct InactiveScan {
+    /// Byte-offset ranges [begin0, end0, begin1, end1, ...] of inactive
+    /// branch bodies in the interested file; directive lines excluded.
+    std::vector<std::uint32_t> regions;
+
+    /// Conditional levels still open at the end of the scanned content,
+    /// outermost first. Bit 0: the level's current branch is inactive.
+    /// Bit 1: an earlier branch of the level was already taken (decides a
+    /// later #else). Preamble/PCH builds end mid-#if when the bound cuts
+    /// inside a block; the AST compile resumes from this stack.
+    std::vector<std::uint8_t> open_stack;
 };
 
 struct DocumentSymbol {
@@ -273,6 +306,16 @@ auto document_links(CompilationUnitRef unit) -> std::vector<DocumentLink>;
 /// resolved file's location (at its start). Empty otherwise.
 auto include_definition(CompilationUnitRef unit, std::uint32_t offset)
     -> std::vector<protocol::Location>;
+
+/// Scan the interested file's condition directives. `open_stack` seeds the
+/// nesting state (from a preceding preamble scan) and `resume_offset` is
+/// where the scanned content starts — pending inactive levels from the
+/// seed begin there. A scan that ends with open levels closes their
+/// pending regions at `end_offset` (the content bound).
+InactiveScan inactive_regions(CompilationUnitRef unit,
+                              llvm::ArrayRef<std::uint8_t> open_stack = {},
+                              std::uint32_t resume_offset = 0,
+                              std::uint32_t end_offset = UINT32_MAX);
 
 auto diagnostics(CompilationUnitRef unit, PositionEncoding encoding = PositionEncoding::UTF16)
     -> std::vector<protocol::Diagnostic>;

@@ -9,7 +9,6 @@
 #include "compile/compilation.h"
 #include "driver/driver.h"
 #include "feature/feature.h"
-#include "server/state/config.h"
 #include "support/filesystem.h"
 #include "syntax/annotation.h"
 
@@ -161,29 +160,19 @@ struct StrictJson {
 };
 
 /// The fixture's --config JSON overlaid on default completion options.
-/// Decoded through the same all-optional mirror the server's
-/// [code_completion] section uses, so missing keys keep the feature
-/// struct's own defaults — a partial overlay, not a full options value.
+/// The options struct doubles as its config section (all fields
+/// `defaulted`), so decoding onto a fresh value IS the overlay: missing
+/// keys keep the field initializers, exactly like the server's
+/// [code_completion] section.
 std::optional<feature::CodeCompletionOptions> parse_completion_config(llvm::StringRef config) {
     feature::CodeCompletionOptions options;
     if(config.empty()) {
         return options;
     }
-    CodeCompletionConfig overlay;
-    if(auto result = kota::codec::json::from_json<StrictJson>(config, overlay); !result) {
+    if(auto result = kota::codec::json::from_json<StrictJson>(config, options); !result) {
         LOG_ERROR("invalid --config: {}", result.error().message);
         return std::nullopt;
     }
-    options.enable_keyword_snippet =
-        overlay.enable_keyword_snippet.value_or(options.enable_keyword_snippet);
-    options.enable_function_arguments_snippet = overlay.enable_function_arguments_snippet.value_or(
-        options.enable_function_arguments_snippet);
-    options.enable_template_arguments_snippet = overlay.enable_template_arguments_snippet.value_or(
-        options.enable_template_arguments_snippet);
-    options.insert_paren_in_function_call =
-        overlay.insert_paren_in_function_call.value_or(options.insert_paren_in_function_call);
-    options.bundle_overloads = overlay.bundle_overloads.value_or(options.bundle_overloads);
-    options.limit = overlay.limit.value_or(options.limit);
     return options;
 }
 

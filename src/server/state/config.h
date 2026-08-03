@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "feature/feature.h"
 #include "support/glob_pattern.h"
 
 #include "kota/meta/annotation.h"
@@ -14,6 +15,12 @@ namespace clice {
 
 using kota::meta::defaulted;
 
+/// Defaults that are computed rather than written: a fresh Config queries
+/// them in its field initializers, so a default-constructed Config is
+/// already fully valid ("born valid") and no later pass fills options in.
+std::uint32_t default_stateless_worker_count();
+std::uint32_t default_max_stateless_worker_count();
+
 /// A file-pattern rule that appends/removes compilation flags.
 /// Corresponds to `[[rules]]` in clice.toml.
 struct ConfigRule {
@@ -22,63 +29,41 @@ struct ConfigRule {
     defaulted<std::vector<std::string>> remove;
 };
 
-/// Corresponds to the `[project]` section in clice.toml.
+/// Corresponds to the `[project]` section in clice.toml. Field
+/// initializers are the defaults; `cache_dir` and `logging_dir` stay empty
+/// here because their defaults derive from the workspace root in
+/// finalize().
 struct ProjectConfig {
-    defaulted<bool> clang_tidy = {};
-    defaulted<int> max_active_file = {};
+    defaulted<bool> clang_tidy = false;
 
     defaulted<std::string> cache_dir;
     defaulted<std::string> logging_dir;
 
     defaulted<std::vector<std::string>> compile_commands_paths;
 
-    std::optional<bool> enable_indexing;
-    std::optional<int> idle_timeout_ms;
+    defaulted<bool> enable_indexing = true;
+    defaulted<int> idle_timeout_ms = 3000;
 
     /// Enables the clice/internal test hooks that can generate load on
     /// demand (log floods). Off unless the harness asks for them.
-    std::optional<bool> test_hooks;
+    defaulted<bool> test_hooks = false;
 
-    defaulted<std::uint32_t> stateful_worker_count = {};
-    defaulted<std::uint32_t> stateless_worker_count = {};
-    defaulted<std::uint32_t> min_stateless_worker_count = {};
-    defaulted<std::uint32_t> max_stateless_worker_count = {};
-    defaulted<std::uint64_t> worker_memory_limit = {};
-};
-
-/// Corresponds to the `[inlay_hints]` section in clice.toml. Mirrors
-/// feature::InlayHintsOptions field by field; unset fields take that
-/// struct's defaults in apply_defaults(), so the two never disagree.
-struct InlayHintsConfig {
-    std::optional<bool> enabled;
-    std::optional<bool> parameters;
-    std::optional<bool> deduced_types;
-    std::optional<bool> designators;
-    std::optional<bool> block_end;
-    std::optional<bool> default_arguments;
-    std::optional<std::uint32_t> type_name_limit;
-};
-
-/// Corresponds to the `[code_completion]` section in clice.toml. Mirrors
-/// feature::CodeCompletionOptions field by field; unset fields take that
-/// struct's defaults in apply_defaults(), so the two never disagree.
-struct CodeCompletionConfig {
-    std::optional<bool> enable_keyword_snippet;
-    std::optional<bool> enable_function_arguments_snippet;
-    std::optional<bool> enable_template_arguments_snippet;
-    std::optional<bool> insert_paren_in_function_call;
-    std::optional<bool> bundle_overloads;
-    std::optional<std::uint32_t> limit;
+    defaulted<std::uint32_t> stateful_worker_count = 2;
+    defaulted<std::uint32_t> stateless_worker_count = default_stateless_worker_count();
+    /// Dynamic scaling bounds for stateless workers; see WorkerPoolOptions.
+    defaulted<std::uint32_t> min_stateless_worker_count = 1;
+    defaulted<std::uint32_t> max_stateless_worker_count = default_max_stateless_worker_count();
+    defaulted<std::uint64_t> worker_memory_limit = 4ULL * 1024 * 1024 * 1024;
 };
 
 /// Corresponds to the `[tracker]` section in clice.toml: the stat-polling
 /// file tracker's intervals. 0 disables the loop (integration tests drive
 /// ticks through the clice/internal/poll hook instead).
 struct TrackerConfig {
-    /// Compilation database poll interval in seconds (default 3).
-    std::optional<std::uint32_t> cdb_poll_seconds;
-    /// Workspace file sweep interval in seconds (default 30).
-    std::optional<std::uint32_t> workspace_poll_seconds;
+    /// Compilation database poll interval in seconds.
+    defaulted<std::uint32_t> cdb_poll_seconds = 3;
+    /// Workspace file sweep interval in seconds.
+    defaulted<std::uint32_t> workspace_poll_seconds = 30;
 };
 
 struct CompiledRule {
@@ -108,26 +93,33 @@ struct ConfigIssue {
 
 /// Configuration for the clice LSP server, loadable from clice.toml
 /// or passed via LSP initializationOptions.
+///
+/// A default-constructed Config is fully valid: every option holds its
+/// real default (single source: the field initializers, including the
+/// feature options structs, which double as their config sections).
+/// Loading is layering — each source is decoded onto the same object in
+/// precedence order (clice.toml, then initializationOptions) and only
+/// touches the fields it names, nested sections merging per field.
+/// finalize() never fills option defaults; it only computes derived
+/// values from the merged result.
 struct Config {
     defaulted<ProjectConfig> project;
 
     defaulted<TrackerConfig> tracker;
 
-    defaulted<InlayHintsConfig> inlay_hints;
+    defaulted<feature::InlayHintsOptions> inlay_hints;
 
-    defaulted<CodeCompletionConfig> code_completion;
+    defaulted<feature::CodeCompletionOptions> code_completion;
 
     defaulted<std::vector<ConfigRule>> rules;
 
     kota::meta::annotation<std::vector<CompiledRule>, kota::meta::attrs::skip> compiled_rules;
 
-    /// Compute default values for any field left at its zero/empty sentinel.
-    void apply_defaults(llvm::StringRef workspace_root);
-
-    /// A fresh config with apply_defaults() already run (no workspace
-    /// root): the state every live config must reach before its option
-    /// fields are read through operator*.
-    static Config with_defaults();
+    /// Compute the values derived from the final merged config: default
+    /// cache/logging directories, ${workspace} substitution, path
+    /// canonicalization, and rule glob compilation. Run once per load,
+    /// after every source has been overlaid.
+    void finalize(llvm::StringRef workspace_root);
 
     /// Collect append/remove flags from all rules whose patterns match `path`.
     void match_rules(llvm::StringRef path,
@@ -137,28 +129,27 @@ struct Config {
     /// Try to load configuration from a TOML file. Parse/validation problems
     /// are appended to `issues` when provided: decode failures as Error (the
     /// caller falls back to defaults), unknown keys as Warning (the rest of
-    /// the file still applies). Set `with_defaults` to false when further
-    /// config sources will be overlaid before apply_defaults() runs — derived
-    /// fields (index_dir, logging_dir, ...) must be computed only once, from
-    /// the final merged values.
+    /// the file still applies). Set `finalized` to false when further config
+    /// sources will be overlaid before finalize() runs — derived fields
+    /// (cache_dir, logging_dir, ...) must be computed only once, from the
+    /// final merged values.
     static std::optional<Config> load(llvm::StringRef path,
                                       llvm::StringRef workspace_root,
                                       std::vector<ConfigIssue>* issues = nullptr,
-                                      bool with_defaults = true);
+                                      bool finalized = true);
 
     /// Try to load configuration from a JSON string (e.g. initializationOptions).
     static std::optional<Config> load_from_json(llvm::StringRef json,
                                                 llvm::StringRef workspace_root);
 
     /// Load config from the workspace, trying standard locations.
-    /// Returns a default config (with apply_defaults) if no file is found.
-    /// `loaded_path`, when provided, receives the path of the config file
-    /// that was found (even if it failed to parse), or stays empty.
-    /// `with_defaults` as in load().
+    /// Returns a default config if no file is found. `loaded_path`, when
+    /// provided, receives the path of the config file that was found (even
+    /// if it failed to parse), or stays empty. `finalized` as in load().
     static Config load_from_workspace(llvm::StringRef workspace_root,
                                       std::vector<ConfigIssue>* issues = nullptr,
                                       std::string* loaded_path = nullptr,
-                                      bool with_defaults = true);
+                                      bool finalized = true);
 };
 
 }  // namespace clice

@@ -22,14 +22,6 @@ clice 从工作区根目录的 `clice.toml` 中读取配置；若该文件不存
 
 启用实验性的 clang-tidy 诊断。**尚未接线**——该选项会被解析，但当前没有任何效果。
 
-### `project.max_active_file`
-
-| 类型  | 默认值 |
-| ----- | ------ |
-| `int` | `8`    |
-
-内存中保持的最大活跃文件数。**尚未接线**——该选项会被解析，但工作进程仍使用硬编码的上限。
-
 ### `project.cache_dir`
 
 | 类型     | 默认值                                                              |
@@ -169,7 +161,6 @@ clice 从工作区根目录的 `clice.toml` 中读取配置；若该文件不存
 
 ```toml
 [project]
-max_active_file = 16
 compile_commands_paths = ["${workspace}/build", "${workspace}/cmake-build-debug"]
 clang_tidy = true
 

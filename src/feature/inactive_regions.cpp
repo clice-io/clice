@@ -1,6 +1,5 @@
-#include "feature/inactive_regions.h"
-
 #include "compile/directive.h"
+#include "feature/feature.h"
 
 #include "llvm/ADT/SmallVector.h"
 

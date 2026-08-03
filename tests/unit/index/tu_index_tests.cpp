@@ -5,7 +5,6 @@
 #include "test/test.h"
 #include "test/tester.h"
 #include "feature/feature.h"
-#include "feature/inactive_regions.h"
 #include "index/tu_index.h"
 #include "semantic/selection.h"
 

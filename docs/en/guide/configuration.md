@@ -22,14 +22,6 @@ The following variable is supported in string values:
 
 Enable experimental clang-tidy diagnostics. **Not yet wired** — the option is parsed but has no effect currently.
 
-### `project.max_active_file`
-
-| Type  | Default |
-| ----- | ------- |
-| `int` | `8`     |
-
-Maximum number of active files to keep in memory. **Not yet wired** — the option is parsed but the worker still uses a hardcoded limit.
-
 ### `project.cache_dir`
 
 | Type     | Default                                                             |
@@ -229,7 +221,6 @@ Flags to remove from the compilation command. Example: `["-Wall", "-Werror"]`.
 
 ```toml
 [project]
-max_active_file = 16
 compile_commands_paths = ["${workspace}/build", "${workspace}/cmake-build-debug"]
 clang_tidy = true
 

@@ -26,7 +26,7 @@ Please refer to [build](./build.md) to build clice, and [test and debug](./test-
 
 | Entity                       | Convention   | Example                           |
 | ---------------------------- | ------------ | --------------------------------- |
-| Variables, fields, functions | `snake_case` | `file_path`, `apply_defaults`     |
+| Variables, fields, functions | `snake_case` | `file_path`                       |
 | Classes, enums, concepts     | `PascalCase` | `CompileGraph`, `SymbolKind`      |
 | Enum values                  | `PascalCase` | `GoToDefinition`, `IncludeAngled` |
 | Template parameters          | `PascalCase` | `typename Result`                 |

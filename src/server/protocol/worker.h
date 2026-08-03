@@ -8,8 +8,8 @@
 #include <vector>
 
 #include "compile/dep_file.h"
-#include "feature/document_link.h"
 #include "feature/feature.h"
+#include "server/state/config.h"
 #include "syntax/token.h"
 
 #include "kota/codec/json/json.h"
@@ -102,10 +102,11 @@ struct QueryParams {
     uint32_t offset = 0;  ///< Byte offset for position-sensitive queries (Hover, GoToDefinition).
     LocalSourceRange range;  ///< Byte range for range-sensitive queries (InlayHints).
 
-    /// Options for InlayHints queries, resolved from the workspace config by
-    /// the master per query — the worker holds no config state and a config
-    /// change simply shows up on the next request.
-    feature::InlayHintsOptions inlay_options;
+    /// The workspace config, carried whole on every request — the worker
+    /// holds no config state and a config change simply shows up on the
+    /// next request. Features read their own section; no per-feature
+    /// forwarding field is ever added here.
+    Config config;
 };
 
 /// Parameters for stateful compilation (builds AST, publishes diagnostics).
@@ -219,10 +220,12 @@ struct BuildParams {
     uint32_t preamble_bound = UINT32_MAX;  ///< BuildPCH
     LocalSourceRange format_range;         ///< Format (default = full document)
 
-    /// Options for Completion builds, resolved from the workspace config by
-    /// the master per request — the worker holds no config state and a
-    /// config change simply shows up on the next request.
-    feature::CodeCompletionOptions completion_options;
+    /// The workspace config, carried whole on interactive builds
+    /// (Completion/SignatureHelp) — the worker holds no config state and a
+    /// config change simply shows up on the next request. Features read
+    /// their own section; no per-feature forwarding field is ever added
+    /// here.
+    Config config;
 };
 
 /// Unified result for stateless build tasks.

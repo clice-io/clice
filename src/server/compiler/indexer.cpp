@@ -475,14 +475,15 @@ kota::task<> Indexer::stop() {
 }
 
 void Indexer::schedule() {
-    if(!*workspace.config.project.enable_indexing || indexing_active || indexing_scheduled)
+    if(!workspace.config.project.enable_indexing.value || indexing_active || indexing_scheduled)
         return;
     indexing_scheduled = true;
 
     if(!index_idle_timer) {
         index_idle_timer = std::make_shared<kota::timer>(kota::timer::create(loop));
     }
-    index_idle_timer->start(std::chrono::milliseconds(*workspace.config.project.idle_timeout_ms));
+    index_idle_timer->start(
+        std::chrono::milliseconds(workspace.config.project.idle_timeout_ms.value));
 
     if(!bg_tasks.spawn(run_background_indexing())) {
         indexing_scheduled = false;

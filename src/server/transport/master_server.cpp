@@ -73,7 +73,7 @@ void MasterServer::initialize() {
     workspace.config = Config::load_from_workspace(workspace_root,
                                                    &config_issues,
                                                    &config_path,
-                                                   /*with_defaults=*/false);
+                                                   /*finalized=*/false);
     // Capture the raw sources now: the configuration dump below can only run
     // once the merged config has named the log directory.
     std::string raw_toml;
@@ -92,7 +92,7 @@ void MasterServer::initialize() {
         }
         init_options_json.clear();
     }
-    workspace.config.apply_defaults(workspace_root);
+    workspace.config.finalize(workspace_root);
 
     auto& cfg = workspace.config.project;
 
@@ -130,7 +130,7 @@ void MasterServer::initialize() {
     LOG_INFO("Server ready (stateful={}, stateless={}, idle={}ms)",
              cfg.stateful_worker_count.value,
              cfg.stateless_worker_count.value,
-             *cfg.idle_timeout_ms);
+             cfg.idle_timeout_ms.value);
 
     WorkerPoolOptions pool_opts;
     pool_opts.self_path = self_path;
@@ -165,17 +165,17 @@ void MasterServer::initialize() {
         // stamp matches the database that was just loaded.
         tracker = std::make_unique<FileTracker>(workspace, sessions, workspace_root);
         auto& tracker_cfg = workspace.config.tracker;
-        if(*tracker_cfg.cdb_poll_seconds > 0) {
+        if(tracker_cfg.cdb_poll_seconds.value > 0) {
             bg_tasks.spawn(cdb_poll_task());
         }
-        if(*tracker_cfg.workspace_poll_seconds > 0) {
+        if(tracker_cfg.workspace_poll_seconds.value > 0) {
             bg_tasks.spawn(workspace_poll_task());
         }
     }
 }
 
 kota::task<> MasterServer::cdb_poll_task() {
-    auto interval = std::chrono::seconds(*workspace.config.tracker.cdb_poll_seconds);
+    auto interval = std::chrono::seconds(workspace.config.tracker.cdb_poll_seconds.value);
     while(true) {
         co_await kota::sleep(interval);
         auto events = tracker->tick_cdb();
@@ -186,7 +186,7 @@ kota::task<> MasterServer::cdb_poll_task() {
 }
 
 kota::task<> MasterServer::workspace_poll_task() {
-    auto interval = std::chrono::seconds(*workspace.config.tracker.workspace_poll_seconds);
+    auto interval = std::chrono::seconds(workspace.config.tracker.workspace_poll_seconds.value);
     while(true) {
         co_await kota::sleep(interval);
         auto events = co_await tracker->tick_workspace();
@@ -559,7 +559,7 @@ void MasterServer::load_workspace() {
     workspace.build_module_map();
     indexer.load();
 
-    if(*cfg.enable_indexing) {
+    if(cfg.enable_indexing.value) {
         for(auto& entry: workspace.cdb.get_entries()) {
             auto file = workspace.cdb.resolve_path(entry.file);
             auto server_id = workspace.path_pool.intern(file);

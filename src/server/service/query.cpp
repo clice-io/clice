@@ -141,7 +141,7 @@ bool IndexQuery::skip_shard(std::uint32_t path_id) const {
 bool IndexQuery::skip_stale_contribution(std::uint32_t path_id) const {
     // With background indexing disabled nothing ever catches up: serving
     // the last-known rows beats a permanent hole.
-    if(!*workspace.config.project.enable_indexing) {
+    if(!workspace.config.project.enable_indexing.value) {
         return false;
     }
     return indexer.pending_reason(path_id) == ReindexReason::ContentChanged;

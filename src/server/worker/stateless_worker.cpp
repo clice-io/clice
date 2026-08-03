@@ -7,7 +7,6 @@
 
 #include "compile/compilation.h"
 #include "feature/feature.h"
-#include "feature/inactive_regions.h"
 #include "index/preamble_state.h"
 #include "index/tu_index.h"
 #include "server/protocol/worker.h"
@@ -300,7 +299,7 @@ static worker::BuildResult handle_completion(const worker::BuildParams& params,
     cp.completion = {params.file, params.offset};
     cp.stop = stop;
 
-    auto items = feature::code_complete(cp, params.completion_options);
+    auto items = feature::code_complete(cp, params.config.code_completion);
     LOG_DEBUG("Completion done: {} items, {}ms", items.size(), timer.ms());
 
     worker::BuildResult result;

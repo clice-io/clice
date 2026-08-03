@@ -31,13 +31,14 @@ static void unset_env(const char* name) {
 TEST_SUITE(Config) {
 
 TEST_CASE(ParsePartialProject) {
+    // A partial decode only touches the fields it names; everything else
+    // keeps the field-initializer defaults.
     auto result = kota::codec::toml::parse<ProjectConfig>(R"(cache_dir = "/tmp/test")");
     EXPECT_TRUE(result.has_value());
     EXPECT_EQ(std::string_view(result->cache_dir), "/tmp/test");
     EXPECT_EQ(result->clang_tidy.value, false);
-    EXPECT_EQ(result->max_active_file.value, 0);
-    EXPECT_FALSE(result->enable_indexing.has_value());
-    EXPECT_FALSE(result->idle_timeout_ms.has_value());
+    EXPECT_EQ(result->enable_indexing.value, true);
+    EXPECT_EQ(result->idle_timeout_ms.value, 3000);
 }
 
 TEST_CASE(ParseConfigRule) {
@@ -66,7 +67,7 @@ append = ["-std=c++20"]
     EXPECT_TRUE(result.has_value());
     EXPECT_EQ(std::string_view(result->project.cache_dir), "/tmp/test");
     EXPECT_EQ(result->project.clang_tidy.value, true);
-    EXPECT_EQ(*result->project.enable_indexing, false);
+    EXPECT_EQ(result->project.enable_indexing.value, false);
     EXPECT_EQ(result->rules.size(), 1u);
     EXPECT_EQ(result->rules[0].patterns[0], "**/*.cpp");
 }
@@ -79,10 +80,10 @@ parameters = false
 type_name_limit = 64
 )");
     EXPECT_TRUE(result.has_value());
-    EXPECT_EQ(*result->inlay_hints.block_end, true);
-    EXPECT_EQ(*result->inlay_hints.parameters, false);
-    EXPECT_EQ(*result->inlay_hints.type_name_limit, 64u);
-    EXPECT_FALSE(result->inlay_hints.designators.has_value());
+    EXPECT_EQ(result->inlay_hints.block_end.value, true);
+    EXPECT_EQ(result->inlay_hints.parameters.value, false);
+    EXPECT_EQ(result->inlay_hints.type_name_limit.value, 64u);
+    EXPECT_EQ(result->inlay_hints.designators.value, true);
 }
 
 TEST_CASE(ParseEmptyConfig) {
@@ -112,7 +113,7 @@ TEST_CASE(MatchRulesBasic) {
         .append = {"-std=c++20"},
         .remove = {"-std=c++17"},
     });
-    config.apply_defaults("");
+    config.finalize("");
 
     std::vector<std::string> append, remove;
     config.match_rules("/src/foo.cpp", append, remove);
@@ -128,7 +129,7 @@ TEST_CASE(MatchRulesNoMatch) {
         .patterns = {"**/*.cpp"},
         .append = {"-DFOO"},
     });
-    config.apply_defaults("");
+    config.finalize("");
 
     std::vector<std::string> append, remove;
     config.match_rules("/src/foo.h", append, remove);
@@ -146,7 +147,7 @@ TEST_CASE(MatchRulesMultiple) {
         .patterns = {"**/test_*.cpp"},
         .append = {"-DTEST"},
     });
-    config.apply_defaults("");
+    config.finalize("");
 
     std::vector<std::string> append, remove;
     config.match_rules("/src/test_foo.cpp", append, remove);
@@ -155,43 +156,64 @@ TEST_CASE(MatchRulesMultiple) {
     EXPECT_EQ(append[1], "-DTEST");
 }
 
-TEST_CASE(ApplyDefaults) {
+TEST_CASE(BornValidDefaults) {
+    // A default-constructed Config is fully valid without any init step;
+    // the option defaults come from the field initializers alone.
     Config config;
-    config.apply_defaults("/workspace");
-    EXPECT_EQ(*config.project.enable_indexing, true);
-    EXPECT_EQ(*config.project.idle_timeout_ms, 3000);
-    EXPECT_EQ(config.project.max_active_file.value, 8);
+    EXPECT_EQ(config.project.clang_tidy.value, false);
+    EXPECT_EQ(config.project.enable_indexing.value, true);
+    EXPECT_EQ(config.project.idle_timeout_ms.value, 3000);
+    EXPECT_EQ(config.project.test_hooks.value, false);
     EXPECT_EQ(config.project.stateful_worker_count.value, 2u);
     EXPECT_GE(config.project.stateless_worker_count.value, 2u);
-    EXPECT_FALSE(config.project.cache_dir.empty());
-    EXPECT_FALSE(config.project.logging_dir.empty());
-    EXPECT_EQ(*config.inlay_hints.enabled, true);
-    EXPECT_EQ(*config.inlay_hints.parameters, true);
-    EXPECT_EQ(*config.inlay_hints.deduced_types, true);
-    EXPECT_EQ(*config.inlay_hints.designators, true);
-    EXPECT_EQ(*config.inlay_hints.block_end, false);
-    EXPECT_EQ(*config.inlay_hints.default_arguments, false);
-    EXPECT_EQ(*config.inlay_hints.type_name_limit, 32u);
+    EXPECT_EQ(config.project.min_stateless_worker_count.value, 1u);
+    EXPECT_EQ(config.project.max_stateless_worker_count.value,
+              default_max_stateless_worker_count());
+    EXPECT_GE(config.project.max_stateless_worker_count.value,
+              config.project.min_stateless_worker_count.value);
+    EXPECT_EQ(config.project.worker_memory_limit.value, 4ULL * 1024 * 1024 * 1024);
+    EXPECT_EQ(config.tracker.cdb_poll_seconds.value, 3u);
+    EXPECT_EQ(config.tracker.workspace_poll_seconds.value, 30u);
+    EXPECT_EQ(config.inlay_hints.enabled.value, true);
+    EXPECT_EQ(config.inlay_hints.parameters.value, true);
+    EXPECT_EQ(config.inlay_hints.deduced_types.value, true);
+    EXPECT_EQ(config.inlay_hints.designators.value, true);
+    EXPECT_EQ(config.inlay_hints.block_end.value, false);
+    EXPECT_EQ(config.inlay_hints.default_arguments.value, false);
+    EXPECT_EQ(config.inlay_hints.type_name_limit.value, 32u);
+    EXPECT_EQ(config.code_completion.enable_keyword_snippet.value, false);
+    EXPECT_EQ(config.code_completion.enable_function_arguments_snippet.value, false);
+    EXPECT_EQ(config.code_completion.enable_template_arguments_snippet.value, false);
+    EXPECT_EQ(config.code_completion.insert_paren_in_function_call.value, false);
+    EXPECT_EQ(config.code_completion.bundle_overloads.value, true);
+    EXPECT_EQ(config.code_completion.limit.value, 0u);
 }
 
-TEST_CASE(ApplyDefaultsEmptyWorkspace) {
+TEST_CASE(FinalizeDerivesPaths) {
     Config config;
-    config.apply_defaults("");
+    config.finalize("/workspace");
+    EXPECT_FALSE(config.project.cache_dir.empty());
+    EXPECT_FALSE(config.project.logging_dir.empty());
+}
+
+TEST_CASE(FinalizeEmptyWorkspace) {
+    Config config;
+    config.finalize("");
     EXPECT_TRUE(config.project.cache_dir.empty());
     EXPECT_TRUE(config.project.logging_dir.empty());
 }
 
-TEST_CASE(ApplyDefaultsPreserveSet) {
+TEST_CASE(FinalizePreservesSet) {
     Config config;
     config.project.cache_dir = "/custom";
     config.project.enable_indexing = false;
     config.inlay_hints.parameters = false;
     config.inlay_hints.block_end = true;
-    config.apply_defaults("/workspace");
+    config.finalize("/workspace");
     EXPECT_EQ(std::string_view(config.project.cache_dir), "/custom");
-    EXPECT_EQ(*config.project.enable_indexing, false);
-    EXPECT_EQ(*config.inlay_hints.parameters, false);
-    EXPECT_EQ(*config.inlay_hints.block_end, true);
+    EXPECT_EQ(config.project.enable_indexing.value, false);
+    EXPECT_EQ(config.inlay_hints.parameters.value, false);
+    EXPECT_EQ(config.inlay_hints.block_end.value, true);
 }
 
 TEST_CASE(LoadFromJson) {
@@ -209,7 +231,7 @@ TEST_CASE(LoadFromJson) {
     EXPECT_TRUE(result.has_value());
     EXPECT_EQ(std::string_view(result->project.cache_dir), "/opt/cache");
     EXPECT_EQ(result->project.clang_tidy.value, true);
-    EXPECT_EQ(*result->project.enable_indexing, false);
+    EXPECT_EQ(result->project.enable_indexing.value, false);
     EXPECT_EQ(result->rules.size(), 1u);
     EXPECT_EQ(result->compiled_rules.size(), 1u);
 }
@@ -250,7 +272,7 @@ TEST_CASE(WorkspaceVarSubst) {
     config.project.cache_dir = "${workspace}/cache";
     config.project.logging_dir = "${workspace}/logs";
     config.project.compile_commands_paths = {"${workspace}/build"};
-    config.apply_defaults("/my/ws");
+    config.finalize("/my/ws");
     EXPECT_EQ(std::string_view(config.project.cache_dir), "/my/ws/cache");
     EXPECT_EQ(std::string_view(config.project.logging_dir), "/my/ws/logs");
     EXPECT_EQ(config.project.compile_commands_paths[0], "/my/ws/build");
@@ -261,10 +283,10 @@ TEST_CASE(XdgCacheDir) {
     auto cache_base = tmp.path("xdg");
     set_env("XDG_CACHE_HOME", cache_base.c_str());
     Config config;
-    config.apply_defaults("/some/ws");
+    config.finalize("/some/ws");
     unset_env("XDG_CACHE_HOME");
 
-    // Compare in the canonical spelling — apply_defaults canonicalizes
+    // Compare in the canonical spelling — finalize canonicalizes
     // cache_dir (a no-op on POSIX).
     std::string cache = path::convert_to_slash(std::string_view(config.project.cache_dir));
     std::string base = path::convert_to_slash(cache_base);
@@ -285,7 +307,7 @@ TEST_CASE(InvalidGlobPattern) {
         .patterns = {"**/****.{c,cc}", "**/*.cpp"},
         .append = {"-DCPP"},
     });
-    config.apply_defaults("");
+    config.finalize("");
     EXPECT_EQ(config.compiled_rules.size(), 1u);
 
     std::vector<std::string> append, remove;
@@ -297,11 +319,11 @@ TEST_CASE(InvalidGlobPattern) {
 TEST_CASE(ConfigPriorityJson) {
     // initializationOptions-sourced config should override an on-disk default.
     auto from_json =
-        Config::load_from_json(R"({ "project": { "max_active_file": 42 } })", "/workspace");
+        Config::load_from_json(R"({ "project": { "idle_timeout_ms": 42 } })", "/workspace");
     EXPECT_TRUE(from_json.has_value());
-    EXPECT_EQ(from_json->project.max_active_file.value, 42);
+    EXPECT_EQ(from_json->project.idle_timeout_ms.value, 42);
     // Unset fields still receive defaults.
-    EXPECT_EQ(*from_json->project.enable_indexing, true);
+    EXPECT_EQ(from_json->project.enable_indexing.value, true);
     EXPECT_EQ(from_json->project.stateful_worker_count.value, 2u);
 }
 
@@ -313,9 +335,9 @@ TEST_CASE(XdgHashUnique) {
     set_env("XDG_CACHE_HOME", cache_base.c_str());
 
     Config a, b, c;
-    a.apply_defaults("/ws/project-a");
-    b.apply_defaults("/ws/project-b");
-    c.apply_defaults("/ws/project-a");
+    a.finalize("/ws/project-a");
+    b.finalize("/ws/project-b");
+    c.finalize("/ws/project-a");
     unset_env("XDG_CACHE_HOME");
 
     EXPECT_NE(std::string_view(a.project.cache_dir), std::string_view(b.project.cache_dir));
@@ -329,7 +351,7 @@ TEST_CASE(XdgNameHashFormat) {
     auto cache_base = tmp.path("xdg");
     set_env("XDG_CACHE_HOME", cache_base.c_str());
     Config config;
-    config.apply_defaults("/some/ws/myproject");
+    config.finalize("/some/ws/myproject");
     unset_env("XDG_CACHE_HOME");
 
     llvm::StringRef leaf = path::filename(std::string_view(config.project.cache_dir));
@@ -345,8 +367,8 @@ TEST_CASE(XdgSameNameDiffer) {
     auto cache_base = tmp.path("xdg");
     set_env("XDG_CACHE_HOME", cache_base.c_str());
     Config a, b;
-    a.apply_defaults("/first/proj");
-    b.apply_defaults("/second/proj");
+    a.finalize("/first/proj");
+    b.finalize("/second/proj");
     unset_env("XDG_CACHE_HOME");
 
     EXPECT_TRUE(path::filename(std::string_view(a.project.cache_dir)).starts_with("proj-"));
@@ -360,7 +382,7 @@ TEST_CASE(XdgRootWorkspace) {
     auto cache_base = tmp.path("xdg");
     set_env("XDG_CACHE_HOME", cache_base.c_str());
     Config config;
-    config.apply_defaults("/");
+    config.finalize("/");
     unset_env("XDG_CACHE_HOME");
 
     EXPECT_TRUE(
@@ -374,7 +396,7 @@ TEST_CASE(XdgLongBasename) {
     auto cache_base = tmp.path("xdg");
     set_env("XDG_CACHE_HOME", cache_base.c_str());
     Config config;
-    config.apply_defaults("/ws/" + std::string(200, 'x'));
+    config.finalize("/ws/" + std::string(200, 'x'));
     unset_env("XDG_CACHE_HOME");
 
     llvm::StringRef leaf = path::filename(std::string_view(config.project.cache_dir));
@@ -387,7 +409,7 @@ TEST_CASE(XdgTrailingSlash) {
     auto cache_base = tmp.path("xdg");
     set_env("XDG_CACHE_HOME", cache_base.c_str());
     Config config;
-    config.apply_defaults("/some/ws/");
+    config.finalize("/some/ws/");
     unset_env("XDG_CACHE_HOME");
 
     EXPECT_TRUE(path::filename(std::string_view(config.project.cache_dir)).starts_with("ws-"));
@@ -404,7 +426,7 @@ TEST_CASE(HomeFallback) {
     set_env("HOME", home.c_str());
 
     Config config;
-    config.apply_defaults("/some/ws");
+    config.finalize("/some/ws");
 
     if(prior_home.empty())
         unset_env("HOME");
@@ -425,7 +447,7 @@ TEST_CASE(WorkspaceCacheFallback) {
     unset_env("HOME");
 
     Config config;
-    config.apply_defaults("/ws/root");
+    config.finalize("/ws/root");
 
     if(!prior_home.empty())
         set_env("HOME", prior_home.c_str());
@@ -441,7 +463,7 @@ TEST_CASE(WorkspaceSubstEmpty) {
     // bogus paths like "/cache" — the placeholder should be left intact.
     Config config;
     config.project.cache_dir = "${workspace}/cache";
-    config.apply_defaults("");
+    config.finalize("");
     EXPECT_EQ(std::string_view(config.project.cache_dir), "${workspace}/cache");
 }
 
@@ -449,7 +471,7 @@ TEST_CASE(WorkspaceSubstRepeated) {
     // Multiple ${workspace} occurrences in one string all get substituted.
     Config config;
     config.project.cache_dir = "${workspace}/a/${workspace}/b";
-    config.apply_defaults("/root");
+    config.finalize("/root");
     EXPECT_EQ(std::string_view(config.project.cache_dir), "/root/a//root/b");
 }
 
@@ -461,7 +483,7 @@ TEST_CASE(CompilePathsList) {
         "/abs/path/compile_commands.json",
         "${workspace}/out",
     };
-    config.apply_defaults("/ws");
+    config.finalize("/ws");
     EXPECT_EQ(config.project.compile_commands_paths.size(), 3u);
     EXPECT_EQ(config.project.compile_commands_paths[0], "/ws/build");
     EXPECT_EQ(config.project.compile_commands_paths[1], "/abs/path/compile_commands.json");
@@ -511,6 +533,43 @@ TEST_CASE(UnknownKeyIssueWarns) {
     EXPECT_NE(issues[0].message.find("clang_tdy"), std::string::npos);
 }
 
+TEST_CASE(UnknownFeatureKeyWarns) {
+    // Feature options structs double as config sections; a typo inside one
+    // must still surface as a Warning, not vanish.
+    TempDir tmp;
+    tmp.touch("clice.toml", "[inlay_hints]\nblokc_end = true\n");
+    std::vector<ConfigIssue> issues;
+    auto result = Config::load(tmp.path("clice.toml"), tmp.root.str(), &issues);
+    EXPECT_TRUE(result.has_value());
+    ASSERT_EQ(issues.size(), 1u);
+    EXPECT_EQ(issues[0].severity, ConfigIssue::Severity::Warning);
+    EXPECT_NE(issues[0].message.find("blokc_end"), std::string::npos);
+}
+
+TEST_CASE(ZeroWorkerCountRejected) {
+    // An explicit 0 is not a runnable worker configuration; finalize
+    // validates it back to the born-valid default instead of starting a
+    // pool with no workers.
+    Config config;
+    config.project.stateful_worker_count = 0;
+    config.project.stateless_worker_count = 0;
+    config.project.worker_memory_limit = 0;
+    config.finalize("");
+    EXPECT_EQ(config.project.stateful_worker_count.value, 2u);
+    EXPECT_GE(config.project.stateless_worker_count.value, 2u);
+    EXPECT_EQ(config.project.worker_memory_limit.value, 4ULL * 1024 * 1024 * 1024);
+}
+
+TEST_CASE(NullOptionRejected) {
+    // `defaulted` means "may be absent", never "may be null": an explicit
+    // JSON null on an option is a type error and fails the whole decode,
+    // both flat and inside a feature section.
+    auto flat = Config::load_from_json(R"({ "project": { "clang_tidy": null } })", "/ws");
+    EXPECT_FALSE(flat.has_value());
+    auto nested = Config::load_from_json(R"({ "inlay_hints": { "block_end": null } })", "/ws");
+    EXPECT_FALSE(nested.has_value());
+}
+
 TEST_CASE(WorkspaceMalformedFallback) {
     // load_from_workspace must fall back to defaults when clice.toml is malformed,
     // not propagate the failure.
@@ -519,7 +578,7 @@ TEST_CASE(WorkspaceMalformedFallback) {
     auto config = Config::load_from_workspace(tmp.root.str());
     // Defaults still applied.
     EXPECT_EQ(config.project.stateful_worker_count.value, 2u);
-    EXPECT_EQ(*config.project.enable_indexing, true);
+    EXPECT_EQ(config.project.enable_indexing.value, true);
 }
 
 TEST_CASE(RuleOrderLaterRemoveWins) {
@@ -533,7 +592,7 @@ TEST_CASE(RuleOrderLaterRemoveWins) {
         .patterns = {"**/*.cpp"},
         .remove = {"-DFOO"},
     });
-    config.apply_defaults("");
+    config.finalize("");
 
     std::vector<std::string> append, remove;
     config.match_rules("/src/a.cpp", append, remove);
@@ -558,7 +617,7 @@ TEST_CASE(RuleOrderLaterAppendWins) {
         .patterns = {"**/*.cpp"},
         .append = {"-O3"},
     });
-    config.apply_defaults("");
+    config.finalize("");
 
     std::vector<std::string> append, remove;
     config.match_rules("/src/a.cpp", append, remove);
@@ -576,7 +635,7 @@ TEST_CASE(InitOptionsOverlayPreservesToml) {
 [project]
 cache_dir = "/from/toml"
 clang_tidy = true
-max_active_file = 16
+idle_timeout_ms = 16
 
 [[rules]]
 patterns = ["**/*.cpp"]
@@ -586,16 +645,16 @@ append = ["-DFROM_TOML"]
     auto config = Config::load_from_workspace(tmp.root.str());
     EXPECT_EQ(std::string_view(config.project.cache_dir), "/from/toml");
     EXPECT_EQ(config.project.clang_tidy.value, true);
-    EXPECT_EQ(config.project.max_active_file.value, 16);
+    EXPECT_EQ(config.project.idle_timeout_ms.value, 16);
     EXPECT_EQ(config.compiled_rules.size(), 1u);
 
-    // Overlay only `max_active_file` via JSON.
-    auto ov = kota::codec::json::parse(R"({ "project": { "max_active_file": 99 } })", config);
+    // Overlay only `idle_timeout_ms` via JSON.
+    auto ov = kota::codec::json::parse(R"({ "project": { "idle_timeout_ms": 99 } })", config);
     EXPECT_TRUE(ov.has_value());
-    config.apply_defaults(tmp.root.str());
+    config.finalize(tmp.root.str());
 
     // Overridden field.
-    EXPECT_EQ(config.project.max_active_file.value, 99);
+    EXPECT_EQ(config.project.idle_timeout_ms.value, 99);
     // Untouched fields stay at TOML values.
     EXPECT_EQ(std::string_view(config.project.cache_dir), "/from/toml");
     EXPECT_EQ(config.project.clang_tidy.value, true);
@@ -605,10 +664,46 @@ append = ["-DFROM_TOML"]
     EXPECT_EQ(config.rules[0].append[0], "-DFROM_TOML");
 }
 
+TEST_CASE(OverlaySectionDeepMerge) {
+    // The load-bearing layering semantic: overlaying a JSON source that
+    // names one field of a section must merge into the section in place —
+    // fields the TOML layer set survive, fields nobody named keep their
+    // defaults. If a decode ever rebuilt the section object wholesale,
+    // this pins the regression.
+    TempDir tmp;
+    tmp.touch("clice.toml", R"(
+[inlay_hints]
+block_end = true
+
+[code_completion]
+bundle_overloads = false
+)");
+    auto config = Config::load_from_workspace(tmp.root.str(),
+                                              nullptr,
+                                              nullptr,
+                                              /*finalized=*/false);
+    auto ov = kota::codec::json::parse(
+        R"({ "inlay_hints": { "parameters": false, "block_end": false }, "code_completion": { "limit": 5 } })",
+        config);
+    EXPECT_TRUE(ov.has_value());
+    config.finalize(tmp.root.str());
+
+    // From the TOML layer.
+    EXPECT_EQ(config.code_completion.bundle_overloads.value, false);
+    // From the JSON overlay, including a nested field both layers set —
+    // the later source wins.
+    EXPECT_EQ(config.inlay_hints.block_end.value, false);
+    EXPECT_EQ(config.inlay_hints.parameters.value, false);
+    EXPECT_EQ(config.code_completion.limit.value, 5u);
+    // Named by nobody: field-initializer defaults.
+    EXPECT_EQ(config.inlay_hints.deduced_types.value, true);
+    EXPECT_EQ(config.code_completion.insert_paren_in_function_call.value, false);
+}
+
 TEST_CASE(InitOptionsOverlayRulesReplace) {
     // When `rules` is present in the overlay JSON, it replaces the whole array
     // (kotatsu deserializes the vector by value). `compiled_rules` must be
-    // rebuilt after apply_defaults so stale compiled entries don't linger.
+    // rebuilt after finalize so stale compiled entries don't linger.
     TempDir tmp;
     tmp.touch("clice.toml", R"(
 [[rules]]
@@ -622,7 +717,7 @@ append = ["-DTOML_ONLY"]
         R"({ "rules": [ { "patterns": ["**/*.cc"], "append": ["-DFROM_JSON"] } ] })",
         config);
     EXPECT_TRUE(ov.has_value());
-    config.apply_defaults(tmp.root.str());
+    config.finalize(tmp.root.str());
 
     EXPECT_EQ(config.rules.size(), 1u);
     EXPECT_EQ(config.rules[0].append[0], "-DFROM_JSON");

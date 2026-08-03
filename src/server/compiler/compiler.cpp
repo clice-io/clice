@@ -1391,20 +1391,7 @@ Compiler::RawResult Compiler::forward_query(worker::QueryKind kind,
     worker::QueryParams wp;
     wp.kind = kind;
     wp.path = path;
-
-    if(kind == worker::QueryKind::InlayHints) {
-        // apply_defaults() has filled every field of the config section.
-        auto& ih = workspace.config.inlay_hints;
-        wp.inlay_options = {
-            .enabled = *ih.enabled,
-            .parameters = *ih.parameters,
-            .deduced_types = *ih.deduced_types,
-            .designators = *ih.designators,
-            .block_end = *ih.block_end,
-            .default_arguments = *ih.default_arguments,
-            .type_name_limit = *ih.type_name_limit,
-        };
-    }
+    wp.config = workspace.config;
 
     if(position) {
         wp.offset = clamped_offset(map, *position);
@@ -1572,19 +1559,7 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
     wp.text = session->text;
     contexts.resolve_command(path, wp.directory, wp.arguments, session.get());
     contexts.append_suffix_include(*session, wp.text);
-
-    if(kind == worker::BuildKind::Completion) {
-        // apply_defaults() has filled every field of the config section.
-        auto& cc = workspace.config.code_completion;
-        wp.completion_options = {
-            .enable_keyword_snippet = *cc.enable_keyword_snippet,
-            .enable_function_arguments_snippet = *cc.enable_function_arguments_snippet,
-            .enable_template_arguments_snippet = *cc.enable_template_arguments_snippet,
-            .insert_paren_in_function_call = *cc.insert_paren_in_function_call,
-            .bundle_overloads = *cc.bundle_overloads,
-            .limit = *cc.limit,
-        };
-    }
+    wp.config = workspace.config;
 
     ScopedTimer timer;
     if(!co_await ensure_deps(*session, gen, epoch, wp.directory, wp.arguments, wp.pch, wp.pcms)) {

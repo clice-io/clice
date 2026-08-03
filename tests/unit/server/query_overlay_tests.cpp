@@ -127,12 +127,6 @@ void merge_disk_index() {
     }
 }
 
-void setup() {
-    // skip_stale_contribution dereferences this optional; a default
-    // Workspace leaves it empty (apply_defaults never runs in tests).
-    workspace.config.project.enable_indexing = true;
-}
-
 protocol::Position position_of(llvm::StringRef name) {
     auto pos = session->line_map().to_position(point(name));
     return pos ? *pos : protocol::Position{};
