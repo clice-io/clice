@@ -1,0 +1,55 @@
+name: repo
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+jobs:
+  conventional-commit:
+    if: ${{ github.event_name != 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check conventional commit format
+        env:
+          IS_PR: ${{ github.event_name == 'pull_request' }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          pattern='^(feat|fix|refactor|chore|build|ci|docs|test|perf|style|revert)(\(.+\))?: .+'
+          if [[ "$IS_PR" == "true" ]]; then
+            subject="$PR_TITLE"
+            label="PR title"
+          else
+            subject=$(echo "$COMMIT_MSG" | head -n1)
+            label="Commit message"
+          fi
+          if [[ ! "$subject" =~ $pattern ]]; then
+            echo "::error::$label must follow conventional commit format: type(scope)?: description"
+            echo "  Valid types: feat, fix, refactor, chore, build, ci, docs, test, perf, style, revert"
+            echo "  Got: '$subject'"
+            exit 1
+          fi
+
+  sync-labels:
+    if: ${{ github.event_name != 'pull_request' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            labels:
+              - '.github/labels.yml'
+
+      - uses: crazy-max/ghaction-github-labeler@v5
+        if: ${{ steps.filter.outputs.labels == 'true' || github.event_name == 'workflow_dispatch' }}
+        with:
+          yaml-file: .github/labels.yml
+          skip-delete: false

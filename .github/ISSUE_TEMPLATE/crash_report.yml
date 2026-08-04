@@ -1,0 +1,104 @@
+name: Crash Report
+description: The clice server crashed, exited unexpectedly, or the editor lost connection.
+labels: ["kind:crash"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Sorry about the crash! The **clice version** and **stack trace** fields below are parsed automatically to symbolize the crash, so please fill them in exactly as requested.
+
+  - type: input
+    id: version
+    attributes:
+      label: clice version
+      description: Output of `clice --version`, or the nightly build date / extension version you installed. Required to locate matching debug symbols.
+      placeholder: e.g. clice 0.1.0-nightly-20260801
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - macOS
+        - Linux
+    validations:
+      required: true
+
+  - type: dropdown
+    id: editor
+    attributes:
+      label: Editor
+      options:
+        - VS Code
+        - Zed
+        - Neovim
+        - Vim
+        - Emacs
+        - Helix
+        - Sublime Text
+        - JetBrains
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Related area
+      description: Which part of clice was involved, if you know? Pick all that apply.
+      multiple: true
+      # Keep in sync with the feature: labels in .github/labels.yml.
+      options:
+        - Code completion
+        - Hover
+        - Semantic highlighting
+        - Inlay hints
+        - Diagnostics
+        - Document symbols
+        - Document links
+        - Folding ranges
+        - Formatting
+        - Inactive regions
+        - Signature help
+        - Go to definition / references
+        - Indexing
+        - C++20 modules
+        - Configuration
+        - Server / process management
+        - Toolchain detection
+        - Compilation database
+        - Editor extension
+        - Other / not sure
+
+  - type: textarea
+    id: what_were_you_doing
+    attributes:
+      label: What were you doing when it crashed
+      description: The action that triggered the crash, e.g. opening a project, hovering a symbol, triggering completion.
+    validations:
+      required: true
+
+  - type: textarea
+    id: stack_trace
+    attributes:
+      label: Stack trace
+      description: Paste the stack trace from the crash output or log. Paste it as-is — do not edit or truncate it.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Server log output around the crash, if available.
+      render: text
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: If you can reproduce the crash, describe how — ideally with a minimal code snippet.

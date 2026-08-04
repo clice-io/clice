@@ -1,0 +1,129 @@
+name: Bug Report
+description: Something works incorrectly (wrong results, missing behavior, errors).
+labels: ["kind:bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please search existing issues first to avoid duplicates.
+
+        If clice **crashed** (server exited, connection lost), please use the **Crash Report** template instead.
+
+  - type: input
+    id: version
+    attributes:
+      label: clice version
+      description: Output of `clice --version`, or the nightly build date / extension version you installed.
+      placeholder: e.g. clice 0.1.0-nightly-20260801
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - macOS
+        - Linux
+    validations:
+      required: true
+
+  - type: dropdown
+    id: editor
+    attributes:
+      label: Editor
+      options:
+        - VS Code
+        - Zed
+        - Neovim
+        - Vim
+        - Emacs
+        - Helix
+        - Sublime Text
+        - JetBrains
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: build_system
+    attributes:
+      label: Build system
+      description: How your `compile_commands.json` is generated.
+      options:
+        - CMake
+        - XMake
+        - Bazel
+        - Meson
+        - Make
+        - MSBuild
+        - GN
+        - SCons
+        - Other / not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Related area
+      description: Which part of clice does this relate to? Pick all that apply.
+      multiple: true
+      # Keep in sync with the feature: labels in .github/labels.yml.
+      options:
+        - Code completion
+        - Hover
+        - Semantic highlighting
+        - Inlay hints
+        - Diagnostics
+        - Document symbols
+        - Document links
+        - Folding ranges
+        - Formatting
+        - Inactive regions
+        - Signature help
+        - Go to definition / references
+        - Indexing
+        - C++20 modules
+        - Configuration
+        - Server / process management
+        - Toolchain detection
+        - Compilation database
+        - Editor extension
+        - Performance
+        - Other / not sure
+
+  - type: textarea
+    id: what_happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what actually happened.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Steps and a minimal code snippet if possible. Small self-contained examples help us fix things much faster.
+      placeholder: |
+        1. Open a project with ...
+        2. Trigger completion at ...
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant server log output, if available. Will be automatically formatted as code.
+      render: text
+
+  - type: textarea
+    id: config
+    attributes:
+      label: clice configuration
+      description: Your `clice.toml` and relevant editor settings, if customized.
+      render: toml

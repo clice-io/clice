@@ -1,0 +1,49 @@
+name: Feature Request
+description: Suggest a new feature or an improvement to existing behavior.
+labels: ["kind:feature-request"]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Related area
+      description: Which part of clice does this relate to? Pick all that apply.
+      multiple: true
+      # Keep in sync with the feature: labels in .github/labels.yml.
+      options:
+        - Code completion
+        - Hover
+        - Semantic highlighting
+        - Inlay hints
+        - Diagnostics
+        - Document symbols
+        - Document links
+        - Folding ranges
+        - Formatting
+        - Inactive regions
+        - Signature help
+        - Go to definition / references
+        - Indexing
+        - C++20 modules
+        - Configuration
+        - Server / process management
+        - Toolchain detection
+        - Compilation database
+        - Editor extension
+        - Performance
+        - Other / new area
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What would you like clice to do? Performance and configuration suggestions are welcome here too.
+    validations:
+      required: true
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: Why is this useful? What is your use case, and how do you work around it today?

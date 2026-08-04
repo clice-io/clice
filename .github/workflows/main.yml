@@ -59,30 +59,12 @@ jobs:
               - '.github/workflows/cross-pair.yml'
               - '.github/workflows/editor-test.yml'
 
-  conventional-commit:
+  repo:
     if: ${{ !startsWith(github.ref, 'refs/tags/') }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check conventional commit format
-        env:
-          IS_PR: ${{ github.event_name == 'pull_request' }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          COMMIT_MSG: ${{ github.event.head_commit.message }}
-        run: |
-          pattern='^(feat|fix|refactor|chore|build|ci|docs|test|perf|style|revert)(\(.+\))?: .+'
-          if [[ "$IS_PR" == "true" ]]; then
-            subject="$PR_TITLE"
-            label="PR title"
-          else
-            subject=$(echo "$COMMIT_MSG" | head -n1)
-            label="Commit message"
-          fi
-          if [[ ! "$subject" =~ $pattern ]]; then
-            echo "::error::$label must follow conventional commit format: type(scope)?: description"
-            echo "  Valid types: feat, fix, refactor, chore, build, ci, docs, test, perf, style, revert"
-            echo "  Got: '$subject'"
-            exit 1
-          fi
+    permissions:
+      contents: read
+      issues: write
+    uses: ./.github/workflows/repo.yml
 
   format:
     needs: changes
@@ -199,7 +181,7 @@ jobs:
   checks-passed:
     if: ${{ always() && !startsWith(github.ref, 'refs/tags/') }}
     needs:
-      - conventional-commit
+      - repo
       - format
       - deploy
       - vscode
@@ -215,6 +197,6 @@ jobs:
         uses: re-actors/alls-green@v1.2.2
         with:
           allowed-skips: >-
-            conventional-commit,format,deploy,vscode,zed,
+            repo,format,deploy,vscode,zed,
             native-test,cross-test,editor-test,instant-vscode
           jobs: ${{ toJSON(needs) }}
