@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Sorry about the crash! The **clice version** and **stack trace** fields below are parsed automatically to symbolize the crash, so please fill them in exactly as requested.
+        Sorry about the crash! The **clice version** and the **uploaded logs** below are parsed automatically to symbolize the crash.
 
   - type: input
     id: version
@@ -81,21 +81,17 @@ body:
     validations:
       required: true
 
-  - type: textarea
-    id: stack_trace
-    attributes:
-      label: Stack trace
-      description: Paste the stack trace from the crash output or log. Paste it as-is — do not edit or truncate it.
-      render: text
-    validations:
-      required: true
-
-  - type: textarea
+  - type: upload
     id: logs
     attributes:
       label: Logs
-      description: Server log output around the crash, if available.
-      render: text
+      description: >-
+        Zip the whole session log directory and upload it here. clice runs multiple
+        processes and each writes its own log file, including the stack trace of the
+        crashed one, so please include all of them. The directory path is printed as
+        "Session log directory: ..." on server startup.
+    validations:
+      accept: ".zip,.gz,.tar.gz,.log,.txt"
 
   - type: textarea
     id: reproduce

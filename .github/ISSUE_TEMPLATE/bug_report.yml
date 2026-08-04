@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for taking the time to report a bug! Please search existing issues first to avoid duplicates.
+        Thanks for taking the time to report a bug!
 
         If clice **crashed** (server exited, connection lost), please use the **Crash Report** template instead.
 
@@ -114,12 +114,15 @@ body:
     validations:
       required: true
 
-  - type: textarea
+  - type: upload
     id: logs
     attributes:
       label: Logs
-      description: Relevant server log output, if available. Will be automatically formatted as code.
-      render: text
+      description: >-
+        Server logs, if relevant. Zip the session log directory (its path is printed
+        as "Session log directory: ..." on server startup) and upload it here.
+    validations:
+      accept: ".zip,.gz,.tar.gz,.log,.txt"
 
   - type: textarea
     id: config

@@ -59,45 +59,15 @@ jobs:
               - '.github/workflows/cross-pair.yml'
               - '.github/workflows/editor-test.yml'
 
-  repo:
+  lint:
+    needs: changes
     if: ${{ !startsWith(github.ref, 'refs/tags/') }}
     permissions:
       contents: read
       issues: write
-    uses: ./.github/workflows/repo.yml
-
-  format:
-    needs: changes
-    if: ${{ needs.changes.outputs.format == 'true' }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - uses: ./.github/actions/setup-pixi
-        with:
-          environments: format
-
-      - name: Run formatter
-        run: pixi run format
-        continue-on-error: true
-
-      - name: Auto correct
-        uses: huacnlee/autocorrect-action@v2.5.4
-        with:
-          args: --lint ./docs
-        continue-on-error: true
-
-      - name: Check diff
-        run: |
-          if ! git diff --quiet; then
-            echo "::error::Formatting changes detected. Please run 'pixi run format' and commit the result."
-            git --no-pager diff --stat
-            git --no-pager diff
-            exit 1
-          fi
+    uses: ./.github/workflows/lint.yml
+    with:
+      format: ${{ needs.changes.outputs.format == 'true' }}
 
   deploy:
     needs: changes
@@ -181,8 +151,8 @@ jobs:
   checks-passed:
     if: ${{ always() && !startsWith(github.ref, 'refs/tags/') }}
     needs:
-      - repo
-      - format
+      - changes
+      - lint
       - deploy
       - vscode
       - zed
@@ -197,6 +167,6 @@ jobs:
         uses: re-actors/alls-green@v1.2.2
         with:
           allowed-skips: >-
-            repo,format,deploy,vscode,zed,
+            lint,deploy,vscode,zed,
             native-test,cross-test,editor-test,instant-vscode
           jobs: ${{ toJSON(needs) }}

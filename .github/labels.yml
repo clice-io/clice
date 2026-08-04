@@ -1,5 +1,5 @@
 # Single source of truth for repository labels.
-# Synced to GitHub automatically when this file changes on main (see workflows/repo.yml).
+# Synced to GitHub automatically when this file changes on main (see workflows/lint.yml).
 # To rename a label without losing its issue associations, add `from_name: <old>`.
 # NOTE: when changing `feature:` labels, also update the "Related area" dropdown
 # in ISSUE_TEMPLATE/{bug_report,crash_report,feature_request}.yml.
