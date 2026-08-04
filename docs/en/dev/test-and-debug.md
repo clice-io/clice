@@ -141,8 +141,7 @@ The extension lives in-tree at `editors/vscode/`:
 1. Install dependencies:
 
    ```shell
-   cd editors/vscode
-   pnpm install
+   npm install # at the repo root; the extension is an npm workspace member
    ```
 
 2. Open the **repository root** in VS Code (the launch configurations are in `.vscode/launch.json` at the root).

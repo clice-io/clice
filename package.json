@@ -3,9 +3,17 @@
   "private": true,
   "workspaces": [
     "tools",
-    "tests"
+    "tests",
+    "editors/vscode"
   ],
   "scripts": {
     "check": "npm run check --workspaces --if-present"
+  },
+  "overrides": {
+    "glob": "^11.1.0",
+    "mocha": {
+      "diff": "^8.0.3",
+      "serialize-javascript": "^7.0.5"
+    }
   }
 }

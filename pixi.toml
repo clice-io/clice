@@ -80,8 +80,8 @@ scripts = ["scripts/activate_cross_linux.sh"]
 [feature.cross-windows-arm64.target.win-64.activation]
 scripts = ["scripts/activate_cross_windows.bat"]
 
-# nodejs bundles npm on every platform including win-arm64 (where
-# cross-test runs this env and conda has no pnpm). Floor 24: the tools
+# nodejs bundles npm on every platform including win-arm64, where
+# cross-test runs this env. Floor 24: the tools
 # run as bare .ts (type stripping, default since node 23.6) and the
 # cache tests use JSON.rawJSON (21+). python remains only for
 # scripts/symbolize.py; the scripts/ tools are not part of the TS
@@ -174,7 +174,8 @@ depends-on = [{ task = "lint-cpp", args = ["{{ type }}"] }]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 cmd = './build/{{ type }}/bin/unit_tests --test-dir="./tests/data" --snapshot-dir="./tests/snapshots/unit" --verbose && node tools/feature_docs.ts check'
 
-# npm workspaces: install runs at the repo root and covers tools/ + tests/.
+# npm workspaces: install runs at the repo root and covers tools/, tests/
+# and editors/vscode/.
 [feature.test.tasks.install-tests]
 cmd = "npm install"
 inputs = [
@@ -182,6 +183,7 @@ inputs = [
     "package-lock.json",
     "tools/package.json",
     "tests/package.json",
+    "editors/vscode/package.json",
 ]
 outputs = ["node_modules/.package-lock.json"]
 
@@ -260,7 +262,7 @@ depends-on = ["editor-prepare"]
 [feature.editor.tasks.vscode-e2e]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 cwd = "editors/vscode"
-cmd = "CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/clice pnpm test"
+cmd = "CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/clice npm test"
 depends-on = ["install-vscode", "editor-prepare"]
 
 [feature.editor.tasks.editor-test]
@@ -280,7 +282,6 @@ platforms = ["win-64", "linux-64", "osx-arm64", "osx-64", "linux-aarch64"]
 
 [feature.node.dependencies]
 nodejs = ">=20"
-pnpm = ">=10,<11"
 
 # The instant-build packaging strips test binaries before bundling them
 # into the vsix (an unstripped ELF carries ~700MB of DWARF).
@@ -288,14 +289,23 @@ pnpm = ">=10,<11"
 llvm-tools = "==22.1.8"
 
 [feature.node.tasks]
-build-vscode = { cwd = "editors/vscode", cmd = "pnpm run package", depends-on = ["install-vscode"] }
-publish-vscode = { cwd = "editors/vscode", cmd = "pnpm run publish", depends-on = ["install-vscode"] }
+# The trailing "--" forwards extra `pixi run` arguments (--target, -p, ...)
+# through npm to the underlying script.
+build-vscode = { cwd = "editors/vscode", cmd = "npm run package --", depends-on = ["install-vscode"] }
+publish-vscode = { cwd = "editors/vscode", cmd = "npm run publish --", depends-on = ["install-vscode"] }
 
+# Same root npm-workspaces install as install-tests, available in the node
+# environment (the publish pipeline installs no test feature).
 [feature.node.tasks.install-vscode]
-cwd = "editors/vscode"
-cmd = "pnpm install"
-inputs = ["editors/vscode/package.json", "editors/vscode/pnpm-lock.yaml"]
-outputs = ["editors/vscode/node_modules/.modules.yaml"]
+cmd = "npm install"
+inputs = [
+    "package.json",
+    "package-lock.json",
+    "tools/package.json",
+    "tests/package.json",
+    "editors/vscode/package.json",
+]
+outputs = ["node_modules/.package-lock.json"]
 
 # ============================================================================== #
 #                                    FORMAT                                      #
@@ -320,7 +330,7 @@ format-markdown = "fd -H -e md -x prettier --write"
 format-json = "fd -H -e json -E package-lock.json -x prettier --write"
 format-toml = "fd -H -e toml -x tombi format"
 format-yaml = """
-fd -H -e yaml -e yml -E pnpm-lock.yaml -E '*.snap.yml' -x prettier --write && \
+fd -H -e yaml -e yml -E '*.snap.yml' -x prettier --write && \
 fd -H "^\\.clang-(format|tidy)$" -x prettier --write --parser yaml
 """
 format = { depends-on = [

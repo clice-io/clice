@@ -38,13 +38,13 @@ class ContextTreeItem extends vscode.TreeItem {
             loadMore ? "Load more…" : (context?.label ?? ""),
             vscode.TreeItemCollapsibleState.None,
         );
-        if (loadMore) {
+        if (loadMore || !context) {
             this.iconPath = new vscode.ThemeIcon("ellipsis");
             this.command = { command: "clice.loadMoreContexts", title: "Load more" };
             return;
         }
-        this.description = active ? `${context!.description} (active)` : context!.description;
-        this.tooltip = context!.description;
+        this.description = active ? `${context.description} (active)` : context.description;
+        this.tooltip = context.description;
         this.iconPath = new vscode.ThemeIcon(active ? "pass-filled" : "circle-large-outline");
         this.contextValue = "clice-context";
         this.command = {
@@ -71,7 +71,7 @@ class ContextTreeProvider implements vscode.TreeDataProvider<ContextTreeItem> {
         return element;
     }
 
-    async getChildren(element?: ContextTreeItem): Promise<ContextTreeItem[]> {
+    getChildren(element?: ContextTreeItem): ContextTreeItem[] {
         if (element) {
             return [];
         }
@@ -110,10 +110,10 @@ class ContextTreeProvider implements vscode.TreeDataProvider<ContextTreeItem> {
             if (this.uri !== uri) {
                 return;
             }
-            this.loaded = query?.contexts ?? [];
-            this.total = query?.total ?? this.loaded.length;
-            this.epoch = query?.epoch ?? 0;
-            this.current = current?.context ?? null;
+            this.loaded = query.contexts;
+            this.total = query.total;
+            this.epoch = query.epoch;
+            this.current = current.context;
         } catch {
             // Server not ready; leave the view empty.
         }
@@ -133,8 +133,8 @@ class ContextTreeProvider implements vscode.TreeDataProvider<ContextTreeItem> {
             if (this.uri !== uri) {
                 return;
             }
-            this.loaded.push(...(query?.contexts ?? []));
-            this.total = query?.total ?? this.loaded.length;
+            this.loaded.push(...query.contexts);
+            this.total = query.total;
         } catch {
             // Keep what we have.
         }
@@ -194,7 +194,7 @@ export function registerCompilationContext(client: LanguageClient, ext: vscode.E
             const result = await client.sendRequest<CurrentContextResult>("clice/currentContext", {
                 uri: editor.document.uri.toString(),
             });
-            const label = result?.context?.label ?? "auto";
+            const label = result.context?.label ?? "auto";
             status.text = `$(list-tree) ${label}`;
             status.show();
         } catch {
@@ -226,11 +226,11 @@ export function registerCompilationContext(client: LanguageClient, ext: vscode.E
             "clice/switchContext",
             params,
         );
-        if (switched?.stale) {
+        if (switched.stale) {
             vscode.window.showInformationMessage(
                 "clice: the workspace changed since this listing — refreshed, pick again",
             );
-        } else if (!switched?.success) {
+        } else if (!switched.success) {
             vscode.window.showWarningMessage("clice: failed to switch compilation context");
         } else {
             // The server is pull-based: the switch only re-targets the
@@ -258,15 +258,15 @@ export function registerCompilationContext(client: LanguageClient, ext: vscode.E
         let total = Number.POSITIVE_INFINITY;
         let epoch = 0;
 
-        while (true) {
+        for (;;) {
             if (loaded.length < total) {
                 const result = await client.sendRequest<QueryContextResult>("clice/queryContext", {
                     uri,
                     offset: loaded.length,
                 });
-                loaded.push(...(result?.contexts ?? []));
-                total = result?.total ?? loaded.length;
-                epoch = result?.epoch ?? 0;
+                loaded.push(...result.contexts);
+                total = result.total;
+                epoch = result.epoch;
                 if (loaded.length === 0) {
                     vscode.window.showInformationMessage(
                         "clice: no compilation contexts available for this file",
@@ -298,10 +298,10 @@ export function registerCompilationContext(client: LanguageClient, ext: vscode.E
             if (!chosen) {
                 return;
             }
-            if (chosen.loadMore) {
+            if (!chosen.context) {
                 continue;
             }
-            await applyContext(chosen.context!, epoch, uri);
+            await applyContext(chosen.context, epoch, uri);
             return;
         }
     }
@@ -321,7 +321,7 @@ export function registerCompilationContext(client: LanguageClient, ext: vscode.E
             const query = await client.sendRequest<QueryContextResult>("clice/queryContext", {
                 uri: document.uri.toString(),
             });
-            if ((query?.total ?? 0) > 0) {
+            if (query.total > 0) {
                 await vscode.languages.setTextDocumentLanguage(document, "cpp");
             }
         } catch {
@@ -337,7 +337,7 @@ export function registerCompilationContext(client: LanguageClient, ext: vscode.E
         const result = await client.sendRequest<CurrentContextResult>("clice/currentContext", {
             uri: editor.document.uri.toString(),
         });
-        const context = result?.context;
+        const context = result.context;
         if (!context) {
             vscode.window.showInformationMessage(
                 "clice: automatic compilation context (no explicit selection)",

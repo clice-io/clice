@@ -1,11 +1,11 @@
 //@ts-check
 
-"use strict";
+import path from "path";
+import { fileURLToPath } from "url";
 
-const path = require("path");
-
-//@ts-check
 /** @typedef {import('webpack').Configuration} WebpackConfig **/
+
+const dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /** @type WebpackConfig */
 const extensionConfig = {
@@ -15,7 +15,7 @@ const extensionConfig = {
     entry: "./src/extension.ts", // the entry point of this extension, 📖 -> https://webpack.js.org/configuration/entry-context/
     output: {
         // the bundle is stored in the 'dist' folder (check package.json), 📖 -> https://webpack.js.org/configuration/output/
-        path: path.resolve(__dirname, "dist"),
+        path: path.resolve(dirname, "dist"),
         filename: "extension.js",
         libraryTarget: "commonjs2",
     },
@@ -45,4 +45,4 @@ const extensionConfig = {
         level: "log", // enables logging required for problem matchers
     },
 };
-module.exports = [extensionConfig];
+export default [extensionConfig];

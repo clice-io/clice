@@ -13,7 +13,7 @@ import { getSetting } from "./setting";
 import { registerCompilationContext } from "./feature/context";
 import { registerInactiveRegions } from "./feature/inactive";
 
-let client: LanguageClient;
+let client: LanguageClient | undefined;
 
 // Platform-specific builds of the extension ship the server under clice/;
 // universal builds (a plain `vsce package` without the binary staged) carry
@@ -35,7 +35,7 @@ function bundledExecutable(context: ExtensionContext): string | undefined {
     return bundled;
 }
 
-export async function registerCommands(client: LanguageClient, context: ExtensionContext) {
+export function registerCommands(client: LanguageClient, context: ExtensionContext) {
     context.subscriptions.push(
         vscode.commands.registerCommand("clice.restart", async () => {
             await client.restart();
@@ -69,7 +69,7 @@ export async function activate(context: ExtensionContext) {
             }
         }
 
-        let args = ["serve"];
+        const args = ["serve"];
         serverOptions = {
             run: { command: executable, args: args },
             debug: { command: executable, args: args },
@@ -126,7 +126,7 @@ export async function activate(context: ExtensionContext) {
 
     client = new LanguageClient("clice", "clice", serverOptions, clientOptions);
 
-    await registerCommands(client, context);
+    registerCommands(client, context);
 
     await client.start();
 
@@ -141,6 +141,5 @@ export function deactivate(): Thenable<void> | undefined {
     if (!client) {
         return undefined;
     }
-    let ret = client.stop();
-    return ret;
+    return client.stop();
 }

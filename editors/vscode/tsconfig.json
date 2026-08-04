@@ -3,6 +3,11 @@
     "module": "Node16",
     "target": "ES2022",
     "lib": ["ES2022"],
+    // Since TS 7 type libraries are no longer collected implicitly from
+    // ancestor node_modules/@types, list them explicitly (mocha provides
+    // the suite/test globals injected by vscode-test).
+    "types": ["node", "mocha"],
+    "skipLibCheck": true,
     "sourceMap": true,
     "rootDir": "src",
     "strict": true /* enable all strict type-checking options */

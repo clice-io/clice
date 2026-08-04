@@ -4,13 +4,13 @@
 
 ## VSCode
 
-VSCode 插件使用 Node/PNPM/VSCE 链路。推荐在 pixi 的 `node` 环境下操作以获得一致的工具链版本。
+VSCode 插件使用 Node/npm/VSCE 链路。推荐在 pixi 的 `node` 环境下操作以获得一致的工具链版本。
 
 ```shell
 # 准备环境（先安装 pixi）
 pixi shell -e node
 
-# 安装依赖（基于 pnpm-lock）
+# 安装依赖（基于 package-lock）
 pixi run install-vscode
 
 # 打包扩展，产物位于 editors/vscode/*.vsix
@@ -29,21 +29,22 @@ pixi run publish-vscode
 开发与调试：
 
 1. `pixi shell -e node`
-2. 在 `editors/vscode` 下运行 `pnpm run watch`（增量构建）
+2. 在 `editors/vscode` 下运行 `npm run watch`（增量构建）
 3. VSCode 中使用”Run Extension/Launch Extension”调试配置，或执行 `code --extensionDevelopmentPath=$(pwd)/editors/vscode`
 
 常用脚本（在 `pixi shell -e node` 下）：
 
 ```bash
-pnpm run package # 等价于 pixi run build-vscode
-pnpm run publish # 等价于 pixi run publish-vscode
+npm run package # 等价于 pixi run build-vscode
+npm run publish # 等价于 pixi run publish-vscode
 ```
 
-如果不使用 pixi，请自行准备 node.js >= 20、pnpm，然后在 `editors/vscode` 目录执行：
+如果不使用 pixi，请自行准备 node.js >= 20（自带 npm）。扩展是仓库 npm workspace 的一部分，依赖安装在仓库根目录执行，打包在 `editors/vscode` 下执行：
 
 ```bash
-pnpm install
-pnpm run package
+npm install          # 在仓库根目录
+cd editors/vscode
+npm run package
 ```
 
 ## Neovim

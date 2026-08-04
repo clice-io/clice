@@ -141,11 +141,10 @@ pixi 环境之外的依赖：
 1. 安装依赖：
 
    ```shell
-   cd editors/vscode
-   pnpm install
+   npm install # 在仓库根目录执行，扩展是 npm workspace 成员
    ```
 
-2. 用 VS Code 打开 `editors/vscode`。
+2. 用 VS Code 打开**仓库根目录**（启动配置位于根目录的 `.vscode/launch.json`）。
 
 3. 创建上述 socket 配置的 `.vscode/settings.json`。
 

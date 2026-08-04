@@ -39,6 +39,11 @@ jobs:
             vscode:
               - 'editors/vscode/**'
               - '.github/workflows/publish-vscode.yml'
+              # The extension is an npm workspace member: its resolved deps
+              # live in the root lockfile and it imports @clice/tools types.
+              - 'package.json'
+              - 'package-lock.json'
+              - 'tools/**'
             zed:
               - 'editors/zed/**'
               - '.github/workflows/main.yml'
@@ -47,6 +52,7 @@ jobs:
               - 'src/**'
               - 'include/**'
               - 'tests/**'
+              - 'tools/**'
               - 'config/**'
               - 'cmake/**'
               - 'scripts/**'
@@ -54,6 +60,10 @@ jobs:
               - 'editors/vscode/**'
               - 'pixi.toml'
               - 'pixi.lock'
+              # Integration/snap/editor suites resolve their deps from the
+              # root npm-workspace lockfile.
+              - 'package.json'
+              - 'package-lock.json'
               - '.github/workflows/native-test.yml'
               - '.github/workflows/cross-test.yml'
               - '.github/workflows/cross-pair.yml'
