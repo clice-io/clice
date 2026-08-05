@@ -9,15 +9,14 @@ The development flow is: branch off `main` → write code (discussing requiremen
 
 ## Branch
 
-- Always `git fetch origin` first and branch from `origin/main` — never from the local `main`, which goes stale and causes messy surprises.
-- Name branches `<type>/<short-topic>` using the conventional-commit types, e.g. `fix/hover-crash`, `chore/upgrade-llvm-23`.
+- Always branch from freshly fetched `origin/main` — `git fetch origin && git checkout -b <type>/<short-topic> origin/main` — never from the local `main`. `<type>` uses the conventional-commit types, e.g. `fix/hover-crash`, `chore/upgrade-llvm-23`.
 
 ## Pre-push verification (every push, not just the first)
 
 Never push anything unverified — "it compiles" is not verified, and CI is not a debugger.
 
 1. `pixi run format`.
-2. `npm run check` at the repo root when TypeScript changed — strict tsc + ESLint across all workspace packages, zero tolerance.
+2. `npm run check` at the repo root when TypeScript changed.
 3. All four test suites pass locally (`/test`). Every failure on the branch is yours to fix now — even if it looks pre-existing (main is green), and never by skipping, disabling, or weakening the test.
 
 ## Self-review (before opening)
@@ -31,7 +30,7 @@ Launch **3 parallel subagents** to review the full diff (`git diff main...HEAD`)
 ## Opening
 
 - Confirm with the maintainer before creating the PR.
-- Title follows the conventional commit format — CI rejects it otherwise, and since PRs are squash-merged with the title as the final commit message, the title is what lands in `main` history.
+- Title follows the conventional commit format — CI checks it, and it becomes the squash-merge commit on `main`.
 - Body follows `.github/pull_request_template.md`. Never reference local file paths, private notes, or other material a reader without this machine cannot see.
 
 ## Watching

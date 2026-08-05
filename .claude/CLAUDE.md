@@ -28,7 +28,7 @@ Distilled from real correction history — these mistakes keep recurring:
 - **Refactoring means improving the abstraction**, not moving code. Understand what design problem the refactor solves before touching anything.
 - **Comments talk to the future reader, not the diff reviewer.** The default for any change is zero new comments. Add one only when the final code, read on its own, would trap or mislead a competent reader — a non-obvious why, an invariant nothing enforces, a workaround for an external quirk that cost real debugging. Never comment what the code does, why the change is correct, or what was there before: that belongs in the PR description and becomes noise the moment it merges. Litmus test: cover the comment; if the surrounding code already tells the reader everything it said, delete it. When moving or rewriting code, existing explanatory comments DO survive — this rule is about adding, not preserving.
 - **Apply cleanup and style instructions project-wide.** Grep for every occurrence and fix them in one pass, not just the file under discussion.
-- **Calibrate confirmation to impact.** Small reversible changes: just do them. Architecture decisions, API changes, large refactors: propose first. Pushing, creating PRs, modifying CI: confirm. Once told "go ahead", execute fully without re-asking mid-way.
+- **Calibrate confirmation to impact.** Small reversible changes: just do them. Architecture decisions, API changes, large refactors: propose first. Creating PRs, modifying CI: confirm. Once told "go ahead", execute fully without re-asking mid-way — follow-up pushes inside an approved PR flow are covered by the go-ahead.
 
 ## Source Layout
 
