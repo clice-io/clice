@@ -7,6 +7,7 @@ Detailed knowledge lives in skills — load them at the moments their descriptio
 - **cpp-style** — before writing or modifying any C++ code.
 - **write-tests** — before writing or modifying anything under `tests/` (fixture forms, snapshot workflow and rules, pitfalls).
 - **pr** — before committing, opening a PR, or checking on an open one (pre-push checks, self-review, CI/review watching).
+- **resolve-comments** — each watch round of an open PR: pulls unresolved review threads, fixes and resolves them, returns a summary.
 - **build / test / format** — build the project, run suites, format sources.
 - **release / upgrade-llvm** — release operations and LLVM upgrades.
 
@@ -59,5 +60,5 @@ Beyond `src/`: `tools/` is the TypeScript harness (`@clice/tools`: LSP client, s
   - Types: `feat`, `fix`, `refactor`, `chore`, `build`, `ci`, `docs`, `test`, `perf`, `style`, `revert`
   - Scopes: `src/` subdirectories or feature names, e.g. `completion`, `server`, `index`, `tests`, `document links`
 - CI checks the head commit message on pushes and the **PR title** on pull requests. PRs are squash-merged with the title as the final commit message — the title is what lands in `main` history; individual branch commits matter less.
-- Branches: `<type>/<short-topic>` off an up-to-date `origin/main`.
+- Branches: `<type>/<short-topic>`, always created from freshly fetched `origin/main` — never from the local `main`, which goes stale and causes messy surprises.
 - The whole pipeline from "code is ready" to "ready to merge" is the **pr** skill — follow it step by step.

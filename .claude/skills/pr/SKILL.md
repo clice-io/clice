@@ -9,7 +9,8 @@ The development flow is: branch off `main` → write code (discussing requiremen
 
 ## Branch
 
-- Branch off an up-to-date `origin/main`, named `<type>/<short-topic>` using the conventional-commit types, e.g. `fix/hover-crash`, `chore/upgrade-llvm-23`.
+- Always `git fetch origin` first and branch from `origin/main` — never from the local `main`, which goes stale and causes messy surprises.
+- Name branches `<type>/<short-topic>` using the conventional-commit types, e.g. `fix/hover-crash`, `chore/upgrade-llvm-23`.
 
 ## Pre-push verification (every push, not just the first)
 
@@ -35,11 +36,14 @@ Launch **3 parallel subagents** to review the full diff (`git diff main...HEAD`)
 
 ## Watching
 
-- Poll with timed wake-ups, not background shell loops, and keep API calls sparse (roughly one batch per check, spaced out).
-- Every check covers BOTH: CI status AND unresolved review threads (query by unresolved state, e.g. GraphQL `reviewThreads` with `isResolved == false` — never by timestamps). A green pipeline with unanswered review comments is not done.
-- Every unresolved thread gets either a fix commit or a reasoned reply before the PR is considered ready.
-- CI failure: reproduce and fix locally, verify, then push — an ordinary commit, never `--amend`, never force push, never a rebase without asking. History rewrites destroy review anchors and reviewers' incremental diffs.
-- Digest CI logs via a subagent; don't pull raw logs into the main conversation.
+This is a sustained loop, not a single check — reviews and CI both take time, and a PR typically needs 5-6 rounds of check-and-fix before it is truly settled. Do not stop at the first green check.
+
+- Cadence: one check every ~30 minutes by default, via timed wake-ups — never background shell loops. Tune to the situation: CI runs take their own time, and agent reviewers need a while to post after each push. Decide the total number of rounds yourself based on elapsed time and remaining activity.
+- Every check covers BOTH: CI status AND unresolved review threads. A green pipeline with open review comments is not done.
+- Threads go through the resolve-comments skill: it pulls unresolved threads (by `isResolved`, never timestamps), applies fixes in the worktree, resolves the threads, and returns a compact summary — the GraphQL plumbing and comment bodies stay out of the main conversation. Threads are settled by resolving, not replying; only ones needing a maintainer decision stay open.
+- If resolve-comments left changes in the worktree: run the pre-push verification, then push an ordinary commit — never `--amend`, never force push, never a rebase without asking. History rewrites destroy review anchors and reviewers' incremental diffs.
+- CI failure: reproduce and fix locally, verify, then push. Digest CI logs via a subagent; don't pull raw logs into the main conversation.
+- Keep API calls sparse — one batch per check, `sleep 1` between `gh` calls.
 
 ## Done
 
