@@ -37,17 +37,25 @@ Always select by `isResolved == false` — never filter by timestamps.
 
 ## Handle each thread
 
-- Valid point: apply the fix in the worktree. Do NOT commit or push —
-  the main conversation runs the pre-push verification and pushes.
-- Wrong, already addressed, or out of scope: no change.
-- Needs a real design decision: leave the thread unresolved and flag it
-  in the report.
+Analyze deeply before touching anything. A reviewer usually points at a
+symptom — find the root cause and fix that, then grep for the same
+pattern elsewhere in the diff. Patching exactly the reported line is the
+failure mode: the comment is evidence, not the bug.
+
+- Valid point: apply the root-cause fix in the worktree. Do NOT commit
+  or push — the main conversation runs the pre-push verification and
+  pushes.
+- Wrong, or already addressed: no change.
+- Debatable design question: do not stall and do not leave it open.
+  Pick the most defensible solution, apply it, and record the decision
+  in the report — chosen approach, rejected alternative, and why. The
+  maintainer reviews these in one batch after the CI flow finishes;
+  anything overturned becomes follow-up work or a dedicated refactor PR.
 
 ## Resolve
 
-Threads are settled by resolving, not replying — replies burn context
-and review time. Resolve every thread you handled (fixed or judged
-no-change); only flagged decision threads stay open:
+Every thread ends resolved — none left open, no replies (replies burn
+context and review time):
 
 ```bash
 gh api graphql -f query='
@@ -59,6 +67,9 @@ mutation($id: ID!) {
 ## Report
 
 One line per thread: `path:line — <the point, in a few words> — fixed in
-<files> | no change (<why>) | NEEDS DECISION (<question>)`. End with
-counts: threads fetched / fixed / resolved without change / left open,
-and whether the worktree now has changes to verify and push.
+<files> | no change (<why>)`. Then a **Decisions** block: every design
+call taken (chosen vs. alternative, one line each) — the main
+conversation accumulates these across rounds and reports them to the
+maintainer with the final ready-to-merge summary. End with counts
+(threads fetched / fixed / no-change) and whether the worktree now has
+changes to verify and push.

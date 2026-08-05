@@ -40,11 +40,12 @@ This is a sustained loop, not a single check — reviews and CI both take time, 
 
 - Cadence: one check every ~30 minutes by default, via timed wake-ups — never background shell loops. Tune to the situation: CI runs take their own time, and agent reviewers need a while to post after each push. Decide the total number of rounds yourself based on elapsed time and remaining activity.
 - Every check covers BOTH: CI status AND unresolved review threads. A green pipeline with open review comments is not done.
-- Threads go through the resolve-comments skill: it pulls unresolved threads (by `isResolved`, never timestamps), applies fixes in the worktree, resolves the threads, and returns a compact summary — the GraphQL plumbing and comment bodies stay out of the main conversation. Threads are settled by resolving, not replying; only ones needing a maintainer decision stay open.
+- Threads go through the resolve-comments skill: it pulls unresolved threads (by `isResolved`, never timestamps), applies root-cause fixes in the worktree, resolves the threads, and returns a compact summary — the GraphQL plumbing and comment bodies stay out of the main conversation. Threads are settled by resolving, not replying, and none stay open waiting for the maintainer: debatable points get the most defensible solution applied and recorded, batched into the final report.
 - If resolve-comments left changes in the worktree: run the pre-push verification, then push an ordinary commit — never `--amend`, never force push, never a rebase without asking. History rewrites destroy review anchors and reviewers' incremental diffs.
 - CI failure: reproduce and fix locally, verify, then push. Digest CI logs via a subagent; don't pull raw logs into the main conversation.
 - Keep API calls sparse — one batch per check, `sleep 1` between `gh` calls.
 
 ## Done
 
-- CI fully green and zero unresolved review threads → report to the maintainer that the PR is ready to merge, with a one-paragraph summary of what review found and how it was addressed. Then stop — merging is the maintainer's call.
+- CI fully green and zero unresolved review threads → report to the maintainer that the PR is ready to merge: a one-paragraph summary of what review found and how it was addressed, plus every design decision taken while resolving threads (chosen vs. alternative), so the maintainer can accept or overturn them in one pass. Then stop — merging is the maintainer's call.
+- Bias toward merging fast: the maintainer inspects end results, not intermediate steps. Ship working-but-imperfect and record the debt — inelegance is cleaned up in dedicated refactor PRs, it does not hold a feature PR hostage.
