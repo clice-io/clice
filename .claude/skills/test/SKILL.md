@@ -1,6 +1,6 @@
 ---
 name: test
-description: Run clice test suites. Args: optional suite (unit | integration | smoke | snap | all, default all) and build type (Debug | RelWithDebInfo, default RelWithDebInfo). Runs in a forked context — test output stays out of the main conversation; only a digest returns.
+description: Run clice test suites. Optional args = suite (unit | integration | smoke | snap | all, default all) and build type (Debug | RelWithDebInfo, default RelWithDebInfo). Runs in a forked context — test output stays out of the main conversation; only a digest returns.
 context: fork
 ---
 
