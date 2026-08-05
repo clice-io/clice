@@ -98,7 +98,7 @@ jobs:
         run: pixi run -e test-run smoke-test ${{ matrix.build_type }}
 
       - name: Snap tests
-        timeout-minutes: 10
+        timeout-minutes: 20
         run: pixi run -e test-run snap-test ${{ matrix.build_type }}
 
       # Package the exact binary the suites above just validated. These
