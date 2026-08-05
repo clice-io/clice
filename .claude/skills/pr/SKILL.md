@@ -17,11 +17,11 @@ Never push anything unverified — "it compiles" is not verified, and CI is not 
 
 1. `pixi run format`.
 2. `npm run check` at the repo root when TypeScript changed.
-3. All four test suites pass locally (`/test`). Every failure on the branch is yours to fix now — even if it looks pre-existing (main is green), and never by skipping, disabling, or weakening the test.
+3. All four test suites pass locally (the test skill). Every failure on the branch is yours to fix now — even if it looks pre-existing (main is green), and never by skipping, disabling, or weakening the test.
 
 ## Self-review (before opening)
 
-Launch **3 parallel subagents** to review the full diff (`git diff main...HEAD`) independently, and fix everything they report before opening:
+Launch **3 parallel subagents** to review the full diff (`git diff origin/main...HEAD` — never the local `main`, which goes stale) independently, and fix everything they report before opening:
 
 1. **Correctness reviewer**: logic errors, edge cases, undefined behavior, off-by-one mistakes.
 2. **Style reviewer**: naming conventions, coding style, cpp-style skill rules.

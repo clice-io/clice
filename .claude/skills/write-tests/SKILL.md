@@ -74,7 +74,9 @@ gates: `npm run check` at the repo root (tsc strict + ESLint, zero tolerance).
    fixture and it keeps no snapshot until fixed. On a shared mismatch:
    either fix the divergence, or downgrade the fixture with an explanatory
    comment — `separate` if the difference is a genuine known property,
-   `skip` if it is simply wrong. `UPDATE_SNAPSHOTS=1` updates everything
+   `skip` if it is simply wrong. `skip` documents a divergence that
+   predates your change — it is never a way to get your own regression
+   past the suite. `UPDATE_SNAPSHOTS=1` updates everything
    in one run: standalone tests run first and own shared bodies; the wire
    side can only update `.wire.snap.yml` variants. Fixture meta keys are
    validated strictly (unknown keys are errors) by `tools/snap/inspect.ts`
