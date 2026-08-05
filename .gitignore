@@ -71,5 +71,5 @@ tests/unit/Local/
 .codex
 .claude/*
 !.claude/CLAUDE.md
-!.claude/commands/
 !.claude/skills/
+!.claude/skills/build/

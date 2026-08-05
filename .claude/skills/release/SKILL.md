@@ -1,3 +1,8 @@
+---
+name: release
+description: Operate the three-tier release process — instant builds, nightlies, stable releases — plus crash-log symbolization. Read before touching anything release-related. Hard rule — tags and manual releases need explicit maintainer approval first.
+---
+
 Operate the three-tier release process: instant builds, nightlies, and stable releases.
 
 ## Versioning

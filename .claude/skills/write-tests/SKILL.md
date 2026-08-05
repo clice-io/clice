@@ -65,6 +65,21 @@ gates: `npm run check` at the repo root (tsc strict + ESLint, zero tolerance).
    review the diff like code; a shared-snapshot mismatch on the wire side
    is a real divergence, not something to update over.
 
+   Snapshot ownership: a fixture defaults to `snap: shared` — the
+   standalone (`clice inspect`) and wire (real server) paths must render
+   byte-identically into one `<name>.snap.yml`. `snap: separate`
+   (declared in the fixture's `///` header, with a `// snap:` comment
+   explaining why) pins the wire reply in its own `<name>.wire.snap.yml`;
+   `snap: skip` marks a known-wrong divergence — both suites skip the
+   fixture and it keeps no snapshot until fixed. On a shared mismatch:
+   either fix the divergence, or downgrade the fixture with an explanatory
+   comment — `separate` if the difference is a genuine known property,
+   `skip` if it is simply wrong. `UPDATE_SNAPSHOTS=1` updates everything
+   in one run: standalone tests run first and own shared bodies; the wire
+   side can only update `.wire.snap.yml` variants. Fixture meta keys are
+   validated strictly (unknown keys are errors) by `tools/snap/inspect.ts`
+   and `tools/feature_docs.ts`.
+
 ## API cheat sheet
 
 `Workspace` (`@clice/tools/workspace`): `path(rel)` `uri(rel)` `write`
@@ -100,7 +115,8 @@ deterministic waits (`poll("cdb")`, `armDiagnostics`) over sleeping.
   malformed URI; a raw path or unencoded space is a server bug.
 - `allowAnomaly` requires the test to assert the expected anomaly itself.
 - Comments: `///` for doc comments, `//` inline; explain constraints the
-  code can't show, nothing else.
+  code can't show, nothing else. Keep tests concise: descriptive test
+  names, no large comment blocks explaining layout or expected behavior.
 - Same-workspace exclusivity across files comes from the session lock —
   never touch `tests/data/*` outside a session, and never run two suites
   concurrently.

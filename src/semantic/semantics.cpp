@@ -85,7 +85,7 @@ clang::DynTypedNode SemanticNode::dyn_typed() const {
                      std::same_as<T, const Import*> ||
                      std::same_as<T, const LexicalInfo::ModuleDeclaration*> ||
                      std::same_as<T, const LexicalInfo::Comment*>) {
-            llvm_unreachable("dyn_typed on a non-AST node");
+            std::unreachable();
         } else if constexpr(std::is_pointer_v<T>) {
             return clang::DynTypedNode::create(*value);
         } else {
@@ -921,7 +921,7 @@ private:
                 case LexicalInfo::ModuleDeclaration::Kind::PrivateFragment:
                     return !token_alive_at(module.keyword.begin);
             }
-            llvm_unreachable("unknown module declaration kind");
+            std::unreachable();
         });
     }
 

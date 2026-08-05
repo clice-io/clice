@@ -1,3 +1,5 @@
+#include <utility>
+
 #include "index/usr.h"
 
 #include "clang/AST/ASTContext.h"
@@ -398,7 +400,7 @@ void USRGenerator::VisitTagDecl(const TagDecl* D) {
                 case TagTypeKind::Class:
                 case TagTypeKind::Struct: Out << "@ST"; break;
                 case TagTypeKind::Union: Out << "@UT"; break;
-                case TagTypeKind::Enum: llvm_unreachable("enum template");
+                case TagTypeKind::Enum: std::unreachable();
             }
             VisitTemplateParameterList(ClassTmpl->getTemplateParameters());
         } else if(const ClassTemplatePartialSpecializationDecl* PartialSpec =
@@ -410,7 +412,7 @@ void USRGenerator::VisitTagDecl(const TagDecl* D) {
                 case TagTypeKind::Class:
                 case TagTypeKind::Struct: Out << "@SP"; break;
                 case TagTypeKind::Union: Out << "@UP"; break;
-                case TagTypeKind::Enum: llvm_unreachable("enum partial specialization");
+                case TagTypeKind::Enum: std::unreachable();
             }
             VisitTemplateParameterList(PartialSpec->getTemplateParameters());
         }

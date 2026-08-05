@@ -1,3 +1,8 @@
+---
+name: upgrade-llvm
+description: Complete workflow for upgrading the prebuilt LLVM packages clice depends on — build-llvm CI, API adaptation, release-llvm pruning, changelog. Arg = target version, e.g. 22.1.4.
+---
+
 Upgrade LLVM to a new version. Accepts the target version as argument (e.g., `22.1.4`).
 
 This is the complete workflow for upgrading the LLVM prebuilt packages that clice depends on. Follow each step in order. Steps that involve CI should use polling (check every ~5 minutes) to wait for completion.
