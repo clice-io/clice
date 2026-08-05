@@ -48,4 +48,4 @@ This is a sustained loop, not a single check — reviews and CI both take time, 
 ## Done
 
 - CI fully green and zero unresolved review threads → report to the maintainer that the PR is ready to merge: a one-paragraph summary of what review found and how it was addressed, plus every design decision taken while resolving threads (chosen vs. alternative), so the maintainer can accept or overturn them in one pass. Then stop — merging is the maintainer's call.
-- Bias toward merging fast: the maintainer inspects end results, not intermediate steps. Ship working-but-imperfect and record the debt — inelegance is cleaned up in dedicated refactor PRs, it does not hold a feature PR hostage.
+- The default bar stays high: elegant code, edge cases considered. "Merge now, clean up in a dedicated refactor PR later" is a real move in this project, but that trade-off is the maintainer's call, made case by case — never the agent's default.
