@@ -14,7 +14,7 @@ Run the requested suites (default: all) against the requested build type (defaul
 
 Filtering specific tests:
 
-- Unit: `pixi run unit-test [type] --test-filter=SuiteName.CaseName`
+- Unit: `pixi run unit-test [type] -- --test-filter=SuiteName.CaseName` (also `SuiteName.*`)
 - Integration: `cd tests && CLICE_EXECUTABLE=../build/[type]/bin/clice npx vitest run --config integration/vitest.config.ts integration/features/some.test.ts`
 - Smoke: `pixi run node tools/replay.ts tests/smoke/specific.jsonl --clice=./build/[type]/bin/clice`
 - Snap: `cd tests && CLICE_EXECUTABLE=../build/[type]/bin/clice npm run snap -- -t "<feature-or-fixture>"`

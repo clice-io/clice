@@ -170,9 +170,13 @@ depends-on = [
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 depends-on = [{ task = "lint-cpp", args = ["{{ type }}"] }]
 
+[feature.test.tasks.check-feature-docs]
+cmd = "node tools/feature_docs.ts check"
+
 [feature.test.tasks.unit-test]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
-cmd = './build/{{ type }}/bin/unit_tests --test-dir="./tests/data" --snapshot-dir="./tests/snapshots/unit" --verbose && node tools/feature_docs.ts check'
+cmd = './build/{{ type }}/bin/unit_tests --test-dir="./tests/data" --snapshot-dir="./tests/snapshots/unit" --verbose'
+depends-on = [{ task = "check-feature-docs" }]
 
 # npm workspaces: install runs at the repo root and covers tools/, tests/
 # and editors/vscode/.
