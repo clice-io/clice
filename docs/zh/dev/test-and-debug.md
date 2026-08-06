@@ -18,7 +18,6 @@ pixi run unit-test Debug    # debug 构建
 ```bash
 ./build/RelWithDebInfo/bin/unit_tests \
     --test-dir="./tests/data" \
-    --snapshot-dir="./tests/snapshots/unit" \
     --verbose
 ```
 
@@ -64,7 +63,7 @@ node tools/replay.ts tests/smoke/*.jsonl \
 
 ### 快照测试
 
-Feature 快照语料位于 `tests/snap/<feature>/`，源文件与快照并排存放。snap 套件（`tests/snap.test.ts`，领域逻辑在 `tools/snap/`）从两条路径固定每个 fixture：standalone（每个 fixture 一个 `clice inspect` 进程，不经过 server）与 wire（通过真实 server 回放）。集成套件不参与任何快照。
+Feature 快照语料位于 `tests/snap/<feature>/`，源文件与快照并排存放。snap 套件（`tests/snap/snap.test.ts`，领域逻辑在 `tools/snap/`）按每个 fixture 的 `verify:` 模式固定其结果：inspect（每个 fixture 一个 `clice inspect` 进程，不经过 server）与 server（通过真实 server 回放）。集成套件不参与任何快照。
 
 ```bash
 pixi run snap-test          # 默认 RelWithDebInfo
@@ -78,9 +77,11 @@ cd tests
 CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/clice npm run snap
 ```
 
-fixture 默认是 `snap: shared`：standalone 与 wire 两路结果必须渲染成逐字节一致的同一份 `<name>.snap.yml`。两路确有合理差异的 fixture 在 `///` 文档头部声明 `- snap: separate`（并用 `// snap:` 注释说明原因），wire 结果单独固定在 `<name>.wire.snap.yml`。两路分歧属于明确错误（尚不支持）的，声明 `- snap: skip`：两个套件都跳过该 fixture，且在两路一致之前不保留任何快照。
+fixture 可以是语料根目录下的单个 `.cpp`，也可以是以 `main.cpp` 为入口的子目录——一个多文件单元，其中的兄弟源文件（模块接口、头文件、附加源码）都属于这个 fixture。语料级编译参数写在语料目录的 `corpus.json` 清单里；单个 fixture 用 `- flags: [...]` 追加自己的参数。server 路径的每次运行都会把 fixture 物化到一次性工作区（源文件落盘时 `§` 标记已剥除），fixture 之间互不共享状态；后台索引默认关闭，需要的 fixture 用 `- indexing: true` 打开。刻意不能干净编译的 fixture 声明 `- diagnostics: expected`：未声明却出现诊断会使 fixture 失败，声明了却干净编译同样失败。
 
-`UPDATE_SNAPSHOTS=1` 一次跑完即可完成全部更新：standalone 测试先执行并拥有共享快照内容；wire 一侧只能更新 `.wire.snap.yml` 变体。wire 侧报告共享快照不匹配 = server 管线与直接调用 feature 之间的真实分歧——应当排查，而不是重新生成把它盖掉。
+fixture 默认是 `verify: both` 加 `snap: shared`：inspect 与 server 两路结果必须渲染成逐字节一致的同一份 `<name>.snap.yml`。两路确有合理差异的 fixture 在 `///` 文档头部声明 `- snap: separate`（并用 `// snap:` 注释说明原因），两路各自固定在 `<name>.inspect.snap.yml` / `<name>.server.snap.yml`。两路分歧属于明确错误（尚不支持）的，声明 `- snap: skip`：该 fixture 不再运行，且在两路一致之前不保留任何快照。只存在于单条路径的 feature（include/import 补全由 server 应答；索引转储没有对应的 LSP 请求）声明 `- verify: server` 或 `- verify: inspect`，由该侧拥有普通的 `<name>.snap.yml`。
+
+`UPDATE_SNAPSHOTS=1` 一次跑完即可完成全部更新：inspect 测试先执行并拥有共享快照内容；server 一侧只能更新自己的变体。server 侧报告共享快照不匹配 = server 管线与直接调用 feature 之间的真实分歧——应当排查，而不是重新生成把它盖掉。
 
 ### 运行全部测试
 

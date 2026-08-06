@@ -1,5 +1,5 @@
 /// vitest binding of the session machinery (tools/client/session.ts) for
-/// the snap suite: the wire driver replays fixtures through real servers,
+/// the snap suite: the server driver replays fixtures through real servers,
 /// so it needs the same `session` fixture and teardown gates as the
 /// integration suite — bound independently, per suite.
 

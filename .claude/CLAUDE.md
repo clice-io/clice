@@ -51,7 +51,7 @@ Beyond `src/`: `tools/` is the TypeScript harness (`@clice/tools`: LSP client, s
   - **Unit** (`tests/unit/`): C++, project's own framework. Test names at most 4 words.
   - **Integration** (`tests/integration/`): TypeScript vitest against a real clice server over LSP.
   - **Smoke** (`tests/smoke/`): recorded LSP sessions replayed via `tools/replay.ts`.
-  - **Snap** (`tests/snap/`): feature snapshot corpora, pinned from both the standalone (`clice inspect`) and wire (real server) paths. A shared-snapshot mismatch between the two paths is a real bug — never `UPDATE_SNAPSHOTS` over it. Ownership rules and fixture meta live in the write-tests skill.
+  - **Snap** (`tests/snap/`): feature snapshot corpora, pinned from the inspect (`clice inspect`) and server (real server) paths per each fixture's `verify:` mode. A shared-snapshot mismatch between the two paths is a real bug — never `UPDATE_SNAPSHOTS` over it. Ownership rules and fixture meta live in the write-tests skill.
 - TypeScript gate: `npm run check` at the repo root — strict tsc + ESLint across all workspace packages, zero tolerance.
 
 ## Commits, Branches, PRs

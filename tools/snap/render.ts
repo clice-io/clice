@@ -64,7 +64,7 @@ export function enumName(enumObject: Record<string, unknown>, value: number): st
 }
 
 /// C++ enum names arrive PascalCase; the server's semantic-tokens legend
-/// lowercases the first letter, and snapshots use that wire spelling.
+/// lowercases the first letter, and snapshots use that reply spelling.
 export function lowerFirst(name: string): string {
     return name.slice(0, 1).toLowerCase() + name.slice(1);
 }

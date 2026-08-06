@@ -18,7 +18,7 @@
 
 // snap: skip because the leading directives fall into the server's
 // preamble PCH and the server reply drops the conditionDirective fold that
-// the standalone (no-PCH) compile reports. Un-skip once the two paths
+// the inspect-path (no-PCH) compile reports. Un-skip once the two paths
 // agree.
 
 #ifdef _WIN32

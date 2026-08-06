@@ -23,7 +23,7 @@ export interface FixtureMeta {
     /// Which verification paths run the fixture: `both` (the default) runs
     /// `clice inspect` and a real server, `inspect`/`server` only the one
     /// path (e.g. include and import completion exist only in the server;
-    /// index dumps only standalone).
+    /// index dumps are inspect-only).
     verify: "both" | "inspect" | "server";
     /// How the two paths of a `verify: both` fixture relate. shared: they
     /// must render byte-identically and are pinned by one snapshot file.

@@ -18,7 +18,6 @@ Equivalent to:
 ```bash
 ./build/RelWithDebInfo/bin/unit_tests \
     --test-dir="./tests/data" \
-    --snapshot-dir="./tests/snapshots/unit" \
     --verbose
 ```
 
@@ -64,7 +63,7 @@ node tools/replay.ts tests/smoke/*.jsonl \
 
 ### Snap Tests
 
-Feature snapshot corpora under `tests/snap/<feature>/`, with sources and snapshots side by side. The snap suite (`tests/snap.test.ts`, domain logic in `tools/snap/`) pins every fixture from both paths: standalone (one `clice inspect` process per fixture, no server involved) and wire (replayed through a real server). The integration suite plays no part in snapshots.
+Feature snapshot corpora under `tests/snap/<feature>/`, with sources and snapshots side by side. The snap suite (`tests/snap/snap.test.ts`, domain logic in `tools/snap/`) pins every fixture from the paths its `verify:` mode asks for: inspect (one `clice inspect` process per fixture, no server involved) and server (replayed through a real server). The integration suite plays no part in snapshots.
 
 ```bash
 pixi run snap-test          # default RelWithDebInfo
@@ -78,9 +77,11 @@ cd tests
 CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/clice npm run snap
 ```
 
-By default a fixture is `snap: shared`: the standalone and wire results must render byte-identically and are pinned by one `<name>.snap.yml`. A fixture whose two paths legitimately differ declares `- snap: separate` in its `///` doc header (with a `// snap:` comment explaining why) and the wire reply is pinned in its own `<name>.wire.snap.yml`. A known-wrong divergence is declared as `- snap: skip`: both suites skip the fixture and it keeps no snapshot until the two paths agree.
+A fixture is a single `.cpp` at the corpus root, or a subdirectory entered through its `main.cpp` — one multi-file unit whose sibling sources (module interfaces, headers, extra sources) belong to the fixture. Corpus-wide compile flags live in the corpus's `corpus.json` manifest; a fixture appends its own with `- flags: [...]`. Each server-path run materializes the fixture into a throwaway workspace (sources arrive on disk with `§`-annotations already stripped), so fixtures never share state and background indexing — off by default, enabled per fixture with `- indexing: true` — sees the same bytes the compiler does. A fixture that deliberately does not compile cleanly declares `- diagnostics: expected`; unexpected diagnostics fail the fixture, and so does a clean compile under that declaration.
 
-`UPDATE_SNAPSHOTS=1` updates everything in one run: standalone tests run first and own shared snapshot bodies; the wire side can only update `.wire.snap.yml` variants. A shared snapshot mismatch on the wire side is a real divergence between the server pipeline and the direct feature call — investigate it instead of regenerating over it.
+By default a fixture is `verify: both` with `snap: shared`: the inspect and server results must render byte-identically and are pinned by one `<name>.snap.yml`. A fixture whose two paths legitimately differ declares `- snap: separate` in its `///` doc header (with a `// snap:` comment explaining why) and each path pins its own `<name>.inspect.snap.yml` / `<name>.server.snap.yml`. A known-wrong divergence is declared as `- snap: skip`: the fixture runs nowhere and keeps no snapshot until the two paths agree. A feature that exists on only one path (include and import completion answered by the server; index dumps with no LSP request shape) declares `- verify: server` or `- verify: inspect` and that side owns the plain `<name>.snap.yml`.
+
+`UPDATE_SNAPSHOTS=1` updates everything in one run: inspect tests run first and own shared snapshot bodies; the server side can only update its own variants. A shared snapshot mismatch on the server side is a real divergence between the server pipeline and the direct feature call — investigate it instead of regenerating over it.
 
 ### Run All Tests
 

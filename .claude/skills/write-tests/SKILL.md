@@ -55,32 +55,47 @@ gates: `npm run check` at the repo root (tsc strict + ESLint, zero tolerance).
    explicitly), `drainStderr: false` (backpressure tests), `args`,
    `socketPort`.
 
-3. **Snap tests** (whole-document feature output): don't write
-   assertions at all — add a fixture to the corpus `tests/snap/<feature>/`
-   and the snap suite
-   (`tests/snap.test.ts`, domain logic in `tools/snap/`) pins the reply
-   from both the standalone and the wire path. Position-dependent fixtures
-   carry `§(name)` annotations (see `@clice/tools/snap/annotation`).
-   Accept intentional changes with `UPDATE_SNAPSHOTS=1 npm run snap` and
-   review the diff like code; a shared-snapshot mismatch on the wire side
-   is a real divergence, not something to update over.
+3. **Snap tests** (feature output): don't write assertions at all — add
+   a fixture to the corpus `tests/snap/<feature>/` and the snap suite
+   (`tests/snap/snap.test.ts`, domain logic in `tools/snap/`) pins the
+   reply from the paths its `verify:` mode asks for: inspect
+   (`clice inspect`, no server) and server (a real server on a
+   materialized throwaway workspace). Position-dependent fixtures carry
+   `§(name)` annotations (see `@clice/tools/snap/annotation`). A fixture
+   is a single `.cpp` at the corpus root or a subdirectory entered
+   through its `main.cpp` — one multi-file unit whose sibling sources
+   (module interfaces, headers) belong to it; files carrying markers
+   participate, the rest are support. Accept intentional changes with
+   `UPDATE_SNAPSHOTS=1 npm run snap` and review the diff like code; a
+   shared-snapshot mismatch on the server side is a real divergence, not
+   something to update over.
 
-   Snapshot ownership: a fixture defaults to `snap: shared` — the
-   standalone (`clice inspect`) and wire (real server) paths must render
-   byte-identically into one `<name>.snap.yml`. `snap: separate`
-   (declared in the fixture's `///` header, with a `// snap:` comment
-   explaining why) pins the wire reply in its own `<name>.wire.snap.yml`;
-   `snap: skip` marks a known-wrong divergence — both suites skip the
-   fixture and it keeps no snapshot until fixed. On a shared mismatch:
-   either fix the divergence, or downgrade the fixture with an explanatory
-   comment — `separate` if the difference is a genuine known property,
-   `skip` if it is simply wrong. `skip` documents a divergence that
-   predates your change — it is never a way to get your own regression
-   past the suite. `UPDATE_SNAPSHOTS=1` updates everything
-   in one run: standalone tests run first and own shared bodies; the wire
-   side can only update `.wire.snap.yml` variants. Fixture meta keys are
-   validated strictly (unknown keys are errors) by `tools/snap/inspect.ts`
-   and `tools/feature_docs.ts`.
+   Fixture meta (strict — unknown keys are errors, validated by
+   `tools/snap/corpus.ts` and `tools/feature_docs.ts`), declared as
+   `- key: value` lines in the leading `///` header:
+   - `verify: both` (default) runs inspect and server; `inspect`/`server`
+     runs only that path, which then owns the plain `<name>.snap.yml`.
+   - `snap:` relates the two paths of a `verify: both` fixture.
+     `shared` (default): byte-identical, one `<name>.snap.yml`.
+     `separate` (with a `// snap:` comment explaining why): a genuine
+     known difference, pinned as `<name>.inspect.snap.yml` /
+     `<name>.server.snap.yml`. `skip`: a known-wrong divergence — the
+     fixture runs nowhere and keeps no snapshot until fixed. `skip`
+     documents a divergence that predates your change — it is never a
+     way to get your own regression past the suite.
+   - `config: {...}`: feature-options overlay; the snapshot pins BOTH
+     halves (`default:` / `configured:` blocks) on both paths.
+   - `diagnostics: expected`: the fixture deliberately does not compile
+     cleanly — unexpected diagnostics fail, and so does a clean compile
+     under the declaration.
+   - `indexing: true`: enables background indexing on the server path
+     (off by default for speed).
+   - `flags: [...]`: extra compile flags, appended to the corpus-wide
+     flags in `tests/snap/<feature>/corpus.json`.
+
+   `UPDATE_SNAPSHOTS=1` updates everything in one run: inspect tests run
+   first and own shared bodies; the server side can only update its own
+   variants.
 
 ## API cheat sheet
 

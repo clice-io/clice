@@ -46,7 +46,9 @@ test("snapshot check flows", () => {
 test("colocated snapshot layout", () => {
     const ctx = new SnapshotContext("/corpus", { colocated: true });
     expect(ctx.snapPath("group/a.cpp")).toBe(path.join("/corpus", "group/a.snap.yml"));
-    expect(ctx.snapPath("group/a.cpp", "wire")).toBe(path.join("/corpus", "group/a.wire.snap.yml"));
+    expect(ctx.snapPath("group/a.cpp", "server")).toBe(
+        path.join("/corpus", "group/a.server.snap.yml"),
+    );
     expect(new SnapshotContext("/dir").snapPath("a.cpp")).toBe(path.join("/dir", "a.cpp.snap.yml"));
 });
 
