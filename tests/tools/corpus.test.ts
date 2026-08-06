@@ -1,8 +1,16 @@
 /// Tests for the corpus model (tools/snap/corpus.ts): the strict fixture
-/// frontmatter schema.
+/// frontmatter schema and snapshot ownership.
 
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import { expect, test } from "vitest";
-import { parseFixtureMeta } from "@clice/tools/snap/corpus";
+import {
+    orphanSnapshots,
+    parseFixtureMeta,
+    type SnapCorpus,
+    type SnapFixture,
+} from "@clice/tools/snap/corpus";
 
 const DEFAULTS = {
     status: "supported",
@@ -86,4 +94,55 @@ test("diagnostics, indexing and flags keys", () => {
     expect(() => parseFixtureMeta("/// # T\n///\n/// - flags: [1]\n", "f")).toThrow(
         "JSON string array",
     );
+});
+
+test("snapshot ownership follows verify and snap modes", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "clice-corpus-"));
+    try {
+        for (const name of [
+            "shared.snap.yml",
+            "split.inspect.snap.yml",
+            "split.server.snap.yml",
+            "split.snap.yml", // superseded by the separate variants
+            "skipped.snap.yml", // a skip fixture keeps no snapshot
+            "renamed.snap.yml", // no fixture at all
+        ]) {
+            fs.writeFileSync(path.join(tmp, name), "---\n---\n");
+        }
+        const fixture = (rel: string, meta: Partial<SnapFixture["meta"]>): SnapFixture => ({
+            rel,
+            unit: "",
+            meta: {
+                status: "supported",
+                verify: "both",
+                snap: "shared",
+                diagnostics: false,
+                indexing: false,
+                flags: [],
+                ...meta,
+            },
+            files: [],
+            extras: [],
+            active: meta.snap !== "skip",
+        });
+        const corpus: SnapCorpus = {
+            feature: "demo",
+            corpus: tmp,
+            flags: [],
+            configSection: "demo",
+            fixtures: [
+                fixture("shared.cpp", {}),
+                fixture("split.cpp", { snap: "separate" }),
+                fixture("skipped.cpp", { snap: "skip" }),
+            ],
+            support: [],
+        };
+        expect(orphanSnapshots(corpus).sort()).toEqual([
+            "renamed.snap.yml",
+            "skipped.snap.yml",
+            "split.snap.yml",
+        ]);
+    } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+    }
 });

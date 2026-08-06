@@ -13,7 +13,12 @@
 
 import type { CliceClient } from "../client/client.ts";
 import type { SessionFactory } from "../client/session.ts";
-import { materializeFixture, type SnapCorpus, type SnapFixture } from "./corpus.ts";
+import {
+    materializeFixture,
+    type FixtureFile,
+    type SnapCorpus,
+    type SnapFixture,
+} from "./corpus.ts";
 import { feature, participates } from "./registry.ts";
 import { abBlocks, fileSections } from "./render.ts";
 import { SnapshotContext } from "./snapshot.ts";
@@ -58,7 +63,7 @@ export async function checkServerSnapFixture(
     const present = async (client: CliceClient): Promise<string[]> => {
         // Sibling sources open before the entry: a module interface must be
         // scanned before an import of it resolves.
-        const uris = new Map<string, string>();
+        const opened: [FixtureFile, string][] = [];
         const errors: string[] = [];
         const ordered = [
             ...fixture.files.filter((file) => file.rel !== fixture.rel),
@@ -66,7 +71,7 @@ export async function checkServerSnapFixture(
         ];
         for (const file of ordered) {
             const [uri] = await client.openAndWait(file.rel, 60_000);
-            uris.set(file.rel, uri);
+            opened.push([file, uri]);
             errors.push(
                 ...client
                     .errors(uri)
@@ -85,13 +90,11 @@ export async function checkServerSnapFixture(
             );
         }
 
+        // Sections render in rel order, like the inspect driver's.
+        opened.sort(([a], [b]) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0));
         const sections: [string, string[]][] = [];
-        for (const file of fixture.files) {
+        for (const [file, uri] of opened) {
             if (!participates(shape, file.source, file.rel === fixture.rel)) {
-                continue;
-            }
-            const uri = uris.get(file.rel);
-            if (uri === undefined) {
                 continue;
             }
             const label = fixture.unit === "" ? file.rel : file.rel.slice(fixture.unit.length + 1);

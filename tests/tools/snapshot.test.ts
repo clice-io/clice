@@ -24,7 +24,7 @@ test("snapshot check flows", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "snap-"));
     const snapPath = path.join(dir, "a.cpp.snap.yml");
 
-    const ctx = new SnapshotContext(dir, { update: false });
+    const ctx = new SnapshotContext(dir);
     ctx.check("a.cpp", "one\n"); // first run creates
     const createdAt = parseSnap(fs.readFileSync(snapPath, "utf8"))!.createdAt;
     ctx.check("a.cpp", "one\n"); // match passes
@@ -33,6 +33,14 @@ test("snapshot check flows", () => {
         ctx.check("a.cpp", "two\n");
     }).toThrow("snapshot mismatch");
     expect(fs.existsSync(`${snapPath}.new`)).toBe(true);
+
+    // A non-owning context (update: false) compares but never authors:
+    // a missing snapshot is the owner's to create.
+    const readonly = new SnapshotContext(dir, { update: false });
+    readonly.check("a.cpp", "one\n");
+    expect(() => {
+        readonly.check("b.cpp", "x\n");
+    }).toThrow("missing snapshot");
 
     new SnapshotContext(dir, { update: true }).check("a.cpp", "two\n");
     expect(parseSnap(fs.readFileSync(snapPath, "utf8"))).toEqual({

@@ -192,6 +192,10 @@ function renderDiff(oldBody: string, newBody: string): string {
 export class SnapshotContext {
     readonly directory: string;
     readonly update: boolean;
+    /// `update: false` marks a caller that must never author the file (the
+    /// server driver on a shared snapshot) — for it a missing snapshot is
+    /// an error, not something to create from its own output.
+    readonly create: boolean;
     readonly colocated: boolean;
 
     // Plain field assignments: parameter properties are not erasable
@@ -199,6 +203,7 @@ export class SnapshotContext {
     constructor(directory: string, options: { update?: boolean; colocated?: boolean } = {}) {
         this.directory = directory;
         this.update = options.update ?? process.env["UPDATE_SNAPSHOTS"] === "1";
+        this.create = options.update !== false;
         this.colocated = options.colocated ?? false;
     }
 
@@ -223,6 +228,9 @@ export class SnapshotContext {
             ? parseSnap(fs.readFileSync(snapPath, "utf8"))
             : null;
         if (existing === null) {
+            if (!this.create) {
+                throw new Error(`missing snapshot ${snapPath} (owned by the other path)`);
+            }
             fs.mkdirSync(path.dirname(snapPath), { recursive: true });
             fs.writeFileSync(snapPath, formatSnap(inputFile, body));
             console.log(`[snapshot] created ${snapPath}`);

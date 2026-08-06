@@ -109,6 +109,21 @@ module my.module:part;
     EXPECT_FALSE(result.is_interface_unit);
 }
 
+TEST_CASE(ModuleImports) {
+    auto result = scan(R"(
+export module top;
+import base;
+export import my.nested:part;
+import <header>;
+import "quoted";
+)");
+
+    EXPECT_EQ(result.module_name, "top");
+    ASSERT_EQ(result.modules.size(), 2u);
+    EXPECT_EQ(result.modules[0], "base");
+    EXPECT_EQ(result.modules[1], "my.nested:part");
+}
+
 TEST_CASE(ModuleImplementation) {
     auto result = scan(R"(
 module my.module;

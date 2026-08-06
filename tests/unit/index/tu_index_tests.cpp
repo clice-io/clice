@@ -8,7 +8,6 @@
 #include "index/tu_index.h"
 #include "semantic/selection.h"
 
-#include "kota/meta/enum.h"
 #include "llvm/Support/thread.h"
 #include "clang/Basic/Stack.h"
 

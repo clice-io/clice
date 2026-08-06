@@ -297,6 +297,17 @@ export function snapCorpora(): SnapCorpus[] {
                         "root or in a main.cpp unit",
                 );
             }
+            // Support sources reach the inspect path unstripped (pulled in
+            // via include search from the real corpus), so a marker in one
+            // would silently diverge the two paths.
+            if (C_FAMILY.test(rel)) {
+                const content = fs.readFileSync(path.join(corpus, rel), "utf8");
+                if (parseAnnotations(content).content !== content) {
+                    throw new Error(
+                        `tests/snap/${feature}/${rel}: support files cannot carry §-markers`,
+                    );
+                }
+            }
             support.push(rel);
         }
         for (const [unit, rels] of unitFiles) {
@@ -340,11 +351,11 @@ function makeFixture(
     return { rel, unit, meta, files, extras, active };
 }
 
-/// Write one fixture's view of the corpus into `root`: support files and
-/// unit sources at their corpus-relative paths — C-family content with
-/// annotations stripped, so the server compiles from disk exactly what the
-/// inspect path compiles from memory — plus a compile_commands.json built
-/// from the manifest and fixture flags.
+/// Write one fixture's view of the corpus into `root`: support files
+/// verbatim (enumeration rejects markers in them) and unit sources with
+/// annotations stripped, so the server compiles from disk exactly what
+/// the inspect path compiles from memory — plus a compile_commands.json
+/// built from the manifest and fixture flags.
 export function materializeFixture(corpus: SnapCorpus, fixture: SnapFixture, root: string): void {
     const write = (rel: string, content: string | Buffer): void => {
         const target = path.join(root, rel);
@@ -352,8 +363,7 @@ export function materializeFixture(corpus: SnapCorpus, fixture: SnapFixture, roo
         fs.writeFileSync(target, content);
     };
     for (const rel of corpus.support) {
-        const raw = fs.readFileSync(path.join(corpus.corpus, rel));
-        write(rel, C_FAMILY.test(rel) ? parseAnnotations(raw.toString("utf8")).content : raw);
+        write(rel, fs.readFileSync(path.join(corpus.corpus, rel)));
     }
     for (const file of fixture.files) {
         write(file.rel, file.source.content);

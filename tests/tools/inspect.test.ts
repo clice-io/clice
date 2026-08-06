@@ -204,3 +204,37 @@ test("inspect directory is one unit", () => {
         fs.rmSync(tmp, { recursive: true, force: true });
     }
 });
+
+test("inspect builds module diamonds in dependency order", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "clice-inspect-"));
+    try {
+        // A diamond on top of a chain: top imports left and right, both
+        // import base. The entry only compiles when every PCM was built
+        // before its importers, whatever order the interfaces enumerate in.
+        const write = (name: string, content: string): void => {
+            fs.writeFileSync(path.join(tmp, name), content);
+        };
+        write("a_base.cppm", "export module base;\nexport inline int b() {\n    return 1;\n}\n");
+        write(
+            "m_left.cppm",
+            "export module left;\nimport base;\nexport inline int l() {\n    return b();\n}\n",
+        );
+        write(
+            "z_right.cppm",
+            "export module right;\nimport base;\nexport inline int r() {\n    return b();\n}\n",
+        );
+        write(
+            "top.cppm",
+            "export module top;\nimport left;\nimport right;\n" +
+                "export inline int t() {\n    return l() + r();\n}\n",
+        );
+        write("main.cpp", "import top;\nint main() {\n    return t();\n}\n");
+        const { files } = runInspect(cliceExecutable(), "folding_range", tmp, {
+            flags: ["-std=c++20"],
+        });
+        expect(files["main.cpp"]?.error ?? null).toBeNull();
+        expect(files["main.cpp"]?.diagnostics ?? null).toBeNull();
+    } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+    }
+});

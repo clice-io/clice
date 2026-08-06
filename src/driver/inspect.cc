@@ -143,7 +143,8 @@ struct StrictJson {
 /// The options struct doubles as its config section (all fields
 /// `defaulted`), so decoding onto a fresh value IS the overlay: missing
 /// keys keep the field initializers, exactly like the server's config
-/// sections.
+/// sections. Runners re-parse on each call; --config was validated up
+/// front in run_inspect, so their parse cannot fail.
 template <typename Options>
 std::optional<Options> parse_feature_config(llvm::StringRef config) {
     Options options;
@@ -157,8 +158,6 @@ std::optional<Options> parse_feature_config(llvm::StringRef config) {
     return options;
 }
 
-/// Runners re-parse `config` on each call; it was validated up front in
-/// run_inspect, so the parse cannot fail here.
 std::optional<kota::codec::RawValue> run_folding_ranges(CompilationUnitRef unit,
                                                         [[maybe_unused]] llvm::StringRef config) {
     return to_raw_json(feature::folding_ranges(unit));
@@ -222,9 +221,9 @@ std::optional<kota::codec::RawValue> run_signature_help(CompilationParams& param
     return to_raw_json(feature::signature_help(params));
 }
 
-/// Occurrence dump of the TU index for the compiled file — the standalone
-/// pin of the index layer. No LSP request carries this shape, so tu_index
-/// fixtures are `verify: inspect`.
+/// Occurrence dump of the TU index for the compiled file — the
+/// inspect-path pin of the index layer. No LSP request carries this
+/// shape, so tu_index fixtures are `verify: inspect`.
 struct RawOccurrence {
     LocalSourceRange range;
     SymbolKind kind;
@@ -517,16 +516,15 @@ std::optional<FileCommand> file_command(FileEntry& entry,
 
 /// Whether a directory-mode file is inspected. A directory input is one
 /// multi-file unit: a file participates when it carries markers of the
-/// feature's shape, plus the unit entry (main.cpp/main.cppm) for
-/// whole-document shapes. Everything else is a support file — compiled
-/// into participants' units and hashed, but not run.
+/// feature's shape, plus the unit entry (main.cpp) for whole-document
+/// shapes. Everything else is a support file — compiled into
+/// participants' units and hashed, but not run.
 bool participates(const FeatureSpec& spec, const SourceFile& file) {
     bool has_points = !file.source.offsets.empty() || !file.source.nameless_offsets.empty();
     if(spec.run_at != nullptr || spec.run_complete != nullptr) {
         return has_points;
     }
-    bool is_entry = file.rel == "main.cpp" || file.rel == "main.cppm";
-    return is_entry || has_points || !file.source.ranges.empty();
+    return file.rel == "main.cpp" || has_points || !file.source.ranges.empty();
 }
 
 /// Run the feature over one participating file and fill its entry. The

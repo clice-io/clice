@@ -11,7 +11,7 @@ import { execFile, execFileSync } from "node:child_process";
 import * as crypto from "node:crypto";
 import * as path from "node:path";
 import { promisify } from "node:util";
-import { resolveFlags, type SnapCorpus, type SnapFixture } from "./corpus.ts";
+import { resolveFlags, type FixtureFile, type SnapCorpus, type SnapFixture } from "./corpus.ts";
 import { feature, participates } from "./registry.ts";
 import { abBlocks, fileSections, type InspectFileEntry, type InspectOutput } from "./render.ts";
 import { SnapshotContext } from "./snapshot.ts";
@@ -92,9 +92,9 @@ export async function checkInspectFixture(
         ...resolveFlags(fixture.meta.flags, corpus.corpus),
     ];
 
-    const inspectEntries = async (config?: string): Promise<Map<string, InspectFileEntry>> => {
+    const inspectEntries = async (config?: string): Promise<[FixtureFile, InspectFileEntry][]> => {
         const output = await runInspectAsync(clice, corpus.feature, target, { flags, config });
-        const entries = new Map<string, InspectFileEntry>();
+        const entries: [FixtureFile, InspectFileEntry][] = [];
         for (const file of fixture.files) {
             const key = fixture.unit === "" ? file.rel : file.rel.slice(fixture.unit.length + 1);
             const entry = output.files[key];
@@ -120,7 +120,7 @@ export async function checkInspectFixture(
                         (diagnostics ? `\n  ${diagnostics}` : ""),
                 );
             }
-            entries.set(file.rel, entry);
+            entries.push([file, entry]);
         }
 
         // The AST builds even for broken sources, so a compile that
@@ -129,9 +129,7 @@ export async function checkInspectFixture(
         // fixture that tests behavior on broken code declares it with
         // `- diagnostics: expected`, and then a clean compile means the
         // declaration went stale — both directions fail.
-        const diagnostics = fixture.files.flatMap(
-            (file) => entries.get(file.rel)?.diagnostics ?? [],
-        );
+        const diagnostics = entries.flatMap(([, entry]) => entry.diagnostics ?? []);
         if (diagnostics.length > 0 && !fixture.meta.diagnostics) {
             throw new Error(
                 `${corpus.feature}/${fixture.rel}: fixture does not compile cleanly:\n  ` +
@@ -147,14 +145,10 @@ export async function checkInspectFixture(
         return entries;
     };
 
-    const render = (entries: Map<string, InspectFileEntry>): string[] => {
+    const render = (entries: [FixtureFile, InspectFileEntry][]): string[] => {
         const sections: [string, string[]][] = [];
-        for (const file of fixture.files) {
+        for (const [file, entry] of entries) {
             if (!participates(shape, file.source, file.rel === fixture.rel)) {
-                continue;
-            }
-            const entry = entries.get(file.rel);
-            if (!entry) {
                 continue;
             }
             const label = fixture.unit === "" ? file.rel : file.rel.slice(fixture.unit.length + 1);

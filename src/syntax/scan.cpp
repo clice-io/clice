@@ -82,6 +82,36 @@ ScanResult scan(llvm::StringRef content) {
                 }
                 break;
             }
+            case dds::cxx_import_decl:
+            case dds::cxx_export_import_decl: {
+                // Collect the imported module name; header-unit imports
+                // (`import <...>` / `import "..."`) have no identifier
+                // tokens and are not module dependencies.
+                std::string name;
+                bool seen_import_keyword = false;
+                for(auto& tok: dir.Tokens) {
+                    if(!seen_import_keyword) {
+                        if(tok.is(clang::tok::raw_identifier) &&
+                           content.substr(tok.Offset, tok.Length) == "import") {
+                            seen_import_keyword = true;
+                        }
+                        continue;
+                    }
+                    if(tok.is(clang::tok::raw_identifier)) {
+                        name += content.substr(tok.Offset, tok.Length);
+                    } else if(tok.is(clang::tok::period)) {
+                        name += '.';
+                    } else if(tok.is(clang::tok::colon)) {
+                        name += ':';
+                    } else {
+                        break;
+                    }
+                }
+                if(!name.empty()) {
+                    result.modules.push_back(std::move(name));
+                }
+                break;
+            }
             case dds::cxx_module_decl:
             case dds::cxx_export_module_decl: {
                 if(conditional_depth > 0) {
