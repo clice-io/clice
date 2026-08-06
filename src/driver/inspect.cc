@@ -378,6 +378,11 @@ struct SourceFile {
     AnnotatedSource source;
     /// Module declaration facts from the dependency scan (directory mode).
     ScanResult scan;
+    /// The compile_commands.json governing the file, empty when none (and
+    /// in the explicit-flags channel). Module discovery and PCM attachment
+    /// are scoped per database, so nested projects that both declare a
+    /// module named `core` don't collide in one namespace.
+    std::string project;
 };
 
 /// The compile command for one file, arguments owned as strings so they
@@ -414,13 +419,26 @@ std::optional<FileCommand> file_command(FileEntry& entry,
     FileCommand command;
 
     if(!flags.empty()) {
-        std::vector<const char*> driver_args = {"clang++"};
+        bool is_cxx = type != types::TY_INVALID && types::isCXX(type);
+        std::vector<const char*> driver_args = {is_cxx || is_header ? "clang++" : "clang"};
         if(is_header) {
             // An ambiguous header is C++ by default, like clangd; -x forces
             // TU semantics instead of a precompiled-header job.
             driver_args.insert(driver_args.end(), {"-x", "c++"});
         }
-        for(auto& flag: flags) {
+        // The toolchain query spawns the driver from the process cwd, and the
+        // driver reads @response-files itself — resolve them against the
+        // input directory so they don't depend on where inspect was launched.
+        std::vector<std::string> resolved_flags(flags.begin(), flags.end());
+        for(auto& flag: resolved_flags) {
+            llvm::StringRef rest(flag);
+            if(rest.consume_front("@") && !path::is_absolute(rest)) {
+                llvm::SmallString<256> abs(flags_directory);
+                path::append(abs, rest);
+                flag = ("@" + abs).str();
+            }
+        }
+        for(auto& flag: resolved_flags) {
             driver_args.push_back(flag.c_str());
         }
         driver_args.insert(driver_args.end(), {"-fsyntax-only", file.c_str()});
@@ -800,16 +818,19 @@ int run_inspect(const InspectOptions& opts) {
     // files in the unit compile like they do against the server's module
     // pipeline. A dependency cycle leaves its modules unbuilt and surfaces
     // as ordinary compile errors on the importers.
-    llvm::StringMap<std::string> pcms;
+    std::map<std::string, llvm::StringMap<std::string>> pcms;
     std::vector<std::string> pcm_files;
     if(is_dir) {
         bool has_modules = false;
         for(auto& source: sources) {
             source.scan = scan_quick(source.source.content);
+            if(flags.empty()) {
+                source.project = find_cdb(path::parent_path(source.abs)).value_or("");
+            }
             has_modules |= source.scan.is_interface_unit || source.scan.need_preprocess;
         }
 
-        llvm::StringMap<SourceFile*> interfaces;
+        std::map<std::string, llvm::StringMap<SourceFile*>> interfaces;
         if(has_modules) {
             // Preprocessing scans run over the stripped unit through an
             // in-memory overlay.
@@ -853,7 +874,8 @@ int run_inspect(const InspectOptions& opts) {
                 if(!source.scan.is_interface_unit || source.scan.module_name.empty()) {
                     continue;
                 }
-                auto [it, inserted] = interfaces.try_emplace(source.scan.module_name, &source);
+                auto [it, inserted] =
+                    interfaces[source.project].try_emplace(source.scan.module_name, &source);
                 if(!inserted) {
                     output.files.find(source.rel)->second.error = "duplicate_module";
                 }
@@ -862,61 +884,66 @@ int run_inspect(const InspectOptions& opts) {
             // The quick scan only detects module declarations; imports can
             // be macro-formed, so dependency edges come from the
             // preprocessing scan.
-            for(const auto& entry: interfaces) {
-                SourceFile& source = *entry.second;
-                if(auto result = scan_with(source, scan_precise)) {
-                    source.scan.modules = std::move(result->modules);
+            for(const auto& [project, group]: interfaces) {
+                for(const auto& entry: group) {
+                    SourceFile& source = *entry.second;
+                    if(auto result = scan_with(source, scan_precise)) {
+                        source.scan.modules = std::move(result->modules);
+                    }
                 }
             }
         }
 
-        llvm::StringSet<> visited;
-        auto build = [&](auto&& self, llvm::StringRef name) -> void {
-            if(!visited.insert(name).second) {
-                return;
-            }
-            SourceFile& source = *interfaces.find(name)->second;
-            for(auto& dep: source.scan.modules) {
-                if(interfaces.contains(dep)) {
-                    self(self, dep);
+        for(const auto& [project, group]: interfaces) {
+            llvm::StringMap<std::string>& project_pcms = pcms[project];
+            llvm::StringSet<> visited;
+            auto build = [&](auto&& self, llvm::StringRef name) -> void {
+                if(!visited.insert(name).second) {
+                    return;
                 }
-            }
+                SourceFile& source = *group.find(name)->second;
+                for(auto& dep: source.scan.modules) {
+                    if(group.contains(dep)) {
+                        self(self, dep);
+                    }
+                }
 
-            FileEntry& entry = output.files.find(source.rel)->second;
-            auto command = command_for(entry, source);
-            if(!command) {
-                return;
-            }
-            auto tmp = fs::createTemporaryFile("clice-pcm", "pcm");
-            if(!tmp) {
-                entry.error = "module_error";
-                entry.diagnostics = {"failed to create temporary PCM file"};
-                return;
-            }
-            pcm_files.push_back(*tmp);
+                FileEntry& entry = output.files.find(source.rel)->second;
+                auto command = command_for(entry, source);
+                if(!command) {
+                    return;
+                }
+                auto tmp = fs::createTemporaryFile("clice-pcm", "pcm");
+                if(!tmp) {
+                    entry.error = "module_error";
+                    entry.diagnostics = {"failed to create temporary PCM file"};
+                    return;
+                }
+                pcm_files.push_back(*tmp);
 
-            CompilationParams params;
-            params.kind = CompilationKind::ModuleInterface;
-            params.output_file = *tmp;
-            apply_command(params, *command);
-            for(const auto& sibling: sources) {
-                params.add_remapped_file(sibling.abs, sibling.source.content);
-            }
-            for(const auto& pcm: pcms) {
-                params.pcms.try_emplace(pcm.getKey(), pcm.getValue());
-            }
+                CompilationParams params;
+                params.kind = CompilationKind::ModuleInterface;
+                params.output_file = *tmp;
+                apply_command(params, *command);
+                for(const auto& sibling: sources) {
+                    params.add_remapped_file(sibling.abs, sibling.source.content);
+                }
+                for(const auto& pcm: project_pcms) {
+                    params.pcms.try_emplace(pcm.getKey(), pcm.getValue());
+                }
 
-            PCMInfo info;
-            auto unit = clice::compile(params, info);
-            if(!unit.completed()) {
-                entry.error = "module_error";
-                entry.diagnostics = error_messages(unit);
-                return;
+                PCMInfo info;
+                auto unit = clice::compile(params, info);
+                if(!unit.completed()) {
+                    entry.error = "module_error";
+                    entry.diagnostics = error_messages(unit);
+                    return;
+                }
+                project_pcms.try_emplace(name, *tmp);
+            };
+            for(const auto& entry: group) {
+                build(build, entry.getKey());
             }
-            pcms.try_emplace(name, *tmp);
-        };
-        for(const auto& entry: interfaces) {
-            build(build, entry.getKey());
         }
     }
 
@@ -929,7 +956,7 @@ int run_inspect(const InspectOptions& opts) {
         if(!command) {
             continue;
         }
-        run_feature(entry, *spec, source, sources, pcms, *command, config);
+        run_feature(entry, *spec, source, sources, pcms[source.project], *command, config);
     }
 
     for(auto& path: pcm_files) {
