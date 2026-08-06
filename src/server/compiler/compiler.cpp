@@ -220,12 +220,22 @@ kota::task<> Compiler::stop() {
 }
 
 void Compiler::init_compile_graph() {
+    // FIXME: this gate assumes "no module declarations anywhere" implies
+    // "no TU depends on modules", which is wrong: a plain TU may legally
+    // import — even solely through an #include'd header, since
+    // [cpp.import]/3 only forbids include-produced imports inside module
+    // files — so e.g. `import std;` against a prebuilt module is invisible
+    // here. Correct discovery needs a conservative preprocess of every TU,
+    // which is expensive; candidate mitigations when module support
+    // resumes: skip it while the preamble/PCH is unchanged, infer from
+    // compile options, or a global modules switch so module-free projects
+    // pay nothing.
     if(workspace.path_to_module.empty()) {
         LOG_INFO("No C++20 modules detected, skipping CompileGraph");
         return;
     }
 
-    // Lazy dependency resolver: scans a module file on demand to discover imports.
+    // Lazy dependency resolver: scans a file on demand to discover imports.
     auto resolve = [this](std::uint32_t path_id) -> llvm::SmallVector<std::uint32_t> {
         auto file_path = workspace.path_pool.resolve(path_id);
         std::vector<std::string> rule_append, rule_remove;
@@ -754,6 +764,12 @@ kota::task<bool> Compiler::ensure_deps(Session& session,
     // Scan buffer text for module imports that might not be in compile_graph yet.
     // When a user adds `import std;` without saving, the compile_graph (disk-based)
     // doesn't know about the new dependency. Scan the in-memory text to find them.
+    //
+    // FIXME: dead code — scan_quick never reports imports (its contract:
+    // import tokens are macro-expanded, so the lexer level cannot see
+    // them), so this loop body never runs and unsaved `import` additions
+    // are never discovered. Needs the precise scan over the buffer text
+    // when module support resumes.
     {
         auto scan_result = scan_quick(session.text);
         for(auto& mod_name: scan_result.modules) {
