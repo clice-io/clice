@@ -83,7 +83,12 @@ struct SharedScanCache {
 /// Quick lexer-based scan for module name and include file names.
 /// If module declaration is inside #if/#ifdef, sets need_preprocess=true
 /// and module_name will be empty.
-ScanResult scan(llvm::StringRef content);
+///
+/// Deliberately does NOT collect module imports (`modules` stays empty):
+/// an import can be formed or hidden by macros, so directive-level text is
+/// not a trustworthy source of module dependencies. Callers that need
+/// dependency edges must use scan_precise().
+ScanResult scan_quick(llvm::StringRef content);
 
 /// Precise preprocessing-based scan. Keeps all directives including #define
 /// and conditionals. Used for lazy module dependency resolution.

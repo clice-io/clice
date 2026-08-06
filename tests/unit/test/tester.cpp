@@ -129,7 +129,7 @@ bool Tester::compile_with_modules(llvm::StringRef standard) {
         if(file == src_path) {
             continue;
         }
-        auto result = scan(source.content);
+        auto result = scan_quick(source.content);
         if(!result.module_name.empty() || result.need_preprocess) {
             all_modules.push_back({file.str(), source.content});
         }

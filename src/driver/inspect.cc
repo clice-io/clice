@@ -17,6 +17,7 @@
 #include "kota/codec/json/json.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/SHA256.h"
+#include "llvm/Support/VirtualFileSystem.h"
 #include "clang/Driver/Types.h"
 
 namespace kota::codec {
@@ -797,13 +798,43 @@ int run_inspect(const InspectOptions& opts) {
     if(is_dir) {
         llvm::StringMap<SourceFile*> interfaces;
         for(auto& source: sources) {
-            source.scan = scan(source.source.content);
+            source.scan = scan_quick(source.source.content);
             if(!source.scan.is_interface_unit || source.scan.module_name.empty()) {
                 continue;
             }
             auto [it, inserted] = interfaces.try_emplace(source.scan.module_name, &source);
             if(!inserted) {
                 output.files.find(source.rel)->second.error = "duplicate_module";
+            }
+        }
+
+        // The quick scan only detects module declarations; imports can be
+        // macro-formed, so dependency edges come from the preprocessing
+        // scan, run over the stripped unit through an in-memory overlay.
+        if(!interfaces.empty()) {
+            auto memory = llvm::makeIntrusiveRefCnt<llvm::vfs::InMemoryFileSystem>();
+            for(const auto& source: sources) {
+                memory->addFile(source.abs,
+                                0,
+                                llvm::MemoryBuffer::getMemBufferCopy(source.source.content));
+            }
+            auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(
+                llvm::vfs::getRealFileSystem());
+            overlay->pushOverlay(memory);
+
+            SharedScanCache cache;
+            for(const auto& entry: interfaces) {
+                SourceFile& source = *entry.second;
+                auto command = command_for(output.files.find(source.rel)->second, source);
+                if(!command) {
+                    continue;
+                }
+                std::vector<const char*> argv;
+                for(auto& arg: command->arguments) {
+                    argv.push_back(arg.c_str());
+                }
+                source.scan.modules =
+                    scan_precise(argv, command->directory, {}, &cache, overlay).modules;
             }
         }
 

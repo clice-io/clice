@@ -6,10 +6,10 @@ namespace {
 
 TEST_SUITE(Scan) {
 
-// === scan() tests ===
+// === scan_quick() tests ===
 
 TEST_CASE(BasicIncludes) {
-    auto result = scan(R"(
+    auto result = scan_quick(R"(
 #include <vector>
 #include "foo/bar.h"
 int x = 1;
@@ -30,7 +30,7 @@ TEST_CASE(IncludeOffsets) {
 #include <a.h>
 #include "b.h"
 )";
-    auto result = scan(content);
+    auto result = scan_quick(content);
 
     ASSERT_EQ(result.includes.size(), 2u);
     EXPECT_EQ(result.includes[0].offset, static_cast<std::uint32_t>(content.find("#include <a")));
@@ -40,7 +40,7 @@ TEST_CASE(IncludeOffsets) {
 
 TEST_CASE(IndentedIncludeOffset) {
     llvm::StringRef content = "  #  include <a.h>\n";
-    auto result = scan(content);
+    auto result = scan_quick(content);
 
     ASSERT_EQ(result.includes.size(), 1u);
     // The offset points at the `#`, not the line start.
@@ -48,7 +48,7 @@ TEST_CASE(IndentedIncludeOffset) {
 }
 
 TEST_CASE(ConditionalIncludes) {
-    auto result = scan(R"(
+    auto result = scan_quick(R"(
 #include <always.h>
 #ifdef FOO
 #include <conditional.h>
@@ -66,7 +66,7 @@ TEST_CASE(ConditionalIncludes) {
 }
 
 TEST_CASE(NestedConditionals) {
-    auto result = scan(R"(
+    auto result = scan_quick(R"(
 #ifdef A
 #ifdef B
 #include <nested.h>
@@ -86,7 +86,7 @@ TEST_CASE(NestedConditionals) {
 }
 
 TEST_CASE(ModuleDeclaration) {
-    auto result = scan(R"(
+    auto result = scan_quick(R"(
 module;
 #include <header.h>
 export module my.module;
@@ -101,7 +101,7 @@ export module my.module;
 }
 
 TEST_CASE(ModulePartition) {
-    auto result = scan(R"(
+    auto result = scan_quick(R"(
 module my.module:part;
 )");
 
@@ -110,22 +110,20 @@ module my.module:part;
 }
 
 TEST_CASE(ModuleImports) {
-    auto result = scan(R"(
+    // Imports are deliberately NOT collected by the quick scan: an import
+    // can be formed or hidden by macros, so directive-level text is not a
+    // trustworthy source of module dependencies — scan_precise() is.
+    auto result = scan_quick(R"(
 export module top;
 import base;
-export import my.nested:part;
-import <header>;
-import "quoted";
 )");
 
     EXPECT_EQ(result.module_name, "top");
-    ASSERT_EQ(result.modules.size(), 2u);
-    EXPECT_EQ(result.modules[0], "base");
-    EXPECT_EQ(result.modules[1], "my.nested:part");
+    EXPECT_TRUE(result.modules.empty());
 }
 
 TEST_CASE(ModuleImplementation) {
-    auto result = scan(R"(
+    auto result = scan_quick(R"(
 module my.module;
 )");
 
@@ -134,7 +132,7 @@ module my.module;
 }
 
 TEST_CASE(ConditionalModule) {
-    auto result = scan(R"(
+    auto result = scan_quick(R"(
 #ifdef USE_MODULES
 export module foo;
 #endif
@@ -145,7 +143,7 @@ export module foo;
 }
 
 TEST_CASE(GlobalModuleFragment) {
-    auto result = scan(R"(
+    auto result = scan_quick(R"(
 module;
 export module test;
 )");
@@ -155,14 +153,14 @@ export module test;
 }
 
 TEST_CASE(EmptyContent) {
-    auto result = scan("");
+    auto result = scan_quick("");
     EXPECT_TRUE(result.includes.empty());
     EXPECT_TRUE(result.module_name.empty());
     EXPECT_FALSE(result.need_preprocess);
 }
 
 TEST_CASE(NoDirectives) {
-    auto result = scan(R"(
+    auto result = scan_quick(R"(
 int main() {
     return 0;
 }

@@ -13,7 +13,7 @@ TEST_SUITE(ModuleScan) {
 
 // Primary module interface: export module M;
 TEST_CASE(PrimaryModuleInterface) {
-    auto result = scan("export module mylib;");
+    auto result = scan_quick("export module mylib;");
     EXPECT_EQ(result.module_name, "mylib");
     EXPECT_TRUE(result.is_interface_unit);
     EXPECT_FALSE(result.need_preprocess);
@@ -21,7 +21,7 @@ TEST_CASE(PrimaryModuleInterface) {
 
 // Module implementation unit: module M;
 TEST_CASE(ModuleImplementationUnit) {
-    auto result = scan("module mylib;");
+    auto result = scan_quick("module mylib;");
     EXPECT_EQ(result.module_name, "mylib");
     EXPECT_FALSE(result.is_interface_unit);
     EXPECT_FALSE(result.need_preprocess);
@@ -29,42 +29,42 @@ TEST_CASE(ModuleImplementationUnit) {
 
 // Dotted module name: export module std.io;
 TEST_CASE(DottedModuleName) {
-    auto result = scan("export module std.io;");
+    auto result = scan_quick("export module std.io;");
     EXPECT_EQ(result.module_name, "std.io");
     EXPECT_TRUE(result.is_interface_unit);
 }
 
 // Deeply dotted module name: export module a.b.c.d;
 TEST_CASE(DeeplyDottedModuleName) {
-    auto result = scan("export module a.b.c.d;");
+    auto result = scan_quick("export module a.b.c.d;");
     EXPECT_EQ(result.module_name, "a.b.c.d");
     EXPECT_TRUE(result.is_interface_unit);
 }
 
 // Module partition interface: export module M:P;
 TEST_CASE(PartitionInterface) {
-    auto result = scan("export module mylib:core;");
+    auto result = scan_quick("export module mylib:core;");
     EXPECT_EQ(result.module_name, "mylib:core");
     EXPECT_TRUE(result.is_interface_unit);
 }
 
 // Module partition implementation: module M:P;
 TEST_CASE(PartitionImplementation) {
-    auto result = scan("module mylib:core;");
+    auto result = scan_quick("module mylib:core;");
     EXPECT_EQ(result.module_name, "mylib:core");
     EXPECT_FALSE(result.is_interface_unit);
 }
 
 // Dotted module name + partition: export module a.b:p;
 TEST_CASE(DottedModuleWithPartition) {
-    auto result = scan("export module a.b:p;");
+    auto result = scan_quick("export module a.b:p;");
     EXPECT_EQ(result.module_name, "a.b:p");
     EXPECT_TRUE(result.is_interface_unit);
 }
 
 // Global module fragment with includes before module declaration.
 TEST_CASE(GlobalModuleFragmentWithIncludes) {
-    auto result = scan(R"(
+    auto result = scan_quick(R"(
 module;
 #include <stdlib.h>
 #include "config.h"
@@ -81,7 +81,7 @@ export module mylib;
 
 // Conditional module declaration with #ifdef.
 TEST_CASE(ConditionalModuleIfdef) {
-    auto result = scan(R"(
+    auto result = scan_quick(R"(
 #ifdef USE_MODULES
 export module mylib;
 #endif
@@ -92,7 +92,7 @@ export module mylib;
 
 // Conditional module declaration with #if __cpp_modules.
 TEST_CASE(ConditionalModuleCppModules) {
-    auto result = scan(R"(
+    auto result = scan_quick(R"(
 #if __cpp_modules >= 201907L
 export module mylib;
 #endif
@@ -103,7 +103,7 @@ export module mylib;
 
 // Conditional module declaration in global module fragment.
 TEST_CASE(ConditionalModuleInGMF) {
-    auto result = scan(R"(
+    auto result = scan_quick(R"(
 module;
 #include <stdlib.h>
 #ifdef USE_MODULES
@@ -118,7 +118,7 @@ export module mylib;
 
 // Module declaration NOT inside conditional (after a closed conditional block).
 TEST_CASE(ModuleAfterClosedConditional) {
-    auto result = scan(R"(
+    auto result = scan_quick(R"(
 module;
 #ifdef FOO
 #include <optional.h>
@@ -132,7 +132,7 @@ export module mylib;
 
 // Private module fragment marker should not override the real module declaration.
 TEST_CASE(PrivateModuleFragment) {
-    auto result = scan(R"(
+    auto result = scan_quick(R"(
 export module mylib;
 export int f();
 module : private;

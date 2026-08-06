@@ -755,7 +755,7 @@ kota::task<bool> Compiler::ensure_deps(Session& session,
     // When a user adds `import std;` without saving, the compile_graph (disk-based)
     // doesn't know about the new dependency. Scan the in-memory text to find them.
     {
-        auto scan_result = scan(session.text);
+        auto scan_result = scan_quick(session.text);
         for(auto& mod_name: scan_result.modules) {
             if(mod_name.empty())
                 continue;

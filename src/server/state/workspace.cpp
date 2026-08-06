@@ -110,7 +110,7 @@ void Workspace::rescan_includes(std::uint32_t path_id) {
         // reachable through the -I set of a non-first CDB entry. The local
         // index serves as config id — prior keys were just cleared and
         // consumers read the union.
-        auto includes = scan((*buf)->getBuffer()).includes;
+        auto includes = scan_quick((*buf)->getBuffer()).includes;
         DirListingCache dir_cache;
         auto dir = llvm::sys::path::parent_path(path);
         for(std::uint32_t ci = 0; ci < cmds.size(); ++ci) {
@@ -153,7 +153,7 @@ llvm::SmallVector<std::uint32_t> Workspace::rescan_after_save(std::uint32_t path
     // Re-scan the saved file for module declarations and update path_to_module.
     auto file_path = path_pool.resolve(path_id);
     if(auto buf = llvm::MemoryBuffer::getFile(file_path)) {
-        auto result = scan((*buf)->getBuffer());
+        auto result = scan_quick((*buf)->getBuffer());
         if(!result.module_name.empty()) {
             path_to_module[path_id] = std::move(result.module_name);
         } else {
