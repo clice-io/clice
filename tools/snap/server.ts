@@ -82,11 +82,19 @@ export async function checkServerSnapFixture(
         }
         // The inspect driver owns the strict two-way diagnostics gate; here
         // only unexpected errors fail — the preamble split may legitimately
-        // shift where an expected-broken fixture's diagnostics surface.
+        // shift where an expected-broken fixture's diagnostics surface. A
+        // server-only fixture never runs the inspect gate, so the stale
+        // `diagnostics: expected` direction must be enforced here.
         if (errors.length > 0 && !fixture.meta.diagnostics) {
             throw new Error(
                 `${corpus.feature}/${fixture.rel}: fixture does not compile cleanly:\n  ` +
                     errors.join("\n  "),
+            );
+        }
+        if (errors.length === 0 && fixture.meta.diagnostics && fixture.meta.verify === "server") {
+            throw new Error(
+                `${corpus.feature}/${fixture.rel}: diagnostics: expected, ` +
+                    "but the fixture compiled cleanly",
             );
         }
 

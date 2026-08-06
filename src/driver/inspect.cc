@@ -515,11 +515,12 @@ std::optional<FileCommand> file_command(FileEntry& entry,
     return command;
 }
 
-/// Whether a directory-mode file is inspected. A directory input is one
-/// multi-file unit: a file participates when it carries markers of the
-/// feature's shape, plus the unit entry (main.cpp) for whole-document
-/// shapes. Everything else is a support file — compiled into
-/// participants' units and hashed, but not run.
+/// Whether a directory-mode file is inspected. Only applied under
+/// --annotations, where a directory input is one fixture unit: a file
+/// participates when it carries markers of the feature's shape, plus the
+/// unit entry (main.cpp) for whole-document shapes. Everything else is a
+/// support file — compiled into participants' units and hashed, but not
+/// run. A plain directory inspect runs the feature over every file.
 bool participates(const FeatureSpec& spec, const SourceFile& file) {
     bool has_points = !file.source.offsets.empty() || !file.source.nameless_offsets.empty();
     if(spec.run_at != nullptr || spec.run_complete != nullptr) {
@@ -550,6 +551,12 @@ void run_feature(FileEntry& entry,
             params.add_remapped_file(sibling.abs, sibling.source.content);
         }
         for(const auto& pcm: pcms) {
+            // Like the server path, withhold the PCM of the module this
+            // file itself declares — attaching it would redeclare the
+            // module the compile is defining.
+            if(file.scan.is_interface_unit && pcm.getKey() == file.scan.module_name) {
+                continue;
+            }
             params.pcms.try_emplace(pcm.getKey(), pcm.getValue());
         }
     };
@@ -914,7 +921,7 @@ int run_inspect(const InspectOptions& opts) {
     }
 
     for(auto& source: sources) {
-        if(is_dir && !participates(*spec, source)) {
+        if(is_dir && opts.annotations && !participates(*spec, source)) {
             continue;
         }
         FileEntry& entry = output.files.find(source.rel)->second;
