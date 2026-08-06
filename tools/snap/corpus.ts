@@ -212,6 +212,7 @@ export interface SnapCorpus {
 
 const C_FAMILY = /\.(cpp|cc|cxx|c|cppm|h|hpp|hh)$/;
 const COMPILABLE = /\.(cpp|cppm)$/;
+export const HEADER = /\.(h|hpp|hh)$/;
 
 /// Substitute `${corpus}` with the root the flags run against: the corpus
 /// directory on the inspect path, the materialized workspace root on the
@@ -390,7 +391,15 @@ export function materializeFixture(corpus: SnapCorpus, fixture: SnapFixture, roo
             compilable.map((rel) => ({
                 directory: unitRels.has(rel) ? unitDir : posixRoot,
                 file: `${posixRoot}/${rel}`,
-                arguments: ["clang++", ...flags, "-fsyntax-only", `${posixRoot}/${rel}`],
+                // Mirror the inspect path's driver choice (file_command):
+                // C sources take the C driver, everything else (C++,
+                // headers) the C++ one.
+                arguments: [
+                    rel.endsWith(".c") ? "clang" : "clang++",
+                    ...flags,
+                    "-fsyntax-only",
+                    `${posixRoot}/${rel}`,
+                ],
             })),
             null,
             2,

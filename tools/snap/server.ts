@@ -14,6 +14,7 @@
 import type { CliceClient } from "../client/client.ts";
 import type { SessionFactory } from "../client/session.ts";
 import {
+    HEADER,
     materializeFixture,
     type FixtureFile,
     type SnapCorpus,
@@ -62,13 +63,20 @@ export async function checkServerSnapFixture(
 
     const present = async (client: CliceClient): Promise<string[]> => {
         // Sibling sources open before the entry: a module interface must be
-        // scanned before an import of it resolves.
+        // scanned before an import of it resolves. Headers open only when
+        // they participate — a support header may be valid only through its
+        // includer, and the inspect path never compiles one standalone
+        // either.
         const opened: [FixtureFile, string][] = [];
         const errors: string[] = [];
         const ordered = [
             ...fixture.files.filter((file) => file.rel !== fixture.rel),
             ...fixture.files.filter((file) => file.rel === fixture.rel),
-        ];
+        ].filter(
+            (file) =>
+                !HEADER.test(file.rel) ||
+                participates(shape, file.source, file.rel === fixture.rel),
+        );
         for (const file of ordered) {
             const [uri] = await client.openAndWait(file.rel, 60_000);
             opened.push([file, uri]);

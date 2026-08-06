@@ -399,6 +399,18 @@ void apply_command(CompilationParams& params, const FileCommand& command) {
     params.directory = command.directory;
 }
 
+clang::driver::types::ID file_type(llvm::StringRef file) {
+    namespace types = clang::driver::types;
+    auto ext = path::extension(file);
+    return ext.empty() ? types::TY_INVALID
+                       : types::lookupTypeForExtension(llvm::StringRef(ext).drop_front());
+}
+
+bool is_header_type(clang::driver::types::ID type) {
+    namespace types = clang::driver::types;
+    return type == types::TY_CHeader || type == types::TY_CXXHeader;
+}
+
 /// The compile command for `file`. Explicit --flag arguments (the snap-test
 /// channel — the harness owns the flags, no compile_commands.json exists)
 /// apply uniformly to every input file; otherwise the file's entry in
@@ -411,10 +423,8 @@ std::optional<FileCommand> file_command(FileEntry& entry,
                                         CompilationDatabase* database,
                                         Toolchain& toolchain) {
     namespace types = clang::driver::types;
-    auto ext = path::extension(file);
-    auto type = ext.empty() ? types::TY_INVALID
-                            : types::lookupTypeForExtension(llvm::StringRef(ext).drop_front());
-    bool is_header = type == types::TY_CHeader || type == types::TY_CXXHeader;
+    auto type = file_type(file);
+    bool is_header = is_header_type(type);
 
     FileCommand command;
 
@@ -554,13 +564,16 @@ bool participates(const FeatureSpec& spec, const SourceFile& file) {
 /// mismatch instead of hiding in the preamble. It sees the whole unit —
 /// every stripped file is remapped and every built PCM attached — so
 /// cross-file fixtures compile like the server's view of the workspace.
+/// With `participant` false only the compile runs: the file's errors still
+/// reach the fixture diagnostics gate, but no feature output is produced.
 void run_feature(FileEntry& entry,
                  const FeatureSpec& spec,
                  const SourceFile& file,
                  llvm::ArrayRef<SourceFile> sources,
                  const llvm::StringMap<std::string>& pcms,
                  const FileCommand& command,
-                 llvm::StringRef config) {
+                 llvm::StringRef config,
+                 bool participant) {
     const AnnotatedSource& source = file.source;
 
     auto prepare = [&](CompilationParams& params) {
@@ -596,6 +609,10 @@ void run_feature(FileEntry& entry,
     // broke instead of pinning garbage.
     if(auto errors = error_messages(unit, /*errors_only=*/true); !errors.empty()) {
         entry.diagnostics = std::move(errors);
+    }
+
+    if(!participant) {
+        return;
     }
 
     if(spec.run_complete != nullptr) {
@@ -948,7 +965,12 @@ int run_inspect(const InspectOptions& opts) {
     }
 
     for(auto& source: sources) {
-        if(is_dir && opts.annotations && !participates(*spec, source)) {
+        bool participant = !(is_dir && opts.annotations) || participates(*spec, source);
+        // Non-participating siblings still health-compile so their errors
+        // reach the fixture diagnostics gate, like the server path opening
+        // every sibling — except headers, which may be valid only through
+        // their includer and never compile standalone on either path.
+        if(!participant && is_header_type(file_type(source.abs))) {
             continue;
         }
         FileEntry& entry = output.files.find(source.rel)->second;
@@ -956,7 +978,14 @@ int run_inspect(const InspectOptions& opts) {
         if(!command) {
             continue;
         }
-        run_feature(entry, *spec, source, sources, pcms[source.project], *command, config);
+        run_feature(entry,
+                    *spec,
+                    source,
+                    sources,
+                    pcms[source.project],
+                    *command,
+                    config,
+                    participant);
     }
 
     for(auto& path: pcm_files) {
