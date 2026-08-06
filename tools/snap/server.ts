@@ -47,7 +47,10 @@ export async function checkServerSnapFixture(
             project: { enable_indexing: fixture.meta.indexing },
         };
         if (configured && fixture.meta.config !== undefined) {
-            options[corpus.feature] = JSON.parse(fixture.meta.config) as Record<string, unknown>;
+            options[corpus.configSection] = JSON.parse(fixture.meta.config) as Record<
+                string,
+                unknown
+            >;
         }
         return options;
     };

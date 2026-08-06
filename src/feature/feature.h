@@ -94,13 +94,14 @@ struct CodeCompletionOptions {
     defaulted<std::uint32_t> limit = 0;
 };
 
+/// Corresponds to the `[hover]` section in clice.toml.
 struct HoverOptions {
     /// Render the hover card as markdown rather than plain text.
-    bool parse_comment_as_markdown = true;
+    defaulted<bool> parse_comment_as_markdown = true;
 
     /// Show the desugared form of a type, e.g. `vector<int>::size_type (aka
     /// unsigned long)`.
-    bool show_aka = true;
+    defaulted<bool> show_aka = true;
 };
 
 /// Contains detailed information about a symbol. Especially useful when

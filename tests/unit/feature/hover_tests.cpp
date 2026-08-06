@@ -691,252 +691,39 @@ TEST_CASE(setter_heuristic_no_crash) {
     ASSERT_TRUE(info.has_value());
 }
 
-TEST_CASE(present) {
-    struct {
-        std::string_view name;
-        std::function<void(HoverInfo&)> builder;
-    } cases[] = {
-        {"invalid-kind",
-         [](HoverInfo& hi) {
-             hi.kind = SymbolKind::Invalid;
-             hi.name = "X";
-         }          },
-        {"namespace",
-         [](HoverInfo& hi) {
-             hi.kind = SymbolKind::Namespace;
-             hi.name = "foo";
-         }          },
-        {"class-template",
-         [](HoverInfo& hi) {
-             hi.kind = SymbolKind::Class;
-             hi.size = 80;
-             hi.template_parameters = {
-                 {                              {"typename"},                              std::string("T"),         std::nullopt},
-                 {           {"typename"},            std::string("C"),      std::string("bool")},
-             };
-             hi.documentation = "documentation";
-             hi.definition = "template <typename T, typename C = bool> class Foo {}";
-             hi.name = "foo";
-             hi.namespace_scope.emplace();
-         }                    },
-        {"function-parameters",
-         [](HoverInfo& hi) {
-             hi.kind = SymbolKind::Function;
-             hi.name = "foo";
-             hi.type = {"type", "c_type"};
-             hi.return_type = {"ret_type", "can_ret_type"};
-             hi.parameters.emplace();
-             HoverParam p;
-             hi.parameters->push_back(p);
-             p.type = PrintedType("type", "can_type");
-             hi.parameters->push_back(p);
-             p.name = "foo";
-             hi.parameters->push_back(p);
-             p.default_value = "default";
-             hi.parameters->push_back(p);
-             hi.namespace_scope = "ns::";
-             hi.definition = "ret_type foo(params) {}";
-         }          },
-        {"field-byte-layout",
-         [](HoverInfo& hi) {
-             hi.kind = SymbolKind::Field;
-             hi.local_scope = "test::Bar::";
-             hi.value = "value";
-             hi.name = "foo";
-             hi.type = {"type", "can_type"};
-             hi.definition = "def";
-             hi.size = 32;
-             hi.offset = 96;
-             hi.padding = 32;
-             hi.align = 32;
-         }},
-        {"field-bit-layout",
-         [](HoverInfo& hi) {
-             hi.kind = SymbolKind::Field;
-             hi.local_scope = "test::Bar::";
-             hi.value = "value";
-             hi.name = "foo";
-             hi.type = {"type", "can_type"};
-             hi.definition = "def";
-             hi.size = 25;
-             hi.offset = 35;
-             hi.padding = 4;
-             hi.align = 64;
-         }          },
-        {"field-access-specifier",
-         [](HoverInfo& hi) {
-             hi.kind = SymbolKind::Field;
-             hi.access_specifier = "public";
-             hi.name = "foo";
-             hi.local_scope = "test::Bar::";
-             hi.definition = "def";
-         }          },
-        {"method-protected",
-         [](HoverInfo& hi) {
-             hi.definition = "size_t method()";
-             hi.access_specifier = "protected";
-             hi.kind = SymbolKind::Method;
-             hi.namespace_scope = "";
-             hi.local_scope = "cls<int>::";
-             hi.name = "method";
-             hi.parameters.emplace();
-             hi.return_type = {"size_t", "unsigned long"};
-             hi.type = {"size_t ()", "unsigned long ()"};
-         }          },
-        {"constructor-parameters",
-         [](HoverInfo& hi) {
-             hi.definition = "cls(int a, int b = 5)";
-             hi.access_specifier = "public";
-             hi.kind = SymbolKind::Method;
-             hi.namespace_scope = "";
-             hi.local_scope = "cls";
-             hi.name = "cls";
-             hi.parameters = {
-                 { {"int"},  std::string("a"), std::nullopt},
-                 {{"int"}, std::string("b"), std::string("5")},
-             };
-         }          },
-        {"union-access-specifier",
-         [](HoverInfo& hi) {
-             hi.kind = SymbolKind::Union;
-             hi.access_specifier = "private";
-             hi.name = "foo";
-             hi.namespace_scope = "ns1::";
-             hi.definition = "union foo {}";
-         }          },
-        {"passed-by-value-as-arg",
-         [](HoverInfo& hi) {
-             hi.kind = SymbolKind::Variable;
-             hi.name = "foo";
-             hi.definition = "int foo = 3";
-             hi.local_scope = "test::Bar::";
-             hi.value = "3";
-             hi.type = "int";
-             hi.callee_arg_info.emplace();
-             hi.callee_arg_info->name = "arg_a";
-             hi.callee_arg_info->type = PrintedType("int");
-             hi.callee_arg_info->default_value = "7";
-             hi.call_pass_type = PassType{PassMode::Value, false};
-         }                    },
-        {"passed-by-value-unnamed-arg",
-         [](HoverInfo& hi) {
-             hi.kind = SymbolKind::Variable;
-             hi.name = "foo";
-             hi.callee_arg_info.emplace();
-             hi.callee_arg_info->type = PrintedType("int");
-             hi.call_pass_type = PassType{PassMode::Value, false};
-         }          },
-        {"passed-by-reference-as-arg",
-         [](HoverInfo& hi) {
-             hi.kind = SymbolKind::Variable;
-             hi.name = "foo";
-             hi.definition = "int foo = 3";
-             hi.local_scope = "test::Bar::";
-             hi.value = "3";
-             hi.type = "int";
-             hi.callee_arg_info.emplace();
-             hi.callee_arg_info->name = "arg_a";
-             hi.callee_arg_info->type = PrintedType("int");
-             hi.callee_arg_info->default_value = "7";
-             hi.call_pass_type = PassType{PassMode::Ref, false};
-         }},
-        {"passed-converted-to-alias",
-         [](HoverInfo& hi) {
-             hi.kind = SymbolKind::Variable;
-             hi.name = "foo";
-             hi.definition = "int foo = 3";
-             hi.local_scope = "test::Bar::";
-             hi.value = "3";
-             hi.type = "int";
-             hi.callee_arg_info.emplace();
-             hi.callee_arg_info->name = "arg_a";
-             hi.callee_arg_info->type = PrintedType("alias_int", "int");
-             hi.callee_arg_info->default_value = "7";
-             hi.call_pass_type = PassType{PassMode::Value, true};
-         }          },
-        {"macro-expansion",
-         [](HoverInfo& hi) {
-             hi.kind = SymbolKind::Macro;
-             hi.name = "PLUS_ONE";
-             hi.definition = "#define PLUS_ONE(X) (X+1)\n\n" "// Expands to\n" "(1 + 1)";
-         }          },
-        {"passed-by-const-ref-converted",
-         [](HoverInfo& hi) {
-             hi.kind = SymbolKind::Variable;
-             hi.name = "foo";
-             hi.definition = "int foo = 3";
-             hi.local_scope = "test::Bar::";
-             hi.value = "3";
-             hi.type = "int";
-             hi.callee_arg_info.emplace();
-             hi.callee_arg_info->name = "arg_a";
-             hi.callee_arg_info->type = PrintedType("int");
-             hi.callee_arg_info->default_value = "7";
-             hi.call_pass_type = PassType{PassMode::ConstRef, true};
-         }          },
-        {"header-file",
-         [](HoverInfo& hi) {
-             hi.name = "stdio.h";
-             hi.definition = "/usr/include/stdio.h";
-         }          },
-    };
-
-    for(const auto& c: cases) {
-        HoverInfo hi;
-        c.builder(hi);
-        ASSERT_SNAPSHOT(yaml_block("plaintext", hi.present().as_plain_text()), c.name);
-    }
-}
-
-TEST_CASE(present_headings) {
-    // Headings don't create any differences in plaintext mode.
-    HoverInfo hi;
-    hi.kind = SymbolKind::Variable;
-    hi.name = "foo";
-
-    ASSERT_SNAPSHOT(yaml_block("markdown", hi.present().as_markdown()), "variable-heading-md");
-}
-
-TEST_CASE(present_rulers) {
-    // Rulers behave differently in markdown vs plaintext.
-    HoverInfo hi;
-    hi.kind = SymbolKind::Variable;
-    hi.name = "foo";
-    hi.value = "val";
-    hi.definition = "def";
-
-    ASSERT_SNAPSHOT(yaml_block("markdown", hi.present().as_markdown()), "rulers-md");
-    ASSERT_SNAPSHOT(yaml_block("plaintext", hi.present().as_plain_text()), "rulers-plaintext");
-}
-
 TEST_CASE(parse_documentation) {
     struct {
-        std::string_view name;
         llvm::StringRef documentation;
+        llvm::StringRef markdown;
+        llvm::StringRef plain_text;
     } cases[] = {
-        {"strip-leading-whitespace",  " \n foo\nbar"                  },
-        {"strip-trailing-whitespace", "foo\nbar \n  "                 },
-        {"join-two-trailing-spaces",  "foo  \nbar"                    },
-        {"join-four-trailing-spaces", "foo    \nbar"                  },
-        {"blank-lines-break",         "foo\n\n\nbar"                  },
-        {"blank-lines-tab-indent",    "foo\n\n\n\tbar"                },
-        {"blank-lines-space-indent",  "foo\n\n\n bar"                 },
-        {"period-breaks-line",        "foo.\nbar"                     },
-        {"period-space-breaks-line",  "foo. \nbar"                    },
-        {"star-breaks-line",          "foo\n*bar"                     },
-        {"simple-join",               "foo\nbar"                      },
-        {"inline-code-span",          "Tests primality of `p`."       },
-        {"backtick-in-text",          "'`' should not occur in `Code`"},
-        {"multiline-code-span",       "`not\nparsed`"                 },
+        // Leading/trailing whitespace strips; plain newlines join, and so
+        // does markdown's own hard-break spelling (trailing spaces).
+        {" \n foo\nbar",                   "foo bar",                 "foo bar"                       },
+        {"foo\nbar \n  ",                  "foo bar",                 "foo bar"                       },
+        {"foo  \nbar",                     "foo bar",                 "foo bar"                       },
+        {"foo    \nbar",                   "foo bar",                 "foo bar"                       },
+        {"foo\nbar",                       "foo bar",                 "foo bar"                       },
+        // Blank lines, indentation, sentence ends and list stars break.
+        {"foo\n\n\nbar",                   "foo  \nbar",              "foo\nbar"                      },
+        {"foo\n\n\n\tbar",                 "foo  \nbar",              "foo\nbar"                      },
+        {"foo\n\n\n bar",                  "foo  \nbar",              "foo\nbar"                      },
+        {"foo.\nbar",                      "foo.  \nbar",             "foo.\nbar"                     },
+        {"foo. \nbar",                     "foo.  \nbar",             "foo.\nbar"                     },
+        {"foo\n*bar",                      "foo  \n\\*bar",           "foo\n*bar"                     },
+        // Inline code spans survive; stray backticks escape in markdown and
+        // multiline spans collapse onto one line.
+        {"Tests primality of `p`.",        "Tests primality of `p`.", "Tests primality of `p`."       },
+        {"'`' should not occur in `Code`",
+         "'\\`' should not occur in `Code`",                          "'`' should not occur in `Code`"},
+        {"`not\nparsed`",                  "\\`not parsed\\`",        "`not parsed`"                  },
     };
 
     for(const auto& c: cases) {
         markup::Document output;
         feature::parse_documentation(c.documentation, output);
-
-        ASSERT_SNAPSHOT(yaml_block("markdown", output.as_markdown()), std::format("{}-md", c.name));
-        ASSERT_SNAPSHOT(yaml_block("plaintext", output.as_plain_text()),
-                        std::format("{}-plaintext", c.name));
+        EXPECT_EQ(output.as_markdown(), c.markdown);
+        EXPECT_EQ(output.as_plain_text(), c.plain_text);
     }
 }
 

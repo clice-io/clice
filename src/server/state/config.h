@@ -107,6 +107,8 @@ struct Config {
 
     defaulted<TrackerConfig> tracker;
 
+    defaulted<feature::HoverOptions> hover;
+
     defaulted<feature::InlayHintsOptions> inlay_hints;
 
     defaulted<feature::CodeCompletionOptions> code_completion;

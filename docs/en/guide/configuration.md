@@ -122,6 +122,26 @@ Interval for re-checking the compilation database file.
 
 Interval for sweeping workspace files for on-disk changes.
 
+## Hover
+
+The `[hover]` section controls how hover cards render. Changes take effect after a server restart.
+
+### `hover.parse_comment_as_markdown`
+
+| Type   | Default |
+| ------ | ------- |
+| `bool` | `true`  |
+
+Render the hover card as markdown. `false` produces plain text for clients that cannot display markdown.
+
+### `hover.show_aka`
+
+| Type   | Default |
+| ------ | ------- |
+| `bool` | `true`  |
+
+Show the desugared form of a type, e.g. `vector<int>::size_type (aka unsigned long)`.
+
 ## Inlay Hints
 
 The `[inlay_hints]` section controls which inlay hint categories the server produces. Configuration changes take effect after a server restart; a client-side refresh then requests hints with the updated values. No recompile is involved.

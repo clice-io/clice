@@ -200,6 +200,10 @@ export interface SnapCorpus {
     corpus: string;
     /// corpus.json manifest flags, `${corpus}` still unresolved.
     flags: string[];
+    /// The config section `config:` overlays target on the server (the
+    /// feature name unless the manifest overrides it — the inlay_hint
+    /// corpus configures the `[inlay_hints]` section).
+    configSection: string;
     fixtures: SnapFixture[];
     /// Corpus-root support entries shared by every fixture (include roots,
     /// `.clang-format`, ...), as corpus-relative paths.
@@ -217,10 +221,10 @@ export function resolveFlags(flags: string[], root: string): string[] {
     return flags.map((flag) => flag.replaceAll("${corpus}", posix));
 }
 
-function readManifest(corpus: string): string[] {
+function readManifest(feature: string, corpus: string): { flags: string[]; configSection: string } {
     const file = path.join(corpus, "corpus.json");
     if (!fs.existsSync(file)) {
-        return ["-std=c++20"];
+        return { flags: ["-std=c++20"], configSection: feature };
     }
     const manifest: unknown = JSON.parse(fs.readFileSync(file, "utf8"));
     if (typeof manifest !== "object" || manifest === null || Array.isArray(manifest)) {
@@ -228,15 +232,18 @@ function readManifest(corpus: string): string[] {
     }
     // `notes` carries the why of the flags — JSON has no comments.
     for (const key of Object.keys(manifest)) {
-        if (key !== "flags" && key !== "notes") {
+        if (key !== "flags" && key !== "config_section" && key !== "notes") {
             throw new Error(`${file}: unknown manifest key '${key}'`);
         }
     }
-    const flags = (manifest as { flags?: unknown }).flags;
+    const { flags, config_section } = manifest as { flags?: unknown; config_section?: unknown };
     if (!Array.isArray(flags) || !flags.every((flag) => typeof flag === "string")) {
         throw new Error(`${file}: flags must be a JSON string array`);
     }
-    return flags;
+    if (config_section !== undefined && typeof config_section !== "string") {
+        throw new Error(`${file}: config_section must be a string`);
+    }
+    return { flags, configSection: config_section ?? feature };
 }
 
 /// Enumerate the corpora under tests/snap.
@@ -299,7 +306,15 @@ export function snapCorpora(): SnapCorpus[] {
         }
         fixtures.sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0));
 
-        corpora.push({ feature, corpus, flags: readManifest(corpus), fixtures, support });
+        const manifest = readManifest(feature, corpus);
+        corpora.push({
+            feature,
+            corpus,
+            flags: manifest.flags,
+            configSection: manifest.configSection,
+            fixtures,
+            support,
+        });
     }
     return corpora;
 }

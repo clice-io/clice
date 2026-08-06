@@ -175,7 +175,7 @@ cmd = "node tools/feature_docs.ts check"
 
 [feature.test.tasks.unit-test]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
-cmd = './build/{{ type }}/bin/unit_tests --test-dir="./tests/data" --snapshot-dir="./tests/snapshots/unit" --verbose'
+cmd = './build/{{ type }}/bin/unit_tests --test-dir="./tests/data" --verbose'
 depends-on = [{ task = "check-feature-docs" }]
 
 # npm workspaces: install runs at the repo root and covers tools/, tests/

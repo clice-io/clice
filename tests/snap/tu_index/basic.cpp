@@ -1,4 +1,6 @@
-// Seed case for the per-feature snapshot corpus: symbols and relations.
+/// - verify: inspect
+
+// Seed case for the tu_index corpus: symbols and relations.
 namespace demo {
 
 struct Base {

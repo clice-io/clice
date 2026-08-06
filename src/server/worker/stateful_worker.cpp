@@ -366,7 +366,7 @@ void StatefulWorker::register_handlers() {
             switch(params.kind) {
                 case K::Hover:
                     co_return co_await with_ast(params.path, [&](DocumentEntry& doc) {
-                        auto result = feature::hover(doc.unit, params.offset);
+                        auto result = feature::hover(doc.unit, params.offset, params.config.hover);
                         return result ? to_raw(*result) : kota::codec::RawValue{"null"};
                     });
                 case K::GoToDefinition:

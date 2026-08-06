@@ -11,6 +11,7 @@ import { hover } from "./features/hover.ts";
 import { inlayHint } from "./features/inlay_hint.ts";
 import { semanticTokens } from "./features/semantic_tokens.ts";
 import { signatureHelp } from "./features/signature_help.ts";
+import { tuIndex } from "./features/tu_index.ts";
 import type { Feature, FeatureShape } from "./render.ts";
 
 const FEATURES: Record<string, Feature> = {
@@ -22,6 +23,7 @@ const FEATURES: Record<string, Feature> = {
     inlay_hint: inlayHint,
     semantic_tokens: semanticTokens,
     signature_help: signatureHelp,
+    tu_index: tuIndex,
 };
 
 export function feature(name: string): Feature {
