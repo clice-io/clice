@@ -178,18 +178,24 @@ test("inspect --flags replaces CDB discovery", () => {
 test("inspect directory is one unit", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "clice-inspect-"));
     try {
-        // Serial module build: main.cpp imports a module interface sibling,
-        // so its entry only compiles if the PCM was built first. The
-        // support file participates through its marker and every file
-        // carries a hash for the stripper-twin check.
+        // Serial module build: the entry consumes a module interface
+        // sibling, so it only compiles if the PCM was built first — and
+        // the import arrives through the #include, which is legal for a
+        // plain (non-module) TU, so PCMs must reach consumers whose own
+        // text never mentions the module. The support file participates
+        // through its marker and every file carries a hash for the
+        // stripper-twin check.
         fs.writeFileSync(
             path.join(tmp, "mod.cppm"),
             "export module demo;\nexport inline int one() {\n    return 1;\n}\n",
         );
-        fs.writeFileSync(path.join(tmp, "lib.h"), "inline int §two() {\n    return 2;\n}\n");
+        fs.writeFileSync(
+            path.join(tmp, "lib.h"),
+            "import demo;\ninline int §two() {\n    return one() + 1;\n}\n",
+        );
         fs.writeFileSync(
             path.join(tmp, "main.cpp"),
-            'import demo;\n#include "lib.h"\nint main() {\n    return one() + two();\n}\n',
+            '#include "lib.h"\nint main() {\n    return one() + two();\n}\n',
         );
         const { files } = runInspect(cliceExecutable(), "folding_range", tmp, {
             flags: ["-std=c++20"],

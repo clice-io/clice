@@ -453,6 +453,26 @@ import :io;
     EXPECT_EQ(result.modules[2], "mylib:io");
 }
 
+// An import arriving entirely through an #include. Legal only for a
+// NON-module translation unit: in a module-file's group an
+// include-produced pp-import is ill-formed ([cpp.import]/3), and the
+// global module fragment cannot hold imports — so plain TUs are exactly
+// why module dependency discovery needs preprocessing, never just the
+// main file's text.
+TEST_CASE(ImportFromIncludedHeader) {
+    ModuleScanFixture f(R"(
+#[main.cpp]
+#include "deps.h"
+int main() { return 0; }
+#[deps.h]
+import dep;
+)");
+    auto result = f.precise();
+    EXPECT_TRUE(result.module_name.empty());
+    ASSERT_EQ(result.modules.size(), 1u);
+    EXPECT_EQ(result.modules[0], "dep");
+}
+
 // Mixed named module imports and partition imports.
 TEST_CASE(MixedNamedAndPartitionImports) {
     ModuleScanFixture f(R"(
