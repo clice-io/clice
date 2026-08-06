@@ -4,8 +4,9 @@
 ///
 /// - status: supported
 /// - order: 2
+/// - diagnostics: expected
 
-// error-ok: the member access expression is left dangling at the point.
+// The member access expression is left dangling at the point.
 template <typename T>
 struct Box {
     T value;

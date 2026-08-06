@@ -3,9 +3,9 @@ created_at: 2026-08-02
 input_file: member_access.cpp
 ---
 pos:
-- { label: "Account", kind: Class, edit: "24:8-24:8" }
-- { label: "balance", kind: Field, description: "int", edit: "24:8-24:8" }
-- { label: "bazzzz", kind: Method, detail: "(int a, int b)", description: "int", edit: "24:8-24:8" }
-- { label: "operator Wallet", kind: Method, detail: "()", edit: "24:8-24:8" }
-- { label: "operator=", kind: Method, detail: "(…) +2 overloads", edit: "24:8-24:8" }
-- { label: "~Account", kind: Method, detail: "()", description: "void", edit: "24:8-24:8" }
+- { label: "Account", kind: Class, edit: "25:8-25:8" }
+- { label: "balance", kind: Field, description: "int", edit: "25:8-25:8" }
+- { label: "bazzzz", kind: Method, detail: "(int a, int b)", description: "int", edit: "25:8-25:8" }
+- { label: "operator Wallet", kind: Method, detail: "()", edit: "25:8-25:8" }
+- { label: "operator=", kind: Method, detail: "(…) +2 overloads", edit: "25:8-25:8" }
+- { label: "~Account", kind: Method, detail: "()", description: "void", edit: "25:8-25:8" }

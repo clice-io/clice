@@ -4,12 +4,13 @@
 ///
 /// - status: supported
 /// - order: 11
+/// - diagnostics: expected
 ///
 /// Qualified completion is not filtered to the statically-reachable subset:
 /// instance fields and the destructor show up alongside the static members
 /// and nested types.
 
-// error-ok: the qualified-id is left dangling at the point.
+// The qualified-id is left dangling at the point.
 struct Config {
     static int shared_count;
     static int make(int seed);

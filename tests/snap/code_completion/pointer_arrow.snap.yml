@@ -3,9 +3,9 @@ created_at: 2026-08-02
 input_file: pointer_arrow.cpp
 ---
 pos:
-- { label: "Node", kind: Class, edit: "16:7-16:7" }
-- { label: "compute", kind: Method, detail: "(int a)", description: "int", edit: "16:7-16:7" }
-- { label: "next", kind: Field, description: "Node *", edit: "16:7-16:7" }
-- { label: "operator=", kind: Method, detail: "(…) +2 overloads", edit: "16:7-16:7" }
-- { label: "value", kind: Field, description: "int", edit: "16:7-16:7" }
-- { label: "~Node", kind: Method, detail: "()", description: "void", edit: "16:7-16:7" }
+- { label: "Node", kind: Class, edit: "17:7-17:7" }
+- { label: "compute", kind: Method, detail: "(int a)", description: "int", edit: "17:7-17:7" }
+- { label: "next", kind: Field, description: "Node *", edit: "17:7-17:7" }
+- { label: "operator=", kind: Method, detail: "(…) +2 overloads", edit: "17:7-17:7" }
+- { label: "value", kind: Field, description: "int", edit: "17:7-17:7" }
+- { label: "~Node", kind: Method, detail: "()", description: "void", edit: "17:7-17:7" }

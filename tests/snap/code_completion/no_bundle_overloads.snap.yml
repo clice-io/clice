@@ -4,10 +4,10 @@ input_file: no_bundle_overloads.cpp
 ---
 default:
   pos:
-  - { label: "foooo", kind: Function, detail: "(…) +3 overloads", edit: "13:8-13:12" }
+  - { label: "foooo", kind: Function, detail: "(…) +3 overloads", edit: "14:8-14:12" }
 
 configured:
   pos:
-  - { label: "foooo", kind: Function, detail: "(double d)", description: "double", edit: "13:8-13:12" }
-  - { label: "foooo", kind: Function, detail: "(int x)", description: "int", edit: "13:8-13:12" }
-  - { label: "foooo", kind: Function, detail: "(int x, int y)", description: "int", edit: "13:8-13:12" }
+  - { label: "foooo", kind: Function, detail: "(double d)", description: "double", edit: "14:8-14:12" }
+  - { label: "foooo", kind: Function, detail: "(int x)", description: "int", edit: "14:8-14:12" }
+  - { label: "foooo", kind: Function, detail: "(int x, int y)", description: "int", edit: "14:8-14:12" }

@@ -4,8 +4,9 @@
 ///
 /// - status: supported
 /// - order: 10
+/// - diagnostics: expected
 
-// error-ok: the qualified-id is left dangling at the point.
+// The qualified-id is left dangling at the point.
 namespace geometry {
 
 int area_of(int r);

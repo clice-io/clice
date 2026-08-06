@@ -4,8 +4,9 @@
 ///
 /// - status: supported
 /// - order: 10
+/// - diagnostics: expected
 
-// error-ok: the member access expression is left dangling at the point.
+// The member access expression is left dangling at the point.
 struct Node {
     int value;
     Node* next;

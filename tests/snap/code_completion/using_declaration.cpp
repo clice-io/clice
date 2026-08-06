@@ -4,8 +4,9 @@
 ///
 /// - status: supported
 /// - order: 13
+/// - diagnostics: expected
 
-// error-ok: the completion prefix dangles as an unfinished statement.
+// The completion prefix dangles as an unfinished statement.
 namespace lib {
 
 int helper_fn(int x);

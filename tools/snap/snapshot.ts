@@ -124,38 +124,6 @@ export function yamlStr(s: string): string {
     return out + '"';
 }
 
-/// Value of `- key: value` in a fixture's leading `///` doc header, or "".
-/// Mirrors tests/unit/test/fixture.h; feature_docs.ts is the authority on
-/// the full grammar.
-export function fixtureFrontmatter(content: string, key: string): string {
-    let first = (content.split("\n", 1)[0] ?? "").trim();
-    if (!first.startsWith("///")) {
-        return "";
-    }
-    first = first.slice(3);
-    if (first.startsWith(" ")) {
-        first = first.slice(1);
-    }
-    if (!first.startsWith("# ")) {
-        return "";
-    }
-    for (let line of content.split("\n")) {
-        line = line.trim();
-        if (!line.startsWith("///")) {
-            break;
-        }
-        line = line.slice(3).trim();
-        if (!line.startsWith("- ") || !line.includes(":")) {
-            continue;
-        }
-        const sep = line.indexOf(":");
-        if (line.slice(2, sep).trim() === key) {
-            return line.slice(sep + 1).trim();
-        }
-    }
-    return "";
-}
-
 export interface Snapshot {
     createdAt: string;
     body: string;
@@ -219,7 +187,8 @@ function renderDiff(oldBody: string, newBody: string): string {
 /// Legacy layout stores `<input>.cpp.snap.yml` under a snapshot tree that
 /// mirrors the corpus; the colocated layout used by tests/snap/ stores
 /// `<input>.snap.yml` (source extension replaced) next to the source
-/// itself, with an optional variant infix: `<input>.wire.snap.yml`.
+/// itself, with an optional variant infix: `<input>.inspect.snap.yml` /
+/// `<input>.server.snap.yml` for `snap: separate` fixtures.
 export class SnapshotContext {
     readonly directory: string;
     readonly update: boolean;

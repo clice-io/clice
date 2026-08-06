@@ -1,0 +1,4 @@
+{
+  "notes": "c++23 for deducing-this fixtures; ms-extensions for __declspec property pseudo-object fixtures.",
+  "flags": ["-std=c++23", "-fms-extensions"]
+}

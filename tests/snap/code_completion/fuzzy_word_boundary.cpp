@@ -4,11 +4,12 @@
 ///
 /// - status: supported
 /// - order: 10
+/// - diagnostics: expected
 ///
 /// `frobnicate` is only a weak scattered subsequence of `fb` and is dropped;
 /// `foo_bar_baz` matches on the `foo`/`bar` word boundaries and survives.
 
-// error-ok: the completion prefix dangles as an unfinished statement.
+// The completion prefix dangles as an unfinished statement.
 int foo_bar_baz;
 int frobnicate;
 

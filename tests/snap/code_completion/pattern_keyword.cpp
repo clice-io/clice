@@ -4,6 +4,7 @@
 ///
 /// - status: supported
 /// - order: 4
+/// - diagnostics: expected
 
-// error-ok: the completion prefix cuts the initializer mid-expression.
+// The completion prefix cuts the initializer mid-expression.
 int x = tru§(pos)

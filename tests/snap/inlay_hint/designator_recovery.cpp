@@ -4,8 +4,9 @@
 ///
 /// - status: supported
 /// - order: 6
+/// - diagnostics: expected
 
-// error-ok: the first initializer deliberately fails to convert.
+// The first initializer deliberately fails to convert.
 struct Empty {};
 
 struct Mixed {

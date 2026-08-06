@@ -4,8 +4,9 @@
 ///
 /// - status: supported
 /// - order: 11
+/// - diagnostics: expected
 
-// error-ok: both completion prefixes dangle; the statements stay
+// Both completion prefixes dangle; the statements stay
 // semicolon-terminated so the second marker is not dragged into recovery.
 enum class Color { Red, Green, Blue };
 

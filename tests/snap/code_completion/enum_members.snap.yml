@@ -3,9 +3,9 @@ created_at: 2026-08-02
 input_file: enum_members.cpp
 ---
 scoped:
-- { label: "Blue", kind: EnumMember, description: "Color", edit: "14:21-14:21" }
-- { label: "Green", kind: EnumMember, description: "Color", edit: "14:21-14:21" }
-- { label: "Red", kind: EnumMember, description: "Color", edit: "14:21-14:21" }
+- { label: "Blue", kind: EnumMember, description: "Color", edit: "15:21-15:21" }
+- { label: "Green", kind: EnumMember, description: "Color", edit: "15:21-15:21" }
+- { label: "Red", kind: EnumMember, description: "Color", edit: "15:21-15:21" }
 
 unscoped:
-- { label: "Apple", kind: EnumMember, description: "Fruit", edit: "15:12-15:15" }
+- { label: "Apple", kind: EnumMember, description: "Fruit", edit: "16:12-16:15" }

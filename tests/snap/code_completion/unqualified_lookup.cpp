@@ -4,8 +4,9 @@
 ///
 /// - status: supported
 /// - order: 1
+/// - diagnostics: expected
 
-// error-ok: the completion expression dangles as an unfinished statement.
+// The completion expression dangles as an unfinished statement.
 namespace A {
 
 void fooooo();

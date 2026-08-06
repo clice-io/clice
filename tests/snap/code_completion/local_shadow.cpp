@@ -4,8 +4,9 @@
 ///
 /// - status: supported
 /// - order: 12
+/// - diagnostics: expected
 
-// error-ok: the completion prefix dangles as an unfinished statement.
+// The completion prefix dangles as an unfinished statement.
 int counter = 0;
 
 void bar() {

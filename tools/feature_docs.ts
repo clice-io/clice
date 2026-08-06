@@ -65,7 +65,17 @@ const ISSUE_TRACKERS: Record<string, string> = {
 
 // `snap` and `config` are consumed by the snapshot suites
 // (tools/snap/inspect.ts), not rendered into docs.
-const KNOWN_KEYS: readonly string[] = ["status", "issues", "order", "snap", "config"];
+const KNOWN_KEYS: readonly string[] = [
+    "status",
+    "issues",
+    "order",
+    "verify",
+    "snap",
+    "config",
+    "diagnostics",
+    "indexing",
+    "flags",
+];
 const VALID_STATUS: readonly string[] = ["supported", "partial", "unsupported"];
 
 // Markers must occupy their own unindented line, so marker text embedded in

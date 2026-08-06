@@ -3,4 +3,4 @@ created_at: 2026-08-02
 input_file: unqualified_lookup.cpp
 ---
 pos:
-- { label: "folded", kind: Variable, detail: "(int x)", description: "void", edit: "22:4-22:6" }
+- { label: "folded", kind: Variable, detail: "(int x)", description: "void", edit: "23:4-23:6" }

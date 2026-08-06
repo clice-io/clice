@@ -4,8 +4,9 @@
 ///
 /// - status: supported
 /// - order: 2
+/// - diagnostics: expected
 
-// error-ok: the completion prefix cuts the initializer mid-expression.
+// The completion prefix cuts the initializer mid-expression.
 int foooo(int x);
 int foooo(int x, int y);
 double foooo(double d);

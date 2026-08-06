@@ -4,18 +4,18 @@ input_file: constructor_labels.cpp
 ---
 default:
   pos:
-  - { label: "Bazzz", kind: Class, detail: "<typename T, typename U>", edit: "22:4-22:6" }
-  - { label: "bar", kind: Function, detail: "()", description: "void", edit: "22:4-22:6" }
+  - { label: "Bazzz", kind: Class, detail: "<typename T, typename U>", edit: "23:4-23:6" }
+  - { label: "bar", kind: Function, detail: "()", description: "void", edit: "23:4-23:6" }
 
 configured:
   pos:
-  - { label: "Bazzz", kind: Class, detail: "<typename T, typename U>", edit: "22:4-22:6" }
-  - { label: "Bazzz", kind: Constructor, detail: "<typename T, typename U>()", edit: "22:4-22:6" }
-  - { label: "Bazzz", kind: Constructor, detail: "<typename T, typename U>(T x)", edit: "22:4-22:6" }
-  - { label: "Bazzz", kind: Constructor, detail: "<typename T, typename U>(T x, U y)", edit: "22:4-22:6" }
-  - { label: "Bazzz", kind: Function, detail: "(Bazzz<T, U>)", description: "Bazzz<T, U>", edit: "22:4-22:6" }
-  - { label: "Bazzz", kind: Function, detail: "(T x, U y)", description: "Bazzz<T, U>", edit: "22:4-22:6" }
-  - { label: "Bazzz", kind: Function, detail: "(T)", description: "Bazzz<T, int>", edit: "22:4-22:6" }
-  - { label: "Bazzz", kind: Function, detail: "<typename T, typename U>()", description: "Bazzz<T, U>", edit: "22:4-22:6" }
-  - { label: "Bazzz", kind: Function, detail: "<typename T, typename U>(T x)", description: "Bazzz<T, U>", edit: "22:4-22:6" }
-  - { label: "bar", kind: Function, detail: "()", description: "void", edit: "22:4-22:6" }
+  - { label: "Bazzz", kind: Class, detail: "<typename T, typename U>", edit: "23:4-23:6" }
+  - { label: "Bazzz", kind: Constructor, detail: "<typename T, typename U>()", edit: "23:4-23:6" }
+  - { label: "Bazzz", kind: Constructor, detail: "<typename T, typename U>(T x)", edit: "23:4-23:6" }
+  - { label: "Bazzz", kind: Constructor, detail: "<typename T, typename U>(T x, U y)", edit: "23:4-23:6" }
+  - { label: "Bazzz", kind: Function, detail: "(Bazzz<T, U>)", description: "Bazzz<T, U>", edit: "23:4-23:6" }
+  - { label: "Bazzz", kind: Function, detail: "(T x, U y)", description: "Bazzz<T, U>", edit: "23:4-23:6" }
+  - { label: "Bazzz", kind: Function, detail: "(T)", description: "Bazzz<T, int>", edit: "23:4-23:6" }
+  - { label: "Bazzz", kind: Function, detail: "<typename T, typename U>()", description: "Bazzz<T, U>", edit: "23:4-23:6" }
+  - { label: "Bazzz", kind: Function, detail: "<typename T, typename U>(T x)", description: "Bazzz<T, U>", edit: "23:4-23:6" }
+  - { label: "bar", kind: Function, detail: "()", description: "void", edit: "23:4-23:6" }

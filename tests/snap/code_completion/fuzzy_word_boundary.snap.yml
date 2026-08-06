@@ -3,4 +3,4 @@ created_at: 2026-08-02
 input_file: fuzzy_word_boundary.cpp
 ---
 pos:
-- { label: "foo_bar_baz", kind: Variable, description: "int", edit: "15:12-15:14" }
+- { label: "foo_bar_baz", kind: Variable, description: "int", edit: "16:12-16:14" }

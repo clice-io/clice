@@ -4,8 +4,9 @@
 ///
 /// - status: supported
 /// - order: 2
+/// - diagnostics: expected
 
-// error-ok: the completion prefix cuts the initializer mid-expression.
+// The completion prefix cuts the initializer mid-expression.
 [[deprecated]] int old_thing(int x);
 int new_thing(int x);
 

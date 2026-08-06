@@ -4,12 +4,13 @@
 ///
 /// - status: supported
 /// - order: 1
+/// - diagnostics: expected
 ///
 /// The destructor completes as `~Account` (never `~struct Account`),
 /// `operator=` keeps no space before `=`, and a conversion operator
 /// spells its target type.
 
-// error-ok: the member access expression is left dangling at the point.
+// The member access expression is left dangling at the point.
 struct Wallet {
     int cents;
 };

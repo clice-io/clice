@@ -4,8 +4,8 @@ input_file: snippet_bundle_mode.cpp
 ---
 default:
   pos:
-  - { label: "foooo", kind: Function, detail: "(…) +2 overloads", edit: "12:8-12:10" }
+  - { label: "foooo", kind: Function, detail: "(…) +2 overloads", edit: "13:8-13:10" }
 
 configured:
   pos:
-  - { label: "foooo", kind: Function, detail: "(…) +2 overloads", edit: "12:8-12:10" }
+  - { label: "foooo", kind: Function, detail: "(…) +2 overloads", edit: "13:8-13:10" }

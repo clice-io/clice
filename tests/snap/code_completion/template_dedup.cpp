@@ -4,8 +4,9 @@
 ///
 /// - status: supported
 /// - order: 2
+/// - diagnostics: expected
 
-// error-ok: the completion prefix dangles as an unfinished statement.
+// The completion prefix dangles as an unfinished statement.
 template <typename T>
 struct Foo {
     Foo() {}

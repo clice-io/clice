@@ -1,53 +1,42 @@
 /// The snap suite: thin vitest glue over the snap domain in tools/snap/.
-/// Each corpus is pinned from both paths — standalone (`clice inspect`,
-/// one concurrent process per fixture, no server) and wire (replayed
-/// through a real server) — plus the not-yet-migrated legacy corpora,
-/// wire-only. The integration suite plays no part in snapshots.
+/// Each fixture is pinned from the paths its `verify:` mode asks for —
+/// inspect (`clice inspect`, one concurrent process per fixture, no
+/// server) and server (replayed through a real server on a materialized
+/// throwaway workspace). The integration suite plays no part in
+/// snapshots.
 
-import { beforeAll, describe } from "vitest";
-import { generateTestDataCDBs } from "@clice/tools/compile-commands";
-import {
-    checkSnapFixture,
-    generateSnapCDBs,
-    orphanSnapshots,
-    snapCorpora,
-} from "@clice/tools/snap/standalone";
-import { checkWireSnapFixture, wirePresenter } from "@clice/tools/snap/wire";
+import { describe } from "vitest";
+import { orphanSnapshots, snapCorpora } from "@clice/tools/snap/corpus";
+import { checkInspectFixture } from "@clice/tools/snap/inspect";
+import { feature } from "@clice/tools/snap/registry";
+import { checkServerSnapFixture } from "@clice/tools/snap/server";
 import { cliceExecutable, expect, test } from "./fixtures.ts";
 
-beforeAll(() => {
-    // Corpus CDBs for the standalone/wire drivers, plus the legacy
-    // tests/data corpora the wire-only path still replays.
-    generateSnapCDBs();
-    generateTestDataCDBs();
-});
-
 for (const corpus of snapCorpora()) {
-    wirePresenter(corpus.feature); // both drivers must cover every corpus
+    feature(corpus.feature); // every corpus must be registered
     describe(`snap/${corpus.feature}`, () => {
-        // All standalone cases register contiguously: vitest closes a
+        // All inspect cases register contiguously: vitest closes a
         // concurrent batch at the first sequential test, so interleaving
-        // them with the wire cases would serialize the inspect processes.
-        // `snap: wire` fixtures exist only on the server side and skip
-        // this half entirely.
+        // them with the server cases would serialize the inspect
+        // processes.
         for (const fixture of corpus.fixtures) {
-            test.skipIf(!fixture.active || fixture.meta.snap === "wire").concurrent(
+            test.skipIf(!fixture.active || fixture.meta.verify === "server").concurrent(
                 `${corpus.feature}/${fixture.rel}`,
                 async () => {
-                    // checkSnapFixture throws on any failure, including a
-                    // snapshot mismatch.
+                    // checkInspectFixture throws on any failure, including
+                    // a snapshot mismatch.
                     await expect(
-                        checkSnapFixture(cliceExecutable(), corpus, fixture),
+                        checkInspectFixture(cliceExecutable(), corpus, fixture),
                     ).resolves.toBeUndefined();
                 },
             );
         }
 
         for (const fixture of corpus.fixtures) {
-            test.skipIf(!fixture.active)(
-                `${corpus.feature}/${fixture.rel} (wire)`,
+            test.skipIf(!fixture.active || fixture.meta.verify === "inspect")(
+                `${corpus.feature}/${fixture.rel} (server)`,
                 async ({ session }) => {
-                    await checkWireSnapFixture(session, corpus, fixture);
+                    await checkServerSnapFixture(session, corpus, fixture);
                 },
             );
         }

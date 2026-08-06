@@ -4,9 +4,10 @@
 ///
 /// - status: supported
 /// - order: 1
-/// - snap: wire
+/// - verify: server
+/// - diagnostics: expected
 ///
-/// Answered by the server before any compilation, so only the wire path
+/// Answered by the server before any compilation, so only the server path
 /// exists for this fixture.
 
 #include "snap§(pos)"

@@ -3,7 +3,7 @@ created_at: 2026-08-02
 input_file: member_template.cpp
 ---
 pos:
-- { label: "Box", kind: Class, edit: "15:6-15:6" }
-- { label: "operator=", kind: Method, detail: "(…) +2 overloads", edit: "15:6-15:6" }
-- { label: "value", kind: Field, description: "int", edit: "15:6-15:6" }
-- { label: "~Box<int>", kind: Method, detail: "()", description: "void", edit: "15:6-15:6" }
+- { label: "Box", kind: Class, edit: "16:6-16:6" }
+- { label: "operator=", kind: Method, detail: "(…) +2 overloads", edit: "16:6-16:6" }
+- { label: "value", kind: Field, description: "int", edit: "16:6-16:6" }
+- { label: "~Box<int>", kind: Method, detail: "()", description: "void", edit: "16:6-16:6" }

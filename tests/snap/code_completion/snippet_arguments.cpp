@@ -5,8 +5,9 @@
 /// - status: supported
 /// - order: 4
 /// - config: {"bundle_overloads": false, "enable_function_arguments_snippet": true}
+/// - diagnostics: expected
 
-// error-ok: the completion prefixes dangle as unfinished statements.
+// The completion prefixes dangle as unfinished statements.
 int foooo(int x, float y);
 void nothing_to_fill();
 

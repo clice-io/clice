@@ -4,11 +4,12 @@
 ///
 /// - status: supported
 /// - order: 12
+/// - diagnostics: expected
 ///
 /// For prefix `fo`, `format_output` is a true prefix and outscores
 /// `fast_math_operation`, which only matches as a subsequence.
 
-// error-ok: the completion prefix dangles as an unfinished statement.
+// The completion prefix dangles as an unfinished statement.
 int format_output;
 int fast_math_operation;
 

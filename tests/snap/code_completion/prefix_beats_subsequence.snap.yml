@@ -3,5 +3,5 @@ created_at: 2026-08-02
 input_file: prefix_beats_subsequence.cpp
 ---
 pos:
-- { label: "format_output", kind: Variable, description: "int", edit: "15:12-15:14" }
-- { label: "fast_math_operation", kind: Variable, description: "int", edit: "15:12-15:14" }
+- { label: "format_output", kind: Variable, description: "int", edit: "16:12-16:14" }
+- { label: "fast_math_operation", kind: Variable, description: "int", edit: "16:12-16:14" }

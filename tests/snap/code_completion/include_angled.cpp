@@ -4,6 +4,7 @@
 ///
 /// - status: supported
 /// - order: 2
-/// - snap: wire
+/// - verify: server
+/// - diagnostics: expected
 
 #include <snap§(pos)>

@@ -5,8 +5,9 @@
 /// - status: supported
 /// - order: 3
 /// - config: {"bundle_overloads": false}
+/// - diagnostics: expected
 
-// error-ok: the completion prefix dangles as an unfinished statement.
+// The completion prefix dangles as an unfinished statement.
 template <typename T, typename U>
 struct Bazzz {
     Bazzz() {}

@@ -3,4 +3,4 @@ created_at: 2026-08-02
 input_file: local_shadow.cpp
 ---
 pos:
-- { label: "counter", kind: Variable, description: "int", edit: "12:12-12:16" }
+- { label: "counter", kind: Variable, description: "int", edit: "13:12-13:16" }

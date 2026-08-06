@@ -4,27 +4,27 @@ input_file: snippet_arguments.cpp
 ---
 default:
   free_function:
-  - { label: "Foo", kind: Class, edit: "18:4-18:6" }
-  - { label: "foooo", kind: Function, detail: "(int x, float y)", description: "int", edit: "18:4-18:6" }
+  - { label: "Foo", kind: Class, edit: "19:4-19:6" }
+  - { label: "foooo", kind: Function, detail: "(int x, float y)", description: "int", edit: "19:4-19:6" }
 
   method:
-  - { label: "bazzzz", kind: Method, detail: "(int a, int b)", description: "int", edit: "20:6-20:8" }
+  - { label: "bazzzz", kind: Method, detail: "(int a, int b)", description: "int", edit: "21:6-21:8" }
 
   no_arguments:
-  - { label: "noexcept", kind: Snippet, edit: "19:4-19:6" }
-  - { label: "nothing_to_fill", kind: Function, detail: "()", description: "void", edit: "19:4-19:6" }
+  - { label: "noexcept", kind: Snippet, edit: "20:4-20:6" }
+  - { label: "nothing_to_fill", kind: Function, detail: "()", description: "void", edit: "20:4-20:6" }
 
 configured:
   free_function:
-  - { label: "Foo", kind: Class, edit: "18:4-18:6" }
-  - { label: "Foo", kind: Constructor, detail: "()", edit: "18:4-18:6" }
-  - { label: "Foo", kind: Constructor, detail: "(Foo &&)", edit: "18:4-18:6", insert: "Foo(${1:Foo &&})", snippet: true }
-  - { label: "Foo", kind: Constructor, detail: "(const Foo &)", edit: "18:4-18:6", insert: "Foo(${1:const Foo &})", snippet: true }
-  - { label: "foooo", kind: Function, detail: "(int x, float y)", description: "int", edit: "18:4-18:6", insert: "foooo(${1:int x}, ${2:float y})", snippet: true }
+  - { label: "Foo", kind: Class, edit: "19:4-19:6" }
+  - { label: "Foo", kind: Constructor, detail: "()", edit: "19:4-19:6" }
+  - { label: "Foo", kind: Constructor, detail: "(Foo &&)", edit: "19:4-19:6", insert: "Foo(${1:Foo &&})", snippet: true }
+  - { label: "Foo", kind: Constructor, detail: "(const Foo &)", edit: "19:4-19:6", insert: "Foo(${1:const Foo &})", snippet: true }
+  - { label: "foooo", kind: Function, detail: "(int x, float y)", description: "int", edit: "19:4-19:6", insert: "foooo(${1:int x}, ${2:float y})", snippet: true }
 
   method:
-  - { label: "bazzzz", kind: Method, detail: "(int a, int b)", description: "int", edit: "20:6-20:8", insert: "bazzzz(${1:int a}, ${2:int b})", snippet: true }
+  - { label: "bazzzz", kind: Method, detail: "(int a, int b)", description: "int", edit: "21:6-21:8", insert: "bazzzz(${1:int a}, ${2:int b})", snippet: true }
 
   no_arguments:
-  - { label: "noexcept", kind: Snippet, edit: "19:4-19:6" }
-  - { label: "nothing_to_fill", kind: Function, detail: "()", description: "void", edit: "19:4-19:6" }
+  - { label: "noexcept", kind: Snippet, edit: "20:4-20:6" }
+  - { label: "nothing_to_fill", kind: Function, detail: "()", description: "void", edit: "20:4-20:6" }

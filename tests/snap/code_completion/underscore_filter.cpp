@@ -4,8 +4,9 @@
 ///
 /// - status: supported
 /// - order: 1
+/// - diagnostics: expected
 
-// error-ok: the completion prefixes are undeclared identifiers. The
+// The completion prefixes are undeclared identifiers. The
 // statements stay semicolon-terminated: an unterminated one puts the
 // NEXT marker into a recovery context, which completion drops entirely.
 int _private_thing;

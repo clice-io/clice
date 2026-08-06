@@ -5,8 +5,9 @@
 /// - status: supported
 /// - order: 5
 /// - config: {"enable_function_arguments_snippet": true}
+/// - diagnostics: expected
 
-// error-ok: the completion prefix cuts the initializer mid-expression.
+// The completion prefix cuts the initializer mid-expression.
 int foooo(int x);
 int foooo(int x, int y);
 

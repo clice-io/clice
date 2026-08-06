@@ -3,7 +3,7 @@ created_at: 2026-08-02
 input_file: underscore_filter.cpp
 ---
 hidden:
-- { label: "public_thing", kind: Variable, description: "int", edit: "13:8-13:10" }
+- { label: "public_thing", kind: Variable, description: "int", edit: "14:8-14:10" }
 
 typed_underscore:
-- { label: "_private_thing", kind: Variable, description: "int", edit: "14:8-14:10" }
+- { label: "_private_thing", kind: Variable, description: "int", edit: "15:8-15:10" }

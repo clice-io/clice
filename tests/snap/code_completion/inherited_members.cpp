@@ -4,8 +4,9 @@
 ///
 /// - status: supported
 /// - order: 12
+/// - diagnostics: expected
 
-// error-ok: the member access expression is left dangling at the point.
+// The member access expression is left dangling at the point.
 struct Base {
     int base_field;
     int base_method();

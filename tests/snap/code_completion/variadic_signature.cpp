@@ -4,8 +4,9 @@
 ///
 /// - status: supported
 /// - order: 11
+/// - diagnostics: expected
 
-// error-ok: the completion prefix cuts the initializer mid-expression.
+// The completion prefix cuts the initializer mid-expression.
 int printf_like(const char* fmt, ...);
 
 int x = printf§(pos)

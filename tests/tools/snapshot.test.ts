@@ -7,7 +7,6 @@ import * as path from "node:path";
 import { expect, test } from "vitest";
 import { URI } from "vscode-uri";
 import {
-    fixtureFrontmatter,
     formatSnap,
     normalizeFileUri,
     parseSnap,
@@ -86,11 +85,4 @@ test("normalize file uri", () => {
 
 test("yaml string escapes", () => {
     expect(yamlStr('a"b\\c\n\t\x01')).toBe('"a\\"b\\\\c\\n\\t\\x01"');
-});
-
-test("fixture frontmatter", () => {
-    const header = "/// # Title\n///\n/// - status: unsupported\nint x;\n";
-    expect(fixtureFrontmatter(header, "status")).toBe("unsupported");
-    expect(fixtureFrontmatter(header, "missing")).toBe("");
-    expect(fixtureFrontmatter("int x;\n", "status")).toBe("");
 });
