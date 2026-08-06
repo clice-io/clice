@@ -6,7 +6,8 @@ namespace {
 
 TEST_SUITE(Scan) {
 
-// === scan_quick() tests ===
+// === scan_quick() — include and conditional extraction; module
+// declaration coverage lives in module_scan_tests.cpp ===
 
 TEST_CASE(BasicIncludes) {
     auto result = scan_quick(R"(
@@ -85,71 +86,36 @@ TEST_CASE(NestedConditionals) {
     EXPECT_FALSE(result.includes[2].conditional);
 }
 
-TEST_CASE(ModuleDeclaration) {
+TEST_CASE(ElifBranchInclude) {
     auto result = scan_quick(R"(
-module;
-#include <header.h>
-export module my.module;
-)");
-
-    EXPECT_EQ(result.module_name, "my.module");
-    EXPECT_TRUE(result.is_interface_unit);
-    EXPECT_FALSE(result.need_preprocess);
-    ASSERT_EQ(result.includes.size(), 1u);
-    EXPECT_EQ(result.includes[0].path, "header.h");
-    EXPECT_TRUE(result.includes[0].is_angled);
-}
-
-TEST_CASE(ModulePartition) {
-    auto result = scan_quick(R"(
-module my.module:part;
-)");
-
-    EXPECT_EQ(result.module_name, "my.module:part");
-    EXPECT_FALSE(result.is_interface_unit);
-}
-
-TEST_CASE(ModuleImports) {
-    // Imports are deliberately NOT collected by the quick scan: an import
-    // can be formed or hidden by macros, so directive-level text is not a
-    // trustworthy source of module dependencies — scan_precise() is.
-    auto result = scan_quick(R"(
-export module top;
-import base;
-)");
-
-    EXPECT_EQ(result.module_name, "top");
-    EXPECT_TRUE(result.modules.empty());
-}
-
-TEST_CASE(ModuleImplementation) {
-    auto result = scan_quick(R"(
-module my.module;
-)");
-
-    EXPECT_EQ(result.module_name, "my.module");
-    EXPECT_FALSE(result.is_interface_unit);
-}
-
-TEST_CASE(ConditionalModule) {
-    auto result = scan_quick(R"(
-#ifdef USE_MODULES
-export module foo;
+#if defined(A)
+#include <a.h>
+#elif defined(B)
+#include <b.h>
+#else
+#include <c.h>
 #endif
+#include <after.h>
 )");
 
-    EXPECT_TRUE(result.module_name.empty());
-    EXPECT_TRUE(result.need_preprocess);
+    ASSERT_EQ(result.includes.size(), 4u);
+    for(std::size_t i = 0; i < 3; i += 1) {
+        EXPECT_TRUE(result.includes[i].conditional);
+        EXPECT_EQ(result.includes[i].conditional_depth, 1);
+    }
+    EXPECT_FALSE(result.includes[3].conditional);
 }
 
-TEST_CASE(GlobalModuleFragment) {
+TEST_CASE(IncludeNext) {
     auto result = scan_quick(R"(
-module;
-export module test;
+#include <normal.h>
+#include_next <chained.h>
 )");
 
-    EXPECT_EQ(result.module_name, "test");
-    EXPECT_TRUE(result.is_interface_unit);
+    ASSERT_EQ(result.includes.size(), 2u);
+    EXPECT_FALSE(result.includes[0].is_include_next);
+    EXPECT_TRUE(result.includes[1].is_include_next);
+    EXPECT_EQ(result.includes[1].path, "chained.h");
 }
 
 TEST_CASE(EmptyContent) {
