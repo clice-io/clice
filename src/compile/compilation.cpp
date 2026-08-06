@@ -435,9 +435,9 @@ CompilationUnit complete(CompilationParams& params, clang::CodeCompleteConsumer*
     std::uint32_t line = 1;
     std::uint32_t column = 1;
 
-    /// FIXME:
-    assert(params.buffers.size() == 1);
-    llvm::StringRef content = params.buffers.begin()->second->getBuffer();
+    auto buffer = params.buffers.find(file);
+    assert(buffer != params.buffers.end() && "completion file must be remapped");
+    llvm::StringRef content = buffer->second->getBuffer();
 
     for(auto c: content.substr(0, offset)) {
         if(c == '\n') {

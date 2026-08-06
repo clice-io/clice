@@ -11,8 +11,10 @@
 #include "feature/feature.h"
 #include "support/filesystem.h"
 #include "syntax/annotation.h"
+#include "syntax/scan.h"
 
 #include "kota/codec/json/json.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/Support/SHA256.h"
 #include "clang/Driver/Types.h"
 
@@ -55,6 +57,14 @@ struct InspectOptions {
 
     DecoKVStyled(
         kota::deco::decl::KVStyle::JoinedOrSeparate,
+        names = {"--flags", "--flags="},
+        help =
+            "Compile flags for the inputs as a JSON string array; " "replaces the compile_commands.json lookup",
+        required = false)
+    <std::string> flags;
+
+    DecoKVStyled(
+        kota::deco::decl::KVStyle::JoinedOrSeparate,
         names = {"--config", "--config="},
         help =
             "Feature options overlay as a JSON object " "(only features that take options accept it)",
@@ -81,8 +91,9 @@ struct FileEntry {
     /// at the same hash, or the two implementations have drifted.
     std::string stripped_hash;
 
-    /// The whole-document feature payload, absent when compilation failed
-    /// or the feature is marker-driven.
+    /// The whole-document feature payload, absent when compilation failed,
+    /// the feature is marker-driven, or the file is a support file of a
+    /// directory unit (hashed but not inspected).
     std::optional<kota::codec::RawValue> result;
 
     /// Marker-driven payloads, keyed by annotation name (`nameless_<i>`
@@ -286,46 +297,71 @@ std::vector<std::string> error_messages(CompilationUnit& unit, bool errors_only 
     return std::ranges::to<std::vector>(messages);
 }
 
-/// Compile `file` in one pass, deliberately without the preamble PCH the
-/// server uses: a shared snapshot pins that the PCH split does not change
-/// feature results, so any divergence between the two paths surfaces as a
-/// snapshot mismatch instead of hiding in the preamble. Nothing is written
-/// to disk. `database` is the one nearest to the file, or null when no
-/// compile_commands.json exists above it.
-FileEntry process_file(const std::string& file,
-                       llvm::StringRef feature,
-                       CompilationDatabase* database,
-                       Toolchain& toolchain,
-                       bool annotations,
-                       llvm::StringRef config) {
-    FileEntry entry;
-
-    auto buffer = llvm::MemoryBuffer::getFile(file);
-    if(!buffer) {
-        entry.error = "read_error";
-        entry.diagnostics = {buffer.getError().message()};
-        return entry;
-    }
-
-    // Only fixture sources carry the §-annotation grammar; ordinary code
-    // may legitimately contain `§` (in strings or comments) and must reach
-    // the compiler verbatim.
+/// One source file of the inspected input, stripped and ready to compile.
+struct SourceFile {
+    /// POSIX-style path relative to the input directory (the bare filename
+    /// for a single-file input) — the key of the file's output entry.
+    std::string rel;
+    std::string abs;
     AnnotatedSource source;
-    if(annotations) {
-        source = AnnotatedSource::from((*buffer)->getBuffer());
-    } else {
-        source.content = (*buffer)->getBuffer().str();
+    /// Module declaration facts from the dependency scan (directory mode).
+    ScanResult scan;
+};
+
+/// The compile command for one file, arguments owned as strings so they
+/// outlive the compiles they parameterize.
+struct FileCommand {
+    std::vector<std::string> arguments;
+    std::string directory;
+};
+
+void apply_command(CompilationParams& params, const FileCommand& command) {
+    for(auto& arg: command.arguments) {
+        params.arguments.push_back(arg.c_str());
     }
-    entry.stripped_hash = sha256_hex(source.content);
+    params.directory = command.directory;
+}
 
-    CompilationParams params;
-    params.kind = CompilationKind::Content;
-
+/// The compile command for `file`. Explicit --flag arguments (the snap-test
+/// channel — the harness owns the flags, no compile_commands.json exists)
+/// apply uniformly to every input file; otherwise the file's entry in
+/// `database`, a language-compatible donor entry for headers, or default
+/// flags. On failure records the error on `entry` and returns nullopt.
+std::optional<FileCommand> file_command(FileEntry& entry,
+                                        const std::string& file,
+                                        llvm::ArrayRef<std::string> flags,
+                                        llvm::StringRef flags_directory,
+                                        CompilationDatabase* database,
+                                        Toolchain& toolchain) {
     namespace types = clang::driver::types;
     auto ext = path::extension(file);
     auto type = ext.empty() ? types::TY_INVALID
                             : types::lookupTypeForExtension(llvm::StringRef(ext).drop_front());
     bool is_header = type == types::TY_CHeader || type == types::TY_CXXHeader;
+
+    FileCommand command;
+
+    if(!flags.empty()) {
+        std::vector<const char*> driver_args = {"clang++"};
+        if(is_header) {
+            // An ambiguous header is C++ by default, like clangd; -x forces
+            // TU semantics instead of a precompiled-header job.
+            driver_args.insert(driver_args.end(), {"-x", "c++"});
+        }
+        for(auto& flag: flags) {
+            driver_args.push_back(flag.c_str());
+        }
+        driver_args.insert(driver_args.end(), {"-fsyntax-only", file.c_str()});
+        auto cc1 = Toolchain::query(driver_args, file);
+        if(!cc1) {
+            entry.error = "toolchain_error";
+            entry.diagnostics = {std::move(cc1.error())};
+            return std::nullopt;
+        }
+        command.arguments = std::move(*cc1);
+        command.directory = flags_directory.str();
+        return command;
+    }
 
     // A header without its own entry borrows the command of the nearest
     // language-compatible translation unit in the database — the server
@@ -357,25 +393,27 @@ FileEntry process_file(const std::string& file,
         }
     }
 
-    /// Owns the fallback cc1 strings so params.arguments stays valid.
-    std::vector<std::string> owned_args;
     // lookup() synthesizes a default command for unknown files, so an
     // explicit entry check decides between the CDB and our fallback.
     if(database != nullptr && database->has_entry(file)) {
         auto commands = database->lookup(file);
-        auto& command = commands.front();
-        toolchain.resolve_or_warn(command);
-        params.arguments = command.to_argv();
-        params.directory = command.resolved.directory.str();
+        auto& cdb_command = commands.front();
+        toolchain.resolve_or_warn(cdb_command);
+        for(const char* arg: cdb_command.to_argv()) {
+            command.arguments.emplace_back(arg);
+        }
+        command.directory = cdb_command.resolved.directory.str();
     } else if(!donor.empty()) {
         auto commands = database->lookup(donor);
-        auto& command = commands.front();
-        toolchain.resolve_or_warn(command);
+        auto& cdb_command = commands.front();
+        toolchain.resolve_or_warn(cdb_command);
         // The donor's resolved flags (including its -x language) apply to
         // the header itself; to_argv() re-derives -main-file-name from it.
-        command.source_file = file.c_str();
-        params.arguments = command.to_argv();
-        params.directory = command.resolved.directory.str();
+        cdb_command.source_file = file.c_str();
+        for(const char* arg: cdb_command.to_argv()) {
+            command.arguments.emplace_back(arg);
+        }
+        command.directory = cdb_command.resolved.directory.str();
     } else {
         // No CDB entry for this file: query the toolchain with default
         // flags. Uncached, but this path only runs for files outside any
@@ -397,22 +435,63 @@ FileEntry process_file(const std::string& file,
         if(!cc1) {
             entry.error = "toolchain_error";
             entry.diagnostics = {std::move(cc1.error())};
-            return entry;
+            return std::nullopt;
         }
-        owned_args = std::move(*cc1);
-        for(auto& arg: owned_args) {
-            params.arguments.push_back(arg.c_str());
-        }
-        params.directory = path::parent_path(file).str();
+        command.arguments = std::move(*cc1);
+        command.directory = path::parent_path(file).str();
     }
+    return command;
+}
 
-    params.add_remapped_file(file, source.content);
+/// Whether a directory-mode file is inspected. A directory input is one
+/// multi-file unit: a file participates when it carries markers of the
+/// feature's shape, plus the unit entry (main.cpp/main.cppm) for
+/// whole-document shapes. Everything else is a support file — compiled
+/// into participants' units and hashed, but not run.
+bool participates(const FeatureSpec& spec, const SourceFile& file) {
+    bool has_points = !file.source.offsets.empty() || !file.source.nameless_offsets.empty();
+    if(spec.run_at != nullptr || spec.run_complete != nullptr) {
+        return has_points;
+    }
+    bool is_entry = file.rel == "main.cpp" || file.rel == "main.cppm";
+    return is_entry || has_points || !file.source.ranges.empty();
+}
+
+/// Run the feature over one participating file and fill its entry. The
+/// compile is one pass, deliberately without the preamble PCH the server
+/// uses: a shared snapshot pins that the PCH split does not change feature
+/// results, so any divergence between the two paths surfaces as a snapshot
+/// mismatch instead of hiding in the preamble. It sees the whole unit —
+/// every stripped file is remapped and every built PCM attached — so
+/// cross-file fixtures compile like the server's view of the workspace.
+void run_feature(FileEntry& entry,
+                 const FeatureSpec& spec,
+                 const SourceFile& file,
+                 llvm::ArrayRef<SourceFile> sources,
+                 const llvm::StringMap<std::string>& pcms,
+                 const FileCommand& command,
+                 llvm::StringRef config) {
+    const AnnotatedSource& source = file.source;
+
+    auto prepare = [&](CompilationParams& params) {
+        apply_command(params, command);
+        for(const auto& sibling: sources) {
+            params.add_remapped_file(sibling.abs, sibling.source.content);
+        }
+        for(const auto& pcm: pcms) {
+            params.pcms.try_emplace(pcm.getKey(), pcm.getValue());
+        }
+    };
+
+    CompilationParams params;
+    params.kind = CompilationKind::Content;
+    prepare(params);
 
     auto unit = clice::compile(params);
     if(!unit.completed()) {
         entry.error = "compile_error";
         entry.diagnostics = error_messages(unit);
-        return entry;
+        return;
     }
 
     // The AST builds even for broken sources (a language server must keep
@@ -423,37 +502,31 @@ FileEntry process_file(const std::string& file,
         entry.diagnostics = std::move(errors);
     }
 
-    const auto& spec = *find_feature(feature);
-
     if(spec.run_complete != nullptr) {
         // Completion shape: the plain compile above only serves the
         // clean-fixture gate — the completion entry points discard their
         // unit, so its diagnostics are the sole health signal. Each `§`
-        // point then compiles again with the offset applied; argv pointees
-        // are interned in the database (or owned_args), so copying the
-        // argument vector into fresh params is safe.
+        // point then compiles again with the offset applied.
         auto points = marker_points(source);
         if(points.empty()) {
             entry.error = "no_markers";
-            return entry;
+            return;
         }
         std::map<std::string, kota::codec::RawValue> markers;
         for(auto& [name, offset]: points) {
             CompilationParams cp;
             cp.kind = CompilationKind::Completion;
-            cp.arguments = params.arguments;
-            cp.directory = params.directory;
-            cp.completion = {file, offset};
-            cp.add_remapped_file(file, source.content);
+            prepare(cp);
+            cp.completion = {file.abs, offset};
             auto value = spec.run_complete(cp, config);
             if(!value.has_value()) {
                 entry.error = "serialize_error";
-                return entry;
+                return;
             }
             markers.emplace(name, std::move(*value));
         }
         entry.markers = std::move(markers);
-        return entry;
+        return;
     }
 
     if(spec.run != nullptr) {
@@ -461,7 +534,7 @@ FileEntry process_file(const std::string& file,
         if(!entry.result.has_value()) {
             entry.error = "serialize_error";
         }
-        return entry;
+        return;
     }
 
     if(spec.run_at != nullptr) {
@@ -471,19 +544,19 @@ FileEntry process_file(const std::string& file,
         auto points = marker_points(source);
         if(points.empty()) {
             entry.error = "no_markers";
-            return entry;
+            return;
         }
         std::map<std::string, kota::codec::RawValue> markers;
         for(auto& [name, offset]: points) {
             auto value = spec.run_at(unit, offset);
             if(!value.has_value()) {
                 entry.error = "serialize_error";
-                return entry;
+                return;
             }
             markers.emplace(name, std::move(*value));
         }
         entry.markers = std::move(markers);
-        return entry;
+        return;
     }
 
     // Range feature: run once per `§⟦...⟧` range, or over the whole
@@ -496,19 +569,18 @@ FileEntry process_file(const std::string& file,
         if(!entry.result.has_value()) {
             entry.error = "serialize_error";
         }
-        return entry;
+        return;
     }
     std::map<std::string, kota::codec::RawValue> markers;
     for(auto& [name, range]: ranges) {
         auto value = spec.run_over(unit, range);
         if(!value.has_value()) {
             entry.error = "serialize_error";
-            return entry;
+            return;
         }
         markers.emplace(name, std::move(*value));
     }
     entry.markers = std::move(markers);
-    return entry;
 }
 
 int run_inspect(const InspectOptions& opts) {
@@ -570,10 +642,53 @@ int run_inspect(const InspectOptions& opts) {
         files.emplace_back(path::filename(abs_path).str(), std::string(abs_path));
     }
 
+    InspectOutput output;
+    output.feature = feature.str();
+
+    // Every readable file gets an entry up front: the hash of its stripped
+    // content feeds the C++/TS stripper-twin check for support files too,
+    // and module/feature errors below land on stable entries.
+    std::vector<SourceFile> sources;
+    for(auto& [rel, abs]: files) {
+        auto buffer = llvm::MemoryBuffer::getFile(abs);
+        if(!buffer) {
+            FileEntry entry;
+            entry.error = "read_error";
+            entry.diagnostics = {buffer.getError().message()};
+            output.files.emplace(rel, std::move(entry));
+            continue;
+        }
+        // Only fixture sources carry the §-annotation grammar; ordinary
+        // code may legitimately contain `§` (in strings or comments) and
+        // must reach the compiler verbatim.
+        AnnotatedSource source;
+        if(opts.annotations) {
+            source = AnnotatedSource::from((*buffer)->getBuffer());
+        } else {
+            source.content = (*buffer)->getBuffer().str();
+        }
+        FileEntry entry;
+        entry.stripped_hash = sha256_hex(source.content);
+        output.files.emplace(rel, std::move(entry));
+        sources.push_back({rel, abs, std::move(source), {}});
+    }
+
+    std::vector<std::string> flags;
+    if(opts.flags.has_value()) {
+        if(auto result = kota::codec::json::from_json(*opts.flags, flags); !result) {
+            LOG_ERROR("--flags is not a JSON string array: {}", result.error().message);
+            return 1;
+        }
+        if(flags.empty()) {
+            LOG_ERROR("--flags must name at least one compile flag");
+            return 1;
+        }
+    }
+
     // Each file resolves against the compile_commands.json nearest to it,
     // so a directory spanning nested projects picks up every inner
     // database. Files without a CDB entry fall back to a per-file
-    // toolchain query in process_file.
+    // toolchain query in file_command.
     std::map<std::string, CompilationDatabase> databases;
     auto database_for = [&](llvm::StringRef file) -> CompilationDatabase* {
         auto cdb = find_cdb(path::parent_path(file));
@@ -590,16 +705,101 @@ int run_inspect(const InspectOptions& opts) {
     };
 
     Toolchain toolchain;
-    InspectOutput output;
-    output.feature = feature.str();
-    for(auto& [rel, abs]: files) {
-        output.files.emplace(rel,
-                             process_file(abs,
-                                          feature,
-                                          database_for(abs),
-                                          toolchain,
-                                          static_cast<bool>(opts.annotations),
-                                          config));
+    llvm::StringRef unit_directory =
+        is_dir ? llvm::StringRef(abs_path) : path::parent_path(abs_path);
+    auto command_for = [&](FileEntry& entry, const SourceFile& file) {
+        return file_command(entry,
+                            file.abs,
+                            flags,
+                            unit_directory,
+                            flags.empty() ? database_for(file.abs) : nullptr,
+                            toolchain);
+    };
+
+    // Serial module builder (directory mode): scan for module declarations
+    // and build each interface unit's PCM in dependency order, so importing
+    // files in the unit compile like they do against the server's module
+    // pipeline. A dependency cycle leaves its modules unbuilt and surfaces
+    // as ordinary compile errors on the importers.
+    llvm::StringMap<std::string> pcms;
+    std::vector<std::string> pcm_files;
+    if(is_dir) {
+        llvm::StringMap<SourceFile*> interfaces;
+        for(auto& source: sources) {
+            source.scan = scan(source.source.content);
+            if(!source.scan.is_interface_unit || source.scan.module_name.empty()) {
+                continue;
+            }
+            auto [it, inserted] = interfaces.try_emplace(source.scan.module_name, &source);
+            if(!inserted) {
+                output.files.find(source.rel)->second.error = "duplicate_module";
+            }
+        }
+
+        llvm::StringSet<> visited;
+        auto build = [&](auto&& self, llvm::StringRef name) -> void {
+            if(!visited.insert(name).second) {
+                return;
+            }
+            SourceFile& source = *interfaces.find(name)->second;
+            for(auto& dep: source.scan.modules) {
+                if(interfaces.contains(dep)) {
+                    self(self, dep);
+                }
+            }
+
+            FileEntry& entry = output.files.find(source.rel)->second;
+            auto command = command_for(entry, source);
+            if(!command) {
+                return;
+            }
+            auto tmp = fs::createTemporaryFile("clice-pcm", "pcm");
+            if(!tmp) {
+                entry.error = "module_error";
+                entry.diagnostics = {"failed to create temporary PCM file"};
+                return;
+            }
+            pcm_files.push_back(*tmp);
+
+            CompilationParams params;
+            params.kind = CompilationKind::ModuleInterface;
+            params.output_file = *tmp;
+            apply_command(params, *command);
+            for(const auto& sibling: sources) {
+                params.add_remapped_file(sibling.abs, sibling.source.content);
+            }
+            for(const auto& pcm: pcms) {
+                params.pcms.try_emplace(pcm.getKey(), pcm.getValue());
+            }
+
+            PCMInfo info;
+            auto unit = clice::compile(params, info);
+            if(!unit.completed()) {
+                entry.error = "module_error";
+                entry.diagnostics = error_messages(unit);
+                return;
+            }
+            pcms.try_emplace(name, *tmp);
+        };
+        for(const auto& entry: interfaces) {
+            build(build, entry.getKey());
+        }
+    }
+
+    for(auto& source: sources) {
+        if(is_dir && !participates(*spec, source)) {
+            continue;
+        }
+        FileEntry& entry = output.files.find(source.rel)->second;
+        auto command = command_for(entry, source);
+        if(!command) {
+            continue;
+        }
+        run_feature(entry, *spec, source, sources, pcms, *command, config);
+    }
+
+    for(auto& path: pcm_files) {
+        fs::remove(path);
     }
 
     auto json = kota::codec::json::to_string<InspectJsonConfig>(output);
