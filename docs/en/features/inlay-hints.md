@@ -885,7 +885,7 @@ clice renders inline annotations for the information the code leaves implicit: p
 - [x] Broken initializers — designators survive next to initializers that fail to compile
 
   ```cpp
-  // error-ok: the first initializer deliberately fails to convert.
+  // The first initializer deliberately fails to convert.
   struct Empty {};
 
   struct Mixed {

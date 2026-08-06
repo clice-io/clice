@@ -190,7 +190,7 @@
 
   ```cpp
   // The leading declaration ends the preamble so the pragmas below reach the
-  // main-file parse on both the standalone and the wire path.
+  // main-file parse on both the inspect and the server path.
   int before = 0;
 
   // Neither a region name nor another pragma's argument mentioning

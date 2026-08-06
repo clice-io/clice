@@ -8,7 +8,7 @@ Triggered by `<`, `"`, `/` characters. Handled before AST (preamble-level, no co
 
 - [x] Quoted include paths — headers and directories from the configured search path, directories marked by a trailing slash
 
-  Answered by the server before any compilation, so only the wire path
+  Answered by the server before any compilation, so only the server path
   exists for this fixture.
 
   ```cpp
@@ -87,7 +87,7 @@ Triggered when cursor is after `import` or `export import`.
 
 - [x] Import statements — known module names complete after `import`, with the closing semicolon inserted
 
-  Answered by the server from its module map, so only the wire path
+  Answered by the server from its module map, so only the server path
   exists for this fixture; the sibling module interface is opened first
   so the module is known. The statement stays unterminated — a `;` on
   the line means the import is already complete and nothing is offered.
@@ -190,7 +190,7 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
   spells its target type.
 
   ```cpp
-  // error-ok: the member access expression is left dangling at the point.
+  // The member access expression is left dangling at the point.
   struct Wallet {
       int cents;
   };
@@ -210,7 +210,7 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
 - [x] Members of an instantiated class template — the destructor label keeps the written template arguments
 
   ```cpp
-  // error-ok: the member access expression is left dangling at the point.
+  // The member access expression is left dangling at the point.
   template <typename T>
   struct Box {
       T value;
@@ -225,7 +225,7 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
 - [x] Pointer member access — `->` on a pointer completes the pointee's members
 
   ```cpp
-  // error-ok: the member access expression is left dangling at the point.
+  // The member access expression is left dangling at the point.
   struct Node {
       int value;
       Node* next;
@@ -245,7 +245,7 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
   and nested types.
 
   ```cpp
-  // error-ok: the qualified-id is left dangling at the point.
+  // The qualified-id is left dangling at the point.
   struct Config {
       static int shared_count;
       static int make(int seed);
@@ -265,7 +265,7 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
 - [x] Inherited members — a derived object completes its own members and those of its base
 
   ```cpp
-  // error-ok: the member access expression is left dangling at the point.
+  // The member access expression is left dangling at the point.
   struct Base {
       int base_field;
       int base_method();
@@ -384,7 +384,7 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
 - [x] Unqualified lookup with fuzzy prefix matching — strong prefix matches survive, weak subsequence matches and unqualified namespace members do not
 
   ```cpp
-  // error-ok: the completion expression dangles as an unfinished statement.
+  // The completion expression dangles as an unfinished statement.
   namespace A {
 
   void fooooo();
@@ -406,7 +406,7 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
 - [x] Class template deduplication — a name that is also constructors and a deduction guide stays a single class entry
 
   ```cpp
-  // error-ok: the completion prefix dangles as an unfinished statement.
+  // The completion prefix dangles as an unfinished statement.
   template <typename T>
   struct Foo {
       Foo() {}
@@ -427,7 +427,7 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
 - [x] Constructor labels stay plain — class template constructors and deduction guides complete as the bare class name, never a templated spelling
 
   ```cpp
-  // error-ok: the completion prefix dangles as an unfinished statement.
+  // The completion prefix dangles as an unfinished statement.
   template <typename T, typename U>
   struct Bazzz {
       Bazzz() {}
@@ -448,14 +448,14 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
 - [x] Keyword patterns — keywords complete like any candidate, with plain insert text
 
   ```cpp
-  // error-ok: the completion prefix cuts the initializer mid-expression.
+  // The completion prefix cuts the initializer mid-expression.
   int x = tru
   ```
 
 - [x] Namespace-qualified lookup — `ns::` lists the namespace's own members
 
   ```cpp
-  // error-ok: the qualified-id is left dangling at the point.
+  // The qualified-id is left dangling at the point.
   namespace geometry {
 
   int area_of(int r);
@@ -476,7 +476,7 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
 - [x] Enum members — a scoped enum lists through `Type::`, an unscoped enumerator completes by bare name
 
   ```cpp
-  // error-ok: both completion prefixes dangle; the statements stay
+  // Both completion prefixes dangle; the statements stay
   // semicolon-terminated so the second marker is not dragged into recovery.
   enum class Color { Red, Green, Blue };
 
@@ -491,7 +491,7 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
 - [x] Local shadowing a global — the shadowed global does not appear as a duplicate entry
 
   ```cpp
-  // error-ok: the completion prefix dangles as an unfinished statement.
+  // The completion prefix dangles as an unfinished statement.
   int counter = 0;
 
   void bar() {
@@ -503,7 +503,7 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
 - [x] Using-declaration — a name pulled in with `using` completes unqualified
 
   ```cpp
-  // error-ok: the completion prefix dangles as an unfinished statement.
+  // The completion prefix dangles as an unfinished statement.
   namespace lib {
 
   int helper_fn(int x);
@@ -556,7 +556,7 @@ All options below live in the `[code_completion]` configuration section.
 - [x] Signature and return type details — the parameter list and return type ride along as label details
 
   ```cpp
-  // error-ok: the completion prefix cuts the initializer mid-expression.
+  // The completion prefix cuts the initializer mid-expression.
   double foooo(int x, float y);
 
   int x = fo
@@ -565,7 +565,7 @@ All options below live in the `[code_completion]` configuration section.
 - [x] Overload bundling — an overload set collapses into one entry with an overload count
 
   ```cpp
-  // error-ok: the completion prefix cuts the initializer mid-expression.
+  // The completion prefix cuts the initializer mid-expression.
   int foooo(int x);
   int foooo(int x, int y);
   double foooo(double d);
@@ -576,7 +576,7 @@ All options below live in the `[code_completion]` configuration section.
 - [x] Unbundled overloads — with bundling off, every overload is its own entry with its own signature
 
   ```cpp
-  // error-ok: the completion prefix cuts the initializer mid-expression.
+  // The completion prefix cuts the initializer mid-expression.
   int foooo(int x);
   int foooo(int x, int y);
   double foooo(double d);
@@ -587,7 +587,7 @@ All options below live in the `[code_completion]` configuration section.
 - [x] Parameter placeholder snippets — calls insert tab-stop placeholders per argument; a no-argument function stays plain text
 
   ```cpp
-  // error-ok: the completion prefixes dangle as unfinished statements.
+  // The completion prefixes dangle as unfinished statements.
   int foooo(int x, float y);
   void nothing_to_fill();
 
@@ -606,7 +606,7 @@ All options below live in the `[code_completion]` configuration section.
 - [x] Snippets defer to bundling — while overloads are bundled, argument snippets stay off even when enabled
 
   ```cpp
-  // error-ok: the completion prefix cuts the initializer mid-expression.
+  // The completion prefix cuts the initializer mid-expression.
   int foooo(int x);
   int foooo(int x, int y);
 
@@ -619,7 +619,7 @@ All options below live in the `[code_completion]` configuration section.
   `int retries = 3` is elided.
 
   ```cpp
-  // error-ok: the completion prefix cuts the initializer mid-expression.
+  // The completion prefix cuts the initializer mid-expression.
   int configure(int timeout, int retries = 3);
 
   int x = confi
@@ -628,7 +628,7 @@ All options below live in the `[code_completion]` configuration section.
 - [x] Variadic signature — a trailing `...` shows in the parameter detail
 
   ```cpp
-  // error-ok: the completion prefix cuts the initializer mid-expression.
+  // The completion prefix cuts the initializer mid-expression.
   int printf_like(const char* fmt, ...);
 
   int x = printf
@@ -767,7 +767,7 @@ All options below live in the `[code_completion]` configuration section.
 - [x] Underscore filtering — underscore-prefixed internal symbols hide unless the typed prefix itself starts with one
 
   ```cpp
-  // error-ok: the completion prefixes are undeclared identifiers. The
+  // The completion prefixes are undeclared identifiers. The
   // statements stay semicolon-terminated: an unterminated one puts the
   // NEXT marker into a recovery context, which completion drops entirely.
   int _private_thing;
@@ -780,7 +780,7 @@ All options below live in the `[code_completion]` configuration section.
 - [x] Deprecated tagging — a [[deprecated]] candidate carries the Deprecated tag, its plain sibling does not
 
   ```cpp
-  // error-ok: the completion prefix cuts the initializer mid-expression.
+  // The completion prefix cuts the initializer mid-expression.
   [[deprecated]] int old_thing(int x);
   int new_thing(int x);
 
@@ -793,7 +793,7 @@ All options below live in the `[code_completion]` configuration section.
   `foo_bar_baz` matches on the `foo`/`bar` word boundaries and survives.
 
   ```cpp
-  // error-ok: the completion prefix dangles as an unfinished statement.
+  // The completion prefix dangles as an unfinished statement.
   int foo_bar_baz;
   int frobnicate;
 
@@ -805,7 +805,7 @@ All options below live in the `[code_completion]` configuration section.
 - [x] Case-insensitive prefix — a lowercase prefix matches a mixed-case identifier
 
   ```cpp
-  // error-ok: the completion prefix dangles as an unfinished statement.
+  // The completion prefix dangles as an unfinished statement.
   int MyLongName;
 
   void bar() {
@@ -819,7 +819,7 @@ All options below live in the `[code_completion]` configuration section.
   `fast_math_operation`, which only matches as a subsequence.
 
   ```cpp
-  // error-ok: the completion prefix dangles as an unfinished statement.
+  // The completion prefix dangles as an unfinished statement.
   int format_output;
   int fast_math_operation;
 
