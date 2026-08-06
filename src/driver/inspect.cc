@@ -796,22 +796,16 @@ int run_inspect(const InspectOptions& opts) {
     llvm::StringMap<std::string> pcms;
     std::vector<std::string> pcm_files;
     if(is_dir) {
-        llvm::StringMap<SourceFile*> interfaces;
+        bool has_modules = false;
         for(auto& source: sources) {
             source.scan = scan_quick(source.source.content);
-            if(!source.scan.is_interface_unit || source.scan.module_name.empty()) {
-                continue;
-            }
-            auto [it, inserted] = interfaces.try_emplace(source.scan.module_name, &source);
-            if(!inserted) {
-                output.files.find(source.rel)->second.error = "duplicate_module";
-            }
+            has_modules |= source.scan.is_interface_unit || source.scan.need_preprocess;
         }
 
-        // The quick scan only detects module declarations; imports can be
-        // macro-formed, so dependency edges come from the preprocessing
-        // scan, run over the stripped unit through an in-memory overlay.
-        if(!interfaces.empty()) {
+        llvm::StringMap<SourceFile*> interfaces;
+        if(has_modules) {
+            // Preprocessing scans run over the stripped unit through an
+            // in-memory overlay.
             auto memory = llvm::makeIntrusiveRefCnt<llvm::vfs::InMemoryFileSystem>();
             for(const auto& source: sources) {
                 memory->addFile(source.abs,
@@ -823,18 +817,49 @@ int run_inspect(const InspectOptions& opts) {
             overlay->pushOverlay(memory);
 
             SharedScanCache cache;
-            for(const auto& entry: interfaces) {
-                SourceFile& source = *entry.second;
+            auto scan_with = [&](SourceFile& source, auto scan) -> std::optional<ScanResult> {
                 auto command = command_for(output.files.find(source.rel)->second, source);
                 if(!command) {
-                    continue;
+                    return std::nullopt;
                 }
                 std::vector<const char*> argv;
                 for(auto& arg: command->arguments) {
                     argv.push_back(arg.c_str());
                 }
-                source.scan.modules =
-                    scan_precise(argv, command->directory, {}, &cache, overlay).modules;
+                return scan(argv, command->directory, {}, &cache, overlay);
+            };
+
+            // A module declaration behind #if/#ifdef is invisible to the
+            // quick scan (need_preprocess); evaluate the conditionals to
+            // learn whether the file really declares an interface.
+            for(auto& source: sources) {
+                if(!source.scan.need_preprocess) {
+                    continue;
+                }
+                if(auto result = scan_with(source, scan_module_decl)) {
+                    source.scan.module_name = std::move(result->module_name);
+                    source.scan.is_interface_unit = result->is_interface_unit;
+                }
+            }
+
+            for(auto& source: sources) {
+                if(!source.scan.is_interface_unit || source.scan.module_name.empty()) {
+                    continue;
+                }
+                auto [it, inserted] = interfaces.try_emplace(source.scan.module_name, &source);
+                if(!inserted) {
+                    output.files.find(source.rel)->second.error = "duplicate_module";
+                }
+            }
+
+            // The quick scan only detects module declarations; imports can
+            // be macro-formed, so dependency edges come from the
+            // preprocessing scan.
+            for(const auto& entry: interfaces) {
+                SourceFile& source = *entry.second;
+                if(auto result = scan_with(source, scan_precise)) {
+                    source.scan.modules = std::move(result->modules);
+                }
             }
         }
 

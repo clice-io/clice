@@ -374,6 +374,12 @@ export function materializeFixture(corpus: SnapCorpus, fixture: SnapFixture, roo
 
     const flags = [...resolveFlags(corpus.flags, root), ...resolveFlags(fixture.meta.flags, root)];
     const posixRoot = root.split(path.sep).join("/");
+    // Unit sources compile with the unit directory as cwd, mirroring
+    // unit_directory on the inspect path, so relative compiler operands
+    // (-Iinclude, @args.rsp, ...) resolve identically on both paths.
+    // Support sources are never inspected; their cwd is where they live.
+    const unitDir = fixture.unit === "" ? posixRoot : `${posixRoot}/${fixture.unit}`;
+    const unitRels = new Set(fixture.files.map((file) => file.rel));
     const compilable = [
         ...fixture.files.map((file) => file.rel),
         ...corpus.support.filter((rel) => COMPILABLE.test(rel)),
@@ -382,7 +388,7 @@ export function materializeFixture(corpus: SnapCorpus, fixture: SnapFixture, roo
         "compile_commands.json",
         JSON.stringify(
             compilable.map((rel) => ({
-                directory: posixRoot,
+                directory: unitRels.has(rel) ? unitDir : posixRoot,
                 file: `${posixRoot}/${rel}`,
                 arguments: ["clang++", ...flags, "-fsyntax-only", `${posixRoot}/${rel}`],
             })),
