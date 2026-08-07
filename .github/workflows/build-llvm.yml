@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       llvm_version:
-        description: "LLVM version to build (e.g., 21.1.8)"
+        description: "LLVM version to build (e.g., 22.1.8)"
         required: true
         type: string
       patch_ref:
-        description: "clice-llvm ref for patches (default: main). Set to a release tag (e.g., 21.1.8+r3) to reproduce a previous build."
+        description: "clice-llvm ref for patches (default: main). Set to a release tag (e.g., 22.1.8) to reproduce a previous build."
         required: false
         default: "main"
         type: string
@@ -156,14 +156,14 @@ jobs:
       - name: Clone llvm-project
         shell: bash
         run: |
-          VERSION="${{ inputs.llvm_version || '21.1.8' }}"
+          VERSION="${{ inputs.llvm_version || '22.1.8' }}"
           echo "Cloning LLVM ${VERSION}..."
           git clone --branch "llvmorg-${VERSION}" --depth 1 https://github.com/llvm/llvm-project.git .llvm
 
       - name: Apply patches
         shell: bash
         run: |
-          VERSION="${{ inputs.llvm_version || '21.1.8' }}"
+          VERSION="${{ inputs.llvm_version || '22.1.8' }}"
           REF="${{ inputs.patch_ref || 'main' }}"
 
           if git clone --branch "$REF" --depth 1 https://github.com/clice-io/clice-llvm.git .clice-llvm 2>/dev/null; then
