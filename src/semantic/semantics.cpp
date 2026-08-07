@@ -484,12 +484,12 @@ public:
     // This means we'd never see 'int' in 'const int'! Work around that here.
     // (The reason for the behavior is to avoid traversing the nested Type twice,
     // but we ignore TraverseType anyway).
-    bool TraverseQualifiedTypeLoc(clang::QualifiedTypeLoc QX, bool traverse_qualifier = true) {
+    bool TraverseQualifiedTypeLoc(clang::QualifiedTypeLoc QX, bool = true) {
         return traverse_node(SemanticNode(static_cast<clang::TypeLoc>(QX)),
                              [&] { return TraverseTypeLoc(QX.getUnqualifiedLoc()); });
     }
 
-    bool TraverseType(clang::QualType, bool traverse_qualifier = true) {
+    bool TraverseType(clang::QualType, bool = true) {
         return true;
     }
 
@@ -1416,7 +1416,7 @@ void nns_occurrences(clang::NestedNameSpecifierLoc NNSL, Occurrences& out) {
         }
 
         /// Type components (including dependent chains, which are
-        /// DependentNameTypes now) are visited as TypeLocs.
+        /// DependentNameTypes) are visited as TypeLocs.
         case clang::NestedNameSpecifier::Kind::Null:
         case clang::NestedNameSpecifier::Kind::Type:
         case clang::NestedNameSpecifier::Kind::Global: {

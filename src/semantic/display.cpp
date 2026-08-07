@@ -177,12 +177,11 @@ bool is_sugared_template_parameter(clang::QualType type) {
     // SubstTemplateTypeParmType is encompassed within a TypedefType, we may lose
     // the chance to visit it.
     // For example, given a QT that represents `std::vector<int *>::value_type`:
-    //  `-ElaboratedType 'value_type' sugar
-    //    `-TypedefType 'vector<int *>::value_type' sugar
-    //      |-Typedef 'value_type'
-    //      `-SubstTemplateTypeParmType 'int *' sugar class depth 0 index 0 T
-    //        |-ClassTemplateSpecialization 'vector'
-    //        `-PointerType 'int *'
+    //  `-TypedefType 'vector<int *>::value_type' sugar
+    //    |-Typedef 'value_type'
+    //    `-SubstTemplateTypeParmType 'int *' sugar class depth 0 index 0 T
+    //      |-ClassTemplateSpecialization 'vector'
+    //      `-PointerType 'int *'
     //          `-BuiltinType 'int'
     // Applying `getPointeeType` to QT results in 'int', a child of our target
     // node SubstTemplateTypeParmType.
@@ -657,6 +656,26 @@ auto type(clang::ASTContext& context, clang::QualType type, const Options& optio
         if(auto* tag = llvm::dyn_cast<clang::TagType>(type.getTypePtr());
            tag && tag->isCanonicalUnqualified()) {
             os << tag->getDecl()->getKindName() << " ";
+        }
+    }
+
+    /// SuppressScope drops qualifiers written in the source along with the
+    /// computed ones (`S2::Nested<int>` would render as `Nested<int>`).
+    /// Written class scopes carry meaning; print the outer node's written
+    /// qualifier back. A deduced `auto` prints as its deduced type, so the
+    /// prefix comes from there. Complex cases (pointers/references,
+    /// cv-qualifiers) are not attempted, mirroring the tag-keyword special
+    /// case above.
+    if(policy.SuppressScope && !type.isNull() && !type.hasQualifiers()) {
+        auto printed = type;
+        if(auto* AT = llvm::dyn_cast<clang::AutoType>(printed.getTypePtr());
+           AT && AT->isDeduced() && !AT->getDeducedType().isNull()) {
+            printed = AT->getDeducedType();
+        }
+        if(!printed.hasQualifiers()) {
+            if(auto prefix = printed->getPrefix()) {
+                prefix.print(os, policy);
+            }
         }
     }
     type.print(os, policy);

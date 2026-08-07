@@ -499,7 +499,7 @@ public:
 
     /// Look up `name` in the given type. First rewrites the type (to substitute
     /// any template parameters in it), then extracts the ClassTemplateDecl or
-    /// TypeAliasTemplateDecl from the resulting TST/DTST and dispatches to the
+    /// TypeAliasTemplateDecl from the resulting TST and dispatches to the
     /// appropriate lookup overload.
     lookup_result lookup(clang::QualType type, clang::DeclarationName name) {
         clang::Decl* TD = nullptr;
@@ -553,6 +553,11 @@ public:
     }
 
     lookup_result lookup(clang::NestedNameSpecifier NNS, clang::DeclarationName name) {
+        /// getKind() rejects the invalid specifier; bail out before it.
+        if(!NNS) {
+            return lookup_result();
+        }
+
         // Handle each NestedNameSpecifier kind:
         // - Type: concrete or dependent type used as qualifier (e.g. `vector<T>::`);
         //   dependent chains (`base::type::inner`) are DependentNameTypes resolved
@@ -959,7 +964,7 @@ private:
             case clang::Type::MemberPointer: {
                 auto MPT = llvm::cast<clang::MemberPointerType>(T);
                 auto qualifier = MPT->getQualifier();
-                if(qualifier.getKind() != clang::NestedNameSpecifier::Kind::Type) {
+                if(!qualifier || qualifier.getKind() != clang::NestedNameSpecifier::Kind::Type) {
                     break;
                 }
                 auto cls = qualifier.getAsType();
@@ -1627,7 +1632,7 @@ private:
         /// Only type components can contain substitutable parameters; a
         /// dependent chain (`base::type::inner`) is a DependentNameType whose
         /// own qualifier the rewrite recurses into.
-        if(NNS.getKind() != clang::NestedNameSpecifier::Kind::Type) {
+        if(!NNS || NNS.getKind() != clang::NestedNameSpecifier::Kind::Type) {
             return NNS;
         }
 
@@ -1982,17 +1987,17 @@ private:
     /// Resolve a specialization whose template is a dependent name
     /// (`T::template rebind<U>`) to a concrete TST when lookup finds the
     /// template.
-    clang::QualType resolve_dependent_template(const clang::TemplateSpecializationType* DTST) {
-        LOG_DEBUG("{}" "resolve DTST '{}'", pad(), clang::QualType(DTST, 0).getAsString());
+    clang::QualType resolve_dependent_template(const clang::TemplateSpecializationType* TST) {
+        LOG_DEBUG("{}" "resolve TST '{}'", pad(), clang::QualType(TST, 0).getAsString());
         indent += 1;
 
-        auto& template_name = *DTST->getTemplateName().getAsDependentTemplateName();
+        auto& template_name = *TST->getTemplateName().getAsDependentTemplateName();
         /// Pack-narrowed resolutions depend on context the node pointer does
         /// not capture; they may not be cached.
         bool cacheable = pack_narrowing == 0;
 
         if(cacheable) {
-            if(auto iter = resolved.find(DTST); iter != resolved.end()) {
+            if(auto iter = resolved.find(TST); iter != resolved.end()) {
                 indent -= 1;
                 return iter->second;
             }
@@ -2001,13 +2006,13 @@ private:
         auto NNS = rewrite_specifier(template_name.getQualifier(), Policy::Resolve);
 
         llvm::SmallVector<clang::TemplateArgument, 4> arguments;
-        rewrite_arguments(DTST->template_arguments(), arguments, Policy::Resolve);
+        rewrite_arguments(TST->template_arguments(), arguments, Policy::Resolve);
 
         auto* name = template_name.getName().getIdentifier();
         if(!name) {
-            LOG_DEBUG("{}→ <unresolved DTST>", pad());
+            LOG_DEBUG("{}→ <unresolved TST>", pad());
             indent -= 1;
-            return clang::QualType(DTST, 0);
+            return clang::QualType(TST, 0);
         }
 
         auto stack_size = stack.data.size();
@@ -2026,13 +2031,13 @@ private:
                         LOG_DEBUG("{}" "→ '{}' (alias)", pad(), type.getAsString());
                         indent -= 1;
                         if(cacheable && !truncated && !ctd_guard_tripped) {
-                            resolved.try_emplace(DTST, type);
+                            resolved.try_emplace(TST, type);
                         }
                         return type;
                     }
                 }
             } else if(auto* CTD = llvm::dyn_cast<clang::ClassTemplateDecl>(decl)) {
-                // Resolve DTST to a concrete TemplateSpecializationType.
+                // Resolve TST to a concrete TemplateSpecializationType.
                 // e.g. __alloc_traits<allocator<T>>::rebind<T> → rebind<T> (a TST)
                 // This allows subsequent lookup of members (like "other") to work.
                 // Keep lookup frames on stack — the caller (e.g. rewrite_specifier
@@ -2041,7 +2046,7 @@ private:
                 LOG_DEBUG("{}" "→ TST '{}' (class)", pad(), result.getAsString());
                 indent -= 1;
                 if(cacheable && !truncated && !ctd_guard_tripped) {
-                    resolved.try_emplace(DTST, result);
+                    resolved.try_emplace(TST, result);
                 }
                 return result;
             }
@@ -2050,15 +2055,15 @@ private:
             stack.pop();
         }
 
-        LOG_DEBUG("{}→ <unresolved DTST>", pad());
+        LOG_DEBUG("{}→ <unresolved TST>", pad());
         indent -= 1;
-        auto fallback = clang::QualType(DTST, 0);
+        auto fallback = clang::QualType(TST, 0);
         /// Only a conclusive failure may be cached: an exhausted step budget
         /// or a tripped recursion guard proves nothing, and the cache is
         /// TU-wide — a truncated query must not poison this node for later
         /// queries that could still resolve it.
         if(cacheable && !truncated && !ctd_guard_tripped) {
-            resolved.try_emplace(DTST, fallback);
+            resolved.try_emplace(TST, fallback);
         }
         return fallback;
     }

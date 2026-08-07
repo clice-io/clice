@@ -448,8 +448,9 @@ bool Unifier::unify(clang::QualType pattern, clang::QualType argument) {
                 return false;
             }
             auto type_of = [](clang::NestedNameSpecifier NNS) -> const clang::Type* {
-                return NNS.getKind() == clang::NestedNameSpecifier::Kind::Type ? NNS.getAsType()
-                                                                               : nullptr;
+                return NNS && NNS.getKind() == clang::NestedNameSpecifier::Kind::Type
+                           ? NNS.getAsType()
+                           : nullptr;
             };
             auto pattern_cls = type_of(PM->getQualifier());
             auto argument_cls = type_of(AM->getQualifier());
