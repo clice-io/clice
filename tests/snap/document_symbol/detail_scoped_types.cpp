@@ -1,6 +1,6 @@
 /// # Symbol Detail
 ///
-/// ## Scoped types — a written class scope survives in the detail exactly once, whether the type prints it itself (nested classes, aliases, dependent names) or the printer drops it and it is restored (template-ids)
+/// ## Scoped types — a written class scope appears in the detail exactly once, for nested classes, template-ids, aliases and dependent names alike
 ///
 /// - status: supported
 /// - order: 6
