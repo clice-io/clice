@@ -1,0 +1,18 @@
+---
+created_at: 2026-08-07
+input_file: detail_scoped_types.cpp
+---
+- { name: "scoped", kind: Namespace, range: "7:0-29:1", selection_range: "7:10-7:16" }
+-   { name: "Outer", kind: Struct, range: "9:0-13:1", selection_range: "9:7-9:12", detail: "struct" }
+-     { name: "Inner", kind: Struct, range: "10:4-10:19", selection_range: "10:11-10:16", detail: "struct" }
+-     { name: "Box", kind: Struct, range: "11:26-11:39", selection_range: "11:33-11:36", detail: "template struct" }
+-     { name: "Alias", kind: Class, range: "12:4-12:21", selection_range: "12:10-12:15", detail: "type alias" }
+-   { name: "User", kind: Struct, range: "15:0-20:1", selection_range: "15:7-15:11", detail: "struct" }
+-     { name: "plain", kind: Field, range: "16:4-16:22", selection_range: "16:17-16:22", detail: "Outer::Inner" }
+-     { name: "boxed", kind: Field, range: "17:4-17:25", selection_range: "17:20-17:25", detail: "Outer::Box<int>" }
+-     { name: "aliased", kind: Field, range: "18:4-18:24", selection_range: "18:17-18:24", detail: "Outer::Alias" }
+-     { name: "frozen", kind: Field, range: "19:4-19:29", selection_range: "19:23-19:29", detail: "const Outer::Inner" }
+-   { name: "Holder", kind: Struct, range: "23:0-27:1", selection_range: "23:7-23:13", detail: "template struct" }
+-     { name: "value", kind: Field, range: "24:4-24:26", selection_range: "24:21-24:26", detail: "typename T::type" }
+-     { name: "deep", kind: Field, range: "25:4-25:32", selection_range: "25:28-25:32", detail: "typename T::inner::type" }
+-     { name: "bound", kind: Field, range: "26:4-26:42", selection_range: "26:37-26:42", detail: "typename T::template rebind<int>" }

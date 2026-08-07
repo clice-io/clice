@@ -440,8 +440,8 @@ TEST_CASE(Types) {
 }
 
 TEST_CASE(CXXFeatures) {
-    /// Since LLVM 22 a dependent qualifier component (`T::U`) is a
-    /// DependentNameType; the cursor's innermost node owns its name token.
+    /// A dependent qualifier component (`T::U`) is a DependentNameType;
+    /// the cursor's innermost node owns its name token.
     EXPECT_SELECT(R"(
           template <typename T>
           int x = T::§⟦§U⟧::ccc();

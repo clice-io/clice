@@ -349,8 +349,8 @@ auto decl_hover(const clang::NamedDecl* decl,
     } else if(const auto* var_template = llvm::dyn_cast<clang::VarTemplateDecl>(decl)) {
         info.type = display::type(context, var_template->getTemplatedDecl()->getType(), options);
     } else if(const auto* typedef_decl = llvm::dyn_cast<clang::TypedefNameDecl>(decl)) {
-        /// TagType is not sugar since LLVM 22, so desugaring would stop at
-        /// the as-written node; canonicalize to render the underlying type
+        /// TagType is not sugar, so desugaring would stop at the
+        /// as-written node; canonicalize to render the underlying type
         /// fully qualified. Dependent types keep their sugar — their
         /// canonical form spells parameters as `type-parameter-N-M`.
         auto underlying = typedef_decl->getUnderlyingType();

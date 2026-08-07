@@ -122,7 +122,7 @@ std::string template_args(const clang::NamedDecl& decl) {
         clang::printTemplateArgumentList(os, record->getTemplateArgs().asArray(), policy);
     } else if(auto* var = llvm::dyn_cast<clang::VarTemplateSpecializationDecl>(&decl)) {
         /// Implicit variable template specializations carry no written
-        /// arguments since LLVM 22; fall back to the converted ones.
+        /// arguments; fall back to the converted ones.
         clang::printTemplateArgumentList(os, var->getTemplateArgs().asArray(), policy);
     }
     return args;
@@ -659,20 +659,30 @@ auto type(clang::ASTContext& context, clang::QualType type, const Options& optio
         }
     }
 
-    /// SuppressScope drops qualifiers written in the source along with the
-    /// computed ones (`S2::Nested<int>` would render as `Nested<int>`).
-    /// Written class scopes carry meaning; print the outer node's written
-    /// qualifier back. A deduced `auto` prints as its deduced type, so the
-    /// prefix comes from there. Complex cases (pointers/references,
-    /// cv-qualifiers) are not attempted, mirroring the tag-keyword special
-    /// case above.
+    /// Class scopes carry meaning, but SuppressScope also drops two of
+    /// them: the computed scope of a canonical tag (a deduced `auto`
+    /// prints as its deduced, canonical type) and the written qualifier
+    /// of a template-id. Print those back. Every other node (typedefs,
+    /// dependent names, written tag types) prints its written qualifier
+    /// regardless of the policy — restoring theirs would duplicate it.
+    /// Complex cases (pointers/references, cv-qualifiers) are not
+    /// attempted, mirroring the tag-keyword special case above.
     if(policy.SuppressScope && !type.isNull() && !type.hasQualifiers()) {
         auto printed = type;
         if(auto* AT = llvm::dyn_cast<clang::AutoType>(printed.getTypePtr());
            AT && AT->isDeduced() && !AT->getDeducedType().isNull()) {
             printed = AT->getDeducedType();
         }
-        if(!printed.hasQualifiers()) {
+
+        bool scope_suppressed = false;
+        if(auto* tag = llvm::dyn_cast<clang::TagType>(printed.getTypePtr())) {
+            scope_suppressed = tag->isCanonicalUnqualified();
+        } else if(auto* TST =
+                      llvm::dyn_cast<clang::TemplateSpecializationType>(printed.getTypePtr())) {
+            scope_suppressed = !TST->getTemplateName().getAsDependentTemplateName();
+        }
+
+        if(scope_suppressed && !printed.hasQualifiers()) {
             if(auto prefix = printed->getPrefix()) {
                 prefix.print(os, policy);
             }

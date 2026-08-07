@@ -553,11 +553,6 @@ public:
     }
 
     lookup_result lookup(clang::NestedNameSpecifier NNS, clang::DeclarationName name) {
-        /// getKind() rejects the invalid specifier; bail out before it.
-        if(!NNS) {
-            return lookup_result();
-        }
-
         // Handle each NestedNameSpecifier kind:
         // - Type: concrete or dependent type used as qualifier (e.g. `vector<T>::`);
         //   dependent chains (`base::type::inner`) are DependentNameTypes resolved

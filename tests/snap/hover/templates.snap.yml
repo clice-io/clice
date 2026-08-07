@@ -413,3 +413,15 @@ comment from specialization
 // In namespace var_primary_fallback
 int slot
 ```
+
+37_dependent_member_alias: { range: "267:8-267:15" }
+### type `element`  
+
+---
+Type: `const T &`  
+
+---
+```cpp
+// In Wrap<T>
+public: using element = const T &
+```
