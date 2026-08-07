@@ -406,12 +406,13 @@ public:
         return ret;
     }
 
-    bool TraverseTypeLoc(clang::TypeLoc X) {
+    bool TraverseTypeLoc(clang::TypeLoc X, bool traverse_qualifier = true) {
         if(!X) {
             return true;
         }
 
-        return traverse_node(SemanticNode(X), [&] { return Base::TraverseTypeLoc(X); });
+        return traverse_node(SemanticNode(X),
+                             [&] { return Base::TraverseTypeLoc(X, traverse_qualifier); });
     }
 
     bool TraverseTemplateArgumentLoc(const clang::TemplateArgumentLoc& X) {
@@ -483,17 +484,18 @@ public:
     // This means we'd never see 'int' in 'const int'! Work around that here.
     // (The reason for the behavior is to avoid traversing the nested Type twice,
     // but we ignore TraverseType anyway).
-    bool TraverseQualifiedTypeLoc(clang::QualifiedTypeLoc QX) {
-        return traverse_node(SemanticNode(static_cast<clang::TypeLoc>(QX)),
-                             [&] { return TraverseTypeLoc(QX.getUnqualifiedLoc()); });
+    bool TraverseQualifiedTypeLoc(clang::QualifiedTypeLoc QX, bool traverse_qualifier = true) {
+        return traverse_node(SemanticNode(static_cast<clang::TypeLoc>(QX)), [&] {
+            return TraverseTypeLoc(QX.getUnqualifiedLoc(), traverse_qualifier);
+        });
     }
 
-    bool TraverseType(clang::QualType) {
+    bool TraverseType(clang::QualType, bool = true) {
         return true;
     }
 
     // Uninteresting parts of the AST that don't have locations within them.
-    bool TraverseNestedNameSpecifier(clang::NestedNameSpecifier*) {
+    bool TraverseNestedNameSpecifier(clang::NestedNameSpecifier) {
         return true;
     }
 
@@ -1297,7 +1299,7 @@ void type_loc_occurrences(clang::TypeLoc TL, Occurrences& out, types::TemplateRe
     /// using Foo = int; Foo foo;
     ///                   ^~~~ reference
     if(auto TTL = TL.getAs<clang::TypedefTypeLoc>()) {
-        occur(out, TTL.getTypedefNameDecl(), RelationKind::Reference, TTL.getNameLoc());
+        occur(out, TTL.getDecl(), RelationKind::Reference, TTL.getNameLoc());
         return;
     }
 
@@ -1330,7 +1332,7 @@ void type_loc_occurrences(clang::TypeLoc TL, Occurrences& out, types::TemplateRe
     /// through the using shadow to the imported type.
     if(auto UTL = TL.getAs<clang::UsingTypeLoc>()) {
         occur(out,
-              UTL.getTypePtr()->getFoundDecl()->getTargetDecl(),
+              UTL.getTypePtr()->getDecl()->getTargetDecl(),
               RelationKind::Reference,
               UTL.getNameLoc());
         return;
@@ -1356,6 +1358,14 @@ void type_loc_occurrences(clang::TypeLoc TL, Occurrences& out, types::TemplateRe
                 auto* target = TD->getTemplatedDecl() ? TD->getTemplatedDecl()
                                                       : static_cast<clang::NamedDecl*>(TD);
                 occur(out, target, RelationKind::Reference, TSTL.getTemplateNameLoc());
+                return;
+            }
+
+            /// std::allocator<T>::rebind<U> — the template itself is a
+            /// dependent name; weak reference, resolved on the primary
+            /// template.
+            for(const auto* target: types::decls_of(TSTL.getType(), resolver)) {
+                occur(out, target, RelationKind::WeakReference, TSTL.getTemplateNameLoc());
             }
             return;
         }
@@ -1384,56 +1394,33 @@ void type_loc_occurrences(clang::TypeLoc TL, Occurrences& out, types::TemplateRe
         }
         return;
     }
-
-    /// std::allocator<T>::rebind<U>
-    ///                       ^~~~ weak reference
-    if(auto DTSTL = TL.getAs<clang::DependentTemplateSpecializationTypeLoc>()) {
-        for(const auto* target: types::decls_of(DTSTL.getType(), resolver)) {
-            occur(out, target, RelationKind::WeakReference, DTSTL.getTemplateNameLoc());
-        }
-        return;
-    }
 }
 
-void nns_occurrences(clang::NestedNameSpecifierLoc NNSL,
-                     Occurrences& out,
-                     types::TemplateResolver* resolver) {
-    auto* NNS = NNSL.getNestedNameSpecifier();
-    switch(NNS->getKind()) {
-        case clang::NestedNameSpecifier::Namespace: {
-            occur(out, NNS->getAsNamespace(), RelationKind::Reference, NNSL.getLocalBeginLoc());
-            break;
-        }
-
-        case clang::NestedNameSpecifier::NamespaceAlias: {
+void nns_occurrences(clang::NestedNameSpecifierLoc NNSL, Occurrences& out) {
+    auto NNS = NNSL.getNestedNameSpecifier();
+    switch(NNS.getKind()) {
+        /// A namespace or namespace alias; the alias decl itself is
+        /// referenced, not the namespace it names.
+        case clang::NestedNameSpecifier::Kind::Namespace: {
             occur(out,
-                  NNS->getAsNamespaceAlias(),
+                  NNS.getAsNamespaceAndPrefix().Namespace,
                   RelationKind::Reference,
                   NNSL.getLocalBeginLoc());
             break;
         }
 
-        case clang::NestedNameSpecifier::Identifier: {
-            assert(NNS->isDependent() && "Identifier NNS should be dependent");
-            if(resolver) {
-                for(auto* target:
-                    resolver->lookup(NNS->getPrefix(),
-                                     clang::DeclarationName(NNS->getAsIdentifier()))) {
-                    occur(out, target, RelationKind::WeakReference, NNSL.getLocalBeginLoc());
-                }
-            }
-            break;
-        }
-
-        case clang::NestedNameSpecifier::Super: {
+        case clang::NestedNameSpecifier::Kind::MicrosoftSuper: {
             /// __super::member (MS extension) — the qualifier names the base
             /// record.
-            occur(out, NNS->getAsRecordDecl(), RelationKind::Reference, NNSL.getLocalBeginLoc());
+            occur(out, NNS.getAsMicrosoftSuper(), RelationKind::Reference, NNSL.getLocalBeginLoc());
             break;
         }
 
-        case clang::NestedNameSpecifier::TypeSpec:
-        case clang::NestedNameSpecifier::Global: {
+        /// Type components (including dependent chains, which are
+        /// DependentNameTypes) are visited as TypeLocs.
+        case clang::NestedNameSpecifier::Kind::Null:
+        case clang::NestedNameSpecifier::Kind::Type:
+        case clang::NestedNameSpecifier::Kind::Global: {
             break;
         };
     }
@@ -1703,7 +1690,7 @@ llvm::SmallVector<NameOccurrence, 2> resolve_occurrences(const SemanticNode& nod
         }
 
         case SemanticNode::Kind::NestedNameSpecifierLoc: {
-            nns_occurrences(*node.get<clang::NestedNameSpecifierLoc>(), out, resolver);
+            nns_occurrences(*node.get<clang::NestedNameSpecifierLoc>(), out);
             break;
         }
 

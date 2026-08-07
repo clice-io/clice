@@ -173,27 +173,10 @@ add_custom_target(generate_flatbuffers_schema DEPENDS "${GENERATED_HEADER}")
 # Version header, regenerated on every build so the embedded git describe
 # tracks the checked-out commit (content-unchanged writes are elided).
 set(CLICE_VERSION_HEADER "${PROJECT_BINARY_DIR}/generated/version.h")
-# Target identifier stamped next to the version: the explicit triple for
-# cross builds (see cmake/toolchain.cmake); native builds compose the same
-# arch-os-abi form the release asset names use, so a crash log names the
-# exact downloadable artifact.
-if(DEFINED CLICE_TARGET_TRIPLE)
-    string(TOLOWER "${CLICE_TARGET_TRIPLE}" CLICE_TARGET_RAW)
-else()
-    string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}-${CMAKE_SYSTEM_NAME}" CLICE_TARGET_RAW)
-endif()
-if(CLICE_TARGET_RAW MATCHES "^(x86_64|amd64|x64)")
-    set(CLICE_TARGET_ARCH "x64")
-else()
-    set(CLICE_TARGET_ARCH "arm64")
-endif()
-if(CLICE_TARGET_RAW MATCHES "windows")
-    set(CLICE_TARGET_STRING "${CLICE_TARGET_ARCH}-windows-msvc")
-elseif(CLICE_TARGET_RAW MATCHES "darwin|apple|macos")
-    set(CLICE_TARGET_STRING "${CLICE_TARGET_ARCH}-macos-darwin")
-else()
-    set(CLICE_TARGET_STRING "${CLICE_TARGET_ARCH}-linux-gnu")
-endif()
+# Target identifier stamped next to the version: the same canonical
+# triple the release asset names use, so a crash log names the exact
+# downloadable artifact.
+clice_target_triple(CLICE_TARGET_STRING)
 add_custom_target(generate_version_header
     COMMAND ${CMAKE_COMMAND}
         -DSOURCE_DIR=${PROJECT_SOURCE_DIR}

@@ -20,8 +20,9 @@
 ///     │                       parameters from the stack; dependent names pass
 ///     │                       through untouched (no lookup)
 ///     └─ Policy::Resolve    — Substitute plus heuristic resolution of
-///                             DependentNameType/DependentTemplateSpecializationType
-///                             via member lookup and argument deduction
+///                             dependent names and dependent template
+///                             specializations via member lookup and
+///                             argument deduction
 ///
 /// Key invariant: typedef/alias expansion always runs under Policy::Substitute,
 /// so it can never re-enter heuristic lookup. Violating this causes
@@ -204,7 +205,7 @@ clang::QualType get_decl_type(clang::Decl* decl) {
     if(auto* TND = llvm::dyn_cast<clang::TypedefNameDecl>(decl))
         return TND->getUnderlyingType();
     if(auto* RD = llvm::dyn_cast<clang::RecordDecl>(decl))
-        return clang::QualType(RD->getTypeForDecl(), 0);
+        return RD->getASTContext().getCanonicalTagType(RD);
     return clang::QualType();
 }
 
@@ -498,7 +499,7 @@ public:
 
     /// Look up `name` in the given type. First rewrites the type (to substitute
     /// any template parameters in it), then extracts the ClassTemplateDecl or
-    /// TypeAliasTemplateDecl from the resulting TST/DTST and dispatches to the
+    /// TypeAliasTemplateDecl from the resulting TST and dispatches to the
     /// appropriate lookup overload.
     lookup_result lookup(clang::QualType type, clang::DeclarationName name) {
         clang::Decl* TD = nullptr;
@@ -512,22 +513,23 @@ public:
         if(auto TST = type->getAs<clang::TemplateSpecializationType>()) {
             TD = TST->getTemplateName().getAsTemplateDecl();
             args = TST->template_arguments();
-        } else if(auto DTST = type->getAs<clang::DependentTemplateSpecializationType>()) {
-            // If this DTST was already resolved (possibly to itself when unresolvable),
-            // skip the redundant lookup.
-            if(pack_narrowing == 0 && resolved.count(DTST)) {
-                return lookup_result();
-            }
 
-            auto& template_name = DTST->getDependentTemplateName();
-            auto name = template_name.getName().getIdentifier();
-            if(!name) {
-                return {};
-            }
+            if(auto dependent =
+                   !TD ? TST->getTemplateName().getAsDependentTemplateName() : nullptr) {
+                // If this dependent specialization was already resolved (possibly to
+                // itself when unresolvable), skip the redundant lookup.
+                if(pack_narrowing == 0 && resolved.count(TST)) {
+                    return lookup_result();
+                }
 
-            if(auto decl = preferred(lookup(template_name.getQualifier(), name))) {
-                TD = decl;
-                args = DTST->template_arguments();
+                auto name = dependent->getName().getIdentifier();
+                if(!name) {
+                    return {};
+                }
+
+                if(auto decl = preferred(lookup(dependent->getQualifier(), name))) {
+                    TD = decl;
+                }
             }
         }
 
@@ -550,60 +552,29 @@ public:
         return lookup_result();
     }
 
-    lookup_result lookup(const clang::NestedNameSpecifier* NNS, clang::DeclarationName name) {
-        if(!NNS) {
-            return lookup_result();
-        }
-
-        if(pack_narrowing == 0) {
-            if(auto iter = resolved.find(NNS); iter != resolved.end()) {
-                return lookup(iter->second, name);
-            }
-        }
-
+    lookup_result lookup(clang::NestedNameSpecifier NNS, clang::DeclarationName name) {
         // Handle each NestedNameSpecifier kind:
-        // - Identifier: dependent name in NNS chain (e.g. `base::type::inner`), resolve recursively
-        // - TypeSpec: concrete or dependent type used as qualifier (e.g. `vector<T>::`)
-        // - Global/Namespace/NamespaceAlias/Super: not dependent, cannot resolve further
-        switch(NNS->getKind()) {
-            case clang::NestedNameSpecifier::Identifier: {
-                auto stack_size = stack.data.size();
-                auto* decl = preferred(lookup(NNS->getPrefix(), NNS->getAsIdentifier()));
-                auto type = get_decl_type(decl);
-                if(!type.isNull()) {
-                    type = substitute(type);
-                }
-                while(stack.data.size() > stack_size) {
-                    stack.pop();
-                }
-                if(!type.isNull()) {
-                    if(pack_narrowing == 0 && !truncated && !ctd_guard_tripped) {
-                        resolved.try_emplace(NNS, type);
-                    }
-                    return lookup(type, name);
-                }
-                return {};
-            }
-
-            case clang::NestedNameSpecifier::TypeSpec: {
-                return lookup(clang::QualType(NNS->getAsType(), 0), name);
+        // - Type: concrete or dependent type used as qualifier (e.g. `vector<T>::`);
+        //   dependent chains (`base::type::inner`) are DependentNameTypes resolved
+        //   recursively through the type lookup
+        // - Global/Namespace/MicrosoftSuper: not dependent, cannot resolve further
+        switch(NNS.getKind()) {
+            case clang::NestedNameSpecifier::Kind::Type: {
+                return lookup(clang::QualType(NNS.getAsType(), 0), name);
             }
 
             /// Namespaces and the global scope are ordinary declaration
             /// contexts; a plain lookup returns the full overload set.
-            case clang::NestedNameSpecifier::Namespace: {
-                return NNS->getAsNamespace()->lookup(name);
+            case clang::NestedNameSpecifier::Kind::Namespace: {
+                return NNS.getAsNamespaceAndPrefix().Namespace->getNamespace()->lookup(name);
             }
 
-            case clang::NestedNameSpecifier::NamespaceAlias: {
-                return NNS->getAsNamespaceAlias()->getNamespace()->lookup(name);
-            }
-
-            case clang::NestedNameSpecifier::Global: {
+            case clang::NestedNameSpecifier::Kind::Global: {
                 return context.getTranslationUnitDecl()->lookup(name);
             }
 
-            case clang::NestedNameSpecifier::Super: {
+            case clang::NestedNameSpecifier::Kind::Null:
+            case clang::NestedNameSpecifier::Kind::MicrosoftSuper: {
                 return {};
             }
         }
@@ -799,16 +770,12 @@ private:
             /// Sugar nodes: rewrite what they point at; the wrapper is dropped,
             /// which is fine because consumers compare canonically or look
             /// through sugar.
-            case clang::Type::Elaborated: {
-                result = rewrite(llvm::cast<clang::ElaboratedType>(T)->getNamedType(), policy);
-                break;
-            }
             case clang::Type::Paren: {
                 result = rewrite(llvm::cast<clang::ParenType>(T)->getInnerType(), policy);
                 break;
             }
             case clang::Type::Using: {
-                result = rewrite(llvm::cast<clang::UsingType>(T)->getUnderlyingType(), policy);
+                result = rewrite(llvm::cast<clang::UsingType>(T)->desugar(), policy);
                 break;
             }
             case clang::Type::MacroQualified: {
@@ -837,12 +804,33 @@ private:
 
             case clang::Type::InjectedClassName: {
                 auto ICT = llvm::cast<clang::InjectedClassNameType>(T);
-                result = rewrite(ICT->getInjectedSpecializationType(), policy);
+                result = rewrite(ICT->getDecl()->getCanonicalTemplateSpecializationType(context),
+                                 policy);
                 break;
             }
 
             case clang::Type::TemplateSpecialization: {
-                result = rewrite_template(llvm::cast<clang::TemplateSpecializationType>(T), policy);
+                auto TST = llvm::cast<clang::TemplateSpecializationType>(T);
+                auto dependent = TST->getTemplateName().getAsDependentTemplateName();
+                if(dependent && policy == Policy::Resolve) {
+                    result = resolve_dependent_template(TST);
+                } else if(dependent) {
+                    auto NNS = rewrite_specifier(dependent->getQualifier(), policy);
+                    llvm::SmallVector<clang::TemplateArgument, 4> arguments;
+                    bool changed = rewrite_arguments(TST->template_arguments(), arguments, policy);
+                    if(NNS != dependent->getQualifier() || changed) {
+                        auto name = context.getDependentTemplateName(
+                            clang::DependentTemplateStorage(NNS,
+                                                            dependent->getName(),
+                                                            dependent->hasTemplateKeyword()));
+                        result = context.getTemplateSpecializationType(TST->getKeyword(),
+                                                                       name,
+                                                                       arguments,
+                                                                       /*CanonicalArgs=*/{});
+                    }
+                } else {
+                    result = rewrite_template(TST, policy);
+                }
                 break;
             }
 
@@ -853,32 +841,9 @@ private:
                 } else {
                     auto NNS = rewrite_specifier(DNT->getQualifier(), policy);
                     if(NNS != DNT->getQualifier()) {
-                        result = context.getDependentNameType(
-                            DNT->getKeyword(),
-                            const_cast<clang::NestedNameSpecifier*>(NNS),
-                            DNT->getIdentifier());
-                    }
-                }
-                break;
-            }
-
-            case clang::Type::DependentTemplateSpecialization: {
-                auto DTST = llvm::cast<clang::DependentTemplateSpecializationType>(T);
-                if(policy == Policy::Resolve) {
-                    result = resolve_dependent_template(DTST);
-                } else {
-                    auto& template_name = DTST->getDependentTemplateName();
-                    auto NNS = rewrite_specifier(template_name.getQualifier(), policy);
-                    llvm::SmallVector<clang::TemplateArgument, 4> arguments;
-                    bool changed = rewrite_arguments(DTST->template_arguments(), arguments, policy);
-                    if(NNS != template_name.getQualifier() || changed) {
-                        result = context.getDependentTemplateSpecializationType(
-                            DTST->getKeyword(),
-                            clang::DependentTemplateStorage(
-                                const_cast<clang::NestedNameSpecifier*>(NNS),
-                                template_name.getName(),
-                                template_name.hasTemplateKeyword()),
-                            arguments);
+                        result = context.getDependentNameType(DNT->getKeyword(),
+                                                              NNS,
+                                                              DNT->getIdentifier());
                     }
                 }
                 break;
@@ -993,10 +958,11 @@ private:
 
             case clang::Type::MemberPointer: {
                 auto MPT = llvm::cast<clang::MemberPointerType>(T);
-                auto cls = MPT->getQualifier() ? MPT->getQualifier()->getAsType() : nullptr;
-                if(!cls) {
+                auto qualifier = MPT->getQualifier();
+                if(!qualifier || qualifier.getKind() != clang::NestedNameSpecifier::Kind::Type) {
                     break;
                 }
+                auto cls = qualifier.getAsType();
                 auto pointee = rewrite(MPT->getPointeeType(), policy);
                 auto rewritten_cls = rewrite(clang::QualType(cls, 0), policy);
                 if(pointee == MPT->getPointeeType() && rewritten_cls.getTypePtr() == cls) {
@@ -1011,12 +977,10 @@ private:
                 if(!rewritten_cls->isDependentType() && !rewritten_cls->isRecordType()) {
                     break;
                 }
-                auto qualifier = clang::NestedNameSpecifier::Create(context,
-                                                                    nullptr,
-                                                                    rewritten_cls.getTypePtr());
-                result = context.getMemberPointerType(pointee,
-                                                      qualifier,
-                                                      rewritten_cls->getAsCXXRecordDecl());
+                result = context.getMemberPointerType(
+                    pointee,
+                    clang::NestedNameSpecifier(rewritten_cls.getTypePtr()),
+                    rewritten_cls->getAsCXXRecordDecl());
                 break;
             }
 
@@ -1286,11 +1250,11 @@ private:
         /// name (libc++ binds `_Alloc::template rebind` this way). A
         /// TemplateSpecializationType cannot carry those (clang asserts);
         /// rebuild the dependent form with the substituted arguments instead.
-        if(auto dependent = name.getAsDependentTemplateName()) {
-            return context.getDependentTemplateSpecializationType(
-                clang::ElaboratedTypeKeyword::None,
-                *dependent,
-                arguments);
+        if(name.getAsDependentTemplateName()) {
+            return context.getTemplateSpecializationType(clang::ElaboratedTypeKeyword::None,
+                                                         name,
+                                                         arguments,
+                                                         /*CanonicalArgs=*/{});
         }
 
         llvm::SmallVector<clang::TemplateArgument, 4> canonical;
@@ -1354,7 +1318,7 @@ private:
                    llvm::dyn_cast_or_null<clang::ClassTemplateDecl>(name.getAsTemplateDecl())) {
                 void* pos = nullptr;
                 if(auto CTSD = CTD->findSpecialization(canonical, pos)) {
-                    underlying = context.getTypeDeclType(CTSD);
+                    underlying = context.getCanonicalTagType(CTSD);
                 }
             }
         }
@@ -1379,11 +1343,19 @@ private:
                 if(aliased.isNull()) {
                     return clang::QualType();
                 }
-                return context.getTemplateSpecializationType(name, arguments, canonical, aliased);
+                return context.getTemplateSpecializationType(clang::ElaboratedTypeKeyword::None,
+                                                             name,
+                                                             arguments,
+                                                             canonical,
+                                                             aliased);
             }
         }
 
-        return context.getTemplateSpecializationType(name, arguments, canonical, underlying);
+        return context.getTemplateSpecializationType(clang::ElaboratedTypeKeyword::None,
+                                                     name,
+                                                     arguments,
+                                                     canonical,
+                                                     underlying);
     }
 
     clang::QualType rewrite_template(const clang::TemplateSpecializationType* TST, Policy policy) {
@@ -1530,11 +1502,10 @@ private:
                     if(auto dependent = argument.getAsTemplate().getAsDependentTemplateName()) {
                         auto qualifier = rewrite_specifier(dependent->getQualifier(), policy);
                         if(qualifier != dependent->getQualifier()) {
-                            auto name =
-                                context.getDependentTemplateName(clang::DependentTemplateStorage(
-                                    const_cast<clang::NestedNameSpecifier*>(qualifier),
-                                    dependent->getName(),
-                                    dependent->hasTemplateKeyword()));
+                            auto name = context.getDependentTemplateName(
+                                clang::DependentTemplateStorage(qualifier,
+                                                                dependent->getName(),
+                                                                dependent->hasTemplateKeyword()));
                             out.emplace_back(name);
                             changed = true;
                             continue;
@@ -1652,56 +1623,19 @@ private:
         return expanded;
     }
 
-    const clang::NestedNameSpecifier* rewrite_specifier(const clang::NestedNameSpecifier* NNS,
-                                                        Policy policy) {
-        if(!NNS) {
-            return nullptr;
+    clang::NestedNameSpecifier rewrite_specifier(clang::NestedNameSpecifier NNS, Policy policy) {
+        /// Only type components can contain substitutable parameters; a
+        /// dependent chain (`base::type::inner`) is a DependentNameType whose
+        /// own qualifier the rewrite recurses into.
+        if(!NNS || NNS.getKind() != clang::NestedNameSpecifier::Kind::Type) {
+            return NNS;
         }
 
-        switch(NNS->getKind()) {
-            case clang::NestedNameSpecifier::TypeSpec: {
-                auto prefix = rewrite_specifier(NNS->getPrefix(), policy);
-
-                /// A dependent component written as `prefix::template B<Y>` keeps
-                /// its qualifier in the specifier chain, not in the type node
-                /// itself; resolve it in the scope of the rewritten prefix.
-                clang::QualType type;
-                auto component = clang::QualType(NNS->getAsType(), 0);
-                auto DTST =
-                    llvm::dyn_cast<clang::DependentTemplateSpecializationType>(NNS->getAsType());
-                if(DTST && !DTST->getDependentTemplateName().getQualifier() &&
-                   policy == Policy::Resolve) {
-                    type = resolve_dependent_template(DTST, prefix);
-                } else {
-                    type = rewrite(component, policy);
-                }
-
-                if(prefix == NNS->getPrefix() && type.getTypePtr() == NNS->getAsType()) {
-                    return NNS;
-                }
-                return clang::NestedNameSpecifier::Create(
-                    context,
-                    const_cast<clang::NestedNameSpecifier*>(prefix),
-                    type.getTypePtr());
-            }
-
-            /// Identifier components are resolved by lookup itself; the prefix
-            /// may still contain substitutable types.
-            case clang::NestedNameSpecifier::Identifier: {
-                auto prefix = rewrite_specifier(NNS->getPrefix(), policy);
-                if(prefix == NNS->getPrefix()) {
-                    return NNS;
-                }
-                return clang::NestedNameSpecifier::Create(
-                    context,
-                    const_cast<clang::NestedNameSpecifier*>(prefix),
-                    NNS->getAsIdentifier());
-            }
-
-            default: {
-                return NNS;
-            }
+        auto type = rewrite(clang::QualType(NNS.getAsType(), 0), policy);
+        if(type.getTypePtr() == NNS.getAsType()) {
+            return NNS;
         }
+        return clang::NestedNameSpecifier(type.getTypePtr());
     }
 
     /// Pseudo-SFINAE: decide whether a partial specialization's dependent
@@ -1761,19 +1695,18 @@ private:
                                    /*wants_template=*/false);
             }
 
-            case clang::Type::DependentTemplateSpecialization: {
-                auto DTST = llvm::cast<clang::DependentTemplateSpecializationType>(T);
-                auto& template_name = DTST->getDependentTemplateName();
-                auto identifier = template_name.getName().getIdentifier();
-                auto qualifier = template_name.getQualifier();
-                if(specifier_absent(qualifier, guard)) {
-                    return true;
-                }
-                return identifier && scope_lacks(qualifier, identifier, /*wants_template=*/true);
-            }
-
             case clang::Type::TemplateSpecialization: {
                 auto TST = llvm::cast<clang::TemplateSpecializationType>(T);
+                if(auto dependent = TST->getTemplateName().getAsDependentTemplateName()) {
+                    auto identifier = dependent->getName().getIdentifier();
+                    auto qualifier = dependent->getQualifier();
+                    if(specifier_absent(qualifier, guard)) {
+                        return true;
+                    }
+                    return identifier &&
+                           scope_lacks(qualifier, identifier, /*wants_template=*/true);
+                }
+
                 /// Check the arguments as written: alias sugar (`void_t<...>`)
                 /// desugars to a type that no longer contains the probe.
                 for(auto& argument: TST->template_arguments()) {
@@ -1785,10 +1718,6 @@ private:
                 return false;
             }
 
-            case clang::Type::Elaborated: {
-                return member_absent(llvm::cast<clang::ElaboratedType>(T)->getNamedType(),
-                                     guard + 1);
-            }
             case clang::Type::Paren: {
                 return member_absent(llvm::cast<clang::ParenType>(T)->getInnerType(), guard + 1);
             }
@@ -1813,36 +1742,31 @@ private:
     }
 
     /// Does any link of the specifier chain provably name a missing member?
-    bool specifier_absent(const clang::NestedNameSpecifier* NNS, unsigned guard) {
-        if(!NNS || guard > 16) {
+    bool specifier_absent(clang::NestedNameSpecifier NNS, unsigned guard) {
+        if(!NNS || guard > 16 || NNS.getKind() != clang::NestedNameSpecifier::Kind::Type) {
             return false;
         }
-        if(specifier_absent(NNS->getPrefix(), guard + 1)) {
-            return true;
-        }
 
-        switch(NNS->getKind()) {
-            case clang::NestedNameSpecifier::Identifier: {
-                return scope_lacks(NNS->getPrefix(), NNS->getAsIdentifier());
-            }
-            case clang::NestedNameSpecifier::TypeSpec: {
-                const clang::Type* T = NNS->getAsType();
-                if(auto DTST = llvm::dyn_cast<clang::DependentTemplateSpecializationType>(T)) {
-                    auto& template_name = DTST->getDependentTemplateName();
-                    auto scope = template_name.getQualifier() ? template_name.getQualifier()
-                                                              : NNS->getPrefix();
-                    auto identifier = template_name.getName().getIdentifier();
-                    return identifier && scope_lacks(scope, identifier, /*wants_template=*/true);
-                }
-                if(auto DNT = llvm::dyn_cast<clang::DependentNameType>(T)) {
-                    return scope_lacks(DNT->getQualifier(), DNT->getIdentifier());
-                }
+        const clang::Type* T = NNS.getAsType();
+        if(auto TST = llvm::dyn_cast<clang::TemplateSpecializationType>(T)) {
+            auto dependent = TST->getTemplateName().getAsDependentTemplateName();
+            if(!dependent) {
                 return false;
             }
-            default: {
-                return false;
+            auto scope = dependent->getQualifier();
+            if(specifier_absent(scope, guard + 1)) {
+                return true;
             }
+            auto identifier = dependent->getName().getIdentifier();
+            return identifier && scope_lacks(scope, identifier, /*wants_template=*/true);
         }
+        if(auto DNT = llvm::dyn_cast<clang::DependentNameType>(T)) {
+            if(specifier_absent(DNT->getQualifier(), guard + 1)) {
+                return true;
+            }
+            return scope_lacks(DNT->getQualifier(), DNT->getIdentifier());
+        }
+        return false;
     }
 
     /// Resolve `scope` and ask whether it is a known template or record that
@@ -1907,7 +1831,7 @@ private:
         return wants_template && llvm::isa<clang::TypeDecl>(decl);
     }
 
-    bool scope_lacks(const clang::NestedNameSpecifier* scope,
+    bool scope_lacks(clang::NestedNameSpecifier scope,
                      clang::DeclarationName name,
                      bool wants_template = false) {
         if(!scope) {
@@ -1937,8 +1861,8 @@ private:
         auto resolved_scope = rewrite_specifier(scope, Policy::Resolve);
 
         bool lacks = false;
-        if(resolved_scope && resolved_scope->getKind() == clang::NestedNameSpecifier::TypeSpec) {
-            auto type = resolve(clang::QualType(resolved_scope->getAsType(), 0));
+        if(resolved_scope.getKind() == clang::NestedNameSpecifier::Kind::Type) {
+            auto type = resolve(clang::QualType(resolved_scope.getAsType(), 0));
             if(!type.isNull()) {
                 if(auto TST = type->getAs<clang::TemplateSpecializationType>()) {
                     if(auto CTD = llvm::dyn_cast_or_null<clang::ClassTemplateDecl>(
@@ -2000,7 +1924,7 @@ private:
             return clang::QualType(DNT, 0);
         }
 
-        auto* NNS = rewrite_specifier(DNT->getQualifier(), Policy::Resolve);
+        auto NNS = rewrite_specifier(DNT->getQualifier(), Policy::Resolve);
         auto stack_size = stack.data.size();
         auto* decl = preferred(lookup(NNS, DNT->getIdentifier()));
         auto type = get_decl_type(decl);
@@ -2055,40 +1979,35 @@ private:
         return clang::QualType(DNT, 0);
     }
 
-    /// `scope` carries the enclosing specifier prefix for components whose own
-    /// qualifier is null (see rewrite_specifier). Such resolutions are not
-    /// cached: the node's identity does not include the scope it was found in.
-    clang::QualType
-        resolve_dependent_template(const clang::DependentTemplateSpecializationType* DTST,
-                                   const clang::NestedNameSpecifier* scope = nullptr) {
-        LOG_DEBUG("{}" "resolve DTST '{}'", pad(), clang::QualType(DTST, 0).getAsString());
+    /// Resolve a specialization whose template is a dependent name
+    /// (`T::template rebind<U>`) to a concrete TST when lookup finds the
+    /// template.
+    clang::QualType resolve_dependent_template(const clang::TemplateSpecializationType* TST) {
+        LOG_DEBUG("{}" "resolve TST '{}'", pad(), clang::QualType(TST, 0).getAsString());
         indent += 1;
 
-        auto& template_name = DTST->getDependentTemplateName();
-        /// Scope-threaded and pack-narrowed resolutions both depend on
-        /// context the node pointer does not capture; neither may be cached.
-        bool cacheable = (template_name.getQualifier() != nullptr || !scope) && pack_narrowing == 0;
+        auto& template_name = *TST->getTemplateName().getAsDependentTemplateName();
+        /// Pack-narrowed resolutions depend on context the node pointer does
+        /// not capture; they may not be cached.
+        bool cacheable = pack_narrowing == 0;
 
         if(cacheable) {
-            if(auto iter = resolved.find(DTST); iter != resolved.end()) {
+            if(auto iter = resolved.find(TST); iter != resolved.end()) {
                 indent -= 1;
                 return iter->second;
             }
         }
 
-        const clang::NestedNameSpecifier* NNS =
-            template_name.getQualifier()
-                ? rewrite_specifier(template_name.getQualifier(), Policy::Resolve)
-                : scope;
+        auto NNS = rewrite_specifier(template_name.getQualifier(), Policy::Resolve);
 
         llvm::SmallVector<clang::TemplateArgument, 4> arguments;
-        rewrite_arguments(DTST->template_arguments(), arguments, Policy::Resolve);
+        rewrite_arguments(TST->template_arguments(), arguments, Policy::Resolve);
 
         auto* name = template_name.getName().getIdentifier();
         if(!name) {
-            LOG_DEBUG("{}→ <unresolved DTST>", pad());
+            LOG_DEBUG("{}→ <unresolved TST>", pad());
             indent -= 1;
-            return clang::QualType(DTST, 0);
+            return clang::QualType(TST, 0);
         }
 
         auto stack_size = stack.data.size();
@@ -2107,13 +2026,13 @@ private:
                         LOG_DEBUG("{}" "→ '{}' (alias)", pad(), type.getAsString());
                         indent -= 1;
                         if(cacheable && !truncated && !ctd_guard_tripped) {
-                            resolved.try_emplace(DTST, type);
+                            resolved.try_emplace(TST, type);
                         }
                         return type;
                     }
                 }
             } else if(auto* CTD = llvm::dyn_cast<clang::ClassTemplateDecl>(decl)) {
-                // Resolve DTST to a concrete TemplateSpecializationType.
+                // Resolve TST to a concrete TemplateSpecializationType.
                 // e.g. __alloc_traits<allocator<T>>::rebind<T> → rebind<T> (a TST)
                 // This allows subsequent lookup of members (like "other") to work.
                 // Keep lookup frames on stack — the caller (e.g. rewrite_specifier
@@ -2122,7 +2041,7 @@ private:
                 LOG_DEBUG("{}" "→ TST '{}' (class)", pad(), result.getAsString());
                 indent -= 1;
                 if(cacheable && !truncated && !ctd_guard_tripped) {
-                    resolved.try_emplace(DTST, result);
+                    resolved.try_emplace(TST, result);
                 }
                 return result;
             }
@@ -2131,15 +2050,15 @@ private:
             stack.pop();
         }
 
-        LOG_DEBUG("{}→ <unresolved DTST>", pad());
+        LOG_DEBUG("{}→ <unresolved TST>", pad());
         indent -= 1;
-        auto fallback = clang::QualType(DTST, 0);
+        auto fallback = clang::QualType(TST, 0);
         /// Only a conclusive failure may be cached: an exhausted step budget
         /// or a tripped recursion guard proves nothing, and the cache is
         /// TU-wide — a truncated query must not poison this node for later
         /// queries that could still resolve it.
         if(cacheable && !truncated && !ctd_guard_tripped) {
-            resolved.try_emplace(DTST, fallback);
+            resolved.try_emplace(TST, fallback);
         }
         return fallback;
     }
@@ -2179,7 +2098,7 @@ clang::QualType TemplateResolver::resolve(clang::QualType type) {
     return instantiator.resolve(type);
 }
 
-TemplateResolver::lookup_result TemplateResolver::lookup(const clang::NestedNameSpecifier* NNS,
+TemplateResolver::lookup_result TemplateResolver::lookup(clang::NestedNameSpecifier NNS,
                                                          clang::DeclarationName name) {
     PseudoInstantiator instantiator(context, resolved);
     return instantiator.lookup(NNS, name);
@@ -2233,7 +2152,7 @@ static TemplateResolver::lookup_result
     /// unwrap it to the equivalent template specialization the lookup
     /// understands.
     if(auto* ICNT = type->getAs<clang::InjectedClassNameType>()) {
-        type = ICNT->getInjectedSpecializationType();
+        type = ICNT->getDecl()->getCanonicalTemplateSpecializationType(context);
     }
 
     PseudoInstantiator instantiator(context, resolved);
@@ -2258,13 +2177,17 @@ TemplateResolver::lookup_result TemplateResolver::lookup(const clang::Unresolved
 }
 
 TemplateResolver::lookup_result
-    TemplateResolver::lookup(const clang::DependentTemplateSpecializationType* type) {
-    auto& template_name = type->getDependentTemplateName();
-    auto name = template_name.getName();
-    if(auto identifier = name.getIdentifier()) {
-        return lookup(template_name.getQualifier(), identifier);
+    TemplateResolver::lookup(const clang::TemplateSpecializationType* type) {
+    auto dependent = type->getTemplateName().getAsDependentTemplateName();
+    if(!dependent) {
+        return {};
     }
-    return lookup(template_name.getQualifier(),
+
+    auto name = dependent->getName();
+    if(auto identifier = name.getIdentifier()) {
+        return lookup(dependent->getQualifier(), identifier);
+    }
+    return lookup(dependent->getQualifier(),
                   context.DeclarationNames.getCXXOperatorName(name.getOperator()));
 }
 

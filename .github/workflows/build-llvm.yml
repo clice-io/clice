@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       llvm_version:
-        description: "LLVM version to build (e.g., 21.1.8)"
+        description: "LLVM version to build (e.g., 22.1.8)"
         required: true
         type: string
       patch_ref:
-        description: "clice-llvm ref for patches (default: main). Set to a release tag (e.g., 21.1.8+r2) to reproduce a previous build."
+        description: "clice-llvm ref for patches (default: main). Set to a release tag (e.g., 22.1.8) to reproduce a previous build."
         required: false
         default: "main"
         type: string
@@ -64,12 +64,12 @@ jobs:
           - os: ubuntu-24.04
             llvm_mode: RelWithDebInfo
             lto: OFF
-            target_triple: aarch64-linux-gnu
+            target_triple: aarch64-unknown-linux-gnu
             pixi_env: cross-linux-arm64
           - os: ubuntu-24.04
             llvm_mode: RelWithDebInfo
             lto: ON
-            target_triple: aarch64-linux-gnu
+            target_triple: aarch64-unknown-linux-gnu
             pixi_env: cross-linux-arm64
 
           # Windows arm64 (from x64 windows-2022)
@@ -155,17 +155,18 @@ jobs:
 
       - name: Clone llvm-project
         shell: bash
+        env:
+          VERSION: ${{ inputs.llvm_version || '22.1.8' }}
         run: |
-          VERSION="${{ inputs.llvm_version || '21.1.8' }}"
           echo "Cloning LLVM ${VERSION}..."
           git clone --branch "llvmorg-${VERSION}" --depth 1 https://github.com/llvm/llvm-project.git .llvm
 
       - name: Apply patches
         shell: bash
+        env:
+          VERSION: ${{ inputs.llvm_version || '22.1.8' }}
+          REF: ${{ inputs.patch_ref || 'main' }}
         run: |
-          VERSION="${{ inputs.llvm_version || '21.1.8' }}"
-          REF="${{ inputs.patch_ref || 'main' }}"
-
           if git clone --branch "$REF" --depth 1 https://github.com/clice-io/clice-llvm.git .clice-llvm 2>/dev/null; then
             echo "Using patches from clice-llvm@$REF"
           else
@@ -201,32 +202,21 @@ jobs:
       - name: Package LLVM install directory
         shell: bash
         run: |
-          # Determine platform/arch from target triple or runner OS
           if [[ -n "${{ matrix.target_triple }}" ]]; then
-            case "${{ matrix.target_triple }}" in
-              x86_64-apple-darwin)       PLATFORM="macos";   ARCH="x64" ;;
-              aarch64-linux-gnu)         PLATFORM="linux";   ARCH="arm64" ;;
-              aarch64-pc-windows-msvc)   PLATFORM="windows"; ARCH="arm64" ;;
-            esac
+            TRIPLE="${{ matrix.target_triple }}"
           else
-            PLATFORM="linux"; ARCH="x64"
-            if [[ "${{ matrix.os }}" == windows-* ]]; then
-              PLATFORM="windows"
-            elif [[ "${{ matrix.os }}" == macos-* ]]; then
-              PLATFORM="macos"; ARCH="arm64"
-            fi
+            case "${{ matrix.os }}" in
+              ubuntu-*)  TRIPLE="x86_64-unknown-linux-gnu" ;;
+              macos-*)   TRIPLE="aarch64-apple-darwin" ;;
+              windows-*) TRIPLE="x86_64-pc-windows-msvc" ;;
+            esac
           fi
 
-          case "$PLATFORM" in
-            linux)   TOOLCHAIN="gnu" ;;
-            macos)   TOOLCHAIN="clang" ;;
-            windows) TOOLCHAIN="msvc" ;;
-          esac
           if [[ "${{ matrix.llvm_mode }}" == "Debug" ]]; then MODE_TAG="debug"; else MODE_TAG="releasedbg"; fi
           SUFFIX=""
           if [[ "${{ matrix.lto }}" == "ON" ]]; then SUFFIX+="-lto"; fi
           if [[ "${{ matrix.llvm_mode }}" == "Debug" && "${{ matrix.os }}" != windows-* ]]; then SUFFIX+="-asan"; fi
-          ARCHIVE="${ARCH}-${PLATFORM}-${TOOLCHAIN}-${MODE_TAG}${SUFFIX}.tar.xz"
+          ARCHIVE="${TRIPLE}.${MODE_TAG}${SUFFIX}.tar.xz"
 
           set -eo pipefail
           tar -C .llvm/build-install -cf - . | xz -T0 -9 -c > "${ARCHIVE}"

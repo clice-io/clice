@@ -50,7 +50,7 @@ docs_ast::X<int>
 ```
 
 05_var_tmpl_ref_doc: { range: "15:11-15:14" }
-### variable `baz<X<int>>`  
+### variable `baz<docs_ast::X<int>>`  
 
 ---
 Type: `docs_ast::X<int>`  

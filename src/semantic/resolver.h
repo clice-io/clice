@@ -27,13 +27,15 @@ public:
     using lookup_result = clang::DeclContext::lookup_result;
 
     /// Look up the name in the given nested name specifier.
-    lookup_result lookup(const clang::NestedNameSpecifier* NNS, clang::DeclarationName name);
+    lookup_result lookup(clang::NestedNameSpecifier NNS, clang::DeclarationName name);
 
     lookup_result lookup(const clang::DependentNameType* type) {
         return lookup(type->getQualifier(), type->getIdentifier());
     }
 
-    lookup_result lookup(const clang::DependentTemplateSpecializationType* type);
+    /// Look up a dependent template name (`T::template rebind`); returns an
+    /// empty result for specializations whose template is already known.
+    lookup_result lookup(const clang::TemplateSpecializationType* type);
 
     lookup_result lookup(const clang::DependentScopeDeclRefExpr* expr) {
         return lookup(expr->getQualifier(), expr->getNameInfo().getName());

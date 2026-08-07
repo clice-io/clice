@@ -25,7 +25,7 @@ SearchConfig extract_search_config(llvm::ArrayRef<const char*> arguments,
     auto make_absolute = [&](std::string_view path) -> std::string {
         llvm::SmallString<256> abs_path(path);
         if(!llvm::sys::path::is_absolute(abs_path)) {
-            llvm::sys::fs::make_absolute(directory, abs_path);
+            llvm::sys::path::make_absolute(directory, abs_path);
         }
         llvm::sys::path::remove_dots(abs_path, true);
         return abs_path.str().str();

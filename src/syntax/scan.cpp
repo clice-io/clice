@@ -10,6 +10,7 @@
 #include "clang/Basic/FileEntry.h"
 #include "clang/Basic/FileManager.h"
 #include "clang/Basic/SourceManager.h"
+#include "clang/Driver/CreateInvocationFromArgs.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Frontend/FrontendActions.h"
 #include "clang/Lex/PPCallbacks.h"
@@ -323,9 +324,10 @@ std::unique_ptr<clang::CompilerInstance>
     }
 
     auto instance = std::make_unique<clang::CompilerInstance>(std::move(invocation));
-    instance->createDiagnostics(*vfs, new clang::IgnoringDiagConsumer(), true);
+    instance->setVirtualFileSystem(std::move(vfs));
+    instance->createDiagnostics(new clang::IgnoringDiagConsumer(), true);
     instance->getDiagnostics().setSuppressAllDiagnostics(true);
-    instance->createFileManager(vfs);
+    instance->createFileManager();
 
     return instance;
 }

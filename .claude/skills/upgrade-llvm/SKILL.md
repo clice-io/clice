@@ -24,9 +24,9 @@ Download the artifact matching the development machine:
 
 ```bash
 gh run view <RUN_ID>
-gh run download <RUN_ID> -n x64-linux-gnu-releasedbg.tar.xz -D .llvm-download
+gh run download <RUN_ID> -n x86_64-unknown-linux-gnu.releasedbg.tar.xz -D .llvm-download
 mkdir -p .llvm
-tar -xf .llvm-download/x64-linux-gnu-releasedbg.tar.xz -C .llvm
+tar -xf .llvm-download/x86_64-unknown-linux-gnu.releasedbg.tar.xz -C .llvm
 ```
 
 Configure clice to build against it:

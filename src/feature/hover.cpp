@@ -350,9 +350,14 @@ auto decl_hover(const clang::NamedDecl* decl,
     } else if(const auto* var_template = llvm::dyn_cast<clang::VarTemplateDecl>(decl)) {
         info.type = display::type(context, var_template->getTemplatedDecl()->getType(), options);
     } else if(const auto* typedef_decl = llvm::dyn_cast<clang::TypedefNameDecl>(decl)) {
-        info.type = display::type(context,
-                                  typedef_decl->getUnderlyingType().getDesugaredType(context),
-                                  options);
+        /// TagType is not sugar, so desugaring would stop at the
+        /// as-written node; canonicalize to render the underlying type
+        /// fully qualified. Dependent types keep their sugar — their
+        /// canonical form spells parameters as `type-parameter-N-M`.
+        auto underlying = typedef_decl->getUnderlyingType();
+        underlying = underlying->isDependentType() ? underlying.getDesugaredType(context)
+                                                   : context.getCanonicalType(underlying);
+        info.type = display::type(context, underlying, options);
     } else if(const auto* alias_template = llvm::dyn_cast<clang::TypeAliasTemplateDecl>(decl)) {
         info.type = display::type(context,
                                   alias_template->getTemplatedDecl()->getUnderlyingType(),
@@ -772,11 +777,12 @@ void add_layout_info(const clang::NamedDecl& decl, HoverInfo& info) {
 
     const auto& context = decl.getASTContext();
     if(auto* record = llvm::dyn_cast<clang::RecordDecl>(&decl)) {
-        if(auto size = context.getTypeSizeInCharsIfKnown(record->getTypeForDecl())) {
+        auto type = context.getCanonicalTagType(record);
+        if(auto size = context.getTypeSizeInCharsIfKnown(type)) {
             info.size = size->getQuantity() * 8;
         }
         if(!record->isDependentType() && record->isCompleteDefinition()) {
-            info.align = context.getTypeAlign(record->getTypeForDecl());
+            info.align = context.getTypeAlign(type);
         }
         return;
     }

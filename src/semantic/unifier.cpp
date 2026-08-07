@@ -21,16 +21,12 @@ clang::QualType peel(clang::QualType type, clang::Qualifiers& quals) {
 
         const clang::Type* T = type.getTypePtr();
         switch(T->getTypeClass()) {
-            case clang::Type::Elaborated: {
-                type = llvm::cast<clang::ElaboratedType>(T)->getNamedType();
-                continue;
-            }
             case clang::Type::Paren: {
                 type = llvm::cast<clang::ParenType>(T)->getInnerType();
                 continue;
             }
             case clang::Type::Using: {
-                type = llvm::cast<clang::UsingType>(T)->getUnderlyingType();
+                type = llvm::cast<clang::UsingType>(T)->desugar();
                 continue;
             }
             case clang::Type::Typedef: {
@@ -257,7 +253,7 @@ bool Unifier::template_id(clang::QualType type,
     type = peel(type, quals);
 
     if(auto ICNT = llvm::dyn_cast<clang::InjectedClassNameType>(type)) {
-        type = ICNT->getInjectedSpecializationType();
+        type = ICNT->getDecl()->getCanonicalTemplateSpecializationType(context);
     }
 
     if(auto TST = llvm::dyn_cast<clang::TemplateSpecializationType>(type)) {
@@ -339,6 +335,13 @@ bool Unifier::unify(clang::QualType pattern, clang::QualType argument) {
         case clang::Type::TemplateSpecialization:
         case clang::Type::InjectedClassName:
         case clang::Type::Record: {
+            /// A specialization of a dependent template name is a
+            /// non-deduced context: it constrains nothing.
+            if(auto TST = llvm::dyn_cast<clang::TemplateSpecializationType>(pattern);
+               TST && TST->getTemplateName().getAsDependentTemplateName()) {
+                return true;
+            }
+
             clang::TemplateName pattern_name, argument_name;
             TemplateArguments pattern_args, argument_args;
             if(!template_id(pattern, pattern_name, pattern_args)) {
@@ -444,8 +447,13 @@ bool Unifier::unify(clang::QualType pattern, clang::QualType argument) {
             if(!AM) {
                 return false;
             }
-            auto pattern_cls = PM->getQualifier() ? PM->getQualifier()->getAsType() : nullptr;
-            auto argument_cls = AM->getQualifier() ? AM->getQualifier()->getAsType() : nullptr;
+            auto type_of = [](clang::NestedNameSpecifier NNS) -> const clang::Type* {
+                return NNS && NNS.getKind() == clang::NestedNameSpecifier::Kind::Type
+                           ? NNS.getAsType()
+                           : nullptr;
+            };
+            auto pattern_cls = type_of(PM->getQualifier());
+            auto argument_cls = type_of(AM->getQualifier());
             if(!pattern_cls || !argument_cls) {
                 return false;
             }
@@ -527,7 +535,6 @@ bool Unifier::unify(clang::QualType pattern, clang::QualType argument) {
         /// Dependent forms we cannot look into are non-deduced contexts:
         /// they constrain nothing.
         case clang::Type::DependentName:
-        case clang::Type::DependentTemplateSpecialization:
         case clang::Type::Decltype:
         case clang::Type::UnresolvedUsing:
         case clang::Type::PackExpansion: {
