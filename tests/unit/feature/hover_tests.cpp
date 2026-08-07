@@ -817,6 +817,47 @@ TEST_CASE(has_include_header) {
     EXPECT_EQ(hover->symbol_range, arg);
 }
 
+TEST_CASE(embed_file) {
+    add_file("data.bin", "0123456789");
+    add_main("main.cpp", R"cpp(
+const unsigned char data[] = {
+#embed §(arg)⟦"data.bin"§⟧
+};
+)cpp");
+    ASSERT_TRUE(compile("-std=c++23"));
+
+    auto arg = range("arg", "main.cpp");
+    auto hover = feature::hover_info(*unit, arg.begin + 1);
+    ASSERT_TRUE(hover.has_value());
+    EXPECT_EQ(hover->kind, SymbolKind::Header);
+    EXPECT_EQ(hover->name, "data.bin");
+
+    llvm::SmallString<128> path(hover->definition);
+    path::remove_dots(path);
+    EXPECT_EQ(path, TestVFS::path("data.bin"));
+    EXPECT_EQ(hover->symbol_range, arg);
+}
+
+TEST_CASE(has_embed_file) {
+    add_file("data.bin", "0123456789");
+    add_main("main.cpp", R"cpp(
+#if __has_embed(§(arg)⟦"data.bin"§⟧)
+#endif
+)cpp");
+    ASSERT_TRUE(compile("-std=c++23"));
+
+    auto arg = range("arg", "main.cpp");
+    auto hover = feature::hover_info(*unit, arg.begin + 1);
+    ASSERT_TRUE(hover.has_value());
+    EXPECT_EQ(hover->kind, SymbolKind::Header);
+    EXPECT_EQ(hover->name, "data.bin");
+
+    llvm::SmallString<128> path(hover->definition);
+    path::remove_dots(path);
+    EXPECT_EQ(path, TestVFS::path("data.bin"));
+    EXPECT_EQ(hover->symbol_range, arg);
+}
+
 TEST_CASE(macro_include_header) {
     add_file("test.h", "#pragma once\n");
     add_main("main.cpp", R"cpp(

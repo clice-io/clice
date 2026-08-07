@@ -302,6 +302,14 @@ auto inlay_hints(CompilationUnitRef unit,
 /// reply edge converts them with the session's line map.
 auto document_links(CompilationUnitRef unit) -> std::vector<DocumentLink>;
 
+/// Find the filename-like argument of a preprocessor directive on the line
+/// containing `offset`. The offset may point at the directive/operator or
+/// inside its argument.
+auto find_directive_argument(llvm::StringRef content,
+                             std::uint32_t offset,
+                             const clang::LangOptions* lang_opts)
+    -> std::optional<LocalSourceRange>;
+
 /// Go-to-definition on an include directive: when `offset` falls on the
 /// argument of an #include or __has_include in the interested file, the
 /// resolved file's location (at its start). Empty otherwise.
@@ -330,6 +338,12 @@ auto code_complete(CompilationParams& params,
 /// interested file of the unit.
 auto hover_info(CompilationUnitRef unit, std::uint32_t offset, const HoverOptions& options = {})
     -> std::optional<HoverInfo>;
+
+/// Render structured hover information with the configured markup format and
+/// convert its byte range through the caller's current line map.
+auto to_protocol_hover(const HoverInfo& info,
+                       const HoverOptions& options,
+                       const LineMap& map) -> protocol::Hover;
 
 auto hover(CompilationUnitRef unit,
            std::uint32_t offset,

@@ -102,22 +102,16 @@ std::optional<protocol::Hover>
             name = name.drop_front().drop_back();
         }
 
-        auto range = map.to_range(link.range.begin, link.range.end);
-        if(!range)
-            return std::nullopt;
-
         feature::HoverInfo info;
         info.name = name.str();
         info.kind = SymbolKind::Header;
         info.definition = link.target;
+        info.symbol_range = link.range;
 
-        protocol::MarkupContent content;
-        content.kind = protocol::MarkupKind::markdown;
-        content.value = info.present().as_markdown();
-        return protocol::Hover{
-            .contents = std::move(content),
-            .range = *range,
-        };
+        auto hover = feature::to_protocol_hover(info, workspace.config.hover, map);
+        if(!hover.range)
+            return std::nullopt;
+        return hover;
     }
     return std::nullopt;
 }

@@ -3,7 +3,6 @@
 #include <string>
 #include <vector>
 
-#include "feature/directive.h"
 #include "feature/feature.h"
 #include "syntax/lexer.h"
 

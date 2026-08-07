@@ -2,7 +2,6 @@
 
 #include "test/test.h"
 #include "test/tester.h"
-#include "feature/directive.h"
 #include "feature/feature.h"
 #include "support/filesystem.h"
 
