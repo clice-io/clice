@@ -6,13 +6,15 @@
 #include <string>
 #include <vector>
 
+#include "compile/compilation_unit.h"
+#include "feature/directive.h"
 #include "feature/feature.h"
 #include "semantic/decls.h"
 #include "semantic/display.h"
 #include "semantic/selection.h"
 #include "semantic/semantics.h"
+#include "semantic/symbol.h"
 #include "semantic/types.h"
-#include "syntax/lexer.h"
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
@@ -44,7 +46,6 @@ namespace clice::feature {
 namespace {
 
 using PrintedType = display::Type;
-using Param = display::Param;
 using PassType = HoverInfo::PassType;
 using PassMode = HoverInfo::PassMode;
 

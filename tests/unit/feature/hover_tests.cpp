@@ -763,8 +763,8 @@ int §foo = 1;
 TEST_CASE(include_header) {
     add_file("test.h", "#pragma once\n");
     add_main("main.cpp", R"cpp(
-#include @arg["test.h"]
-$(outside)
+#include §(arg)⟦"test.h"§⟧
+§(outside)
 int x = 0;
 )cpp");
     ASSERT_TRUE(compile());
@@ -800,7 +800,7 @@ int x = 0;
 TEST_CASE(has_include_header) {
     add_file("test.h", "#pragma once\n");
     add_main("main.cpp", R"cpp(
-#if __has_include(@arg["test.h"])
+#if __has_include(§(arg)⟦"test.h"§⟧)
 #endif
 )cpp");
     ASSERT_TRUE(compile());
@@ -821,7 +821,7 @@ TEST_CASE(macro_include_header) {
     add_file("test.h", "#pragma once\n");
     add_main("main.cpp", R"cpp(
 #define HEADER "test.h"
-#include @arg[HEADER]
+#include §(arg)⟦HEADER§⟧
 )cpp");
     ASSERT_TRUE(compile());
 
@@ -840,7 +840,7 @@ TEST_CASE(macro_include_header) {
 TEST_CASE(missing_include_header) {
     add_main("main.cpp", R"cpp(
 /* error-ok */
-#include @arg["missing.h"]
+#include §(arg)⟦"missing.h"§⟧
 )cpp");
     ASSERT_TRUE(compile());
 

@@ -3,20 +3,21 @@
 #include <string>
 #include <vector>
 
+#include "feature/directive.h"
 #include "feature/feature.h"
 #include "syntax/lexer.h"
 
 namespace clice::feature {
 
 /// Find the range of the filename argument in a preprocessor directive line.
-/// `content` is the full source text, `offset` points at or before the
-/// directive keyword. Returns the range of the first filename-like token
-/// (header name, string literal, or macro identifier) found on the same
-/// line, or nullopt if none.
-static std::optional<LocalSourceRange>
-    find_directive_argument(llvm::StringRef content,
-                            std::uint32_t offset,
-                            const clang::LangOptions* lang_opts) {
+/// `content` is the full source text; `offset` may point at the directive,
+/// operator, or inside its argument. Returns the range of the first
+/// filename-like token (header name, string literal, or macro identifier)
+/// containing or following the offset, or nullopt if none.
+auto find_directive_argument(llvm::StringRef content,
+                             std::uint32_t offset,
+                             const clang::LangOptions* lang_opts)
+    -> std::optional<LocalSourceRange> {
     auto lexer = Lexer::from_line(content, offset, {.lang_opts = lang_opts});
     bool after_keyword = false;
 
@@ -44,7 +45,7 @@ static std::optional<LocalSourceRange>
             }
         }
 
-        if(token.range.begin < offset || !after_keyword) {
+        if(token.range.end <= offset || !after_keyword) {
             continue;
         }
 

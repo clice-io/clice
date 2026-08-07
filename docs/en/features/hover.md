@@ -266,7 +266,7 @@
   // hover on "nodiscard" → description of the attribute
   ```
 
-- [ ] `#include` directive hover showing resolved header path
+- [x] `#include` directive hover showing resolved header path
 - [x] `this` expression hover showing pointed-to type
 - [x] `__func__` and related predefined identifier hover
 

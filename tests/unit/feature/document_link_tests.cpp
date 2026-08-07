@@ -2,6 +2,7 @@
 
 #include "test/test.h"
 #include "test/tester.h"
+#include "feature/directive.h"
 #include "feature/feature.h"
 #include "support/filesystem.h"
 
@@ -29,6 +30,15 @@ void EXPECT_LINK(std::size_t index, llvm::StringRef name, llvm::StringRef path) 
     llvm::SmallString<128> target(link.target.begin(), link.target.end());
     path::remove_dots(target);
     ASSERT_EQ(target, path);
+}
+
+TEST_CASE(DirectiveArgumentFromFilename) {
+    llvm::StringRef content = R"(#if __has_include("test.h"))";
+    auto offset = static_cast<std::uint32_t>(content.find("test.h"));
+    auto result = feature::find_directive_argument(content, offset, nullptr);
+
+    ASSERT_TRUE(result.has_value());
+    ASSERT_EQ(content.substr(result->begin, result->length()), R"("test.h")");
 }
 
 TEST_CASE(Include) {
@@ -185,7 +195,7 @@ int x = 0;
 TEST_CASE(MissingIncludeDefinition) {
     add_main("main.cpp", R"(
 /* error-ok */
-#include @arg["missing.h"]
+#include §(arg)⟦"missing.h"§⟧
 )");
     ASSERT_TRUE(compile());
 
