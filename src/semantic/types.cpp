@@ -36,28 +36,12 @@ auto decls_of(clang::QualType type, TemplateResolver* resolver)
         return {};
     }
 
-    // Strip type-sugar that wraps the underlying type without adding a decl
-    // (e.g. ElaboratedType for "struct Foo" vs plain "Foo").
-    if(auto ET = type->getAs<clang::ElaboratedType>()) {
-        type = ET->getNamedType();
-    }
-
     /// Dependent names carry no declaration structurally; resolve them
     /// heuristically when a resolver is available.
     if(const auto* DNT = type->getAs<clang::DependentNameType>()) {
         llvm::SmallVector<const clang::NamedDecl*, 1> result;
         if(resolver) {
             for(auto* target: resolver->lookup(DNT)) {
-                result.push_back(target);
-            }
-        }
-        return result;
-    }
-
-    if(const auto* DTST = type->getAs<clang::DependentTemplateSpecializationType>()) {
-        llvm::SmallVector<const clang::NamedDecl*, 1> result;
-        if(resolver) {
-            for(auto* target: resolver->lookup(DTST)) {
                 result.push_back(target);
             }
         }
@@ -81,6 +65,19 @@ auto decls_of(clang::QualType type, TemplateResolver* resolver)
 
     if(auto TST = type->getAs<clang::TemplateSpecializationType>()) {
         auto decl = TST->getTemplateName().getAsTemplateDecl();
+
+        /// A dependent template name (`T::template rebind<U>`) has no
+        /// declaration structurally; resolve it heuristically.
+        if(!decl) {
+            llvm::SmallVector<const clang::NamedDecl*, 1> result;
+            if(resolver) {
+                for(auto* target: resolver->lookup(TST)) {
+                    result.push_back(target);
+                }
+            }
+            return result;
+        }
+
         if(type->isDependentType()) {
             return {decl};
         }
@@ -150,6 +147,7 @@ auto declared_type(const clang::TypeDecl* decl) -> clang::QualType {
     if(const auto* spec = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(decl)) {
         if(const auto* args = spec->getTemplateArgsAsWritten()) {
             return context.getTemplateSpecializationType(
+                clang::ElaboratedTypeKeyword::None,
                 clang::TemplateName(spec->getSpecializedTemplate()),
                 args->arguments(),
                 /*CanonicalArgs=*/{});

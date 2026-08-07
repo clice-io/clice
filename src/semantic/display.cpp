@@ -57,10 +57,6 @@ llvm::StringRef simple_name(const clang::DeclarationName& name) {
 /// The identifier text of the decl (or builtin) behind a type, empty
 /// otherwise.
 llvm::StringRef type_identifier(clang::QualType type) {
-    if(const auto* elaborated = llvm::dyn_cast<clang::ElaboratedType>(type)) {
-        return type_identifier(elaborated->getNamedType());
-    }
-
     if(const auto* builtin = llvm::dyn_cast<clang::BuiltinType>(type)) {
         clang::PrintingPolicy pp(clang::LangOptions{});
         pp.adjustForCPlusPlus();
@@ -124,6 +120,10 @@ std::string template_args(const clang::NamedDecl& decl) {
         /// AST, e.g. friend decls. Currently we fallback to template
         /// arguments without location information.
         clang::printTemplateArgumentList(os, record->getTemplateArgs().asArray(), policy);
+    } else if(auto* var = llvm::dyn_cast<clang::VarTemplateSpecializationDecl>(&decl)) {
+        /// Implicit variable template specializations carry no written
+        /// arguments since LLVM 22; fall back to the converted ones.
+        clang::printTemplateArgumentList(os, var->getTemplateArgs().asArray(), policy);
     }
     return args;
 }
@@ -345,8 +345,8 @@ auto name_of(const clang::NamedDecl* decl, const Options& options) -> std::strin
     /// Handle 'using namespace'. They all have the same name - <using-directive>.
     if(auto* directive = llvm::dyn_cast<clang::UsingDirectiveDecl>(decl)) {
         os << "using namespace ";
-        if(auto* qualifier = directive->getQualifier()) {
-            qualifier->print(os, policy);
+        if(auto qualifier = directive->getQualifier()) {
+            qualifier.print(os, policy);
         }
         directive->getNominatedNamespaceAsWritten()->printName(os);
         return name;
@@ -373,8 +373,8 @@ auto name_of(const clang::NamedDecl* decl, const Options& options) -> std::strin
     }
 
     /// Print nested name qualifier if it was written in the source code.
-    if(auto* qualifier = qualifier_loc(*decl).getNestedNameSpecifier()) {
-        qualifier->print(os, policy);
+    if(auto qualifier = qualifier_loc(*decl).getNestedNameSpecifier()) {
+        qualifier.print(os, policy);
     }
 
     /// Print the name itself.
@@ -648,13 +648,14 @@ auto type(clang::ASTContext& context, clang::QualType type, const Options& optio
     Type result;
     llvm::raw_string_ostream os(result.text);
 
-    /// Special case: if the outer type is a tag type without qualifiers, then
-    /// include the tag for extra clarity. This isn't very idiomatic, so don't
-    /// attempt it for complex cases, including pointers/references, template
+    /// Special case: if the outer type is a canonical tag type, then include
+    /// the tag for extra clarity. This isn't very idiomatic, so don't attempt
+    /// it for complex cases, including pointers/references, template
     /// specializations, etc.
     if(options.tag_keyword_prefix && !type.isNull() && !type.hasQualifiers() &&
        policy.SuppressTagKeyword) {
-        if(auto* tag = llvm::dyn_cast<clang::TagType>(type.getTypePtr())) {
+        if(auto* tag = llvm::dyn_cast<clang::TagType>(type.getTypePtr());
+           tag && tag->isCanonicalUnqualified()) {
             os << tag->getDecl()->getKindName() << " ";
         }
     }
