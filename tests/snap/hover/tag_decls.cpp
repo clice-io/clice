@@ -152,3 +152,102 @@ namespace nested_templates_class {
 template <class T> struct cls {};
 §(17_nested_template_class)cls<cls<cls<int>>> foo;
 }
+
+namespace inherited_class {
+struct first {};
+struct second {};
+
+class Point : public first, virtual protected second {
+  int value;
+};
+void foo() {
+  §(18_inherited_class)Point point;
+}
+}
+
+namespace template_fields {
+template <typename T>
+struct Box {
+  using value_type = T;
+  T value;
+};
+void foo() {
+  §(19_template_fields)Box<int> box;
+}
+}
+
+namespace record_members {
+struct Traits {
+public:
+  static constexpr int extent = 4;
+  using value_type = int;
+  template <typename T> using pointer = T*;
+  enum class Kind { first, second, third, fourth, fifth, sixth, seventh, eighth, ninth };
+  struct Node { int hidden; };
+  struct Forward;
+  template <typename T> struct Nested { T hidden; };
+
+private:
+  static int instances;
+  int value = [] { return 42; }();
+  static int create();
+  void reset() {}
+};
+void foo() {
+  §(20_record_members)Traits traits;
+}
+}
+
+namespace record_member_limit {
+struct Values {
+  int v01;
+  int v02;
+  int v03;
+  int v04;
+  int v05;
+  int v06;
+  int v07;
+  int v08;
+  int v09;
+  int v10;
+  int v11;
+  int v12;
+  int v13;
+  int v14;
+  int v15;
+  int v16;
+  int v17;
+  int v18;
+  int v19;
+  int v20;
+  int v21;
+};
+void foo() {
+  §(21_record_member_limit)Values values;
+}
+}
+
+namespace top_level_enum {
+enum Value { v01, v02, v03, v04, v05, v06, v07, v08, v09 };
+void foo() {
+  §(22_top_level_enum)Value value = v01;
+}
+}
+
+#define HOVER_REPEAT_4(x) x, x, x, x
+#define HOVER_REPEAT_256(x) HOVER_REPEAT_4(HOVER_REPEAT_4(HOVER_REPEAT_4(HOVER_REPEAT_4(x))))
+
+namespace large_record_initializer {
+struct Tables {
+  int large_field[256] = { HOVER_REPEAT_256(0) };
+  inline static int large_static[256] = { HOVER_REPEAT_256(0) };
+  int small_field = 1;
+  inline static int small_static = 2;
+};
+void foo() {
+  §(23_large_record_initializer)Tables tables;
+}
+}
+
+#undef HOVER_REPEAT_256
+#undef HOVER_REPEAT_4
