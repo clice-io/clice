@@ -341,9 +341,8 @@ auto hover_info(CompilationUnitRef unit, std::uint32_t offset, const HoverOption
 
 /// Render structured hover information with the configured markup format and
 /// convert its byte range through the caller's current line map.
-auto to_protocol_hover(const HoverInfo& info,
-                       const HoverOptions& options,
-                       const LineMap& map) -> protocol::Hover;
+auto to_protocol_hover(const HoverInfo& info, const HoverOptions& options, const LineMap& map)
+    -> protocol::Hover;
 
 auto hover(CompilationUnitRef unit,
            std::uint32_t offset,

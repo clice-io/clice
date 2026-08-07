@@ -1077,9 +1077,8 @@ void reformat_definition(HoverInfo& info) {
 
 }  // namespace
 
-auto to_protocol_hover(const HoverInfo& info,
-                       const HoverOptions& options,
-                       const LineMap& map) -> protocol::Hover {
+auto to_protocol_hover(const HoverInfo& info, const HoverOptions& options, const LineMap& map)
+    -> protocol::Hover {
     auto document = info.present();
 
     protocol::MarkupContent content;
