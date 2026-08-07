@@ -155,17 +155,18 @@ jobs:
 
       - name: Clone llvm-project
         shell: bash
+        env:
+          VERSION: ${{ inputs.llvm_version || '22.1.8' }}
         run: |
-          VERSION="${{ inputs.llvm_version || '22.1.8' }}"
           echo "Cloning LLVM ${VERSION}..."
           git clone --branch "llvmorg-${VERSION}" --depth 1 https://github.com/llvm/llvm-project.git .llvm
 
       - name: Apply patches
         shell: bash
+        env:
+          VERSION: ${{ inputs.llvm_version || '22.1.8' }}
+          REF: ${{ inputs.patch_ref || 'main' }}
         run: |
-          VERSION="${{ inputs.llvm_version || '22.1.8' }}"
-          REF="${{ inputs.patch_ref || 'main' }}"
-
           if git clone --branch "$REF" --depth 1 https://github.com/clice-io/clice-llvm.git .clice-llvm 2>/dev/null; then
             echo "Using patches from clice-llvm@$REF"
           else

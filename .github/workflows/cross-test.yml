@@ -3,6 +3,9 @@ name: cross-test
 on:
   workflow_call:
 
+permissions:
+  contents: read
+
 jobs:
   macos-x64:
     uses: ./.github/workflows/cross-pair.yml

@@ -139,22 +139,16 @@ jobs:
           EOF
           fi
 
-      - name: Determine vsix output name
-        id: vsix
+      - name: Package platform extension
         env:
           RELEASE_TAG: ${{ inputs.release_tag || (startsWith(github.ref, 'refs/tags/v') && github.ref_name || '') }}
         run: |
-          if [ -n "$RELEASE_TAG" ]; then
-            VERSION="${RELEASE_TAG#v}"
-            echo "out=-o clice-${VERSION}.${{ matrix.triple }}.vsix" >> "$GITHUB_OUTPUT"
-          else
-            echo "out=" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Package platform extension
-        run: |
           FLAG="${{ (inputs.prerelease || contains(github.ref_name, '-')) && '--pre-release' || '' }}"
-          pixi run build-vscode $FLAG --target ${{ matrix.vsce_target }} ${{ steps.vsix.outputs.out }}
+          OUT=()
+          if [ -n "$RELEASE_TAG" ]; then
+            OUT=(-o "clice-${RELEASE_TAG#v}.${{ matrix.triple }}.vsix")
+          fi
+          pixi run build-vscode $FLAG --target ${{ matrix.vsce_target }} "${OUT[@]}"
 
       - name: Upload vsix artifact
         uses: actions/upload-artifact@v7

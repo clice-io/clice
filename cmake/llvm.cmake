@@ -1,26 +1,34 @@
 include_guard()
 include(FetchContent)
 
-function(_download_llvm LLVM_VERSION)
+# Canonical target triple: the explicit CLICE_TARGET_TRIPLE for cross
+# builds, composed from the host otherwise. This exact spelling names the
+# prebuilt LLVM archives and the clice release assets.
+function(clice_target_triple OUT_VAR)
     if(DEFINED CLICE_TARGET_TRIPLE)
-        set(_TRIPLE "${CLICE_TARGET_TRIPLE}")
-    else()
-        if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64")
-            set(_ARCH "aarch64")
-        elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|x64")
-            set(_ARCH "x86_64")
-        else()
-            message(FATAL_ERROR "Unsupported processor: ${CMAKE_SYSTEM_PROCESSOR}")
-        endif()
-
-        if(WIN32)
-            set(_TRIPLE "${_ARCH}-pc-windows-msvc")
-        elseif(APPLE)
-            set(_TRIPLE "${_ARCH}-apple-darwin")
-        else()
-            set(_TRIPLE "${_ARCH}-unknown-linux-gnu")
-        endif()
+        set(${OUT_VAR} "${CLICE_TARGET_TRIPLE}" PARENT_SCOPE)
+        return()
     endif()
+
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64")
+        set(_ARCH "aarch64")
+    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|x64")
+        set(_ARCH "x86_64")
+    else()
+        message(FATAL_ERROR "Unsupported processor: ${CMAKE_SYSTEM_PROCESSOR}")
+    endif()
+
+    if(WIN32)
+        set(${OUT_VAR} "${_ARCH}-pc-windows-msvc" PARENT_SCOPE)
+    elseif(APPLE)
+        set(${OUT_VAR} "${_ARCH}-apple-darwin" PARENT_SCOPE)
+    else()
+        set(${OUT_VAR} "${_ARCH}-unknown-linux-gnu" PARENT_SCOPE)
+    endif()
+endfunction()
+
+function(_download_llvm LLVM_VERSION)
+    clice_target_triple(_TRIPLE)
 
     if(CMAKE_BUILD_TYPE STREQUAL "Debug")
         set(_MODE "debug")
@@ -71,7 +79,7 @@ function(setup_llvm LLVM_VERSION)
     target_link_libraries(llvm-libs INTERFACE
         ${LLVM_RESOLVED}
         clangAST clangASTMatchers clangBasic clangDriver
-        clangFormat clangFrontend clangLex clangSema clangSerialization
+        clangFormat clangFrontend clangLex clangOptions clangSema clangSerialization
         clangTidy clangTidyUtils
         clangTidyAbseilModule clangTidyAlteraModule clangTidyAndroidModule
         clangTidyBoostModule clangTidyBugproneModule clangTidyCERTModule

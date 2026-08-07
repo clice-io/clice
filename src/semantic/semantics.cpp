@@ -484,9 +484,10 @@ public:
     // This means we'd never see 'int' in 'const int'! Work around that here.
     // (The reason for the behavior is to avoid traversing the nested Type twice,
     // but we ignore TraverseType anyway).
-    bool TraverseQualifiedTypeLoc(clang::QualifiedTypeLoc QX, bool = true) {
-        return traverse_node(SemanticNode(static_cast<clang::TypeLoc>(QX)),
-                             [&] { return TraverseTypeLoc(QX.getUnqualifiedLoc()); });
+    bool TraverseQualifiedTypeLoc(clang::QualifiedTypeLoc QX, bool traverse_qualifier = true) {
+        return traverse_node(SemanticNode(static_cast<clang::TypeLoc>(QX)), [&] {
+            return TraverseTypeLoc(QX.getUnqualifiedLoc(), traverse_qualifier);
+        });
     }
 
     bool TraverseType(clang::QualType, bool = true) {

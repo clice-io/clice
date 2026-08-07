@@ -42,12 +42,24 @@ jobs:
           fi
           # A green run may still have nothing to promote: path-filtered
           # runs (e.g. docs-only commits) skip the build jobs, and package
-          # artifacts expire after 30 days. Fail here with one clear message
-          # instead of in six download jobs.
-          LIVE=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts?name=package-clice.x86_64-unknown-linux-gnu.tar.gz" \
-            --jq '[.artifacts[] | select(.expired | not)] | length')
-          if [ "$LIVE" -eq 0 ]; then
-            echo "::error::run $RUN_ID for $TAG has no live package artifacts (path-filtered build, or expired after 30 days) — rerun that commit's main workflow first"
+          # artifacts expire after 30 days. Check every package here so a
+          # partial run fails with one clear message before any asset is
+          # uploaded, instead of promoting an incomplete release.
+          MISSING=""
+          for NAME in package-clice.x86_64-unknown-linux-gnu.tar.gz \
+                      package-clice.aarch64-unknown-linux-gnu.tar.gz \
+                      package-clice.aarch64-apple-darwin.tar.gz \
+                      package-clice.x86_64-apple-darwin.tar.gz \
+                      package-clice.x86_64-pc-windows-msvc.zip \
+                      package-clice.aarch64-pc-windows-msvc.zip; do
+            LIVE=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts?name=$NAME" \
+              --jq '[.artifacts[] | select(.expired | not)] | length')
+            if [ "$LIVE" -eq 0 ]; then
+              MISSING="$MISSING $NAME"
+            fi
+          done
+          if [ -n "$MISSING" ]; then
+            echo "::error::run $RUN_ID for $TAG is missing live package artifacts:$MISSING (path-filtered build, or expired after 30 days) — rerun that commit's main workflow first"
             exit 1
           fi
           echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
