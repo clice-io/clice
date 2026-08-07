@@ -49,8 +49,7 @@ void EXPECT_HAS_INL(u32 index, llvm::StringRef position, llvm::StringRef path) {
     ASSERT_EQ(offset, point(position));
 
     /// FIXME:
-    llvm::SmallString<64> target =
-        has_include.fid.isValid() ? unit->file_path(has_include.fid) : "";
+    llvm::SmallString<64> target(has_include.target.begin(), has_include.target.end());
     path::remove_dots(target);
 
     ASSERT_EQ(target, path);

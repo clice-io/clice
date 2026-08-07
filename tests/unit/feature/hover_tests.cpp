@@ -797,6 +797,57 @@ int x = 0;
     EXPECT_FALSE(feature::hover_info(*unit, point("outside")).has_value());
 }
 
+TEST_CASE(has_include_header) {
+    add_file("test.h", "#pragma once\n");
+    add_main("main.cpp", R"cpp(
+#if __has_include(@arg["test.h"])
+#endif
+)cpp");
+    ASSERT_TRUE(compile());
+
+    auto arg = range("arg", "main.cpp");
+    auto hover = feature::hover_info(*unit, arg.begin + 1);
+    ASSERT_TRUE(hover.has_value());
+    EXPECT_EQ(hover->kind, SymbolKind::Header);
+    EXPECT_EQ(hover->name, "test.h");
+
+    llvm::SmallString<128> path(hover->definition);
+    path::remove_dots(path);
+    EXPECT_EQ(path, TestVFS::path("test.h"));
+    EXPECT_EQ(hover->symbol_range, arg);
+}
+
+TEST_CASE(macro_include_header) {
+    add_file("test.h", "#pragma once\n");
+    add_main("main.cpp", R"cpp(
+#define HEADER "test.h"
+#include @arg[HEADER]
+)cpp");
+    ASSERT_TRUE(compile());
+
+    auto arg = range("arg", "main.cpp");
+    auto hover = feature::hover_info(*unit, arg.begin + 1);
+    ASSERT_TRUE(hover.has_value());
+    EXPECT_EQ(hover->kind, SymbolKind::Header);
+    EXPECT_EQ(hover->name, "HEADER");
+
+    llvm::SmallString<128> path(hover->definition);
+    path::remove_dots(path);
+    EXPECT_EQ(path, TestVFS::path("test.h"));
+    EXPECT_EQ(hover->symbol_range, arg);
+}
+
+TEST_CASE(missing_include_header) {
+    add_main("main.cpp", R"cpp(
+/* error-ok */
+#include @arg["missing.h"]
+)cpp");
+    ASSERT_TRUE(compile());
+
+    auto arg = range("arg", "main.cpp");
+    EXPECT_FALSE(feature::hover_info(*unit, arg.begin + 1).has_value());
+}
+
 TEST_CASE(scoped_attribute) {
     run_info(R"cpp(
 [[gnu::no§inline]] void foo();

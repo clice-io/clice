@@ -26,9 +26,8 @@ struct Include {
 
 /// Information about `__has_include` directive.
 struct HasInclude {
-    /// The file id of included file, may be empty if there is
-    /// not such file.
-    clang::FileID fid;
+    /// Resolved path of the probed file, empty when it does not exist.
+    std::string target;
 
     /// Location of the filename token start.
     clang::SourceLocation location;

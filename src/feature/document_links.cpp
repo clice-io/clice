@@ -85,8 +85,8 @@ auto document_links(CompilationUnitRef unit) -> std::vector<DocumentLink> {
     }
 
     for(const auto& has_include: directives.has_includes) {
-        if(has_include.fid.isValid()) {
-            add_link(has_include.location, unit.file_path(has_include.fid));
+        if(!has_include.target.empty()) {
+            add_link(has_include.location, has_include.target);
         }
     }
 
@@ -118,8 +118,8 @@ auto include_definition(CompilationUnitRef unit, std::uint32_t offset)
     auto content = unit.interested_content();
     auto* lang_opts = &unit.lang_options();
 
-    auto try_directive = [&](clang::SourceLocation loc, clang::FileID target) {
-        if(!locations.empty() || !target.isValid()) {
+    auto try_directive = [&](clang::SourceLocation loc, llvm::StringRef target) {
+        if(!locations.empty() || target.empty()) {
             return;
         }
         auto [fid, directive_offset] = unit.decompose_location(loc);
@@ -131,16 +131,16 @@ auto include_definition(CompilationUnitRef unit, std::uint32_t offset)
             return;
         }
         locations.push_back(protocol::Location{
-            .uri = to_uri(unit.file_path(target)),
+            .uri = to_uri(target),
             .range = protocol::Range{},
         });
     };
 
     for(const auto& include: directives_it->second.includes) {
-        try_directive(include.location, include.fid);
+        try_directive(include.location, unit.file_path(include.fid));
     }
     for(const auto& has_include: directives_it->second.has_includes) {
-        try_directive(has_include.location, has_include.fid);
+        try_directive(has_include.location, has_include.target);
     }
     return locations;
 }

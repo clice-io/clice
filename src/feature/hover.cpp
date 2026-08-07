@@ -703,12 +703,18 @@ auto include_hover(CompilationUnitRef unit, std::uint32_t offset) -> std::option
         return arg.str();
     };
 
+    auto line_start = content.rfind('\n', offset);
+    line_start = line_start == llvm::StringRef::npos ? 0 : line_start + 1;
+
+    auto line_end = content.find('\n', offset);
+    line_end = line_end == llvm::StringRef::npos ? content.size() : line_end;
+
     auto try_directive = [&](clang::SourceLocation loc,
-                             clang::FileID target) -> std::optional<HoverInfo> {
-        if(!target.isValid())
+                             llvm::StringRef target) -> std::optional<HoverInfo> {
+        if(target.empty())
             return std::nullopt;
         auto [fid, directive_offset] = unit.decompose_location(loc);
-        if(fid != interested || directive_offset >= content.size())
+        if(fid != interested || directive_offset < line_start || directive_offset >= line_end)
             return std::nullopt;
         auto range = find_directive_argument(content, directive_offset, lang_opts);
         if(!range || !range->contains(offset))
@@ -717,18 +723,18 @@ auto include_hover(CompilationUnitRef unit, std::uint32_t offset) -> std::option
         HoverInfo info;
         info.name = header_name(*range);
         info.kind = SymbolKind::Header;
-        info.definition = unit.file_path(target);
+        info.definition = target;
         info.symbol_range = *range;
         return info;
     };
 
     for(const auto& include: directives_it->second.includes) {
-        if(auto info = try_directive(include.location, include.fid)) {
+        if(auto info = try_directive(include.location, unit.file_path(include.fid))) {
             return info;
         }
     }
     for(const auto& has_include: directives_it->second.has_includes) {
-        if(auto info = try_directive(has_include.location, has_include.fid)) {
+        if(auto info = try_directive(has_include.location, has_include.target)) {
             return info;
         }
     }
