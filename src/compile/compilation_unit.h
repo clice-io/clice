@@ -132,10 +132,6 @@ public:
     /// them out first, see `is_builtin_file`.
     auto file_path(clang::FileID fid) -> llvm::StringRef;
 
-    /// Get the normalized path of a file entry that may not have a FileID,
-    /// such as a file only probed by __has_include.
-    auto file_path(clang::FileEntryRef file) -> std::string;
-
     /// Get the file content of the file ID.
     auto file_content(clang::FileID fid) -> llvm::StringRef;
 

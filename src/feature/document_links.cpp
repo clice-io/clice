@@ -85,8 +85,8 @@ auto document_links(CompilationUnitRef unit) -> std::vector<DocumentLink> {
     }
 
     for(const auto& has_include: directives.has_includes) {
-        if(!has_include.target.empty()) {
-            add_link(has_include.location, has_include.target);
+        if(has_include.file) {
+            add_link(has_include.location, unit.file_path(*has_include.file));
         }
     }
 
@@ -137,10 +137,14 @@ auto include_definition(CompilationUnitRef unit, std::uint32_t offset)
     };
 
     for(const auto& include: directives_it->second.includes) {
-        try_directive(include.location, unit.file_path(include.fid));
+        if(include.fid.isValid()) {
+            try_directive(include.location, unit.file_path(include.fid));
+        }
     }
     for(const auto& has_include: directives_it->second.has_includes) {
-        try_directive(has_include.location, has_include.target);
+        if(has_include.file) {
+            try_directive(has_include.location, unit.file_path(*has_include.file));
+        }
     }
     return locations;
 }

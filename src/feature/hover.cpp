@@ -729,13 +729,17 @@ auto include_hover(CompilationUnitRef unit, std::uint32_t offset) -> std::option
     };
 
     for(const auto& include: directives_it->second.includes) {
-        if(auto info = try_directive(include.location, unit.file_path(include.fid))) {
-            return info;
+        if(include.fid.isValid()) {
+            if(auto info = try_directive(include.location, unit.file_path(include.fid))) {
+                return info;
+            }
         }
     }
     for(const auto& has_include: directives_it->second.has_includes) {
-        if(auto info = try_directive(has_include.location, has_include.target)) {
-            return info;
+        if(has_include.file) {
+            if(auto info = try_directive(has_include.location, unit.file_path(*has_include.file))) {
+                return info;
+            }
         }
     }
     return std::nullopt;

@@ -48,8 +48,10 @@ void EXPECT_HAS_INL(u32 index, llvm::StringRef position, llvm::StringRef path) {
     auto [_, offset] = unit->decompose_location(has_include.location);
     ASSERT_EQ(offset, point(position));
 
-    /// FIXME:
-    llvm::SmallString<64> target(has_include.target.begin(), has_include.target.end());
+    llvm::SmallString<64> target;
+    if(has_include.file) {
+        target = unit->file_path(*has_include.file);
+    }
     path::remove_dots(target);
 
     ASSERT_EQ(target, path);

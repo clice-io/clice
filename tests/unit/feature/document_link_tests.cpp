@@ -182,6 +182,17 @@ int x = 0;
     EXPECT_TRUE(feature::include_definition(*unit, point("inside")).empty());
 }
 
+TEST_CASE(MissingIncludeDefinition) {
+    add_main("main.cpp", R"(
+/* error-ok */
+#include @arg["missing.h"]
+)");
+    ASSERT_TRUE(compile());
+
+    auto arg = range("arg", "main.cpp");
+    EXPECT_TRUE(feature::include_definition(*unit, arg.begin + 1).empty());
+}
+
 };  // TEST_SUITE(document_link)
 
 }  // namespace
