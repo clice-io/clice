@@ -237,7 +237,7 @@
 
 ## Special Hover Targets
 
-- [ ] Show struct/enum members on type-level hover ([clangd#959](https://github.com/clangd/clangd/issues/959))
+- [x] Show struct/enum members on type-level hover ([clangd#959](https://github.com/clangd/clangd/issues/959))
 
   ```cpp
   enum Color { Red, Green, Blue };
