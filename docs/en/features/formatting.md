@@ -29,6 +29,6 @@ Beyond the LSP `textDocument/formatting` request (which formats a single open fi
 
 ## Changelog
 
-| Date | Change                                                 | PR  |
-| ---- | ------------------------------------------------------ | --- |
-| —    | Document formatting, range formatting, include sorting | —   |
+| Date       | Change                                                 | PR                                                 |
+| ---------- | ------------------------------------------------------ | -------------------------------------------------- |
+| 2025-08-23 | Document formatting, range formatting, include sorting | [#188](https://github.com/clice-io/clice/pull/188) |

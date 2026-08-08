@@ -58,6 +58,6 @@ Respects standard `.clang-tidy` configuration files in the project tree.
 
 ## Changelog
 
-| Date | Change                                         | PR  |
-| ---- | ---------------------------------------------- | --- |
-| —    | Stub implementation, dependency graph tracking | —   |
+| Date       | Change                                         | PR                                                 |
+| ---------- | ---------------------------------------------- | -------------------------------------------------- |
+| 2026-07-22 | Stub implementation, dependency graph tracking | [#539](https://github.com/clice-io/clice/pull/539) |

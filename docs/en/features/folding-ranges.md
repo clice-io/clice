@@ -11,6 +11,9 @@
 
 - [x] Block folding — functions, classes, structs, unions, enums, namespaces, lambdas
 
+  <details>
+  <summary>Example</summary>
+
   ```cpp
   namespace geometry {
 
@@ -53,7 +56,12 @@
   }  // namespace spaced
   ```
 
+  </details>
+
 - [x] Nested compound-statement folding — `if`/`for`/`while` bodies inside functions
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   void process(int count) {
@@ -75,7 +83,12 @@
   }
   ```
 
+  </details>
+
 - [x] Multi-line list folding — function parameters, call arguments, initializer lists, lambda captures
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   void configure(
@@ -144,7 +157,12 @@
   };
   ```
 
+  </details>
+
 - [x] Access-specifier section folding — `public:` / `protected:` / `private:` regions within a class ([clangd#1455](https://github.com/clangd/clangd/issues/1455))
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   class Widget {
@@ -157,11 +175,16 @@
   };
   ```
 
+  </details>
+
 - [ ] Preprocessor conditional folding (`#if` / `#ifdef` / `#ifndef` ... `#endif`) _(partial)_ ([clangd#1661](https://github.com/clangd/clangd/issues/1661), [clangd#2059](https://github.com/clangd/clangd/issues/2059))
 
   Branch regions delimited by `#else` fold today; a bare `#if ... #endif`
   block without an `#else` does not fold yet. clangd#2059 is a duplicate
   of clangd#1661.
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   #ifdef ENABLE_LOGGING    // ┐
@@ -175,7 +198,12 @@
   #endif                   // ┘
   ```
 
+  </details>
+
 - [x] Custom region folding (`#pragma region` / `#pragma endregion`) ([clangd#1623](https://github.com/clangd/clangd/issues/1623))
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   #pragma region Configuration
@@ -186,7 +214,12 @@
   #pragma endregion
   ```
 
+  </details>
+
 - [x] Pragma classification — only the first argument token decides region/endregion
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   // The leading declaration ends the preamble so the pragmas below reach the
@@ -209,7 +242,12 @@
   #pragma endregion
   ```
 
+  </details>
+
 - [ ] Comment folding — multi-line `/* */` and consecutive `//` line comments
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   // This is a long
@@ -222,7 +260,12 @@
    */
   ```
 
+  </details>
+
 - [ ] Include region folding — consecutive `#include` directives
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   #include <vector>       // ┐
@@ -233,7 +276,12 @@
   #include "config.h"     // ┘ (blank line separates)
   ```
 
+  </details>
+
 - [ ] Raw string literal folding
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   auto sql = R"(
@@ -243,7 +291,12 @@
   )";  // foldable multi-line raw string
   ```
 
+  </details>
+
 - [ ] `using` declaration blocks — consecutive using declarations/directives
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   using std::vector;  // ┐
@@ -251,7 +304,12 @@
   using std::map;     // ┘
   ```
 
+  </details>
+
 - [ ] Template parameter list folding
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   template<typename T>
@@ -265,7 +323,12 @@
   class SortedMap { };
   ```
 
+  </details>
+
 - [x] Template specializations and instantiations — written specializations and their members fold; instantiated declarations reuse the pattern's source locations and must not fold it again
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   template <typename T>
@@ -295,7 +358,12 @@
   template struct Box<char>;
   ```
 
+  </details>
+
 - [x] Abbreviated function templates — bodies of functions with `auto` or constrained `auto` parameters fold like any other function
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   template <typename T>
@@ -311,7 +379,12 @@
   }
   ```
 
+  </details>
+
 - [x] Macro-generated folding — braces and access specifiers spelled through macros fold at the invocation site
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   #define NS_BEGIN namespace ns {
@@ -333,7 +406,12 @@
   NS_END
   ```
 
+  </details>
+
 - [x] Coroutine bodies — the written block folds exactly once and the coroutine transformation wrapper adds no duplicate fold; a coroutine lambda keeps its body fold
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   namespace std {
@@ -388,7 +466,12 @@
   }
   ```
 
+  </details>
+
 - [x] Initializer-list constructions — the constructor's braces and the nested initializer list share delimiters and fold once; a parenthesized list argument keeps both folds
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   namespace std {
@@ -419,6 +502,8 @@
   });
   ```
 
+  </details>
+
 <!-- END GENERATED ITEMS -->
 
 ## Refinements
@@ -433,6 +518,9 @@
   > implement this field will silently ignore it — the folding still works,
   > only the placeholder text is missing.
 
+  <details>
+  <summary>Example</summary>
+
   ```cpp
   struct Config {
       int width;
@@ -446,6 +534,8 @@
   }
   ```
 
+  </details>
+
 - [ ] Fold from the declaration line for function/class bodies — keep the signature visible when folded ([clangd#2666](https://github.com/clangd/clangd/issues/2666))
 
   > **Client support**: this depends on the client interpreting
@@ -455,6 +545,9 @@
   > leaves the closing `}` on a separate line rather than collapsing it onto
   > the signature line ([vscode#3352](https://github.com/microsoft/vscode/issues/3352)
   > — still open). Other clients may differ.
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   struct Config {
@@ -470,6 +563,8 @@
   }
   ```
 
+  </details>
+
 - [ ] Inactive preprocessor branch indication — visually distinguish or auto-fold inactive `#if`/`#else` branches _(partial)_
 
   The server emits a fold range for the region between the condition and
@@ -482,6 +577,9 @@
   > is partly a client UX concern. The server can mark these ranges with
   > `FoldingRangeKind.Region` and clients can choose to auto-fold them.
 
+  <details>
+  <summary>Example</summary>
+
   ```cpp
   #ifdef _WIN32
       // ... Windows code (active) ...
@@ -490,7 +588,12 @@
   #endif
   ```
 
+  </details>
+
 - [x] Single-line constructs stay unfolded — a fold that hides nothing is noise
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   namespace tiny { }
@@ -508,6 +611,8 @@
   int result = lambda(42);
   ```
 
+  </details>
+
 <!-- END GENERATED ITEMS -->
 
 ## Changelog
@@ -515,4 +620,4 @@
 | Date       | Change                                                                                                                     | PR                                                 |
 | ---------- | -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
 | 2026-08-01 | Nested compound statements, abbreviated function templates and coroutine bodies; instantiation dedup; semantics-table walk | [#568](https://github.com/clice-io/clice/pull/568) |
-| —          | Block folding, list folding, access specifiers, preprocessor regions                                                       | —                                                  |
+| 2024-12-17 | Block folding, list folding, access specifiers, preprocessor regions                                                       | [#13](https://github.com/clice-io/clice/pull/13)   |

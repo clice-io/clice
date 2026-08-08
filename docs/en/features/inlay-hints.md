@@ -13,6 +13,9 @@ clice renders inline annotations for the information the code leaves implicit: p
 
 - [x] Parameter name hints — argument names at call sites and constructor calls
 
+  <details>
+  <summary>Example</summary>
+
   ```cpp
   void draw(int width, int height);
 
@@ -34,7 +37,12 @@ clice renders inline annotations for the information the code leaves implicit: p
   }
   ```
 
+  </details>
+
 - [x] Hint suppression — arguments that already spell the parameter name, and `/*name=*/` comments ([clangd#1877](https://github.com/clangd/clangd/issues/1877))
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   void draw(int width, int height);
@@ -68,7 +76,12 @@ clice renders inline annotations for the information the code leaves implicit: p
   }
   ```
 
+  </details>
+
 - [x] Setter and builtin suppression — `setX(x)` and `std::move`/`std::forward` arguments stay bare
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   namespace std {
@@ -126,7 +139,12 @@ clice renders inline annotations for the information the code leaves implicit: p
   }
   ```
 
+  </details>
+
 - [x] Mutable reference markers — `&` flags arguments passed by non-const lvalue reference ([clangd#1123](https://github.com/clangd/clangd/issues/1123))
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   void mutate(int& value);
@@ -141,7 +159,12 @@ clice renders inline annotations for the information the code leaves implicit: p
   }
   ```
 
+  </details>
+
 - [x] Forwarding resolution — packs forwarded through wrappers resolve to the target's parameter names ([clangd#2324](https://github.com/clangd/clangd/issues/2324))
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   namespace std {
@@ -192,7 +215,12 @@ clice renders inline annotations for the information the code leaves implicit: p
   }
   ```
 
+  </details>
+
 - [x] Names from definitions — unnamed declaration parameters take the definition's names; leading underscores strip
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   void resize(int, int);
@@ -215,7 +243,12 @@ clice renders inline annotations for the information the code leaves implicit: p
   }
   ```
 
+  </details>
+
 - [x] Function pointers and call operators — indirect calls still name their parameters ([clangd#1734](https://github.com/clangd/clangd/issues/1734), [clangd#1742](https://github.com/clangd/clangd/issues/1742))
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   struct Callback {
@@ -234,7 +267,12 @@ clice renders inline annotations for the information the code leaves implicit: p
   }
   ```
 
+  </details>
+
 - [x] Deducing `this` — the explicit object parameter never hints (C++23) ([clangd#1777](https://github.com/clangd/clangd/issues/1777))
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   struct Widget {
@@ -247,11 +285,16 @@ clice renders inline annotations for the information the code leaves implicit: p
   }
   ```
 
+  </details>
+
 - [x] Dependent calls — parameter names appear even when the callee is only known inside a template
 
   Candidates are matched by argument count; only a unique surviving
   candidate names the parameters, so a call that could still hit several
   overloads stays bare rather than guessing.
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   template <typename T>
@@ -278,7 +321,12 @@ clice renders inline annotations for the information the code leaves implicit: p
   };
   ```
 
+  </details>
+
 - [x] Unexpanded packs — a written pack expansion breaks the 1:1 argument mapping and stops hinting
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   void plot(int x, int y, int z);
@@ -296,7 +344,12 @@ clice renders inline annotations for the information the code leaves implicit: p
   }
   ```
 
+  </details>
+
 - [x] Macros at call sites — arguments spelled as macros hint; calls generated inside macro bodies do not ([clangd#2620](https://github.com/clangd/clangd/issues/2620))
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   void report(double value);
@@ -320,7 +373,12 @@ clice renders inline annotations for the information the code leaves implicit: p
   }
   ```
 
+  </details>
+
 - [x] Implicit constructor calls — conversions the code never wrote produce no hints of their own
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   struct Seconds {
@@ -340,7 +398,12 @@ clice renders inline annotations for the information the code leaves implicit: p
   }
   ```
 
+  </details>
+
 - [x] Pseudo-object expressions — MS property accesses stay quiet; written subscripts keep the accessor's names
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   int printf(const char* Format, ...);
@@ -367,7 +430,12 @@ clice renders inline annotations for the information the code leaves implicit: p
   }
   ```
 
+  </details>
+
 - [x] Explicit instantiation — an explicit instantiation definition adds no duplicate hints, while its written template arguments hint normally ([clangd#1034](https://github.com/clangd/clangd/issues/1034))
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   template <typename T>
@@ -387,7 +455,12 @@ clice renders inline annotations for the information the code leaves implicit: p
   template struct Box<decltype(measure(7))>;
   ```
 
+  </details>
+
 - [ ] Sloppy name matching — `aParam` does not yet suppress an argument spelled `param` _(partial)_ ([clangd#2248](https://github.com/clangd/clangd/issues/2248))
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   void draw(int aParam);
@@ -399,7 +472,12 @@ clice renders inline annotations for the information the code leaves implicit: p
   }
   ```
 
+  </details>
+
 - [ ] Inherited constructors — `using Base::Base` calls lose their parameter names _(partial)_ ([clangd#1364](https://github.com/clangd/clangd/issues/1364))
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   struct Base {
@@ -414,7 +492,12 @@ clice renders inline annotations for the information the code leaves implicit: p
   Derived d(7);
   ```
 
+  </details>
+
 - [x] Anonymous parameters — nothing to name, though a mutable reference still flags `&`
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   void value_sink(int);
@@ -432,7 +515,12 @@ clice renders inline annotations for the information the code leaves implicit: p
   }
   ```
 
+  </details>
+
 - [x] Operators and literals — operator syntax and user-defined literals stay bare; member and default member initializers hint
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   struct S {
@@ -457,7 +545,12 @@ clice renders inline annotations for the information the code leaves implicit: p
   }
   ```
 
+  </details>
+
 - [ ] Packs in constructor arguments — outer calls resolve; hints inside the expansion are still missing _(partial)_
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   struct Foo {
@@ -485,6 +578,8 @@ clice renders inline annotations for the information the code leaves implicit: p
   }
   ```
 
+  </details>
+
 <!-- END GENERATED ITEMS -->
 
 ## Type Hints
@@ -492,6 +587,9 @@ clice renders inline annotations for the information the code leaves implicit: p
 <!-- BEGIN GENERATED ITEMS: Type Hints -->
 
 - [x] Deduced `auto` variables — the hint shows the full variable type, qualifiers included
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   int make();
@@ -503,7 +601,12 @@ clice renders inline annotations for the information the code leaves implicit: p
   }
   ```
 
+  </details>
+
 - [x] Type sugar and the length limit — aliases keep their spelling; over-long types fall back to the sugared name ([clangd#1298](https://github.com/clangd/clangd/issues/1298), [clangd#1357](https://github.com/clangd/clangd/issues/1357))
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   using Integer = int;
@@ -534,7 +637,12 @@ clice renders inline annotations for the information the code leaves implicit: p
   }
   ```
 
+  </details>
+
 - [x] Structured bindings — each binding hints its canonical type; the aggregate itself stays bare
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   struct Pair {
@@ -552,7 +660,12 @@ clice renders inline annotations for the information the code leaves implicit: p
   }
   ```
 
+  </details>
+
 - [x] Lambdas — variables, deduced return types, and init-captures all hint ([clangd#1163](https://github.com/clangd/clangd/issues/1163))
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   int compute();
@@ -567,7 +680,12 @@ clice renders inline annotations for the information the code leaves implicit: p
   }
   ```
 
+  </details>
+
 - [x] Deduced return types — `-> T` after the parameter list, declarations included
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   auto answer() {
@@ -601,7 +719,12 @@ clice renders inline annotations for the information the code leaves implicit: p
   };
   ```
 
+  </details>
+
 - [x] `decltype` spellings — the underlying type shows next to the written `decltype`
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   int source();
@@ -628,7 +751,12 @@ clice renders inline annotations for the information the code leaves implicit: p
   auto constructed = decltype(0){};
   ```
 
+  </details>
+
 - [x] `auto` parameters — a template with exactly one instantiation reveals the deduced type
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   int twice(auto x) {
@@ -663,7 +791,12 @@ clice renders inline annotations for the information the code leaves implicit: p
   template void body<float>();
   ```
 
+  </details>
+
 - [ ] Explicitly spelled initializers — casts and functional casts still hint redundantly _(partial)_ ([clangd#1749](https://github.com/clangd/clangd/issues/1749))
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   int compute();
@@ -676,7 +809,12 @@ clice renders inline annotations for the information the code leaves implicit: p
   }
   ```
 
+  </details>
+
 - [ ] Dependent `auto` — deduction inside an uninstantiated template body stays silent _(partial)_ ([clangd#2275](https://github.com/clangd/clangd/issues/2275))
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   template <typename T>
@@ -688,7 +826,12 @@ clice renders inline annotations for the information the code leaves implicit: p
   }
   ```
 
+  </details>
+
 - [x] Scope suppression — namespace qualifiers drop from hints; class scopes stay
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   namespace outer {
@@ -710,7 +853,12 @@ clice renders inline annotations for the information the code leaves implicit: p
   }  // namespace outer
   ```
 
+  </details>
+
 - [x] Tuple-protocol bindings — hints print the canonical type, not `tuple_element<I, T>::type`
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   struct IntPair {
@@ -752,7 +900,12 @@ clice renders inline annotations for the information the code leaves implicit: p
   auto [x, y] = make();
   ```
 
+  </details>
+
 - [ ] Instantiated templates — instantiated bodies repeat no hints at the pattern; dependent `auto` could reveal the deduced type while exactly one instantiation exists _(partial)_ ([clangd#2275](https://github.com/clangd/clangd/issues/2275))
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   void take(int first, int second);
@@ -780,6 +933,8 @@ clice renders inline annotations for the information the code leaves implicit: p
   template struct Twice<int>;
   ```
 
+  </details>
+
 <!-- END GENERATED ITEMS -->
 
 ## Designator Hints
@@ -787,6 +942,9 @@ clice renders inline annotations for the information the code leaves implicit: p
 <!-- BEGIN GENERATED ITEMS: Designator Hints -->
 
 - [x] Field and index designators — positional aggregate initialization shows `.field=` and `[index]=` ([clangd#2303](https://github.com/clangd/clangd/issues/2303))
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   struct Point {
@@ -809,7 +967,12 @@ clice renders inline annotations for the information the code leaves implicit: p
   Array<int, 2> pair = {0, 1};
   ```
 
+  </details>
+
 - [x] Nested aggregates — written braces recurse; omitted braces flatten into `.outer.inner=`
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   struct Inner {
@@ -825,7 +988,12 @@ clice renders inline annotations for the information the code leaves implicit: p
   Outer o{{1, 2}, 3};
   ```
 
+  </details>
+
 - [x] Anonymous members — unnamed unions and structs vanish from the designator path
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   struct State {
@@ -841,7 +1009,12 @@ clice renders inline annotations for the information the code leaves implicit: p
   State s{42};
   ```
 
+  </details>
+
 - [x] Designator suppression — written designators and `/*name=*/` comments keep their inits bare
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   struct Point {
@@ -857,7 +1030,12 @@ clice renders inline annotations for the information the code leaves implicit: p
   Point p{/*a=*/1, .c = 2, /* .d = */ 3, 4};
   ```
 
+  </details>
+
 - [x] Aggregates only — constructor calls, copies and idiomatic zero-init produce no designators
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   struct Constructible {
@@ -882,7 +1060,12 @@ clice renders inline annotations for the information the code leaves implicit: p
   Wide zeroed{};
   ```
 
+  </details>
+
 - [x] Broken initializers — designators survive next to initializers that fail to compile
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   // The first initializer deliberately fails to convert.
@@ -898,7 +1081,12 @@ clice renders inline annotations for the information the code leaves implicit: p
   }
   ```
 
+  </details>
+
 - [ ] Parenthesized aggregate initialization — C++20 `Point(1, 2)` gets no hints yet ([clangd#2540](https://github.com/clangd/clangd/issues/2540))
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   struct Point {
@@ -909,6 +1097,8 @@ clice renders inline annotations for the information the code leaves implicit: p
   Point p(1, 2);
   ```
 
+  </details>
+
 <!-- END GENERATED ITEMS -->
 
 ## Other Hint Kinds
@@ -916,6 +1106,9 @@ clice renders inline annotations for the information the code leaves implicit: p
 <!-- BEGIN GENERATED ITEMS: Other Hint Kinds -->
 
 - [ ] Template parameter hints — deduced and explicit template arguments at call sites ([clangd#2583](https://github.com/clangd/clangd/issues/2583))
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   template <typename T, typename U>
@@ -925,7 +1118,12 @@ clice renders inline annotations for the information the code leaves implicit: p
   float converted = convert<float>(42);
   ```
 
+  </details>
+
 - [ ] CTAD arguments — deduced class template arguments after the template name ([clangd#2331](https://github.com/clangd/clangd/issues/2331))
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   template <typename A, typename B>
@@ -939,7 +1137,12 @@ clice renders inline annotations for the information the code leaves implicit: p
   Pair pair(1, 2.5);
   ```
 
+  </details>
+
 - [ ] Implicit conversion hints — surface the conversions a call site performs ([clangd#2254](https://github.com/clangd/clangd/issues/2254))
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   void process(double val);
@@ -949,6 +1152,8 @@ clice renders inline annotations for the information the code leaves implicit: p
       process(42);
   }
   ```
+
+  </details>
 
 <!-- END GENERATED ITEMS -->
 
@@ -1005,6 +1210,6 @@ The `[inlay_hints]` section of `clice.toml` (or the same keys via `initializatio
 
 | Date       | Change                                                                                                  | PR                                                 |
 | ---------- | ------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| —          | Parameter name hints, type hints, range-scoped queries                                                  | —                                                  |
-| 2026-07-31 | Designator hints, dependent-call parameter hints, `[inlay_hints]` configuration, fixture-generated docs | —                                                  |
 | 2026-08-01 | Instantiation-subtree skip: no duplicate or contradictory hints from instantiated bodies                | [#571](https://github.com/clice-io/clice/pull/571) |
+| 2026-08-01 | Designator hints, dependent-call parameter hints, `[inlay_hints]` configuration, fixture-generated docs | [#565](https://github.com/clice-io/clice/pull/565) |
+| 2025-01-13 | Parameter name hints, type hints, range-scoped queries                                                  | [#19](https://github.com/clice-io/clice/pull/19)   |
