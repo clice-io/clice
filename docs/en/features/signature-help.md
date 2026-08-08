@@ -399,6 +399,6 @@ Registered: `(`, `)`, `{`, `}`, `<`, `>`, `,`
 
 ## Changelog
 
-| Date       | Change                                                                      | PR  |
-| ---------- | --------------------------------------------------------------------------- | --- |
-| 2024-10-27 | Function overload signatures, active parameter tracking, trigger characters | —   |
+| Date       | Change                                                                      | PR                                                 |
+| ---------- | --------------------------------------------------------------------------- | -------------------------------------------------- |
+| 2025-08-23 | Function overload signatures, active parameter tracking, trigger characters | [#187](https://github.com/clice-io/clice/pull/187) |
