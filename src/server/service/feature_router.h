@@ -173,6 +173,10 @@ private:
     std::vector<protocol::Location>
         resolve_directive_definition(Session& session, const protocol::Position& position);
 
+    /// Resolve hover on a preamble include from the links cached with the PCH.
+    std::optional<protocol::Hover> resolve_preamble_hover(Session& session,
+                                                          const protocol::Position& position);
+
     Compiler& compiler;
     IndexQuery& index_query;
     Workspace& workspace;

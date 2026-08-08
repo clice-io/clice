@@ -77,6 +77,45 @@ std::vector<protocol::Location>
     return locations;
 }
 
+std::optional<protocol::Hover>
+    FeatureRouter::resolve_preamble_hover(Session& session, const protocol::Position& position) {
+    auto links = find_preamble_links(session);
+    if(links.empty())
+        return std::nullopt;
+
+    auto map = session.line_map();
+    auto offset = map.to_offset(position);
+    if(!offset)
+        return std::nullopt;
+
+    for(const auto& link: links) {
+        if(!link.range.contains(*offset))
+            continue;
+
+        if(link.range.end > session.text.size())
+            return std::nullopt;
+
+        llvm::StringRef name(session.text.data() + link.range.begin, link.range.length());
+        name = name.trim();
+        if(name.size() >= 2 && ((name.front() == '"' && name.back() == '"') ||
+                                (name.front() == '<' && name.back() == '>'))) {
+            name = name.drop_front().drop_back();
+        }
+
+        feature::HoverInfo info;
+        info.name = name.str();
+        info.kind = SymbolKind::Header;
+        info.definition = link.target;
+        info.symbol_range = link.range;
+
+        auto hover = feature::to_protocol_hover(info, workspace.config.hover, map);
+        if(!hover.range)
+            return std::nullopt;
+        return hover;
+    }
+    return std::nullopt;
+}
+
 kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
     FeatureRouter::document_links(std::shared_ptr<Session> session,
                                   std::optional<kota::cancellation_token> token) {
@@ -173,11 +212,27 @@ kota::task<kota::codec::RawValue, kota::ipc::Error>
 FeatureRouter::RawResult FeatureRouter::hover(std::shared_ptr<Session> session,
                                               const protocol::Position& position,
                                               std::optional<kota::cancellation_token> token) {
-    co_return co_await compiler.forward_query(worker::QueryKind::Hover,
-                                              session,
-                                              position,
-                                              {},
-                                              std::move(token));
+    if(!session) {
+        co_return kota::outcome_error(document_not_open());
+    }
+
+    /// Like document_links, the preamble and the worker's AST are disjoint, so merge the two
+    /// sources.
+    auto gen = session->generation;
+    auto raw = co_await compiler.forward_query(worker::QueryKind::Hover,
+                                               session,
+                                               position,
+                                               {},
+                                               std::move(token));
+    if(session->generation != gen) {
+        co_return serde_raw{"null"};
+    }
+    if(raw.has_value() && raw.value().data == "null" && !session->ast_dirty) {
+        if(auto hover = resolve_preamble_hover(*session, position)) {
+            co_return to_raw(*hover);
+        }
+    }
+    co_return std::move(raw);
 }
 
 FeatureRouter::RawResult

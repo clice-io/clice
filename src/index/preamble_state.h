@@ -19,7 +19,7 @@ namespace clice::index {
 /// carrying a different value loads as "missing" and the PCH pair is
 /// rebuilt. cache.json records it so a version change is caught at load
 /// time instead of on the first overlay query.
-constexpr inline std::uint32_t preamble_format_version = 3;
+constexpr inline std::uint32_t preamble_format_version = 4;
 
 /// All master-visible state derived from one PCH build.
 ///
