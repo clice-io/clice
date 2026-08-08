@@ -76,4 +76,4 @@ Cursor/selection-driven refactorings.
 
 | Date       | Change                                   | PR  |
 | ---------- | ---------------------------------------- | --- |
-| 2024-09-16 | Stub handler (always returns empty list) | —   |
+| 2024-11-24 | Stub handler (always returns empty list) | —   |

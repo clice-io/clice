@@ -1418,4 +1418,5 @@ as semantic tokens.
 | Date       | Change                                                                    | PR                                                 |
 | ---------- | ------------------------------------------------------------------------- | -------------------------------------------------- |
 | 2026-08-01 | Explicit instantiation directive names pinned as unpainted until clang 23 | [#571](https://github.com/clice-io/clice/pull/571) |
-| 2024-08-31 | Initial semantic token types and modifiers, full document tokens          | —                                                  |
+| 2024-11-26 | Full document tokens (`textDocument/semanticTokens/full`)                 | —                                                  |
+| 2024-09-16 | Initial semantic token types and modifiers                                | —                                                  |
