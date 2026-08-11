@@ -23,7 +23,9 @@ TEST_SUITE(PCHWorker) {
 TEST_CASE(BuildPCHThenCompile) {
     TempDir tmp;
 
-    tmp.touch("common.h", R"cpp(struct Point { int x, y; };)cpp" "\n");
+    tmp.touch("common.h",
+              R"cpp(struct Point { int x, y; };)cpp"
+              "\n");
     auto header = tmp.path("common.h");
 
     std::string main_text = "#include \"common.h\"\nPoint p{1,2};\n";
@@ -120,7 +122,9 @@ TEST_CASE(BuildPCHThenCompile) {
 TEST_CASE(BlobWriteFailure) {
     TempDir tmp;
 
-    tmp.touch("common.h", R"cpp(struct Point { int x, y; };)cpp" "\n");
+    tmp.touch("common.h",
+              R"cpp(struct Point { int x, y; };)cpp"
+              "\n");
     std::string main_text = "#include \"common.h\"\nPoint p{1,2};\n";
     tmp.touch("main.cpp", main_text);
     auto main_file = tmp.path("main.cpp");
@@ -165,7 +169,9 @@ TEST_CASE(BlobWriteFailure) {
 TEST_CASE(CompileWithoutPCHStillWorks) {
     TempDir tmp;
 
-    tmp.touch("common.h", R"cpp(struct Point { int x, y; };)cpp" "\n");
+    tmp.touch("common.h",
+              R"cpp(struct Point { int x, y; };)cpp"
+              "\n");
     std::string main_text = "#include \"common.h\"\nPoint p{1,2};\n";
     tmp.touch("main.cpp", main_text);
     auto main_file = tmp.path("main.cpp");

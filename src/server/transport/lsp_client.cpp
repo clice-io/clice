@@ -105,7 +105,7 @@ void LSPClient::register_lifecycle() {
 
         if(init.initialization_options.has_value()) {
             auto json =
-                kota::codec::json::to_json<kota::ipc::lsp_config>(*init.initialization_options);
+                kota::codec::json::to_string<kota::ipc::lsp_config>(*init.initialization_options);
             if(json)
                 srv.init_options_json = std::move(*json);
         }

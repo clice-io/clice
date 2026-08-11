@@ -85,7 +85,7 @@ void MasterServer::initialize() {
     std::string raw_init_options = init_options_json;
 
     if(!init_options_json.empty()) {
-        if(auto ov = kota::codec::json::parse(init_options_json, workspace.config); !ov) {
+        if(auto ov = kota::codec::json::from_string(init_options_json, workspace.config); !ov) {
             LOG_GUIDANCE("Failed to apply initializationOptions: {}", ov.error().to_string());
         } else {
             LOG_INFO("Applied initializationOptions overlay");
@@ -506,7 +506,8 @@ void MasterServer::load_workspace() {
     auto cdb_path = discover_compile_commands(workspace.config, workspace_root);
     if(cdb_path.empty()) {
         LOG_GUIDANCE(
-            "No compile_commands.json found in workspace {}. Compile commands will be " "guessed; see https://clice.io/en/guide/quick-start for setup.",
+            "No compile_commands.json found in workspace {}. Compile commands will be "
+            "guessed; see https://clice.io/en/guide/quick-start for setup.",
             workspace_root);
         // Persisted index shards are CDB-independent; load them so a
         // database generated later (picked up by the CDB poll) starts from
@@ -538,7 +539,8 @@ void MasterServer::load_workspace() {
             ? 100.0 * static_cast<double>(report.includes_resolved) / report.includes_found
             : 100.0;
     LOG_INFO(
-        "Dependency scan: {}ms, {} files ({} source + {} header), " "{} edges, {}/{} resolved ({:.1f}%), {} waves",
+        "Dependency scan: {}ms, {} files ({} source + {} header), "
+        "{} edges, {}/{} resolved ({:.1f}%), {} waves",
         report.elapsed_ms,
         report.total_files,
         report.source_files,

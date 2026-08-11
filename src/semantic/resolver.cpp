@@ -331,7 +331,8 @@ public:
                 }
 
                 LOG_DEBUG(
-                    "{}" "default arg: '{}' = '{}'",
+                    "{}"
+                    "default arg: '{}' = '{}'",
                     pad(),
                     TTPD->getNameAsString(),
                     result.getAsString());
@@ -602,7 +603,8 @@ public:
                 if(!resolved_type.isNull()) {
                     if(auto members = lookup(resolved_type, name); !members.empty()) {
                         LOG_DEBUG(
-                            "{}" "found '{}' via base '{}'",
+                            "{}"
+                            "found '{}' via base '{}'",
                             pad(),
                             name.getAsString(),
                             resolved_type.getAsString());
@@ -660,7 +662,8 @@ public:
         CTD->getPartialSpecializations(partials);
 
         LOG_DEBUG(
-            "{}" "lookup '{}' in '{}' (partials={})",
+            "{}"
+            "lookup '{}' in '{}' (partials={})",
             pad(),
             name.getAsString(),
             CTD->getNameAsString(),
@@ -678,7 +681,8 @@ public:
                 stack.pop();
                 if(!viable) {
                     LOG_DEBUG(
-                        "{}" "pruned partial '{}' (member absent)",
+                        "{}"
+                        "pruned partial '{}' (member absent)",
                         pad(),
                         partial->getNameAsString());
                     continue;
@@ -696,7 +700,10 @@ public:
         if(best && matched.size() > 1) {
             for(auto partial: matched) {
                 if(partial != best && !more_specialized(context, best, partial)) {
-                    LOG_DEBUG("{}" "ambiguous partials; degrading", pad());
+                    LOG_DEBUG(
+                        "{}"
+                        "ambiguous partials; degrading",
+                        pad());
                     indent -= 1;
                     return lookup_result();
                 }
@@ -707,21 +714,34 @@ public:
         /// need subsumption machinery); a structurally matching constrained
         /// partial is therefore unverifiable — degrade rather than trust it.
         if(best && best->getTemplateParameters()->hasAssociatedConstraints()) {
-            LOG_DEBUG("{}" "constrained partial; degrading", pad());
+            LOG_DEBUG(
+                "{}"
+                "constrained partial; degrading",
+                pad());
             indent -= 1;
             return lookup_result();
         }
 
         if(best && deduce_template_arguments(best, arguments)) {
-            LOG_DEBUG("{}" "matched partial '{}'", pad(), best->getNameAsString());
+            LOG_DEBUG(
+                "{}"
+                "matched partial '{}'",
+                pad(),
+                best->getNameAsString());
             if(auto members = best->lookup(name); !members.empty()) {
-                LOG_DEBUG("{}" "found in 'partial'", pad());
+                LOG_DEBUG(
+                    "{}"
+                    "found in 'partial'",
+                    pad());
                 indent -= 1;
                 return members;
             }
 
             if(auto members = lookup_in_bases(best, name); !members.empty()) {
-                LOG_DEBUG("{}" "found in 'base'", pad());
+                LOG_DEBUG(
+                    "{}"
+                    "found in 'base'",
+                    pad());
                 indent -= 1;
                 return members;
             }
@@ -733,13 +753,19 @@ public:
             LOG_DEBUG("{}using primary template", pad());
             auto CRD = CTD->getTemplatedDecl();
             if(auto members = CRD->lookup(name); !members.empty()) {
-                LOG_DEBUG("{}" "found in 'primary'", pad());
+                LOG_DEBUG(
+                    "{}"
+                    "found in 'primary'",
+                    pad());
                 indent -= 1;
                 return members;
             }
 
             if(auto members = lookup_in_bases(CRD, name); !members.empty()) {
-                LOG_DEBUG("{}" "found in 'base'", pad());
+                LOG_DEBUG(
+                    "{}"
+                    "found in 'base'",
+                    pad());
                 indent -= 1;
                 return members;
             }
@@ -1905,13 +1931,21 @@ private:
     }
 
     clang::QualType resolve_dependent_name(const clang::DependentNameType* DNT) {
-        LOG_DEBUG("{}" "resolve '{}'", pad(), clang::QualType(DNT, 0).getAsString());
+        LOG_DEBUG(
+            "{}"
+            "resolve '{}'",
+            pad(),
+            clang::QualType(DNT, 0).getAsString());
         indent += 1;
 
         // Check cache.
         if(pack_narrowing == 0) {
             if(auto iter = resolved.find(DNT); iter != resolved.end()) {
-                LOG_DEBUG("{}" "→ '{}' (cached)", pad(), iter->second.getAsString());
+                LOG_DEBUG(
+                    "{}"
+                    "→ '{}' (cached)",
+                    pad(),
+                    iter->second.getAsString());
                 indent -= 1;
                 return iter->second;
             }
@@ -1939,11 +1973,21 @@ private:
             auto decl_name = llvm::dyn_cast<clang::NamedDecl>(decl)
                                  ? llvm::dyn_cast<clang::NamedDecl>(decl)->getNameAsString()
                                  : "?";
-            LOG_DEBUG("{}" "found {} '{}' = '{}'", pad(), decl_kind, decl_name, type.getAsString());
+            LOG_DEBUG(
+                "{}"
+                "found {} '{}' = '{}'",
+                pad(),
+                decl_kind,
+                decl_name,
+                type.getAsString());
 
             // Step 1: substitute params (expand typedefs, no lookup).
             result = substitute(type);
-            LOG_DEBUG("{}" "substitute → '{}'", pad(), result.getAsString());
+            LOG_DEBUG(
+                "{}"
+                "substitute → '{}'",
+                pad(),
+                result.getAsString());
 
             // Pop lookup frames BEFORE further resolution. The substitute step already
             // used the full stack for parameter substitution. Resolution should only
@@ -1966,7 +2010,11 @@ private:
         active_resolutions.erase(DNT);
 
         if(!result.isNull()) {
-            LOG_DEBUG("{}" "→ '{}'", pad(), result.getAsString());
+            LOG_DEBUG(
+                "{}"
+                "→ '{}'",
+                pad(),
+                result.getAsString());
             indent -= 1;
             if(pack_narrowing == 0 && !truncated && !ctd_guard_tripped) {
                 resolved.try_emplace(DNT, result);
@@ -1983,7 +2031,11 @@ private:
     /// (`T::template rebind<U>`) to a concrete TST when lookup finds the
     /// template.
     clang::QualType resolve_dependent_template(const clang::TemplateSpecializationType* TST) {
-        LOG_DEBUG("{}" "resolve TST '{}'", pad(), clang::QualType(TST, 0).getAsString());
+        LOG_DEBUG(
+            "{}"
+            "resolve TST '{}'",
+            pad(),
+            clang::QualType(TST, 0).getAsString());
         indent += 1;
 
         auto& template_name = *TST->getTemplateName().getAsDependentTemplateName();
@@ -2023,7 +2075,11 @@ private:
                         type = rewrite(type, Policy::Resolve);
                     }
                     if(!type.isNull()) {
-                        LOG_DEBUG("{}" "→ '{}' (alias)", pad(), type.getAsString());
+                        LOG_DEBUG(
+                            "{}"
+                            "→ '{}' (alias)",
+                            pad(),
+                            type.getAsString());
                         indent -= 1;
                         if(cacheable && !truncated && !ctd_guard_tripped) {
                             resolved.try_emplace(TST, type);
@@ -2038,7 +2094,11 @@ private:
                 // Keep lookup frames on stack — the caller (e.g. rewrite_specifier
                 // processing A<X>::B<Y>::C<Z>) needs them for parameter substitution.
                 auto result = make_specialization(clang::TemplateName(CTD), arguments);
-                LOG_DEBUG("{}" "→ TST '{}' (class)", pad(), result.getAsString());
+                LOG_DEBUG(
+                    "{}"
+                    "→ TST '{}' (class)",
+                    pad(),
+                    result.getAsString());
                 indent -= 1;
                 if(cacheable && !truncated && !ctd_guard_tripped) {
                     resolved.try_emplace(TST, result);

@@ -96,7 +96,7 @@ void export_graph_json(const PathPool& path_pool,
         export_data.files.push_back(std::move(node));
     }
 
-    auto json = kota::codec::json::to_json(export_data);
+    auto json = kota::codec::json::to_string(export_data);
     if(!json) {
         std::println(stderr, "Failed to serialize dependency graph");
         return;

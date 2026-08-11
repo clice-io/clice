@@ -13,6 +13,7 @@
 #include "support/filesystem.h"
 #include "support/markup.h"
 
+#include "kota/codec/macro.h"
 #include "kota/ipc/lsp/position.h"
 #include "kota/ipc/lsp/protocol.h"
 #include "kota/ipc/lsp/uri.h"
@@ -24,11 +25,10 @@ namespace clice::feature {
 namespace lsp = kota::ipc::lsp;
 namespace protocol = kota::ipc::protocol;
 
-/// Feature options double as their clice.toml/initializationOptions config
-/// sections: `defaulted` lets a decode leave unmentioned fields at the
-/// values below, so the field initializers are the single source of every
-/// default and a config source only ever overlays what it names.
-using kota::meta::defaulted;
+// Feature options double as their clice.toml/initializationOptions config
+// sections: `defaulted = true` lets a decode leave unmentioned fields at
+// their initializers, so those are the single source of every default and a
+// config source only ever overlays what it names.
 
 using kota::ipc::lsp::LineMap;
 using kota::ipc::lsp::PositionEncoding;
@@ -86,22 +86,46 @@ inline auto to_range(const LineMap& map, LocalSourceRange range) -> std::optiona
 
 /// Corresponds to the `[code_completion]` section in clice.toml.
 struct CodeCompletionOptions {
-    defaulted<bool> enable_keyword_snippet = false;
-    defaulted<bool> enable_function_arguments_snippet = false;
-    defaulted<bool> enable_template_arguments_snippet = false;
-    defaulted<bool> insert_paren_in_function_call = false;
-    defaulted<bool> bundle_overloads = true;
-    defaulted<std::uint32_t> limit = 0;
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description = "Complete keywords as snippets (not yet implemented).")
+    <bool> enable_keyword_snippet = false;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description = "Insert function arguments as a snippet on completion.")
+    <bool> enable_function_arguments_snippet = false;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Insert template arguments as a snippet on completion "
+                         "(not yet implemented).")
+    <bool> enable_template_arguments_snippet = false;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Insert parentheses when completing a function call "
+                         "(not yet implemented).")
+    <bool> insert_paren_in_function_call = false;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description = "Collapse an overload set into a single completion item.")
+    <bool> bundle_overloads = true;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description = "Maximum number of completion items (not yet implemented).")
+    <std::uint32_t> limit = 0;
 };
 
 /// Corresponds to the `[hover]` section in clice.toml.
 struct HoverOptions {
-    /// Render the hover card as markdown rather than plain text.
-    defaulted<bool> parse_comment_as_markdown = true;
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description = "Render the hover card as markdown rather than plain text.")
+    <bool> parse_comment_as_markdown = true;
 
-    /// Show the desugared form of a type, e.g. `vector<int>::size_type (aka
-    /// unsigned long)`.
-    defaulted<bool> show_aka = true;
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Show the desugared form of a type, e.g. "
+                         "`vector<int>::size_type (aka unsigned long)`.")
+    <bool> show_aka = true;
 };
 
 /// Contains detailed information about a symbol. Especially useful when
@@ -206,13 +230,32 @@ void parse_documentation(llvm::StringRef input, markup::Document& output);
 
 /// Corresponds to the `[inlay_hints]` section in clice.toml.
 struct InlayHintsOptions {
-    defaulted<bool> enabled = true;
-    defaulted<bool> parameters = true;
-    defaulted<bool> deduced_types = true;
-    defaulted<bool> designators = true;
-    defaulted<bool> block_end = false;
-    defaulted<bool> default_arguments = false;
-    defaulted<std::uint32_t> type_name_limit = 32;
+    KOTATSU_ANNOTATE(defaulted = true, description = "Master switch for inlay hints.")
+    <bool> enabled = true;
+
+    KOTATSU_ANNOTATE(defaulted = true, description = "Show parameter name hints at call sites.")
+    <bool> parameters = true;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description = "Show deduced types for `auto` and templated declarations.")
+    <bool> deduced_types = true;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description = "Show designators in aggregate initialization.")
+    <bool> designators = true;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description = "Show a hint naming the construct after a closing brace.")
+    <bool> block_end = false;
+
+    KOTATSU_ANNOTATE(defaulted = true, description = "Show omitted default arguments.")
+    <bool> default_arguments = false;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Character budget for a rendered type name; longer names "
+                         "are truncated; 0 means no limit.")
+    <std::uint32_t> type_name_limit = 32;
 };
 
 struct SignatureHelpOptions {};

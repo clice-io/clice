@@ -14,6 +14,7 @@
 #include "syntax/scan.h"
 
 #include "kota/codec/json/json.h"
+#include "kota/codec/macro.h"
 #include "llvm/Support/Chrono.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -331,9 +332,14 @@ struct CacheDepEntry {
     // still load: the fields read back zeroed ("no fast path") and the first
     // staleness check re-earns them by hash. Their old entry-level build_at
     // is skipped as an unknown field.
-    kota::meta::defaulted<std::uint64_t> size;
-    kota::meta::defaulted<std::int64_t> mtime_ns;
-    kota::meta::defaulted<bool> missing;
+    KOTATSU_ANNOTATE(defaulted = true)
+    <std::uint64_t> size;
+
+    KOTATSU_ANNOTATE(defaulted = true)
+    <std::int64_t> mtime_ns;
+
+    KOTATSU_ANNOTATE(defaulted = true)
+    <bool> missing;
 };
 
 struct CachePCHEntry {
@@ -460,7 +466,7 @@ void Workspace::load_cache(ContextResolver& contexts) {
     }
 
     CacheData data;
-    auto status = kota::codec::json::from_json(*content, data);
+    auto status = kota::codec::json::from_string(*content, data);
     if(!status) {
         LOG_WARN("Failed to parse cache.json");
         return;
@@ -605,7 +611,7 @@ void Workspace::save_cache(const ContextResolver& contexts) {
                                intern,
                                intern_path);
 
-    auto json_str = kota::codec::json::to_json(data);
+    auto json_str = kota::codec::json::to_string(data);
     if(!json_str) {
         LOG_WARN("Failed to serialize cache.json");
         return;

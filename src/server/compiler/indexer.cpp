@@ -596,7 +596,8 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id,
                 // so there is no diagnostic surface. Cross-file references
                 // into this file stay stale until its content changes.
                 LOG_WARN(
-                    "[{}/{}] Index giving up on {} after {} crash requeues; " "its cross-file data stays stale until it is edited: {}",
+                    "[{}/{}] Index giving up on {} after {} crash requeues; "
+                    "its cross-file data stays stale until it is edited: {}",
                     index,
                     total,
                     file_path,

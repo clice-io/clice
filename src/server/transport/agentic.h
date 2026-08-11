@@ -22,9 +22,10 @@ struct QueryOptions {
     <int> port;
 
     DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
-           help = "Query method (compileCommand, symbolSearch, definition, references, "
-                  "documentSymbols, readSymbol, callGraph, typeHierarchy, projectFiles, "
-                  "fileDeps, impactAnalysis, status, shutdown)",
+           help =
+               "Query method (compileCommand, symbolSearch, definition, references, "
+               "documentSymbols, readSymbol, callGraph, typeHierarchy, projectFiles, "
+               "fileDeps, impactAnalysis, status, shutdown)",
            required = false)
     <std::string> method = "compileCommand";
 

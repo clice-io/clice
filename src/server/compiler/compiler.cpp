@@ -101,9 +101,10 @@ static kota::codec::RawValue quarantine_diagnostics(unsigned crashes) {
     diagnostic.severity = protocol::DiagnosticSeverity::Error;
     diagnostic.source = "clice";
     diagnostic.message = std::format(
-        "compiling this file crashed the language server worker {} times; " "the file is quarantined until it is edited",
+        "compiling this file crashed the language server worker {} times; "
+        "the file is quarantined until it is edited",
         crashes);
-    auto json = kota::codec::json::to_json<kota::ipc::lsp_config>(diagnostics);
+    auto json = kota::codec::json::to_string<kota::ipc::lsp_config>(diagnostics);
     return kota::codec::RawValue{json ? std::move(*json) : "[]"};
 }
 
@@ -1164,7 +1165,7 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
             std::vector<protocol::Diagnostic> diagnostics;
             if(!result.value().diagnostics.empty()) {
                 [[maybe_unused]] auto status =
-                    kota::codec::json::from_json(result.value().diagnostics.data, diagnostics);
+                    kota::codec::json::from_string(result.value().diagnostics.data, diagnostics);
             }
             session->trial_done = true;
             contexts.record_header_mode(pid, HeaderMode::SelfContained);

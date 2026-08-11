@@ -796,7 +796,8 @@ kota::task<> WorkerPool::monitor_loop() {
 
 void WorkerPool::tick_memory(double available_ratio) {
     LOG_DEBUG(
-        "Memory: {:.0f}% available, low_limit={}/{}, busy={} (low={}), " "queued=hi:{}/lo:{}, alive={}, sat={}/idle={}",
+        "Memory: {:.0f}% available, low_limit={}/{}, busy={} (low={}), "
+        "queued=hi:{}/lo:{}, alive={}, sat={}/idle={}",
         available_ratio * 100,
         low_limit,
         max_low_limit(),

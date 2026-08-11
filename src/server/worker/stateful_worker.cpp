@@ -276,7 +276,7 @@ void StatefulWorker::register_handlers() {
 
                 if(doc->unit.completed() || doc->unit.fatal_error()) {
                     auto diags = feature::diagnostics(doc->unit);
-                    auto json = kota::codec::json::to_json<kota::ipc::lsp_config>(diags);
+                    auto json = kota::codec::json::to_string<kota::ipc::lsp_config>(diags);
                     result.diagnostics = kota::codec::RawValue{json ? std::move(*json) : "[]"};
                     LOG_INFO("Compile done: path={}, {}ms, {} diags, fatal={}",
                              params.path,

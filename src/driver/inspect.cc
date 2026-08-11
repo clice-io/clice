@@ -43,34 +43,35 @@ struct InspectOptions {
     DecoFlag(names = {"-h", "--help"}, help = "Show help", required = false)
     help;
 
-    DecoInput(
-        meta_var = "<FEATURE> <PATH>",
-        help =
-            "Feature to run (code_completion, document_links, document_symbol, " "folding_range, hover, inlay_hint, semantic_tokens, signature_help, " "tu_index) and a source file or directory",
-        required = false)
+    DecoInput(meta_var = "<FEATURE> <PATH>",
+              help =
+                  "Feature to run (code_completion, document_links, document_symbol, "
+                  "folding_range, hover, inlay_hint, semantic_tokens, signature_help, "
+                  "tu_index) and a source file or directory",
+              required = false)
     <std::vector<std::string>> inputs;
 
-    DecoFlag(
-        names = {"--annotations"},
-        help =
-            "Treat inputs as annotated fixture sources: strip inline " "§-markers before compiling (the snap-test grammar)",
-        required = false)
+    DecoFlag(names = {"--annotations"},
+             help =
+                 "Treat inputs as annotated fixture sources: strip inline "
+                 "§-markers before compiling (the snap-test grammar)",
+             required = false)
     annotations;
 
-    DecoKVStyled(
-        kota::deco::decl::KVStyle::JoinedOrSeparate,
-        names = {"--flags", "--flags="},
-        help =
-            "Compile flags for the inputs as a JSON string array; " "replaces the compile_commands.json lookup",
-        required = false)
+    DecoKVStyled(kota::deco::decl::KVStyle::JoinedOrSeparate,
+                 names = {"--flags", "--flags="},
+                 help =
+                     "Compile flags for the inputs as a JSON string array; "
+                     "replaces the compile_commands.json lookup",
+                 required = false)
     <std::string> flags;
 
-    DecoKVStyled(
-        kota::deco::decl::KVStyle::JoinedOrSeparate,
-        names = {"--config", "--config="},
-        help =
-            "Feature options overlay as a JSON object " "(only features that take options accept it)",
-        required = false)
+    DecoKVStyled(kota::deco::decl::KVStyle::JoinedOrSeparate,
+                 names = {"--config", "--config="},
+                 help =
+                     "Feature options overlay as a JSON object "
+                     "(only features that take options accept it)",
+                 required = false)
     <std::string> config;
 
     DecoKVStyled(kota::deco::decl::KVStyle::JoinedOrSeparate,
@@ -142,9 +143,9 @@ struct StrictJson {
 
 /// The fixture's --config JSON overlaid on the feature's default options.
 /// The options struct doubles as its config section (all fields
-/// `defaulted`), so decoding onto a fresh value IS the overlay: missing
-/// keys keep the field initializers, exactly like the server's config
-/// sections. Runners re-parse on each call; --config was validated up
+/// `defaulted = true`), so decoding onto a fresh value IS the overlay:
+/// missing keys keep the field initializers, exactly like the server's
+/// config sections. Runners re-parse on each call; --config was validated up
 /// front in run_inspect, so their parse cannot fail.
 template <typename Options>
 std::optional<Options> parse_feature_config(llvm::StringRef config) {
@@ -152,7 +153,7 @@ std::optional<Options> parse_feature_config(llvm::StringRef config) {
     if(config.empty()) {
         return options;
     }
-    if(auto result = kota::codec::json::from_json<StrictJson>(config, options); !result) {
+    if(auto result = kota::codec::json::from_string<StrictJson>(config, options); !result) {
         LOG_ERROR("invalid --config: {}", result.error().message);
         return std::nullopt;
     }
@@ -789,7 +790,7 @@ int run_inspect(const InspectOptions& opts) {
 
     std::vector<std::string> flags;
     if(opts.flags.has_value()) {
-        if(auto result = kota::codec::json::from_json(*opts.flags, flags); !result) {
+        if(auto result = kota::codec::json::from_string(*opts.flags, flags); !result) {
             LOG_ERROR("--flags is not a JSON string array: {}", result.error().message);
             return 1;
         }
