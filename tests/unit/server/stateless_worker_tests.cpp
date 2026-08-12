@@ -4,8 +4,10 @@
 #include "test/test.h"
 #include "server/protocol/worker.h"
 #include "server/worker_test_helpers.h"
+#include "support/filesystem.h"
 
 #include "kota/codec/bincode/bincode.h"
+#include "llvm/Support/xxhash.h"
 
 namespace clice::testing {
 
@@ -133,9 +135,88 @@ TEST_CASE(IndexRequest) {
         params.file = src;
         params.directory = "/tmp";
         params.arguments = make_args(src);
+        params.index_output_path = tmp.path("spill.bin");
 
         auto result = co_await w.peer->send_request(params);
         EXPECT_TRUE(result.has_value());
+        if(result.has_value()) {
+            // A small index stays inline even with a spill path offered.
+            EXPECT_TRUE(result->success);
+            EXPECT_FALSE(result->tu_index_data.empty());
+            EXPECT_EQ(result->tu_index_file_size, std::uint64_t(0));
+        }
+        test_done = true;
+        w.peer->close_output();
+    });
+
+    ASSERT_TRUE(test_done);
+}
+
+TEST_CASE(IndexSpillToFile) {
+    TempDir tmp;
+    tmp.touch("test_index.cpp", "int indexed_var = 1;\n");
+    auto src = tmp.path("test_index.cpp");
+    auto spill = tmp.path("spill.bin");
+
+    WorkerHandle w;
+    ASSERT_TRUE(w.spawn());
+
+    bool test_done = false;
+
+    w.run([&]() -> kota::task<> {
+        worker::BuildParams params;
+        params.kind = worker::BuildKind::Index;
+        params.file = src;
+        params.directory = "/tmp";
+        params.arguments = make_args(src);
+        params.index_output_path = spill;
+        params.index_inline_limit = 1;
+
+        auto result = co_await w.peer->send_request(params);
+        EXPECT_TRUE(result.has_value());
+        if(result.has_value()) {
+            EXPECT_TRUE(result->success);
+            EXPECT_TRUE(result->tu_index_data.empty());
+            auto blob = fs::read(spill);
+            EXPECT_TRUE(blob.has_value());
+            if(blob.has_value()) {
+                EXPECT_EQ(result->tu_index_file_size, blob->size());
+                EXPECT_EQ(result->tu_index_hash, llvm::xxh3_64bits(*blob));
+            }
+        }
+        test_done = true;
+        w.peer->close_output();
+    });
+
+    ASSERT_TRUE(test_done);
+}
+
+TEST_CASE(SpillFailureFallsInline) {
+    TempDir tmp;
+    tmp.touch("test_index.cpp", "int indexed_var = 1;\n");
+    auto src = tmp.path("test_index.cpp");
+
+    WorkerHandle w;
+    ASSERT_TRUE(w.spawn());
+
+    bool test_done = false;
+
+    w.run([&]() -> kota::task<> {
+        worker::BuildParams params;
+        params.kind = worker::BuildKind::Index;
+        params.file = src;
+        params.directory = "/tmp";
+        params.arguments = make_args(src);
+        params.index_output_path = tmp.path("no_such_dir/spill.bin");
+        params.index_inline_limit = 1;
+
+        auto result = co_await w.peer->send_request(params);
+        EXPECT_TRUE(result.has_value());
+        if(result.has_value()) {
+            EXPECT_TRUE(result->success);
+            EXPECT_FALSE(result->tu_index_data.empty());
+            EXPECT_EQ(result->tu_index_file_size, std::uint64_t(0));
+        }
         test_done = true;
         w.peer->close_output();
     });

@@ -125,6 +125,14 @@ inline std::expected<void, std::error_code> write(llvm::StringRef path, llvm::St
     }
     os << content;
     os.flush();
+    // A mid-write failure (disk full, EIO) lands in the stream's error
+    // flag, and an unchecked flag turns into a fatal error in the
+    // destructor — surface it as an ordinary error instead.
+    if(os.has_error()) {
+        EC = os.error();
+        os.clear_error();
+        return std::unexpected(EC);
+    }
     return std::expected<void, std::error_code>();
 }
 

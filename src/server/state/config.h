@@ -76,6 +76,14 @@ struct ProjectConfig {
                          "harness.")
     <bool> test_hooks = false;
 
+    /// Test-facing, like test_hooks: the default only matters for results
+    /// large enough that CI cannot produce them.
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Serialized TUIndex results above this many bytes are "
+                         "spilled to a tmp file instead of sent inline.")
+    <std::uint64_t> index_inline_limit = 8 * 1024 * 1024;
+
     KOTATSU_ANNOTATE(defaulted = true, description = "Number of stateful workers.")
     <std::uint32_t> stateful_worker_count = 2;
 

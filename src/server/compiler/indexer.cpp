@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cassert>
 #include <format>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -532,12 +533,48 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id,
         co_return;
 
     workspace.fill_pcm_deps(params.pcms);
+    params.index_inline_limit = workspace.config.project.index_inline_limit.value;
+
+    // Deliberately never committed: the PendingEntry removes the transfer
+    // file on every master-side exit path, and a write orphaned by
+    // cancellation is swept with the instance tmp dir.
+    std::optional<CacheStore::PendingEntry> transfer;
+    if(workspace.store) {
+        transfer = workspace.store->begin_store("index", shard_key(file_path));
+        params.index_output_path = transfer->tmp_path;
+    }
 
     LOG_INFO("[{}/{}] Indexing {}", index, total, file_path);
 
     ScopedTimer timer;
     auto result = co_await pool.send_stateless(params);
-    if(result.has_value() && result.value().success && !result.value().tu_index_data.empty()) {
+
+    llvm::StringRef tu_index_bytes;
+    std::unique_ptr<llvm::MemoryBuffer> spilled;
+    if(result.has_value() && result.value().success) {
+        tu_index_bytes = result.value().tu_index_data;
+        if(tu_index_bytes.empty() && result.value().tu_index_file_size > 0 && transfer) {
+            auto buffer = llvm::MemoryBuffer::getFile(transfer->tmp_path);
+            if(!buffer || (*buffer)->getBufferSize() != result.value().tu_index_file_size ||
+               llvm::xxh3_64bits((*buffer)->getBuffer()) != result.value().tu_index_hash) {
+                // A transfer loss is a transport failure, not a build
+                // verdict: the work itself is fine (a worker died
+                // mid-write, or the cache dir was wiped mid-flight), so
+                // requeue like a crash instead of serving the stale shard
+                // as fresh until the file's next edit.
+                LOG_WARN("[{}/{}] Requeueing {}: corrupt TUIndex transfer",
+                         index,
+                         total,
+                         file_path);
+                note_dispatch_failure(server_path_id, ticket, false);
+                co_return;
+            }
+            spilled = std::move(*buffer);
+            tu_index_bytes = spilled->getBuffer();
+        }
+    }
+
+    if(result.has_value() && result.value().success && !tu_index_bytes.empty()) {
         auto index_ms = timer.ms();
         // Merge guard: a newer content-level invalidation during this build
         // (or a removal clearing the entry) means this result describes text
@@ -553,18 +590,19 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id,
             co_return;
         }
         ScopedTimer merge_timer;
-        merge(result.value().tu_index_data.data(), result.value().tu_index_data.size());
+        merge(tu_index_bytes.data(), tu_index_bytes.size());
         LOG_PERF("index",
-                 "progress={}/{} file={} bytes={} index_ms={} merge_ms={}",
+                 "progress={}/{} file={} bytes={} transfer={} index_ms={} merge_ms={}",
                  index,
                  total,
                  file_path,
-                 result.value().tu_index_data.size(),
+                 tu_index_bytes.size(),
+                 spilled ? "file" : "inline",
                  index_ms,
                  merge_timer.ms());
     } else if(result.has_value() && !result.value().success) {
         LOG_WARN("[{}/{}] Index failed for {}: {}", index, total, file_path, result.value().error);
-    } else if(result.has_value() && result.value().tu_index_data.empty()) {
+    } else if(result.has_value()) {
         LOG_WARN("[{}/{}] Index returned empty TUIndex for {}", index, total, file_path);
     } else if(result.error().code == worker::dispatch_errc::cancelled ||
               result.error().code == worker::dispatch_errc::worker_crashed ||

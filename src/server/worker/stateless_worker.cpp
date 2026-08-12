@@ -19,6 +19,7 @@
 #include "kota/ipc/peer.h"
 #include "kota/ipc/transport.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/xxhash.h"
 
 namespace clice {
 
@@ -278,6 +279,20 @@ static worker::BuildResult handle_index(const worker::BuildParams& params,
              timer.ms());
     worker::BuildResult result;
     result.success = true;
+
+    // The master verifies size+hash before use, so a torn write is detected
+    // there and needs no atomic-rename dance here.
+    if(serialized.size() > params.index_inline_limit && !params.index_output_path.empty()) {
+        auto written = fs::write(params.index_output_path, serialized);
+        if(written) {
+            result.tu_index_file_size = serialized.size();
+            result.tu_index_hash = llvm::xxh3_64bits(serialized);
+            return result;
+        }
+        LOG_WARN("Index spill to {} failed ({}), sending inline",
+                 params.index_output_path,
+                 written.error().message());
+    }
     result.tu_index_data = std::move(serialized);
     return result;
 }

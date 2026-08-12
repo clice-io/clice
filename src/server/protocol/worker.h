@@ -185,9 +185,9 @@ enum class BuildKind : uint8_t {
 /// Unified parameters for all stateless build/compilation tasks.
 /// Fields are used selectively based on `kind`:
 ///   - All:           file, directory, arguments
-///   - BuildPCH:      + content, preamble_bound, output_path
+///   - BuildPCH:      + content, preamble_bound, output_path, index_output_path
 ///   - BuildPCM:      + module_name, pcms, output_path
-///   - Index:         + pcms
+///   - Index:         + pcms, index_output_path, index_inline_limit
 ///   - Completion:    + text, version, offset, pch, pcms
 ///   - SignatureHelp: + text, version, offset, pch, pcms
 ///   - Format:        + text, format_range (optional)
@@ -214,7 +214,13 @@ struct BuildParams {
     /// `.pch.idx`), allocated by the master's store alongside output_path.
     /// The worker serializes the preamble's index and feature state into
     /// it; the master commits both blobs together.
+    /// Index: tmp path for a serialized TUIndex too large to travel inline
+    /// in the IPC frame (see BuildResult::tu_index_file_size).
     std::string index_output_path;
+
+    /// Index: serialized results above this many bytes spill to
+    /// index_output_path instead of travelling inline.
+    std::uint64_t index_inline_limit = 8 * 1024 * 1024;
 
     std::string module_name;               ///< BuildPCM
     uint32_t preamble_bound = UINT32_MAX;  ///< BuildPCH
@@ -242,7 +248,13 @@ struct BuildResult {
     /// whose mtime is past this moment may differ from what the build read.
     std::int64_t build_at = 0;
     std::vector<DepFile> deps;
-    std::string tu_index_data;          ///< Index: serialized TUIndex, merged by the master
+    std::string tu_index_data;  ///< Index: serialized TUIndex, merged by the master
+    /// Index: set instead of tu_index_data when the serialized TUIndex was
+    /// spilled to BuildParams::index_output_path (too large for the IPC
+    /// frame): blob byte size and its xxh3_64, checked by the master before
+    /// use — the file may be torn if the worker died mid-write.
+    std::uint64_t tu_index_file_size = 0;
+    std::uint64_t tu_index_hash = 0;
     kota::codec::RawValue result_json;  ///< Completion/SignatureHelp result
 };
 
