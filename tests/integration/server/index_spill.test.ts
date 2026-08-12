@@ -44,7 +44,10 @@ test("index spill roundtrip", async ({ session }) => {
     const { client, workspace } = session.tmp();
     // The reference probe excludes declarations, so lib.cpp needs a real
     // call site for it to show up in the reference list.
-    workspace.write("lib.cpp", "int shared_fn() { return 42; }\nint call_it() { return shared_fn(); }\n");
+    workspace.write(
+        "lib.cpp",
+        "int shared_fn() { return 42; }\nint call_it() { return shared_fn(); }\n",
+    );
     workspace.write("main.cpp", "int shared_fn();\nint main() { return shared_fn(); }\n");
     workspace.writeCDB(["lib.cpp", "main.cpp"]);
     workspace.pinCacheDir();
