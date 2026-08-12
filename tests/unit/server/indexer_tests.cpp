@@ -101,6 +101,19 @@ IndexedTU index_file(TempDir& tmp, llvm::StringRef file) {
     return result;
 }
 
+TEST_CASE(MergeRejectsGarbage) {
+    // A worker shipping corrupted bytes (torn write, stale format) must not
+    // crash the master or leave partial state behind.
+    ASSERT_TRUE(workspace.merged_indices.empty());
+    ASSERT_TRUE(workspace.project_index.symbols.empty());
+
+    std::string garbage = "definitely not a flatbuffer, but long enough to try";
+    indexer.merge(garbage.data(), garbage.size());
+
+    ASSERT_TRUE(workspace.merged_indices.empty());
+    ASSERT_TRUE(workspace.project_index.symbols.empty());
+}
+
 TEST_CASE(MergeSkipsMovedDisk) {
     TempDir tmp;
     tmp.touch("main.cpp", "int value() { return 1; }\n");

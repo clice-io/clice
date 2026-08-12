@@ -530,14 +530,8 @@ public:
         for(auto& [fid, index]: result.file_indices) {
             for(auto& [symbol_id, relations]: index.relations) {
                 std::ranges::sort(relations, [](const Relation& lhs, const Relation& rhs) {
-                    return std::tuple(static_cast<std::uint32_t>(lhs.kind),
-                                      lhs.range.begin,
-                                      lhs.range.end,
-                                      lhs.target_symbol) <
-                           std::tuple(static_cast<std::uint32_t>(rhs.kind),
-                                      rhs.range.begin,
-                                      rhs.range.end,
-                                      rhs.target_symbol);
+                    return std::tuple(lhs.kind, lhs.range.begin, lhs.range.end, lhs.target_symbol) <
+                           std::tuple(rhs.kind, rhs.range.begin, rhs.range.end, rhs.target_symbol);
                 });
                 auto range =
                     std::ranges::unique(relations, [](const Relation& lhs, const Relation& rhs) {
@@ -643,25 +637,29 @@ TUIndex TUIndex::build(CompilationUnitRef unit, bool interested_only) {
 
 void TUIndex::serialize(llvm::raw_ostream& os) {
     /// Convert the FileID-keyed working state into the persisted
-    /// path_id-keyed form. Multiple FileIDs can share a path id (repeated
-    /// header contexts); last-wins matches what deserialization of the old
-    /// per-FileID entries did.
-    path_file_indices.clear();
-    for(auto& [fid, file_index]: file_indices) {
-        path_file_indices[graph.path_id(fid)] = file_index;
+    /// path_id-keyed form; multiple FileIDs can share a path id (repeated
+    /// header contexts), last-wins. A deserialized index has no FileID-keyed
+    /// state at all — its path-keyed rows already are the persisted form, so
+    /// re-serializing must not wipe them.
+    if(!file_indices.empty()) {
+        path_file_indices.clear();
+        for(auto& [fid, file_index]: file_indices) {
+            path_file_indices[graph.path_id(fid)] = file_index;
+        }
     }
 
     serialize_blob(*this, os);
 }
 
 std::optional<TUIndex> TUIndex::from(llvm::StringRef data) {
-    // The out-parameter overload: TUIndex holds llvm::DenseMap members whose
-    // explicit default constructors make it fail std::default_initializable,
-    // which the value-returning from_bytes requires.
     std::optional<TUIndex> index{std::in_place};
-    if(!kota::codec::fbs::from_bytes(blob_bytes(data), *index)) {
+    if(!deserialize_blob(data, *index)) {
         return std::nullopt;
     }
+    // The verifier checks structure, not cross-field consistency: consumers
+    // index path_hashes by path id, so normalize its length to the path
+    // table's (absent hashes read as 0 = "unavailable").
+    index->graph.path_hashes.resize(index->graph.paths.size(), 0);
     return index;
 }
 

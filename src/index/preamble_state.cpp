@@ -49,12 +49,10 @@ StateView root_of(const llvm::MemoryBuffer& buffer) {
     return StateView::from_verified_bytes(blob_bytes(buffer.getBuffer()));
 }
 
-PreambleState::File file_of(StateView root, FileEntryView entry) {
-    auto paths = root[&PreambleStateRepr::paths];
-    auto path_id = entry[&PreambleFileEntryRepr::path_id];
+PreambleState::File file_of(kota::codec::fbs::array_view<std::string> paths, FileEntryView entry) {
     auto line_starts = to_array_ref(entry[&PreambleFileEntryRepr::line_starts]);
     return PreambleState::File{
-        .path = to_ref(paths[path_id]),
+        .path = to_ref(paths[entry[&PreambleFileEntryRepr::path_id]]),
         .content = to_ref(entry[&PreambleFileEntryRepr::content]),
         .line_starts = std::span(line_starts.data(), line_starts.size()),
     };
@@ -157,7 +155,7 @@ void PreambleState::lookup(SymbolHash symbol,
         if(entry[&PreambleFileEntryRepr::path_id] >= paths.size()) {
             continue;
         }
-        auto file = file_of(root, entry);
+        auto file = file_of(paths, entry);
 
         auto rels = found->get<1>();
         for(std::size_t j = 0; j < rels.size(); ++j) {
@@ -192,28 +190,11 @@ void PreambleState::lookup_preamble(std::uint32_t offset,
     auto occurrences =
         root[&PreambleStateRepr::preamble][&PreambleFileEntryRepr::index][&FileIndex::occurrences];
 
-    // First occurrence whose range ends at or past the offset; entries are
-    // sorted by (range.begin, range.end, target).
-    std::size_t lo = 0;
-    std::size_t hi = occurrences.size();
-    while(lo < hi) {
-        auto mid = lo + (hi - lo) / 2;
-        if(occurrences[mid].range.end < offset) {
-            lo = mid + 1;
-        } else {
-            hi = mid;
-        }
-    }
-
-    for(; lo < occurrences.size(); ++lo) {
-        Occurrence occurrence = occurrences[lo];
-        if(!occurrence.range.contains(offset)) {
-            break;
-        }
-        if(!callback(occurrence)) {
-            break;
-        }
-    }
+    scan_occurrences_at(
+        occurrences.size(),
+        offset,
+        [&](std::size_t i) { return occurrences[i]; },
+        callback);
 }
 
 void PreambleState::lookup_preamble(SymbolHash symbol,

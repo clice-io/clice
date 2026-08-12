@@ -1,4 +1,6 @@
+#include <algorithm>
 #include <filesystem>
+#include <tuple>
 
 #include "test/temp_dir.h"
 #include "test/test.h"
@@ -693,6 +695,176 @@ TEST_CASE(OldShardDiscarded) {
         auto loaded = index::MergedIndex::load(path);
         ASSERT_TRUE(loaded.content().empty());
         ASSERT_TRUE(loaded.need_update());
+    }
+
+    // Positive control: the same single-slot shape carrying the CURRENT
+    // version is kept — slot 0 really is the version slot and the rejection
+    // above comes from its value, not from the blob's shape.
+    {
+        struct VersionOnly {
+            std::uint32_t format_version = 0;
+        };
+
+        auto blob = kota::codec::fbs::to_bytes(VersionOnly{index::index_format_version});
+        ASSERT_TRUE(blob.has_value());
+
+        auto path = dir.path("current.idx");
+        std::error_code ec;
+        llvm::raw_fd_ostream os(path, ec);
+        os.write(reinterpret_cast<const char*>(blob->data()), blob->size());
+        os.flush();
+
+        ASSERT_TRUE(index::MergedIndex::load(path).loaded());
+    }
+}
+
+TEST_CASE(GarbageLoadRejected) {
+    TempDir dir;
+    dir.touch("garbage.idx", "not a flatbuffer");
+
+    auto loaded = index::MergedIndex::load(dir.path("garbage.idx"));
+    ASSERT_FALSE(loaded.loaded());
+    ASSERT_TRUE(loaded.content().empty());
+    ASSERT_TRUE(loaded.need_update());
+
+    // Queries on the rejected shard answer with silence, not UB.
+    bool visited = false;
+    loaded.lookup(0, [&](const index::Occurrence&) {
+        visited = true;
+        return true;
+    });
+    ASSERT_FALSE(visited);
+
+    loaded.lookup(index::SymbolHash(1), RelationKind::Definition, [&](const index::Relation&) {
+        visited = true;
+        return true;
+    });
+    ASSERT_FALSE(visited);
+
+    std::string name;
+    SymbolKind kind;
+    ASSERT_FALSE(loaded.find_symbol(1, name, kind));
+}
+
+TEST_CASE(CorruptShardRejected) {
+    TempDir dir;
+
+    index::MergedIndex merged;
+    index::FileIndex file_idx;
+    merged.merge("tu0", std::chrono::milliseconds(1), {}, file_idx, "corrupt-me");
+
+    llvm::SmallString<1024> blob;
+    llvm::raw_svector_ostream os(blob);
+    merged.serialize(os);
+    ASSERT_TRUE(blob.size() > 8);
+
+    auto write = [&](llvm::StringRef name, llvm::StringRef bytes) {
+        dir.touch(name, bytes);
+        return dir.path(name);
+    };
+
+    // Sanity: the intact bytes load, so the rejections below are earned.
+    ASSERT_TRUE(index::MergedIndex::load(write("valid.idx", blob)).loaded());
+
+    llvm::StringRef bytes(blob.data(), blob.size());
+    ASSERT_FALSE(
+        index::MergedIndex::load(write("half.idx", bytes.take_front(bytes.size() / 2))).loaded());
+    ASSERT_FALSE(index::MergedIndex::load(write("minus1.idx", bytes.drop_back(1))).loaded());
+
+    // Bytes 4-7 carry the buffer identifier; a blob from another format
+    // must be rejected up front.
+    std::string clobbered = bytes.str();
+    for(std::size_t i = 4; i < 8; ++i) {
+        clobbered[i] = 'X';
+    }
+    ASSERT_FALSE(index::MergedIndex::load(write("clobbered.idx", clobbered)).loaded());
+}
+
+TEST_CASE(BufferPathLookupParity) {
+    build_index(R"(
+            void §(a)alpha_func() {}
+            int §(b)beta_var = 1;
+        )");
+
+    index::MergedIndex merged;
+    auto fid = unit->interested_file();
+    merged.merge("tu0",
+                 tu_index.graph.include_location_id(fid),
+                 tu_index.main_file_index,
+                 unit->interested_content());
+
+    auto hash_at = [&](llvm::StringRef pos) {
+        auto offset = point(pos);
+        index::SymbolHash hash = 0;
+        merged.lookup(offset, [&](const index::Occurrence& occ) {
+            hash = occ.target;
+            return false;
+        });
+        return hash;
+    };
+
+    using Row = std::tuple<std::uint32_t, std::uint32_t, std::uint64_t>;
+    auto definitions = [](index::MergedIndex& index, index::SymbolHash hash) {
+        std::vector<Row> rows;
+        index.lookup(hash, RelationKind::Definition, [&](const index::Relation& relation) {
+            rows.emplace_back(relation.range.begin, relation.range.end, relation.target_symbol);
+            return true;
+        });
+        std::ranges::sort(rows);
+        return rows;
+    };
+
+    index::SymbolHash hashes[2] = {hash_at("a"), hash_at("b")};
+    std::vector<Row> expected[2];
+    for(std::size_t i = 0; i < 2; ++i) {
+        ASSERT_TRUE(hashes[i] != 0);
+        expected[i] = definitions(merged, hashes[i]);
+        ASSERT_FALSE(expected[i].empty());
+    }
+    ASSERT_TRUE(hashes[0] != hashes[1]);
+
+    llvm::SmallString<4096> buf;
+    llvm::raw_svector_ostream os(buf);
+    merged.serialize(os);
+    auto restored = index::MergedIndex(buf);
+
+    // The zero-copy view is the production read path: it must agree BEFORE
+    // anything materializes the impl (operator== would, so it comes last).
+    for(std::size_t i = 0; i < 2; ++i) {
+        ASSERT_TRUE(definitions(restored, hashes[i]) == expected[i]);
+    }
+
+    ASSERT_FALSE(restored.line_starts().empty());
+    ASSERT_TRUE(std::ranges::equal(restored.line_starts(), merged.line_starts()));
+}
+
+TEST_CASE(BufferPathMultiOccurrenceLookup) {
+    // Synthesized occurrences sorted by (begin, end, target), spaced so each
+    // probe hits exactly one range (contains() is inclusive at both ends).
+    index::FileIndex file_idx;
+    index::SymbolHash target = 100;
+    for(std::uint32_t begin = 0; begin < 60; begin += 10) {
+        file_idx.occurrences.emplace_back(index::Range{begin, begin + 3}, target++);
+    }
+
+    index::MergedIndex merged;
+    merged.merge("tu0", std::uint32_t(0), file_idx, "synthetic");
+
+    llvm::SmallString<1024> buf;
+    llvm::raw_svector_ostream os(buf);
+    merged.serialize(os);
+    auto restored = index::MergedIndex(buf);
+
+    // The buffer path binary-searches the serialized rows: every probe must
+    // land on exactly its own range.
+    for(auto& occurrence: file_idx.occurrences) {
+        std::vector<index::Occurrence> hits;
+        restored.lookup(occurrence.range.begin + 1, [&](const index::Occurrence& hit) {
+            hits.push_back(hit);
+            return true;
+        });
+        ASSERT_EQ(hits.size(), 1u);
+        ASSERT_TRUE(hits.front() == occurrence);
     }
 }
 

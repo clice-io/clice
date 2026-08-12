@@ -10,7 +10,7 @@ import { generateCDB } from "../compile_commands.ts";
 
 /// Versioned root of the unified cache store; bump together with
 /// cache_format_version in src/server/state/workspace.h.
-const CACHE_ROOT = path.join(".clice", "cache", "v4");
+const CACHE_ROOT = path.join(".clice", "cache", "v5");
 
 /// The harness-wide canonical URI spelling: percent-decoded. vscode-uri
 /// encodes the drive colon (file:///c%3A/...) while the server emits it

@@ -8,6 +8,7 @@
 #include <string_view>
 #include <vector>
 
+#include "index/tu_index.h"
 #include "semantic/symbol.h"
 #include "support/bitmap.h"
 
@@ -86,6 +87,46 @@ void serialize_blob(const T& value, llvm::raw_ostream& os) {
 /// The bytes of `data` as the span every kota fbs entry point takes.
 inline std::span<const std::uint8_t> blob_bytes(llvm::StringRef data) {
     return {reinterpret_cast<const std::uint8_t*>(data.data()), data.size()};
+}
+
+/// Verify and deserialize a blob into `out`. The out-parameter overload of
+/// from_bytes is deliberate: index types hold llvm::DenseMap members whose
+/// explicit default constructors fail std::default_initializable, which the
+/// value-returning overload requires.
+template <typename T>
+bool deserialize_blob(llvm::StringRef data, T& out) {
+    return kota::codec::fbs::from_bytes(blob_bytes(data), out).has_value();
+}
+
+/// Scan the occurrences containing `offset` in a sequence sorted by
+/// (range.begin, range.end, target): binary-search the first entry whose
+/// range ends at or past the offset, then walk while ranges contain it.
+/// `get(i)` yields the i-th Occurrence.
+template <typename GetOccurrence>
+void scan_occurrences_at(std::size_t size,
+                         std::uint32_t offset,
+                         GetOccurrence&& get,
+                         llvm::function_ref<bool(const Occurrence&)> callback) {
+    std::size_t lo = 0;
+    std::size_t hi = size;
+    while(lo < hi) {
+        auto mid = lo + (hi - lo) / 2;
+        if(get(mid).range.end < offset) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+
+    for(; lo < size; ++lo) {
+        Occurrence occurrence = get(lo);
+        if(!occurrence.range.contains(offset)) {
+            break;
+        }
+        if(!callback(occurrence)) {
+            break;
+        }
+    }
 }
 
 inline llvm::StringRef to_ref(std::string_view text) {

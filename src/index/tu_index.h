@@ -133,7 +133,7 @@ struct TUIndex {
     /// populated from file_indices first — hence non-const).
     void serialize(llvm::raw_ostream& os);
 
-    /// Deserialize a verified buffer; nullopt when verification fails.
+    /// Verify and deserialize a buffer; nullopt when verification fails.
     static std::optional<TUIndex> from(llvm::StringRef data);
 };
 

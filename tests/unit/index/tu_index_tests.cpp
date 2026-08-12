@@ -1184,6 +1184,143 @@ TEST_CASE(SuperQualifierRef) {
     GO_TO_DEFINITION("use", "def");
 }
 
+TEST_CASE(SerializeRoundTrip) {
+    add_file("header.h", R"(
+            #pragma once
+            inline int §(hdr)helper() { return 1; }
+        )");
+    add_main("main.cpp", R"(
+            #include "header.h"
+            int main() { return §(use)helper(); }
+        )");
+    ASSERT_TRUE(compile());
+    tu_index = index::TUIndex::build(*unit);
+    ASSERT_FALSE(tu_index.file_indices.empty());
+
+    llvm::SmallString<4096> buf;
+    llvm::raw_svector_ostream os(buf);
+    tu_index.serialize(os);
+
+    auto loaded = index::TUIndex::from(buf);
+    ASSERT_TRUE(loaded.has_value());
+
+    ASSERT_EQ(loaded->built_at.count(), tu_index.built_at.count());
+    ASSERT_TRUE(loaded->graph.paths == tu_index.graph.paths);
+    ASSERT_TRUE(loaded->graph.locations == tu_index.graph.locations);
+    ASSERT_TRUE(loaded->graph.path_hashes == tu_index.graph.path_hashes);
+
+    // The persisted per-file rows are keyed by path id; recompute the
+    // expected conversion from the build-time FileID-keyed state.
+    llvm::DenseMap<std::uint32_t, std::pair<std::size_t, std::size_t>> expected;
+    for(auto& [fid, file_index]: tu_index.file_indices) {
+        expected[tu_index.graph.path_id(fid)] = {file_index.occurrences.size(),
+                                                 file_index.relations.size()};
+    }
+    ASSERT_FALSE(expected.empty());
+    ASSERT_EQ(loaded->path_file_indices.size(), expected.size());
+    for(auto& [path_id, counts]: expected) {
+        auto it = loaded->path_file_indices.find(path_id);
+        ASSERT_TRUE(it != loaded->path_file_indices.end());
+        ASSERT_EQ(it->second.occurrences.size(), counts.first);
+        ASSERT_EQ(it->second.relations.size(), counts.second);
+    }
+
+    ASSERT_TRUE(loaded->main_file_index.occurrences == tu_index.main_file_index.occurrences);
+    ASSERT_EQ(loaded->main_file_index.relations.size(), tu_index.main_file_index.relations.size());
+
+    ASSERT_EQ(loaded->symbols.size(), tu_index.symbols.size());
+    for(auto& [hash, symbol]: tu_index.symbols) {
+        auto it = loaded->symbols.find(hash);
+        ASSERT_TRUE(it != loaded->symbols.end());
+        ASSERT_EQ(it->second.name, symbol.name);
+        ASSERT_EQ(it->second.kind.value(), symbol.kind.value());
+        ASSERT_EQ(static_cast<int>(it->second.scope), static_cast<int>(symbol.scope));
+        ASSERT_TRUE(it->second.reference_files == symbol.reference_files);
+    }
+}
+
+TEST_CASE(FromRejectsHostileInput) {
+    ASSERT_FALSE(index::TUIndex::from("not a flatbuffer at all").has_value());
+
+    build_index(R"(
+            int foo() { return 42; }
+        )");
+
+    llvm::SmallString<4096> buf;
+    llvm::raw_svector_ostream os(buf);
+    tu_index.serialize(os);
+
+    // Sanity: the intact blob loads, so the rejections below are earned.
+    ASSERT_TRUE(index::TUIndex::from(buf).has_value());
+
+    ASSERT_FALSE(index::TUIndex::from(llvm::StringRef(buf.data(), buf.size() / 2)).has_value());
+
+    // Bytes 4-7 carry the buffer identifier; a blob from another format
+    // must be rejected up front.
+    ASSERT_TRUE(buf.size() > 8);
+    std::string clobbered(buf.data(), buf.size());
+    for(std::size_t i = 4; i < 8; ++i) {
+        clobbered[i] = 'X';
+    }
+    ASSERT_FALSE(index::TUIndex::from(clobbered).has_value());
+}
+
+TEST_CASE(FromNormalizesPathHashes) {
+    build_index(R"(
+            int foo() { return 42; }
+        )");
+    ASSERT_FALSE(tu_index.graph.paths.empty());
+
+    // A blob without path hashes (structurally valid: the field reads back
+    // empty) must come back resized to the path table, all "unavailable".
+    tu_index.graph.path_hashes.clear();
+    llvm::SmallString<4096> buf;
+    llvm::raw_svector_ostream os(buf);
+    tu_index.serialize(os);
+
+    auto loaded = index::TUIndex::from(buf);
+    ASSERT_TRUE(loaded.has_value());
+    ASSERT_EQ(loaded->graph.path_hashes.size(), loaded->graph.paths.size());
+    for(auto hash: loaded->graph.path_hashes) {
+        ASSERT_EQ(hash, 0u);
+    }
+}
+
+TEST_CASE(ReserializeKeepsPathIndices) {
+    add_file("header.h", R"(
+            #pragma once
+            inline int helper() { return 1; }
+        )");
+    add_main("main.cpp", R"(
+            #include "header.h"
+            int main() { return helper(); }
+        )");
+    ASSERT_TRUE(compile());
+    tu_index = index::TUIndex::build(*unit);
+
+    llvm::SmallString<4096> buf;
+    llvm::raw_svector_ostream os(buf);
+    tu_index.serialize(os);
+
+    auto loaded = index::TUIndex::from(buf);
+    ASSERT_TRUE(loaded.has_value());
+    ASSERT_TRUE(loaded->file_indices.empty());
+    ASSERT_FALSE(loaded->path_file_indices.empty());
+
+    // A deserialized index has no FileID-keyed state; re-serializing must
+    // keep the path-keyed rows instead of wiping them from an empty map.
+    llvm::SmallString<4096> again;
+    llvm::raw_svector_ostream os2(again);
+    loaded->serialize(os2);
+
+    auto reloaded = index::TUIndex::from(again);
+    ASSERT_TRUE(reloaded.has_value());
+    ASSERT_EQ(reloaded->path_file_indices.size(), loaded->path_file_indices.size());
+    for(auto& [path_id, file_index]: loaded->path_file_indices) {
+        ASSERT_TRUE(reloaded->path_file_indices.contains(path_id));
+    }
+}
+
 };  // TEST_SUITE(tu_index)
 
 }  // namespace

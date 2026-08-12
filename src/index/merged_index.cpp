@@ -13,6 +13,7 @@
 
 #include "kota/ipc/lsp/position.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/raw_os_ostream.h"
 #include "llvm/Support/xxhash.h"
 
@@ -340,12 +341,10 @@ void MergedIndex::load_in_memory(this Self& self) {
 
     auto& index = *self.impl;
     // The buffer was verified at load(); decode straight into the repr and
-    // move its containers into place. Out-parameter overload: the DenseMap
-    // members' explicit default constructors make the repr fail the
-    // std::default_initializable constraint of the value-returning one.
+    // move its containers into place.
     MergedIndexRepr repr;
-    auto decoded = kota::codec::fbs::from_bytes(blob_bytes(self.buffer->getBuffer()), repr);
-    assert(decoded.has_value());
+    [[maybe_unused]] bool decoded = deserialize_blob(self.buffer->getBuffer(), repr);
+    assert(decoded);
 
     index.max_canonical_id = repr.max_canonical_id;
 
@@ -361,12 +360,12 @@ void MergedIndex::load_in_memory(this Self& self) {
 
     index.canonical_ref_counts.resize(index.max_canonical_id, 0);
 
-    for(auto& [path, context]: repr.header_contexts) {
+    for(auto& context: llvm::make_second_range(repr.header_contexts)) {
         for(auto& include: context.includes) {
             index.canonical_ref_counts[include.canonical_id] += 1;
         }
     }
-    for(auto& [path, context]: repr.compilation_contexts) {
+    for(auto& context: llvm::make_second_range(repr.compilation_contexts)) {
         index.canonical_ref_counts[context.canonical_id] += 1;
     }
 
@@ -522,29 +521,11 @@ void MergedIndex::lookup(this const Self& self,
         }
     } else if(self.buffer) {
         auto occurrences = root_of(*self.buffer)[&MergedIndexRepr::occurrences];
-
-        // First entry whose range ends at or past the offset; entries are
-        // sorted by (range.begin, range.end, target).
-        std::size_t lo = 0;
-        std::size_t hi = occurrences.size();
-        while(lo < hi) {
-            auto mid = lo + (hi - lo) / 2;
-            if(occurrences.at(mid).get<0>().range.end < offset) {
-                lo = mid + 1;
-            } else {
-                hi = mid;
-            }
-        }
-
-        for(; lo < occurrences.size(); ++lo) {
-            Occurrence occurrence = occurrences.at(lo).get<0>();
-            if(!occurrence.range.contains(offset)) {
-                break;
-            }
-            if(!callback(occurrence)) {
-                break;
-            }
-        }
+        scan_occurrences_at(
+            occurrences.size(),
+            offset,
+            [&](std::size_t i) { return occurrences.at(i).get<0>(); },
+            callback);
     }
 }
 

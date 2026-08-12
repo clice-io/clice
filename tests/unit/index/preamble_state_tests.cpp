@@ -241,6 +241,57 @@ TEST_CASE(RejectVersionMismatch) {
     EXPECT_TRUE(index::PreambleState::load(blob_path) == nullptr);
 }
 
+TEST_CASE(AcceptCurrentVersionBlob) {
+    // Positive control for RejectVersionMismatch: the same single-slot shape
+    // carrying the CURRENT version loads — slot 0 really is the version slot
+    // and the rejection comes from its value, not from the blob's shape.
+    struct VersionOnly {
+        std::uint32_t format_version = 0;
+    };
+
+    auto blob = kota::codec::fbs::to_bytes(VersionOnly{index::preamble_format_version});
+    ASSERT_TRUE(blob.has_value());
+
+    dir.touch("current.pch.idx",
+              llvm::StringRef(reinterpret_cast<const char*>(blob->data()), blob->size()));
+    EXPECT_TRUE(index::PreambleState::load(dir.path("current.pch.idx")) != nullptr);
+}
+
+TEST_CASE(RejectCorruptBlob) {
+    add_main("main.cpp", R"(
+int main() { return 0; }
+)");
+    build_state();
+
+    auto buffer = llvm::MemoryBuffer::getFile(dir.path("state.pch.idx"));
+    ASSERT_TRUE(bool(buffer));
+    auto bytes = (*buffer)->getBuffer();
+    ASSERT_TRUE(bytes.size() > 8);
+
+    dir.touch("truncated.pch.idx", bytes.take_front(bytes.size() / 2));
+    EXPECT_TRUE(index::PreambleState::load(dir.path("truncated.pch.idx")) == nullptr);
+
+    // Bytes 4-7 carry the buffer identifier; a blob from another format
+    // must be rejected up front.
+    std::string clobbered = bytes.str();
+    for(std::size_t i = 4; i < 8; ++i) {
+        clobbered[i] = 'X';
+    }
+    dir.touch("clobbered.pch.idx", clobbered);
+    EXPECT_TRUE(index::PreambleState::load(dir.path("clobbered.pch.idx")) == nullptr);
+}
+
+TEST_CASE(SourcePathAndContent) {
+    add_main("main.cpp", R"(
+int value = 42;
+int other = 1;
+)");
+    build_state();
+
+    EXPECT_TRUE(state->source_path().ends_with("main.cpp"));
+    EXPECT_EQ(state->preamble_content(), unit->interested_content());
+}
+
 };  // TEST_SUITE(PreambleState)
 
 }  // namespace

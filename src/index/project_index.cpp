@@ -88,12 +88,8 @@ void ProjectIndex::serialize(this const ProjectIndex& self,
 std::optional<ProjectIndex> ProjectIndex::from(llvm::StringRef data,
                                                clice::PathPool& pool,
                                                llvm::SmallVectorImpl<std::uint32_t>& shards) {
-    // Out-parameter overload: SymbolTable is an llvm::DenseMap whose explicit
-    // default constructor makes the repr fail the std::default_initializable
-    // constraint of the value-returning from_bytes.
     ProjectIndexRepr repr;
-    auto decoded = kota::codec::fbs::from_bytes(blob_bytes(data), repr);
-    if(!decoded || repr.format_version != index_format_version) {
+    if(!deserialize_blob(data, repr) || repr.format_version != index_format_version) {
         return std::nullopt;
     }
 
