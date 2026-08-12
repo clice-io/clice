@@ -423,8 +423,7 @@ MergedIndex MergedIndex::load(llvm::StringRef path) {
     // discard any shard whose format version differs (including version-less
     // shards, which report 0). A discarded shard is treated as "not on disk"
     // and the background indexer rebuilds it.
-    auto data = reinterpret_cast<const std::uint8_t*>((*buffer)->getBufferStart());
-    fbs::Verifier verifier(data, (*buffer)->getBufferSize());
+    auto verifier = blob_verifier((*buffer)->getBufferStart(), (*buffer)->getBufferSize());
     if(!verifier.VerifyBuffer<binary::MergedIndex>(nullptr)) {
         return MergedIndex();
     }

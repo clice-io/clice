@@ -101,7 +101,7 @@ std::optional<ProjectIndex> ProjectIndex::from(const void* data,
                                                std::size_t size,
                                                clice::PathPool& pool,
                                                llvm::SmallVectorImpl<std::uint32_t>& shards) {
-    fbs::Verifier verifier(static_cast<const std::uint8_t*>(data), size);
+    auto verifier = blob_verifier(data, size);
     if(!verifier.VerifyBuffer<binary::ProjectIndex>()) {
         return std::nullopt;
     }

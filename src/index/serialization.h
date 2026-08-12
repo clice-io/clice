@@ -18,6 +18,18 @@ namespace fbs = flatbuffers;
 /// older builds, which read back the field's default of 0.
 constexpr inline std::uint32_t index_format_version = 1;
 
+/// Verifier for the self-written blobs in the cache store. The default
+/// table budget (one million) rejects large but perfectly valid blobs — a
+/// whole-project symbol table alone can carry millions of tables. Distinct
+/// tables occupy at least four bytes each, so a byte-proportional budget
+/// admits every blob a writer can produce while keeping verification work
+/// bounded by blob size.
+inline fbs::Verifier blob_verifier(const void* data, std::size_t size) {
+    return fbs::Verifier(static_cast<const std::uint8_t*>(data),
+                         size,
+                         {.max_tables = static_cast<fbs::uoffset_t>(size / 4 + 1)});
+}
+
 namespace {
 
 template <typename Range>

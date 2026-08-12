@@ -376,7 +376,7 @@ void Indexer::load() {
                 }
             }
         } else {
-            LOG_INFO("Discarding old-format ProjectIndex blob");
+            LOG_INFO("Discarding unreadable or old-format ProjectIndex blob");
         }
     }
 

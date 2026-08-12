@@ -151,6 +151,28 @@ TEST_CASE(SerializationRoundTrip) {
     }
 }
 
+TEST_CASE(GiantIndexRoundTrip) {
+    // 600k symbols serialize to well over a million flatbuffer tables —
+    // the verifier's default budget — which real whole-project indices
+    // exceed; a rejected blob reads back as "no index on disk" and the
+    // startup sweep then deletes every shard.
+    index::ProjectIndex project;
+    for(std::uint64_t hash = 1; hash <= 600'000; ++hash) {
+        project.symbols[hash].name = std::to_string(hash);
+    }
+
+    clice::PathPool pool;
+    llvm::SmallString<4096> buf;
+    llvm::raw_svector_ostream os(buf);
+    project.serialize(os, pool, {});
+
+    clice::PathPool fresh;
+    llvm::SmallVector<std::uint32_t> shards;
+    auto loaded = index::ProjectIndex::from(buf.data(), buf.size(), fresh, shards);
+    ASSERT_TRUE(loaded.has_value());
+    ASSERT_EQ(loaded->symbols.size(), project.symbols.size());
+}
+
 TEST_CASE(FileIdsMapCorrectness) {
     index::TUIndex tu;
     ASSERT_TRUE(build_and_index(R"(

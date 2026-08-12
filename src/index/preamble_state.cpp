@@ -138,15 +138,8 @@ std::shared_ptr<PreambleState> PreambleState::load(llvm::StringRef path) {
 
     // A stale or truncated blob must never crash the server. Verify it is
     // a structurally valid flatbuffer, then discard any blob whose format
-    // version differs (version-less blobs read back 0). The table budget
-    // is far above the default: a large preamble's symbol table alone can
-    // exceed a million entries, and a verification failure here would
-    // otherwise send every compile into a rebuild loop.
-    auto data = reinterpret_cast<const std::uint8_t*>((*buffer)->getBufferStart());
-    fbs::Verifier verifier(data,
-                           (*buffer)->getBufferSize(),
-                           /*max_depth=*/64,
-                           /*max_tables=*/1u << 26);
+    // version differs (version-less blobs read back 0).
+    auto verifier = blob_verifier((*buffer)->getBufferStart(), (*buffer)->getBufferSize());
     if(!verifier.VerifyBuffer<binary::PreambleState>(nullptr)) {
         return nullptr;
     }
