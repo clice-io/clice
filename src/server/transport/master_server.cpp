@@ -1,5 +1,6 @@
 #include "server/transport/master_server.h"
 
+#include <csignal>
 #include <list>
 #include <memory>
 #include <string>
@@ -410,6 +411,11 @@ void MasterServer::schedule_shutdown() {
 }
 
 kota::task<> MasterServer::shutdown_and_cleanup() {
+    // Serving can end without an explicit shutdown trigger (transport EOF
+    // from a crashed editor); cancel the shutdown token here so every
+    // token-bound task — the SIGTERM watcher in particular — unwinds and
+    // releases its loop handle, letting the loop drain after cleanup.
+    schedule_shutdown();
     bg_tasks.cancel();
     co_await bg_tasks.join();
     // Quiesce in-flight compilation and indexing first so the persisted
@@ -645,6 +651,22 @@ static kota::task<> serve_peer(kota::ipc::JsonPeer& peer, kota::task<> acceptor)
     co_await kota::when_any(peer.run(), std::move(acceptor));
 }
 
+/// Route SIGTERM into the same shutdown path as the LSP exit notification,
+/// so an editor teardown or system stop still writes the shutdown save
+/// instead of losing it to default termination.
+static kota::task<> shutdown_on_sigterm(MasterServer& server) {
+    auto sig = kota::signal::create(server.loop);
+    if(!sig || sig->start(SIGTERM)) {
+        LOG_WARN("SIGTERM watcher unavailable; hard termination will skip the shutdown save");
+        co_return;
+    }
+    auto fired = co_await kota::with_token(sig->wait(), server.shutdown_token());
+    if(!fired.has_value())
+        co_return;
+    LOG_INFO("SIGTERM received, shutting down");
+    server.schedule_shutdown();
+}
+
 int run_serve_mode(const ServerOptions& opts, const char* self_path) {
     logging::stderr_logger("master", logging::options);
 
@@ -669,6 +691,8 @@ int run_serve_mode(const ServerOptions& opts, const char* self_path) {
     kota::event_loop loop;
     MasterServer server(loop, self_path);
     std::list<Connection> connections;
+
+    loop.schedule(shutdown_on_sigterm(server));
 
     if(mode == ServerMode::Pipe) {
         auto transport = kota::ipc::StreamTransport::open_stdio(loop);

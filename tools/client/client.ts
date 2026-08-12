@@ -488,6 +488,25 @@ export class CliceClient {
         }
     }
 
+    /// Drop the transport without the shutdown handshake, as a crashed
+    /// editor would: dispose() alone leaves the child's stdin open, so the
+    /// server would never observe EOF.
+    disconnect(): void {
+        this.dispose();
+        this.child.stdin.end();
+    }
+
+    /// Terminate with SIGTERM and hold the same clean-exit gate as
+    /// shutdown(): the server must run its shutdown save and exit 0.
+    async terminate(): Promise<void> {
+        this.child.kill("SIGTERM");
+        try {
+            await this.assertExitedCleanly();
+        } finally {
+            this.dispose();
+        }
+    }
+
     /// The clean-exit gate every session must pass.
     async assertExitedCleanly(timeout = 10_000): Promise<void> {
         const failures: string[] = [];
