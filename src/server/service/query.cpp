@@ -605,7 +605,7 @@ void IndexQuery::collect_unique_targets(index::SymbolHash hash,
         if(rel_it == session.file_index->relations.end())
             return true;
         for(auto& r: rel_it->second) {
-            if(r.kind & kind) {
+            if(RelationKind(r.kind) & kind) {
                 if(seen.insert(r.target_symbol).second) {
                     targets.push_back(r.target_symbol);
                 }

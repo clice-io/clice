@@ -42,8 +42,7 @@ struct ProjectIndex {
     /// the loader should fetch. Returns nullopt for an unreadable or
     /// old-format blob — the caller treats that as "no index on disk" and
     /// rebuilds in the background.
-    static std::optional<ProjectIndex> from(const void* data,
-                                            std::size_t size,
+    static std::optional<ProjectIndex> from(llvm::StringRef data,
                                             clice::PathPool& pool,
                                             llvm::SmallVectorImpl<std::uint32_t>& shards);
 };

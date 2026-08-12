@@ -29,7 +29,7 @@ TEST_CASE(SerializeCollectsGarbage) {
 
     clice::PathPool fresh;
     llvm::SmallVector<std::uint32_t> shards;
-    auto loaded = index::ProjectIndex::from(buf.data(), buf.size(), fresh, shards);
+    auto loaded = index::ProjectIndex::from(buf.str(), fresh, shards);
     ASSERT_TRUE(loaded.has_value());
     ASSERT_TRUE(fresh.find("/proj/used.cpp").has_value());
     ASSERT_FALSE(fresh.find("/proj/garbage.cpp").has_value());
@@ -48,7 +48,7 @@ TEST_CASE(RemapAcrossSessions) {
     clice::PathPool fresh;
     fresh.intern("/proj/opened-first.cpp");
     llvm::SmallVector<std::uint32_t> shards;
-    auto loaded = index::ProjectIndex::from(buf.data(), buf.size(), fresh, shards);
+    auto loaded = index::ProjectIndex::from(buf.str(), fresh, shards);
     ASSERT_TRUE(loaded.has_value());
 
     auto id = fresh.find("/proj/used.cpp");
@@ -67,7 +67,7 @@ TEST_CASE(ShardManifestRoundTrip) {
 
     clice::PathPool fresh;
     llvm::SmallVector<std::uint32_t> shards;
-    auto loaded = index::ProjectIndex::from(buf.data(), buf.size(), fresh, shards);
+    auto loaded = index::ProjectIndex::from(buf.str(), fresh, shards);
     ASSERT_TRUE(loaded.has_value());
     ASSERT_EQ(shards.size(), 1u);
     ASSERT_EQ(fresh.resolve(shards.front()), "/proj/tu.cpp");
@@ -78,7 +78,8 @@ TEST_CASE(OldBlobDiscarded) {
     llvm::SmallVector<std::uint32_t> shards;
     // Arbitrary bytes are rejected by verification, not misread.
     const char junk[] = "not a flatbuffer";
-    ASSERT_FALSE(index::ProjectIndex::from(junk, sizeof(junk), pool, shards).has_value());
+    ASSERT_FALSE(
+        index::ProjectIndex::from(llvm::StringRef(junk, sizeof(junk)), pool, shards).has_value());
 }
 
 };  // TEST_SUITE(PersistedIndex)

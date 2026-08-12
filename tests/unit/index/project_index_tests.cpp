@@ -136,7 +136,7 @@ TEST_CASE(SerializationRoundTrip) {
     // Deserialize into a fresh pool, as a new session would.
     clice::PathPool fresh;
     llvm::SmallVector<std::uint32_t> shards;
-    auto loaded = index::ProjectIndex::from(buf.data(), buf.size(), fresh, shards);
+    auto loaded = index::ProjectIndex::from(buf.str(), fresh, shards);
     ASSERT_TRUE(loaded.has_value());
     auto& restored = *loaded;
 
@@ -201,7 +201,7 @@ TEST_CASE(NameSurvivesRoundTrip) {
     project.serialize(os, pool, {});
     clice::PathPool fresh;
     llvm::SmallVector<std::uint32_t> shards;
-    auto loaded = index::ProjectIndex::from(buf.data(), buf.size(), fresh, shards);
+    auto loaded = index::ProjectIndex::from(buf.str(), fresh, shards);
     ASSERT_TRUE(loaded.has_value());
     auto& restored = *loaded;
 
@@ -261,7 +261,7 @@ TEST_CASE(ScopeRoundTrip) {
     project.serialize(os, pool, {});
     clice::PathPool fresh;
     llvm::SmallVector<std::uint32_t> shards;
-    auto loaded = index::ProjectIndex::from(buf.data(), buf.size(), fresh, shards);
+    auto loaded = index::ProjectIndex::from(buf.str(), fresh, shards);
     ASSERT_TRUE(loaded.has_value());
     auto& restored = *loaded;
 

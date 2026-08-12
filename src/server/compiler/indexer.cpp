@@ -27,7 +27,13 @@
 namespace clice {
 
 void Indexer::merge(const void* tu_index_data, std::size_t size) {
-    auto tu_index = index::TUIndex::from(tu_index_data);
+    auto loaded =
+        index::TUIndex::from(llvm::StringRef(static_cast<const char*>(tu_index_data), size));
+    if(!loaded) {
+        LOG_WARN("Ignoring TUIndex that failed verification");
+        return;
+    }
+    auto& tu_index = *loaded;
     if(tu_index.graph.paths.empty()) {
         LOG_WARN("Ignoring TUIndex with empty path graph");
         return;
@@ -345,10 +351,7 @@ void Indexer::load() {
         // An unreadable or old-format blob loads as "no index on disk":
         // everything is swept and rebuilt once in the background.
         llvm::SmallVector<std::uint32_t> manifest;
-        auto loaded = index::ProjectIndex::from((*buf)->getBufferStart(),
-                                                (*buf)->getBufferSize(),
-                                                workspace.path_pool,
-                                                manifest);
+        auto loaded = index::ProjectIndex::from((*buf)->getBuffer(), workspace.path_pool, manifest);
         if(loaded) {
             workspace.project_index = std::move(*loaded);
             has_project = true;

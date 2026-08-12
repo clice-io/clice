@@ -1,10 +1,10 @@
 #include <filesystem>
 
-#include "schema_generated.h"
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "test/tester.h"
 #include "index/merged_index.h"
+#include "index/serialization.h"
 
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/xxhash.h"
@@ -321,7 +321,7 @@ TEST_CASE(RemergeReplacesContribution) {
     index::SymbolHash defined{};
     for(auto& [symbol, relations]: header_idx.relations) {
         for(auto& relation: relations) {
-            if(relation.kind & RelationKind(RelationKind::Definition)) {
+            if(RelationKind(relation.kind) & RelationKind(RelationKind::Definition)) {
                 defined = symbol;
             }
         }
@@ -369,7 +369,7 @@ TEST_CASE(RemergePreservesOtherTus) {
     index::SymbolHash defined{};
     for(auto& [symbol, relations]: header_idx.relations) {
         for(auto& relation: relations) {
-            if(relation.kind & RelationKind(RelationKind::Definition)) {
+            if(RelationKind(relation.kind) & RelationKind(RelationKind::Definition)) {
                 defined = symbol;
             }
         }
@@ -673,37 +673,21 @@ TEST_CASE(OldShardDiscarded) {
 
     // A version-less (format_version=0) shard from an older build is silently
     // discarded — load returns an empty index, as if nothing were on disk.
+    // Only the version slot is written: every other field reads back absent,
+    // which is structurally valid — rejection must come from the version
+    // check.
     {
-        namespace binary = clice::index::binary;
-        flatbuffers::FlatBufferBuilder builder;
-        auto content = builder.CreateString("stale-shard");
-        auto paths = builder.CreateVector<flatbuffers::Offset<flatbuffers::String>>({});
-        auto cache = builder.CreateVector<flatbuffers::Offset<binary::CacheEntry>>({});
-        auto headers = builder.CreateVector<flatbuffers::Offset<binary::HeaderContextEntry>>({});
-        auto compilations =
-            builder.CreateVector<flatbuffers::Offset<binary::CompilationContextEntry>>({});
-        auto occurrences = builder.CreateVector<flatbuffers::Offset<binary::OccurrenceEntry>>({});
-        auto relations =
-            builder.CreateVector<flatbuffers::Offset<binary::SymbolRelationsEntry>>({});
-        auto root = binary::CreateMergedIndex(builder,
-                                              0,
-                                              paths,
-                                              cache,
-                                              headers,
-                                              compilations,
-                                              occurrences,
-                                              relations,
-                                              0,
-                                              content,
-                                              0,
-                                              0,
-                                              /*format_version=*/0);
-        builder.Finish(root);
+        struct VersionOnly {
+            std::uint32_t format_version = 0;
+        };
+
+        auto blob = kota::codec::fbs::to_bytes(VersionOnly{});
+        ASSERT_TRUE(blob.has_value());
 
         auto path = dir.path("stale.idx");
         std::error_code ec;
         llvm::raw_fd_ostream os(path, ec);
-        os.write(reinterpret_cast<const char*>(builder.GetBufferPointer()), builder.GetSize());
+        os.write(reinterpret_cast<const char*>(blob->data()), blob->size());
         os.flush();
 
         auto loaded = index::MergedIndex::load(path);

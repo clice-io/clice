@@ -1,85 +1,104 @@
-#include <cstdint>
-#include <ranges>
-#include <type_traits>
+#pragma once
 
-#include "schema_generated.h"
+#include <cassert>
+#include <chrono>
+#include <cstddef>
+#include <cstdint>
+#include <span>
+#include <string_view>
+#include <vector>
+
+#include "semantic/symbol.h"
 #include "support/bitmap.h"
 
-#include "llvm/ADT/SmallVector.h"
+#include "kota/codec/fbs/fbs.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/raw_ostream.h"
+
+namespace kota::meta {
+
+/// Roaring bitmaps travel as their own serialized image (the non-portable
+/// format, matching every in-process reader).
+template <>
+struct repr<clice::Bitmap, codec::fbs::format> {
+    using type = std::vector<std::byte>;
+
+    static type to(const clice::Bitmap& bitmap) {
+        type buffer(bitmap.getSizeInBytes(false));
+        bitmap.write(reinterpret_cast<char*>(buffer.data()), false);
+        return buffer;
+    }
+
+    static clice::Bitmap from(const type& buffer) {
+        return clice::Bitmap::read(reinterpret_cast<const char*>(buffer.data()), false);
+    }
+};
+
+/// SymbolKind hides its enum behind constructors, which keeps it out of
+/// reflection; persist the underlying value.
+template <>
+struct repr<clice::SymbolKind, codec::fbs::format> {
+    using type = std::uint8_t;
+
+    static type to(clice::SymbolKind kind) {
+        return kind.value();
+    }
+
+    static clice::SymbolKind from(type value) {
+        return clice::SymbolKind(value);
+    }
+};
+
+template <>
+struct repr<std::chrono::milliseconds, codec::fbs::format> {
+    using type = std::int64_t;
+
+    static type to(std::chrono::milliseconds ms) {
+        return ms.count();
+    }
+
+    static std::chrono::milliseconds from(type count) {
+        return std::chrono::milliseconds(count);
+    }
+};
+
+}  // namespace kota::meta
 
 namespace clice::index {
 
-namespace fbs = flatbuffers;
+/// On-disk index blob schema version. Every persisted blob carries it as a
+/// regular field and every loader discards blobs with a different value —
+/// including version-less blobs from older builds, which read back as 0.
+/// Bump it whenever a persisted type's reflected layout changes.
+constexpr inline std::uint32_t index_format_version = 2;
 
-/// On-disk MergedIndex shard schema version. Bump this whenever `schema.fbs`
-/// changes the shard layout so that `MergedIndex::load` silently discards any
-/// shard carrying a different value — including version-less shards written by
-/// older builds, which read back the field's default of 0.
-constexpr inline std::uint32_t index_format_version = 1;
-
-namespace {
-
-template <typename Range>
-concept sequence_range = std::ranges::input_range<Range> &&
-                         !requires { typename Range::key_type; } && requires(const Range& r) {
-                             r.data();
-                             r.size();
-                         };
-
+/// Serialize a reflected index blob to `os` as a verified-readable
+/// flatbuffer. Encoding only fails on structural impossibilities (e.g. more
+/// fields than slots), which the persisted index types cannot hit.
 template <typename T>
-using Offsets = llvm::SmallVector<fbs::Offset<T>, 0>;
-
-template <typename U, typename V>
-const U* safe_cast(const V* v) {
-    static_assert(sizeof(U) == sizeof(V), "size mismatch");
-    static_assert(alignof(U) == alignof(V), "alignment mismatch");
-    static_assert(std::is_trivially_copyable_v<U> && std::is_trivially_copyable_v<V>,
-                  "requires trivially copyable");
-    /// If aliasing issues arise, prefer copying into a temporary SmallVector<U>.
-    return reinterpret_cast<const U*>(v);
+void serialize_blob(const T& value, llvm::raw_ostream& os) {
+    auto encoded = kota::codec::fbs::to_bytes(value);
+    assert(encoded.has_value());
+    os.write(reinterpret_cast<const char*>(encoded->data()), encoded->size());
 }
 
-auto CreateString(fbs::FlatBufferBuilder& builder, llvm::StringRef string) {
-    return builder.CreateString(string.data(), string.size());
+/// The bytes of `data` as the span every kota fbs entry point takes.
+inline std::span<const std::uint8_t> blob_bytes(llvm::StringRef data) {
+    return {reinterpret_cast<const std::uint8_t*>(data.data()), data.size()};
 }
 
-template <sequence_range Range>
-auto CreateVector(fbs::FlatBufferBuilder& builder, const Range& range) {
-    return builder.CreateVector(range.data(), range.size());
+inline llvm::StringRef to_ref(std::string_view text) {
+    return {text.data(), text.size()};
 }
 
-auto CreateVector(fbs::FlatBufferBuilder& builder, const llvm::SmallVector<char, 1024>& range) {
-    return builder.CreateVector(reinterpret_cast<const std::uint8_t*>(range.data()), range.size());
-}
-
-template <typename U, sequence_range Range>
-auto CreateStructVector(fbs::FlatBufferBuilder& builder, const Range& range) {
-    using V = std::ranges::range_value_t<Range>;
-    (void)sizeof(V);
-    return builder.CreateVectorOfStructs(safe_cast<U>(range.data()), range.size());
-}
-
-template <typename Range, typename Functor>
-auto transform(const Range& range, const Functor& functor) {
-    using V = std::ranges::range_value_t<Range>;
-    using R = std::invoke_result_t<Functor, V>;
-
-    llvm::SmallVector<R, 0> result;
-    result.resize_for_overwrite(std::ranges::size(range));
-
-    auto i = 0;
-    for(auto&& v: range) {
-        result[i] = functor(v);
-        i += 1;
+/// A scalar array view as an ArrayRef borrowing the mapped blob.
+template <typename T>
+llvm::ArrayRef<T> to_array_ref(kota::codec::fbs::array_view<T> view) {
+    if(!view.valid()) {
+        return {};
     }
-    return result;
+    return {view.raw()->data(), view.raw()->size()};
 }
-
-Bitmap read_bitmap(const fbs::Vector<uint8_t>* buffer) {
-    return Bitmap::read(reinterpret_cast<const char*>(buffer->data()), false);
-}
-
-}  // namespace
 
 }  // namespace clice::index

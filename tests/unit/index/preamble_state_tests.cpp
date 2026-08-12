@@ -1,8 +1,8 @@
-#include "schema_generated.h"
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "test/tester.h"
 #include "index/preamble_state.h"
+#include "index/serialization.h"
 
 #include "llvm/Support/raw_ostream.h"
 
@@ -225,19 +225,19 @@ TEST_CASE(RejectBadBlob) {
 TEST_CASE(RejectVersionMismatch) {
     // A structurally valid blob written by a different format version (0 is
     // what a version-less blob reads back) must load as missing, so the
-    // PCH pair rebuilds instead of serving a stale layout.
-    flatbuffers::FlatBufferBuilder builder(64);
-    auto paths = builder.CreateVector(std::vector<flatbuffers::Offset<flatbuffers::String>>{});
-    auto files =
-        builder.CreateVector(std::vector<flatbuffers::Offset<index::binary::PreambleFileEntry>>{});
-    auto symbols = builder.CreateVector(
-        std::vector<flatbuffers::Offset<index::binary::PreambleSymbolEntry>>{});
-    builder.Finish(index::binary::CreatePreambleState(builder, 0, paths, files, 0, symbols));
+    // PCH pair rebuilds instead of serving a stale layout. The blob only
+    // needs the version slot: every other field reads back absent, which is
+    // structurally valid — rejection must come from the version check.
+    struct VersionOnly {
+        std::uint32_t format_version = 0;
+    };
+
+    auto blob = kota::codec::fbs::to_bytes(VersionOnly{});
+    ASSERT_TRUE(blob.has_value());
 
     auto blob_path = dir.path("stale.pch.idx");
     dir.touch("stale.pch.idx",
-              llvm::StringRef(reinterpret_cast<const char*>(builder.GetBufferPointer()),
-                              builder.GetSize()));
+              llvm::StringRef(reinterpret_cast<const char*>(blob->data()), blob->size()));
     EXPECT_TRUE(index::PreambleState::load(blob_path) == nullptr);
 }
 

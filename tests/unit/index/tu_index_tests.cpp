@@ -91,7 +91,7 @@ void GO_TO_DEFINITION(llvm::StringRef pos,
 
     auto& relations = it->second;
     auto target = std::ranges::find_if(relations, [](const index::Relation& relation) {
-        return relation.kind.value() == static_cast<std::uint32_t>(RelationKind::Definition);
+        return relation.kind == RelationKind::Definition;
     });
 
     ASSERT_TRUE(target != relations.end());
@@ -273,7 +273,7 @@ TEST_CASE(Reference) {
 
     auto& relations = it->second;
     auto ref = std::ranges::find_if(relations, [](const index::Relation& r) {
-        return r.kind.value() == static_cast<std::uint32_t>(RelationKind::Reference);
+        return r.kind == RelationKind::Reference;
     });
     ASSERT_TRUE(ref != relations.end());
 }
@@ -297,18 +297,19 @@ TEST_CASE(BaseAndDerived) {
     auto base_hash = base_occs.front().target;
     auto derived_hash = derived_occs.front().target;
 
-    auto has_pair = [&](index::SymbolHash source, RelationKind kind, index::SymbolHash target) {
-        auto it = index.relations.find(source);
-        if(it == index.relations.end()) {
-            return false;
-        }
-        for(auto& r: it->second) {
-            if(r.kind.value() == static_cast<std::uint32_t>(kind) && r.target_symbol == target) {
-                return true;
+    auto has_pair =
+        [&](index::SymbolHash source, RelationKind::Kind kind, index::SymbolHash target) {
+            auto it = index.relations.find(source);
+            if(it == index.relations.end()) {
+                return false;
             }
-        }
-        return false;
-    };
+            for(auto& r: it->second) {
+                if(r.kind == kind && r.target_symbol == target) {
+                    return true;
+                }
+            }
+            return false;
+        };
 
     ASSERT_TRUE(has_pair(derived_hash, RelationKind::Base, base_hash));
     ASSERT_TRUE(has_pair(base_hash, RelationKind::Derived, derived_hash));
@@ -335,7 +336,7 @@ TEST_CASE(CallerAndCallee) {
 
     bool found_callee = false;
     for(auto& r: caller_it->second) {
-        if(r.kind.value() == static_cast<std::uint32_t>(RelationKind::Callee)) {
+        if(r.kind == RelationKind::Callee) {
             found_callee = true;
             break;
         }
@@ -352,7 +353,7 @@ TEST_CASE(CallerAndCallee) {
 
     bool found_caller = false;
     for(auto& r: callee_it->second) {
-        if(r.kind.value() == static_cast<std::uint32_t>(RelationKind::Caller)) {
+        if(r.kind == RelationKind::Caller) {
             found_caller = true;
             break;
         }
@@ -388,8 +389,7 @@ TEST_CASE(MethodCallerCallee) {
 
     bool found_callee = false;
     for(auto& r: method_it->second) {
-        if(r.kind.value() == static_cast<std::uint32_t>(RelationKind::Callee) &&
-           r.target_symbol == callee_hash) {
+        if(r.kind == RelationKind::Callee && r.target_symbol == callee_hash) {
             found_callee = true;
             break;
         }
@@ -401,8 +401,7 @@ TEST_CASE(MethodCallerCallee) {
 
     bool found_caller = false;
     for(auto& r: callee_it->second) {
-        if(r.kind.value() == static_cast<std::uint32_t>(RelationKind::Caller) &&
-           r.target_symbol == method_hash) {
+        if(r.kind == RelationKind::Caller && r.target_symbol == method_hash) {
             found_caller = true;
             break;
         }
@@ -430,8 +429,7 @@ TEST_CASE(UsingRelationKey) {
 
     bool found_use = false;
     for(auto& r: it->second) {
-        if(r.kind.value() == static_cast<std::uint32_t>(RelationKind::WeakReference) &&
-           r.range == range("use")) {
+        if(r.kind == RelationKind::WeakReference && r.range == range("use")) {
             found_use = true;
             break;
         }
@@ -515,8 +513,7 @@ TEST_CASE(DependentWeakReference) {
 
     bool found_weak = false;
     for(auto& r: it->second) {
-        if(r.kind.value() == static_cast<std::uint32_t>(RelationKind::WeakReference) &&
-           r.range == range("use")) {
+        if(r.kind == RelationKind::WeakReference && r.range == range("use")) {
             found_weak = true;
             break;
         }
@@ -552,8 +549,7 @@ TEST_CASE(TypeDefinitionRelations) {
             return false;
         }
         for(auto& r: it->second) {
-            if(r.kind.value() == static_cast<std::uint32_t>(RelationKind::TypeDefinition) &&
-               r.target_symbol == target_hash) {
+            if(r.kind == RelationKind::TypeDefinition && r.target_symbol == target_hash) {
                 return true;
             }
         }
@@ -587,11 +583,10 @@ TEST_CASE(ConstructorDestructorRelations) {
     bool found_ctor = false;
     bool found_dtor = false;
     for(auto& r: it->second) {
-        if(r.kind.value() == static_cast<std::uint32_t>(RelationKind::Constructor) &&
-           r.target_symbol == ctor_hash) {
+        if(r.kind == RelationKind::Constructor && r.target_symbol == ctor_hash) {
             found_ctor = true;
         }
-        if(r.kind.value() == static_cast<std::uint32_t>(RelationKind::Destructor)) {
+        if(r.kind == RelationKind::Destructor) {
             found_dtor = true;
         }
     }
@@ -604,8 +599,7 @@ TEST_CASE(ConstructorDestructorRelations) {
 
     bool found_type = false;
     for(auto& r: ctor_it->second) {
-        if(r.kind.value() == static_cast<std::uint32_t>(RelationKind::TypeDefinition) &&
-           r.target_symbol == class_hash) {
+        if(r.kind == RelationKind::TypeDefinition && r.target_symbol == class_hash) {
             found_type = true;
         }
     }
@@ -631,12 +625,10 @@ TEST_CASE(MacroRelations) {
     bool found_definition = false;
     bool found_reference = false;
     for(auto& r: it->second) {
-        if(r.kind.value() == static_cast<std::uint32_t>(RelationKind::Definition) &&
-           r.range == range("def")) {
+        if(r.kind == RelationKind::Definition && r.range == range("def")) {
             found_definition = true;
         }
-        if(r.kind.value() == static_cast<std::uint32_t>(RelationKind::Reference) &&
-           r.range == range("use")) {
+        if(r.kind == RelationKind::Reference && r.range == range("use")) {
             found_reference = true;
         }
     }
@@ -656,7 +648,7 @@ TEST_CASE(ModuleName) {
 
     bool found_definition = false;
     for(auto& r: it->second) {
-        if(r.kind.value() == static_cast<std::uint32_t>(RelationKind::Definition)) {
+        if(r.kind == RelationKind::Definition) {
             found_definition = true;
         }
     }
@@ -677,7 +669,7 @@ TEST_CASE(ModulePartitionName) {
 
     bool found_definition = false;
     for(auto& r: it->second) {
-        if(r.kind.value() == static_cast<std::uint32_t>(RelationKind::Definition)) {
+        if(r.kind == RelationKind::Definition) {
             found_definition = true;
         }
     }
@@ -707,10 +699,10 @@ module §(m)⟦§(m)foo⟧;
 
     bool found_reference = false;
     for(auto& r: it->second) {
-        if(r.kind.value() == static_cast<std::uint32_t>(RelationKind::Definition)) {
+        if(r.kind == RelationKind::Definition) {
             ASSERT_TRUE(false);
         }
-        if(r.kind.value() == static_cast<std::uint32_t>(RelationKind::Reference)) {
+        if(r.kind == RelationKind::Reference) {
             found_reference = true;
         }
     }
@@ -738,9 +730,9 @@ TEST_CASE(OverrideRelation) {
     auto check_relations = [&](index::FileIndex& idx) {
         for(auto& [hash, rels]: idx.relations) {
             for(auto& r: rels) {
-                if(r.kind.value() == RelationKind::Interface)
+                if(r.kind == RelationKind::Interface)
                     found_interface = true;
-                if(r.kind.value() == RelationKind::Implementation)
+                if(r.kind == RelationKind::Implementation)
                     found_implementation = true;
             }
         }
@@ -775,10 +767,10 @@ TEST_CASE(DeclarationAndDefinition) {
     bool found_decl = false;
     bool found_def = false;
     for(auto& r: it->second) {
-        if(r.kind.value() == static_cast<std::uint32_t>(RelationKind::Declaration)) {
+        if(r.kind == RelationKind::Declaration) {
             found_decl = true;
         }
-        if(r.kind.value() == static_cast<std::uint32_t>(RelationKind::Definition)) {
+        if(r.kind == RelationKind::Definition) {
             found_def = true;
         }
     }

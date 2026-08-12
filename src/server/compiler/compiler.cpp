@@ -1189,10 +1189,12 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
         pc->succeeded = true;
         record_deps(*session, result.value().deps, result.value().build_at);
 
-        if(!result.value().tu_index_data.empty()) {
-            auto tu_index = index::TUIndex::from(result.value().tu_index_data.data());
-            session->file_index = std::move(tu_index.main_file_index);
-            session->symbols = std::move(tu_index.symbols);
+        auto tu_index = result.value().tu_index_data.empty()
+                            ? std::nullopt
+                            : index::TUIndex::from(result.value().tu_index_data);
+        if(tu_index) {
+            session->file_index = std::move(tu_index->main_file_index);
+            session->symbols = std::move(tu_index->symbols);
         } else {
             // The AST and the file index settle together — that pairing is
             // what lets navigation trust the index after ensure_compiled. A

@@ -152,24 +152,6 @@ if(CLICE_CI_ENVIRONMENT)
     target_compile_definitions(clice_options INTERFACE CLICE_CI_ENVIRONMENT=1)
 endif()
 
-set(FBS_SCHEMA_FILE "${PROJECT_SOURCE_DIR}/src/index/schema.fbs")
-set(GENERATED_HEADER "${PROJECT_BINARY_DIR}/generated/schema_generated.h")
-
-# kotatsu builds the flatbuffers runtime but not its schema compiler, so flatc
-# comes from the pixi environment (conda-forge flatbuffers). Its version must
-# match the headers kotatsu fetches — the generated header static_asserts on
-# that, so a mismatch surfaces as a compile error in schema_generated.h.
-find_program(FLATC_EXECUTABLE flatc REQUIRED)
-
-add_custom_command(
-    OUTPUT "${GENERATED_HEADER}"
-    COMMAND ${FLATC_EXECUTABLE} --cpp -o "${PROJECT_BINARY_DIR}/generated" "${FBS_SCHEMA_FILE}"
-    DEPENDS "${FBS_SCHEMA_FILE}" "${FLATC_EXECUTABLE}"
-    COMMENT "Generating C++ header from ${FBS_SCHEMA_FILE}"
-)
-
-add_custom_target(generate_flatbuffers_schema DEPENDS "${GENERATED_HEADER}")
-
 # Version header, regenerated on every build so the embedded git describe
 # tracks the checked-out commit (content-unchanged writes are elided).
 set(CLICE_VERSION_HEADER "${PROJECT_BINARY_DIR}/generated/version.h")
@@ -192,7 +174,7 @@ add_custom_target(generate_version_header
 file(GLOB_RECURSE CLICE_CORE_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/*.cpp")
 add_library(clice-core STATIC ${CLICE_CORE_SOURCES})
 add_library(clice::core ALIAS clice-core)
-add_dependencies(clice-core generate_flatbuffers_schema generate_version_header)
+add_dependencies(clice-core generate_version_header)
 
 target_include_directories(clice-core PUBLIC
     "${PROJECT_SOURCE_DIR}/src"

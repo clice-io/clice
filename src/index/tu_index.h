@@ -4,6 +4,7 @@
 #include <bit>
 #include <chrono>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -11,6 +12,8 @@
 #include "semantic/symbol.h"
 #include "support/bitmap.h"
 
+#include "kota/codec/macro.h"
+#include "kota/meta/annotation.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -34,7 +37,10 @@ enum class SymbolScope : std::uint8_t {
 };
 
 struct Relation {
-    RelationKind kind;
+    /// The raw enum rather than the RelationKind wrapper: the wrapper's
+    /// constructors hide it from reflection, and reflection is what lets a
+    /// relation vector persist as one contiguous struct vector.
+    RelationKind::Kind kind = RelationKind::Invalid;
 
     std::uint32_t padding = 0;
 
@@ -62,7 +68,11 @@ struct Occurrence {
 };
 
 struct FileIndex {
-    llvm::DenseMap<SymbolHash, std::vector<Relation>> relations;
+    /// The braces matter: fbs decode value-constructs map entries with
+    /// `FileIndex{}`, and without an initializer this member would be
+    /// copy-initialized from an empty list, which DenseMap's explicit
+    /// default constructor rejects.
+    llvm::DenseMap<SymbolHash, std::vector<Relation>> relations{};
 
     std::vector<Occurrence> occurrences;
 
@@ -99,10 +109,14 @@ struct TUIndex {
 
     SymbolTable symbols;
 
-    llvm::DenseMap<clang::FileID, FileIndex> file_indices;
+    /// Build-time working state keyed by FileID — clang::FileID means nothing
+    /// outside the compilation, so it never persists; serialize() converts it
+    /// through graph.path_id.
+    KOTATSU_ANNOTATE(skip = true)
+    <llvm::DenseMap<clang::FileID, FileIndex>> file_indices;
 
-    /// File indices keyed by path_id, populated by from() for deserialized data.
-    /// When built from AST, this is empty and file_indices (keyed by FileID) is used.
+    /// File indices keyed by path_id: populated from file_indices by
+    /// serialize(), and directly by from() for deserialized data.
     llvm::DenseMap<std::uint32_t, FileIndex> path_file_indices;
 
     FileIndex main_file_index;
@@ -115,9 +129,12 @@ struct TUIndex {
     /// under the main path id.
     static TUIndex build(CompilationUnitRef unit, bool interested_only = false);
 
-    void serialize(llvm::raw_ostream& os) const;
+    /// Serialization reflects this object directly (path_file_indices is
+    /// populated from file_indices first — hence non-const).
+    void serialize(llvm::raw_ostream& os);
 
-    static TUIndex from(const void* data);
+    /// Deserialize a verified buffer; nullopt when verification fails.
+    static std::optional<TUIndex> from(llvm::StringRef data);
 };
 
 }  // namespace clice::index
