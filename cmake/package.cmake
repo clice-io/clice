@@ -30,7 +30,7 @@ set(ENABLE_ROARING_MICROBENCHMARKS OFF CACHE INTERNAL "" FORCE)
 FetchContent_Declare(
     kotatsu
     GIT_REPOSITORY https://github.com/clice-io/kotatsu
-    GIT_TAG 24adcfc75f675b46a0bf9389509e077e1714f5ed
+    GIT_TAG 9850507984be208db957a24ebfe584f62f924da1
 )
 
 set(KOTA_ENABLE_ZEST ON)
