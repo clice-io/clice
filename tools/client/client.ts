@@ -127,7 +127,9 @@ export async function findFreePort(): Promise<number> {
 const ANOMALY_PATTERN = /\[anomaly:([A-Za-z]+)\]/;
 const CRASH_TRACE_MARKER = "=== CRASH STACK TRACE ===";
 
-function logFiles(root: string | null): string[] {
+/// All .log files under <workspace>/.clice/logs — one directory per server
+/// session, master and worker logs side by side.
+export function logFiles(root: string | null): string[] {
     if (root === null) {
         return [];
     }

@@ -237,8 +237,7 @@ struct PCHBuildResult {
 PCHBuildResult build_one_pch(const std::string& header_text,
                              const std::string& file_path,
                              const std::string& output_path,
-                             const std::string& prev_pch = "",
-                             std::uint32_t prev_bound = 0) {
+                             const std::string& prev_pch = "") {
     PCHBuildResult result;
 
     CompilationParams cp;
@@ -250,7 +249,11 @@ PCHBuildResult build_one_pch(const std::string& header_text,
     cp.add_remapped_file(file_path, header_text);
 
     if(!prev_pch.empty()) {
-        cp.pch = {prev_pch, prev_bound};
+        // Bound 0: PrecompiledPreambleBytes tells clang to skip the first N
+        // bytes of the current source, which is only correct when the PCH
+        // was built FROM the current file (monolithic preamble). Each chain
+        // link is a separate file, so nothing must be skipped.
+        cp.pch = {prev_pch, 0};
     }
 
     auto start = Clock::now();
@@ -283,8 +286,10 @@ PCHBuildResult build_one_pch(const std::string& header_text,
     return result;
 }
 
-/// Verify a PCH works by syntax-checking a test file against it.
-bool verify_pch(const std::string& pch_path, std::uint32_t preamble_bound) {
+/// Verify a PCH works by syntax-checking a test file against it. Bound 0:
+/// the verify source does not embed the PCH's preamble text, so no bytes
+/// of it may be skipped.
+bool verify_pch(const std::string& pch_path) {
     CompilationParams cp;
     cp.kind = CompilationKind::Content;
 
@@ -292,7 +297,7 @@ bool verify_pch(const std::string& pch_path, std::uint32_t preamble_bound) {
     auto args = make_source_args(file);
     cp.arguments = args.argv;
     cp.add_remapped_file(file, "static_assert(sizeof(int) > 0);\nint main() { return 0; }\n");
-    cp.pch = {pch_path, preamble_bound};
+    cp.pch = {pch_path, 0};
 
     auto unit = compile(cp);
     return unit.completed();
@@ -349,8 +354,7 @@ void bench_monolithic(const std::vector<std::string>& headers, std::size_t count
         times.push_back(result.ms);
         if(r == 0) {
             std::println("  Size: {} KB", result.size_bytes / 1024);
-            auto bound = static_cast<std::uint32_t>(preamble.size());
-            std::println("  Correctness: {}", verify_pch(pch_path, bound) ? "PASS" : "FAIL");
+            std::println("  Correctness: {}", verify_pch(pch_path) ? "PASS" : "FAIL");
         }
     }
 
@@ -391,12 +395,7 @@ void bench_chained(const std::vector<std::string>& headers, std::size_t count, i
             std::string file_path = temps.create("chain-link", "h");
             link.pch_path = temps.create("chain", "pch");
 
-            // For chained PCH the bound is always 0: PrecompiledPreambleBytes
-            // tells clang to skip the first N bytes of the current source,
-            // which is only correct when the PCH was built FROM the current
-            // file (monolithic preamble). Each chain link is a separate
-            // file, so nothing must be skipped.
-            auto result = build_one_pch(text, file_path, link.pch_path, prev_pch, 0);
+            auto result = build_one_pch(text, file_path, link.pch_path, prev_pch);
             link.build_ms = result.ms;
             link.success = result.success;
 
@@ -448,9 +447,8 @@ void bench_chained(const std::vector<std::string>& headers, std::size_t count, i
                  total_ms);
 
     if(!links.empty() && links.back().success) {
-        // bound=0: the chain PCH does not cover the verify file.
         std::println("  Final PCH correctness: {}",
-                     verify_pch(links.back().pch_path, 0) ? "PASS" : "FAIL");
+                     verify_pch(links.back().pch_path) ? "PASS" : "FAIL");
     }
 
     // Additional runs for timing statistics.
@@ -492,8 +490,7 @@ void bench_incremental(const std::vector<std::string>& headers, std::size_t base
         auto result = build_one_pch(text,
                                     temps.create("incr-base", "h"),
                                     temps.create("incr-base", "pch"),
-                                    prev_pch,
-                                    0);
+                                    prev_pch);
         if(!result.success) {
             std::println("  Base chain failed at link {} (<{}>)", i + 1, headers[i]);
             return;
@@ -523,7 +520,7 @@ void bench_incremental(const std::vector<std::string>& headers, std::size_t base
 
     for(int r = 0; r < runs; r += 1) {
         fs::remove(extra_pch);
-        auto result = build_one_pch(extra_text, extra_file, extra_pch, prev_pch, 0);
+        auto result = build_one_pch(extra_text, extra_file, extra_pch, prev_pch);
         if(result.success)
             chain_times.push_back(result.ms);
     }
@@ -687,8 +684,7 @@ void bench_ast_load(const std::vector<std::string>& headers, std::size_t count, 
         auto result = build_one_pch(text,
                                     temps.create("ast-chain", "h"),
                                     temps.create("ast-chain", "pch"),
-                                    prev_pch,
-                                    0);
+                                    prev_pch);
         if(!result.success) {
             std::println("  Chain build failed at link {} (<{}>): {}",
                          i + 1,
@@ -772,9 +768,7 @@ void bench_end_to_end(const std::vector<std::string>& headers, std::size_t count
         return;
     }
     std::println("    Build: {:.1f}ms", mono_result.ms);
-    std::println("    Verify: {}",
-                 verify_pch(mono_pch, static_cast<std::uint32_t>(mono_preamble.size())) ? "PASS"
-                                                                                        : "FAIL");
+    std::println("    Verify: {}", verify_pch(mono_pch) ? "PASS" : "FAIL");
 
     // Phase 2: background — split into a chain for future incremental use;
     // the user keeps editing and never waits for this.
@@ -788,8 +782,7 @@ void bench_end_to_end(const std::vector<std::string>& headers, std::size_t count
         auto result = build_one_pch(text,
                                     temps.create("e2e-chain", "h"),
                                     temps.create("e2e-chain", "pch"),
-                                    prev_pch,
-                                    0);
+                                    prev_pch);
         if(!result.success) {
             std::println("    Chain failed at link {} (<{}>): {}", i + 1, headers[i], result.error);
             return;
@@ -801,7 +794,7 @@ void bench_end_to_end(const std::vector<std::string>& headers, std::size_t count
     double split_ms = std::chrono::duration<double, std::milli>(split_end - split_start).count();
 
     std::println("    Split into {} links: {:.1f}ms", chain_pchs.size(), split_ms);
-    std::println("    Verify final link: {}", verify_pch(chain_pchs.back(), 0) ? "PASS" : "FAIL");
+    std::println("    Verify final link: {}", verify_pch(chain_pchs.back()) ? "PASS" : "FAIL");
 
     // Phase 3: user adds a new #include at the preamble end.
     std::println("\n  Phase 3: User adds #include <chrono> at preamble end");
@@ -823,8 +816,7 @@ void bench_end_to_end(const std::vector<std::string>& headers, std::size_t count
         auto result = build_one_pch(extra_text,
                                     temps.create("e2e-append", "h"),
                                     temps.create("e2e-append", "pch"),
-                                    chain_pchs.back(),
-                                    0);
+                                    chain_pchs.back());
         if(result.success)
             chain_append_times.push_back(result.ms);
     }
@@ -860,8 +852,7 @@ int main() {
         auto result = build_one_pch(extra_text,
                                     temps.create("e2e-final", "h"),
                                     temps.create("e2e-final", "pch"),
-                                    chain_pchs.back(),
-                                    0);
+                                    chain_pchs.back());
         if(result.success) {
             // bound=0: the chain PCH covers no bytes of the source file.
             double ms = compile_with_pch(full_source, source_file, result.path, 0);

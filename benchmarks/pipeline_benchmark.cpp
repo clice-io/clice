@@ -201,16 +201,23 @@ FileResult profile_file(llvm::StringRef file,
             return false;
         }
 
+        // Like the stage itself, keep the fastest run for the sub-timings.
+        auto keep_min = [](double& slot, double ms) {
+            if(slot < 0 || ms < slot) {
+                slot = ms;
+            }
+        };
+
         ScopedTimer index_timer;
         auto tu_index = index::TUIndex::build(unit);
-        result.index_ms = index_timer.ms_f();
+        keep_min(result.index_ms, index_timer.ms_f());
         result.symbols = tu_index.symbols.size();
 
         ScopedTimer serialize_timer;
         std::string serialized;
         llvm::raw_string_ostream os(serialized);
         tu_index.serialize(os);
-        result.index_serialize_ms = serialize_timer.ms_f();
+        keep_min(result.index_serialize_ms, serialize_timer.ms_f());
         result.index_bytes = serialized.size();
         return true;
     });

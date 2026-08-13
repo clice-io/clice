@@ -28,13 +28,13 @@ export function parsePerfLines(text: string): PerfEvent[] {
             continue;
         }
         const values: Record<string, string | number> = {};
-        for (const pair of rest.split(" ")) {
-            const eq = pair.indexOf("=");
-            if (eq <= 0) {
+        // A value runs until the next ` key=` boundary, not the next space:
+        // paths and workspace-symbol queries may contain spaces.
+        for (const pair of rest.matchAll(/(\w+)=((?:(?!\s\w+=).)*)/g)) {
+            const [, key, raw] = pair;
+            if (key === undefined || raw === undefined) {
                 continue;
             }
-            const key = pair.slice(0, eq);
-            const raw = pair.slice(eq + 1);
             const num = Number(raw);
             values[key] = raw !== "" && Number.isFinite(num) ? num : raw;
         }
@@ -83,7 +83,7 @@ export function computeStats(values: number[]): Stats | null {
 /// series named `<topic>[.<kind>].<key>`, where the kind discriminator is
 /// the event's `kind` or `phase` value when present — mirroring how the
 /// topics in logging.h use those fields.
-export function aggregate(events: PerfEvent[]): Map<string, number[]> {
+function aggregate(events: PerfEvent[]): Map<string, number[]> {
     const series = new Map<string, number[]>();
     for (const event of events) {
         const kind = event.values["kind"] ?? event.values["phase"];

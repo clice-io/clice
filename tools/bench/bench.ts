@@ -3,8 +3,9 @@
 ///
 /// The harness is server-agnostic at the LSP level, so the same scenarios
 /// run against clice and clangd for A/B comparison. For clice it
-/// additionally parses the `[perf:*]` lines mirrored to stderr into a
-/// server-side breakdown (see perf.ts).
+/// additionally parses the session's `[perf:*]` log lines — master and
+/// worker files under <workspace>/.clice/logs — into a server-side
+/// breakdown (see perf.ts).
 ///
 /// Usage:
 ///   node tools/bench/bench.ts --workspace <dir> [options]
@@ -30,7 +31,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { parseArgs } from "node:util";
 import { fileURLToPath } from "node:url";
-import { CliceClient } from "../client/client.ts";
+import { CliceClient, logFiles } from "../client/client.ts";
 import { Workspace } from "../client/workspace.ts";
 import { computeStats, parsePerfLines, summarize, type Stats } from "./perf.ts";
 
@@ -56,7 +57,8 @@ interface Options {
 interface ScenarioResult {
     /// Client-observed latency series, milliseconds.
     measurements: Record<string, Stats>;
-    /// Server-side breakdown from `[perf:*]` stderr lines (clice only).
+    /// Server-side breakdown from the session's `[perf:*]` log lines
+    /// (clice only).
     perf?: Record<string, Stats>;
 }
 
@@ -187,6 +189,16 @@ async function timed(fn: () => Promise<unknown>): Promise<number> {
 
 class Bench {
     series = new Map<string, number[]>();
+    /// Log files that existed before this scenario's server ran; every
+    /// scenario spawns a fresh server, so files beyond this set are exactly
+    /// this scenario's session logs.
+    priorLogs: Set<string>;
+    opts: Options;
+
+    constructor(opts: Options) {
+        this.opts = opts;
+        this.priorLogs = new Set(opts.server === "clice" ? logFiles(opts.workspace) : []);
+    }
 
     record(name: string, ms: number): void {
         const list = this.series.get(name) ?? [];
@@ -198,7 +210,11 @@ class Bench {
         this.record(name, await timed(fn));
     }
 
-    result(client: CliceClient, server: string): ScenarioResult {
+    /// Server-side breakdown from the session's log files — the worker
+    /// processes' `[perf:build]`/`[perf:query]` lines only exist there
+    /// (workers never mirror to stderr). Captured stderr, which carries the
+    /// master's lines, is the fallback when no log files appeared.
+    result(client: CliceClient): ScenarioResult {
         const measurements: Record<string, Stats> = {};
         for (const [name, values] of this.series) {
             const stats = computeStats(values);
@@ -207,8 +223,13 @@ class Bench {
             }
         }
         const result: ScenarioResult = { measurements };
-        if (server === "clice") {
-            const perf = summarize(parsePerfLines(client.drainedStderr().toString("utf8")));
+        if (this.opts.server === "clice") {
+            const fresh = logFiles(this.opts.workspace).filter((f) => !this.priorLogs.has(f));
+            const text =
+                fresh.length > 0
+                    ? fresh.map((f) => fs.readFileSync(f, "utf8")).join("\n")
+                    : client.drainedStderr().toString("utf8");
+            const perf = summarize(parsePerfLines(text));
             if (Object.keys(perf).length > 0) {
                 result.perf = perf;
             }
@@ -266,7 +287,7 @@ async function shutdownServer(client: CliceClient, opts: Options): Promise<void>
 
 /// Server start → initialize response → first diagnostics of the main file.
 async function runStartScenario(opts: Options, file: string): Promise<ScenarioResult> {
-    const bench = new Bench();
+    const bench = new Bench(opts);
 
     const start = nowMs();
     const client = CliceClient.start(opts.binary, { args: serverArgs(opts) });
@@ -277,7 +298,7 @@ async function runStartScenario(opts: Options, file: string): Promise<ScenarioRe
 
     await bench.measure("open_to_diagnostics", () => client.openAndWait(file, 300_000));
 
-    const result = bench.result(client, opts.server);
+    const result = bench.result(client);
     await shutdownServer(client, opts);
     return result;
 }
@@ -294,7 +315,7 @@ async function runColdStart(opts: Options, file: string): Promise<ScenarioResult
 }
 
 async function runEditLoop(opts: Options, file: string): Promise<ScenarioResult> {
-    const bench = new Bench();
+    const bench = new Bench(opts);
     const client = await startServer(opts);
     const [uri, content] = await client.openAndWait(file, 300_000);
 
@@ -308,13 +329,13 @@ async function runEditLoop(opts: Options, file: string): Promise<ScenarioResult>
         });
     }
 
-    const result = bench.result(client, opts.server);
+    const result = bench.result(client);
     await shutdownServer(client, opts);
     return result;
 }
 
 async function runWarmRequests(opts: Options, file: string): Promise<ScenarioResult> {
-    const bench = new Bench();
+    const bench = new Bench(opts);
     const client = await startServer(opts);
     const [uri] = await client.openAndWait(file, 300_000);
     const { line, character } = opts.position;
@@ -336,7 +357,7 @@ async function runWarmRequests(opts: Options, file: string): Promise<ScenarioRes
         }
     }
 
-    const result = bench.result(client, opts.server);
+    const result = bench.result(client);
     await shutdownServer(client, opts);
     return result;
 }
