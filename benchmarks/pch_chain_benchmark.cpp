@@ -262,17 +262,18 @@ PCHBuildResult build_one_pch(const std::string& header_text,
     auto unit = compile(cp, pch_info);
     bool ok = unit.completed();
 
-    auto end = Clock::now();
-    result.ms = std::chrono::duration<double, std::milli>(end - start).count();
-
     if(!ok) {
+        result.ms = std::chrono::duration<double, std::milli>(Clock::now() - start).count();
         auto errors = collect_errors(unit);
         result.error = errors.empty() ? "PCH compilation failed (no diagnostics)" : errors;
         return result;
     }
 
-    // Flush to disk by destroying the unit.
+    // The unit's destructor flushes the PCH to disk; that write is part of
+    // the build cost being compared, so destroy before stopping the clock.
     unit = CompilationUnit(nullptr);
+    result.ms = std::chrono::duration<double, std::milli>(Clock::now() - start).count();
+
     if(!llvm::sys::fs::exists(output_path)) {
         result.error = "PCH file not written to disk";
         return result;
@@ -300,7 +301,9 @@ bool verify_pch(const std::string& pch_path) {
     cp.pch = {pch_path, 0};
 
     auto unit = compile(cp);
-    return unit.completed();
+    // completed() only covers frontend execution; a compile over a broken
+    // PCH still completes carrying ordinary error diagnostics.
+    return unit.completed() && collect_errors(unit).empty();
 }
 
 /// Compile a source file over a given PCH and report the wall-clock time,
@@ -319,7 +322,9 @@ double compile_with_pch(const std::string& source_text,
 
     auto start = Clock::now();
     auto unit = compile(cp);
-    bool ok = unit.completed();
+    // See verify_pch: an erroneous parse still reports completed(), and its
+    // timing must not enter the latency samples.
+    bool ok = unit.completed() && collect_errors(unit).empty();
     unit = CompilationUnit(nullptr);
     auto end = Clock::now();
 
@@ -416,40 +421,43 @@ void bench_chained(const std::vector<std::string>& headers, std::size_t count, i
                 }
             }
 
-            // A failed link is skipped; the chain continues over the
-            // previous PCH.
-            if(result.success) {
-                prev_pch = link.pch_path;
-            }
+            bool success = result.success;
             links.push_back(std::move(link));
+            // A partial chain must not masquerade as the requested one:
+            // stop here and let the caller discard the run.
+            if(!success) {
+                break;
+            }
+            prev_pch = links.back().pch_path;
         }
 
         return links;
     };
 
+    auto is_complete = [&](const std::vector<LinkInfo>& links) {
+        return links.size() == count && links.back().success;
+    };
+
     // First run: verbose, report per-link times.
     auto links = build_chain(true);
 
-    std::size_t passed = 0, failed = 0;
     double total_ms = 0;
     for(auto& link: links) {
         if(link.success) {
-            passed += 1;
             total_ms += link.build_ms;
-        } else {
-            failed += 1;
         }
     }
 
-    std::println("\n  Chain result: {} passed, {} failed, total {:.1f}ms",
-                 passed,
-                 failed,
-                 total_ms);
-
-    if(!links.empty() && links.back().success) {
-        std::println("  Final PCH correctness: {}",
-                     verify_pch(links.back().pch_path) ? "PASS" : "FAIL");
+    if(!is_complete(links)) {
+        std::println("\n  Chain INCOMPLETE ({}/{} links built) — no timing statistics",
+                     links.empty() ? 0 : links.size() - 1,
+                     count);
+        return;
     }
+
+    std::println("\n  Chain result: {} links, total {:.1f}ms", links.size(), total_ms);
+    std::println("  Final PCH correctness: {}",
+                 verify_pch(links.back().pch_path) ? "PASS" : "FAIL");
 
     // Additional runs for timing statistics.
     if(runs > 1) {
@@ -458,10 +466,13 @@ void bench_chained(const std::vector<std::string>& headers, std::size_t count, i
 
         for(int r = 1; r < runs; r += 1) {
             auto chain = build_chain(false);
+            if(!is_complete(chain)) {
+                std::println("  Run {}: chain incomplete, discarded", r + 1);
+                continue;
+            }
             double total = 0;
             for(auto& link: chain) {
-                if(link.success)
-                    total += link.build_ms;
+                total += link.build_ms;
             }
             totals.push_back(total);
         }
@@ -662,6 +673,8 @@ int main() {
 
 void bench_ast_load(const std::vector<std::string>& headers, std::size_t count, int runs) {
     std::println("\n=== AST LOAD LATENCY ({} headers, {} runs) ===", count, runs);
+    std::println("  (mono consumes the source with its preamble skipped via the bound;");
+    std::println("   the chain re-preprocesses the include lines under the imported PCH)");
 
     auto preamble = make_preamble(headers, count);
     auto preamble_bound = static_cast<std::uint32_t>(preamble.size());
@@ -719,7 +732,12 @@ void bench_ast_load(const std::vector<std::string>& headers, std::size_t count, 
         }
 
         for(int r = 0; r < runs; r += 1) {
-            double ms = compile_with_pch(source, source_file, chain_pch, preamble_bound);
+            // Bound 0: the chain PCH was built from separate per-header
+            // files, so no bytes of this source may be skipped (see
+            // build_one_pch). The chain therefore re-preprocesses the
+            // include lines — guard-skipped, but not free — which the mono
+            // side avoids entirely; the ratio includes that gap.
+            double ms = compile_with_pch(source, source_file, chain_pch, 0);
             if(ms >= 0)
                 chain_times.push_back(ms);
         }
@@ -796,9 +814,11 @@ void bench_end_to_end(const std::vector<std::string>& headers, std::size_t count
     std::println("    Split into {} links: {:.1f}ms", chain_pchs.size(), split_ms);
     std::println("    Verify final link: {}", verify_pch(chain_pchs.back()) ? "PASS" : "FAIL");
 
-    // Phase 3: user adds a new #include at the preamble end.
-    std::println("\n  Phase 3: User adds #include <chrono> at preamble end");
-    std::string extra_text = "#include <chrono>\n";
+    // Phase 3: user adds a new #include at the preamble end. <cinttypes>
+    // is deliberately outside ALL_HEADERS: appending a header already in
+    // the chain would measure a guarded-include no-op.
+    std::println("\n  Phase 3: User adds #include <cinttypes> at preamble end");
+    std::string extra_text = "#include <cinttypes>\n";
 
     // Strategy A: monolithic — full rebuild.
     std::vector<double> mono_rebuild_times;
@@ -833,14 +853,14 @@ void bench_end_to_end(const std::vector<std::string>& headers, std::size_t count
         }
     }
 
-    // Phase 4: verify the appended chain PCH works with real code.
+    // Phase 4: verify the appended chain PCH works with real code. The
+    // source only uses the appended header, so it stays valid for any
+    // --chain-length.
     std::println("\n  Phase 4: Correctness — compile real code with appended chain");
     std::string verify_source = R"cpp(
 int main() {
-    auto now = std::chrono::system_clock::now();
-    std::vector<std::string> v = {"hello"};
-    std::map<int, double> m = {{1, 3.14}};
-    return 0;
+    std::intmax_t value = std::imaxabs(-42);
+    return static_cast<int>(value - 42);
 }
 )cpp";
     std::string full_preamble = mono_preamble + extra_text;

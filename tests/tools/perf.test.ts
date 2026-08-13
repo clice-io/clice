@@ -69,6 +69,28 @@ test("stats percentiles", () => {
     expect(computeStats([])).toBeNull();
 });
 
+test("trace lanes preserve process and thread identity", () => {
+    const master = parsePerfLines(
+        "[2026-08-14 10:00:00.000] [info] [thread 1] [f:1] [perf:request] kind=Hover total_ms=4\n",
+        1,
+    );
+    const worker = parsePerfLines(
+        "[2026-08-14 10:00:00.050] [info] [thread 9] [f:2] [perf:query] kind=Hover total_ms=2\n",
+        2,
+    );
+    const trace = JSON.parse(toChromeTrace([...master, ...worker], { 2: "worker.log" })) as {
+        traceEvents: { ph: string; pid: number; tid: number; args: { name?: string } }[];
+    };
+    const meta = trace.traceEvents.find((e) => e.ph === "M")!;
+    expect(meta.pid).toBe(2);
+    expect(meta.args.name).toBe("worker.log");
+    const spans = trace.traceEvents.filter((e) => e.ph === "X");
+    expect(spans.map((e) => [e.pid, e.tid])).toEqual([
+        [1, 1],
+        [2, 9],
+    ]);
+});
+
 test("chrome trace reconstructs spans", () => {
     const events = parsePerfLines(
         [

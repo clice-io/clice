@@ -23,6 +23,42 @@ def run(args: list[str], cwd: Path) -> None:
     subprocess.run(args, cwd=cwd, check=True)
 
 
+def head_commit(root: Path) -> str | None:
+    result = subprocess.run(
+        ["git", "rev-parse", "--verify", "HEAD"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
+def checkout(root: Path, workload: dict) -> bool:
+    """Materialize the pinned ref; returns True when the tree changed.
+
+    The marker file records which ref+commit a completed checkout
+    produced: a fetch that died halfway, a ref bumped in workloads.json,
+    or a checkout moved by hand all fail the comparison and are redone.
+    """
+    marker = root / ".git" / "workload-ref"
+    if (root / ".git").exists():
+        head = head_commit(root)
+        if head is not None and marker.exists():
+            if marker.read_text() == f"{workload['ref']} {head}":
+                print(f"{root} already at {workload['ref']}")
+                return False
+
+    root.mkdir(parents=True, exist_ok=True)
+    run(["git", "init", "--quiet"], cwd=root)
+    run(
+        ["git", "fetch", "--depth", "1", workload["git"], workload["ref"]],
+        cwd=root,
+    )
+    run(["git", "checkout", "--quiet", "FETCH_HEAD"], cwd=root)
+    marker.write_text(f"{workload['ref']} {head_commit(root)}")
+    return True
+
+
 def main() -> int:
     workloads = json.loads((BENCH_DIR / "workloads.json").read_text())["workloads"]
 
@@ -35,25 +71,14 @@ def main() -> int:
     workload = workloads[name]
     root = BENCH_DIR / "workloads" / name
 
-    if not (root / ".git").exists():
-        root.mkdir(parents=True, exist_ok=True)
-        run(["git", "init", "--quiet"], cwd=root)
-        run(["git", "remote", "add", "origin", workload["git"]], cwd=root)
-        run(
-            ["git", "fetch", "--depth", "1", "origin", workload["ref"]],
-            cwd=root,
-        )
-        run(["git", "checkout", "--quiet", "FETCH_HEAD"], cwd=root)
-    else:
-        print(f"{root} already cloned")
+    fresh = checkout(root, workload)
 
     cdb = root / workload["cdb"]
-    if not cdb.exists():
+    if fresh or not cdb.exists():
         run(workload["configure"], cwd=root)
     else:
         print(f"{cdb} already generated")
 
-    workspace = cdb.parent
     print(f"\nworkload ready: {root}")
     print(f"compile_commands.json: {cdb}")
     print("suggested runs:")
@@ -62,7 +87,7 @@ def main() -> int:
     scenario = workload.get("scenario")
     if scenario:
         print(
-            f"  node tools/bench/bench.ts --workspace {workspace}"
+            f"  node tools/bench/bench.ts --workspace {root}"
             f" --file {root / scenario['file']}"
         )
     return 0

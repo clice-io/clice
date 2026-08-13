@@ -39,6 +39,7 @@
 #include "kota/deco/deco.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/TimeProfiler.h"
+#include "llvm/Support/xxhash.h"
 
 using namespace clice;
 
@@ -53,7 +54,8 @@ struct BenchmarkOptions {
            required = false;)
     <std::string> filter;
 
-    DecoKV(names = {"--limit"}; help = "Profile at most N files (0 = all)"; required = false;)
+    DecoKV(names = {"--limit"}; help = "Profile only the N largest files by source size (0 = all)";
+           required = false;)
     <int> limit = 0;
 
     DecoKV(names = {"--runs"}; help = "Repetitions per stage, the minimum is reported";
@@ -167,6 +169,14 @@ FileResult profile_file(llvm::StringRef file,
         return result;
     }
 
+    // One unmeasured preprocess warms the OS caches for every header the
+    // TU touches; without it the first measured variant pays the cold-cache
+    // cost and the tokens-vs-no-tokens delta is polluted.
+    {
+        auto params = make_params(CompilationKind::Preprocess, arguments, file, content);
+        preprocess(params);
+    }
+
     for(bool collect_tokens: {false, true}) {
         auto& out_ms = collect_tokens ? result.preprocess_tokens_ms : result.preprocess_ms;
         ok = run_stage(runs, out_ms, [&] {
@@ -223,8 +233,12 @@ FileResult profile_file(llvm::StringRef file,
     });
     if(tracing) {
         llvm::SmallString<128> trace_path{time_trace_dir};
-        llvm::sys::path::append(trace_path, llvm::sys::path::filename(file));
-        trace_path += ".json";
+        // Duplicate basenames are common in large projects; a full-path
+        // hash keeps one trace per TU.
+        llvm::sys::path::append(trace_path,
+                                std::format("{}.{:08x}.json",
+                                            llvm::sys::path::filename(file).str(),
+                                            static_cast<std::uint32_t>(llvm::xxh3_64bits(file))));
         if(auto error = llvm::timeTraceProfilerWrite(trace_path, file)) {
             LOG_WARN("Failed to write time trace {}: {}", trace_path, error);
         }
@@ -441,8 +455,24 @@ int main(int argc, const char** argv) {
             continue;
         }
         files.push_back(path);
-        if(*opts.limit > 0 && files.size() == static_cast<std::size_t>(*opts.limit)) {
-            break;
+    }
+
+    // --limit keeps the N largest TUs by main-file size — a coarse but
+    // stable proxy for TU weight — rather than an arbitrary CDB prefix.
+    if(*opts.limit > 0 && files.size() > static_cast<std::size_t>(*opts.limit)) {
+        std::vector<std::pair<std::uint64_t, llvm::StringRef>> sized;
+        sized.reserve(files.size());
+        for(auto path: files) {
+            std::uint64_t size = 0;
+            if(auto error = llvm::sys::fs::file_size(path, size)) {
+                size = 0;
+            }
+            sized.emplace_back(size, path);
+        }
+        std::ranges::stable_sort(sized, std::greater{}, [](auto& pair) { return pair.first; });
+        files.clear();
+        for(auto& [size, path]: sized | std::views::take(*opts.limit)) {
+            files.push_back(path);
         }
     }
     std::println("Profiling {} file(s), {} run(s) per stage\n", files.size(), runs);

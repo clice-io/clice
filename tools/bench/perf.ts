@@ -5,10 +5,15 @@
 
 /// One `[perf:topic]` line: string keys kept verbatim, numeric values
 /// parsed. `ts` is the log line's timestamp in epoch milliseconds when the
-/// line carried one (stderr mirrors and log files do).
+/// line carried one (stderr mirrors and log files do). `pid`/`tid` are the
+/// trace lanes: the caller assigns one `pid` per source log (master and
+/// each worker are separate processes), `tid` is the line's `[thread N]`
+/// value; both default to 1 for stderr-only sources.
 export interface PerfEvent {
     topic: string;
     ts: number | null;
+    pid: number;
+    tid: number;
     values: Record<string, string | number>;
 }
 
@@ -16,7 +21,9 @@ export interface PerfEvent {
 const LINE_PATTERN =
     /^(?:\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3})\] )?.*?\[perf:([\w-]+)\] (.*)$/;
 
-export function parsePerfLines(text: string): PerfEvent[] {
+const THREAD_PATTERN = /\[thread (\d+)\]/;
+
+export function parsePerfLines(text: string, pid = 1): PerfEvent[] {
     const events: PerfEvent[] = [];
     for (const line of text.split("\n")) {
         const match = LINE_PATTERN.exec(line);
@@ -29,7 +36,10 @@ export function parsePerfLines(text: string): PerfEvent[] {
         }
         const values: Record<string, string | number> = {};
         // A value runs until the next ` key=` boundary, not the next space:
-        // paths and workspace-symbol queries may contain spaces.
+        // paths may contain spaces. This boundary is the format's contract —
+        // producers must not put arbitrary user text into perf lines (the
+        // workspace-symbol query is logged as query_len for this reason);
+        // the remaining values are filesystem paths and enum names.
         for (const pair of rest.matchAll(/(\w+)=((?:(?!\s\w+=).)*)/g)) {
             const [, key, raw] = pair;
             if (key === undefined || raw === undefined) {
@@ -38,11 +48,14 @@ export function parsePerfLines(text: string): PerfEvent[] {
             const num = Number(raw);
             values[key] = raw !== "" && Number.isFinite(num) ? num : raw;
         }
+        const thread = THREAD_PATTERN.exec(line);
         events.push({
             topic,
             // The log stamp has no timezone; Date.parse reads it as local
             // time, which is what the producing process used.
             ts: stamp !== undefined ? Date.parse(stamp.replace(" ", "T")) : null,
+            pid,
+            tid: thread?.[1] !== undefined ? Number(thread[1]) : 1,
             values,
         });
     }
@@ -123,12 +136,26 @@ interface TraceEvent {
     args: Record<string, string | number>;
 }
 
+interface TraceMetadataEvent {
+    name: "process_name";
+    ph: "M";
+    pid: number;
+    args: { name: string };
+}
+
 /// Convert perf events to Chrome "Trace Event" JSON (load in Perfetto or
 /// chrome://tracing). A perf line is emitted when its span ends and carries
 /// the duration, so the span is reconstructed as [ts - dur, ts]. Lines
-/// without a timestamp are skipped.
-export function toChromeTrace(events: PerfEvent[]): string {
-    const traceEvents: TraceEvent[] = [];
+/// without a timestamp are skipped. `processNames` labels the pid lanes
+/// (typically the source log file names).
+export function toChromeTrace(
+    events: PerfEvent[],
+    processNames: Record<number, string> = {},
+): string {
+    const traceEvents: (TraceEvent | TraceMetadataEvent)[] = [];
+    for (const [pid, name] of Object.entries(processNames)) {
+        traceEvents.push({ name: "process_name", ph: "M", pid: Number(pid), args: { name } });
+    }
     const base = events.find((e) => e.ts !== null)?.ts ?? 0;
     for (const event of events) {
         if (event.ts === null) {
@@ -146,8 +173,8 @@ export function toChromeTrace(events: PerfEvent[]): string {
             ph: "X",
             ts: (event.ts - base - duration) * 1000,
             dur: duration * 1000,
-            pid: 1,
-            tid: 1,
+            pid: event.pid,
+            tid: event.tid,
             args: event.values,
         });
     }

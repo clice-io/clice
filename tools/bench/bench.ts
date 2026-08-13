@@ -15,7 +15,8 @@
 ///   --binary <path>          server executable (default: clice from
 ///                            build/RelWithDebInfo/bin, clangd from PATH)
 ///   --file <rel>             file to open/edit (default: first CDB entry)
-///   --position <line:char>   position for warm requests (default 0:0)
+///   --position <line:char>   position for warm requests (default: derived
+///                            from the file's first call-like identifier)
 ///   --scenario <name>        cold_start | warm_start | edit_loop |
 ///                            warm_requests; repeatable (default: all)
 ///   --edits <N>              edit_loop iterations (default 10)
@@ -23,8 +24,9 @@
 ///   --json <path>            write the full results as JSON
 ///
 /// The workspace must contain a compile_commands.json. cold_start wipes
-/// the workspace's .clice cache dir (and clangd's .cache) first; the other
-/// scenarios reuse whatever state the previous scenarios left, in order.
+/// the selected server's cache first (clice's .clice dir, clangd's
+/// .cache/clangd); the other scenarios reuse whatever state the previous
+/// scenarios left, in order.
 
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -47,7 +49,8 @@ interface Options {
     /// Directory holding compile_commands.json; resolved in main().
     cdbDir: string;
     file: string | null;
-    position: { line: number; character: number };
+    /// null = derive a symbol-bearing position from the file content.
+    position: { line: number; character: number } | null;
     scenarios: ScenarioName[];
     edits: number;
     repeats: number;
@@ -91,7 +94,7 @@ function parseOptions(): Options {
             binary: { type: "string" },
             workspace: { type: "string" },
             file: { type: "string" },
-            position: { type: "string", default: "0:0" },
+            position: { type: "string" },
             scenario: { type: "string", multiple: true },
             edits: { type: "string", default: "10" },
             repeats: { type: "string", default: "50" },
@@ -124,11 +127,27 @@ function parseOptions(): Options {
         return name as ScenarioName;
     });
 
-    const [lineText, charText] = values.position.split(":");
-    const line = Number(lineText);
-    const character = Number(charText);
-    if (!Number.isInteger(line) || !Number.isInteger(character)) {
-        fail(`bad --position '${values.position}' (expected line:char)`);
+    let position: { line: number; character: number } | null = null;
+    if (values.position !== undefined) {
+        const parts = values.position.split(":");
+        const line = Number(parts[0]);
+        const character = Number(parts[1]);
+        if (
+            parts.length !== 2 ||
+            !Number.isInteger(line) ||
+            line < 0 ||
+            !Number.isInteger(character) ||
+            character < 0
+        ) {
+            fail(`bad --position '${values.position}' (expected line:char)`);
+        }
+        position = { line, character };
+    }
+
+    const edits = Number(values.edits);
+    const repeats = Number(values.repeats);
+    if (!Number.isInteger(edits) || edits < 0 || !Number.isInteger(repeats) || repeats < 0) {
+        fail("--edits and --repeats must be non-negative integers");
     }
 
     return {
@@ -137,12 +156,40 @@ function parseOptions(): Options {
         workspace: path.resolve(values.workspace),
         cdbDir: "",
         file: values.file ?? null,
-        position: { line, character },
+        position,
         scenarios,
-        edits: Number(values.edits),
-        repeats: Number(values.repeats),
+        edits,
+        repeats,
         jsonPath: values.json ?? null,
     };
+}
+
+/// Derive a symbol-bearing probe position: the first call-like identifier
+/// outside comment/preprocessor lines. The old 0:0 default usually landed
+/// on a license comment, so the positional features took their
+/// empty-result fast paths and measured nothing.
+function derivePosition(file: string): { line: number; character: number } {
+    const keywords = new Set(["if", "for", "while", "switch", "return", "sizeof", "catch"]);
+    const lines = fs.readFileSync(file, "utf8").split("\n");
+    for (let line = 0; line < lines.length; line += 1) {
+        const text = lines[line] ?? "";
+        const trimmed = text.trimStart();
+        if (
+            trimmed.startsWith("//") ||
+            trimmed.startsWith("/*") ||
+            trimmed.startsWith("*") ||
+            trimmed.startsWith("#")
+        ) {
+            continue;
+        }
+        for (const match of text.matchAll(/\b([A-Za-z_]\w+)\s*\(/g)) {
+            const name = match[1];
+            if (name !== undefined && !keywords.has(name)) {
+                return { line, character: match.index };
+            }
+        }
+    }
+    fail(`cannot derive a symbol-bearing position in ${file}; pass --position`);
 }
 
 /// Locate the CDB the way clice does: workspace root first, then any
@@ -193,6 +240,10 @@ class Bench {
     /// scenario spawns a fresh server, so files beyond this set are exactly
     /// this scenario's session logs.
     priorLogs: Set<string>;
+    /// When set (epoch ms), server-side perf events stamped before this
+    /// point are dropped: they belong to setup/warmup work the client
+    /// series deliberately excludes.
+    perfWindowStart: number | null = null;
     opts: Options;
 
     constructor(opts: Options) {
@@ -225,11 +276,17 @@ class Bench {
         const result: ScenarioResult = { measurements };
         if (this.opts.server === "clice") {
             const fresh = logFiles(this.opts.workspace).filter((f) => !this.priorLogs.has(f));
-            const text =
+            // One pid per log file: master and workers are separate
+            // processes and keep separate trace lanes.
+            let events =
                 fresh.length > 0
-                    ? fresh.map((f) => fs.readFileSync(f, "utf8")).join("\n")
-                    : client.drainedStderr().toString("utf8");
-            const perf = summarize(parsePerfLines(text));
+                    ? fresh.flatMap((f, i) => parsePerfLines(fs.readFileSync(f, "utf8"), i + 1))
+                    : parsePerfLines(client.drainedStderr().toString("utf8"));
+            const windowStart = this.perfWindowStart;
+            if (windowStart !== null) {
+                events = events.filter((e) => e.ts !== null && e.ts >= windowStart);
+            }
+            const perf = summarize(events);
             if (Object.keys(perf).length > 0) {
                 result.perf = perf;
             }
@@ -246,14 +303,20 @@ function serverArgs(opts: Options): string[] {
         : ["--background-index", `--compile-commands-dir=${opts.cdbDir}`];
 }
 
-/// CliceClient.initialize defaults worker counts to 1 for cheap tests; a
-/// benchmark must run the server's real defaults (stateful 2, stateless
-/// cores/2, from src/server/state/config.cpp).
+/// CliceClient.initialize defaults worker counts to 1 and zeroes the
+/// tracker polling loops for cheap deterministic tests; a benchmark must
+/// run the server's real defaults (stateful 2, stateless cores/2, tracker
+/// 3s/30s, from src/server/state/config.h) including the background
+/// activity those loops generate.
 function initializationOptions(): Record<string, unknown> {
     return {
         project: {
             stateful_worker_count: 2,
             stateless_worker_count: Math.max(Math.floor(os.cpus().length / 2), 2),
+        },
+        tracker: {
+            cdb_poll_seconds: 3,
+            workspace_poll_seconds: 30,
         },
     };
 }
@@ -304,12 +367,17 @@ async function runStartScenario(opts: Options, file: string): Promise<ScenarioRe
 }
 
 async function runColdStart(opts: Options, file: string): Promise<ScenarioResult> {
-    // clice caches in the workspace's .clice (pinned by the client's
-    // initialize); clangd keeps its index under .cache next to the
-    // workspace root and the CDB directory.
-    for (const dir of [".clice", ".cache"]) {
-        fs.rmSync(path.join(opts.workspace, dir), { recursive: true, force: true });
-        fs.rmSync(path.join(opts.cdbDir, dir), { recursive: true, force: true });
+    // Wipe only the selected server's cache: clice keeps everything in the
+    // workspace's .clice (pinned by the client's initialize); clangd keeps
+    // its index under .cache/clangd next to the workspace root and the CDB
+    // directory. The rest of a real project's .cache belongs to other
+    // tools and must survive.
+    if (opts.server === "clice") {
+        fs.rmSync(path.join(opts.workspace, ".clice"), { recursive: true, force: true });
+    } else {
+        for (const dir of new Set([opts.workspace, opts.cdbDir])) {
+            fs.rmSync(path.join(dir, ".cache", "clangd"), { recursive: true, force: true });
+        }
     }
     return runStartScenario(opts, file);
 }
@@ -319,14 +387,20 @@ async function runEditLoop(opts: Options, file: string): Promise<ScenarioResult>
     const client = await startServer(opts);
     const [uri, content] = await client.openAndWait(file, 300_000);
 
+    // Append at the end of the TU: every edit invalidates the main file
+    // but not the preamble — the interactive path the server optimizes.
+    // Sent as a ranged insertion like a real editor; a full-document
+    // replacement would add whole-file serialization to every sample.
+    const lines = content.split("\n");
+    let end = { line: lines.length - 1, character: lines[lines.length - 1]?.length ?? 0 };
+
     for (let i = 1; i <= opts.edits; i += 1) {
-        // Append at the end of the TU: every edit invalidates the main file
-        // but not the preamble — the interactive path the server optimizes.
-        const edited = `${content}\n// bench edit ${i}\n`;
+        const comment = `// bench edit ${i}`;
         await bench.measure("edit_to_diagnostics", async () => {
-            client.change(uri, i, edited);
+            client.changeRange(uri, i, { start: end, end }, `\n${comment}`);
             await client.waitForRecompile(uri, 300_000);
         });
+        end = { line: end.line + 1, character: comment.length };
     }
 
     const result = bench.result(client);
@@ -338,7 +412,11 @@ async function runWarmRequests(opts: Options, file: string): Promise<ScenarioRes
     const bench = new Bench(opts);
     const client = await startServer(opts);
     const [uri] = await client.openAndWait(file, 300_000);
-    const { line, character } = opts.position;
+    const position = opts.position ?? derivePosition(file);
+    if (opts.position === null) {
+        console.log(`derived probe position ${position.line}:${position.character}`);
+    }
+    const { line, character } = position;
 
     const requests: Record<string, () => Promise<unknown>> = {
         hover: () => client.hoverAt(uri, line, character),
@@ -349,9 +427,15 @@ async function runWarmRequests(opts: Options, file: string): Promise<ScenarioRes
         semantic_tokens: () => client.semanticTokensFull(uri),
     };
 
-    for (const [name, request] of Object.entries(requests)) {
-        // One unmeasured warmup absorbs lazy first-request work.
+    // One unmeasured warmup per request absorbs lazy first-request work.
+    // All warmups run before the measurement window opens, so the
+    // server-side series carry exactly --repeats events per kind.
+    for (const request of Object.values(requests)) {
         await request();
+    }
+    bench.perfWindowStart = Date.now();
+
+    for (const [name, request] of Object.entries(requests)) {
         for (let i = 0; i < opts.repeats; i += 1) {
             await bench.measure(name, request);
         }

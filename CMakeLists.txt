@@ -242,6 +242,9 @@ if(CLICE_ENABLE_BENCHMARK)
             "${PROJECT_SOURCE_DIR}/src"
         )
         target_link_libraries(${benchmark} PRIVATE clice::core kota::deco)
+        # The benchmarks locate lib/clang next to their binary; an explicit
+        # `ninja <benchmark>` must not race or skip the resource copy.
+        add_dependencies(${benchmark} copy_clang_resource)
     endforeach()
 endif()
 

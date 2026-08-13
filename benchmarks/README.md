@@ -114,9 +114,9 @@ to the critical path (TokenBuffer collection, preamble indexing).
   `cold_start` wipes the cache dirs; everything else is warm. For component
   benchmarks the first run warms the OS file cache — use `--runs` and look
   at percentiles, not single samples.
-- **Idle machine.** No concurrent builds; on WSL2 specifically, do not run
-  ninja alongside a benchmark and expect page-cache-sensitive numbers to
-  wobble (WSL2 reclaims mmap'd cache aggressively).
+- **Idle machine.** No concurrent builds. On WSL2 specifically, do not run
+  ninja alongside a benchmark: page-cache-sensitive numbers wobble because
+  WSL2 reclaims mmap'd cache aggressively.
 - **One variable at a time.** The pipeline stages and the A/B knobs
   (`collect_tokens`, PCH on/off) exist so a comparison changes exactly one
   thing.

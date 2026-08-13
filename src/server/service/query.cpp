@@ -284,8 +284,16 @@ std::vector<protocol::Location> IndexQuery::query_relations(llvm::StringRef path
                                                             Session* session) {
     ScopedTimer timer;
     auto hit = resolve_cursor(path, position, session);
-    if(hit.hash == 0)
+    if(hit.hash == 0) {
+        // Misses (whitespace, comments, unindexed positions) are normal
+        // inputs; their latency belongs in the series like any hit's.
+        LOG_PERF("index_query",
+                 "kind=relations rel={} path={} results=0 elapsed_ms={:.2f}",
+                 kota::meta::enum_name(static_cast<RelationKind::Kind>(kind), "Invalid"),
+                 path,
+                 timer.ms_f());
         return {};
+    }
 
     std::vector<protocol::Location> locations;
 
@@ -877,9 +885,12 @@ std::vector<protocol::SymbolInformation> IndexQuery::search_symbols(llvm::String
         }
         return true;
     });
+    // The query is arbitrary LSP input; its length is logged instead of its
+    // text, which could contain newlines or `key=` fragments and corrupt
+    // the key/value record.
     LOG_PERF("index_query",
-             "kind=search query={} results={} elapsed_ms={:.2f}",
-             query,
+             "kind=search query_len={} results={} elapsed_ms={:.2f}",
+             query.size(),
              results.size(),
              timer.ms_f());
     return results;

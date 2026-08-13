@@ -681,6 +681,14 @@ export class CliceClient {
         });
     }
 
+    /// Incremental didChange: replace `range` with `text`.
+    changeRange(uri: string, version: number, range: proto.Range, text: string): void {
+        void this.sendNotification(proto.DidChangeTextDocumentNotification.type, {
+            textDocument: { uri, version },
+            contentChanges: [{ range, text }],
+        });
+    }
+
     save(uri: string, text?: string): void {
         void this.sendNotification(proto.DidSaveTextDocumentNotification.type, {
             textDocument: { uri },

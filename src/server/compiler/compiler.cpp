@@ -1207,7 +1207,7 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
 
         auto version = session->version;
 
-        LOG_PERF("request", "kind=Compile file={} total_ms={}", file_path, timer.ms());
+        LOG_PERF("request", "kind=Compile file={} total_ms={:.2f}", file_path, timer.ms_f());
         // The preamble's share lives with the PCH; the compile result
         // covers the content past the bound. Publish both.
         auto inactive = std::move(pch_inactive);
@@ -1539,10 +1539,10 @@ kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
         publish_recovered(session);
     }
     LOG_PERF("request",
-             "kind=DocumentLink file={} wait_ms={} total_ms={}",
+             "kind=DocumentLink file={} wait_ms={:.2f} total_ms={:.2f}",
              path,
              wait_ms,
-             timer.ms());
+             timer.ms_f());
     co_return std::move(result.value());
 }
 
@@ -1722,7 +1722,7 @@ Compiler::RawResult Compiler::forward_format(std::shared_ptr<Session> session,
             publish_recovered(session);
         }
     }
-    LOG_PERF("request", "kind=Format file={} total_ms={}", path, timer.ms());
+    LOG_PERF("request", "kind=Format file={} total_ms={:.2f}", path, timer.ms_f());
     co_return std::move(result.value().result_json);
 }
 

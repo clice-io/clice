@@ -10,6 +10,7 @@
 /// stderr.
 
 import * as fs from "node:fs";
+import * as path from "node:path";
 import { parseArgs } from "node:util";
 import { parsePerfLines, summarize, toChromeTrace, type PerfEvent } from "./perf.ts";
 
@@ -26,10 +27,15 @@ if (values.help || positionals.length === 0) {
     process.exit(values.help ? 0 : 1);
 }
 
+// One trace pid per input log: master and workers are separate processes,
+// and their concurrent activity must land on separate lanes.
 const events: PerfEvent[] = [];
-for (const file of positionals) {
-    events.push(...parsePerfLines(fs.readFileSync(file, "utf8")));
-}
+const processNames: Record<number, string> = {};
+positionals.forEach((file, index) => {
+    const pid = index + 1;
+    processNames[pid] = path.basename(file);
+    events.push(...parsePerfLines(fs.readFileSync(file, "utf8"), pid));
+});
 
 if (events.length === 0) {
     console.log("no [perf:*] lines found");
@@ -51,6 +57,6 @@ for (const [series, stats] of summary) {
 }
 
 if (values.trace !== undefined) {
-    fs.writeFileSync(values.trace, toChromeTrace(events));
+    fs.writeFileSync(values.trace, toChromeTrace(events, processNames));
     console.log(`\nChrome trace written to ${values.trace} (open in Perfetto)`);
 }

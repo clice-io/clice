@@ -136,8 +136,9 @@ static worker::BuildResult handle_build_pch(const worker::BuildParams& params,
     cp.output_file = tmp_path;
 
     PCHInfo pch_info;
+    ScopedTimer compile_timer;
     auto unit = compile(cp, pch_info);
-    auto compile_ms = timer.ms();
+    auto compile_ms = compile_timer.ms();
     // A cancelled parse reports !completed(); the extra check catches a
     // cancellation landing between the parse and the serialization, whose
     // blob nobody will read. The tmp file is removed like any failed build.
@@ -228,8 +229,9 @@ static worker::BuildResult handle_build_pcm(const worker::BuildParams& params,
     cp.output_file = tmp_path;
 
     PCMInfo pcm_info;
+    ScopedTimer compile_timer;
     auto unit = compile(cp, pcm_info);
-    auto compile_ms = timer.ms();
+    auto compile_ms = compile_timer.ms();
     bool success = unit.completed() && !stop->load(std::memory_order_relaxed);
     auto build_at = unit.build_at().count();
 
@@ -284,8 +286,9 @@ static worker::BuildResult handle_index(const worker::BuildParams& params,
     }
     cp.stop = stop;
 
+    ScopedTimer compile_timer;
     auto unit = compile(cp);
-    auto compile_ms = timer.ms();
+    auto compile_ms = compile_timer.ms();
     if(!unit.completed()) {
         LOG_WARN("Index failed: file={}, {}ms", params.file, timer.ms());
         return {false, "Index compilation failed"};

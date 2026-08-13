@@ -19,8 +19,7 @@
       ],
       "cdb": "build/compile_commands.json",
       "scenario": {
-        "file": "clang/lib/Sema/SemaExpr.cpp",
-        "position": "0:0"
+        "file": "clang/lib/Sema/SemaExpr.cpp"
       }
     }
   }
