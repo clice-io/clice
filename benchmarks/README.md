@@ -82,6 +82,23 @@ Breakdown of a real (non-benchmark) session from its logs:
 node tools/bench/perf_report.ts <logging_dir>/<session>/*.log --trace /tmp/trace.json
 ```
 
+Single-file stage comparison against clangd — pair `pipeline_benchmark`
+(one file selected via `--filter`) with `clangd --check`, which prints its
+preamble build and AST build times for the same TU without a server or
+background indexing in the way:
+
+```bash
+./build/RelWithDebInfo/bin/pipeline_benchmark --filter SemaExpr.cpp --runs 5 \
+    benchmarks/workloads/llvm/build/compile_commands.json
+clangd --check=benchmarks/workloads/llvm/clang/lib/Sema/SemaExpr.cpp \
+    --compile-commands-dir=benchmarks/workloads/llvm/build 2>&1 | grep -E "preamble|AST"
+```
+
+Read them side by side as: clangd "Built preamble in N s" vs our
+`pch_build`, clangd "Building AST" gap vs our `parse_pch`. Everything our
+`pch_build` spends beyond clangd's preamble number is the work clice adds
+to the critical path (TokenBuffer collection, preamble indexing).
+
 ## Method rules
 
 - **Fix the machine, compare on the machine.** Absolute numbers are not
