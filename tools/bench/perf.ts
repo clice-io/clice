@@ -81,12 +81,12 @@ export function computeStats(values: number[]): Stats | null {
 
 /// Group events into duration series. Every numeric `*_ms` key becomes a
 /// series named `<topic>[.<kind>].<key>`, where the kind discriminator is
-/// the event's `kind` or `phase` value when present — mirroring how the
+/// the event's `kind`, `phase`, or `op` value when present — mirroring how the
 /// topics in logging.h use those fields.
 function aggregate(events: PerfEvent[]): Map<string, number[]> {
     const series = new Map<string, number[]>();
     for (const event of events) {
-        const kind = event.values["kind"] ?? event.values["phase"];
+        const kind = event.values["kind"] ?? event.values["phase"] ?? event.values["op"];
         const prefix = typeof kind === "string" ? `${event.topic}.${kind}` : event.topic;
         for (const [key, value] of Object.entries(event.values)) {
             if (typeof value !== "number" || !key.endsWith("_ms")) {
@@ -138,7 +138,7 @@ export function toChromeTrace(events: PerfEvent[]): string {
         if (typeof duration !== "number") {
             continue;
         }
-        const kind = event.values["kind"] ?? event.values["phase"];
+        const kind = event.values["kind"] ?? event.values["phase"] ?? event.values["op"];
         const name = typeof kind === "string" ? `${event.topic}.${kind}` : event.topic;
         traceEvents.push({
             name,

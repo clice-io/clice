@@ -9,6 +9,8 @@
 #include "semantic/display.h"
 #include "semantic/semantics.h"
 #include "semantic/types.h"
+#include "support/logging.h"
+#include "support/timer.h"
 
 #include "llvm/Support/SHA256.h"
 #include "llvm/Support/xxhash.h"
@@ -504,6 +506,7 @@ public:
     }
 
     void build() {
+        ScopedTimer semantics_timer;
         /// The interested-only shape is the one features share, cached on the
         /// unit; the whole-TU shape is transient — projected and dropped.
         /// Both phases below share the one build.
@@ -512,11 +515,15 @@ public:
             full.emplace(Semantics::build(unit, false));
         }
         const Semantics& semantics = interested_only ? unit.semantics() : *full;
+        auto semantics_ms = semantics_timer.ms_f();
 
+        ScopedTimer project_timer;
         project_semantics(semantics);
 
         index_modules(semantics);
+        auto project_ms = project_timer.ms_f();
 
+        ScopedTimer finish_timer;
         // Build the include graph from what the index actually recorded:
         // every fid keying `file_indices` gets its include chain resolved
         // through the SourceManager, so the lookups below cannot miss.
@@ -559,6 +566,13 @@ public:
         }
 
         result.file_indices.erase(unit.interested_file());
+
+        LOG_PERF("index_detail",
+                 "op=build scope={} semantics_ms={:.2f} project_ms={:.2f} finish_ms={:.2f}",
+                 interested_only ? "interested" : "full",
+                 semantics_ms,
+                 project_ms,
+                 finish_timer.ms_f());
     }
 
 private:
@@ -643,14 +657,21 @@ void TUIndex::serialize(llvm::raw_ostream& os) {
     /// header contexts), last-wins. A deserialized index has no FileID-keyed
     /// state at all — its path-keyed rows already are the persisted form, so
     /// re-serializing must not wipe them.
+    ScopedTimer copy_timer;
     if(!file_indices.empty()) {
         path_file_indices.clear();
         for(auto& [fid, file_index]: file_indices) {
             path_file_indices[graph.path_id(fid)] = file_index;
         }
     }
+    auto copy_ms = copy_timer.ms_f();
 
+    ScopedTimer pack_timer;
     serialize_blob(*this, os);
+    LOG_PERF("index_detail",
+             "op=serialize copy_ms={:.2f} pack_ms={:.2f}",
+             copy_ms,
+             pack_timer.ms_f());
 }
 
 std::optional<TUIndex> TUIndex::from(llvm::StringRef data) {

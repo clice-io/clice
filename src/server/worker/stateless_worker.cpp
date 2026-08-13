@@ -61,9 +61,13 @@ static std::string collect_errors(CompilationUnit& unit) {
 /// happens separately, after the PCH itself is flushed.
 static std::string serialize_preamble_state(CompilationUnit& unit, std::uint32_t preamble_bound) {
     auto tu_index = index::TUIndex::build(unit);
+
+    ScopedTimer links_timer;
     auto links = feature::document_links(unit);
     auto inactive = feature::inactive_regions(unit, {}, 0, preamble_bound);
+    auto links_ms = links_timer.ms_f();
 
+    ScopedTimer blob_timer;
     std::string blob;
     llvm::raw_string_ostream os(blob);
     index::PreambleState::serialize(unit,
@@ -72,6 +76,11 @@ static std::string serialize_preamble_state(CompilationUnit& unit, std::uint32_t
                                     inactive.regions,
                                     inactive.open_stack,
                                     os);
+    LOG_PERF("index_detail",
+             "op=preamble links_ms={:.2f} blob_ms={:.2f} bytes={}",
+             links_ms,
+             blob_timer.ms_f(),
+             blob.size());
     return blob;
 }
 

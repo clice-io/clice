@@ -46,9 +46,11 @@ test("summarize discriminates by kind and keeps only durations", () => {
                 "[perf:build] kind=pch file=/w/b.h compile_ms=300 total_ms=340",
                 "[perf:build] kind=index file=/w/a.cpp compile_ms=50 total_ms=60",
                 "[perf:startup] phase=dep_scan elapsed_ms=25",
+                "[perf:index_detail] op=serialize copy_ms=17.4 pack_ms=155.3",
             ].join("\n"),
         ),
     );
+    expect(summary["index_detail.serialize.pack_ms"]?.p50).toBe(155.3);
     expect(summary["build.pch.compile_ms"]?.count).toBe(2);
     expect(summary["build.pch.compile_ms"]?.max).toBe(300);
     expect(summary["build.index.total_ms"]?.count).toBe(1);

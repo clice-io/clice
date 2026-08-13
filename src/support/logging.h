@@ -71,9 +71,13 @@
 /// compute_ms = the feature call itself), "build" (stateless-worker build
 /// tasks: kind=pch|pcm|index with per-stage splits — compile_ms, and per
 /// kind preamble_index_ms/flush_ms or index_ms/serialize_ms),
-/// "index_query" (master-side index lookups: kind=relations|search). Use
-/// stable key=value pairs and `_ms` suffixes for durations — scripts
-/// aggregate these lines (tools/bench/perf_report.ts).
+/// "index_query" (master-side index lookups: kind=relations|search),
+/// "index_detail" (inside one index pass: op=build splits the semantics
+/// table from projection and finishing, op=serialize splits the path-id
+/// rekeying copy from the flatbuffers pack, op=preamble the document
+/// links and the PreambleState blob). Use stable key=value pairs and
+/// `_ms` suffixes for durations — scripts aggregate these lines
+/// (tools/bench/perf_report.ts).
 ///
 /// ## Process ownership
 /// The master logs to <logging_dir>/<session>/master.log and mirrors to
