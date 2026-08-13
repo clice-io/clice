@@ -519,6 +519,26 @@ std::expected<void, std::string> Toolchain::resolve(CompileCommand& cmd) {
 
     auto [key, query_args] = extract_flags(cmd.source_file, cmd.resolved.flags);
 
+    // CompilationDatabase injects clice's resource directory into driver
+    // commands by default.  Passing that path to an unrelated external clang
+    // driver prevents it from discovering its own builtin and C++ standard
+    // library headers (notably LLVM-MinGW's mm_malloc.h/libc++ headers).
+    // Let external drivers derive their implicit resource paths instead.
+    if(query_args.size() >= 3 && !resource_dir().empty()) {
+        std::vector<const char*> filtered;
+        filtered.reserve(query_args.size());
+        filtered.push_back(query_args.front());
+        for(std::size_t i = 1; i < query_args.size(); ++i) {
+            if(query_args[i] == llvm::StringRef("-resource-dir") && i + 1 < query_args.size() &&
+               query_args[i + 1] == resource_dir()) {
+                ++i;
+                continue;
+            }
+            filtered.push_back(query_args[i]);
+        }
+        query_args = std::move(filtered);
+    }
+
     auto it = cache.find(key);
     if(it == cache.end()) {
         if(auto failed_it = failed.find(key); failed_it != failed.end())
@@ -542,7 +562,10 @@ std::expected<void, std::string> Toolchain::resolve(CompileCommand& cmd) {
     auto cached = llvm::ArrayRef(it->second);
     std::vector<const char*> new_flags(cached.begin(), cached.end());
 
-    // Replace resource dir in cc1 result with ours.
+    // Replace a missing resource dir in cc1 output with ours.  If the queried
+    // driver has a real resource directory, preserve it: its builtin headers
+    // and standard library are a matched installation and may not exist in
+    // clice's resource tree.
     if(!resource_dir().empty()) {
         llvm::StringRef old_resource_dir;
         for(std::size_t i = 0; i + 1 < new_flags.size(); ++i) {
@@ -551,7 +574,8 @@ std::expected<void, std::string> Toolchain::resolve(CompileCommand& cmd) {
                 break;
             }
         }
-        if(!old_resource_dir.empty() && old_resource_dir != resource_dir()) {
+        if(!old_resource_dir.empty() && old_resource_dir != resource_dir() &&
+           !llvm::sys::fs::is_directory(old_resource_dir)) {
             for(auto& arg: new_flags) {
                 llvm::StringRef s(arg);
                 if(s.starts_with(old_resource_dir)) {
