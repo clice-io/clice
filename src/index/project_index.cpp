@@ -69,6 +69,12 @@ std::optional<ProjectIndex> ProjectIndex::from(llvm::StringRef data,
     llvm::DenseMap<std::uint32_t, std::uint32_t> remap;
     remap.reserve(index->paths.size());
     for(auto& [id, path]: index->paths) {
+        // The writer only emits interned paths, which are never empty; an
+        // empty entry marks a corrupt blob and must not become a real pool
+        // entry.
+        if(path.empty()) {
+            return std::nullopt;
+        }
         remap.try_emplace(id, pool.intern(path));
     }
 

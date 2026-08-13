@@ -1,6 +1,7 @@
 #include "test/test.h"
 #include "test/tester.h"
 #include "index/project_index.h"
+#include "index/serialization.h"
 
 namespace clice::testing {
 namespace {
@@ -241,6 +242,23 @@ TEST_CASE(LocalSymbolsExcluded) {
     ASSERT_TRUE(found_global);
     ASSERT_FALSE(found_static);
     ASSERT_FALSE(found_local);
+}
+
+TEST_CASE(EmptyPathRejected) {
+    // A codec-valid blob whose path table carries an empty entry is corrupt:
+    // the writer only emits interned (never empty) paths.
+    index::ProjectIndex corrupt;
+    corrupt.format_version = index::index_format_version;
+    corrupt.paths.emplace_back(0, "");
+
+    llvm::SmallString<128> buf;
+    llvm::raw_svector_ostream os(buf);
+    index::serialize_blob(corrupt, os);
+
+    clice::PathPool pool;
+    llvm::SmallVector<std::uint32_t> shards;
+    ASSERT_FALSE(index::ProjectIndex::from(buf.str(), pool, shards).has_value());
+    ASSERT_TRUE(pool.paths.empty());
 }
 
 TEST_CASE(ScopeRoundTrip) {

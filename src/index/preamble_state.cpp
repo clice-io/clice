@@ -25,6 +25,16 @@ struct PreambleFileEntry {
     std::vector<std::uint32_t> line_starts;
 };
 
+/// find_symbol serves only name and kind, so the blob stores this reduced
+/// entry instead of the full Symbol — reflecting that would drag every
+/// symbol's scope and reference bitmap into large SDK preamble blobs for
+/// nothing. The name borrows the consumed TUIndex (encode-only, like
+/// PreambleFileEntry).
+struct PreambleSymbol {
+    llvm::StringRef name;
+    SymbolKind kind;
+};
+
 /// The persisted shape of a `.pch.idx` blob. Queries run on a zero-copy
 /// view of this layout; nothing is deserialized up front.
 struct PreambleBlob {
@@ -32,7 +42,7 @@ struct PreambleBlob {
     std::vector<std::string> paths;
     std::vector<PreambleFileEntry> files;
     PreambleFileEntry preamble;
-    SymbolTable symbols;
+    llvm::DenseMap<SymbolHash, PreambleSymbol> symbols;
     llvm::ArrayRef<feature::DocumentLink> links;
     llvm::ArrayRef<std::uint32_t> inactive_regions;
     llvm::ArrayRef<std::uint8_t> open_conditionals;
@@ -101,7 +111,10 @@ void PreambleState::serialize(CompilationUnitRef unit,
             std::string_view(preamble_text.data(), preamble_text.size())),
     };
 
-    blob.symbols = std::move(index.symbols);
+    blob.symbols.reserve(index.symbols.size());
+    for(const auto& [hash, symbol]: index.symbols) {
+        blob.symbols.try_emplace(hash, PreambleSymbol{.name = symbol.name, .kind = symbol.kind});
+    }
     blob.paths = std::move(index.graph.paths);
     blob.links = links;
     blob.inactive_regions = inactive_regions;
@@ -224,8 +237,8 @@ bool PreambleState::find_symbol(SymbolHash hash, std::string& name, SymbolKind& 
     }
 
     auto symbol = found->get<1>();
-    name = std::string(symbol[&Symbol::name]);
-    kind = SymbolKind(symbol[&Symbol::kind]);
+    name = std::string(symbol[&PreambleSymbol::name]);
+    kind = SymbolKind(symbol[&PreambleSymbol::kind]);
     return true;
 }
 
