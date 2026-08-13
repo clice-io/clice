@@ -101,6 +101,13 @@ struct Symbol {
 using SymbolTable = llvm::DenseMap<SymbolHash, Symbol>;
 
 struct TUIndex {
+    /// Persisted-blob schema version (index_format_version), stamped by
+    /// serialize() and gated by from(). These blobs never touch disk — they
+    /// travel worker→server over IPC — but a worker respawned after the
+    /// binary on disk changed can be one build ahead of the server, and a
+    /// layout change need not be structurally detectable.
+    std::uint32_t format_version = 0;
+
     /// The building timestamp of this file.
     std::chrono::milliseconds built_at;
 
@@ -133,7 +140,9 @@ struct TUIndex {
     /// populated from file_indices first — hence non-const).
     void serialize(llvm::raw_ostream& os);
 
-    /// Verify and deserialize a buffer; nullopt when verification fails.
+    /// Verify and deserialize a buffer; nullopt when structural
+    /// verification fails, the format version differs, or a decoded path id
+    /// falls outside the blob's own path table.
     static std::optional<TUIndex> from(llvm::StringRef data);
 };
 

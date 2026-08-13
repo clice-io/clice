@@ -340,11 +340,43 @@ void MergedIndex::load_in_memory(this Self& self) {
     }
 
     auto& index = *self.impl;
-    // The buffer was verified at load(); decode straight into the repr and
-    // move its containers into place.
+    // The buffer's structure was verified at load(), but structural
+    // verification does not constrain field values: a canonical id at or
+    // past max_canonical_id would index canonical_ref_counts out of bounds
+    // below (and in every later release_canonical). A blob carrying one —
+    // like a blob that fails to decode outright — is dropped, so the shard
+    // reads as empty and the background indexer rebuilds it.
     MergedIndexRepr repr;
-    [[maybe_unused]] bool decoded = deserialize_blob(self.buffer->getBuffer(), repr);
-    assert(decoded);
+    auto usable = [&] {
+        if(!deserialize_blob(self.buffer->getBuffer(), repr)) {
+            return false;
+        }
+        auto in_range = [&](std::uint32_t canonical_id) {
+            return canonical_id < repr.max_canonical_id;
+        };
+        for(auto& [_, canonical_id]: repr.canonical_cache) {
+            if(!in_range(canonical_id)) {
+                return false;
+            }
+        }
+        for(auto& context: llvm::make_second_range(repr.header_contexts)) {
+            for(auto& include: context.includes) {
+                if(!in_range(include.canonical_id)) {
+                    return false;
+                }
+            }
+        }
+        for(auto& context: llvm::make_second_range(repr.compilation_contexts)) {
+            if(!in_range(context.canonical_id)) {
+                return false;
+            }
+        }
+        return true;
+    };
+    if(!usable()) {
+        self.buffer.reset();
+        return;
+    }
 
     index.max_canonical_id = repr.max_canonical_id;
 

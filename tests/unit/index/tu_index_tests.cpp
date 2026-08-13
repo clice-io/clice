@@ -5,6 +5,7 @@
 #include "test/test.h"
 #include "test/tester.h"
 #include "feature/feature.h"
+#include "index/serialization.h"
 #include "index/tu_index.h"
 #include "semantic/selection.h"
 
@@ -1263,6 +1264,77 @@ TEST_CASE(FromRejectsHostileInput) {
         clobbered[i] = 'X';
     }
     ASSERT_FALSE(index::TUIndex::from(clobbered).has_value());
+}
+
+TEST_CASE(FromRejectsStaleFormatVersion) {
+    // Only the version slot is written: every other field reads back
+    // absent, which is structurally valid — the verdict must hinge on the
+    // value. Field order MUST mirror TUIndex (tu_index.h): format_version
+    // is slot 0.
+    struct VersionOnly {
+        std::uint32_t format_version = 0;
+    };
+
+    auto bytes_of = [](const std::vector<std::uint8_t>& blob) {
+        return llvm::StringRef(reinterpret_cast<const char*>(blob.data()), blob.size());
+    };
+
+    auto stale = kota::codec::fbs::to_bytes(VersionOnly{index::index_format_version + 1});
+    ASSERT_TRUE(stale.has_value());
+    ASSERT_FALSE(index::TUIndex::from(bytes_of(*stale)).has_value());
+
+    // Positive control: the same shape carrying the current version loads,
+    // so the rejection above comes from the value, not the blob's shape.
+    auto current = kota::codec::fbs::to_bytes(VersionOnly{index::index_format_version});
+    ASSERT_TRUE(current.has_value());
+    ASSERT_TRUE(index::TUIndex::from(bytes_of(*current)).has_value());
+}
+
+TEST_CASE(FromRejectsOutOfRangePathIds) {
+    // Structural verification does not constrain field values, and the
+    // merge pipeline dereferences every decoded path id against the path
+    // table without further checks (Indexer::merge indexes paths and
+    // path_hashes, ProjectIndex::merge indexes file_ids_map with
+    // reference_files values) — a blob pointing outside its own table must
+    // be rejected as a whole.
+    auto serialized = [](index::TUIndex& index) {
+        std::string buf;
+        llvm::raw_string_ostream os(buf);
+        index.serialize(os);
+        return buf;
+    };
+
+    // Positive control first: the same shapes with in-range ids load, so
+    // the rejections below come from the hostile values.
+    index::TUIndex honest;
+    honest.built_at = std::chrono::milliseconds(0);
+    honest.graph.paths = {"/proj/main.cpp"};
+    honest.graph.locations.push_back({.path_id = 0, .line = 1, .include = 0});
+    honest.path_file_indices.try_emplace(0);
+    honest.symbols[42].reference_files.add(0);
+    ASSERT_TRUE(index::TUIndex::from(serialized(honest)).has_value());
+
+    {
+        index::TUIndex hostile;
+        hostile.built_at = std::chrono::milliseconds(0);
+        hostile.graph.paths = {"/proj/main.cpp"};
+        hostile.graph.locations.push_back({.path_id = 7, .line = 1, .include = 0});
+        ASSERT_FALSE(index::TUIndex::from(serialized(hostile)).has_value());
+    }
+    {
+        index::TUIndex hostile;
+        hostile.built_at = std::chrono::milliseconds(0);
+        hostile.graph.paths = {"/proj/main.cpp"};
+        hostile.path_file_indices.try_emplace(7);  // Only path id 0 exists.
+        ASSERT_FALSE(index::TUIndex::from(serialized(hostile)).has_value());
+    }
+    {
+        index::TUIndex hostile;
+        hostile.built_at = std::chrono::milliseconds(0);
+        hostile.graph.paths = {"/proj/main.cpp"};
+        hostile.symbols[42].reference_files.add(7);
+        ASSERT_FALSE(index::TUIndex::from(serialized(hostile)).has_value());
+    }
 }
 
 TEST_CASE(FromNormalizesPathHashes) {

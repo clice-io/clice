@@ -101,6 +101,9 @@ bool deserialize_blob(llvm::StringRef data, T& out) {
 /// Scan the occurrences containing `offset` in a sequence sorted by
 /// (range.begin, range.end, target): binary-search the first entry whose
 /// range ends at or past the offset, then walk while ranges contain it.
+/// Binary-searching on range.end is sound because occurrence ranges are
+/// name-token spans, pairwise disjoint or identical — never partially
+/// overlapping or nested — so under this order range.end is monotonic too.
 /// `get(i)` yields the i-th Occurrence.
 template <typename GetOccurrence>
 void scan_occurrences_at(std::size_t size,

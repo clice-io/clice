@@ -1,5 +1,7 @@
 #include <algorithm>
 #include <filesystem>
+#include <map>
+#include <optional>
 #include <tuple>
 
 #include "test/temp_dir.h"
@@ -8,6 +10,8 @@
 #include "index/merged_index.h"
 #include "index/serialization.h"
 
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/xxhash.h"
 
@@ -778,6 +782,97 @@ TEST_CASE(CorruptShardRejected) {
         clobbered[i] = 'X';
     }
     ASSERT_FALSE(index::MergedIndex::load(write("clobbered.idx", clobbered)).loaded());
+}
+
+TEST_CASE(OutOfRangeCanonicalIdRejected) {
+    TempDir dir;
+
+    // Field order MUST mirror the persisted shapes in merged_index.cpp
+    // (MergedIndexRepr prefix, HeaderContext, IncludeContext,
+    // CompilationContext prefix); the trailing fields read back absent,
+    // which is structurally valid.
+    struct IncludeContextMirror {
+        std::uint32_t include_id = 0;
+        std::uint32_t canonical_id = 0;
+    };
+
+    struct HeaderContextMirror {
+        std::uint32_t version = 0;
+        llvm::SmallVector<IncludeContextMirror> includes;
+    };
+
+    // The vector matters beyond field parity: without one the mirror would
+    // be trivially copyable and encode as an inline struct, while the real
+    // CompilationContext encodes as a table — the verifier tells them apart.
+    struct CompilationContextMirror {
+        std::uint32_t version = 0;
+        std::uint32_t canonical_id = 0;
+        std::uint64_t build_at = 0;
+        std::vector<index::IncludeLocation> include_locations;
+    };
+
+    struct ReprMirror {
+        std::uint32_t format_version = 0;
+        std::uint32_t max_canonical_id = 0;
+        std::vector<std::string> paths;
+        std::map<std::string, std::uint32_t> canonical_cache;
+        llvm::SmallDenseMap<std::uint32_t, HeaderContextMirror, 2> header_contexts;
+        llvm::SmallDenseMap<std::uint32_t, CompilationContextMirror, 1> compilation_contexts;
+    };
+
+    // A consistent base: one path, one canonical id, one header context
+    // referencing it.
+    auto base = [] {
+        ReprMirror mirror;
+        mirror.format_version = index::index_format_version;
+        mirror.max_canonical_id = 1;
+        mirror.paths = {"/proj/tu.cpp"};
+        mirror.canonical_cache.emplace("hash", 0);
+        mirror.header_contexts[0].includes.push_back({.include_id = 0, .canonical_id = 0});
+        return mirror;
+    };
+
+    // Structure and version pass, so load() accepts the blob off disk; the
+    // first mutation materializes it in memory, where the id values face
+    // the range check. Nullopt = the blob never reached that check.
+    auto materialized_contribution = [&](llvm::StringRef name,
+                                         const ReprMirror& mirror) -> std::optional<bool> {
+        auto blob = kota::codec::fbs::to_bytes(mirror);
+        if(!blob) {
+            return std::nullopt;
+        }
+        dir.touch(name, llvm::StringRef(reinterpret_cast<const char*>(blob->data()), blob->size()));
+        auto shard = index::MergedIndex::load(dir.path(name));
+        if(!shard.loaded()) {
+            return std::nullopt;
+        }
+        shard.remove("/proj/never-indexed.cpp");
+        return shard.has_contribution("/proj/tu.cpp");
+    };
+
+    // Positive control first: the base materializes intact, so the
+    // rejections below come from the hostile ids, not the blob's shape.
+    auto good = materialized_contribution("good.idx", base());
+    ASSERT_TRUE(good.has_value() && *good);
+
+    // Structural verification does not constrain field values: each blob
+    // carries one canonical id at or past max_canonical_id, which would
+    // index canonical_ref_counts out of bounds if the in-memory load
+    // accepted it. The blob is dropped and the shard reads as empty.
+    auto bad_cache = base();
+    bad_cache.canonical_cache["hash"] = 5;
+    auto cache_verdict = materialized_contribution("bad-cache.idx", bad_cache);
+    ASSERT_TRUE(cache_verdict.has_value() && !*cache_verdict);
+
+    auto bad_include = base();
+    bad_include.header_contexts[0].includes.front().canonical_id = 5;
+    auto include_verdict = materialized_contribution("bad-include.idx", bad_include);
+    ASSERT_TRUE(include_verdict.has_value() && !*include_verdict);
+
+    auto bad_compilation = base();
+    bad_compilation.compilation_contexts[0].canonical_id = 5;
+    auto compilation_verdict = materialized_contribution("bad-compilation.idx", bad_compilation);
+    ASSERT_TRUE(compilation_verdict.has_value() && !*compilation_verdict);
 }
 
 TEST_CASE(BufferPathLookupParity) {

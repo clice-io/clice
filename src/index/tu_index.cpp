@@ -636,6 +636,8 @@ TUIndex TUIndex::build(CompilationUnitRef unit, bool interested_only) {
 }
 
 void TUIndex::serialize(llvm::raw_ostream& os) {
+    format_version = index_format_version;
+
     /// Convert the FileID-keyed working state into the persisted
     /// path_id-keyed form; multiple FileIDs can share a path id (repeated
     /// header contexts), last-wins. A deserialized index has no FileID-keyed
@@ -653,13 +655,37 @@ void TUIndex::serialize(llvm::raw_ostream& os) {
 
 std::optional<TUIndex> TUIndex::from(llvm::StringRef data) {
     std::optional<TUIndex> index{std::in_place};
-    if(!deserialize_blob(data, *index)) {
+    if(!deserialize_blob(data, *index) || index->format_version != index_format_version) {
         return std::nullopt;
     }
     // The verifier checks structure, not cross-field consistency: consumers
     // index path_hashes by path id, so normalize its length to the path
     // table's (absent hashes read as 0 = "unavailable").
     index->graph.path_hashes.resize(index->graph.paths.size(), 0);
+
+    // Nor does it constrain field values, and every decoded path id is
+    // dereferenced against the path table without further checks — graph
+    // locations and per-file rows in Indexer::merge, reference_files through
+    // ProjectIndex::merge's file_ids_map. A blob carrying an out-of-range
+    // one is rejected as a whole.
+    auto in_range = [count = index->graph.paths.size()](std::uint32_t path_id) {
+        return path_id < count;
+    };
+    for(auto& location: index->graph.locations) {
+        if(!in_range(location.path_id)) {
+            return std::nullopt;
+        }
+    }
+    for(auto& [path_id, _]: index->path_file_indices) {
+        if(!in_range(path_id)) {
+            return std::nullopt;
+        }
+    }
+    for(auto& [_, symbol]: index->symbols) {
+        if(!symbol.reference_files.isEmpty() && !in_range(symbol.reference_files.maximum())) {
+            return std::nullopt;
+        }
+    }
     return index;
 }
 
