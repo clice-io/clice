@@ -100,7 +100,7 @@ function aggregate(events: PerfEvent[]): Map<string, number[]> {
     const series = new Map<string, number[]>();
     for (const event of events) {
         const kind = event.values["kind"] ?? event.values["phase"] ?? event.values["op"];
-        const prefix = typeof kind === "string" ? `${event.topic}.${kind}` : event.topic;
+        const prefix = kind === undefined ? event.topic : `${event.topic}.${String(kind)}`;
         for (const [key, value] of Object.entries(event.values)) {
             if (typeof value !== "number" || !key.endsWith("_ms")) {
                 continue;
@@ -156,7 +156,9 @@ export function toChromeTrace(
     for (const [pid, name] of Object.entries(processNames)) {
         traceEvents.push({ name: "process_name", ph: "M", pid: Number(pid), args: { name } });
     }
-    const base = events.find((e) => e.ts !== null)?.ts ?? 0;
+    // Events concatenate from multiple log files in file order, so the
+    // first stamped event is not necessarily the earliest.
+    const base = Math.min(...events.filter((e) => e.ts !== null).map((e) => e.ts ?? 0), Infinity);
     for (const event of events) {
         if (event.ts === null) {
             continue;
@@ -166,7 +168,7 @@ export function toChromeTrace(
             continue;
         }
         const kind = event.values["kind"] ?? event.values["phase"] ?? event.values["op"];
-        const name = typeof kind === "string" ? `${event.topic}.${kind}` : event.topic;
+        const name = kind === undefined ? event.topic : `${event.topic}.${String(kind)}`;
         traceEvents.push({
             name,
             cat: event.topic,

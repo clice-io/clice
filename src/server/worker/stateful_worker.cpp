@@ -20,6 +20,7 @@
 #include "kota/ipc/codec/bincode.h"
 #include "kota/ipc/peer.h"
 #include "kota/ipc/transport.h"
+#include "kota/meta/enum.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -154,8 +155,8 @@ class StatefulWorker {
 
         LOG_PERF("query",
                  "kind={} path={} acquire_ms={:.2f} compute_ms={:.2f} total_ms={:.2f}",
-                 kind.str(),
-                 path.str(),
+                 kind,
+                 path,
                  acquire_ms,
                  compute_ms,
                  timer.ms_f());

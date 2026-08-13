@@ -353,10 +353,7 @@ async function runStartScenario(opts: Options, file: string): Promise<ScenarioRe
     const bench = new Bench(opts);
 
     const start = nowMs();
-    const client = CliceClient.start(opts.binary, { args: serverArgs(opts) });
-    await client.initialize(new Workspace(opts.workspace), {
-        initializationOptions: initializationOptions(),
-    });
+    const client = await startServer(opts);
     bench.record("initialize", nowMs() - start);
 
     await bench.measure("open_to_diagnostics", () => client.openAndWait(file, 300_000));
@@ -476,14 +473,15 @@ async function main(): Promise<void> {
     const cdb = findCdb(opts.workspace);
     opts.cdbDir = path.dirname(cdb);
     const file = opts.file !== null ? path.resolve(opts.workspace, opts.file) : firstCdbEntry(cdb);
+    const cpus = os.cpus();
 
     const result: BenchResult = {
         env: {
             platform: process.platform,
             release: os.release(),
             arch: process.arch,
-            cpus: os.cpus().length,
-            cpuModel: os.cpus()[0]?.model ?? "unknown",
+            cpus: cpus.length,
+            cpuModel: cpus[0]?.model ?? "unknown",
             node: process.version,
             server: opts.server,
             binary: opts.binary,

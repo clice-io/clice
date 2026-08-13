@@ -129,4 +129,7 @@ CompilationUnit compile(CompilationParams& params, PCMInfo& out);
 /// Run code completion at the given location.
 CompilationUnit complete(CompilationParams& params, clang::CodeCompleteConsumer* consumer);
 
+/// Error-level diagnostics of a finished compilation, joined with "; ".
+std::string collect_errors(CompilationUnit& unit);
+
 }  // namespace clice

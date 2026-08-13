@@ -26,6 +26,7 @@
 #include <string>
 #include <vector>
 
+#include "stats.h"
 #include "command/command.h"
 #include "command/toolchain.h"
 #include "compile/compilation.h"
@@ -114,18 +115,6 @@ CompilationParams make_params(CompilationKind kind,
     params.arguments = arguments;
     params.add_remapped_file(file, content);
     return params;
-}
-
-std::string collect_errors(CompilationUnit& unit) {
-    std::string errors;
-    for(auto& diag: unit.diagnostics()) {
-        if(diag.id.level >= DiagnosticLevel::Error) {
-            if(!errors.empty())
-                errors += "; ";
-            errors += diag.message;
-        }
-    }
-    return errors;
 }
 
 /// Run `stage` `runs` times and keep the fastest wall-clock time. The
@@ -329,11 +318,6 @@ struct StageStats {
             values.push_back(ms);
         }
     }
-
-    double percentile(double p) {
-        auto index = static_cast<std::size_t>(p * static_cast<double>(values.size() - 1));
-        return values[index];
-    }
 };
 
 void print_summary(std::vector<FileResult>& results) {
@@ -369,13 +353,12 @@ void print_summary(std::vector<FileResult>& results) {
         if(stage.values.empty()) {
             continue;
         }
-        std::ranges::sort(stage.values);
         std::println("    {:<17}{:>13} {:>8.1f} {:>8.1f} {:>8.1f} {:>8.1f}",
                      stage.name.str(),
                      stage.values.size(),
-                     stage.percentile(0.5),
-                     stage.percentile(0.9),
-                     stage.percentile(0.99),
+                     bench::percentile(stage.values, 0.5),
+                     bench::percentile(stage.values, 0.9),
+                     bench::percentile(stage.values, 0.99),
                      stage.values.back());
     }
 

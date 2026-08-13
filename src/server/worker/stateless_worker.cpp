@@ -41,19 +41,6 @@ struct ScopedNice {
 using kota::ipc::RequestResult;
 using RequestContext = kota::ipc::BincodePeer::RequestContext;
 
-/// Extract error messages from compilation diagnostics.
-static std::string collect_errors(CompilationUnit& unit) {
-    std::string errors;
-    for(auto& diag: unit.diagnostics()) {
-        if(diag.id.level >= DiagnosticLevel::Error) {
-            if(!errors.empty())
-                errors += "; ";
-            errors += diag.message;
-        }
-    }
-    return errors;
-}
-
 /// Serialize the preamble's PreambleState blob (full index + document
 /// links + inactive regions) into a string. Runs while the freshly
 /// parsed AST is still in memory — the only moment the preamble's index
@@ -179,8 +166,10 @@ static worker::BuildResult handle_build_pch(const worker::BuildParams& params,
 
     if(success) {
         LOG_PERF("build",
-                 "kind=pch file={} compile_ms={} preamble_index_ms={} flush_ms={} total_ms={}",
+                 "kind=pch file={} output={} compile_ms={} preamble_index_ms={} flush_ms={} "
+                 "total_ms={}",
                  params.file,
+                 tmp_path,
                  compile_ms,
                  index_ms,
                  flush_ms,

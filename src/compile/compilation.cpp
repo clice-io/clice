@@ -456,4 +456,16 @@ CompilationUnit complete(CompilationParams& params, clang::CodeCompleteConsumer*
                      });
 }
 
+std::string collect_errors(CompilationUnit& unit) {
+    std::string errors;
+    for(auto& diag: unit.diagnostics()) {
+        if(diag.id.level >= DiagnosticLevel::Error) {
+            if(!errors.empty())
+                errors += "; ";
+            errors += diag.message;
+        }
+    }
+    return errors;
+}
+
 }  // namespace clice

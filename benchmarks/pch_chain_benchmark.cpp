@@ -23,6 +23,7 @@
 #include <string>
 #include <vector>
 
+#include "stats.h"
 #include "command/argument_parser.h"
 #include "command/command.h"
 #include "compile/compilation.h"
@@ -213,18 +214,6 @@ ArgList make_source_args(const std::string& file) {
                    file};
 }
 
-std::string collect_errors(CompilationUnit& unit) {
-    std::string errors;
-    for(auto& diag: unit.diagnostics()) {
-        if(diag.id.level >= DiagnosticLevel::Error) {
-            if(!errors.empty())
-                errors += "; ";
-            errors += diag.message;
-        }
-    }
-    return errors;
-}
-
 struct PCHBuildResult {
     bool success = false;
     std::string path;
@@ -333,11 +322,6 @@ double compile_with_pch(const std::string& source_text,
     return std::chrono::duration<double, std::milli>(end - start).count();
 }
 
-double median_of(std::vector<double>& values) {
-    std::ranges::sort(values);
-    return values[values.size() / 2];
-}
-
 void bench_monolithic(const std::vector<std::string>& headers, std::size_t count, int runs) {
     std::println("=== MONOLITHIC PCH ({} headers, {} runs) ===", count, runs);
 
@@ -366,7 +350,7 @@ void bench_monolithic(const std::vector<std::string>& headers, std::size_t count
     if(!times.empty()) {
         double mean =
             std::accumulate(times.begin(), times.end(), 0.0) / static_cast<double>(times.size());
-        double median = median_of(times);
+        double median = bench::percentile(times, 0.5);
         std::println("  Min: {:.1f}ms  Median: {:.1f}ms  Mean: {:.1f}ms  Max: {:.1f}ms",
                      times.front(),
                      median,
@@ -379,7 +363,6 @@ void bench_chained(const std::vector<std::string>& headers, std::size_t count, i
     std::println("\n=== CHAINED PCH ({} headers, {} runs) ===", count, runs);
 
     struct LinkInfo {
-        std::string header;
         std::string pch_path;
         double build_ms = 0;
         bool success = false;
@@ -394,8 +377,6 @@ void bench_chained(const std::vector<std::string>& headers, std::size_t count, i
         std::string prev_pch;
         for(std::size_t i = 0; i < count && i < headers.size(); i += 1) {
             LinkInfo link;
-            link.header = headers[i];
-
             std::string text = "#include <" + headers[i] + ">\n";
             std::string file_path = temps.create("chain-link", "h");
             link.pch_path = temps.create("chain", "pch");
@@ -421,11 +402,10 @@ void bench_chained(const std::vector<std::string>& headers, std::size_t count, i
                 }
             }
 
-            bool success = result.success;
             links.push_back(std::move(link));
             // A partial chain must not masquerade as the requested one:
             // stop here and let the caller discard the run.
-            if(!success) {
+            if(!result.success) {
                 break;
             }
             prev_pch = links.back().pch_path;
@@ -450,7 +430,7 @@ void bench_chained(const std::vector<std::string>& headers, std::size_t count, i
 
     if(!is_complete(links)) {
         std::println("\n  Chain INCOMPLETE ({}/{} links built) — no timing statistics",
-                     links.empty() ? 0 : links.size() - 1,
+                     std::ranges::count_if(links, &LinkInfo::success),
                      count);
         return;
     }
@@ -479,7 +459,7 @@ void bench_chained(const std::vector<std::string>& headers, std::size_t count, i
 
         double mean =
             std::accumulate(totals.begin(), totals.end(), 0.0) / static_cast<double>(totals.size());
-        double median = median_of(totals);
+        double median = bench::percentile(totals, 0.5);
         std::println(
             "  Total chain build - Min: {:.1f}ms  Median: {:.1f}ms  Mean: {:.1f}ms  Max: {:.1f}ms",
             totals.front(),
@@ -524,8 +504,7 @@ void bench_incremental(const std::vector<std::string>& headers, std::size_t base
     }
 
     // Chained incremental: just append one more link.
-    std::string extra_hdr = (base_count < headers.size()) ? headers[base_count] : "version";
-    std::string extra_text = "#include <" + extra_hdr + ">\n";
+    std::string extra_text = "#include <" + headers[base_count] + ">\n";
     std::string extra_file = temps.create("incr-extra", "h");
     std::string extra_pch = temps.create("incr-extra", "pch");
 
@@ -537,8 +516,8 @@ void bench_incremental(const std::vector<std::string>& headers, std::size_t base
     }
 
     if(!mono_times.empty() && !chain_times.empty()) {
-        double mono_med = median_of(mono_times);
-        double chain_med = median_of(chain_times);
+        double mono_med = bench::percentile(mono_times, 0.5);
+        double chain_med = bench::percentile(chain_times, 0.5);
         std::println("  Monolithic full rebuild:  median {:.1f}ms", mono_med);
         std::println("  Chained append-one-link:  median {:.1f}ms", chain_med);
         std::println("  Speedup: {:.1f}x", mono_med / chain_med);
@@ -743,21 +722,21 @@ void bench_ast_load(const std::vector<std::string>& headers, std::size_t count, 
         }
 
         if(!mono_times.empty()) {
-            double med = median_of(mono_times);
+            double med = bench::percentile(mono_times, 0.5);
             std::println("  Monolithic PCH → compile:  median {:.1f}ms  (min {:.1f}, max {:.1f})",
                          med,
                          mono_times.front(),
                          mono_times.back());
         }
         if(!chain_times.empty()) {
-            double med = median_of(chain_times);
+            double med = bench::percentile(chain_times, 0.5);
             std::println("  Chained PCH    → compile:  median {:.1f}ms  (min {:.1f}, max {:.1f})",
                          med,
                          chain_times.front(),
                          chain_times.back());
         }
         if(!mono_times.empty() && !chain_times.empty()) {
-            double ratio = median_of(chain_times) / median_of(mono_times);
+            double ratio = bench::percentile(chain_times, 0.5) / bench::percentile(mono_times, 0.5);
             std::println("  Ratio (chained/mono): {:.2f}x", ratio);
         } else if(chain_times.empty()) {
             std::println("  Chained PCH: compilation FAILED (heavy source may have errors)");
@@ -843,13 +822,14 @@ void bench_end_to_end(const std::vector<std::string>& headers, std::size_t count
 
     if(!mono_rebuild_times.empty()) {
         std::println("    Monolithic full rebuild:  median {:.1f}ms",
-                     median_of(mono_rebuild_times));
+                     bench::percentile(mono_rebuild_times, 0.5));
     }
     if(!chain_append_times.empty()) {
-        double chain_med = median_of(chain_append_times);
+        double chain_med = bench::percentile(chain_append_times, 0.5);
         std::println("    Chained append 1 link:   median {:.1f}ms", chain_med);
         if(!mono_rebuild_times.empty()) {
-            std::println("    Speedup: {:.0f}x", median_of(mono_rebuild_times) / chain_med);
+            std::println("    Speedup: {:.0f}x",
+                         bench::percentile(mono_rebuild_times, 0.5) / chain_med);
         }
     }
 
