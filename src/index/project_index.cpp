@@ -3,23 +3,9 @@
 #include "index/serialization.h"
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/STLExtras.h"
 
 namespace clice::index {
-
-namespace {
-
-/// The persisted shape of the project blob: the symbol table with pool ids
-/// remapped into a compact local path table (only ids the blob references
-/// are written — garbage paths are collected here), plus the shard list as
-/// local ids.
-struct ProjectIndexRepr {
-    std::uint32_t format_version = 0;
-    std::vector<std::string> paths;
-    SymbolTable symbols;
-    std::vector<std::uint32_t> shards;
-};
-
-}  // namespace
 
 llvm::SmallVector<std::uint32_t> ProjectIndex::merge(this ProjectIndex& self,
                                                      TUIndex& index,
@@ -48,86 +34,65 @@ llvm::SmallVector<std::uint32_t> ProjectIndex::merge(this ProjectIndex& self,
     return file_ids_map;
 }
 
-void ProjectIndex::serialize(this const ProjectIndex& self,
+void ProjectIndex::serialize(this ProjectIndex& self,
                              llvm::raw_ostream& os,
                              const clice::PathPool& pool,
                              llvm::ArrayRef<std::uint32_t> shards) {
-    ProjectIndexRepr repr;
-    repr.format_version = index_format_version;
+    self.format_version = index_format_version;
+    self.shards.assign(shards.begin(), shards.end());
 
-    llvm::DenseMap<std::uint32_t, std::uint32_t> local_ids;
-    auto to_local = [&](std::uint32_t pool_id) -> std::uint32_t {
-        auto [it, inserted] = local_ids.try_emplace(pool_id, repr.paths.size());
-        if(inserted) {
-            repr.paths.emplace_back(pool.resolve(pool_id));
-        }
-        return it->second;
-    };
-
-    llvm::SmallVector<std::uint32_t> remapped;
-    for(auto& [symbol_id, symbol]: self.symbols) {
-        remapped.clear();
-        for(auto ref: symbol.reference_files) {
-            remapped.push_back(to_local(ref));
-        }
-
-        auto& target = repr.symbols[symbol_id];
-        target.name = symbol.name;
-        target.kind = symbol.kind;
-        target.scope = symbol.scope;
-        target.reference_files = Bitmap(remapped.size(), remapped.data());
+    Bitmap referenced(shards.size(), shards.data());
+    for(auto& symbol: llvm::make_second_range(self.symbols)) {
+        referenced |= symbol.reference_files;
     }
 
-    for(auto shard: shards) {
-        repr.shards.push_back(to_local(shard));
+    self.paths.clear();
+    self.paths.reserve(referenced.cardinality());
+    for(auto id: referenced) {
+        self.paths.emplace_back(id, pool.resolve(id).str());
     }
 
-    serialize_blob(repr, os);
+    serialize_blob(self, os);
 }
 
 std::optional<ProjectIndex> ProjectIndex::from(llvm::StringRef data,
                                                clice::PathPool& pool,
                                                llvm::SmallVectorImpl<std::uint32_t>& shards) {
-    ProjectIndexRepr repr;
-    if(!deserialize_blob(data, repr) || repr.format_version != index_format_version) {
+    std::optional<ProjectIndex> index{std::in_place};
+    if(!deserialize_blob(data, *index) || index->format_version != index_format_version) {
         return std::nullopt;
     }
 
-    // Intern the blob's compact path table into the running pool; every id
-    // in the blob is an index into it.
-    llvm::SmallVector<std::uint32_t> pool_ids;
-    pool_ids.reserve(repr.paths.size());
-    for(auto& path: repr.paths) {
-        pool_ids.push_back(pool.intern(path));
+    // The blob's ids are the writing session's pool ids: intern its path
+    // table and remap every decoded id into this session's pool. Ids the
+    // table does not cover are dropped, not misresolved.
+    llvm::DenseMap<std::uint32_t, std::uint32_t> remap;
+    remap.reserve(index->paths.size());
+    for(auto& [id, path]: index->paths) {
+        remap.try_emplace(id, pool.intern(path));
     }
 
-    auto to_pool = [&](std::uint32_t local) -> std::optional<std::uint32_t> {
-        if(local >= pool_ids.size()) {
-            return std::nullopt;
-        }
-        return pool_ids[local];
-    };
-
-    ProjectIndex loaded;
-    for(auto& [symbol_id, symbol]: repr.symbols) {
-        auto& target = loaded.symbols[symbol_id];
-        target.name = std::move(symbol.name);
-        target.kind = symbol.kind;
-        target.scope = symbol.scope;
-        for(auto local: symbol.reference_files) {
-            if(auto id = to_pool(local)) {
-                target.reference_files.add(*id);
+    for(auto& symbol: llvm::make_second_range(index->symbols)) {
+        Bitmap remapped;
+        for(auto id: symbol.reference_files) {
+            if(auto it = remap.find(id); it != remap.end()) {
+                remapped.add(it->second);
             }
         }
+        symbol.reference_files = std::move(remapped);
     }
 
-    for(auto local: repr.shards) {
-        if(auto id = to_pool(local)) {
-            shards.push_back(*id);
+    for(auto id: index->shards) {
+        if(auto it = remap.find(id); it != remap.end()) {
+            shards.push_back(it->second);
         }
     }
 
-    return loaded;
+    // The table and manifest were only the wire form; the runtime state is
+    // the pool and the caller's shard list.
+    index->paths.clear();
+    index->shards.clear();
+    return index;
 }
 
 }  // namespace clice::index

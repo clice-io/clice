@@ -110,21 +110,23 @@ TEST_CASE(VersionGate) {
 }
 
 TEST_CASE(OutOfRangeLocalIdsDropped) {
-    // Field order MUST mirror ProjectIndexRepr (project_index.cpp):
+    // Field order MUST mirror ProjectIndex (project_index.h):
     // format_version, paths, symbols, shards.
     struct ProjectIndexMirror {
         std::uint32_t format_version = 0;
-        std::vector<std::string> paths;
+        std::vector<std::pair<std::uint32_t, std::string>> paths;
         index::SymbolTable symbols;
         std::vector<std::uint32_t> shards;
     };
 
     ProjectIndexMirror mirror;
     mirror.format_version = index::index_format_version;
-    mirror.paths = {"/proj/used.cpp"};
+    mirror.paths = {
+        {0, "/proj/used.cpp"}
+    };
     auto& symbol = mirror.symbols[42];
     symbol.name = "sym";
-    symbol.reference_files.add(7);  // Only local id 0 exists.
+    symbol.reference_files.add(7);  // Only pool id 0 is in the table.
     mirror.shards = {9};
 
     auto blob = kota::codec::fbs::to_bytes(mirror);

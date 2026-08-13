@@ -1,6 +1,5 @@
 #include <algorithm>
 #include <filesystem>
-#include <map>
 #include <optional>
 #include <tuple>
 
@@ -422,6 +421,46 @@ TEST_CASE(CompactionDropsMasked) {
     ASSERT_FALSE(found);
 }
 
+TEST_CASE(SerializeCompactsInPlace) {
+    // Two contributions with distinct content, so each gets its own
+    // canonical id; only one is removed.
+    index::FileIndex live_idx;
+    live_idx.occurrences.emplace_back(index::Range{0, 3}, 100);
+    index::FileIndex dead_idx;
+    dead_idx.occurrences.emplace_back(index::Range{10, 13}, 200);
+
+    index::MergedIndex merged;
+    merged.merge("tu0", std::uint32_t(0), live_idx, "synthetic");
+    merged.merge("tu1", std::uint32_t(0), dead_idx, "synthetic");
+    merged.remove("tu1");
+
+    llvm::SmallString<1024> buf;
+    llvm::raw_svector_ostream os(buf);
+    merged.serialize(os);
+
+    // The save flip is conditional: when it does not happen, the in-memory
+    // impl — now compacted by serialize() — keeps serving queries. Surviving
+    // rows must still resolve and removed ones stay gone.
+    auto hits_at = [&](std::uint32_t offset) {
+        std::size_t hits = 0;
+        merged.lookup(offset, [&](const index::Occurrence&) {
+            hits += 1;
+            return true;
+        });
+        return hits;
+    };
+    ASSERT_EQ(hits_at(1), 1u);
+    ASSERT_EQ(hits_at(11), 0u);
+    ASSERT_TRUE(merged.has_contribution("tu0"));
+    ASSERT_FALSE(merged.has_contribution("tu1"));
+
+    // A second serialize of the compacted impl round-trips identically.
+    llvm::SmallString<1024> again;
+    llvm::raw_svector_ostream os2(again);
+    merged.serialize(os2);
+    ASSERT_EQ(llvm::StringRef(buf), llvm::StringRef(again));
+}
+
 TEST_CASE(HasContributionTracking) {
     add_file("header.h", R"(
             #pragma once
@@ -788,9 +827,9 @@ TEST_CASE(OutOfRangeCanonicalIdRejected) {
     TempDir dir;
 
     // Field order MUST mirror the persisted shapes in merged_index.cpp
-    // (MergedIndexRepr prefix, HeaderContext, IncludeContext,
-    // CompilationContext prefix); the trailing fields read back absent,
-    // which is structurally valid.
+    // (MergedIndex::Impl prefix — skip-annotated fields occupy no slot —
+    // HeaderContext, IncludeContext, CompilationContext prefix); the
+    // trailing fields read back absent, which is structurally valid.
     struct IncludeContextMirror {
         std::uint32_t include_id = 0;
         std::uint32_t canonical_id = 0;
@@ -813,11 +852,13 @@ TEST_CASE(OutOfRangeCanonicalIdRejected) {
 
     struct ReprMirror {
         std::uint32_t format_version = 0;
-        std::uint32_t max_canonical_id = 0;
         std::vector<std::string> paths;
-        std::map<std::string, std::uint32_t> canonical_cache;
+        std::string content;
+        std::vector<std::uint32_t> line_starts;
         llvm::SmallDenseMap<std::uint32_t, HeaderContextMirror, 2> header_contexts;
         llvm::SmallDenseMap<std::uint32_t, CompilationContextMirror, 1> compilation_contexts;
+        std::vector<std::pair<std::string, std::uint32_t>> canonical_cache;
+        std::uint32_t max_canonical_id = 0;
     };
 
     // A consistent base: one path, one canonical id, one header context
@@ -827,7 +868,7 @@ TEST_CASE(OutOfRangeCanonicalIdRejected) {
         mirror.format_version = index::index_format_version;
         mirror.max_canonical_id = 1;
         mirror.paths = {"/proj/tu.cpp"};
-        mirror.canonical_cache.emplace("hash", 0);
+        mirror.canonical_cache.emplace_back("hash", 0);
         mirror.header_contexts[0].includes.push_back({.include_id = 0, .canonical_id = 0});
         return mirror;
     };
@@ -860,7 +901,7 @@ TEST_CASE(OutOfRangeCanonicalIdRejected) {
     // index canonical_ref_counts out of bounds if the in-memory load
     // accepted it. The blob is dropped and the shard reads as empty.
     auto bad_cache = base();
-    bad_cache.canonical_cache["hash"] = 5;
+    bad_cache.canonical_cache.front().second = 5;
     auto cache_verdict = materialized_contribution("bad-cache.idx", bad_cache);
     ASSERT_TRUE(cache_verdict.has_value() && !*cache_verdict);
 

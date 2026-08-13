@@ -25,9 +25,14 @@ struct DepLocation {
 };
 
 class MergedIndex {
-private:
+public:
+    /// The in-memory shard state, defined in merged_index.cpp. Its reflected
+    /// layout doubles as the persisted shard schema: serialization reflects
+    /// an Impl directly and the buffer-backed query paths read the blob
+    /// through a zero-copy view of the same layout.
     struct Impl;
 
+private:
     using Self = MergedIndex;
 
     MergedIndex(std::unique_ptr<llvm::MemoryBuffer> buffer, std::unique_ptr<Impl> impl);
@@ -52,8 +57,9 @@ public:
     /// Load merged index from disk
     static MergedIndex load(llvm::StringRef path);
 
-    /// Serialize it to binary format.
-    void serialize(this const Self& self, llvm::raw_ostream& out);
+    /// Serialize it to binary format. Compacts rows masked by removals in
+    /// place first, so the serialized blob is a direct reflection of Impl.
+    void serialize(this Self& self, llvm::raw_ostream& out);
 
     /// Lookup the occurrence in corresponding offset.
     void lookup(this const Self& self,

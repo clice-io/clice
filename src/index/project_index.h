@@ -2,6 +2,9 @@
 
 #include <cstdint>
 #include <optional>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "index/tu_index.h"
 #include "support/path_pool.h"
@@ -15,13 +18,29 @@ namespace clice::index {
 ///
 /// There is a single path-id space at runtime: the server-wide
 /// clice::PathPool. Symbol reference bitmaps carry those ids directly, so
-/// queries never translate between pools. Runtime ids are per-session and
-/// never persist — serialization remaps every referenced id into a compact
-/// self-contained path table (which is also the garbage collection: paths no
-/// longer referenced by any symbol or shard are simply not written), and
-/// loading interns the table back into the running pool.
+/// queries never translate between pools, and they persist as-is — the blob
+/// stays self-contained through a path table mapping every referenced id to
+/// its path (which is also the garbage collection: paths no longer
+/// referenced by any symbol or shard are simply not written). Loading
+/// interns the table into the running pool and remaps every id.
+///
+/// Serialization reflects this object directly; `format_version`, `paths`
+/// and `shards` are serialize-time state populated by serialize() and
+/// consumed by from().
 struct ProjectIndex {
+    /// Persisted-blob schema version (index_format_version), stamped by
+    /// serialize() and gated by from().
+    std::uint32_t format_version = 0;
+
+    /// The blob's self-contained path table: pool id → path for every id
+    /// the symbol bitmaps and the shard manifest reference.
+    std::vector<std::pair<std::uint32_t, std::string>> paths;
+
     SymbolTable symbols;
+
+    /// Pool ids of the files owning a MergedIndex shard blob, persisted so
+    /// the loader knows which blobs to fetch.
+    std::vector<std::uint32_t> shards;
 
     /// Merge a TU's external symbols, interning the TU's paths into `pool`.
     /// Returns the TU-local id → pool id mapping for the TU's path graph.
@@ -29,10 +48,10 @@ struct ProjectIndex {
                                            TUIndex& index,
                                            clice::PathPool& pool);
 
-    /// Serialize with a compact path table covering exactly the ids used by
-    /// the symbol bitmaps plus `shards`, the pool ids of the files owning a
-    /// MergedIndex shard blob (persisted so the loader knows what to fetch).
-    void serialize(this const ProjectIndex& self,
+    /// Serialize with a path table covering exactly the ids used by the
+    /// symbol bitmaps plus `shards`, the pool ids of the files owning a
+    /// MergedIndex shard blob.
+    void serialize(this ProjectIndex& self,
                    llvm::raw_ostream& os,
                    const clice::PathPool& pool,
                    llvm::ArrayRef<std::uint32_t> shards);

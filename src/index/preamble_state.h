@@ -19,7 +19,7 @@ namespace clice::index {
 /// changes; a blob carrying a different value loads as "missing" and the
 /// PCH pair is rebuilt. cache.json records it so a version change is
 /// caught at load time instead of on the first overlay query.
-constexpr inline std::uint32_t preamble_format_version = 4;
+constexpr inline std::uint32_t preamble_format_version = 5;
 
 /// All master-visible state derived from one PCH build.
 ///
@@ -57,8 +57,10 @@ public:
     /// over the preamble unit with interested_only=false and its
     /// main_file_index intact (it holds the preamble region's own
     /// occurrences — macro definitions and references before the bound).
+    /// Taken by value and consumed: the blob is assembled by moving the
+    /// index's rows, never copying them.
     static void serialize(CompilationUnitRef unit,
-                          const TUIndex& index,
+                          TUIndex index,
                           llvm::ArrayRef<feature::DocumentLink> links,
                           llvm::ArrayRef<std::uint32_t> inactive_regions,
                           llvm::ArrayRef<std::uint8_t> open_conditionals,

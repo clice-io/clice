@@ -5,15 +5,20 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
+#include "index/path_pool.h"
 #include "index/tu_index.h"
 #include "semantic/symbol.h"
 #include "support/bitmap.h"
 
 #include "kota/codec/fbs/fbs.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -51,6 +56,80 @@ struct repr<clice::SymbolKind, codec::fbs::format> {
     }
 };
 
+/// A PathPool persists as its path table; ids are the dense indices, so
+/// interning the table back in order reproduces them. Both directions drive
+/// the visitor: encoding writes the interned StringRefs straight to the
+/// wire, decoding interns one path at a time.
+template <>
+struct repr<clice::index::PathPool, codec::fbs::format> {
+    using type = std::vector<std::string>;
+
+    template <typename Config>
+    static bool serialize(auto& vis, const clice::index::PathPool& pool) {
+        return codec::encode_value<Config>(vis, pool.paths);
+    }
+
+    template <typename Config>
+    static bool deserialize(auto& vis, clice::index::PathPool& pool) {
+        type shape;
+        return vis.visit_seq(shape, [&](auto& sv) -> bool {
+            while(sv.has_element()) {
+                std::string path;
+                if(!sv.visit_element(
+                       [&](auto& ev) -> bool { return codec::decode_value<Config>(ev, path); })) {
+                    return false;
+                }
+                // The pool never interns an empty path, so a blob carrying
+                // one is corrupt; reject it instead of tripping the intern
+                // precondition.
+                if(path.empty()) {
+                    return false;
+                }
+                pool.path_id(path);
+            }
+            return true;
+        });
+    }
+};
+
+/// A StringMap iterates as StringMapEntry, which no codec understands;
+/// persist the entries as key/value pairs, sorted by value for
+/// deterministic blobs (values are unique canonical ids). Format-agnostic,
+/// unlike the reprs above: the pair-list form is not fbs-specific, and the
+/// schema layer classifies fields without a format tag — a format-scoped
+/// repr would leave it staring at StringMapEntry, which it rejects.
+template <>
+struct repr<llvm::StringMap<std::uint32_t>> {
+    using type = std::vector<std::pair<std::string, std::uint32_t>>;
+
+    template <typename Config>
+    static bool serialize(auto& vis, const llvm::StringMap<std::uint32_t>& map) {
+        llvm::SmallVector<std::pair<llvm::StringRef, std::uint32_t>> entries;
+        entries.reserve(map.size());
+        for(const auto& entry: map) {
+            entries.emplace_back(entry.getKey(), entry.getValue());
+        }
+        llvm::sort(entries, llvm::less_second{});
+        return codec::encode_value<Config>(vis, entries);
+    }
+
+    template <typename Config>
+    static bool deserialize(auto& vis, llvm::StringMap<std::uint32_t>& map) {
+        type shape;
+        return vis.visit_seq(shape, [&](auto& sv) -> bool {
+            while(sv.has_element()) {
+                std::pair<std::string, std::uint32_t> entry;
+                if(!sv.visit_element(
+                       [&](auto& ev) -> bool { return codec::decode_value<Config>(ev, entry); })) {
+                    return false;
+                }
+                map.try_emplace(entry.first, entry.second);
+            }
+            return true;
+        });
+    }
+};
+
 template <>
 struct repr<std::chrono::milliseconds, codec::fbs::format> {
     using type = std::int64_t;
@@ -72,7 +151,7 @@ namespace clice::index {
 /// regular field and every loader discards blobs with a different value —
 /// including version-less blobs from older builds, which read back as 0.
 /// Bump it whenever a persisted type's reflected layout changes.
-constexpr inline std::uint32_t index_format_version = 2;
+constexpr inline std::uint32_t index_format_version = 3;
 
 /// Serialize a reflected index blob to `os` as a verified-readable
 /// flatbuffer. Encoding only fails on structural impossibilities (e.g. more

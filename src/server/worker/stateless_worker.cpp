@@ -67,7 +67,7 @@ static std::string serialize_preamble_state(CompilationUnit& unit, std::uint32_t
     std::string blob;
     llvm::raw_string_ostream os(blob);
     index::PreambleState::serialize(unit,
-                                    tu_index,
+                                    std::move(tu_index),
                                     links,
                                     inactive.regions,
                                     inactive.open_stack,

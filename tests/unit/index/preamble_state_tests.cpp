@@ -171,6 +171,48 @@ int main() { §(ref)⟦§(ref)foo⟧(); return 0; }
     EXPECT_TRUE(found_relation);
 }
 
+TEST_CASE(MoveConsumedIndex) {
+    // The production path (stateless worker) moves the TUIndex into
+    // serialize; the blob must be complete even though the index is
+    // consumed rather than copied.
+    add_file("foo.h", R"(
+inline void §(def)⟦foo⟧() {}
+)");
+    add_main("main.cpp", R"(
+#include "foo.h"
+int main() { §(ref)⟦foo⟧(); return 0; }
+)");
+    ASSERT_TRUE(compile());
+    tu_index = index::TUIndex::build(*unit);
+    auto foo = hash_of("foo");
+
+    auto blob_path = dir.path("moved.pch.idx");
+    std::error_code ec;
+    llvm::raw_fd_ostream os(blob_path, ec);
+    ASSERT_FALSE(bool(ec));
+    index::PreambleState::serialize(*unit, std::move(tu_index), {}, {}, {}, os);
+    os.close();
+
+    state = index::PreambleState::load(blob_path);
+    ASSERT_TRUE(state != nullptr);
+
+    bool found = false;
+    state->lookup(foo,
+                  RelationKind::Definition,
+                  [&](const index::PreambleState::File& file, const index::Relation& r) {
+                      EXPECT_TRUE(file.path.ends_with("foo.h"));
+                      EXPECT_EQ(dump(r.range), dump(range("def", "foo.h")));
+                      found = true;
+                      return false;
+                  });
+    EXPECT_TRUE(found);
+
+    std::string name;
+    SymbolKind kind;
+    EXPECT_TRUE(state->find_symbol(foo, name, kind));
+    EXPECT_EQ(name, "foo");
+}
+
 TEST_CASE(SymbolTableLookup) {
     add_file("foo.h", R"(
 inline void §(def)⟦foo⟧() {}

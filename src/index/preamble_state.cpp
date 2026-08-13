@@ -15,34 +15,31 @@ namespace clice::index {
 namespace {
 
 /// One file covered by the preamble compilation: its rows plus content and
-/// line starts for position mapping.
-struct PreambleFileEntryRepr {
+/// line starts for position mapping. The rows are moved out of the TUIndex
+/// and the content borrows the compilation's buffers — entries are only
+/// ever encoded, never decoded (queries run on the zero-copy view).
+struct PreambleFileEntry {
     std::uint32_t path_id = 0;
     FileIndex index;
-    std::string content;
+    llvm::StringRef content;
     std::vector<std::uint32_t> line_starts;
-};
-
-struct PreambleSymbolRepr {
-    std::string name;
-    SymbolKind kind;
 };
 
 /// The persisted shape of a `.pch.idx` blob. Queries run on a zero-copy
 /// view of this layout; nothing is deserialized up front.
-struct PreambleStateRepr {
+struct PreambleBlob {
     std::uint32_t format_version = 0;
     std::vector<std::string> paths;
-    std::vector<PreambleFileEntryRepr> files;
-    PreambleFileEntryRepr preamble;
-    llvm::DenseMap<SymbolHash, PreambleSymbolRepr> symbols;
-    std::vector<feature::DocumentLink> links;
-    std::vector<std::uint32_t> inactive_regions;
-    std::vector<std::uint8_t> open_conditionals;
+    std::vector<PreambleFileEntry> files;
+    PreambleFileEntry preamble;
+    SymbolTable symbols;
+    llvm::ArrayRef<feature::DocumentLink> links;
+    llvm::ArrayRef<std::uint32_t> inactive_regions;
+    llvm::ArrayRef<std::uint8_t> open_conditionals;
 };
 
-using StateView = kota::codec::fbs::table_view<PreambleStateRepr>;
-using FileEntryView = kota::codec::fbs::table_view<PreambleFileEntryRepr>;
+using StateView = kota::codec::fbs::table_view<PreambleBlob>;
+using FileEntryView = kota::codec::fbs::table_view<PreambleFileEntry>;
 
 /// The blob was fully verified at load(); per-query views skip that cost.
 StateView root_of(const llvm::MemoryBuffer& buffer) {
@@ -50,10 +47,10 @@ StateView root_of(const llvm::MemoryBuffer& buffer) {
 }
 
 PreambleState::File file_of(kota::codec::fbs::array_view<std::string> paths, FileEntryView entry) {
-    auto line_starts = to_array_ref(entry[&PreambleFileEntryRepr::line_starts]);
+    auto line_starts = to_array_ref(entry[&PreambleFileEntry::line_starts]);
     return PreambleState::File{
-        .path = to_ref(paths[entry[&PreambleFileEntryRepr::path_id]]),
-        .content = to_ref(entry[&PreambleFileEntryRepr::content]),
+        .path = to_ref(paths[entry[&PreambleFileEntry::path_id]]),
+        .content = to_ref(entry[&PreambleFileEntry::content]),
         .line_starts = std::span(line_starts.data(), line_starts.size()),
     };
 }
@@ -61,16 +58,15 @@ PreambleState::File file_of(kota::codec::fbs::array_view<std::string> paths, Fil
 }  // namespace
 
 void PreambleState::serialize(CompilationUnitRef unit,
-                              const TUIndex& index,
+                              TUIndex index,
                               llvm::ArrayRef<feature::DocumentLink> links,
                               llvm::ArrayRef<std::uint32_t> inactive_regions,
                               llvm::ArrayRef<std::uint8_t> open_conditionals,
                               llvm::raw_ostream& os) {
-    PreambleStateRepr repr;
-    repr.format_version = preamble_format_version;
-    repr.paths = index.graph.paths;
+    PreambleBlob blob;
+    blob.format_version = preamble_format_version;
 
-    repr.files.reserve(index.file_indices.size());
+    blob.files.reserve(index.file_indices.size());
     for(auto& [fid, file_index]: index.file_indices) {
         // A file with no include edge is a synthetic buffer (predefines,
         // <command line>): it has no real path to attribute rows to, and
@@ -82,12 +78,13 @@ void PreambleState::serialize(CompilationUnitRef unit,
             continue;
         }
         auto content = unit.file_content(fid);
-        auto& entry = repr.files.emplace_back();
-        entry.path_id = index.graph.path_id(fid);
-        entry.index = file_index;
-        entry.content = content;
-        entry.line_starts =
-            kota::ipc::lsp::build_line_starts(std::string_view(content.data(), content.size()));
+        blob.files.push_back({
+            .path_id = index.graph.path_id(fid),
+            .index = std::move(file_index),
+            .content = content,
+            .line_starts =
+                kota::ipc::lsp::build_line_starts(std::string_view(content.data(), content.size())),
+        });
     }
 
     // The source file is the last path in graph.paths (convention from
@@ -96,21 +93,21 @@ void PreambleState::serialize(CompilationUnitRef unit,
     // PCH was built from — stored so consumers can compare it against the
     // live buffer's prefix before serving these rows.
     auto preamble_text = unit.interested_content();
-    repr.preamble.path_id = static_cast<std::uint32_t>(index.graph.paths.size() - 1);
-    repr.preamble.index = index.main_file_index;
-    repr.preamble.content = preamble_text;
-    repr.preamble.line_starts = kota::ipc::lsp::build_line_starts(
-        std::string_view(preamble_text.data(), preamble_text.size()));
+    blob.preamble = {
+        .path_id = static_cast<std::uint32_t>(index.graph.paths.size() - 1),
+        .index = std::move(index.main_file_index),
+        .content = preamble_text,
+        .line_starts = kota::ipc::lsp::build_line_starts(
+            std::string_view(preamble_text.data(), preamble_text.size())),
+    };
 
-    for(auto& [symbol_id, symbol]: index.symbols) {
-        repr.symbols[symbol_id] = PreambleSymbolRepr{.name = symbol.name, .kind = symbol.kind};
-    }
+    blob.symbols = std::move(index.symbols);
+    blob.paths = std::move(index.graph.paths);
+    blob.links = links;
+    blob.inactive_regions = inactive_regions;
+    blob.open_conditionals = open_conditionals;
 
-    repr.links.assign(links.begin(), links.end());
-    repr.inactive_regions.assign(inactive_regions.begin(), inactive_regions.end());
-    repr.open_conditionals.assign(open_conditionals.begin(), open_conditionals.end());
-
-    serialize_blob(repr, os);
+    serialize_blob(blob, os);
 }
 
 PreambleState::PreambleState(std::unique_ptr<llvm::MemoryBuffer> buffer) :
@@ -128,7 +125,7 @@ std::shared_ptr<PreambleState> PreambleState::load(llvm::StringRef path) {
     // format version load as "missing" (version-less blobs read back 0)
     // and the PCH pair is rebuilt.
     auto root = StateView::from_bytes(blob_bytes((*buffer)->getBuffer()));
-    if(!root.valid() || root[&PreambleStateRepr::format_version] != preamble_format_version) {
+    if(!root.valid() || root[&PreambleBlob::format_version] != preamble_format_version) {
         return nullptr;
     }
 
@@ -139,12 +136,12 @@ void PreambleState::lookup(SymbolHash symbol,
                            RelationKind kind,
                            llvm::function_ref<bool(const File&, const Relation&)> callback) const {
     auto root = root_of(*buffer);
-    auto paths = root[&PreambleStateRepr::paths];
-    auto files = root[&PreambleStateRepr::files];
+    auto paths = root[&PreambleBlob::paths];
+    auto files = root[&PreambleBlob::files];
 
     for(std::size_t i = 0; i < files.size(); ++i) {
         auto entry = files[i];
-        auto relations = entry[&PreambleFileEntryRepr::index][&FileIndex::relations];
+        auto relations = entry[&PreambleFileEntry::index][&FileIndex::relations];
         auto found = relations.find(symbol);
         if(!found) {
             continue;
@@ -152,7 +149,7 @@ void PreambleState::lookup(SymbolHash symbol,
 
         // The verifier checks structure, not cross-references: a corrupt
         // path_id must not attribute rows to an arbitrary path.
-        if(entry[&PreambleFileEntryRepr::path_id] >= paths.size()) {
+        if(entry[&PreambleFileEntry::path_id] >= paths.size()) {
             continue;
         }
         auto file = file_of(paths, entry);
@@ -171,7 +168,7 @@ void PreambleState::lookup(SymbolHash symbol,
 
 llvm::StringRef PreambleState::source_path() const {
     auto root = root_of(*buffer);
-    auto paths = root[&PreambleStateRepr::paths];
+    auto paths = root[&PreambleBlob::paths];
     if(paths.empty()) {
         return {};
     }
@@ -181,14 +178,14 @@ llvm::StringRef PreambleState::source_path() const {
 
 llvm::StringRef PreambleState::preamble_content() const {
     auto root = root_of(*buffer);
-    return to_ref(root[&PreambleStateRepr::preamble][&PreambleFileEntryRepr::content]);
+    return to_ref(root[&PreambleBlob::preamble][&PreambleFileEntry::content]);
 }
 
 void PreambleState::lookup_preamble(std::uint32_t offset,
                                     llvm::function_ref<bool(const Occurrence&)> callback) const {
     auto root = root_of(*buffer);
     auto occurrences =
-        root[&PreambleStateRepr::preamble][&PreambleFileEntryRepr::index][&FileIndex::occurrences];
+        root[&PreambleBlob::preamble][&PreambleFileEntry::index][&FileIndex::occurrences];
 
     scan_occurrences_at(
         occurrences.size(),
@@ -202,7 +199,7 @@ void PreambleState::lookup_preamble(SymbolHash symbol,
                                     llvm::function_ref<bool(const Relation&)> callback) const {
     auto root = root_of(*buffer);
     auto relations =
-        root[&PreambleStateRepr::preamble][&PreambleFileEntryRepr::index][&FileIndex::relations];
+        root[&PreambleBlob::preamble][&PreambleFileEntry::index][&FileIndex::relations];
     auto found = relations.find(symbol);
     if(!found) {
         return;
@@ -221,20 +218,20 @@ void PreambleState::lookup_preamble(SymbolHash symbol,
 
 bool PreambleState::find_symbol(SymbolHash hash, std::string& name, SymbolKind& kind) const {
     auto root = root_of(*buffer);
-    auto found = root[&PreambleStateRepr::symbols].find(hash);
+    auto found = root[&PreambleBlob::symbols].find(hash);
     if(!found) {
         return false;
     }
 
     auto symbol = found->get<1>();
-    name = std::string(symbol[&PreambleSymbolRepr::name]);
-    kind = SymbolKind(symbol[&PreambleSymbolRepr::kind]);
+    name = std::string(symbol[&Symbol::name]);
+    kind = SymbolKind(symbol[&Symbol::kind]);
     return true;
 }
 
 std::vector<feature::DocumentLink> PreambleState::links() const {
     auto root = root_of(*buffer);
-    auto entries = root[&PreambleStateRepr::links];
+    auto entries = root[&PreambleBlob::links];
 
     std::vector<feature::DocumentLink> links;
     links.reserve(entries.size());
@@ -250,12 +247,12 @@ std::vector<feature::DocumentLink> PreambleState::links() const {
 
 llvm::ArrayRef<std::uint32_t> PreambleState::inactive_regions() const {
     auto root = root_of(*buffer);
-    return to_array_ref(root[&PreambleStateRepr::inactive_regions]);
+    return to_array_ref(root[&PreambleBlob::inactive_regions]);
 }
 
 llvm::ArrayRef<std::uint8_t> PreambleState::open_conditionals() const {
     auto root = root_of(*buffer);
-    return to_array_ref(root[&PreambleStateRepr::open_conditionals]);
+    return to_array_ref(root[&PreambleBlob::open_conditionals]);
 }
 
 }  // namespace clice::index
