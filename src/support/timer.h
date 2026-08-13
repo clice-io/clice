@@ -13,6 +13,15 @@ struct ScopedTimer {
                    std::chrono::steady_clock::now() - start)
             .count();
     }
+
+    /// Fractional milliseconds for sub-millisecond stages (feature compute,
+    /// IPC hops); perf lines keep the `_ms` suffix convention.
+    double ms_f() const {
+        return std::chrono::duration_cast<std::chrono::microseconds>(
+                   std::chrono::steady_clock::now() - start)
+                   .count() /
+               1000.0;
+    }
 };
 
 }  // namespace clice

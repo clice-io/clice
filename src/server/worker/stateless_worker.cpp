@@ -128,6 +128,7 @@ static worker::BuildResult handle_build_pch(const worker::BuildParams& params,
 
     PCHInfo pch_info;
     auto unit = compile(cp, pch_info);
+    auto compile_ms = timer.ms();
     // A cancelled parse reports !completed(); the extra check catches a
     // cancellation landing between the parse and the serialization, whose
     // blob nobody will read. The tmp file is removed like any failed build.
@@ -139,12 +140,16 @@ static worker::BuildResult handle_build_pch(const worker::BuildParams& params,
         errors = collect_errors(unit);
 
     std::string blob;
+    ScopedTimer index_timer;
     if(success) {
         blob = serialize_preamble_state(unit, params.preamble_bound);
     }
+    auto index_ms = index_timer.ms();
 
     // Destroy CompilationUnit to flush PCH to disk.
+    ScopedTimer flush_timer;
     unit = CompilationUnit(nullptr);
+    auto flush_ms = flush_timer.ms();
 
     // Write the blob strictly after the PCH flush: the CacheStore's
     // restart adoption validates a pair by "aux not older than primary"
@@ -163,7 +168,13 @@ static worker::BuildResult handle_build_pch(const worker::BuildParams& params,
     }
 
     if(success) {
-        LOG_INFO("BuildPCH done: file={}, output={}, {}ms", params.file, tmp_path, timer.ms());
+        LOG_PERF("build",
+                 "kind=pch file={} compile_ms={} preamble_index_ms={} flush_ms={} total_ms={}",
+                 params.file,
+                 compile_ms,
+                 index_ms,
+                 flush_ms,
+                 timer.ms());
         worker::BuildResult result;
         result.success = true;
         result.output_path = tmp_path;
@@ -209,6 +220,7 @@ static worker::BuildResult handle_build_pcm(const worker::BuildParams& params,
 
     PCMInfo pcm_info;
     auto unit = compile(cp, pcm_info);
+    auto compile_ms = timer.ms();
     bool success = unit.completed() && !stop->load(std::memory_order_relaxed);
     auto build_at = unit.build_at().count();
 
@@ -220,10 +232,17 @@ static worker::BuildResult handle_build_pcm(const worker::BuildParams& params,
     // buffer-derived artifact — module units are ordinary disk files with
     // CDB entries, so their symbols should flow through the normal
     // background-indexing path (no per-blob pair needed).
+    ScopedTimer flush_timer;
     unit = CompilationUnit(nullptr);
+    auto flush_ms = flush_timer.ms();
 
     if(success) {
-        LOG_INFO("BuildPCM done: module={}, {}ms", params.module_name, timer.ms());
+        LOG_PERF("build",
+                 "kind=pcm module={} compile_ms={} flush_ms={} total_ms={}",
+                 params.module_name,
+                 compile_ms,
+                 flush_ms,
+                 timer.ms());
         worker::BuildResult result;
         result.success = true;
         result.output_path = tmp_path;
@@ -257,6 +276,7 @@ static worker::BuildResult handle_index(const worker::BuildParams& params,
     cp.stop = stop;
 
     auto unit = compile(cp);
+    auto compile_ms = timer.ms();
     if(!unit.completed()) {
         LOG_WARN("Index failed: file={}, {}ms", params.file, timer.ms());
         return {false, "Index compilation failed"};
@@ -267,14 +287,25 @@ static worker::BuildResult handle_index(const worker::BuildParams& params,
     if(stop->load(std::memory_order_relaxed)) {
         return {false, "Index cancelled"};
     }
+    ScopedTimer index_timer;
     auto tu_index = index::TUIndex::build(unit);
+    auto index_ms = index_timer.ms();
+
+    ScopedTimer serialize_timer;
     std::string serialized;
     llvm::raw_string_ostream os(serialized);
     tu_index.serialize(os);
+    auto serialize_ms = serialize_timer.ms();
 
-    LOG_INFO("Index done: file={}, {} symbols, {}ms",
+    LOG_PERF("build",
+             "kind=index file={} symbols={} bytes={} compile_ms={} index_ms={} serialize_ms={} "
+             "total_ms={}",
              params.file,
              tu_index.symbols.size(),
+             serialized.size(),
+             compile_ms,
+             index_ms,
+             serialize_ms,
              timer.ms());
     worker::BuildResult result;
     result.success = true;

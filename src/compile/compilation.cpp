@@ -282,7 +282,7 @@ CompilationStatus CompilationUnitRef::Self::run_clang(
     }
 
     std::optional<clang::syntax::TokenCollector> token_collector;
-    if(!instance.hasCodeCompletionConsumer()) {
+    if(params.collect_tokens && !instance.hasCodeCompletionConsumer()) {
         /// It is not necessary to collect tokens if we are running code completion.
         /// And in fact will cause assertion failure.
         token_collector.emplace(instance.getPreprocessor());

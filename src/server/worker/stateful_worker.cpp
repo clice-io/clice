@@ -124,9 +124,12 @@ class StatefulWorker {
         auto doc = it->second;
         touch_lru(path);
 
+        ScopedTimer timer;
         co_await doc->ast_ready.wait();
         co_await doc->strand.lock();
         StrandGuard strand_guard{doc->strand};
+        auto acquire_ms = timer.ms_f();
+        double compute_ms = 0;
 
         // The frame stays alive until fn returns even when the handler is
         // cancelled mid-await, so the by-reference captures are safe; the
@@ -140,10 +143,19 @@ class StatefulWorker {
                 }
                 if(!doc->has_ast || (!doc->unit.completed() && !doc->unit.fatal_error()))
                     return std::move(missing);
-                return fn(*doc);
+                ScopedTimer compute_timer;
+                auto value = fn(*doc);
+                compute_ms = compute_timer.ms_f();
+                return value;
             },
             [&] { cancelled.store(true, std::memory_order_relaxed); });
 
+        LOG_PERF("query",
+                 "path={} acquire_ms={:.2f} compute_ms={:.2f} total_ms={:.2f}",
+                 path.str(),
+                 acquire_ms,
+                 compute_ms,
+                 timer.ms_f());
         co_return result.value();
     }
 

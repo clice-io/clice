@@ -71,6 +71,10 @@ struct CompilationParams {
     /// Whether to run clang-tidy.
     bool clang_tidy = false;
 
+    /// Whether to collect the syntax::TokenBuffer during the run. Features
+    /// need it; measurement paths turn it off to isolate its cost.
+    bool collect_tokens = true;
+
     /// Output file path.
     llvm::SmallString<128> output_file;
 

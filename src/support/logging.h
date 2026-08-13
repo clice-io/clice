@@ -65,9 +65,15 @@
 /// "[perf:<topic>] key=value ..." at info level, e.g.
 /// `grep 'perf:index' master.log`. Topics in use: "index" (per-file and
 /// phase timings), "cache" (hit/miss with reason), "startup" (phase
-/// durations), "request" (per-request latency: wait_ms = time until a
-/// worker was ready, total_ms = end-to-end). Use stable key=value pairs and
-/// `_ms` suffixes for durations — scripts aggregate these lines.
+/// durations), "request" (per-request latency on the master: wait_ms =
+/// time until a worker was ready, total_ms = end-to-end), "query"
+/// (worker-side share of a request: acquire_ms = AST wait + strand lock,
+/// compute_ms = the feature call itself), "build" (stateless-worker build
+/// tasks: kind=pch|pcm|index with per-stage splits — compile_ms, and per
+/// kind preamble_index_ms/flush_ms or index_ms/serialize_ms),
+/// "index_query" (master-side index lookups: kind=relations|search). Use
+/// stable key=value pairs and `_ms` suffixes for durations — scripts
+/// aggregate these lines (tools/bench/perf_report.ts).
 ///
 /// ## Process ownership
 /// The master logs to <logging_dir>/<session>/master.log and mirrors to

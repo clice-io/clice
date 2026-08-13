@@ -30,7 +30,13 @@ export interface CDBOptions {
 }
 
 export class Workspace {
-    constructor(readonly root: string) {}
+    // Not a constructor parameter property: those don't survive Node's
+    // strip-only TS mode, and bench.ts runs this file under plain node.
+    readonly root: string;
+
+    constructor(root: string) {
+        this.root = root;
+    }
 
     /// A fresh temp-directory workspace. Removal is the creator's business —
     /// the session fixture registers it for teardown.

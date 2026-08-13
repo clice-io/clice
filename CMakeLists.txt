@@ -234,13 +234,15 @@ if(CLICE_ENABLE_TEST)
 endif()
 
 if(CLICE_ENABLE_BENCHMARK)
-    add_executable(scan_benchmark
-        "${PROJECT_SOURCE_DIR}/benchmarks/scan_benchmark.cpp"
-    )
-    target_include_directories(scan_benchmark PRIVATE
-        "${PROJECT_SOURCE_DIR}/src"
-    )
-    target_link_libraries(scan_benchmark PRIVATE clice::core kota::deco)
+    foreach(benchmark scan_benchmark pipeline_benchmark pch_chain_benchmark)
+        add_executable(${benchmark}
+            "${PROJECT_SOURCE_DIR}/benchmarks/${benchmark}.cpp"
+        )
+        target_include_directories(${benchmark} PRIVATE
+            "${PROJECT_SOURCE_DIR}/src"
+        )
+        target_link_libraries(${benchmark} PRIVATE clice::core kota::deco)
+    endforeach()
 endif()
 
 include("${PROJECT_SOURCE_DIR}/cmake/release.cmake")

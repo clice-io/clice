@@ -16,10 +16,13 @@
 #include "server/state/session.h"
 #include "server/state/session_store.h"
 #include "support/filesystem.h"
+#include "support/logging.h"
+#include "support/timer.h"
 
 #include "kota/ipc/lsp/position.h"
 #include "kota/ipc/lsp/protocol.h"
 #include "kota/ipc/lsp/uri.h"
+#include "kota/meta/enum.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/Path.h"
@@ -279,6 +282,7 @@ std::vector<protocol::Location> IndexQuery::query_relations(llvm::StringRef path
                                                             const protocol::Position& position,
                                                             RelationKind kind,
                                                             Session* session) {
+    ScopedTimer timer;
     auto hit = resolve_cursor(path, position, session);
     if(hit.hash == 0)
         return {};
@@ -358,6 +362,12 @@ std::vector<protocol::Location> IndexQuery::query_relations(llvm::StringRef path
         });
 
     dedup_locations(locations);
+    LOG_PERF("index_query",
+             "kind=relations rel={} path={} results={} elapsed_ms={:.2f}",
+             kota::meta::enum_name(static_cast<RelationKind::Kind>(kind), "Invalid"),
+             path,
+             locations.size(),
+             timer.ms_f());
     return locations;
 }
 
@@ -800,6 +810,7 @@ std::vector<protocol::TypeHierarchyItem> IndexQuery::find_subtypes(index::Symbol
 
 std::vector<protocol::SymbolInformation> IndexQuery::search_symbols(llvm::StringRef query,
                                                                     std::size_t max_results) {
+    ScopedTimer timer;
     std::string query_lower = query.lower();
 
     auto is_indexable_kind = [](SymbolKind sk) {
@@ -866,6 +877,11 @@ std::vector<protocol::SymbolInformation> IndexQuery::search_symbols(llvm::String
         }
         return true;
     });
+    LOG_PERF("index_query",
+             "kind=search query={} results={} elapsed_ms={:.2f}",
+             query,
+             results.size(),
+             timer.ms_f());
     return results;
 }
 
