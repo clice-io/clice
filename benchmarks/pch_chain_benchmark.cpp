@@ -277,17 +277,26 @@ PCHBuildResult build_one_pch(const std::string& header_text,
     return result;
 }
 
-/// Verify a PCH works by syntax-checking a test file against it. Bound 0:
+std::string make_heavy_source(const std::string& preamble,
+                              const std::vector<std::string>& headers,
+                              std::size_t count);
+
+/// Verify a PCH by compiling code that uses representative declarations
+/// from every selected header WITHOUT re-including any of them (the heavy
+/// source over an empty preamble), so a loadable but incomplete PCH — a
+/// chain that dropped earlier links — fails instead of passing. Bound 0:
 /// the verify source does not embed the PCH's preamble text, so no bytes
 /// of it may be skipped.
-bool verify_pch(const std::string& pch_path) {
+bool verify_pch(const std::string& pch_path,
+                const std::vector<std::string>& headers,
+                std::size_t count) {
     CompilationParams cp;
     cp.kind = CompilationKind::Content;
 
     auto file = virtual_path("pch-verify.cpp");
     auto args = make_source_args(file);
     cp.arguments = args.argv;
-    cp.add_remapped_file(file, "static_assert(sizeof(int) > 0);\nint main() { return 0; }\n");
+    cp.add_remapped_file(file, make_heavy_source("", headers, count));
     cp.pch = {pch_path, 0};
 
     auto unit = compile(cp);
@@ -344,7 +353,8 @@ void bench_monolithic(const std::vector<std::string>& headers, std::size_t count
         times.push_back(result.ms);
         if(r == 0) {
             std::println("  Size: {} KB", result.size_bytes / 1024);
-            std::println("  Correctness: {}", verify_pch(pch_path) ? "PASS" : "FAIL");
+            std::println("  Correctness: {}",
+                         verify_pch(pch_path, headers, count) ? "PASS" : "FAIL");
         }
     }
 
@@ -439,7 +449,7 @@ void bench_chained(const std::vector<std::string>& headers, std::size_t count, i
 
     std::println("\n  Chain result: {} links, total {:.1f}ms", links.size(), total_ms);
     std::println("  Final PCH correctness: {}",
-                 verify_pch(links.back().pch_path) ? "PASS" : "FAIL");
+                 verify_pch(links.back().pch_path, headers, count) ? "PASS" : "FAIL");
 
     // Additional runs for timing statistics.
     if(runs > 1) {
@@ -784,7 +794,7 @@ void bench_end_to_end(const std::vector<std::string>& headers, std::size_t count
         return;
     }
     std::println("    Build: {:.1f}ms", mono_result.ms);
-    std::println("    Verify: {}", verify_pch(mono_pch) ? "PASS" : "FAIL");
+    std::println("    Verify: {}", verify_pch(mono_pch, headers, count) ? "PASS" : "FAIL");
 
     // Phase 2: background — split into a chain for future incremental use;
     // the user keeps editing and never waits for this.
@@ -810,7 +820,8 @@ void bench_end_to_end(const std::vector<std::string>& headers, std::size_t count
     double split_ms = std::chrono::duration<double, std::milli>(split_end - split_start).count();
 
     std::println("    Split into {} links: {:.1f}ms", chain_pchs.size(), split_ms);
-    std::println("    Verify final link: {}", verify_pch(chain_pchs.back()) ? "PASS" : "FAIL");
+    std::println("    Verify final link: {}",
+                 verify_pch(chain_pchs.back(), headers, count) ? "PASS" : "FAIL");
 
     // Phase 3: user adds a new #include at the preamble end. <cinttypes>
     // is deliberately outside ALL_HEADERS: appending a header already in

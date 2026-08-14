@@ -33,7 +33,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { parseArgs } from "node:util";
 import { fileURLToPath } from "node:url";
-import { CliceClient, logFiles } from "../client/client.ts";
+import { CliceClient, logFiles, withTimeout } from "../client/client.ts";
 import { Workspace } from "../client/workspace.ts";
 import { computeStats, parsePerfLines, summarize, type Stats } from "./perf.ts";
 
@@ -339,8 +339,8 @@ class Bench {
     }
 }
 
-/// clice runs `serve` and discovers the CDB itself; clangd needs the CDB
-/// directory spelled out.
+/// clice takes the CDB via initialization options; clangd needs the CDB
+/// directory spelled out on the command line.
 function serverArgs(opts: Options): string[] {
     return opts.server === "clice"
         ? ["serve"]
@@ -352,9 +352,14 @@ function serverArgs(opts: Options): string[] {
 /// run the server's real defaults (stateful 2, stateless cores/2, tracker
 /// 3s/30s, from src/server/state/config.h) including the background
 /// activity those loops generate.
-function initializationOptions(): Record<string, unknown> {
+function initializationOptions(opts: Options): Record<string, unknown> {
     return {
         project: {
+            // Pin clice to the CDB selected for the comparison: a workspace
+            // clice.toml may configure compile_commands_paths elsewhere,
+            // while the clangd run always receives opts.cdbDir — the A/B
+            // must open the file under the same compilation command.
+            compile_commands_paths: [opts.cdbDir],
             stateful_worker_count: 2,
             stateless_worker_count: Math.max(Math.floor(os.cpus().length / 2), 2),
         },
@@ -368,7 +373,7 @@ function initializationOptions(): Record<string, unknown> {
 async function startServer(opts: Options): Promise<CliceClient> {
     const client = CliceClient.start(opts.binary, { args: serverArgs(opts) });
     await client.initialize(new Workspace(opts.workspace), {
-        initializationOptions: initializationOptions(),
+        initializationOptions: initializationOptions(opts),
     });
     return client;
 }
@@ -393,6 +398,13 @@ async function shutdownServer(client: CliceClient, opts: Options): Promise<void>
 }
 
 /// Server start → initialize response → first diagnostics of the main file.
+///
+/// The hover poke that triggers compilation on clice stays off the timed
+/// path: diagnostics publish when compilation settles and the hover is
+/// computed afterward, so awaiting its response first (as openAndWait
+/// does) would fold hover computation into every sample. The sample ends
+/// at the diagnostics notification; the poke is drained after the clock
+/// stops.
 async function runStartScenario(opts: Options, file: string): Promise<ScenarioResult> {
     const bench = new Bench(opts);
 
@@ -400,7 +412,14 @@ async function runStartScenario(opts: Options, file: string): Promise<ScenarioRe
     const client = await startServer(opts);
     bench.record("initialize", nowMs() - start);
 
-    await bench.measure("open_to_diagnostics", () => client.openAndWait(file, 300_000));
+    let poke: Promise<unknown> = Promise.resolve();
+    await bench.measure("open_to_diagnostics", async () => {
+        const [uri] = client.open(file);
+        const arrived = client.armDiagnostics(uri);
+        poke = client.hoverAt(uri, 0, 0);
+        await withTimeout(arrived, 300_000, `diagnostics ${uri}`);
+    });
+    await poke;
 
     const result = bench.result(client);
     await shutdownServer(client, opts);
@@ -437,10 +456,16 @@ async function runEditLoop(opts: Options, file: string): Promise<ScenarioResult>
 
     for (let i = 1; i <= opts.edits; i += 1) {
         const comment = `// bench edit ${i}`;
+        // See runStartScenario: the sample ends at the diagnostics
+        // notification, with the triggering hover drained off the clock.
+        let poke: Promise<unknown> = Promise.resolve();
         await bench.measure("edit_to_diagnostics", async () => {
+            const arrived = client.armDiagnostics(uri);
             client.changeRange(uri, i, { start: end, end }, `\n${comment}`);
-            await client.waitForRecompile(uri, 300_000);
+            poke = client.hoverAt(uri, 0, 0);
+            await withTimeout(arrived, 300_000, `diagnostics ${uri}`);
         });
+        await poke;
         end = { line: end.line + 1, character: comment.length };
     }
 

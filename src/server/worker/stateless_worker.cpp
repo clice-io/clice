@@ -301,15 +301,25 @@ static worker::BuildResult handle_index(const worker::BuildParams& params,
     tu_index.serialize(os);
     auto serialize_ms = serialize_timer.ms();
 
+    // AST teardown for a large TU is material work that belongs to this
+    // task: sample the total only after the unit and index are gone, so
+    // the logged span covers everything that blocks the worker.
+    auto symbol_count = tu_index.symbols.size();
+    ScopedTimer teardown_timer;
+    tu_index = index::TUIndex();
+    unit = CompilationUnit(nullptr);
+    auto teardown_ms = teardown_timer.ms();
+
     LOG_PERF("build",
              "kind=index file={} symbols={} bytes={} compile_ms={} index_ms={} serialize_ms={} "
-             "total_ms={}",
+             "teardown_ms={} total_ms={}",
              params.file,
-             tu_index.symbols.size(),
+             symbol_count,
              serialized.size(),
              compile_ms,
              index_ms,
              serialize_ms,
+             teardown_ms,
              timer.ms());
     worker::BuildResult result;
     result.success = true;
