@@ -360,8 +360,14 @@ function initializationOptions(opts: Options): Record<string, unknown> {
             // while the clangd run always receives opts.cdbDir — the A/B
             // must open the file under the same compilation command.
             compile_commands_paths: [opts.cdbDir],
+            // Pin logs to where result() reads them (logFiles searches
+            // <workspace>/.clice/logs); a clice.toml logging_dir would
+            // otherwise send the worker perf lines elsewhere.
+            logging_dir: path.join(opts.workspace, ".clice", "logs"),
             stateful_worker_count: 2,
-            stateless_worker_count: Math.max(Math.floor(os.cpus().length / 2), 2),
+            // availableParallelism respects cpusets and container CPU
+            // quotas; os.cpus() is the host's full list.
+            stateless_worker_count: Math.max(Math.floor(os.availableParallelism() / 2), 2),
         },
         tracker: {
             cdb_poll_seconds: 3,
