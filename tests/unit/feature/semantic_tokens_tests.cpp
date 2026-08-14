@@ -162,9 +162,64 @@ TEST_CASE(PreambleDefineUnderPch) {
 
     EXPECT_TOKEN("d1", SymbolKind::Directive);
     EXPECT_TOKEN("m0", SymbolKind::Macro);
-    EXPECT_TOKEN("k0", SymbolKind::Keyword);
+    EXPECT_TOKEN("k0", SymbolKind::Primitive);
     EXPECT_TOKEN("k1", SymbolKind::Keyword);
     EXPECT_TOKEN("c0", SymbolKind::Comment);
+}
+
+TEST_CASE(PrimitiveKeywordClassification) {
+    run_utf8(R"cpp(
+§(boolean)⟦bool⟧ boolean = true;
+§(narrow)⟦char⟧ narrow = 'a';
+§(wide)⟦wchar_t⟧ wide = L'a';
+§(utf8)⟦char8_t⟧ utf8 = u8'a';
+§(utf16)⟦char16_t⟧ utf16 = u'a';
+§(utf32)⟦char32_t⟧ utf32 = U'a';
+
+§(short_integer)⟦short⟧ short_integer = 0;
+§(signed_integer)⟦signed⟧ signed_integer = 0;
+§(unsigned_integer)⟦unsigned⟧ §(long_integer)⟦long⟧ §(long_long_integer)⟦long⟧ long_integer = 0;
+§(integer)⟦int⟧ integer = 0;
+§(single_precision)⟦float⟧ single_precision = 0.5f;
+§(double_precision)⟦double⟧ double_precision = 0.5;
+§(act)⟦void⟧ act();
+
+§(bit_integer)⟦_BitInt⟧(17) bit_integer = 0;
+
+§(deduced)⟦auto⟧ deduced = integer;
+using Deduced = §(decltype)⟦decltype⟧(deduced);
+
+void control_flow() {
+    §(if)⟦if⟧(boolean) {
+        return;
+    }
+}
+)cpp");
+
+    for(auto name: {
+            "boolean",
+            "narrow",
+            "wide",
+            "utf8",
+            "utf16",
+            "utf32",
+            "short_integer",
+            "signed_integer",
+            "unsigned_integer",
+            "long_integer",
+            "long_long_integer",
+            "integer",
+            "single_precision",
+            "double_precision",
+            "act",
+            "bit_integer",
+        }) {
+        EXPECT_TOKEN(name, SymbolKind::Primitive);
+    }
+
+    EXPECT_TOKEN("deduced", SymbolKind::Keyword);
+    EXPECT_TOKEN("decltype", SymbolKind::Keyword);
+    EXPECT_TOKEN("if", SymbolKind::Keyword);
 }
 
 TEST_CASE(ModuleDeclarationUnderPch) {

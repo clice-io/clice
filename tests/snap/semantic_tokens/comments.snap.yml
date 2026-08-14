@@ -15,11 +15,11 @@ input_file: comments.cpp
 - { loc: "11:0", text: " * spanning several lines", kind: comment }
 - { loc: "12:0", text: " */", kind: comment }
 - { loc: "13:0", text: "/// a doc comment", kind: comment }
-- { loc: "14:0", text: "int", kind: keyword }
+- { loc: "14:0", text: "int", kind: primitive }
 - { loc: "14:4", text: "after_comments", kind: variable, modifiers: [definition] }
 - { loc: "14:21", text: "0", kind: number }
 - { loc: "16:0", text: "/* first", kind: comment }
 - { loc: "17:0", text: "second */", kind: comment }
-- { loc: "17:10", text: "int", kind: keyword }
+- { loc: "17:10", text: "int", kind: primitive }
 - { loc: "17:14", text: "after_block", kind: variable, modifiers: [definition] }
 - { loc: "17:28", text: "1", kind: number }

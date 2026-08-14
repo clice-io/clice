@@ -146,7 +146,7 @@
 
 ### 额外 Token 类型
 
-- [ ] Primitive token 类型用于内置类型（`int`、`float`、`void` 等）
+- [x] Primitive token 类型用于内置类型（`int`、`float`、`void` 等）
 - [ ] Bracket token 类型用于匹配的括号对（`[]`、`()`、`{}`、`<>`）
 
 ## Token 修饰符

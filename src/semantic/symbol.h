@@ -4,7 +4,6 @@
 #include <string>
 
 #include "clang/AST/Decl.h"
-#include "clang/Basic/TokenKinds.h"
 
 namespace clice {
 
@@ -49,6 +48,7 @@ struct SymbolKind {
         Brace,           ///> `{` and `}`.
         Angle,           ///> `<` and `>`.
         Conflict,        ///> This token have multiple kinds.
+        Primitive,       ///< C/C++ built-in primitive type keyword.
         Invalid,
     };
 
@@ -71,8 +71,6 @@ struct SymbolKind {
     }
 
     static SymbolKind from(const clang::Decl* decl);
-
-    static SymbolKind from(const clang::tok::TokenKind kind);
 
 private:
     Kind kind_value = Invalid;

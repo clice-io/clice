@@ -14,6 +14,7 @@
 #include "llvm/ADT/DenseMap.h"
 #include "clang/AST/Attr.h"
 #include "clang/AST/DeclObjC.h"
+#include "clang/Basic/TokenKinds.h"
 
 namespace clice::feature {
 
@@ -325,16 +326,45 @@ private:
 
         switch(token.kind()) {
             case clang::tok::numeric_constant: lexical.kind = SymbolKind::Number; break;
+
+            /// Character literals
             case clang::tok::char_constant:
             case clang::tok::wide_char_constant:
             case clang::tok::utf8_char_constant:
             case clang::tok::utf16_char_constant:
             case clang::tok::utf32_char_constant: lexical.kind = SymbolKind::Character; break;
+
+            /// String literals
             case clang::tok::string_literal:
             case clang::tok::wide_string_literal:
             case clang::tok::utf8_string_literal:
             case clang::tok::utf16_string_literal:
             case clang::tok::utf32_string_literal: lexical.kind = SymbolKind::String; break;
+
+            /// Standard C and C++ fundamental types.
+            case clang::tok::kw_bool:
+            case clang::tok::kw_char:
+            case clang::tok::kw_wchar_t:
+            case clang::tok::kw_char8_t:
+            case clang::tok::kw_char16_t:
+            case clang::tok::kw_char32_t:
+            case clang::tok::kw_double:
+            case clang::tok::kw_float:
+            case clang::tok::kw_int:
+            case clang::tok::kw_long:
+            case clang::tok::kw_short:
+            case clang::tok::kw_signed:
+            case clang::tok::kw_unsigned:
+            case clang::tok::kw_void:
+            case clang::tok::kw__BitInt:
+            case clang::tok::kw__Bool:
+            case clang::tok::kw__Complex:
+            case clang::tok::kw__Decimal128:
+            case clang::tok::kw__Decimal32:
+            case clang::tok::kw__Decimal64:
+            case clang::tok::kw__Imaginary: lexical.kind = SymbolKind::Primitive; break;
+
+            /// PP directive hash
             case clang::tok::hash: {
                 if(directive_context == DirectiveContext::None) {
                     lexical.kind = SymbolKind::Directive;

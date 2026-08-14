@@ -2,7 +2,7 @@
 ///
 /// ## Primitive token type — a distinct kind for built-in types instead of plain `keyword`
 ///
-/// - status: unsupported
+/// - status: supported
 /// - order: 9
 
 int number = 0;

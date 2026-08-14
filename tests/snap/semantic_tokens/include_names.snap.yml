@@ -15,6 +15,6 @@ input_file: include_names.cpp
 - { loc: "9:0", text: "#", kind: directive }
 - { loc: "9:2", text: "include", kind: directive }
 - { loc: "9:10", text: "\"inc/angled.h\"", kind: header }
-- { loc: "11:0", text: "int", kind: keyword }
+- { loc: "11:0", text: "int", kind: primitive }
 - { loc: "11:4", text: "after_includes", kind: variable, modifiers: [definition] }
 - { loc: "11:21", text: "0", kind: number }

@@ -14,12 +14,12 @@ input_file: declaration_tokens.cpp
 - { loc: "6:24", text: "Green", kind: enumMember, modifiers: [definition, readonly] }
 - { loc: "8:0", text: "struct", kind: keyword }
 - { loc: "8:7", text: "Shape", kind: struct, modifiers: [definition] }
-- { loc: "9:4", text: "int", kind: keyword }
+- { loc: "9:4", text: "int", kind: primitive }
 - { loc: "9:8", text: "sides", kind: field, modifiers: [definition] }
-- { loc: "12:0", text: "int", kind: keyword }
+- { loc: "12:0", text: "int", kind: primitive }
 - { loc: "12:4", text: "area", kind: function, modifiers: [declaration] }
-- { loc: "12:9", text: "int", kind: keyword }
+- { loc: "12:9", text: "int", kind: primitive }
 - { loc: "12:13", text: "width", kind: parameter, modifiers: [definition] }
-- { loc: "12:20", text: "int", kind: keyword }
+- { loc: "12:20", text: "int", kind: primitive }
 - { loc: "12:24", text: "height", kind: parameter, modifiers: [definition] }
 - { loc: "14:3", text: "// namespace demo", kind: comment }

@@ -173,7 +173,7 @@ Kinds derived from the token stream itself, independent of the AST.
 
   </details>
 
-- [ ] Primitive token type — a distinct kind for built-in types instead of plain `keyword`
+- [x] Primitive token type — a distinct kind for built-in types instead of plain `keyword`
 
   <details>
   <summary>Example</summary>

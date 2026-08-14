@@ -14,6 +14,6 @@ input_file: module_partition.cpp
 - { loc: "7:19", text: "core", kind: module }
 - { loc: "7:24", text: "part", kind: module }
 - { loc: "9:0", text: "export", kind: keyword }
-- { loc: "9:7", text: "int", kind: keyword }
+- { loc: "9:7", text: "int", kind: primitive }
 - { loc: "9:11", text: "partition_value", kind: variable, modifiers: [definition] }
 - { loc: "9:29", text: "1", kind: number }
