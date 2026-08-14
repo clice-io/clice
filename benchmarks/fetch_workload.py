@@ -33,20 +33,39 @@ def head_commit(root: Path) -> str | None:
     return result.stdout.strip() if result.returncode == 0 else None
 
 
+def tracked_files_dirty(root: Path) -> bool:
+    """Untracked files are invisible here on purpose: the configure step
+    always leaves build output (including the CDB) untracked in the
+    checkout, so only tracked-file modifications are detectable drift."""
+    result = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=no"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+    )
+    return result.returncode != 0 or result.stdout.strip() != ""
+
+
 def checkout(root: Path, workload: dict) -> bool:
     """Materialize the pinned ref; returns True when the tree changed.
 
     The marker file records which ref+commit a completed checkout
     produced: a fetch that died halfway, a ref bumped in workloads.json,
     or a checkout moved by hand all fail the comparison and are redone.
+    A matching marker with locally modified tracked files is hard-reset —
+    edits must not leak into a run the script reports as pinned.
     """
     marker = root / ".git" / "workload-ref"
     if (root / ".git").exists():
         head = head_commit(root)
         if head is not None and marker.exists():
             if marker.read_text() == f"{workload['ref']} {head}":
-                print(f"{root} already at {workload['ref']}")
-                return False
+                if not tracked_files_dirty(root):
+                    print(f"{root} already at {workload['ref']}")
+                    return False
+                print(f"{root} has local modifications; resetting")
+                run(["git", "reset", "--hard", "--quiet", "HEAD"], cwd=root)
+                return True
 
     root.mkdir(parents=True, exist_ok=True)
     run(["git", "init", "--quiet"], cwd=root)

@@ -348,6 +348,7 @@ void bench_monolithic(const std::vector<std::string>& headers, std::size_t count
     }
 
     if(!times.empty()) {
+        std::ranges::sort(times);
         double mean =
             std::accumulate(times.begin(), times.end(), 0.0) / static_cast<double>(times.size());
         double median = bench::percentile(times, 0.5);
@@ -368,9 +369,7 @@ void bench_chained(const std::vector<std::string>& headers, std::size_t count, i
         bool success = false;
     };
 
-    TempTracker temps;
-
-    auto build_chain = [&](bool verbose) -> std::vector<LinkInfo> {
+    auto build_chain = [&](TempTracker& temps, bool verbose) -> std::vector<LinkInfo> {
         std::vector<LinkInfo> links;
         links.reserve(count);
 
@@ -418,8 +417,10 @@ void bench_chained(const std::vector<std::string>& headers, std::size_t count, i
         return links.size() == count && links.back().success;
     };
 
-    // First run: verbose, report per-link times.
-    auto links = build_chain(true);
+    // First run: verbose, report per-link times. Its chain must survive
+    // for the correctness check below.
+    TempTracker temps;
+    auto links = build_chain(temps, true);
 
     double total_ms = 0;
     for(auto& link: links) {
@@ -445,7 +446,11 @@ void bench_chained(const std::vector<std::string>& headers, std::size_t count, i
         totals.push_back(total_ms);
 
         for(int r = 1; r < runs; r += 1) {
-            auto chain = build_chain(false);
+            // A tracker per run: only the summed time survives the
+            // iteration, and a full standard-library chain of PCHs per run
+            // would otherwise pile up in the temp dir until exit.
+            TempTracker run_temps;
+            auto chain = build_chain(run_temps, false);
             if(!is_complete(chain)) {
                 std::println("  Run {}: chain incomplete, discarded", r + 1);
                 continue;
@@ -457,6 +462,7 @@ void bench_chained(const std::vector<std::string>& headers, std::size_t count, i
             totals.push_back(total);
         }
 
+        std::ranges::sort(totals);
         double mean =
             std::accumulate(totals.begin(), totals.end(), 0.0) / static_cast<double>(totals.size());
         double median = bench::percentile(totals, 0.5);
@@ -516,6 +522,8 @@ void bench_incremental(const std::vector<std::string>& headers, std::size_t base
     }
 
     if(!mono_times.empty() && !chain_times.empty()) {
+        std::ranges::sort(mono_times);
+        std::ranges::sort(chain_times);
         double mono_med = bench::percentile(mono_times, 0.5);
         double chain_med = bench::percentile(chain_times, 0.5);
         std::println("  Monolithic full rebuild:  median {:.1f}ms", mono_med);
@@ -721,6 +729,8 @@ void bench_ast_load(const std::vector<std::string>& headers, std::size_t count, 
                 chain_times.push_back(ms);
         }
 
+        std::ranges::sort(mono_times);
+        std::ranges::sort(chain_times);
         if(!mono_times.empty()) {
             double med = bench::percentile(mono_times, 0.5);
             std::println("  Monolithic PCH → compile:  median {:.1f}ms  (min {:.1f}, max {:.1f})",
@@ -820,6 +830,8 @@ void bench_end_to_end(const std::vector<std::string>& headers, std::size_t count
             chain_append_times.push_back(result.ms);
     }
 
+    std::ranges::sort(mono_rebuild_times);
+    std::ranges::sort(chain_append_times);
     if(!mono_rebuild_times.empty()) {
         std::println("    Monolithic full rebuild:  median {:.1f}ms",
                      bench::percentile(mono_rebuild_times, 0.5));

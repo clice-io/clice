@@ -156,6 +156,7 @@ static worker::BuildResult handle_build_pch(const worker::BuildParams& params,
     // failure, never a user-code problem — must not be downgraded to an
     // expected build failure.
     bool internal_error = false;
+    ScopedTimer state_write_timer;
     if(success) {
         if(auto error = write_preamble_state(blob, params.index_output_path)) {
             success = false;
@@ -163,16 +164,18 @@ static worker::BuildResult handle_build_pch(const worker::BuildParams& params,
             errors = std::move(*error);
         }
     }
+    auto state_write_ms = state_write_timer.ms();
 
     if(success) {
         LOG_PERF("build",
                  "kind=pch file={} output={} compile_ms={} preamble_index_ms={} flush_ms={} "
-                 "total_ms={}",
+                 "state_write_ms={} total_ms={}",
                  params.file,
                  tmp_path,
                  compile_ms,
                  index_ms,
                  flush_ms,
+                 state_write_ms,
                  timer.ms());
         worker::BuildResult result;
         result.success = true;

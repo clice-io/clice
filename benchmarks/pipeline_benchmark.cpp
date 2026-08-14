@@ -8,8 +8,10 @@
 ///   preprocess_tokens  PreprocessOnlyAction, TokenBuffer on (delta = TokenBuffer cost)
 ///   parse              full parse without PCH + TUIndex build + serialize
 ///                      (the background-index worker shape)
-///   pch_build          preamble PCH build incl. disk flush (first didOpen shape)
-///   parse_pch          full parse over the PCH (the didChange shape)
+///   pch_build          preamble PCH build + preamble index/state blob incl.
+///                      disk writes (first didOpen shape)
+///   parse_pch          full parse over the PCH + interactive index build +
+///                      serialize (the didChange shape)
 ///
 /// Usage:
 ///   pipeline_benchmark [OPTIONS] <compile_commands.json>
@@ -30,6 +32,8 @@
 #include "command/command.h"
 #include "command/toolchain.h"
 #include "compile/compilation.h"
+#include "feature/feature.h"
+#include "index/preamble_state.h"
 #include "index/tu_index.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
@@ -172,8 +176,12 @@ FileResult profile_file(llvm::StringRef file,
             auto params = make_params(CompilationKind::Preprocess, arguments, file, content);
             params.collect_tokens = collect_tokens;
             auto unit = preprocess(params);
-            if(!unit.completed()) {
-                result.error = "preprocess failed: " + collect_errors(unit);
+            // completed() only covers frontend execution; missing headers,
+            // bad flags and ordinary source errors surface as diagnostics
+            // on a completed unit, and such a run's timing must not enter
+            // the samples (same for every acceptance check below).
+            if(auto errors = collect_errors(unit); !unit.completed() || !errors.empty()) {
+                result.error = "preprocess failed: " + errors;
                 return false;
             }
             return true;
@@ -195,8 +203,8 @@ FileResult profile_file(llvm::StringRef file,
     ok = run_stage(tracing ? 1 : runs, result.parse_ms, [&] {
         auto params = make_params(CompilationKind::Indexing, arguments, file, content);
         auto unit = compile(params);
-        if(!unit.completed()) {
-            result.error = "parse failed: " + collect_errors(unit);
+        if(auto errors = collect_errors(unit); !unit.completed() || !errors.empty()) {
+            result.error = "parse failed: " + errors;
             return false;
         }
 
@@ -247,11 +255,17 @@ FileResult profile_file(llvm::StringRef file,
     }
 
     auto pch_path = fs::createTemporaryFile("pipeline-bench", "pch");
-    if(!pch_path) {
-        result.error = "failed to create temporary PCH file";
+    auto state_path = fs::createTemporaryFile("pipeline-bench", "idx");
+    if(!pch_path || !state_path) {
+        result.error = "failed to create temporary PCH files";
         return result;
     }
+    auto remove_pch_files = [&] {
+        fs::remove(*pch_path);
+        fs::remove(*state_path);
+    };
 
+    std::vector<std::uint8_t> open_conditionals;
     ok = run_stage(runs, result.pch_build_ms, [&] {
         CompilationParams params;
         params.kind = CompilationKind::Preamble;
@@ -261,17 +275,39 @@ FileResult profile_file(llvm::StringRef file,
 
         PCHInfo pch_info;
         auto unit = compile(params, pch_info);
-        if(!unit.completed()) {
-            result.error = "pch build failed: " + collect_errors(unit);
+        if(auto errors = collect_errors(unit); !unit.completed() || !errors.empty()) {
+            result.error = "pch build failed: " + errors;
             return false;
         }
-        // The PCH is flushed to disk by the unit's destructor; the stage
-        // timing must include it, so destroy explicitly.
+
+        // The production PCH pass (stateless worker) also builds the
+        // preamble's full index, document links and inactive regions and
+        // writes the PreambleState blob next to the PCH before reporting
+        // success; the stage must carry that cost to match a didOpen.
+        auto tu_index = index::TUIndex::build(unit);
+        auto links = feature::document_links(unit);
+        auto inactive = feature::inactive_regions(unit, {}, 0, result.preamble_bound);
+        open_conditionals = std::move(inactive.open_stack);
+        std::string blob;
+        llvm::raw_string_ostream os(blob);
+        index::PreambleState::serialize(unit,
+                                        std::move(tu_index),
+                                        links,
+                                        inactive.regions,
+                                        open_conditionals,
+                                        os);
+
+        // The PCH is flushed to disk by the unit's destructor; the blob
+        // write follows it, like the worker's on-disk ordering contract.
         unit = CompilationUnit(nullptr);
+        if(auto write = fs::write(*state_path, blob); !write) {
+            result.error = "preamble state write failed: " + write.error().message();
+            return false;
+        }
         return true;
     });
     if(!ok) {
-        fs::remove(*pch_path);
+        remove_pch_files();
         return result;
     }
 
@@ -283,14 +319,24 @@ FileResult profile_file(llvm::StringRef file,
         auto params = make_params(CompilationKind::Content, arguments, file, content);
         params.pch = {*pch_path, result.preamble_bound};
         auto unit = compile(params);
-        if(!unit.completed()) {
-            result.error = "parse with pch failed: " + collect_errors(unit);
+        if(auto errors = collect_errors(unit); !unit.completed() || !errors.empty()) {
+            result.error = "parse with pch failed: " + errors;
             return false;
         }
+
+        // The didChange pass (stateful worker) also computes inactive
+        // regions and builds and serializes the interested-only index
+        // before replying; include them so parse and parse_pch bound the
+        // same work.
+        feature::inactive_regions(unit, open_conditionals, result.preamble_bound);
+        auto tu_index = index::TUIndex::build(unit, /*interested_only=*/true);
+        std::string serialized;
+        llvm::raw_string_ostream os(serialized);
+        tu_index.serialize(os);
         return true;
     });
 
-    fs::remove(*pch_path);
+    remove_pch_files();
     return result;
 }
 
@@ -353,6 +399,7 @@ void print_summary(std::vector<FileResult>& results) {
         if(stage.values.empty()) {
             continue;
         }
+        std::ranges::sort(stage.values);
         std::println("    {:<17}{:>13} {:>8.1f} {:>8.1f} {:>8.1f} {:>8.1f}",
                      stage.name.str(),
                      stage.values.size(),

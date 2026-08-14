@@ -164,22 +164,66 @@ function parseOptions(): Options {
     };
 }
 
+/// Overwrite comment and string/char literal bytes with spaces, keeping
+/// offsets and newlines intact, so position derivation only ever sees
+/// code. Raw string literals are treated as ordinary strings — good
+/// enough for a probe heuristic with a --position override.
+function blankNonCode(text: string): string {
+    const out = text.split("");
+    const blank = (index: number): void => {
+        if (index < out.length && out[index] !== "\n") {
+            out[index] = " ";
+        }
+    };
+    let i = 0;
+    while (i < text.length) {
+        const two = text.slice(i, i + 2);
+        if (two === "//") {
+            while (i < text.length && text[i] !== "\n") {
+                blank(i);
+                i += 1;
+            }
+        } else if (two === "/*") {
+            while (i < text.length && text.slice(i, i + 2) !== "*/") {
+                blank(i);
+                i += 1;
+            }
+            blank(i);
+            blank(i + 1);
+            i += 2;
+        } else if (text[i] === '"' || text[i] === "'") {
+            const quote = text[i];
+            blank(i);
+            i += 1;
+            // An unterminated literal ends at the newline (blank keeps it).
+            while (i < text.length && text[i] !== quote && text[i] !== "\n") {
+                blank(i);
+                if (text[i] === "\\") {
+                    blank(i + 1);
+                    i += 1;
+                }
+                i += 1;
+            }
+            blank(i);
+            i += 1;
+        } else {
+            i += 1;
+        }
+    }
+    return out.join("");
+}
+
 /// Derive a symbol-bearing probe position: the first call-like identifier
-/// outside comment/preprocessor lines. The old 0:0 default usually landed
-/// on a license comment, so the positional features took their
-/// empty-result fast paths and measured nothing.
+/// in code text — comments, string/char literals and preprocessor lines
+/// do not count. The old 0:0 default usually landed on a license comment,
+/// so the positional features took their empty-result fast paths and
+/// measured nothing.
 function derivePosition(file: string): { line: number; character: number } {
     const keywords = new Set(["if", "for", "while", "switch", "return", "sizeof", "catch"]);
-    const lines = fs.readFileSync(file, "utf8").split("\n");
+    const lines = blankNonCode(fs.readFileSync(file, "utf8")).split("\n");
     for (let line = 0; line < lines.length; line += 1) {
         const text = lines[line] ?? "";
-        const trimmed = text.trimStart();
-        if (
-            trimmed.startsWith("//") ||
-            trimmed.startsWith("/*") ||
-            trimmed.startsWith("*") ||
-            trimmed.startsWith("#")
-        ) {
+        if (text.trimStart().startsWith("#")) {
             continue;
         }
         for (const match of text.matchAll(/\b([A-Za-z_]\w+)\s*\(/g)) {
@@ -430,7 +474,15 @@ async function runWarmRequests(opts: Options, file: string): Promise<ScenarioRes
     for (const request of Object.values(requests)) {
         await request();
     }
-    bench.perfWindowStart = Date.now();
+    // Log timestamps truncate to milliseconds, so a boundary read in the
+    // same millisecond as the last warmup's perf line cannot separate the
+    // two. Park until the wall clock leaves the warmup millisecond: every
+    // warmup event is stamped <= boundary, every measured one >= boundary+1.
+    const boundary = Date.now();
+    while (Date.now() <= boundary) {
+        await new Promise((resolve) => setTimeout(resolve, 1));
+    }
+    bench.perfWindowStart = boundary + 1;
 
     for (const [name, request] of Object.entries(requests)) {
         for (let i = 0; i < opts.repeats; i += 1) {

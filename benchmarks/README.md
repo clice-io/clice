@@ -22,15 +22,17 @@ your question:
    `-DCLICE_ENABLE_BENCHMARK=ON`, each answering one decision:
    - `scan_benchmark` — dependency-graph scan over a real CDB.
    - `pipeline_benchmark` — per-TU stage profile (preprocess with/without
-     TokenBuffer, parse, index build/serialize, preamble PCH build, reparse
-     over PCH), one result per file.
+     TokenBuffer, parse, index build/serialize, preamble PCH build incl.
+     preamble indexing, reparse over PCH incl. interactive indexing), one
+     result per file.
    - `pch_chain_benchmark` — monolithic vs chained PCH strategy (ported
      from PR #405).
 
 ## Building
 
 ```bash
-cmake -B build/RelWithDebInfo -DCLICE_ENABLE_BENCHMARK=ON  # plus the usual flags
+cmake -B build/RelWithDebInfo -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+    -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain.cmake -DCLICE_ENABLE_BENCHMARK=ON
 ninja -C build/RelWithDebInfo scan_benchmark pipeline_benchmark pch_chain_benchmark
 ```
 

@@ -157,8 +157,15 @@ export function toChromeTrace(
         traceEvents.push({ name: "process_name", ph: "M", pid: Number(pid), args: { name } });
     }
     // Events concatenate from multiple log files in file order, so the
-    // first stamped event is not necessarily the earliest.
-    const base = Math.min(...events.filter((e) => e.ts !== null).map((e) => e.ts ?? 0), Infinity);
+    // first stamped event is not necessarily the earliest. No spread into
+    // Math.min: a long session's event count exceeds the engine's
+    // argument-count limit.
+    let base = Infinity;
+    for (const event of events) {
+        if (event.ts !== null && event.ts < base) {
+            base = event.ts;
+        }
+    }
     for (const event of events) {
         if (event.ts === null) {
             continue;

@@ -34,7 +34,11 @@ const processNames: Record<number, string> = {};
 positionals.forEach((file, index) => {
     const pid = index + 1;
     processNames[pid] = path.basename(file);
-    events.push(...parsePerfLines(fs.readFileSync(file, "utf8"), pid));
+    // No spread into push: a long session yields enough events to blow
+    // the engine's argument-count limit.
+    for (const event of parsePerfLines(fs.readFileSync(file, "utf8"), pid)) {
+        events.push(event);
+    }
 });
 
 if (events.length === 0) {
