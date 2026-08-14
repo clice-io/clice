@@ -47,6 +47,10 @@ test("summarize discriminates by kind and keeps only durations", () => {
                 "[perf:build] kind=index file=/w/a.cpp compile_ms=50 total_ms=60",
                 "[perf:startup] phase=dep_scan elapsed_ms=25",
                 "[perf:index_detail] op=serialize copy_ms=17.4 pack_ms=155.3",
+                "[perf:index_detail] op=build scope=full semantics_ms=80 finish_ms=5",
+                "[perf:index_detail] op=build scope=interested semantics_ms=8 finish_ms=1",
+                "[perf:index_query] kind=relations rel=Definition path=/w/a.cpp elapsed_ms=3",
+                "[perf:index_query] kind=relations rel=Reference path=/w/a.cpp elapsed_ms=7",
             ].join("\n"),
         ),
     );
@@ -55,6 +59,12 @@ test("summarize discriminates by kind and keeps only durations", () => {
     expect(summary["build.pch.compile_ms"]?.max).toBe(300);
     expect(summary["build.index.total_ms"]?.count).toBe(1);
     expect(summary["startup.dep_scan.elapsed_ms"]?.p50).toBe(25);
+    // The secondary scope/rel discriminators keep materially different
+    // operations in separate series.
+    expect(summary["index_detail.build.full.semantics_ms"]?.p50).toBe(80);
+    expect(summary["index_detail.build.interested.semantics_ms"]?.p50).toBe(8);
+    expect(summary["index_query.relations.Definition.elapsed_ms"]?.p50).toBe(3);
+    expect(summary["index_query.relations.Reference.elapsed_ms"]?.p50).toBe(7);
     // Non-duration keys (file=, kind=) never become series.
     expect(Object.keys(summary).every((name) => name.endsWith("_ms"))).toBe(true);
 });

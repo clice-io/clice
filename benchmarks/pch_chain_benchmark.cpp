@@ -31,6 +31,7 @@
 #include "support/logging.h"
 
 #include "kota/deco/deco.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
 
@@ -532,130 +533,138 @@ void bench_incremental(const std::vector<std::string>& headers, std::size_t base
     }
 }
 
-/// Sources for the AST load scenarios: light touches a couple of types
-/// (lazy PCH load, best case); heavy references symbols from as many
-/// headers as possible to force maximum PCH deserialization (worst case).
+/// Sources for the AST load scenarios: light touches a couple of scalar
+/// types (lazy PCH load, best case); heavy references symbols from every
+/// selected header to force maximum PCH deserialization (worst case).
+/// Both are built from the selected header prefix so that any accepted
+/// --chain-length yields a source that compiles cleanly.
 std::string make_light_source(const std::string& preamble) {
+    // <cstddef> and <cstdint> lead ALL_HEADERS, and --chain-length is at
+    // least 2, so these types exist for any prefix.
     return preamble + R"cpp(
 int main() {
-    std::vector<int> v = {1, 2, 3};
-    return v[0];
+    std::size_t n = sizeof(std::uint64_t);
+    return static_cast<int>(n);
 }
 )cpp";
 }
 
-std::string make_heavy_source(const std::string& preamble) {
-    return preamble + R"cpp(
-template <typename... Ts> void use(Ts&&...) {}
+/// One usage statement per header for the heavy source. Each snippet uses
+/// declarations only from its own header and headers EARLIER in
+/// ALL_HEADERS, so emitting the snippets of a contiguous prefix in header
+/// order yields a valid program. Headers with nothing to use have no
+/// entry (<iosfwd> and <codecvt> declare nothing to instantiate
+/// standalone; <expected> is empty under -std=c++20).
+const llvm::StringMap<llvm::StringRef> HEAVY_SNIPPETS = {
+    {"cstddef",            "std::size_t sz = 0; use(sz);"                            },
+    {"cstdint",            "std::uint64_t u64 = 0; use(u64);"                        },
+    {"climits",            "use(INT_MAX);"                                           },
+    {"cfloat",             "use(DBL_EPSILON);"                                       },
+    {"type_traits",        "static_assert(std::is_integral_v<int>);"                 },
+    {"concepts",           "static_assert(std::integral<int>);"                      },
+    {"compare",            "std::strong_ordering cmp = 1 <=> 2; use(cmp);"           },
+    {"initializer_list",   "auto il = {1, 2, 3}; use(il);"                           },
+    {"utility",            "auto pr = std::make_pair(1, 2); use(pr);"                },
+    {"tuple",              "auto tp = std::make_tuple(1, \"hello\", 3.14); use(tp);" },
+    {"optional",           "std::optional<int> opt = 42; use(opt);"                  },
+    {"variant",            "std::variant<int, double> var = 3.14; use(var);"         },
+    {"any",                "std::any a = 42; use(a);"                                },
+    {"bitset",             "std::bitset<64> bs(0xFF); use(bs);"                      },
+    {"bit",                "auto pc = std::popcount(42u); use(pc);"                  },
+    {"string_view",        "std::string_view sv = \"hello\"; use(sv);"               },
+    {"string",             "std::string s = \"world\"; use(s);"                      },
+    {"charconv",
+     "char buf[16]; auto res = std::to_chars(buf, buf + 16, 42); "
+     "use(res.ptr);"                                                                 },
+    {"format",             "auto fmt = std::format(\"{} {}\", s, 42); use(fmt);"     },
+    {"array",              "std::array<int, 3> arr = {1, 2, 3}; use(arr);"           },
+    {"vector",             "std::vector<std::string> vec = {\"a\", \"b\"}; use(vec);"},
+    {"deque",              "std::deque<int> dq = {1, 2}; use(dq);"                   },
+    {"list",               "std::list<int> lst = {1, 2}; use(lst);"                  },
+    {"forward_list",       "std::forward_list<int> fl = {1, 2}; use(fl);"            },
+    {"set",                "std::set<int> st = {1, 2, 3}; use(st);"                  },
+    {"map",                "std::map<std::string, int> mp = {{\"a\", 1}}; use(mp);"  },
+    {"unordered_set",      "std::unordered_set<int> us = {1, 2}; use(us);"           },
+    {"unordered_map",
+     "std::unordered_map<std::string, int> um = {{\"b\", 2}}; "
+     "use(um);"                                                                      },
+    {"stack",              "std::stack<int> stk; use(stk);"                          },
+    {"queue",              "std::queue<int> que; use(que);"                          },
+    {"span",               "std::span<const int> spn(arr); use(spn);"                },
+    {"iterator",           "use(std::distance(vec.begin(), vec.end()));"             },
+    {"ranges",             "auto rng = vec | std::views::take(1); use(rng);"         },
+    {"algorithm",          "std::sort(vec.begin(), vec.end());"                      },
+    {"numeric",
+     "auto sum = std::accumulate(arr.begin(), arr.end(), 0); "
+     "use(sum);"                                                                     },
+    {"memory",             "auto up = std::make_unique<int>(42); use(up);"           },
+    {"memory_resource",    "std::pmr::monotonic_buffer_resource mbr; use(mbr);"      },
+    {"scoped_allocator",
+     "std::scoped_allocator_adaptor<std::allocator<int>> saa; "
+     "use(saa);"                                                                     },
+    {"functional",
+     "std::function<int(int)> fn = [](int x) { return x * 2; }; "
+     "use(fn);"                                                                      },
+    {"ratio",              "using half = std::ratio<1, 2>; use(half::num);"          },
+    {"chrono",             "auto now = std::chrono::system_clock::now(); use(now);"  },
+    {"exception",          "use(std::uncaught_exceptions());"                        },
+    {"stdexcept",          "std::runtime_error re(\"test\"); use(re);"               },
+    {"system_error",
+     "auto ec = std::make_error_code(std::errc::invalid_argument); "
+     "use(ec);"                                                                      },
+    {"typeinfo",           "auto& ti = typeid(int); use(ti);"                        },
+    {"typeindex",          "std::type_index tidx(typeid(int)); use(tidx);"           },
+    {"source_location",    "auto loc = std::source_location::current(); use(loc);"   },
+    {"new",                "use(std::nothrow);"                                      },
+    {"limits",             "static_assert(std::numeric_limits<double>::is_iec559);"  },
+    {"numbers",            "constexpr auto pi = std::numbers::pi; use(pi);"          },
+    {"valarray",           "std::valarray<double> va = {1.0, 2.0, 3.0}; use(va);"    },
+    {"complex",            "std::complex<double> cx(1.0, 2.0); use(cx);"             },
+    {"random",             "std::mt19937 rng_eng(42); use(rng_eng);"                 },
+    {"ios",                "use(std::ios_base::app);"                                },
+    {"streambuf",          "std::streambuf* sb = nullptr; use(sb);"                  },
+    {"istream",            "std::istream* is = nullptr; use(is);"                    },
+    {"ostream",            "std::ostream* os = nullptr; use(os);"                    },
+    {"iostream",           "std::cout << 42;"                                        },
+    {"sstream",            "std::stringstream ss; ss << \"hello\"; use(ss);"         },
+    {"fstream",            "std::ifstream ifs; use(ifs);"                            },
+    {"cmath",              "auto sq = std::sqrt(2.0); use(sq);"                      },
+    {"cstdio",             "use(EOF);"                                               },
+    {"cstdlib",            "use(std::abs(-1));"                                      },
+    {"cstring",            "auto len = std::strlen(\"hello\"); use(len);"            },
+    {"ctime",              "auto t = std::time(nullptr); use(t);"                    },
+    {"cassert",            "assert(1 + 1 == 2);"                                     },
+    {"cerrno",             "use(errno);"                                             },
+    {"atomic",             "std::atomic<int> ai{0}; use(ai);"                        },
+    {"mutex",              "std::mutex mtx; use(mtx);"                               },
+    {"condition_variable", "std::condition_variable cv; use(cv);"                    },
+    {"thread",             "use(std::this_thread::get_id());"                        },
+    {"future",             "std::promise<int> prom; use(prom);"                      },
+    {"semaphore",          "std::counting_semaphore<1> sem(1); use(sem);"            },
+    {"latch",              "std::latch lat(1); use(lat);"                            },
+    {"barrier",            "std::barrier bar(1); use(bar);"                          },
+    {"stop_token",         "std::stop_source ssrc; use(ssrc);"                       },
+    {"shared_mutex",       "std::shared_mutex smtx; use(smtx);"                      },
+    {"regex",              "std::regex rx(\"hello.*\"); use(rx);"                    },
+    {"filesystem",         "auto cwd = std::filesystem::current_path(); use(cwd);"   },
+    {"locale",             "auto& lc = std::locale::classic(); use(lc);"             },
+};
 
-int main() {
-    // <cstddef> <cstdint> <climits> <cfloat>
-    std::size_t sz = 0; std::uint64_t u64 = 0;
-
-    // <type_traits> <concepts> <compare>
-    static_assert(std::is_integral_v<int>);
-    static_assert(std::integral<int>);
-    std::strong_ordering cmp = 1 <=> 2;
-
-    // <initializer_list> <utility> <tuple> <optional> <variant> <any> <expected>
-    auto il = {1, 2, 3};
-    auto pr = std::make_pair(1, 2);
-    auto tp = std::make_tuple(1, "hello", 3.14);
-    std::optional<int> opt = 42;
-    std::variant<int, double, std::string> var = "hello";
-    std::any a = 42;
-
-    // <bitset> <bit> <string_view> <string> <charconv> <format>
-    std::bitset<64> bs(0xFF);
-    auto pc = std::popcount(42u);
-    std::string_view sv = "hello";
-    std::string s = "world";
-    auto fmt = std::format("{} {}", s, 42);
-
-    // <array> <vector> <deque> <list> <forward_list>
-    std::array<int, 3> arr = {1, 2, 3};
-    std::vector<std::string> vec = {"a", "b"};
-    std::deque<int> dq = {1, 2};
-    std::list<int> lst = {1, 2};
-    std::forward_list<int> fl = {1, 2};
-
-    // <set> <map> <unordered_set> <unordered_map>
-    std::set<int> st = {1, 2, 3};
-    std::map<std::string, int> mp = {{"a", 1}};
-    std::unordered_set<int> us = {1, 2};
-    std::unordered_map<std::string, int> um = {{"b", 2}};
-
-    // <stack> <queue> <span>
-    std::stack<int> stk;
-    std::queue<int> que;
-    std::span<const int> spn(arr);
-
-    // <iterator> <ranges> <algorithm> <numeric>
-    auto it = vec.begin();
-    auto rng = vec | std::views::take(1);
-    std::sort(vec.begin(), vec.end());
-    auto sum = std::accumulate(arr.begin(), arr.end(), 0);
-
-    // <memory> <memory_resource> <scoped_allocator> <functional>
-    auto up = std::make_unique<int>(42);
-    auto sp = std::make_shared<std::string>("test");
-    std::function<int(int)> fn = [](int x) { return x * 2; };
-
-    // <ratio> <chrono>
-    using half = std::ratio<1, 2>;
-    auto now = std::chrono::system_clock::now();
-
-    // <exception> <stdexcept> <system_error>
-    try { throw std::runtime_error("test"); } catch(...) {}
-    auto ec = std::make_error_code(std::errc::invalid_argument);
-
-    // <typeinfo> <typeindex> <source_location>
-    auto& ti = typeid(int);
-    std::type_index tidx(ti);
-    auto loc = std::source_location::current();
-
-    // <new> <limits> <numbers> <valarray> <complex> <random>
-    static_assert(std::numeric_limits<double>::is_iec559);
-    constexpr auto pi = std::numbers::pi;
-    std::valarray<double> va = {1.0, 2.0, 3.0};
-    std::complex<double> cx(1.0, 2.0);
-    std::mt19937 rng_eng(42);
-
-    // <iosfwd> <ios> <streambuf> <istream> <ostream> <iostream> <sstream> <fstream>
-    std::stringstream ss;
-    ss << "hello " << 42;
-    std::cout << ss.str() << std::endl;
-
-    // <cmath> <cstdio> <cstdlib> <cstring> <ctime> <cassert> <cerrno>
-    auto sq = std::sqrt(2.0);
-    auto len = std::strlen("hello");
-    auto t = std::time(nullptr);
-    assert(sq > 1.0);
-
-    // <atomic> <mutex> <condition_variable> <thread> <future>
-    std::atomic<int> ai{0};
-    std::mutex mtx;
-    std::condition_variable cv;
-
-    // <semaphore> <latch> <barrier> <stop_token> <shared_mutex>
-    std::counting_semaphore<1> sem(1);
-    std::latch lat(1);
-
-    // <regex> <filesystem>
-    std::regex rx("hello.*");
-    auto cwd = std::filesystem::current_path();
-
-    // <locale> <codecvt>
-    auto& loc2 = std::locale::classic();
-
-    use(sz, u64, cmp, il, pr, tp, opt, var, a, bs, pc, sv, s, fmt,
-        arr, vec, dq, lst, fl, st, mp, us, um, stk, que, spn,
-        it, rng, sum, up, sp, fn, now, ec, ti, tidx, loc,
-        pi, va, cx, rng_eng, ss, sq, len, t, ai, mtx, cv,
-        sem, lat, rx, cwd, loc2);
-    return 0;
-}
-)cpp";
+std::string make_heavy_source(const std::string& preamble,
+                              const std::vector<std::string>& headers,
+                              std::size_t count) {
+    std::string source = preamble;
+    source += "\ntemplate <typename... Ts> void use(Ts&&...) {}\n\nint main() {\n";
+    for(std::size_t i = 0; i < count && i < headers.size(); i += 1) {
+        auto it = HEAVY_SNIPPETS.find(headers[i]);
+        if(it != HEAVY_SNIPPETS.end()) {
+            source += "    ";
+            source += it->second;
+            source += "\n";
+        }
+    }
+    source += "    return 0;\n}\n";
+    return source;
 }
 
 void bench_ast_load(const std::vector<std::string>& headers, std::size_t count, int runs) {
@@ -697,13 +706,13 @@ void bench_ast_load(const std::vector<std::string>& headers, std::size_t count, 
     std::string chain_pch = prev_pch;
 
     struct Scenario {
-        const char* name;
+        std::string name;
         std::string source;
     };
 
     Scenario scenarios[] = {
-        {"light (3 types)",     make_light_source(preamble)},
-        {"heavy (all headers)", make_heavy_source(preamble)},
+        {"light (2 types)", make_light_source(preamble)},
+        {std::format("heavy ({} headers)", count), make_heavy_source(preamble, headers, count)},
     };
 
     for(auto& [name, source]: scenarios) {
@@ -749,7 +758,7 @@ void bench_ast_load(const std::vector<std::string>& headers, std::size_t count, 
             double ratio = bench::percentile(chain_times, 0.5) / bench::percentile(mono_times, 0.5);
             std::println("  Ratio (chained/mono): {:.2f}x", ratio);
         } else if(chain_times.empty()) {
-            std::println("  Chained PCH: compilation FAILED (heavy source may have errors)");
+            std::println("  Chained PCH: compilation FAILED");
         }
     }
 }

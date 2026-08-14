@@ -92,15 +92,31 @@ export function computeStats(values: number[]): Stats | null {
     };
 }
 
+/// Discriminated name for an event: `<topic>[.<kind>][.<detail>]`. The kind
+/// is the event's `kind`, `phase`, or `op` value; the detail is its `scope`
+/// or `rel` value — mirroring how the topics in logging.h use those fields
+/// to distinguish materially different operations (`index_detail op=build
+/// scope=full` vs `scope=interested`, `index_query kind=relations
+/// rel=Definition` vs `rel=Reference`).
+function eventName(event: PerfEvent): string {
+    const parts = [event.topic];
+    const kind = event.values["kind"] ?? event.values["phase"] ?? event.values["op"];
+    if (kind !== undefined) {
+        parts.push(String(kind));
+    }
+    const detail = event.values["scope"] ?? event.values["rel"];
+    if (detail !== undefined) {
+        parts.push(String(detail));
+    }
+    return parts.join(".");
+}
+
 /// Group events into duration series. Every numeric `*_ms` key becomes a
-/// series named `<topic>[.<kind>].<key>`, where the kind discriminator is
-/// the event's `kind`, `phase`, or `op` value when present — mirroring how the
-/// topics in logging.h use those fields.
+/// series named `<eventName>.<key>`.
 function aggregate(events: PerfEvent[]): Map<string, number[]> {
     const series = new Map<string, number[]>();
     for (const event of events) {
-        const kind = event.values["kind"] ?? event.values["phase"] ?? event.values["op"];
-        const prefix = kind === undefined ? event.topic : `${event.topic}.${String(kind)}`;
+        const prefix = eventName(event);
         for (const [key, value] of Object.entries(event.values)) {
             if (typeof value !== "number" || !key.endsWith("_ms")) {
                 continue;
@@ -174,10 +190,8 @@ export function toChromeTrace(
         if (typeof duration !== "number") {
             continue;
         }
-        const kind = event.values["kind"] ?? event.values["phase"] ?? event.values["op"];
-        const name = kind === undefined ? event.topic : `${event.topic}.${String(kind)}`;
         traceEvents.push({
-            name,
+            name: eventName(event),
             cat: event.topic,
             ph: "X",
             ts: (event.ts - base - duration) * 1000,
