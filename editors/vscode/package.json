@@ -164,6 +164,11 @@
         "id": "angle",
         "description": "Angle brackets `<>`",
         "superType": "operator"
+      },
+      {
+        "id": "primitive",
+        "description": "C/C++ primitive type (e.g., int, float)",
+        "superType": "keyword"
       }
     ],
     "views": {
