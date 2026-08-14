@@ -346,13 +346,42 @@ TEST_CASE(ResolveKeepsExistingExternalResourceDir, skip = Windows) {
     ASSERT_TRUE(driver.has_value());
 
     CompileCommand cmd;
-    cmd.resolved.flags = {driver->c_str(), "-std=c++23", "-resource-dir", resource_dir().data()};
+    cmd.resolved.flags = {driver->c_str(),
+                          "-std=c++23",
+                          "--target=x86_64-w64-windows-gnu",
+                          "-resource-dir",
+                          resource_dir().data()};
     cmd.source_file = "/tmp/a.cpp";
 
     Toolchain tc;
     ASSERT_TRUE(tc.resolve(cmd).has_value());
     EXPECT_TRUE(std::ranges::contains(cmd.resolved.flags, llvm::StringRef(external_dir)));
     EXPECT_FALSE(std::ranges::contains(cmd.resolved.flags, resource_dir()));
+
+    fs::remove(*driver);
+    llvm::sys::fs::remove(external_dir_buf);
+}
+
+TEST_CASE(ResolveReplacesExistingExternalResourceDirForNonMinGW, skip = Windows) {
+    llvm::SmallString<128> external_dir_buf;
+    auto create_error =
+        llvm::sys::fs::createUniqueDirectory("clice-external-resource", external_dir_buf);
+    ASSERT_TRUE(!create_error);
+    auto external_dir = external_dir_buf.str().str();
+    auto driver_line = R"( "/usr/bin/clang-22" "-cc1" "-resource-dir" ")" + external_dir +
+                       R"(" "-internal-isystem" ")" + external_dir + R"(/include" "-std=c++23")";
+    auto driver = create_fake_clang(driver_line);
+    ASSERT_TRUE(driver.has_value());
+
+    CompileCommand cmd;
+    cmd.resolved.flags = {driver->c_str(), "-std=c++23"};
+    cmd.source_file = "/tmp/a.cpp";
+
+    Toolchain tc;
+    ASSERT_TRUE(tc.resolve(cmd).has_value());
+    auto expected_include = resource_dir().str() + "/include";
+    EXPECT_TRUE(std::ranges::contains(cmd.resolved.flags, resource_dir()));
+    EXPECT_TRUE(std::ranges::contains(cmd.resolved.flags, llvm::StringRef(expected_include)));
 
     fs::remove(*driver);
     llvm::sys::fs::remove(external_dir_buf);

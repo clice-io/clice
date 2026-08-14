@@ -19,6 +19,7 @@
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Program.h"
 #include "llvm/TargetParser/Host.h"
+#include "llvm/TargetParser/Triple.h"
 #include "clang/Driver/Compilation.h"
 #include "clang/Driver/Driver.h"
 #include "clang/Driver/Tool.h"
@@ -513,18 +514,37 @@ Toolchain::ToolchainExtract Toolchain::extract_flags(llvm::StringRef file,
     return result;
 }
 
+static bool uses_windows_gnu_target(llvm::ArrayRef<const char*> arguments) {
+    if(arguments.empty())
+        return false;
+
+    std::vector<std::string> parse_args(arguments.begin() + 1, arguments.end());
+    auto options = kota::option::ParseOptions{.dash_dash_parsing = true,
+                                              .visibility = default_visibility(arguments[0])};
+    for(auto& result: option::table().parse(parse_args, options)) {
+        if(!result.has_value())
+            continue;
+        auto& arg = *result;
+        if((arg.id == option::OPT_target || arg.id == option::OPT_target_legacy_spelling) &&
+           arg.values.size() == 1) {
+            return llvm::Triple(llvm::StringRef(arg.values[0])).isWindowsGNUEnvironment();
+        }
+    }
+    return false;
+}
+
 std::expected<void, std::string> Toolchain::resolve(CompileCommand& cmd) {
     if(cmd.resolved.flags.empty())
         return std::unexpected("empty flags");
 
     auto [key, query_args] = extract_flags(cmd.source_file, cmd.resolved.flags);
 
-    // CompilationDatabase injects clice's resource directory into driver
-    // commands by default.  Passing that path to an unrelated external clang
-    // driver prevents it from discovering its own builtin and C++ standard
-    // library headers (notably LLVM-MinGW's mm_malloc.h/libc++ headers).
-    // Let external drivers derive their implicit resource paths instead.
-    if(query_args.size() >= 3 && !resource_dir().empty()) {
+    // LLVM-MinGW's resource headers and libc++ are a matched installation.
+    // Let its driver derive those implicit paths instead of forcing clice's
+    // resource tree. Other targets keep the existing replacement behavior so
+    // the embedded frontend and builtin headers stay version-matched.
+    bool preserve_external_resource = uses_windows_gnu_target(cmd.resolved.flags);
+    if(preserve_external_resource && query_args.size() >= 3 && !resource_dir().empty()) {
         std::vector<const char*> filtered;
         filtered.reserve(query_args.size());
         filtered.push_back(query_args.front());
@@ -562,10 +582,9 @@ std::expected<void, std::string> Toolchain::resolve(CompileCommand& cmd) {
     auto cached = llvm::ArrayRef(it->second);
     std::vector<const char*> new_flags(cached.begin(), cached.end());
 
-    // Replace a missing resource dir in cc1 output with ours.  If the queried
-    // driver has a real resource directory, preserve it: its builtin headers
-    // and standard library are a matched installation and may not exist in
-    // clice's resource tree.
+    // Preserve a real LLVM-MinGW resource tree. Other external resource paths
+    // are replaced with ours to keep the embedded frontend and builtin headers
+    // version-matched.
     if(!resource_dir().empty()) {
         llvm::StringRef old_resource_dir;
         for(std::size_t i = 0; i + 1 < new_flags.size(); ++i) {
@@ -574,8 +593,9 @@ std::expected<void, std::string> Toolchain::resolve(CompileCommand& cmd) {
                 break;
             }
         }
-        if(!old_resource_dir.empty() && old_resource_dir != resource_dir() &&
-           !llvm::sys::fs::is_directory(old_resource_dir)) {
+        bool keep_external =
+            preserve_external_resource && llvm::sys::fs::is_directory(old_resource_dir);
+        if(!old_resource_dir.empty() && old_resource_dir != resource_dir() && !keep_external) {
             for(auto& arg: new_flags) {
                 llvm::StringRef s(arg);
                 if(s.starts_with(old_resource_dir)) {
