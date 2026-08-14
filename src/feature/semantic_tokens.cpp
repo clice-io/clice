@@ -323,6 +323,7 @@ private:
     /// small state machine for preprocessor directive context.
     Classified classify_lexical(const clang::syntax::Token& token, std::uint32_t offset) {
         Classified lexical;
+        bool is_identifier_like = clang::tok::isAnyIdentifier(token.kind());
 
         switch(token.kind()) {
             case clang::tok::numeric_constant: lexical.kind = SymbolKind::Number; break;
@@ -362,37 +363,20 @@ private:
             case clang::tok::kw__Decimal128:
             case clang::tok::kw__Decimal32:
             case clang::tok::kw__Decimal64:
-            case clang::tok::kw__Imaginary: lexical.kind = SymbolKind::Primitive; break;
-
-            /// PP directive hash
-            case clang::tok::hash: {
-                if(directive_context == DirectiveContext::None) {
-                    lexical.kind = SymbolKind::Directive;
-                    directive_context = DirectiveContext::AfterHash;
-                }
+            case clang::tok::kw__Imaginary: {
+                lexical.kind = SymbolKind::Primitive;
+                is_identifier_like = true;
                 break;
             }
+
+            /// PP directive hash
+            case clang::tok::hash: break;
+
             default: {
-                if(directive_context == DirectiveContext::AfterHash) {
-                    /// The directive name right after `#`, e.g. `include`, `if`.
-                    lexical.kind = SymbolKind::Directive;
-                    auto spelling = content.substr(offset, token.length());
-                    if(spelling == "include" || spelling == "include_next" ||
-                       spelling == "import" || spelling == "embed") {
-                        directive_context = DirectiveContext::InIncludeName;
-                    } else if(spelling == "define") {
-                        directive_context = DirectiveContext::AfterDefine;
-                    } else {
-                        directive_context = DirectiveContext::InDirective;
-                    }
-                } else if(directive_context == DirectiveContext::AfterDefine) {
-                    /// The macro name of a #define. Also covers preamble
-                    /// defines under a PCH, where no MacroDefine node exists
-                    /// (the preamble's directives live in the PCH compile).
-                    lexical.kind = SymbolKind::Macro;
-                    directive_context = DirectiveContext::InDirective;
-                } else if(clang::tok::getKeywordSpelling(token.kind())) {
+                if(clang::tok::getKeywordSpelling(token.kind())) {
                     lexical.kind = SymbolKind::Keyword;
+                    is_identifier_like = true;
+                    break;
                 } else if(auto* punctuator = clang::tok::getPunctuatorSpelling(token.kind())) {
                     /// Alternative operator spellings (and, or, not, ...) lex
                     /// as their punctuator kinds but are written as words.
@@ -406,26 +390,66 @@ private:
             }
         }
 
-        /// The filename of an #include: either a string literal or the
-        /// `<vector>` token sequence; adjacent merging joins the pieces.
-        /// The header context ends with the filename, so directive operands
-        /// after it (e.g. #embed parameters) keep their own classification.
-        if(directive_context == DirectiveContext::InIncludeName &&
-           lexical.kind != SymbolKind::Directive) {
-            if(token.kind() == clang::tok::less) {
-                directive_context = DirectiveContext::InAngledName;
-                lexical = {SymbolKind::Header, 0};
-            } else if(lexical.kind == SymbolKind::String) {
-                directive_context = DirectiveContext::InDirective;
-                lexical = {SymbolKind::Header, 0};
-            } else {
-                directive_context = DirectiveContext::InDirective;
+        /// Move the directive state machine to classify tokens in a PP directive.
+        switch(directive_context) {
+            case DirectiveContext::None: {
+                if(token.kind() == clang::tok::hash) {
+                    directive_context = DirectiveContext::AfterHash;
+                    lexical.kind = SymbolKind::Directive;
+                }
+                break;
             }
-        } else if(directive_context == DirectiveContext::InAngledName) {
-            if(token.kind() == clang::tok::greater) {
-                directive_context = DirectiveContext::InDirective;
+            case DirectiveContext::AfterHash: {
+                /// The directive name right after `#`, e.g. `include`, `if`.
+                if(is_identifier_like) {
+                    lexical.kind = SymbolKind::Directive;
+                }
+
+                auto spelling = content.substr(offset, token.length());
+                if(spelling == "include" || spelling == "include_next" || spelling == "import" ||
+                   spelling == "embed") {
+                    directive_context = DirectiveContext::InIncludeName;
+                } else if(spelling == "define") {
+                    directive_context = DirectiveContext::AfterDefine;
+                } else {
+                    directive_context = DirectiveContext::InDirective;
+                }
+                break;
             }
-            lexical = {SymbolKind::Header, 0};
+            case DirectiveContext::InIncludeName: {
+                /// The filename of an #include: either a string literal or the
+                /// `<vector>` token sequence; adjacent merging joins the pieces.
+                /// The header context ends with the filename, so directive operands
+                /// after it (e.g. #embed parameters) keep their own classification.
+                if(token.kind() == clang::tok::less) {
+                    directive_context = DirectiveContext::InAngledName;
+                    lexical = {SymbolKind::Header, 0};
+                } else if(lexical.kind == SymbolKind::String) {
+                    directive_context = DirectiveContext::InDirective;
+                    lexical = {SymbolKind::Header, 0};
+                } else {
+                    directive_context = DirectiveContext::InDirective;
+                }
+                break;
+            }
+            case DirectiveContext::InAngledName: {
+                if(token.kind() == clang::tok::greater) {
+                    directive_context = DirectiveContext::InDirective;
+                }
+                lexical = {SymbolKind::Header, 0};
+                break;
+            }
+            case DirectiveContext::AfterDefine: {
+                /// The macro name of a #define. Also covers preamble
+                /// defines under a PCH, where no MacroDefine node exists
+                /// (the preamble's directives live in the PCH compile).
+                if(is_identifier_like) {
+                    lexical.kind = SymbolKind::Macro;
+                }
+                directive_context = DirectiveContext::InDirective;
+                break;
+            }
+            case DirectiveContext::InDirective: break;
         }
 
         return lexical;
@@ -677,10 +701,10 @@ private:
     enum class DirectiveContext : std::uint8_t {
         None,
         AfterHash,
-        InDirective,
         InIncludeName,
         InAngledName,
         AfterDefine,
+        InDirective,
     };
 
     CompilationUnitRef unit;
