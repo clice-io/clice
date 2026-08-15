@@ -182,6 +182,7 @@ Kinds derived from the token stream itself, independent of the AST.
   int number = 0;
   float ratio = 0.5f;
   void act();
+  unsigned long long wide_number = 0;
   ```
 
   </details>

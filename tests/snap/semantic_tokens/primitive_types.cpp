@@ -5,6 +5,7 @@
 /// - status: supported
 /// - order: 9
 
-int number = 0;
-float ratio = 0.5f;
-void act();
+§int number = 0;
+§float ratio = 0.5f;
+§void act();
+§unsigned §long §long wide_number = 0;
