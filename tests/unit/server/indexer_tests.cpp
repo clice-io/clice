@@ -246,7 +246,9 @@ TEST_CASE(MidSaveMergeKept) {
     auto save_body = [&]() -> kota::task<> {
         co_await indexer.save();
     };
+    std::size_t mid_save_pending = 0;
     auto merge_body = [&]() -> kota::task<> {
+        mid_save_pending = indexer.pending_shard_writes();
         indexer.merge(fresh.data.data(), fresh.data.size());
         co_return;
     };
@@ -255,6 +257,11 @@ TEST_CASE(MidSaveMergeKept) {
     loop.schedule(save_task);
     loop.schedule(merge_task);
     loop.run();
+
+    // Sampled while save() awaited its commit: the settle gauge must keep
+    // covering the in-flight batch, or a stats poll in that window reads
+    // "settled" with last_save_shards still holding its reset.
+    ASSERT_TRUE(mid_save_pending >= 1);
 
     // The save committed the pre-merge snapshot: the shard keeps the new
     // content and stays dirty so the next save commits it.
@@ -419,6 +426,93 @@ TEST_CASE(SaveCompactsAndRetires) {
     workspace.index_storage->for_each_key(index::IndexBlobKind::Shard,
                                           [&](llvm::StringRef k) { on_disk |= k == key; });
     ASSERT_FALSE(on_disk);
+}
+
+TEST_CASE(SaveRetiresPinnedShard) {
+    TempDir tmp;
+    tmp.touch("pinned.h",
+              "#pragma once\n#ifdef MODE\nint pin_mode();\n#endif\n"
+              "inline int pin_fn() { return 1; }\n");
+    tmp.touch("pa.cpp", "#include \"pinned.h\"\nint pa() { return pin_fn(); }\n");
+    tmp.touch("pb.cpp", "#include \"pinned.h\"\nint pb() { return pin_fn(); }\n");
+    open_store(tmp, workspace);
+
+    auto a = index_file(tmp, tmp.path("pa.cpp"));
+    auto b = index_file(tmp, tmp.path("pb.cpp"), {"-DMODE"});
+    ASSERT_FALSE(a.data.empty());
+    ASSERT_FALSE(b.data.empty());
+    indexer.merge(a.data.data(), a.data.size());
+    indexer.merge(b.data.data(), b.data.size());
+    auto header_id = workspace.path_pool.intern(tmp.path("pinned.h"));
+    ASSERT_EQ(workspace.shards[header_id].variants().size(), std::size_t(2));
+
+    // The header moves to a new content generation and only pa catches up:
+    // the blob starts over with pa's variant, while pb's manifest still
+    // pins a hash the blob no longer stores.
+    tmp.touch("pinned.h",
+              "#pragma once\n#ifdef MODE\nint pin_mode();\n#endif\n"
+              "inline int pin_fn() { return 2; }\n");
+    auto a2 = index_file(tmp, tmp.path("pa.cpp"));
+    ASSERT_FALSE(a2.data.empty());
+    indexer.merge(a2.data.data(), a2.data.size());
+    ASSERT_EQ(workspace.shards[header_id].variants().size(), std::size_t(1));
+
+    // pa's index drops before pb reindexes: every stored variant is dead,
+    // but pb's pinned hash keeps the live set nonempty. The save must
+    // retire the shard rather than compact to an empty variant set.
+    indexer.drop_index(workspace.path_pool.intern(a2.tu_path));
+    auto body = [&]() -> kota::task<> {
+        co_await indexer.save();
+    };
+    auto task = body();
+    loop.schedule(task);
+    loop.run();
+
+    ASSERT_FALSE(workspace.shards.contains(header_id));
+    bool on_disk = false;
+    auto key = blob_key(workspace.path_pool.resolve(header_id));
+    workspace.index_storage->for_each_key(index::IndexBlobKind::Shard,
+                                          [&](llvm::StringRef k) { on_disk |= k == key; });
+    ASSERT_FALSE(on_disk);
+}
+
+TEST_CASE(RejectsCorruptSection) {
+    TempDir tmp;
+    tmp.touch("cor.h", "#pragma once\ninline int cor() { return 1; }\n");
+    tmp.touch("cor_main.cpp", "#include \"cor.h\"\nint use_cor() { return cor(); }\n");
+
+    auto indexed = index_file(tmp, tmp.path("cor_main.cpp"));
+    ASSERT_FALSE(indexed.data.empty());
+
+    // Corrupt the main file's nested rows section: the outer wire still
+    // verifies (sections are opaque bytes to it), only the nested decode
+    // fails.
+    auto tampered = index::TUIndex::from(indexed.data);
+    ASSERT_TRUE(tampered.has_value());
+    auto main_id = static_cast<std::uint32_t>(tampered->graph.paths.size() - 1);
+    for(auto& section: tampered->sections) {
+        if(section.path_id == main_id) {
+            section.rows = {0, 1, 2, 3};
+        }
+    }
+    std::string corrupt;
+    llvm::raw_string_ostream os(corrupt);
+    tampered->serialize(os);
+
+    // The header section decodes fine and is staged before the main
+    // section's decode fails; the reject must discard the whole result — a
+    // manifest whose recorded versions all match the disk would otherwise
+    // be judged fresh forever with the main file's rows missing.
+    indexer.merge(corrupt.data(), corrupt.size());
+    auto tu_id = workspace.path_pool.intern(indexed.tu_path);
+    auto header_id = workspace.path_pool.intern(tmp.path("cor.h"));
+    ASSERT_FALSE(workspace.project_index.manifests.contains(tu_id));
+    ASSERT_FALSE(workspace.shards.contains(header_id));
+
+    // The intact result still lands afterwards.
+    indexer.merge(indexed.data.data(), indexed.data.size());
+    ASSERT_TRUE(workspace.project_index.manifests.contains(tu_id));
+    ASSERT_TRUE(workspace.shards.contains(header_id));
 }
 
 };  // TEST_SUITE(IndexerMerge)

@@ -160,10 +160,13 @@ public:
     /// shard blobs the contributions expect, and sweep the rest.
     void load();
 
-    /// Shard blobs mutated since the last save (memory/pending-write
-    /// gauge for the stats endpoint).
+    /// Shard blobs whose write has not durably completed: dirty since the
+    /// last save plus the batch a running save is committing. The gauge
+    /// reaches zero only once every shard write settled — never in the
+    /// window where save() has snapshot-cleared the dirty set but its
+    /// commit (and the last_save_shards update) is still in flight.
     std::size_t pending_shard_writes() const {
-        return dirty_shards.size();
+        return dirty_shards.size() + saving_shards;
     }
 
     /// Cancel background indexing and wait for all tasks to settle.
@@ -327,6 +330,9 @@ private:
     bool indexing_active = false;
     bool indexing_scheduled = false;
     std::size_t saved_shards = 0;
+    /// Shards in the batch a running save() is committing (see
+    /// pending_shard_writes).
+    std::size_t saving_shards = 0;
     std::shared_ptr<kota::timer> index_idle_timer;
 
     /// Pause/resume: when paused, new index tasks wait on this event.

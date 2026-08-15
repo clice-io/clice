@@ -147,6 +147,11 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
     auto lookup_symbol = [&](index::SymbolHash hash) {
         return view.find_symbol(hash);
     };
+    // Staged, not committed: a section that fails to decode rejects the
+    // whole result mid-loop, and shards installed before that point would
+    // leave the surviving manifest referencing variants the new blobs no
+    // longer store.
+    llvm::SmallVector<std::pair<std::uint32_t, index::Shard>> replacements;
     for(std::uint32_t section = 0; section < view.section_count(); section += 1) {
         auto local_id = view.section_path(section);
         auto rows_hash = view.section_rows_hash(section);
@@ -193,10 +198,17 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
 
         auto rows = view.decode_section_rows(section);
         if(!rows) {
-            LOG_WARN("Skip merge for {}: rows section failed verification",
+            // Not a carry-and-skip like the moved-on case above: that one
+            // self-corrects because the skipped file's recorded version is
+            // stale by hash. A decode failure leaves every recorded version
+            // matching the disk, so an installed manifest would be judged
+            // fresh forever with this file's rows missing or stale — even
+            // across restarts. Reject the whole result like the main-file
+            // gate does; nothing is committed yet.
+            LOG_WARN("Reject merge for {}: rows section for {} failed verification",
+                     main_tu_path,
                      workspace.path_pool.resolve(global_id));
-            carry_old_contribution(global_id);
-            continue;
+            return;
         }
 
         index::VariantInput fresh{rows_hash, &*rows, lookup_symbol};
@@ -219,9 +231,13 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
 
         auto replacement = index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
         assert(replacement.loaded() && "a freshly written shard blob must verify");
+        replacements.emplace_back(global_id, std::move(replacement));
+        manifest.contributions.emplace_back(fv_of[local_id], rows_hash);
+    }
+
+    for(auto& [global_id, replacement]: replacements) {
         workspace.shards[global_id] = std::move(replacement);
         dirty_shards.insert(global_id);
-        manifest.contributions.emplace_back(fv_of[local_id], rows_hash);
     }
 
     // Replace this TU's manifest wholesale: files it no longer touches lose
@@ -277,11 +293,16 @@ kota::task<> Indexer::save() {
 
     // Compact shards whose variant set shrank: queries already mask the
     // dead rows, this erases them for real before the blob reaches disk.
-    // A file with no contributions left is retired entirely below.
+    // A file with no live variant left in its blob is retired entirely
+    // below: either no contribution remains, or the remaining ones pin
+    // hashes a newer content generation replaced (their TUs have not
+    // reindexed yet) — compacting to those pins would write a blob with no
+    // variants at all, while retiring serves the same nothing the mask
+    // already does, and load() re-enqueues the pinning TUs after a restart.
     llvm::SmallVector<std::uint32_t> retired;
     for(auto& [path_id, shard]: workspace.shards) {
         auto live = project.live_variants(path_id);
-        if(live.empty()) {
+        if(llvm::none_of(live, [&](std::uint64_t hash) { return shard.has_variant(hash); })) {
             retired.push_back(path_id);
             continue;
         }
@@ -354,6 +375,12 @@ kota::task<> Indexer::save() {
         co_return;
     }
 
+    // The dirty set was snapshot-cleared above so merges landing across
+    // the write await re-dirty for the next save; the in-flight count
+    // keeps pending_shard_writes() truthful meanwhile — a stats reader
+    // polling for "shard writes settled" must not observe zero while the
+    // commit is still running (and saved_shards still holds its reset).
+    saving_shards = shard_count;
     co_await kota::queue([&] {
         storage.write(batch);
         for(auto& [kind, key]: removals) {
@@ -361,6 +388,7 @@ kota::task<> Indexer::save() {
         }
     });
     saved_shards = shard_count;
+    saving_shards = 0;
 
     LOG_PERF("index",
              "phase=save shards={} manifests={} total={} elapsed_ms={}",

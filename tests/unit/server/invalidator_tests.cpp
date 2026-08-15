@@ -454,6 +454,33 @@ TEST_CASE(RemoveRecreateBatchOrder) {
     }
 }
 
+TEST_CASE(EntryChangeThenRemoval) {
+    TempDir tmp;
+    tmp.touch("a.cpp", R"(int a;)");
+
+    Workspace workspace;
+    SessionStore store;
+    auto json = build_cdb_json({
+        {tmp.root, tmp.path("a.cpp"), {}}
+    });
+    write_cdb(tmp, workspace.cdb, json);
+    auto file = workspace.path_pool.intern(tmp.path("a.cpp"));
+
+    ContextResolver resolver(workspace);
+    Invalidator invalidator(workspace, store, resolver);
+    FileEvent::CDBDelta delta;
+    delta.changed = {file};
+    FileEvent events[] = {FileEvent::cdb_changed(std::move(delta)), FileEvent::disk_removed(file)};
+    auto dirty = invalidator.apply(events);
+
+    // The removal is the later fact: the file keeps its last-known index
+    // serving, so the entry change's drop and enqueue must not survive — a
+    // surviving drop would mask the shard and let the next save retire it.
+    ASSERT_TRUE(dirty.drop_index.empty());
+    ASSERT_TRUE(dirty.reindex_content_changed.empty());
+    ASSERT_EQ(dirty.clear_reindex, llvm::SmallVector<std::uint32_t>{file});
+}
+
 TEST_CASE(CloseOfDeletedFile) {
     Workspace workspace;
     SessionStore store;
