@@ -111,9 +111,9 @@ Bitmap read_row_bitmap(const RowColumns& columns, std::uint32_t row) {
 }
 
 /// Structural verification does not constrain field values; everything the
-/// readers dereference through raw column pointers must be proven
-/// in-bounds here, once, so queries stay check-free. Sizes only — column
-/// VALUES that merely select rows or symbols are clamped at use.
+/// readers dereference through raw column pointers or binary-search must be
+/// proven in-bounds and in order here, once, so queries stay check-free.
+/// Column VALUES that merely select rows or symbols are clamped at use.
 bool validate(ShardView root) {
     auto variants = to_array_ref(root[&ShardBlob::variants]);
     auto sym_hashes = to_array_ref(root[&ShardBlob::sym_hashes]);
@@ -159,6 +159,21 @@ bool validate(ShardView root) {
     };
     if(!sparse_ok(occ.long_rows, occ.long_ends.size(), occ_count)) {
         return false;
+    }
+    // lookup(offset) binary-searches the decoded end column and stops its
+    // containment walk on begin order; rows out of either order (a corrupt
+    // escaped end included) would silently miss or misresolve occurrences
+    // on every query, forever — reject the blob so it is rebuilt instead.
+    std::uint32_t prev_begin = 0;
+    std::uint32_t prev_end = 0;
+    for(std::uint32_t row = 0; row < occ_count; row += 1) {
+        auto begin = occ.begins[row];
+        auto end = occ.end_of(row);
+        if(begin < prev_begin || end < prev_end || end < begin) {
+            return false;
+        }
+        prev_begin = begin;
+        prev_end = end;
     }
     if(!sparse_ok(rel.long_rows, rel.long_ends.size(), rel_count)) {
         return false;

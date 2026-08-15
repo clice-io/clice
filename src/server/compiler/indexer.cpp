@@ -439,6 +439,15 @@ void Indexer::load() {
         auto manifest = blob ? index::deserialize_manifest(blob->getBuffer()) : std::nullopt;
         if(!manifest || !project.knows_file_versions(*manifest)) {
             dead_manifests.push_back(key.str());
+            // The manifest raced a crash ahead of the global blob. When
+            // the TU's own version is still resolvable, re-enqueue it:
+            // the CDB sweep never covers standalone-indexed headers.
+            if(manifest) {
+                auto fv = project.file_versions.find(manifest->tu_fv);
+                if(fv != project.file_versions.end()) {
+                    enqueue(fv->second.path_id, ReindexReason::ContentChanged);
+                }
+            }
             return;
         }
         auto tu_path_id = project.file_versions.find(manifest->tu_fv)->second.path_id;

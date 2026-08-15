@@ -5,6 +5,7 @@
 #include "test/test.h"
 #include "command/argument_parser.h"
 #include "compile/compilation.h"
+#include "index/manifest.h"
 #include "index/shard.h"
 #include "index/storage.h"
 #include "index/tu_index.h"
@@ -713,6 +714,65 @@ TEST_CASE(LoadHealsMissingVariant) {
     auto tu_id = f.workspace.path_pool.intern(src);
     ASSERT_TRUE(f.workspace.project_index.manifests.empty());
     ASSERT_TRUE(f.indexer.pending_reason(tu_id).has_value());
+}
+
+TEST_CASE(LoadRequeuesStaleManifest) {
+    TempDir tmp;
+    tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
+    tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
+    auto src = tmp.path("main.cpp");
+    auto header = tmp.path("dep.h");
+
+    {
+        IndexerFixture f;
+        open_store(tmp, f.workspace);
+        auto indexed = index_file(tmp, src);
+        ASSERT_FALSE(indexed.data.empty());
+        f.indexer.merge(indexed.data.data(), indexed.data.size());
+        f.save();
+
+        // Plant what a crash between save phases leaves: a manifest whose
+        // dependency FileVersion the persisted global table never learned,
+        // while the TU's own version is known — here for the header, whose
+        // standalone index no CDB sweep would ever rebuild.
+        auto header_id = f.workspace.path_pool.intern(header);
+        std::uint32_t header_fv = ~0u;
+        for(auto& [fv, record]: f.workspace.project_index.file_versions) {
+            if(record.path_id == header_id) {
+                header_fv = fv;
+            }
+        }
+        ASSERT_TRUE(header_fv != ~0u);
+        index::TUManifest stale;
+        stale.tu_fv = header_fv;
+        stale.nodes.push_back({.fv = 9999});
+        std::string bytes;
+        llvm::raw_string_ostream os(bytes);
+        index::serialize_manifest(stale, os);
+        f.workspace.index_storage->write({
+            {index::IndexBlobKind::Manifest, blob_key(header), std::move(bytes)}
+        });
+    }
+
+    IndexerFixture f;
+    open_store(tmp, f.workspace);
+    f.indexer.load();
+
+    // The unresolvable manifest is dropped from storage and its TU
+    // re-enqueued instead of losing its persisted index forever.
+    auto header_id = f.workspace.path_pool.intern(header);
+    ASSERT_TRUE(f.indexer.pending_reason(header_id) == ReindexReason::ContentChanged);
+    ASSERT_FALSE(f.workspace.project_index.manifests.contains(header_id));
+    bool stale_alive = false;
+    f.workspace.index_storage->for_each_key(
+        index::IndexBlobKind::Manifest,
+        [&](llvm::StringRef key) { stale_alive |= key == blob_key(header); });
+    ASSERT_FALSE(stale_alive);
+
+    // The TU whose manifest resolved is untouched.
+    auto tu_id = f.workspace.path_pool.intern(src);
+    ASSERT_TRUE(f.workspace.project_index.manifests.contains(tu_id));
+    ASSERT_FALSE(f.indexer.pending_reason(tu_id).has_value());
 }
 
 TEST_CASE(DropIndexEvictsPersisted) {
