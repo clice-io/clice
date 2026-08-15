@@ -31,6 +31,13 @@ inline Bitmap read_bitmap(const void* data, std::size_t size) {
     if(!decoded) {
         return {};
     }
+    // deserialize_safe only bounds the reads; the bitmap it hands back can
+    // still violate internal invariants (unsorted containers), on which
+    // croaring's operations are undefined.
+    if(!roaring::api::roaring_bitmap_internal_validate(decoded, nullptr)) {
+        roaring::api::roaring_bitmap_free(decoded);
+        return {};
+    }
     return Bitmap(decoded);
 }
 

@@ -48,6 +48,7 @@
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringMap.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/xxhash.h"
@@ -917,7 +918,16 @@ std::string format_stats_json(const Stats& stats, const Report& r, llvm::StringR
         o += std::format("  \"{}\": {}{}\n", k, v, comma ? "," : "");
     };
 
-    o += std::format("  \"cdb\": \"{}\",\n", cdb);
+    // The only string value in the output; a Windows path would otherwise
+    // break the JSON.
+    std::string escaped_cdb;
+    for(char c: cdb) {
+        if(c == '"' || c == '\\') {
+            escaped_cdb += '\\';
+        }
+        escaped_cdb += c;
+    }
+    o += std::format("  \"cdb\": \"{}\",\n", escaped_cdb);
     kv("tus_indexed", stats.indexed);
     kv("skipped_missing", stats.skipped_missing);
     kv("skipped_compile", stats.skipped_compile);
@@ -1048,13 +1058,17 @@ int main(int argc, const char** argv) {
     }
     std::println("CDB loaded: {} entries", *count);
 
+    // A CDB can list the same TU several times, adjacent or not (per-config
+    // duplicates); each repeat would recompile the TU and inflate the
+    // per-TU (N-side) distributions.
     std::vector<llvm::StringRef> files;
+    llvm::StringSet<> seen_files;
     for(auto& entry: cdb.get_entries()) {
         auto path = cdb.resolve_path(entry.file);
         if(opts.filter.has_value() && !path.contains(*opts.filter)) {
             continue;
         }
-        if(!files.empty() && files.back() == path) {
+        if(!seen_files.insert(path).second) {
             continue;
         }
         files.push_back(path);

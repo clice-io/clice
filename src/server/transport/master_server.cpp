@@ -367,6 +367,10 @@ void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
         contexts.drop_header_context(path_id);
     }
 
+    for(auto path_id: dirty.drop_index) {
+        indexer.drop_index(path_id);
+    }
+
     for(auto path_id: dirty.reindex_content_changed) {
         indexer.enqueue(path_id, ReindexReason::ContentChanged);
     }

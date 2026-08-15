@@ -5,6 +5,7 @@
 #include "test/test.h"
 #include "command/argument_parser.h"
 #include "compile/compilation.h"
+#include "index/shard.h"
 #include "index/storage.h"
 #include "index/tu_index.h"
 #include "server/compiler/context_resolver.h"
@@ -66,6 +67,11 @@ struct IndexerFixture {
     /// cleared by run_background_indexing, which these tests bypass.
     void clear_verdicts() {
         indexer.fv_verdicts.clear();
+    }
+
+    /// Judge staleness inside the current round (see clear_verdicts).
+    bool need_update(llvm::StringRef path) {
+        return indexer.need_update(path);
     }
 
     bool global_dirty() {
@@ -443,7 +449,7 @@ struct Indexed {
 TEST_CASE(TouchRepairsStamp) {
     Indexed x;
     ASSERT_TRUE(x.setup());
-    ASSERT_FALSE(x.f.indexer.need_update(x.src));
+    ASSERT_FALSE(x.f.need_update(x.src));
 
     // Same bytes, new mtime: the stat fast path misses, the hash proves a
     // mere touch, and the stamp is repaired in place (dirtying the global
@@ -451,7 +457,7 @@ TEST_CASE(TouchRepairsStamp) {
     ASSERT_TRUE(set_file_mtime(x.header, file_mtime_ns(x.header) + 5'000'000'000));
     x.f.reset_global_dirty();
     x.f.clear_verdicts();
-    ASSERT_FALSE(x.f.indexer.need_update(x.src));
+    ASSERT_FALSE(x.f.need_update(x.src));
     ASSERT_TRUE(x.f.global_dirty());
 }
 
@@ -466,7 +472,7 @@ TEST_CASE(PreservedMtimeEditStale) {
     x.tmp.touch("dep.h", "#pragma once\ninline int dep() { return 12345; }\n");
     ASSERT_TRUE(set_file_mtime(x.header, recorded));
     x.f.clear_verdicts();
-    ASSERT_TRUE(x.f.indexer.need_update(x.src));
+    ASSERT_TRUE(x.f.need_update(x.src));
 }
 
 TEST_CASE(AllDepsChecked) {
@@ -480,7 +486,7 @@ TEST_CASE(AllDepsChecked) {
     auto indexed = index_file(tmp, tmp.path("main.cpp"));
     ASSERT_FALSE(indexed.data.empty());
     f.indexer.merge(indexed.data.data(), indexed.data.size());
-    ASSERT_FALSE(f.indexer.need_update(tmp.path("main.cpp")));
+    ASSERT_FALSE(f.need_update(tmp.path("main.cpp")));
 
     // Only the second dependency changes; a partial iteration would call
     // the TU fresh.
@@ -488,7 +494,7 @@ TEST_CASE(AllDepsChecked) {
     tmp.touch("second.h", "#pragma once\ninline int second() { return 22222; }\n");
     ASSERT_TRUE(set_file_mtime(tmp.path("second.h"), recorded));
     f.clear_verdicts();
-    ASSERT_TRUE(f.indexer.need_update(tmp.path("main.cpp")));
+    ASSERT_TRUE(f.need_update(tmp.path("main.cpp")));
 }
 
 };  // TEST_SUITE(IndexerStaleness)
@@ -521,7 +527,7 @@ TEST_CASE(LoadRestoresIndex) {
     ASSERT_TRUE(f.workspace.project_index.contributions.lookup(header_id).contains(tu_id));
     // The persisted FileVersion stamps make the untouched TU judge fresh
     // without any reindex.
-    ASSERT_FALSE(f.indexer.need_update(src));
+    ASSERT_FALSE(f.need_update(src));
 }
 
 TEST_CASE(LoadHealsBrokenShard) {
@@ -573,6 +579,78 @@ TEST_CASE(LoadHealsBrokenShard) {
         orphan_alive |= key == "deadbeefdeadbeef";
     });
     ASSERT_FALSE(orphan_alive);
+}
+
+TEST_CASE(LoadHealsMissingVariant) {
+    TempDir tmp;
+    tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
+    tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
+    auto src = tmp.path("main.cpp");
+    std::string header_key;
+
+    {
+        IndexerFixture f;
+        open_store(tmp, f.workspace);
+        auto indexed = index_file(tmp, src);
+        ASSERT_FALSE(indexed.data.empty());
+        f.indexer.merge(indexed.data.data(), indexed.data.size());
+        f.save();
+        header_key = blob_key(
+            f.workspace.path_pool.resolve(f.workspace.path_pool.intern(tmp.path("dep.h"))));
+    }
+
+    // Replace the header's blob with one that verifies but stores a variant
+    // no manifest contributed — the residue of a crash or failed write that
+    // landed the manifest without its shard.
+    index::FileIndex no_rows;
+    index::VariantInput stranger{.hash = 0x1234, .rows = &no_rows};
+    std::string bytes;
+    llvm::raw_string_ostream os(bytes);
+    index::write_shard({}, {}, stranger, "", 0, os);
+    tmp.touch("cache/cache/v1/index/" + header_key + ".idx", bytes);
+
+    IndexerFixture f;
+    open_store(tmp, f.workspace);
+    f.indexer.load();
+
+    // set_live would silently drop the missing rows, so the shard is as
+    // unservable as an unreadable one: the TU's manifest goes and the TU
+    // re-enqueues.
+    auto tu_id = f.workspace.path_pool.intern(src);
+    ASSERT_TRUE(f.workspace.project_index.manifests.empty());
+    ASSERT_TRUE(f.indexer.pending_reason(tu_id).has_value());
+}
+
+TEST_CASE(DropIndexEvictsPersisted) {
+    TempDir tmp;
+    tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
+    tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
+    auto src = tmp.path("main.cpp");
+
+    {
+        IndexerFixture f;
+        open_store(tmp, f.workspace);
+        auto indexed = index_file(tmp, src);
+        ASSERT_FALSE(indexed.data.empty());
+        f.indexer.merge(indexed.data.data(), indexed.data.size());
+        f.save();
+
+        // The compile command changed: content freshness cannot see it, so
+        // the TU's index is dropped wholesale and staleness flips at once.
+        f.indexer.drop_index(f.workspace.path_pool.intern(src));
+        ASSERT_TRUE(f.workspace.project_index.manifests.empty());
+        ASSERT_TRUE(f.need_update(src));
+        f.save();
+    }
+
+    // The drop survives a restart: nothing on disk resurrects the
+    // old-command rows as fresh.
+    IndexerFixture f;
+    open_store(tmp, f.workspace);
+    f.indexer.load();
+    ASSERT_TRUE(f.workspace.project_index.manifests.empty());
+    ASSERT_TRUE(f.workspace.shards.empty());
+    ASSERT_TRUE(f.need_update(src));
 }
 
 };  // TEST_SUITE(IndexerLoad)

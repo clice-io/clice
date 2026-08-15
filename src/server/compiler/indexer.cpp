@@ -20,6 +20,7 @@
 #include "support/timer.h"
 
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/raw_ostream.h"
@@ -172,14 +173,17 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
             content = (*main_buf)->getBuffer();
         } else {
             auto path = workspace.path_pool.resolve(global_id);
-            if(auto buf = llvm::MemoryBuffer::getFile(path)) {
+            auto buf = llvm::MemoryBuffer::getFile(path);
+            if(buf) {
                 header_content = (*buf)->getBuffer().str();
                 content = header_content;
             }
             // Unconditional, unlike the main-file read: an unreadable or
             // truncated-to-empty header must not slip past the arbitration
-            // and pair the rows with content they were not built from.
-            if(!content_matches(local_id, content)) {
+            // and pair the rows with content they were not built from. A
+            // failed read is checked on its own — with no worker hash the
+            // arbitration would otherwise wave the empty content through.
+            if(!buf || !content_matches(local_id, content)) {
                 LOG_INFO("Skip merge for {}: disk moved on since it was indexed", path);
                 carry_old_contribution(global_id);
                 continue;
@@ -245,6 +249,21 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
         workspace.shards.size());
 }
 
+void Indexer::drop_index(std::uint32_t tu_path_id) {
+    auto& project = workspace.project_index;
+    if(!project.manifests.contains(tu_path_id)) {
+        return;
+    }
+    for(auto path_id: project.remove_manifest(tu_path_id)) {
+        auto it = workspace.shards.find(path_id);
+        if(it != workspace.shards.end()) {
+            it->second.set_live(project.live_variants(path_id));
+        }
+    }
+    dirty_manifests.insert(tu_path_id);
+    global_dirty = true;
+}
+
 kota::task<> Indexer::save() {
     // Reset up front: every early return below means this save committed
     // nothing, and the gauge must not keep exposing the previous round's
@@ -286,11 +305,14 @@ kota::task<> Indexer::save() {
     // from copies, so merges landing across the write await simply re-dirty
     // for the next save.
     std::vector<index::IndexStorage::Blob> batch;
+    llvm::SmallVector<std::pair<index::IndexBlobKind, std::string>> removals;
+    for(auto path_id: retired) {
+        removals.push_back(
+            {index::IndexBlobKind::Shard, blob_key(workspace.path_pool.resolve(path_id))});
+    }
     for(auto path_id: dirty_shards) {
         auto it = workspace.shards.find(path_id);
-        if(it == workspace.shards.end()) {
-            continue;
-        }
+        assert(it != workspace.shards.end() && "dirty shards stay resident until retirement");
         batch.push_back({index::IndexBlobKind::Shard,
                          blob_key(workspace.path_pool.resolve(path_id)),
                          it->second.bytes().str()});
@@ -299,15 +321,18 @@ kota::task<> Indexer::save() {
 
     for(auto tu_path_id: dirty_manifests) {
         auto it = project.manifests.find(tu_path_id);
+        auto key = blob_key(workspace.path_pool.resolve(tu_path_id));
+        // Dirty with no in-memory manifest means dropped (drop_index): the
+        // persisted blob must go too, or a restart resurrects the TU's
+        // rows as fresh.
         if(it == project.manifests.end()) {
+            removals.push_back({index::IndexBlobKind::Manifest, std::move(key)});
             continue;
         }
         std::string bytes;
         llvm::raw_string_ostream os(bytes);
         index::serialize_manifest(it->second, os);
-        batch.push_back({index::IndexBlobKind::Manifest,
-                         blob_key(workspace.path_pool.resolve(tu_path_id)),
-                         std::move(bytes)});
+        batch.push_back({index::IndexBlobKind::Manifest, std::move(key), std::move(bytes)});
     }
     auto manifest_count = batch.size() - shard_count;
 
@@ -321,11 +346,6 @@ kota::task<> Indexer::save() {
         batch.push_back({index::IndexBlobKind::Global, "global", std::move(bytes)});
     }
 
-    llvm::SmallVector<std::string> removals;
-    for(auto path_id: retired) {
-        removals.push_back(blob_key(workspace.path_pool.resolve(path_id)));
-    }
-
     dirty_shards.clear();
     dirty_manifests.clear();
     global_dirty = false;
@@ -336,8 +356,8 @@ kota::task<> Indexer::save() {
 
     co_await kota::queue([&] {
         storage.write(batch);
-        for(auto& key: removals) {
-            storage.remove(index::IndexBlobKind::Shard, key);
+        for(auto& [kind, key]: removals) {
+            storage.remove(kind, key);
         }
     });
     saved_shards = shard_count;
@@ -409,8 +429,14 @@ void Indexer::load() {
     for(auto& [path_id, entry]: project.contributions) {
         auto key = blob_key(workspace.path_pool.resolve(path_id));
         auto shard = index::Shard::from_buffer(storage.read(index::IndexBlobKind::Shard, key));
-        if(!shard.loaded()) {
-            LOG_INFO("Discarding unreadable shard for {}", workspace.path_pool.resolve(path_id));
+        // A blob can verify yet miss a contributed variant (crash or failed
+        // write left a manifest newer than its shard); set_live would drop
+        // those rows silently, so it is as unservable as an unreadable one.
+        bool servable = shard.loaded() &&
+                        llvm::all_of(llvm::make_second_range(entry),
+                                     [&](std::uint64_t hash) { return shard.has_variant(hash); });
+        if(!servable) {
+            LOG_INFO("Discarding unservable shard for {}", workspace.path_pool.resolve(path_id));
             unservable.push_back(path_id);
             continue;
         }

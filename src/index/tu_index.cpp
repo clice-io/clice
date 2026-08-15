@@ -685,6 +685,9 @@ void TUIndex::serialize(llvm::raw_ostream& os) {
         for(auto& [fid, file_index]: file_indices) {
             add(graph.path_id(fid), file_index);
         }
+        // size() - 1 would wrap on an empty path table and name the main
+        // file with an id every reader rejects, losing the rows silently.
+        assert(!graph.paths.empty() && "rows cannot exist without a path table naming their file");
         add(static_cast<std::uint32_t>(graph.paths.size() - 1), main_file_index);
     }
     auto copy_ms = copy_timer.ms_f();

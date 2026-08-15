@@ -1,6 +1,7 @@
 #include "index/manifest.h"
 
 #include <cstring>
+#include <limits>
 #include <span>
 
 #include "index/serialization.h"
@@ -90,10 +91,20 @@ std::optional<TUManifest> deserialize_manifest(llvm::StringRef data) {
         return std::nullopt;
     }
 
+    // The counts size reserves below and are untrusted; a node occupies at
+    // least 3 payload bytes (three varints) and a contribution at least 9
+    // (varint + 8-byte hash), so a count beyond these bounds cannot be
+    // honest and must not reach an allocator.
+    if(blob.node_count > blob.nodes.size() / 3 ||
+       blob.contribution_count > blob.contributions.size() / 9) {
+        return std::nullopt;
+    }
+
     TUManifest manifest;
     manifest.built_at = blob.built_at;
     manifest.tu_fv = blob.tu_fv;
 
+    constexpr std::uint64_t id_max = std::numeric_limits<std::uint32_t>::max();
     std::span<const std::uint8_t> nodes(blob.nodes);
     std::size_t pos = 0;
     manifest.nodes.reserve(blob.node_count);
@@ -103,6 +114,9 @@ std::optional<TUManifest> deserialize_manifest(llvm::StringRef data) {
         std::uint64_t line = 0;
         if(!read_varint(nodes, pos, fv) || !read_varint(nodes, pos, parent) ||
            !read_varint(nodes, pos, line)) {
+            return std::nullopt;
+        }
+        if(fv > id_max || line > id_max) {
             return std::nullopt;
         }
         // Parents may follow their children (the include graph resolves
@@ -125,7 +139,7 @@ std::optional<TUManifest> deserialize_manifest(llvm::StringRef data) {
     manifest.contributions.reserve(blob.contribution_count);
     for(std::uint32_t i = 0; i < blob.contribution_count; i += 1) {
         std::uint64_t fv = 0;
-        if(!read_varint(contributions, pos, fv)) {
+        if(!read_varint(contributions, pos, fv) || fv > id_max) {
             return std::nullopt;
         }
         if(pos + 8 > contributions.size()) {

@@ -498,6 +498,7 @@ TEST_CASE(CDBAddedScansAndEnqueues) {
     // A command change rewrites rows as thoroughly as an edit.
     ASSERT_EQ(workspace.dep_graph.get_includers(header_id), llvm::ArrayRef<std::uint32_t>{main_id});
     ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<std::uint32_t>{main_id});
+    ASSERT_EQ(dirty.drop_index, llvm::SmallVector<std::uint32_t>{main_id});
     ASSERT_TRUE(dirty.reindex_deps_only.empty());
     ASSERT_TRUE(dirty.recheck_contexts);
     ASSERT_TRUE(dirty.ensure_compile_graph);
@@ -538,12 +539,15 @@ TEST_CASE(CDBChangedSplitsOpenClosed) {
     ASSERT_TRUE(dirty.reindex_deps_only.empty());
     ASSERT_TRUE(dirty.recheck_contexts);
 
-    // Both shards were built under the old command and look fresh to
-    // content-only validation: evict them so the queued reindexes are not
-    // filtered out. The open file's slot is skipped while open-file
-    // indexing is off; its next compile owns the session-side refresh.
-    ASSERT_EQ(workspace.shards.count(closed_id), 0u);
-    ASSERT_EQ(workspace.shards.count(open_id), 0u);
+    // Both indexes were built under the old command and look fresh to
+    // content-only validation: drop them so the queued reindexes are not
+    // filtered out, here or after a restart. The shards themselves stay
+    // with the indexer, which masks and retires them off the manifests.
+    auto dropped = dirty.drop_index;
+    llvm::sort(dropped);
+    ASSERT_EQ(dropped, reindexed);
+    ASSERT_EQ(workspace.shards.count(closed_id), 1u);
+    ASSERT_EQ(workspace.shards.count(open_id), 1u);
 }
 
 TEST_CASE(CDBAddedOpenMarksDirty) {
@@ -563,6 +567,7 @@ TEST_CASE(CDBAddedOpenMarksDirty) {
     // under the real command once open-file indexing is on.
     ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{file});
     ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<std::uint32_t>{file});
+    ASSERT_EQ(dirty.drop_index, llvm::SmallVector<std::uint32_t>{file});
     ASSERT_TRUE(dirty.reindex_deps_only.empty());
 }
 
@@ -586,14 +591,20 @@ TEST_CASE(CDBChangedDropsHostedContext) {
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
 
     // Headers borrowing the changed entry re-resolve their context; the
-    // open one recompiles, the closed one loses its stale shard and
-    // reindexes. Unrelated contexts are untouched.
+    // open one recompiles, the closed one reindexes. Any standalone index
+    // of theirs borrowed the changed command too, so it is dropped along
+    // with the host's. Unrelated contexts are untouched.
     llvm::SmallVector<std::uint32_t> dropped{open_header, closed_header};
     llvm::sort(dropped);
     ASSERT_EQ(dirty.drop_context, dropped);
+    llvm::SmallVector<std::uint32_t> evicted{host, open_header, closed_header};
+    llvm::sort(evicted);
+    auto drop = dirty.drop_index;
+    llvm::sort(drop);
+    ASSERT_EQ(drop, evicted);
     ASSERT_TRUE(llvm::is_contained(dirty.mark_ast_dirty, open_header));
     ASSERT_TRUE(llvm::is_contained(dirty.reindex_content_changed, closed_header));
-    ASSERT_EQ(workspace.shards.count(closed_header), 0u);
+    ASSERT_EQ(workspace.shards.count(closed_header), 1u);
 }
 
 TEST_CASE(CDBChangedCascadesModule) {
@@ -634,6 +645,7 @@ TEST_CASE(CDBChangedCascadesModule) {
         // resolves the overlap to ContentChanged.
         EXPECT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{open_user});
         EXPECT_EQ(dirty.reindex_content_changed, llvm::SmallVector<std::uint32_t>{mod});
+        EXPECT_EQ(dirty.drop_index, llvm::SmallVector<std::uint32_t>{mod});
         llvm::SmallVector<std::uint32_t> deps{mod, closed_user};
         llvm::sort(deps);
         EXPECT_EQ(dirty.reindex_deps_only, deps);
@@ -693,9 +705,11 @@ TEST_CASE(CDBRemovedDropsSourceRole) {
     delta.removed = {gone_id};
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
 
-    // The rebuild resolves includes from the surviving entries only.
+    // The rebuild resolves includes from the surviving entries only. A
+    // removed entry keeps its index — the last-known rows still serve.
     ASSERT_TRUE(workspace.dep_graph.get_all_includes(gone_id).empty());
     ASSERT_EQ(workspace.dep_graph.get_includers(header_id), llvm::ArrayRef<std::uint32_t>{kept_id});
+    ASSERT_TRUE(dirty.drop_index.empty());
     ASSERT_TRUE(dirty.recheck_contexts);
 }
 

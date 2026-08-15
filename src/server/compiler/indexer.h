@@ -142,6 +142,14 @@ public:
     /// touches nothing else.
     void merge(const void* tu_index_data, std::size_t size);
 
+    /// Drop a TU's index wholesale: manifest and contributions now (the
+    /// affected shards' live masks follow), persisted blobs at the next
+    /// save. For invalidation content-based freshness cannot see — a
+    /// compile-command change — where a surviving manifest would keep
+    /// judging the old-command rows fresh, in this session and after a
+    /// restart.
+    void drop_index(std::uint32_t tu_path_id);
+
     /// Persist the dirty state (rewritten shards, replaced manifests, the
     /// global blob) through the index storage. Serialization runs on the
     /// event loop from copies; the write batch is offloaded to the kota
@@ -151,10 +159,6 @@ public:
     /// Load the global blob, adopt every resolvable manifest, fetch the
     /// shard blobs the contributions expect, and sweep the rest.
     void load();
-
-    /// Check whether a file needs re-indexing: no manifest, or a stale
-    /// FileVersion among its dependencies.
-    bool need_update(llvm::StringRef file_path);
 
     /// Shard blobs mutated since the last save (memory/pending-write
     /// gauge for the stats endpoint).
@@ -312,6 +316,11 @@ private:
     /// match after a stat mismatch repairs the version's stat fast path in
     /// place for every consumer.
     bool file_version_stale(std::uint32_t fv_id);
+
+    /// Check whether a file needs re-indexing: no manifest, or a stale
+    /// FileVersion among its dependencies. Valid only within one round:
+    /// the verdicts above are cleared when a round starts, never here.
+    bool need_update(llvm::StringRef file_path);
 
     llvm::DenseMap<std::uint32_t, PendingReindex> reindex_reasons;
     std::uint64_t reindex_ticket = 0;

@@ -308,31 +308,22 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // see, whether it appeared, changed or vanished. PCH/PCM
                 // keys embed the canonical flags, so pull-side caches miss
                 // naturally.
-                auto invalidate_entry = [&](std::uint32_t path_id, bool keep_shard) {
+                auto invalidate_entry = [&](std::uint32_t path_id, bool keep_index) {
                     if(store.find(path_id)) {
                         // The next compile re-resolves the command (added:
                         // first real entry replaces the guessed one;
-                        // changed: new flags; removed: fall back). The
-                        // shard was indexed under the old command either
-                        // way — same eviction as the closed branch.
+                        // changed: new flags; removed: fall back).
                         dirty.mark_ast_dirty.push_back(path_id);
-                        if(!keep_shard) {
-                            workspace.shards.erase(path_id);
-                            dirty.add_reindex_content_changed(path_id);
-                        }
-                    } else if(!keep_shard) {
-                        // The shard was indexed under the old command, and
+                    }
+                    if(!keep_index) {
+                        // The index was built under the old command, and
                         // the indexer's freshness gate validates content
-                        // only: evict the shard so the queued reindex is
-                        // not filtered out as fresh. ContentChanged: a new
+                        // only: drop the TU's index so the queued reindex
+                        // is not filtered out as fresh — in this session
+                        // or after a restart. ContentChanged: a new
                         // command can rewrite the rows (macros, includes)
-                        // as thoroughly as an edit — and the shard is gone
-                        // anyway.
-                        // TODO: a background index task already in flight
-                        // can merge its old-command result back after this
-                        // eviction; closing that window needs an index
-                        // generation guard in the indexer.
-                        workspace.shards.erase(path_id);
+                        // as thoroughly as an edit.
+                        dirty.drop_index.push_back(path_id);
                         dirty.add_reindex_content_changed(path_id);
                     }
 
@@ -353,28 +344,31 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                             continue;
                         }
                         dirty.drop_context.push_back(header_id);
+                        // A standalone-indexed header borrowed the changed
+                        // command too; its manifest is as stale as the
+                        // host's (no-op for headers indexed only via TUs).
+                        dirty.drop_index.push_back(header_id);
                         if(store.find(header_id)) {
                             dirty.mark_ast_dirty.push_back(header_id);
                         } else {
-                            workspace.shards.erase(header_id);
                             dirty.add_reindex_content_changed(header_id);
                         }
                     }
                 };
 
                 for(auto path_id: delta.added) {
-                    invalidate_entry(path_id, /*keep_shard=*/false);
+                    invalidate_entry(path_id, /*keep_index=*/false);
                 }
                 for(auto path_id: delta.changed) {
-                    invalidate_entry(path_id, /*keep_shard=*/false);
+                    invalidate_entry(path_id, /*keep_index=*/false);
                 }
                 for(auto path_id: delta.removed) {
-                    // A removed entry keeps its shard: the last-known
+                    // A removed entry keeps its index: the last-known
                     // content still serves navigation, same conservative
                     // semantics as DiskRemoved. The graph rebuild above
                     // already dropped the file's source role, and the
                     // orphan recheck cleans choices through it.
-                    invalidate_entry(path_id, /*keep_shard=*/true);
+                    invalidate_entry(path_id, /*keep_index=*/true);
                 }
 
                 // The first CDB of the session may have introduced C++20
@@ -423,6 +417,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
     dedup(dirty.force_revalidate);
     dedup(dirty.reindex_content_changed);
     dedup(dirty.reindex_deps_only);
+    dedup(dirty.drop_index);
     dedup(dirty.drop_context);
     return dirty;
 }
