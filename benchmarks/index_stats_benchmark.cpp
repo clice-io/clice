@@ -904,7 +904,7 @@ std::string format_report_md(const Stats& stats, const Report& r, llvm::StringRe
                     r.today_m == 0 ? 0.0 : 100.0 * static_cast<double>(r.new_m) / r.today_m));
     line("");
     line(
-        "Optional MergedIndex replay (exact today shard sizes): **skipped** — it "
+        "Optional merged-blob replay (exact today shard sizes): **skipped** — it "
         "needs the workspace path pool and per-shard disk content plumbing, out of "
         "scope for this scratch probe.");
 

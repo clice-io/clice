@@ -102,11 +102,12 @@ RowColumns rel_columns(ShardView root) {
     };
 }
 
-/// The slice bounds were validated monotonic and in-bounds at load;
-/// roaring's own header bounds the read within the slice.
+/// The slice bounds were validated monotonic and in-bounds at load; the
+/// decode itself is bounded to the slice and degrades a corrupt image to
+/// an empty mask (the row reads as dead) instead of aborting.
 Bitmap read_row_bitmap(const RowColumns& columns, std::uint32_t row) {
     auto begin = columns.roaring_offsets[row];
-    return Bitmap::read(reinterpret_cast<const char*>(columns.roaring.data() + begin), false);
+    return read_bitmap(columns.roaring.data() + begin, columns.roaring_offsets[row + 1] - begin);
 }
 
 /// Structural verification does not constrain field values; everything the
@@ -285,7 +286,6 @@ void Shard::set_live(llvm::ArrayRef<RowsHash> live_hashes) {
     auto stored = to_array_ref(root_of(*buffer)[&ShardBlob::variants]);
     std::size_t matched = 0;
     Live next;
-    next.all = false;
     for(std::uint32_t id = 0; id < stored.size(); id += 1) {
         if(!llvm::is_contained(live_hashes, stored[id])) {
             continue;
@@ -521,11 +521,7 @@ bool mask_empty(const MaskT& mask) {
 
 template <typename MaskT>
 void mask_or(MaskT& into, const MaskT& from) {
-    if constexpr(std::same_as<MaskT, std::uint64_t>) {
-        into |= from;
-    } else {
-        into |= from;
-    }
+    into |= from;
 }
 
 /// The old blob's mask of one row, remapped through old-id -> new-id (a
@@ -584,6 +580,32 @@ struct MergedRows {
     std::vector<std::pair<std::uint64_t, std::vector<RelRow<MaskT>>>> relations;
 };
 
+/// Two-way merge of runs sorted under `key`; rows with equal keys are one
+/// row and OR their masks — the cross-variant dedup.
+template <typename Row, typename Key>
+void merge_sorted(std::vector<Row> old_rows,
+                  std::vector<Row> fresh_rows,
+                  Key key,
+                  std::vector<Row>& out) {
+    out.reserve(old_rows.size() + fresh_rows.size());
+    auto lhs = old_rows.begin();
+    auto rhs = fresh_rows.begin();
+    while(lhs != old_rows.end() || rhs != fresh_rows.end()) {
+        if(rhs == fresh_rows.end() || (lhs != old_rows.end() && key(*lhs) < key(*rhs))) {
+            out.push_back(std::move(*lhs));
+            lhs += 1;
+        } else if(lhs == old_rows.end() || key(*rhs) < key(*lhs)) {
+            out.push_back(std::move(*rhs));
+            rhs += 1;
+        } else {
+            mask_or(lhs->mask, rhs->mask);
+            out.push_back(std::move(*lhs));
+            lhs += 1;
+            rhs += 1;
+        }
+    }
+}
+
 template <typename MaskT>
 void merge_occurrences(ShardView old_root,
                        llvm::ArrayRef<std::int64_t> id_map,
@@ -621,26 +643,11 @@ void merge_occurrences(ShardView old_root,
         });
     }
 
-    auto key = [](const auto& row) {
-        return std::tuple(row.begin, row.end, row.sym);
-    };
-    out.reserve(old_rows.size() + fresh_rows.size());
-    auto lhs = old_rows.begin();
-    auto rhs = fresh_rows.begin();
-    while(lhs != old_rows.end() || rhs != fresh_rows.end()) {
-        if(rhs == fresh_rows.end() || (lhs != old_rows.end() && key(*lhs) < key(*rhs))) {
-            out.push_back(std::move(*lhs));
-            lhs += 1;
-        } else if(lhs == old_rows.end() || key(*rhs) < key(*lhs)) {
-            out.push_back(std::move(*rhs));
-            rhs += 1;
-        } else {
-            mask_or(lhs->mask, rhs->mask);
-            out.push_back(std::move(*lhs));
-            lhs += 1;
-            rhs += 1;
-        }
-    }
+    merge_sorted(
+        std::move(old_rows),
+        std::move(fresh_rows),
+        [](const auto& row) { return std::tuple(row.begin, row.end, row.sym); },
+        out);
 }
 
 template <typename MaskT>
@@ -699,26 +706,11 @@ template <typename MaskT>
 void merge_relation_rows(std::vector<RelRow<MaskT>> old_rows,
                          std::vector<RelRow<MaskT>> fresh_rows,
                          std::vector<RelRow<MaskT>>& out) {
-    auto key = [](const auto& row) {
-        return std::tuple(row.kind, row.begin, row.end, row.payload);
-    };
-    out.reserve(old_rows.size() + fresh_rows.size());
-    auto lhs = old_rows.begin();
-    auto rhs = fresh_rows.begin();
-    while(lhs != old_rows.end() || rhs != fresh_rows.end()) {
-        if(rhs == fresh_rows.end() || (lhs != old_rows.end() && key(*lhs) < key(*rhs))) {
-            out.push_back(std::move(*lhs));
-            lhs += 1;
-        } else if(lhs == old_rows.end() || key(*rhs) < key(*lhs)) {
-            out.push_back(std::move(*rhs));
-            rhs += 1;
-        } else {
-            mask_or(lhs->mask, rhs->mask);
-            out.push_back(std::move(*lhs));
-            lhs += 1;
-            rhs += 1;
-        }
-    }
+    merge_sorted(
+        std::move(old_rows),
+        std::move(fresh_rows),
+        [](const auto& row) { return std::tuple(row.kind, row.begin, row.end, row.payload); },
+        out);
 }
 
 template <typename MaskT>
@@ -831,10 +823,10 @@ void emit_mask(ShardBlob& blob, bool occurrence, MaskTier tier, const MaskT& mas
         }
         case MaskTier::Roaring: {
             if constexpr(std::same_as<MaskT, Bitmap>) {
-                auto size = mask.getSizeInBytes(false);
+                auto size = mask.getSizeInBytes(true);
                 auto offset = roaring.size();
                 roaring.resize(offset + size);
-                mask.write(reinterpret_cast<char*>(roaring.data() + offset), false);
+                mask.write(reinterpret_cast<char*>(roaring.data() + offset), true);
                 roaring_offsets.push_back(static_cast<std::uint32_t>(offset));
             }
             break;

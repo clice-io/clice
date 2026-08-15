@@ -192,9 +192,9 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                     dirty.add_clear_reindex(event.path_id);
                     break;
                 }
-                auto shard_it = workspace.merged_indices.find(event.path_id);
-                bool shard_current = shard_it != workspace.merged_indices.end() &&
-                                     *disk == shard_it->second.content();
+                auto shard_it = workspace.shards.find(event.path_id);
+                bool shard_current =
+                    shard_it != workspace.shards.end() && *disk == shard_it->second.content();
                 if(shard_current) {
                     dirty.add_reindex_deps_only(event.path_id);
                 } else {
@@ -317,7 +317,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                         // way — same eviction as the closed branch.
                         dirty.mark_ast_dirty.push_back(path_id);
                         if(!keep_shard) {
-                            workspace.merged_indices.erase(path_id);
+                            workspace.shards.erase(path_id);
                             dirty.add_reindex_content_changed(path_id);
                         }
                     } else if(!keep_shard) {
@@ -332,7 +332,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                         // can merge its old-command result back after this
                         // eviction; closing that window needs an index
                         // generation guard in the indexer.
-                        workspace.merged_indices.erase(path_id);
+                        workspace.shards.erase(path_id);
                         dirty.add_reindex_content_changed(path_id);
                     }
 
@@ -356,7 +356,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                         if(store.find(header_id)) {
                             dirty.mark_ast_dirty.push_back(header_id);
                         } else {
-                            workspace.merged_indices.erase(header_id);
+                            workspace.shards.erase(header_id);
                             dirty.add_reindex_content_changed(header_id);
                         }
                     }

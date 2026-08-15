@@ -306,9 +306,9 @@ void MasterServer::on_agentic_query() {
         if(!disk) {
             continue;
         }
-        auto shard_it = workspace.merged_indices.find(path_id);
+        auto shard_it = workspace.shards.find(path_id);
         bool shard_current =
-            shard_it != workspace.merged_indices.end() && *disk == shard_it->second.content();
+            shard_it != workspace.shards.end() && *disk == shard_it->second.content();
         indexer.enqueue(path_id,
                         shard_current ? ReindexReason::DepsOnly : ReindexReason::ContentChanged);
     }

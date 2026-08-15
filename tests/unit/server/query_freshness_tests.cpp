@@ -64,7 +64,7 @@ void merge_into_workspace() {
         std::string bytes;
         llvm::raw_string_ostream os(bytes);
         index::write_shard(index::Shard(), {}, fresh, content, llvm::xxh3_64bits(content), os);
-        workspace.merged_indices[file_ids_map[local_id]] =
+        workspace.shards[file_ids_map[local_id]] =
             index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
         if(llvm::sys::path::filename(view->path(local_id)) == "header.h") {
             header_id = file_ids_map[local_id];
@@ -75,7 +75,7 @@ void merge_into_workspace() {
 /// The symbol hash at an offset in a file's merged shard.
 index::SymbolHash symbol_at(std::uint32_t path_id, std::uint32_t offset) {
     index::SymbolHash result = 0;
-    workspace.merged_indices[path_id].lookup(offset, [&](const index::Occurrence& o) {
+    workspace.shards[path_id].lookup(offset, [&](const index::Occurrence& o) {
         result = o.target;
         return false;
     });

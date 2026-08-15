@@ -2,7 +2,6 @@
 
 #include <cstdint>
 #include <optional>
-#include <string>
 #include <utility>
 #include <vector>
 
@@ -20,7 +19,7 @@ struct ManifestNode {
     std::uint32_t fv = 0;
 
     /// Index of the including node, ~0 when the directive sits in the TU's
-    /// own file... the TU root is not itself a node.
+    /// own file (the TU root is not itself a node).
     std::uint32_t parent = ~0u;
 
     /// 1-based line of the include directive in the parent.

@@ -263,7 +263,7 @@ struct Workspace {
     /// Per-file row blobs from background indexing, keyed by project-level
     /// path_id: symbol occurrences, relations and stored content for
     /// position mapping, served zero-copy.
-    llvm::DenseMap<std::uint32_t, index::Shard> merged_indices;
+    llvm::DenseMap<std::uint32_t, index::Shard> shards;
 
     /// Index blob persistence, opened together with the cache store.
     /// Declared after `store`: the filesystem backend borrows it, so it

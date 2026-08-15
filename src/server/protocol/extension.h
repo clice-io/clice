@@ -124,9 +124,9 @@ struct StatsResult {
     std::uint32_t pch_loaded_states = 0;
     std::uint64_t pch_state_bytes = 0;
 
-    /// Index shards holding a heap Impl (need_rewrite() true), and their
-    /// stored-content bytes. Zero after a settled save: committed shards
-    /// flip back to their buffer-backed blobs.
+    /// Shard blobs awaiting persistence (the indexer's dirty set — zero
+    /// after a settled save), and the total mapped bytes of every loaded
+    /// shard blob.
     std::uint32_t index_inmemory_shards = 0;
     std::uint64_t index_shard_content_bytes = 0;
 

@@ -1,3 +1,4 @@
+#include <format>
 #include <limits>
 
 #include "test/temp_dir.h"
@@ -13,6 +14,7 @@
 #include "server/worker/worker_pool.h"
 
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/xxhash.h"
 
 namespace clice::testing {
 
@@ -59,18 +61,35 @@ struct IndexerFixture {
     void consume(std::uint32_t id) {
         indexer.pending_ids.erase(id);
     }
+
+    /// Start a fresh staleness round: per-round FileVersion verdicts are
+    /// cleared by run_background_indexing, which these tests bypass.
+    void clear_verdicts() {
+        indexer.fv_verdicts.clear();
+    }
+
+    bool global_dirty() {
+        return indexer.global_dirty;
+    }
+
+    /// Drop the merge's own dirty mark so a later assertion isolates the
+    /// stamp-repair path.
+    void reset_global_dirty() {
+        indexer.global_dirty = false;
+    }
+
+    /// Run one save() to completion on the fixture's loop.
+    void save() {
+        auto body = [this]() -> kota::task<> {
+            co_await indexer.save();
+        };
+        auto task = body();
+        loop.schedule(task);
+        loop.run();
+    }
 };
 
 namespace {
-
-TEST_SUITE(IndexerMerge) {
-
-kota::event_loop loop;
-Workspace workspace;
-SessionStore store;
-WorkerPool pool{loop};
-ContextResolver resolver{workspace};
-Indexer indexer{loop, workspace, pool, resolver, store};
 
 struct IndexedTU {
     std::string data;     ///< Serialized TUIndex, as a worker would ship it.
@@ -78,10 +97,11 @@ struct IndexedTU {
 };
 
 /// Index a real on-disk file in-process and serialize its TUIndex.
-IndexedTU index_file(TempDir& tmp, llvm::StringRef file) {
+IndexedTU index_file(TempDir& tmp, llvm::StringRef file, std::vector<std::string> extra_args = {}) {
     std::string resource = std::string(resource_dir());
     std::vector<std::string> args =
         {"clang++", "-fsyntax-only", "-resource-dir", resource, "-c", std::string(file)};
+    args.insert(args.end(), extra_args.begin(), extra_args.end());
 
     CompilationParams cp;
     cp.kind = CompilationKind::Indexing;
@@ -102,16 +122,37 @@ IndexedTU index_file(TempDir& tmp, llvm::StringRef file) {
     return result;
 }
 
+void open_store(TempDir& tmp, Workspace& workspace) {
+    auto store = CacheStore::open(tmp.path("cache"), 1);
+    ASSERT_TRUE(store.has_value());
+    workspace.store.emplace(std::move(*store));
+    workspace.index_storage = index::make_fs_index_storage(*workspace.store);
+}
+
+/// The storage key of a file's shard or manifest blob (Indexer's naming).
+std::string blob_key(llvm::StringRef path) {
+    return std::format("{:016x}", llvm::xxh3_64bits(path));
+}
+
+TEST_SUITE(IndexerMerge) {
+
+kota::event_loop loop;
+Workspace workspace;
+SessionStore store;
+WorkerPool pool{loop};
+ContextResolver resolver{workspace};
+Indexer indexer{loop, workspace, pool, resolver, store};
+
 TEST_CASE(MergeRejectsGarbage) {
     // A worker shipping corrupted bytes (torn write, stale format) must not
     // crash the master or leave partial state behind.
-    ASSERT_TRUE(workspace.merged_indices.empty());
+    ASSERT_TRUE(workspace.shards.empty());
     ASSERT_TRUE(workspace.project_index.symbols.empty());
 
     std::string garbage = "definitely not a flatbuffer, but long enough to try";
     indexer.merge(garbage.data(), garbage.size());
 
-    ASSERT_TRUE(workspace.merged_indices.empty());
+    ASSERT_TRUE(workspace.shards.empty());
     ASSERT_TRUE(workspace.project_index.symbols.empty());
 }
 
@@ -125,8 +166,8 @@ TEST_CASE(MergeSkipsMovedDisk) {
 
     indexer.merge(indexed.data.data(), indexed.data.size());
     auto path_id = workspace.path_pool.intern(indexed.tu_path);
-    auto it = workspace.merged_indices.find(path_id);
-    ASSERT_TRUE(it != workspace.merged_indices.end());
+    auto it = workspace.shards.find(path_id);
+    ASSERT_TRUE(it != workspace.shards.end());
     ASSERT_EQ(it->second.content(), "int value() { return 1; }\n");
 
     // The disk moved on since the rows were indexed: merging them would
@@ -142,13 +183,6 @@ TEST_CASE(MergeSkipsMovedDisk) {
     ASSERT_FALSE(fresh.data.empty());
     indexer.merge(fresh.data.data(), fresh.data.size());
     ASSERT_EQ(it->second.content(), "int renamed() { return 2; }\n");
-}
-
-void open_store(TempDir& tmp, Workspace& workspace) {
-    auto store = CacheStore::open(tmp.path("cache"), 1);
-    ASSERT_TRUE(store.has_value());
-    workspace.store.emplace(std::move(*store));
-    workspace.index_storage = index::make_fs_index_storage(*workspace.store);
 }
 
 TEST_CASE(SaveCommitsDirtyShard) {
@@ -175,8 +209,8 @@ TEST_CASE(SaveCommitsDirtyShard) {
 
     // Committed: the dirty state is drained and the shard still answers
     // identically.
-    auto it = workspace.merged_indices.find(path_id);
-    ASSERT_TRUE(it != workspace.merged_indices.end());
+    auto it = workspace.shards.find(path_id);
+    ASSERT_TRUE(it != workspace.shards.end());
     ASSERT_EQ(indexer.pending_shard_writes(), 0u);
     ASSERT_EQ(indexer.last_save_shards(), 1u);
     ASSERT_EQ(it->second.content(), "int flip_value() { return 1; }\n");
@@ -218,8 +252,8 @@ TEST_CASE(MidSaveMergeKept) {
 
     // The save committed the pre-merge snapshot: the shard keeps the new
     // content and stays dirty so the next save commits it.
-    auto it = workspace.merged_indices.find(path_id);
-    ASSERT_TRUE(it != workspace.merged_indices.end());
+    auto it = workspace.shards.find(path_id);
+    ASSERT_TRUE(it != workspace.shards.end());
     ASSERT_EQ(indexer.pending_shard_writes(), 1u);
     ASSERT_EQ(it->second.content(), "int second_value() { return 2; }\n");
 
@@ -230,12 +264,318 @@ TEST_CASE(MidSaveMergeKept) {
     loop.schedule(task);
     loop.run();
 
-    it = workspace.merged_indices.find(path_id);
+    it = workspace.shards.find(path_id);
     ASSERT_EQ(indexer.pending_shard_writes(), 0u);
     ASSERT_EQ(it->second.content(), "int second_value() { return 2; }\n");
 }
 
+TEST_CASE(MergeHitWritesNothing) {
+    TempDir tmp;
+    tmp.touch("main.cpp", "int steady() { return 1; }\n");
+    auto src = tmp.path("main.cpp");
+    open_store(tmp, workspace);
+
+    auto indexed = index_file(tmp, src);
+    ASSERT_FALSE(indexed.data.empty());
+    indexer.merge(indexed.data.data(), indexed.data.size());
+    auto save_body = [&]() -> kota::task<> {
+        co_await indexer.save();
+    };
+    auto task = save_body();
+    loop.schedule(task);
+    loop.run();
+    ASSERT_EQ(indexer.pending_shard_writes(), 0u);
+
+    // A re-merge whose rows the shard already stores is the steady state of
+    // every background round: it must record contributions and touch no
+    // blob at all.
+    indexer.merge(indexed.data.data(), indexed.data.size());
+    ASSERT_EQ(indexer.pending_shard_writes(), 0u);
+}
+
+TEST_CASE(SharedHeaderVariants) {
+    TempDir tmp;
+    tmp.touch("shared.h",
+              "#pragma once\n#ifdef MODE\nint mode_fn();\n#endif\n"
+              "inline int shared_fn() { return 1; }\n");
+    tmp.touch("a.cpp", "#include \"shared.h\"\nint a() { return shared_fn(); }\n");
+    tmp.touch("b.cpp", "#include \"shared.h\"\nint b() { return shared_fn(); }\n");
+
+    auto a = index_file(tmp, tmp.path("a.cpp"));
+    auto b = index_file(tmp, tmp.path("b.cpp"), {"-DMODE"});
+    ASSERT_FALSE(a.data.empty());
+    ASSERT_FALSE(b.data.empty());
+
+    // Two TUs preprocess the header differently: both variants coexist in
+    // one blob, each TU's contribution live.
+    indexer.merge(a.data.data(), a.data.size());
+    indexer.merge(b.data.data(), b.data.size());
+    auto header_id = workspace.path_pool.intern(tmp.path("shared.h"));
+    auto& shard = workspace.shards[header_id];
+    ASSERT_EQ(shard.variants().size(), std::size_t(2));
+    ASSERT_EQ(workspace.project_index.contributions.lookup(header_id).size(), std::size_t(2));
+
+    // A third TU sharing a's preprocessing hits the stored variant: the
+    // set does not grow, and neither existing contribution is disturbed.
+    tmp.touch("c.cpp", "#include \"shared.h\"\nint c() { return shared_fn(); }\n");
+    auto c = index_file(tmp, tmp.path("c.cpp"));
+    ASSERT_FALSE(c.data.empty());
+    indexer.merge(c.data.data(), c.data.size());
+    ASSERT_EQ(shard.variants().size(), std::size_t(2));
+    ASSERT_EQ(workspace.project_index.contributions.lookup(header_id).size(), std::size_t(3));
+
+    // Re-indexing a TU whose header rows are unchanged must not disturb
+    // the other TUs' variants either.
+    tmp.touch("a.cpp", "#include \"shared.h\"\nint a2() { return shared_fn(); }\n");
+    auto fresh = index_file(tmp, tmp.path("a.cpp"));
+    ASSERT_FALSE(fresh.data.empty());
+    indexer.merge(fresh.data.data(), fresh.data.size());
+    ASSERT_EQ(shard.variants().size(), std::size_t(2));
+    ASSERT_EQ(workspace.project_index.contributions.lookup(header_id).size(), std::size_t(3));
+}
+
+TEST_CASE(HeaderSkipCarriesContribution) {
+    TempDir tmp;
+    tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
+    tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
+    auto src = tmp.path("main.cpp");
+
+    auto v1 = index_file(tmp, src);
+    ASSERT_FALSE(v1.data.empty());
+    indexer.merge(v1.data.data(), v1.data.size());
+    auto header_id = workspace.path_pool.intern(tmp.path("dep.h"));
+    auto tu_id = workspace.path_pool.intern(v1.tu_path);
+    auto old_hash = workspace.project_index.contributions.lookup(header_id).lookup(tu_id);
+    ASSERT_TRUE(old_hash != 0);
+
+    // The header changes, a reindex captures it — and the header changes
+    // AGAIN before the result merges. The stale section must not land, but
+    // the previous contribution keeps serving (its rows still match the
+    // shard) until a follow-up pass settles.
+    tmp.touch("dep.h", "#pragma once\ninline int dep() { return 2; }\n");
+    auto v2 = index_file(tmp, src);
+    ASSERT_FALSE(v2.data.empty());
+    tmp.touch("dep.h", "#pragma once\ninline int dep() { return 3; }\n");
+
+    indexer.merge(v2.data.data(), v2.data.size());
+    ASSERT_EQ(workspace.project_index.contributions.lookup(header_id).lookup(tu_id), old_hash);
+    ASSERT_TRUE(workspace.shards[header_id].has_variant(old_hash));
+}
+
+TEST_CASE(SaveCompactsAndRetires) {
+    TempDir tmp;
+    tmp.touch("shared.h",
+              "#pragma once\n#ifdef MODE\nint mode_fn();\n#endif\n"
+              "inline int shared_fn() { return 1; }\n");
+    tmp.touch("a.cpp", "#include \"shared.h\"\nint a() { return shared_fn(); }\n");
+    tmp.touch("b.cpp", "#include \"shared.h\"\nint b() { return shared_fn(); }\n");
+    open_store(tmp, workspace);
+
+    auto a = index_file(tmp, tmp.path("a.cpp"));
+    auto b = index_file(tmp, tmp.path("b.cpp"), {"-DMODE"});
+    ASSERT_FALSE(a.data.empty());
+    ASSERT_FALSE(b.data.empty());
+    indexer.merge(a.data.data(), a.data.size());
+    indexer.merge(b.data.data(), b.data.size());
+    auto header_id = workspace.path_pool.intern(tmp.path("shared.h"));
+    ASSERT_EQ(workspace.shards[header_id].variants().size(), std::size_t(2));
+
+    auto save = [&] {
+        auto body = [&]() -> kota::task<> {
+            co_await indexer.save();
+        };
+        auto task = body();
+        loop.schedule(task);
+        loop.run();
+    };
+    save();
+
+    // b stops including the header: its variant dies, and the next save
+    // erases the dead rows for real.
+    tmp.touch("b.cpp", "int b() { return 2; }\n");
+    auto b2 = index_file(tmp, tmp.path("b.cpp"));
+    ASSERT_FALSE(b2.data.empty());
+    indexer.merge(b2.data.data(), b2.data.size());
+    ASSERT_TRUE(workspace.shards[header_id].has_dead_variants());
+    save();
+    ASSERT_EQ(workspace.shards[header_id].variants().size(), std::size_t(1));
+
+    // a drops it too: no contribution is left, so the shard retires from
+    // memory and from storage.
+    tmp.touch("a.cpp", "int a() { return 3; }\n");
+    auto a2 = index_file(tmp, tmp.path("a.cpp"));
+    ASSERT_FALSE(a2.data.empty());
+    indexer.merge(a2.data.data(), a2.data.size());
+    save();
+    ASSERT_FALSE(workspace.shards.contains(header_id));
+    bool on_disk = false;
+    auto key = blob_key(workspace.path_pool.resolve(header_id));
+    workspace.index_storage->for_each_key(index::IndexBlobKind::Shard,
+                                          [&](llvm::StringRef k) { on_disk |= k == key; });
+    ASSERT_FALSE(on_disk);
+}
+
 };  // TEST_SUITE(IndexerMerge)
+
+TEST_SUITE(IndexerStaleness) {
+
+/// A merged TU with one header dependency, ready for staleness probing.
+struct Indexed {
+    TempDir tmp;
+    IndexerFixture f;
+    std::string src;
+    std::string header;
+
+    bool setup() {
+        tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
+        tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
+        src = tmp.path("main.cpp");
+        header = tmp.path("dep.h");
+        auto indexed = index_file(tmp, src);
+        if(indexed.data.empty()) {
+            return false;
+        }
+        f.indexer.merge(indexed.data.data(), indexed.data.size());
+        return true;
+    }
+};
+
+TEST_CASE(TouchRepairsStamp) {
+    Indexed x;
+    ASSERT_TRUE(x.setup());
+    ASSERT_FALSE(x.f.indexer.need_update(x.src));
+
+    // Same bytes, new mtime: the stat fast path misses, the hash proves a
+    // mere touch, and the stamp is repaired in place (dirtying the global
+    // blob so the repair persists).
+    ASSERT_TRUE(set_file_mtime(x.header, file_mtime_ns(x.header) + 5'000'000'000));
+    x.f.reset_global_dirty();
+    x.f.clear_verdicts();
+    ASSERT_FALSE(x.f.indexer.need_update(x.src));
+    ASSERT_TRUE(x.f.global_dirty());
+}
+
+TEST_CASE(PreservedMtimeEditStale) {
+    Indexed x;
+    ASSERT_TRUE(x.setup());
+    auto recorded = file_mtime_ns(x.header);
+
+    // Different content restored to the recorded mtime (rsync -t, git
+    // restore-mtime): equality of the stat is not enough — the size moved,
+    // and the hash check must catch the edit.
+    x.tmp.touch("dep.h", "#pragma once\ninline int dep() { return 12345; }\n");
+    ASSERT_TRUE(set_file_mtime(x.header, recorded));
+    x.f.clear_verdicts();
+    ASSERT_TRUE(x.f.indexer.need_update(x.src));
+}
+
+TEST_CASE(AllDepsChecked) {
+    TempDir tmp;
+    tmp.touch("first.h", "#pragma once\ninline int first() { return 1; }\n");
+    tmp.touch("second.h", "#pragma once\ninline int second() { return 2; }\n");
+    tmp.touch("main.cpp",
+              "#include \"first.h\"\n#include \"second.h\"\n"
+              "int use() { return first() + second(); }\n");
+    IndexerFixture f;
+    auto indexed = index_file(tmp, tmp.path("main.cpp"));
+    ASSERT_FALSE(indexed.data.empty());
+    f.indexer.merge(indexed.data.data(), indexed.data.size());
+    ASSERT_FALSE(f.indexer.need_update(tmp.path("main.cpp")));
+
+    // Only the second dependency changes; a partial iteration would call
+    // the TU fresh.
+    auto recorded = file_mtime_ns(tmp.path("second.h"));
+    tmp.touch("second.h", "#pragma once\ninline int second() { return 22222; }\n");
+    ASSERT_TRUE(set_file_mtime(tmp.path("second.h"), recorded));
+    f.clear_verdicts();
+    ASSERT_TRUE(f.indexer.need_update(tmp.path("main.cpp")));
+}
+
+};  // TEST_SUITE(IndexerStaleness)
+
+TEST_SUITE(IndexerLoad) {
+
+TEST_CASE(LoadRestoresIndex) {
+    TempDir tmp;
+    tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
+    tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
+    auto src = tmp.path("main.cpp");
+
+    {
+        IndexerFixture f;
+        open_store(tmp, f.workspace);
+        auto indexed = index_file(tmp, src);
+        ASSERT_FALSE(indexed.data.empty());
+        f.indexer.merge(indexed.data.data(), indexed.data.size());
+        f.save();
+    }
+
+    IndexerFixture f;
+    open_store(tmp, f.workspace);
+    f.indexer.load();
+
+    auto tu_id = f.workspace.path_pool.intern(src);
+    auto header_id = f.workspace.path_pool.intern(tmp.path("dep.h"));
+    ASSERT_TRUE(f.workspace.shards.contains(tu_id));
+    ASSERT_TRUE(f.workspace.shards.contains(header_id));
+    ASSERT_TRUE(f.workspace.project_index.contributions.lookup(header_id).contains(tu_id));
+    // The persisted FileVersion stamps make the untouched TU judge fresh
+    // without any reindex.
+    ASSERT_FALSE(f.indexer.need_update(src));
+}
+
+TEST_CASE(LoadHealsBrokenShard) {
+    TempDir tmp;
+    tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
+    tmp.touch("extra.h", "#pragma once\ninline int extra() { return 2; }\n");
+    tmp.touch("main.cpp",
+              "#include \"dep.h\"\n#include \"extra.h\"\n"
+              "int use() { return dep() + extra(); }\n");
+    auto src = tmp.path("main.cpp");
+    std::string header_key;
+
+    {
+        IndexerFixture f;
+        open_store(tmp, f.workspace);
+        auto indexed = index_file(tmp, src);
+        ASSERT_FALSE(indexed.data.empty());
+        f.indexer.merge(indexed.data.data(), indexed.data.size());
+        f.save();
+        header_key = blob_key(
+            f.workspace.path_pool.resolve(f.workspace.path_pool.intern(tmp.path("dep.h"))));
+    }
+
+    // Corrupt the header's blob and plant an orphan nothing references
+    // (the store's layout is {root}/cache/v{N}, under the "cache" root).
+    tmp.touch("cache/cache/v1/index/" + header_key + ".idx", "corrupted beyond verification");
+    tmp.touch("cache/cache/v1/index/deadbeefdeadbeef.idx", "orphan");
+
+    IndexerFixture f;
+    open_store(tmp, f.workspace);
+    f.indexer.load();
+
+    // The header's rows are unservable, so its contributing TU's manifest
+    // is dropped and the TU re-enqueued — no CDB entry would ever re-index
+    // a header otherwise. The orphan is swept.
+    auto tu_id = f.workspace.path_pool.intern(src);
+    ASSERT_TRUE(f.workspace.project_index.manifests.empty());
+    ASSERT_TRUE(f.indexer.pending_reason(tu_id).has_value());
+
+    // The dropped manifest also retired the TU's contribution to the
+    // OTHER header: its loaded shard's live mask must follow, or it keeps
+    // serving a variant nothing contributes any more.
+    auto extra_id = f.workspace.path_pool.intern(tmp.path("extra.h"));
+    auto extra_it = f.workspace.shards.find(extra_id);
+    ASSERT_TRUE(extra_it != f.workspace.shards.end());
+    ASSERT_TRUE(extra_it->second.has_dead_variants());
+    bool orphan_alive = false;
+    f.workspace.index_storage->for_each_key(index::IndexBlobKind::Shard, [&](llvm::StringRef key) {
+        orphan_alive |= key == "deadbeefdeadbeef";
+    });
+    ASSERT_FALSE(orphan_alive);
+}
+
+};  // TEST_SUITE(IndexerLoad)
 
 TEST_SUITE(IndexerRequeue) {
 

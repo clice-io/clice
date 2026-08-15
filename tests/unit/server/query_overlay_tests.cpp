@@ -124,7 +124,7 @@ void merge_disk_index() {
         std::string bytes;
         llvm::raw_string_ostream os(bytes);
         index::write_shard(index::Shard(), {}, fresh, content, llvm::xxh3_64bits(content), os);
-        workspace.merged_indices[file_ids_map[local_id]] =
+        workspace.shards[file_ids_map[local_id]] =
             index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
     }
 }
@@ -423,7 +423,7 @@ int main() { §(ref)⟦foo⟧(); return 0; }
     std::string bytes;
     llvm::raw_string_ostream os(bytes);
     index::write_shard(index::Shard(), {}, fresh, "xxx\n", llvm::xxh3_64bits("xxx\n"), os);
-    workspace.merged_indices[header_id] =
+    workspace.shards[header_id] =
         index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
     workspace.project_index.symbols[foo].reference_files.add(header_id);
 

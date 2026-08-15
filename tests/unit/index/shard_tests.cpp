@@ -177,8 +177,8 @@ TEST_CASE(CompactionDropsVariant) {
     ASSERT_EQ(hash_at(compacted, 11), 0u);
 }
 
-/// Grow a shard to `count` variants: variant i holds the shared row plus a
-/// unique row at offset i * 16.
+/// Grow a shard to `count` variants: variant i holds the shared occurrence
+/// and relation plus a unique one of each at offset i * 16.
 index::Shard grow_variants(std::uint32_t count) {
     std::string content(16 * (count + 2), 'x');
     index::Shard shard;
@@ -187,27 +187,43 @@ index::Shard grow_variants(std::uint32_t count) {
             {{0, 3},               111     },
             {{i * 16, i * 16 + 3}, 1000 + i}
         });
+        rows.relations[999] = {
+            {.kind = RelationKind::Reference, .range = {0, 3},               .target_symbol = 0},
+            {.kind = RelationKind::Reference, .range = {i * 16, i * 16 + 3}, .target_symbol = 0},
+        };
         shard = make_shard(shard.loaded() ? append_variant(shard, rows, i)
                                           : write_fresh(rows, i, content));
     }
     return shard;
 }
 
+std::size_t reference_count(const index::Shard& shard, index::SymbolHash symbol) {
+    std::size_t count = 0;
+    shard.lookup(symbol, RelationKind::Reference, [&](const index::Relation&) {
+        count += 1;
+        return true;
+    });
+    return count;
+}
+
 void expect_tier_behavior(std::uint32_t count) {
     auto shard = grow_variants(count);
     ASSERT_EQ(shard.variants().size(), std::size_t(count));
 
-    // Every variant's unique row serves under the full live set.
+    // Every variant's unique row serves under the full live set, and the
+    // shared relation collapsed to one row across all variants.
     for(std::uint32_t i = 1; i <= count; i += 1) {
         ASSERT_EQ(hash_at(shard, i * 16 + 1), 1000u + i);
     }
+    ASSERT_EQ(reference_count(shard, 999), std::size_t(count) + 1);
 
-    // One live variant: its unique row and the shared row serve, another
-    // variant's unique row does not.
+    // One live variant: its unique rows and the shared rows serve, another
+    // variant's do not — on the occurrence and the relation side alike.
     shard.set_live({3});
     ASSERT_EQ(hash_at(shard, 1), 111u);
     ASSERT_EQ(hash_at(shard, 3 * 16 + 1), 1003u);
     ASSERT_EQ(hash_at(shard, 5 * 16 + 1), 0u);
+    ASSERT_EQ(reference_count(shard, 999), std::size_t(2));
 }
 
 TEST_CASE(MaskTier32) {
@@ -316,8 +332,47 @@ TEST_CASE(LocalSymbolNames) {
     ASSERT_FALSE(shard.find_symbol(external, name, kind));
 }
 
+TEST_CASE(WideSymbolIds) {
+    // Past 65535 distinct symbols the id columns must widen to u32; a
+    // truncating writer corrupts resolution only on indexes this large.
+    index::FileIndex rows;
+    constexpr std::uint32_t count = 70000;
+    rows.occurrences.reserve(count);
+    for(std::uint32_t i = 0; i < count; i += 1) {
+        rows.occurrences.push_back({
+            {i * 8, i * 8 + 3},
+            0x100000u + i
+        });
+    }
+    std::string content(count * 8 + 16, 'w');
+    auto shard = make_shard(write_fresh(rows, 1, content));
+    ASSERT_EQ(hash_at(shard, 69999 * 8 + 1), 0x100000u + 69999);
+    ASSERT_EQ(hash_at(shard, 3 * 8 + 1), 0x100000u + 3);
+}
+
+TEST_CASE(UnloadedShardNoops) {
+    index::Shard shard;
+    shard.lookup(0, [&](const index::Occurrence&) { return true; });
+    shard.lookup(1, RelationKind::Reference, [&](const index::Relation&) { return true; });
+    std::string name;
+    SymbolKind kind;
+    ASSERT_FALSE(shard.find_symbol(1, name, kind));
+    ASSERT_TRUE(shard.content().empty());
+    ASSERT_TRUE(shard.line_starts().empty());
+}
+
 TEST_CASE(CorruptBlobRejected) {
     ASSERT_FALSE(index::Shard::from_bytes("not a flatbuffer").loaded());
+
+    // A valid blob cut mid-structure must fail verification, not be
+    // misread. (One trailing byte can be alignment padding, so the cut
+    // must reach real data.)
+    auto rows = simple_rows({
+        {{0, 3}, 111}
+    });
+    auto bytes = write_fresh(rows, 1, "aaaa");
+    ASSERT_FALSE(
+        index::Shard::from_bytes(llvm::StringRef(bytes).take_front(bytes.size() / 2)).loaded());
 
     // A structurally valid blob of the current version but with no variants
     // is impossible output of the writer, and must not load either.

@@ -118,7 +118,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
         }
 
         if(filter == "all" || filter == "header") {
-            for(auto& [path_id, shard]: ws.merged_indices) {
+            for(auto& [path_id, shard]: ws.shards) {
                 if(seen.contains(path_id))
                     continue;
                 auto path_str = ws.path_pool.resolve(path_id);
@@ -355,8 +355,8 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
             if(srv.agent_query.skip_shard(*path_id))
                 co_return result;
 
-            auto shard_it = srv.workspace.merged_indices.find(*path_id);
-            if(shard_it == srv.workspace.merged_indices.end())
+            auto shard_it = srv.workspace.shards.find(*path_id);
+            if(shard_it == srv.workspace.shards.end())
                 co_return result;
 
             auto& merged_index = shard_it->second;

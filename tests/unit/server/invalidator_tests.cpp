@@ -226,7 +226,7 @@ TEST_CASE(CloseCurrentShardDepsOnly) {
     Workspace workspace;
     SessionStore store;
     auto closed = workspace.path_pool.intern("/proj/a.cpp");
-    workspace.merged_indices[closed];
+    workspace.shards[closed];
 
     ContextResolver resolver(workspace);
     // Disk matches the shard's stored content: a browse-and-close must not
@@ -244,7 +244,7 @@ TEST_CASE(CloseDivergentShardContentChanged) {
     Workspace workspace;
     SessionStore store;
     auto closed = workspace.path_pool.intern("/proj/a.cpp");
-    workspace.merged_indices[closed];
+    workspace.shards[closed];
 
     ContextResolver resolver(workspace);
     // Disk holds edits the shard never saw (saved while open): the shard's
@@ -518,8 +518,8 @@ TEST_CASE(CDBChangedSplitsOpenClosed) {
     auto open_id = workspace.path_pool.intern(tmp.path("a.cpp"));
     auto closed_id = workspace.path_pool.intern(tmp.path("b.cpp"));
     store.open(open_id);
-    workspace.merged_indices[open_id];
-    workspace.merged_indices[closed_id];
+    workspace.shards[open_id];
+    workspace.shards[closed_id];
 
     ContextResolver resolver(workspace);
     Invalidator invalidator(workspace, store, resolver);
@@ -542,8 +542,8 @@ TEST_CASE(CDBChangedSplitsOpenClosed) {
     // content-only validation: evict them so the queued reindexes are not
     // filtered out. The open file's slot is skipped while open-file
     // indexing is off; its next compile owns the session-side refresh.
-    ASSERT_EQ(workspace.merged_indices.count(closed_id), 0u);
-    ASSERT_EQ(workspace.merged_indices.count(open_id), 0u);
+    ASSERT_EQ(workspace.shards.count(closed_id), 0u);
+    ASSERT_EQ(workspace.shards.count(open_id), 0u);
 }
 
 TEST_CASE(CDBAddedOpenMarksDirty) {
@@ -574,7 +574,7 @@ TEST_CASE(CDBChangedDropsHostedContext) {
     auto closed_header = workspace.path_pool.intern("/proj/closed.h");
     auto other_header = workspace.path_pool.intern("/proj/other.h");
     store.open(open_header);
-    workspace.merged_indices[closed_header];
+    workspace.shards[closed_header];
 
     ContextResolver resolver(workspace);
     resolver.header_contexts[open_header].host_path_id = host;
@@ -593,7 +593,7 @@ TEST_CASE(CDBChangedDropsHostedContext) {
     ASSERT_EQ(dirty.drop_context, dropped);
     ASSERT_TRUE(llvm::is_contained(dirty.mark_ast_dirty, open_header));
     ASSERT_TRUE(llvm::is_contained(dirty.reindex_content_changed, closed_header));
-    ASSERT_EQ(workspace.merged_indices.count(closed_header), 0u);
+    ASSERT_EQ(workspace.shards.count(closed_header), 0u);
 }
 
 TEST_CASE(CDBChangedCascadesModule) {

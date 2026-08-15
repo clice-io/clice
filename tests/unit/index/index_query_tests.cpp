@@ -68,7 +68,7 @@ void merge_into_workspace() {
         std::string bytes;
         llvm::raw_string_ostream os(bytes);
         index::write_shard(index::Shard(), {}, fresh, content, llvm::xxh3_64bits(content), os);
-        workspace.merged_indices[global_id] =
+        workspace.shards[global_id] =
             index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
 
         auto fv = project.intern_file_version(global_id, view->path_hash(local_id));
@@ -79,8 +79,8 @@ void merge_into_workspace() {
     }
 
     for(auto path_id: project.apply_manifest(main_id, std::move(manifest))) {
-        auto it = workspace.merged_indices.find(path_id);
-        if(it != workspace.merged_indices.end()) {
+        auto it = workspace.shards.find(path_id);
+        if(it != workspace.shards.end()) {
             it->second.set_live(project.live_variants(path_id));
         }
     }
@@ -103,7 +103,7 @@ TEST_CASE(DefinitionAcrossFiles) {
 
     auto hit_offset = point("use");
     index::SymbolHash symbol = 0;
-    workspace.merged_indices[main_id].lookup(hit_offset, [&](const index::Occurrence& o) {
+    workspace.shards[main_id].lookup(hit_offset, [&](const index::Occurrence& o) {
         symbol = o.target;
         return false;
     });
@@ -126,7 +126,7 @@ TEST_CASE(ReferencesAcrossFiles) {
     merge_into_workspace();
 
     index::SymbolHash symbol = 0;
-    workspace.merged_indices[main_id].lookup(point("use"), [&](const index::Occurrence& o) {
+    workspace.shards[main_id].lookup(point("use"), [&](const index::Occurrence& o) {
         symbol = o.target;
         return false;
     });
@@ -158,7 +158,7 @@ TEST_CASE(LocalSymbolName) {
     merge_into_workspace();
 
     index::SymbolHash symbol = 0;
-    workspace.merged_indices[main_id].lookup(point("local"), [&](const index::Occurrence& o) {
+    workspace.shards[main_id].lookup(point("local"), [&](const index::Occurrence& o) {
         symbol = o.target;
         return false;
     });
@@ -181,7 +181,7 @@ TEST_CASE(StaleContributionSuppressed) {
     merge_into_workspace();
 
     index::SymbolHash symbol = 0;
-    workspace.merged_indices[main_id].lookup(point("use"), [&](const index::Occurrence& o) {
+    workspace.shards[main_id].lookup(point("use"), [&](const index::Occurrence& o) {
         symbol = o.target;
         return false;
     });

@@ -153,8 +153,8 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
         auto consumed = view.path_hash(local_id);
         bool is_main = local_id == main_local_id;
 
-        auto shard_it = workspace.merged_indices.find(global_id);
-        auto* shard = shard_it != workspace.merged_indices.end() ? &shard_it->second : nullptr;
+        auto shard_it = workspace.shards.find(global_id);
+        auto* shard = shard_it != workspace.shards.end() ? &shard_it->second : nullptr;
 
         // Fast path: this content generation's blob already stores these
         // rows — recording the contribution is the only work, no IO at all.
@@ -215,7 +215,7 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
 
         auto replacement = index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
         assert(replacement.loaded() && "a freshly written shard blob must verify");
-        workspace.merged_indices[global_id] = std::move(replacement);
+        workspace.shards[global_id] = std::move(replacement);
         dirty_shards.insert(global_id);
         manifest.contributions.emplace_back(fv_of[local_id], rows_hash);
     }
@@ -225,8 +225,8 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
     // no sweep over other shards is needed.
     auto affected = project.apply_manifest(tu_path_id, std::move(manifest));
     for(auto path_id: affected) {
-        auto it = workspace.merged_indices.find(path_id);
-        if(it == workspace.merged_indices.end()) {
+        auto it = workspace.shards.find(path_id);
+        if(it == workspace.shards.end()) {
             continue;
         }
         it->second.set_live(project.live_variants(path_id));
@@ -242,7 +242,7 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
         hits,
         appended,
         rebuilt,
-        workspace.merged_indices.size());
+        workspace.shards.size());
 }
 
 kota::task<> Indexer::save() {
@@ -260,7 +260,7 @@ kota::task<> Indexer::save() {
     // dead rows, this erases them for real before the blob reaches disk.
     // A file with no contributions left is retired entirely below.
     llvm::SmallVector<std::uint32_t> retired;
-    for(auto& [path_id, shard]: workspace.merged_indices) {
+    for(auto& [path_id, shard]: workspace.shards) {
         auto live = project.live_variants(path_id);
         if(live.empty()) {
             retired.push_back(path_id);
@@ -278,7 +278,7 @@ kota::task<> Indexer::save() {
         dirty_shards.insert(path_id);
     }
     for(auto path_id: retired) {
-        workspace.merged_indices.erase(path_id);
+        workspace.shards.erase(path_id);
         dirty_shards.erase(path_id);
     }
 
@@ -287,8 +287,8 @@ kota::task<> Indexer::save() {
     // for the next save.
     std::vector<index::IndexStorage::Blob> batch;
     for(auto path_id: dirty_shards) {
-        auto it = workspace.merged_indices.find(path_id);
-        if(it == workspace.merged_indices.end()) {
+        auto it = workspace.shards.find(path_id);
+        if(it == workspace.shards.end()) {
             continue;
         }
         batch.push_back({index::IndexBlobKind::Shard,
@@ -346,7 +346,7 @@ kota::task<> Indexer::save() {
              "phase=save shards={} manifests={} total={} elapsed_ms={}",
              shard_count,
              manifest_count,
-             workspace.merged_indices.size(),
+             workspace.shards.size(),
              timer.ms());
 }
 
@@ -416,8 +416,9 @@ void Indexer::load() {
         }
         expected_keys.insert(key);
         shard.set_live(project.live_variants(path_id));
-        workspace.merged_indices[path_id] = std::move(shard);
+        workspace.shards[path_id] = std::move(shard);
     }
+    llvm::SmallVector<std::uint32_t> mask_refresh;
     for(auto path_id: unservable) {
         auto contribution_it = project.contributions.find(path_id);
         if(contribution_it == project.contributions.end()) {
@@ -428,10 +429,20 @@ void Indexer::load() {
             owners.push_back(tu);
         }
         for(auto tu: owners) {
-            project.remove_manifest(tu);
+            // The removal retires the TU's contributions to EVERY file it
+            // touched, not just the unservable one; the affected set feeds
+            // the mask refresh below, like the merge path's.
+            auto affected = project.remove_manifest(tu);
+            mask_refresh.append(affected.begin(), affected.end());
             storage.remove(index::IndexBlobKind::Manifest,
                            blob_key(workspace.path_pool.resolve(tu)));
             enqueue(tu, ReindexReason::ContentChanged);
+        }
+    }
+    for(auto path_id: mask_refresh) {
+        auto it = workspace.shards.find(path_id);
+        if(it != workspace.shards.end()) {
+            it->second.set_live(project.live_variants(path_id));
         }
     }
 
@@ -446,16 +457,16 @@ void Indexer::load() {
         storage.remove(index::IndexBlobKind::Shard, key);
     }
 
-    if(!workspace.merged_indices.empty()) {
+    if(!workspace.shards.empty()) {
         LOG_INFO("Loaded {} index shards, {} manifests, {} symbols",
-                 workspace.merged_indices.size(),
+                 workspace.shards.size(),
                  project.manifests.size(),
                  project.symbols.size());
     }
     LOG_PERF("startup",
              "phase=index_load symbols={} shards={} manifests={} elapsed_ms={}",
              project.symbols.size(),
-             workspace.merged_indices.size(),
+             workspace.shards.size(),
              project.manifests.size(),
              timer.ms());
 }
@@ -889,8 +900,6 @@ kota::task<> Indexer::run_background_indexing() {
     progress_data.dispatched = dispatched;
     on_progress_changed.emit();
 
-    indexing_active = false;
-
     // Safe point to compact: no dispatch loop holds an index into the queue.
     // Files enqueued while we awaited the workers keep the queue alive for
     // the next scheduled round.
@@ -908,6 +917,11 @@ kota::task<> Indexer::run_background_indexing() {
              total,
              timer.ms());
     co_await save();
+
+    // The round owns the "active" gate through its save: releasing it
+    // before the write await would let a next round's save overlap this
+    // one's in-flight batch, racing same-key blob writes on the pool.
+    indexing_active = false;
 
     // Files enqueued while the round was joining its workers saw their
     // schedule() no-op against indexing_active; without this kick they

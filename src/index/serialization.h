@@ -19,22 +19,39 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
 
+namespace clice::index {
+
+/// Decode a serialized bitmap without trusting its bytes: bounded by the
+/// buffer, and a failed parse yields an empty bitmap — croaring's C++ read
+/// wrappers abort on one, and blob bitmaps are untrusted disk/wire input.
+inline Bitmap read_bitmap(const void* data, std::size_t size) {
+    auto* decoded =
+        roaring::api::roaring_bitmap_portable_deserialize_safe(static_cast<const char*>(data),
+                                                               size);
+    if(!decoded) {
+        return {};
+    }
+    return Bitmap(decoded);
+}
+
+}  // namespace clice::index
+
 namespace kota::meta {
 
-/// Roaring bitmaps travel as their own serialized image (the non-portable
-/// format, matching every in-process reader).
+/// Roaring bitmaps travel in the portable format — the only one with a
+/// bounded deserializer.
 template <>
 struct repr<clice::Bitmap, codec::fbs::format> {
     using type = std::vector<std::byte>;
 
     static type to(const clice::Bitmap& bitmap) {
-        type buffer(bitmap.getSizeInBytes(false));
-        bitmap.write(reinterpret_cast<char*>(buffer.data()), false);
+        type buffer(bitmap.getSizeInBytes(true));
+        bitmap.write(reinterpret_cast<char*>(buffer.data()), true);
         return buffer;
     }
 
     static clice::Bitmap from(const type& buffer) {
-        return clice::Bitmap::read(reinterpret_cast<const char*>(buffer.data()), false);
+        return clice::index::read_bitmap(buffer.data(), buffer.size());
     }
 };
 

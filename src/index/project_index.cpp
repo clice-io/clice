@@ -42,7 +42,7 @@ llvm::SmallVector<std::uint32_t> ProjectIndex::merge(this ProjectIndex& self,
     llvm::SmallVector<std::uint32_t> file_ids_map;
     file_ids_map.resize_for_overwrite(count);
 
-    for(std::uint32_t i = 0; i < count; i++) {
+    for(std::uint32_t i = 0; i < count; i += 1) {
         file_ids_map[i] = pool.intern(view.path(i));
     }
 
@@ -59,7 +59,7 @@ llvm::SmallVector<std::uint32_t> ProjectIndex::merge(this ProjectIndex& self,
             if(bitmap.empty()) {
                 return;
             }
-            for(auto ref: Bitmap::read(bitmap.data(), false)) {
+            for(auto ref: read_bitmap(bitmap.data(), bitmap.size())) {
                 // Reference ids are unvalidated wire values (the view skips
                 // the double bitmap decode a load-time check would cost);
                 // an out-of-range one is dropped, not misresolved.
