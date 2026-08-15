@@ -230,7 +230,18 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
         }
 
         auto replacement = index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
-        assert(replacement.loaded() && "a freshly written shard blob must verify");
+        if(!replacement.loaded()) {
+            // Only an unverified pairing can produce an unloadable blob:
+            // with no consumed hash the arbitration above cannot see the
+            // disk shrinking under rows built from longer content, and the
+            // blob's own range bounds catch it here instead —
+            // hash-verified content always fits its rows.
+            assert(consumed == 0 && "a freshly written shard blob must verify");
+            LOG_INFO("Skip merge for {}: disk moved on since it was indexed",
+                     workspace.path_pool.resolve(global_id));
+            carry_old_contribution(global_id);
+            continue;
+        }
         replacements.emplace_back(global_id, std::move(replacement));
         manifest.contributions.emplace_back(fv_of[local_id], rows_hash);
     }
@@ -340,6 +351,13 @@ kota::task<> Indexer::save() {
     }
     auto shard_count = batch.size();
 
+    // One generation per persisted global blob, stamped into every
+    // manifest of the batch: a manifest can outrun a lost global write
+    // with every FileVersion it references already known (a reindex that
+    // changed rows only), so load() needs the ordering explicit.
+    if(global_dirty) {
+        project.global_generation += 1;
+    }
     for(auto tu_path_id: dirty_manifests) {
         auto it = project.manifests.find(tu_path_id);
         auto key = blob_key(workspace.path_pool.resolve(tu_path_id));
@@ -350,6 +368,7 @@ kota::task<> Indexer::save() {
             removals.push_back({index::IndexBlobKind::Manifest, std::move(key)});
             continue;
         }
+        it->second.global_gen = project.global_generation;
         std::string bytes;
         llvm::raw_string_ostream os(bytes);
         index::serialize_manifest(it->second, os);
@@ -357,9 +376,10 @@ kota::task<> Indexer::save() {
     }
     auto manifest_count = batch.size() - shard_count;
 
-    // The global blob goes last: after a crash mid-batch, manifests newer
-    // than the global table reference unknown FileVersions and are dropped
-    // at load — self-healing in the direction that loses least.
+    // The global blob goes last: a crash mid-batch then strands only
+    // manifests, which load() drops by their generation stamp — the
+    // reverse order would strand a global claiming symbols in files whose
+    // rows never landed.
     if(global_dirty) {
         std::string bytes;
         llvm::raw_string_ostream os(bytes);
@@ -429,15 +449,19 @@ void Indexer::load() {
         return;
     }
 
-    // Adopt every manifest the global table can resolve; the rest are
-    // stale residue (crash between batch phases, older format) and their
-    // TUs simply reindex — the startup sweep enqueues every CDB entry, and
-    // standalone-indexed headers are re-enqueued here explicitly.
+    // Adopt every manifest the global table covers: FileVersions all
+    // resolvable and a generation stamp no newer than the global's (a
+    // newer stamp means the symbols of that save never landed). The rest
+    // are stale residue (crash between batch phases, older format) and
+    // their TUs simply reindex — the startup sweep enqueues every CDB
+    // entry, and standalone-indexed headers are re-enqueued here
+    // explicitly.
     llvm::SmallVector<std::string> dead_manifests;
     storage.for_each_key(index::IndexBlobKind::Manifest, [&](llvm::StringRef key) {
         auto blob = storage.read(index::IndexBlobKind::Manifest, key);
         auto manifest = blob ? index::deserialize_manifest(blob->getBuffer()) : std::nullopt;
-        if(!manifest || !project.knows_file_versions(*manifest)) {
+        if(!manifest || manifest->global_gen > project.global_generation ||
+           !project.knows_file_versions(*manifest)) {
             dead_manifests.push_back(key.str());
             // The manifest raced a crash ahead of the global blob. When
             // the TU's own version is still resolvable, re-enqueue it:
@@ -457,6 +481,27 @@ void Indexer::load() {
         storage.remove(index::IndexBlobKind::Manifest, key);
     }
 
+    // Every contributing FileVersion pins the content generation its rows
+    // were built from; the shard must store that same generation. The
+    // variant check below cannot catch a stale shard alone when an edit
+    // past every indexed row left the rows hash identical: all recorded
+    // versions would match the disk while positions map through the old
+    // text, forever. A version with no consumed-content hash (0) pins
+    // nothing — it is permanently stale and reindexes its TU anyway.
+    llvm::DenseMap<std::uint32_t, llvm::SmallVector<std::uint64_t, 1>> generations;
+    for(auto& manifest: llvm::make_second_range(project.manifests)) {
+        for(auto fv: llvm::make_first_range(manifest.contributions)) {
+            auto& record = project.file_versions.find(fv)->second;
+            if(record.content_hash == 0) {
+                continue;
+            }
+            auto& pinned = generations[record.path_id];
+            if(!llvm::is_contained(pinned, record.content_hash)) {
+                pinned.push_back(record.content_hash);
+            }
+        }
+    }
+
     // Fetch exactly the shard blobs the contributions expect. A blob that
     // is missing or fails verification leaves its contributing TUs' rows
     // unservable, so those manifests are dropped and the TUs reindex (for
@@ -466,10 +511,18 @@ void Indexer::load() {
     for(auto& [path_id, entry]: project.contributions) {
         auto key = blob_key(workspace.path_pool.resolve(path_id));
         auto shard = index::Shard::from_buffer(storage.read(index::IndexBlobKind::Shard, key));
-        // A blob can verify yet miss a contributed variant (crash or failed
-        // write left a manifest newer than its shard); set_live would drop
-        // those rows silently, so it is as unservable as an unreadable one.
-        bool servable = shard.loaded() &&
+        // A blob can verify yet miss a contributed variant, or carry
+        // another content generation than the contributions pin (crash or
+        // failed write left a manifest newer than its shard); set_live
+        // would drop missing rows silently and stale content misplaces
+        // every position, so both are as unservable as an unreadable blob.
+        auto generation_ok = [&] {
+            auto it = generations.find(path_id);
+            return it == generations.end() || llvm::all_of(it->second, [&](std::uint64_t hash) {
+                       return hash == shard.content_hash();
+                   });
+        };
+        bool servable = shard.loaded() && generation_ok() &&
                         llvm::all_of(llvm::make_second_range(entry),
                                      [&](std::uint64_t hash) { return shard.has_variant(hash); });
         if(!servable) {

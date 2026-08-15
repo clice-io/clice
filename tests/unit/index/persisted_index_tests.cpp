@@ -16,6 +16,7 @@ llvm::StringRef bytes_of(const std::vector<std::uint8_t>& blob) {
 
 TEST_CASE(ManifestRoundTrip) {
     index::TUManifest manifest;
+    manifest.global_gen = 7;
     manifest.built_at = 1234567;
     manifest.tu_fv = 300;
     // A root node, a multi-byte-varint line, and a parent that FOLLOWS its
@@ -48,6 +49,7 @@ TEST_CASE(ManifestCountMismatchRejected) {
     // claiming more nodes than the payload holds must not decode.
     struct ManifestBlobMirror {
         std::uint32_t format_version = 0;
+        std::uint64_t global_gen = 0;
         std::uint64_t built_at = 0;
         std::uint32_t tu_fv = 0;
         std::uint32_t node_count = 0;
@@ -95,6 +97,7 @@ index::ProjectIndex build_project(clice::PathPool& pool, llvm::StringRef path, l
 TEST_CASE(GlobalRoundTripRemap) {
     clice::PathPool pool;
     auto project = build_project(pool, "/proj/used.h", "/proj/tu.cpp");
+    project.global_generation = 9;
 
     llvm::SmallString<1024> buf;
     llvm::raw_svector_ostream os(buf);
@@ -112,6 +115,7 @@ TEST_CASE(GlobalRoundTripRemap) {
     ASSERT_TRUE(id.has_value());
     ASSERT_TRUE(loaded.symbols[42].reference_files.contains(*id));
     ASSERT_EQ(loaded.next_fv_id, project.next_fv_id);
+    ASSERT_EQ(loaded.global_generation, 9u);
 
     auto fv_it = loaded.fv_ids.find({*id, std::uint64_t(0xabcd)});
     ASSERT_TRUE(fv_it != loaded.fv_ids.end());

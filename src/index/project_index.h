@@ -60,6 +60,13 @@ struct ProjectIndex {
     /// resolvable against any later global blob (or is detected as stale).
     std::uint32_t next_fv_id = 0;
 
+    /// Generation of the persisted global blob, bumped once per save that
+    /// writes it. Manifests are stamped with the generation they were
+    /// saved under (TUManifest::global_gen); the loader refuses manifests
+    /// newer than the loaded global. Later generations only accumulate
+    /// symbols and reference bits, so older manifests stay covered.
+    std::uint64_t global_generation = 0;
+
     /// TU path_id -> its manifest.
     llvm::DenseMap<std::uint32_t, TUManifest> manifests;
 

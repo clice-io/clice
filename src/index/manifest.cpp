@@ -17,6 +17,8 @@ namespace {
 struct ManifestBlob {
     std::uint32_t format_version = 0;
 
+    std::uint64_t global_gen = 0;
+
     std::uint64_t built_at = 0;
 
     std::uint32_t tu_fv = 0;
@@ -62,6 +64,7 @@ bool read_varint(std::span<const std::uint8_t> data, std::size_t& pos, std::uint
 void serialize_manifest(const TUManifest& manifest, llvm::raw_ostream& os) {
     ManifestBlob blob;
     blob.format_version = index_format_version;
+    blob.global_gen = manifest.global_gen;
     blob.built_at = manifest.built_at;
     blob.tu_fv = manifest.tu_fv;
 
@@ -101,6 +104,7 @@ std::optional<TUManifest> deserialize_manifest(llvm::StringRef data) {
     }
 
     TUManifest manifest;
+    manifest.global_gen = blob.global_gen;
     manifest.built_at = blob.built_at;
     manifest.tu_fv = blob.tu_fv;
 

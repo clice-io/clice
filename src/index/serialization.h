@@ -98,7 +98,7 @@ namespace clice::index {
 /// regular field and every loader discards blobs with a different value —
 /// including version-less blobs from older builds, which read back as 0.
 /// Bump it whenever a persisted type's reflected layout changes.
-constexpr inline std::uint32_t index_format_version = 4;
+constexpr inline std::uint32_t index_format_version = 5;
 
 /// Serialize a reflected index blob to `os` as a verified-readable
 /// flatbuffer. Encoding only fails on structural impossibilities (e.g. more

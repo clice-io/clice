@@ -199,8 +199,9 @@ struct PathAgg {
     bool size_known = false;
     std::uint64_t file_size = 0;
 
-    /// Distinct symbols (occurrence targets + relation keys) over all variants
-    /// — S, the blob-local symbol id space.
+    /// Distinct symbols (occurrence targets, relation keys and symbol
+    /// payloads, mirroring the shard writer's referenced set) over all
+    /// variants — S, the blob-local symbol id space.
     llvm::DenseSet<index::SymbolHash> symbols;
 
     std::uint64_t max_range_end = 0;
@@ -312,6 +313,13 @@ struct Stats {
         }
         for(auto& [symbol, relations]: fi.relations) {
             variant_symbols.insert(symbol);
+            // Non-decl/def payloads are symbol hashes the shard's table
+            // must also cover (decl/def payloads are definition ranges).
+            for(auto& r: relations) {
+                if(r.target_symbol != 0 && !RelationKind(r.kind).isDeclOrDef()) {
+                    variant_symbols.insert(r.target_symbol);
+                }
+            }
         }
         s_variant.add(variant_symbols.size());
         for(auto s: variant_symbols) {

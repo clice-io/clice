@@ -34,6 +34,13 @@ struct ManifestNode {
 /// content-identity so a re-merge can tell "already stored" from "new
 /// variant" without touching any shard.
 struct TUManifest {
+    /// ProjectIndex::global_generation stamped by the save that persisted
+    /// this manifest. The loader drops manifests newer than the loaded
+    /// global blob: a reindex that changed rows without new FileVersions
+    /// (a command-only change) would otherwise outrun a lost global write
+    /// and serve against a symbol table that never learned its symbols.
+    std::uint64_t global_gen = 0;
+
     /// Milliseconds since epoch, sampled before the indexed build started.
     std::uint64_t built_at = 0;
 

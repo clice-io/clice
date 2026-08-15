@@ -399,7 +399,7 @@ TEST_CASE(MisorderedRowsRejected) {
     blob.occ_begins = {0, 8};
     blob.occ_lengths = {3, 0xff};  // 0xff escapes to (row, end)
     blob.occ_long_rows = {1};
-    blob.occ_long_ends = {600};
+    blob.occ_long_ends = {12};
     blob.occ_syms16 = {0, 0};
 
     auto bytes_of = [&] {
@@ -418,13 +418,70 @@ TEST_CASE(MisorderedRowsRejected) {
     blob.occ_begins = {0, 8};
     blob.occ_lengths = {0xff, 3};
     blob.occ_long_rows = {0};
-    blob.occ_long_ends = {20};  // ends decode to {20, 11}
+    blob.occ_long_ends = {14};  // ends decode to {14, 11}
     ASSERT_FALSE(make_shard(bytes_of()).loaded());
 
     // An escaped end before its own begin.
     blob.occ_lengths = {3, 0xff};
     blob.occ_long_rows = {1};
     blob.occ_long_ends = {5};  // row 1: begin 8, end 5
+    ASSERT_FALSE(make_shard(bytes_of()).loaded());
+}
+
+TEST_CASE(RangesBeyondContentRejected) {
+    // Every decoded range is served as a source range into the stored
+    // content; an end past it would map positions through text that does
+    // not exist — forever, since the blob's content hash still matches the
+    // disk and nothing rebuilds it.
+    index::ShardBlob blob;
+    blob.format_version = index::index_format_version;
+    blob.content = "aaaaaaaaaaaaaaaa";
+    blob.variants = {1};
+    blob.sym_hashes = {111};
+    blob.sym_rel_offsets = {0, 1};
+    blob.occ_begins = {0};
+    blob.occ_lengths = {3};
+    blob.occ_syms16 = {0};
+    blob.rel_kinds = {static_cast<std::uint8_t>(RelationKind::Reference)};
+    blob.rel_begins = {0};
+    blob.rel_lengths = {3};
+
+    auto bytes_of = [&] {
+        std::string bytes;
+        llvm::raw_string_ostream os(bytes);
+        index::serialize_blob(blob, os);
+        return bytes;
+    };
+    ASSERT_TRUE(make_shard(bytes_of()).loaded());
+
+    // A plain length overruns the 16-byte content.
+    blob.occ_lengths = {100};
+    ASSERT_FALSE(make_shard(bytes_of()).loaded());
+
+    // An escaped end does too.
+    blob.occ_lengths = {0xff};
+    blob.occ_long_rows = {0};
+    blob.occ_long_ends = {600};
+    ASSERT_FALSE(make_shard(bytes_of()).loaded());
+    blob.occ_lengths = {3};
+    blob.occ_long_rows = {};
+    blob.occ_long_ends = {};
+
+    // Relation ranges are bounded alike.
+    blob.rel_lengths = {100};
+    ASSERT_FALSE(make_shard(bytes_of()).loaded());
+
+    // Except the no-range sentinel a pair relation legitimately carries.
+    blob.rel_begins = {0xffffffff};
+    blob.rel_lengths = {0};
+    ASSERT_TRUE(make_shard(bytes_of()).loaded());
+    blob.rel_begins = {0};
+    blob.rel_lengths = {3};
+
+    // And definition-range payloads.
+    blob.rel_def_rows = {0};
+    blob.rel_def_begins = {0};
+    blob.rel_def_ends = {600};
     ASSERT_FALSE(make_shard(bytes_of()).loaded());
 }
 

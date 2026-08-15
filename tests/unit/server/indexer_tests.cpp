@@ -516,6 +516,32 @@ TEST_CASE(RejectsCorruptSection) {
     ASSERT_TRUE(workspace.shards.contains(header_id));
 }
 
+TEST_CASE(UnverifiedPairingSkipped) {
+    TempDir tmp;
+    tmp.touch("unv.cpp", "int unverified_fn() { return 123456; }\n");
+    auto src = tmp.path("unv.cpp");
+    auto indexed = index_file(tmp, src);
+    ASSERT_FALSE(indexed.data.empty());
+
+    // Strip the consumed-content hashes (a file behind a PCM ships none)
+    // and shrink the file: the content arbitration cannot see the disk
+    // moving on, but the rows overrun the shorter content and the fresh
+    // blob's own range bounds must catch it — a skip, not a blob serving
+    // ranges past its content.
+    auto tampered = index::TUIndex::from(indexed.data);
+    ASSERT_TRUE(tampered.has_value());
+    for(auto& hash: tampered->graph.path_hashes) {
+        hash = 0;
+    }
+    std::string wire;
+    llvm::raw_string_ostream os(wire);
+    tampered->serialize(os);
+    tmp.touch("unv.cpp", "int f;\n");
+
+    indexer.merge(wire.data(), wire.size());
+    ASSERT_FALSE(workspace.shards.contains(workspace.path_pool.intern(src)));
+}
+
 };  // TEST_SUITE(IndexerMerge)
 
 TEST_SUITE(IndexerStaleness) {
@@ -714,6 +740,89 @@ TEST_CASE(LoadHealsMissingVariant) {
     auto tu_id = f.workspace.path_pool.intern(src);
     ASSERT_TRUE(f.workspace.project_index.manifests.empty());
     ASSERT_TRUE(f.indexer.pending_reason(tu_id).has_value());
+}
+
+TEST_CASE(LoadHealsWrongGeneration) {
+    TempDir tmp;
+    tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
+    tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
+    auto src = tmp.path("main.cpp");
+    std::string header_key;
+    std::uint64_t rows_hash = 0;
+
+    {
+        IndexerFixture f;
+        open_store(tmp, f.workspace);
+        auto indexed = index_file(tmp, src);
+        ASSERT_FALSE(indexed.data.empty());
+        f.indexer.merge(indexed.data.data(), indexed.data.size());
+        f.save();
+        auto header_id = f.workspace.path_pool.intern(tmp.path("dep.h"));
+        auto tu_id = f.workspace.path_pool.intern(src);
+        rows_hash = f.workspace.project_index.contributions.lookup(header_id).lookup(tu_id);
+        ASSERT_TRUE(rows_hash != 0);
+        header_key = blob_key(f.workspace.path_pool.resolve(header_id));
+    }
+
+    // Replace the header's blob with one from ANOTHER content generation
+    // that still stores the contributed variant — the residue of a failed
+    // shard write when an edit past every indexed row keeps the rows hash
+    // identical. Every recorded FileVersion matches the disk, so only the
+    // generation pin can tell that positions would map through stale text.
+    index::FileIndex no_rows;
+    index::VariantInput same_rows{.hash = rows_hash, .rows = &no_rows};
+    std::string bytes;
+    llvm::raw_string_ostream os(bytes);
+    index::write_shard({}, {}, same_rows, "stale text", llvm::xxh3_64bits("stale text"), os);
+    tmp.touch("cache/cache/v1/index/" + header_key + ".idx", bytes);
+
+    IndexerFixture f;
+    open_store(tmp, f.workspace);
+    f.indexer.load();
+
+    auto tu_id = f.workspace.path_pool.intern(src);
+    ASSERT_TRUE(f.workspace.project_index.manifests.empty());
+    ASSERT_TRUE(f.indexer.pending_reason(tu_id).has_value());
+}
+
+TEST_CASE(LoadDropsNewerManifest) {
+    TempDir tmp;
+    tmp.touch("main.cpp", "int lone() { return 1; }\n");
+    auto src = tmp.path("main.cpp");
+
+    {
+        IndexerFixture f;
+        open_store(tmp, f.workspace);
+        auto indexed = index_file(tmp, src);
+        ASSERT_FALSE(indexed.data.empty());
+        f.indexer.merge(indexed.data.data(), indexed.data.size());
+        f.save();
+
+        // Plant what a lost global write leaves behind: a manifest stamped
+        // with a generation the persisted global never reached. Every
+        // FileVersion it references is known and its shard variant stored
+        // (a rows-only reindex), so only the stamp can tell that the
+        // global's symbols never landed.
+        auto tu_id = f.workspace.path_pool.intern(src);
+        auto raced = f.workspace.project_index.manifests.find(tu_id)->second;
+        raced.global_gen = f.workspace.project_index.global_generation + 1;
+        std::string bytes;
+        llvm::raw_string_ostream os(bytes);
+        index::serialize_manifest(raced, os);
+        f.workspace.index_storage->write({
+            {index::IndexBlobKind::Manifest, blob_key(src), std::move(bytes)}
+        });
+    }
+
+    IndexerFixture f;
+    open_store(tmp, f.workspace);
+    f.indexer.load();
+
+    // The raced manifest is dropped and its TU re-enqueued; the reindex
+    // rewrites the manifest and the global together.
+    auto tu_id = f.workspace.path_pool.intern(src);
+    ASSERT_TRUE(f.workspace.project_index.manifests.empty());
+    ASSERT_TRUE(f.indexer.pending_reason(tu_id) == ReindexReason::ContentChanged);
 }
 
 TEST_CASE(LoadRequeuesStaleManifest) {

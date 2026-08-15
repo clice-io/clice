@@ -19,6 +19,9 @@ namespace {
 struct GlobalBlob {
     std::uint32_t format_version = 0;
 
+    /// See ProjectIndex::global_generation.
+    std::uint64_t generation = 0;
+
     std::uint32_t next_fv_id = 0;
 
     std::vector<std::uint32_t> fv_ids;
@@ -192,6 +195,7 @@ void ProjectIndex::serialize_global(this ProjectIndex& self,
 
     GlobalBlob blob;
     blob.format_version = index_format_version;
+    blob.generation = self.global_generation;
     blob.next_fv_id = self.next_fv_id;
 
     llvm::SmallVector<std::uint32_t> ids;
@@ -238,6 +242,7 @@ bool ProjectIndex::load_global(this ProjectIndex& self,
         return false;
     }
 
+    self.global_generation = blob.generation;
     self.next_fv_id = blob.next_fv_id;
     for(std::size_t i = 0; i < count; i += 1) {
         // The writer only emits interned paths, which are never empty; an

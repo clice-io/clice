@@ -164,12 +164,15 @@ bool validate(ShardView root) {
     // containment walk on begin order; rows out of either order (a corrupt
     // escaped end included) would silently miss or misresolve occurrences
     // on every query, forever — reject the blob so it is rebuilt instead.
+    // Ends are bounded by the stored content too: every decoded range is
+    // served as a source range into it.
+    auto content_size = root[&ShardBlob::content].size();
     std::uint32_t prev_begin = 0;
     std::uint32_t prev_end = 0;
     for(std::uint32_t row = 0; row < occ_count; row += 1) {
         auto begin = occ.begins[row];
         auto end = occ.end_of(row);
-        if(begin < prev_begin || end < prev_end || end < begin) {
+        if(begin < prev_begin || end < prev_end || end < begin || end > content_size) {
             return false;
         }
         prev_begin = begin;
@@ -177,6 +180,20 @@ bool validate(ShardView root) {
     }
     if(!sparse_ok(rel.long_rows, rel.long_ends.size(), rel_count)) {
         return false;
+    }
+    // Relation ranges carry no query order to enforce, but are served as
+    // source ranges all the same — bound them like the occurrence ends.
+    // The exception is the default LocalSourceRange, the writer's sentinel
+    // for pair relations, which carry no range of their own.
+    for(std::uint32_t row = 0; row < rel_count; row += 1) {
+        auto begin = rel.begins[row];
+        auto end = rel.end_of(row);
+        if((LocalSourceRange{begin, end}) == LocalSourceRange{}) {
+            continue;
+        }
+        if(end < begin || end > content_size) {
+            return false;
+        }
     }
 
     auto rel_sym_rows = to_array_ref(root[&ShardBlob::rel_sym_rows]);
@@ -192,6 +209,11 @@ bool validate(ShardView root) {
     if(!sparse_ok(rel_def_rows, rel_def_begins.size(), rel_count) ||
        rel_def_ends.size() != rel_def_begins.size()) {
         return false;
+    }
+    for(std::uint32_t k = 0; k < rel_def_begins.size(); k += 1) {
+        if(rel_def_ends[k] < rel_def_begins[k] || rel_def_ends[k] > content_size) {
+            return false;
+        }
     }
 
     auto local_syms = to_array_ref(root[&ShardBlob::local_syms]);
