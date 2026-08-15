@@ -4,6 +4,7 @@
 #include "test/test.h"
 #include "command/argument_parser.h"
 #include "compile/compilation.h"
+#include "index/storage.h"
 #include "index/tu_index.h"
 #include "server/compiler/context_resolver.h"
 #include "server/compiler/indexer.h"
@@ -134,7 +135,7 @@ TEST_CASE(MergeSkipsMovedDisk) {
     tmp.touch("main.cpp", "int renamed() { return 2; }\n");
     indexer.merge(indexed.data.data(), indexed.data.size());
     ASSERT_EQ(it->second.content(), "int value() { return 1; }\n");
-    ASSERT_TRUE(it->second.has_contribution(indexed.tu_path));
+    ASSERT_TRUE(workspace.project_index.contributions.lookup(path_id).contains(path_id));
 
     // Once the rows describe the settled content again, the merge lands.
     auto fresh = index_file(tmp, src);
@@ -146,12 +147,11 @@ TEST_CASE(MergeSkipsMovedDisk) {
 void open_store(TempDir& tmp, Workspace& workspace) {
     auto store = CacheStore::open(tmp.path("cache"), 1);
     ASSERT_TRUE(store.has_value());
-    store->register_namespace(
-        {.name = "index", .extension = ".idx", .policy = CachePolicy::Persistent});
     workspace.store.emplace(std::move(*store));
+    workspace.index_storage = index::make_fs_index_storage(*workspace.store);
 }
 
-TEST_CASE(SaveFlipsShards) {
+TEST_CASE(SaveCommitsDirtyShard) {
     TempDir tmp;
     tmp.touch("main.cpp", "int flip_value() { return 1; }\n");
     auto src = tmp.path("main.cpp");
@@ -162,7 +162,7 @@ TEST_CASE(SaveFlipsShards) {
     indexer.merge(indexed.data.data(), indexed.data.size());
 
     auto path_id = workspace.path_pool.intern(indexed.tu_path);
-    ASSERT_TRUE(workspace.merged_indices.find(path_id)->second.need_rewrite());
+    ASSERT_EQ(indexer.pending_shard_writes(), 1u);
 
     // Named body: a temporary lambda's captures die with the statement
     // while the coroutine frame still references them.
@@ -173,13 +173,14 @@ TEST_CASE(SaveFlipsShards) {
     loop.schedule(task);
     loop.run();
 
-    // Committed and flipped back to the buffer-backed blob; the shard
-    // still answers identically.
+    // Committed: the dirty state is drained and the shard still answers
+    // identically.
     auto it = workspace.merged_indices.find(path_id);
     ASSERT_TRUE(it != workspace.merged_indices.end());
-    ASSERT_FALSE(it->second.need_rewrite());
+    ASSERT_EQ(indexer.pending_shard_writes(), 0u);
+    ASSERT_EQ(indexer.last_save_shards(), 1u);
     ASSERT_EQ(it->second.content(), "int flip_value() { return 1; }\n");
-    ASSERT_TRUE(it->second.has_contribution(indexed.tu_path));
+    ASSERT_TRUE(workspace.project_index.contributions.lookup(path_id).contains(path_id));
 }
 
 TEST_CASE(MidSaveMergeKept) {
@@ -199,9 +200,9 @@ TEST_CASE(MidSaveMergeKept) {
     auto fresh = index_file(tmp, src);
     ASSERT_FALSE(fresh.data.empty());
 
-    // The merge task runs when save() suspends at its first commit await:
-    // it lands between the serialize snapshot and the flip check, exactly
-    // the window the revision guard exists for.
+    // The merge task runs when save() suspends at its write await: it
+    // lands after the dirty snapshot was taken and cleared, exactly the
+    // window re-dirtying exists for.
     auto save_body = [&]() -> kota::task<> {
         co_await indexer.save();
     };
@@ -215,11 +216,11 @@ TEST_CASE(MidSaveMergeKept) {
     loop.schedule(merge_task);
     loop.run();
 
-    // The stale committed blob must not overwrite the newer merge: the
-    // shard keeps the new content and stays dirty for the next save.
+    // The save committed the pre-merge snapshot: the shard keeps the new
+    // content and stays dirty so the next save commits it.
     auto it = workspace.merged_indices.find(path_id);
     ASSERT_TRUE(it != workspace.merged_indices.end());
-    ASSERT_TRUE(it->second.need_rewrite());
+    ASSERT_EQ(indexer.pending_shard_writes(), 1u);
     ASSERT_EQ(it->second.content(), "int second_value() { return 2; }\n");
 
     auto again_body = [&]() -> kota::task<> {
@@ -230,7 +231,7 @@ TEST_CASE(MidSaveMergeKept) {
     loop.run();
 
     it = workspace.merged_indices.find(path_id);
-    ASSERT_FALSE(it->second.need_rewrite());
+    ASSERT_EQ(indexer.pending_shard_writes(), 0u);
     ASSERT_EQ(it->second.content(), "int second_value() { return 2; }\n");
 }
 

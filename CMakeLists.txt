@@ -234,7 +234,7 @@ if(CLICE_ENABLE_TEST)
 endif()
 
 if(CLICE_ENABLE_BENCHMARK)
-    foreach(benchmark scan_benchmark pipeline_benchmark pch_chain_benchmark)
+    foreach(benchmark scan_benchmark pipeline_benchmark pch_chain_benchmark index_stats_benchmark)
         add_executable(${benchmark}
             "${PROJECT_SOURCE_DIR}/benchmarks/${benchmark}.cpp"
         )

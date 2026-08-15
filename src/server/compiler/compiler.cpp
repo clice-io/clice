@@ -1193,7 +1193,12 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
                             ? std::nullopt
                             : index::TUIndex::from(result.value().tu_index_data);
         if(tu_index) {
-            session->file_index = std::move(tu_index->main_file_index);
+            // The interested file's rows travel as a wire section; a file
+            // with no rows at all has no section and gets an empty index.
+            auto* section = tu_index->main_section();
+            auto rows = section ? index::TUIndex::decode_rows(*section)
+                                : std::optional<index::FileIndex>{std::in_place};
+            session->file_index = rows ? std::move(*rows) : index::FileIndex();
             session->symbols = std::move(tu_index->symbols);
         } else {
             // The AST and the file index settle together — that pairing is

@@ -188,7 +188,7 @@ bool IndexQuery::find_symbol_info(index::SymbolHash hash,
     if(found)
         return true;
 
-    // Check per-file MergedIndex shards (TU-local + file-local symbols).
+    // Check per-file Shard blobs (TU-local + file-local symbols).
     // Each shard stores exactly the local symbols its occurrences reference,
     // so the symbol will be in the shard that produced the occurrence.
     for(auto& [path_id, shard]: workspace.merged_indices) {
@@ -245,7 +245,7 @@ IndexQuery::CursorHit IndexQuery::resolve_cursor(llvm::StringRef path,
         return hit;
     }
 
-    // Fallback to MergedIndex. Position -> offset uses the session text when
+    // Fallback to the disk shard. Position -> offset uses the session text when
     // one exists (open but not yet compiled); for closed files the shard's
     // own stored content provides the mapping.
     auto path_id = workspace.path_pool.find(path);

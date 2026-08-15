@@ -1210,24 +1210,34 @@ TEST_CASE(SerializeRoundTrip) {
     ASSERT_TRUE(loaded->graph.locations == tu_index.graph.locations);
     ASSERT_TRUE(loaded->graph.path_hashes == tu_index.graph.path_hashes);
 
-    // The persisted per-file rows are keyed by path id; recompute the
-    // expected conversion from the build-time FileID-keyed state.
+    // The persisted per-file rows travel as wire sections keyed by path id;
+    // recompute the expected conversion from the build-time FileID-keyed
+    // state. Empty rows get no section.
     llvm::DenseMap<std::uint32_t, std::pair<std::size_t, std::size_t>> expected;
     for(auto& [fid, file_index]: tu_index.file_indices) {
-        expected[tu_index.graph.path_id(fid)] = {file_index.occurrences.size(),
-                                                 file_index.relations.size()};
+        if(!file_index.empty()) {
+            expected[tu_index.graph.path_id(fid)] = {file_index.occurrences.size(),
+                                                     file_index.relations.size()};
+        }
     }
     ASSERT_FALSE(expected.empty());
-    ASSERT_EQ(loaded->path_file_indices.size(), expected.size());
+    // The interested file's rows travel as the last section.
+    ASSERT_EQ(loaded->sections.size(), expected.size() + 1);
     for(auto& [path_id, counts]: expected) {
-        auto it = loaded->path_file_indices.find(path_id);
-        ASSERT_TRUE(it != loaded->path_file_indices.end());
-        ASSERT_EQ(it->second.occurrences.size(), counts.first);
-        ASSERT_EQ(it->second.relations.size(), counts.second);
+        auto it = std::ranges::find(loaded->sections, path_id, &index::FileSection::path_id);
+        ASSERT_TRUE(it != loaded->sections.end());
+        auto rows = index::TUIndex::decode_rows(*it);
+        ASSERT_TRUE(rows.has_value());
+        ASSERT_EQ(rows->occurrences.size(), counts.first);
+        ASSERT_EQ(rows->relations.size(), counts.second);
     }
 
-    ASSERT_TRUE(loaded->main_file_index.occurrences == tu_index.main_file_index.occurrences);
-    ASSERT_EQ(loaded->main_file_index.relations.size(), tu_index.main_file_index.relations.size());
+    auto* main_sec = loaded->main_section();
+    ASSERT_TRUE(main_sec != nullptr);
+    auto main_rows = index::TUIndex::decode_rows(*main_sec);
+    ASSERT_TRUE(main_rows.has_value());
+    ASSERT_TRUE(main_rows->occurrences == tu_index.main_file_index.occurrences);
+    ASSERT_EQ(main_rows->relations.size(), tu_index.main_file_index.relations.size());
 
     ASSERT_EQ(loaded->symbols.size(), tu_index.symbols.size());
     for(auto& [hash, symbol]: tu_index.symbols) {
@@ -1310,7 +1320,7 @@ TEST_CASE(FromRejectsOutOfRangePathIds) {
     honest.built_at = std::chrono::milliseconds(0);
     honest.graph.paths = {"/proj/main.cpp"};
     honest.graph.locations.push_back({.path_id = 0, .line = 1, .include = 0});
-    honest.path_file_indices.try_emplace(0);
+    honest.sections.push_back({.path_id = 0});
     honest.symbols[42].reference_files.add(0);
     ASSERT_TRUE(index::TUIndex::from(serialized(honest)).has_value());
 
@@ -1325,7 +1335,7 @@ TEST_CASE(FromRejectsOutOfRangePathIds) {
         index::TUIndex hostile;
         hostile.built_at = std::chrono::milliseconds(0);
         hostile.graph.paths = {"/proj/main.cpp"};
-        hostile.path_file_indices.try_emplace(7);  // Only path id 0 exists.
+        hostile.sections.push_back({.path_id = 7});  // Only path id 0 exists.
         ASSERT_FALSE(index::TUIndex::from(serialized(hostile)).has_value());
     }
     {
@@ -1358,7 +1368,7 @@ TEST_CASE(FromNormalizesPathHashes) {
     }
 }
 
-TEST_CASE(ReserializeKeepsPathIndices) {
+TEST_CASE(ReserializeKeepsSections) {
     add_file("header.h", R"(
             #pragma once
             inline int helper() { return 1; }
@@ -1377,19 +1387,20 @@ TEST_CASE(ReserializeKeepsPathIndices) {
     auto loaded = index::TUIndex::from(buf);
     ASSERT_TRUE(loaded.has_value());
     ASSERT_TRUE(loaded->file_indices.empty());
-    ASSERT_FALSE(loaded->path_file_indices.empty());
+    ASSERT_FALSE(loaded->sections.empty());
 
     // A deserialized index has no FileID-keyed state; re-serializing must
-    // keep the path-keyed rows instead of wiping them from an empty map.
+    // keep the wire sections instead of wiping them from the empty maps.
     llvm::SmallString<4096> again;
     llvm::raw_svector_ostream os2(again);
     loaded->serialize(os2);
 
     auto reloaded = index::TUIndex::from(again);
     ASSERT_TRUE(reloaded.has_value());
-    ASSERT_EQ(reloaded->path_file_indices.size(), loaded->path_file_indices.size());
-    for(auto& [path_id, file_index]: loaded->path_file_indices) {
-        ASSERT_TRUE(reloaded->path_file_indices.contains(path_id));
+    ASSERT_EQ(reloaded->sections.size(), loaded->sections.size());
+    for(std::size_t i = 0; i < loaded->sections.size(); i += 1) {
+        ASSERT_EQ(reloaded->sections[i].path_id, loaded->sections[i].path_id);
+        ASSERT_EQ(reloaded->sections[i].rows_hash, loaded->sections[i].rows_hash);
     }
 }
 

@@ -12,7 +12,6 @@
 #include "support/logging.h"
 #include "support/timer.h"
 
-#include "llvm/Support/SHA256.h"
 #include "llvm/Support/xxhash.h"
 #include "clang/AST/DeclCXX.h"
 
@@ -610,33 +609,42 @@ void FileIndex::lookup(SymbolHash symbol,
     }
 }
 
-std::array<std::uint8_t, 32> FileIndex::hash() {
-    llvm::SHA256 hasher;
+std::uint64_t FileIndex::rows_hash() const {
+    static_assert(sizeof(Occurrence) == sizeof(Range) + sizeof(SymbolHash));
+    static_assert(sizeof(Relation) ==
+                  sizeof(RelationKind) + 4 + sizeof(Range) + sizeof(SymbolHash));
 
-    using u8 = std::uint8_t;
+    // One flat buffer in a deterministic order: the sorted occurrences,
+    // then each relation group in ascending symbol order (DenseMap
+    // iteration order must never leak into the hash).
+    std::vector<std::uint8_t> buffer;
+    std::size_t size = occurrences.size() * sizeof(Occurrence);
+    for(auto& [symbol, group]: relations) {
+        size += sizeof(symbol) + group.size() * sizeof(Relation);
+    }
+    buffer.reserve(size);
 
-    if(!occurrences.empty()) {
-        static_assert(sizeof(Occurrence) == sizeof(Range) + sizeof(SymbolHash));
-        static_assert(sizeof(Occurrence) % 8 == 0);
-        auto data = reinterpret_cast<u8*>(occurrences.data());
-        auto size = occurrences.size() * sizeof(Occurrence);
-        hasher.update(llvm::ArrayRef(data, size));
+    auto append = [&](const void* data, std::size_t bytes) {
+        auto* raw = static_cast<const std::uint8_t*>(data);
+        buffer.insert(buffer.end(), raw, raw + bytes);
+    };
+
+    append(occurrences.data(), occurrences.size() * sizeof(Occurrence));
+
+    llvm::SmallVector<SymbolHash> keys;
+    keys.reserve(relations.size());
+    for(auto symbol: llvm::make_first_range(relations)) {
+        keys.push_back(symbol);
+    }
+    llvm::sort(keys);
+    for(auto symbol: keys) {
+        append(&symbol, sizeof(symbol));
+        auto& group = relations.find(symbol)->second;
+        append(group.data(), group.size() * sizeof(Relation));
     }
 
-    for(auto& [symbol_id, relations]: relations) {
-        hasher.update(std::bit_cast<std::array<u8, sizeof(symbol_id)>>(symbol_id));
-        static_assert(sizeof(Relation) ==
-                      sizeof(RelationKind) + 4 + sizeof(Range) + sizeof(SymbolHash));
-        static_assert(sizeof(Relation) % 8 == 0);
-
-        if(!relations.empty()) {
-            auto data = reinterpret_cast<u8*>(relations.data());
-            auto size = relations.size() * sizeof(Relation);
-            hasher.update(llvm::ArrayRef(data, size));
-        }
-    }
-
-    return hasher.final();
+    return llvm::xxh3_64bits(
+        llvm::StringRef(reinterpret_cast<const char*>(buffer.data()), buffer.size()));
 }
 
 TUIndex TUIndex::build(CompilationUnitRef unit, bool interested_only) {
@@ -652,22 +660,43 @@ TUIndex TUIndex::build(CompilationUnitRef unit, bool interested_only) {
 void TUIndex::serialize(llvm::raw_ostream& os) {
     format_version = index_format_version;
 
-    /// Convert the FileID-keyed working state into the persisted
-    /// path_id-keyed form; multiple FileIDs can share a path id (repeated
-    /// header contexts), last-wins. A deserialized index has no FileID-keyed
-    /// state at all — its path-keyed rows already are the persisted form, so
-    /// re-serializing must not wipe them.
+    /// Convert the FileID-keyed working state into wire sections; multiple
+    /// FileIDs can share a path id (repeated header contexts), last-wins.
+    /// A deserialized index has no FileID-keyed state at all — its sections
+    /// already are the persisted form, so re-serializing must not wipe them.
     ScopedTimer copy_timer;
-    if(!file_indices.empty()) {
-        path_file_indices.clear();
+    if(!file_indices.empty() || !main_file_index.empty()) {
+        sections.clear();
+        llvm::DenseMap<std::uint32_t, std::size_t> positions;
+        auto add = [&](std::uint32_t path_id, const FileIndex& index) {
+            if(index.empty()) {
+                return;
+            }
+            auto encoded = kota::codec::fbs::to_bytes(index);
+            assert(encoded.has_value());
+            FileSection section{path_id, index.rows_hash(), std::move(*encoded)};
+            auto [it, inserted] = positions.try_emplace(path_id, sections.size());
+            if(inserted) {
+                sections.push_back(std::move(section));
+            } else {
+                sections[it->second] = std::move(section);
+            }
+        };
         for(auto& [fid, file_index]: file_indices) {
-            path_file_indices[graph.path_id(fid)] = file_index;
+            add(graph.path_id(fid), file_index);
         }
+        add(static_cast<std::uint32_t>(graph.paths.size() - 1), main_file_index);
     }
     auto copy_ms = copy_timer.ms_f();
 
+    // The interested file's rows travel only as their section; the
+    // reflected field is written empty and restored after the pack.
+    auto main_rows = std::move(main_file_index);
+    main_file_index = FileIndex();
+
     ScopedTimer pack_timer;
     serialize_blob(*this, os);
+    main_file_index = std::move(main_rows);
     LOG_PERF("index_detail",
              "op=serialize copy_ms={:.2f} pack_ms={:.2f}",
              copy_ms,
@@ -686,9 +715,9 @@ std::optional<TUIndex> TUIndex::from(llvm::StringRef data) {
 
     // Nor does it constrain field values, and every decoded path id is
     // dereferenced against the path table without further checks — graph
-    // locations and per-file rows in Indexer::merge, reference_files through
-    // ProjectIndex::merge's file_ids_map. A blob carrying an out-of-range
-    // one is rejected as a whole.
+    // locations and wire sections in Indexer::merge, reference_files
+    // through ProjectIndex::merge's file_ids_map. A blob carrying an
+    // out-of-range one is rejected as a whole.
     auto in_range = [count = index->graph.paths.size()](std::uint32_t path_id) {
         return path_id < count;
     };
@@ -697,8 +726,8 @@ std::optional<TUIndex> TUIndex::from(llvm::StringRef data) {
             return std::nullopt;
         }
     }
-    for(auto& [path_id, _]: index->path_file_indices) {
-        if(!in_range(path_id)) {
+    for(auto& section: index->sections) {
+        if(!in_range(section.path_id)) {
             return std::nullopt;
         }
     }
@@ -708,6 +737,169 @@ std::optional<TUIndex> TUIndex::from(llvm::StringRef data) {
         }
     }
     return index;
+}
+
+const FileSection* TUIndex::main_section() const {
+    if(graph.paths.empty()) {
+        return nullptr;
+    }
+    auto main_id = static_cast<std::uint32_t>(graph.paths.size() - 1);
+    // The interested file's section is appended last by serialize().
+    for(auto& section: std::ranges::reverse_view(sections)) {
+        if(section.path_id == main_id) {
+            return &section;
+        }
+    }
+    return nullptr;
+}
+
+std::optional<FileIndex> TUIndex::decode_rows(const FileSection& section) {
+    std::optional<FileIndex> rows{std::in_place};
+    auto data =
+        llvm::StringRef(reinterpret_cast<const char*>(section.rows.data()), section.rows.size());
+    if(!deserialize_blob(data, *rows)) {
+        return std::nullopt;
+    }
+    return rows;
+}
+
+namespace {
+
+using WireView = kota::codec::fbs::table_view<TUIndex>;
+
+/// The buffer was fully verified at TUIndexView::from; per-accessor views
+/// skip that cost.
+WireView wire_root(llvm::StringRef data) {
+    return WireView::from_verified_bytes(blob_bytes(data));
+}
+
+SymbolIdentity identity_of(kota::codec::fbs::table_view<Symbol> symbol) {
+    return {to_ref(symbol[&Symbol::name]),
+            SymbolKind(symbol[&Symbol::kind]),
+            symbol[&Symbol::scope]};
+}
+
+/// The symbol's serialized reference bitmap (the Bitmap repr's byte image)
+/// as a StringRef borrowing the wire.
+llvm::StringRef bitmap_bytes(kota::codec::fbs::table_view<Symbol> symbol) {
+    const auto* raw = symbol[&Symbol::reference_files].raw();
+    if(!raw) {
+        return {};
+    }
+    return llvm::StringRef(reinterpret_cast<const char*>(raw->data()), raw->size());
+}
+
+}  // namespace
+
+std::optional<TUIndexView> TUIndexView::from(llvm::StringRef data) {
+    auto root = WireView::from_bytes(blob_bytes(data));
+    if(!root.valid() || root[&TUIndex::format_version] != index_format_version) {
+        return std::nullopt;
+    }
+
+    // Structural verification does not constrain field values; every path
+    // id the merge dereferences against the path table is bounded here so
+    // the accessors stay check-free.
+    auto graph = root[&TUIndex::graph];
+    auto count = graph[&IncludeGraph::paths].size();
+    auto locations = graph[&IncludeGraph::locations];
+    for(std::size_t i = 0; i < locations.size(); i += 1) {
+        IncludeLocation location = locations.at(i);
+        if(location.path_id >= count) {
+            return std::nullopt;
+        }
+    }
+    auto sections = root[&TUIndex::sections];
+    for(std::size_t i = 0; i < sections.size(); i += 1) {
+        if(sections.at(i)[&FileSection::path_id] >= count) {
+            return std::nullopt;
+        }
+    }
+    return TUIndexView(data);
+}
+
+std::int64_t TUIndexView::built_at() const {
+    return wire_root(data)[&TUIndex::built_at];
+}
+
+std::uint32_t TUIndexView::path_count() const {
+    return static_cast<std::uint32_t>(
+        wire_root(data)[&TUIndex::graph][&IncludeGraph::paths].size());
+}
+
+llvm::StringRef TUIndexView::path(std::uint32_t id) const {
+    return to_ref(wire_root(data)[&TUIndex::graph][&IncludeGraph::paths].at(id));
+}
+
+std::uint64_t TUIndexView::path_hash(std::uint32_t id) const {
+    // The hash column may be shorter than the path table on a foreign
+    // blob; an absent hash reads as 0, "unavailable" — the same
+    // normalization TUIndex::from applies.
+    auto hashes = wire_root(data)[&TUIndex::graph][&IncludeGraph::path_hashes];
+    return id < hashes.size() ? hashes.at(id) : 0;
+}
+
+std::uint32_t TUIndexView::location_count() const {
+    return static_cast<std::uint32_t>(
+        wire_root(data)[&TUIndex::graph][&IncludeGraph::locations].size());
+}
+
+IncludeLocation TUIndexView::location(std::uint32_t i) const {
+    return wire_root(data)[&TUIndex::graph][&IncludeGraph::locations].at(i);
+}
+
+std::uint32_t TUIndexView::section_count() const {
+    return static_cast<std::uint32_t>(wire_root(data)[&TUIndex::sections].size());
+}
+
+std::uint32_t TUIndexView::section_path(std::uint32_t i) const {
+    return wire_root(data)[&TUIndex::sections].at(i)[&FileSection::path_id];
+}
+
+std::uint64_t TUIndexView::section_rows_hash(std::uint32_t i) const {
+    return wire_root(data)[&TUIndex::sections].at(i)[&FileSection::rows_hash];
+}
+
+std::optional<FileIndex> TUIndexView::decode_section_rows(std::uint32_t i) const {
+    auto rows = to_array_ref(wire_root(data)[&TUIndex::sections].at(i)[&FileSection::rows]);
+    std::optional<FileIndex> decoded{std::in_place};
+    auto bytes = llvm::StringRef(reinterpret_cast<const char*>(rows.data()), rows.size());
+    if(!deserialize_blob(bytes, *decoded)) {
+        return std::nullopt;
+    }
+    return decoded;
+}
+
+std::optional<std::uint32_t> TUIndexView::main_section_index() const {
+    auto count = path_count();
+    if(count == 0) {
+        return std::nullopt;
+    }
+    auto main_id = count - 1;
+    // The interested file's section is appended last by serialize().
+    for(auto i = section_count(); i > 0; i -= 1) {
+        if(section_path(i - 1) == main_id) {
+            return i - 1;
+        }
+    }
+    return std::nullopt;
+}
+
+void TUIndexView::iterate_symbols(
+    llvm::function_ref<void(SymbolHash, const SymbolIdentity&, llvm::StringRef)> callback) const {
+    auto symbols = wire_root(data)[&TUIndex::symbols];
+    for(std::size_t i = 0; i < symbols.size(); i += 1) {
+        auto entry = symbols.at(i);
+        callback(entry.get<0>(), identity_of(entry.get<1>()), bitmap_bytes(entry.get<1>()));
+    }
+}
+
+std::optional<SymbolIdentity> TUIndexView::find_symbol(SymbolHash hash) const {
+    auto found = wire_root(data)[&TUIndex::symbols].find(hash);
+    if(!found) {
+        return std::nullopt;
+    }
+    return identity_of(found->get<1>());
 }
 
 }  // namespace clice::index

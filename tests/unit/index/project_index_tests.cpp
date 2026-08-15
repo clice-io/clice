@@ -1,294 +1,169 @@
+#include <optional>
+#include <string>
+
 #include "test/test.h"
 #include "test/tester.h"
 #include "index/project_index.h"
 #include "index/serialization.h"
+
+#include "llvm/Support/raw_ostream.h"
 
 namespace clice::testing {
 namespace {
 
 TEST_SUITE(ProjectIndex, Tester) {
 
-bool build_and_index(llvm::StringRef code, index::TUIndex& out) {
-    add_main("main.cpp", code);
-    if(!compile()) {
-        return false;
-    }
-    out = index::TUIndex::build(*unit);
-    return true;
+std::string wire;
+
+/// Build the current unit's TUIndex and return the zero-copy view the
+/// merge path consumes; `wire` keeps the bytes alive.
+std::optional<index::TUIndexView> build_view() {
+    auto tu_index = index::TUIndex::build(*unit);
+    wire.clear();
+    llvm::raw_string_ostream os(wire);
+    tu_index.serialize(os);
+    return index::TUIndexView::from(wire);
 }
 
-TEST_CASE(MergeSingleTU) {
-    index::TUIndex tu;
-    ASSERT_TRUE(build_and_index(R"(
-            int foo() { return 42; }
-            int bar() { return foo() + 1; }
-        )",
-                                tu));
-
-    index::ProjectIndex project;
-    clice::PathPool pool;
-    auto file_ids_map = project.merge(tu, pool);
-
-    // The shared pool should have entries for the TU's files.
-    ASSERT_FALSE(pool.paths.empty());
-
-    // Symbols from the TU should be merged into the project.
-    ASSERT_FALSE(project.symbols.empty());
-
-    // Only External symbols should be in the project.
-    for(auto& [hash, symbol]: tu.symbols) {
-        if(symbol.scope == index::SymbolScope::External) {
-            ASSERT_TRUE(project.symbols.contains(hash));
+index::SymbolHash find_symbol(const index::ProjectIndex& project, llvm::StringRef name) {
+    for(auto& [hash, symbol]: project.symbols) {
+        if(symbol.name == name) {
+            return hash;
         }
     }
+    return 0;
 }
 
-TEST_CASE(MergeMultipleTUs) {
-    index::TUIndex tu1;
-    ASSERT_TRUE(build_and_index(R"(
-            int foo() { return 42; }
-        )",
-                                tu1));
-
-    index::TUIndex tu2;
-    ASSERT_TRUE(build_and_index(R"(
-            int bar() { return 99; }
-        )",
-                                tu2));
-
-    index::ProjectIndex project;
-    clice::PathPool pool;
-    project.merge(tu1, pool);
-    project.merge(tu2, pool);
-
-    // All symbols from both TUs should be present.
-    for(auto& [hash, symbol]: tu1.symbols) {
-        ASSERT_TRUE(project.symbols.contains(hash));
-    }
-    for(auto& [hash, symbol]: tu2.symbols) {
-        ASSERT_TRUE(project.symbols.contains(hash));
-    }
-}
-
-TEST_CASE(MergeDuplicateSymbol) {
-    // Build two TUs that both define/reference the same function via header.
-    add_file("shared.h", R"(
-            #pragma once
-            inline int shared_func() { return 1; }
-        )");
-    add_main("a.cpp", R"(
-            #include "shared.h"
-            int use_a() { return shared_func(); }
-        )");
+TEST_CASE(MergeCollectsExternalSymbols) {
+    add_file("header.h", R"(
+        int external_fn();
+    )");
+    add_main("main.cpp", R"(
+        #include "header.h"
+        static int local_fn() { return 1; }
+        int use() { return external_fn() + local_fn(); }
+    )");
     ASSERT_TRUE(compile());
-    auto tu_a = index::TUIndex::build(*unit);
 
-    add_file("shared.h", R"(
-            #pragma once
-            inline int shared_func() { return 1; }
-        )");
-    add_main("b.cpp", R"(
-            #include "shared.h"
-            int use_b() { return shared_func(); }
-        )");
+    clice::PathPool pool;
+    index::ProjectIndex project;
+    auto view = build_view();
+    ASSERT_TRUE(view.has_value());
+    auto file_ids_map = project.merge(*view, pool);
+    ASSERT_EQ(file_ids_map.size(), std::size_t(view->path_count()));
+
+    auto external = find_symbol(project, "external_fn");
+    ASSERT_TRUE(external != 0);
+    // Referenced from both the header (declaration) and the main file.
+    ASSERT_TRUE(project.symbols[external].reference_files.cardinality() >= 2);
+
+    // Non-External symbols never reach the project table.
+    ASSERT_EQ(find_symbol(project, "local_fn"), 0u);
+}
+
+TEST_CASE(FileVersionInterning) {
+    index::ProjectIndex project;
+    auto a = project.intern_file_version(7, 0x1111);
+    ASSERT_EQ(project.intern_file_version(7, 0x1111), a);
+
+    auto b = project.intern_file_version(7, 0x2222);
+    ASSERT_TRUE(b != a);
+    ASSERT_EQ(project.file_versions.find(b)->second.path_id, 7u);
+    ASSERT_EQ(project.file_versions.find(b)->second.content_hash, 0x2222u);
+}
+
+TEST_CASE(ManifestContributions) {
+    index::ProjectIndex project;
+    auto fv_a = project.intern_file_version(1, 0xa);
+    auto fv_b = project.intern_file_version(2, 0xb);
+
+    auto manifest_for = [&](std::uint32_t tu_fv,
+                            std::initializer_list<std::pair<std::uint32_t, std::uint64_t>> rows) {
+        index::TUManifest manifest;
+        manifest.tu_fv = tu_fv;
+        manifest.contributions = rows;
+        return manifest;
+    };
+
+    auto tu1_fv = project.intern_file_version(10, 0x1);
+    auto tu2_fv = project.intern_file_version(11, 0x2);
+
+    // TU 1 contributes h1 to file 1 and h2 to file 2.
+    auto affected = project.apply_manifest(10,
+                                           manifest_for(tu1_fv,
+                                                        {
+                                                            {fv_a, 100},
+                                                            {fv_b, 200}
+    }));
+    ASSERT_EQ(affected.size(), std::size_t(2));
+    ASSERT_EQ(project.live_variants(1).size(), std::size_t(1));
+
+    // TU 2 shares file 1's variant: the live set does not grow.
+    project.apply_manifest(11,
+                           manifest_for(tu2_fv,
+                                        {
+                                            {fv_a, 100}
+    }));
+    ASSERT_EQ(project.live_variants(1).size(), std::size_t(1));
+
+    // TU 1 re-indexes with a new variant for file 1 and drops file 2: both
+    // hashes stay live on file 1 (TU 2 still holds the old one), file 2
+    // loses its only contribution.
+    project.apply_manifest(10,
+                           manifest_for(tu1_fv,
+                                        {
+                                            {fv_a, 300}
+    }));
+    ASSERT_EQ(project.live_variants(1).size(), std::size_t(2));
+    ASSERT_TRUE(project.live_variants(2).empty());
+
+    project.remove_manifest(11);
+    auto live = project.live_variants(1);
+    ASSERT_EQ(live.size(), std::size_t(1));
+    ASSERT_EQ(live.front(), 300u);
+
+    project.remove_manifest(10);
+    ASSERT_TRUE(project.contributions.empty());
+}
+
+TEST_CASE(GlobalRoundTripWithRealMerge) {
+    add_main("main.cpp", R"(
+        int global_value = 42;
+        int reader() { return global_value; }
+    )");
     ASSERT_TRUE(compile());
-    auto tu_b = index::TUIndex::build(*unit);
 
+    clice::PathPool pool;
     index::ProjectIndex project;
-    clice::PathPool pool;
-    project.merge(tu_a, pool);
-    project.merge(tu_b, pool);
+    auto view = build_view();
+    ASSERT_TRUE(view.has_value());
+    auto file_ids_map = project.merge(*view, pool);
 
-    // Find the shared_func symbol hash from TU A's symbol table.
-    index::SymbolHash shared_hash = 0;
-    for(auto& [hash, symbol]: tu_a.symbols) {
-        if(symbol.name == "shared_func") {
-            shared_hash = hash;
-            break;
-        }
-    }
-    ASSERT_TRUE(shared_hash != 0);
-
-    // The same hash should exist in project symbols.
-    ASSERT_TRUE(project.symbols.contains(shared_hash));
-
-    // reference_files bitmap should contain entries from both TUs.
-    auto& proj_sym = project.symbols[shared_hash];
-    ASSERT_TRUE(proj_sym.reference_files.cardinality() >= 2U);
-}
-
-TEST_CASE(SerializationRoundTrip) {
-    index::TUIndex tu;
-    ASSERT_TRUE(build_and_index(R"(
-            struct Foo { int x; };
-            void bar(Foo f) { f.x = 42; }
-        )",
-                                tu));
-
-    index::ProjectIndex project;
-    clice::PathPool pool;
-    project.merge(tu, pool);
-
-    // Serialize.
-    llvm::SmallString<4096> buf;
-    llvm::raw_svector_ostream os(buf);
-    project.serialize(os, pool, {});
-
-    // Deserialize into a fresh pool, as a new session would.
-    clice::PathPool fresh;
-    llvm::SmallVector<std::uint32_t> shards;
-    auto loaded = index::ProjectIndex::from(buf.str(), fresh, shards);
-    ASSERT_TRUE(loaded.has_value());
-    auto& restored = *loaded;
-
-    // Symbol tables should have same size.
-    ASSERT_EQ(project.symbols.size(), restored.symbols.size());
-
-    // Each symbol should be present in restored with same reference count.
-    for(auto& [hash, symbol]: project.symbols) {
-        ASSERT_TRUE(restored.symbols.contains(hash));
-        auto& restored_sym = restored.symbols[hash];
-        ASSERT_EQ(symbol.reference_files.cardinality(), restored_sym.reference_files.cardinality());
-    }
-}
-
-TEST_CASE(FileIdsMapCorrectness) {
-    index::TUIndex tu;
-    ASSERT_TRUE(build_and_index(R"(
-            int x = 1;
-        )",
-                                tu));
-
-    index::ProjectIndex project;
-    clice::PathPool pool;
-    auto file_ids_map = project.merge(tu, pool);
-
-    // file_ids_map should have same size as TU's include graph paths.
-    ASSERT_EQ(file_ids_map.size(), tu.graph.paths.size());
-
-    // Each mapped ID should be valid in the shared pool.
-    for(auto mapped_id: file_ids_map) {
-        ASSERT_TRUE(mapped_id < pool.paths.size());
-    }
-}
-
-TEST_CASE(NameSurvivesRoundTrip) {
-    index::TUIndex tu;
-    ASSERT_TRUE(build_and_index(R"(
-            int my_variable = 42;
-            void my_function() {}
-        )",
-                                tu));
-
-    index::ProjectIndex project;
-    clice::PathPool pool;
-    project.merge(tu, pool);
-
-    // Verify names are populated after merge.
-    bool found_var = false;
-    bool found_func = false;
-    for(auto& [hash, symbol]: project.symbols) {
-        if(symbol.name == "my_variable")
-            found_var = true;
-        if(symbol.name == "my_function")
-            found_func = true;
-    }
-    ASSERT_TRUE(found_var);
-    ASSERT_TRUE(found_func);
-
-    // Serialize and deserialize.
-    llvm::SmallString<4096> buf;
-    llvm::raw_svector_ostream os(buf);
-    project.serialize(os, pool, {});
-    clice::PathPool fresh;
-    llvm::SmallVector<std::uint32_t> shards;
-    auto loaded = index::ProjectIndex::from(buf.str(), fresh, shards);
-    ASSERT_TRUE(loaded.has_value());
-    auto& restored = *loaded;
-
-    // Verify names survive round-trip.
-    for(auto& [hash, symbol]: project.symbols) {
-        ASSERT_TRUE(restored.symbols.contains(hash));
-        ASSERT_EQ(restored.symbols[hash].name, symbol.name);
-        ASSERT_EQ(restored.symbols[hash].kind.value(), symbol.kind.value());
-    }
-}
-
-TEST_CASE(LocalSymbolsExcluded) {
-    index::TUIndex tu;
-    ASSERT_TRUE(build_and_index(R"(
-            int global = 0;
-            static int file_static = 1;
-            void foo() { int local = 2; }
-        )",
-                                tu));
-
-    index::ProjectIndex project;
-    clice::PathPool pool;
-    project.merge(tu, pool);
-
-    // global (External) should be in ProjectIndex.
-    bool found_global = false;
-    bool found_static = false;
-    bool found_local = false;
-    for(auto& [hash, symbol]: project.symbols) {
-        if(symbol.name == "global")
-            found_global = true;
-        if(symbol.name == "file_static")
-            found_static = true;
-        if(symbol.name == "local")
-            found_local = true;
-    }
-    ASSERT_TRUE(found_global);
-    ASSERT_FALSE(found_static);
-    ASSERT_FALSE(found_local);
-}
-
-TEST_CASE(EmptyPathRejected) {
-    // A codec-valid blob whose path table carries an empty entry is corrupt:
-    // the writer only emits interned (never empty) paths.
-    index::ProjectIndex corrupt;
-    corrupt.format_version = index::index_format_version;
-    corrupt.paths.emplace_back(0, "");
-
-    llvm::SmallString<128> buf;
-    llvm::raw_svector_ostream os(buf);
-    index::serialize_blob(corrupt, os);
-
-    clice::PathPool pool;
-    llvm::SmallVector<std::uint32_t> shards;
-    ASSERT_FALSE(index::ProjectIndex::from(buf.str(), pool, shards).has_value());
-    ASSERT_TRUE(pool.paths.empty());
-}
-
-TEST_CASE(ScopeRoundTrip) {
-    index::TUIndex tu;
-    ASSERT_TRUE(build_and_index(R"(
-            int external_var = 0;
-            static int tu_local_var = 1;
-            void foo() { int file_local_var = 2; }
-        )",
-                                tu));
-
-    index::ProjectIndex project;
-    clice::PathPool pool;
-    project.merge(tu, pool);
+    // A manifest referencing the main file keeps its FileVersion alive
+    // through the write's garbage collection.
+    auto main_fv = project.intern_file_version(file_ids_map[view->path_count() - 1],
+                                               view->path_hash(view->path_count() - 1));
+    index::TUManifest manifest;
+    manifest.tu_fv = main_fv;
+    project.apply_manifest(file_ids_map[view->path_count() - 1], std::move(manifest));
 
     llvm::SmallString<4096> buf;
     llvm::raw_svector_ostream os(buf);
-    project.serialize(os, pool, {});
-    clice::PathPool fresh;
-    llvm::SmallVector<std::uint32_t> shards;
-    auto loaded = index::ProjectIndex::from(buf.str(), fresh, shards);
-    ASSERT_TRUE(loaded.has_value());
-    auto& restored = *loaded;
+    project.serialize_global(os, pool);
 
-    for(auto& [hash, symbol]: project.symbols) {
-        ASSERT_TRUE(restored.symbols.contains(hash));
-        ASSERT_EQ(static_cast<int>(restored.symbols[hash].scope), static_cast<int>(symbol.scope));
-    }
+    clice::PathPool fresh;
+    index::ProjectIndex loaded;
+    ASSERT_TRUE(loaded.load_global(buf.str(), fresh));
+
+    auto symbol = find_symbol(loaded, "global_value");
+    ASSERT_TRUE(symbol != 0);
+    auto main_path = pool.resolve(file_ids_map[view->path_count() - 1]);
+    auto fresh_id = fresh.find(main_path);
+    ASSERT_TRUE(fresh_id.has_value());
+    ASSERT_TRUE(loaded.symbols[symbol].reference_files.contains(*fresh_id));
 }
 
 };  // TEST_SUITE(ProjectIndex)
+
 }  // namespace
 }  // namespace clice::testing

@@ -1,84 +1,276 @@
 #include "index/project_index.h"
 
+#include <algorithm>
+#include <string>
+#include <vector>
+
 #include "index/serialization.h"
 
-#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 
 namespace clice::index {
 
+namespace {
+
+/// The global layer's persisted form: the FileVersion table as parallel
+/// columns plus the symbol table with a self-contained path table for its
+/// reference bitmaps.
+struct GlobalBlob {
+    std::uint32_t format_version = 0;
+
+    std::uint32_t next_fv_id = 0;
+
+    std::vector<std::uint32_t> fv_ids;
+    std::vector<std::string> fv_paths;
+    std::vector<std::uint64_t> fv_hashes;
+    std::vector<std::uint64_t> fv_sizes;
+    std::vector<std::int64_t> fv_mtimes;
+
+    SymbolTable symbols{};
+
+    /// Pool id -> path for every id the symbol bitmaps reference.
+    std::vector<std::pair<std::uint32_t, std::string>> sym_paths;
+};
+
+}  // namespace
+
 llvm::SmallVector<std::uint32_t> ProjectIndex::merge(this ProjectIndex& self,
-                                                     TUIndex& index,
+                                                     const TUIndexView& view,
                                                      clice::PathPool& pool) {
-    auto& paths = index.graph.paths;
+    auto count = view.path_count();
     llvm::SmallVector<std::uint32_t> file_ids_map;
-    file_ids_map.resize_for_overwrite(paths.size());
+    file_ids_map.resize_for_overwrite(count);
 
-    for(std::uint32_t i = 0; i < paths.size(); i++) {
-        file_ids_map[i] = pool.intern(paths[i]);
+    for(std::uint32_t i = 0; i < count; i++) {
+        file_ids_map[i] = pool.intern(view.path(i));
     }
 
-    for(auto& [symbol_id, symbol]: index.symbols) {
-        if(symbol.scope != SymbolScope::External)
-            continue;
-        auto& target_symbol = self.symbols[symbol_id];
-        if(target_symbol.name.empty()) {
-            target_symbol.name = symbol.name;
-            target_symbol.kind = symbol.kind;
-        }
-        for(auto ref: symbol.reference_files) {
-            target_symbol.reference_files.add(file_ids_map[ref]);
-        }
-    }
+    view.iterate_symbols(
+        [&](SymbolHash hash, const SymbolIdentity& identity, llvm::StringRef bitmap) {
+            if(identity.scope != SymbolScope::External) {
+                return;
+            }
+            auto& target = self.symbols[hash];
+            if(target.name.empty()) {
+                target.name = std::string(identity.name);
+                target.kind = identity.kind;
+            }
+            if(bitmap.empty()) {
+                return;
+            }
+            for(auto ref: Bitmap::read(bitmap.data(), false)) {
+                // Reference ids are unvalidated wire values (the view skips
+                // the double bitmap decode a load-time check would cost);
+                // an out-of-range one is dropped, not misresolved.
+                if(ref < count) {
+                    target.reference_files.add(file_ids_map[ref]);
+                }
+            }
+        });
 
     return file_ids_map;
 }
 
-void ProjectIndex::serialize(this ProjectIndex& self,
-                             llvm::raw_ostream& os,
-                             const clice::PathPool& pool,
-                             llvm::ArrayRef<std::uint32_t> shards) {
-    self.format_version = index_format_version;
-    self.shards.assign(shards.begin(), shards.end());
-
-    Bitmap referenced(shards.size(), shards.data());
-    for(auto& symbol: llvm::make_second_range(self.symbols)) {
-        referenced |= symbol.reference_files;
+std::uint32_t ProjectIndex::intern_file_version(this ProjectIndex& self,
+                                                std::uint32_t path_id,
+                                                std::uint64_t content_hash) {
+    auto [it, inserted] = self.fv_ids.try_emplace({path_id, content_hash}, self.next_fv_id);
+    if(inserted) {
+        self.file_versions.try_emplace(
+            self.next_fv_id,
+            FileVersionRecord{.path_id = path_id, .content_hash = content_hash});
+        self.next_fv_id += 1;
     }
-
-    self.paths.clear();
-    self.paths.reserve(referenced.cardinality());
-    for(auto id: referenced) {
-        self.paths.emplace_back(id, pool.resolve(id).str());
-    }
-
-    serialize_blob(self, os);
+    return it->second;
 }
 
-std::optional<ProjectIndex> ProjectIndex::from(llvm::StringRef data,
-                                               clice::PathPool& pool,
-                                               llvm::SmallVectorImpl<std::uint32_t>& shards) {
-    std::optional<ProjectIndex> index{std::in_place};
-    if(!deserialize_blob(data, *index) || index->format_version != index_format_version) {
-        return std::nullopt;
+bool ProjectIndex::knows_file_versions(this const ProjectIndex& self, const TUManifest& manifest) {
+    if(!self.file_versions.contains(manifest.tu_fv)) {
+        return false;
+    }
+    for(auto& node: manifest.nodes) {
+        if(!self.file_versions.contains(node.fv)) {
+            return false;
+        }
+    }
+    for(auto& [fv, hash]: manifest.contributions) {
+        if(!self.file_versions.contains(fv)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+llvm::SmallVector<std::uint32_t> ProjectIndex::apply_manifest(this ProjectIndex& self,
+                                                              std::uint32_t tu_path_id,
+                                                              TUManifest manifest) {
+    llvm::SmallVector<std::uint32_t> affected = self.remove_manifest(tu_path_id);
+
+    for(auto& [fv, hash]: manifest.contributions) {
+        auto path_id = self.file_versions.at(fv).path_id;
+        self.contributions[path_id][tu_path_id] = hash;
+        affected.push_back(path_id);
+    }
+    self.manifests[tu_path_id] = std::move(manifest);
+
+    llvm::sort(affected);
+    affected.erase(llvm::unique(affected), affected.end());
+    return affected;
+}
+
+llvm::SmallVector<std::uint32_t> ProjectIndex::remove_manifest(this ProjectIndex& self,
+                                                               std::uint32_t tu_path_id) {
+    llvm::SmallVector<std::uint32_t> affected;
+    auto it = self.manifests.find(tu_path_id);
+    if(it == self.manifests.end()) {
+        return affected;
     }
 
-    // The blob's ids are the writing session's pool ids: intern its path
-    // table and remap every decoded id into this session's pool. Ids the
-    // table does not cover are dropped, not misresolved.
-    llvm::DenseMap<std::uint32_t, std::uint32_t> remap;
-    remap.reserve(index->paths.size());
-    for(auto& [id, path]: index->paths) {
+    for(auto& [fv, hash]: it->second.contributions) {
+        auto path_id = self.file_versions.at(fv).path_id;
+        auto contribution_it = self.contributions.find(path_id);
+        if(contribution_it == self.contributions.end()) {
+            continue;
+        }
+        contribution_it->second.erase(tu_path_id);
+        if(contribution_it->second.empty()) {
+            self.contributions.erase(contribution_it);
+        }
+        affected.push_back(path_id);
+    }
+    self.manifests.erase(it);
+
+    llvm::sort(affected);
+    affected.erase(llvm::unique(affected), affected.end());
+    return affected;
+}
+
+llvm::SmallVector<std::uint64_t> ProjectIndex::live_variants(this const ProjectIndex& self,
+                                                             std::uint32_t path_id) {
+    llvm::SmallVector<std::uint64_t> variants;
+    auto it = self.contributions.find(path_id);
+    if(it == self.contributions.end()) {
+        return variants;
+    }
+    for(auto hash: llvm::make_second_range(it->second)) {
+        variants.push_back(hash);
+    }
+    llvm::sort(variants);
+    variants.erase(llvm::unique(variants), variants.end());
+    return variants;
+}
+
+void ProjectIndex::serialize_global(this ProjectIndex& self,
+                                    llvm::raw_ostream& os,
+                                    const clice::PathPool& pool) {
+    // Garbage-collect the FileVersion table down to what some manifest
+    // still references — in memory too, so ids of dead versions stop
+    // accumulating across the session (they are never reused either way).
+    llvm::DenseSet<std::uint32_t> referenced;
+    for(auto& manifest: llvm::make_second_range(self.manifests)) {
+        referenced.insert(manifest.tu_fv);
+        for(auto& node: manifest.nodes) {
+            referenced.insert(node.fv);
+        }
+        for(auto& [fv, hash]: manifest.contributions) {
+            referenced.insert(fv);
+        }
+    }
+
+    llvm::SmallVector<std::uint32_t> dead;
+    for(auto id: llvm::make_first_range(self.file_versions)) {
+        if(!referenced.contains(id)) {
+            dead.push_back(id);
+        }
+    }
+    for(auto id: dead) {
+        auto& record = self.file_versions.at(id);
+        self.fv_ids.erase({record.path_id, record.content_hash});
+        self.file_versions.erase(id);
+    }
+
+    GlobalBlob blob;
+    blob.format_version = index_format_version;
+    blob.next_fv_id = self.next_fv_id;
+
+    llvm::SmallVector<std::uint32_t> ids;
+    ids.reserve(self.file_versions.size());
+    for(auto id: llvm::make_first_range(self.file_versions)) {
+        ids.push_back(id);
+    }
+    llvm::sort(ids);
+    for(auto id: ids) {
+        auto& record = self.file_versions.at(id);
+        blob.fv_ids.push_back(id);
+        blob.fv_paths.emplace_back(pool.resolve(record.path_id));
+        blob.fv_hashes.push_back(record.content_hash);
+        blob.fv_sizes.push_back(record.size);
+        blob.fv_mtimes.push_back(record.mtime_ns);
+    }
+
+    blob.symbols = std::move(self.symbols);
+
+    Bitmap bitmap_referenced;
+    for(auto& symbol: llvm::make_second_range(blob.symbols)) {
+        bitmap_referenced |= symbol.reference_files;
+    }
+    blob.sym_paths.reserve(bitmap_referenced.cardinality());
+    for(auto id: bitmap_referenced) {
+        blob.sym_paths.emplace_back(id, pool.resolve(id).str());
+    }
+
+    serialize_blob(blob, os);
+    self.symbols = std::move(blob.symbols);
+}
+
+bool ProjectIndex::load_global(this ProjectIndex& self,
+                               llvm::StringRef data,
+                               clice::PathPool& pool) {
+    GlobalBlob blob;
+    if(!deserialize_blob(data, blob) || blob.format_version != index_format_version) {
+        return false;
+    }
+
+    auto count = blob.fv_ids.size();
+    if(blob.fv_paths.size() != count || blob.fv_hashes.size() != count ||
+       blob.fv_sizes.size() != count || blob.fv_mtimes.size() != count) {
+        return false;
+    }
+
+    self.next_fv_id = blob.next_fv_id;
+    for(std::size_t i = 0; i < count; i += 1) {
         // The writer only emits interned paths, which are never empty; an
         // empty entry marks a corrupt blob and must not become a real pool
         // entry.
+        if(blob.fv_paths[i].empty()) {
+            return false;
+        }
+        auto path_id = pool.intern(blob.fv_paths[i]);
+        auto id = blob.fv_ids[i];
+        self.file_versions[id] = {path_id, blob.fv_hashes[i], blob.fv_sizes[i], blob.fv_mtimes[i]};
+        self.fv_ids[{path_id, blob.fv_hashes[i]}] = id;
+        // Ids must stay unique forever; a blob whose counter lags its own
+        // table (corruption) must not hand out ids that alias stored ones.
+        if(id >= self.next_fv_id) {
+            self.next_fv_id = id + 1;
+        }
+    }
+
+    // The blob's bitmap ids are the writing session's pool ids: intern its
+    // path table and remap every decoded id into this session's pool. Ids
+    // the table does not cover are dropped, not misresolved.
+    llvm::DenseMap<std::uint32_t, std::uint32_t> remap;
+    remap.reserve(blob.sym_paths.size());
+    for(auto& [id, path]: blob.sym_paths) {
         if(path.empty()) {
-            return std::nullopt;
+            return false;
         }
         remap.try_emplace(id, pool.intern(path));
     }
 
-    for(auto& symbol: llvm::make_second_range(index->symbols)) {
+    self.symbols = std::move(blob.symbols);
+    for(auto& symbol: llvm::make_second_range(self.symbols)) {
         Bitmap remapped;
         for(auto id: symbol.reference_files) {
             if(auto it = remap.find(id); it != remap.end()) {
@@ -88,17 +280,7 @@ std::optional<ProjectIndex> ProjectIndex::from(llvm::StringRef data,
         symbol.reference_files = std::move(remapped);
     }
 
-    for(auto id: index->shards) {
-        if(auto it = remap.find(id); it != remap.end()) {
-            shards.push_back(it->second);
-        }
-    }
-
-    // The table and manifest were only the wire form; the runtime state is
-    // the pool and the caller's shard list.
-    index->paths.clear();
-    index->shards.clear();
-    return index;
+    return true;
 }
 
 }  // namespace clice::index

@@ -645,11 +645,10 @@ void LSPClient::register_extensions() {
             }
             stats.pch_cache_entries = static_cast<std::uint32_t>(srv.workspace.pch_cache.size());
 
+            stats.index_inmemory_shards =
+                static_cast<std::uint32_t>(srv.indexer.pending_shard_writes());
             for(auto& [path_id, shard]: srv.workspace.merged_indices) {
-                if(shard.need_rewrite()) {
-                    stats.index_inmemory_shards += 1;
-                    stats.index_shard_content_bytes += shard.content().size();
-                }
+                stats.index_shard_content_bytes += shard.bytes().size();
             }
             stats.last_save_shards = static_cast<std::uint32_t>(srv.indexer.last_save_shards());
 

@@ -47,7 +47,7 @@ struct ResolvedSymbol {
 /// Read-only index query layer.
 ///
 /// IndexQuery holds no index data of its own.  All persistent data lives in
-/// Workspace (disk-derived ProjectIndex + MergedIndex shards) and per-file
+/// Workspace (disk-derived ProjectIndex + Shard blobs) and per-file
 /// data lives in Session (file index from unsaved buffers).
 ///
 /// Responsibilities:
@@ -113,7 +113,7 @@ public:
         workspace(workspace), sessions(sessions), indexer(indexer), options(options) {}
 
     /// Query relations (Definition, Reference, etc.) for a symbol at cursor.
-    /// @param session  Active Session for this file, or nullptr to use MergedIndex only.
+    /// @param session  Active Session for this file, or nullptr to use the disk shards only.
     std::vector<protocol::Location> query_relations(llvm::StringRef path,
                                                     const protocol::Position& position,
                                                     RelationKind kind,
@@ -217,7 +217,7 @@ private:
     };
 
     /// Resolve the symbol at (position), checking Session's file_index first
-    /// then falling back to Workspace's MergedIndex.
+    /// then falling back to Workspace's disk shards.
     CursorHit resolve_cursor(llvm::StringRef path,
                              const protocol::Position& position,
                              Session* session);

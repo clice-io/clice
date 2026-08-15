@@ -12,9 +12,10 @@
 #include "command/command.h"
 #include "command/toolchain.h"
 #include "compile/dep_file.h"
-#include "index/merged_index.h"
 #include "index/preamble_state.h"
 #include "index/project_index.h"
+#include "index/shard.h"
+#include "index/storage.h"
 #include "semantic/symbol.h"
 #include "server/compiler/compile_graph.h"
 #include "server/state/config.h"
@@ -35,7 +36,7 @@ class ContextResolver;
 
 /// On-disk cache layout version (CacheStore root `cache/v{N}`).
 /// Bump to discard all cached artifacts after incompatible format changes.
-constexpr inline std::uint32_t cache_format_version = 5;
+constexpr inline std::uint32_t cache_format_version = 6;
 
 /// Sentinel for "no path": path pool ids start at 0, so 0 is a real file.
 constexpr inline std::uint32_t no_path_id = ~0u;
@@ -48,8 +49,8 @@ constexpr inline std::uint32_t no_path_id = ~0u;
 /// since before the build started, so matching them proves the disk still
 /// holds the consumed content. mtime_ns == 0 means "no fast path" — the
 /// check falls through to the hash comparison and, on a match, repairs the
-/// fast path in place. The index shard's immutable, non-repairing form of
-/// the same fast path is `DepStamp` (merged_index.cpp).
+/// fast path in place. The index's form of the same fast path is
+/// `index::FileVersionRecord`, shared by every TU consuming the version.
 struct DepState {
     std::uint32_t path_id = no_path_id;
     std::uint64_t size = 0;
@@ -188,7 +189,7 @@ struct PCMState {
 /// Workspace is the single source of truth for:
 ///   - dependency relationships (include graph, module DAG)
 ///   - compilation artifacts shared across files (PCH/PCM caches)
-///   - symbol index (ProjectIndex + per-file MergedIndex shards)
+///   - symbol index (ProjectIndex + per-file Shard blobs)
 ///   - compilation database and configuration
 ///
 /// Workspace is NEVER modified by unsaved buffer content.  The only mutation
@@ -255,13 +256,19 @@ struct Workspace {
     /// Maps to the .pcm file on disk used as -fmodule-file argument.
     llvm::DenseMap<std::uint32_t, std::string> pcm_paths;
 
-    /// Global symbol table across all indexed translation units.
+    /// The index's global layer: symbols, FileVersions, per-TU manifests
+    /// and the derived contribution map.
     index::ProjectIndex project_index;
 
-    /// Per-file index shards from background indexing, keyed by project-level
-    /// path_id.  Contains symbol occurrences, relations, and stored content
-    /// for position mapping.
-    llvm::DenseMap<std::uint32_t, index::MergedIndex> merged_indices;
+    /// Per-file row blobs from background indexing, keyed by project-level
+    /// path_id: symbol occurrences, relations and stored content for
+    /// position mapping, served zero-copy.
+    llvm::DenseMap<std::uint32_t, index::Shard> merged_indices;
+
+    /// Index blob persistence, opened together with the cache store.
+    /// Declared after `store`: the filesystem backend borrows it, so it
+    /// must be destroyed first.
+    std::unique_ptr<index::IndexStorage> index_storage;
 
     /// Monotonic generation of context-affecting workspace state (include
     /// graph, CDB, disk contents). Bumped on didSave; clice/queryContext

@@ -28,7 +28,7 @@ constexpr inline std::uint32_t preamble_format_version = 5;
 /// queries run directly on the serialized data, nothing is deserialized up
 /// front. It carries the preamble's full symbol index — every header the
 /// PCH covers plus the main file's preamble region — with per-file content
-/// and line starts for position mapping (mirroring MergedIndex shards),
+/// and line starts for position mapping (mirroring the disk shards),
 /// and the PCH-derived feature state that is spliced into main-file
 /// results: document links, inactive regions and the open conditional
 /// stack at the preamble bound.

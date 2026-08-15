@@ -5,6 +5,7 @@
 #include "test/test.h"
 #include "test/tester.h"
 #include "index/preamble_state.h"
+#include "index/shard.h"
 #include "server/compiler/context_resolver.h"
 #include "server/compiler/indexer.h"
 #include "server/service/query.h"
@@ -14,6 +15,7 @@
 #include "kota/ipc/lsp/text.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/xxhash.h"
 
 namespace clice::testing {
 namespace {
@@ -96,34 +98,34 @@ std::string header_path(llvm::StringRef basename) {
 /// Merge the full TUIndex into the workspace's disk index with real
 /// contents, as background indexing would.
 void merge_disk_index() {
-    auto file_ids_map = workspace.project_index.merge(full_index, workspace.path_pool);
+    std::string wire;
+    llvm::raw_string_ostream wos(wire);
+    full_index.serialize(wos);
+    auto view = index::TUIndexView::from(wire);
+    ASSERT_TRUE(view.has_value());
+
+    auto file_ids_map = workspace.project_index.merge(*view, workspace.path_pool);
 
     auto content_of = [&](llvm::StringRef path) -> llvm::StringRef {
         auto it = sources.all_files.find(llvm::sys::path::filename(path));
         return it != sources.all_files.end() ? llvm::StringRef(it->second.content)
                                              : llvm::StringRef();
     };
+    auto lookup_symbol = [&](index::SymbolHash hash) {
+        return view->find_symbol(hash);
+    };
 
-    auto main_tu_path_id = static_cast<std::uint32_t>(full_index.graph.paths.size() - 1);
-    llvm::StringRef main_tu_path = full_index.graph.paths[main_tu_path_id];
-
-    llvm::SmallVector<index::DepLocation> deps;
-    for(auto& loc: full_index.graph.locations) {
-        deps.push_back({full_index.graph.paths[loc.path_id], loc.line, loc.include});
-    }
-    workspace.merged_indices[file_ids_map[main_tu_path_id]].merge(main_tu_path,
-                                                                  full_index.built_at,
-                                                                  deps,
-                                                                  full_index.main_file_index,
-                                                                  content_of(main_tu_path));
-
-    for(auto& [fid, file_idx]: full_index.file_indices) {
-        auto tu_pid = full_index.graph.path_id(fid);
-        workspace.merged_indices[file_ids_map[tu_pid]].merge(
-            main_tu_path,
-            full_index.graph.include_location_id(fid),
-            file_idx,
-            content_of(full_index.graph.paths[tu_pid]));
+    for(std::uint32_t section = 0; section < view->section_count(); section += 1) {
+        auto local_id = view->section_path(section);
+        auto rows = view->decode_section_rows(section);
+        ASSERT_TRUE(rows.has_value());
+        auto content = content_of(view->path(local_id));
+        index::VariantInput fresh{view->section_rows_hash(section), &*rows, lookup_symbol};
+        std::string bytes;
+        llvm::raw_string_ostream os(bytes);
+        index::write_shard(index::Shard(), {}, fresh, content, llvm::xxh3_64bits(content), os);
+        workspace.merged_indices[file_ids_map[local_id]] =
+            index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
     }
 }
 
@@ -417,7 +419,12 @@ int main() { §(ref)⟦foo⟧(); return 0; }
     relation.set_definition_range({0, 3});
     fake.relations[foo].push_back(relation);
     auto header_id = workspace.path_pool.intern(header_path("foo.h"));
-    workspace.merged_indices[header_id].merge("other_tu", 0, fake, "xxx\n");
+    index::VariantInput fresh{.hash = fake.rows_hash(), .rows = &fake};
+    std::string bytes;
+    llvm::raw_string_ostream os(bytes);
+    index::write_shard(index::Shard(), {}, fresh, "xxx\n", llvm::xxh3_64bits("xxx\n"), os);
+    workspace.merged_indices[header_id] =
+        index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
     workspace.project_index.symbols[foo].reference_files.add(header_id);
 
     auto def_loc = index_query.find_definition_location(foo);

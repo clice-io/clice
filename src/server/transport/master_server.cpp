@@ -485,10 +485,10 @@ void MasterServer::open_cache_store() {
     store->register_namespace(
         {.name = "pcm", .extension = ".pcm", .policy = CachePolicy::LRU, .max_bytes = 8 * GiB});
     store->register_namespace(
-        {.name = "index", .extension = ".idx", .policy = CachePolicy::Persistent});
-    store->register_namespace(
         {.name = "header_context", .extension = ".h", .policy = CachePolicy::Scratch});
     workspace.store.emplace(std::move(*store));
+    // Registers the index namespaces itself.
+    workspace.index_storage = index::make_fs_index_storage(*workspace.store);
     LOG_INFO("Cache store: {}", workspace.store->base_dir());
 
     workspace.load_cache(contexts);

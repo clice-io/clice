@@ -1,449 +1,200 @@
+#include <string>
+#include <vector>
+
 #include "test/test.h"
 #include "test/tester.h"
-#include "index/merged_index.h"
-#include "index/project_index.h"
+#include "index/shard.h"
 #include "index/tu_index.h"
+#include "server/compiler/context_resolver.h"
+#include "server/compiler/indexer.h"
+#include "server/service/query.h"
+#include "server/state/session_store.h"
+#include "server/worker/worker_pool.h"
+
+#include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/Path.h"
+#include "llvm/Support/xxhash.h"
 
 namespace clice::testing {
 namespace {
 
 TEST_SUITE(IndexQuery, Tester) {
 
-index::ProjectIndex project_index;
-clice::PathPool pool;
-llvm::DenseMap<std::uint32_t, index::MergedIndex> merged_indices;
+kota::event_loop loop;
+Workspace workspace;
+SessionStore store;
+WorkerPool pool{loop};
+ContextResolver resolver{workspace};
+Indexer indexer{loop, workspace, pool, resolver, store};
+clice::IndexQuery query{workspace, store, indexer};
 
-/// Build TUIndex from code and merge into ProjectIndex + MergedIndex shards.
-void build_and_merge(llvm::StringRef code,
-                     std::source_location location = std::source_location::current()) {
-    add_main("main.cpp", code);
-    ASSERT_TRUE(compile());
+std::uint32_t main_id = 0;
+std::uint32_t header_id = 0;
 
+/// Mirror of the indexer's merge over in-memory sources: project symbols,
+/// per-section shard blobs, and the TU manifest with its contributions —
+/// so live-variant masks and staleness gates behave as in production.
+void merge_into_workspace() {
     auto tu_index = index::TUIndex::build(*unit);
-    auto file_ids_map = project_index.merge(tu_index, pool);
+    std::string wire;
+    llvm::raw_string_ostream wos(wire);
+    tu_index.serialize(wos);
+    auto view = index::TUIndexView::from(wire);
+    ASSERT_TRUE(view.has_value());
 
-    // Merge main file index as compilation context.
-    auto main_tu_path_id = static_cast<std::uint32_t>(tu_index.graph.paths.size() - 1);
-    auto main_global_id = file_ids_map[main_tu_path_id];
-    llvm::StringRef main_tu_path = tu_index.graph.paths[main_tu_path_id];
+    auto& project = workspace.project_index;
+    auto file_ids_map = project.merge(*view, workspace.path_pool);
+    main_id = file_ids_map[view->path_count() - 1];
 
-    llvm::SmallVector<index::DepLocation> deps;
-    for(auto& loc: tu_index.graph.locations) {
-        deps.push_back({tu_index.graph.paths[loc.path_id], loc.line, loc.include});
-    }
+    auto content_of = [&](llvm::StringRef path) -> llvm::StringRef {
+        auto it = sources.all_files.find(llvm::sys::path::filename(path));
+        return it != sources.all_files.end() ? llvm::StringRef(it->second.content)
+                                             : llvm::StringRef();
+    };
+    auto lookup_symbol = [&](index::SymbolHash hash) {
+        return view->find_symbol(hash);
+    };
 
-    merged_indices[main_global_id].merge(main_tu_path,
-                                         tu_index.built_at,
-                                         deps,
-                                         tu_index.main_file_index,
-                                         {});
+    index::TUManifest manifest;
+    manifest.tu_fv = project.intern_file_version(main_id, view->path_hash(view->path_count() - 1));
 
-    // Merge header file indices.
-    for(auto& [fid, file_idx]: tu_index.file_indices) {
-        auto tu_pid = tu_index.graph.path_id(fid);
-        auto global_pid = file_ids_map[tu_pid];
-        auto include_id = tu_index.graph.include_location_id(fid);
-        merged_indices[global_pid].merge(main_tu_path, include_id, file_idx, {});
-    }
-}
+    for(std::uint32_t section = 0; section < view->section_count(); section += 1) {
+        auto local_id = view->section_path(section);
+        auto global_id = file_ids_map[local_id];
+        auto rows = view->decode_section_rows(section);
+        ASSERT_TRUE(rows.has_value());
+        auto content = content_of(view->path(local_id));
+        index::VariantInput fresh{view->section_rows_hash(section), &*rows, lookup_symbol};
+        std::string bytes;
+        llvm::raw_string_ostream os(bytes);
+        index::write_shard(index::Shard(), {}, fresh, content, llvm::xxh3_64bits(content), os);
+        workspace.merged_indices[global_id] =
+            index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
 
-/// Reset index state between test cases.
-void reset() {
-    project_index = index::ProjectIndex();
-    pool = clice::PathPool();
-    merged_indices.clear();
-    clear();
-}
-
-/// Lookup the symbol hash at a given annotation offset in any merged index.
-index::SymbolHash lookup_symbol(llvm::StringRef pos) {
-    auto offset = point(pos);
-    index::SymbolHash result = 0;
-    for(auto& [path_id, merged]: merged_indices) {
-        merged.lookup(offset, [&](const index::Occurrence& o) {
-            if(o.range.contains(offset)) {
-                result = o.target;
-                return false;
-            }
-            return true;
-        });
-        if(result != 0)
-            break;
-    }
-    return result;
-}
-
-/// Find all relations of a given kind for a symbol across all merged indices.
-std::vector<index::Relation> find_relations(index::SymbolHash symbol, RelationKind kind) {
-    std::vector<index::Relation> results;
-
-    auto sym_it = project_index.symbols.find(symbol);
-    if(sym_it == project_index.symbols.end())
-        return results;
-
-    // Search every shard that references this symbol.
-    for(auto file_id: sym_it->second.reference_files) {
-        auto it = merged_indices.find(file_id);
-        if(it == merged_indices.end())
-            continue;
-
-        it->second.lookup(symbol, kind, [&](const index::Relation& r) {
-            results.push_back(r);
-            return true;
-        });
-    }
-
-    // Also search all shards (symbol may appear in files not tracked by reference_files).
-    if(results.empty()) {
-        for(auto& [pid, merged]: merged_indices) {
-            merged.lookup(symbol, kind, [&](const index::Relation& r) {
-                results.push_back(r);
-                return true;
-            });
+        auto fv = project.intern_file_version(global_id, view->path_hash(local_id));
+        manifest.contributions.emplace_back(fv, view->section_rows_hash(section));
+        if(llvm::sys::path::filename(view->path(local_id)) == "header.h") {
+            header_id = global_id;
         }
     }
 
-    return results;
-}
-
-// ============================================================
-// Test cases
-// ============================================================
-
-TEST_CASE(GoToDefinition) {
-    reset();
-    build_and_merge(R"(
-        int §(decl)foo();
-
-        int §(def)⟦§(def)foo⟧() { return 42; }
-
-        int main() {
-            return §(use)foo();
+    for(auto path_id: project.apply_manifest(main_id, std::move(manifest))) {
+        auto it = workspace.merged_indices.find(path_id);
+        if(it != workspace.merged_indices.end()) {
+            it->second.set_live(project.live_variants(path_id));
         }
-    )");
-
-    auto hash = lookup_symbol("use");
-    ASSERT_NE(hash, 0UL);
-
-    auto defs = find_relations(hash, RelationKind::Definition);
-    ASSERT_FALSE(defs.empty());
-
-    auto expected = range("def");
-    ASSERT_EQ(dump(defs.front().range), dump(expected));
-}
-
-TEST_CASE(FindReferences) {
-    reset();
-    build_and_merge(R"(
-        int §(decl)foo();
-
-        int §(def)foo() { return 42; }
-
-        int bar() {
-            return §(ref1)foo() + §(ref2)foo();
-        }
-    )");
-
-    auto hash = lookup_symbol("decl");
-    ASSERT_NE(hash, 0UL);
-
-    auto refs = find_relations(hash, RelationKind::Reference);
-    ASSERT_GE(refs.size(), 2U);
-}
-
-TEST_CASE(DeclAndDef) {
-    reset();
-    build_and_merge(R"(
-        int §(decl)foo();
-        int §(def)⟦§(def)foo⟧() { return 42; }
-    )");
-
-    auto hash = lookup_symbol("decl");
-    ASSERT_NE(hash, 0UL);
-
-    auto decls = find_relations(hash, RelationKind::Declaration);
-    ASSERT_FALSE(decls.empty());
-
-    auto defs = find_relations(hash, RelationKind::Definition);
-    ASSERT_FALSE(defs.empty());
-
-    auto expected_def = range("def");
-    ASSERT_EQ(dump(defs.front().range), dump(expected_def));
-}
-
-TEST_CASE(CallerCallee) {
-    reset();
-    build_and_merge(R"(
-        void §(callee_def)callee() {}
-
-        void §(caller_def)caller() {
-            §(call_site)callee();
-        }
-    )");
-
-    auto caller_hash = lookup_symbol("caller_def");
-    ASSERT_NE(caller_hash, 0UL);
-
-    auto callees = find_relations(caller_hash, RelationKind::Callee);
-    ASSERT_FALSE(callees.empty());
-
-    auto callee_hash = lookup_symbol("callee_def");
-    ASSERT_NE(callee_hash, 0UL);
-
-    auto callers = find_relations(callee_hash, RelationKind::Caller);
-    ASSERT_FALSE(callers.empty());
-}
-
-TEST_CASE(OverrideRelation) {
-    reset();
-    build_and_merge(R"(
-        struct Base {
-            virtual void §(base_method)method() {}
-        };
-
-        struct Derived : Base {
-            void §(derived_method)method() override {}
-        };
-    )");
-
-    // Derived::method should have Interface relation to Base::method.
-    auto derived_hash = lookup_symbol("derived_method");
-    ASSERT_NE(derived_hash, 0UL);
-
-    auto interfaces = find_relations(derived_hash, RelationKind::Interface);
-    ASSERT_FALSE(interfaces.empty());
-
-    // Base::method should have Implementation relation.
-    auto base_hash = lookup_symbol("base_method");
-    ASSERT_NE(base_hash, 0UL);
-
-    auto impls = find_relations(base_hash, RelationKind::Implementation);
-    ASSERT_FALSE(impls.empty());
-}
-
-TEST_CASE(BaseAndDerived) {
-    reset();
-    build_and_merge(R"(
-        struct §(base_cls)Animal {
-            virtual void speak() {}
-        };
-
-        struct §(derived_cls)Dog : §(base_ref)Animal {
-            void speak() override {}
-        };
-    )");
-
-    auto derived_hash = lookup_symbol("derived_cls");
-    ASSERT_NE(derived_hash, 0UL);
-
-    // Look for any Base relation in any shard.
-    bool found_base = false;
-    for(auto& [pid, merged]: merged_indices) {
-        merged.lookup(derived_hash, RelationKind::Base, [&](const index::Relation& r) {
-            found_base = true;
-            return false;
-        });
     }
-    ASSERT_TRUE(found_base);
 }
 
-TEST_CASE(ClassTemplate) {
-    reset();
-    build_and_merge(R"(
-        template <typename T>
-        struct §(primary)⟦§(primary)foo⟧ {};
-
-        §(use)foo<int> x;
-    )");
-
-    auto hash = lookup_symbol("use");
-    ASSERT_NE(hash, 0UL);
-
-    auto defs = find_relations(hash, RelationKind::Definition);
-    ASSERT_FALSE(defs.empty());
+std::string main_path() {
+    return std::string(workspace.path_pool.resolve(main_id));
 }
 
-TEST_CASE(SymbolKinds) {
-    reset();
-    build_and_merge(R"(
-        struct §(cls)MyClass {};
-        void §(func)myFunc() {}
-        int §(var)myVar = 0;
-    )");
-
-    auto cls_hash = lookup_symbol("cls");
-    ASSERT_NE(cls_hash, 0UL);
-    ASSERT_TRUE(project_index.symbols.contains(cls_hash));
-    ASSERT_EQ(project_index.symbols[cls_hash].kind.value(), SymbolKind(SymbolKind::Struct).value());
-
-    auto func_hash = lookup_symbol("func");
-    ASSERT_NE(func_hash, 0UL);
-    ASSERT_TRUE(project_index.symbols.contains(func_hash));
-    ASSERT_EQ(project_index.symbols[func_hash].kind.value(),
-              SymbolKind(SymbolKind::Function).value());
-
-    auto var_hash = lookup_symbol("var");
-    ASSERT_NE(var_hash, 0UL);
-    ASSERT_TRUE(project_index.symbols.contains(var_hash));
-    ASSERT_EQ(project_index.symbols[var_hash].kind.value(),
-              SymbolKind(SymbolKind::Variable).value());
-}
-
-TEST_CASE(ReferenceFiles) {
-    reset();
-    build_and_merge(R"(
-        int §(target)target = 42;
-        int a = §(ref)target + 1;
-    )");
-
-    auto hash = lookup_symbol("target");
-    ASSERT_NE(hash, 0UL);
-
-    auto sym_it = project_index.symbols.find(hash);
-    ASSERT_TRUE(sym_it != project_index.symbols.end());
-
-    // reference_files should contain at least the main file.
-    ASSERT_FALSE(sym_it->second.reference_files.isEmpty());
-}
-
-TEST_CASE(CrossFileQuery) {
-    reset();
-
+TEST_CASE(DefinitionAcrossFiles) {
     add_file("header.h", R"(
-        #pragma once
-        int §(hdr_decl)helper();
+        struct §(def)⟦§(def)Widget⟧ { int value; };
     )");
     add_main("main.cpp", R"(
         #include "header.h"
-
-        int main() {
-            return §(use_helper)helper();
-        }
+        §(use)⟦§(use)Widget⟧ instance;
     )");
     ASSERT_TRUE(compile());
+    merge_into_workspace();
 
-    auto tu_index = index::TUIndex::build(*unit);
-    auto file_ids_map = project_index.merge(tu_index, pool);
-
-    // Merge main file.
-    auto main_tu_path_id = static_cast<std::uint32_t>(tu_index.graph.paths.size() - 1);
-    auto main_global_id = file_ids_map[main_tu_path_id];
-
-    llvm::StringRef main_tu_path = tu_index.graph.paths[main_tu_path_id];
-    llvm::SmallVector<index::DepLocation> deps;
-    for(auto& loc: tu_index.graph.locations) {
-        deps.push_back({tu_index.graph.paths[loc.path_id], loc.line, loc.include});
-    }
-    merged_indices[main_global_id].merge(main_tu_path,
-                                         tu_index.built_at,
-                                         deps,
-                                         tu_index.main_file_index,
-                                         {});
-
-    // Merge header file indices.
-    for(auto& [fid, file_idx]: tu_index.file_indices) {
-        auto tu_pid = tu_index.graph.path_id(fid);
-        auto global_pid = file_ids_map[tu_pid];
-        auto include_id = tu_index.graph.include_location_id(fid);
-        merged_indices[global_pid].merge(main_tu_path, include_id, file_idx, {});
-    }
-
-    // Query: from usage in main.cpp, find the symbol via merged index.
-    auto use_offset = point("use_helper");
-    index::SymbolHash helper_hash = 0;
-    merged_indices[main_global_id].lookup(use_offset, [&](const index::Occurrence& o) {
-        if(o.range.contains(use_offset)) {
-            helper_hash = o.target;
-            return false;
-        }
-        return true;
+    auto hit_offset = point("use");
+    index::SymbolHash symbol = 0;
+    workspace.merged_indices[main_id].lookup(hit_offset, [&](const index::Occurrence& o) {
+        symbol = o.target;
+        return false;
     });
-    ASSERT_NE(helper_hash, 0UL);
+    ASSERT_TRUE(symbol != 0);
 
-    // Find declaration across all shards -- should find it in header shard.
-    auto decls = find_relations(helper_hash, RelationKind::Declaration);
-    ASSERT_FALSE(decls.empty());
+    auto location = query.find_definition_location(symbol);
+    ASSERT_TRUE(location.has_value());
+    ASSERT_TRUE(llvm::StringRef(location->uri).ends_with("header.h"));
 }
 
-TEST_CASE(ImplementationDirection) {
-    /// Locks the relation direction used by go-to-implementation: at a base
-    /// virtual method, Implementation relations point to the overrides; at
-    /// an override, Interface relations point back to the overridden method.
-    reset();
-    build_and_merge(R"(
-        struct Base {
-            virtual void §(base)draw();
-        };
-        struct Circle : Base {
-            void §(circle)draw() override;
-        };
-        struct Square : Circle {
-            void §(square)draw() override;
-        };
+TEST_CASE(ReferencesAcrossFiles) {
+    add_file("header.h", R"(
+        int shared_fn();
     )");
+    add_main("main.cpp", R"(
+        #include "header.h"
+        int call() { return §(use)⟦§(use)shared_fn⟧(); }
+    )");
+    ASSERT_TRUE(compile());
+    merge_into_workspace();
 
-    auto base = lookup_symbol("base");
-    auto circle = lookup_symbol("circle");
-    auto square = lookup_symbol("square");
-    ASSERT_NE(base, 0UL);
-    ASSERT_NE(circle, 0UL);
-    ASSERT_NE(square, 0UL);
+    index::SymbolHash symbol = 0;
+    workspace.merged_indices[main_id].lookup(point("use"), [&](const index::Occurrence& o) {
+        symbol = o.target;
+        return false;
+    });
+    ASSERT_TRUE(symbol != 0);
 
-    auto targets_of = [&](index::SymbolHash sym, RelationKind kind) {
-        std::vector<index::SymbolHash> targets;
-        for(auto& r: find_relations(sym, kind))
-            targets.push_back(r.target_symbol);
-        return targets;
-    };
-
-    auto impls = targets_of(base, RelationKind::Implementation);
-    EXPECT_TRUE(std::ranges::contains(impls, circle));
-
-    auto interfaces = targets_of(circle, RelationKind::Interface);
-    EXPECT_TRUE(std::ranges::contains(interfaces, base));
-
-    // The chain is direct-base only: Square::draw implements Circle::draw.
-    auto circle_impls = targets_of(circle, RelationKind::Implementation);
-    EXPECT_TRUE(std::ranges::contains(circle_impls, square));
-    EXPECT_FALSE(std::ranges::contains(impls, square));
+    auto references = query.collect_references(symbol, RelationKind::Reference);
+    ASSERT_FALSE(references.empty());
 }
 
-TEST_CASE(TypeDefinitionTargets) {
-    /// Locks the data go-to-type-definition relies on: TypeDefinition
-    /// relations at variable declarations carry the type's symbol hash.
-    reset();
-    build_and_merge(R"(
-        struct §(widget)Widget {};
-        using §(alias)Alias = Widget;
-
-        Widget §(plain)w;
-        Alias §(aliased)a;
-        auto §(deduced)b = Widget{};
+TEST_CASE(SearchSymbols) {
+    add_main("main.cpp", R"(
+        struct Searchable { int field; };
+        Searchable instance;
     )");
+    ASSERT_TRUE(compile());
+    merge_into_workspace();
 
-    auto widget = lookup_symbol("widget");
-    auto alias = lookup_symbol("alias");
-    ASSERT_NE(widget, 0UL);
-    ASSERT_NE(alias, 0UL);
+    auto results = query.search_symbols("Searchable", 10);
+    ASSERT_FALSE(results.empty());
+    ASSERT_EQ(results.front().name, "Searchable");
+}
 
-    auto type_targets = [&](llvm::StringRef pos) {
-        auto sym = lookup_symbol(pos);
-        EXPECT_NE(sym, 0UL);
-        std::vector<index::SymbolHash> targets;
-        for(auto& r: find_relations(sym, RelationKind::TypeDefinition))
-            targets.push_back(r.target_symbol);
-        return targets;
-    };
+TEST_CASE(LocalSymbolName) {
+    add_main("main.cpp", R"(
+        static int §(local)⟦§(local)hidden⟧() { return 1; }
+        int use() { return hidden(); }
+    )");
+    ASSERT_TRUE(compile());
+    merge_into_workspace();
 
-    EXPECT_TRUE(std::ranges::contains(type_targets("plain"), widget));
-    // Known index gaps (recorded, to be fixed in the indexer separately):
-    // auto-deduced and alias-typed variables do not resolve to the
-    // underlying record yet. Lock the current behavior so a future fix
-    // shows up as an intentional test update.
-    EXPECT_TRUE(type_targets("deduced").empty());
-    EXPECT_TRUE(std::ranges::contains(type_targets("aliased"), alias));
+    index::SymbolHash symbol = 0;
+    workspace.merged_indices[main_id].lookup(point("local"), [&](const index::Occurrence& o) {
+        symbol = o.target;
+        return false;
+    });
+    ASSERT_TRUE(symbol != 0);
+
+    // TU-local names are not in the project table; the query falls back to
+    // the shard's own local-name table.
+    std::string name;
+    SymbolKind kind;
+    ASSERT_TRUE(query.find_symbol_info(symbol, name, kind));
+    ASSERT_EQ(name, "hidden");
+}
+
+TEST_CASE(StaleContributionSuppressed) {
+    add_main("main.cpp", R"(
+        int stale_fn() { return 1; }
+        int use() { return §(use)⟦§(use)stale_fn⟧(); }
+    )");
+    ASSERT_TRUE(compile());
+    merge_into_workspace();
+
+    index::SymbolHash symbol = 0;
+    workspace.merged_indices[main_id].lookup(point("use"), [&](const index::Occurrence& o) {
+        symbol = o.target;
+        return false;
+    });
+    ASSERT_FALSE(query.collect_references(symbol, RelationKind::Reference).empty());
+
+    // A content-changed pending file's rows describe text that no longer
+    // exists: its contribution disappears from cross-file results until
+    // the reindex lands.
+    indexer.enqueue(main_id, ReindexReason::ContentChanged);
+    ASSERT_TRUE(query.collect_references(symbol, RelationKind::Reference).empty());
 }
 
 };  // TEST_SUITE(IndexQuery)
+
 }  // namespace
 }  // namespace clice::testing
