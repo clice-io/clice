@@ -344,7 +344,9 @@ kota::task<> Indexer::save() {
     // hashes a newer content generation replaced (their TUs have not
     // reindexed yet) — compacting to those pins would write a blob with no
     // variants at all, while retiring serves the same nothing the mask
-    // already does, and load() re-enqueues the pinning TUs after a restart.
+    // already does. The pinning TUs are re-enqueued: no in-process event
+    // would rebuild their rows otherwise (a reverted file even reads fresh
+    // by hash), only a restart reaching load()'s re-enqueue.
     llvm::SmallVector<std::uint32_t> retired;
     for(auto& [path_id, shard]: workspace.shards) {
         auto live = project.live_variants(path_id);
@@ -366,6 +368,13 @@ kota::task<> Indexer::save() {
     for(auto path_id: retired) {
         workspace.shards.erase(path_id);
         dirty_shards.erase(path_id);
+        auto it = project.contributions.find(path_id);
+        if(it == project.contributions.end()) {
+            continue;
+        }
+        for(auto tu: llvm::make_first_range(it->second)) {
+            enqueue(tu, ReindexReason::ContentChanged);
+        }
     }
 
     // Snapshot the dirty state on the loop: everything below serializes

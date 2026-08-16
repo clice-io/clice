@@ -534,6 +534,67 @@ TEST_CASE(RangesBeyondContentRejected) {
     ASSERT_FALSE(make_shard(bytes_of()).loaded());
 }
 
+TEST_CASE(DuplicateSymbolHashRejected) {
+    // Symbol lookups lower-bound the hash column and read only the first
+    // match's slices: a duplicated hash strands the later id's relations
+    // unreachably while the blob keeps loading as fresh.
+    index::ShardBlob blob;
+    blob.format_version = index::index_format_version;
+    blob.content = "aaaa";
+    blob.variants = {1};
+    blob.sym_hashes = {111, 222};
+    blob.sym_rel_offsets = {0, 0, 0};
+
+    auto bytes_of = [&] {
+        std::string bytes;
+        llvm::raw_string_ostream os(bytes);
+        index::serialize_blob(blob, os);
+        return bytes;
+    };
+    ASSERT_TRUE(make_shard(bytes_of()).loaded());
+
+    blob.sym_hashes = {111, 111};
+    ASSERT_FALSE(make_shard(bytes_of()).loaded());
+}
+
+TEST_CASE(CorruptRoaringMaskRejected) {
+    // Roaring row masks gate liveness and are rewritten by compaction; a
+    // slice failing decode would read the row as dead and the next
+    // compaction would erase it for real, every manifest still fresh — so
+    // an undecodable slice must reject the blob at load.
+    index::ShardBlob blob;
+    blob.format_version = index::index_format_version;
+    blob.content = "aaaa";
+    for(std::uint32_t i = 1; i <= 65; i += 1) {
+        blob.variants.push_back(i);
+    }
+    blob.sym_hashes = {111};
+    blob.sym_rel_offsets = {0, 0};
+    blob.occ_begins = {0};
+    blob.occ_lengths = {3};
+    blob.occ_syms16 = {0};
+
+    clice::Bitmap mask;
+    mask.add(2);
+    for(auto byte: index::write_bitmap(mask)) {
+        blob.occ_roaring.push_back(static_cast<std::uint8_t>(byte));
+    }
+    blob.occ_roaring_offsets = {0, static_cast<std::uint32_t>(blob.occ_roaring.size())};
+    blob.rel_roaring_offsets = {0};
+
+    auto bytes_of = [&] {
+        std::string bytes;
+        llvm::raw_string_ostream os(bytes);
+        index::serialize_blob(blob, os);
+        return bytes;
+    };
+    ASSERT_TRUE(make_shard(bytes_of()).loaded());
+
+    blob.occ_roaring = {0xff, 0xff, 0xff};
+    blob.occ_roaring_offsets = {0, 3};
+    ASSERT_FALSE(make_shard(bytes_of()).loaded());
+}
+
 };  // TEST_SUITE(Shard)
 
 }  // namespace

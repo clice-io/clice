@@ -336,21 +336,48 @@ bool ProjectIndex::load_global(this ProjectIndex& self,
         }
     }
 
+    // Ids and (path, hash) pairs are both map keys in the writer, so a
+    // repeat of either marks a corrupt blob. A repeated id in particular
+    // would leave fv_ids interning the earlier pair to an id whose record
+    // names the later path, attributing contributions to the wrong file.
+    llvm::DenseSet<std::uint32_t> blob_fvs(blob.fv_ids.begin(), blob.fv_ids.end());
+    if(blob_fvs.size() != count) {
+        return false;
+    }
+    llvm::DenseSet<std::pair<llvm::StringRef, std::uint64_t>> blob_versions;
+    for(std::size_t i = 0; i < count; i += 1) {
+        if(!blob_versions.insert({llvm::StringRef(blob.fv_paths[i]), blob.fv_hashes[i]}).second) {
+            return false;
+        }
+    }
+
     // The writer only pins manifests whose tu_fv survived the same save's
     // garbage collection, so an unresolvable pin marks a corrupt blob.
-    llvm::DenseSet<std::uint32_t> blob_fvs(blob.fv_ids.begin(), blob.fv_ids.end());
     for(auto fv: blob.manifest_fvs) {
         if(!blob_fvs.contains(fv)) {
             return false;
         }
     }
 
+    // The writer emits a path-table entry for every id its bitmaps
+    // reference; an uncovered id dropped here would silently lose the
+    // symbol's reference files with every manifest still fresh — reject
+    // the blob so everything is reindexed instead.
+    llvm::DenseSet<std::uint32_t> covered;
+    for(auto id: llvm::make_first_range(blob.sym_paths)) {
+        covered.insert(id);
+    }
     std::vector<Bitmap> bitmaps;
     bitmaps.reserve(sym_count);
     for(auto& image: blob.sym_bitmaps) {
         auto decoded = read_bitmap(image.data(), image.size());
         if(!decoded) {
             return false;
+        }
+        for(auto id: *decoded) {
+            if(!covered.contains(id)) {
+                return false;
+            }
         }
         bitmaps.push_back(std::move(*decoded));
     }
@@ -374,8 +401,8 @@ bool ProjectIndex::load_global(this ProjectIndex& self,
     }
 
     // The blob's bitmap ids are the writing session's pool ids: intern its
-    // path table and remap every decoded id into this session's pool. Ids
-    // the table does not cover are dropped, not misresolved.
+    // path table and remap every decoded id into this session's pool. Every
+    // id was proven covered by the table above.
     llvm::DenseMap<std::uint32_t, std::uint32_t> remap;
     remap.reserve(blob.sym_paths.size());
     for(auto& [id, path]: blob.sym_paths) {
@@ -386,9 +413,7 @@ bool ProjectIndex::load_global(this ProjectIndex& self,
     for(std::size_t k = 0; k < sym_count; k += 1) {
         Bitmap remapped;
         for(auto id: bitmaps[k]) {
-            if(auto it = remap.find(id); it != remap.end()) {
-                remapped.add(it->second);
-            }
+            remapped.add(remap.find(id)->second);
         }
         auto& symbol = self.symbols[blob.sym_hashes[k]];
         symbol.name = std::move(blob.sym_names[k]);

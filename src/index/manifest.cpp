@@ -51,6 +51,11 @@ bool read_varint(std::span<const std::uint8_t> data, std::size_t& pos, std::uint
         }
         auto byte = data[pos];
         pos += 1;
+        // The tenth byte holds only value bit 63; greater payloads would
+        // shift out silently and decode to an unrelated small value.
+        if(shift == 63 && byte > 1) {
+            return false;
+        }
         value |= static_cast<std::uint64_t>(byte & 0x7f) << shift;
         if((byte & 0x80) == 0) {
             return true;

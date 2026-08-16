@@ -99,13 +99,11 @@ RowColumns rel_columns(ShardView root) {
     };
 }
 
-/// The slice bounds were validated monotonic and in-bounds at load; the
-/// decode itself is bounded to the slice and degrades a corrupt image to
-/// an empty mask (the row reads as dead) instead of aborting.
+/// The slice bounds were validated monotonic and in-bounds at load, and
+/// every slice proven to decode, so this cannot fail.
 Bitmap read_row_bitmap(const RowColumns& columns, std::uint32_t row) {
     auto begin = columns.roaring_offsets[row];
-    return read_bitmap(columns.roaring.data() + begin, columns.roaring_offsets[row + 1] - begin)
-        .value_or(Bitmap{});
+    return *read_bitmap(columns.roaring.data() + begin, columns.roaring_offsets[row + 1] - begin);
 }
 
 /// Structural verification does not constrain field values; everything the
@@ -132,7 +130,10 @@ bool validate(ShardView root) {
     if(!std::ranges::is_sorted(offsets) || offsets.back() != rel_count) {
         return false;
     }
-    if(!std::ranges::is_sorted(sym_hashes)) {
+    // Strictly: symbol lookups lower-bound the hash column and read only
+    // the first match's slices, so a duplicated hash would strand the later
+    // id's relations and local name unreachably.
+    if(!std::ranges::is_sorted(sym_hashes, std::less_equal{})) {
         return false;
     }
 
@@ -265,11 +266,26 @@ bool validate(ShardView root) {
                        columns.roaring_offsets.empty();
             }
             case MaskTier::Roaring: {
-                return columns.masks32.empty() && columns.masks64.empty() &&
-                       columns.roaring_offsets.size() == count + 1 &&
-                       std::ranges::is_sorted(columns.roaring_offsets) &&
-                       columns.roaring_offsets.back() == columns.roaring.size() &&
-                       (count == 0 || columns.roaring_offsets.front() == 0);
+                if(!columns.masks32.empty() || !columns.masks64.empty() ||
+                   columns.roaring_offsets.size() != count + 1 ||
+                   !std::ranges::is_sorted(columns.roaring_offsets) ||
+                   columns.roaring_offsets.back() != columns.roaring.size() ||
+                   (count != 0 && columns.roaring_offsets.front() != 0)) {
+                    return false;
+                }
+                // The masks gate row liveness and are what compaction
+                // rewrites; a slice failing decode would read as an empty
+                // mask — the row silently dead, then erased for real by the
+                // next compaction, with every manifest still fresh. Prove
+                // each slice decodes once here so the blob rebuilds instead.
+                for(std::uint32_t row = 0; row < count; row += 1) {
+                    auto begin = columns.roaring_offsets[row];
+                    if(!read_bitmap(columns.roaring.data() + begin,
+                                    columns.roaring_offsets[row + 1] - begin)) {
+                        return false;
+                    }
+                }
+                return true;
             }
         }
         std::unreachable();

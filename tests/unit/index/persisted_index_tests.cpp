@@ -44,24 +44,39 @@ TEST_CASE(ManifestJunkRejected) {
     ASSERT_FALSE(index::deserialize_manifest("not a flatbuffer").has_value());
 }
 
-TEST_CASE(ManifestCountMismatchRejected) {
-    // Field order MUST mirror ManifestBlob (manifest.cpp): a node count
-    // claiming more nodes than the payload holds must not decode.
-    struct ManifestBlobMirror {
-        std::uint32_t format_version = 0;
-        std::uint64_t global_gen = 0;
-        std::uint64_t built_at = 0;
-        std::uint32_t tu_fv = 0;
-        std::uint32_t node_count = 0;
-        std::uint32_t contribution_count = 0;
-        std::vector<std::uint8_t> nodes;
-        std::vector<std::uint8_t> contributions;
-    };
+/// Field order MUST mirror ManifestBlob (manifest.cpp).
+struct ManifestBlobMirror {
+    std::uint32_t format_version = 0;
+    std::uint64_t global_gen = 0;
+    std::uint64_t built_at = 0;
+    std::uint32_t tu_fv = 0;
+    std::uint32_t node_count = 0;
+    std::uint32_t contribution_count = 0;
+    std::vector<std::uint8_t> nodes;
+    std::vector<std::uint8_t> contributions;
+};
 
+TEST_CASE(ManifestCountMismatchRejected) {
+    // A node count claiming more nodes than the payload holds must not
+    // decode.
     ManifestBlobMirror mirror;
     mirror.format_version = index::index_format_version;
     mirror.node_count = 2;
     mirror.nodes = {1, 0, 5};  // one node's worth of varints
+
+    auto blob = kota::codec::fbs::to_bytes(mirror);
+    ASSERT_TRUE(blob.has_value());
+    ASSERT_FALSE(index::deserialize_manifest(bytes_of(*blob)).has_value());
+}
+
+TEST_CASE(ManifestVarintOverflowRejected) {
+    // A ten-byte varint whose last byte carries more than value bit 63
+    // would silently shift the excess out and decode to an unrelated small
+    // id, redirecting contributions to another file.
+    ManifestBlobMirror mirror;
+    mirror.format_version = index::index_format_version;
+    mirror.node_count = 1;
+    mirror.nodes = {0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x02, 0x00, 0x00};
 
     auto blob = kota::codec::fbs::to_bytes(mirror);
     ASSERT_TRUE(blob.has_value());
@@ -176,27 +191,30 @@ TEST_CASE(GlobalVersionGate) {
     ASSERT_FALSE(loaded.load_global("not a flatbuffer", pool, pins));
 }
 
-TEST_CASE(GlobalBitmapPayloadGate) {
-    // Field order MUST mirror GlobalBlob (project_index.cpp) up to the
-    // bitmap column. A malformed reference bitmap must fail the whole
-    // load: normalized to empty it would silently lose the symbol's
-    // reference files, with nothing ever rebuilding them.
-    struct GlobalBlobPrefixMirror {
-        std::uint32_t format_version = 0;
-        std::uint64_t generation = 0;
-        std::uint32_t next_fv_id = 0;
-        std::vector<std::uint32_t> fv_ids;
-        std::vector<std::string> fv_paths;
-        std::vector<std::uint64_t> fv_hashes;
-        std::vector<std::uint64_t> fv_sizes;
-        std::vector<std::int64_t> fv_mtimes;
-        std::vector<std::uint64_t> sym_hashes;
-        std::vector<std::string> sym_names;
-        std::vector<std::uint8_t> sym_kinds;
-        std::vector<std::vector<std::byte>> sym_bitmaps;
-    };
+/// Field order MUST mirror GlobalBlob (project_index.cpp).
+struct GlobalBlobMirror {
+    std::uint32_t format_version = 0;
+    std::uint64_t generation = 0;
+    std::uint32_t next_fv_id = 0;
+    std::vector<std::uint32_t> fv_ids;
+    std::vector<std::string> fv_paths;
+    std::vector<std::uint64_t> fv_hashes;
+    std::vector<std::uint64_t> fv_sizes;
+    std::vector<std::int64_t> fv_mtimes;
+    std::vector<std::uint64_t> sym_hashes;
+    std::vector<std::string> sym_names;
+    std::vector<std::uint8_t> sym_kinds;
+    std::vector<std::vector<std::byte>> sym_bitmaps;
+    std::vector<std::uint32_t> manifest_fvs;
+    std::vector<std::uint64_t> manifest_gens;
+    std::vector<std::pair<std::uint32_t, std::string>> sym_paths;
+};
 
-    GlobalBlobPrefixMirror mirror;
+TEST_CASE(GlobalBitmapPayloadGate) {
+    // A malformed reference bitmap must fail the whole load: normalized to
+    // empty it would silently lose the symbol's reference files, with
+    // nothing ever rebuilding them.
+    GlobalBlobMirror mirror;
     mirror.format_version = index::index_format_version;
     mirror.sym_hashes = {42};
     mirror.sym_names = {"sym"};
@@ -205,6 +223,9 @@ TEST_CASE(GlobalBitmapPayloadGate) {
     clice::Bitmap bits;
     bits.add(3);
     mirror.sym_bitmaps = {index::write_bitmap(bits)};
+    mirror.sym_paths = {
+        {3, "/proj/ref.h"}
+    };
 
     clice::PathPool pool;
     llvm::DenseMap<std::uint32_t, std::uint64_t> pins;
@@ -237,6 +258,73 @@ TEST_CASE(GlobalBitmapPayloadGate) {
     ASSERT_TRUE(rejecting.symbols.empty());
     ASSERT_TRUE(rejecting.file_versions.empty());
     ASSERT_FALSE(untouched.find("/proj/partial.h").has_value());
+}
+
+TEST_CASE(UncoveredBitmapIdRejected) {
+    // The writer emits a path-table entry for every id its bitmaps
+    // reference; dropping an uncovered id would silently lose the symbol's
+    // reference files while every manifest stays fresh.
+    GlobalBlobMirror mirror;
+    mirror.format_version = index::index_format_version;
+    mirror.sym_hashes = {42};
+    mirror.sym_names = {"sym"};
+    mirror.sym_kinds = {0};
+    clice::Bitmap bits;
+    bits.add(3);
+    mirror.sym_bitmaps = {index::write_bitmap(bits)};
+
+    clice::PathPool pool;
+    llvm::DenseMap<std::uint32_t, std::uint64_t> pins;
+    auto uncovered = kota::codec::fbs::to_bytes(mirror);
+    ASSERT_TRUE(uncovered.has_value());
+    index::ProjectIndex loaded;
+    ASSERT_FALSE(loaded.load_global(bytes_of(*uncovered), pool, pins));
+    ASSERT_TRUE(loaded.symbols.empty());
+
+    mirror.sym_paths = {
+        {3, "/proj/ref.h"}
+    };
+    auto covered = kota::codec::fbs::to_bytes(mirror);
+    ASSERT_TRUE(covered.has_value());
+    ASSERT_TRUE(loaded.load_global(bytes_of(*covered), pool, pins));
+    ASSERT_TRUE(loaded.symbols.contains(42));
+}
+
+TEST_CASE(GlobalDuplicateVersionsRejected) {
+    // Version-table ids and (path, hash) pairs are both map keys in the
+    // writer; a repeated id in particular would intern the earlier pair to
+    // an id whose record names the later path, attributing contributions
+    // to the wrong file.
+    GlobalBlobMirror mirror;
+    mirror.format_version = index::index_format_version;
+    mirror.fv_ids = {7, 7};
+    mirror.fv_paths = {"/proj/a.h", "/proj/b.h"};
+    mirror.fv_hashes = {0x1, 0x2};
+    mirror.fv_sizes = {1, 2};
+    mirror.fv_mtimes = {1, 2};
+
+    clice::PathPool pool;
+    llvm::DenseMap<std::uint32_t, std::uint64_t> pins;
+    auto dup_id = kota::codec::fbs::to_bytes(mirror);
+    ASSERT_TRUE(dup_id.has_value());
+    index::ProjectIndex loaded;
+    ASSERT_FALSE(loaded.load_global(bytes_of(*dup_id), pool, pins));
+    ASSERT_TRUE(loaded.file_versions.empty());
+
+    mirror.fv_ids = {7, 8};
+    mirror.fv_paths = {"/proj/a.h", "/proj/a.h"};
+    mirror.fv_hashes = {0x1, 0x1};
+    auto dup_pair = kota::codec::fbs::to_bytes(mirror);
+    ASSERT_TRUE(dup_pair.has_value());
+    ASSERT_FALSE(loaded.load_global(bytes_of(*dup_pair), pool, pins));
+
+    // The same path under two content hashes is the legitimate shape: two
+    // observed versions of one file.
+    mirror.fv_hashes = {0x1, 0x2};
+    auto distinct = kota::codec::fbs::to_bytes(mirror);
+    ASSERT_TRUE(distinct.has_value());
+    ASSERT_TRUE(loaded.load_global(bytes_of(*distinct), pool, pins));
+    ASSERT_EQ(loaded.file_versions.size(), std::size_t(2));
 }
 
 TEST_CASE(UnknownFileVersionsDetected) {

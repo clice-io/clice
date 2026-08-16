@@ -416,13 +416,14 @@ TEST_CASE(SaveCompactsAndRetires) {
     ASSERT_EQ(workspace.shards[header_id].variants().size(), std::size_t(1));
 
     // a drops it too: no contribution is left, so the shard retires from
-    // memory and from storage.
+    // memory and from storage — with no owner left to re-enqueue.
     tmp.touch("a.cpp", "int a() { return 3; }\n");
     auto a2 = index_file(tmp, tmp.path("a.cpp"));
     ASSERT_FALSE(a2.data.empty());
     indexer.merge(a2.data.data(), a2.data.size());
     save();
     ASSERT_FALSE(workspace.shards.contains(header_id));
+    ASSERT_FALSE(indexer.pending_reason(workspace.path_pool.intern(a2.tu_path)).has_value());
     bool on_disk = false;
     auto key = blob_key(workspace.path_pool.resolve(header_id));
     workspace.index_storage->for_each_key(index::IndexBlobKind::Shard,
@@ -476,6 +477,13 @@ TEST_CASE(SaveRetiresPinnedShard) {
     workspace.index_storage->for_each_key(index::IndexBlobKind::Shard,
                                           [&](llvm::StringRef k) { on_disk |= k == key; });
     ASSERT_FALSE(on_disk);
+
+    // pb's manifest survives, still pinning rows the retirement made
+    // unservable; nothing else in this process would rebuild them (a
+    // reverted header even reads fresh by hash), so the retirement must
+    // re-enqueue pb itself.
+    ASSERT_TRUE(indexer.pending_reason(workspace.path_pool.intern(b.tu_path)) ==
+                ReindexReason::ContentChanged);
 }
 
 TEST_CASE(RejectsCorruptSection) {
