@@ -62,9 +62,10 @@ struct ProjectIndex {
 
     /// Generation of the persisted global blob, bumped once per save that
     /// writes it. Manifests are stamped with the generation they were
-    /// saved under (TUManifest::global_gen); the loader refuses manifests
-    /// newer than the loaded global. Later generations only accumulate
-    /// symbols and reference bits, so older manifests stay covered.
+    /// saved under (TUManifest::global_gen), and the global blob pins the
+    /// stamp expected of every TU's manifest; the loader adopts a manifest
+    /// only on an exact match, so a lost or failed manifest write cannot
+    /// leave an older on-disk manifest serving as current.
     std::uint64_t global_generation = 0;
 
     /// TU path_id -> its manifest.
@@ -110,8 +111,9 @@ struct ProjectIndex {
                                                    std::uint32_t path_id);
 
     /// Serialize the global blob: the FileVersion table (garbage-collected
-    /// down to the versions some manifest still references, in memory too)
-    /// and the symbol table with a self-contained path table.
+    /// down to the versions some manifest still references, in memory too),
+    /// the symbol table with a self-contained path table, and a per-TU pin
+    /// of every manifest's generation stamp.
     void serialize_global(this ProjectIndex& self,
                           llvm::raw_ostream& os,
                           const clice::PathPool& pool);
@@ -119,8 +121,13 @@ struct ProjectIndex {
     /// Restore the global blob, interning its paths into `pool`. Returns
     /// false for an unreadable or old-format blob — the caller treats that
     /// as "no index on disk" and rebuilds in the background. Manifests are
-    /// loaded separately (apply_manifest per blob).
-    bool load_global(this ProjectIndex& self, llvm::StringRef data, clice::PathPool& pool);
+    /// loaded separately (apply_manifest per blob); `manifest_pins` maps
+    /// each pinned TU's tu_fv to the generation stamp its manifest must
+    /// carry to be adopted.
+    bool load_global(this ProjectIndex& self,
+                     llvm::StringRef data,
+                     clice::PathPool& pool,
+                     llvm::DenseMap<std::uint32_t, std::uint64_t>& manifest_pins);
 };
 
 }  // namespace clice::index

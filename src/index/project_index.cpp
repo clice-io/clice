@@ -1,6 +1,7 @@
 #include "index/project_index.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -30,7 +31,24 @@ struct GlobalBlob {
     std::vector<std::uint64_t> fv_sizes;
     std::vector<std::int64_t> fv_mtimes;
 
-    SymbolTable symbols{};
+    /// The external symbol table as parallel columns. Reference bitmaps
+    /// travel as raw portable images rather than through the Bitmap repr:
+    /// the repr has no failure channel and would normalize a malformed
+    /// image to empty — silently losing the symbol's reference files with
+    /// nothing ever rebuilding them — while raw images let load_global
+    /// reject the blob so everything is reindexed.
+    std::vector<std::uint64_t> sym_hashes;
+    std::vector<std::string> sym_names;
+    std::vector<std::uint8_t> sym_kinds;
+    std::vector<std::vector<std::byte>> sym_bitmaps;
+
+    /// tu_fv -> generation stamp of every manifest current at this save.
+    /// The loader adopts a manifest blob only on an exact stamp match, so
+    /// a manifest whose write failed while the global landed (or one that
+    /// outran a lost global write) reads as lost and its TU reindexes,
+    /// instead of an older on-disk manifest serving as current.
+    std::vector<std::uint32_t> manifest_fvs;
+    std::vector<std::uint64_t> manifest_gens;
 
     /// Pool id -> path for every id the symbol bitmaps reference.
     std::vector<std::pair<std::uint32_t, std::string>> sym_paths;
@@ -62,10 +80,12 @@ llvm::SmallVector<std::uint32_t> ProjectIndex::merge(this ProjectIndex& self,
             if(bitmap.empty()) {
                 return;
             }
-            for(auto ref: read_bitmap(bitmap.data(), bitmap.size())) {
-                // Reference ids are unvalidated wire values (the view skips
-                // the double bitmap decode a load-time check would cost);
-                // an out-of-range one is dropped, not misresolved.
+            // Reference ids are unvalidated wire values (the view skips
+            // the double bitmap decode a load-time check would cost); an
+            // out-of-range one is dropped, not misresolved, and a
+            // malformed image degrades to no bits — the wire is rebuilt
+            // by the TU's next reindex, unlike a persisted blob.
+            for(auto ref: read_bitmap(bitmap.data(), bitmap.size()).value_or(Bitmap{})) {
                 if(ref < count) {
                     target.reference_files.add(file_ids_map[ref]);
                 }
@@ -213,10 +233,25 @@ void ProjectIndex::serialize_global(this ProjectIndex& self,
         blob.fv_mtimes.push_back(record.mtime_ns);
     }
 
-    blob.symbols = std::move(self.symbols);
+    blob.manifest_fvs.reserve(self.manifests.size());
+    blob.manifest_gens.reserve(self.manifests.size());
+    for(auto& manifest: llvm::make_second_range(self.manifests)) {
+        blob.manifest_fvs.push_back(manifest.tu_fv);
+        blob.manifest_gens.push_back(manifest.global_gen);
+    }
 
     Bitmap bitmap_referenced;
-    for(auto& symbol: llvm::make_second_range(blob.symbols)) {
+    blob.sym_hashes.reserve(self.symbols.size());
+    blob.sym_names.reserve(self.symbols.size());
+    blob.sym_kinds.reserve(self.symbols.size());
+    blob.sym_bitmaps.reserve(self.symbols.size());
+    for(auto& [hash, symbol]: self.symbols) {
+        blob.sym_hashes.push_back(hash);
+        // Moved out for the write and moved back below; the table itself
+        // stays untouched in between so the two iterations pair up.
+        blob.sym_names.push_back(std::move(symbol.name));
+        blob.sym_kinds.push_back(symbol.kind.value());
+        blob.sym_bitmaps.push_back(write_bitmap(symbol.reference_files));
         bitmap_referenced |= symbol.reference_files;
     }
     blob.sym_paths.reserve(bitmap_referenced.cardinality());
@@ -225,12 +260,18 @@ void ProjectIndex::serialize_global(this ProjectIndex& self,
     }
 
     serialize_blob(blob, os);
-    self.symbols = std::move(blob.symbols);
+
+    std::size_t i = 0;
+    for(auto& symbol: llvm::make_second_range(self.symbols)) {
+        symbol.name = std::move(blob.sym_names[i]);
+        i += 1;
+    }
 }
 
 bool ProjectIndex::load_global(this ProjectIndex& self,
                                llvm::StringRef data,
-                               clice::PathPool& pool) {
+                               clice::PathPool& pool,
+                               llvm::DenseMap<std::uint32_t, std::uint64_t>& manifest_pins) {
     GlobalBlob blob;
     if(!deserialize_blob(data, blob) || blob.format_version != index_format_version) {
         return false;
@@ -239,6 +280,14 @@ bool ProjectIndex::load_global(this ProjectIndex& self,
     auto count = blob.fv_ids.size();
     if(blob.fv_paths.size() != count || blob.fv_hashes.size() != count ||
        blob.fv_sizes.size() != count || blob.fv_mtimes.size() != count) {
+        return false;
+    }
+    auto sym_count = blob.sym_hashes.size();
+    if(blob.sym_names.size() != sym_count || blob.sym_kinds.size() != sym_count ||
+       blob.sym_bitmaps.size() != sym_count) {
+        return false;
+    }
+    if(blob.manifest_gens.size() != blob.manifest_fvs.size()) {
         return false;
     }
 
@@ -262,6 +311,15 @@ bool ProjectIndex::load_global(this ProjectIndex& self,
         }
     }
 
+    // The writer only pins manifests whose tu_fv survived the same save's
+    // garbage collection, so an unresolvable pin marks a corrupt blob.
+    for(std::size_t k = 0; k < blob.manifest_fvs.size(); k += 1) {
+        if(!self.file_versions.contains(blob.manifest_fvs[k])) {
+            return false;
+        }
+        manifest_pins[blob.manifest_fvs[k]] = blob.manifest_gens[k];
+    }
+
     // The blob's bitmap ids are the writing session's pool ids: intern its
     // path table and remap every decoded id into this session's pool. Ids
     // the table does not cover are dropped, not misresolved.
@@ -274,14 +332,21 @@ bool ProjectIndex::load_global(this ProjectIndex& self,
         remap.try_emplace(id, pool.intern(path));
     }
 
-    self.symbols = std::move(blob.symbols);
-    for(auto& symbol: llvm::make_second_range(self.symbols)) {
+    self.symbols.reserve(sym_count);
+    for(std::size_t k = 0; k < sym_count; k += 1) {
+        auto decoded = read_bitmap(blob.sym_bitmaps[k].data(), blob.sym_bitmaps[k].size());
+        if(!decoded) {
+            return false;
+        }
         Bitmap remapped;
-        for(auto id: symbol.reference_files) {
+        for(auto id: *decoded) {
             if(auto it = remap.find(id); it != remap.end()) {
                 remapped.add(it->second);
             }
         }
+        auto& symbol = self.symbols[blob.sym_hashes[k]];
+        symbol.name = std::move(blob.sym_names[k]);
+        symbol.kind = SymbolKind(blob.sym_kinds[k]);
         symbol.reference_files = std::move(remapped);
     }
 

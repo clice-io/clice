@@ -35,10 +35,12 @@ struct ManifestNode {
 /// variant" without touching any shard.
 struct TUManifest {
     /// ProjectIndex::global_generation stamped by the save that persisted
-    /// this manifest. The loader drops manifests newer than the loaded
-    /// global blob: a reindex that changed rows without new FileVersions
-    /// (a command-only change) would otherwise outrun a lost global write
-    /// and serve against a symbol table that never learned its symbols.
+    /// this manifest. The global blob pins the stamp it expects per TU and
+    /// the loader adopts a manifest only on an exact match: a manifest
+    /// that outran a lost global write would otherwise serve against a
+    /// symbol table that never learned its symbols, and a manifest whose
+    /// own write failed would pass off the previous reindex's dependency
+    /// set and rows as current.
     std::uint64_t global_gen = 0;
 
     /// Milliseconds since epoch, sampled before the indexed build started.

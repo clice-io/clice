@@ -471,10 +471,14 @@ TEST_CASE(RangesBeyondContentRejected) {
     blob.rel_lengths = {100};
     ASSERT_FALSE(make_shard(bytes_of()).loaded());
 
-    // Except the no-range sentinel a pair relation legitimately carries.
+    // Except the no-range sentinel a pair relation legitimately carries —
+    // on a source-located kind the same sentinel is corruption.
+    blob.rel_kinds = {static_cast<std::uint8_t>(RelationKind::Base)};
     blob.rel_begins = {0xffffffff};
     blob.rel_lengths = {0};
     ASSERT_TRUE(make_shard(bytes_of()).loaded());
+    blob.rel_kinds = {static_cast<std::uint8_t>(RelationKind::Reference)};
+    ASSERT_FALSE(make_shard(bytes_of()).loaded());
     blob.rel_begins = {0};
     blob.rel_lengths = {3};
 

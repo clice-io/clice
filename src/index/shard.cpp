@@ -107,7 +107,8 @@ RowColumns rel_columns(ShardView root) {
 /// an empty mask (the row reads as dead) instead of aborting.
 Bitmap read_row_bitmap(const RowColumns& columns, std::uint32_t row) {
     auto begin = columns.roaring_offsets[row];
-    return read_bitmap(columns.roaring.data() + begin, columns.roaring_offsets[row + 1] - begin);
+    return read_bitmap(columns.roaring.data() + begin, columns.roaring_offsets[row + 1] - begin)
+        .value_or(Bitmap{});
 }
 
 /// Structural verification does not constrain field values; everything the
@@ -184,11 +185,16 @@ bool validate(ShardView root) {
     // Relation ranges carry no query order to enforce, but are served as
     // source ranges all the same — bound them like the occurrence ends.
     // The exception is the default LocalSourceRange, the writer's sentinel
-    // for pair relations, which carry no range of their own.
+    // for pair relations, which carry no range of their own; every other
+    // kind is written with a real range, so a sentinel there is corruption
+    // that would serve an invalid source range forever.
     for(std::uint32_t row = 0; row < rel_count; row += 1) {
         auto begin = rel.begins[row];
         auto end = rel.end_of(row);
         if((LocalSourceRange{begin, end}) == LocalSourceRange{}) {
+            if(!RelationKind(static_cast<RelationKind::Kind>(rel_kinds[row])).isBetweenSymbol()) {
+                return false;
+            }
             continue;
         }
         if(end < begin || end > content_size) {

@@ -196,8 +196,12 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
         }
         auto generation = consumed != 0 ? consumed : llvm::xxh3_64bits(content);
 
+        // The recomputed hash guards the variant identity alongside the
+        // structural decode: rows installed under a hash they do not
+        // reproduce would satisfy every later hit-path check for that hash
+        // while the shard stores different rows.
         auto rows = view.decode_section_rows(section);
-        if(!rows) {
+        if(!rows || rows->rows_hash() != rows_hash) {
             // Not a carry-and-skip like the moved-on case above: that one
             // self-corrects because the skipped file's recorded version is
             // stale by hash. A decode failure leaves every recorded version
@@ -231,16 +235,27 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
 
         auto replacement = index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
         if(!replacement.loaded()) {
-            // Only an unverified pairing can produce an unloadable blob:
-            // with no consumed hash the arbitration above cannot see the
-            // disk shrinking under rows built from longer content, and the
-            // blob's own range bounds catch it here instead —
-            // hash-verified content always fits its rows.
-            assert(consumed == 0 && "a freshly written shard blob must verify");
-            LOG_INFO("Skip merge for {}: disk moved on since it was indexed",
+            if(consumed == 0) {
+                // Unverified pairing: the arbitration above cannot see the
+                // disk shrinking under rows built from longer content, and
+                // the blob's own range bounds catch it here instead. A
+                // carry self-corrects — the recorded version is stale by
+                // hash.
+                LOG_INFO("Skip merge for {}: disk moved on since it was indexed",
+                         workspace.path_pool.resolve(global_id));
+                carry_old_contribution(global_id);
+                continue;
+            }
+            // Hash-verified content always fits rows built from it: this
+            // blob failed on the rows themselves (inverted or out-of-range
+            // spans that kept wire structure and hash). Carrying would
+            // install a manifest whose versions all match the disk, pinning
+            // the stale rows as fresh forever — reject like the decode
+            // failure above.
+            LOG_WARN("Reject merge for {}: rows for {} do not form a valid shard",
+                     main_tu_path,
                      workspace.path_pool.resolve(global_id));
-            carry_old_contribution(global_id);
-            continue;
+            return;
         }
         replacements.emplace_back(global_id, std::move(replacement));
         manifest.contributions.emplace_back(fv_of[local_id], rows_hash);
@@ -352,9 +367,12 @@ kota::task<> Indexer::save() {
     auto shard_count = batch.size();
 
     // One generation per persisted global blob, stamped into every
-    // manifest of the batch: a manifest can outrun a lost global write
-    // with every FileVersion it references already known (a reindex that
-    // changed rows only), so load() needs the ordering explicit.
+    // manifest of the batch and pinned per TU inside the global blob
+    // (serialize_global): load() adopts a manifest only at its pinned
+    // stamp. Without the pin an ordering check alone cannot tell a
+    // deliberately unchanged older manifest from one whose update failed
+    // while the global landed — both FileVersion sets can stay fully
+    // resolvable (a reindex that changed rows or the include tree only).
     if(global_dirty) {
         project.global_generation += 1;
     }
@@ -442,30 +460,32 @@ void Indexer::load() {
         sweep_all();
         return;
     }
-    if(!project.load_global(global->getBuffer(), workspace.path_pool)) {
+    llvm::DenseMap<std::uint32_t, std::uint64_t> manifest_pins;
+    if(!project.load_global(global->getBuffer(), workspace.path_pool, manifest_pins)) {
         LOG_INFO("Discarding old-format index global blob");
         sweep_all();
         storage.remove(index::IndexBlobKind::Global, "global");
         return;
     }
 
-    // Adopt every manifest the global table covers: FileVersions all
-    // resolvable and a generation stamp no newer than the global's (a
-    // newer stamp means the symbols of that save never landed). The rest
-    // are stale residue (crash between batch phases, older format) and
-    // their TUs simply reindex — the startup sweep enqueues every CDB
-    // entry, and standalone-indexed headers are re-enqueued here
-    // explicitly.
+    // Adopt exactly the manifests the global blob pins, at exactly the
+    // pinned generation stamp and with every FileVersion resolvable. The
+    // rest are stale residue — a crash between batch phases, a failed
+    // write under a landed global, a dropped TU whose removal was lost —
+    // and are swept, with their TUs re-enqueued where recoverable.
+    llvm::DenseSet<std::uint32_t> adopted_pins;
     llvm::SmallVector<std::string> dead_manifests;
     storage.for_each_key(index::IndexBlobKind::Manifest, [&](llvm::StringRef key) {
         auto blob = storage.read(index::IndexBlobKind::Manifest, key);
         auto manifest = blob ? index::deserialize_manifest(blob->getBuffer()) : std::nullopt;
-        if(!manifest || manifest->global_gen > project.global_generation ||
+        auto pin = manifest ? manifest_pins.find(manifest->tu_fv) : manifest_pins.end();
+        if(!manifest || pin == manifest_pins.end() || pin->second != manifest->global_gen ||
            !project.knows_file_versions(*manifest)) {
             dead_manifests.push_back(key.str());
-            // The manifest raced a crash ahead of the global blob. When
-            // the TU's own version is still resolvable, re-enqueue it:
-            // the CDB sweep never covers standalone-indexed headers.
+            // The manifest raced a crash ahead of the global blob (its own
+            // pin never landed). When the TU's version is still resolvable,
+            // re-enqueue it: the CDB sweep never covers standalone-indexed
+            // headers.
             if(manifest) {
                 auto fv = project.file_versions.find(manifest->tu_fv);
                 if(fv != project.file_versions.end()) {
@@ -474,11 +494,21 @@ void Indexer::load() {
             }
             return;
         }
+        adopted_pins.insert(manifest->tu_fv);
         auto tu_path_id = project.file_versions.find(manifest->tu_fv)->second.path_id;
         project.apply_manifest(tu_path_id, std::move(*manifest));
     });
     for(auto& key: dead_manifests) {
         storage.remove(index::IndexBlobKind::Manifest, key);
+    }
+    // A pinned TU without an adopted manifest lost it to a failed write
+    // that the landed global outran, or to a lost removal; re-enqueue it —
+    // its rows are unservable until a reindex. Pinned fvs always resolve:
+    // load_global rejects a blob whose pins its own table cannot cover.
+    for(auto fv: llvm::make_first_range(manifest_pins)) {
+        if(!adopted_pins.contains(fv)) {
+            enqueue(project.file_versions.find(fv)->second.path_id, ReindexReason::ContentChanged);
+        }
     }
 
     // Every contributing FileVersion pins the content generation its rows

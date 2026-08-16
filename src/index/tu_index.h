@@ -232,7 +232,7 @@ public:
     std::optional<std::uint32_t> main_section_index() const;
 
     /// Visit every symbol: hash, identity, and the raw serialized
-    /// reference-files bitmap (Bitmap::read'able, non-portable form).
+    /// reference-files bitmap (a read_bitmap'able portable image).
     void iterate_symbols(
         llvm::function_ref<void(SymbolHash, const SymbolIdentity&, llvm::StringRef bitmap)>
             callback) const;

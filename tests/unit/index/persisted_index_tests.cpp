@@ -98,6 +98,8 @@ TEST_CASE(GlobalRoundTripRemap) {
     clice::PathPool pool;
     auto project = build_project(pool, "/proj/used.h", "/proj/tu.cpp");
     project.global_generation = 9;
+    auto& manifest = project.manifests.find(pool.intern("/proj/tu.cpp"))->second;
+    manifest.global_gen = 9;
 
     llvm::SmallString<1024> buf;
     llvm::raw_svector_ostream os(buf);
@@ -109,13 +111,18 @@ TEST_CASE(GlobalRoundTripRemap) {
     clice::PathPool fresh;
     fresh.intern("/proj/opened-first.cpp");
     index::ProjectIndex loaded;
-    ASSERT_TRUE(loaded.load_global(buf.str(), fresh));
+    llvm::DenseMap<std::uint32_t, std::uint64_t> pins;
+    ASSERT_TRUE(loaded.load_global(buf.str(), fresh, pins));
 
     auto id = fresh.find("/proj/used.h");
     ASSERT_TRUE(id.has_value());
     ASSERT_TRUE(loaded.symbols[42].reference_files.contains(*id));
     ASSERT_EQ(loaded.next_fv_id, project.next_fv_id);
     ASSERT_EQ(loaded.global_generation, 9u);
+
+    // The blob pins the TU's manifest at the stamp it was saved under.
+    ASSERT_EQ(pins.size(), std::size_t(1));
+    ASSERT_EQ(pins.find(manifest.tu_fv)->second, 9u);
 
     auto fv_it = loaded.fv_ids.find({*id, std::uint64_t(0xabcd)});
     ASSERT_TRUE(fv_it != loaded.fv_ids.end());
@@ -139,7 +146,8 @@ TEST_CASE(GlobalCollectsGarbage) {
 
     clice::PathPool fresh;
     index::ProjectIndex loaded;
-    ASSERT_TRUE(loaded.load_global(buf.str(), fresh));
+    llvm::DenseMap<std::uint32_t, std::uint64_t> pins;
+    ASSERT_TRUE(loaded.load_global(buf.str(), fresh, pins));
     ASSERT_FALSE(fresh.find("/proj/dead.h").has_value());
     ASSERT_TRUE(fresh.find("/proj/used.h").has_value());
 }
@@ -153,17 +161,66 @@ TEST_CASE(GlobalVersionGate) {
 
     clice::PathPool pool;
     index::ProjectIndex loaded;
+    llvm::DenseMap<std::uint32_t, std::uint64_t> pins;
 
     auto stale = kota::codec::fbs::to_bytes(VersionOnly{});
     ASSERT_TRUE(stale.has_value());
-    ASSERT_FALSE(loaded.load_global(bytes_of(*stale), pool));
+    ASSERT_FALSE(loaded.load_global(bytes_of(*stale), pool, pins));
 
     auto current = kota::codec::fbs::to_bytes(VersionOnly{index::index_format_version});
     ASSERT_TRUE(current.has_value());
-    ASSERT_TRUE(loaded.load_global(bytes_of(*current), pool));
+    ASSERT_TRUE(loaded.load_global(bytes_of(*current), pool, pins));
     ASSERT_TRUE(loaded.symbols.empty());
+    ASSERT_TRUE(pins.empty());
 
-    ASSERT_FALSE(loaded.load_global("not a flatbuffer", pool));
+    ASSERT_FALSE(loaded.load_global("not a flatbuffer", pool, pins));
+}
+
+TEST_CASE(GlobalBitmapPayloadGate) {
+    // Field order MUST mirror GlobalBlob (project_index.cpp) up to the
+    // bitmap column. A malformed reference bitmap must fail the whole
+    // load: normalized to empty it would silently lose the symbol's
+    // reference files, with nothing ever rebuilding them.
+    struct GlobalBlobPrefixMirror {
+        std::uint32_t format_version = 0;
+        std::uint64_t generation = 0;
+        std::uint32_t next_fv_id = 0;
+        std::vector<std::uint32_t> fv_ids;
+        std::vector<std::string> fv_paths;
+        std::vector<std::uint64_t> fv_hashes;
+        std::vector<std::uint64_t> fv_sizes;
+        std::vector<std::int64_t> fv_mtimes;
+        std::vector<std::uint64_t> sym_hashes;
+        std::vector<std::string> sym_names;
+        std::vector<std::uint8_t> sym_kinds;
+        std::vector<std::vector<std::byte>> sym_bitmaps;
+    };
+
+    GlobalBlobPrefixMirror mirror;
+    mirror.format_version = index::index_format_version;
+    mirror.sym_hashes = {42};
+    mirror.sym_names = {"sym"};
+    mirror.sym_kinds = {0};
+
+    clice::Bitmap bits;
+    bits.add(3);
+    mirror.sym_bitmaps = {index::write_bitmap(bits)};
+
+    clice::PathPool pool;
+    llvm::DenseMap<std::uint32_t, std::uint64_t> pins;
+    auto valid = kota::codec::fbs::to_bytes(mirror);
+    ASSERT_TRUE(valid.has_value());
+    index::ProjectIndex loaded;
+    ASSERT_TRUE(loaded.load_global(bytes_of(*valid), pool, pins));
+    ASSERT_TRUE(loaded.symbols.contains(42));
+
+    mirror.sym_bitmaps = {
+        {std::byte{0xff}, std::byte{0xff}, std::byte{0xff}}
+    };
+    auto corrupt = kota::codec::fbs::to_bytes(mirror);
+    ASSERT_TRUE(corrupt.has_value());
+    index::ProjectIndex rejecting;
+    ASSERT_FALSE(rejecting.load_global(bytes_of(*corrupt), pool, pins));
 }
 
 TEST_CASE(UnknownFileVersionsDetected) {

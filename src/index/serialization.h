@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -22,23 +23,34 @@
 namespace clice::index {
 
 /// Decode a serialized bitmap without trusting its bytes: bounded by the
-/// buffer, and a failed parse yields an empty bitmap — croaring's C++ read
-/// wrappers abort on one, and blob bitmaps are untrusted disk/wire input.
-inline Bitmap read_bitmap(const void* data, std::size_t size) {
+/// buffer, nullopt on a failed parse — croaring's C++ read wrappers abort
+/// on one, and blob bitmaps are untrusted disk/wire input. The caller
+/// chooses what a failure means: wire consumers degrade to an empty bitmap
+/// (the next reindex rebuilds the bits), persisted-blob loaders reject the
+/// blob — normalized-to-empty reference bits would stay lost forever.
+inline std::optional<Bitmap> read_bitmap(const void* data, std::size_t size) {
     auto* decoded =
         roaring::api::roaring_bitmap_portable_deserialize_safe(static_cast<const char*>(data),
                                                                size);
     if(!decoded) {
-        return {};
+        return std::nullopt;
     }
     // deserialize_safe only bounds the reads; the bitmap it hands back can
     // still violate internal invariants (unsorted containers), on which
     // croaring's operations are undefined.
     if(!roaring::api::roaring_bitmap_internal_validate(decoded, nullptr)) {
         roaring::api::roaring_bitmap_free(decoded);
-        return {};
+        return std::nullopt;
     }
     return Bitmap(decoded);
+}
+
+/// Encode a bitmap as its portable image — the only format with a bounded
+/// deserializer.
+inline std::vector<std::byte> write_bitmap(const Bitmap& bitmap) {
+    std::vector<std::byte> buffer(bitmap.getSizeInBytes(true));
+    bitmap.write(reinterpret_cast<char*>(buffer.data()), true);
+    return buffer;
 }
 
 }  // namespace clice::index
@@ -46,19 +58,19 @@ inline Bitmap read_bitmap(const void* data, std::size_t size) {
 namespace kota::meta {
 
 /// Roaring bitmaps travel in the portable format — the only one with a
-/// bounded deserializer.
+/// bounded deserializer. Only wire types decode through this repr (it has
+/// no failure channel, so a malformed image degrades to empty); persisted
+/// blobs carry raw images and reject unparseable ones in their loaders.
 template <>
 struct repr<clice::Bitmap, codec::fbs::format> {
     using type = std::vector<std::byte>;
 
     static type to(const clice::Bitmap& bitmap) {
-        type buffer(bitmap.getSizeInBytes(true));
-        bitmap.write(reinterpret_cast<char*>(buffer.data()), true);
-        return buffer;
+        return clice::index::write_bitmap(bitmap);
     }
 
     static clice::Bitmap from(const type& buffer) {
-        return clice::index::read_bitmap(buffer.data(), buffer.size());
+        return clice::index::read_bitmap(buffer.data(), buffer.size()).value_or(clice::Bitmap{});
     }
 };
 

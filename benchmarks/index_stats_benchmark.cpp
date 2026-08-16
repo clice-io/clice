@@ -477,20 +477,21 @@ struct Stats {
     }
 };
 
+/// Per-row mask cost of the shard writer's tier ladder (tier_of in
+/// src/index/shard.cpp): none, u32, u64, then roaring — a 4-byte offset
+/// column entry plus the serialized bitmap, whose floor is 18 bytes (the
+/// 8-byte portable header plus one single-value array container).
 std::uint32_t mask_bytes(std::uint32_t m) {
     if(m <= 1) {
         return 0;
     }
-    if(m <= 8) {
-        return 1;
-    }
-    if(m <= 16) {
-        return 2;
-    }
     if(m <= 32) {
         return 4;
     }
-    return 8;
+    if(m <= 64) {
+        return 8;
+    }
+    return 4 + 18;
 }
 
 CompilationParams make_params(const std::vector<const char*>& arguments,
@@ -885,7 +886,7 @@ std::string format_report_md(const Stats& stats, const Report& r, llvm::StringRe
                      r.m_dist.max(),
                      r.m_dist.max() <= 1
                          ? "every file is single-variant here → 0-bit masks suffice; the "
-                           "0/8/16/32/64-bit tier ladder is exercised only by multi-config projects"
+                           "u32/u64/roaring tier ladder is exercised only by multi-config projects"
                          : "M spreads beyond 1 → tiered masks pay off"));
     line(std::format("- (b) u16 symbol id: {} ({} files exceed 65535 symbols)",
                      r.s_over_65535 == 0 ? "SAFE" : "UNSAFE",
@@ -1066,9 +1067,8 @@ int main(int argc, const char** argv) {
     }
     std::println("CDB loaded: {} entries", *count);
 
-    // A CDB can list the same TU several times, adjacent or not (per-config
-    // duplicates); each repeat would recompile the TU and inflate the
-    // per-TU (N-side) distributions.
+    // Distinct source paths: lookup() below returns every command of a
+    // file at once, and the --limit selection sizes files, not entries.
     std::vector<llvm::StringRef> files;
     llvm::StringSet<> seen_files;
     for(auto& entry: cdb.get_entries()) {
@@ -1106,15 +1106,27 @@ int main(int argc, const char** argv) {
         std::vector<const char*> argv;
     };
 
+    // One job per distinct command line: literal CDB duplicates would
+    // recompile the same variant and inflate the N-side distributions,
+    // while distinct commands for one file (per-config -D/-I/language
+    // spreads) are exactly the population that creates preprocessing
+    // variants and must all be compiled.
     std::vector<Job> jobs;
     jobs.reserve(files.size());
+    llvm::DenseSet<std::uint64_t> seen_commands;
     for(auto file: files) {
-        auto commands = cdb.lookup(file);
-        if(commands.empty()) {
-            continue;
+        for(auto& command: cdb.lookup(file)) {
+            toolchain.resolve_or_warn(command);
+            auto argv = command.to_argv();
+            std::string joined;
+            for(auto* arg: argv) {
+                joined += arg;
+                joined += '\0';
+            }
+            if(seen_commands.insert(llvm::xxh3_64bits(joined)).second) {
+                jobs.push_back({file, std::move(argv)});
+            }
         }
-        toolchain.resolve_or_warn(commands[0]);
-        jobs.push_back({file, commands[0].to_argv()});
     }
 
     auto thread_count = std::clamp(*opts.threads, 1, 4);

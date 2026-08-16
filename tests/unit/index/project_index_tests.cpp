@@ -153,7 +153,8 @@ TEST_CASE(GlobalRoundTripWithRealMerge) {
 
     clice::PathPool fresh;
     index::ProjectIndex loaded;
-    ASSERT_TRUE(loaded.load_global(buf.str(), fresh));
+    llvm::DenseMap<std::uint32_t, std::uint64_t> pins;
+    ASSERT_TRUE(loaded.load_global(buf.str(), fresh, pins));
 
     auto symbol = find_symbol(loaded, "global_value");
     ASSERT_TRUE(symbol != 0);

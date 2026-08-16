@@ -809,8 +809,12 @@ TEST_CASE(LoadDropsNewerManifest) {
         std::string bytes;
         llvm::raw_string_ostream os(bytes);
         index::serialize_manifest(raced, os);
+        // Keyed by the interned (canonical) spelling, like save() itself:
+        // on Windows the raw TempDir spelling hashes to a different key.
         f.workspace.index_storage->write({
-            {index::IndexBlobKind::Manifest, blob_key(src), std::move(bytes)}
+            {index::IndexBlobKind::Manifest,
+             blob_key(f.workspace.path_pool.resolve(tu_id)),
+             std::move(bytes)}
         });
     }
 
@@ -820,6 +824,48 @@ TEST_CASE(LoadDropsNewerManifest) {
 
     // The raced manifest is dropped and its TU re-enqueued; the reindex
     // rewrites the manifest and the global together.
+    auto tu_id = f.workspace.path_pool.intern(src);
+    ASSERT_TRUE(f.workspace.project_index.manifests.empty());
+    ASSERT_TRUE(f.indexer.pending_reason(tu_id) == ReindexReason::ContentChanged);
+}
+
+TEST_CASE(LoadDropsLostManifest) {
+    TempDir tmp;
+    tmp.touch("main.cpp", "int lone() { return 1; }\n");
+    auto src = tmp.path("main.cpp");
+
+    {
+        IndexerFixture f;
+        open_store(tmp, f.workspace);
+        auto indexed = index_file(tmp, src);
+        ASSERT_FALSE(indexed.data.empty());
+        f.indexer.merge(indexed.data.data(), indexed.data.size());
+        f.save();
+
+        // Plant what a failed manifest write under a landed global leaves
+        // behind: the previous manifest, older-stamped, with every
+        // FileVersion still resolvable and its shard variant stored (a
+        // reindex that changed rows or the include tree only). Only the
+        // global's pin can tell it is not the manifest the save meant.
+        auto tu_id = f.workspace.path_pool.intern(src);
+        auto lost = f.workspace.project_index.manifests.find(tu_id)->second;
+        lost.global_gen = f.workspace.project_index.global_generation - 1;
+        std::string bytes;
+        llvm::raw_string_ostream os(bytes);
+        index::serialize_manifest(lost, os);
+        f.workspace.index_storage->write({
+            {index::IndexBlobKind::Manifest,
+             blob_key(f.workspace.path_pool.resolve(tu_id)),
+             std::move(bytes)}
+        });
+    }
+
+    IndexerFixture f;
+    open_store(tmp, f.workspace);
+    f.indexer.load();
+
+    // The mistamped manifest is dropped and the TU re-enqueued instead of
+    // the previous reindex's dependency set and rows serving as current.
     auto tu_id = f.workspace.path_pool.intern(src);
     ASSERT_TRUE(f.workspace.project_index.manifests.empty());
     ASSERT_TRUE(f.indexer.pending_reason(tu_id) == ReindexReason::ContentChanged);
