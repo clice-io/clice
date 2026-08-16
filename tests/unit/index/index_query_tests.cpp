@@ -11,6 +11,7 @@
 #include "server/state/session_store.h"
 #include "server/worker/worker_pool.h"
 
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/xxhash.h"
@@ -43,9 +44,11 @@ void merge_into_workspace() {
     ASSERT_TRUE(view.has_value());
 
     auto& project = workspace.project_index;
-    auto merged_ids = project.merge(*view, workspace.path_pool);
-    ASSERT_TRUE(merged_ids.has_value());
-    auto& file_ids_map = *merged_ids;
+    llvm::SmallVector<std::uint32_t> file_ids_map;
+    for(std::uint32_t i = 0; i < view->path_count(); i += 1) {
+        file_ids_map.push_back(workspace.path_pool.intern(view->path(i)));
+    }
+    ASSERT_TRUE(project.merge(*view, file_ids_map));
     main_id = file_ids_map[view->path_count() - 1];
 
     auto content_of = [&](llvm::StringRef path) -> llvm::StringRef {

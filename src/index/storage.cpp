@@ -42,15 +42,21 @@ public:
         return std::move(*buffer);
     }
 
-    std::size_t write(llvm::ArrayRef<Blob> batch) override {
-        std::size_t committed_count = 0;
-        for(auto& blob: batch) {
+    bool contains(IndexBlobKind kind, llvm::StringRef key) override {
+        return store.lookup(namespace_of(kind), key).has_value();
+    }
+
+    llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> batch) override {
+        llvm::SmallVector<std::size_t> failed;
+        for(std::size_t i = 0; i < batch.size(); i += 1) {
+            auto& blob = batch[i];
             auto ns = namespace_of(blob.kind);
             auto pending = store.begin_store(ns, blob.key);
             std::error_code ec;
             llvm::raw_fd_ostream os(pending.tmp_path, ec);
             if(ec) {
                 LOG_WARN("Failed to write index blob {}/{}: {}", ns, blob.key, ec.message());
+                failed.push_back(i);
                 continue;
             }
             os.write(blob.bytes.data(), blob.bytes.size());
@@ -63,6 +69,7 @@ public:
                          blob.key,
                          os.error().message());
                 os.clear_error();
+                failed.push_back(i);
                 continue;
             }
             if(auto committed = store.commit(std::move(pending)); !committed) {
@@ -70,11 +77,11 @@ public:
                          ns,
                          blob.key,
                          committed.error().message());
+                failed.push_back(i);
                 continue;
             }
-            committed_count += 1;
         }
-        return committed_count;
+        return failed;
     }
 
     void remove(IndexBlobKind kind, llvm::StringRef key) override {

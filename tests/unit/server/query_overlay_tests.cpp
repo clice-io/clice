@@ -13,6 +13,7 @@
 #include "server/worker/worker_pool.h"
 
 #include "kota/ipc/lsp/text.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/xxhash.h"
@@ -104,9 +105,11 @@ void merge_disk_index() {
     auto view = index::TUIndexView::from(wire);
     ASSERT_TRUE(view.has_value());
 
-    auto merged_ids = workspace.project_index.merge(*view, workspace.path_pool);
-    ASSERT_TRUE(merged_ids.has_value());
-    auto& file_ids_map = *merged_ids;
+    llvm::SmallVector<std::uint32_t> file_ids_map;
+    for(std::uint32_t i = 0; i < view->path_count(); i += 1) {
+        file_ids_map.push_back(workspace.path_pool.intern(view->path(i)));
+    }
+    ASSERT_TRUE(workspace.project_index.merge(*view, file_ids_map));
 
     auto content_of = [&](llvm::StringRef path) -> llvm::StringRef {
         auto it = sources.all_files.find(llvm::sys::path::filename(path));

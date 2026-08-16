@@ -1,13 +1,13 @@
 #pragma once
 
 #include <cstdint>
-#include <optional>
 #include <utility>
 
 #include "index/manifest.h"
 #include "index/tu_index.h"
 #include "support/path_pool.h"
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
@@ -76,16 +76,18 @@ struct ProjectIndex {
     llvm::DenseMap<std::uint32_t, llvm::SmallDenseMap<std::uint32_t, std::uint64_t, 2>>
         contributions;
 
-    /// Merge a TU's external symbols straight off the wire, interning the
-    /// TU's paths into `pool`. Symbol names are copied only for symbols new
-    /// to the table. Returns the TU-local id -> pool id mapping for the
-    /// TU's path graph, or nullopt — with the table untouched — when a
-    /// reference bitmap fails to decode: the caller rejects the whole
-    /// result, because merged bits persist while the result's recorded
-    /// versions match the disk, so lost bits would never be rebuilt.
-    std::optional<llvm::SmallVector<std::uint32_t>> merge(this ProjectIndex& self,
-                                                          const TUIndexView& view,
-                                                          clice::PathPool& pool);
+    /// Merge a TU's external symbols straight off the wire; `file_ids_map`
+    /// maps the TU-local ids of `view`'s path table to pool ids. Symbol
+    /// names are copied only for symbols new to the table. Returns false —
+    /// with the table untouched — when a reference bitmap fails to decode
+    /// or carries an id past the path table (the bound TUIndex::from
+    /// enforces; the zero-copy view leaves it to this consumer): the
+    /// caller rejects the whole result, because merged bits persist while
+    /// the result's recorded versions match the disk, so lost bits would
+    /// never be rebuilt.
+    bool merge(this ProjectIndex& self,
+               const TUIndexView& view,
+               llvm::ArrayRef<std::uint32_t> file_ids_map);
 
     /// The FileVersion id for (path, content hash), interning a new record
     /// on first sight.

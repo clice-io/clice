@@ -557,6 +557,71 @@ TEST_CASE(DuplicateSymbolHashRejected) {
     ASSERT_FALSE(make_shard(bytes_of()).loaded());
 }
 
+TEST_CASE(OwnerlessMaskRejected) {
+    // A mask owning no stored variant serves its row unconditionally while
+    // every variant is live (row_live's live.all fast path never consults
+    // it), vanishes once any variant dies, and the next compaction erases
+    // it for real — so it must reject the blob at load.
+    index::ShardBlob blob;
+    blob.format_version = index::index_format_version;
+    blob.content = "aaaa";
+    blob.variants = {1, 2};
+    blob.sym_hashes = {111};
+    blob.sym_rel_offsets = {0, 0};
+    blob.occ_begins = {0};
+    blob.occ_lengths = {3};
+    blob.occ_syms16 = {0};
+    blob.occ_masks32 = {0b01};
+
+    auto bytes_of = [&] {
+        std::string bytes;
+        llvm::raw_string_ostream os(bytes);
+        index::serialize_blob(blob, os);
+        return bytes;
+    };
+    ASSERT_TRUE(make_shard(bytes_of()).loaded());
+
+    // An empty mask, then one whose only bit lies past the variant table.
+    blob.occ_masks32 = {0};
+    ASSERT_FALSE(make_shard(bytes_of()).loaded());
+    blob.occ_masks32 = {0b100};
+    ASSERT_FALSE(make_shard(bytes_of()).loaded());
+
+    // The u64 tier is bounded alike.
+    for(std::uint32_t i = 3; i <= 40; i += 1) {
+        blob.variants.push_back(i);
+    }
+    blob.occ_masks32 = {};
+    blob.occ_masks64 = {1};
+    ASSERT_TRUE(make_shard(bytes_of()).loaded());
+    blob.occ_masks64 = {std::uint64_t(1) << 45};
+    ASSERT_FALSE(make_shard(bytes_of()).loaded());
+
+    // And roaring masks: decodable but empty, or holding only dropped ids.
+    for(std::uint32_t i = 41; i <= 70; i += 1) {
+        blob.variants.push_back(i);
+    }
+    blob.occ_masks64 = {};
+    auto set_mask = [&](const clice::Bitmap& mask) {
+        blob.occ_roaring.clear();
+        for(auto byte: index::write_bitmap(mask)) {
+            blob.occ_roaring.push_back(static_cast<std::uint8_t>(byte));
+        }
+        blob.occ_roaring_offsets = {0, static_cast<std::uint32_t>(blob.occ_roaring.size())};
+        blob.rel_roaring_offsets = {0};
+    };
+    clice::Bitmap in_range;
+    in_range.add(69);
+    set_mask(in_range);
+    ASSERT_TRUE(make_shard(bytes_of()).loaded());
+    set_mask({});
+    ASSERT_FALSE(make_shard(bytes_of()).loaded());
+    clice::Bitmap stray;
+    stray.add(70);
+    set_mask(stray);
+    ASSERT_FALSE(make_shard(bytes_of()).loaded());
+}
+
 TEST_CASE(CorruptRoaringMaskRejected) {
     // Roaring row masks gate liveness and are rewritten by compaction; a
     // slice failing decode would read the row as dead and the next

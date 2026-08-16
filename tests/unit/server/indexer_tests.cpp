@@ -518,6 +518,12 @@ TEST_CASE(RejectsCorruptSection) {
     auto header_id = workspace.path_pool.intern(tmp.path("cor.h"));
     ASSERT_FALSE(workspace.project_index.manifests.contains(tu_id));
     ASSERT_FALSE(workspace.shards.contains(header_id));
+    // No global trace either: symbol identities from an untrusted result
+    // would stay canonical for their hashes forever (later merges only
+    // fill empty names), and stray FileVersions would persist with the
+    // next save.
+    ASSERT_TRUE(workspace.project_index.symbols.empty());
+    ASSERT_TRUE(workspace.project_index.file_versions.empty());
 
     // The intact result still lands afterwards.
     indexer.merge(indexed.data.data(), indexed.data.size());
@@ -592,8 +598,16 @@ TEST_CASE(FailedWriteNotCounted) {
             return nullptr;
         }
 
-        std::size_t write(llvm::ArrayRef<Blob>) override {
-            return 0;
+        bool contains(index::IndexBlobKind, llvm::StringRef) override {
+            return false;
+        }
+
+        llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> batch) override {
+            llvm::SmallVector<std::size_t> failed;
+            for(std::size_t i = 0; i < batch.size(); i += 1) {
+                failed.push_back(i);
+            }
+            return failed;
         }
 
         void remove(index::IndexBlobKind, llvm::StringRef) override {}
@@ -609,13 +623,25 @@ TEST_CASE(FailedWriteNotCounted) {
     indexer.merge(indexed.data.data(), indexed.data.size());
     ASSERT_EQ(indexer.pending_shard_writes(), 1u);
 
-    auto save_body = [&]() -> kota::task<> {
-        co_await indexer.save();
+    auto save = [&] {
+        auto body = [&]() -> kota::task<> {
+            co_await indexer.save();
+        };
+        auto task = body();
+        loop.schedule(task);
+        loop.run();
     };
-    auto task = save_body();
-    loop.schedule(task);
-    loop.run();
+    save();
     ASSERT_EQ(indexer.last_save_shards(), 0u);
+    // The failed batch is re-dirtied rather than discarded, so a later
+    // save has it to retry and the cache converges once the storage
+    // recovers.
+    ASSERT_EQ(indexer.pending_shard_writes(), 1u);
+
+    open_store(tmp, workspace);
+    save();
+    ASSERT_EQ(indexer.last_save_shards(), 1u);
+    ASSERT_EQ(indexer.pending_shard_writes(), 0u);
 }
 
 };  // TEST_SUITE(IndexerMerge)
@@ -1004,6 +1030,69 @@ TEST_CASE(LoadRequeuesStaleManifest) {
     auto tu_id = f.workspace.path_pool.intern(src);
     ASSERT_TRUE(f.workspace.project_index.manifests.contains(tu_id));
     ASSERT_FALSE(f.indexer.pending_reason(tu_id).has_value());
+}
+
+TEST_CASE(UnreadableGlobalPreserved) {
+    TempDir tmp;
+    tmp.touch("main.cpp", "int keep() { return 1; }\n");
+    auto src = tmp.path("main.cpp");
+
+    {
+        IndexerFixture f;
+        open_store(tmp, f.workspace);
+        auto indexed = index_file(tmp, src);
+        ASSERT_FALSE(indexed.data.empty());
+        f.indexer.merge(indexed.data.data(), indexed.data.size());
+        f.save();
+    }
+
+    // The global blob exists but fails to open — a transient IO error at
+    // startup, not absence. Sweeping would destroy the intact index; a
+    // fresh lineage saved over the unread one could alias its fv ids and
+    // generation stamps. The session must run memory-only and leave every
+    // blob for the next start.
+    struct UnreadableGlobal final : index::IndexStorage {
+        std::unique_ptr<index::IndexStorage> real;
+
+        std::unique_ptr<llvm::MemoryBuffer> read(index::IndexBlobKind kind,
+                                                 llvm::StringRef key) override {
+            return kind == index::IndexBlobKind::Global ? nullptr : real->read(kind, key);
+        }
+
+        bool contains(index::IndexBlobKind kind, llvm::StringRef key) override {
+            return real->contains(kind, key);
+        }
+
+        llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> batch) override {
+            return real->write(batch);
+        }
+
+        void remove(index::IndexBlobKind kind, llvm::StringRef key) override {
+            real->remove(kind, key);
+        }
+
+        void for_each_key(index::IndexBlobKind kind,
+                          llvm::function_ref<void(llvm::StringRef)> fn) override {
+            real->for_each_key(kind, fn);
+        }
+    };
+
+    {
+        IndexerFixture f;
+        open_store(tmp, f.workspace);
+        auto wrapper = std::make_unique<UnreadableGlobal>();
+        wrapper->real = std::move(f.workspace.index_storage);
+        f.workspace.index_storage = std::move(wrapper);
+        f.indexer.load();
+        ASSERT_TRUE(f.workspace.project_index.manifests.empty());
+        ASSERT_TRUE(f.workspace.index_storage == nullptr);
+    }
+
+    IndexerFixture f;
+    open_store(tmp, f.workspace);
+    f.indexer.load();
+    ASSERT_FALSE(f.workspace.project_index.manifests.empty());
+    ASSERT_FALSE(f.workspace.shards.empty());
 }
 
 TEST_CASE(DropIndexEvictsPersisted) {

@@ -251,6 +251,12 @@ bool validate(ShardView root) {
         return false;
     }
 
+    // Beyond the per-tier column shape, every mask must own at least one
+    // stored variant and no bits past the variant table: an ownerless row
+    // serves unconditionally while every stored variant is live (row_live's
+    // live.all fast path skips the mask), vanishes once any variant dies,
+    // and the next compaction erases it for real — every manifest still
+    // fresh throughout.
     auto masks_ok = [&](const RowColumns& columns, std::size_t count) {
         switch(tier_of(variants.size())) {
             case MaskTier::Single: {
@@ -258,12 +264,24 @@ bool validate(ShardView root) {
                        columns.roaring_offsets.empty() && columns.roaring.empty();
             }
             case MaskTier::U32: {
-                return columns.masks32.size() == count && columns.masks64.empty() &&
-                       columns.roaring_offsets.empty();
+                if(columns.masks32.size() != count || !columns.masks64.empty() ||
+                   !columns.roaring_offsets.empty()) {
+                    return false;
+                }
+                auto stray = variants.size() < 32 ? ~std::uint32_t(0) << variants.size() : 0;
+                return llvm::all_of(columns.masks32, [&](std::uint32_t mask) {
+                    return mask != 0 && (mask & stray) == 0;
+                });
             }
             case MaskTier::U64: {
-                return columns.masks64.size() == count && columns.masks32.empty() &&
-                       columns.roaring_offsets.empty();
+                if(columns.masks64.size() != count || !columns.masks32.empty() ||
+                   !columns.roaring_offsets.empty()) {
+                    return false;
+                }
+                auto stray = variants.size() < 64 ? ~std::uint64_t(0) << variants.size() : 0;
+                return llvm::all_of(columns.masks64, [&](std::uint64_t mask) {
+                    return mask != 0 && (mask & stray) == 0;
+                });
             }
             case MaskTier::Roaring: {
                 if(!columns.masks32.empty() || !columns.masks64.empty() ||
@@ -273,15 +291,15 @@ bool validate(ShardView root) {
                    (count != 0 && columns.roaring_offsets.front() != 0)) {
                     return false;
                 }
-                // The masks gate row liveness and are what compaction
-                // rewrites; a slice failing decode would read as an empty
-                // mask — the row silently dead, then erased for real by the
-                // next compaction, with every manifest still fresh. Prove
-                // each slice decodes once here so the blob rebuilds instead.
+                // A slice failing decode would read as an empty mask — the
+                // ownerless-row corruption above in another coat. Prove
+                // each slice decodes once here so queries stay check-free
+                // and the blob rebuilds instead.
                 for(std::uint32_t row = 0; row < count; row += 1) {
                     auto begin = columns.roaring_offsets[row];
-                    if(!read_bitmap(columns.roaring.data() + begin,
-                                    columns.roaring_offsets[row + 1] - begin)) {
+                    auto mask = read_bitmap(columns.roaring.data() + begin,
+                                            columns.roaring_offsets[row + 1] - begin);
+                    if(!mask || mask->isEmpty() || mask->maximum() >= variants.size()) {
                         return false;
                     }
                 }

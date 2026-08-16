@@ -37,6 +37,17 @@ index::SymbolHash find_symbol(const index::ProjectIndex& project, llvm::StringRe
     return 0;
 }
 
+/// The TU-local id -> pool id mapping merge() consumes, as Indexer::merge
+/// computes it.
+llvm::SmallVector<std::uint32_t> intern_paths(const index::TUIndexView& view,
+                                              clice::PathPool& pool) {
+    llvm::SmallVector<std::uint32_t> ids;
+    for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
+        ids.push_back(pool.intern(view.path(i)));
+    }
+    return ids;
+}
+
 llvm::StringRef bytes_of(const std::vector<std::uint8_t>& blob) {
     return llvm::StringRef(reinterpret_cast<const char*>(blob.data()), blob.size());
 }
@@ -56,9 +67,7 @@ TEST_CASE(MergeCollectsExternalSymbols) {
     index::ProjectIndex project;
     auto view = build_view();
     ASSERT_TRUE(view.has_value());
-    auto file_ids_map = project.merge(*view, pool);
-    ASSERT_TRUE(file_ids_map.has_value());
-    ASSERT_EQ(file_ids_map->size(), std::size_t(view->path_count()));
+    ASSERT_TRUE(project.merge(*view, intern_paths(*view, pool)));
 
     auto external = find_symbol(project, "external_fn");
     ASSERT_TRUE(external != 0);
@@ -102,7 +111,7 @@ TEST_CASE(MergeRejectsBadBitmap) {
     ASSERT_TRUE(valid_view.has_value());
     clice::PathPool pool;
     index::ProjectIndex accepting;
-    ASSERT_TRUE(accepting.merge(*valid_view, pool).has_value());
+    ASSERT_TRUE(accepting.merge(*valid_view, intern_paths(*valid_view, pool)));
     ASSERT_EQ(find_symbol(accepting, "good_sym"), 42u);
 
     // One malformed image rejects the whole result: merged bits would
@@ -117,8 +126,22 @@ TEST_CASE(MergeRejectsBadBitmap) {
     auto corrupt_view = index::TUIndexView::from(bytes_of(*corrupt));
     ASSERT_TRUE(corrupt_view.has_value());
     index::ProjectIndex rejecting;
-    ASSERT_FALSE(rejecting.merge(*corrupt_view, pool).has_value());
+    ASSERT_FALSE(rejecting.merge(*corrupt_view, intern_paths(*corrupt_view, pool)));
     ASSERT_TRUE(rejecting.symbols.empty());
+
+    // An id past the path table is the same corruption in a decodable
+    // coat: silently dropped, the symbol's relations would sit in a shard
+    // its fan-out never visits — reject like the full TUIndex::from does.
+    clice::Bitmap stray;
+    stray.add(7);
+    mirror.symbols[43] = {.name = "bad_sym", .reference_files = index::write_bitmap(stray)};
+    auto out_of_range = kota::codec::fbs::to_bytes(mirror);
+    ASSERT_TRUE(out_of_range.has_value());
+    auto stray_view = index::TUIndexView::from(bytes_of(*out_of_range));
+    ASSERT_TRUE(stray_view.has_value());
+    index::ProjectIndex bounding;
+    ASSERT_FALSE(bounding.merge(*stray_view, intern_paths(*stray_view, pool)));
+    ASSERT_TRUE(bounding.symbols.empty());
 }
 
 TEST_CASE(FileVersionInterning) {
@@ -197,9 +220,8 @@ TEST_CASE(GlobalRoundTripWithRealMerge) {
     index::ProjectIndex project;
     auto view = build_view();
     ASSERT_TRUE(view.has_value());
-    auto merged_ids = project.merge(*view, pool);
-    ASSERT_TRUE(merged_ids.has_value());
-    auto& file_ids_map = *merged_ids;
+    auto file_ids_map = intern_paths(*view, pool);
+    ASSERT_TRUE(project.merge(*view, file_ids_map));
 
     // A manifest referencing the main file keeps its FileVersion alive
     // through the write's garbage collection.

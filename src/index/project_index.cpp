@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cstddef>
-#include <optional>
 #include <string>
 #include <vector>
 
@@ -57,23 +56,17 @@ struct GlobalBlob {
 
 }  // namespace
 
-std::optional<llvm::SmallVector<std::uint32_t>> ProjectIndex::merge(this ProjectIndex& self,
-                                                                    const TUIndexView& view,
-                                                                    clice::PathPool& pool) {
-    auto count = view.path_count();
-    llvm::SmallVector<std::uint32_t> file_ids_map;
-    file_ids_map.resize_for_overwrite(count);
-
-    for(std::uint32_t i = 0; i < count; i += 1) {
-        file_ids_map[i] = pool.intern(view.path(i));
-    }
-
-    // Decode every reference bitmap before touching the table: merged bits
-    // persist in the global blob while the result's recorded versions all
-    // match the disk, so a malformed image normalized to empty would lose
-    // the symbol's reference files with nothing ever rebuilding them. It
-    // rejects the whole result instead — and the reject must leave no
-    // partial names or bits behind, hence the staging.
+bool ProjectIndex::merge(this ProjectIndex& self,
+                         const TUIndexView& view,
+                         llvm::ArrayRef<std::uint32_t> file_ids_map) {
+    // Decode and bound every reference bitmap before touching the table:
+    // merged bits persist in the global blob while the result's recorded
+    // versions all match the disk, so a malformed image normalized to
+    // empty — or a silently dropped out-of-range id, whose relations would
+    // sit in a shard the symbol's fan-out never visits — would lose
+    // reference files with nothing ever rebuilding them. Either rejects
+    // the whole result instead — and the reject must leave no partial
+    // names or bits behind, hence the staging.
     struct StagedSymbol {
         SymbolHash hash;
         SymbolIdentity identity;
@@ -96,10 +89,14 @@ std::optional<llvm::SmallVector<std::uint32_t>> ProjectIndex::merge(this Project
                 }
                 references = std::move(*decoded);
             }
+            if(!references.isEmpty() && references.maximum() >= file_ids_map.size()) {
+                valid = false;
+                return;
+            }
             staged.push_back({hash, identity, std::move(references)});
         });
     if(!valid) {
-        return std::nullopt;
+        return false;
     }
 
     for(auto& [hash, identity, references]: staged) {
@@ -108,16 +105,12 @@ std::optional<llvm::SmallVector<std::uint32_t>> ProjectIndex::merge(this Project
             target.name = std::string(identity.name);
             target.kind = identity.kind;
         }
-        // Reference ids are unvalidated wire VALUES; an out-of-range one
-        // is dropped, not misresolved.
         for(auto ref: references) {
-            if(ref < count) {
-                target.reference_files.add(file_ids_map[ref]);
-            }
+            target.reference_files.add(file_ids_map[ref]);
         }
     }
 
-    return file_ids_map;
+    return true;
 }
 
 std::uint32_t ProjectIndex::intern_file_version(this ProjectIndex& self,

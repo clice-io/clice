@@ -7,6 +7,7 @@
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/MemoryBuffer.h"
 
@@ -41,6 +42,11 @@ public:
     /// nullptr when missing or unreadable.
     virtual std::unique_ptr<llvm::MemoryBuffer> read(IndexBlobKind kind, llvm::StringRef key) = 0;
 
+    /// Whether a blob exists under the key, even when unreadable — how the
+    /// loader tells a missing global blob (sweep everything) from a
+    /// transient read failure (touch nothing).
+    virtual bool contains(IndexBlobKind kind, llvm::StringRef key) = 0;
+
     struct Blob {
         IndexBlobKind kind;
         std::string key;
@@ -50,9 +56,9 @@ public:
     /// Persist a batch in order. Atomicity is per blob, not per batch — a
     /// crash can land a prefix; every load path treats any partially
     /// written combination as stale data to rebuild. An entry that fails
-    /// to persist is logged and dropped (the index is rebuildable); the
-    /// returned count of durably committed blobs is how callers tell.
-    virtual std::size_t write(llvm::ArrayRef<Blob> batch) = 0;
+    /// to persist is logged and skipped, and its batch index returned so
+    /// the caller can re-dirty it for a later save.
+    virtual llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> batch) = 0;
 
     virtual void remove(IndexBlobKind kind, llvm::StringRef key) = 0;
 
