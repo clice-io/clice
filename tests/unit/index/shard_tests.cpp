@@ -7,8 +7,10 @@
 #include "test/tester.h"
 #include "index/serialization.h"
 #include "index/shard.h"
+#include "index/shard_layout.h"
 #include "index/tu_index.h"
 
+#include "kota/ipc/lsp/text.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/xxhash.h"
@@ -36,33 +38,18 @@ std::optional<index::SymbolIdentity> lookup_symbol(index::SymbolHash hash) {
 }
 
 std::string write_fresh(const index::FileIndex& rows,
-                        index::RowsHash hash,
                         llvm::StringRef content,
                         bool with_symbols = false) {
-    auto resolve = [this](index::SymbolHash symbol) {
+    llvm::function_ref<std::optional<index::SymbolIdentity>(index::SymbolHash)> resolve;
+    auto resolver = [this](index::SymbolHash symbol) {
         return lookup_symbol(symbol);
     };
-    index::VariantInput fresh{hash, &rows, {}};
     if(with_symbols) {
-        fresh.symbols = resolve;
+        resolve = resolver;
     }
     std::string bytes;
     llvm::raw_string_ostream os(bytes);
-    index::write_shard(index::Shard(), {}, fresh, content, llvm::xxh3_64bits(content), os);
-    return bytes;
-}
-
-std::string append_variant(const index::Shard& old,
-                           const index::FileIndex& rows,
-                           index::RowsHash hash) {
-    std::string bytes;
-    llvm::raw_string_ostream os(bytes);
-    index::write_shard(old,
-                       old.variants(),
-                       {hash, &rows, {}},
-                       old.content(),
-                       old.content_hash(),
-                       os);
+    index::write_shard(rows, resolve, content, os);
     return bytes;
 }
 
@@ -70,6 +57,25 @@ std::string append_variant(const index::Shard& old,
 /// temporary string.
 index::Shard make_shard(llvm::StringRef bytes) {
     return index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
+}
+
+index::Shard merge(const index::Shard& old,
+                   llvm::ArrayRef<index::RowsHash> keep,
+                   std::vector<index::Shard> fresh) {
+    std::string bytes;
+    llvm::raw_string_ostream os(bytes);
+    index::merge_shards(old, keep, fresh, os);
+    return make_shard(bytes);
+}
+
+/// `content` must repeat the text the shard was built from — ASCII blobs
+/// do not store it, so it cannot be recovered from `old`.
+index::Shard append_variant(const index::Shard& old,
+                            const index::FileIndex& rows,
+                            llvm::StringRef content) {
+    std::vector<index::Shard> fresh;
+    fresh.push_back(make_shard(write_fresh(rows, content)));
+    return merge(old, old.variants(), std::move(fresh));
 }
 
 index::SymbolHash hash_at(const index::Shard& shard, std::uint32_t offset) {
@@ -81,6 +87,12 @@ index::SymbolHash hash_at(const index::Shard& shard, std::uint32_t offset) {
     return result;
 }
 
+index::FileIndex simple_rows(std::initializer_list<index::Occurrence> occurrences) {
+    index::FileIndex rows;
+    rows.occurrences = occurrences;
+    return rows;
+}
+
 TEST_CASE(RoundtripLookups) {
     build_index(R"(
         int §(def)⟦§(def)foo⟧() { return 42; }
@@ -88,11 +100,10 @@ TEST_CASE(RoundtripLookups) {
     )");
 
     auto content = sources.all_files.find("main.cpp")->second.content;
-    auto bytes =
-        write_fresh(tu_index.main_file_index, tu_index.main_file_index.rows_hash(), content);
+    auto bytes = write_fresh(tu_index.main_file_index, content);
     auto shard = make_shard(bytes);
     ASSERT_TRUE(shard.loaded());
-    ASSERT_EQ(shard.content(), llvm::StringRef(content));
+    ASSERT_EQ(shard.content_size(), static_cast<std::uint32_t>(content.size()));
     ASSERT_FALSE(shard.line_starts().empty());
 
     auto expected = range("ref");
@@ -117,10 +128,103 @@ TEST_CASE(RoundtripLookups) {
     ASSERT_TRUE(has_definition);
 }
 
-index::FileIndex simple_rows(std::initializer_list<index::Occurrence> occurrences) {
+TEST_CASE(DeterministicEncoding) {
+    // The blob's byte hash is the variant's identity, so equal rows must
+    // encode to equal bytes regardless of in-memory insertion order.
     index::FileIndex rows;
-    rows.occurrences = occurrences;
-    return rows;
+    rows.occurrences = {
+        {{0, 3},   111},
+        {{10, 13}, 222},
+        {{20, 23}, 111},
+    };
+    rows.relations[111] = {
+        {.kind = RelationKind::Definition, .range = {0, 3},   .target_symbol = 0},
+        {.kind = RelationKind::Reference,  .range = {20, 23}, .target_symbol = 0},
+    };
+    rows.relations[333] = {
+        {.kind = RelationKind::Base, .range = {10, 13}, .target_symbol = 444},
+    };
+
+    index::FileIndex shuffled;
+    shuffled.occurrences = {rows.occurrences[2], rows.occurrences[0], rows.occurrences[1]};
+    shuffled.relations[333] = rows.relations[333];
+    shuffled.relations[111] = {rows.relations[111][1], rows.relations[111][0]};
+
+    auto content = "aaa bbb ccc ddd 111 222 333";
+    ASSERT_EQ(write_fresh(rows, content), write_fresh(shuffled, content));
+}
+
+TEST_CASE(AnonymousVariantIdentity) {
+    auto rows = simple_rows({
+        {{0, 3}, 111}
+    });
+    auto bytes = write_fresh(rows, "aaa bbb");
+    auto shard = make_shard(bytes);
+
+    auto variants = shard.variants();
+    ASSERT_EQ(variants.size(), std::size_t(1));
+    ASSERT_EQ(variants.front(), llvm::xxh3_64bits(bytes));
+    ASSERT_TRUE(shard.has_variant(variants.front()));
+}
+
+TEST_CASE(AsciiContentOmitted) {
+    std::string content = "int x;\nint y;\n";
+    auto rows = simple_rows({
+        {{4, 5}, 111}
+    });
+    auto shard = make_shard(write_fresh(rows, content));
+
+    ASSERT_TRUE(shard.ascii());
+    ASSERT_TRUE(shard.content().empty());
+    ASSERT_EQ(shard.content_size(), static_cast<std::uint32_t>(content.size()));
+    ASSERT_EQ(shard.content_hash(), llvm::xxh3_64bits(content));
+    ASSERT_EQ(hash_at(shard, 4), 111u);
+
+    auto expected = kota::ipc::lsp::build_line_starts(content);
+    auto starts = shard.line_starts();
+    ASSERT_EQ(std::vector<std::uint32_t>(starts.begin(), starts.end()), expected);
+}
+
+TEST_CASE(NonAsciiContentStored) {
+    std::string content = "int å;\nint y;\n";
+    auto rows = simple_rows({
+        {{4, 6}, 111}
+    });
+    auto shard = make_shard(write_fresh(rows, content));
+
+    ASSERT_FALSE(shard.ascii());
+    ASSERT_EQ(shard.content(), llvm::StringRef(content));
+
+    auto expected = kota::ipc::lsp::build_line_starts(content);
+    auto starts = shard.line_starts();
+    ASSERT_EQ(std::vector<std::uint32_t>(starts.begin(), starts.end()), expected);
+}
+
+TEST_CASE(LongLineEscape) {
+    // A line past 255 bytes escapes to the sparse table; the materialized
+    // starts must match a direct scan of the content.
+    std::string content = "short\n" + std::string(300, 'a') + "\nshort again\n";
+    auto rows = simple_rows({
+        {{0, 5}, 111}
+    });
+    auto shard = make_shard(write_fresh(rows, content));
+
+    auto expected = kota::ipc::lsp::build_line_starts(content);
+    auto starts = shard.line_starts();
+    ASSERT_EQ(std::vector<std::uint32_t>(starts.begin(), starts.end()), expected);
+}
+
+TEST_CASE(WideRangeTier) {
+    // Past 16MB of content the packed range column cannot hold begins;
+    // the wide tier takes over transparently.
+    std::string content(index::packed_range_limit + 64, 'w');
+    auto rows = simple_rows({
+        {{0, 3},                                                       111},
+        {{index::packed_range_limit + 8, index::packed_range_limit + 11}, 222},
+    });
+    auto shard = make_shard(write_fresh(rows, content));
+    ASSERT_EQ(hash_at(shard, 1), 111u);
+    ASSERT_EQ(hash_at(shard, index::packed_range_limit + 9), 222u);
 }
 
 TEST_CASE(VariantMaskFiltering) {
@@ -132,23 +236,23 @@ TEST_CASE(VariantMaskFiltering) {
         {{10, 13}, 222}
     });
 
-    auto first = make_shard(write_fresh(a, 1, "aaa bbb ccc ddd"));
-    auto shard = make_shard(append_variant(first, b, 2));
-    ASSERT_TRUE(shard.has_variant(1));
-    ASSERT_TRUE(shard.has_variant(2));
+    auto first = make_shard(write_fresh(a, "aaa bbb ccc ddd"));
+    auto shard = append_variant(first, b, "aaa bbb ccc ddd");
+    auto variants = shard.variants();
+    ASSERT_EQ(variants.size(), std::size_t(2));
 
     // All variants live by default: both rows serve.
     ASSERT_EQ(hash_at(shard, 1), 111u);
     ASSERT_EQ(hash_at(shard, 11), 222u);
 
-    // Restricting to variant 1 hides the row only variant 2 holds, while
-    // the shared row keeps serving.
-    shard.set_live({1});
+    // Restricting to the first variant hides the row only the second
+    // holds, while the shared row keeps serving.
+    shard.set_live({variants[0]});
     ASSERT_TRUE(shard.has_dead_variants());
     ASSERT_EQ(hash_at(shard, 1), 111u);
     ASSERT_EQ(hash_at(shard, 11), 0u);
 
-    shard.set_live({1, 2});
+    shard.set_live(variants);
     ASSERT_FALSE(shard.has_dead_variants());
     ASSERT_EQ(hash_at(shard, 11), 222u);
 
@@ -164,17 +268,41 @@ TEST_CASE(CompactionDropsVariant) {
         {{0, 3},   111},
         {{10, 13}, 222}
     });
-    auto first = make_shard(write_fresh(a, 1, "aaa bbb ccc ddd"));
-    auto both = make_shard(append_variant(first, b, 2));
+    auto first = make_shard(write_fresh(a, "aaa bbb ccc ddd"));
+    auto both = append_variant(first, b, "aaa bbb ccc ddd");
+    auto variants = both.variants();
 
-    std::string bytes;
-    llvm::raw_string_ostream os(bytes);
-    index::write_shard(both, {1}, {}, both.content(), both.content_hash(), os);
-    auto compacted = make_shard(bytes);
-    ASSERT_TRUE(compacted.has_variant(1));
-    ASSERT_FALSE(compacted.has_variant(2));
+    auto compacted = merge(both, {variants[0]}, {});
+    ASSERT_TRUE(compacted.has_variant(variants[0]));
+    ASSERT_FALSE(compacted.has_variant(variants[1]));
     ASSERT_EQ(hash_at(compacted, 1), 111u);
     ASSERT_EQ(hash_at(compacted, 11), 0u);
+}
+
+TEST_CASE(KWayMerge) {
+    // Several fresh variants land in one write; shared rows collapse with
+    // OR-ed masks and each unique row stays filterable to its owner.
+    std::string content = "aaa bbb ccc ddd eee";
+    std::vector<index::Shard> fresh;
+    for(std::uint32_t i = 0; i < 3; i += 1) {
+        auto rows = simple_rows({
+            {{0, 3},                   111     },
+            {{4 * (i + 1), 4 * (i + 1) + 3}, 1000 + i},
+        });
+        fresh.push_back(make_shard(write_fresh(rows, content)));
+    }
+    auto shard = merge(index::Shard(), {}, std::move(fresh));
+
+    auto variants = shard.variants();
+    ASSERT_EQ(variants.size(), std::size_t(3));
+    for(std::uint32_t i = 0; i < 3; i += 1) {
+        ASSERT_EQ(hash_at(shard, 4 * (i + 1) + 1), 1000u + i);
+    }
+
+    shard.set_live({variants[1]});
+    ASSERT_EQ(hash_at(shard, 1), 111u);
+    ASSERT_EQ(hash_at(shard, 8 + 1), 1001u);
+    ASSERT_EQ(hash_at(shard, 4 + 1), 0u);
 }
 
 /// Grow a shard to `count` variants: variant i holds the shared occurrence
@@ -191,8 +319,14 @@ index::Shard grow_variants(std::uint32_t count) {
             {.kind = RelationKind::Reference, .range = {0, 3},               .target_symbol = 0},
             {.kind = RelationKind::Reference, .range = {i * 16, i * 16 + 3}, .target_symbol = 0},
         };
-        shard = make_shard(shard.loaded() ? append_variant(shard, rows, i)
-                                          : write_fresh(rows, i, content));
+        auto fresh = make_shard(write_fresh(rows, content));
+        if(!shard.loaded()) {
+            shard = std::move(fresh);
+        } else {
+            std::vector<index::Shard> batch;
+            batch.push_back(std::move(fresh));
+            shard = merge(shard, shard.variants(), std::move(batch));
+        }
     }
     return shard;
 }
@@ -208,7 +342,8 @@ std::size_t reference_count(const index::Shard& shard, index::SymbolHash symbol)
 
 void expect_tier_behavior(std::uint32_t count) {
     auto shard = grow_variants(count);
-    ASSERT_EQ(shard.variants().size(), std::size_t(count));
+    auto variants = shard.variants();
+    ASSERT_EQ(variants.size(), std::size_t(count));
 
     // Every variant's unique row serves under the full live set, and the
     // shared relation collapsed to one row across all variants.
@@ -219,7 +354,7 @@ void expect_tier_behavior(std::uint32_t count) {
 
     // One live variant: its unique rows and the shared rows serve, another
     // variant's do not — on the occurrence and the relation side alike.
-    shard.set_live({3});
+    shard.set_live({variants[2]});
     ASSERT_EQ(hash_at(shard, 1), 111u);
     ASSERT_EQ(hash_at(shard, 3 * 16 + 1), 1003u);
     ASSERT_EQ(hash_at(shard, 5 * 16 + 1), 0u);
@@ -244,7 +379,7 @@ TEST_CASE(LongTokenEscape) {
         {{400, 404}, 222}
     });
     std::string content(500, 'y');
-    auto shard = make_shard(write_fresh(rows, 1, content));
+    auto shard = make_shard(write_fresh(rows, content));
 
     bool found = false;
     shard.lookup(299, [&](const index::Occurrence& o) {
@@ -271,7 +406,7 @@ TEST_CASE(RelationPayloadRoundtrip) {
         {.kind = RelationKind::Base, .range = {20, 23}, .target_symbol = 444},
     };
 
-    auto shard = make_shard(write_fresh(rows, 1, std::string(60, 'z')));
+    auto shard = make_shard(write_fresh(rows, std::string(60, 'z')));
 
     bool checked_definition = false;
     shard.lookup(111, RelationKind::Definition, [&](const index::Relation& r) {
@@ -307,10 +442,7 @@ TEST_CASE(LocalSymbolNames) {
     )");
 
     auto content = sources.all_files.find("main.cpp")->second.content;
-    auto shard = make_shard(write_fresh(tu_index.main_file_index,
-                                        tu_index.main_file_index.rows_hash(),
-                                        content,
-                                        /*with_symbols=*/true));
+    auto shard = make_shard(write_fresh(tu_index.main_file_index, content, /*with_symbols=*/true));
 
     auto local = hash_at(shard, point("use"));
     ASSERT_TRUE(local != 0);
@@ -332,8 +464,31 @@ TEST_CASE(LocalSymbolNames) {
     ASSERT_FALSE(shard.find_symbol(external, name, kind));
 }
 
+TEST_CASE(MergedLocalNames) {
+    // Merged blobs carry local names forward from their inputs without any
+    // external resolver — every input blob is self-contained.
+    build_index(R"(
+        static int §(local)⟦§(local)helper⟧() { return 1; }
+        int visible() { return helper(); }
+    )");
+    auto content = sources.all_files.find("main.cpp")->second.content;
+    auto first = make_shard(write_fresh(tu_index.main_file_index, content, /*with_symbols=*/true));
+
+    auto extra = simple_rows({
+        {{0, 3}, 424242}
+    });
+    auto shard = append_variant(first, extra, content);
+
+    auto local = hash_at(shard, point("local"));
+    ASSERT_TRUE(local != 0);
+    std::string name;
+    SymbolKind kind;
+    ASSERT_TRUE(shard.find_symbol(local, name, kind));
+    ASSERT_EQ(name, "helper");
+}
+
 TEST_CASE(WideSymbolIds) {
-    // Past 65535 distinct symbols the id columns must widen to u32; a
+    // Past 65536 distinct symbols the id columns must widen to u32; a
     // truncating writer corrupts resolution only on indexes this large.
     index::FileIndex rows;
     constexpr std::uint32_t count = 70000;
@@ -345,7 +500,7 @@ TEST_CASE(WideSymbolIds) {
         });
     }
     std::string content(count * 8 + 16, 'w');
-    auto shard = make_shard(write_fresh(rows, 1, content));
+    auto shard = make_shard(write_fresh(rows, content));
     ASSERT_EQ(hash_at(shard, 69999 * 8 + 1), 0x100000u + 69999);
     ASSERT_EQ(hash_at(shard, 3 * 8 + 1), 0x100000u + 3);
 }
@@ -361,6 +516,30 @@ TEST_CASE(UnloadedShardNoops) {
     ASSERT_TRUE(shard.line_starts().empty());
 }
 
+/// Fill the content identity and line table of a hand-built blob the way
+/// the writer would (ASCII omitted, non-ASCII stored).
+void fill_content(index::ShardBlob& blob, llvm::StringRef text) {
+    blob.content_hash = llvm::xxh3_64bits(text);
+    blob.content_size = static_cast<std::uint32_t>(text.size());
+    bool is_ascii = llvm::all_of(text, [](char c) { return static_cast<unsigned char>(c) < 0x80; });
+    blob.content = is_ascii ? std::string() : text.str();
+    blob.line_lengths.clear();
+    blob.long_line_rows.clear();
+    blob.long_line_lengths.clear();
+    auto starts = kota::ipc::lsp::build_line_starts(std::string_view(text.data(), text.size()));
+    for(std::size_t i = 0; i < starts.size(); i += 1) {
+        auto next = i + 1 < starts.size() ? starts[i + 1] : blob.content_size;
+        auto length = next - starts[i];
+        if(length >= index::length_escape) {
+            blob.line_lengths.push_back(index::length_escape);
+            blob.long_line_rows.push_back(static_cast<std::uint32_t>(i));
+            blob.long_line_lengths.push_back(length);
+        } else {
+            blob.line_lengths.push_back(static_cast<std::uint8_t>(length));
+        }
+    }
+}
+
 TEST_CASE(CorruptBlobRejected) {
     ASSERT_FALSE(index::Shard::from_bytes("not a flatbuffer").loaded());
 
@@ -370,12 +549,12 @@ TEST_CASE(CorruptBlobRejected) {
     auto rows = simple_rows({
         {{0, 3}, 111}
     });
-    auto bytes = write_fresh(rows, 1, "aaaa");
+    auto bytes = write_fresh(rows, "aaaa");
     ASSERT_FALSE(
         index::Shard::from_bytes(llvm::StringRef(bytes).take_front(bytes.size() / 2)).loaded());
 
-    // A structurally valid blob of the current version but with no variants
-    // is impossible output of the writer, and must not load either.
+    // A structurally valid table of the current version with no line table
+    // at all cannot be writer output.
     struct VersionOnly {
         std::uint32_t format_version = 0;
     };
@@ -392,8 +571,7 @@ TEST_CASE(ContentHashMismatchRejected) {
     // as fresh while position mapping reads the wrong text.
     index::ShardBlob blob;
     blob.format_version = index::index_format_version;
-    blob.content = "aaaa";
-    blob.content_hash = llvm::xxh3_64bits(llvm::StringRef(blob.content));
+    fill_content(blob, "aaåå");
     blob.variants = {1};
     blob.sym_hashes = {111};
     blob.sym_rel_offsets = {0, 0};
@@ -406,7 +584,55 @@ TEST_CASE(ContentHashMismatchRejected) {
     };
     ASSERT_TRUE(make_shard(bytes_of()).loaded());
 
-    blob.content = "aaab";
+    blob.content = "aaåb";
+    ASSERT_FALSE(make_shard(bytes_of()).loaded());
+}
+
+TEST_CASE(StoredAsciiContentRejected) {
+    // The encoding is canonical — one logical blob, one byte image — so
+    // pure-ASCII content stored in full is an invalid second spelling of
+    // the omitted form.
+    index::ShardBlob blob;
+    blob.format_version = index::index_format_version;
+    fill_content(blob, "aaaa");
+    blob.variants = {1};
+    blob.sym_hashes = {111};
+    blob.sym_rel_offsets = {0, 0};
+
+    auto bytes_of = [&] {
+        std::string bytes;
+        llvm::raw_string_ostream os(bytes);
+        index::serialize_blob(blob, os);
+        return bytes;
+    };
+    ASSERT_TRUE(make_shard(bytes_of()).loaded());
+
+    blob.content = "aaaa";
+    ASSERT_FALSE(make_shard(bytes_of()).loaded());
+}
+
+TEST_CASE(LineTableMismatchRejected) {
+    // Line starts are prefix sums of the length column; a sum drifting off
+    // the content size would shift every position mapping below the drift.
+    index::ShardBlob blob;
+    blob.format_version = index::index_format_version;
+    fill_content(blob, "aaa\nbbb\n");
+    blob.variants = {1};
+    blob.sym_hashes = {111};
+    blob.sym_rel_offsets = {0, 0};
+
+    auto bytes_of = [&] {
+        std::string bytes;
+        llvm::raw_string_ostream os(bytes);
+        index::serialize_blob(blob, os);
+        return bytes;
+    };
+    ASSERT_TRUE(make_shard(bytes_of()).loaded());
+
+    blob.line_lengths = {4, 3};
+    ASSERT_FALSE(make_shard(bytes_of()).loaded());
+
+    blob.line_lengths = {};
     ASSERT_FALSE(make_shard(bytes_of()).loaded());
 }
 
@@ -416,16 +642,14 @@ TEST_CASE(MisorderedRowsRejected) {
     // rebuilt, not keep misresolving queries on every restart.
     index::ShardBlob blob;
     blob.format_version = index::index_format_version;
-    blob.content = "aaaaaaaaaaaaaaaa";
-    blob.content_hash = llvm::xxh3_64bits(llvm::StringRef(blob.content));
+    fill_content(blob, "aaaaaaaaaaaaaaaa");
     blob.variants = {1};
     blob.sym_hashes = {111};
     blob.sym_rel_offsets = {0, 0};
-    blob.occ_begins = {0, 8};
-    blob.occ_lengths = {3, 0xff};  // 0xff escapes to (row, end)
-    blob.occ_long_rows = {1};
-    blob.occ_long_ends = {12};
-    blob.occ_syms16 = {0, 0};
+    blob.occs.packed = {index::pack_range(0, 3), index::pack_range(8, index::length_escape)};
+    blob.occs.long_rows = {1};
+    blob.occs.long_ends = {12};
+    blob.occ_syms8 = {0, 0};
 
     auto bytes_of = [&] {
         std::string bytes;
@@ -436,20 +660,20 @@ TEST_CASE(MisorderedRowsRejected) {
     ASSERT_TRUE(make_shard(bytes_of()).loaded());
 
     // Begins out of order.
-    blob.occ_begins = {8, 0};
+    blob.occs.packed = {index::pack_range(8, index::length_escape), index::pack_range(0, 3)};
+    blob.occs.long_rows = {0};
     ASSERT_FALSE(make_shard(bytes_of()).loaded());
 
     // Begins sorted, but the escaped end regresses below the row before.
-    blob.occ_begins = {0, 8};
-    blob.occ_lengths = {0xff, 3};
-    blob.occ_long_rows = {0};
-    blob.occ_long_ends = {14};  // ends decode to {14, 11}
+    blob.occs.packed = {index::pack_range(0, index::length_escape), index::pack_range(8, 3)};
+    blob.occs.long_rows = {0};
+    blob.occs.long_ends = {14};  // ends decode to {14, 11}
     ASSERT_FALSE(make_shard(bytes_of()).loaded());
 
     // An escaped end before its own begin.
-    blob.occ_lengths = {3, 0xff};
-    blob.occ_long_rows = {1};
-    blob.occ_long_ends = {5};  // row 1: begin 8, end 5
+    blob.occs.packed = {index::pack_range(0, 3), index::pack_range(8, index::length_escape)};
+    blob.occs.long_rows = {1};
+    blob.occs.long_ends = {5};  // row 1: begin 8, end 5
     ASSERT_FALSE(make_shard(bytes_of()).loaded());
 }
 
@@ -460,16 +684,14 @@ TEST_CASE(EscapeTableMismatchRejected) {
     // wrong ranges forever, so only the pairing check can reject them.
     index::ShardBlob blob;
     blob.format_version = index::index_format_version;
-    blob.content = std::string(300, 'a');
-    blob.content_hash = llvm::xxh3_64bits(llvm::StringRef(blob.content));
+    fill_content(blob, std::string(300, 'a'));
     blob.variants = {1};
     blob.sym_hashes = {111};
     blob.sym_rel_offsets = {0, 0};
-    blob.occ_begins = {0};
-    blob.occ_lengths = {0xff};
-    blob.occ_long_rows = {0};
-    blob.occ_long_ends = {260};
-    blob.occ_syms16 = {0};
+    blob.occs.packed = {index::pack_range(0, index::length_escape)};
+    blob.occs.long_rows = {0};
+    blob.occs.long_ends = {260};
+    blob.occ_syms8 = {0};
 
     auto bytes_of = [&] {
         std::string bytes;
@@ -480,43 +702,39 @@ TEST_CASE(EscapeTableMismatchRejected) {
     ASSERT_TRUE(make_shard(bytes_of()).loaded());
 
     // A sentinel without its sparse entry.
-    blob.occ_long_rows = {};
-    blob.occ_long_ends = {};
+    blob.occs.long_rows = {};
+    blob.occs.long_ends = {};
     ASSERT_FALSE(make_shard(bytes_of()).loaded());
 
     // A sparse entry pointing at an unescaped row.
-    blob.occ_lengths = {3};
-    blob.occ_long_rows = {0};
-    blob.occ_long_ends = {260};
+    blob.occs.packed = {index::pack_range(0, 3)};
+    blob.occs.long_rows = {0};
+    blob.occs.long_ends = {260};
     ASSERT_FALSE(make_shard(bytes_of()).loaded());
 
     // The relation escape table is validated alike.
-    blob.occ_lengths = {0xff};
+    blob.occs.packed = {index::pack_range(0, index::length_escape)};
     blob.sym_rel_offsets = {0, 1};
     blob.rel_kinds = {static_cast<std::uint8_t>(RelationKind::Reference)};
-    blob.rel_begins = {0};
-    blob.rel_lengths = {0xff};
+    blob.rels.packed = {index::pack_range(0, index::length_escape)};
     ASSERT_FALSE(make_shard(bytes_of()).loaded());
 }
 
 TEST_CASE(RangesBeyondContentRejected) {
-    // Every decoded range is served as a source range into the stored
-    // content; an end past it would map positions through text that does
-    // not exist — forever, since the blob's content hash still matches the
-    // disk and nothing rebuilds it.
+    // Every decoded range is served as a source range into the content; an
+    // end past it would map positions through text that does not exist —
+    // forever, since the blob's content hash still matches the disk and
+    // nothing rebuilds it.
     index::ShardBlob blob;
     blob.format_version = index::index_format_version;
-    blob.content = "aaaaaaaaaaaaaaaa";
-    blob.content_hash = llvm::xxh3_64bits(llvm::StringRef(blob.content));
+    fill_content(blob, "aaaaaaaaaaaaaaaa");
     blob.variants = {1};
     blob.sym_hashes = {111};
     blob.sym_rel_offsets = {0, 1};
-    blob.occ_begins = {0};
-    blob.occ_lengths = {3};
-    blob.occ_syms16 = {0};
+    blob.occs.packed = {index::pack_range(0, 3)};
+    blob.occ_syms8 = {0};
     blob.rel_kinds = {static_cast<std::uint8_t>(RelationKind::Reference)};
-    blob.rel_begins = {0};
-    blob.rel_lengths = {3};
+    blob.rels.packed = {index::pack_range(0, 3)};
 
     auto bytes_of = [&] {
         std::string bytes;
@@ -527,32 +745,30 @@ TEST_CASE(RangesBeyondContentRejected) {
     ASSERT_TRUE(make_shard(bytes_of()).loaded());
 
     // A plain length overruns the 16-byte content.
-    blob.occ_lengths = {100};
+    blob.occs.packed = {index::pack_range(0, 100)};
     ASSERT_FALSE(make_shard(bytes_of()).loaded());
 
     // An escaped end does too.
-    blob.occ_lengths = {0xff};
-    blob.occ_long_rows = {0};
-    blob.occ_long_ends = {600};
+    blob.occs.packed = {index::pack_range(0, index::length_escape)};
+    blob.occs.long_rows = {0};
+    blob.occs.long_ends = {600};
     ASSERT_FALSE(make_shard(bytes_of()).loaded());
-    blob.occ_lengths = {3};
-    blob.occ_long_rows = {};
-    blob.occ_long_ends = {};
+    blob.occs.packed = {index::pack_range(0, 3)};
+    blob.occs.long_rows = {};
+    blob.occs.long_ends = {};
 
     // Relation ranges are bounded alike.
-    blob.rel_lengths = {100};
+    blob.rels.packed = {index::pack_range(0, 100)};
     ASSERT_FALSE(make_shard(bytes_of()).loaded());
 
     // Except the no-range sentinel a pair relation legitimately carries —
     // on a source-located kind the same sentinel is corruption.
     blob.rel_kinds = {static_cast<std::uint8_t>(RelationKind::Base)};
-    blob.rel_begins = {0xffffffff};
-    blob.rel_lengths = {0};
+    blob.rels.packed = {index::packed_sentinel};
     ASSERT_TRUE(make_shard(bytes_of()).loaded());
     blob.rel_kinds = {static_cast<std::uint8_t>(RelationKind::Reference)};
     ASSERT_FALSE(make_shard(bytes_of()).loaded());
-    blob.rel_begins = {0};
-    blob.rel_lengths = {3};
+    blob.rels.packed = {index::pack_range(0, 3)};
 
     // And definition-range payloads.
     blob.rel_def_rows = {0};
@@ -561,14 +777,50 @@ TEST_CASE(RangesBeyondContentRejected) {
     ASSERT_FALSE(make_shard(bytes_of()).loaded());
 }
 
+TEST_CASE(WrongRangeTierRejected) {
+    // The range tier is a strict function of the content size — a second
+    // spelling of the same rows would fork the byte identity.
+    index::ShardBlob blob;
+    blob.format_version = index::index_format_version;
+    fill_content(blob, "aaaaaaaaaaaaaaaa");
+    blob.variants = {1};
+    blob.sym_hashes = {111};
+    blob.sym_rel_offsets = {0, 0};
+    blob.occs.begins = {0};
+    blob.occs.lengths = {3};
+    blob.occ_syms8 = {0};
+
+    std::string bytes;
+    llvm::raw_string_ostream os(bytes);
+    index::serialize_blob(blob, os);
+    ASSERT_FALSE(make_shard(bytes).loaded());
+}
+
+TEST_CASE(WrongSymWidthRejected) {
+    // The symbol id width is a strict function of the table size, for the
+    // same canonicality reason.
+    index::ShardBlob blob;
+    blob.format_version = index::index_format_version;
+    fill_content(blob, "aaaaaaaaaaaaaaaa");
+    blob.variants = {1};
+    blob.sym_hashes = {111};
+    blob.sym_rel_offsets = {0, 0};
+    blob.occs.packed = {index::pack_range(0, 3)};
+    blob.occ_syms16 = {0};
+
+    std::string bytes;
+    llvm::raw_string_ostream os(bytes);
+    index::serialize_blob(blob, os);
+    ASSERT_FALSE(make_shard(bytes).loaded());
+}
+
 TEST_CASE(DuplicateSymbolHashRejected) {
     // Symbol lookups lower-bound the hash column and read only the first
     // match's slices: a duplicated hash strands the later id's relations
     // unreachably while the blob keeps loading as fresh.
     index::ShardBlob blob;
     blob.format_version = index::index_format_version;
-    blob.content = "aaaa";
-    blob.content_hash = llvm::xxh3_64bits(llvm::StringRef(blob.content));
+    fill_content(blob, "aaaa");
     blob.variants = {1};
     blob.sym_hashes = {111, 222};
     blob.sym_rel_offsets = {0, 0, 0};
@@ -586,13 +838,12 @@ TEST_CASE(DuplicateSymbolHashRejected) {
 }
 
 TEST_CASE(DuplicateVariantRejected) {
-    // Liveness and compaction select variants by rows hash; a duplicated
+    // Liveness and compaction select variants by identity; a duplicated
     // entry would make every copy live at once, and rows masked only to the
     // extra id would serve and survive with no contribution owning them.
     index::ShardBlob blob;
     blob.format_version = index::index_format_version;
-    blob.content = "aaaa";
-    blob.content_hash = llvm::xxh3_64bits(llvm::StringRef(blob.content));
+    fill_content(blob, "aaaa");
     blob.variants = {1, 2};
     blob.sym_hashes = {111};
     blob.sym_rel_offsets = {0, 0};
@@ -615,19 +866,16 @@ TEST_CASE(StraySymbolIdRejected) {
     // or dropping the relation's target forever with no reindex triggered.
     index::ShardBlob blob;
     blob.format_version = index::index_format_version;
-    blob.content = "aaaaaaaaaaaaaaaa";
-    blob.content_hash = llvm::xxh3_64bits(llvm::StringRef(blob.content));
+    fill_content(blob, "aaaaaaaaaaaaaaaa");
     blob.variants = {1};
     blob.sym_hashes = {111};
     blob.sym_rel_offsets = {0, 1};
-    blob.occ_begins = {0};
-    blob.occ_lengths = {3};
-    blob.occ_syms16 = {0};
+    blob.occs.packed = {index::pack_range(0, 3)};
+    blob.occ_syms8 = {0};
     blob.rel_kinds = {static_cast<std::uint8_t>(RelationKind::Base)};
-    blob.rel_begins = {4};
-    blob.rel_lengths = {3};
+    blob.rels.packed = {index::pack_range(4, 3)};
     blob.rel_sym_rows = {0};
-    blob.rel_sym16 = {0};
+    blob.rel_sym8 = {0};
 
     auto bytes_of = [&] {
         std::string bytes;
@@ -637,11 +885,11 @@ TEST_CASE(StraySymbolIdRejected) {
     };
     ASSERT_TRUE(make_shard(bytes_of()).loaded());
 
-    blob.occ_syms16 = {5};
+    blob.occ_syms8 = {5};
     ASSERT_FALSE(make_shard(bytes_of()).loaded());
-    blob.occ_syms16 = {0};
+    blob.occ_syms8 = {0};
 
-    blob.rel_sym16 = {5};
+    blob.rel_sym8 = {5};
     ASSERT_FALSE(make_shard(bytes_of()).loaded());
 }
 
@@ -652,15 +900,13 @@ TEST_CASE(OwnerlessMaskRejected) {
     // it for real — so it must reject the blob at load.
     index::ShardBlob blob;
     blob.format_version = index::index_format_version;
-    blob.content = "aaaa";
-    blob.content_hash = llvm::xxh3_64bits(llvm::StringRef(blob.content));
+    fill_content(blob, "aaaa");
     blob.variants = {1, 2};
     blob.sym_hashes = {111};
     blob.sym_rel_offsets = {0, 0};
-    blob.occ_begins = {0};
-    blob.occ_lengths = {3};
-    blob.occ_syms16 = {0};
-    blob.occ_masks32 = {0b01};
+    blob.occs.packed = {index::pack_range(0, 3)};
+    blob.occ_syms8 = {0};
+    blob.occs.masks32 = {0b01};
 
     auto bytes_of = [&] {
         std::string bytes;
@@ -671,33 +917,33 @@ TEST_CASE(OwnerlessMaskRejected) {
     ASSERT_TRUE(make_shard(bytes_of()).loaded());
 
     // An empty mask, then one whose only bit lies past the variant table.
-    blob.occ_masks32 = {0};
+    blob.occs.masks32 = {0};
     ASSERT_FALSE(make_shard(bytes_of()).loaded());
-    blob.occ_masks32 = {0b100};
+    blob.occs.masks32 = {0b100};
     ASSERT_FALSE(make_shard(bytes_of()).loaded());
 
     // The u64 tier is bounded alike.
     for(std::uint32_t i = 3; i <= 40; i += 1) {
         blob.variants.push_back(i);
     }
-    blob.occ_masks32 = {};
-    blob.occ_masks64 = {1};
+    blob.occs.masks32 = {};
+    blob.occs.masks64 = {1};
     ASSERT_TRUE(make_shard(bytes_of()).loaded());
-    blob.occ_masks64 = {std::uint64_t(1) << 45};
+    blob.occs.masks64 = {std::uint64_t(1) << 45};
     ASSERT_FALSE(make_shard(bytes_of()).loaded());
 
     // And roaring masks: decodable but empty, or holding only dropped ids.
     for(std::uint32_t i = 41; i <= 70; i += 1) {
         blob.variants.push_back(i);
     }
-    blob.occ_masks64 = {};
+    blob.occs.masks64 = {};
     auto set_mask = [&](const clice::Bitmap& mask) {
-        blob.occ_roaring.clear();
+        blob.occs.roaring.clear();
         for(auto byte: index::write_bitmap(mask)) {
-            blob.occ_roaring.push_back(static_cast<std::uint8_t>(byte));
+            blob.occs.roaring.push_back(static_cast<std::uint8_t>(byte));
         }
-        blob.occ_roaring_offsets = {0, static_cast<std::uint32_t>(blob.occ_roaring.size())};
-        blob.rel_roaring_offsets = {0};
+        blob.occs.roaring_offsets = {0, static_cast<std::uint32_t>(blob.occs.roaring.size())};
+        blob.rels.roaring_offsets = {0};
     };
     clice::Bitmap in_range;
     in_range.add(69);
@@ -718,24 +964,22 @@ TEST_CASE(CorruptRoaringMaskRejected) {
     // an undecodable slice must reject the blob at load.
     index::ShardBlob blob;
     blob.format_version = index::index_format_version;
-    blob.content = "aaaa";
-    blob.content_hash = llvm::xxh3_64bits(llvm::StringRef(blob.content));
+    fill_content(blob, "aaaa");
     for(std::uint32_t i = 1; i <= 65; i += 1) {
         blob.variants.push_back(i);
     }
     blob.sym_hashes = {111};
     blob.sym_rel_offsets = {0, 0};
-    blob.occ_begins = {0};
-    blob.occ_lengths = {3};
-    blob.occ_syms16 = {0};
+    blob.occs.packed = {index::pack_range(0, 3)};
+    blob.occ_syms8 = {0};
 
     clice::Bitmap mask;
     mask.add(2);
     for(auto byte: index::write_bitmap(mask)) {
-        blob.occ_roaring.push_back(static_cast<std::uint8_t>(byte));
+        blob.occs.roaring.push_back(static_cast<std::uint8_t>(byte));
     }
-    blob.occ_roaring_offsets = {0, static_cast<std::uint32_t>(blob.occ_roaring.size())};
-    blob.rel_roaring_offsets = {0};
+    blob.occs.roaring_offsets = {0, static_cast<std::uint32_t>(blob.occs.roaring.size())};
+    blob.rels.roaring_offsets = {0};
 
     auto bytes_of = [&] {
         std::string bytes;
@@ -745,8 +989,8 @@ TEST_CASE(CorruptRoaringMaskRejected) {
     };
     ASSERT_TRUE(make_shard(bytes_of()).loaded());
 
-    blob.occ_roaring = {0xff, 0xff, 0xff};
-    blob.occ_roaring_offsets = {0, 3};
+    blob.occs.roaring = {0xff, 0xff, 0xff};
+    blob.occs.roaring_offsets = {0, 3};
     ASSERT_FALSE(make_shard(bytes_of()).loaded());
 }
 
