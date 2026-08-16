@@ -220,7 +220,10 @@ FileResult profile_file(llvm::StringRef file,
 
         auto view = index::TUIndex::from_bytes(serialized);
         std::uint64_t symbols = 0;
-        view.iterate_symbols([&](auto, auto&, auto) { symbols += 1; });
+        view.iterate_symbols([&](auto, auto&, auto) {
+            symbols += 1;
+            return true;
+        });
         result.symbols = symbols;
         return true;
     });

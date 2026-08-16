@@ -14,6 +14,16 @@ namespace clice::index {
 
 namespace {
 
+/// DenseMap reserves two sentinel key values per type, so the in-memory
+/// tables can never hold them and the writer can never emit them; wire or
+/// disk bytes carrying one are corrupt, and inserting one would corrupt
+/// (or assert in) the very containers doing the loading.
+template <typename T>
+bool reserved_key(T value) {
+    return value == llvm::DenseMapInfo<T>::getEmptyKey() ||
+           value == llvm::DenseMapInfo<T>::getTombstoneKey();
+}
+
 /// The global layer's persisted form: the FileVersion table as parallel
 /// columns plus the symbol table with a self-contained path table for its
 /// reference bitmaps.
@@ -57,7 +67,7 @@ struct GlobalBlob {
 }  // namespace
 
 bool ProjectIndex::merge(this ProjectIndex& self,
-                         const TUIndex& view,
+                         const TUIndex& index,
                          llvm::ArrayRef<std::uint32_t> file_ids_map) {
     // Decode and bound every reference bitmap before touching the table:
     // merged bits persist in the global blob while the result's recorded
@@ -75,25 +85,30 @@ bool ProjectIndex::merge(this ProjectIndex& self,
 
     std::vector<StagedSymbol> staged;
     bool valid = true;
-    view.iterate_symbols(
+    index.iterate_symbols(
         [&](SymbolHash hash, const SymbolIdentity& identity, llvm::StringRef bitmap) {
-            if(!valid || identity.scope != SymbolScope::External) {
-                return;
+            if(identity.scope != SymbolScope::External) {
+                return true;
+            }
+            if(reserved_key(hash)) {
+                valid = false;
+                return false;
             }
             Bitmap references;
             if(!bitmap.empty()) {
                 auto decoded = read_bitmap(bitmap.data(), bitmap.size());
                 if(!decoded) {
                     valid = false;
-                    return;
+                    return false;
                 }
                 references = std::move(*decoded);
             }
             if(!references.isEmpty() && references.maximum() >= file_ids_map.size()) {
                 valid = false;
-                return;
+                return false;
             }
             staged.push_back({hash, identity, std::move(references)});
+            return true;
         });
     if(!valid) {
         return false;
@@ -329,6 +344,30 @@ bool ProjectIndex::load_global(this ProjectIndex& self,
         }
     }
 
+    // Every id and hash below becomes a DenseMap or DenseSet key, first in
+    // the duplicate checks here and then in the tables themselves — see
+    // reserved_key.
+    for(auto id: blob.fv_ids) {
+        if(reserved_key(id)) {
+            return false;
+        }
+    }
+    for(auto hash: blob.sym_hashes) {
+        if(reserved_key(hash)) {
+            return false;
+        }
+    }
+    for(auto id: llvm::make_first_range(blob.sym_paths)) {
+        if(reserved_key(id)) {
+            return false;
+        }
+    }
+    for(auto fv: blob.manifest_fvs) {
+        if(reserved_key(fv)) {
+            return false;
+        }
+    }
+
     // Ids, (path, hash) pairs and symbol hashes are all map keys in the
     // writer, so a repeat of any marks a corrupt blob. A repeated id in
     // particular would leave fv_ids interning the earlier pair to an id
@@ -374,7 +413,10 @@ bool ProjectIndex::load_global(this ProjectIndex& self,
             return false;
         }
         for(auto id: *decoded) {
-            if(!covered.contains(id)) {
+            // Reserved keys first: probing a DenseSet FOR a sentinel value
+            // matches empty or tombstoned buckets, so contains() could
+            // spuriously accept exactly the ids the tables cannot hold.
+            if(reserved_key(id) || !covered.contains(id)) {
                 return false;
             }
         }

@@ -127,6 +127,9 @@ IndexedTU index_file(TempDir& tmp, llvm::StringRef file, std::vector<std::string
     IndexedTU result;
     result.data = index::build_tu_index(unit);
     auto view = index::TUIndex::from_bytes(result.data);
+    if(!view.loaded()) {
+        return {};
+    }
     result.tu_path = std::string(view.path(view.path_count() - 1));
     return result;
 }
@@ -175,6 +178,7 @@ std::string strip_path_hashes(llvm::StringRef data) {
             symbol.scope = static_cast<std::uint8_t>(id.scope);
             const auto* begin = reinterpret_cast<const std::byte*>(bitmap.data());
             symbol.reference_files.assign(begin, begin + bitmap.size());
+            return true;
         });
     for(std::uint32_t i = 0; i < view.section_count(); i += 1) {
         auto blob = view.section_blob(i);

@@ -194,7 +194,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 }
                 auto shard_it = workspace.shards.find(event.path_id);
                 bool shard_current =
-                    shard_it != workspace.shards.end() && *disk == shard_it->second.content();
+                    shard_it != workspace.shards.end() && shard_it->second.matches_content(*disk);
                 if(shard_current) {
                     dirty.add_reindex_deps_only(event.path_id);
                 } else {

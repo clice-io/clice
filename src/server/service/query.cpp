@@ -931,16 +931,16 @@ std::vector<protocol::SymbolInformation> IndexQuery::search_symbols(llvm::String
         session.index.iterate_symbols(
             [&](index::SymbolHash hash, const index::SymbolIdentity& symbol, llvm::StringRef) {
                 if(results.size() >= max_results)
-                    return;
+                    return false;
                 if(seen.contains(hash))
-                    return;
+                    return true;
                 if(!is_indexable_kind(symbol.kind) || symbol.name.empty())
-                    return;
+                    return true;
                 if(!matches_query(symbol.name))
-                    return;
+                    return true;
                 auto def_loc = find_definition_location(hash);
                 if(!def_loc)
-                    return;
+                    return true;
 
                 protocol::SymbolInformation info;
                 info.name = std::string(symbol.name);
@@ -948,6 +948,7 @@ std::vector<protocol::SymbolInformation> IndexQuery::search_symbols(llvm::String
                 info.location = std::move(*def_loc);
                 results.push_back(std::move(info));
                 seen.insert(hash);
+                return true;
             });
         return true;
     });

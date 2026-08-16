@@ -358,6 +358,57 @@ TEST_CASE(GlobalDuplicateSymbolRejected) {
     ASSERT_EQ(loaded.symbols.size(), std::size_t(2));
 }
 
+TEST_CASE(GlobalReservedKeysRejected) {
+    // The two DenseMap sentinel key values can never sit in the in-memory
+    // tables, so the writer can never emit them; a blob carrying one is
+    // corrupt, and inserting it would corrupt (or assert in) the loader's
+    // own containers.
+    clice::PathPool pool;
+    llvm::DenseMap<std::uint32_t, std::uint64_t> pins;
+    index::ProjectIndex loaded;
+
+    {
+        GlobalBlobMirror mirror;
+        mirror.format_version = index::index_format_version;
+        mirror.fv_ids = {0xffffffffu};
+        mirror.fv_paths = {"/proj/a.h"};
+        mirror.fv_hashes = {0x1};
+        mirror.fv_sizes = {1};
+        mirror.fv_mtimes = {1};
+        auto bytes = kota::codec::fbs::to_bytes(mirror);
+        ASSERT_TRUE(bytes.has_value());
+        ASSERT_FALSE(loaded.load_global(bytes_of(*bytes), pool, pins));
+    }
+    {
+        GlobalBlobMirror mirror;
+        mirror.format_version = index::index_format_version;
+        mirror.sym_hashes = {~std::uint64_t(0)};
+        mirror.sym_names = {"sym"};
+        mirror.sym_kinds = {0};
+        clice::Bitmap bits;
+        bits.add(3);
+        mirror.sym_bitmaps = {index::write_bitmap(bits)};
+        mirror.sym_paths = {
+            {3, "/proj/ref.h"}
+        };
+        auto bytes = kota::codec::fbs::to_bytes(mirror);
+        ASSERT_TRUE(bytes.has_value());
+        ASSERT_FALSE(loaded.load_global(bytes_of(*bytes), pool, pins));
+    }
+    {
+        GlobalBlobMirror mirror;
+        mirror.format_version = index::index_format_version;
+        mirror.sym_paths = {
+            {0xfffffffeu, "/proj/ref.h"}
+        };
+        auto bytes = kota::codec::fbs::to_bytes(mirror);
+        ASSERT_TRUE(bytes.has_value());
+        ASSERT_FALSE(loaded.load_global(bytes_of(*bytes), pool, pins));
+    }
+    ASSERT_TRUE(loaded.file_versions.empty());
+    ASSERT_TRUE(loaded.symbols.empty());
+}
+
 TEST_CASE(UnknownFileVersionsDetected) {
     index::ProjectIndex project;
     auto known = project.intern_file_version(0, 0x1);

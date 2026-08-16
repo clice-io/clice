@@ -72,6 +72,11 @@ public:
     /// Whether the content is pure ASCII (and therefore not stored).
     bool ascii() const;
 
+    /// Whether `text` is the exact content the rows were built from —
+    /// the freshness comparison for disk state. Compares by size and
+    /// hash, so it works for ASCII blobs, whose text is not stored.
+    bool matches_content(llvm::StringRef text) const;
+
     /// All variant identities stored in the blob, in mask-bit order. A
     /// worker-emitted blob holds one anonymous variant identified by its
     /// own byte hash.
@@ -148,8 +153,11 @@ void write_shard(const FileIndex& rows,
 /// `fresh` as one new variant. Rows shared between variants merge into
 /// one row; masks are re-encoded for the surviving variant set. `old` may
 /// be an empty shard (all-fresh merge) and `fresh` may be empty (pure
-/// compaction); every fresh shard must be a loaded single-variant blob of
-/// the same content generation as the other inputs.
+/// compaction), but at least one variant must survive overall — a blob
+/// holds at least one variant, and a file whose last variant died is
+/// retired by the caller, not compacted to nothing. Every fresh shard
+/// must be a loaded single-variant blob of the same content generation as
+/// the other inputs.
 void merge_shards(const Shard& old,
                   llvm::ArrayRef<RowsHash> keep,
                   llvm::ArrayRef<Shard> fresh,

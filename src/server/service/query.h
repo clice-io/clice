@@ -246,7 +246,8 @@ private:
     /// Whether a session's overlay preamble entry may serve: the blob was
     /// built from this very file (identical preambles share one PCH, but
     /// macro USRs embed the source path) and the buffer still starts with
-    /// the blob's stored preamble text.
+    /// the exact preamble the blob was built from (compared by hash — the
+    /// text itself is not stored).
     bool serves_preamble(const Session& session, const index::TUIndex& state) const;
 
     /// Whether an overlay file entry may contribute results. Filters

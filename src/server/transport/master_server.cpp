@@ -308,7 +308,7 @@ void MasterServer::on_agentic_query() {
         }
         auto shard_it = workspace.shards.find(path_id);
         bool shard_current =
-            shard_it != workspace.shards.end() && *disk == shard_it->second.content();
+            shard_it != workspace.shards.end() && shard_it->second.matches_content(*disk);
         indexer.enqueue(path_id,
                         shard_current ? ReindexReason::DepsOnly : ReindexReason::ContentChanged);
     }

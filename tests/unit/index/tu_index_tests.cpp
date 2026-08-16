@@ -81,6 +81,7 @@ void decode_index(const std::string& envelope) {
             symbol.scope = identity.scope;
             symbol.reference_files =
                 index::read_bitmap(bitmap.data(), bitmap.size()).value_or(Bitmap{});
+            return true;
         });
 }
 
@@ -1316,25 +1317,29 @@ TEST_CASE(FromRejectsHostileInput) {
 }
 
 TEST_CASE(FromRejectsStaleFormatVersion) {
-    // Only the version slot is written: every other field reads back
-    // absent, which is structurally valid — the verdict must hinge on the
-    // value. Field order MUST mirror the envelope layout (tu_index.cpp):
-    // format_version is slot 0.
-    struct VersionOnly {
+    // Only the version slot and the path table are written: every other
+    // field reads back absent, which is structurally valid — the verdict
+    // must hinge on the version value. Field order MUST mirror the
+    // envelope layout (tu_index.cpp): format_version is slot 0.
+    struct VersionAndPaths {
         std::uint32_t format_version = 0;
+        std::int64_t built_at = 0;
+        std::vector<std::string> paths = {"/proj/main.cpp"};
     };
 
     auto bytes_of = [](const std::vector<std::uint8_t>& blob) {
         return llvm::StringRef(reinterpret_cast<const char*>(blob.data()), blob.size());
     };
 
-    auto stale = kota::codec::fbs::to_bytes(VersionOnly{index::index_format_version + 1});
+    auto stale = kota::codec::fbs::to_bytes(
+        VersionAndPaths{.format_version = index::index_format_version + 1});
     ASSERT_TRUE(stale.has_value());
     ASSERT_FALSE(index::TUIndex::from_bytes(bytes_of(*stale)).loaded());
 
     // Positive control: the same shape carrying the current version loads,
     // so the rejection above comes from the value, not the blob's shape.
-    auto current = kota::codec::fbs::to_bytes(VersionOnly{index::index_format_version});
+    auto current =
+        kota::codec::fbs::to_bytes(VersionAndPaths{.format_version = index::index_format_version});
     ASSERT_TRUE(current.has_value());
     ASSERT_TRUE(index::TUIndex::from_bytes(bytes_of(*current)).loaded());
 }
@@ -1391,6 +1396,41 @@ TEST_CASE(FromRejectsOutOfRangePathIds) {
         MirrorEnvelope hostile;
         hostile.paths = {"/proj/main.cpp"};
         hostile.sections.push_back({.path_id = 7});  // Only path id 0 exists.
+        ASSERT_FALSE(index::TUIndex::from_bytes(mirror_bytes(hostile)).loaded());
+    }
+}
+
+TEST_CASE(FromRejectsEmptyPathTable) {
+    // The builder ends every path table with the interested file, and
+    // consumers address path_count() - 1 unchecked — an envelope with no
+    // paths at all is corrupt.
+    MirrorEnvelope hostile;
+    ASSERT_FALSE(index::TUIndex::from_bytes(mirror_bytes(hostile)).loaded());
+}
+
+TEST_CASE(FromRejectsUnsortedSections) {
+    // section_of binary-searches the section table by path id; a repeated
+    // or out-of-order id would attribute one file's rows to another.
+
+    // Positive control: the ascending shape loads.
+    MirrorEnvelope honest;
+    honest.paths = {"/proj/a.h", "/proj/main.cpp"};
+    honest.sections.push_back({.path_id = 0});
+    honest.sections.push_back({.path_id = 1});
+    ASSERT_TRUE(index::TUIndex::from_bytes(mirror_bytes(honest)).loaded());
+
+    {
+        MirrorEnvelope hostile;
+        hostile.paths = {"/proj/a.h", "/proj/main.cpp"};
+        hostile.sections.push_back({.path_id = 1});
+        hostile.sections.push_back({.path_id = 0});
+        ASSERT_FALSE(index::TUIndex::from_bytes(mirror_bytes(hostile)).loaded());
+    }
+    {
+        MirrorEnvelope hostile;
+        hostile.paths = {"/proj/a.h", "/proj/main.cpp"};
+        hostile.sections.push_back({.path_id = 1});
+        hostile.sections.push_back({.path_id = 1});
         ASSERT_FALSE(index::TUIndex::from_bytes(mirror_bytes(hostile)).loaded());
     }
 }

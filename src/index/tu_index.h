@@ -49,8 +49,9 @@ std::string build_preamble_index(CompilationUnitRef unit,
 /// and the blob bytes themselves are read straight off the wire — a new
 /// variant's bytes are sliced out and written or merged without ever
 /// decoding the envelope around them — and symbol names are touched only
-/// when a consumer genuinely needs them. Accessors on an empty reader
-/// answer empty/zero.
+/// when a consumer genuinely needs them. Whole-envelope accessors on an
+/// empty reader answer empty/zero; per-element accessors require a valid
+/// index, and no index is valid on an empty reader (every count is 0).
 class TUIndex {
 public:
     TUIndex() = default;
@@ -118,8 +119,9 @@ public:
 
     /// Visit every symbol: hash, identity, and the raw serialized
     /// reference-files bitmap (a read_bitmap'able portable image).
+    /// Return false from the callback to stop.
     void iterate_symbols(
-        llvm::function_ref<void(SymbolHash, const SymbolIdentity&, llvm::StringRef bitmap)>
+        llvm::function_ref<bool(SymbolHash, const SymbolIdentity&, llvm::StringRef bitmap)>
             callback) const;
 
     /// Look up one symbol's identity by hash.

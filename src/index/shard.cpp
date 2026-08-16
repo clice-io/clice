@@ -325,16 +325,26 @@ bool validate(BlobView root) {
     // on every query, forever — reject the blob so it is rebuilt instead.
     // Ends are bounded by the content size too: every decoded range is
     // served as a source range into the content.
+    // The merge also two-way merges rows under the full (begin, end, sym)
+    // key with equal-key rows combined at write time, so equal ranges must
+    // carry strictly ascending symbols — sym_hashes is strictly sorted, so
+    // id order stands in for hash order.
     std::uint32_t prev_begin = 0;
     std::uint32_t prev_end = 0;
+    std::uint32_t prev_sym = 0;
     for(std::uint32_t row = 0; row < occ_count; row += 1) {
         auto begin = occ.begin_of(row);
         auto end = occ.end_of(row);
+        auto sym = occ_sym_id(root, row);
         if(begin < prev_begin || end < prev_end || end < begin || end > content_size) {
+            return false;
+        }
+        if(row != 0 && begin == prev_begin && end == prev_end && sym <= prev_sym) {
             return false;
         }
         prev_begin = begin;
         prev_end = end;
+        prev_sym = sym;
     }
     // Relation ranges carry no query order to enforce, but are served as
     // source ranges all the same — bound them like the occurrence ends.
@@ -383,6 +393,46 @@ bool validate(BlobView root) {
     for(std::uint32_t k = 0; k < rel_def_begins.size(); k += 1) {
         if(rel_def_ends[k] < rel_def_begins[k] || rel_def_ends[k] > content_size) {
             return false;
+        }
+    }
+
+    // Rows of one relation group two-way merge under the full (kind,
+    // begin, end, payload) key with equal-key rows combined at write time,
+    // so the key must ascend strictly within each group — out-of-order or
+    // repeated rows would mis-merge silently instead of being rejected.
+    // The payload mirrors decode_relation_group: a def range, a target
+    // symbol's hash, or 0.
+    {
+        std::size_t sym_cursor = 0;
+        std::size_t def_cursor = 0;
+        auto payload_of = [&](std::uint32_t row) -> std::uint64_t {
+            while(sym_cursor < rel_sym_rows.size() && rel_sym_rows[sym_cursor] < row) {
+                sym_cursor += 1;
+            }
+            while(def_cursor < rel_def_rows.size() && rel_def_rows[def_cursor] < row) {
+                def_cursor += 1;
+            }
+            if(def_cursor < rel_def_rows.size() && rel_def_rows[def_cursor] == row) {
+                return std::bit_cast<std::uint64_t>(
+                    LocalSourceRange{rel_def_begins[def_cursor], rel_def_ends[def_cursor]});
+            }
+            if(sym_cursor < rel_sym_rows.size() && rel_sym_rows[sym_cursor] == row) {
+                auto id = !rel_sym8.empty()    ? rel_sym8[sym_cursor]
+                          : !rel_sym16.empty() ? rel_sym16[sym_cursor]
+                                               : rel_sym32[sym_cursor];
+                return sym_hashes[id];
+            }
+            return 0;
+        };
+        for(std::size_t id = 0; id < sym_hashes.size(); id += 1) {
+            std::tuple<std::uint8_t, std::uint32_t, std::uint32_t, std::uint64_t> prev{};
+            for(auto row = offsets[id]; row < offsets[id + 1]; row += 1) {
+                std::tuple key{rel_kinds[row], rel.begin_of(row), rel.end_of(row), payload_of(row)};
+                if(row != offsets[id] && key <= prev) {
+                    return false;
+                }
+                prev = key;
+            }
         }
     }
 
@@ -507,6 +557,10 @@ llvm::StringRef Shard::content() const {
 
 bool Shard::ascii() const {
     return loaded() && content().empty();
+}
+
+bool Shard::matches_content(llvm::StringRef text) const {
+    return loaded() && text.size() == content_size() && llvm::xxh3_64bits(text) == content_hash();
 }
 
 std::vector<RowsHash> Shard::variants() const {

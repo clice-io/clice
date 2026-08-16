@@ -449,7 +449,9 @@ TEST_CASE(LocalSymbolNames) {
             [&](index::SymbolHash hash, const index::SymbolIdentity& symbol, llvm::StringRef) {
                 if(symbol.name == "visible") {
                     result = hash;
+                    return false;
                 }
+                return true;
             });
         return result;
     }();
@@ -577,7 +579,9 @@ TEST_CASE(ContentHashMismatchRejected) {
     };
     ASSERT_TRUE(make_shard(bytes_of()).loaded());
 
-    blob.content = "aaåb";
+    // Same byte length (ä is two UTF-8 bytes like å): only the hash
+    // differs, so the size check cannot be what rejects the blob.
+    blob.content = "aaåä";
     ASSERT_FALSE(make_shard(bytes_of()).loaded());
 }
 
@@ -667,6 +671,66 @@ TEST_CASE(MisorderedRowsRejected) {
     blob.occs.packed = {index::pack_range(0, 3), index::pack_range(8, index::length_escape)};
     blob.occs.long_rows = {1};
     blob.occs.long_ends = {5};  // row 1: begin 8, end 5
+    ASSERT_FALSE(make_shard(bytes_of()).loaded());
+}
+
+TEST_CASE(DuplicateOccKeyRejected) {
+    // The merge two-way merges occurrence runs under the full (begin, end,
+    // sym) key and the writer combines equal keys, so a repeated or
+    // descending symbol under one range is non-canonical and would
+    // mis-merge silently instead of being rejected.
+    index::ShardBlob blob;
+    blob.format_version = index::index_format_version;
+    fill_content(blob, "aaaaaaaaaaaaaaaa");
+    blob.variants = {1};
+    blob.sym_hashes = {111, 222};
+    blob.sym_rel_offsets = {0, 0, 0};
+    blob.occs.packed = {index::pack_range(0, 3), index::pack_range(0, 3)};
+    blob.occ_syms8 = {0, 1};
+
+    auto bytes_of = [&] {
+        std::string bytes;
+        llvm::raw_string_ostream os(bytes);
+        index::serialize_blob(blob, os);
+        return bytes;
+    };
+    // Positive control: one range with ascending symbols loads.
+    ASSERT_TRUE(make_shard(bytes_of()).loaded());
+
+    blob.occ_syms8 = {0, 0};
+    ASSERT_FALSE(make_shard(bytes_of()).loaded());
+
+    blob.occ_syms8 = {1, 0};
+    ASSERT_FALSE(make_shard(bytes_of()).loaded());
+}
+
+TEST_CASE(UnsortedRelationRowsRejected) {
+    // Rows of one relation group merge under the full (kind, begin, end,
+    // payload) key and the writer sorts and combines equal keys, so
+    // out-of-order or repeated rows are non-canonical and would mis-merge
+    // silently instead of being rejected.
+    index::ShardBlob blob;
+    blob.format_version = index::index_format_version;
+    fill_content(blob, "aaaaaaaaaaaaaaaa");
+    blob.variants = {1};
+    blob.sym_hashes = {111};
+    blob.sym_rel_offsets = {0, 2};
+    blob.rel_kinds = {static_cast<std::uint8_t>(RelationKind::Reference),
+                      static_cast<std::uint8_t>(RelationKind::Reference)};
+    blob.rels.packed = {index::pack_range(0, 3), index::pack_range(4, 3)};
+
+    auto bytes_of = [&] {
+        std::string bytes;
+        llvm::raw_string_ostream os(bytes);
+        index::serialize_blob(blob, os);
+        return bytes;
+    };
+    ASSERT_TRUE(make_shard(bytes_of()).loaded());
+
+    blob.rels.packed = {index::pack_range(4, 3), index::pack_range(0, 3)};
+    ASSERT_FALSE(make_shard(bytes_of()).loaded());
+
+    blob.rels.packed = {index::pack_range(0, 3), index::pack_range(0, 3)};
     ASSERT_FALSE(make_shard(bytes_of()).loaded());
 }
 

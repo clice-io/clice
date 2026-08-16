@@ -410,6 +410,7 @@ struct Stats {
                     scope_n[scope] += 1;
                 }
                 scope_map.try_emplace(hash, symbol.scope);
+                return true;
             });
 
         for(std::uint32_t i = 0; i < tu.section_count(); i += 1) {

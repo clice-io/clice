@@ -47,6 +47,7 @@ index::SymbolHash hash_of(llvm::StringRef name,
                 hash = symbol_id;
                 count += 1;
             }
+            return true;
         });
     EXPECT_EQ(count, 1);
     return hash;
@@ -258,14 +259,18 @@ TEST_CASE(RejectVersionMismatch) {
 }
 
 TEST_CASE(AcceptCurrentVersionBlob) {
-    // Positive control for RejectVersionMismatch: the same single-slot shape
-    // carrying the CURRENT version loads — slot 0 really is the version slot
-    // and the rejection comes from its value, not from the blob's shape.
-    struct VersionOnly {
+    // Positive control for RejectVersionMismatch: the same leading slots
+    // carrying the CURRENT version (plus the minimal valid path table, which
+    // verification demands) load — slot 0 really is the version slot and the
+    // rejection comes from its value, not from the blob's shape.
+    struct VersionAndPaths {
         std::uint32_t format_version = 0;
+        std::int64_t built_at = 0;
+        std::vector<std::string> paths = {"/proj/main.cpp"};
     };
 
-    auto blob = kota::codec::fbs::to_bytes(VersionOnly{index::index_format_version});
+    auto blob =
+        kota::codec::fbs::to_bytes(VersionAndPaths{.format_version = index::index_format_version});
     ASSERT_TRUE(blob.has_value());
 
     dir.touch("current.pch.idx",

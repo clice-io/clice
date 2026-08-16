@@ -35,7 +35,8 @@ struct FileSection {
 /// The envelope's wire layout. Only the builder below ever materializes
 /// it; every consumer reads the bytes through the TUIndex reader.
 struct EnvelopeBlob {
-    /// Wire schema version (index_format_version), gated by TUIndex::from.
+    /// Wire schema version (index_format_version), gated by
+    /// TUIndex::from_bytes.
     /// A worker respawned after the binary on disk changed can be one
     /// build ahead of the server, and a layout change need not be
     /// structurally detectable.
@@ -768,8 +769,13 @@ TUIndex TUIndex::from_bytes(llvm::StringRef data) {
 
     // Structural verification does not constrain field values; every path
     // id the merge dereferences against the path table is bounded here so
-    // the accessors stay check-free.
+    // the accessors stay check-free. The builder ends every path table
+    // with the interested file, so consumers address path_count() - 1
+    // unchecked — an empty table marks a corrupt envelope.
     auto count = root[&EnvelopeBlob::paths].size();
+    if(count == 0) {
+        return {};
+    }
     auto locations = root[&EnvelopeBlob::locations];
     for(std::size_t i = 0; i < locations.size(); i += 1) {
         IncludeLocation location = locations.at(i);
@@ -777,11 +783,17 @@ TUIndex TUIndex::from_bytes(llvm::StringRef data) {
             return {};
         }
     }
+    // section_of binary-searches the section table by path id and shard_of
+    // trusts the result, so the ids must ascend strictly — a repeated or
+    // out-of-order id would attribute one file's rows to another.
     auto sections = root[&EnvelopeBlob::sections];
+    std::uint32_t previous_path_id = 0;
     for(std::size_t i = 0; i < sections.size(); i += 1) {
-        if(sections.at(i)[&FileSection::path_id] >= count) {
+        auto path_id = sections.at(i)[&FileSection::path_id];
+        if(path_id >= count || (i != 0 && path_id <= previous_path_id)) {
             return {};
         }
+        previous_path_id = path_id;
     }
 
     TUIndex result;
@@ -895,14 +907,16 @@ bool TUIndex::shards_verify() const {
 }
 
 void TUIndex::iterate_symbols(
-    llvm::function_ref<void(SymbolHash, const SymbolIdentity&, llvm::StringRef)> callback) const {
+    llvm::function_ref<bool(SymbolHash, const SymbolIdentity&, llvm::StringRef)> callback) const {
     if(!loaded()) {
         return;
     }
     auto symbols = wire_root(data)[&EnvelopeBlob::symbols];
     for(std::size_t i = 0; i < symbols.size(); i += 1) {
         auto entry = symbols.at(i);
-        callback(entry.get<0>(), identity_of(entry.get<1>()), bitmap_bytes(entry.get<1>()));
+        if(!callback(entry.get<0>(), identity_of(entry.get<1>()), bitmap_bytes(entry.get<1>()))) {
+            return;
+        }
     }
 }
 

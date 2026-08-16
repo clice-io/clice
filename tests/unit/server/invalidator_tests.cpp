@@ -8,6 +8,19 @@
 namespace clice::testing {
 namespace {
 
+/// A loaded shard whose rows were built from `content`, for the
+/// disk-vs-shard freshness comparisons below.
+index::Shard shard_of(llvm::StringRef content) {
+    std::string bytes;
+    llvm::raw_string_ostream os(bytes);
+    index::write_shard(
+        {},
+        [](index::SymbolHash) -> std::optional<index::SymbolIdentity> { return std::nullopt; },
+        content,
+        os);
+    return index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
+}
+
 TEST_SUITE(Invalidator) {
 
 TEST_CASE(EmptyBatchNoEffects) {
@@ -226,13 +239,13 @@ TEST_CASE(CloseCurrentShardDepsOnly) {
     Workspace workspace;
     SessionStore store;
     auto closed = workspace.path_pool.intern("/proj/a.cpp");
-    workspace.shards[closed];
+    workspace.shards[closed] = shard_of("int x;");
 
     ContextResolver resolver(workspace);
-    // Disk matches the shard's stored content: a browse-and-close must not
-    // blank the file's rows for the reindex queue's latency.
+    // Disk matches the content the shard was built from: a browse-and-close
+    // must not blank the file's rows for the reindex queue's latency.
     Invalidator invalidator(workspace, store, resolver, [](llvm::StringRef) {
-        return std::optional<std::string>{""};
+        return std::optional<std::string>{"int x;"};
     });
     auto dirty = invalidator.apply(FileEvent::buffer_closed(closed));
 
@@ -244,7 +257,7 @@ TEST_CASE(CloseDivergentShardContentChanged) {
     Workspace workspace;
     SessionStore store;
     auto closed = workspace.path_pool.intern("/proj/a.cpp");
-    workspace.shards[closed];
+    workspace.shards[closed] = shard_of("int x;");
 
     ContextResolver resolver(workspace);
     // Disk holds edits the shard never saw (saved while open): the shard's

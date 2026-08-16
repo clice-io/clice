@@ -44,10 +44,6 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
         LOG_WARN("Ignoring TUIndex that failed verification");
         return;
     }
-    if(view.path_count() == 0) {
-        LOG_WARN("Ignoring TUIndex with empty path graph");
-        return;
-    }
     auto main_local_id = view.path_count() - 1;
     llvm::StringRef main_tu_path = view.path(main_local_id);
 
@@ -154,10 +150,10 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
     // Intern a FileVersion per file of the parse. The freshness baseline is
     // two-part and lives on the version, shared by every TU that consumed
     // it: the consumed-content hash from the compiler's own buffers, and a
-    // stat fast path recorded only for files that provably did not change
-    // since before the build started — for the rest the stat could describe
-    // content the rows were never built from, so they re-earn their fast
-    // path through a hash check instead (see file_version_stale).
+    // stat fast path recorded only when the disk provably still holds the
+    // consumed bytes — otherwise the stat could describe content the rows
+    // were never built from, so those files re-earn their fast path
+    // through a hash check instead (see file_version_stale).
     auto baseline_before_ns = fs::stat_baseline_before_ns(view.built_at());
     llvm::SmallVector<std::uint32_t> fv_of;
     fv_of.resize_for_overwrite(view.path_count());
@@ -176,10 +172,19 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
         }
 
         auto fv = project.intern_file_version(file_ids_map[i], hash);
-        if(untouched) {
+        if(untouched && hash != 0) {
+            // The untouched mtime alone is no proof: a rewrite during the
+            // build that preserves the size and backdates the mtime
+            // (rsync -t) would stamp a stat describing bytes the rows were
+            // never built from, and file_version_stale's equality fast
+            // path would then judge them fresh forever. Stamp only under a
+            // disk-hash match; an already-stamped version earned its stamp
+            // the same way, so it need not re-prove it every merge.
             auto& record = project.file_versions.find(fv)->second;
-            record.size = status.getSize();
-            record.mtime_ns = fs::mtime_ns(status);
+            if(record.mtime_ns == 0 && hash_file(path) == hash) {
+                record.size = status.getSize();
+                record.mtime_ns = fs::mtime_ns(status);
+            }
         }
         fv_of[i] = fv;
     }

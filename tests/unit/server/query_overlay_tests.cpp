@@ -82,6 +82,7 @@ index::SymbolHash hash_of(llvm::StringRef name,
                 hash = symbol_id;
                 count += 1;
             }
+            return true;
         });
     EXPECT_EQ(count, 1);
     return hash;
