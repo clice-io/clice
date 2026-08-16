@@ -361,10 +361,9 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                 co_return result;
 
             auto& merged_index = shard_it->second;
-            auto ls = merged_index.line_starts();
-            if(ls.empty())
-                co_return result;
-            IndexedLineMap map(merged_index.content(), merged_index.content_size(), ls);
+            IndexedLineMap map(merged_index.content(),
+                               merged_index.content_size(),
+                               merged_index.line_starts());
 
             for(auto& [hash, symbol]: srv.workspace.project_index.symbols) {
                 if(symbol.name.empty())

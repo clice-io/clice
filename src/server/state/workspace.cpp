@@ -465,7 +465,7 @@ void Workspace::enforce_loaded_budget() {
             i += 1;
             continue;
         }
-        LOG_DEBUG("Unloading PreambleIndex of {} (budget {})", loaded_state_lru[i], budget);
+        LOG_DEBUG("Unloading pch.idx envelope of {} (budget {})", loaded_state_lru[i], budget);
         it->second.state.reset();
         loaded_state_lru.erase(loaded_state_lru.begin() + i);
     }

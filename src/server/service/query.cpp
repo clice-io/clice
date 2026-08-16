@@ -546,10 +546,9 @@ std::optional<protocol::Location> IndexQuery::find_definition_location(index::Sy
         if(!uri)
             continue;
         auto& merged_index = shard_it->second;
-        auto ls = merged_index.line_starts();
-        if(ls.empty())
-            continue;
-        IndexedLineMap map(merged_index.content(), merged_index.content_size(), ls);
+        IndexedLineMap map(merged_index.content(),
+                           merged_index.content_size(),
+                           merged_index.line_starts());
         std::optional<protocol::Location> result;
         merged_index.lookup(hash, RelationKind::Definition, [&](const index::Relation& r) {
             if(auto range = map.to_range(r.range.begin, r.range.end)) {

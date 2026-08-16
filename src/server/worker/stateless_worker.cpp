@@ -45,7 +45,8 @@ using RequestContext = kota::ipc::BincodePeer::RequestContext;
 /// is still in memory — the only moment the preamble's index is
 /// obtainable without deserializing the whole PCH. The file write
 /// happens separately, after the PCH itself is flushed.
-static std::string serialize_preamble_state(CompilationUnit& unit, std::uint32_t preamble_bound) {
+static std::string serialize_preamble_envelope(CompilationUnit& unit,
+                                               std::uint32_t preamble_bound) {
     ScopedTimer links_timer;
     auto links = feature::document_links(unit);
     auto inactive = feature::inactive_regions(unit, {}, 0, preamble_bound);
@@ -63,8 +64,8 @@ static std::string serialize_preamble_state(CompilationUnit& unit, std::uint32_t
 
 /// Write the serialized blob next to the PCH. Returns an error description
 /// on failure so the master's anomaly carries the cause.
-static std::optional<std::string> write_preamble_state(llvm::StringRef blob,
-                                                       llvm::StringRef output_path) {
+static std::optional<std::string> write_preamble_envelope(llvm::StringRef blob,
+                                                          llvm::StringRef output_path) {
     std::error_code ec;
     llvm::raw_fd_ostream os(output_path, ec);
     if(ec) {
@@ -129,7 +130,7 @@ static worker::BuildResult handle_build_pch(const worker::BuildParams& params,
     std::string blob;
     ScopedTimer index_timer;
     if(success) {
-        blob = serialize_preamble_state(unit, params.preamble_bound);
+        blob = serialize_preamble_envelope(unit, params.preamble_bound);
     }
     auto index_ms = index_timer.ms();
 
@@ -148,7 +149,7 @@ static worker::BuildResult handle_build_pch(const worker::BuildParams& params,
     bool internal_error = false;
     ScopedTimer state_write_timer;
     if(success) {
-        if(auto error = write_preamble_state(blob, params.index_output_path)) {
+        if(auto error = write_preamble_envelope(blob, params.index_output_path)) {
             success = false;
             internal_error = true;
             errors = std::move(*error);

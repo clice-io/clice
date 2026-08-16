@@ -2,6 +2,7 @@
 
 /// Shared LSP position clamping for master-side buffer access.
 
+#include <algorithm>
 #include <optional>
 #include <span>
 #include <string_view>
@@ -61,11 +62,13 @@ public:
         if(position.line >= starts.size()) {
             return std::nullopt;
         }
-        auto offset = starts[position.line] + position.character;
-        if(offset > line_end(position.line)) {
+        // Compare against the line length, not the summed offset: the
+        // character is untrusted client input and the sum can wrap.
+        auto start = starts[position.line];
+        if(position.character > line_end(position.line) - start) {
             return std::nullopt;
         }
-        return offset;
+        return start + position.character;
     }
 
     std::optional<protocol::Range> to_range(std::uint32_t begin, std::uint32_t end) const {
@@ -89,7 +92,7 @@ private:
     }
 
     std::uint32_t line_of(std::uint32_t offset) const {
-        auto it = std::upper_bound(starts.begin(), starts.end(), offset);
+        auto it = std::ranges::upper_bound(starts, offset);
         return it == starts.begin() ? 0 : static_cast<std::uint32_t>(it - starts.begin()) - 1;
     }
 

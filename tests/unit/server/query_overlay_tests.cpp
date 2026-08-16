@@ -369,6 +369,58 @@ int main() { return 0; }
     }
 }
 
+TEST_CASE(AsciiPreviewFromDisk) {
+    // The ASCII preview happy path: the blob omits the text, the disk
+    // still holds the exact bytes, so definition text and context lines
+    // serve from the re-read; once the file moves on, the hash check
+    // degrades both back to positions-only.
+    llvm::StringRef text = "int value = 1;\nint other = value;\n";
+    dir.touch("preview.cpp", text);
+    auto path = dir.path("preview.cpp");
+    auto path_id = workspace.path_pool.intern(path);
+
+    index::SymbolHash sym = 777;
+    index::FileIndex rows;
+    rows.occurrences.push_back({
+        {4, 9},
+        sym
+    });
+    index::Relation def{
+        .kind = RelationKind::Definition,
+        .range = {4, 9}
+    };
+    def.set_definition_range({0, 14});
+    rows.relations[sym].push_back(def);
+    rows.relations[sym].push_back({
+        .kind = RelationKind::Reference,
+        .range = {27, 32},
+        .target_symbol = 0
+    });
+
+    std::string bytes;
+    llvm::raw_string_ostream os(bytes);
+    index::write_shard(rows, {}, text, os);
+    workspace.shards[path_id] =
+        index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
+    ASSERT_TRUE(workspace.shards[path_id].ascii());
+    workspace.project_index.symbols[sym].name = "value";
+    workspace.project_index.symbols[sym].reference_files.add(path_id);
+
+    auto definition = agent_query.get_definition_text(sym);
+    ASSERT_TRUE(definition.has_value());
+    EXPECT_EQ(definition->text, "int value = 1;");
+
+    auto references = agent_query.collect_references(sym, RelationKind::Reference);
+    ASSERT_FALSE(references.empty());
+    EXPECT_EQ(references.front().context, "int other = value;");
+
+    dir.touch("preview.cpp", "int moved = 0;\n");
+    EXPECT_FALSE(agent_query.get_definition_text(sym).has_value());
+    references = agent_query.collect_references(sym, RelationKind::Reference);
+    ASSERT_FALSE(references.empty());
+    EXPECT_TRUE(references.front().context.empty());
+}
+
 TEST_CASE(SharedPreambleScoped) {
     add_main("main.cpp", R"(#define §(macro)⟦§(macro)FOO⟧ 1
 #if FOO

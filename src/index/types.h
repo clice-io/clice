@@ -56,10 +56,9 @@ struct Relation {
 };
 
 struct Occurrence {
-    /// range of this occurrence.
     Range range;
 
-    ///
+    /// Hash of the symbol this occurrence names.
     SymbolHash target;
 
     friend bool operator==(const Occurrence&, const Occurrence&) = default;
