@@ -591,7 +591,10 @@ Report build_report(Stats& stats) {
             r.occ_under_64k += agg.occ_m;
         }
 
-        std::uint32_t off = small ? 2 : 4;
+        // The shard writer emits fixed u32 begin columns at every file size;
+        // the u16 coverage stats above measure what a size-tiered offset
+        // column would win, not what the implemented format spends.
+        std::uint32_t off = 4;
         std::uint32_t sid = s <= 65535 ? 2 : 4;
         std::uint32_t mask = mask_bytes(m);
 

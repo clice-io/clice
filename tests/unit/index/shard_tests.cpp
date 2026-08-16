@@ -386,6 +386,30 @@ TEST_CASE(CorruptBlobRejected) {
     ASSERT_FALSE(index::Shard::from_bytes(data).loaded());
 }
 
+TEST_CASE(ContentHashMismatchRejected) {
+    // Every freshness decision compares the advertised content hash, so
+    // content bytes corrupted under an intact structure would keep loading
+    // as fresh while position mapping reads the wrong text.
+    index::ShardBlob blob;
+    blob.format_version = index::index_format_version;
+    blob.content = "aaaa";
+    blob.content_hash = llvm::xxh3_64bits(llvm::StringRef(blob.content));
+    blob.variants = {1};
+    blob.sym_hashes = {111};
+    blob.sym_rel_offsets = {0, 0};
+
+    auto bytes_of = [&] {
+        std::string bytes;
+        llvm::raw_string_ostream os(bytes);
+        index::serialize_blob(blob, os);
+        return bytes;
+    };
+    ASSERT_TRUE(make_shard(bytes_of()).loaded());
+
+    blob.content = "aaab";
+    ASSERT_FALSE(make_shard(bytes_of()).loaded());
+}
+
 TEST_CASE(MisorderedRowsRejected) {
     // Occurrence lookup binary-searches decoded row ends; a corrupt blob
     // whose rows lost their order must load as "not on disk" and be
@@ -393,6 +417,7 @@ TEST_CASE(MisorderedRowsRejected) {
     index::ShardBlob blob;
     blob.format_version = index::index_format_version;
     blob.content = "aaaaaaaaaaaaaaaa";
+    blob.content_hash = llvm::xxh3_64bits(llvm::StringRef(blob.content));
     blob.variants = {1};
     blob.sym_hashes = {111};
     blob.sym_rel_offsets = {0, 0};
@@ -436,6 +461,7 @@ TEST_CASE(EscapeTableMismatchRejected) {
     index::ShardBlob blob;
     blob.format_version = index::index_format_version;
     blob.content = std::string(300, 'a');
+    blob.content_hash = llvm::xxh3_64bits(llvm::StringRef(blob.content));
     blob.variants = {1};
     blob.sym_hashes = {111};
     blob.sym_rel_offsets = {0, 0};
@@ -481,6 +507,7 @@ TEST_CASE(RangesBeyondContentRejected) {
     index::ShardBlob blob;
     blob.format_version = index::index_format_version;
     blob.content = "aaaaaaaaaaaaaaaa";
+    blob.content_hash = llvm::xxh3_64bits(llvm::StringRef(blob.content));
     blob.variants = {1};
     blob.sym_hashes = {111};
     blob.sym_rel_offsets = {0, 1};
@@ -541,6 +568,7 @@ TEST_CASE(DuplicateSymbolHashRejected) {
     index::ShardBlob blob;
     blob.format_version = index::index_format_version;
     blob.content = "aaaa";
+    blob.content_hash = llvm::xxh3_64bits(llvm::StringRef(blob.content));
     blob.variants = {1};
     blob.sym_hashes = {111, 222};
     blob.sym_rel_offsets = {0, 0, 0};
@@ -557,6 +585,66 @@ TEST_CASE(DuplicateSymbolHashRejected) {
     ASSERT_FALSE(make_shard(bytes_of()).loaded());
 }
 
+TEST_CASE(DuplicateVariantRejected) {
+    // Liveness and compaction select variants by rows hash; a duplicated
+    // entry would make every copy live at once, and rows masked only to the
+    // extra id would serve and survive with no contribution owning them.
+    index::ShardBlob blob;
+    blob.format_version = index::index_format_version;
+    blob.content = "aaaa";
+    blob.content_hash = llvm::xxh3_64bits(llvm::StringRef(blob.content));
+    blob.variants = {1, 2};
+    blob.sym_hashes = {111};
+    blob.sym_rel_offsets = {0, 0};
+
+    auto bytes_of = [&] {
+        std::string bytes;
+        llvm::raw_string_ostream os(bytes);
+        index::serialize_blob(blob, os);
+        return bytes;
+    };
+    ASSERT_TRUE(make_shard(bytes_of()).loaded());
+
+    blob.variants = {1, 1};
+    ASSERT_FALSE(make_shard(bytes_of()).loaded());
+}
+
+TEST_CASE(StraySymbolIdRejected) {
+    // Lookups dereference symbol ids straight into the hash table; an id
+    // past it would previously read as "no symbol", missing the occurrence
+    // or dropping the relation's target forever with no reindex triggered.
+    index::ShardBlob blob;
+    blob.format_version = index::index_format_version;
+    blob.content = "aaaaaaaaaaaaaaaa";
+    blob.content_hash = llvm::xxh3_64bits(llvm::StringRef(blob.content));
+    blob.variants = {1};
+    blob.sym_hashes = {111};
+    blob.sym_rel_offsets = {0, 1};
+    blob.occ_begins = {0};
+    blob.occ_lengths = {3};
+    blob.occ_syms16 = {0};
+    blob.rel_kinds = {static_cast<std::uint8_t>(RelationKind::Base)};
+    blob.rel_begins = {4};
+    blob.rel_lengths = {3};
+    blob.rel_sym_rows = {0};
+    blob.rel_sym16 = {0};
+
+    auto bytes_of = [&] {
+        std::string bytes;
+        llvm::raw_string_ostream os(bytes);
+        index::serialize_blob(blob, os);
+        return bytes;
+    };
+    ASSERT_TRUE(make_shard(bytes_of()).loaded());
+
+    blob.occ_syms16 = {5};
+    ASSERT_FALSE(make_shard(bytes_of()).loaded());
+    blob.occ_syms16 = {0};
+
+    blob.rel_sym16 = {5};
+    ASSERT_FALSE(make_shard(bytes_of()).loaded());
+}
+
 TEST_CASE(OwnerlessMaskRejected) {
     // A mask owning no stored variant serves its row unconditionally while
     // every variant is live (row_live's live.all fast path never consults
@@ -565,6 +653,7 @@ TEST_CASE(OwnerlessMaskRejected) {
     index::ShardBlob blob;
     blob.format_version = index::index_format_version;
     blob.content = "aaaa";
+    blob.content_hash = llvm::xxh3_64bits(llvm::StringRef(blob.content));
     blob.variants = {1, 2};
     blob.sym_hashes = {111};
     blob.sym_rel_offsets = {0, 0};
@@ -630,6 +719,7 @@ TEST_CASE(CorruptRoaringMaskRejected) {
     index::ShardBlob blob;
     blob.format_version = index::index_format_version;
     blob.content = "aaaa";
+    blob.content_hash = llvm::xxh3_64bits(llvm::StringRef(blob.content));
     for(std::uint32_t i = 1; i <= 65; i += 1) {
         blob.variants.push_back(i);
     }

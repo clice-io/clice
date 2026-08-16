@@ -12,6 +12,7 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/xxhash.h"
 
 namespace clice::index {
 
@@ -109,13 +110,29 @@ Bitmap read_row_bitmap(const RowColumns& columns, std::uint32_t row) {
 /// Structural verification does not constrain field values; everything the
 /// readers dereference through raw column pointers or binary-search must be
 /// proven in-bounds and in order here, once, so queries stay check-free.
-/// Column VALUES that merely select rows or symbols are clamped at use.
 bool validate(ShardView root) {
     auto variants = to_array_ref(root[&ShardBlob::variants]);
     auto sym_hashes = to_array_ref(root[&ShardBlob::sym_hashes]);
     auto offsets = to_array_ref(root[&ShardBlob::sym_rel_offsets]);
 
     if(variants.empty()) {
+        return false;
+    }
+    // A variant is identified by its rows hash everywhere (set_live,
+    // write_shard's keep filter), so hashes must be unique: rows owned only
+    // by a duplicated entry would serve and survive compaction with no
+    // contribution owning them.
+    llvm::SmallVector<RowsHash> sorted_variants(variants.begin(), variants.end());
+    std::ranges::sort(sorted_variants);
+    if(std::ranges::adjacent_find(sorted_variants) != sorted_variants.end()) {
+        return false;
+    }
+
+    // Every freshness decision compares the advertised content hash
+    // (manifest FileVersions, the merge's generation checks), so content
+    // bytes corrupted under an intact structure would keep loading as fresh
+    // while position mapping reads text the rows were not built from.
+    if(llvm::xxh3_64bits(to_ref(root[&ShardBlob::content])) != root[&ShardBlob::content_hash]) {
         return false;
     }
 
@@ -137,6 +154,9 @@ bool validate(ShardView root) {
         return false;
     }
 
+    auto sym_ids_ok = [&](auto ids) {
+        return llvm::all_of(ids, [&](std::uint32_t id) { return id < sym_hashes.size(); });
+    };
     auto occ_syms16 = to_array_ref(root[&ShardBlob::occ_syms16]);
     auto occ_syms32 = to_array_ref(root[&ShardBlob::occ_syms32]);
     if(occ.lengths.size() != occ_count) {
@@ -144,6 +164,9 @@ bool validate(ShardView root) {
     }
     if(occ_syms16.size() + occ_syms32.size() != occ_count ||
        (!occ_syms16.empty() && !occ_syms32.empty())) {
+        return false;
+    }
+    if(!sym_ids_ok(occ_syms16) || !sym_ids_ok(occ_syms32)) {
         return false;
     }
 
@@ -227,6 +250,9 @@ bool validate(ShardView root) {
     auto rel_sym32 = to_array_ref(root[&ShardBlob::rel_sym32]);
     if(!sparse_ok(rel_sym_rows, rel_sym16.size() + rel_sym32.size(), rel_count) ||
        (!rel_sym16.empty() && !rel_sym32.empty())) {
+        return false;
+    }
+    if(!sym_ids_ok(rel_sym16) || !sym_ids_ok(rel_sym32)) {
         return false;
     }
     auto rel_def_rows = to_array_ref(root[&ShardBlob::rel_def_rows]);
@@ -317,12 +343,6 @@ std::uint32_t occ_sym_id(ShardView root, std::uint32_t row) {
         return syms16[row];
     }
     return to_array_ref(root[&ShardBlob::occ_syms32])[row];
-}
-
-SymbolHash sym_hash_at(llvm::ArrayRef<std::uint64_t> sym_hashes, std::uint32_t id) {
-    // Ids come from unvalidated column values; an out-of-range one reads as
-    // "no symbol" instead of out-of-bounds.
-    return id < sym_hashes.size() ? sym_hashes[id] : 0;
 }
 
 }  // namespace
@@ -456,7 +476,7 @@ void Shard::lookup(std::uint32_t offset,
         if(!row_live(true, row)) {
             continue;
         }
-        Occurrence result{range, sym_hash_at(sym_hashes, occ_sym_id(root, row))};
+        Occurrence result{range, sym_hashes[occ_sym_id(root, row)]};
         if(!callback(result)) {
             break;
         }
@@ -522,7 +542,7 @@ void Shard::lookup(SymbolHash symbol,
         } else if(sym_cursor < static_cast<std::ptrdiff_t>(sym_rows.size()) &&
                   sym_rows[sym_cursor] == row) {
             auto payload = sym16.empty() ? sym32[sym_cursor] : sym16[sym_cursor];
-            relation.target_symbol = sym_hash_at(sym_hashes, payload);
+            relation.target_symbol = sym_hashes[payload];
         }
 
         if(!callback(relation)) {
@@ -630,7 +650,7 @@ MaskT remap_mask(ShardView root,
                  llvm::ArrayRef<std::int64_t> id_map) {
     MaskT result{};
     auto apply = [&](std::uint32_t old_id) {
-        if(old_id < id_map.size() && id_map[old_id] >= 0) {
+        if(id_map[old_id] >= 0) {
             mask_or(result, single_bit<MaskT>(static_cast<std::uint32_t>(id_map[old_id])));
         }
     };
@@ -720,7 +740,7 @@ void merge_occurrences(ShardView old_root,
             }
             old_rows.push_back({columns.begins[row],
                                 columns.end_of(row),
-                                sym_hash_at(sym_hashes, occ_sym_id(old_root, row)),
+                                sym_hashes[occ_sym_id(old_root, row)],
                                 std::move(mask)});
         }
     }
@@ -789,7 +809,7 @@ std::vector<RelRow<MaskT>> decode_relation_group(ShardView root,
         } else if(sym_cursor < static_cast<std::ptrdiff_t>(sym_rows.size()) &&
                   sym_rows[sym_cursor] == row) {
             auto id = sym16.empty() ? sym32[sym_cursor] : sym16[sym_cursor];
-            payload = sym_hash_at(sym_hashes, id);
+            payload = sym_hashes[id];
         }
 
         rows.push_back(
