@@ -640,7 +640,7 @@ void LSPClient::register_extensions() {
                 auto& st = entry.second;
                 if(st.state) {
                     stats.pch_loaded_states += 1;
-                    stats.pch_state_bytes += st.state->size();
+                    stats.pch_state_bytes += st.state->bytes().size();
                 }
             }
             stats.pch_cache_entries = static_cast<std::uint32_t>(srv.workspace.pch_cache.size());

@@ -321,9 +321,7 @@ void StatefulWorker::register_handlers() {
                     result.deps = doc->unit.deps();
 
                     // Build index for main file only (interested_only=true).
-                    auto tu_index = index::TUIndex::build(doc->unit, true);
-                    llvm::raw_string_ostream os(result.tu_index_data);
-                    tu_index.serialize(os);
+                    result.tu_index_data = index::build_tu_index(doc->unit, true);
                 }
 
                 // A unit that is neither complete nor a fatal-error result

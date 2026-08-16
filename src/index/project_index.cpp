@@ -57,7 +57,7 @@ struct GlobalBlob {
 }  // namespace
 
 bool ProjectIndex::merge(this ProjectIndex& self,
-                         const TUIndexView& view,
+                         const TUIndex& view,
                          llvm::ArrayRef<std::uint32_t> file_ids_map) {
     // Decode and bound every reference bitmap before touching the table:
     // merged bits persist in the global blob while the result's recorded

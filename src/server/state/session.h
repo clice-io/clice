@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-#include "index/shard.h"
+#include "index/tu_index.h"
 #include "server/state/quarantine.h"
 #include "server/state/workspace.h"
 
@@ -149,16 +149,18 @@ struct Session {
     /// errors never trigger a pointless prefix synthesis.
     bool trial_done = false;
 
-    /// Symbol index built from the latest compilation of this file's buffer,
-    /// held as the worker's shard blob and queried through the unified
-    /// reader (empty = no index). Used for queries (hover, goto,
-    /// references) on this file. NOT merged into Workspace.project_index —
-    /// that only gets disk-derived data from background indexing.
-    index::Shard file_index;
+    /// The latest compilation's index envelope, owned; the readers it
+    /// hands out (main-file rows, symbol identities) borrow it. Empty
+    /// until a compile lands index data. NOT merged into
+    /// Workspace.project_index — that only gets disk-derived data from
+    /// background indexing.
+    index::TUIndex index;
 
-    /// Symbol table from the latest compilation, mapping symbol hashes to
-    /// names and kinds.
-    std::optional<index::SymbolTable> symbols;
+    /// The interested file's rows within `index` (an empty shard when the
+    /// compile produced none).
+    const index::Shard& file_rows() const {
+        return index.shard_of(index.path_count() - 1);
+    }
 
     /// Publishable products of the latest compilation, kept for the
     /// transport push path (see CompileOutput).

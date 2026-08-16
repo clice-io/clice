@@ -38,13 +38,12 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
     // Zero-copy consumption: the wire stays serialized; a new variant's
     // blob bytes are sliced out and installed or merged without decoding
     // the envelope, and only genuinely new symbol names are materialized.
-    auto loaded =
-        index::TUIndexView::from(llvm::StringRef(static_cast<const char*>(tu_index_data), size));
-    if(!loaded) {
+    auto view =
+        index::TUIndex::from_bytes(llvm::StringRef(static_cast<const char*>(tu_index_data), size));
+    if(!view.loaded()) {
         LOG_WARN("Ignoring TUIndex that failed verification");
         return;
     }
-    auto& view = *loaded;
     if(view.path_count() == 0) {
         LOG_WARN("Ignoring TUIndex with empty path graph");
         return;

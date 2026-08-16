@@ -86,7 +86,7 @@ struct ProjectIndex {
     /// the result's recorded versions match the disk, so lost bits would
     /// never be rebuilt.
     bool merge(this ProjectIndex& self,
-               const TUIndexView& view,
+               const TUIndex& view,
                llvm::ArrayRef<std::uint32_t> file_ids_map);
 
     /// The FileVersion id for (path, content hash), interning a new record

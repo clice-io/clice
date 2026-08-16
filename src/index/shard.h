@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-#include "index/tu_index.h"
+#include "index/types.h"
 #include "support/bitmap.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -92,6 +92,15 @@ public:
     void lookup(SymbolHash symbol,
                 RelationKind kind,
                 llvm::function_ref<bool(const Relation&)> callback) const;
+
+    /// Visit every live occurrence in row order (sorted by range, then
+    /// target hash).
+    void for_each_occurrence(llvm::function_ref<bool(const Occurrence&)> callback) const;
+
+    /// Visit every live relation, grouped by symbol in ascending hash
+    /// order, rows in (kind, range, payload) order within each group.
+    void for_each_relation(
+        llvm::function_ref<bool(SymbolHash, const Relation&)> callback) const;
 
     /// Look up a local symbol's name and kind.
     bool find_symbol(SymbolHash hash, std::string& name, SymbolKind& kind) const;

@@ -9,6 +9,7 @@
 #include "compile/compilation.h"
 #include "driver/driver.h"
 #include "feature/feature.h"
+#include "index/shard.h"
 #include "index/tu_index.h"
 #include "support/filesystem.h"
 #include "syntax/annotation.h"
@@ -235,21 +236,28 @@ struct RawOccurrence {
 std::optional<kota::codec::RawValue> run_tu_index(CompilationUnitRef unit,
                                                   [[maybe_unused]] llvm::StringRef config) {
     auto index = index::TUIndex::build(unit);
-    auto sorted = index.main_file_index.occurrences;
-    std::ranges::sort(sorted, {}, [](const index::Occurrence& occurrence) {
-        return std::tuple(occurrence.range.begin, occurrence.range.end, occurrence.target);
+    index::Shard rows;
+    if(auto* section = index.main_section()) {
+        rows = index::Shard::from_bytes(
+            llvm::StringRef(reinterpret_cast<const char*>(section->blob.data()),
+                            section->blob.size()));
+    }
+
+    llvm::DenseMap<index::SymbolHash, std::vector<index::Relation>> relations;
+    rows.for_each_relation([&](index::SymbolHash hash, const index::Relation& relation) {
+        relations[hash].push_back(relation);
+        return true;
     });
 
     std::vector<RawOccurrence> out;
-    for(const auto& occurrence: sorted) {
+    rows.for_each_occurrence([&](const index::Occurrence& occurrence) {
         RawOccurrence raw;
         raw.range = LocalSourceRange(occurrence.range.begin, occurrence.range.end);
         auto symbol = index.symbols.find(occurrence.target);
         raw.kind =
             symbol != index.symbols.end() ? symbol->second.kind : SymbolKind(SymbolKind::Invalid);
-        if(auto relations = index.main_file_index.relations.find(occurrence.target);
-           relations != index.main_file_index.relations.end()) {
-            for(const auto& relation: relations->second) {
+        if(auto found = relations.find(occurrence.target); found != relations.end()) {
+            for(const auto& relation: found->second) {
                 if(relation.range == occurrence.range) {
                     raw.relations.emplace_back(
                         kota::meta::enum_name(static_cast<RelationKind::Kind>(relation.kind),
@@ -258,7 +266,8 @@ std::optional<kota::codec::RawValue> run_tu_index(CompilationUnitRef unit,
             }
         }
         out.push_back(std::move(raw));
-    }
+        return true;
+    });
     return to_raw_json(out);
 }
 

@@ -118,7 +118,7 @@ struct LogFloodResult {
 struct StatsParams {};
 
 struct StatsResult {
-    /// pch_cache entries whose PreambleIndex blob is currently open, and
+    /// pch_cache entries whose pch.idx envelope is currently open, and
     /// their mapped bytes. Steady state after closing documents: bounded
     /// by the loaded-state budget, not by every key ever touched.
     std::uint32_t pch_loaded_states = 0;

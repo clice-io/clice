@@ -20,6 +20,63 @@ namespace clice::index {
 
 namespace {
 
+/// One file's rows on the wire: a self-contained single-variant shard
+/// blob (index/shard.h). `hash` is xxh3 of `blob` — the variant's
+/// identity — so the master can skip blobs it already stores without
+/// touching their bytes.
+struct FileSection {
+    std::uint32_t path_id = 0;
+
+    std::uint64_t hash = 0;
+
+    std::vector<std::uint8_t> blob;
+};
+
+/// The envelope's wire layout. Only the builder below ever materializes
+/// it; every consumer reads the bytes through the TUIndex reader.
+struct EnvelopeBlob {
+    /// Wire schema version (index_format_version), gated by TUIndex::from.
+    /// A worker respawned after the binary on disk changed can be one
+    /// build ahead of the server, and a layout change need not be
+    /// structurally detectable.
+    std::uint32_t format_version = 0;
+
+    /// Milliseconds since epoch, sampled before the build started.
+    std::int64_t built_at = 0;
+
+    /// The include graph (IncludeGraph's persisted vectors): the path
+    /// table, the consumed-content hash per path, and every include edge
+    /// of the parse.
+    std::vector<std::string> paths;
+    std::vector<std::uint64_t> path_hashes;
+    std::vector<IncludeLocation> locations;
+
+    SymbolTable symbols;
+
+    /// One entry per file with rows, ascending by path id.
+    std::vector<FileSection> sections;
+
+    /// Preamble ride-alongs, empty on ordinary envelopes: identity of the
+    /// exact preamble text the PCH was built from (matches_prefix), and
+    /// the PCH-derived feature state spliced into main-file results. The
+    /// refs borrow the builder's inputs — encode-only, like the section
+    /// blobs are for readers.
+    std::uint64_t preamble_hash = 0;
+    std::uint32_t preamble_size = 0;
+    llvm::ArrayRef<feature::DocumentLink> links;
+    llvm::ArrayRef<std::uint32_t> inactive_regions;
+    llvm::ArrayRef<std::uint8_t> open_conditionals;
+};
+
+/// What build_preamble_index adds on top of an ordinary build.
+struct PreambleExtras {
+    std::uint64_t hash = 0;
+    std::uint32_t size = 0;
+    llvm::ArrayRef<feature::DocumentLink> links;
+    llvm::ArrayRef<std::uint32_t> inactive_regions;
+    llvm::ArrayRef<std::uint8_t> open_conditionals;
+};
+
 SymbolScope classify_scope(const clang::NamedDecl* decl) {
     auto linkage = decl->getFormalLinkage();
     if(linkage == clang::Linkage::None)
@@ -33,8 +90,8 @@ SymbolScope classify_scope(const clang::NamedDecl* decl) {
 /// relations from the resolve facts, macros from the preprocessor directives.
 class Projector {
 public:
-    Projector(TUIndex& result, CompilationUnitRef unit, bool interested_only) :
-        result(result), unit(unit), interested_only(interested_only) {}
+    Projector(CompilationUnitRef unit, bool interested_only) :
+        unit(unit), interested_only(interested_only) {}
 
     /// The only gate through which rows enter `file_indices`. With
     /// interested_only, the index covers just the interested file — yet
@@ -75,7 +132,7 @@ public:
         }
 
         auto symbol_id = unit.getSymbolID(decl);
-        auto [it, success] = result.symbols.try_emplace(symbol_id.hash);
+        auto [it, success] = symbols.try_emplace(symbol_id.hash);
         if(success) {
             auto& symbol = it->second;
             symbol.name = display::name_of(decl);
@@ -102,7 +159,7 @@ public:
         // build() would default-construct a nameless entry when recording
         // reference files, and every name lookup for the macro would come
         // back empty.
-        auto [it, success] = result.symbols.try_emplace(symbol_id.hash);
+        auto [it, success] = symbols.try_emplace(symbol_id.hash);
         if(success) {
             auto& symbol = it->second;
             symbol.name = unit.token_spelling(location).str();
@@ -234,7 +291,7 @@ public:
             }
             index->relations[hash].emplace_back(relation);
 
-            auto& symbol = result.symbols[hash];
+            auto& symbol = symbols[hash];
             if(symbol.name.empty()) {
                 symbol.name = name.str();
                 symbol.kind = SymbolKind::Module;
@@ -505,7 +562,7 @@ public:
         }
     }
 
-    void build() {
+    std::string build(const PreambleExtras* extras) {
         ScopedTimer semantics_timer;
         /// The interested-only shape is the one features share, cached on the
         /// unit; the whole-TU shape is transient — projected and dropped.
@@ -532,11 +589,11 @@ public:
         for(auto& [fid, index]: file_indices) {
             indexed_fids.push_back(fid);
         }
-        result.graph = IncludeGraph::from(unit, indexed_fids);
+        graph = IncludeGraph::from(unit, indexed_fids);
 
         for(auto& [fid, index]: file_indices) {
             for(auto symbol_id: llvm::make_first_range(index.relations)) {
-                result.symbols[symbol_id].reference_files.add(result.graph.path_id(fid));
+                symbols[symbol_id].reference_files.add(graph.path_id(fid));
             }
         }
         auto finish_ms = finish_timer.ms_f();
@@ -556,10 +613,10 @@ public:
             // include edge in the predefines buffer, which is a valid
             // location. The interested file legitimately has no edge.
             if(fid != unit.interested_file() &&
-               result.graph.include_location_id(fid) == static_cast<std::uint32_t>(-1)) {
+               graph.include_location_id(fid) == static_cast<std::uint32_t>(-1)) {
                 continue;
             }
-            auto path_id = result.graph.path_id(fid);
+            auto path_id = graph.path_id(fid);
             path_fids.try_emplace(path_id, fid);
             auto& into = by_path[path_id];
             if(into.empty()) {
@@ -576,8 +633,8 @@ public:
         }
 
         auto resolve = [&](SymbolHash hash) -> std::optional<SymbolIdentity> {
-            auto it = result.symbols.find(hash);
-            if(it == result.symbols.end()) {
+            auto it = symbols.find(hash);
+            if(it == symbols.end()) {
                 return std::nullopt;
             }
             return SymbolIdentity{it->second.name, it->second.kind, it->second.scope};
@@ -588,9 +645,8 @@ public:
         for(auto path_id: llvm::make_first_range(by_path)) {
             path_ids.push_back(path_id);
         }
-        // Ascending path ids put the interested file (the last path id)
-        // last — the position main_section() relies on.
         llvm::sort(path_ids);
+        std::vector<FileSection> sections;
         for(auto path_id: path_ids) {
             auto& rows = by_path[path_id];
             if(rows.empty()) {
@@ -600,107 +656,88 @@ public:
             llvm::raw_string_ostream os(bytes);
             write_shard(rows, resolve, unit.file_content(path_fids[path_id]), os);
             auto hash = llvm::xxh3_64bits(bytes);
-            result.sections.push_back(
+            sections.push_back(
                 {path_id, hash, std::vector<std::uint8_t>(bytes.begin(), bytes.end())});
         }
+        auto encode_ms = encode_timer.ms_f();
+
+        EnvelopeBlob blob;
+        blob.format_version = index_format_version;
+        blob.built_at = unit.build_at().count();
+        blob.paths = std::move(graph.paths);
+        blob.path_hashes = std::move(graph.path_hashes);
+        blob.locations = std::move(graph.locations);
+        blob.symbols = std::move(symbols);
+        blob.sections = std::move(sections);
+        if(extras) {
+            blob.preamble_hash = extras->hash;
+            blob.preamble_size = extras->size;
+            blob.links = extras->links;
+            blob.inactive_regions = extras->inactive_regions;
+            blob.open_conditionals = extras->open_conditionals;
+        }
+
+        ScopedTimer pack_timer;
+        std::string envelope;
+        llvm::raw_string_ostream os(envelope);
+        serialize_blob(blob, os);
 
         LOG_PERF("index_detail",
                  "op=build scope={} semantics_ms={:.2f} project_ms={:.2f} finish_ms={:.2f} "
-                 "encode_ms={:.2f}",
+                 "encode_ms={:.2f} pack_ms={:.2f}",
                  interested_only ? "interested" : "full",
                  semantics_ms,
                  project_ms,
                  finish_ms,
-                 encode_timer.ms_f());
+                 encode_ms,
+                 pack_timer.ms_f());
+        return envelope;
     }
 
 private:
-    TUIndex& result;
     CompilationUnitRef unit;
     bool interested_only;
+    IncludeGraph graph;
+    SymbolTable symbols;
     /// Build-time working state keyed by FileID — clang::FileID means
     /// nothing outside the compilation, so it never leaves the builder;
-    /// the encode step above converts it through graph.path_id.
+    /// the encode step converts it through graph.path_id.
     llvm::DenseMap<clang::FileID, FileIndex> file_indices;
     llvm::DenseMap<std::uint32_t, const clang::NamedDecl*> enclosing_cache;
 };
 
 }  // namespace
 
-TUIndex TUIndex::build(CompilationUnitRef unit, bool interested_only) {
-    TUIndex index;
-    index.built_at = unit.build_at();
-
-    Projector projector(index, unit, interested_only);
-    projector.build();
-
-    return index;
+std::string build_tu_index(CompilationUnitRef unit, bool interested_only) {
+    Projector projector(unit, interested_only);
+    return projector.build(nullptr);
 }
 
-void TUIndex::serialize(llvm::raw_ostream& os) {
-    format_version = index_format_version;
-
-    ScopedTimer pack_timer;
-    serialize_blob(*this, os);
-    LOG_PERF("index_detail", "op=serialize pack_ms={:.2f}", pack_timer.ms_f());
-}
-
-std::optional<TUIndex> TUIndex::from(llvm::StringRef data) {
-    std::optional<TUIndex> index{std::in_place};
-    if(!deserialize_blob(data, *index) || index->format_version != index_format_version) {
-        return std::nullopt;
-    }
-    // The verifier checks structure, not cross-field consistency: consumers
-    // index path_hashes by path id, so normalize its length to the path
-    // table's (absent hashes read as 0 = "unavailable").
-    index->graph.path_hashes.resize(index->graph.paths.size(), 0);
-
-    // Nor does it constrain field values, and every decoded path id is
-    // dereferenced against the path table without further checks — graph
-    // locations and wire sections in Indexer::merge, reference_files
-    // through ProjectIndex::merge's file_ids_map. A blob carrying an
-    // out-of-range one is rejected as a whole.
-    auto in_range = [count = index->graph.paths.size()](std::uint32_t path_id) {
-        return path_id < count;
+std::string build_preamble_index(CompilationUnitRef unit,
+                                 llvm::ArrayRef<feature::DocumentLink> links,
+                                 llvm::ArrayRef<std::uint32_t> inactive_regions,
+                                 llvm::ArrayRef<std::uint8_t> open_conditionals) {
+    // The preamble compile remaps the buffer truncated at the bound, so
+    // interested_content() is exactly the preamble text the PCH was built
+    // from.
+    auto preamble_text = unit.interested_content();
+    PreambleExtras extras{
+        .hash = llvm::xxh3_64bits(preamble_text),
+        .size = static_cast<std::uint32_t>(preamble_text.size()),
+        .links = links,
+        .inactive_regions = inactive_regions,
+        .open_conditionals = open_conditionals,
     };
-    for(auto& location: index->graph.locations) {
-        if(!in_range(location.path_id)) {
-            return std::nullopt;
-        }
-    }
-    for(auto& section: index->sections) {
-        if(!in_range(section.path_id)) {
-            return std::nullopt;
-        }
-    }
-    for(auto& [_, symbol]: index->symbols) {
-        if(!symbol.reference_files.isEmpty() && !in_range(symbol.reference_files.maximum())) {
-            return std::nullopt;
-        }
-    }
-    return index;
-}
-
-const FileSection* TUIndex::main_section() const {
-    if(graph.paths.empty()) {
-        return nullptr;
-    }
-    auto main_id = static_cast<std::uint32_t>(graph.paths.size() - 1);
-    // The interested file's section is appended last by serialize().
-    for(auto& section: std::ranges::reverse_view(sections)) {
-        if(section.path_id == main_id) {
-            return &section;
-        }
-    }
-    return nullptr;
+    Projector projector(unit, false);
+    return projector.build(&extras);
 }
 
 namespace {
 
-using WireView = kota::codec::fbs::table_view<TUIndex>;
+using WireView = kota::codec::fbs::table_view<EnvelopeBlob>;
 
-/// The buffer was fully verified at TUIndexView::from; per-accessor views
-/// skip that cost.
+/// The buffer was fully verified at TUIndex::from_bytes; per-accessor
+/// views skip that cost.
 WireView wire_root(llvm::StringRef data) {
     return WireView::from_verified_bytes(blob_bytes(data));
 }
@@ -723,110 +760,204 @@ llvm::StringRef bitmap_bytes(kota::codec::fbs::table_view<Symbol> symbol) {
 
 }  // namespace
 
-std::optional<TUIndexView> TUIndexView::from(llvm::StringRef data) {
+TUIndex TUIndex::from_bytes(llvm::StringRef data) {
     auto root = WireView::from_bytes(blob_bytes(data));
-    if(!root.valid() || root[&TUIndex::format_version] != index_format_version) {
-        return std::nullopt;
+    if(!root.valid() || root[&EnvelopeBlob::format_version] != index_format_version) {
+        return {};
     }
 
     // Structural verification does not constrain field values; every path
     // id the merge dereferences against the path table is bounded here so
     // the accessors stay check-free.
-    auto graph = root[&TUIndex::graph];
-    auto count = graph[&IncludeGraph::paths].size();
-    auto locations = graph[&IncludeGraph::locations];
+    auto count = root[&EnvelopeBlob::paths].size();
+    auto locations = root[&EnvelopeBlob::locations];
     for(std::size_t i = 0; i < locations.size(); i += 1) {
         IncludeLocation location = locations.at(i);
         if(location.path_id >= count) {
-            return std::nullopt;
+            return {};
         }
     }
-    auto sections = root[&TUIndex::sections];
+    auto sections = root[&EnvelopeBlob::sections];
     for(std::size_t i = 0; i < sections.size(); i += 1) {
         if(sections.at(i)[&FileSection::path_id] >= count) {
-            return std::nullopt;
+            return {};
         }
     }
-    return TUIndexView(data);
+
+    TUIndex result;
+    result.data = data;
+    return result;
 }
 
-std::int64_t TUIndexView::built_at() const {
-    return wire_root(data)[&TUIndex::built_at];
+TUIndex TUIndex::from_buffer(std::unique_ptr<llvm::MemoryBuffer> buffer) {
+    if(!buffer) {
+        return {};
+    }
+    auto result = from_bytes(buffer->getBuffer());
+    if(result.loaded()) {
+        result.owned = std::move(buffer);
+    }
+    return result;
 }
 
-std::uint32_t TUIndexView::path_count() const {
-    return static_cast<std::uint32_t>(
-        wire_root(data)[&TUIndex::graph][&IncludeGraph::paths].size());
+std::int64_t TUIndex::built_at() const {
+    return loaded() ? wire_root(data)[&EnvelopeBlob::built_at] : 0;
 }
 
-llvm::StringRef TUIndexView::path(std::uint32_t id) const {
-    return to_ref(wire_root(data)[&TUIndex::graph][&IncludeGraph::paths].at(id));
+std::uint32_t TUIndex::path_count() const {
+    return loaded() ? static_cast<std::uint32_t>(wire_root(data)[&EnvelopeBlob::paths].size()) : 0;
 }
 
-std::uint64_t TUIndexView::path_hash(std::uint32_t id) const {
+llvm::StringRef TUIndex::path(std::uint32_t id) const {
+    return to_ref(wire_root(data)[&EnvelopeBlob::paths].at(id));
+}
+
+std::uint64_t TUIndex::path_hash(std::uint32_t id) const {
     // The hash column may be shorter than the path table on a foreign
-    // blob; an absent hash reads as 0, "unavailable" — the same
-    // normalization TUIndex::from applies.
-    auto hashes = wire_root(data)[&TUIndex::graph][&IncludeGraph::path_hashes];
+    // blob; an absent hash reads as 0, "unavailable".
+    auto hashes = wire_root(data)[&EnvelopeBlob::path_hashes];
     return id < hashes.size() ? hashes.at(id) : 0;
 }
 
-std::uint32_t TUIndexView::location_count() const {
-    return static_cast<std::uint32_t>(
-        wire_root(data)[&TUIndex::graph][&IncludeGraph::locations].size());
+std::uint32_t TUIndex::location_count() const {
+    return loaded()
+               ? static_cast<std::uint32_t>(wire_root(data)[&EnvelopeBlob::locations].size())
+               : 0;
 }
 
-IncludeLocation TUIndexView::location(std::uint32_t i) const {
-    return wire_root(data)[&TUIndex::graph][&IncludeGraph::locations].at(i);
+IncludeLocation TUIndex::location(std::uint32_t i) const {
+    return wire_root(data)[&EnvelopeBlob::locations].at(i);
 }
 
-std::uint32_t TUIndexView::section_count() const {
-    return static_cast<std::uint32_t>(wire_root(data)[&TUIndex::sections].size());
+std::uint32_t TUIndex::section_count() const {
+    return loaded() ? static_cast<std::uint32_t>(wire_root(data)[&EnvelopeBlob::sections].size())
+                    : 0;
 }
 
-std::uint32_t TUIndexView::section_path(std::uint32_t i) const {
-    return wire_root(data)[&TUIndex::sections].at(i)[&FileSection::path_id];
+std::uint32_t TUIndex::section_path(std::uint32_t i) const {
+    return wire_root(data)[&EnvelopeBlob::sections].at(i)[&FileSection::path_id];
 }
 
-std::uint64_t TUIndexView::section_hash(std::uint32_t i) const {
-    return wire_root(data)[&TUIndex::sections].at(i)[&FileSection::hash];
+std::uint64_t TUIndex::section_hash(std::uint32_t i) const {
+    return wire_root(data)[&EnvelopeBlob::sections].at(i)[&FileSection::hash];
 }
 
-llvm::StringRef TUIndexView::section_blob(std::uint32_t i) const {
-    auto blob = to_array_ref(wire_root(data)[&TUIndex::sections].at(i)[&FileSection::blob]);
+llvm::StringRef TUIndex::section_blob(std::uint32_t i) const {
+    auto blob = to_array_ref(wire_root(data)[&EnvelopeBlob::sections].at(i)[&FileSection::blob]);
     return llvm::StringRef(reinterpret_cast<const char*>(blob.data()), blob.size());
 }
 
-std::optional<std::uint32_t> TUIndexView::main_section_index() const {
-    auto count = path_count();
-    if(count == 0) {
-        return std::nullopt;
-    }
-    auto main_id = count - 1;
-    // The interested file's section is appended last by serialize().
-    for(auto i = section_count(); i > 0; i -= 1) {
-        if(section_path(i - 1) == main_id) {
-            return i - 1;
+std::optional<std::uint32_t> TUIndex::section_of(std::uint32_t path_id) const {
+    std::uint32_t lo = 0;
+    std::uint32_t hi = section_count();
+    while(lo < hi) {
+        auto mid = lo + (hi - lo) / 2;
+        if(section_path(mid) < path_id) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
         }
+    }
+    if(lo < section_count() && section_path(lo) == path_id) {
+        return lo;
     }
     return std::nullopt;
 }
 
-void TUIndexView::iterate_symbols(
+const Shard& TUIndex::shard_of(std::uint32_t path_id) const {
+    static const Shard missing;
+    auto section = section_of(path_id);
+    if(!section) {
+        return missing;
+    }
+    if(shards.empty()) {
+        shards.resize(section_count());
+    }
+    auto& slot = shards[*section];
+    if(!slot.loaded()) {
+        slot = Shard::from_bytes(section_blob(*section));
+    }
+    return slot;
+}
+
+bool TUIndex::shards_verify() const {
+    if(shards.empty()) {
+        shards.resize(section_count());
+    }
+    for(std::uint32_t i = 0; i < section_count(); i += 1) {
+        if(!shards[i].loaded()) {
+            shards[i] = Shard::from_bytes(section_blob(i));
+            if(!shards[i].loaded()) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+void TUIndex::iterate_symbols(
     llvm::function_ref<void(SymbolHash, const SymbolIdentity&, llvm::StringRef)> callback) const {
-    auto symbols = wire_root(data)[&TUIndex::symbols];
+    if(!loaded()) {
+        return;
+    }
+    auto symbols = wire_root(data)[&EnvelopeBlob::symbols];
     for(std::size_t i = 0; i < symbols.size(); i += 1) {
         auto entry = symbols.at(i);
         callback(entry.get<0>(), identity_of(entry.get<1>()), bitmap_bytes(entry.get<1>()));
     }
 }
 
-std::optional<SymbolIdentity> TUIndexView::find_symbol(SymbolHash hash) const {
-    auto found = wire_root(data)[&TUIndex::symbols].find(hash);
+std::optional<SymbolIdentity> TUIndex::find_symbol(SymbolHash hash) const {
+    if(!loaded()) {
+        return std::nullopt;
+    }
+    auto found = wire_root(data)[&EnvelopeBlob::symbols].find(hash);
     if(!found) {
         return std::nullopt;
     }
     return identity_of(found->get<1>());
+}
+
+bool TUIndex::matches_prefix(llvm::StringRef text) const {
+    if(!loaded()) {
+        return false;
+    }
+    auto root = wire_root(data);
+    auto size = root[&EnvelopeBlob::preamble_size];
+    return text.size() >= size &&
+           llvm::xxh3_64bits(text.take_front(size)) == root[&EnvelopeBlob::preamble_hash];
+}
+
+std::vector<feature::DocumentLink> TUIndex::links() const {
+    if(!loaded()) {
+        return {};
+    }
+    auto entries = wire_root(data)[&EnvelopeBlob::links];
+
+    std::vector<feature::DocumentLink> links;
+    links.reserve(entries.size());
+    for(std::size_t i = 0; i < entries.size(); i += 1) {
+        auto entry = entries[i];
+        links.push_back(feature::DocumentLink{
+            .range = entry[&feature::DocumentLink::range],
+            .target = std::string(entry[&feature::DocumentLink::target]),
+        });
+    }
+    return links;
+}
+
+llvm::ArrayRef<std::uint32_t> TUIndex::inactive_regions() const {
+    if(!loaded()) {
+        return {};
+    }
+    return to_array_ref(wire_root(data)[&EnvelopeBlob::inactive_regions]);
+}
+
+llvm::ArrayRef<std::uint8_t> TUIndex::open_conditionals() const {
+    if(!loaded()) {
+        return {};
+    }
+    return to_array_ref(wire_root(data)[&EnvelopeBlob::open_conditionals]);
 }
 
 }  // namespace clice::index

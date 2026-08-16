@@ -7,7 +7,6 @@
 #include <utility>
 
 #include "index/serialization.h"
-#include "index/shard_layout.h"
 
 #include "kota/ipc/lsp/text.h"
 #include "llvm/ADT/DenseMap.h"
@@ -614,25 +613,17 @@ void Shard::lookup(std::uint32_t offset,
     }
 }
 
-void Shard::lookup(SymbolHash symbol,
-                   RelationKind kind,
-                   llvm::function_ref<bool(const Relation&)> callback) const {
-    if(!buffer) {
-        return;
-    }
-    auto root = root_of(*buffer);
-    auto sym_hashes = to_array_ref(root[&ShardBlob::sym_hashes]);
-    auto it = std::ranges::lower_bound(sym_hashes, symbol);
-    if(it == sym_hashes.end() || *it != symbol) [[unlikely]] {
-        return;
-    }
-    auto id = static_cast<std::uint32_t>(it - sym_hashes.begin());
+namespace {
 
-    auto offsets = to_array_ref(root[&ShardBlob::sym_rel_offsets]);
-    auto begin_row = offsets[id];
-    auto end_row = offsets[id + 1];
-
+/// Reconstruct and visit the relation rows [begin_row, end_row); `live`
+/// filters dead rows, the callback's false stops the walk.
+void visit_relation_rows(BlobView root,
+                         std::uint32_t begin_row,
+                         std::uint32_t end_row,
+                         llvm::function_ref<bool(std::uint32_t)> live,
+                         llvm::function_ref<bool(const Relation&)> callback) {
     auto columns = rel_ranges(root);
+    auto sym_hashes = to_array_ref(root[&ShardBlob::sym_hashes]);
     auto kinds = to_array_ref(root[&ShardBlob::rel_kinds]);
     auto sym_rows = to_array_ref(root[&ShardBlob::rel_sym_rows]);
     auto sym8 = to_array_ref(root[&ShardBlob::rel_sym8]);
@@ -655,16 +646,12 @@ void Shard::lookup(SymbolHash symbol,
             def_cursor += 1;
         }
 
-        auto row_kind = static_cast<RelationKind::Kind>(kinds[row]);
-        if(!(RelationKind(row_kind) & kind)) {
-            continue;
-        }
-        if(!row_live(false, row)) {
+        if(!live(row)) {
             continue;
         }
 
         Relation relation{
-            .kind = row_kind,
+            .kind = static_cast<RelationKind::Kind>(kinds[row]),
             .range = {columns.begin_of(row), columns.end_of(row)},
             .target_symbol = 0,
         };
@@ -680,7 +667,84 @@ void Shard::lookup(SymbolHash symbol,
         }
 
         if(!callback(relation)) {
-            break;
+            return;
+        }
+    }
+}
+
+}  // namespace
+
+void Shard::lookup(SymbolHash symbol,
+                   RelationKind kind,
+                   llvm::function_ref<bool(const Relation&)> callback) const {
+    if(!buffer) {
+        return;
+    }
+    auto root = root_of(*buffer);
+    auto sym_hashes = to_array_ref(root[&ShardBlob::sym_hashes]);
+    auto it = std::ranges::lower_bound(sym_hashes, symbol);
+    if(it == sym_hashes.end() || *it != symbol) [[unlikely]] {
+        return;
+    }
+    auto id = static_cast<std::uint32_t>(it - sym_hashes.begin());
+
+    auto offsets = to_array_ref(root[&ShardBlob::sym_rel_offsets]);
+    visit_relation_rows(
+        root,
+        offsets[id],
+        offsets[id + 1],
+        [&](std::uint32_t row) { return row_live(false, row); },
+        [&](const Relation& relation) {
+            if(!(RelationKind(relation.kind) & kind)) {
+                return true;
+            }
+            return callback(relation);
+        });
+}
+
+void Shard::for_each_occurrence(llvm::function_ref<bool(const Occurrence&)> callback) const {
+    if(!buffer) {
+        return;
+    }
+    auto root = root_of(*buffer);
+    auto columns = occ_ranges(root);
+    auto sym_hashes = to_array_ref(root[&ShardBlob::sym_hashes]);
+    for(std::uint32_t row = 0; row < columns.size(); row += 1) {
+        if(!row_live(true, row)) {
+            continue;
+        }
+        Occurrence occurrence{{columns.begin_of(row), columns.end_of(row)},
+                              sym_hashes[occ_sym_id(root, row)]};
+        if(!callback(occurrence)) {
+            return;
+        }
+    }
+}
+
+void Shard::for_each_relation(
+    llvm::function_ref<bool(SymbolHash, const Relation&)> callback) const {
+    if(!buffer) {
+        return;
+    }
+    auto root = root_of(*buffer);
+    auto sym_hashes = to_array_ref(root[&ShardBlob::sym_hashes]);
+    auto offsets = to_array_ref(root[&ShardBlob::sym_rel_offsets]);
+    for(std::uint32_t id = 0; id < sym_hashes.size(); id += 1) {
+        bool stopped = false;
+        visit_relation_rows(
+            root,
+            offsets[id],
+            offsets[id + 1],
+            [&](std::uint32_t row) { return row_live(false, row); },
+            [&](const Relation& relation) {
+                if(!callback(sym_hashes[id], relation)) {
+                    stopped = true;
+                    return false;
+                }
+                return true;
+            });
+        if(stopped) {
+            return;
         }
     }
 }
