@@ -950,6 +950,48 @@ TEST_CASE(StraySymbolIdRejected) {
     ASSERT_FALSE(make_shard(bytes_of()).loaded());
 }
 
+TEST_CASE(MismatchedPayloadTableRejected) {
+    // Readers decode whichever sparse table holds a row without consulting
+    // its kind: a decl/def row in the symbol table (or the reverse) would
+    // serve one payload's bit pattern as the other.
+    index::ShardBlob blob;
+    blob.format_version = index::index_format_version;
+    fill_content(blob, "aaaaaaaaaaaaaaaa");
+    blob.variants = {1};
+    blob.sym_hashes = {111};
+    blob.sym_rel_offsets = {0, 1};
+    blob.rel_kinds = {static_cast<std::uint8_t>(RelationKind::Definition)};
+    blob.rels.packed = {index::pack_range(4, 3)};
+    blob.rel_def_rows = {0};
+    blob.rel_def_begins = {0};
+    blob.rel_def_ends = {8};
+
+    auto bytes_of = [&] {
+        std::string bytes;
+        llvm::raw_string_ostream os(bytes);
+        index::serialize_blob(blob, os);
+        return bytes;
+    };
+    ASSERT_TRUE(make_shard(bytes_of()).loaded());
+
+    blob.rel_def_rows = {};
+    blob.rel_def_begins = {};
+    blob.rel_def_ends = {};
+    blob.rel_sym_rows = {0};
+    blob.rel_sym8 = {0};
+    ASSERT_FALSE(make_shard(bytes_of()).loaded());
+
+    blob.rel_kinds = {static_cast<std::uint8_t>(RelationKind::Base)};
+    ASSERT_TRUE(make_shard(bytes_of()).loaded());
+
+    blob.rel_sym_rows = {};
+    blob.rel_sym8 = {};
+    blob.rel_def_rows = {0};
+    blob.rel_def_begins = {0};
+    blob.rel_def_ends = {8};
+    ASSERT_FALSE(make_shard(bytes_of()).loaded());
+}
+
 TEST_CASE(OwnerlessMaskRejected) {
     // A mask owning no stored variant serves its row unconditionally while
     // every variant is live (row_live's live.all fast path never consults

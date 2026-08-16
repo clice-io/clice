@@ -1293,6 +1293,40 @@ TEST_CASE(EnvelopeSections) {
     }
 }
 
+TEST_CASE(CorruptSectionBytesRejected) {
+    // The persisted-load gate must reject any flipped section byte, in
+    // particular flips that still form a structurally valid shard (an
+    // opaque hash field, say) — only the byte hash catches those, and
+    // serving them would navigate by corrupted rows across restarts.
+    add_main("main.cpp", R"(
+            int value = 1;
+            int main() { return value; }
+        )");
+    ASSERT_TRUE(compile());
+    decode_index(index::build_tu_index(*unit));
+
+    auto& view = tu_index.view;
+    ASSERT_TRUE(view.section_count() > 0);
+    auto blob = view.section_blob(0);
+    auto offset = static_cast<std::size_t>(blob.data() - view.bytes().data());
+
+    bool structurally_valid_flip = false;
+    std::string bytes = view.bytes().str();
+    for(std::size_t i = 0; i < blob.size(); i += 1) {
+        std::string mutated = bytes;
+        mutated[offset + i] ^= 0x01;
+        auto reloaded = index::TUIndex::from_bytes(mutated);
+        if(!reloaded.loaded()) {
+            continue;
+        }
+        if(index::Shard::from_bytes(reloaded.section_blob(0)).loaded()) {
+            structurally_valid_flip = true;
+        }
+        ASSERT_FALSE(reloaded.shards_verify());
+    }
+    ASSERT_TRUE(structurally_valid_flip);
+}
+
 TEST_CASE(FromRejectsHostileInput) {
     ASSERT_FALSE(index::TUIndex::from_bytes("not a flatbuffer at all").loaded());
 

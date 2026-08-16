@@ -896,6 +896,13 @@ bool TUIndex::shards_verify() const {
         shards.resize(section_count());
     }
     for(std::uint32_t i = 0; i < section_count(); i += 1) {
+        // Structural verification alone accepts flipped bits that still
+        // form a valid shard (an in-bounds range, another symbol id);
+        // only the byte hash catches those, so a persisted envelope must
+        // fail here and rebuild instead of serving corrupted rows.
+        if(llvm::xxh3_64bits(section_blob(i)) != section_hash(i)) {
+            return false;
+        }
         if(!shards[i].loaded()) {
             shards[i] = Shard::from_bytes(section_blob(i));
             if(!shards[i].loaded()) {

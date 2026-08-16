@@ -61,8 +61,9 @@ public:
     /// every path id the graph and sections carry; corrupt bytes load as
     /// an empty reader. Symbol reference-file ids are NOT validated —
     /// iterate_symbols hands them out raw and the consumer bounds them.
-    /// Section blob bytes are verified per section, by shard_of on first
-    /// use or by shards_verify in one pass.
+    /// Section blob bytes are verified per section: structurally by
+    /// shard_of on first use, or hash-checked and wrapped by
+    /// shards_verify in one pass.
     static TUIndex from_bytes(llvm::StringRef data);
 
     /// Adopt an owning buffer of envelope bytes (a mapped `.pch.idx`, a
@@ -112,9 +113,11 @@ public:
     /// section or its blob fails verification.
     const Shard& shard_of(std::uint32_t path_id) const;
 
-    /// Wrap and verify every section's blob in one pass — the load gate
-    /// for persisted envelopes, where a corrupt blob must read as "pair
-    /// missing" and rebuild instead of silently serving nothing.
+    /// Wrap every section's blob in one pass, checking its bytes against
+    /// the recorded section hash on top of structural verification — the
+    /// load gate for persisted envelopes, where a corrupt blob must read
+    /// as "pair missing" and rebuild instead of silently serving wrong
+    /// rows or nothing.
     bool shards_verify() const;
 
     /// Visit every symbol: hash, identity, and the raw serialized

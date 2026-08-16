@@ -73,6 +73,24 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
     // FileVersions these will reference are interned only at commit.
     llvm::SmallVector<std::pair<std::uint32_t, std::uint64_t>> section_contributions;
     llvm::SmallVector<std::uint32_t> rebuilt_ids;
+    // TU-local path id -> content hash of the bytes each section's rows
+    // were built from (0 = no section). A section's shard already records
+    // that hash, so the FileVersion baseline below adopts it: pairing the
+    // rows with any other hash — the file behind a PCM whose disk moved
+    // on under a preserved or backdated mtime — would keep the baseline
+    // fresh while queries serve another generation's rows.
+    llvm::SmallVector<std::uint64_t> consumed_hashes(view.path_count(), 0);
+    auto record_consumed = [&](std::uint32_t local_id, std::uint64_t content_hash) {
+        auto path_hash = view.path_hash(local_id);
+        if(path_hash != 0 && path_hash != content_hash) {
+            LOG_WARN("Reject merge for {}: rows for {} consumed other content than the compiler",
+                     main_tu_path,
+                     workspace.path_pool.resolve(file_ids_map[local_id]));
+            return false;
+        }
+        consumed_hashes[local_id] = content_hash;
+        return true;
+    };
     for(std::uint32_t section = 0; section < view.section_count(); section += 1) {
         auto local_id = view.section_path(section);
         auto blob_hash = view.section_hash(section);
@@ -85,6 +103,9 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
         // hashes the blob bytes, which embed the content generation, so
         // one membership test is the whole check — no IO, no bytes read.
         if(shard && shard->loaded() && shard->has_variant(blob_hash)) {
+            if(!record_consumed(local_id, shard->content_hash())) {
+                return;
+            }
             section_contributions.emplace_back(local_id, blob_hash);
             hits += 1;
             continue;
@@ -110,6 +131,9 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
             LOG_WARN("Reject merge for {}: rows for {} do not form a valid shard",
                      main_tu_path,
                      workspace.path_pool.resolve(global_id));
+            return;
+        }
+        if(!record_consumed(local_id, fresh.content_hash())) {
             return;
         }
 
@@ -159,15 +183,17 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
     fv_of.resize_for_overwrite(view.path_count());
     for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
         llvm::StringRef path = view.path(i);
-        auto hash = view.path_hash(i);
+        // The section's own record wins: for a hashless path (behind a
+        // PCM) it is the only hash naming the bytes the rows describe.
+        auto hash = consumed_hashes[i] != 0 ? consumed_hashes[i] : view.path_hash(i);
 
         fs::file_status status;
         bool stat_ok = !fs::status(path, status);
         bool untouched = stat_ok && fs::mtime_ns(status) <= baseline_before_ns;
         if(hash == 0 && untouched) {
-            // The worker had no buffer to hash (e.g. behind a PCM); the
-            // unchanged mtime proves the disk still holds the consumed
-            // bytes, so hash it here.
+            // The worker had no buffer to hash (e.g. behind a PCM) and no
+            // rows recorded one; the unchanged mtime proves the disk still
+            // holds the consumed bytes, so hash it here.
             hash = hash_file(path);
         }
 

@@ -346,9 +346,15 @@ bool ProjectIndex::load_global(this ProjectIndex& self,
 
     // Every id and hash below becomes a DenseMap or DenseSet key, first in
     // the duplicate checks here and then in the tables themselves — see
-    // reserved_key.
+    // reserved_key. The counter is one intern away from becoming a key
+    // itself, and the writer hands ids out from it, so ids must sit below
+    // it — a bound that (with the sentinels at the top of the id space)
+    // also keeps every id non-reserved.
+    if(reserved_key(blob.next_fv_id)) {
+        return false;
+    }
     for(auto id: blob.fv_ids) {
-        if(reserved_key(id)) {
+        if(id >= blob.next_fv_id) {
             return false;
         }
     }
@@ -430,11 +436,6 @@ bool ProjectIndex::load_global(this ProjectIndex& self,
         auto id = blob.fv_ids[i];
         self.file_versions[id] = {path_id, blob.fv_hashes[i], blob.fv_sizes[i], blob.fv_mtimes[i]};
         self.fv_ids[{path_id, blob.fv_hashes[i]}] = id;
-        // Ids must stay unique forever; a blob whose counter lags its own
-        // table (corruption) must not hand out ids that alias stored ones.
-        if(id >= self.next_fv_id) {
-            self.next_fv_id = id + 1;
-        }
     }
 
     for(std::size_t k = 0; k < blob.manifest_fvs.size(); k += 1) {

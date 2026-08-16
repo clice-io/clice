@@ -709,13 +709,16 @@ std::optional<SymbolInfo> IndexQuery::resolve_symbol(index::SymbolHash hash) {
     return SymbolInfo{hash, std::move(name), kind, def_loc->uri, def_loc->range};
 }
 
-/// The stored text of an indexed file, for preview slicing. ASCII blobs
-/// do not store it: re-read the disk and serve it only while its hash
+/// The stored text of an indexed file, for preview slicing. Non-ASCII
+/// shards lend out the content they store; ASCII blobs do not store it:
+/// re-read the disk into `storage` and serve it only while its hash
 /// still matches what the rows were built from — a moved-on file
 /// degrades to no preview rather than slicing mismatched text.
-static std::optional<std::string> indexed_text(llvm::StringRef path, const index::Shard& shard) {
+static std::optional<llvm::StringRef> indexed_text(llvm::StringRef path,
+                                                   const index::Shard& shard,
+                                                   std::unique_ptr<llvm::MemoryBuffer>& storage) {
     if(!shard.ascii()) {
-        return shard.content().str();
+        return shard.content();
     }
     auto buffer = llvm::MemoryBuffer::getFile(path);
     if(!buffer) {
@@ -725,7 +728,8 @@ static std::optional<std::string> indexed_text(llvm::StringRef path, const index
     if(llvm::xxh3_64bits(text) != shard.content_hash()) {
         return std::nullopt;
     }
-    return text.str();
+    storage = std::move(*buffer);
+    return text;
 }
 
 static std::string extract_line(llvm::StringRef content, std::uint32_t offset) {
@@ -756,7 +760,8 @@ std::optional<IndexQuery::DefinitionText> IndexQuery::get_definition_text(index:
             continue;
         auto& merged_index = shard_it->second;
         auto file_path = workspace.path_pool.resolve(file_id);
-        auto text = indexed_text(file_path, merged_index);
+        std::unique_ptr<llvm::MemoryBuffer> storage;
+        auto text = indexed_text(file_path, merged_index, storage);
         if(!text)
             continue;
         llvm::StringRef content = *text;
@@ -802,8 +807,9 @@ std::vector<IndexQuery::ReferenceWithContext> IndexQuery::collect_references(ind
             auto file_path = workspace.path_pool.resolve(file_id);
             // A moved-on ASCII file yields no text: positions still map
             // through the line table, only the context line degrades.
-            auto text = indexed_text(file_path, merged_index);
-            llvm::StringRef content = text ? llvm::StringRef(*text) : llvm::StringRef();
+            std::unique_ptr<llvm::MemoryBuffer> storage;
+            auto text = indexed_text(file_path, merged_index, storage);
+            llvm::StringRef content = text.value_or(llvm::StringRef());
             IndexedLineMap map(content, merged_index.content_size(), merged_index.line_starts());
 
             merged_index.lookup(hash, kind, [&](const index::Relation& r) {

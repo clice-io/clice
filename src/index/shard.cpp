@@ -396,6 +396,27 @@ bool validate(BlobView root) {
         }
     }
 
+    // The writer splits payloads by kind — decl/def rows carry a
+    // definition range, every other payload names a target symbol — and
+    // the readers decode whichever sparse table holds the row without
+    // consulting its kind. A row in the wrong table would serve one
+    // payload's bit pattern as the other (a source range as a symbol
+    // hash, or vice versa), so enforce the partition, which also keeps
+    // the tables disjoint.
+    auto kind_of = [&](std::uint32_t row) {
+        return RelationKind(static_cast<RelationKind::Kind>(rel_kinds[row]));
+    };
+    for(auto row: rel_sym_rows) {
+        if(kind_of(row).isDeclOrDef()) {
+            return false;
+        }
+    }
+    for(auto row: rel_def_rows) {
+        if(!kind_of(row).isDeclOrDef()) {
+            return false;
+        }
+    }
+
     // Rows of one relation group two-way merge under the full (kind,
     // begin, end, payload) key with equal-key rows combined at write time,
     // so the key must ascend strictly within each group — out-of-order or
