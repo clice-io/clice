@@ -7,7 +7,7 @@
 
 #include "compile/compilation.h"
 #include "feature/feature.h"
-#include "index/preamble_state.h"
+#include "index/preamble_index.h"
 #include "index/tu_index.h"
 #include "server/protocol/worker.h"
 #include "server/worker/worker_common.h"
@@ -41,7 +41,7 @@ struct ScopedNice {
 using kota::ipc::RequestResult;
 using RequestContext = kota::ipc::BincodePeer::RequestContext;
 
-/// Serialize the preamble's PreambleState blob (full index + document
+/// Serialize the preamble's PreambleIndex blob (full index + document
 /// links + inactive regions) into a string. Runs while the freshly
 /// parsed AST is still in memory — the only moment the preamble's index
 /// is obtainable without deserializing the whole PCH. The file write
@@ -57,7 +57,7 @@ static std::string serialize_preamble_state(CompilationUnit& unit, std::uint32_t
     ScopedTimer blob_timer;
     std::string blob;
     llvm::raw_string_ostream os(blob);
-    index::PreambleState::serialize(unit,
+    index::PreambleIndex::serialize(unit,
                                     std::move(tu_index),
                                     links,
                                     inactive.regions,
@@ -79,14 +79,14 @@ static std::optional<std::string> write_preamble_state(llvm::StringRef blob,
     llvm::raw_fd_ostream os(output_path, ec);
     if(ec) {
         auto message =
-            std::format("cannot open PreambleState blob {}: {}", output_path, ec.message());
+            std::format("cannot open PreambleIndex blob {}: {}", output_path, ec.message());
         LOG_ERROR("BuildPCH: {}", message);
         return message;
     }
     os << blob;
     os.flush();
     if(os.has_error()) {
-        auto message = std::format("failed writing PreambleState blob {}: {}",
+        auto message = std::format("failed writing PreambleIndex blob {}: {}",
                                    output_path,
                                    os.error().message());
         os.clear_error();

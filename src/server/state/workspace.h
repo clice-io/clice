@@ -12,7 +12,7 @@
 #include "command/command.h"
 #include "command/toolchain.h"
 #include "compile/dep_file.h"
-#include "index/preamble_state.h"
+#include "index/preamble_index.h"
 #include "index/project_index.h"
 #include "index/shard.h"
 #include "index/storage.h"
@@ -146,25 +146,25 @@ struct SavedContext {
 ///
 /// Everything derived from the PCH build beyond validity metadata — the
 /// preamble's symbol index, document links, inactive regions, the open
-/// conditional stack — lives in the paired PreambleState blob (the store's
+/// conditional stack — lives in the paired PreambleIndex blob (the store's
 /// `.pch.idx` aux file), committed and evicted together with the PCH.
 struct PCHState {
     std::string path;
     std::uint32_t bound = 0;
     DepsSnapshot deps;
 
-    /// Path of the paired PreambleState blob.
+    /// Path of the paired PreambleIndex blob.
     std::string index_path;
 
     /// Lazily opened blob; shared so a consumer holding it across an await
     /// survives concurrent entry replacement or eviction.
-    std::shared_ptr<index::PreambleState> state;
+    std::shared_ptr<index::PreambleIndex> state;
 
     /// Open the blob on first use (memory-mapped, no deserialization).
     /// Returns nullptr when the blob is missing or unreadable — consumers
     /// degrade (no overlay, no preamble links) and the next ensure_pch
     /// treats the incomplete pair as a cache miss.
-    const std::shared_ptr<index::PreambleState>& load_state();
+    const std::shared_ptr<index::PreambleIndex>& load_state();
 
     std::shared_ptr<kota::event> building;
 };
@@ -233,7 +233,7 @@ struct Workspace {
     /// of CacheStore state; blob paths come from the store.
     llvm::StringMap<PCHState> pch_cache;
 
-    /// Keys of pch_cache entries whose PreambleState is currently loaded,
+    /// Keys of pch_cache entries whose PreambleIndex is currently loaded,
     /// most recently used first (see enforce_loaded_budget).
     llvm::SmallVector<std::string, 8> loaded_state_lru;
 
@@ -311,20 +311,20 @@ struct Workspace {
     /// is a module unit so dependents can be re-evaluated on next compile.
     void on_file_closed(std::uint32_t path_id);
 
-    /// Open the PreambleState blob of a cached PCH. The single consumption
+    /// Open the PreambleIndex blob of a cached PCH. The single consumption
     /// gate for `.pch.idx` blobs: when the blob turns out unreadable, the
     /// on-disk pair is retracted from the store as well — otherwise every
     /// later session re-adopts the corrupt pair from cache.json and
     /// silently degrades again. With the pair gone the next ensure_pch is
     /// a miss and rebuilds both halves. Loads count against the
     /// loaded-state budget (see enforce_loaded_budget).
-    std::shared_ptr<index::PreambleState> preamble_state(llvm::StringRef pch_key);
+    std::shared_ptr<index::PreambleIndex> preamble_state(llvm::StringRef pch_key);
 
     /// Move a pch key to the front of the loaded-state LRU. Called
-    /// whenever an entry's PreambleState is opened or replaced.
+    /// whenever an entry's PreambleIndex is opened or replaced.
     void touch_loaded_state(llvm::StringRef pch_key);
 
-    /// Unload PreambleState blobs beyond the budget (open documents + 2),
+    /// Unload PreambleIndex blobs beyond the budget (open documents + 2),
     /// least recently used first. Without this every preamble key ever
     /// touched keeps its blob mapped for the server's lifetime — tens of
     /// MB per key on real projects, released by neither didClose nor

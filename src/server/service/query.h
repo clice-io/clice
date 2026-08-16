@@ -231,23 +231,23 @@ private:
     /// staleness follows the PCH's dependency discipline. Identical rows
     /// also present in disk shards are collapsed by per-location dedup at
     /// result assembly. Return false from the visitor to stop.
-    void visit_overlays(llvm::function_ref<bool(const index::PreambleState&)> visitor) const;
+    void visit_overlays(llvm::function_ref<bool(const index::PreambleIndex&)> visitor) const;
 
     /// Visit each open session whose overlay preamble entry may serve
     /// (see serves_preamble), paired with that blob.
     void visit_preambles(llvm::function_ref<bool(std::uint32_t server_path_id,
                                                  const Session& session,
-                                                 const index::PreambleState& state)> visitor) const;
+                                                 const index::PreambleIndex& state)> visitor) const;
 
     /// The PCH overlay of a session, or nullptr when it has no PCH or the
     /// blob is unreadable.
-    std::shared_ptr<index::PreambleState> overlay_of(const Session& session) const;
+    std::shared_ptr<index::PreambleIndex> overlay_of(const Session& session) const;
 
     /// Whether a session's overlay preamble entry may serve: the blob was
     /// built from this very file (identical preambles share one PCH, but
     /// macro USRs embed the source path) and the buffer still starts with
     /// the blob's stored preamble text.
-    bool serves_preamble(const Session& session, const index::PreambleState& state) const;
+    bool serves_preamble(const Session& session, const index::PreambleIndex& state) const;
 
     /// Whether an overlay file entry may contribute results. Filters
     /// synthesized context artifacts (their positions live in

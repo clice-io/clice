@@ -374,21 +374,21 @@ struct CacheData {
 
 }  // namespace
 
-const std::shared_ptr<index::PreambleState>& PCHState::load_state() {
+const std::shared_ptr<index::PreambleIndex>& PCHState::load_state() {
     if(!state && !index_path.empty()) {
-        state = index::PreambleState::load(index_path);
+        state = index::PreambleIndex::load(index_path);
         if(!state) {
             // Unreadable blob: clear the path so queries don't retry the
             // mmap + verification on every call. The pair now looks
             // incomplete and ensure_pch rebuilds it on the next compile.
-            LOG_WARN("Failed to open PreambleState blob {}", index_path);
+            LOG_WARN("Failed to open PreambleIndex blob {}", index_path);
             index_path.clear();
         }
     }
     return state;
 }
 
-std::shared_ptr<index::PreambleState> Workspace::preamble_state(llvm::StringRef pch_key) {
+std::shared_ptr<index::PreambleIndex> Workspace::preamble_state(llvm::StringRef pch_key) {
     auto it = pch_cache.find(pch_key);
     if(it == pch_cache.end()) {
         return nullptr;
@@ -403,7 +403,7 @@ std::shared_ptr<index::PreambleState> Workspace::preamble_state(llvm::StringRef 
         // would be served to every session for the rest of the store's
         // life. Retract it now; the entry itself stays until ensure_pch
         // re-checks the store and rebuilds the pair.
-        LOG_WARN("Retracting PCH pair {} with unreadable PreambleState blob", pch_key);
+        LOG_WARN("Retracting PCH pair {} with unreadable PreambleIndex blob", pch_key);
         store->invalidate("pch", pch_key);
     }
     if(state) {
@@ -448,7 +448,7 @@ void Workspace::enforce_loaded_budget() {
             i += 1;
             continue;
         }
-        LOG_DEBUG("Unloading PreambleState of {} (budget {})", loaded_state_lru[i], budget);
+        LOG_DEBUG("Unloading PreambleIndex of {} (budget {})", loaded_state_lru[i], budget);
         it->second.state.reset();
         loaded_state_lru.erase(loaded_state_lru.begin() + i);
     }
@@ -501,7 +501,7 @@ void Workspace::load_cache(ContextResolver& contexts) {
         if(!pch_path)
             continue;
 
-        // A PCH without its PreambleState blob is an incomplete pair
+        // A PCH without its PreambleIndex blob is an incomplete pair
         // (crash between the two commits): treat it as absent so the next
         // compile rebuilds both.
         auto index_path = store->lookup_aux("pch", entry.key);

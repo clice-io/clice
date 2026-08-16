@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-#include "index/tu_index.h"
+#include "index/shard.h"
 #include "server/state/quarantine.h"
 #include "server/state/workspace.h"
 
@@ -149,11 +149,12 @@ struct Session {
     /// errors never trigger a pointless prefix synthesis.
     bool trial_done = false;
 
-    /// Symbol index built from the latest compilation of this file's buffer.
-    /// Used for queries (hover, goto, references) on this file.
-    /// NOT merged into Workspace.project_index — that only gets disk-derived
-    /// data from background indexing.
-    std::optional<index::FileIndex> file_index;
+    /// Symbol index built from the latest compilation of this file's buffer,
+    /// held as the worker's shard blob and queried through the unified
+    /// reader (empty = no index). Used for queries (hover, goto,
+    /// references) on this file. NOT merged into Workspace.project_index —
+    /// that only gets disk-derived data from background indexing.
+    index::Shard file_index;
 
     /// Symbol table from the latest compilation, mapping symbol hashes to
     /// names and kinds.

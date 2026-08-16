@@ -35,8 +35,9 @@ static std::string blob_key(llvm::StringRef path) {
 }
 
 void Indexer::merge(const void* tu_index_data, std::size_t size) {
-    // Zero-copy consumption: the wire stays serialized; only miss sections
-    // and genuinely new symbol names are ever materialized.
+    // Zero-copy consumption: the wire stays serialized; a new variant's
+    // blob bytes are sliced out and installed or merged without decoding
+    // the envelope, and only genuinely new symbol names are materialized.
     auto loaded =
         index::TUIndexView::from(llvm::StringRef(static_cast<const char*>(tu_index_data), size));
     if(!loaded) {
@@ -50,34 +51,6 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
     }
     auto main_local_id = view.path_count() - 1;
     llvm::StringRef main_tu_path = view.path(main_local_id);
-
-    // Shards pair the worker's rows with content read from disk here; if the
-    // disk moved on since the worker read it, the rows' offsets describe
-    // bytes that no longer exist and merging would misplace every position
-    // until the next reindex. The worker's consumed-content hash arbitrates.
-    // A missing hash (0) proceeds as before.
-    auto content_matches = [&](std::uint32_t local_id, llvm::StringRef disk_content) {
-        auto consumed = view.path_hash(local_id);
-        return consumed == 0 || llvm::xxh3_64bits(disk_content) == consumed;
-    };
-
-    // The main file's verdict gates the WHOLE result: every section and the
-    // manifest describe this one compile, so applying any of it against a
-    // moved-on main file would mix two generations. Skipping everything
-    // keeps the last-known state consistent; the changed file fails the
-    // next staleness check (or is already pending), and a follow-up pass
-    // redoes the merge against settled content.
-    auto main_buf = llvm::MemoryBuffer::getFile(main_tu_path);
-    if(!main_buf) {
-        LOG_WARN("Skip merge for {}: cannot read content: {}",
-                 main_tu_path,
-                 main_buf.getError().message());
-        return;
-    }
-    if(!content_matches(main_local_id, (*main_buf)->getBuffer())) {
-        LOG_INFO("Skip merge for {}: disk moved on since it was indexed", main_tu_path);
-        return;
-    }
 
     // Interning paths only names them — pool ids left behind by a rejected
     // result are inert. Everything that is index STATE (symbols,
@@ -94,158 +67,79 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
     index::TUManifest manifest;
     manifest.built_at = static_cast<std::uint64_t>(view.built_at());
 
-    // The previous contribution entry for a file this pass must skip (disk
-    // moved on under a section): its rows stay consistent with the shard
-    // they live in, so it keeps serving; a later pass redoes the file.
-    auto carry_old_contribution = [&](std::uint32_t global_id) {
-        auto manifest_it = project.manifests.find(tu_path_id);
-        if(manifest_it == project.manifests.end()) {
-            return;
-        }
-        for(auto& [fv, hash]: manifest_it->second.contributions) {
-            if(project.file_versions.find(fv)->second.path_id == global_id) {
-                manifest.contributions.emplace_back(fv, hash);
-                return;
-            }
-        }
-    };
-
     std::size_t hits = 0;
     std::size_t appended = 0;
-    auto lookup_symbol = [&](index::SymbolHash hash) {
-        return view.find_symbol(hash);
-    };
-    // Staged, not committed: a section that fails to decode rejects the
+    // Staged, not committed: a section that fails verification rejects the
     // whole result mid-loop, and shards installed before that point would
     // leave the surviving manifest referencing variants the new blobs no
     // longer store.
     llvm::SmallVector<std::pair<std::uint32_t, index::Shard>> replacements;
-    // (TU-local path id, rows hash) per serving section; the FileVersions
-    // these will reference are interned only at commit.
+    // (TU-local path id, variant identity) per serving section; the
+    // FileVersions these will reference are interned only at commit.
     llvm::SmallVector<std::pair<std::uint32_t, std::uint64_t>> section_contributions;
     llvm::SmallVector<std::uint32_t> rebuilt_ids;
     for(std::uint32_t section = 0; section < view.section_count(); section += 1) {
         auto local_id = view.section_path(section);
-        auto rows_hash = view.section_rows_hash(section);
+        auto blob_hash = view.section_hash(section);
         auto global_id = file_ids_map[local_id];
-        auto consumed = view.path_hash(local_id);
-        bool is_main = local_id == main_local_id;
 
         auto shard_it = workspace.shards.find(global_id);
         auto* shard = shard_it != workspace.shards.end() ? &shard_it->second : nullptr;
 
-        // Fast path: this content generation's blob already stores these
-        // rows — recording the contribution is the only work, no IO at all.
-        if(consumed != 0 && shard && shard->loaded() && shard->content_hash() == consumed &&
-           shard->has_variant(rows_hash)) {
-            section_contributions.emplace_back(local_id, rows_hash);
-            hits += 1;
-            continue;
-        }
-
-        // Read and arbitrate the content the blob will pair the rows with.
-        std::string header_content;
-        llvm::StringRef content;
-        if(is_main) {
-            content = (*main_buf)->getBuffer();
-        } else {
-            auto path = workspace.path_pool.resolve(global_id);
-            auto buf = llvm::MemoryBuffer::getFile(path);
-            if(buf) {
-                header_content = (*buf)->getBuffer().str();
-                content = header_content;
-            }
-            // Unconditional, unlike the main-file read: an unreadable or
-            // truncated-to-empty header must not slip past the arbitration
-            // and pair the rows with content they were not built from. A
-            // failed read is checked on its own — with no worker hash the
-            // arbitration would otherwise wave the empty content through.
-            if(!buf || !content_matches(local_id, content)) {
-                LOG_INFO("Skip merge for {}: disk moved on since it was indexed", path);
-                carry_old_contribution(global_id);
-                continue;
-            }
-        }
-        auto generation = consumed != 0 ? consumed : llvm::xxh3_64bits(content);
-
-        // The same hit as the fast path above, verifiable for a hash-less
-        // section only now that the disk read pinned the generation:
-        // re-appending an already-stored variant would duplicate it in the
-        // blob's variant table (write_shard asserts against exactly that).
-        if(consumed == 0 && shard && shard->loaded() && shard->content_hash() == generation &&
-           shard->has_variant(rows_hash)) {
-            section_contributions.emplace_back(local_id, rows_hash);
+        // Fast path: the blob already stores this variant. The identity
+        // hashes the blob bytes, which embed the content generation, so
+        // one membership test is the whole check — no IO, no bytes read.
+        if(shard && shard->loaded() && shard->has_variant(blob_hash)) {
+            section_contributions.emplace_back(local_id, blob_hash);
             hits += 1;
             continue;
         }
 
         // The recomputed hash guards the variant identity alongside the
-        // structural decode: rows installed under a hash they do not
-        // reproduce would satisfy every later hit-path check for that hash
-        // while the shard stores different rows.
-        auto rows = view.decode_section_rows(section);
-        if(!rows || rows->rows_hash() != rows_hash) {
-            // Not a carry-and-skip like the moved-on case above: that one
-            // self-corrects because the skipped file's recorded version is
-            // stale by hash. A decode failure leaves every recorded version
-            // matching the disk, so an installed manifest would be judged
-            // fresh forever with this file's rows missing or stale — even
-            // across restarts. Reject the whole result like the main-file
-            // gate does; nothing is committed yet.
+        // structural verification below: bytes installed under a hash they
+        // do not reproduce would satisfy every later hit-path check for
+        // that hash while the shard stores different rows. A mismatch (or
+        // an invalid blob) leaves every recorded version matching the
+        // disk, so an installed manifest would be judged fresh forever
+        // with this file's rows missing or stale — reject the whole
+        // result; nothing is committed yet.
+        auto bytes = view.section_blob(section);
+        if(llvm::xxh3_64bits(bytes) != blob_hash) {
             LOG_WARN("Reject merge for {}: rows section for {} failed verification",
                      main_tu_path,
                      workspace.path_pool.resolve(global_id));
             return;
         }
-
-        index::VariantInput fresh{rows_hash, &*rows, lookup_symbol};
-        std::string bytes;
-        llvm::raw_string_ostream os(bytes);
-        bool append = shard && shard->loaded() && shard->content_hash() == generation;
-        if(append) {
-            // Same generation, new variant: merge it in, keeping every
-            // stored variant — dead ones stay masked until the next save
-            // compacts them.
-            write_shard(*shard, shard->variants(), fresh, content, generation, os);
-            appended += 1;
-        } else {
-            // New content generation (or no blob at all): rows from other
-            // generations must never share offset storage with these, so
-            // the blob starts over. Stale contributions from other TUs
-            // stop matching any stored variant; the commit re-enqueues
-            // their owners.
-            write_shard(index::Shard(), {}, fresh, content, generation, os);
-        }
-
-        auto replacement = index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
-        if(!replacement.loaded()) {
-            if(consumed == 0) {
-                // Unverified pairing: the arbitration above cannot see the
-                // disk shrinking under rows built from longer content, and
-                // the blob's own range bounds catch it here instead. A
-                // carry self-corrects — the recorded version is stale by
-                // hash.
-                LOG_INFO("Skip merge for {}: disk moved on since it was indexed",
-                         workspace.path_pool.resolve(global_id));
-                carry_old_contribution(global_id);
-                continue;
-            }
-            // Hash-verified content always fits rows built from it: this
-            // blob failed on the rows themselves (inverted or out-of-range
-            // spans that kept wire structure and hash). Carrying would
-            // install a manifest whose versions all match the disk, pinning
-            // the stale rows as fresh forever — reject like the decode
-            // failure above.
+        auto fresh = index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
+        if(!fresh.loaded()) {
             LOG_WARN("Reject merge for {}: rows for {} do not form a valid shard",
                      main_tu_path,
                      workspace.path_pool.resolve(global_id));
             return;
         }
-        replacements.emplace_back(global_id, std::move(replacement));
-        if(!append) {
+
+        index::Shard replacement;
+        if(shard && shard->loaded() && shard->content_hash() == fresh.content_hash()) {
+            // Same generation, new variant: merge it in, keeping every
+            // stored variant — dead ones stay masked until the next save
+            // compacts them.
+            std::string merged;
+            llvm::raw_string_ostream os(merged);
+            index::merge_shards(*shard, shard->variants(), llvm::ArrayRef(fresh), os);
+            replacement = index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(merged));
+            assert(replacement.loaded() && "a freshly merged shard blob must verify");
+            appended += 1;
+        } else {
+            // New content generation (or no blob at all): rows from other
+            // generations must never share offset storage with these, so
+            // the worker's bytes become the blob verbatim. Stale
+            // contributions from other TUs stop matching any stored
+            // variant; the commit re-enqueues their owners.
+            replacement = std::move(fresh);
             rebuilt_ids.push_back(global_id);
         }
-        section_contributions.emplace_back(local_id, rows_hash);
+        replacements.emplace_back(global_id, std::move(replacement));
+        section_contributions.emplace_back(local_id, blob_hash);
     }
 
     // The last gate and the first commit. A malformed reference bitmap (or
@@ -394,7 +288,7 @@ kota::task<> Indexer::save() {
         }
         std::string bytes;
         llvm::raw_string_ostream os(bytes);
-        write_shard(shard, live, {}, shard.content(), shard.content_hash(), os);
+        index::merge_shards(shard, live, {}, os);
         auto replacement = index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
         assert(replacement.loaded() && "a freshly written shard blob must verify");
         shard = std::move(replacement);
