@@ -460,6 +460,10 @@ TEST_CASE(SaveRetiresPinnedShard) {
     indexer.merge(a2.data.data(), a2.data.size());
     ASSERT_EQ(workspace.shards[header_id].variants().size(), std::size_t(1));
 
+    // The rebuild re-enqueued pb; its pass then runs and fails, consuming
+    // the slot — the state the retirement below must repair on its own.
+    indexer.clear_pending(workspace.path_pool.intern(b.tu_path));
+
     // pa's index drops before pb reindexes: every stored variant is dead,
     // but pb's pinned hash keeps the live set nonempty. The save must
     // retire the shard rather than compact to an empty variant set.
@@ -484,6 +488,42 @@ TEST_CASE(SaveRetiresPinnedShard) {
     // re-enqueue pb itself.
     ASSERT_TRUE(indexer.pending_reason(workspace.path_pool.intern(b.tu_path)) ==
                 ReindexReason::ContentChanged);
+}
+
+TEST_CASE(RebuildRequeuesPinnedOwner) {
+    TempDir tmp;
+    tmp.touch("gen.h",
+              "#pragma once\n#ifdef MODE\nint gen_mode();\n#endif\n"
+              "inline int gen_fn() { return 1; }\n");
+    tmp.touch("ga.cpp", "#include \"gen.h\"\nint ga() { return gen_fn(); }\n");
+    tmp.touch("gb.cpp", "#include \"gen.h\"\nint gb() { return gen_fn(); }\n");
+
+    auto a = index_file(tmp, tmp.path("ga.cpp"));
+    auto b = index_file(tmp, tmp.path("gb.cpp"), {"-DMODE"});
+    ASSERT_FALSE(a.data.empty());
+    ASSERT_FALSE(b.data.empty());
+    indexer.merge(a.data.data(), a.data.size());
+    indexer.merge(b.data.data(), b.data.size());
+    auto b_tu = workspace.path_pool.intern(b.tu_path);
+    ASSERT_FALSE(indexer.pending_reason(b_tu).has_value());
+
+    // The header moves to a new content generation and only ga catches up:
+    // the rebuilt blob discards gb's variant. With no pending slot left for
+    // gb, no in-process event would rebuild its rows — the rebuild itself
+    // must re-enqueue it, and as ContentChanged: a reverted header reads
+    // fresh by hash, which a deps-only slot would skip past.
+    tmp.touch("gen.h",
+              "#pragma once\n#ifdef MODE\nint gen_mode();\n#endif\n"
+              "inline int gen_fn() { return 2; }\n");
+    auto a2 = index_file(tmp, tmp.path("ga.cpp"));
+    ASSERT_FALSE(a2.data.empty());
+    indexer.merge(a2.data.data(), a2.data.size());
+    auto header_id = workspace.path_pool.intern(tmp.path("gen.h"));
+    ASSERT_EQ(workspace.shards[header_id].variants().size(), std::size_t(1));
+
+    ASSERT_TRUE(indexer.pending_reason(b_tu) == ReindexReason::ContentChanged);
+    // ga's own fresh pin is stored: the rebuild must not re-enqueue it.
+    ASSERT_FALSE(indexer.pending_reason(workspace.path_pool.intern(a2.tu_path)).has_value());
 }
 
 TEST_CASE(RejectsCorruptSection) {

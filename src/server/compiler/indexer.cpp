@@ -112,7 +112,6 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
 
     std::size_t hits = 0;
     std::size_t appended = 0;
-    std::size_t rebuilt = 0;
     auto lookup_symbol = [&](index::SymbolHash hash) {
         return view.find_symbol(hash);
     };
@@ -124,6 +123,7 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
     // (TU-local path id, rows hash) per serving section; the FileVersions
     // these will reference are interned only at commit.
     llvm::SmallVector<std::pair<std::uint32_t, std::uint64_t>> section_contributions;
+    llvm::SmallVector<std::uint32_t> rebuilt_ids;
     for(std::uint32_t section = 0; section < view.section_count(); section += 1) {
         auto local_id = view.section_path(section);
         auto rows_hash = view.section_rows_hash(section);
@@ -201,7 +201,8 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
         index::VariantInput fresh{rows_hash, &*rows, lookup_symbol};
         std::string bytes;
         llvm::raw_string_ostream os(bytes);
-        if(shard && shard->loaded() && shard->content_hash() == generation) {
+        bool append = shard && shard->loaded() && shard->content_hash() == generation;
+        if(append) {
             // Same generation, new variant: merge it in, keeping every
             // stored variant — dead ones stay masked until the next save
             // compacts them.
@@ -211,9 +212,9 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
             // New content generation (or no blob at all): rows from other
             // generations must never share offset storage with these, so
             // the blob starts over. Stale contributions from other TUs
-            // simply stop matching any stored variant.
+            // stop matching any stored variant; the commit re-enqueues
+            // their owners.
             write_shard(index::Shard(), {}, fresh, content, generation, os);
-            rebuilt += 1;
         }
 
         auto replacement = index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
@@ -241,6 +242,9 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
             return;
         }
         replacements.emplace_back(global_id, std::move(replacement));
+        if(!append) {
+            rebuilt_ids.push_back(global_id);
+        }
         section_contributions.emplace_back(local_id, rows_hash);
     }
 
@@ -313,6 +317,21 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
         }
         it->second.set_live(project.live_variants(path_id));
     }
+
+    // A rebuild started its file's blob over, discarding the variants other
+    // TUs' contributions pin. Those owners are usually already pending from
+    // the same content event (enqueue dedupes); one whose attempt already
+    // failed — or that reads fresh by hash after a revert, which is why
+    // ContentChanged — has no in-process event left to rebuild its rows,
+    // only a restart reaching load()'s re-enqueue.
+    for(auto path_id: rebuilt_ids) {
+        auto& shard = workspace.shards.find(path_id)->second;
+        for(auto& [tu, hash]: project.contributions.find(path_id)->second) {
+            if(!shard.has_variant(hash)) {
+                enqueue(tu, ReindexReason::ContentChanged);
+            }
+        }
+    }
     dirty_manifests.insert(tu_path_id);
     global_dirty = true;
 
@@ -323,7 +342,7 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
         view.section_count(),
         hits,
         appended,
-        rebuilt,
+        rebuilt_ids.size(),
         workspace.shards.size());
 }
 

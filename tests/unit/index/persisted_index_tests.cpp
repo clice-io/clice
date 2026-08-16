@@ -327,6 +327,37 @@ TEST_CASE(GlobalDuplicateVersionsRejected) {
     ASSERT_EQ(loaded.file_versions.size(), std::size_t(2));
 }
 
+TEST_CASE(GlobalDuplicateSymbolRejected) {
+    // Symbol hashes are map keys in the writer; a structurally valid blob
+    // repeating one would silently replace the earlier entry's identity
+    // and reference bitmap while every manifest still loads as fresh.
+    GlobalBlobMirror mirror;
+    mirror.format_version = index::index_format_version;
+    mirror.sym_hashes = {42, 42};
+    mirror.sym_names = {"sym", "impostor"};
+    mirror.sym_kinds = {0, 0};
+    clice::Bitmap bits;
+    bits.add(3);
+    mirror.sym_bitmaps = {index::write_bitmap(bits), index::write_bitmap(bits)};
+    mirror.sym_paths = {
+        {3, "/proj/ref.h"}
+    };
+
+    clice::PathPool pool;
+    llvm::DenseMap<std::uint32_t, std::uint64_t> pins;
+    auto dup = kota::codec::fbs::to_bytes(mirror);
+    ASSERT_TRUE(dup.has_value());
+    index::ProjectIndex loaded;
+    ASSERT_FALSE(loaded.load_global(bytes_of(*dup), pool, pins));
+    ASSERT_TRUE(loaded.symbols.empty());
+
+    mirror.sym_hashes = {42, 43};
+    auto distinct = kota::codec::fbs::to_bytes(mirror);
+    ASSERT_TRUE(distinct.has_value());
+    ASSERT_TRUE(loaded.load_global(bytes_of(*distinct), pool, pins));
+    ASSERT_EQ(loaded.symbols.size(), std::size_t(2));
+}
+
 TEST_CASE(UnknownFileVersionsDetected) {
     index::ProjectIndex project;
     auto known = project.intern_file_version(0, 0x1);

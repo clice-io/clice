@@ -329,10 +329,12 @@ bool ProjectIndex::load_global(this ProjectIndex& self,
         }
     }
 
-    // Ids and (path, hash) pairs are both map keys in the writer, so a
-    // repeat of either marks a corrupt blob. A repeated id in particular
-    // would leave fv_ids interning the earlier pair to an id whose record
-    // names the later path, attributing contributions to the wrong file.
+    // Ids, (path, hash) pairs and symbol hashes are all map keys in the
+    // writer, so a repeat of any marks a corrupt blob. A repeated id in
+    // particular would leave fv_ids interning the earlier pair to an id
+    // whose record names the later path, attributing contributions to the
+    // wrong file; a repeated symbol hash would silently replace the earlier
+    // entry's identity and reference bitmap.
     llvm::DenseSet<std::uint32_t> blob_fvs(blob.fv_ids.begin(), blob.fv_ids.end());
     if(blob_fvs.size() != count) {
         return false;
@@ -342,6 +344,10 @@ bool ProjectIndex::load_global(this ProjectIndex& self,
         if(!blob_versions.insert({llvm::StringRef(blob.fv_paths[i]), blob.fv_hashes[i]}).second) {
             return false;
         }
+    }
+    llvm::DenseSet<SymbolHash> blob_syms(blob.sym_hashes.begin(), blob.sym_hashes.end());
+    if(blob_syms.size() != sym_count) {
+        return false;
     }
 
     // The writer only pins manifests whose tu_fv survived the same save's
