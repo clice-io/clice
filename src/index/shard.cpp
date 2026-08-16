@@ -218,7 +218,9 @@ bool validate(BlobView root) {
     // The line table reconstructs every line start by prefix sum, so it
     // must both pair with its escape table and add up to exactly the
     // content size — a drifted sum would shift every position mapping
-    // below the corruption.
+    // below the corruption. When the content is stored, the sum check is
+    // not enough: a table redistributing bytes between lines keeps the
+    // sum intact, so every start must match the one the content derives.
     auto line_lengths = to_array_ref(root[&ShardBlob::line_lengths]);
     auto long_line_rows = to_array_ref(root[&ShardBlob::long_line_rows]);
     auto long_line_lengths = to_array_ref(root[&ShardBlob::long_line_lengths]);
@@ -227,9 +229,21 @@ bool validate(BlobView root) {
        !std::ranges::is_sorted(long_line_rows, std::less_equal{})) {
         return false;
     }
+    std::vector<std::uint32_t> starts;
+    if(!content.empty()) {
+        starts =
+            kota::ipc::lsp::build_line_starts(std::string_view(content.data(), content.size()));
+        if(starts.size() != line_lengths.size()) {
+            return false;
+        }
+    }
     std::uint64_t line_sum = 0;
     std::size_t line_escape_cursor = 0;
-    for(auto length: line_lengths) {
+    for(std::size_t row = 0; row < line_lengths.size(); row += 1) {
+        if(!starts.empty() && starts[row] != line_sum) {
+            return false;
+        }
+        auto length = line_lengths[row];
         if(length == length_escape) {
             auto value = long_line_lengths[line_escape_cursor];
             line_escape_cursor += 1;
@@ -596,7 +610,14 @@ std::vector<RowsHash> Shard::variants() const {
 }
 
 bool Shard::has_variant(RowsHash hash) const {
-    return loaded() && llvm::is_contained(variants(), hash);
+    if(!buffer) {
+        return false;
+    }
+    auto stored = to_array_ref(root_of(*buffer)[&ShardBlob::variants]);
+    if(stored.empty()) {
+        return hash == blob_hash;
+    }
+    return llvm::is_contained(stored, hash);
 }
 
 void Shard::set_live(llvm::ArrayRef<RowsHash> live_hashes) {

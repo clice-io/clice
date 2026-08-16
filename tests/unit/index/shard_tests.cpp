@@ -631,6 +631,14 @@ TEST_CASE(LineTableMismatchRejected) {
 
     blob.line_lengths = {};
     ASSERT_FALSE(make_shard(bytes_of()).loaded());
+
+    // Redistributing bytes between lines preserves the sum; with stored
+    // content every line start must match the one the content derives.
+    fill_content(blob, "aå\nbb\n");
+    ASSERT_TRUE(make_shard(bytes_of()).loaded());
+
+    blob.line_lengths = {3, 4};
+    ASSERT_FALSE(make_shard(bytes_of()).loaded());
 }
 
 TEST_CASE(MisorderedRowsRejected) {
