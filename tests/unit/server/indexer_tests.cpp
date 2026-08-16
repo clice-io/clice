@@ -7,6 +7,7 @@
 #include "command/argument_parser.h"
 #include "compile/compilation.h"
 #include "index/manifest.h"
+#include "index/serialization.h"
 #include "index/shard.h"
 #include "index/storage.h"
 #include "index/tu_index.h"
@@ -16,6 +17,7 @@
 #include "server/state/workspace.h"
 #include "server/worker/worker_pool.h"
 
+#include "kota/ipc/lsp/text.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/xxhash.h"
 
@@ -100,11 +102,11 @@ struct IndexerFixture {
 namespace {
 
 struct IndexedTU {
-    std::string data;     ///< Serialized TUIndex, as a worker would ship it.
+    std::string data;     ///< Envelope bytes, as a worker would ship them.
     std::string tu_path;  ///< The TU's canonical path inside the index.
 };
 
-/// Index a real on-disk file in-process and serialize its TUIndex.
+/// Index a real on-disk file in-process into its envelope bytes.
 IndexedTU index_file(TempDir& tmp, llvm::StringRef file, std::vector<std::string> extra_args = {}) {
     std::string resource = std::string(resource_dir());
     std::vector<std::string> args =
@@ -122,12 +124,91 @@ IndexedTU index_file(TempDir& tmp, llvm::StringRef file, std::vector<std::string
     if(!unit.completed()) {
         return {};
     }
-    auto tu_index = index::TUIndex::build(unit);
     IndexedTU result;
-    result.tu_path = tu_index.graph.paths.back();
-    llvm::raw_string_ostream os(result.data);
-    tu_index.serialize(os);
+    result.data = index::build_tu_index(unit);
+    auto view = index::TUIndex::from_bytes(result.data);
+    result.tu_path = std::string(view.path(view.path_count() - 1));
     return result;
+}
+
+/// Re-encode an envelope with its consumed-content hash column dropped,
+/// as a file behind a PCM ships it. Field order MUST mirror the envelope
+/// layout (tu_index.cpp).
+std::string strip_path_hashes(llvm::StringRef data) {
+    struct SymbolMirror {
+        std::string name;
+        std::uint8_t kind = 0;
+        std::uint8_t scope = 0;
+        std::vector<std::byte> reference_files;
+    };
+
+    struct SectionMirror {
+        std::uint32_t path_id = 0;
+        std::uint64_t hash = 0;
+        std::vector<std::uint8_t> blob;
+    };
+
+    struct EnvelopeMirror {
+        std::uint32_t format_version = index::index_format_version;
+        std::int64_t built_at = 0;
+        std::vector<std::string> paths;
+        std::vector<std::uint64_t> path_hashes;
+        std::vector<index::IncludeLocation> locations;
+        llvm::DenseMap<std::uint64_t, SymbolMirror> symbols{};
+        std::vector<SectionMirror> sections;
+    };
+
+    auto view = index::TUIndex::from_bytes(data);
+    EnvelopeMirror mirror;
+    mirror.built_at = view.built_at();
+    for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
+        mirror.paths.emplace_back(view.path(i));
+    }
+    for(std::uint32_t i = 0; i < view.location_count(); i += 1) {
+        mirror.locations.push_back(view.location(i));
+    }
+    view.iterate_symbols(
+        [&](index::SymbolHash hash, const index::SymbolIdentity& id, llvm::StringRef bitmap) {
+            auto& symbol = mirror.symbols[hash];
+            symbol.name = std::string(id.name);
+            symbol.kind = id.kind.value();
+            symbol.scope = static_cast<std::uint8_t>(id.scope);
+            const auto* begin = reinterpret_cast<const std::byte*>(bitmap.data());
+            symbol.reference_files.assign(begin, begin + bitmap.size());
+        });
+    for(std::uint32_t i = 0; i < view.section_count(); i += 1) {
+        auto blob = view.section_blob(i);
+        mirror.sections.push_back({view.section_path(i),
+                                   view.section_hash(i),
+                                   std::vector<std::uint8_t>(blob.begin(), blob.end())});
+    }
+
+    auto bytes = kota::codec::fbs::to_bytes(mirror);
+    if(!bytes) {
+        return {};
+    }
+    return std::string(bytes->begin(), bytes->end());
+}
+
+/// A structurally valid blob of `text`'s content generation carrying an
+/// explicit variant list — the shapes load()'s healing paths probe.
+std::string planted_blob(llvm::StringRef text, std::uint64_t variant) {
+    index::ShardBlob blob;
+    blob.format_version = index::index_format_version;
+    blob.content_hash = llvm::xxh3_64bits(text);
+    blob.content_size = static_cast<std::uint32_t>(text.size());
+    auto starts = kota::ipc::lsp::build_line_starts(std::string_view(text.data(), text.size()));
+    for(std::size_t i = 0; i < starts.size(); i += 1) {
+        auto next = i + 1 < starts.size() ? starts[i + 1] : blob.content_size;
+        blob.line_lengths.push_back(static_cast<std::uint8_t>(next - starts[i]));
+    }
+    blob.variants = {variant};
+    blob.sym_hashes = {111};
+    blob.sym_rel_offsets = {0, 0};
+    std::string bytes;
+    llvm::raw_string_ostream os(bytes);
+    index::serialize_blob(blob, os);
+    return bytes;
 }
 
 void open_store(TempDir& tmp, Workspace& workspace) {
@@ -164,7 +245,7 @@ TEST_CASE(MergeRejectsGarbage) {
     ASSERT_TRUE(workspace.project_index.symbols.empty());
 }
 
-TEST_CASE(MergeSkipsMovedDisk) {
+TEST_CASE(MergeIgnoresDiskDrift) {
     TempDir tmp;
     tmp.touch("main.cpp", "int value() { return 1; }\n");
     auto src = tmp.path("main.cpp");
@@ -176,21 +257,23 @@ TEST_CASE(MergeSkipsMovedDisk) {
     auto path_id = workspace.path_pool.intern(indexed.tu_path);
     auto it = workspace.shards.find(path_id);
     ASSERT_TRUE(it != workspace.shards.end());
-    ASSERT_EQ(it->second.content(), "int value() { return 1; }\n");
+    ASSERT_EQ(it->second.content_hash(), llvm::xxh3_64bits("int value() { return 1; }\n"));
 
-    // The disk moved on since the rows were indexed: merging them would
-    // pair offsets with bytes they were not built from, so the merge must
-    // be skipped and the last-known snapshot kept serving.
+    // The disk moved on since the rows were indexed. The blob is
+    // self-contained — its rows pair with the generation it embeds, never
+    // with the disk — so the re-merge is a pure variant hit and freshness
+    // gating owns the drift.
     tmp.touch("main.cpp", "int renamed() { return 2; }\n");
     indexer.merge(indexed.data.data(), indexed.data.size());
-    ASSERT_EQ(it->second.content(), "int value() { return 1; }\n");
+    ASSERT_EQ(it->second.content_hash(), llvm::xxh3_64bits("int value() { return 1; }\n"));
+    ASSERT_EQ(it->second.variants().size(), std::size_t(1));
     ASSERT_TRUE(workspace.project_index.contributions.lookup(path_id).contains(path_id));
 
-    // Once the rows describe the settled content again, the merge lands.
+    // Rows built from the settled content open a new generation.
     auto fresh = index_file(tmp, src);
     ASSERT_FALSE(fresh.data.empty());
     indexer.merge(fresh.data.data(), fresh.data.size());
-    ASSERT_EQ(it->second.content(), "int renamed() { return 2; }\n");
+    ASSERT_EQ(it->second.content_hash(), llvm::xxh3_64bits("int renamed() { return 2; }\n"));
 }
 
 TEST_CASE(SaveCommitsDirtyShard) {
@@ -221,7 +304,7 @@ TEST_CASE(SaveCommitsDirtyShard) {
     ASSERT_TRUE(it != workspace.shards.end());
     ASSERT_EQ(indexer.pending_shard_writes(), 0u);
     ASSERT_EQ(indexer.last_save_shards(), 1u);
-    ASSERT_EQ(it->second.content(), "int flip_value() { return 1; }\n");
+    ASSERT_EQ(it->second.content_hash(), llvm::xxh3_64bits("int flip_value() { return 1; }\n"));
     ASSERT_TRUE(workspace.project_index.contributions.lookup(path_id).contains(path_id));
 }
 
@@ -270,7 +353,7 @@ TEST_CASE(MidSaveMergeKept) {
     auto it = workspace.shards.find(path_id);
     ASSERT_TRUE(it != workspace.shards.end());
     ASSERT_EQ(indexer.pending_shard_writes(), 1u);
-    ASSERT_EQ(it->second.content(), "int second_value() { return 2; }\n");
+    ASSERT_EQ(it->second.content_hash(), llvm::xxh3_64bits("int second_value() { return 2; }\n"));
 
     auto again_body = [&]() -> kota::task<> {
         co_await indexer.save();
@@ -281,7 +364,7 @@ TEST_CASE(MidSaveMergeKept) {
 
     it = workspace.shards.find(path_id);
     ASSERT_EQ(indexer.pending_shard_writes(), 0u);
-    ASSERT_EQ(it->second.content(), "int second_value() { return 2; }\n");
+    ASSERT_EQ(it->second.content_hash(), llvm::xxh3_64bits("int second_value() { return 2; }\n"));
 }
 
 TEST_CASE(MergeHitWritesNothing) {
@@ -349,7 +432,7 @@ TEST_CASE(SharedHeaderVariants) {
     ASSERT_EQ(workspace.project_index.contributions.lookup(header_id).size(), std::size_t(3));
 }
 
-TEST_CASE(HeaderSkipCarriesContribution) {
+TEST_CASE(HeaderRegenerationReplaces) {
     TempDir tmp;
     tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
     tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
@@ -364,17 +447,23 @@ TEST_CASE(HeaderSkipCarriesContribution) {
     ASSERT_TRUE(old_hash != 0);
 
     // The header changes, a reindex captures it — and the header changes
-    // AGAIN before the result merges. The stale section must not land, but
-    // the previous contribution keeps serving (its rows still match the
-    // shard) until a follow-up pass settles.
+    // AGAIN before the result merges. The worker's bytes are their own
+    // generation: they land verbatim regardless of the disk moving on, and
+    // freshness gating owns the remaining drift.
     tmp.touch("dep.h", "#pragma once\ninline int dep() { return 2; }\n");
     auto v2 = index_file(tmp, src);
     ASSERT_FALSE(v2.data.empty());
     tmp.touch("dep.h", "#pragma once\ninline int dep() { return 3; }\n");
 
     indexer.merge(v2.data.data(), v2.data.size());
-    ASSERT_EQ(workspace.project_index.contributions.lookup(header_id).lookup(tu_id), old_hash);
-    ASSERT_TRUE(workspace.shards[header_id].has_variant(old_hash));
+    auto new_hash = workspace.project_index.contributions.lookup(header_id).lookup(tu_id);
+    ASSERT_TRUE(new_hash != 0);
+    ASSERT_TRUE(new_hash != old_hash);
+    ASSERT_TRUE(workspace.shards[header_id].has_variant(new_hash));
+    // A new content generation never shares row storage with the old one.
+    ASSERT_FALSE(workspace.shards[header_id].has_variant(old_hash));
+    ASSERT_EQ(workspace.shards[header_id].content_hash(),
+              llvm::xxh3_64bits("#pragma once\ninline int dep() { return 2; }\n"));
 }
 
 TEST_CASE(SaveCompactsAndRetires) {
@@ -534,25 +623,25 @@ TEST_CASE(RejectsCorruptSection) {
     auto indexed = index_file(tmp, tmp.path("cor_main.cpp"));
     ASSERT_FALSE(indexed.data.empty());
 
-    // Corrupt the main file's nested rows section: the outer wire still
-    // verifies (sections are opaque bytes to it), only the nested decode
-    // fails.
-    auto tampered = index::TUIndex::from(indexed.data);
-    ASSERT_TRUE(tampered.has_value());
-    auto main_id = static_cast<std::uint32_t>(tampered->graph.paths.size() - 1);
-    for(auto& section: tampered->sections) {
-        if(section.path_id == main_id) {
-            section.rows = {0, 1, 2, 3};
-        }
+    // Corrupt the main file's blob bytes in place: the outer wire still
+    // verifies (sections are opaque bytes to it), only the blob's byte
+    // identity check against the recorded section hash fails.
+    std::string corrupt = indexed.data;
+    auto tampered = index::TUIndex::from_bytes(corrupt);
+    ASSERT_TRUE(tampered.loaded());
+    auto main_section = tampered.section_of(tampered.path_count() - 1);
+    ASSERT_TRUE(main_section.has_value());
+    auto blob = tampered.section_blob(*main_section);
+    auto pos = llvm::StringRef(corrupt).find(blob);
+    ASSERT_TRUE(pos != llvm::StringRef::npos);
+    for(std::size_t i = 0; i < blob.size(); i += 1) {
+        corrupt[pos + i] = 'X';
     }
-    std::string corrupt;
-    llvm::raw_string_ostream os(corrupt);
-    tampered->serialize(os);
 
-    // The header section decodes fine and is staged before the main
-    // section's decode fails; the reject must discard the whole result — a
-    // manifest whose recorded versions all match the disk would otherwise
-    // be judged fresh forever with the main file's rows missing.
+    // The header section verifies fine and is staged before the main
+    // section's identity check fails; the reject must discard the whole
+    // result — a manifest whose recorded versions all match the disk would
+    // otherwise be judged fresh forever with the main file's rows missing.
     indexer.merge(corrupt.data(), corrupt.size());
     auto tu_id = workspace.path_pool.intern(indexed.tu_path);
     auto header_id = workspace.path_pool.intern(tmp.path("cor.h"));
@@ -571,32 +660,6 @@ TEST_CASE(RejectsCorruptSection) {
     ASSERT_TRUE(workspace.shards.contains(header_id));
 }
 
-TEST_CASE(UnverifiedPairingSkipped) {
-    TempDir tmp;
-    tmp.touch("unv.cpp", "int unverified_fn() { return 123456; }\n");
-    auto src = tmp.path("unv.cpp");
-    auto indexed = index_file(tmp, src);
-    ASSERT_FALSE(indexed.data.empty());
-
-    // Strip the consumed-content hashes (a file behind a PCM ships none)
-    // and shrink the file: the content arbitration cannot see the disk
-    // moving on, but the rows overrun the shorter content and the fresh
-    // blob's own range bounds must catch it — a skip, not a blob serving
-    // ranges past its content.
-    auto tampered = index::TUIndex::from(indexed.data);
-    ASSERT_TRUE(tampered.has_value());
-    for(auto& hash: tampered->graph.path_hashes) {
-        hash = 0;
-    }
-    std::string wire;
-    llvm::raw_string_ostream os(wire);
-    tampered->serialize(os);
-    tmp.touch("unv.cpp", "int f;\n");
-
-    indexer.merge(wire.data(), wire.size());
-    ASSERT_FALSE(workspace.shards.contains(workspace.path_pool.intern(src)));
-}
-
 TEST_CASE(HashlessRemergeHits) {
     TempDir tmp;
     tmp.touch("pcm.cpp", "int hashless_fn() { return 7; }\n");
@@ -604,16 +667,11 @@ TEST_CASE(HashlessRemergeHits) {
     auto indexed = index_file(tmp, src);
     ASSERT_FALSE(indexed.data.empty());
 
-    // A file behind a PCM ships no consumed-content hash, so the no-IO
-    // fast path cannot vouch for a stored variant; only the disk read can.
-    auto tampered = index::TUIndex::from(indexed.data);
-    ASSERT_TRUE(tampered.has_value());
-    for(auto& hash: tampered->graph.path_hashes) {
-        hash = 0;
-    }
-    std::string wire;
-    llvm::raw_string_ostream os(wire);
-    tampered->serialize(os);
+    // A file behind a PCM ships no consumed-content hash; the variant
+    // identity is the blob's own byte hash, so membership needs no
+    // content vouching at all.
+    auto wire = strip_path_hashes(indexed.data);
+    ASSERT_FALSE(wire.empty());
 
     indexer.merge(wire.data(), wire.size());
     auto path_id = workspace.path_pool.intern(src);
@@ -865,12 +923,8 @@ TEST_CASE(LoadHealsMissingVariant) {
     // Replace the header's blob with one that verifies but stores a variant
     // no manifest contributed — the residue of a crash or failed write that
     // landed the manifest without its shard.
-    index::FileIndex no_rows;
-    index::VariantInput stranger{.hash = 0x1234, .rows = &no_rows};
-    std::string bytes;
-    llvm::raw_string_ostream os(bytes);
-    index::write_shard({}, {}, stranger, "", 0, os);
-    tmp.touch("cache/cache/v1/index/" + header_key + ".idx", bytes);
+    tmp.touch("cache/cache/v1/index/" + header_key + ".idx",
+              planted_blob("#pragma once\ninline int dep() { return 1; }\n", 0x1234));
 
     IndexerFixture f;
     open_store(tmp, f.workspace);
@@ -907,16 +961,11 @@ TEST_CASE(LoadHealsWrongGeneration) {
     }
 
     // Replace the header's blob with one from ANOTHER content generation
-    // that still stores the contributed variant — the residue of a failed
-    // shard write when an edit past every indexed row keeps the rows hash
-    // identical. Every recorded FileVersion matches the disk, so only the
-    // generation pin can tell that positions would map through stale text.
-    index::FileIndex no_rows;
-    index::VariantInput same_rows{.hash = rows_hash, .rows = &no_rows};
-    std::string bytes;
-    llvm::raw_string_ostream os(bytes);
-    index::write_shard({}, {}, same_rows, "stale text", llvm::xxh3_64bits("stale text"), os);
-    tmp.touch("cache/cache/v1/index/" + header_key + ".idx", bytes);
+    // whose explicit variant list still claims the contributed identity —
+    // the residue of a crash between shard and manifest writes. Every
+    // recorded FileVersion matches the disk, so only the generation pin
+    // can tell that positions would map through stale text.
+    tmp.touch("cache/cache/v1/index/" + header_key + ".idx", planted_blob("stale text", rows_hash));
 
     IndexerFixture f;
     open_store(tmp, f.workspace);

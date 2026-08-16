@@ -36,49 +36,32 @@ std::uint32_t header_id = 0;
 /// per-section shard blobs, and the TU manifest with its contributions —
 /// so live-variant masks and staleness gates behave as in production.
 void merge_into_workspace() {
-    auto tu_index = index::TUIndex::build(*unit);
-    std::string wire;
-    llvm::raw_string_ostream wos(wire);
-    tu_index.serialize(wos);
-    auto view = index::TUIndexView::from(wire);
-    ASSERT_TRUE(view.has_value());
+    auto wire = index::build_tu_index(*unit);
+    auto view = index::TUIndex::from_bytes(wire);
+    ASSERT_TRUE(view.loaded());
 
     auto& project = workspace.project_index;
     llvm::SmallVector<std::uint32_t> file_ids_map;
-    for(std::uint32_t i = 0; i < view->path_count(); i += 1) {
-        file_ids_map.push_back(workspace.path_pool.intern(view->path(i)));
+    for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
+        file_ids_map.push_back(workspace.path_pool.intern(view.path(i)));
     }
-    ASSERT_TRUE(project.merge(*view, file_ids_map));
-    main_id = file_ids_map[view->path_count() - 1];
-
-    auto content_of = [&](llvm::StringRef path) -> llvm::StringRef {
-        auto it = sources.all_files.find(llvm::sys::path::filename(path));
-        return it != sources.all_files.end() ? llvm::StringRef(it->second.content)
-                                             : llvm::StringRef();
-    };
-    auto lookup_symbol = [&](index::SymbolHash hash) {
-        return view->find_symbol(hash);
-    };
+    ASSERT_TRUE(project.merge(view, file_ids_map));
+    main_id = file_ids_map[view.path_count() - 1];
 
     index::TUManifest manifest;
-    manifest.tu_fv = project.intern_file_version(main_id, view->path_hash(view->path_count() - 1));
+    manifest.tu_fv = project.intern_file_version(main_id, view.path_hash(view.path_count() - 1));
 
-    for(std::uint32_t section = 0; section < view->section_count(); section += 1) {
-        auto local_id = view->section_path(section);
+    for(std::uint32_t section = 0; section < view.section_count(); section += 1) {
+        auto local_id = view.section_path(section);
         auto global_id = file_ids_map[local_id];
-        auto rows = view->decode_section_rows(section);
-        ASSERT_TRUE(rows.has_value());
-        auto content = content_of(view->path(local_id));
-        index::VariantInput fresh{view->section_rows_hash(section), &*rows, lookup_symbol};
-        std::string bytes;
-        llvm::raw_string_ostream os(bytes);
-        index::write_shard(index::Shard(), {}, fresh, content, llvm::xxh3_64bits(content), os);
-        workspace.shards[global_id] =
-            index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
+        // A section blob is already the final shard encoding: install the
+        // bytes verbatim, as the indexer's first-variant path does.
+        workspace.shards[global_id] = index::Shard::from_buffer(
+            llvm::MemoryBuffer::getMemBufferCopy(view.section_blob(section)));
 
-        auto fv = project.intern_file_version(global_id, view->path_hash(local_id));
-        manifest.contributions.emplace_back(fv, view->section_rows_hash(section));
-        if(llvm::sys::path::filename(view->path(local_id)) == "header.h") {
+        auto fv = project.intern_file_version(global_id, view.path_hash(local_id));
+        manifest.contributions.emplace_back(fv, view.section_hash(section));
+        if(llvm::sys::path::filename(view.path(local_id)) == "header.h") {
             header_id = global_id;
         }
     }

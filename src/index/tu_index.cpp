@@ -820,9 +820,8 @@ std::uint64_t TUIndex::path_hash(std::uint32_t id) const {
 }
 
 std::uint32_t TUIndex::location_count() const {
-    return loaded()
-               ? static_cast<std::uint32_t>(wire_root(data)[&EnvelopeBlob::locations].size())
-               : 0;
+    return loaded() ? static_cast<std::uint32_t>(wire_root(data)[&EnvelopeBlob::locations].size())
+                    : 0;
 }
 
 IncludeLocation TUIndex::location(std::uint32_t i) const {
@@ -865,7 +864,7 @@ std::optional<std::uint32_t> TUIndex::section_of(std::uint32_t path_id) const {
 }
 
 const Shard& TUIndex::shard_of(std::uint32_t path_id) const {
-    static const Shard missing;
+    const static Shard missing;
     auto section = section_of(path_id);
     if(!section) {
         return missing;

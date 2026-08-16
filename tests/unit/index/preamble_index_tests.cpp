@@ -1,8 +1,10 @@
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "test/tester.h"
-#include "index/preamble_state.h"
 #include "index/serialization.h"
+#include "index/shard.h"
+#include "index/tu_index.h"
+#include "server/state/workspace.h"
 
 #include "llvm/Support/raw_ostream.h"
 
@@ -10,21 +12,19 @@ namespace clice::testing {
 
 namespace {
 
-TEST_SUITE(PreambleState, Tester) {
+TEST_SUITE(PreambleIndex, Tester) {
 
-index::TUIndex tu_index;
 TempDir dir;
-std::shared_ptr<index::PreambleState> state;
+std::shared_ptr<index::TUIndex> state;
 
 std::vector<feature::DocumentLink> links;
 std::vector<std::uint32_t> inactive;
 std::vector<std::uint8_t> conditionals;
 
-/// Compile, build a full TUIndex, serialize a PreambleState blob to disk
-/// and load it back.
+/// Compile, build a preamble envelope, persist it as the `.pch.idx` pair
+/// and load it back through the production gate.
 void build_state(std::source_location location = std::source_location::current()) {
     ASSERT_TRUE(compile());
-    tu_index = index::TUIndex::build(*unit);
 
     links.resize(1);
     links[0].range = {12, 20};
@@ -32,14 +32,8 @@ void build_state(std::source_location location = std::source_location::current()
     inactive = {4, 9, 30, 42};
     conditionals = {1, 0, 2};
 
-    auto blob_path = dir.path("state.pch.idx");
-    std::error_code ec;
-    llvm::raw_fd_ostream os(blob_path, ec);
-    ASSERT_FALSE(bool(ec));
-    index::PreambleState::serialize(*unit, tu_index, links, inactive, conditionals, os);
-    os.close();
-
-    state = index::PreambleState::load(blob_path);
+    dir.touch("state.pch.idx", index::build_preamble_index(*unit, links, inactive, conditionals));
+    state = load_pch_envelope(dir.path("state.pch.idx"));
     ASSERT_TRUE(state != nullptr);
 }
 
@@ -47,14 +41,36 @@ index::SymbolHash hash_of(llvm::StringRef name,
                           std::source_location location = std::source_location::current()) {
     index::SymbolHash hash = 0;
     std::uint32_t count = 0;
-    for(auto& [symbol_id, symbol]: tu_index.symbols) {
-        if(symbol.name == name) {
-            hash = symbol_id;
-            count += 1;
-        }
-    }
+    state->iterate_symbols(
+        [&](index::SymbolHash symbol_id, const index::SymbolIdentity& symbol, llvm::StringRef) {
+            if(symbol.name == name) {
+                hash = symbol_id;
+                count += 1;
+            }
+        });
     EXPECT_EQ(count, 1);
     return hash;
+}
+
+/// Walk a symbol's relation rows in every header section (all but the
+/// main file's), the way the query layer's overlay lookup serves them.
+void lookup_headers(index::SymbolHash hash,
+                    RelationKind kind,
+                    llvm::function_ref<bool(llvm::StringRef, const index::Relation&)> callback) {
+    for(std::uint32_t i = 0; i < state->section_count(); i += 1) {
+        auto path_id = state->section_path(i);
+        if(path_id == state->path_count() - 1) {
+            continue;
+        }
+        bool keep = true;
+        state->shard_of(path_id).lookup(hash, kind, [&](const index::Relation& r) {
+            keep = callback(state->path(path_id), r);
+            return keep;
+        });
+        if(!keep) {
+            return;
+        }
+    }
 }
 
 TEST_CASE(ForcedIncludeServed) {
@@ -63,8 +79,8 @@ TEST_CASE(ForcedIncludeServed) {
 
     // A compile-command forced include: clang records its include edge in
     // the predefines buffer, which is a valid location — so unlike the
-    // synthetic buffers themselves, the file must stay in the blob under
-    // its own path.
+    // synthetic buffers themselves, the file must stay in the envelope
+    // under its own path.
     prepare();
     owned_args.insert(owned_args.end() - 1, "-include");
     owned_args.insert(owned_args.end() - 1, TestVFS::path("forced.h"));
@@ -73,27 +89,20 @@ TEST_CASE(ForcedIncludeServed) {
         params.arguments.push_back(arg.c_str());
     }
     ASSERT_TRUE(try_compile());
-    tu_index = index::TUIndex::build(*unit);
 
-    auto blob_path = dir.path("state.pch.idx");
-    std::error_code ec;
-    llvm::raw_fd_ostream os(blob_path, ec);
-    ASSERT_FALSE(bool(ec));
-    index::PreambleState::serialize(*unit, tu_index, {}, {}, {}, os);
-    os.close();
-
-    state = index::PreambleState::load(blob_path);
+    dir.touch("state.pch.idx", index::build_preamble_index(*unit, {}, {}, {}));
+    state = load_pch_envelope(dir.path("state.pch.idx"));
     ASSERT_TRUE(state != nullptr);
 
     bool found = false;
-    state->lookup(hash_of("forced_value"),
-                  RelationKind::Definition,
-                  [&](const index::PreambleState::File& file, const index::Relation& r) {
-                      EXPECT_TRUE(file.path.ends_with("forced.h"));
-                      EXPECT_EQ(dump(r.range), dump(range("def", "forced.h")));
-                      found = true;
-                      return false;
-                  });
+    lookup_headers(hash_of("forced_value"),
+                   RelationKind::Definition,
+                   [&](llvm::StringRef path, const index::Relation& r) {
+                       EXPECT_TRUE(path.ends_with("forced.h"));
+                       EXPECT_EQ(dump(r.range), dump(range("def", "forced.h")));
+                       found = true;
+                       return false;
+                   });
     EXPECT_TRUE(found);
 }
 
@@ -110,33 +119,38 @@ int main() { §(ref)⟦foo⟧(); return 0; }
 
     auto foo = hash_of("foo");
 
-    // The definition inside the header is served from the blob, together
-    // with everything needed to map it to an LSP location.
+    // The definition inside the header is served from its section.
     bool found_def = false;
-    state->lookup(foo,
-                  RelationKind::Definition,
-                  [&](const index::PreambleState::File& file, const index::Relation& r) {
-                      EXPECT_TRUE(file.path.ends_with("foo.h"));
-                      EXPECT_FALSE(file.content.empty());
-                      EXPECT_FALSE(file.line_starts.empty());
-                      EXPECT_EQ(dump(r.range), dump(range("def", "foo.h")));
-                      found_def = true;
-                      return false;
-                  });
+    lookup_headers(foo,
+                   RelationKind::Definition,
+                   [&](llvm::StringRef path, const index::Relation& r) {
+                       EXPECT_TRUE(path.ends_with("foo.h"));
+                       EXPECT_EQ(dump(r.range), dump(range("def", "foo.h")));
+                       found_def = true;
+                       return false;
+                   });
     EXPECT_TRUE(found_def);
 
-    // Header-internal references are in the blob too.
+    // Header-internal references are in the envelope too.
     bool found_ref = false;
-    state->lookup(foo,
-                  RelationKind::Reference,
-                  [&](const index::PreambleState::File& file, const index::Relation& r) {
-                      if(r.range == range("href", "foo.h")) {
-                          found_ref = true;
-                          return false;
-                      }
-                      return true;
-                  });
+    lookup_headers(foo, RelationKind::Reference, [&](llvm::StringRef, const index::Relation& r) {
+        if(r.range == range("href", "foo.h")) {
+            found_ref = true;
+            return false;
+        }
+        return true;
+    });
     EXPECT_TRUE(found_ref);
+
+    // Everything needed to map rows to LSP positions rides in each shard;
+    // pure-ASCII content itself is omitted.
+    for(std::uint32_t i = 0; i < state->section_count(); i += 1) {
+        auto& shard = state->shard_of(state->section_path(i));
+        EXPECT_TRUE(shard.content_size() > 0);
+        EXPECT_FALSE(shard.line_starts().empty());
+        EXPECT_TRUE(shard.ascii());
+        EXPECT_TRUE(shard.content().empty());
+    }
 }
 
 TEST_CASE(PreambleLookup) {
@@ -150,10 +164,12 @@ int main() { §(ref)⟦§(ref)foo⟧(); return 0; }
     build_state();
 
     auto foo = hash_of("foo");
+    const index::Shard& preamble = state->shard_of(state->path_count() - 1);
+    ASSERT_TRUE(preamble.loaded());
 
     // Occurrence lookup by offset in the preamble entry.
     bool found_occurrence = false;
-    state->lookup_preamble(point("ref"), [&](const index::Occurrence& occurrence) {
+    preamble.lookup(point("ref"), [&](const index::Occurrence& occurrence) {
         EXPECT_EQ(occurrence.target, foo);
         EXPECT_EQ(dump(occurrence.range), dump(range("ref")));
         found_occurrence = true;
@@ -163,54 +179,12 @@ int main() { §(ref)⟦§(ref)foo⟧(); return 0; }
 
     // Relation lookup by symbol in the preamble entry.
     bool found_relation = false;
-    state->lookup_preamble(foo, RelationKind::Reference, [&](const index::Relation& r) {
+    preamble.lookup(foo, RelationKind::Reference, [&](const index::Relation& r) {
         EXPECT_EQ(dump(r.range), dump(range("ref")));
         found_relation = true;
         return false;
     });
     EXPECT_TRUE(found_relation);
-}
-
-TEST_CASE(MoveConsumedIndex) {
-    // The production path (stateless worker) moves the TUIndex into
-    // serialize; the blob must be complete even though the index is
-    // consumed rather than copied.
-    add_file("foo.h", R"(
-inline void §(def)⟦foo⟧() {}
-)");
-    add_main("main.cpp", R"(
-#include "foo.h"
-int main() { §(ref)⟦foo⟧(); return 0; }
-)");
-    ASSERT_TRUE(compile());
-    tu_index = index::TUIndex::build(*unit);
-    auto foo = hash_of("foo");
-
-    auto blob_path = dir.path("moved.pch.idx");
-    std::error_code ec;
-    llvm::raw_fd_ostream os(blob_path, ec);
-    ASSERT_FALSE(bool(ec));
-    index::PreambleState::serialize(*unit, std::move(tu_index), {}, {}, {}, os);
-    os.close();
-
-    state = index::PreambleState::load(blob_path);
-    ASSERT_TRUE(state != nullptr);
-
-    bool found = false;
-    state->lookup(foo,
-                  RelationKind::Definition,
-                  [&](const index::PreambleState::File& file, const index::Relation& r) {
-                      EXPECT_TRUE(file.path.ends_with("foo.h"));
-                      EXPECT_EQ(dump(r.range), dump(range("def", "foo.h")));
-                      found = true;
-                      return false;
-                  });
-    EXPECT_TRUE(found);
-
-    std::string name;
-    SymbolKind kind;
-    EXPECT_TRUE(state->find_symbol(foo, name, kind));
-    EXPECT_EQ(name, "foo");
 }
 
 TEST_CASE(SymbolTableLookup) {
@@ -225,13 +199,12 @@ int main() { §(ref)⟦foo⟧(); return 0; }
 
     auto foo = hash_of("foo");
 
-    std::string name;
-    SymbolKind kind;
-    ASSERT_TRUE(state->find_symbol(foo, name, kind));
-    EXPECT_EQ(name, "foo");
-    EXPECT_EQ(kind.value(), SymbolKind(SymbolKind::Function).value());
+    auto identity = state->find_symbol(foo);
+    ASSERT_TRUE(identity.has_value());
+    EXPECT_EQ(identity->name, "foo");
+    EXPECT_EQ(identity->kind.value(), SymbolKind(SymbolKind::Function).value());
 
-    EXPECT_FALSE(state->find_symbol(foo + 1, name, kind));
+    EXPECT_FALSE(state->find_symbol(foo + 1).has_value());
 }
 
 TEST_CASE(FeatureStateRoundtrip) {
@@ -248,9 +221,10 @@ int main() { return 0; }
     EXPECT_EQ(state->inactive_regions(), llvm::ArrayRef<std::uint32_t>(inactive));
     EXPECT_EQ(state->open_conditionals(), llvm::ArrayRef<std::uint8_t>(conditionals));
 
-    // A blob with no header entries answers lookups with silence, not UB.
+    // An envelope with no header sections answers lookups with silence,
+    // not UB.
     bool visited = false;
-    state->lookup(42, RelationKind::Reference, [&](auto&, auto&) {
+    lookup_headers(42, RelationKind::Reference, [&](llvm::StringRef, const index::Relation&) {
         visited = true;
         return true;
     });
@@ -258,10 +232,10 @@ int main() { return 0; }
 }
 
 TEST_CASE(RejectBadBlob) {
-    EXPECT_TRUE(index::PreambleState::load(dir.path("missing.pch.idx")) == nullptr);
+    EXPECT_TRUE(load_pch_envelope(dir.path("missing.pch.idx")) == nullptr);
 
     dir.touch("garbage.pch.idx", "not a flatbuffer at all");
-    EXPECT_TRUE(index::PreambleState::load(dir.path("garbage.pch.idx")) == nullptr);
+    EXPECT_TRUE(load_pch_envelope(dir.path("garbage.pch.idx")) == nullptr);
 }
 
 TEST_CASE(RejectVersionMismatch) {
@@ -280,7 +254,7 @@ TEST_CASE(RejectVersionMismatch) {
     auto blob_path = dir.path("stale.pch.idx");
     dir.touch("stale.pch.idx",
               llvm::StringRef(reinterpret_cast<const char*>(blob->data()), blob->size()));
-    EXPECT_TRUE(index::PreambleState::load(blob_path) == nullptr);
+    EXPECT_TRUE(load_pch_envelope(blob_path) == nullptr);
 }
 
 TEST_CASE(AcceptCurrentVersionBlob) {
@@ -291,12 +265,12 @@ TEST_CASE(AcceptCurrentVersionBlob) {
         std::uint32_t format_version = 0;
     };
 
-    auto blob = kota::codec::fbs::to_bytes(VersionOnly{index::preamble_format_version});
+    auto blob = kota::codec::fbs::to_bytes(VersionOnly{index::index_format_version});
     ASSERT_TRUE(blob.has_value());
 
     dir.touch("current.pch.idx",
               llvm::StringRef(reinterpret_cast<const char*>(blob->data()), blob->size()));
-    EXPECT_TRUE(index::PreambleState::load(dir.path("current.pch.idx")) != nullptr);
+    EXPECT_TRUE(load_pch_envelope(dir.path("current.pch.idx")) != nullptr);
 }
 
 TEST_CASE(RejectCorruptBlob) {
@@ -311,30 +285,68 @@ int main() { return 0; }
     ASSERT_TRUE(bytes.size() > 8);
 
     dir.touch("truncated.pch.idx", bytes.take_front(bytes.size() / 2));
-    EXPECT_TRUE(index::PreambleState::load(dir.path("truncated.pch.idx")) == nullptr);
+    EXPECT_TRUE(load_pch_envelope(dir.path("truncated.pch.idx")) == nullptr);
 
     // Bytes 4-7 carry the buffer identifier; a blob from another format
     // must be rejected up front.
     std::string clobbered = bytes.str();
-    for(std::size_t i = 4; i < 8; ++i) {
+    for(std::size_t i = 4; i < 8; i += 1) {
         clobbered[i] = 'X';
     }
     dir.touch("clobbered.pch.idx", clobbered);
-    EXPECT_TRUE(index::PreambleState::load(dir.path("clobbered.pch.idx")) == nullptr);
+    EXPECT_TRUE(load_pch_envelope(dir.path("clobbered.pch.idx")) == nullptr);
 }
 
-TEST_CASE(SourcePathAndContent) {
+TEST_CASE(RejectCorruptSectionBlob) {
+    add_main("main.cpp", R"(
+int main() { return 0; }
+)");
+    build_state();
+
+    // Overwrite one section's blob bytes in place: the envelope stays
+    // structurally valid, but the load gate verifies every blob and must
+    // read the pair as missing instead of silently serving nothing.
+    auto buffer = llvm::MemoryBuffer::getFile(dir.path("state.pch.idx"));
+    ASSERT_TRUE(bool(buffer));
+    std::string bytes = (*buffer)->getBuffer().str();
+
+    auto view = index::TUIndex::from_bytes(bytes);
+    ASSERT_TRUE(view.loaded());
+    ASSERT_TRUE(view.section_count() > 0);
+    auto blob = view.section_blob(0);
+    auto pos = llvm::StringRef(bytes).find(blob);
+    ASSERT_TRUE(pos != llvm::StringRef::npos);
+    for(std::size_t i = 0; i < blob.size(); i += 1) {
+        bytes[pos + i] = 'X';
+    }
+
+    dir.touch("bad_section.pch.idx", bytes);
+    EXPECT_TRUE(load_pch_envelope(dir.path("bad_section.pch.idx")) == nullptr);
+}
+
+TEST_CASE(SourcePathAndPrefix) {
     add_main("main.cpp", R"(
 int value = 42;
 int other = 1;
 )");
     build_state();
 
-    EXPECT_TRUE(state->source_path().ends_with("main.cpp"));
-    EXPECT_EQ(state->preamble_content(), unit->interested_content());
+    EXPECT_TRUE(state->path(state->path_count() - 1).ends_with("main.cpp"));
+
+    // The preamble text itself is not stored; the envelope keeps only the
+    // identity of the exact prefix it was built from.
+    auto content = unit->interested_content();
+    EXPECT_TRUE(state->matches_prefix(content));
+    EXPECT_TRUE(state->matches_prefix(content.str() + "\nint more = 2;"));
+    EXPECT_FALSE(state->matches_prefix(content.drop_back(1)));
+    EXPECT_FALSE(state->matches_prefix("int changed = 0;"));
+
+    // An ordinary envelope never serves preamble state.
+    auto ordinary = index::build_tu_index(*unit);
+    EXPECT_FALSE(index::TUIndex::from_bytes(ordinary).matches_prefix(content));
 }
 
-};  // TEST_SUITE(PreambleState)
+};  // TEST_SUITE(PreambleIndex)
 
 }  // namespace
 

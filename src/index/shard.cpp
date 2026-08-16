@@ -87,8 +87,7 @@ struct Ranges {
         if(!packed.empty() && packed[row] == packed_sentinel) {
             return ~std::uint32_t(0);
         }
-        auto length =
-            packed.empty() ? lengths[row] : static_cast<std::uint8_t>(packed[row] & 0xff);
+        auto length = packed.empty() ? lengths[row] : static_cast<std::uint8_t>(packed[row] & 0xff);
         if(length == length_escape) {
             // validate() proves every sentinel owns exactly one escape
             // entry, so the search always lands.
@@ -223,7 +222,8 @@ bool validate(BlobView root) {
     auto line_lengths = to_array_ref(root[&ShardBlob::line_lengths]);
     auto long_line_rows = to_array_ref(root[&ShardBlob::long_line_rows]);
     auto long_line_lengths = to_array_ref(root[&ShardBlob::long_line_lengths]);
-    if(line_lengths.empty() || !escapes_ok(line_lengths, long_line_rows, long_line_lengths.size()) ||
+    if(line_lengths.empty() ||
+       !escapes_ok(line_lengths, long_line_rows, long_line_lengths.size()) ||
        !std::ranges::is_sorted(long_line_rows, std::less_equal{})) {
         return false;
     }
@@ -264,7 +264,8 @@ bool validate(BlobView root) {
         if(columns.packed.empty()) {
             return escapes_ok(columns.lengths, columns.long_rows, columns.long_ends.size());
         }
-        return escapes_ok(packed_lengths(columns.packed), columns.long_rows,
+        return escapes_ok(packed_lengths(columns.packed),
+                          columns.long_rows,
                           columns.long_ends.size());
     };
     if(!range_escapes_ok(occ) || !range_escapes_ok(rel)) {
@@ -713,16 +714,18 @@ void Shard::for_each_occurrence(llvm::function_ref<bool(const Occurrence&)> call
         if(!row_live(true, row)) {
             continue;
         }
-        Occurrence occurrence{{columns.begin_of(row), columns.end_of(row)},
-                              sym_hashes[occ_sym_id(root, row)]};
+        Occurrence occurrence{
+            {columns.begin_of(row), columns.end_of(row)},
+            sym_hashes[occ_sym_id(root, row)]
+        };
         if(!callback(occurrence)) {
             return;
         }
     }
 }
 
-void Shard::for_each_relation(
-    llvm::function_ref<bool(SymbolHash, const Relation&)> callback) const {
+void
+    Shard::for_each_relation(llvm::function_ref<bool(SymbolHash, const Relation&)> callback) const {
     if(!buffer) {
         return;
     }
@@ -965,7 +968,9 @@ llvm::DenseSet<std::uint64_t> referenced_symbols(const MergedRows<MaskT>& merged
     return referenced;
 }
 
-constexpr auto occ_key = [](const auto& row) { return std::tuple(row.begin, row.end, row.sym); };
+constexpr auto occ_key = [](const auto& row) {
+    return std::tuple(row.begin, row.end, row.sym);
+};
 constexpr auto rel_key = [](const auto& row) {
     return std::tuple(row.kind, row.begin, row.end, row.payload);
 };
@@ -1157,8 +1162,8 @@ void emit_row_range(RowRanges& side,
         return;
     }
     auto length = end - begin;
-    std::uint8_t stored = length >= length_escape ? length_escape
-                                                  : static_cast<std::uint8_t>(length);
+    std::uint8_t stored =
+        length >= length_escape ? length_escape : static_cast<std::uint8_t>(length);
     if(stored == length_escape) {
         side.long_rows.push_back(row);
         side.long_ends.push_back(end);
@@ -1332,9 +1337,8 @@ void merge_shards_impl(BlobView old_root,
     for(std::uint32_t i = 0; i < fresh.size(); i += 1) {
         auto root = view_of(fresh[i].bytes());
         auto bit = single_bit<MaskT>(fresh_base + i);
-        auto rows = decode_occurrences<MaskT>(root, [&](const Ranges&, std::uint32_t) {
-            return bit;
-        });
+        auto rows =
+            decode_occurrences<MaskT>(root, [&](const Ranges&, std::uint32_t) { return bit; });
         fresh_occs.insert(fresh_occs.end(),
                           std::make_move_iterator(rows.begin()),
                           std::make_move_iterator(rows.end()));
@@ -1356,13 +1360,12 @@ void merge_shards_impl(BlobView old_root,
         auto bit = single_bit<MaskT>(fresh_base + i);
         auto columns = rel_ranges(root);
         for(auto& group: relation_groups(root)) {
-            auto rows = decode_relation_group<MaskT>(root,
-                                                     columns,
-                                                     group.begin_row,
-                                                     group.end_row,
-                                                     [&](const Ranges&, std::uint32_t) {
-                                                         return bit;
-                                                     });
+            auto rows =
+                decode_relation_group<MaskT>(root,
+                                             columns,
+                                             group.begin_row,
+                                             group.end_row,
+                                             [&](const Ranges&, std::uint32_t) { return bit; });
             auto& into = fresh_group_map[group.hash];
             into.insert(into.end(),
                         std::make_move_iterator(rows.begin()),
@@ -1526,11 +1529,21 @@ void merge_shards(const Shard& old,
     }
 
     if(variants.size() <= 64) {
-        merge_shards_impl<std::uint64_t>(old_root, id_map, fresh, fresh_base,
-                                         std::move(variants), content, os);
+        merge_shards_impl<std::uint64_t>(old_root,
+                                         id_map,
+                                         fresh,
+                                         fresh_base,
+                                         std::move(variants),
+                                         content,
+                                         os);
     } else {
-        merge_shards_impl<Bitmap>(old_root, id_map, fresh, fresh_base,
-                                  std::move(variants), content, os);
+        merge_shards_impl<Bitmap>(old_root,
+                                  id_map,
+                                  fresh,
+                                  fresh_base,
+                                  std::move(variants),
+                                  content,
+                                  os);
     }
 }
 

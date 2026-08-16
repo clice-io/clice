@@ -70,10 +70,10 @@ frontend-internal breakdown (preprocessing, parsing, Sema, PCH
 deserialization) that wall-clock stage timing cannot separate.
 
 `--log-level info` additionally surfaces the `[perf:index_detail]` lines
-from inside the index stages: semantics-table build vs projection vs
-finishing within `TUIndex::build`, and the path-rekeying copy vs the
-flatbuffers pack within `serialize`. The same lines appear in worker logs
-of a real session, so production runs decompose identically.
+from inside the index stage: semantics-table build vs projection vs
+finishing vs per-file blob encoding vs the envelope pack within
+`build_tu_index`. The same lines appear in worker logs of a real session,
+so production runs decompose identically.
 
 E2E scenarios, clice vs clangd:
 

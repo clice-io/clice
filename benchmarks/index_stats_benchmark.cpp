@@ -1,6 +1,6 @@
 /// In-process measurement probe for the on-disk index redesign. Compiles
 /// every TU in a compilation database exactly like the background-index
-/// worker does (full parse without PCH + TUIndex::build), serializes the
+/// worker does (full parse without PCH + envelope build), measures the
 /// index the way production consumes it, then walks the resulting structures
 /// and accumulates the distributions the new "merged blob" format needs to
 /// pick its column tiers.
@@ -8,7 +8,7 @@
 /// Compiles run on a few worker threads, each accumulating into its own
 /// Stats; the only shared state is a per-(path, variant-hash) registry
 /// deciding which thread walks a distinct variant's rows — touched once per
-/// FileIndex, never per row — so "per distinct variant" populations are not
+/// file section, never per row — so "per distinct variant" populations are not
 /// double-counted across threads. Accumulators merge after join.
 ///
 /// This is measurement scratch code: it favours being obvious over being
@@ -189,10 +189,10 @@ struct Hist {
 /// Per source-file aggregates, keyed by path string and folded across every
 /// TU that touched the file.
 struct PathAgg {
-    /// Distinct FileIndex rows hashes this thread claimed for this path;
+    /// Distinct section blob hashes this thread claimed for this path;
     /// claims are globally unique, so the merged union is the file's M.
     std::set<std::uint64_t> variants;
-    /// Number of TU contributions (one FileIndex per TU per path) — N.
+    /// Number of TU contributions (one section per TU per path) — N.
     std::uint32_t contributions = 0;
 
     bool size_probed = false;
@@ -220,7 +220,7 @@ struct DirAgg {
 };
 
 /// Arbitrates which thread accumulates a distinct (path, variant) exactly
-/// once. Touched once per FileIndex per TU — a coarse coordination point,
+/// once. Touched once per section per TU — a coarse coordination point,
 /// not the per-row hot path.
 struct VariantRegistry {
     std::mutex mutex;
@@ -256,7 +256,14 @@ struct Stats {
     std::uint64_t indexed = 0;
     std::uint64_t had_diagnostics = 0;
 
-    void add_file_index(index::FileIndex& fi, llvm::StringRef path) {
+    /// One file's rows decoded back out of its envelope section.
+    struct DecodedRows {
+        std::vector<index::Occurrence> occurrences;
+        llvm::DenseMap<index::SymbolHash, std::vector<index::Relation>> relations{};
+    };
+
+    /// `hash` is the section's blob hash — the variant's byte identity.
+    void add_file_index(const DecodedRows& fi, llvm::StringRef path, std::uint64_t hash) {
         if(fi.occurrences.empty() && fi.relations.empty()) {
             return;
         }
@@ -272,7 +279,6 @@ struct Stats {
         }
         agg.contributions += 1;
 
-        auto hash = fi.rows_hash();
         bool inserted = registry->try_claim(path, hash);
         if(inserted) {
             agg.variants.insert(hash);
@@ -341,16 +347,16 @@ struct Stats {
         }
     }
 
-    void add_directives(index::TUIndex& tu) {
-        auto& graph = tu.graph;
-        if(graph.paths.empty()) {
+    void add_directives(const index::TUIndex& tu) {
+        if(tu.path_count() == 0) {
             return;
         }
-        auto root_path_id = static_cast<std::uint32_t>(graph.paths.size() - 1);
+        auto root_path_id = tu.path_count() - 1;
 
         // Outgoing edges keyed by parent location index (-1 = TU root).
         llvm::DenseMap<std::int64_t, std::vector<std::pair<std::uint32_t, std::uint32_t>>> outgoing;
-        for(auto& loc: graph.locations) {
+        for(std::uint32_t i = 0; i < tu.location_count(); i += 1) {
+            auto loc = tu.location(i);
             std::int64_t parent = loc.include == static_cast<std::uint32_t>(-1)
                                       ? -1
                                       : static_cast<std::int64_t>(loc.include);
@@ -360,30 +366,28 @@ struct Stats {
         llvm::StringMap<llvm::DenseSet<std::uint64_t>> local;
         for(auto& [parent, list]: outgoing) {
             std::uint32_t parent_path_id =
-                parent < 0 ? root_path_id : graph.locations[parent].path_id;
-            if(parent_path_id >= graph.paths.size()) {
+                parent < 0 ? root_path_id : tu.location(static_cast<std::uint32_t>(parent)).path_id;
+            if(parent_path_id >= tu.path_count()) {
                 continue;
             }
-            std::uint64_t parent_hash =
-                parent_path_id < graph.path_hashes.size() ? graph.path_hashes[parent_path_id] : 0;
+            std::uint64_t parent_hash = tu.path_hash(parent_path_id);
 
             std::ranges::sort(list, [&](auto& a, auto& b) {
                 if(a.first != b.first) {
                     return a.first < b.first;
                 }
-                return graph.paths[a.second] < graph.paths[b.second];
+                return tu.path(a.second) < tu.path(b.second);
             });
 
             std::string shape;
             for(auto& [line, child_path_id]: list) {
                 shape += std::format("{},{}\n",
                                      line,
-                                     child_path_id < graph.paths.size()
-                                         ? llvm::StringRef(graph.paths[child_path_id])
-                                         : llvm::StringRef());
+                                     child_path_id < tu.path_count() ? tu.path(child_path_id)
+                                                                     : llvm::StringRef());
             }
 
-            auto key = std::format("{}#{:016x}", graph.paths[parent_path_id], parent_hash);
+            auto key = std::format("{}#{:016x}", tu.path(parent_path_id), parent_hash);
             local[key].insert(llvm::xxh3_64bits(shape));
         }
 
@@ -396,28 +400,30 @@ struct Stats {
         }
     }
 
-    void add_tu(index::TUIndex& tu) {
+    void add_tu(const index::TUIndex& tu) {
         indexed += 1;
 
-        for(auto& [hash, symbol]: tu.symbols) {
-            auto scope = static_cast<std::uint8_t>(symbol.scope);
-            if(scope < scope_n.size()) {
-                scope_n[scope] += 1;
-            }
-            scope_map.try_emplace(hash, symbol.scope);
-        }
+        tu.iterate_symbols(
+            [&](index::SymbolHash hash, const index::SymbolIdentity& symbol, llvm::StringRef) {
+                auto scope = static_cast<std::uint8_t>(symbol.scope);
+                if(scope < scope_n.size()) {
+                    scope_n[scope] += 1;
+                }
+                scope_map.try_emplace(hash, symbol.scope);
+            });
 
-        if(!tu.graph.paths.empty()) {
-            add_file_index(tu.main_file_index, tu.graph.paths.back());
-        }
-        // Multiple FileIDs can share a path id (repeated header contexts);
-        // last-wins, like the wire sections.
-        llvm::DenseMap<std::uint32_t, index::FileIndex*> by_path;
-        for(auto& [fid, fi]: tu.file_indices) {
-            by_path[tu.graph.path_id(fid)] = &fi;
-        }
-        for(auto& [path_id, fi]: by_path) {
-            add_file_index(*fi, tu.graph.paths[path_id]);
+        for(std::uint32_t i = 0; i < tu.section_count(); i += 1) {
+            const auto& shard = tu.shard_of(tu.section_path(i));
+            DecodedRows rows;
+            shard.for_each_occurrence([&](const index::Occurrence& occurrence) {
+                rows.occurrences.push_back(occurrence);
+                return true;
+            });
+            shard.for_each_relation([&](index::SymbolHash hash, const index::Relation& relation) {
+                rows.relations[hash].push_back(relation);
+                return true;
+            });
+            add_file_index(rows, tu.path(tu.section_path(i)), tu.section_hash(i));
         }
 
         add_directives(tu);
@@ -1178,14 +1184,10 @@ int main(int argc, const char** argv) {
                 stats.had_diagnostics += 1;
             }
 
-            auto tu_index = index::TUIndex::build(unit);
+            auto envelope = index::build_tu_index(unit);
+            stats.wire_sizes.add(envelope.size());
 
-            llvm::SmallString<0> buffer;
-            llvm::raw_svector_ostream os(buffer);
-            tu_index.serialize(os);
-            stats.wire_sizes.add(buffer.size());
-
-            stats.add_tu(tu_index);
+            stats.add_tu(index::TUIndex::from_bytes(envelope));
             finish("");
         }
     };

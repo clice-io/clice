@@ -7,7 +7,6 @@
 #include "test/tester.h"
 #include "index/serialization.h"
 #include "index/shard.h"
-#include "index/shard_layout.h"
 #include "index/tu_index.h"
 
 #include "kota/ipc/lsp/text.h"
@@ -26,31 +25,25 @@ void build_index(llvm::StringRef code,
                  std::source_location location = std::source_location::current()) {
     add_main("main.cpp", code);
     ASSERT_TRUE(compile());
-    tu_index = index::TUIndex::build(*unit);
+    tu_index = index::TUIndex::from_buffer(
+        llvm::MemoryBuffer::getMemBufferCopy(index::build_tu_index(*unit)));
+    ASSERT_TRUE(tu_index.loaded());
 }
 
-std::optional<index::SymbolIdentity> lookup_symbol(index::SymbolHash hash) {
-    auto it = tu_index.symbols.find(hash);
-    if(it == tu_index.symbols.end()) {
-        return std::nullopt;
-    }
-    return index::SymbolIdentity{it->second.name, it->second.kind, it->second.scope};
-}
-
-std::string write_fresh(const index::FileIndex& rows,
-                        llvm::StringRef content,
-                        bool with_symbols = false) {
-    llvm::function_ref<std::optional<index::SymbolIdentity>(index::SymbolHash)> resolve;
-    auto resolver = [this](index::SymbolHash symbol) {
-        return lookup_symbol(symbol);
-    };
-    if(with_symbols) {
-        resolve = resolver;
-    }
+std::string write_fresh(const index::FileIndex& rows, llvm::StringRef content) {
     std::string bytes;
     llvm::raw_string_ostream os(bytes);
-    index::write_shard(rows, resolve, content, os);
+    index::write_shard(rows, {}, content, os);
     return bytes;
+}
+
+/// The interested file's worker-encoded blob, straight from the envelope.
+std::string main_blob() {
+    auto section = tu_index.section_of(tu_index.path_count() - 1);
+    if(!section) {
+        return {};
+    }
+    return tu_index.section_blob(*section).str();
 }
 
 /// Owning wrap: from_bytes borrows, and every builder here returns a
@@ -100,8 +93,7 @@ TEST_CASE(RoundtripLookups) {
     )");
 
     auto content = sources.all_files.find("main.cpp")->second.content;
-    auto bytes = write_fresh(tu_index.main_file_index, content);
-    auto shard = make_shard(bytes);
+    auto shard = make_shard(main_blob());
     ASSERT_TRUE(shard.loaded());
     ASSERT_EQ(shard.content_size(), static_cast<std::uint32_t>(content.size()));
     ASSERT_FALSE(shard.line_starts().empty());
@@ -219,7 +211,7 @@ TEST_CASE(WideRangeTier) {
     // the wide tier takes over transparently.
     std::string content(index::packed_range_limit + 64, 'w');
     auto rows = simple_rows({
-        {{0, 3},                                                       111},
+        {{0, 3},                                                          111},
         {{index::packed_range_limit + 8, index::packed_range_limit + 11}, 222},
     });
     auto shard = make_shard(write_fresh(rows, content));
@@ -286,7 +278,7 @@ TEST_CASE(KWayMerge) {
     std::vector<index::Shard> fresh;
     for(std::uint32_t i = 0; i < 3; i += 1) {
         auto rows = simple_rows({
-            {{0, 3},                   111     },
+            {{0, 3},                         111     },
             {{4 * (i + 1), 4 * (i + 1) + 3}, 1000 + i},
         });
         fresh.push_back(make_shard(write_fresh(rows, content)));
@@ -441,8 +433,7 @@ TEST_CASE(LocalSymbolNames) {
         int visible() { return §(use)⟦§(use)helper⟧(); }
     )");
 
-    auto content = sources.all_files.find("main.cpp")->second.content;
-    auto shard = make_shard(write_fresh(tu_index.main_file_index, content, /*with_symbols=*/true));
+    auto shard = make_shard(main_blob());
 
     auto local = hash_at(shard, point("use"));
     ASSERT_TRUE(local != 0);
@@ -453,12 +444,14 @@ TEST_CASE(LocalSymbolNames) {
 
     // External names live in the ProjectIndex, never in the blob.
     auto external = [&] {
-        for(auto& [hash, symbol]: tu_index.symbols) {
-            if(symbol.name == "visible") {
-                return hash;
-            }
-        }
-        return index::SymbolHash(0);
+        index::SymbolHash result = 0;
+        tu_index.iterate_symbols(
+            [&](index::SymbolHash hash, const index::SymbolIdentity& symbol, llvm::StringRef) {
+                if(symbol.name == "visible") {
+                    result = hash;
+                }
+            });
+        return result;
     }();
     ASSERT_TRUE(external != 0);
     ASSERT_FALSE(shard.find_symbol(external, name, kind));
@@ -472,7 +465,7 @@ TEST_CASE(MergedLocalNames) {
         int visible() { return helper(); }
     )");
     auto content = sources.all_files.find("main.cpp")->second.content;
-    auto first = make_shard(write_fresh(tu_index.main_file_index, content, /*with_symbols=*/true));
+    auto first = make_shard(main_blob());
 
     auto extra = simple_rows({
         {{0, 3}, 424242}

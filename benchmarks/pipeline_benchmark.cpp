@@ -6,12 +6,12 @@
 ///   read               source file I/O
 ///   preprocess         PreprocessOnlyAction, TokenBuffer off
 ///   preprocess_tokens  PreprocessOnlyAction, TokenBuffer on (delta = TokenBuffer cost)
-///   parse              full parse without PCH + TUIndex build + serialize
-///                      (the background-index worker shape)
-///   pch_build          preamble PCH build + preamble index/state blob incl.
-///                      disk writes (first didOpen shape)
-///   parse_pch          full parse over the PCH + interactive index build +
-///                      serialize (the didChange shape)
+///   parse              full parse without PCH + envelope build (the
+///                      background-index worker shape)
+///   pch_build          preamble PCH build + preamble envelope incl. disk
+///                      writes (first didOpen shape)
+///   parse_pch          full parse over the PCH + interactive envelope
+///                      build (the didChange shape)
 ///
 /// Usage:
 ///   pipeline_benchmark [OPTIONS] <compile_commands.json>
@@ -33,7 +33,6 @@
 #include "command/toolchain.h"
 #include "compile/compilation.h"
 #include "feature/feature.h"
-#include "index/preamble_state.h"
 #include "index/tu_index.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
@@ -95,7 +94,6 @@ struct FileResult {
     double preprocess_tokens_ms = -1;
     double parse_ms = -1;
     double index_ms = -1;
-    double index_serialize_ms = -1;
     double pch_build_ms = -1;
     double parse_pch_ms = -1;
 
@@ -216,16 +214,14 @@ FileResult profile_file(llvm::StringRef file,
         };
 
         ScopedTimer index_timer;
-        auto tu_index = index::TUIndex::build(unit);
+        auto serialized = index::build_tu_index(unit);
         keep_min(result.index_ms, index_timer.ms_f());
-        result.symbols = tu_index.symbols.size();
-
-        ScopedTimer serialize_timer;
-        std::string serialized;
-        llvm::raw_string_ostream os(serialized);
-        tu_index.serialize(os);
-        keep_min(result.index_serialize_ms, serialize_timer.ms_f());
         result.index_bytes = serialized.size();
+
+        auto view = index::TUIndex::from_bytes(serialized);
+        std::uint64_t symbols = 0;
+        view.iterate_symbols([&](auto, auto&, auto) { symbols += 1; });
+        result.symbols = symbols;
         return true;
     });
     if(tracing) {
@@ -281,21 +277,13 @@ FileResult profile_file(llvm::StringRef file,
         }
 
         // The production PCH pass (stateless worker) also builds the
-        // preamble's full index, document links and inactive regions and
-        // writes the PreambleState blob next to the PCH before reporting
-        // success; the stage must carry that cost to match a didOpen.
-        auto tu_index = index::TUIndex::build(unit);
+        // preamble's envelope, document links and inactive regions and
+        // writes the blob next to the PCH before reporting success; the
+        // stage must carry that cost to match a didOpen.
         auto links = feature::document_links(unit);
         auto inactive = feature::inactive_regions(unit, {}, 0, result.preamble_bound);
         open_conditionals = std::move(inactive.open_stack);
-        std::string blob;
-        llvm::raw_string_ostream os(blob);
-        index::PreambleState::serialize(unit,
-                                        std::move(tu_index),
-                                        links,
-                                        inactive.regions,
-                                        open_conditionals,
-                                        os);
+        auto blob = index::build_preamble_index(unit, links, inactive.regions, open_conditionals);
 
         // The PCH is flushed to disk by the unit's destructor; the blob
         // write follows it, like the worker's on-disk ordering contract.
@@ -325,14 +313,10 @@ FileResult profile_file(llvm::StringRef file,
         }
 
         // The didChange pass (stateful worker) also computes inactive
-        // regions and builds and serializes the interested-only index
-        // before replying; include them so parse and parse_pch bound the
-        // same work.
+        // regions and builds the interested-only envelope before replying;
+        // include them so parse and parse_pch bound the same work.
         feature::inactive_regions(unit, open_conditionals, result.preamble_bound);
-        auto tu_index = index::TUIndex::build(unit, /*interested_only=*/true);
-        std::string serialized;
-        llvm::raw_string_ostream os(serialized);
-        tu_index.serialize(os);
+        index::build_tu_index(unit, /*interested_only=*/true);
         return true;
     });
 
@@ -373,7 +357,6 @@ void print_summary(std::vector<FileResult>& results) {
         {"preprocess_tokens"},
         {"parse"},
         {"index"},
-        {"index_serialize"},
         {"pch_build"},
         {"parse_pch"},
     };
@@ -383,9 +366,8 @@ void print_summary(std::vector<FileResult>& results) {
         stats[2].add(result.preprocess_tokens_ms);
         stats[3].add(result.parse_ms);
         stats[4].add(result.index_ms);
-        stats[5].add(result.index_serialize_ms);
-        stats[6].add(result.pch_build_ms);
-        stats[7].add(result.parse_pch_ms);
+        stats[5].add(result.pch_build_ms);
+        stats[6].add(result.parse_pch_ms);
     }
 
     std::println("");

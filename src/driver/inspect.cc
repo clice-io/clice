@@ -235,13 +235,9 @@ struct RawOccurrence {
 
 std::optional<kota::codec::RawValue> run_tu_index(CompilationUnitRef unit,
                                                   [[maybe_unused]] llvm::StringRef config) {
-    auto index = index::TUIndex::build(unit);
-    index::Shard rows;
-    if(auto* section = index.main_section()) {
-        rows = index::Shard::from_bytes(
-            llvm::StringRef(reinterpret_cast<const char*>(section->blob.data()),
-                            section->blob.size()));
-    }
+    auto envelope = index::build_tu_index(unit);
+    auto index = index::TUIndex::from_bytes(envelope);
+    const index::Shard& rows = index.shard_of(index.path_count() - 1);
 
     llvm::DenseMap<index::SymbolHash, std::vector<index::Relation>> relations;
     rows.for_each_relation([&](index::SymbolHash hash, const index::Relation& relation) {
@@ -252,16 +248,13 @@ std::optional<kota::codec::RawValue> run_tu_index(CompilationUnitRef unit,
     std::vector<RawOccurrence> out;
     rows.for_each_occurrence([&](const index::Occurrence& occurrence) {
         RawOccurrence raw;
-        raw.range = LocalSourceRange(occurrence.range.begin, occurrence.range.end);
-        auto symbol = index.symbols.find(occurrence.target);
-        raw.kind =
-            symbol != index.symbols.end() ? symbol->second.kind : SymbolKind(SymbolKind::Invalid);
+        raw.range = occurrence.range;
+        auto symbol = index.find_symbol(occurrence.target);
+        raw.kind = symbol ? symbol->kind : SymbolKind(SymbolKind::Invalid);
         if(auto found = relations.find(occurrence.target); found != relations.end()) {
             for(const auto& relation: found->second) {
                 if(relation.range == occurrence.range) {
-                    raw.relations.emplace_back(
-                        kota::meta::enum_name(static_cast<RelationKind::Kind>(relation.kind),
-                                              "Invalid"));
+                    raw.relations.emplace_back(kota::meta::enum_name(relation.kind, "Invalid"));
                 }
             }
         }

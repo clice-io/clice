@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "server/protocol/agentic.h"
+#include "server/protocol/position.h"
 #include "server/transport/master_server.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
@@ -363,7 +364,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
             auto ls = merged_index.line_starts();
             if(ls.empty())
                 co_return result;
-            lsp::LineMap map(merged_index.content(), ls);
+            IndexedLineMap map(merged_index.content(), merged_index.content_size(), ls);
 
             for(auto& [hash, symbol]: srv.workspace.project_index.symbols) {
                 if(symbol.name.empty())

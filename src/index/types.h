@@ -10,8 +10,8 @@
 #include <vector>
 
 #include "semantic/symbol.h"
-#include "syntax/token.h"
 #include "support/bitmap.h"
+#include "syntax/token.h"
 
 #include "llvm/ADT/DenseMap.h"
 

@@ -4,8 +4,9 @@
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "test/tester.h"
-#include "index/preamble_state.h"
+#include "index/serialization.h"
 #include "index/shard.h"
+#include "index/tu_index.h"
 #include "server/compiler/context_resolver.h"
 #include "server/compiler/indexer.h"
 #include "server/service/query.h"
@@ -37,28 +38,26 @@ index::TUIndex full_index;
 std::shared_ptr<Session> session;
 std::string main_path;
 
-/// Compile the added sources, serialize the full TUIndex as a
-/// PreambleState blob (exactly what the PCH build produces), and open a
-/// session whose pch_key points at it. The session's own file index is
-/// the interested-only index, mirroring the production per-edit index.
+/// Compile the added sources, persist the preamble envelope (exactly what
+/// the PCH build produces), and open a session whose pch_key points at
+/// it. The session's own index is the interested-only envelope, mirroring
+/// the production per-edit index.
 void open_with_overlay(std::source_location location = std::source_location::current()) {
     ASSERT_TRUE(compile());
 
-    full_index = index::TUIndex::build(*unit);
+    full_index = index::TUIndex::from_buffer(
+        llvm::MemoryBuffer::getMemBufferCopy(index::build_tu_index(*unit)));
+    ASSERT_TRUE(full_index.loaded());
+
     auto blob_path = dir.path("overlay.pch.idx");
-    {
-        std::error_code ec;
-        llvm::raw_fd_ostream os(blob_path, ec);
-        ASSERT_FALSE(bool(ec));
-        index::PreambleState::serialize(*unit, full_index, {}, {}, {}, os);
-    }
+    dir.touch("overlay.pch.idx", index::build_preamble_index(*unit, {}, {}, {}));
 
     auto& st = workspace.pch_cache["key"];
     st.path = "unused.pch";
     st.index_path = blob_path;
     st.state = nullptr;
 
-    main_path = full_index.graph.paths.back();
+    main_path = std::string(full_index.path(full_index.path_count() - 1));
     auto path_id = workspace.path_pool.intern(main_path);
     session = session_store.open(path_id);
 
@@ -67,9 +66,8 @@ void open_with_overlay(std::source_location location = std::source_location::cur
     session->text = it->second.content;
     session->line_starts = kota::ipc::lsp::build_line_starts(session->text);
 
-    auto session_index = index::TUIndex::build(*unit, true);
-    session->file_index = std::move(session_index.main_file_index);
-    session->symbols = std::move(session_index.symbols);
+    session->index = index::TUIndex::from_buffer(
+        llvm::MemoryBuffer::getMemBufferCopy(index::build_tu_index(*unit, true)));
     session->ast_dirty = false;
     session->pch_key = "key";
 }
@@ -78,60 +76,60 @@ index::SymbolHash hash_of(llvm::StringRef name,
                           std::source_location location = std::source_location::current()) {
     index::SymbolHash hash = 0;
     std::uint32_t count = 0;
-    for(auto& [symbol_id, symbol]: full_index.symbols) {
-        if(symbol.name == name) {
-            hash = symbol_id;
-            count += 1;
-        }
-    }
+    full_index.iterate_symbols(
+        [&](index::SymbolHash symbol_id, const index::SymbolIdentity& symbol, llvm::StringRef) {
+            if(symbol.name == name) {
+                hash = symbol_id;
+                count += 1;
+            }
+        });
     EXPECT_EQ(count, 1);
     return hash;
 }
 
 std::string header_path(llvm::StringRef basename) {
-    for(auto& path: full_index.graph.paths) {
-        if(llvm::sys::path::filename(path) == basename)
-            return path;
+    for(std::uint32_t i = 0; i < full_index.path_count(); i += 1) {
+        if(llvm::sys::path::filename(full_index.path(i)) == basename)
+            return std::string(full_index.path(i));
     }
     return {};
 }
 
-/// Merge the full TUIndex into the workspace's disk index with real
-/// contents, as background indexing would.
+/// Merge the full envelope into the workspace's disk index, installing
+/// each section's blob verbatim as background indexing would.
 void merge_disk_index() {
-    std::string wire;
-    llvm::raw_string_ostream wos(wire);
-    full_index.serialize(wos);
-    auto view = index::TUIndexView::from(wire);
-    ASSERT_TRUE(view.has_value());
-
     llvm::SmallVector<std::uint32_t> file_ids_map;
-    for(std::uint32_t i = 0; i < view->path_count(); i += 1) {
-        file_ids_map.push_back(workspace.path_pool.intern(view->path(i)));
+    for(std::uint32_t i = 0; i < full_index.path_count(); i += 1) {
+        file_ids_map.push_back(workspace.path_pool.intern(full_index.path(i)));
     }
-    ASSERT_TRUE(workspace.project_index.merge(*view, file_ids_map));
+    ASSERT_TRUE(workspace.project_index.merge(full_index, file_ids_map));
 
-    auto content_of = [&](llvm::StringRef path) -> llvm::StringRef {
-        auto it = sources.all_files.find(llvm::sys::path::filename(path));
-        return it != sources.all_files.end() ? llvm::StringRef(it->second.content)
-                                             : llvm::StringRef();
-    };
-    auto lookup_symbol = [&](index::SymbolHash hash) {
-        return view->find_symbol(hash);
-    };
-
-    for(std::uint32_t section = 0; section < view->section_count(); section += 1) {
-        auto local_id = view->section_path(section);
-        auto rows = view->decode_section_rows(section);
-        ASSERT_TRUE(rows.has_value());
-        auto content = content_of(view->path(local_id));
-        index::VariantInput fresh{view->section_rows_hash(section), &*rows, lookup_symbol};
-        std::string bytes;
-        llvm::raw_string_ostream os(bytes);
-        index::write_shard(index::Shard(), {}, fresh, content, llvm::xxh3_64bits(content), os);
-        workspace.shards[file_ids_map[local_id]] =
-            index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
+    for(std::uint32_t section = 0; section < full_index.section_count(); section += 1) {
+        auto local_id = full_index.section_path(section);
+        workspace.shards[file_ids_map[local_id]] = index::Shard::from_buffer(
+            llvm::MemoryBuffer::getMemBufferCopy(full_index.section_blob(section)));
     }
+}
+
+/// A settled, rows-empty per-edit index — what a session holds when every
+/// row of its buffer lives behind the PCH. `loaded` is what the freshness
+/// gate keys on; an unloaded index means "compile not settled".
+index::TUIndex empty_session_index() {
+    // Field order MUST mirror the envelope layout (tu_index.cpp).
+    struct EnvelopeMirror {
+        std::uint32_t format_version = index::index_format_version;
+        std::int64_t built_at = 1;
+        std::vector<std::string> paths;
+    };
+
+    EnvelopeMirror mirror;
+    mirror.paths = {main_path};
+    auto bytes = kota::codec::fbs::to_bytes(mirror);
+    if(!bytes) {
+        return {};
+    }
+    return index::TUIndex::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(
+        llvm::StringRef(reinterpret_cast<const char*>(bytes->data()), bytes->size())));
 }
 
 protocol::Position position_of(llvm::StringRef name) {
@@ -200,8 +198,8 @@ int main() { return 0; }
     // Production per-edit indexes never see the preamble region (the PCH
     // swallows it); emulate that by emptying the session's own index so
     // the cursor can only resolve through the overlay's main-file entry.
-    session->file_index = index::FileIndex();
-    session->symbols = index::SymbolTable();
+    session->index = empty_session_index();
+    ASSERT_TRUE(session->index.loaded());
 
     auto uri = std::string("file://") + main_path;
     auto info = index_query.lookup_symbol(uri, main_path, position_of("macro"), session.get());
@@ -327,11 +325,16 @@ int main() { §(ref)⟦foo⟧(); return 0; }
 }
 
 TEST_CASE(MacroDefinitionText) {
-    add_main("main.cpp", R"(#define §(macro)⟦FOO⟧ 1
+    // The π comment keeps the file non-ASCII, so its content is stored in
+    // the blob and the text path serves without touching the disk.
+    add_main("main.cpp", R"(// π
+#define §(macro)⟦FOO⟧ 1
 int main() { return 0; }
 )");
     ASSERT_TRUE(compile());
-    full_index = index::TUIndex::build(*unit);
+    full_index = index::TUIndex::from_buffer(
+        llvm::MemoryBuffer::getMemBufferCopy(index::build_tu_index(*unit)));
+    ASSERT_TRUE(full_index.loaded());
     merge_disk_index();
 
     // Macro Definition relations carry the full #define extent, so the
@@ -341,6 +344,31 @@ int main() { return 0; }
     EXPECT_TRUE(llvm::StringRef(text->text).contains("FOO"));
 }
 
+TEST_CASE(AsciiPreviewDegrades) {
+    // Pure-ASCII blobs re-read the disk for previews. This file only
+    // exists in the test VFS, so the read fails like a moved-on file:
+    // definition text degrades to nothing while references keep serving
+    // their positions, only without context lines.
+    add_main("main.cpp", R"(#define §(macro)⟦FOO⟧ 1
+int use = FOO;
+int main() { return 0; }
+)");
+    ASSERT_TRUE(compile());
+    full_index = index::TUIndex::from_buffer(
+        llvm::MemoryBuffer::getMemBufferCopy(index::build_tu_index(*unit)));
+    ASSERT_TRUE(full_index.loaded());
+    merge_disk_index();
+
+    auto foo = hash_of("FOO");
+    EXPECT_FALSE(agent_query.get_definition_text(foo).has_value());
+
+    auto references = agent_query.collect_references(foo, RelationKind::Reference);
+    ASSERT_FALSE(references.empty());
+    for(auto& reference: references) {
+        EXPECT_TRUE(reference.context.empty());
+    }
+}
+
 TEST_CASE(SharedPreambleScoped) {
     add_main("main.cpp", R"(#define §(macro)⟦§(macro)FOO⟧ 1
 #if FOO
@@ -348,8 +376,8 @@ TEST_CASE(SharedPreambleScoped) {
 int main() { return 0; }
 )");
     open_with_overlay();
-    session->file_index = index::FileIndex();
-    session->symbols = index::SymbolTable();
+    session->index = empty_session_index();
+    ASSERT_TRUE(session->index.loaded());
 
     // A second file with a byte-identical preamble shares the PCH (the
     // key excludes the source path), but the preamble entry carries
@@ -375,8 +403,8 @@ TEST_CASE(DirtyPreambleServed) {
 int main() { return 0; }
 )");
     open_with_overlay();
-    session->file_index = index::FileIndex();
-    session->symbols = index::SymbolTable();
+    session->index = empty_session_index();
+    ASSERT_TRUE(session->index.loaded());
 
     // Body edits dirty the session but never move preamble rows: as long
     // as the buffer still starts with the blob's preamble text, the
@@ -392,8 +420,8 @@ TEST_CASE(PreambleDriftSkipped) {
 int main() { return 0; }
 )");
     open_with_overlay();
-    session->file_index = index::FileIndex();
-    session->symbols = index::SymbolTable();
+    session->index = empty_session_index();
+    ASSERT_TRUE(session->index.loaded());
 
     // A deferred PCH rebuild keeps an old blob while the buffer's
     // preamble moved on; once the buffer no longer starts with the blob's
@@ -424,10 +452,9 @@ int main() { §(ref)⟦foo⟧(); return 0; }
     relation.set_definition_range({0, 3});
     fake.relations[foo].push_back(relation);
     auto header_id = workspace.path_pool.intern(header_path("foo.h"));
-    index::VariantInput fresh{.hash = fake.rows_hash(), .rows = &fake};
     std::string bytes;
     llvm::raw_string_ostream os(bytes);
-    index::write_shard(index::Shard(), {}, fresh, "xxx\n", llvm::xxh3_64bits("xxx\n"), os);
+    index::write_shard(fake, {}, "xxx\n", os);
     workspace.shards[header_id] =
         index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
     workspace.project_index.symbols[foo].reference_files.add(header_id);

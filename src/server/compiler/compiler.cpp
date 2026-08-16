@@ -1194,9 +1194,10 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
         // therefore drop the previous buffer's index rather than leave it
         // posing as current: an honest gap over yesterday's offsets.
         auto& index_data = result.value().tu_index_data;
-        session->index = index_data.empty() ? index::TUIndex()
-                                            : index::TUIndex::from_buffer(
-                                                  llvm::MemoryBuffer::getMemBufferCopy(index_data));
+        session->index =
+            index_data.empty()
+                ? index::TUIndex()
+                : index::TUIndex::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(index_data));
 
         auto version = session->version;
 

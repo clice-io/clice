@@ -34,44 +34,25 @@ IndexQuery agent_query{workspace, store, indexer, {.disk_only = true}};
 std::uint32_t main_id = 0;
 std::uint32_t header_id = 0;
 
-/// Build a TUIndex from the added sources and merge it into the workspace
-/// with real contents, so shards can map their rows to positions.
+/// Build an envelope from the added sources and merge it into the
+/// workspace, installing each section's blob verbatim as the file's shard.
 void merge_into_workspace() {
-    auto tu_index = index::TUIndex::build(*unit);
-    std::string wire;
-    llvm::raw_string_ostream wos(wire);
-    tu_index.serialize(wos);
-    auto view = index::TUIndexView::from(wire);
-    ASSERT_TRUE(view.has_value());
+    auto wire = index::build_tu_index(*unit);
+    auto view = index::TUIndex::from_bytes(wire);
+    ASSERT_TRUE(view.loaded());
 
     llvm::SmallVector<std::uint32_t> file_ids_map;
-    for(std::uint32_t i = 0; i < view->path_count(); i += 1) {
-        file_ids_map.push_back(workspace.path_pool.intern(view->path(i)));
+    for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
+        file_ids_map.push_back(workspace.path_pool.intern(view.path(i)));
     }
-    ASSERT_TRUE(workspace.project_index.merge(*view, file_ids_map));
-    main_id = file_ids_map[view->path_count() - 1];
+    ASSERT_TRUE(workspace.project_index.merge(view, file_ids_map));
+    main_id = file_ids_map[view.path_count() - 1];
 
-    auto content_of = [&](llvm::StringRef path) -> llvm::StringRef {
-        auto it = sources.all_files.find(llvm::sys::path::filename(path));
-        return it != sources.all_files.end() ? llvm::StringRef(it->second.content)
-                                             : llvm::StringRef();
-    };
-    auto lookup_symbol = [&](index::SymbolHash hash) {
-        return view->find_symbol(hash);
-    };
-
-    for(std::uint32_t section = 0; section < view->section_count(); section += 1) {
-        auto local_id = view->section_path(section);
-        auto rows = view->decode_section_rows(section);
-        ASSERT_TRUE(rows.has_value());
-        auto content = content_of(view->path(local_id));
-        index::VariantInput fresh{view->section_rows_hash(section), &*rows, lookup_symbol};
-        std::string bytes;
-        llvm::raw_string_ostream os(bytes);
-        index::write_shard(index::Shard(), {}, fresh, content, llvm::xxh3_64bits(content), os);
-        workspace.shards[file_ids_map[local_id]] =
-            index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
-        if(llvm::sys::path::filename(view->path(local_id)) == "header.h") {
+    for(std::uint32_t section = 0; section < view.section_count(); section += 1) {
+        auto local_id = view.section_path(section);
+        workspace.shards[file_ids_map[local_id]] = index::Shard::from_buffer(
+            llvm::MemoryBuffer::getMemBufferCopy(view.section_blob(section)));
+        if(llvm::sys::path::filename(view.path(local_id)) == "header.h") {
             header_id = file_ids_map[local_id];
         }
     }

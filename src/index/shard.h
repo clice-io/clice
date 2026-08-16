@@ -99,8 +99,7 @@ public:
 
     /// Visit every live relation, grouped by symbol in ascending hash
     /// order, rows in (kind, range, payload) order within each group.
-    void for_each_relation(
-        llvm::function_ref<bool(SymbolHash, const Relation&)> callback) const;
+    void for_each_relation(llvm::function_ref<bool(SymbolHash, const Relation&)> callback) const;
 
     /// Look up a local symbol's name and kind.
     bool find_symbol(SymbolHash hash, std::string& name, SymbolKind& kind) const;
