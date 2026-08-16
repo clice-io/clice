@@ -113,7 +113,7 @@ namespace clice::index {
 /// regular field and every loader discards blobs with a different value —
 /// including version-less blobs from older builds, which read back as 0.
 /// Bump it whenever a persisted type's reflected layout changes.
-constexpr inline std::uint32_t index_format_version = 5;
+constexpr inline std::uint32_t index_format_version = 6;
 
 /// Serialize a reflected index blob to `os` as a verified-readable
 /// flatbuffer. Encoding only fails on structural impossibilities (e.g. more
@@ -137,40 +137,6 @@ inline std::span<const std::uint8_t> blob_bytes(llvm::StringRef data) {
 template <typename T>
 bool deserialize_blob(llvm::StringRef data, T& out) {
     return kota::codec::fbs::from_bytes(blob_bytes(data), out).has_value();
-}
-
-/// Scan the occurrences containing `offset` in a sequence sorted by
-/// (range.begin, range.end, target): binary-search the first entry whose
-/// range ends at or past the offset, then walk while ranges contain it.
-/// Binary-searching on range.end is sound because occurrence ranges are
-/// name-token spans, pairwise disjoint or identical — never partially
-/// overlapping or nested — so under this order range.end is monotonic too.
-/// `get(i)` yields the i-th Occurrence.
-template <typename GetOccurrence>
-void scan_occurrences_at(std::size_t size,
-                         std::uint32_t offset,
-                         GetOccurrence&& get,
-                         llvm::function_ref<bool(const Occurrence&)> callback) {
-    std::size_t lo = 0;
-    std::size_t hi = size;
-    while(lo < hi) {
-        auto mid = lo + (hi - lo) / 2;
-        if(get(mid).range.end < offset) {
-            lo = mid + 1;
-        } else {
-            hi = mid;
-        }
-    }
-
-    for(; lo < size; ++lo) {
-        Occurrence occurrence = get(lo);
-        if(!occurrence.range.contains(offset)) {
-            break;
-        }
-        if(!callback(occurrence)) {
-            break;
-        }
-    }
 }
 
 inline llvm::StringRef to_ref(std::string_view text) {

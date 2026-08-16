@@ -11,8 +11,6 @@
 #include "semantic/symbol.h"
 #include "support/bitmap.h"
 
-#include "kota/codec/macro.h"
-#include "kota/meta/annotation.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -66,6 +64,8 @@ struct Occurrence {
     friend bool operator==(const Occurrence&, const Occurrence&) = default;
 };
 
+/// One file's rows while a build accumulates them; encoded into a shard
+/// blob (index/shard.h) at build end and consumed as bytes from then on.
 struct FileIndex {
     /// The braces matter: fbs decode value-constructs map entries with
     /// `FileIndex{}`, and without an initializer this member would be
@@ -75,22 +75,9 @@ struct FileIndex {
 
     std::vector<Occurrence> occurrences;
 
-    void lookup(std::uint32_t offset, llvm::function_ref<bool(const Occurrence&)> callback) const;
-
-    void lookup(SymbolHash symbol,
-                RelationKind kind,
-                llvm::function_ref<bool(const Relation&)> callback) const;
-
     bool empty() const {
         return occurrences.empty() && relations.empty();
     }
-
-    /// Content identity of the rows: xxh3 over the occurrences and the
-    /// relation groups in ascending symbol order. Requires the canonical
-    /// row order build() establishes (sorted, deduplicated); two files
-    /// preprocessed identically hash equal, and that equality is what
-    /// deduplicates variants across compilation contexts.
-    std::uint64_t rows_hash() const;
 };
 
 struct Symbol {
@@ -108,25 +95,31 @@ struct Symbol {
 
 using SymbolTable = llvm::DenseMap<SymbolHash, Symbol>;
 
-/// One file's rows on the wire: the hash first, so the master can skip the
-/// nested decode for rows it already stores, and the rows themselves as a
-/// self-contained nested blob decoded per miss.
+/// One file's rows on the wire: a self-contained single-variant shard
+/// blob (index/shard.h), stored verbatim by the master when the variant
+/// is new and merged byte-for-byte otherwise. `hash` is xxh3 of `blob` —
+/// the variant's identity — so the master can skip blobs it already
+/// stores without touching their bytes.
 struct FileSection {
     std::uint32_t path_id = 0;
 
-    /// FileIndex::rows_hash of the nested rows.
-    std::uint64_t rows_hash = 0;
+    std::uint64_t hash = 0;
 
-    /// Nested fbs FileIndex blob (TUIndex::decode_rows).
-    std::vector<std::uint8_t> rows;
+    std::vector<std::uint8_t> blob;
 };
 
+/// What indexing one TU produced, in transit from worker to master: the
+/// include graph (interned into a manifest), the TU's symbol table with
+/// per-symbol reference files (merged into the project table), and one
+/// shard blob per file that received rows (stored or merged into the
+/// file's disk shard). Never persisted itself; it travels worker→server
+/// over IPC and is dismantled into the three persistent layers on
+/// arrival.
 struct TUIndex {
-    /// Persisted-blob schema version (index_format_version), stamped by
-    /// serialize() and gated by from(). These blobs never touch disk — they
-    /// travel worker→server over IPC — but a worker respawned after the
-    /// binary on disk changed can be one build ahead of the server, and a
-    /// layout change need not be structurally detectable.
+    /// Wire schema version (index_format_version), stamped by serialize()
+    /// and gated by from(). A worker respawned after the binary on disk
+    /// changed can be one build ahead of the server, and a layout change
+    /// need not be structurally detectable.
     std::uint32_t format_version = 0;
 
     /// The building timestamp of this file.
@@ -137,48 +130,28 @@ struct TUIndex {
 
     SymbolTable symbols;
 
-    /// Build-time working state keyed by FileID — clang::FileID means nothing
-    /// outside the compilation, so it never persists; serialize() converts it
-    /// through graph.path_id.
-    KOTATSU_ANNOTATE(skip = true)
-    <llvm::DenseMap<clang::FileID, FileIndex>> file_indices;
-
-    /// The interested file's rows, used in memory (sessions, preamble
-    /// state). serialize() moves it into its wire section for the duration
-    /// of the write, so the reflected field always travels empty.
-    FileIndex main_file_index;
-
-    /// The wire form of the per-file rows: populated by serialize() from
-    /// file_indices and main_file_index (the interested file's section is
-    /// last), kept raw by from(). Files whose rows are empty get no
-    /// section — no rows means no contribution.
+    /// One entry per file with rows, ascending by path id; the interested
+    /// file (the last path id) comes last. Rows of a header entered
+    /// several times are one union blob. Files whose rows are empty get
+    /// no section — no rows means no contribution.
     std::vector<FileSection> sections;
 
     /// Build the index for `unit`. With interested_only, only rows in
-    /// the interested file are kept. Note that a full build over a unit
-    /// compiled with a preamble PCH is not a production combination
-    /// (background indexing compiles without PCH): rows landing in the
-    /// PCH's loaded copy of the main file would serialize a second entry
-    /// under the main path id.
+    /// the interested file are kept.
     static TUIndex build(CompilationUnitRef unit, bool interested_only = false);
 
-    /// Serialization reflects this object directly (sections are populated
-    /// from the row state first — hence non-const).
+    /// Serialization reflects this object directly.
     void serialize(llvm::raw_ostream& os);
 
     /// Verify and deserialize a buffer; nullopt when structural
     /// verification fails, the format version differs, or a decoded path id
-    /// falls outside the blob's own path table. Section rows stay raw —
-    /// decode them per file with decode_rows.
+    /// falls outside the blob's own path table. Section blobs stay raw —
+    /// wrap them in a Shard per file to query them.
     static std::optional<TUIndex> from(llvm::StringRef data);
 
     /// The interested file's wire section, or nullptr when its rows were
     /// empty.
     const FileSection* main_section() const;
-
-    /// Verify and decode one section's rows; nullopt for a corrupt nested
-    /// blob.
-    static std::optional<FileIndex> decode_rows(const FileSection& section);
 };
 
 /// A symbol's identity as a merge consumer needs it; the name borrows the
@@ -190,10 +163,12 @@ struct SymbolIdentity {
 };
 
 /// Zero-copy reader over a serialized TUIndex, for the master's merge path:
-/// the graph and the per-file rows hashes are read straight off the wire,
-/// section rows are decoded only for actual misses, and symbol names are
-/// touched only when a symbol is genuinely new to the global table. The
-/// view borrows the wire bytes; keep them alive while using it.
+/// the graph, the per-file blob hashes and the blob bytes themselves are
+/// read straight off the wire — a new variant's bytes are sliced out and
+/// written or merged without ever decoding the envelope around them — and
+/// symbol names are touched only when a symbol is genuinely new to the
+/// global table. The view borrows the wire bytes; keep them alive while
+/// using it.
 ///
 /// TUIndex::from stays the full-decode entry for consumers that need the
 /// whole object (sessions, tests).
@@ -203,7 +178,8 @@ public:
     /// the graph and sections carry. Symbol reference-file ids are NOT
     /// validated here — iterate_symbols hands them out raw and the consumer
     /// bounds them (decoding every bitmap twice just to validate would
-    /// defeat the view).
+    /// defeat the view). Section blob bytes are not verified either;
+    /// Shard::from_bytes verifies each blob the consumer actually uses.
     static std::optional<TUIndexView> from(llvm::StringRef data);
 
     std::int64_t built_at() const;
@@ -222,10 +198,10 @@ public:
 
     std::uint32_t section_path(std::uint32_t i) const;
 
-    std::uint64_t section_rows_hash(std::uint32_t i) const;
+    std::uint64_t section_hash(std::uint32_t i) const;
 
-    /// Verify and decode one section's rows straight from the wire buffer.
-    std::optional<FileIndex> decode_section_rows(std::uint32_t i) const;
+    /// One section's shard blob bytes, borrowing the wire buffer.
+    llvm::StringRef section_blob(std::uint32_t i) const;
 
     /// The section index of the interested file (path_count() - 1), or
     /// nullopt when its rows were empty.
