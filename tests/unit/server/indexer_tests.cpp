@@ -1,5 +1,6 @@
 #include <format>
 #include <limits>
+#include <memory>
 
 #include "test/temp_dir.h"
 #include "test/test.h"
@@ -540,6 +541,73 @@ TEST_CASE(UnverifiedPairingSkipped) {
 
     indexer.merge(wire.data(), wire.size());
     ASSERT_FALSE(workspace.shards.contains(workspace.path_pool.intern(src)));
+}
+
+TEST_CASE(HashlessRemergeHits) {
+    TempDir tmp;
+    tmp.touch("pcm.cpp", "int hashless_fn() { return 7; }\n");
+    auto src = tmp.path("pcm.cpp");
+    auto indexed = index_file(tmp, src);
+    ASSERT_FALSE(indexed.data.empty());
+
+    // A file behind a PCM ships no consumed-content hash, so the no-IO
+    // fast path cannot vouch for a stored variant; only the disk read can.
+    auto tampered = index::TUIndex::from(indexed.data);
+    ASSERT_TRUE(tampered.has_value());
+    for(auto& hash: tampered->graph.path_hashes) {
+        hash = 0;
+    }
+    std::string wire;
+    llvm::raw_string_ostream os(wire);
+    tampered->serialize(os);
+
+    indexer.merge(wire.data(), wire.size());
+    auto path_id = workspace.path_pool.intern(src);
+    ASSERT_EQ(workspace.shards[path_id].variants().size(), std::size_t(1));
+
+    // Re-merging the same rows must register as a hit, not append the
+    // stored variant to the blob a second time.
+    indexer.merge(wire.data(), wire.size());
+    ASSERT_EQ(workspace.shards[path_id].variants().size(), std::size_t(1));
+}
+
+TEST_CASE(FailedWriteNotCounted) {
+    TempDir tmp;
+    tmp.touch("main.cpp", "int uncommitted() { return 1; }\n");
+    auto src = tmp.path("main.cpp");
+
+    // A storage whose commits never land (disk full, permissions): the
+    // gauge must report what was durably committed, not what the save
+    // attempted.
+    struct FailingStorage final : index::IndexStorage {
+        std::unique_ptr<llvm::MemoryBuffer> read(index::IndexBlobKind, llvm::StringRef) override {
+            return nullptr;
+        }
+
+        std::size_t write(llvm::ArrayRef<Blob>) override {
+            return 0;
+        }
+
+        void remove(index::IndexBlobKind, llvm::StringRef) override {}
+
+        void for_each_key(index::IndexBlobKind,
+                          llvm::function_ref<void(llvm::StringRef)>) override {}
+    };
+
+    workspace.index_storage = std::make_unique<FailingStorage>();
+
+    auto indexed = index_file(tmp, src);
+    ASSERT_FALSE(indexed.data.empty());
+    indexer.merge(indexed.data.data(), indexed.data.size());
+    ASSERT_EQ(indexer.pending_shard_writes(), 1u);
+
+    auto save_body = [&]() -> kota::task<> {
+        co_await indexer.save();
+    };
+    auto task = save_body();
+    loop.schedule(task);
+    loop.run();
+    ASSERT_EQ(indexer.last_save_shards(), 0u);
 }
 
 };  // TEST_SUITE(IndexerMerge)

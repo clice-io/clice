@@ -79,8 +79,17 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
         return;
     }
 
+    // A malformed reference bitmap rejects the whole result for the same
+    // reason a rows section that fails decode does below: everything the
+    // merge would install reads as fresh forever, with the lost bits never
+    // rebuilt. Nothing is committed yet — merge() stages before it writes.
     auto& project = workspace.project_index;
-    auto file_ids_map = project.merge(view, workspace.path_pool);
+    auto merged_ids = project.merge(view, workspace.path_pool);
+    if(!merged_ids) {
+        LOG_WARN("Reject merge for {}: symbol reference bitmap failed verification", main_tu_path);
+        return;
+    }
+    auto& file_ids_map = *merged_ids;
     auto tu_path_id = file_ids_map[main_local_id];
 
     // Intern a FileVersion per file of the parse. The freshness baseline is
@@ -195,6 +204,17 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
             }
         }
         auto generation = consumed != 0 ? consumed : llvm::xxh3_64bits(content);
+
+        // The same hit as the fast path above, verifiable for a hash-less
+        // section only now that the disk read pinned the generation:
+        // re-appending an already-stored variant would duplicate it in the
+        // blob's variant table (write_shard asserts against exactly that).
+        if(consumed == 0 && shard && shard->loaded() && shard->content_hash() == generation &&
+           shard->has_variant(rows_hash)) {
+            manifest.contributions.emplace_back(fv_of[local_id], rows_hash);
+            hits += 1;
+            continue;
+        }
 
         // The recomputed hash guards the variant identity alongside the
         // structural decode: rows installed under a hash they do not
@@ -418,14 +438,18 @@ kota::task<> Indexer::save() {
     // keeps pending_shard_writes() truthful meanwhile — a stats reader
     // polling for "shard writes settled" must not observe zero while the
     // commit is still running (and saved_shards still holds its reset).
+    // Shards are written as their own batch so the gauge counts what the
+    // storage durably committed, not what this save attempted.
     saving_shards = shard_count;
+    std::size_t committed_shards = 0;
     co_await kota::queue([&] {
-        storage.write(batch);
+        committed_shards = storage.write(llvm::ArrayRef(batch).take_front(shard_count));
+        storage.write(llvm::ArrayRef(batch).drop_front(shard_count));
         for(auto& [kind, key]: removals) {
             storage.remove(kind, key);
         }
     });
-    saved_shards = shard_count;
+    saved_shards = committed_shards;
     saving_shards = 0;
 
     LOG_PERF("index",

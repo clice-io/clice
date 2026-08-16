@@ -25,9 +25,11 @@ namespace clice::index {
 /// Decode a serialized bitmap without trusting its bytes: bounded by the
 /// buffer, nullopt on a failed parse — croaring's C++ read wrappers abort
 /// on one, and blob bitmaps are untrusted disk/wire input. The caller
-/// chooses what a failure means: wire consumers degrade to an empty bitmap
-/// (the next reindex rebuilds the bits), persisted-blob loaders reject the
-/// blob — normalized-to-empty reference bits would stay lost forever.
+/// chooses what a failure means: anything feeding persisted state (the
+/// project merge, blob loaders) rejects the whole input — normalized to
+/// empty, reference bits would read as fresh and stay lost forever —
+/// while the session-scoped full decode degrades to an empty bitmap,
+/// rebuilt by the next parse.
 inline std::optional<Bitmap> read_bitmap(const void* data, std::size_t size) {
     auto* decoded =
         roaring::api::roaring_bitmap_portable_deserialize_safe(static_cast<const char*>(data),
@@ -58,9 +60,10 @@ inline std::vector<std::byte> write_bitmap(const Bitmap& bitmap) {
 namespace kota::meta {
 
 /// Roaring bitmaps travel in the portable format — the only one with a
-/// bounded deserializer. Only wire types decode through this repr (it has
-/// no failure channel, so a malformed image degrades to empty); persisted
-/// blobs carry raw images and reject unparseable ones in their loaders.
+/// bounded deserializer. Only the session-scoped full decode goes through
+/// this repr (it has no failure channel, so a malformed image degrades to
+/// empty); the merge path and persisted blobs read raw images and reject
+/// unparseable ones.
 template <>
 struct repr<clice::Bitmap, codec::fbs::format> {
     using type = std::vector<std::byte>;

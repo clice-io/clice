@@ -42,7 +42,8 @@ public:
         return std::move(*buffer);
     }
 
-    void write(llvm::ArrayRef<Blob> batch) override {
+    std::size_t write(llvm::ArrayRef<Blob> batch) override {
+        std::size_t committed_count = 0;
         for(auto& blob: batch) {
             auto ns = namespace_of(blob.kind);
             auto pending = store.begin_store(ns, blob.key);
@@ -69,8 +70,11 @@ public:
                          ns,
                          blob.key,
                          committed.error().message());
+                continue;
             }
+            committed_count += 1;
         }
+        return committed_count;
     }
 
     void remove(IndexBlobKind kind, llvm::StringRef key) override {

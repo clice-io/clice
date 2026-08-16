@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -49,8 +50,9 @@ public:
     /// Persist a batch in order. Atomicity is per blob, not per batch — a
     /// crash can land a prefix; every load path treats any partially
     /// written combination as stale data to rebuild. An entry that fails
-    /// to persist is logged and dropped (the index is rebuildable).
-    virtual void write(llvm::ArrayRef<Blob> batch) = 0;
+    /// to persist is logged and dropped (the index is rebuildable); the
+    /// returned count of durably committed blobs is how callers tell.
+    virtual std::size_t write(llvm::ArrayRef<Blob> batch) = 0;
 
     virtual void remove(IndexBlobKind kind, llvm::StringRef key) = 0;
 

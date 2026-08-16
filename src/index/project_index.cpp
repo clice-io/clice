@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -56,9 +57,9 @@ struct GlobalBlob {
 
 }  // namespace
 
-llvm::SmallVector<std::uint32_t> ProjectIndex::merge(this ProjectIndex& self,
-                                                     const TUIndexView& view,
-                                                     clice::PathPool& pool) {
+std::optional<llvm::SmallVector<std::uint32_t>> ProjectIndex::merge(this ProjectIndex& self,
+                                                                    const TUIndexView& view,
+                                                                    clice::PathPool& pool) {
     auto count = view.path_count();
     llvm::SmallVector<std::uint32_t> file_ids_map;
     file_ids_map.resize_for_overwrite(count);
@@ -67,30 +68,54 @@ llvm::SmallVector<std::uint32_t> ProjectIndex::merge(this ProjectIndex& self,
         file_ids_map[i] = pool.intern(view.path(i));
     }
 
+    // Decode every reference bitmap before touching the table: merged bits
+    // persist in the global blob while the result's recorded versions all
+    // match the disk, so a malformed image normalized to empty would lose
+    // the symbol's reference files with nothing ever rebuilding them. It
+    // rejects the whole result instead — and the reject must leave no
+    // partial names or bits behind, hence the staging.
+    struct StagedSymbol {
+        SymbolHash hash;
+        SymbolIdentity identity;
+        Bitmap references;
+    };
+
+    std::vector<StagedSymbol> staged;
+    bool valid = true;
     view.iterate_symbols(
         [&](SymbolHash hash, const SymbolIdentity& identity, llvm::StringRef bitmap) {
-            if(identity.scope != SymbolScope::External) {
+            if(!valid || identity.scope != SymbolScope::External) {
                 return;
             }
-            auto& target = self.symbols[hash];
-            if(target.name.empty()) {
-                target.name = std::string(identity.name);
-                target.kind = identity.kind;
-            }
-            if(bitmap.empty()) {
-                return;
-            }
-            // Reference ids are unvalidated wire values (the view skips
-            // the double bitmap decode a load-time check would cost); an
-            // out-of-range one is dropped, not misresolved, and a
-            // malformed image degrades to no bits — the wire is rebuilt
-            // by the TU's next reindex, unlike a persisted blob.
-            for(auto ref: read_bitmap(bitmap.data(), bitmap.size()).value_or(Bitmap{})) {
-                if(ref < count) {
-                    target.reference_files.add(file_ids_map[ref]);
+            Bitmap references;
+            if(!bitmap.empty()) {
+                auto decoded = read_bitmap(bitmap.data(), bitmap.size());
+                if(!decoded) {
+                    valid = false;
+                    return;
                 }
+                references = std::move(*decoded);
             }
+            staged.push_back({hash, identity, std::move(references)});
         });
+    if(!valid) {
+        return std::nullopt;
+    }
+
+    for(auto& [hash, identity, references]: staged) {
+        auto& target = self.symbols[hash];
+        if(target.name.empty()) {
+            target.name = std::string(identity.name);
+            target.kind = identity.kind;
+        }
+        // Reference ids are unvalidated wire VALUES; an out-of-range one
+        // is dropped, not misresolved.
+        for(auto ref: references) {
+            if(ref < count) {
+                target.reference_files.add(file_ids_map[ref]);
+            }
+        }
+    }
 
     return file_ids_map;
 }
@@ -291,15 +316,48 @@ bool ProjectIndex::load_global(this ProjectIndex& self,
         return false;
     }
 
+    // Every value check runs before the first mutation: a blob rejected
+    // halfway through would otherwise leave partial state behind — file
+    // versions whose corrupt stat stamps feed the freshness fast path, and
+    // symbols the next global save would persist — while the caller treats
+    // the failed load as "no index on disk".
+
+    // The writer only emits interned paths, which are never empty; an
+    // empty entry marks a corrupt blob and must not become a real pool
+    // entry.
+    for(auto& path: blob.fv_paths) {
+        if(path.empty()) {
+            return false;
+        }
+    }
+    for(auto& path: llvm::make_second_range(blob.sym_paths)) {
+        if(path.empty()) {
+            return false;
+        }
+    }
+
+    // The writer only pins manifests whose tu_fv survived the same save's
+    // garbage collection, so an unresolvable pin marks a corrupt blob.
+    llvm::DenseSet<std::uint32_t> blob_fvs(blob.fv_ids.begin(), blob.fv_ids.end());
+    for(auto fv: blob.manifest_fvs) {
+        if(!blob_fvs.contains(fv)) {
+            return false;
+        }
+    }
+
+    std::vector<Bitmap> bitmaps;
+    bitmaps.reserve(sym_count);
+    for(auto& image: blob.sym_bitmaps) {
+        auto decoded = read_bitmap(image.data(), image.size());
+        if(!decoded) {
+            return false;
+        }
+        bitmaps.push_back(std::move(*decoded));
+    }
+
     self.global_generation = blob.generation;
     self.next_fv_id = blob.next_fv_id;
     for(std::size_t i = 0; i < count; i += 1) {
-        // The writer only emits interned paths, which are never empty; an
-        // empty entry marks a corrupt blob and must not become a real pool
-        // entry.
-        if(blob.fv_paths[i].empty()) {
-            return false;
-        }
         auto path_id = pool.intern(blob.fv_paths[i]);
         auto id = blob.fv_ids[i];
         self.file_versions[id] = {path_id, blob.fv_hashes[i], blob.fv_sizes[i], blob.fv_mtimes[i]};
@@ -311,12 +369,7 @@ bool ProjectIndex::load_global(this ProjectIndex& self,
         }
     }
 
-    // The writer only pins manifests whose tu_fv survived the same save's
-    // garbage collection, so an unresolvable pin marks a corrupt blob.
     for(std::size_t k = 0; k < blob.manifest_fvs.size(); k += 1) {
-        if(!self.file_versions.contains(blob.manifest_fvs[k])) {
-            return false;
-        }
         manifest_pins[blob.manifest_fvs[k]] = blob.manifest_gens[k];
     }
 
@@ -326,20 +379,13 @@ bool ProjectIndex::load_global(this ProjectIndex& self,
     llvm::DenseMap<std::uint32_t, std::uint32_t> remap;
     remap.reserve(blob.sym_paths.size());
     for(auto& [id, path]: blob.sym_paths) {
-        if(path.empty()) {
-            return false;
-        }
         remap.try_emplace(id, pool.intern(path));
     }
 
     self.symbols.reserve(sym_count);
     for(std::size_t k = 0; k < sym_count; k += 1) {
-        auto decoded = read_bitmap(blob.sym_bitmaps[k].data(), blob.sym_bitmaps[k].size());
-        if(!decoded) {
-            return false;
-        }
         Bitmap remapped;
-        for(auto id: *decoded) {
+        for(auto id: bitmaps[k]) {
             if(auto it = remap.find(id); it != remap.end()) {
                 remapped.add(it->second);
             }

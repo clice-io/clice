@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <utility>
 
 #include "index/manifest.h"
@@ -78,10 +79,13 @@ struct ProjectIndex {
     /// Merge a TU's external symbols straight off the wire, interning the
     /// TU's paths into `pool`. Symbol names are copied only for symbols new
     /// to the table. Returns the TU-local id -> pool id mapping for the
-    /// TU's path graph.
-    llvm::SmallVector<std::uint32_t> merge(this ProjectIndex& self,
-                                           const TUIndexView& view,
-                                           clice::PathPool& pool);
+    /// TU's path graph, or nullopt — with the table untouched — when a
+    /// reference bitmap fails to decode: the caller rejects the whole
+    /// result, because merged bits persist while the result's recorded
+    /// versions match the disk, so lost bits would never be rebuilt.
+    std::optional<llvm::SmallVector<std::uint32_t>> merge(this ProjectIndex& self,
+                                                          const TUIndexView& view,
+                                                          clice::PathPool& pool);
 
     /// The FileVersion id for (path, content hash), interning a new record
     /// on first sight.
@@ -119,11 +123,12 @@ struct ProjectIndex {
                           const clice::PathPool& pool);
 
     /// Restore the global blob, interning its paths into `pool`. Returns
-    /// false for an unreadable or old-format blob — the caller treats that
-    /// as "no index on disk" and rebuilds in the background. Manifests are
-    /// loaded separately (apply_manifest per blob); `manifest_pins` maps
-    /// each pinned TU's tu_fv to the generation stamp its manifest must
-    /// carry to be adopted.
+    /// false for an unreadable or old-format blob, leaving the index (and
+    /// `pool`) untouched — the caller treats that as "no index on disk"
+    /// and rebuilds in the background. Manifests are loaded separately
+    /// (apply_manifest per blob); `manifest_pins` maps each pinned TU's
+    /// tu_fv to the generation stamp its manifest must carry to be
+    /// adopted.
     bool load_global(this ProjectIndex& self,
                      llvm::StringRef data,
                      clice::PathPool& pool,

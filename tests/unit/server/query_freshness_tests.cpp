@@ -43,7 +43,9 @@ void merge_into_workspace() {
     auto view = index::TUIndexView::from(wire);
     ASSERT_TRUE(view.has_value());
 
-    auto file_ids_map = workspace.project_index.merge(*view, workspace.path_pool);
+    auto merged_ids = workspace.project_index.merge(*view, workspace.path_pool);
+    ASSERT_TRUE(merged_ids.has_value());
+    auto& file_ids_map = *merged_ids;
     main_id = file_ids_map[view->path_count() - 1];
 
     auto content_of = [&](llvm::StringRef path) -> llvm::StringRef {

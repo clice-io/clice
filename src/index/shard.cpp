@@ -64,13 +64,10 @@ struct RowColumns {
     std::uint32_t end_of(std::uint32_t row) const {
         auto length = lengths[row];
         if(length == length_escape) {
+            // validate() proves every sentinel owns exactly one escape
+            // entry, so the search always lands.
             auto it = std::ranges::lower_bound(long_rows, row);
-            // The writer records an escape entry for every sentinel length;
-            // a blob missing one is corrupt and degrades to a wrong end
-            // instead of an out-of-bounds read.
-            if(it != long_rows.end() && *it == row) {
-                return long_ends[it - long_rows.begin()];
-            }
+            return long_ends[it - long_rows.begin()];
         }
         return begins[row] + length;
     }
@@ -158,7 +155,29 @@ bool validate(ShardView root) {
         return rows.size() == values && std::ranges::is_sorted(rows, std::less_equal{}) &&
                (rows.empty() || rows.back() < count);
     };
-    if(!sparse_ok(occ.long_rows, occ.long_ends.size(), occ_count)) {
+    // The escape table must pair one-to-one, in row order, with the
+    // sentinel lengths: end_of trusts the pairing, and a sentinel missing
+    // its entry (or a stray entry masking one elsewhere) can pass every
+    // range bound below while serving a wrong end forever.
+    auto escapes_ok = [](llvm::ArrayRef<std::uint8_t> lengths,
+                         llvm::ArrayRef<std::uint32_t> long_rows,
+                         llvm::ArrayRef<std::uint32_t> long_ends) {
+        if(long_ends.size() != long_rows.size()) {
+            return false;
+        }
+        std::size_t cursor = 0;
+        for(std::uint32_t row = 0; row < lengths.size(); row += 1) {
+            if(lengths[row] != length_escape) {
+                continue;
+            }
+            if(cursor == long_rows.size() || long_rows[cursor] != row) {
+                return false;
+            }
+            cursor += 1;
+        }
+        return cursor == long_rows.size();
+    };
+    if(!escapes_ok(occ.lengths, occ.long_rows, occ.long_ends)) {
         return false;
     }
     // lookup(offset) binary-searches the decoded end column and stops its
@@ -179,7 +198,7 @@ bool validate(ShardView root) {
         prev_begin = begin;
         prev_end = end;
     }
-    if(!sparse_ok(rel.long_rows, rel.long_ends.size(), rel_count)) {
+    if(!escapes_ok(rel.lengths, rel.long_rows, rel.long_ends)) {
         return false;
     }
     // Relation ranges carry no query order to enforce, but are served as

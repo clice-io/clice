@@ -428,6 +428,51 @@ TEST_CASE(MisorderedRowsRejected) {
     ASSERT_FALSE(make_shard(bytes_of()).loaded());
 }
 
+TEST_CASE(EscapeTableMismatchRejected) {
+    // A sentinel length without its sparse entry decodes as begin + 255
+    // (end_of's fallback) and a stray entry is silently ignored: with
+    // content long enough both pass every range bound and would serve
+    // wrong ranges forever, so only the pairing check can reject them.
+    index::ShardBlob blob;
+    blob.format_version = index::index_format_version;
+    blob.content = std::string(300, 'a');
+    blob.variants = {1};
+    blob.sym_hashes = {111};
+    blob.sym_rel_offsets = {0, 0};
+    blob.occ_begins = {0};
+    blob.occ_lengths = {0xff};
+    blob.occ_long_rows = {0};
+    blob.occ_long_ends = {260};
+    blob.occ_syms16 = {0};
+
+    auto bytes_of = [&] {
+        std::string bytes;
+        llvm::raw_string_ostream os(bytes);
+        index::serialize_blob(blob, os);
+        return bytes;
+    };
+    ASSERT_TRUE(make_shard(bytes_of()).loaded());
+
+    // A sentinel without its sparse entry.
+    blob.occ_long_rows = {};
+    blob.occ_long_ends = {};
+    ASSERT_FALSE(make_shard(bytes_of()).loaded());
+
+    // A sparse entry pointing at an unescaped row.
+    blob.occ_lengths = {3};
+    blob.occ_long_rows = {0};
+    blob.occ_long_ends = {260};
+    ASSERT_FALSE(make_shard(bytes_of()).loaded());
+
+    // The relation escape table is validated alike.
+    blob.occ_lengths = {0xff};
+    blob.sym_rel_offsets = {0, 1};
+    blob.rel_kinds = {static_cast<std::uint8_t>(RelationKind::Reference)};
+    blob.rel_begins = {0};
+    blob.rel_lengths = {0xff};
+    ASSERT_FALSE(make_shard(bytes_of()).loaded());
+}
+
 TEST_CASE(RangesBeyondContentRejected) {
     // Every decoded range is served as a source range into the stored
     // content; an end past it would map positions through text that does

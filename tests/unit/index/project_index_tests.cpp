@@ -1,5 +1,8 @@
+#include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "test/test.h"
 #include "test/tester.h"
@@ -34,6 +37,10 @@ index::SymbolHash find_symbol(const index::ProjectIndex& project, llvm::StringRe
     return 0;
 }
 
+llvm::StringRef bytes_of(const std::vector<std::uint8_t>& blob) {
+    return llvm::StringRef(reinterpret_cast<const char*>(blob.data()), blob.size());
+}
+
 TEST_CASE(MergeCollectsExternalSymbols) {
     add_file("header.h", R"(
         int external_fn();
@@ -50,7 +57,8 @@ TEST_CASE(MergeCollectsExternalSymbols) {
     auto view = build_view();
     ASSERT_TRUE(view.has_value());
     auto file_ids_map = project.merge(*view, pool);
-    ASSERT_EQ(file_ids_map.size(), std::size_t(view->path_count()));
+    ASSERT_TRUE(file_ids_map.has_value());
+    ASSERT_EQ(file_ids_map->size(), std::size_t(view->path_count()));
 
     auto external = find_symbol(project, "external_fn");
     ASSERT_TRUE(external != 0);
@@ -59,6 +67,58 @@ TEST_CASE(MergeCollectsExternalSymbols) {
 
     // Non-External symbols never reach the project table.
     ASSERT_EQ(find_symbol(project, "local_fn"), 0u);
+}
+
+TEST_CASE(MergeRejectsBadBitmap) {
+    // Field order MUST mirror TUIndex up to `symbols` (the skip-annotated
+    // file_indices holds no slot): serialize() always writes valid bitmap
+    // images, so a malformed one has to be planted by hand.
+    struct SymbolMirror {
+        std::string name;
+        std::uint8_t kind = 0;
+        std::uint8_t scope = 0;
+        std::vector<std::byte> reference_files;
+    };
+
+    struct TUIndexPrefixMirror {
+        std::uint32_t format_version = 0;
+        std::int64_t built_at = 0;
+        index::IncludeGraph graph;
+        llvm::DenseMap<std::uint64_t, SymbolMirror> symbols{};
+    };
+
+    TUIndexPrefixMirror mirror;
+    mirror.format_version = index::index_format_version;
+    mirror.graph.paths = {"/proj/main.cpp"};
+    clice::Bitmap bits;
+    bits.add(0);
+    mirror.symbols[42] = {.name = "good_sym", .reference_files = index::write_bitmap(bits)};
+
+    // Control: the mirror layout matches — the view sees the symbol and a
+    // valid image merges.
+    auto valid = kota::codec::fbs::to_bytes(mirror);
+    ASSERT_TRUE(valid.has_value());
+    auto valid_view = index::TUIndexView::from(bytes_of(*valid));
+    ASSERT_TRUE(valid_view.has_value());
+    clice::PathPool pool;
+    index::ProjectIndex accepting;
+    ASSERT_TRUE(accepting.merge(*valid_view, pool).has_value());
+    ASSERT_EQ(find_symbol(accepting, "good_sym"), 42u);
+
+    // One malformed image rejects the whole result: merged bits would
+    // persist behind versions that match the disk, with the lost ones
+    // never rebuilt. The symbols that decoded fine must not stay behind.
+    mirror.symbols[43] = {
+        .name = "bad_sym",
+        .reference_files = {std::byte{0xff}, std::byte{0xff}, std::byte{0xff}},
+    };
+    auto corrupt = kota::codec::fbs::to_bytes(mirror);
+    ASSERT_TRUE(corrupt.has_value());
+    auto corrupt_view = index::TUIndexView::from(bytes_of(*corrupt));
+    ASSERT_TRUE(corrupt_view.has_value());
+    index::ProjectIndex rejecting;
+    ASSERT_FALSE(rejecting.merge(*corrupt_view, pool).has_value());
+    ASSERT_TRUE(rejecting.symbols.empty());
 }
 
 TEST_CASE(FileVersionInterning) {
@@ -137,7 +197,9 @@ TEST_CASE(GlobalRoundTripWithRealMerge) {
     index::ProjectIndex project;
     auto view = build_view();
     ASSERT_TRUE(view.has_value());
-    auto file_ids_map = project.merge(*view, pool);
+    auto merged_ids = project.merge(*view, pool);
+    ASSERT_TRUE(merged_ids.has_value());
+    auto& file_ids_map = *merged_ids;
 
     // A manifest referencing the main file keeps its FileVersion alive
     // through the write's garbage collection.

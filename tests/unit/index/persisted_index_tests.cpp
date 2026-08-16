@@ -214,13 +214,29 @@ TEST_CASE(GlobalBitmapPayloadGate) {
     ASSERT_TRUE(loaded.load_global(bytes_of(*valid), pool, pins));
     ASSERT_TRUE(loaded.symbols.contains(42));
 
+    // A malformed image after columns that decoded fine: the reject must
+    // leave no partial state — file versions or symbols — that later
+    // merges would build on and the next save persist.
+    mirror.fv_ids = {7};
+    mirror.fv_paths = {"/proj/partial.h"};
+    mirror.fv_hashes = {0x1};
+    mirror.fv_sizes = {10};
+    mirror.fv_mtimes = {10};
+    mirror.sym_hashes = {42, 43};
+    mirror.sym_names = {"sym", "other"};
+    mirror.sym_kinds = {0, 0};
     mirror.sym_bitmaps = {
+        index::write_bitmap(bits),
         {std::byte{0xff}, std::byte{0xff}, std::byte{0xff}}
     };
     auto corrupt = kota::codec::fbs::to_bytes(mirror);
     ASSERT_TRUE(corrupt.has_value());
     index::ProjectIndex rejecting;
-    ASSERT_FALSE(rejecting.load_global(bytes_of(*corrupt), pool, pins));
+    clice::PathPool untouched;
+    ASSERT_FALSE(rejecting.load_global(bytes_of(*corrupt), untouched, pins));
+    ASSERT_TRUE(rejecting.symbols.empty());
+    ASSERT_TRUE(rejecting.file_versions.empty());
+    ASSERT_FALSE(untouched.find("/proj/partial.h").has_value());
 }
 
 TEST_CASE(UnknownFileVersionsDetected) {
