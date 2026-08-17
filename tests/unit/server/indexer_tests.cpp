@@ -906,6 +906,54 @@ TEST_CASE(LoadHealsBrokenShard) {
     ASSERT_FALSE(orphan_alive);
 }
 
+TEST_CASE(ReadOnlyLoadKeepsDisk) {
+    TempDir tmp;
+    tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
+    tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
+    auto src = tmp.path("main.cpp");
+    std::string header_key;
+    std::string manifest_key;
+
+    {
+        IndexerFixture f;
+        open_store(tmp, f.workspace);
+        auto indexed = index_file(tmp, src);
+        ASSERT_FALSE(indexed.data.empty());
+        f.indexer.merge(indexed.data.data(), indexed.data.size());
+        f.save();
+        header_key = blob_key(
+            f.workspace.path_pool.resolve(f.workspace.path_pool.intern(tmp.path("dep.h"))));
+        manifest_key = blob_key(f.workspace.path_pool.resolve(f.workspace.path_pool.intern(src)));
+    }
+
+    tmp.touch("cache/cache/v1/index/" + header_key + ".idx", "corrupted beyond verification");
+    tmp.touch("cache/cache/v1/index/deadbeefdeadbeef.idx", "orphan");
+
+    IndexerFixture f;
+    open_store(tmp, f.workspace);
+    f.indexer.load(/*read_only=*/true);
+
+    // The in-memory sweeps still run: the unservable header drops its
+    // contributing TU's manifest and re-enqueues the TU.
+    auto tu_id = f.workspace.path_pool.intern(src);
+    ASSERT_TRUE(f.workspace.project_index.manifests.empty());
+    ASSERT_TRUE(f.indexer.pending_reason(tu_id).has_value());
+
+    // But every blob survives on disk — a server running concurrently may
+    // still reference what this reader judged stale.
+    bool header_alive = false, orphan_alive = false, manifest_alive = false;
+    f.workspace.index_storage->for_each_key(index::IndexBlobKind::Shard, [&](llvm::StringRef key) {
+        header_alive |= key == header_key;
+        orphan_alive |= key == "deadbeefdeadbeef";
+    });
+    f.workspace.index_storage->for_each_key(
+        index::IndexBlobKind::Manifest,
+        [&](llvm::StringRef key) { manifest_alive |= key == manifest_key; });
+    ASSERT_TRUE(header_alive);
+    ASSERT_TRUE(orphan_alive);
+    ASSERT_TRUE(manifest_alive);
+}
+
 TEST_CASE(LoadHealsMissingVariant) {
     TempDir tmp;
     tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");

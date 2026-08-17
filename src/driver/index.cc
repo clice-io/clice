@@ -1,7 +1,7 @@
 #include <csignal>
 #include <format>
 #include <print>
-#include <span>
+#include <ranges>
 
 #include "driver/driver.h"
 #include "index/serialization.h"
@@ -38,13 +38,13 @@ struct IndexOptions {
     DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
            help = "How many of the largest file shards --stats lists",
            required = false)
-    <std::uint32_t> top = 20;
+    <std::uint32_t> top;
 
     DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
            names = {"--log-level", "--log-level="},
            help = "Log level: trace, debug, info, warn, error, off",
            required = false)
-    <std::string> log_level = "info";
+    <std::string> log_level;
 };
 
 auto make_command() {
@@ -190,8 +190,6 @@ int run_stats(llvm::StringRef root, std::uint32_t top) {
         std::uint64_t relations = 0;
     };
 
-    /// Byte totals per blob column across every shard, so the report shows
-    /// what the index actually spends its bytes on.
     struct ColumnBytes {
         std::uint64_t content = 0;
         std::uint64_t variants = 0;
@@ -216,9 +214,9 @@ int run_stats(llvm::StringRef root, std::uint32_t top) {
     files.reserve(workspace.shards.size());
     std::uint64_t total_bytes = 0, total_occurrences = 0, total_relations = 0;
     for(auto& [path_id, shard]: workspace.shards) {
-        ShardStat stat{workspace.path_pool.resolve(path_id),
-                       shard.bytes().size(),
-                       shard.variants().size()};
+        ShardStat stat{.path = workspace.path_pool.resolve(path_id),
+                       .bytes = shard.bytes().size(),
+                       .variants = shard.variants().size()};
         shard.for_each_occurrence([&](const index::Occurrence&) {
             stat.occurrences += 1;
             return true;
@@ -273,7 +271,7 @@ int run_stats(llvm::StringRef root, std::uint32_t top) {
         return payload != 0 ? 100.0 * static_cast<double>(bytes) / static_cast<double>(payload)
                             : 0.0;
     };
-    std::println("");
+    std::println();
     std::println("Payload by column ({}; the rest of the file size is format framing):",
                  format_size(payload));
     std::println("  occurrence rows      {:>10}  {:>5.1f}%",
@@ -304,9 +302,9 @@ int run_stats(llvm::StringRef root, std::uint32_t top) {
         std::println("Translation units pending reindex (stale or partially written): {}",
                      indexer.pending_files());
     }
-    std::println("");
+    std::println();
     std::println("Top {} file shards by size:", std::min<std::size_t>(top, files.size()));
-    for(auto& stat: std::span(files).subspan(0, std::min<std::size_t>(top, files.size()))) {
+    for(auto& stat: files | std::views::take(top)) {
         std::println("  {:>10}  {:>4} variants  {:>9} occs  {:>9} rels  {}",
                      format_size(stat.bytes),
                      stat.variants,

@@ -47,6 +47,11 @@ test("index subcommand builds and resumes", ({ session }) => {
     ws.write("main.cpp", "int add(int a, int b) { return a + b; }\n");
     ws.writeCDB(["main.cpp"]);
 
+    // A stats query before any index run reports the missing cache.
+    const empty = runClice("index", "--stats", "--workspace", ws.root);
+    expect(empty.status).toBe(1);
+    expect(empty.stderr).toContain("No index cache");
+
     const args = ["index", "--workspace", ws.root, "--workers", "2"];
     const first = runClice(...args);
     expect(first.status, `stderr: ${first.stderr}`).toBe(0);
