@@ -4,6 +4,7 @@
 #include <span>
 
 #include "driver/driver.h"
+#include "index/serialization.h"
 #include "server/transport/master_server.h"
 #include "support/filesystem.h"
 #include "support/timer.h"
@@ -189,6 +190,28 @@ int run_stats(llvm::StringRef root, std::uint32_t top) {
         std::uint64_t relations = 0;
     };
 
+    /// Byte totals per blob column across every shard, so the report shows
+    /// what the index actually spends its bytes on.
+    struct ColumnBytes {
+        std::uint64_t content = 0;
+        std::uint64_t variants = 0;
+        std::uint64_t symbols = 0;
+        std::uint64_t local_names = 0;
+        std::uint64_t occ_rows = 0;
+        std::uint64_t occ_masks = 0;
+        std::uint64_t rel_rows = 0;
+        std::uint64_t rel_masks = 0;
+    } columns;
+
+    auto row_bytes = [](const index::RowRanges& rr) -> std::uint64_t {
+        return rr.packed.size() * 4 + rr.begins.size() * 4 + rr.lengths.size() +
+               rr.long_rows.size() * 4 + rr.long_ends.size() * 4;
+    };
+    auto mask_bytes = [](const index::RowRanges& rr) -> std::uint64_t {
+        return rr.masks32.size() * 4 + rr.masks64.size() * 8 + rr.roaring_offsets.size() * 4 +
+               rr.roaring.size();
+    };
+
     std::vector<ShardStat> files;
     files.reserve(workspace.shards.size());
     std::uint64_t total_bytes = 0, total_occurrences = 0, total_relations = 0;
@@ -208,6 +231,28 @@ int run_stats(llvm::StringRef root, std::uint32_t top) {
         total_occurrences += stat.occurrences;
         total_relations += stat.relations;
         files.push_back(stat);
+
+        index::ShardBlob blob;
+        if(index::deserialize_blob(shard.bytes(), blob)) {
+            columns.content += blob.content.size() + blob.line_lengths.size() +
+                               blob.long_line_rows.size() * 4 + blob.long_line_lengths.size() * 4;
+            columns.variants += blob.variants.size() * 8;
+            columns.symbols += blob.sym_hashes.size() * 8 + blob.sym_rel_offsets.size() * 4;
+            columns.local_names +=
+                blob.local_syms.size() * 4 + blob.local_kinds.size() + blob.local_scopes.size();
+            for(auto& name: blob.local_names) {
+                columns.local_names += name.size();
+            }
+            columns.occ_rows += row_bytes(blob.occs) + blob.occ_syms8.size() +
+                                blob.occ_syms16.size() * 2 + blob.occ_syms32.size() * 4;
+            columns.occ_masks += mask_bytes(blob.occs);
+            columns.rel_rows += row_bytes(blob.rels) + blob.rel_kinds.size() +
+                                blob.rel_sym_rows.size() * 4 + blob.rel_sym8.size() +
+                                blob.rel_sym16.size() * 2 + blob.rel_sym32.size() * 4 +
+                                blob.rel_def_rows.size() * 4 + blob.rel_def_begins.size() * 4 +
+                                blob.rel_def_ends.size() * 4;
+            columns.rel_masks += mask_bytes(blob.rels);
+        }
     }
     std::ranges::sort(files, std::ranges::greater{}, &ShardStat::bytes);
 
@@ -221,6 +266,40 @@ int run_stats(llvm::StringRef root, std::uint32_t top) {
     std::println("Global symbols: {}, file versions: {}",
                  project.symbols.size(),
                  project.file_versions.size());
+
+    auto payload = columns.content + columns.variants + columns.symbols + columns.local_names +
+                   columns.occ_rows + columns.occ_masks + columns.rel_rows + columns.rel_masks;
+    auto share = [&](std::uint64_t bytes) {
+        return payload != 0 ? 100.0 * static_cast<double>(bytes) / static_cast<double>(payload)
+                            : 0.0;
+    };
+    std::println("");
+    std::println("Payload by column ({}; the rest of the file size is format framing):",
+                 format_size(payload));
+    std::println("  occurrence rows      {:>10}  {:>5.1f}%",
+                 format_size(columns.occ_rows),
+                 share(columns.occ_rows));
+    std::println("  occurrence masks     {:>10}  {:>5.1f}%",
+                 format_size(columns.occ_masks),
+                 share(columns.occ_masks));
+    std::println("  relation rows        {:>10}  {:>5.1f}%",
+                 format_size(columns.rel_rows),
+                 share(columns.rel_rows));
+    std::println("  relation masks       {:>10}  {:>5.1f}%",
+                 format_size(columns.rel_masks),
+                 share(columns.rel_masks));
+    std::println("  symbol tables        {:>10}  {:>5.1f}%",
+                 format_size(columns.symbols),
+                 share(columns.symbols));
+    std::println("  local symbol names   {:>10}  {:>5.1f}%",
+                 format_size(columns.local_names),
+                 share(columns.local_names));
+    std::println("  content + line maps  {:>10}  {:>5.1f}%",
+                 format_size(columns.content),
+                 share(columns.content));
+    std::println("  variant tables       {:>10}  {:>5.1f}%",
+                 format_size(columns.variants),
+                 share(columns.variants));
     if(indexer.pending_files() != 0) {
         std::println("Translation units pending reindex (stale or partially written): {}",
                      indexer.pending_files());
