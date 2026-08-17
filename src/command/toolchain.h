@@ -28,9 +28,10 @@ enum class CompilerFamily {
 };
 
 /// Patches raw CDB commands into clang-acceptable cc1 arguments by querying
-/// the compiler driver. Results are cached by (driver, file extension,
-/// non-user-content flags); user-content flags (-I, -D, ...) don't affect
-/// the query and are re-appended from the original command after resolution.
+/// the compiler driver. Results are cached by (working directory, driver, file
+/// extension, non-user-content flags); user-content flags (-I, -D, ...) don't
+/// affect the query and are re-appended from the original command after
+/// resolution.
 class Toolchain {
 public:
     Toolchain();
@@ -52,11 +53,20 @@ public:
 
     /// Single synchronous toolchain query. Returns cc1 arguments as owned strings.
     /// `file` is used for temp file extension detection (optional if -x is set).
+    /// `directory` is the driver's working directory: probe subprocesses (gcc
+    /// -dumpmachine/-print-search-dirs, clang -###, nvcc --dryrun) run in it and a
+    /// path-bearing relative `arguments[0]` resolves against it; when empty the
+    /// driver inherits clice's own cwd.
+    /// TODO: the GCC/MSVC/NVCC families synthesize their final cc1 through an
+    /// in-process clang driver running in clice's cwd, so relative paths in their
+    /// remaining flags escape `directory` — give that driver `directory` too.
     /// Unlike resolve(), this is uncached and forwards `arguments` as-is; prefer
     /// resolve() for CDB commands so results are cached and per-file user-content
     /// flags are re-appended.
     static std::expected<std::vector<std::string>, std::string>
-        query(llvm::ArrayRef<const char*> arguments, llvm::StringRef file = {});
+        query(llvm::ArrayRef<const char*> arguments,
+              llvm::StringRef file = {},
+              llvm::StringRef directory = {});
 
     bool has_cache() const;
 
@@ -65,8 +75,10 @@ public:
 #ifdef CLICE_ENABLE_TEST
 
     /// Compute the cache key for the given file and driver-level arguments.
-    std::string cache_key(llvm::StringRef file, llvm::ArrayRef<const char*> arguments) {
-        return extract_flags(file, arguments).key;
+    std::string cache_key(llvm::StringRef file,
+                          llvm::ArrayRef<const char*> arguments,
+                          llvm::StringRef directory = {}) {
+        return extract_flags(file, arguments, directory).key;
     }
 
     /// Number of cached toolchain query results.
@@ -96,7 +108,9 @@ private:
         bool preserve_external_resource = false;
     };
 
-    ToolchainExtract extract_flags(llvm::StringRef file, llvm::ArrayRef<const char*> arguments);
+    ToolchainExtract extract_flags(llvm::StringRef file,
+                                   llvm::ArrayRef<const char*> arguments,
+                                   llvm::StringRef directory);
 
     std::unique_ptr<llvm::BumpPtrAllocator> allocator;
     StringSet strings;

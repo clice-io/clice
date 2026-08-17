@@ -439,9 +439,9 @@ std::optional<FileCommand> file_command(FileEntry& entry,
             // TU semantics instead of a precompiled-header job.
             driver_args.insert(driver_args.end(), {"-x", "c++"});
         }
-        // The toolchain query spawns the driver from the process cwd, and the
-        // driver reads @response-files itself — resolve them against the
-        // input directory so they don't depend on where inspect was launched.
+        // The driver expands @response-files itself, so resolve them against the
+        // input directory rather than letting them depend on where inspect was
+        // launched.
         std::vector<std::string> resolved_flags(flags.begin(), flags.end());
         for(auto& flag: resolved_flags) {
             llvm::StringRef rest(flag);
@@ -455,7 +455,7 @@ std::optional<FileCommand> file_command(FileEntry& entry,
             driver_args.push_back(flag.c_str());
         }
         driver_args.insert(driver_args.end(), {"-fsyntax-only", file.c_str()});
-        auto cc1 = Toolchain::query(driver_args, file);
+        auto cc1 = Toolchain::query(driver_args, file, flags_directory);
         if(!cc1) {
             entry.error = "toolchain_error";
             entry.diagnostics = {std::move(cc1.error())};
@@ -534,7 +534,7 @@ std::optional<FileCommand> file_command(FileEntry& entry,
         } else {
             driver_args = {"clang", "-fsyntax-only", file.c_str()};
         }
-        auto cc1 = Toolchain::query(driver_args, file);
+        auto cc1 = Toolchain::query(driver_args, file, path::parent_path(file));
         if(!cc1) {
             entry.error = "toolchain_error";
             entry.diagnostics = {std::move(cc1.error())};

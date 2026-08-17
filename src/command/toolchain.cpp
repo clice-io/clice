@@ -73,10 +73,13 @@ kota::task<std::string> drain_pipe(kota::pipe p) {
 }
 
 kota::task<std::expected<std::string, std::string>>
-    execute_async(std::vector<std::string> arguments, bool capture_stdout = false) {
+    execute_async(std::vector<std::string> arguments,
+                  llvm::StringRef directory,
+                  bool capture_stdout = false) {
     kota::process::options opts;
     opts.file = arguments[0];
     opts.args = std::move(arguments);
+    opts.cwd = directory.str();
 #ifndef _WIN32
     opts.env = process_env();
 #endif
@@ -232,12 +235,13 @@ struct GCCToolchainFlags {
     std::string install_dir;
 };
 
-kota::task<std::expected<GCCToolchainFlags, std::string>> query_gcc_flags(std::string driver) {
-    auto target = co_await execute_async({driver, "-dumpmachine"}, true);
+kota::task<std::expected<GCCToolchainFlags, std::string>>
+    query_gcc_flags(std::string driver, llvm::StringRef directory) {
+    auto target = co_await execute_async({driver, "-dumpmachine"}, directory, true);
     if(!target)
         co_return std::unexpected(std::move(target.error()));
 
-    auto search_dirs = co_await execute_async({driver, "-print-search-dirs"}, true);
+    auto search_dirs = co_await execute_async({driver, "-print-search-dirs"}, directory, true);
     if(!search_dirs)
         co_return std::unexpected(std::move(search_dirs.error()));
 
@@ -259,9 +263,19 @@ kota::task<std::expected<GCCToolchainFlags, std::string>> query_gcc_flags(std::s
 }
 
 kota::task<std::expected<std::vector<std::string>, std::string>>
-    query_one(llvm::ArrayRef<const char*> arguments, llvm::StringRef file) {
+    query_one(llvm::ArrayRef<const char*> arguments,
+              llvm::StringRef file,
+              llvm::StringRef directory) {
     if(arguments.empty())
         co_return std::unexpected(std::string("Empty arguments"));
+
+    /// A CDB outlives the build directory it names. Spawning there fails, and
+    /// warm() would keep that failure for the session, so an unusable directory
+    /// degrades to the clice process cwd — what every query used before.
+    if(!directory.empty() && !fs::is_directory(directory)) {
+        LOG_WARN("Working directory {} is unusable; querying from the process cwd", directory);
+        directory = {};
+    }
 
     llvm::StringRef driver = arguments[0];
 
@@ -272,18 +286,28 @@ kota::task<std::expected<std::vector<std::string>, std::string>>
     /// Therefore, never use `realpath` on the initial `driver` name, as that
     /// would lose the context needed for the driver to behave correctly (and break caching).
     llvm::SmallString<128> resolved_path;
-    if(!path::is_absolute(driver)) {
-        /// If the path is not absolute path like g++, find it in the env vars.
+    if(path::has_parent_path(driver)) {
+        /// A path-bearing driver is relative to the working directory; with none,
+        /// it stays relative and `fs::make_absolute` anchors it to the clice cwd.
+        resolved_path = driver;
+        path::make_absolute(directory, resolved_path);
+        if(auto error = fs::make_absolute(resolved_path))
+            co_return std::unexpected(
+                std::format("Failed to resolve driver {}: {}", driver.str(), error.message()));
+    } else {
         auto program = llvm::sys::findProgramByName(driver);
         if(!program)
             co_return std::unexpected(std::format("Cannot find driver: {}", driver.str()));
         resolved_path = *program;
-        driver = resolved_path.c_str();
     }
 
-    if(!fs::exists(driver) || !fs::can_execute(driver))
+    if(!fs::exists(resolved_path) || !fs::can_execute(resolved_path))
         co_return std::unexpected(
-            std::format("Driver {} not found or not executable", driver.str()));
+            std::format("Driver {} not found or not executable", resolved_path.str()));
+
+    /// `args` below stores `driver.data()` as a NUL-terminated `const char*`, so
+    /// `resolved_path` must outlive it and must not be mutated from here on.
+    driver = resolved_path.c_str();
 
     llvm::SmallVector<const char*, 256> args;
     args.emplace_back(driver.data());
@@ -316,7 +340,7 @@ kota::task<std::expected<std::vector<std::string>, std::string>>
         // Query g++ or mingw toolchain info. We detect the target and corresponding
         // gcc toolchain install path as default behavior.
         case CompilerFamily::GCC: {
-            auto gcc = co_await query_gcc_flags(driver.str());
+            auto gcc = co_await query_gcc_flags(driver.str(), directory);
             if(!gcc)
                 co_return std::unexpected(std::move(gcc.error()));
 
@@ -360,7 +384,7 @@ kota::task<std::expected<std::vector<std::string>, std::string>>
             for(auto arg: remaining)
                 exec_args.emplace_back(arg);
 
-            auto content = co_await execute_async(std::move(exec_args));
+            auto content = co_await execute_async(std::move(exec_args), directory);
             if(!content)
                 co_return std::unexpected(std::move(content.error()));
 
@@ -429,7 +453,7 @@ kota::task<std::expected<std::vector<std::string>, std::string>>
                     dryrun_args.push_back(arg.str());
             }
 
-            auto dryrun = co_await execute_async(std::move(dryrun_args));
+            auto dryrun = co_await execute_async(std::move(dryrun_args), directory);
             if(!dryrun)
                 co_return std::unexpected(std::move(dryrun.error()));
 
@@ -470,7 +494,7 @@ kota::task<std::expected<std::vector<std::string>, std::string>>
 
             switch(Toolchain::driver_family(host)) {
                 case CompilerFamily::GCC: {
-                    auto gcc = co_await query_gcc_flags(host);
+                    auto gcc = co_await query_gcc_flags(host, directory);
                     if(!gcc)
                         co_return std::unexpected(std::move(gcc.error()));
                     cuda_args.push_back(std::move(gcc->target));
@@ -610,9 +634,10 @@ kota::task<std::expected<std::vector<std::string>, std::string>>
 struct PendingQuery {
     std::string key;
     std::vector<const char*> query_args;
-    /// Points to interned, pointer-stable storage in CompileCommand::source_file;
+    /// Both point to interned, pointer-stable storage in the CompileCommand;
     /// valid for the whole warm() call.
     llvm::StringRef file;
+    llvm::StringRef directory;
 };
 
 }  // namespace
@@ -664,11 +689,13 @@ CompilerFamily Toolchain::driver_family(llvm::StringRef driver) {
 }
 
 std::expected<std::vector<std::string>, std::string>
-    Toolchain::query(llvm::ArrayRef<const char*> arguments, llvm::StringRef file) {
+    Toolchain::query(llvm::ArrayRef<const char*> arguments,
+                     llvm::StringRef file,
+                     llvm::StringRef directory) {
     std::expected<std::vector<std::string>, std::string> result;
     kota::event_loop loop;
     auto task = [&]() -> kota::task<> {
-        result = co_await query_one(arguments, file);
+        result = co_await query_one(arguments, file, directory);
     };
     loop.schedule(task());
     loop.run();
@@ -704,7 +731,8 @@ static bool uses_windows_gnu_target(llvm::ArrayRef<const char*> arguments) {
 }
 
 Toolchain::ToolchainExtract Toolchain::extract_flags(llvm::StringRef file,
-                                                     llvm::ArrayRef<const char*> arguments) {
+                                                     llvm::ArrayRef<const char*> arguments,
+                                                     llvm::StringRef directory) {
     ToolchainExtract result;
 
     // LLVM-MinGW's resource headers and libc++ are a matched installation.
@@ -714,9 +742,13 @@ Toolchain::ToolchainExtract Toolchain::extract_flags(llvm::StringRef file,
     // and builtin headers stay version-matched.
     result.preserve_external_resource = uses_windows_gnu_target(arguments);
 
+    /// The probe subprocess runs in `directory`, so its result only holds there.
+    /// Keyed unconditionally rather than detected: a wrong detection silently
+    /// shares one entry between directories that need different flags.
+    result.key += directory;
+    result.key += '\0';
     result.key += arguments[0];
     result.key += '\0';
-
     result.key += path::extension(file);
     result.key += '\0';
 
@@ -768,7 +800,7 @@ std::expected<void, std::string> Toolchain::resolve(CompileCommand& cmd) {
         return std::unexpected("empty flags");
 
     auto [key, query_args, preserve_external_resource] =
-        extract_flags(cmd.source_file, cmd.resolved.flags);
+        extract_flags(cmd.source_file, cmd.resolved.flags, cmd.resolved.directory);
 
     auto it = cache.find(key);
     if(it == cache.end()) {
@@ -777,7 +809,7 @@ std::expected<void, std::string> Toolchain::resolve(CompileCommand& cmd) {
 
         LOG_WARN("Toolchain cache miss: file={}", cmd.source_file);
 
-        auto result = query(query_args, cmd.source_file);
+        auto result = query(query_args, cmd.source_file, cmd.resolved.directory);
         if(!result) {
             failed.try_emplace(key, result.error());
             return std::unexpected(std::move(result.error()));
@@ -869,12 +901,15 @@ void Toolchain::warm(llvm::ArrayRef<CompileCommand> commands) {
         if(cmd.resolved.flags.empty())
             continue;
 
-        auto extract = extract_flags(cmd.source_file, cmd.resolved.flags);
+        auto extract = extract_flags(cmd.source_file, cmd.resolved.flags, cmd.resolved.directory);
         auto& key = extract.key;
         if(cache.count(key) || failed.count(key) || !seen.try_emplace(key, true).second)
             continue;
 
-        pending.push_back({std::move(key), std::move(extract.query_args), cmd.source_file});
+        pending.push_back({.key = std::move(key),
+                           .query_args = std::move(extract.query_args),
+                           .file = cmd.source_file,
+                           .directory = cmd.resolved.directory});
     }
 
     if(pending.empty())
@@ -893,7 +928,7 @@ void Toolchain::warm(llvm::ArrayRef<CompileCommand> commands) {
     // The query is moved into the coroutine frame as a parameter, so the
     // argument references stay valid for the coroutine's whole lifetime.
     auto make_task = [](PendingQuery q) -> kota::task<QueryOutcome> {
-        auto result = co_await query_one(q.query_args, q.file);
+        auto result = co_await query_one(q.query_args, q.file, q.directory);
         co_return QueryOutcome{std::move(q.key), std::move(result)};
     };
 

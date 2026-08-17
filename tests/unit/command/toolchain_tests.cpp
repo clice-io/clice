@@ -8,6 +8,8 @@
 #include "compile/compilation.h"
 #include "support/logging.h"
 
+#include "llvm/ADT/ScopeExit.h"
+
 namespace clice::testing {
 namespace {
 
@@ -303,6 +305,27 @@ TEST_CASE(KeyTracksSemantics) {
     EXPECT_NE(key, tc.cache_key("/tmp/a.cpp", semantic));
 }
 
+TEST_CASE(KeyTracksWorkingDirectory) {
+    Toolchain tc;
+    std::vector<const char*> args = {"clang++", "-std=c++23"};
+
+    // The driver runs in the working directory, so its query result belongs to
+    // that directory — two directories never share a cache entry, however
+    // cwd-independent the command looks.
+    EXPECT_NE(tc.cache_key("/tmp/a.cpp", args, "/tmp/project-a"),
+              tc.cache_key("/tmp/a.cpp", args, "/tmp/project-b"));
+
+    // The directory is a separate key field, not a prefix glued onto the driver
+    // spelling: these two contrived pairs concatenate to the same bytes, so a
+    // missing field separator would merge them.
+    EXPECT_NE(tc.cache_key("/tmp/a.cpp", {"b/clang++", "-std=c++23"}, "/tmp/a"),
+              tc.cache_key("/tmp/a.cpp", {"/clang++", "-std=c++23"}, "/tmp/ab"));
+
+    // An absent directory (query() runs the driver in clice's own cwd) is one
+    // more distinct case, not an alias of any real directory.
+    EXPECT_NE(tc.cache_key("/tmp/a.cpp", args), tc.cache_key("/tmp/a.cpp", args, "/tmp/project-a"));
+}
+
 TEST_CASE(ResolveEmptyFlags) {
     Toolchain tc;
     CompileCommand cmd;
@@ -367,15 +390,23 @@ TEST_CASE(ParseCC1DropsCodegen) {
 constexpr static llvm::StringRef fake_cc1_line =
     R"( "/usr/bin/clang-22" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "-fmodules-reduced-bmi" "-fmodule-output=/tmp/probe.pcm" "-clice-future-flag" "val" "-std=c++23")";
 
+/// The cc1 args query() should produce from `fake_cc1_line`: unknown future flag
+/// and its value dropped, BMI emission flags stripped, known flags kept.
+std::vector<std::string> fake_cc1_expected() {
+    return {"/usr/bin/clang-22", "-cc1", "-triple", "x86_64-unknown-linux-gnu", "-std=c++23"};
+}
+
 /// Create an executable shell script named `*.clang` (detected as the Clang
 /// family) that prints a canned `-###` line to stderr, standing in for a
-/// real external driver.
-std::optional<std::string> create_fake_clang(llvm::StringRef cc1_line) {
+/// real external driver. `prelude` is injected before the echo, letting a
+/// test make the script assert something about how it was invoked.
+std::optional<std::string> create_fake_clang(llvm::StringRef cc1_line,
+                                             llvm::StringRef prelude = {}) {
     auto file = fs::createTemporaryFile("clice-fake", "clang");
     if(!file)
         return std::nullopt;
 
-    auto script = "#!/bin/sh\necho '" + cc1_line.str() + "' >&2\n";
+    auto script = "#!/bin/sh\n" + prelude.str() + "echo '" + cc1_line.str() + "' >&2\n";
     if(!fs::write(*file, script))
         return std::nullopt;
 
@@ -393,12 +424,55 @@ TEST_CASE(QueryFakeDriver, skip = Windows) {
     ASSERT_TRUE(result.has_value());
 
     // Unknown flag + value dropped, BMI emission flags stripped, known kept.
-    std::vector<std::string> expected = {"/usr/bin/clang-22",
-                                         "-cc1",
-                                         "-triple",
-                                         "x86_64-unknown-linux-gnu",
-                                         "-std=c++23"};
-    EXPECT_EQ(*result, expected);
+    EXPECT_EQ(*result, fake_cc1_expected());
+}
+
+TEST_CASE(QueryRelativeDriver, skip = Windows) {
+    auto marker = fs::createTemporaryFile("clice-cwd", "marker");
+    ASSERT_TRUE(marker.has_value());
+    auto marker_cleanup = llvm::make_scope_exit([&] { fs::remove(*marker); });
+
+    /// The fake driver only emits its cc1 line if it finds the marker through a
+    /// bare relative name, which requires it to be spawned in `directory`.
+    auto prelude = "test -f " + path::filename(*marker).str() + " || exit 1\n";
+    auto driver = create_fake_clang(fake_cc1_line, prelude);
+    ASSERT_TRUE(driver.has_value());
+    auto driver_cleanup = llvm::make_scope_exit([&] { fs::remove(*driver); });
+
+    auto directory = path::parent_path(*driver).str();
+    auto relative_driver = "./" + path::filename(*driver).str();
+
+    /// Otherwise the marker check could succeed via the runner's own cwd.
+    llvm::SmallString<128> cwd;
+    ASSERT_TRUE(!fs::current_path(cwd));
+    ASSERT_NE(cwd.str(), llvm::StringRef(directory));
+    ASSERT_EQ(path::parent_path(*marker), llvm::StringRef(directory));
+
+    CompileCommand command;
+    command.resolved.directory = directory;
+    command.resolved.flags = {relative_driver.c_str()};
+    command.source_file = "/tmp/a.cpp";
+
+    Toolchain tc;
+    ASSERT_TRUE(tc.resolve(command).has_value());
+    EXPECT_TRUE(command.resolved.is_cc1);
+
+    std::vector<std::string> actual(command.resolved.flags.begin(), command.resolved.flags.end());
+    EXPECT_EQ(actual, fake_cc1_expected());
+}
+
+TEST_CASE(QueryVanishedDirectory, skip = Windows) {
+    auto driver = create_fake_clang(fake_cc1_line);
+    ASSERT_TRUE(driver.has_value());
+    auto driver_cleanup = llvm::make_scope_exit([&] { fs::remove(*driver); });
+
+    // A CDB outlives the build directory it names. Spawning the probe there
+    // would fail, and warm() caches a failure for the whole session, so an
+    // unusable directory falls back to clice's cwd.
+    auto result =
+        Toolchain::query({driver->c_str()}, "/tmp/a.cpp", "/tmp/clice-vanished-directory");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(*result, fake_cc1_expected());
 }
 
 TEST_CASE(WarmPartialFailure, skip = Windows) {
