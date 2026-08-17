@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { cliceExecutable, expect, test } from "../fixtures.ts";
 
 const SUBCOMMANDS = ["serve", "query", "worker", "index", "doc", "lint", "format"];
-const STUBS = ["index", "doc", "lint", "format"];
+const STUBS = ["doc", "lint", "format"];
 
 function runClice(...args: string[]) {
     return spawnSync(cliceExecutable(), args, { encoding: "utf8", timeout: 30_000 });
@@ -39,4 +39,27 @@ test("subcommand help", () => {
 
 test("unknown subcommand fails", () => {
     expect(runClice("bogus").status).not.toBe(0);
+});
+
+test("index subcommand builds and resumes", ({ session }) => {
+    const ws = session.tmpdir();
+    ws.pinCacheDir();
+    ws.write("main.cpp", "int add(int a, int b) { return a + b; }\n");
+    ws.writeCDB(["main.cpp"]);
+
+    const args = ["index", "--workspace", ws.root, "--workers", "2"];
+    const first = runClice(...args);
+    expect(first.status, `stderr: ${first.stderr}`).toBe(0);
+    expect(first.stderr).toContain("] Indexing ");
+    expect(first.stdout).toContain("Indexed 1 translation units");
+
+    // The second run resumes from the persisted index: the hash gate
+    // skips the fresh TU without recompiling it.
+    const second = runClice(...args);
+    expect(second.status, `stderr: ${second.stderr}`).toBe(0);
+    expect(second.stderr).not.toContain("] Indexing ");
+
+    const stats = runClice("index", "--stats", "--workspace", ws.root);
+    expect(stats.status, `stderr: ${stats.stderr}`).toBe(0);
+    expect(stats.stdout).toContain("Translation units: 1");
 });

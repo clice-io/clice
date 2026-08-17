@@ -158,7 +158,10 @@ public:
 
     /// Load the global blob, adopt every resolvable manifest, fetch the
     /// shard blobs the contributions expect, and sweep the rest.
-    void load();
+    /// `read_only` keeps the sweeps in memory only: an out-of-process
+    /// reader (`clice index --stats`) must not delete blobs a concurrently
+    /// running server may be about to reference.
+    void load(bool read_only = false);
 
     /// Shard blobs whose write has not durably completed: dirty since the
     /// last save plus the batch a running save is committing. The gauge

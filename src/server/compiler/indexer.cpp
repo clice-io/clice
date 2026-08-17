@@ -446,7 +446,7 @@ kota::task<> Indexer::save() {
              timer.ms());
 }
 
-void Indexer::load() {
+void Indexer::load(bool read_only) {
     if(!workspace.index_storage)
         return;
     auto& storage = *workspace.index_storage;
@@ -454,6 +454,9 @@ void Indexer::load() {
     ScopedTimer timer;
 
     auto sweep_all = [&] {
+        if(read_only) {
+            return;
+        }
         for(auto kind: {index::IndexBlobKind::Shard, index::IndexBlobKind::Manifest}) {
             llvm::SmallVector<std::string> keys;
             storage.for_each_key(kind, [&](llvm::StringRef key) { keys.push_back(key.str()); });
@@ -485,7 +488,9 @@ void Indexer::load() {
     if(!project.load_global(global->getBuffer(), workspace.path_pool, manifest_pins)) {
         LOG_INFO("Discarding old-format index global blob");
         sweep_all();
-        storage.remove(index::IndexBlobKind::Global, "global");
+        if(!read_only) {
+            storage.remove(index::IndexBlobKind::Global, "global");
+        }
         return;
     }
 
@@ -519,8 +524,10 @@ void Indexer::load() {
         auto tu_path_id = project.file_versions.find(manifest->tu_fv)->second.path_id;
         project.apply_manifest(tu_path_id, std::move(*manifest));
     });
-    for(auto& key: dead_manifests) {
-        storage.remove(index::IndexBlobKind::Manifest, key);
+    if(!read_only) {
+        for(auto& key: dead_manifests) {
+            storage.remove(index::IndexBlobKind::Manifest, key);
+        }
     }
     // A pinned TU without an adopted manifest lost it to a failed write
     // that the landed global outran, or to a lost removal; re-enqueue it —
@@ -601,8 +608,10 @@ void Indexer::load() {
             // the mask refresh below, like the merge path's.
             auto affected = project.remove_manifest(tu);
             mask_refresh.append(affected.begin(), affected.end());
-            storage.remove(index::IndexBlobKind::Manifest,
-                           blob_key(workspace.path_pool.resolve(tu)));
+            if(!read_only) {
+                storage.remove(index::IndexBlobKind::Manifest,
+                               blob_key(workspace.path_pool.resolve(tu)));
+            }
             enqueue(tu, ReindexReason::ContentChanged);
         }
     }
@@ -614,14 +623,16 @@ void Indexer::load() {
     }
 
     // Sweep shard blobs nothing references any more.
-    llvm::SmallVector<std::string> orphans;
-    storage.for_each_key(index::IndexBlobKind::Shard, [&](llvm::StringRef key) {
-        if(!expected_keys.contains(key)) {
-            orphans.push_back(key.str());
+    if(!read_only) {
+        llvm::SmallVector<std::string> orphans;
+        storage.for_each_key(index::IndexBlobKind::Shard, [&](llvm::StringRef key) {
+            if(!expected_keys.contains(key)) {
+                orphans.push_back(key.str());
+            }
+        });
+        for(auto& key: orphans) {
+            storage.remove(index::IndexBlobKind::Shard, key);
         }
-    });
-    for(auto& key: orphans) {
-        storage.remove(index::IndexBlobKind::Shard, key);
     }
 
     if(!workspace.shards.empty()) {
