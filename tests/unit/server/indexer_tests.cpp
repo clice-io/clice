@@ -1648,6 +1648,116 @@ TEST_CASE(CdbWriteFailureRetried) {
     ASSERT_FALSE(f.indexer.has_unsaved_state());
 }
 
+TEST_CASE(MissingSnapshotRewritten) {
+    TempDir tmp;
+    tmp.touch("main.cpp", "int value() { return 1; }\n");
+    auto src = tmp.path("main.cpp");
+
+    {
+        IndexerFixture f;
+        open_store(tmp, f.workspace);
+        f.workspace.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
+        auto indexed = index_file(tmp, src);
+        ASSERT_FALSE(indexed.data.empty());
+        ASSERT_TRUE(f.indexer.merge(indexed.data.data(), indexed.data.size()));
+        f.save();
+        // The global landed but the final CDB write never did: the rest of
+        // the index is intact.
+        f.workspace.index_storage->remove(index::IndexBlobKind::Cdb, "cdb");
+    }
+
+    // A rerun that dirties nothing must still recreate the baseline —
+    // without it, every later offline command edit would go undetected.
+    IndexerFixture f;
+    open_store(tmp, f.workspace);
+    f.workspace.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
+    f.indexer.load();
+    ASSERT_TRUE(f.indexer.has_unsaved_state());
+    f.save();
+    ASSERT_TRUE(f.workspace.index_storage->contains(index::IndexBlobKind::Cdb, "cdb"));
+    ASSERT_FALSE(f.indexer.has_unsaved_state());
+}
+
+TEST_CASE(DroppedHeaderDebtRetried) {
+    TempDir tmp;
+    tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
+    tmp.touch("main.cpp", "int use() { return 0; }\n");
+    auto src = tmp.path("main.cpp");
+    auto header = tmp.path("dep.h");
+
+    {
+        IndexerFixture f;
+        open_store(tmp, f.workspace);
+        f.workspace.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=1 -c main.cpp"));
+        auto indexed = index_file(tmp, header);
+        ASSERT_FALSE(indexed.data.empty());
+        ASSERT_TRUE(f.indexer.merge(indexed.data.data(), indexed.data.size()));
+        f.set_header_host(f.workspace.path_pool.intern(header), f.workspace.path_pool.intern(src));
+        f.save();
+    }
+
+    {
+        // The host's command changed offline: the header's index is dropped
+        // and queued — but the rebuild never lands this session. The saved
+        // snapshot must keep recording the header, or nothing would ever
+        // retry it.
+        IndexerFixture f;
+        open_store(tmp, f.workspace);
+        f.workspace.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=2 -c main.cpp"));
+        f.indexer.load();
+        auto header_id = f.workspace.path_pool.intern(header);
+        ASSERT_FALSE(f.workspace.project_index.manifests.contains(header_id));
+        ASSERT_TRUE(f.indexer.pending_reason(header_id) == ReindexReason::ContentChanged);
+        f.save();
+    }
+
+    IndexerFixture f;
+    open_store(tmp, f.workspace);
+    f.workspace.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=2 -c main.cpp"));
+    f.indexer.load();
+
+    auto header_id = f.workspace.path_pool.intern(header);
+    ASSERT_FALSE(f.workspace.project_index.manifests.contains(header_id));
+    ASSERT_TRUE(f.indexer.pending_reason(header_id) == ReindexReason::ContentChanged);
+}
+
+TEST_CASE(VanishedHeaderDebtDies) {
+    TempDir tmp;
+    tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
+    tmp.touch("main.cpp", "int use() { return 0; }\n");
+    auto src = tmp.path("main.cpp");
+    auto header = tmp.path("dep.h");
+
+    {
+        IndexerFixture f;
+        open_store(tmp, f.workspace);
+        f.workspace.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=1 -c main.cpp"));
+        auto indexed = index_file(tmp, header);
+        ASSERT_FALSE(indexed.data.empty());
+        ASSERT_TRUE(f.indexer.merge(indexed.data.data(), indexed.data.size()));
+        f.set_header_host(f.workspace.path_pool.intern(header), f.workspace.path_pool.intern(src));
+        f.save();
+    }
+
+    {
+        IndexerFixture f;
+        open_store(tmp, f.workspace);
+        f.workspace.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=2 -c main.cpp"));
+        f.indexer.load();
+        f.save();
+    }
+
+    // The header was deleted while its debt entry sat in the snapshot: a
+    // retry could never succeed, so the debt dies instead of keeping every
+    // later run partial forever.
+    ASSERT_TRUE(!llvm::sys::fs::remove(header));
+    IndexerFixture f;
+    open_store(tmp, f.workspace);
+    f.workspace.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=2 -c main.cpp"));
+    f.indexer.load();
+    ASSERT_FALSE(f.indexer.pending_reason(f.workspace.path_pool.intern(header)).has_value());
+}
+
 };  // TEST_SUITE(IndexerLoad)
 
 TEST_SUITE(IndexerRequeue) {

@@ -12,6 +12,7 @@
 #include "kota/async/async.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace clice {
@@ -339,8 +340,10 @@ private:
     /// CDB serializes differently.
     std::string persisted_cdb_snapshot;
 
-    /// A CDB blob write failed while the rest of the batch may have
-    /// landed. Without this flag the retry would wait for an unrelated
+    /// The persisted CDB snapshot needs a rewrite no dirty blob will
+    /// trigger: its write failed while the rest of the batch may have
+    /// landed, or load() found it missing or corrupt next to a valid
+    /// global. Without this flag the rewrite would wait for an unrelated
     /// dirtying merge: a save with nothing else to commit skips the
     /// snapshot recompute entirely.
     bool cdb_dirty = false;
@@ -352,6 +355,13 @@ private:
     /// reachability alone cannot see a change that removed or redirected
     /// the very include edge the header's context came through.
     llvm::DenseMap<std::uint32_t, std::uint32_t> header_hosts;
+
+    /// Standalone TUs owed an index that nothing else records: no manifest
+    /// (dropped for a command or rule change, the rebuild failed or is
+    /// still pending) and no CDB entry the startup sweep would retry. The
+    /// snapshot keeps an entry for each so reconcile's debt pass retries
+    /// them next session instead of the index staying silently partial.
+    llvm::SmallVector<std::uint32_t> standalone_debt();
 
     /// Diff the persisted CDB snapshot against the live CDB and drop the
     /// index of every TU whose compile command changed while no server was

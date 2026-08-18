@@ -78,7 +78,8 @@ std::string rules_hash(const Config& config, llvm::StringRef file) {
 }
 
 CdbSnapshot build_cdb_snapshot(Workspace& workspace,
-                               const llvm::DenseMap<std::uint32_t, std::uint32_t>& header_hosts) {
+                               const llvm::DenseMap<std::uint32_t, std::uint32_t>& header_hosts,
+                               llvm::ArrayRef<std::uint32_t> standalone_debt) {
     CdbSnapshot snapshot;
     for(auto& [path_id, hashes]: workspace.cdb.command_hash_snapshot()) {
         auto file = workspace.cdb.resolve_path(path_id).str();
@@ -92,10 +93,10 @@ CdbSnapshot build_cdb_snapshot(Workspace& workspace,
     // Standalone-indexed TUs have no CDB entry, yet their effective command
     // depends on their own matched rules and their borrowed host's command
     // — both must be snapshot to detect offline changes.
-    for(auto tu: llvm::make_first_range(workspace.project_index.manifests)) {
+    auto add_standalone = [&](std::uint32_t tu) {
         auto file = workspace.path_pool.resolve(tu);
         if(workspace.cdb.has_entry(file)) {
-            continue;
+            return;
         }
         auto host_it = header_hosts.find(tu);
         snapshot.entries.push_back({
@@ -105,16 +106,26 @@ CdbSnapshot build_cdb_snapshot(Workspace& workspace,
                         ? workspace.path_pool.resolve(host_it->second).str()
                         : std::string(),
         });
+    };
+    for(auto tu: llvm::make_first_range(workspace.project_index.manifests)) {
+        add_standalone(tu);
+    }
+    // A dropped standalone TU whose rebuild has not landed keeps its entry:
+    // with no manifest pin and no CDB entry, the snapshot is the only
+    // record that an index is owed (reconcile's debt pass retries it).
+    for(auto tu: standalone_debt) {
+        add_standalone(tu);
     }
     // Deterministic bytes: save() decides "unchanged" by byte equality.
     std::ranges::sort(snapshot.entries, {}, &CdbSnapshotEntry::file);
     return snapshot;
 }
 
-std::string
-    serialize_cdb_snapshot(Workspace& workspace,
-                           const llvm::DenseMap<std::uint32_t, std::uint32_t>& header_hosts) {
-    auto json = kota::codec::json::to_string(build_cdb_snapshot(workspace, header_hosts));
+std::string serialize_cdb_snapshot(Workspace& workspace,
+                                   const llvm::DenseMap<std::uint32_t, std::uint32_t>& header_hosts,
+                                   llvm::ArrayRef<std::uint32_t> standalone_debt) {
+    auto json =
+        kota::codec::json::to_string(build_cdb_snapshot(workspace, header_hosts, standalone_debt));
     return json ? std::move(*json) : std::string();
 }
 
@@ -490,13 +501,13 @@ kota::task<> Indexer::save() {
     // leave the old global still pinning old-command manifests under a
     // snapshot that already matches the live CDB — reconcile would then
     // never drop them. A save that commits nothing skips the recompute
-    // (unless a failed CDB write is owed a retry): a pure CDB change
+    // (unless the snapshot itself is owed a rewrite): a pure CDB change
     // dirties no blob on its own — the invalidator's drops do — so the
     // next dirtying save carries the fresh snapshot.
     std::string cdb_bytes;
     std::optional<std::size_t> cdb_index;
     if(!batch.empty() || !removals.empty() || cdb_dirty) {
-        cdb_bytes = serialize_cdb_snapshot(workspace, header_hosts);
+        cdb_bytes = serialize_cdb_snapshot(workspace, header_hosts, standalone_debt());
         if(!cdb_bytes.empty() && cdb_bytes != persisted_cdb_snapshot) {
             cdb_index = batch.size();
             batch.push_back({index::IndexBlobKind::Cdb, "cdb", cdb_bytes});
@@ -767,12 +778,35 @@ bool Indexer::load(bool read_only) {
     return true;
 }
 
+llvm::SmallVector<std::uint32_t> Indexer::standalone_debt() {
+    llvm::SmallVector<std::uint32_t> debt;
+    llvm::DenseSet<std::uint32_t> seen;
+    auto add = [&](std::uint32_t id) {
+        if(workspace.project_index.manifests.contains(id) ||
+           workspace.cdb.has_entry(workspace.path_pool.resolve(id)) || !seen.insert(id).second) {
+            return;
+        }
+        debt.push_back(id);
+    };
+    for(auto id: failed_ids) {
+        add(id);
+    }
+    for(auto id: llvm::make_first_range(reindex_reasons)) {
+        add(id);
+    }
+    return debt;
+}
+
 void Indexer::reconcile_cdb_snapshot() {
     auto blob = workspace.index_storage->read(index::IndexBlobKind::Cdb, "cdb");
     CdbSnapshot persisted;
     if(!blob || !kota::codec::json::from_string(std::string_view(blob->getBuffer()), persisted)) {
-        // Unknown baseline: nothing to diff against; the next save writes
-        // one, so the window closes after the first indexed session.
+        // Unknown baseline: nothing to diff against. Dirty the snapshot so
+        // the next save recreates it even when it commits nothing else —
+        // after a crash that lost only the CDB blob, waiting for an
+        // unrelated dirtying merge would leave offline command edits
+        // undetectable across every following session.
+        cdb_dirty = true;
         return;
     }
     persisted_cdb_snapshot = blob->getBuffer().str();
@@ -784,7 +818,7 @@ void Indexer::reconcile_cdb_snapshot() {
     auto& project = workspace.project_index;
     llvm::DenseSet<std::uint32_t> cdb_ids;
     llvm::SmallVector<std::uint32_t> changed_ids;
-    auto snapshot = build_cdb_snapshot(workspace, header_hosts);
+    auto snapshot = build_cdb_snapshot(workspace, header_hosts, {});
     for(auto& entry: snapshot.entries) {
         if(entry.hashes.empty()) {
             continue;
@@ -859,6 +893,24 @@ void Indexer::reconcile_cdb_snapshot() {
         }
         header_hosts[server_id] = host_id;
         pinned_fresh.insert(server_id);
+    }
+
+    // A persisted standalone entry whose file has no manifest is recorded
+    // debt: its index was dropped for a command or rule change and no
+    // rebuild has landed since — with no manifest pin and no CDB entry,
+    // nothing else would ever retry it. Re-enqueue while the file exists;
+    // a vanished file's debt dies with its entry at the next save.
+    for(auto& old: persisted.entries) {
+        if(!old.hashes.empty() || workspace.cdb.has_entry(old.file)) {
+            continue;
+        }
+        auto server_id = workspace.path_pool.intern(old.file);
+        if(project.manifests.contains(server_id) || reindex_reasons.contains(server_id) ||
+           !fs::exists(old.file)) {
+            continue;
+        }
+        LOG_INFO("Index owed from the last session; reindexing {}", old.file);
+        enqueue(server_id, ReindexReason::ContentChanged);
     }
     if(changed_ids.empty()) {
         return;

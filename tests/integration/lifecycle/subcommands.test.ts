@@ -115,8 +115,15 @@ test("index reports header losing host", async ({ session }) => {
     expect(second.stderr).toContain("stays unindexed");
     expect(second.stdout).toContain("failed to index");
 
-    // The debt is reported once: the dropped header left the snapshot, so
-    // the next run has nothing pending and exits clean.
+    // The debt persists across runs: the snapshot keeps recording the
+    // dropped header, so every rerun retries it and reports the partial
+    // index rather than going silently clean.
     const third = runClice("index", "--workspace", ws.root, "--workers", "2");
-    expect(third.status, `stderr: ${third.stderr}`).toBe(0);
+    expect(third.status, `stderr: ${third.stderr}`).toBe(1);
+    expect(third.stderr).toContain("stays unindexed");
+
+    // Only deleting the file settles the debt.
+    ws.rm("a.h");
+    const fourth = runClice("index", "--workspace", ws.root, "--workers", "2");
+    expect(fourth.status, `stderr: ${fourth.stderr}`).toBe(0);
 });
