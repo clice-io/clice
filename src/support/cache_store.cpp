@@ -185,6 +185,10 @@ struct CacheStore::State {
     std::uint32_t changes_since_checkpoint = 0;
     bool dirty = false;
 
+    /// Inspection mode (open's read_only): no directory is created or
+    /// swept, and writes are a caller bug.
+    bool read_only = false;
+
     /// Logical clock: strictly increasing per issued stamp so that LRU
     /// ordering is deterministic even within one millisecond.
     std::int64_t last_stamp = 0;
@@ -239,15 +243,24 @@ CacheStore& CacheStore::operator=(CacheStore&&) noexcept = default;
 CacheStore::~CacheStore() = default;
 
 std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root,
-                                                            std::uint32_t version) {
+                                                            std::uint32_t version,
+                                                            bool read_only) {
     assert(!root.empty() && "cache root must not be empty");
 
     auto state = std::make_unique<State>();
     state->self_pid = static_cast<std::uint32_t>(llvm::sys::Process::getProcessId());
+    state->read_only = read_only;
 
     auto parent = path::join(root, "cache");
     auto version_dir = std::format("v{}", version);
     state->base = path::join(parent, version_dir);
+
+    if(read_only) {
+        if(!llvm::sys::fs::is_directory(state->base)) {
+            return std::unexpected(std::make_error_code(std::errc::no_such_file_or_directory));
+        }
+        return CacheStore(std::move(state));
+    }
 
     if(auto ec = llvm::sys::fs::create_directories(state->base)) {
         return std::unexpected(ec);
@@ -306,7 +319,9 @@ void CacheStore::register_namespace(CacheNamespace ns) {
     std::lock_guard guard(state->mutex);
 
     auto ns_dir = path::join(state->base, ns.name);
-    llvm::sys::fs::create_directories(ns_dir);
+    if(!state->read_only) {
+        llvm::sys::fs::create_directories(ns_dir);
+    }
 
     auto [it, inserted] = state->namespaces.try_emplace(ns.name);
     assert(inserted && "namespace registered twice");
@@ -438,6 +453,7 @@ std::optional<std::string> CacheStore::lookup_aux(llvm::StringRef ns, llvm::Stri
 
 CacheStore::PendingEntry CacheStore::begin_store(llvm::StringRef ns, llvm::StringRef key) {
     std::lock_guard guard(state->mutex);
+    assert(!state->read_only && "write on a read-only store");
 
     auto* ns_state = state->find_namespace(ns);
     assert(ns_state && "begin_store on unregistered namespace");

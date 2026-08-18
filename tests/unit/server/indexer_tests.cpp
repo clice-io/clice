@@ -1268,6 +1268,84 @@ TEST_CASE(DropIndexEvictsPersisted) {
     ASSERT_TRUE(f.need_update(src));
 }
 
+TEST_CASE(OfflineCommandChangeReindexed) {
+    TempDir tmp;
+    tmp.touch("main.cpp", "int value() { return 1; }\n");
+    auto src = tmp.path("main.cpp");
+
+    {
+        IndexerFixture f;
+        open_store(tmp, f.workspace);
+        f.workspace.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=1 -c main.cpp"));
+        auto indexed = index_file(tmp, src);
+        ASSERT_FALSE(indexed.data.empty());
+        f.indexer.merge(indexed.data.data(), indexed.data.size());
+        f.save();
+    }
+
+    // The command changed while no server ran: content freshness cannot
+    // see it, so the persisted CDB snapshot must catch it at load.
+    IndexerFixture f;
+    open_store(tmp, f.workspace);
+    f.workspace.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=2 -c main.cpp"));
+    f.indexer.load();
+
+    auto tu_id = f.workspace.path_pool.intern(src);
+    ASSERT_FALSE(f.workspace.project_index.manifests.contains(tu_id));
+    ASSERT_TRUE(f.indexer.pending_reason(tu_id) == ReindexReason::ContentChanged);
+}
+
+TEST_CASE(UnchangedCommandKept) {
+    TempDir tmp;
+    tmp.touch("main.cpp", "int value() { return 1; }\n");
+    auto src = tmp.path("main.cpp");
+
+    {
+        IndexerFixture f;
+        open_store(tmp, f.workspace);
+        f.workspace.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=1 -c main.cpp"));
+        auto indexed = index_file(tmp, src);
+        ASSERT_FALSE(indexed.data.empty());
+        f.indexer.merge(indexed.data.data(), indexed.data.size());
+        f.save();
+    }
+
+    IndexerFixture f;
+    open_store(tmp, f.workspace);
+    f.workspace.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=1 -c main.cpp"));
+    f.indexer.load();
+
+    auto tu_id = f.workspace.path_pool.intern(src);
+    ASSERT_TRUE(f.workspace.project_index.manifests.contains(tu_id));
+    ASSERT_FALSE(f.indexer.pending_reason(tu_id).has_value());
+}
+
+TEST_CASE(RemovedEntryKeepsIndex) {
+    TempDir tmp;
+    tmp.touch("main.cpp", "int value() { return 1; }\n");
+    auto src = tmp.path("main.cpp");
+
+    {
+        IndexerFixture f;
+        open_store(tmp, f.workspace);
+        f.workspace.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=1 -c main.cpp"));
+        auto indexed = index_file(tmp, src);
+        ASSERT_FALSE(indexed.data.empty());
+        f.indexer.merge(indexed.data.data(), indexed.data.size());
+        f.save();
+    }
+
+    // The entry vanished from the CDB: the last-known rows still serve
+    // navigation, same conservative semantics as the live reload path.
+    IndexerFixture f;
+    open_store(tmp, f.workspace);
+    f.indexer.load();
+
+    auto tu_id = f.workspace.path_pool.intern(src);
+    ASSERT_TRUE(f.workspace.project_index.manifests.contains(tu_id));
+    ASSERT_FALSE(f.indexer.pending_reason(tu_id).has_value());
+}
+
 };  // TEST_SUITE(IndexerLoad)
 
 TEST_SUITE(IndexerRequeue) {

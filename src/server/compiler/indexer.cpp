@@ -19,8 +19,10 @@
 #include "support/logging.h"
 #include "support/timer.h"
 
+#include "kota/codec/json/json.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/raw_ostream.h"
@@ -28,11 +30,41 @@
 
 namespace clice {
 
+namespace {
+
 /// Stable blob key for a file's shard or a TU's manifest: runtime pool ids
 /// are per-session, so blobs are named by a hash of the path instead.
-static std::string blob_key(llvm::StringRef path) {
+std::string blob_key(llvm::StringRef path) {
     return std::format("{:016x}", llvm::xxh3_64bits(path));
 }
+
+/// JSON layout of the persisted CDB snapshot (blob kind Cdb): per source
+/// file, the sorted canonical command hashes of its entries when the index
+/// state was last saved.
+struct CdbSnapshotEntry {
+    std::string file;
+    std::vector<std::string> hashes;
+};
+
+struct CdbSnapshot {
+    std::vector<CdbSnapshotEntry> entries;
+};
+
+std::string serialize_cdb_snapshot(Workspace& workspace) {
+    CdbSnapshot snapshot;
+    for(auto& [path_id, hashes]: workspace.cdb.command_hash_snapshot()) {
+        snapshot.entries.push_back({
+            workspace.cdb.resolve_path(path_id).str(),
+            {hashes.begin(), hashes.end()}
+        });
+    }
+    // Deterministic bytes: save() decides "unchanged" by byte equality.
+    std::ranges::sort(snapshot.entries, {}, &CdbSnapshotEntry::file);
+    auto json = kota::codec::json::to_string(snapshot);
+    return json ? std::move(*json) : std::string();
+}
+
+}  // namespace
 
 void Indexer::merge(const void* tu_index_data, std::size_t size) {
     // Zero-copy consumption: the wire stays serialized; a new variant's
@@ -387,6 +419,20 @@ kota::task<> Indexer::save() {
     }
     auto manifest_count = batch.size() - shard_count;
 
+    // The CDB snapshot follows the index state it describes. A save that
+    // commits nothing skips the recompute: a pure CDB change dirties no
+    // blob on its own — the invalidator's drops do — so the next dirtying
+    // save carries the fresh snapshot.
+    std::string cdb_bytes;
+    std::optional<std::size_t> cdb_index;
+    if(!batch.empty() || !removals.empty()) {
+        cdb_bytes = serialize_cdb_snapshot(workspace);
+        if(!cdb_bytes.empty() && cdb_bytes != persisted_cdb_snapshot) {
+            cdb_index = batch.size();
+            batch.push_back({index::IndexBlobKind::Cdb, "cdb", cdb_bytes});
+        }
+    }
+
     // The global blob goes last: a crash mid-batch then strands only
     // manifests, which load() drops by their generation stamp — the
     // reverse order would strand a global claiming symbols in files whose
@@ -431,9 +477,15 @@ kota::task<> Indexer::save() {
             dirty_shards.insert(shard_ids[i]);
         } else if(i - shard_count < manifest_count) {
             dirty_manifests.insert(manifest_ids[i - shard_count]);
+        } else if(cdb_index && i == *cdb_index) {
+            // Keep the old persisted bytes so the next save retries.
+            cdb_index.reset();
         } else {
             global_dirty = true;
         }
+    }
+    if(cdb_index) {
+        persisted_cdb_snapshot = std::move(cdb_bytes);
     }
     saved_shards = shard_count - failed_shards;
     saving_shards = 0;
@@ -633,6 +685,7 @@ void Indexer::load(bool read_only) {
         for(auto& key: orphans) {
             storage.remove(index::IndexBlobKind::Shard, key);
         }
+        reconcile_cdb_snapshot();
     }
 
     if(!workspace.shards.empty()) {
@@ -647,6 +700,37 @@ void Indexer::load(bool read_only) {
              workspace.shards.size(),
              project.manifests.size(),
              timer.ms());
+}
+
+void Indexer::reconcile_cdb_snapshot() {
+    auto blob = workspace.index_storage->read(index::IndexBlobKind::Cdb, "cdb");
+    CdbSnapshot persisted;
+    if(!blob || !kota::codec::json::from_string(std::string_view(blob->getBuffer()), persisted)) {
+        // Unknown baseline: nothing to diff against; the next save writes
+        // one, so the window closes after the first indexed session.
+        return;
+    }
+    persisted_cdb_snapshot = blob->getBuffer().str();
+
+    llvm::StringMap<std::vector<std::string>> before;
+    for(auto& entry: persisted.entries) {
+        before[entry.file] = std::move(entry.hashes);
+    }
+    auto& project = workspace.project_index;
+    for(auto& [path_id, hashes]: workspace.cdb.command_hash_snapshot()) {
+        auto file = workspace.cdb.resolve_path(path_id);
+        auto it = before.find(file);
+        if(it != before.end() && std::ranges::equal(it->second, hashes)) {
+            continue;
+        }
+        auto server_id = workspace.path_pool.intern(file);
+        if(!project.manifests.contains(server_id)) {
+            continue;
+        }
+        LOG_INFO("Compile command changed since the last session; reindexing {}", file);
+        drop_index(server_id);
+        enqueue(server_id, ReindexReason::ContentChanged);
+    }
 }
 
 bool Indexer::file_version_stale(std::uint32_t fv_id) {
@@ -853,6 +937,7 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id,
         }
         ScopedTimer merge_timer;
         merge(result.value().tu_index_data.data(), result.value().tu_index_data.size());
+        failed_ids.erase(server_path_id);
         LOG_PERF("index",
                  "progress={}/{} file={} bytes={} index_ms={} merge_ms={}",
                  index,
@@ -863,8 +948,10 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id,
                  merge_timer.ms());
     } else if(result.has_value() && !result.value().success) {
         LOG_WARN("[{}/{}] Index failed for {}: {}", index, total, file_path, result.value().error);
+        failed_ids.insert(server_path_id);
     } else if(result.has_value() && result.value().tu_index_data.empty()) {
         LOG_WARN("[{}/{}] Index returned empty TUIndex for {}", index, total, file_path);
+        failed_ids.insert(server_path_id);
     } else if(result.error().code == worker::dispatch_errc::cancelled ||
               result.error().code == worker::dispatch_errc::worker_crashed ||
               (result.error().code == worker::dispatch_errc::worker_unavailable &&
@@ -902,6 +989,7 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id,
                     file_path,
                     max_requeue_attempts,
                     result.error().message);
+                failed_ids.insert(server_path_id);
                 break;
             }
             case RequeueVerdict::Requeued: {
@@ -919,6 +1007,7 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id,
                  total,
                  file_path,
                  result.error().message);
+        failed_ids.insert(server_path_id);
     }
 }
 

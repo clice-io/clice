@@ -14,6 +14,7 @@ llvm::StringRef namespace_of(IndexBlobKind kind) {
         case IndexBlobKind::Shard: return "index";
         case IndexBlobKind::Manifest: return "index-manifest";
         case IndexBlobKind::Global: return "index-global";
+        case IndexBlobKind::Cdb: return "index-cdb";
     }
     std::unreachable();
 }
@@ -21,7 +22,10 @@ llvm::StringRef namespace_of(IndexBlobKind kind) {
 class FsIndexStorage final : public IndexStorage {
 public:
     explicit FsIndexStorage(CacheStore& store) : store(store) {
-        for(auto kind: {IndexBlobKind::Shard, IndexBlobKind::Manifest, IndexBlobKind::Global}) {
+        for(auto kind: {IndexBlobKind::Shard,
+                        IndexBlobKind::Manifest,
+                        IndexBlobKind::Global,
+                        IndexBlobKind::Cdb}) {
             store.register_namespace({
                 .name = std::string(namespace_of(kind)),
                 .extension = ".idx",

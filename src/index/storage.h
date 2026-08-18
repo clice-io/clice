@@ -19,7 +19,7 @@ class CacheStore;
 
 namespace clice::index {
 
-/// The three blob families the index persists.
+/// The blob families the index persists.
 enum class IndexBlobKind : std::uint8_t {
     /// Per-file row blobs (ShardBlob), keyed by a path hash.
     Shard,
@@ -27,6 +27,10 @@ enum class IndexBlobKind : std::uint8_t {
     Manifest,
     /// The single global blob (FileVersion table + symbols), key "global".
     Global,
+    /// The single CDB command-hash snapshot the persisted index was built
+    /// against, key "cdb" — how a cold start detects compile-command
+    /// changes that happened while no server was running.
+    Cdb,
 };
 
 /// Storage backend for index blobs. The filesystem implementation below is

@@ -654,6 +654,39 @@ TEST_CASE(InvalidateRemovesPair) {
     ASSERT_FALSE(fs::read(aux_path).has_value());
 }
 
+TEST_CASE(ReadOnlyOpenRequiresStore) {
+    TempDir tmp;
+    // The parent directory alone (config resolution creates it eagerly)
+    // must not pass for an existing store.
+    tmp.touch("root/cache/marker", "");
+    auto store = CacheStore::open(tmp.path("root"), version, /*read_only=*/true);
+    ASSERT_FALSE(store.has_value());
+    ASSERT_TRUE(store.error() == std::errc::no_such_file_or_directory);
+}
+
+TEST_CASE(ReadOnlyOpenTouchesNothing) {
+    TempDir tmp;
+    {
+        auto store = open_store(tmp);
+        register_lru(store);
+        put(store, "pch", "k1", "blob");
+        store.shutdown();
+    }
+
+    // A newer-version inspector must neither create its own directory nor
+    // sweep the older version a live server may still be using.
+    auto store = CacheStore::open(tmp.path("root"), version + 1, /*read_only=*/true);
+    ASSERT_FALSE(store.has_value());
+    ASSERT_FALSE(llvm::sys::fs::exists(tmp.path("root/cache/v2")));
+
+    auto reader = CacheStore::open(tmp.path("root"), version, /*read_only=*/true);
+    ASSERT_TRUE(reader.has_value());
+    register_lru(*reader);
+    ASSERT_TRUE(reader->lookup("pch", "k1").has_value());
+    auto pid = std::to_string(llvm::sys::Process::getProcessId());
+    ASSERT_FALSE(llvm::sys::fs::exists(tmp.path("root/cache/v1/tmp/" + pid)));
+}
+
 };  // TEST_SUITE(CacheStore)
 
 }  // namespace

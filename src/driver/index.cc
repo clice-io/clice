@@ -71,17 +71,22 @@ kota::task<> wait_until_indexed(const MasterServer& server) {
 
 /// The first signal asks for a graceful stop: in-flight files are
 /// abandoned, finished ones are persisted, and a rerun resumes from
-/// there. A second signal exits immediately.
-kota::task<> watch_signal(MasterServer& server, int signum) {
+/// there. A second signal — of either watched kind, hence the shared
+/// flag — exits immediately.
+kota::task<> watch_signal(MasterServer& server, int signum, bool& stop_requested) {
     auto watcher = kota::signal::create();
     if(!watcher || watcher->start(signum).has_error()) {
         co_return;
     }
-    co_await watcher->wait();
-    LOG_INFO("Interrupted; saving indexing progress");
-    server.schedule_shutdown();
-    co_await watcher->wait();
-    std::_Exit(130);
+    while(true) {
+        co_await watcher->wait();
+        if(stop_requested) {
+            std::_Exit(130);
+        }
+        stop_requested = true;
+        LOG_INFO("Interrupted; saving indexing progress");
+        server.schedule_shutdown();
+    }
 }
 
 kota::task<> run_indexing_task(MasterServer& server, std::string root, int& exit_code) {
@@ -99,9 +104,10 @@ kota::task<> run_indexing_task(MasterServer& server, std::string root, int& exit
         co_return;
     }
 
+    bool stop_requested = false;
     kota::task_group<> aux(server.loop);
-    aux.spawn(watch_signal(server, SIGINT));
-    aux.spawn(watch_signal(server, SIGTERM));
+    aux.spawn(watch_signal(server, SIGINT, stop_requested));
+    aux.spawn(watch_signal(server, SIGTERM, stop_requested));
 
     co_await kota::with_token(wait_until_indexed(server), server.shutdown_token());
     bool interrupted = server.lifecycle == ServerLifecycle::ShuttingDown;
@@ -125,6 +131,11 @@ kota::task<> run_indexing_task(MasterServer& server, std::string root, int& exit
                  workspace.shards.size(),
                  format_size(total_bytes),
                  workspace.project_index.symbols.size());
+    if(auto failed = server.indexer.failed_files()) {
+        std::println("{} translation units failed to index (see the log); the index is partial.",
+                     failed);
+        exit_code = 1;
+    }
 }
 
 int run_indexing(std::string root, std::uint32_t workers, const char* self_path) {
@@ -152,16 +163,21 @@ int run_indexing(std::string root, std::uint32_t workers, const char* self_path)
 
 int run_stats(llvm::StringRef root, std::uint32_t top) {
     auto config = Config::load_from_workspace(root);
-    if(!llvm::sys::fs::exists(config.project.cache_dir)) {
-        LOG_ERROR("No index cache at {}; run `clice index` first",
-                  std::string_view(config.project.cache_dir));
-        return 1;
-    }
-    auto store = CacheStore::open(config.project.cache_dir, cache_format_version);
+    // Read-only: the default cache directory exists as soon as the config
+    // resolves it, so only the versioned store inside it proves an index
+    // was ever built — and a live server (even one on an older layout)
+    // must not lose blobs to a stats reader.
+    auto store =
+        CacheStore::open(config.project.cache_dir, cache_format_version, /*read_only=*/true);
     if(!store) {
-        LOG_ERROR("Failed to open cache store at {}: {}",
-                  std::string_view(config.project.cache_dir),
-                  store.error().message());
+        if(store.error() == std::errc::no_such_file_or_directory) {
+            LOG_ERROR("No index cache at {}; run `clice index` first",
+                      std::string_view(config.project.cache_dir));
+        } else {
+            LOG_ERROR("Failed to open cache store at {}: {}",
+                      std::string_view(config.project.cache_dir),
+                      store.error().message());
+        }
         return 1;
     }
 
@@ -175,6 +191,13 @@ int run_stats(llvm::StringRef root, std::uint32_t top) {
     SessionStore sessions;
     Indexer indexer(loop, workspace, pool, contexts, sessions);
     indexer.load(/*read_only=*/true);
+    // load() detaches the storage when the global blob exists but cannot
+    // be read — a transient IO error, not an empty index.
+    if(workspace.index_storage == nullptr) {
+        LOG_ERROR("Failed to read the index cache at {}; the cache was left untouched",
+                  std::string_view(workspace.config.project.cache_dir));
+        return 1;
+    }
 
     auto& project = workspace.project_index;
     if(project.manifests.empty() && workspace.shards.empty()) {

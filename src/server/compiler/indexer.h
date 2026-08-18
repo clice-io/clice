@@ -190,6 +190,15 @@ public:
         return index_queue.size();
     }
 
+    /// Files whose latest index attempt failed for good — rejected by the
+    /// worker, an empty or unverifiable result, a spent crash budget, or a
+    /// dead IPC path — with no retry pending. Their rows are missing or
+    /// stale; a later successful pass removes them again. The one-shot
+    /// `clice index` reports a partial build from this.
+    std::size_t failed_files() const {
+        return failed_ids.size();
+    }
+
     /// How many shard blobs the last save() durably committed. A
     /// steady-state save commits 0 — only variant-set changes rewrite a
     /// blob — so the stats endpoint can pin full-rewrite regressions.
@@ -313,6 +322,19 @@ private:
     llvm::DenseSet<std::uint32_t> dirty_manifests;
     bool global_dirty = false;
 
+    /// The persisted CDB snapshot blob's bytes as last read or written;
+    /// empty when none exists. save() rewrites the blob whenever the live
+    /// CDB serializes differently.
+    std::string persisted_cdb_snapshot;
+
+    /// Diff the persisted CDB snapshot against the live CDB and drop the
+    /// index of every TU whose compile command changed while no server was
+    /// running — content-based freshness cannot see command changes, so an
+    /// adopted manifest would keep serving the old-command rows forever.
+    /// Entries that vanished keep their index (last-known content still
+    /// serves navigation), mirroring the live CDB-reload treatment.
+    void reconcile_cdb_snapshot();
+
     /// Per-round FileVersion staleness verdicts: many TUs share the same
     /// versions, and one stat (or repair) per version per round is enough.
     /// Cleared when a round starts.
@@ -329,6 +351,7 @@ private:
     bool need_update(llvm::StringRef file_path);
 
     llvm::DenseMap<std::uint32_t, PendingReindex> reindex_reasons;
+    llvm::DenseSet<std::uint32_t> failed_ids;
     std::uint64_t reindex_ticket = 0;
     bool indexing_active = false;
     bool indexing_scheduled = false;
