@@ -210,7 +210,7 @@ struct BuildParams {
 
     std::string output_path;  ///< BuildPCH, BuildPCM
 
-    /// BuildPCH: tmp path for the PreambleState blob (the PCH's paired
+    /// BuildPCH: tmp path for the pch.idx envelope (the PCH's paired
     /// `.pch.idx`), allocated by the master's store alongside output_path.
     /// The worker serializes the preamble's index and feature state into
     /// it; the master commits both blobs together.
@@ -248,7 +248,7 @@ struct BuildResult {
 
 /// Request the document links of an open file's AST. Only the main-file
 /// region is covered: the preamble is compiled into the PCH, and its links
-/// live in the PCH's PreambleState blob (spliced in by the master).
+/// live in the PCH's pch.idx envelope (spliced in by the master).
 struct DocumentLinkParams {
     std::string path;
 };

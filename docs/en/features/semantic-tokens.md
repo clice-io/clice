@@ -18,6 +18,9 @@ Kinds derived from the token stream itself, independent of the AST.
 
 - [x] Comments — line, block and doc comments, including multiline blocks
 
+  <details>
+  <summary>Example</summary>
+
   ```cpp
   // A line comment.
   /* a one-line block comment */
@@ -32,7 +35,12 @@ Kinds derived from the token stream itself, independent of the AST.
   second */ int after_block = 1;
   ```
 
+  </details>
+
 - [x] Literals — numbers, characters and strings, including raw strings
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   int decimal = 42;
@@ -48,7 +56,12 @@ Kinds derived from the token stream itself, independent of the AST.
   )"; int after_closing = 2;
   ```
 
+  </details>
+
 - [x] Keywords — including alternative operator spellings and the contextual `final` / `override`
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   bool logic(bool a, bool b) {
@@ -69,7 +82,12 @@ Kinds derived from the token stream itself, independent of the AST.
   };
   ```
 
+  </details>
+
 - [x] Preprocessor directives — `#if` chains keep directive kinds; disabled branches keep lexical kinds; pragma arguments stay plain
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   int before_conditional = 0;
@@ -88,7 +106,12 @@ Kinds derived from the token stream itself, independent of the AST.
   #pragma pack(1)
   ```
 
+  </details>
+
 - [x] Header names — quoted and angled `#include` filenames, including the split `# include` form
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   #include "inc/angled.h"
@@ -98,7 +121,12 @@ Kinds derived from the token stream itself, independent of the AST.
   int after_includes = 0;
   ```
 
+  </details>
+
 - [ ] Literal prefixes and suffixes — encoding prefixes, type suffixes, digit separators and UDL suffixes as distinct tokens
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   using size_type = decltype(sizeof(0));
@@ -116,14 +144,24 @@ Kinds derived from the token stream itself, independent of the AST.
   auto udl = 4_kb;
   ```
 
+  </details>
+
 - [ ] Escape sequences — highlighted distinctly inside string and character literals
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   const char* escaped = "hello\nworld";
   char hex_escape = '\x41';
   ```
 
+  </details>
+
 - [ ] Declarator vs operator disambiguation — `*`, `&`, `&&` as declarators vs arithmetic/logical operators ([clangd#1421](https://github.com/clangd/clangd/issues/1421))
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   int value = 1;
@@ -133,7 +171,12 @@ Kinds derived from the token stream itself, independent of the AST.
   int masked = value & 1;
   ```
 
+  </details>
+
 - [ ] Primitive token type — a distinct kind for built-in types instead of plain `keyword`
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   int number = 0;
@@ -141,7 +184,12 @@ Kinds derived from the token stream itself, independent of the AST.
   void act();
   ```
 
+  </details>
+
 - [ ] Bracket token types — matching `()`, `[]`, `{}`, `<>` pairs as distinct kinds
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   template <typename T>
@@ -156,6 +204,8 @@ Kinds derived from the token stream itself, independent of the AST.
   }
   ```
 
+  </details>
+
 <!-- END GENERATED ITEMS -->
 
 ## Declarations & References
@@ -165,6 +215,9 @@ Names classified by the declaration they define or reference.
 <!-- BEGIN GENERATED ITEMS: Declarations & References -->
 
 - [x] Namespaces — definitions, references, nested namespaces and namespace aliases
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   namespace demo {
@@ -180,7 +233,12 @@ Names classified by the declaration they define or reference.
   int use_alias = alias::value;
   ```
 
+  </details>
+
 - [x] Types — class, struct, union, enum and type aliases, at definitions and references
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   class Widget {};
@@ -200,7 +258,12 @@ Names classified by the declaration they define or reference.
   Mode current = Mode::Fast;
   ```
 
+  </details>
+
 - [x] Functions and methods — declarations, definitions and call sites
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   int twice(int value);
@@ -221,7 +284,12 @@ Names classified by the declaration they define or reference.
   }
   ```
 
+  </details>
+
 - [x] Variables — globals, locals, parameters, fields and enum members
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   struct Holder {
@@ -242,7 +310,12 @@ Names classified by the declaration they define or reference.
   }
   ```
 
+  </details>
+
 - [x] Templates — type and non-type template parameters, with the `templated` modifier on template names
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   template <typename T, int N>
@@ -262,7 +335,12 @@ Names classified by the declaration they define or reference.
   int result = identity(3);
   ```
 
+  </details>
+
 - [x] Concepts — definitions and uses as template constraints
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   template <typename T>
@@ -276,7 +354,12 @@ Names classified by the declaration they define or reference.
   void require_small(T value);
   ```
 
+  </details>
+
 - [x] Labels — `goto` targets and label definitions
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   void retry(bool again) {
@@ -288,10 +371,15 @@ Names classified by the declaration they define or reference.
   }
   ```
 
+  </details>
+
 - [x] Structured bindings — binding names at definition and use
 
   The opening `[` deliberately carries no token; only the binding names
   themselves are highlighted.
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   struct Pair {
@@ -304,7 +392,12 @@ Names classified by the declaration they define or reference.
   }
   ```
 
+  </details>
+
 - [x] Member initializer lists — initialized fields highlighted as fields ([clangd#122](https://github.com/clangd/clangd/issues/122))
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   struct Widget {
@@ -315,7 +408,12 @@ Names classified by the declaration they define or reference.
   };
   ```
 
+  </details>
+
 - [x] Using declarations — the introduced name keeps its target's kind ([clangd#2619](https://github.com/clangd/clangd/issues/2619))
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   namespace tools {
@@ -332,7 +430,12 @@ Names classified by the declaration they define or reference.
   Gadget gadget;
   ```
 
+  </details>
+
 - [x] Lambda init-captures — the captured name highlighted as a variable ([clangd#868](https://github.com/clangd/clangd/issues/868))
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   int compute();
@@ -342,14 +445,24 @@ Names classified by the declaration they define or reference.
   };
   ```
 
+  </details>
+
 - [x] `sizeof...` — the pack parameter keeps its type-parameter token ([clangd#213](https://github.com/clangd/clangd/issues/213))
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   template <typename... Ts>
   constexpr auto count = sizeof...(Ts);
   ```
 
+  </details>
+
 - [x] `using enum` — the enum name highlighted at the using site ([clangd#1283](https://github.com/clangd/clangd/issues/1283))
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   enum class Color { Red };
@@ -360,7 +473,12 @@ Names classified by the declaration they define or reference.
   }
   ```
 
+  </details>
+
 - [x] Deduction guides — the guide name and the guided template highlighted
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   template <typename T>
@@ -373,7 +491,12 @@ Names classified by the declaration they define or reference.
   Vec(It, It) -> Vec<int>;
   ```
 
+  </details>
+
 - [x] Explicit instantiation — the instantiated template name and its written template arguments highlighted, on the extern declaration and the definition alike ([clangd#316](https://github.com/clangd/clangd/issues/316))
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   struct Widget {};
@@ -388,12 +511,17 @@ Names classified by the declaration they define or reference.
   template struct Holder<Widget>;
   ```
 
+  </details>
+
 - [ ] Dependent names — resolved through the primary template where one is known _(partial)_ ([clangd#154](https://github.com/clangd/clangd/issues/154), [clangd#297](https://github.com/clangd/clangd/issues/297))
 
   Dependent members of a known template (`Box<T>`) resolve to the primary
   template's declarations and keep their kinds. Members of a bare template
   parameter have no candidate declaration and currently get no token;
   heuristic coloring for such names remains open.
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   template <typename T>
@@ -418,7 +546,12 @@ Names classified by the declaration they define or reference.
   }
   ```
 
+  </details>
+
 - [x] Variable templates — declarations, definitions, partial and full specializations
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   template <typename T, typename U>
@@ -437,7 +570,12 @@ Names classified by the declaration they define or reference.
   int pair_value<int, int> = 5;
   ```
 
+  </details>
+
 - [x] Out-of-line member definitions — qualified names keep method kinds and modifiers
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   struct Gauge {
@@ -452,7 +590,12 @@ Names classified by the declaration they define or reference.
   void Gauge::reset() {}
   ```
 
+  </details>
+
 - [x] Alias templates — the alias name carries the type kind and the `templated` modifier
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   template <typename T>
@@ -467,7 +610,12 @@ Names classified by the declaration they define or reference.
   Ptr<int> pointer = nullptr;
   ```
 
+  </details>
+
 - [x] Template template parameters — declared and used as types
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   template <typename T>
@@ -481,7 +629,12 @@ Names classified by the declaration they define or reference.
   Adaptor<Holder, int> adaptor;
   ```
 
+  </details>
+
 - [x] Lambda captures — by-copy and by-reference captures reference the captured variable; `this` stays a keyword
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   struct S {
@@ -500,7 +653,12 @@ Names classified by the declaration they define or reference.
   };
   ```
 
+  </details>
+
 - [x] Range-based for — the loop variable at definition and use
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   struct List {
@@ -515,7 +673,12 @@ Names classified by the declaration they define or reference.
   }
   ```
 
+  </details>
+
 - [x] Enum underlying types — the enum-base reference keeps its type kind
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   using Byte = unsigned char;
@@ -525,7 +688,12 @@ Names classified by the declaration they define or reference.
   Flags flags = Flags::A;
   ```
 
+  </details>
+
 - [x] Friend declarations — befriended names resolve to their targets; inline friends define
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   struct Widget;
@@ -538,10 +706,15 @@ Names classified by the declaration they define or reference.
   };
   ```
 
+  </details>
+
 - [ ] Dependent using declarations — `using T::name` in a template body _(partial)_
 
   The introduced name and its uses currently get no token; the reserved
   dependent-name modifier is not emitted yet.
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   template <typename T>
@@ -554,7 +727,12 @@ Names classified by the declaration they define or reference.
   };
   ```
 
+  </details>
+
 - [ ] Function explicit instantiation directives — clang builds no node for the directive, so every identifier on it goes unpainted: the name, the template arguments and the parameter types _(partial)_ ([llvm#191658](https://github.com/llvm/llvm-project/issues/191658))
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   struct Widget {};
@@ -567,7 +745,12 @@ Names classified by the declaration they define or reference.
   template void convert<Widget>(Widget);
   ```
 
+  </details>
+
 - [ ] Variable explicit instantiation directives — clang builds no node for the directive, so every identifier on it goes unpainted: the name, the template arguments, even the declarator's type _(partial)_ ([llvm#191658](https://github.com/llvm/llvm-project/issues/191658))
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   struct Widget {};
@@ -580,7 +763,12 @@ Names classified by the declaration they define or reference.
   template Widget zero<Widget>;
   ```
 
+  </details>
+
 - [x] Explicit instantiation member bodies — a dependent name paints as its actual resolution: agreeing kinds keep the modifiers all instantiations share, disagreeing kinds paint a conflict
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   struct A {
@@ -616,6 +804,8 @@ Names classified by the declaration they define or reference.
   template struct E<C>;
   ```
 
+  </details>
+
 <!-- END GENERATED ITEMS -->
 
 ## Modules
@@ -623,6 +813,9 @@ Names classified by the declaration they define or reference.
 <!-- BEGIN GENERATED ITEMS: Modules -->
 
 - [x] Module declarations — the contextual `module` keyword, dotted module names and the private fragment
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   module;
@@ -640,7 +833,12 @@ Names classified by the declaration they define or reference.
   #endif
   ```
 
+  </details>
+
 - [x] Module partitions — partition names in the module declaration
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   export module demo.core:part;
@@ -648,7 +846,12 @@ Names classified by the declaration they define or reference.
   export int partition_value = 1;
   ```
 
+  </details>
+
 - [x] `module` and `import` as identifiers — contextual keywords keep their semantic kinds outside module declarations
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   void f() {
@@ -659,6 +862,8 @@ Names classified by the declaration they define or reference.
   }
   ```
 
+  </details>
+
 <!-- END GENERATED ITEMS -->
 
 ## Token Modifiers
@@ -666,6 +871,9 @@ Names classified by the declaration they define or reference.
 <!-- BEGIN GENERATED ITEMS: Token Modifiers -->
 
 - [x] Declaration vs definition — the modifier distinguishes the two
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   int measure(int value);
@@ -679,7 +887,12 @@ Names classified by the declaration they define or reference.
   struct Sensor {};
   ```
 
+  </details>
+
 - [x] Static — class-level members and static locals
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   struct Counter {
@@ -695,10 +908,15 @@ Names classified by the declaration they define or reference.
   }
   ```
 
+  </details>
+
 - [x] Readonly — const and constexpr values, const methods and enum members
 
   Readonly is currently value-based: a pointer to const counts as
   readonly even though the pointer itself can change.
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   enum class Level { High };
@@ -718,7 +936,12 @@ Names classified by the declaration they define or reference.
   }
   ```
 
+  </details>
+
 - [x] Virtual and abstract — virtual methods, pure virtual methods and abstract classes
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   struct Shape {
@@ -736,7 +959,12 @@ Names classified by the declaration they define or reference.
   }
   ```
 
+  </details>
+
 - [x] Deprecated — `[[deprecated]]` declarations and their uses
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   [[deprecated("use next_api")]] void old_api();
@@ -747,7 +975,12 @@ Names classified by the declaration they define or reference.
   }
   ```
 
+  </details>
+
 - [x] Default library — symbols declared in system headers
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   int before_includes = 0;
@@ -757,7 +990,12 @@ Names classified by the declaration they define or reference.
   int used = system_helper();
   ```
 
+  </details>
+
 - [ ] Scope modifiers — function, class, file and global scope ([clangd#352](https://github.com/clangd/clangd/issues/352))
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   int global_scope;
@@ -772,7 +1010,12 @@ Names classified by the declaration they define or reference.
   };
   ```
 
+  </details>
+
 - [ ] Mutable reference and pointer — arguments passed by non-const reference or pointer ([clangd#839](https://github.com/clangd/clangd/issues/839))
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   void modify(int& out);
@@ -787,14 +1030,24 @@ Names classified by the declaration they define or reference.
   }
   ```
 
+  </details>
+
 - [ ] Deduced — mark deduced types such as `auto` and `decltype`
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   auto deduced_int = 1;
   decltype(deduced_int) same_type = 2;
   ```
 
+  </details>
+
 - [ ] User-defined operators — distinguish overloaded operators from built-in ones ([clangd#1521](https://github.com/clangd/clangd/issues/1521))
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   struct Vec {
@@ -810,6 +1063,8 @@ Names classified by the declaration they define or reference.
   }
   ```
 
+  </details>
+
 <!-- END GENERATED ITEMS -->
 
 ## Conflict & Ambiguity
@@ -823,6 +1078,9 @@ which clients typically display in a neutral color.
 
 - [x] Type vs function — a name naming both renders as `conflict`
 
+  <details>
+  <summary>Example</summary>
+
   ```cpp
   namespace shop {
   struct Widget {};
@@ -832,7 +1090,12 @@ which clients typically display in a neutral color.
   using shop::Widget;
   ```
 
+  </details>
+
 - [x] Type vs variable — a name naming both renders as `conflict`
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   namespace mixed {
@@ -843,7 +1106,12 @@ which clients typically display in a neutral color.
   using mixed::Thing;
   ```
 
+  </details>
+
 - [x] Same-kind overload sets — a name naming only functions is no conflict
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   namespace ops {
@@ -859,10 +1127,15 @@ which clients typically display in a neutral color.
   }
   ```
 
+  </details>
+
 - [x] Injected class name — the class name used as a constructor call inside the class
 
   The written name renders as the class; the constructor reference it
   implies paints nothing extra — the `(` stays token-free.
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   struct Widget {
@@ -873,6 +1146,8 @@ which clients typically display in a neutral color.
       }
   };
   ```
+
+  </details>
 
 <!-- END GENERATED ITEMS -->
 
@@ -887,6 +1162,9 @@ Shapes clice pins deliberately, including issues clangd got wrong.
   A destructor name renders as two tokens: the `~` carries the method
   kind and the declaration/definition modifiers, the class name after it
   stays a reference to the class.
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   struct Session {
@@ -903,20 +1181,30 @@ Shapes clice pins deliberately, including issues clangd got wrong.
   }
   ```
 
+  </details>
+
 - [x] Anonymous parameters — unnamed parameters produce no tokens
 
   The punctuation after an unnamed parameter's type stays token-free.
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   void take_one(int) {}
   void take_two(int, char* c) {}
   ```
 
+  </details>
+
 - [x] Operator names — the `operator` keyword and call-site punctuation stay plain
 
   An operator's written name is keyword plus punctuation, so no name
   token is painted: `operator` keeps its keyword classification and
   call sites emit nothing on the operator symbol.
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   struct Value {
@@ -930,7 +1218,12 @@ Shapes clice pins deliberately, including issues clangd got wrong.
   }
   ```
 
+  </details>
+
 - [x] Destructors of class templates — the `~` shape holds under templates
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   template <typename T>
@@ -942,7 +1235,12 @@ Shapes clice pins deliberately, including issues clangd got wrong.
   Holder<T>::~Holder() {}
   ```
 
+  </details>
+
 - [x] Conversion operators — written as keywords, converting uses paint nothing extra
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   struct Ratio {
@@ -958,7 +1256,12 @@ Shapes clice pins deliberately, including issues clangd got wrong.
   }
   ```
 
+  </details>
+
 - [x] Pseudo-destructor on a template parameter — the `~` paints nothing; the type name keeps its kind
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   template <typename T>
@@ -967,7 +1270,12 @@ Shapes clice pins deliberately, including issues clangd got wrong.
   }
   ```
 
+  </details>
+
 - [x] Defaulted and deleted members — special-member names keep their definition tokens
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   struct Session {
@@ -977,6 +1285,8 @@ Shapes clice pins deliberately, including issues clangd got wrong.
   };
   ```
 
+  </details>
+
 <!-- END GENERATED ITEMS -->
 
 ## Attributes
@@ -985,6 +1295,9 @@ Shapes clice pins deliberately, including issues clangd got wrong.
 
 - [ ] Attribute names — standard and vendor attributes, and expressions inside them ([clangd#2209](https://github.com/clangd/clangd/issues/2209))
 
+  <details>
+  <summary>Example</summary>
+
   ```cpp
   [[nodiscard]] int compute();
   [[deprecated("use v2")]] void old_func();
@@ -992,6 +1305,8 @@ Shapes clice pins deliberately, including issues clangd got wrong.
 
   struct [[gnu::packed]] Packed {};
   ```
+
+  </details>
 
 <!-- END GENERATED ITEMS -->
 
@@ -1004,13 +1319,21 @@ them from their expansions belongs to a future expansion-preview feature.
 
 - [x] Macro definition and expansion
 
+  <details>
+  <summary>Example</summary>
+
   ```cpp
   #define SQUARE(x) ((x) * (x))
 
   [[maybe_unused]] static int squared = SQUARE(4);
   ```
 
+  </details>
+
 - [x] Expansion sites and arguments — expansion names are macros, written arguments keep their semantics, definition bodies stay lexical
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   int value = 1;
@@ -1027,7 +1350,12 @@ them from their expansions belongs to a future expansion-preview feature.
   }
   ```
 
+  </details>
+
 - [ ] Object-like vs function-like macros — distinct highlighting for the two forms ([clangd#2649](https://github.com/clangd/clangd/issues/2649))
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   #define MAX_SIZE 1024
@@ -1035,6 +1363,8 @@ them from their expansions belongs to a future expansion-preview feature.
 
   int checked = CHECK(MAX_SIZE);
   ```
+
+  </details>
 
 <!-- END GENERATED ITEMS -->
 
@@ -1087,5 +1417,6 @@ as semantic tokens.
 
 | Date       | Change                                                                    | PR                                                 |
 | ---------- | ------------------------------------------------------------------------- | -------------------------------------------------- |
-| —          | Initial semantic token types and modifiers, full document tokens          | —                                                  |
 | 2026-08-01 | Explicit instantiation directive names pinned as unpainted until clang 23 | [#571](https://github.com/clice-io/clice/pull/571) |
+| 2024-11-26 | Full document tokens (`textDocument/semanticTokens/full`)                 | —                                                  |
+| 2024-09-16 | Initial semantic token types and modifiers                                | —                                                  |

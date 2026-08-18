@@ -8,12 +8,11 @@
 #include "feature/feature.h"
 #include "support/glob_pattern.h"
 
+#include "kota/codec/macro.h"
 #include "kota/meta/annotation.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace clice {
-
-using kota::meta::defaulted;
 
 /// Defaults that are computed rather than written: a fresh Config queries
 /// them in its field initializers, so a default-constructed Config is
@@ -24,9 +23,17 @@ std::uint32_t default_max_stateless_worker_count();
 /// A file-pattern rule that appends/removes compilation flags.
 /// Corresponds to `[[rules]]` in clice.toml.
 struct ConfigRule {
-    defaulted<std::vector<std::string>> patterns;
-    defaulted<std::vector<std::string>> append;
-    defaulted<std::vector<std::string>> remove;
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description = "Glob patterns selecting the files this rule applies to.")
+    <std::vector<std::string>> patterns;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description = "Compilation flags appended for matching files.")
+    <std::vector<std::string>> append;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description = "Compilation flags removed for matching files.")
+    <std::vector<std::string>> remove;
 };
 
 /// Corresponds to the `[project]` section in clice.toml. Field
@@ -34,36 +41,75 @@ struct ConfigRule {
 /// here because their defaults derive from the workspace root in
 /// finalize().
 struct ProjectConfig {
-    defaulted<bool> clang_tidy = false;
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description = "Run clang-tidy alongside compiler diagnostics.")
+    <bool> clang_tidy = false;
 
-    defaulted<std::string> cache_dir;
-    defaulted<std::string> logging_dir;
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Directory for the index and PCH cache; empty derives it "
+                         "from the workspace root.")
+    <std::string> cache_dir;
 
-    defaulted<std::vector<std::string>> compile_commands_paths;
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Directory for log files; empty derives it from the "
+                         "cache directory.")
+    <std::string> logging_dir;
 
-    defaulted<bool> enable_indexing = true;
-    defaulted<int> idle_timeout_ms = 3000;
+    KOTATSU_ANNOTATE(defaulted = true, description = "Paths searched for compile_commands.json.")
+    <std::vector<std::string>> compile_commands_paths;
 
-    /// Enables the clice/internal test hooks that can generate load on
-    /// demand (log floods). Off unless the harness asks for them.
-    defaulted<bool> test_hooks = false;
+    KOTATSU_ANNOTATE(defaulted = true, description = "Build the background index.")
+    <bool> enable_indexing = true;
 
-    defaulted<std::uint32_t> stateful_worker_count = 2;
-    defaulted<std::uint32_t> stateless_worker_count = default_stateless_worker_count();
-    /// Dynamic scaling bounds for stateless workers; see WorkerPoolOptions.
-    defaulted<std::uint32_t> min_stateless_worker_count = 1;
-    defaulted<std::uint32_t> max_stateless_worker_count = default_max_stateless_worker_count();
-    defaulted<std::uint64_t> worker_memory_limit = 4ULL * 1024 * 1024 * 1024;
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Idle delay in milliseconds before background indexing "
+                         "starts.")
+    <int> idle_timeout_ms = 3000;
+
+    /// The hooks can generate load on demand (log floods).
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Enable the clice/internal test hooks used by the test "
+                         "harness.")
+    <bool> test_hooks = false;
+
+    KOTATSU_ANNOTATE(defaulted = true, description = "Number of stateful workers.")
+    <std::uint32_t> stateful_worker_count = 2;
+
+    KOTATSU_ANNOTATE(defaulted = true, description = "Initial number of stateless workers.")
+    <std::uint32_t> stateless_worker_count = default_stateless_worker_count();
+
+    /// See WorkerPoolOptions.
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description = "Lower bound for dynamic stateless-worker scaling.")
+    <std::uint32_t> min_stateless_worker_count = 1;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description = "Upper bound for dynamic stateless-worker scaling.")
+    <std::uint32_t> max_stateless_worker_count = default_max_stateless_worker_count();
+
+    KOTATSU_ANNOTATE(defaulted = true, description = "Per-stateful-worker memory limit in bytes.")
+    <std::uint64_t> worker_memory_limit = 4ULL * 1024 * 1024 * 1024;
 };
 
 /// Corresponds to the `[tracker]` section in clice.toml: the stat-polling
-/// file tracker's intervals. 0 disables the loop (integration tests drive
-/// ticks through the clice/internal/poll hook instead).
+/// file tracker's intervals (integration tests drive ticks through the
+/// clice/internal/poll hook instead).
 struct TrackerConfig {
-    /// Compilation database poll interval in seconds.
-    defaulted<std::uint32_t> cdb_poll_seconds = 3;
-    /// Workspace file sweep interval in seconds.
-    defaulted<std::uint32_t> workspace_poll_seconds = 30;
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Compilation database poll interval in seconds; 0 disables "
+                         "polling.")
+    <std::uint32_t> cdb_poll_seconds = 3;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Workspace file sweep interval in seconds; 0 disables "
+                         "polling.")
+    <std::uint32_t> workspace_poll_seconds = 30;
 };
 
 struct CompiledRule {
@@ -103,19 +149,34 @@ struct ConfigIssue {
 /// finalize() never fills option defaults; it only computes derived
 /// values from the merged result.
 struct Config {
-    defaulted<ProjectConfig> project;
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description = "The [project] section: project-wide server options.")
+    <ProjectConfig> project;
 
-    defaulted<TrackerConfig> tracker;
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description = "The [tracker] section: file tracker poll intervals.")
+    <TrackerConfig> tracker;
 
-    defaulted<feature::HoverOptions> hover;
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description = "The [hover] section: hover rendering options.")
+    <feature::HoverOptions> hover;
 
-    defaulted<feature::InlayHintsOptions> inlay_hints;
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description = "The [inlay_hints] section: inlay hint options.")
+    <feature::InlayHintsOptions> inlay_hints;
 
-    defaulted<feature::CodeCompletionOptions> code_completion;
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description = "The [code_completion] section: code completion options.")
+    <feature::CodeCompletionOptions> code_completion;
 
-    defaulted<std::vector<ConfigRule>> rules;
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "File-pattern rules that adjust compilation flags "
+                         "([[rules]] in clice.toml).")
+    <std::vector<ConfigRule>> rules;
 
-    kota::meta::annotation<std::vector<CompiledRule>, kota::meta::attrs::skip> compiled_rules;
+    KOTATSU_ANNOTATE(skip = true)
+    <std::vector<CompiledRule>> compiled_rules;
 
     /// Compute the values derived from the final merged config: default
     /// cache/logging directories, ${workspace} substitution, path

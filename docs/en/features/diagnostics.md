@@ -113,6 +113,6 @@ Known issues that should be handled correctly:
 
 ## Changelog
 
-| Date | Change                                                     | PR  |
-| ---- | ---------------------------------------------------------- | --- |
-| —    | Clang diagnostics, severity mapping, tags, push publishing | —   |
+| Date       | Change                                                     | PR                                                 |
+| ---------- | ---------------------------------------------------------- | -------------------------------------------------- |
+| 2025-07-30 | Clang diagnostics, severity mapping, tags, push publishing | [#164](https://github.com/clice-io/clice/pull/164) |

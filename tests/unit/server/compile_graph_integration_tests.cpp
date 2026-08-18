@@ -157,7 +157,9 @@ void execute(F&& fn) {
 /// ============================================================================
 
 TEST_CASE(single_module) {
-    env.tmp.touch("mod_a.cppm", "export module A;\n" "export int foo() { return 42; }\n");
+    env.tmp.touch("mod_a.cppm",
+                  "export module A;\n"
+                  "export int foo() { return 42; }\n");
 
     auto json = build_cdb_json({
         {env.tmp.root, env.tmp.path("mod_a.cppm"), {}}
@@ -177,7 +179,9 @@ TEST_CASE(single_module) {
 }
 
 TEST_CASE(chained_modules) {
-    env.tmp.touch("mod_a.cppm", "export module A;\n" "export int foo() { return 42; }\n");
+    env.tmp.touch("mod_a.cppm",
+                  "export module A;\n"
+                  "export int foo() { return 42; }\n");
     env.tmp.touch("mod_b.cppm",
                   "export module B;\n"
                   "import A;\n"
@@ -206,7 +210,8 @@ TEST_CASE(chained_modules) {
 
 TEST_CASE(diamond_modules) {
     env.tmp.touch("mod_base.cppm",
-                  "export module Base;\n" "export int base_val() { return 10; }\n");
+                  "export module Base;\n"
+                  "export int base_val() { return 10; }\n");
     env.tmp.touch("mod_left.cppm",
                   "export module Left;\n"
                   "import Base;\n"
@@ -246,7 +251,9 @@ TEST_CASE(diamond_modules) {
 /// ============================================================================
 
 TEST_CASE(dotted_module_name) {
-    env.tmp.touch("io.cppm", "export module my.io;\n" "export void print() {}\n");
+    env.tmp.touch("io.cppm",
+                  "export module my.io;\n"
+                  "export void print() {}\n");
     env.tmp.touch("app.cppm",
                   "export module my.app;\n"
                   "import my.io;\n"
@@ -275,7 +282,9 @@ TEST_CASE(dotted_module_name) {
 /// ============================================================================
 
 TEST_CASE(re_export) {
-    env.tmp.touch("core.cppm", "export module Core;\n" "export int core_fn() { return 1; }\n");
+    env.tmp.touch("core.cppm",
+                  "export module Core;\n"
+                  "export int core_fn() { return 1; }\n");
     env.tmp.touch("wrapper.cppm",
                   "export module Wrapper;\n"
                   "export import Core;\n"
@@ -350,7 +359,8 @@ TEST_CASE(global_module_fragment) {
     env.tmp.touch("legacy.h", "inline int legacy_fn() { return 99; }\n");
     env.tmp.touch("gmf.cppm",
                   "module;\n"
-                  R"(#include "legacy.h")" "\n"
+                  R"(#include "legacy.h")"
+                  "\n"
                   "export module GMF;\n"
                   "export int wrapped() { return legacy_fn(); }\n");
 
@@ -406,7 +416,9 @@ TEST_CASE(private_module_fragment) {
 
 TEST_CASE(partition_interface) {
     // Partition interface unit.
-    env.tmp.touch("part.cppm", "export module M:Part;\n" "export int part_fn() { return 5; }\n");
+    env.tmp.touch("part.cppm",
+                  "export module M:Part;\n"
+                  "export int part_fn() { return 5; }\n");
     // Primary module interface re-exports the partition.
     env.tmp.touch("primary.cppm",
                   "export module M;\n"
@@ -439,8 +451,12 @@ TEST_CASE(partition_interface) {
 /// ============================================================================
 
 TEST_CASE(multiple_partitions) {
-    env.tmp.touch("part_a.cppm", "export module Lib:A;\n" "export int a_fn() { return 1; }\n");
-    env.tmp.touch("part_b.cppm", "export module Lib:B;\n" "export int b_fn() { return 2; }\n");
+    env.tmp.touch("part_a.cppm",
+                  "export module Lib:A;\n"
+                  "export int a_fn() { return 1; }\n");
+    env.tmp.touch("part_b.cppm",
+                  "export module Lib:B;\n"
+                  "export int b_fn() { return 2; }\n");
     env.tmp.touch("lib.cppm",
                   "export module Lib;\n"
                   "export import :A;\n"
@@ -473,7 +489,8 @@ TEST_CASE(multiple_partitions) {
 
 TEST_CASE(partition_chain) {
     env.tmp.touch("types.cppm",
-                  "export module Sys:Types;\n" "export struct Config { int value = 0; };\n");
+                  "export module Sys:Types;\n"
+                  "export struct Config { int value = 0; };\n");
     env.tmp.touch("core.cppm",
                   "export module Sys:Core;\n"
                   "import :Types;\n"
@@ -543,10 +560,13 @@ TEST_CASE(export_namespace) {
 
 TEST_CASE(gmf_with_import) {
     env.tmp.touch("util.h", "inline int util_helper() { return 7; }\n");
-    env.tmp.touch("base.cppm", "export module Base;\n" "export int base() { return 100; }\n");
+    env.tmp.touch("base.cppm",
+                  "export module Base;\n"
+                  "export int base() { return 100; }\n");
     env.tmp.touch("combined.cppm",
                   "module;\n"
-                  R"(#include "util.h")" "\n"
+                  R"(#include "util.h")"
+                  "\n"
                   "export module Combined;\n"
                   "import Base;\n"
                   "export int combined() { return base() + util_helper(); }\n");
@@ -574,7 +594,9 @@ TEST_CASE(gmf_with_import) {
 /// ============================================================================
 
 TEST_CASE(deep_chain) {
-    env.tmp.touch("m1.cppm", "export module M1;\n" "export int f1() { return 1; }\n");
+    env.tmp.touch("m1.cppm",
+                  "export module M1;\n"
+                  "export int f1() { return 1; }\n");
     env.tmp.touch("m2.cppm",
                   "export module M2;\n"
                   "import M1;\n"
@@ -618,8 +640,12 @@ TEST_CASE(deep_chain) {
 /// ============================================================================
 
 TEST_CASE(independent_modules) {
-    env.tmp.touch("x.cppm", "export module X;\n" "export int x() { return 1; }\n");
-    env.tmp.touch("y.cppm", "export module Y;\n" "export int y() { return 2; }\n");
+    env.tmp.touch("x.cppm",
+                  "export module X;\n"
+                  "export int x() { return 1; }\n");
+    env.tmp.touch("y.cppm",
+                  "export module Y;\n"
+                  "export int y() { return 2; }\n");
 
     auto json = build_cdb_json({
         {env.tmp.root, env.tmp.path("x.cppm"), {}},
@@ -721,7 +747,9 @@ TEST_CASE(class_export_inheritance) {
 /// ============================================================================
 
 TEST_CASE(recompile_after_update) {
-    env.tmp.touch("leaf.cppm", "export module Leaf;\n" "export int leaf() { return 1; }\n");
+    env.tmp.touch("leaf.cppm",
+                  "export module Leaf;\n"
+                  "export int leaf() { return 1; }\n");
     env.tmp.touch("mid.cppm",
                   "export module Mid;\n"
                   "import Leaf;\n"
@@ -768,10 +796,13 @@ TEST_CASE(partition_with_gmf) {
     env.tmp.touch("config.h", "#define MAX_SIZE 100\n");
     env.tmp.touch("part_cfg.cppm",
                   "module;\n"
-                  R"(#include "config.h")" "\n"
+                  R"(#include "config.h")"
+                  "\n"
                   "export module Cfg:Limits;\n"
                   "export constexpr int max_size = MAX_SIZE;\n");
-    env.tmp.touch("cfg.cppm", "export module Cfg;\n" "export import :Limits;\n");
+    env.tmp.touch("cfg.cppm",
+                  "export module Cfg;\n"
+                  "export import :Limits;\n");
 
     auto json = build_cdb_json({
         {env.tmp.root, env.tmp.path("part_cfg.cppm"), {"-I", env.tmp.path(".")}},
@@ -797,14 +828,18 @@ TEST_CASE(partition_with_gmf) {
 
 TEST_CASE(partition_external_import) {
     // External module.
-    env.tmp.touch("ext.cppm", "export module Ext;\n" "export int ext_val() { return 99; }\n");
+    env.tmp.touch("ext.cppm",
+                  "export module Ext;\n"
+                  "export int ext_val() { return 99; }\n");
     // Partition that imports the external module.
     env.tmp.touch("part.cppm",
                   "export module App:Core;\n"
                   "import Ext;\n"
                   "export int core_fn() { return ext_val() + 1; }\n");
     // Primary module interface.
-    env.tmp.touch("app.cppm", "export module App;\n" "export import :Core;\n");
+    env.tmp.touch("app.cppm",
+                  "export module App;\n"
+                  "export import :Core;\n");
 
     auto json = build_cdb_json({
         {env.tmp.root, env.tmp.path("ext.cppm"),  {}},
@@ -832,7 +867,8 @@ TEST_CASE(partition_external_import) {
 
 TEST_CASE(diamond_update_cascade) {
     env.tmp.touch("mod_base.cppm",
-                  "export module Base;\n" "export int base_val() { return 10; }\n");
+                  "export module Base;\n"
+                  "export int base_val() { return 10; }\n");
     env.tmp.touch("mod_left.cppm",
                   "export module Left;\n"
                   "import Base;\n"
@@ -900,8 +936,12 @@ TEST_CASE(diamond_update_cascade) {
 
 TEST_CASE(re_resolve_after_update) {
     // Start with Mid importing Leaf.
-    env.tmp.touch("leaf.cppm", "export module Leaf;\n" "export int leaf() { return 1; }\n");
-    env.tmp.touch("extra.cppm", "export module Extra;\n" "export int extra() { return 99; }\n");
+    env.tmp.touch("leaf.cppm",
+                  "export module Leaf;\n"
+                  "export int leaf() { return 1; }\n");
+    env.tmp.touch("extra.cppm",
+                  "export module Extra;\n"
+                  "export int extra() { return 99; }\n");
     env.tmp.touch("mid.cppm",
                   "export module Mid;\n"
                   "import Leaf;\n"
@@ -952,7 +992,9 @@ TEST_CASE(re_resolve_after_update) {
 
 TEST_CASE(compile_failure_propagation) {
     // Good module.
-    env.tmp.touch("good.cppm", "export module Good;\n" "export int good() { return 1; }\n");
+    env.tmp.touch("good.cppm",
+                  "export module Good;\n"
+                  "export int good() { return 1; }\n");
     // Bad module with syntax error.
     env.tmp.touch("bad.cppm",
                   "export module Bad;\n"
@@ -988,10 +1030,14 @@ TEST_CASE(compile_failure_propagation) {
 
 TEST_CASE(module_implementation_unit) {
     // Module interface unit — produces PCM.
-    env.tmp.touch("iface.cppm", "export module Greeter;\n" "export const char* greet();\n");
+    env.tmp.touch("iface.cppm",
+                  "export module Greeter;\n"
+                  "export const char* greet();\n");
     // Module implementation unit — consumes PCM, no export.
     env.tmp.touch("impl.cpp",
-                  "module Greeter;\n" R"(const char* greet() { return "hello"; })" "\n");
+                  "module Greeter;\n"
+                  R"(const char* greet() { return "hello"; })"
+                  "\n");
 
     auto json = build_cdb_json({
         {env.tmp.root, env.tmp.path("iface.cppm"), {}},
@@ -1040,7 +1086,8 @@ TEST_CASE(module_implementation_unit) {
 
 TEST_CASE(shared_dep_import_switch) {
     env.tmp.touch("shared.cppm",
-                  "export module Shared;\n" "export int shared_val() { return 1; }\n");
+                  "export module Shared;\n"
+                  "export int shared_val() { return 1; }\n");
     env.tmp.touch("a.cppm",
                   "export module A;\n"
                   "import Shared;\n"
@@ -1139,9 +1186,9 @@ TEST_CASE(shared_dep_import_switch) {
 /// ============================================================================
 
 TEST_CASE(shared_dep_fails_both) {
-    env.tmp.touch(
-        "shared.cppm",
-        "export module Shared;\n" "export int shared_val() { return UNDEFINED_SYMBOL; }\n");
+    env.tmp.touch("shared.cppm",
+                  "export module Shared;\n"
+                  "export int shared_val() { return UNDEFINED_SYMBOL; }\n");
     env.tmp.touch("a.cppm",
                   "export module A;\n"
                   "import Shared;\n"

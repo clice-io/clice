@@ -105,7 +105,7 @@ void LSPClient::register_lifecycle() {
 
         if(init.initialization_options.has_value()) {
             auto json =
-                kota::codec::json::to_json<kota::ipc::lsp_config>(*init.initialization_options);
+                kota::codec::json::to_string<kota::ipc::lsp_config>(*init.initialization_options);
             if(json)
                 srv.init_options_json = std::move(*json);
         }
@@ -640,16 +640,15 @@ void LSPClient::register_extensions() {
                 auto& st = entry.second;
                 if(st.state) {
                     stats.pch_loaded_states += 1;
-                    stats.pch_state_bytes += st.state->size();
+                    stats.pch_state_bytes += st.state->bytes().size();
                 }
             }
             stats.pch_cache_entries = static_cast<std::uint32_t>(srv.workspace.pch_cache.size());
 
-            for(auto& [path_id, shard]: srv.workspace.merged_indices) {
-                if(shard.need_rewrite()) {
-                    stats.index_inmemory_shards += 1;
-                    stats.index_shard_content_bytes += shard.content().size();
-                }
+            stats.index_inmemory_shards =
+                static_cast<std::uint32_t>(srv.indexer.pending_shard_writes());
+            for(auto& [path_id, shard]: srv.workspace.shards) {
+                stats.index_shard_content_bytes += shard.bytes().size();
             }
             stats.last_save_shards = static_cast<std::uint32_t>(srv.indexer.last_save_shards());
 

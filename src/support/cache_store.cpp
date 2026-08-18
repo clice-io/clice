@@ -275,7 +275,7 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
     auto manifest_path = path::join(state->base, "manifest.json");
     if(auto content = fs::read(manifest_path)) {
         ManifestData data;
-        if(kota::codec::json::from_json(*content, data)) {
+        if(kota::codec::json::from_string(*content, data)) {
             for(auto& entry: data.entries) {
                 auto key = entry.ns + "/" + entry.key;
                 state->manifest_atimes[key] = entry.atime;
@@ -763,7 +763,7 @@ void CacheStore::State::checkpoint_locked() {
         }
     }
 
-    auto json = kota::codec::json::to_json(data);
+    auto json = kota::codec::json::to_string(data);
     if(!json) {
         LOG_WARN("CacheStore: failed to serialize manifest");
         return;

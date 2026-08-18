@@ -11,15 +11,25 @@ Triggered by `<`, `"`, `/` characters. Handled before AST (preamble-level, no co
   Answered by the server before any compilation, so only the server path
   exists for this fixture.
 
+  <details>
+  <summary>Example</summary>
+
   ```cpp
   #include "snap"
   ```
 
+  </details>
+
 - [x] Angled include paths — the same search-path candidates in the angled form
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   #include <snap>
   ```
+
+  </details>
 
 <!-- END GENERATED ITEMS -->
 
@@ -92,9 +102,14 @@ Triggered when cursor is after `import` or `export import`.
   so the module is known. The statement stays unterminated — a `;` on
   the line means the import is already complete and nothing is offered.
 
+  <details>
+  <summary>Example</summary>
+
   ```cpp
   import ma
   ```
+
+  </details>
 
 <!-- END GENERATED ITEMS -->
 
@@ -189,6 +204,9 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
   `operator=` keeps no space before `=`, and a conversion operator
   spells its target type.
 
+  <details>
+  <summary>Example</summary>
+
   ```cpp
   // The member access expression is left dangling at the point.
   struct Wallet {
@@ -207,7 +225,12 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
   }
   ```
 
+  </details>
+
 - [x] Members of an instantiated class template — the destructor label keeps the written template arguments
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   // The member access expression is left dangling at the point.
@@ -222,7 +245,12 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
   }
   ```
 
+  </details>
+
 - [x] Pointer member access — `->` on a pointer completes the pointee's members
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   // The member access expression is left dangling at the point.
@@ -238,11 +266,16 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
   }
   ```
 
+  </details>
+
 - [x] Scope-qualified members — after `::` static data, nested types, methods and the injected class name all list
 
   Qualified completion is not filtered to the statically-reachable subset:
   instance fields and the destructor show up alongside the static members
   and nested types.
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   // The qualified-id is left dangling at the point.
@@ -262,7 +295,12 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
   }
   ```
 
+  </details>
+
 - [x] Inherited members — a derived object completes its own members and those of its base
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   // The member access expression is left dangling at the point.
@@ -280,6 +318,8 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
       d.
   }
   ```
+
+  </details>
 
 <!-- END GENERATED ITEMS -->
 
@@ -383,6 +423,9 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
 
 - [x] Unqualified lookup with fuzzy prefix matching — strong prefix matches survive, weak subsequence matches and unqualified namespace members do not
 
+  <details>
+  <summary>Example</summary>
+
   ```cpp
   // The completion expression dangles as an unfinished statement.
   namespace A {
@@ -403,7 +446,12 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
   }
   ```
 
+  </details>
+
 - [x] Class template deduplication — a name that is also constructors and a deduction guide stays a single class entry
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   // The completion prefix dangles as an unfinished statement.
@@ -424,7 +472,12 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
   }
   ```
 
+  </details>
+
 - [x] Constructor labels stay plain — class template constructors and deduction guides complete as the bare class name, never a templated spelling
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   // The completion prefix dangles as an unfinished statement.
@@ -445,14 +498,24 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
   }
   ```
 
+  </details>
+
 - [x] Keyword patterns — keywords complete like any candidate, with plain insert text
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   // The completion prefix cuts the initializer mid-expression.
   int x = tru
   ```
 
+  </details>
+
 - [x] Namespace-qualified lookup — `ns::` lists the namespace's own members
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   // The qualified-id is left dangling at the point.
@@ -473,7 +536,12 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
   }
   ```
 
+  </details>
+
 - [x] Enum members — a scoped enum lists through `Type::`, an unscoped enumerator completes by bare name
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   // Both completion prefixes dangle; the statements stay
@@ -488,7 +556,12 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
   }
   ```
 
+  </details>
+
 - [x] Local shadowing a global — the shadowed global does not appear as a duplicate entry
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   // The completion prefix dangles as an unfinished statement.
@@ -500,7 +573,12 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
   }
   ```
 
+  </details>
+
 - [x] Using-declaration — a name pulled in with `using` completes unqualified
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   // The completion prefix dangles as an unfinished statement.
@@ -516,6 +594,8 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
       int v = help;
   }
   ```
+
+  </details>
 
 <!-- END GENERATED ITEMS -->
 
@@ -555,6 +635,9 @@ All options below live in the `[code_completion]` configuration section.
 
 - [x] Signature and return type details — the parameter list and return type ride along as label details
 
+  <details>
+  <summary>Example</summary>
+
   ```cpp
   // The completion prefix cuts the initializer mid-expression.
   double foooo(int x, float y);
@@ -562,7 +645,12 @@ All options below live in the `[code_completion]` configuration section.
   int x = fo
   ```
 
+  </details>
+
 - [x] Overload bundling — an overload set collapses into one entry with an overload count
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   // The completion prefix cuts the initializer mid-expression.
@@ -572,9 +660,14 @@ All options below live in the `[code_completion]` configuration section.
 
   int x = fooo
   ```
+
+  </details>
 
 - [x] Unbundled overloads — with bundling off, every overload is its own entry with its own signature
 
+  <details>
+  <summary>Example</summary>
+
   ```cpp
   // The completion prefix cuts the initializer mid-expression.
   int foooo(int x);
@@ -584,7 +677,12 @@ All options below live in the `[code_completion]` configuration section.
   int x = fooo
   ```
 
+  </details>
+
 - [x] Parameter placeholder snippets — calls insert tab-stop placeholders per argument; a no-argument function stays plain text
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   // The completion prefixes dangle as unfinished statements.
@@ -603,7 +701,12 @@ All options below live in the `[code_completion]` configuration section.
   }
   ```
 
+  </details>
+
 - [x] Snippets defer to bundling — while overloads are bundled, argument snippets stay off even when enabled
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   // The completion prefix cuts the initializer mid-expression.
@@ -613,10 +716,15 @@ All options below live in the `[code_completion]` configuration section.
   int z = fo
   ```
 
+  </details>
+
 - [x] Default-argument parameters — a parameter with a default value drops out of the signature detail
 
   The signature detail keeps only the required parameters; the trailing
   `int retries = 3` is elided.
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   // The completion prefix cuts the initializer mid-expression.
@@ -625,7 +733,12 @@ All options below live in the `[code_completion]` configuration section.
   int x = confi
   ```
 
+  </details>
+
 - [x] Variadic signature — a trailing `...` shows in the parameter detail
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   // The completion prefix cuts the initializer mid-expression.
@@ -633,6 +746,8 @@ All options below live in the `[code_completion]` configuration section.
 
   int x = printf
   ```
+
+  </details>
 
 <!-- END GENERATED ITEMS -->
 
@@ -766,6 +881,9 @@ All options below live in the `[code_completion]` configuration section.
 
 - [x] Underscore filtering — underscore-prefixed internal symbols hide unless the typed prefix itself starts with one
 
+  <details>
+  <summary>Example</summary>
+
   ```cpp
   // The completion prefixes are undeclared identifiers. The
   // statements stay semicolon-terminated: an unterminated one puts the
@@ -777,7 +895,12 @@ All options below live in the `[code_completion]` configuration section.
   int y = _p;
   ```
 
+  </details>
+
 - [x] Deprecated tagging — a [[deprecated]] candidate carries the Deprecated tag, its plain sibling does not
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   // The completion prefix cuts the initializer mid-expression.
@@ -787,10 +910,15 @@ All options below live in the `[code_completion]` configuration section.
   int z = thing
   ```
 
+  </details>
+
 - [x] Word-boundary fuzzy match — prefix `fb` matches the word starts of `foo_bar_baz`
 
   `frobnicate` is only a weak scattered subsequence of `fb` and is dropped;
   `foo_bar_baz` matches on the `foo`/`bar` word boundaries and survives.
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   // The completion prefix dangles as an unfinished statement.
@@ -802,7 +930,12 @@ All options below live in the `[code_completion]` configuration section.
   }
   ```
 
+  </details>
+
 - [x] Case-insensitive prefix — a lowercase prefix matches a mixed-case identifier
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   // The completion prefix dangles as an unfinished statement.
@@ -813,10 +946,15 @@ All options below live in the `[code_completion]` configuration section.
   }
   ```
 
+  </details>
+
 - [x] Prefix outranks subsequence — an exact-prefix candidate sorts above a scattered subsequence match
 
   For prefix `fo`, `format_output` is a true prefix and outscores
   `fast_math_operation`, which only matches as a subsequence.
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   // The completion prefix dangles as an unfinished statement.
@@ -827,6 +965,8 @@ All options below live in the `[code_completion]` configuration section.
       int v = fo;
   }
   ```
+
+  </details>
 
 <!-- END GENERATED ITEMS -->
 
@@ -946,7 +1086,7 @@ Registered: `. < > : " / *`. Space (` `) is planned but not yet merged ([#460](h
 
 ## Changelog
 
-| Date | Change                                 | PR  |
-| ---- | -------------------------------------- | --- |
-| —    | Initial include/semantic completion    | —   |
-| —    | Module import completion (flat prefix) | —   |
+| Date       | Change                                                                | PR                                                 |
+| ---------- | --------------------------------------------------------------------- | -------------------------------------------------- |
+| 2026-04-06 | `#include` path completion and module import completion (flat prefix) | [#394](https://github.com/clice-io/clice/pull/394) |
+| 2024-12-01 | Initial semantic completion                                           | —                                                  |

@@ -46,7 +46,8 @@ static protocol::Diagnostic make_inferred_command_diagnostic(CommandSource sourc
     }
     diagnostic.source = "clice";
     diagnostic.message = std::format(
-        "No compilation database entry for this file (compile command was {}), so some includes " "may not be found. Configure compile_commands.json for accurate diagnostics.",
+        "No compilation database entry for this file (compile command was {}), so some includes "
+        "may not be found. Configure compile_commands.json for accurate diagnostics.",
         source == CommandSource::Fallback ? "synthesized from defaults"
                                           : "inferred from an including file");
     return diagnostic;
@@ -55,7 +56,7 @@ static protocol::Diagnostic make_inferred_command_diagnostic(CommandSource sourc
 std::vector<protocol::Diagnostic> format_diagnostics(const CompileOutput& output) {
     std::vector<protocol::Diagnostic> diagnostics;
     if(!output.diagnostics.empty()) {
-        auto status = kota::codec::json::from_json(output.diagnostics.data, diagnostics);
+        auto status = kota::codec::json::from_string(output.diagnostics.data, diagnostics);
         if(!status) {
             LOG_WARN("Failed to deserialize diagnostics JSON");
         }

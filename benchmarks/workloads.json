@@ -1,0 +1,26 @@
+{
+  "_comment": "Pinned real-project workloads for reproducible benchmarks. fetch_workload.py materializes one under benchmarks/workloads/<name>: shallow clone at the SHA, then the configure command generates compile_commands.json (no build needed). The scenario block feeds tools/bench/bench.ts defaults.",
+  "workloads": {
+    "llvm": {
+      "description": "llvm-project at the release the prebuilt LLVM packages track. Large workload: ~4500 clang+llvm TUs, heavy templates, deep include graphs.",
+      "git": "https://github.com/llvm/llvm-project.git",
+      "ref": "llvmorg-22.1.8",
+      "configure": [
+        "cmake",
+        "-S",
+        "llvm",
+        "-B",
+        "build",
+        "-G",
+        "Ninja",
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+        "-DLLVM_ENABLE_PROJECTS=clang"
+      ],
+      "cdb": "build/compile_commands.json",
+      "scenario": {
+        "file": "clang/lib/Sema/SemaExpr.cpp"
+      }
+    }
+  }
+}

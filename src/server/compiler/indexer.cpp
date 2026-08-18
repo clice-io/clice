@@ -7,6 +7,9 @@
 #include <string>
 #include <vector>
 
+#include "index/manifest.h"
+#include "index/shard.h"
+#include "index/storage.h"
 #include "index/tu_index.h"
 #include "server/compiler/context_resolver.h"
 #include "server/protocol/worker.h"
@@ -17,193 +20,269 @@
 #include "support/timer.h"
 
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSet.h"
-#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/Path.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/xxhash.h"
 
 namespace clice {
 
-void Indexer::merge(const void* tu_index_data, std::size_t size) {
-    auto tu_index = index::TUIndex::from(tu_index_data);
-    if(tu_index.graph.paths.empty()) {
-        LOG_WARN("Ignoring TUIndex with empty path graph");
-        return;
-    }
-    auto main_tu_path_id = static_cast<std::uint32_t>(tu_index.graph.paths.size() - 1);
-    llvm::StringRef main_tu_path = tu_index.graph.paths[main_tu_path_id];
-
-    // Shards pair the worker's rows with content read from disk here; if the
-    // disk moved on since the worker read it, the rows' offsets describe
-    // bytes that no longer exist and merging would misplace every position
-    // until the next reindex. The worker's consumed-content hash arbitrates.
-    // A missing hash (0) proceeds as before.
-    auto content_matches = [&](std::uint32_t tu_path_id, llvm::StringRef disk_content) {
-        auto consumed = tu_index.graph.path_hashes[tu_path_id];
-        return consumed == 0 || llvm::xxh3_64bits(disk_content) == consumed;
-    };
-
-    // The main file's verdict gates the WHOLE result: its per-header shards
-    // and the trailing sweep all describe this one compile, so applying any
-    // of it against a moved-on main file would mix two generations (and the
-    // sweep would strip contributions the stale result merely no longer
-    // mentions). Skipping everything keeps the last-known state consistent;
-    // the changed file fails the next staleness check (or is already
-    // pending), and a follow-up pass redoes the merge against settled
-    // content.
-    auto main_buf = llvm::MemoryBuffer::getFile(main_tu_path);
-    if(!main_buf) {
-        LOG_WARN("Skip merge for {}: cannot read content: {}",
-                 main_tu_path,
-                 main_buf.getError().message());
-        return;
-    }
-    if(!content_matches(main_tu_path_id, (*main_buf)->getBuffer())) {
-        LOG_INFO("Skip merge for {}: disk moved on since it was indexed", main_tu_path);
-        return;
-    }
-
-    auto file_ids_map = workspace.project_index.merge(tu_index, workspace.path_pool);
-
-    // Collect non-External symbols referenced in a FileIndex.  Each file's
-    // MergedIndex shard stores exactly the local symbols its occurrences
-    // reference, so lookup is a single shard check — no scanning.
-    auto collect_local_symbols = [&](const index::FileIndex& file_idx) {
-        index::SymbolTable result;
-        for(auto& occ: file_idx.occurrences) {
-            auto it = tu_index.symbols.find(occ.target);
-            if(it != tu_index.symbols.end() && it->second.scope != index::SymbolScope::External) {
-                result.try_emplace(occ.target, it->second);
-            }
-        }
-        return result;
-    };
-
-    // Only shards that actually receive this TU's new contribution count as
-    // touched; a file still in the include graph but with an empty FileIndex
-    // must be swept below like a dropped one.
-    llvm::DenseSet<std::uint32_t> touched;
-
-    auto merge_file_index = [&](std::uint32_t tu_path_id, index::FileIndex& file_idx) {
-        auto global_path_id = file_ids_map[tu_path_id];
-        auto& shard = workspace.merged_indices[global_path_id];
-
-        if(tu_path_id == main_tu_path_id) {
-            auto& path_hashes = tu_index.graph.path_hashes;
-            llvm::SmallVector<index::DepLocation> deps;
-            deps.reserve(tu_index.graph.locations.size() + 1);
-            // The TU's own content is a dependency of its shard too: without
-            // it, a closed TU edited on disk with unchanged includes would
-            // never look stale.
-            deps.push_back({main_tu_path, 0, 0, path_hashes[main_tu_path_id]});
-            for(auto& loc: tu_index.graph.locations) {
-                deps.push_back({tu_index.graph.paths[loc.path_id],
-                                loc.line,
-                                loc.include,
-                                path_hashes[loc.path_id]});
-            }
-            // Read and verified against the consumed hash before anything
-            // was merged: an unreadable or moved-on main file skips this
-            // whole result up front.
-            shard.merge(main_tu_path, tu_index.built_at, deps, file_idx, (*main_buf)->getBuffer());
-            shard.merge_symbols(collect_local_symbols(file_idx));
-            touched.insert(global_path_id);
-        } else {
-            std::optional<std::uint32_t> include_id;
-            for(std::uint32_t i = 0; i < tu_index.graph.locations.size(); ++i) {
-                if(tu_index.graph.locations[i].path_id == tu_path_id) {
-                    include_id = i;
-                    break;
-                }
-            }
-            if(!include_id) {
-                LOG_WARN("Skip merge for path {}: include location not found", global_path_id);
-                return;
-            }
-            auto header_path = workspace.path_pool.resolve(global_path_id);
-            llvm::StringRef header_content;
-            std::string header_content_storage;
-            auto header_buf = llvm::MemoryBuffer::getFile(header_path);
-            if(header_buf) {
-                header_content_storage = (*header_buf)->getBuffer().str();
-                header_content = header_content_storage;
-            }
-            // Unconditional, unlike the read above: an unreadable or
-            // truncated-to-empty header must not slip past the arbitration
-            // and pair the rows with content they were not built from.
-            if(!content_matches(tu_path_id, header_content)) {
-                LOG_INFO("Skip merge for {}: disk moved on since it was indexed", header_path);
-                touched.insert(global_path_id);
-                return;
-            }
-            // Keyed by the including TU so a reindex of that TU replaces its
-            // prior contribution to this header's shard.
-            shard.merge(main_tu_path, *include_id, file_idx, header_content);
-            shard.merge_symbols(collect_local_symbols(file_idx));
-            touched.insert(global_path_id);
-        }
-    };
-
-    for(auto& [tu_path_id, file_idx]: tu_index.path_file_indices) {
-        merge_file_index(tu_path_id, file_idx);
-    }
-    merge_file_index(main_tu_path_id, tu_index.main_file_index);
-
-    // A file dropped from this TU (a removed transitive include, or one
-    // whose contribution became empty) is no longer merged above, but its
-    // shard may still hold this TU's previous contribution — sweep it, or
-    // references under the dropped include keep being served as if the edge
-    // still existed.
-    for(auto& [path_id, shard]: workspace.merged_indices) {
-        if(touched.contains(path_id)) {
-            continue;
-        }
-        if(shard.has_contribution(main_tu_path)) {
-            shard.remove(main_tu_path);
-        }
-    }
-
-    auto external_count = std::ranges::count_if(tu_index.symbols, [](auto& kv) {
-        return kv.second.scope == index::SymbolScope::External;
-    });
-    LOG_INFO("Merged TUIndex: {} paths, {} symbols ({} external), {} merged_shards",
-             tu_index.graph.paths.size(),
-             tu_index.symbols.size(),
-             external_count,
-             workspace.merged_indices.size());
-}
-
-/// Stable blob key for a file's shard: runtime pool ids are per-session,
-/// so blobs are named by a hash of the path instead.
-static std::string shard_key(llvm::StringRef path) {
+/// Stable blob key for a file's shard or a TU's manifest: runtime pool ids
+/// are per-session, so blobs are named by a hash of the path instead.
+static std::string blob_key(llvm::StringRef path) {
     return std::format("{:016x}", llvm::xxh3_64bits(path));
 }
 
-/// Begin a two-phase store write and serialize the blob to its tmp path.
-/// Returns the entry to commit, or nullopt if serialization failed.
-static std::optional<CacheStore::PendingEntry>
-    serialize_blob(CacheStore& store,
-                   llvm::StringRef key,
-                   llvm::function_ref<void(llvm::raw_ostream&)> serialize) {
-    auto pending = store.begin_store("index", key);
-    std::error_code ec;
-    llvm::raw_fd_ostream os(pending.tmp_path, ec);
-    if(ec) {
-        LOG_WARN("Failed to write index blob {}: {}", key, ec.message());
-        return std::nullopt;
+void Indexer::merge(const void* tu_index_data, std::size_t size) {
+    // Zero-copy consumption: the wire stays serialized; a new variant's
+    // blob bytes are sliced out and installed or merged without decoding
+    // the envelope, and only genuinely new symbol names are materialized.
+    auto view =
+        index::TUIndex::from_bytes(llvm::StringRef(static_cast<const char*>(tu_index_data), size));
+    if(!view.loaded()) {
+        LOG_WARN("Ignoring TUIndex that failed verification");
+        return;
     }
-    serialize(os);
-    os.flush();
-    // A truncated blob (disk full) must never be committed: the index
-    // namespace is Persistent, so it would be served forever.
-    if(os.has_error()) {
-        LOG_WARN("Failed to write index blob {}: {}", key, os.error().message());
-        os.clear_error();
-        return std::nullopt;
+    auto main_local_id = view.path_count() - 1;
+    llvm::StringRef main_tu_path = view.path(main_local_id);
+
+    // Interning paths only names them — pool ids left behind by a rejected
+    // result are inert. Everything that is index STATE (symbols,
+    // FileVersions, the manifest, shards) commits only below the section
+    // loop, once every part of the result validated.
+    auto& project = workspace.project_index;
+    llvm::SmallVector<std::uint32_t> file_ids_map;
+    file_ids_map.resize_for_overwrite(view.path_count());
+    for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
+        file_ids_map[i] = workspace.path_pool.intern(view.path(i));
     }
-    return pending;
+    auto tu_path_id = file_ids_map[main_local_id];
+
+    index::TUManifest manifest;
+    manifest.built_at = static_cast<std::uint64_t>(view.built_at());
+
+    std::size_t hits = 0;
+    std::size_t appended = 0;
+    // Staged, not committed: a section that fails verification rejects the
+    // whole result mid-loop, and shards installed before that point would
+    // leave the surviving manifest referencing variants the new blobs no
+    // longer store.
+    llvm::SmallVector<std::pair<std::uint32_t, index::Shard>> replacements;
+    // (TU-local path id, variant identity) per serving section; the
+    // FileVersions these will reference are interned only at commit.
+    llvm::SmallVector<std::pair<std::uint32_t, std::uint64_t>> section_contributions;
+    llvm::SmallVector<std::uint32_t> rebuilt_ids;
+    // TU-local path id -> content hash of the bytes each section's rows
+    // were built from (0 = no section). A section's shard already records
+    // that hash, so the FileVersion baseline below adopts it: pairing the
+    // rows with any other hash — the file behind a PCM whose disk moved
+    // on under a preserved or backdated mtime — would keep the baseline
+    // fresh while queries serve another generation's rows.
+    llvm::SmallVector<std::uint64_t> consumed_hashes(view.path_count(), 0);
+    auto record_consumed = [&](std::uint32_t local_id, std::uint64_t content_hash) {
+        auto path_hash = view.path_hash(local_id);
+        if(path_hash != 0 && path_hash != content_hash) {
+            LOG_WARN("Reject merge for {}: rows for {} consumed other content than the compiler",
+                     main_tu_path,
+                     workspace.path_pool.resolve(file_ids_map[local_id]));
+            return false;
+        }
+        consumed_hashes[local_id] = content_hash;
+        return true;
+    };
+    for(std::uint32_t section = 0; section < view.section_count(); section += 1) {
+        auto local_id = view.section_path(section);
+        auto blob_hash = view.section_hash(section);
+        auto global_id = file_ids_map[local_id];
+
+        auto shard_it = workspace.shards.find(global_id);
+        auto* shard = shard_it != workspace.shards.end() ? &shard_it->second : nullptr;
+
+        // Fast path: the blob already stores this variant. The identity
+        // hashes the blob bytes, which embed the content generation, so
+        // one membership test is the whole check — no IO, no bytes read.
+        if(shard && shard->loaded() && shard->has_variant(blob_hash)) {
+            if(!record_consumed(local_id, shard->content_hash())) {
+                return;
+            }
+            section_contributions.emplace_back(local_id, blob_hash);
+            hits += 1;
+            continue;
+        }
+
+        // The recomputed hash guards the variant identity alongside the
+        // structural verification below: bytes installed under a hash they
+        // do not reproduce would satisfy every later hit-path check for
+        // that hash while the shard stores different rows. A mismatch (or
+        // an invalid blob) leaves every recorded version matching the
+        // disk, so an installed manifest would be judged fresh forever
+        // with this file's rows missing or stale — reject the whole
+        // result; nothing is committed yet.
+        auto bytes = view.section_blob(section);
+        if(llvm::xxh3_64bits(bytes) != blob_hash) {
+            LOG_WARN("Reject merge for {}: rows section for {} failed verification",
+                     main_tu_path,
+                     workspace.path_pool.resolve(global_id));
+            return;
+        }
+        auto fresh = index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
+        if(!fresh.loaded()) {
+            LOG_WARN("Reject merge for {}: rows for {} do not form a valid shard",
+                     main_tu_path,
+                     workspace.path_pool.resolve(global_id));
+            return;
+        }
+        if(!record_consumed(local_id, fresh.content_hash())) {
+            return;
+        }
+
+        index::Shard replacement;
+        if(shard && shard->loaded() && shard->content_hash() == fresh.content_hash()) {
+            // Same generation, new variant: merge it in, keeping every
+            // stored variant — dead ones stay masked until the next save
+            // compacts them.
+            std::string merged;
+            llvm::raw_string_ostream os(merged);
+            index::merge_shards(*shard, shard->variants(), llvm::ArrayRef(fresh), os);
+            replacement = index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(merged));
+            assert(replacement.loaded() && "a freshly merged shard blob must verify");
+            appended += 1;
+        } else {
+            // New content generation (or no blob at all): rows from other
+            // generations must never share offset storage with these, so
+            // the worker's bytes become the blob verbatim. Stale
+            // contributions from other TUs stop matching any stored
+            // variant; the commit re-enqueues their owners.
+            replacement = std::move(fresh);
+            rebuilt_ids.push_back(global_id);
+        }
+        replacements.emplace_back(global_id, std::move(replacement));
+        section_contributions.emplace_back(local_id, blob_hash);
+    }
+
+    // The last gate and the first commit. A malformed reference bitmap (or
+    // an out-of-range reference id) rejects the whole result for the same
+    // reason a rows section that fails decode does above: everything the
+    // merge would install reads as fresh forever, with the lost bits never
+    // rebuilt.
+    if(!project.merge(view, file_ids_map)) {
+        LOG_WARN("Reject merge for {}: symbol reference bitmap failed verification", main_tu_path);
+        return;
+    }
+
+    // Intern a FileVersion per file of the parse. The freshness baseline is
+    // two-part and lives on the version, shared by every TU that consumed
+    // it: the consumed-content hash from the compiler's own buffers, and a
+    // stat fast path recorded only when the disk provably still holds the
+    // consumed bytes — otherwise the stat could describe content the rows
+    // were never built from, so those files re-earn their fast path
+    // through a hash check instead (see file_version_stale).
+    auto baseline_before_ns = fs::stat_baseline_before_ns(view.built_at());
+    llvm::SmallVector<std::uint32_t> fv_of;
+    fv_of.resize_for_overwrite(view.path_count());
+    for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
+        llvm::StringRef path = view.path(i);
+        // The section's own record wins: for a hashless path (behind a
+        // PCM) it is the only hash naming the bytes the rows describe.
+        auto hash = consumed_hashes[i] != 0 ? consumed_hashes[i] : view.path_hash(i);
+
+        fs::file_status status;
+        bool stat_ok = !fs::status(path, status);
+        bool untouched = stat_ok && fs::mtime_ns(status) <= baseline_before_ns;
+        if(hash == 0 && untouched) {
+            // The worker had no buffer to hash (e.g. behind a PCM) and no
+            // rows recorded one; the unchanged mtime proves the disk still
+            // holds the consumed bytes, so hash it here.
+            hash = hash_file(path);
+        }
+
+        auto fv = project.intern_file_version(file_ids_map[i], hash);
+        if(untouched && hash != 0) {
+            // The untouched mtime alone is no proof: a rewrite during the
+            // build that preserves the size and backdates the mtime
+            // (rsync -t) would stamp a stat describing bytes the rows were
+            // never built from, and file_version_stale's equality fast
+            // path would then judge them fresh forever. Stamp only under a
+            // disk-hash match; an already-stamped version earned its stamp
+            // the same way, so it need not re-prove it every merge.
+            auto& record = project.file_versions.find(fv)->second;
+            if(record.mtime_ns == 0 && hash_file(path) == hash) {
+                record.size = status.getSize();
+                record.mtime_ns = fs::mtime_ns(status);
+            }
+        }
+        fv_of[i] = fv;
+    }
+
+    manifest.tu_fv = fv_of[main_local_id];
+    manifest.nodes.reserve(view.location_count());
+    for(std::uint32_t i = 0; i < view.location_count(); i += 1) {
+        auto location = view.location(i);
+        manifest.nodes.push_back({fv_of[location.path_id], location.include, location.line});
+    }
+    for(auto [local_id, rows_hash]: section_contributions) {
+        manifest.contributions.emplace_back(fv_of[local_id], rows_hash);
+    }
+
+    for(auto& [global_id, replacement]: replacements) {
+        workspace.shards[global_id] = std::move(replacement);
+        dirty_shards.insert(global_id);
+    }
+
+    // Replace this TU's manifest wholesale: files it no longer touches lose
+    // their contribution here, which is also what retires their variants —
+    // no sweep over other shards is needed.
+    auto affected = project.apply_manifest(tu_path_id, std::move(manifest));
+    for(auto path_id: affected) {
+        auto it = workspace.shards.find(path_id);
+        if(it == workspace.shards.end()) {
+            continue;
+        }
+        it->second.set_live(project.live_variants(path_id));
+    }
+
+    // A rebuild started its file's blob over, discarding the variants other
+    // TUs' contributions pin. Those owners are usually already pending from
+    // the same content event (enqueue dedupes); one whose attempt already
+    // failed — or that reads fresh by hash after a revert, which is why
+    // ContentChanged — has no in-process event left to rebuild its rows,
+    // only a restart reaching load()'s re-enqueue.
+    for(auto path_id: rebuilt_ids) {
+        auto& shard = workspace.shards.find(path_id)->second;
+        for(auto& [tu, hash]: project.contributions.find(path_id)->second) {
+            if(!shard.has_variant(hash)) {
+                enqueue(tu, ReindexReason::ContentChanged);
+            }
+        }
+    }
+    dirty_manifests.insert(tu_path_id);
+    global_dirty = true;
+
+    LOG_INFO(
+        "Merged TUIndex: {} paths, {} sections ({} hits, {} appended, {} rebuilt), "
+        "{} merged_shards",
+        view.path_count(),
+        view.section_count(),
+        hits,
+        appended,
+        rebuilt_ids.size(),
+        workspace.shards.size());
+}
+
+void Indexer::drop_index(std::uint32_t tu_path_id) {
+    auto& project = workspace.project_index;
+    if(!project.manifests.contains(tu_path_id)) {
+        return;
+    }
+    for(auto path_id: project.remove_manifest(tu_path_id)) {
+        auto it = workspace.shards.find(path_id);
+        if(it != workspace.shards.end()) {
+            it->second.set_live(project.live_variants(path_id));
+        }
+    }
+    dirty_manifests.insert(tu_path_id);
+    global_dirty = true;
 }
 
 kota::task<> Indexer::save() {
@@ -211,207 +290,416 @@ kota::task<> Indexer::save() {
     // nothing, and the gauge must not keep exposing the previous round's
     // count as current.
     saved_shards = 0;
-    if(!workspace.store)
+    if(!workspace.index_storage)
         co_return;
-    auto& store = *workspace.store;
+    auto& storage = *workspace.index_storage;
+    auto& project = workspace.project_index;
     ScopedTimer timer;
 
-    // Phase 1, synchronous: serialize the ProjectIndex and every dirty
-    // shard to tmp files.  No suspension point in between, so the batch is
-    // a consistent snapshot even if a merge runs before the commits below
-    // are done.  Shards are only published together with the ProjectIndex
-    // they were built against: pairing new shards with an old project blob
-    // (or vice versa) would serve a mixed snapshot after restart.
-    // The project blob doubles as the shard manifest: it lists every file
-    // owning a shard so the loader knows exactly which blobs to fetch (and
-    // sweeps the rest).
+    // Compact shards whose variant set shrank: queries already mask the
+    // dead rows, this erases them for real before the blob reaches disk.
+    // A file with no live variant left in its blob is retired entirely
+    // below: either no contribution remains, or the remaining ones pin
+    // hashes a newer content generation replaced (their TUs have not
+    // reindexed yet) — compacting to those pins would write a blob with no
+    // variants at all, while retiring serves the same nothing the mask
+    // already does. The pinning TUs are re-enqueued: no in-process event
+    // would rebuild their rows otherwise (a reverted file even reads fresh
+    // by hash), only a restart reaching load()'s re-enqueue.
+    llvm::SmallVector<std::uint32_t> retired;
+    for(auto& [path_id, shard]: workspace.shards) {
+        auto live = project.live_variants(path_id);
+        if(llvm::none_of(live, [&](std::uint64_t hash) { return shard.has_variant(hash); })) {
+            retired.push_back(path_id);
+            continue;
+        }
+        if(!shard.has_dead_variants()) {
+            continue;
+        }
+        std::string bytes;
+        llvm::raw_string_ostream os(bytes);
+        index::merge_shards(shard, live, {}, os);
+        auto replacement = index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
+        assert(replacement.loaded() && "a freshly written shard blob must verify");
+        shard = std::move(replacement);
+        dirty_shards.insert(path_id);
+    }
+    for(auto path_id: retired) {
+        workspace.shards.erase(path_id);
+        dirty_shards.erase(path_id);
+        auto it = project.contributions.find(path_id);
+        if(it == project.contributions.end()) {
+            continue;
+        }
+        for(auto tu: llvm::make_first_range(it->second)) {
+            enqueue(tu, ReindexReason::ContentChanged);
+        }
+    }
+
+    // Snapshot the dirty state on the loop: everything below serializes
+    // from copies, so merges landing across the write await simply re-dirty
+    // for the next save. The id vectors parallel the batch so a failed
+    // entry can be re-dirtied by its batch index.
+    std::vector<index::IndexStorage::Blob> batch;
     llvm::SmallVector<std::uint32_t> shard_ids;
-    shard_ids.reserve(workspace.merged_indices.size());
-    for(auto& [path_id, shard]: workspace.merged_indices) {
+    llvm::SmallVector<std::uint32_t> manifest_ids;
+    llvm::SmallVector<std::pair<index::IndexBlobKind, std::string>> removals;
+    for(auto path_id: retired) {
+        removals.push_back(
+            {index::IndexBlobKind::Shard, blob_key(workspace.path_pool.resolve(path_id))});
+    }
+    for(auto path_id: dirty_shards) {
+        auto it = workspace.shards.find(path_id);
+        assert(it != workspace.shards.end() && "dirty shards stay resident until retirement");
+        batch.push_back({index::IndexBlobKind::Shard,
+                         blob_key(workspace.path_pool.resolve(path_id)),
+                         it->second.bytes().str()});
         shard_ids.push_back(path_id);
     }
+    auto shard_count = batch.size();
 
-    auto project_pending = serialize_blob(store, "project", [&](llvm::raw_ostream& os) {
-        workspace.project_index.serialize(os, workspace.path_pool, shard_ids);
+    // One generation per persisted global blob, stamped into every
+    // manifest of the batch and pinned per TU inside the global blob
+    // (serialize_global): load() adopts a manifest only at its pinned
+    // stamp. Without the pin an ordering check alone cannot tell a
+    // deliberately unchanged older manifest from one whose update failed
+    // while the global landed — both FileVersion sets can stay fully
+    // resolvable (a reindex that changed rows or the include tree only).
+    if(global_dirty) {
+        project.global_generation += 1;
+    }
+    for(auto tu_path_id: dirty_manifests) {
+        auto it = project.manifests.find(tu_path_id);
+        auto key = blob_key(workspace.path_pool.resolve(tu_path_id));
+        // Dirty with no in-memory manifest means dropped (drop_index): the
+        // persisted blob must go too, or a restart resurrects the TU's
+        // rows as fresh.
+        if(it == project.manifests.end()) {
+            removals.push_back({index::IndexBlobKind::Manifest, std::move(key)});
+            continue;
+        }
+        it->second.global_gen = project.global_generation;
+        std::string bytes;
+        llvm::raw_string_ostream os(bytes);
+        index::serialize_manifest(it->second, os);
+        batch.push_back({index::IndexBlobKind::Manifest, std::move(key), std::move(bytes)});
+        manifest_ids.push_back(tu_path_id);
+    }
+    auto manifest_count = batch.size() - shard_count;
+
+    // The global blob goes last: a crash mid-batch then strands only
+    // manifests, which load() drops by their generation stamp — the
+    // reverse order would strand a global claiming symbols in files whose
+    // rows never landed.
+    if(global_dirty) {
+        std::string bytes;
+        llvm::raw_string_ostream os(bytes);
+        project.serialize_global(os, workspace.path_pool);
+        batch.push_back({index::IndexBlobKind::Global, "global", std::move(bytes)});
+    }
+
+    dirty_shards.clear();
+    dirty_manifests.clear();
+    global_dirty = false;
+
+    if(batch.empty() && removals.empty()) {
+        co_return;
+    }
+
+    // The dirty set was snapshot-cleared above so merges landing across
+    // the write await re-dirty for the next save; the in-flight count
+    // keeps pending_shard_writes() truthful meanwhile — a stats reader
+    // polling for "shard writes settled" must not observe zero while the
+    // commit is still running (and saved_shards still holds its reset).
+    saving_shards = shard_count;
+    llvm::SmallVector<std::size_t> failed;
+    co_await kota::queue([&] {
+        failed = storage.write(batch);
+        for(auto& [kind, key]: removals) {
+            storage.remove(kind, key);
+        }
     });
-    if(!project_pending) {
-        LOG_WARN("Skipping index save: ProjectIndex serialization failed");
-        co_return;
-    }
-    LOG_INFO("Saved ProjectIndex ({} symbols)", workspace.project_index.symbols.size());
-
-    // Each write remembers which shard it snapshotted and at what
-    // revision, so the post-commit flip below can prove the shard is
-    // byte-identical to the blob it just published.
-    struct ShardWrite {
-        CacheStore::PendingEntry pending;
-        std::uint32_t path_id;
-        std::uint64_t revision;
-    };
-
-    // A commit's result pairs the published path with the blob reopened in
-    // the same job: the mmap plus the flatbuffer verification walk the
-    // whole file, and neither belongs on the event loop.
-    struct CommitOutcome {
-        std::expected<std::string, std::error_code> path;
-        index::MergedIndex reloaded;
-    };
-
-    llvm::SmallVector<ShardWrite> shards;
-    std::size_t total = workspace.merged_indices.size();
-    for(auto& [path_id, shard]: workspace.merged_indices) {
-        if(!shard.need_rewrite())
-            continue;
-        if(auto pending = serialize_blob(store,
-                                         shard_key(workspace.path_pool.resolve(path_id)),
-                                         [&](llvm::raw_ostream& os) { shard.serialize(os); })) {
-            shards.push_back({std::move(*pending), path_id, shard.revision()});
+    // An entry the storage failed to commit is re-dirtied so a later save
+    // retries it; discarded, the cache would trail the in-memory index
+    // until an unrelated merge happens to dirty the same entry or a
+    // restart rebuilds it. (Failed removals need no retry: load() drops
+    // stale manifests by their generation pin and sweeps orphan shards.)
+    std::size_t failed_shards = 0;
+    for(auto i: failed) {
+        if(i < shard_count) {
+            failed_shards += 1;
+            dirty_shards.insert(shard_ids[i]);
+        } else if(i - shard_count < manifest_count) {
+            dirty_manifests.insert(manifest_ids[i - shard_count]);
+        } else {
+            global_dirty = true;
         }
     }
-    LOG_INFO("Serialized {} MergedIndex shards (of {} total)", shards.size(), total);
-
-    // Phase 2: commit each blob (fsync + atomic rename) on the kota thread
-    // pool, keeping the heavy IO off the event loop.  The project blob goes
-    // first; if it cannot be published, drop the shards of this snapshot.
-    auto committed =
-        co_await kota::queue([&] { return store.commit(std::move(*project_pending)); });
-    if(!committed.has_value() || !committed.value().has_value()) {
-        // The shard entries clean their own tmp blobs up on destruction.
-        LOG_WARN("Failed to commit ProjectIndex blob, dropping {} shard blobs", shards.size());
-        co_return;
-    }
-
-    // FIXME: shard commits are strictly sequential (one co_await per shard).
-    // For large projects this adds ~N×2ms of round-trip overhead.  Consider
-    // batching commits or dispatching them in parallel on the thread pool.
-    for(auto& write: shards) {
-        auto key = write.pending.key;
-
-        auto outcome = co_await kota::queue([&]() -> CommitOutcome {
-            CommitOutcome out{store.commit(std::move(write.pending)), {}};
-            if(out.path) {
-                out.reloaded = index::MergedIndex::load(*out.path);
-            }
-            return out;
-        });
-        if(!outcome.has_value() || !outcome.value().path.has_value()) {
-            LOG_WARN("Failed to commit index blob {}", key);
-            continue;
-        }
-        saved_shards += 1;
-
-        // Flip the shard back to its committed, buffer-backed blob: the
-        // heap Impl a merge materialized would otherwise live until
-        // shutdown (F21), and need_rewrite() would keep claiming the
-        // shard dirty forever, turning every later save into a full
-        // rewrite. Only a shard untouched across the commit await may
-        // flip — a merge that landed meanwhile made the blob stale, and
-        // the shard simply stays dirty for the next save. An unreadable
-        // reload keeps the live Impl for the same reason.
-        auto it = workspace.merged_indices.find(write.path_id);
-        if(it == workspace.merged_indices.end() || it->second.revision() != write.revision) {
-            continue;
-        }
-        if(!outcome.value().reloaded.loaded()) {
-            LOG_WARN("Committed index blob {} did not read back; keeping the in-memory shard", key);
-            continue;
-        }
-        it->second = std::move(outcome.value().reloaded);
-    }
+    saved_shards = shard_count - failed_shards;
+    saving_shards = 0;
 
     LOG_PERF("index",
-             "phase=save shards={} total={} elapsed_ms={}",
-             shards.size(),
-             total,
+             "phase=save shards={} manifests={} total={} elapsed_ms={}",
+             shard_count,
+             manifest_count,
+             workspace.shards.size(),
              timer.ms());
 }
 
 void Indexer::load() {
-    if(!workspace.store)
+    if(!workspace.index_storage)
         return;
+    auto& storage = *workspace.index_storage;
+    auto& project = workspace.project_index;
     ScopedTimer timer;
 
-    bool has_project = false;
-    llvm::StringSet<> expected_keys;
-    auto project_path = workspace.store->lookup("index", "project");
-    if(project_path) {
-        auto buf = llvm::MemoryBuffer::getFile(*project_path);
-        if(!buf) {
-            // Transient read failure — don't load shards (useless without
-            // the project index), but don't destroy them either.
-            LOG_WARN("Failed to read ProjectIndex blob: {}", buf.getError().message());
+    auto sweep_all = [&] {
+        for(auto kind: {index::IndexBlobKind::Shard, index::IndexBlobKind::Manifest}) {
+            llvm::SmallVector<std::string> keys;
+            storage.for_each_key(kind, [&](llvm::StringRef key) { keys.push_back(key.str()); });
+            for(auto& key: keys) {
+                storage.remove(kind, key);
+            }
+        }
+    };
+
+    auto global = storage.read(index::IndexBlobKind::Global, "global");
+    if(!global) {
+        // A global blob that exists but failed to open is a transient IO
+        // error, not absence: sweeping would destroy an intact index and
+        // force a full rebuild. Run this session memory-only instead —
+        // saving a fresh lineage over blobs whose anchor was never read
+        // could alias their fv ids and generation stamps — and leave
+        // everything for a healthier restart to load.
+        if(storage.contains(index::IndexBlobKind::Global, "global")) {
+            LOG_WARN("Index global blob unreadable; disabling index persistence this session");
+            workspace.index_storage.reset();
             return;
         }
-        // An unreadable or old-format blob loads as "no index on disk":
-        // everything is swept and rebuilt once in the background.
-        llvm::SmallVector<std::uint32_t> manifest;
-        auto loaded = index::ProjectIndex::from((*buf)->getBufferStart(),
-                                                (*buf)->getBufferSize(),
-                                                workspace.path_pool,
-                                                manifest);
-        if(loaded) {
-            workspace.project_index = std::move(*loaded);
-            has_project = true;
-            LOG_INFO("Loaded ProjectIndex: {} symbols", workspace.project_index.symbols.size());
+        // No global table means no resolvable manifests: everything else
+        // is unreachable data, swept so it cannot survive as orphans.
+        sweep_all();
+        return;
+    }
+    llvm::DenseMap<std::uint32_t, std::uint64_t> manifest_pins;
+    if(!project.load_global(global->getBuffer(), workspace.path_pool, manifest_pins)) {
+        LOG_INFO("Discarding old-format index global blob");
+        sweep_all();
+        storage.remove(index::IndexBlobKind::Global, "global");
+        return;
+    }
 
-            // The manifest names every shard blob; fetch exactly those. A
-            // blob the loader rejects (corruption, old format) counts as
-            // missing: enqueue the file so the background round rebuilds it
-            // — for headers no CDB entry would ever re-enqueue it otherwise.
-            for(auto path_id: manifest) {
-                auto key = shard_key(workspace.path_pool.resolve(path_id));
-                auto shard_path = workspace.store->lookup("index", key);
-                auto shard =
-                    shard_path ? index::MergedIndex::load(*shard_path) : index::MergedIndex();
-                if(shard.loaded()) {
-                    workspace.merged_indices[path_id] = std::move(shard);
-                    expected_keys.insert(key);
-                } else {
-                    // No shard survives, so there is nothing stale to keep
-                    // serving; ContentChanged states the truth ("the index
-                    // does not describe this file") without effect.
-                    LOG_INFO("Discarding unreadable shard for {}",
-                             workspace.path_pool.resolve(path_id));
-                    enqueue(path_id, ReindexReason::ContentChanged);
+    // Adopt exactly the manifests the global blob pins, at exactly the
+    // pinned generation stamp and with every FileVersion resolvable. The
+    // rest are stale residue — a crash between batch phases, a failed
+    // write under a landed global, a dropped TU whose removal was lost —
+    // and are swept, with their TUs re-enqueued where recoverable.
+    llvm::DenseSet<std::uint32_t> adopted_pins;
+    llvm::SmallVector<std::string> dead_manifests;
+    storage.for_each_key(index::IndexBlobKind::Manifest, [&](llvm::StringRef key) {
+        auto blob = storage.read(index::IndexBlobKind::Manifest, key);
+        auto manifest = blob ? index::deserialize_manifest(blob->getBuffer()) : std::nullopt;
+        auto pin = manifest ? manifest_pins.find(manifest->tu_fv) : manifest_pins.end();
+        if(!manifest || pin == manifest_pins.end() || pin->second != manifest->global_gen ||
+           !project.knows_file_versions(*manifest)) {
+            dead_manifests.push_back(key.str());
+            // The manifest raced a crash ahead of the global blob (its own
+            // pin never landed). When the TU's version is still resolvable,
+            // re-enqueue it: the CDB sweep never covers standalone-indexed
+            // headers.
+            if(manifest) {
+                auto fv = project.file_versions.find(manifest->tu_fv);
+                if(fv != project.file_versions.end()) {
+                    enqueue(fv->second.path_id, ReindexReason::ContentChanged);
                 }
             }
-        } else {
-            LOG_INFO("Discarding old-format ProjectIndex blob");
+            return;
+        }
+        adopted_pins.insert(manifest->tu_fv);
+        auto tu_path_id = project.file_versions.find(manifest->tu_fv)->second.path_id;
+        project.apply_manifest(tu_path_id, std::move(*manifest));
+    });
+    for(auto& key: dead_manifests) {
+        storage.remove(index::IndexBlobKind::Manifest, key);
+    }
+    // A pinned TU without an adopted manifest lost it to a failed write
+    // that the landed global outran, or to a lost removal; re-enqueue it —
+    // its rows are unservable until a reindex. Pinned fvs always resolve:
+    // load_global rejects a blob whose pins its own table cannot cover.
+    for(auto fv: llvm::make_first_range(manifest_pins)) {
+        if(!adopted_pins.contains(fv)) {
+            enqueue(project.file_versions.find(fv)->second.path_id, ReindexReason::ContentChanged);
         }
     }
 
-    // Sweep every blob the manifest does not name (or all of them when the
-    // project index itself is gone or outdated — Persistent namespace
-    // cleanup is the caller's mark-and-sweep).
+    // Every contributing FileVersion pins the content generation its rows
+    // were built from; the shard must store that same generation. The
+    // variant check below cannot catch a stale shard alone when an edit
+    // past every indexed row left the rows hash identical: all recorded
+    // versions would match the disk while positions map through the old
+    // text, forever. A version with no consumed-content hash (0) pins
+    // nothing — it is permanently stale and reindexes its TU anyway.
+    llvm::DenseMap<std::uint32_t, llvm::SmallVector<std::uint64_t, 1>> generations;
+    for(auto& manifest: llvm::make_second_range(project.manifests)) {
+        for(auto fv: llvm::make_first_range(manifest.contributions)) {
+            auto& record = project.file_versions.find(fv)->second;
+            if(record.content_hash == 0) {
+                continue;
+            }
+            auto& pinned = generations[record.path_id];
+            if(!llvm::is_contained(pinned, record.content_hash)) {
+                pinned.push_back(record.content_hash);
+            }
+        }
+    }
+
+    // Fetch exactly the shard blobs the contributions expect. A blob that
+    // is missing or fails verification leaves its contributing TUs' rows
+    // unservable, so those manifests are dropped and the TUs reindex (for
+    // headers no CDB entry would ever re-enqueue them otherwise).
+    llvm::StringSet<> expected_keys;
+    llvm::SmallVector<std::uint32_t> unservable;
+    for(auto& [path_id, entry]: project.contributions) {
+        auto key = blob_key(workspace.path_pool.resolve(path_id));
+        auto shard = index::Shard::from_buffer(storage.read(index::IndexBlobKind::Shard, key));
+        // A blob can verify yet miss a contributed variant, or carry
+        // another content generation than the contributions pin (crash or
+        // failed write left a manifest newer than its shard); set_live
+        // would drop missing rows silently and stale content misplaces
+        // every position, so both are as unservable as an unreadable blob.
+        auto generation_ok = [&] {
+            auto it = generations.find(path_id);
+            return it == generations.end() || llvm::all_of(it->second, [&](std::uint64_t hash) {
+                       return hash == shard.content_hash();
+                   });
+        };
+        bool servable = shard.loaded() && generation_ok() &&
+                        llvm::all_of(llvm::make_second_range(entry),
+                                     [&](std::uint64_t hash) { return shard.has_variant(hash); });
+        if(!servable) {
+            LOG_INFO("Discarding unservable shard for {}", workspace.path_pool.resolve(path_id));
+            unservable.push_back(path_id);
+            continue;
+        }
+        expected_keys.insert(key);
+        shard.set_live(project.live_variants(path_id));
+        workspace.shards[path_id] = std::move(shard);
+    }
+    llvm::SmallVector<std::uint32_t> mask_refresh;
+    for(auto path_id: unservable) {
+        auto contribution_it = project.contributions.find(path_id);
+        if(contribution_it == project.contributions.end()) {
+            continue;
+        }
+        llvm::SmallVector<std::uint32_t> owners;
+        for(auto tu: llvm::make_first_range(contribution_it->second)) {
+            owners.push_back(tu);
+        }
+        for(auto tu: owners) {
+            // The removal retires the TU's contributions to EVERY file it
+            // touched, not just the unservable one; the affected set feeds
+            // the mask refresh below, like the merge path's.
+            auto affected = project.remove_manifest(tu);
+            mask_refresh.append(affected.begin(), affected.end());
+            storage.remove(index::IndexBlobKind::Manifest,
+                           blob_key(workspace.path_pool.resolve(tu)));
+            enqueue(tu, ReindexReason::ContentChanged);
+        }
+    }
+    for(auto path_id: mask_refresh) {
+        auto it = workspace.shards.find(path_id);
+        if(it != workspace.shards.end()) {
+            it->second.set_live(project.live_variants(path_id));
+        }
+    }
+
+    // Sweep shard blobs nothing references any more.
     llvm::SmallVector<std::string> orphans;
-    workspace.store->for_each_key("index", [&](llvm::StringRef key) {
-        if(key == "project" && has_project)
-            return;
+    storage.for_each_key(index::IndexBlobKind::Shard, [&](llvm::StringRef key) {
         if(!expected_keys.contains(key)) {
             orphans.push_back(key.str());
         }
     });
-
     for(auto& key: orphans) {
-        workspace.store->invalidate("index", key);
+        storage.remove(index::IndexBlobKind::Shard, key);
     }
 
-    if(!workspace.merged_indices.empty()) {
-        LOG_INFO("Loaded {} MergedIndex shards", workspace.merged_indices.size());
+    if(!workspace.shards.empty()) {
+        LOG_INFO("Loaded {} index shards, {} manifests, {} symbols",
+                 workspace.shards.size(),
+                 project.manifests.size(),
+                 project.symbols.size());
     }
     LOG_PERF("startup",
-             "phase=index_load symbols={} shards={} elapsed_ms={}",
-             workspace.project_index.symbols.size(),
-             workspace.merged_indices.size(),
+             "phase=index_load symbols={} shards={} manifests={} elapsed_ms={}",
+             project.symbols.size(),
+             workspace.shards.size(),
+             project.manifests.size(),
              timer.ms());
 }
 
+bool Indexer::file_version_stale(std::uint32_t fv_id) {
+    auto [cached, inserted] = fv_verdicts.try_emplace(fv_id, true);
+    if(!inserted) {
+        return cached->second;
+    }
+
+    auto record_it = workspace.project_index.file_versions.find(fv_id);
+    if(record_it == workspace.project_index.file_versions.end()) {
+        return true;
+    }
+    auto& record = record_it->second;
+    auto path = workspace.path_pool.resolve(record.path_id);
+
+    // Two-layer test on the shared FileVersion: Layer 1 trusts a stat EQUAL
+    // to the recorded stamp (no file read) — equality, not a watermark, so
+    // backdated or preserved mtimes cannot masquerade as fresh; Layer 2
+    // re-hashes the disk against the consumed-content hash and treats a
+    // match as a mere touch, repairing the stamp in place — once, for every
+    // TU that consumes this version.
+    auto stale = [&] {
+        fs::file_status status;
+        if(auto err = fs::status(path, status)) {
+            return true;
+        }
+        if(record.mtime_ns != 0 && record.size == status.getSize() &&
+           record.mtime_ns == fs::mtime_ns(status)) {
+            return false;
+        }
+        if(record.content_hash == 0) {
+            return true;
+        }
+        if(hash_file(path) != record.content_hash) {
+            return true;
+        }
+        record.size = status.getSize();
+        record.mtime_ns = fs::mtime_ns(status);
+        global_dirty = true;
+        return false;
+    }();
+    fv_verdicts[fv_id] = stale;
+    return stale;
+}
+
 bool Indexer::need_update(llvm::StringRef file_path) {
-    auto merged_it = workspace.merged_indices.find(workspace.path_pool.intern(file_path));
-    if(merged_it == workspace.merged_indices.end())
+    auto& project = workspace.project_index;
+    auto manifest_it = project.manifests.find(workspace.path_pool.intern(file_path));
+    if(manifest_it == project.manifests.end())
         return true;
 
-    return merged_it->second.need_update();
+    // Every referenced version must be validated: whichever a partial
+    // iteration skipped would keep serving stale rows behind a fresh
+    // verdict.
+    auto& manifest = manifest_it->second;
+    if(file_version_stale(manifest.tu_fv)) {
+        return true;
+    }
+    for(auto& node: manifest.nodes) {
+        if(file_version_stale(node.fv)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 void Indexer::enqueue(std::uint32_t server_path_id, ReindexReason reason) {
@@ -596,7 +884,8 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id,
                 // so there is no diagnostic surface. Cross-file references
                 // into this file stay stale until its content changes.
                 LOG_WARN(
-                    "[{}/{}] Index giving up on {} after {} crash requeues; " "its cross-file data stays stale until it is edited: {}",
+                    "[{}/{}] Index giving up on {} after {} crash requeues; "
+                    "its cross-file data stays stale until it is edited: {}",
                     index,
                     total,
                     file_path,
@@ -712,6 +1001,10 @@ kota::task<> Indexer::run_background_indexing() {
     LOG_DEBUG("Background indexing: starting, {} files queued",
               index_queue.size() - index_queue_pos);
 
+    // FileVersion verdicts hold for one round: the disk can change under a
+    // running round, but staleness is re-judged per round anyway.
+    fv_verdicts.clear();
+
     std::stable_partition(
         index_queue.begin() + index_queue_pos,
         index_queue.end(),
@@ -774,8 +1067,6 @@ kota::task<> Indexer::run_background_indexing() {
     progress_data.dispatched = dispatched;
     on_progress_changed.emit();
 
-    indexing_active = false;
-
     // Safe point to compact: no dispatch loop holds an index into the queue.
     // Files enqueued while we awaited the workers keep the queue alive for
     // the next scheduled round.
@@ -793,6 +1084,11 @@ kota::task<> Indexer::run_background_indexing() {
              total,
              timer.ms());
     co_await save();
+
+    // The round owns the "active" gate through its save: releasing it
+    // before the write await would let a next round's save overlap this
+    // one's in-flight batch, racing same-key blob writes on the pool.
+    indexing_active = false;
 
     // Files enqueued while the round was joining its workers saw their
     // schedule() no-op against indexing_active; without this kick they

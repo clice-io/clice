@@ -46,12 +46,13 @@ enum class ReindexReason : std::uint8_t {
 ///
 /// Indexer owns the indexing queue and drives disk files through
 /// the stateless workers, merging each TUIndex result into Workspace's
-/// ProjectIndex and MergedIndex shards.  It holds no index data of its own.
+/// ProjectIndex (manifests, FileVersions, symbols) and Shard blobs.  It
+/// holds no index data of its own beyond the dirty bookkeeping.
 ///
 /// Responsibilities:
 ///   - Background indexing scheduling (enqueue → idle timer → worker dispatch)
-///   - Merging TUIndex results into Workspace's ProjectIndex
-///   - Persisting and restoring the index shards
+///   - Merging TUIndex results into Workspace's index state
+///   - Persisting and restoring the index blobs
 ///
 /// NOT responsible for:
 ///   - Index queries — handled by IndexQuery
@@ -135,21 +136,38 @@ public:
     /// Schedule background indexing (respects idle timeout and dedup).
     void schedule();
 
-    /// Merge a TUIndex result into Workspace's ProjectIndex and MergedIndex shards.
+    /// Merge a TUIndex result: intern FileVersions, replace the TU's
+    /// manifest, and write row blobs only for variants no shard stores yet
+    /// — a re-index whose rows are unchanged records its contributions and
+    /// touches nothing else.
     void merge(const void* tu_index_data, std::size_t size);
 
-    /// Save Workspace's ProjectIndex and MergedIndex shards to the cache
-    /// store ("index" namespace, Persistent policy).  Serialization runs
-    /// on the event loop; each blob's commit (fsync + rename) is offloaded
-    /// to the kota thread pool.
+    /// Drop a TU's index wholesale: manifest and contributions now (the
+    /// affected shards' live masks follow), persisted blobs at the next
+    /// save. For invalidation content-based freshness cannot see — a
+    /// compile-command change — where a surviving manifest would keep
+    /// judging the old-command rows fresh, in this session and after a
+    /// restart.
+    void drop_index(std::uint32_t tu_path_id);
+
+    /// Persist the dirty state (rewritten shards, replaced manifests, the
+    /// global blob) through the index storage. Serialization runs on the
+    /// event loop from copies; the write batch is offloaded to the kota
+    /// thread pool. Shards whose variant set shrank are compacted first.
     kota::task<> save();
 
-    /// Load Workspace's ProjectIndex and MergedIndex shards from the cache
-    /// store, sweeping orphaned shard blobs.
+    /// Load the global blob, adopt every resolvable manifest, fetch the
+    /// shard blobs the contributions expect, and sweep the rest.
     void load();
 
-    /// Check whether a file needs re-indexing (stale or missing shard).
-    bool need_update(llvm::StringRef file_path);
+    /// Shard blobs whose write has not durably completed: dirty since the
+    /// last save plus the batch a running save is committing. The gauge
+    /// reaches zero only once every shard write settled — never in the
+    /// window where save() has snapshot-cleared the dirty set but its
+    /// commit (and the last_save_shards update) is still in flight.
+    std::size_t pending_shard_writes() const {
+        return dirty_shards.size() + saving_shards;
+    }
 
     /// Cancel background indexing and wait for all tasks to settle.
     kota::task<> stop();
@@ -169,10 +187,9 @@ public:
         return index_queue.size();
     }
 
-    /// How many shard blobs the last save() durably committed. With the
-    /// post-commit flip-back this is the true dirty set — a steady-state
-    /// save commits 0 — so the stats endpoint can pin full-rewrite
-    /// regressions.
+    /// How many shard blobs the last save() durably committed. A
+    /// steady-state save commits 0 — only variant-set changes rewrite a
+    /// blob — so the stats endpoint can pin full-rewrite regressions.
     std::size_t last_save_shards() const {
         return saved_shards;
     }
@@ -287,11 +304,35 @@ private:
 
     friend struct testing::IndexerFixture;
 
+    /// Blobs mutated since the last save, plus whether the global blob
+    /// (symbols, FileVersion table) changed.
+    llvm::DenseSet<std::uint32_t> dirty_shards;
+    llvm::DenseSet<std::uint32_t> dirty_manifests;
+    bool global_dirty = false;
+
+    /// Per-round FileVersion staleness verdicts: many TUs share the same
+    /// versions, and one stat (or repair) per version per round is enough.
+    /// Cleared when a round starts.
+    llvm::DenseMap<std::uint32_t, bool> fv_verdicts;
+
+    /// Two-layer staleness test on a FileVersion, cached per round; a hash
+    /// match after a stat mismatch repairs the version's stat fast path in
+    /// place for every consumer.
+    bool file_version_stale(std::uint32_t fv_id);
+
+    /// Check whether a file needs re-indexing: no manifest, or a stale
+    /// FileVersion among its dependencies. Valid only within one round:
+    /// the verdicts above are cleared when a round starts, never here.
+    bool need_update(llvm::StringRef file_path);
+
     llvm::DenseMap<std::uint32_t, PendingReindex> reindex_reasons;
     std::uint64_t reindex_ticket = 0;
     bool indexing_active = false;
     bool indexing_scheduled = false;
     std::size_t saved_shards = 0;
+    /// Shards in the batch a running save() is committing (see
+    /// pending_shard_writes).
+    std::size_t saving_shards = 0;
     std::shared_ptr<kota::timer> index_idle_timer;
 
     /// Pause/resume: when paused, new index tasks wait on this event.

@@ -131,16 +131,28 @@ TEST_CASE(Escaping) {
     // Code blocks might need more than 3 backticks.
     Document d;
     d.add_code_block("foobarbaz `\nqux");
-    ASSERT_EQ(d.as_markdown(), "```cpp\n" "foobarbaz `\nqux\n" "```");
+    ASSERT_EQ(d.as_markdown(),
+              "```cpp\n"
+              "foobarbaz `\nqux\n"
+              "```");
     d = Document();
     d.add_code_block("foobarbaz ``\nqux");
-    ASSERT_EQ(d.as_markdown(), "```cpp\n" "foobarbaz ``\nqux\n" "```");
+    ASSERT_EQ(d.as_markdown(),
+              "```cpp\n"
+              "foobarbaz ``\nqux\n"
+              "```");
     d = Document();
     d.add_code_block("foobarbaz ```\nqux");
-    ASSERT_EQ(d.as_markdown(), "````cpp\n" "foobarbaz ```\nqux\n" "````");
+    ASSERT_EQ(d.as_markdown(),
+              "````cpp\n"
+              "foobarbaz ```\nqux\n"
+              "````");
     d = Document();
     d.add_code_block("foobarbaz ` `` ``` ```` `\nqux");
-    ASSERT_EQ(d.as_markdown(), "`````cpp\n" "foobarbaz ` `` ``` ```` `\nqux\n" "`````");
+    ASSERT_EQ(d.as_markdown(),
+              "`````cpp\n"
+              "foobarbaz ` `` ``` ```` `\nqux\n"
+              "`````");
 }
 
 TEST_CASE(ParagraphChunks) {
@@ -211,7 +223,12 @@ TEST_CASE(DocumentSeparators) {
 
     // Escaped literal: the markdown hard-break "  \n" after "foo" is
     // significant trailing whitespace.
-    const char* expected_markdown = "foo  \n" "```cpp\n" "test\n" "```\n" "bar";
+    const char* expected_markdown =
+        "foo  \n"
+        "```cpp\n"
+        "test\n"
+        "```\n"
+        "bar";
     ASSERT_EQ(d.as_markdown(), expected_markdown);
 
     const char* expected_text = R"pt(foo
@@ -339,13 +356,14 @@ TEST_CASE(BulletListRender) {
 
     // Escaped literals: markdown hard-breaks "  \n" are significant trailing
     // whitespace.
-    const char* expected_markdown = "- foo\n"
-                                    "- bar\n"
-                                    "- foo  \n"
-                                    "  baz  \n"
-                                    "  - foo  \n"
-                                    "    - baz  \n"
-                                    "      baz";
+    const char* expected_markdown =
+        "- foo\n"
+        "- bar\n"
+        "- foo  \n"
+        "  baz  \n"
+        "  - foo  \n"
+        "    - baz  \n"
+        "      baz";
     ASSERT_EQ(l.as_markdown(), expected_markdown);
     const char* expected_plain_text = R"pt(- foo
 - bar
@@ -359,15 +377,16 @@ TEST_CASE(BulletListRender) {
     // Termination
     inner.add_paragraph().append_text("after");
     // Escaped literal: the list-termination line "    " is whitespace-only.
-    expected_markdown = "- foo\n"
-                        "- bar\n"
-                        "- foo  \n"
-                        "  baz  \n"
-                        "  - foo  \n"
-                        "    - baz  \n"
-                        "      baz\n"
-                        "    \n"
-                        "    after";
+    expected_markdown =
+        "- foo\n"
+        "- bar\n"
+        "- foo  \n"
+        "  baz  \n"
+        "  - foo  \n"
+        "    - baz  \n"
+        "      baz\n"
+        "    \n"
+        "    after";
     ASSERT_EQ(l.as_markdown(), expected_markdown);
     expected_plain_text = R"pt(- foo
 - bar

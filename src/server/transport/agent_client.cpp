@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "server/protocol/agentic.h"
+#include "server/protocol/position.h"
 #include "server/transport/master_server.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
@@ -118,7 +119,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
         }
 
         if(filter == "all" || filter == "header") {
-            for(auto& [path_id, shard]: ws.merged_indices) {
+            for(auto& [path_id, shard]: ws.shards) {
                 if(seen.contains(path_id))
                     continue;
                 auto path_str = ws.path_pool.resolve(path_id);
@@ -355,15 +356,14 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
             if(srv.agent_query.skip_shard(*path_id))
                 co_return result;
 
-            auto shard_it = srv.workspace.merged_indices.find(*path_id);
-            if(shard_it == srv.workspace.merged_indices.end())
+            auto shard_it = srv.workspace.shards.find(*path_id);
+            if(shard_it == srv.workspace.shards.end())
                 co_return result;
 
             auto& merged_index = shard_it->second;
-            auto ls = merged_index.line_starts();
-            if(ls.empty())
-                co_return result;
-            lsp::LineMap map(merged_index.content(), ls);
+            IndexedLineMap map(merged_index.content(),
+                               merged_index.content_size(),
+                               merged_index.line_starts());
 
             for(auto& [hash, symbol]: srv.workspace.project_index.symbols) {
                 if(symbol.name.empty())

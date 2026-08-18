@@ -85,7 +85,7 @@ void MasterServer::initialize() {
     std::string raw_init_options = init_options_json;
 
     if(!init_options_json.empty()) {
-        if(auto ov = kota::codec::json::parse(init_options_json, workspace.config); !ov) {
+        if(auto ov = kota::codec::json::from_string(init_options_json, workspace.config); !ov) {
             LOG_GUIDANCE("Failed to apply initializationOptions: {}", ov.error().to_string());
         } else {
             LOG_INFO("Applied initializationOptions overlay");
@@ -306,9 +306,9 @@ void MasterServer::on_agentic_query() {
         if(!disk) {
             continue;
         }
-        auto shard_it = workspace.merged_indices.find(path_id);
+        auto shard_it = workspace.shards.find(path_id);
         bool shard_current =
-            shard_it != workspace.merged_indices.end() && *disk == shard_it->second.content();
+            shard_it != workspace.shards.end() && shard_it->second.matches_content(*disk);
         indexer.enqueue(path_id,
                         shard_current ? ReindexReason::DepsOnly : ReindexReason::ContentChanged);
     }
@@ -365,6 +365,10 @@ void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
     // DirtySet via mark_ast_dirty.
     for(auto path_id: dirty.drop_context) {
         contexts.drop_header_context(path_id);
+    }
+
+    for(auto path_id: dirty.drop_index) {
+        indexer.drop_index(path_id);
     }
 
     for(auto path_id: dirty.reindex_content_changed) {
@@ -485,10 +489,10 @@ void MasterServer::open_cache_store() {
     store->register_namespace(
         {.name = "pcm", .extension = ".pcm", .policy = CachePolicy::LRU, .max_bytes = 8 * GiB});
     store->register_namespace(
-        {.name = "index", .extension = ".idx", .policy = CachePolicy::Persistent});
-    store->register_namespace(
         {.name = "header_context", .extension = ".h", .policy = CachePolicy::Scratch});
     workspace.store.emplace(std::move(*store));
+    // Registers the index namespaces itself.
+    workspace.index_storage = index::make_fs_index_storage(*workspace.store);
     LOG_INFO("Cache store: {}", workspace.store->base_dir());
 
     workspace.load_cache(contexts);
@@ -506,7 +510,8 @@ void MasterServer::load_workspace() {
     auto cdb_path = discover_compile_commands(workspace.config, workspace_root);
     if(cdb_path.empty()) {
         LOG_GUIDANCE(
-            "No compile_commands.json found in workspace {}. Compile commands will be " "guessed; see https://clice.io/en/guide/quick-start for setup.",
+            "No compile_commands.json found in workspace {}. Compile commands will be "
+            "guessed; see https://clice.io/en/guide/quick-start for setup.",
             workspace_root);
         // Persisted index shards are CDB-independent; load them so a
         // database generated later (picked up by the CDB poll) starts from
@@ -538,7 +543,8 @@ void MasterServer::load_workspace() {
             ? 100.0 * static_cast<double>(report.includes_resolved) / report.includes_found
             : 100.0;
     LOG_INFO(
-        "Dependency scan: {}ms, {} files ({} source + {} header), " "{} edges, {}/{} resolved ({:.1f}%), {} waves",
+        "Dependency scan: {}ms, {} files ({} source + {} header), "
+        "{} edges, {}/{} resolved ({:.1f}%), {} waves",
         report.elapsed_ms,
         report.total_files,
         report.source_files,

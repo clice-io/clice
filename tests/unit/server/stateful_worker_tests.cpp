@@ -454,12 +454,12 @@ TEST_CASE(InlayHintsWithoutCompile) {
 TEST_CASE(MultipleSequentialRequests) {
     TempDir tmp;
     tmp.touch("seq_test.cpp",
-        "int foo(int x) {\n"
-        "    return x + 1;\n"
-        "}\n"
-        "int main() {\n"
-        "    return foo(0);\n"
-        "}\n");
+              "int foo(int x) {\n"
+              "    return x + 1;\n"
+              "}\n"
+              "int main() {\n"
+              "    return foo(0);\n"
+              "}\n");
     auto src = tmp.path("seq_test.cpp");
 
     WorkerHandle w;
