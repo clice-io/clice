@@ -288,7 +288,9 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
         return CacheStore(std::move(state));
     }
 
-    if(auto ec = llvm::sys::fs::create_directories(state->base)) {
+    // Only the parent may exist before the lock is held: it hosts the lock
+    // file and is never swept.
+    if(auto ec = llvm::sys::fs::create_directories(parent)) {
         return std::unexpected(ec);
     }
 
@@ -297,8 +299,8 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
     // sweeper scanning between our create_directories and the marker would
     // reclaim the layout we are initializing. This root-level lock covers
     // exactly that window — every writable open holds it from before its
-    // sweep until its marker exists. Best effort: on a filesystem without
-    // advisory locks the window stays open, as before.
+    // version directory exists until its marker does. Best effort: on a
+    // filesystem without advisory locks the window stays open, as before.
     int lock_fd = -1;
     auto lock_path = path::join(parent, store_lock_name);
     if(auto ec = llvm::sys::fs::openFileForReadWrite(lock_path,
@@ -318,6 +320,10 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
             llvm::sys::Process::SafelyCloseFileDescriptor(lock_fd);
         }
     });
+
+    if(auto ec = llvm::sys::fs::create_directories(state->base)) {
+        return std::unexpected(ec);
+    }
 
     // Discard anything that isn't the current layout version: older version
     // directories and any stray files. A layout still holding a live

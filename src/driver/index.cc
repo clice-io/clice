@@ -381,8 +381,10 @@ int run_stats_once(llvm::StringRef root, std::uint32_t top, bool allow_retry) {
                  format_size(columns.variants),
                  share(columns.variants));
     if(indexer.pending_files() != 0) {
-        std::println("Translation units pending reindex (stale or partially written): {}",
-                     indexer.pending_files());
+        std::println(
+            "Translation units pending reindex (stale or partially written): {}; "
+            "run `clice index` to repair",
+            indexer.pending_files());
     }
     std::println();
     std::println("Top {} file shards by size:", std::min<std::size_t>(top, files.size()));
@@ -394,7 +396,9 @@ int run_stats_once(llvm::StringRef root, std::uint32_t top, bool allow_retry) {
                      stat.relations,
                      std::string_view(stat.path));
     }
-    return 0;
+    // Partial damage is still damage: automation must not read exit 0 as
+    // "the cache is healthy" just because some TUs remained servable.
+    return indexer.pending_files() == 0 ? 0 : 1;
 }
 
 int run_stats(llvm::StringRef root, std::uint32_t top) {
