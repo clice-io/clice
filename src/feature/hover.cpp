@@ -728,7 +728,7 @@ auto file_directive_hover(CompilationUnitRef unit, std::uint32_t offset)
         if(fid != interested || directive_offset < line_start || directive_offset >= line_end)
             return std::nullopt;
         auto range = find_directive_argument(content, directive_offset, lang_opts);
-        if(!range || !range->contains(offset))
+        if(!range || offset >= range->end || offset < range->begin)
             return std::nullopt;
 
         HoverInfo info;
