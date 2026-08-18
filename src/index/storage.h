@@ -78,9 +78,4 @@ public:
 /// writer. Read-only stores skip the lock.
 std::unique_ptr<IndexStorage> make_fs_index_storage(CacheStore& store);
 
-/// Whether some live process currently holds the store's index writer
-/// lock — how a read-only consumer tells "racing an active writer's batch,
-/// retry" from "the cache is genuinely damaged".
-bool index_writer_active(CacheStore& store);
-
 }  // namespace clice::index

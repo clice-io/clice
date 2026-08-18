@@ -239,10 +239,11 @@ int run_stats_once(llvm::StringRef root, std::uint32_t top, bool allow_retry) {
     // A live writer's save publishes shards and manifests before the
     // replacement global blob, so a read racing the batch can capture the
     // old global next to newer blobs; the load drops those as stale and
-    // the verdicts below misread the mid-write state as damage. While the
-    // writer lock is held, retry until the capture is settled.
-    if(allow_retry && indexer.pending_files() != 0 &&
-       index::index_writer_active(*workspace.store)) {
+    // the verdicts below misread the mid-write state as damage. The writer
+    // may already have finished and unlocked by the time any post-load
+    // probe runs, so retry on the drops themselves; genuine damage merely
+    // spends the bounded retries before the final no-retry pass reports it.
+    if(allow_retry && indexer.pending_files() != 0) {
         return stats_retry;
     }
 

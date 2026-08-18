@@ -1066,8 +1066,20 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id,
                                            params.arguments,
                                            nullptr,
                                            &host_path_id);
-    if(source == CommandSource::Fallback)
+    if(source == CommandSource::Fallback) {
+        // A file whose manifest survives keeps serving its last-known rows,
+        // so skipping it loses nothing. One without a manifest (dropped or
+        // never built) stays unindexed — count that as a failure so a batch
+        // run reports the debt instead of exiting clean.
+        if(!workspace.project_index.manifests.contains(server_path_id)) {
+            LOG_WARN("[{}/{}] No compile command found for {}; it stays unindexed",
+                     index,
+                     total,
+                     file_path);
+            failed_ids.insert(server_path_id);
+        }
         co_return;
+    }
 
     workspace.fill_pcm_deps(params.pcms);
 
