@@ -232,6 +232,17 @@ int run_stats(llvm::StringRef root, std::uint32_t top) {
 
     auto& project = workspace.project_index;
     if(project.manifests.empty() && workspace.shards.empty()) {
+        // Nothing else fills the queue here, so pending files can only be
+        // load()'s recovery drops: every TU's blobs were missing, stale,
+        // or corrupt — a damaged cache, not a legitimately empty one.
+        if(indexer.pending_files() != 0) {
+            LOG_ERROR(
+                "Index cache at {} has no servable data ({} translation units need "
+                "reindexing); run `clice index` to rebuild",
+                std::string_view(workspace.config.project.cache_dir),
+                indexer.pending_files());
+            return 1;
+        }
         std::println("Index is empty; run `clice index` to build it.");
         return 0;
     }
