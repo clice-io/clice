@@ -808,9 +808,9 @@ void Indexer::reconcile_cdb_snapshot() {
     // A standalone-indexed header borrowed a host source's command and
     // applied its own matched rules on top, so an offline change to either
     // staled its rows exactly like the live CDB path's hosted-header
-    // invalidation. A header whose recorded host survives unchanged is
-    // pinned fresh; one with no recorded host (older snapshot) falls back
-    // to the include-reachability approximation below.
+    // invalidation. A header whose recorded host survives unchanged and
+    // still includes it is pinned fresh; one with no recorded host (older
+    // snapshot) falls back to the include-reachability approximation below.
     llvm::DenseSet<std::uint32_t> pinned_fresh;
     for(auto& entry: snapshot.entries) {
         if(!entry.hashes.empty()) {
@@ -844,6 +844,16 @@ void Indexer::reconcile_cdb_snapshot() {
             LOG_INFO("Host compile command changed since the last session; reindexing {}",
                      entry.file);
             drop_index(server_id);
+            enqueue(server_id, ReindexReason::ContentChanged);
+            continue;
+        }
+        // The dependency scan preceding this load saw the offline edits, so
+        // a recorded host that no longer includes the header cannot vouch
+        // for the borrowed command any more. Keep the rows serving (last
+        // known good, like the vanished-entry case above) while a rebuild
+        // re-selects a host; a Fallback resolution then changes nothing.
+        if(workspace.dep_graph.find_include_chain(host_id, server_id).empty()) {
+            LOG_INFO("Recorded host no longer includes {}; reindexing", entry.file);
             enqueue(server_id, ReindexReason::ContentChanged);
             continue;
         }

@@ -221,6 +221,9 @@ public:
     /// manages namespace subdirectories); they die with the version.
     llvm::StringRef base_dir() const;
 
+    /// Whether the store was opened in read-only inspection mode.
+    bool read_only() const;
+
     /// First namespace directory scan that failed since open (default
     /// error_code when none did).  A failed scan makes the namespace look
     /// empty while its blobs exist, so a reader that would report "no

@@ -727,6 +727,10 @@ llvm::StringRef CacheStore::base_dir() const {
     return state->base;
 }
 
+bool CacheStore::read_only() const {
+    return state->read_only;
+}
+
 std::error_code CacheStore::scan_error() const {
     std::lock_guard guard(state->mutex);
     return state->scan_failure;

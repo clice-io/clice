@@ -1,8 +1,10 @@
 #include "index/storage.h"
 
 #include "support/cache_store.h"
+#include "support/filesystem.h"
 #include "support/logging.h"
 
+#include "llvm/Support/Process.h"
 #include "llvm/Support/raw_ostream.h"
 
 namespace clice::index {
@@ -21,7 +23,7 @@ llvm::StringRef namespace_of(IndexBlobKind kind) {
 
 class FsIndexStorage final : public IndexStorage {
 public:
-    explicit FsIndexStorage(CacheStore& store) : store(store) {
+    FsIndexStorage(CacheStore& store, int lock_fd) : store(store), lock_fd(lock_fd) {
         for(auto kind: {IndexBlobKind::Shard,
                         IndexBlobKind::Manifest,
                         IndexBlobKind::Global,
@@ -31,6 +33,13 @@ public:
                 .extension = ".idx",
                 .policy = CachePolicy::Persistent,
             });
+        }
+    }
+
+    ~FsIndexStorage() override {
+        if(lock_fd != -1) {
+            llvm::sys::fs::unlockFile(lock_fd);
+            llvm::sys::Process::SafelyCloseFileDescriptor(lock_fd);
         }
     }
 
@@ -98,12 +107,39 @@ public:
 
 private:
     CacheStore& store;
+    int lock_fd;
 };
 
 }  // namespace
 
 std::unique_ptr<IndexStorage> make_fs_index_storage(CacheStore& store) {
-    return std::make_unique<FsIndexStorage>(store);
+    int lock_fd = -1;
+    if(!store.read_only()) {
+        // Atomic per-blob replacement cannot serialize the mutable
+        // global/manifest lineage: two writers (an LSP server plus a batch
+        // `clice index`) derive the same next generation from the same
+        // loaded state, so a manifest written by one passes the other's
+        // generation pin with FileVersion ids allocated against a different
+        // table, loading rows under the wrong files. An OS advisory lock
+        // dies with its process, so a crash leaves nothing stale behind.
+        auto lock_path = path::join(store.base_dir(), "index.lock");
+        if(auto ec = llvm::sys::fs::openFileForReadWrite(lock_path,
+                                                         lock_fd,
+                                                         llvm::sys::fs::CD_OpenAlways,
+                                                         llvm::sys::fs::OF_None)) {
+            LOG_WARN("Failed to open the index writer lock {}: {}", lock_path, ec.message());
+            return nullptr;
+        }
+        if(llvm::sys::fs::tryLockFile(lock_fd)) {
+            LOG_WARN(
+                "Another clice process is writing the index cache at {}; "
+                "index persistence is disabled for this process",
+                store.base_dir());
+            llvm::sys::Process::SafelyCloseFileDescriptor(lock_fd);
+            return nullptr;
+        }
+    }
+    return std::make_unique<FsIndexStorage>(store, lock_fd);
 }
 
 }  // namespace clice::index

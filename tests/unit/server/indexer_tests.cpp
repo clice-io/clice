@@ -1522,6 +1522,37 @@ TEST_CASE(PinnedHostKeepsHeader) {
     ASSERT_FALSE(f.indexer.pending_reason(header_id).has_value());
 }
 
+TEST_CASE(UnreachableHostRebuilds) {
+    TempDir tmp;
+    tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
+    tmp.touch("main.cpp", "int use() { return 0; }\n");
+    auto src = tmp.path("main.cpp");
+    auto header = tmp.path("dep.h");
+
+    {
+        IndexerFixture f;
+        open_store(tmp, f.workspace);
+        f.workspace.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
+        auto indexed = index_file(tmp, header);
+        ASSERT_FALSE(indexed.data.empty());
+        ASSERT_TRUE(f.indexer.merge(indexed.data.data(), indexed.data.size()));
+        f.set_header_host(f.workspace.path_pool.intern(header), f.workspace.path_pool.intern(src));
+        f.save();
+    }
+
+    // The host's command is untouched but an offline edit removed its
+    // include of the header: the rows keep serving while a queued rebuild
+    // re-selects a host.
+    IndexerFixture f;
+    open_store(tmp, f.workspace);
+    f.workspace.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
+    f.indexer.load();
+
+    auto header_id = f.workspace.path_pool.intern(header);
+    ASSERT_TRUE(f.workspace.project_index.manifests.contains(header_id));
+    ASSERT_TRUE(f.indexer.pending_reason(header_id) == ReindexReason::ContentChanged);
+}
+
 TEST_CASE(CdbWriteFailureRetried) {
     TempDir tmp;
     tmp.touch("main.cpp", "int value() { return 1; }\n");

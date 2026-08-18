@@ -70,7 +70,11 @@ public:
 };
 
 /// Filesystem implementation over the cache store; registers the index
-/// namespaces on construction.
+/// namespaces on construction. On a writable store this takes an exclusive
+/// cross-process writer lock for the index (held until destruction) and
+/// returns nullptr when another clice process already holds it — the
+/// global/manifest blobs form one mutable lineage that tolerates no second
+/// writer. Read-only stores skip the lock.
 std::unique_ptr<IndexStorage> make_fs_index_storage(CacheStore& store);
 
 }  // namespace clice::index

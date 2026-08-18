@@ -98,11 +98,12 @@ kota::task<> run_indexing_task(MasterServer& server, std::string root, int& exit
         co_return;
     }
     // The command's whole product is the persisted index: without storage
-    // (cache failed to open, or an unreadable global blob disabled
-    // persistence) the run would only warm this process's memory and a
-    // rerun would start from nothing — fail instead of pretending.
+    // (cache failed to open, another process holds the index writer lock,
+    // or an unreadable global blob disabled persistence) the run would
+    // only warm this process's memory and a rerun would start from
+    // nothing — fail instead of pretending.
     if(!server.workspace.index_storage) {
-        LOG_ERROR("Cannot persist the index (see the log); fix the cache at {} and rerun",
+        LOG_ERROR("Cannot persist the index at {}; see the log for the cause and rerun",
                   std::string_view(server.workspace.config.project.cache_dir));
         exit_code = 1;
         co_await server.shutdown_and_cleanup();
