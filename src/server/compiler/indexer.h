@@ -162,8 +162,11 @@ public:
     /// shard blobs the contributions expect, and sweep the rest.
     /// `read_only` keeps the sweeps in memory only: an out-of-process
     /// reader (`clice index --stats`) must not delete blobs a concurrently
-    /// running server may be about to reference.
-    void load(bool read_only = false);
+    /// running server may be about to reference. Returns false when a
+    /// global blob existed but could not be decoded (old format or
+    /// corrupt): the server rebuilds from scratch, but a read-only reader
+    /// must report an unusable cache instead of an empty index.
+    bool load(bool read_only = false);
 
     /// Shard blobs whose write has not durably completed: dirty since the
     /// last save plus the batch a running save is committing. The gauge

@@ -217,7 +217,11 @@ int run_stats(llvm::StringRef root, std::uint32_t top) {
     ContextResolver contexts(workspace);
     SessionStore sessions;
     Indexer indexer(loop, workspace, pool, contexts, sessions);
-    indexer.load(/*read_only=*/true);
+    if(!indexer.load(/*read_only=*/true)) {
+        LOG_ERROR("Index cache at {} is in an old or corrupt format; run `clice index` to rebuild",
+                  std::string_view(workspace.config.project.cache_dir));
+        return 1;
+    }
     // load() detaches the storage when the global blob exists but cannot
     // be read — a transient IO error, not an empty index.
     if(workspace.index_storage == nullptr) {

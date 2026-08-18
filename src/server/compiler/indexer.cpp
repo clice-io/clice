@@ -562,9 +562,9 @@ kota::task<> Indexer::save() {
              timer.ms());
 }
 
-void Indexer::load(bool read_only) {
+bool Indexer::load(bool read_only) {
     if(!workspace.index_storage)
-        return;
+        return true;
     auto& storage = *workspace.index_storage;
     auto& project = workspace.project_index;
     ScopedTimer timer;
@@ -593,12 +593,12 @@ void Indexer::load(bool read_only) {
         if(storage.contains(index::IndexBlobKind::Global, "global")) {
             LOG_WARN("Index global blob unreadable; disabling index persistence this session");
             workspace.index_storage.reset();
-            return;
+            return true;
         }
         // No global table means no resolvable manifests: everything else
         // is unreachable data, swept so it cannot survive as orphans.
         sweep_all();
-        return;
+        return true;
     }
     llvm::DenseMap<std::uint32_t, std::uint64_t> manifest_pins;
     if(!project.load_global(global->getBuffer(), workspace.path_pool, manifest_pins)) {
@@ -607,7 +607,7 @@ void Indexer::load(bool read_only) {
         if(!read_only) {
             storage.remove(index::IndexBlobKind::Global, "global");
         }
-        return;
+        return false;
     }
 
     // Adopt exactly the manifests the global blob pins, at exactly the
@@ -764,6 +764,7 @@ void Indexer::load(bool read_only) {
              workspace.shards.size(),
              project.manifests.size(),
              timer.ms());
+    return true;
 }
 
 void Indexer::reconcile_cdb_snapshot() {
