@@ -186,10 +186,13 @@ public:
     /// and finally a synthesized fallback command — so it always succeeds.
     /// Emits a per-file decision log (tiers tried, tier hit, command hash).
     /// @param session  If non-null, used for header context resolution on open files.
+    /// @param host_path_id  If non-null, receives the host source whose
+    /// command an IncludeGraph resolution borrowed (untouched otherwise).
     CommandSource resolve_command(llvm::StringRef path,
                                   std::string& directory,
                                   std::vector<std::string>& arguments,
-                                  Session* session = nullptr);
+                                  Session* session = nullptr,
+                                  std::uint32_t* host_path_id = nullptr);
 
     /// Append the header context's suffix as one trailing #include line: the
     /// suffix content (everything after the include position along the chain)
@@ -206,7 +209,8 @@ public:
                                   std::uint32_t path_id,
                                   std::string& directory,
                                   std::vector<std::string>& arguments,
-                                  Session* session);
+                                  Session* session,
+                                  std::uint32_t* host_path_id);
 
     /// Validate a context choice persisted from an earlier run against the
     /// current CDB and include graph, dropping it when stale. Called on

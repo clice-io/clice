@@ -208,6 +208,13 @@ public:
         return saved_shards;
     }
 
+    /// Whether index state remains that no save() committed. After a final
+    /// save this means write failures whose retry never came — the one-shot
+    /// `clice index` must not report a durable index from this.
+    bool has_unsaved_state() const {
+        return !dirty_shards.empty() || !dirty_manifests.empty() || global_dirty || cdb_dirty;
+    }
+
     /// Progress of the current (or last) indexing round. The reporter reads
     /// this on each on_progress_changed emission — the signal only wakes it,
     /// the numbers live here.
@@ -334,6 +341,14 @@ private:
     /// dirtying merge: a save with nothing else to commit skips the
     /// snapshot recompute entirely.
     bool cdb_dirty = false;
+
+    /// Host source whose command each standalone-indexed header's rows
+    /// borrowed, recorded at dispatch and persisted in the CDB snapshot.
+    /// The offline invalidator checks the recorded host directly — the
+    /// include graph is rebuilt from the NEW commands before load(), so
+    /// reachability alone cannot see a change that removed or redirected
+    /// the very include edge the header's context came through.
+    llvm::DenseMap<std::uint32_t, std::uint32_t> header_hosts;
 
     /// Diff the persisted CDB snapshot against the live CDB and drop the
     /// index of every TU whose compile command changed while no server was

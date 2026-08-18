@@ -89,6 +89,12 @@ struct IndexerFixture {
         indexer.global_dirty = false;
     }
 
+    /// Record a standalone header's borrowed host, as index_one's dispatch
+    /// does (these tests merge worker results directly).
+    void set_header_host(std::uint32_t header_id, std::uint32_t host_id) {
+        indexer.header_hosts[header_id] = host_id;
+    }
+
     /// Run one save() to completion on the fixture's loop.
     void save() {
         auto body = [this]() -> kota::task<> {
@@ -1415,6 +1421,107 @@ TEST_CASE(HostChangeDropsHeader) {
     ASSERT_TRUE(f.indexer.pending_reason(header_id) == ReindexReason::ContentChanged);
 }
 
+TEST_CASE(HeaderRuleChangeReindexed) {
+    TempDir tmp;
+    tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
+    auto header = tmp.path("dep.h");
+
+    {
+        IndexerFixture f;
+        open_store(tmp, f.workspace);
+        auto indexed = index_file(tmp, header);
+        ASSERT_FALSE(indexed.data.empty());
+        ASSERT_TRUE(f.indexer.merge(indexed.data.data(), indexed.data.size()));
+        f.save();
+    }
+
+    // A clice.toml rule matching the header itself changed offline: the
+    // header has no CDB entry, so only its own snapshot entry can see it.
+    IndexerFixture f;
+    open_store(tmp, f.workspace);
+    f.workspace.config.rules.push_back(ConfigRule{
+        .patterns = {"**/*.h"},
+        .append = {"-DFOO=1"},
+    });
+    f.workspace.config.finalize(tmp.root);
+    f.indexer.load();
+
+    auto header_id = f.workspace.path_pool.intern(header);
+    ASSERT_FALSE(f.workspace.project_index.manifests.contains(header_id));
+    ASSERT_TRUE(f.indexer.pending_reason(header_id) == ReindexReason::ContentChanged);
+}
+
+TEST_CASE(RecordedHostChangeDrops) {
+    TempDir tmp;
+    tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
+    tmp.touch("main.cpp", "int use() { return 0; }\n");
+    auto src = tmp.path("main.cpp");
+    auto header = tmp.path("dep.h");
+
+    {
+        IndexerFixture f;
+        open_store(tmp, f.workspace);
+        f.workspace.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=1 -c main.cpp"));
+        auto indexed = index_file(tmp, header);
+        ASSERT_FALSE(indexed.data.empty());
+        ASSERT_TRUE(f.indexer.merge(indexed.data.data(), indexed.data.size()));
+        f.set_header_host(f.workspace.path_pool.intern(header), f.workspace.path_pool.intern(src));
+        f.save();
+    }
+
+    // The host's command changed offline AND the new command no longer
+    // includes the header, so the rebuilt include graph cannot reach it —
+    // only the recorded host association can catch the stale borrow.
+    IndexerFixture f;
+    open_store(tmp, f.workspace);
+    f.workspace.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=2 -c main.cpp"));
+    f.indexer.load();
+
+    auto header_id = f.workspace.path_pool.intern(header);
+    ASSERT_FALSE(f.workspace.project_index.manifests.contains(header_id));
+    ASSERT_TRUE(f.indexer.pending_reason(header_id) == ReindexReason::ContentChanged);
+}
+
+TEST_CASE(PinnedHostKeepsHeader) {
+    TempDir tmp;
+    tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
+    tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
+    tmp.touch("other.cpp", "#include \"dep.h\"\nint more() { return dep(); }\n");
+    auto src = tmp.path("main.cpp");
+    auto other = tmp.path("other.cpp");
+    auto header = tmp.path("dep.h");
+
+    {
+        IndexerFixture f;
+        open_store(tmp, f.workspace);
+        f.workspace.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
+        f.workspace.cdb.add_command(tmp.root, other, llvm::StringRef("clang++ -c other.cpp"));
+        auto indexed = index_file(tmp, header);
+        ASSERT_FALSE(indexed.data.empty());
+        ASSERT_TRUE(f.indexer.merge(indexed.data.data(), indexed.data.size()));
+        f.set_header_host(f.workspace.path_pool.intern(header), f.workspace.path_pool.intern(src));
+        f.save();
+    }
+
+    // Another includer's command changed, but the header borrowed the
+    // unchanged host's — the recorded association beats the reachability
+    // approximation's over-drop.
+    IndexerFixture f;
+    open_store(tmp, f.workspace);
+    f.workspace.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
+    f.workspace.cdb.add_command(tmp.root, other, llvm::StringRef("clang++ -DBAR=1 -c other.cpp"));
+    auto src_id = f.workspace.path_pool.intern(src);
+    auto other_id = f.workspace.path_pool.intern(other);
+    auto header_id = f.workspace.path_pool.intern(header);
+    f.workspace.dep_graph.set_includes(src_id, 0, {header_id});
+    f.workspace.dep_graph.set_includes(other_id, 0, {header_id});
+    f.workspace.dep_graph.build_reverse_map();
+    f.indexer.load();
+
+    ASSERT_TRUE(f.workspace.project_index.manifests.contains(header_id));
+    ASSERT_FALSE(f.indexer.pending_reason(header_id).has_value());
+}
+
 TEST_CASE(CdbWriteFailureRetried) {
     TempDir tmp;
     tmp.touch("main.cpp", "int value() { return 1; }\n");
@@ -1477,10 +1584,13 @@ TEST_CASE(CdbWriteFailureRetried) {
     ASSERT_FALSE(storage->real->contains(index::IndexBlobKind::Cdb, "cdb"));
 
     // Nothing else is dirty any more, yet the failed snapshot alone must
-    // drive the next save until it lands.
+    // drive the next save until it lands — and until it does, the state
+    // counts as unsaved (`clice index` fails on it after the final save).
+    ASSERT_TRUE(f.indexer.has_unsaved_state());
     storage->fail_cdb = false;
     f.save();
     ASSERT_TRUE(storage->real->contains(index::IndexBlobKind::Cdb, "cdb"));
+    ASSERT_FALSE(f.indexer.has_unsaved_state());
 }
 
 };  // TEST_SUITE(IndexerLoad)

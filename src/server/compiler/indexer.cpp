@@ -40,11 +40,14 @@ std::string blob_key(llvm::StringRef path) {
 
 /// JSON layout of the persisted CDB snapshot (blob kind Cdb): per source
 /// file, the sorted canonical command hashes of its entries and a hash of
-/// its matched config rules when the index state was last saved.
+/// its matched config rules when the index state was last saved. A
+/// standalone-indexed header gets an entry too (empty hashes): its own
+/// matched rules plus the host source whose command its rows borrowed.
 struct CdbSnapshotEntry {
     std::string file;
     std::vector<std::string> hashes;
     std::string rules;
+    std::string host;
 };
 
 struct CdbSnapshot {
@@ -74,15 +77,33 @@ std::string rules_hash(const Config& config, llvm::StringRef file) {
     return std::format("{:016x}", llvm::xxh3_64bits(joined));
 }
 
-CdbSnapshot build_cdb_snapshot(Workspace& workspace) {
+CdbSnapshot build_cdb_snapshot(Workspace& workspace,
+                               const llvm::DenseMap<std::uint32_t, std::uint32_t>& header_hosts) {
     CdbSnapshot snapshot;
     for(auto& [path_id, hashes]: workspace.cdb.command_hash_snapshot()) {
         auto file = workspace.cdb.resolve_path(path_id).str();
         auto rules = rules_hash(workspace.config, file);
         snapshot.entries.push_back({
-            std::move(file),
-            {hashes.begin(), hashes.end()},
-            std::move(rules)
+            .file = std::move(file),
+            .hashes = {hashes.begin(), hashes.end()},
+            .rules = std::move(rules),
+        });
+    }
+    // Standalone-indexed TUs have no CDB entry, yet their effective command
+    // depends on their own matched rules and their borrowed host's command
+    // — both must be snapshot to detect offline changes.
+    for(auto tu: llvm::make_first_range(workspace.project_index.manifests)) {
+        auto file = workspace.path_pool.resolve(tu);
+        if(workspace.cdb.has_entry(file)) {
+            continue;
+        }
+        auto host_it = header_hosts.find(tu);
+        snapshot.entries.push_back({
+            .file = file.str(),
+            .rules = rules_hash(workspace.config, file),
+            .host = host_it != header_hosts.end()
+                        ? workspace.path_pool.resolve(host_it->second).str()
+                        : std::string(),
         });
     }
     // Deterministic bytes: save() decides "unchanged" by byte equality.
@@ -90,8 +111,10 @@ CdbSnapshot build_cdb_snapshot(Workspace& workspace) {
     return snapshot;
 }
 
-std::string serialize_cdb_snapshot(Workspace& workspace) {
-    auto json = kota::codec::json::to_string(build_cdb_snapshot(workspace));
+std::string
+    serialize_cdb_snapshot(Workspace& workspace,
+                           const llvm::DenseMap<std::uint32_t, std::uint32_t>& header_hosts) {
+    auto json = kota::codec::json::to_string(build_cdb_snapshot(workspace, header_hosts));
     return json ? std::move(*json) : std::string();
 }
 
@@ -473,7 +496,7 @@ kota::task<> Indexer::save() {
     std::string cdb_bytes;
     std::optional<std::size_t> cdb_index;
     if(!batch.empty() || !removals.empty() || cdb_dirty) {
-        cdb_bytes = serialize_cdb_snapshot(workspace);
+        cdb_bytes = serialize_cdb_snapshot(workspace, header_hosts);
         if(!cdb_bytes.empty() && cdb_bytes != persisted_cdb_snapshot) {
             cdb_index = batch.size();
             batch.push_back({index::IndexBlobKind::Cdb, "cdb", cdb_bytes});
@@ -760,7 +783,11 @@ void Indexer::reconcile_cdb_snapshot() {
     auto& project = workspace.project_index;
     llvm::DenseSet<std::uint32_t> cdb_ids;
     llvm::SmallVector<std::uint32_t> changed_ids;
-    for(auto& entry: build_cdb_snapshot(workspace).entries) {
+    auto snapshot = build_cdb_snapshot(workspace, header_hosts);
+    for(auto& entry: snapshot.entries) {
+        if(entry.hashes.empty()) {
+            continue;
+        }
         auto server_id = workspace.path_pool.intern(entry.file);
         cdb_ids.insert(server_id);
         auto it = before.find(entry.file);
@@ -776,19 +803,59 @@ void Indexer::reconcile_cdb_snapshot() {
         drop_index(server_id);
         enqueue(server_id, ReindexReason::ContentChanged);
     }
+
+    // A standalone-indexed header borrowed a host source's command and
+    // applied its own matched rules on top, so an offline change to either
+    // staled its rows exactly like the live CDB path's hosted-header
+    // invalidation. A header whose recorded host survives unchanged is
+    // pinned fresh; one with no recorded host (older snapshot) falls back
+    // to the include-reachability approximation below.
+    llvm::DenseSet<std::uint32_t> pinned_fresh;
+    for(auto& entry: snapshot.entries) {
+        if(!entry.hashes.empty()) {
+            continue;
+        }
+        auto it = before.find(entry.file);
+        if(it == before.end()) {
+            // Not in the persisted snapshot: the next save adopts it, and
+            // offline changes against an unknown baseline are undetectable
+            // anyway.
+            continue;
+        }
+        auto& old = *it->second;
+        // The header's own CDB entry vanished: keep the index — last-known
+        // content still serves navigation, mirroring the live treatment.
+        if(!old.hashes.empty()) {
+            continue;
+        }
+        auto server_id = workspace.path_pool.intern(entry.file);
+        if(old.rules != entry.rules) {
+            LOG_INFO("Config rules changed since the last session; reindexing {}", entry.file);
+            drop_index(server_id);
+            enqueue(server_id, ReindexReason::ContentChanged);
+            continue;
+        }
+        if(old.host.empty()) {
+            continue;
+        }
+        auto host_id = workspace.path_pool.intern(old.host);
+        if(!workspace.cdb.has_entry(old.host) || llvm::is_contained(changed_ids, host_id)) {
+            LOG_INFO("Host compile command changed since the last session; reindexing {}",
+                     entry.file);
+            drop_index(server_id);
+            enqueue(server_id, ReindexReason::ContentChanged);
+            continue;
+        }
+        header_hosts[server_id] = host_id;
+        pinned_fresh.insert(server_id);
+    }
     if(changed_ids.empty()) {
         return;
     }
 
-    // A standalone-indexed header borrowed a source's command, so a host
-    // command change while no server ran staled its rows exactly like the
-    // live CDB path's hosted-header invalidation. The borrowed host is
-    // not persisted, so approximate it by include reachability from the
-    // changed sources — over-dropping costs one reindex, under-dropping
-    // serves the old-command rows forever.
     llvm::SmallVector<std::uint32_t> hosted;
     for(auto tu: llvm::make_first_range(project.manifests)) {
-        if(cdb_ids.contains(tu)) {
+        if(cdb_ids.contains(tu) || pinned_fresh.contains(tu)) {
             continue;
         }
         if(llvm::any_of(changed_ids, [&](std::uint32_t host) {
@@ -982,9 +1049,17 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id,
     params.file = file_path;
     // Bulk background indexing sticks to real commands; synthesized fallback
     // commands would fill the index with guesses.
-    if(contexts.resolve_command(file_path, params.directory, params.arguments, nullptr) ==
-       CommandSource::Fallback)
+    std::uint32_t host_path_id = no_path_id;
+    auto source = contexts.resolve_command(file_path,
+                                           params.directory,
+                                           params.arguments,
+                                           nullptr,
+                                           &host_path_id);
+    if(source == CommandSource::Fallback)
         co_return;
+    if(source == CommandSource::IncludeGraph) {
+        header_hosts[server_path_id] = host_path_id;
+    }
 
     workspace.fill_pcm_deps(params.pcms);
 

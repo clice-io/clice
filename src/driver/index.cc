@@ -97,6 +97,17 @@ kota::task<> run_indexing_task(MasterServer& server, std::string root, int& exit
         co_await server.shutdown_and_cleanup();
         co_return;
     }
+    // The command's whole product is the persisted index: without storage
+    // (cache failed to open, or an unreadable global blob disabled
+    // persistence) the run would only warm this process's memory and a
+    // rerun would start from nothing — fail instead of pretending.
+    if(!server.workspace.index_storage) {
+        LOG_ERROR("Cannot persist the index (see the log); fix the cache at {} and rerun",
+                  std::string_view(server.workspace.config.project.cache_dir));
+        exit_code = 1;
+        co_await server.shutdown_and_cleanup();
+        co_return;
+    }
     if(server.workspace.cdb.get_entries().empty()) {
         LOG_ERROR("Nothing to index: no compile_commands.json found under {}", root);
         exit_code = 1;
@@ -136,6 +147,12 @@ kota::task<> run_indexing_task(MasterServer& server, std::string root, int& exit
     if(auto failed = server.indexer.failed_files()) {
         std::println("{} translation units failed to index (see the log); the index is partial.",
                      failed);
+        exit_code = 1;
+    }
+    // The shutdown save was the last retry for failed writes; whatever is
+    // still dirty never reached disk and a rerun cannot resume from it.
+    if(server.indexer.has_unsaved_state()) {
+        std::println("Part of the index could not be persisted (see the log).");
         exit_code = 1;
     }
 }
@@ -188,6 +205,14 @@ int run_stats(llvm::StringRef root, std::uint32_t top) {
     workspace.config = std::move(config);
     workspace.store.emplace(std::move(*store));
     workspace.index_storage = index::make_fs_index_storage(*workspace.store);
+    // A namespace whose directory scan failed looks empty while its blobs
+    // exist — reporting "Index is empty" with exit code 0 would be a lie.
+    if(auto ec = workspace.store->scan_error()) {
+        LOG_ERROR("Failed to read the index cache at {}: {}",
+                  std::string_view(workspace.config.project.cache_dir),
+                  ec.message());
+        return 1;
+    }
     WorkerPool pool(loop);
     ContextResolver contexts(workspace);
     SessionStore sessions;

@@ -221,6 +221,13 @@ public:
     /// manages namespace subdirectories); they die with the version.
     llvm::StringRef base_dir() const;
 
+    /// First namespace directory scan that failed since open (default
+    /// error_code when none did).  A failed scan makes the namespace look
+    /// empty while its blobs exist, so a reader that would report "no
+    /// data" must check this first.  A read-only open of a namespace that
+    /// was never created scans empty legitimately and is not a failure.
+    std::error_code scan_error() const;
+
     /// Atomically persist the manifest (key sizes and last-accessed times)
     /// if anything changed.  Also runs automatically every few commits;
     /// the owner should additionally schedule it periodically and call

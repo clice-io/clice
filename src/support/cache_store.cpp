@@ -189,6 +189,11 @@ struct CacheStore::State {
     /// swept, and writes are a caller bug.
     bool read_only = false;
 
+    /// First namespace directory scan that failed (permissions, IO):
+    /// the affected namespace looks empty while its blobs exist, so
+    /// readers must not mistake the store for empty.
+    std::error_code scan_failure;
+
     /// Logical clock: strictly increasing per issued stamp so that LRU
     /// ordering is deterministic even within one millisecond.
     std::int64_t last_stamp = 0;
@@ -392,6 +397,13 @@ void CacheStore::register_namespace(CacheNamespace ns) {
         ns_state.entries[filename] = {status.getSize(), 0, atime};
         ns_state.total_size += status.getSize();
         primary_mtimes[filename] = status.getLastModificationTime();
+    }
+    // A read-only open of a store whose namespace was never created is a
+    // legitimately empty scan; any other failure hides existing blobs.
+    if(ec && !(state->read_only && ec == std::errc::no_such_file_or_directory) &&
+       !state->scan_failure) {
+        LOG_WARN("CacheStore: failed to scan namespace {}: {}", ns_state.dir, ec.message());
+        state->scan_failure = ec;
     }
 
     // Attach aux blobs to their entries. An aux without a primary is crash
@@ -713,6 +725,11 @@ void CacheStore::for_each_key(llvm::StringRef ns, llvm::function_ref<void(llvm::
 
 llvm::StringRef CacheStore::base_dir() const {
     return state->base;
+}
+
+std::error_code CacheStore::scan_error() const {
+    std::lock_guard guard(state->mutex);
+    return state->scan_failure;
 }
 
 void CacheStore::State::evict_locked(Namespace& ns, llvm::StringRef keep_key) {
