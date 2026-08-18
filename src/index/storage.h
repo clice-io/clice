@@ -58,10 +58,11 @@ public:
     };
 
     /// Persist a batch in order. Atomicity is per blob, not per batch — a
-    /// crash can land a prefix; every load path treats any partially
-    /// written combination as stale data to rebuild. An entry that fails
-    /// to persist is logged and skipped, and its batch index returned so
-    /// the caller can re-dirty it for a later save.
+    /// crash can land a prefix, and every load path treats a committed
+    /// prefix as stale data to rebuild. A failed entry therefore fails the
+    /// rest of the batch too: what lands is always a prefix, never a
+    /// suffix without its prerequisites. The failed indices are logged and
+    /// returned so the caller can re-dirty them for a later save.
     virtual llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> batch) = 0;
 
     virtual void remove(IndexBlobKind kind, llvm::StringRef key) = 0;

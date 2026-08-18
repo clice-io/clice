@@ -138,6 +138,22 @@ void sweep_dead_pid_dirs(llvm::StringRef dir, std::uint32_t self_pid) {
     }
 }
 
+/// Whether a live process is working inside this cache layout: every
+/// writable open creates `tmp/{pid}` and keeps it until shutdown.
+bool has_live_instance(llvm::StringRef base) {
+    std::error_code ec;
+    auto tmp_parent = path::join(base, "tmp");
+    for(auto it = llvm::sys::fs::directory_iterator(tmp_parent, ec);
+        !ec && it != llvm::sys::fs::directory_iterator();
+        it.increment(ec)) {
+        std::uint32_t pid = 0;
+        if(!path::filename(it->path()).getAsInteger(10, pid) && is_pid_alive(pid)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 std::int64_t now_ms() {
     auto now = std::chrono::system_clock::now().time_since_epoch();
     return std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
@@ -272,7 +288,10 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
     }
 
     // Discard anything that isn't the current layout version: older version
-    // directories and any stray files.
+    // directories and any stray files. A layout still holding a live
+    // instance stays: a clice of another version is serving from it, and
+    // its writer locks live inside the directory, so they cannot protect
+    // it from us — a later open reclaims it once that process exits.
     std::error_code ec;
     for(auto it = llvm::sys::fs::directory_iterator(parent, ec);
         !ec && it != llvm::sys::fs::directory_iterator();
@@ -280,12 +299,17 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
         if(path::filename(it->path()) == version_dir) {
             continue;
         }
-        LOG_INFO("CacheStore: discarding stale cache layout {}", it->path());
-        if(llvm::sys::fs::is_directory(it->path())) {
-            fs::remove_all(it->path());
-        } else {
+        if(!llvm::sys::fs::is_directory(it->path())) {
+            LOG_INFO("CacheStore: discarding stale cache layout {}", it->path());
             llvm::sys::fs::remove(it->path());
+            continue;
         }
+        if(has_live_instance(it->path())) {
+            LOG_INFO("CacheStore: keeping cache layout {}, still in use", it->path());
+            continue;
+        }
+        LOG_INFO("CacheStore: discarding stale cache layout {}", it->path());
+        fs::remove_all(it->path());
     }
 
     // Load the manifest.  Corrupt or missing is fine: registration falls

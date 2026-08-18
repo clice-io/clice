@@ -175,6 +175,29 @@ TEST_CASE(VersionBumpDiscards) {
     ASSERT_FALSE(llvm::sys::fs::exists(tmp.path("root/cache/v1")));
 }
 
+TEST_CASE(LiveLayoutKept) {
+    TempDir tmp;
+    // A clice of another version is live inside v1 (our own pid stands in
+    // for its `tmp/{pid}` marker): the sweep must not delete the cache out
+    // from under it.
+    auto self = std::to_string(llvm::sys::Process::getProcessId());
+    tmp.touch("root/cache/v1/tmp/" + self + "/0.pch");
+    tmp.touch("root/cache/v1/pch/k1.pch", "live");
+
+    auto store = open_store(tmp, version + 1);
+    ASSERT_TRUE(llvm::sys::fs::exists(tmp.path("root/cache/v1/pch/k1.pch")));
+}
+
+TEST_CASE(CrashedLayoutDiscarded) {
+    TempDir tmp;
+    // A crashed old-version instance leaves its `tmp/{pid}` behind; a dead
+    // pid does not hold the layout alive.
+    tmp.touch(std::string("root/cache/v1/tmp/") + dead_pid + "/0.pch");
+
+    auto store = open_store(tmp, version + 1);
+    ASSERT_FALSE(llvm::sys::fs::exists(tmp.path("root/cache/v1")));
+}
+
 TEST_CASE(LegacyLayoutDiscarded) {
     TempDir tmp;
     // Pre-versioning layout: blobs and metadata directly under cache/.

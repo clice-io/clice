@@ -60,7 +60,18 @@ public:
     }
 
     llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> batch) override {
-        llvm::SmallVector<std::size_t> failed;
+        // Batch order encodes dependency (shards → manifests → global →
+        // CDB snapshot), so the first failure fails the rest of the batch:
+        // continuing would publish an entry whose prerequisites never
+        // landed — e.g. a CDB snapshot vouching for a global that failed —
+        // and load paths only tolerate a committed prefix, the crash shape.
+        auto fail_from = [&](std::size_t i) {
+            llvm::SmallVector<std::size_t> failed;
+            for(; i < batch.size(); i += 1) {
+                failed.push_back(i);
+            }
+            return failed;
+        };
         for(std::size_t i = 0; i < batch.size(); i += 1) {
             auto& blob = batch[i];
             auto ns = namespace_of(blob.kind);
@@ -69,8 +80,7 @@ public:
             llvm::raw_fd_ostream os(pending.tmp_path, ec);
             if(ec) {
                 LOG_WARN("Failed to write index blob {}/{}: {}", ns, blob.key, ec.message());
-                failed.push_back(i);
-                continue;
+                return fail_from(i);
             }
             os.write(blob.bytes.data(), blob.bytes.size());
             os.close();
@@ -82,19 +92,17 @@ public:
                          blob.key,
                          os.error().message());
                 os.clear_error();
-                failed.push_back(i);
-                continue;
+                return fail_from(i);
             }
             if(auto committed = store.commit(std::move(pending)); !committed) {
                 LOG_WARN("Failed to commit index blob {}/{}: {}",
                          ns,
                          blob.key,
                          committed.error().message());
-                failed.push_back(i);
-                continue;
+                return fail_from(i);
             }
         }
-        return failed;
+        return {};
     }
 
     void remove(IndexBlobKind kind, llvm::StringRef key) override {

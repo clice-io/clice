@@ -753,6 +753,30 @@ TEST_CASE(FailedWriteNotCounted) {
     ASSERT_EQ(indexer.pending_shard_writes(), 0u);
 }
 
+TEST_CASE(WriteFailureStopsBatch) {
+    TempDir tmp;
+    open_store(tmp, workspace);
+    auto& storage = *workspace.index_storage;
+
+    // Wedge the manifest's destination with a non-empty directory so its
+    // commit fails while the shard before it lands.
+    tmp.touch("cache/cache/v1/index-manifest/k.idx/wedge");
+
+    auto failures = storage.write({
+        {index::IndexBlobKind::Shard,    "k",      "shard bytes"   },
+        {index::IndexBlobKind::Manifest, "k",      "manifest bytes"},
+        {index::IndexBlobKind::Global,   "global", "global bytes"  },
+    });
+
+    // The failure fails the rest of the batch: a global must never land
+    // above a manifest that did not.
+    ASSERT_EQ(failures.size(), 2u);
+    ASSERT_EQ(failures[0], 1u);
+    ASSERT_EQ(failures[1], 2u);
+    ASSERT_TRUE(storage.contains(index::IndexBlobKind::Shard, "k"));
+    ASSERT_FALSE(storage.contains(index::IndexBlobKind::Global, "global"));
+}
+
 };  // TEST_SUITE(IndexerMerge)
 
 TEST_SUITE(IndexerStaleness) {
