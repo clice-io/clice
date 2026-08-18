@@ -348,8 +348,9 @@ private:
     /// snapshot recompute entirely.
     bool cdb_dirty = false;
 
-    /// Host source whose command each standalone-indexed header's rows
-    /// borrowed, recorded at dispatch and persisted in the CDB snapshot.
+    /// Host source whose command each standalone-indexed header's retained
+    /// rows borrowed, recorded when a merge lands and persisted in the CDB
+    /// snapshot.
     /// The offline invalidator checks the recorded host directly — the
     /// include graph is rebuilt from the NEW commands before load(), so
     /// reachability alone cannot see a change that removed or redirected

@@ -886,8 +886,13 @@ void Indexer::reconcile_cdb_snapshot() {
         // for the borrowed command any more. Keep the rows serving (last
         // known good, like the vanished-entry case above) while a rebuild
         // re-selects a host; a Fallback resolution then changes nothing.
+        // The retained rows were still built through the old host, so keep
+        // that association until a landed rebuild overwrites it — an empty
+        // host persisted after a Fallback or failed rebuild would hit the
+        // `old.host.empty()` gate next session and never retry.
         if(workspace.dep_graph.find_include_chain(host_id, server_id).empty()) {
             LOG_INFO("Recorded host no longer includes {}; reindexing", entry.file);
+            header_hosts[server_id] = host_id;
             enqueue(server_id, ReindexReason::ContentChanged);
             continue;
         }
