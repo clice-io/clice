@@ -110,12 +110,14 @@ kota::task<> run_indexing_task(MasterServer& server, std::string root, int& exit
     aux.spawn(watch_signal(server, SIGTERM, stop_requested));
 
     co_await kota::with_token(wait_until_indexed(server), server.shutdown_token());
-    bool interrupted = server.lifecycle == ServerLifecycle::ShuttingDown;
     co_await server.shutdown_and_cleanup();
     aux.cancel();
     co_await aux.join();
 
-    if(interrupted) {
+    // Judged only after the watchers settle: a signal arriving while the
+    // final save/teardown ran must still report an interruption, not a
+    // normal completion with exit code 0.
+    if(stop_requested) {
         std::println("Indexing interrupted; progress saved. Rerun `clice index` to resume.");
         exit_code = 130;
         co_return;

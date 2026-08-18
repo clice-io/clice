@@ -332,10 +332,13 @@ void CacheStore::register_namespace(CacheNamespace ns) {
     ns_state.config = std::move(ns);
 
     if(ns_state.config.policy == CachePolicy::Scratch) {
+        ns_state.dir = path::join(ns_dir, std::to_string(state->self_pid));
+        if(state->read_only) {
+            return;
+        }
         // Scratch directories are per-instance; reclaim those left behind
         // by crashed instances and start with a fresh one of our own.
         sweep_dead_pid_dirs(ns_dir, state->self_pid);
-        ns_state.dir = path::join(ns_dir, std::to_string(state->self_pid));
         fs::remove_all(ns_state.dir);
         llvm::sys::fs::create_directories(ns_state.dir);
         return;
@@ -405,7 +408,7 @@ void CacheStore::register_namespace(CacheNamespace ns) {
         if(it != ns_state.entries.end() && entry.getValue().mtime >= primary_mtimes[key]) {
             it->second.aux_size = entry.getValue().size;
             ns_state.total_size += entry.getValue().size;
-        } else {
+        } else if(!state->read_only) {
             llvm::sys::fs::remove(state->aux_blob_path(ns_state, key));
             LOG_DEBUG("CacheStore: removed stale aux blob {} in {}", key, ns_state.config.name);
         }
@@ -454,6 +457,10 @@ std::optional<std::string> CacheStore::lookup_aux(llvm::StringRef ns, llvm::Stri
 CacheStore::PendingEntry CacheStore::begin_store(llvm::StringRef ns, llvm::StringRef key) {
     std::lock_guard guard(state->mutex);
     assert(!state->read_only && "write on a read-only store");
+    if(state->read_only) {
+        LOG_ERROR("CacheStore: begin_store on a read-only store");
+        return {};
+    }
 
     auto* ns_state = state->find_namespace(ns);
     assert(ns_state && "begin_store on unregistered namespace");
@@ -475,6 +482,11 @@ CacheStore::PendingEntry CacheStore::begin_store(llvm::StringRef ns, llvm::Strin
 
 CacheStore::PendingEntry CacheStore::begin_store_aux(llvm::StringRef ns, llvm::StringRef key) {
     std::lock_guard guard(state->mutex);
+    assert(!state->read_only && "write on a read-only store");
+    if(state->read_only) {
+        LOG_ERROR("CacheStore: begin_store_aux on a read-only store");
+        return {};
+    }
 
     auto* ns_state = state->find_namespace(ns);
     assert(ns_state && "begin_store_aux on unregistered namespace");
@@ -633,6 +645,9 @@ void CacheStore::PendingEntry::remove_tmp() {
 void CacheStore::invalidate(llvm::StringRef ns, llvm::StringRef key) {
     {
         std::lock_guard guard(state->mutex);
+        if(state->read_only) {
+            return;
+        }
 
         auto* ns_state = state->find_namespace(ns);
         if(!ns_state) {
@@ -701,7 +716,7 @@ llvm::StringRef CacheStore::base_dir() const {
 }
 
 void CacheStore::State::evict_locked(Namespace& ns, llvm::StringRef keep_key) {
-    if(ns.config.policy != CachePolicy::LRU || ns.config.max_bytes == 0 ||
+    if(read_only || ns.config.policy != CachePolicy::LRU || ns.config.max_bytes == 0 ||
        ns.total_size <= ns.config.max_bytes) {
         return;
     }
@@ -765,7 +780,10 @@ void CacheStore::State::evict_locked(Namespace& ns, llvm::StringRef keep_key) {
 }
 
 void CacheStore::State::checkpoint_locked() {
-    if(!dirty) {
+    // Read-only: lookups still bump in-memory atimes (setting dirty), but
+    // nothing may reach the disk — with no tmp_dir the write below would
+    // even land a manifest in the process working directory.
+    if(read_only || !dirty) {
         return;
     }
 
@@ -814,6 +832,9 @@ void CacheStore::maybe_checkpoint() {
 
 void CacheStore::shutdown() {
     std::lock_guard guard(state->mutex);
+    if(state->read_only) {
+        return;
+    }
     state->checkpoint_locked();
 
     fs::remove_all(state->tmp_dir);

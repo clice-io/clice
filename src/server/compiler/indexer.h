@@ -139,8 +139,10 @@ public:
     /// Merge a TUIndex result: intern FileVersions, replace the TU's
     /// manifest, and write row blobs only for variants no shard stores yet
     /// — a re-index whose rows are unchanged records its contributions and
-    /// touches nothing else.
-    void merge(const void* tu_index_data, std::size_t size);
+    /// touches nothing else. Returns false when the result failed
+    /// verification and nothing was committed — the caller must count the
+    /// file as failed, not indexed.
+    bool merge(const void* tu_index_data, std::size_t size);
 
     /// Drop a TU's index wholesale: manifest and contributions now (the
     /// affected shards' live masks follow), persisted blobs at the next
@@ -326,6 +328,12 @@ private:
     /// empty when none exists. save() rewrites the blob whenever the live
     /// CDB serializes differently.
     std::string persisted_cdb_snapshot;
+
+    /// A CDB blob write failed while the rest of the batch may have
+    /// landed. Without this flag the retry would wait for an unrelated
+    /// dirtying merge: a save with nothing else to commit skips the
+    /// snapshot recompute entirely.
+    bool cdb_dirty = false;
 
     /// Diff the persisted CDB snapshot against the live CDB and drop the
     /// index of every TU whose compile command changed while no server was

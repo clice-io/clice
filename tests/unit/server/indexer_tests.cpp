@@ -13,6 +13,7 @@
 #include "index/tu_index.h"
 #include "server/compiler/context_resolver.h"
 #include "server/compiler/indexer.h"
+#include "server/state/config.h"
 #include "server/state/session_store.h"
 #include "server/state/workspace.h"
 #include "server/worker/worker_pool.h"
@@ -243,7 +244,7 @@ TEST_CASE(MergeRejectsGarbage) {
     ASSERT_TRUE(workspace.project_index.symbols.empty());
 
     std::string garbage = "definitely not a flatbuffer, but long enough to try";
-    indexer.merge(garbage.data(), garbage.size());
+    ASSERT_FALSE(indexer.merge(garbage.data(), garbage.size()));
 
     ASSERT_TRUE(workspace.shards.empty());
     ASSERT_TRUE(workspace.project_index.symbols.empty());
@@ -1344,6 +1345,142 @@ TEST_CASE(RemovedEntryKeepsIndex) {
     auto tu_id = f.workspace.path_pool.intern(src);
     ASSERT_TRUE(f.workspace.project_index.manifests.contains(tu_id));
     ASSERT_FALSE(f.indexer.pending_reason(tu_id).has_value());
+}
+
+TEST_CASE(RuleChangeReindexed) {
+    TempDir tmp;
+    tmp.touch("main.cpp", "int value() { return 1; }\n");
+    auto src = tmp.path("main.cpp");
+
+    {
+        IndexerFixture f;
+        open_store(tmp, f.workspace);
+        f.workspace.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
+        auto indexed = index_file(tmp, src);
+        ASSERT_FALSE(indexed.data.empty());
+        ASSERT_TRUE(f.indexer.merge(indexed.data.data(), indexed.data.size()));
+        f.save();
+    }
+
+    // The CDB entry is unchanged, but a clice.toml rule now adjusts the
+    // effective command — as invisible to content freshness as a command
+    // edit, so the snapshot must cover it too.
+    IndexerFixture f;
+    open_store(tmp, f.workspace);
+    f.workspace.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
+    f.workspace.config.rules.push_back(ConfigRule{
+        .patterns = {"**/*.cpp"},
+        .append = {"-DFOO=1"},
+    });
+    f.workspace.config.finalize(tmp.root);
+    f.indexer.load();
+
+    auto tu_id = f.workspace.path_pool.intern(src);
+    ASSERT_FALSE(f.workspace.project_index.manifests.contains(tu_id));
+    ASSERT_TRUE(f.indexer.pending_reason(tu_id) == ReindexReason::ContentChanged);
+}
+
+TEST_CASE(HostChangeDropsHeader) {
+    TempDir tmp;
+    tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
+    tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
+    auto src = tmp.path("main.cpp");
+    auto header = tmp.path("dep.h");
+
+    {
+        IndexerFixture f;
+        open_store(tmp, f.workspace);
+        f.workspace.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=1 -c main.cpp"));
+        // A standalone pass over the header, as a borrowed-context index
+        // produces it; the host source itself was never indexed.
+        auto indexed = index_file(tmp, header);
+        ASSERT_FALSE(indexed.data.empty());
+        ASSERT_TRUE(f.indexer.merge(indexed.data.data(), indexed.data.size()));
+        f.save();
+    }
+
+    // The host's command changed while no server ran: the header has no
+    // CDB entry of its own, so only include reachability from the changed
+    // source can catch its borrowed-command manifest.
+    IndexerFixture f;
+    open_store(tmp, f.workspace);
+    f.workspace.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=2 -c main.cpp"));
+    auto src_id = f.workspace.path_pool.intern(src);
+    auto header_id = f.workspace.path_pool.intern(header);
+    f.workspace.dep_graph.set_includes(src_id, 0, {header_id});
+    f.workspace.dep_graph.build_reverse_map();
+    f.indexer.load();
+
+    ASSERT_FALSE(f.workspace.project_index.manifests.contains(header_id));
+    ASSERT_TRUE(f.indexer.pending_reason(header_id) == ReindexReason::ContentChanged);
+}
+
+TEST_CASE(CdbWriteFailureRetried) {
+    TempDir tmp;
+    tmp.touch("main.cpp", "int value() { return 1; }\n");
+    auto src = tmp.path("main.cpp");
+
+    // A storage that fails only the CDB snapshot blob, with everything
+    // else landing normally.
+    struct CdbFailingStorage final : index::IndexStorage {
+        std::unique_ptr<index::IndexStorage> real;
+        bool fail_cdb = true;
+        llvm::SmallVector<index::IndexBlobKind> written;
+
+        std::unique_ptr<llvm::MemoryBuffer> read(index::IndexBlobKind kind,
+                                                 llvm::StringRef key) override {
+            return real->read(kind, key);
+        }
+
+        bool contains(index::IndexBlobKind kind, llvm::StringRef key) override {
+            return real->contains(kind, key);
+        }
+
+        llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> batch) override {
+            llvm::SmallVector<std::size_t> failed;
+            for(std::size_t i = 0; i < batch.size(); i += 1) {
+                written.push_back(batch[i].kind);
+                if(fail_cdb && batch[i].kind == index::IndexBlobKind::Cdb) {
+                    failed.push_back(i);
+                } else if(!real->write(llvm::ArrayRef(batch[i])).empty()) {
+                    failed.push_back(i);
+                }
+            }
+            return failed;
+        }
+
+        void remove(index::IndexBlobKind kind, llvm::StringRef key) override {
+            real->remove(kind, key);
+        }
+
+        void for_each_key(index::IndexBlobKind kind,
+                          llvm::function_ref<void(llvm::StringRef)> fn) override {
+            real->for_each_key(kind, fn);
+        }
+    };
+
+    IndexerFixture f;
+    open_store(tmp, f.workspace);
+    f.workspace.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
+    auto failing = std::make_unique<CdbFailingStorage>();
+    failing->real = std::move(f.workspace.index_storage);
+    auto* storage = failing.get();
+    f.workspace.index_storage = std::move(failing);
+
+    auto indexed = index_file(tmp, src);
+    ASSERT_FALSE(indexed.data.empty());
+    ASSERT_TRUE(f.indexer.merge(indexed.data.data(), indexed.data.size()));
+    f.save();
+
+    // The snapshot rides the batch behind the index state it describes.
+    ASSERT_EQ(int(storage->written.back()), int(index::IndexBlobKind::Cdb));
+    ASSERT_FALSE(storage->real->contains(index::IndexBlobKind::Cdb, "cdb"));
+
+    // Nothing else is dirty any more, yet the failed snapshot alone must
+    // drive the next save until it lands.
+    storage->fail_cdb = false;
+    f.save();
+    ASSERT_TRUE(storage->real->contains(index::IndexBlobKind::Cdb, "cdb"));
 }
 
 };  // TEST_SUITE(IndexerLoad)

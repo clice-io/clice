@@ -39,34 +39,65 @@ std::string blob_key(llvm::StringRef path) {
 }
 
 /// JSON layout of the persisted CDB snapshot (blob kind Cdb): per source
-/// file, the sorted canonical command hashes of its entries when the index
-/// state was last saved.
+/// file, the sorted canonical command hashes of its entries and a hash of
+/// its matched config rules when the index state was last saved.
 struct CdbSnapshotEntry {
     std::string file;
     std::vector<std::string> hashes;
+    std::string rules;
 };
 
 struct CdbSnapshot {
     std::vector<CdbSnapshotEntry> entries;
 };
 
-std::string serialize_cdb_snapshot(Workspace& workspace) {
+/// clice.toml append/remove rules change the effective indexing command
+/// without touching the CDB entry, so the snapshot must cover them too —
+/// an offline rule edit is as stale-making as an offline command edit.
+std::string rules_hash(const Config& config, llvm::StringRef file) {
+    std::vector<std::string> append, remove;
+    config.match_rules(file, append, remove);
+    if(append.empty() && remove.empty()) {
+        return {};
+    }
+    std::string joined;
+    for(auto& arg: append) {
+        joined += 'a';
+        joined += arg;
+        joined += '\0';
+    }
+    for(auto& arg: remove) {
+        joined += 'r';
+        joined += arg;
+        joined += '\0';
+    }
+    return std::format("{:016x}", llvm::xxh3_64bits(joined));
+}
+
+CdbSnapshot build_cdb_snapshot(Workspace& workspace) {
     CdbSnapshot snapshot;
     for(auto& [path_id, hashes]: workspace.cdb.command_hash_snapshot()) {
+        auto file = workspace.cdb.resolve_path(path_id).str();
+        auto rules = rules_hash(workspace.config, file);
         snapshot.entries.push_back({
-            workspace.cdb.resolve_path(path_id).str(),
-            {hashes.begin(), hashes.end()}
+            std::move(file),
+            {hashes.begin(), hashes.end()},
+            std::move(rules)
         });
     }
     // Deterministic bytes: save() decides "unchanged" by byte equality.
     std::ranges::sort(snapshot.entries, {}, &CdbSnapshotEntry::file);
-    auto json = kota::codec::json::to_string(snapshot);
+    return snapshot;
+}
+
+std::string serialize_cdb_snapshot(Workspace& workspace) {
+    auto json = kota::codec::json::to_string(build_cdb_snapshot(workspace));
     return json ? std::move(*json) : std::string();
 }
 
 }  // namespace
 
-void Indexer::merge(const void* tu_index_data, std::size_t size) {
+bool Indexer::merge(const void* tu_index_data, std::size_t size) {
     // Zero-copy consumption: the wire stays serialized; a new variant's
     // blob bytes are sliced out and installed or merged without decoding
     // the envelope, and only genuinely new symbol names are materialized.
@@ -74,7 +105,7 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
         index::TUIndex::from_bytes(llvm::StringRef(static_cast<const char*>(tu_index_data), size));
     if(!view.loaded()) {
         LOG_WARN("Ignoring TUIndex that failed verification");
-        return;
+        return false;
     }
     auto main_local_id = view.path_count() - 1;
     llvm::StringRef main_tu_path = view.path(main_local_id);
@@ -136,7 +167,7 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
         // one membership test is the whole check — no IO, no bytes read.
         if(shard && shard->loaded() && shard->has_variant(blob_hash)) {
             if(!record_consumed(local_id, shard->content_hash())) {
-                return;
+                return false;
             }
             section_contributions.emplace_back(local_id, blob_hash);
             hits += 1;
@@ -156,17 +187,17 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
             LOG_WARN("Reject merge for {}: rows section for {} failed verification",
                      main_tu_path,
                      workspace.path_pool.resolve(global_id));
-            return;
+            return false;
         }
         auto fresh = index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
         if(!fresh.loaded()) {
             LOG_WARN("Reject merge for {}: rows for {} do not form a valid shard",
                      main_tu_path,
                      workspace.path_pool.resolve(global_id));
-            return;
+            return false;
         }
         if(!record_consumed(local_id, fresh.content_hash())) {
-            return;
+            return false;
         }
 
         index::Shard replacement;
@@ -200,7 +231,7 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
     // rebuilt.
     if(!project.merge(view, file_ids_map)) {
         LOG_WARN("Reject merge for {}: symbol reference bitmap failed verification", main_tu_path);
-        return;
+        return false;
     }
 
     // Intern a FileVersion per file of the parse. The freshness baseline is
@@ -300,6 +331,7 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
         appended,
         rebuilt_ids.size(),
         workspace.shards.size());
+    return true;
 }
 
 void Indexer::drop_index(std::uint32_t tu_path_id) {
@@ -419,29 +451,35 @@ kota::task<> Indexer::save() {
     }
     auto manifest_count = batch.size() - shard_count;
 
-    // The CDB snapshot follows the index state it describes. A save that
-    // commits nothing skips the recompute: a pure CDB change dirties no
-    // blob on its own — the invalidator's drops do — so the next dirtying
-    // save carries the fresh snapshot.
-    std::string cdb_bytes;
-    std::optional<std::size_t> cdb_index;
-    if(!batch.empty() || !removals.empty()) {
-        cdb_bytes = serialize_cdb_snapshot(workspace);
-        if(!cdb_bytes.empty() && cdb_bytes != persisted_cdb_snapshot) {
-            cdb_index = batch.size();
-            batch.push_back({index::IndexBlobKind::Cdb, "cdb", cdb_bytes});
-        }
-    }
-
-    // The global blob goes last: a crash mid-batch then strands only
-    // manifests, which load() drops by their generation stamp — the
-    // reverse order would strand a global claiming symbols in files whose
-    // rows never landed.
+    // The global blob follows the shards and manifests: a crash mid-batch
+    // then strands only manifests, which load() drops by their generation
+    // stamp — the reverse order would strand a global claiming symbols in
+    // files whose rows never landed.
     if(global_dirty) {
         std::string bytes;
         llvm::raw_string_ostream os(bytes);
         project.serialize_global(os, workspace.path_pool);
         batch.push_back({index::IndexBlobKind::Global, "global", std::move(bytes)});
+    }
+
+    // The CDB snapshot goes last, after the whole index state it
+    // describes: landed before the global, a crash between the two would
+    // leave the old global still pinning old-command manifests under a
+    // snapshot that already matches the live CDB — reconcile would then
+    // never drop them. A save that commits nothing skips the recompute
+    // (unless a failed CDB write is owed a retry): a pure CDB change
+    // dirties no blob on its own — the invalidator's drops do — so the
+    // next dirtying save carries the fresh snapshot.
+    std::string cdb_bytes;
+    std::optional<std::size_t> cdb_index;
+    if(!batch.empty() || !removals.empty() || cdb_dirty) {
+        cdb_bytes = serialize_cdb_snapshot(workspace);
+        if(!cdb_bytes.empty() && cdb_bytes != persisted_cdb_snapshot) {
+            cdb_index = batch.size();
+            batch.push_back({index::IndexBlobKind::Cdb, "cdb", cdb_bytes});
+        } else {
+            cdb_dirty = false;
+        }
     }
 
     dirty_shards.clear();
@@ -478,7 +516,9 @@ kota::task<> Indexer::save() {
         } else if(i - shard_count < manifest_count) {
             dirty_manifests.insert(manifest_ids[i - shard_count]);
         } else if(cdb_index && i == *cdb_index) {
-            // Keep the old persisted bytes so the next save retries.
+            // Keep the old persisted bytes and stay dirty so the next
+            // save retries even when nothing else changes by then.
+            cdb_dirty = true;
             cdb_index.reset();
         } else {
             global_dirty = true;
@@ -486,6 +526,7 @@ kota::task<> Indexer::save() {
     }
     if(cdb_index) {
         persisted_cdb_snapshot = std::move(cdb_bytes);
+        cdb_dirty = false;
     }
     saved_shards = shard_count - failed_shards;
     saving_shards = 0;
@@ -712,24 +753,55 @@ void Indexer::reconcile_cdb_snapshot() {
     }
     persisted_cdb_snapshot = blob->getBuffer().str();
 
-    llvm::StringMap<std::vector<std::string>> before;
+    llvm::StringMap<const CdbSnapshotEntry*> before;
     for(auto& entry: persisted.entries) {
-        before[entry.file] = std::move(entry.hashes);
+        before[entry.file] = &entry;
     }
     auto& project = workspace.project_index;
-    for(auto& [path_id, hashes]: workspace.cdb.command_hash_snapshot()) {
-        auto file = workspace.cdb.resolve_path(path_id);
-        auto it = before.find(file);
-        if(it != before.end() && std::ranges::equal(it->second, hashes)) {
+    llvm::DenseSet<std::uint32_t> cdb_ids;
+    llvm::SmallVector<std::uint32_t> changed_ids;
+    for(auto& entry: build_cdb_snapshot(workspace).entries) {
+        auto server_id = workspace.path_pool.intern(entry.file);
+        cdb_ids.insert(server_id);
+        auto it = before.find(entry.file);
+        if(it != before.end() && it->second->hashes == entry.hashes &&
+           it->second->rules == entry.rules) {
             continue;
         }
-        auto server_id = workspace.path_pool.intern(file);
+        changed_ids.push_back(server_id);
         if(!project.manifests.contains(server_id)) {
             continue;
         }
-        LOG_INFO("Compile command changed since the last session; reindexing {}", file);
+        LOG_INFO("Compile command changed since the last session; reindexing {}", entry.file);
         drop_index(server_id);
         enqueue(server_id, ReindexReason::ContentChanged);
+    }
+    if(changed_ids.empty()) {
+        return;
+    }
+
+    // A standalone-indexed header borrowed a source's command, so a host
+    // command change while no server ran staled its rows exactly like the
+    // live CDB path's hosted-header invalidation. The borrowed host is
+    // not persisted, so approximate it by include reachability from the
+    // changed sources — over-dropping costs one reindex, under-dropping
+    // serves the old-command rows forever.
+    llvm::SmallVector<std::uint32_t> hosted;
+    for(auto tu: llvm::make_first_range(project.manifests)) {
+        if(cdb_ids.contains(tu)) {
+            continue;
+        }
+        if(llvm::any_of(changed_ids, [&](std::uint32_t host) {
+               return !workspace.dep_graph.find_include_chain(host, tu).empty();
+           })) {
+            hosted.push_back(tu);
+        }
+    }
+    for(auto header_id: hosted) {
+        LOG_INFO("Host compile command changed since the last session; reindexing {}",
+                 workspace.path_pool.resolve(header_id));
+        drop_index(header_id);
+        enqueue(header_id, ReindexReason::ContentChanged);
     }
 }
 
@@ -936,7 +1008,12 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id,
             co_return;
         }
         ScopedTimer merge_timer;
-        merge(result.value().tu_index_data.data(), result.value().tu_index_data.size());
+        if(!merge(result.value().tu_index_data.data(), result.value().tu_index_data.size())) {
+            // Rejected wholesale: the file's rows are missing or stale,
+            // which is a failure, not a completed index.
+            failed_ids.insert(server_path_id);
+            co_return;
+        }
         failed_ids.erase(server_path_id);
         LOG_PERF("index",
                  "progress={}/{} file={} bytes={} index_ms={} merge_ms={}",

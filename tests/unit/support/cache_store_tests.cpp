@@ -687,6 +687,32 @@ TEST_CASE(ReadOnlyOpenTouchesNothing) {
     ASSERT_FALSE(llvm::sys::fs::exists(tmp.path("root/cache/v1/tmp/" + pid)));
 }
 
+TEST_CASE(ReadOnlyNeverWrites) {
+    TempDir tmp;
+    {
+        auto store = open_store(tmp);
+        register_lru(store);
+        put(store, "pch", "k1", "blob");
+        store.shutdown();
+    }
+    auto manifest_before = fs::read(tmp.path("root/cache/v1/manifest.json"));
+    ASSERT_TRUE(manifest_before.has_value());
+
+    auto reader = CacheStore::open(tmp.path("root"), version, /*read_only=*/true);
+    ASSERT_TRUE(reader.has_value());
+    // A budget below the blob size must not evict at registration, an
+    // invalidate must not delete the live server's blob, and the atime
+    // bumps from lookups must not publish a manifest at shutdown — with
+    // no tmp dir it would even be staged in the working directory.
+    register_lru(*reader, 1);
+    ASSERT_TRUE(reader->lookup("pch", "k1").has_value());
+    reader->invalidate("pch", "k1");
+    reader->shutdown();
+
+    ASSERT_EQ(fs::read(tmp.path("root/cache/v1/pch/k1.pch")).value_or(""), "blob");
+    ASSERT_EQ(fs::read(tmp.path("root/cache/v1/manifest.json")).value_or(""), *manifest_before);
+}
+
 };  // TEST_SUITE(CacheStore)
 
 }  // namespace
