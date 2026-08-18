@@ -25,6 +25,7 @@
 #include "support/logging.h"
 
 #include "kota/codec/json/json.h"
+#include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Error.h"
@@ -37,6 +38,10 @@ namespace {
 
 /// Manifest checkpoint is forced after this many commits/invalidates.
 constexpr std::uint32_t checkpoint_interval = 16;
+
+/// Root-level lock file serializing open()'s version sweep against layout
+/// startup; lives beside the version directories, exempt from the sweep.
+constexpr llvm::StringLiteral store_lock_name = "store.lock";
 
 /// JSON layout of manifest.json.  Only an acceleration structure: blob
 /// presence and size always come from the filesystem; the manifest merely
@@ -287,6 +292,33 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
         return std::unexpected(ec);
     }
 
+    // The pid marker created below is what shields a layout from another
+    // version's sweep, but it only exists at the end of this function: a
+    // sweeper scanning between our create_directories and the marker would
+    // reclaim the layout we are initializing. This root-level lock covers
+    // exactly that window — every writable open holds it from before its
+    // sweep until its marker exists. Best effort: on a filesystem without
+    // advisory locks the window stays open, as before.
+    int lock_fd = -1;
+    auto lock_path = path::join(parent, store_lock_name);
+    if(auto ec = llvm::sys::fs::openFileForReadWrite(lock_path,
+                                                     lock_fd,
+                                                     llvm::sys::fs::CD_OpenAlways,
+                                                     llvm::sys::fs::OF_None)) {
+        LOG_WARN("CacheStore: cannot open {}: {}", lock_path, ec.message());
+        lock_fd = -1;
+    } else if(auto ec2 = llvm::sys::fs::lockFile(lock_fd)) {
+        LOG_WARN("CacheStore: cannot lock {}: {}", lock_path, ec2.message());
+        llvm::sys::Process::SafelyCloseFileDescriptor(lock_fd);
+        lock_fd = -1;
+    }
+    auto unlock = llvm::make_scope_exit([&] {
+        if(lock_fd != -1) {
+            llvm::sys::fs::unlockFile(lock_fd);
+            llvm::sys::Process::SafelyCloseFileDescriptor(lock_fd);
+        }
+    });
+
     // Discard anything that isn't the current layout version: older version
     // directories and any stray files. A layout still holding a live
     // instance stays: a clice of another version is serving from it, and
@@ -296,7 +328,8 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
     for(auto it = llvm::sys::fs::directory_iterator(parent, ec);
         !ec && it != llvm::sys::fs::directory_iterator();
         it.increment(ec)) {
-        if(path::filename(it->path()) == version_dir) {
+        auto name = path::filename(it->path());
+        if(name == version_dir || name == store_lock_name) {
             continue;
         }
         if(!llvm::sys::fs::is_directory(it->path())) {

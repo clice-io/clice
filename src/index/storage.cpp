@@ -11,6 +11,8 @@ namespace clice::index {
 
 namespace {
 
+constexpr llvm::StringLiteral index_lock_name = "index.lock";
+
 llvm::StringRef namespace_of(IndexBlobKind kind) {
     switch(kind) {
         case IndexBlobKind::Shard: return "index";
@@ -130,7 +132,7 @@ std::unique_ptr<IndexStorage> make_fs_index_storage(CacheStore& store) {
         // generation pin with FileVersion ids allocated against a different
         // table, loading rows under the wrong files. An OS advisory lock
         // dies with its process, so a crash leaves nothing stale behind.
-        auto lock_path = path::join(store.base_dir(), "index.lock");
+        auto lock_path = path::join(store.base_dir(), index_lock_name);
         if(auto ec = llvm::sys::fs::openFileForReadWrite(lock_path,
                                                          lock_fd,
                                                          llvm::sys::fs::CD_OpenAlways,
@@ -148,6 +150,21 @@ std::unique_ptr<IndexStorage> make_fs_index_storage(CacheStore& store) {
         }
     }
     return std::make_unique<FsIndexStorage>(store, lock_fd);
+}
+
+bool index_writer_active(CacheStore& store) {
+    int fd = -1;
+    auto lock_path = path::join(store.base_dir(), index_lock_name);
+    // Never created means no writer ever ran against this store.
+    if(llvm::sys::fs::openFileForReadWrite(lock_path,
+                                           fd,
+                                           llvm::sys::fs::CD_OpenExisting,
+                                           llvm::sys::fs::OF_None)) {
+        return false;
+    }
+    bool active = static_cast<bool>(llvm::sys::fs::tryLockFile(fd));
+    llvm::sys::Process::SafelyCloseFileDescriptor(fd);
+    return active;
 }
 
 }  // namespace clice::index

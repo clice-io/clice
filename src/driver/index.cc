@@ -1,7 +1,9 @@
+#include <chrono>
 #include <csignal>
 #include <format>
 #include <print>
 #include <ranges>
+#include <thread>
 
 #include "driver/driver.h"
 #include "index/serialization.h"
@@ -181,7 +183,11 @@ int run_indexing(std::string root, std::uint32_t workers, const char* self_path)
     return exit_code;
 }
 
-int run_stats(llvm::StringRef root, std::uint32_t top) {
+/// Sentinel of run_stats_once: the load raced a live writer's batch;
+/// the caller retries instead of reporting over the mid-write state.
+constexpr int stats_retry = -1;
+
+int run_stats_once(llvm::StringRef root, std::uint32_t top, bool allow_retry) {
     auto config = Config::load_from_workspace(root);
     // Read-only: the default cache directory exists as soon as the config
     // resolves it, so only the versioned store inside it proves an index
@@ -229,6 +235,15 @@ int run_stats(llvm::StringRef root, std::uint32_t top) {
         LOG_ERROR("Failed to read the index cache at {}; the cache was left untouched",
                   std::string_view(workspace.config.project.cache_dir));
         return 1;
+    }
+    // A live writer's save publishes shards and manifests before the
+    // replacement global blob, so a read racing the batch can capture the
+    // old global next to newer blobs; the load drops those as stale and
+    // the verdicts below misread the mid-write state as damage. While the
+    // writer lock is held, retry until the capture is settled.
+    if(allow_retry && indexer.pending_files() != 0 &&
+       index::index_writer_active(*workspace.store)) {
+        return stats_retry;
     }
 
     auto& project = workspace.project_index;
@@ -379,6 +394,19 @@ int run_stats(llvm::StringRef root, std::uint32_t top) {
                      std::string_view(stat.path));
     }
     return 0;
+}
+
+int run_stats(llvm::StringRef root, std::uint32_t top) {
+    constexpr std::uint32_t stats_attempts = 5;
+    for(std::uint32_t attempt = 1; attempt < stats_attempts; attempt += 1) {
+        int rc = run_stats_once(root, top, /*allow_retry=*/true);
+        if(rc != stats_retry) {
+            return rc;
+        }
+        LOG_DEBUG("Index cache is mid-save; retrying the stats read");
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    }
+    return run_stats_once(root, top, /*allow_retry=*/false);
 }
 
 }  // namespace

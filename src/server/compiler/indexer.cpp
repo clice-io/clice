@@ -1068,9 +1068,6 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id,
                                            &host_path_id);
     if(source == CommandSource::Fallback)
         co_return;
-    if(source == CommandSource::IncludeGraph) {
-        header_hosts[server_path_id] = host_path_id;
-    }
 
     workspace.fill_pcm_deps(params.pcms);
 
@@ -1101,6 +1098,14 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id,
             co_return;
         }
         failed_ids.erase(server_path_id);
+        // Record the borrowed host only for rows that landed: written at
+        // dispatch, a failed rebuild would leave the persisted CDB
+        // snapshot naming the new host while the retained rows were built
+        // through the old one — an unchanged new host then pins those
+        // stale rows fresh across restarts.
+        if(source == CommandSource::IncludeGraph) {
+            header_hosts[server_path_id] = host_path_id;
+        }
         LOG_PERF("index",
                  "progress={}/{} file={} bytes={} index_ms={} merge_ms={}",
                  index,
