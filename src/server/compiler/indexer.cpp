@@ -435,13 +435,7 @@ kota::task<> Indexer::save() {
     for(auto path_id: retired) {
         workspace.shards.erase(path_id);
         dirty_shards.erase(path_id);
-        auto it = project.contributions.find(path_id);
-        if(it == project.contributions.end()) {
-            continue;
-        }
-        for(auto tu: llvm::make_first_range(it->second)) {
-            enqueue(tu, ReindexReason::ContentChanged);
-        }
+        requeue_owners(path_id);
     }
 
     // Snapshot the dirty state on the loop: everything below serializes
@@ -588,43 +582,14 @@ kota::task<> Indexer::save() {
 
     // Corruption can surface first at write time (a damaged page only the
     // write's tree descent reaches): heal like load-time corruption instead
-    // of writing into the damaged environment every save. Nothing committed
-    // to the condemned database survives, so the batch's shards — dirty at
-    // batch build, hence memory-backed — re-dirty wholesale along with
-    // every manifest, the global and the CDB snapshot, and re-persist into
-    // the fresh database. Every other resident shard borrows from the
-    // condemned environment and is shed instead, its owners re-enqueued:
-    // their rows exist nowhere any more, and for standalone headers no
-    // restart sweep would ever rebuild them.
+    // of writing into the damaged environment every save. The batch's
+    // shards — dirty at batch build, hence memory-backed — re-dirty before
+    // the recovery's shed so they survive it and re-persist wholesale.
     if(db.corrupted()) {
-        LOG_WARN("Index database is corrupt; discarding it and rebuilding from scratch");
-        saved_shards = 0;
         for(auto path_id: shard_ids) {
             dirty_shards.insert(path_id);
         }
-        llvm::SmallVector<std::uint32_t> shed;
-        for(auto path_id: llvm::make_first_range(workspace.shards)) {
-            if(!dirty_shards.contains(path_id)) {
-                shed.push_back(path_id);
-            }
-        }
-        for(auto path_id: shed) {
-            workspace.shards.erase(path_id);
-            auto it = project.contributions.find(path_id);
-            if(it == project.contributions.end()) {
-                continue;
-            }
-            for(auto tu: llvm::make_first_range(it->second)) {
-                enqueue(tu, ReindexReason::ContentChanged);
-            }
-        }
-        for(auto tu_path_id: llvm::make_first_range(project.manifests)) {
-            dirty_manifests.insert(tu_path_id);
-        }
-        global_dirty = true;
-        cdb_dirty = true;
-        persisted_cdb_snapshot.clear();
-        reopen_fresh_database();
+        recover_corrupt_database();
         co_return;
     }
 
@@ -650,19 +615,12 @@ kota::task<> Indexer::migrate_shard_views() {
     auto grown = db.grow();
     if(!grown) {
         // Degenerate (address space exhausted): borrowed views may already
-        // be dead. Dirty shards own their bytes by construction (merges
-        // install memory copies); everything else is shed rather than left
-        // dangling.
+        // be dead, so everything borrowed is shed rather than left
+        // dangling. The shed shards' persisted bytes stay intact but their
+        // manifests still read fresh — only the owner requeue rebuilds
+        // their resident rows this session.
         LOG_ERROR("Index database growth failed: {}", grown.error());
-        llvm::SmallVector<std::uint32_t> shed;
-        for(auto path_id: llvm::make_first_range(workspace.shards)) {
-            if(!dirty_shards.contains(path_id)) {
-                shed.push_back(path_id);
-            }
-        }
-        for(auto path_id: shed) {
-            workspace.shards.erase(path_id);
-        }
+        shed_borrowed_shards();
         co_return;
     }
     bool grew = *grown;
@@ -705,16 +663,66 @@ kota::task<> Indexer::migrate_shard_views() {
         auto blob =
             db.read(index::IndexBlobKind::Shard, blob_key(workspace.path_pool.resolve(path_id)));
         if(!blob || !it->second.rebind(std::move(blob.buffer))) {
-            // Unreachable under the writer lock; dropping serves no rows
-            // for the file until reload, while keeping the old view would
-            // dangle once the snapshot retires.
+            // Corruption can also surface first here (a damaged page only
+            // this re-read reaches); the recovery below sheds the whole
+            // resident set, nothing per-shard to do.
+            if(db.corrupted()) {
+                break;
+            }
+            // Unreachable under the writer lock; the shard is dropped and
+            // its owners requeued to rebuild the rows, while keeping the
+            // old view would dangle once the snapshot retires.
             LOG_ERROR("Index shard for {} diverged during snapshot migration",
                       workspace.path_pool.resolve(path_id));
             assert(false && "persisted shard must survive snapshot migration");
             workspace.shards.erase(path_id);
+            requeue_owners(path_id);
         }
     }
+    // Corruption observed by any read since the write-time check — this
+    // loop's, or a query's during its yields — condemns the database; the
+    // recovery sheds every borrowed view before the environment closes.
+    if(db.corrupted()) {
+        recover_corrupt_database();
+        co_return;
+    }
     db.retire_old_snapshot();
+}
+
+void Indexer::requeue_owners(std::uint32_t path_id) {
+    auto it = workspace.project_index.contributions.find(path_id);
+    if(it == workspace.project_index.contributions.end()) {
+        return;
+    }
+    for(auto tu: llvm::make_first_range(it->second)) {
+        enqueue(tu, ReindexReason::ContentChanged);
+    }
+}
+
+void Indexer::shed_borrowed_shards() {
+    llvm::SmallVector<std::uint32_t> shed;
+    for(auto path_id: llvm::make_first_range(workspace.shards)) {
+        if(!dirty_shards.contains(path_id)) {
+            shed.push_back(path_id);
+        }
+    }
+    for(auto path_id: shed) {
+        workspace.shards.erase(path_id);
+        requeue_owners(path_id);
+    }
+}
+
+void Indexer::recover_corrupt_database() {
+    LOG_WARN("Index database is corrupt; discarding it and rebuilding from scratch");
+    saved_shards = 0;
+    shed_borrowed_shards();
+    for(auto tu_path_id: llvm::make_first_range(workspace.project_index.manifests)) {
+        dirty_manifests.insert(tu_path_id);
+    }
+    global_dirty = true;
+    cdb_dirty = true;
+    persisted_cdb_snapshot.clear();
+    reopen_fresh_database();
 }
 
 void Indexer::reopen_fresh_database() {

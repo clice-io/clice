@@ -424,9 +424,11 @@ TEST_CASE(GrowFailureShedsCleanShards) {
     open_store(tmp, workspace);
 
     // grow() failing is backend-independent shed territory: every clean
-    // (non-dirty, possibly borrowed) shard must go, dirty ones are owned
-    // by construction and stay. The spy also fails dirty.cpp's put so it
-    // is re-dirtied by the time the migration runs.
+    // (non-dirty, possibly borrowed) shard must go with its owner requeued
+    // — the manifests still read fresh, so nothing else would rebuild the
+    // dropped rows — while dirty ones are owned by construction and stay.
+    // The spy also fails dirty.cpp's put so it is re-dirtied by the time
+    // the migration runs.
     struct FailingGrow final : index::BlobDatabase {
         std::unique_ptr<index::BlobDatabase> real;
         std::string fail_key;
@@ -496,6 +498,7 @@ TEST_CASE(GrowFailureShedsCleanShards) {
 
     ASSERT_FALSE(workspace.shards.contains(clean_id));
     ASSERT_TRUE(workspace.shards.contains(dirty_id));
+    ASSERT_TRUE(indexer.pending_reason(clean_id) == ReindexReason::ContentChanged);
 }
 
 TEST_CASE(MidSaveMergeKept) {
@@ -1038,6 +1041,88 @@ TEST_CASE(WriteCorruptionRebuildsDatabase) {
     // The next save re-persists everything servable into the fresh database.
     save();
     ASSERT_EQ(indexer.last_save_shards(), 1u);
+    ASSERT_FALSE(indexer.has_unsaved_state());
+}
+
+TEST_CASE(MigrationCorruptionRebuildsDatabase) {
+    TempDir tmp;
+    tmp.touch("main.cpp", "int migrate_value() { return 1; }\n");
+    open_store(tmp, workspace);
+
+    // Corruption surfacing first at migration time (a damaged page only the
+    // re-read from the advanced snapshot reaches, after the write-time
+    // check passed): same recovery as write-time corruption — the resident
+    // view is shed with its owner re-enqueued, the environment condemned
+    // and replaced by a fresh one.
+    struct CorruptOnRead final : index::BlobDatabase {
+        bool* condemned;
+        bool poisoned = false;
+
+        index::ReadBlob read(index::IndexBlobKind, llvm::StringRef) override {
+            poisoned = true;
+            return {};
+        }
+
+        bool contains(index::IndexBlobKind, llvm::StringRef) override {
+            return false;
+        }
+
+        llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob>,
+                                             llvm::ArrayRef<index::BlobKey>) override {
+            return {};
+        }
+
+        void for_each_key(index::IndexBlobKind,
+                          llvm::function_ref<void(llvm::StringRef)>) override {}
+
+        std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
+            return 2;
+        }
+
+        void retire_old_snapshot() override {}
+
+        std::expected<bool, std::string> grow() override {
+            return false;
+        }
+
+        bool corrupted() const override {
+            return poisoned;
+        }
+
+        void condemn() override {
+            *condemned = true;
+        }
+    };
+
+    bool condemned = false;
+    auto spy = std::make_unique<CorruptOnRead>();
+    spy->condemned = &condemned;
+    workspace.index_db = std::move(spy);
+
+    auto indexed = index_file(tmp, tmp.path("main.cpp"));
+    ASSERT_FALSE(indexed.data.empty());
+    indexer.merge(indexed.data.data(), indexed.data.size());
+
+    auto save = [&] {
+        auto body = [&]() -> kota::task<> {
+            co_await indexer.save();
+        };
+        auto task = body();
+        loop.schedule(task);
+        loop.run();
+    };
+    save();
+
+    auto path_id = workspace.path_pool.intern(indexed.tu_path);
+    ASSERT_TRUE(condemned);
+    ASSERT_TRUE(workspace.index_db != nullptr);
+    ASSERT_FALSE(workspace.shards.contains(path_id));
+    ASSERT_TRUE(indexer.pending_reason(path_id) == ReindexReason::ContentChanged);
+    ASSERT_EQ(indexer.last_save_shards(), 0u);
+
+    // The re-dirtied manifests, global and CDB snapshot re-persist into
+    // the fresh database.
+    save();
     ASSERT_FALSE(indexer.has_unsaved_state());
 }
 

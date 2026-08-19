@@ -244,8 +244,11 @@ MDB_val to_val(llvm::StringRef bytes) {
     return {bytes.size(), const_cast<char*>(bytes.data())};
 }
 
+// MDB_PAGE_NOTFOUND is not a key miss: a page the B-tree references is
+// absent from the file, which LMDB documents as corruption.
 bool is_corruption(int rc) {
-    return rc == MDB_CORRUPTED || rc == MDB_INVALID || rc == MDB_VERSION_MISMATCH;
+    return rc == MDB_CORRUPTED || rc == MDB_INVALID || rc == MDB_VERSION_MISMATCH ||
+           rc == MDB_PAGE_NOTFOUND;
 }
 
 void remove_database_files(llvm::StringRef path) {
@@ -450,7 +453,7 @@ private:
     /// Latch corruption-family read errors for the loader's rebuild
     /// decision; everything else stays "missing or transiently unreadable".
     void note_error(int rc) {
-        if(is_corruption(rc) || rc == MDB_PAGE_NOTFOUND) {
+        if(is_corruption(rc)) {
             poisoned.store(true, std::memory_order_relaxed);
         }
     }

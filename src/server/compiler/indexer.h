@@ -434,6 +434,25 @@ private:
     /// lock meanwhile) leaves persistence disabled for the session.
     void reopen_fresh_database();
 
+    /// Re-enqueue every TU contributing to `path_id`'s shard. Used when the
+    /// file's resident rows are lost while its manifests still read fresh:
+    /// no in-process event would ever rebuild them, and for standalone
+    /// headers no restart sweep would either.
+    void requeue_owners(std::uint32_t path_id);
+
+    /// Drop every resident shard that may borrow database memory —
+    /// everything not dirty, since dirty shards own their bytes by
+    /// construction (merges install memory copies) — and requeue the
+    /// owners of the dropped rows.
+    void shed_borrowed_shards();
+
+    /// Runtime-corruption recovery, shared by the write-time and the
+    /// snapshot-migration detection points: nothing in the condemned
+    /// database survives, so borrowed shards are shed with their owners
+    /// requeued while every manifest, the global and the CDB snapshot
+    /// re-dirty to re-persist into the freshly opened database.
+    void recover_corrupt_database();
+
     /// Migrate resident shards onto a fresh database read snapshot after a
     /// save's commit (growing the map first when the write hit a full one),
     /// then retire the previous snapshot. Filesystem-backed runs return
