@@ -552,7 +552,7 @@ Shard Shard::from_bytes(llvm::StringRef data) {
 }
 
 bool Shard::rebind(std::unique_ptr<llvm::MemoryBuffer> replacement) {
-    if(!buffer || !replacement || llvm::xxh3_64bits(replacement->getBuffer()) != blob_hash) {
+    if(!buffer || !replacement || replacement->getBufferSize() != buffer->getBufferSize()) {
         return false;
     }
     buffer = std::move(replacement);

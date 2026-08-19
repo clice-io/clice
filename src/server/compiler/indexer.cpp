@@ -586,6 +586,48 @@ kota::task<> Indexer::save() {
     saved_shards = shard_count - failed_shards;
     saving_shards = 0;
 
+    // Corruption can surface first at write time (a damaged page only the
+    // write's tree descent reaches): heal like load-time corruption instead
+    // of writing into the damaged environment every save. Nothing committed
+    // to the condemned database survives, so the batch's shards — dirty at
+    // batch build, hence memory-backed — re-dirty wholesale along with
+    // every manifest, the global and the CDB snapshot, and re-persist into
+    // the fresh database. Every other resident shard borrows from the
+    // condemned environment and is shed instead, its owners re-enqueued:
+    // their rows exist nowhere any more, and for standalone headers no
+    // restart sweep would ever rebuild them.
+    if(db.corrupted()) {
+        LOG_WARN("Index database is corrupt; discarding it and rebuilding from scratch");
+        saved_shards = 0;
+        for(auto path_id: shard_ids) {
+            dirty_shards.insert(path_id);
+        }
+        llvm::SmallVector<std::uint32_t> shed;
+        for(auto path_id: llvm::make_first_range(workspace.shards)) {
+            if(!dirty_shards.contains(path_id)) {
+                shed.push_back(path_id);
+            }
+        }
+        for(auto path_id: shed) {
+            workspace.shards.erase(path_id);
+            auto it = project.contributions.find(path_id);
+            if(it == project.contributions.end()) {
+                continue;
+            }
+            for(auto tu: llvm::make_first_range(it->second)) {
+                enqueue(tu, ReindexReason::ContentChanged);
+            }
+        }
+        for(auto tu_path_id: llvm::make_first_range(project.manifests)) {
+            dirty_manifests.insert(tu_path_id);
+        }
+        global_dirty = true;
+        cdb_dirty = true;
+        persisted_cdb_snapshot.clear();
+        reopen_fresh_database();
+        co_return;
+    }
+
     co_await migrate_shard_views();
 
     LOG_PERF("index",
@@ -675,6 +717,12 @@ kota::task<> Indexer::migrate_shard_views() {
     db.retire_old_snapshot();
 }
 
+void Indexer::reopen_fresh_database() {
+    workspace.index_db->condemn();
+    workspace.index_db.reset();
+    workspace.index_db = index::open_database(*workspace.store, workspace.config.project.index_db);
+}
+
 bool Indexer::load(bool read_only) {
     if(!workspace.index_db)
         return true;
@@ -703,15 +751,17 @@ bool Indexer::load(bool read_only) {
         // everything for a healthier restart to load.
         if(db.contains(index::IndexBlobKind::Global, "global")) {
             // Confirmed page corruption heals through rebuildability: the
-            // condemned database deletes itself on close and the next
-            // start begins empty. Transient failures touch nothing.
+            // condemned database deletes itself and a fresh empty one
+            // opens in its place, so this session's rebuild persists
+            // instead of being redone at the next start. Transient
+            // failures touch nothing.
             if(!read_only && db.corrupted()) {
-                LOG_WARN("Index database is corrupt; discarding it to rebuild on next start");
-                db.condemn();
+                LOG_WARN("Index database is corrupt; discarding it and rebuilding from scratch");
+                reopen_fresh_database();
             } else {
                 LOG_WARN("Index global blob unreadable; disabling index persistence this session");
+                workspace.index_db.reset();
             }
-            workspace.index_db.reset();
             return true;
         }
         // No global table means no resolvable manifests: everything else
@@ -873,14 +923,25 @@ bool Indexer::load(bool read_only) {
     // tree every session. The adopted state unwinds wholesale: the shard
     // views borrow from the condemned environment, and manifests kept
     // without their views would read as fresh and gate the rebuild sweep
-    // off exactly the files whose rows were lost.
+    // off exactly the files whose rows were lost. Standalone-indexed TUs
+    // re-enqueue first — the CDB sweep that rebuilds everything else never
+    // covers them, and the condemned database is deleting their only
+    // persistent record. The dirtied snapshot carries them as debt from
+    // the fresh database's first save on, so even a crash before their
+    // rebuild lands cannot lose them a second time.
     if(!read_only && db.corrupted()) {
-        LOG_WARN("Index database is corrupt; discarding it to rebuild from scratch");
-        db.condemn();
+        LOG_WARN("Index database is corrupt; discarding it and rebuilding from scratch");
+        for(auto tu: llvm::make_first_range(project.manifests)) {
+            if(!workspace.cdb.has_entry(workspace.path_pool.resolve(tu))) {
+                enqueue(tu, ReindexReason::ContentChanged);
+            }
+        }
         workspace.shards.clear();
         project = index::ProjectIndex();
         startup_removes.clear();
-        workspace.index_db.reset();
+        persisted_cdb_snapshot.clear();
+        cdb_dirty = true;
+        reopen_fresh_database();
         return true;
     }
 

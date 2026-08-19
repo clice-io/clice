@@ -941,6 +941,106 @@ TEST_CASE(FailedWriteNotCounted) {
     ASSERT_EQ(indexer.pending_shard_writes(), 0u);
 }
 
+TEST_CASE(WriteCorruptionRebuildsDatabase) {
+    TempDir tmp;
+    tmp.touch("clean.cpp", "int clean_value() { return 1; }\n");
+    tmp.touch("dirty.cpp", "int dirty_value() { return 2; }\n");
+    open_store(tmp, workspace);
+
+    // Corruption surfacing at write time (a damaged page only the write's
+    // tree descent reaches): the save must condemn the environment and
+    // continue on a fresh one instead of re-writing into it every save.
+    // Batch shards own their bytes and stay to re-persist; the clean
+    // resident view is shed and its owner re-enqueued.
+    struct CorruptOnWrite final : index::BlobDatabase {
+        bool* condemned;
+        bool fail = false;
+        bool poisoned = false;
+
+        index::ReadBlob read(index::IndexBlobKind, llvm::StringRef) override {
+            return {};
+        }
+
+        bool contains(index::IndexBlobKind, llvm::StringRef) override {
+            return false;
+        }
+
+        llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> puts,
+                                             llvm::ArrayRef<index::BlobKey>) override {
+            if(!fail) {
+                return {};
+            }
+            poisoned = true;
+            llvm::SmallVector<std::size_t> failed;
+            for(std::size_t i = 0; i < puts.size(); i += 1) {
+                failed.push_back(i);
+            }
+            return failed;
+        }
+
+        void for_each_key(index::IndexBlobKind,
+                          llvm::function_ref<void(llvm::StringRef)>) override {}
+
+        std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
+            return 0;
+        }
+
+        void retire_old_snapshot() override {}
+
+        std::expected<bool, std::string> grow() override {
+            return false;
+        }
+
+        bool corrupted() const override {
+            return poisoned;
+        }
+
+        void condemn() override {
+            *condemned = true;
+        }
+    };
+
+    bool condemned = false;
+    auto spy = std::make_unique<CorruptOnWrite>();
+    spy->condemned = &condemned;
+    auto* probe = spy.get();
+    workspace.index_db = std::move(spy);
+
+    auto indexed_clean = index_file(tmp, tmp.path("clean.cpp"));
+    auto indexed_dirty = index_file(tmp, tmp.path("dirty.cpp"));
+    ASSERT_FALSE(indexed_clean.data.empty());
+    ASSERT_FALSE(indexed_dirty.data.empty());
+
+    auto save = [&] {
+        auto body = [&]() -> kota::task<> {
+            co_await indexer.save();
+        };
+        auto task = body();
+        loop.schedule(task);
+        loop.run();
+    };
+
+    indexer.merge(indexed_clean.data.data(), indexed_clean.data.size());
+    save();
+    indexer.merge(indexed_dirty.data.data(), indexed_dirty.data.size());
+    probe->fail = true;
+    save();
+
+    ASSERT_TRUE(condemned);
+    ASSERT_TRUE(workspace.index_db != nullptr);
+    auto clean_id = workspace.path_pool.intern(indexed_clean.tu_path);
+    auto dirty_id = workspace.path_pool.intern(indexed_dirty.tu_path);
+    ASSERT_FALSE(workspace.shards.contains(clean_id));
+    ASSERT_TRUE(workspace.shards.contains(dirty_id));
+    ASSERT_TRUE(indexer.pending_reason(clean_id) == ReindexReason::ContentChanged);
+    ASSERT_EQ(indexer.last_save_shards(), 0u);
+
+    // The next save re-persists everything servable into the fresh database.
+    save();
+    ASSERT_EQ(indexer.last_save_shards(), 1u);
+    ASSERT_FALSE(indexer.has_unsaved_state());
+}
+
 TEST_CASE(WriteFailureStopsBatch) {
     TempDir tmp;
     open_store(tmp, workspace);
@@ -1519,8 +1619,8 @@ TEST_CASE(LmdbLoadServesAcrossSaves) {
 TEST_CASE(CorruptGlobalCondemnsDatabase) {
     // Page corruption under the global blob: read fails, contains() still
     // says present, corrupted() confirms. load must condemn the database
-    // (deleted on close, rebuilt next start) instead of parking it in the
-    // disabled-persistence limbo forever.
+    // (deleted on close) and continue on a fresh empty one instead of
+    // parking in the disabled-persistence limbo forever.
     struct CorruptGlobal final : index::BlobDatabase {
         bool* condemned;
 
@@ -1559,7 +1659,9 @@ TEST_CASE(CorruptGlobalCondemnsDatabase) {
         }
     };
 
+    TempDir tmp;
     IndexerFixture f;
+    open_store(tmp, f.workspace);
     bool condemned = false;
     auto spy = std::make_unique<CorruptGlobal>();
     spy->condemned = &condemned;
@@ -1567,7 +1669,7 @@ TEST_CASE(CorruptGlobalCondemnsDatabase) {
 
     ASSERT_TRUE(f.indexer.load());
     ASSERT_TRUE(condemned);
-    ASSERT_TRUE(f.workspace.index_db == nullptr);
+    ASSERT_TRUE(f.workspace.index_db != nullptr);
 }
 
 TEST_CASE(CorruptShardCondemnsDatabase) {
@@ -1575,12 +1677,14 @@ TEST_CASE(CorruptShardCondemnsDatabase) {
     tmp.touch("main.cpp", "int gone() { return 1; }\n");
     auto src = tmp.path("main.cpp");
 
+    std::string tu_path;
     {
         IndexerFixture f;
         open_store(tmp, f.workspace);
         auto indexed = index_file(tmp, src);
         ASSERT_FALSE(indexed.data.empty());
         f.indexer.merge(indexed.data.data(), indexed.data.size());
+        tu_path = indexed.tu_path;
         f.save();
     }
 
@@ -1644,9 +1748,19 @@ TEST_CASE(CorruptShardCondemnsDatabase) {
 
     ASSERT_TRUE(f.indexer.load());
     ASSERT_TRUE(condemned);
-    ASSERT_TRUE(f.workspace.index_db == nullptr);
     ASSERT_TRUE(f.workspace.shards.empty());
     ASSERT_TRUE(f.workspace.project_index.symbols.empty());
+
+    // The TU has no CDB entry, so nothing else records the debt: it is
+    // re-enqueued before the adopted state unwinds, and the fresh
+    // database's first save persists it as standalone debt.
+    ASSERT_TRUE(f.indexer.pending_reason(f.workspace.path_pool.intern(tu_path)) ==
+                ReindexReason::ContentChanged);
+    ASSERT_TRUE(f.workspace.index_db != nullptr);
+    f.save();
+    auto snapshot = f.workspace.index_db->read(index::IndexBlobKind::CDB, "cdb");
+    ASSERT_TRUE(snapshot);
+    ASSERT_TRUE(snapshot.buffer->getBuffer().contains("main.cpp"));
 }
 
 TEST_CASE(UnreadableGlobalPreserved) {

@@ -427,6 +427,13 @@ private:
         kota::event task_done{false};
     };
 
+    /// Confirmed corruption heals through rebuildability: condemn the
+    /// database (deleted on close) and continue on a freshly opened empty
+    /// one, so the session's rebuild persists instead of waiting for the
+    /// next start. A failed reopen (another process grabbed the writer
+    /// lock meanwhile) leaves persistence disabled for the session.
+    void reopen_fresh_database();
+
     /// Migrate resident shards onto a fresh database read snapshot after a
     /// save's commit (growing the map first when the write hit a full one),
     /// then retire the previous snapshot. Filesystem-backed runs return

@@ -1114,12 +1114,16 @@ TEST_CASE(RebindSwapsIdenticalBytes) {
     ASSERT_TRUE(shard.bytes().data() != address_before);
     ASSERT_EQ(shard.content_hash(), hash_before);
 
-    // Drifted bytes and a missing replacement are rejected; the current
-    // buffer stays.
+    // Byte identity is the caller's contract: only the size gates the
+    // swap, so migration never touches the replacement's content pages.
     std::string drift = bytes;
     drift.back() = static_cast<char>(drift.back() ^ 1);
+    ASSERT_TRUE(shard.rebind(llvm::MemoryBuffer::getMemBufferCopy(drift)));
+
+    // A missing replacement or another size is rejected; the current
+    // buffer stays.
     const char* kept = shard.bytes().data();
-    ASSERT_FALSE(shard.rebind(llvm::MemoryBuffer::getMemBufferCopy(drift)));
+    ASSERT_FALSE(shard.rebind(llvm::MemoryBuffer::getMemBufferCopy(bytes + "x")));
     ASSERT_FALSE(shard.rebind(nullptr));
     ASSERT_TRUE(shard.bytes().data() == kept);
 }
