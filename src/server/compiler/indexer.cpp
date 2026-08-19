@@ -531,6 +531,21 @@ kota::task<> Indexer::save() {
     dirty_manifests.clear();
     global_dirty = false;
 
+    // A deferred load-time sweep can name a key this very save re-writes:
+    // the swept TU was re-enqueued at load and has already re-indexed.
+    // Puts run before removes inside write(), so the stale removal would
+    // delete the fresh blob — the put wins.
+    if(!removals.empty()) {
+        llvm::DenseSet<std::pair<unsigned, llvm::StringRef>> putting;
+        for(auto& put: batch) {
+            putting.insert({static_cast<unsigned>(put.kind), llvm::StringRef(put.key)});
+        }
+        llvm::erase_if(removals, [&](const index::BlobKey& remove) {
+            return putting.contains(
+                {static_cast<unsigned>(remove.kind), llvm::StringRef(remove.key)});
+        });
+    }
+
     if(batch.empty() && removals.empty()) {
         co_return;
     }

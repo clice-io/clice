@@ -246,6 +246,69 @@ TEST_CASE(ReadOnlyWithoutDatabaseFallsBack) {
     ASSERT_FALSE(db->contains(index::IndexBlobKind::Global, "global"));
 }
 
+TEST_CASE(ReadOnlyServesExistingDatabase) {
+    TempDir tmp;
+    {
+        auto store = open_store(tmp, "ws");
+        auto db = index::open_database(store, "lmdb");
+        ASSERT_TRUE(db != nullptr);
+        ASSERT_TRUE(db->write({blob(index::IndexBlobKind::Global, "global", "gg")}, {}).empty());
+    }
+    auto store = open_store(tmp, "ws", /*read_only=*/true);
+    auto db = index::open_database(store, "lmdb");
+    ASSERT_TRUE(db != nullptr);
+    ASSERT_TRUE(db->contains(index::IndexBlobKind::Global, "global"));
+    ASSERT_TRUE(db->read(index::IndexBlobKind::Global, "global").buffer->getBuffer() == "gg");
+}
+
+TEST_CASE(CondemnedDatabaseDeletesOnClose) {
+    TempDir tmp;
+    auto store = open_store(tmp, "lmdb");
+    {
+        auto db = index::open_database(store, "lmdb");
+        ASSERT_TRUE(db != nullptr);
+        ASSERT_TRUE(db->write({blob(index::IndexBlobKind::CDB, "cdb", "bytes")}, {}).empty());
+        db->condemn();
+    }
+    ASSERT_FALSE(llvm::sys::fs::exists(path::join(store.base_dir(), "index.mdb")));
+    auto db = index::open_database(store, "lmdb");
+    ASSERT_TRUE(db != nullptr);
+    ASSERT_FALSE(db->contains(index::IndexBlobKind::CDB, "cdb"));
+}
+
+TEST_CASE(OutstandingSnapshotsStack) {
+    TempDir tmp;
+    auto store = open_store(tmp, "lmdb");
+    auto db = index::open_database(store, "lmdb");
+    ASSERT_TRUE(db != nullptr);
+
+    ASSERT_TRUE(db->write({blob(index::IndexBlobKind::Shard, "k", large_value('1'))}, {}).empty());
+    ASSERT_TRUE(db->advance_read_snapshot().has_value());
+    db->retire_old_snapshot();
+    auto lease = db->read(index::IndexBlobKind::Shard, "k");
+    ASSERT_TRUE(bool(lease));
+
+    // A cancelled migration leaves its old snapshot outstanding and the
+    // next advance stacks another; every stacked snapshot keeps its
+    // borrowers alive until one retire clears them all.
+    ASSERT_TRUE(db->write({blob(index::IndexBlobKind::Shard, "k", large_value('2'))}, {}).empty());
+    ASSERT_TRUE(db->advance_read_snapshot().has_value());
+    ASSERT_TRUE(db->write({blob(index::IndexBlobKind::Shard, "k", large_value('3'))}, {}).empty());
+    ASSERT_TRUE(db->advance_read_snapshot().has_value());
+    ASSERT_TRUE(lease.buffer->getBuffer() == large_value('1'));
+    ASSERT_TRUE(db->read(index::IndexBlobKind::Shard, "k").buffer->getBuffer() == large_value('3'));
+    db->retire_old_snapshot();
+    ASSERT_TRUE(db->read(index::IndexBlobKind::Shard, "k").buffer->getBuffer() == large_value('3'));
+}
+
+TEST_CASE(UnknownBackendFallsBackToLmdb) {
+    TempDir tmp;
+    auto store = open_store(tmp, "lmdb");
+    auto db = index::open_database(store, "bogus");
+    ASSERT_TRUE(db != nullptr);
+    ASSERT_TRUE(llvm::sys::fs::exists(path::join(store.base_dir(), "index.mdb")));
+}
+
 };  // TEST_SUITE(IndexDatabase)
 
 }  // namespace

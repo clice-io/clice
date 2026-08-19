@@ -107,7 +107,7 @@ public:
         if(!buffer) {
             return {};
         }
-        return {std::move(*buffer), 0};
+        return {.buffer = std::move(*buffer)};
     }
 
     bool contains(IndexBlobKind kind, llvm::StringRef key) override {
@@ -282,10 +282,12 @@ public:
         // inline values are copied into an owned, allocator-aligned
         // buffer and become immortal (generation 0).
         if(reinterpret_cast<std::uintptr_t>(value.mv_data) % 8 != 0) {
-            return {llvm::MemoryBuffer::getMemBufferCopy(bytes), 0};
+            return {.buffer = llvm::MemoryBuffer::getMemBufferCopy(bytes)};
         }
-        return {llvm::MemoryBuffer::getMemBuffer(bytes, "", /*RequiresNullTerminator=*/false),
-                generation};
+        return {.buffer = llvm::MemoryBuffer::getMemBuffer(bytes,
+                                                           "",
+                                                           /*RequiresNullTerminator=*/false),
+                .generation = generation};
     }
 
     bool contains(IndexBlobKind kind, llvm::StringRef key) override {
@@ -654,7 +656,9 @@ FsLocality filesystem_locality(llvm::StringRef dir) {
     // LMDB is documented to break on.
     struct statfs sfs;
     if(statfs(std::string(dir).c_str(), &sfs) == 0) {
-        switch(static_cast<std::uint64_t>(sfs.f_type)) {
+        // Through uint32 first: f_type is a signed word, and the SMB2/CIFS
+        // magics have the top bit set.
+        switch(static_cast<std::uint32_t>(sfs.f_type)) {
             case 0x6969:      // NFS
             case 0x517B:      // SMB
             case 0xFE534D42:  // SMB2
