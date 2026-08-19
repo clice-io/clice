@@ -681,6 +681,8 @@ std::size_t WorkerPool::claim_stateless(std::size_t index, worker::Priority prio
     auto& w = stateless_workers[index];
     w.busy = true;
     w.low_priority = priority == worker::Priority::Low;
+    next_claim_epoch += 1;
+    w.claim_epoch = next_claim_epoch;
     return index;
 }
 
@@ -802,21 +804,7 @@ kota::task<> WorkerPool::monitor_loop() {
         co_await kota::sleep(std::chrono::milliseconds(3000), loop);
 
         tick_foreground();
-
-        // A cancelled low request that ignored its stop flag past the grace
-        // window is stuck inside one declaration; reclaim the process.
-        auto now = std::chrono::steady_clock::now();
-        for(std::size_t i = 0; i < stateless_workers.size(); i += 1) {
-            auto& w = stateless_workers[i];
-            if(w.state == SlotState::Alive && w.busy &&
-               w.cancel_requested_at != std::chrono::steady_clock::time_point{} &&
-               now - w.cancel_requested_at > cancel_grace) {
-                LOG_WARN("Worker {} ignored a cooperative cancel; killing it", w.name);
-                w.preempted = true;
-                reset_streak_if_healthy(w);
-                mark_worker_dead(i, false, true);
-            }
-        }
+        tick_cancel_grace();
 
         auto mem = kota::sys::memory();
         if(mem.total == 0)
@@ -861,19 +849,50 @@ void WorkerPool::tick_foreground() {
     try_dispatch_pending();
 }
 
+void WorkerPool::tick_cancel_grace() {
+    // A cancelled low request that ignored its stop flag past the grace
+    // window is stuck inside one declaration; reclaim the process.
+    auto now = std::chrono::steady_clock::now();
+    for(std::size_t i = 0; i < stateless_workers.size(); i += 1) {
+        auto& w = stateless_workers[i];
+        if(w.state == SlotState::Alive && w.busy &&
+           w.cancel_requested_at != std::chrono::steady_clock::time_point{} &&
+           now - w.cancel_requested_at > cancel_grace) {
+            LOG_WARN("Worker {} ignored a cooperative cancel; killing it", w.name);
+            w.preempted = true;
+            reset_streak_if_healthy(w);
+            mark_worker_dead(i, false, true);
+        }
+    }
+}
+
 void WorkerPool::cancel_low_priority(std::size_t count) {
-    std::size_t cancelled = 0;
     // Newest claim first: the youngest compile has the least work to lose,
-    // and always starting from index 0 would starve the same slot's file.
-    for(std::size_t i = stateless_workers.size(); i > 0 && cancelled < count;) {
-        i -= 1;
+    // and a fixed scan order would keep sacrificing the same slot's file.
+    llvm::SmallVector<std::size_t> victims;
+    for(std::size_t i = 0; i < stateless_workers.size(); i += 1) {
         auto& w = stateless_workers[i];
         if(w.state != SlotState::Alive || !w.busy || !w.low_priority)
             continue;
         if(w.cancel_requested_at != std::chrono::steady_clock::time_point{})
             continue;
-        if(w.preempt_source)
-            w.preempt_source->cancel();
+        // A claim whose sender has not resumed yet has no cancellation
+        // source installed; skip it entirely — stamping it would leave a
+        // request that never saw a cancel to be grace-killed as if it had
+        // ignored one. The invariant: a stamped slot was really cancelled.
+        if(!w.preempt_source)
+            continue;
+        victims.push_back(i);
+    }
+    std::ranges::sort(victims, std::greater{}, [this](std::size_t i) {
+        return stateless_workers[i].claim_epoch;
+    });
+    std::size_t cancelled = 0;
+    for(auto i: victims) {
+        if(cancelled >= count)
+            break;
+        auto& w = stateless_workers[i];
+        w.preempt_source->cancel();
         w.cancel_requested_at = std::chrono::steady_clock::now();
         cancelled += 1;
     }
@@ -963,8 +982,12 @@ void WorkerPool::tick_scaling(double available_ratio) {
     // for high-priority requests: the reserved slot stays idle, so busy
     // never equals alive, but the pool is effectively saturated for
     // low-priority (indexing) work.
+    // A zeroed low budget (severe memory pressure) is deliberate shutdown,
+    // not saturation: counting it would let the scaler re-admit low work
+    // past the memory controller's recovery threshold.
+    auto low_budget = effective_low_limit();
     bool saturated = (alive > 0 && busy == alive && has_queued) ||
-                     (low_busy_count() >= effective_low_limit() && !low_queue.empty());
+                     (low_budget > 0 && low_busy_count() >= low_budget && !low_queue.empty());
 
     if(saturated) {
         saturated_cycles += 1;

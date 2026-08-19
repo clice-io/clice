@@ -53,6 +53,38 @@ struct WorkerPoolFixture {
         pool.low_limit = low;
     }
 
+    /// Arm a busy slot with a live cancellation source, as a resumed
+    /// sender would; cancel_low_priority only victimizes armed slots.
+    std::shared_ptr<kota::cancellation_source> arm_cancel_source(std::size_t idx) {
+        auto source = std::make_shared<kota::cancellation_source>();
+        pool.stateless_workers[idx].preempt_source = source;
+        return source;
+    }
+
+    void tick_foreground() {
+        pool.tick_foreground();
+    }
+
+    /// Age the last foreground activity past the hold window.
+    void rewind_fg_activity() {
+        pool.last_fg_activity =
+            std::chrono::steady_clock::now() - WorkerPool::fg_hold - std::chrono::seconds(1);
+    }
+
+    /// Stamp a cooperative cancel as having happened past the grace window.
+    void expire_cancel_grace(std::size_t idx) {
+        pool.stateless_workers[idx].cancel_requested_at =
+            std::chrono::steady_clock::now() - WorkerPool::cancel_grace - std::chrono::seconds(1);
+    }
+
+    void tick_cancel_grace() {
+        pool.tick_cancel_grace();
+    }
+
+    void set_claim_epoch(std::size_t idx, std::uint64_t epoch) {
+        pool.stateless_workers[idx].claim_epoch = epoch;
+    }
+
     void cancel_low(std::size_t count) {
         pool.cancel_low_priority(count);
     }
@@ -903,25 +935,91 @@ TEST_CASE(ForegroundCancelsExcess) {
     f.add_stateless(true, true, true);
     f.set_low_limit(4);
     f.set_max_stateless(10);
+    std::vector<std::shared_ptr<kota::cancellation_source>> sources;
+    for(std::size_t i = 0; i < 4; i += 1) {
+        f.set_claim_epoch(i, i + 1);
+        sources.push_back(f.arm_cancel_source(i));
+    }
 
     // The rising edge cancels exactly the over-cap excess (4 busy − cap 3),
-    // newest slot first, cooperatively (slots stay alive).
+    // newest claim first, cooperatively (slots stay alive).
     f.pool.foreground_pulse();
 
     EXPECT_TRUE(f.cancel_asked(3));
+    EXPECT_TRUE(sources[3]->cancelled());
     EXPECT_TRUE(!f.cancel_asked(0) && !f.cancel_asked(1) && !f.cancel_asked(2));
+    EXPECT_TRUE(!sources[0]->cancelled() && !sources[1]->cancelled());
     EXPECT_EQ(f.state(3), WorkerPoolFixture::SlotState::Alive);
+}
+
+TEST_CASE(ForegroundHoldExpires) {
+    WorkerPoolFixture f;
+    f.add_stateless();
+    f.add_stateless();
+    f.set_low_limit(8);
+    f.set_max_stateless(10);
+
+    f.pool.foreground_pulse();
+    EXPECT_EQ(f.pool.effective_low_limit(), 3u);
+
+    // Still inside the hold window: the tick keeps the clamp.
+    f.tick_foreground();
+    EXPECT_EQ(f.pool.effective_low_limit(), 3u);
+
+    // Rewind the last activity past the hold: the tick reopens the budget.
+    f.rewind_fg_activity();
+    f.tick_foreground();
+    EXPECT_EQ(f.pool.effective_low_limit(), 2u);
+}
+
+TEST_CASE(GraceKillReclaims) {
+    WorkerPoolFixture f;
+    f.add_stateless(true, true, true);
+    f.arm_cancel_source(0);
+    f.cancel_low(1);
+
+    // Within the grace window the worker lives on.
+    f.tick_cancel_grace();
+    EXPECT_EQ(f.state(0), WorkerPoolFixture::SlotState::Alive);
+
+    // Past it, the stuck process is reclaimed like a memory preemption:
+    // no crash accounting, immediate respawn.
+    f.expire_cancel_grace(0);
+    f.tick_cancel_grace();
+    EXPECT_EQ(f.state(0), WorkerPoolFixture::SlotState::Dying);
+}
+
+TEST_CASE(CancelSkipsUnarmedSlots) {
+    WorkerPoolFixture f;
+    f.add_stateless(true, true, true);
+    f.add_stateless(true, true, true);
+    f.set_claim_epoch(0, 1);
+    f.set_claim_epoch(1, 2);
+    // Slot 1 was claimed but its sender has not resumed: no source yet.
+    auto armed = f.arm_cancel_source(0);
+
+    f.cancel_low(2);
+
+    // Only the armed slot may be stamped — stamping the un-asked one would
+    // get a request that never saw a cancel grace-killed.
+    EXPECT_TRUE(f.cancel_asked(0));
+    EXPECT_TRUE(armed->cancelled());
+    EXPECT_TRUE(!f.cancel_asked(1));
 }
 
 TEST_CASE(CancelSkipsAskedSlots) {
     WorkerPoolFixture f;
     f.add_stateless(true, true, true);
     f.add_stateless(true, true, true);
+    f.set_claim_epoch(0, 1);
+    f.set_claim_epoch(1, 2);
+    f.arm_cancel_source(0);
+    f.arm_cancel_source(1);
 
     f.cancel_low(1);
     f.cancel_low(1);
 
-    // The second ask must move on to the older slot instead of re-asking.
+    // The second ask must move on to the older claim instead of re-asking.
     EXPECT_TRUE(f.cancel_asked(0) && f.cancel_asked(1));
 }
 

@@ -101,9 +101,11 @@ enum class Suspect : std::uint8_t {
 /// Two kinds of workers are managed:
 ///   - Stateless workers execute independent build tasks (PCH/PCM builds,
 ///     indexing, completion, formatting) with two-level priority scheduling:
-///     one worker's worth of capacity is reserved for high-priority requests
-///     by capping low-priority concurrency at capacity - 1, and the cap
-///     shrinks further under memory pressure.
+///     low-priority concurrency is budgeted — the full schedulable capacity
+///     when the user is idle, a fixed share of the configured capacity while
+///     foreground activity is live, and less under memory pressure. A High
+///     request finding no idle slot cooperatively cancels one low build
+///     instead of waiting out a whole TU.
 ///   - Stateful workers keep per-document ASTs; each open document is pinned
 ///     to one worker (path_id affinity), balanced by document count.
 ///
@@ -286,6 +288,11 @@ private:
         /// low request; zero when none is outstanding. The monitor kills the
         /// process if it blows past cancel_grace without returning.
         std::chrono::steady_clock::time_point cancel_requested_at{};
+
+        /// Monotonic claim ordinal of the in-flight request. Victim
+        /// selection picks the largest — the actual newest claim; the slot
+        /// index says nothing about claim order once slots are reused.
+        std::uint64_t claim_epoch = 0;
     };
 
     kota::event_loop& loop;
@@ -423,9 +430,13 @@ private:
     /// within a declaration boundary, not at end-of-TU.
     void note_foreground();
 
-    /// Falling edge, driven by the monitor tick: leases gone and the hold
-    /// window expired reopen the idle budget.
+    /// Falling edge, driven by the monitor tick: foreground work drained
+    /// and the hold window expired reopen the idle budget.
     void tick_foreground();
+
+    /// Kill workers whose cooperatively cancelled request outlived
+    /// cancel_grace; driven by the monitor tick.
+    void tick_cancel_grace();
 
     /// Cooperatively cancel up to `count` in-flight low-priority requests:
     /// the wire cancellation trips the worker's stop flag, the compile
@@ -521,6 +532,7 @@ private:
     bool foreground_active = false;
     std::size_t stateful_inflight = 0;
     std::chrono::steady_clock::time_point last_fg_activity{};
+    std::uint64_t next_claim_epoch = 0;
 
     /// Whether foreground work is in flight right now — the hold window
     /// only starts counting once this drains.
@@ -717,6 +729,11 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
     if(params.priority == worker::Priority::Low) {
         preempt_src = std::make_shared<kota::cancellation_source>();
         stateless_workers[idx].preempt_source = preempt_src;
+        // Known limitation: with a caller-provided token the scheduler's
+        // cancel cannot reach the worker (no token composition in kota) —
+        // the request is then only classified, not shortened, and a long
+        // one falls to the grace kill. Today's sole Low caller (the
+        // indexer) passes no token.
         if(!opts.token)
             opts.token = preempt_src->token();
     }

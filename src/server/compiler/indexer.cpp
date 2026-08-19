@@ -1316,27 +1316,39 @@ kota::task<> Indexer::run_round_feeder(kota::task_group<>& workers,
                                        std::size_t total,
                                        std::size_t& dispatched) {
     while(index_queue_pos < round_end) {
-        if(pause_depth > 0)
-            co_await resume_event.wait();
+        // Every wait loops back to re-check ALL gates: a pause arriving
+        // while parked on capacity (or a capacity loss while parked on the
+        // pause) must not let one slot slip through on wake-up.
+        while(true) {
+            if(pause_depth > 0) {
+                co_await resume_event.wait();
+                continue;
+            }
 
-        // With no schedulable worker but revival pending, a dispatch would
-        // only convert the queue slot into an instant worker_unavailable
-        // failure; park until a slot returns to service. With revival off
-        // such failures are terminal and take the normal failure path.
-        while(pool.revives_slots() && pool.schedulable_stateless() == 0) {
-            capacity_event.reset();
-            co_await capacity_event.wait();
-        }
+            // With no schedulable worker but revival pending, a dispatch
+            // would only convert the queue slot into an instant
+            // worker_unavailable failure; park until a slot returns to
+            // service. With revival off such failures are terminal and
+            // take the normal failure path.
+            if(pool.revives_slots() && pool.schedulable_stateless() == 0) {
+                capacity_event.reset();
+                co_await capacity_event.wait();
+                continue;
+            }
 
-        // Feed at most twice the pool's low budget: deep enough that
-        // workers never idle waiting for the feeder, shallow enough that
-        // the pool queue holds little when a pause or budget cut lands.
-        // The floor keeps the window alive when the budget reads zero (a
-        // pool that has not started yet); without it the feeder would wait
-        // on task_done with nothing in flight to ever set it.
-        while(round.inflight >= std::max<std::size_t>(2 * pool.effective_low_limit(), 2)) {
-            round.task_done.reset();
-            co_await round.task_done.wait();
+            // Feed at most twice the pool's low budget: deep enough that
+            // workers never idle waiting for the feeder, shallow enough
+            // that the pool queue holds little when a pause or budget cut
+            // lands. The floor keeps the window alive when the budget
+            // reads zero (a pool that has not started yet); without it
+            // the feeder would wait on task_done with nothing in flight
+            // to ever set it.
+            if(round.inflight >= std::max<std::size_t>(2 * pool.effective_low_limit(), 2)) {
+                round.task_done.reset();
+                co_await round.task_done.wait();
+                continue;
+            }
+            break;
         }
 
         auto server_path_id = index_queue[index_queue_pos];
