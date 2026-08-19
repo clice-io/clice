@@ -104,7 +104,7 @@ kota::task<> run_indexing_task(MasterServer& server, std::string root, int& exit
     // or an unreadable global blob disabled persistence) the run would
     // only warm this process's memory and a rerun would start from
     // nothing — fail instead of pretending.
-    if(!server.workspace.index_storage) {
+    if(!server.workspace.index_db) {
         LOG_ERROR("Cannot persist the index at {}; see the log for the cause and rerun",
                   std::string_view(server.workspace.config.project.cache_dir));
         exit_code = 1;
@@ -211,7 +211,7 @@ int run_stats_once(llvm::StringRef root, std::uint32_t top, bool allow_retry) {
     Workspace workspace;
     workspace.config = std::move(config);
     workspace.store.emplace(std::move(*store));
-    workspace.index_storage = index::make_fs_index_storage(*workspace.store);
+    workspace.index_db = index::open_database(*workspace.store, workspace.config.project.index_db);
     // A namespace whose directory scan failed looks empty while its blobs
     // exist — reporting "Index is empty" with exit code 0 would be a lie.
     if(auto ec = workspace.store->scan_error()) {
@@ -231,7 +231,7 @@ int run_stats_once(llvm::StringRef root, std::uint32_t top, bool allow_retry) {
     }
     // load() detaches the storage when the global blob exists but cannot
     // be read — a transient IO error, not an empty index.
-    if(workspace.index_storage == nullptr) {
+    if(workspace.index_db == nullptr) {
         LOG_ERROR("Failed to read the index cache at {}; the cache was left untouched",
                   std::string_view(workspace.config.project.cache_dir));
         return 1;

@@ -12,9 +12,9 @@
 #include "command/command.h"
 #include "command/toolchain.h"
 #include "compile/dep_file.h"
+#include "index/database.h"
 #include "index/project_index.h"
 #include "index/shard.h"
-#include "index/storage.h"
 #include "index/tu_index.h"
 #include "semantic/symbol.h"
 #include "server/compiler/compile_graph.h"
@@ -36,7 +36,7 @@ class ContextResolver;
 
 /// On-disk cache layout version (CacheStore root `cache/v{N}`).
 /// Bump to discard all cached artifacts after incompatible format changes.
-constexpr inline std::uint32_t cache_format_version = 6;
+constexpr inline std::uint32_t cache_format_version = 7;
 
 /// Sentinel for "no path": path pool ids start at 0, so 0 is a real file.
 constexpr inline std::uint32_t no_path_id = ~0u;
@@ -221,6 +221,12 @@ struct Workspace {
     /// recovery); validity metadata (deps snapshots) stays in cache.json.
     std::optional<CacheStore> store;
 
+    /// Index blob persistence, opened together with the cache store.
+    /// Declared right after `store` (both backends borrow it) and before
+    /// every index structure that borrows database bytes (`shards`), so
+    /// destruction runs shards → index_db → store.
+    std::unique_ptr<index::BlobDatabase> index_db;
+
     /// Include relationships between files on disk (#include edges).
     /// Built once at startup from CDB scan; updated incrementally on didSave.
     DependencyGraph dep_graph;
@@ -270,11 +276,6 @@ struct Workspace {
     /// path_id: symbol occurrences, relations and stored content for
     /// position mapping, served zero-copy.
     llvm::DenseMap<std::uint32_t, index::Shard> shards;
-
-    /// Index blob persistence, opened together with the cache store.
-    /// Declared after `store`: the filesystem backend borrows it, so it
-    /// must be destroyed first.
-    std::unique_ptr<index::IndexStorage> index_storage;
 
     /// Monotonic generation of context-affecting workspace state (include
     /// graph, CDB, disk contents). Bumped on didSave; clice/queryContext

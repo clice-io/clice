@@ -44,4 +44,27 @@ set(KOTA_CODEC_ENABLE_FLATBUFFERS ON)
 set(KOTA_ENABLE_EXCEPTIONS OFF)
 set(KOTA_ENABLE_RTTI OFF)
 
-FetchContent_MakeAvailable(kotatsu spdlog croaring)
+# lmdb — index blob database backend (index::BlobDatabase). Upstream ships
+# no CMake; the two-file static library is defined below. Pinned to the
+# 0.9 stable line.
+FetchContent_Declare(
+    lmdb
+    GIT_REPOSITORY https://github.com/LMDB/lmdb.git
+    GIT_TAG LMDB_0.9.31
+    GIT_SHALLOW TRUE
+)
+
+FetchContent_MakeAvailable(kotatsu spdlog croaring lmdb)
+
+add_library(lmdb STATIC
+    ${lmdb_SOURCE_DIR}/libraries/liblmdb/mdb.c
+    ${lmdb_SOURCE_DIR}/libraries/liblmdb/midl.c)
+target_include_directories(lmdb SYSTEM PUBLIC ${lmdb_SOURCE_DIR}/libraries/liblmdb)
+# Third-party C, not held to the project's warning set.
+if(MSVC)
+    target_compile_options(lmdb PRIVATE /w)
+else()
+    target_compile_options(lmdb PRIVATE -w)
+endif()
+find_package(Threads REQUIRED)
+target_link_libraries(lmdb PUBLIC Threads::Threads)

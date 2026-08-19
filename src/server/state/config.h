@@ -65,6 +65,12 @@ struct ProjectConfig {
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
+                         "Index persistence backend: \"lmdb\" (single database "
+                         "file) or \"files\" (one file per blob).")
+    <std::string> index_db = "lmdb";
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
                          "Idle delay in milliseconds before background indexing "
                          "starts.")
     <int> idle_timeout_ms = 3000;

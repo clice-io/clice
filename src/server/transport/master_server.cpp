@@ -491,8 +491,7 @@ void MasterServer::open_cache_store() {
     store->register_namespace(
         {.name = "header_context", .extension = ".h", .policy = CachePolicy::Scratch});
     workspace.store.emplace(std::move(*store));
-    // Registers the index namespaces itself.
-    workspace.index_storage = index::make_fs_index_storage(*workspace.store);
+    workspace.index_db = index::open_database(*workspace.store, cfg.index_db);
     LOG_INFO("Cache store: {}", workspace.store->base_dir());
 
     workspace.load_cache(contexts);

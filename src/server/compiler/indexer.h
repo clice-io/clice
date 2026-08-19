@@ -422,6 +422,12 @@ private:
         kota::event task_done{false};
     };
 
+    /// Migrate resident shards onto a fresh database read snapshot after a
+    /// save's commit (growing the map first when the write hit a full one),
+    /// then retire the previous snapshot. Filesystem-backed runs return
+    /// immediately: their buffers are immortal.
+    kota::task<> migrate_shard_views();
+
     kota::task<> run_background_indexing();
 
     /// The round's dispatch loop, spawned as a child of `workers` so that a

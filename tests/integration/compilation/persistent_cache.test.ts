@@ -487,13 +487,18 @@ test("cache dirs created on startup", async ({ session }) => {
     const [uri] = await client.openAndWait("main.cpp");
     client.assertCleanCompile(uri);
 
-    for (const subdir of ["pch", "pcm", "index"]) {
+    for (const subdir of ["pch", "pcm"]) {
         expect(
             fs.existsSync(path.join(workspace.cacheRoot(), subdir)) &&
                 fs.statSync(path.join(workspace.cacheRoot(), subdir)).isDirectory(),
             `${subdir}/ should be created`,
         ).toBe(true);
     }
+    // The index persists into a single LMDB database, not a namespace dir.
+    expect(
+        fs.existsSync(path.join(workspace.cacheRoot(), "index.mdb")),
+        "index.mdb should be created",
+    ).toBe(true);
 });
 
 test("different flags different pch", async ({ session }) => {

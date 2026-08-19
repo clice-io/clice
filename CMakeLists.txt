@@ -190,6 +190,7 @@ target_link_libraries(clice-core PUBLIC
     kota::codec::toml
     kota::option
     simdjson::simdjson
+    lmdb
 )
 
 file(GLOB CLICE_DRIVER_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/driver/*.cc")

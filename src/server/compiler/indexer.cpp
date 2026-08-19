@@ -7,9 +7,9 @@
 #include <string>
 #include <vector>
 
+#include "index/database.h"
 #include "index/manifest.h"
 #include "index/shard.h"
-#include "index/storage.h"
 #include "index/tu_index.h"
 #include "server/compiler/context_resolver.h"
 #include "server/protocol/worker.h"
@@ -398,9 +398,9 @@ kota::task<> Indexer::save() {
     // nothing, and the gauge must not keep exposing the previous round's
     // count as current.
     saved_shards = 0;
-    if(!workspace.index_storage)
+    if(!workspace.index_db)
         co_return;
-    auto& storage = *workspace.index_storage;
+    auto& db = *workspace.index_db;
     auto& project = workspace.project_index;
     ScopedTimer timer;
 
@@ -448,10 +448,10 @@ kota::task<> Indexer::save() {
     // from copies, so merges landing across the write await simply re-dirty
     // for the next save. The id vectors parallel the batch so a failed
     // entry can be re-dirtied by its batch index.
-    std::vector<index::IndexStorage::Blob> batch;
+    std::vector<index::BlobDatabase::Blob> batch;
     llvm::SmallVector<std::uint32_t> shard_ids;
     llvm::SmallVector<std::uint32_t> manifest_ids;
-    llvm::SmallVector<std::pair<index::IndexBlobKind, std::string>> removals;
+    llvm::SmallVector<index::BlobKey> removals;
     for(auto path_id: retired) {
         removals.push_back(
             {index::IndexBlobKind::Shard, blob_key(workspace.path_pool.resolve(path_id))});
@@ -541,12 +541,7 @@ kota::task<> Indexer::save() {
     // commit is still running (and saved_shards still holds its reset).
     saving_shards = shard_count;
     llvm::SmallVector<std::size_t> failed;
-    co_await kota::queue([&] {
-        failed = storage.write(batch);
-        for(auto& [kind, key]: removals) {
-            storage.remove(kind, key);
-        }
-    });
+    co_await kota::queue([&] { failed = db.write(batch, removals); });
     // An entry the storage failed to commit is re-dirtied so a later save
     // retries it; discarded, the cache would trail the in-memory index
     // until an unrelated merge happens to dirty the same entry or a
@@ -575,6 +570,8 @@ kota::task<> Indexer::save() {
     saved_shards = shard_count - failed_shards;
     saving_shards = 0;
 
+    co_await migrate_shard_views();
+
     LOG_PERF("index",
              "phase=save shards={} manifests={} total={} elapsed_ms={}",
              shard_count,
@@ -583,10 +580,90 @@ kota::task<> Indexer::save() {
              timer.ms());
 }
 
+kota::task<> Indexer::migrate_shard_views() {
+    if(!workspace.index_db) {
+        co_return;
+    }
+    auto& db = *workspace.index_db;
+
+    // A full-map write left nothing committed (everything is dirty again);
+    // growing retires every snapshot at once, so the rebind below must run
+    // to completion before the first yield.
+    auto grown = db.grow();
+    if(!grown) {
+        // Degenerate (address space exhausted): borrowed views may already
+        // be dead. Dirty shards own their bytes by construction (merges
+        // install memory copies); everything else is shed rather than left
+        // dangling.
+        LOG_ERROR("Index database growth failed: {}", grown.error());
+        assert(false && "index map growth must not fail");
+        llvm::SmallVector<std::uint32_t> shed;
+        for(auto path_id: llvm::make_first_range(workspace.shards)) {
+            if(!dirty_shards.contains(path_id)) {
+                shed.push_back(path_id);
+            }
+        }
+        for(auto path_id: shed) {
+            workspace.shards.erase(path_id);
+        }
+        co_return;
+    }
+    bool grew = *grown;
+    if(!grew) {
+        // The LMDB backend hands out pointers into its resident read
+        // snapshot; after a commit the resident shards migrate onto a
+        // fresh snapshot so the old one can be retired. Both snapshots
+        // stay valid across the yields and the blobs are byte-identical,
+        // so queries between batches may observe a mix of old and new
+        // pointers with identical meaning. Shards whose write just failed
+        // are dirty again by now (their bytes never landed) and stay
+        // memory-backed until a later save.
+        auto advanced = db.advance_read_snapshot();
+        if(!advanced) {
+            LOG_WARN("Index read-snapshot advance failed: {}", advanced.error());
+            co_return;
+        }
+        if(*advanced == 0) {
+            // Filesystem backend: buffers are immortal, nothing to migrate.
+            co_return;
+        }
+    }
+
+    constexpr std::size_t rebind_batch = 512;
+    llvm::SmallVector<std::uint32_t> resident;
+    for(auto path_id: llvm::make_first_range(workspace.shards)) {
+        if(!dirty_shards.contains(path_id)) {
+            resident.push_back(path_id);
+        }
+    }
+    for(std::size_t i = 0; i < resident.size(); i += 1) {
+        if(!grew && i != 0 && i % rebind_batch == 0) {
+            co_await kota::sleep(std::chrono::milliseconds(0), loop);
+        }
+        auto path_id = resident[i];
+        auto it = workspace.shards.find(path_id);
+        if(it == workspace.shards.end() || dirty_shards.contains(path_id)) {
+            continue;
+        }
+        auto blob =
+            db.read(index::IndexBlobKind::Shard, blob_key(workspace.path_pool.resolve(path_id)));
+        if(!blob || !it->second.rebind(std::move(blob.buffer))) {
+            // Unreachable under the writer lock; dropping serves no rows
+            // for the file until reload, while keeping the old view would
+            // dangle once the snapshot retires.
+            LOG_ERROR("Index shard for {} diverged during snapshot migration",
+                      workspace.path_pool.resolve(path_id));
+            assert(false && "persisted shard must survive snapshot migration");
+            workspace.shards.erase(path_id);
+        }
+    }
+    db.retire_old_snapshot();
+}
+
 bool Indexer::load(bool read_only) {
-    if(!workspace.index_storage)
+    if(!workspace.index_db)
         return true;
-    auto& storage = *workspace.index_storage;
+    auto& db = *workspace.index_db;
     auto& project = workspace.project_index;
     ScopedTimer timer;
 
@@ -594,16 +671,15 @@ bool Indexer::load(bool read_only) {
         if(read_only) {
             return;
         }
+        llvm::SmallVector<index::BlobKey> removes;
         for(auto kind: {index::IndexBlobKind::Shard, index::IndexBlobKind::Manifest}) {
-            llvm::SmallVector<std::string> keys;
-            storage.for_each_key(kind, [&](llvm::StringRef key) { keys.push_back(key.str()); });
-            for(auto& key: keys) {
-                storage.remove(kind, key);
-            }
+            db.for_each_key(kind,
+                            [&](llvm::StringRef key) { removes.push_back({kind, key.str()}); });
         }
+        db.write({}, removes);
     };
 
-    auto global = storage.read(index::IndexBlobKind::Global, "global");
+    auto global = db.read(index::IndexBlobKind::Global, "global");
     if(!global) {
         // A global blob that exists but failed to open is a transient IO
         // error, not absence: sweeping would destroy an intact index and
@@ -611,9 +687,9 @@ bool Indexer::load(bool read_only) {
         // saving a fresh lineage over blobs whose anchor was never read
         // could alias their fv ids and generation stamps — and leave
         // everything for a healthier restart to load.
-        if(storage.contains(index::IndexBlobKind::Global, "global")) {
+        if(db.contains(index::IndexBlobKind::Global, "global")) {
             LOG_WARN("Index global blob unreadable; disabling index persistence this session");
-            workspace.index_storage.reset();
+            workspace.index_db.reset();
             return true;
         }
         // No global table means no resolvable manifests: everything else
@@ -622,11 +698,14 @@ bool Indexer::load(bool read_only) {
         return true;
     }
     llvm::DenseMap<std::uint32_t, std::uint64_t> manifest_pins;
-    if(!project.load_global(global->getBuffer(), workspace.path_pool, manifest_pins)) {
+    if(!project.load_global(global.buffer->getBuffer(), workspace.path_pool, manifest_pins)) {
         LOG_INFO("Discarding old-format index global blob");
         sweep_all();
         if(!read_only) {
-            storage.remove(index::IndexBlobKind::Global, "global");
+            db.write(
+                {
+            },
+                {{index::IndexBlobKind::Global, "global"}});
         }
         return false;
     }
@@ -638,9 +717,9 @@ bool Indexer::load(bool read_only) {
     // and are swept, with their TUs re-enqueued where recoverable.
     llvm::DenseSet<std::uint32_t> adopted_pins;
     llvm::SmallVector<std::string> dead_manifests;
-    storage.for_each_key(index::IndexBlobKind::Manifest, [&](llvm::StringRef key) {
-        auto blob = storage.read(index::IndexBlobKind::Manifest, key);
-        auto manifest = blob ? index::deserialize_manifest(blob->getBuffer()) : std::nullopt;
+    db.for_each_key(index::IndexBlobKind::Manifest, [&](llvm::StringRef key) {
+        auto blob = db.read(index::IndexBlobKind::Manifest, key);
+        auto manifest = blob ? index::deserialize_manifest(blob.buffer->getBuffer()) : std::nullopt;
         auto pin = manifest ? manifest_pins.find(manifest->tu_fv) : manifest_pins.end();
         if(!manifest || pin == manifest_pins.end() || pin->second != manifest->global_gen ||
            !project.knows_file_versions(*manifest)) {
@@ -661,10 +740,12 @@ bool Indexer::load(bool read_only) {
         auto tu_path_id = project.file_versions.find(manifest->tu_fv)->second.path_id;
         project.apply_manifest(tu_path_id, std::move(*manifest));
     });
-    if(!read_only) {
+    if(!read_only && !dead_manifests.empty()) {
+        llvm::SmallVector<index::BlobKey> removes;
         for(auto& key: dead_manifests) {
-            storage.remove(index::IndexBlobKind::Manifest, key);
+            removes.push_back({index::IndexBlobKind::Manifest, std::move(key)});
         }
+        db.write({}, removes);
     }
     // A pinned TU without an adopted manifest lost it to a failed write
     // that the landed global outran, or to a lost removal; re-enqueue it —
@@ -705,7 +786,7 @@ bool Indexer::load(bool read_only) {
     llvm::SmallVector<std::uint32_t> unservable;
     for(auto& [path_id, entry]: project.contributions) {
         auto key = blob_key(workspace.path_pool.resolve(path_id));
-        auto shard = index::Shard::from_buffer(storage.read(index::IndexBlobKind::Shard, key));
+        auto shard = index::Shard::from_buffer(db.read(index::IndexBlobKind::Shard, key).buffer);
         // A blob can verify yet miss a contributed variant, or carry
         // another content generation than the contributions pin (crash or
         // failed write left a manifest newer than its shard); set_live
@@ -730,6 +811,7 @@ bool Indexer::load(bool read_only) {
         workspace.shards[path_id] = std::move(shard);
     }
     llvm::SmallVector<std::uint32_t> mask_refresh;
+    llvm::SmallVector<index::BlobKey> manifest_removes;
     for(auto path_id: unservable) {
         auto contribution_it = project.contributions.find(path_id);
         if(contribution_it == project.contributions.end()) {
@@ -746,11 +828,14 @@ bool Indexer::load(bool read_only) {
             auto affected = project.remove_manifest(tu);
             mask_refresh.append(affected.begin(), affected.end());
             if(!read_only) {
-                storage.remove(index::IndexBlobKind::Manifest,
-                               blob_key(workspace.path_pool.resolve(tu)));
+                manifest_removes.push_back(
+                    {index::IndexBlobKind::Manifest, blob_key(workspace.path_pool.resolve(tu))});
             }
             enqueue(tu, ReindexReason::ContentChanged);
         }
+    }
+    if(!manifest_removes.empty()) {
+        db.write({}, manifest_removes);
     }
     for(auto path_id: mask_refresh) {
         auto it = workspace.shards.find(path_id);
@@ -761,14 +846,14 @@ bool Indexer::load(bool read_only) {
 
     // Sweep shard blobs nothing references any more.
     if(!read_only) {
-        llvm::SmallVector<std::string> orphans;
-        storage.for_each_key(index::IndexBlobKind::Shard, [&](llvm::StringRef key) {
+        llvm::SmallVector<index::BlobKey> orphans;
+        db.for_each_key(index::IndexBlobKind::Shard, [&](llvm::StringRef key) {
             if(!expected_keys.contains(key)) {
-                orphans.push_back(key.str());
+                orphans.push_back({index::IndexBlobKind::Shard, key.str()});
             }
         });
-        for(auto& key: orphans) {
-            storage.remove(index::IndexBlobKind::Shard, key);
+        if(!orphans.empty()) {
+            db.write({}, orphans);
         }
         reconcile_cdb_snapshot();
     }
@@ -808,9 +893,10 @@ llvm::SmallVector<std::uint32_t> Indexer::standalone_debt() {
 }
 
 void Indexer::reconcile_cdb_snapshot() {
-    auto blob = workspace.index_storage->read(index::IndexBlobKind::Cdb, "cdb");
+    auto blob = workspace.index_db->read(index::IndexBlobKind::Cdb, "cdb");
     CdbSnapshot persisted;
-    if(!blob || !kota::codec::json::from_string(std::string_view(blob->getBuffer()), persisted)) {
+    if(!blob ||
+       !kota::codec::json::from_string(std::string_view(blob.buffer->getBuffer()), persisted)) {
         // Unknown baseline: nothing to diff against. Dirty the snapshot so
         // the next save recreates it even when it commits nothing else —
         // after a crash that lost only the CDB blob, waiting for an
@@ -819,7 +905,7 @@ void Indexer::reconcile_cdb_snapshot() {
         cdb_dirty = true;
         return;
     }
-    persisted_cdb_snapshot = blob->getBuffer().str();
+    persisted_cdb_snapshot = blob.buffer->getBuffer().str();
 
     llvm::StringMap<const CdbSnapshotEntry*> before;
     for(auto& entry: persisted.entries) {
