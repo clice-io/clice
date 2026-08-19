@@ -1074,7 +1074,7 @@ kota::task<> Indexer::stop() {
     co_await bg_tasks.join();
 }
 
-void Indexer::schedule() {
+void Indexer::schedule(bool immediate) {
     if(!workspace.config.project.enable_indexing.value || indexing_active || indexing_scheduled)
         return;
     indexing_scheduled = true;
@@ -1082,8 +1082,13 @@ void Indexer::schedule() {
     if(!index_idle_timer) {
         index_idle_timer = std::make_shared<kota::timer>(kota::timer::create(loop));
     }
+    // The idle timeout exists to batch edit storms into one round; a
+    // follow-up round for work requeued during the round just ended has
+    // already been batched by that round and starts right away — a crashed
+    // file's retry must not owe an extra idle window on top of the round
+    // boundary it already waited out.
     index_idle_timer->start(
-        std::chrono::milliseconds(workspace.config.project.idle_timeout_ms.value));
+        std::chrono::milliseconds(immediate ? 0 : workspace.config.project.idle_timeout_ms.value));
 
     if(!bg_tasks.spawn(run_background_indexing())) {
         indexing_scheduled = false;
@@ -1498,7 +1503,7 @@ kota::task<> Indexer::run_background_indexing() {
     // the next external event — and a content-changed pending file's rows
     // stay skipped for that whole wait.
     if(index_queue_pos < index_queue.size()) {
-        schedule();
+        schedule(/*immediate=*/true);
     }
 }
 

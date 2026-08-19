@@ -100,8 +100,11 @@ test.skipIf(process.platform !== "linux")(
         // requeued and indexed by a follow-up round: every function
         // eventually appears in the project index.
         const expected = new Set(Array.from({ length: FILE_COUNT }, (_, i) => `func_${i}`));
+        // Budgeted for the Debug/ASan CI runners: 20 single-worker ASan
+        // compiles plus a crash respawn and one round boundary for the
+        // requeued file measure ~130s there (~60s locally).
         let found = new Set<string>();
-        for (let i = 0; i < 120; i++) {
+        for (let i = 0; i < 180; i++) {
             found = await indexedFunctions(client);
             if ([...expected].every((f) => found.has(f))) {
                 break;

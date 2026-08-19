@@ -133,7 +133,9 @@ public:
     }
 
     /// Schedule background indexing (respects idle timeout and dedup).
-    void schedule();
+    /// `immediate` skips the idle batching window — used by the round tail
+    /// for work requeued during the round that just ended.
+    void schedule(bool immediate = false);
 
     /// Merge a TUIndex result: intern FileVersions, replace the TU's
     /// manifest, and write row blobs only for variants no shard stores yet
