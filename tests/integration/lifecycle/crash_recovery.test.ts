@@ -5,6 +5,7 @@
 /// requeues them, and a follow-up round indexes every file.
 
 import * as fs from "node:fs";
+import * as path from "node:path";
 import { sleep, type CliceClient } from "@clice/tools/client";
 import { expect, test } from "../fixtures.ts";
 
@@ -110,5 +111,103 @@ test.skipIf(process.platform !== "linux")(
             [...expected].every((f) => found.has(f)),
             `missing after crash: ${JSON.stringify(missing)}`,
         ).toBe(true);
+    },
+);
+
+// Regression for #611: with every stateless slot's crash budget burnt, the
+// dispatch loop must park until the pool revives a slot — not spin the same
+// requeued files through instant worker-unavailable failures (the incident
+// produced a ~986 GiB master.log with a [51294/1] progress numerator).
+test.skipIf(process.platform !== "linux")(
+    "pool outage parks indexing",
+    { timeout: 300_000 },
+    async ({ session }) => {
+        const workspace = session.tmpdir();
+        const files: string[] = [];
+        for (let i = 0; i < FILE_COUNT; i++) {
+            const name = `file_${i}.cpp`;
+            workspace.write(
+                name,
+                `#include <string>\n` +
+                    `int func_${i}() { return (int)std::string("${i}").size(); }\n`,
+            );
+            files.push(name);
+        }
+        workspace.write("main.cpp", "int main() { return 0; }\n");
+        workspace.writeCDB([...files, "main.cpp"]);
+
+        // One stateless slot only, so exhausting its crash budget darkens
+        // the whole pool. The kills surface as WorkerCrash anomalies.
+        process.env["CLICE_ANOMALY_NO_TRAP"] = "1";
+        let client;
+        try {
+            client = session.spawn(workspace, {
+                allowAnomaly: true,
+                initializationOptions: {
+                    project: {
+                        stateless_worker_count: 1,
+                        min_stateless_worker_count: 1,
+                        max_stateless_worker_count: 1,
+                        idle_timeout_ms: 10,
+                    },
+                },
+            });
+            await client.initialize(workspace);
+        } finally {
+            delete process.env["CLICE_ANOMALY_NO_TRAP"];
+        }
+
+        await client.openAndWait("main.cpp");
+
+        // Kill the slot on sight until its budget (3 consecutive fast
+        // crashes) is spent; respawn backoff caps at ~1s, so 8s of killing
+        // covers the initial worker and every respawn.
+        let kills = 0;
+        for (let i = 0; i < 40; i += 1) {
+            for (const pid of statelessWorkerPids(client.child.pid!)) {
+                try {
+                    process.kill(pid, "SIGKILL");
+                    kills += 1;
+                } catch {
+                    // Already reaped.
+                }
+            }
+            await sleep(200);
+        }
+        expect(kills, "no stateless worker was ever seen").toBeGreaterThanOrEqual(3);
+
+        // Dark window: the master must stay responsive while the round is
+        // parked on the capacity signal.
+        const during = await indexedFunctions(client);
+
+        // The revival cooldown (30s) re-arms the slot and the parked round
+        // must resume and finish every file: crash requeues land past the
+        // round snapshot, so no single file burns its budget.
+        const expected = new Set(Array.from({ length: FILE_COUNT }, (_, i) => `func_${i}`));
+        let found = new Set<string>();
+        for (let i = 0; i < 150; i += 1) {
+            found = await indexedFunctions(client);
+            if ([...expected].every((f) => found.has(f))) {
+                break;
+            }
+            await sleep(1_000);
+        }
+        const missing = [...expected].filter((f) => !found.has(f)).sort();
+        expect(
+            [...expected].every((f) => found.has(f)),
+            `missing after outage (had ${during.size} during): ${JSON.stringify(missing)}`,
+        ).toBe(true);
+
+        // The spin itself: parked dispatch sends nothing, so the outage may
+        // produce at most a handful of worker-unavailable requeues — the
+        // incident produced them at an unbounded rate.
+        const logsDir = workspace.path(".clice/logs");
+        const requeues = fs
+            .readdirSync(logsDir, { recursive: true, encoding: "utf8" })
+            .filter((name) => path.basename(name) === "master.log")
+            .map((name) => fs.readFileSync(path.join(logsDir, name), "utf8"))
+            .join("")
+            .match(/No stateless workers available/g);
+        expect((requeues ?? []).length).toBeLessThanOrEqual(FILE_COUNT);
     },
 );

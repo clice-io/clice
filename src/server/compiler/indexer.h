@@ -65,9 +65,7 @@ public:
             Workspace& workspace,
             WorkerPool& pool,
             ContextResolver& contexts,
-            const SessionStore& sessions) :
-        loop(loop), bg_tasks(loop), workspace(workspace), pool(pool), contexts(contexts),
-        sessions(sessions) {}
+            const SessionStore& sessions);
 
     /// Whether open files' disk snapshots are indexed like closed ones.
     /// Off by default: the LSP side never reads an open file's shard (its
@@ -403,7 +401,26 @@ private:
     std::size_t pause_depth = 0;
     kota::event resume_event{true};
 
+    /// Set by on_stateless_capacity: wakes a round parked on "no schedulable
+    /// stateless worker" the moment a slot (re)enters service.
+    kota::event capacity_event{false};
+    Signal<>::Connection capacity_conn;
+
     Progress progress_data;
+
+    /// A round's shared counters, living on run_background_indexing's frame,
+    /// which outlives every spawned task (it joins them before returning).
+    struct RoundState {
+        std::size_t completed = 0;
+
+        /// Dispatched tasks not yet finished; the feeder caps this at twice
+        /// the pool's low budget so the pool queue stays shallow enough for
+        /// pause and budget changes to bite.
+        std::size_t inflight = 0;
+
+        /// Set whenever a task finishes, waking a feeder waiting out the cap.
+        kota::event task_done{false};
+    };
 
     kota::task<> run_background_indexing();
     kota::task<> index_one(std::uint32_t server_path_id,
@@ -412,14 +429,12 @@ private:
                            std::size_t total);
 
     /// One dispatched unit of a background round: index the file, then end
-    /// its pending window (ticket-guarded) and report progress. `completed`
-    /// refers into run_background_indexing's frame, which outlives every
-    /// spawned task (it joins them before returning).
+    /// its pending window (ticket-guarded) and report progress.
     kota::task<> run_index_task(std::uint32_t server_path_id,
                                 std::uint64_t ticket,
                                 std::size_t index,
                                 std::size_t total,
-                                std::size_t& completed);
+                                RoundState& round);
 };
 
 }  // namespace clice

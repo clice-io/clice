@@ -104,6 +104,16 @@ struct IndexerFixture {
         loop.schedule(task);
         loop.run();
     }
+
+    /// Run one background round to completion on the fixture's loop.
+    void run_round() {
+        auto body = [this]() -> kota::task<> {
+            co_await indexer.run_background_indexing();
+        };
+        auto task = body();
+        loop.schedule(task);
+        loop.run();
+    }
 };
 
 namespace {
@@ -1873,6 +1883,50 @@ TEST_CASE(ContentChangeResetsBudget) {
     ASSERT_EQ(int(f.fail(id, /*crashed=*/true)), int(IndexerFixture::Verdict::Requeued));
     f.indexer.enqueue(id, ReindexReason::DepsOnly);
     ASSERT_EQ(f.attempts(id), 1u);
+}
+
+TEST_CASE(RoundSnapshotBoundary) {
+    IndexerFixture f;
+    // Manual rounds: the tail schedule() must no-op so the boundary between
+    // the two rounds stays observable.
+    f.workspace.config.project.enable_indexing.value = false;
+
+    auto a = f.workspace.path_pool.intern("/fake/a.cpp");
+    auto b = f.workspace.path_pool.intern("/fake/b.cpp");
+    auto c = f.workspace.path_pool.intern("/fake/c.cpp");
+
+    f.indexer.enqueue(a, ReindexReason::ContentChanged);
+    f.indexer.enqueue(b, ReindexReason::ContentChanged);
+
+    // Grow the queue from inside the round: the first Report enqueues a
+    // third file, which must land past the round snapshot and wait for the
+    // next round instead of being consumed by this one.
+    bool grew = false;
+    Indexer::Progress first_end;
+    auto conn = f.indexer.on_progress_changed.connect([&] {
+        auto& progress = f.indexer.progress();
+        if(progress.stage == Indexer::Progress::Stage::Report && !grew) {
+            grew = true;
+            f.indexer.enqueue(c, ReindexReason::ContentChanged);
+        }
+        if(progress.stage == Indexer::Progress::Stage::End && first_end.total == 0) {
+            first_end = progress;
+        }
+    });
+
+    f.run_round();
+
+    ASSERT_TRUE(grew);
+    ASSERT_EQ(first_end.total, 2u);
+    ASSERT_EQ(first_end.dispatched, 2u);
+    ASSERT_EQ(first_end.completed, 2u);
+    ASSERT_EQ(f.indexer.pending_files(), 1u);
+
+    f.run_round();
+
+    ASSERT_EQ(f.indexer.pending_files(), 0u);
+    ASSERT_EQ(f.indexer.failed_files(), 3u);
+    ASSERT_TRUE(f.indexer.is_idle());
 }
 
 };  // TEST_SUITE(IndexerRequeue)

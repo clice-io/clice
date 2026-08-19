@@ -8,6 +8,7 @@
 #include <optional>
 
 #include "server/protocol/worker.h"
+#include "support/signal.h"
 
 #include "kota/async/async.h"
 #include "kota/ipc/codec/bincode.h"
@@ -178,6 +179,21 @@ public:
     bool revives_slots() const {
         return started && options.revive_after.count() > 0;
     }
+
+    /// Alive stateless slots that also accept new work: a retiring slot
+    /// stays alive to finish its request but is skipped by dispatch.
+    std::size_t schedulable_stateless() const;
+
+    /// The current low-priority concurrency budget. Public so the indexer's
+    /// feeder can size its in-flight window from it.
+    std::size_t effective_low_limit() const {
+        return std::min(low_limit, max_low_limit());
+    }
+
+    /// Emitted when a stateless slot (re)enters service — spawn, respawn,
+    /// revive, scale-up. The indexer's capacity gate wakes on it instead of
+    /// spinning dispatch attempts against a pool with no schedulable worker.
+    Signal<> on_stateless_capacity;
 
     /// Callback invoked when a worker process crashes.
     std::function<void(const WorkerCrashInfo&)> on_crash;
@@ -352,10 +368,6 @@ private:
     /// Stateless slots that can serve requests now.
     std::size_t alive_stateless() const;
 
-    /// Alive stateless slots that also accept new work: a retiring slot
-    /// stays alive to finish its request but is skipped by dispatch.
-    std::size_t schedulable_stateless() const;
-
     /// Alive stateless slots with a request in flight.
     std::size_t busy_stateless() const;
 
@@ -384,10 +396,6 @@ private:
     std::size_t max_low_limit() const {
         auto live = schedulable_stateless();
         return live > 1 ? live - 1 : live;
-    }
-
-    std::size_t effective_low_limit() const {
-        return std::min(low_limit, max_low_limit());
     }
 
     /// Wait for an idle stateless worker. Returns SIZE_MAX when no slot can

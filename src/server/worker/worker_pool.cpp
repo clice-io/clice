@@ -179,6 +179,8 @@ bool WorkerPool::spawn_worker(bool stateful) {
     if(stateful)
         install_evict_handler(workers[index], index);
     worker_tasks.spawn(monitor_worker(index, stateful));
+    if(!stateful)
+        on_stateless_capacity.emit();
     return true;
 }
 
@@ -207,8 +209,10 @@ bool WorkerPool::respawn_worker(std::size_t index, bool stateful) {
         install_evict_handler(w, index);
     worker_tasks.spawn(monitor_worker(index, stateful));
 
-    if(!stateful)
+    if(!stateful) {
         try_dispatch_pending();
+        on_stateless_capacity.emit();
+    }
 
     LOG_INFO("Worker {} restarted (crash streak {})", w.name, w.crash_streak);
     return true;

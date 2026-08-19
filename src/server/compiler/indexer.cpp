@@ -131,6 +131,16 @@ std::string serialize_cdb_snapshot(Workspace& workspace,
 
 }  // namespace
 
+Indexer::Indexer(kota::event_loop& loop,
+                 Workspace& workspace,
+                 WorkerPool& pool,
+                 ContextResolver& contexts,
+                 const SessionStore& sessions) :
+    loop(loop), bg_tasks(loop), workspace(workspace), pool(pool), contexts(contexts),
+    sessions(sessions) {
+    capacity_conn = pool.on_stateless_capacity.connect([this] { capacity_event.set(); });
+}
+
 bool Indexer::merge(const void* tu_index_data, std::size_t size) {
     // Zero-copy consumption: the wire stays serialized; a new variant's
     // blob bytes are sliced out and installed or merged without decoding
@@ -1304,7 +1314,7 @@ kota::task<> Indexer::run_index_task(std::uint32_t server_path_id,
                                      std::uint64_t ticket,
                                      std::size_t index,
                                      std::size_t total,
-                                     std::size_t& completed) {
+                                     RoundState& round) {
     co_await index_one(server_path_id, ticket, index, total);
     // The pending window ends with the index attempt, success or not. On
     // failure the last-known rows resume serving — deliberately: keeping
@@ -1317,9 +1327,11 @@ kota::task<> Indexer::run_index_task(std::uint32_t server_path_id,
        it != reindex_reasons.end() && it->second.ticket == ticket) {
         reindex_reasons.erase(it);
     }
-    ++completed;
+    round.completed += 1;
+    round.inflight -= 1;
+    round.task_done.set();
     progress_data.stage = Progress::Stage::Report;
-    progress_data.completed = completed;
+    progress_data.completed = round.completed;
     on_progress_changed.emit();
 }
 
@@ -1347,9 +1359,15 @@ kota::task<> Indexer::run_background_indexing() {
         index_queue.end(),
         [this](std::uint32_t id) { return workspace.path_to_module.contains(id); });
 
-    auto total = index_queue.size() - index_queue_pos;
+    // This round consumes [index_queue_pos, round_end) only. Anything
+    // appended during the round — including its own failures' requeues —
+    // waits for the next round; consuming a requeue in the round that
+    // produced it is what let a worker outage spin the dispatch loop
+    // against instant failures (#611).
+    auto round_end = index_queue.size();
+    auto total = round_end - index_queue_pos;
     std::size_t dispatched = 0;
-    std::size_t completed = 0;
+    RoundState round;
 
     // Announce the round; a progress reporter reads the counts from
     // progress() and owns the LSP token's begin/report/end handshake. With
@@ -1362,11 +1380,29 @@ kota::task<> Indexer::run_background_indexing() {
     ScopedTimer timer;
     kota::task_group<> workers(loop);
 
-    while(index_queue_pos < index_queue.size()) {
+    while(index_queue_pos < round_end) {
         if(pause_depth > 0)
             co_await resume_event.wait();
 
-        auto server_path_id = index_queue[index_queue_pos++];
+        // With no schedulable worker but revival pending, a dispatch would
+        // only convert the queue slot into an instant worker_unavailable
+        // failure; park until a slot returns to service. With revival off
+        // such failures are terminal and take the normal failure path.
+        while(pool.revives_slots() && pool.schedulable_stateless() == 0) {
+            capacity_event.reset();
+            co_await capacity_event.wait();
+        }
+
+        // Feed at most twice the pool's low budget: deep enough that
+        // workers never idle waiting for the feeder, shallow enough that
+        // the pool queue holds little when a pause or budget cut lands.
+        while(round.inflight >= std::max<std::size_t>(2 * pool.effective_low_limit(), 2)) {
+            round.task_done.reset();
+            co_await round.task_done.wait();
+        }
+
+        auto server_path_id = index_queue[index_queue_pos];
+        index_queue_pos += 1;
         pending_ids.erase(server_path_id);
         // No open-session or hash-freshness shortcut here: index_one is the
         // single decision point for skipping (it knows the pending reason;
@@ -1385,13 +1421,14 @@ kota::task<> Indexer::run_background_indexing() {
             continue;
         }
 
-        ++dispatched;
+        dispatched += 1;
+        round.inflight += 1;
         auto ticket = pending_it->second.ticket;
         // A member coroutine, not an immediately-invoked capturing lambda:
         // a lambda's captures live in the lambda object, which dies at the
         // end of this statement — anything read after the first suspension
         // would dangle. Coroutine parameters are copied into the frame.
-        workers.spawn(run_index_task(server_path_id, ticket, dispatched, total, completed));
+        workers.spawn(run_index_task(server_path_id, ticket, dispatched, total, round));
     }
 
     LOG_DEBUG("Background indexing: all {} tasks spawned, waiting for completion", dispatched);
@@ -1399,14 +1436,14 @@ kota::task<> Indexer::run_background_indexing() {
 
     // Skipped files bump `completed` without a Report emit; refresh the
     // materialized count so a subscriber waking up on End reads the truth.
-    progress_data.completed = completed;
+    progress_data.completed = round.completed;
     progress_data.stage = Progress::Stage::End;
     progress_data.dispatched = dispatched;
     on_progress_changed.emit();
 
     // Safe point to compact: no dispatch loop holds an index into the queue.
-    // Files enqueued while we awaited the workers keep the queue alive for
-    // the next scheduled round.
+    // Files enqueued or requeued past the round snapshot keep the queue
+    // alive for the next scheduled round.
     if(index_queue_pos >= index_queue.size()) {
         assert(pending_ids.empty() && "drained queue must have no pending ids");
         assert(reindex_reasons.empty() && "drained queue must have no pending reasons");
@@ -1427,10 +1464,10 @@ kota::task<> Indexer::run_background_indexing() {
     // one's in-flight batch, racing same-key blob writes on the pool.
     indexing_active = false;
 
-    // Files enqueued while the round was joining its workers saw their
-    // schedule() no-op against indexing_active; without this kick they
-    // would wait for the next external event — and a content-changed
-    // pending file's rows stay skipped for that whole wait.
+    // Files enqueued or requeued while the round ran saw their schedule()
+    // no-op against indexing_active; without this kick they would wait for
+    // the next external event — and a content-changed pending file's rows
+    // stay skipped for that whole wait.
     if(index_queue_pos < index_queue.size()) {
         schedule();
     }
