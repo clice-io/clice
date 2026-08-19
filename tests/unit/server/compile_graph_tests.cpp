@@ -31,27 +31,27 @@ CompileGraph::resolve_fn
 }
 
 CompileGraph::dispatch_fn instant_dispatch() {
-    return [](std::uint32_t) -> kota::task<bool> {
+    return [](std::uint32_t, bool) -> kota::task<bool> {
         co_return true;
     };
 }
 
 CompileGraph::dispatch_fn tracking_dispatch(std::vector<std::uint32_t>& compiled) {
-    return [&compiled](std::uint32_t path_id) -> kota::task<bool> {
+    return [&compiled](std::uint32_t path_id, bool) -> kota::task<bool> {
         compiled.push_back(path_id);
         co_return true;
     };
 }
 
 CompileGraph::dispatch_fn failing_dispatch() {
-    return [](std::uint32_t) -> kota::task<bool> {
+    return [](std::uint32_t, bool) -> kota::task<bool> {
         co_return false;
     };
 }
 
 /// Dispatch that fails only for specific path_ids.
 CompileGraph::dispatch_fn selective_dispatch(llvm::DenseSet<std::uint32_t> fail_ids) {
-    return [fail_ids = std::move(fail_ids)](std::uint32_t path_id) -> kota::task<bool> {
+    return [fail_ids = std::move(fail_ids)](std::uint32_t path_id, bool) -> kota::task<bool> {
         co_return !fail_ids.contains(path_id);
     };
 }
@@ -85,7 +85,7 @@ struct ManualDispatch {
     }
 
     CompileGraph::dispatch_fn fn() {
-        return [this](std::uint32_t path_id) -> kota::task<bool> {
+        return [this](std::uint32_t path_id, bool) -> kota::task<bool> {
             auto& g = gate(path_id);
             g.calls += 1;
             g.started.set();
@@ -441,7 +441,7 @@ TEST_CASE(compile_deps_resolve_once) {
 TEST_CASE(compile_deps_failure) {
     // A failing dependency fails the request; the root unit is never
     // dispatched on a failed preparation.
-    auto fail_and_track = [&](std::uint32_t path_id) -> kota::task<bool> {
+    auto fail_and_track = [&](std::uint32_t path_id, bool) -> kota::task<bool> {
         compiled.push_back(path_id);
         co_return false;
     };
@@ -1626,7 +1626,7 @@ TEST_CASE(shutdown_with_inflight) {
 
 TEST_CASE(randomized_stress) {
     kota::semaphore permits{0};
-    auto dispatch = [&](std::uint32_t) -> kota::task<bool> {
+    auto dispatch = [&](std::uint32_t, bool) -> kota::task<bool> {
         co_await permits.acquire();
         co_return true;
     };

@@ -20,7 +20,7 @@ CompileGraph::dispatch_fn make_dispatch(CompilationDatabase& cdb,
                                         PathPool& pool,
                                         DependencyGraph& graph,
                                         llvm::DenseMap<std::uint32_t, std::string>& pcm_paths) {
-    return [&](std::uint32_t path_id) -> kota::task<bool> {
+    return [&](std::uint32_t path_id, bool) -> kota::task<bool> {
         auto file_path = pool.resolve(path_id);
         auto results = cdb.lookup(file_path);
         if(results.empty()) {
@@ -1117,13 +1117,13 @@ TEST_CASE(shared_dep_import_switch) {
     kota::event shared_proceed;
     int shared_calls = 0;
     auto inner = default_dispatch();
-    auto dispatch = [&](std::uint32_t pid) -> kota::task<bool> {
+    auto dispatch = [&](std::uint32_t pid, bool) -> kota::task<bool> {
         if(pid == pid_shared) {
             shared_calls += 1;
             shared_started.set();
             co_await shared_proceed.wait();
         }
-        co_return co_await inner(pid);
+        co_return co_await inner(pid, false);
     };
 
     make_graph(std::move(dispatch), default_resolver());
@@ -1215,13 +1215,13 @@ TEST_CASE(shared_dep_fails_both) {
     kota::event shared_proceed;
     int shared_calls = 0;
     auto inner = default_dispatch();
-    auto dispatch = [&](std::uint32_t pid) -> kota::task<bool> {
+    auto dispatch = [&](std::uint32_t pid, bool) -> kota::task<bool> {
         if(pid == pid_shared) {
             shared_calls += 1;
             shared_started.set();
             co_await shared_proceed.wait();
         }
-        co_return co_await inner(pid);
+        co_return co_await inner(pid, false);
     };
 
     make_graph(std::move(dispatch), default_resolver());

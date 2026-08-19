@@ -51,6 +51,14 @@ struct CompileUnit {
     /// compiling cancels this unit's round. Not a lifetime count.
     std::uint32_t refcount = 0;
 
+    /// A foreground requester holds (or held) interest in this round: the
+    /// dispatch sends the build at High priority so a waiting user request
+    /// is not throttled behind background indexing. Sticky while any
+    /// interest remains — clearing with the foreground requester alone
+    /// would drop an in-flight retry back to Low mid-wait — and reset when
+    /// the interest count returns to zero.
+    bool foreground = false;
+
     /// A zero-interest cancellation check is already queued for this unit.
     bool zero_check_pending = false;
 
@@ -94,20 +102,23 @@ struct CompileUnit {
 ///   dependency cycle) propagates to waiters without retry.
 class CompileGraph {
 public:
-    /// Performs the actual compilation (e.g. produce PCM file).
-    using dispatch_fn = std::function<kota::task<bool>(std::uint32_t path_id)>;
+    /// Performs the actual compilation (e.g. produce PCM file); `foreground`
+    /// carries the unit's interest class into the build's priority.
+    using dispatch_fn = std::function<kota::task<bool>(std::uint32_t path_id, bool foreground)>;
 
     /// Returns the dependency path_ids for a given path_id (called lazily on first compile).
     using resolve_fn = std::function<llvm::SmallVector<std::uint32_t>(std::uint32_t path_id)>;
 
     CompileGraph(kota::event_loop& loop, dispatch_fn dispatch, resolve_fn resolve);
 
-    /// Compile a unit and all its transitive dependencies.
-    kota::task<bool> compile(std::uint32_t path_id);
+    /// Compile a unit and all its transitive dependencies. `foreground`
+    /// marks the chain's dispatches High-priority (a user request waits on
+    /// them); background callers leave it unset.
+    kota::task<bool> compile(std::uint32_t path_id, bool foreground = false);
 
     /// Compile all transitive module dependencies of path_id, but NOT path_id itself.
     /// Used for non-module files (plain .cpp) that import modules.
-    kota::task<bool> compile_deps(std::uint32_t path_id);
+    kota::task<bool> compile_deps(std::uint32_t path_id, bool foreground = false);
 
     /// Mark path_id and all transitive dependents as dirty,
     /// cancelling any in-progress compilations (their results are stale).

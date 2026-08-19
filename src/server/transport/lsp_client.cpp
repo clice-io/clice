@@ -234,6 +234,7 @@ void LSPClient::register_document_sync() {
         auto& srv = this->server;
         if(past_shutdown(srv.lifecycle))
             return;
+        srv.pool.foreground_pulse();
 
         auto [path, path_id, session] = resolve_uri(params.text_document.uri);
 
@@ -263,6 +264,7 @@ void LSPClient::register_document_sync() {
         auto& srv = this->server;
         if(past_shutdown(srv.lifecycle))
             return;
+        srv.pool.foreground_pulse();
 
         auto [path, path_id, session] = resolve_uri(params.text_document.uri);
         if(!session) {
@@ -318,6 +320,7 @@ void LSPClient::register_document_sync() {
         // ready reads the saved disk content anyway.
         if(srv.lifecycle != ServerLifecycle::Ready)
             return;
+        srv.pool.foreground_pulse();
 
         auto [path, path_id, session] = resolve_uri(params.text_document.uri);
         srv.dispatch(FileEvent::buffer_saved(path_id));

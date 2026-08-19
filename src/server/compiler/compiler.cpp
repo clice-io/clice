@@ -269,7 +269,7 @@ void Compiler::init_compile_graph() {
     };
 
     // Dispatch: sends BuildPCM request to a stateless worker.
-    auto dispatch = [this](std::uint32_t path_id) -> kota::task<bool> {
+    auto dispatch = [this](std::uint32_t path_id, bool foreground) -> kota::task<bool> {
         auto mod_it = workspace.path_to_module.find(path_id);
         if(mod_it == workspace.path_to_module.end())
             co_return false;
@@ -282,6 +282,7 @@ void Compiler::init_compile_graph() {
         auto file_path = std::string(workspace.path_pool.resolve(path_id));
 
         worker::BuildParams bp;
+        bp.priority = foreground ? worker::Priority::High : worker::Priority::Low;
         bp.kind = worker::BuildKind::BuildPCM;
         bp.file = file_path;
         contexts.resolve_command(file_path, bp.directory, bp.arguments);
@@ -716,10 +717,14 @@ kota::task<bool> Compiler::ensure_deps(Session& session,
     // scope unwinds the wait and releases this request's interest in the
     // dependency graph, without touching the shared compilations themselves.
     auto compile_deps = [&](std::uint32_t pid) -> kota::task<bool> {
+        // A user request waits on these builds: dispatch them High so the
+        // background budget cannot throttle its own foreground.
         if(!scope) {
-            co_return co_await workspace.compile_graph->compile_deps(pid);
+            co_return co_await workspace.compile_graph->compile_deps(pid, /*foreground=*/true);
         }
-        auto result = co_await kota::with_token(workspace.compile_graph->compile_deps(pid), *scope);
+        auto result = co_await kota::with_token(
+            workspace.compile_graph->compile_deps(pid, /*foreground=*/true),
+            *scope);
         co_return result.has_value() && *result;
     };
 

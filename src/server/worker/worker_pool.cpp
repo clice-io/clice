@@ -81,6 +81,12 @@ std::size_t WorkerPool::low_busy_count() const {
     });
 }
 
+std::size_t WorkerPool::high_busy_count() const {
+    return std::ranges::count_if(stateless_workers, [](const WorkerProcess& w) {
+        return w.state == SlotState::Alive && w.busy && !w.low_priority;
+    });
+}
+
 std::size_t WorkerPool::stateless_capacity() const {
     return std::ranges::count_if(stateless_workers, [](const WorkerProcess& w) {
         return w.state != SlotState::Dead && w.state != SlotState::Retired && !w.retiring;
@@ -201,6 +207,7 @@ bool WorkerPool::respawn_worker(std::size_t index, bool stateful) {
     w.low_priority = false;
     w.retiring = false;
     w.preempted = false;
+    w.cancel_requested_at = {};
     w.spawn_time = std::chrono::steady_clock::now();
     // generation was bumped at death; crash_streak carries across restarts
     // until a healthy uptime resets it.
@@ -692,6 +699,14 @@ kota::task<std::size_t> WorkerPool::acquire_stateless_slot(worker::Priority prio
                 co_return claim_stateless(idx, priority);
         }
 
+        // A queued High request needs a process, not just CPU: with every
+        // slot busy, cooperatively cancel one low compile so a slot frees
+        // at the next declaration boundary instead of at end-of-TU. Slots
+        // already asked stay asked (cancel_low_priority skips them), so
+        // re-entering this loop cannot over-cancel.
+        if(priority == P::High && pick_idle_stateless() == SIZE_MAX)
+            cancel_low_priority(1);
+
         // Queue up and suspend until try_dispatch_pending() claims a worker
         // for us or wakes us to observe pool death. The destructor covers
         // cancellation while queued or between dispatch and resume.
@@ -721,6 +736,7 @@ void WorkerPool::release_stateless_slot(std::size_t worker_index) {
     w.busy = false;
     w.low_priority = false;
     w.preempt_source.reset();
+    w.cancel_requested_at = {};
     LOG_DEBUG("Release {} (busy={}, low_busy={})", w.name, busy_stateless(), low_busy_count());
     try_dispatch_pending();
 }
@@ -785,6 +801,23 @@ kota::task<> WorkerPool::monitor_loop() {
     while(true) {
         co_await kota::sleep(std::chrono::milliseconds(3000), loop);
 
+        tick_foreground();
+
+        // A cancelled low request that ignored its stop flag past the grace
+        // window is stuck inside one declaration; reclaim the process.
+        auto now = std::chrono::steady_clock::now();
+        for(std::size_t i = 0; i < stateless_workers.size(); i += 1) {
+            auto& w = stateless_workers[i];
+            if(w.state == SlotState::Alive && w.busy &&
+               w.cancel_requested_at != std::chrono::steady_clock::time_point{} &&
+               now - w.cancel_requested_at > cancel_grace) {
+                LOG_WARN("Worker {} ignored a cooperative cancel; killing it", w.name);
+                w.preempted = true;
+                reset_streak_if_healthy(w);
+                mark_worker_dead(i, false, true);
+            }
+        }
+
         auto mem = kota::sys::memory();
         if(mem.total == 0)
             continue;
@@ -796,6 +829,56 @@ kota::task<> WorkerPool::monitor_loop() {
         tick_memory(ratio);
         tick_scaling(ratio);
     }
+}
+
+void WorkerPool::note_foreground() {
+    last_fg_activity = std::chrono::steady_clock::now();
+    if(foreground_active)
+        return;
+    foreground_active = true;
+    auto cap = effective_low_limit();
+    auto busy_low = low_busy_count();
+    if(busy_low > cap) {
+        LOG_INFO("Foreground active: low budget -> {}, cancelling {} in-flight",
+                 cap,
+                 busy_low - cap);
+        cancel_low_priority(busy_low - cap);
+    }
+}
+
+void WorkerPool::tick_foreground() {
+    if(!foreground_active)
+        return;
+    if(foreground_busy()) {
+        last_fg_activity = std::chrono::steady_clock::now();
+        return;
+    }
+    if(std::chrono::steady_clock::now() - last_fg_activity < fg_hold)
+        return;
+    foreground_active = false;
+    LOG_DEBUG("Foreground idle: low budget -> {}", effective_low_limit());
+    // The reopened budget can admit queued low work right away.
+    try_dispatch_pending();
+}
+
+void WorkerPool::cancel_low_priority(std::size_t count) {
+    std::size_t cancelled = 0;
+    // Newest claim first: the youngest compile has the least work to lose,
+    // and always starting from index 0 would starve the same slot's file.
+    for(std::size_t i = stateless_workers.size(); i > 0 && cancelled < count;) {
+        i -= 1;
+        auto& w = stateless_workers[i];
+        if(w.state != SlotState::Alive || !w.busy || !w.low_priority)
+            continue;
+        if(w.cancel_requested_at != std::chrono::steady_clock::time_point{})
+            continue;
+        if(w.preempt_source)
+            w.preempt_source->cancel();
+        w.cancel_requested_at = std::chrono::steady_clock::now();
+        cancelled += 1;
+    }
+    if(cancelled > 0)
+        LOG_INFO("Cooperatively cancelled {} low-priority requests", cancelled);
 }
 
 void WorkerPool::tick_memory(double available_ratio) {
@@ -813,15 +896,17 @@ void WorkerPool::tick_memory(double available_ratio) {
         saturated_cycles,
         idle_cycles);
 
-    // Severe pressure: drop the low allowance to its floor and preempt all
-    // running low-priority work — killing the workers releases their memory
-    // immediately, and they respawn without crash accounting.
+    // Severe pressure: zero the low allowance and preempt all running
+    // low-priority work — killing the workers releases their memory
+    // immediately, and they respawn without crash accounting. Zero, not
+    // one: with any allowance left, the preemption's own dispatch kick
+    // would admit a fresh compile into the very pressure being relieved.
     if(available_ratio < 0.10) {
-        if(low_limit > 1) {
+        if(low_limit > 0) {
             if(w_max == 0 || low_limit > w_max)
                 w_max = low_limit;
-            low_limit = 1;
-            LOG_WARN("low_limit -> 1 (severe memory pressure: {:.0f}% available)",
+            low_limit = 0;
+            LOG_WARN("low_limit -> 0 (severe memory pressure: {:.0f}% available)",
                      available_ratio * 100);
         }
         if(auto busy_low = low_busy_count())
@@ -842,7 +927,11 @@ void WorkerPool::tick_memory(double available_ratio) {
                      low_limit,
                      available_ratio * 100);
         }
-    } else if(available_ratio > 0.40 && low_limit < max_low_limit()) {
+    } else if(available_ratio > 0.40 && low_limit < max_low_limit() && !foreground_active) {
+        // The foreground gate is anti-windup: while the cap masks the low
+        // budget, memory freed by the squeeze itself would otherwise walk
+        // the window back to its old peak, and the cap's falling edge would
+        // release that untested burst all at once.
         backoff_cooldown = 0;
         if(w_max > 0 && low_limit < w_max) {
             // CUBIC-style fast recovery: close half the gap to the last
@@ -888,7 +977,10 @@ void WorkerPool::tick_scaling(double available_ratio) {
         idle_cycles = 0;
     }
 
-    if(saturated_cycles >= scale_up_ticks && available_ratio > 0.30) {
+    // No scale-up while the foreground cap binds: the "saturation" is the
+    // cap doing its job, and new slots would feed the post-cap ramp-up, not
+    // the user.
+    if(saturated_cycles >= scale_up_ticks && available_ratio > 0.30 && !foreground_active) {
         if(scale_up_worker())
             saturated_cycles = 0;
     }

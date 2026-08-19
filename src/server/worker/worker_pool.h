@@ -184,10 +184,20 @@ public:
     /// stays alive to finish its request but is skipped by dispatch.
     std::size_t schedulable_stateless() const;
 
-    /// The current low-priority concurrency budget. Public so the indexer's
-    /// feeder can size its in-flight window from it.
+    /// The current low-priority concurrency budget: the memory controller's
+    /// window, additionally clamped to the foreground cap while the user is
+    /// active. Public so the indexer's feeder can size its in-flight window
+    /// from it.
     std::size_t effective_low_limit() const {
-        return std::min(low_limit, max_low_limit());
+        return std::min(low_limit, foreground_active ? foreground_cap() : max_low_limit());
+    }
+
+    /// Foreground evidence from outside the pool: didOpen/didChange/didSave
+    /// and friends. Starts (or refreshes) the hold window; requests need no
+    /// call of their own — every stateful dispatch and every High stateless
+    /// dispatch notes itself, and in-flight ones hold the window open.
+    void foreground_pulse() {
+        note_foreground();
     }
 
     /// Emitted when a stateless slot (re)enters service — spawn, respawn,
@@ -271,6 +281,11 @@ private:
         /// Stateless only: cancels the in-flight low-priority request so its
         /// sender observes preemption instead of a bare transport error.
         std::shared_ptr<kota::cancellation_source> preempt_source;
+
+        /// When a cooperative cancel was requested of this slot's in-flight
+        /// low request; zero when none is outstanding. The monitor kills the
+        /// process if it blows past cancel_grace without returning.
+        std::chrono::steady_clock::time_point cancel_requested_at{};
     };
 
     kota::event_loop& loop;
@@ -387,16 +402,37 @@ private:
         return stateless_capacity() > 0;
     }
 
-    /// Reserve one worker for high-priority requests by capping low-priority
-    /// concurrency at one below the slots that can be scheduled right now.
-    /// A slot dying, awaiting respawn, or retiring cannot take new work;
-    /// counting it would let low-priority requests occupy every schedulable
-    /// worker. With a single schedulable worker this collapses to 1: both
-    /// priorities share it, and high wins only via queue ordering.
+    /// The low-priority ceiling with no foreground activity: every
+    /// schedulable slot. Foreground bursts reclaim capacity through the
+    /// foreground cap and the deficit cancel in acquire_stateless_slot
+    /// instead of a standing reservation, which would leave a slot idle
+    /// through every fully-idle stretch.
     std::size_t max_low_limit() const {
-        auto live = schedulable_stateless();
-        return live > 1 ? live - 1 : live;
+        return schedulable_stateless();
     }
+
+    /// The low budget while the user is active: a fixed share of the
+    /// configured capacity (not of the live slot count, which the scaler
+    /// moves and which would turn the share into a feedback loop).
+    std::size_t foreground_cap() const {
+        return std::max<std::size_t>(1, options.max_stateless * 3 / 10);
+    }
+
+    /// Rising edge of foreground activity: clamp the budget now and
+    /// cooperatively cancel the excess in-flight low work so the CPU frees
+    /// within a declaration boundary, not at end-of-TU.
+    void note_foreground();
+
+    /// Falling edge, driven by the monitor tick: leases gone and the hold
+    /// window expired reopen the idle budget.
+    void tick_foreground();
+
+    /// Cooperatively cancel up to `count` in-flight low-priority requests:
+    /// the wire cancellation trips the worker's stop flag, the compile
+    /// returns at the next declaration boundary, and the sender observes
+    /// dispatch_errc::cancelled — the process survives. A victim that
+    /// ignores the cancel past cancel_grace is killed by the monitor.
+    void cancel_low_priority(std::size_t count);
 
     /// Wait for an idle stateless worker. Returns SIZE_MAX when no slot can
     /// serve the request anymore (pool stopped or all slots given up).
@@ -477,6 +513,31 @@ private:
     /// processes respawn immediately without crash accounting.
     void preempt_low_priority(std::size_t count);
 
+    /// Foreground activity state: in-flight foreground work (stateful or
+    /// High stateless), or a pulse within fg_hold, keeps the low budget
+    /// clamped to foreground_cap(). Rising edges are synchronous
+    /// (note_foreground); the falling edge is evaluated by the monitor tick
+    /// so hot paths never read the clock.
+    bool foreground_active = false;
+    std::size_t stateful_inflight = 0;
+    std::chrono::steady_clock::time_point last_fg_activity{};
+
+    /// Whether foreground work is in flight right now — the hold window
+    /// only starts counting once this drains.
+    bool foreground_busy() const {
+        return stateful_inflight > 0 || !high_queue.empty() || high_busy_count() > 0;
+    }
+
+    /// Alive stateless slots busy with high-priority work.
+    std::size_t high_busy_count() const;
+
+    constexpr static std::chrono::seconds fg_hold{10};
+
+    /// Grace before a cooperatively cancelled low request's worker is
+    /// killed: covers a compile stuck inside one giant declaration, where
+    /// the stop flag is never polled.
+    constexpr static std::chrono::seconds cancel_grace{10};
+
     /// CUBIC-style fast recovery target: last low_limit before a reduction.
     std::size_t w_max = 0;
 
@@ -544,6 +605,19 @@ RequestResult<Params> WorkerPool::send_stateful(std::uint32_t path_id,
                                                 const Params& params,
                                                 kota::ipc::request_options opts,
                                                 Suspect suspect) {
+    // Every stateful request is user-facing: note the activity and hold the
+    // foreground window open for as long as it flies.
+    note_foreground();
+    stateful_inflight += 1;
+
+    struct InflightGuard {
+        std::size_t& count;
+
+        ~InflightGuard() {
+            count -= 1;
+        }
+    } inflight_guard{stateful_inflight};
+
     // An isolated probe only runs on a worker hosting no other document:
     // its crash must never take healthy sessions with it. With no such
     // worker available right now, the caller keeps the probe armed and
@@ -621,6 +695,11 @@ RequestResult<Params> WorkerPool::send_stateful(std::uint32_t path_id,
 template <typename Params>
 RequestResult<Params> WorkerPool::send_stateless(const Params& params,
                                                  kota::ipc::request_options opts) {
+    // High-priority stateless work (PCH, completion builds, foreground
+    // PCMs) is foreground by the priority taxonomy; while it runs or
+    // queues, foreground_busy() holds the window open.
+    if(params.priority == worker::Priority::High)
+        note_foreground();
     auto idx = co_await acquire_stateless_slot(params.priority);
     if(idx == SIZE_MAX) {
         co_return kota::outcome_error(kota::ipc::Error{worker::dispatch_errc::worker_unavailable,
@@ -643,12 +722,15 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
     }
 
     auto result = co_await peer->send_request(params, opts);
-    if(result.has_value())
-        co_return std::move(result);
-
+    // A cooperative cancel may still come back as a value — the worker
+    // returns a "cancelled" build result at its next stop poll — but the
+    // sender must observe cancelled either way, so the indexer requeues
+    // instead of recording a failure.
     if(preempt_src && preempt_src->cancelled())
         co_return kota::outcome_error(kota::ipc::Error{worker::dispatch_errc::cancelled,
-                                                       "Request preempted under memory pressure"});
+                                                       "Request preempted by the scheduler"});
+    if(result.has_value())
+        co_return std::move(result);
 
     // An error returned by the worker's handler leaves the worker healthy;
     // pass it through untouched.
