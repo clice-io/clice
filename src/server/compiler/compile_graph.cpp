@@ -193,13 +193,14 @@ kota::task<> CompileGraph::unit_body(std::uint32_t path_id,
     // Acquire edge references on all direct dependencies. This must stay
     // synchronous: no suspension between refcount++ and guard registration.
     // A foreground unit passes its class down: the user waits on the whole
-    // chain, not just the root.
+    // chain, not just the root — and a dep discovered here may already be
+    // running with a resolved closure of its own, so the mark must recurse.
     auto foreground = unit.foreground;
     for(auto dep_id: deps) {
         acquire(dep_id);
         guard.acquired.push_back(dep_id);
         if(foreground) {
-            units.find(dep_id)->second.foreground = true;
+            mark_foreground(dep_id);
         }
     }
 

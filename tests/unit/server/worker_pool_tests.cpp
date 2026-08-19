@@ -1400,6 +1400,12 @@ TEST_CASE(AIMDMinimum) {
     f.set_low_limit(1);
     f.apply_backoff();
     EXPECT_EQ(f.low_limit(), 1u);
+
+    // A zeroed budget is the memory controller's deliberate shutdown; a
+    // crash must not lift it back to 1 before recovery is observed.
+    f.set_low_limit(0);
+    f.apply_backoff();
+    EXPECT_EQ(f.low_limit(), 0u);
 }
 
 TEST_CASE(CrashAppliesBackoff) {
@@ -2020,6 +2026,54 @@ TEST_CASE(PreemptCancelsRequest) {
         }
         EXPECT_TRUE(f.worker_alive(0));
         EXPECT_EQ(f.crash_streak(0), 0u);
+
+        co_await f.stop();
+        done = true;
+    });
+    EXPECT_TRUE(done);
+}
+
+TEST_CASE(CancelledCrashRetiresSlot) {
+    TempDir tmp;
+    tmp.touch("slow.cpp", "#include <vector>\n#include <string>\nint x = 1;\n");
+    auto src = tmp.path("slow.cpp");
+
+    WorkerPoolFixture f;
+    bool done = false;
+    f.run([&]() -> kota::task<> {
+        CO_ASSERT_TRUE(f.start(1, 0));
+        co_await kota::sleep(500);
+
+        worker::BuildParams params;
+        params.priority = worker::Priority::Low;
+        params.kind = worker::BuildKind::Index;
+        params.file = src;
+        params.directory = "/tmp";
+        params.arguments = make_args(src);
+
+        worker::protocol::integer code = 0;
+        kota::task_group<> group(f.loop);
+        auto sender = [&]() -> kota::task<> {
+            auto result = co_await f.pool.send_stateless(params);
+            if(!result.has_value())
+                code = result.error().code;
+        };
+        group.spawn(sender());
+        while(f.low_busy() == 0)
+            co_await kota::sleep(1);
+
+        // A cooperative cancel whose victim then dies on its own inside the
+        // grace window: the request still classifies as cancelled, but the
+        // slot must be retired with it — released as Alive it would take
+        // the next dispatch before the monitor observes the exit. The
+        // generation bump is the retirement evidence that survives an
+        // instant respawn.
+        auto gen = f.generation(0);
+        f.cancel_low(1);
+        f.kill_worker(0);
+        co_await group.join();
+        EXPECT_EQ(code, worker::dispatch_errc::cancelled);
+        EXPECT_NE(f.generation(0), gen);
 
         co_await f.stop();
         done = true;

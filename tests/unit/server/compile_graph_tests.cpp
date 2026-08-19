@@ -1134,6 +1134,56 @@ TEST_CASE(preempted_dep_retry_upgrades) {
     EXPECT_TRUE(dep_classes[1]);
 }
 
+TEST_CASE(late_resolve_upgrades_closure) {
+    // A foreground root still unresolved when marked resolves to a
+    // dependency already running as background: the closure behind that
+    // dependency must upgrade too, so the deep unit's preempted round
+    // retries foreground instead of staying cancellable Low.
+    kota::event started;
+    kota::event proceed;
+    int deep_calls = 0;
+    std::vector<bool> deep_classes;
+    auto dispatch = [&](std::uint32_t pid, bool foreground) -> kota::task<Outcome> {
+        if(pid == 3) {
+            deep_calls += 1;
+            deep_classes.push_back(foreground);
+            if(deep_calls == 1) {
+                started.set();
+                co_await proceed.wait();
+                co_return Outcome::Stale;
+            }
+        }
+        co_return Outcome::Success;
+    };
+    llvm::DenseMap<std::uint32_t, llvm::SmallVector<std::uint32_t>> adj;
+    adj[1] = {2};
+    adj[2] = {3};
+    make_graph(std::move(dispatch), static_resolver(std::move(adj)));
+
+    Request background;
+    bool fg_ok = false;
+    execute([&]() -> kota::task<> {
+        auto foreground_join = [&]() -> kota::task<> {
+            auto r = co_await graph->compile(1, /*foreground=*/true).catch_cancel();
+            fg_ok = r.has_value() && *r;
+        };
+        auto driver = [&]() -> kota::task<> {
+            co_await started.wait();
+            proceed.set();
+            co_return;
+        };
+        // The background request resolves 2 and parks 3 inside its first
+        // dispatch; the foreground request then joins at the unresolved 1.
+        co_await kota::when_all(run_request(2, background), foreground_join(), driver());
+    });
+
+    EXPECT_TRUE(background.result == true);
+    EXPECT_TRUE(fg_ok);
+    ASSERT_EQ(deep_calls, 2);
+    EXPECT_FALSE(deep_classes[0]);
+    EXPECT_TRUE(deep_classes[1]);
+}
+
 TEST_CASE(preempted_retry_upgrades_class) {
     // A foreground requester joining a Low round whose build the scheduler
     // then preempts must not eat the preemption as a failure: the respawn

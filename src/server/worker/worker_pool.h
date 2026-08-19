@@ -754,6 +754,19 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
     }
 
     auto result = co_await peer->send_request(params, opts);
+    // The worker link broke mid-request: declare the slot dead now so a
+    // caller-side retry cannot land on the same corpse before the monitor
+    // observed the exit. This must precede the cancel classification — a
+    // cooperatively cancelled worker can die on its own inside the grace
+    // window, and returning early would release the slot still Alive.
+    bool transport_dead = !result.has_value() && worker::is_transport_error(result.error());
+    if(transport_dead && stateless_workers[idx].generation == gen) {
+        mark_worker_dead(idx, false, true);
+        // The dead worker's claim is gone; a queued low-priority waiter may
+        // now fit under the limit on another idle worker.
+        try_dispatch_pending();
+    }
+
     // A scheduler cancel comes back as whatever the worker produced — the
     // cooperatively stopped build's own reply, or the killed process's
     // transport error — never as a wire cancel: the sender deliberately
@@ -769,18 +782,9 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
 
     // An error returned by the worker's handler leaves the worker healthy;
     // pass it through untouched.
-    if(!worker::is_transport_error(result.error()))
+    if(!transport_dead)
         co_return std::move(result);
 
-    // The worker link broke mid-request: declare the slot dead now so a
-    // caller-side retry cannot land on the same corpse before the monitor
-    // observed the exit.
-    if(stateless_workers[idx].generation == gen) {
-        mark_worker_dead(idx, false, true);
-        // The dead worker's claim is gone; a queued low-priority waiter may
-        // now fit under the limit on another idle worker.
-        try_dispatch_pending();
-    }
     co_return kota::outcome_error(
         kota::ipc::Error{worker::dispatch_errc::worker_crashed,
                          "Stateless worker died during request: " + result.error().message,
