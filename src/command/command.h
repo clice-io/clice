@@ -238,6 +238,12 @@ public:
     /// All compilation entries (sorted by path_id).
     llvm::ArrayRef<CompilationEntry> get_entries() const;
 
+    /// Map each file's path_id to the sorted canonical command hashes of its
+    /// entries (a file may own several entries with different flags). The
+    /// entry identity reload_and_diff() diffs on and the indexer persists to
+    /// catch command changes across sessions.
+    llvm::DenseMap<std::uint32_t, llvm::SmallVector<std::string, 1>> command_hash_snapshot() const;
+
     /// A group of files that share the same compilation configuration.
     /// CDB internally deduplicates by (directory, canonical flags, user-content flags),
     /// so each group corresponds to one unique CompilationInfo — files within a group
@@ -294,11 +300,6 @@ private:
     object_ptr<CompilationInfo> save_compilation_info(llvm::StringRef file,
                                                       llvm::StringRef directory,
                                                       llvm::StringRef command);
-
-    /// Map each file's path_id to the sorted canonical command hashes of its
-    /// entries (a file may own several entries with different flags). Used by
-    /// reload_and_diff() to compare the database before and after a reload.
-    llvm::DenseMap<std::uint32_t, llvm::SmallVector<std::string, 1>> command_hash_snapshot() const;
 
     /// The memory pool which holds all elements of compilation database.
     /// Heap-allocated so its address is stable across moves.

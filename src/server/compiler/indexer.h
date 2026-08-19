@@ -12,6 +12,7 @@
 #include "kota/async/async.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace clice {
@@ -139,8 +140,10 @@ public:
     /// Merge a TUIndex result: intern FileVersions, replace the TU's
     /// manifest, and write row blobs only for variants no shard stores yet
     /// — a re-index whose rows are unchanged records its contributions and
-    /// touches nothing else.
-    void merge(const void* tu_index_data, std::size_t size);
+    /// touches nothing else. Returns false when the result failed
+    /// verification and nothing was committed — the caller must count the
+    /// file as failed, not indexed.
+    bool merge(const void* tu_index_data, std::size_t size);
 
     /// Drop a TU's index wholesale: manifest and contributions now (the
     /// affected shards' live masks follow), persisted blobs at the next
@@ -158,7 +161,13 @@ public:
 
     /// Load the global blob, adopt every resolvable manifest, fetch the
     /// shard blobs the contributions expect, and sweep the rest.
-    void load();
+    /// `read_only` keeps the sweeps in memory only: an out-of-process
+    /// reader (`clice index --stats`) must not delete blobs a concurrently
+    /// running server may be about to reference. Returns false when a
+    /// global blob existed but could not be decoded (old format or
+    /// corrupt): the server rebuilds from scratch, but a read-only reader
+    /// must report an unusable cache instead of an empty index.
+    bool load(bool read_only = false);
 
     /// Shard blobs whose write has not durably completed: dirty since the
     /// last save plus the batch a running save is committing. The gauge
@@ -187,11 +196,27 @@ public:
         return index_queue.size();
     }
 
+    /// Files whose latest index attempt failed for good — rejected by the
+    /// worker, an empty or unverifiable result, a spent crash budget, or a
+    /// dead IPC path — with no retry pending. Their rows are missing or
+    /// stale; a later successful pass removes them again. The one-shot
+    /// `clice index` reports a partial build from this.
+    std::size_t failed_files() const {
+        return failed_ids.size();
+    }
+
     /// How many shard blobs the last save() durably committed. A
     /// steady-state save commits 0 — only variant-set changes rewrite a
     /// blob — so the stats endpoint can pin full-rewrite regressions.
     std::size_t last_save_shards() const {
         return saved_shards;
+    }
+
+    /// Whether index state remains that no save() committed. After a final
+    /// save this means write failures whose retry never came — the one-shot
+    /// `clice index` must not report a durable index from this.
+    bool has_unsaved_state() const {
+        return !dirty_shards.empty() || !dirty_manifests.empty() || global_dirty || cdb_dirty;
     }
 
     /// Progress of the current (or last) indexing round. The reporter reads
@@ -310,6 +335,43 @@ private:
     llvm::DenseSet<std::uint32_t> dirty_manifests;
     bool global_dirty = false;
 
+    /// The persisted CDB snapshot blob's bytes as last read or written;
+    /// empty when none exists. save() rewrites the blob whenever the live
+    /// CDB serializes differently.
+    std::string persisted_cdb_snapshot;
+
+    /// The persisted CDB snapshot needs a rewrite no dirty blob will
+    /// trigger: its write failed while the rest of the batch may have
+    /// landed, or load() found it missing or corrupt next to a valid
+    /// global. Without this flag the rewrite would wait for an unrelated
+    /// dirtying merge: a save with nothing else to commit skips the
+    /// snapshot recompute entirely.
+    bool cdb_dirty = false;
+
+    /// Host source whose command each standalone-indexed header's retained
+    /// rows borrowed, recorded when a merge lands and persisted in the CDB
+    /// snapshot.
+    /// The offline invalidator checks the recorded host directly — the
+    /// include graph is rebuilt from the NEW commands before load(), so
+    /// reachability alone cannot see a change that removed or redirected
+    /// the very include edge the header's context came through.
+    llvm::DenseMap<std::uint32_t, std::uint32_t> header_hosts;
+
+    /// Standalone TUs owed an index that nothing else records: no manifest
+    /// (dropped for a command or rule change, the rebuild failed or is
+    /// still pending) and no CDB entry the startup sweep would retry. The
+    /// snapshot keeps an entry for each so reconcile's debt pass retries
+    /// them next session instead of the index staying silently partial.
+    llvm::SmallVector<std::uint32_t> standalone_debt();
+
+    /// Diff the persisted CDB snapshot against the live CDB and drop the
+    /// index of every TU whose compile command changed while no server was
+    /// running — content-based freshness cannot see command changes, so an
+    /// adopted manifest would keep serving the old-command rows forever.
+    /// Entries that vanished keep their index (last-known content still
+    /// serves navigation), mirroring the live CDB-reload treatment.
+    void reconcile_cdb_snapshot();
+
     /// Per-round FileVersion staleness verdicts: many TUs share the same
     /// versions, and one stat (or repair) per version per round is enough.
     /// Cleared when a round starts.
@@ -326,6 +388,7 @@ private:
     bool need_update(llvm::StringRef file_path);
 
     llvm::DenseMap<std::uint32_t, PendingReindex> reindex_reasons;
+    llvm::DenseSet<std::uint32_t> failed_ids;
     std::uint64_t reindex_ticket = 0;
     bool indexing_active = false;
     bool indexing_scheduled = false;

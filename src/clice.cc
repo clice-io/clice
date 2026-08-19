@@ -30,7 +30,7 @@ int main(int argc, const char** argv) {
     driver::add_serve(clice, exit_code, self_path);
     driver::add_query(clice, exit_code);
     driver::add_worker(clice, exit_code);
-    driver::add_index(clice, exit_code);
+    driver::add_index(clice, exit_code, self_path);
     driver::add_doc(clice, exit_code);
     driver::add_lint(clice, exit_code);
     driver::add_format(clice, exit_code);

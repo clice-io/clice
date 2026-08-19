@@ -19,8 +19,10 @@
 #include "support/logging.h"
 #include "support/timer.h"
 
+#include "kota/codec/json/json.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/raw_ostream.h"
@@ -28,13 +30,108 @@
 
 namespace clice {
 
+namespace {
+
 /// Stable blob key for a file's shard or a TU's manifest: runtime pool ids
 /// are per-session, so blobs are named by a hash of the path instead.
-static std::string blob_key(llvm::StringRef path) {
+std::string blob_key(llvm::StringRef path) {
     return std::format("{:016x}", llvm::xxh3_64bits(path));
 }
 
-void Indexer::merge(const void* tu_index_data, std::size_t size) {
+/// JSON layout of the persisted CDB snapshot (blob kind Cdb): per source
+/// file, the sorted canonical command hashes of its entries and a hash of
+/// its matched config rules when the index state was last saved. A
+/// standalone-indexed header gets an entry too (empty hashes): its own
+/// matched rules plus the host source whose command its rows borrowed.
+struct CdbSnapshotEntry {
+    std::string file;
+    std::vector<std::string> hashes;
+    std::string rules;
+    std::string host;
+};
+
+struct CdbSnapshot {
+    std::vector<CdbSnapshotEntry> entries;
+};
+
+/// clice.toml append/remove rules change the effective indexing command
+/// without touching the CDB entry, so the snapshot must cover them too —
+/// an offline rule edit is as stale-making as an offline command edit.
+std::string rules_hash(const Config& config, llvm::StringRef file) {
+    std::vector<std::string> append, remove;
+    config.match_rules(file, append, remove);
+    if(append.empty() && remove.empty()) {
+        return {};
+    }
+    std::string joined;
+    for(auto& arg: append) {
+        joined += 'a';
+        joined += arg;
+        joined += '\0';
+    }
+    for(auto& arg: remove) {
+        joined += 'r';
+        joined += arg;
+        joined += '\0';
+    }
+    return std::format("{:016x}", llvm::xxh3_64bits(joined));
+}
+
+CdbSnapshot build_cdb_snapshot(Workspace& workspace,
+                               const llvm::DenseMap<std::uint32_t, std::uint32_t>& header_hosts,
+                               llvm::ArrayRef<std::uint32_t> standalone_debt) {
+    CdbSnapshot snapshot;
+    for(auto& [path_id, hashes]: workspace.cdb.command_hash_snapshot()) {
+        auto file = workspace.cdb.resolve_path(path_id).str();
+        auto rules = rules_hash(workspace.config, file);
+        snapshot.entries.push_back({
+            .file = std::move(file),
+            .hashes = {hashes.begin(), hashes.end()},
+            .rules = std::move(rules),
+        });
+    }
+    // Standalone-indexed TUs have no CDB entry, yet their effective command
+    // depends on their own matched rules and their borrowed host's command
+    // — both must be snapshot to detect offline changes.
+    auto add_standalone = [&](std::uint32_t tu) {
+        auto file = workspace.path_pool.resolve(tu);
+        if(workspace.cdb.has_entry(file)) {
+            return;
+        }
+        auto host_it = header_hosts.find(tu);
+        snapshot.entries.push_back({
+            .file = file.str(),
+            .rules = rules_hash(workspace.config, file),
+            .host = host_it != header_hosts.end()
+                        ? workspace.path_pool.resolve(host_it->second).str()
+                        : std::string(),
+        });
+    };
+    for(auto tu: llvm::make_first_range(workspace.project_index.manifests)) {
+        add_standalone(tu);
+    }
+    // A dropped standalone TU whose rebuild has not landed keeps its entry:
+    // with no manifest pin and no CDB entry, the snapshot is the only
+    // record that an index is owed (reconcile's debt pass retries it).
+    for(auto tu: standalone_debt) {
+        add_standalone(tu);
+    }
+    // Deterministic bytes: save() decides "unchanged" by byte equality.
+    std::ranges::sort(snapshot.entries, {}, &CdbSnapshotEntry::file);
+    return snapshot;
+}
+
+std::string serialize_cdb_snapshot(Workspace& workspace,
+                                   const llvm::DenseMap<std::uint32_t, std::uint32_t>& header_hosts,
+                                   llvm::ArrayRef<std::uint32_t> standalone_debt) {
+    auto json =
+        kota::codec::json::to_string(build_cdb_snapshot(workspace, header_hosts, standalone_debt));
+    return json ? std::move(*json) : std::string();
+}
+
+}  // namespace
+
+bool Indexer::merge(const void* tu_index_data, std::size_t size) {
     // Zero-copy consumption: the wire stays serialized; a new variant's
     // blob bytes are sliced out and installed or merged without decoding
     // the envelope, and only genuinely new symbol names are materialized.
@@ -42,7 +139,7 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
         index::TUIndex::from_bytes(llvm::StringRef(static_cast<const char*>(tu_index_data), size));
     if(!view.loaded()) {
         LOG_WARN("Ignoring TUIndex that failed verification");
-        return;
+        return false;
     }
     auto main_local_id = view.path_count() - 1;
     llvm::StringRef main_tu_path = view.path(main_local_id);
@@ -104,7 +201,7 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
         // one membership test is the whole check — no IO, no bytes read.
         if(shard && shard->loaded() && shard->has_variant(blob_hash)) {
             if(!record_consumed(local_id, shard->content_hash())) {
-                return;
+                return false;
             }
             section_contributions.emplace_back(local_id, blob_hash);
             hits += 1;
@@ -124,17 +221,17 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
             LOG_WARN("Reject merge for {}: rows section for {} failed verification",
                      main_tu_path,
                      workspace.path_pool.resolve(global_id));
-            return;
+            return false;
         }
         auto fresh = index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
         if(!fresh.loaded()) {
             LOG_WARN("Reject merge for {}: rows for {} do not form a valid shard",
                      main_tu_path,
                      workspace.path_pool.resolve(global_id));
-            return;
+            return false;
         }
         if(!record_consumed(local_id, fresh.content_hash())) {
-            return;
+            return false;
         }
 
         index::Shard replacement;
@@ -168,7 +265,7 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
     // rebuilt.
     if(!project.merge(view, file_ids_map)) {
         LOG_WARN("Reject merge for {}: symbol reference bitmap failed verification", main_tu_path);
-        return;
+        return false;
     }
 
     // Intern a FileVersion per file of the parse. The freshness baseline is
@@ -268,6 +365,7 @@ void Indexer::merge(const void* tu_index_data, std::size_t size) {
         appended,
         rebuilt_ids.size(),
         workspace.shards.size());
+    return true;
 }
 
 void Indexer::drop_index(std::uint32_t tu_path_id) {
@@ -387,15 +485,35 @@ kota::task<> Indexer::save() {
     }
     auto manifest_count = batch.size() - shard_count;
 
-    // The global blob goes last: a crash mid-batch then strands only
-    // manifests, which load() drops by their generation stamp — the
-    // reverse order would strand a global claiming symbols in files whose
-    // rows never landed.
+    // The global blob follows the shards and manifests: a crash mid-batch
+    // then strands only manifests, which load() drops by their generation
+    // stamp — the reverse order would strand a global claiming symbols in
+    // files whose rows never landed.
     if(global_dirty) {
         std::string bytes;
         llvm::raw_string_ostream os(bytes);
         project.serialize_global(os, workspace.path_pool);
         batch.push_back({index::IndexBlobKind::Global, "global", std::move(bytes)});
+    }
+
+    // The CDB snapshot goes last, after the whole index state it
+    // describes: landed before the global, a crash between the two would
+    // leave the old global still pinning old-command manifests under a
+    // snapshot that already matches the live CDB — reconcile would then
+    // never drop them. A save that commits nothing skips the recompute
+    // (unless the snapshot itself is owed a rewrite): a pure CDB change
+    // dirties no blob on its own — the invalidator's drops do — so the
+    // next dirtying save carries the fresh snapshot.
+    std::string cdb_bytes;
+    std::optional<std::size_t> cdb_index;
+    if(!batch.empty() || !removals.empty() || cdb_dirty) {
+        cdb_bytes = serialize_cdb_snapshot(workspace, header_hosts, standalone_debt());
+        if(!cdb_bytes.empty() && cdb_bytes != persisted_cdb_snapshot) {
+            cdb_index = batch.size();
+            batch.push_back({index::IndexBlobKind::Cdb, "cdb", cdb_bytes});
+        } else {
+            cdb_dirty = false;
+        }
     }
 
     dirty_shards.clear();
@@ -431,9 +549,18 @@ kota::task<> Indexer::save() {
             dirty_shards.insert(shard_ids[i]);
         } else if(i - shard_count < manifest_count) {
             dirty_manifests.insert(manifest_ids[i - shard_count]);
+        } else if(cdb_index && i == *cdb_index) {
+            // Keep the old persisted bytes and stay dirty so the next
+            // save retries even when nothing else changes by then.
+            cdb_dirty = true;
+            cdb_index.reset();
         } else {
             global_dirty = true;
         }
+    }
+    if(cdb_index) {
+        persisted_cdb_snapshot = std::move(cdb_bytes);
+        cdb_dirty = false;
     }
     saved_shards = shard_count - failed_shards;
     saving_shards = 0;
@@ -446,14 +573,17 @@ kota::task<> Indexer::save() {
              timer.ms());
 }
 
-void Indexer::load() {
+bool Indexer::load(bool read_only) {
     if(!workspace.index_storage)
-        return;
+        return true;
     auto& storage = *workspace.index_storage;
     auto& project = workspace.project_index;
     ScopedTimer timer;
 
     auto sweep_all = [&] {
+        if(read_only) {
+            return;
+        }
         for(auto kind: {index::IndexBlobKind::Shard, index::IndexBlobKind::Manifest}) {
             llvm::SmallVector<std::string> keys;
             storage.for_each_key(kind, [&](llvm::StringRef key) { keys.push_back(key.str()); });
@@ -474,19 +604,21 @@ void Indexer::load() {
         if(storage.contains(index::IndexBlobKind::Global, "global")) {
             LOG_WARN("Index global blob unreadable; disabling index persistence this session");
             workspace.index_storage.reset();
-            return;
+            return true;
         }
         // No global table means no resolvable manifests: everything else
         // is unreachable data, swept so it cannot survive as orphans.
         sweep_all();
-        return;
+        return true;
     }
     llvm::DenseMap<std::uint32_t, std::uint64_t> manifest_pins;
     if(!project.load_global(global->getBuffer(), workspace.path_pool, manifest_pins)) {
         LOG_INFO("Discarding old-format index global blob");
         sweep_all();
-        storage.remove(index::IndexBlobKind::Global, "global");
-        return;
+        if(!read_only) {
+            storage.remove(index::IndexBlobKind::Global, "global");
+        }
+        return false;
     }
 
     // Adopt exactly the manifests the global blob pins, at exactly the
@@ -519,8 +651,10 @@ void Indexer::load() {
         auto tu_path_id = project.file_versions.find(manifest->tu_fv)->second.path_id;
         project.apply_manifest(tu_path_id, std::move(*manifest));
     });
-    for(auto& key: dead_manifests) {
-        storage.remove(index::IndexBlobKind::Manifest, key);
+    if(!read_only) {
+        for(auto& key: dead_manifests) {
+            storage.remove(index::IndexBlobKind::Manifest, key);
+        }
     }
     // A pinned TU without an adopted manifest lost it to a failed write
     // that the landed global outran, or to a lost removal; re-enqueue it —
@@ -601,8 +735,10 @@ void Indexer::load() {
             // the mask refresh below, like the merge path's.
             auto affected = project.remove_manifest(tu);
             mask_refresh.append(affected.begin(), affected.end());
-            storage.remove(index::IndexBlobKind::Manifest,
-                           blob_key(workspace.path_pool.resolve(tu)));
+            if(!read_only) {
+                storage.remove(index::IndexBlobKind::Manifest,
+                               blob_key(workspace.path_pool.resolve(tu)));
+            }
             enqueue(tu, ReindexReason::ContentChanged);
         }
     }
@@ -614,14 +750,17 @@ void Indexer::load() {
     }
 
     // Sweep shard blobs nothing references any more.
-    llvm::SmallVector<std::string> orphans;
-    storage.for_each_key(index::IndexBlobKind::Shard, [&](llvm::StringRef key) {
-        if(!expected_keys.contains(key)) {
-            orphans.push_back(key.str());
+    if(!read_only) {
+        llvm::SmallVector<std::string> orphans;
+        storage.for_each_key(index::IndexBlobKind::Shard, [&](llvm::StringRef key) {
+            if(!expected_keys.contains(key)) {
+                orphans.push_back(key.str());
+            }
+        });
+        for(auto& key: orphans) {
+            storage.remove(index::IndexBlobKind::Shard, key);
         }
-    });
-    for(auto& key: orphans) {
-        storage.remove(index::IndexBlobKind::Shard, key);
+        reconcile_cdb_snapshot();
     }
 
     if(!workspace.shards.empty()) {
@@ -636,6 +775,169 @@ void Indexer::load() {
              workspace.shards.size(),
              project.manifests.size(),
              timer.ms());
+    return true;
+}
+
+llvm::SmallVector<std::uint32_t> Indexer::standalone_debt() {
+    llvm::SmallVector<std::uint32_t> debt;
+    llvm::DenseSet<std::uint32_t> seen;
+    auto add = [&](std::uint32_t id) {
+        if(workspace.project_index.manifests.contains(id) ||
+           workspace.cdb.has_entry(workspace.path_pool.resolve(id)) || !seen.insert(id).second) {
+            return;
+        }
+        debt.push_back(id);
+    };
+    for(auto id: failed_ids) {
+        add(id);
+    }
+    for(auto id: llvm::make_first_range(reindex_reasons)) {
+        add(id);
+    }
+    return debt;
+}
+
+void Indexer::reconcile_cdb_snapshot() {
+    auto blob = workspace.index_storage->read(index::IndexBlobKind::Cdb, "cdb");
+    CdbSnapshot persisted;
+    if(!blob || !kota::codec::json::from_string(std::string_view(blob->getBuffer()), persisted)) {
+        // Unknown baseline: nothing to diff against. Dirty the snapshot so
+        // the next save recreates it even when it commits nothing else —
+        // after a crash that lost only the CDB blob, waiting for an
+        // unrelated dirtying merge would leave offline command edits
+        // undetectable across every following session.
+        cdb_dirty = true;
+        return;
+    }
+    persisted_cdb_snapshot = blob->getBuffer().str();
+
+    llvm::StringMap<const CdbSnapshotEntry*> before;
+    for(auto& entry: persisted.entries) {
+        before[entry.file] = &entry;
+    }
+    auto& project = workspace.project_index;
+    llvm::DenseSet<std::uint32_t> cdb_ids;
+    llvm::SmallVector<std::uint32_t> changed_ids;
+    auto snapshot = build_cdb_snapshot(workspace, header_hosts, {});
+    for(auto& entry: snapshot.entries) {
+        if(entry.hashes.empty()) {
+            continue;
+        }
+        auto server_id = workspace.path_pool.intern(entry.file);
+        cdb_ids.insert(server_id);
+        auto it = before.find(entry.file);
+        if(it != before.end() && it->second->hashes == entry.hashes &&
+           it->second->rules == entry.rules) {
+            continue;
+        }
+        changed_ids.push_back(server_id);
+        if(!project.manifests.contains(server_id)) {
+            continue;
+        }
+        LOG_INFO("Compile command changed since the last session; reindexing {}", entry.file);
+        drop_index(server_id);
+        enqueue(server_id, ReindexReason::ContentChanged);
+    }
+
+    // A standalone-indexed header borrowed a host source's command and
+    // applied its own matched rules on top, so an offline change to either
+    // staled its rows exactly like the live CDB path's hosted-header
+    // invalidation. A header whose recorded host survives unchanged and
+    // still includes it is pinned fresh; one with no recorded host (older
+    // snapshot) falls back to the include-reachability approximation below.
+    llvm::DenseSet<std::uint32_t> pinned_fresh;
+    for(auto& entry: snapshot.entries) {
+        if(!entry.hashes.empty()) {
+            continue;
+        }
+        auto it = before.find(entry.file);
+        if(it == before.end()) {
+            // Not in the persisted snapshot: the next save adopts it, and
+            // offline changes against an unknown baseline are undetectable
+            // anyway.
+            continue;
+        }
+        auto& old = *it->second;
+        // The header's own CDB entry vanished: keep the index — last-known
+        // content still serves navigation, mirroring the live treatment.
+        if(!old.hashes.empty()) {
+            continue;
+        }
+        auto server_id = workspace.path_pool.intern(entry.file);
+        if(old.rules != entry.rules) {
+            LOG_INFO("Config rules changed since the last session; reindexing {}", entry.file);
+            drop_index(server_id);
+            enqueue(server_id, ReindexReason::ContentChanged);
+            continue;
+        }
+        if(old.host.empty()) {
+            continue;
+        }
+        auto host_id = workspace.path_pool.intern(old.host);
+        if(!workspace.cdb.has_entry(old.host) || llvm::is_contained(changed_ids, host_id)) {
+            LOG_INFO("Host compile command changed since the last session; reindexing {}",
+                     entry.file);
+            drop_index(server_id);
+            enqueue(server_id, ReindexReason::ContentChanged);
+            continue;
+        }
+        // The dependency scan preceding this load saw the offline edits, so
+        // a recorded host that no longer includes the header cannot vouch
+        // for the borrowed command any more. Keep the rows serving (last
+        // known good, like the vanished-entry case above) while a rebuild
+        // re-selects a host; a Fallback resolution then changes nothing.
+        // The retained rows were still built through the old host, so keep
+        // that association until a landed rebuild overwrites it — an empty
+        // host persisted after a Fallback or failed rebuild would hit the
+        // `old.host.empty()` gate next session and never retry.
+        if(workspace.dep_graph.find_include_chain(host_id, server_id).empty()) {
+            LOG_INFO("Recorded host no longer includes {}; reindexing", entry.file);
+            header_hosts[server_id] = host_id;
+            enqueue(server_id, ReindexReason::ContentChanged);
+            continue;
+        }
+        header_hosts[server_id] = host_id;
+        pinned_fresh.insert(server_id);
+    }
+
+    // A persisted standalone entry whose file has no manifest is recorded
+    // debt: its index was dropped for a command or rule change and no
+    // rebuild has landed since — with no manifest pin and no CDB entry,
+    // nothing else would ever retry it. Re-enqueue while the file exists;
+    // a vanished file's debt dies with its entry at the next save.
+    for(auto& old: persisted.entries) {
+        if(!old.hashes.empty() || workspace.cdb.has_entry(old.file)) {
+            continue;
+        }
+        auto server_id = workspace.path_pool.intern(old.file);
+        if(project.manifests.contains(server_id) || reindex_reasons.contains(server_id) ||
+           !fs::exists(old.file)) {
+            continue;
+        }
+        LOG_INFO("Index owed from the last session; reindexing {}", old.file);
+        enqueue(server_id, ReindexReason::ContentChanged);
+    }
+    if(changed_ids.empty()) {
+        return;
+    }
+
+    llvm::SmallVector<std::uint32_t> hosted;
+    for(auto tu: llvm::make_first_range(project.manifests)) {
+        if(cdb_ids.contains(tu) || pinned_fresh.contains(tu)) {
+            continue;
+        }
+        if(llvm::any_of(changed_ids, [&](std::uint32_t host) {
+               return !workspace.dep_graph.find_include_chain(host, tu).empty();
+           })) {
+            hosted.push_back(tu);
+        }
+    }
+    for(auto header_id: hosted) {
+        LOG_INFO("Host compile command changed since the last session; reindexing {}",
+                 workspace.path_pool.resolve(header_id));
+        drop_index(header_id);
+        enqueue(header_id, ReindexReason::ContentChanged);
+    }
 }
 
 bool Indexer::file_version_stale(std::uint32_t fv_id) {
@@ -815,9 +1117,26 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id,
     params.file = file_path;
     // Bulk background indexing sticks to real commands; synthesized fallback
     // commands would fill the index with guesses.
-    if(contexts.resolve_command(file_path, params.directory, params.arguments, nullptr) ==
-       CommandSource::Fallback)
+    std::uint32_t host_path_id = no_path_id;
+    auto source = contexts.resolve_command(file_path,
+                                           params.directory,
+                                           params.arguments,
+                                           nullptr,
+                                           &host_path_id);
+    if(source == CommandSource::Fallback) {
+        // A file whose manifest survives keeps serving its last-known rows,
+        // so skipping it loses nothing. One without a manifest (dropped or
+        // never built) stays unindexed — count that as a failure so a batch
+        // run reports the debt instead of exiting clean.
+        if(!workspace.project_index.manifests.contains(server_path_id)) {
+            LOG_WARN("[{}/{}] No compile command found for {}; it stays unindexed",
+                     index,
+                     total,
+                     file_path);
+            failed_ids.insert(server_path_id);
+        }
         co_return;
+    }
 
     workspace.fill_pcm_deps(params.pcms);
 
@@ -841,7 +1160,21 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id,
             co_return;
         }
         ScopedTimer merge_timer;
-        merge(result.value().tu_index_data.data(), result.value().tu_index_data.size());
+        if(!merge(result.value().tu_index_data.data(), result.value().tu_index_data.size())) {
+            // Rejected wholesale: the file's rows are missing or stale,
+            // which is a failure, not a completed index.
+            failed_ids.insert(server_path_id);
+            co_return;
+        }
+        failed_ids.erase(server_path_id);
+        // Record the borrowed host only for rows that landed: written at
+        // dispatch, a failed rebuild would leave the persisted CDB
+        // snapshot naming the new host while the retained rows were built
+        // through the old one — an unchanged new host then pins those
+        // stale rows fresh across restarts.
+        if(source == CommandSource::IncludeGraph) {
+            header_hosts[server_path_id] = host_path_id;
+        }
         LOG_PERF("index",
                  "progress={}/{} file={} bytes={} index_ms={} merge_ms={}",
                  index,
@@ -852,8 +1185,10 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id,
                  merge_timer.ms());
     } else if(result.has_value() && !result.value().success) {
         LOG_WARN("[{}/{}] Index failed for {}: {}", index, total, file_path, result.value().error);
+        failed_ids.insert(server_path_id);
     } else if(result.has_value() && result.value().tu_index_data.empty()) {
         LOG_WARN("[{}/{}] Index returned empty TUIndex for {}", index, total, file_path);
+        failed_ids.insert(server_path_id);
     } else if(result.error().code == worker::dispatch_errc::cancelled ||
               result.error().code == worker::dispatch_errc::worker_crashed ||
               (result.error().code == worker::dispatch_errc::worker_unavailable &&
@@ -891,6 +1226,7 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id,
                     file_path,
                     max_requeue_attempts,
                     result.error().message);
+                failed_ids.insert(server_path_id);
                 break;
             }
             case RequeueVerdict::Requeued: {
@@ -908,6 +1244,7 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id,
                  total,
                  file_path,
                  result.error().message);
+        failed_ids.insert(server_path_id);
     }
 }
 

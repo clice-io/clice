@@ -240,6 +240,56 @@ TEST_CASE(FunctionTemplate) {
     GO_TO_DEFINITION("implicit_spec", "spec");
 }
 
+TEST_CASE(InstantiationLocalCollapse) {
+    build_index(R"(
+            struct Fn {
+                template <typename T>
+                int operator()(T §(parm)x) const {
+                    int §(local)loc = 1;
+                    return §(local_ref)loc + static_cast<int>(§(parm_ref)x);
+                }
+            };
+            constexpr Fn fn{};
+            int a = fn(1);
+            int b = fn(2.0);
+        )");
+
+    for(auto pos: {"parm", "local", "local_ref", "parm_ref"}) {
+        auto occurrences = select(pos);
+        std::set<index::SymbolHash> targets;
+        for(auto& occurrence: occurrences) {
+            targets.insert(occurrence.target);
+        }
+        EXPECT_EQ(targets.size(), 1U);
+    }
+}
+
+TEST_CASE(LambdaCaptureCollapse) {
+    build_index(R"(
+            struct Fn {
+                template <typename T>
+                int operator()(T §(parm)x) const {
+                    auto lambda = [&] {
+                        return static_cast<int>(§(parm_ref)x);
+                    };
+                    return lambda();
+                }
+            };
+            constexpr Fn fn{};
+            int a = fn(1);
+            int b = fn(2.0);
+        )");
+
+    for(auto pos: {"parm", "parm_ref"}) {
+        auto occurrences = select(pos);
+        std::set<index::SymbolHash> targets;
+        for(auto& occurrence: occurrences) {
+            targets.insert(occurrence.target);
+        }
+        EXPECT_EQ(targets.size(), 1U);
+    }
+}
+
 TEST_CASE(AliasTemplate) {
     build_index(R"(
             template <typename T>
