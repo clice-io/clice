@@ -280,8 +280,9 @@ private:
 
         std::chrono::steady_clock::time_point spawn_time{};
 
-        /// Stateless only: cancels the in-flight low-priority request so its
-        /// sender observes preemption instead of a bare transport error.
+        /// Stateless only: marks the in-flight low-priority request as
+        /// scheduler-cancelled so its sender classifies the eventual reply
+        /// (cooperative stop or kill) as preemption instead of a failure.
         std::shared_ptr<kota::cancellation_source> preempt_source;
 
         /// When a cooperative cancel was requested of this slot's in-flight
@@ -439,11 +440,23 @@ private:
     void tick_cancel_grace();
 
     /// Cooperatively cancel up to `count` in-flight low-priority requests:
-    /// the wire cancellation trips the worker's stop flag, the compile
-    /// returns at the next declaration boundary, and the sender observes
-    /// dispatch_errc::cancelled — the process survives. A victim that
-    /// ignores the cancel past cancel_grace is killed by the monitor.
+    /// a CancelBuild notification trips the worker's stop flag, the compile
+    /// returns at the next declaration boundary, and the sender — which
+    /// keeps awaiting the worker's own reply, so the slot stays busy until
+    /// the process is actually free — observes dispatch_errc::cancelled.
+    /// A victim that ignores the cancel past cancel_grace is killed by the
+    /// monitor.
     void cancel_low_priority(std::size_t count);
+
+    /// Low slots still owed to foreground/High demand beyond the cancels
+    /// already in flight: the excess over the clamped budget, or one per
+    /// queued High request while no slot is idle, minus the victims already
+    /// asked to stop. Evaluated at every demand edge AND at the Low arming
+    /// point in send_stateless — the cancel sweep must skip claims whose
+    /// sender has not armed a source yet, so the arming re-check is what
+    /// keeps demand from being dropped in that window. `pending_high`
+    /// counts a High requester about to queue itself.
+    std::size_t low_reclaim_deficit(std::size_t pending_high = 0);
 
     /// Wait for an idle stateless worker. Returns SIZE_MAX when no slot can
     /// serve the request anymore (pool stopped or all slots given up).
@@ -722,27 +735,32 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
     auto peer = stateless_workers[idx].peer;
     auto gen = stateless_workers[idx].generation;
 
-    // For low-priority requests, install a cancellation source so
-    // preempt_low_priority() can signal the preemption to this sender
-    // before the kill's transport error arrives.
     std::shared_ptr<kota::cancellation_source> preempt_src;
     if(params.priority == worker::Priority::Low) {
+        // Reclaim demand that arose while this claim's sender was parked
+        // (a foreground edge, a queued High) was skipped by the cancel
+        // sweep — an unarmed slot must never be stamped (see
+        // cancel_low_priority). Honor it here, before the request reaches
+        // the wire: giving the claim back costs nothing.
+        if(low_reclaim_deficit() > 0) {
+            co_return kota::outcome_error(kota::ipc::Error{worker::dispatch_errc::cancelled,
+                                                           "Request preempted by the scheduler"});
+        }
+        // The classification channel for scheduler-initiated cancels: the
+        // cooperative CancelBuild and the memory-preemption kill both mark
+        // it, and the sender consults it when the reply arrives.
         preempt_src = std::make_shared<kota::cancellation_source>();
         stateless_workers[idx].preempt_source = preempt_src;
-        // Known limitation: with a caller-provided token the scheduler's
-        // cancel cannot reach the worker (no token composition in kota) —
-        // the request is then only classified, not shortened, and a long
-        // one falls to the grace kill. Today's sole Low caller (the
-        // indexer) passes no token.
-        if(!opts.token)
-            opts.token = preempt_src->token();
     }
 
     auto result = co_await peer->send_request(params, opts);
-    // A cooperative cancel may still come back as a value — the worker
-    // returns a "cancelled" build result at its next stop poll — but the
-    // sender must observe cancelled either way, so the indexer requeues
-    // instead of recording a failure.
+    // A scheduler cancel comes back as whatever the worker produced — the
+    // cooperatively stopped build's own reply, or the killed process's
+    // transport error — never as a wire cancel: the sender deliberately
+    // awaits the real reply so the slot frees only once the process is
+    // actually idle again, keeping the grace deadline armed and the next
+    // request off a still-stuck worker. Either shape must surface as
+    // cancelled, so the indexer requeues instead of recording a failure.
     if(preempt_src && preempt_src->cancelled())
         co_return kota::outcome_error(kota::ipc::Error{worker::dispatch_errc::cancelled,
                                                        "Request preempted by the scheduler"});

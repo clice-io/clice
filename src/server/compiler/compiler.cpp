@@ -269,10 +269,11 @@ void Compiler::init_compile_graph() {
     };
 
     // Dispatch: sends BuildPCM request to a stateless worker.
-    auto dispatch = [this](std::uint32_t path_id, bool foreground) -> kota::task<bool> {
+    using Outcome = CompileUnit::Outcome;
+    auto dispatch = [this](std::uint32_t path_id, bool foreground) -> kota::task<Outcome> {
         auto mod_it = workspace.path_to_module.find(path_id);
         if(mod_it == workspace.path_to_module.end())
-            co_return false;
+            co_return Outcome::Failed;
 
         // Copy out of the map before any suspension below: while a PCM build
         // is awaited, a concurrent didSave can insert into (or erase from)
@@ -289,7 +290,7 @@ void Compiler::init_compile_graph() {
 
         if(!workspace.store) {
             LOG_WARN("BuildPCM skipped for module {}: cache store is unavailable", module_name);
-            co_return false;
+            co_return Outcome::Failed;
         }
 
         // Deterministic content-addressed PCM key over the source path and
@@ -315,7 +316,7 @@ void Compiler::init_compile_graph() {
             } else {
                 workspace.pcm_paths[path_id] = pcm_it->second.path;
                 LOG_PERF("cache", "ns=pcm event=hit key={} module={}", pcm_key, module_name);
-                co_return true;
+                co_return Outcome::Success;
             }
         }
         LOG_PERF("cache",
@@ -336,7 +337,7 @@ void Compiler::init_compile_graph() {
             LOG_WARN("PCM build for module {} refused: key {} keeps crashing workers",
                      module_name,
                      budget_key);
-            co_return false;
+            co_return Outcome::Failed;
         }
 
         bp.module_name = module_name;
@@ -354,6 +355,13 @@ void Compiler::init_compile_graph() {
             [this, &budget_key](const kota::ipc::protocol::Error&) {
                 workspace.build_crashes.on_crash(budget_key);
             });
+        // A scheduler preemption (foreground reclaim, memory pressure) is
+        // no verdict on the unit: report the round stale so waiters drive
+        // a retry instead of failing their whole chain.
+        if(!result.has_value() && result.error().code == worker::dispatch_errc::cancelled) {
+            LOG_INFO("BuildPCM preempted for module {}, will retry", module_name);
+            co_return Outcome::Stale;
+        }
         if(!result.has_value() || !result.value().success) {
             if(expected_build_failure(result)) {
                 LOG_WARN("BuildPCM failed for module {}: {}",
@@ -365,7 +373,7 @@ void Compiler::init_compile_graph() {
                             module_name,
                             build_failure_message(result));
             }
-            co_return false;
+            co_return Outcome::Failed;
         }
 
         // Commit on the thread pool: it fsyncs the freshly written PCM.
@@ -373,7 +381,7 @@ void Compiler::init_compile_graph() {
             co_await kota::queue([&] { return workspace.store->commit(std::move(pending)); });
         if(!committed.has_value() || !committed.value().has_value()) {
             LOG_WARN("Failed to commit PCM for module {}", module_name);
-            co_return false;
+            co_return Outcome::Failed;
         }
 
         workspace.build_crashes.on_land(budget_key);
@@ -393,7 +401,7 @@ void Compiler::init_compile_graph() {
         if(on_indexing_needed)
             on_indexing_needed();
 
-        co_return true;
+        co_return Outcome::Success;
     };
 
     workspace.compile_graph =

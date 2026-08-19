@@ -94,6 +94,21 @@ struct WorkerPoolFixture {
                std::chrono::steady_clock::time_point{};
     }
 
+    std::size_t reclaim_deficit(std::size_t pending_high = 0) {
+        return pool.low_reclaim_deficit(pending_high);
+    }
+
+    /// Queue a fake High waiter, as acquire_stateless_slot would when no
+    /// slot is idle; the deficit counts it as demand.
+    void queue_high() {
+        auto pending = std::make_unique<WorkerPool::PendingStateless>(pool, worker::Priority::High);
+        pool.high_queue.push_back(pending.get());
+        pending->queue = &pool.high_queue;
+        queued_high.push_back(std::move(pending));
+    }
+
+    std::vector<std::unique_ptr<WorkerPool::PendingStateless>> queued_high;
+
     void set_max_crash_streak(unsigned n) {
         pool.options.max_crash_streak = n;
     }
@@ -1021,6 +1036,46 @@ TEST_CASE(CancelSkipsAskedSlots) {
 
     // The second ask must move on to the older claim instead of re-asking.
     EXPECT_TRUE(f.cancel_asked(0) && f.cancel_asked(1));
+}
+
+TEST_CASE(DeficitSurvivesUnarmedSweep) {
+    WorkerPoolFixture f;
+    for(int i = 0; i < 4; i += 1) {
+        f.add_stateless(true, true, true);
+    }
+    f.set_low_limit(8);
+    f.set_max_stateless(10);
+
+    // The rising edge finds only unarmed claims: the sweep stamps nothing,
+    // but the demand survives for the arming re-check to honor.
+    f.pool.foreground_pulse();
+    EXPECT_TRUE(!f.cancel_asked(0) && !f.cancel_asked(1) && !f.cancel_asked(2) &&
+                !f.cancel_asked(3));
+    EXPECT_EQ(f.reclaim_deficit(), 1u);
+
+    // Once a sender arms and the ask lands, the deficit is covered.
+    f.arm_cancel_source(3);
+    f.cancel_low(f.reclaim_deficit());
+    EXPECT_TRUE(f.cancel_asked(3));
+    EXPECT_EQ(f.reclaim_deficit(), 0u);
+}
+
+TEST_CASE(DeficitCountsQueuedHigh) {
+    WorkerPoolFixture f;
+    f.add_stateless(true, true, true);
+    f.set_low_limit(8);
+    f.set_max_stateless(10);
+
+    // Within budget and no High demand: nothing owed. A queued High with
+    // no idle slot owes one low even though the budget alone allows it.
+    EXPECT_EQ(f.reclaim_deficit(), 0u);
+    f.queue_high();
+    EXPECT_EQ(f.reclaim_deficit(), 1u);
+
+    // An ask already in flight covers the queued High.
+    f.arm_cancel_source(0);
+    f.cancel_low(1);
+    EXPECT_EQ(f.reclaim_deficit(), 0u);
 }
 
 };  // TEST_SUITE(WorkerPoolScheduling)

@@ -269,6 +269,19 @@ struct CancelCompileParams {
     std::string path;
 };
 
+/// Interrupt a stateless worker's in-flight build. Sent by the pool's
+/// cooperative cancel instead of wire-cancelling the build request: the
+/// worker flips the build's stop flag so clang abandons the parse at the
+/// next declaration, while the request still runs to a normal (cancelled)
+/// reply. The sender keeps awaiting that reply, so the slot stays busy —
+/// and the cancel-grace deadline stays armed — until the process is
+/// actually free; a wire cancel would resume the sender immediately and
+/// hand the slot out while the worker is still stuck in the old parse.
+/// Carries no build identity: the pool dispatches at most one build per
+/// worker at a time, and pipe ordering pins any follow-up build behind
+/// the cancel.
+struct CancelBuildParams {};
+
 }  // namespace clice::worker
 
 namespace kota::ipc::protocol {
@@ -310,6 +323,11 @@ struct NotificationTraits<clice::worker::EvictedParams> {
 template <>
 struct NotificationTraits<clice::worker::CancelCompileParams> {
     constexpr inline static std::string_view method = "clice/worker/cancelCompile";
+};
+
+template <>
+struct NotificationTraits<clice::worker::CancelBuildParams> {
+    constexpr inline static std::string_view method = "clice/worker/cancelBuild";
 };
 
 }  // namespace kota::ipc::protocol

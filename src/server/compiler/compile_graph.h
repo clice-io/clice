@@ -13,10 +13,13 @@ namespace clice {
 
 struct CompileUnit {
     /// Result of one compilation round, observed by waiters after the
-    /// round's completion event fires.
+    /// round's completion event fires. Also the dispatch callback's return
+    /// type: a dispatch reports Stale when the scheduler preempted its
+    /// build — no verdict on the unit, waiters retry.
     enum class Outcome : std::uint8_t {
-        /// The round was cancelled (file update or loss of interest) and its
-        /// result discarded; waiters that still hold interest retry.
+        /// The round was cancelled (file update, loss of interest, or a
+        /// scheduler-preempted build) and its result discarded; waiters
+        /// that still hold interest retry.
         Stale,
         Success,
         /// Dispatch failed or a dependency cycle was detected; waiters
@@ -103,8 +106,13 @@ struct CompileUnit {
 class CompileGraph {
 public:
     /// Performs the actual compilation (e.g. produce PCM file); `foreground`
-    /// carries the unit's interest class into the build's priority.
-    using dispatch_fn = std::function<kota::task<bool>(std::uint32_t path_id, bool foreground)>;
+    /// carries the unit's interest class into the build's priority. Stale
+    /// reports a scheduler-preempted build: the round ends without a
+    /// verdict and waiters respawn it — a foreground joiner's retry then
+    /// re-dispatches at High instead of surfacing the preemption as a
+    /// failure.
+    using dispatch_fn =
+        std::function<kota::task<CompileUnit::Outcome>(std::uint32_t path_id, bool foreground)>;
 
     /// Returns the dependency path_ids for a given path_id (called lazily on first compile).
     using resolve_fn = std::function<llvm::SmallVector<std::uint32_t>(std::uint32_t path_id)>;

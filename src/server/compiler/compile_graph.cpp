@@ -219,12 +219,15 @@ kota::task<> CompileGraph::unit_body(std::uint32_t path_id,
 
     // Re-look up the class: a foreground requester may have joined while
     // the dependency waits above were suspended.
-    bool ok = co_await dispatch(path_id, units.find(path_id)->second.foreground);
+    auto outcome = co_await dispatch(path_id, units.find(path_id)->second.foreground);
 
     // Synchronous tail: nothing can interleave between dispatch resuming us
     // and co_return, so the checks below are atomic.
-    if(!ok) {
-        guard.outcome = CompileUnit::Outcome::Failed;
+    if(outcome != CompileUnit::Outcome::Success) {
+        // Failed propagates to waiters; Stale (the scheduler preempted the
+        // build) makes them respawn the round, re-reading the interest
+        // class — a foreground joiner's retry dispatches at High.
+        guard.outcome = outcome;
         co_return;
     }
 
@@ -268,7 +271,9 @@ kota::task<bool> CompileGraph::await_unit(std::uint32_t path_id,
             case CompileUnit::Outcome::Failed: co_return false;
             // The round was cancelled and produced no result; we still hold
             // interest, so drive a new round. Each retry consumes one
-            // staleness event — without further updates this terminates.
+            // staleness event (an update, or one scheduler preemption of
+            // the dispatch, whose retry queues for a pool slot rather than
+            // spinning) — this terminates once the events stop.
             case CompileUnit::Outcome::Stale: break;
         }
     }

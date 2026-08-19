@@ -703,11 +703,11 @@ kota::task<std::size_t> WorkerPool::acquire_stateless_slot(worker::Priority prio
 
         // A queued High request needs a process, not just CPU: with every
         // slot busy, cooperatively cancel one low compile so a slot frees
-        // at the next declaration boundary instead of at end-of-TU. Slots
-        // already asked stay asked (cancel_low_priority skips them), so
+        // at the next declaration boundary instead of at end-of-TU. The
+        // deficit already counts slots asked and highs queued, so
         // re-entering this loop cannot over-cancel.
         if(priority == P::High && pick_idle_stateless() == SIZE_MAX)
-            cancel_low_priority(1);
+            cancel_low_priority(low_reclaim_deficit(1));
 
         // Queue up and suspend until try_dispatch_pending() claims a worker
         // for us or wakes us to observe pool death. The destructor covers
@@ -824,14 +824,30 @@ void WorkerPool::note_foreground() {
     if(foreground_active)
         return;
     foreground_active = true;
+    if(auto deficit = low_reclaim_deficit()) {
+        LOG_INFO("Foreground active: low budget -> {}, cancelling {} in-flight",
+                 effective_low_limit(),
+                 deficit);
+        cancel_low_priority(deficit);
+    }
+}
+
+std::size_t WorkerPool::low_reclaim_deficit(std::size_t pending_high) {
     auto cap = effective_low_limit();
     auto busy_low = low_busy_count();
-    if(busy_low > cap) {
-        LOG_INFO("Foreground active: low budget -> {}, cancelling {} in-flight",
-                 cap,
-                 busy_low - cap);
-        cancel_low_priority(busy_low - cap);
+    std::size_t need = busy_low > cap ? busy_low - cap : 0;
+    // Queued High requests each need a freed process; with a slot idle the
+    // queue is a transient the next dispatch drains without a sacrifice.
+    auto high_need = high_queue.size() + pending_high;
+    if(high_need > 0 && pick_idle_stateless() == SIZE_MAX) {
+        need = std::max(need, high_need);
     }
+    auto asked = static_cast<std::size_t>(
+        std::ranges::count_if(stateless_workers, [](const WorkerProcess& w) {
+            return w.state == SlotState::Alive && w.busy && w.low_priority &&
+                   w.cancel_requested_at != std::chrono::steady_clock::time_point{};
+        }));
+    return need > asked ? need - asked : 0;
 }
 
 void WorkerPool::tick_foreground() {
@@ -879,7 +895,8 @@ void WorkerPool::cancel_low_priority(std::size_t count) {
         // A claim whose sender has not resumed yet has no cancellation
         // source installed; skip it entirely — stamping it would leave a
         // request that never saw a cancel to be grace-killed as if it had
-        // ignored one. The invariant: a stamped slot was really cancelled.
+        // ignored one. The demand is not dropped: the sender re-checks the
+        // deficit when it arms and gives the claim back on the spot.
         if(!w.preempt_source)
             continue;
         victims.push_back(i);
@@ -893,6 +910,8 @@ void WorkerPool::cancel_low_priority(std::size_t count) {
             break;
         auto& w = stateless_workers[i];
         w.preempt_source->cancel();
+        if(w.peer)
+            w.peer->send_notification(worker::CancelBuildParams{});
         w.cancel_requested_at = std::chrono::steady_clock::now();
         cancelled += 1;
     }
@@ -1098,13 +1117,10 @@ void WorkerPool::preempt_low_priority(std::size_t count) {
         if(w.state != SlotState::Alive || !w.busy || !w.low_priority)
             continue;
 
-        // Signal the sender first, then take the slot out of rotation and
-        // kill the process — the kill is what actually frees the memory.
-        // The kill fails the in-flight request, and the sender classifies
-        // that failure as preemption by consulting the source. Today the
-        // runtime only queues waiters on cancel/close (never resumes them
-        // inline), so either order behaves the same; cancelling first
-        // keeps the classification correct without depending on that.
+        // Mark the source before taking the slot out of rotation: the kill
+        // is what actually frees the memory and fails the in-flight
+        // request, and the sender classifies that failure as preemption by
+        // consulting the source.
         auto source = w.preempt_source;
         w.preempted = true;
         // The preempt respawn skips crash accounting, so credit a healthy
