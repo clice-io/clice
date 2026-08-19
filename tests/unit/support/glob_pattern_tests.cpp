@@ -29,6 +29,50 @@ TEST_CASE(PatternSema) {
     ASSERT_FALSE(Pat3.has_value());
 }
 
+TEST_CASE(SingleSlashPrefix) {
+    // A single `/` inside the literal prefix (e.g. `src/foo` of `src/foo*.c`)
+    // is not a "multiple `/`" and must be accepted.
+    PATDEF(Pat1, "a/b")
+    ASSERT_TRUE(Pat1.match("a/b"));
+    ASSERT_FALSE(Pat1.match("ab"));
+    ASSERT_FALSE(Pat1.match("a/c"));
+
+    PATDEF(Pat2, "src/foo*.c")
+    ASSERT_TRUE(Pat2.match("src/foo.c"));
+    ASSERT_TRUE(Pat2.match("src/foo1.c"));
+    ASSERT_FALSE(Pat2.match("src/foo.cpp"));
+    ASSERT_FALSE(Pat2.match("src/bar1.c"));
+
+    PATDEF(Pat3, "/foo/bar/baz/*.c")
+    ASSERT_TRUE(Pat3.match("/foo/bar/baz/x.c"));
+    ASSERT_FALSE(Pat3.match("/foo/bar/baz/x/y.c"));
+
+    // A one-character segment (e.g. `*`) followed by `/` is also valid.
+    PATDEF(Pat4, "foo*/bar")
+    ASSERT_TRUE(Pat4.match("foo/bar"));
+    ASSERT_TRUE(Pat4.match("fooX/bar"));
+    ASSERT_TRUE(Pat4.match("fooXY/bar"));
+    ASSERT_FALSE(Pat4.match("fooX/baz"));
+
+    PATDEF(Pat5, "*/foo")
+    ASSERT_TRUE(Pat5.match("x/foo"));
+    ASSERT_FALSE(Pat5.match("x/y/foo"));
+
+    PATDEF(Pat6, "src/*/test.c")
+    ASSERT_TRUE(Pat6.match("src/x/test.c"));
+    ASSERT_FALSE(Pat6.match("src/x/y/test.c"));
+
+    // Real consecutive `/` must still be rejected.
+    auto Pat7 = clice::GlobPattern::create("a//b", 100);
+    ASSERT_FALSE(Pat7.has_value());
+
+    auto Pat8 = clice::GlobPattern::create("src//foo*.c", 100);
+    ASSERT_FALSE(Pat8.has_value());
+
+    auto Pat9 = clice::GlobPattern::create("a/*//b", 100);
+    ASSERT_FALSE(Pat9.has_value());
+}
+
 TEST_CASE(MaxSubGlob) {
     auto Pat1 = clice::GlobPattern::create("{AAA,BBB,AB*}");
     ASSERT_TRUE(Pat1.has_value());

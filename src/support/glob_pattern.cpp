@@ -166,17 +166,11 @@ std::expected<GlobPattern, std::string> GlobPattern::create(llvm::StringRef s,
     // Store the prefix that does not contain any metacharacter.
     GlobPattern pat;
     size_t prefix_size = s.find_first_of("?*[{\\");
+    if(s.substr(0, prefix_size).contains("//")) {
+        return std::unexpected{"Multiple `/` is not allowed"};
+    }
     if(prefix_size == std::string::npos) {
-        pat.prefix = s.substr(0, prefix_size).str();
-        // check if there is multiple `/` in prefix
-        size_t last_slash = 0;
-        size_t size = pat.prefix.size();
-        for(size_t i = 0; i < size; ++i) {
-            if(s[i] == '/' && i - last_slash == 1) {
-                return std::unexpected{"Multiple `/` is not allowed"};
-            }
-            last_slash = i;
-        }
+        pat.prefix = s.str();
         return pat;
     }
     if(prefix_size != 0 && s[prefix_size - 1] == '/') {
@@ -184,15 +178,6 @@ std::expected<GlobPattern, std::string> GlobPattern::create(llvm::StringRef s,
         --prefix_size;
     }
     pat.prefix = s.substr(0, prefix_size).str();
-    // check if there is multiple `/` in prefix
-    size_t last_slash = 0;
-    size_t size = pat.prefix.size();
-    for(size_t i = 0; i < size; ++i) {
-        if(s[i] == '/' && i - last_slash == 1) {
-            return std::unexpected{"Multiple `/` is not allowed"};
-        }
-        last_slash = i;
-    }
     s = s.substr(pat.prefix_at_seg_end ? prefix_size + 1 : prefix_size);
 
     llvm::SmallVector<std::string, 1> sub_pats;
@@ -268,7 +253,7 @@ std::expected<GlobPattern::SubGlobPattern, std::string>
                 return std::unexpected{"Invalid glob pattern, stray '\\'"};
             }
         } else if(s[i] == '/') {
-            if(i - current_gs->start == 1) {
+            if(i != 0 && i == current_gs->start) {
                 return std::unexpected{"Multiple `/` is not allowed"};
             }
             current_gs->end = i;
