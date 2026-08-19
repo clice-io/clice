@@ -105,12 +105,15 @@ struct IndexerFixture {
         loop.run();
     }
 
+    /// One background round as a schedulable task, for tests that need to
+    /// interleave other tasks with it.
+    kota::task<> round_task() {
+        return indexer.run_background_indexing();
+    }
+
     /// Run one background round to completion on the fixture's loop.
     void run_round() {
-        auto body = [this]() -> kota::task<> {
-            co_await indexer.run_background_indexing();
-        };
-        auto task = body();
+        auto task = round_task();
         loop.schedule(task);
         loop.run();
     }
@@ -1926,6 +1929,42 @@ TEST_CASE(RoundSnapshotBoundary) {
 
     ASSERT_EQ(f.indexer.pending_files(), 0u);
     ASSERT_EQ(f.indexer.failed_files(), 3u);
+    ASSERT_TRUE(f.indexer.is_idle());
+}
+
+TEST_CASE(PauseResumesRound) {
+    IndexerFixture f;
+    f.workspace.config.project.enable_indexing.value = false;
+
+    auto a = f.workspace.path_pool.intern("/fake/a.cpp");
+    auto b = f.workspace.path_pool.intern("/fake/b.cpp");
+    f.indexer.enqueue(a, ReindexReason::ContentChanged);
+    f.indexer.enqueue(b, ReindexReason::ContentChanged);
+
+    // Pause from inside the round (the first Report), resume from a
+    // separately scheduled task: the feeder must park on the resume event
+    // and drain the rest of the round afterwards.
+    bool paused = false;
+    auto conn = f.indexer.on_progress_changed.connect([&] {
+        if(f.indexer.progress().stage == Indexer::Progress::Stage::Report && !paused) {
+            paused = true;
+            f.indexer.pause_indexing();
+        }
+    });
+
+    auto resume_body = [&]() -> kota::task<> {
+        co_await kota::yield();
+        f.indexer.resume_indexing();
+    };
+    auto round = f.round_task();
+    auto resumer = resume_body();
+    f.loop.schedule(round);
+    f.loop.schedule(resumer);
+    f.loop.run();
+
+    ASSERT_TRUE(paused);
+    ASSERT_EQ(f.indexer.pending_files(), 0u);
+    ASSERT_EQ(f.indexer.failed_files(), 2u);
     ASSERT_TRUE(f.indexer.is_idle());
 }
 

@@ -2,7 +2,9 @@
 ///
 /// Kills stateless workers while an indexing round is in flight and verifies the
 /// round still converges: in-flight files fail with worker_crashed, the indexer
-/// requeues them, and a follow-up round indexes every file.
+/// requeues them, and a follow-up round indexes every file. The second test
+/// darkens the whole pool (crash budget exhausted) and verifies the round parks
+/// until revival instead of spinning requeues (#611).
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -141,8 +143,8 @@ test.skipIf(process.platform !== "linux")(
         process.env["CLICE_ANOMALY_NO_TRAP"] = "1";
         let client;
         try {
-            client = session.spawn(workspace, {
-                allowAnomaly: true,
+            client = session.spawn(workspace, { allowAnomaly: true });
+            await client.initialize(workspace, {
                 initializationOptions: {
                     project: {
                         stateless_worker_count: 1,
@@ -152,18 +154,25 @@ test.skipIf(process.platform !== "linux")(
                     },
                 },
             });
-            await client.initialize(workspace);
         } finally {
             delete process.env["CLICE_ANOMALY_NO_TRAP"];
         }
 
         await client.openAndWait("main.cpp");
 
-        // Kill the slot on sight until its budget (3 consecutive fast
-        // crashes) is spent; respawn backoff caps at ~1s, so 8s of killing
-        // covers the initial worker and every respawn.
+        const logsDir = workspace.path(".clice/logs");
+        const masterLog = () =>
+            fs
+                .readdirSync(logsDir, { recursive: true, encoding: "utf8" })
+                .filter((name) => path.basename(name) === "master.log")
+                .map((name) => fs.readFileSync(path.join(logsDir, name), "utf8"))
+                .join("");
+
+        // Kill the slot on sight until the pool reports the budget as spent
+        // (a fast-crash streak past max_crash_streak); respawn backoff caps
+        // at ~1s, so a few seconds of killing cover every respawn.
         let kills = 0;
-        for (let i = 0; i < 40; i += 1) {
+        for (let i = 0; i < 150 && !masterLog().includes("exceeded crash budget"); i += 1) {
             for (const pid of statelessWorkerPids(client.child.pid!)) {
                 try {
                     process.kill(pid, "SIGKILL");
@@ -175,10 +184,19 @@ test.skipIf(process.platform !== "linux")(
             await sleep(200);
         }
         expect(kills, "no stateless worker was ever seen").toBeGreaterThanOrEqual(3);
+        expect(
+            masterLog().includes("exceeded crash budget"),
+            "the pool never went dark — the outage under test did not happen",
+        ).toBe(true);
 
         // Dark window: the master must stay responsive while the round is
-        // parked on the capacity signal.
-        const during = await indexedFunctions(client);
+        // parked on the capacity signal — fail loudly here instead of via
+        // the test timeout if it wedged.
+        const during = await Promise.race([
+            indexedFunctions(client),
+            sleep(15_000).then(() => null),
+        ]);
+        expect(during, "master unresponsive during the outage").not.toBeNull();
 
         // The revival cooldown (30s) re-arms the slot and the parked round
         // must resume and finish every file: crash requeues land past the
@@ -195,19 +213,13 @@ test.skipIf(process.platform !== "linux")(
         const missing = [...expected].filter((f) => !found.has(f)).sort();
         expect(
             [...expected].every((f) => found.has(f)),
-            `missing after outage (had ${during.size} during): ${JSON.stringify(missing)}`,
+            `missing after outage (had ${during?.size} during): ${JSON.stringify(missing)}`,
         ).toBe(true);
 
         // The spin itself: parked dispatch sends nothing, so the outage may
         // produce at most a handful of worker-unavailable requeues — the
         // incident produced them at an unbounded rate.
-        const logsDir = workspace.path(".clice/logs");
-        const requeues = fs
-            .readdirSync(logsDir, { recursive: true, encoding: "utf8" })
-            .filter((name) => path.basename(name) === "master.log")
-            .map((name) => fs.readFileSync(path.join(logsDir, name), "utf8"))
-            .join("")
-            .match(/No stateless workers available/g);
+        const requeues = masterLog().match(/No stateless workers available/g);
         expect((requeues ?? []).length).toBeLessThanOrEqual(FILE_COUNT);
     },
 );

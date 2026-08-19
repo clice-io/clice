@@ -413,9 +413,7 @@ private:
     struct RoundState {
         std::size_t completed = 0;
 
-        /// Dispatched tasks not yet finished; the feeder caps this at twice
-        /// the pool's low budget so the pool queue stays shallow enough for
-        /// pause and budget changes to bite.
+        /// Dispatched tasks not yet finished.
         std::size_t inflight = 0;
 
         /// Set whenever a task finishes, waking a feeder waiting out the cap.
@@ -423,6 +421,16 @@ private:
     };
 
     kota::task<> run_background_indexing();
+
+    /// The round's dispatch loop, spawned as a child of `workers` so that a
+    /// shutdown cancel reaches it through the round frame's join — see the
+    /// spawn site. Consumes [index_queue_pos, round_end) and spawns one
+    /// run_index_task per live slot, bounded by the feeder window.
+    kota::task<> run_round_feeder(kota::task_group<>& workers,
+                                  RoundState& round,
+                                  std::size_t round_end,
+                                  std::size_t total,
+                                  std::size_t& dispatched);
     kota::task<> index_one(std::uint32_t server_path_id,
                            std::uint64_t ticket,
                            std::size_t index,
