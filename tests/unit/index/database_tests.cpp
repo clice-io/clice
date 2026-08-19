@@ -179,11 +179,11 @@ TEST_CASE(ReopenServesPersistedBlobs) {
     {
         auto db = index::open_database(store, "lmdb");
         ASSERT_TRUE(db != nullptr);
-        ASSERT_TRUE(db->write({blob(index::IndexBlobKind::Cdb, "cdb", "snapshot")}, {}).empty());
+        ASSERT_TRUE(db->write({blob(index::IndexBlobKind::CDB, "cdb", "snapshot")}, {}).empty());
     }
     auto db = index::open_database(store, "lmdb");
     ASSERT_TRUE(db != nullptr);
-    ASSERT_TRUE(db->read(index::IndexBlobKind::Cdb, "cdb").buffer->getBuffer() == "snapshot");
+    ASSERT_TRUE(db->read(index::IndexBlobKind::CDB, "cdb").buffer->getBuffer() == "snapshot");
 }
 
 TEST_CASE(CorruptDatabaseRebuilds) {
@@ -197,8 +197,8 @@ TEST_CASE(CorruptDatabaseRebuilds) {
     }
     auto db = index::open_database(store, "lmdb");
     ASSERT_TRUE(db != nullptr);
-    ASSERT_FALSE(db->contains(index::IndexBlobKind::Cdb, "cdb"));
-    ASSERT_TRUE(db->write({blob(index::IndexBlobKind::Cdb, "cdb", "fresh")}, {}).empty());
+    ASSERT_FALSE(db->contains(index::IndexBlobKind::CDB, "cdb"));
+    ASSERT_TRUE(db->write({blob(index::IndexBlobKind::CDB, "cdb", "fresh")}, {}).empty());
 }
 
 TEST_CASE(FullMapFailsWholeBatchThenGrows) {

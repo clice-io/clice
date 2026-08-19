@@ -238,7 +238,7 @@ function derivePosition(file: string): { line: number; character: number } {
 
 /// Locate the CDB the way clice does: workspace root first, then any
 /// first-level subdirectory (e.g. build/).
-function findCdb(workspace: string): string {
+function findCDB(workspace: string): string {
     const candidates = [workspace];
     for (const entry of fs.readdirSync(workspace, { withFileTypes: true })) {
         if (entry.isDirectory()) {
@@ -254,7 +254,7 @@ function findCdb(workspace: string): string {
     fail(`no compile_commands.json under ${workspace} or its direct subdirectories`);
 }
 
-function firstCdbEntry(cdbPath: string): string {
+function firstCDBEntry(cdbPath: string): string {
     const entries = JSON.parse(fs.readFileSync(cdbPath, "utf8")) as {
         file: string;
         directory?: string;
@@ -553,9 +553,9 @@ function printScenario(name: string, result: ScenarioResult): void {
 
 async function main(): Promise<void> {
     const opts = parseOptions();
-    const cdb = findCdb(opts.workspace);
+    const cdb = findCDB(opts.workspace);
     opts.cdbDir = path.dirname(cdb);
-    const file = opts.file !== null ? path.resolve(opts.workspace, opts.file) : firstCdbEntry(cdb);
+    const file = opts.file !== null ? path.resolve(opts.workspace, opts.file) : firstCDBEntry(cdb);
     const cpus = os.cpus();
 
     const result: BenchResult = {

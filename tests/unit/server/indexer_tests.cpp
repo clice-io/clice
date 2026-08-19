@@ -1614,14 +1614,14 @@ TEST_CASE(UnreachableHostRebuilds) {
     ASSERT_TRUE(f.indexer.pending_reason(header_id) == ReindexReason::ContentChanged);
 }
 
-TEST_CASE(CdbWriteFailureRetried) {
+TEST_CASE(CDBWriteFailureRetried) {
     TempDir tmp;
     tmp.touch("main.cpp", "int value() { return 1; }\n");
     auto src = tmp.path("main.cpp");
 
     // A storage that fails only the CDB snapshot blob, with everything
     // else landing normally.
-    struct CdbFailingStorage final : index::BlobDatabase {
+    struct CDBFailingStorage final : index::BlobDatabase {
         std::unique_ptr<index::BlobDatabase> real;
         bool fail_cdb = true;
         llvm::SmallVector<index::IndexBlobKind> written;
@@ -1639,7 +1639,7 @@ TEST_CASE(CdbWriteFailureRetried) {
             llvm::SmallVector<std::size_t> failed;
             for(std::size_t i = 0; i < puts.size(); i += 1) {
                 written.push_back(puts[i].kind);
-                if(fail_cdb && puts[i].kind == index::IndexBlobKind::Cdb) {
+                if(fail_cdb && puts[i].kind == index::IndexBlobKind::CDB) {
                     failed.push_back(i);
                 } else if(!real->write(llvm::ArrayRef(puts[i]), {}).empty()) {
                     failed.push_back(i);
@@ -1668,7 +1668,7 @@ TEST_CASE(CdbWriteFailureRetried) {
     IndexerFixture f;
     open_store(tmp, f.workspace);
     f.workspace.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
-    auto failing = std::make_unique<CdbFailingStorage>();
+    auto failing = std::make_unique<CDBFailingStorage>();
     failing->real = std::move(f.workspace.index_db);
     auto* storage = failing.get();
     f.workspace.index_db = std::move(failing);
@@ -1679,8 +1679,8 @@ TEST_CASE(CdbWriteFailureRetried) {
     f.save();
 
     // The snapshot rides the batch behind the index state it describes.
-    ASSERT_EQ(int(storage->written.back()), int(index::IndexBlobKind::Cdb));
-    ASSERT_FALSE(storage->real->contains(index::IndexBlobKind::Cdb, "cdb"));
+    ASSERT_EQ(int(storage->written.back()), int(index::IndexBlobKind::CDB));
+    ASSERT_FALSE(storage->real->contains(index::IndexBlobKind::CDB, "cdb"));
 
     // Nothing else is dirty any more, yet the failed snapshot alone must
     // drive the next save until it lands — and until it does, the state
@@ -1688,7 +1688,7 @@ TEST_CASE(CdbWriteFailureRetried) {
     ASSERT_TRUE(f.indexer.has_unsaved_state());
     storage->fail_cdb = false;
     f.save();
-    ASSERT_TRUE(storage->real->contains(index::IndexBlobKind::Cdb, "cdb"));
+    ASSERT_TRUE(storage->real->contains(index::IndexBlobKind::CDB, "cdb"));
     ASSERT_FALSE(f.indexer.has_unsaved_state());
 }
 
@@ -1710,7 +1710,7 @@ TEST_CASE(MissingSnapshotRewritten) {
         f.workspace.index_db->write(
             {
         },
-            {{index::IndexBlobKind::Cdb, std::string("cdb")}});
+            {{index::IndexBlobKind::CDB, std::string("cdb")}});
     }
 
     // A rerun that dirties nothing must still recreate the baseline —
@@ -1721,7 +1721,7 @@ TEST_CASE(MissingSnapshotRewritten) {
     f.indexer.load();
     ASSERT_TRUE(f.indexer.has_unsaved_state());
     f.save();
-    ASSERT_TRUE(f.workspace.index_db->contains(index::IndexBlobKind::Cdb, "cdb"));
+    ASSERT_TRUE(f.workspace.index_db->contains(index::IndexBlobKind::CDB, "cdb"));
     ASSERT_FALSE(f.indexer.has_unsaved_state());
 }
 

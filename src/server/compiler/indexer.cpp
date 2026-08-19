@@ -38,20 +38,20 @@ std::string blob_key(llvm::StringRef path) {
     return std::format("{:016x}", llvm::xxh3_64bits(path));
 }
 
-/// JSON layout of the persisted CDB snapshot (blob kind Cdb): per source
+/// JSON layout of the persisted CDB snapshot (blob kind CDB): per source
 /// file, the sorted canonical command hashes of its entries and a hash of
 /// its matched config rules when the index state was last saved. A
 /// standalone-indexed header gets an entry too (empty hashes): its own
 /// matched rules plus the host source whose command its rows borrowed.
-struct CdbSnapshotEntry {
+struct CDBSnapshotEntry {
     std::string file;
     std::vector<std::string> hashes;
     std::string rules;
     std::string host;
 };
 
-struct CdbSnapshot {
-    std::vector<CdbSnapshotEntry> entries;
+struct CDBSnapshot {
+    std::vector<CDBSnapshotEntry> entries;
 };
 
 /// clice.toml append/remove rules change the effective indexing command
@@ -77,10 +77,10 @@ std::string rules_hash(const Config& config, llvm::StringRef file) {
     return std::format("{:016x}", llvm::xxh3_64bits(joined));
 }
 
-CdbSnapshot build_cdb_snapshot(Workspace& workspace,
+CDBSnapshot build_cdb_snapshot(Workspace& workspace,
                                const llvm::DenseMap<std::uint32_t, std::uint32_t>& header_hosts,
                                llvm::ArrayRef<std::uint32_t> standalone_debt) {
-    CdbSnapshot snapshot;
+    CDBSnapshot snapshot;
     for(auto& [path_id, hashes]: workspace.cdb.command_hash_snapshot()) {
         auto file = workspace.cdb.resolve_path(path_id).str();
         auto rules = rules_hash(workspace.config, file);
@@ -117,7 +117,7 @@ CdbSnapshot build_cdb_snapshot(Workspace& workspace,
         add_standalone(tu);
     }
     // Deterministic bytes: save() decides "unchanged" by byte equality.
-    std::ranges::sort(snapshot.entries, {}, &CdbSnapshotEntry::file);
+    std::ranges::sort(snapshot.entries, {}, &CDBSnapshotEntry::file);
     return snapshot;
 }
 
@@ -520,7 +520,7 @@ kota::task<> Indexer::save() {
         cdb_bytes = serialize_cdb_snapshot(workspace, header_hosts, standalone_debt());
         if(!cdb_bytes.empty() && cdb_bytes != persisted_cdb_snapshot) {
             cdb_index = batch.size();
-            batch.push_back({index::IndexBlobKind::Cdb, "cdb", cdb_bytes});
+            batch.push_back({index::IndexBlobKind::CDB, "cdb", cdb_bytes});
         } else {
             cdb_dirty = false;
         }
@@ -893,8 +893,8 @@ llvm::SmallVector<std::uint32_t> Indexer::standalone_debt() {
 }
 
 void Indexer::reconcile_cdb_snapshot() {
-    auto blob = workspace.index_db->read(index::IndexBlobKind::Cdb, "cdb");
-    CdbSnapshot persisted;
+    auto blob = workspace.index_db->read(index::IndexBlobKind::CDB, "cdb");
+    CDBSnapshot persisted;
     if(!blob ||
        !kota::codec::json::from_string(std::string_view(blob.buffer->getBuffer()), persisted)) {
         // Unknown baseline: nothing to diff against. Dirty the snapshot so
@@ -907,7 +907,7 @@ void Indexer::reconcile_cdb_snapshot() {
     }
     persisted_cdb_snapshot = blob.buffer->getBuffer().str();
 
-    llvm::StringMap<const CdbSnapshotEntry*> before;
+    llvm::StringMap<const CDBSnapshotEntry*> before;
     for(auto& entry: persisted.entries) {
         before[entry.file] = &entry;
     }

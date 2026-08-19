@@ -31,7 +31,7 @@ enum class IndexBlobKind : std::uint8_t {
     /// The single CDB command-hash snapshot the persisted index was built
     /// against, key "cdb" — how a cold start detects compile-command
     /// changes that happened while no server was running.
-    Cdb,
+    CDB,
 };
 
 /// One blob read out of the database. The bytes' lifetime is

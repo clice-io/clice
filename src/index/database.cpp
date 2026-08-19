@@ -69,7 +69,7 @@ llvm::StringRef namespace_of(IndexBlobKind kind) {
         case IndexBlobKind::Shard: return "index";
         case IndexBlobKind::Manifest: return "index-manifest";
         case IndexBlobKind::Global: return "index-global";
-        case IndexBlobKind::Cdb: return "index-cdb";
+        case IndexBlobKind::CDB: return "index-cdb";
     }
     std::unreachable();
 }
@@ -80,7 +80,7 @@ public:
         for(auto kind: {IndexBlobKind::Shard,
                         IndexBlobKind::Manifest,
                         IndexBlobKind::Global,
-                        IndexBlobKind::Cdb}) {
+                        IndexBlobKind::CDB}) {
             store.register_namespace({
                 .name = std::string(namespace_of(kind)),
                 .extension = ".idx",
@@ -198,7 +198,7 @@ char kind_prefix(IndexBlobKind kind) {
         case IndexBlobKind::Shard: return 'S';
         case IndexBlobKind::Manifest: return 'M';
         case IndexBlobKind::Global: return 'G';
-        case IndexBlobKind::Cdb: return 'C';
+        case IndexBlobKind::CDB: return 'C';
     }
     std::unreachable();
 }
