@@ -279,12 +279,31 @@ kota::task<bool> CompileGraph::await_unit(std::uint32_t path_id,
     }
 }
 
+void CompileGraph::mark_foreground(std::uint32_t path_id) {
+    auto& unit = units[path_id];
+    unit.path_id = path_id;
+    // Already-marked doubles as the cycle/shared-dep visit guard.
+    if(unit.foreground) {
+        return;
+    }
+    unit.foreground = true;
+    // A late join must upgrade the whole resolved closure, not just the
+    // root: a dependency already spawned at Low re-reads its class when a
+    // preempted round retries, and without the closure mark that retry
+    // would stay Low — cancellable by the very foreground waiting on it.
+    // Copy: recursion inserts units and may rehash the map.
+    auto deps = unit.dependencies;
+    for(auto dep_id: deps) {
+        mark_foreground(dep_id);
+    }
+}
+
 kota::task<bool> CompileGraph::compile(std::uint32_t path_id, bool foreground) {
     // Request scope: one root reference, dropped when the requester exits or
     // its frame is cancelled.
     RefGuard scope(*this, {path_id});
     if(foreground) {
-        units.find(path_id)->second.foreground = true;
+        mark_foreground(path_id);
     }
     co_return co_await await_unit(path_id, std::nullopt);
 }
@@ -303,7 +322,7 @@ kota::task<bool> CompileGraph::compile_deps(std::uint32_t path_id, bool foregrou
     RefGuard scope(*this, deps);
     if(foreground) {
         for(auto dep_id: deps) {
-            units.find(dep_id)->second.foreground = true;
+            mark_foreground(dep_id);
         }
     }
 

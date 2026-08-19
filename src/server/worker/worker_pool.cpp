@@ -910,6 +910,11 @@ void WorkerPool::cancel_low_priority(std::size_t count) {
             break;
         auto& w = stateless_workers[i];
         w.preempt_source->cancel();
+        // An Alive slot always holds a peer in production (mark_worker_dead
+        // drops the peer and the Alive state in one step); the conditional
+        // exists for fixture-built slots. Either way the source above makes
+        // the sender observe cancelled, and a slot that dies before the
+        // grace expires has its stamp cleared by the respawn.
         if(w.peer)
             w.peer->send_notification(worker::CancelBuildParams{});
         w.cancel_requested_at = std::chrono::steady_clock::now();

@@ -1086,6 +1086,54 @@ TEST_CASE(preempted_dispatch_retries) {
     });
 }
 
+TEST_CASE(preempted_dep_retry_upgrades) {
+    // A foreground requester joining a background root must upgrade the
+    // resolved dependency closure: the dependency's preempted round retries
+    // with the foreground class instead of staying cancellable Low.
+    kota::event started;
+    kota::event proceed;
+    int dep_calls = 0;
+    std::vector<bool> dep_classes;
+    auto dispatch = [&](std::uint32_t pid, bool foreground) -> kota::task<Outcome> {
+        if(pid == 2) {
+            dep_calls += 1;
+            dep_classes.push_back(foreground);
+            if(dep_calls == 1) {
+                started.set();
+                co_await proceed.wait();
+                co_return Outcome::Stale;
+            }
+        }
+        co_return Outcome::Success;
+    };
+    llvm::DenseMap<std::uint32_t, llvm::SmallVector<std::uint32_t>> adj;
+    adj[1] = {2};
+    make_graph(std::move(dispatch), static_resolver(std::move(adj)));
+
+    Request background;
+    bool fg_ok = false;
+    execute([&]() -> kota::task<> {
+        auto foreground_join = [&]() -> kota::task<> {
+            auto r = co_await graph->compile(1, /*foreground=*/true).catch_cancel();
+            fg_ok = r.has_value() && *r;
+        };
+        auto driver = [&]() -> kota::task<> {
+            co_await started.wait();
+            proceed.set();
+            co_return;
+        };
+        // The foreground request joins while the dependency's first round
+        // is parked inside its dispatch.
+        co_await kota::when_all(run_request(1, background), foreground_join(), driver());
+    });
+
+    EXPECT_TRUE(background.result == true);
+    EXPECT_TRUE(fg_ok);
+    ASSERT_EQ(dep_calls, 2);
+    EXPECT_FALSE(dep_classes[0]);
+    EXPECT_TRUE(dep_classes[1]);
+}
+
 TEST_CASE(preempted_retry_upgrades_class) {
     // A foreground requester joining a Low round whose build the scheduler
     // then preempts must not eat the preemption as a failure: the respawn

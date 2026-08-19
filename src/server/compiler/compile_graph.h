@@ -169,6 +169,10 @@ private:
     /// Interest +1; creates the unit if needed.
     void acquire(std::uint32_t path_id);
 
+    /// Mark a unit and its resolved dependency closure foreground; units
+    /// resolved later inherit through the edge propagation in unit_body.
+    void mark_foreground(std::uint32_t path_id);
+
     /// Interest -1; schedules a zero-interest cancellation check when it
     /// drops to zero mid-compile.
     void release(std::uint32_t path_id);
