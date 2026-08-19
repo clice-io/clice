@@ -867,6 +867,23 @@ bool Indexer::load(bool read_only) {
         reconcile_cdb_snapshot();
     }
 
+    // The reads above touch every adopted manifest and shard, so page
+    // corruption anywhere in the database has latched by now; heal it like
+    // the unreadable-global case above instead of writing into a damaged
+    // tree every session. The adopted state unwinds wholesale: the shard
+    // views borrow from the condemned environment, and manifests kept
+    // without their views would read as fresh and gate the rebuild sweep
+    // off exactly the files whose rows were lost.
+    if(!read_only && db.corrupted()) {
+        LOG_WARN("Index database is corrupt; discarding it to rebuild from scratch");
+        db.condemn();
+        workspace.shards.clear();
+        project = index::ProjectIndex();
+        startup_removes.clear();
+        workspace.index_db.reset();
+        return true;
+    }
+
     if(!workspace.shards.empty()) {
         LOG_INFO("Loaded {} index shards, {} manifests, {} symbols",
                  workspace.shards.size(),

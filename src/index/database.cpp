@@ -116,11 +116,19 @@ public:
 
     llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> puts,
                                          llvm::ArrayRef<BlobKey> removes) override {
+        // A failed batch keeps its removals too, mirroring the LMDB
+        // backend's all-or-nothing commit: a removal landing without the
+        // puts it was batched behind can delete a blob the surviving
+        // on-disk state still references. load() re-sweeps whatever the
+        // skip leaves behind.
         auto failed = write_puts(puts);
+        if(!failed.empty()) {
+            return failed;
+        }
         for(auto& [kind, key]: removes) {
             store.invalidate(namespace_of(kind), key);
         }
-        return failed;
+        return {};
     }
 
     void for_each_key(IndexBlobKind kind, llvm::function_ref<void(llvm::StringRef)> fn) override {
@@ -377,7 +385,11 @@ public:
         if(int rc = mdb_txn_begin(env, nullptr, MDB_RDONLY, &fresh)) {
             return std::unexpected(std::string(mdb_strerror(rc)));
         }
-        outstanding.push_back(txn);
+        // No predecessor to retire when a grow() resized the map but
+        // failed to reopen a snapshot.
+        if(txn) {
+            outstanding.push_back(txn);
+        }
         txn = fresh;
         generation += 1;
         return generation;
@@ -538,14 +550,6 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(CacheStore& store,
     bool read_only = store.read_only();
 
     auto mapsize = initial_mapsize != 0 ? initial_mapsize : lmdb_default_mapsize;
-#ifdef _WIN32
-    if(!read_only && !make_sparse(path) && initial_mapsize == 0) {
-        LOG_WARN("Index database at {} cannot be sparse; starting at {} bytes and growing",
-                 path,
-                 lmdb_small_mapsize);
-        mapsize = lmdb_small_mapsize;
-    }
-#endif
 
     // One recovery retry: confirmed corruption (or a meta mismatch) is
     // repaired by deleting the database — it is a rebuildable cache, and
@@ -554,9 +558,28 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(CacheStore& store,
     // anything: persistence is disabled for this session instead, the
     // same discipline the loader applies to an unreadable global blob.
     for(int attempt = 0; attempt < 2; attempt += 1) {
+        // Giving up must not leave behind a file this attempt created
+        // (make_sparse and mdb_env_open both create on demand): read-only
+        // opens select the LMDB backend on bare existence, so an abandoned
+        // uninitialized placeholder would shadow the per-file blobs.
+        bool created = !read_only && !llvm::sys::fs::exists(path);
+        auto discard_created = [&] {
+            if(created) {
+                remove_database_files(path);
+            }
+        };
+#ifdef _WIN32
+        if(!read_only && !make_sparse(path) && initial_mapsize == 0) {
+            LOG_WARN("Index database at {} cannot be sparse; starting at {} bytes and growing",
+                     path,
+                     lmdb_small_mapsize);
+            mapsize = lmdb_small_mapsize;
+        }
+#endif
         MDB_env* env = nullptr;
         if(int rc = mdb_env_create(&env)) {
             LOG_WARN("Failed to create the index database environment: {}", mdb_strerror(rc));
+            discard_created();
             return nullptr;
         }
         mdb_env_set_mapsize(env, mapsize);
@@ -579,6 +602,7 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(CacheStore& store,
                 path,
                 stage,
                 mdb_strerror(rc));
+            discard_created();
             return false;
         };
 
@@ -633,6 +657,7 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(CacheStore& store,
                     "Cannot validate the index database at {}; "
                     "index persistence is disabled for this session",
                     path);
+                discard_created();
                 return nullptr;
             }
         }

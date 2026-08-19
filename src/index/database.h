@@ -124,7 +124,11 @@ public:
     /// opening a fresh one. Returns true when the map was resized: the
     /// caller must then rebind every borrower before yielding the event
     /// loop. False when no growth was pending (including the filesystem
-    /// backend, where this is a no-op).
+    /// backend, where this is a no-op). An error return also means growth
+    /// was attempted, so every snapshot has already been retired: borrowed
+    /// buffers are dead and must be shed or re-read, and a replacement
+    /// snapshot may not have opened — reads then miss until a later grow()
+    /// succeeds.
     virtual std::expected<bool, std::string> grow() = 0;
 
     /// Whether the backend observed page-level corruption after open

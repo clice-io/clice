@@ -475,7 +475,11 @@ TEST_CASE(GrowFailureShedsCleanShards) {
 
     auto spy = std::make_unique<FailingGrow>();
     spy->real = std::move(workspace.index_db);
-    spy->fail_key = blob_key(indexed_dirty.tu_path);
+    // Through the pool: the indexer keys blobs by the pool-canonical path,
+    // which need not equal the raw temp path byte-for-byte (Windows 8.3
+    // names).
+    spy->fail_key =
+        blob_key(workspace.path_pool.resolve(workspace.path_pool.intern(indexed_dirty.tu_path)));
     workspace.index_db = std::move(spy);
 
     indexer.merge(indexed_clean.data.data(), indexed_clean.data.size());
@@ -1424,6 +1428,10 @@ TEST_CASE(DeferredSweepYieldsToFreshWrite) {
         ASSERT_FALSE(indexed.data.empty());
         f.indexer.merge(indexed.data.data(), indexed.data.size());
         f.save();
+        // The indexer keys blobs by the pool-canonical path, which need
+        // not equal the raw temp path byte-for-byte (Windows 8.3 names).
+        auto key =
+            blob_key(f.workspace.path_pool.resolve(f.workspace.path_pool.intern(indexed.tu_path)));
         // Replace the persisted manifest with an unresolvable one: the
         // next load sweeps it — deferred into the first save — and the
         // TU's shard turns orphan, deferred too.
@@ -1435,7 +1443,7 @@ TEST_CASE(DeferredSweepYieldsToFreshWrite) {
         index::serialize_manifest(stale, os);
         f.workspace.index_db->write(
             {
-                {index::IndexBlobKind::Manifest, blob_key(src), std::move(bytes)}
+                {index::IndexBlobKind::Manifest, key, std::move(bytes)}
         },
             {});
     }
@@ -1452,14 +1460,14 @@ TEST_CASE(DeferredSweepYieldsToFreshWrite) {
     f.indexer.merge(indexed.data.data(), indexed.data.size());
     f.save();
 
+    auto key =
+        blob_key(f.workspace.path_pool.resolve(f.workspace.path_pool.intern(indexed.tu_path)));
     bool manifest_alive = false;
-    f.workspace.index_db->for_each_key(index::IndexBlobKind::Manifest, [&](llvm::StringRef key) {
-        manifest_alive |= key == blob_key(src);
-    });
+    f.workspace.index_db->for_each_key(index::IndexBlobKind::Manifest,
+                                       [&](llvm::StringRef k) { manifest_alive |= k == key; });
     bool shard_alive = false;
-    f.workspace.index_db->for_each_key(index::IndexBlobKind::Shard, [&](llvm::StringRef key) {
-        shard_alive |= key == blob_key(src);
-    });
+    f.workspace.index_db->for_each_key(index::IndexBlobKind::Shard,
+                                       [&](llvm::StringRef k) { shard_alive |= k == key; });
     ASSERT_TRUE(manifest_alive);
     ASSERT_TRUE(shard_alive);
 }
@@ -1560,6 +1568,85 @@ TEST_CASE(CorruptGlobalCondemnsDatabase) {
     ASSERT_TRUE(f.indexer.load());
     ASSERT_TRUE(condemned);
     ASSERT_TRUE(f.workspace.index_db == nullptr);
+}
+
+TEST_CASE(CorruptShardCondemnsDatabase) {
+    TempDir tmp;
+    tmp.touch("main.cpp", "int gone() { return 1; }\n");
+    auto src = tmp.path("main.cpp");
+
+    {
+        IndexerFixture f;
+        open_store(tmp, f.workspace);
+        auto indexed = index_file(tmp, src);
+        ASSERT_FALSE(indexed.data.empty());
+        f.indexer.merge(indexed.data.data(), indexed.data.size());
+        f.save();
+    }
+
+    // Corruption latched past the global anchor: the shard read poisons
+    // the latch while the global stays readable. load must condemn here
+    // too, and unwind everything it adopted — the views would otherwise
+    // borrow from the condemned environment.
+    struct CorruptShard final : index::BlobDatabase {
+        std::unique_ptr<index::BlobDatabase> real;
+        bool* condemned;
+        bool poisoned = false;
+
+        index::ReadBlob read(index::IndexBlobKind kind, llvm::StringRef key) override {
+            if(kind == index::IndexBlobKind::Shard) {
+                poisoned = true;
+                return {};
+            }
+            return real->read(kind, key);
+        }
+
+        bool contains(index::IndexBlobKind kind, llvm::StringRef key) override {
+            return real->contains(kind, key);
+        }
+
+        llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> puts,
+                                             llvm::ArrayRef<index::BlobKey> removes) override {
+            return real->write(puts, removes);
+        }
+
+        void for_each_key(index::IndexBlobKind kind,
+                          llvm::function_ref<void(llvm::StringRef)> fn) override {
+            real->for_each_key(kind, fn);
+        }
+
+        std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
+            return 0;
+        }
+
+        void retire_old_snapshot() override {}
+
+        std::expected<bool, std::string> grow() override {
+            return false;
+        }
+
+        bool corrupted() const override {
+            return poisoned;
+        }
+
+        void condemn() override {
+            *condemned = true;
+        }
+    };
+
+    IndexerFixture f;
+    open_store(tmp, f.workspace);
+    bool condemned = false;
+    auto wrapper = std::make_unique<CorruptShard>();
+    wrapper->real = std::move(f.workspace.index_db);
+    wrapper->condemned = &condemned;
+    f.workspace.index_db = std::move(wrapper);
+
+    ASSERT_TRUE(f.indexer.load());
+    ASSERT_TRUE(condemned);
+    ASSERT_TRUE(f.workspace.index_db == nullptr);
+    ASSERT_TRUE(f.workspace.shards.empty());
+    ASSERT_TRUE(f.workspace.project_index.symbols.empty());
 }
 
 TEST_CASE(UnreadableGlobalPreserved) {
