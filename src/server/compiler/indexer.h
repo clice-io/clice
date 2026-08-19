@@ -335,6 +335,11 @@ private:
     llvm::DenseSet<std::uint32_t> dirty_manifests;
     bool global_dirty = false;
 
+    /// Blob removals discovered during load (stale manifests, orphan
+    /// shards, swept layouts), deferred into the first save so startup
+    /// never runs synchronous database commits on the event loop.
+    llvm::SmallVector<index::BlobKey> startup_removes;
+
     /// The persisted CDB snapshot blob's bytes as last read or written;
     /// empty when none exists. save() rewrites the blob whenever the live
     /// CDB serializes differently.

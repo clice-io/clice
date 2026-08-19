@@ -3,6 +3,11 @@
 #include <atomic>
 #include <cassert>
 #include <cstring>
+#include <type_traits>
+
+#ifdef __linux__
+#include <sys/vfs.h>
+#endif
 
 #include "lmdb.h"
 #include "support/cache_store.h"
@@ -223,23 +228,39 @@ struct MetaRecord {
     std::uint32_t byte_order = 0x01020304;
 };
 
+// The record is compared with memcmp; padding or a surprising layout
+// would poison every comparison.
+static_assert(sizeof(MetaRecord) == 12 && std::has_unique_object_representations_v<MetaRecord>);
+
 MDB_val to_val(llvm::StringRef bytes) {
     return {bytes.size(), const_cast<char*>(bytes.data())};
 }
 
+bool is_corruption(int rc) {
+    return rc == MDB_CORRUPTED || rc == MDB_INVALID || rc == MDB_VERSION_MISMATCH;
+}
+
+void remove_database_files(llvm::StringRef path) {
+    llvm::sys::fs::remove(path);
+    llvm::sys::fs::remove(path + "-lock");
+}
+
 class LmdbDatabase final : public BlobDatabase {
 public:
-    LmdbDatabase(MDB_env* env, MDB_dbi dbi, MDB_txn* txn, int lock_fd) :
-        env(env), dbi(dbi), txn(txn), lock_fd(lock_fd) {}
+    LmdbDatabase(MDB_env* env, MDB_dbi dbi, MDB_txn* txn, std::string path, int lock_fd) :
+        env(env), dbi(dbi), txn(txn), path(std::move(path)), lock_fd(lock_fd) {}
 
     ~LmdbDatabase() override {
-        if(old_txn) {
-            mdb_txn_abort(old_txn);
-        }
+        retire_old_snapshot();
         if(txn) {
             mdb_txn_abort(txn);
         }
         mdb_env_close(env);
+        // Condemned = corruption observed at read time; deleting under the
+        // writer lock lets the next open start from an empty database.
+        if(condemned) {
+            remove_database_files(path);
+        }
         release_writer_lock(lock_fd);
     }
 
@@ -250,7 +271,8 @@ public:
         auto encoded = encode_key(kind, key);
         auto mk = to_val(encoded);
         MDB_val value;
-        if(mdb_get(txn, dbi, &mk, &value) != 0) {
+        if(int rc = mdb_get(txn, dbi, &mk, &value)) {
+            note_error(rc);
             return {};
         }
         llvm::StringRef bytes(static_cast<const char*>(value.mv_data), value.mv_size);
@@ -273,9 +295,11 @@ public:
         auto encoded = encode_key(kind, key);
         auto mk = to_val(encoded);
         MDB_val value;
-        // Any error other than "not found" counts as present-but-unreadable,
-        // which the loader treats as transient (touch nothing).
-        return mdb_get(txn, dbi, &mk, &value) != MDB_NOTFOUND;
+        // Any error other than "not found" counts as present-but-unreadable;
+        // the loader reads corrupted() to decide rebuild vs touch-nothing.
+        int rc = mdb_get(txn, dbi, &mk, &value);
+        note_error(rc);
+        return rc != MDB_NOTFOUND;
     }
 
     llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> puts,
@@ -284,6 +308,7 @@ public:
             if(rc == MDB_MAP_FULL) {
                 map_full.store(true, std::memory_order_relaxed);
             }
+            note_error(rc);
             LOG_WARN("Index database write failed ({}): {}", stage, mdb_strerror(rc));
             llvm::SmallVector<std::size_t> failed;
             for(std::size_t i = 0; i < puts.size(); i += 1) {
@@ -323,7 +348,8 @@ public:
             return;
         }
         MDB_cursor* cursor = nullptr;
-        if(mdb_cursor_open(txn, dbi, &cursor) != 0) {
+        if(int rc = mdb_cursor_open(txn, dbi, &cursor)) {
+            note_error(rc);
             return;
         }
         char prefix = kind_prefix(kind);
@@ -338,26 +364,28 @@ public:
             fn(bytes.drop_front());
             rc = mdb_cursor_get(cursor, &key, &value, MDB_NEXT);
         }
+        if(rc != 0 && rc != MDB_NOTFOUND) {
+            note_error(rc);
+        }
         mdb_cursor_close(cursor);
     }
 
     std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
-        assert(!old_txn && "previous snapshot migration still pending");
         MDB_txn* fresh = nullptr;
         if(int rc = mdb_txn_begin(env, nullptr, MDB_RDONLY, &fresh)) {
             return std::unexpected(std::string(mdb_strerror(rc)));
         }
-        old_txn = txn;
+        outstanding.push_back(txn);
         txn = fresh;
         generation += 1;
         return generation;
     }
 
     void retire_old_snapshot() override {
-        if(old_txn) {
-            mdb_txn_abort(old_txn);
-            old_txn = nullptr;
+        for(auto* old: outstanding) {
+            mdb_txn_abort(old);
         }
+        outstanding.clear();
     }
 
     std::expected<bool, std::string> grow() override {
@@ -396,16 +424,37 @@ public:
         return true;
     }
 
+    bool corrupted() const override {
+        return poisoned.load(std::memory_order_relaxed);
+    }
+
+    void condemn() override {
+        condemned = true;
+    }
+
 private:
+    /// Latch corruption-family read errors for the loader's rebuild
+    /// decision; everything else stays "missing or transiently unreadable".
+    void note_error(int rc) {
+        if(is_corruption(rc) || rc == MDB_PAGE_NOTFOUND) {
+            poisoned.store(true, std::memory_order_relaxed);
+        }
+    }
+
     MDB_env* env;
     MDB_dbi dbi;
     /// Current read snapshot; owned by the opening (event-loop) thread.
     MDB_txn* txn;
-    /// The pre-advance snapshot kept alive while its borrowers migrate.
-    MDB_txn* old_txn = nullptr;
+    /// Pre-advance snapshots kept alive while their borrowers migrate; a
+    /// migration cancelled mid-way leaves entries for the next one.
+    llvm::SmallVector<MDB_txn*, 2> outstanding;
     std::uint64_t generation = 1;
+    std::string path;
     /// Set by write() on the pool thread, consumed by grow() on the loop.
     std::atomic<bool> map_full = false;
+    /// See note_error()/corrupted(); written on both loop and pool threads.
+    std::atomic<bool> poisoned = false;
+    bool condemned = false;
     int lock_fd;
 };
 
@@ -431,44 +480,53 @@ bool make_sparse(llvm::StringRef path) {
 }
 #endif
 
-bool is_corruption(int rc) {
-    return rc == MDB_CORRUPTED || rc == MDB_INVALID || rc == MDB_VERSION_MISMATCH;
-}
+enum class MetaCheck : std::uint8_t {
+    Ok,
+    /// Foreign word size/endianness/schema, or data without any meta —
+    /// the corruption-recovery shape (delete and rebuild when writable).
+    Mismatch,
+    /// Could not validate right now; touch nothing.
+    Transient,
+};
 
-void remove_database_files(llvm::StringRef path) {
-    llvm::sys::fs::remove(path);
-    llvm::sys::fs::remove(path + "-lock");
-}
-
-/// Reads the meta record under the resident transaction; writes it first
-/// on a fresh writable database. Returns false on a mismatch (foreign
-/// word size/endianness/schema — the corruption-recovery shape).
-bool check_meta(MDB_env* env, MDB_dbi dbi, MDB_txn* txn, bool read_only) {
+/// Validates the meta record under the resident transaction; initializes
+/// it first on a fresh (provably empty) writable database.
+MetaCheck check_meta(MDB_env* env, MDB_dbi dbi, MDB_txn* txn, bool read_only) {
     auto mk = to_val(meta_key);
     MDB_val value;
     int rc = mdb_get(txn, dbi, &mk, &value);
     MetaRecord expected;
     if(rc == 0) {
-        return value.mv_size == sizeof(MetaRecord) &&
-               std::memcmp(value.mv_data, &expected, sizeof(MetaRecord)) == 0;
+        bool ok = value.mv_size == sizeof(MetaRecord) &&
+                  std::memcmp(value.mv_data, &expected, sizeof(MetaRecord)) == 0;
+        return ok ? MetaCheck::Ok : MetaCheck::Mismatch;
     }
     if(rc != MDB_NOTFOUND) {
-        return false;
+        return is_corruption(rc) ? MetaCheck::Mismatch : MetaCheck::Transient;
+    }
+    // Meta missing: only a provably EMPTY database may be initialized in
+    // place — populated bytes without our meta are a foreign layout, and
+    // stamping them would bypass the schema gate.
+    MDB_stat stat;
+    if(mdb_stat(txn, dbi, &stat) != 0) {
+        return MetaCheck::Transient;
+    }
+    if(stat.ms_entries != 0) {
+        return MetaCheck::Mismatch;
     }
     if(read_only) {
-        // A fresh, never-written database: nothing to validate.
-        return true;
+        return MetaCheck::Ok;
     }
     MDB_txn* wtxn = nullptr;
     if(mdb_txn_begin(env, nullptr, 0, &wtxn) != 0) {
-        return false;
+        return MetaCheck::Transient;
     }
     MDB_val mv{sizeof(MetaRecord), &expected};
     if(mdb_put(wtxn, dbi, &mk, &mv, 0) != 0) {
         mdb_txn_abort(wtxn);
-        return false;
+        return MetaCheck::Transient;
     }
-    return mdb_txn_commit(wtxn) == 0;
+    return mdb_txn_commit(wtxn) == 0 ? MetaCheck::Ok : MetaCheck::Transient;
 }
 
 std::unique_ptr<LmdbDatabase> open_lmdb_env(CacheStore& store,
@@ -536,30 +594,89 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(CacheStore& store,
             }
         }
         MDB_txn* txn = nullptr;
-        if(int rc = mdb_txn_begin(env, nullptr, MDB_RDONLY, &txn)) {
+        int rc = mdb_txn_begin(env, nullptr, MDB_RDONLY, &txn);
+        if(rc == MDB_MAP_RESIZED) {
+            // Another process grew the map between open and here; adopt
+            // its size (no transaction is active yet) and retry once.
+            mdb_env_set_mapsize(env, 0);
+            rc = mdb_txn_begin(env, nullptr, MDB_RDONLY, &txn);
+        }
+        if(rc != 0) {
             if(fail(rc, "snapshot")) {
                 continue;
             }
             return nullptr;
         }
         MDB_dbi dbi;
-        if(int rc = mdb_dbi_open(txn, nullptr, 0, &dbi)) {
+        if(int dbi_rc = mdb_dbi_open(txn, nullptr, 0, &dbi)) {
             mdb_txn_abort(txn);
-            if(fail(rc, "dbi")) {
+            if(fail(dbi_rc, "dbi")) {
                 continue;
             }
             return nullptr;
         }
-        if(!check_meta(env, dbi, txn, read_only)) {
-            mdb_txn_abort(txn);
-            if(fail(MDB_INVALID, "meta")) {
-                continue;
+        switch(check_meta(env, dbi, txn, read_only)) {
+            case MetaCheck::Ok: break;
+            case MetaCheck::Mismatch: {
+                mdb_txn_abort(txn);
+                if(fail(MDB_INVALID, "meta")) {
+                    continue;
+                }
+                return nullptr;
             }
-            return nullptr;
+            case MetaCheck::Transient: {
+                mdb_txn_abort(txn);
+                mdb_env_close(env);
+                LOG_WARN(
+                    "Cannot validate the index database at {}; "
+                    "index persistence is disabled for this session",
+                    path);
+                return nullptr;
+            }
         }
-        return std::make_unique<LmdbDatabase>(env, dbi, txn, lock_fd);
+        return std::make_unique<LmdbDatabase>(env, dbi, txn, std::move(path), lock_fd);
     }
     return nullptr;
+}
+
+enum class FsLocality : std::uint8_t {
+    Local,
+    Remote,
+    /// FUSE fronts anything from a local overlay to sshfs; LMDB may or
+    /// may not survive there — warn and respect the configuration.
+    Unknown,
+};
+
+FsLocality filesystem_locality(llvm::StringRef dir) {
+#ifdef __linux__
+    // llvm's is_local only knows NFS/SMB/CIFS on Linux; 9p (WSL drvfs
+    // mounts) and FUSE pass as local, and those are exactly the mounts
+    // LMDB is documented to break on.
+    struct statfs sfs;
+    if(statfs(std::string(dir).c_str(), &sfs) == 0) {
+        switch(static_cast<std::uint64_t>(sfs.f_type)) {
+            case 0x6969:      // NFS
+            case 0x517B:      // SMB
+            case 0xFE534D42:  // SMB2
+            case 0xFF534D42:  // CIFS
+            case 0x01021997:  // 9p
+                return FsLocality::Remote;
+            case 0x65735546:  // FUSE
+                return FsLocality::Unknown;
+            default: break;
+        }
+    }
+#endif
+    bool local = true;
+    if(auto ec = llvm::sys::fs::is_local(dir, local)) {
+        // Undetermined counts as local: an over-eager fallback would
+        // silently fork the index lineage.
+        LOG_WARN("Cannot determine whether {} is a local filesystem ({}); assuming local",
+                 dir,
+                 ec.message());
+        return FsLocality::Local;
+    }
+    return local ? FsLocality::Local : FsLocality::Remote;
 }
 
 }  // namespace
@@ -599,22 +716,22 @@ std::unique_ptr<BlobDatabase> open_database(CacheStore& store, llvm::StringRef b
     if(backend != "lmdb") {
         LOG_WARN("Unknown index_db backend '{}'; using lmdb", backend);
     }
-    // LMDB is documented to break on remote filesystems; llvm's is_local
-    // is the cross-platform best-effort check. Undetermined counts as
-    // local (an over-eager fallback would silently fork the lineage).
-    bool local = true;
-    if(auto ec = llvm::sys::fs::is_local(store.base_dir(), local)) {
-        LOG_WARN("Cannot determine whether {} is a local filesystem ({}); assuming local",
-                 store.base_dir(),
-                 ec.message());
-        local = true;
-    }
-    if(!local) {
-        LOG_WARN(
-            "{} is on a remote filesystem, which LMDB does not support; "
-            "using per-file index storage",
-            store.base_dir());
-        return open_fs_database(store);
+    switch(filesystem_locality(store.base_dir())) {
+        case FsLocality::Local: break;
+        case FsLocality::Remote: {
+            LOG_WARN(
+                "{} is on a remote filesystem, which LMDB does not support; "
+                "using per-file index storage",
+                store.base_dir());
+            return open_fs_database(store);
+        }
+        case FsLocality::Unknown: {
+            LOG_WARN(
+                "{} is on a FUSE filesystem; LMDB needs local-filesystem semantics — "
+                "set index_db = \"files\" if the index database misbehaves",
+                store.base_dir());
+            break;
+        }
     }
     // A reader before any LMDB writer ever ran (or after "files" runs)
     // reads whatever the per-file backend left behind — including nothing.

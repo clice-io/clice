@@ -451,7 +451,8 @@ kota::task<> Indexer::save() {
     std::vector<index::BlobDatabase::Blob> batch;
     llvm::SmallVector<std::uint32_t> shard_ids;
     llvm::SmallVector<std::uint32_t> manifest_ids;
-    llvm::SmallVector<index::BlobKey> removals;
+    llvm::SmallVector<index::BlobKey> removals = std::move(startup_removes);
+    startup_removes.clear();
     for(auto path_id: retired) {
         removals.push_back(
             {index::IndexBlobKind::Shard, blob_key(workspace.path_pool.resolve(path_id))});
@@ -596,7 +597,6 @@ kota::task<> Indexer::migrate_shard_views() {
         // install memory copies); everything else is shed rather than left
         // dangling.
         LOG_ERROR("Index database growth failed: {}", grown.error());
-        assert(false && "index map growth must not fail");
         llvm::SmallVector<std::uint32_t> shed;
         for(auto path_id: llvm::make_first_range(workspace.shards)) {
             if(!dirty_shards.contains(path_id)) {
@@ -671,12 +671,11 @@ bool Indexer::load(bool read_only) {
         if(read_only) {
             return;
         }
-        llvm::SmallVector<index::BlobKey> removes;
         for(auto kind: {index::IndexBlobKind::Shard, index::IndexBlobKind::Manifest}) {
-            db.for_each_key(kind,
-                            [&](llvm::StringRef key) { removes.push_back({kind, key.str()}); });
+            db.for_each_key(kind, [&](llvm::StringRef key) {
+                startup_removes.push_back({kind, key.str()});
+            });
         }
-        db.write({}, removes);
     };
 
     auto global = db.read(index::IndexBlobKind::Global, "global");
@@ -688,7 +687,15 @@ bool Indexer::load(bool read_only) {
         // could alias their fv ids and generation stamps — and leave
         // everything for a healthier restart to load.
         if(db.contains(index::IndexBlobKind::Global, "global")) {
-            LOG_WARN("Index global blob unreadable; disabling index persistence this session");
+            // Confirmed page corruption heals through rebuildability: the
+            // condemned database deletes itself on close and the next
+            // start begins empty. Transient failures touch nothing.
+            if(!read_only && db.corrupted()) {
+                LOG_WARN("Index database is corrupt; discarding it to rebuild on next start");
+                db.condemn();
+            } else {
+                LOG_WARN("Index global blob unreadable; disabling index persistence this session");
+            }
             workspace.index_db.reset();
             return true;
         }
@@ -702,10 +709,7 @@ bool Indexer::load(bool read_only) {
         LOG_INFO("Discarding old-format index global blob");
         sweep_all();
         if(!read_only) {
-            db.write(
-                {
-            },
-                {{index::IndexBlobKind::Global, "global"}});
+            startup_removes.push_back({index::IndexBlobKind::Global, "global"});
         }
         return false;
     }
@@ -740,12 +744,10 @@ bool Indexer::load(bool read_only) {
         auto tu_path_id = project.file_versions.find(manifest->tu_fv)->second.path_id;
         project.apply_manifest(tu_path_id, std::move(*manifest));
     });
-    if(!read_only && !dead_manifests.empty()) {
-        llvm::SmallVector<index::BlobKey> removes;
+    if(!read_only) {
         for(auto& key: dead_manifests) {
-            removes.push_back({index::IndexBlobKind::Manifest, std::move(key)});
+            startup_removes.push_back({index::IndexBlobKind::Manifest, std::move(key)});
         }
-        db.write({}, removes);
     }
     // A pinned TU without an adopted manifest lost it to a failed write
     // that the landed global outran, or to a lost removal; re-enqueue it —
@@ -811,7 +813,6 @@ bool Indexer::load(bool read_only) {
         workspace.shards[path_id] = std::move(shard);
     }
     llvm::SmallVector<std::uint32_t> mask_refresh;
-    llvm::SmallVector<index::BlobKey> manifest_removes;
     for(auto path_id: unservable) {
         auto contribution_it = project.contributions.find(path_id);
         if(contribution_it == project.contributions.end()) {
@@ -828,14 +829,11 @@ bool Indexer::load(bool read_only) {
             auto affected = project.remove_manifest(tu);
             mask_refresh.append(affected.begin(), affected.end());
             if(!read_only) {
-                manifest_removes.push_back(
+                startup_removes.push_back(
                     {index::IndexBlobKind::Manifest, blob_key(workspace.path_pool.resolve(tu))});
             }
             enqueue(tu, ReindexReason::ContentChanged);
         }
-    }
-    if(!manifest_removes.empty()) {
-        db.write({}, manifest_removes);
     }
     for(auto path_id: mask_refresh) {
         auto it = workspace.shards.find(path_id);
@@ -846,15 +844,11 @@ bool Indexer::load(bool read_only) {
 
     // Sweep shard blobs nothing references any more.
     if(!read_only) {
-        llvm::SmallVector<index::BlobKey> orphans;
         db.for_each_key(index::IndexBlobKind::Shard, [&](llvm::StringRef key) {
             if(!expected_keys.contains(key)) {
-                orphans.push_back({index::IndexBlobKind::Shard, key.str()});
+                startup_removes.push_back({index::IndexBlobKind::Shard, key.str()});
             }
         });
-        if(!orphans.empty()) {
-            db.write({}, orphans);
-        }
         reconcile_cdb_snapshot();
     }
 

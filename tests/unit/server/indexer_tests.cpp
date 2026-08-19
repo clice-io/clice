@@ -333,6 +333,90 @@ TEST_CASE(SaveCommitsDirtyShard) {
     ASSERT_TRUE(workspace.project_index.contributions.lookup(path_id).contains(path_id));
 }
 
+TEST_CASE(SaveMigratesShardViews) {
+    TempDir tmp;
+    tmp.touch("main.cpp", "int migrate_value() { return 1; }\n");
+    auto src = tmp.path("main.cpp");
+
+    // The LMDB backend wrapped in a spy: save() must advance the read
+    // snapshot exactly once, rebind the resident shard onto it, and
+    // retire the old snapshot exactly once.
+    struct SnapshotSpy final : index::BlobDatabase {
+        std::unique_ptr<index::BlobDatabase> real;
+        int advances = 0;
+        int retires = 0;
+
+        index::ReadBlob read(index::IndexBlobKind kind, llvm::StringRef key) override {
+            return real->read(kind, key);
+        }
+
+        bool contains(index::IndexBlobKind kind, llvm::StringRef key) override {
+            return real->contains(kind, key);
+        }
+
+        llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> puts,
+                                             llvm::ArrayRef<index::BlobKey> removes) override {
+            return real->write(puts, removes);
+        }
+
+        void for_each_key(index::IndexBlobKind kind,
+                          llvm::function_ref<void(llvm::StringRef)> fn) override {
+            real->for_each_key(kind, fn);
+        }
+
+        std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
+            advances += 1;
+            return real->advance_read_snapshot();
+        }
+
+        void retire_old_snapshot() override {
+            retires += 1;
+            real->retire_old_snapshot();
+        }
+
+        std::expected<bool, std::string> grow() override {
+            return real->grow();
+        }
+    };
+
+    auto store = CacheStore::open(tmp.path("cache"), 1);
+    ASSERT_TRUE(store.has_value());
+    workspace.store.emplace(std::move(*store));
+    auto spy = std::make_unique<SnapshotSpy>();
+    spy->real = index::open_lmdb_database(*workspace.store);
+    ASSERT_TRUE(spy->real != nullptr);
+    auto* probe = spy.get();
+    workspace.index_db = std::move(spy);
+
+    auto indexed = index_file(tmp, src);
+    ASSERT_FALSE(indexed.data.empty());
+    indexer.merge(indexed.data.data(), indexed.data.size());
+    auto path_id = workspace.path_pool.intern(indexed.tu_path);
+    auto before = workspace.shards.find(path_id);
+    ASSERT_TRUE(before != workspace.shards.end());
+    auto variants_before = before->second.variants();
+    const char* bytes_before = before->second.bytes().data();
+
+    auto save_body = [&]() -> kota::task<> {
+        co_await indexer.save();
+    };
+    auto task = save_body();
+    loop.schedule(task);
+    loop.run();
+
+    // Rebound: the shard now serves the database's snapshot view — the
+    // same bytes at a different address — with the verification state and
+    // variant set carried over.
+    ASSERT_EQ(probe->advances, 1);
+    ASSERT_EQ(probe->retires, 1);
+    auto it = workspace.shards.find(path_id);
+    ASSERT_TRUE(it != workspace.shards.end());
+    ASSERT_TRUE(it->second.loaded());
+    ASSERT_TRUE(it->second.bytes().data() != bytes_before);
+    ASSERT_EQ(it->second.content_hash(), llvm::xxh3_64bits("int migrate_value() { return 1; }\n"));
+    ASSERT_TRUE(it->second.variants() == variants_before);
+}
+
 TEST_CASE(MidSaveMergeKept) {
     TempDir tmp;
     tmp.touch("main.cpp", "int first_value() { return 1; }\n");
@@ -955,6 +1039,15 @@ TEST_CASE(LoadHealsBrokenShard) {
     auto extra_it = f.workspace.shards.find(extra_id);
     ASSERT_TRUE(extra_it != f.workspace.shards.end());
     ASSERT_TRUE(extra_it->second.has_dead_variants());
+
+    // Load defers blob cleanup into the first save (no synchronous
+    // database commits on the startup event loop); the orphan dies there.
+    auto save_body = [&]() -> kota::task<> {
+        co_await f.indexer.save();
+    };
+    auto task = save_body();
+    f.loop.schedule(task);
+    f.loop.run();
     bool orphan_alive = false;
     f.workspace.index_db->for_each_key(index::IndexBlobKind::Shard, [&](llvm::StringRef key) {
         orphan_alive |= key == "deadbeefdeadbeef";
@@ -1218,11 +1311,18 @@ TEST_CASE(LoadRequeuesStaleManifest) {
     open_store(tmp, f.workspace);
     f.indexer.load();
 
-    // The unresolvable manifest is dropped from storage and its TU
-    // re-enqueued instead of losing its persisted index forever.
+    // The unresolvable manifest is dropped and its TU re-enqueued instead
+    // of losing its persisted index forever; the blob itself dies at the
+    // first save (load defers cleanup off the startup event loop).
     auto header_id = f.workspace.path_pool.intern(header);
     ASSERT_TRUE(f.indexer.pending_reason(header_id) == ReindexReason::ContentChanged);
     ASSERT_FALSE(f.workspace.project_index.manifests.contains(header_id));
+    auto save_body = [&]() -> kota::task<> {
+        co_await f.indexer.save();
+    };
+    auto task = save_body();
+    f.loop.schedule(task);
+    f.loop.run();
     bool stale_alive = false;
     f.workspace.index_db->for_each_key(index::IndexBlobKind::Manifest, [&](llvm::StringRef key) {
         stale_alive |= key == blob_key(header);

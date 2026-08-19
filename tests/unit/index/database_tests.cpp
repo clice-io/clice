@@ -219,6 +219,10 @@ TEST_CASE(FullMapFailsWholeBatchThenGrows) {
     auto grown = db->grow();
     ASSERT_TRUE(grown.has_value());
     ASSERT_TRUE(*grown);
+    // grow() opened a fresh snapshot, so this proves the failed batch
+    // really committed nothing (the pre-grow check only saw the pinned
+    // old snapshot).
+    ASSERT_FALSE(db->contains(index::IndexBlobKind::Shard, "0"));
     // A second grow without a latched full map is a no-op.
     auto again = db->grow();
     ASSERT_TRUE(again.has_value());

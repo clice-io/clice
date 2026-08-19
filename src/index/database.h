@@ -112,8 +112,11 @@ public:
     /// (filesystem): returns the current generation, 0.
     virtual std::expected<std::uint64_t, std::string> advance_read_snapshot() = 0;
 
-    /// Retire the snapshot advance_read_snapshot() replaced, invalidating
-    /// every buffer still borrowed from it. No-op when nothing is pending.
+    /// Retire every snapshot advance_read_snapshot() has replaced,
+    /// invalidating the buffers still borrowed from them. A migration
+    /// cancelled between advance and retire leaves snapshots outstanding;
+    /// the next migration rebinds every borrower onto the newest snapshot
+    /// and retires them all. No-op when nothing is pending.
     virtual void retire_old_snapshot() = 0;
 
     /// Resize the map after write() failed on a full map, retiring EVERY
@@ -123,6 +126,19 @@ public:
     /// loop. False when no growth was pending (including the filesystem
     /// backend, where this is a no-op).
     virtual std::expected<bool, std::string> grow() = 0;
+
+    /// Whether the backend observed page-level corruption after open
+    /// (reads failing with LMDB's corruption family). The loader uses it
+    /// to tell "rebuild me" apart from a transient failure; backends
+    /// without the concept never latch it.
+    virtual bool corrupted() const {
+        return false;
+    }
+
+    /// Mark the database for deletion when it closes — the recovery for
+    /// corruption observed at read time. The files go away under the
+    /// writer lock, so the next open starts from an empty database.
+    virtual void condemn() {}
 };
 
 /// Filesystem backend over the cache store; registers the index
