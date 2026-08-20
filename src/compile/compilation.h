@@ -71,6 +71,10 @@ struct CompilationParams {
     /// Whether to run clang-tidy.
     bool clang_tidy = false;
 
+    /// Whether to collect the syntax::TokenBuffer during the run. Features
+    /// need it; measurement paths turn it off to isolate its cost.
+    bool collect_tokens = true;
+
     /// Output file path.
     llvm::SmallString<128> output_file;
 
@@ -124,5 +128,8 @@ CompilationUnit compile(CompilationParams& params, PCMInfo& out);
 
 /// Run code completion at the given location.
 CompilationUnit complete(CompilationParams& params, clang::CodeCompleteConsumer* consumer);
+
+/// Error-level diagnostics of a finished compilation, joined with "; ".
+std::string collect_errors(CompilationUnit& unit);
 
 }  // namespace clice

@@ -7,10 +7,15 @@ import { MTIME_GRANULARITY, sleep } from "@clice/tools/client";
 import { Workspace } from "@clice/tools/workspace";
 import { expect, test } from "../fixtures.ts";
 
+/// The probes below watch per-file blob mtimes, so the sessions pin the
+/// files backend (the default LMDB backend has no per-blob files).
+const NO_LMDB = { project: { index_db: "files" } };
+
 const HEADER = "#pragma once\ninline int alpha() { return 1; }\n";
 const CLOSED_TU = '#include "header.h"\nint use() { return alpha(); }\n';
 
-/// mtimes of the per-TU shards (numeric names; excludes the project blob).
+/// mtimes of the per-file shard blobs (the "index" namespace holds nothing
+/// else).
 function shardMtimes(workspace: Workspace): Map<string, bigint> {
     const dir = path.join(workspace.cacheRoot(), "index");
     const shards = new Map<string, bigint>();
@@ -18,15 +23,15 @@ function shardMtimes(workspace: Workspace): Map<string, bigint> {
         return shards;
     }
     for (const name of fs.readdirSync(dir)) {
-        if (name.endsWith(".idx") && name.slice(0, -".idx".length) !== "project") {
+        if (name.endsWith(".idx")) {
             shards.set(name, fs.statSync(path.join(dir, name), { bigint: true }).mtimeNs);
         }
     }
     return shards;
 }
 
-function projectMtime(workspace: Workspace): bigint {
-    const p = path.join(workspace.cacheRoot(), "index", "project.idx");
+function globalMtime(workspace: Workspace): bigint {
+    const p = path.join(workspace.cacheRoot(), "index-global", "global.idx");
     return fs.existsSync(p) ? fs.statSync(p, { bigint: true }).mtimeNs : 0n;
 }
 
@@ -48,7 +53,7 @@ test("touch header no reindex", async ({ session }) => {
 
     // Session 1: background-index the closed TU into a shard.
     const c1 = session.spawn(workspace);
-    await c1.initialize(workspace);
+    await c1.initialize(workspace, { initializationOptions: NO_LMDB });
     expect(await poll(() => shardMtimes(workspace).size > 0), "closed TU never indexed").toBe(true);
     await c1.shutdown();
 
@@ -63,13 +68,15 @@ test("touch header no reindex", async ({ session }) => {
     // completes (save() rewrites the project blob), then re-snapshot: the
     // storm filter must skip the closed TU, leaving its shard untouched.
     const before = shardMtimes(workspace);
-    const projectBefore = projectMtime(workspace);
+    const globalBefore = globalMtime(workspace);
     const c2 = session.spawn(workspace);
-    await c2.initialize(workspace);
-    // save() rewrites the project blob unconditionally each round (see
-    // Indexer::save), so its mtime moving proves the round ran.
+    await c2.initialize(workspace, { initializationOptions: NO_LMDB });
+    // The touch makes the header's stat mismatch its FileVersion stamp; the
+    // staleness check re-hashes, proves a mere touch, and repairs the stamp
+    // — which dirties the global blob, so its mtime moving proves both that
+    // the round ran and that the repair persisted.
     expect(
-        await poll(() => projectMtime(workspace) !== projectBefore),
+        await poll(() => globalMtime(workspace) !== globalBefore),
         "indexing round never ran in session 2",
     ).toBe(true);
     const after = shardMtimes(workspace);

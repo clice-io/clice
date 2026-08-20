@@ -7,7 +7,6 @@
 
 #include "compile/compilation.h"
 #include "feature/feature.h"
-#include "index/preamble_state.h"
 #include "index/tu_index.h"
 #include "server/protocol/worker.h"
 #include "server/worker/worker_common.h"
@@ -41,56 +40,44 @@ struct ScopedNice {
 using kota::ipc::RequestResult;
 using RequestContext = kota::ipc::BincodePeer::RequestContext;
 
-/// Extract error messages from compilation diagnostics.
-static std::string collect_errors(CompilationUnit& unit) {
-    std::string errors;
-    for(auto& diag: unit.diagnostics()) {
-        if(diag.id.level >= DiagnosticLevel::Error) {
-            if(!errors.empty())
-                errors += "; ";
-            errors += diag.message;
-        }
-    }
-    return errors;
-}
-
-/// Serialize the preamble's PreambleState blob (full index + document
-/// links + inactive regions) into a string. Runs while the freshly
-/// parsed AST is still in memory — the only moment the preamble's index
-/// is obtainable without deserializing the whole PCH. The file write
+/// Serialize the preamble's index envelope (full index + document links
+/// + inactive regions) into a string. Runs while the freshly parsed AST
+/// is still in memory — the only moment the preamble's index is
+/// obtainable without deserializing the whole PCH. The file write
 /// happens separately, after the PCH itself is flushed.
-static std::string serialize_preamble_state(CompilationUnit& unit, std::uint32_t preamble_bound) {
-    auto tu_index = index::TUIndex::build(unit);
+static std::string serialize_preamble_envelope(CompilationUnit& unit,
+                                               std::uint32_t preamble_bound) {
+    ScopedTimer links_timer;
     auto links = feature::document_links(unit);
     auto inactive = feature::inactive_regions(unit, {}, 0, preamble_bound);
+    auto links_ms = links_timer.ms_f();
 
-    std::string blob;
-    llvm::raw_string_ostream os(blob);
-    index::PreambleState::serialize(unit,
-                                    std::move(tu_index),
-                                    links,
-                                    inactive.regions,
-                                    inactive.open_stack,
-                                    os);
+    ScopedTimer blob_timer;
+    auto blob = index::build_preamble_index(unit, links, inactive.regions, inactive.open_stack);
+    LOG_PERF("index_detail",
+             "op=preamble links_ms={:.2f} blob_ms={:.2f} bytes={}",
+             links_ms,
+             blob_timer.ms_f(),
+             blob.size());
     return blob;
 }
 
 /// Write the serialized blob next to the PCH. Returns an error description
 /// on failure so the master's anomaly carries the cause.
-static std::optional<std::string> write_preamble_state(llvm::StringRef blob,
-                                                       llvm::StringRef output_path) {
+static std::optional<std::string> write_preamble_envelope(llvm::StringRef blob,
+                                                          llvm::StringRef output_path) {
     std::error_code ec;
     llvm::raw_fd_ostream os(output_path, ec);
     if(ec) {
         auto message =
-            std::format("cannot open PreambleState blob {}: {}", output_path, ec.message());
+            std::format("cannot open pch.idx envelope {}: {}", output_path, ec.message());
         LOG_ERROR("BuildPCH: {}", message);
         return message;
     }
     os << blob;
     os.flush();
     if(os.has_error()) {
-        auto message = std::format("failed writing PreambleState blob {}: {}",
+        auto message = std::format("failed writing pch.idx envelope {}: {}",
                                    output_path,
                                    os.error().message());
         os.clear_error();
@@ -127,7 +114,9 @@ static worker::BuildResult handle_build_pch(const worker::BuildParams& params,
     cp.output_file = tmp_path;
 
     PCHInfo pch_info;
+    ScopedTimer compile_timer;
     auto unit = compile(cp, pch_info);
+    auto compile_ms = compile_timer.ms();
     // A cancelled parse reports !completed(); the extra check catches a
     // cancellation landing between the parse and the serialization, whose
     // blob nobody will read. The tmp file is removed like any failed build.
@@ -139,12 +128,16 @@ static worker::BuildResult handle_build_pch(const worker::BuildParams& params,
         errors = collect_errors(unit);
 
     std::string blob;
+    ScopedTimer index_timer;
     if(success) {
-        blob = serialize_preamble_state(unit, params.preamble_bound);
+        blob = serialize_preamble_envelope(unit, params.preamble_bound);
     }
+    auto index_ms = index_timer.ms();
 
     // Destroy CompilationUnit to flush PCH to disk.
+    ScopedTimer flush_timer;
     unit = CompilationUnit(nullptr);
+    auto flush_ms = flush_timer.ms();
 
     // Write the blob strictly after the PCH flush: the CacheStore's
     // restart adoption validates a pair by "aux not older than primary"
@@ -154,16 +147,27 @@ static worker::BuildResult handle_build_pch(const worker::BuildParams& params,
     // failure, never a user-code problem — must not be downgraded to an
     // expected build failure.
     bool internal_error = false;
+    ScopedTimer state_write_timer;
     if(success) {
-        if(auto error = write_preamble_state(blob, params.index_output_path)) {
+        if(auto error = write_preamble_envelope(blob, params.index_output_path)) {
             success = false;
             internal_error = true;
             errors = std::move(*error);
         }
     }
+    auto state_write_ms = state_write_timer.ms();
 
     if(success) {
-        LOG_INFO("BuildPCH done: file={}, output={}, {}ms", params.file, tmp_path, timer.ms());
+        LOG_PERF("build",
+                 "kind=pch file={} output={} compile_ms={} preamble_index_ms={} flush_ms={} "
+                 "state_write_ms={} total_ms={}",
+                 params.file,
+                 tmp_path,
+                 compile_ms,
+                 index_ms,
+                 flush_ms,
+                 state_write_ms,
+                 timer.ms());
         worker::BuildResult result;
         result.success = true;
         result.output_path = tmp_path;
@@ -208,7 +212,9 @@ static worker::BuildResult handle_build_pcm(const worker::BuildParams& params,
     cp.output_file = tmp_path;
 
     PCMInfo pcm_info;
+    ScopedTimer compile_timer;
     auto unit = compile(cp, pcm_info);
+    auto compile_ms = compile_timer.ms();
     bool success = unit.completed() && !stop->load(std::memory_order_relaxed);
     auto build_at = unit.build_at().count();
 
@@ -220,10 +226,17 @@ static worker::BuildResult handle_build_pcm(const worker::BuildParams& params,
     // buffer-derived artifact — module units are ordinary disk files with
     // CDB entries, so their symbols should flow through the normal
     // background-indexing path (no per-blob pair needed).
+    ScopedTimer flush_timer;
     unit = CompilationUnit(nullptr);
+    auto flush_ms = flush_timer.ms();
 
     if(success) {
-        LOG_INFO("BuildPCM done: module={}, {}ms", params.module_name, timer.ms());
+        LOG_PERF("build",
+                 "kind=pcm module={} compile_ms={} flush_ms={} total_ms={}",
+                 params.module_name,
+                 compile_ms,
+                 flush_ms,
+                 timer.ms());
         worker::BuildResult result;
         result.success = true;
         result.output_path = tmp_path;
@@ -256,7 +269,9 @@ static worker::BuildResult handle_index(const worker::BuildParams& params,
     }
     cp.stop = stop;
 
+    ScopedTimer compile_timer;
     auto unit = compile(cp);
+    auto compile_ms = compile_timer.ms();
     if(!unit.completed()) {
         LOG_WARN("Index failed: file={}, {}ms", params.file, timer.ms());
         return {false, "Index compilation failed"};
@@ -267,14 +282,24 @@ static worker::BuildResult handle_index(const worker::BuildParams& params,
     if(stop->load(std::memory_order_relaxed)) {
         return {false, "Index cancelled"};
     }
-    auto tu_index = index::TUIndex::build(unit);
-    std::string serialized;
-    llvm::raw_string_ostream os(serialized);
-    tu_index.serialize(os);
+    ScopedTimer index_timer;
+    auto serialized = index::build_tu_index(unit);
+    auto index_ms = index_timer.ms();
 
-    LOG_INFO("Index done: file={}, {} symbols, {}ms",
+    // AST teardown for a large TU is material work that belongs to this
+    // task: sample the total only after the unit is gone, so the logged
+    // span covers everything that blocks the worker.
+    ScopedTimer teardown_timer;
+    unit = CompilationUnit(nullptr);
+    auto teardown_ms = teardown_timer.ms();
+
+    LOG_PERF("build",
+             "kind=index file={} bytes={} compile_ms={} index_ms={} teardown_ms={} total_ms={}",
              params.file,
-             tu_index.symbols.size(),
+             serialized.size(),
+             compile_ms,
+             index_ms,
+             teardown_ms,
              timer.ms());
     worker::BuildResult result;
     result.success = true;
@@ -382,7 +407,21 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
         return 1;
     }
 
+    // Stop flag of the most recent build request, published before its
+    // pool-thread hop so a CancelBuild aimed at it still lands. Never
+    // cleared: the master sends CancelBuild only while it awaits that
+    // build's reply, and pipe ordering pins any follow-up build behind the
+    // cancel, so a set can only ever hit the stale build's flag.
+    std::shared_ptr<std::atomic_bool> build_stop;
+
     kota::ipc::BincodePeer peer(loop, std::move(*transport_result));
+
+    peer.on_notification([&build_stop](const worker::CancelBuildParams&) {
+        LOG_DEBUG("CancelBuild notification received");
+        if(build_stop) {
+            build_stop->store(true, std::memory_order_relaxed);
+        }
+    });
 
     peer.on_request([&](RequestContext& ctx,
                         const worker::BuildParams& params) -> RequestResult<worker::BuildParams> {
@@ -394,6 +433,7 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
         // even the parse itself stops instead of running to completion for
         // a result nobody will read.
         auto stop = std::make_shared<std::atomic_bool>(false);
+        build_stop = stop;
         auto result = co_await kota::queue(
             [&]() -> worker::BuildResult {
                 if(stop->load(std::memory_order_relaxed)) {

@@ -20,6 +20,7 @@
 #include "kota/ipc/codec/bincode.h"
 #include "kota/ipc/peer.h"
 #include "kota/ipc/transport.h"
+#include "kota/meta/enum.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -113,8 +114,10 @@ class StatefulWorker {
 
     /// Look up document, wait for AST, lock strand, run fn(doc) on thread pool, unlock.
     /// Returns `missing` if the document is not found or its AST unusable.
+    /// `kind` discriminates the perf series: query kinds have very
+    /// different costs and must not collapse into one distribution.
     template <typename R, typename F>
-    kota::task<R> with_ast_or(llvm::StringRef path, R missing, F&& fn) {
+    kota::task<R> with_ast_or(llvm::StringRef kind, llvm::StringRef path, R missing, F&& fn) {
         auto it = documents.find(path);
         if(it == documents.end()) {
             co_return std::move(missing);
@@ -124,9 +127,12 @@ class StatefulWorker {
         auto doc = it->second;
         touch_lru(path);
 
+        ScopedTimer timer;
         co_await doc->ast_ready.wait();
         co_await doc->strand.lock();
         StrandGuard strand_guard{doc->strand};
+        auto acquire_ms = timer.ms_f();
+        double compute_ms = 0;
 
         // The frame stays alive until fn returns even when the handler is
         // cancelled mid-await, so the by-reference captures are safe; the
@@ -140,17 +146,30 @@ class StatefulWorker {
                 }
                 if(!doc->has_ast || (!doc->unit.completed() && !doc->unit.fatal_error()))
                     return std::move(missing);
-                return fn(*doc);
+                ScopedTimer compute_timer;
+                auto value = fn(*doc);
+                compute_ms = compute_timer.ms_f();
+                return value;
             },
             [&] { cancelled.store(true, std::memory_order_relaxed); });
 
+        LOG_PERF("query",
+                 "kind={} path={} acquire_ms={:.2f} compute_ms={:.2f} total_ms={:.2f}",
+                 kind,
+                 path,
+                 acquire_ms,
+                 compute_ms,
+                 timer.ms_f());
         co_return result.value();
     }
 
     /// Returns "null" if document not found or AST not usable.
     template <typename F>
-    kota::task<kota::codec::RawValue> with_ast(llvm::StringRef path, F&& fn) {
-        co_return co_await with_ast_or(path, kota::codec::RawValue{"null"}, std::forward<F>(fn));
+    kota::task<kota::codec::RawValue> with_ast(llvm::StringRef kind, llvm::StringRef path, F&& fn) {
+        co_return co_await with_ast_or(kind,
+                                       path,
+                                       kota::codec::RawValue{"null"},
+                                       std::forward<F>(fn));
     }
 
 public:
@@ -302,9 +321,7 @@ void StatefulWorker::register_handlers() {
                     result.deps = doc->unit.deps();
 
                     // Build index for main file only (interested_only=true).
-                    auto tu_index = index::TUIndex::build(doc->unit, true);
-                    llvm::raw_string_ostream os(result.tu_index_data);
-                    tu_index.serialize(os);
+                    result.tu_index_data = index::build_tu_index(doc->unit, true);
                 }
 
                 // A unit that is neither complete nor a fatal-error result
@@ -332,6 +349,7 @@ void StatefulWorker::register_handlers() {
     peer.on_request([this](RequestContext& ctx, const worker::DocumentLinkParams& params)
                         -> RequestResult<worker::DocumentLinkParams> {
         co_return co_await with_ast_or(
+            "DocumentLink",
             params.path,
             std::vector<feature::DocumentLink>{},
             [&](DocumentEntry& doc) { return feature::document_links(doc.unit); });
@@ -363,25 +381,26 @@ void StatefulWorker::register_handlers() {
         [this](RequestContext& ctx,
                const worker::QueryParams& params) -> RequestResult<worker::QueryParams> {
             using K = worker::QueryKind;
+            auto kind = kota::meta::enum_name(params.kind, "Unknown");
             switch(params.kind) {
                 case K::Hover:
-                    co_return co_await with_ast(params.path, [&](DocumentEntry& doc) {
+                    co_return co_await with_ast(kind, params.path, [&](DocumentEntry& doc) {
                         auto result = feature::hover(doc.unit, params.offset, params.config.hover);
                         return result ? to_raw(*result) : kota::codec::RawValue{"null"};
                     });
                 case K::GoToDefinition:
                     // Include directives only; symbol definitions are served
                     // from the index by the master.
-                    co_return co_await with_ast(params.path, [&](DocumentEntry& doc) {
+                    co_return co_await with_ast(kind, params.path, [&](DocumentEntry& doc) {
                         return to_raw(feature::include_definition(doc.unit, params.offset));
                     });
                 case K::SemanticTokens:
-                    co_return co_await with_ast(params.path, [&](DocumentEntry& doc) {
+                    co_return co_await with_ast(kind, params.path, [&](DocumentEntry& doc) {
                         return to_raw(
                             feature::semantic_tokens(doc.unit, feature::PositionEncoding::UTF16));
                     });
                 case K::InlayHints:
-                    co_return co_await with_ast(params.path, [&](DocumentEntry& doc) {
+                    co_return co_await with_ast(kind, params.path, [&](DocumentEntry& doc) {
                         auto range = params.range;
                         if(range.begin == static_cast<uint32_t>(-1))
                             range = LocalSourceRange{0, static_cast<uint32_t>(doc.text.size())};
@@ -391,12 +410,12 @@ void StatefulWorker::register_handlers() {
                                                            feature::PositionEncoding::UTF16));
                     });
                 case K::FoldingRange:
-                    co_return co_await with_ast(params.path, [&](DocumentEntry& doc) {
+                    co_return co_await with_ast(kind, params.path, [&](DocumentEntry& doc) {
                         return to_raw(
                             feature::folding_ranges(doc.unit, feature::PositionEncoding::UTF16));
                     });
                 case K::DocumentSymbol:
-                    co_return co_await with_ast(params.path, [&](DocumentEntry& doc) {
+                    co_return co_await with_ast(kind, params.path, [&](DocumentEntry& doc) {
                         return to_raw(
                             feature::document_symbols(doc.unit, feature::PositionEncoding::UTF16));
                     });

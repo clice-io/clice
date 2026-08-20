@@ -45,7 +45,7 @@ std::vector<feature::DocumentLink> FeatureRouter::find_preamble_links(const Sess
     // Link offsets are buffer coordinates as of the PCH build; serve them
     // only while the buffer still starts with that exact preamble text
     // (a deferred rebuild mid-edit keeps an old blob for a moved buffer).
-    if(!llvm::StringRef(session.text).starts_with(state->preamble_content()))
+    if(!state->matches_prefix(session.text))
         return {};
     return state->links();
 }

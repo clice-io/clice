@@ -6,10 +6,12 @@
 #include "test/tester.h"
 #include "feature/feature.h"
 #include "index/serialization.h"
+#include "index/shard.h"
 #include "index/tu_index.h"
 #include "semantic/selection.h"
 
 #include "llvm/Support/thread.h"
+#include "llvm/Support/xxhash.h"
 #include "clang/Basic/Stack.h"
 
 namespace clice::testing {
@@ -20,21 +22,80 @@ namespace {
 
 TEST_SUITE(tu_index, Tester) {
 
-index::TUIndex tu_index;
+/// One file's rows read back out of its envelope section through the
+/// Shard reader — every assertion below therefore exercises the full
+/// build → encode → read roundtrip, not builder-internal state.
+struct DecodedRows {
+    std::vector<index::Occurrence> occurrences;
+    llvm::DenseMap<index::SymbolHash, std::vector<index::Relation>> relations{};
+
+    bool empty() const {
+        return occurrences.empty() && relations.empty();
+    }
+};
+
+struct DecodedIndex {
+    index::TUIndex view;
+    DecodedRows main_file_index;
+    /// Non-main sections keyed by path id.
+    std::vector<std::pair<std::uint32_t, DecodedRows>> file_indices;
+    index::SymbolTable symbols{};
+};
+
+DecodedIndex tu_index;
+
+DecodedRows decode_rows(const index::Shard& shard) {
+    DecodedRows rows;
+    shard.for_each_occurrence([&](const index::Occurrence& occurrence) {
+        rows.occurrences.push_back(occurrence);
+        return true;
+    });
+    shard.for_each_relation([&](index::SymbolHash hash, const index::Relation& relation) {
+        rows.relations[hash].push_back(relation);
+        return true;
+    });
+    return rows;
+}
+
+void decode_index(const std::string& envelope) {
+    tu_index = {};
+    tu_index.view = index::TUIndex::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(envelope));
+    auto& view = tu_index.view;
+    ASSERT_TRUE(view.loaded());
+
+    auto main_path = view.path_count() - 1;
+    for(std::uint32_t i = 0; i < view.section_count(); i += 1) {
+        auto rows = decode_rows(view.shard_of(view.section_path(i)));
+        if(view.section_path(i) == main_path) {
+            tu_index.main_file_index = std::move(rows);
+        } else {
+            tu_index.file_indices.emplace_back(view.section_path(i), std::move(rows));
+        }
+    }
+
+    view.iterate_symbols(
+        [&](index::SymbolHash hash, const index::SymbolIdentity& identity, llvm::StringRef bitmap) {
+            auto& symbol = tu_index.symbols[hash];
+            symbol.name = identity.name.str();
+            symbol.kind = identity.kind;
+            symbol.scope = identity.scope;
+            symbol.reference_files =
+                index::read_bitmap(bitmap.data(), bitmap.size()).value_or(Bitmap{});
+            return true;
+        });
+}
 
 void build_index(llvm::StringRef code,
                  std::source_location location = std::source_location::current()) {
     add_main("main.cpp", code);
     ASSERT_TRUE(compile());
 
-    tu_index = index::TUIndex::build(*unit);
+    decode_index(index::build_tu_index(*unit));
 }
 
-auto select(llvm::StringRef pos, llvm::StringRef file = "") -> std::vector<index::Occurrence> {
-    auto offset = point(pos, file);
-    auto fid = file.empty() ? unit->interested_file() : unit->file_id(file);
-    auto& index =
-        fid == unit->interested_file() ? tu_index.main_file_index : tu_index.file_indices[fid];
+auto select(llvm::StringRef pos) -> std::vector<index::Occurrence> {
+    auto offset = point(pos);
+    auto& index = tu_index.main_file_index;
 
     auto it =
         std::ranges::lower_bound(index.occurrences, offset, {}, [](index::Occurrence& occurrence) {
@@ -56,15 +117,11 @@ auto select(llvm::StringRef pos, llvm::StringRef file = "") -> std::vector<index
 
 void EXPECT_SELECT(llvm::StringRef pos,
                    llvm::StringRef expect_range,
-                   llvm::StringRef file = "",
                    std::source_location location = std::source_location::current()) {
-    auto offset = point(pos, file);
-    auto expected = range(expect_range, file);
-    auto occurrences = select(pos, file);
+    auto expected = range(expect_range);
+    auto occurrences = select(pos);
 
     ASSERT_FALSE(occurrences.empty());
-    /// << std::format("Fail to find symbol for offset: {}, target range: {}", offset,
-    /// dump(expected));
 
     /// FIXME: Make eq pretty print reflectable struct.
     ASSERT_EQ(dump(occurrences.front().range), dump(expected));
@@ -72,20 +129,13 @@ void EXPECT_SELECT(llvm::StringRef pos,
 
 void GO_TO_DEFINITION(llvm::StringRef pos,
                       llvm::StringRef definition,
-                      llvm::StringRef file = "",
                       std::source_location location = std::source_location::current()) {
-    auto offset = point(pos, file);
-    auto expected = range(definition, file);
-    auto occurrences = select(pos, file);
+    auto expected = range(definition);
+    auto occurrences = select(pos);
 
     ASSERT_EQ(occurrences.size(), 1U);
-    /// << std::format("Fail to find symbol for offset: {}, target range: {}", offset,
-    /// dump(expected));
 
-    auto fid = file.empty() ? unit->interested_file() : unit->file_id(file);
-    auto& index =
-        fid == unit->interested_file() ? tu_index.main_file_index : tu_index.file_indices[fid];
-
+    auto& index = tu_index.main_file_index;
     auto it = index.relations.find(occurrences.front().target);
     ASSERT_TRUE(it != index.relations.end());
     ///<< std::format("Cannot find target: {}", occurrences.front().target);
@@ -188,6 +238,56 @@ TEST_CASE(FunctionTemplate) {
     GO_TO_DEFINITION("implicit_primary", "primary");
     GO_TO_DEFINITION("spec_decl", "spec");
     GO_TO_DEFINITION("implicit_spec", "spec");
+}
+
+TEST_CASE(InstantiationLocalCollapse) {
+    build_index(R"(
+            struct Fn {
+                template <typename T>
+                int operator()(T §(parm)x) const {
+                    int §(local)loc = 1;
+                    return §(local_ref)loc + static_cast<int>(§(parm_ref)x);
+                }
+            };
+            constexpr Fn fn{};
+            int a = fn(1);
+            int b = fn(2.0);
+        )");
+
+    for(auto pos: {"parm", "local", "local_ref", "parm_ref"}) {
+        auto occurrences = select(pos);
+        std::set<index::SymbolHash> targets;
+        for(auto& occurrence: occurrences) {
+            targets.insert(occurrence.target);
+        }
+        EXPECT_EQ(targets.size(), 1U);
+    }
+}
+
+TEST_CASE(LambdaCaptureCollapse) {
+    build_index(R"(
+            struct Fn {
+                template <typename T>
+                int operator()(T §(parm)x) const {
+                    auto lambda = [&] {
+                        return static_cast<int>(§(parm_ref)x);
+                    };
+                    return lambda();
+                }
+            };
+            constexpr Fn fn{};
+            int a = fn(1);
+            int b = fn(2.0);
+        )");
+
+    for(auto pos: {"parm", "parm_ref"}) {
+        auto occurrences = select(pos);
+        std::set<index::SymbolHash> targets;
+        for(auto& occurrence: occurrences) {
+            targets.insert(occurrence.target);
+        }
+        EXPECT_EQ(targets.size(), 1U);
+    }
 }
 
 TEST_CASE(AliasTemplate) {
@@ -687,7 +787,7 @@ export int x = 1;
 module §(m)⟦§(m)foo⟧;
 )");
     ASSERT_TRUE(compile_with_modules());
-    tu_index = index::TUIndex::build(*unit);
+    decode_index(index::build_tu_index(*unit));
 
     // An implementation unit's declaration is a Reference, not a Definition.
     auto occs = select("m");
@@ -728,7 +828,7 @@ TEST_CASE(OverrideRelation) {
     bool found_interface = false;
     bool found_implementation = false;
 
-    auto check_relations = [&](index::FileIndex& idx) {
+    auto check_relations = [&](DecodedRows& idx) {
         for(auto& [hash, rels]: idx.relations) {
             for(auto& r: rels) {
                 if(r.kind == RelationKind::Interface)
@@ -740,7 +840,7 @@ TEST_CASE(OverrideRelation) {
     };
 
     check_relations(tu_index.main_file_index);
-    for(auto& [fid, idx]: tu_index.file_indices) {
+    for(auto& [path_id, idx]: tu_index.file_indices) {
         check_relations(idx);
     }
 
@@ -792,7 +892,7 @@ TEST_CASE(CrossFileHeaderIndex) {
             }
         )");
     ASSERT_TRUE(compile());
-    tu_index = index::TUIndex::build(*unit);
+    decode_index(index::build_tu_index(*unit));
 
     // The header should have its own FileIndex (separate from main).
     ASSERT_TRUE(tu_index.file_indices.size() >= 1U);
@@ -814,9 +914,9 @@ TEST_CASE(CrossFileHeaderIndex) {
     auto helper_hash = it->target;
     ASSERT_TRUE(tu_index.symbols.contains(helper_hash));
 
-    // The helper's declaration should be in the header FileIndex.
+    // The helper's declaration should be in the header's rows.
     bool found_in_header = false;
-    for(auto& [fid, file_index]: tu_index.file_indices) {
+    for(auto& [path_id, file_index]: tu_index.file_indices) {
         for(auto& [sym, rels]: file_index.relations) {
             if(sym == helper_hash) {
                 found_in_header = true;
@@ -861,31 +961,33 @@ TEST_CASE(LookupOccurrence) {
 
     auto& fi = tu_index.main_file_index;
     ASSERT_FALSE(fi.occurrences.empty());
+    const index::Shard& shard = tu_index.view.shard_of(tu_index.view.path_count() - 1);
+    ASSERT_TRUE(shard.loaded());
 
     auto x_range = range("x");
-    const index::Occurrence* found = nullptr;
-    fi.lookup(point("x"), [&](const index::Occurrence& occ) {
-        found = &occ;
+    std::optional<index::Occurrence> found;
+    shard.lookup(point("x"), [&](const index::Occurrence& occ) {
+        found = occ;
         return true;
     });
-    ASSERT_TRUE(found);
+    ASSERT_TRUE(found.has_value());
     EXPECT_EQ(found->range.begin, x_range.begin);
     EXPECT_EQ(found->range.end, x_range.end);
 
-    found = nullptr;
-    fi.lookup(point("ref"), [&](const index::Occurrence& occ) {
-        found = &occ;
+    found.reset();
+    shard.lookup(point("ref"), [&](const index::Occurrence& occ) {
+        found = occ;
         return true;
     });
-    ASSERT_TRUE(found);
+    ASSERT_TRUE(found.has_value());
     EXPECT_EQ(found->target, fi.occurrences.front().target);
 
-    found = nullptr;
-    fi.lookup(0, [&](const index::Occurrence& occ) {
-        found = &occ;
+    found.reset();
+    shard.lookup(0, [&](const index::Occurrence& occ) {
+        found = occ;
         return false;
     });
-    EXPECT_FALSE(found);
+    EXPECT_FALSE(found.has_value());
 }
 
 TEST_CASE(LookupRelation) {
@@ -894,18 +996,19 @@ TEST_CASE(LookupRelation) {
         void §(def)⟦fo§(def)o⟧() {}
     )");
 
-    auto& fi = tu_index.main_file_index;
+    const index::Shard& shard = tu_index.view.shard_of(tu_index.view.path_count() - 1);
+    ASSERT_TRUE(shard.loaded());
 
-    const index::Occurrence* occ = nullptr;
-    fi.lookup(point("decl"), [&](const index::Occurrence& o) {
-        occ = &o;
+    std::optional<index::Occurrence> occ;
+    shard.lookup(point("decl"), [&](const index::Occurrence& o) {
+        occ = o;
         return false;
     });
-    ASSERT_TRUE(occ);
+    ASSERT_TRUE(occ.has_value());
 
     auto def_range = range("def");
     bool found_def = false;
-    fi.lookup(occ->target, RelationKind::Definition, [&](const index::Relation& r) {
+    shard.lookup(occ->target, RelationKind::Definition, [&](const index::Relation& r) {
         found_def = true;
         EXPECT_EQ(r.range.begin, def_range.begin);
         EXPECT_EQ(r.range.end, def_range.end);
@@ -914,7 +1017,7 @@ TEST_CASE(LookupRelation) {
     EXPECT_TRUE(found_def);
 
     bool found_any = false;
-    fi.lookup(occ->target, RelationKind::Caller, [&](const index::Relation&) {
+    shard.lookup(occ->target, RelationKind::Caller, [&](const index::Relation&) {
         found_any = true;
         return false;
     });
@@ -1004,14 +1107,14 @@ int Foo::§(def)⟦§(1)find⟧(int x) const { return 0; }
     // A full build keeps the preamble rows: this proves the row exists
     // (so the gate test below cannot pass vacuously) and that the loaded
     // fid resolves through the graph to the header's path.
-    tu_index = index::TUIndex::build(*unit);
+    decode_index(index::build_tu_index(*unit));
     bool found = false;
-    for(auto& [fid, index]: tu_index.file_indices) {
-        found |= tu_index.graph.path(tu_index.graph.path_id(fid)).ends_with("foo.h");
+    for(auto& [path_id, index]: tu_index.file_indices) {
+        found |= tu_index.view.path(path_id).ends_with("foo.h");
     }
     ASSERT_TRUE(found);
 
-    tu_index = index::TUIndex::build(*unit, true);
+    decode_index(index::build_tu_index(*unit, true));
 
     // Rows resolving into the preamble are dropped: the preamble's own
     // index covers them. Only the main file's rows remain.
@@ -1036,14 +1139,14 @@ Derived* use();
 
     // Full build: the base-specifier rows land in the preamble header
     // and its loaded fid resolves to the header's path.
-    tu_index = index::TUIndex::build(*unit);
+    decode_index(index::build_tu_index(*unit));
     bool found = false;
-    for(auto& [fid, index]: tu_index.file_indices) {
-        found |= tu_index.graph.path(tu_index.graph.path_id(fid)).ends_with("bar.h");
+    for(auto& [path_id, index]: tu_index.file_indices) {
+        found |= tu_index.view.path(path_id).ends_with("bar.h");
     }
     ASSERT_TRUE(found);
 
-    tu_index = index::TUIndex::build(*unit, true);
+    decode_index(index::build_tu_index(*unit, true));
 
     ASSERT_TRUE(tu_index.file_indices.empty());
     ASSERT_FALSE(tu_index.main_file_index.occurrences.empty());
@@ -1062,7 +1165,7 @@ int x = §(1)BAZ;
 )");
     ASSERT_TRUE(compile());
 
-    tu_index = index::TUIndex::build(*unit, true);
+    decode_index(index::build_tu_index(*unit, true));
     ASSERT_TRUE(tu_index.file_indices.empty());
     ASSERT_FALSE(tu_index.main_file_index.occurrences.empty());
 }
@@ -1139,7 +1242,7 @@ TEST_CASE(DeepExpressionChain) {
     llvm::thread index_thread(std::optional<unsigned>(clang::DesiredStackSize / 4), [&] {
         // Mirror the stateful worker's post-compile sequence.
         scan = feature::inactive_regions(*unit);
-        tu_index = index::TUIndex::build(*unit, true);
+        decode_index(index::build_tu_index(*unit, true));
 
         // The semantic map must also serve token classification and a
         // selection at the giant expansion's invocation on this stack:
@@ -1180,12 +1283,12 @@ TEST_CASE(SuperQualifierRef) {
         params.arguments.push_back(arg.c_str());
     }
     ASSERT_TRUE(try_compile());
-    tu_index = index::TUIndex::build(*unit);
+    decode_index(index::build_tu_index(*unit));
 
     GO_TO_DEFINITION("use", "def");
 }
 
-TEST_CASE(SerializeRoundTrip) {
+TEST_CASE(EnvelopeSections) {
     add_file("header.h", R"(
             #pragma once
             inline int §(hdr)helper() { return 1; }
@@ -1195,202 +1298,239 @@ TEST_CASE(SerializeRoundTrip) {
             int main() { return §(use)helper(); }
         )");
     ASSERT_TRUE(compile());
-    tu_index = index::TUIndex::build(*unit);
+    decode_index(index::build_tu_index(*unit));
     ASSERT_FALSE(tu_index.file_indices.empty());
 
-    llvm::SmallString<4096> buf;
-    llvm::raw_svector_ostream os(buf);
-    tu_index.serialize(os);
+    auto& view = tu_index.view;
+    ASSERT_TRUE(view.built_at() > 0);
 
-    auto loaded = index::TUIndex::from(buf);
-    ASSERT_TRUE(loaded.has_value());
-
-    ASSERT_EQ(loaded->built_at.count(), tu_index.built_at.count());
-    ASSERT_TRUE(loaded->graph.paths == tu_index.graph.paths);
-    ASSERT_TRUE(loaded->graph.locations == tu_index.graph.locations);
-    ASSERT_TRUE(loaded->graph.path_hashes == tu_index.graph.path_hashes);
-
-    // The persisted per-file rows are keyed by path id; recompute the
-    // expected conversion from the build-time FileID-keyed state.
-    llvm::DenseMap<std::uint32_t, std::pair<std::size_t, std::size_t>> expected;
-    for(auto& [fid, file_index]: tu_index.file_indices) {
-        expected[tu_index.graph.path_id(fid)] = {file_index.occurrences.size(),
-                                                 file_index.relations.size()};
+    // Sections ascend by path id and the interested file's rows are the
+    // last path id's section.
+    for(std::uint32_t i = 1; i < view.section_count(); i += 1) {
+        ASSERT_TRUE(view.section_path(i - 1) < view.section_path(i));
     }
-    ASSERT_FALSE(expected.empty());
-    ASSERT_EQ(loaded->path_file_indices.size(), expected.size());
-    for(auto& [path_id, counts]: expected) {
-        auto it = loaded->path_file_indices.find(path_id);
-        ASSERT_TRUE(it != loaded->path_file_indices.end());
-        ASSERT_EQ(it->second.occurrences.size(), counts.first);
-        ASSERT_EQ(it->second.relations.size(), counts.second);
+    auto main_section = view.section_of(view.path_count() - 1);
+    ASSERT_TRUE(main_section.has_value());
+
+    // Every section's hash is the byte identity of its blob, the blob
+    // loads as a self-contained single-variant shard under that identity,
+    // and the whole envelope passes the persisted-load gate.
+    ASSERT_TRUE(view.shards_verify());
+    for(std::uint32_t i = 0; i < view.section_count(); i += 1) {
+        auto blob = view.section_blob(i);
+        ASSERT_EQ(view.section_hash(i), llvm::xxh3_64bits(blob));
+        auto shard = index::Shard::from_bytes(blob);
+        ASSERT_TRUE(shard.loaded());
+        ASSERT_EQ(shard.variants().size(), std::size_t(1));
+        ASSERT_EQ(shard.variants().front(), view.section_hash(i));
     }
 
-    ASSERT_TRUE(loaded->main_file_index.occurrences == tu_index.main_file_index.occurrences);
-    ASSERT_EQ(loaded->main_file_index.relations.size(), tu_index.main_file_index.relations.size());
+    // The graph travels with the envelope: every path resolves and the
+    // consumed-content hash column covers the whole table.
+    for(std::uint32_t id = 0; id < view.path_count(); id += 1) {
+        ASSERT_FALSE(view.path(id).empty());
+        ASSERT_TRUE(view.path_hash(id) != 0);
+    }
 
-    ASSERT_EQ(loaded->symbols.size(), tu_index.symbols.size());
+    // Symbols read back identically through iteration and point lookup.
+    ASSERT_FALSE(tu_index.symbols.empty());
     for(auto& [hash, symbol]: tu_index.symbols) {
-        auto it = loaded->symbols.find(hash);
-        ASSERT_TRUE(it != loaded->symbols.end());
-        ASSERT_EQ(it->second.name, symbol.name);
-        ASSERT_EQ(it->second.kind.value(), symbol.kind.value());
-        ASSERT_EQ(static_cast<int>(it->second.scope), static_cast<int>(symbol.scope));
-        ASSERT_TRUE(it->second.reference_files == symbol.reference_files);
+        auto identity = view.find_symbol(hash);
+        ASSERT_TRUE(identity.has_value());
+        ASSERT_EQ(identity->name, llvm::StringRef(symbol.name));
+        ASSERT_EQ(identity->kind.value(), symbol.kind.value());
+        ASSERT_EQ(static_cast<int>(identity->scope), static_cast<int>(symbol.scope));
     }
 }
 
+TEST_CASE(CorruptSectionBytesRejected) {
+    // The persisted-load gate must reject any flipped section byte, in
+    // particular flips that still form a structurally valid shard (an
+    // opaque hash field, say) — only the byte hash catches those, and
+    // serving them would navigate by corrupted rows across restarts.
+    add_main("main.cpp", R"(
+            int value = 1;
+            int main() { return value; }
+        )");
+    ASSERT_TRUE(compile());
+    decode_index(index::build_tu_index(*unit));
+
+    auto& view = tu_index.view;
+    ASSERT_TRUE(view.section_count() > 0);
+    auto blob = view.section_blob(0);
+    auto offset = static_cast<std::size_t>(blob.data() - view.bytes().data());
+
+    bool structurally_valid_flip = false;
+    std::string bytes = view.bytes().str();
+    for(std::size_t i = 0; i < blob.size(); i += 1) {
+        std::string mutated = bytes;
+        mutated[offset + i] ^= 0x01;
+        auto reloaded = index::TUIndex::from_bytes(mutated);
+        if(!reloaded.loaded()) {
+            continue;
+        }
+        if(index::Shard::from_bytes(reloaded.section_blob(0)).loaded()) {
+            structurally_valid_flip = true;
+        }
+        ASSERT_FALSE(reloaded.shards_verify());
+    }
+    ASSERT_TRUE(structurally_valid_flip);
+}
+
 TEST_CASE(FromRejectsHostileInput) {
-    ASSERT_FALSE(index::TUIndex::from("not a flatbuffer at all").has_value());
+    ASSERT_FALSE(index::TUIndex::from_bytes("not a flatbuffer at all").loaded());
 
     build_index(R"(
             int foo() { return 42; }
         )");
+    auto bytes = tu_index.view.bytes();
 
-    llvm::SmallString<4096> buf;
-    llvm::raw_svector_ostream os(buf);
-    tu_index.serialize(os);
+    // Sanity: the intact envelope loads, so the rejections below are earned.
+    ASSERT_TRUE(index::TUIndex::from_bytes(bytes).loaded());
 
-    // Sanity: the intact blob loads, so the rejections below are earned.
-    ASSERT_TRUE(index::TUIndex::from(buf).has_value());
-
-    ASSERT_FALSE(index::TUIndex::from(llvm::StringRef(buf.data(), buf.size() / 2)).has_value());
+    ASSERT_FALSE(index::TUIndex::from_bytes(bytes.substr(0, bytes.size() / 2)).loaded());
 
     // Bytes 4-7 carry the buffer identifier; a blob from another format
     // must be rejected up front.
-    ASSERT_TRUE(buf.size() > 8);
-    std::string clobbered(buf.data(), buf.size());
-    for(std::size_t i = 4; i < 8; ++i) {
+    ASSERT_TRUE(bytes.size() > 8);
+    std::string clobbered(bytes.data(), bytes.size());
+    for(std::size_t i = 4; i < 8; i += 1) {
         clobbered[i] = 'X';
     }
-    ASSERT_FALSE(index::TUIndex::from(clobbered).has_value());
+    ASSERT_FALSE(index::TUIndex::from_bytes(clobbered).loaded());
 }
 
 TEST_CASE(FromRejectsStaleFormatVersion) {
-    // Only the version slot is written: every other field reads back
-    // absent, which is structurally valid — the verdict must hinge on the
-    // value. Field order MUST mirror TUIndex (tu_index.h): format_version
-    // is slot 0.
-    struct VersionOnly {
+    // Only the version slot and the path table are written: every other
+    // field reads back absent, which is structurally valid — the verdict
+    // must hinge on the version value. Field order MUST mirror the
+    // envelope layout (tu_index.cpp): format_version is slot 0.
+    struct VersionAndPaths {
         std::uint32_t format_version = 0;
+        std::int64_t built_at = 0;
+        std::vector<std::string> paths = {"/proj/main.cpp"};
     };
 
     auto bytes_of = [](const std::vector<std::uint8_t>& blob) {
         return llvm::StringRef(reinterpret_cast<const char*>(blob.data()), blob.size());
     };
 
-    auto stale = kota::codec::fbs::to_bytes(VersionOnly{index::index_format_version + 1});
+    auto stale = kota::codec::fbs::to_bytes(
+        VersionAndPaths{.format_version = index::index_format_version + 1});
     ASSERT_TRUE(stale.has_value());
-    ASSERT_FALSE(index::TUIndex::from(bytes_of(*stale)).has_value());
+    ASSERT_FALSE(index::TUIndex::from_bytes(bytes_of(*stale)).loaded());
 
     // Positive control: the same shape carrying the current version loads,
     // so the rejection above comes from the value, not the blob's shape.
-    auto current = kota::codec::fbs::to_bytes(VersionOnly{index::index_format_version});
+    auto current =
+        kota::codec::fbs::to_bytes(VersionAndPaths{.format_version = index::index_format_version});
     ASSERT_TRUE(current.has_value());
-    ASSERT_TRUE(index::TUIndex::from(bytes_of(*current)).has_value());
+    ASSERT_TRUE(index::TUIndex::from_bytes(bytes_of(*current)).loaded());
+}
+
+/// Hand-built envelopes for hostile-input tests. Field order MUST mirror
+/// the envelope layout (tu_index.cpp).
+struct MirrorSection {
+    std::uint32_t path_id = 0;
+    std::uint64_t hash = 0;
+    std::vector<std::uint8_t> blob;
+};
+
+struct MirrorEnvelope {
+    std::uint32_t format_version = index::index_format_version;
+    std::int64_t built_at = 0;
+    std::vector<std::string> paths;
+    std::vector<std::uint64_t> path_hashes;
+    std::vector<index::IncludeLocation> locations;
+    index::SymbolTable symbols{};
+    std::vector<MirrorSection> sections;
+};
+
+std::string mirror_bytes(const MirrorEnvelope& envelope) {
+    auto bytes = kota::codec::fbs::to_bytes(envelope);
+    if(!bytes) {
+        return {};
+    }
+    return std::string(bytes->begin(), bytes->end());
 }
 
 TEST_CASE(FromRejectsOutOfRangePathIds) {
     // Structural verification does not constrain field values, and the
     // merge pipeline dereferences every decoded path id against the path
-    // table without further checks (Indexer::merge indexes paths and
-    // path_hashes, ProjectIndex::merge indexes file_ids_map with
-    // reference_files values) — a blob pointing outside its own table must
-    // be rejected as a whole.
-    auto serialized = [](index::TUIndex& index) {
-        std::string buf;
-        llvm::raw_string_ostream os(buf);
-        index.serialize(os);
-        return buf;
-    };
+    // table without further checks — an envelope pointing outside its own
+    // table must be rejected as a whole. Symbol reference-file ids are
+    // deliberately not gated here: ProjectIndex::merge bounds them, pinned
+    // by project_index_tests.
 
     // Positive control first: the same shapes with in-range ids load, so
     // the rejections below come from the hostile values.
-    index::TUIndex honest;
-    honest.built_at = std::chrono::milliseconds(0);
-    honest.graph.paths = {"/proj/main.cpp"};
-    honest.graph.locations.push_back({.path_id = 0, .line = 1, .include = 0});
-    honest.path_file_indices.try_emplace(0);
-    honest.symbols[42].reference_files.add(0);
-    ASSERT_TRUE(index::TUIndex::from(serialized(honest)).has_value());
+    MirrorEnvelope honest;
+    honest.paths = {"/proj/main.cpp"};
+    honest.locations.push_back({.path_id = 0, .line = 1, .include = 0});
+    honest.sections.push_back({.path_id = 0});
+    ASSERT_TRUE(index::TUIndex::from_bytes(mirror_bytes(honest)).loaded());
 
     {
-        index::TUIndex hostile;
-        hostile.built_at = std::chrono::milliseconds(0);
-        hostile.graph.paths = {"/proj/main.cpp"};
-        hostile.graph.locations.push_back({.path_id = 7, .line = 1, .include = 0});
-        ASSERT_FALSE(index::TUIndex::from(serialized(hostile)).has_value());
+        MirrorEnvelope hostile;
+        hostile.paths = {"/proj/main.cpp"};
+        hostile.locations.push_back({.path_id = 7, .line = 1, .include = 0});
+        ASSERT_FALSE(index::TUIndex::from_bytes(mirror_bytes(hostile)).loaded());
     }
     {
-        index::TUIndex hostile;
-        hostile.built_at = std::chrono::milliseconds(0);
-        hostile.graph.paths = {"/proj/main.cpp"};
-        hostile.path_file_indices.try_emplace(7);  // Only path id 0 exists.
-        ASSERT_FALSE(index::TUIndex::from(serialized(hostile)).has_value());
-    }
-    {
-        index::TUIndex hostile;
-        hostile.built_at = std::chrono::milliseconds(0);
-        hostile.graph.paths = {"/proj/main.cpp"};
-        hostile.symbols[42].reference_files.add(7);
-        ASSERT_FALSE(index::TUIndex::from(serialized(hostile)).has_value());
+        MirrorEnvelope hostile;
+        hostile.paths = {"/proj/main.cpp"};
+        hostile.sections.push_back({.path_id = 7});  // Only path id 0 exists.
+        ASSERT_FALSE(index::TUIndex::from_bytes(mirror_bytes(hostile)).loaded());
     }
 }
 
-TEST_CASE(FromNormalizesPathHashes) {
-    build_index(R"(
-            int foo() { return 42; }
-        )");
-    ASSERT_FALSE(tu_index.graph.paths.empty());
+TEST_CASE(FromRejectsEmptyPathTable) {
+    // The builder ends every path table with the interested file, and
+    // consumers address path_count() - 1 unchecked — an envelope with no
+    // paths at all is corrupt.
+    MirrorEnvelope hostile;
+    ASSERT_FALSE(index::TUIndex::from_bytes(mirror_bytes(hostile)).loaded());
+}
 
-    // A blob without path hashes (structurally valid: the field reads back
-    // empty) must come back resized to the path table, all "unavailable".
-    tu_index.graph.path_hashes.clear();
-    llvm::SmallString<4096> buf;
-    llvm::raw_svector_ostream os(buf);
-    tu_index.serialize(os);
+TEST_CASE(FromRejectsUnsortedSections) {
+    // section_of binary-searches the section table by path id; a repeated
+    // or out-of-order id would attribute one file's rows to another.
 
-    auto loaded = index::TUIndex::from(buf);
-    ASSERT_TRUE(loaded.has_value());
-    ASSERT_EQ(loaded->graph.path_hashes.size(), loaded->graph.paths.size());
-    for(auto hash: loaded->graph.path_hashes) {
-        ASSERT_EQ(hash, 0u);
+    // Positive control: the ascending shape loads.
+    MirrorEnvelope honest;
+    honest.paths = {"/proj/a.h", "/proj/main.cpp"};
+    honest.sections.push_back({.path_id = 0});
+    honest.sections.push_back({.path_id = 1});
+    ASSERT_TRUE(index::TUIndex::from_bytes(mirror_bytes(honest)).loaded());
+
+    {
+        MirrorEnvelope hostile;
+        hostile.paths = {"/proj/a.h", "/proj/main.cpp"};
+        hostile.sections.push_back({.path_id = 1});
+        hostile.sections.push_back({.path_id = 0});
+        ASSERT_FALSE(index::TUIndex::from_bytes(mirror_bytes(hostile)).loaded());
+    }
+    {
+        MirrorEnvelope hostile;
+        hostile.paths = {"/proj/a.h", "/proj/main.cpp"};
+        hostile.sections.push_back({.path_id = 1});
+        hostile.sections.push_back({.path_id = 1});
+        ASSERT_FALSE(index::TUIndex::from_bytes(mirror_bytes(hostile)).loaded());
     }
 }
 
-TEST_CASE(ReserializeKeepsPathIndices) {
-    add_file("header.h", R"(
-            #pragma once
-            inline int helper() { return 1; }
-        )");
-    add_main("main.cpp", R"(
-            #include "header.h"
-            int main() { return helper(); }
-        )");
-    ASSERT_TRUE(compile());
-    tu_index = index::TUIndex::build(*unit);
-
-    llvm::SmallString<4096> buf;
-    llvm::raw_svector_ostream os(buf);
-    tu_index.serialize(os);
-
-    auto loaded = index::TUIndex::from(buf);
-    ASSERT_TRUE(loaded.has_value());
-    ASSERT_TRUE(loaded->file_indices.empty());
-    ASSERT_FALSE(loaded->path_file_indices.empty());
-
-    // A deserialized index has no FileID-keyed state; re-serializing must
-    // keep the path-keyed rows instead of wiping them from an empty map.
-    llvm::SmallString<4096> again;
-    llvm::raw_svector_ostream os2(again);
-    loaded->serialize(os2);
-
-    auto reloaded = index::TUIndex::from(again);
-    ASSERT_TRUE(reloaded.has_value());
-    ASSERT_EQ(reloaded->path_file_indices.size(), loaded->path_file_indices.size());
-    for(auto& [path_id, file_index]: loaded->path_file_indices) {
-        ASSERT_TRUE(reloaded->path_file_indices.contains(path_id));
-    }
+TEST_CASE(AbsentPathHashesReadZero) {
+    // The hash column may be shorter than the path table on a foreign
+    // envelope (structurally valid: the field reads back empty); absent
+    // entries read as 0, "unavailable".
+    MirrorEnvelope envelope;
+    envelope.paths = {"/proj/a.h", "/proj/main.cpp"};
+    envelope.path_hashes = {7};
+    auto bytes = mirror_bytes(envelope);
+    auto view = index::TUIndex::from_bytes(bytes);
+    ASSERT_TRUE(view.loaded());
+    ASSERT_EQ(view.path_hash(0), 7u);
+    ASSERT_EQ(view.path_hash(1), 0u);
 }
 
 };  // TEST_SUITE(tu_index)

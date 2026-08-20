@@ -25,6 +25,7 @@
 #include "support/logging.h"
 
 #include "kota/codec/json/json.h"
+#include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Error.h"
@@ -37,6 +38,10 @@ namespace {
 
 /// Manifest checkpoint is forced after this many commits/invalidates.
 constexpr std::uint32_t checkpoint_interval = 16;
+
+/// Root-level lock file serializing open()'s version sweep against layout
+/// startup; lives beside the version directories, exempt from the sweep.
+constexpr llvm::StringLiteral store_lock_name = "store.lock";
 
 /// JSON layout of manifest.json.  Only an acceleration structure: blob
 /// presence and size always come from the filesystem; the manifest merely
@@ -138,6 +143,22 @@ void sweep_dead_pid_dirs(llvm::StringRef dir, std::uint32_t self_pid) {
     }
 }
 
+/// Whether a live process is working inside this cache layout: every
+/// writable open creates `tmp/{pid}` and keeps it until shutdown.
+bool has_live_instance(llvm::StringRef base) {
+    std::error_code ec;
+    auto tmp_parent = path::join(base, "tmp");
+    for(auto it = llvm::sys::fs::directory_iterator(tmp_parent, ec);
+        !ec && it != llvm::sys::fs::directory_iterator();
+        it.increment(ec)) {
+        std::uint32_t pid = 0;
+        if(!path::filename(it->path()).getAsInteger(10, pid) && is_pid_alive(pid)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 std::int64_t now_ms() {
     auto now = std::chrono::system_clock::now().time_since_epoch();
     return std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
@@ -184,6 +205,15 @@ struct CacheStore::State {
 
     std::uint32_t changes_since_checkpoint = 0;
     bool dirty = false;
+
+    /// Inspection mode (open's read_only): no directory is created or
+    /// swept, and writes are a caller bug.
+    bool read_only = false;
+
+    /// First namespace directory scan that failed (permissions, IO):
+    /// the affected namespace looks empty while its blobs exist, so
+    /// readers must not mistake the store for empty.
+    std::error_code scan_failure;
 
     /// Logical clock: strictly increasing per issued stamp so that LRU
     /// ordering is deterministic even within one millisecond.
@@ -239,35 +269,86 @@ CacheStore& CacheStore::operator=(CacheStore&&) noexcept = default;
 CacheStore::~CacheStore() = default;
 
 std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root,
-                                                            std::uint32_t version) {
+                                                            std::uint32_t version,
+                                                            bool read_only) {
     assert(!root.empty() && "cache root must not be empty");
 
     auto state = std::make_unique<State>();
     state->self_pid = static_cast<std::uint32_t>(llvm::sys::Process::getProcessId());
+    state->read_only = read_only;
 
     auto parent = path::join(root, "cache");
     auto version_dir = std::format("v{}", version);
     state->base = path::join(parent, version_dir);
+
+    if(read_only) {
+        if(!llvm::sys::fs::is_directory(state->base)) {
+            return std::unexpected(std::make_error_code(std::errc::no_such_file_or_directory));
+        }
+        return CacheStore(std::move(state));
+    }
+
+    // Only the parent may exist before the lock is held: it hosts the lock
+    // file and is never swept.
+    if(auto ec = llvm::sys::fs::create_directories(parent)) {
+        return std::unexpected(ec);
+    }
+
+    // The pid marker created below is what shields a layout from another
+    // version's sweep, but it only exists at the end of this function: a
+    // sweeper scanning between our create_directories and the marker would
+    // reclaim the layout we are initializing. This root-level lock covers
+    // exactly that window — every writable open holds it from before its
+    // version directory exists until its marker does. Best effort: on a
+    // filesystem without advisory locks the window stays open, as before.
+    int lock_fd = -1;
+    auto lock_path = path::join(parent, store_lock_name);
+    if(auto ec = llvm::sys::fs::openFileForReadWrite(lock_path,
+                                                     lock_fd,
+                                                     llvm::sys::fs::CD_OpenAlways,
+                                                     llvm::sys::fs::OF_None)) {
+        LOG_WARN("CacheStore: cannot open {}: {}", lock_path, ec.message());
+        lock_fd = -1;
+    } else if(auto ec2 = llvm::sys::fs::lockFile(lock_fd)) {
+        LOG_WARN("CacheStore: cannot lock {}: {}", lock_path, ec2.message());
+        llvm::sys::Process::SafelyCloseFileDescriptor(lock_fd);
+        lock_fd = -1;
+    }
+    auto unlock = llvm::make_scope_exit([&] {
+        if(lock_fd != -1) {
+            llvm::sys::fs::unlockFile(lock_fd);
+            llvm::sys::Process::SafelyCloseFileDescriptor(lock_fd);
+        }
+    });
 
     if(auto ec = llvm::sys::fs::create_directories(state->base)) {
         return std::unexpected(ec);
     }
 
     // Discard anything that isn't the current layout version: older version
-    // directories and any stray files.
+    // directories and any stray files. A layout still holding a live
+    // instance stays: a clice of another version is serving from it, and
+    // its writer locks live inside the directory, so they cannot protect
+    // it from us — a later open reclaims it once that process exits.
     std::error_code ec;
     for(auto it = llvm::sys::fs::directory_iterator(parent, ec);
         !ec && it != llvm::sys::fs::directory_iterator();
         it.increment(ec)) {
-        if(path::filename(it->path()) == version_dir) {
+        auto name = path::filename(it->path());
+        if(name == version_dir || name == store_lock_name) {
+            continue;
+        }
+        if(!llvm::sys::fs::is_directory(it->path())) {
+            LOG_INFO("CacheStore: discarding stale cache layout {}", it->path());
+            llvm::sys::fs::remove(it->path());
+            continue;
+        }
+        if(has_live_instance(it->path())) {
+            LOG_INFO("CacheStore: keeping cache layout {}, still in use", it->path());
             continue;
         }
         LOG_INFO("CacheStore: discarding stale cache layout {}", it->path());
-        if(llvm::sys::fs::is_directory(it->path())) {
-            fs::remove_all(it->path());
-        } else {
-            llvm::sys::fs::remove(it->path());
-        }
+        fs::remove_all(it->path());
     }
 
     // Load the manifest.  Corrupt or missing is fine: registration falls
@@ -306,7 +387,9 @@ void CacheStore::register_namespace(CacheNamespace ns) {
     std::lock_guard guard(state->mutex);
 
     auto ns_dir = path::join(state->base, ns.name);
-    llvm::sys::fs::create_directories(ns_dir);
+    if(!state->read_only) {
+        llvm::sys::fs::create_directories(ns_dir);
+    }
 
     auto [it, inserted] = state->namespaces.try_emplace(ns.name);
     assert(inserted && "namespace registered twice");
@@ -317,10 +400,13 @@ void CacheStore::register_namespace(CacheNamespace ns) {
     ns_state.config = std::move(ns);
 
     if(ns_state.config.policy == CachePolicy::Scratch) {
+        ns_state.dir = path::join(ns_dir, std::to_string(state->self_pid));
+        if(state->read_only) {
+            return;
+        }
         // Scratch directories are per-instance; reclaim those left behind
         // by crashed instances and start with a fresh one of our own.
         sweep_dead_pid_dirs(ns_dir, state->self_pid);
-        ns_state.dir = path::join(ns_dir, std::to_string(state->self_pid));
         fs::remove_all(ns_state.dir);
         llvm::sys::fs::create_directories(ns_state.dir);
         return;
@@ -375,6 +461,13 @@ void CacheStore::register_namespace(CacheNamespace ns) {
         ns_state.total_size += status.getSize();
         primary_mtimes[filename] = status.getLastModificationTime();
     }
+    // A read-only open of a store whose namespace was never created is a
+    // legitimately empty scan; any other failure hides existing blobs.
+    if(ec && !(state->read_only && ec == std::errc::no_such_file_or_directory) &&
+       !state->scan_failure) {
+        LOG_WARN("CacheStore: failed to scan namespace {}: {}", ns_state.dir, ec.message());
+        state->scan_failure = ec;
+    }
 
     // Attach aux blobs to their entries. An aux without a primary is crash
     // residue (a pair evicted halfway); an aux OLDER than its primary is
@@ -390,7 +483,7 @@ void CacheStore::register_namespace(CacheNamespace ns) {
         if(it != ns_state.entries.end() && entry.getValue().mtime >= primary_mtimes[key]) {
             it->second.aux_size = entry.getValue().size;
             ns_state.total_size += entry.getValue().size;
-        } else {
+        } else if(!state->read_only) {
             llvm::sys::fs::remove(state->aux_blob_path(ns_state, key));
             LOG_DEBUG("CacheStore: removed stale aux blob {} in {}", key, ns_state.config.name);
         }
@@ -438,6 +531,11 @@ std::optional<std::string> CacheStore::lookup_aux(llvm::StringRef ns, llvm::Stri
 
 CacheStore::PendingEntry CacheStore::begin_store(llvm::StringRef ns, llvm::StringRef key) {
     std::lock_guard guard(state->mutex);
+    assert(!state->read_only && "write on a read-only store");
+    if(state->read_only) {
+        LOG_ERROR("CacheStore: begin_store on a read-only store");
+        return {};
+    }
 
     auto* ns_state = state->find_namespace(ns);
     assert(ns_state && "begin_store on unregistered namespace");
@@ -459,6 +557,11 @@ CacheStore::PendingEntry CacheStore::begin_store(llvm::StringRef ns, llvm::Strin
 
 CacheStore::PendingEntry CacheStore::begin_store_aux(llvm::StringRef ns, llvm::StringRef key) {
     std::lock_guard guard(state->mutex);
+    assert(!state->read_only && "write on a read-only store");
+    if(state->read_only) {
+        LOG_ERROR("CacheStore: begin_store_aux on a read-only store");
+        return {};
+    }
 
     auto* ns_state = state->find_namespace(ns);
     assert(ns_state && "begin_store_aux on unregistered namespace");
@@ -617,6 +720,9 @@ void CacheStore::PendingEntry::remove_tmp() {
 void CacheStore::invalidate(llvm::StringRef ns, llvm::StringRef key) {
     {
         std::lock_guard guard(state->mutex);
+        if(state->read_only) {
+            return;
+        }
 
         auto* ns_state = state->find_namespace(ns);
         if(!ns_state) {
@@ -684,8 +790,17 @@ llvm::StringRef CacheStore::base_dir() const {
     return state->base;
 }
 
+bool CacheStore::read_only() const {
+    return state->read_only;
+}
+
+std::error_code CacheStore::scan_error() const {
+    std::lock_guard guard(state->mutex);
+    return state->scan_failure;
+}
+
 void CacheStore::State::evict_locked(Namespace& ns, llvm::StringRef keep_key) {
-    if(ns.config.policy != CachePolicy::LRU || ns.config.max_bytes == 0 ||
+    if(read_only || ns.config.policy != CachePolicy::LRU || ns.config.max_bytes == 0 ||
        ns.total_size <= ns.config.max_bytes) {
         return;
     }
@@ -749,7 +864,10 @@ void CacheStore::State::evict_locked(Namespace& ns, llvm::StringRef keep_key) {
 }
 
 void CacheStore::State::checkpoint_locked() {
-    if(!dirty) {
+    // Read-only: lookups still bump in-memory atimes (setting dirty), but
+    // nothing may reach the disk — with no tmp_dir the write below would
+    // even land a manifest in the process working directory.
+    if(read_only || !dirty) {
         return;
     }
 
@@ -798,6 +916,9 @@ void CacheStore::maybe_checkpoint() {
 
 void CacheStore::shutdown() {
     std::lock_guard guard(state->mutex);
+    if(state->read_only) {
+        return;
+    }
     state->checkpoint_locked();
 
     fs::remove_all(state->tmp_dir);

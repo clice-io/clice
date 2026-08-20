@@ -325,6 +325,14 @@ struct X {
     auto usr2 = tester.lookup("2");
 
     ASSERT_NE(usr1, usr2);
+
+    /// The dependent name is encoded as text: an AST-node address here
+    /// (IdentifierInfo streamed as a pointer) made every hash touching a
+    /// dependent template name unique per compile.
+    EXPECT_TRUE(usr1.contains(":apply"));
+    EXPECT_TRUE(usr2.contains(":apply2"));
+    EXPECT_FALSE(usr1.contains("0x"));
+    EXPECT_FALSE(usr2.contains("0x"));
 };
 
 TEST_CASE(USRDeducingThis) {

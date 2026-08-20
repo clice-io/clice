@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./bench/perf": "./bench/perf.ts",
     "./client": "./client/client.ts",
     "./workspace": "./client/workspace.ts",
     "./session": "./client/session.ts",

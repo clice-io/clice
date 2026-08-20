@@ -836,8 +836,13 @@ void USRGenerator::VisitTemplateName(TemplateName Name) {
     if(auto DT = Name.getAsDependentTemplateName()) {
         Out << '^';
         printQualifier(Out, LangOpts, DT->getQualifier());
-        /// FIXME: This may be operators.
-        Out << ':' << DT->getName().getIdentifier();
+        Out << ':';
+        auto name = DT->getName();
+        if(const IdentifierInfo* II = name.getIdentifier()) {
+            Out << II->getName();
+        } else {
+            Out << clang::getOperatorSpelling(name.getOperator());
+        }
     }
 }
 

@@ -28,6 +28,15 @@ struct TempDir {
 
     TempDir(llvm::StringRef prefix = "clice-test") {
         llvm::sys::fs::createUniqueDirectory(prefix, root);
+        // Canonicalize the root so path() spellings match what the compiler
+        // reports (CompilationUnit::file_path realpaths every file): the
+        // macOS temp dir lives behind the /var -> /private/var symlink and
+        // Windows runners hand out 8.3 short names — either would make
+        // every path-keyed index lookup in tests miss.
+        llvm::SmallString<128> real;
+        if(!llvm::sys::fs::real_path(root, real)) {
+            root = real;
+        }
     }
 
     ~TempDir() {

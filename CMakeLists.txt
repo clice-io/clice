@@ -178,6 +178,7 @@ add_dependencies(clice-core generate_version_header)
 
 target_include_directories(clice-core PUBLIC
     "${PROJECT_SOURCE_DIR}/src"
+    "${PROJECT_SOURCE_DIR}/cmake"
     "${PROJECT_BINARY_DIR}/generated"
 )
 target_link_libraries(clice-core PUBLIC
@@ -189,7 +190,9 @@ target_link_libraries(clice-core PUBLIC
     kota::ipc::lsp
     kota::codec::toml
     kota::option
+    kota::support
     simdjson::simdjson
+    lmdb
 )
 
 file(GLOB CLICE_DRIVER_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/driver/*.cc")
@@ -234,13 +237,18 @@ if(CLICE_ENABLE_TEST)
 endif()
 
 if(CLICE_ENABLE_BENCHMARK)
-    add_executable(scan_benchmark
-        "${PROJECT_SOURCE_DIR}/benchmarks/scan_benchmark.cpp"
-    )
-    target_include_directories(scan_benchmark PRIVATE
-        "${PROJECT_SOURCE_DIR}/src"
-    )
-    target_link_libraries(scan_benchmark PRIVATE clice::core kota::deco)
+    foreach(benchmark scan_benchmark pipeline_benchmark pch_chain_benchmark index_stats_benchmark)
+        add_executable(${benchmark}
+            "${PROJECT_SOURCE_DIR}/benchmarks/${benchmark}.cpp"
+        )
+        target_include_directories(${benchmark} PRIVATE
+            "${PROJECT_SOURCE_DIR}/src"
+        )
+        target_link_libraries(${benchmark} PRIVATE clice::core kota::deco)
+        # The benchmarks locate lib/clang next to their binary; an explicit
+        # `ninja <benchmark>` must not race or skip the resource copy.
+        add_dependencies(${benchmark} copy_clang_resource)
+    endforeach()
 endif()
 
 include("${PROJECT_SOURCE_DIR}/cmake/release.cmake")

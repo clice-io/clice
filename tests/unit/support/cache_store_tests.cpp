@@ -175,6 +175,29 @@ TEST_CASE(VersionBumpDiscards) {
     ASSERT_FALSE(llvm::sys::fs::exists(tmp.path("root/cache/v1")));
 }
 
+TEST_CASE(LiveLayoutKept) {
+    TempDir tmp;
+    // A clice of another version is live inside v1 (our own pid stands in
+    // for its `tmp/{pid}` marker): the sweep must not delete the cache out
+    // from under it.
+    auto self = std::to_string(llvm::sys::Process::getProcessId());
+    tmp.touch("root/cache/v1/tmp/" + self + "/0.pch");
+    tmp.touch("root/cache/v1/pch/k1.pch", "live");
+
+    auto store = open_store(tmp, version + 1);
+    ASSERT_TRUE(llvm::sys::fs::exists(tmp.path("root/cache/v1/pch/k1.pch")));
+}
+
+TEST_CASE(CrashedLayoutDiscarded) {
+    TempDir tmp;
+    // A crashed old-version instance leaves its `tmp/{pid}` behind; a dead
+    // pid does not hold the layout alive.
+    tmp.touch(std::string("root/cache/v1/tmp/") + dead_pid + "/0.pch");
+
+    auto store = open_store(tmp, version + 1);
+    ASSERT_FALSE(llvm::sys::fs::exists(tmp.path("root/cache/v1")));
+}
+
 TEST_CASE(LegacyLayoutDiscarded) {
     TempDir tmp;
     // Pre-versioning layout: blobs and metadata directly under cache/.
@@ -652,6 +675,65 @@ TEST_CASE(InvalidateRemovesPair) {
     ASSERT_FALSE(store.lookup("pch", "k1").has_value());
     ASSERT_FALSE(store.lookup_aux("pch", "k1").has_value());
     ASSERT_FALSE(fs::read(aux_path).has_value());
+}
+
+TEST_CASE(ReadOnlyOpenRequiresStore) {
+    TempDir tmp;
+    // The parent directory alone (config resolution creates it eagerly)
+    // must not pass for an existing store.
+    tmp.touch("root/cache/marker", "");
+    auto store = CacheStore::open(tmp.path("root"), version, /*read_only=*/true);
+    ASSERT_FALSE(store.has_value());
+    ASSERT_TRUE(store.error() == std::errc::no_such_file_or_directory);
+}
+
+TEST_CASE(ReadOnlyOpenTouchesNothing) {
+    TempDir tmp;
+    {
+        auto store = open_store(tmp);
+        register_lru(store);
+        put(store, "pch", "k1", "blob");
+        store.shutdown();
+    }
+
+    // A newer-version inspector must neither create its own directory nor
+    // sweep the older version a live server may still be using.
+    auto store = CacheStore::open(tmp.path("root"), version + 1, /*read_only=*/true);
+    ASSERT_FALSE(store.has_value());
+    ASSERT_FALSE(llvm::sys::fs::exists(tmp.path("root/cache/v2")));
+
+    auto reader = CacheStore::open(tmp.path("root"), version, /*read_only=*/true);
+    ASSERT_TRUE(reader.has_value());
+    register_lru(*reader);
+    ASSERT_TRUE(reader->lookup("pch", "k1").has_value());
+    auto pid = std::to_string(llvm::sys::Process::getProcessId());
+    ASSERT_FALSE(llvm::sys::fs::exists(tmp.path("root/cache/v1/tmp/" + pid)));
+}
+
+TEST_CASE(ReadOnlyNeverWrites) {
+    TempDir tmp;
+    {
+        auto store = open_store(tmp);
+        register_lru(store);
+        put(store, "pch", "k1", "blob");
+        store.shutdown();
+    }
+    auto manifest_before = fs::read(tmp.path("root/cache/v1/manifest.json"));
+    ASSERT_TRUE(manifest_before.has_value());
+
+    auto reader = CacheStore::open(tmp.path("root"), version, /*read_only=*/true);
+    ASSERT_TRUE(reader.has_value());
+    // A budget below the blob size must not evict at registration, an
+    // invalidate must not delete the live server's blob, and the atime
+    // bumps from lookups must not publish a manifest at shutdown — with
+    // no tmp dir it would even be staged in the working directory.
+    register_lru(*reader, 1);
+    ASSERT_TRUE(reader->lookup("pch", "k1").has_value());
+    reader->invalidate("pch", "k1");
+    reader->shutdown();
+
+    ASSERT_EQ(fs::read(tmp.path("root/cache/v1/pch/k1.pch")).value_or(""), "blob");
+    ASSERT_EQ(fs::read(tmp.path("root/cache/v1/manifest.json")).value_or(""), *manifest_before);
 }
 
 };  // TEST_SUITE(CacheStore)

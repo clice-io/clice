@@ -103,6 +103,9 @@ void CompileGraph::release(std::uint32_t path_id) {
     auto& unit = units.find(path_id)->second;
     assert(unit.refcount > 0 && "released more interest than acquired");
     unit.refcount -= 1;
+    if(unit.refcount == 0) {
+        unit.foreground = false;
+    }
 
     // No interest left in an in-flight round. The drop is often transient —
     // a stale round's edges being re-acquired by the retry that re-resolves
@@ -189,9 +192,16 @@ kota::task<> CompileGraph::unit_body(std::uint32_t path_id,
 
     // Acquire edge references on all direct dependencies. This must stay
     // synchronous: no suspension between refcount++ and guard registration.
+    // A foreground unit passes its class down: the user waits on the whole
+    // chain, not just the root — and a dep discovered here may already be
+    // running with a resolved closure of its own, so the mark must recurse.
+    auto foreground = unit.foreground;
     for(auto dep_id: deps) {
         acquire(dep_id);
         guard.acquired.push_back(dep_id);
+        if(foreground) {
+            mark_foreground(dep_id);
+        }
     }
 
     if(!deps.empty()) {
@@ -208,12 +218,17 @@ kota::task<> CompileGraph::unit_body(std::uint32_t path_id,
         }
     }
 
-    bool ok = co_await dispatch(path_id);
+    // Re-look up the class: a foreground requester may have joined while
+    // the dependency waits above were suspended.
+    auto outcome = co_await dispatch(path_id, units.find(path_id)->second.foreground);
 
     // Synchronous tail: nothing can interleave between dispatch resuming us
     // and co_return, so the checks below are atomic.
-    if(!ok) {
-        guard.outcome = CompileUnit::Outcome::Failed;
+    if(outcome != CompileUnit::Outcome::Success) {
+        // Failed propagates to waiters; Stale (the scheduler preempted the
+        // build) makes them respawn the round, re-reading the interest
+        // class — a foreground joiner's retry dispatches at High.
+        guard.outcome = outcome;
         co_return;
     }
 
@@ -257,20 +272,44 @@ kota::task<bool> CompileGraph::await_unit(std::uint32_t path_id,
             case CompileUnit::Outcome::Failed: co_return false;
             // The round was cancelled and produced no result; we still hold
             // interest, so drive a new round. Each retry consumes one
-            // staleness event — without further updates this terminates.
+            // staleness event (an update, or one scheduler preemption of
+            // the dispatch, whose retry queues for a pool slot rather than
+            // spinning) — this terminates once the events stop.
             case CompileUnit::Outcome::Stale: break;
         }
     }
 }
 
-kota::task<bool> CompileGraph::compile(std::uint32_t path_id) {
+void CompileGraph::mark_foreground(std::uint32_t path_id) {
+    auto& unit = units[path_id];
+    unit.path_id = path_id;
+    // Already-marked doubles as the cycle/shared-dep visit guard.
+    if(unit.foreground) {
+        return;
+    }
+    unit.foreground = true;
+    // A late join must upgrade the whole resolved closure, not just the
+    // root: a dependency already spawned at Low re-reads its class when a
+    // preempted round retries, and without the closure mark that retry
+    // would stay Low — cancellable by the very foreground waiting on it.
+    // Copy: recursion inserts units and may rehash the map.
+    auto deps = unit.dependencies;
+    for(auto dep_id: deps) {
+        mark_foreground(dep_id);
+    }
+}
+
+kota::task<bool> CompileGraph::compile(std::uint32_t path_id, bool foreground) {
     // Request scope: one root reference, dropped when the requester exits or
     // its frame is cancelled.
     RefGuard scope(*this, {path_id});
+    if(foreground) {
+        mark_foreground(path_id);
+    }
     co_return co_await await_unit(path_id, std::nullopt);
 }
 
-kota::task<bool> CompileGraph::compile_deps(std::uint32_t path_id) {
+kota::task<bool> CompileGraph::compile_deps(std::uint32_t path_id, bool foreground) {
     ensure_resolved(path_id);
 
     // Copy deps — the map may rehash while this frame is suspended.
@@ -282,6 +321,11 @@ kota::task<bool> CompileGraph::compile_deps(std::uint32_t path_id) {
     // Request scope: root references on each direct dependency (path_id
     // itself is never dispatched here).
     RefGuard scope(*this, deps);
+    if(foreground) {
+        for(auto dep_id: deps) {
+            mark_foreground(dep_id);
+        }
+    }
 
     std::vector<kota::task<bool>> waits;
     waits.reserve(deps.size());

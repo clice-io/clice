@@ -13,10 +13,13 @@ namespace clice {
 
 struct CompileUnit {
     /// Result of one compilation round, observed by waiters after the
-    /// round's completion event fires.
+    /// round's completion event fires. Also the dispatch callback's return
+    /// type: a dispatch reports Stale when the scheduler preempted its
+    /// build — no verdict on the unit, waiters retry.
     enum class Outcome : std::uint8_t {
-        /// The round was cancelled (file update or loss of interest) and its
-        /// result discarded; waiters that still hold interest retry.
+        /// The round was cancelled (file update, loss of interest, or a
+        /// scheduler-preempted build) and its result discarded; waiters
+        /// that still hold interest retry.
         Stale,
         Success,
         /// Dispatch failed or a dependency cycle was detected; waiters
@@ -50,6 +53,14 @@ struct CompileUnit {
     /// held by a dependent unit's running task. Staying at zero while
     /// compiling cancels this unit's round. Not a lifetime count.
     std::uint32_t refcount = 0;
+
+    /// A foreground requester holds (or held) interest in this round: the
+    /// dispatch sends the build at High priority so a waiting user request
+    /// is not throttled behind background indexing. Sticky while any
+    /// interest remains — clearing with the foreground requester alone
+    /// would drop an in-flight retry back to Low mid-wait — and reset when
+    /// the interest count returns to zero.
+    bool foreground = false;
 
     /// A zero-interest cancellation check is already queued for this unit.
     bool zero_check_pending = false;
@@ -94,20 +105,28 @@ struct CompileUnit {
 ///   dependency cycle) propagates to waiters without retry.
 class CompileGraph {
 public:
-    /// Performs the actual compilation (e.g. produce PCM file).
-    using dispatch_fn = std::function<kota::task<bool>(std::uint32_t path_id)>;
+    /// Performs the actual compilation (e.g. produce PCM file); `foreground`
+    /// carries the unit's interest class into the build's priority. Stale
+    /// reports a scheduler-preempted build: the round ends without a
+    /// verdict and waiters respawn it — a foreground joiner's retry then
+    /// re-dispatches at High instead of surfacing the preemption as a
+    /// failure.
+    using dispatch_fn =
+        std::function<kota::task<CompileUnit::Outcome>(std::uint32_t path_id, bool foreground)>;
 
     /// Returns the dependency path_ids for a given path_id (called lazily on first compile).
     using resolve_fn = std::function<llvm::SmallVector<std::uint32_t>(std::uint32_t path_id)>;
 
     CompileGraph(kota::event_loop& loop, dispatch_fn dispatch, resolve_fn resolve);
 
-    /// Compile a unit and all its transitive dependencies.
-    kota::task<bool> compile(std::uint32_t path_id);
+    /// Compile a unit and all its transitive dependencies. `foreground`
+    /// marks the chain's dispatches High-priority (a user request waits on
+    /// them); background callers leave it unset.
+    kota::task<bool> compile(std::uint32_t path_id, bool foreground = false);
 
     /// Compile all transitive module dependencies of path_id, but NOT path_id itself.
     /// Used for non-module files (plain .cpp) that import modules.
-    kota::task<bool> compile_deps(std::uint32_t path_id);
+    kota::task<bool> compile_deps(std::uint32_t path_id, bool foreground = false);
 
     /// Mark path_id and all transitive dependents as dirty,
     /// cancelling any in-progress compilations (their results are stale).
@@ -149,6 +168,10 @@ private:
 
     /// Interest +1; creates the unit if needed.
     void acquire(std::uint32_t path_id);
+
+    /// Mark a unit and its resolved dependency closure foreground; units
+    /// resolved later inherit through the edge propagation in unit_body.
+    void mark_foreground(std::uint32_t path_id);
 
     /// Interest -1; schedules a zero-interest cancellation check when it
     /// drops to zero mid-compile.
