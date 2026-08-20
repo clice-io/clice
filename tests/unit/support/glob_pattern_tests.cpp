@@ -27,6 +27,14 @@ TEST_CASE(PatternSema) {
 
     auto Pat3 = clice::GlobPattern::create("/foo/bar/baz/**////*.{c,cc}", 100);
     ASSERT_FALSE(Pat3.has_value());
+
+    // An unmatched '[' at the end of the pattern must be reported as an error
+    // instead of reading past the end of the pattern string.
+    auto Pat4 = clice::GlobPattern::create("foo[", 100);
+    ASSERT_FALSE(Pat4.has_value());
+
+    auto Pat5 = clice::GlobPattern::create("{a,b}[", 100);
+    ASSERT_FALSE(Pat5.has_value());
 }
 
 TEST_CASE(SingleSlashPrefix) {

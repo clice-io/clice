@@ -33,7 +33,7 @@ static std::expected<GlobCharSet, std::string> expand(llvm::StringRef s, llvm::S
                 ++i;
                 if(c_end == '\\') {
                     ++i;
-                    if(s[i] == e) {
+                    if(i == e) {
                         return std::unexpected{"Invalid expansions: stary `\\`"};
                     }
                     c_end = s[i];
@@ -83,7 +83,7 @@ static std::expected<llvm::SmallVector<std::string, 1>, std::string>
     for(size_t i = 0, e = s.size(); i != e; ++i) {
         if(s[i] == '[') {
             ++i;
-            if(s[i] == ']') {
+            if(i != e && s[i] == ']') {
                 ++i;
             }
             while(i != e && s[i] != ']') {
@@ -215,7 +215,7 @@ std::expected<GlobPattern::SubGlobPattern, std::string>
         if(s[i] == '[') {
             ++i;
             size_t j = i;
-            if(s[j] == ']') {
+            if(j != e && s[j] == ']') {
                 // ']' is allowed as the first character of a character class. '[]'
                 // is invalid. So, just skip the first character.
                 ++j;
