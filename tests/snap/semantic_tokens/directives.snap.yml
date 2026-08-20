@@ -29,3 +29,10 @@ input_file: directives.cpp
 - { loc: "18:0", text: "#endif", kind: directive }
 - { loc: "20:0", text: "#pragma", kind: directive }
 - { loc: "20:13", text: "1", kind: number }
+- { loc: "22:0", text: "#", kind: directive }
+- { loc: "23:0", text: "#define", kind: directive }
+- { loc: "23:8", text: "STRINGIZE", kind: macro, modifiers: [definition] }
+- { loc: "24:0", text: "const", kind: keyword }
+- { loc: "24:6", text: "char", kind: primitive }
+- { loc: "24:12", text: "stringized", kind: variable, modifiers: [definition, readonly] }
+- { loc: "24:25", text: "STRINGIZE", kind: macro }

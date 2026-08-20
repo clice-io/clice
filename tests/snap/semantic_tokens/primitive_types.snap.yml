@@ -8,3 +8,5 @@ input_file: primitive_types.cpp
 - { loc: "10:0", text: "unsigned", kind: primitive }
 - { loc: "10:9", text: "long", kind: primitive }
 - { loc: "10:14", text: "long", kind: primitive }
+- { loc: "11:0", text: "__int128", kind: primitive }
+- { loc: "12:0", text: "_Float16", kind: primitive }

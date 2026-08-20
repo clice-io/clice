@@ -103,7 +103,7 @@ namespace clice::index {
 /// Bump it whenever a persisted type's reflected layout changes, or when
 /// symbol-hash semantics change (stored rows keyed by old hashes would
 /// silently stop matching newly computed ones).
-constexpr inline std::uint32_t index_format_version = 7;
+constexpr inline std::uint32_t index_format_version = 8;
 
 /// Serialize a reflected index blob to `os` as a verified-readable
 /// flatbuffer. Encoding only fails on structural impossibilities (e.g. more

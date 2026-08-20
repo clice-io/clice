@@ -342,7 +342,8 @@ private:
             case clang::tok::utf16_string_literal:
             case clang::tok::utf32_string_literal: lexical.kind = SymbolKind::String; break;
 
-            /// Standard C and C++ fundamental types.
+            /// Fundamental and Clang/GNU builtin types; `__fp16` lexes as
+            /// `kw_half`.
             case clang::tok::kw_bool:
             case clang::tok::kw_char:
             case clang::tok::kw_wchar_t:
@@ -357,13 +358,21 @@ private:
             case clang::tok::kw_signed:
             case clang::tok::kw_unsigned:
             case clang::tok::kw_void:
+            case clang::tok::kw_half:
             case clang::tok::kw__BitInt:
             case clang::tok::kw__Bool:
             case clang::tok::kw__Complex:
             case clang::tok::kw__Decimal128:
             case clang::tok::kw__Decimal32:
             case clang::tok::kw__Decimal64:
-            case clang::tok::kw__Imaginary: {
+            case clang::tok::kw__ExtInt:
+            case clang::tok::kw__Float16:
+            case clang::tok::kw__Imaginary:
+            case clang::tok::kw___bf16:
+            case clang::tok::kw___float128:
+            case clang::tok::kw___ibm128:
+            case clang::tok::kw___int64:
+            case clang::tok::kw___int128: {
                 lexical.kind = SymbolKind::Primitive;
                 is_identifier_like = true;
                 break;
