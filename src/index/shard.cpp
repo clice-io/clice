@@ -551,6 +551,14 @@ Shard Shard::from_bytes(llvm::StringRef data) {
     return from_buffer(llvm::MemoryBuffer::getMemBuffer(data, "", false));
 }
 
+bool Shard::rebind(std::unique_ptr<llvm::MemoryBuffer> replacement) {
+    if(!buffer || !replacement || replacement->getBufferSize() != buffer->getBufferSize()) {
+        return false;
+    }
+    buffer = std::move(replacement);
+    return true;
+}
+
 Shard Shard::from_buffer(std::unique_ptr<llvm::MemoryBuffer> buffer) {
     if(!buffer) {
         return {};

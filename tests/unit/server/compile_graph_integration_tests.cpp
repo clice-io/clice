@@ -20,11 +20,11 @@ CompileGraph::dispatch_fn make_dispatch(CompilationDatabase& cdb,
                                         PathPool& pool,
                                         DependencyGraph& graph,
                                         llvm::DenseMap<std::uint32_t, std::string>& pcm_paths) {
-    return [&](std::uint32_t path_id) -> kota::task<bool> {
+    return [&](std::uint32_t path_id, bool) -> kota::task<CompileUnit::Outcome> {
         auto file_path = pool.resolve(path_id);
         auto results = cdb.lookup(file_path);
         if(results.empty()) {
-            co_return false;
+            co_return CompileUnit::Outcome::Failed;
         }
         toolchain.resolve_or_warn(results[0]);
 
@@ -45,7 +45,7 @@ CompileGraph::dispatch_fn make_dispatch(CompilationDatabase& cdb,
 
         auto tmp = fs::createTemporaryFile("test-pcm", "pcm");
         if(!tmp) {
-            co_return false;
+            co_return CompileUnit::Outcome::Failed;
         }
         cp.output_file = *tmp;
 
@@ -54,9 +54,9 @@ CompileGraph::dispatch_fn make_dispatch(CompilationDatabase& cdb,
 
         if(unit.completed()) {
             pcm_paths[path_id] = std::string(cp.output_file);
-            co_return true;
+            co_return CompileUnit::Outcome::Success;
         }
-        co_return false;
+        co_return CompileUnit::Outcome::Failed;
     };
 }
 
@@ -1117,13 +1117,13 @@ TEST_CASE(shared_dep_import_switch) {
     kota::event shared_proceed;
     int shared_calls = 0;
     auto inner = default_dispatch();
-    auto dispatch = [&](std::uint32_t pid) -> kota::task<bool> {
+    auto dispatch = [&](std::uint32_t pid, bool) -> kota::task<CompileUnit::Outcome> {
         if(pid == pid_shared) {
             shared_calls += 1;
             shared_started.set();
             co_await shared_proceed.wait();
         }
-        co_return co_await inner(pid);
+        co_return co_await inner(pid, false);
     };
 
     make_graph(std::move(dispatch), default_resolver());
@@ -1215,13 +1215,13 @@ TEST_CASE(shared_dep_fails_both) {
     kota::event shared_proceed;
     int shared_calls = 0;
     auto inner = default_dispatch();
-    auto dispatch = [&](std::uint32_t pid) -> kota::task<bool> {
+    auto dispatch = [&](std::uint32_t pid, bool) -> kota::task<CompileUnit::Outcome> {
         if(pid == pid_shared) {
             shared_calls += 1;
             shared_started.set();
             co_await shared_proceed.wait();
         }
-        co_return co_await inner(pid);
+        co_return co_await inner(pid, false);
     };
 
     make_graph(std::move(dispatch), default_resolver());

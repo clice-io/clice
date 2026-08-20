@@ -87,7 +87,9 @@ TEST_CASE(CascadeSplitsOpenClosed) {
     deps[closed_user] = {mod};
     workspace.compile_graph = std::make_unique<CompileGraph>(
         loop,
-        [](std::uint32_t) -> kota::task<bool> { co_return true; },
+        [](std::uint32_t, bool) -> kota::task<CompileUnit::Outcome> {
+            co_return CompileUnit::Outcome::Success;
+        },
         [deps = std::move(deps)](std::uint32_t id) -> llvm::SmallVector<std::uint32_t> {
             auto it = deps.find(id);
             return it != deps.end() ? it->second : llvm::SmallVector<std::uint32_t>{};
@@ -660,7 +662,9 @@ TEST_CASE(CDBChangedCascadesModule) {
     deps[closed_user] = {mod};
     workspace.compile_graph = std::make_unique<CompileGraph>(
         loop,
-        [](std::uint32_t) -> kota::task<bool> { co_return true; },
+        [](std::uint32_t, bool) -> kota::task<CompileUnit::Outcome> {
+            co_return CompileUnit::Outcome::Success;
+        },
         [deps = std::move(deps)](std::uint32_t id) -> llvm::SmallVector<std::uint32_t> {
             auto it = deps.find(id);
             return it != deps.end() ? it->second : llvm::SmallVector<std::uint32_t>{};

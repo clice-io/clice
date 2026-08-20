@@ -89,6 +89,7 @@ void LSPClient::register_lifecycle() {
 
     peer.on_request([this](RequestContext& ctx, const protocol::InitializeParams& params)
                         -> RequestResult<protocol::InitializeParams> {
+        this->server.pool.foreground_pulse();
         auto& srv = this->server;
         if(srv.lifecycle != ServerLifecycle::Uninitialized) {
             co_return kota::outcome_error(protocol::Error{"Server already initialized"});
@@ -218,6 +219,7 @@ void LSPClient::register_lifecycle() {
     peer.on_request(
         [this](RequestContext& ctx,
                const protocol::ShutdownParams& params) -> RequestResult<protocol::ShutdownParams> {
+            this->server.pool.foreground_pulse();
             this->server.lifecycle = ServerLifecycle::ShuttingDown;
             LOG_INFO("Shutdown requested");
             co_return nullptr;
@@ -234,6 +236,7 @@ void LSPClient::register_document_sync() {
         auto& srv = this->server;
         if(past_shutdown(srv.lifecycle))
             return;
+        srv.pool.foreground_pulse();
 
         auto [path, path_id, session] = resolve_uri(params.text_document.uri);
 
@@ -263,6 +266,7 @@ void LSPClient::register_document_sync() {
         auto& srv = this->server;
         if(past_shutdown(srv.lifecycle))
             return;
+        srv.pool.foreground_pulse();
 
         auto [path, path_id, session] = resolve_uri(params.text_document.uri);
         if(!session) {
@@ -318,6 +322,7 @@ void LSPClient::register_document_sync() {
         // ready reads the saved disk content anyway.
         if(srv.lifecycle != ServerLifecycle::Ready)
             return;
+        srv.pool.foreground_pulse();
 
         auto [path, path_id, session] = resolve_uri(params.text_document.uri);
         srv.dispatch(FileEvent::buffer_saved(path_id));
@@ -328,6 +333,7 @@ void LSPClient::register_document_sync() {
 
 void LSPClient::register_language_features() {
     peer.on_request([this](RequestContext& ctx, const protocol::HoverParams& params) -> RawResult {
+        this->server.pool.foreground_pulse();
         auto& srv = this->server;
         auto [path, path_id, session] =
             resolve_uri(params.text_document_position_params.text_document.uri);
@@ -340,6 +346,7 @@ void LSPClient::register_language_features() {
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::SemanticTokensParams& params) -> RawResult {
+            this->server.pool.foreground_pulse();
             auto& srv = this->server;
             auto [path, path_id, session] = resolve_uri(params.text_document.uri);
             if(!session)
@@ -349,6 +356,7 @@ void LSPClient::register_language_features() {
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::InlayHintParams& params) -> RawResult {
+            this->server.pool.foreground_pulse();
             auto& srv = this->server;
             auto [path, path_id, session] = resolve_uri(params.text_document.uri);
             if(!session)
@@ -358,6 +366,7 @@ void LSPClient::register_language_features() {
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::FoldingRangeParams& params) -> RawResult {
+            this->server.pool.foreground_pulse();
             auto& srv = this->server;
             auto [path, path_id, session] = resolve_uri(params.text_document.uri);
             if(!session)
@@ -367,6 +376,7 @@ void LSPClient::register_language_features() {
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::DocumentSymbolParams& params) -> RawResult {
+            this->server.pool.foreground_pulse();
             auto& srv = this->server;
             auto [path, path_id, session] = resolve_uri(params.text_document.uri);
             if(!session)
@@ -376,6 +386,7 @@ void LSPClient::register_language_features() {
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::DocumentLinkParams& params) -> RawResult {
+            this->server.pool.foreground_pulse();
             auto [path, path_id, session] = resolve_uri(params.text_document.uri);
             if(!session)
                 co_return kota::outcome_error(document_not_open());
@@ -387,6 +398,7 @@ void LSPClient::register_language_features() {
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::CodeActionParams& params) -> RawResult {
+            this->server.pool.foreground_pulse();
             auto& srv = this->server;
             auto [path, path_id, session] = resolve_uri(params.text_document.uri);
             if(!session)
@@ -396,6 +408,7 @@ void LSPClient::register_language_features() {
 
     peer.on_request([this](RequestContext& ctx,
                            const protocol::DefinitionParams& params) -> RawResult {
+        this->server.pool.foreground_pulse();
         auto& uri = params.text_document_position_params.text_document.uri;
         auto& pos = params.text_document_position_params.position;
         auto [path, path_id, session] = resolve_uri(uri);
@@ -407,6 +420,7 @@ void LSPClient::register_language_features() {
     // returned as [] — never an error.
     peer.on_request(
         [this](RequestContext& ctx, const protocol::ReferenceParams& params) -> RawResult {
+            this->server.pool.foreground_pulse();
             auto& uri = params.text_document_position_params.text_document.uri;
             auto& pos = params.text_document_position_params.position;
             auto [path, path_id, session] = resolve_uri(uri);
@@ -418,6 +432,7 @@ void LSPClient::register_language_features() {
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::TypeDefinitionParams& params) -> RawResult {
+            this->server.pool.foreground_pulse();
             auto& uri = params.text_document_position_params.text_document.uri;
             auto& pos = params.text_document_position_params.position;
             auto [path, path_id, session] = resolve_uri(uri);
@@ -426,6 +441,7 @@ void LSPClient::register_language_features() {
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::ImplementationParams& params) -> RawResult {
+            this->server.pool.foreground_pulse();
             auto& uri = params.text_document_position_params.text_document.uri;
             auto& pos = params.text_document_position_params.position;
             auto [path, path_id, session] = resolve_uri(uri);
@@ -434,6 +450,7 @@ void LSPClient::register_language_features() {
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::DeclarationParams& params) -> RawResult {
+            this->server.pool.foreground_pulse();
             auto& uri = params.text_document_position_params.text_document.uri;
             auto& pos = params.text_document_position_params.position;
             auto [path, path_id, session] = resolve_uri(uri);
@@ -442,6 +459,7 @@ void LSPClient::register_language_features() {
 
     peer.on_request([this](RequestContext& ctx,
                            const protocol::CompletionParams& params) -> RawResult {
+        this->server.pool.foreground_pulse();
         auto& srv = this->server;
         auto [path, path_id, session] =
             resolve_uri(params.text_document_position_params.text_document.uri);
@@ -459,6 +477,7 @@ void LSPClient::register_language_features() {
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::SignatureHelpParams& params) -> RawResult {
+            this->server.pool.foreground_pulse();
             auto& srv = this->server;
             auto [path, path_id, session] =
                 resolve_uri(params.text_document_position_params.text_document.uri);
@@ -472,6 +491,7 @@ void LSPClient::register_language_features() {
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::DocumentFormattingParams& params) -> RawResult {
+            this->server.pool.foreground_pulse();
             auto& srv = this->server;
             auto [path, path_id, session] = resolve_uri(params.text_document.uri);
             if(!session)
@@ -481,6 +501,7 @@ void LSPClient::register_language_features() {
 
     peer.on_request([this](RequestContext& ctx,
                            const protocol::DocumentRangeFormattingParams& params) -> RawResult {
+        this->server.pool.foreground_pulse();
         auto& srv = this->server;
         auto [path, path_id, session] = resolve_uri(params.text_document.uri);
         if(!session)
@@ -490,6 +511,7 @@ void LSPClient::register_language_features() {
 
     peer.on_request([this](RequestContext& ctx,
                            const protocol::CallHierarchyPrepareParams& params) -> RawResult {
+        this->server.pool.foreground_pulse();
         auto& uri = params.text_document_position_params.text_document.uri;
         auto& pos = params.text_document_position_params.position;
         auto [path, path_id, session] = resolve_uri(uri);
@@ -498,6 +520,7 @@ void LSPClient::register_language_features() {
 
     peer.on_request([this](RequestContext& ctx,
                            const protocol::CallHierarchyIncomingCallsParams& params) -> RawResult {
+        this->server.pool.foreground_pulse();
         auto [path, path_id, session] = resolve_uri(params.item.uri);
         co_return co_await this->server.features.call_hierarchy_incoming(session,
                                                                          path,
@@ -506,6 +529,7 @@ void LSPClient::register_language_features() {
 
     peer.on_request([this](RequestContext& ctx,
                            const protocol::CallHierarchyOutgoingCallsParams& params) -> RawResult {
+        this->server.pool.foreground_pulse();
         auto [path, path_id, session] = resolve_uri(params.item.uri);
         co_return co_await this->server.features.call_hierarchy_outgoing(session,
                                                                          path,
@@ -514,6 +538,7 @@ void LSPClient::register_language_features() {
 
     peer.on_request([this](RequestContext& ctx,
                            const protocol::TypeHierarchyPrepareParams& params) -> RawResult {
+        this->server.pool.foreground_pulse();
         auto& uri = params.text_document_position_params.text_document.uri;
         auto& pos = params.text_document_position_params.position;
         auto [path, path_id, session] = resolve_uri(uri);
@@ -522,6 +547,7 @@ void LSPClient::register_language_features() {
 
     peer.on_request([this](RequestContext& ctx,
                            const protocol::TypeHierarchySupertypesParams& params) -> RawResult {
+        this->server.pool.foreground_pulse();
         auto [path, path_id, session] = resolve_uri(params.item.uri);
         co_return co_await this->server.features.type_hierarchy_supertypes(session,
                                                                            path,
@@ -530,6 +556,7 @@ void LSPClient::register_language_features() {
 
     peer.on_request([this](RequestContext& ctx,
                            const protocol::TypeHierarchySubtypesParams& params) -> RawResult {
+        this->server.pool.foreground_pulse();
         auto [path, path_id, session] = resolve_uri(params.item.uri);
         co_return co_await this->server.features.type_hierarchy_subtypes(session,
                                                                          path,
@@ -538,6 +565,7 @@ void LSPClient::register_language_features() {
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::WorkspaceSymbolParams& params) -> RawResult {
+            this->server.pool.foreground_pulse();
             co_return co_await this->server.features.workspace_symbol(params.query);
         });
 }
@@ -548,6 +576,7 @@ void LSPClient::register_extensions() {
     peer.on_request(
         "clice/queryContext",
         [this](RequestContext& ctx, const ext::QueryContextParams& params) -> RawResult {
+            this->server.pool.foreground_pulse();
             auto [path, path_id, session] = resolve_uri(params.uri);
             co_return to_raw(this->server.contexts.query_contexts(path, path_id, params));
         });
@@ -555,6 +584,7 @@ void LSPClient::register_extensions() {
     peer.on_request(
         "clice/currentContext",
         [this](RequestContext& ctx, const ext::CurrentContextParams& params) -> RawResult {
+            this->server.pool.foreground_pulse();
             auto [path, path_id, session] = resolve_uri(params.uri);
             co_return to_raw(this->server.contexts.current_context(path, session.get(), params));
         });
@@ -562,6 +592,7 @@ void LSPClient::register_extensions() {
     peer.on_request(
         "clice/switchContext",
         [this](RequestContext& ctx, const ext::SwitchContextParams& params) -> RawResult {
+            this->server.pool.foreground_pulse();
             auto [path, path_id, session] = resolve_uri(params.uri);
             auto [context_path, context_path_id, context_session] = resolve_uri(params.context_uri);
             // The session reset lives inside switch_context (single owner,

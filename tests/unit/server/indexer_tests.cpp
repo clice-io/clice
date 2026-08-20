@@ -1,3 +1,4 @@
+#include <expected>
 #include <format>
 #include <limits>
 #include <memory>
@@ -6,10 +7,10 @@
 #include "test/test.h"
 #include "command/argument_parser.h"
 #include "compile/compilation.h"
+#include "index/database.h"
 #include "index/manifest.h"
 #include "index/serialization.h"
 #include "index/shard.h"
-#include "index/storage.h"
 #include "index/tu_index.h"
 #include "server/compiler/context_resolver.h"
 #include "server/compiler/indexer.h"
@@ -101,6 +102,19 @@ struct IndexerFixture {
             co_await indexer.save();
         };
         auto task = body();
+        loop.schedule(task);
+        loop.run();
+    }
+
+    /// One background round as a schedulable task, for tests that need to
+    /// interleave other tasks with it.
+    kota::task<> round_task() {
+        return indexer.run_background_indexing();
+    }
+
+    /// Run one background round to completion on the fixture's loop.
+    void run_round() {
+        auto task = round_task();
         loop.schedule(task);
         loop.run();
     }
@@ -226,7 +240,7 @@ void open_store(TempDir& tmp, Workspace& workspace) {
     auto store = CacheStore::open(tmp.path("cache"), 1);
     ASSERT_TRUE(store.has_value());
     workspace.store.emplace(std::move(*store));
-    workspace.index_storage = index::make_fs_index_storage(*workspace.store);
+    workspace.index_db = index::open_fs_database(*workspace.store);
 }
 
 /// The storage key of a file's shard or manifest blob (Indexer's naming).
@@ -317,6 +331,174 @@ TEST_CASE(SaveCommitsDirtyShard) {
     ASSERT_EQ(indexer.last_save_shards(), 1u);
     ASSERT_EQ(it->second.content_hash(), llvm::xxh3_64bits("int flip_value() { return 1; }\n"));
     ASSERT_TRUE(workspace.project_index.contributions.lookup(path_id).contains(path_id));
+}
+
+TEST_CASE(SaveMigratesShardViews) {
+    TempDir tmp;
+    tmp.touch("main.cpp", "int migrate_value() { return 1; }\n");
+    auto src = tmp.path("main.cpp");
+
+    // The LMDB backend wrapped in a spy: save() must advance the read
+    // snapshot exactly once, rebind the resident shard onto it, and
+    // retire the old snapshot exactly once.
+    struct SnapshotSpy final : index::BlobDatabase {
+        std::unique_ptr<index::BlobDatabase> real;
+        int advances = 0;
+        int retires = 0;
+
+        index::ReadBlob read(index::IndexBlobKind kind, llvm::StringRef key) override {
+            return real->read(kind, key);
+        }
+
+        bool contains(index::IndexBlobKind kind, llvm::StringRef key) override {
+            return real->contains(kind, key);
+        }
+
+        llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> puts,
+                                             llvm::ArrayRef<index::BlobKey> removes) override {
+            return real->write(puts, removes);
+        }
+
+        void for_each_key(index::IndexBlobKind kind,
+                          llvm::function_ref<void(llvm::StringRef)> fn) override {
+            real->for_each_key(kind, fn);
+        }
+
+        std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
+            advances += 1;
+            return real->advance_read_snapshot();
+        }
+
+        void retire_old_snapshot() override {
+            retires += 1;
+            real->retire_old_snapshot();
+        }
+
+        std::expected<bool, std::string> grow() override {
+            return real->grow();
+        }
+    };
+
+    auto store = CacheStore::open(tmp.path("cache"), 1);
+    ASSERT_TRUE(store.has_value());
+    workspace.store.emplace(std::move(*store));
+    auto spy = std::make_unique<SnapshotSpy>();
+    spy->real = index::open_lmdb_database(*workspace.store);
+    ASSERT_TRUE(spy->real != nullptr);
+    auto* probe = spy.get();
+    workspace.index_db = std::move(spy);
+
+    auto indexed = index_file(tmp, src);
+    ASSERT_FALSE(indexed.data.empty());
+    indexer.merge(indexed.data.data(), indexed.data.size());
+    auto path_id = workspace.path_pool.intern(indexed.tu_path);
+    auto before = workspace.shards.find(path_id);
+    ASSERT_TRUE(before != workspace.shards.end());
+    auto variants_before = before->second.variants();
+    const char* bytes_before = before->second.bytes().data();
+
+    auto save_body = [&]() -> kota::task<> {
+        co_await indexer.save();
+    };
+    auto task = save_body();
+    loop.schedule(task);
+    loop.run();
+
+    // Rebound: the shard now serves the database's snapshot view — the
+    // same bytes at a different address — with the verification state and
+    // variant set carried over.
+    ASSERT_EQ(probe->advances, 1);
+    ASSERT_EQ(probe->retires, 1);
+    auto it = workspace.shards.find(path_id);
+    ASSERT_TRUE(it != workspace.shards.end());
+    ASSERT_TRUE(it->second.loaded());
+    ASSERT_TRUE(it->second.bytes().data() != bytes_before);
+    ASSERT_EQ(it->second.content_hash(), llvm::xxh3_64bits("int migrate_value() { return 1; }\n"));
+    ASSERT_TRUE(it->second.variants() == variants_before);
+}
+
+TEST_CASE(GrowFailureShedsCleanShards) {
+    TempDir tmp;
+    tmp.touch("clean.cpp", "int clean_value() { return 1; }\n");
+    tmp.touch("dirty.cpp", "int dirty_value() { return 2; }\n");
+    open_store(tmp, workspace);
+
+    // grow() failing is backend-independent shed territory: every clean
+    // (non-dirty, possibly borrowed) shard must go with its owner requeued
+    // — the manifests still read fresh, so nothing else would rebuild the
+    // dropped rows — while dirty ones are owned by construction and stay.
+    // The spy also fails dirty.cpp's put so it is re-dirtied by the time
+    // the migration runs.
+    struct FailingGrow final : index::BlobDatabase {
+        std::unique_ptr<index::BlobDatabase> real;
+        std::string fail_key;
+
+        index::ReadBlob read(index::IndexBlobKind kind, llvm::StringRef key) override {
+            return real->read(kind, key);
+        }
+
+        bool contains(index::IndexBlobKind kind, llvm::StringRef key) override {
+            return real->contains(kind, key);
+        }
+
+        llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> puts,
+                                             llvm::ArrayRef<index::BlobKey> removes) override {
+            auto failed = real->write(puts, removes);
+            for(std::size_t i = 0; i < puts.size(); i += 1) {
+                if(puts[i].key == fail_key && !llvm::is_contained(failed, i)) {
+                    failed.push_back(i);
+                }
+            }
+            return failed;
+        }
+
+        void for_each_key(index::IndexBlobKind kind,
+                          llvm::function_ref<void(llvm::StringRef)> fn) override {
+            real->for_each_key(kind, fn);
+        }
+
+        std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
+            return real->advance_read_snapshot();
+        }
+
+        void retire_old_snapshot() override {
+            real->retire_old_snapshot();
+        }
+
+        std::expected<bool, std::string> grow() override {
+            return std::unexpected(std::string("address space exhausted"));
+        }
+    };
+
+    auto indexed_clean = index_file(tmp, tmp.path("clean.cpp"));
+    auto indexed_dirty = index_file(tmp, tmp.path("dirty.cpp"));
+    ASSERT_FALSE(indexed_clean.data.empty());
+    ASSERT_FALSE(indexed_dirty.data.empty());
+
+    auto spy = std::make_unique<FailingGrow>();
+    spy->real = std::move(workspace.index_db);
+    // Through the pool: the indexer keys blobs by the pool-canonical path,
+    // which need not equal the raw temp path byte-for-byte (Windows 8.3
+    // names).
+    spy->fail_key =
+        blob_key(workspace.path_pool.resolve(workspace.path_pool.intern(indexed_dirty.tu_path)));
+    workspace.index_db = std::move(spy);
+
+    indexer.merge(indexed_clean.data.data(), indexed_clean.data.size());
+    indexer.merge(indexed_dirty.data.data(), indexed_dirty.data.size());
+    auto clean_id = workspace.path_pool.intern(indexed_clean.tu_path);
+    auto dirty_id = workspace.path_pool.intern(indexed_dirty.tu_path);
+
+    auto save_body = [&]() -> kota::task<> {
+        co_await indexer.save();
+    };
+    auto task = save_body();
+    loop.schedule(task);
+    loop.run();
+
+    ASSERT_FALSE(workspace.shards.contains(clean_id));
+    ASSERT_TRUE(workspace.shards.contains(dirty_id));
+    ASSERT_TRUE(indexer.pending_reason(clean_id) == ReindexReason::ContentChanged);
 }
 
 TEST_CASE(MidSaveMergeKept) {
@@ -526,8 +708,8 @@ TEST_CASE(SaveCompactsAndRetires) {
     ASSERT_FALSE(indexer.pending_reason(workspace.path_pool.intern(a2.tu_path)).has_value());
     bool on_disk = false;
     auto key = blob_key(workspace.path_pool.resolve(header_id));
-    workspace.index_storage->for_each_key(index::IndexBlobKind::Shard,
-                                          [&](llvm::StringRef k) { on_disk |= k == key; });
+    workspace.index_db->for_each_key(index::IndexBlobKind::Shard,
+                                     [&](llvm::StringRef k) { on_disk |= k == key; });
     ASSERT_FALSE(on_disk);
 }
 
@@ -578,8 +760,8 @@ TEST_CASE(SaveRetiresPinnedShard) {
     ASSERT_FALSE(workspace.shards.contains(header_id));
     bool on_disk = false;
     auto key = blob_key(workspace.path_pool.resolve(header_id));
-    workspace.index_storage->for_each_key(index::IndexBlobKind::Shard,
-                                          [&](llvm::StringRef k) { on_disk |= k == key; });
+    workspace.index_db->for_each_key(index::IndexBlobKind::Shard,
+                                     [&](llvm::StringRef k) { on_disk |= k == key; });
     ASSERT_FALSE(on_disk);
 
     // pb's manifest survives, still pinning rows the retirement made
@@ -702,30 +884,39 @@ TEST_CASE(FailedWriteNotCounted) {
     // A storage whose commits never land (disk full, permissions): the
     // gauge must report what was durably committed, not what the save
     // attempted.
-    struct FailingStorage final : index::IndexStorage {
-        std::unique_ptr<llvm::MemoryBuffer> read(index::IndexBlobKind, llvm::StringRef) override {
-            return nullptr;
+    struct FailingStorage final : index::BlobDatabase {
+        index::ReadBlob read(index::IndexBlobKind, llvm::StringRef) override {
+            return {};
         }
 
         bool contains(index::IndexBlobKind, llvm::StringRef) override {
             return false;
         }
 
-        llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> batch) override {
+        llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> puts,
+                                             llvm::ArrayRef<index::BlobKey>) override {
             llvm::SmallVector<std::size_t> failed;
-            for(std::size_t i = 0; i < batch.size(); i += 1) {
+            for(std::size_t i = 0; i < puts.size(); i += 1) {
                 failed.push_back(i);
             }
             return failed;
         }
 
-        void remove(index::IndexBlobKind, llvm::StringRef) override {}
-
         void for_each_key(index::IndexBlobKind,
                           llvm::function_ref<void(llvm::StringRef)>) override {}
+
+        std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
+            return 0;
+        }
+
+        void retire_old_snapshot() override {}
+
+        std::expected<bool, std::string> grow() override {
+            return false;
+        }
     };
 
-    workspace.index_storage = std::make_unique<FailingStorage>();
+    workspace.index_db = std::make_unique<FailingStorage>();
 
     auto indexed = index_file(tmp, src);
     ASSERT_FALSE(indexed.data.empty());
@@ -753,28 +944,212 @@ TEST_CASE(FailedWriteNotCounted) {
     ASSERT_EQ(indexer.pending_shard_writes(), 0u);
 }
 
+TEST_CASE(WriteCorruptionRebuildsDatabase) {
+    TempDir tmp;
+    tmp.touch("clean.cpp", "int clean_value() { return 1; }\n");
+    tmp.touch("dirty.cpp", "int dirty_value() { return 2; }\n");
+    open_store(tmp, workspace);
+
+    // Corruption surfacing at write time (a damaged page only the write's
+    // tree descent reaches): the save must condemn the environment and
+    // continue on a fresh one instead of re-writing into it every save.
+    // Batch shards own their bytes and stay to re-persist; the clean
+    // resident view is shed and its owner re-enqueued.
+    struct CorruptOnWrite final : index::BlobDatabase {
+        bool* condemned;
+        bool fail = false;
+        bool poisoned = false;
+
+        index::ReadBlob read(index::IndexBlobKind, llvm::StringRef) override {
+            return {};
+        }
+
+        bool contains(index::IndexBlobKind, llvm::StringRef) override {
+            return false;
+        }
+
+        llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> puts,
+                                             llvm::ArrayRef<index::BlobKey>) override {
+            if(!fail) {
+                return {};
+            }
+            poisoned = true;
+            llvm::SmallVector<std::size_t> failed;
+            for(std::size_t i = 0; i < puts.size(); i += 1) {
+                failed.push_back(i);
+            }
+            return failed;
+        }
+
+        void for_each_key(index::IndexBlobKind,
+                          llvm::function_ref<void(llvm::StringRef)>) override {}
+
+        std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
+            return 0;
+        }
+
+        void retire_old_snapshot() override {}
+
+        std::expected<bool, std::string> grow() override {
+            return false;
+        }
+
+        bool corrupted() const override {
+            return poisoned;
+        }
+
+        void condemn() override {
+            *condemned = true;
+        }
+    };
+
+    bool condemned = false;
+    auto spy = std::make_unique<CorruptOnWrite>();
+    spy->condemned = &condemned;
+    auto* probe = spy.get();
+    workspace.index_db = std::move(spy);
+
+    auto indexed_clean = index_file(tmp, tmp.path("clean.cpp"));
+    auto indexed_dirty = index_file(tmp, tmp.path("dirty.cpp"));
+    ASSERT_FALSE(indexed_clean.data.empty());
+    ASSERT_FALSE(indexed_dirty.data.empty());
+
+    auto save = [&] {
+        auto body = [&]() -> kota::task<> {
+            co_await indexer.save();
+        };
+        auto task = body();
+        loop.schedule(task);
+        loop.run();
+    };
+
+    indexer.merge(indexed_clean.data.data(), indexed_clean.data.size());
+    save();
+    indexer.merge(indexed_dirty.data.data(), indexed_dirty.data.size());
+    probe->fail = true;
+    save();
+
+    ASSERT_TRUE(condemned);
+    ASSERT_TRUE(workspace.index_db != nullptr);
+    auto clean_id = workspace.path_pool.intern(indexed_clean.tu_path);
+    auto dirty_id = workspace.path_pool.intern(indexed_dirty.tu_path);
+    ASSERT_FALSE(workspace.shards.contains(clean_id));
+    ASSERT_TRUE(workspace.shards.contains(dirty_id));
+    ASSERT_TRUE(indexer.pending_reason(clean_id) == ReindexReason::ContentChanged);
+    ASSERT_EQ(indexer.last_save_shards(), 0u);
+
+    // The next save re-persists everything servable into the fresh database.
+    save();
+    ASSERT_EQ(indexer.last_save_shards(), 1u);
+    ASSERT_FALSE(indexer.has_unsaved_state());
+}
+
+TEST_CASE(MigrationCorruptionRebuildsDatabase) {
+    TempDir tmp;
+    tmp.touch("main.cpp", "int migrate_value() { return 1; }\n");
+    open_store(tmp, workspace);
+
+    // Corruption surfacing first at migration time (a damaged page only the
+    // re-read from the advanced snapshot reaches, after the write-time
+    // check passed): same recovery as write-time corruption — the resident
+    // view is shed with its owner re-enqueued, the environment condemned
+    // and replaced by a fresh one.
+    struct CorruptOnRead final : index::BlobDatabase {
+        bool* condemned;
+        bool poisoned = false;
+
+        index::ReadBlob read(index::IndexBlobKind, llvm::StringRef) override {
+            poisoned = true;
+            return {};
+        }
+
+        bool contains(index::IndexBlobKind, llvm::StringRef) override {
+            return false;
+        }
+
+        llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob>,
+                                             llvm::ArrayRef<index::BlobKey>) override {
+            return {};
+        }
+
+        void for_each_key(index::IndexBlobKind,
+                          llvm::function_ref<void(llvm::StringRef)>) override {}
+
+        std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
+            return 2;
+        }
+
+        void retire_old_snapshot() override {}
+
+        std::expected<bool, std::string> grow() override {
+            return false;
+        }
+
+        bool corrupted() const override {
+            return poisoned;
+        }
+
+        void condemn() override {
+            *condemned = true;
+        }
+    };
+
+    bool condemned = false;
+    auto spy = std::make_unique<CorruptOnRead>();
+    spy->condemned = &condemned;
+    workspace.index_db = std::move(spy);
+
+    auto indexed = index_file(tmp, tmp.path("main.cpp"));
+    ASSERT_FALSE(indexed.data.empty());
+    indexer.merge(indexed.data.data(), indexed.data.size());
+
+    auto save = [&] {
+        auto body = [&]() -> kota::task<> {
+            co_await indexer.save();
+        };
+        auto task = body();
+        loop.schedule(task);
+        loop.run();
+    };
+    save();
+
+    auto path_id = workspace.path_pool.intern(indexed.tu_path);
+    ASSERT_TRUE(condemned);
+    ASSERT_TRUE(workspace.index_db != nullptr);
+    ASSERT_FALSE(workspace.shards.contains(path_id));
+    ASSERT_TRUE(indexer.pending_reason(path_id) == ReindexReason::ContentChanged);
+    ASSERT_EQ(indexer.last_save_shards(), 0u);
+
+    // The re-dirtied manifests, global and CDB snapshot re-persist into
+    // the fresh database.
+    save();
+    ASSERT_FALSE(indexer.has_unsaved_state());
+}
+
 TEST_CASE(WriteFailureStopsBatch) {
     TempDir tmp;
     open_store(tmp, workspace);
-    auto& storage = *workspace.index_storage;
+    auto& db = *workspace.index_db;
 
     // Wedge the manifest's destination with a non-empty directory so its
     // commit fails while the shard before it lands.
     tmp.touch("cache/cache/v1/index-manifest/k.idx/wedge");
 
-    auto failures = storage.write({
-        {index::IndexBlobKind::Shard,    "k",      "shard bytes"   },
-        {index::IndexBlobKind::Manifest, "k",      "manifest bytes"},
-        {index::IndexBlobKind::Global,   "global", "global bytes"  },
-    });
+    auto failures = db.write(
+        {
+            {index::IndexBlobKind::Shard,    "k",      "shard bytes"   },
+            {index::IndexBlobKind::Manifest, "k",      "manifest bytes"},
+            {index::IndexBlobKind::Global,   "global", "global bytes"  },
+    },
+        {});
 
     // The failure fails the rest of the batch: a global must never land
     // above a manifest that did not.
     ASSERT_EQ(failures.size(), 2u);
     ASSERT_EQ(failures[0], 1u);
     ASSERT_EQ(failures[1], 2u);
-    ASSERT_TRUE(storage.contains(index::IndexBlobKind::Shard, "k"));
-    ASSERT_FALSE(storage.contains(index::IndexBlobKind::Global, "global"));
+    ASSERT_TRUE(db.contains(index::IndexBlobKind::Shard, "k"));
+    ASSERT_FALSE(db.contains(index::IndexBlobKind::Global, "global"));
 }
 
 };  // TEST_SUITE(IndexerMerge)
@@ -930,8 +1305,17 @@ TEST_CASE(LoadHealsBrokenShard) {
     auto extra_it = f.workspace.shards.find(extra_id);
     ASSERT_TRUE(extra_it != f.workspace.shards.end());
     ASSERT_TRUE(extra_it->second.has_dead_variants());
+
+    // Load defers blob cleanup into the first save (no synchronous
+    // database commits on the startup event loop); the orphan dies there.
+    auto save_body = [&]() -> kota::task<> {
+        co_await f.indexer.save();
+    };
+    auto task = save_body();
+    f.loop.schedule(task);
+    f.loop.run();
     bool orphan_alive = false;
-    f.workspace.index_storage->for_each_key(index::IndexBlobKind::Shard, [&](llvm::StringRef key) {
+    f.workspace.index_db->for_each_key(index::IndexBlobKind::Shard, [&](llvm::StringRef key) {
         orphan_alive |= key == "deadbeefdeadbeef";
     });
     ASSERT_FALSE(orphan_alive);
@@ -973,13 +1357,13 @@ TEST_CASE(ReadOnlyLoadKeepsDisk) {
     // But every blob survives on disk — a server running concurrently may
     // still reference what this reader judged stale.
     bool header_alive = false, orphan_alive = false, manifest_alive = false;
-    f.workspace.index_storage->for_each_key(index::IndexBlobKind::Shard, [&](llvm::StringRef key) {
+    f.workspace.index_db->for_each_key(index::IndexBlobKind::Shard, [&](llvm::StringRef key) {
         header_alive |= key == header_key;
         orphan_alive |= key == "deadbeefdeadbeef";
     });
-    f.workspace.index_storage->for_each_key(
-        index::IndexBlobKind::Manifest,
-        [&](llvm::StringRef key) { manifest_alive |= key == manifest_key; });
+    f.workspace.index_db->for_each_key(index::IndexBlobKind::Manifest, [&](llvm::StringRef key) {
+        manifest_alive |= key == manifest_key;
+    });
     ASSERT_TRUE(header_alive);
     ASSERT_TRUE(orphan_alive);
     ASSERT_TRUE(manifest_alive);
@@ -1085,11 +1469,13 @@ TEST_CASE(LoadDropsNewerManifest) {
         index::serialize_manifest(raced, os);
         // Keyed by the interned (canonical) spelling, like save() itself:
         // on Windows the raw TempDir spelling hashes to a different key.
-        f.workspace.index_storage->write({
-            {index::IndexBlobKind::Manifest,
-             blob_key(f.workspace.path_pool.resolve(tu_id)),
-             std::move(bytes)}
-        });
+        f.workspace.index_db->write(
+            {
+                {index::IndexBlobKind::Manifest,
+                 blob_key(f.workspace.path_pool.resolve(tu_id)),
+                 std::move(bytes)}
+        },
+            {});
     }
 
     IndexerFixture f;
@@ -1127,11 +1513,13 @@ TEST_CASE(LoadDropsLostManifest) {
         std::string bytes;
         llvm::raw_string_ostream os(bytes);
         index::serialize_manifest(lost, os);
-        f.workspace.index_storage->write({
-            {index::IndexBlobKind::Manifest,
-             blob_key(f.workspace.path_pool.resolve(tu_id)),
-             std::move(bytes)}
-        });
+        f.workspace.index_db->write(
+            {
+                {index::IndexBlobKind::Manifest,
+                 blob_key(f.workspace.path_pool.resolve(tu_id)),
+                 std::move(bytes)}
+        },
+            {});
     }
 
     IndexerFixture f;
@@ -1178,30 +1566,286 @@ TEST_CASE(LoadRequeuesStaleManifest) {
         std::string bytes;
         llvm::raw_string_ostream os(bytes);
         index::serialize_manifest(stale, os);
-        f.workspace.index_storage->write({
-            {index::IndexBlobKind::Manifest, blob_key(header), std::move(bytes)}
-        });
+        f.workspace.index_db->write(
+            {
+                {index::IndexBlobKind::Manifest, blob_key(header), std::move(bytes)}
+        },
+            {});
     }
 
     IndexerFixture f;
     open_store(tmp, f.workspace);
     f.indexer.load();
 
-    // The unresolvable manifest is dropped from storage and its TU
-    // re-enqueued instead of losing its persisted index forever.
+    // The unresolvable manifest is dropped and its TU re-enqueued instead
+    // of losing its persisted index forever; the blob itself dies at the
+    // first save (load defers cleanup off the startup event loop).
     auto header_id = f.workspace.path_pool.intern(header);
     ASSERT_TRUE(f.indexer.pending_reason(header_id) == ReindexReason::ContentChanged);
     ASSERT_FALSE(f.workspace.project_index.manifests.contains(header_id));
+    auto save_body = [&]() -> kota::task<> {
+        co_await f.indexer.save();
+    };
+    auto task = save_body();
+    f.loop.schedule(task);
+    f.loop.run();
     bool stale_alive = false;
-    f.workspace.index_storage->for_each_key(
-        index::IndexBlobKind::Manifest,
-        [&](llvm::StringRef key) { stale_alive |= key == blob_key(header); });
+    f.workspace.index_db->for_each_key(index::IndexBlobKind::Manifest, [&](llvm::StringRef key) {
+        stale_alive |= key == blob_key(header);
+    });
     ASSERT_FALSE(stale_alive);
 
     // The TU whose manifest resolved is untouched.
     auto tu_id = f.workspace.path_pool.intern(src);
     ASSERT_TRUE(f.workspace.project_index.manifests.contains(tu_id));
     ASSERT_FALSE(f.indexer.pending_reason(tu_id).has_value());
+}
+
+TEST_CASE(DeferredSweepYieldsToFreshWrite) {
+    TempDir tmp;
+    tmp.touch("main.cpp", "int sweep_target() { return 1; }\n");
+    auto src = tmp.path("main.cpp");
+
+    {
+        IndexerFixture f;
+        open_store(tmp, f.workspace);
+        auto indexed = index_file(tmp, src);
+        ASSERT_FALSE(indexed.data.empty());
+        f.indexer.merge(indexed.data.data(), indexed.data.size());
+        f.save();
+        // The indexer keys blobs by the pool-canonical path, which need
+        // not equal the raw temp path byte-for-byte (Windows 8.3 names).
+        auto key =
+            blob_key(f.workspace.path_pool.resolve(f.workspace.path_pool.intern(indexed.tu_path)));
+        // Replace the persisted manifest with an unresolvable one: the
+        // next load sweeps it — deferred into the first save — and the
+        // TU's shard turns orphan, deferred too.
+        index::TUManifest stale;
+        stale.tu_fv = 999999;
+        stale.nodes.push_back({.fv = 9999});
+        std::string bytes;
+        llvm::raw_string_ostream os(bytes);
+        index::serialize_manifest(stale, os);
+        f.workspace.index_db->write(
+            {
+                {index::IndexBlobKind::Manifest, key, std::move(bytes)}
+        },
+            {});
+    }
+
+    IndexerFixture f;
+    open_store(tmp, f.workspace);
+    ASSERT_TRUE(f.indexer.load());
+
+    // The swept TU re-indexes before the first save, so that save both
+    // re-writes and (deferred) removes the same keys — the fresh write
+    // must win or the file never persists again.
+    auto indexed = index_file(tmp, src);
+    ASSERT_FALSE(indexed.data.empty());
+    f.indexer.merge(indexed.data.data(), indexed.data.size());
+    f.save();
+
+    auto key =
+        blob_key(f.workspace.path_pool.resolve(f.workspace.path_pool.intern(indexed.tu_path)));
+    bool manifest_alive = false;
+    f.workspace.index_db->for_each_key(index::IndexBlobKind::Manifest,
+                                       [&](llvm::StringRef k) { manifest_alive |= k == key; });
+    bool shard_alive = false;
+    f.workspace.index_db->for_each_key(index::IndexBlobKind::Shard,
+                                       [&](llvm::StringRef k) { shard_alive |= k == key; });
+    ASSERT_TRUE(manifest_alive);
+    ASSERT_TRUE(shard_alive);
+}
+
+TEST_CASE(LmdbLoadServesAcrossSaves) {
+    TempDir tmp;
+    tmp.touch("main.cpp", "int lmdb_value() { return 1; }\n");
+    auto src = tmp.path("main.cpp");
+
+    auto open_lmdb = [&](Workspace& workspace) {
+        auto store = CacheStore::open(tmp.path("cache"), 1);
+        ASSERT_TRUE(store.has_value());
+        workspace.store.emplace(std::move(*store));
+        workspace.index_db = index::open_lmdb_database(*workspace.store);
+        ASSERT_TRUE(workspace.index_db != nullptr);
+    };
+
+    {
+        IndexerFixture f;
+        open_lmdb(f.workspace);
+        auto indexed = index_file(tmp, src);
+        ASSERT_FALSE(indexed.data.empty());
+        f.indexer.merge(indexed.data.data(), indexed.data.size());
+        f.save();
+    }
+
+    IndexerFixture f;
+    open_lmdb(f.workspace);
+    ASSERT_TRUE(f.indexer.load());
+    auto path_id = f.workspace.path_pool.intern(src);
+    ASSERT_TRUE(f.workspace.shards.contains(path_id));
+
+    // The loaded shard borrows the open-time snapshot. A save that commits
+    // anything advances and retires it — the shard must come out rebound
+    // onto the fresh snapshot, still serving.
+    tmp.touch("other.cpp", "int other_value() { return 2; }\n");
+    auto other = index_file(tmp, tmp.path("other.cpp"));
+    ASSERT_FALSE(other.data.empty());
+    f.indexer.merge(other.data.data(), other.data.size());
+    f.save();
+
+    auto it = f.workspace.shards.find(path_id);
+    ASSERT_TRUE(it != f.workspace.shards.end());
+    ASSERT_TRUE(it->second.loaded());
+    ASSERT_EQ(it->second.content_hash(), llvm::xxh3_64bits("int lmdb_value() { return 1; }\n"));
+    ASSERT_FALSE(it->second.bytes().empty());
+}
+
+TEST_CASE(CorruptGlobalCondemnsDatabase) {
+    // Page corruption under the global blob: read fails, contains() still
+    // says present, corrupted() confirms. load must condemn the database
+    // (deleted on close) and continue on a fresh empty one instead of
+    // parking in the disabled-persistence limbo forever.
+    struct CorruptGlobal final : index::BlobDatabase {
+        bool* condemned;
+
+        index::ReadBlob read(index::IndexBlobKind, llvm::StringRef) override {
+            return {};
+        }
+
+        bool contains(index::IndexBlobKind, llvm::StringRef) override {
+            return true;
+        }
+
+        llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob>,
+                                             llvm::ArrayRef<index::BlobKey>) override {
+            return {};
+        }
+
+        void for_each_key(index::IndexBlobKind,
+                          llvm::function_ref<void(llvm::StringRef)>) override {}
+
+        std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
+            return 0;
+        }
+
+        void retire_old_snapshot() override {}
+
+        std::expected<bool, std::string> grow() override {
+            return false;
+        }
+
+        bool corrupted() const override {
+            return true;
+        }
+
+        void condemn() override {
+            *condemned = true;
+        }
+    };
+
+    TempDir tmp;
+    IndexerFixture f;
+    open_store(tmp, f.workspace);
+    bool condemned = false;
+    auto spy = std::make_unique<CorruptGlobal>();
+    spy->condemned = &condemned;
+    f.workspace.index_db = std::move(spy);
+
+    ASSERT_TRUE(f.indexer.load());
+    ASSERT_TRUE(condemned);
+    ASSERT_TRUE(f.workspace.index_db != nullptr);
+}
+
+TEST_CASE(CorruptShardCondemnsDatabase) {
+    TempDir tmp;
+    tmp.touch("main.cpp", "int gone() { return 1; }\n");
+    auto src = tmp.path("main.cpp");
+
+    std::string tu_path;
+    {
+        IndexerFixture f;
+        open_store(tmp, f.workspace);
+        auto indexed = index_file(tmp, src);
+        ASSERT_FALSE(indexed.data.empty());
+        f.indexer.merge(indexed.data.data(), indexed.data.size());
+        tu_path = indexed.tu_path;
+        f.save();
+    }
+
+    // Corruption latched past the global anchor: the shard read poisons
+    // the latch while the global stays readable. load must condemn here
+    // too, and unwind everything it adopted — the views would otherwise
+    // borrow from the condemned environment.
+    struct CorruptShard final : index::BlobDatabase {
+        std::unique_ptr<index::BlobDatabase> real;
+        bool* condemned;
+        bool poisoned = false;
+
+        index::ReadBlob read(index::IndexBlobKind kind, llvm::StringRef key) override {
+            if(kind == index::IndexBlobKind::Shard) {
+                poisoned = true;
+                return {};
+            }
+            return real->read(kind, key);
+        }
+
+        bool contains(index::IndexBlobKind kind, llvm::StringRef key) override {
+            return real->contains(kind, key);
+        }
+
+        llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> puts,
+                                             llvm::ArrayRef<index::BlobKey> removes) override {
+            return real->write(puts, removes);
+        }
+
+        void for_each_key(index::IndexBlobKind kind,
+                          llvm::function_ref<void(llvm::StringRef)> fn) override {
+            real->for_each_key(kind, fn);
+        }
+
+        std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
+            return 0;
+        }
+
+        void retire_old_snapshot() override {}
+
+        std::expected<bool, std::string> grow() override {
+            return false;
+        }
+
+        bool corrupted() const override {
+            return poisoned;
+        }
+
+        void condemn() override {
+            *condemned = true;
+        }
+    };
+
+    IndexerFixture f;
+    open_store(tmp, f.workspace);
+    bool condemned = false;
+    auto wrapper = std::make_unique<CorruptShard>();
+    wrapper->real = std::move(f.workspace.index_db);
+    wrapper->condemned = &condemned;
+    f.workspace.index_db = std::move(wrapper);
+
+    ASSERT_TRUE(f.indexer.load());
+    ASSERT_TRUE(condemned);
+    ASSERT_TRUE(f.workspace.shards.empty());
+    ASSERT_TRUE(f.workspace.project_index.symbols.empty());
+
+    // The TU has no CDB entry, so nothing else records the debt: it is
+    // re-enqueued before the adopted state unwinds, and the fresh
+    // database's first save persists it as standalone debt.
+    ASSERT_TRUE(f.indexer.pending_reason(f.workspace.path_pool.intern(tu_path)) ==
+                ReindexReason::ContentChanged);
+    ASSERT_TRUE(f.workspace.index_db != nullptr);
+    f.save();
+    auto snapshot = f.workspace.index_db->read(index::IndexBlobKind::CDB, "cdb");
+    ASSERT_TRUE(snapshot);
+    ASSERT_TRUE(snapshot.buffer->getBuffer().contains("main.cpp"));
 }
 
 TEST_CASE(UnreadableGlobalPreserved) {
@@ -1223,29 +1867,35 @@ TEST_CASE(UnreadableGlobalPreserved) {
     // fresh lineage saved over the unread one could alias its fv ids and
     // generation stamps. The session must run memory-only and leave every
     // blob for the next start.
-    struct UnreadableGlobal final : index::IndexStorage {
-        std::unique_ptr<index::IndexStorage> real;
+    struct UnreadableGlobal final : index::BlobDatabase {
+        std::unique_ptr<index::BlobDatabase> real;
 
-        std::unique_ptr<llvm::MemoryBuffer> read(index::IndexBlobKind kind,
-                                                 llvm::StringRef key) override {
-            return kind == index::IndexBlobKind::Global ? nullptr : real->read(kind, key);
+        index::ReadBlob read(index::IndexBlobKind kind, llvm::StringRef key) override {
+            return kind == index::IndexBlobKind::Global ? index::ReadBlob{} : real->read(kind, key);
         }
 
         bool contains(index::IndexBlobKind kind, llvm::StringRef key) override {
             return real->contains(kind, key);
         }
 
-        llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> batch) override {
-            return real->write(batch);
-        }
-
-        void remove(index::IndexBlobKind kind, llvm::StringRef key) override {
-            real->remove(kind, key);
+        llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> puts,
+                                             llvm::ArrayRef<index::BlobKey> removes) override {
+            return real->write(puts, removes);
         }
 
         void for_each_key(index::IndexBlobKind kind,
                           llvm::function_ref<void(llvm::StringRef)> fn) override {
             real->for_each_key(kind, fn);
+        }
+
+        std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
+            return 0;
+        }
+
+        void retire_old_snapshot() override {}
+
+        std::expected<bool, std::string> grow() override {
+            return false;
         }
     };
 
@@ -1253,11 +1903,11 @@ TEST_CASE(UnreadableGlobalPreserved) {
         IndexerFixture f;
         open_store(tmp, f.workspace);
         auto wrapper = std::make_unique<UnreadableGlobal>();
-        wrapper->real = std::move(f.workspace.index_storage);
-        f.workspace.index_storage = std::move(wrapper);
+        wrapper->real = std::move(f.workspace.index_db);
+        f.workspace.index_db = std::move(wrapper);
         f.indexer.load();
         ASSERT_TRUE(f.workspace.project_index.manifests.empty());
-        ASSERT_TRUE(f.workspace.index_storage == nullptr);
+        ASSERT_TRUE(f.workspace.index_db == nullptr);
     }
 
     IndexerFixture f;
@@ -1577,20 +2227,19 @@ TEST_CASE(UnreachableHostRebuilds) {
     ASSERT_TRUE(f.indexer.pending_reason(header_id) == ReindexReason::ContentChanged);
 }
 
-TEST_CASE(CdbWriteFailureRetried) {
+TEST_CASE(CDBWriteFailureRetried) {
     TempDir tmp;
     tmp.touch("main.cpp", "int value() { return 1; }\n");
     auto src = tmp.path("main.cpp");
 
     // A storage that fails only the CDB snapshot blob, with everything
     // else landing normally.
-    struct CdbFailingStorage final : index::IndexStorage {
-        std::unique_ptr<index::IndexStorage> real;
+    struct CDBFailingStorage final : index::BlobDatabase {
+        std::unique_ptr<index::BlobDatabase> real;
         bool fail_cdb = true;
         llvm::SmallVector<index::IndexBlobKind> written;
 
-        std::unique_ptr<llvm::MemoryBuffer> read(index::IndexBlobKind kind,
-                                                 llvm::StringRef key) override {
+        index::ReadBlob read(index::IndexBlobKind kind, llvm::StringRef key) override {
             return real->read(kind, key);
         }
 
@@ -1598,36 +2247,44 @@ TEST_CASE(CdbWriteFailureRetried) {
             return real->contains(kind, key);
         }
 
-        llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> batch) override {
+        llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> puts,
+                                             llvm::ArrayRef<index::BlobKey> removes) override {
             llvm::SmallVector<std::size_t> failed;
-            for(std::size_t i = 0; i < batch.size(); i += 1) {
-                written.push_back(batch[i].kind);
-                if(fail_cdb && batch[i].kind == index::IndexBlobKind::Cdb) {
+            for(std::size_t i = 0; i < puts.size(); i += 1) {
+                written.push_back(puts[i].kind);
+                if(fail_cdb && puts[i].kind == index::IndexBlobKind::CDB) {
                     failed.push_back(i);
-                } else if(!real->write(llvm::ArrayRef(batch[i])).empty()) {
+                } else if(!real->write(llvm::ArrayRef(puts[i]), {}).empty()) {
                     failed.push_back(i);
                 }
             }
+            real->write({}, removes);
             return failed;
-        }
-
-        void remove(index::IndexBlobKind kind, llvm::StringRef key) override {
-            real->remove(kind, key);
         }
 
         void for_each_key(index::IndexBlobKind kind,
                           llvm::function_ref<void(llvm::StringRef)> fn) override {
             real->for_each_key(kind, fn);
         }
+
+        std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
+            return 0;
+        }
+
+        void retire_old_snapshot() override {}
+
+        std::expected<bool, std::string> grow() override {
+            return false;
+        }
     };
 
     IndexerFixture f;
     open_store(tmp, f.workspace);
     f.workspace.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
-    auto failing = std::make_unique<CdbFailingStorage>();
-    failing->real = std::move(f.workspace.index_storage);
+    auto failing = std::make_unique<CDBFailingStorage>();
+    failing->real = std::move(f.workspace.index_db);
     auto* storage = failing.get();
-    f.workspace.index_storage = std::move(failing);
+    f.workspace.index_db = std::move(failing);
 
     auto indexed = index_file(tmp, src);
     ASSERT_FALSE(indexed.data.empty());
@@ -1635,8 +2292,8 @@ TEST_CASE(CdbWriteFailureRetried) {
     f.save();
 
     // The snapshot rides the batch behind the index state it describes.
-    ASSERT_EQ(int(storage->written.back()), int(index::IndexBlobKind::Cdb));
-    ASSERT_FALSE(storage->real->contains(index::IndexBlobKind::Cdb, "cdb"));
+    ASSERT_EQ(int(storage->written.back()), int(index::IndexBlobKind::CDB));
+    ASSERT_FALSE(storage->real->contains(index::IndexBlobKind::CDB, "cdb"));
 
     // Nothing else is dirty any more, yet the failed snapshot alone must
     // drive the next save until it lands — and until it does, the state
@@ -1644,7 +2301,7 @@ TEST_CASE(CdbWriteFailureRetried) {
     ASSERT_TRUE(f.indexer.has_unsaved_state());
     storage->fail_cdb = false;
     f.save();
-    ASSERT_TRUE(storage->real->contains(index::IndexBlobKind::Cdb, "cdb"));
+    ASSERT_TRUE(storage->real->contains(index::IndexBlobKind::CDB, "cdb"));
     ASSERT_FALSE(f.indexer.has_unsaved_state());
 }
 
@@ -1663,7 +2320,10 @@ TEST_CASE(MissingSnapshotRewritten) {
         f.save();
         // The global landed but the final CDB write never did: the rest of
         // the index is intact.
-        f.workspace.index_storage->remove(index::IndexBlobKind::Cdb, "cdb");
+        f.workspace.index_db->write(
+            {
+        },
+            {{index::IndexBlobKind::CDB, "cdb"}});
     }
 
     // A rerun that dirties nothing must still recreate the baseline —
@@ -1674,7 +2334,7 @@ TEST_CASE(MissingSnapshotRewritten) {
     f.indexer.load();
     ASSERT_TRUE(f.indexer.has_unsaved_state());
     f.save();
-    ASSERT_TRUE(f.workspace.index_storage->contains(index::IndexBlobKind::Cdb, "cdb"));
+    ASSERT_TRUE(f.workspace.index_db->contains(index::IndexBlobKind::CDB, "cdb"));
     ASSERT_FALSE(f.indexer.has_unsaved_state());
 }
 
@@ -1873,6 +2533,86 @@ TEST_CASE(ContentChangeResetsBudget) {
     ASSERT_EQ(int(f.fail(id, /*crashed=*/true)), int(IndexerFixture::Verdict::Requeued));
     f.indexer.enqueue(id, ReindexReason::DepsOnly);
     ASSERT_EQ(f.attempts(id), 1u);
+}
+
+TEST_CASE(RoundSnapshotBoundary) {
+    IndexerFixture f;
+    // Manual rounds: the tail schedule() must no-op so the boundary between
+    // the two rounds stays observable.
+    f.workspace.config.project.enable_indexing.value = false;
+
+    auto a = f.workspace.path_pool.intern("/fake/a.cpp");
+    auto b = f.workspace.path_pool.intern("/fake/b.cpp");
+    auto c = f.workspace.path_pool.intern("/fake/c.cpp");
+
+    f.indexer.enqueue(a, ReindexReason::ContentChanged);
+    f.indexer.enqueue(b, ReindexReason::ContentChanged);
+
+    // Grow the queue from inside the round: the first Report enqueues a
+    // third file, which must land past the round snapshot and wait for the
+    // next round instead of being consumed by this one.
+    bool grew = false;
+    Indexer::Progress first_end;
+    auto conn = f.indexer.on_progress_changed.connect([&] {
+        auto& progress = f.indexer.progress();
+        if(progress.stage == Indexer::Progress::Stage::Report && !grew) {
+            grew = true;
+            f.indexer.enqueue(c, ReindexReason::ContentChanged);
+        }
+        if(progress.stage == Indexer::Progress::Stage::End && first_end.total == 0) {
+            first_end = progress;
+        }
+    });
+
+    f.run_round();
+
+    ASSERT_TRUE(grew);
+    ASSERT_EQ(first_end.total, 2u);
+    ASSERT_EQ(first_end.dispatched, 2u);
+    ASSERT_EQ(first_end.completed, 2u);
+    ASSERT_EQ(f.indexer.pending_files(), 1u);
+
+    f.run_round();
+
+    ASSERT_EQ(f.indexer.pending_files(), 0u);
+    ASSERT_EQ(f.indexer.failed_files(), 3u);
+    ASSERT_TRUE(f.indexer.is_idle());
+}
+
+TEST_CASE(PauseResumesRound) {
+    IndexerFixture f;
+    f.workspace.config.project.enable_indexing.value = false;
+
+    auto a = f.workspace.path_pool.intern("/fake/a.cpp");
+    auto b = f.workspace.path_pool.intern("/fake/b.cpp");
+    f.indexer.enqueue(a, ReindexReason::ContentChanged);
+    f.indexer.enqueue(b, ReindexReason::ContentChanged);
+
+    // Pause from inside the round (the first Report), resume from a
+    // separately scheduled task: the feeder must park on the resume event
+    // and drain the rest of the round afterwards.
+    bool paused = false;
+    auto conn = f.indexer.on_progress_changed.connect([&] {
+        if(f.indexer.progress().stage == Indexer::Progress::Stage::Report && !paused) {
+            paused = true;
+            f.indexer.pause_indexing();
+        }
+    });
+
+    auto resume_body = [&]() -> kota::task<> {
+        co_await kota::yield();
+        f.indexer.resume_indexing();
+    };
+    auto round = f.round_task();
+    auto resumer = resume_body();
+    f.loop.schedule(round);
+    f.loop.schedule(resumer);
+    f.loop.run();
+
+    ASSERT_TRUE(paused);
+    ASSERT_EQ(f.indexer.pending_files(), 0u);
+    ASSERT_EQ(f.indexer.failed_files(), 2u);
+    ASSERT_TRUE(f.indexer.is_idle());
 }
 
 };  // TEST_SUITE(IndexerRequeue)

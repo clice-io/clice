@@ -65,9 +65,7 @@ public:
             Workspace& workspace,
             WorkerPool& pool,
             ContextResolver& contexts,
-            const SessionStore& sessions) :
-        loop(loop), bg_tasks(loop), workspace(workspace), pool(pool), contexts(contexts),
-        sessions(sessions) {}
+            const SessionStore& sessions);
 
     /// Whether open files' disk snapshots are indexed like closed ones.
     /// Off by default: the LSP side never reads an open file's shard (its
@@ -135,7 +133,9 @@ public:
     }
 
     /// Schedule background indexing (respects idle timeout and dedup).
-    void schedule();
+    /// `immediate` skips the idle batching window — used by the round tail
+    /// for work requeued during the round that just ended.
+    void schedule(bool immediate = false);
 
     /// Merge a TUIndex result: intern FileVersions, replace the TU's
     /// manifest, and write row blobs only for variants no shard stores yet
@@ -335,6 +335,11 @@ private:
     llvm::DenseSet<std::uint32_t> dirty_manifests;
     bool global_dirty = false;
 
+    /// Blob removals discovered during load (stale manifests, orphan
+    /// shards, swept layouts), deferred into the first save so startup
+    /// never runs synchronous database commits on the event loop.
+    llvm::SmallVector<index::BlobKey> startup_removes;
+
     /// The persisted CDB snapshot blob's bytes as last read or written;
     /// empty when none exists. save() rewrites the blob whenever the live
     /// CDB serializes differently.
@@ -403,23 +408,80 @@ private:
     std::size_t pause_depth = 0;
     kota::event resume_event{true};
 
+    /// Set by on_stateless_capacity: wakes a round parked on "no schedulable
+    /// stateless worker" the moment a slot (re)enters service.
+    kota::event capacity_event{false};
+    Signal<>::Connection capacity_conn;
+
     Progress progress_data;
 
+    /// A round's shared counters, living on run_background_indexing's frame,
+    /// which outlives every spawned task (it joins them before returning).
+    struct RoundState {
+        std::size_t completed = 0;
+
+        /// Dispatched tasks not yet finished.
+        std::size_t inflight = 0;
+
+        /// Set whenever a task finishes, waking a feeder waiting out the cap.
+        kota::event task_done{false};
+    };
+
+    /// Confirmed corruption heals through rebuildability: condemn the
+    /// database (deleted on close) and continue on a freshly opened empty
+    /// one, so the session's rebuild persists instead of waiting for the
+    /// next start. A failed reopen (another process grabbed the writer
+    /// lock meanwhile) leaves persistence disabled for the session.
+    void reopen_fresh_database();
+
+    /// Re-enqueue every TU contributing to `path_id`'s shard. Used when the
+    /// file's resident rows are lost while its manifests still read fresh:
+    /// no in-process event would ever rebuild them, and for standalone
+    /// headers no restart sweep would either.
+    void requeue_owners(std::uint32_t path_id);
+
+    /// Drop every resident shard that may borrow database memory —
+    /// everything not dirty, since dirty shards own their bytes by
+    /// construction (merges install memory copies) — and requeue the
+    /// owners of the dropped rows.
+    void shed_borrowed_shards();
+
+    /// Runtime-corruption recovery, shared by the write-time and the
+    /// snapshot-migration detection points: nothing in the condemned
+    /// database survives, so borrowed shards are shed with their owners
+    /// requeued while every manifest, the global and the CDB snapshot
+    /// re-dirty to re-persist into the freshly opened database.
+    void recover_corrupt_database();
+
+    /// Migrate resident shards onto a fresh database read snapshot after a
+    /// save's commit (growing the map first when the write hit a full one),
+    /// then retire the previous snapshot. Filesystem-backed runs return
+    /// immediately: their buffers are immortal.
+    kota::task<> migrate_shard_views();
+
     kota::task<> run_background_indexing();
+
+    /// The round's dispatch loop, spawned as a child of `workers` so that a
+    /// shutdown cancel reaches it through the round frame's join — see the
+    /// spawn site. Consumes [index_queue_pos, round_end) and spawns one
+    /// run_index_task per live slot, bounded by the feeder window.
+    kota::task<> run_round_feeder(kota::task_group<>& workers,
+                                  RoundState& round,
+                                  std::size_t round_end,
+                                  std::size_t total,
+                                  std::size_t& dispatched);
     kota::task<> index_one(std::uint32_t server_path_id,
                            std::uint64_t ticket,
                            std::size_t index,
                            std::size_t total);
 
     /// One dispatched unit of a background round: index the file, then end
-    /// its pending window (ticket-guarded) and report progress. `completed`
-    /// refers into run_background_indexing's frame, which outlives every
-    /// spawned task (it joins them before returning).
+    /// its pending window (ticket-guarded) and report progress.
     kota::task<> run_index_task(std::uint32_t server_path_id,
                                 std::uint64_t ticket,
                                 std::size_t index,
                                 std::size_t total,
-                                std::size_t& completed);
+                                RoundState& round);
 };
 
 }  // namespace clice

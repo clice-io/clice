@@ -45,6 +45,16 @@ public:
     /// disk".
     static Shard from_buffer(std::unique_ptr<llvm::MemoryBuffer> buffer);
 
+    /// Swap the backing buffer for byte-identical storage (read-snapshot
+    /// migration after a save). Verification, the live mask and the
+    /// line-start cache all describe the bytes, not the address, so they
+    /// carry over. Byte identity is the caller's contract (the exclusive
+    /// writer lock keeps every key the batch left alone byte-identical);
+    /// only the size is checked, so migrating a resident shard never
+    /// faults its content pages in. Returns false — and keeps the current
+    /// buffer — when the replacement is missing or its size differs.
+    bool rebind(std::unique_ptr<llvm::MemoryBuffer> replacement);
+
     /// Whether this shard holds a blob.
     bool loaded() const {
         return buffer != nullptr;

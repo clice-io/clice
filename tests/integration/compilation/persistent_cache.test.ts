@@ -487,13 +487,18 @@ test("cache dirs created on startup", async ({ session }) => {
     const [uri] = await client.openAndWait("main.cpp");
     client.assertCleanCompile(uri);
 
-    for (const subdir of ["pch", "pcm", "index"]) {
+    for (const subdir of ["pch", "pcm"]) {
         expect(
             fs.existsSync(path.join(workspace.cacheRoot(), subdir)) &&
                 fs.statSync(path.join(workspace.cacheRoot(), subdir)).isDirectory(),
             `${subdir}/ should be created`,
         ).toBe(true);
     }
+    // The index persists into a single LMDB database, not a namespace dir.
+    expect(
+        fs.existsSync(path.join(workspace.cacheRoot(), "index.mdb")),
+        "index.mdb should be created",
+    ).toBe(true);
 });
 
 test("different flags different pch", async ({ session }) => {
@@ -688,6 +693,32 @@ test("corrupt pch idx retracted", async ({ session }) => {
     await c2.shutdown();
 });
 
+/// Best-effort recursive wipe: a live server keeps its LMDB index
+/// memory-mapped, and Windows refuses to delete mapped files (EPERM) —
+/// exactly what a user wiping the cache mid-session experiences there.
+/// Everything unlocked still goes.
+function wipeBestEffort(dir: string): void {
+    let entries: fs.Dirent[];
+    try {
+        entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+        return;
+    }
+    for (const entry of entries) {
+        const child = path.join(dir, entry.name);
+        try {
+            if (entry.isDirectory()) {
+                wipeBestEffort(child);
+                fs.rmdirSync(child);
+            } else {
+                fs.rmSync(child, { force: true });
+            }
+        } catch {
+            // Locked by the live server; leave it.
+        }
+    }
+}
+
 test("cache wiped while running", async ({ session }) => {
     // Wiping the cache directory under a running server must not wedge
     // PCH builds forever: the store re-creates its directories on demand.
@@ -702,7 +733,7 @@ test("cache wiped while running", async ({ session }) => {
     client.assertCleanCompile(uri);
 
     // Simulate a user resetting state without restarting the server.
-    workspace.rm(path.join(".clice", "cache"));
+    wipeBestEffort(workspace.path(path.join(".clice", "cache")));
 
     // Change the preamble so a fresh PCH build is required.
     await sleep(1_100);

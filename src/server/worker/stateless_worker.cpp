@@ -407,7 +407,21 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
         return 1;
     }
 
+    // Stop flag of the most recent build request, published before its
+    // pool-thread hop so a CancelBuild aimed at it still lands. Never
+    // cleared: the master sends CancelBuild only while it awaits that
+    // build's reply, and pipe ordering pins any follow-up build behind the
+    // cancel, so a set can only ever hit the stale build's flag.
+    std::shared_ptr<std::atomic_bool> build_stop;
+
     kota::ipc::BincodePeer peer(loop, std::move(*transport_result));
+
+    peer.on_notification([&build_stop](const worker::CancelBuildParams&) {
+        LOG_DEBUG("CancelBuild notification received");
+        if(build_stop) {
+            build_stop->store(true, std::memory_order_relaxed);
+        }
+    });
 
     peer.on_request([&](RequestContext& ctx,
                         const worker::BuildParams& params) -> RequestResult<worker::BuildParams> {
@@ -419,6 +433,7 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
         // even the parse itself stops instead of running to completion for
         // a result nobody will read.
         auto stop = std::make_shared<std::atomic_bool>(false);
+        build_stop = stop;
         auto result = co_await kota::queue(
             [&]() -> worker::BuildResult {
                 if(stop->load(std::memory_order_relaxed)) {

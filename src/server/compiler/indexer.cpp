@@ -7,9 +7,9 @@
 #include <string>
 #include <vector>
 
+#include "index/database.h"
 #include "index/manifest.h"
 #include "index/shard.h"
-#include "index/storage.h"
 #include "index/tu_index.h"
 #include "server/compiler/context_resolver.h"
 #include "server/protocol/worker.h"
@@ -38,20 +38,20 @@ std::string blob_key(llvm::StringRef path) {
     return std::format("{:016x}", llvm::xxh3_64bits(path));
 }
 
-/// JSON layout of the persisted CDB snapshot (blob kind Cdb): per source
+/// JSON layout of the persisted CDB snapshot (blob kind CDB): per source
 /// file, the sorted canonical command hashes of its entries and a hash of
 /// its matched config rules when the index state was last saved. A
 /// standalone-indexed header gets an entry too (empty hashes): its own
 /// matched rules plus the host source whose command its rows borrowed.
-struct CdbSnapshotEntry {
+struct CDBSnapshotEntry {
     std::string file;
     std::vector<std::string> hashes;
     std::string rules;
     std::string host;
 };
 
-struct CdbSnapshot {
-    std::vector<CdbSnapshotEntry> entries;
+struct CDBSnapshot {
+    std::vector<CDBSnapshotEntry> entries;
 };
 
 /// clice.toml append/remove rules change the effective indexing command
@@ -77,10 +77,10 @@ std::string rules_hash(const Config& config, llvm::StringRef file) {
     return std::format("{:016x}", llvm::xxh3_64bits(joined));
 }
 
-CdbSnapshot build_cdb_snapshot(Workspace& workspace,
+CDBSnapshot build_cdb_snapshot(Workspace& workspace,
                                const llvm::DenseMap<std::uint32_t, std::uint32_t>& header_hosts,
                                llvm::ArrayRef<std::uint32_t> standalone_debt) {
-    CdbSnapshot snapshot;
+    CDBSnapshot snapshot;
     for(auto& [path_id, hashes]: workspace.cdb.command_hash_snapshot()) {
         auto file = workspace.cdb.resolve_path(path_id).str();
         auto rules = rules_hash(workspace.config, file);
@@ -117,7 +117,7 @@ CdbSnapshot build_cdb_snapshot(Workspace& workspace,
         add_standalone(tu);
     }
     // Deterministic bytes: save() decides "unchanged" by byte equality.
-    std::ranges::sort(snapshot.entries, {}, &CdbSnapshotEntry::file);
+    std::ranges::sort(snapshot.entries, {}, &CDBSnapshotEntry::file);
     return snapshot;
 }
 
@@ -130,6 +130,16 @@ std::string serialize_cdb_snapshot(Workspace& workspace,
 }
 
 }  // namespace
+
+Indexer::Indexer(kota::event_loop& loop,
+                 Workspace& workspace,
+                 WorkerPool& pool,
+                 ContextResolver& contexts,
+                 const SessionStore& sessions) :
+    loop(loop), bg_tasks(loop), workspace(workspace), pool(pool), contexts(contexts),
+    sessions(sessions) {
+    capacity_conn = pool.on_stateless_capacity.connect([this] { capacity_event.set(); });
+}
 
 bool Indexer::merge(const void* tu_index_data, std::size_t size) {
     // Zero-copy consumption: the wire stays serialized; a new variant's
@@ -388,9 +398,9 @@ kota::task<> Indexer::save() {
     // nothing, and the gauge must not keep exposing the previous round's
     // count as current.
     saved_shards = 0;
-    if(!workspace.index_storage)
+    if(!workspace.index_db)
         co_return;
-    auto& storage = *workspace.index_storage;
+    auto& db = *workspace.index_db;
     auto& project = workspace.project_index;
     ScopedTimer timer;
 
@@ -425,23 +435,18 @@ kota::task<> Indexer::save() {
     for(auto path_id: retired) {
         workspace.shards.erase(path_id);
         dirty_shards.erase(path_id);
-        auto it = project.contributions.find(path_id);
-        if(it == project.contributions.end()) {
-            continue;
-        }
-        for(auto tu: llvm::make_first_range(it->second)) {
-            enqueue(tu, ReindexReason::ContentChanged);
-        }
+        requeue_owners(path_id);
     }
 
     // Snapshot the dirty state on the loop: everything below serializes
     // from copies, so merges landing across the write await simply re-dirty
     // for the next save. The id vectors parallel the batch so a failed
     // entry can be re-dirtied by its batch index.
-    std::vector<index::IndexStorage::Blob> batch;
+    std::vector<index::BlobDatabase::Blob> batch;
     llvm::SmallVector<std::uint32_t> shard_ids;
     llvm::SmallVector<std::uint32_t> manifest_ids;
-    llvm::SmallVector<std::pair<index::IndexBlobKind, std::string>> removals;
+    llvm::SmallVector<index::BlobKey> removals = std::move(startup_removes);
+    startup_removes.clear();
     for(auto path_id: retired) {
         removals.push_back(
             {index::IndexBlobKind::Shard, blob_key(workspace.path_pool.resolve(path_id))});
@@ -510,7 +515,7 @@ kota::task<> Indexer::save() {
         cdb_bytes = serialize_cdb_snapshot(workspace, header_hosts, standalone_debt());
         if(!cdb_bytes.empty() && cdb_bytes != persisted_cdb_snapshot) {
             cdb_index = batch.size();
-            batch.push_back({index::IndexBlobKind::Cdb, "cdb", cdb_bytes});
+            batch.push_back({index::IndexBlobKind::CDB, "cdb", cdb_bytes});
         } else {
             cdb_dirty = false;
         }
@@ -519,6 +524,21 @@ kota::task<> Indexer::save() {
     dirty_shards.clear();
     dirty_manifests.clear();
     global_dirty = false;
+
+    // A deferred load-time sweep can name a key this very save re-writes:
+    // the swept TU was re-enqueued at load and has already re-indexed.
+    // Puts run before removes inside write(), so the stale removal would
+    // delete the fresh blob — the put wins.
+    if(!removals.empty()) {
+        llvm::DenseSet<std::pair<unsigned, llvm::StringRef>> putting;
+        for(auto& put: batch) {
+            putting.insert({static_cast<unsigned>(put.kind), llvm::StringRef(put.key)});
+        }
+        llvm::erase_if(removals, [&](const index::BlobKey& remove) {
+            return putting.contains(
+                {static_cast<unsigned>(remove.kind), llvm::StringRef(remove.key)});
+        });
+    }
 
     if(batch.empty() && removals.empty()) {
         co_return;
@@ -531,12 +551,7 @@ kota::task<> Indexer::save() {
     // commit is still running (and saved_shards still holds its reset).
     saving_shards = shard_count;
     llvm::SmallVector<std::size_t> failed;
-    co_await kota::queue([&] {
-        failed = storage.write(batch);
-        for(auto& [kind, key]: removals) {
-            storage.remove(kind, key);
-        }
-    });
+    co_await kota::queue([&] { failed = db.write(batch, removals); });
     // An entry the storage failed to commit is re-dirtied so a later save
     // retries it; discarded, the cache would trail the in-memory index
     // until an unrelated merge happens to dirty the same entry or a
@@ -565,6 +580,21 @@ kota::task<> Indexer::save() {
     saved_shards = shard_count - failed_shards;
     saving_shards = 0;
 
+    // Corruption can surface first at write time (a damaged page only the
+    // write's tree descent reaches): heal like load-time corruption instead
+    // of writing into the damaged environment every save. The batch's
+    // shards — dirty at batch build, hence memory-backed — re-dirty before
+    // the recovery's shed so they survive it and re-persist wholesale.
+    if(db.corrupted()) {
+        for(auto path_id: shard_ids) {
+            dirty_shards.insert(path_id);
+        }
+        recover_corrupt_database();
+        co_return;
+    }
+
+    co_await migrate_shard_views();
+
     LOG_PERF("index",
              "phase=save shards={} manifests={} total={} elapsed_ms={}",
              shard_count,
@@ -573,10 +603,145 @@ kota::task<> Indexer::save() {
              timer.ms());
 }
 
+kota::task<> Indexer::migrate_shard_views() {
+    if(!workspace.index_db) {
+        co_return;
+    }
+    auto& db = *workspace.index_db;
+
+    // A full-map write left nothing committed (everything is dirty again);
+    // growing retires every snapshot at once, so the rebind below must run
+    // to completion before the first yield.
+    auto grown = db.grow();
+    if(!grown) {
+        // Degenerate (address space exhausted): borrowed views may already
+        // be dead, so everything borrowed is shed rather than left
+        // dangling. The shed shards' persisted bytes stay intact but their
+        // manifests still read fresh — only the owner requeue rebuilds
+        // their resident rows this session.
+        LOG_ERROR("Index database growth failed: {}", grown.error());
+        if(db.corrupted()) {
+            recover_corrupt_database();
+        } else {
+            shed_borrowed_shards();
+        }
+        co_return;
+    }
+    bool grew = *grown;
+    if(!grew) {
+        // The LMDB backend hands out pointers into its resident read
+        // snapshot; after a commit the resident shards migrate onto a
+        // fresh snapshot so the old one can be retired. Both snapshots
+        // stay valid across the yields and the blobs are byte-identical,
+        // so queries between batches may observe a mix of old and new
+        // pointers with identical meaning. Shards whose write just failed
+        // are dirty again by now (their bytes never landed) and stay
+        // memory-backed until a later save.
+        auto advanced = db.advance_read_snapshot();
+        if(!advanced) {
+            LOG_WARN("Index read-snapshot advance failed: {}", advanced.error());
+            if(db.corrupted()) {
+                recover_corrupt_database();
+            }
+            co_return;
+        }
+        if(*advanced == 0) {
+            // Filesystem backend: buffers are immortal, nothing to migrate.
+            co_return;
+        }
+    }
+
+    constexpr std::size_t rebind_batch = 512;
+    llvm::SmallVector<std::uint32_t> resident;
+    for(auto path_id: llvm::make_first_range(workspace.shards)) {
+        if(!dirty_shards.contains(path_id)) {
+            resident.push_back(path_id);
+        }
+    }
+    for(std::size_t i = 0; i < resident.size(); i += 1) {
+        if(!grew && i != 0 && i % rebind_batch == 0) {
+            co_await kota::sleep(std::chrono::milliseconds(0), loop);
+        }
+        auto path_id = resident[i];
+        auto it = workspace.shards.find(path_id);
+        if(it == workspace.shards.end() || dirty_shards.contains(path_id)) {
+            continue;
+        }
+        auto blob =
+            db.read(index::IndexBlobKind::Shard, blob_key(workspace.path_pool.resolve(path_id)));
+        if(!blob || !it->second.rebind(std::move(blob.buffer))) {
+            // Corruption can also surface first here (a damaged page only
+            // this re-read reaches); the recovery below sheds the whole
+            // resident set, nothing per-shard to do.
+            if(db.corrupted()) {
+                break;
+            }
+            // Unreachable under the writer lock; the shard is dropped and
+            // its owners requeued to rebuild the rows, while keeping the
+            // old view would dangle once the snapshot retires.
+            LOG_ERROR("Index shard for {} diverged during snapshot migration",
+                      workspace.path_pool.resolve(path_id));
+            assert(false && "persisted shard must survive snapshot migration");
+            workspace.shards.erase(path_id);
+            requeue_owners(path_id);
+        }
+    }
+    // Corruption observed by any read since the write-time check — this
+    // loop's, or a query's during its yields — condemns the database; the
+    // recovery sheds every borrowed view before the environment closes.
+    if(db.corrupted()) {
+        recover_corrupt_database();
+        co_return;
+    }
+    db.retire_old_snapshot();
+}
+
+void Indexer::requeue_owners(std::uint32_t path_id) {
+    auto it = workspace.project_index.contributions.find(path_id);
+    if(it == workspace.project_index.contributions.end()) {
+        return;
+    }
+    for(auto tu: llvm::make_first_range(it->second)) {
+        enqueue(tu, ReindexReason::ContentChanged);
+    }
+}
+
+void Indexer::shed_borrowed_shards() {
+    llvm::SmallVector<std::uint32_t> shed;
+    for(auto path_id: llvm::make_first_range(workspace.shards)) {
+        if(!dirty_shards.contains(path_id)) {
+            shed.push_back(path_id);
+        }
+    }
+    for(auto path_id: shed) {
+        workspace.shards.erase(path_id);
+        requeue_owners(path_id);
+    }
+}
+
+void Indexer::recover_corrupt_database() {
+    LOG_WARN("Index database is corrupt; discarding it and rebuilding from scratch");
+    saved_shards = 0;
+    shed_borrowed_shards();
+    for(auto tu_path_id: llvm::make_first_range(workspace.project_index.manifests)) {
+        dirty_manifests.insert(tu_path_id);
+    }
+    global_dirty = true;
+    cdb_dirty = true;
+    persisted_cdb_snapshot.clear();
+    reopen_fresh_database();
+}
+
+void Indexer::reopen_fresh_database() {
+    workspace.index_db->condemn();
+    workspace.index_db.reset();
+    workspace.index_db = index::open_database(*workspace.store, workspace.config.project.index_db);
+}
+
 bool Indexer::load(bool read_only) {
-    if(!workspace.index_storage)
+    if(!workspace.index_db)
         return true;
-    auto& storage = *workspace.index_storage;
+    auto& db = *workspace.index_db;
     auto& project = workspace.project_index;
     ScopedTimer timer;
 
@@ -585,15 +750,13 @@ bool Indexer::load(bool read_only) {
             return;
         }
         for(auto kind: {index::IndexBlobKind::Shard, index::IndexBlobKind::Manifest}) {
-            llvm::SmallVector<std::string> keys;
-            storage.for_each_key(kind, [&](llvm::StringRef key) { keys.push_back(key.str()); });
-            for(auto& key: keys) {
-                storage.remove(kind, key);
-            }
+            db.for_each_key(kind, [&](llvm::StringRef key) {
+                startup_removes.push_back({kind, key.str()});
+            });
         }
     };
 
-    auto global = storage.read(index::IndexBlobKind::Global, "global");
+    auto global = db.read(index::IndexBlobKind::Global, "global");
     if(!global) {
         // A global blob that exists but failed to open is a transient IO
         // error, not absence: sweeping would destroy an intact index and
@@ -601,9 +764,19 @@ bool Indexer::load(bool read_only) {
         // saving a fresh lineage over blobs whose anchor was never read
         // could alias their fv ids and generation stamps — and leave
         // everything for a healthier restart to load.
-        if(storage.contains(index::IndexBlobKind::Global, "global")) {
-            LOG_WARN("Index global blob unreadable; disabling index persistence this session");
-            workspace.index_storage.reset();
+        if(db.contains(index::IndexBlobKind::Global, "global")) {
+            // Confirmed page corruption heals through rebuildability: the
+            // condemned database deletes itself and a fresh empty one
+            // opens in its place, so this session's rebuild persists
+            // instead of being redone at the next start. Transient
+            // failures touch nothing.
+            if(!read_only && db.corrupted()) {
+                LOG_WARN("Index database is corrupt; discarding it and rebuilding from scratch");
+                reopen_fresh_database();
+            } else {
+                LOG_WARN("Index global blob unreadable; disabling index persistence this session");
+                workspace.index_db.reset();
+            }
             return true;
         }
         // No global table means no resolvable manifests: everything else
@@ -612,11 +785,11 @@ bool Indexer::load(bool read_only) {
         return true;
     }
     llvm::DenseMap<std::uint32_t, std::uint64_t> manifest_pins;
-    if(!project.load_global(global->getBuffer(), workspace.path_pool, manifest_pins)) {
+    if(!project.load_global(global.buffer->getBuffer(), workspace.path_pool, manifest_pins)) {
         LOG_INFO("Discarding old-format index global blob");
         sweep_all();
         if(!read_only) {
-            storage.remove(index::IndexBlobKind::Global, "global");
+            startup_removes.push_back({index::IndexBlobKind::Global, "global"});
         }
         return false;
     }
@@ -628,9 +801,9 @@ bool Indexer::load(bool read_only) {
     // and are swept, with their TUs re-enqueued where recoverable.
     llvm::DenseSet<std::uint32_t> adopted_pins;
     llvm::SmallVector<std::string> dead_manifests;
-    storage.for_each_key(index::IndexBlobKind::Manifest, [&](llvm::StringRef key) {
-        auto blob = storage.read(index::IndexBlobKind::Manifest, key);
-        auto manifest = blob ? index::deserialize_manifest(blob->getBuffer()) : std::nullopt;
+    db.for_each_key(index::IndexBlobKind::Manifest, [&](llvm::StringRef key) {
+        auto blob = db.read(index::IndexBlobKind::Manifest, key);
+        auto manifest = blob ? index::deserialize_manifest(blob.buffer->getBuffer()) : std::nullopt;
         auto pin = manifest ? manifest_pins.find(manifest->tu_fv) : manifest_pins.end();
         if(!manifest || pin == manifest_pins.end() || pin->second != manifest->global_gen ||
            !project.knows_file_versions(*manifest)) {
@@ -653,7 +826,7 @@ bool Indexer::load(bool read_only) {
     });
     if(!read_only) {
         for(auto& key: dead_manifests) {
-            storage.remove(index::IndexBlobKind::Manifest, key);
+            startup_removes.push_back({index::IndexBlobKind::Manifest, std::move(key)});
         }
     }
     // A pinned TU without an adopted manifest lost it to a failed write
@@ -695,7 +868,7 @@ bool Indexer::load(bool read_only) {
     llvm::SmallVector<std::uint32_t> unservable;
     for(auto& [path_id, entry]: project.contributions) {
         auto key = blob_key(workspace.path_pool.resolve(path_id));
-        auto shard = index::Shard::from_buffer(storage.read(index::IndexBlobKind::Shard, key));
+        auto shard = index::Shard::from_buffer(db.read(index::IndexBlobKind::Shard, key).buffer);
         // A blob can verify yet miss a contributed variant, or carry
         // another content generation than the contributions pin (crash or
         // failed write left a manifest newer than its shard); set_live
@@ -736,8 +909,8 @@ bool Indexer::load(bool read_only) {
             auto affected = project.remove_manifest(tu);
             mask_refresh.append(affected.begin(), affected.end());
             if(!read_only) {
-                storage.remove(index::IndexBlobKind::Manifest,
-                               blob_key(workspace.path_pool.resolve(tu)));
+                startup_removes.push_back(
+                    {index::IndexBlobKind::Manifest, blob_key(workspace.path_pool.resolve(tu))});
             }
             enqueue(tu, ReindexReason::ContentChanged);
         }
@@ -751,16 +924,40 @@ bool Indexer::load(bool read_only) {
 
     // Sweep shard blobs nothing references any more.
     if(!read_only) {
-        llvm::SmallVector<std::string> orphans;
-        storage.for_each_key(index::IndexBlobKind::Shard, [&](llvm::StringRef key) {
+        db.for_each_key(index::IndexBlobKind::Shard, [&](llvm::StringRef key) {
             if(!expected_keys.contains(key)) {
-                orphans.push_back(key.str());
+                startup_removes.push_back({index::IndexBlobKind::Shard, key.str()});
             }
         });
-        for(auto& key: orphans) {
-            storage.remove(index::IndexBlobKind::Shard, key);
-        }
         reconcile_cdb_snapshot();
+    }
+
+    // The reads above touch every adopted manifest and shard, so page
+    // corruption anywhere in the database has latched by now; heal it like
+    // the unreadable-global case above instead of writing into a damaged
+    // tree every session. The adopted state unwinds wholesale: the shard
+    // views borrow from the condemned environment, and manifests kept
+    // without their views would read as fresh and gate the rebuild sweep
+    // off exactly the files whose rows were lost. Standalone-indexed TUs
+    // re-enqueue first — the CDB sweep that rebuilds everything else never
+    // covers them, and the condemned database is deleting their only
+    // persistent record. The dirtied snapshot carries them as debt from
+    // the fresh database's first save on, so even a crash before their
+    // rebuild lands cannot lose them a second time.
+    if(!read_only && db.corrupted()) {
+        LOG_WARN("Index database is corrupt; discarding it and rebuilding from scratch");
+        for(auto tu: llvm::make_first_range(project.manifests)) {
+            if(!workspace.cdb.has_entry(workspace.path_pool.resolve(tu))) {
+                enqueue(tu, ReindexReason::ContentChanged);
+            }
+        }
+        workspace.shards.clear();
+        project = index::ProjectIndex();
+        startup_removes.clear();
+        persisted_cdb_snapshot.clear();
+        cdb_dirty = true;
+        reopen_fresh_database();
+        return true;
     }
 
     if(!workspace.shards.empty()) {
@@ -798,9 +995,10 @@ llvm::SmallVector<std::uint32_t> Indexer::standalone_debt() {
 }
 
 void Indexer::reconcile_cdb_snapshot() {
-    auto blob = workspace.index_storage->read(index::IndexBlobKind::Cdb, "cdb");
-    CdbSnapshot persisted;
-    if(!blob || !kota::codec::json::from_string(std::string_view(blob->getBuffer()), persisted)) {
+    auto blob = workspace.index_db->read(index::IndexBlobKind::CDB, "cdb");
+    CDBSnapshot persisted;
+    if(!blob ||
+       !kota::codec::json::from_string(std::string_view(blob.buffer->getBuffer()), persisted)) {
         // Unknown baseline: nothing to diff against. Dirty the snapshot so
         // the next save recreates it even when it commits nothing else —
         // after a crash that lost only the CDB blob, waiting for an
@@ -809,9 +1007,9 @@ void Indexer::reconcile_cdb_snapshot() {
         cdb_dirty = true;
         return;
     }
-    persisted_cdb_snapshot = blob->getBuffer().str();
+    persisted_cdb_snapshot = blob.buffer->getBuffer().str();
 
-    llvm::StringMap<const CdbSnapshotEntry*> before;
+    llvm::StringMap<const CDBSnapshotEntry*> before;
     for(auto& entry: persisted.entries) {
         before[entry.file] = &entry;
     }
@@ -1064,7 +1262,7 @@ kota::task<> Indexer::stop() {
     co_await bg_tasks.join();
 }
 
-void Indexer::schedule() {
+void Indexer::schedule(bool immediate) {
     if(!workspace.config.project.enable_indexing.value || indexing_active || indexing_scheduled)
         return;
     indexing_scheduled = true;
@@ -1072,8 +1270,13 @@ void Indexer::schedule() {
     if(!index_idle_timer) {
         index_idle_timer = std::make_shared<kota::timer>(kota::timer::create(loop));
     }
+    // The idle timeout exists to batch edit storms into one round; a
+    // follow-up round for work requeued during the round just ended has
+    // already been batched by that round and starts right away — a crashed
+    // file's retry must not owe an extra idle window on top of the round
+    // boundary it already waited out.
     index_idle_timer->start(
-        std::chrono::milliseconds(workspace.config.project.idle_timeout_ms.value));
+        std::chrono::milliseconds(immediate ? 0 : workspace.config.project.idle_timeout_ms.value));
 
     if(!bg_tasks.spawn(run_background_indexing())) {
         indexing_scheduled = false;
@@ -1300,11 +1503,85 @@ auto Indexer::note_dispatch_failure(std::uint32_t server_path_id,
     return RequeueVerdict::Requeued;
 }
 
+kota::task<> Indexer::run_round_feeder(kota::task_group<>& workers,
+                                       RoundState& round,
+                                       std::size_t round_end,
+                                       std::size_t total,
+                                       std::size_t& dispatched) {
+    while(index_queue_pos < round_end) {
+        // Every wait loops back to re-check ALL gates: a pause arriving
+        // while parked on capacity (or a capacity loss while parked on the
+        // pause) must not let one slot slip through on wake-up.
+        while(true) {
+            if(pause_depth > 0) {
+                co_await resume_event.wait();
+                continue;
+            }
+
+            // With no schedulable worker but revival pending, a dispatch
+            // would only convert the queue slot into an instant
+            // worker_unavailable failure; park until a slot returns to
+            // service. With revival off such failures are terminal and
+            // take the normal failure path.
+            if(pool.revives_slots() && pool.schedulable_stateless() == 0) {
+                capacity_event.reset();
+                co_await capacity_event.wait();
+                continue;
+            }
+
+            // Feed at most twice the pool's low budget: deep enough that
+            // workers never idle waiting for the feeder, shallow enough
+            // that the pool queue holds little when a pause or budget cut
+            // lands. The floor keeps the window alive when the budget
+            // reads zero (a pool that has not started yet); without it
+            // the feeder would wait on task_done with nothing in flight
+            // to ever set it.
+            if(round.inflight >= std::max<std::size_t>(2 * pool.effective_low_limit(), 2)) {
+                round.task_done.reset();
+                co_await round.task_done.wait();
+                continue;
+            }
+            break;
+        }
+
+        auto server_path_id = index_queue[index_queue_pos];
+        index_queue_pos += 1;
+        pending_ids.erase(server_path_id);
+        // No open-session or hash-freshness shortcut here: index_one is the
+        // single decision point for skipping (it knows the pending reason;
+        // a hash check alone cannot see a file's own edit), and the
+        // completion clear in run_index_task retires the pending state with
+        // the ticket honored. A second, reason-blind copy of these checks
+        // here is exactly what once erased ContentChanged state early and
+        // let a stale shard keep serving.
+
+        // A queued slot with no pending entry was cleared mid-batch: the
+        // file was removed from disk after being enqueued (clear_pending),
+        // so there is nothing to index — skip the slot. Every other slot
+        // has an entry, because enqueue writes it before the queue push.
+        auto pending_it = reindex_reasons.find(server_path_id);
+        if(pending_it == reindex_reasons.end()) {
+            continue;
+        }
+
+        dispatched += 1;
+        round.inflight += 1;
+        auto ticket = pending_it->second.ticket;
+        // A member coroutine, not an immediately-invoked capturing lambda:
+        // a lambda's captures live in the lambda object, which dies at the
+        // end of this statement — anything read after the first suspension
+        // would dangle. Coroutine parameters are copied into the frame.
+        workers.spawn(run_index_task(server_path_id, ticket, dispatched, total, round));
+    }
+
+    LOG_DEBUG("Background indexing: all {} tasks spawned, waiting for completion", dispatched);
+}
+
 kota::task<> Indexer::run_index_task(std::uint32_t server_path_id,
                                      std::uint64_t ticket,
                                      std::size_t index,
                                      std::size_t total,
-                                     std::size_t& completed) {
+                                     RoundState& round) {
     co_await index_one(server_path_id, ticket, index, total);
     // The pending window ends with the index attempt, success or not. On
     // failure the last-known rows resume serving — deliberately: keeping
@@ -1317,9 +1594,11 @@ kota::task<> Indexer::run_index_task(std::uint32_t server_path_id,
        it != reindex_reasons.end() && it->second.ticket == ticket) {
         reindex_reasons.erase(it);
     }
-    ++completed;
+    round.completed += 1;
+    round.inflight -= 1;
+    round.task_done.set();
     progress_data.stage = Progress::Stage::Report;
-    progress_data.completed = completed;
+    progress_data.completed = round.completed;
     on_progress_changed.emit();
 }
 
@@ -1347,9 +1626,15 @@ kota::task<> Indexer::run_background_indexing() {
         index_queue.end(),
         [this](std::uint32_t id) { return workspace.path_to_module.contains(id); });
 
-    auto total = index_queue.size() - index_queue_pos;
+    // This round consumes [index_queue_pos, round_end) only. Anything
+    // appended during the round — including its own failures' requeues —
+    // waits for the next round; consuming a requeue in the round that
+    // produced it is what let a worker outage spin the dispatch loop
+    // against instant failures (#611).
+    auto round_end = index_queue.size();
+    auto total = round_end - index_queue_pos;
     std::size_t dispatched = 0;
-    std::size_t completed = 0;
+    RoundState round;
 
     // Announce the round; a progress reporter reads the counts from
     // progress() and owns the LSP token's begin/report/end handshake. With
@@ -1362,51 +1647,25 @@ kota::task<> Indexer::run_background_indexing() {
     ScopedTimer timer;
     kota::task_group<> workers(loop);
 
-    while(index_queue_pos < index_queue.size()) {
-        if(pause_depth > 0)
-            co_await resume_event.wait();
-
-        auto server_path_id = index_queue[index_queue_pos++];
-        pending_ids.erase(server_path_id);
-        // No open-session or hash-freshness shortcut here: index_one is the
-        // single decision point for skipping (it knows the pending reason;
-        // a hash check alone cannot see a file's own edit), and the
-        // completion clear in run_index_task retires the pending state with
-        // the ticket honored. A second, reason-blind copy of these checks
-        // here is exactly what once erased ContentChanged state early and
-        // let a stale shard keep serving.
-
-        // A queued slot with no pending entry was cleared mid-batch: the
-        // file was removed from disk after being enqueued (clear_pending),
-        // so there is nothing to index — skip the slot. Every other slot
-        // has an entry, because enqueue writes it before the queue push.
-        auto pending_it = reindex_reasons.find(server_path_id);
-        if(pending_it == reindex_reasons.end()) {
-            continue;
-        }
-
-        ++dispatched;
-        auto ticket = pending_it->second.ticket;
-        // A member coroutine, not an immediately-invoked capturing lambda:
-        // a lambda's captures live in the lambda object, which dies at the
-        // end of this statement — anything read after the first suspension
-        // would dangle. Coroutine parameters are copied into the frame.
-        workers.spawn(run_index_task(server_path_id, ticket, dispatched, total, completed));
-    }
-
-    LOG_DEBUG("Background indexing: all {} tasks spawned, waiting for completion", dispatched);
+    // The dispatch loop runs as a child of `workers`, so this frame's only
+    // suspension while children live is the join below: a shutdown cancel
+    // cascades through the join into the group, and the feeder plus every
+    // in-flight task unwind before `workers` is destroyed. Parking the
+    // feeder's waits on this frame instead would let the cancel finalize
+    // the frame — destroying the group with children still in flight.
+    workers.spawn(run_round_feeder(workers, round, round_end, total, dispatched));
     co_await workers.join();
 
     // Skipped files bump `completed` without a Report emit; refresh the
     // materialized count so a subscriber waking up on End reads the truth.
-    progress_data.completed = completed;
+    progress_data.completed = round.completed;
     progress_data.stage = Progress::Stage::End;
     progress_data.dispatched = dispatched;
     on_progress_changed.emit();
 
     // Safe point to compact: no dispatch loop holds an index into the queue.
-    // Files enqueued while we awaited the workers keep the queue alive for
-    // the next scheduled round.
+    // Files enqueued or requeued past the round snapshot keep the queue
+    // alive for the next scheduled round.
     if(index_queue_pos >= index_queue.size()) {
         assert(pending_ids.empty() && "drained queue must have no pending ids");
         assert(reindex_reasons.empty() && "drained queue must have no pending reasons");
@@ -1427,12 +1686,12 @@ kota::task<> Indexer::run_background_indexing() {
     // one's in-flight batch, racing same-key blob writes on the pool.
     indexing_active = false;
 
-    // Files enqueued while the round was joining its workers saw their
-    // schedule() no-op against indexing_active; without this kick they
-    // would wait for the next external event — and a content-changed
-    // pending file's rows stay skipped for that whole wait.
+    // Files enqueued or requeued while the round ran saw their schedule()
+    // no-op against indexing_active; without this kick they would wait for
+    // the next external event — and a content-changed pending file's rows
+    // stay skipped for that whole wait.
     if(index_queue_pos < index_queue.size()) {
-        schedule();
+        schedule(/*immediate=*/true);
     }
 }
 

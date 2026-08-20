@@ -1101,6 +1101,33 @@ TEST_CASE(CorruptRoaringMaskRejected) {
     ASSERT_FALSE(make_shard(bytes_of()).loaded());
 }
 
+TEST_CASE(RebindSwapsIdenticalBytes) {
+    build_index("int rebind_value() { return 1; }\n");
+    auto bytes = main_blob();
+    ASSERT_FALSE(bytes.empty());
+    auto shard = make_shard(bytes);
+    ASSERT_TRUE(shard.loaded());
+    auto hash_before = shard.content_hash();
+    const char* address_before = shard.bytes().data();
+
+    ASSERT_TRUE(shard.rebind(llvm::MemoryBuffer::getMemBufferCopy(bytes)));
+    ASSERT_TRUE(shard.bytes().data() != address_before);
+    ASSERT_EQ(shard.content_hash(), hash_before);
+
+    // Byte identity is the caller's contract: only the size gates the
+    // swap, so migration never touches the replacement's content pages.
+    std::string drift = bytes;
+    drift.back() = static_cast<char>(drift.back() ^ 1);
+    ASSERT_TRUE(shard.rebind(llvm::MemoryBuffer::getMemBufferCopy(drift)));
+
+    // A missing replacement or another size is rejected; the current
+    // buffer stays.
+    const char* kept = shard.bytes().data();
+    ASSERT_FALSE(shard.rebind(llvm::MemoryBuffer::getMemBufferCopy(bytes + "x")));
+    ASSERT_FALSE(shard.rebind(nullptr));
+    ASSERT_TRUE(shard.bytes().data() == kept);
+}
+
 };  // TEST_SUITE(Shard)
 
 }  // namespace
