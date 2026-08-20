@@ -6,10 +6,10 @@
 #include <vector>
 
 #include "feature/feature.h"
-#include "support/glob_pattern.h"
 
 #include "kota/codec/macro.h"
 #include "kota/meta/annotation.h"
+#include "kota/support/glob_pattern.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace clice {
@@ -119,7 +119,7 @@ struct TrackerConfig {
 };
 
 struct CompiledRule {
-    std::vector<GlobPattern> patterns;
+    std::vector<kota::GlobPattern> patterns;
     std::vector<std::string> append;
     std::vector<std::string> remove;
 };

@@ -189,6 +189,7 @@ target_link_libraries(clice-core PUBLIC
     kota::ipc::lsp
     kota::codec::toml
     kota::option
+    kota::support
     simdjson::simdjson
     lmdb
 )
