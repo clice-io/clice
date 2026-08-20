@@ -39,14 +39,22 @@ codex exec -m gpt-5.6-sol -c model_reasoning_effort=xhigh \
   (review, test writing, implementation) must be told in the prompt which
   rule files to read first, e.g. `.claude/CLAUDE.md` and the cpp-style skill.
 
-Code review has a purpose-built mode that collects the diff itself:
+The canonical code-review invocation is the standard form with a prompt that
+loads the repo rules and reviews the branch diff:
 
 ```bash
-codex exec review --base origin/main \
-  -m gpt-5.6-sol -c model_reasoning_effort=xhigh -o /tmp/codex-review.md
+codex exec -m gpt-5.6-sol -c model_reasoning_effort=xhigh \
+  --dangerously-bypass-approvals-and-sandbox -o /tmp/codex-review.md \
+  "Read .claude/CLAUDE.md and .claude/skills/cpp-style/SKILL.md and apply
+their rules. Review the changes in 'git diff origin/main...HEAD' for
+correctness, style, and test coverage. Report ranked findings, each with
+file:line and a concrete failure scenario."
 ```
 
-Also `--uncommitted` (staged + unstaged + untracked) and `--commit <sha>`.
+The built-in `codex exec review --base origin/main` collects the diff itself,
+but `--base` is mutually exclusive with the prompt argument, so it can never
+see the repo rules — use it only as a quick rules-blind supplementary pass
+(also `--uncommitted`, `--commit <sha>`).
 
 ## Multi-round sessions
 
@@ -76,6 +84,8 @@ into independent continuations.
   its diff as you would a PR — you own what gets committed. Verification
   (build + suites) happens in the main session, and the hard rules (never
   weaken tests, never push unverified) apply unchanged to codex-authored code.
+  Any run that may modify files gets its own git worktree — the main checkout
+  is for analysis-only runs, or edits will race with this session's.
 - **Never let codex run the integration or snap suites while this session
   might also run them** — concurrent runs in one checkout clobber each other's
   workspace `.clice`. Either codex runs them and you don't, or codex analyzes
@@ -86,7 +96,7 @@ into independent continuations.
 - **Plan review**: point it at the doc path; ask for attacks ranked by
   severity, each with a minimal counterexample. Fold confirmed findings back
   into the doc.
-- **Code review**: `codex exec review --base origin/main` — the primary
+- **Code review**: the canonical review command above — the primary
   self-review pass of the pr skill.
 - **Debug**: give the failing test, the repro command, and the suspect area;
   ask for a root-cause hypothesis plus the experiment that would confirm it.
@@ -103,4 +113,6 @@ into independent continuations.
 
 If a run dies before writing `-o`, the transcript is at
 `~/.codex/sessions/YYYY/MM/DD/*.jsonl`; the final reply is the last record
-with payload `type == "message"` and `role == "assistant"`.
+with payload `type == "message"` and `role == "assistant"`. These transcripts
+persist indefinitely and record full prompts, file contents, and command
+output — treat `~/.codex/sessions/` as sensitive local data.

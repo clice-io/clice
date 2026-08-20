@@ -23,7 +23,7 @@ Never push anything unverified — "it compiles" is not verified, and CI is not 
 
 Review the full diff (`git diff origin/main...HEAD` — never the local `main`, which goes stale) and fix everything confirmed before opening:
 
-1. **Primary: codex review** (the codex skill) — `codex exec review --base origin/main` with gpt-5.6-sol at xhigh, with a prompt telling it to first read `.claude/CLAUDE.md` and the cpp-style skill and apply their rules (codex does not auto-load `.claude/` docs). Treat findings as hypotheses: verify each concrete claim before fixing it.
+1. **Primary: codex review** (the codex skill) — the canonical rules-aware review command: plain `codex exec` with gpt-5.6-sol at xhigh and a prompt that reads `.claude/CLAUDE.md` plus the cpp-style skill and reviews `git diff origin/main...HEAD` (the built-in `codex exec review --base` cannot take a prompt, so it never sees the repo rules). Treat findings as hypotheses: verify each concrete claim before fixing it.
 2. **Supplement** — when codex is unavailable, or as an extra pass on high-risk diffs: 3 parallel subagents reviewing independently — correctness (logic errors, edge cases, undefined behavior), style (naming, cpp-style skill rules), tests (new functionality covered, no existing tests broken or weakened).
 
 ## Opening
