@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "server/protocol/agentic.h"
+#include "server/protocol/position.h"
 #include "server/transport/master_server.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
@@ -66,6 +67,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
     peer.on_request(
         [&srv](RequestContext&,
                const CompileCommandParams& params) -> RequestResult<CompileCommandParams> {
+            srv.pool.foreground_pulse();
             std::string directory;
             std::vector<std::string> arguments;
             srv.contexts.resolve_command(params.path, directory, arguments);
@@ -79,6 +81,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
 
     peer.on_request([&srv](RequestContext&,
                            const ProjectFilesParams& params) -> RequestResult<ProjectFilesParams> {
+        srv.pool.foreground_pulse();
         auto& ws = srv.workspace;
         auto filter = params.filter.value_or("all");
 
@@ -118,7 +121,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
         }
 
         if(filter == "all" || filter == "header") {
-            for(auto& [path_id, shard]: ws.merged_indices) {
+            for(auto& [path_id, shard]: ws.shards) {
                 if(seen.contains(path_id))
                     continue;
                 auto path_str = ws.path_pool.resolve(path_id);
@@ -139,6 +142,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
 
     peer.on_request(
         [&srv](RequestContext&, const FileDepsParams& params) -> RequestResult<FileDepsParams> {
+            srv.pool.foreground_pulse();
             auto& ws = srv.workspace;
             // find() applies the canonical spelling; a native uppercase-drive
             // path from an agentic client must hit the same ID.
@@ -226,6 +230,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
     peer.on_request(
         [&srv](RequestContext&,
                const ImpactAnalysisParams& params) -> RequestResult<ImpactAnalysisParams> {
+            srv.pool.foreground_pulse();
             auto& ws = srv.workspace;
             auto pool_id = ws.path_pool.find(params.path);
             if(!pool_id)
@@ -263,6 +268,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
 
     peer.on_request([&srv](RequestContext&,
                            const SymbolSearchParams& params) -> RequestResult<SymbolSearchParams> {
+        srv.pool.foreground_pulse();
         srv.on_agentic_query();
         auto max = params.max_results.value_or(100);
         std::string query_lower = llvm::StringRef(params.query).lower();
@@ -307,6 +313,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
 
     peer.on_request(
         [&srv](RequestContext&, const ReadSymbolParams& params) -> RequestResult<ReadSymbolParams> {
+            srv.pool.foreground_pulse();
             srv.on_agentic_query();
             auto resolved = resolve_unique(params, srv.agent_query);
             if(!resolved)
@@ -331,6 +338,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
     peer.on_request(
         [&srv](RequestContext&,
                const DocumentSymbolsParams& params) -> RequestResult<DocumentSymbolsParams> {
+            srv.pool.foreground_pulse();
             srv.on_agentic_query();
             auto is_document_level = [](SymbolKind kind) {
                 return kind == SymbolKind::Namespace || kind == SymbolKind::Class ||
@@ -355,15 +363,14 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
             if(srv.agent_query.skip_shard(*path_id))
                 co_return result;
 
-            auto shard_it = srv.workspace.merged_indices.find(*path_id);
-            if(shard_it == srv.workspace.merged_indices.end())
+            auto shard_it = srv.workspace.shards.find(*path_id);
+            if(shard_it == srv.workspace.shards.end())
                 co_return result;
 
             auto& merged_index = shard_it->second;
-            auto ls = merged_index.line_starts();
-            if(ls.empty())
-                co_return result;
-            lsp::LineMap map(merged_index.content(), ls);
+            IndexedLineMap map(merged_index.content(),
+                               merged_index.content_size(),
+                               merged_index.line_starts());
 
             for(auto& [hash, symbol]: srv.workspace.project_index.symbols) {
                 if(symbol.name.empty())
@@ -394,6 +401,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
 
     peer.on_request(
         [&srv](RequestContext&, const DefinitionParams& params) -> RequestResult<DefinitionParams> {
+            srv.pool.foreground_pulse();
             srv.on_agentic_query();
             auto resolved = resolve_unique(
                 ReadSymbolParams{params.name, params.path, params.line, params.symbol_id},
@@ -422,6 +430,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
 
     peer.on_request([&srv](RequestContext&,
                            const ReferencesParams& params) -> RequestResult<ReferencesParams> {
+        srv.pool.foreground_pulse();
         srv.on_agentic_query();
         auto resolved = resolve_unique(
             ReadSymbolParams{params.name, params.path, params.line, params.symbol_id},
@@ -459,6 +468,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
 
     peer.on_request(
         [&srv](RequestContext&, const CallGraphParams& params) -> RequestResult<CallGraphParams> {
+            srv.pool.foreground_pulse();
             srv.on_agentic_query();
             auto resolved = resolve_unique(
                 ReadSymbolParams{params.name, params.path, params.line, params.symbol_id},
@@ -522,6 +532,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
     peer.on_request(
         [&srv](RequestContext&,
                const TypeHierarchyParams& params) -> RequestResult<TypeHierarchyParams> {
+            srv.pool.foreground_pulse();
             srv.on_agentic_query();
             auto resolved = resolve_unique(
                 ReadSymbolParams{params.name, params.path, params.line, params.symbol_id},
@@ -581,6 +592,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
         });
 
     peer.on_request([&srv](RequestContext&, const StatusParams&) -> RequestResult<StatusParams> {
+        srv.pool.foreground_pulse();
         // The progress numbers describe the current round — or the last
         // one, retained after it ends; the live queue is compacted between
         // rounds and would read as "nothing was ever indexed".

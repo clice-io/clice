@@ -74,7 +74,7 @@ void export_graph_json(const PathPool& path_pool,
     }
 
     GraphExport export_data;
-    for(std::uint32_t id = 0; id < path_pool.paths.size(); id++) {
+    for(std::uint32_t id = 0; id < path_pool.paths.size(); id += 1) {
         auto inc_ids = graph.get_all_includes(id);
         if(inc_ids.empty()) {
             continue;
@@ -174,7 +174,7 @@ void print_report(const ScanReport& report) {
                      "Prefetch",
                      "DirList",
                      "DirHits");
-        for(std::size_t i = 0; i < report.wave_stats.size(); i++) {
+        for(std::size_t i = 0; i < report.wave_stats.size(); i += 1) {
             auto& ws = report.wave_stats[i];
             std::println("    {:>5} {:>8} {:>8} {:>8} {:>8} {:>8} {:>10} {:>10}",
                          i,
@@ -271,7 +271,12 @@ int main(int argc, const char** argv) {
 
     CompilationDatabase cdb;
     Toolchain toolchain;
-    auto count = cdb.load(cdb_path);
+    auto loaded = cdb.load(cdb_path);
+    if(!loaded) {
+        std::println(stderr, "Error: failed to load {}", cdb_path);
+        return 1;
+    }
+    auto count = *loaded;
 
     auto t1 = std::chrono::steady_clock::now();
     auto load_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
@@ -285,7 +290,7 @@ int main(int argc, const char** argv) {
         for(auto& entry: cdb.get_entries()) {
             unique_contexts.insert(entry.info.ptr);
             unique_canonicals.insert(entry.info->canonical.ptr);
-            canonical_hist[entry.info->canonical.ptr]++;
+            canonical_hist[entry.info->canonical.ptr] += 1;
         }
         double dedup_ratio =
             unique_contexts.empty() ? 0.0 : static_cast<double>(count) / unique_contexts.size();
@@ -307,7 +312,7 @@ int main(int argc, const char** argv) {
                               &std::pair<int, const CanonicalCommand*>::first);
 
             // Show top-5 canonical commands.
-            for(int i = 0; i < std::min(5, (int)sorted.size()); i++) {
+            for(int i = 0; i < std::min(5, (int)sorted.size()); i += 1) {
                 auto [cnt, cmd] = sorted[i];
                 std::println("  canonical[{}] ({} files, {} args):", i, cnt, cmd->arguments.size());
                 for(auto arg: cmd->arguments)
@@ -330,7 +335,7 @@ int main(int argc, const char** argv) {
                 auto* b = sorted[1].second;
                 std::println("  --- Canonical diff (top-1 vs top-2) ---");
                 auto max_len = std::max(a->arguments.size(), b->arguments.size());
-                for(std::size_t i = 0; i < max_len; i++) {
+                for(std::size_t i = 0; i < max_len; i += 1) {
                     llvm::StringRef av = i < a->arguments.size() ? a->arguments[i] : "<missing>";
                     llvm::StringRef bv = i < b->arguments.size() ? b->arguments[i] : "<missing>";
                     if(av != bv)
@@ -355,7 +360,7 @@ int main(int argc, const char** argv) {
     phase1_times.reserve(runs);
     phase2_times.reserve(runs);
 
-    for(int i = 0; i < runs; i++) {
+    for(int i = 0; i < runs; i += 1) {
         // True cold start: rebuild CDB (clears toolchain & config caches),
         // reset PathPool and DependencyGraph.
         cdb = CompilationDatabase{};

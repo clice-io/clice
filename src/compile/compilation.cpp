@@ -282,7 +282,7 @@ CompilationStatus CompilationUnitRef::Self::run_clang(
     }
 
     std::optional<clang::syntax::TokenCollector> token_collector;
-    if(!instance.hasCodeCompletionConsumer()) {
+    if(params.collect_tokens && !instance.hasCodeCompletionConsumer()) {
         /// It is not necessary to collect tokens if we are running code completion.
         /// And in fact will cause assertion failure.
         token_collector.emplace(instance.getPreprocessor());
@@ -454,6 +454,18 @@ CompilationUnit complete(CompilationParams& params, clang::CodeCompleteConsumer*
                          instance.getFrontendOpts().CodeCompletionAt.Column = column;
                          instance.setCodeCompletionConsumer(consumer);
                      });
+}
+
+std::string collect_errors(CompilationUnit& unit) {
+    std::string errors;
+    for(auto& diag: unit.diagnostics()) {
+        if(diag.id.level >= DiagnosticLevel::Error) {
+            if(!errors.empty())
+                errors += "; ";
+            errors += diag.message;
+        }
+    }
+    return errors;
 }
 
 }  // namespace clice

@@ -47,7 +47,6 @@ TEST_CASE(CompileRequest) {
         CO_ASSERT_TRUE(result.has_value());
         EXPECT_EQ(result.value().version, 1);
         test_done = true;
-        w.peer->close_output();
     });
 
     ASSERT_TRUE(test_done);
@@ -110,9 +109,13 @@ TEST_CASE(CancelledCompileFreesStrand) {
         // The strand must be free again: a second compile of the same
         // document completes instead of hanging behind the cancelled one's
         // never-released lock (the guard releases it when the cancelled
-        // handler's frame unwinds). Bounded so a regression is a clean,
-        // attributable failure instead of a CI-wide timeout.
+        // handler's frame unwinds). A held strand blocks a compile of any
+        // size, so the retry uses a trivial TU — re-parsing the 200k
+        // declarations here once blew the bound on a slow runner — and the
+        // bound makes a regression a clean, attributable failure instead
+        // of a CI-wide timeout.
         cp.version = 2;
+        cp.text = "int done;\n";
         kota::ipc::request_options retry_opts;
         retry_opts.timeout = std::chrono::milliseconds(30'000);
         auto retry = co_await w.peer->send_request(cp, retry_opts);
@@ -120,7 +123,6 @@ TEST_CASE(CancelledCompileFreesStrand) {
         EXPECT_EQ(retry.value().version, 2);
 
         test_done = true;
-        w.peer->close_output();
     });
 
     ASSERT_TRUE(test_done);
@@ -177,7 +179,6 @@ TEST_CASE(CancelNotificationInterruptsCompile) {
         EXPECT_TRUE(reply->tu_index_data.empty());
 
         test_done = true;
-        w.peer->close_output();
     });
 
     ASSERT_TRUE(test_done);
@@ -230,7 +231,6 @@ TEST_CASE(CancelledQueryFreesStrand) {
         CO_ASSERT_TRUE(retry.has_value());
 
         test_done = true;
-        w.peer->close_output();
     });
 
     ASSERT_TRUE(test_done);
@@ -254,7 +254,6 @@ TEST_CASE(HoverWithoutCompile) {
         // Should be "null" RawValue since document doesn't exist.
         EXPECT_EQ(result.value().data, std::string("null"));
         test_done = true;
-        w.peer->close_output();
     });
 
     ASSERT_TRUE(test_done);
@@ -296,7 +295,6 @@ TEST_CASE(CompileThenHover) {
         EXPECT_NE(hover_result.value().data, std::string("null"));
 
         test_done = true;
-        w.peer->close_output();
     });
 
     ASSERT_TRUE(test_done);
@@ -318,7 +316,6 @@ TEST_CASE(CodeActionReturnsEmpty) {
         // No document: the shared with_ast default is "null".
         EXPECT_EQ(result.value().data, std::string("[]"));
         test_done = true;
-        w.peer->close_output();
     });
 
     ASSERT_TRUE(test_done);
@@ -341,7 +338,6 @@ TEST_CASE(GoToDefinitionWithoutCompile) {
         // No document: the shared with_ast default is "null".
         EXPECT_EQ(result.value().data, std::string("null"));
         test_done = true;
-        w.peer->close_output();
     });
 
     ASSERT_TRUE(test_done);
@@ -362,7 +358,6 @@ TEST_CASE(SemanticTokensWithoutCompile) {
         CO_ASSERT_TRUE(result.has_value());
         EXPECT_EQ(result.value().data, std::string("null"));
         test_done = true;
-        w.peer->close_output();
     });
 
     ASSERT_TRUE(test_done);
@@ -383,7 +378,6 @@ TEST_CASE(FoldingRangeWithoutCompile) {
         CO_ASSERT_TRUE(result.has_value());
         EXPECT_EQ(result.value().data, std::string("null"));
         test_done = true;
-        w.peer->close_output();
     });
 
     ASSERT_TRUE(test_done);
@@ -404,7 +398,6 @@ TEST_CASE(DocumentSymbolWithoutCompile) {
         CO_ASSERT_TRUE(result.has_value());
         EXPECT_EQ(result.value().data, std::string("null"));
         test_done = true;
-        w.peer->close_output();
     });
 
     ASSERT_TRUE(test_done);
@@ -424,7 +417,6 @@ TEST_CASE(DocumentLinkWithoutCompile) {
         CO_ASSERT_TRUE(result.has_value());
         EXPECT_TRUE(result.value().empty());
         test_done = true;
-        w.peer->close_output();
     });
 
     ASSERT_TRUE(test_done);
@@ -445,7 +437,6 @@ TEST_CASE(InlayHintsWithoutCompile) {
         CO_ASSERT_TRUE(result.has_value());
         EXPECT_EQ(result.value().data, std::string("null"));
         test_done = true;
-        w.peer->close_output();
     });
 
     ASSERT_TRUE(test_done);
@@ -516,7 +507,6 @@ TEST_CASE(MultipleSequentialRequests) {
         EXPECT_TRUE(r5.has_value());
 
         test_done = true;
-        w.peer->close_output();
     });
 
     ASSERT_TRUE(test_done);
@@ -565,7 +555,6 @@ TEST_CASE(MultipleDocuments) {
         }
 
         test_done = true;
-        w.peer->close_output();
     });
 
     ASSERT_TRUE(test_done);
@@ -594,7 +583,6 @@ TEST_CASE(EvictNotification) {
         EXPECT_EQ(result.value().data, std::string("null"));
 
         test_done = true;
-        w.peer->close_output();
     });
 
     ASSERT_TRUE(test_done);
@@ -646,7 +634,6 @@ TEST_CASE(LowLimitDrivesEviction) {
         EXPECT_EQ(result.value().data, std::string("null"));
 
         test_done = true;
-        w.peer->close_output();
     });
 
     ASSERT_TRUE(test_done);
@@ -686,7 +673,6 @@ TEST_CASE(SpawnWithMemoryLimit) {
         EXPECT_TRUE(result.has_value());
 
         test_done = true;
-        w.peer->close_output();
     });
 
     ASSERT_TRUE(test_done);

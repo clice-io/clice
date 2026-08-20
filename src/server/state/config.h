@@ -6,10 +6,10 @@
 #include <vector>
 
 #include "feature/feature.h"
-#include "support/glob_pattern.h"
 
 #include "kota/codec/macro.h"
 #include "kota/meta/annotation.h"
+#include "kota/support/glob_pattern.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace clice {
@@ -65,6 +65,12 @@ struct ProjectConfig {
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
+                         "Index persistence backend: \"lmdb\" (single database "
+                         "file) or \"files\" (one file per blob).")
+    <std::string> index_db = "lmdb";
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
                          "Idle delay in milliseconds before background indexing "
                          "starts.")
     <int> idle_timeout_ms = 3000;
@@ -113,7 +119,7 @@ struct TrackerConfig {
 };
 
 struct CompiledRule {
-    std::vector<GlobPattern> patterns;
+    std::vector<kota::GlobPattern> patterns;
     std::vector<std::string> append;
     std::vector<std::string> remove;
 };

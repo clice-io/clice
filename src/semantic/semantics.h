@@ -320,7 +320,7 @@ public:
     /// The spelled tokens of the interested file (a view into the unit's
     /// TokenBuffer, not a copy). They cover the whole file even under a
     /// preamble PCH — what the PCH consumes is the preamble's AST and
-    /// directives (those travel through PreambleState instead), not its
+    /// directives (those travel through the pch.idx envelope instead), not its
     /// spelling.
     llvm::ArrayRef<clang::syntax::Token> spelled_tokens() const {
         return tokens;

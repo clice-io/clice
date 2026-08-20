@@ -5,6 +5,7 @@
 
 #include "test/test.h"
 #include "test/tester.h"
+#include "index/shard.h"
 #include "index/tu_index.h"
 #include "server/compiler/context_resolver.h"
 #include "server/compiler/indexer.h"
@@ -12,7 +13,9 @@
 #include "server/state/session_store.h"
 #include "server/worker/worker_pool.h"
 
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Path.h"
+#include "llvm/Support/xxhash.h"
 
 namespace clice::testing {
 namespace {
@@ -31,42 +34,26 @@ IndexQuery agent_query{workspace, store, indexer, {.disk_only = true}};
 std::uint32_t main_id = 0;
 std::uint32_t header_id = 0;
 
-/// Build a TUIndex from the added sources and merge it into the workspace
-/// with real contents, so shards can map their rows to positions.
+/// Build an envelope from the added sources and merge it into the
+/// workspace, installing each section's blob verbatim as the file's shard.
 void merge_into_workspace() {
-    auto tu_index = index::TUIndex::build(*unit);
-    auto file_ids_map = workspace.project_index.merge(tu_index, workspace.path_pool);
+    auto wire = index::build_tu_index(*unit);
+    auto view = index::TUIndex::from_bytes(wire);
+    ASSERT_TRUE(view.loaded());
 
-    auto content_of = [&](llvm::StringRef path) -> llvm::StringRef {
-        auto it = sources.all_files.find(llvm::sys::path::filename(path));
-        return it != sources.all_files.end() ? llvm::StringRef(it->second.content)
-                                             : llvm::StringRef();
-    };
-
-    auto main_tu_path_id = static_cast<std::uint32_t>(tu_index.graph.paths.size() - 1);
-    llvm::StringRef main_tu_path = tu_index.graph.paths[main_tu_path_id];
-    main_id = file_ids_map[main_tu_path_id];
-
-    llvm::SmallVector<index::DepLocation> deps;
-    for(auto& loc: tu_index.graph.locations) {
-        deps.push_back({tu_index.graph.paths[loc.path_id], loc.line, loc.include});
+    llvm::SmallVector<std::uint32_t> file_ids_map;
+    for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
+        file_ids_map.push_back(workspace.path_pool.intern(view.path(i)));
     }
-    workspace.merged_indices[main_id].merge(main_tu_path,
-                                            tu_index.built_at,
-                                            deps,
-                                            tu_index.main_file_index,
-                                            content_of(main_tu_path));
+    ASSERT_TRUE(workspace.project_index.merge(view, file_ids_map));
+    main_id = file_ids_map[view.path_count() - 1];
 
-    for(auto& [fid, file_idx]: tu_index.file_indices) {
-        auto tu_pid = tu_index.graph.path_id(fid);
-        auto global_pid = file_ids_map[tu_pid];
-        auto include_id = tu_index.graph.include_location_id(fid);
-        workspace.merged_indices[global_pid].merge(main_tu_path,
-                                                   include_id,
-                                                   file_idx,
-                                                   content_of(tu_index.graph.paths[tu_pid]));
-        if(llvm::sys::path::filename(tu_index.graph.paths[tu_pid]) == "header.h") {
-            header_id = global_pid;
+    for(std::uint32_t section = 0; section < view.section_count(); section += 1) {
+        auto local_id = view.section_path(section);
+        workspace.shards[file_ids_map[local_id]] = index::Shard::from_buffer(
+            llvm::MemoryBuffer::getMemBufferCopy(view.section_blob(section)));
+        if(llvm::sys::path::filename(view.path(local_id)) == "header.h") {
+            header_id = file_ids_map[local_id];
         }
     }
 }
@@ -74,7 +61,7 @@ void merge_into_workspace() {
 /// The symbol hash at an offset in a file's merged shard.
 index::SymbolHash symbol_at(std::uint32_t path_id, std::uint32_t offset) {
     index::SymbolHash result = 0;
-    workspace.merged_indices[path_id].lookup(offset, [&](const index::Occurrence& o) {
+    workspace.shards[path_id].lookup(offset, [&](const index::Occurrence& o) {
         result = o.target;
         return false;
     });

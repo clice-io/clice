@@ -4,12 +4,12 @@
 
 #include "feature/feature.h"
 #include "support/filesystem.h"
-#include "support/glob_pattern.h"
 #include "support/logging.h"
 
 #include "kota/async/io/system.h"
 #include "kota/codec/json/json.h"
 #include "kota/codec/toml/toml.h"
+#include "kota/support/glob_pattern.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Process.h"
@@ -126,9 +126,9 @@ void Config::finalize(llvm::StringRef workspace_root) {
     for(auto& rule: rules) {
         CompiledRule compiled;
         for(auto& pattern_str: rule.patterns) {
-            auto pat = GlobPattern::create(pattern_str);
+            auto pat = kota::GlobPattern::create(pattern_str);
             if(!pat) {
-                LOG_WARN("Invalid glob pattern in rule: {}", pattern_str);
+                LOG_WARN("Invalid glob pattern in rule: {}: {}", pattern_str, pat.error().message);
                 continue;
             }
             compiled.patterns.push_back(std::move(*pat));

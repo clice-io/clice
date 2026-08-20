@@ -3,6 +3,8 @@
 #include "compile/compilation_unit.h"
 #include "support/logging.h"
 
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/xxhash.h"
 
 namespace clice::index {
@@ -53,8 +55,19 @@ IncludeGraph IncludeGraph::from(CompilationUnitRef unit,
     llvm::StringMap<std::uint32_t> path_table;
     IncludeGraph graph;
 
-    for(auto& [fid, directive]: unit.directives()) {
-        for(auto& include: directive.includes) {
+    // Path and location ids are assigned in first-visit order and the
+    // envelope's byte hash is an identity, so the visit order must be a
+    // pure function of the parse — sort every fid set that arrives in
+    // DenseMap iteration order.
+    auto& directives = unit.directives();
+    llvm::SmallVector<clang::FileID> directive_fids;
+    directive_fids.reserve(directives.size());
+    for(auto fid: llvm::make_first_range(directives)) {
+        directive_fids.push_back(fid);
+    }
+    llvm::sort(directive_fids);
+    for(auto fid: directive_fids) {
+        for(auto& include: directives.find(fid)->second.includes) {
             if(!include.skipped && include.fid.isValid()) {
                 graph.file_table[include.fid] =
                     addIncludeChain(unit, include.fid, graph, path_table);
@@ -62,7 +75,9 @@ IncludeGraph IncludeGraph::from(CompilationUnitRef unit,
         }
     }
 
-    for(auto fid: indexed_fids) {
+    llvm::SmallVector<clang::FileID> sorted_indexed(indexed_fids.begin(), indexed_fids.end());
+    llvm::sort(sorted_indexed);
+    for(auto fid: sorted_indexed) {
         graph.file_table[fid] = addIncludeChain(unit, fid, graph, path_table);
     }
 
