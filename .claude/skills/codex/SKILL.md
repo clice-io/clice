@@ -44,7 +44,7 @@ loads the repo rules and reviews the branch diff:
 
 ```bash
 codex exec -m gpt-5.6-sol -c model_reasoning_effort=xhigh \
-  --dangerously-bypass-approvals-and-sandbox -o /tmp/codex-review.md \
+  --dangerously-bypass-approvals-and-sandbox -o /tmp/codex-review-<topic>.md \
   "Read .claude/CLAUDE.md and .claude/skills/cpp-style/SKILL.md and apply
 their rules. Review the changes in 'git diff origin/main...HEAD' for
 correctness, style, and test coverage. Report ranked findings, each with
@@ -62,10 +62,10 @@ see the repo rules — use it only as a quick rules-blind supplementary pass
 (`--last` picks the newest session). Use it for successive adversarial rounds,
 "now fix what you found", or clarifying questions — never restate context in a
 fresh session. Execution-scoped flags are NOT inherited from the resumed
-session: repeat `-c model_reasoning_effort=xhigh`,
+session: repeat `-m gpt-5.6-sol`, `-c model_reasoning_effort=xhigh`,
 `--dangerously-bypass-approvals-and-sandbox`, and a fresh `-o` path on every
-resume, or the follow-up silently runs at default effort, sandboxed, and
-without an output file. `codex exec fork <session-id>` branches one history
+resume, or the follow-up silently runs on the default model at default
+effort, sandboxed, and without an output file. `codex exec fork <session-id>` branches one history
 into independent continuations.
 
 ## Discipline
