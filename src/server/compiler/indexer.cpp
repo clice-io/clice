@@ -620,7 +620,11 @@ kota::task<> Indexer::migrate_shard_views() {
         // manifests still read fresh — only the owner requeue rebuilds
         // their resident rows this session.
         LOG_ERROR("Index database growth failed: {}", grown.error());
-        shed_borrowed_shards();
+        if(db.corrupted()) {
+            recover_corrupt_database();
+        } else {
+            shed_borrowed_shards();
+        }
         co_return;
     }
     bool grew = *grown;
@@ -636,6 +640,9 @@ kota::task<> Indexer::migrate_shard_views() {
         auto advanced = db.advance_read_snapshot();
         if(!advanced) {
             LOG_WARN("Index read-snapshot advance failed: {}", advanced.error());
+            if(db.corrupted()) {
+                recover_corrupt_database();
+            }
             co_return;
         }
         if(*advanced == 0) {

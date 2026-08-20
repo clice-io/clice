@@ -386,6 +386,7 @@ public:
     std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
         MDB_txn* fresh = nullptr;
         if(int rc = mdb_txn_begin(env, nullptr, MDB_RDONLY, &fresh)) {
+            note_error(rc);
             return std::unexpected(std::string(mdb_strerror(rc)));
         }
         // No predecessor to retire when a grow() resized the map but
@@ -428,6 +429,7 @@ public:
         }
         MDB_txn* fresh = nullptr;
         if(int rc = mdb_txn_begin(env, nullptr, MDB_RDONLY, &fresh)) {
+            note_error(rc);
             // No snapshot at all: reads degrade to "missing" until a
             // later grow() succeeds. Persistence stays attached — closing
             // the environment would invalidate every borrowed buffer.
