@@ -35,6 +35,10 @@ TEST_CASE(PatternSema) {
 
     auto Pat5 = clice::GlobPattern::create("{a,b}[", 100);
     ASSERT_FALSE(Pat5.has_value());
+
+    // Same for an unmatched '[' whose last char is an escaping backslash.
+    auto Pat6 = clice::GlobPattern::create("{a,b}[\\", 100);
+    ASSERT_FALSE(Pat6.has_value());
 }
 
 TEST_CASE(SingleSlashPrefix) {

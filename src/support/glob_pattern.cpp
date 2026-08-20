@@ -88,7 +88,7 @@ static std::expected<llvm::SmallVector<std::string, 1>, std::string>
             }
             while(i != e && s[i] != ']') {
                 if(s[i] == '\\') {
-                    if(i == e) {
+                    if(i + 1 == e) {
                         return std::unexpected{
                             "Invalid glob pattern, unmatched '[', with stray "
                             "'\\' inside"};
