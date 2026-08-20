@@ -39,6 +39,9 @@ jobs:
             vscode:
               - 'editors/vscode/**'
               - '.github/workflows/publish-vscode.yml'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'tools/**'
             zed:
               - 'editors/zed/**'
               - '.github/workflows/main.yml'
@@ -47,6 +50,7 @@ jobs:
               - 'src/**'
               - 'include/**'
               - 'tests/**'
+              - 'tools/**'
               - 'config/**'
               - 'cmake/**'
               - 'scripts/**'
@@ -54,68 +58,22 @@ jobs:
               - 'editors/vscode/**'
               - 'pixi.toml'
               - 'pixi.lock'
+              - 'package.json'
+              - 'package-lock.json'
               - '.github/workflows/native-test.yml'
               - '.github/workflows/cross-test.yml'
               - '.github/workflows/cross-pair.yml'
               - '.github/workflows/editor-test.yml'
 
-  conventional-commit:
-    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check conventional commit format
-        env:
-          IS_PR: ${{ github.event_name == 'pull_request' }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          COMMIT_MSG: ${{ github.event.head_commit.message }}
-        run: |
-          pattern='^(feat|fix|refactor|chore|build|ci|docs|test|perf|style|revert)(\(.+\))?: .+'
-          if [[ "$IS_PR" == "true" ]]; then
-            subject="$PR_TITLE"
-            label="PR title"
-          else
-            subject=$(echo "$COMMIT_MSG" | head -n1)
-            label="Commit message"
-          fi
-          if [[ ! "$subject" =~ $pattern ]]; then
-            echo "::error::$label must follow conventional commit format: type(scope)?: description"
-            echo "  Valid types: feat, fix, refactor, chore, build, ci, docs, test, perf, style, revert"
-            echo "  Got: '$subject'"
-            exit 1
-          fi
-
-  format:
+  lint:
     needs: changes
-    if: ${{ needs.changes.outputs.format == 'true' }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - uses: ./.github/actions/setup-pixi
-        with:
-          environments: format
-
-      - name: Run formatter
-        run: pixi run format
-        continue-on-error: true
-
-      - name: Auto correct
-        uses: huacnlee/autocorrect-action@v2.5.4
-        with:
-          args: --lint ./docs
-        continue-on-error: true
-
-      - name: Check diff
-        run: |
-          if ! git diff --quiet; then
-            echo "::error::Formatting changes detected. Please run 'pixi run format' and commit the result."
-            git --no-pager diff --stat
-            git --no-pager diff
-            exit 1
-          fi
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    permissions:
+      contents: read
+      issues: write
+    uses: ./.github/workflows/lint.yml
+    with:
+      format: ${{ needs.changes.outputs.format == 'true' }}
 
   deploy:
     needs: changes
@@ -130,7 +88,7 @@ jobs:
       - uses: clice-io/docs@main
         with:
           project: clice
-          token: ${{ secrets.PUBLISH_DOCS }}
+          token: ${{ secrets.CLICE_DOCS }}
 
   vscode:
     needs: changes
@@ -199,8 +157,8 @@ jobs:
   checks-passed:
     if: ${{ always() && !startsWith(github.ref, 'refs/tags/') }}
     needs:
-      - conventional-commit
-      - format
+      - changes
+      - lint
       - deploy
       - vscode
       - zed
@@ -215,6 +173,6 @@ jobs:
         uses: re-actors/alls-green@v1.2.2
         with:
           allowed-skips: >-
-            conventional-commit,format,deploy,vscode,zed,
+            lint,deploy,vscode,zed,
             native-test,cross-test,editor-test,instant-vscode
           jobs: ${{ toJSON(needs) }}

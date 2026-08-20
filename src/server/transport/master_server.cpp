@@ -73,7 +73,7 @@ void MasterServer::initialize() {
     workspace.config = Config::load_from_workspace(workspace_root,
                                                    &config_issues,
                                                    &config_path,
-                                                   /*with_defaults=*/false);
+                                                   /*finalized=*/false);
     // Capture the raw sources now: the configuration dump below can only run
     // once the merged config has named the log directory.
     std::string raw_toml;
@@ -85,14 +85,14 @@ void MasterServer::initialize() {
     std::string raw_init_options = init_options_json;
 
     if(!init_options_json.empty()) {
-        if(auto ov = kota::codec::json::parse(init_options_json, workspace.config); !ov) {
+        if(auto ov = kota::codec::json::from_string(init_options_json, workspace.config); !ov) {
             LOG_GUIDANCE("Failed to apply initializationOptions: {}", ov.error().to_string());
         } else {
             LOG_INFO("Applied initializationOptions overlay");
         }
         init_options_json.clear();
     }
-    workspace.config.apply_defaults(workspace_root);
+    workspace.config.finalize(workspace_root);
 
     auto& cfg = workspace.config.project;
 
@@ -130,7 +130,7 @@ void MasterServer::initialize() {
     LOG_INFO("Server ready (stateful={}, stateless={}, idle={}ms)",
              cfg.stateful_worker_count.value,
              cfg.stateless_worker_count.value,
-             *cfg.idle_timeout_ms);
+             cfg.idle_timeout_ms.value);
 
     WorkerPoolOptions pool_opts;
     pool_opts.self_path = self_path;
@@ -165,17 +165,17 @@ void MasterServer::initialize() {
         // stamp matches the database that was just loaded.
         tracker = std::make_unique<FileTracker>(workspace, sessions, workspace_root);
         auto& tracker_cfg = workspace.config.tracker;
-        if(*tracker_cfg.cdb_poll_seconds > 0) {
+        if(tracker_cfg.cdb_poll_seconds.value > 0) {
             bg_tasks.spawn(cdb_poll_task());
         }
-        if(*tracker_cfg.workspace_poll_seconds > 0) {
+        if(tracker_cfg.workspace_poll_seconds.value > 0) {
             bg_tasks.spawn(workspace_poll_task());
         }
     }
 }
 
 kota::task<> MasterServer::cdb_poll_task() {
-    auto interval = std::chrono::seconds(*workspace.config.tracker.cdb_poll_seconds);
+    auto interval = std::chrono::seconds(workspace.config.tracker.cdb_poll_seconds.value);
     while(true) {
         co_await kota::sleep(interval);
         auto events = tracker->tick_cdb();
@@ -186,7 +186,7 @@ kota::task<> MasterServer::cdb_poll_task() {
 }
 
 kota::task<> MasterServer::workspace_poll_task() {
-    auto interval = std::chrono::seconds(*workspace.config.tracker.workspace_poll_seconds);
+    auto interval = std::chrono::seconds(workspace.config.tracker.workspace_poll_seconds.value);
     while(true) {
         co_await kota::sleep(interval);
         auto events = co_await tracker->tick_workspace();
@@ -306,9 +306,9 @@ void MasterServer::on_agentic_query() {
         if(!disk) {
             continue;
         }
-        auto shard_it = workspace.merged_indices.find(path_id);
+        auto shard_it = workspace.shards.find(path_id);
         bool shard_current =
-            shard_it != workspace.merged_indices.end() && *disk == shard_it->second.content();
+            shard_it != workspace.shards.end() && shard_it->second.matches_content(*disk);
         indexer.enqueue(path_id,
                         shard_current ? ReindexReason::DepsOnly : ReindexReason::ContentChanged);
     }
@@ -365,6 +365,10 @@ void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
     // DirtySet via mark_ast_dirty.
     for(auto path_id: dirty.drop_context) {
         contexts.drop_header_context(path_id);
+    }
+
+    for(auto path_id: dirty.drop_index) {
+        indexer.drop_index(path_id);
     }
 
     for(auto path_id: dirty.reindex_content_changed) {
@@ -485,10 +489,9 @@ void MasterServer::open_cache_store() {
     store->register_namespace(
         {.name = "pcm", .extension = ".pcm", .policy = CachePolicy::LRU, .max_bytes = 8 * GiB});
     store->register_namespace(
-        {.name = "index", .extension = ".idx", .policy = CachePolicy::Persistent});
-    store->register_namespace(
         {.name = "header_context", .extension = ".h", .policy = CachePolicy::Scratch});
     workspace.store.emplace(std::move(*store));
+    workspace.index_db = index::open_database(*workspace.store, cfg.index_db);
     LOG_INFO("Cache store: {}", workspace.store->base_dir());
 
     workspace.load_cache(contexts);
@@ -506,7 +509,8 @@ void MasterServer::load_workspace() {
     auto cdb_path = discover_compile_commands(workspace.config, workspace_root);
     if(cdb_path.empty()) {
         LOG_GUIDANCE(
-            "No compile_commands.json found in workspace {}. Compile commands will be " "guessed; see https://clice.io/en/guide/quick-start for setup.",
+            "No compile_commands.json found in workspace {}. Compile commands will be "
+            "guessed; see https://clice.io/en/guide/quick-start for setup.",
             workspace_root);
         // Persisted index shards are CDB-independent; load them so a
         // database generated later (picked up by the CDB poll) starts from
@@ -538,7 +542,8 @@ void MasterServer::load_workspace() {
             ? 100.0 * static_cast<double>(report.includes_resolved) / report.includes_found
             : 100.0;
     LOG_INFO(
-        "Dependency scan: {}ms, {} files ({} source + {} header), " "{} edges, {}/{} resolved ({:.1f}%), {} waves",
+        "Dependency scan: {}ms, {} files ({} source + {} header), "
+        "{} edges, {}/{} resolved ({:.1f}%), {} waves",
         report.elapsed_ms,
         report.total_files,
         report.source_files,
@@ -559,7 +564,7 @@ void MasterServer::load_workspace() {
     workspace.build_module_map();
     indexer.load();
 
-    if(*cfg.enable_indexing) {
+    if(cfg.enable_indexing.value) {
         for(auto& entry: workspace.cdb.get_entries()) {
             auto file = workspace.cdb.resolve_path(entry.file);
             auto server_id = workspace.path_pool.intern(file);

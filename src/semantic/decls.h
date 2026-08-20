@@ -16,6 +16,27 @@ bool is_templated(const clang::Decl* decl);
 /// Check whether the decl is an implicit template instantiation.
 bool is_implicit_instantiation(const clang::NamedDecl* decl);
 
+/// Check whether the decl heads a template-instantiation subtree: an
+/// implicit instantiation, or the decl an explicit instantiation directive
+/// creates. Everything instantiated reuses the pattern's source locations;
+/// of the whole subtree only the explicit directive itself is written.
+///
+/// FIXME(explicit-instantiation): clang mislocates the function and
+/// variable directive forms at the pattern. The class form only works as
+/// long as each written directive happens to own its own specialization
+/// redecl — the written info lives on the specialization, not the
+/// directive, so any node reuse loses a directive's locations. clang 23's
+/// ExplicitInstantiationDecl (llvm/llvm-project#191658) records each
+/// written directive, letting features stop special-casing all forms.
+bool is_instantiation(const clang::Decl* decl);
+
+/// Check whether the decl is a member of a class template instantiation,
+/// instantiated from the pattern's corresponding member. Such members
+/// repeat the directive's specialization kind when the instantiation is
+/// explicit, but unlike the directive's own decl nothing about them is
+/// written.
+bool is_member_specialization(const clang::Decl* decl);
+
 /// Return the decl where it is instantiated from. It could be a template
 /// decl or a member of a class template. If the decl is a full
 /// specialization, return itself.

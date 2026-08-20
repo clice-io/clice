@@ -8,8 +8,8 @@
 /// - snap: skip
 
 // snap: skip because this file is directives-only, so the server's
-// preamble PCH swallows the whole file and the wire reply loses the region
-// fold that the standalone (no-PCH) compile reports. Un-skip once the two
+// preamble PCH swallows the whole file and the server reply loses the region
+// fold that the inspect-path (no-PCH) compile reports. Un-skip once the two
 // paths agree.
 
 #pragma region Configuration

@@ -1,5 +1,0 @@
----
-created_at: 2026-07-31
-input_file: explicit_instantiation.cpp
----
-- { loc: "13:16", text: "Holder", kind: struct, modifiers: [templated] }

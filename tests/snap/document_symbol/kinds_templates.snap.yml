@@ -1,0 +1,13 @@
+---
+created_at: 2026-08-01
+input_file: kinds_templates.cpp
+---
+- { name: "templates", kind: Namespace, range: "7:0-32:1", selection_range: "7:10-7:19" }
+-   { name: "Box", kind: Struct, range: "10:0-14:1", selection_range: "10:7-10:10", detail: "template struct" }
+-     { name: "value", kind: Field, range: "11:4-11:11", selection_range: "11:6-11:11", detail: "T" }
+-     { name: "reset", kind: Method, range: "13:4-13:16", selection_range: "13:9-13:14", detail: "void ()" }
+-   { name: "Box<T>::reset", kind: Method, range: "16:0-17:23", selection_range: "17:13-17:18", detail: "void ()" }
+-   { name: "zero", kind: Function, range: "20:0-22:1", selection_range: "20:2-20:6", detail: "template T ()" }
+-   { name: "pi", kind: Variable, range: "25:0-25:27", selection_range: "25:12-25:14", detail: "template const T" }
+-   { name: "Small", kind: TypeParameter, range: "27:0-28:30", selection_range: "28:8-28:13", detail: "concept" }
+-   { name: "takes_concept", kind: Function, range: "30:0-30:32", selection_range: "30:5-30:18", detail: "template void (Small auto)" }

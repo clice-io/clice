@@ -1,0 +1,20 @@
+---
+created_at: 2026-08-01
+input_file: kinds_specializations.cpp
+---
+- { name: "spec", kind: Namespace, range: "7:0-56:1", selection_range: "7:10-7:14" }
+-   { name: "Box", kind: Struct, range: "10:0-12:1", selection_range: "10:7-10:10", detail: "template struct" }
+-     { name: "value", kind: Field, range: "11:4-11:11", selection_range: "11:6-11:11", detail: "T" }
+-   { name: "Box<void>", kind: Struct, range: "14:0-15:19", selection_range: "15:7-15:10", detail: "struct" }
+-   { name: "Box<T *>", kind: Struct, range: "17:0-20:1", selection_range: "18:7-18:10", detail: "template struct" }
+-     { name: "pointee", kind: Field, range: "19:4-19:14", selection_range: "19:7-19:14", detail: "T *" }
+-   { name: "zero", kind: Function, range: "23:0-25:1", selection_range: "23:2-23:6", detail: "template T ()" }
+-   { name: "zero<int>", kind: Function, range: "27:0-28:15", selection_range: "28:4-28:8", detail: "int ()" }
+-   { name: "pi", kind: Variable, range: "31:0-31:21", selection_range: "31:12-31:14", detail: "template const T" }
+-   { name: "pi<int>", kind: Variable, range: "33:0-34:25", selection_range: "34:14-34:16", detail: "const int" }
+-   { name: "pi<T *>", kind: Variable, range: "36:0-37:29", selection_range: "37:13-37:15", detail: "template T *const" }
+-   { name: "Deduced", kind: Struct, range: "40:0-42:1", selection_range: "40:7-40:14", detail: "template struct" }
+-     { name: "Deduced", kind: Method, range: "41:4-41:18", selection_range: "41:4-41:11", detail: "(T)" }
+-   { name: "<deduction guide for Deduced>", kind: Function, range: "45:0-45:25", selection_range: "45:0-45:7", detail: "template auto (T *) -> Deduced<T>" }
+-   { name: "instantiated", kind: Variable, range: "48:0-48:21", selection_range: "48:9-48:21", detail: "Box<int>" }
+-   { name: "Box<char>", kind: Struct, range: "53:0-53:25", selection_range: "53:16-53:19", detail: "struct" }

@@ -271,7 +271,7 @@ FileScanResult scan_file_worker(const char* path, std::uint32_t path_id, std::ui
         return result;
     }
 
-    result.scan_result = scan((*buf)->getBuffer());
+    result.scan_result = scan_quick((*buf)->getBuffer());
     auto t2 = std::chrono::steady_clock::now();
     result.scan_us = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
 
@@ -784,7 +784,8 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
         report.wave_stats.push_back(ws);
 
         LOG_INFO(
-            "Wave {}: {} files | read+scan={}ms resolve={}ms graph={}ms | next={} " "prefetch={}",
+            "Wave {}: {} files | read+scan={}ms resolve={}ms graph={}ms | next={} "
+            "prefetch={}",
             wave_num,
             current_wave.size(),
             p1,

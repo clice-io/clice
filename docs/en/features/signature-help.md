@@ -30,12 +30,125 @@ Registered: `(`, `)`, `{`, `}`, `<`, `>`, `,`
 
 ## Overload Signatures
 
-- [x] Function overload signatures
-- [x] Active parameter tracking
+<!-- BEGIN GENERATED ITEMS: Overload Signatures -->
+
+- [x] Function overloads — every overload of the callee, each with its parameter list and return type
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  void foo();
+  void foo(int x);
+  void foo(int x, int y);
+
+  int main() {
+      foo();
+  }
+  ```
+
+  </details>
+
+- [x] Active parameter tracking — the parameter under the cursor is bracketed; the point sits in the second argument
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  void bar(int first, double second, char third);
+
+  int main() {
+      bar(1, 2.0, 'c');
+  }
+  ```
+
+  </details>
+
+- [x] Member function overloads — a non-const receiver lists both the const and non-const overloads; the trailing const qualifier is not rendered in the label
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  struct Buffer {
+      int at(int index);
+      int at(int index) const;
+  };
+
+  int main() {
+      Buffer b;
+      b.at(0);
+  }
+  ```
+
+  </details>
+
+- [x] Default arguments in the label — parameters with defaults render their initializer in the signature
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  void configure(int width, int height = 100, bool visible = true);
+
+  int main() {
+      configure(1);
+  }
+  ```
+
+  </details>
+
+- [x] C-style variadic function — named parameters are listed while the trailing ellipsis is elided from the label
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  void record(int code, ...);
+
+  int main() {
+      record(0);
+  }
+  ```
+
+  </details>
+
+- [x] Variadic template pack — the parameter pack renders as the callee's uninstantiated signature
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  template <typename... Args>
+  void emit(Args... args);
+
+  int main() {
+      emit();
+  }
+  ```
+
+  </details>
+
+- [x] Active parameter past a shorter overload — with the cursor in the second argument, only overloads that declare a second parameter remain
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  void draw();
+  void draw(int x);
+  void draw(int x, int y);
+
+  int main() {
+      draw(1, 2);
+  }
+  ```
+
+  </details>
+
+<!-- END GENERATED ITEMS -->
+
 - [x] Template instantiation pattern resolution (shows template pattern, not instantiation)
-- [x] Parameter labels with types
-- [x] Return type in signature label
-- [x] Parameter label byte offsets for precise highlighting
 - [ ] Filter const/non-const overload duplicates — don't show both when only one is viable ([clangd#50](https://github.com/clangd/clangd/issues/50))
 
   ```cpp
@@ -70,21 +183,127 @@ Registered: `(`, `)`, `{`, `}`, `<`, `>`, `,`
 
 ## Special Call Contexts
 
-- [x] Template argument signature help ([clangd#299](https://github.com/clangd/clangd/issues/299), [clangd#1387](https://github.com/clangd/clangd/issues/1387))
+<!-- BEGIN GENERATED ITEMS: Special Call Contexts -->
+
+- [x] Constructors and aggregates — constructor calls render without a return arrow; aggregate initialization lists the fields in braces ([clangd#726](https://github.com/clangd/clangd/issues/726), [clangd#2541](https://github.com/clangd/clangd/issues/2541))
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
-  template<typename Key, typename Value, typename Compare = less<Key>>
-  class SortedMap;
+  struct Point {
+      int x;
+      int y;
+  };
 
-  SortedMap<int, ^  // show: Key = int, Value = ?, Compare = less<Key>
+  struct Widget {
+      Widget(int a, double b);
+  };
+
+  int main() {
+      Point p{1, 2};
+      Widget w(3, 4.0);
+  }
   ```
 
-- [x] Aggregate initialization — show field names as "parameters" ([clangd#726](https://github.com/clangd/clangd/issues/726), [clangd#2541](https://github.com/clangd/clangd/issues/2541))
+  </details>
+
+- [x] Function pointer calls — the prototype's parameter names show, not just the types
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
-  struct Point { int x, y, z; };
-  Point p = {1, ^  // show: .x = int, .y = int, .z = int (active: .y)
+  int main() {
+      void (*callback)(int code, double value) = nullptr;
+      callback(5, 1.5);
+  }
   ```
+
+  </details>
+
+- [x] Template argument lists — template parameters show as the signature; a class template points at its kind, not a return type ([clangd#299](https://github.com/clangd/clangd/issues/299), [clangd#1387](https://github.com/clangd/clangd/issues/1387))
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  template <typename T, typename U>
+  struct Pair {};
+
+  Pair<int,  double> p;
+  ```
+
+  </details>
+
+- [x] Nested calls — the inner call's help shows at the inner marker and the outer call's help at the outer marker
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  int inner(int a);
+  int outer(int b, int c);
+
+  int main() {
+      outer(inner(1), 2);
+  }
+  ```
+
+  </details>
+
+- [x] Functor call — invoking an object routes signature help to its operator() overload
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  struct Adder {
+      int operator()(int a, int b);
+  };
+
+  int main() {
+      Adder add;
+      add(1, 2);
+  }
+  ```
+
+  </details>
+
+- [x] Lambda call — calling a lambda variable offers the closure's operator() parameters
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  int main() {
+      auto square = [](int n) {
+          return n * n;
+      };
+      square(3);
+  }
+  ```
+
+  </details>
+
+- [x] New expression — a new-expression's constructor arguments drive signature help
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  struct Node {
+      Node(int value, Node* next);
+  };
+
+  int main() {
+      Node* n = new Node(0, nullptr);
+  }
+  ```
+
+  </details>
+
+<!-- END GENERATED ITEMS -->
 
 - [ ] Inherited constructors — show base class constructors when calling from derived ([clangd#1363](https://github.com/clangd/clangd/issues/1363))
 
@@ -180,6 +399,6 @@ Registered: `(`, `)`, `{`, `}`, `<`, `>`, `,`
 
 ## Changelog
 
-| Date | Change                                                                      | PR  |
-| ---- | --------------------------------------------------------------------------- | --- |
-| —    | Function overload signatures, active parameter tracking, trigger characters | —   |
+| Date       | Change                                                                      | PR                                                 |
+| ---------- | --------------------------------------------------------------------------- | -------------------------------------------------- |
+| 2025-08-23 | Function overload signatures, active parameter tracking, trigger characters | [#187](https://github.com/clice-io/clice/pull/187) |

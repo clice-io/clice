@@ -13,7 +13,7 @@ namespace {
 TEST_SUITE(IncludeResolver) {
 
 TEST_CASE(ScanAngledVsQuoted) {
-    auto result = scan(R"(
+    auto result = scan_quick(R"(
 #include <vector>
 #include "local.h"
 )");
@@ -29,7 +29,7 @@ TEST_CASE(ScanAngledVsQuoted) {
 }
 
 TEST_CASE(ScanIncludeNext) {
-    auto result = scan(R"(
+    auto result = scan_quick(R"(
 #include_next <stdlib.h>
 )");
 
@@ -40,7 +40,7 @@ TEST_CASE(ScanIncludeNext) {
 }
 
 TEST_CASE(ScanMixedDirectives) {
-    auto result = scan(R"(
+    auto result = scan_quick(R"(
 #include <system.h>
 #include "quoted.h"
 #ifdef FOO

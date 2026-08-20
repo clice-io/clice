@@ -6,164 +6,281 @@
 
 namespace clice::testing {
 namespace {
-TEST_SUITE(SourceText) {
 
-TEST_CASE(IgnoreComments) {
-    std::size_t count = 0;
-
-    std::vector<clang::tok::TokenKind> kinds = {
-        clang::tok::raw_identifier,
-        clang::tok::raw_identifier,
-        clang::tok::equal,
-        clang::tok::numeric_constant,
-        clang::tok::semi,
-    };
-
-    {
-        Lexer lexer("int x = 1; // comment", true);
-
-        while(true) {
-            Token token = lexer.advance();
-            if(token.is_eof()) {
-                break;
-            }
-
-            ASSERT_EQ(token.kind, kinds[count]);
-            count += 1;
-        }
-
-        ASSERT_EQ(count, 5);
-    }
-
-    count = 0;
-
-    kinds = {
-        clang::tok::raw_identifier,
-        clang::tok::raw_identifier,
-        clang::tok::equal,
-        clang::tok::numeric_constant,
-        clang::tok::semi,
-        clang::tok::comment,
-    };
-
-    {
-        Lexer lexer("int x = 1; // comment", false);
-
-        while(true) {
-            Token token = lexer.advance();
-            if(token.is_eof()) {
-                break;
-            }
-
-            ASSERT_EQ(token.kind, kinds[count]);
-            count += 1;
-        }
-
-        ASSERT_EQ(count, 6);
-    }
-}
-
-TEST_CASE(LexInclude) {
-    Lexer lexer(R"(
-#include <iostream>
-#include "gtest/test.h"
-module;
-int x = 1;
-)",
-                true,
-                nullptr,
-                false);
-
+/// Drain the lexer and return every token before eof.
+std::vector<Token> lex_all(Lexer& lexer) {
+    std::vector<Token> tokens;
     while(true) {
         Token token = lexer.advance();
         if(token.is_eof()) {
             break;
         }
+        tokens.push_back(token);
     }
+    return tokens;
+}
+
+TEST_SUITE(SourceText) {
+
+TEST_CASE(IgnoreComments) {
+    llvm::StringRef content = "int x = 1; // comment";
+
+    std::vector<TokenKind> kinds = {
+        clang::tok::raw_identifier,
+        clang::tok::raw_identifier,
+        clang::tok::equal,
+        clang::tok::numeric_constant,
+        clang::tok::semi,
+    };
+
+    {
+        Lexer lexer(content);
+        auto tokens = lex_all(lexer);
+        ASSERT_EQ(tokens.size(), kinds.size());
+        for(std::size_t i = 0; i < kinds.size(); i += 1) {
+            ASSERT_EQ(tokens[i].kind, kinds[i]);
+        }
+    }
+
+    kinds.push_back(clang::tok::comment);
+
+    {
+        Lexer lexer(content, {.keep_comments = true});
+        auto tokens = lex_all(lexer);
+        ASSERT_EQ(tokens.size(), kinds.size());
+        for(std::size_t i = 0; i < kinds.size(); i += 1) {
+            ASSERT_EQ(tokens[i].kind, kinds[i]);
+        }
+        ASSERT_EQ(tokens.back().text(content), "// comment");
+    }
+}
+
+TEST_CASE(TokenRanges) {
+    llvm::StringRef content = "int foo = 42;";
+    Lexer lexer(content);
+    auto tokens = lex_all(lexer);
+
+    ASSERT_EQ(tokens.size(), 5U);
+    ASSERT_EQ(tokens[0].text(content), "int");
+    ASSERT_EQ(tokens[1].text(content), "foo");
+    ASSERT_EQ(tokens[1].range.begin, 4U);
+    ASSERT_EQ(tokens[1].range.end, 7U);
+    ASSERT_EQ(tokens[3].text(content), "42");
+    ASSERT_EQ(tokens[4].text(content), ";");
+}
+
+TEST_CASE(LexInclude) {
+    llvm::StringRef content = R"(
+#include <iostream>
+#include "gtest/test.h"
+module;
+int x = 1;
+)";
+    Lexer lexer(content);
+    auto tokens = lex_all(lexer);
+
+    std::vector<TokenKind> kinds = {
+        clang::tok::hash,            // #
+        clang::tok::raw_identifier,  // include
+        clang::tok::header_name,     // <iostream>
+        clang::tok::eod,
+        clang::tok::hash,            // #
+        clang::tok::raw_identifier,  // include
+        clang::tok::header_name,     // "gtest/test.h"
+        clang::tok::eod,
+        clang::tok::raw_identifier,  // module
+        clang::tok::semi,            // ;
+        clang::tok::eod,
+        clang::tok::raw_identifier,  // int
+        clang::tok::raw_identifier,  // x
+        clang::tok::equal,           // =
+        clang::tok::numeric_constant,
+        clang::tok::semi,
+    };
+
+    ASSERT_EQ(tokens.size(), kinds.size());
+    for(std::size_t i = 0; i < kinds.size(); i += 1) {
+        ASSERT_EQ(tokens[i].kind, kinds[i]);
+    }
+
+    ASSERT_EQ(tokens[2].text(content), "<iostream>");
+    ASSERT_TRUE(tokens[1].is_pp_keyword);
+    ASSERT_EQ(tokens[6].text(content), R"("gtest/test.h")");
+    ASSERT_TRUE(tokens[8].is_pp_keyword);
 }
 
 };  // TEST_SUITE(SourceText)
 
-TEST_SUITE(DirectiveArgument) {
+TEST_SUITE(HeaderNameLexing) {
 
-void EXPECT_RANGE(llvm::StringRef content, std::uint32_t offset, llvm::StringRef expected) {
-    auto result = find_directive_argument(content, offset);
-    ASSERT_TRUE(result.has_value());
-    ASSERT_EQ(content.substr(result->begin, result->length()), expected);
+/// The text of the first header-name token in `content`, or empty.
+llvm::StringRef first_header_name(llvm::StringRef content) {
+    Lexer lexer(content);
+    while(true) {
+        Token token = lexer.advance();
+        if(token.is_eof()) {
+            return "";
+        }
+        if(token.is_header_name()) {
+            return token.text(content);
+        }
+    }
 }
 
-void EXPECT_NONE(llvm::StringRef content, std::uint32_t offset) {
-    auto result = find_directive_argument(content, offset);
-    ASSERT_FALSE(result.has_value());
+TEST_CASE(HasIncludeArgument) {
+    ASSERT_EQ(first_header_name("#if __has_include(<vector>)"), "<vector>");
+    ASSERT_EQ(first_header_name(R"(#if __has_include("foo.h"))"), R"("foo.h")");
+    ASSERT_EQ(first_header_name("#if __has_include_next(<stdlib.h>)"), "<stdlib.h>");
 }
 
-TEST_CASE(IncludeQuoted) {
-    llvm::StringRef src = R"(#include "foo.h")";
-    EXPECT_RANGE(src, 0, R"("foo.h")");
+TEST_CASE(HasEmbedArgument) {
+    ASSERT_EQ(first_header_name(R"(#if __has_embed("data.bin"))"), R"("data.bin")");
 }
 
-TEST_CASE(IncludeAngled) {
-    llvm::StringRef src = "#include <iostream>";
-    EXPECT_RANGE(src, 0, "<iostream>");
+TEST_CASE(IncludeNextArgument) {
+    ASSERT_EQ(first_header_name("#include_next <stdlib.h>"), "<stdlib.h>");
 }
 
-TEST_CASE(IncludeMacro) {
-    llvm::StringRef src = "#include HEADER";
-    EXPECT_RANGE(src, 0, "HEADER");
+TEST_CASE(EmbedArgument) {
+    ASSERT_EQ(first_header_name(R"(#embed "data.bin")"), R"("data.bin")");
 }
 
-TEST_CASE(HasIncludeQuoted) {
-    llvm::StringRef src = R"(#if __has_include("foo.h"))";
-    // offset at __has_include
-    auto pos = src.find("__has_include");
-    EXPECT_RANGE(src, static_cast<std::uint32_t>(pos), R"("foo.h")");
+TEST_CASE(HashImportArgument) {
+    ASSERT_EQ(first_header_name("#import <Foundation/Foundation.h>"), "<Foundation/Foundation.h>");
 }
 
-TEST_CASE(HasIncludeAngled) {
-    llvm::StringRef src = "#if __has_include(<vector>)";
-    auto pos = src.find("__has_include");
-    EXPECT_RANGE(src, static_cast<std::uint32_t>(pos), "<vector>");
+TEST_CASE(MacroArgument) {
+    // A macro filename argument stays an ordinary identifier.
+    llvm::StringRef content = "#include HEADER";
+    Lexer lexer(content);
+    auto tokens = lex_all(lexer);
+
+    ASSERT_TRUE(tokens.size() >= 3U);
+    ASSERT_EQ(first_header_name(content), "");
+    ASSERT_TRUE(tokens[2].is_identifier());
+    ASSERT_EQ(tokens[2].text(content), "HEADER");
 }
 
-TEST_CASE(EmbedQuoted) {
-    llvm::StringRef src = R"(#embed "data.bin")";
-    EXPECT_RANGE(src, 0, R"("data.bin")");
+TEST_CASE(CommentThenDirective) {
+    // A retained leading comment must not consume the start-of-line state
+    // the directive machinery keys on.
+    llvm::StringRef content = "/* c */ #include <x>\nint y;\n";
+    Lexer lexer(content, {.keep_comments = true});
+
+    auto comment = lexer.advance();
+    ASSERT_EQ(comment.kind, clang::tok::comment);
+
+    auto hash = lexer.advance();
+    ASSERT_EQ(hash.kind, clang::tok::hash);
+    ASSERT_TRUE(hash.is_at_start_of_line);
+
+    auto keyword = lexer.advance();
+    ASSERT_TRUE(keyword.is_pp_keyword);
+
+    auto name = lexer.advance();
+    ASSERT_TRUE(name.is_header_name());
+    ASSERT_EQ(name.text(content), "<x>");
 }
 
-TEST_CASE(HasEmbedQuoted) {
-    llvm::StringRef src = R"(#if __has_embed("data.bin"))";
-    auto pos = src.find("__has_embed");
-    EXPECT_RANGE(src, static_cast<std::uint32_t>(pos), R"("data.bin")");
+TEST_CASE(SplicedInclude) {
+    // The token spelling legitimately contains the line splice; only the
+    // trailing part is the written filename.
+    ASSERT_TRUE(first_header_name("#include \\\n<foo.h>\nint x;").ends_with("<foo.h>"));
 }
 
-TEST_CASE(MultilineOffset) {
-    llvm::StringRef src = "#include \"a.h\"\n#include \"b.h\"";
-    // offset pointing into the second line
-    auto pos = src.find("#include \"b.h\"");
-    EXPECT_RANGE(src, static_cast<std::uint32_t>(pos), R"("b.h")");
+TEST_CASE(EmptyInclude) {
+    llvm::StringRef content = "#include \nint x;";
+    Lexer lexer(content);
+    auto tokens = lex_all(lexer);
+
+    // No filename: the directive just ends; nothing is lexed as a header name.
+    ASSERT_EQ(first_header_name(content), "");
+    ASSERT_EQ(tokens[2].kind, clang::tok::eod);
 }
 
-TEST_CASE(EmptyDirective) {
-    llvm::StringRef src = "#include \n";
-    EXPECT_NONE(src, 0);
+};  // TEST_SUITE(HeaderNameLexing)
+
+TEST_SUITE(FromLine) {
+
+TEST_CASE(MidFileLine) {
+    llvm::StringRef content = "int a;\n#include <foo>\nint b;\n";
+    auto offset = static_cast<std::uint32_t>(content.find("include"));
+
+    auto lexer = Lexer::from_line(content, offset);
+    auto hash = lexer.advance();
+    ASSERT_EQ(hash.kind, clang::tok::hash);
+    ASSERT_TRUE(hash.is_at_start_of_line);
+    ASSERT_EQ(hash.range.begin, static_cast<std::uint32_t>(content.find('#')));
+
+    auto keyword = lexer.advance();
+    ASSERT_TRUE(keyword.is_pp_keyword);
+    ASSERT_EQ(keyword.text(content), "include");
+
+    auto name = lexer.advance();
+    ASSERT_TRUE(name.is_header_name());
+    ASSERT_EQ(name.text(content), "<foo>");
 }
 
-TEST_CASE(HasIncludeFromLineStart) {
-    llvm::StringRef src = "#if __has_include(<vector>)";
-    EXPECT_RANGE(src, 0, "<vector>");
+TEST_CASE(FirstLine) {
+    llvm::StringRef content = "int a = 1;\nint b;\n";
+    auto lexer = Lexer::from_line(content, 4);
+    ASSERT_EQ(lexer.advance().text(content), "int");
 }
 
-TEST_CASE(HasEmbedFromLineStart) {
-    llvm::StringRef src = R"(#if __has_embed("data.bin"))";
-    EXPECT_RANGE(src, 0, R"("data.bin")");
+TEST_CASE(OffsetAtNewline) {
+    // An offset on the terminating newline still lexes the line it ends.
+    llvm::StringRef content = "int a;\nint b;\n";
+    auto offset = static_cast<std::uint32_t>(content.find('\n', content.find('b')));
+
+    auto lexer = Lexer::from_line(content, offset);
+    auto token = lexer.advance();
+    ASSERT_EQ(token.text(content), "int");
+    ASSERT_EQ(token.range.begin, static_cast<std::uint32_t>(content.find("int b")));
 }
 
-TEST_CASE(IncludeNext) {
-    llvm::StringRef src = "#include_next <stdlib.h>";
-    EXPECT_RANGE(src, 0, "<stdlib.h>");
+TEST_CASE(EmptyContent) {
+    auto lexer = Lexer::from_line("", 0);
+    ASSERT_TRUE(lexer.advance().is_eof());
 }
 
-};  // TEST_SUITE(DirectiveArgument)
+TEST_CASE(ContinuesToEnd) {
+    // from_line picks the starting point; lexing continues past the line.
+    llvm::StringRef content = "int a;\nint b;\nint c;\n";
+    auto lexer = Lexer::from_line(content, static_cast<std::uint32_t>(content.find('b')));
+    auto tokens = lex_all(lexer);
+    ASSERT_EQ(tokens.size(), 6U);
+    ASSERT_EQ(tokens.back().text(content), ";");
+}
+
+};  // TEST_SUITE(FromLine)
+
+TEST_SUITE(IncompleteInput) {
+
+TEST_CASE(UnterminatedHeaderName) {
+    llvm::StringRef content = "#include <iost";
+    Lexer lexer(content);
+    auto tokens = lex_all(lexer);
+    ASSERT_TRUE(tokens.size() >= 2U);
+}
+
+TEST_CASE(UnterminatedString) {
+    llvm::StringRef content = R"(const char* s = "abc)";
+    Lexer lexer(content);
+    auto tokens = lex_all(lexer);
+    ASSERT_TRUE(tokens.size() >= 4U);
+}
+
+TEST_CASE(UnterminatedComment) {
+    // clang's raw lexer swallows a block comment left unterminated at eof;
+    // no comment token is produced for it.
+    llvm::StringRef content = "int x; /* abc";
+    Lexer lexer(content, {.keep_comments = true});
+    auto tokens = lex_all(lexer);
+    ASSERT_EQ(tokens.size(), 3U);
+    ASSERT_EQ(tokens.back().kind, clang::tok::semi);
+}
+
+};  // TEST_SUITE(IncompleteInput)
 
 }  // namespace
 }  // namespace clice::testing

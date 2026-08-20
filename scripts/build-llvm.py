@@ -103,7 +103,7 @@ def main():
     )
     parser.add_argument(
         "--target-triple",
-        help="Cross-compilation target triple (e.g. x86_64-apple-darwin, aarch64-linux-gnu, aarch64-pc-windows-msvc)",
+        help="Cross-compilation target triple (e.g. x86_64-apple-darwin, aarch64-unknown-linux-gnu, aarch64-pc-windows-msvc)",
     )
 
     args = parser.parse_args()
@@ -182,6 +182,7 @@ def main():
             f"-DCMAKE_C_FLAGS={c_flags}",
             f"-DCMAKE_CXX_FLAGS={c_flags}",
             "-DLLVM_USE_LINKER=lld-link",
+            "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded",
         ]
     else:
         cxx_flags = "-w"

@@ -140,6 +140,17 @@ If any step in the resolution process fails (lookup failure, cycle detection tri
 
 **Why graceful degradation instead of error reporting?** Template resolution is inherently heuristic -- it is impossible to cover every edge case in C++ templates. Graceful degradation ensures that resolution failure is never worse than "not resolving at all," while providing a significant experience improvement in the cases where resolution succeeds.
 
+## Instantiations as Implementations
+
+Pseudo-instantiation works from the written side of a template: it reasons about what a dependent name _could_ mean from the pattern alone. The translation unit often holds a complementary source of truth -- the _actual_ instantiations, which record what every dependent name _does_ mean for each concrete argument list.
+
+clice deliberately treats a template like a duck-typed interface and each of its instantiations like an implementation of that interface, analogous to how virtual functions relate to their overrides. This is a long-term direction, and it already shapes today's behavior:
+
+- Semantic classification does not skip instantiated code. An instantiation reuses the pattern's source locations, so the resolution of a dependent name inside an instantiated body lands on the very token the user wrote in the template. With one instantiation the dependent name is classified as its actual resolution; when instantiations agree on the kind, only the modifiers they all share survive; when they disagree (one resolves a name to a function, another to a variable), the token is classified as a conflict -- disagreement between implementations is information, not noise. Today the unit records only the instantiations an explicit instantiation definition delivers; recording implicit instantiations at their points of use is a planned extension of the same direction.
+- Planned: go-to-implementation on a dependent name will list its resolution in each instantiation, the same way go-to-implementation on a virtual function lists its overrides. How these implementation relations are modeled in the symbol index is intentionally left open for now.
+
+Walk-based features (inlay hints, folding ranges, document symbols) still skip instantiated subtrees: they emit location-keyed items, where an instantiation can only repeat -- or contradict -- what the pattern already produced. The distinction is deliberate: merging many resolutions is meaningful for classification and navigation, but not for per-location rendering.
+
 ## Known Limitations
 
 - **Pack expansion**: Currently only single-element packs are handled (e.g., pack forwarding); multi-element pack expansion (e.g., `Us... = {int, float}`) is not supported.

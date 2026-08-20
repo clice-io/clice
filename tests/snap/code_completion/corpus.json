@@ -1,0 +1,4 @@
+{
+  "notes": "Freestanding, -undef and -nostdinc keep host stdlib symbols, platform macros and system search directories out of the candidate set, so completion replies stay identical across hosts. inc/ backs the include-completion fixtures.",
+  "flags": ["-I${corpus}/inc", "-std=c++20", "-ffreestanding", "-undef", "-nostdinc"]
+}

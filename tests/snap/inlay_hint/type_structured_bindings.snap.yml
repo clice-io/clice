@@ -1,0 +1,8 @@
+---
+created_at: 2026-07-31
+input_file: type_structured_bindings.cpp
+---
+- { pos: "17:11", kind: Type, label: ": int" }
+- { pos: "17:14", kind: Type, label: ": float" }
+- { pos: "18:11", kind: Type, label: ": int" }
+- { pos: "18:14", kind: Type, label: ": int" }

@@ -4,13 +4,13 @@ This section covers development and release workflows for the editor extensions 
 
 ## VSCode
 
-The VSCode extension uses the Node/PNPM/VSCE toolchain. Work inside the pixi `node` environment for consistent versions.
+The VSCode extension uses the Node/npm/VSCE toolchain. Work inside the pixi `node` environment for consistent versions.
 
 ```shell
 # prepare environment (install pixi first)
 pixi shell -e node
 
-# install deps (uses pnpm-lock)
+# install deps (uses package-lock)
 pixi run install-vscode
 
 # package the extension; outputs editors/vscode/*.vsix
@@ -29,21 +29,22 @@ pixi run publish-vscode
 Develop and debug:
 
 1. `pixi shell -e node`
-2. In `editors/vscode`, run `pnpm run watch` for incremental builds
+2. In `editors/vscode`, run `npm run watch` for incremental builds
 3. In VSCode, use the “Run Extension/Launch Extension” configs, or run `code --extensionDevelopmentPath=$(pwd)/editors/vscode`
 
 Common scripts (inside `pixi shell -e node`):
 
 ```bash
-pnpm run package # same as pixi run build-vscode
-pnpm run publish # same as pixi run publish-vscode
+npm run package # same as pixi run build-vscode
+npm run publish # same as pixi run publish-vscode
 ```
 
-If you skip pixi, install node.js >= 20 and pnpm yourself, then in `editors/vscode` run:
+If you skip pixi, install node.js >= 20 yourself (npm is bundled). The extension is part of the repo's npm workspace, so install at the repo root, then package from `editors/vscode`:
 
 ```bash
-pnpm install
-pnpm run package
+npm install          # at the repo root
+cd editors/vscode
+npm run package
 ```
 
 ## Neovim

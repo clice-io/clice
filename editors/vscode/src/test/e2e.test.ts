@@ -2,11 +2,18 @@ import * as assert from "assert";
 import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
+import type { LanguageClient } from "vscode-languageclient/node";
+// Shared protocol shapes — type-only, mirrors feature/context.ts.
+import type {
+    CurrentContextResult,
+    QueryContextResult,
+    SwitchContextResult,
+} from "@clice/tools/protocol" with { "resolution-mode": "import" };
 
 import { resyncDocument } from "../feature/context";
 
 // E2E smoke tests against a real clice binary. The binary path comes from
-// CLICE_EXECUTABLE; without it (plain `pnpm test`) the suite is skipped.
+// CLICE_EXECUTABLE; without it (plain `npm test`) the suite is skipped.
 // The workspace folder is set by .vscode-test.mjs and selects the scenario.
 //
 // The bundled variant clears CLICE_EXECUTABLE and passes CLICE_E2E_BUNDLED_FROM
@@ -47,7 +54,7 @@ suite("clice E2E", function () {
     // The bundled variant runs the server staged under clice/ by .vscode-test.mjs;
     // its CLICE_EXECUTABLE is empty and CLICE_E2E_BUNDLED_FROM carries the origin.
     const bundled = !!process.env.CLICE_E2E_BUNDLED_FROM;
-    const executable = process.env.CLICE_E2E_BUNDLED_FROM || process.env.CLICE_EXECUTABLE;
+    const executable = bundled ? process.env.CLICE_E2E_BUNDLED_FROM : process.env.CLICE_EXECUTABLE;
     if (!executable) {
         if (process.env.CI) {
             throw new Error("CLICE_EXECUTABLE must be set in CI");
@@ -59,11 +66,16 @@ suite("clice E2E", function () {
     let position: vscode.Position;
     let scenario: Scenario;
 
+    function workspaceFolder(): vscode.WorkspaceFolder {
+        const folder = vscode.workspace.workspaceFolders?.[0];
+        assert.ok(folder, "no workspace folder");
+        return folder;
+    }
+
     suiteSetup(async function () {
         this.timeout(60 * 1000);
 
-        const folder = vscode.workspace.workspaceFolders?.[0];
-        assert.ok(folder, "no workspace folder");
+        const folder = workspaceFolder();
         scenario = scenarios[path.basename(folder.uri.fsPath)];
         assert.ok(scenario, `no scenario for workspace ${folder.uri.fsPath}`);
 
@@ -91,7 +103,7 @@ suite("clice E2E", function () {
     test("server starts and publishes diagnostics", async function () {
         this.timeout(240 * 1000);
 
-        const folder = vscode.workspace.workspaceFolders![0];
+        const folder = workspaceFolder();
         const uri = vscode.Uri.joinPath(folder.uri, scenario.file);
 
         const diagnostics = new Promise<void>((resolve) => {
@@ -125,7 +137,7 @@ suite("clice E2E", function () {
                 "vscode.executeWorkspaceSymbolProvider",
                 scenario.indexSymbol,
             );
-            if ((symbols ?? []).some((s) => s.name === scenario.indexSymbol)) {
+            if (symbols.some((s) => s.name === scenario.indexSymbol)) {
                 return;
             }
             assert.ok(
@@ -168,7 +180,7 @@ suite("clice E2E", function () {
 
     test("compilation context requests", async function () {
         this.timeout(60 * 1000);
-        const folder = vscode.workspace.workspaceFolders![0];
+        const folder = workspaceFolder();
         if (path.basename(folder.uri.fsPath) !== "header_context") {
             this.skip();
         }
@@ -176,23 +188,25 @@ suite("clice E2E", function () {
 
         const extension = vscode.extensions.getExtension("clice-io.clice");
         assert.ok(extension?.isActive, "extension not active");
-        const client = extension.exports.client;
+        const client = (extension.exports as { client: LanguageClient }).client;
         const uri = document.uri.toString();
 
-        const query = await client.sendRequest("clice/queryContext", { uri });
+        const query = await client.sendRequest<QueryContextResult>("clice/queryContext", { uri });
         assert.ok(query.total >= 1, `expected at least one context, got ${query.total}`);
-        const host = query.contexts.find((c: { uri: string }) => c.uri.includes("main.cpp"));
+        const host = query.contexts.find((c) => c.uri.includes("main.cpp"));
         assert.ok(host, "main.cpp should be offered as a context");
 
-        const switched = await client.sendRequest("clice/switchContext", {
+        const switched = await client.sendRequest<SwitchContextResult>("clice/switchContext", {
             uri,
             contextUri: host.uri,
         });
         assert.ok(switched.success, "switchContext should succeed");
 
-        const current = await client.sendRequest("clice/currentContext", { uri });
+        const current = await client.sendRequest<CurrentContextResult>("clice/currentContext", {
+            uri,
+        });
         assert.ok(
-            current.context && current.context.uri.includes("main.cpp"),
+            current.context?.uri.includes("main.cpp"),
             "currentContext should report the switched host",
         );
 
@@ -221,9 +235,11 @@ suite("clice E2E", function () {
             "cpp",
             "language id restored after the resync round-trip",
         );
-        const resynced = await client.sendRequest("clice/currentContext", { uri });
+        const resynced = await client.sendRequest<CurrentContextResult>("clice/currentContext", {
+            uri,
+        });
         assert.ok(
-            resynced.context && resynced.context.uri.includes("main.cpp"),
+            resynced.context?.uri.includes("main.cpp"),
             "switched context should survive the resync",
         );
     });

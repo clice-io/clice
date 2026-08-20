@@ -1,0 +1,100 @@
+name: Crash Report
+description: The clice server crashed, exited unexpectedly, or the editor lost connection.
+labels: ["kind:crash"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Sorry about the crash! The **clice version** and the **uploaded logs** below are parsed automatically to symbolize the crash.
+
+  - type: input
+    id: version
+    attributes:
+      label: clice version
+      description: Output of `clice --version`, or the nightly build date / extension version you installed. Required to locate matching debug symbols.
+      placeholder: e.g. clice 0.1.0-nightly-20260801
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - macOS
+        - Linux
+    validations:
+      required: true
+
+  - type: dropdown
+    id: editor
+    attributes:
+      label: Editor
+      options:
+        - VS Code
+        - Zed
+        - Neovim
+        - Vim
+        - Emacs
+        - Helix
+        - Sublime Text
+        - JetBrains
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Related area
+      description: Which part of clice was involved, if you know? Pick all that apply.
+      multiple: true
+      # Keep in sync with the feature: labels in .github/labels.yml.
+      options:
+        - Code completion
+        - Hover
+        - Semantic highlighting
+        - Inlay hints
+        - Diagnostics
+        - Document symbols
+        - Document links
+        - Folding ranges
+        - Formatting
+        - Inactive regions
+        - Signature help
+        - Go to definition / references
+        - Indexing
+        - C++20 modules
+        - Configuration
+        - Server / process management
+        - Toolchain detection
+        - Compilation database
+        - Editor extension
+        - Other / not sure
+
+  - type: textarea
+    id: what_were_you_doing
+    attributes:
+      label: What were you doing when it crashed
+      description: The action that triggered the crash, e.g. opening a project, hovering a symbol, triggering completion.
+    validations:
+      required: true
+
+  - type: upload
+    id: logs
+    attributes:
+      label: Logs
+      description: >-
+        Zip the whole session log directory and upload it here. clice runs multiple
+        processes and each writes its own log file, including the stack trace of the
+        crashed one, so please include all of them. The directory path is printed as
+        "Session log directory: ..." on server startup.
+    validations:
+      accept: ".zip,.gz,.tar.gz,.log,.txt"
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: If you can reproduce the crash, describe how — ideally with a minimal code snippet.

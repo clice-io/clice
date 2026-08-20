@@ -1,0 +1,9 @@
+---
+created_at: 2026-08-01
+input_file: nested_compound_statement.cpp
+---
+- { range: "7:24-23:1", kind: functionBody, collapsed_text: "{...}" }
+- { range: "8:19-12:5", kind: compoundStmt, collapsed_text: "{...}" }
+- { range: "9:43-11:9", kind: compoundStmt, collapsed_text: "{...}" }
+- { range: "14:22-16:5", kind: compoundStmt, collapsed_text: "{...}" }
+- { range: "19:4-22:5", kind: compoundStmt, collapsed_text: "{...}" }

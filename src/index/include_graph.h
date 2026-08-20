@@ -7,6 +7,8 @@
 
 #include "syntax/token.h"
 
+#include "kota/codec/macro.h"
+#include "kota/meta/annotation.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 
@@ -51,8 +53,11 @@ struct IncludeGraph {
 
     /// Each `FileID` represents a new header context and is introduced
     /// by a new include directive. So a include directive is a new header
-    /// context. A map between FileID and its include location.
-    llvm::DenseMap<clang::FileID, std::uint32_t> file_table;
+    /// context. A map between FileID and its include location. Build-time
+    /// only: FileIDs mean nothing outside the compilation, so the field is
+    /// excluded from serialization.
+    KOTATSU_ANNOTATE(skip = true)
+    <llvm::DenseMap<clang::FileID, std::uint32_t>> file_table;
 
     /// Build the graph for `unit`. The file table covers the union of
     /// every file included in this parse (from the replayed directives)

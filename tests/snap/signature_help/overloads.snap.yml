@@ -1,0 +1,8 @@
+---
+created_at: 2026-08-02
+input_file: overloads.cpp
+---
+pos:
+- foo(⟦int x⟧, int y) -> void
+- foo(⟦int x⟧) -> void
+- foo() -> void

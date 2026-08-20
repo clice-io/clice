@@ -24,6 +24,7 @@
 #include "clang/AST/ExprConcepts.h"
 #include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/AST/Stmt.h"
+#include "clang/Basic/Module.h"
 #include "clang/Basic/OperatorKinds.h"
 #include "clang/Basic/TokenKinds.h"
 #include "clang/Lex/Lexer.h"
@@ -62,6 +63,10 @@ clang::SourceRange SemanticNode::source_range() const {
                 return clang::SourceRange(value->location, value->name_locations.back());
             }
             return clang::SourceRange(value->location);
+        } else if constexpr(std::same_as<T, const LexicalInfo::ModuleDeclaration*> ||
+                            std::same_as<T, const LexicalInfo::Comment*>) {
+            /// Lexical payloads carry file offsets, not SourceLocations.
+            return clang::SourceRange();
         } else if constexpr(std::same_as<T, const clang::Attr*>) {
             return value->getRange();
         } else if constexpr(std::is_pointer_v<T>) {
@@ -77,8 +82,10 @@ clang::DynTypedNode SemanticNode::dyn_typed() const {
     return visit([](const auto& value) -> clang::DynTypedNode {
         using T = std::remove_cvref_t<decltype(value)>;
         if constexpr(std::same_as<T, const MacroRef*> || std::same_as<T, const Include*> ||
-                     std::same_as<T, const Import*>) {
-            llvm_unreachable("dyn_typed on a preprocessor node");
+                     std::same_as<T, const Import*> ||
+                     std::same_as<T, const LexicalInfo::ModuleDeclaration*> ||
+                     std::same_as<T, const LexicalInfo::Comment*>) {
+            std::unreachable();
         } else if constexpr(std::is_pointer_v<T>) {
             return clang::DynTypedNode::create(*value);
         } else {
@@ -365,16 +372,47 @@ public:
             return true;
         }
 
-        return traverse_node(SemanticNode(static_cast<const clang::Decl*>(X)),
-                             [&] { return Base::TraverseDecl(X); });
+        if(const auto* binding = llvm::dyn_cast<clang::BindingDecl>(X)) {
+            // Namespace-scope bindings are also members of the enclosing
+            // DeclContext, so the visitor reaches them twice: through the
+            // context iteration and through DecompositionDecl's explicit
+            // bindings loop. Record them only under their DecompositionDecl.
+            std::uint32_t parent = stack.back();
+            if(parent == Semantics::invalid ||
+               semantics.nodes[parent].node.get<clang::Decl>() != binding->getDecomposedDecl()) {
+                return true;
+            }
+        }
+
+        // An instantiation subtree reuses the pattern's source locations, so
+        // nothing under it is written here. An explicit instantiation
+        // directive's own decl is the exception: the directive is written,
+        // and the traversal visits only its written template arguments (the
+        // instantiated members arrive as separate top-level decls, carrying
+        // the directive's specialization kind but written nowhere — flag
+        // their whole subtrees like any implicit instantiation).
+        bool head = decls::is_instantiation(X);
+        bool written_head = head &&
+                            !decls::is_implicit_instantiation(llvm::cast<clang::NamedDecl>(X)) &&
+                            !decls::is_member_specialization(X);
+        if(head && !written_head) {
+            instantiation_depth += 1;
+        }
+        bool ret = traverse_node(SemanticNode(static_cast<const clang::Decl*>(X)),
+                                 [&] { return Base::TraverseDecl(X); });
+        if(head && !written_head) {
+            instantiation_depth -= 1;
+        }
+        return ret;
     }
 
-    bool TraverseTypeLoc(clang::TypeLoc X) {
+    bool TraverseTypeLoc(clang::TypeLoc X, bool traverse_qualifier = true) {
         if(!X) {
             return true;
         }
 
-        return traverse_node(SemanticNode(X), [&] { return Base::TraverseTypeLoc(X); });
+        return traverse_node(SemanticNode(X),
+                             [&] { return Base::TraverseTypeLoc(X, traverse_qualifier); });
     }
 
     bool TraverseTemplateArgumentLoc(const clang::TemplateArgumentLoc& X) {
@@ -446,17 +484,18 @@ public:
     // This means we'd never see 'int' in 'const int'! Work around that here.
     // (The reason for the behavior is to avoid traversing the nested Type twice,
     // but we ignore TraverseType anyway).
-    bool TraverseQualifiedTypeLoc(clang::QualifiedTypeLoc QX) {
-        return traverse_node(SemanticNode(static_cast<clang::TypeLoc>(QX)),
-                             [&] { return TraverseTypeLoc(QX.getUnqualifiedLoc()); });
+    bool TraverseQualifiedTypeLoc(clang::QualifiedTypeLoc QX, bool traverse_qualifier = true) {
+        return traverse_node(SemanticNode(static_cast<clang::TypeLoc>(QX)), [&] {
+            return TraverseTypeLoc(QX.getUnqualifiedLoc(), traverse_qualifier);
+        });
     }
 
-    bool TraverseType(clang::QualType) {
+    bool TraverseType(clang::QualType, bool = true) {
         return true;
     }
 
     // Uninteresting parts of the AST that don't have locations within them.
-    bool TraverseNestedNameSpecifier(clang::NestedNameSpecifier*) {
+    bool TraverseNestedNameSpecifier(clang::NestedNameSpecifier) {
         return true;
     }
 
@@ -558,6 +597,7 @@ private:
         clang::SourceRange early = early_source_range(node);
         auto self = static_cast<std::uint32_t>(semantics.nodes.size());
         semantics.nodes.push_back({std::move(node), stack.back()});
+        semantics.nodes.back().flags.in_instantiation = instantiation_depth > 0;
         stack.push_back(self);
         claim_range(early, self);
     }
@@ -835,15 +875,66 @@ private:
         return location;
     }
 
-    // Append the interested file's preprocessor directives as nodes owning
-    // their name tokens. These live outside the AST segment: parent chains do
-    // not include them (yet), and selection ignores them, but hover and
-    // document links see macros, includes and imports as first-class nodes.
-    void append_directives() {
-        auto it = unit.directives().find(main_fid);
-        if(it == unit.directives().end()) {
+    // Whether a live spelled token starts exactly at `offset` (present and
+    // not preprocessed away).
+    bool token_alive_at(unsigned offset) const {
+        auto i = first_token_at(offset);
+        return i < semantics.tokens.size() && semantics.token_offset(i) == offset &&
+               !semantics.pp_ignored[i];
+    }
+
+    // Cross-check the lexically scanned module declarations against the
+    // compiled module before they become nodes: valid code cannot spell
+    // these token patterns with another meaning, but invalid or disabled
+    // code can, and a node must never outrank the compiler.
+    void filter_module_declarations() {
+        auto& modules = semantics.lexical.modules;
+        auto* mod = unit.context().getCurrentNamedModule();
+        if(!mod) {
+            modules.clear();
             return;
         }
+
+        // The declaration form additionally anchors on the compiler's
+        // DefinitionLoc — the written `module` keyword of the real
+        // declaration. This survives macro-spelled names (the keyword is
+        // always written) and kills duplicates in disabled branches.
+        std::optional<unsigned> definition_offset;
+        if(auto def_loc = mod->DefinitionLoc; def_loc.isValid()) {
+            definition_offset = offset_in_main_file(SM.getSpellingLoc(def_loc));
+        }
+
+        std::erase_if(modules, [&](const LexicalInfo::ModuleDeclaration& module) {
+            switch(module.kind) {
+                // The introducer is necessarily the file's first token, so no
+                // conditional can disable it — and under a preamble PCH its
+                // spelled token counts as preprocessed away, so a liveness
+                // check would wrongly drop it.
+                case LexicalInfo::ModuleDeclaration::Kind::GlobalFragment: return false;
+
+                // The DefinitionLoc anchor subsumes liveness: a duplicate in
+                // a disabled branch sits at a different offset.
+                case LexicalInfo::ModuleDeclaration::Kind::Declaration:
+                    return definition_offset != module.keyword.begin;
+
+                // The private fragment has no compiler-side location to
+                // anchor on; a disabled branch can spell the same tokens, so
+                // require the keyword's spelled token to be live.
+                case LexicalInfo::ModuleDeclaration::Kind::PrivateFragment:
+                    return !token_alive_at(module.keyword.begin);
+            }
+            std::unreachable();
+        });
+    }
+
+    // Append the interested file's preprocessor directives and lexically
+    // scanned entities as nodes owning their name tokens. These live outside
+    // the AST segment: parent chains do not include them (yet), and selection
+    // ignores them, but hover and document links see macros, includes and
+    // imports as first-class nodes.
+    void append_directives() {
+        semantics.lexical = lexical_scan(unit.interested_content(), &unit.lang_options());
+        filter_module_declarations();
 
         struct Row {
             unsigned offset;
@@ -852,45 +943,76 @@ private:
         };
 
         std::vector<Row> rows;
-        auto& directive = it->second;
 
-        for(auto& macro: directive.macros) {
-            if(auto offset = offset_in_main_file(macro.loc)) {
-                rows.push_back({*offset, SemanticNode(&macro), {}});
-            }
-        }
+        if(auto it = unit.directives().find(main_fid); it != unit.directives().end()) {
+            auto& directive = it->second;
 
-        for(auto& include: directive.includes) {
-            if(auto offset = offset_in_main_file(include.location)) {
-                rows.push_back({*offset, SemanticNode(&include), {}});
-            }
-        }
-
-        for(auto& import: directive.imports) {
-            /// An import spelled through a macro carries macro locations;
-            /// name tokens written as macro arguments still resolve to
-            /// spelled main-file tokens.
-            Row row{0, SemanticNode(&import), {}};
-            std::optional<unsigned> anchor;
-            if(auto offset = offset_in_main_file(import.location)) {
-                anchor = *offset;
-                row.extra_offsets.push_back(*offset);
-            }
-            for(auto loc: import.name_locations) {
-                if(loc.isMacroID()) {
-                    loc = SM.getSpellingLoc(loc);
+            for(auto& macro: directive.macros) {
+                if(auto offset = offset_in_main_file(macro.loc)) {
+                    rows.push_back({*offset, SemanticNode(&macro), {}});
                 }
-                if(auto name_offset = offset_in_main_file(loc)) {
-                    if(!anchor) {
-                        anchor = *name_offset;
+            }
+
+            for(auto& include: directive.includes) {
+                if(auto offset = offset_in_main_file(include.location)) {
+                    rows.push_back({*offset, SemanticNode(&include), {}});
+                }
+            }
+
+            for(auto& import: directive.imports) {
+                /// An import spelled through a macro carries macro locations;
+                /// name tokens written as macro arguments still resolve to
+                /// spelled main-file tokens.
+                Row row{0, SemanticNode(&import), {}};
+                std::optional<unsigned> anchor;
+                if(auto offset = offset_in_main_file(import.location)) {
+                    anchor = *offset;
+                    row.extra_offsets.push_back(*offset);
+                }
+                for(auto loc: import.name_locations) {
+                    if(loc.isMacroID()) {
+                        loc = SM.getSpellingLoc(loc);
                     }
-                    row.extra_offsets.push_back(*name_offset);
+                    if(auto name_offset = offset_in_main_file(loc)) {
+                        if(!anchor) {
+                            anchor = *name_offset;
+                        }
+                        row.extra_offsets.push_back(*name_offset);
+                    }
+                }
+                if(anchor) {
+                    row.offset = *anchor;
+                    rows.push_back(std::move(row));
                 }
             }
-            if(anchor) {
-                row.offset = *anchor;
-                rows.push_back(std::move(row));
+        }
+
+        // A comment node owns no spelled tokens (the stream drops them); it
+        // participates by its payload range only.
+        for(auto& comment: semantics.lexical.comments) {
+            rows.push_back({comment.range.begin, SemanticNode(&comment), {}});
+        }
+
+        // A module declaration owns its written tokens: the keywords, the
+        // name parts and the partition colon; the separators stay unowned,
+        // matching imports.
+        for(auto& module: semantics.lexical.modules) {
+            Row row{module.keyword.begin, SemanticNode(&module), {}};
+            if(module.export_keyword.valid()) {
+                row.offset = module.export_keyword.begin;
+                row.extra_offsets.push_back(module.export_keyword.begin);
             }
+            row.extra_offsets.push_back(module.keyword.begin);
+            for(auto& part: module.name_parts) {
+                row.extra_offsets.push_back(part.begin);
+            }
+            if(module.colon.valid()) {
+                row.extra_offsets.push_back(module.colon.begin);
+            }
+            for(auto& part: module.partition_parts) {
+                row.extra_offsets.push_back(part.begin);
+            }
+            rows.push_back(std::move(row));
         }
 
         std::ranges::sort(rows, {}, &Row::offset);
@@ -932,6 +1054,10 @@ private:
     clang::SourceRange main_file_range;
     IntervalSet unclaimed_expanded_tokens;
     llvm::SmallVector<std::uint32_t, 64> stack;
+
+    /// Depth of enclosing instantiation subtrees; nodes pushed while it is
+    /// non-zero are flagged in_instantiation.
+    std::uint32_t instantiation_depth = 0;
 
     /// (spelled token index, owning node index) pairs, sorted in finalize().
     std::vector<std::pair<std::uint32_t, std::uint32_t>> entries;
@@ -1105,8 +1231,10 @@ void decl_occurrences(const clang::Decl* D, Occurrences& out, types::TemplateRes
     if(auto* FD = llvm::dyn_cast<clang::FunctionDecl>(D)) {
         switch(FD->getTemplateSpecializationKind()) {
             case clang::TSK_ImplicitInstantiation:
-            /// FIXME: Clang currently doesn't record source location of explicit
-            /// instantiation of function template correctly. Skip it temporarily.
+            /// FIXME(explicit-instantiation): clang doesn't record the written
+            /// location of a function template's explicit instantiation until
+            /// clang 23's ExplicitInstantiationDecl (llvm/llvm-project#191658).
+            /// Skip it temporarily.
             case clang::TSK_ExplicitInstantiationDeclaration:
             case clang::TSK_ExplicitInstantiationDefinition: {
                 return;
@@ -1137,8 +1265,10 @@ void decl_occurrences(const clang::Decl* D, Occurrences& out, types::TemplateRes
         if(auto* VTSD = llvm::dyn_cast<clang::VarTemplateSpecializationDecl>(VD)) {
             switch(VTSD->getSpecializationKind()) {
                 case clang::TSK_ImplicitInstantiation:
-                /// FIXME: Clang currently doesn't record source location of explicit
-                /// instantiation of variable template correctly. Skip it temporarily.
+                /// FIXME(explicit-instantiation): clang doesn't record the
+                /// written location of a variable template's explicit
+                /// instantiation until clang 23's ExplicitInstantiationDecl
+                /// (llvm/llvm-project#191658). Skip it temporarily.
                 case clang::TSK_ExplicitInstantiationDeclaration:
                 case clang::TSK_ExplicitInstantiationDefinition: {
                     return;
@@ -1169,7 +1299,7 @@ void type_loc_occurrences(clang::TypeLoc TL, Occurrences& out, types::TemplateRe
     /// using Foo = int; Foo foo;
     ///                   ^~~~ reference
     if(auto TTL = TL.getAs<clang::TypedefTypeLoc>()) {
-        occur(out, TTL.getTypedefNameDecl(), RelationKind::Reference, TTL.getNameLoc());
+        occur(out, TTL.getDecl(), RelationKind::Reference, TTL.getNameLoc());
         return;
     }
 
@@ -1202,7 +1332,7 @@ void type_loc_occurrences(clang::TypeLoc TL, Occurrences& out, types::TemplateRe
     /// through the using shadow to the imported type.
     if(auto UTL = TL.getAs<clang::UsingTypeLoc>()) {
         occur(out,
-              UTL.getTypePtr()->getFoundDecl()->getTargetDecl(),
+              UTL.getTypePtr()->getDecl()->getTargetDecl(),
               RelationKind::Reference,
               UTL.getNameLoc());
         return;
@@ -1228,6 +1358,14 @@ void type_loc_occurrences(clang::TypeLoc TL, Occurrences& out, types::TemplateRe
                 auto* target = TD->getTemplatedDecl() ? TD->getTemplatedDecl()
                                                       : static_cast<clang::NamedDecl*>(TD);
                 occur(out, target, RelationKind::Reference, TSTL.getTemplateNameLoc());
+                return;
+            }
+
+            /// std::allocator<T>::rebind<U> — the template itself is a
+            /// dependent name; weak reference, resolved on the primary
+            /// template.
+            for(const auto* target: types::decls_of(TSTL.getType(), resolver)) {
+                occur(out, target, RelationKind::WeakReference, TSTL.getTemplateNameLoc());
             }
             return;
         }
@@ -1256,56 +1394,33 @@ void type_loc_occurrences(clang::TypeLoc TL, Occurrences& out, types::TemplateRe
         }
         return;
     }
-
-    /// std::allocator<T>::rebind<U>
-    ///                       ^~~~ weak reference
-    if(auto DTSTL = TL.getAs<clang::DependentTemplateSpecializationTypeLoc>()) {
-        for(const auto* target: types::decls_of(DTSTL.getType(), resolver)) {
-            occur(out, target, RelationKind::WeakReference, DTSTL.getTemplateNameLoc());
-        }
-        return;
-    }
 }
 
-void nns_occurrences(clang::NestedNameSpecifierLoc NNSL,
-                     Occurrences& out,
-                     types::TemplateResolver* resolver) {
-    auto* NNS = NNSL.getNestedNameSpecifier();
-    switch(NNS->getKind()) {
-        case clang::NestedNameSpecifier::Namespace: {
-            occur(out, NNS->getAsNamespace(), RelationKind::Reference, NNSL.getLocalBeginLoc());
-            break;
-        }
-
-        case clang::NestedNameSpecifier::NamespaceAlias: {
+void nns_occurrences(clang::NestedNameSpecifierLoc NNSL, Occurrences& out) {
+    auto NNS = NNSL.getNestedNameSpecifier();
+    switch(NNS.getKind()) {
+        /// A namespace or namespace alias; the alias decl itself is
+        /// referenced, not the namespace it names.
+        case clang::NestedNameSpecifier::Kind::Namespace: {
             occur(out,
-                  NNS->getAsNamespaceAlias(),
+                  NNS.getAsNamespaceAndPrefix().Namespace,
                   RelationKind::Reference,
                   NNSL.getLocalBeginLoc());
             break;
         }
 
-        case clang::NestedNameSpecifier::Identifier: {
-            assert(NNS->isDependent() && "Identifier NNS should be dependent");
-            if(resolver) {
-                for(auto* target:
-                    resolver->lookup(NNS->getPrefix(),
-                                     clang::DeclarationName(NNS->getAsIdentifier()))) {
-                    occur(out, target, RelationKind::WeakReference, NNSL.getLocalBeginLoc());
-                }
-            }
-            break;
-        }
-
-        case clang::NestedNameSpecifier::Super: {
+        case clang::NestedNameSpecifier::Kind::MicrosoftSuper: {
             /// __super::member (MS extension) — the qualifier names the base
             /// record.
-            occur(out, NNS->getAsRecordDecl(), RelationKind::Reference, NNSL.getLocalBeginLoc());
+            occur(out, NNS.getAsMicrosoftSuper(), RelationKind::Reference, NNSL.getLocalBeginLoc());
             break;
         }
 
-        case clang::NestedNameSpecifier::TypeSpec:
-        case clang::NestedNameSpecifier::Global: {
+        /// Type components (including dependent chains, which are
+        /// DependentNameTypes) are visited as TypeLocs.
+        case clang::NestedNameSpecifier::Kind::Null:
+        case clang::NestedNameSpecifier::Kind::Type:
+        case clang::NestedNameSpecifier::Kind::Global: {
             break;
         };
     }
@@ -1575,7 +1690,7 @@ llvm::SmallVector<NameOccurrence, 2> resolve_occurrences(const SemanticNode& nod
         }
 
         case SemanticNode::Kind::NestedNameSpecifierLoc: {
-            nns_occurrences(*node.get<clang::NestedNameSpecifierLoc>(), out, resolver);
+            nns_occurrences(*node.get<clang::NestedNameSpecifierLoc>(), out);
             break;
         }
 

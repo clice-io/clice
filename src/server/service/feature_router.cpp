@@ -45,7 +45,7 @@ std::vector<feature::DocumentLink> FeatureRouter::find_preamble_links(const Sess
     // Link offsets are buffer coordinates as of the PCH build; serve them
     // only while the buffer still starts with that exact preamble text
     // (a deferred rebuild mid-edit keeps an old blob for a moved buffer).
-    if(!llvm::StringRef(session.text).starts_with(state->preamble_content()))
+    if(!state->matches_prefix(session.text))
         return {};
     return state->links();
 }
@@ -289,7 +289,7 @@ FeatureRouter::RawResult FeatureRouter::completion(std::shared_ptr<Session> sess
                 item.kind = protocol::CompletionItemKind::File;
                 items.push_back(std::move(item));
             }
-            auto json = kota::codec::json::to_json<kota::ipc::lsp_config>(items);
+            auto json = kota::codec::json::to_string<kota::ipc::lsp_config>(items);
             co_return serde_raw{json ? std::move(*json) : "[]"};
         }
         if(pctx.kind == CompletionContext::Import) {
@@ -304,7 +304,7 @@ FeatureRouter::RawResult FeatureRouter::completion(std::shared_ptr<Session> sess
                 item.insert_text = name + ";";
                 items.push_back(std::move(item));
             }
-            auto json = kota::codec::json::to_json<kota::ipc::lsp_config>(items);
+            auto json = kota::codec::json::to_string<kota::ipc::lsp_config>(items);
             co_return serde_raw{json ? std::move(*json) : "[]"};
         }
     }

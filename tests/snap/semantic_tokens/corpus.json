@@ -1,0 +1,4 @@
+{
+  "notes": "inc/ backs angled-include fixtures; sys/ simulates a system header so the DefaultLibrary modifier pins deterministically on every host.",
+  "flags": ["-I${corpus}/inc", "-isystem${corpus}/sys", "-std=c++20"]
+}

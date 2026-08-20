@@ -1,0 +1,12 @@
+---
+created_at: 2026-07-31
+input_file: type_auto_params.cpp
+---
+- { pos: "7:16", kind: Type, label: ": int" }
+- { pos: "11:19", kind: Parameter, label: "x:", padding_right: true }
+- { pos: "18:16", kind: Parameter, label: "x:", padding_right: true }
+- { pos: "19:16", kind: Parameter, label: "x:", padding_right: true }
+- { pos: "22:21", kind: Type, label: ": void *" }
+- { pos: "26:35", kind: Parameter, label: "first:", padding_right: true }
+- { pos: "26:55", kind: Parameter, label: "last:", padding_right: true }
+- { pos: "32:12", kind: Type, label: ": int" }

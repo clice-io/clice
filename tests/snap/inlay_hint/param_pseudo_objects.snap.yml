@@ -1,0 +1,7 @@
+---
+created_at: 2026-07-31
+input_file: param_pseudo_objects.cpp
+---
+- { pos: "25:11", kind: Parameter, label: "Format:", padding_right: true }
+- { pos: "27:15", kind: Parameter, label: "row:", padding_right: true }
+- { pos: "27:18", kind: Parameter, label: "column:", padding_right: true }

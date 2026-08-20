@@ -23,20 +23,20 @@ from pathlib import Path
 from typing import Iterable, List, Optional
 
 ARTIFACTS = [
-    "arm64-linux-gnu-releasedbg-lto.tar.xz",
-    "arm64-linux-gnu-releasedbg.tar.xz",
-    "arm64-windows-msvc-releasedbg-lto.tar.xz",
-    "arm64-windows-msvc-releasedbg.tar.xz",
-    "arm64-macos-clang-debug-asan.tar.xz",
-    "arm64-macos-clang-releasedbg-lto.tar.xz",
-    "arm64-macos-clang-releasedbg.tar.xz",
-    "x64-linux-gnu-debug-asan.tar.xz",
-    "x64-linux-gnu-releasedbg-lto.tar.xz",
-    "x64-linux-gnu-releasedbg.tar.xz",
-    "x64-macos-clang-releasedbg-lto.tar.xz",
-    "x64-macos-clang-releasedbg.tar.xz",
-    "x64-windows-msvc-releasedbg-lto.tar.xz",
-    "x64-windows-msvc-releasedbg.tar.xz",
+    "aarch64-unknown-linux-gnu.releasedbg-lto.tar.xz",
+    "aarch64-unknown-linux-gnu.releasedbg.tar.xz",
+    "aarch64-pc-windows-msvc.releasedbg-lto.tar.xz",
+    "aarch64-pc-windows-msvc.releasedbg.tar.xz",
+    "aarch64-apple-darwin.debug-asan.tar.xz",
+    "aarch64-apple-darwin.releasedbg-lto.tar.xz",
+    "aarch64-apple-darwin.releasedbg.tar.xz",
+    "x86_64-unknown-linux-gnu.debug-asan.tar.xz",
+    "x86_64-unknown-linux-gnu.releasedbg-lto.tar.xz",
+    "x86_64-unknown-linux-gnu.releasedbg.tar.xz",
+    "x86_64-apple-darwin.releasedbg-lto.tar.xz",
+    "x86_64-apple-darwin.releasedbg.tar.xz",
+    "x86_64-pc-windows-msvc.releasedbg-lto.tar.xz",
+    "x86_64-pc-windows-msvc.releasedbg.tar.xz",
 ]
 
 ARCHIVE_MAGIC = b"!<arch>\n"
@@ -82,9 +82,9 @@ def _run_build(build_dir: Path) -> bool:
 
 def _manifest_for(artifact: str, manifests_dir: Path) -> Optional[Path]:
     manifest_dirs = {
-        "linux": "prune-manifest-ubuntu-24.04",
-        "macos": "prune-manifest-macos-15",
-        "windows": "prune-manifest-windows-2025",
+        "linux-gnu": "prune-manifest-ubuntu-24.04",
+        "apple-darwin": "prune-manifest-macos-15",
+        "windows-msvc": "prune-manifest-windows-2025",
     }
     for platform, dirname in manifest_dirs.items():
         if platform in artifact:

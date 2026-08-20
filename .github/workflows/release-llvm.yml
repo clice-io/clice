@@ -27,11 +27,11 @@ jobs:
       matrix:
         include:
           - os: ubuntu-24.04
-            artifact: x64-linux-gnu-releasedbg.tar.xz
+            artifact: x86_64-unknown-linux-gnu.releasedbg.tar.xz
           - os: macos-15
-            artifact: arm64-macos-clang-releasedbg.tar.xz
+            artifact: aarch64-apple-darwin.releasedbg.tar.xz
           - os: windows-2025
-            artifact: x64-windows-msvc-releasedbg.tar.xz
+            artifact: x86_64-pc-windows-msvc.releasedbg.tar.xz
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -127,20 +127,20 @@ jobs:
       fail-fast: false
       matrix:
         artifact:
-          - arm64-linux-gnu-releasedbg-lto.tar.xz
-          - arm64-linux-gnu-releasedbg.tar.xz
-          - arm64-windows-msvc-releasedbg-lto.tar.xz
-          - arm64-windows-msvc-releasedbg.tar.xz
-          - arm64-macos-clang-debug-asan.tar.xz
-          - arm64-macos-clang-releasedbg-lto.tar.xz
-          - arm64-macos-clang-releasedbg.tar.xz
-          - x64-linux-gnu-debug-asan.tar.xz
-          - x64-linux-gnu-releasedbg-lto.tar.xz
-          - x64-linux-gnu-releasedbg.tar.xz
-          - x64-macos-clang-releasedbg-lto.tar.xz
-          - x64-macos-clang-releasedbg.tar.xz
-          - x64-windows-msvc-releasedbg-lto.tar.xz
-          - x64-windows-msvc-releasedbg.tar.xz
+          - aarch64-unknown-linux-gnu.releasedbg-lto.tar.xz
+          - aarch64-unknown-linux-gnu.releasedbg.tar.xz
+          - aarch64-pc-windows-msvc.releasedbg-lto.tar.xz
+          - aarch64-pc-windows-msvc.releasedbg.tar.xz
+          - aarch64-apple-darwin.debug-asan.tar.xz
+          - aarch64-apple-darwin.releasedbg-lto.tar.xz
+          - aarch64-apple-darwin.releasedbg.tar.xz
+          - x86_64-unknown-linux-gnu.debug-asan.tar.xz
+          - x86_64-unknown-linux-gnu.releasedbg-lto.tar.xz
+          - x86_64-unknown-linux-gnu.releasedbg.tar.xz
+          - x86_64-apple-darwin.releasedbg-lto.tar.xz
+          - x86_64-apple-darwin.releasedbg.tar.xz
+          - x86_64-pc-windows-msvc.releasedbg-lto.tar.xz
+          - x86_64-pc-windows-msvc.releasedbg.tar.xz
     steps:
       - uses: actions/checkout@v7
 

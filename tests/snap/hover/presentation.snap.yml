@@ -1,0 +1,74 @@
+---
+created_at: 2026-08-06
+input_file: presentation.cpp
+---
+default:
+  01_function: { range: "7:14-7:20" }
+  ### function `answer`  
+
+  ---
+  → `int`  
+  Parameters:  
+  - `int p`
+
+  Computes the answer. Tests primality of `p`.  
+
+  ---
+  ```cpp
+  constexpr int answer(int p)
+  ```
+
+  02_variable: { range: "11:4-11:9" }
+  ### variable `value`  
+
+  ---
+  Type: `int`  
+  Value = `42 (0x2a)`  
+
+  ---
+  ```cpp
+  int value = answer(1)
+  ```
+
+  03_field: { range: "15:8-15:14" }
+  ### field `second`  
+
+  ---
+  Type: `int`  
+  Offset: 4 bytes  
+  Size: 4 bytes, alignment 4 bytes  
+
+  ---
+  ```cpp
+  // In Layout
+  public: int second
+  ```
+
+configured:
+  01_function: { range: "7:14-7:20" }
+  function answer
+
+  → int
+  Parameters:
+  - int p
+  Computes the answer. Tests primality of `p`.
+
+  constexpr int answer(int p)
+
+  02_variable: { range: "11:4-11:9" }
+  variable value
+
+  Type: int
+  Value = 42 (0x2a)
+
+  int value = answer(1)
+
+  03_field: { range: "15:8-15:14" }
+  field second
+
+  Type: int
+  Offset: 4 bytes
+  Size: 4 bytes, alignment 4 bytes
+
+  // In Layout
+  public: int second

@@ -9,16 +9,16 @@ interface Setting {
 
 export function getSetting(): Setting | undefined {
     const setting = vscode.workspace.getConfiguration("clice");
-    const executable = process.env.CLICE_EXECUTABLE || setting.get<string>("executable");
-    const mode = process.env.CLICE_MODE || setting.get<string>("mode");
+    const executable = process.env.CLICE_EXECUTABLE ?? setting.get<string>("executable");
+    const mode = process.env.CLICE_MODE ?? setting.get<string>("mode");
 
     if (mode !== "pipe" && mode !== "socket") {
         vscode.window.showErrorMessage(`Unexpected mode: ${mode}`);
         return undefined;
     }
 
-    const host = setting.get<string>("host")!;
-    const port = setting.get<number>("port")!;
+    const host = setting.get<string>("host") ?? "";
+    const port = setting.get<number>("port") ?? 0;
 
     if (mode === "socket" && (!host || !port)) {
         vscode.window.showErrorMessage("Socket mode requires both host and port to be configured.");

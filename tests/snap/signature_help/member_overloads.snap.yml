@@ -1,0 +1,7 @@
+---
+created_at: 2026-08-02
+input_file: member_overloads.cpp
+---
+pos:
+- at(⟦int index⟧) -> int
+- at(⟦int index⟧) -> int

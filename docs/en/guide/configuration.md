@@ -22,14 +22,6 @@ The following variable is supported in string values:
 
 Enable experimental clang-tidy diagnostics. **Not yet wired** — the option is parsed but has no effect currently.
 
-### `project.max_active_file`
-
-| Type  | Default |
-| ----- | ------- |
-| `int` | `8`     |
-
-Maximum number of active files to keep in memory. **Not yet wired** — the option is parsed but the worker still uses a hardcoded limit.
-
 ### `project.cache_dir`
 
 | Type     | Default                                                             |
@@ -130,6 +122,86 @@ Interval for re-checking the compilation database file.
 
 Interval for sweeping workspace files for on-disk changes.
 
+## Hover
+
+The `[hover]` section controls how hover cards render. Changes take effect after a server restart.
+
+### `hover.parse_comment_as_markdown`
+
+| Type   | Default |
+| ------ | ------- |
+| `bool` | `true`  |
+
+Render the hover card as markdown. `false` produces plain text for clients that cannot display markdown.
+
+### `hover.show_aka`
+
+| Type   | Default |
+| ------ | ------- |
+| `bool` | `true`  |
+
+Show the desugared form of a type, e.g. `vector<int>::size_type (aka unsigned long)`.
+
+## Inlay Hints
+
+The `[inlay_hints]` section controls which inlay hint categories the server produces. Configuration changes take effect after a server restart; a client-side refresh then requests hints with the updated values. No recompile is involved.
+
+### `inlay_hints.enabled`
+
+| Type   | Default |
+| ------ | ------- |
+| `bool` | `true`  |
+
+Master switch: `false` disables all inlay hints.
+
+### `inlay_hints.parameters`
+
+| Type   | Default |
+| ------ | ------- |
+| `bool` | `true`  |
+
+Parameter name hints at call sites, e.g. `draw(width: 800, height: 600)`, including `&` markers for arguments passed by mutable reference.
+
+### `inlay_hints.deduced_types`
+
+| Type   | Default |
+| ------ | ------- |
+| `bool` | `true`  |
+
+Deduced type hints for `auto` variables, structured bindings, and deduced return types.
+
+### `inlay_hints.designators`
+
+| Type   | Default |
+| ------ | ------- |
+| `bool` | `true`  |
+
+Field designator hints in aggregate initialization, e.g. `Point{.x=1, .y=2}` for `Point{1, 2}`.
+
+### `inlay_hints.block_end`
+
+| Type   | Default |
+| ------ | ------- |
+| `bool` | `false` |
+
+`// name` hints after the closing brace of long blocks (functions, types, namespaces, control flow).
+
+### `inlay_hints.default_arguments`
+
+| Type   | Default |
+| ------ | ------- |
+| `bool` | `false` |
+
+Show the default arguments a call omitted, abbreviated when long.
+
+### `inlay_hints.type_name_limit`
+
+| Type     | Default |
+| -------- | ------- |
+| `uint32` | `32`    |
+
+Maximum length for printed type names; longer types fall back to a sugared spelling or are dropped. `0` means no limit.
+
 ## Rules
 
 `[[rules]]` is an array of rule objects. Rules are matched in declaration order — later rules override earlier ones.
@@ -169,7 +241,6 @@ Flags to remove from the compilation command. Example: `["-Wall", "-Werror"]`.
 
 ```toml
 [project]
-max_active_file = 16
 compile_commands_paths = ["${workspace}/build", "${workspace}/cmake-build-debug"]
 clang_tidy = true
 

@@ -81,7 +81,8 @@ void SessionStore::apply_change(Session& session,
                         // the edit, which would silently desync every
                         // subsequent position until a full sync or reopen.
                         LOG_INFO(
-                            "didChange range {}:{}-{}:{} does not fit the buffer " "(path_id={} version={}); clamped",
+                            "didChange range {}:{}-{}:{} does not fit the buffer "
+                            "(path_id={} version={}); clamped",
                             range.start.line,
                             range.start.character,
                             range.end.line,

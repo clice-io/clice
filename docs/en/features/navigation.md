@@ -584,10 +584,8 @@ Highlight all references to the symbol under cursor within the current file (`te
 
 ## Changelog
 
-| Date | Change                                                                                             | PR  |
-| ---- | -------------------------------------------------------------------------------------------------- | --- |
-| —    | go-to-definition on include directives and module names                                            | —   |
-| —    | declaration / implementation / typeDefinition; references includeDeclaration includes declarations | —   |
-| —    | Index-based go-to-definition and find references                                                   | —   |
-| —    | Call hierarchy (incoming/outgoing)                                                                 | —   |
-| —    | Type hierarchy (supertypes/subtypes)                                                               | —   |
+| Date       | Change                                                                                             | PR                                                 |
+| ---------- | -------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| 2026-07-04 | go-to-definition on include directives and module names                                            | [#481](https://github.com/clice-io/clice/pull/481) |
+| 2026-07-03 | declaration / implementation / typeDefinition; references includeDeclaration includes declarations | [#480](https://github.com/clice-io/clice/pull/480) |
+| 2026-04-02 | Index-based go-to-definition and find references; call hierarchy; type hierarchy                   | [#382](https://github.com/clice-io/clice/pull/382) |

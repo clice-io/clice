@@ -1,0 +1,93 @@
+name: lint
+
+on:
+  workflow_call:
+    inputs:
+      format:
+        description: Run the format check.
+        type: boolean
+        default: false
+  workflow_dispatch:
+
+jobs:
+  conventional-commit:
+    if: ${{ github.event_name != 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check conventional commit format
+        env:
+          IS_PR: ${{ github.event_name == 'pull_request' }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          pattern='^(feat|fix|refactor|chore|build|ci|docs|test|perf|style|revert)(\(.+\))?: .+'
+          if [[ "$IS_PR" == "true" ]]; then
+            subject="$PR_TITLE"
+            label="PR title"
+          else
+            subject=$(echo "$COMMIT_MSG" | head -n1)
+            label="Commit message"
+          fi
+          if [[ ! "$subject" =~ $pattern ]]; then
+            echo "::error::$label must follow conventional commit format: type(scope)?: description"
+            echo "  Valid types: feat, fix, refactor, chore, build, ci, docs, test, perf, style, revert"
+            echo "  Got: '$subject'"
+            exit 1
+          fi
+
+  format:
+    if: ${{ inputs.format }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: format
+
+      - name: Run formatter
+        run: pixi run format
+        continue-on-error: true
+
+      - name: Auto correct
+        uses: huacnlee/autocorrect-action@v2.5.4
+        with:
+          args: --lint ./docs
+        continue-on-error: true
+
+      - name: Check diff
+        run: |
+          if ! git diff --quiet; then
+            echo "::error::Formatting changes detected. Please run 'pixi run format' and commit the result."
+            git --no-pager diff --stat
+            git --no-pager diff
+            exit 1
+          fi
+
+  sync-labels:
+    if: ${{ github.event_name != 'pull_request' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: dorny/paths-filter@v4
+        if: ${{ github.event_name != 'workflow_dispatch' }}
+        id: filter
+        with:
+          filters: |
+            labels:
+              - '.github/labels.yml'
+
+      - uses: crazy-max/ghaction-github-labeler@v5
+        if: ${{ steps.filter.outputs.labels == 'true' || github.event_name == 'workflow_dispatch' }}
+        with:
+          yaml-file: .github/labels.yml
+          skip-delete: false

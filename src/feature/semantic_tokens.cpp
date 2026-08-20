@@ -1,5 +1,6 @@
 #include <cstdint>
 #include <optional>
+#include <ranges>
 #include <utility>
 #include <vector>
 
@@ -8,12 +9,11 @@
 #include "semantic/decls.h"
 #include "semantic/semantics.h"
 #include "semantic/symbol.h"
-#include "syntax/lexer.h"
+#include "syntax/token.h"
 
 #include "llvm/ADT/DenseMap.h"
 #include "clang/AST/Attr.h"
 #include "clang/AST/DeclObjC.h"
-#include "clang/Basic/Module.h"
 
 namespace clice::feature {
 
@@ -25,15 +25,20 @@ struct Classified {
     std::uint32_t modifiers = 0;
 };
 
-/// Merge a candidate into the running classification: first one wins on
-/// equal kinds, differing kinds collapse to Conflict.
+/// Merge a candidate into the running classification: differing kinds
+/// collapse to Conflict, and only the modifiers every candidate agrees on
+/// survive — a token combining resolutions from several instantiations
+/// must not depend on the order the instantiations were written in.
 void combine(Classified& result, Classified candidate) {
-    if(candidate.kind == SymbolKind::Invalid || result.kind == SymbolKind::Conflict) {
+    if(candidate.kind == SymbolKind::Invalid) {
         return;
     }
     if(result.kind == SymbolKind::Invalid) {
         result = candidate;
-    } else if(result.kind != candidate.kind) {
+        return;
+    }
+    result.modifiers &= candidate.modifiers;
+    if(result.kind != candidate.kind) {
         result.kind = SymbolKind::Conflict;
     }
 }
@@ -263,12 +268,11 @@ Classified classify_decl(const clang::NamedDecl* decl, RelationKind relation) {
 class SemanticTokensCollector {
 public:
     explicit SemanticTokensCollector(CompilationUnitRef unit) :
-        unit(unit), semantics(unit.semantics()), content(unit.interested_content()) {}
+        unit(unit), semantics(unit.semantics()), content(unit.interested_content()),
+        comments(semantics.comments()) {}
 
     auto collect() -> std::vector<SemanticToken> {
-        precompute_module_declaration();
         precompute_semantics();
-        scan_comments();
 
         auto spelled = semantics.spelled_tokens();
         for(std::uint32_t i = 0; i < spelled.size(); i++) {
@@ -287,17 +291,10 @@ private:
 
         /// A logical newline between tokens ends any directive context; a
         /// backslash-newline splice continues the directive.
-        if(offset > previous_end &&
-           has_logical_newline(content.substr(previous_end, offset - previous_end))) {
+        if(offset > previous_end && has_logical_newline(previous_end, offset)) {
             directive_context = DirectiveContext::None;
         }
         previous_end = range.end;
-
-        /// The module declaration (`export module foo.bar;`), precomputed.
-        if(auto it = module_tokens.find(index); it != module_tokens.end()) {
-            emit(range, it->second, 0);
-            return;
-        }
 
         Classified lexical = classify_lexical(token, offset);
         Classified semantic;
@@ -412,29 +409,44 @@ private:
     /// linear; the previous per-token owner-chain walk degraded quadratically
     /// on pathological inputs (a macro expanding to tens of thousands of
     /// nodes attributes all of them to one spelled invocation token).
+    /// The spelled token written at `location`, or none. Macro locations
+    /// resolve to their spelling: names written as macro arguments
+    /// classify the argument token itself.
+    auto spelled_index(clang::SourceLocation location) -> std::optional<std::uint32_t> {
+        if(location.isInvalid()) {
+            return std::nullopt;
+        }
+        if(location.isMacroID()) {
+            location = unit.spelling_location(location);
+        }
+
+        auto spelled = semantics.spelled_tokens();
+        auto it = std::partition_point(
+            spelled.begin(),
+            spelled.end(),
+            [&](const clang::syntax::Token& token) { return token.location() < location; });
+        if(it == spelled.end() || it->location() != location) {
+            return std::nullopt;
+        }
+        return static_cast<std::uint32_t>(it - spelled.begin());
+    }
+
+    /// The spelled token starting exactly at file offset `offset`, or none.
+    auto spelled_index_at(std::uint32_t offset) -> std::optional<std::uint32_t> {
+        auto count = static_cast<std::uint32_t>(semantics.spelled_tokens().size());
+        auto range = std::views::iota(0u, count);
+        auto it = std::ranges::partition_point(range, [&](std::uint32_t index) {
+            return semantics.token_offset(index) < offset;
+        });
+        auto index = static_cast<std::uint32_t>(it - range.begin());
+        if(index >= count || semantics.token_offset(index) != offset) {
+            return std::nullopt;
+        }
+        return index;
+    }
+
     void precompute_semantics() {
         auto spelled = semantics.spelled_tokens();
-
-        /// The spelled token written at `location`, or none. Macro locations
-        /// resolve to their spelling: names written as macro arguments
-        /// classify the argument token itself.
-        auto spelled_index = [&](clang::SourceLocation location) -> std::optional<std::uint32_t> {
-            if(location.isInvalid()) {
-                return std::nullopt;
-            }
-            if(location.isMacroID()) {
-                location = unit.spelling_location(location);
-            }
-
-            auto it = std::partition_point(
-                spelled.begin(),
-                spelled.end(),
-                [&](const clang::syntax::Token& token) { return token.location() < location; });
-            if(it == spelled.end() || it->location() != location) {
-                return std::nullopt;
-            }
-            return static_cast<std::uint32_t>(it - spelled.begin());
-        };
 
         /// Anchor a candidate at the spelled token written at `location`.
         /// With allow_ignored, tokens preprocessed away (directive regions)
@@ -480,6 +492,9 @@ private:
         };
 
         for(auto [entry_index, entry]: llvm::enumerate(semantics.node_entries())) {
+            // Instantiated nodes deliberately classify too: they repeat the
+            // pattern's locations, so a dependent name paints as its actual
+            // resolution — and as Conflict when instantiations disagree.
             const SemanticNode& node = entry.node;
             switch(node.kind()) {
                 case SemanticNode::Kind::MacroDefine: {
@@ -523,6 +538,36 @@ private:
                     break;
                 }
 
+                case SemanticNode::Kind::Module: {
+                    auto* module = node.get<LexicalInfo::ModuleDeclaration>();
+                    auto anchor_offset = [&](std::uint32_t offset, Classified candidate) {
+                        if(auto index = spelled_index_at(offset)) {
+                            combine(token_semantics[*index], candidate);
+                        }
+                    };
+
+                    /// The contextual `module` lexes as a plain identifier;
+                    /// `export` and the private fragment's `private` are real
+                    /// keywords the lexical pass paints on its own, and the
+                    /// separators stay unpainted, matching the import side.
+                    anchor_offset(module->keyword.begin, {SymbolKind::Keyword, 0});
+                    for(auto& part: module->name_parts) {
+                        anchor_offset(part.begin, {SymbolKind::Module, 0});
+                    }
+                    if(module->kind == LexicalInfo::ModuleDeclaration::Kind::Declaration) {
+                        for(auto& part: module->partition_parts) {
+                            anchor_offset(part.begin, {SymbolKind::Module, 0});
+                        }
+                    }
+                    break;
+                }
+
+                case SemanticNode::Kind::Comment: {
+                    /// Comments own no spelled tokens; the emit loop
+                    /// interleaves them by offset instead.
+                    break;
+                }
+
                 case SemanticNode::Kind::Attr: {
                     /// `final` and `override` are contextual keywords.
                     if(llvm::isa<clang::FinalAttr, clang::OverrideAttr>(node.get<clang::Attr>())) {
@@ -547,121 +592,39 @@ private:
         }
     }
 
-    /// The module declaration has no AST node or directive record; locate its
-    /// tokens up front so the main pass can classify them in order.
-    void precompute_module_declaration() {
-        auto* mod = unit.context().getCurrentNamedModule();
-        if(!mod) {
-            return;
-        }
-
-        /// The global module fragment (`module;`) precedes DefinitionLoc and
-        /// its contextual `module` lexes as a plain identifier.
-        {
-            auto spelled = semantics.spelled_tokens();
-            if(!spelled.empty() && spelled.front().kind() == clang::tok::identifier &&
-               spelled.size() > 1 && spelled[1].kind() == clang::tok::semi) {
-                auto offset = semantics.token_offset(0);
-                if(content.substr(offset, spelled.front().length()) == "module") {
-                    module_tokens[0] = SymbolKind::Keyword;
-                }
-            }
-        }
-
-        /// `module :private;` — the private fragment's contextual `module`
-        /// also lexes as a plain identifier. The identifier-colon-`private`
-        /// token sequence is not valid C++ anywhere else, so locate it
-        /// lexically like the global module fragment above. Tokens
-        /// preprocessed away (a disabled branch, a macro body) spell no
-        /// fragment and keep their lexical handling.
-        {
-            auto spelled = semantics.spelled_tokens();
-            for(std::uint32_t i = 0; i + 2 < spelled.size(); i += 1) {
-                if(spelled[i].kind() != clang::tok::identifier ||
-                   spelled[i + 1].kind() != clang::tok::colon ||
-                   spelled[i + 2].kind() != clang::tok::kw_private ||
-                   semantics.token_preprocessed_away(i)) {
-                    continue;
-                }
-                auto offset = semantics.token_offset(i);
-                if(content.substr(offset, spelled[i].length()) == "module") {
-                    module_tokens[i] = SymbolKind::Keyword;
-                }
-            }
-        }
-
-        auto def_loc = mod->DefinitionLoc;
-        if(!def_loc.isValid() || !def_loc.isFileID() ||
-           unit.file_id(def_loc) != unit.interested_file()) {
-            return;
-        }
-
-        auto spelled = semantics.spelled_tokens();
-        auto count = static_cast<std::uint32_t>(spelled.size());
-        std::uint32_t i = 0;
-        while(i < count && spelled[i].location() < def_loc) {
-            i++;
-        }
-
-        /// `module`, then the dotted name parts until the semicolon.
-        if(i < count && spelled[i].kind() == clang::tok::identifier) {
-            module_tokens[i] = SymbolKind::Keyword;
-            i++;
-        }
-        for(; i < count && spelled[i].kind() != clang::tok::semi; i++) {
-            if(spelled[i].kind() == clang::tok::identifier) {
-                module_tokens[i] = SymbolKind::Module;
-            }
-        }
-    }
-
-    /// The spelled token stream does not retain comments; one slim raw scan
-    /// collects them (and nothing else).
-    void scan_comments() {
-        auto& lang_opts = unit.lang_options();
-        Lexer lexer(content, false, &lang_opts);
-
-        while(true) {
-            Token token = lexer.advance();
-            if(token.is_eof()) {
-                break;
-            }
-
-            if(token.kind == clang::tok::comment) {
-                comments.push_back(token.range);
-            }
-        }
-    }
-
     void flush_comments(std::uint32_t until) {
-        while(next_comment < comments.size() && comments[next_comment].begin < until) {
-            emit(comments[next_comment], SymbolKind::Comment, 0);
+        while(next_comment < comments.size() && comments[next_comment].range.begin < until) {
+            emit(comments[next_comment].range, SymbolKind::Comment, 0);
             next_comment++;
         }
     }
 
-    static bool has_logical_newline(llvm::StringRef text) {
-        for(std::size_t i = 0; i < text.size(); i++) {
-            /// A block comment is whitespace to the preprocessor, however
-            /// many lines it spans.
-            if(text[i] == '/' && i + 1 < text.size() && text[i + 1] == '*') {
-                auto end = text.find("*/", i + 2);
-                if(end == llvm::StringRef::npos) {
-                    return true;
-                }
-                i = end + 1;
-                continue;
+    bool has_logical_newline(std::uint32_t begin, std::uint32_t end) {
+        /// Comment ranges come from the semantics' lexical scan; gaps are
+        /// visited in order, so one monotonic cursor suffices.
+        auto inside_comment = [&](std::uint32_t offset) {
+            while(newline_scan_comment < comments.size() &&
+                  comments[newline_scan_comment].range.end <= offset) {
+                newline_scan_comment += 1;
             }
+            return newline_scan_comment < comments.size() &&
+                   comments[newline_scan_comment].range.begin <= offset;
+        };
 
-            if(text[i] != '\n') {
+        for(auto i = begin; i < end; i += 1) {
+            /// A newline inside a comment is invisible to the preprocessor
+            /// (a block comment is whitespace however many lines it spans;
+            /// a line comment ends only at its unspliced newline, which the
+            /// Lexer leaves outside the comment range).
+            if(content[i] != '\n' || inside_comment(i)) {
                 continue;
             }
 
             auto j = i;
-            if(j > 0 && text[j - 1] == '\r') {
-                j--;
+            if(j > begin && content[j - 1] == '\r') {
+                j -= 1;
             }
-            if(j > 0 && text[j - 1] == '\\') {
+            if(j > begin && content[j - 1] == '\\') {
                 continue;
             }
             return true;
@@ -695,10 +658,11 @@ private:
     llvm::StringRef content;
     DirectiveContext directive_context = DirectiveContext::None;
     std::uint32_t previous_end = 0;
-    llvm::DenseMap<std::uint32_t, SymbolKind> module_tokens;
     llvm::DenseMap<std::uint32_t, Classified> token_semantics;
-    std::vector<LocalSourceRange> comments;
+    llvm::ArrayRef<LexicalInfo::Comment> comments;
     std::size_t next_comment = 0;
+    /// Cursor of has_logical_newline over `comments`.
+    std::size_t newline_scan_comment = 0;
     std::vector<SemanticToken> tokens;
 };
 

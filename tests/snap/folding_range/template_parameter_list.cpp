@@ -3,7 +3,7 @@
 /// ## Template parameter list folding
 ///
 /// - status: unsupported
-/// - order: 11
+/// - order: 12
 
 template<typename T>
 struct Less;

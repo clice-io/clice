@@ -93,6 +93,41 @@ TEST_CASE(MacroInclude) {
     EXPECT_LINK(0, "0", TestVFS::path("test.h"));
 }
 
+TEST_CASE(HasIncludeTwice) {
+    // Two operators on one line: each restarts the argument match.
+    run(R"cpp(
+#[a.h]
+
+#[b.h]
+
+#[main.cpp]
+#include "a.h"
+#include "b.h"
+#if __has_include(§(0)⟦"a.h"⟧) && __has_include(§(1)⟦"b.h"⟧)
+#endif
+)cpp");
+
+    // Two include links, then the two operator arguments.
+    ASSERT_EQ(links.size(), 4U);
+    EXPECT_LINK(2, "0", TestVFS::path("a.h"));
+    EXPECT_LINK(3, "1", TestVFS::path("b.h"));
+}
+
+TEST_CASE(ImportNamedMacro) {
+    // Pre-C++20, even `import` is a legal macro name; as the filename
+    // argument it must link, not read as a directive keyword.
+    run(R"cpp(
+#[test.h]
+
+#[main.cpp]
+#define import "test.h"
+#include §(0)⟦import§⟧
+)cpp");
+
+    ASSERT_EQ(links.size(), 1U);
+    EXPECT_LINK(0, "0", TestVFS::path("test.h"));
+}
+
 TEST_CASE(Embed) {
     run(R"cpp(
 #[bytes.bin]

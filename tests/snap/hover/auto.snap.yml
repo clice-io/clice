@@ -201,7 +201,7 @@ auto on alias
 
 ---
 ```cpp
-cls_type // aka: alias_class::cls
+cls_type // aka: cls
 ```
 
 24_auto_alias_template: { range: "187:0-187:4" }

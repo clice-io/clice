@@ -1,0 +1,7 @@
+---
+created_at: 2026-07-31
+input_file: param_dependent.cpp
+---
+- { pos: "26:14", kind: Parameter, label: "scale:", padding_right: true }
+- { pos: "27:22", kind: Parameter, label: "item:", padding_right: true }
+- { pos: "28:33", kind: Parameter, label: "slot:", padding_right: true }

@@ -49,18 +49,33 @@ import { parseAnnotations } from "./snap/annotation.ts";
 // feature -> doc path (relative to repo root). Extend as more features
 // adopt fixture-generated docs.
 const FEATURES: Record<string, string> = {
+    code_completion: "docs/en/features/completion.md",
+    document_symbol: "docs/en/features/document-symbols.md",
     folding_range: "docs/en/features/folding-ranges.md",
+    inlay_hint: "docs/en/features/inlay-hints.md",
     semantic_tokens: "docs/en/features/semantic-tokens.md",
+    signature_help: "docs/en/features/signature-help.md",
 };
 
 const ISSUE_TRACKERS: Record<string, string> = {
     clangd: "https://github.com/clangd/clangd/issues/",
     vscode: "https://github.com/microsoft/vscode/issues/",
+    llvm: "https://github.com/llvm/llvm-project/issues/",
 };
 
-// `snap` is consumed by the snapshot suites (tools/snap/inspect.ts),
-// not rendered into docs.
-const KNOWN_KEYS: readonly string[] = ["status", "issues", "order", "snap"];
+// `snap` and `config` are consumed by the snapshot suites
+// (tools/snap/inspect.ts), not rendered into docs.
+const KNOWN_KEYS: readonly string[] = [
+    "status",
+    "issues",
+    "order",
+    "verify",
+    "snap",
+    "config",
+    "diagnostics",
+    "indexing",
+    "flags",
+];
 const VALID_STATUS: readonly string[] = ["supported", "partial", "unsupported"];
 
 // Markers must occupy their own unindented line, so marker text embedded in
@@ -328,10 +343,17 @@ function renderItem(fx: Fixture): string {
         const runs = fx.example.match(/`+/g) ?? [];
         const longest = runs.reduce((max, run) => Math.max(max, run.length), 0);
         const fence = "`".repeat(Math.max(3, longest + 1));
+        // `<details>` rather than VitePress's `::: details` container so the
+        // example collapses on GitHub too.
+        out.push("");
+        out.push("  <details>");
+        out.push("  <summary>Example</summary>");
         out.push("");
         out.push(`  ${fence}cpp`);
         out.push(...indent(fx.example));
         out.push(`  ${fence}`);
+        out.push("");
+        out.push("  </details>");
     }
     return out.join("\n");
 }

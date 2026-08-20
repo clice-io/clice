@@ -17,8 +17,8 @@
 /// > `FoldingRangeKind.Region` and clients can choose to auto-fold them.
 
 // snap: skip because the leading directives fall into the server's
-// preamble PCH and the wire reply drops the conditionDirective fold that
-// the standalone (no-PCH) compile reports. Un-skip once the two paths
+// preamble PCH and the server reply drops the conditionDirective fold that
+// the inspect-path (no-PCH) compile reports. Un-skip once the two paths
 // agree.
 
 #ifdef _WIN32

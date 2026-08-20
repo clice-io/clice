@@ -6,10 +6,11 @@ namespace {
 
 TEST_SUITE(Scan) {
 
-// === scan() tests ===
+// === scan_quick() — include and conditional extraction; module
+// declaration coverage lives in module_scan_tests.cpp ===
 
 TEST_CASE(BasicIncludes) {
-    auto result = scan(R"(
+    auto result = scan_quick(R"(
 #include <vector>
 #include "foo/bar.h"
 int x = 1;
@@ -30,7 +31,7 @@ TEST_CASE(IncludeOffsets) {
 #include <a.h>
 #include "b.h"
 )";
-    auto result = scan(content);
+    auto result = scan_quick(content);
 
     ASSERT_EQ(result.includes.size(), 2u);
     EXPECT_EQ(result.includes[0].offset, static_cast<std::uint32_t>(content.find("#include <a")));
@@ -40,7 +41,7 @@ TEST_CASE(IncludeOffsets) {
 
 TEST_CASE(IndentedIncludeOffset) {
     llvm::StringRef content = "  #  include <a.h>\n";
-    auto result = scan(content);
+    auto result = scan_quick(content);
 
     ASSERT_EQ(result.includes.size(), 1u);
     // The offset points at the `#`, not the line start.
@@ -48,7 +49,7 @@ TEST_CASE(IndentedIncludeOffset) {
 }
 
 TEST_CASE(ConditionalIncludes) {
-    auto result = scan(R"(
+    auto result = scan_quick(R"(
 #include <always.h>
 #ifdef FOO
 #include <conditional.h>
@@ -66,7 +67,7 @@ TEST_CASE(ConditionalIncludes) {
 }
 
 TEST_CASE(NestedConditionals) {
-    auto result = scan(R"(
+    auto result = scan_quick(R"(
 #ifdef A
 #ifdef B
 #include <nested.h>
@@ -85,69 +86,47 @@ TEST_CASE(NestedConditionals) {
     EXPECT_FALSE(result.includes[2].conditional);
 }
 
-TEST_CASE(ModuleDeclaration) {
-    auto result = scan(R"(
-module;
-#include <header.h>
-export module my.module;
-)");
-
-    EXPECT_EQ(result.module_name, "my.module");
-    EXPECT_TRUE(result.is_interface_unit);
-    EXPECT_FALSE(result.need_preprocess);
-    ASSERT_EQ(result.includes.size(), 1u);
-    EXPECT_EQ(result.includes[0].path, "header.h");
-    EXPECT_TRUE(result.includes[0].is_angled);
-}
-
-TEST_CASE(ModulePartition) {
-    auto result = scan(R"(
-module my.module:part;
-)");
-
-    EXPECT_EQ(result.module_name, "my.module:part");
-    EXPECT_FALSE(result.is_interface_unit);
-}
-
-TEST_CASE(ModuleImplementation) {
-    auto result = scan(R"(
-module my.module;
-)");
-
-    EXPECT_EQ(result.module_name, "my.module");
-    EXPECT_FALSE(result.is_interface_unit);
-}
-
-TEST_CASE(ConditionalModule) {
-    auto result = scan(R"(
-#ifdef USE_MODULES
-export module foo;
+TEST_CASE(ElifBranchInclude) {
+    auto result = scan_quick(R"(
+#if defined(A)
+#include <a.h>
+#elif defined(B)
+#include <b.h>
+#else
+#include <c.h>
 #endif
+#include <after.h>
 )");
 
-    EXPECT_TRUE(result.module_name.empty());
-    EXPECT_TRUE(result.need_preprocess);
+    ASSERT_EQ(result.includes.size(), 4u);
+    for(std::size_t i = 0; i < 3; i += 1) {
+        EXPECT_TRUE(result.includes[i].conditional);
+        EXPECT_EQ(result.includes[i].conditional_depth, 1);
+    }
+    EXPECT_FALSE(result.includes[3].conditional);
 }
 
-TEST_CASE(GlobalModuleFragment) {
-    auto result = scan(R"(
-module;
-export module test;
+TEST_CASE(IncludeNext) {
+    auto result = scan_quick(R"(
+#include <normal.h>
+#include_next <chained.h>
 )");
 
-    EXPECT_EQ(result.module_name, "test");
-    EXPECT_TRUE(result.is_interface_unit);
+    ASSERT_EQ(result.includes.size(), 2u);
+    EXPECT_FALSE(result.includes[0].is_include_next);
+    EXPECT_TRUE(result.includes[1].is_include_next);
+    EXPECT_EQ(result.includes[1].path, "chained.h");
 }
 
 TEST_CASE(EmptyContent) {
-    auto result = scan("");
+    auto result = scan_quick("");
     EXPECT_TRUE(result.includes.empty());
     EXPECT_TRUE(result.module_name.empty());
     EXPECT_FALSE(result.need_preprocess);
 }
 
 TEST_CASE(NoDirectives) {
-    auto result = scan(R"(
+    auto result = scan_quick(R"(
 int main() {
     return 0;
 }
@@ -392,6 +371,34 @@ TEST_CASE(ExportModuleMissingSemicolon) {
     llvm::StringRef content = "export module foo\nint x;";
     // Bound covers "export module foo\n".
     EXPECT_FALSE(is_preamble_complete(content, 18));
+}
+
+TEST_CASE(SplicedIncompleteInclude) {
+    // The unterminated filename token's spelling begins with the splice.
+    llvm::StringRef content = "#include \\\n<foo\nint x;";
+    EXPECT_FALSE(is_preamble_complete(content, 16));
+}
+
+TEST_CASE(SplicedCompleteInclude) {
+    llvm::StringRef content = "#include \\\n<foo.h>\nint x;";
+    EXPECT_TRUE(is_preamble_complete(content, 19));
+}
+
+TEST_CASE(AngledHashImport) {
+    llvm::StringRef content = "#import <foo.h>\nint x;";
+    EXPECT_TRUE(is_preamble_complete(content, 16));
+}
+
+TEST_CASE(TrailingCommentAfterSemicolon) {
+    // A trailing comment must not hide the terminating semicolon.
+    llvm::StringRef content = "import std; // done\nint x;";
+    EXPECT_TRUE(is_preamble_complete(content, 20));
+}
+
+TEST_CASE(TrailingCommentNoSemicolon) {
+    llvm::StringRef content = "import std // ;\nint x;";
+    // The semicolon inside the comment does not terminate the statement.
+    EXPECT_FALSE(is_preamble_complete(content, 16));
 }
 
 TEST_CASE(CompleteExportImport) {

@@ -5,19 +5,78 @@
 
 #include "compile/compilation_unit.h"
 #include "index/serialization.h"
+#include "index/shard.h"
 #include "semantic/decls.h"
 #include "semantic/display.h"
 #include "semantic/semantics.h"
 #include "semantic/types.h"
-#include "syntax/lexer.h"
+#include "support/logging.h"
+#include "support/timer.h"
 
-#include "llvm/Support/SHA256.h"
 #include "llvm/Support/xxhash.h"
 #include "clang/AST/DeclCXX.h"
 
 namespace clice::index {
 
 namespace {
+
+/// One file's rows on the wire: a self-contained single-variant shard
+/// blob (index/shard.h). `hash` is xxh3 of `blob` — the variant's
+/// identity — so the master can skip blobs it already stores without
+/// touching their bytes.
+struct FileSection {
+    std::uint32_t path_id = 0;
+
+    std::uint64_t hash = 0;
+
+    std::vector<std::uint8_t> blob;
+};
+
+/// The envelope's wire layout. Only the builder below ever materializes
+/// it; every consumer reads the bytes through the TUIndex reader.
+struct EnvelopeBlob {
+    /// Wire schema version (index_format_version), gated by
+    /// TUIndex::from_bytes.
+    /// A worker respawned after the binary on disk changed can be one
+    /// build ahead of the server, and a layout change need not be
+    /// structurally detectable.
+    std::uint32_t format_version = 0;
+
+    /// Milliseconds since epoch, sampled before the build started.
+    std::int64_t built_at = 0;
+
+    /// The include graph (IncludeGraph's persisted vectors): the path
+    /// table, the consumed-content hash per path, and every include edge
+    /// of the parse.
+    std::vector<std::string> paths;
+    std::vector<std::uint64_t> path_hashes;
+    std::vector<IncludeLocation> locations;
+
+    SymbolTable symbols;
+
+    /// One entry per file with rows, ascending by path id.
+    std::vector<FileSection> sections;
+
+    /// Preamble ride-alongs, empty on ordinary envelopes: identity of the
+    /// exact preamble text the PCH was built from (matches_prefix), and
+    /// the PCH-derived feature state spliced into main-file results. The
+    /// refs borrow the builder's inputs — encode-only, like the section
+    /// blobs are for readers.
+    std::uint64_t preamble_hash = 0;
+    std::uint32_t preamble_size = 0;
+    llvm::ArrayRef<feature::DocumentLink> links;
+    llvm::ArrayRef<std::uint32_t> inactive_regions;
+    llvm::ArrayRef<std::uint8_t> open_conditionals;
+};
+
+/// What build_preamble_index adds on top of an ordinary build.
+struct PreambleExtras {
+    std::uint64_t hash = 0;
+    std::uint32_t size = 0;
+    llvm::ArrayRef<feature::DocumentLink> links;
+    llvm::ArrayRef<std::uint32_t> inactive_regions;
+    llvm::ArrayRef<std::uint8_t> open_conditionals;
+};
 
 SymbolScope classify_scope(const clang::NamedDecl* decl) {
     auto linkage = decl->getFormalLinkage();
@@ -32,8 +91,8 @@ SymbolScope classify_scope(const clang::NamedDecl* decl) {
 /// relations from the resolve facts, macros from the preprocessor directives.
 class Projector {
 public:
-    Projector(TUIndex& result, CompilationUnitRef unit, bool interested_only) :
-        result(result), unit(unit), interested_only(interested_only) {}
+    Projector(CompilationUnitRef unit, bool interested_only) :
+        unit(unit), interested_only(interested_only) {}
 
     /// The only gate through which rows enter `file_indices`. With
     /// interested_only, the index covers just the interested file — yet
@@ -45,7 +104,7 @@ public:
         if(interested_only && fid != unit.interested_file()) {
             return nullptr;
         }
-        return &result.file_indices[fid];
+        return &file_indices[fid];
     }
 
     void add_occurrence(const clang::NamedDecl* decl,
@@ -74,7 +133,7 @@ public:
         }
 
         auto symbol_id = unit.getSymbolID(decl);
-        auto [it, success] = result.symbols.try_emplace(symbol_id.hash);
+        auto [it, success] = symbols.try_emplace(symbol_id.hash);
         if(success) {
             auto& symbol = it->second;
             symbol.name = display::name_of(decl);
@@ -101,7 +160,7 @@ public:
         // build() would default-construct a nameless entry when recording
         // reference files, and every name lookup for the macro would come
         // back empty.
-        auto [it, success] = result.symbols.try_emplace(symbol_id.hash);
+        auto [it, success] = symbols.try_emplace(symbol_id.hash);
         if(success) {
             auto& symbol = it->second;
             symbol.name = unit.token_spelling(location).str();
@@ -205,7 +264,7 @@ public:
     /// Module names are indexed like macro names: an occurrence plus a
     /// Definition/Reference relation keyed by a hash of the full module
     /// name, so navigation flows through the ordinary index pipeline.
-    void index_modules() {
+    void index_modules(const Semantics& semantics) {
         auto emit = [&](llvm::StringRef name,
                         clang::FileID fid,
                         LocalSourceRange range,
@@ -233,7 +292,7 @@ public:
             }
             index->relations[hash].emplace_back(relation);
 
-            auto& symbol = result.symbols[hash];
+            auto& symbol = symbols[hash];
             if(symbol.name.empty()) {
                 symbol.name = name.str();
                 symbol.kind = SymbolKind::Module;
@@ -258,77 +317,30 @@ public:
 
         // The module declaration of this unit: Definition in the interface
         // unit, Reference in an implementation unit. The declaration has no
-        // AST node or PP location, so locate the name with the lexer.
+        // AST node or PP location; the semantics' lexical scan located and
+        // cross-checked its written tokens. The occurrence spans the written
+        // name, partition included.
         if(!unit.is_named_module()) {
             return;
         }
         auto module_name = unit.module_name();
-        if(!module_name.empty()) {
-            // interested_content() is the full, NUL-terminated buffer; the
-            // lexer token ranges are offsets into it, i.e. file offsets.
-            llvm::StringRef content = unit.interested_content();
-            Lexer lexer(content);
-
-            auto is_identifier = [](const Token& token) {
-                return token.is_identifier();
-            };
-
-            bool found = false;
-            std::uint32_t name_begin = 0;
-            std::uint32_t name_end = 0;
-
-            // Whether the previous token was `export` at the start of a line,
-            // so a following `module` still introduces the declaration.
-            bool after_export = false;
-
-            while(true) {
-                auto token = lexer.advance();
-                if(token.is_eof())
-                    break;
-
-                // The `module` declaration keyword either starts the line or
-                // follows an `export` that starts the line (`export module M;`).
-                bool at_decl_start = token.is_at_start_of_line || after_export;
-                after_export = token.is_at_start_of_line && token.is_identifier() &&
-                               token.text(content) == "export";
-
-                // Only interested in a `module` keyword whose next token is an
-                // identifier (the name). This skips `module;` (global module
-                // fragment, next is `;`) and `module :private;` (next is `:`).
-                if(!at_decl_start || !token.is_identifier() || token.text(content) != "module")
-                    continue;
-
-                auto next = lexer.next();
-                if(!next.is_identifier())
-                    continue;
-
-                auto first = lexer.advance_if(is_identifier);
-                if(!first)
-                    continue;
-                name_begin = first->range.begin;
-                name_end = first->range.end;
-                while(true) {
-                    auto sep = lexer.advance_if([](const Token& token) {
-                        return token.kind == clang::tok::period || token.kind == clang::tok::colon;
-                    });
-                    if(!sep)
-                        break;
-                    auto part = lexer.advance_if(is_identifier);
-                    if(!part)
-                        break;
-                    name_end = part->range.end;
-                }
-                found = true;
-                break;
+        if(module_name.empty()) {
+            return;
+        }
+        for(auto& module: semantics.module_declarations()) {
+            if(module.kind != LexicalInfo::ModuleDeclaration::Kind::Declaration) {
+                continue;
             }
-
-            if(found) {
-                emit(module_name,
-                     unit.interested_file(),
-                     LocalSourceRange{name_begin, name_end},
-                     unit.is_module_interface_unit() ? RelationKind::Definition
-                                                     : RelationKind::Reference);
-            }
+            auto name_begin = module.name_parts.front().begin;
+            auto name_end = (module.partition_parts.empty() ? module.name_parts.back()
+                                                            : module.partition_parts.back())
+                                .end;
+            emit(module_name,
+                 unit.interested_file(),
+                 LocalSourceRange{name_begin, name_end},
+                 unit.is_module_interface_unit() ? RelationKind::Definition
+                                                 : RelationKind::Reference);
+            break;
         }
     }
 
@@ -511,14 +523,7 @@ public:
         }
     }
 
-    void project_semantics() {
-        /// The interested-only shape is the one features share, cached on the
-        /// unit; the whole-TU shape is transient — projected and dropped.
-        std::optional<Semantics> full;
-        if(!interested_only) {
-            full.emplace(Semantics::build(unit, false));
-        }
-        const Semantics& semantics = interested_only ? unit.semantics() : *full;
+    void project_semantics(const Semantics& semantics) {
         auto entries = semantics.node_entries();
 
         for(std::uint32_t i = 0; i < entries.size(); i++) {
@@ -558,256 +563,421 @@ public:
         }
     }
 
-    void build() {
-        project_semantics();
+    std::string build(const PreambleExtras* extras) {
+        ScopedTimer semantics_timer;
+        /// The interested-only shape is the one features share, cached on the
+        /// unit; the whole-TU shape is transient — projected and dropped.
+        /// Both phases below share the one build.
+        std::optional<Semantics> full;
+        if(!interested_only) {
+            full.emplace(Semantics::build(unit, false));
+        }
+        const Semantics& semantics = interested_only ? unit.semantics() : *full;
+        auto semantics_ms = semantics_timer.ms_f();
 
-        index_modules();
+        ScopedTimer project_timer;
+        project_semantics(semantics);
 
+        index_modules(semantics);
+        auto project_ms = project_timer.ms_f();
+
+        ScopedTimer finish_timer;
         // Build the include graph from what the index actually recorded:
         // every fid keying `file_indices` gets its include chain resolved
         // through the SourceManager, so the lookups below cannot miss.
         llvm::SmallVector<clang::FileID, 16> indexed_fids;
-        indexed_fids.reserve(result.file_indices.size());
-        for(auto& [fid, index]: result.file_indices) {
+        indexed_fids.reserve(file_indices.size());
+        for(auto& [fid, index]: file_indices) {
             indexed_fids.push_back(fid);
         }
-        result.graph = IncludeGraph::from(unit, indexed_fids);
+        graph = IncludeGraph::from(unit, indexed_fids);
 
-        for(auto& [fid, index]: result.file_indices) {
-            for(auto& [symbol_id, relations]: index.relations) {
-                std::ranges::sort(relations, [](const Relation& lhs, const Relation& rhs) {
-                    return std::tuple(lhs.kind.value(),
-                                      lhs.range.begin,
-                                      lhs.range.end,
-                                      lhs.target_symbol) < std::tuple(rhs.kind.value(),
-                                                                      rhs.range.begin,
-                                                                      rhs.range.end,
-                                                                      rhs.target_symbol);
-                });
-                auto range =
-                    std::ranges::unique(relations, [](const Relation& lhs, const Relation& rhs) {
-                        return lhs.kind == rhs.kind && lhs.range == rhs.range &&
-                               lhs.target_symbol == rhs.target_symbol;
-                    });
-                relations.erase(range.begin(), range.end());
-                result.symbols[symbol_id].reference_files.add(result.graph.path_id(fid));
+        for(auto& [fid, index]: file_indices) {
+            for(auto symbol_id: llvm::make_first_range(index.relations)) {
+                symbols[symbol_id].reference_files.add(graph.path_id(fid));
             }
+        }
+        auto finish_ms = finish_timer.ms_f();
 
-            std::ranges::sort(index.occurrences, [](const Occurrence& lhs, const Occurrence& rhs) {
-                return std::tuple(lhs.range.begin, lhs.range.end, lhs.target) <
-                       std::tuple(rhs.range.begin, rhs.range.end, rhs.target);
-            });
-            auto range =
-                std::ranges::unique(index.occurrences,
-                                    [](const Occurrence& lhs, const Occurrence& rhs) {
-                                        return lhs.range == rhs.range && lhs.target == rhs.target;
-                                    });
-            index.occurrences.erase(range.begin(), range.end());
-
-            if(fid == unit.interested_file()) {
-                result.main_file_index = std::move(index);
+        // Encode one blob per path. A header entered several times (its
+        // FileIDs differ, its path id does not) contributes the union of
+        // its entries' rows: write_shard canonicalizes — sorts and
+        // deduplicates — so concatenation is union.
+        ScopedTimer encode_timer;
+        llvm::DenseMap<std::uint32_t, FileIndex> by_path;
+        llvm::DenseMap<std::uint32_t, clang::FileID> path_fids;
+        for(auto& [fid, index]: file_indices) {
+            // A file with no include edge is a synthetic buffer (predefines,
+            // <command line>): it has no real path to attribute rows to, and
+            // path_id() would misfile them under the source file. Real files
+            // forced in via -include are not affected — clang records their
+            // include edge in the predefines buffer, which is a valid
+            // location. The interested file legitimately has no edge.
+            if(fid != unit.interested_file() &&
+               graph.include_location_id(fid) == static_cast<std::uint32_t>(-1)) {
+                continue;
+            }
+            auto path_id = graph.path_id(fid);
+            path_fids.try_emplace(path_id, fid);
+            auto& into = by_path[path_id];
+            if(into.empty()) {
+                into = std::move(index);
+                continue;
+            }
+            into.occurrences.insert(into.occurrences.end(),
+                                    index.occurrences.begin(),
+                                    index.occurrences.end());
+            for(auto& [hash, relations]: index.relations) {
+                auto& group = into.relations[hash];
+                group.insert(group.end(), relations.begin(), relations.end());
             }
         }
 
-        result.file_indices.erase(unit.interested_file());
+        auto resolve = [&](SymbolHash hash) -> std::optional<SymbolIdentity> {
+            auto it = symbols.find(hash);
+            if(it == symbols.end()) {
+                return std::nullopt;
+            }
+            return SymbolIdentity{it->second.name, it->second.kind, it->second.scope};
+        };
+
+        llvm::SmallVector<std::uint32_t> path_ids;
+        path_ids.reserve(by_path.size());
+        for(auto path_id: llvm::make_first_range(by_path)) {
+            path_ids.push_back(path_id);
+        }
+        llvm::sort(path_ids);
+        std::vector<FileSection> sections;
+        for(auto path_id: path_ids) {
+            auto& rows = by_path[path_id];
+            if(rows.empty()) {
+                continue;
+            }
+            std::string bytes;
+            llvm::raw_string_ostream os(bytes);
+            write_shard(rows, resolve, unit.file_content(path_fids[path_id]), os);
+            auto hash = llvm::xxh3_64bits(bytes);
+            sections.push_back(
+                {path_id, hash, std::vector<std::uint8_t>(bytes.begin(), bytes.end())});
+        }
+        auto encode_ms = encode_timer.ms_f();
+
+        EnvelopeBlob blob;
+        blob.format_version = index_format_version;
+        blob.built_at = unit.build_at().count();
+        blob.paths = std::move(graph.paths);
+        blob.path_hashes = std::move(graph.path_hashes);
+        blob.locations = std::move(graph.locations);
+        blob.symbols = std::move(symbols);
+        blob.sections = std::move(sections);
+        if(extras) {
+            blob.preamble_hash = extras->hash;
+            blob.preamble_size = extras->size;
+            blob.links = extras->links;
+            blob.inactive_regions = extras->inactive_regions;
+            blob.open_conditionals = extras->open_conditionals;
+        }
+
+        ScopedTimer pack_timer;
+        std::string envelope;
+        llvm::raw_string_ostream os(envelope);
+        serialize_blob(blob, os);
+
+        LOG_PERF("index_detail",
+                 "op=build scope={} semantics_ms={:.2f} project_ms={:.2f} finish_ms={:.2f} "
+                 "encode_ms={:.2f} pack_ms={:.2f}",
+                 interested_only ? "interested" : "full",
+                 semantics_ms,
+                 project_ms,
+                 finish_ms,
+                 encode_ms,
+                 pack_timer.ms_f());
+        return envelope;
     }
 
 private:
-    TUIndex& result;
     CompilationUnitRef unit;
     bool interested_only;
+    IncludeGraph graph;
+    SymbolTable symbols;
+    /// Build-time working state keyed by FileID — clang::FileID means
+    /// nothing outside the compilation, so it never leaves the builder;
+    /// the encode step converts it through graph.path_id.
+    llvm::DenseMap<clang::FileID, FileIndex> file_indices;
     llvm::DenseMap<std::uint32_t, const clang::NamedDecl*> enclosing_cache;
 };
 
 }  // namespace
 
-void FileIndex::lookup(std::uint32_t offset,
-                       llvm::function_ref<bool(const Occurrence&)> callback) const {
-    auto it = std::ranges::lower_bound(occurrences, offset, {}, [](const Occurrence& o) {
-        return o.range.end;
-    });
-    while(it != occurrences.end() && it->range.contains(offset)) {
-        if(!callback(*it))
-            return;
-        ++it;
-    }
+std::string build_tu_index(CompilationUnitRef unit, bool interested_only) {
+    Projector projector(unit, interested_only);
+    return projector.build(nullptr);
 }
 
-void FileIndex::lookup(SymbolHash symbol,
-                       RelationKind kind,
-                       llvm::function_ref<bool(const Relation&)> callback) const {
-    auto it = relations.find(symbol);
-    if(it == relations.end())
+std::string build_preamble_index(CompilationUnitRef unit,
+                                 llvm::ArrayRef<feature::DocumentLink> links,
+                                 llvm::ArrayRef<std::uint32_t> inactive_regions,
+                                 llvm::ArrayRef<std::uint8_t> open_conditionals) {
+    // The preamble compile remaps the buffer truncated at the bound, so
+    // interested_content() is exactly the preamble text the PCH was built
+    // from.
+    auto preamble_text = unit.interested_content();
+    PreambleExtras extras{
+        .hash = llvm::xxh3_64bits(preamble_text),
+        .size = static_cast<std::uint32_t>(preamble_text.size()),
+        .links = links,
+        .inactive_regions = inactive_regions,
+        .open_conditionals = open_conditionals,
+    };
+    Projector projector(unit, false);
+    return projector.build(&extras);
+}
+
+namespace {
+
+using WireView = kota::codec::fbs::table_view<EnvelopeBlob>;
+
+/// The buffer was fully verified at TUIndex::from_bytes; per-accessor
+/// views skip that cost.
+WireView wire_root(llvm::StringRef data) {
+    return WireView::from_verified_bytes(blob_bytes(data));
+}
+
+SymbolIdentity identity_of(kota::codec::fbs::table_view<Symbol> symbol) {
+    return {to_ref(symbol[&Symbol::name]),
+            SymbolKind(symbol[&Symbol::kind]),
+            symbol[&Symbol::scope]};
+}
+
+/// The symbol's serialized reference bitmap (the Bitmap repr's byte image)
+/// as a StringRef borrowing the wire.
+llvm::StringRef bitmap_bytes(kota::codec::fbs::table_view<Symbol> symbol) {
+    const auto* raw = symbol[&Symbol::reference_files].raw();
+    if(!raw) {
+        return {};
+    }
+    return llvm::StringRef(reinterpret_cast<const char*>(raw->data()), raw->size());
+}
+
+}  // namespace
+
+TUIndex TUIndex::from_bytes(llvm::StringRef data) {
+    auto root = WireView::from_bytes(blob_bytes(data));
+    if(!root.valid() || root[&EnvelopeBlob::format_version] != index_format_version) {
+        return {};
+    }
+
+    // Structural verification does not constrain field values; every path
+    // id the merge dereferences against the path table is bounded here so
+    // the accessors stay check-free. The builder ends every path table
+    // with the interested file, so consumers address path_count() - 1
+    // unchecked — an empty table marks a corrupt envelope.
+    auto count = root[&EnvelopeBlob::paths].size();
+    if(count == 0) {
+        return {};
+    }
+    auto locations = root[&EnvelopeBlob::locations];
+    for(std::size_t i = 0; i < locations.size(); i += 1) {
+        IncludeLocation location = locations.at(i);
+        if(location.path_id >= count) {
+            return {};
+        }
+    }
+    // section_of binary-searches the section table by path id and shard_of
+    // trusts the result, so the ids must ascend strictly — a repeated or
+    // out-of-order id would attribute one file's rows to another.
+    auto sections = root[&EnvelopeBlob::sections];
+    std::uint32_t previous_path_id = 0;
+    for(std::size_t i = 0; i < sections.size(); i += 1) {
+        auto path_id = sections.at(i)[&FileSection::path_id];
+        if(path_id >= count || (i != 0 && path_id <= previous_path_id)) {
+            return {};
+        }
+        previous_path_id = path_id;
+    }
+
+    TUIndex result;
+    result.data = data;
+    return result;
+}
+
+TUIndex TUIndex::from_buffer(std::unique_ptr<llvm::MemoryBuffer> buffer) {
+    if(!buffer) {
+        return {};
+    }
+    auto result = from_bytes(buffer->getBuffer());
+    if(result.loaded()) {
+        result.owned = std::move(buffer);
+    }
+    return result;
+}
+
+std::int64_t TUIndex::built_at() const {
+    return loaded() ? wire_root(data)[&EnvelopeBlob::built_at] : 0;
+}
+
+std::uint32_t TUIndex::path_count() const {
+    return loaded() ? static_cast<std::uint32_t>(wire_root(data)[&EnvelopeBlob::paths].size()) : 0;
+}
+
+llvm::StringRef TUIndex::path(std::uint32_t id) const {
+    return to_ref(wire_root(data)[&EnvelopeBlob::paths].at(id));
+}
+
+std::uint64_t TUIndex::path_hash(std::uint32_t id) const {
+    // The hash column may be shorter than the path table on a foreign
+    // blob; an absent hash reads as 0, "unavailable".
+    auto hashes = wire_root(data)[&EnvelopeBlob::path_hashes];
+    return id < hashes.size() ? hashes.at(id) : 0;
+}
+
+std::uint32_t TUIndex::location_count() const {
+    return loaded() ? static_cast<std::uint32_t>(wire_root(data)[&EnvelopeBlob::locations].size())
+                    : 0;
+}
+
+IncludeLocation TUIndex::location(std::uint32_t i) const {
+    return wire_root(data)[&EnvelopeBlob::locations].at(i);
+}
+
+std::uint32_t TUIndex::section_count() const {
+    return loaded() ? static_cast<std::uint32_t>(wire_root(data)[&EnvelopeBlob::sections].size())
+                    : 0;
+}
+
+std::uint32_t TUIndex::section_path(std::uint32_t i) const {
+    return wire_root(data)[&EnvelopeBlob::sections].at(i)[&FileSection::path_id];
+}
+
+std::uint64_t TUIndex::section_hash(std::uint32_t i) const {
+    return wire_root(data)[&EnvelopeBlob::sections].at(i)[&FileSection::hash];
+}
+
+llvm::StringRef TUIndex::section_blob(std::uint32_t i) const {
+    auto blob = to_array_ref(wire_root(data)[&EnvelopeBlob::sections].at(i)[&FileSection::blob]);
+    return llvm::StringRef(reinterpret_cast<const char*>(blob.data()), blob.size());
+}
+
+std::optional<std::uint32_t> TUIndex::section_of(std::uint32_t path_id) const {
+    std::uint32_t lo = 0;
+    std::uint32_t hi = section_count();
+    while(lo < hi) {
+        auto mid = lo + (hi - lo) / 2;
+        if(section_path(mid) < path_id) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    if(lo < section_count() && section_path(lo) == path_id) {
+        return lo;
+    }
+    return std::nullopt;
+}
+
+const Shard& TUIndex::shard_of(std::uint32_t path_id) const {
+    const static Shard missing;
+    auto section = section_of(path_id);
+    if(!section) {
+        return missing;
+    }
+    if(shards.empty()) {
+        shards.resize(section_count());
+    }
+    auto& slot = shards[*section];
+    if(!slot.loaded()) {
+        slot = Shard::from_bytes(section_blob(*section));
+    }
+    return slot;
+}
+
+bool TUIndex::shards_verify() const {
+    if(shards.empty()) {
+        shards.resize(section_count());
+    }
+    for(std::uint32_t i = 0; i < section_count(); i += 1) {
+        // Structural verification alone accepts flipped bits that still
+        // form a valid shard (an in-bounds range, another symbol id);
+        // only the byte hash catches those, so a persisted envelope must
+        // fail here and rebuild instead of serving corrupted rows.
+        if(llvm::xxh3_64bits(section_blob(i)) != section_hash(i)) {
+            return false;
+        }
+        if(!shards[i].loaded()) {
+            shards[i] = Shard::from_bytes(section_blob(i));
+            if(!shards[i].loaded()) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+void TUIndex::iterate_symbols(
+    llvm::function_ref<bool(SymbolHash, const SymbolIdentity&, llvm::StringRef)> callback) const {
+    if(!loaded()) {
         return;
-    for(auto& r: it->second) {
-        if(r.kind & kind) {
-            if(!callback(r))
-                return;
+    }
+    auto symbols = wire_root(data)[&EnvelopeBlob::symbols];
+    for(std::size_t i = 0; i < symbols.size(); i += 1) {
+        auto entry = symbols.at(i);
+        if(!callback(entry.get<0>(), identity_of(entry.get<1>()), bitmap_bytes(entry.get<1>()))) {
+            return;
         }
     }
 }
 
-std::array<std::uint8_t, 32> FileIndex::hash() {
-    llvm::SHA256 hasher;
-
-    using u8 = std::uint8_t;
-
-    if(!occurrences.empty()) {
-        static_assert(sizeof(Occurrence) == sizeof(Range) + sizeof(SymbolHash));
-        static_assert(sizeof(Occurrence) % 8 == 0);
-        auto data = reinterpret_cast<u8*>(occurrences.data());
-        auto size = occurrences.size() * sizeof(Occurrence);
-        hasher.update(llvm::ArrayRef(data, size));
+std::optional<SymbolIdentity> TUIndex::find_symbol(SymbolHash hash) const {
+    if(!loaded()) {
+        return std::nullopt;
     }
-
-    for(auto& [symbol_id, relations]: relations) {
-        hasher.update(std::bit_cast<std::array<u8, sizeof(symbol_id)>>(symbol_id));
-        static_assert(sizeof(Relation) ==
-                      sizeof(RelationKind) + 4 + sizeof(Range) + sizeof(SymbolHash));
-        static_assert(sizeof(Relation) % 8 == 0);
-
-        if(!relations.empty()) {
-            auto data = reinterpret_cast<u8*>(relations.data());
-            auto size = relations.size() * sizeof(Relation);
-            hasher.update(llvm::ArrayRef(data, size));
-        }
+    auto found = wire_root(data)[&EnvelopeBlob::symbols].find(hash);
+    if(!found) {
+        return std::nullopt;
     }
-
-    return hasher.final();
+    return identity_of(found->get<1>());
 }
 
-TUIndex TUIndex::build(CompilationUnitRef unit, bool interested_only) {
-    TUIndex index;
-    index.built_at = unit.build_at();
-
-    Projector projector(index, unit, interested_only);
-    projector.build();
-
-    return index;
+bool TUIndex::matches_prefix(llvm::StringRef text) const {
+    if(!loaded()) {
+        return false;
+    }
+    auto root = wire_root(data);
+    auto size = root[&EnvelopeBlob::preamble_size];
+    return text.size() >= size &&
+           llvm::xxh3_64bits(text.take_front(size)) == root[&EnvelopeBlob::preamble_hash];
 }
 
-void TUIndex::serialize(llvm::raw_ostream& os) const {
-    fbs::FlatBufferBuilder builder(4096);
+std::vector<feature::DocumentLink> TUIndex::links() const {
+    if(!loaded()) {
+        return {};
+    }
+    auto entries = wire_root(data)[&EnvelopeBlob::links];
 
-    llvm::SmallVector<char, 1024> buffer;
-
-    auto paths =
-        transform(graph.paths, [&](const std::string& p) { return builder.CreateString(p); });
-
-    auto syms = transform(symbols, [&](auto&& value) {
-        auto& [symbol_id, symbol] = value;
-        buffer.clear();
-        buffer.resize_for_overwrite(symbol.reference_files.getSizeInBytes(false));
-        symbol.reference_files.write(buffer.data(), false);
-        return binary::CreateSymbolEntry(builder,
-                                         symbol_id,
-                                         binary::CreateSymbol(builder,
-                                                              CreateString(builder, symbol.name),
-                                                              symbol.kind.value(),
-                                                              CreateVector(builder, buffer),
-                                                              static_cast<uint8_t>(symbol.scope)));
-    });
-
-    /// Serialize a single FileIndex into a TUFileIndexEntry.
-    auto serialize_file_index = [&](std::uint32_t fid, const FileIndex& index) {
-        auto occs = CreateStructVector<binary::Occurrence>(builder, index.occurrences);
-        auto rels = transform(index.relations, [&](auto&& value) {
-            auto& [symbol_id, relations] = value;
-            return binary::CreateTUFileRelationsEntry(
-                builder,
-                symbol_id,
-                CreateStructVector<binary::Relation>(builder, relations));
+    std::vector<feature::DocumentLink> links;
+    links.reserve(entries.size());
+    for(std::size_t i = 0; i < entries.size(); i += 1) {
+        auto entry = entries[i];
+        links.push_back(feature::DocumentLink{
+            .range = entry[&feature::DocumentLink::range],
+            .target = std::string(entry[&feature::DocumentLink::target]),
         });
-        return binary::CreateTUFileIndexEntry(builder, fid, occs, CreateVector(builder, rels));
-    };
-
-    /// Convert FileID-keyed file_indices to path_id-keyed entries.
-    llvm::SmallVector<fbs::Offset<binary::TUFileIndexEntry>> file_idx_vec;
-    for(auto& [fid, index]: file_indices) {
-        auto pid = graph.path_id(fid);
-        file_idx_vec.push_back(serialize_file_index(pid, index));
     }
-
-    /// Main file is the last path in graph.paths (convention from IncludeGraph).
-    auto main_idx =
-        serialize_file_index(static_cast<std::uint32_t>(graph.paths.size() - 1), main_file_index);
-
-    auto tu_index =
-        binary::CreateTUIndex(builder,
-                              static_cast<std::uint64_t>(built_at.count()),
-                              CreateVector(builder, paths),
-                              CreateStructVector<binary::IncludeLocation>(builder, graph.locations),
-                              CreateVector(builder, syms),
-                              builder.CreateVector(file_idx_vec.data(), file_idx_vec.size()),
-                              main_idx,
-                              CreateVector(builder, graph.path_hashes));
-
-    builder.Finish(tu_index);
-    os.write(safe_cast<const char>(builder.GetBufferPointer()), builder.GetSize());
+    return links;
 }
 
-TUIndex TUIndex::from(const void* data) {
-    auto root = fbs::GetRoot<binary::TUIndex>(data);
-
-    TUIndex index;
-    index.built_at = std::chrono::milliseconds(root->built_at());
-
-    for(auto p: *root->paths()) {
-        index.graph.paths.emplace_back(p->str());
+llvm::ArrayRef<std::uint32_t> TUIndex::inactive_regions() const {
+    if(!loaded()) {
+        return {};
     }
+    return to_array_ref(wire_root(data)[&EnvelopeBlob::inactive_regions]);
+}
 
-    for(auto loc: *root->locations()) {
-        index.graph.locations.emplace_back(*safe_cast<IncludeLocation>(loc));
+llvm::ArrayRef<std::uint8_t> TUIndex::open_conditionals() const {
+    if(!loaded()) {
+        return {};
     }
-
-    if(root->path_hashes()) {
-        index.graph.path_hashes.assign(root->path_hashes()->begin(), root->path_hashes()->end());
-    }
-    index.graph.path_hashes.resize(index.graph.paths.size(), 0);
-
-    for(auto entry: *root->symbols()) {
-        auto& symbol = index.symbols[entry->symbol_id()];
-        symbol.name = entry->symbol()->name()->str();
-        symbol.kind = SymbolKind(static_cast<std::uint8_t>(entry->symbol()->kind()));
-        symbol.scope = static_cast<SymbolScope>(entry->symbol()->scope());
-        symbol.reference_files = read_bitmap(entry->symbol()->refs());
-    }
-
-    /// Helper to deserialize a TUFileIndexEntry into a FileIndex.
-    auto deserialize_file_index = [](const binary::TUFileIndexEntry* entry) -> FileIndex {
-        FileIndex fi;
-        if(entry->occurrences()) {
-            fi.occurrences.reserve(entry->occurrences()->size());
-            for(auto o: *entry->occurrences()) {
-                fi.occurrences.emplace_back(*safe_cast<Occurrence>(o));
-            }
-        }
-        if(entry->relations()) {
-            for(auto rel_entry: *entry->relations()) {
-                auto& rels = fi.relations[rel_entry->symbol()];
-                if(rel_entry->relations()) {
-                    rels.reserve(rel_entry->relations()->size());
-                    for(auto r: *rel_entry->relations()) {
-                        rels.emplace_back(*safe_cast<Relation>(r));
-                    }
-                }
-            }
-        }
-        return fi;
-    };
-
-    /// Populate path_file_indices keyed by path_id (no clang::FileID needed).
-    if(root->file_indices()) {
-        for(auto entry: *root->file_indices()) {
-            index.path_file_indices[entry->file_id()] = deserialize_file_index(entry);
-        }
-    }
-
-    if(root->main_file_index()) {
-        index.main_file_index = deserialize_file_index(root->main_file_index());
-    }
-
-    return index;
+    return to_array_ref(wire_root(data)[&EnvelopeBlob::open_conditionals]);
 }
 
 }  // namespace clice::index

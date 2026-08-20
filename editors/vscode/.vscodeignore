@@ -6,7 +6,8 @@ node_modules/**
 src/**
 .gitignore
 .yarnrc
-webpack.config.js
+webpack.config.mjs
+eslint.config.mjs
 vsc-extension-quickstart.md
 **/tsconfig.json
 **/.eslintrc.json

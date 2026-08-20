@@ -22,11 +22,15 @@ TEST_CASE(BuildPCMThenCompileWithImport) {
     TempDir tmp;
     // Module interface: produces PCM.
     tmp.touch("mod_iface.cppm",
-              "export module Hello;\n" R"(export const char* hello() { return "world"; })" "\n");
+              "export module Hello;\n"
+              R"(export const char* hello() { return "world"; })"
+              "\n");
     auto iface = tmp.path("mod_iface.cppm");
 
     // Consumer: imports the module.
-    tmp.touch("consumer.cpp", "import Hello;\n" "int main() { return hello()[0]; }\n");
+    tmp.touch("consumer.cpp",
+              "import Hello;\n"
+              "int main() { return hello()[0]; }\n");
     auto consumer = tmp.path("consumer.cpp");
 
     WorkerHandle sl;
@@ -71,7 +75,9 @@ TEST_CASE(BuildPCMThenCompileWithImport) {
         worker::CompileParams params;
         params.path = consumer;
         params.version = 1;
-        params.text = "import Hello;\n" "int main() { return hello()[0]; }\n";
+        params.text =
+            "import Hello;\n"
+            "int main() { return hello()[0]; }\n";
         params.directory = "/tmp";
         params.arguments = {"clang++",
                             "-resource-dir",
@@ -101,7 +107,9 @@ TEST_CASE(BuildPCMThenCompileWithImport) {
 TEST_CASE(BuildPCMChainThenCompile) {
     TempDir tmp;
     // Module A: no deps.
-    tmp.touch("chain_a.cppm", "export module A;\n" "export int val_a() { return 1; }\n");
+    tmp.touch("chain_a.cppm",
+              "export module A;\n"
+              "export int val_a() { return 1; }\n");
     auto mod_a = tmp.path("chain_a.cppm");
     // Module B: imports A.
     tmp.touch("chain_b.cppm",
@@ -110,7 +118,9 @@ TEST_CASE(BuildPCMChainThenCompile) {
               "export int val_b() { return val_a() + 1; }\n");
     auto mod_b = tmp.path("chain_b.cppm");
     // Consumer: imports B (transitively needs A).
-    tmp.touch("chain_consumer.cpp", "import B;\n" "int main() { return val_b(); }\n");
+    tmp.touch("chain_consumer.cpp",
+              "import B;\n"
+              "int main() { return val_b(); }\n");
     auto consumer = tmp.path("chain_consumer.cpp");
 
     WorkerHandle sl;
@@ -179,7 +189,9 @@ TEST_CASE(BuildPCMChainThenCompile) {
         worker::CompileParams params;
         params.path = consumer;
         params.version = 1;
-        params.text = "import B;\n" "int main() { return val_b(); }\n";
+        params.text =
+            "import B;\n"
+            "int main() { return val_b(); }\n";
         params.directory = "/tmp";
         params.arguments = {"clang++",
                             "-resource-dir",
@@ -210,10 +222,14 @@ TEST_CASE(BuildPCMChainThenCompile) {
 TEST_CASE(ModuleImplementationUnitWithWorker) {
     TempDir tmp;
     // Module interface.
-    tmp.touch("impl_iface.cppm", "export module Calc;\n" "export int add(int a, int b);\n");
+    tmp.touch("impl_iface.cppm",
+              "export module Calc;\n"
+              "export int add(int a, int b);\n");
     auto iface = tmp.path("impl_iface.cppm");
     // Module implementation unit (no export).
-    tmp.touch("impl_unit.cpp", "module Calc;\n" "int add(int a, int b) { return a + b; }\n");
+    tmp.touch("impl_unit.cpp",
+              "module Calc;\n"
+              "int add(int a, int b) { return a + b; }\n");
     auto impl = tmp.path("impl_unit.cpp");
 
     // Build PCM for interface.
@@ -257,7 +273,9 @@ TEST_CASE(ModuleImplementationUnitWithWorker) {
         worker::CompileParams params;
         params.path = impl;
         params.version = 1;
-        params.text = "module Calc;\n" "int add(int a, int b) { return a + b; }\n";
+        params.text =
+            "module Calc;\n"
+            "int add(int a, int b) { return a + b; }\n";
         params.directory = "/tmp";
         params.arguments = {"clang++",
                             "-resource-dir",

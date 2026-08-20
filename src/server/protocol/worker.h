@@ -8,7 +8,8 @@
 #include <vector>
 
 #include "compile/dep_file.h"
-#include "feature/document_link.h"
+#include "feature/feature.h"
+#include "server/state/config.h"
 #include "syntax/token.h"
 
 #include "kota/codec/json/json.h"
@@ -100,6 +101,12 @@ struct QueryParams {
     std::string path;
     uint32_t offset = 0;  ///< Byte offset for position-sensitive queries (Hover, GoToDefinition).
     LocalSourceRange range;  ///< Byte range for range-sensitive queries (InlayHints).
+
+    /// The workspace config, carried whole on every request — the worker
+    /// holds no config state and a config change simply shows up on the
+    /// next request. Features read their own section; no per-feature
+    /// forwarding field is ever added here.
+    Config config;
 };
 
 /// Parameters for stateful compilation (builds AST, publishes diagnostics).
@@ -185,9 +192,6 @@ enum class BuildKind : uint8_t {
 ///   - SignatureHelp: + text, version, offset, pch, pcms
 ///   - Format:        + text, format_range (optional)
 struct BuildParams {
-    // FIXME: BuildPCM dispatched via compile_graph defaults to Low, which can
-    // starve interactive dep-resolution (hover/completion) behind indexing.
-    // Consider routing module-dep builds as High when triggered by a user request.
     Priority priority = Priority::Low;
     BuildKind kind;
     std::string file;
@@ -203,7 +207,7 @@ struct BuildParams {
 
     std::string output_path;  ///< BuildPCH, BuildPCM
 
-    /// BuildPCH: tmp path for the PreambleState blob (the PCH's paired
+    /// BuildPCH: tmp path for the pch.idx envelope (the PCH's paired
     /// `.pch.idx`), allocated by the master's store alongside output_path.
     /// The worker serializes the preamble's index and feature state into
     /// it; the master commits both blobs together.
@@ -212,6 +216,13 @@ struct BuildParams {
     std::string module_name;               ///< BuildPCM
     uint32_t preamble_bound = UINT32_MAX;  ///< BuildPCH
     LocalSourceRange format_range;         ///< Format (default = full document)
+
+    /// The workspace config, carried whole on interactive builds
+    /// (Completion/SignatureHelp) — the worker holds no config state and a
+    /// config change simply shows up on the next request. Features read
+    /// their own section; no per-feature forwarding field is ever added
+    /// here.
+    Config config;
 };
 
 /// Unified result for stateless build tasks.
@@ -234,7 +245,7 @@ struct BuildResult {
 
 /// Request the document links of an open file's AST. Only the main-file
 /// region is covered: the preamble is compiled into the PCH, and its links
-/// live in the PCH's PreambleState blob (spliced in by the master).
+/// live in the PCH's pch.idx envelope (spliced in by the master).
 struct DocumentLinkParams {
     std::string path;
 };
@@ -257,6 +268,19 @@ struct EvictedParams {
 struct CancelCompileParams {
     std::string path;
 };
+
+/// Interrupt a stateless worker's in-flight build. Sent by the pool's
+/// cooperative cancel instead of wire-cancelling the build request: the
+/// worker flips the build's stop flag so clang abandons the parse at the
+/// next declaration, while the request still runs to a normal (cancelled)
+/// reply. The sender keeps awaiting that reply, so the slot stays busy —
+/// and the cancel-grace deadline stays armed — until the process is
+/// actually free; a wire cancel would resume the sender immediately and
+/// hand the slot out while the worker is still stuck in the old parse.
+/// Carries no build identity: the pool dispatches at most one build per
+/// worker at a time, and pipe ordering pins any follow-up build behind
+/// the cancel.
+struct CancelBuildParams {};
 
 }  // namespace clice::worker
 
@@ -299,6 +323,11 @@ struct NotificationTraits<clice::worker::EvictedParams> {
 template <>
 struct NotificationTraits<clice::worker::CancelCompileParams> {
     constexpr inline static std::string_view method = "clice/worker/cancelCompile";
+};
+
+template <>
+struct NotificationTraits<clice::worker::CancelBuildParams> {
+    constexpr inline static std::string_view method = "clice/worker/cancelBuild";
 };
 
 }  // namespace kota::ipc::protocol

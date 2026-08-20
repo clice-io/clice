@@ -34,6 +34,8 @@ export function registerInactiveRegions(client: LanguageClient, ext: vscode.Exte
 
     ext.subscriptions.push(
         decoration,
-        vscode.window.onDidChangeVisibleTextEditors((editors) => editors.forEach(apply)),
+        vscode.window.onDidChangeVisibleTextEditors((editors) => {
+            editors.forEach(apply);
+        }),
     );
 }

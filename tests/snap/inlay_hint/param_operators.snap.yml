@@ -1,0 +1,8 @@
+---
+created_at: 2026-07-31
+input_file: param_operators.cpp
+---
+- { pos: "17:16", kind: Parameter, label: "param:", padding_right: true }
+- { pos: "18:22", kind: Parameter, label: "param:", padding_right: true }
+- { pos: "22:8", kind: Parameter, label: "param:", padding_right: true }
+- { pos: "23:8", kind: Parameter, label: "param:", padding_right: true }

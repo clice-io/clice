@@ -11,6 +11,8 @@ namespace {
 
 namespace ranges = std::ranges;
 
+using Outcome = CompileUnit::Outcome;
+
 /// A resolve_fn that always returns no dependencies.
 CompileGraph::resolve_fn no_deps() {
     return [](std::uint32_t) -> llvm::SmallVector<std::uint32_t> {
@@ -31,28 +33,28 @@ CompileGraph::resolve_fn
 }
 
 CompileGraph::dispatch_fn instant_dispatch() {
-    return [](std::uint32_t) -> kota::task<bool> {
-        co_return true;
+    return [](std::uint32_t, bool) -> kota::task<Outcome> {
+        co_return Outcome::Success;
     };
 }
 
 CompileGraph::dispatch_fn tracking_dispatch(std::vector<std::uint32_t>& compiled) {
-    return [&compiled](std::uint32_t path_id) -> kota::task<bool> {
+    return [&compiled](std::uint32_t path_id, bool) -> kota::task<Outcome> {
         compiled.push_back(path_id);
-        co_return true;
+        co_return Outcome::Success;
     };
 }
 
 CompileGraph::dispatch_fn failing_dispatch() {
-    return [](std::uint32_t) -> kota::task<bool> {
-        co_return false;
+    return [](std::uint32_t, bool) -> kota::task<Outcome> {
+        co_return Outcome::Failed;
     };
 }
 
 /// Dispatch that fails only for specific path_ids.
 CompileGraph::dispatch_fn selective_dispatch(llvm::DenseSet<std::uint32_t> fail_ids) {
-    return [fail_ids = std::move(fail_ids)](std::uint32_t path_id) -> kota::task<bool> {
-        co_return !fail_ids.contains(path_id);
+    return [fail_ids = std::move(fail_ids)](std::uint32_t path_id, bool) -> kota::task<Outcome> {
+        co_return fail_ids.contains(path_id) ? Outcome::Failed : Outcome::Success;
     };
 }
 
@@ -85,12 +87,12 @@ struct ManualDispatch {
     }
 
     CompileGraph::dispatch_fn fn() {
-        return [this](std::uint32_t path_id) -> kota::task<bool> {
+        return [this](std::uint32_t path_id, bool) -> kota::task<Outcome> {
             auto& g = gate(path_id);
             g.calls += 1;
             g.started.set();
             co_await g.proceed.wait();
-            co_return g.result;
+            co_return g.result ? Outcome::Success : Outcome::Failed;
         };
     }
 };
@@ -441,9 +443,9 @@ TEST_CASE(compile_deps_resolve_once) {
 TEST_CASE(compile_deps_failure) {
     // A failing dependency fails the request; the root unit is never
     // dispatched on a failed preparation.
-    auto fail_and_track = [&](std::uint32_t path_id) -> kota::task<bool> {
+    auto fail_and_track = [&](std::uint32_t path_id, bool) -> kota::task<Outcome> {
         compiled.push_back(path_id);
-        co_return false;
+        co_return Outcome::Failed;
     };
 
     make_graph(std::move(fail_and_track),
@@ -1064,6 +1066,168 @@ TEST_CASE(recompile_after_failure) {
     });
 }
 
+TEST_CASE(preempted_dispatch_retries) {
+    // A dispatch reporting Stale (the scheduler preempted its build) is no
+    // verdict: the waiter respawns the round instead of failing, and the
+    // request succeeds once a dispatch completes.
+    int calls = 0;
+    auto dispatch = [&](std::uint32_t, bool) -> kota::task<Outcome> {
+        calls += 1;
+        co_return calls == 1 ? Outcome::Stale : Outcome::Success;
+    };
+    make_graph(std::move(dispatch), no_deps());
+
+    execute([&]() -> kota::task<> {
+        auto result = co_await graph->compile(1).catch_cancel();
+        EXPECT_TRUE(result.has_value());
+        EXPECT_TRUE(*result);
+        EXPECT_EQ(calls, 2);
+        EXPECT_FALSE(graph->is_dirty(1));
+    });
+}
+
+TEST_CASE(preempted_dep_retry_upgrades) {
+    // A foreground requester joining a background root must upgrade the
+    // resolved dependency closure: the dependency's preempted round retries
+    // with the foreground class instead of staying cancellable Low.
+    kota::event started;
+    kota::event proceed;
+    int dep_calls = 0;
+    std::vector<bool> dep_classes;
+    auto dispatch = [&](std::uint32_t pid, bool foreground) -> kota::task<Outcome> {
+        if(pid == 2) {
+            dep_calls += 1;
+            dep_classes.push_back(foreground);
+            if(dep_calls == 1) {
+                started.set();
+                co_await proceed.wait();
+                co_return Outcome::Stale;
+            }
+        }
+        co_return Outcome::Success;
+    };
+    llvm::DenseMap<std::uint32_t, llvm::SmallVector<std::uint32_t>> adj;
+    adj[1] = {2};
+    make_graph(std::move(dispatch), static_resolver(std::move(adj)));
+
+    Request background;
+    bool fg_ok = false;
+    execute([&]() -> kota::task<> {
+        auto foreground_join = [&]() -> kota::task<> {
+            auto r = co_await graph->compile(1, /*foreground=*/true).catch_cancel();
+            fg_ok = r.has_value() && *r;
+        };
+        auto driver = [&]() -> kota::task<> {
+            co_await started.wait();
+            proceed.set();
+            co_return;
+        };
+        // The foreground request joins while the dependency's first round
+        // is parked inside its dispatch.
+        co_await kota::when_all(run_request(1, background), foreground_join(), driver());
+    });
+
+    EXPECT_TRUE(background.result == true);
+    EXPECT_TRUE(fg_ok);
+    ASSERT_EQ(dep_calls, 2);
+    EXPECT_FALSE(dep_classes[0]);
+    EXPECT_TRUE(dep_classes[1]);
+}
+
+TEST_CASE(late_resolve_upgrades_closure) {
+    // A foreground root still unresolved when marked resolves to a
+    // dependency already running as background: the closure behind that
+    // dependency must upgrade too, so the deep unit's preempted round
+    // retries foreground instead of staying cancellable Low.
+    kota::event started;
+    kota::event proceed;
+    int deep_calls = 0;
+    std::vector<bool> deep_classes;
+    auto dispatch = [&](std::uint32_t pid, bool foreground) -> kota::task<Outcome> {
+        if(pid == 3) {
+            deep_calls += 1;
+            deep_classes.push_back(foreground);
+            if(deep_calls == 1) {
+                started.set();
+                co_await proceed.wait();
+                co_return Outcome::Stale;
+            }
+        }
+        co_return Outcome::Success;
+    };
+    llvm::DenseMap<std::uint32_t, llvm::SmallVector<std::uint32_t>> adj;
+    adj[1] = {2};
+    adj[2] = {3};
+    make_graph(std::move(dispatch), static_resolver(std::move(adj)));
+
+    Request background;
+    bool fg_ok = false;
+    execute([&]() -> kota::task<> {
+        auto foreground_join = [&]() -> kota::task<> {
+            auto r = co_await graph->compile(1, /*foreground=*/true).catch_cancel();
+            fg_ok = r.has_value() && *r;
+        };
+        auto driver = [&]() -> kota::task<> {
+            co_await started.wait();
+            proceed.set();
+            co_return;
+        };
+        // The background request resolves 2 and parks 3 inside its first
+        // dispatch; the foreground request then joins at the unresolved 1.
+        co_await kota::when_all(run_request(2, background), foreground_join(), driver());
+    });
+
+    EXPECT_TRUE(background.result == true);
+    EXPECT_TRUE(fg_ok);
+    ASSERT_EQ(deep_calls, 2);
+    EXPECT_FALSE(deep_classes[0]);
+    EXPECT_TRUE(deep_classes[1]);
+}
+
+TEST_CASE(preempted_retry_upgrades_class) {
+    // A foreground requester joining a Low round whose build the scheduler
+    // then preempts must not eat the preemption as a failure: the respawn
+    // re-reads the interest class, so the retry dispatches foreground.
+    kota::event started;
+    kota::event proceed;
+    int calls = 0;
+    std::vector<bool> classes;
+    auto dispatch = [&](std::uint32_t, bool foreground) -> kota::task<Outcome> {
+        calls += 1;
+        classes.push_back(foreground);
+        if(calls == 1) {
+            started.set();
+            co_await proceed.wait();
+            co_return Outcome::Stale;
+        }
+        co_return Outcome::Success;
+    };
+    make_graph(std::move(dispatch), no_deps());
+
+    Request background;
+    bool fg_ok = false;
+    execute([&]() -> kota::task<> {
+        auto foreground_join = [&]() -> kota::task<> {
+            auto r = co_await graph->compile(1, /*foreground=*/true).catch_cancel();
+            fg_ok = r.has_value() && *r;
+        };
+        auto driver = [&]() -> kota::task<> {
+            co_await started.wait();
+            proceed.set();
+            co_return;
+        };
+        // Start order matters: the foreground request joins the parked
+        // round before the driver releases its dispatch.
+        co_await kota::when_all(run_request(1, background), foreground_join(), driver());
+    });
+
+    EXPECT_TRUE(background.result == true);
+    EXPECT_TRUE(fg_ok);
+    ASSERT_EQ(calls, 2);
+    EXPECT_FALSE(classes[0]);
+    EXPECT_TRUE(classes[1]);
+}
+
 TEST_CASE(shared_dep_failure_propagates) {
     // One failing round of a shared dependency fails every consumer waiting
     // on it; the failing dispatch runs only once.
@@ -1626,9 +1790,9 @@ TEST_CASE(shutdown_with_inflight) {
 
 TEST_CASE(randomized_stress) {
     kota::semaphore permits{0};
-    auto dispatch = [&](std::uint32_t) -> kota::task<bool> {
+    auto dispatch = [&](std::uint32_t, bool) -> kota::task<Outcome> {
         co_await permits.acquire();
-        co_return true;
+        co_return Outcome::Success;
     };
 
     make_graph(std::move(dispatch),

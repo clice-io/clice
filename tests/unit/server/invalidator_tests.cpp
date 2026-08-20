@@ -8,6 +8,19 @@
 namespace clice::testing {
 namespace {
 
+/// A loaded shard whose rows were built from `content`, for the
+/// disk-vs-shard freshness comparisons below.
+index::Shard shard_of(llvm::StringRef content) {
+    std::string bytes;
+    llvm::raw_string_ostream os(bytes);
+    index::write_shard(
+        {},
+        [](index::SymbolHash) -> std::optional<index::SymbolIdentity> { return std::nullopt; },
+        content,
+        os);
+    return index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
+}
+
 TEST_SUITE(Invalidator) {
 
 TEST_CASE(EmptyBatchNoEffects) {
@@ -74,7 +87,9 @@ TEST_CASE(CascadeSplitsOpenClosed) {
     deps[closed_user] = {mod};
     workspace.compile_graph = std::make_unique<CompileGraph>(
         loop,
-        [](std::uint32_t) -> kota::task<bool> { co_return true; },
+        [](std::uint32_t, bool) -> kota::task<CompileUnit::Outcome> {
+            co_return CompileUnit::Outcome::Success;
+        },
         [deps = std::move(deps)](std::uint32_t id) -> llvm::SmallVector<std::uint32_t> {
             auto it = deps.find(id);
             return it != deps.end() ? it->second : llvm::SmallVector<std::uint32_t>{};
@@ -226,13 +241,13 @@ TEST_CASE(CloseCurrentShardDepsOnly) {
     Workspace workspace;
     SessionStore store;
     auto closed = workspace.path_pool.intern("/proj/a.cpp");
-    workspace.merged_indices[closed];
+    workspace.shards[closed] = shard_of("int x;");
 
     ContextResolver resolver(workspace);
-    // Disk matches the shard's stored content: a browse-and-close must not
-    // blank the file's rows for the reindex queue's latency.
+    // Disk matches the content the shard was built from: a browse-and-close
+    // must not blank the file's rows for the reindex queue's latency.
     Invalidator invalidator(workspace, store, resolver, [](llvm::StringRef) {
-        return std::optional<std::string>{""};
+        return std::optional<std::string>{"int x;"};
     });
     auto dirty = invalidator.apply(FileEvent::buffer_closed(closed));
 
@@ -244,7 +259,7 @@ TEST_CASE(CloseDivergentShardContentChanged) {
     Workspace workspace;
     SessionStore store;
     auto closed = workspace.path_pool.intern("/proj/a.cpp");
-    workspace.merged_indices[closed];
+    workspace.shards[closed] = shard_of("int x;");
 
     ContextResolver resolver(workspace);
     // Disk holds edits the shard never saw (saved while open): the shard's
@@ -454,6 +469,33 @@ TEST_CASE(RemoveRecreateBatchOrder) {
     }
 }
 
+TEST_CASE(EntryChangeThenRemoval) {
+    TempDir tmp;
+    tmp.touch("a.cpp", R"(int a;)");
+
+    Workspace workspace;
+    SessionStore store;
+    auto json = build_cdb_json({
+        {tmp.root, tmp.path("a.cpp"), {}}
+    });
+    write_cdb(tmp, workspace.cdb, json);
+    auto file = workspace.path_pool.intern(tmp.path("a.cpp"));
+
+    ContextResolver resolver(workspace);
+    Invalidator invalidator(workspace, store, resolver);
+    FileEvent::CDBDelta delta;
+    delta.changed = {file};
+    FileEvent events[] = {FileEvent::cdb_changed(std::move(delta)), FileEvent::disk_removed(file)};
+    auto dirty = invalidator.apply(events);
+
+    // The removal is the later fact: the file keeps its last-known index
+    // serving, so the entry change's drop and enqueue must not survive — a
+    // surviving drop would mask the shard and let the next save retire it.
+    ASSERT_TRUE(dirty.drop_index.empty());
+    ASSERT_TRUE(dirty.reindex_content_changed.empty());
+    ASSERT_EQ(dirty.clear_reindex, llvm::SmallVector<std::uint32_t>{file});
+}
+
 TEST_CASE(CloseOfDeletedFile) {
     Workspace workspace;
     SessionStore store;
@@ -498,6 +540,7 @@ TEST_CASE(CDBAddedScansAndEnqueues) {
     // A command change rewrites rows as thoroughly as an edit.
     ASSERT_EQ(workspace.dep_graph.get_includers(header_id), llvm::ArrayRef<std::uint32_t>{main_id});
     ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<std::uint32_t>{main_id});
+    ASSERT_EQ(dirty.drop_index, llvm::SmallVector<std::uint32_t>{main_id});
     ASSERT_TRUE(dirty.reindex_deps_only.empty());
     ASSERT_TRUE(dirty.recheck_contexts);
     ASSERT_TRUE(dirty.ensure_compile_graph);
@@ -518,8 +561,8 @@ TEST_CASE(CDBChangedSplitsOpenClosed) {
     auto open_id = workspace.path_pool.intern(tmp.path("a.cpp"));
     auto closed_id = workspace.path_pool.intern(tmp.path("b.cpp"));
     store.open(open_id);
-    workspace.merged_indices[open_id];
-    workspace.merged_indices[closed_id];
+    workspace.shards[open_id];
+    workspace.shards[closed_id];
 
     ContextResolver resolver(workspace);
     Invalidator invalidator(workspace, store, resolver);
@@ -538,12 +581,15 @@ TEST_CASE(CDBChangedSplitsOpenClosed) {
     ASSERT_TRUE(dirty.reindex_deps_only.empty());
     ASSERT_TRUE(dirty.recheck_contexts);
 
-    // Both shards were built under the old command and look fresh to
-    // content-only validation: evict them so the queued reindexes are not
-    // filtered out. The open file's slot is skipped while open-file
-    // indexing is off; its next compile owns the session-side refresh.
-    ASSERT_EQ(workspace.merged_indices.count(closed_id), 0u);
-    ASSERT_EQ(workspace.merged_indices.count(open_id), 0u);
+    // Both indexes were built under the old command and look fresh to
+    // content-only validation: drop them so the queued reindexes are not
+    // filtered out, here or after a restart. The shards themselves stay
+    // with the indexer, which masks and retires them off the manifests.
+    auto dropped = dirty.drop_index;
+    llvm::sort(dropped);
+    ASSERT_EQ(dropped, reindexed);
+    ASSERT_EQ(workspace.shards.count(closed_id), 1u);
+    ASSERT_EQ(workspace.shards.count(open_id), 1u);
 }
 
 TEST_CASE(CDBAddedOpenMarksDirty) {
@@ -563,6 +609,7 @@ TEST_CASE(CDBAddedOpenMarksDirty) {
     // under the real command once open-file indexing is on.
     ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{file});
     ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<std::uint32_t>{file});
+    ASSERT_EQ(dirty.drop_index, llvm::SmallVector<std::uint32_t>{file});
     ASSERT_TRUE(dirty.reindex_deps_only.empty());
 }
 
@@ -574,7 +621,7 @@ TEST_CASE(CDBChangedDropsHostedContext) {
     auto closed_header = workspace.path_pool.intern("/proj/closed.h");
     auto other_header = workspace.path_pool.intern("/proj/other.h");
     store.open(open_header);
-    workspace.merged_indices[closed_header];
+    workspace.shards[closed_header];
 
     ContextResolver resolver(workspace);
     resolver.header_contexts[open_header].host_path_id = host;
@@ -586,14 +633,20 @@ TEST_CASE(CDBChangedDropsHostedContext) {
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
 
     // Headers borrowing the changed entry re-resolve their context; the
-    // open one recompiles, the closed one loses its stale shard and
-    // reindexes. Unrelated contexts are untouched.
+    // open one recompiles, the closed one reindexes. Any standalone index
+    // of theirs borrowed the changed command too, so it is dropped along
+    // with the host's. Unrelated contexts are untouched.
     llvm::SmallVector<std::uint32_t> dropped{open_header, closed_header};
     llvm::sort(dropped);
     ASSERT_EQ(dirty.drop_context, dropped);
+    llvm::SmallVector<std::uint32_t> evicted{host, open_header, closed_header};
+    llvm::sort(evicted);
+    auto drop = dirty.drop_index;
+    llvm::sort(drop);
+    ASSERT_EQ(drop, evicted);
     ASSERT_TRUE(llvm::is_contained(dirty.mark_ast_dirty, open_header));
     ASSERT_TRUE(llvm::is_contained(dirty.reindex_content_changed, closed_header));
-    ASSERT_EQ(workspace.merged_indices.count(closed_header), 0u);
+    ASSERT_EQ(workspace.shards.count(closed_header), 1u);
 }
 
 TEST_CASE(CDBChangedCascadesModule) {
@@ -609,7 +662,9 @@ TEST_CASE(CDBChangedCascadesModule) {
     deps[closed_user] = {mod};
     workspace.compile_graph = std::make_unique<CompileGraph>(
         loop,
-        [](std::uint32_t) -> kota::task<bool> { co_return true; },
+        [](std::uint32_t, bool) -> kota::task<CompileUnit::Outcome> {
+            co_return CompileUnit::Outcome::Success;
+        },
         [deps = std::move(deps)](std::uint32_t id) -> llvm::SmallVector<std::uint32_t> {
             auto it = deps.find(id);
             return it != deps.end() ? it->second : llvm::SmallVector<std::uint32_t>{};
@@ -634,6 +689,7 @@ TEST_CASE(CDBChangedCascadesModule) {
         // resolves the overlap to ContentChanged.
         EXPECT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{open_user});
         EXPECT_EQ(dirty.reindex_content_changed, llvm::SmallVector<std::uint32_t>{mod});
+        EXPECT_EQ(dirty.drop_index, llvm::SmallVector<std::uint32_t>{mod});
         llvm::SmallVector<std::uint32_t> deps{mod, closed_user};
         llvm::sort(deps);
         EXPECT_EQ(dirty.reindex_deps_only, deps);
@@ -693,9 +749,11 @@ TEST_CASE(CDBRemovedDropsSourceRole) {
     delta.removed = {gone_id};
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
 
-    // The rebuild resolves includes from the surviving entries only.
+    // The rebuild resolves includes from the surviving entries only. A
+    // removed entry keeps its index — the last-known rows still serve.
     ASSERT_TRUE(workspace.dep_graph.get_all_includes(gone_id).empty());
     ASSERT_EQ(workspace.dep_graph.get_includers(header_id), llvm::ArrayRef<std::uint32_t>{kept_id});
+    ASSERT_TRUE(dirty.drop_index.empty());
     ASSERT_TRUE(dirty.recheck_contexts);
 }
 

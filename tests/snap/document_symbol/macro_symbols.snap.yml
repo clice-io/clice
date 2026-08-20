@@ -1,0 +1,8 @@
+---
+created_at: 2026-08-01
+input_file: macro_symbols.cpp
+---
+- { name: "on_ready", kind: Function, range: "10:0-10:23", selection_range: "10:15-10:23", detail: "void ()" }
+- { name: "on_close", kind: Function, range: "11:0-11:23", selection_range: "11:15-11:23", detail: "void ()" }
+- { name: "Generated", kind: Class, range: "14:0-16:1", selection_range: "14:14-14:23", detail: "class" }
+-   { name: "member", kind: Field, range: "15:4-15:14", selection_range: "15:8-15:14", detail: "int" }

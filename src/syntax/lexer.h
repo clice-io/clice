@@ -17,12 +17,33 @@ class Lexer;
 
 namespace clice {
 
+struct LexerOptions {
+    /// Emit comment tokens instead of dropping them.
+    bool keep_comments = false;
+
+    const clang::LangOptions* lang_opts = nullptr;
+};
+
+/// A pull-style wrapper over clang's raw lexer with just enough
+/// preprocessor awareness for scanning: directive lines are terminated by
+/// eod tokens, directive keywords are flagged via Token::is_pp_keyword, and
+/// header-name arguments (after #include/#embed keywords and inside the
+/// parentheses of the __has_include family) are lexed as single
+/// header_name tokens.
 class Lexer {
 public:
-    Lexer(llvm::StringRef content,
-          bool ignore_comments = true,
-          const clang::LangOptions* lang_opts = nullptr,
-          bool ignore_end_of_directive = true);
+    using Options = LexerOptions;
+
+    /// `content` must end at a NUL terminator (clang's raw lexer reads it
+    /// as its end sentinel): full buffers and suffix slices are fine, but
+    /// never pass a prefix slice — bound the lexing logically instead.
+    explicit Lexer(llvm::StringRef content, Options options = {});
+
+    /// Lex in place: start at the beginning of the line containing `offset`
+    /// rather than at the buffer start. Token ranges are still offsets into
+    /// the full `content`, so they compose directly with file coordinates
+    /// and token.text(content).
+    static Lexer from_line(llvm::StringRef content, std::uint32_t offset, Options options = {});
 
     Lexer(const Lexer&) = delete;
     Lexer(Lexer&&) = delete;
@@ -51,20 +72,14 @@ public:
 
     Token advance_until(TokenKind kind);
 
-    /// Force the lexer into header-name mode so the next token is lexed
-    /// via LexIncludeFilename (correctly handling both "..." and <...>).
-    /// Use this before lexing filename arguments in contexts like
-    /// __has_include() or __has_embed() where the lexer cannot detect
-    /// the mode automatically.
-    void set_header_name_mode() {
-        parse_header_name = true;
-    }
-
 private:
-    bool ignore_end_of_directive = true;
+    Lexer(llvm::StringRef content, std::uint32_t start_offset, Options options);
+
     bool parse_pp_keyword = false;
     bool parse_header_name = false;
+    bool after_has_include = false;
     bool module_declaration_context = true;
+    bool pending_start_of_line = false;
 
     Token last_token;
     Token current_token;
@@ -72,14 +87,5 @@ private:
     llvm::StringRef content;
     std::unique_ptr<clang::Lexer> lexer;
 };
-
-/// Find the range of the filename argument in a preprocessor directive line.
-/// `content` is the full source text, `offset` points at or before the directive keyword.
-/// Returns the range of the first filename-like token (header name, string literal,
-/// or macro identifier) found on the same line, or nullopt if none.
-std::optional<LocalSourceRange>
-    find_directive_argument(llvm::StringRef content,
-                            std::uint32_t offset,
-                            const clang::LangOptions* lang_opts = nullptr);
 
 }  // namespace clice

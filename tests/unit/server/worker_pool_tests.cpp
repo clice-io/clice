@@ -53,6 +53,62 @@ struct WorkerPoolFixture {
         pool.low_limit = low;
     }
 
+    /// Arm a busy slot with a live cancellation source, as a resumed
+    /// sender would; cancel_low_priority only victimizes armed slots.
+    std::shared_ptr<kota::cancellation_source> arm_cancel_source(std::size_t idx) {
+        auto source = std::make_shared<kota::cancellation_source>();
+        pool.stateless_workers[idx].preempt_source = source;
+        return source;
+    }
+
+    void tick_foreground() {
+        pool.tick_foreground();
+    }
+
+    /// Age the last foreground activity past the hold window.
+    void rewind_fg_activity() {
+        pool.last_fg_activity =
+            std::chrono::steady_clock::now() - WorkerPool::fg_hold - std::chrono::seconds(1);
+    }
+
+    /// Stamp a cooperative cancel as having happened past the grace window.
+    void expire_cancel_grace(std::size_t idx) {
+        pool.stateless_workers[idx].cancel_requested_at =
+            std::chrono::steady_clock::now() - WorkerPool::cancel_grace - std::chrono::seconds(1);
+    }
+
+    void tick_cancel_grace() {
+        pool.tick_cancel_grace();
+    }
+
+    void set_claim_epoch(std::size_t idx, std::uint64_t epoch) {
+        pool.stateless_workers[idx].claim_epoch = epoch;
+    }
+
+    void cancel_low(std::size_t count) {
+        pool.cancel_low_priority(count);
+    }
+
+    bool cancel_asked(std::size_t idx) {
+        return pool.stateless_workers[idx].cancel_requested_at !=
+               std::chrono::steady_clock::time_point{};
+    }
+
+    std::size_t reclaim_deficit(std::size_t pending_high = 0) {
+        return pool.low_reclaim_deficit(pending_high);
+    }
+
+    /// Queue a fake High waiter, as acquire_stateless_slot would when no
+    /// slot is idle; the deficit counts it as demand.
+    void queue_high() {
+        auto pending = std::make_unique<WorkerPool::PendingStateless>(pool, worker::Priority::High);
+        pool.high_queue.push_back(pending.get());
+        pending->queue = &pool.high_queue;
+        queued_high.push_back(std::move(pending));
+    }
+
+    std::vector<std::unique_ptr<WorkerPool::PendingStateless>> queued_high;
+
     void set_max_crash_streak(unsigned n) {
         pool.options.max_crash_streak = n;
     }
@@ -831,9 +887,11 @@ TEST_CASE(EffectiveLimitClamped) {
     f.add_stateless();
     f.add_stateless();
     f.set_low_limit(8);
-    // Capacity 3 caps the effective allowance at 2 regardless of low_limit.
-    EXPECT_EQ(f.max_low_limit(), 2u);
-    EXPECT_EQ(f.effective_low_limit(), 2u);
+    // Capacity 3 caps the effective allowance regardless of low_limit; no
+    // standing reservation — foreground bursts reclaim slots through the
+    // foreground cap and the deficit cancel instead.
+    EXPECT_EQ(f.max_low_limit(), 3u);
+    EXPECT_EQ(f.effective_low_limit(), 3u);
 }
 
 TEST_CASE(LowCapCountsLive) {
@@ -846,10 +904,10 @@ TEST_CASE(LowCapCountsLive) {
     f.mark_dead(1);
 
     // A slot awaiting respawn is future capacity, not schedulable now: the
-    // reserve-one-for-high cap must not let low-priority work occupy both
-    // live workers for the whole respawn window.
-    EXPECT_EQ(f.max_low_limit(), 1u);
-    EXPECT_EQ(f.effective_low_limit(), 1u);
+    // ceiling must track the two live workers, not the three allocated
+    // slots, for the whole respawn window.
+    EXPECT_EQ(f.max_low_limit(), 2u);
+    EXPECT_EQ(f.effective_low_limit(), 2u);
 }
 
 TEST_CASE(LowCapSkipsRetiring) {
@@ -862,9 +920,162 @@ TEST_CASE(LowCapSkipsRetiring) {
     f.set_retiring(1);
 
     // A retiring slot is alive but takes no new work, so it must not
-    // count toward the schedulable pool the cap reserves from.
-    EXPECT_EQ(f.max_low_limit(), 1u);
-    EXPECT_EQ(f.effective_low_limit(), 1u);
+    // count toward the schedulable ceiling.
+    EXPECT_EQ(f.max_low_limit(), 2u);
+    EXPECT_EQ(f.effective_low_limit(), 2u);
+}
+
+TEST_CASE(ForegroundCapClampsBudget) {
+    WorkerPoolFixture f;
+    f.add_stateless();
+    f.add_stateless();
+    f.add_stateless();
+    f.add_stateless();
+    f.set_low_limit(8);
+    f.set_max_stateless(10);
+
+    // Idle: the full schedulable capacity, no standing reservation.
+    EXPECT_EQ(f.pool.effective_low_limit(), 4u);
+
+    // Active: 30% of the configured capacity, not of the live slot count.
+    f.pool.foreground_pulse();
+    EXPECT_EQ(f.pool.effective_low_limit(), 3u);
+}
+
+TEST_CASE(ForegroundCancelsExcess) {
+    WorkerPoolFixture f;
+    f.add_stateless(true, true, true);
+    f.add_stateless(true, true, true);
+    f.add_stateless(true, true, true);
+    f.add_stateless(true, true, true);
+    f.set_low_limit(4);
+    f.set_max_stateless(10);
+    std::vector<std::shared_ptr<kota::cancellation_source>> sources;
+    for(std::size_t i = 0; i < 4; i += 1) {
+        f.set_claim_epoch(i, i + 1);
+        sources.push_back(f.arm_cancel_source(i));
+    }
+
+    // The rising edge cancels exactly the over-cap excess (4 busy − cap 3),
+    // newest claim first, cooperatively (slots stay alive).
+    f.pool.foreground_pulse();
+
+    EXPECT_TRUE(f.cancel_asked(3));
+    EXPECT_TRUE(sources[3]->cancelled());
+    EXPECT_TRUE(!f.cancel_asked(0) && !f.cancel_asked(1) && !f.cancel_asked(2));
+    EXPECT_TRUE(!sources[0]->cancelled() && !sources[1]->cancelled());
+    EXPECT_EQ(f.state(3), WorkerPoolFixture::SlotState::Alive);
+}
+
+TEST_CASE(ForegroundHoldExpires) {
+    WorkerPoolFixture f;
+    f.add_stateless();
+    f.add_stateless();
+    f.set_low_limit(8);
+    f.set_max_stateless(10);
+
+    f.pool.foreground_pulse();
+    EXPECT_EQ(f.pool.effective_low_limit(), 3u);
+
+    // Still inside the hold window: the tick keeps the clamp.
+    f.tick_foreground();
+    EXPECT_EQ(f.pool.effective_low_limit(), 3u);
+
+    // Rewind the last activity past the hold: the tick reopens the budget.
+    f.rewind_fg_activity();
+    f.tick_foreground();
+    EXPECT_EQ(f.pool.effective_low_limit(), 2u);
+}
+
+TEST_CASE(GraceKillReclaims) {
+    WorkerPoolFixture f;
+    f.add_stateless(true, true, true);
+    f.arm_cancel_source(0);
+    f.cancel_low(1);
+
+    // Within the grace window the worker lives on.
+    f.tick_cancel_grace();
+    EXPECT_EQ(f.state(0), WorkerPoolFixture::SlotState::Alive);
+
+    // Past it, the stuck process is reclaimed like a memory preemption:
+    // no crash accounting, immediate respawn.
+    f.expire_cancel_grace(0);
+    f.tick_cancel_grace();
+    EXPECT_EQ(f.state(0), WorkerPoolFixture::SlotState::Dying);
+}
+
+TEST_CASE(CancelSkipsUnarmedSlots) {
+    WorkerPoolFixture f;
+    f.add_stateless(true, true, true);
+    f.add_stateless(true, true, true);
+    f.set_claim_epoch(0, 1);
+    f.set_claim_epoch(1, 2);
+    // Slot 1 was claimed but its sender has not resumed: no source yet.
+    auto armed = f.arm_cancel_source(0);
+
+    f.cancel_low(2);
+
+    // Only the armed slot may be stamped — stamping the un-asked one would
+    // get a request that never saw a cancel grace-killed.
+    EXPECT_TRUE(f.cancel_asked(0));
+    EXPECT_TRUE(armed->cancelled());
+    EXPECT_TRUE(!f.cancel_asked(1));
+}
+
+TEST_CASE(CancelSkipsAskedSlots) {
+    WorkerPoolFixture f;
+    f.add_stateless(true, true, true);
+    f.add_stateless(true, true, true);
+    f.set_claim_epoch(0, 1);
+    f.set_claim_epoch(1, 2);
+    f.arm_cancel_source(0);
+    f.arm_cancel_source(1);
+
+    f.cancel_low(1);
+    f.cancel_low(1);
+
+    // The second ask must move on to the older claim instead of re-asking.
+    EXPECT_TRUE(f.cancel_asked(0) && f.cancel_asked(1));
+}
+
+TEST_CASE(DeficitSurvivesUnarmedSweep) {
+    WorkerPoolFixture f;
+    for(int i = 0; i < 4; i += 1) {
+        f.add_stateless(true, true, true);
+    }
+    f.set_low_limit(8);
+    f.set_max_stateless(10);
+
+    // The rising edge finds only unarmed claims: the sweep stamps nothing,
+    // but the demand survives for the arming re-check to honor.
+    f.pool.foreground_pulse();
+    EXPECT_TRUE(!f.cancel_asked(0) && !f.cancel_asked(1) && !f.cancel_asked(2) &&
+                !f.cancel_asked(3));
+    EXPECT_EQ(f.reclaim_deficit(), 1u);
+
+    // Once a sender arms and the ask lands, the deficit is covered.
+    f.arm_cancel_source(3);
+    f.cancel_low(f.reclaim_deficit());
+    EXPECT_TRUE(f.cancel_asked(3));
+    EXPECT_EQ(f.reclaim_deficit(), 0u);
+}
+
+TEST_CASE(DeficitCountsQueuedHigh) {
+    WorkerPoolFixture f;
+    f.add_stateless(true, true, true);
+    f.set_low_limit(8);
+    f.set_max_stateless(10);
+
+    // Within budget and no High demand: nothing owed. A queued High with
+    // no idle slot owes one low even though the budget alone allows it.
+    EXPECT_EQ(f.reclaim_deficit(), 0u);
+    f.queue_high();
+    EXPECT_EQ(f.reclaim_deficit(), 1u);
+
+    // An ask already in flight covers the queued High.
+    f.arm_cancel_source(0);
+    f.cancel_low(1);
+    EXPECT_EQ(f.reclaim_deficit(), 0u);
 }
 
 };  // TEST_SUITE(WorkerPoolScheduling)
@@ -1189,6 +1400,12 @@ TEST_CASE(AIMDMinimum) {
     f.set_low_limit(1);
     f.apply_backoff();
     EXPECT_EQ(f.low_limit(), 1u);
+
+    // A zeroed budget is the memory controller's deliberate shutdown; a
+    // crash must not lift it back to 1 before recovery is observed.
+    f.set_low_limit(0);
+    f.apply_backoff();
+    EXPECT_EQ(f.low_limit(), 0u);
 }
 
 TEST_CASE(CrashAppliesBackoff) {
@@ -1364,9 +1581,9 @@ TEST_CASE(MaxLowLimitShrinks) {
 
     f.simulate_crash(0, false);
 
-    // Capacity dropped to 2; the derived ceiling reserves one for high and
-    // clamps the stored allowance of 2 down to it.
-    EXPECT_EQ(f.max_low_limit(), 1u);
+    // Capacity dropped to 2, so the ceiling tracks it; the crash AIMD
+    // independently walked the stored allowance down to 1.
+    EXPECT_EQ(f.max_low_limit(), 2u);
     EXPECT_EQ(f.effective_low_limit(), 1u);
 }
 
@@ -1427,8 +1644,10 @@ TEST_CASE(SevereMemoryTick) {
 
     f.tick_memory(0.05);
 
-    // Floor the allowance, remember the recovery target, kill the low work.
-    EXPECT_EQ(f.low_limit(), 1u);
+    // Zero the allowance, remember the recovery target, kill the low work.
+    // Zero, not one: any allowance left would let the preemption's own
+    // dispatch kick admit a fresh compile into the pressure being relieved.
+    EXPECT_EQ(f.low_limit(), 0u);
     EXPECT_EQ(f.w_max(), 2u);
     EXPECT_EQ(f.low_busy(), 0u);
     EXPECT_EQ(f.state(0), WorkerPoolFixture::SlotState::Dying);
@@ -1814,6 +2033,54 @@ TEST_CASE(PreemptCancelsRequest) {
     EXPECT_TRUE(done);
 }
 
+TEST_CASE(CancelledCrashRetiresSlot) {
+    TempDir tmp;
+    tmp.touch("slow.cpp", "#include <vector>\n#include <string>\nint x = 1;\n");
+    auto src = tmp.path("slow.cpp");
+
+    WorkerPoolFixture f;
+    bool done = false;
+    f.run([&]() -> kota::task<> {
+        CO_ASSERT_TRUE(f.start(1, 0));
+        co_await kota::sleep(500);
+
+        worker::BuildParams params;
+        params.priority = worker::Priority::Low;
+        params.kind = worker::BuildKind::Index;
+        params.file = src;
+        params.directory = "/tmp";
+        params.arguments = make_args(src);
+
+        worker::protocol::integer code = 0;
+        kota::task_group<> group(f.loop);
+        auto sender = [&]() -> kota::task<> {
+            auto result = co_await f.pool.send_stateless(params);
+            if(!result.has_value())
+                code = result.error().code;
+        };
+        group.spawn(sender());
+        while(f.low_busy() == 0)
+            co_await kota::sleep(1);
+
+        // A cooperative cancel whose victim then dies on its own inside the
+        // grace window: the request still classifies as cancelled, but the
+        // slot must be retired with it — released as Alive it would take
+        // the next dispatch before the monitor observes the exit. The
+        // generation bump is the retirement evidence that survives an
+        // instant respawn.
+        auto gen = f.generation(0);
+        f.cancel_low(1);
+        f.kill_worker(0);
+        co_await group.join();
+        EXPECT_EQ(code, worker::dispatch_errc::cancelled);
+        EXPECT_NE(f.generation(0), gen);
+
+        co_await f.stop();
+        done = true;
+    });
+    EXPECT_TRUE(done);
+}
+
 TEST_CASE(ScaleUpKeepsLimit) {
     WorkerPoolFixture f;
     bool done = false;
@@ -1825,8 +2092,8 @@ TEST_CASE(ScaleUpKeepsLimit) {
         CO_ASSERT_TRUE(f.scale_up());
 
         // The new worker adds exactly one to the allowance; it must not
-        // reset the reduction back to the ceiling (which is now 3).
-        EXPECT_EQ(f.max_low_limit(), 3u);
+        // reset the reduction back to the ceiling (which is now 4).
+        EXPECT_EQ(f.max_low_limit(), 4u);
         EXPECT_EQ(f.low_limit(), 2u);
 
         co_await f.stop();

@@ -3,7 +3,7 @@
 /// ## Comment folding — multi-line `/* */` and consecutive `//` line comments
 ///
 /// - status: unsupported
-/// - order: 7
+/// - order: 8
 
 // This is a long
 // multi-line comment

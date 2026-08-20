@@ -1,0 +1,12 @@
+---
+created_at: 2026-08-01
+input_file: kinds_type_aliases.cpp
+---
+- { name: "aliases", kind: Namespace, range: "7:0-25:1", selection_range: "7:10-7:17" }
+-   { name: "Widget", kind: Struct, range: "9:0-9:16", selection_range: "9:7-9:13", detail: "struct" }
+-   { name: "LegacyWidget", kind: Class, range: "11:0-11:27", selection_range: "11:15-11:27", detail: "type alias" }
+-   { name: "ModernWidget", kind: Class, range: "13:0-13:27", selection_range: "13:6-13:18", detail: "type alias" }
+-   { name: "Box", kind: Struct, range: "16:0-16:13", selection_range: "16:7-16:10", detail: "template struct" }
+-   { name: "BoxOf", kind: Class, range: "19:0-19:20", selection_range: "19:6-19:11", detail: "template type alias" }
+-   { name: "Holder", kind: Struct, range: "21:0-23:1", selection_range: "21:7-21:13", detail: "struct" }
+-     { name: "Inner", kind: Class, range: "22:4-22:24", selection_range: "22:10-22:15", detail: "type alias" }

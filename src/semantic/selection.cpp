@@ -4,6 +4,7 @@
 #include <optional>
 #include <ranges>
 #include <string>
+#include <utility>
 
 #include "compile/compilation_unit.h"
 #include "semantic/semantics.h"
@@ -303,7 +304,8 @@ const clang::DeclContext& SelectionTree::Node::decl_context() const {
             }
         }
     }
-    llvm_unreachable("A tree must always be rooted at TranslationUnitDecl.");
+    // A tree must always be rooted at TranslationUnitDecl.
+    std::unreachable();
 }
 
 clang::SourceRange SelectionTree::Node::source_range() const {

@@ -52,23 +52,29 @@ jobs:
       matrix:
         include:
           - vsce_target: linux-x64
-            package_artifact: package-clice-x64-linux-gnu.tar.gz
+            triple: x86_64-unknown-linux-gnu
+            ext: tar.gz
             build_artifact: native-build-ubuntu-24.04-RelWithDebInfo
           - vsce_target: linux-arm64
-            package_artifact: package-clice-arm64-linux-gnu.tar.gz
-            build_artifact: cross-build-arm64-linux-gnu
+            triple: aarch64-unknown-linux-gnu
+            ext: tar.gz
+            build_artifact: cross-build-aarch64-unknown-linux-gnu
           - vsce_target: darwin-arm64
-            package_artifact: package-clice-arm64-macos-darwin.tar.gz
+            triple: aarch64-apple-darwin
+            ext: tar.gz
             build_artifact: native-build-macos-15-RelWithDebInfo
           - vsce_target: darwin-x64
-            package_artifact: package-clice-x64-macos-darwin.tar.gz
-            build_artifact: cross-build-x64-macos-darwin
+            triple: x86_64-apple-darwin
+            ext: tar.gz
+            build_artifact: cross-build-x86_64-apple-darwin
           - vsce_target: win32-x64
-            package_artifact: package-clice-x64-windows-msvc.zip
+            triple: x86_64-pc-windows-msvc
+            ext: zip
             build_artifact: native-build-windows-2025-RelWithDebInfo
           - vsce_target: win32-arm64
-            package_artifact: package-clice-arm64-windows-msvc.zip
-            build_artifact: cross-build-arm64-windows-msvc
+            triple: aarch64-pc-windows-msvc
+            ext: zip
+            build_artifact: cross-build-aarch64-pc-windows-msvc
 
     runs-on: ubuntu-latest
 
@@ -86,7 +92,7 @@ jobs:
       - name: Download server binaries
         uses: actions/download-artifact@v8
         with:
-          name: ${{ inputs.source == 'package' && matrix.package_artifact || matrix.build_artifact }}
+          name: ${{ inputs.source == 'package' && format('package-clice.{0}.{1}', matrix.triple, matrix.ext) || matrix.build_artifact }}
           path: /tmp/server
 
       # Both sources end up as editors/vscode/clice/{bin,lib/clang,...}, the
@@ -134,9 +140,15 @@ jobs:
           fi
 
       - name: Package platform extension
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag || (startsWith(github.ref, 'refs/tags/v') && github.ref_name || '') }}
         run: |
           FLAG="${{ (inputs.prerelease || contains(github.ref_name, '-')) && '--pre-release' || '' }}"
-          pixi run build-vscode $FLAG --target ${{ matrix.vsce_target }}
+          OUT=()
+          if [ -n "$RELEASE_TAG" ]; then
+            OUT=(-o "clice-${RELEASE_TAG#v}.${{ matrix.triple }}.vsix")
+          fi
+          pixi run build-vscode $FLAG --target ${{ matrix.vsce_target }} "${OUT[@]}"
 
       - name: Upload vsix artifact
         uses: actions/upload-artifact@v7

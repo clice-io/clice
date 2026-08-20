@@ -440,11 +440,13 @@ TEST_CASE(Types) {
 }
 
 TEST_CASE(CXXFeatures) {
+    /// A dependent qualifier component (`T::U`) is a DependentNameType;
+    /// the cursor's innermost node owns its name token.
     EXPECT_SELECT(R"(
           template <typename T>
-          int x = §⟦T::§U::⟧ccc();
+          int x = T::§⟦§U⟧::ccc();
           )",
-                  "NestedNameSpecifierLoc");
+                  "DependentNameTypeLoc");
     EXPECT_SELECT(R"(
           struct Foo {};
           struct Bar : §⟦v§ir§tual private Foo⟧ {};

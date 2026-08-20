@@ -179,7 +179,7 @@ std::optional<SynthesizedContext> synthesize_context(llvm::ArrayRef<ChainEntry> 
         auto next_path = is_last ? target_path : chain[i + 1].path;
         auto includer_dir = llvm::sys::path::parent_path(entry.path);
 
-        auto scan_result = scan(entry.content);
+        auto scan_result = scan_quick(entry.content);
 
         llvm::SmallVector<std::optional<std::string>> resolved;
         resolved.reserve(scan_result.includes.size());
@@ -267,7 +267,7 @@ std::uint32_t count_include_occurrences(llvm::StringRef content,
                                         llvm::StringRef target_path,
                                         IncludeResolver resolve) {
     auto includer_dir = llvm::sys::path::parent_path(includer_path);
-    auto scan_result = scan(content);
+    auto scan_result = scan_quick(content);
 
     llvm::SmallVector<std::optional<std::string>> resolved;
     resolved.reserve(scan_result.includes.size());

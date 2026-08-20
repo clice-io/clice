@@ -1,0 +1,12 @@
+---
+created_at: 2026-07-31
+input_file: param_suppression.cpp
+---
+- { pos: "14:16", kind: Parameter, label: "height:", padding_right: true }
+- { pos: "18:20", kind: Parameter, label: "width:", padding_right: true }
+- { pos: "18:23", kind: Parameter, label: "height:", padding_right: true }
+- { pos: "27:13", kind: Parameter, label: "width:", padding_right: true }
+- { pos: "33:9", kind: Parameter, label: "width:", padding_right: true }
+- { pos: "33:23", kind: Parameter, label: "height:", padding_right: true }
+- { pos: "35:9", kind: Parameter, label: "width:", padding_right: true }
+- { pos: "35:12", kind: Parameter, label: "height:", padding_right: true }

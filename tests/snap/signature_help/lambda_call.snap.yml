@@ -1,0 +1,6 @@
+---
+created_at: 2026-08-02
+input_file: lambda_call.cpp
+---
+pos:
+- operator()(⟦int n⟧) -> int

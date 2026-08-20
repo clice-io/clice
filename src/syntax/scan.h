@@ -80,13 +80,40 @@ struct SharedScanCache {
     llvm::StringMap<CachedEntry> entries;
 };
 
-/// Quick lexer-based scan for module name and include file names.
-/// If module declaration is inside #if/#ifdef, sets need_preprocess=true
-/// and module_name will be empty.
-ScanResult scan(llvm::StringRef content);
+/// Quick lexer-based scan, answering exactly two questions: is this file a
+/// module unit (and which module does it declare), and which header names
+/// does it mention? It runs over raw dependency directives without any
+/// preprocessing, which is only sound because of what the standard
+/// guarantees about module declarations. P1857R3 "Modules Dependency
+/// Discovery" (https://wg21.link/p1857r3, adopted as a DR against C++20;
+/// now [cpp.pre]/[cpp.module]) made them preprocessing directives with:
+///
+///   - "A module directive may only appear as the first preprocessing
+///     tokens in a file (excluding the global module fragment)" — it can
+///     never arrive through an #include, so scanning the file's own text
+///     is sufficient.
+///   - "No identifier in the pp-module-name or pp-module-partition shall
+///     currently be defined as an object-like macro" ([cpp.module]/2) —
+///     the declared module name is literal tokens a lexer can read.
+///
+/// The directive may still sit inside #if/#ifdef branches, which a lexer
+/// cannot evaluate: then need_preprocess is set (module_name stays empty)
+/// and scan_module_decl() resolves it.
+///
+/// Imports are deliberately NOT collected (`modules` stays empty): unlike
+/// the module declaration, an import's tokens ARE macro-expanded
+/// ("processed just as in normal text", [cpp.import]), so directive-level
+/// text is not a trustworthy source of dependency edges — scan_precise()
+/// is.
+ScanResult scan_quick(llvm::StringRef content);
 
-/// Precise preprocessing-based scan. Keeps all directives including #define
-/// and conditionals. Used for lazy module dependency resolution.
+/// Precise preprocessing-based scan: runs the real preprocessor, so
+/// conditionals are evaluated and macros expand. This is the only
+/// trustworthy source of module dependency edges — `import MACRO;` is
+/// legal ([cpp.import] macro-expands an import's tokens, see
+/// ImportMacroExpandedName in module_import_tests) — and it resolves a
+/// partition import (`import :part;`) against the enclosing module's
+/// name. Keeps all directives including #define and conditionals.
 ScanResult scan_precise(llvm::ArrayRef<const char*> arguments,
                         llvm::StringRef directory,
                         llvm::StringRef content = {},

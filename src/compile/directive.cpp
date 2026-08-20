@@ -1,6 +1,7 @@
 #include "compile/directive.h"
 
 #include "compile/implement.h"
+#include "syntax/lexer.h"
 
 #include "clang/Basic/Module.h"
 #include "clang/Lex/MacroArgs.h"
@@ -190,12 +191,25 @@ public:
 
         clang::FileID fid = unit.file_id(loc);
 
-        llvm::StringRef text_to_end = unit.file_content(fid).substr(unit.file_offset(loc));
-        llvm::StringRef that_line = text_to_end.take_until([](char ch) { return ch == '\n'; });
+        llvm::StringRef content = unit.file_content(fid);
+        std::uint32_t offset = unit.file_offset(loc);
+        llvm::StringRef that_line =
+            content.substr(offset).take_until([](char ch) { return ch == '\n'; });
 
-        Pragma::Kind kind = that_line.contains("endregion") ? Pragma::EndRegion
-                            : that_line.contains("region")  ? Pragma::Region
-                                                            : Pragma::Other;
+        // Classify by the first argument token: substring matching would
+        // misfire on lines like `#pragma message("see endregion below")`.
+        // Lexing starts at the reported `#` (a suffix keeps the NUL
+        // terminator), not at the physical line start — the tail of a
+        // multiline comment may sit before the introducer.
+        Pragma::Kind kind = Pragma::Other;
+        Lexer lexer(content.substr(offset), {.lang_opts = &unit.lang_options()});
+        lexer.advance();  // the introducer `#`
+        lexer.advance();  // the `pragma` keyword
+        if(lexer.advance_if("region")) {
+            kind = Pragma::Region;
+        } else if(lexer.advance_if("endregion")) {
+            kind = Pragma::EndRegion;
+        }
 
         auto& directive = unit->directives[fid];
         directive.pragmas.emplace_back(Pragma{

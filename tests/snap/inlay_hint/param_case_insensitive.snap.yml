@@ -1,0 +1,5 @@
+---
+created_at: 2026-07-31
+input_file: param_case_insensitive.cpp
+---
+- { pos: "13:9", kind: Parameter, label: "aParam:", padding_right: true }

@@ -7,17 +7,27 @@ namespace clice {
 static clang::SourceLocation fake_loc = clang::SourceLocation::getFromRawEncoding(1);
 static clang::LangOptions default_opts;
 
-Lexer::Lexer(llvm::StringRef content,
-             bool ignore_comments,
-             const clang::LangOptions* lang_opts,
-             bool ignore_end_of_directive) :
-    content(content), ignore_end_of_directive(ignore_end_of_directive),
-    lexer(new clang::Lexer(fake_loc,
-                           lang_opts ? *lang_opts : default_opts,
-                           content.begin(),
-                           content.begin(),
-                           content.end())) {
-    lexer->SetCommentRetentionState(!ignore_comments);
+Lexer::Lexer(llvm::StringRef content, std::uint32_t start_offset, Options options) :
+    content(content), lexer(new clang::Lexer(fake_loc,
+                                             options.lang_opts ? *options.lang_opts : default_opts,
+                                             content.begin(),
+                                             content.begin() + start_offset,
+                                             content.end())) {
+    // clang's raw lexer reads the terminator as its end sentinel; a prefix
+    // slice would make it run past the buffer end.
+    assert(content.data() != nullptr && content.data()[content.size()] == '\0' &&
+           "Lexer requires a NUL-terminated buffer");
+    lexer->SetCommentRetentionState(options.keep_comments);
+}
+
+Lexer::Lexer(llvm::StringRef content, Options options) : Lexer(content, 0, options) {}
+
+Lexer Lexer::from_line(llvm::StringRef content, std::uint32_t offset, Options options) {
+    std::uint32_t line_start = 0;
+    if(auto nl = content.rfind('\n', offset); nl != llvm::StringRef::npos) {
+        line_start = static_cast<std::uint32_t>(nl + 1);
+    }
+    return Lexer(content, line_start, options);
 }
 
 Lexer::~Lexer() = default;
@@ -26,6 +36,8 @@ void Lexer::lex(Token& token) {
     clang::Token raw_token;
 
     if(parse_header_name) {
+        // One-shot: exactly the next token is a filename argument.
+        parse_header_name = false;
         lexer->LexIncludeFilename(raw_token);
     } else {
         lexer->LexFromRawLexer(raw_token);
@@ -35,12 +47,26 @@ void Lexer::lex(Token& token) {
     token.is_at_start_of_line = raw_token.isAtStartOfLine();
     token.is_pp_keyword = parse_pp_keyword;
 
+    // The fake location maps the buffer start, so raw locations decode
+    // straight to offsets into `content` even when lexing starts mid-buffer.
     auto offset = raw_token.getLocation().getRawEncoding() - fake_loc.getRawEncoding();
     token.range = LocalSourceRange{offset, offset + raw_token.getLength()};
 
-    if(token.is_at_start_of_line) {
-        parse_header_name = false;
+    // Comments are transparent to the directive machinery, matching how the
+    // lexer behaves when they are dropped: a retained line-leading comment
+    // must neither consume the start-of-line state the next token keys on
+    // nor end the module declaration context.
+    if(token.kind == clang::tok::comment) {
+        pending_start_of_line |= token.is_at_start_of_line;
+        return;
+    }
 
+    if(pending_start_of_line) {
+        token.is_at_start_of_line = true;
+        pending_start_of_line = false;
+    }
+
+    if(token.is_at_start_of_line) {
         if(token.kind == clang::tok::hash ||
            (module_declaration_context && token.text(content) == "export")) {
             parse_pp_keyword = true;
@@ -54,7 +80,25 @@ void Lexer::lex(Token& token) {
     } else if(parse_pp_keyword) {
         parse_pp_keyword = false;
         auto kw = token.text(content);
-        parse_header_name = kw == "include" || kw == "include_next" || kw == "embed";
+        // `import` here is the directive form (`#import`), which takes a
+        // filename; a module import never sets parse_pp_keyword.
+        parse_header_name =
+            kw == "include" || kw == "include_next" || kw == "embed" || kw == "import";
+    }
+
+    // The __has_include family takes a parenthesized filename argument the
+    // raw lexer cannot detect on its own (LexIncludeFilename handles both
+    // "..." and <...>): switch to header-name mode right after the opening
+    // paren.
+    if(after_has_include && token.kind == clang::tok::l_paren) {
+        parse_header_name = true;
+    }
+
+    after_has_include = false;
+    if(token.is_identifier()) {
+        auto text = token.text(content);
+        after_has_include =
+            text == "__has_include" || text == "__has_include_next" || text == "__has_embed";
     }
 }
 
@@ -104,62 +148,6 @@ Token Lexer::advance_until(TokenKind kind) {
             return token;
         }
     }
-}
-
-static bool is_directive_keyword(llvm::StringRef word) {
-    return word == "include" || word == "include_next" || word == "import" || word == "embed" ||
-           word == "__has_include" || word == "__has_include_next" || word == "__has_embed";
-}
-
-std::optional<LocalSourceRange> find_directive_argument(llvm::StringRef content,
-                                                        std::uint32_t offset,
-                                                        const clang::LangOptions* lang_opts) {
-    std::uint32_t line_start = 0;
-    if(auto nl = content.rfind('\n', offset); nl != llvm::StringRef::npos)
-        line_start = static_cast<std::uint32_t>(nl + 1);
-
-    auto line = content.substr(line_start);
-    Lexer lexer(line, true, lang_opts);
-    bool after_has_keyword = false;
-    bool ready = false;
-
-    while(true) {
-        auto tok = lexer.advance();
-        if(tok.is_eof() || tok.is_eod())
-            break;
-
-        auto abs_begin = line_start + tok.range.begin;
-        auto abs_end = line_start + tok.range.end;
-
-        if(tok.is_identifier()) {
-            auto text = tok.text(line);
-            if(text == "__has_include" || text == "__has_include_next" || text == "__has_embed") {
-                after_has_keyword = true;
-                continue;
-            }
-            if(text == "include" || text == "include_next" || text == "embed") {
-                ready = true;
-                continue;
-            }
-        }
-
-        if(tok.kind == clang::tok::l_paren && after_has_keyword) {
-            after_has_keyword = false;
-            ready = true;
-            lexer.set_header_name_mode();
-            continue;
-        }
-
-        if(abs_begin < offset || !ready)
-            continue;
-
-        if(tok.is_header_name() || tok.kind == clang::tok::string_literal)
-            return LocalSourceRange(abs_begin, abs_end);
-
-        if(tok.is_identifier())
-            return LocalSourceRange(abs_begin, abs_end);
-    }
-    return std::nullopt;
 }
 
 }  // namespace clice

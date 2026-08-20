@@ -1,6 +1,7 @@
 #include "syntax/completion.h"
 
 #include "syntax/include_resolver.h"
+#include "syntax/lexer.h"
 
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringSet.h"
@@ -11,49 +12,57 @@ namespace clice {
 
 PreambleCompletionContext detect_completion_context(llvm::StringRef text, std::uint32_t offset) {
     // TODO: cache newline offsets from incremental text updates to avoid
-    // the linear rfind/find scans on every completion trigger.
-    auto line_start = text.rfind('\n', offset > 0 ? offset - 1 : 0);
-    line_start = (line_start == llvm::StringRef::npos) ? 0 : line_start + 1;
+    // the linear line-boundary scans on every completion trigger.
+    //
+    // The full (NUL-terminated) text is lexed and the cursor applies as a
+    // logical bound: a keyword must end at or before it to count as typed.
+    auto lexer = Lexer::from_line(text, offset);
+    auto before_cursor = [&](const Token& token) {
+        return token.range.end <= offset;
+    };
 
-    auto line = text.slice(line_start, offset);
-    auto trimmed = line.ltrim();
+    auto first = lexer.advance();
 
-    if(trimmed.starts_with("#")) {
-        auto directive = trimmed.drop_front(1).ltrim();
-        if(directive.consume_front("include")) {
-            directive = directive.ltrim();
-            if(directive.consume_front("\"")) {
-                return {CompletionContext::IncludeQuoted, directive.str()};
-            }
-            if(directive.consume_front("<")) {
-                return {CompletionContext::IncludeAngled, directive.str()};
-            }
+    if(first.is_directive_hash() && before_cursor(first)) {
+        auto keyword = lexer.advance();
+        if(!keyword.is_identifier() || !before_cursor(keyword) || keyword.text(text) != "include") {
+            return {};
+        }
+        // The argument is likely half-typed, so its prefix is taken
+        // textually between the keyword token and the cursor.
+        auto argument = text.slice(keyword.range.end, offset).ltrim();
+        if(argument.consume_front("\"")) {
+            return {CompletionContext::IncludeQuoted, argument.str()};
+        }
+        if(argument.consume_front("<")) {
+            return {CompletionContext::IncludeAngled, argument.str()};
         }
         return {};
     }
 
-    // FIXME: the import detection is purely textual and can false-positive
-    // on a type named `import` (context-sensitive keyword). Use the
-    // module-name scanner from the syntax module for precise disambiguation.
-    auto import_check = trimmed;
-    if(import_check.consume_front("export") && !import_check.empty() &&
-       !std::isalnum(import_check[0])) {
-        import_check = import_check.ltrim();
+    // `[export] import` opening a logical line always means an import
+    // statement; lexing (instead of textual matching) rules out longer
+    // identifiers like `importlib` and sees through comments.
+    auto import_keyword = first;
+    if(first.is_identifier() && before_cursor(first) && first.text(text) == "export") {
+        import_keyword = lexer.advance();
     }
-    if(import_check.consume_front("import") &&
-       (import_check.empty() || !std::isalnum(import_check[0]))) {
-        import_check = import_check.ltrim();
-
-        auto line_end = text.find('\n', offset);
-        if(line_end == llvm::StringRef::npos)
-            line_end = text.size();
-        auto rest_of_line = text.slice(line_start, line_end);
-        if(!rest_of_line.contains(';')) {
-            return {CompletionContext::Import, import_check.str()};
-        }
+    if(!import_keyword.is_identifier() || !before_cursor(import_keyword) ||
+       import_keyword.text(text) != "import") {
+        return {};
     }
 
-    return {};
+    // Only complete while the statement is still open on this line.
+    auto line_end = text.find('\n', offset);
+    if(line_end == llvm::StringRef::npos) {
+        line_end = text.size();
+    }
+    if(text.slice(first.range.begin, line_end).contains(';')) {
+        return {};
+    }
+
+    auto prefix = text.slice(import_keyword.range.end, offset).ltrim();
+    return {CompletionContext::Import, prefix.str()};
 }
 
 std::vector<std::string>

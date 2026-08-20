@@ -8,7 +8,6 @@
 #include <utility>
 
 #include "command/argument_parser.h"
-#include "index/preamble_state.h"
 #include "index/tu_index.h"
 #include "server/compiler/context_resolver.h"
 #include "server/protocol/extension.h"
@@ -101,9 +100,10 @@ static kota::codec::RawValue quarantine_diagnostics(unsigned crashes) {
     diagnostic.severity = protocol::DiagnosticSeverity::Error;
     diagnostic.source = "clice";
     diagnostic.message = std::format(
-        "compiling this file crashed the language server worker {} times; " "the file is quarantined until it is edited",
+        "compiling this file crashed the language server worker {} times; "
+        "the file is quarantined until it is edited",
         crashes);
-    auto json = kota::codec::json::to_json<kota::ipc::lsp_config>(diagnostics);
+    auto json = kota::codec::json::to_string<kota::ipc::lsp_config>(diagnostics);
     return kota::codec::RawValue{json ? std::move(*json) : "[]"};
 }
 
@@ -220,12 +220,22 @@ kota::task<> Compiler::stop() {
 }
 
 void Compiler::init_compile_graph() {
+    // FIXME: this gate assumes "no module declarations anywhere" implies
+    // "no TU depends on modules", which is wrong: a plain TU may legally
+    // import — even solely through an #include'd header, since
+    // [cpp.import]/3 only forbids include-produced imports inside module
+    // files — so e.g. `import std;` against a prebuilt module is invisible
+    // here. Correct discovery needs a conservative preprocess of every TU,
+    // which is expensive; candidate mitigations when module support
+    // resumes: skip it while the preamble/PCH is unchanged, infer from
+    // compile options, or a global modules switch so module-free projects
+    // pay nothing.
     if(workspace.path_to_module.empty()) {
         LOG_INFO("No C++20 modules detected, skipping CompileGraph");
         return;
     }
 
-    // Lazy dependency resolver: scans a module file on demand to discover imports.
+    // Lazy dependency resolver: scans a file on demand to discover imports.
     auto resolve = [this](std::uint32_t path_id) -> llvm::SmallVector<std::uint32_t> {
         auto file_path = workspace.path_pool.resolve(path_id);
         std::vector<std::string> rule_append, rule_remove;
@@ -259,10 +269,11 @@ void Compiler::init_compile_graph() {
     };
 
     // Dispatch: sends BuildPCM request to a stateless worker.
-    auto dispatch = [this](std::uint32_t path_id) -> kota::task<bool> {
+    using Outcome = CompileUnit::Outcome;
+    auto dispatch = [this](std::uint32_t path_id, bool foreground) -> kota::task<Outcome> {
         auto mod_it = workspace.path_to_module.find(path_id);
         if(mod_it == workspace.path_to_module.end())
-            co_return false;
+            co_return Outcome::Failed;
 
         // Copy out of the map before any suspension below: while a PCM build
         // is awaited, a concurrent didSave can insert into (or erase from)
@@ -272,13 +283,14 @@ void Compiler::init_compile_graph() {
         auto file_path = std::string(workspace.path_pool.resolve(path_id));
 
         worker::BuildParams bp;
+        bp.priority = foreground ? worker::Priority::High : worker::Priority::Low;
         bp.kind = worker::BuildKind::BuildPCM;
         bp.file = file_path;
         contexts.resolve_command(file_path, bp.directory, bp.arguments);
 
         if(!workspace.store) {
             LOG_WARN("BuildPCM skipped for module {}: cache store is unavailable", module_name);
-            co_return false;
+            co_return Outcome::Failed;
         }
 
         // Deterministic content-addressed PCM key over the source path and
@@ -304,7 +316,7 @@ void Compiler::init_compile_graph() {
             } else {
                 workspace.pcm_paths[path_id] = pcm_it->second.path;
                 LOG_PERF("cache", "ns=pcm event=hit key={} module={}", pcm_key, module_name);
-                co_return true;
+                co_return Outcome::Success;
             }
         }
         LOG_PERF("cache",
@@ -325,7 +337,7 @@ void Compiler::init_compile_graph() {
             LOG_WARN("PCM build for module {} refused: key {} keeps crashing workers",
                      module_name,
                      budget_key);
-            co_return false;
+            co_return Outcome::Failed;
         }
 
         bp.module_name = module_name;
@@ -343,6 +355,13 @@ void Compiler::init_compile_graph() {
             [this, &budget_key](const kota::ipc::protocol::Error&) {
                 workspace.build_crashes.on_crash(budget_key);
             });
+        // A scheduler preemption (foreground reclaim, memory pressure) is
+        // no verdict on the unit: report the round stale so waiters drive
+        // a retry instead of failing their whole chain.
+        if(!result.has_value() && result.error().code == worker::dispatch_errc::cancelled) {
+            LOG_INFO("BuildPCM preempted for module {}, will retry", module_name);
+            co_return Outcome::Stale;
+        }
         if(!result.has_value() || !result.value().success) {
             if(expected_build_failure(result)) {
                 LOG_WARN("BuildPCM failed for module {}: {}",
@@ -354,7 +373,7 @@ void Compiler::init_compile_graph() {
                             module_name,
                             build_failure_message(result));
             }
-            co_return false;
+            co_return Outcome::Failed;
         }
 
         // Commit on the thread pool: it fsyncs the freshly written PCM.
@@ -362,7 +381,7 @@ void Compiler::init_compile_graph() {
             co_await kota::queue([&] { return workspace.store->commit(std::move(pending)); });
         if(!committed.has_value() || !committed.value().has_value()) {
             LOG_WARN("Failed to commit PCM for module {}", module_name);
-            co_return false;
+            co_return Outcome::Failed;
         }
 
         workspace.build_crashes.on_land(budget_key);
@@ -382,7 +401,7 @@ void Compiler::init_compile_graph() {
         if(on_indexing_needed)
             on_indexing_needed();
 
-        co_return true;
+        co_return Outcome::Success;
     };
 
     workspace.compile_graph =
@@ -482,7 +501,7 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
     if(auto it = workspace.pch_cache.find(pch_key); it != workspace.pch_cache.end()) {
         auto& st = it->second;
         // Both halves of the pair must be present: a PCH whose
-        // PreambleState blob is gone (crash between commits, failed aux
+        // pch.idx envelope is gone (crash between commits, failed aux
         // commit) rebuilds whole.
         bool in_store = workspace.store && workspace.store->lookup("pch", pch_key) &&
                         workspace.store->lookup_aux("pch", pch_key);
@@ -565,7 +584,7 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
     }
 
     // Build a new PCH pair via stateless worker: it writes the PCH and its
-    // PreambleState blob to the tmp paths allocated here; the store
+    // pch.idx envelope to the tmp paths allocated here; the store
     // commits (fsync + rename) both on success, primary first.
     auto pending = workspace.store->begin_store("pch", pch_key);
     auto pending_idx = workspace.store->begin_store_aux("pch", pch_key);
@@ -617,7 +636,7 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
     struct PairCommit {
         std::optional<std::string> pch_path;
         std::optional<std::string> index_path;
-        std::shared_ptr<index::PreambleState> state;
+        std::shared_ptr<index::TUIndex> state;
     };
 
     auto committed = co_await kota::queue([&]() -> PairCommit {
@@ -637,7 +656,7 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
             return outcome;
         }
         outcome.index_path = std::move(*index_path);
-        outcome.state = index::PreambleState::load(*outcome.index_path);
+        outcome.state = load_pch_envelope(*outcome.index_path);
         return outcome;
     });
     if(!committed.has_value() || !committed.value().pch_path.has_value()) {
@@ -645,7 +664,7 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
         co_return false;
     }
     if(!committed.value().index_path.has_value()) {
-        LOG_WARN("Failed to commit PreambleState blob for {}", path);
+        LOG_WARN("Failed to commit pch.idx envelope for {}", path);
         // A rebuild of an existing key just had its blobs retracted from
         // the store; the entry's paths now dangle and waiters checking
         // `!path.empty()` would hand the compile a deleted PCH. Drop it —
@@ -706,10 +725,14 @@ kota::task<bool> Compiler::ensure_deps(Session& session,
     // scope unwinds the wait and releases this request's interest in the
     // dependency graph, without touching the shared compilations themselves.
     auto compile_deps = [&](std::uint32_t pid) -> kota::task<bool> {
+        // A user request waits on these builds: dispatch them High so the
+        // background budget cannot throttle its own foreground.
         if(!scope) {
-            co_return co_await workspace.compile_graph->compile_deps(pid);
+            co_return co_await workspace.compile_graph->compile_deps(pid, /*foreground=*/true);
         }
-        auto result = co_await kota::with_token(workspace.compile_graph->compile_deps(pid), *scope);
+        auto result = co_await kota::with_token(
+            workspace.compile_graph->compile_deps(pid, /*foreground=*/true),
+            *scope);
         co_return result.has_value() && *result;
     };
 
@@ -754,8 +777,14 @@ kota::task<bool> Compiler::ensure_deps(Session& session,
     // Scan buffer text for module imports that might not be in compile_graph yet.
     // When a user adds `import std;` without saving, the compile_graph (disk-based)
     // doesn't know about the new dependency. Scan the in-memory text to find them.
+    //
+    // FIXME: dead code — scan_quick never reports imports (its contract:
+    // import tokens are macro-expanded, so the lexer level cannot see
+    // them), so this loop body never runs and unsaved `import` additions
+    // are never discovered. Needs the precise scan over the buffer text
+    // when module support resumes.
     {
-        auto scan_result = scan(session.text);
+        auto scan_result = scan_quick(session.text);
         for(auto& mod_name: scan_result.modules) {
             if(mod_name.empty())
                 continue;
@@ -957,7 +986,7 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
         // out: concurrent compiles can insert into pch_cache across the
         // await below and rehash the map from under a held pointer.
         std::vector<std::uint32_t> pch_inactive;
-        std::shared_ptr<index::PreambleState> preamble_state;
+        std::shared_ptr<index::TUIndex> preamble_state;
         if(session->pch_key.has_value()) {
             preamble_state = workspace.preamble_state(*session->pch_key);
         }
@@ -1148,7 +1177,7 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
             std::vector<protocol::Diagnostic> diagnostics;
             if(!result.value().diagnostics.empty()) {
                 [[maybe_unused]] auto status =
-                    kota::codec::json::from_json(result.value().diagnostics.data, diagnostics);
+                    kota::codec::json::from_string(result.value().diagnostics.data, diagnostics);
             }
             session->trial_done = true;
             contexts.record_header_mode(pid, HeaderMode::SelfContained);
@@ -1172,23 +1201,20 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
         pc->succeeded = true;
         record_deps(*session, result.value().deps, result.value().build_at);
 
-        if(!result.value().tu_index_data.empty()) {
-            auto tu_index = index::TUIndex::from(result.value().tu_index_data.data());
-            session->file_index = std::move(tu_index.main_file_index);
-            session->symbols = std::move(tu_index.symbols);
-        } else {
-            // The AST and the file index settle together — that pairing is
-            // what lets navigation trust the index after ensure_compiled. A
-            // compile that produced no index data (fatal error, no AST) must
-            // therefore drop the previous buffer's index rather than leave
-            // it posing as current: an honest gap over yesterday's offsets.
-            session->file_index.reset();
-            session->symbols.reset();
-        }
+        // The AST and the file index settle together — that pairing is
+        // what lets navigation trust the index after ensure_compiled. A
+        // compile that produced no index data (fatal error, no AST) must
+        // therefore drop the previous buffer's index rather than leave it
+        // posing as current: an honest gap over yesterday's offsets.
+        auto& index_data = result.value().tu_index_data;
+        session->index =
+            index_data.empty()
+                ? index::TUIndex()
+                : index::TUIndex::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(index_data));
 
         auto version = session->version;
 
-        LOG_PERF("request", "kind=Compile file={} total_ms={}", file_path, timer.ms());
+        LOG_PERF("request", "kind=Compile file={} total_ms={:.2f}", file_path, timer.ms_f());
         // The preamble's share lives with the PCH; the compile result
         // covers the content past the bound. Publish both.
         auto inactive = std::move(pch_inactive);
@@ -1382,7 +1408,7 @@ Compiler::RawResult Compiler::forward_query(worker::QueryKind kind,
     if(!co_await ensure_compiled(session)) {
         co_return serde_raw{"null"};
     }
-    auto wait_ms = timer.ms();
+    auto wait_ms = timer.ms_f();
 
     if(session->generation != gen) {
         co_return serde_raw{"null"};
@@ -1391,6 +1417,7 @@ Compiler::RawResult Compiler::forward_query(worker::QueryKind kind,
     worker::QueryParams wp;
     wp.kind = kind;
     wp.path = path;
+    wp.config = workspace.config;
 
     if(position) {
         wp.offset = clamped_offset(map, *position);
@@ -1452,7 +1479,12 @@ Compiler::RawResult Compiler::forward_query(worker::QueryKind kind,
             publish_recovered(session);
         }
     }
-    LOG_PERF("request", "kind={} file={} wait_ms={} total_ms={}", kind, path, wait_ms, timer.ms());
+    LOG_PERF("request",
+             "kind={} file={} wait_ms={:.2f} total_ms={:.2f}",
+             kind,
+             path,
+             wait_ms,
+             timer.ms_f());
     co_return std::move(result.value());
 }
 
@@ -1470,7 +1502,7 @@ kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
     if(session->generation != gen) {
         co_return std::vector<feature::DocumentLink>{};
     }
-    auto wait_ms = timer.ms();
+    auto wait_ms = timer.ms_f();
 
     if(session->quarantine.kind_blocked(document_link_evidence)) {
         co_return kota::outcome_error(
@@ -1514,10 +1546,10 @@ kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
         publish_recovered(session);
     }
     LOG_PERF("request",
-             "kind=DocumentLink file={} wait_ms={} total_ms={}",
+             "kind=DocumentLink file={} wait_ms={:.2f} total_ms={:.2f}",
              path,
              wait_ms,
-             timer.ms());
+             timer.ms_f());
     co_return std::move(result.value());
 }
 
@@ -1558,6 +1590,7 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
     wp.text = session->text;
     contexts.resolve_command(path, wp.directory, wp.arguments, session.get());
     contexts.append_suffix_include(*session, wp.text);
+    wp.config = workspace.config;
 
     ScopedTimer timer;
     if(!co_await ensure_deps(*session, gen, epoch, wp.directory, wp.arguments, wp.pch, wp.pcms)) {
@@ -1578,7 +1611,7 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
         co_return kota::outcome_error(
             kota::ipc::Error{worker::dispatch_errc::worker_unavailable, "Document is quarantined"});
     }
-    auto wait_ms = timer.ms();
+    auto wait_ms = timer.ms_f();
 
     if(session->generation != gen) {
         co_return serde_raw{"null"};
@@ -1625,7 +1658,12 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
             publish_recovered(session);
         }
     }
-    LOG_PERF("request", "kind={} file={} wait_ms={} total_ms={}", kind, path, wait_ms, timer.ms());
+    LOG_PERF("request",
+             "kind={} file={} wait_ms={:.2f} total_ms={:.2f}",
+             kind,
+             path,
+             wait_ms,
+             timer.ms_f());
     co_return std::move(result.value().result_json);
 }
 
@@ -1691,7 +1729,7 @@ Compiler::RawResult Compiler::forward_format(std::shared_ptr<Session> session,
             publish_recovered(session);
         }
     }
-    LOG_PERF("request", "kind=Format file={} total_ms={}", path, timer.ms());
+    LOG_PERF("request", "kind=Format file={} total_ms={:.2f}", path, timer.ms_f());
     co_return std::move(result.value().result_json);
 }
 

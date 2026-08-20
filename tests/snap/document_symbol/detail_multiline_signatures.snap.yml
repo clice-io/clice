@@ -1,0 +1,6 @@
+---
+created_at: 2026-08-01
+input_file: detail_multiline_signatures.cpp
+---
+- { name: "Config", kind: Struct, range: "8:0-8:16", selection_range: "8:7-8:13", detail: "struct" }
+- { name: "process_data", kind: Function, range: "10:0-13:4", selection_range: "10:5-10:17", detail: "void (const Config &, int)" }

@@ -14,13 +14,13 @@ export function highlightDocument(
     semanticTokens: vscode.SemanticTokens,
 ) {
     const editor = vscode.window.activeTextEditor;
-    if (!editor || editor.document !== document) {
+    if (editor?.document !== document) {
         return;
     }
-    const angleIndex = legend?.tokenTypes.indexOf("angle");
-    const leftIndex = legend?.tokenModifiers.indexOf("left");
-    const rightIndex = legend?.tokenModifiers.indexOf("right");
-    if (leftIndex === undefined || rightIndex === undefined || angleIndex === undefined) {
+    const angleIndex = legend.tokenTypes.indexOf("angle");
+    const leftIndex = legend.tokenModifiers.indexOf("left");
+    const rightIndex = legend.tokenModifiers.indexOf("right");
+    if (angleIndex === -1 || leftIndex === -1 || rightIndex === -1) {
         return;
     }
 

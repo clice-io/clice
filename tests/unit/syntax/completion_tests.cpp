@@ -32,6 +32,26 @@ TEST_CASE(IncludeEmpty) {
     EXPECT_EQ(ctx.prefix, "");
 }
 
+TEST_CASE(CursorInsideKeyword) {
+    // A keyword is only "typed" once the cursor passed its end.
+    EXPECT_EQ(detect_completion_context("#include", 5).kind, CompletionContext::None);
+    EXPECT_EQ(detect_completion_context("import", 3).kind, CompletionContext::None);
+}
+
+TEST_CASE(CursorAtNewline) {
+    // A cursor sitting on a line's terminating newline still completes the
+    // statement that line opened.
+    auto ctx = detect_completion_context("import std\nint x;", 10);
+    EXPECT_EQ(ctx.kind, CompletionContext::Import);
+    EXPECT_EQ(ctx.prefix, "std");
+}
+
+TEST_CASE(CrlfLineEndings) {
+    auto ctx = detect_completion_context("#include <a>\r\n#include <ve", 26);
+    EXPECT_EQ(ctx.kind, CompletionContext::IncludeAngled);
+    EXPECT_EQ(ctx.prefix, "ve");
+}
+
 TEST_CASE(ImportSimple) {
     auto ctx = detect_completion_context("import std", 10);
     EXPECT_EQ(ctx.kind, CompletionContext::Import);

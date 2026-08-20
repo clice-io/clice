@@ -32,4 +32,40 @@ void demo() {
     ] {
         return first + second;
     };
+
+    auto scale = [](
+        int base,    // ┐ foldable lambda
+        int factor   // ┘ parameter list
+    ) {
+        return base * factor;
+    };
+
+    result += sum() + scale(result, 2);
 }
+
+int accumulate(
+    int start,  // ┐
+    int step,   // │ foldable parameter list
+    int count   // ┘ on a definition
+) {
+    return start + step * count;
+}
+
+void log_all(
+    const char* format,  // ┐ variadic parameter
+    ...                  // ┘ list still folds
+);
+
+struct Rect {
+    Rect(int w, int h);
+};
+
+Rect area(
+    10,  // ┐ foldable constructor
+    20   // ┘ arguments
+);
+
+Rect brace_area{
+    30,
+    40
+};

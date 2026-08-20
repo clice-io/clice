@@ -4,17 +4,17 @@
     {
       "label": "npm: install vscode deps",
       "type": "shell",
-      "command": "pnpm",
+      "command": "npm",
       "args": ["install"],
       "options": {
-        "cwd": "${workspaceFolder}/editors/vscode"
+        "cwd": "${workspaceFolder}"
       },
       "problemMatcher": []
     },
     {
       "label": "npm: compile vscode ext",
       "type": "shell",
-      "command": "pnpm",
+      "command": "npm",
       "args": ["run", "compile"],
       "options": {
         "cwd": "${workspaceFolder}/editors/vscode"
@@ -25,7 +25,7 @@
     {
       "label": "npm: watch vscode ext",
       "type": "shell",
-      "command": "pnpm",
+      "command": "npm",
       "args": ["run", "watch"],
       "options": {
         "cwd": "${workspaceFolder}/editors/vscode"
@@ -41,7 +41,7 @@
     {
       "label": "npm: package vscode ext",
       "type": "shell",
-      "command": "pnpm",
+      "command": "npm",
       "args": ["run", "package"],
       "options": {
         "cwd": "${workspaceFolder}/editors/vscode"

@@ -26,7 +26,7 @@
 
 | 实体             | 规范         | 示例                              |
 | ---------------- | ------------ | --------------------------------- |
-| 变量、字段、函数 | `snake_case` | `file_path`、`apply_defaults`     |
+| 变量、字段、函数 | `snake_case` | `file_path`                       |
 | 类、枚举、概念   | `PascalCase` | `CompileGraph`、`SymbolKind`      |
 | 枚举值           | `PascalCase` | `GoToDefinition`、`IncludeAngled` |
 | 模板参数         | `PascalCase` | `typename Result`                 |

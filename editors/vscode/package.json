@@ -231,10 +231,14 @@
     "package": "vsce package --no-dependencies --baseImagesUrl https://raw.githubusercontent.com/clice-io/clice/main/",
     "publish": "vsce publish --no-dependencies --baseImagesUrl https://raw.githubusercontent.com/clice-io/clice/main/",
     "compile-tests": "tsc -p . --outDir out",
-    "pretest": "pnpm run compile && pnpm run compile-tests",
+    "typecheck": "tsc -p . --noEmit",
+    "lint": "eslint .",
+    "check": "npm run typecheck && npm run lint",
+    "pretest": "npm run compile && npm run compile-tests",
     "test": "vscode-test",
-    "release:patch": "pnpm version patch -m \"release: v%s\" && git push --follow-tags",
-    "release:minor": "pnpm version minor -m \"release: v%s\" && git push --follow-tags"
+    "release:patch": "npm version patch --no-git-tag-version && npm run release:tag",
+    "release:minor": "npm version minor --no-git-tag-version && npm run release:tag",
+    "release:tag": "VERSION=$(node -p \"require('./package.json').version\") && git commit -m \"release: v$VERSION\" package.json ../../package-lock.json && git tag \"v$VERSION\" && git push --follow-tags"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
@@ -243,16 +247,15 @@
     "@vscode/test-cli": "^0.0.15",
     "@vscode/test-electron": "^3.1.0",
     "@vscode/vsce": "^3.7.1",
+    "eslint": "^10.8.0",
     "ts-loader": "^9.5.4",
+    "typescript-eslint": "^8.65.0",
     "typescript": "~5.5.4",
     "webpack": "^5.104.1",
     "webpack-cli": "^6.0.1",
-    "@clice/tools": "file:../../tools"
+    "@clice/tools": "*"
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"
-  },
-  "overrides": {
-    "glob": "^11.1.0"
   }
 }

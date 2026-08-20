@@ -10,6 +10,7 @@
 #include "clang/Basic/FileEntry.h"
 #include "clang/Basic/FileManager.h"
 #include "clang/Basic/SourceManager.h"
+#include "clang/Driver/CreateInvocationFromArgs.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Frontend/FrontendActions.h"
 #include "clang/Lex/PPCallbacks.h"
@@ -19,7 +20,7 @@
 
 namespace clice {
 
-ScanResult scan(llvm::StringRef content) {
+ScanResult scan_quick(llvm::StringRef content) {
     namespace dds = clang::dependency_directives_scan;
 
     ScanResult result;
@@ -323,9 +324,10 @@ std::unique_ptr<clang::CompilerInstance>
     }
 
     auto instance = std::make_unique<clang::CompilerInstance>(std::move(invocation));
-    instance->createDiagnostics(*vfs, new clang::IgnoringDiagConsumer(), true);
+    instance->setVirtualFileSystem(std::move(vfs));
+    instance->createDiagnostics(new clang::IgnoringDiagConsumer(), true);
     instance->getDiagnostics().setSuppressAllDiagnostics(true);
-    instance->createFileManager(vfs);
+    instance->createFileManager();
 
     return instance;
 }
@@ -440,7 +442,7 @@ std::uint32_t compute_preamble_bound(llvm::StringRef content) {
 std::vector<std::uint32_t> compute_preamble_bounds(llvm::StringRef content) {
     std::vector<std::uint32_t> result;
 
-    Lexer lexer(content, true, nullptr, false);
+    Lexer lexer(content);
 
     while(true) {
         auto token = lexer.advance();
@@ -480,56 +482,67 @@ std::vector<std::uint32_t> compute_preamble_bounds(llvm::StringRef content) {
     return result;
 }
 
-/// Check if a preprocessor #include/#import directive line is complete.
-static bool is_include_directive_complete(llvm::StringRef directive) {
-    if(directive.contains('"')) {
-        auto after_keyword = directive.drop_front(directive.starts_with("import") ? 6 : 7);
-        return after_keyword.count('"') >= 2;
-    }
-    if(directive.contains('<')) {
-        return directive.contains('>');
-    }
-    // No " or < — might be a macro (#include FOO) or just incomplete (#include ).
-    auto after_keyword = directive.drop_front(directive.starts_with("import") ? 6 : 7).ltrim();
-    return !after_keyword.empty();
-}
-
-/// Check if a C++20 module statement line (import/export module) is complete.
-/// A complete statement must end with ';'.
-static bool is_module_statement_complete(llvm::StringRef trimmed) {
-    return trimmed.rtrim().ends_with(";");
-}
-
 bool is_preamble_complete(llvm::StringRef content, std::uint32_t bound) {
-    auto preamble = content.substr(0, bound);
+    // The full (NUL-terminated) content is lexed; `bound` applies as a
+    // logical end — tokens starting at or past it belong to the body.
+    Lexer lexer(content);
 
-    while(!preamble.empty()) {
-        auto [line, rest] = preamble.split('\n');
-        preamble = rest;
+    // Tokens of the current logical line; eod tokens only act as line ends.
+    llvm::SmallVector<Token, 8> line;
 
-        auto trimmed = line.ltrim();
-
-        // Preprocessor directive: #include or #import
-        if(trimmed.starts_with("#")) {
-            auto directive = trimmed.drop_front(1).ltrim();
-            if(directive.starts_with("include") || directive.starts_with("import")) {
-                if(!is_include_directive_complete(directive)) {
-                    return false;
-                }
+    auto line_complete = [&] {
+        // A #include/#import directive is complete once it has a terminated
+        // filename argument (or a macro identifier standing in for one).
+        if(line.front().is_directive_hash()) {
+            if(line.size() < 2 || !line[1].is_identifier()) {
+                return true;
             }
-            continue;
-        }
-
-        // C++20 module statements: import, export module, export import
-        // Check word boundary to avoid matching identifiers like "important".
-        auto is_keyword = [](llvm::StringRef s, llvm::StringRef keyword) {
-            return s.starts_with(keyword) &&
-                   (s.size() == keyword.size() || !llvm::isAlnum(s[keyword.size()]));
-        };
-        if(is_keyword(trimmed, "import") || is_keyword(trimmed, "export")) {
-            if(!is_module_statement_complete(trimmed)) {
+            auto keyword = line[1].text(content);
+            if(keyword != "include" && keyword != "include_next" && keyword != "import") {
+                return true;
+            }
+            if(line.size() < 3) {
                 return false;
             }
+            // A filename token's spelling may begin with line splices; skip
+            // them before inspecting the delimiter.
+            auto argument = line[2].text(content).ltrim("\\\r\n \t");
+            if(argument.starts_with("\"")) {
+                return argument.size() >= 2 && argument.ends_with("\"");
+            }
+            if(argument.starts_with("<")) {
+                return argument.ends_with(">");
+            }
+            return true;
+        }
+
+        // A module statement (import, export module, export import) is
+        // complete once its last token is the semicolon. Working on tokens
+        // instead of text keeps a trailing comment from hiding it.
+        if(!line.front().is_identifier()) {
+            return true;
+        }
+        auto keyword = line.front().text(content);
+        if(keyword != "import" && keyword != "export") {
+            return true;
+        }
+        return line.back().kind == clang::tok::semi;
+    };
+
+    while(true) {
+        auto token = lexer.advance();
+        bool at_end = token.is_eof() || token.range.begin >= bound;
+        if((at_end || token.is_at_start_of_line) && !line.empty()) {
+            if(!line_complete()) {
+                return false;
+            }
+            line.clear();
+        }
+        if(at_end) {
+            break;
+        }
+        if(!token.is_eod()) {
+            line.push_back(token);
         }
     }
 

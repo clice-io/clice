@@ -7,7 +7,6 @@ import * as path from "node:path";
 import { expect, test } from "vitest";
 import { URI } from "vscode-uri";
 import {
-    fixtureFrontmatter,
     formatSnap,
     normalizeFileUri,
     parseSnap,
@@ -25,7 +24,7 @@ test("snapshot check flows", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "snap-"));
     const snapPath = path.join(dir, "a.cpp.snap.yml");
 
-    const ctx = new SnapshotContext(dir, { update: false });
+    const ctx = new SnapshotContext(dir);
     ctx.check("a.cpp", "one\n"); // first run creates
     const createdAt = parseSnap(fs.readFileSync(snapPath, "utf8"))!.createdAt;
     ctx.check("a.cpp", "one\n"); // match passes
@@ -34,6 +33,14 @@ test("snapshot check flows", () => {
         ctx.check("a.cpp", "two\n");
     }).toThrow("snapshot mismatch");
     expect(fs.existsSync(`${snapPath}.new`)).toBe(true);
+
+    // A non-owning context (update: false) compares but never authors:
+    // a missing snapshot is the owner's to create.
+    const readonly = new SnapshotContext(dir, { update: false });
+    readonly.check("a.cpp", "one\n");
+    expect(() => {
+        readonly.check("b.cpp", "x\n");
+    }).toThrow("missing snapshot");
 
     new SnapshotContext(dir, { update: true }).check("a.cpp", "two\n");
     expect(parseSnap(fs.readFileSync(snapPath, "utf8"))).toEqual({
@@ -47,7 +54,9 @@ test("snapshot check flows", () => {
 test("colocated snapshot layout", () => {
     const ctx = new SnapshotContext("/corpus", { colocated: true });
     expect(ctx.snapPath("group/a.cpp")).toBe(path.join("/corpus", "group/a.snap.yml"));
-    expect(ctx.snapPath("group/a.cpp", "wire")).toBe(path.join("/corpus", "group/a.wire.snap.yml"));
+    expect(ctx.snapPath("group/a.cpp", "server")).toBe(
+        path.join("/corpus", "group/a.server.snap.yml"),
+    );
     expect(new SnapshotContext("/dir").snapPath("a.cpp")).toBe(path.join("/dir", "a.cpp.snap.yml"));
 });
 
@@ -86,11 +95,4 @@ test("normalize file uri", () => {
 
 test("yaml string escapes", () => {
     expect(yamlStr('a"b\\c\n\t\x01')).toBe('"a\\"b\\\\c\\n\\t\\x01"');
-});
-
-test("fixture frontmatter", () => {
-    const header = "/// # Title\n///\n/// - status: unsupported\nint x;\n";
-    expect(fixtureFrontmatter(header, "status")).toBe("unsupported");
-    expect(fixtureFrontmatter(header, "missing")).toBe("");
-    expect(fixtureFrontmatter("int x;\n", "status")).toBe("");
 });

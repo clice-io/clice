@@ -1,0 +1,7 @@
+---
+created_at: 2026-08-01
+input_file: explicit_instantiation_member_bodies.cpp
+---
+- { loc: "22:14", text: "T", kind: type }
+- { loc: "22:17", text: "hit", kind: conflict, modifiers: [static] }
+- { loc: "32:10", text: "hit", kind: method }

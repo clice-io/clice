@@ -4,9 +4,11 @@
 #include <utility>
 #include <vector>
 
+#include "compile/compilation_unit.h"
 #include "feature/feature.h"
+#include "semantic/decls.h"
 #include "semantic/display.h"
-#include "semantic/filtered_ast_visitor.h"
+#include "semantic/semantics.h"
 #include "semantic/symbol.h"
 
 #include "llvm/Support/Casting.h"
@@ -28,7 +30,9 @@ auto to_protocol_symbol_kind(SymbolKind kind) -> protocol::SymbolKind {
         case SymbolKind::Struct: return Struct;
         case SymbolKind::Union: return Class;
         case SymbolKind::Enum: return Enum;
-        case SymbolKind::Type:
+        // Type aliases are the only Type producer in the outline; clangd
+        // maps them to Class as well.
+        case SymbolKind::Type: return Class;
         case SymbolKind::Concept: return TypeParameter;
         case SymbolKind::Field: return Field;
         case SymbolKind::EnumMember: return EnumMember;
@@ -93,54 +97,129 @@ auto symbol_detail(clang::ASTContext& context, const clang::NamedDecl& decl) -> 
     return detail;
 }
 
-struct SymbolFrame {
-    std::vector<DocumentSymbol> symbols;
-    std::vector<DocumentSymbol>* cursor = &symbols;
-};
-
-class DocumentSymbolCollector : public FilteredASTVisitor<DocumentSymbolCollector> {
+/// Collects the outline by walking the unit's cached Semantics node table —
+/// the DFS pre-order record of the interested file's written AST — instead of
+/// running another RecursiveASTVisitor over the TU. Nesting comes for free:
+/// a symbol's frame stays open while the walk index is inside its subtree.
+class Collector {
 public:
-    explicit DocumentSymbolCollector(CompilationUnitRef unit) : FilteredASTVisitor(unit, true) {}
+    explicit Collector(CompilationUnitRef unit) : unit(unit) {}
 
-    bool on_traverse_decl(clang::Decl* decl, auto traverse) {
-        if(!is_interested(decl)) {
-            return (this->*traverse)(decl);
+    auto collect() -> std::vector<DocumentSymbol> {
+        auto nodes = unit.semantics().node_entries();
+        std::uint32_t index = 0;
+        while(index < nodes.size()) {
+            const Semantics::Node& entry = nodes[index];
+            if(!entry.node.is_ast()) {
+                // The preprocessor segment follows the AST segment; nothing
+                // there produces an outline symbol.
+                break;
+            }
+
+            close_frames(index);
+
+            // Implicit instantiations (and anything below an instantiation
+            // head) are located at the pattern, not here.
+            if(entry.flags.in_instantiation) {
+                index = entry.subtree_end;
+                continue;
+            }
+
+            if(entry.node.kind() == SemanticNode::Kind::Decl) {
+                if(!handle_decl(entry.node.get<clang::Decl>(), entry.subtree_end)) {
+                    index = entry.subtree_end;
+                    continue;
+                }
+            }
+
+            index += 1;
         }
 
-        auto* named = llvm::dyn_cast<clang::NamedDecl>(decl);
+        return std::move(symbols);
+    }
+
+private:
+    /// Restore the insertion cursor of every symbol whose subtree the walk
+    /// has left.
+    void close_frames(std::uint32_t index) {
+        while(!frames.empty() && index >= frames.back().subtree_end) {
+            cursor = frames.back().previous;
+            frames.pop_back();
+        }
+    }
+
+    /// Returns false when the decl's whole subtree should be skipped.
+    bool handle_decl(const clang::Decl* decl, std::uint32_t subtree_end) {
+        const auto* named = llvm::dyn_cast<clang::NamedDecl>(decl);
         if(!named) {
-            return (this->*traverse)(decl);
-        }
-
-        auto [fid, selection_range] =
-            unit.decompose_range(unit.expansion_location(named->getLocation()));
-        auto [fid2, range] = unit.decompose_expansion_range(named->getSourceRange());
-        if(fid != fid2 || fid != unit.interested_file() || !selection_range.valid() ||
-           !range.valid()) {
             return true;
         }
 
-        auto* previous = result.cursor;
-        auto& symbol = result.cursor->emplace_back();
+        // Explicit instantiation directives carry no written body (implicit
+        // instantiations never reach here — the walk skips flagged nodes).
+        // The class form (`template struct Box<int>;`) gets a childless
+        // outline node — its members are instantiated decls located in the
+        // primary template.
+        // FIXME(explicit-instantiation): clang mislocates the function and
+        // variable directive forms at the pattern, so they produce no symbol
+        // at all (mirroring resolve_occurrences) until the pin gains
+        // clang 23's ExplicitInstantiationDecl (llvm/llvm-project#191658).
+        bool childless_instantiation = false;
+        if(decls::is_instantiation(decl)) {
+            if(!llvm::isa<clang::ClassTemplateSpecializationDecl>(decl)) {
+                return false;
+            }
+            childless_instantiation = true;
+        }
+
+        if(!is_interested(decl)) {
+            return true;
+        }
+
+        // A function's declaration name may span several tokens
+        // (`~Widget`, `operator bool`, `operator==`); NameInfo covers them
+        // all, while getLocation() is only the first one.
+        clang::SourceRange name_range = named->getLocation();
+        if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(named)) {
+            name_range = function->getNameInfo().getSourceRange();
+        }
+
+        // Names spelled inside a macro argument (`DEFINE(name)`) select the
+        // written spelling; names spelled in the macro body keep the
+        // invocation site.
+        name_range = clang::SourceRange(unit.file_location(name_range.getBegin()),
+                                        unit.file_location(name_range.getEnd()));
+
+        auto [fid, selection_range] = unit.decompose_range(name_range);
+        auto [fid2, range] = unit.decompose_expansion_range(named->getSourceRange());
+        if(fid != fid2 || fid != unit.interested_file() || !selection_range.valid() ||
+           !range.valid()) {
+            return false;
+        }
+
+        // LSP requires the selection range to be contained in the full
+        // range; a macro invocation's expansion range may be narrower than
+        // the name spelled in its argument.
+        range.begin = std::min(range.begin, selection_range.begin);
+        range.end = std::max(range.end, selection_range.end);
+
+        auto& symbol = cursor->emplace_back();
         symbol.kind = SymbolKind::from(decl);
         symbol.name = display::name_of(named);
         symbol.detail = symbol_detail(unit.context(), *named);
         symbol.selection_range = selection_range;
         symbol.range = range;
 
-        result.cursor = &symbol.children;
-        auto ok = (this->*traverse)(decl);
-        result.cursor = previous;
-        return ok;
+        if(childless_instantiation) {
+            return false;
+        }
+
+        frames.push_back({subtree_end, cursor});
+        cursor = &symbol.children;
+        return true;
     }
 
-    auto collect() -> std::vector<DocumentSymbol> {
-        TraverseDecl(unit.tu());
-        return std::move(result.symbols);
-    }
-
-private:
-    static bool is_interested(clang::Decl* decl) {
+    static bool is_interested(const clang::Decl* decl) {
         switch(decl->getKind()) {
             case clang::Decl::Namespace:
             case clang::Decl::Enum:
@@ -153,16 +232,29 @@ private:
             case clang::Decl::CXXDeductionGuide:
             case clang::Decl::Record:
             case clang::Decl::CXXRecord:
+            case clang::Decl::ClassTemplateSpecialization:
+            case clang::Decl::ClassTemplatePartialSpecialization:
             case clang::Decl::Field:
             case clang::Decl::Var:
+            case clang::Decl::VarTemplateSpecialization:
+            case clang::Decl::VarTemplatePartialSpecialization:
             case clang::Decl::Binding:
+            case clang::Decl::Typedef:
+            case clang::Decl::TypeAlias:
             case clang::Decl::Concept: return true;
             default: return false;
         }
     }
 
-private:
-    SymbolFrame result;
+    struct Frame {
+        std::uint32_t subtree_end;
+        std::vector<DocumentSymbol>* previous;
+    };
+
+    CompilationUnitRef unit;
+    std::vector<DocumentSymbol> symbols;
+    std::vector<DocumentSymbol>* cursor = &symbols;
+    std::vector<Frame> frames;
 };
 
 void sort_symbols(std::vector<DocumentSymbol>& symbols) {
@@ -214,7 +306,7 @@ auto to_protocol_symbol(const DocumentSymbol& symbol, const LineMap& map)
 }  // namespace
 
 auto document_symbols(CompilationUnitRef unit) -> std::vector<DocumentSymbol> {
-    auto result = DocumentSymbolCollector(unit).collect();
+    auto result = Collector(unit).collect();
     sort_symbols(result);
     return result;
 }

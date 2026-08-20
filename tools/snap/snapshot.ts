@@ -124,38 +124,6 @@ export function yamlStr(s: string): string {
     return out + '"';
 }
 
-/// Value of `- key: value` in a fixture's leading `///` doc header, or "".
-/// Mirrors tests/unit/test/fixture.h; feature_docs.ts is the authority on
-/// the full grammar.
-export function fixtureFrontmatter(content: string, key: string): string {
-    let first = (content.split("\n", 1)[0] ?? "").trim();
-    if (!first.startsWith("///")) {
-        return "";
-    }
-    first = first.slice(3);
-    if (first.startsWith(" ")) {
-        first = first.slice(1);
-    }
-    if (!first.startsWith("# ")) {
-        return "";
-    }
-    for (let line of content.split("\n")) {
-        line = line.trim();
-        if (!line.startsWith("///")) {
-            break;
-        }
-        line = line.slice(3).trim();
-        if (!line.startsWith("- ") || !line.includes(":")) {
-            continue;
-        }
-        const sep = line.indexOf(":");
-        if (line.slice(2, sep).trim() === key) {
-            return line.slice(sep + 1).trim();
-        }
-    }
-    return "";
-}
-
 export interface Snapshot {
     createdAt: string;
     body: string;
@@ -219,10 +187,15 @@ function renderDiff(oldBody: string, newBody: string): string {
 /// Legacy layout stores `<input>.cpp.snap.yml` under a snapshot tree that
 /// mirrors the corpus; the colocated layout used by tests/snap/ stores
 /// `<input>.snap.yml` (source extension replaced) next to the source
-/// itself, with an optional variant infix: `<input>.wire.snap.yml`.
+/// itself, with an optional variant infix: `<input>.inspect.snap.yml` /
+/// `<input>.server.snap.yml` for `snap: separate` fixtures.
 export class SnapshotContext {
     readonly directory: string;
     readonly update: boolean;
+    /// `update: false` marks a caller that must never author the file (the
+    /// server driver on a shared snapshot) — for it a missing snapshot is
+    /// an error, not something to create from its own output.
+    readonly create: boolean;
     readonly colocated: boolean;
 
     // Plain field assignments: parameter properties are not erasable
@@ -230,6 +203,7 @@ export class SnapshotContext {
     constructor(directory: string, options: { update?: boolean; colocated?: boolean } = {}) {
         this.directory = directory;
         this.update = options.update ?? process.env["UPDATE_SNAPSHOTS"] === "1";
+        this.create = options.update !== false;
         this.colocated = options.colocated ?? false;
     }
 
@@ -254,6 +228,9 @@ export class SnapshotContext {
             ? parseSnap(fs.readFileSync(snapPath, "utf8"))
             : null;
         if (existing === null) {
+            if (!this.create) {
+                throw new Error(`missing snapshot ${snapPath} (owned by the other path)`);
+            }
             fs.mkdirSync(path.dirname(snapPath), { recursive: true });
             fs.writeFileSync(snapPath, formatSnap(inputFile, body));
             console.log(`[snapshot] created ${snapPath}`);

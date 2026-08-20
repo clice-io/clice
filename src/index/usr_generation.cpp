@@ -1,3 +1,5 @@
+#include <utility>
+
 #include "index/usr.h"
 
 #include "clang/AST/ASTContext.h"
@@ -398,7 +400,7 @@ void USRGenerator::VisitTagDecl(const TagDecl* D) {
                 case TagTypeKind::Class:
                 case TagTypeKind::Struct: Out << "@ST"; break;
                 case TagTypeKind::Union: Out << "@UT"; break;
-                case TagTypeKind::Enum: llvm_unreachable("enum template");
+                case TagTypeKind::Enum: std::unreachable();
             }
             VisitTemplateParameterList(ClassTmpl->getTemplateParameters());
         } else if(const ClassTemplatePartialSpecializationDecl* PartialSpec =
@@ -410,7 +412,7 @@ void USRGenerator::VisitTagDecl(const TagDecl* D) {
                 case TagTypeKind::Class:
                 case TagTypeKind::Struct: Out << "@SP"; break;
                 case TagTypeKind::Union: Out << "@UP"; break;
-                case TagTypeKind::Enum: llvm_unreachable("enum partial specialization");
+                case TagTypeKind::Enum: std::unreachable();
             }
             VisitTemplateParameterList(PartialSpec->getTemplateParameters());
         }
@@ -504,14 +506,14 @@ bool USRGenerator::GenLoc(const Decl* D, bool IncludeOffset) {
 
 static void printQualifier(llvm::raw_ostream& Out,
                            const LangOptions& LangOpts,
-                           NestedNameSpecifier* NNS) {
+                           NestedNameSpecifier NNS) {
     // FIXME: Encode the qualifier, don't just print it.
     PrintingPolicy PO(LangOpts);
     PO.SuppressTagKeyword = true;
     PO.SuppressUnwrittenScope = true;
     PO.ConstantArraySizeAsWritten = false;
     PO.AnonymousTagLocations = false;
-    NNS->print(Out, PO);
+    NNS.print(Out, PO);
 }
 
 void USRGenerator::VisitType(QualType T) {
@@ -696,6 +698,10 @@ void USRGenerator::VisitType(QualType T) {
             continue;
         }
         if(const TagType* TT = T->getAs<TagType>()) {
+            if(const auto* ICNT = dyn_cast<InjectedClassNameType>(TT)) {
+                T = ICNT->getDecl()->getCanonicalTemplateSpecializationType(Ctx);
+                continue;
+            }
             Out << '$';
             VisitTagDecl(TT->getDecl());
             return;
@@ -738,10 +744,6 @@ void USRGenerator::VisitType(QualType T) {
             printQualifier(Out, LangOpts, DNT->getQualifier());
             Out << ':' << DNT->getIdentifier()->getName();
             return;
-        }
-        if(const InjectedClassNameType* InjT = T->getAs<InjectedClassNameType>()) {
-            T = InjT->getInjectedSpecializationType();
-            continue;
         }
         if(const auto* VT = T->getAs<VectorType>()) {
             Out << (T->isExtVectorType() ? ']' : '[');
@@ -834,8 +836,13 @@ void USRGenerator::VisitTemplateName(TemplateName Name) {
     if(auto DT = Name.getAsDependentTemplateName()) {
         Out << '^';
         printQualifier(Out, LangOpts, DT->getQualifier());
-        /// FIXME: This may be operators.
-        Out << ':' << DT->getName().getIdentifier();
+        Out << ':';
+        auto name = DT->getName();
+        if(const IdentifierInfo* II = name.getIdentifier()) {
+            Out << II->getName();
+        } else {
+            Out << clang::getOperatorSpelling(name.getOperator());
+        }
     }
 }
 
