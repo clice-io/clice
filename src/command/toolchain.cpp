@@ -23,6 +23,7 @@
 #include "clang/Driver/Compilation.h"
 #include "clang/Driver/Driver.h"
 #include "clang/Driver/Tool.h"
+#include "clang/Driver/ToolChain.h"
 
 #ifndef _WIN32
 #include <unistd.h>
@@ -472,9 +473,44 @@ std::expected<std::vector<std::string>, std::string>
     return result;
 }
 
+/// Whether the command targets windows-gnu: an explicit target flag wins
+/// (the last one, matching the driver's getLastArg); otherwise a
+/// target-prefixed driver name (llvm-mingw installs
+/// `x86_64-w64-mingw32-clang++`-style wrappers that derive the target
+/// implicitly) decides. Parsing resolves aliases, so the legacy `-target`
+/// and `=` spellings arrive as the canonical ids.
+static bool uses_windows_gnu_target(llvm::ArrayRef<const char*> arguments) {
+    std::vector<std::string> parse_args(arguments.begin() + 1, arguments.end());
+    auto options = kota::option::ParseOptions{.dash_dash_parsing = true,
+                                              .visibility = default_visibility(arguments[0])};
+    std::optional<bool> from_flags;
+    for(auto& result: option::table().parse(parse_args, options)) {
+        if(!result.has_value())
+            continue;
+        auto& arg = *result;
+        if(arg.id == option::OPT_target && arg.values.size() == 1) {
+            from_flags =
+                llvm::Triple(llvm::Triple::normalize(arg.values[0])).isWindowsGNUEnvironment();
+        }
+    }
+    if(from_flags)
+        return *from_flags;
+
+    auto parsed = clang::driver::ToolChain::getTargetAndModeFromProgramName(arguments[0]);
+    return !parsed.TargetPrefix.empty() &&
+           llvm::Triple(llvm::Triple::normalize(parsed.TargetPrefix)).isWindowsGNUEnvironment();
+}
+
 Toolchain::ToolchainExtract Toolchain::extract_flags(llvm::StringRef file,
                                                      llvm::ArrayRef<const char*> arguments) {
     ToolchainExtract result;
+
+    // LLVM-MinGW's resource headers and libc++ are a matched installation.
+    // Let its driver derive those implicit paths instead of forcing clice's
+    // resource tree: the injected -resource-dir is dropped from the query
+    // (and the key) below. Other targets keep it so the embedded frontend
+    // and builtin headers stay version-matched.
+    result.preserve_external_resource = uses_windows_gnu_target(arguments);
 
     result.key += arguments[0];
     result.key += '\0';
@@ -498,6 +534,10 @@ Toolchain::ToolchainExtract Toolchain::extract_flags(llvm::StringRef file,
         if(is_user_content_option(arg.id))
             continue;
 
+        if(result.preserve_external_resource && arg.id == option::OPT_resource_dir &&
+           arg.values.size() == 1 && llvm::StringRef(arg.values[0]) == resource_dir())
+            continue;
+
         result.key += std::to_string(arg.id);
         result.key += '\0';
         for(auto value: arg.values) {
@@ -514,50 +554,12 @@ Toolchain::ToolchainExtract Toolchain::extract_flags(llvm::StringRef file,
     return result;
 }
 
-static bool uses_windows_gnu_target(llvm::ArrayRef<const char*> arguments) {
-    if(arguments.empty())
-        return false;
-
-    std::vector<std::string> parse_args(arguments.begin() + 1, arguments.end());
-    auto options = kota::option::ParseOptions{.dash_dash_parsing = true,
-                                              .visibility = default_visibility(arguments[0])};
-    for(auto& result: option::table().parse(parse_args, options)) {
-        if(!result.has_value())
-            continue;
-        auto& arg = *result;
-        if((arg.id == option::OPT_target || arg.id == option::OPT_target_legacy_spelling) &&
-           arg.values.size() == 1) {
-            return llvm::Triple(llvm::StringRef(arg.values[0])).isWindowsGNUEnvironment();
-        }
-    }
-    return false;
-}
-
 std::expected<void, std::string> Toolchain::resolve(CompileCommand& cmd) {
     if(cmd.resolved.flags.empty())
         return std::unexpected("empty flags");
 
-    auto [key, query_args] = extract_flags(cmd.source_file, cmd.resolved.flags);
-
-    // LLVM-MinGW's resource headers and libc++ are a matched installation.
-    // Let its driver derive those implicit paths instead of forcing clice's
-    // resource tree. Other targets keep the existing replacement behavior so
-    // the embedded frontend and builtin headers stay version-matched.
-    bool preserve_external_resource = uses_windows_gnu_target(cmd.resolved.flags);
-    if(preserve_external_resource && query_args.size() >= 3 && !resource_dir().empty()) {
-        std::vector<const char*> filtered;
-        filtered.reserve(query_args.size());
-        filtered.push_back(query_args.front());
-        for(std::size_t i = 1; i < query_args.size(); ++i) {
-            if(query_args[i] == llvm::StringRef("-resource-dir") && i + 1 < query_args.size() &&
-               query_args[i + 1] == resource_dir()) {
-                ++i;
-                continue;
-            }
-            filtered.push_back(query_args[i]);
-        }
-        query_args = std::move(filtered);
-    }
+    auto [key, query_args, preserve_external_resource] =
+        extract_flags(cmd.source_file, cmd.resolved.flags);
 
     auto it = cache.find(key);
     if(it == cache.end()) {
@@ -658,11 +660,12 @@ void Toolchain::warm(llvm::ArrayRef<CompileCommand> commands) {
         if(cmd.resolved.flags.empty())
             continue;
 
-        auto [key, query_args] = extract_flags(cmd.source_file, cmd.resolved.flags);
+        auto extract = extract_flags(cmd.source_file, cmd.resolved.flags);
+        auto& key = extract.key;
         if(cache.count(key) || failed.count(key) || !seen.try_emplace(key, true).second)
             continue;
 
-        pending.push_back({std::move(key), std::move(query_args), cmd.source_file});
+        pending.push_back({std::move(key), std::move(extract.query_args), cmd.source_file});
     }
 
     if(pending.empty())

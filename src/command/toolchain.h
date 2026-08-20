@@ -89,6 +89,11 @@ private:
     struct ToolchainExtract {
         std::string key;
         std::vector<const char*> query_args;
+
+        /// The command targets windows-gnu (LLVM-MinGW): the injected
+        /// -resource-dir was dropped from the query, and resolve() keeps
+        /// an existing external resource tree instead of replacing it.
+        bool preserve_external_resource = false;
     };
 
     ToolchainExtract extract_flags(llvm::StringRef file, llvm::ArrayRef<const char*> arguments);
