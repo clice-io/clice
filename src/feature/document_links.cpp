@@ -92,13 +92,13 @@ auto document_links(CompilationUnitRef unit) -> std::vector<DocumentLink> {
 
     for(const auto& embed: directives.embeds) {
         if(embed.file) {
-            add_link(embed.loc, embed.file->getName());
+            add_link(embed.loc, unit.file_path(*embed.file));
         }
     }
 
     for(const auto& has_embed: directives.has_embeds) {
         if(has_embed.file) {
-            add_link(has_embed.loc, has_embed.file->getName());
+            add_link(has_embed.loc, unit.file_path(*has_embed.file));
         }
     }
 

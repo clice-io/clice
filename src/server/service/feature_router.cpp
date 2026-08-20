@@ -66,7 +66,8 @@ std::vector<protocol::Location>
         return locations;
 
     for(auto& link: links) {
-        if(link.range.contains(*offset)) {
+        /// Link ranges are half-open; contains() would also accept end.
+        if(*offset >= link.range.begin && *offset < link.range.end) {
             locations.push_back(protocol::Location{
                 .uri = feature::to_uri(link.target),
                 .range = protocol::Range{},
@@ -89,7 +90,7 @@ std::optional<protocol::Hover>
         return std::nullopt;
 
     for(const auto& link: links) {
-        if(!link.range.contains(*offset))
+        if(*offset < link.range.begin || *offset >= link.range.end)
             continue;
 
         if(link.range.end > session.text.size())
