@@ -10,10 +10,13 @@ def parse_numbers(text):
 
 
 def gh(*args):
-    result = subprocess.run(["gh", *args], capture_output=True, text=True)
-    if result.returncode != 0:
-        raise SystemExit(f"gh {' '.join(args)} failed: {result.stderr.strip()}")
-    return result.stdout
+    for attempt in range(3):
+        result = subprocess.run(["gh", *args], capture_output=True, text=True)
+        if result.returncode == 0:
+            return result.stdout
+        if attempt < 2:
+            time.sleep(5 * (attempt + 1))
+    raise SystemExit(f"gh {' '.join(args)} failed: {result.stderr.strip()}")
 
 
 def main():
@@ -32,6 +35,11 @@ def main():
         "--retitle",
         default="",
         help="'all' or comma-separated issue numbers whose better_title to apply",
+    )
+    parser.add_argument(
+        "--include-closed",
+        action="store_true",
+        help="also edit closed issues (one-off migrations)",
     )
     args = parser.parse_args()
 
@@ -57,7 +65,7 @@ def main():
                 "labels,state,title",
             )
         )
-        if live["state"] != "OPEN":
+        if live["state"] != "OPEN" and not args.include_closed:
             print(f"#{num} skipped: no longer open")
             time.sleep(1)
             continue
@@ -70,6 +78,8 @@ def main():
         proposed_kind = proposed_kinds[0] if proposed_kinds else None
 
         add = [label for label in verdict["labels"] if label not in live_labels]
+        if "triaged" not in live_labels:
+            add.append("triaged")
         remove = ["needs-triage"] if marker else []
         maintainer_kind_wins = False
         if marker:

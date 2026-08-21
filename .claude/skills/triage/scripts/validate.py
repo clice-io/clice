@@ -31,6 +31,7 @@ def extract_array(text):
 def check(verdict, taxonomy, existing):
     labels = set(verdict.get("labels") or [])
     labels.discard("needs-triage")
+    labels.discard("triaged")
     problems = []
     unknown = labels - taxonomy
     if unknown:

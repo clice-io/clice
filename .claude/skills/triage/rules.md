@@ -71,6 +71,7 @@ If no feature label fits, omit it and report the gap via `taxonomy_gap`.
 - `status:confirmed` — only when a maintainer states they reproduced it.
 - `status:blocked-upstream` / `status:fixed-upstream` — only when the
   thread says so explicitly.
+- Closed issues get no `status:` labels at all — the thread is settled.
 
 ## Scope labels
 
@@ -91,9 +92,9 @@ If no feature label fits, omit it and report the gap via `taxonomy_gap`.
   rationale.
 - NEVER apply `good first issue` or `help wanted` — maintainer judgment
   only.
-- Never include `needs-triage` in the output — it is a transient marker
-  added by the issue templates and removed automatically when triage is
-  applied.
+- Never include `needs-triage` or `triaged` in the output — they are
+  process markers managed by the triage tooling itself, not
+  classification facts.
 
 ## Title normalization
 

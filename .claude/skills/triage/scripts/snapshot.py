@@ -29,8 +29,7 @@ def login(entry):
 
 
 def untriaged_filter(issue):
-    names = {label["name"] for label in issue["labels"]}
-    return "needs-triage" in names or not any(n.startswith("kind:") for n in names)
+    return "triaged" not in {label["name"] for label in issue["labels"]}
 
 
 def main():
@@ -39,6 +38,12 @@ def main():
     parser.add_argument("--out", default="/tmp/clice-triage")
     parser.add_argument(
         "--limit", type=int, default=0, help="cap untriaged issues (0 = all)"
+    )
+    parser.add_argument(
+        "--state",
+        choices=("open", "all"),
+        default="open",
+        help="'all' sweeps closed issues too (one-off migrations)",
     )
     args = parser.parse_args()
 
@@ -55,23 +60,24 @@ def main():
     for stale_verdict in out.glob("verdicts-*.md"):
         stale_verdict.unlink()
 
-    all_open = json.loads(
+    listed = json.loads(
         gh(
             "issue",
             "list",
             "--repo",
             args.repo,
             "--state",
-            "open",
+            args.state,
             "--limit",
             "1000",
             "--json",
-            "number,title,labels,createdAt,updatedAt",
+            "number,title,labels,state,createdAt,updatedAt",
         )
     )
-    if len(all_open) == 1000:
+    if len(listed) == 1000:
         print("warning: hit the 1000-issue listing cap, snapshot may be incomplete")
-    untriaged = [i for i in all_open if untriaged_filter(i)]
+    all_open = [i for i in listed if i["state"] == "OPEN"]
+    untriaged = [i for i in listed if untriaged_filter(i)]
     selected = untriaged[: args.limit] if args.limit else untriaged
 
     now = datetime.now(timezone.utc)
@@ -119,7 +125,7 @@ def main():
             body = body[:BODY_LIMIT] + "\n[... body truncated ...]"
         lines = [
             f"# Issue #{detail['number']}: {detail['title']}",
-            f"Author: {login(detail['author'])}",
+            f"State: {issue['state']}  Author: {login(detail['author'])}",
             f"Existing labels: {', '.join(labels) or '(none)'}",
             "",
             body,

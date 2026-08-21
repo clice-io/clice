@@ -4,11 +4,15 @@ description: Classify untriaged issues (open issues without a kind: label) via a
 context: fork
 ---
 
-Triage one batch of untriaged issues. Untriaged = open issue that carries
-`needs-triage` (auto-applied by the issue templates) or has no `kind:`
-label (blank issues). The state lives in the labels themselves, so
-manually triaged issues are skipped automatically and there is no
-bookkeeping file.
+Triage one batch of untriaged issues. Untriaged = issue without the
+permanent `triaged` marker, which apply stamps on every processed issue
+(title patterns and kind labels are not trusted as processed-state —
+reporters can produce both themselves). The templates additionally apply
+`needs-triage` as a human-visible awaiting signal; apply removes it. The
+state lives in the labels themselves, so there is no bookkeeping file.
+Snapshot covers open issues by default; `--state all` sweeps closed ones
+too (paired with apply `--include-closed`) — the full-history migration
+ran 2026-08, so this is only needed if backfill gaps ever surface again.
 
 ## 1. Snapshot
 
