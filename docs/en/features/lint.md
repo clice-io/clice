@@ -58,6 +58,7 @@ Respects standard `.clang-tidy` configuration files in the project tree.
 
 ## Changelog
 
-| Date | Change                                         | PR  |
-| ---- | ---------------------------------------------- | --- |
-| —    | Stub implementation, dependency graph tracking | —   |
+| Date       | Change                                       | PR                                                 |
+| ---------- | -------------------------------------------- | -------------------------------------------------- |
+| 2026-07-22 | Stub `clice lint` subcommand                 | [#539](https://github.com/clice-io/clice/pull/539) |
+| 2026-03-28 | Dependency graph tracking for included files | [#368](https://github.com/clice-io/clice/pull/368) |

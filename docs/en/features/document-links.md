@@ -36,6 +36,8 @@ Clickable links from source directives to their resolved target files.
 
 ## Changelog
 
-| Date | Change                                                      | PR  |
-| ---- | ----------------------------------------------------------- | --- |
-| —    | Include directive links (#include, \_\_has_include, #embed) | —   |
+| Date       | Change                                                        | PR                                                 |
+| ---------- | ------------------------------------------------------------- | -------------------------------------------------- |
+| 2026-04-11 | `__has_include` argument links via unified directive scanning | [#421](https://github.com/clice-io/clice/pull/421) |
+| 2026-04-09 | `#embed` links; links inside the preamble preserved           | [#413](https://github.com/clice-io/clice/pull/413) |
+| 2025-03-16 | `#include` directive links                                    | [#107](https://github.com/clice-io/clice/pull/107) |

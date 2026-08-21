@@ -47,7 +47,7 @@ struct ResolvedSymbol {
 /// Read-only index query layer.
 ///
 /// IndexQuery holds no index data of its own.  All persistent data lives in
-/// Workspace (disk-derived ProjectIndex + MergedIndex shards) and per-file
+/// Workspace (disk-derived ProjectIndex + Shard blobs) and per-file
 /// data lives in Session (file index from unsaved buffers).
 ///
 /// Responsibilities:
@@ -113,7 +113,7 @@ public:
         workspace(workspace), sessions(sessions), indexer(indexer), options(options) {}
 
     /// Query relations (Definition, Reference, etc.) for a symbol at cursor.
-    /// @param session  Active Session for this file, or nullptr to use MergedIndex only.
+    /// @param session  Active Session for this file, or nullptr to use the disk shards only.
     std::vector<protocol::Location> query_relations(llvm::StringRef path,
                                                     const protocol::Position& position,
                                                     RelationKind kind,
@@ -217,7 +217,7 @@ private:
     };
 
     /// Resolve the symbol at (position), checking Session's file_index first
-    /// then falling back to Workspace's MergedIndex.
+    /// then falling back to Workspace's disk shards.
     CursorHit resolve_cursor(llvm::StringRef path,
                              const protocol::Position& position,
                              Session* session);
@@ -231,23 +231,24 @@ private:
     /// staleness follows the PCH's dependency discipline. Identical rows
     /// also present in disk shards are collapsed by per-location dedup at
     /// result assembly. Return false from the visitor to stop.
-    void visit_overlays(llvm::function_ref<bool(const index::PreambleState&)> visitor) const;
+    void visit_overlays(llvm::function_ref<bool(const index::TUIndex&)> visitor) const;
 
     /// Visit each open session whose overlay preamble entry may serve
     /// (see serves_preamble), paired with that blob.
     void visit_preambles(llvm::function_ref<bool(std::uint32_t server_path_id,
                                                  const Session& session,
-                                                 const index::PreambleState& state)> visitor) const;
+                                                 const index::TUIndex& state)> visitor) const;
 
     /// The PCH overlay of a session, or nullptr when it has no PCH or the
     /// blob is unreadable.
-    std::shared_ptr<index::PreambleState> overlay_of(const Session& session) const;
+    std::shared_ptr<index::TUIndex> overlay_of(const Session& session) const;
 
     /// Whether a session's overlay preamble entry may serve: the blob was
     /// built from this very file (identical preambles share one PCH, but
     /// macro USRs embed the source path) and the buffer still starts with
-    /// the blob's stored preamble text.
-    bool serves_preamble(const Session& session, const index::PreambleState& state) const;
+    /// the exact preamble the blob was built from (compared by hash — the
+    /// text itself is not stored).
+    bool serves_preamble(const Session& session, const index::TUIndex& state) const;
 
     /// Whether an overlay file entry may contribute results. Filters
     /// synthesized context artifacts (their positions live in

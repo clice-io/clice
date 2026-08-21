@@ -8,14 +8,14 @@ input_file: directives.cpp
 - { loc: "3:0", text: "///", kind: comment }
 - { loc: "4:0", text: "/// - status: supported", kind: comment }
 - { loc: "5:0", text: "/// - order: 4", kind: comment }
-- { loc: "7:0", text: "int", kind: keyword }
+- { loc: "7:0", text: "int", kind: primitive }
 - { loc: "7:4", text: "before_conditional", kind: variable, modifiers: [definition] }
 - { loc: "7:25", text: "0", kind: number }
 - { loc: "9:0", text: "#if", kind: directive }
 - { loc: "9:4", text: "0", kind: number }
-- { loc: "10:0", text: "int", kind: keyword }
+- { loc: "10:0", text: "int", kind: primitive }
 - { loc: "11:0", text: "#else", kind: directive }
-- { loc: "12:0", text: "int", kind: keyword }
+- { loc: "12:0", text: "int", kind: primitive }
 - { loc: "12:4", text: "enabled_branch", kind: variable, modifiers: [definition] }
 - { loc: "12:21", text: "1", kind: number }
 - { loc: "13:0", text: "#endif", kind: directive }
@@ -23,9 +23,16 @@ input_file: directives.cpp
 - { loc: "15:8", text: "FLAG", kind: macro, modifiers: [definition] }
 - { loc: "16:0", text: "#ifdef", kind: directive }
 - { loc: "16:7", text: "FLAG", kind: macro }
-- { loc: "17:0", text: "int", kind: keyword }
+- { loc: "17:0", text: "int", kind: primitive }
 - { loc: "17:4", text: "flagged", kind: variable, modifiers: [definition] }
 - { loc: "17:14", text: "2", kind: number }
 - { loc: "18:0", text: "#endif", kind: directive }
 - { loc: "20:0", text: "#pragma", kind: directive }
 - { loc: "20:13", text: "1", kind: number }
+- { loc: "22:0", text: "#", kind: directive }
+- { loc: "23:0", text: "#define", kind: directive }
+- { loc: "23:8", text: "STRINGIZE", kind: macro, modifiers: [definition] }
+- { loc: "24:0", text: "const", kind: keyword }
+- { loc: "24:6", text: "char", kind: primitive }
+- { loc: "24:12", text: "stringized", kind: variable, modifiers: [definition, readonly] }
+- { loc: "24:25", text: "STRINGIZE", kind: macro }

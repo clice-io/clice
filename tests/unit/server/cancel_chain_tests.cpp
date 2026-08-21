@@ -92,6 +92,54 @@ TEST_CASE(HandlerCancelChainsThrough) {
     EXPECT_TRUE(observed_cancelled_reply);
 }
 
+// The scheduler's cooperative cancel of a stateless build takes the
+// CancelBuild-notification path, never a wire cancel: the sender keeps
+// awaiting the build's own reply (the slot must stay busy while the
+// worker is), and the notification trips the stop flag so that reply
+// arrives at the next declaration boundary instead of after the whole TU.
+TEST_CASE(CancelBuildStopsBuild) {
+    TempDir tmp;
+    std::string text;
+    text.reserve(1 << 22);
+    for(int i = 0; i < 200'000; i += 1) {
+        text += std::format("int v{};\n", i);
+    }
+    tmp.touch("probe.cpp", text);
+    auto src = tmp.path("probe.cpp");
+
+    WorkerHandle w;
+    ASSERT_TRUE(w.spawn());
+
+    bool test_done = false;
+    w.run([&]() -> kota::task<> {
+        worker::BuildParams bp;
+        bp.kind = worker::BuildKind::Index;
+        bp.file = src;
+        bp.directory = "/tmp";
+        bp.arguments = make_args(src);
+
+        auto build = [&]() -> kota::task<> {
+            auto result = co_await w.peer->send_request(bp);
+            // An uninterrupted worker would index all 200k decls and reply
+            // success; the stopped parse must not produce an index.
+            CO_ASSERT_TRUE(result.has_value());
+            EXPECT_FALSE(result.value().success);
+        };
+
+        kota::task_group<> group(w.loop);
+        group.spawn(build());
+
+        co_await kota::sleep(50, w.loop);
+        w.peer->send_notification(worker::CancelBuildParams{});
+        co_await group.join();
+
+        test_done = true;
+        w.peer->close_output();
+    });
+
+    ASSERT_TRUE(test_done);
+}
+
 };  // TEST_SUITE(CancelChain)
 
 }  // namespace

@@ -42,12 +42,24 @@ jobs:
           fi
           # A green run may still have nothing to promote: path-filtered
           # runs (e.g. docs-only commits) skip the build jobs, and package
-          # artifacts expire after 30 days. Fail here with one clear message
-          # instead of in six download jobs.
-          LIVE=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts?name=package-clice-x64-linux-gnu.tar.gz" \
-            --jq '[.artifacts[] | select(.expired | not)] | length')
-          if [ "$LIVE" -eq 0 ]; then
-            echo "::error::run $RUN_ID for $TAG has no live package artifacts (path-filtered build, or expired after 30 days) — rerun that commit's main workflow first"
+          # artifacts expire after 30 days. Check every package here so a
+          # partial run fails with one clear message before any asset is
+          # uploaded, instead of promoting an incomplete release.
+          MISSING=""
+          for NAME in package-clice.x86_64-unknown-linux-gnu.tar.gz \
+                      package-clice.aarch64-unknown-linux-gnu.tar.gz \
+                      package-clice.aarch64-apple-darwin.tar.gz \
+                      package-clice.x86_64-apple-darwin.tar.gz \
+                      package-clice.x86_64-pc-windows-msvc.zip \
+                      package-clice.aarch64-pc-windows-msvc.zip; do
+            LIVE=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts?name=$NAME" \
+              --jq '[.artifacts[] | select(.expired | not)] | length')
+            if [ "$LIVE" -eq 0 ]; then
+              MISSING="$MISSING $NAME"
+            fi
+          done
+          if [ -n "$MISSING" ]; then
+            echo "::error::run $RUN_ID for $TAG is missing live package artifacts:$MISSING (path-filtered build, or expired after 30 days) — rerun that commit's main workflow first"
             exit 1
           fi
           echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
@@ -70,18 +82,24 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - asset_name: clice-x64-linux-gnu.tar.gz
-            symbol_asset_name: clice-x64-linux-gnu.symbols.tar.xz
-          - asset_name: clice-arm64-linux-gnu.tar.gz
-            symbol_asset_name: clice-arm64-linux-gnu.symbols.tar.xz
-          - asset_name: clice-arm64-macos-darwin.tar.gz
-            symbol_asset_name: clice-arm64-macos-darwin.symbols.tar.xz
-          - asset_name: clice-x64-macos-darwin.tar.gz
-            symbol_asset_name: clice-x64-macos-darwin.symbols.tar.xz
-          - asset_name: clice-x64-windows-msvc.zip
-            symbol_asset_name: clice-x64-windows-msvc.symbols.zip
-          - asset_name: clice-arm64-windows-msvc.zip
-            symbol_asset_name: clice-arm64-windows-msvc.symbols.zip
+          - triple: x86_64-unknown-linux-gnu
+            ext: tar.gz
+            symbol_ext: tar.xz
+          - triple: aarch64-unknown-linux-gnu
+            ext: tar.gz
+            symbol_ext: tar.xz
+          - triple: aarch64-apple-darwin
+            ext: tar.gz
+            symbol_ext: tar.xz
+          - triple: x86_64-apple-darwin
+            ext: tar.gz
+            symbol_ext: tar.xz
+          - triple: x86_64-pc-windows-msvc
+            ext: zip
+            symbol_ext: zip
+          - triple: aarch64-pc-windows-msvc
+            ext: zip
+            symbol_ext: zip
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -92,35 +110,40 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh run download "${{ needs.locate.outputs.run_id }}" \
-            --repo "$GITHUB_REPOSITORY" -n "package-${{ matrix.asset_name }}" -D pkg
+            --repo "$GITHUB_REPOSITORY" -n "package-clice.${{ matrix.triple }}.${{ matrix.ext }}" -D pkg
 
       - name: Upload assets to the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
+          VERSION="${RELEASE_TAG#v}"
+          ASSET="clice-${VERSION}.${{ matrix.triple }}.${{ matrix.ext }}"
+          SYMBOL_ASSET="clice-${VERSION}.${{ matrix.triple }}.symbols.${{ matrix.symbol_ext }}"
           cd pkg
-          mv clice.tar.gz "${{ matrix.asset_name }}" 2>/dev/null || mv clice.zip "${{ matrix.asset_name }}"
-          mv clice-symbol.tar.xz "${{ matrix.symbol_asset_name }}" 2>/dev/null \
-            || mv clice-symbol.zip "${{ matrix.symbol_asset_name }}"
+          mv clice.tar.gz "$ASSET" 2>/dev/null || mv clice.zip "$ASSET"
+          mv clice-symbol.tar.xz "$SYMBOL_ASSET" 2>/dev/null \
+            || mv clice-symbol.zip "$SYMBOL_ASSET"
           gh release upload "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
-            --clobber "${{ matrix.asset_name }}" "${{ matrix.symbol_asset_name }}"
+            --clobber "$ASSET" "$SYMBOL_ASSET"
 
-      # Bridge for publish-vscode.yml: make the package available as an
-      # artifact of the current run, with the original inner file names the
+      # Bridge for publish-vscode.yml: restore the inner file names the
       # staging step expects.
       - name: Restore inner file names
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
+          VERSION="${RELEASE_TAG#v}"
           cd pkg
-          case "${{ matrix.asset_name }}" in
-            *.zip) mv "${{ matrix.asset_name }}" clice.zip ;;
-            *) mv "${{ matrix.asset_name }}" clice.tar.gz ;;
+          case "${{ matrix.ext }}" in
+            zip) mv "clice-${VERSION}.${{ matrix.triple }}.zip" clice.zip ;;
+            *)   mv "clice-${VERSION}.${{ matrix.triple }}.tar.gz" clice.tar.gz ;;
           esac
 
       - name: Re-upload package artifact
         uses: actions/upload-artifact@v7
         with:
-          name: package-${{ matrix.asset_name }}
+          name: package-clice.${{ matrix.triple }}.${{ matrix.ext }}
           path: |
             pkg/clice.tar.gz
             pkg/clice.zip

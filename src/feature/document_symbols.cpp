@@ -42,6 +42,7 @@ auto to_protocol_symbol_kind(SymbolKind kind) -> protocol::SymbolKind {
         case SymbolKind::Parameter:
         case SymbolKind::Label:
         case SymbolKind::Keyword:
+        case SymbolKind::Primitive:
         case SymbolKind::Directive:
         case SymbolKind::MacroParameter:
         case SymbolKind::Attribute: return Variable;

@@ -101,6 +101,23 @@ test("preamble macro definition", async ({ session }) => {
     );
 });
 
+test("preamble include hover", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("foo.h", "inline void foo() {}\n");
+    workspace.write("main.cpp", '#include "foo.h"\nint main() { foo(); return 0; }\n');
+    workspace.writeCDB(["main.cpp"]);
+    await client.initialize(workspace, { initializationOptions: NO_INDEXING });
+
+    const [uri] = await client.openAndWait("main.cpp");
+    // The include lives in the preamble, invisible to the worker's AST:
+    // the hover must be served from the PCH's stored links.
+    const hover = await client.hoverAt(uri, 0, 12);
+    expect(hover).not.toBeNull();
+    expect(JSON.stringify(hover!.contents)).toContain("foo.h");
+    // Link ranges are half-open: just past the closing quote hovers nothing.
+    expect(await client.hoverAt(uri, 0, 16)).toBeNull();
+});
+
 test("preamble links survive restart", async ({ session }) => {
     const workspace = session.tmpdir();
     workspace.pinCacheDir();

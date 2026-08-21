@@ -12,9 +12,10 @@
 #include "command/command.h"
 #include "command/toolchain.h"
 #include "compile/dep_file.h"
-#include "index/merged_index.h"
-#include "index/preamble_state.h"
+#include "index/database.h"
 #include "index/project_index.h"
+#include "index/shard.h"
+#include "index/tu_index.h"
 #include "semantic/symbol.h"
 #include "server/compiler/compile_graph.h"
 #include "server/state/config.h"
@@ -35,7 +36,7 @@ class ContextResolver;
 
 /// On-disk cache layout version (CacheStore root `cache/v{N}`).
 /// Bump to discard all cached artifacts after incompatible format changes.
-constexpr inline std::uint32_t cache_format_version = 4;
+constexpr inline std::uint32_t cache_format_version = 7;
 
 /// Sentinel for "no path": path pool ids start at 0, so 0 is a real file.
 constexpr inline std::uint32_t no_path_id = ~0u;
@@ -48,8 +49,8 @@ constexpr inline std::uint32_t no_path_id = ~0u;
 /// since before the build started, so matching them proves the disk still
 /// holds the consumed content. mtime_ns == 0 means "no fast path" — the
 /// check falls through to the hash comparison and, on a match, repairs the
-/// fast path in place. The index shard's immutable, non-repairing form of
-/// the same fast path is `DepStamp` (merged_index.cpp).
+/// fast path in place. The index's form of the same fast path is
+/// `index::FileVersionRecord`, shared by every TU consuming the version.
 struct DepState {
     std::uint32_t path_id = no_path_id;
     std::uint64_t size = 0;
@@ -145,25 +146,31 @@ struct SavedContext {
 ///
 /// Everything derived from the PCH build beyond validity metadata — the
 /// preamble's symbol index, document links, inactive regions, the open
-/// conditional stack — lives in the paired PreambleState blob (the store's
+/// conditional stack — lives in the paired pch.idx envelope (the store's
 /// `.pch.idx` aux file), committed and evicted together with the PCH.
+/// Open a PCH's `.pch.idx` envelope (memory-mapped). Returns nullptr when
+/// the file is unreadable, structurally invalid, of a different format
+/// version, or any embedded shard blob fails verification — callers treat
+/// all of these as a PCH cache miss.
+std::shared_ptr<index::TUIndex> load_pch_envelope(llvm::StringRef path);
+
 struct PCHState {
     std::string path;
     std::uint32_t bound = 0;
     DepsSnapshot deps;
 
-    /// Path of the paired PreambleState blob.
+    /// Path of the paired pch.idx envelope.
     std::string index_path;
 
     /// Lazily opened blob; shared so a consumer holding it across an await
     /// survives concurrent entry replacement or eviction.
-    std::shared_ptr<index::PreambleState> state;
+    std::shared_ptr<index::TUIndex> state;
 
     /// Open the blob on first use (memory-mapped, no deserialization).
     /// Returns nullptr when the blob is missing or unreadable — consumers
     /// degrade (no overlay, no preamble links) and the next ensure_pch
     /// treats the incomplete pair as a cache miss.
-    const std::shared_ptr<index::PreambleState>& load_state();
+    const std::shared_ptr<index::TUIndex>& load_state();
 
     std::shared_ptr<kota::event> building;
 };
@@ -188,7 +195,7 @@ struct PCMState {
 /// Workspace is the single source of truth for:
 ///   - dependency relationships (include graph, module DAG)
 ///   - compilation artifacts shared across files (PCH/PCM caches)
-///   - symbol index (ProjectIndex + per-file MergedIndex shards)
+///   - symbol index (ProjectIndex + per-file Shard blobs)
 ///   - compilation database and configuration
 ///
 /// Workspace is NEVER modified by unsaved buffer content.  The only mutation
@@ -214,6 +221,12 @@ struct Workspace {
     /// recovery); validity metadata (deps snapshots) stays in cache.json.
     std::optional<CacheStore> store;
 
+    /// Index blob persistence, opened together with the cache store.
+    /// Declared right after `store` (both backends borrow it) and before
+    /// every index structure that borrows database bytes (`shards`), so
+    /// destruction runs shards → index_db → store.
+    std::unique_ptr<index::BlobDatabase> index_db;
+
     /// Include relationships between files on disk (#include edges).
     /// Built once at startup from CDB scan; updated incrementally on didSave.
     DependencyGraph dep_graph;
@@ -232,7 +245,7 @@ struct Workspace {
     /// of CacheStore state; blob paths come from the store.
     llvm::StringMap<PCHState> pch_cache;
 
-    /// Keys of pch_cache entries whose PreambleState is currently loaded,
+    /// Keys of pch_cache entries whose envelope is currently loaded,
     /// most recently used first (see enforce_loaded_budget).
     llvm::SmallVector<std::string, 8> loaded_state_lru;
 
@@ -255,13 +268,14 @@ struct Workspace {
     /// Maps to the .pcm file on disk used as -fmodule-file argument.
     llvm::DenseMap<std::uint32_t, std::string> pcm_paths;
 
-    /// Global symbol table across all indexed translation units.
+    /// The index's global layer: symbols, FileVersions, per-TU manifests
+    /// and the derived contribution map.
     index::ProjectIndex project_index;
 
-    /// Per-file index shards from background indexing, keyed by project-level
-    /// path_id.  Contains symbol occurrences, relations, and stored content
-    /// for position mapping.
-    llvm::DenseMap<std::uint32_t, index::MergedIndex> merged_indices;
+    /// Per-file row blobs from background indexing, keyed by project-level
+    /// path_id: symbol occurrences, relations and stored content for
+    /// position mapping, served zero-copy.
+    llvm::DenseMap<std::uint32_t, index::Shard> shards;
 
     /// Monotonic generation of context-affecting workspace state (include
     /// graph, CDB, disk contents). Bumped on didSave; clice/queryContext
@@ -304,20 +318,20 @@ struct Workspace {
     /// is a module unit so dependents can be re-evaluated on next compile.
     void on_file_closed(std::uint32_t path_id);
 
-    /// Open the PreambleState blob of a cached PCH. The single consumption
+    /// Open the pch.idx envelope of a cached PCH. The single consumption
     /// gate for `.pch.idx` blobs: when the blob turns out unreadable, the
     /// on-disk pair is retracted from the store as well — otherwise every
     /// later session re-adopts the corrupt pair from cache.json and
     /// silently degrades again. With the pair gone the next ensure_pch is
     /// a miss and rebuilds both halves. Loads count against the
     /// loaded-state budget (see enforce_loaded_budget).
-    std::shared_ptr<index::PreambleState> preamble_state(llvm::StringRef pch_key);
+    std::shared_ptr<index::TUIndex> preamble_state(llvm::StringRef pch_key);
 
     /// Move a pch key to the front of the loaded-state LRU. Called
-    /// whenever an entry's PreambleState is opened or replaced.
+    /// whenever an entry's envelope is opened or replaced.
     void touch_loaded_state(llvm::StringRef pch_key);
 
-    /// Unload PreambleState blobs beyond the budget (open documents + 2),
+    /// Unload pch.idx envelopes beyond the budget (open documents + 2),
     /// least recently used first. Without this every preamble key ever
     /// touched keeps its blob mapped for the server's lifetime — tens of
     /// MB per key on real projects, released by neither didClose nor

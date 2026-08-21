@@ -9,6 +9,7 @@
 #include "llvm/Support/Error.h"
 #include "llvm/Support/xxhash.h"
 #include "clang/Basic/Stack.h"
+#include "clang/Driver/CreateInvocationFromArgs.h"
 #include "clang/Frontend/MultiplexConsumer.h"
 #include "clang/Frontend/TextDiagnosticPrinter.h"
 #include "clang/Lex/PreprocessorOptions.h"
@@ -249,13 +250,9 @@ CompilationStatus CompilationUnitRef::Self::run_clang(
 
     self.instance = std::make_unique<clang::CompilerInstance>(std::move(invocation));
     auto& instance = *self.instance;
-    instance.createDiagnostics(*params.vfs, diagnostic_consumer.release(), true);
-
-    if(auto remapping = clang::createVFSFromCompilerInvocation(instance.getInvocation(),
-                                                               instance.getDiagnostics(),
-                                                               params.vfs)) {
-        instance.createFileManager(std::move(remapping));
-    }
+    instance.createVirtualFileSystem(params.vfs, diagnostic_consumer.get());
+    instance.createDiagnostics(diagnostic_consumer.release(), true);
+    instance.createFileManager();
 
     if(!instance.createTarget()) {
         return CompilationStatus::SetupFail;
@@ -285,7 +282,7 @@ CompilationStatus CompilationUnitRef::Self::run_clang(
     }
 
     std::optional<clang::syntax::TokenCollector> token_collector;
-    if(!instance.hasCodeCompletionConsumer()) {
+    if(params.collect_tokens && !instance.hasCodeCompletionConsumer()) {
         /// It is not necessary to collect tokens if we are running code completion.
         /// And in fact will cause assertion failure.
         token_collector.emplace(instance.getPreprocessor());
@@ -457,6 +454,18 @@ CompilationUnit complete(CompilationParams& params, clang::CodeCompleteConsumer*
                          instance.getFrontendOpts().CodeCompletionAt.Column = column;
                          instance.setCodeCompletionConsumer(consumer);
                      });
+}
+
+std::string collect_errors(CompilationUnit& unit) {
+    std::string errors;
+    for(auto& diag: unit.diagnostics()) {
+        if(diag.id.level >= DiagnosticLevel::Error) {
+            if(!errors.empty())
+                errors += "; ";
+            errors += diag.message;
+        }
+    }
+    return errors;
 }
 
 }  // namespace clice

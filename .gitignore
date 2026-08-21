@@ -36,6 +36,9 @@
 temp/
 .cache/
 
+# Materialized benchmark workloads (fetch_workload.py)
+benchmarks/workloads/
+
 .llvm*/
 .clice/
 compile_commands.json

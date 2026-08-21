@@ -12,18 +12,18 @@ input_file: expression_tokens.cpp
 - { loc: "5:19", text: "Red", kind: enumMember, modifiers: [definition, readonly] }
 - { loc: "7:0", text: "struct", kind: keyword }
 - { loc: "7:7", text: "Shape", kind: struct, modifiers: [definition] }
-- { loc: "8:4", text: "int", kind: keyword }
+- { loc: "8:4", text: "int", kind: primitive }
 - { loc: "8:8", text: "sides", kind: field, modifiers: [definition] }
-- { loc: "11:0", text: "int", kind: keyword }
+- { loc: "11:0", text: "int", kind: primitive }
 - { loc: "11:4", text: "area", kind: function, modifiers: [definition] }
-- { loc: "11:9", text: "int", kind: keyword }
+- { loc: "11:9", text: "int", kind: primitive }
 - { loc: "11:13", text: "width", kind: parameter, modifiers: [definition] }
-- { loc: "11:20", text: "int", kind: keyword }
+- { loc: "11:20", text: "int", kind: primitive }
 - { loc: "11:24", text: "height", kind: parameter, modifiers: [definition] }
 - { loc: "12:4", text: "return", kind: keyword }
 - { loc: "12:11", text: "width", kind: parameter }
 - { loc: "12:19", text: "height", kind: parameter }
-- { loc: "15:0", text: "void", kind: keyword }
+- { loc: "15:0", text: "void", kind: primitive }
 - { loc: "15:5", text: "test", kind: function, modifiers: [definition] }
 - { loc: "16:4", text: "Shape", kind: struct }
 - { loc: "16:10", text: "square", kind: variable, modifiers: [definition] }
@@ -32,14 +32,14 @@ input_file: expression_tokens.cpp
 - { loc: "17:10", text: "c", kind: variable, modifiers: [definition] }
 - { loc: "17:14", text: "Color", kind: enum }
 - { loc: "17:21", text: "Red", kind: enumMember, modifiers: [readonly] }
-- { loc: "18:21", text: "int", kind: keyword }
+- { loc: "18:21", text: "int", kind: primitive }
 - { loc: "18:25", text: "a", kind: variable, modifiers: [definition] }
 - { loc: "18:29", text: "area", kind: function }
 - { loc: "18:34", text: "2", kind: number }
 - { loc: "18:38", text: "2", kind: number }
 - { loc: "18:41", text: "square", kind: variable }
 - { loc: "18:48", text: "sides", kind: field }
-- { loc: "19:21", text: "bool", kind: keyword }
+- { loc: "19:21", text: "bool", kind: primitive }
 - { loc: "19:26", text: "red", kind: variable, modifiers: [definition] }
 - { loc: "19:32", text: "c", kind: variable }
 - { loc: "19:37", text: "Color", kind: enum }

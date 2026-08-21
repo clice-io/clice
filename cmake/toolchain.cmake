@@ -2,8 +2,8 @@ cmake_minimum_required(VERSION 3.30)
 
 # Cross-compilation support via CLICE_TARGET_TRIPLE.
 # Examples:
-#   -DCLICE_TARGET_TRIPLE=x86_64-apple-darwin      (macOS x64 from arm64)
-#   -DCLICE_TARGET_TRIPLE=aarch64-linux-gnu         (Linux arm64 from x64)
+#   -DCLICE_TARGET_TRIPLE=x86_64-apple-darwin       (macOS x64 from arm64)
+#   -DCLICE_TARGET_TRIPLE=aarch64-unknown-linux-gnu (Linux arm64 from x64)
 #   -DCLICE_TARGET_TRIPLE=aarch64-pc-windows-msvc   (Windows arm64 from x64)
 if(DEFINED CLICE_TARGET_TRIPLE)
     if(CLICE_TARGET_TRIPLE MATCHES "^x86_64-apple-darwin")
@@ -11,8 +11,8 @@ if(DEFINED CLICE_TARGET_TRIPLE)
     elseif(CLICE_TARGET_TRIPLE MATCHES "^aarch64-.*linux")
         set(CMAKE_SYSTEM_NAME Linux)
         set(CMAKE_SYSTEM_PROCESSOR aarch64)
-        set(CMAKE_C_COMPILER_TARGET "aarch64-linux-gnu" CACHE STRING "")
-        set(CMAKE_CXX_COMPILER_TARGET "aarch64-linux-gnu" CACHE STRING "")
+        set(CMAKE_C_COMPILER_TARGET "aarch64-unknown-linux-gnu" CACHE STRING "")
+        set(CMAKE_CXX_COMPILER_TARGET "aarch64-unknown-linux-gnu" CACHE STRING "")
         if(DEFINED ENV{CONDA_PREFIX} AND NOT DEFINED CMAKE_SYSROOT)
             set(CMAKE_SYSROOT "$ENV{CONDA_PREFIX}/aarch64-conda-linux-gnu/sysroot" CACHE PATH "")
         endif()
@@ -71,11 +71,7 @@ if(WIN32)
         set(CMAKE_C_COMPILER_LAUNCHER "${SCCACHE_PATH}" CACHE FILEPATH "")
         set(CMAKE_CXX_COMPILER_LAUNCHER "${SCCACHE_PATH}" CACHE FILEPATH "")
     endif()
-    # TODO(prebuilt-respin): switch to "MultiThreaded" (/MT). /MD makes the exe
-    # import MSVCP140.dll and VCRUNTIME140.dll, which come from the Visual C++
-    # redistributable rather than from Windows. The CRT is baked into every
-    # object, so the prebuilt LLVM must be respun to /MT in the same change.
-    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL" CACHE STRING "")
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded" CACHE STRING "")
     set(CMAKE_EXE_LINKER_FLAGS_INIT "-fuse-ld=lld-link")
     set(CMAKE_SHARED_LINKER_FLAGS_INIT "-fuse-ld=lld-link")
     set(CMAKE_MODULE_LINKER_FLAGS_INIT "-fuse-ld=lld-link")
@@ -91,10 +87,7 @@ else()
 endif()
 
 if(APPLE)
-    # TODO(prebuilt-respin): set an explicit CMAKE_OSX_DEPLOYMENT_TARGET. With
-    # none it follows the build machine, so the artifact is stamped minos 15.0
-    # and will not launch on macOS 14 or older. Lowering it needs the prebuilt
-    # built against the same target.
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "15.0" CACHE STRING "")
 
     # conda-forge clang 22's bundled config files (<triple>-clang++.cfg)
     # inject -L/-rpath pointing into the conda env at link time, binding
@@ -107,14 +100,4 @@ if(APPLE)
     string(APPEND CMAKE_EXE_LINKER_FLAGS_INIT " --no-default-config")
     string(APPEND CMAKE_SHARED_LINKER_FLAGS_INIT " --no-default-config")
     string(APPEND CMAKE_MODULE_LINKER_FLAGS_INIT " --no-default-config")
-
-    # Debug links the prebuilt LLVM ASan dylibs, which reference conda's
-    # @rpath libc++ with rpaths baked for the machine that built them.
-    # Debug binaries are CI-internal, so resolve libc++ from the build
-    # env instead. TODO(prebuilt-respin): remove once the prebuilt is
-    # respun — its dylibs will then link the system libc++ above.
-    if(DEFINED ENV{CONDA_PREFIX})
-        string(APPEND CMAKE_EXE_LINKER_FLAGS_DEBUG_INIT " -Wl,-rpath,$ENV{CONDA_PREFIX}/lib")
-        string(APPEND CMAKE_SHARED_LINKER_FLAGS_DEBUG_INIT " -Wl,-rpath,$ENV{CONDA_PREFIX}/lib")
-    endif()
 endif()

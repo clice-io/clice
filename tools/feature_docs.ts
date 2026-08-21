@@ -343,10 +343,17 @@ function renderItem(fx: Fixture): string {
         const runs = fx.example.match(/`+/g) ?? [];
         const longest = runs.reduce((max, run) => Math.max(max, run.length), 0);
         const fence = "`".repeat(Math.max(3, longest + 1));
+        // `<details>` rather than VitePress's `::: details` container so the
+        // example collapses on GitHub too.
+        out.push("");
+        out.push("  <details>");
+        out.push("  <summary>Example</summary>");
         out.push("");
         out.push(`  ${fence}cpp`);
         out.push(...indent(fx.example));
         out.push(`  ${fence}`);
+        out.push("");
+        out.push("  </details>");
     }
     return out.join("\n");
 }

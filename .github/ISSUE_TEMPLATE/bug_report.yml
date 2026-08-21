@@ -1,6 +1,6 @@
 name: Bug Report
 description: Something works incorrectly (wrong results, missing behavior, errors).
-labels: ["kind:bug"]
+labels: ["kind:bug", "needs-triage"]
 body:
   - type: markdown
     attributes:
@@ -26,6 +26,7 @@ body:
         - Windows
         - macOS
         - Linux
+        - WSL
     validations:
       required: true
 

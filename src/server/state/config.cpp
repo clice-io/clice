@@ -4,12 +4,12 @@
 
 #include "feature/feature.h"
 #include "support/filesystem.h"
-#include "support/glob_pattern.h"
 #include "support/logging.h"
 
 #include "kota/async/io/system.h"
 #include "kota/codec/json/json.h"
 #include "kota/codec/toml/toml.h"
+#include "kota/support/glob_pattern.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Process.h"
@@ -126,9 +126,9 @@ void Config::finalize(llvm::StringRef workspace_root) {
     for(auto& rule: rules) {
         CompiledRule compiled;
         for(auto& pattern_str: rule.patterns) {
-            auto pat = GlobPattern::create(pattern_str);
+            auto pat = kota::GlobPattern::create(pattern_str);
             if(!pat) {
-                LOG_WARN("Invalid glob pattern in rule: {}", pattern_str);
+                LOG_WARN("Invalid glob pattern in rule: {}: {}", pattern_str, pat.error().message);
                 continue;
             }
             compiled.patterns.push_back(std::move(*pat));
@@ -196,7 +196,7 @@ std::optional<Config> Config::load(llvm::StringRef path,
     if(!content)
         return std::nullopt;
 
-    auto result = kota::codec::toml::parse<Config>(*content);
+    auto result = kota::codec::toml::from_string<Config>(*content);
     if(!result) {
         LOG_ERROR("Invalid clice.toml {}: {}", path, result.error().to_string());
         if(issues)
@@ -209,7 +209,8 @@ std::optional<Config> Config::load(llvm::StringRef path,
     // misspelled option silently doing nothing) as Warning issues.
     if(issues) {
         Config probe{};
-        if(auto strict = kota::codec::toml::from_toml<DenyUnknownKeys>(*content, probe); !strict) {
+        if(auto strict = kota::codec::toml::from_string<DenyUnknownKeys>(*content, probe);
+           !strict) {
             LOG_WARN("clice.toml {}: {}", path, strict.error().to_string());
             issues->push_back(make_issue(ConfigIssue::Severity::Warning, path, strict.error()));
         }
@@ -224,7 +225,7 @@ std::optional<Config> Config::load(llvm::StringRef path,
 
 std::optional<Config> Config::load_from_json(llvm::StringRef json, llvm::StringRef workspace_root) {
     Config config{};
-    auto result = kota::codec::json::from_json(json, config);
+    auto result = kota::codec::json::from_string(json, config);
     if(!result) {
         LOG_WARN("Failed to parse initializationOptions JSON: {}", result.error().message);
         return std::nullopt;

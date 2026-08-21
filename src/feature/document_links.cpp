@@ -9,14 +9,14 @@
 namespace clice::feature {
 
 /// Find the range of the filename argument in a preprocessor directive line.
-/// `content` is the full source text, `offset` points at or before the
-/// directive keyword. Returns the range of the first filename-like token
-/// (header name, string literal, or macro identifier) found on the same
-/// line, or nullopt if none.
-static std::optional<LocalSourceRange>
-    find_directive_argument(llvm::StringRef content,
-                            std::uint32_t offset,
-                            const clang::LangOptions* lang_opts) {
+/// `content` is the full source text; `offset` may point at the directive,
+/// operator, or inside its argument. Returns the range of the first
+/// filename-like token (header name, string literal, or macro identifier)
+/// containing or following the offset, or nullopt if none.
+auto find_directive_argument(llvm::StringRef content,
+                             std::uint32_t offset,
+                             const clang::LangOptions* lang_opts)
+    -> std::optional<LocalSourceRange> {
     auto lexer = Lexer::from_line(content, offset, {.lang_opts = lang_opts});
     bool after_keyword = false;
 
@@ -44,7 +44,7 @@ static std::optional<LocalSourceRange>
             }
         }
 
-        if(token.range.begin < offset || !after_keyword) {
+        if(token.range.end <= offset || !after_keyword) {
             continue;
         }
 
@@ -85,20 +85,20 @@ auto document_links(CompilationUnitRef unit) -> std::vector<DocumentLink> {
     }
 
     for(const auto& has_include: directives.has_includes) {
-        if(has_include.fid.isValid()) {
-            add_link(has_include.location, unit.file_path(has_include.fid));
+        if(has_include.file) {
+            add_link(has_include.location, unit.file_path(*has_include.file));
         }
     }
 
     for(const auto& embed: directives.embeds) {
         if(embed.file) {
-            add_link(embed.loc, embed.file->getName());
+            add_link(embed.loc, unit.file_path(*embed.file));
         }
     }
 
     for(const auto& has_embed: directives.has_embeds) {
         if(has_embed.file) {
-            add_link(has_embed.loc, has_embed.file->getName());
+            add_link(has_embed.loc, unit.file_path(*has_embed.file));
         }
     }
 
@@ -118,8 +118,8 @@ auto include_definition(CompilationUnitRef unit, std::uint32_t offset)
     auto content = unit.interested_content();
     auto* lang_opts = &unit.lang_options();
 
-    auto try_directive = [&](clang::SourceLocation loc, clang::FileID target) {
-        if(!locations.empty() || !target.isValid()) {
+    auto try_directive = [&](clang::SourceLocation loc, llvm::StringRef target) {
+        if(!locations.empty() || target.empty()) {
             return;
         }
         auto [fid, directive_offset] = unit.decompose_location(loc);
@@ -131,16 +131,20 @@ auto include_definition(CompilationUnitRef unit, std::uint32_t offset)
             return;
         }
         locations.push_back(protocol::Location{
-            .uri = to_uri(unit.file_path(target)),
+            .uri = to_uri(target),
             .range = protocol::Range{},
         });
     };
 
     for(const auto& include: directives_it->second.includes) {
-        try_directive(include.location, include.fid);
+        if(include.fid.isValid()) {
+            try_directive(include.location, unit.file_path(include.fid));
+        }
     }
     for(const auto& has_include: directives_it->second.has_includes) {
-        try_directive(has_include.location, has_include.fid);
+        if(has_include.file) {
+            try_directive(has_include.location, unit.file_path(*has_include.file));
+        }
     }
     return locations;
 }

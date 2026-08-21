@@ -31,6 +31,15 @@ void EXPECT_LINK(std::size_t index, llvm::StringRef name, llvm::StringRef path) 
     ASSERT_EQ(target, path);
 }
 
+TEST_CASE(DirectiveArgumentFromFilename) {
+    llvm::StringRef content = R"(#if __has_include("test.h"))";
+    auto offset = static_cast<std::uint32_t>(content.find("test.h"));
+    auto result = feature::find_directive_argument(content, offset, nullptr);
+
+    ASSERT_TRUE(result.has_value());
+    ASSERT_EQ(content.substr(result->begin, result->length()), R"("test.h")");
+}
+
 TEST_CASE(Include) {
     run(R"cpp(
 #[test.h]
@@ -180,6 +189,17 @@ int x = 0;
 
     // Outside any include argument: empty.
     EXPECT_TRUE(feature::include_definition(*unit, point("inside")).empty());
+}
+
+TEST_CASE(MissingIncludeDefinition) {
+    add_main("main.cpp", R"(
+/* error-ok */
+#include §(arg)⟦"missing.h"§⟧
+)");
+    ASSERT_TRUE(compile());
+
+    auto arg = range("arg", "main.cpp");
+    EXPECT_TRUE(feature::include_definition(*unit, arg.begin + 1).empty());
 }
 
 };  // TEST_SUITE(document_link)

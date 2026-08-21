@@ -6,11 +6,13 @@
 #include <string>
 #include <vector>
 
+#include "compile/compilation_unit.h"
 #include "feature/feature.h"
 #include "semantic/decls.h"
 #include "semantic/display.h"
 #include "semantic/selection.h"
 #include "semantic/semantics.h"
+#include "semantic/symbol.h"
 #include "semantic/types.h"
 
 #include "llvm/ADT/STLExtras.h"
@@ -43,7 +45,6 @@ namespace clice::feature {
 namespace {
 
 using PrintedType = display::Type;
-using Param = display::Param;
 using PassType = HoverInfo::PassType;
 using PassMode = HoverInfo::PassMode;
 
@@ -349,9 +350,14 @@ auto decl_hover(const clang::NamedDecl* decl,
     } else if(const auto* var_template = llvm::dyn_cast<clang::VarTemplateDecl>(decl)) {
         info.type = display::type(context, var_template->getTemplatedDecl()->getType(), options);
     } else if(const auto* typedef_decl = llvm::dyn_cast<clang::TypedefNameDecl>(decl)) {
-        info.type = display::type(context,
-                                  typedef_decl->getUnderlyingType().getDesugaredType(context),
-                                  options);
+        /// TagType is not sugar, so desugaring would stop at the
+        /// as-written node; canonicalize to render the underlying type
+        /// fully qualified. Dependent types keep their sugar — their
+        /// canonical form spells parameters as `type-parameter-N-M`.
+        auto underlying = typedef_decl->getUnderlyingType();
+        underlying = underlying->isDependentType() ? underlying.getDesugaredType(context)
+                                                   : context.getCanonicalType(underlying);
+        info.type = display::type(context, underlying, options);
     } else if(const auto* alias_template = llvm::dyn_cast<clang::TypeAliasTemplateDecl>(decl)) {
         info.type = display::type(context,
                                   alias_template->getTemplatedDecl()->getUnderlyingType(),
@@ -683,6 +689,87 @@ auto attr_hover(const clang::Attr* attr, clang::ASTContext& context) -> std::opt
     return info;
 }
 
+auto file_directive_hover(CompilationUnitRef unit, std::uint32_t offset)
+    -> std::optional<HoverInfo> {
+    auto interested = unit.interested_file();
+    auto directives_it = unit.directives().find(interested);
+    if(directives_it == unit.directives().end()) {
+        return std::nullopt;
+    }
+
+    auto content = unit.interested_content();
+    auto* lang_opts = &unit.lang_options();
+
+    auto file_name = [&](LocalSourceRange range) -> std::string {
+        auto arg = content.substr(range.begin, range.end - range.begin).trim();
+        if(arg.size() >= 2 && ((arg.front() == '"' && arg.back() == '"') ||
+                               (arg.front() == '<' && arg.back() == '>'))) {
+            arg = arg.drop_front().drop_back();
+        }
+        return arg.str();
+    };
+
+    auto line_start = content.rfind('\n', offset);
+    line_start = line_start == llvm::StringRef::npos ? 0 : line_start + 1;
+
+    auto line_end = content.find('\n', offset);
+    line_end = line_end == llvm::StringRef::npos ? content.size() : line_end;
+
+    auto try_directive = [&](clang::SourceLocation loc,
+                             llvm::StringRef target) -> std::optional<HoverInfo> {
+        if(target.empty())
+            return std::nullopt;
+        auto [fid, directive_offset] = unit.decompose_location(loc);
+        /// FIXME: A directive continued with an escaped newline may have its
+        /// keyword and argument on different physical lines. This check then
+        /// rejects a cursor inside the argument before find_directive_argument()
+        /// can match its range. Remove the same-line restriction once continued
+        /// directive hover also handles the spliced argument spelling and range.
+        if(fid != interested || directive_offset < line_start || directive_offset >= line_end)
+            return std::nullopt;
+        auto range = find_directive_argument(content, directive_offset, lang_opts);
+        if(!range || offset >= range->end || offset < range->begin)
+            return std::nullopt;
+
+        HoverInfo info;
+        info.name = file_name(*range);
+        info.kind = SymbolKind::Header;
+        info.definition = target;
+        info.symbol_range = *range;
+        return info;
+    };
+
+    for(const auto& include: directives_it->second.includes) {
+        if(include.fid.isValid()) {
+            if(auto info = try_directive(include.location, unit.file_path(include.fid))) {
+                return info;
+            }
+        }
+    }
+    for(const auto& has_include: directives_it->second.has_includes) {
+        if(has_include.file) {
+            if(auto info = try_directive(has_include.location, unit.file_path(*has_include.file))) {
+                return info;
+            }
+        }
+    }
+    for(const auto& embed: directives_it->second.embeds) {
+        if(embed.file) {
+            if(auto info = try_directive(embed.loc, unit.file_path(*embed.file))) {
+                return info;
+            }
+        }
+    }
+    for(const auto& has_embed: directives_it->second.has_embeds) {
+        if(has_embed.file) {
+            if(auto info = try_directive(has_embed.loc, unit.file_path(*has_embed.file))) {
+                return info;
+            }
+        }
+    }
+    return std::nullopt;
+}
+
 void add_layout_info(const clang::NamedDecl& decl, HoverInfo& info) {
     if(decl.isInvalidDecl()) {
         return;
@@ -690,11 +777,12 @@ void add_layout_info(const clang::NamedDecl& decl, HoverInfo& info) {
 
     const auto& context = decl.getASTContext();
     if(auto* record = llvm::dyn_cast<clang::RecordDecl>(&decl)) {
-        if(auto size = context.getTypeSizeInCharsIfKnown(record->getTypeForDecl())) {
+        auto type = context.getCanonicalTagType(record);
+        if(auto size = context.getTypeSizeInCharsIfKnown(type)) {
             info.size = size->getQuantity() * 8;
         }
         if(!record->isDependentType() && record->isCompleteDefinition()) {
-            info.align = context.getTypeAlign(record->getTypeForDecl());
+            info.align = context.getTypeAlign(type);
         }
         return;
     }
@@ -987,10 +1075,10 @@ void reformat_definition(HoverInfo& info) {
     info.definition = *formatted;
 }
 
-auto to_protocol_hover(CompilationUnitRef unit,
-                       const HoverInfo& info,
-                       const HoverOptions& options,
-                       PositionEncoding encoding) -> protocol::Hover {
+}  // namespace
+
+auto to_protocol_hover(const HoverInfo& info, const HoverOptions& options, const LineMap& map)
+    -> protocol::Hover {
     auto document = info.present();
 
     protocol::MarkupContent content;
@@ -1007,14 +1095,11 @@ auto to_protocol_hover(CompilationUnitRef unit,
     };
 
     if(info.symbol_range) {
-        LineMap map(unit.interested_content(), unit.line_starts(), encoding);
         result.range = to_range(map, *info.symbol_range);
     }
 
     return result;
 }
-
-}  // namespace
 
 void parse_documentation(llvm::StringRef input, markup::Document& output) {
     std::vector<llvm::StringRef> paragraph_lines;
@@ -1177,6 +1262,11 @@ markup::Document HoverInfo::present() const {
 
 auto hover_info(CompilationUnitRef unit, std::uint32_t offset, const HoverOptions& options)
     -> std::optional<HoverInfo> {
+    /// The hover is over an include or embed directive.
+    if(auto info = file_directive_hover(unit, offset)) {
+        return info;
+    }
+
     auto& context = unit.context();
     display::Options display_options = {
         .terse = true,
@@ -1279,7 +1369,8 @@ auto hover(CompilationUnitRef unit,
         return std::nullopt;
     }
 
-    return to_protocol_hover(unit, *info, options, encoding);
+    LineMap map(unit.interested_content(), unit.line_starts(), encoding);
+    return to_protocol_hover(*info, options, map);
 }
 
 }  // namespace clice::feature

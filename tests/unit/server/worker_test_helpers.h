@@ -115,10 +115,17 @@ struct WorkerHandle {
     }
 
     /// Run a coroutine on the event loop and return when it completes.
+    /// Closes the worker's input afterwards — including when the body
+    /// unwound early through a failed CO_ASSERT — so the IO pump drains
+    /// and a failing test reports instead of hanging the suite.
     template <typename F>
     void run(F&& coro_factory) {
+        auto body = [](WorkerHandle& self, F factory) -> kota::task<> {
+            co_await factory();
+            self.peer->close_output();
+        };
         loop.schedule(peer->run());
-        loop.schedule(coro_factory());
+        loop.schedule(body(*this, std::forward<F>(coro_factory)));
         loop.run();
     }
 };

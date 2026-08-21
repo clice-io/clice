@@ -337,9 +337,7 @@ std::vector<DepFile> CompilationUnitRef::deps() {
         /// pipeline: persist unresolved lookups and match them against
         /// file-creation events from the workspace watcher.
         for(auto& has_include: directive.has_includes) {
-            if(has_include.fid.isValid()) {
-                add_fid(has_include.fid);
-            }
+            add_file(has_include.file);
         }
 
         for(auto& embed: directive.embeds) {

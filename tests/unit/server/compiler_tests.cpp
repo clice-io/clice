@@ -304,7 +304,8 @@ TEST_CASE(StopUnblocksCompileWaiters) {
     auto session = std::make_shared<Session>();
     session->path_id = workspace.path_pool.intern(src);
     session->text =
-        "#include <vector>\n#include <string>\n#include <algorithm>\n" "#include <regex>\nint main() { return 0; }\n";
+        "#include <vector>\n#include <string>\n#include <algorithm>\n"
+        "#include <regex>\nint main() { return 0; }\n";
 
     bool waiter_done = false;
     bool done = false;

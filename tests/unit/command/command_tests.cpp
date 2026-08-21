@@ -299,7 +299,8 @@ TEST_CASE(CodegenFilter) {
     database.add_command(
         "fake",
         "main.cpp",
-        "clang++ -std=c++20 -fPIC -fno-omit-frame-pointer -fstack-protector-strong " "-fdata-sections -ffunction-sections -flto -fcolor-diagnostics -g main.cpp"sv);
+        "clang++ -std=c++20 -fPIC -fno-omit-frame-pointer -fstack-protector-strong "
+        "-fdata-sections -ffunction-sections -flto -fcolor-diagnostics -g main.cpp"sv);
 
     auto result = database.lookup("main.cpp", quiet_options()).front().to_argv();
     auto argv = print_argv(result);

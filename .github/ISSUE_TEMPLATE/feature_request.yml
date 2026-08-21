@@ -1,6 +1,6 @@
 name: Feature Request
 description: Suggest a new feature or an improvement to existing behavior.
-labels: ["kind:feature-request"]
+labels: ["kind:feature-request", "needs-triage"]
 body:
   - type: dropdown
     id: area

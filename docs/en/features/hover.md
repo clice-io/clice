@@ -266,7 +266,7 @@
   // hover on "nodiscard" → description of the attribute
   ```
 
-- [ ] `#include` directive hover showing resolved header path
+- [x] `#include` directive hover showing resolved header path
 - [x] `this` expression hover showing pointed-to type
 - [x] `__func__` and related predefined identifier hover
 
@@ -291,8 +291,6 @@ Known issues that should be handled correctly:
 
 ## Changelog
 
-| Date    | Change                           | PR     |
-| ------- | -------------------------------- | ------ |
-| 2025-06 | Port clangd hover implementation | [#452] |
-
-[#452]: https://github.com/clice-io/clice/pull/452
+| Date       | Change                           | PR                                                 |
+| ---------- | -------------------------------- | -------------------------------------------------- |
+| 2026-06-12 | Port clangd hover implementation | [#452](https://github.com/clice-io/clice/pull/452) |

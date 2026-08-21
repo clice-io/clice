@@ -42,8 +42,6 @@ lld = "==22.1.8"
 llvm-tools = "==22.1.8"
 clang-tools = "==22.1.8"
 compiler-rt = "==22.1.8"
-# Must match the headers kotatsu fetches — generated code static_asserts on it.
-flatbuffers = "==25.2.10"
 # cmake/archive.cmake pipes tar through xz for the symbol archives.
 xz = ">=5.8.1,<6"
 

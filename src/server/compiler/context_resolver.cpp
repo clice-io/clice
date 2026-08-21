@@ -222,7 +222,8 @@ bool ContextResolver::fill_header_context_args(llvm::StringRef path,
                                                std::uint32_t path_id,
                                                std::string& directory,
                                                std::vector<std::string>& arguments,
-                                               Session* session) {
+                                               Session* session,
+                                               std::uint32_t* host_path_id) {
     // Opening one of our own synthesized files (prefix/suffix/snapshot):
     // it is a fragment of the host TU it was synthesized for, so compile
     // it with that host's command, treated as self-contained. It must not
@@ -247,6 +248,9 @@ bool ContextResolver::fill_header_context_args(llvm::StringRef path,
         artifact_cmd.source_file = workspace.path_pool.resolve(path_id).data();
         directory = artifact_cmd.resolved.directory.str();
         arguments = artifact_cmd.to_string_argv();
+        if(host_path_id) {
+            *host_path_id = it->second;
+        }
         return true;
     }
 
@@ -332,6 +336,9 @@ bool ContextResolver::fill_header_context_args(llvm::StringRef path,
     }
 
     arguments = header_cmd.to_string_argv();
+    if(host_path_id) {
+        *host_path_id = ctx_ptr->host_path_id;
+    }
 
     LOG_INFO("resolve_command: header context for {} (host={}, preamble={})",
              path,
@@ -343,7 +350,8 @@ bool ContextResolver::fill_header_context_args(llvm::StringRef path,
 CommandSource ContextResolver::resolve_command(llvm::StringRef path,
                                                std::string& directory,
                                                std::vector<std::string>& arguments,
-                                               Session* session) {
+                                               Session* session,
+                                               std::uint32_t* host_path_id) {
     auto path_id = workspace.path_pool.intern(path);
     llvm::SmallVector<llvm::StringRef, 3> tried;
 
@@ -379,7 +387,7 @@ CommandSource ContextResolver::resolve_command(llvm::StringRef path,
     //    host source's CDB entry with file path replaced and preamble injected.
     if(has_host_choice) {
         tried.push_back("switch_context");
-        if(fill_header_context_args(path, path_id, directory, arguments, session)) {
+        if(fill_header_context_args(path, path_id, directory, arguments, session, host_path_id)) {
             log_command_decision(path, tried, CommandSource::IncludeGraph, arguments);
             return CommandSource::IncludeGraph;
         }
@@ -397,7 +405,7 @@ CommandSource ContextResolver::resolve_command(llvm::StringRef path,
     // 3. No CDB entry — try automatic header context resolution.
     if(!has_host_choice) {
         tried.push_back("include_graph");
-        if(fill_header_context_args(path, path_id, directory, arguments, session)) {
+        if(fill_header_context_args(path, path_id, directory, arguments, session, host_path_id)) {
             log_command_decision(path, tried, CommandSource::IncludeGraph, arguments);
             return CommandSource::IncludeGraph;
         }

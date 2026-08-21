@@ -19,3 +19,7 @@ int flagged = 2;
 #endif
 
 #pragma pack(1)
+
+#
+#define STRINGIZE(x) #x
+const char* stringized = STRINGIZE(abc);

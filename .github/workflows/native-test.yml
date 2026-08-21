@@ -21,20 +21,20 @@ jobs:
           # release artifacts once their test suites pass.
           - os: windows-2025
             build_type: RelWithDebInfo
-            asset_name: clice-x64-windows-msvc.zip
-            target_name: x64-windows-msvc
+            asset_name: clice.x86_64-pc-windows-msvc.zip
+            target_name: x86_64-pc-windows-msvc
           - os: ubuntu-24.04
             build_type: Debug
           - os: ubuntu-24.04
             build_type: RelWithDebInfo
-            asset_name: clice-x64-linux-gnu.tar.gz
-            target_name: x64-linux-gnu
+            asset_name: clice.x86_64-unknown-linux-gnu.tar.gz
+            target_name: x86_64-unknown-linux-gnu
           - os: macos-15
             build_type: Debug
           - os: macos-15
             build_type: RelWithDebInfo
-            asset_name: clice-arm64-macos-darwin.tar.gz
-            target_name: arm64-macos-darwin
+            asset_name: clice.aarch64-apple-darwin.tar.gz
+            target_name: aarch64-apple-darwin
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout repository

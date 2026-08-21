@@ -9,20 +9,25 @@
 #include <vector>
 
 #include "feature/feature.h"
-#include "index/preamble_state.h"
 #include "index/tu_index.h"
 #include "server/compiler/compiler.h"
 #include "server/compiler/indexer.h"
+#include "server/protocol/position.h"
 #include "server/state/session.h"
 #include "server/state/session_store.h"
 #include "support/filesystem.h"
+#include "support/logging.h"
+#include "support/timer.h"
 
 #include "kota/ipc/lsp/position.h"
 #include "kota/ipc/lsp/protocol.h"
 #include "kota/ipc/lsp/uri.h"
+#include "kota/meta/enum.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringSet.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
+#include "llvm/Support/xxhash.h"
 
 namespace clice {
 
@@ -35,7 +40,7 @@ void IndexQuery::visit_sessions(SessionVisitor visitor) const {
     sessions.for_each([&](std::uint32_t path_id, const Session& session) -> bool {
         // Freshness contract, clause 3: a dirty session's file index may
         // describe a buffer that no longer exists — skip it.
-        if(session.file_index && session.symbols && !session.ast_dirty) {
+        if(session.index.loaded() && !session.ast_dirty) {
             return visitor(path_id, session);
         }
         return true;
@@ -46,7 +51,7 @@ bool IndexQuery::is_path_open(std::uint32_t path_id) const {
     return sessions.find(path_id) != nullptr;
 }
 
-std::shared_ptr<index::PreambleState> IndexQuery::overlay_of(const Session& session) const {
+std::shared_ptr<index::TUIndex> IndexQuery::overlay_of(const Session& session) const {
     if(!session.pch_key) {
         return nullptr;
     }
@@ -55,8 +60,7 @@ std::shared_ptr<index::PreambleState> IndexQuery::overlay_of(const Session& sess
     return workspace.preamble_state(*session.pch_key);
 }
 
-void IndexQuery::visit_overlays(
-    llvm::function_ref<bool(const index::PreambleState&)> visitor) const {
+void IndexQuery::visit_overlays(llvm::function_ref<bool(const index::TUIndex&)> visitor) const {
     if(options.disk_only) {
         return;
     }
@@ -72,8 +76,7 @@ void IndexQuery::visit_overlays(
 }
 
 void IndexQuery::visit_preambles(
-    llvm::function_ref<bool(std::uint32_t, const Session&, const index::PreambleState&)> visitor)
-    const {
+    llvm::function_ref<bool(std::uint32_t, const Session&, const index::TUIndex&)> visitor) const {
     if(options.disk_only) {
         return;
     }
@@ -86,7 +89,7 @@ void IndexQuery::visit_preambles(
     });
 }
 
-bool IndexQuery::serves_preamble(const Session& session, const index::PreambleState& state) const {
+bool IndexQuery::serves_preamble(const Session& session, const index::TUIndex& state) const {
     // The preamble entry's rows are buffer offsets of the file that built
     // the blob: serve them only for that very file (identical preambles
     // share a PCH, but macro USRs embed the source path) and only while
@@ -96,8 +99,8 @@ bool IndexQuery::serves_preamble(const Session& session, const index::PreambleSt
     // gating is needed on top. The blob stores clang's native path
     // (backslashes on Windows) while the pool normalizes separators, so
     // compare through the pool's lookup, not raw strings.
-    return workspace.path_pool.find(state.source_path()) == session.path_id &&
-           llvm::StringRef(session.text).starts_with(state.preamble_content());
+    return workspace.path_pool.find(state.path(state.path_count() - 1)) == session.path_id &&
+           state.matches_prefix(session.text);
 }
 
 bool IndexQuery::should_serve_overlay_file(llvm::StringRef path) const {
@@ -114,6 +117,62 @@ bool IndexQuery::should_serve_overlay_file(llvm::StringRef path) const {
         }
     }
     return !workspace.is_synthesized_artifact(path);
+}
+
+/// A header entry of an overlay envelope, as lookup callbacks consume it.
+/// Views borrow the envelope; keep the overlay alive while using them.
+struct OverlayFile {
+    llvm::StringRef path;
+
+    /// Empty for pure-ASCII content, which blobs do not store.
+    llvm::StringRef content;
+
+    std::uint32_t content_size = 0;
+
+    std::span<const std::uint32_t> line_starts;
+};
+
+/// Iterate relations of `symbol` matching `kind` across an overlay
+/// envelope's header entries (every section except the source file's
+/// own, which has its own serving gate). This is the only query shape
+/// overlays serve: hash-anchored answering; discovery inputs (by name,
+/// by path and line) are the disk index's job.
+static void
+    overlay_lookup(const index::TUIndex& state,
+                   index::SymbolHash symbol,
+                   RelationKind kind,
+                   llvm::function_ref<bool(const OverlayFile&, const index::Relation&)> callback) {
+    auto main_id = state.path_count() - 1;
+    for(std::uint32_t i = 0; i < state.section_count(); i += 1) {
+        auto path_id = state.section_path(i);
+        if(path_id == main_id) {
+            continue;
+        }
+        auto& shard = state.shard_of(path_id);
+        OverlayFile file{
+            .path = state.path(path_id),
+            .content = shard.content(),
+            .content_size = shard.content_size(),
+            .line_starts = shard.line_starts(),
+        };
+        bool stopped = false;
+        shard.lookup(symbol, kind, [&](const index::Relation& relation) {
+            if(!callback(file, relation)) {
+                stopped = true;
+                return false;
+            }
+            return true;
+        });
+        if(stopped) {
+            return;
+        }
+    }
+}
+
+/// The source file's preamble-region rows of an overlay envelope (buffer
+/// offsets below the preamble bound).
+const static index::Shard& preamble_rows(const index::TUIndex& state) {
+    return state.shard_of(state.path_count() - 1);
 }
 
 /// Cross-source dedup: a row present in both a disk shard and a PCH
@@ -153,12 +212,9 @@ bool IndexQuery::find_symbol_info(index::SymbolHash hash,
     // Check open sessions first (has all symbols for unsaved buffers).
     bool found = false;
     visit_sessions([&](std::uint32_t, const Session& session) -> bool {
-        if(!session.symbols)
-            return true;
-        auto it = session.symbols->find(hash);
-        if(it != session.symbols->end()) {
-            name = it->second.name;
-            kind = it->second.kind;
+        if(auto identity = session.index.find_symbol(hash)) {
+            name = std::string(identity->name);
+            kind = identity->kind;
             found = true;
             return false;
         }
@@ -178,17 +234,21 @@ bool IndexQuery::find_symbol_info(index::SymbolHash hash,
     // Check PCH overlays: a symbol that exists only under an open buffer's
     // context (or in headers no disk TU has been indexed with) is in no
     // disk table.
-    visit_overlays([&](const index::PreambleState& state) {
-        found = state.find_symbol(hash, name, kind);
+    visit_overlays([&](const index::TUIndex& state) {
+        if(auto identity = state.find_symbol(hash)) {
+            name = std::string(identity->name);
+            kind = identity->kind;
+            found = true;
+        }
         return !found;
     });
     if(found)
         return true;
 
-    // Check per-file MergedIndex shards (TU-local + file-local symbols).
+    // Check per-file Shard blobs (TU-local + file-local symbols).
     // Each shard stores exactly the local symbols its occurrences reference,
     // so the symbol will be in the shard that produced the occurrence.
-    for(auto& [path_id, shard]: workspace.merged_indices) {
+    for(auto& [path_id, shard]: workspace.shards) {
         if(shard.find_symbol(hash, name, kind))
             return true;
     }
@@ -206,16 +266,16 @@ IndexQuery::CursorHit IndexQuery::resolve_cursor(llvm::StringRef path,
     // cross-file visit already skips shards of open files for the same
     // reason). A dirty-after-await session (failed or superseded compile)
     // or an index-less one therefore reports no hit.
-    if(session && (!session->file_index || session->ast_dirty)) {
+    if(session && (!session->index.loaded() || session->ast_dirty)) {
         return {};
     }
-    if(session && session->file_index && !session->ast_dirty) {
+    if(session && session->index.loaded() && !session->ast_dirty) {
         auto map = session->line_map();
         auto offset = map.to_offset(position);
         if(!offset)
             return {};
         CursorHit hit;
-        session->file_index->lookup(*offset, [&](const index::Occurrence& occ) {
+        session->file_rows().lookup(*offset, [&](const index::Occurrence& occ) {
             auto range = map.to_range(occ.range.begin, occ.range.end);
             if(range) {
                 hit = {occ.target, *range};
@@ -230,7 +290,7 @@ IndexQuery::CursorHit IndexQuery::resolve_cursor(llvm::StringRef path,
         // (preamble drift, shared-PCH identity).
         auto overlay = hit.hash == 0 ? overlay_of(*session) : nullptr;
         if(overlay && serves_preamble(*session, *overlay)) {
-            overlay->lookup_preamble(*offset, [&](const index::Occurrence& occ) {
+            preamble_rows(*overlay).lookup(*offset, [&](const index::Occurrence& occ) {
                 auto range = map.to_range(occ.range.begin, occ.range.end);
                 if(range) {
                     hit = {occ.target, *range};
@@ -242,7 +302,7 @@ IndexQuery::CursorHit IndexQuery::resolve_cursor(llvm::StringRef path,
         return hit;
     }
 
-    // Fallback to MergedIndex. Position -> offset uses the session text when
+    // Fallback to the disk shard. Position -> offset uses the session text when
     // one exists (open but not yet compiled); for closed files the shard's
     // own stored content provides the mapping.
     auto path_id = workspace.path_pool.find(path);
@@ -252,15 +312,14 @@ IndexQuery::CursorHit IndexQuery::resolve_cursor(llvm::StringRef path,
     // resolved against them would name the wrong symbol.
     if(skip_stale_contribution(*path_id))
         return {};
-    auto shard_it = workspace.merged_indices.find(*path_id);
-    if(shard_it == workspace.merged_indices.end())
+    auto shard_it = workspace.shards.find(*path_id);
+    if(shard_it == workspace.shards.end())
         return {};
 
     auto& merged_index = shard_it->second;
-    auto ls = merged_index.line_starts();
-    if(ls.empty())
-        return {};
-    lsp::LineMap map(merged_index.content(), ls);
+    IndexedLineMap map(merged_index.content(),
+                       merged_index.content_size(),
+                       merged_index.line_starts());
 
     auto offset = session ? session->line_map().to_offset(position) : map.to_offset(position);
     if(!offset)
@@ -279,9 +338,18 @@ std::vector<protocol::Location> IndexQuery::query_relations(llvm::StringRef path
                                                             const protocol::Position& position,
                                                             RelationKind kind,
                                                             Session* session) {
+    ScopedTimer timer;
     auto hit = resolve_cursor(path, position, session);
-    if(hit.hash == 0)
+    if(hit.hash == 0) {
+        // Misses (whitespace, comments, unindexed positions) are normal
+        // inputs; their latency belongs in the series like any hit's.
+        LOG_PERF("index_query",
+                 "kind=relations rel={} path={} results=0 elapsed_ms={:.2f}",
+                 kota::meta::enum_name(static_cast<RelationKind::Kind>(kind), "Invalid"),
+                 path,
+                 timer.ms_f());
         return {};
+    }
 
     std::vector<protocol::Location> locations;
 
@@ -290,17 +358,16 @@ std::vector<protocol::Location> IndexQuery::query_relations(llvm::StringRef path
         for(auto file_id: sym_it->second.reference_files) {
             if(skip_shard(file_id))
                 continue;
-            auto shard_it = workspace.merged_indices.find(file_id);
-            if(shard_it == workspace.merged_indices.end())
+            auto shard_it = workspace.shards.find(file_id);
+            if(shard_it == workspace.shards.end())
                 continue;
             auto uri = lsp::URI::from_file_path(workspace.path_pool.resolve(file_id));
             if(!uri)
                 continue;
             auto& merged_index = shard_it->second;
-            auto ls = merged_index.line_starts();
-            if(ls.empty())
-                continue;
-            lsp::LineMap map(merged_index.content(), ls);
+            IndexedLineMap map(merged_index.content(),
+                               merged_index.content_size(),
+                               merged_index.line_starts());
             merged_index.lookup(hit.hash, kind, [&](const index::Relation& r) {
                 if(auto range = map.to_range(r.range.begin, r.range.end))
                     locations.push_back({uri->str(), *range});
@@ -314,7 +381,7 @@ std::vector<protocol::Location> IndexQuery::query_relations(llvm::StringRef path
         if(!uri)
             return true;
         auto map = session.line_map();
-        session.file_index->lookup(hit.hash, kind, [&](const index::Relation& r) {
+        session.file_rows().lookup(hit.hash, kind, [&](const index::Relation& r) {
             if(auto range = map.to_range(r.range.begin, r.range.end))
                 locations.push_back({uri->str(), *range});
             return true;
@@ -325,39 +392,45 @@ std::vector<protocol::Location> IndexQuery::query_relations(llvm::StringRef path
     // PCH overlays: header rows under each open buffer's live context.
     // Rows a disk shard also holds come out identical and collapse in the
     // dedup below.
-    visit_overlays([&](const index::PreambleState& state) {
-        state.lookup(hit.hash,
-                     kind,
-                     [&](const index::PreambleState::File& file, const index::Relation& r) {
-                         if(!should_serve_overlay_file(file.path) || file.line_starts.empty())
-                             return true;
-                         // to_uri canonicalizes clang's raw spelling (drive
-                         // case) before emitting.
-                         auto uri = feature::to_uri(file.path);
-                         lsp::LineMap map(file.content, file.line_starts);
-                         if(auto range = map.to_range(r.range.begin, r.range.end))
-                             locations.push_back({uri, *range});
-                         return true;
-                     });
+    visit_overlays([&](const index::TUIndex& state) {
+        overlay_lookup(state,
+                       hit.hash,
+                       kind,
+                       [&](const OverlayFile& file, const index::Relation& r) {
+                           if(!should_serve_overlay_file(file.path))
+                               return true;
+                           // to_uri canonicalizes clang's raw spelling (drive
+                           // case) before emitting.
+                           auto uri = feature::to_uri(file.path);
+                           IndexedLineMap map(file.content, file.content_size, file.line_starts);
+                           if(auto range = map.to_range(r.range.begin, r.range.end))
+                               locations.push_back({uri, *range});
+                           return true;
+                       });
         return true;
     });
 
     // Preamble entries: the buffers' own preamble regions.
-    visit_preambles(
-        [&](std::uint32_t id, const Session& session, const index::PreambleState& state) {
-            auto uri = lsp::URI::from_file_path(std::string(workspace.path_pool.resolve(id)));
-            if(!uri)
-                return true;
-            auto map = session.line_map();
-            state.lookup_preamble(hit.hash, kind, [&](const index::Relation& r) {
-                if(auto range = map.to_range(r.range.begin, r.range.end))
-                    locations.push_back({uri->str(), *range});
-                return true;
-            });
+    visit_preambles([&](std::uint32_t id, const Session& session, const index::TUIndex& state) {
+        auto uri = lsp::URI::from_file_path(std::string(workspace.path_pool.resolve(id)));
+        if(!uri)
+            return true;
+        auto map = session.line_map();
+        preamble_rows(state).lookup(hit.hash, kind, [&](const index::Relation& r) {
+            if(auto range = map.to_range(r.range.begin, r.range.end))
+                locations.push_back({uri->str(), *range});
             return true;
         });
+        return true;
+    });
 
     dedup_locations(locations);
+    LOG_PERF("index_query",
+             "kind=relations rel={} path={} results={} elapsed_ms={:.2f}",
+             kota::meta::enum_name(static_cast<RelationKind::Kind>(kind), "Invalid"),
+             path,
+             locations.size(),
+             timer.ms_f());
     return locations;
 }
 
@@ -404,7 +477,7 @@ std::optional<protocol::Location> IndexQuery::find_definition_location(index::Sy
         if(!uri)
             return true;
         auto map = session.line_map();
-        session.file_index->lookup(hash, RelationKind::Definition, [&](const index::Relation& r) {
+        session.file_rows().lookup(hash, RelationKind::Definition, [&](const index::Relation& r) {
             if(auto range = map.to_range(r.range.begin, r.range.end)) {
                 session_result = protocol::Location{uri->str(), *range};
                 return false;
@@ -421,38 +494,38 @@ std::optional<protocol::Location> IndexQuery::find_definition_location(index::Sy
     // been indexed — the in-memory-file case behind empty go-to-definition.
     // First the buffers' own preamble regions, then the header entries.
     std::optional<protocol::Location> overlay_result;
-    visit_preambles(
-        [&](std::uint32_t id, const Session& session, const index::PreambleState& state) {
-            auto uri = lsp::URI::from_file_path(std::string(workspace.path_pool.resolve(id)));
-            if(!uri)
-                return true;
-            auto map = session.line_map();
-            state.lookup_preamble(hash, RelationKind::Definition, [&](const index::Relation& r) {
-                if(auto range = map.to_range(r.range.begin, r.range.end)) {
-                    overlay_result = protocol::Location{uri->str(), *range};
-                    return false;
-                }
-                return true;
-            });
-            return !overlay_result.has_value();
+    visit_preambles([&](std::uint32_t id, const Session& session, const index::TUIndex& state) {
+        auto uri = lsp::URI::from_file_path(std::string(workspace.path_pool.resolve(id)));
+        if(!uri)
+            return true;
+        auto map = session.line_map();
+        preamble_rows(state).lookup(hash, RelationKind::Definition, [&](const index::Relation& r) {
+            if(auto range = map.to_range(r.range.begin, r.range.end)) {
+                overlay_result = protocol::Location{uri->str(), *range};
+                return false;
+            }
+            return true;
         });
+        return !overlay_result.has_value();
+    });
     if(overlay_result)
         return overlay_result;
 
-    visit_overlays([&](const index::PreambleState& state) {
-        state.lookup(hash,
-                     RelationKind::Definition,
-                     [&](const index::PreambleState::File& file, const index::Relation& r) {
-                         if(!should_serve_overlay_file(file.path) || file.line_starts.empty())
-                             return true;
-                         auto uri = feature::to_uri(file.path);
-                         lsp::LineMap map(file.content, file.line_starts);
-                         if(auto range = map.to_range(r.range.begin, r.range.end)) {
-                             overlay_result = protocol::Location{uri, *range};
-                             return false;
-                         }
-                         return true;
-                     });
+    visit_overlays([&](const index::TUIndex& state) {
+        overlay_lookup(state,
+                       hash,
+                       RelationKind::Definition,
+                       [&](const OverlayFile& file, const index::Relation& r) {
+                           if(!should_serve_overlay_file(file.path))
+                               return true;
+                           auto uri = feature::to_uri(file.path);
+                           IndexedLineMap map(file.content, file.content_size, file.line_starts);
+                           if(auto range = map.to_range(r.range.begin, r.range.end)) {
+                               overlay_result = protocol::Location{uri, *range};
+                               return false;
+                           }
+                           return true;
+                       });
         return !overlay_result.has_value();
     });
     if(overlay_result)
@@ -466,17 +539,16 @@ std::optional<protocol::Location> IndexQuery::find_definition_location(index::Sy
     for(auto file_id: sym_it->second.reference_files) {
         if(skip_shard(file_id))
             continue;
-        auto shard_it = workspace.merged_indices.find(file_id);
-        if(shard_it == workspace.merged_indices.end())
+        auto shard_it = workspace.shards.find(file_id);
+        if(shard_it == workspace.shards.end())
             continue;
         auto uri = lsp::URI::from_file_path(workspace.path_pool.resolve(file_id));
         if(!uri)
             continue;
         auto& merged_index = shard_it->second;
-        auto ls = merged_index.line_starts();
-        if(ls.empty())
-            continue;
-        lsp::LineMap map(merged_index.content(), ls);
+        IndexedLineMap map(merged_index.content(),
+                           merged_index.content_size(),
+                           merged_index.line_starts());
         std::optional<protocol::Location> result;
         merged_index.lookup(hash, RelationKind::Definition, [&](const index::Relation& r) {
             if(auto range = map.to_range(r.range.begin, r.range.end)) {
@@ -520,14 +592,13 @@ void IndexQuery::collect_grouped_relations(
         for(auto file_id: sym_it->second.reference_files) {
             if(skip_shard(file_id))
                 continue;
-            auto shard_it = workspace.merged_indices.find(file_id);
-            if(shard_it == workspace.merged_indices.end())
+            auto shard_it = workspace.shards.find(file_id);
+            if(shard_it == workspace.shards.end())
                 continue;
             auto& merged_index = shard_it->second;
-            auto ls = merged_index.line_starts();
-            if(ls.empty())
-                continue;
-            lsp::LineMap map(merged_index.content(), ls);
+            IndexedLineMap map(merged_index.content(),
+                               merged_index.content_size(),
+                               merged_index.line_starts());
             merged_index.lookup(hash, kind, [&](const index::Relation& r) {
                 if(auto range = map.to_range(r.range.begin, r.range.end))
                     target_ranges[r.target_symbol].push_back(*range);
@@ -537,7 +608,7 @@ void IndexQuery::collect_grouped_relations(
     }
     visit_sessions([&](std::uint32_t, const Session& session) -> bool {
         auto map = session.line_map();
-        session.file_index->lookup(hash, kind, [&](const index::Relation& r) {
+        session.file_rows().lookup(hash, kind, [&](const index::Relation& r) {
             if(auto range = map.to_range(r.range.begin, r.range.end))
                 target_ranges[r.target_symbol].push_back(*range);
             return true;
@@ -548,17 +619,15 @@ void IndexQuery::collect_grouped_relations(
     // PCH overlays: call/type relations inside headers under an open
     // buffer's context. The main-file entry cannot contribute — the
     // preamble region holds only preprocessor directives.
-    visit_overlays([&](const index::PreambleState& state) {
-        state.lookup(hash,
-                     kind,
-                     [&](const index::PreambleState::File& file, const index::Relation& r) {
-                         if(!should_serve_overlay_file(file.path) || file.line_starts.empty())
-                             return true;
-                         lsp::LineMap map(file.content, file.line_starts);
-                         if(auto range = map.to_range(r.range.begin, r.range.end))
-                             target_ranges[r.target_symbol].push_back(*range);
-                         return true;
-                     });
+    visit_overlays([&](const index::TUIndex& state) {
+        overlay_lookup(state, hash, kind, [&](const OverlayFile& file, const index::Relation& r) {
+            if(!should_serve_overlay_file(file.path))
+                return true;
+            IndexedLineMap map(file.content, file.content_size, file.line_starts);
+            if(auto range = map.to_range(r.range.begin, r.range.end))
+                target_ranges[r.target_symbol].push_back(*range);
+            return true;
+        });
         return true;
     });
 
@@ -589,8 +658,8 @@ void IndexQuery::collect_unique_targets(index::SymbolHash hash,
         for(auto file_id: sym_it->second.reference_files) {
             if(skip_shard(file_id))
                 continue;
-            auto shard_it = workspace.merged_indices.find(file_id);
-            if(shard_it == workspace.merged_indices.end())
+            auto shard_it = workspace.shards.find(file_id);
+            if(shard_it == workspace.shards.end())
                 continue;
             shard_it->second.lookup(hash, kind, [&](const index::Relation& r) {
                 if(seen.insert(r.target_symbol).second) {
@@ -601,16 +670,12 @@ void IndexQuery::collect_unique_targets(index::SymbolHash hash,
         }
     }
     visit_sessions([&](std::uint32_t, const Session& session) -> bool {
-        auto rel_it = session.file_index->relations.find(hash);
-        if(rel_it == session.file_index->relations.end())
-            return true;
-        for(auto& r: rel_it->second) {
-            if(r.kind & kind) {
-                if(seen.insert(r.target_symbol).second) {
-                    targets.push_back(r.target_symbol);
-                }
+        session.file_rows().lookup(hash, kind, [&](const index::Relation& r) {
+            if(seen.insert(r.target_symbol).second) {
+                targets.push_back(r.target_symbol);
             }
-        }
+            return true;
+        });
         return true;
     });
 
@@ -618,17 +683,15 @@ void IndexQuery::collect_unique_targets(index::SymbolHash hash,
     // open header's session is authoritative for its relations (an edited
     // `struct D : NewBase` must not resurface the disk snapshot's OldBase
     // through another file's overlay).
-    visit_overlays([&](const index::PreambleState& state) {
-        state.lookup(hash,
-                     kind,
-                     [&](const index::PreambleState::File& file, const index::Relation& r) {
-                         if(!should_serve_overlay_file(file.path))
-                             return true;
-                         if(seen.insert(r.target_symbol).second) {
-                             targets.push_back(r.target_symbol);
-                         }
-                         return true;
-                     });
+    visit_overlays([&](const index::TUIndex& state) {
+        overlay_lookup(state, hash, kind, [&](const OverlayFile& file, const index::Relation& r) {
+            if(!should_serve_overlay_file(file.path))
+                return true;
+            if(seen.insert(r.target_symbol).second) {
+                targets.push_back(r.target_symbol);
+            }
+            return true;
+        });
         return true;
     });
 }
@@ -644,6 +707,29 @@ std::optional<SymbolInfo> IndexQuery::resolve_symbol(index::SymbolHash hash) {
     if(!def_loc)
         return std::nullopt;
     return SymbolInfo{hash, std::move(name), kind, def_loc->uri, def_loc->range};
+}
+
+/// The stored text of an indexed file, for preview slicing. Non-ASCII
+/// shards lend out the content they store; ASCII blobs do not store it:
+/// re-read the disk into `storage` and serve it only while its hash
+/// still matches what the rows were built from — a moved-on file
+/// degrades to no preview rather than slicing mismatched text.
+static std::optional<llvm::StringRef> indexed_text(llvm::StringRef path,
+                                                   const index::Shard& shard,
+                                                   std::unique_ptr<llvm::MemoryBuffer>& storage) {
+    if(!shard.ascii()) {
+        return shard.content();
+    }
+    auto buffer = llvm::MemoryBuffer::getFile(path);
+    if(!buffer) {
+        return std::nullopt;
+    }
+    auto text = (*buffer)->getBuffer();
+    if(llvm::xxh3_64bits(text) != shard.content_hash()) {
+        return std::nullopt;
+    }
+    storage = std::move(*buffer);
+    return text;
 }
 
 static std::string extract_line(llvm::StringRef content, std::uint32_t offset) {
@@ -669,15 +755,17 @@ std::optional<IndexQuery::DefinitionText> IndexQuery::get_definition_text(index:
     for(auto file_id: sym_it->second.reference_files) {
         if(skip_shard(file_id))
             continue;
-        auto shard_it = workspace.merged_indices.find(file_id);
-        if(shard_it == workspace.merged_indices.end())
+        auto shard_it = workspace.shards.find(file_id);
+        if(shard_it == workspace.shards.end())
             continue;
         auto& merged_index = shard_it->second;
-        auto ls = merged_index.line_starts();
-        if(ls.empty())
+        auto file_path = workspace.path_pool.resolve(file_id);
+        std::unique_ptr<llvm::MemoryBuffer> storage;
+        auto text = indexed_text(file_path, merged_index, storage);
+        if(!text)
             continue;
-        auto content = merged_index.content();
-        lsp::LineMap map(content, ls);
+        llvm::StringRef content = *text;
+        lsp::LineMap map(content, merged_index.line_starts());
 
         std::optional<DefinitionText> result;
         merged_index.lookup(hash, RelationKind::Definition, [&](const index::Relation& r) {
@@ -688,7 +776,7 @@ std::optional<IndexQuery::DefinitionText> IndexQuery::get_definition_text(index:
             if(!range)
                 return true;
             result = DefinitionText{
-                .file = workspace.path_pool.resolve(file_id).str(),
+                .file = file_path.str(),
                 .start_line = static_cast<int>(range->start.line) + 1,
                 .end_line = static_cast<int>(range->end.line) + 1,
                 .text =
@@ -712,16 +800,17 @@ std::vector<IndexQuery::ReferenceWithContext> IndexQuery::collect_references(ind
         for(auto file_id: sym_it->second.reference_files) {
             if(skip_shard(file_id))
                 continue;
-            auto shard_it = workspace.merged_indices.find(file_id);
-            if(shard_it == workspace.merged_indices.end())
+            auto shard_it = workspace.shards.find(file_id);
+            if(shard_it == workspace.shards.end())
                 continue;
             auto& merged_index = shard_it->second;
-            auto ls = merged_index.line_starts();
-            if(ls.empty())
-                continue;
-            auto content = merged_index.content();
-            lsp::LineMap map(content, ls);
             auto file_path = workspace.path_pool.resolve(file_id);
+            // A moved-on ASCII file yields no text: positions still map
+            // through the line table, only the context line degrades.
+            std::unique_ptr<llvm::MemoryBuffer> storage;
+            auto text = indexed_text(file_path, merged_index, storage);
+            llvm::StringRef content = text.value_or(llvm::StringRef());
+            IndexedLineMap map(content, merged_index.content_size(), merged_index.line_starts());
 
             merged_index.lookup(hash, kind, [&](const index::Relation& r) {
                 auto pos = map.to_position(r.range.begin);
@@ -800,6 +889,7 @@ std::vector<protocol::TypeHierarchyItem> IndexQuery::find_subtypes(index::Symbol
 
 std::vector<protocol::SymbolInformation> IndexQuery::search_symbols(llvm::StringRef query,
                                                                     std::size_t max_results) {
+    ScopedTimer timer;
     std::string query_lower = query.lower();
 
     auto is_indexable_kind = [](SymbolKind sk) {
@@ -844,28 +934,38 @@ std::vector<protocol::SymbolInformation> IndexQuery::search_symbols(llvm::String
     visit_sessions([&](std::uint32_t, const Session& session) -> bool {
         if(results.size() >= max_results)
             return false;
-        for(auto& [hash, symbol]: *session.symbols) {
-            if(results.size() >= max_results)
-                return false;
-            if(seen.contains(hash))
-                continue;
-            if(!is_indexable_kind(symbol.kind) || symbol.name.empty())
-                continue;
-            if(!matches_query(symbol.name))
-                continue;
-            auto def_loc = find_definition_location(hash);
-            if(!def_loc)
-                continue;
+        session.index.iterate_symbols(
+            [&](index::SymbolHash hash, const index::SymbolIdentity& symbol, llvm::StringRef) {
+                if(results.size() >= max_results)
+                    return false;
+                if(seen.contains(hash))
+                    return true;
+                if(!is_indexable_kind(symbol.kind) || symbol.name.empty())
+                    return true;
+                if(!matches_query(symbol.name))
+                    return true;
+                auto def_loc = find_definition_location(hash);
+                if(!def_loc)
+                    return true;
 
-            protocol::SymbolInformation info;
-            info.name = symbol.name;
-            info.kind = to_lsp_symbol_kind(symbol.kind);
-            info.location = std::move(*def_loc);
-            results.push_back(std::move(info));
-            seen.insert(hash);
-        }
+                protocol::SymbolInformation info;
+                info.name = std::string(symbol.name);
+                info.kind = to_lsp_symbol_kind(symbol.kind);
+                info.location = std::move(*def_loc);
+                results.push_back(std::move(info));
+                seen.insert(hash);
+                return true;
+            });
         return true;
     });
+    // The query is arbitrary LSP input; its length is logged instead of its
+    // text, which could contain newlines or `key=` fragments and corrupt
+    // the key/value record.
+    LOG_PERF("index_query",
+             "kind=search query_len={} results={} elapsed_ms={:.2f}",
+             query.size(),
+             results.size(),
+             timer.ms_f());
     return results;
 }
 
@@ -948,15 +1048,14 @@ std::vector<ResolvedSymbol> IndexQuery::locate_symbols(const agentic::ReadSymbol
         if(skip_stale_contribution(*path_id))
             return {};
 
-        auto shard_it = workspace.merged_indices.find(*path_id);
-        if(shard_it == workspace.merged_indices.end())
+        auto shard_it = workspace.shards.find(*path_id);
+        if(shard_it == workspace.shards.end())
             return {};
 
         auto& merged_index = shard_it->second;
-        auto ls = merged_index.line_starts();
-        if(ls.empty())
-            return {};
-        lsp::LineMap map(merged_index.content(), ls);
+        IndexedLineMap map(merged_index.content(),
+                           merged_index.content_size(),
+                           merged_index.line_starts());
 
         for(auto& [hash, symbol]: workspace.project_index.symbols) {
             if(!symbol.reference_files.contains(*path_id))

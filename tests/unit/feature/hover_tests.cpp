@@ -8,6 +8,7 @@
 #include "test/test.h"
 #include "test/tester.h"
 #include "feature/feature.h"
+#include "support/filesystem.h"
 
 #include "kota/meta/enum.h"
 
@@ -757,6 +758,135 @@ int §foo = 1;
     ASSERT_EQ(result->range->start.character, 4U);
     ASSERT_EQ(result->range->end.line, 1U);
     ASSERT_EQ(result->range->end.character, 7U);
+}
+
+TEST_CASE(include_header) {
+    add_file("test.h", "#pragma once\n");
+    add_main("main.cpp", R"cpp(
+#include §(arg)⟦"test.h"§⟧
+§(outside)
+int x = 0;
+)cpp");
+    ASSERT_TRUE(compile());
+
+    auto arg = range("arg", "main.cpp");
+    info = feature::hover_info(*unit, arg.begin + 1);
+    ASSERT_TRUE(info.has_value());
+    EXPECT_EQ(info->kind, SymbolKind::Header);
+    EXPECT_EQ(info->name, "test.h");
+
+    llvm::SmallString<128> path(info->definition);
+    path::remove_dots(path);
+    EXPECT_EQ(path, TestVFS::path("test.h"));
+    ASSERT_TRUE(info->symbol_range.has_value());
+    EXPECT_EQ(info->symbol_range->begin, arg.begin);
+    EXPECT_EQ(info->symbol_range->end, arg.end);
+
+    result = feature::hover(*unit, arg.begin + 1, {}, feature::PositionEncoding::UTF8);
+    ASSERT_TRUE(result.has_value());
+    auto* content = std::get_if<protocol::MarkupContent>(&result->contents);
+    ASSERT_TRUE(content != nullptr);
+    EXPECT_TRUE(content->value.contains("test.h"));
+    EXPECT_TRUE(content->value.contains(TestVFS::path("test.h")));
+    ASSERT_TRUE(result->range.has_value());
+    EXPECT_EQ(result->range->start.line, 1U);
+    EXPECT_EQ(result->range->start.character, 9U);
+    EXPECT_EQ(result->range->end.line, 1U);
+    EXPECT_EQ(result->range->end.character, 17U);
+
+    EXPECT_FALSE(feature::hover_info(*unit, point("outside")).has_value());
+}
+
+TEST_CASE(has_include_header) {
+    add_file("test.h", "#pragma once\n");
+    add_main("main.cpp", R"cpp(
+#if __has_include(§(arg)⟦"test.h"§⟧)
+#endif
+)cpp");
+    ASSERT_TRUE(compile());
+
+    auto arg = range("arg", "main.cpp");
+    auto hover = feature::hover_info(*unit, arg.begin + 1);
+    ASSERT_TRUE(hover.has_value());
+    EXPECT_EQ(hover->kind, SymbolKind::Header);
+    EXPECT_EQ(hover->name, "test.h");
+
+    llvm::SmallString<128> path(hover->definition);
+    path::remove_dots(path);
+    EXPECT_EQ(path, TestVFS::path("test.h"));
+    EXPECT_EQ(hover->symbol_range, arg);
+}
+
+TEST_CASE(embed_file) {
+    add_file("data.bin", "0123456789");
+    add_main("main.cpp", R"cpp(
+const unsigned char data[] = {
+#embed §(arg)⟦"data.bin"§⟧
+};
+)cpp");
+    ASSERT_TRUE(compile("-std=c++23"));
+
+    auto arg = range("arg", "main.cpp");
+    auto hover = feature::hover_info(*unit, arg.begin + 1);
+    ASSERT_TRUE(hover.has_value());
+    EXPECT_EQ(hover->kind, SymbolKind::Header);
+    EXPECT_EQ(hover->name, "data.bin");
+
+    llvm::SmallString<128> path(hover->definition);
+    path::remove_dots(path);
+    EXPECT_EQ(path, TestVFS::path("data.bin"));
+    EXPECT_EQ(hover->symbol_range, arg);
+}
+
+TEST_CASE(has_embed_file) {
+    add_file("data.bin", "0123456789");
+    add_main("main.cpp", R"cpp(
+#if __has_embed(§(arg)⟦"data.bin"§⟧)
+#endif
+)cpp");
+    ASSERT_TRUE(compile("-std=c++23"));
+
+    auto arg = range("arg", "main.cpp");
+    auto hover = feature::hover_info(*unit, arg.begin + 1);
+    ASSERT_TRUE(hover.has_value());
+    EXPECT_EQ(hover->kind, SymbolKind::Header);
+    EXPECT_EQ(hover->name, "data.bin");
+
+    llvm::SmallString<128> path(hover->definition);
+    path::remove_dots(path);
+    EXPECT_EQ(path, TestVFS::path("data.bin"));
+    EXPECT_EQ(hover->symbol_range, arg);
+}
+
+TEST_CASE(macro_include_header) {
+    add_file("test.h", "#pragma once\n");
+    add_main("main.cpp", R"cpp(
+#define HEADER "test.h"
+#include §(arg)⟦HEADER§⟧
+)cpp");
+    ASSERT_TRUE(compile());
+
+    auto arg = range("arg", "main.cpp");
+    auto hover = feature::hover_info(*unit, arg.begin + 1);
+    ASSERT_TRUE(hover.has_value());
+    EXPECT_EQ(hover->kind, SymbolKind::Header);
+    EXPECT_EQ(hover->name, "HEADER");
+
+    llvm::SmallString<128> path(hover->definition);
+    path::remove_dots(path);
+    EXPECT_EQ(path, TestVFS::path("test.h"));
+    EXPECT_EQ(hover->symbol_range, arg);
+}
+
+TEST_CASE(missing_include_header) {
+    add_main("main.cpp", R"cpp(
+/* error-ok */
+#include §(arg)⟦"missing.h"§⟧
+)cpp");
+    ASSERT_TRUE(compile());
+
+    auto arg = range("arg", "main.cpp");
+    EXPECT_FALSE(feature::hover_info(*unit, arg.begin + 1).has_value());
 }
 
 TEST_CASE(scoped_attribute) {

@@ -173,6 +173,12 @@ struct DirtySet {
     void add_clear_reindex(std::uint32_t path_id) {
         erase_id(reindex_content_changed, path_id);
         erase_id(reindex_deps_only, path_id);
+        // A removal retains the last-known index, so it also cancels an
+        // earlier entry-change drop — a surviving drop would mask the shard
+        // and let the next save retire it. The reverse order needs no
+        // handling: every drop emission is paired with a reindex adder,
+        // which already un-clears.
+        erase_id(drop_index, path_id);
         if(llvm::find(clear_reindex, path_id) == clear_reindex.end()) {
             clear_reindex.push_back(path_id);
         }
@@ -184,6 +190,14 @@ private:
     }
 
 public:
+    /// TUs whose compile command changed: their index describes a compile
+    /// that no longer exists, and content-based freshness cannot see that.
+    /// The indexer drops the manifest, contributions and persisted blobs —
+    /// a surviving manifest would judge the queued reindex fresh and keep
+    /// the old-command rows serving, in this session and after a restart.
+    /// Follows the later-event rule above: a later removal's clear cancels
+    /// the drop, since the deleted file's last-known index keeps serving.
+    llvm::SmallVector<std::uint32_t> drop_index;
     /// Headers whose resolved context borrows a compile command that no
     /// longer exists in that form (the host's CDB entry changed): drop the
     /// context so the next use re-resolves. Content validation cannot see
@@ -206,8 +220,8 @@ public:
         return mark_ast_dirty.empty() && mark_lost.empty() && reset_trial.empty() &&
                reset_header_mode.empty() && force_revalidate.empty() &&
                reindex_content_changed.empty() && reindex_deps_only.empty() &&
-               clear_reindex.empty() && drop_context.empty() && !recheck_contexts && !save_cache &&
-               !reschedule_indexing && !ensure_compile_graph;
+               clear_reindex.empty() && drop_index.empty() && drop_context.empty() &&
+               !recheck_contexts && !save_cache && !reschedule_indexing && !ensure_compile_graph;
     }
 };
 

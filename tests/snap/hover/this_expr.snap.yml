@@ -15,7 +15,7 @@ ns::Foo1 *
 
 ---
 ```cpp
-const Foo2<T> *
+const ns::Foo2<T> *
 ```
 
 03_this_specialization: { range: "28:13-28:17" }
@@ -23,7 +23,7 @@ const Foo2<T> *
 
 ---
 ```cpp
-Foo3<int> *
+ns::Foo3<int> *
 ```
 
 04_this_partial_specialization: { range: "39:13-39:17" }
@@ -31,5 +31,5 @@ Foo3<int> *
 
 ---
 ```cpp
-const Foo4<int, F> *
+const ns::Foo4<int, F> *
 ```

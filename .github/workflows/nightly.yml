@@ -46,7 +46,7 @@ jobs:
           for RUN in $(gh run list --repo "$GITHUB_REPOSITORY" --workflow main \
               --branch main --event push --status success --limit 100 \
               --json databaseId -q '.[].databaseId'); do
-            LIVE=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN/artifacts?name=package-clice-x64-linux-gnu.tar.gz" \
+            LIVE=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN/artifacts?name=package-clice.x86_64-unknown-linux-gnu.tar.gz" \
               --jq '[.artifacts[] | select(.expired | not)] | length')
             if [ "$LIVE" -gt 0 ]; then
               COMMIT=$(gh run view "$RUN" --repo "$GITHUB_REPOSITORY" \
@@ -130,17 +130,17 @@ jobs:
             echo "| Platform | Server | VS Code extension | Symbols |"
             echo "| --- | --- | --- | --- |"
             row() {
-              PKG="clice-$2.$3"
-              SYM="clice-$2.symbols.$4"
-              VSIX="clice-$5-$V.vsix"
+              PKG="clice-$V.$2.$3"
+              SYM="clice-$V.$2.symbols.$4"
+              VSIX="clice-$V.$2.vsix"
               echo "| $1 | [$PKG]($URL/$PKG) | [$VSIX]($URL/$VSIX) | [$SYM]($URL/$SYM) |"
             }
-            row "Linux x64" x64-linux-gnu tar.gz tar.xz linux-x64
-            row "Linux arm64" arm64-linux-gnu tar.gz tar.xz linux-arm64
-            row "macOS arm64" arm64-macos-darwin tar.gz tar.xz darwin-arm64
-            row "macOS x64" x64-macos-darwin tar.gz tar.xz darwin-x64
-            row "Windows x64" x64-windows-msvc zip zip win32-x64
-            row "Windows arm64" arm64-windows-msvc zip zip win32-arm64
+            row "Linux x64" x86_64-unknown-linux-gnu tar.gz tar.xz
+            row "Linux arm64" aarch64-unknown-linux-gnu tar.gz tar.xz
+            row "macOS arm64" aarch64-apple-darwin tar.gz tar.xz
+            row "macOS x64" x86_64-apple-darwin tar.gz tar.xz
+            row "Windows x64" x86_64-pc-windows-msvc zip zip
+            row "Windows arm64" aarch64-pc-windows-msvc zip zip
             echo
             echo "Symbol packages hold GSYM data for crash log symbolization"
             echo "via \`scripts/symbolize.py\`. VS Code users on the Marketplace"

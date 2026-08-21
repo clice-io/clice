@@ -245,7 +245,8 @@ std::optional<std::size_t> CompilationDatabase::load(llvm::StringRef path) {
         simdjson::ondemand::object obj;
         if(element.get_object().get(obj)) {
             LOG_ERROR(
-                "Invalid compilation database in {}. Skipping item at index {}: " "item is not an object.",
+                "Invalid compilation database in {}. Skipping item at index {}: "
+                "item is not an object.",
                 path,
                 index);
             ++index;
@@ -255,7 +256,8 @@ std::optional<std::size_t> CompilationDatabase::load(llvm::StringRef path) {
         std::string_view dir_sv, file_sv;
         if(obj["directory"].get_string().get(dir_sv)) {
             LOG_ERROR(
-                "Invalid compilation database in {}. Skipping item at index {}: " "'directory' key is missing.",
+                "Invalid compilation database in {}. Skipping item at index {}: "
+                "'directory' key is missing.",
                 path,
                 index);
             ++index;
@@ -264,7 +266,8 @@ std::optional<std::size_t> CompilationDatabase::load(llvm::StringRef path) {
 
         if(obj["file"].get_string().get(file_sv)) {
             LOG_ERROR(
-                "Invalid compilation database in {}. Skipping item at index {}: " "'file' key is missing.",
+                "Invalid compilation database in {}. Skipping item at index {}: "
+                "'file' key is missing.",
                 path,
                 index);
             ++index;
@@ -316,7 +319,8 @@ std::optional<std::size_t> CompilationDatabase::load(llvm::StringRef path) {
             std::string_view cmd_sv;
             if(obj["command"].get_string().get(cmd_sv)) {
                 LOG_ERROR(
-                    "Invalid compilation database in {}. Skipping item at index {}: " "neither 'arguments' nor 'command' key is present.",
+                    "Invalid compilation database in {}. Skipping item at index {}: "
+                    "neither 'arguments' nor 'command' key is present.",
                     path,
                     index);
                 ++index;

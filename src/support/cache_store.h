@@ -140,8 +140,15 @@ public:
     /// Open (creating if necessary) the store under `root`.  Any sibling
     /// version directory other than v{version} is deleted.  Loads the
     /// manifest if present and sweeps tmp directories of dead instances.
+    ///
+    /// `read_only` opens for inspection without touching the disk: nothing
+    /// is created, swept or discarded — a store another process (possibly
+    /// an older layout version) is live on must survive being inspected.
+    /// Fails with `no_such_file_or_directory` when the versioned directory
+    /// does not exist; only lookups and enumeration may be used.
     static std::expected<CacheStore, std::error_code> open(llvm::StringRef root,
-                                                           std::uint32_t version);
+                                                           std::uint32_t version,
+                                                           bool read_only = false);
 
     CacheStore(CacheStore&&) noexcept;
     CacheStore& operator=(CacheStore&&) noexcept;
@@ -213,6 +220,16 @@ public:
     /// place their own metadata files directly under it (the store only
     /// manages namespace subdirectories); they die with the version.
     llvm::StringRef base_dir() const;
+
+    /// Whether the store was opened in read-only inspection mode.
+    bool read_only() const;
+
+    /// First namespace directory scan that failed since open (default
+    /// error_code when none did).  A failed scan makes the namespace look
+    /// empty while its blobs exist, so a reader that would report "no
+    /// data" must check this first.  A read-only open of a namespace that
+    /// was never created scans empty legitimately and is not a failure.
+    std::error_code scan_error() const;
 
     /// Atomically persist the manifest (key sizes and last-accessed times)
     /// if anything changed.  Also runs automatically every few commits;

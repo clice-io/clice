@@ -20,12 +20,12 @@ Size: 14 bytes
 ### `expression`  
 
 ---
-Type: `unsigned long`  
+Type: `__size_t (aka unsigned long)`  
 Value = `1`
 
 04_alignof_expr: { range: "16:8-16:15" }
 ### `expression`  
 
 ---
-Type: `unsigned long`  
+Type: `__size_t (aka unsigned long)`  
 Value = `1`

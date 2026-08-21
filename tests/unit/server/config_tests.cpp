@@ -33,7 +33,7 @@ TEST_SUITE(Config) {
 TEST_CASE(ParsePartialProject) {
     // A partial decode only touches the fields it names; everything else
     // keeps the field-initializer defaults.
-    auto result = kota::codec::toml::parse<ProjectConfig>(R"(cache_dir = "/tmp/test")");
+    auto result = kota::codec::toml::from_string<ProjectConfig>(R"(cache_dir = "/tmp/test")");
     EXPECT_TRUE(result.has_value());
     EXPECT_EQ(std::string_view(result->cache_dir), "/tmp/test");
     EXPECT_EQ(result->clang_tidy.value, false);
@@ -42,7 +42,7 @@ TEST_CASE(ParsePartialProject) {
 }
 
 TEST_CASE(ParseConfigRule) {
-    auto result = kota::codec::toml::parse<ConfigRule>(R"(
+    auto result = kota::codec::toml::from_string<ConfigRule>(R"(
 patterns = ["**/*.cpp"]
 append = ["-std=c++20"]
 )");
@@ -54,7 +54,7 @@ append = ["-std=c++20"]
 }
 
 TEST_CASE(ParseFullConfig) {
-    auto result = kota::codec::toml::parse<Config>(R"(
+    auto result = kota::codec::toml::from_string<Config>(R"(
 [project]
 cache_dir = "/tmp/test"
 clang_tidy = true
@@ -73,7 +73,7 @@ append = ["-std=c++20"]
 }
 
 TEST_CASE(ParseInlayHints) {
-    auto result = kota::codec::toml::parse<Config>(R"(
+    auto result = kota::codec::toml::from_string<Config>(R"(
 [inlay_hints]
 block_end = true
 parameters = false
@@ -87,14 +87,14 @@ type_name_limit = 64
 }
 
 TEST_CASE(ParseEmptyConfig) {
-    auto result = kota::codec::toml::parse<Config>("");
+    auto result = kota::codec::toml::from_string<Config>("");
     EXPECT_TRUE(result.has_value());
     EXPECT_TRUE(result->rules.empty());
     EXPECT_TRUE(std::string_view(result->project.cache_dir).empty());
 }
 
 TEST_CASE(ParseOnlyRules) {
-    auto result = kota::codec::toml::parse<Config>(R"(
+    auto result = kota::codec::toml::from_string<Config>(R"(
 [[rules]]
 patterns = ["*.h"]
 remove = ["-Werror"]
@@ -649,7 +649,7 @@ append = ["-DFROM_TOML"]
     EXPECT_EQ(config.compiled_rules.size(), 1u);
 
     // Overlay only `idle_timeout_ms` via JSON.
-    auto ov = kota::codec::json::parse(R"({ "project": { "idle_timeout_ms": 99 } })", config);
+    auto ov = kota::codec::json::from_string(R"({ "project": { "idle_timeout_ms": 99 } })", config);
     EXPECT_TRUE(ov.has_value());
     config.finalize(tmp.root.str());
 
@@ -682,7 +682,7 @@ bundle_overloads = false
                                               nullptr,
                                               nullptr,
                                               /*finalized=*/false);
-    auto ov = kota::codec::json::parse(
+    auto ov = kota::codec::json::from_string(
         R"({ "inlay_hints": { "parameters": false, "block_end": false }, "code_completion": { "limit": 5 } })",
         config);
     EXPECT_TRUE(ov.has_value());
@@ -713,7 +713,7 @@ append = ["-DTOML_ONLY"]
     auto config = Config::load_from_workspace(tmp.root.str());
     EXPECT_EQ(config.compiled_rules.size(), 1u);
 
-    auto ov = kota::codec::json::parse(
+    auto ov = kota::codec::json::from_string(
         R"({ "rules": [ { "patterns": ["**/*.cc"], "append": ["-DFROM_JSON"] } ] })",
         config);
     EXPECT_TRUE(ov.has_value());

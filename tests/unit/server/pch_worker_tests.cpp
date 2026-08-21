@@ -3,8 +3,8 @@
 #include <vector>
 
 #include "test/test.h"
-#include "index/preamble_state.h"
 #include "server/protocol/worker.h"
+#include "server/state/workspace.h"
 #include "server/worker_test_helpers.h"
 #include "syntax/scan.h"
 
@@ -23,7 +23,9 @@ TEST_SUITE(PCHWorker) {
 TEST_CASE(BuildPCHThenCompile) {
     TempDir tmp;
 
-    tmp.touch("common.h", R"cpp(struct Point { int x, y; };)cpp" "\n");
+    tmp.touch("common.h",
+              R"cpp(struct Point { int x, y; };)cpp"
+              "\n");
     auto header = tmp.path("common.h");
 
     std::string main_text = "#include \"common.h\"\nPoint p{1,2};\n";
@@ -72,9 +74,9 @@ TEST_CASE(BuildPCHThenCompile) {
     // Verify the PCH file exists on disk.
     ASSERT_TRUE(llvm::sys::fs::exists(pch_path));
 
-    // The worker wrote the paired PreambleState blob: it must load and
+    // The worker wrote the paired preamble envelope: it must load and
     // carry the preamble's document links (the #include of common.h).
-    auto state = index::PreambleState::load(tmp.path("preamble.pch.idx"));
+    auto state = load_pch_envelope(tmp.path("preamble.pch.idx"));
     ASSERT_TRUE(state != nullptr);
     bool has_common_link = std::ranges::any_of(state->links(), [&](auto& link) {
         return llvm::StringRef(link.target).ends_with("common.h");
@@ -120,7 +122,9 @@ TEST_CASE(BuildPCHThenCompile) {
 TEST_CASE(BlobWriteFailure) {
     TempDir tmp;
 
-    tmp.touch("common.h", R"cpp(struct Point { int x, y; };)cpp" "\n");
+    tmp.touch("common.h",
+              R"cpp(struct Point { int x, y; };)cpp"
+              "\n");
     std::string main_text = "#include \"common.h\"\nPoint p{1,2};\n";
     tmp.touch("main.cpp", main_text);
     auto main_file = tmp.path("main.cpp");
@@ -165,7 +169,9 @@ TEST_CASE(BlobWriteFailure) {
 TEST_CASE(CompileWithoutPCHStillWorks) {
     TempDir tmp;
 
-    tmp.touch("common.h", R"cpp(struct Point { int x, y; };)cpp" "\n");
+    tmp.touch("common.h",
+              R"cpp(struct Point { int x, y; };)cpp"
+              "\n");
     std::string main_text = "#include \"common.h\"\nPoint p{1,2};\n";
     tmp.touch("main.cpp", main_text);
     auto main_file = tmp.path("main.cpp");

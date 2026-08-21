@@ -162,7 +162,7 @@ TEST_CASE(PreambleDefineUnderPch) {
 
     EXPECT_TOKEN("d1", SymbolKind::Directive);
     EXPECT_TOKEN("m0", SymbolKind::Macro);
-    EXPECT_TOKEN("k0", SymbolKind::Keyword);
+    EXPECT_TOKEN("k0", SymbolKind::Primitive);
     EXPECT_TOKEN("k1", SymbolKind::Keyword);
     EXPECT_TOKEN("c0", SymbolKind::Comment);
 }

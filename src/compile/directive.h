@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <string>
 #include <vector>
 
 #include "syntax/token.h"
@@ -26,9 +25,8 @@ struct Include {
 
 /// Information about `__has_include` directive.
 struct HasInclude {
-    /// The file id of included file, may be empty if there is
-    /// not such file.
-    clang::FileID fid;
+    /// The actual file found by the probe, if any.
+    clang::OptionalFileEntryRef file;
 
     /// Location of the filename token start.
     clang::SourceLocation location;

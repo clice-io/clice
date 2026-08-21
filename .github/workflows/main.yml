@@ -88,7 +88,7 @@ jobs:
       - uses: clice-io/docs@main
         with:
           project: clice
-          token: ${{ secrets.PUBLISH_DOCS }}
+          token: ${{ secrets.CLICE_DOCS }}
 
   vscode:
     needs: changes

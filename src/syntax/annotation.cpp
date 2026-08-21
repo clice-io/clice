@@ -67,7 +67,8 @@ AnnotatedSource AnnotatedSource::from(llvm::StringRef content) {
                        return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
                    })) {
                     LOG_FATAL(
-                        "§({}) is not an identifier name; use §() for a nameless " "point before real parentheses.",
+                        "§({}) is not an identifier name; use §() for a nameless "
+                        "point before real parentheses.",
                         key);
                 }
                 // `nameless_<i>` is how unnamed markers key their results;

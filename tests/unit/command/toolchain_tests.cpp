@@ -334,6 +334,124 @@ TEST_CASE(ResolveReplacesResourceDir, skip = Windows) {
     }
 }
 
+/// A fake driver whose -### line reflects the -resource-dir it was invoked
+/// with, falling back to `fallback_dir` when none was passed — the same
+/// observable difference a real driver shows between a forced resource dir
+/// and a derived one. An empty `name` produces the usual `*.clang` temp
+/// file; otherwise the script gets that exact file name so the target can
+/// be derived from a prefixed driver spelling.
+std::optional<std::string> create_echo_clang(llvm::StringRef fallback_dir, llvm::StringRef name) {
+    std::string file;
+    if(name.empty()) {
+        auto temp = fs::createTemporaryFile("clice-fake", "clang");
+        if(!temp)
+            return std::nullopt;
+        file = *temp;
+    } else {
+        llvm::SmallString<128> dir;
+        if(llvm::sys::fs::createUniqueDirectory("clice-fake-driver", dir))
+            return std::nullopt;
+        file = (llvm::Twine(dir) + "/" + name).str();
+    }
+
+    auto script = R"(#!/bin/sh
+rd=')" + fallback_dir.str() +
+                  R"('
+prev=""
+for a in "$@"; do
+  if [ "$prev" = "-resource-dir" ]; then rd="$a"; fi
+  prev="$a"
+done
+echo " \"/usr/bin/clang-22\" \"-cc1\" \"-resource-dir\" \"$rd\" \"-internal-isystem\" \"$rd/include\" \"-std=c++23\"" >&2
+)";
+    if(!fs::write(file, script))
+        return std::nullopt;
+
+    if(fs::setPermissions(file, fs::all_read | fs::all_exe))
+        return std::nullopt;
+
+    return file;
+}
+
+/// The MinGW preservation tests share one shape: an external resource tree,
+/// an echoing driver, and the expectation that the resolved flags keep the
+/// external tree and never mention clice's own.
+void EXPECT_KEEPS_EXTERNAL(llvm::StringRef driver_name,
+                           llvm::ArrayRef<const char*> extra_flags,
+                           bool warm_first = false) {
+    llvm::SmallString<128> external_dir_buf;
+    auto create_error =
+        llvm::sys::fs::createUniqueDirectory("clice-external-resource", external_dir_buf);
+    ASSERT_TRUE(!create_error);
+    auto external_dir = external_dir_buf.str().str();
+    auto driver = create_echo_clang(external_dir, driver_name);
+    ASSERT_TRUE(driver.has_value());
+
+    CompileCommand cmd;
+    cmd.resolved.flags = {driver->c_str(), "-std=c++23"};
+    cmd.resolved.flags.insert(cmd.resolved.flags.end(), extra_flags.begin(), extra_flags.end());
+    cmd.resolved.flags.push_back("-resource-dir");
+    cmd.resolved.flags.push_back(resource_dir().data());
+    cmd.source_file = "/tmp/a.cpp";
+
+    Toolchain tc;
+    if(warm_first) {
+        tc.warm({cmd});
+        // The driver disappears after warming: the resolve below can only
+        // succeed from the warmed cache entry, never from a fresh query.
+        fs::remove(*driver);
+    }
+    ASSERT_TRUE(tc.resolve(cmd).has_value());
+    EXPECT_TRUE(std::ranges::contains(cmd.resolved.flags, llvm::StringRef(external_dir)));
+    EXPECT_FALSE(std::ranges::contains(cmd.resolved.flags, resource_dir()));
+
+    fs::remove(*driver);
+    if(!driver_name.empty()) {
+        llvm::sys::fs::remove(llvm::sys::path::parent_path(*driver));
+    }
+    llvm::sys::fs::remove(external_dir_buf);
+}
+
+TEST_CASE(ResolveKeepsExternalResource, skip = Windows) {
+    EXPECT_KEEPS_EXTERNAL("", {"--target=x86_64-w64-windows-gnu"});
+}
+
+TEST_CASE(WarmKeepsExternalResource, skip = Windows) {
+    EXPECT_KEEPS_EXTERNAL("", {"--target=x86_64-w64-windows-gnu"}, /*warm_first=*/true);
+}
+
+TEST_CASE(PrefixedDriverKeepsResource, skip = Windows) {
+    EXPECT_KEEPS_EXTERNAL("x86_64-w64-mingw32-clang++", {});
+}
+
+TEST_CASE(LastTargetFlagWins, skip = Windows) {
+    EXPECT_KEEPS_EXTERNAL("",
+                          {"--target=x86_64-unknown-linux-gnu", "--target=x86_64-w64-windows-gnu"});
+}
+
+TEST_CASE(ResolveReplacesNonMingwResource, skip = Windows) {
+    llvm::SmallString<128> external_dir_buf;
+    auto create_error =
+        llvm::sys::fs::createUniqueDirectory("clice-external-resource", external_dir_buf);
+    ASSERT_TRUE(!create_error);
+    auto external_dir = external_dir_buf.str().str();
+    auto driver = create_echo_clang(external_dir, "");
+    ASSERT_TRUE(driver.has_value());
+
+    CompileCommand cmd;
+    cmd.resolved.flags = {driver->c_str(), "-std=c++23"};
+    cmd.source_file = "/tmp/a.cpp";
+
+    Toolchain tc;
+    ASSERT_TRUE(tc.resolve(cmd).has_value());
+    auto expected_include = resource_dir().str() + "/include";
+    EXPECT_TRUE(std::ranges::contains(cmd.resolved.flags, resource_dir()));
+    EXPECT_TRUE(std::ranges::contains(cmd.resolved.flags, llvm::StringRef(expected_include)));
+
+    fs::remove(*driver);
+    llvm::sys::fs::remove(external_dir_buf);
+}
+
 TEST_CASE(ResolveMainFileName, skip = Windows) {
     constexpr llvm::StringRef line =
         R"( "/usr/bin/clang-22" "-cc1" "-main-file-name" "probe.cpp" "-std=c++23")";

@@ -19,9 +19,11 @@
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Program.h"
 #include "llvm/TargetParser/Host.h"
+#include "llvm/TargetParser/Triple.h"
 #include "clang/Driver/Compilation.h"
 #include "clang/Driver/Driver.h"
 #include "clang/Driver/Tool.h"
+#include "clang/Driver/ToolChain.h"
 
 #ifndef _WIN32
 #include <unistd.h>
@@ -471,9 +473,44 @@ std::expected<std::vector<std::string>, std::string>
     return result;
 }
 
+/// Whether the command targets windows-gnu: an explicit target flag wins
+/// (the last one, matching the driver's getLastArg); otherwise a
+/// target-prefixed driver name (llvm-mingw installs
+/// `x86_64-w64-mingw32-clang++`-style wrappers that derive the target
+/// implicitly) decides. Parsing resolves aliases, so the legacy `-target`
+/// and `=` spellings arrive as the canonical ids.
+static bool uses_windows_gnu_target(llvm::ArrayRef<const char*> arguments) {
+    std::vector<std::string> parse_args(arguments.begin() + 1, arguments.end());
+    auto options = kota::option::ParseOptions{.dash_dash_parsing = true,
+                                              .visibility = default_visibility(arguments[0])};
+    std::optional<bool> from_flags;
+    for(auto& result: option::table().parse(parse_args, options)) {
+        if(!result.has_value())
+            continue;
+        auto& arg = *result;
+        if(arg.id == option::OPT_target && arg.values.size() == 1) {
+            from_flags =
+                llvm::Triple(llvm::Triple::normalize(arg.values[0])).isWindowsGNUEnvironment();
+        }
+    }
+    if(from_flags)
+        return *from_flags;
+
+    auto parsed = clang::driver::ToolChain::getTargetAndModeFromProgramName(arguments[0]);
+    return !parsed.TargetPrefix.empty() &&
+           llvm::Triple(llvm::Triple::normalize(parsed.TargetPrefix)).isWindowsGNUEnvironment();
+}
+
 Toolchain::ToolchainExtract Toolchain::extract_flags(llvm::StringRef file,
                                                      llvm::ArrayRef<const char*> arguments) {
     ToolchainExtract result;
+
+    // LLVM-MinGW's resource headers and libc++ are a matched installation.
+    // Let its driver derive those implicit paths instead of forcing clice's
+    // resource tree: the injected -resource-dir is dropped from the query
+    // (and the key) below. Other targets keep it so the embedded frontend
+    // and builtin headers stay version-matched.
+    result.preserve_external_resource = uses_windows_gnu_target(arguments);
 
     result.key += arguments[0];
     result.key += '\0';
@@ -497,6 +534,10 @@ Toolchain::ToolchainExtract Toolchain::extract_flags(llvm::StringRef file,
         if(is_user_content_option(arg.id))
             continue;
 
+        if(result.preserve_external_resource && arg.id == option::OPT_resource_dir &&
+           arg.values.size() == 1 && llvm::StringRef(arg.values[0]) == resource_dir())
+            continue;
+
         result.key += std::to_string(arg.id);
         result.key += '\0';
         for(auto value: arg.values) {
@@ -517,7 +558,8 @@ std::expected<void, std::string> Toolchain::resolve(CompileCommand& cmd) {
     if(cmd.resolved.flags.empty())
         return std::unexpected("empty flags");
 
-    auto [key, query_args] = extract_flags(cmd.source_file, cmd.resolved.flags);
+    auto [key, query_args, preserve_external_resource] =
+        extract_flags(cmd.source_file, cmd.resolved.flags);
 
     auto it = cache.find(key);
     if(it == cache.end()) {
@@ -542,7 +584,9 @@ std::expected<void, std::string> Toolchain::resolve(CompileCommand& cmd) {
     auto cached = llvm::ArrayRef(it->second);
     std::vector<const char*> new_flags(cached.begin(), cached.end());
 
-    // Replace resource dir in cc1 result with ours.
+    // Preserve a real LLVM-MinGW resource tree. Other external resource paths
+    // are replaced with ours to keep the embedded frontend and builtin headers
+    // version-matched.
     if(!resource_dir().empty()) {
         llvm::StringRef old_resource_dir;
         for(std::size_t i = 0; i + 1 < new_flags.size(); ++i) {
@@ -551,7 +595,9 @@ std::expected<void, std::string> Toolchain::resolve(CompileCommand& cmd) {
                 break;
             }
         }
-        if(!old_resource_dir.empty() && old_resource_dir != resource_dir()) {
+        bool keep_external =
+            preserve_external_resource && llvm::sys::fs::is_directory(old_resource_dir);
+        if(!old_resource_dir.empty() && old_resource_dir != resource_dir() && !keep_external) {
             for(auto& arg: new_flags) {
                 llvm::StringRef s(arg);
                 if(s.starts_with(old_resource_dir)) {
@@ -614,11 +660,12 @@ void Toolchain::warm(llvm::ArrayRef<CompileCommand> commands) {
         if(cmd.resolved.flags.empty())
             continue;
 
-        auto [key, query_args] = extract_flags(cmd.source_file, cmd.resolved.flags);
+        auto extract = extract_flags(cmd.source_file, cmd.resolved.flags);
+        auto& key = extract.key;
         if(cache.count(key) || failed.count(key) || !seen.try_emplace(key, true).second)
             continue;
 
-        pending.push_back({std::move(key), std::move(query_args), cmd.source_file});
+        pending.push_back({std::move(key), std::move(extract.query_args), cmd.source_file});
     }
 
     if(pending.empty())

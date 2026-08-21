@@ -12,8 +12,8 @@ on:
       target_triple:
         required: true
         type: string
-      # Unified arch-os-abi name (e.g. arm64-linux-gnu) used for artifact
-      # naming; the triple above keeps the compiler's spelling.
+      # Standard triple (e.g. aarch64-unknown-linux-gnu) used for artifact
+      # naming; matches the compiler triple.
       target_name:
         required: true
         type: string

@@ -175,12 +175,7 @@ public:
                     bool,
                     clang::OptionalFileEntryRef file,
                     clang::SrcMgr::CharacteristicKind) override {
-        clang::FileID fid;
-        if(file) {
-            fid = unit.file_id(*file);
-        }
-
-        unit->directives[unit.file_id(location)].has_includes.emplace_back(fid, location);
+        unit->directives[unit.file_id(location)].has_includes.emplace_back(file, location);
     }
 
     void PragmaDirective(clang::SourceLocation loc,

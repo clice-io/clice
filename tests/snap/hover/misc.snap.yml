@@ -89,11 +89,11 @@ public: static void operator delete(void *p) noexcept
 ---
 → `void *`  
 Parameters:  
-- `unsigned long`
+- `__size_t (aka unsigned long)`
 
 ---
 ```cpp
-void *operator new(unsigned long)
+void *operator new(__size_t)
 ```
 
 09_ctor_paren: { range: "53:5-53:10" }
