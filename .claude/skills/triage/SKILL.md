@@ -4,9 +4,11 @@ description: Classify untriaged issues (open issues without a kind: label) via a
 context: fork
 ---
 
-Triage one batch of untriaged issues. Untriaged = open issue with no
-`kind:` label — the state lives in the labels themselves, so manually
-triaged issues are skipped automatically and there is no bookkeeping file.
+Triage one batch of untriaged issues. Untriaged = open issue that carries
+`needs-triage` (auto-applied by the issue templates) or has no `kind:`
+label (blank issues). The state lives in the labels themselves, so
+manually triaged issues are skipped automatically and there is no
+bookkeeping file.
 
 ## 1. Snapshot
 
@@ -45,12 +47,14 @@ python3 .claude/skills/triage/scripts/validate.py /tmp/clice-triage/verdicts-*.m
 ```
 
 Deterministic gate over the model output: every label must exist in
-`.github/labels.yml`, exactly one `kind:`, no forbidden labels
-(`good first issue`, `help wanted`), every snapshot issue covered,
-verdicts for unknown issues dropped. Computes `add` = proposed minus
-existing labels and writes `/tmp/clice-triage/validated.json`. A verdict
-that fails validation goes to the failures list — report it, never apply
-it, and do not hand-edit it back in.
+`.github/labels.yml`, exactly one `kind:`, no forbidden additions
+(`good first issue`, `help wanted`), no `os:wsl` mixed with a native os
+label, every snapshot issue covered, verdicts for unknown issues dropped.
+Computes `add` = proposed minus existing labels plus a `suggest_remove`
+list (existing labels the model omitted — reported for the maintainer,
+never auto-removed) and writes `/tmp/clice-triage/validated.json`. A
+verdict that fails validation goes to the failures list — report it,
+never apply it, and do not hand-edit it back in.
 
 ## 4. Report
 
@@ -72,7 +76,10 @@ python3 .claude/skills/triage/scripts/apply.py /tmp/clice-triage/validated.json 
   [--only N,N | --skip N,N] [--retitle N,N]
 ```
 
-Labels are only ever added, never removed. Title rewrites apply only to
-issues explicitly listed in `--retitle`. `ask_reporter` suggestions are
-never posted automatically — the maintainer sends them personally if
-worthwhile.
+Before editing, apply refetches each issue's live labels: closed issues
+are skipped, a `kind:` set by a maintainer since the snapshot wins over
+the model's, and `needs-triage` is removed. Beyond that marker, labels
+are only ever added — removals stay manual via the `suggest_remove`
+report. Title rewrites apply to `--retitle all` or explicitly listed
+issues. `ask_reporter` suggestions are never posted automatically — the
+maintainer sends them personally if worthwhile.

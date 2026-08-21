@@ -1,5 +1,6 @@
 import argparse
 import json
+import shutil
 import subprocess
 import time
 from datetime import datetime, timezone
@@ -8,6 +9,8 @@ from pathlib import Path
 CHUNK = 25
 BODY_LIMIT = 8000
 COMMENT_LIMIT = 3000
+COMMENT_WINDOW = 8
+MAINTAINERS = {"16bit-ykiko"}
 
 
 def gh(*args):
@@ -15,8 +18,19 @@ def gh(*args):
         result = subprocess.run(["gh", *args], capture_output=True, text=True)
         if result.returncode == 0:
             return result.stdout
-        time.sleep(5 * (attempt + 1))
+        if attempt < 2:
+            time.sleep(5 * (attempt + 1))
     raise SystemExit(f"gh {' '.join(args)} failed: {result.stderr.strip()}")
+
+
+def login(entry):
+    name = (entry or {}).get("login", "ghost")
+    return f"{name} (maintainer)" if name in MAINTAINERS else name
+
+
+def untriaged_filter(issue):
+    names = {l["name"] for l in issue["labels"]}
+    return "needs-triage" in names or not any(n.startswith("kind:") for n in names)
 
 
 def main():
@@ -29,6 +43,9 @@ def main():
     args = parser.parse_args()
 
     out = Path(args.out)
+    shutil.rmtree(out / "issues", ignore_errors=True)
+    for stale in ("existing-labels.json", "validated.json", "digest.json"):
+        (out / stale).unlink(missing_ok=True)
     out.mkdir(parents=True, exist_ok=True)
 
     all_open = json.loads(
@@ -45,31 +62,31 @@ def main():
             "number,title,labels,createdAt,updatedAt",
         )
     )
-    untriaged = [
-        i
-        for i in all_open
-        if not any(l["name"].startswith("kind:") for l in i["labels"])
-    ]
+    if len(all_open) == 1000:
+        print("warning: hit the 1000-issue listing cap, snapshot may be incomplete")
+    untriaged = [i for i in all_open if untriaged_filter(i)]
     if args.limit:
         untriaged = untriaged[: args.limit]
 
     now = datetime.now(timezone.utc)
 
-    def age(iso):
-        return (now - datetime.fromisoformat(iso.replace("Z", "+00:00"))).days
+    def age_days(iso):
+        return (
+            now - datetime.fromisoformat(iso.replace("Z", "+00:00"))
+        ).total_seconds() / 86400
 
     waiting = ("status:needs-info", "status:needs-repro")
     digest = {
         "open_total": len(all_open),
         "untriaged": sorted(i["number"] for i in untriaged),
         "new_last_7d": [
-            [i["number"], i["title"]] for i in all_open if age(i["createdAt"]) <= 7
+            [i["number"], i["title"]] for i in all_open if age_days(i["createdAt"]) <= 7
         ],
         "stale_waiting": [
-            [i["number"], i["title"], age(i["updatedAt"])]
+            [i["number"], i["title"], int(age_days(i["updatedAt"]))]
             for i in all_open
             if any(l["name"] in waiting for l in i["labels"])
-            and age(i["updatedAt"]) > 14
+            and age_days(i["updatedAt"]) > 14
         ],
     }
     (out / "digest.json").write_text(json.dumps(digest, indent=1))
@@ -89,18 +106,31 @@ def main():
                 "number,title,body,author,comments",
             )
         )
-        author = (detail["author"] or {}).get("login", "ghost")
         labels = sorted(l["name"] for l in issue["labels"])
+        body = detail["body"] or "(no body)"
+        if len(body) > BODY_LIMIT:
+            body = body[:BODY_LIMIT] + "\n[... body truncated ...]"
         lines = [
             f"# Issue #{detail['number']}: {detail['title']}",
-            f"Author: {author}",
+            f"Author: {login(detail['author'])}",
             f"Existing labels: {', '.join(labels) or '(none)'}",
             "",
-            (detail["body"] or "(no body)")[:BODY_LIMIT],
+            body,
         ]
-        for comment in detail["comments"][:8]:
-            who = (comment["author"] or {}).get("login", "ghost")
-            lines += ["", f"--- comment by {who} ---", comment["body"][:COMMENT_LIMIT]]
+        comments = detail["comments"]
+        if len(comments) > COMMENT_WINDOW:
+            half = COMMENT_WINDOW // 2
+            omitted = len(comments) - 2 * half
+            comments = comments[:half] + [None] + comments[-half:]
+        for comment in comments:
+            if comment is None:
+                lines += ["", f"[... {omitted} comments omitted ...]"]
+                continue
+            lines += [
+                "",
+                f"--- comment by {login(comment['author'])} ---",
+                comment["body"][:COMMENT_LIMIT],
+            ]
         (chunk_dir / f"{detail['number']}.md").write_text("\n".join(lines))
         existing[str(detail["number"])] = labels
         time.sleep(1)

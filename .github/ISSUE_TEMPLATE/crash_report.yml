@@ -1,6 +1,6 @@
 name: Crash Report
 description: The clice server crashed, exited unexpectedly, or the editor lost connection.
-labels: ["kind:crash"]
+labels: ["kind:crash", "needs-triage"]
 body:
   - type: markdown
     attributes:

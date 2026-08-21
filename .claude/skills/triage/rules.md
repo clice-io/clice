@@ -91,6 +91,9 @@ If no feature label fits, omit it and report the gap via `taxonomy_gap`.
   rationale.
 - NEVER apply `good first issue` or `help wanted` — maintainer judgment
   only.
+- Never include `needs-triage` in the output — it is a transient marker
+  added by the issue templates and removed automatically when triage is
+  applied.
 
 ## Title normalization
 
@@ -115,16 +118,20 @@ Issue titles follow the PR-title convention:
 Reply with ONLY a JSON array, one object per issue:
 
 ```json
-{
-  "issue": 0,
-  "labels": [],
-  "confidence": "high|medium|low",
-  "rationale": "<one sentence>",
-  "ask_reporter": null,
-  "better_title": null,
-  "taxonomy_gap": null
-}
+[
+  {
+    "issue": 0,
+    "labels": [],
+    "confidence": "high|medium|low",
+    "rationale": "<one sentence>",
+    "ask_reporter": null,
+    "better_title": null,
+    "taxonomy_gap": null
+  }
+]
 ```
+
+The reply is always an array, even for a single issue.
 
 - `labels` — the complete label set for the issue (including labels it
   already has when they remain correct).
