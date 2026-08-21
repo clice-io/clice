@@ -9,7 +9,7 @@ from pathlib import Path
 CHUNK = 25
 BODY_LIMIT = 8000
 COMMENT_LIMIT = 3000
-COMMENT_WINDOW = 8
+COMMENT_WINDOW = 30
 MAINTAINERS = {"16bit-ykiko"}
 
 
@@ -44,9 +44,11 @@ def main():
 
     out = Path(args.out)
     shutil.rmtree(out / "issues", ignore_errors=True)
+    out.mkdir(parents=True, exist_ok=True)
     for stale in ("existing-labels.json", "validated.json", "digest.json"):
         (out / stale).unlink(missing_ok=True)
-    out.mkdir(parents=True, exist_ok=True)
+    for stale_verdict in out.glob("verdicts-*.md"):
+        stale_verdict.unlink()
 
     all_open = json.loads(
         gh(

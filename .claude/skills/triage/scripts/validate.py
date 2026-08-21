@@ -3,20 +3,29 @@ import json
 import re
 from pathlib import Path
 
-FORBIDDEN = {"good first issue", "help wanted", "needs-triage"}
+FORBIDDEN = {"good first issue", "help wanted"}
 CONFIDENCE = {"high", "medium", "low"}
+
+
+def verdict_shaped(data):
+    return (
+        isinstance(data, list)
+        and len(data) > 0
+        and all(isinstance(x, dict) and "issue" in x for x in data)
+    )
 
 
 def extract_array(text):
     decoder = json.JSONDecoder()
+    candidates = []
     for match in re.finditer(r"\[", text):
         try:
             data, end = decoder.raw_decode(text, match.start())
         except ValueError:
             continue
-        if isinstance(data, list):
-            return data
-    return None
+        if verdict_shaped(data):
+            candidates.append(data)
+    return candidates[-1] if candidates else None
 
 
 def check(verdict, taxonomy, existing):
@@ -32,8 +41,10 @@ def check(verdict, taxonomy, existing):
     banned = (labels - existing) & FORBIDDEN
     if banned:
         problems.append(f"forbidden additions {sorted(banned)}")
-    if "os:wsl" in labels and labels & {"os:linux", "os:macos", "os:windows"}:
-        problems.append("os:wsl combined with a native os label")
+    native = {"os:linux", "os:macos", "os:windows"}
+    combined = labels | existing
+    if "os:wsl" in combined and combined & native:
+        problems.append("os:wsl conflicts with a native os label (resolve manually)")
     if verdict.get("confidence") not in CONFIDENCE:
         problems.append(f"bad confidence {verdict.get('confidence')!r}")
     return labels, problems

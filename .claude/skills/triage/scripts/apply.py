@@ -46,41 +46,51 @@ def main():
         live = json.loads(
             gh("issue", "view", str(num), "--repo", args.repo, "--json", "labels,state")
         )
-        time.sleep(1)
         if live["state"] != "OPEN":
             print(f"#{num} skipped: no longer open")
+            time.sleep(1)
             continue
         live_labels = {l["name"] for l in live["labels"]}
+        marker = "needs-triage" in live_labels
+        live_kinds = sorted(l for l in live_labels if l.startswith("kind:"))
+        proposed_kinds = [l for l in verdict["labels"] if l.startswith("kind:")]
+        proposed_kind = proposed_kinds[0] if proposed_kinds else None
+
         add = [l for l in verdict["add"] if l not in live_labels]
-        if any(l.startswith("kind:") for l in live_labels):
-            dropped = [l for l in add if l.startswith("kind:")]
-            if dropped:
+        remove = ["needs-triage"] if marker else []
+        maintainer_kind_wins = False
+        if live_kinds and proposed_kind and proposed_kind not in live_kinds:
+            if marker:
+                remove += live_kinds
+            else:
                 add = [l for l in add if not l.startswith("kind:")]
-                print(f"#{num} kind already set, not adding {dropped}")
+                maintainer_kind_wins = True
+                print(f"#{num} maintainer kind {live_kinds} wins over {proposed_kind}")
+
         edit = []
         if add:
             edit += ["--add-label", ",".join(add)]
-        if "needs-triage" in live_labels:
-            edit += ["--remove-label", "needs-triage"]
+        if remove:
+            edit += ["--remove-label", ",".join(remove)]
         if edit:
             gh("issue", "edit", str(num), "--repo", args.repo, *edit)
-            print(
-                f"#{num} +{add}"
-                + (" -needs-triage" if "--remove-label" in edit else "")
-            )
-            time.sleep(1)
+            print(f"#{num} +{add}" + (f" -{remove}" if remove else ""))
+
         if (retitle_all or num in retitle) and verdict.get("better_title"):
-            gh(
-                "issue",
-                "edit",
-                str(num),
-                "--repo",
-                args.repo,
-                "--title",
-                verdict["better_title"],
-            )
-            print(f"#{num} title → {verdict['better_title']}")
-            time.sleep(1)
+            if maintainer_kind_wins:
+                print(f"#{num} retitle skipped: title type derives from dropped kind")
+            else:
+                gh(
+                    "issue",
+                    "edit",
+                    str(num),
+                    "--repo",
+                    args.repo,
+                    "--title",
+                    verdict["better_title"],
+                )
+                print(f"#{num} title → {verdict['better_title']}")
+        time.sleep(1)
 
 
 main()
