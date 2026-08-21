@@ -85,6 +85,10 @@ def main():
             continue
         marker = "needs-triage" in live_labels
         live_kinds = sorted(label for label in live_labels if label.startswith("kind:"))
+        if not marker and len(live_kinds) > 1:
+            print(f"#{num} skipped: multiple kinds {live_kinds} (resolve manually)")
+            time.sleep(1)
+            continue
         proposed_kinds = [
             label for label in verdict["labels"] if label.startswith("kind:")
         ]

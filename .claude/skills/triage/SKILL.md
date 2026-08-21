@@ -93,7 +93,7 @@ proposals first.
 
 ```bash
 python3 .claude/skills/triage/scripts/apply.py /tmp/clice-triage/validated.json \
-  [--only N,N | --skip N,N] [--retitle N,N]
+  [--only N,N | --skip N,N] [--retitle N,N] [--include-closed]
 ```
 
 Before editing, apply refetches each issue's live labels and title and
@@ -110,9 +110,9 @@ kind is a maintainer decision — it wins, and the model's kind, its
 `status:` labels, and its derived title rewrite are all dropped. Label
 edits run removals first and stamp `triaged` in a separate final call,
 so a partial failure never hides an inconsistent issue from future
-snapshots. An issue whose live labels would
-combine `os:wsl` with a native os label is skipped for manual
-resolution. Beyond that, labels are only ever added — removals stay
+snapshots. An issue carrying several maintainer kinds (no marker), or
+whose live labels would combine `os:wsl` with a native os label, is
+skipped for manual resolution. Beyond that, labels are only ever added — removals stay
 manual via the `suggest_remove` report. Title rewrites apply to
 `--retitle all` or explicitly listed issues, and are skipped when the
 live title changed after the snapshot. `ask_reporter` suggestions are
