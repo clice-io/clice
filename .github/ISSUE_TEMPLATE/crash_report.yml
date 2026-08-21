@@ -24,6 +24,7 @@ body:
         - Windows
         - macOS
         - Linux
+        - WSL
     validations:
       required: true
 

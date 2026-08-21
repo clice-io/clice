@@ -10,6 +10,7 @@ Detailed knowledge lives in skills — load them at the moments their descriptio
 - **resolve-comments** — each watch round of an open PR: pulls unresolved review threads, fixes and resolves them, returns a summary.
 - **codex** — before delegating work to the codex CLI: adversarial plan review, code review, debugging, test writing, scoped implementation.
 - **build / test / format** — build the project, run suites, format sources.
+- **triage** — classify untriaged issues and produce the activity digest; label rules live in the skill's `rules.md`.
 - **release / upgrade-llvm** — release operations and LLVM upgrades.
 
 ## Hard Rules
