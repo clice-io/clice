@@ -1,6 +1,6 @@
 ---
 name: triage
-description: Classify untriaged issues (open issues without a kind: label) via a GPT batch run, validate against the label taxonomy, and return a proposed-labels report plus an activity digest. Read-only — applying labels happens in the main conversation after maintainer approval. Runs in a forked context.
+description: Classify untriaged issues (issues without the permanent triaged marker — open by default, closed backfills optional) via a GPT batch run, validate against the label taxonomy, and return a proposed-labels report plus an activity digest. Read-only — applying labels happens in the main conversation after maintainer approval. Runs in a forked context.
 context: fork
 ---
 
@@ -97,7 +97,9 @@ python3 .claude/skills/triage/scripts/apply.py /tmp/clice-triage/validated.json 
 
 Before editing, apply refetches each issue's live labels and title and
 reconciles the verdict's full label set against them. Closed issues are
-skipped and `needs-triage` is removed. Kind conflicts split on that
+skipped; with `--include-closed` they are edited instead, and any
+`status:` labels — proposed or live — are stripped, since a settled
+thread has no state. `needs-triage` is removed. Kind conflicts split on that
 marker: while it is still present, template `kind:` labels differing
 from the model's are replaced; once the marker is gone, the existing
 kind is a maintainer decision — it wins, and both the model's kind and

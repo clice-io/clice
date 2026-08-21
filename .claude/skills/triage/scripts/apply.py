@@ -65,7 +65,8 @@ def main():
                 "labels,state,title",
             )
         )
-        if live["state"] != "OPEN" and not args.include_closed:
+        closed = live["state"] != "OPEN"
+        if closed and not args.include_closed:
             print(f"#{num} skipped: no longer open")
             time.sleep(1)
             continue
@@ -78,9 +79,14 @@ def main():
         proposed_kind = proposed_kinds[0] if proposed_kinds else None
 
         add = [label for label in verdict["labels"] if label not in live_labels]
+        remove = ["needs-triage"] if marker else []
+        if closed:
+            add = [label for label in add if not label.startswith("status:")]
+            remove += sorted(
+                label for label in live_labels if label.startswith("status:")
+            )
         if "triaged" not in live_labels:
             add.append("triaged")
-        remove = ["needs-triage"] if marker else []
         maintainer_kind_wins = False
         if marker:
             remove += [label for label in live_kinds if label != proposed_kind]
@@ -95,15 +101,6 @@ def main():
             print(f"#{num} skipped: os:wsl vs native os conflict (resolve manually)")
             time.sleep(1)
             continue
-
-        edit = []
-        if add:
-            edit += ["--add-label", ",".join(add)]
-        if remove:
-            edit += ["--remove-label", ",".join(remove)]
-        if edit:
-            gh("issue", "edit", str(num), "--repo", args.repo, *edit)
-            print(f"#{num} +{add}" + (f" -{remove}" if remove else ""))
 
         if (retitle_all or num in retitle) and verdict.get("better_title"):
             if maintainer_kind_wins:
@@ -121,6 +118,17 @@ def main():
                     verdict["better_title"],
                 )
                 print(f"#{num} title → {verdict['better_title']}")
+
+        # The label edit stamps `triaged`, which hides the issue from every
+        # future snapshot — it must be the last operation, after the title edit.
+        edit = []
+        if add:
+            edit += ["--add-label", ",".join(add)]
+        if remove:
+            edit += ["--remove-label", ",".join(remove)]
+        if edit:
+            gh("issue", "edit", str(num), "--repo", args.repo, *edit)
+            print(f"#{num} +{add}" + (f" -{remove}" if remove else ""))
         time.sleep(1)
 
 
