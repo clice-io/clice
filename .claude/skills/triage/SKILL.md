@@ -23,8 +23,9 @@ python3 .claude/skills/triage/scripts/snapshot.py
 Fetches every untriaged issue (body + comments) into
 `/tmp/clice-triage/issues/chunk-N/` (25 per chunk), plus `digest.json`
 (new issues in the last 7 days, `needs-info`/`needs-repro` threads with no
-activity for over 14 days), `existing-labels.json`, and `titles.json`
-(snapshot titles, used by apply to detect drift). Spaces `gh` calls
+activity for over 14 days), `existing-labels.json`, `titles.json`, and
+`states.json` (snapshot titles and states, used by apply to detect
+drift). Spaces `gh` calls
 with `sleep 1` — API rate limits are a real concern. With zero untriaged
 issues, skip straight to the digest section of the report.
 
@@ -96,14 +97,20 @@ python3 .claude/skills/triage/scripts/apply.py /tmp/clice-triage/validated.json 
 ```
 
 Before editing, apply refetches each issue's live labels and title and
-reconciles the verdict's full label set against them. Closed issues are
-skipped; with `--include-closed` they are edited instead, and any
+reconciles the verdict's full label set against them. An issue whose
+state flipped since the snapshot (closed, or reopened during a closed
+backfill) or that gained `triaged` in the meantime is skipped — the
+verdict was produced for a state that no longer exists. Closed issues
+are skipped; with `--include-closed` they are edited instead, and any
 `status:` labels — proposed or live — are stripped, since a settled
 thread has no state. `needs-triage` is removed. Kind conflicts split on that
 marker: while it is still present, template `kind:` labels differing
 from the model's are replaced; once the marker is gone, the existing
-kind is a maintainer decision — it wins, and both the model's kind and
-its derived title rewrite are dropped. An issue whose live labels would
+kind is a maintainer decision — it wins, and the model's kind, its
+`status:` labels, and its derived title rewrite are all dropped. Label
+edits run removals first and stamp `triaged` in a separate final call,
+so a partial failure never hides an inconsistent issue from future
+snapshots. An issue whose live labels would
 combine `os:wsl` with a native os label is skipped for manual
 resolution. Beyond that, labels are only ever added — removals stay
 manual via the `suggest_remove` report. Title rewrites apply to

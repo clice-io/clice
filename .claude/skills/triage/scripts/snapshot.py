@@ -53,6 +53,7 @@ def main():
     for stale in (
         "existing-labels.json",
         "titles.json",
+        "states.json",
         "validated.json",
         "digest.json",
     ):
@@ -105,6 +106,7 @@ def main():
 
     existing = {}
     titles = {}
+    states = {}
     for pos, issue in enumerate(selected):
         chunk_dir = out / "issues" / f"chunk-{pos // CHUNK + 1}"
         chunk_dir.mkdir(parents=True, exist_ok=True)
@@ -147,9 +149,11 @@ def main():
         (chunk_dir / f"{detail['number']}.md").write_text("\n".join(lines))
         existing[str(detail["number"])] = labels
         titles[str(detail["number"])] = detail["title"]
+        states[str(detail["number"])] = issue["state"]
         time.sleep(1)
     (out / "existing-labels.json").write_text(json.dumps(existing, indent=1))
     (out / "titles.json").write_text(json.dumps(titles, indent=1))
+    (out / "states.json").write_text(json.dumps(states, indent=1))
 
     chunks = (
         sorted(p.name for p in (out / "issues").glob("chunk-*")) if selected else []
