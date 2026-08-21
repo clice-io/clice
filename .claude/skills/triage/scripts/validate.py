@@ -35,7 +35,7 @@ def check(verdict, taxonomy, existing):
     unknown = labels - taxonomy
     if unknown:
         problems.append(f"unknown labels {sorted(unknown)}")
-    kinds = [l for l in labels if l.startswith("kind:")]
+    kinds = [label for label in labels if label.startswith("kind:")]
     if len(kinds) != 1:
         problems.append(f"{len(kinds)} kind labels")
     banned = (labels - existing) & FORBIDDEN
@@ -47,6 +47,9 @@ def check(verdict, taxonomy, existing):
         problems.append("os:wsl conflicts with a native os label (resolve manually)")
     if verdict.get("confidence") not in CONFIDENCE:
         problems.append(f"bad confidence {verdict.get('confidence')!r}")
+    title = verdict.get("better_title")
+    if title is not None and not (isinstance(title, str) and title.strip()):
+        problems.append(f"bad better_title {title!r}")
     return labels, problems
 
 
@@ -70,6 +73,7 @@ def main():
     expected = {int(p.stem) for p in snapshot.glob("issues/chunk-*/*.md")}
 
     verdicts = {}
+    duplicated = set()
     failures = []
     for file in args.verdicts:
         data = extract_array(Path(file).read_text())
@@ -78,14 +82,22 @@ def main():
             continue
         for verdict in data:
             try:
-                verdicts[int(verdict["issue"])] = verdict
+                num = int(verdict["issue"])
             except (TypeError, KeyError, ValueError):
                 failures.append((file, f"malformed entry: {str(verdict)[:80]}"))
+                continue
+            verdict["issue"] = num
+            if num in verdicts:
+                duplicated.add(num)
+            verdicts[num] = verdict
 
     valid = []
     for num in sorted(expected):
         if num not in verdicts:
             failures.append((num, "no verdict returned"))
+            continue
+        if num in duplicated:
+            failures.append((num, "conflicting duplicate verdicts (dropped)"))
             continue
         verdict = verdicts[num]
         try:

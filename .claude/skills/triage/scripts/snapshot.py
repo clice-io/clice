@@ -29,7 +29,7 @@ def login(entry):
 
 
 def untriaged_filter(issue):
-    names = {l["name"] for l in issue["labels"]}
+    names = {label["name"] for label in issue["labels"]}
     return "needs-triage" in names or not any(n.startswith("kind:") for n in names)
 
 
@@ -45,7 +45,12 @@ def main():
     out = Path(args.out)
     shutil.rmtree(out / "issues", ignore_errors=True)
     out.mkdir(parents=True, exist_ok=True)
-    for stale in ("existing-labels.json", "validated.json", "digest.json"):
+    for stale in (
+        "existing-labels.json",
+        "titles.json",
+        "validated.json",
+        "digest.json",
+    ):
         (out / stale).unlink(missing_ok=True)
     for stale_verdict in out.glob("verdicts-*.md"):
         stale_verdict.unlink()
@@ -67,8 +72,7 @@ def main():
     if len(all_open) == 1000:
         print("warning: hit the 1000-issue listing cap, snapshot may be incomplete")
     untriaged = [i for i in all_open if untriaged_filter(i)]
-    if args.limit:
-        untriaged = untriaged[: args.limit]
+    selected = untriaged[: args.limit] if args.limit else untriaged
 
     now = datetime.now(timezone.utc)
 
@@ -87,14 +91,15 @@ def main():
         "stale_waiting": [
             [i["number"], i["title"], int(age_days(i["updatedAt"]))]
             for i in all_open
-            if any(l["name"] in waiting for l in i["labels"])
+            if any(label["name"] in waiting for label in i["labels"])
             and age_days(i["updatedAt"]) > 14
         ],
     }
     (out / "digest.json").write_text(json.dumps(digest, indent=1))
 
     existing = {}
-    for pos, issue in enumerate(untriaged):
+    titles = {}
+    for pos, issue in enumerate(selected):
         chunk_dir = out / "issues" / f"chunk-{pos // CHUNK + 1}"
         chunk_dir.mkdir(parents=True, exist_ok=True)
         detail = json.loads(
@@ -108,7 +113,7 @@ def main():
                 "number,title,body,author,comments",
             )
         )
-        labels = sorted(l["name"] for l in issue["labels"])
+        labels = sorted(label["name"] for label in issue["labels"])
         body = detail["body"] or "(no body)"
         if len(body) > BODY_LIMIT:
             body = body[:BODY_LIMIT] + "\n[... body truncated ...]"
@@ -135,13 +140,20 @@ def main():
             ]
         (chunk_dir / f"{detail['number']}.md").write_text("\n".join(lines))
         existing[str(detail["number"])] = labels
+        titles[str(detail["number"])] = detail["title"]
         time.sleep(1)
     (out / "existing-labels.json").write_text(json.dumps(existing, indent=1))
+    (out / "titles.json").write_text(json.dumps(titles, indent=1))
 
     chunks = (
-        sorted(p.name for p in (out / "issues").glob("chunk-*")) if untriaged else []
+        sorted(p.name for p in (out / "issues").glob("chunk-*")) if selected else []
     )
-    print(f"untriaged: {len(untriaged)} issue(s) in {len(chunks)} chunk(s)")
+    scope = (
+        f"{len(selected)} of {len(untriaged)}"
+        if len(selected) != len(untriaged)
+        else f"{len(untriaged)}"
+    )
+    print(f"untriaged: {scope} issue(s) in {len(chunks)} chunk(s)")
     for name in chunks:
         print(f"  {out / 'issues' / name}")
     print(

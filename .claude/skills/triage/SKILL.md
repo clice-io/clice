@@ -19,7 +19,8 @@ python3 .claude/skills/triage/scripts/snapshot.py
 Fetches every untriaged issue (body + comments) into
 `/tmp/clice-triage/issues/chunk-N/` (25 per chunk), plus `digest.json`
 (new issues in the last 7 days, `needs-info`/`needs-repro` threads with no
-activity for over 14 days) and `existing-labels.json`. Spaces `gh` calls
+activity for over 14 days), `existing-labels.json`, and `titles.json`
+(snapshot titles, used by apply to detect drift). Spaces `gh` calls
 with `sleep 1` — API rate limits are a real concern. With zero untriaged
 issues, skip straight to the digest section of the report.
 
@@ -28,7 +29,14 @@ issues, skip straight to the digest section of the report.
 One codex call per chunk; run chunks as parallel background jobs:
 
 ```bash
-codex exec -m gpt-5.6-sol -c model_reasoning_effort=xhigh \
+codex_root="$(cd "$(dirname "$(command -v codex)")/.." && pwd)"
+systemd-run --user --pipe --wait --collect --same-dir \
+  --setenv=PATH="$codex_root/bin:/usr/bin:/bin" \
+  -p ProtectHome=tmpfs \
+  -p BindReadOnlyPaths="$PWD" \
+  -p BindReadOnlyPaths="$codex_root" \
+  -p BindPaths="$HOME/.codex" \
+  codex exec -m gpt-5.6-sol -c model_reasoning_effort=xhigh \
   --sandbox read-only \
   -o /tmp/clice-triage/verdicts-N.md \
   "Read .claude/skills/triage/rules.md, .github/labels.yml, and every
@@ -37,9 +45,13 @@ local files — no gh, no network. Classify every issue per the rules and
 reply with ONLY the JSON array defined by the rules' output schema."
 ```
 
-The read-only sandbox is mandatory, never the usual full bypass: issue
-bodies are untrusted input, and the sandbox — not the prompt — is what
-keeps a prompt injection from reaching gh, credentials, or the network.
+Both sandbox layers are mandatory, never the usual full bypass: issue
+bodies are untrusted input. Codex's `--sandbox read-only` blocks writes
+and command network access but still lets model-run commands read the
+whole filesystem, so an injected issue could exfiltrate credentials
+through the verdict text. The `systemd-run` wrapper closes that: it
+masks `$HOME` and rebinds only the repo (read-only), the codex install
+prefix, and `~/.codex` (codex's own state — the one residual exposure).
 
 ## 3. Validate
 
@@ -79,13 +91,17 @@ python3 .claude/skills/triage/scripts/apply.py /tmp/clice-triage/validated.json 
   [--only N,N | --skip N,N] [--retitle N,N]
 ```
 
-Before editing, apply refetches each issue's live labels. Closed issues
-are skipped and `needs-triage` is removed. Kind conflicts split on that
-marker: while it is still present, an existing `kind:` is just the
-template default, so a differing model kind replaces it; once the marker
-is gone, the existing kind is a maintainer decision — it wins, and both
-the model's kind and its derived title rewrite are dropped. Beyond that,
-labels are only ever added — removals stay manual via the
-`suggest_remove` report. Title rewrites apply to `--retitle all` or
-explicitly listed issues. `ask_reporter` suggestions are never posted
-automatically — the maintainer sends them personally if worthwhile.
+Before editing, apply refetches each issue's live labels and title and
+reconciles the verdict's full label set against them. Closed issues are
+skipped and `needs-triage` is removed. Kind conflicts split on that
+marker: while it is still present, template `kind:` labels differing
+from the model's are replaced; once the marker is gone, the existing
+kind is a maintainer decision — it wins, and both the model's kind and
+its derived title rewrite are dropped. An issue whose live labels would
+combine `os:wsl` with a native os label is skipped for manual
+resolution. Beyond that, labels are only ever added — removals stay
+manual via the `suggest_remove` report. Title rewrites apply to
+`--retitle all` or explicitly listed issues, and are skipped when the
+live title changed after the snapshot. `ask_reporter` suggestions are
+never posted automatically — the maintainer sends them personally if
+worthwhile.

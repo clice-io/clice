@@ -2,6 +2,7 @@ import argparse
 import json
 import subprocess
 import time
+from pathlib import Path
 
 
 def parse_numbers(text):
@@ -39,33 +40,51 @@ def main():
     retitle_all = args.retitle == "all"
     retitle = set() if retitle_all else parse_numbers(args.retitle)
 
+    titles = json.loads((Path(args.validated).parent / "titles.json").read_text())
+
     for verdict in json.load(open(args.validated)):
         num = verdict["issue"]
         if (only and num not in only) or num in skip:
             continue
         live = json.loads(
-            gh("issue", "view", str(num), "--repo", args.repo, "--json", "labels,state")
+            gh(
+                "issue",
+                "view",
+                str(num),
+                "--repo",
+                args.repo,
+                "--json",
+                "labels,state,title",
+            )
         )
         if live["state"] != "OPEN":
             print(f"#{num} skipped: no longer open")
             time.sleep(1)
             continue
-        live_labels = {l["name"] for l in live["labels"]}
+        live_labels = {label["name"] for label in live["labels"]}
         marker = "needs-triage" in live_labels
-        live_kinds = sorted(l for l in live_labels if l.startswith("kind:"))
-        proposed_kinds = [l for l in verdict["labels"] if l.startswith("kind:")]
+        live_kinds = sorted(label for label in live_labels if label.startswith("kind:"))
+        proposed_kinds = [
+            label for label in verdict["labels"] if label.startswith("kind:")
+        ]
         proposed_kind = proposed_kinds[0] if proposed_kinds else None
 
-        add = [l for l in verdict["add"] if l not in live_labels]
+        add = [label for label in verdict["labels"] if label not in live_labels]
         remove = ["needs-triage"] if marker else []
         maintainer_kind_wins = False
-        if live_kinds and proposed_kind and proposed_kind not in live_kinds:
-            if marker:
-                remove += live_kinds
-            else:
-                add = [l for l in add if not l.startswith("kind:")]
-                maintainer_kind_wins = True
-                print(f"#{num} maintainer kind {live_kinds} wins over {proposed_kind}")
+        if marker:
+            remove += [label for label in live_kinds if label != proposed_kind]
+        elif live_kinds and proposed_kind and proposed_kind not in live_kinds:
+            add = [label for label in add if not label.startswith("kind:")]
+            maintainer_kind_wins = True
+            print(f"#{num} maintainer kind {live_kinds} wins over {proposed_kind}")
+
+        native = {"os:linux", "os:macos", "os:windows"}
+        combined = live_labels | set(add)
+        if "os:wsl" in combined and combined & native:
+            print(f"#{num} skipped: os:wsl vs native os conflict (resolve manually)")
+            time.sleep(1)
+            continue
 
         edit = []
         if add:
@@ -79,6 +98,8 @@ def main():
         if (retitle_all or num in retitle) and verdict.get("better_title"):
             if maintainer_kind_wins:
                 print(f"#{num} retitle skipped: title type derives from dropped kind")
+            elif live["title"] != titles.get(str(num)):
+                print(f"#{num} retitle skipped: title changed since snapshot")
             else:
                 gh(
                     "issue",
