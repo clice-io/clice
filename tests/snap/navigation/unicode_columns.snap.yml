@@ -1,0 +1,29 @@
+---
+created_at: 2026-08-22
+input_file: unicode_columns.cpp
+---
+after_unicode:
+  definition:
+    - { file: "${WS}/unicode_columns.cpp", range: "8:32-8:36" }
+  declaration:
+    - { file: "${WS}/unicode_columns.cpp", range: "8:32-8:36" }
+  references:
+    - { file: "${WS}/unicode_columns.cpp", range: "8:32-8:36" }
+
+def:
+  definition:
+    - { file: "${WS}/unicode_columns.cpp", range: "6:4-6:9" }
+  declaration:
+    - { file: "${WS}/unicode_columns.cpp", range: "6:4-6:9" }
+  references:
+    - { file: "${WS}/unicode_columns.cpp", range: "6:4-6:9" }
+    - { file: "${WS}/unicode_columns.cpp", range: "8:39-8:44" }
+
+use:
+  definition:
+    - { file: "${WS}/unicode_columns.cpp", range: "6:4-6:9" }
+  declaration:
+    - { file: "${WS}/unicode_columns.cpp", range: "6:4-6:9" }
+  references:
+    - { file: "${WS}/unicode_columns.cpp", range: "6:4-6:9" }
+    - { file: "${WS}/unicode_columns.cpp", range: "8:39-8:44" }

@@ -12,8 +12,8 @@ base:
     - { file: "${WS}/implementation_virtual.cpp", range: "12:7-12:13" }
   references:
     - { file: "${WS}/implementation_virtual.cpp", range: "2:7-2:12" }
-    - { file: "${WS}/implementation_virtual.cpp", range: "6:15-6:20" }
-    - { file: "${WS}/implementation_virtual.cpp", range: "12:15-12:20" }
+    - { file: "${WS}/implementation_virtual.cpp", range: "6:16-6:21" }
+    - { file: "${WS}/implementation_virtual.cpp", range: "12:16-12:21" }
     - { file: "${WS}/implementation_virtual.cpp", range: "18:12-18:17" }
   typeHierarchy:
     - { name: "Shape", kind: Struct, file: "${WS}/implementation_virtual.cpp", range: "2:7-2:12" }

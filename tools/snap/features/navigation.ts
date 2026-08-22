@@ -68,11 +68,20 @@ function locationLines(locations: proto.Location[], root: string): string[] {
 
 type HierarchyItem = proto.CallHierarchyItem | proto.TypeHierarchyItem;
 
+/// `selection` and `detail` render only when they carry information beyond
+/// `range` — today clice always sets selectionRange == range and no detail,
+/// so their appearance in a snapshot IS the regression signal.
 function itemFields(item: HierarchyItem, root: string): { file: string; body: string } {
     const file = normalizeFileUri(item.uri, root);
-    const body =
+    let body =
         `name: ${yamlStr(item.name)}, kind: ${enumName(proto.SymbolKind, item.kind)}, ` +
         `file: ${yamlStr(file)}, range: "${fmtRange(item.range)}"`;
+    if (byRange(item.range, item.selectionRange) !== 0) {
+        body += `, selection: "${fmtRange(item.selectionRange)}"`;
+    }
+    if (item.detail !== undefined) {
+        body += `, detail: ${yamlStr(item.detail)}`;
+    }
     return { file, body };
 }
 
@@ -82,6 +91,14 @@ function itemLines(items: HierarchyItem[], root: string): string[] {
             const { file, body } = itemFields(item, root);
             return { file, range: item.range, entry: `- { ${body} }` };
         }),
+    );
+}
+
+/// Prepare replies expand into per-item sections, so their order must be
+/// pinned before iteration, not only at render time.
+function sortItems<T extends HierarchyItem>(items: T[]): T[] {
+    return [...items].sort(
+        (a, b) => (a.uri < b.uri ? -1 : a.uri > b.uri ? 1 : 0) || byRange(a.range, b.range),
     );
 }
 
@@ -128,7 +145,7 @@ export const navigation: Feature = {
             const references = (await client.referencesAt(uri, line, character)) ?? [];
             sections.push(["references", locationLines(references, ctx.root)]);
 
-            const callItems = (await client.prepareCallHierarchy(uri, line, character)) ?? [];
+            const callItems = sortItems((await client.prepareCallHierarchy(uri, line, character)) ?? []);
             sections.push(["callHierarchy", itemLines(callItems, ctx.root)]);
             for (const item of callItems) {
                 const incoming = (await client.callHierarchyIncoming(item)) ?? [];
@@ -149,7 +166,7 @@ export const navigation: Feature = {
                 ]);
             }
 
-            const typeItems = (await client.prepareTypeHierarchy(uri, line, character)) ?? [];
+            const typeItems = sortItems((await client.prepareTypeHierarchy(uri, line, character)) ?? []);
             sections.push(["typeHierarchy", itemLines(typeItems, ctx.root)]);
             for (const item of typeItems) {
                 const supertypes = (await client.typeHierarchySupertypes(item)) ?? [];

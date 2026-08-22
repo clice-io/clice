@@ -4,13 +4,13 @@ struct §(base)Shape {
     virtual int §(base_method)area() = 0;
 };
 
-struct Circle: Shape {
+struct Circle : Shape {
     int §(override_def)area() override {
         return 3;
     }
 };
 
-struct Square: Shape {
+struct Square : Shape {
     int area() override {
         return 4;
     }

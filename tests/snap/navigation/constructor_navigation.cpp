@@ -5,8 +5,8 @@ struct Session {
     int id;
 };
 
-§(scope_use)Session::§(ctor_def)Session(int id): id(id) {}
+§(scope_use)Session::§(ctor_def)Session(int id) : id(id) {}
 
 Session open() {
-    return §(ctor_use)Session(7);
+    return §(ctor_use)Session§(ctor_invoke)(7);
 }

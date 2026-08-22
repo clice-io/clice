@@ -11,7 +11,7 @@ base_def:
     - { file: "${WS}/inherited_member_access.cpp", range: "8:7-8:14" }
   references:
     - { file: "${WS}/inherited_member_access.cpp", range: "2:7-2:11" }
-    - { file: "${WS}/inherited_member_access.cpp", range: "8:16-8:20" }
+    - { file: "${WS}/inherited_member_access.cpp", range: "8:17-8:21" }
   typeHierarchy:
     - { name: "Base", kind: Struct, file: "${WS}/inherited_member_access.cpp", range: "2:7-2:11" }
   subtypes:

@@ -50,6 +50,10 @@ inline_def:
     - { name: "floor_plan", kind: Function, file: "${WS}/header_source/main.cpp", range: "4:4-4:14", fromRanges: ["5:33-5:57"] }
 
 --- main.cpp
+include_target:
+  definition:
+    - { file: "${WS}/header_source/lib.h", range: "0:0-0:0" }
+
 inline_use:
   definition:
     - { file: "${WS}/header_source/lib.h", range: "4:11-4:20" }

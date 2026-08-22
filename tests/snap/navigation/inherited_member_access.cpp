@@ -6,7 +6,7 @@ struct §(base_def)Base {
     }
 };
 
-struct §(derived_def)Derived: Base {};
+struct §(derived_def)Derived : Base {};
 
 int measure_derived(const Derived& derived) {
     return derived.§(inherited_use)measure();

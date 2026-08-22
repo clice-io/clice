@@ -1,7 +1,7 @@
 /// - verify: server
 
 struct Base {
-    §(base_ctor)Base(int input): value(input) {}
+    §(base_ctor)Base(int input) : value(input) {}
 
     int §(base_member)read() const {
         return value;
@@ -10,7 +10,7 @@ struct Base {
     int value;
 };
 
-struct Derived: Base {
+struct Derived : Base {
     using Base::§(ctor_using)Base;
     using Base::§(member_using)read;
 };
