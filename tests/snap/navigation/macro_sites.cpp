@@ -1,8 +1,8 @@
 /// - verify: server
 ///
-/// Macro-driven occurrences record spelling positions while relations
-/// record expansion positions, so cursor-site detection (and with it
-/// def/decl alternation) deliberately stays inert at these sites.
+/// Names spelled in macro arguments anchor at their spelling, so def/decl
+/// alternation works there like at plain sites, while the invocation
+/// token itself always resolves to the macro.
 
 #define §(macro_def_site)DECLARE_HOOK(name) int name(int value)
 

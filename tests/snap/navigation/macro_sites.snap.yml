@@ -4,29 +4,31 @@ input_file: macro_sites.cpp
 ---
 macro_decl:
   definition:
-    - { file: "${WS}/macro_sites.cpp", range: "10:0-10:12" }
+    - { file: "${WS}/macro_sites.cpp", range: "10:13-10:19" }
   declaration:
-    - { file: "${WS}/macro_sites.cpp", range: "8:0-8:12" }
-    - { file: "${WS}/macro_sites.cpp", range: "10:0-10:12" }
+    - { file: "${WS}/macro_sites.cpp", range: "10:13-10:19" }
   references:
-    - { file: "${WS}/macro_sites.cpp", range: "8:0-8:12" }
-    - { file: "${WS}/macro_sites.cpp", range: "10:0-10:12" }
+    - { file: "${WS}/macro_sites.cpp", range: "8:13-8:19" }
+    - { file: "${WS}/macro_sites.cpp", range: "10:13-10:19" }
     - { file: "${WS}/macro_sites.cpp", range: "15:11-15:17" }
   callHierarchy:
-    - { name: "notify", kind: Function, file: "${WS}/macro_sites.cpp", range: "10:0-10:12" }
+    - { name: "notify", kind: Function, file: "${WS}/macro_sites.cpp", range: "10:13-10:19" }
+  incomingCalls:
+    - { name: "trigger", kind: Function, file: "${WS}/macro_sites.cpp", range: "14:4-14:11", fromRanges: ["15:11-15:24"] }
 
 macro_def:
   definition:
-    - { file: "${WS}/macro_sites.cpp", range: "10:0-10:12" }
+    - { file: "${WS}/macro_sites.cpp", range: "8:13-8:19" }
   declaration:
-    - { file: "${WS}/macro_sites.cpp", range: "8:0-8:12" }
-    - { file: "${WS}/macro_sites.cpp", range: "10:0-10:12" }
+    - { file: "${WS}/macro_sites.cpp", range: "8:13-8:19" }
   references:
-    - { file: "${WS}/macro_sites.cpp", range: "8:0-8:12" }
-    - { file: "${WS}/macro_sites.cpp", range: "10:0-10:12" }
+    - { file: "${WS}/macro_sites.cpp", range: "8:13-8:19" }
+    - { file: "${WS}/macro_sites.cpp", range: "10:13-10:19" }
     - { file: "${WS}/macro_sites.cpp", range: "15:11-15:17" }
   callHierarchy:
-    - { name: "notify", kind: Function, file: "${WS}/macro_sites.cpp", range: "10:0-10:12" }
+    - { name: "notify", kind: Function, file: "${WS}/macro_sites.cpp", range: "10:13-10:19" }
+  incomingCalls:
+    - { name: "trigger", kind: Function, file: "${WS}/macro_sites.cpp", range: "14:4-14:11", fromRanges: ["15:11-15:24"] }
 
 macro_def_site:
   definition:
@@ -50,13 +52,15 @@ macro_name_use:
 
 plain_use:
   definition:
-    - { file: "${WS}/macro_sites.cpp", range: "10:0-10:12" }
+    - { file: "${WS}/macro_sites.cpp", range: "10:13-10:19" }
   declaration:
-    - { file: "${WS}/macro_sites.cpp", range: "8:0-8:12" }
-    - { file: "${WS}/macro_sites.cpp", range: "10:0-10:12" }
+    - { file: "${WS}/macro_sites.cpp", range: "8:13-8:19" }
+    - { file: "${WS}/macro_sites.cpp", range: "10:13-10:19" }
   references:
-    - { file: "${WS}/macro_sites.cpp", range: "8:0-8:12" }
-    - { file: "${WS}/macro_sites.cpp", range: "10:0-10:12" }
+    - { file: "${WS}/macro_sites.cpp", range: "8:13-8:19" }
+    - { file: "${WS}/macro_sites.cpp", range: "10:13-10:19" }
     - { file: "${WS}/macro_sites.cpp", range: "15:11-15:17" }
   callHierarchy:
-    - { name: "notify", kind: Function, file: "${WS}/macro_sites.cpp", range: "10:0-10:12" }
+    - { name: "notify", kind: Function, file: "${WS}/macro_sites.cpp", range: "10:13-10:19" }
+  incomingCalls:
+    - { name: "trigger", kind: Function, file: "${WS}/macro_sites.cpp", range: "14:4-14:11", fromRanges: ["15:11-15:24"] }
