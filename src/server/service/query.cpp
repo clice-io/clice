@@ -194,11 +194,9 @@ static void dedup_locations(std::vector<protocol::Location>& locations) {
 }
 
 /// Whether a location names the very occurrence site the cursor stands on.
-/// Occurrences and relations are written from the same record, so for
-/// sites spelled directly in a file the ranges match exactly. Macro-driven
-/// sites index the occurrence at the spelling but the relation at the
-/// expansion; the ranges differ, so cursor-site detection (and with it the
-/// definition/declaration alternation) simply does not trigger there.
+/// Occurrences and self-relations are written from the same record with
+/// identical ranges — names spelled in macro arguments included, since
+/// both anchor at the spelling — so an exact compare suffices.
 static bool is_cursor_site(const protocol::Location& location,
                            llvm::StringRef uri,
                            const protocol::Range& range) {
@@ -434,6 +432,8 @@ std::vector<protocol::Location> IndexQuery::collect_relation_locations(index::Sy
         return true;
     });
 
+    // Same-kind rows can share one anchor: a macro body using an
+    // argument twice spells both references at the one written token.
     dedup_locations(locations);
     return locations;
 }
@@ -447,9 +447,6 @@ std::vector<protocol::Location> IndexQuery::query_relations(llvm::StringRef path
     std::vector<protocol::Location> locations;
     if(hit.hash != 0) {
         locations = collect_relation_locations(hit.hash, kind);
-        // Same-kind rows can share one anchor: a macro body using an
-        // argument twice spells both references at the one written token.
-        dedup_locations(locations);
     }
     // Misses (whitespace, comments, unindexed positions) are normal
     // inputs; their latency belongs in the series like any hit's.
