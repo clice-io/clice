@@ -447,12 +447,42 @@ std::vector<protocol::Location> IndexQuery::query_relations(llvm::StringRef path
     std::vector<protocol::Location> locations;
     if(hit.hash != 0) {
         locations = collect_relation_locations(hit.hash, kind);
+        // Same-kind rows can share one anchor: a macro body using an
+        // argument twice spells both references at the one written token.
+        dedup_locations(locations);
     }
     // Misses (whitespace, comments, unindexed positions) are normal
     // inputs; their latency belongs in the series like any hit's.
     LOG_PERF("index_query",
              "kind=relations rel={} path={} results={} elapsed_ms={:.2f}",
              kota::meta::enum_name(static_cast<RelationKind::Kind>(kind), "Invalid"),
+             path,
+             locations.size(),
+             timer.ms_f());
+    return locations;
+}
+
+std::vector<protocol::Location> IndexQuery::query_references(llvm::StringRef path,
+                                                             const protocol::Position& position,
+                                                             bool include_declaration,
+                                                             Session* session) {
+    ScopedTimer timer;
+    auto hit = resolve_cursor(path, position, session);
+    std::vector<protocol::Location> locations;
+    if(hit.hash != 0) {
+        locations = collect_relation_locations(hit.hash, RelationKind::Reference);
+        if(include_declaration) {
+            for(auto kind: {RelationKind::Declaration, RelationKind::Definition}) {
+                auto extra = collect_relation_locations(hit.hash, kind);
+                locations.insert(locations.end(),
+                                 std::make_move_iterator(extra.begin()),
+                                 std::make_move_iterator(extra.end()));
+            }
+        }
+        dedup_locations(locations);
+    }
+    LOG_PERF("index_query",
+             "kind=references path={} results={} elapsed_ms={:.2f}",
              path,
              locations.size(),
              timer.ms_f());
