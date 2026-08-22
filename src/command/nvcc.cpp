@@ -97,14 +97,15 @@ std::string absolutize(llvm::StringRef value, llvm::StringRef directory) {
     return path::join(directory, value);
 }
 
-/// Split on unescaped commas: nvcc reads `\,` as a literal comma inside a
-/// value (`-DFOO=a\,b` defines FOO=a,b).
+/// Split on unescaped commas. nvcc's backslash escapes the next character
+/// unconditionally (`a\,b` is one value with a comma, `a\\,b` is `a\` and
+/// `b`, `a\x` is `ax`).
 void split_list(llvm::StringRef value, llvm::SmallVectorImpl<std::string>& out) {
     std::string piece;
     for(std::size_t i = 0; i < value.size(); i += 1) {
         char c = value[i];
-        if(c == '\\' && i + 1 < value.size() && value[i + 1] == ',') {
-            piece += ',';
+        if(c == '\\' && i + 1 < value.size()) {
+            piece += value[i + 1];
             i += 1;
             continue;
         }
@@ -201,6 +202,9 @@ std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> argu
     llvm::StringRef default_stream;
     bool allow_unsupported = false;
     bool rdc = false;
+    bool ewp = false;
+    bool relaxed_constexpr = false;
+    bool extended_lambda = false;
 
     auto args = expand_options_files(arguments.drop_front(), directory);
 
@@ -261,7 +265,8 @@ std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> argu
         if(value_of(i, {"-ccbin", "--compiler-bindir"}, value)) {
             /// A bare program name resolves on PATH like nvcc would; only
             /// path-shaped values anchor to the compile directory.
-            bool path_shaped = value.contains('/') || value.contains('\\');
+            bool path_shaped =
+                value.contains('/') || value.contains('\\') || value == "." || value == "..";
             host_compiler = path_shaped ? absolutize(value, directory) : value.str();
             continue;
         }
@@ -304,7 +309,7 @@ std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> argu
             continue;
         }
         if(arg == "-ewp" || arg == "--extensible-whole-program") {
-            result.emplace_back("-D__CUDACC_EWP__");
+            ewp = true;
             continue;
         }
 
@@ -315,12 +320,12 @@ std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> argu
 
         /// Feature toggles whose only parse-visible effect is a macro.
         if(arg == "--expt-relaxed-constexpr" || arg == "-expt-relaxed-constexpr") {
-            result.emplace_back("-D__CUDACC_RELAXED_CONSTEXPR__");
+            relaxed_constexpr = true;
             continue;
         }
         if(arg == "--expt-extended-lambda" || arg == "-expt-extended-lambda" ||
            arg == "--extended-lambda" || arg == "-extended-lambda") {
-            result.emplace_back("-D__CUDACC_EXTENDED_LAMBDA__");
+            extended_lambda = true;
             continue;
         }
 
@@ -384,19 +389,30 @@ std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> argu
         result.emplace_back(arg);
     }
 
+    /// nvcc injects its macros ahead of the user's preprocessor flags, so a
+    /// later `-U` can undo them (`-dc -U__CUDACC_RDC__` parses without the
+    /// RDC macro) — the synthetic ones render first.
+    std::vector<std::string> prelude;
+    if(rdc) {
+        prelude.emplace_back("-fgpu-rdc");
+        /// nvcc defines it; clang's -fgpu-rdc does not.
+        prelude.emplace_back("-D__CUDACC_RDC__");
+    }
+    if(default_stream == "per-thread")
+        prelude.emplace_back("-DCUDA_API_PER_THREAD_DEFAULT_STREAM=1");
+    if(relaxed_constexpr)
+        prelude.emplace_back("-D__CUDACC_RELAXED_CONSTEXPR__");
+    if(extended_lambda)
+        prelude.emplace_back("-D__CUDACC_EXTENDED_LAMBDA__");
+    if(ewp)
+        prelude.emplace_back("-D__CUDACC_EWP__");
+    result.insert(result.begin() + 1, prelude.begin(), prelude.end());
+
     /// nvcc rejects mixing -gencode with -arch, so at most one list is
     /// populated.
     auto& archs = gencode_archs.empty() ? arch_archs : gencode_archs;
     if(!archs.empty())
         result.emplace_back("--cuda-gpu-arch=" + select_gpu_arch(archs));
-
-    if(rdc) {
-        result.emplace_back("-fgpu-rdc");
-        /// nvcc defines it; clang's -fgpu-rdc does not.
-        result.emplace_back("-D__CUDACC_RDC__");
-    }
-    if(default_stream == "per-thread")
-        result.emplace_back("-DCUDA_API_PER_THREAD_DEFAULT_STREAM=1");
 
     if(!host_compiler.empty())
         result.emplace_back((llvm::Twine(ccbin_prefix) + host_compiler).str());

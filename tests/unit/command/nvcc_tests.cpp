@@ -101,8 +101,13 @@ TEST_CASE(ProbeFlagsCarried) {
     }
     EXPECT_FALSE(is_nvcc_probe_flag("-I/base"));
 
-    // A bare name resolves on PATH like nvcc would — never anchored.
+    // A bare name resolves on PATH like nvcc would — never anchored — while
+    // dot-relative values are directory-relative.
     EXPECT_TRUE(contains(translate({"nvcc", "-ccbin=g++-13"}, "/base"), "-ccbin=g++-13"));
+    auto dot = translate({"nvcc", "-ccbin=."}, "/base");
+    EXPECT_TRUE(std::ranges::any_of(dot, [](llvm::StringRef arg) {
+        return arg.starts_with("-ccbin=/base");
+    }));
 }
 
 TEST_CASE(XcompilerUnwrapped) {
@@ -138,6 +143,12 @@ TEST_CASE(MacroToggles) {
     EXPECT_FALSE(contains(translate({"nvcc", "-rdc=true", "-rdc=false"}), "-fgpu-rdc"));
     auto stream = translate({"nvcc", "-default-stream=per-thread", "-default-stream=legacy"});
     EXPECT_FALSE(contains(stream, "-DCUDA_API_PER_THREAD_DEFAULT_STREAM=1"));
+
+    // Synthetic macros render ahead of user flags, so a later -U can undo
+    // them the way it does under nvcc.
+    auto undef = llvm::join(translate({"nvcc", "-dc", "-U__CUDACC_RDC__"}), " ");
+    EXPECT_TRUE(llvm::StringRef(undef).find("-D__CUDACC_RDC__") <
+                llvm::StringRef(undef).find("-U __CUDACC_RDC__"));
 }
 
 TEST_CASE(PairedValueDrops) {
@@ -184,9 +195,12 @@ TEST_CASE(ListValuesSplit) {
         EXPECT_TRUE(llvm::StringRef(joined).contains(piece));
     }
 
-    // `\,` is nvcc's escape for a literal comma inside a value.
-    auto escaped = translate({"nvcc", R"(-DP=a\,b)"});
-    EXPECT_TRUE(contains(escaped, "P=a,b"));
+    // Backslash escapes the next character unconditionally: `\,` is a
+    // literal comma, `\\,` is a trailing backslash then a separator.
+    EXPECT_TRUE(contains(translate({"nvcc", R"(-DP=a\,b)"}), "P=a,b"));
+    auto parity = translate({"nvcc", R"(-DQ=a\\,b)"});
+    EXPECT_TRUE(contains(parity, R"(Q=a\)"));
+    EXPECT_TRUE(contains(parity, "b"));
 }
 
 TEST_CASE(OptionsFileExpanded) {
