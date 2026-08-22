@@ -528,6 +528,24 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
 
   </details>
 
+- [x] Macro shadowing a declaration — a name redefined as a macro completes as the macro, not the shadowed declaration
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  void GUARD(int);
+  #define GUARD 1
+
+  int BOUND(int lo, int hi);
+  #define BOUND(lo, hi) ((lo) < (hi) ? (lo) : (hi))
+
+  int a = GUAR;
+  int b = BOUN;
+  ```
+
+  </details>
+
 - [x] Namespace-qualified lookup — `ns::` lists the namespace's own members
 
   <details>

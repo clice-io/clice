@@ -110,6 +110,25 @@ auto completion_kind(const clang::NamedDecl* decl) -> protocol::CompletionItemKi
     return protocol::CompletionItemKind::Text;
 }
 
+/// In bundle mode several candidates may share one label: a class and its
+/// constructors/deduction guides, or a declaration shadowed by a macro.
+/// Label dedup keeps the highest-priority item. An active macro always
+/// wins: the preprocessor rewrites the completed token, so a shadowed
+/// declaration is not what the completion would invoke.
+auto dedup_priority(protocol::CompletionItemKind kind, bool is_macro) -> int {
+    if(is_macro) {
+        return 4;
+    }
+
+    switch(kind) {
+        case protocol::CompletionItemKind::Class: return 3;
+        case protocol::CompletionItemKind::Function:
+        case protocol::CompletionItemKind::Method: return 2;
+        case protocol::CompletionItemKind::Constructor: return 1;
+        default: return 0;
+    }
+}
+
 /// Extract the function signature (parameter list) from a CodeCompletionString.
 /// Returns something like "(int x, float y)" for display in labelDetails.detail.
 auto extract_signature(const clang::CodeCompletionString& ccs) -> std::string {
@@ -223,6 +242,12 @@ struct OverloadItem {
     protocol::CompletionItem item;
     float score = 0.0F;
     std::uint32_t count = 0;
+    int dedup_priority = 0;
+};
+
+struct CollectedItem {
+    protocol::CompletionItem item;
+    int dedup_priority = 0;
 };
 
 class CodeCompletionCollector final : public clang::CodeCompleteConsumer {
@@ -271,7 +296,7 @@ public:
             return;
         auto replace_range = *range;
 
-        std::vector<protocol::CompletionItem> collected;
+        std::vector<CollectedItem> collected;
         collected.reserve(candidate_count);
 
         std::vector<OverloadItem> overloads;
@@ -307,7 +332,8 @@ public:
                            llvm::StringRef signature = {},
                            llvm::StringRef return_type = {},
                            bool is_snippet = false,
-                           bool is_deprecated = false) {
+                           bool is_deprecated = false,
+                           bool is_macro = false) {
             if(label.empty()) {
                 return;
             }
@@ -321,6 +347,8 @@ public:
             if(!score.has_value()) {
                 return;
             }
+
+            int priority = dedup_priority(kind, is_macro);
 
             if(!overload_key.empty()) {
                 auto [it, inserted] =
@@ -345,6 +373,7 @@ public:
                         .item = std::move(item),
                         .score = *score,
                         .count = 1,
+                        .dedup_priority = priority,
                     });
                 } else {
                     auto& existing = overloads[it->second];
@@ -372,7 +401,7 @@ public:
             if(is_deprecated) {
                 item.tags = std::vector{protocol::CompletionItemTag::Deprecated};
             }
-            collected.push_back(std::move(item));
+            collected.push_back({.item = std::move(item), .dedup_priority = priority});
         };
 
         for(auto& candidate: llvm::make_range(candidates, candidates + candidate_count)) {
@@ -417,7 +446,9 @@ public:
                             "",
                             signature,
                             {},
-                            has_snippet);
+                            has_snippet,
+                            /*is_deprecated=*/false,
+                            /*is_macro=*/true);
                     break;
                 }
 
@@ -492,46 +523,32 @@ public:
                 details.detail = std::format("(…) +{} overloads", entry.count);
                 entry.item.label_details = std::move(details);
             }
-            collected.push_back(std::move(entry.item));
+            collected.push_back(
+                {.item = std::move(entry.item), .dedup_priority = entry.dedup_priority});
         }
 
-        // In bundle mode, deduplicate by label: when the same name appears as
-        // both a class and its constructors/deduction guides, keep only the
-        // highest-priority kind (Class > Function/Method > others).
+        // In bundle mode, deduplicate same-label candidates (see dedup_priority).
         if(options.bundle_overloads) {
-            auto kind_priority = [](protocol::CompletionItemKind k) -> int {
-                switch(k) {
-                    case protocol::CompletionItemKind::Class:
-                    case protocol::CompletionItemKind::Struct: return 3;
-                    case protocol::CompletionItemKind::Function:
-                    case protocol::CompletionItemKind::Method: return 2;
-                    case protocol::CompletionItemKind::Constructor: return 1;
-                    default: return 0;
-                }
-            };
-
             std::unordered_map<std::string, std::size_t> label_index;
-            std::vector<protocol::CompletionItem> deduped;
+            std::vector<CollectedItem> deduped;
             deduped.reserve(collected.size());
 
-            for(auto& item: collected) {
-                auto [it, inserted] = label_index.try_emplace(item.label, deduped.size());
+            for(auto& entry: collected) {
+                auto [it, inserted] = label_index.try_emplace(entry.item.label, deduped.size());
                 if(inserted) {
-                    deduped.push_back(std::move(item));
-                } else {
-                    auto& existing = deduped[it->second];
-                    int old_prio = existing.kind.has_value() ? kind_priority(*existing.kind) : 0;
-                    int new_prio = item.kind.has_value() ? kind_priority(*item.kind) : 0;
-                    if(new_prio > old_prio) {
-                        existing = std::move(item);
-                    }
+                    deduped.push_back(std::move(entry));
+                } else if(entry.dedup_priority > deduped[it->second].dedup_priority) {
+                    deduped[it->second] = std::move(entry);
                 }
             }
             collected.swap(deduped);
         }
 
         output.clear();
-        output.swap(collected);
+        output.reserve(collected.size());
+        for(auto& entry: collected) {
+            output.push_back(std::move(entry.item));
+        }
     }
 
 private:
