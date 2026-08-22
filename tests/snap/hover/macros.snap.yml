@@ -1,0 +1,167 @@
+---
+created_at: 2026-08-22
+input_file: macros.cpp
+---
+01_object_def: { range: "6:8-6:13" }
+### macro `LIMIT`  
+
+---
+```cpp
+#define LIMIT 64
+```
+
+02_function_def: { range: "8:8-8:13" }
+### macro `CLAMP`  
+
+---
+```cpp
+#define CLAMP(x) ((x) < LIMIT ? (x) : LIMIT)
+```
+
+03_object_use: { range: "12:17-12:22" }
+### macro `LIMIT`  
+
+---
+```cpp
+#define LIMIT 64
+
+// Expands to
+64
+```
+
+04_function_use: { range: "14:19-14:24" }
+### macro `CLAMP`  
+
+---
+```cpp
+#define CLAMP(x) ((x) < LIMIT ? (x) : LIMIT)
+
+// Expands to
+( ( 10 ) < 64 ? ( 10 ) : 64 )
+```
+
+05_nested_use: { range: "16:17-16:21" }
+### macro `WRAP`  
+
+---
+```cpp
+#define WRAP(x) CLAMP(x)
+
+// Expands to
+( ( 3 ) < 64 ? ( 3 ) : 64 )
+```
+
+06_ifdef_use: { range: "18:7-18:12" }
+### macro `LIMIT`  
+
+---
+```cpp
+#define LIMIT 64
+```
+
+07_undef_site: { range: "22:7-22:12" }
+### macro `LIMIT`  
+
+---
+```cpp
+#define LIMIT 64
+```
+
+08_empty_def: { range: "24:8-24:12" }
+### macro `BARE`  
+
+---
+```cpp
+#define BARE
+```
+
+09_empty_use: { range: "26:0-26:4" }
+### macro `BARE`  
+
+---
+```cpp
+#define BARE
+```
+
+10_cli_use: { range: "28:10-28:18" }
+### macro `FROM_CLI`  
+
+---
+```cpp
+#define FROM_CLI 7
+
+// Expands to
+7
+```
+
+11_multiline_def: { range: "30:8-30:13" }
+### macro `MULTI`  
+
+---
+```cpp
+#define MULTI(x) \
+    ((x) + 1)
+```
+
+12_multiline_use: { range: "33:13-33:18" }
+### macro `MULTI`  
+
+---
+```cpp
+#define MULTI(x) \
+    ((x) + 1)
+
+// Expands to
+( ( 2 ) + 1 )
+```
+
+13_spliced_def: { range: "35:8-36:4" }
+### macro `SPLIT_NAME`  
+
+---
+```cpp
+#define SPLIT_\
+NAME 7
+```
+
+14_spliced_use: { range: "38:18-38:28" }
+### macro `SPLIT_NAME`  
+
+---
+```cpp
+#define SPLIT_\
+NAME 7
+
+// Expands to
+7
+```
+
+15_nested_arg: { range: "43:22-43:31" }
+### macro `INNER_VAL`  
+
+---
+```cpp
+#define INNER_VAL 99
+```
+
+16_continued_arg: { range: "47:16-47:20" }
+### macro `ECHO`  
+
+---
+```cpp
+#define ECHO(x) x
+
+// Expands to
+joined_name
+```
+
+17_oversized_use: { range: "63:4-63:9" }
+### macro `A2048`  
+
+---
+```cpp
+#define A2048 CAT(A1024, A1024)
+
+// Expands to
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ...
+```

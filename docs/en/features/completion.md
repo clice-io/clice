@@ -512,6 +512,40 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
 
   </details>
 
+- [x] Macros — object-like macros complete as constants, function-like ones as functions with a parameter signature; argument snippets follow the function setting
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  #define RETRY_LIMIT 3
+
+  #define CLAMP(value, limit) ((value) < (limit) ? (value) : (limit))
+
+  int a = RETRY;
+  int b = CLA;
+  ```
+
+  </details>
+
+- [x] Macro shadowing a declaration — a name redefined as a macro completes as the macro, not the shadowed declaration
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  void GUARD(int);
+  #define GUARD 1
+
+  int BOUND(int lo, int hi);
+  #define BOUND(lo, hi) ((lo) < (hi) ? (lo) : (hi))
+
+  int a = GUAR;
+  int b = BOUN;
+  ```
+
+  </details>
+
 - [x] Namespace-qualified lookup — `ns::` lists the namespace's own members
 
   <details>
@@ -601,7 +635,7 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
 
 - [x] Qualified name lookup (`std::`)
 - [x] Argument-dependent lookup (ADL) candidates
-- [ ] Macro completion — macros are currently excluded from the candidate set
+- [x] Macro completion — object-like and function-like macros in the candidate set
 - [ ] Snippet patterns with placeholders (function bodies, control flow)
 - [ ] C++ attribute completion
 
@@ -851,9 +885,10 @@ All options below live in the `[code_completion]` configuration section.
 
 ### Macros
 
-- [x] Macro name completion from AST
+- [x] Macro name completion, including macros deserialized from the preamble
 - [x] Fuzzy matching for macros (same matcher as other symbols)
-- [ ] Correct `CompletionItemKind`: `Function` for function-like, `Constant` for object-like (currently `Unit` for all) ([clangd#2002](https://github.com/clangd/clangd/issues/2002))
+- [x] Correct `CompletionItemKind`: `Function` for function-like, `Constant` for object-like ([clangd#2002](https://github.com/clangd/clangd/issues/2002))
+- [x] Parameter list as the label detail for function-like macros
 - [ ] Show macro definition/expansion as documentation ([clangd#1485](https://github.com/clangd/clangd/issues/1485))
 
   ```cpp
@@ -861,7 +896,7 @@ All options below live in the `[code_completion]` configuration section.
   MAX^  // completion detail shows: #define MAX_BUF 4096
   ```
 
-- [ ] Parameter placeholders for function-like macros (respect snippet settings)
+- [x] Parameter placeholders for function-like macros (respect snippet settings)
 
   ```cpp
   #define CHECK(cond, msg) ...

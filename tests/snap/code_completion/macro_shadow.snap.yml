@@ -1,0 +1,9 @@
+---
+created_at: 2026-08-22
+input_file: macro_shadow.cpp
+---
+function:
+- { label: "BOUND", kind: Function, detail: "(lo, hi)", edit: "15:8-15:12" }
+
+object:
+- { label: "GUARD", kind: Constant, edit: "14:8-14:12" }

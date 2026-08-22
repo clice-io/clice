@@ -37,7 +37,7 @@ const LSP_SYMBOL_KIND: Record<string, string> = {
     EnumMember: "EnumMember",
     Function: "Function",
     Method: "Method",
-    Macro: "Function",
+    Macro: "Constant",
     Comment: "String",
     Character: "String",
     String: "String",

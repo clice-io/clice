@@ -1,0 +1,74 @@
+---
+created_at: 2026-08-22
+input_file: macro_header/main.cpp
+---
+body_gen_site:
+  definition:
+    - { file: "${WS}/macro_header/hooks.h", range: "4:8-4:18" }
+  declaration:
+    - { file: "${WS}/macro_header/hooks.h", range: "4:8-4:18" }
+  references:
+    - { file: "${WS}/macro_header/hooks.h", range: "4:8-4:18" }
+    - { file: "${WS}/macro_header/main.cpp", range: "15:0-15:10" }
+
+body_gen_use:
+  definition:
+    - { file: "${WS}/macro_header/main.cpp", range: "15:0-15:10" }
+  declaration:
+    - { file: "${WS}/macro_header/main.cpp", range: "15:0-15:10" }
+  references:
+    - { file: "${WS}/macro_header/main.cpp", range: "15:0-15:10" }
+    - { file: "${WS}/macro_header/main.cpp", range: "18:11-18:23" }
+
+hook_decl:
+  definition:
+    - { file: "${WS}/macro_header/main.cpp", range: "11:12-11:19" }
+  declaration:
+    - { file: "${WS}/macro_header/main.cpp", range: "11:12-11:19" }
+  references:
+    - { file: "${WS}/macro_header/main.cpp", range: "9:12-9:19" }
+    - { file: "${WS}/macro_header/main.cpp", range: "11:12-11:19" }
+    - { file: "${WS}/macro_header/main.cpp", range: "18:27-18:34" }
+  callHierarchy:
+    - { name: "advance", kind: Function, file: "${WS}/macro_header/main.cpp", range: "11:12-11:19" }
+  incomingCalls:
+    - { name: "check", kind: Function, file: "${WS}/macro_header/main.cpp", range: "17:5-17:10", fromRanges: ["18:27-18:37"] }
+
+hook_def:
+  definition:
+    - { file: "${WS}/macro_header/main.cpp", range: "9:12-9:19" }
+  declaration:
+    - { file: "${WS}/macro_header/main.cpp", range: "9:12-9:19" }
+  references:
+    - { file: "${WS}/macro_header/main.cpp", range: "9:12-9:19" }
+    - { file: "${WS}/macro_header/main.cpp", range: "11:12-11:19" }
+    - { file: "${WS}/macro_header/main.cpp", range: "18:27-18:34" }
+  callHierarchy:
+    - { name: "advance", kind: Function, file: "${WS}/macro_header/main.cpp", range: "11:12-11:19" }
+  incomingCalls:
+    - { name: "check", kind: Function, file: "${WS}/macro_header/main.cpp", range: "17:5-17:10", fromRanges: ["18:27-18:37"] }
+
+hook_use:
+  definition:
+    - { file: "${WS}/macro_header/main.cpp", range: "11:12-11:19" }
+  declaration:
+    - { file: "${WS}/macro_header/main.cpp", range: "9:12-9:19" }
+    - { file: "${WS}/macro_header/main.cpp", range: "11:12-11:19" }
+  references:
+    - { file: "${WS}/macro_header/main.cpp", range: "9:12-9:19" }
+    - { file: "${WS}/macro_header/main.cpp", range: "11:12-11:19" }
+    - { file: "${WS}/macro_header/main.cpp", range: "18:27-18:34" }
+  callHierarchy:
+    - { name: "advance", kind: Function, file: "${WS}/macro_header/main.cpp", range: "11:12-11:19" }
+  incomingCalls:
+    - { name: "check", kind: Function, file: "${WS}/macro_header/main.cpp", range: "17:5-17:10", fromRanges: ["18:27-18:37"] }
+
+macro_use:
+  definition:
+    - { file: "${WS}/macro_header/hooks.h", range: "2:8-2:19" }
+  declaration:
+    - { file: "${WS}/macro_header/hooks.h", range: "2:8-2:19" }
+  references:
+    - { file: "${WS}/macro_header/hooks.h", range: "2:8-2:19" }
+    - { file: "${WS}/macro_header/main.cpp", range: "9:0-9:11" }
+    - { file: "${WS}/macro_header/main.cpp", range: "11:0-11:11" }

@@ -46,7 +46,9 @@ auto to_protocol_symbol_kind(SymbolKind kind) -> protocol::SymbolKind {
         case SymbolKind::Directive:
         case SymbolKind::MacroParameter:
         case SymbolKind::Attribute: return Variable;
-        case SymbolKind::Macro: return Function;
+        // The vocabulary has no macro kind; Constant reads right for the
+        // object-like majority and the parameter-list detail marks the rest.
+        case SymbolKind::Macro: return Constant;
         case SymbolKind::Comment:
         case SymbolKind::Character:
         case SymbolKind::String:
@@ -112,8 +114,7 @@ public:
         while(index < nodes.size()) {
             const Semantics::Node& entry = nodes[index];
             if(!entry.node.is_ast()) {
-                // The preprocessor segment follows the AST segment; nothing
-                // there produces an outline symbol.
+                // The preprocessor segment follows the AST segment.
                 break;
             }
 
@@ -134,6 +135,12 @@ public:
             }
 
             index += 1;
+        }
+
+        for(; index < nodes.size(); index += 1) {
+            if(nodes[index].node.kind() == SemanticNode::Kind::MacroDefine) {
+                add_macro(*nodes[index].node.get<MacroRef>());
+            }
         }
 
         return std::move(symbols);
@@ -218,6 +225,57 @@ private:
         frames.push_back({subtree_end, cursor});
         cursor = &symbol.children;
         return true;
+    }
+
+    /// A `#define` written in this file. The AST walk never sees
+    /// directives, so nesting runs by containment instead: one spelled
+    /// between class members outlines under the class.
+    void add_macro(const MacroRef& macro) {
+        auto [fid, selection_range] = unit.decompose_range(macro.loc);
+        auto [def_fid, range] =
+            unit.decompose_range(clang::SourceRange(macro.macro->getDefinitionLoc(),
+                                                    macro.macro->getDefinitionEndLoc()));
+
+        DocumentSymbol symbol;
+        symbol.kind = SymbolKind::Macro;
+        symbol.name = unit.token_spelling(macro.loc);
+        symbol.selection_range = selection_range;
+        symbol.range = range;
+
+        if(macro.macro->isFunctionLike()) {
+            std::string detail = "(";
+            const auto params = macro.macro->params();
+            for(const auto* param: params) {
+                if(detail.size() > 1) {
+                    detail += ", ";
+                }
+                llvm::StringRef name = param->getName();
+                if(name == "__VA_ARGS__") {
+                    detail += "...";
+                } else {
+                    detail += name;
+                    if(macro.macro->isGNUVarargs() && param == params.back()) {
+                        detail += "...";
+                    }
+                }
+            }
+            detail += ')';
+            symbol.detail = std::move(detail);
+        }
+
+        auto* level = &symbols;
+        for(bool descended = true; descended;) {
+            descended = false;
+            for(auto& candidate: *level) {
+                if(candidate.range.begin <= symbol.range.begin &&
+                   symbol.range.end <= candidate.range.end) {
+                    level = &candidate.children;
+                    descended = true;
+                    break;
+                }
+            }
+        }
+        level->push_back(std::move(symbol));
     }
 
     static bool is_interested(const clang::Decl* decl) {

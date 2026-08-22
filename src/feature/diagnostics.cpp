@@ -144,8 +144,7 @@ auto diagnostics(CompilationUnitRef unit, PositionEncoding encoding)
         }
 
         auto offset = unit.file_offset(include_location);
-        auto end_offset =
-            static_cast<std::uint32_t>(offset + unit.token_spelling(include_location).size());
+        auto end_offset = offset + unit.token_length(include_location);
         auto range = to_range(map, {offset, end_offset});
         if(!range)
             continue;

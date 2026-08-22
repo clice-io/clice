@@ -353,6 +353,44 @@ Provides the file outline and breadcrumb navigation via `textDocument/documentSy
 
   </details>
 
+- [x] Macro definitions — object-like and function-like macro definitions in the outline, a parameter list as the function-like detail ([clangd#1744](https://github.com/clangd/clangd/issues/1744))
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  // The assertion holds the directives out of the preamble region, whose
+  // live record the server path does not yet see.
+  static_assert(true);
+
+  #define MAX_BUFFER_SIZE 4096
+  #define CHECK(cond, msg) ((cond) ? 0 : (msg))
+  #define TRACE(...) log(__VA_ARGS__)
+  #define SPLIT_\
+  LIMIT 7
+
+  struct Config {
+  #define CONFIG_VERSION 3
+      int version = CONFIG_VERSION;
+  };
+  ```
+
+  </details>
+
+- [ ] Macros in the preamble region — definitions in the leading directive run outline on the inspect path, while the server's preamble record does not surface them yet _(partial)_
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  #define PREAMBLE_LIMIT 8
+  #define PREAMBLE_CHECK(cond) (!!(cond))
+
+  int after = PREAMBLE_LIMIT;
+  ```
+
+  </details>
+
 <!-- END GENERATED ITEMS -->
 
 ## Symbol Detail
@@ -495,18 +533,6 @@ Provides the file outline and breadcrumb navigation via `textDocument/documentSy
 ## Missing Symbols
 
 <!-- BEGIN GENERATED ITEMS: Missing Symbols -->
-
-- [ ] Macro definitions — object-like and function-like macro definitions in the outline ([clangd#1744](https://github.com/clangd/clangd/issues/1744))
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  #define MAX_BUFFER_SIZE 4096
-  #define CHECK(cond, msg) ((cond) ? 0 : (msg))
-  ```
-
-  </details>
 
 - [ ] Include directives — `#include` entries in the outline ([clangd#2226](https://github.com/clangd/clangd/issues/2226))
 
@@ -651,6 +677,10 @@ Provides the file outline and breadcrumb navigation via `textDocument/documentSy
   <summary>Example</summary>
 
   ```cpp
+  // The assertion holds the directives out of the preamble region, whose
+  // live record the server path does not yet see.
+  static_assert(true);
+
   #define DEFINE_HANDLER(name) void name()
 
   DEFINE_HANDLER(on_ready);
@@ -670,6 +700,10 @@ Provides the file outline and breadcrumb navigation via `textDocument/documentSy
   <summary>Example</summary>
 
   ```cpp
+  // The assertion holds the directives out of the preamble region, whose
+  // live record the server path does not yet see.
+  static_assert(true);
+
   #define VAR(X) int X = 1;
 
   VAR(from_argument)

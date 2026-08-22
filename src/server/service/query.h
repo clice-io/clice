@@ -119,6 +119,16 @@ public:
                                                     RelationKind kind,
                                                     Session* session);
 
+    /// Query references for the symbol at cursor, optionally folding in its
+    /// declarations and definitions, deduplicated across the kinds — rows of
+    /// different kinds can share one anchor (a pasted name's declaration and
+    /// definition both collapse onto the invocation token).
+    /// @param session  Active Session for this file, or nullptr to use the disk shards only.
+    std::vector<protocol::Location> query_references(llvm::StringRef path,
+                                                     const protocol::Position& position,
+                                                     bool include_declaration,
+                                                     Session* session);
+
     /// Query definition locations for the symbol at cursor. Standing on the
     /// definition itself navigates to the declarations (and any sibling
     /// definitions) instead, so definition and declaration sites alternate;

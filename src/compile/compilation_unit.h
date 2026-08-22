@@ -212,8 +212,11 @@ public:
     /// Get the token length.
     auto token_length(clang::SourceLocation location) -> std::uint32_t;
 
-    /// Get the spelling of the token corresponding to the location.
-    auto token_spelling(clang::SourceLocation location) -> llvm::StringRef;
+    /// The text of the token at the location, with line splices and other
+    /// physical-source artifacts folded away. `token_length` measures the
+    /// physical span instead — the two differ exactly when the token needs
+    /// such cleaning.
+    auto token_spelling(clang::SourceLocation location) -> std::string;
 
     /// Get the C++20 named module name if any.
     /// Whether this unit is a named module (interface or implementation).
