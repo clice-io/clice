@@ -153,7 +153,7 @@ public:
         auto [it, success] = symbols.try_emplace(symbol_id.hash);
         if(success) {
             auto& symbol = it->second;
-            symbol.name = unit.token_spelling(location).str();
+            symbol.name = unit.token_spelling(location);
             symbol.kind = SymbolKind::Macro;
             symbol.scope = SymbolScope::External;
         }

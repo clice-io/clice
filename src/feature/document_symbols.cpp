@@ -238,7 +238,7 @@ private:
 
         DocumentSymbol symbol;
         symbol.kind = SymbolKind::Macro;
-        symbol.name = unit.token_spelling(macro.loc).str();
+        symbol.name = unit.token_spelling(macro.loc);
         symbol.selection_range = selection_range;
         symbol.range = range;
 

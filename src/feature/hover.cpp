@@ -790,7 +790,7 @@ auto macro_hover(CompilationUnitRef unit, std::uint32_t offset) -> std::optional
         }
 
         HoverInfo info;
-        info.name = unit.token_spelling(macro.loc).str();
+        info.name = unit.token_spelling(macro.loc);
         info.kind = SymbolKind::Macro;
         info.symbol_range = range;
 
@@ -819,12 +819,10 @@ auto macro_hover(CompilationUnitRef unit, std::uint32_t offset) -> std::optional
                     if(!preview.empty()) {
                         preview += ' ';
                     }
-                    /// The token's own length paired with its spelling
-                    /// offset; measuring at the location would read the
-                    /// wrong span for tokens born in an expansion.
-                    auto [fid, offset] =
-                        unit.decompose_location(unit.spelling_location(token.location()));
-                    preview += unit.file_content(fid).substr(offset, token.length());
+                    /// Lex at the token's spelling site — getSpelling stays
+                    /// at the depth it is given, and only the spelling
+                    /// carries the written bytes.
+                    preview += unit.token_spelling(unit.spelling_location(token.location()));
                     if(preview.size() > preview_limit) {
                         preview += " ...";
                         break;

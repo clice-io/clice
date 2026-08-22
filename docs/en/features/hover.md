@@ -227,7 +227,7 @@
 ## Macro Hover
 
 - [x] Macro definition text at definition, expansion, `#ifdef` and `#undef` sites
-- [x] Fully-expanded preview at expansion sites
+- [x] Fully-expanded preview where the expansion starts at the hovered name
 
   ```cpp
   #define MAX(a, b) ((a) > (b) ? (a) : (b))
@@ -236,6 +236,7 @@
   //                         expands to: "( ( x ) > ( y ) ? ( x ) : ( y ) )"
   ```
 
+- [ ] Expansion preview for a macro named inside another invocation's arguments — the recorded expansion starts at the outer name, so only the definition renders
 - [x] Command-line macros (`-D`) hover with their synthesized `#define` text
 - [ ] Show macro expansion before definition ([clangd#2642](https://github.com/clangd/clangd/issues/2642))
 - [ ] Hover on a `#define` line inside the preamble region of the open file — the live parse does not see the preamble's directive record yet

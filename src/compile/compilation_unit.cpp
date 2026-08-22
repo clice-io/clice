@@ -241,8 +241,10 @@ auto CompilationUnitRef::token_length(clang::SourceLocation location) -> std::ui
     return clang::Lexer::MeasureTokenLength(location, self->SM(), self->instance->getLangOpts());
 }
 
-auto CompilationUnitRef::token_spelling(clang::SourceLocation location) -> llvm::StringRef {
-    return llvm::StringRef(self->SM().getCharacterData(location), token_length(location));
+auto CompilationUnitRef::token_spelling(clang::SourceLocation location) -> std::string {
+    llvm::SmallString<64> buffer;
+    return clang::Lexer::getSpelling(location, buffer, self->SM(), self->instance->getLangOpts())
+        .str();
 }
 
 bool CompilationUnitRef::is_named_module() {
@@ -385,7 +387,7 @@ index::SymbolID CompilationUnitRef::getSymbolID(const clang::MacroInfo* macro) {
         hash = llvm::xxh3_64bits(usr);
         self->symbol_hash_cache.try_emplace(macro, hash);
     }
-    return index::SymbolID{hash, name.str()};
+    return index::SymbolID{hash, std::move(name)};
 }
 
 clang::TranslationUnitDecl* CompilationUnitRef::tu() {

@@ -114,3 +114,43 @@ input_file: macros.cpp
 // Expands to
 ( ( 2 ) + 1 )
 ```
+
+13_spliced_def: { range: "35:8-36:4" }
+### macro `SPLIT_NAME`  
+
+---
+```cpp
+#define SPLIT_\
+NAME 7
+```
+
+14_spliced_use: { range: "38:18-38:28" }
+### macro `SPLIT_NAME`  
+
+---
+```cpp
+#define SPLIT_\
+NAME 7
+
+// Expands to
+7
+```
+
+15_nested_arg: { range: "43:22-43:31" }
+### macro `INNER_VAL`  
+
+---
+```cpp
+#define INNER_VAL 99
+```
+
+16_continued_arg: { range: "47:16-47:20" }
+### macro `ECHO`  
+
+---
+```cpp
+#define ECHO(x) x
+
+// Expands to
+joined_name
+```
