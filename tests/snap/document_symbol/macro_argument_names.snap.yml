@@ -2,5 +2,7 @@
 created_at: 2026-08-01
 input_file: macro_argument_names.cpp
 ---
-- { name: "from_argument", kind: Variable, range: "10:0-10:17", selection_range: "10:4-10:17", detail: "int" }
-- { name: "counter_from_body", kind: Variable, range: "14:0-14:7", selection_range: "14:0-14:7", detail: "int" }
+- { name: "VAR", kind: Constant, range: "12:8-12:25", selection_range: "12:8-12:11", detail: "(X)" }
+- { name: "from_argument", kind: Variable, range: "14:0-14:17", selection_range: "14:4-14:17", detail: "int" }
+- { name: "COUNTER", kind: Constant, range: "16:8-16:44", selection_range: "16:8-16:15", detail: "()" }
+- { name: "counter_from_body", kind: Variable, range: "18:0-18:7", selection_range: "18:0-18:7", detail: "int" }
