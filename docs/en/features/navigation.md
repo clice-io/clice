@@ -3,6 +3,7 @@
 ## Go to Definition
 
 - [x] Index-based cross-TU go-to-definition
+- [x] Definition and declaration alternate: invoking go-to-definition on the definition itself navigates to the declaration (an inline-defined symbol with no separate declaration keeps the definition site as the answer)
 - [x] Go to definition on `#include` directives (navigate to the included file), including preamble includes compiled into the PCH
 - [ ] AST-based fallback for local/unsaved symbols
 - [ ] Navigate through macro wrappers to the underlying declaration
@@ -243,7 +244,7 @@ Implicit navigation requires an unambiguous source token — patterns where the 
 
 Navigate from a symbol usage or definition to its declaration. In C++, many entities have separate declarations and definitions; go-to-declaration always targets the declaration side.
 
-clice returns the declaration locations plus the definition: symbols defined inline have no separate declaration, and navigating to the definition is what clients expect in that case.
+clice returns the declaration locations plus the definition — symbols defined inline have no separate declaration — minus the site the cursor already stands on, so declaration and definition sites alternate just like go-to-definition.
 
 - [x] Index-based cross-TU go-to-declaration
 - [x] Functions — from usage or out-of-line definition to the declaration/prototype

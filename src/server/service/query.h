@@ -119,6 +119,25 @@ public:
                                                     RelationKind kind,
                                                     Session* session);
 
+    /// Query definition locations for the symbol at cursor. Standing on the
+    /// definition itself navigates to the declarations (and any sibling
+    /// definitions) instead, so definition and declaration sites alternate;
+    /// an inline-defined symbol with no separate declaration answers with
+    /// the definition site itself.
+    /// @param session  Active Session for this file, or nullptr to use the disk shards only.
+    std::vector<protocol::Location> query_definition(llvm::StringRef path,
+                                                     const protocol::Position& position,
+                                                     Session* session);
+
+    /// Query declaration locations for the symbol at cursor: declarations
+    /// plus the definition (symbols defined inline have no separate
+    /// Declaration relation), minus the site the cursor stands on — the
+    /// mirror half of query_definition's alternation.
+    /// @param session  Active Session for this file, or nullptr to use the disk shards only.
+    std::vector<protocol::Location> query_declaration(llvm::StringRef path,
+                                                      const protocol::Position& position,
+                                                      Session* session);
+
     /// Query between-symbol relations (Implementation, TypeDefinition, ...)
     /// for the symbol at cursor and resolve each target symbol to its
     /// definition location — the two-hop query behind go-to-implementation
@@ -221,6 +240,11 @@ private:
     CursorHit resolve_cursor(llvm::StringRef path,
                              const protocol::Position& position,
                              Session* session);
+
+    /// Assemble the locations of a symbol's relation rows of one kind
+    /// across all index sources, deduplicated and sorted.
+    std::vector<protocol::Location> collect_relation_locations(index::SymbolHash hash,
+                                                               RelationKind kind);
 
     /// Visit each distinct PCH overlay blob once (sessions sharing a
     /// preamble share one blob). Overlays are the only index source for
