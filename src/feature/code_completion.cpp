@@ -17,6 +17,7 @@
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/Basic/CharInfo.h"
+#include "clang/Lex/Preprocessor.h"
 #include "clang/Sema/CodeCompleteConsumer.h"
 #include "clang/Sema/Sema.h"
 
@@ -226,12 +227,21 @@ struct OverloadItem {
 
 class CodeCompletionCollector final : public clang::CodeCompleteConsumer {
 public:
+    /// Sema surfaces macro candidates only on request; everything else
+    /// keeps clang's defaults.
+    static clang::CodeCompleteOptions sema_options() {
+        clang::CodeCompleteOptions options;
+        options.IncludeMacros = 1;
+        return options;
+    }
+
     CodeCompletionCollector(std::uint32_t offset,
                             PositionEncoding encoding,
                             std::vector<protocol::CompletionItem>& output,
                             const CodeCompletionOptions& options) :
-        clang::CodeCompleteConsumer({}), offset(offset), encoding(encoding), output(output),
-        options(options), info(std::make_shared<clang::GlobalCodeCompletionAllocator>()) {}
+        clang::CodeCompleteConsumer(sema_options()), offset(offset), encoding(encoding),
+        output(output), options(options),
+        info(std::make_shared<clang::GlobalCodeCompletionAllocator>()) {}
 
     clang::CodeCompletionAllocator& getAllocator() final {
         return info.getAllocator();
@@ -380,12 +390,36 @@ public:
                     break;
                 }
 
-                case clang::CodeCompletionResult::RK_Macro:
-                    try_add(candidate.Macro->getName(),
-                            protocol::CompletionItemKind::Unit,
-                            candidate.Macro->getName(),
-                            "");
+                case clang::CodeCompletionResult::RK_Macro: {
+                    auto* info = sema.getPreprocessor().getMacroInfo(candidate.Macro);
+                    bool function_like = info && info->isFunctionLike();
+
+                    std::string signature;
+                    std::string snippet;
+                    if(auto* ccs =
+                           candidate.CreateCodeCompletionString(sema,
+                                                                context,
+                                                                getAllocator(),
+                                                                getCodeCompletionTUInfo(),
+                                                                /*IncludeBriefComments=*/false)) {
+                        signature = extract_signature(*ccs);
+                        if(function_like && options.enable_function_arguments_snippet) {
+                            snippet = build_snippet(*ccs);
+                        }
+                    }
+
+                    bool has_snippet = !snippet.empty();
+                    auto name = candidate.Macro->getName();
+                    try_add(name,
+                            function_like ? protocol::CompletionItemKind::Function
+                                          : protocol::CompletionItemKind::Constant,
+                            has_snippet ? llvm::StringRef(snippet) : name,
+                            "",
+                            signature,
+                            {},
+                            has_snippet);
                     break;
+                }
 
                 case clang::CodeCompletionResult::RK_Declaration: {
                     auto* declaration = candidate.Declaration;
