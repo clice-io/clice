@@ -47,3 +47,18 @@ int joined_name = 8;
 
 int continued = §(16_continued_arg)ECHO(joined_\
 name);
+
+// Doubling pastes grow one identifier token past the 1 KiB preview
+// limit, so the expansion preview must truncate mid-token.
+#define CAT_(a, b) a##b
+#define CAT(a, b) CAT_(a, b)
+#define A16 aaaaaaaaaaaaaaaa
+#define A32 CAT(A16, A16)
+#define A64 CAT(A32, A32)
+#define A128 CAT(A64, A64)
+#define A256 CAT(A128, A128)
+#define A512 CAT(A256, A256)
+#define A1024 CAT(A512, A512)
+#define A2048 CAT(A1024, A1024)
+
+int §(17_oversized_use)A2048 = 1;

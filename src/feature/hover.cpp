@@ -822,11 +822,14 @@ auto macro_hover(CompilationUnitRef unit, std::uint32_t offset) -> std::optional
                     /// Lex at the token's spelling site — getSpelling stays
                     /// at the depth it is given, and only the spelling
                     /// carries the written bytes.
-                    preview += unit.token_spelling(unit.spelling_location(token.location()));
-                    if(preview.size() > preview_limit) {
+                    auto spelling = unit.token_spelling(unit.spelling_location(token.location()));
+                    if(auto remaining = preview_limit - preview.size();
+                       spelling.size() >= remaining) {
+                        preview.append(spelling, 0, remaining);
                         preview += " ...";
                         break;
                     }
+                    preview += spelling;
                 }
                 info.definition += "\n\n// Expands to\n" + preview;
                 break;
