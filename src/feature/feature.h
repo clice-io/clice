@@ -126,6 +126,21 @@ struct HoverOptions {
                          "Show the desugared form of a type, e.g. "
                          "`vector<int>::size_type (aka unsigned long)`.")
     <bool> show_aka = true;
+
+    KOTATSU_ANNOTATE(defaulted = true, description = "Show members of record and enum definitions.")
+    <bool> show_tag_members = true;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Maximum number of displayed members in a record or enum definition; "
+                         "-1 means no limit.")
+    <std::int32_t> max_tag_members = 20;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Maximum number of tokens in a member initializer before it is omitted; "
+                         "-1 never omits initializers.")
+    <std::int32_t> max_initializer_tokens = 200;
 };
 
 /// Contains detailed information about a symbol. Especially useful when

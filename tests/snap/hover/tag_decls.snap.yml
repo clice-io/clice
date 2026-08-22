@@ -1,5 +1,5 @@
 ---
-created_at: 2026-07-28
+created_at: 2026-08-22
 input_file: tag_decls.cpp
 ---
 01_struct: { range: "9:7-9:14" }
@@ -242,24 +242,10 @@ public:
   static constexpr int extent = 4;
   using value_type = int;
   template <typename T> using pointer = T *;
-  enum class Kind : int {
-    first = 0,
-    second = 1,
-    third = 2,
-    fourth = 3,
-    fifth = 4,
-    sixth = 5,
-    seventh = 6,
-    eighth = 7,
-    ...
-  };
-  struct Node {
-    ...
-  };
+  enum class Kind : int;
+  struct Node;
   struct Forward;
-  template <typename T> struct Nested {
-    ...
-  };
+  template <typename T> struct Nested;
 
 private:
   static int instances;
