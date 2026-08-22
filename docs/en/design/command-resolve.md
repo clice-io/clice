@@ -63,7 +63,7 @@ Both `CanonicalCommand` and `CompilationInfo` are deduplicated via `ObjectSet` -
 
 On lookup, `CompilationDatabase` assembles a `CompilationInfo` into a `CompileCommand` -- the final output of the command processing pipeline, containing the complete compilation flags and source file path, ready to be submitted to toolchain probing or the Clang frontend.
 
-For files without a CDB entry (e.g., a file the user opens that is not part of the project), `CompilationDatabase` synthesizes a default command -- selecting `clang` or `clang++ -std=c++20` based on the file extension.
+For files without a CDB entry (e.g., a file the user opens that is not part of the project), `CompilationDatabase` synthesizes a default command -- selecting `clang` or `clang++ -std=c++20` based on the file extension. CUDA files (`.cu`/`.cuh`) additionally force `-x cuda`: `.cuh` is not an extension clang recognizes, so without it the driver would treat the file as linker input.
 
 `CompilationDatabase` also provides the ability to group by configuration: `ConfigGroup` aggregates files that share the same `CompilationInfo`. This is the right granularity for extracting search path configurations during dependency scanning -- different `-I` paths produce different groups. For toolchain probing, the granularity is coarser (user-content options don't affect probing results), so `Toolchain` further deduplicates on top of `ConfigGroup`.
 
@@ -162,7 +162,7 @@ After the four tiers are concatenated, deduplication begins from the Angled tier
 
 ## Known Limitations
 
-- **Incomplete support for some compiler families.** NVCC and Intel compilers (`icc`, `icx`, `dpcpp`) are recognized but currently fall through to the generic Clang driver path without dedicated probing logic. This means these compilers' special system paths may not be correctly discovered.
+- **Incomplete support for some compiler families.** Intel compilers (`icc`, `icx`, `dpcpp`) are recognized but currently fall through to the generic Clang driver path without dedicated probing logic, so their special system paths may not be correctly discovered. NVCC has dedicated probing (parsing `nvcc --dryrun` output into a clang CUDA invocation), but only with a GCC or Clang host compiler -- nvcc driving MSVC `cl` is not supported yet, and multi-architecture commands parse the newest architecture only.
 
 - **SearchConfig does not support all search path options.** `-cxx-isystem` (system directories effective only in C++ mode), `-iwithsysroot` (prepends sysroot to path), and HeaderMap support are not yet implemented. These options are uncommon in practice but may appear in specific Apple or cross-compilation toolchains.
 
