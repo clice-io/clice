@@ -951,27 +951,160 @@ auto template_param_type(const clang::NamedDecl* param, const Options& options) 
     return {};
 }
 
+namespace {
+
+bool has_large_initializer(const clang::Expr* init,
+                           const clang::syntax::TokenBuffer* tb,
+                           std::int32_t max_tokens) {
+    return max_tokens >= 0 && init && tb &&
+           tb->expandedTokens(init->getSourceRange()).size() > static_cast<std::size_t>(max_tokens);
+}
+
+auto member_initializer(const clang::Decl* decl) -> const clang::Expr* {
+    if(const auto* field = llvm::dyn_cast<clang::FieldDecl>(decl)) {
+        return field->getInClassInitializer();
+    }
+    if(const auto* var = llvm::dyn_cast<clang::VarDecl>(decl)) {
+        return var->getInit();
+    }
+    return nullptr;
+}
+
+auto print_decl_head(const clang::Decl* decl, clang::PrintingPolicy policy) -> std::string {
+    std::string definition;
+    llvm::raw_string_ostream os(definition);
+    decl->print(os, policy);
+
+    /// TerseOutput leaves tag definitions with an empty body. Keep Clang's rendering of the
+    /// template prefix, attributes and bases, then replace that body with our summary.
+    auto body = definition.rfind('{');
+    if(body != std::string::npos) {
+        definition.resize(body);
+    }
+    return definition;
+}
+
+void print_enum_definition(const clang::EnumDecl* decl,
+                           llvm::raw_ostream& os,
+                           clang::PrintingPolicy policy,
+                           const Options& options) {
+    os << print_decl_head(decl, policy);
+    os << " {";
+    std::size_t count = 0;
+    for(const clang::EnumConstantDecl* enumerator: decl->enumerators()) {
+        if(count == static_cast<std::size_t>(options.max_tag_members)) {
+            os << "\n...";
+            break;
+        }
+        ++count;
+        os << '\n';
+        enumerator->print(os, policy);
+        if(!enumerator->getInitExpr() && !enumerator->getType()->isDependentType()) {
+            os << " = " << llvm::toString(enumerator->getInitVal(), 10);
+        }
+        os << ',';
+    }
+    os << "\n}";
+}
+
+/// Methods are intentionally omitted: this is a compact data/type summary, not a member list.
+bool not_method_member(const clang::Decl* decl) {
+    if(llvm::isa<clang::FieldDecl, clang::TypedefNameDecl, clang::TypeAliasTemplateDecl>(*decl)) {
+        return true;
+    }
+    if(const auto* var = llvm::dyn_cast<clang::VarDecl>(decl)) {
+        return var->isStaticDataMember();
+    }
+    return llvm::isa<clang::TagDecl, clang::ClassTemplateDecl>(*decl);
+}
+
+void print_record_definition(const clang::RecordDecl* decl,
+                             llvm::raw_ostream& os,
+                             clang::PrintingPolicy policy,
+                             const clang::syntax::TokenBuffer* tb,
+                             const Options& options) {
+    os << print_decl_head(decl, policy);
+    os << " {";
+    std::size_t count = 0;
+    const clang::AccessSpecDecl* pending_access = nullptr;
+    for(const clang::Decl* member: decl->decls()) {
+        if(member->isImplicit()) {
+            continue;
+        }
+        if(const auto* access = llvm::dyn_cast<clang::AccessSpecDecl>(member)) {
+            pending_access = access;
+            continue;
+        }
+        if(!not_method_member(member)) {
+            continue;
+        }
+        if(options.max_tag_members >= 0 &&
+           count == static_cast<std::size_t>(options.max_tag_members)) {
+            os << "\n// ...";
+            break;
+        }
+        ++count;
+
+        /// Delay the label until a visible member follows it. This avoids a dangling `private:`
+        /// section when that section contains methods only.
+        if(pending_access) {
+            os << '\n' << clang::getAccessSpelling(pending_access->getAccess()) << ':';
+            pending_access = nullptr;
+        }
+        os << '\n';
+
+        /// We don't print the body of nested types, for simplicity and clarity.
+        if(llvm::isa<clang::TagDecl, clang::ClassTemplateDecl>(*member)) {
+            os << print_decl_head(member, policy) << ";";
+            continue;
+        }
+
+        clang::PrintingPolicy member_policy = policy;
+        if(has_large_initializer(member_initializer(member), tb, options.max_initializer_tokens)) {
+            member_policy.SuppressInitializers = true;
+        }
+        member->print(os, member_policy);
+        os << ';';
+    }
+    os << "\n}";
+}
+
+}  // namespace
+
 auto definition(const clang::Decl* decl,
                 const Options& options,
                 const clang::syntax::TokenBuffer* tb) -> std::string {
     assert(decl);
     clang::PrintingPolicy policy = derive_policy(decl->getASTContext(), options);
-    if(tb) {
-        if(auto* var = llvm::dyn_cast<clang::VarDecl>(decl)) {
-            if(auto* init = var->getInit()) {
-                /// Initializers might be huge and result in lots of memory allocations
-                /// in some catastrophic cases. Such long lists are not useful in hover
-                /// cards anyway.
-                if(tb->expandedTokens(init->getSourceRange()).size() > 200) {
-                    policy.SuppressInitializers = true;
-                }
-            }
+    if(const auto* var = llvm::dyn_cast<clang::VarDecl>(decl)) {
+        /// Initializers might be huge and result in lots of memory allocations in some
+        /// catastrophic cases. Such long lists are not useful in hover cards anyway.
+        if(has_large_initializer(var->getInit(), tb, options.max_initializer_tokens)) {
+            policy.SuppressInitializers = true;
         }
     }
 
     std::string definition;
     llvm::raw_string_ostream os(definition);
-    decl->print(os, policy);
+
+    if(const auto* record = llvm::dyn_cast<clang::RecordDecl>(decl);
+       record && record->getDefinition()) {
+        if(options.show_tag_members) {
+            print_record_definition(record->getDefinition(), os, policy, tb, options);
+        } else {
+            os << print_decl_head(record->getDefinition(), policy);
+        }
+    } else if(const auto* enum_decl = llvm::dyn_cast<clang::EnumDecl>(decl);
+              enum_decl && enum_decl->getDefinition()) {
+        if(options.show_tag_members) {
+            print_enum_definition(enum_decl->getDefinition(), os, policy, options);
+        } else {
+            os << print_decl_head(enum_decl->getDefinition(), policy);
+        }
+    } else {
+        decl->print(os, policy);
+    }
+
     return definition;
 }
 

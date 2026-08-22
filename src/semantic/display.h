@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -66,6 +67,15 @@ struct Options {
 
     /// type(): attach the desugared form as `aka` when it differs.
     bool show_aka = false;
+
+    /// definition(): include the members of complete record and enum declarations.
+    bool show_tag_members = true;
+
+    /// definition(): maximum displayed members of a record or enum; -1 means no limit.
+    std::int32_t max_tag_members = 20;
+
+    /// definition(): omit member initializers exceeding this token count; -1 means no limit.
+    std::int32_t max_initializer_tokens = 200;
 };
 
 /// A pretty-printed type, optionally with its desugared form.

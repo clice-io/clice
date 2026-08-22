@@ -1,5 +1,5 @@
 ---
-created_at: 2026-07-28
+created_at: 2026-08-22
 input_file: tag_decls.cpp
 ---
 01_struct: { range: "9:7-9:14" }
@@ -26,7 +26,10 @@ class MyClass {}
 ---
 ```cpp
 // In namespace union_decl::ns1
-union MyUnion {}
+union MyUnion {
+  int x;
+  int y;
+}
 ```
 
 04_forward_class: { range: "37:0-37:3" }
@@ -50,7 +53,11 @@ Enum declaration
 ---
 ```cpp
 // In namespace enum_def
-enum Hello {}
+enum Hello {
+  ONE = 0,
+  TWO = 1,
+  THREE = 2,
+}
 ```
 
 06_enumerator: { range: "56:16-56:19" }
@@ -199,4 +206,113 @@ type of nested templates.
 // In namespace nested_templates_class
 template <>
 struct cls<nested_templates_class::cls<nested_templates_class::cls<int>>> {}
+```
+
+18_inherited_class: { range: "163:2-163:7" }
+### class `Point`  
+
+---
+```cpp
+// In namespace inherited_class
+class Point : public first, virtual protected second {
+  int value;
+}
+```
+
+19_template_fields: { range: "174:2-174:5" }
+### struct `Box<int>`  
+
+---
+```cpp
+// In namespace template_fields
+template <> struct Box<int> {
+  using value_type = int;
+  int value;
+}
+```
+
+20_record_members: { range: "196:2-196:8" }
+### struct `Traits`  
+
+---
+```cpp
+// In namespace record_members
+struct Traits {
+public:
+  static constexpr int extent = 4;
+  using value_type = int;
+  template <typename T> using pointer = T *;
+  enum class Kind : int;
+  struct Node;
+  struct Forward;
+  template <typename T> struct Nested;
+
+private:
+  static int instances;
+  int value = [] {}();
+}
+```
+
+21_record_member_limit: { range: "225:2-225:8" }
+### struct `Values`  
+
+---
+```cpp
+// In namespace record_member_limit
+struct Values {
+  int v01;
+  int v02;
+  int v03;
+  int v04;
+  int v05;
+  int v06;
+  int v07;
+  int v08;
+  int v09;
+  int v10;
+  int v11;
+  int v12;
+  int v13;
+  int v14;
+  int v15;
+  int v16;
+  int v17;
+  int v18;
+  int v19;
+  int v20;
+  // ...
+}
+```
+
+22_top_level_enum: { range: "232:2-232:7" }
+### enum `Value`  
+
+---
+```cpp
+// In namespace top_level_enum
+enum Value {
+  v01 = 0,
+  v02 = 1,
+  v03 = 2,
+  v04 = 3,
+  v05 = 4,
+  v06 = 5,
+  v07 = 6,
+  v08 = 7,
+  v09 = 8,
+}
+```
+
+23_large_record_initializer: { range: "247:2-247:8" }
+### struct `Tables`  
+
+---
+```cpp
+// In namespace large_record_initializer
+struct Tables {
+  int large_field[256];
+  static int large_static[256];
+  int small_field = 1;
+  static int small_static = 2;
+}
 ```

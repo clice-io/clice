@@ -640,6 +640,66 @@ TEST_CASE(disable_show_aka) {
     check_sym_range();
 }
 
+TEST_CASE(tag_definition_options) {
+    feature::HoverOptions options;
+    options.show_tag_members = false;
+
+    run_info(R"cpp(
+    struct Record { int field; };
+    Re§cord record;
+  )cpp",
+             options);
+    ASSERT_TRUE(info.has_value());
+    EXPECT_EQ(info->definition, "struct Record");
+
+    run_info(R"cpp(
+    enum Value { one, two };
+    Va§lue value;
+  )cpp",
+             options);
+    ASSERT_TRUE(info.has_value());
+    EXPECT_EQ(info->definition, "enum Value");
+
+    options.show_tag_members = true;
+    options.max_tag_members = 1;
+    options.max_initializer_tokens = 1;
+    run_info(R"cpp(
+    struct Record {
+        int first;
+        int second = 1 + 2;
+    };
+    Re§cord record;
+  )cpp",
+             options);
+    ASSERT_TRUE(info.has_value());
+    EXPECT_NE(info->definition.find("int first;"), std::string::npos);
+    EXPECT_NE(info->definition.find("// ..."), std::string::npos);
+    EXPECT_EQ(info->definition.find("second"), std::string::npos);
+
+    run_info(R"cpp(
+    enum Value { first, second };
+    Va§lue value;
+  )cpp",
+             options);
+    ASSERT_TRUE(info.has_value());
+    EXPECT_NE(info->definition.find("first = 0"), std::string::npos);
+    EXPECT_NE(info->definition.find("..."), std::string::npos);
+    EXPECT_EQ(info->definition.find("second"), std::string::npos);
+
+    options.max_tag_members = -1;
+    options.max_initializer_tokens = -1;
+    run_info(R"cpp(
+    struct Record {
+        int first;
+        int second = 1 + 2;
+    };
+    Re§cord record;
+  )cpp",
+             options);
+    ASSERT_TRUE(info.has_value());
+    EXPECT_NE(info->definition.find("int second = 1 + 2;"), std::string::npos);
+}
+
 TEST_CASE(big_ints_no_crash) {
     // APInt64 wrap around.
     run_info(R"cpp(

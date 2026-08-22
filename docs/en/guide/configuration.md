@@ -142,6 +142,30 @@ Render the hover card as markdown. `false` produces plain text for clients that 
 
 Show the desugared form of a type, e.g. `vector<int>::size_type (aka unsigned long)`.
 
+### `hover.show_tag_members`
+
+| Type   | Default |
+| ------ | ------- |
+| `bool` | `true`  |
+
+Show members when rendering complete record and enum definitions.
+
+### `hover.max_tag_members`
+
+| Type    | Default |
+| ------- | ------- |
+| `int32` | `20`    |
+
+Maximum number of displayed members in a record or enum definition. `-1` means no limit.
+
+### `hover.max_initializer_tokens`
+
+| Type    | Default |
+| ------- | ------- |
+| `int32` | `200`   |
+
+Member initializers with more tokens than this limit are omitted. `-1` never omits initializers.
+
 ## Inlay Hints
 
 The `[inlay_hints]` section controls which inlay hint categories the server produces. Configuration changes take effect after a server restart; a client-side refresh then requests hints with the updated values. No recompile is involved.
