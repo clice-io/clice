@@ -152,17 +152,17 @@ Show members when rendering complete record and enum definitions.
 
 ### `hover.max_tag_members`
 
-| Type     | Default |
-| -------- | ------- |
-| `int32`  | `20`    |
+| Type    | Default |
+| ------- | ------- |
+| `int32` | `20`    |
 
 Maximum number of displayed members in a record or enum definition. `-1` means no limit.
 
 ### `hover.max_initializer_tokens`
 
-| Type     | Default |
-| -------- | ------- |
-| `int32`  | `200`   |
+| Type    | Default |
+| ------- | ------- |
+| `int32` | `200`   |
 
 Member initializers with more tokens than this limit are omitted. `-1` never omits initializers.
 
