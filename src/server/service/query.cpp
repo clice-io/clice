@@ -193,6 +193,34 @@ static void dedup_locations(std::vector<protocol::Location>& locations) {
     locations.erase(dup.begin(), dup.end());
 }
 
+/// Whether a location names the very occurrence site the cursor stands on.
+/// Occurrences and relations are written from the same record, so for
+/// sites spelled directly in a file the ranges match exactly. Macro-driven
+/// sites index the occurrence at the spelling but the relation at the
+/// expansion; the ranges differ, so cursor-site detection (and with it the
+/// definition/declaration alternation) simply does not trigger there.
+static bool is_cursor_site(const protocol::Location& location,
+                           llvm::StringRef uri,
+                           const protocol::Range& range) {
+    return location.uri == uri && location.range.start.line == range.start.line &&
+           location.range.start.character == range.start.character &&
+           location.range.end.line == range.end.line &&
+           location.range.end.character == range.end.character;
+}
+
+/// Drop the cursor's own site from an answer set — standing on a
+/// declaration or definition navigates to the other sites — unless it is
+/// the only site the symbol has (an inline definition, nowhere else to go).
+static void drop_cursor_site(std::vector<protocol::Location>& locations,
+                             llvm::StringRef uri,
+                             const protocol::Range& range) {
+    if(locations.size() > 1) {
+        std::erase_if(locations, [&](const protocol::Location& location) {
+            return is_cursor_site(location, uri, range);
+        });
+    }
+}
+
 bool IndexQuery::skip_shard(std::uint32_t path_id) const {
     return (!options.disk_only && is_path_open(path_id)) || skip_stale_contribution(path_id);
 }
@@ -334,26 +362,11 @@ IndexQuery::CursorHit IndexQuery::resolve_cursor(llvm::StringRef path,
     return hit;
 }
 
-std::vector<protocol::Location> IndexQuery::query_relations(llvm::StringRef path,
-                                                            const protocol::Position& position,
-                                                            RelationKind kind,
-                                                            Session* session) {
-    ScopedTimer timer;
-    auto hit = resolve_cursor(path, position, session);
-    if(hit.hash == 0) {
-        // Misses (whitespace, comments, unindexed positions) are normal
-        // inputs; their latency belongs in the series like any hit's.
-        LOG_PERF("index_query",
-                 "kind=relations rel={} path={} results=0 elapsed_ms={:.2f}",
-                 kota::meta::enum_name(static_cast<RelationKind::Kind>(kind), "Invalid"),
-                 path,
-                 timer.ms_f());
-        return {};
-    }
-
+std::vector<protocol::Location> IndexQuery::collect_relation_locations(index::SymbolHash hash,
+                                                                       RelationKind kind) {
     std::vector<protocol::Location> locations;
 
-    auto sym_it = workspace.project_index.symbols.find(hit.hash);
+    auto sym_it = workspace.project_index.symbols.find(hash);
     if(sym_it != workspace.project_index.symbols.end()) {
         for(auto file_id: sym_it->second.reference_files) {
             if(skip_shard(file_id))
@@ -368,7 +381,7 @@ std::vector<protocol::Location> IndexQuery::query_relations(llvm::StringRef path
             IndexedLineMap map(merged_index.content(),
                                merged_index.content_size(),
                                merged_index.line_starts());
-            merged_index.lookup(hit.hash, kind, [&](const index::Relation& r) {
+            merged_index.lookup(hash, kind, [&](const index::Relation& r) {
                 if(auto range = map.to_range(r.range.begin, r.range.end))
                     locations.push_back({uri->str(), *range});
                 return true;
@@ -381,7 +394,7 @@ std::vector<protocol::Location> IndexQuery::query_relations(llvm::StringRef path
         if(!uri)
             return true;
         auto map = session.line_map();
-        session.file_rows().lookup(hit.hash, kind, [&](const index::Relation& r) {
+        session.file_rows().lookup(hash, kind, [&](const index::Relation& r) {
             if(auto range = map.to_range(r.range.begin, r.range.end))
                 locations.push_back({uri->str(), *range});
             return true;
@@ -393,20 +406,17 @@ std::vector<protocol::Location> IndexQuery::query_relations(llvm::StringRef path
     // Rows a disk shard also holds come out identical and collapse in the
     // dedup below.
     visit_overlays([&](const index::TUIndex& state) {
-        overlay_lookup(state,
-                       hit.hash,
-                       kind,
-                       [&](const OverlayFile& file, const index::Relation& r) {
-                           if(!should_serve_overlay_file(file.path))
-                               return true;
-                           // to_uri canonicalizes clang's raw spelling (drive
-                           // case) before emitting.
-                           auto uri = feature::to_uri(file.path);
-                           IndexedLineMap map(file.content, file.content_size, file.line_starts);
-                           if(auto range = map.to_range(r.range.begin, r.range.end))
-                               locations.push_back({uri, *range});
-                           return true;
-                       });
+        overlay_lookup(state, hash, kind, [&](const OverlayFile& file, const index::Relation& r) {
+            if(!should_serve_overlay_file(file.path))
+                return true;
+            // to_uri canonicalizes clang's raw spelling (drive
+            // case) before emitting.
+            auto uri = feature::to_uri(file.path);
+            IndexedLineMap map(file.content, file.content_size, file.line_starts);
+            if(auto range = map.to_range(r.range.begin, r.range.end))
+                locations.push_back({uri, *range});
+            return true;
+        });
         return true;
     });
 
@@ -416,7 +426,7 @@ std::vector<protocol::Location> IndexQuery::query_relations(llvm::StringRef path
         if(!uri)
             return true;
         auto map = session.line_map();
-        preamble_rows(state).lookup(hit.hash, kind, [&](const index::Relation& r) {
+        preamble_rows(state).lookup(hash, kind, [&](const index::Relation& r) {
             if(auto range = map.to_range(r.range.begin, r.range.end))
                 locations.push_back({uri->str(), *range});
             return true;
@@ -425,9 +435,86 @@ std::vector<protocol::Location> IndexQuery::query_relations(llvm::StringRef path
     });
 
     dedup_locations(locations);
+    return locations;
+}
+
+std::vector<protocol::Location> IndexQuery::query_relations(llvm::StringRef path,
+                                                            const protocol::Position& position,
+                                                            RelationKind kind,
+                                                            Session* session) {
+    ScopedTimer timer;
+    auto hit = resolve_cursor(path, position, session);
+    std::vector<protocol::Location> locations;
+    if(hit.hash != 0) {
+        locations = collect_relation_locations(hit.hash, kind);
+    }
+    // Misses (whitespace, comments, unindexed positions) are normal
+    // inputs; their latency belongs in the series like any hit's.
     LOG_PERF("index_query",
              "kind=relations rel={} path={} results={} elapsed_ms={:.2f}",
              kota::meta::enum_name(static_cast<RelationKind::Kind>(kind), "Invalid"),
+             path,
+             locations.size(),
+             timer.ms_f());
+    return locations;
+}
+
+std::string IndexQuery::self_uri(llvm::StringRef path) {
+    // Collected locations spell URIs from the pool's canonical form; the
+    // transport's raw path can differ (drive case on Windows), which would
+    // defeat cursor-site detection.
+    auto path_id = workspace.path_pool.find(path);
+    if(!path_id)
+        return {};
+    auto uri = lsp::URI::from_file_path(workspace.path_pool.resolve(*path_id));
+    return uri ? uri->str() : std::string{};
+}
+
+std::vector<protocol::Location> IndexQuery::query_definition(llvm::StringRef path,
+                                                             const protocol::Position& position,
+                                                             Session* session) {
+    ScopedTimer timer;
+    auto hit = resolve_cursor(path, position, session);
+    std::vector<protocol::Location> locations;
+    if(hit.hash != 0) {
+        auto self = self_uri(path);
+        locations = collect_relation_locations(hit.hash, RelationKind::Definition);
+        if(locations.empty() || std::ranges::any_of(locations, [&](const protocol::Location& l) {
+               return is_cursor_site(l, self, hit.range);
+           })) {
+            auto decls = collect_relation_locations(hit.hash, RelationKind::Declaration);
+            locations.insert(locations.end(),
+                             std::make_move_iterator(decls.begin()),
+                             std::make_move_iterator(decls.end()));
+            dedup_locations(locations);
+            drop_cursor_site(locations, self, hit.range);
+        }
+    }
+    LOG_PERF("index_query",
+             "kind=definition path={} results={} elapsed_ms={:.2f}",
+             path,
+             locations.size(),
+             timer.ms_f());
+    return locations;
+}
+
+std::vector<protocol::Location> IndexQuery::query_declaration(llvm::StringRef path,
+                                                              const protocol::Position& position,
+                                                              Session* session) {
+    ScopedTimer timer;
+    auto hit = resolve_cursor(path, position, session);
+    std::vector<protocol::Location> locations;
+    if(hit.hash != 0) {
+        locations = collect_relation_locations(hit.hash, RelationKind::Declaration);
+        auto defs = collect_relation_locations(hit.hash, RelationKind::Definition);
+        locations.insert(locations.end(),
+                         std::make_move_iterator(defs.begin()),
+                         std::make_move_iterator(defs.end()));
+        dedup_locations(locations);
+        drop_cursor_site(locations, self_uri(path), hit.range);
+    }
+    LOG_PERF("index_query",
+             "kind=declaration path={} results={} elapsed_ms={:.2f}",
              path,
              locations.size(),
              timer.ms_f());
@@ -442,8 +529,32 @@ std::vector<protocol::Location> IndexQuery::query_symbol_targets(llvm::StringRef
     if(hit.hash == 0)
         return {};
 
+    return resolve_target_locations(hit.hash, kind);
+}
+
+std::vector<protocol::Location> IndexQuery::query_implementation(llvm::StringRef path,
+                                                                 const protocol::Position& position,
+                                                                 Session* session) {
+    auto hit = resolve_cursor(path, position, session);
+    if(hit.hash == 0)
+        return {};
+
+    std::string name;
+    SymbolKind kind;
+    if(!find_symbol_info(hit.hash, name, kind))
+        return {};
+
+    bool type_like =
+        kind == SymbolKind::Class || kind == SymbolKind::Struct || kind == SymbolKind::Union;
+    return resolve_target_locations(hit.hash,
+                                    type_like ? RelationKind::Derived
+                                              : RelationKind::Implementation);
+}
+
+std::vector<protocol::Location> IndexQuery::resolve_target_locations(index::SymbolHash hash,
+                                                                     RelationKind kind) {
     llvm::SmallVector<index::SymbolHash> targets;
-    collect_unique_targets(hit.hash, kind, targets);
+    collect_unique_targets(hash, kind, targets);
 
     std::vector<protocol::Location> locations;
     for(auto target: targets) {
@@ -470,14 +581,15 @@ std::optional<SymbolInfo> IndexQuery::lookup_symbol(const std::string& uri,
     return SymbolInfo{hit.hash, std::move(name), sym_kind, uri, hit.range};
 }
 
-std::optional<protocol::Location> IndexQuery::find_definition_location(index::SymbolHash hash) {
+std::optional<protocol::Location> IndexQuery::find_relation_location(index::SymbolHash hash,
+                                                                     RelationKind kind) {
     std::optional<protocol::Location> session_result;
     visit_sessions([&](std::uint32_t id, const Session& session) -> bool {
         auto uri = lsp::URI::from_file_path(std::string(workspace.path_pool.resolve(id)));
         if(!uri)
             return true;
         auto map = session.line_map();
-        session.file_rows().lookup(hash, RelationKind::Definition, [&](const index::Relation& r) {
+        session.file_rows().lookup(hash, kind, [&](const index::Relation& r) {
             if(auto range = map.to_range(r.range.begin, r.range.end)) {
                 session_result = protocol::Location{uri->str(), *range};
                 return false;
@@ -499,7 +611,7 @@ std::optional<protocol::Location> IndexQuery::find_definition_location(index::Sy
         if(!uri)
             return true;
         auto map = session.line_map();
-        preamble_rows(state).lookup(hash, RelationKind::Definition, [&](const index::Relation& r) {
+        preamble_rows(state).lookup(hash, kind, [&](const index::Relation& r) {
             if(auto range = map.to_range(r.range.begin, r.range.end)) {
                 overlay_result = protocol::Location{uri->str(), *range};
                 return false;
@@ -512,20 +624,17 @@ std::optional<protocol::Location> IndexQuery::find_definition_location(index::Sy
         return overlay_result;
 
     visit_overlays([&](const index::TUIndex& state) {
-        overlay_lookup(state,
-                       hash,
-                       RelationKind::Definition,
-                       [&](const OverlayFile& file, const index::Relation& r) {
-                           if(!should_serve_overlay_file(file.path))
-                               return true;
-                           auto uri = feature::to_uri(file.path);
-                           IndexedLineMap map(file.content, file.content_size, file.line_starts);
-                           if(auto range = map.to_range(r.range.begin, r.range.end)) {
-                               overlay_result = protocol::Location{uri, *range};
-                               return false;
-                           }
-                           return true;
-                       });
+        overlay_lookup(state, hash, kind, [&](const OverlayFile& file, const index::Relation& r) {
+            if(!should_serve_overlay_file(file.path))
+                return true;
+            auto uri = feature::to_uri(file.path);
+            IndexedLineMap map(file.content, file.content_size, file.line_starts);
+            if(auto range = map.to_range(r.range.begin, r.range.end)) {
+                overlay_result = protocol::Location{uri, *range};
+                return false;
+            }
+            return true;
+        });
         return !overlay_result.has_value();
     });
     if(overlay_result)
@@ -550,7 +659,7 @@ std::optional<protocol::Location> IndexQuery::find_definition_location(index::Sy
                            merged_index.content_size(),
                            merged_index.line_starts());
         std::optional<protocol::Location> result;
-        merged_index.lookup(hash, RelationKind::Definition, [&](const index::Relation& r) {
+        merged_index.lookup(hash, kind, [&](const index::Relation& r) {
             if(auto range = map.to_range(r.range.begin, r.range.end)) {
                 result = protocol::Location{uri->str(), *range};
                 return false;
@@ -562,6 +671,16 @@ std::optional<protocol::Location> IndexQuery::find_definition_location(index::Sy
     }
 
     return std::nullopt;
+}
+
+std::optional<protocol::Location> IndexQuery::find_definition_location(index::SymbolHash hash) {
+    return find_relation_location(hash, RelationKind::Definition);
+}
+
+std::optional<protocol::Location> IndexQuery::find_symbol_location(index::SymbolHash hash) {
+    if(auto location = find_relation_location(hash, RelationKind::Definition))
+        return location;
+    return find_relation_location(hash, RelationKind::Declaration);
 }
 
 std::optional<SymbolInfo>
@@ -703,10 +822,10 @@ std::optional<SymbolInfo> IndexQuery::resolve_symbol(index::SymbolHash hash) {
     SymbolKind kind;
     if(!find_symbol_info(hash, name, kind))
         return std::nullopt;
-    auto def_loc = find_definition_location(hash);
-    if(!def_loc)
+    auto location = find_symbol_location(hash);
+    if(!location)
         return std::nullopt;
-    return SymbolInfo{hash, std::move(name), kind, def_loc->uri, def_loc->range};
+    return SymbolInfo{hash, std::move(name), kind, location->uri, location->range};
 }
 
 /// The stored text of an indexed file, for preview slicing. Non-ASCII

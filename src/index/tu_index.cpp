@@ -390,6 +390,22 @@ public:
             return;
         }
 
+        /// Constructions are call edges too, but only written ones — an
+        /// implicit copy or elided temporary has no paren/brace form and
+        /// would flood the constructor's callers.
+        if(auto* CCE = node.get<clang::CXXConstructExpr>()) {
+            if(!CCE->getParenOrBraceRange().isValid()) {
+                return;
+            }
+            const clang::NamedDecl* caller = enclosing_function(semantics, index);
+            const clang::NamedDecl* callee = CCE->getConstructor();
+            if(caller && callee) {
+                add_call_relation(caller, RelationKind::Callee, callee, CCE->getSourceRange());
+                add_call_relation(callee, RelationKind::Caller, caller, CCE->getSourceRange());
+            }
+            return;
+        }
+
         auto* D = node.get<clang::Decl>();
         if(!D) {
             return;

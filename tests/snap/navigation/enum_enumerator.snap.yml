@@ -1,0 +1,61 @@
+---
+created_at: 2026-08-22
+input_file: enum_enumerator.cpp
+---
+idle_case:
+  definition:
+    - { file: "${WS}/enum_enumerator.cpp", range: "3:4-3:8" }
+  declaration:
+    - { file: "${WS}/enum_enumerator.cpp", range: "3:4-3:8" }
+  typeDefinition:
+    - { file: "${WS}/enum_enumerator.cpp", range: "2:11-2:16" }
+  references:
+    - { file: "${WS}/enum_enumerator.cpp", range: "3:4-3:8" }
+    - { file: "${WS}/enum_enumerator.cpp", range: "9:16-9:20" }
+
+idle_def:
+  definition:
+    - { file: "${WS}/enum_enumerator.cpp", range: "3:4-3:8" }
+  declaration:
+    - { file: "${WS}/enum_enumerator.cpp", range: "3:4-3:8" }
+  typeDefinition:
+    - { file: "${WS}/enum_enumerator.cpp", range: "2:11-2:16" }
+  references:
+    - { file: "${WS}/enum_enumerator.cpp", range: "3:4-3:8" }
+    - { file: "${WS}/enum_enumerator.cpp", range: "9:16-9:20" }
+
+ready_case:
+  definition:
+    - { file: "${WS}/enum_enumerator.cpp", range: "4:4-4:9" }
+  declaration:
+    - { file: "${WS}/enum_enumerator.cpp", range: "4:4-4:9" }
+  typeDefinition:
+    - { file: "${WS}/enum_enumerator.cpp", range: "2:11-2:16" }
+  references:
+    - { file: "${WS}/enum_enumerator.cpp", range: "4:4-4:9" }
+    - { file: "${WS}/enum_enumerator.cpp", range: "11:16-11:21" }
+    - { file: "${WS}/enum_enumerator.cpp", range: "14:27-14:32" }
+
+ready_def:
+  definition:
+    - { file: "${WS}/enum_enumerator.cpp", range: "4:4-4:9" }
+  declaration:
+    - { file: "${WS}/enum_enumerator.cpp", range: "4:4-4:9" }
+  typeDefinition:
+    - { file: "${WS}/enum_enumerator.cpp", range: "2:11-2:16" }
+  references:
+    - { file: "${WS}/enum_enumerator.cpp", range: "4:4-4:9" }
+    - { file: "${WS}/enum_enumerator.cpp", range: "11:16-11:21" }
+    - { file: "${WS}/enum_enumerator.cpp", range: "14:27-14:32" }
+
+ready_use:
+  definition:
+    - { file: "${WS}/enum_enumerator.cpp", range: "4:4-4:9" }
+  declaration:
+    - { file: "${WS}/enum_enumerator.cpp", range: "4:4-4:9" }
+  typeDefinition:
+    - { file: "${WS}/enum_enumerator.cpp", range: "2:11-2:16" }
+  references:
+    - { file: "${WS}/enum_enumerator.cpp", range: "4:4-4:9" }
+    - { file: "${WS}/enum_enumerator.cpp", range: "11:16-11:21" }
+    - { file: "${WS}/enum_enumerator.cpp", range: "14:27-14:32" }

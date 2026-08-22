@@ -1,0 +1,103 @@
+---
+created_at: 2026-08-22
+input_file: header_source/main.cpp
+---
+--- lib.cpp
+def:
+  definition:
+    - { file: "${WS}/header_source/lib.h", range: "2:4-2:8" }
+  declaration:
+    - { file: "${WS}/header_source/lib.h", range: "2:4-2:8" }
+  references:
+    - { file: "${WS}/header_source/lib.cpp", range: "2:4-2:8" }
+    - { file: "${WS}/header_source/lib.h", range: "2:4-2:8" }
+    - { file: "${WS}/header_source/main.cpp", range: "5:11-5:15" }
+    - { file: "${WS}/header_source/uses.cpp", range: "3:11-3:15" }
+  callHierarchy:
+    - { name: "area", kind: Function, file: "${WS}/header_source/lib.cpp", range: "2:4-2:8" }
+  incomingCalls:
+    - { name: "floor_plan", kind: Function, file: "${WS}/header_source/main.cpp", range: "4:4-4:14", fromRanges: ["5:11-5:30"] }
+    - { name: "wall_paint", kind: Function, file: "${WS}/header_source/uses.cpp", range: "2:4-2:14", fromRanges: ["3:11-3:30"] }
+
+--- lib.h
+decl:
+  definition:
+    - { file: "${WS}/header_source/lib.cpp", range: "2:4-2:8" }
+  declaration:
+    - { file: "${WS}/header_source/lib.cpp", range: "2:4-2:8" }
+  references:
+    - { file: "${WS}/header_source/lib.cpp", range: "2:4-2:8" }
+    - { file: "${WS}/header_source/lib.h", range: "2:4-2:8" }
+    - { file: "${WS}/header_source/main.cpp", range: "5:11-5:15" }
+    - { file: "${WS}/header_source/uses.cpp", range: "3:11-3:15" }
+  callHierarchy:
+    - { name: "area", kind: Function, file: "${WS}/header_source/lib.cpp", range: "2:4-2:8" }
+  incomingCalls:
+    - { name: "floor_plan", kind: Function, file: "${WS}/header_source/main.cpp", range: "4:4-4:14", fromRanges: ["5:11-5:30"] }
+    - { name: "wall_paint", kind: Function, file: "${WS}/header_source/uses.cpp", range: "2:4-2:14", fromRanges: ["3:11-3:30"] }
+
+inline_def:
+  definition:
+    - { file: "${WS}/header_source/lib.h", range: "4:11-4:20" }
+  declaration:
+    - { file: "${WS}/header_source/lib.h", range: "4:11-4:20" }
+  references:
+    - { file: "${WS}/header_source/lib.h", range: "4:11-4:20" }
+    - { file: "${WS}/header_source/main.cpp", range: "5:33-5:42" }
+  callHierarchy:
+    - { name: "perimeter", kind: Function, file: "${WS}/header_source/lib.h", range: "4:11-4:20" }
+  incomingCalls:
+    - { name: "floor_plan", kind: Function, file: "${WS}/header_source/main.cpp", range: "4:4-4:14", fromRanges: ["5:33-5:57"] }
+
+--- main.cpp
+include_target:
+  definition:
+    - { file: "${WS}/header_source/lib.h", range: "0:0-0:0" }
+
+inline_use:
+  definition:
+    - { file: "${WS}/header_source/lib.h", range: "4:11-4:20" }
+  declaration:
+    - { file: "${WS}/header_source/lib.h", range: "4:11-4:20" }
+  references:
+    - { file: "${WS}/header_source/lib.h", range: "4:11-4:20" }
+    - { file: "${WS}/header_source/main.cpp", range: "5:33-5:42" }
+  callHierarchy:
+    - { name: "perimeter", kind: Function, file: "${WS}/header_source/lib.h", range: "4:11-4:20" }
+  incomingCalls:
+    - { name: "floor_plan", kind: Function, file: "${WS}/header_source/main.cpp", range: "4:4-4:14", fromRanges: ["5:33-5:57"] }
+
+use:
+  definition:
+    - { file: "${WS}/header_source/lib.cpp", range: "2:4-2:8" }
+  declaration:
+    - { file: "${WS}/header_source/lib.cpp", range: "2:4-2:8" }
+    - { file: "${WS}/header_source/lib.h", range: "2:4-2:8" }
+  references:
+    - { file: "${WS}/header_source/lib.cpp", range: "2:4-2:8" }
+    - { file: "${WS}/header_source/lib.h", range: "2:4-2:8" }
+    - { file: "${WS}/header_source/main.cpp", range: "5:11-5:15" }
+    - { file: "${WS}/header_source/uses.cpp", range: "3:11-3:15" }
+  callHierarchy:
+    - { name: "area", kind: Function, file: "${WS}/header_source/lib.cpp", range: "2:4-2:8" }
+  incomingCalls:
+    - { name: "floor_plan", kind: Function, file: "${WS}/header_source/main.cpp", range: "4:4-4:14", fromRanges: ["5:11-5:30"] }
+    - { name: "wall_paint", kind: Function, file: "${WS}/header_source/uses.cpp", range: "2:4-2:14", fromRanges: ["3:11-3:30"] }
+
+--- uses.cpp
+second_use:
+  definition:
+    - { file: "${WS}/header_source/lib.cpp", range: "2:4-2:8" }
+  declaration:
+    - { file: "${WS}/header_source/lib.cpp", range: "2:4-2:8" }
+    - { file: "${WS}/header_source/lib.h", range: "2:4-2:8" }
+  references:
+    - { file: "${WS}/header_source/lib.cpp", range: "2:4-2:8" }
+    - { file: "${WS}/header_source/lib.h", range: "2:4-2:8" }
+    - { file: "${WS}/header_source/main.cpp", range: "5:11-5:15" }
+    - { file: "${WS}/header_source/uses.cpp", range: "3:11-3:15" }
+  callHierarchy:
+    - { name: "area", kind: Function, file: "${WS}/header_source/lib.cpp", range: "2:4-2:8" }
+  incomingCalls:
+    - { name: "floor_plan", kind: Function, file: "${WS}/header_source/main.cpp", range: "4:4-4:14", fromRanges: ["5:11-5:30"] }
+    - { name: "wall_paint", kind: Function, file: "${WS}/header_source/uses.cpp", range: "2:4-2:14", fromRanges: ["3:11-3:30"] }

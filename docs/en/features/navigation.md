@@ -3,6 +3,8 @@
 ## Go to Definition
 
 - [x] Index-based cross-TU go-to-definition
+- [x] Definition and declaration alternate: invoking go-to-definition on the definition itself navigates to the declaration (an inline-defined symbol with no separate declaration keeps the definition site as the answer)
+- [x] Declaration-only symbols (pure virtuals, extern declarations, pre-C++17 class constants) navigate to their declaration instead of returning empty
 - [x] Go to definition on `#include` directives (navigate to the included file), including preamble includes compiled into the PCH
 - [ ] AST-based fallback for local/unsaved symbols
 - [ ] Navigate through macro wrappers to the underlying declaration
@@ -241,9 +243,9 @@ Implicit navigation requires an unambiguous source token — patterns where the 
 
 ## Go to Declaration
 
-Navigate from a symbol usage or definition to its declaration. In C++, many entities have separate declarations and definitions; go-to-declaration always targets the declaration side.
+Navigate from a symbol usage or definition to its declaration. In C++, many entities have separate declarations and definitions.
 
-clice returns the declaration locations plus the definition: symbols defined inline have no separate declaration, and navigating to the definition is what clients expect in that case.
+clice returns the declaration locations plus the definition — symbols defined inline have no separate declaration — minus the site the cursor already stands on, so declaration and definition sites alternate just like go-to-definition.
 
 - [x] Index-based cross-TU go-to-declaration
 - [x] Functions — from usage or out-of-line definition to the declaration/prototype
@@ -586,6 +588,7 @@ Highlight all references to the symbol under cursor within the current file (`te
 
 | Date       | Change                                                                                             | PR                                                 |
 | ---------- | -------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| 2026-08-22 | definition/declaration alternate at the cursor site; declaration-only symbols serve declarations   | [#626](https://github.com/clice-io/clice/pull/626) |
 | 2026-07-04 | go-to-definition on include directives and module names                                            | [#481](https://github.com/clice-io/clice/pull/481) |
 | 2026-07-03 | declaration / implementation / typeDefinition; references includeDeclaration includes declarations | [#480](https://github.com/clice-io/clice/pull/480) |
 | 2026-04-02 | Index-based go-to-definition and find references; call hierarchy; type hierarchy                   | [#382](https://github.com/clice-io/clice/pull/382) |

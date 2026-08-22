@@ -1,0 +1,122 @@
+---
+created_at: 2026-08-22
+input_file: template_navigation.cpp
+---
+class_primary:
+  definition:
+    - { file: "${WS}/template_navigation.cpp", range: "13:7-13:10" }
+  declaration:
+    - { file: "${WS}/template_navigation.cpp", range: "13:7-13:10" }
+  references:
+    - { file: "${WS}/template_navigation.cpp", range: "13:7-13:10" }
+    - { file: "${WS}/template_navigation.cpp", range: "19:2-19:5" }
+    - { file: "${WS}/template_navigation.cpp", range: "24:4-24:7" }
+  typeHierarchy:
+    - { name: "Box", kind: Struct, file: "${WS}/template_navigation.cpp", range: "13:7-13:10" }
+
+class_use:
+  definition:
+    - { file: "${WS}/template_navigation.cpp", range: "13:7-13:10" }
+  declaration:
+    - { file: "${WS}/template_navigation.cpp", range: "13:7-13:10" }
+  references:
+    - { file: "${WS}/template_navigation.cpp", range: "13:7-13:10" }
+    - { file: "${WS}/template_navigation.cpp", range: "19:2-19:5" }
+    - { file: "${WS}/template_navigation.cpp", range: "24:4-24:7" }
+  typeHierarchy:
+    - { name: "Box", kind: Struct, file: "${WS}/template_navigation.cpp", range: "13:7-13:10" }
+
+member_decl:
+  definition:
+    - { file: "${WS}/template_navigation.cpp", range: "19:10-19:13" }
+  declaration:
+    - { file: "${WS}/template_navigation.cpp", range: "19:10-19:13" }
+  references:
+    - { file: "${WS}/template_navigation.cpp", range: "14:6-14:9" }
+    - { file: "${WS}/template_navigation.cpp", range: "19:10-19:13" }
+    - { file: "${WS}/template_navigation.cpp", range: "27:15-27:18" }
+  callHierarchy:
+    - { name: "get", kind: Method, file: "${WS}/template_navigation.cpp", range: "19:10-19:13" }
+  incomingCalls:
+    - { name: "drive", kind: Function, file: "${WS}/template_navigation.cpp", range: "23:4-23:9", fromRanges: ["27:11-27:20"] }
+
+member_def:
+  definition:
+    - { file: "${WS}/template_navigation.cpp", range: "14:6-14:9" }
+  declaration:
+    - { file: "${WS}/template_navigation.cpp", range: "14:6-14:9" }
+  references:
+    - { file: "${WS}/template_navigation.cpp", range: "14:6-14:9" }
+    - { file: "${WS}/template_navigation.cpp", range: "19:10-19:13" }
+    - { file: "${WS}/template_navigation.cpp", range: "27:15-27:18" }
+  callHierarchy:
+    - { name: "get", kind: Method, file: "${WS}/template_navigation.cpp", range: "19:10-19:13" }
+  incomingCalls:
+    - { name: "drive", kind: Function, file: "${WS}/template_navigation.cpp", range: "23:4-23:9", fromRanges: ["27:11-27:20"] }
+
+member_use:
+  definition:
+    - { file: "${WS}/template_navigation.cpp", range: "19:10-19:13" }
+  declaration:
+    - { file: "${WS}/template_navigation.cpp", range: "14:6-14:9" }
+    - { file: "${WS}/template_navigation.cpp", range: "19:10-19:13" }
+  references:
+    - { file: "${WS}/template_navigation.cpp", range: "14:6-14:9" }
+    - { file: "${WS}/template_navigation.cpp", range: "19:10-19:13" }
+    - { file: "${WS}/template_navigation.cpp", range: "27:15-27:18" }
+  callHierarchy:
+    - { name: "get", kind: Method, file: "${WS}/template_navigation.cpp", range: "19:10-19:13" }
+  incomingCalls:
+    - { name: "drive", kind: Function, file: "${WS}/template_navigation.cpp", range: "23:4-23:9", fromRanges: ["27:11-27:20"] }
+
+primary:
+  definition:
+    - { file: "${WS}/template_navigation.cpp", range: "3:2-3:10" }
+  declaration:
+    - { file: "${WS}/template_navigation.cpp", range: "3:2-3:10" }
+  references:
+    - { file: "${WS}/template_navigation.cpp", range: "3:2-3:10" }
+    - { file: "${WS}/template_navigation.cpp", range: "26:42-26:50" }
+  callHierarchy:
+    - { name: "identity", kind: Function, file: "${WS}/template_navigation.cpp", range: "3:2-3:10" }
+  incomingCalls:
+    - { name: "drive", kind: Function, file: "${WS}/template_navigation.cpp", range: "23:4-23:9", fromRanges: ["26:42-26:55"] }
+
+spec:
+  definition:
+    - { file: "${WS}/template_navigation.cpp", range: "8:4-8:12" }
+  declaration:
+    - { file: "${WS}/template_navigation.cpp", range: "8:4-8:12" }
+  references:
+    - { file: "${WS}/template_navigation.cpp", range: "8:4-8:12" }
+    - { file: "${WS}/template_navigation.cpp", range: "26:11-26:19" }
+  callHierarchy:
+    - { name: "identity", kind: Function, file: "${WS}/template_navigation.cpp", range: "8:4-8:12" }
+  incomingCalls:
+    - { name: "drive", kind: Function, file: "${WS}/template_navigation.cpp", range: "23:4-23:9", fromRanges: ["26:11-26:22"] }
+
+use_primary:
+  definition:
+    - { file: "${WS}/template_navigation.cpp", range: "3:2-3:10" }
+  declaration:
+    - { file: "${WS}/template_navigation.cpp", range: "3:2-3:10" }
+  references:
+    - { file: "${WS}/template_navigation.cpp", range: "3:2-3:10" }
+    - { file: "${WS}/template_navigation.cpp", range: "26:42-26:50" }
+  callHierarchy:
+    - { name: "identity", kind: Function, file: "${WS}/template_navigation.cpp", range: "3:2-3:10" }
+  incomingCalls:
+    - { name: "drive", kind: Function, file: "${WS}/template_navigation.cpp", range: "23:4-23:9", fromRanges: ["26:42-26:55"] }
+
+use_spec:
+  definition:
+    - { file: "${WS}/template_navigation.cpp", range: "8:4-8:12" }
+  declaration:
+    - { file: "${WS}/template_navigation.cpp", range: "8:4-8:12" }
+  references:
+    - { file: "${WS}/template_navigation.cpp", range: "8:4-8:12" }
+    - { file: "${WS}/template_navigation.cpp", range: "26:11-26:19" }
+  callHierarchy:
+    - { name: "identity", kind: Function, file: "${WS}/template_navigation.cpp", range: "8:4-8:12" }
+  incomingCalls:
+    - { name: "drive", kind: Function, file: "${WS}/template_navigation.cpp", range: "23:4-23:9", fromRanges: ["26:11-26:22"] }

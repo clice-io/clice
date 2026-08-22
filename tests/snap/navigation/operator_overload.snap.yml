@@ -1,0 +1,32 @@
+---
+created_at: 2026-08-22
+input_file: operator_overload.cpp
+---
+op_def:
+  definition:
+    - { file: "${WS}/operator_overload.cpp", range: "6:4-6:12" }
+  declaration:
+    - { file: "${WS}/operator_overload.cpp", range: "6:4-6:12" }
+  references:
+    - { file: "${WS}/operator_overload.cpp", range: "6:4-6:12" }
+    - { file: "${WS}/operator_overload.cpp", range: "8:4-8:12" }
+    - { file: "${WS}/operator_overload.cpp", range: "13:16-13:17" }
+  callHierarchy:
+    - { name: "operator+", kind: Operator, file: "${WS}/operator_overload.cpp", range: "8:4-8:12" }
+  incomingCalls:
+    - { name: "combine", kind: Function, file: "${WS}/operator_overload.cpp", range: "12:4-12:11", fromRanges: ["13:11-13:23"] }
+
+op_use:
+  definition:
+    - { file: "${WS}/operator_overload.cpp", range: "8:4-8:12" }
+  declaration:
+    - { file: "${WS}/operator_overload.cpp", range: "6:4-6:12" }
+    - { file: "${WS}/operator_overload.cpp", range: "8:4-8:12" }
+  references:
+    - { file: "${WS}/operator_overload.cpp", range: "6:4-6:12" }
+    - { file: "${WS}/operator_overload.cpp", range: "8:4-8:12" }
+    - { file: "${WS}/operator_overload.cpp", range: "13:16-13:17" }
+  callHierarchy:
+    - { name: "operator+", kind: Operator, file: "${WS}/operator_overload.cpp", range: "8:4-8:12" }
+  incomingCalls:
+    - { name: "combine", kind: Function, file: "${WS}/operator_overload.cpp", range: "12:4-12:11", fromRanges: ["13:11-13:23"] }

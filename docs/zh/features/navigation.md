@@ -3,7 +3,9 @@
 ## Go to Definition
 
 - [x] 基于索引的跨翻译单元 go-to-definition
-- [ ] 在 `#include` 指令上 go-to-definition（导航到被包含的文件）
+- [x] 定义与声明交替跳转：在定义本身上执行 go-to-definition 会导航到声明（内联定义的符号没有独立声明时，仍以定义位置作为结果）
+- [x] 只有声明的符号（纯虚函数、extern 声明、C++17 前的类内常量）导航到其声明，而不是返回空结果
+- [x] 在 `#include` 指令上 go-to-definition（导航到被包含的文件），包括编译进 PCH 的 preamble include
 - [ ] 基于 AST 的本地/未保存符号回退
 - [ ] 穿透宏包装导航到底层声明
 
@@ -241,9 +243,12 @@
 
 ## Go to Declaration
 
-从符号的使用处或定义处导航到其声明。C++ 中许多实体有独立的声明和定义；go-to-declaration 始终导航到声明一侧。
+从符号的使用处或定义处导航到其声明。C++ 中许多实体有独立的声明和定义。
 
-- [ ] 函数 — 从使用处或行外定义导航到声明/原型
+clice 返回声明位置加上定义位置（内联定义的符号没有独立的声明），并排除光标所在的位置本身，因此声明与定义之间同样交替跳转。
+
+- [x] 基于索引的跨翻译单元 go-to-declaration
+- [x] 函数 — 从使用处或行外定义导航到声明/原型
 
   ```cpp
   // widget.h
@@ -575,8 +580,9 @@
 
 ## 变更记录
 
-| 日期 | 变更                                           | PR  |
-| ---- | ---------------------------------------------- | --- |
-| —    | 基于索引的 go-to-definition 和 find references | —   |
-| —    | Call hierarchy（incoming/outgoing）            | —   |
-| —    | Type hierarchy（supertypes/subtypes）          | —   |
+| 日期       | 变更                                                  | PR                                                 |
+| ---------- | ----------------------------------------------------- | -------------------------------------------------- |
+| 2026-08-22 | 定义/声明在光标站点交替跳转；只有声明的符号返回其声明 | [#626](https://github.com/clice-io/clice/pull/626) |
+| —          | 基于索引的 go-to-definition 和 find references        | —                                                  |
+| —          | Call hierarchy（incoming/outgoing）                   | —                                                  |
+| —          | Type hierarchy（supertypes/subtypes）                 | —                                                  |

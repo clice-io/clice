@@ -1,0 +1,52 @@
+---
+created_at: 2026-08-22
+input_file: ctad_guide.cpp
+---
+class_def:
+  definition:
+    - { file: "${WS}/ctad_guide.cpp", range: "3:7-3:10" }
+  declaration:
+    - { file: "${WS}/ctad_guide.cpp", range: "3:7-3:10" }
+  references:
+    - { file: "${WS}/ctad_guide.cpp", range: "3:7-3:10" }
+    - { file: "${WS}/ctad_guide.cpp", range: "9:10-9:13" }
+    - { file: "${WS}/ctad_guide.cpp", range: "12:4-12:7" }
+  typeHierarchy:
+    - { name: "Box", kind: Struct, file: "${WS}/ctad_guide.cpp", range: "3:7-3:10" }
+
+ctad_invoke:
+  definition:
+    - { file: "${WS}/ctad_guide.cpp", range: "4:4-4:7" }
+  declaration:
+    - { file: "${WS}/ctad_guide.cpp", range: "4:4-4:7" }
+  typeDefinition:
+    - { file: "${WS}/ctad_guide.cpp", range: "3:7-3:10" }
+  references:
+    - { file: "${WS}/ctad_guide.cpp", range: "4:4-4:7" }
+    - { file: "${WS}/ctad_guide.cpp", range: "12:11-12:12" }
+  callHierarchy:
+    - { name: "Box", kind: Method, file: "${WS}/ctad_guide.cpp", range: "4:4-4:7" }
+  incomingCalls:
+    - { name: "read_box", kind: Function, file: "${WS}/ctad_guide.cpp", range: "11:4-11:12", fromRanges: ["12:8-12:14"] }
+
+ctad_use:
+  definition:
+    - { file: "${WS}/ctad_guide.cpp", range: "3:7-3:10" }
+  declaration:
+    - { file: "${WS}/ctad_guide.cpp", range: "3:7-3:10" }
+  references:
+    - { file: "${WS}/ctad_guide.cpp", range: "3:7-3:10" }
+    - { file: "${WS}/ctad_guide.cpp", range: "9:10-9:13" }
+    - { file: "${WS}/ctad_guide.cpp", range: "12:4-12:7" }
+  typeHierarchy:
+    - { name: "Box", kind: Struct, file: "${WS}/ctad_guide.cpp", range: "3:7-3:10" }
+
+guide_decl:
+  definition:
+    - { file: "${WS}/ctad_guide.cpp", range: "9:0-9:3" }
+  declaration:
+    - { file: "${WS}/ctad_guide.cpp", range: "9:0-9:3" }
+  references:
+    - { file: "${WS}/ctad_guide.cpp", range: "9:0-9:3" }
+  callHierarchy:
+    - { name: "<deduction guide for Box>", kind: Function, file: "${WS}/ctad_guide.cpp", range: "9:0-9:3" }

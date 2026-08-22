@@ -1,0 +1,47 @@
+---
+created_at: 2026-08-22
+input_file: function_pointer.cpp
+---
+address_use:
+  definition:
+    - { file: "${WS}/function_pointer.cpp", range: "2:4-2:10" }
+  declaration:
+    - { file: "${WS}/function_pointer.cpp", range: "2:4-2:10" }
+  references:
+    - { file: "${WS}/function_pointer.cpp", range: "2:4-2:10" }
+    - { file: "${WS}/function_pointer.cpp", range: "8:21-8:27" }
+  callHierarchy:
+    - { name: "target", kind: Function, file: "${WS}/function_pointer.cpp", range: "2:4-2:10" }
+
+pointer_call:
+  definition:
+    - { file: "${WS}/function_pointer.cpp", range: "8:9-8:17" }
+  declaration:
+    - { file: "${WS}/function_pointer.cpp", range: "8:9-8:17" }
+  typeDefinition:
+    - { file: "${WS}/function_pointer.cpp", range: "6:6-6:14" }
+  references:
+    - { file: "${WS}/function_pointer.cpp", range: "8:9-8:17" }
+    - { file: "${WS}/function_pointer.cpp", range: "11:11-11:19" }
+
+pointer_def:
+  definition:
+    - { file: "${WS}/function_pointer.cpp", range: "8:9-8:17" }
+  declaration:
+    - { file: "${WS}/function_pointer.cpp", range: "8:9-8:17" }
+  typeDefinition:
+    - { file: "${WS}/function_pointer.cpp", range: "6:6-6:14" }
+  references:
+    - { file: "${WS}/function_pointer.cpp", range: "8:9-8:17" }
+    - { file: "${WS}/function_pointer.cpp", range: "11:11-11:19" }
+
+target_def:
+  definition:
+    - { file: "${WS}/function_pointer.cpp", range: "2:4-2:10" }
+  declaration:
+    - { file: "${WS}/function_pointer.cpp", range: "2:4-2:10" }
+  references:
+    - { file: "${WS}/function_pointer.cpp", range: "2:4-2:10" }
+    - { file: "${WS}/function_pointer.cpp", range: "8:21-8:27" }
+  callHierarchy:
+    - { name: "target", kind: Function, file: "${WS}/function_pointer.cpp", range: "2:4-2:10" }

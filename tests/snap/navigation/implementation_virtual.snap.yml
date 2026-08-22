@@ -1,0 +1,64 @@
+---
+created_at: 2026-08-22
+input_file: implementation_virtual.cpp
+---
+base:
+  definition:
+    - { file: "${WS}/implementation_virtual.cpp", range: "2:7-2:12" }
+  declaration:
+    - { file: "${WS}/implementation_virtual.cpp", range: "2:7-2:12" }
+  implementation:
+    - { file: "${WS}/implementation_virtual.cpp", range: "6:7-6:13" }
+    - { file: "${WS}/implementation_virtual.cpp", range: "12:7-12:13" }
+  references:
+    - { file: "${WS}/implementation_virtual.cpp", range: "2:7-2:12" }
+    - { file: "${WS}/implementation_virtual.cpp", range: "6:16-6:21" }
+    - { file: "${WS}/implementation_virtual.cpp", range: "12:16-12:21" }
+    - { file: "${WS}/implementation_virtual.cpp", range: "18:12-18:17" }
+  typeHierarchy:
+    - { name: "Shape", kind: Struct, file: "${WS}/implementation_virtual.cpp", range: "2:7-2:12" }
+  subtypes:
+    - { name: "Circle", kind: Struct, file: "${WS}/implementation_virtual.cpp", range: "6:7-6:13" }
+    - { name: "Square", kind: Struct, file: "${WS}/implementation_virtual.cpp", range: "12:7-12:13" }
+
+base_method:
+  definition:
+    - { file: "${WS}/implementation_virtual.cpp", range: "3:16-3:20" }
+  declaration:
+    - { file: "${WS}/implementation_virtual.cpp", range: "3:16-3:20" }
+  implementation:
+    - { file: "${WS}/implementation_virtual.cpp", range: "7:8-7:12" }
+    - { file: "${WS}/implementation_virtual.cpp", range: "13:8-13:12" }
+  references:
+    - { file: "${WS}/implementation_virtual.cpp", range: "3:16-3:20" }
+    - { file: "${WS}/implementation_virtual.cpp", range: "19:17-19:21" }
+  callHierarchy:
+    - { name: "area", kind: Method, file: "${WS}/implementation_virtual.cpp", range: "3:16-3:20" }
+  incomingCalls:
+    - { name: "measure", kind: Function, file: "${WS}/implementation_virtual.cpp", range: "18:4-18:11", fromRanges: ["19:11-19:23"] }
+
+override_def:
+  definition:
+    - { file: "${WS}/implementation_virtual.cpp", range: "7:8-7:12" }
+  declaration:
+    - { file: "${WS}/implementation_virtual.cpp", range: "7:8-7:12" }
+  references:
+    - { file: "${WS}/implementation_virtual.cpp", range: "7:8-7:12" }
+  callHierarchy:
+    - { name: "area", kind: Method, file: "${WS}/implementation_virtual.cpp", range: "7:8-7:12" }
+
+virtual_call:
+  definition:
+    - { file: "${WS}/implementation_virtual.cpp", range: "3:16-3:20" }
+  declaration:
+    - { file: "${WS}/implementation_virtual.cpp", range: "3:16-3:20" }
+  implementation:
+    - { file: "${WS}/implementation_virtual.cpp", range: "7:8-7:12" }
+    - { file: "${WS}/implementation_virtual.cpp", range: "13:8-13:12" }
+  references:
+    - { file: "${WS}/implementation_virtual.cpp", range: "3:16-3:20" }
+    - { file: "${WS}/implementation_virtual.cpp", range: "19:17-19:21" }
+  callHierarchy:
+    - { name: "area", kind: Method, file: "${WS}/implementation_virtual.cpp", range: "3:16-3:20" }
+  incomingCalls:
+    - { name: "measure", kind: Function, file: "${WS}/implementation_virtual.cpp", range: "18:4-18:11", fromRanges: ["19:11-19:23"] }

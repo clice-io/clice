@@ -204,11 +204,58 @@ test("goto declaration cross file", async ({ client, workspace }) => {
         "nav.h",
         4,
     ]);
-    // Union semantics: the definition itself is also listed.
-    expect(lines, `expected nav.cpp:2 definition, got ${JSON.stringify(lines)}`).toContainEqual([
+    // The cursor stands on the definition site; it is not an answer.
+    expect(lines, `expected no nav.cpp:2 self, got ${JSON.stringify(lines)}`).not.toContainEqual([
         "nav.cpp",
         2,
     ]);
+
+    client.close(uri);
+});
+
+/// Standing on a definition or declaration navigates to the other site.
+test("goto definition alternate", async ({ client, workspace }) => {
+    const [uri] = await client.openAndWait("main.cpp");
+    expect(await client.waitForIndex(uri, "area"), "Index not ready after 30s").toBe(true);
+
+    // 'area' definition nav.cpp:2, declaration nav.h:4 (both closed files).
+    const fromDef = asLocations(await client.definitionAt(workspace.uri("nav.cpp"), 2, 4));
+    expect(fromDef.map((loc) => [fileName(loc.uri), loc.range.start.line])).toEqual([["nav.h", 4]]);
+
+    const fromDecl = asLocations(await client.definitionAt(workspace.uri("nav.h"), 4, 4));
+    expect(fromDecl.map((loc) => [fileName(loc.uri), loc.range.start.line])).toEqual([
+        ["nav.cpp", 2],
+    ]);
+
+    client.close(uri);
+});
+
+/// A symbol with no definition anywhere navigates to its declaration
+/// instead of returning empty.
+test("goto definition declaration only", async ({ client, workspace }) => {
+    const [uri] = await client.openAndWait("main.cpp");
+    // workspace/symbol only lists defined symbols, so gate on the defined
+    // caller: its TU index lands together with both nav shards.
+    expect(await client.waitForIndex(uri, "use_area_scale"), "Index not ready after 30s").toBe(
+        true,
+    );
+
+    // 'area_scale' declared nav.h:27, never defined; called in nav.cpp:23.
+    const locs = asLocations(await client.definitionAt(workspace.uri("nav.cpp"), 23, 11));
+    expect(locs.map((loc) => [fileName(loc.uri), loc.range.start.line])).toEqual([["nav.h", 27]]);
+
+    client.close(uri);
+});
+
+/// An inline-defined symbol has nowhere else to point: the definition
+/// site stays the answer (clients render self-navigation as a peek).
+test("goto definition inline definition", async ({ client }) => {
+    const [uri] = await client.openAndWait("main.cpp");
+    expect(await client.waitForIndex(uri), "Index not ready after 30s").toBe(true);
+
+    // 'add' is defined inline on line 18 with no separate declaration.
+    const locs = asLocations(await client.definitionAt(uri, 18, 4));
+    expect(locs.map((loc) => loc.range.start.line)).toEqual([18]);
 
     client.close(uri);
 });

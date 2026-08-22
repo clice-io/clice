@@ -1,0 +1,41 @@
+---
+created_at: 2026-08-22
+input_file: lambda_variable.cpp
+---
+capture_use:
+  definition:
+    - { file: "${WS}/lambda_variable.cpp", range: "3:8-3:12" }
+  declaration:
+    - { file: "${WS}/lambda_variable.cpp", range: "3:8-3:12" }
+  references:
+    - { file: "${WS}/lambda_variable.cpp", range: "3:8-3:12" }
+    - { file: "${WS}/lambda_variable.cpp", range: "4:16-4:20" }
+    - { file: "${WS}/lambda_variable.cpp", range: "5:15-5:19" }
+
+captured_def:
+  definition:
+    - { file: "${WS}/lambda_variable.cpp", range: "3:8-3:12" }
+  declaration:
+    - { file: "${WS}/lambda_variable.cpp", range: "3:8-3:12" }
+  references:
+    - { file: "${WS}/lambda_variable.cpp", range: "3:8-3:12" }
+    - { file: "${WS}/lambda_variable.cpp", range: "4:16-4:20" }
+    - { file: "${WS}/lambda_variable.cpp", range: "5:15-5:19" }
+
+lambda_call:
+  definition:
+    - { file: "${WS}/lambda_variable.cpp", range: "4:9-4:12" }
+  declaration:
+    - { file: "${WS}/lambda_variable.cpp", range: "4:9-4:12" }
+  references:
+    - { file: "${WS}/lambda_variable.cpp", range: "4:9-4:12" }
+    - { file: "${WS}/lambda_variable.cpp", range: "7:11-7:14" }
+
+lambda_def:
+  definition:
+    - { file: "${WS}/lambda_variable.cpp", range: "4:9-4:12" }
+  declaration:
+    - { file: "${WS}/lambda_variable.cpp", range: "4:9-4:12" }
+  references:
+    - { file: "${WS}/lambda_variable.cpp", range: "4:9-4:12" }
+    - { file: "${WS}/lambda_variable.cpp", range: "7:11-7:14" }

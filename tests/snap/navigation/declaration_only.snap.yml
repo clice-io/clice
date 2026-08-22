@@ -1,0 +1,59 @@
+---
+created_at: 2026-08-22
+input_file: declaration_only.cpp
+---
+caller:
+  definition:
+    - { file: "${WS}/declaration_only.cpp", range: "9:4-9:9" }
+  declaration:
+    - { file: "${WS}/declaration_only.cpp", range: "9:4-9:9" }
+  references:
+    - { file: "${WS}/declaration_only.cpp", range: "9:4-9:9" }
+  callHierarchy:
+    - { name: "watch", kind: Function, file: "${WS}/declaration_only.cpp", range: "9:4-9:9" }
+  outgoingCalls:
+    - { name: "probe", kind: Function, file: "${WS}/declaration_only.cpp", range: "7:4-7:9", fromRanges: ["10:11-10:23"] }
+
+fn_decl:
+  definition:
+    - { file: "${WS}/declaration_only.cpp", range: "7:4-7:9" }
+  declaration:
+    - { file: "${WS}/declaration_only.cpp", range: "7:4-7:9" }
+  references:
+    - { file: "${WS}/declaration_only.cpp", range: "7:4-7:9" }
+    - { file: "${WS}/declaration_only.cpp", range: "10:11-10:16" }
+  callHierarchy:
+    - { name: "probe", kind: Function, file: "${WS}/declaration_only.cpp", range: "7:4-7:9" }
+  incomingCalls:
+    - { name: "watch", kind: Function, file: "${WS}/declaration_only.cpp", range: "9:4-9:9", fromRanges: ["10:11-10:23"] }
+
+fn_use:
+  definition:
+    - { file: "${WS}/declaration_only.cpp", range: "7:4-7:9" }
+  declaration:
+    - { file: "${WS}/declaration_only.cpp", range: "7:4-7:9" }
+  references:
+    - { file: "${WS}/declaration_only.cpp", range: "7:4-7:9" }
+    - { file: "${WS}/declaration_only.cpp", range: "10:11-10:16" }
+  callHierarchy:
+    - { name: "probe", kind: Function, file: "${WS}/declaration_only.cpp", range: "7:4-7:9" }
+  incomingCalls:
+    - { name: "watch", kind: Function, file: "${WS}/declaration_only.cpp", range: "9:4-9:9", fromRanges: ["10:11-10:23"] }
+
+var_decl:
+  definition:
+    - { file: "${WS}/declaration_only.cpp", range: "5:11-5:20" }
+  declaration:
+    - { file: "${WS}/declaration_only.cpp", range: "5:11-5:20" }
+  references:
+    - { file: "${WS}/declaration_only.cpp", range: "5:11-5:20" }
+    - { file: "${WS}/declaration_only.cpp", range: "10:26-10:35" }
+
+var_use:
+  definition:
+    - { file: "${WS}/declaration_only.cpp", range: "5:11-5:20" }
+  declaration:
+    - { file: "${WS}/declaration_only.cpp", range: "5:11-5:20" }
+  references:
+    - { file: "${WS}/declaration_only.cpp", range: "5:11-5:20" }
+    - { file: "${WS}/declaration_only.cpp", range: "10:26-10:35" }

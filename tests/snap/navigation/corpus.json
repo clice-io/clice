@@ -1,0 +1,4 @@
+{
+  "notes": "Freestanding, -undef and -nostdinc keep host stdlib symbols and platform macros out of the replies, so navigation targets stay identical across hosts. C++23 so the corpus covers current language constructs; module fixtures build their interface units from this same CDB.",
+  "flags": ["-std=c++23", "-ffreestanding", "-undef", "-nostdinc"]
+}

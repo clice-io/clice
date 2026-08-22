@@ -1,0 +1,29 @@
+---
+created_at: 2026-08-22
+input_file: inline_definition.cpp
+---
+def:
+  definition:
+    - { file: "${WS}/inline_definition.cpp", range: "2:4-2:9" }
+  declaration:
+    - { file: "${WS}/inline_definition.cpp", range: "2:4-2:9" }
+  references:
+    - { file: "${WS}/inline_definition.cpp", range: "2:4-2:9" }
+    - { file: "${WS}/inline_definition.cpp", range: "7:11-7:16" }
+  callHierarchy:
+    - { name: "twice", kind: Function, file: "${WS}/inline_definition.cpp", range: "2:4-2:9" }
+  incomingCalls:
+    - { name: "caller", kind: Function, file: "${WS}/inline_definition.cpp", range: "6:4-6:10", fromRanges: ["7:11-7:20"] }
+
+use:
+  definition:
+    - { file: "${WS}/inline_definition.cpp", range: "2:4-2:9" }
+  declaration:
+    - { file: "${WS}/inline_definition.cpp", range: "2:4-2:9" }
+  references:
+    - { file: "${WS}/inline_definition.cpp", range: "2:4-2:9" }
+    - { file: "${WS}/inline_definition.cpp", range: "7:11-7:16" }
+  callHierarchy:
+    - { name: "twice", kind: Function, file: "${WS}/inline_definition.cpp", range: "2:4-2:9" }
+  incomingCalls:
+    - { name: "caller", kind: Function, file: "${WS}/inline_definition.cpp", range: "6:4-6:10", fromRanges: ["7:11-7:20"] }

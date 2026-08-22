@@ -1,0 +1,84 @@
+---
+created_at: 2026-08-22
+input_file: type_hierarchy.cpp
+---
+gate_fn:
+  definition:
+    - { file: "${WS}/type_hierarchy.cpp", range: "21:4-21:10" }
+  declaration:
+    - { file: "${WS}/type_hierarchy.cpp", range: "21:4-21:10" }
+  references:
+    - { file: "${WS}/type_hierarchy.cpp", range: "21:4-21:10" }
+  callHierarchy:
+    - { name: "helper", kind: Function, file: "${WS}/type_hierarchy.cpp", range: "21:4-21:10" }
+
+leaf_enum:
+  definition:
+    - { file: "${WS}/type_hierarchy.cpp", range: "19:11-19:15" }
+  declaration:
+    - { file: "${WS}/type_hierarchy.cpp", range: "19:11-19:15" }
+  references:
+    - { file: "${WS}/type_hierarchy.cpp", range: "19:11-19:15" }
+  typeHierarchy:
+    - { name: "Mode", kind: Enum, file: "${WS}/type_hierarchy.cpp", range: "19:11-19:15" }
+
+mid:
+  definition:
+    - { file: "${WS}/type_hierarchy.cpp", range: "4:7-4:14" }
+  declaration:
+    - { file: "${WS}/type_hierarchy.cpp", range: "4:7-4:14" }
+  implementation:
+    - { file: "${WS}/type_hierarchy.cpp", range: "6:7-6:13" }
+    - { file: "${WS}/type_hierarchy.cpp", range: "8:7-8:12" }
+    - { file: "${WS}/type_hierarchy.cpp", range: "12:7-12:12" }
+  references:
+    - { file: "${WS}/type_hierarchy.cpp", range: "4:7-4:14" }
+    - { file: "${WS}/type_hierarchy.cpp", range: "6:16-6:23" }
+    - { file: "${WS}/type_hierarchy.cpp", range: "8:15-8:22" }
+    - { file: "${WS}/type_hierarchy.cpp", range: "12:15-12:22" }
+  typeHierarchy:
+    - { name: "Control", kind: Struct, file: "${WS}/type_hierarchy.cpp", range: "4:7-4:14" }
+  supertypes:
+    - { name: "Widget", kind: Struct, file: "${WS}/type_hierarchy.cpp", range: "2:7-2:13" }
+  subtypes:
+    - { name: "Button", kind: Struct, file: "${WS}/type_hierarchy.cpp", range: "6:7-6:13" }
+    - { name: "Label", kind: Struct, file: "${WS}/type_hierarchy.cpp", range: "8:7-8:12" }
+    - { name: "Panel", kind: Struct, file: "${WS}/type_hierarchy.cpp", range: "12:7-12:12" }
+
+multi:
+  definition:
+    - { file: "${WS}/type_hierarchy.cpp", range: "12:7-12:12" }
+  declaration:
+    - { file: "${WS}/type_hierarchy.cpp", range: "12:7-12:12" }
+  references:
+    - { file: "${WS}/type_hierarchy.cpp", range: "12:7-12:12" }
+  typeHierarchy:
+    - { name: "Panel", kind: Struct, file: "${WS}/type_hierarchy.cpp", range: "12:7-12:12" }
+  supertypes:
+    - { name: "Control", kind: Struct, file: "${WS}/type_hierarchy.cpp", range: "4:7-4:14" }
+    - { name: "Extra", kind: Struct, file: "${WS}/type_hierarchy.cpp", range: "10:7-10:12" }
+
+root:
+  definition:
+    - { file: "${WS}/type_hierarchy.cpp", range: "2:7-2:13" }
+  declaration:
+    - { file: "${WS}/type_hierarchy.cpp", range: "2:7-2:13" }
+  implementation:
+    - { file: "${WS}/type_hierarchy.cpp", range: "4:7-4:14" }
+  references:
+    - { file: "${WS}/type_hierarchy.cpp", range: "2:7-2:13" }
+    - { file: "${WS}/type_hierarchy.cpp", range: "4:17-4:23" }
+  typeHierarchy:
+    - { name: "Widget", kind: Struct, file: "${WS}/type_hierarchy.cpp", range: "2:7-2:13" }
+  subtypes:
+    - { name: "Control", kind: Struct, file: "${WS}/type_hierarchy.cpp", range: "4:7-4:14" }
+
+union_def:
+  definition:
+    - { file: "${WS}/type_hierarchy.cpp", range: "14:6-14:12" }
+  declaration:
+    - { file: "${WS}/type_hierarchy.cpp", range: "14:6-14:12" }
+  references:
+    - { file: "${WS}/type_hierarchy.cpp", range: "14:6-14:12" }
+  typeHierarchy:
+    - { name: "Packet", kind: Class, file: "${WS}/type_hierarchy.cpp", range: "14:6-14:12" }

@@ -1,0 +1,52 @@
+---
+created_at: 2026-08-22
+input_file: destructor_navigation.cpp
+---
+dtor_decl:
+  definition:
+    - { file: "${WS}/destructor_navigation.cpp", range: "6:10-6:11" }
+  declaration:
+    - { file: "${WS}/destructor_navigation.cpp", range: "6:10-6:11" }
+  typeDefinition:
+    - { file: "${WS}/destructor_navigation.cpp", range: "2:7-2:15" }
+  references:
+    - { file: "${WS}/destructor_navigation.cpp", range: "3:4-3:5" }
+    - { file: "${WS}/destructor_navigation.cpp", range: "6:10-6:11" }
+    - { file: "${WS}/destructor_navigation.cpp", range: "9:13-9:14" }
+  callHierarchy:
+    - { name: "~Resource", kind: Method, file: "${WS}/destructor_navigation.cpp", range: "6:10-6:11" }
+  incomingCalls:
+    - { name: "release", kind: Function, file: "${WS}/destructor_navigation.cpp", range: "8:5-8:12", fromRanges: ["9:4-9:24"] }
+
+dtor_def:
+  definition:
+    - { file: "${WS}/destructor_navigation.cpp", range: "3:4-3:5" }
+  declaration:
+    - { file: "${WS}/destructor_navigation.cpp", range: "3:4-3:5" }
+  typeDefinition:
+    - { file: "${WS}/destructor_navigation.cpp", range: "2:7-2:15" }
+  references:
+    - { file: "${WS}/destructor_navigation.cpp", range: "3:4-3:5" }
+    - { file: "${WS}/destructor_navigation.cpp", range: "6:10-6:11" }
+    - { file: "${WS}/destructor_navigation.cpp", range: "9:13-9:14" }
+  callHierarchy:
+    - { name: "~Resource", kind: Method, file: "${WS}/destructor_navigation.cpp", range: "6:10-6:11" }
+  incomingCalls:
+    - { name: "release", kind: Function, file: "${WS}/destructor_navigation.cpp", range: "8:5-8:12", fromRanges: ["9:4-9:24"] }
+
+dtor_use:
+  definition:
+    - { file: "${WS}/destructor_navigation.cpp", range: "6:10-6:11" }
+  declaration:
+    - { file: "${WS}/destructor_navigation.cpp", range: "3:4-3:5" }
+    - { file: "${WS}/destructor_navigation.cpp", range: "6:10-6:11" }
+  typeDefinition:
+    - { file: "${WS}/destructor_navigation.cpp", range: "2:7-2:15" }
+  references:
+    - { file: "${WS}/destructor_navigation.cpp", range: "3:4-3:5" }
+    - { file: "${WS}/destructor_navigation.cpp", range: "6:10-6:11" }
+    - { file: "${WS}/destructor_navigation.cpp", range: "9:13-9:14" }
+  callHierarchy:
+    - { name: "~Resource", kind: Method, file: "${WS}/destructor_navigation.cpp", range: "6:10-6:11" }
+  incomingCalls:
+    - { name: "release", kind: Function, file: "${WS}/destructor_navigation.cpp", range: "8:5-8:12", fromRanges: ["9:4-9:24"] }

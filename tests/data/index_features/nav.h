@@ -24,3 +24,5 @@ struct DebugGLRenderer : GLRenderer {
 };
 
 Shape make_unit_shape();
+
+int area_scale(const Shape& s);

@@ -1,0 +1,50 @@
+---
+created_at: 2026-08-22
+input_file: module_basic/main.cpp
+---
+--- main.cpp
+import_name:
+  definition:
+    - { file: "${WS}/module_basic/math.cppm", range: "0:14-0:18" }
+  declaration:
+    - { file: "${WS}/module_basic/math.cppm", range: "0:14-0:18" }
+  references:
+    - { file: "${WS}/module_basic/main.cpp", range: "2:7-2:11" }
+    - { file: "${WS}/module_basic/math.cppm", range: "0:14-0:18" }
+
+imported_use:
+  definition:
+    - { file: "${WS}/module_basic/math.cppm", range: "2:11-2:14" }
+  declaration:
+    - { file: "${WS}/module_basic/math.cppm", range: "2:11-2:14" }
+  references:
+    - { file: "${WS}/module_basic/main.cpp", range: "5:11-5:14" }
+    - { file: "${WS}/module_basic/math.cppm", range: "2:11-2:14" }
+  callHierarchy:
+    - { name: "add", kind: Function, file: "${WS}/module_basic/math.cppm", range: "2:11-2:14" }
+  incomingCalls:
+    - { name: "total", kind: Function, file: "${WS}/module_basic/main.cpp", range: "4:4-4:9", fromRanges: ["5:11-5:27"] }
+
+--- math.cppm
+exported_def:
+  definition:
+    - { file: "${WS}/module_basic/math.cppm", range: "2:11-2:14" }
+  declaration:
+    - { file: "${WS}/module_basic/math.cppm", range: "2:11-2:14" }
+  references:
+    - { file: "${WS}/module_basic/main.cpp", range: "5:11-5:14" }
+    - { file: "${WS}/module_basic/math.cppm", range: "2:11-2:14" }
+  callHierarchy:
+    - { name: "add", kind: Function, file: "${WS}/module_basic/math.cppm", range: "2:11-2:14" }
+  incomingCalls:
+    - { name: "total", kind: Function, file: "${WS}/module_basic/main.cpp", range: "4:4-4:9", fromRanges: ["5:11-5:27"] }
+
+internal_def:
+  definition:
+    - { file: "${WS}/module_basic/math.cppm", range: "6:4-6:9" }
+  declaration:
+    - { file: "${WS}/module_basic/math.cppm", range: "6:4-6:9" }
+  references:
+    - { file: "${WS}/module_basic/math.cppm", range: "6:4-6:9" }
+  callHierarchy:
+    - { name: "carry", kind: Function, file: "${WS}/module_basic/math.cppm", range: "6:4-6:9" }

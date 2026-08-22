@@ -175,8 +175,7 @@ kota::task<kota::codec::RawValue, kota::ipc::Error>
     // would fall back to the stale merged shard and could return a
     // non-empty hit for pre-edit content, bypassing the compile below.
     if(!session || !session->ast_dirty) {
-        auto result =
-            index_query.query_relations(path, pos, RelationKind::Definition, session.get());
+        auto result = index_query.query_definition(path, pos, session.get());
         if(!result.empty()) {
             co_return to_raw(result);
         }
@@ -198,9 +197,7 @@ kota::task<kota::codec::RawValue, kota::ipc::Error>
     // actually completed — a failed or superseded compile leaves
     // ast_dirty set and the caches stale.
     if(!session->ast_dirty) {
-        if(auto retry =
-               index_query.query_relations(path, pos, RelationKind::Definition, session.get());
-           !retry.empty()) {
+        if(auto retry = index_query.query_definition(path, pos, session.get()); !retry.empty()) {
             co_return to_raw(retry);
         }
         if(auto directive = resolve_directive_definition(*session, pos); !directive.empty()) {
@@ -427,9 +424,6 @@ FeatureRouter::RawResult FeatureRouter::references(std::shared_ptr<Session> sess
     co_return to_raw(locations);
 }
 
-/// Declarations plus the definition: symbols defined inline have no
-/// separate Declaration relation, and navigating to the definition is
-/// what every client expects in that case.
 FeatureRouter::RawResult FeatureRouter::declaration(std::shared_ptr<Session> session,
                                                     llvm::StringRef path,
                                                     const protocol::Position& position) {
@@ -445,14 +439,7 @@ FeatureRouter::RawResult FeatureRouter::declaration(std::shared_ptr<Session> ses
         }
     }
 
-    auto locations =
-        index_query.query_relations(path, position, RelationKind::Declaration, session.get());
-    auto defs =
-        index_query.query_relations(path, position, RelationKind::Definition, session.get());
-    locations.insert(locations.end(),
-                     std::make_move_iterator(defs.begin()),
-                     std::make_move_iterator(defs.end()));
-    co_return to_raw(locations);
+    co_return to_raw(index_query.query_declaration(path, position, session.get()));
 }
 
 FeatureRouter::RawResult FeatureRouter::type_definition(std::shared_ptr<Session> session,
@@ -491,10 +478,7 @@ FeatureRouter::RawResult FeatureRouter::implementation(std::shared_ptr<Session> 
         }
     }
 
-    co_return to_raw(index_query.query_symbol_targets(path,
-                                                      position,
-                                                      RelationKind::Implementation,
-                                                      session.get()));
+    co_return to_raw(index_query.query_implementation(path, position, session.get()));
 }
 
 FeatureRouter::RawResult FeatureRouter::call_hierarchy_prepare(std::shared_ptr<Session> session,
@@ -516,8 +500,15 @@ FeatureRouter::RawResult FeatureRouter::call_hierarchy_prepare(std::shared_ptr<S
     auto info = index_query.lookup_symbol(uri, path, position, session.get());
     if(!info)
         co_return serde_raw{"null"};
-    if(!(info->kind == SymbolKind::Function || info->kind == SymbolKind::Method))
+    if(!(info->kind == SymbolKind::Function || info->kind == SymbolKind::Method ||
+         info->kind == SymbolKind::Operator))
         co_return serde_raw{"null"};
+
+    // The item stands for the symbol, not the cursor: anchor it at the
+    // symbol's canonical site so expanding from a use renders the same
+    // root as expanding from the declaration.
+    if(auto canonical = index_query.resolve_symbol(info->hash))
+        info = canonical;
 
     std::vector<protocol::CallHierarchyItem> items;
     items.push_back(IndexQuery::build_call_hierarchy_item(*info));
@@ -582,6 +573,9 @@ FeatureRouter::RawResult FeatureRouter::type_hierarchy_prepare(std::shared_ptr<S
     if(!(info->kind == SymbolKind::Class || info->kind == SymbolKind::Struct ||
          info->kind == SymbolKind::Enum || info->kind == SymbolKind::Union))
         co_return serde_raw{"null"};
+
+    if(auto canonical = index_query.resolve_symbol(info->hash))
+        info = canonical;
 
     std::vector<protocol::TypeHierarchyItem> items;
     items.push_back(IndexQuery::build_type_hierarchy_item(*info));

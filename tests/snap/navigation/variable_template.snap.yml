@@ -1,0 +1,43 @@
+---
+created_at: 2026-08-22
+input_file: variable_template.cpp
+---
+primary:
+  definition:
+    - { file: "${WS}/variable_template.cpp", range: "3:2-3:6" }
+  declaration:
+    - { file: "${WS}/variable_template.cpp", range: "3:2-3:6" }
+  typeDefinition:
+    - { file: "${WS}/variable_template.cpp", range: "2:19-2:20" }
+  references:
+    - { file: "${WS}/variable_template.cpp", range: "3:2-3:6" }
+    - { file: "${WS}/variable_template.cpp", range: "9:40-9:44" }
+
+primary_use:
+  definition:
+    - { file: "${WS}/variable_template.cpp", range: "3:2-3:6" }
+  declaration:
+    - { file: "${WS}/variable_template.cpp", range: "3:2-3:6" }
+  typeDefinition:
+    - { file: "${WS}/variable_template.cpp", range: "2:19-2:20" }
+  references:
+    - { file: "${WS}/variable_template.cpp", range: "3:2-3:6" }
+    - { file: "${WS}/variable_template.cpp", range: "9:40-9:44" }
+
+spec_use:
+  definition:
+    - { file: "${WS}/variable_template.cpp", range: "6:4-6:8" }
+  declaration:
+    - { file: "${WS}/variable_template.cpp", range: "6:4-6:8" }
+  references:
+    - { file: "${WS}/variable_template.cpp", range: "6:4-6:8" }
+    - { file: "${WS}/variable_template.cpp", range: "9:11-9:15" }
+
+specialization:
+  definition:
+    - { file: "${WS}/variable_template.cpp", range: "6:4-6:8" }
+  declaration:
+    - { file: "${WS}/variable_template.cpp", range: "6:4-6:8" }
+  references:
+    - { file: "${WS}/variable_template.cpp", range: "6:4-6:8" }
+    - { file: "${WS}/variable_template.cpp", range: "9:11-9:15" }

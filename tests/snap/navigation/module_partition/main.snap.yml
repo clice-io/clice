@@ -1,0 +1,76 @@
+---
+created_at: 2026-08-22
+input_file: module_partition/main.cpp
+---
+--- geo.cppm
+partition_ref:
+  definition:
+    - { file: "${WS}/module_partition/geo_shapes.cppm", range: "0:14-0:24" }
+  declaration:
+    - { file: "${WS}/module_partition/geo_shapes.cppm", range: "0:14-0:24" }
+  references:
+    - { file: "${WS}/module_partition/geo.cppm", range: "2:14-2:15" }
+    - { file: "${WS}/module_partition/geo_shapes.cppm", range: "0:14-0:24" }
+
+primary_fn:
+  definition:
+    - { file: "${WS}/module_partition/geo.cppm", range: "4:11-4:15" }
+  declaration:
+    - { file: "${WS}/module_partition/geo.cppm", range: "4:11-4:15" }
+  references:
+    - { file: "${WS}/module_partition/geo.cppm", range: "4:11-4:15" }
+    - { file: "${WS}/module_partition/main.cpp", range: "5:11-5:15" }
+  callHierarchy:
+    - { name: "area", kind: Function, file: "${WS}/module_partition/geo.cppm", range: "4:11-4:15" }
+  incomingCalls:
+    - { name: "build", kind: Function, file: "${WS}/module_partition/main.cpp", range: "4:4-4:9", fromRanges: ["5:11-5:21"] }
+
+--- geo_shapes.cppm
+partition_fn:
+  definition:
+    - { file: "${WS}/module_partition/geo_shapes.cppm", range: "2:11-2:18" }
+  declaration:
+    - { file: "${WS}/module_partition/geo_shapes.cppm", range: "2:11-2:18" }
+  references:
+    - { file: "${WS}/module_partition/geo_shapes.cppm", range: "2:11-2:18" }
+    - { file: "${WS}/module_partition/main.cpp", range: "5:24-5:31" }
+  callHierarchy:
+    - { name: "corners", kind: Function, file: "${WS}/module_partition/geo_shapes.cppm", range: "2:11-2:18" }
+  incomingCalls:
+    - { name: "build", kind: Function, file: "${WS}/module_partition/main.cpp", range: "4:4-4:9", fromRanges: ["5:24-5:33"] }
+
+partition_name:
+  definition:
+    - { file: "${WS}/module_partition/geo_shapes.cppm", range: "0:14-0:24" }
+  declaration:
+    - { file: "${WS}/module_partition/geo_shapes.cppm", range: "0:14-0:24" }
+  references:
+    - { file: "${WS}/module_partition/geo.cppm", range: "2:14-2:15" }
+    - { file: "${WS}/module_partition/geo_shapes.cppm", range: "0:14-0:24" }
+
+--- main.cpp
+use_partition:
+  definition:
+    - { file: "${WS}/module_partition/geo_shapes.cppm", range: "2:11-2:18" }
+  declaration:
+    - { file: "${WS}/module_partition/geo_shapes.cppm", range: "2:11-2:18" }
+  references:
+    - { file: "${WS}/module_partition/geo_shapes.cppm", range: "2:11-2:18" }
+    - { file: "${WS}/module_partition/main.cpp", range: "5:24-5:31" }
+  callHierarchy:
+    - { name: "corners", kind: Function, file: "${WS}/module_partition/geo_shapes.cppm", range: "2:11-2:18" }
+  incomingCalls:
+    - { name: "build", kind: Function, file: "${WS}/module_partition/main.cpp", range: "4:4-4:9", fromRanges: ["5:24-5:33"] }
+
+use_primary:
+  definition:
+    - { file: "${WS}/module_partition/geo.cppm", range: "4:11-4:15" }
+  declaration:
+    - { file: "${WS}/module_partition/geo.cppm", range: "4:11-4:15" }
+  references:
+    - { file: "${WS}/module_partition/geo.cppm", range: "4:11-4:15" }
+    - { file: "${WS}/module_partition/main.cpp", range: "5:11-5:15" }
+  callHierarchy:
+    - { name: "area", kind: Function, file: "${WS}/module_partition/geo.cppm", range: "4:11-4:15" }
+  incomingCalls:
+    - { name: "build", kind: Function, file: "${WS}/module_partition/main.cpp", range: "4:4-4:9", fromRanges: ["5:11-5:21"] }

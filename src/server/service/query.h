@@ -119,14 +119,42 @@ public:
                                                     RelationKind kind,
                                                     Session* session);
 
-    /// Query between-symbol relations (Implementation, TypeDefinition, ...)
-    /// for the symbol at cursor and resolve each target symbol to its
-    /// definition location — the two-hop query behind go-to-implementation
-    /// and go-to-type-definition.
+    /// Query definition locations for the symbol at cursor. Standing on the
+    /// definition itself navigates to the declarations (and any sibling
+    /// definitions) instead, so definition and declaration sites alternate;
+    /// an inline-defined symbol with no separate declaration answers with
+    /// the definition site itself. A symbol with no definition at all (pure
+    /// virtual, extern, pre-C++17 class constant) answers with its
+    /// declarations rather than an empty result.
+    /// @param session  Active Session for this file, or nullptr to use the disk shards only.
+    std::vector<protocol::Location> query_definition(llvm::StringRef path,
+                                                     const protocol::Position& position,
+                                                     Session* session);
+
+    /// Query declaration locations for the symbol at cursor: declarations
+    /// plus the definition (symbols defined inline have no separate
+    /// Declaration relation), minus the site the cursor stands on — the
+    /// mirror half of query_definition's alternation.
+    /// @param session  Active Session for this file, or nullptr to use the disk shards only.
+    std::vector<protocol::Location> query_declaration(llvm::StringRef path,
+                                                      const protocol::Position& position,
+                                                      Session* session);
+
+    /// Query between-symbol relations (TypeDefinition, ...) for the symbol
+    /// at cursor and resolve each target symbol to its canonical location —
+    /// the two-hop query behind go-to-type-definition.
     /// @param session  Active Session for this file, or nullptr.
     std::vector<protocol::Location> query_symbol_targets(llvm::StringRef path,
                                                          const protocol::Position& position,
                                                          RelationKind kind,
+                                                         Session* session);
+
+    /// Locations implementing the symbol at cursor: derived types for a
+    /// class-like symbol, Implementation relation targets (overrides)
+    /// otherwise.
+    /// @param session  Active Session for this file, or nullptr.
+    std::vector<protocol::Location> query_implementation(llvm::StringRef path,
+                                                         const protocol::Position& position,
                                                          Session* session);
 
     /// Look up symbol info (hash, name, kind, range) at a cursor position.
@@ -138,6 +166,13 @@ public:
 
     /// Find the definition location of a symbol by hash.
     std::optional<protocol::Location> find_definition_location(index::SymbolHash hash);
+
+    /// The symbol's canonical location: its definition, or its declaration
+    /// when nothing defines it (pure virtuals, externs, decl-only APIs).
+    std::optional<protocol::Location> find_symbol_location(index::SymbolHash hash);
+
+    /// Resolve a symbol hash into a SymbolInfo at its canonical location.
+    std::optional<SymbolInfo> resolve_symbol(index::SymbolHash hash);
 
     /// Find a symbol's name and kind by hash.
     bool find_symbol_info(index::SymbolHash hash, std::string& name, SymbolKind& kind) const;
@@ -222,6 +257,16 @@ private:
                              const protocol::Position& position,
                              Session* session);
 
+    /// Assemble the locations of a symbol's relation rows of one kind
+    /// across all index sources, deduplicated and sorted.
+    std::vector<protocol::Location> collect_relation_locations(index::SymbolHash hash,
+                                                               RelationKind kind);
+
+    /// The request file's URI in the pool's canonical spelling — the form
+    /// collected locations carry. Empty when the path is unknown to the
+    /// pool (no location can name it then either).
+    std::string self_uri(llvm::StringRef path);
+
     /// Visit each distinct PCH overlay blob once (sessions sharing a
     /// preamble share one blob). Overlays are the only index source for
     /// headers as seen under a live buffer's context (novel unsaved
@@ -271,8 +316,14 @@ private:
                                 RelationKind kind,
                                 llvm::SmallVectorImpl<index::SymbolHash>& targets);
 
-    /// Resolve a symbol hash into a SymbolInfo with definition location.
-    std::optional<SymbolInfo> resolve_symbol(index::SymbolHash hash);
+    /// One location per unique relation target, each resolved to its
+    /// canonical site.
+    std::vector<protocol::Location> resolve_target_locations(index::SymbolHash hash,
+                                                             RelationKind kind);
+
+    /// Find one location carrying the given relation kind for the symbol.
+    std::optional<protocol::Location> find_relation_location(index::SymbolHash hash,
+                                                             RelationKind kind);
 
     /// Check whether a path_id has an active Session.
     bool is_path_open(std::uint32_t path_id) const;
