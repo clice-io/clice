@@ -32,16 +32,18 @@ ctor_def:
 
 ctor_invoke:
   definition:
-    - { file: "${WS}/constructor_navigation.cpp", range: "2:7-2:14" }
+    - { file: "${WS}/constructor_navigation.cpp", range: "7:9-7:16" }
   declaration:
+    - { file: "${WS}/constructor_navigation.cpp", range: "3:4-3:11" }
+    - { file: "${WS}/constructor_navigation.cpp", range: "7:9-7:16" }
+  typeDefinition:
     - { file: "${WS}/constructor_navigation.cpp", range: "2:7-2:14" }
   references:
-    - { file: "${WS}/constructor_navigation.cpp", range: "2:7-2:14" }
-    - { file: "${WS}/constructor_navigation.cpp", range: "7:0-7:7" }
-    - { file: "${WS}/constructor_navigation.cpp", range: "9:0-9:7" }
-    - { file: "${WS}/constructor_navigation.cpp", range: "10:11-10:18" }
-  typeHierarchy:
-    - { name: "Session", kind: Struct, file: "${WS}/constructor_navigation.cpp", range: "2:7-2:14" }
+    - { file: "${WS}/constructor_navigation.cpp", range: "3:4-3:11" }
+    - { file: "${WS}/constructor_navigation.cpp", range: "7:9-7:16" }
+    - { file: "${WS}/constructor_navigation.cpp", range: "10:18-10:19" }
+  callHierarchy:
+    - { name: "Session", kind: Method, file: "${WS}/constructor_navigation.cpp", range: "7:9-7:16" }
 
 ctor_use:
   definition:

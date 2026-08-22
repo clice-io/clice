@@ -702,6 +702,12 @@ void Shard::lookup(std::uint32_t offset,
         }
     }
 
+    // A cursor between two tokens belongs to the one starting at it, so
+    // rows the offset only touches at their right edge yield after every
+    // row it is properly inside — `a+b` with the cursor before `b` must
+    // resolve to `b`, not `+`, while a cursor right after a lone token
+    // still hits that token.
+    llvm::SmallVector<std::uint32_t, 2> edge_rows;
     for(; lo < columns.size(); lo += 1) {
         auto row = static_cast<std::uint32_t>(lo);
         LocalSourceRange range{columns.begin_of(row), columns.end_of(row)};
@@ -711,9 +717,20 @@ void Shard::lookup(std::uint32_t offset,
         if(!row_live(true, row)) {
             continue;
         }
+        if(range.end == offset && range.begin != offset) {
+            edge_rows.push_back(row);
+            continue;
+        }
         Occurrence result{range, sym_hashes[occ_sym_id(root, row)]};
         if(!callback(result)) {
-            break;
+            return;
+        }
+    }
+    for(auto row: edge_rows) {
+        LocalSourceRange range{columns.begin_of(row), columns.end_of(row)};
+        Occurrence result{range, sym_hashes[occ_sym_id(root, row)]};
+        if(!callback(result)) {
+            return;
         }
     }
 }

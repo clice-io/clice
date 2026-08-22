@@ -16,14 +16,16 @@ class_def:
 
 ctad_invoke:
   definition:
-    - { file: "${WS}/ctad_guide.cpp", range: "12:8-12:11" }
+    - { file: "${WS}/ctad_guide.cpp", range: "4:4-4:7" }
   declaration:
-    - { file: "${WS}/ctad_guide.cpp", range: "12:8-12:11" }
+    - { file: "${WS}/ctad_guide.cpp", range: "4:4-4:7" }
   typeDefinition:
     - { file: "${WS}/ctad_guide.cpp", range: "3:7-3:10" }
   references:
-    - { file: "${WS}/ctad_guide.cpp", range: "12:8-12:11" }
-    - { file: "${WS}/ctad_guide.cpp", range: "13:11-13:14" }
+    - { file: "${WS}/ctad_guide.cpp", range: "4:4-4:7" }
+    - { file: "${WS}/ctad_guide.cpp", range: "12:11-12:12" }
+  callHierarchy:
+    - { name: "Box", kind: Method, file: "${WS}/ctad_guide.cpp", range: "4:4-4:7" }
 
 ctad_use:
   definition:

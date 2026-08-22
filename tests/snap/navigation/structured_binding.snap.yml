@@ -4,11 +4,12 @@ input_file: structured_binding.cpp
 ---
 left_def:
   definition:
-    - { file: "${WS}/structured_binding.cpp", range: "12:9-12:10" }
+    - { file: "${WS}/structured_binding.cpp", range: "12:10-12:14" }
   declaration:
-    - { file: "${WS}/structured_binding.cpp", range: "12:9-12:10" }
+    - { file: "${WS}/structured_binding.cpp", range: "12:10-12:14" }
   references:
-    - { file: "${WS}/structured_binding.cpp", range: "12:9-12:10" }
+    - { file: "${WS}/structured_binding.cpp", range: "12:10-12:14" }
+    - { file: "${WS}/structured_binding.cpp", range: "13:11-13:15" }
 
 left_use:
   definition:
