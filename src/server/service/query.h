@@ -123,7 +123,9 @@ public:
     /// definition itself navigates to the declarations (and any sibling
     /// definitions) instead, so definition and declaration sites alternate;
     /// an inline-defined symbol with no separate declaration answers with
-    /// the definition site itself.
+    /// the definition site itself. A symbol with no definition at all (pure
+    /// virtual, extern, pre-C++17 class constant) answers with its
+    /// declarations rather than an empty result.
     /// @param session  Active Session for this file, or nullptr to use the disk shards only.
     std::vector<protocol::Location> query_definition(llvm::StringRef path,
                                                      const protocol::Position& position,
@@ -245,6 +247,11 @@ private:
     /// across all index sources, deduplicated and sorted.
     std::vector<protocol::Location> collect_relation_locations(index::SymbolHash hash,
                                                                RelationKind kind);
+
+    /// The request file's URI in the pool's canonical spelling — the form
+    /// collected locations carry. Empty when the path is unknown to the
+    /// pool (no location can name it then either).
+    std::string self_uri(llvm::StringRef path);
 
     /// Visit each distinct PCH overlay blob once (sessions sharing a
     /// preamble share one blob). Overlays are the only index source for

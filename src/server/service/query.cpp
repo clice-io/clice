@@ -194,8 +194,11 @@ static void dedup_locations(std::vector<protocol::Location>& locations) {
 }
 
 /// Whether a location names the very occurrence site the cursor stands on.
-/// Occurrences and relations are written from the same record, so the
-/// cursor's occurrence range equals the site's relation range exactly.
+/// Occurrences and relations are written from the same record, so for
+/// sites spelled directly in a file the ranges match exactly. Macro-driven
+/// sites index the occurrence at the spelling but the relation at the
+/// expansion; the ranges differ, so cursor-site detection (and with it the
+/// definition/declaration alternation) simply does not trigger there.
 static bool is_cursor_site(const protocol::Location& location,
                            llvm::StringRef uri,
                            const protocol::Range& range) {
@@ -456,18 +459,28 @@ std::vector<protocol::Location> IndexQuery::query_relations(llvm::StringRef path
     return locations;
 }
 
+std::string IndexQuery::self_uri(llvm::StringRef path) {
+    // Collected locations spell URIs from the pool's canonical form; the
+    // transport's raw path can differ (drive case on Windows), which would
+    // defeat cursor-site detection.
+    auto path_id = workspace.path_pool.find(path);
+    if(!path_id)
+        return {};
+    auto uri = lsp::URI::from_file_path(workspace.path_pool.resolve(*path_id));
+    return uri ? uri->str() : std::string{};
+}
+
 std::vector<protocol::Location> IndexQuery::query_definition(llvm::StringRef path,
                                                              const protocol::Position& position,
                                                              Session* session) {
     ScopedTimer timer;
     auto hit = resolve_cursor(path, position, session);
-    auto uri = lsp::URI::from_file_path(path);
     std::vector<protocol::Location> locations;
-    if(hit.hash != 0 && uri) {
-        auto self = uri->str();
+    if(hit.hash != 0) {
+        auto self = self_uri(path);
         locations = collect_relation_locations(hit.hash, RelationKind::Definition);
-        if(std::ranges::any_of(locations, [&](const protocol::Location& location) {
-               return is_cursor_site(location, self, hit.range);
+        if(locations.empty() || std::ranges::any_of(locations, [&](const protocol::Location& l) {
+               return is_cursor_site(l, self, hit.range);
            })) {
             auto decls = collect_relation_locations(hit.hash, RelationKind::Declaration);
             locations.insert(locations.end(),
@@ -490,16 +503,15 @@ std::vector<protocol::Location> IndexQuery::query_declaration(llvm::StringRef pa
                                                               Session* session) {
     ScopedTimer timer;
     auto hit = resolve_cursor(path, position, session);
-    auto uri = lsp::URI::from_file_path(path);
     std::vector<protocol::Location> locations;
-    if(hit.hash != 0 && uri) {
+    if(hit.hash != 0) {
         locations = collect_relation_locations(hit.hash, RelationKind::Declaration);
         auto defs = collect_relation_locations(hit.hash, RelationKind::Definition);
         locations.insert(locations.end(),
                          std::make_move_iterator(defs.begin()),
                          std::make_move_iterator(defs.end()));
         dedup_locations(locations);
-        drop_cursor_site(locations, uri->str(), hit.range);
+        drop_cursor_site(locations, self_uri(path), hit.range);
     }
     LOG_PERF("index_query",
              "kind=declaration path={} results={} elapsed_ms={:.2f}",

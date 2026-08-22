@@ -230,6 +230,23 @@ test("goto definition alternate", async ({ client, workspace }) => {
     client.close(uri);
 });
 
+/// A symbol with no definition anywhere navigates to its declaration
+/// instead of returning empty.
+test("goto definition declaration only", async ({ client, workspace }) => {
+    const [uri] = await client.openAndWait("main.cpp");
+    // workspace/symbol only lists defined symbols, so gate on the defined
+    // caller: its TU index lands together with both nav shards.
+    expect(await client.waitForIndex(uri, "use_area_scale"), "Index not ready after 30s").toBe(
+        true,
+    );
+
+    // 'area_scale' declared nav.h:27, never defined; called in nav.cpp:23.
+    const locs = asLocations(await client.definitionAt(workspace.uri("nav.cpp"), 23, 11));
+    expect(locs.map((loc) => [fileName(loc.uri), loc.range.start.line])).toEqual([["nav.h", 27]]);
+
+    client.close(uri);
+});
+
 /// An inline-defined symbol has nowhere else to point: the definition
 /// site stays the answer (clients render self-navigation as a peek).
 test("goto definition inline definition", async ({ client }) => {

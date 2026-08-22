@@ -19,3 +19,7 @@ Shape make_unit_shape() {
 }
 
 #include "nav_late.h"
+
+int use_area_scale(const Shape& s) {
+    return area_scale(s);
+}
