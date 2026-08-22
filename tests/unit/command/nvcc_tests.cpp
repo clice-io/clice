@@ -62,6 +62,11 @@ TEST_CASE(GencodeSelectsBest) {
     EXPECT_TRUE(contains(translate({"nvcc", "-arch=compute_86"}), "--cuda-gpu-arch=sm_86"));
     EXPECT_TRUE(contains(translate({"nvcc", "-arch=sm_100f"}), "--cuda-gpu-arch=sm_100f"));
 
+    // -arch is a scalar option: the last one wins, unlike -gencode which
+    // accumulates.
+    auto repeated = translate({"nvcc", "-arch=compute_80", "-arch=compute_75"});
+    EXPECT_TRUE(contains(repeated, "--cuda-gpu-arch=sm_75"));
+
     // Bare -code and arch-less commands pin no architecture.
     for(auto& args: {translate({"nvcc", "-code=sm_90"}), translate({"nvcc", "-c", "a.cu"})}) {
         for(llvm::StringRef arg: args) {
@@ -95,6 +100,9 @@ TEST_CASE(ProbeFlagsCarried) {
         EXPECT_TRUE(is_nvcc_probe_flag(flag));
     }
     EXPECT_FALSE(is_nvcc_probe_flag("-I/base"));
+
+    // A bare name resolves on PATH like nvcc would — never anchored.
+    EXPECT_TRUE(contains(translate({"nvcc", "-ccbin=g++-13"}, "/base"), "-ccbin=g++-13"));
 }
 
 TEST_CASE(XcompilerUnwrapped) {
@@ -125,6 +133,11 @@ TEST_CASE(MacroToggles) {
     EXPECT_TRUE(contains(dc, "-fgpu-rdc"));
     EXPECT_TRUE(contains(dc, "-D__CUDACC_RDC__"));
     EXPECT_TRUE(contains(translate({"nvcc", "--extensible-whole-program"}), "-D__CUDACC_EWP__"));
+
+    // Stateful options are last-wins, matching nvcc.
+    EXPECT_FALSE(contains(translate({"nvcc", "-rdc=true", "-rdc=false"}), "-fgpu-rdc"));
+    auto stream = translate({"nvcc", "-default-stream=per-thread", "-default-stream=legacy"});
+    EXPECT_FALSE(contains(stream, "-DCUDA_API_PER_THREAD_DEFAULT_STREAM=1"));
 }
 
 TEST_CASE(PairedValueDrops) {
@@ -170,6 +183,10 @@ TEST_CASE(ListValuesSplit) {
                                 "-include h2.h"}) {
         EXPECT_TRUE(llvm::StringRef(joined).contains(piece));
     }
+
+    // `\,` is nvcc's escape for a literal comma inside a value.
+    auto escaped = translate({"nvcc", R"(-DP=a\,b)"});
+    EXPECT_TRUE(contains(escaped, "P=a,b"));
 }
 
 TEST_CASE(OptionsFileExpanded) {
