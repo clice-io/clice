@@ -1,0 +1,70 @@
+---
+created_at: 2026-08-22
+input_file: call_hierarchy.cpp
+---
+gate:
+  definition:
+    - { file: "${WS}/call_hierarchy.cpp", range: "18:4-18:10" }
+  declaration:
+    - { file: "${WS}/call_hierarchy.cpp", range: "18:4-18:10" }
+  references:
+    - { file: "${WS}/call_hierarchy.cpp", range: "18:4-18:10" }
+
+leaf:
+  definition:
+    - { file: "${WS}/call_hierarchy.cpp", range: "2:4-2:10" }
+  declaration:
+    - { file: "${WS}/call_hierarchy.cpp", range: "2:4-2:10" }
+  references:
+    - { file: "${WS}/call_hierarchy.cpp", range: "2:4-2:10" }
+    - { file: "${WS}/call_hierarchy.cpp", range: "7:11-7:17" }
+    - { file: "${WS}/call_hierarchy.cpp", range: "7:27-7:33" }
+  callHierarchy:
+    - { name: "settle", kind: Function, file: "${WS}/call_hierarchy.cpp", range: "2:4-2:10" }
+  incomingCalls:
+    - { name: "route", kind: Function, file: "${WS}/call_hierarchy.cpp", range: "6:4-6:9", fromRanges: ["7:11-7:24", "7:27-7:44"] }
+
+mid:
+  definition:
+    - { file: "${WS}/call_hierarchy.cpp", range: "6:4-6:9" }
+  declaration:
+    - { file: "${WS}/call_hierarchy.cpp", range: "6:4-6:9" }
+  references:
+    - { file: "${WS}/call_hierarchy.cpp", range: "6:4-6:9" }
+    - { file: "${WS}/call_hierarchy.cpp", range: "11:11-11:16" }
+    - { file: "${WS}/call_hierarchy.cpp", range: "15:11-15:16" }
+  callHierarchy:
+    - { name: "route", kind: Function, file: "${WS}/call_hierarchy.cpp", range: "6:4-6:9" }
+  incomingCalls:
+    - { name: "start", kind: Function, file: "${WS}/call_hierarchy.cpp", range: "10:4-10:9", fromRanges: ["11:11-11:23"] }
+    - { name: "restart", kind: Function, file: "${WS}/call_hierarchy.cpp", range: "14:4-14:11", fromRanges: ["15:11-15:23"] }
+  outgoingCalls:
+    - { name: "settle", kind: Function, file: "${WS}/call_hierarchy.cpp", range: "2:4-2:10", fromRanges: ["7:11-7:24", "7:27-7:44"] }
+
+recursive:
+  definition:
+    - { file: "${WS}/call_hierarchy.cpp", range: "14:4-14:11" }
+  declaration:
+    - { file: "${WS}/call_hierarchy.cpp", range: "14:4-14:11" }
+  references:
+    - { file: "${WS}/call_hierarchy.cpp", range: "14:4-14:11" }
+    - { file: "${WS}/call_hierarchy.cpp", range: "15:26-15:33" }
+  callHierarchy:
+    - { name: "restart", kind: Function, file: "${WS}/call_hierarchy.cpp", range: "14:4-14:11" }
+  incomingCalls:
+    - { name: "restart", kind: Function, file: "${WS}/call_hierarchy.cpp", range: "14:4-14:11", fromRanges: ["15:26-15:44"] }
+  outgoingCalls:
+    - { name: "route", kind: Function, file: "${WS}/call_hierarchy.cpp", range: "6:4-6:9", fromRanges: ["15:11-15:23"] }
+    - { name: "restart", kind: Function, file: "${WS}/call_hierarchy.cpp", range: "14:4-14:11", fromRanges: ["15:26-15:44"] }
+
+top:
+  definition:
+    - { file: "${WS}/call_hierarchy.cpp", range: "10:4-10:9" }
+  declaration:
+    - { file: "${WS}/call_hierarchy.cpp", range: "10:4-10:9" }
+  references:
+    - { file: "${WS}/call_hierarchy.cpp", range: "10:4-10:9" }
+  callHierarchy:
+    - { name: "start", kind: Function, file: "${WS}/call_hierarchy.cpp", range: "10:4-10:9" }
+  outgoingCalls:
+    - { name: "route", kind: Function, file: "${WS}/call_hierarchy.cpp", range: "6:4-6:9", fromRanges: ["11:11-11:23"] }

@@ -9,6 +9,7 @@ import { documentSymbol } from "./features/document_symbol.ts";
 import { foldingRange } from "./features/folding_range.ts";
 import { hover } from "./features/hover.ts";
 import { inlayHint } from "./features/inlay_hint.ts";
+import { navigation } from "./features/navigation.ts";
 import { semanticTokens } from "./features/semantic_tokens.ts";
 import { signatureHelp } from "./features/signature_help.ts";
 import { tuIndex } from "./features/tu_index.ts";
@@ -21,6 +22,7 @@ const FEATURES: Record<string, Feature> = {
     folding_range: foldingRange,
     hover,
     inlay_hint: inlayHint,
+    navigation,
     semantic_tokens: semanticTokens,
     signature_help: signatureHelp,
     tu_index: tuIndex,
