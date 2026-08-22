@@ -71,9 +71,11 @@ TEST_CASE(GencodeSelectsBest) {
 }
 
 TEST_CASE(CcbinBecomesToken) {
-    for(auto arguments: {std::vector<const char*>{"nvcc", "-ccbin", "/usr/bin/g++-12"},
-                         std::vector<const char*>{"nvcc", "-ccbin=/usr/bin/g++-12"},
-                         std::vector<const char*>{"nvcc", "--compiler-bindir", "/usr/bin/g++-12"}}) {
+    for(auto arguments: {
+            std::vector<const char*>{"nvcc", "-ccbin", "/usr/bin/g++-12"},
+            std::vector<const char*>{"nvcc", "-ccbin=/usr/bin/g++-12"},
+            std::vector<const char*>{"nvcc", "--compiler-bindir", "/usr/bin/g++-12"}
+    }) {
         auto args = translate(arguments);
         EXPECT_TRUE(contains(args, "-ccbin=/usr/bin/g++-12"));
         EXPECT_FALSE(contains(args, "/usr/bin/g++-12"));
@@ -86,8 +88,9 @@ TEST_CASE(ProbeFlagsCarried) {
     auto args = translate(
         {"nvcc", "-allow-unsupported-compiler", "-target-dir", "sbsa-linux", "-ccbin", "tools/g++"},
         "/base");
-    for(llvm::StringRef flag:
-        {"--allow-unsupported-compiler", "--target-directory=sbsa-linux", "-ccbin=/base/tools/g++"}) {
+    for(llvm::StringRef flag: {"--allow-unsupported-compiler",
+                               "--target-directory=sbsa-linux",
+                               "-ccbin=/base/tools/g++"}) {
         EXPECT_TRUE(contains(args, flag));
         EXPECT_TRUE(is_nvcc_probe_flag(flag));
     }
@@ -155,9 +158,16 @@ TEST_CASE(ListValuesSplit) {
     auto args = translate(
         {"nvcc", "-Ia,b", "-DA=1,B=2", "-U", "X,Y", "-isystem=s1,s2", "-include", "h1.h,h2.h"});
     auto joined = llvm::join(args, " ");
-    for(llvm::StringRef piece:
-        {"-I a", "-I b", "-D A=1", "-D B=2", "-U X", "-U Y", "-isystem s1", "-isystem s2",
-         "-include h1.h", "-include h2.h"}) {
+    for(llvm::StringRef piece: {"-I a",
+                                "-I b",
+                                "-D A=1",
+                                "-D B=2",
+                                "-U X",
+                                "-U Y",
+                                "-isystem s1",
+                                "-isystem s2",
+                                "-include h1.h",
+                                "-include h2.h"}) {
         EXPECT_TRUE(llvm::StringRef(joined).contains(piece));
     }
 }
