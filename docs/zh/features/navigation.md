@@ -579,8 +579,9 @@ clice 返回声明位置加上定义位置（内联定义的符号没有独立�
 
 ## 变更记录
 
-| 日期 | 变更                                           | PR  |
-| ---- | ---------------------------------------------- | --- |
-| —    | 基于索引的 go-to-definition 和 find references | —   |
-| —    | Call hierarchy（incoming/outgoing）            | —   |
-| —    | Type hierarchy（supertypes/subtypes）          | —   |
+| 日期       | 变更                                                  | PR                                                 |
+| ---------- | ----------------------------------------------------- | -------------------------------------------------- |
+| 2026-08-22 | 定义/声明在光标站点交替跳转；只有声明的符号返回其声明 | [#626](https://github.com/clice-io/clice/pull/626) |
+| —          | 基于索引的 go-to-definition 和 find references        | —                                                  |
+| —          | Call hierarchy（incoming/outgoing）                   | —                                                  |
+| —          | Type hierarchy（supertypes/subtypes）                 | —                                                  |
