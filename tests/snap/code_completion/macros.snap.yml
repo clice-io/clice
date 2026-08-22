@@ -1,0 +1,10 @@
+---
+created_at: 2026-08-22
+input_file: macros.cpp
+---
+function:
+- { label: "CLAMP", kind: Function, detail: "(value, limit)", edit: "13:8-13:11" }
+- { label: "class", kind: Keyword, edit: "13:8-13:11" }
+
+object:
+- { label: "RETRY_LIMIT", kind: Constant, edit: "12:8-12:13" }
