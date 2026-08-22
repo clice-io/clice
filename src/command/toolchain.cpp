@@ -405,7 +405,7 @@ kota::task<std::expected<std::vector<std::string>, std::string>>
                                                     "-c",
                                                     std::string(cu_probe)};
             for(llvm::StringRef arg: args) {
-                if(arg.starts_with(nvcc_ccbin_prefix))
+                if(is_nvcc_probe_flag(arg))
                     dryrun_args.push_back(arg.str());
             }
 
@@ -502,7 +502,7 @@ kota::task<std::expected<std::vector<std::string>, std::string>>
                 cuda_args.push_back("--cuda-gpu-arch=" + info->default_arch);
 
             for(llvm::StringRef arg: llvm::ArrayRef(args).drop_front()) {
-                if(arg.starts_with(nvcc_ccbin_prefix))
+                if(is_nvcc_probe_flag(arg))
                     continue;
                 cuda_args.push_back(arg.str());
             }

@@ -93,7 +93,7 @@ object_ptr<CompilationInfo>
     std::vector<std::string> nvcc_translated;
     llvm::SmallVector<const char*, 32> nvcc_arguments;
     if(Toolchain::driver_family(arguments[0]) == CompilerFamily::NVCC) {
-        nvcc_translated = translate_nvcc_command(arguments).arguments;
+        nvcc_translated = translate_nvcc_command(arguments, directory);
         for(auto& arg: nvcc_translated)
             nvcc_arguments.push_back(arg.c_str());
         arguments = nvcc_arguments;
@@ -182,11 +182,12 @@ object_ptr<CompilationInfo>
         render_arg(canonical_args, arg);
     }
 
-    /// The `-ccbin=` token the translation appended is unknown to the table
-    /// and was dropped above — the NVCC toolchain query needs it in canonical.
+    /// The probe-flag tokens the translation appended are unknown to the
+    /// table and were dropped above — the NVCC toolchain query needs them
+    /// in canonical.
     if(!nvcc_translated.empty()) {
         for(llvm::StringRef arg: arguments) {
-            if(arg.starts_with(nvcc_ccbin_prefix)) {
+            if(is_nvcc_probe_flag(arg)) {
                 canonical_args.push_back(strings.save(arg).data());
             }
         }

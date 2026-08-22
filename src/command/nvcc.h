@@ -9,28 +9,38 @@
 
 namespace clice {
 
-/// clang's option table has no spelling for nvcc's `-ccbin`, so the host
-/// compiler travels through the canonical command as this verbatim token
-/// (`-ccbin=<path>`), written by the CDB translation below and consumed by
-/// the NVCC toolchain query.
-constexpr inline llvm::StringLiteral nvcc_ccbin_prefix = "-ccbin=";
+/// nvcc options that select the toolchain itself (`-ccbin=<path>`,
+/// `--allow-unsupported-compiler`, `--target-directory=<name>`): clang's
+/// option table has no spelling for them, so the translation re-emits them
+/// as normalized verbatim tokens. They survive CDB classification into the
+/// canonical command — keying the toolchain cache — and the NVCC query
+/// forwards them to its `nvcc --dryrun` probe so the probe runs against the
+/// build's real toolchain.
+bool is_nvcc_probe_flag(llvm::StringRef arg);
 
-/// An nvcc driver command rewritten into spellings clang's option table
-/// parses, so the regular CDB classification (canonical / user-content /
-/// discarded) applies unchanged.
-struct NVCCCommand {
-    /// The driver followed by translated flags: `-gencode`/`-arch`/`-code`
-    /// become the single best `--cuda-gpu-arch=`, `-x cu` becomes `-x cuda`,
-    /// `-Xcompiler` values are unwrapped into plain host flags, long-form
-    /// preprocessor aliases become their short spellings, and macro-defining
-    /// toggles (`--expt-extended-lambda`, ...) become their `-D` effect.
-    /// nvcc options that cannot affect parsing are dropped, together with
-    /// their values when those could be mistaken for flags (`-Xptxas -O3`).
-    /// A `-ccbin=<path>` token is appended when a host compiler was named.
-    std::vector<std::string> arguments;
-};
-
-NVCCCommand translate_nvcc_command(llvm::ArrayRef<const char*> arguments);
+/// Rewrite an nvcc driver command into flags clang's option table parses,
+/// so the regular CDB classification (canonical / user-content / discarded)
+/// applies unchanged:
+///
+/// - `-gencode`/`-arch` collapse to the single best `--cuda-gpu-arch=`.
+///   Only `arch=` clauses count — they name the virtual architecture the
+///   device front end compiles for, while `code=` entries are ptxas targets
+///   that never set `__CUDA_ARCH__`. The newest wins; at equal number
+///   'a' > 'f' > plain ('a' unlocks e.g. Hopper GMMA/TMA).
+/// - Preprocessor options split their comma-separated values, short
+///   spellings included: `-Ia,b` names two directories, `-DA=1,B=2` two
+///   macros.
+/// - `-Xcompiler` values unwrap into plain host flags, `-x cu` becomes
+///   `-x cuda`, and macro-defining toggles (`--extended-lambda`,
+///   `-rdc=true`, `-dc`, `-ewp`, `--default-stream per-thread`, ...) become
+///   their exact macro effect.
+/// - `--options-file` response files are expanded in place, resolved
+///   against `directory` like a relative `-ccbin` — nvcc resolves both
+///   against its working directory.
+/// - Remaining nvcc-only options are dropped, together with their values
+///   when those could be mistaken for host flags (`-Xptxas -O3`).
+std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> arguments,
+                                                llvm::StringRef directory);
 
 /// What one `nvcc --dryrun` run reveals about the toolchain. The dryrun
 /// prints the whole compilation pipeline (host preprocess, cudafe++, device

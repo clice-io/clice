@@ -4,6 +4,7 @@
 #include "command/command.h"
 #include "command/nvcc.h"
 #include "command/toolchain.h"
+#include "support/filesystem.h"
 
 namespace clice::testing {
 namespace {
@@ -12,8 +13,9 @@ using namespace std::string_view_literals;
 
 TEST_SUITE(NVCCTests) {
 
-std::vector<std::string> translate(std::vector<const char*> arguments) {
-    return translate_nvcc_command(arguments).arguments;
+std::vector<std::string> translate(std::vector<const char*> arguments,
+                                   llvm::StringRef directory = "") {
+    return translate_nvcc_command(arguments, directory);
 }
 
 bool contains(llvm::ArrayRef<std::string> arguments, llvm::StringRef flag) {
@@ -34,7 +36,7 @@ TEST_CASE(TranslateCMakeShape) {
 
     EXPECT_EQ(args[0], "nvcc"sv);
     EXPECT_TRUE(contains(args, "--cuda-gpu-arch=sm_75"));
-    EXPECT_TRUE(contains(args, "-DMY_FLAG=1"));
+    EXPECT_TRUE(contains(args, "MY_FLAG=1"));
     EXPECT_TRUE(contains(args, "-x"));
     EXPECT_TRUE(contains(args, "cuda"));
     EXPECT_FALSE(contains(args, "cu"));
@@ -44,35 +46,52 @@ TEST_CASE(TranslateCMakeShape) {
 }
 
 TEST_CASE(GencodeSelectsBest) {
-    // The newest architecture wins; 'a' outranks 'f' and plain at the same
-    // number; lto_ entries are intermediates, not architectures.
-    auto args = translate({"nvcc",
-                           "-gencode",
-                           "arch=compute_75,code=sm_75",
-                           "-gencode",
-                           "arch=compute_90a,code=[compute_90a,sm_90a,lto_120]",
-                           "-gencode=arch=compute_80,code=sm_80"});
-    EXPECT_TRUE(contains(args, "--cuda-gpu-arch=sm_90a"));
+    // Only arch= clauses count: code= entries are ptxas targets and never
+    // set __CUDA_ARCH__ (arch=compute_75,code=sm_90 preprocesses as 750).
+    auto mismatch = translate({"nvcc", "-gencode", "arch=compute_75,code=sm_90"});
+    EXPECT_TRUE(contains(mismatch, "--cuda-gpu-arch=sm_75"));
 
-    auto compute_only = translate({"nvcc", "-arch=compute_86"});
-    EXPECT_TRUE(contains(compute_only, "--cuda-gpu-arch=sm_86"));
+    // The newest architecture wins; 'a' outranks plain at the same number;
+    // lto_ entries are intermediates, not architectures.
+    auto multi = translate({"nvcc",
+                            "-gencode",
+                            "arch=compute_75,code=sm_75",
+                            "-gencode=arch=compute_90a,code=[compute_90a,sm_90a,lto_120]"});
+    EXPECT_TRUE(contains(multi, "--cuda-gpu-arch=sm_90a"));
 
-    auto family = translate({"nvcc", "-code=sm_100f,sm_100"});
-    EXPECT_TRUE(contains(family, "--cuda-gpu-arch=sm_100f"));
+    EXPECT_TRUE(contains(translate({"nvcc", "-arch=compute_86"}), "--cuda-gpu-arch=sm_86"));
+    EXPECT_TRUE(contains(translate({"nvcc", "-arch=sm_100f"}), "--cuda-gpu-arch=sm_100f"));
 
-    EXPECT_FALSE(contains(translate({"nvcc", "-c", "a.cu"}), "--cuda-gpu-arch=sm_52"));
+    // Bare -code and arch-less commands pin no architecture.
+    for(auto& args: {translate({"nvcc", "-code=sm_90"}), translate({"nvcc", "-c", "a.cu"})}) {
+        for(llvm::StringRef arg: args) {
+            EXPECT_FALSE(arg.starts_with("--cuda-gpu-arch="));
+        }
+    }
 }
 
 TEST_CASE(CcbinBecomesToken) {
-    for(auto arguments: {
-            std::vector<const char*>{"nvcc", "-ccbin", "/usr/bin/g++-12"},
-            std::vector<const char*>{"nvcc", "-ccbin=/usr/bin/g++-12"},
-            std::vector<const char*>{"nvcc", "--compiler-bindir", "/usr/bin/g++-12"}
-    }) {
+    for(auto arguments: {std::vector<const char*>{"nvcc", "-ccbin", "/usr/bin/g++-12"},
+                         std::vector<const char*>{"nvcc", "-ccbin=/usr/bin/g++-12"},
+                         std::vector<const char*>{"nvcc", "--compiler-bindir", "/usr/bin/g++-12"}}) {
         auto args = translate(arguments);
         EXPECT_TRUE(contains(args, "-ccbin=/usr/bin/g++-12"));
         EXPECT_FALSE(contains(args, "/usr/bin/g++-12"));
     }
+}
+
+TEST_CASE(ProbeFlagsCarried) {
+    // Toolchain-selecting options become normalized verbatim tokens; a
+    // relative -ccbin anchors to the compile directory like nvcc would.
+    auto args = translate(
+        {"nvcc", "-allow-unsupported-compiler", "-target-dir", "sbsa-linux", "-ccbin", "tools/g++"},
+        "/base");
+    for(llvm::StringRef flag:
+        {"--allow-unsupported-compiler", "--target-directory=sbsa-linux", "-ccbin=/base/tools/g++"}) {
+        EXPECT_TRUE(contains(args, flag));
+        EXPECT_TRUE(is_nvcc_probe_flag(flag));
+    }
+    EXPECT_FALSE(is_nvcc_probe_flag("-I/base"));
 }
 
 TEST_CASE(XcompilerUnwrapped) {
@@ -96,15 +115,19 @@ TEST_CASE(MacroToggles) {
     EXPECT_TRUE(contains(args, "-D__CUDACC_RDC__"));
     EXPECT_TRUE(contains(args, "-DCUDA_API_PER_THREAD_DEFAULT_STREAM=1"));
 
-    auto off = translate({"nvcc", "-rdc=false"});
-    EXPECT_FALSE(contains(off, "-fgpu-rdc"));
+    EXPECT_FALSE(contains(translate({"nvcc", "-rdc=false"}), "-fgpu-rdc"));
+
+    // Separate compilation implies -rdc=true; -ewp has its own macro.
+    auto dc = translate({"nvcc", "-dc"});
+    EXPECT_TRUE(contains(dc, "-fgpu-rdc"));
+    EXPECT_TRUE(contains(dc, "-D__CUDACC_RDC__"));
+    EXPECT_TRUE(contains(translate({"nvcc", "--extensible-whole-program"}), "-D__CUDACC_EWP__"));
 }
 
 TEST_CASE(PairedValueDrops) {
     // The wrapped values would parse as host flags on their own; bare
     // nvcc-only flags pass through for the CDB classification to discard.
-    auto args = translate(
-        {"nvcc", "-Xptxas", "-O3", "-t", "4", "--options-file", "extra.rsp", "-lineinfo"});
+    auto args = translate({"nvcc", "-Xptxas", "-O3", "-t", "4", "-lineinfo"});
     std::vector<std::string> expected = {"nvcc", "-lineinfo"};
     EXPECT_EQ(args, expected);
 }
@@ -124,6 +147,39 @@ TEST_CASE(LongFormAliases) {
     EXPECT_TRUE(llvm::StringRef(joined).contains("-U BAR"));
     EXPECT_TRUE(llvm::StringRef(joined).contains("-include config.h"));
     EXPECT_TRUE(llvm::StringRef(joined).contains("-isystem /opt/sys"));
+}
+
+TEST_CASE(ListValuesSplit) {
+    // nvcc splits every preprocessor value on commas, short spellings
+    // included: -Ia,b preprocesses with two include directories.
+    auto args = translate(
+        {"nvcc", "-Ia,b", "-DA=1,B=2", "-U", "X,Y", "-isystem=s1,s2", "-include", "h1.h,h2.h"});
+    auto joined = llvm::join(args, " ");
+    for(llvm::StringRef piece:
+        {"-I a", "-I b", "-D A=1", "-D B=2", "-U X", "-U Y", "-isystem s1", "-isystem s2",
+         "-include h1.h", "-include h2.h"}) {
+        EXPECT_TRUE(llvm::StringRef(joined).contains(piece));
+    }
+}
+
+TEST_CASE(OptionsFileExpanded) {
+    auto file = fs::createTemporaryFile("clice-nvcc", "rsp");
+    ASSERT_TRUE(file.has_value());
+    ASSERT_TRUE(fs::write(*file, "-Igenerated -DAPI=2 -std=c++20\n"));
+
+    auto args = translate({"nvcc", "--options-file", file->c_str()});
+    auto joined = llvm::join(args, " ");
+    EXPECT_TRUE(llvm::StringRef(joined).contains("-I generated"));
+    EXPECT_TRUE(llvm::StringRef(joined).contains("-D API=2"));
+    EXPECT_TRUE(contains(args, "-std=c++20"));
+    EXPECT_FALSE(contains(args, "--options-file"));
+
+    // An unreadable file drops with a warning; the rest of the command
+    // still translates.
+    auto missing = translate({"nvcc", "--options-file=missing.rsp", "-DX"}, "/clice-nonexistent");
+    EXPECT_TRUE(contains(missing, "X"));
+
+    fs::remove(*file);
 }
 
 TEST_CASE(StdNormalized) {
@@ -189,6 +245,7 @@ TEST_CASE(DatabaseTranslatesNVCC) {
                                           "-DMY_FLAG=1",
                                           "--generate-code=arch=compute_75,code=[compute_75,sm_75]",
                                           "-ccbin=/usr/bin/g++-12",
+                                          "-allow-unsupported-compiler",
                                           "-x",
                                           "cu",
                                           "-c",
@@ -207,6 +264,7 @@ TEST_CASE(DatabaseTranslatesNVCC) {
     // --cuda-gpu-arch renders through its unaliased spelling.
     EXPECT_TRUE(has("--offload-arch=sm_75"));
     EXPECT_TRUE(has("-ccbin=/usr/bin/g++-12"));
+    EXPECT_TRUE(has("--allow-unsupported-compiler"));
     EXPECT_TRUE(has("-x"));
     EXPECT_TRUE(has("cuda"));
     EXPECT_TRUE(has("MY_FLAG=1"));

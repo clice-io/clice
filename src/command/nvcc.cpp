@@ -4,12 +4,14 @@
 #include <format>
 
 #include "support/filesystem.h"
+#include "support/logging.h"
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Program.h"
 #include "llvm/Support/StringSaver.h"
 
@@ -17,7 +19,11 @@ namespace clice {
 
 namespace {
 
-/// One GPU architecture named inside an -arch/-code/-gencode value.
+constexpr llvm::StringLiteral ccbin_prefix = "-ccbin=";
+constexpr llvm::StringLiteral target_directory_prefix = "--target-directory=";
+constexpr llvm::StringLiteral allow_unsupported_flag = "--allow-unsupported-compiler";
+
+/// One GPU architecture named inside an -arch/-gencode value.
 struct ArchToken {
     unsigned number = 0;
 
@@ -25,8 +31,8 @@ struct ArchToken {
     char suffix = 0;
 };
 
-/// Scan a spec like "arch=compute_90a,code=[compute_90a,sm_90a]" for
-/// sm_NN / compute_NN tokens. `lto_NN` entries name LTO intermediates, not
+/// Scan a spec like "compute_90a" or "arch=compute_90a" for sm_NN /
+/// compute_NN tokens. `lto_NN` entries name LTO intermediates, not
 /// architectures, and are ignored.
 void collect_archs(llvm::StringRef spec, llvm::SmallVectorImpl<ArchToken>& out) {
     for(llvm::StringRef prefix: {"sm_", "compute_"}) {
@@ -53,6 +59,20 @@ void collect_archs(llvm::StringRef spec, llvm::SmallVectorImpl<ArchToken>& out) 
     }
 }
 
+/// Only the `arch=` clause of a -gencode value names the virtual
+/// architecture the device front end compiles for; `code=` entries are
+/// ptxas targets (`-gencode arch=compute_80,code=sm_90` preprocesses with
+/// `__CUDA_ARCH__` == 800).
+void collect_gencode_archs(llvm::StringRef spec, llvm::SmallVectorImpl<ArchToken>& out) {
+    llvm::SmallVector<llvm::StringRef> pieces;
+    spec.split(pieces, ',', -1, false);
+    for(llvm::StringRef piece: pieces) {
+        piece = piece.trim();
+        if(piece.consume_front("arch="))
+            collect_archs(piece, out);
+    }
+}
+
 /// The newest architecture wins; at equal number the fuller feature set does
 /// ('a' unlocks the arch-specific instructions the family 'f' and plain
 /// forms hide, e.g. sm_90a for Hopper GMMA/TMA).
@@ -69,16 +89,91 @@ std::string select_gpu_arch(llvm::ArrayRef<ArchToken> archs) {
     return result;
 }
 
+/// nvcc resolves relative paths against its working directory — the compile
+/// directory — not against ours.
+std::string absolutize(llvm::StringRef value, llvm::StringRef directory) {
+    if(value.empty() || directory.empty() || path::is_absolute(value))
+        return value.str();
+    return path::join(directory, value);
+}
+
+/// `--options-file` pulls additional nvcc arguments from a response file —
+/// CMake routes long CUDA include lists through one — so dropping it would
+/// lose every -I inside. Each pass splices all response files in place;
+/// repeated passes resolve nested files, with a small cap as a cycle guard.
+std::vector<std::string> expand_options_files(llvm::ArrayRef<const char*> arguments,
+                                              llvm::StringRef directory) {
+    std::vector<std::string> args(arguments.begin(), arguments.end());
+
+    for(int depth = 0; depth < 4; depth += 1) {
+        bool expanded = false;
+        std::vector<std::string> next;
+        next.reserve(args.size());
+
+        for(std::size_t i = 0; i < args.size(); i += 1) {
+            llvm::StringRef arg = args[i];
+            llvm::StringRef value;
+
+            if(arg == "-optf" || arg == "--options-file") {
+                if(i + 1 < args.size()) {
+                    i += 1;
+                    value = args[i];
+                }
+            } else if(arg.consume_front("-optf=") || arg.consume_front("--options-file=")) {
+                value = arg;
+            } else {
+                next.emplace_back(std::move(args[i]));
+                continue;
+            }
+
+            expanded = true;
+            llvm::SmallVector<llvm::StringRef> files;
+            value.split(files, ',', -1, false);
+            for(llvm::StringRef file: files) {
+                auto file_path = absolutize(file, directory);
+                auto buffer = llvm::MemoryBuffer::getFile(file_path);
+                if(!buffer) {
+                    LOG_WARN("Cannot read nvcc options file {}: {}",
+                             file_path,
+                             buffer.getError().message());
+                    continue;
+                }
+
+                llvm::BumpPtrAllocator alloc;
+                llvm::StringSaver saver(alloc);
+                llvm::SmallVector<const char*> tokens;
+                llvm::cl::TokenizeGNUCommandLine((*buffer)->getBuffer(), saver, tokens);
+                for(llvm::StringRef token: tokens)
+                    next.emplace_back(token);
+            }
+        }
+
+        args = std::move(next);
+        if(!expanded)
+            break;
+    }
+
+    return args;
+}
+
 }  // namespace
 
-NVCCCommand translate_nvcc_command(llvm::ArrayRef<const char*> arguments) {
-    NVCCCommand result;
-    result.arguments.emplace_back(arguments[0]);
+bool is_nvcc_probe_flag(llvm::StringRef arg) {
+    return arg.starts_with(ccbin_prefix) || arg == allow_unsupported_flag ||
+           arg.starts_with(target_directory_prefix);
+}
+
+std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> arguments,
+                                                llvm::StringRef directory) {
+    std::vector<std::string> result;
+    result.emplace_back(arguments[0]);
 
     llvm::SmallVector<ArchToken> archs;
     std::string host_compiler;
+    std::string target_directory;
+    bool allow_unsupported = false;
 
-    auto args = arguments.drop_front();
+    auto args = expand_options_files(arguments.drop_front(), directory);
 
     /// Match `-opt value` / `-opt=value` for any of the spellings, advancing
     /// past a separate value. A spelling at the end of the command matches
@@ -104,24 +199,45 @@ NVCCCommand translate_nvcc_command(llvm::ArrayRef<const char*> arguments) {
         return false;
     };
 
+    /// nvcc treats every preprocessor value as a comma-separated list,
+    /// short spellings included: `-Ia,b` names two directories.
+    auto emit_list = [&](llvm::StringRef flag, llvm::StringRef value) {
+        llvm::SmallVector<llvm::StringRef> pieces;
+        value.split(pieces, ',', -1, false);
+        for(auto piece: pieces) {
+            result.emplace_back(flag);
+            result.emplace_back(piece);
+        }
+    };
+
     for(std::size_t i = 0; i < args.size(); i += 1) {
         llvm::StringRef arg = args[i];
         llvm::StringRef value;
 
-        if(value_of(i,
-                    {"-gencode",
-                     "--generate-code",
-                     "-arch",
-                     "--gpu-architecture",
-                     "-code",
-                     "--gpu-code"},
-                    value)) {
+        if(value_of(i, {"-gencode", "--generate-code"}, value)) {
+            collect_gencode_archs(value, archs);
+            continue;
+        }
+        if(value_of(i, {"-arch", "--gpu-architecture"}, value)) {
             collect_archs(value, archs);
+            continue;
+        }
+        /// ptxas targets only — consumed so the value cannot leak, never
+        /// harvested.
+        if(value_of(i, {"-code", "--gpu-code"}, value)) {
             continue;
         }
 
         if(value_of(i, {"-ccbin", "--compiler-bindir"}, value)) {
-            host_compiler = value;
+            host_compiler = absolutize(value, directory);
+            continue;
+        }
+        if(arg == "--allow-unsupported-compiler" || arg == "-allow-unsupported-compiler") {
+            allow_unsupported = true;
+            continue;
+        }
+        if(value_of(i, {"-target-dir", "--target-directory"}, value)) {
+            target_directory = value;
             continue;
         }
 
@@ -130,72 +246,90 @@ NVCCCommand translate_nvcc_command(llvm::ArrayRef<const char*> arguments) {
             llvm::SmallVector<llvm::StringRef> pieces;
             value.split(pieces, ',', -1, false);
             for(auto piece: pieces)
-                result.arguments.emplace_back(piece);
+                result.emplace_back(piece);
             continue;
         }
 
         if(value_of(i, {"-std", "--std"}, value)) {
-            result.arguments.emplace_back(("-std=" + value).str());
+            result.emplace_back(("-std=" + value).str());
             continue;
         }
 
         if(value_of(i, {"-x", "--x"}, value)) {
-            result.arguments.emplace_back("-x");
-            result.arguments.emplace_back(value == "cu" ? "cuda" : value.str());
+            result.emplace_back("-x");
+            result.emplace_back(value == "cu" ? "cuda" : value.str());
             continue;
         }
 
         if(value_of(i, {"-rdc", "--relocatable-device-code"}, value)) {
             if(value == "true") {
-                result.arguments.emplace_back("-fgpu-rdc");
+                result.emplace_back("-fgpu-rdc");
                 /// nvcc defines it; clang's -fgpu-rdc does not.
-                result.arguments.emplace_back("-D__CUDACC_RDC__");
+                result.emplace_back("-D__CUDACC_RDC__");
             }
+            continue;
+        }
+        /// Separate compilation implies -rdc=true.
+        if(arg == "-dc" || arg == "--device-c") {
+            result.emplace_back("-fgpu-rdc");
+            result.emplace_back("-D__CUDACC_RDC__");
+            continue;
+        }
+        if(arg == "-ewp" || arg == "--extensible-whole-program") {
+            result.emplace_back("-D__CUDACC_EWP__");
             continue;
         }
 
         if(value_of(i, {"-default-stream", "--default-stream"}, value)) {
             if(value == "per-thread")
-                result.arguments.emplace_back("-DCUDA_API_PER_THREAD_DEFAULT_STREAM=1");
+                result.emplace_back("-DCUDA_API_PER_THREAD_DEFAULT_STREAM=1");
             continue;
         }
 
         /// Feature toggles whose only parse-visible effect is a macro.
         if(arg == "--expt-relaxed-constexpr" || arg == "-expt-relaxed-constexpr") {
-            result.arguments.emplace_back("-D__CUDACC_RELAXED_CONSTEXPR__");
+            result.emplace_back("-D__CUDACC_RELAXED_CONSTEXPR__");
             continue;
         }
         if(arg == "--expt-extended-lambda" || arg == "-expt-extended-lambda" ||
            arg == "--extended-lambda" || arg == "-extended-lambda") {
-            result.arguments.emplace_back("-D__CUDACC_EXTENDED_LAMBDA__");
+            result.emplace_back("-D__CUDACC_EXTENDED_LAMBDA__");
             continue;
         }
 
-        /// Long-form preprocessor aliases, rewritten to the short spellings
-        /// the CDB classification knows.
-        if(value_of(i, {"--define-macro"}, value)) {
-            result.arguments.emplace_back("-D");
-            result.arguments.emplace_back(value);
+        /// Preprocessor list options, rewritten to the short spellings the
+        /// CDB classification knows. The exact-spelling matches must come
+        /// before the direct-join ones: `-include` also starts with "-I".
+        if(value_of(i, {"-isystem", "--system-include"}, value)) {
+            emit_list("-isystem", value);
             continue;
         }
-        if(value_of(i, {"--undefine-macro"}, value)) {
-            result.arguments.emplace_back("-U");
-            result.arguments.emplace_back(value);
+        if(value_of(i, {"-include", "--pre-include"}, value)) {
+            emit_list("-include", value);
             continue;
         }
-        if(value_of(i, {"--include-path"}, value)) {
-            result.arguments.emplace_back("-I");
-            result.arguments.emplace_back(value);
+        if(arg.size() > 2 && arg.starts_with("-I") && arg[2] != '=') {
+            emit_list("-I", arg.substr(2));
             continue;
         }
-        if(value_of(i, {"--system-include", "-isystem"}, value)) {
-            result.arguments.emplace_back("-isystem");
-            result.arguments.emplace_back(value);
+        if(value_of(i, {"-I", "--include-path"}, value)) {
+            emit_list("-I", value);
             continue;
         }
-        if(value_of(i, {"--pre-include"}, value)) {
-            result.arguments.emplace_back("-include");
-            result.arguments.emplace_back(value);
+        if(arg.size() > 2 && arg.starts_with("-D") && arg[2] != '=') {
+            emit_list("-D", arg.substr(2));
+            continue;
+        }
+        if(value_of(i, {"-D", "--define-macro"}, value)) {
+            emit_list("-D", value);
+            continue;
+        }
+        if(arg.size() > 2 && arg.starts_with("-U") && arg[2] != '=') {
+            emit_list("-U", arg.substr(2));
+            continue;
+        }
+        if(value_of(i, {"-U", "--undefine-macro"}, value)) {
+            emit_list("-U", value);
             continue;
         }
 
@@ -214,22 +348,24 @@ NVCCCommand translate_nvcc_command(llvm::ArrayRef<const char*> arguments) {
                      "-Xlinker",
                      "--linker-options",
                      "-Xcudafe",
-                     "--options-file",
-                     "-optf",
                      "--threads",
                      "-t"},
                     value)) {
             continue;
         }
 
-        result.arguments.emplace_back(arg);
+        result.emplace_back(arg);
     }
 
     if(!archs.empty())
-        result.arguments.emplace_back("--cuda-gpu-arch=" + select_gpu_arch(archs));
+        result.emplace_back("--cuda-gpu-arch=" + select_gpu_arch(archs));
 
     if(!host_compiler.empty())
-        result.arguments.emplace_back((llvm::Twine(nvcc_ccbin_prefix) + host_compiler).str());
+        result.emplace_back((llvm::Twine(ccbin_prefix) + host_compiler).str());
+    if(allow_unsupported)
+        result.emplace_back(allow_unsupported_flag.str());
+    if(!target_directory.empty())
+        result.emplace_back((llvm::Twine(target_directory_prefix) + target_directory).str());
 
     return result;
 }
