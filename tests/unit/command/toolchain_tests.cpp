@@ -121,6 +121,40 @@ TEST_CASE(Zig, skip = !CIEnvironment) {
     // TODO: add Zig toolchain test when available in CI.
 }
 
+TEST_CASE(NVCC, skip = !(CIEnvironment && Linux)) {
+    auto file = fs::createTemporaryFile("clice", "cu");
+    if(!file) {
+        LOG_ERROR_RET(void(), "{}", file.error());
+    }
+
+    auto result = Toolchain::query({"nvcc", "-resource-dir", resource_dir().data()}, file->c_str());
+    ASSERT_TRUE(result.has_value());
+
+    ASSERT_TRUE(result->size() > 2);
+    ASSERT_EQ((*result)[1], "-cc1"sv);
+
+    // The default view is the device pass — the __CUDA_ARCH__ world.
+    EXPECT_TRUE(std::ranges::contains(*result, "-fcuda-is-device"));
+
+    CompilationParams params;
+    for(auto& arg: *result) {
+        params.arguments.push_back(arg.c_str());
+    }
+    params.add_remapped_file(file->c_str(), R"(
+            __global__ void kern(float* p) { p[threadIdx.x] = 1.0f; }
+            int main() {
+                float* d = nullptr;
+                cudaMalloc(&d, 16);
+                kern<<<1, 1>>>(d);
+                return 0;
+            }
+        )");
+
+    auto unit = compile(params);
+    ASSERT_TRUE(unit.completed());
+    ASSERT_TRUE(unit.diagnostics().empty());
+};
+
 TEST_CASE(InitiallyEmpty) {
     Toolchain tc;
     EXPECT_FALSE(tc.has_cache());

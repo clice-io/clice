@@ -8,6 +8,8 @@
 #include <string_view>
 
 #include "simdjson.h"
+#include "command/nvcc.h"
+#include "command/toolchain.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 
@@ -84,6 +86,18 @@ object_ptr<CompilationInfo>
                                                llvm::StringRef directory,
                                                llvm::ArrayRef<const char*> arguments) {
     assert(!arguments.empty() && "arguments must contain at least the driver");
+
+    /// clang's option table cannot parse nvcc's own spellings, and the loop
+    /// below discards what it cannot parse — rewrite them first so the
+    /// regular classification applies.
+    std::vector<std::string> nvcc_translated;
+    llvm::SmallVector<const char*, 32> nvcc_arguments;
+    if(Toolchain::driver_family(arguments[0]) == CompilerFamily::NVCC) {
+        nvcc_translated = translate_nvcc_command(arguments).arguments;
+        for(auto& arg: nvcc_translated)
+            nvcc_arguments.push_back(arg.c_str());
+        arguments = nvcc_arguments;
+    }
 
     auto render_arg = [&](auto& out, const kota::option::ParsedArg& arg) {
         auto cb = [&](std::string_view s) {
@@ -166,6 +180,16 @@ object_ptr<CompilationInfo>
 
         /// Everything else goes into canonical.
         render_arg(canonical_args, arg);
+    }
+
+    /// The `-ccbin=` token the translation appended is unknown to the table
+    /// and was dropped above — the NVCC toolchain query needs it in canonical.
+    if(!nvcc_translated.empty()) {
+        for(llvm::StringRef arg: arguments) {
+            if(arg.starts_with(nvcc_ccbin_prefix)) {
+                canonical_args.push_back(strings.save(arg).data());
+            }
+        }
     }
 
     /// Dedup canonical command.
@@ -515,6 +539,10 @@ llvm::SmallVector<CompileCommand> CompilationDatabase::lookup(llvm::StringRef fi
         std::vector<const char*> flags;
         if(file.ends_with(".cpp") || file.ends_with(".hpp") || file.ends_with(".cc")) {
             flags = {"clang++", "-std=c++20"};
+        } else if(file.ends_with(".cu") || file.ends_with(".cuh")) {
+            /// .cuh is not a clang-known extension: without -x the driver
+            /// classifies it as linker input and builds no compile job.
+            flags = {"clang++", "-std=c++20", "-x", "cuda"};
         } else {
             flags = {"clang"};
         }
