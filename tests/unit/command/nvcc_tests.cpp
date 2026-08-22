@@ -149,6 +149,14 @@ TEST_CASE(MacroToggles) {
     auto undef = llvm::join(translate({"nvcc", "-dc", "-U__CUDACC_RDC__"}), " ");
     EXPECT_TRUE(llvm::StringRef(undef).find("-D__CUDACC_RDC__") <
                 llvm::StringRef(undef).find("-U __CUDACC_RDC__"));
+
+    // The stream macro is nvcc's one exception: it lands after user flags,
+    // so their -U cannot undo it.
+    auto stream_undef = llvm::join(
+        translate({"nvcc", "-default-stream=per-thread", "-UCUDA_API_PER_THREAD_DEFAULT_STREAM"}),
+        " ");
+    EXPECT_TRUE(llvm::StringRef(stream_undef).find("-U CUDA_API_PER_THREAD_DEFAULT_STREAM") <
+                llvm::StringRef(stream_undef).find("-DCUDA_API_PER_THREAD_DEFAULT_STREAM=1"));
 }
 
 TEST_CASE(PairedValueDrops) {

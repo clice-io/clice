@@ -398,8 +398,6 @@ std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> argu
         /// nvcc defines it; clang's -fgpu-rdc does not.
         prelude.emplace_back("-D__CUDACC_RDC__");
     }
-    if(default_stream == "per-thread")
-        prelude.emplace_back("-DCUDA_API_PER_THREAD_DEFAULT_STREAM=1");
     if(relaxed_constexpr)
         prelude.emplace_back("-D__CUDACC_RELAXED_CONSTEXPR__");
     if(extended_lambda)
@@ -407,6 +405,11 @@ std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> argu
     if(ewp)
         prelude.emplace_back("-D__CUDACC_EWP__");
     result.insert(result.begin() + 1, prelude.begin(), prelude.end());
+
+    /// The stream macro is nvcc's one exception: it lands after the user's
+    /// preprocessor flags.
+    if(default_stream == "per-thread")
+        result.emplace_back("-DCUDA_API_PER_THREAD_DEFAULT_STREAM=1");
 
     /// nvcc rejects mixing -gencode with -arch, so at most one list is
     /// populated.
