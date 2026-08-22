@@ -490,6 +490,37 @@ TEST_CASE(LoadMixedFormats) {
     EXPECT_CONTAINS(print_argv(b.front().to_argv()), "-std=c++23");
 };
 
+TEST_CASE(LoadBuildSystemFixtures) {
+    struct Fixture {
+        llvm::StringLiteral name;
+        llvm::StringLiteral definition;
+    };
+
+    constexpr std::array fixtures = {
+        Fixture{"cmake.json", "CMAKE_BUILD"},
+        Fixture{"bazel.json", "BAZEL_BUILD"},
+        Fixture{"make.json",  "MAKE_BUILD" },
+        Fixture{"xmake.json", "XMAKE_BUILD"},
+    };
+
+    for(auto fixture: fixtures) {
+        CompilationDatabase database;
+        auto fixture_path = path::join(test_dir, "compilation_database", fixture.name);
+        auto count = database.load(fixture_path);
+        ASSERT_TRUE(count.has_value());
+        ASSERT_EQ(*count, 1U);
+
+        auto source = path::join("project", "src/main.cpp");
+        auto commands = database.lookup(source, quiet_options());
+        ASSERT_EQ(commands.size(), 1U);
+
+        auto argv = print_argv(commands.front().to_argv());
+        EXPECT_CONTAINS(argv, fixture.definition);
+        EXPECT_NOT_CONTAINS(argv, " -c ");
+        EXPECT_NOT_CONTAINS(argv, " -o ");
+    }
+};
+
 TEST_CASE(LoadErrorRecovery) {
     /// Bad entries should be skipped; good entries still load.
     CompilationDatabase database;
