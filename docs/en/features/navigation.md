@@ -7,12 +7,22 @@
 - [x] Declaration-only symbols (pure virtuals, extern declarations, pre-C++17 class constants) navigate to their declaration instead of returning empty
 - [x] Go to definition on `#include` directives (navigate to the included file), including preamble includes compiled into the PCH
 - [ ] AST-based fallback for local/unsaved symbols
-- [ ] Navigate through macro wrappers to the underlying declaration
+- [x] Navigate through macro wrappers to the underlying declaration — a name spelled in a macro argument anchors at its spelling, so definition/declaration alternation works there like at plain sites
 
   ```cpp
   #define DECLARE_HANDLER(name) void name()
-  DECLARE_HANDLER(onReady);  // go-to-def on onReady → should reach the underlying function
+  DECLARE_HANDLER(onReady);  // go-to-def on onReady reaches the underlying function
   ```
+
+- [x] Names conjured by a macro body or token paste anchor at the invocation — gtest-style pasted classes navigate to the registration site, and typed uses of such names jump there
+
+  ```cpp
+  #define MAKE_FLAG(name) bool flag_##name = false
+  MAKE_FLAG(verbose);       // definition site of flag_verbose
+  bool b = flag_verbose;    // go-to-def → the MAKE_FLAG invocation
+  ```
+
+- [x] Tokens inside a `#define` body carry no navigation of their own: their meaning belongs to each expansion, and the invocation token always resolves to the macro
 
 - [ ] Error recovery: navigate to variable definition even when its type is unresolved
 - [ ] Dependent type navigation in uninstantiated templates
@@ -443,7 +453,8 @@ Navigate to the type definition of a symbol. Applicable to variables, parameters
   ```
 
 - [ ] Enclosing function context — include the name of the enclosing function in each reference result for better readability ([clangd#177](https://github.com/clangd/clangd/issues/177))
-- [ ] Macro definition/expansion references (including uses within other macro definitions) ([clangd#346](https://github.com/clangd/clangd/issues/346))
+- [x] Macro references across expansion, `#ifdef`/`#ifndef` and `#undef` sites; each `#define` of a name is its own symbol
+- [ ] Macro references spelled inside other macro definitions ([clangd#346](https://github.com/clangd/clangd/issues/346))
 - [ ] Label → goto references
 
   ```cpp

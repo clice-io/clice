@@ -1,8 +1,8 @@
 /// # Symbol Kinds
 ///
-/// ## Macros in the preamble region — definitions in the leading directive run outline like any other
+/// ## Macros in the preamble region — definitions in the leading directive run outline on the inspect path, while the server's preamble record does not surface them yet
 ///
-/// - status: supported
+/// - status: partial
 /// - snap: skip
 /// - order: 7
 
