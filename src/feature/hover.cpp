@@ -770,6 +770,75 @@ auto file_directive_hover(CompilationUnitRef unit, std::uint32_t offset)
     return std::nullopt;
 }
 
+/// A macro name at the cursor, rendered from the preprocessor record —
+/// macro semantics never reach the AST. The card shows the `#define` text,
+/// plus a preview of the expanded tokens at expansion sites.
+auto macro_hover(CompilationUnitRef unit, std::uint32_t offset) -> std::optional<HoverInfo> {
+    auto directives_it = unit.directives().find(unit.interested_file());
+    if(directives_it == unit.directives().end()) {
+        return std::nullopt;
+    }
+
+    for(const auto& macro: directives_it->second.macros) {
+        /// A reference inside another expansion has no written token here.
+        if(macro.loc.isMacroID()) {
+            continue;
+        }
+        auto [fid, range] = unit.decompose_range(macro.loc);
+        if(offset < range.begin || offset >= range.end) {
+            continue;
+        }
+
+        HoverInfo info;
+        info.name = unit.token_spelling(macro.loc).str();
+        info.kind = SymbolKind::Macro;
+        info.symbol_range = range;
+
+        /// The definition text spans the name through the last body token.
+        /// Its file can be synthetic (`-D` macros live in <command line>),
+        /// which still has real `#define` lines as content.
+        auto [def_fid, def_range] =
+            unit.decompose_range(clang::SourceRange(macro.macro->getDefinitionLoc(),
+                                                    macro.macro->getDefinitionEndLoc()));
+        auto def_text =
+            unit.file_content(def_fid).substr(def_range.begin, def_range.end - def_range.begin);
+        info.definition = "#define " + def_text.str();
+
+        if(macro.kind == MacroRef::Kind::Ref) {
+            for(auto& expansion:
+                unit.expansions_overlapping(unit.spelled_tokens_touch(macro.loc))) {
+                if(expansion.Spelled.empty() || expansion.Spelled.front().location() != macro.loc ||
+                   expansion.Expanded.empty()) {
+                    continue;
+                }
+                /// A conditional reference (#ifdef) never reaches here: it
+                /// expands nothing, so no expansion starts at its token.
+                std::string preview;
+                constexpr std::size_t preview_limit = 1024;
+                for(const auto& token: expansion.Expanded) {
+                    if(!preview.empty()) {
+                        preview += ' ';
+                    }
+                    /// The token's own length paired with its spelling
+                    /// offset; measuring at the location would read the
+                    /// wrong span for tokens born in an expansion.
+                    auto [fid, offset] =
+                        unit.decompose_location(unit.spelling_location(token.location()));
+                    preview += unit.file_content(fid).substr(offset, token.length());
+                    if(preview.size() > preview_limit) {
+                        preview += " ...";
+                        break;
+                    }
+                }
+                info.definition += "\n\n// Expands to\n" + preview;
+                break;
+            }
+        }
+        return info;
+    }
+    return std::nullopt;
+}
+
 void add_layout_info(const clang::NamedDecl& decl, HoverInfo& info) {
     if(decl.isInvalidDecl()) {
         return;
@@ -1267,6 +1336,10 @@ auto hover_info(CompilationUnitRef unit, std::uint32_t offset, const HoverOption
         return info;
     }
 
+    if(auto info = macro_hover(unit, offset)) {
+        return info;
+    }
+
     auto& context = unit.context();
     display::Options display_options = {
         .terse = true,
@@ -1297,9 +1370,7 @@ auto hover_info(CompilationUnitRef unit, std::uint32_t offset, const HoverOption
     LocalSourceRange highlight_range = token_range(tokens.back());
     std::optional<HoverInfo> info;
 
-    /// Deduced type only works on auto/decltype keywords. Note that macro
-    /// hover is currently not supported: the preprocessor state is not
-    /// retained in the compilation unit.
+    /// Deduced type only works on auto/decltype keywords.
     for(const auto& token: tokens) {
         if(token.kind() == clang::tok::identifier) {
             /// Prefer the identifier token as a fallback highlighting range.
