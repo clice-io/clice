@@ -1,0 +1,17 @@
+[
+  {
+    "directory": "project",
+    "arguments": [
+      "clang++",
+      "-DBAZEL_BUILD",
+      "-iquote",
+      ".",
+      "-c",
+      "src/main.cpp",
+      "-o",
+      "bazel-out/app/main.o"
+    ],
+    "file": "src/main.cpp",
+    "output": "bazel-out/app/main.o"
+  }
+]

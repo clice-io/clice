@@ -1,0 +1,15 @@
+[
+  {
+    "directory": "project",
+    "file": "src/main.cpp",
+    "arguments": [
+      "clang++",
+      "-DXMAKE_BUILD",
+      "-Iinclude",
+      "-c",
+      "src/main.cpp",
+      "-o",
+      "build/.objs/app/src/main.cpp.o"
+    ]
+  }
+]

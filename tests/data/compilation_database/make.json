@@ -1,0 +1,16 @@
+[
+  {
+    "arguments": [
+      "clang++",
+      "-DMAKE_BUILD",
+      "-Iinclude",
+      "-c",
+      "src/main.cpp",
+      "-o",
+      "build/main.o"
+    ],
+    "directory": "project",
+    "file": "src/main.cpp",
+    "output": "build/main.o"
+  }
+]

@@ -1,0 +1,8 @@
+[
+  {
+    "directory": "project",
+    "command": "clang++ -DCMAKE_BUILD -Iinclude -o CMakeFiles/app.dir/src/main.cpp.o -c src/main.cpp",
+    "file": "src/main.cpp",
+    "output": "CMakeFiles/app.dir/src/main.cpp.o"
+  }
+]
