@@ -690,12 +690,14 @@ std::optional<SymbolInfo>
                                        const std::optional<protocol::LSPAny>& data,
                                        Session* session) {
     if(data) {
-        if(auto* int_val = std::get_if<std::int64_t>(&*data)) {
-            auto hash = static_cast<index::SymbolHash>(*int_val);
-            std::string name;
-            SymbolKind kind;
-            if(find_symbol_info(hash, name, kind)) {
-                return SymbolInfo{hash, std::move(name), kind, uri, range};
+        if(auto* str = std::get_if<std::string>(&*data)) {
+            index::SymbolHash hash = 0;
+            if(!llvm::StringRef(*str).getAsInteger(10, hash)) {
+                std::string name;
+                SymbolKind kind;
+                if(find_symbol_info(hash, name, kind)) {
+                    return SymbolInfo{hash, std::move(name), kind, uri, range};
+                }
             }
         }
     }
@@ -1223,6 +1225,8 @@ protocol::SymbolKind IndexQuery::to_lsp_symbol_kind(SymbolKind kind) {
     }
 }
 
+/// The symbol handle travels as a decimal string: a 64-bit integer would
+/// be parsed into a double by a JavaScript client and come back rounded.
 protocol::CallHierarchyItem IndexQuery::build_call_hierarchy_item(const SymbolInfo& info) {
     protocol::CallHierarchyItem item;
     item.name = info.name;
@@ -1230,7 +1234,7 @@ protocol::CallHierarchyItem IndexQuery::build_call_hierarchy_item(const SymbolIn
     item.uri = info.uri;
     item.range = info.range;
     item.selection_range = info.range;
-    item.data = protocol::LSPAny(static_cast<std::int64_t>(info.hash));
+    item.data = protocol::LSPAny(std::format("{}", info.hash));
     return item;
 }
 
@@ -1241,7 +1245,7 @@ protocol::TypeHierarchyItem IndexQuery::build_type_hierarchy_item(const SymbolIn
     item.uri = info.uri;
     item.range = info.range;
     item.selection_range = info.range;
-    item.data = protocol::LSPAny(static_cast<std::int64_t>(info.hash));
+    item.data = protocol::LSPAny(std::format("{}", info.hash));
     return item;
 }
 
