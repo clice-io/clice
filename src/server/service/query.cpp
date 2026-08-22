@@ -544,8 +544,8 @@ std::vector<protocol::Location> IndexQuery::query_implementation(llvm::StringRef
     if(!find_symbol_info(hit.hash, name, kind))
         return {};
 
-    bool type_like = kind == SymbolKind::Class || kind == SymbolKind::Struct ||
-                     kind == SymbolKind::Union;
+    bool type_like =
+        kind == SymbolKind::Class || kind == SymbolKind::Struct || kind == SymbolKind::Union;
     return resolve_target_locations(hit.hash,
                                     type_like ? RelationKind::Derived
                                               : RelationKind::Implementation);
@@ -624,20 +624,17 @@ std::optional<protocol::Location> IndexQuery::find_relation_location(index::Symb
         return overlay_result;
 
     visit_overlays([&](const index::TUIndex& state) {
-        overlay_lookup(state,
-                       hash,
-                       kind,
-                       [&](const OverlayFile& file, const index::Relation& r) {
-                           if(!should_serve_overlay_file(file.path))
-                               return true;
-                           auto uri = feature::to_uri(file.path);
-                           IndexedLineMap map(file.content, file.content_size, file.line_starts);
-                           if(auto range = map.to_range(r.range.begin, r.range.end)) {
-                               overlay_result = protocol::Location{uri, *range};
-                               return false;
-                           }
-                           return true;
-                       });
+        overlay_lookup(state, hash, kind, [&](const OverlayFile& file, const index::Relation& r) {
+            if(!should_serve_overlay_file(file.path))
+                return true;
+            auto uri = feature::to_uri(file.path);
+            IndexedLineMap map(file.content, file.content_size, file.line_starts);
+            if(auto range = map.to_range(r.range.begin, r.range.end)) {
+                overlay_result = protocol::Location{uri, *range};
+                return false;
+            }
+            return true;
+        });
         return !overlay_result.has_value();
     });
     if(overlay_result)

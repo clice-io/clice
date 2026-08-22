@@ -26,6 +26,8 @@ ctad_invoke:
     - { file: "${WS}/ctad_guide.cpp", range: "12:11-12:12" }
   callHierarchy:
     - { name: "Box", kind: Method, file: "${WS}/ctad_guide.cpp", range: "4:4-4:7" }
+  incomingCalls:
+    - { name: "read_box", kind: Function, file: "${WS}/ctad_guide.cpp", range: "11:4-11:12", fromRanges: ["12:8-12:14"] }
 
 ctad_use:
   definition:

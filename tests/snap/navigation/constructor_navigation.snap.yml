@@ -15,6 +15,8 @@ ctor_decl:
     - { file: "${WS}/constructor_navigation.cpp", range: "10:18-10:19" }
   callHierarchy:
     - { name: "Session", kind: Method, file: "${WS}/constructor_navigation.cpp", range: "7:9-7:16" }
+  incomingCalls:
+    - { name: "open", kind: Function, file: "${WS}/constructor_navigation.cpp", range: "9:8-9:12", fromRanges: ["10:11-10:21"] }
 
 ctor_def:
   definition:
@@ -29,6 +31,8 @@ ctor_def:
     - { file: "${WS}/constructor_navigation.cpp", range: "10:18-10:19" }
   callHierarchy:
     - { name: "Session", kind: Method, file: "${WS}/constructor_navigation.cpp", range: "7:9-7:16" }
+  incomingCalls:
+    - { name: "open", kind: Function, file: "${WS}/constructor_navigation.cpp", range: "9:8-9:12", fromRanges: ["10:11-10:21"] }
 
 ctor_invoke:
   definition:
@@ -44,6 +48,8 @@ ctor_invoke:
     - { file: "${WS}/constructor_navigation.cpp", range: "10:18-10:19" }
   callHierarchy:
     - { name: "Session", kind: Method, file: "${WS}/constructor_navigation.cpp", range: "7:9-7:16" }
+  incomingCalls:
+    - { name: "open", kind: Function, file: "${WS}/constructor_navigation.cpp", range: "9:8-9:12", fromRanges: ["10:11-10:21"] }
 
 ctor_use:
   definition:

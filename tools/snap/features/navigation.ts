@@ -145,7 +145,9 @@ export const navigation: Feature = {
             const references = (await client.referencesAt(uri, line, character)) ?? [];
             sections.push(["references", locationLines(references, ctx.root)]);
 
-            const callItems = sortItems((await client.prepareCallHierarchy(uri, line, character)) ?? []);
+            const callItems = sortItems(
+                (await client.prepareCallHierarchy(uri, line, character)) ?? [],
+            );
             sections.push(["callHierarchy", itemLines(callItems, ctx.root)]);
             for (const item of callItems) {
                 const incoming = (await client.callHierarchyIncoming(item)) ?? [];
@@ -166,7 +168,9 @@ export const navigation: Feature = {
                 ]);
             }
 
-            const typeItems = sortItems((await client.prepareTypeHierarchy(uri, line, character)) ?? []);
+            const typeItems = sortItems(
+                (await client.prepareTypeHierarchy(uri, line, character)) ?? [],
+            );
             sections.push(["typeHierarchy", itemLines(typeItems, ctx.root)]);
             for (const item of typeItems) {
                 const supertypes = (await client.typeHierarchySupertypes(item)) ?? [];

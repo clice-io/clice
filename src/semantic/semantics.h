@@ -212,7 +212,10 @@ private:
 bool should_ignore_token(const clang::syntax::Token& token);
 
 /// A name occurrence a node gives rise to: the decl the written name refers
-/// to, its role, and the name token's location.
+/// to, its role, and the name token's location. Multi-token names (`~Foo`,
+/// `operator int`) anchor at their first token: widening them to the full
+/// name overlaps the nested type reference, which the shard's
+/// disjoint-or-identical occurrence invariant cannot represent.
 struct NameOccurrence {
     const clang::NamedDecl* decl;
 
