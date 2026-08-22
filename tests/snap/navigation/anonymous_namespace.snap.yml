@@ -11,7 +11,7 @@ fn_use:
     - { file: "${WS}/anonymous_namespace.cpp", range: "6:4-6:8" }
     - { file: "${WS}/anonymous_namespace.cpp", range: "14:11-14:15" }
   callHierarchy:
-    - { name: "next", kind: Function, file: "${WS}/anonymous_namespace.cpp", range: "14:11-14:15" }
+    - { name: "next", kind: Function, file: "${WS}/anonymous_namespace.cpp", range: "6:4-6:8" }
   incomingCalls:
     - { name: "read_hidden", kind: Function, file: "${WS}/anonymous_namespace.cpp", range: "13:4-13:15", fromRanges: ["14:11-14:17"] }
 

@@ -31,7 +31,7 @@ decl:
     - { file: "${WS}/header_source/main.cpp", range: "5:11-5:15" }
     - { file: "${WS}/header_source/uses.cpp", range: "3:11-3:15" }
   callHierarchy:
-    - { name: "area", kind: Function, file: "${WS}/header_source/lib.h", range: "2:4-2:8" }
+    - { name: "area", kind: Function, file: "${WS}/header_source/lib.cpp", range: "2:4-2:8" }
   incomingCalls:
     - { name: "floor_plan", kind: Function, file: "${WS}/header_source/main.cpp", range: "4:4-4:14", fromRanges: ["5:11-5:30"] }
     - { name: "wall_paint", kind: Function, file: "${WS}/header_source/uses.cpp", range: "2:4-2:14", fromRanges: ["3:11-3:30"] }
@@ -59,7 +59,7 @@ inline_use:
     - { file: "${WS}/header_source/lib.h", range: "4:11-4:20" }
     - { file: "${WS}/header_source/main.cpp", range: "5:33-5:42" }
   callHierarchy:
-    - { name: "perimeter", kind: Function, file: "${WS}/header_source/main.cpp", range: "5:33-5:42" }
+    - { name: "perimeter", kind: Function, file: "${WS}/header_source/lib.h", range: "4:11-4:20" }
   incomingCalls:
     - { name: "floor_plan", kind: Function, file: "${WS}/header_source/main.cpp", range: "4:4-4:14", fromRanges: ["5:33-5:57"] }
 
@@ -75,7 +75,7 @@ use:
     - { file: "${WS}/header_source/main.cpp", range: "5:11-5:15" }
     - { file: "${WS}/header_source/uses.cpp", range: "3:11-3:15" }
   callHierarchy:
-    - { name: "area", kind: Function, file: "${WS}/header_source/main.cpp", range: "5:11-5:15" }
+    - { name: "area", kind: Function, file: "${WS}/header_source/lib.cpp", range: "2:4-2:8" }
   incomingCalls:
     - { name: "floor_plan", kind: Function, file: "${WS}/header_source/main.cpp", range: "4:4-4:14", fromRanges: ["5:11-5:30"] }
     - { name: "wall_paint", kind: Function, file: "${WS}/header_source/uses.cpp", range: "2:4-2:14", fromRanges: ["3:11-3:30"] }
@@ -93,7 +93,7 @@ second_use:
     - { file: "${WS}/header_source/main.cpp", range: "5:11-5:15" }
     - { file: "${WS}/header_source/uses.cpp", range: "3:11-3:15" }
   callHierarchy:
-    - { name: "area", kind: Function, file: "${WS}/header_source/uses.cpp", range: "3:11-3:15" }
+    - { name: "area", kind: Function, file: "${WS}/header_source/lib.cpp", range: "2:4-2:8" }
   incomingCalls:
     - { name: "floor_plan", kind: Function, file: "${WS}/header_source/main.cpp", range: "4:4-4:14", fromRanges: ["5:11-5:30"] }
     - { name: "wall_paint", kind: Function, file: "${WS}/header_source/uses.cpp", range: "2:4-2:14", fromRanges: ["3:11-3:30"] }

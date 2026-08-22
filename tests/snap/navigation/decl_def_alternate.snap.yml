@@ -12,7 +12,7 @@ decl:
     - { file: "${WS}/decl_def_alternate.cpp", range: "4:4-4:9" }
     - { file: "${WS}/decl_def_alternate.cpp", range: "9:11-9:16" }
   callHierarchy:
-    - { name: "scale", kind: Function, file: "${WS}/decl_def_alternate.cpp", range: "2:4-2:9" }
+    - { name: "scale", kind: Function, file: "${WS}/decl_def_alternate.cpp", range: "4:4-4:9" }
   incomingCalls:
     - { name: "apply", kind: Function, file: "${WS}/decl_def_alternate.cpp", range: "8:4-8:9", fromRanges: ["9:11-9:23"] }
 
@@ -41,6 +41,6 @@ use:
     - { file: "${WS}/decl_def_alternate.cpp", range: "4:4-4:9" }
     - { file: "${WS}/decl_def_alternate.cpp", range: "9:11-9:16" }
   callHierarchy:
-    - { name: "scale", kind: Function, file: "${WS}/decl_def_alternate.cpp", range: "9:11-9:16" }
+    - { name: "scale", kind: Function, file: "${WS}/decl_def_alternate.cpp", range: "4:4-4:9" }
   incomingCalls:
     - { name: "apply", kind: Function, file: "${WS}/decl_def_alternate.cpp", range: "8:4-8:9", fromRanges: ["9:11-9:23"] }

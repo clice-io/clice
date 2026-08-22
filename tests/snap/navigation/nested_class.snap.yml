@@ -24,7 +24,7 @@ inner_scope:
     - { file: "${WS}/nested_class.cpp", range: "8:11-8:16" }
     - { file: "${WS}/nested_class.cpp", range: "12:28-12:33" }
   typeHierarchy:
-    - { name: "Inner", kind: Struct, file: "${WS}/nested_class.cpp", range: "8:11-8:16" }
+    - { name: "Inner", kind: Struct, file: "${WS}/nested_class.cpp", range: "3:11-3:16" }
 
 member_decl:
   definition:
@@ -36,7 +36,7 @@ member_decl:
     - { file: "${WS}/nested_class.cpp", range: "8:18-8:22" }
     - { file: "${WS}/nested_class.cpp", range: "13:17-13:21" }
   callHierarchy:
-    - { name: "read", kind: Method, file: "${WS}/nested_class.cpp", range: "4:12-4:16" }
+    - { name: "read", kind: Method, file: "${WS}/nested_class.cpp", range: "8:18-8:22" }
   incomingCalls:
     - { name: "read_inner", kind: Function, file: "${WS}/nested_class.cpp", range: "12:4-12:14", fromRanges: ["13:11-13:23"] }
 
@@ -65,6 +65,6 @@ member_use:
     - { file: "${WS}/nested_class.cpp", range: "8:18-8:22" }
     - { file: "${WS}/nested_class.cpp", range: "13:17-13:21" }
   callHierarchy:
-    - { name: "read", kind: Method, file: "${WS}/nested_class.cpp", range: "13:17-13:21" }
+    - { name: "read", kind: Method, file: "${WS}/nested_class.cpp", range: "8:18-8:22" }
   incomingCalls:
     - { name: "read_inner", kind: Function, file: "${WS}/nested_class.cpp", range: "12:4-12:14", fromRanges: ["13:11-13:23"] }

@@ -31,7 +31,7 @@ first_decl:
     - { file: "${WS}/multi_declaration.cpp", range: "5:4-5:9" }
     - { file: "${WS}/multi_declaration.cpp", range: "10:11-10:16" }
   callHierarchy:
-    - { name: "clamp", kind: Function, file: "${WS}/multi_declaration.cpp", range: "2:4-2:9" }
+    - { name: "clamp", kind: Function, file: "${WS}/multi_declaration.cpp", range: "5:4-5:9" }
   incomingCalls:
     - { name: "hold", kind: Function, file: "${WS}/multi_declaration.cpp", range: "9:4-9:8", fromRanges: ["10:11-10:23"] }
 
@@ -47,7 +47,7 @@ second_decl:
     - { file: "${WS}/multi_declaration.cpp", range: "5:4-5:9" }
     - { file: "${WS}/multi_declaration.cpp", range: "10:11-10:16" }
   callHierarchy:
-    - { name: "clamp", kind: Function, file: "${WS}/multi_declaration.cpp", range: "3:4-3:9" }
+    - { name: "clamp", kind: Function, file: "${WS}/multi_declaration.cpp", range: "5:4-5:9" }
   incomingCalls:
     - { name: "hold", kind: Function, file: "${WS}/multi_declaration.cpp", range: "9:4-9:8", fromRanges: ["10:11-10:23"] }
 
@@ -64,6 +64,6 @@ use:
     - { file: "${WS}/multi_declaration.cpp", range: "5:4-5:9" }
     - { file: "${WS}/multi_declaration.cpp", range: "10:11-10:16" }
   callHierarchy:
-    - { name: "clamp", kind: Function, file: "${WS}/multi_declaration.cpp", range: "10:11-10:16" }
+    - { name: "clamp", kind: Function, file: "${WS}/multi_declaration.cpp", range: "5:4-5:9" }
   incomingCalls:
     - { name: "hold", kind: Function, file: "${WS}/multi_declaration.cpp", range: "9:4-9:8", fromRanges: ["10:11-10:23"] }

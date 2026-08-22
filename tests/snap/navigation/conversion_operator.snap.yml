@@ -12,7 +12,7 @@ conv_decl:
     - { file: "${WS}/conversion_operator.cpp", range: "7:8-7:16" }
     - { file: "${WS}/conversion_operator.cpp", range: "12:18-12:26" }
   callHierarchy:
-    - { name: "operator int", kind: Method, file: "${WS}/conversion_operator.cpp", range: "4:4-4:12" }
+    - { name: "operator int", kind: Method, file: "${WS}/conversion_operator.cpp", range: "7:8-7:16" }
   incomingCalls:
     - { name: "read_number", kind: Function, file: "${WS}/conversion_operator.cpp", range: "11:4-11:15", fromRanges: ["12:11-12:32"] }
 
@@ -41,6 +41,6 @@ conv_use:
     - { file: "${WS}/conversion_operator.cpp", range: "7:8-7:16" }
     - { file: "${WS}/conversion_operator.cpp", range: "12:18-12:26" }
   callHierarchy:
-    - { name: "operator int", kind: Method, file: "${WS}/conversion_operator.cpp", range: "12:18-12:26" }
+    - { name: "operator int", kind: Method, file: "${WS}/conversion_operator.cpp", range: "7:8-7:16" }
   incomingCalls:
     - { name: "read_number", kind: Function, file: "${WS}/conversion_operator.cpp", range: "11:4-11:15", fromRanges: ["12:11-12:32"] }

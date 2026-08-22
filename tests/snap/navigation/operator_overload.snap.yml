@@ -11,6 +11,10 @@ op_def:
     - { file: "${WS}/operator_overload.cpp", range: "6:4-6:12" }
     - { file: "${WS}/operator_overload.cpp", range: "8:4-8:12" }
     - { file: "${WS}/operator_overload.cpp", range: "13:16-13:17" }
+  callHierarchy:
+    - { name: "operator+", kind: Operator, file: "${WS}/operator_overload.cpp", range: "8:4-8:12" }
+  incomingCalls:
+    - { name: "combine", kind: Function, file: "${WS}/operator_overload.cpp", range: "12:4-12:11", fromRanges: ["13:11-13:23"] }
 
 op_use:
   definition:
@@ -22,3 +26,7 @@ op_use:
     - { file: "${WS}/operator_overload.cpp", range: "6:4-6:12" }
     - { file: "${WS}/operator_overload.cpp", range: "8:4-8:12" }
     - { file: "${WS}/operator_overload.cpp", range: "13:16-13:17" }
+  callHierarchy:
+    - { name: "operator+", kind: Operator, file: "${WS}/operator_overload.cpp", range: "8:4-8:12" }
+  incomingCalls:
+    - { name: "combine", kind: Function, file: "${WS}/operator_overload.cpp", range: "12:4-12:11", fromRanges: ["13:11-13:23"] }

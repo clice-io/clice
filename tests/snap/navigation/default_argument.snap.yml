@@ -13,7 +13,7 @@ call_use:
     - { file: "${WS}/default_argument.cpp", range: "6:4-6:18" }
     - { file: "${WS}/default_argument.cpp", range: "11:11-11:25" }
   callHierarchy:
-    - { name: "choose_default", kind: Function, file: "${WS}/default_argument.cpp", range: "11:11-11:25" }
+    - { name: "choose_default", kind: Function, file: "${WS}/default_argument.cpp", range: "6:4-6:18" }
   incomingCalls:
     - { name: "run_default", kind: Function, file: "${WS}/default_argument.cpp", range: "10:4-10:15", fromRanges: ["11:11-11:27"] }
 

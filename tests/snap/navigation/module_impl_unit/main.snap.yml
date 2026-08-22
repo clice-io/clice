@@ -13,7 +13,7 @@ iface_decl:
     - { file: "${WS}/module_impl_unit/impl.cpp", range: "2:4-2:9" }
     - { file: "${WS}/module_impl_unit/main.cpp", range: "5:11-5:16" }
   callHierarchy:
-    - { name: "fetch", kind: Function, file: "${WS}/module_impl_unit/iface.cppm", range: "2:11-2:16" }
+    - { name: "fetch", kind: Function, file: "${WS}/module_impl_unit/impl.cpp", range: "2:4-2:9" }
   incomingCalls:
     - { name: "lookup", kind: Function, file: "${WS}/module_impl_unit/main.cpp", range: "4:4-4:10", fromRanges: ["5:11-5:21"] }
 
@@ -64,6 +64,6 @@ use:
     - { file: "${WS}/module_impl_unit/impl.cpp", range: "2:4-2:9" }
     - { file: "${WS}/module_impl_unit/main.cpp", range: "5:11-5:16" }
   callHierarchy:
-    - { name: "fetch", kind: Function, file: "${WS}/module_impl_unit/main.cpp", range: "5:11-5:16" }
+    - { name: "fetch", kind: Function, file: "${WS}/module_impl_unit/impl.cpp", range: "2:4-2:9" }
   incomingCalls:
     - { name: "lookup", kind: Function, file: "${WS}/module_impl_unit/main.cpp", range: "4:4-4:10", fromRanges: ["5:11-5:21"] }

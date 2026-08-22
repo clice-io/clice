@@ -529,8 +529,32 @@ std::vector<protocol::Location> IndexQuery::query_symbol_targets(llvm::StringRef
     if(hit.hash == 0)
         return {};
 
+    return resolve_target_locations(hit.hash, kind);
+}
+
+std::vector<protocol::Location> IndexQuery::query_implementation(llvm::StringRef path,
+                                                                 const protocol::Position& position,
+                                                                 Session* session) {
+    auto hit = resolve_cursor(path, position, session);
+    if(hit.hash == 0)
+        return {};
+
+    std::string name;
+    SymbolKind kind;
+    if(!find_symbol_info(hit.hash, name, kind))
+        return {};
+
+    bool type_like = kind == SymbolKind::Class || kind == SymbolKind::Struct ||
+                     kind == SymbolKind::Union;
+    return resolve_target_locations(hit.hash,
+                                    type_like ? RelationKind::Derived
+                                              : RelationKind::Implementation);
+}
+
+std::vector<protocol::Location> IndexQuery::resolve_target_locations(index::SymbolHash hash,
+                                                                     RelationKind kind) {
     llvm::SmallVector<index::SymbolHash> targets;
-    collect_unique_targets(hit.hash, kind, targets);
+    collect_unique_targets(hash, kind, targets);
 
     std::vector<protocol::Location> locations;
     for(auto target: targets) {
@@ -557,14 +581,15 @@ std::optional<SymbolInfo> IndexQuery::lookup_symbol(const std::string& uri,
     return SymbolInfo{hit.hash, std::move(name), sym_kind, uri, hit.range};
 }
 
-std::optional<protocol::Location> IndexQuery::find_definition_location(index::SymbolHash hash) {
+std::optional<protocol::Location> IndexQuery::find_relation_location(index::SymbolHash hash,
+                                                                     RelationKind kind) {
     std::optional<protocol::Location> session_result;
     visit_sessions([&](std::uint32_t id, const Session& session) -> bool {
         auto uri = lsp::URI::from_file_path(std::string(workspace.path_pool.resolve(id)));
         if(!uri)
             return true;
         auto map = session.line_map();
-        session.file_rows().lookup(hash, RelationKind::Definition, [&](const index::Relation& r) {
+        session.file_rows().lookup(hash, kind, [&](const index::Relation& r) {
             if(auto range = map.to_range(r.range.begin, r.range.end)) {
                 session_result = protocol::Location{uri->str(), *range};
                 return false;
@@ -586,7 +611,7 @@ std::optional<protocol::Location> IndexQuery::find_definition_location(index::Sy
         if(!uri)
             return true;
         auto map = session.line_map();
-        preamble_rows(state).lookup(hash, RelationKind::Definition, [&](const index::Relation& r) {
+        preamble_rows(state).lookup(hash, kind, [&](const index::Relation& r) {
             if(auto range = map.to_range(r.range.begin, r.range.end)) {
                 overlay_result = protocol::Location{uri->str(), *range};
                 return false;
@@ -601,7 +626,7 @@ std::optional<protocol::Location> IndexQuery::find_definition_location(index::Sy
     visit_overlays([&](const index::TUIndex& state) {
         overlay_lookup(state,
                        hash,
-                       RelationKind::Definition,
+                       kind,
                        [&](const OverlayFile& file, const index::Relation& r) {
                            if(!should_serve_overlay_file(file.path))
                                return true;
@@ -637,7 +662,7 @@ std::optional<protocol::Location> IndexQuery::find_definition_location(index::Sy
                            merged_index.content_size(),
                            merged_index.line_starts());
         std::optional<protocol::Location> result;
-        merged_index.lookup(hash, RelationKind::Definition, [&](const index::Relation& r) {
+        merged_index.lookup(hash, kind, [&](const index::Relation& r) {
             if(auto range = map.to_range(r.range.begin, r.range.end)) {
                 result = protocol::Location{uri->str(), *range};
                 return false;
@@ -649,6 +674,16 @@ std::optional<protocol::Location> IndexQuery::find_definition_location(index::Sy
     }
 
     return std::nullopt;
+}
+
+std::optional<protocol::Location> IndexQuery::find_definition_location(index::SymbolHash hash) {
+    return find_relation_location(hash, RelationKind::Definition);
+}
+
+std::optional<protocol::Location> IndexQuery::find_symbol_location(index::SymbolHash hash) {
+    if(auto location = find_relation_location(hash, RelationKind::Definition))
+        return location;
+    return find_relation_location(hash, RelationKind::Declaration);
 }
 
 std::optional<SymbolInfo>
@@ -790,10 +825,10 @@ std::optional<SymbolInfo> IndexQuery::resolve_symbol(index::SymbolHash hash) {
     SymbolKind kind;
     if(!find_symbol_info(hash, name, kind))
         return std::nullopt;
-    auto def_loc = find_definition_location(hash);
-    if(!def_loc)
+    auto location = find_symbol_location(hash);
+    if(!location)
         return std::nullopt;
-    return SymbolInfo{hash, std::move(name), kind, def_loc->uri, def_loc->range};
+    return SymbolInfo{hash, std::move(name), kind, location->uri, location->range};
 }
 
 /// The stored text of an indexed file, for preview slicing. Non-ASCII

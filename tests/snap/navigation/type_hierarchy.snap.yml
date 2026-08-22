@@ -27,6 +27,9 @@ mid:
     - { file: "${WS}/type_hierarchy.cpp", range: "4:7-4:14" }
   declaration:
     - { file: "${WS}/type_hierarchy.cpp", range: "4:7-4:14" }
+  implementation:
+    - { file: "${WS}/type_hierarchy.cpp", range: "6:7-6:13" }
+    - { file: "${WS}/type_hierarchy.cpp", range: "8:7-8:12" }
   references:
     - { file: "${WS}/type_hierarchy.cpp", range: "4:7-4:14" }
     - { file: "${WS}/type_hierarchy.cpp", range: "6:15-6:22" }
@@ -44,6 +47,8 @@ root:
     - { file: "${WS}/type_hierarchy.cpp", range: "2:7-2:13" }
   declaration:
     - { file: "${WS}/type_hierarchy.cpp", range: "2:7-2:13" }
+  implementation:
+    - { file: "${WS}/type_hierarchy.cpp", range: "4:7-4:14" }
   references:
     - { file: "${WS}/type_hierarchy.cpp", range: "2:7-2:13" }
     - { file: "${WS}/type_hierarchy.cpp", range: "4:16-4:22" }

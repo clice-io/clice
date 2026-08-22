@@ -24,7 +24,7 @@ ctad_use:
     - { file: "${WS}/ctad_guide.cpp", range: "9:10-9:13" }
     - { file: "${WS}/ctad_guide.cpp", range: "12:4-12:7" }
   typeHierarchy:
-    - { name: "Box", kind: Struct, file: "${WS}/ctad_guide.cpp", range: "12:4-12:7" }
+    - { name: "Box", kind: Struct, file: "${WS}/ctad_guide.cpp", range: "3:7-3:10" }
 
 guide_decl:
   definition:

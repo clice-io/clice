@@ -7,6 +7,9 @@ base:
     - { file: "${WS}/implementation_virtual.cpp", range: "2:7-2:12" }
   declaration:
     - { file: "${WS}/implementation_virtual.cpp", range: "2:7-2:12" }
+  implementation:
+    - { file: "${WS}/implementation_virtual.cpp", range: "6:7-6:13" }
+    - { file: "${WS}/implementation_virtual.cpp", range: "12:7-12:13" }
   references:
     - { file: "${WS}/implementation_virtual.cpp", range: "2:7-2:12" }
     - { file: "${WS}/implementation_virtual.cpp", range: "6:15-6:20" }
@@ -56,6 +59,6 @@ virtual_call:
     - { file: "${WS}/implementation_virtual.cpp", range: "3:16-3:20" }
     - { file: "${WS}/implementation_virtual.cpp", range: "19:17-19:21" }
   callHierarchy:
-    - { name: "area", kind: Method, file: "${WS}/implementation_virtual.cpp", range: "19:17-19:21" }
+    - { name: "area", kind: Method, file: "${WS}/implementation_virtual.cpp", range: "3:16-3:20" }
   incomingCalls:
     - { name: "measure", kind: Function, file: "${WS}/implementation_virtual.cpp", range: "18:4-18:11", fromRanges: ["19:11-19:23"] }

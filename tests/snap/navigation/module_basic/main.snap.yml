@@ -21,7 +21,7 @@ imported_use:
     - { file: "${WS}/module_basic/main.cpp", range: "5:11-5:14" }
     - { file: "${WS}/module_basic/math.cppm", range: "2:11-2:14" }
   callHierarchy:
-    - { name: "add", kind: Function, file: "${WS}/module_basic/main.cpp", range: "5:11-5:14" }
+    - { name: "add", kind: Function, file: "${WS}/module_basic/math.cppm", range: "2:11-2:14" }
   incomingCalls:
     - { name: "total", kind: Function, file: "${WS}/module_basic/main.cpp", range: "4:4-4:9", fromRanges: ["5:11-5:27"] }
 

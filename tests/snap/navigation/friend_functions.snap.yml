@@ -12,7 +12,7 @@ friend_decl:
     - { file: "${WS}/friend_functions.cpp", range: "12:4-12:11" }
     - { file: "${WS}/friend_functions.cpp", range: "17:11-17:18" }
   callHierarchy:
-    - { name: "inspect", kind: Function, file: "${WS}/friend_functions.cpp", range: "5:15-5:22" }
+    - { name: "inspect", kind: Function, file: "${WS}/friend_functions.cpp", range: "12:4-12:11" }
   incomingCalls:
     - { name: "inspect_vault", kind: Function, file: "${WS}/friend_functions.cpp", range: "16:4-16:17", fromRanges: ["17:11-17:25"] }
 
@@ -41,7 +41,7 @@ friend_use:
     - { file: "${WS}/friend_functions.cpp", range: "12:4-12:11" }
     - { file: "${WS}/friend_functions.cpp", range: "17:11-17:18" }
   callHierarchy:
-    - { name: "inspect", kind: Function, file: "${WS}/friend_functions.cpp", range: "17:11-17:18" }
+    - { name: "inspect", kind: Function, file: "${WS}/friend_functions.cpp", range: "12:4-12:11" }
   incomingCalls:
     - { name: "inspect_vault", kind: Function, file: "${WS}/friend_functions.cpp", range: "16:4-16:17", fromRanges: ["17:11-17:25"] }
 
@@ -67,6 +67,6 @@ hidden_use:
     - { file: "${WS}/friend_functions.cpp", range: "7:15-7:21" }
     - { file: "${WS}/friend_functions.cpp", range: "17:28-17:34" }
   callHierarchy:
-    - { name: "reveal", kind: Function, file: "${WS}/friend_functions.cpp", range: "17:28-17:34" }
+    - { name: "reveal", kind: Function, file: "${WS}/friend_functions.cpp", range: "7:15-7:21" }
   incomingCalls:
     - { name: "inspect_vault", kind: Function, file: "${WS}/friend_functions.cpp", range: "16:4-16:17", fromRanges: ["17:28-17:41"] }

@@ -478,10 +478,7 @@ FeatureRouter::RawResult FeatureRouter::implementation(std::shared_ptr<Session> 
         }
     }
 
-    co_return to_raw(index_query.query_symbol_targets(path,
-                                                      position,
-                                                      RelationKind::Implementation,
-                                                      session.get()));
+    co_return to_raw(index_query.query_implementation(path, position, session.get()));
 }
 
 FeatureRouter::RawResult FeatureRouter::call_hierarchy_prepare(std::shared_ptr<Session> session,
@@ -503,8 +500,15 @@ FeatureRouter::RawResult FeatureRouter::call_hierarchy_prepare(std::shared_ptr<S
     auto info = index_query.lookup_symbol(uri, path, position, session.get());
     if(!info)
         co_return serde_raw{"null"};
-    if(!(info->kind == SymbolKind::Function || info->kind == SymbolKind::Method))
+    if(!(info->kind == SymbolKind::Function || info->kind == SymbolKind::Method ||
+         info->kind == SymbolKind::Operator))
         co_return serde_raw{"null"};
+
+    // The item stands for the symbol, not the cursor: anchor it at the
+    // symbol's canonical site so expanding from a use renders the same
+    // root as expanding from the declaration.
+    if(auto canonical = index_query.resolve_symbol(info->hash))
+        info = canonical;
 
     std::vector<protocol::CallHierarchyItem> items;
     items.push_back(IndexQuery::build_call_hierarchy_item(*info));
@@ -569,6 +573,9 @@ FeatureRouter::RawResult FeatureRouter::type_hierarchy_prepare(std::shared_ptr<S
     if(!(info->kind == SymbolKind::Class || info->kind == SymbolKind::Struct ||
          info->kind == SymbolKind::Enum || info->kind == SymbolKind::Union))
         co_return serde_raw{"null"};
+
+    if(auto canonical = index_query.resolve_symbol(info->hash))
+        info = canonical;
 
     std::vector<protocol::TypeHierarchyItem> items;
     items.push_back(IndexQuery::build_type_hierarchy_item(*info));

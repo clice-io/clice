@@ -24,7 +24,7 @@ class_use:
     - { file: "${WS}/template_navigation.cpp", range: "19:2-19:5" }
     - { file: "${WS}/template_navigation.cpp", range: "24:4-24:7" }
   typeHierarchy:
-    - { name: "Box", kind: Struct, file: "${WS}/template_navigation.cpp", range: "24:4-24:7" }
+    - { name: "Box", kind: Struct, file: "${WS}/template_navigation.cpp", range: "13:7-13:10" }
 
 member_decl:
   definition:
@@ -36,7 +36,7 @@ member_decl:
     - { file: "${WS}/template_navigation.cpp", range: "19:10-19:13" }
     - { file: "${WS}/template_navigation.cpp", range: "27:15-27:18" }
   callHierarchy:
-    - { name: "get", kind: Method, file: "${WS}/template_navigation.cpp", range: "14:6-14:9" }
+    - { name: "get", kind: Method, file: "${WS}/template_navigation.cpp", range: "19:10-19:13" }
   incomingCalls:
     - { name: "drive", kind: Function, file: "${WS}/template_navigation.cpp", range: "23:4-23:9", fromRanges: ["27:11-27:20"] }
 
@@ -65,7 +65,7 @@ member_use:
     - { file: "${WS}/template_navigation.cpp", range: "19:10-19:13" }
     - { file: "${WS}/template_navigation.cpp", range: "27:15-27:18" }
   callHierarchy:
-    - { name: "get", kind: Method, file: "${WS}/template_navigation.cpp", range: "27:15-27:18" }
+    - { name: "get", kind: Method, file: "${WS}/template_navigation.cpp", range: "19:10-19:13" }
   incomingCalls:
     - { name: "drive", kind: Function, file: "${WS}/template_navigation.cpp", range: "23:4-23:9", fromRanges: ["27:11-27:20"] }
 
@@ -104,7 +104,7 @@ use_primary:
     - { file: "${WS}/template_navigation.cpp", range: "3:2-3:10" }
     - { file: "${WS}/template_navigation.cpp", range: "26:42-26:50" }
   callHierarchy:
-    - { name: "identity", kind: Function, file: "${WS}/template_navigation.cpp", range: "26:42-26:50" }
+    - { name: "identity", kind: Function, file: "${WS}/template_navigation.cpp", range: "3:2-3:10" }
   incomingCalls:
     - { name: "drive", kind: Function, file: "${WS}/template_navigation.cpp", range: "23:4-23:9", fromRanges: ["26:42-26:55"] }
 
@@ -117,6 +117,6 @@ use_spec:
     - { file: "${WS}/template_navigation.cpp", range: "8:4-8:12" }
     - { file: "${WS}/template_navigation.cpp", range: "26:11-26:19" }
   callHierarchy:
-    - { name: "identity", kind: Function, file: "${WS}/template_navigation.cpp", range: "26:11-26:19" }
+    - { name: "identity", kind: Function, file: "${WS}/template_navigation.cpp", range: "8:4-8:12" }
   incomingCalls:
     - { name: "drive", kind: Function, file: "${WS}/template_navigation.cpp", range: "23:4-23:9", fromRanges: ["26:11-26:22"] }
