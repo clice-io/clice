@@ -339,7 +339,9 @@ function parseFixture(filePath: string, featureDir: string, problems: string[]):
 }
 
 /// The sibling sources of a `<unit>/main.cpp` doc fixture, §-stripped like
-/// the entry's example code; empty for single-file fixtures.
+/// the entry's example code; empty for single-file fixtures. A leading
+/// `// snap:` comment block is harness commentary, dropped the same way
+/// the entry's example drops it.
 function collectSiblings(filePath: string, relParts: string[]): { rel: string; content: string }[] {
     if (relParts.length !== 2 || relParts[1] !== "main.cpp") {
         return [];
@@ -353,7 +355,15 @@ function collectSiblings(filePath: string, relParts: string[]): { rel: string; c
             continue;
         }
         const content = parseAnnotations(fs.readFileSync(abs, "utf8")).content;
-        siblings.push({ rel, content: trimBlank(content.split("\n")).join("\n") });
+        let lines = trimBlank(content.split("\n"));
+        if ((lines[0] ?? "").trim().startsWith("// snap:")) {
+            let start = 0;
+            while ((lines[start] ?? "").trim().startsWith("//")) {
+                start += 1;
+            }
+            lines = trimBlank(lines.slice(start));
+        }
+        siblings.push({ rel, content: lines.join("\n") });
     }
     siblings.sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0));
     return siblings;

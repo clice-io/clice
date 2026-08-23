@@ -77,8 +77,6 @@ Clickable links from source directives to their resolved target files.
   ```cpp
   #pragma once
 
-  // A marker  opts this support header into the snapshot:
-  // the include_next links live in this file, not in the fixture entry.
   #define WRAP_FIRST 1
 
   #if __has_include_next(<wrap.h>)

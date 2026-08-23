@@ -1,0 +1,5 @@
+# These fixtures carry `§(name)` participation markers and directive layouts
+# that clang-format would rewrite, so formatting is disabled for this
+# directory.
+DisableFormat: true
+SortIncludes: false
