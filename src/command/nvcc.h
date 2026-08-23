@@ -47,9 +47,11 @@ std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> argu
 /// preprocess, cicc, ...) without executing it — CMake detects CUDA
 /// toolchains from the same output.
 struct NVCCDryrunInfo {
-    /// The toolkit root (`TOP=` line), valid for clang's `--cuda-path`.
-    /// Deriving it from the nvcc binary's location instead is wrong for
-    /// split layouts (conda puts it under `targets/<triple>`).
+    /// The toolkit root (`TOP=` line, else derived from
+    /// `NVVMIR_LIBRARY_DIR=`), valid for clang's `--cuda-path`; empty when
+    /// the dryrun names neither. Deriving it from the nvcc binary's location
+    /// instead is wrong for split layouts (conda puts it under
+    /// `targets/<triple>`).
     std::string cuda_path;
 
     /// argv[0] of the host preprocess line — the compiler nvcc actually

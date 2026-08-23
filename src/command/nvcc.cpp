@@ -153,23 +153,28 @@ std::vector<std::string> expand_options_files(llvm::ArrayRef<const char*> argume
             }
 
             expanded = true;
-            /// The value is one file path, taken verbatim: comma-splitting
-            /// it would shred native Windows paths.
-            auto file_path = absolutize(value, directory);
-            auto buffer = llvm::MemoryBuffer::getFile(file_path);
-            if(!buffer) {
-                LOG_WARN("Cannot read nvcc options file {}: {}",
-                         file_path,
-                         buffer.getError().message());
-                continue;
-            }
+            /// The value is a comma-separated file list (`-optf a.rsp,b.rsp`
+            /// reads both); a literal comma in a path arrives escaped as
+            /// `\,`, so the split leaves native Windows paths intact.
+            llvm::SmallVector<std::string> files;
+            split_list(value, files);
+            for(llvm::StringRef file: files) {
+                auto file_path = absolutize(file, directory);
+                auto buffer = llvm::MemoryBuffer::getFile(file_path);
+                if(!buffer) {
+                    LOG_WARN("Cannot read nvcc options file {}: {}",
+                             file_path,
+                             buffer.getError().message());
+                    continue;
+                }
 
-            llvm::BumpPtrAllocator alloc;
-            llvm::StringSaver saver(alloc);
-            llvm::SmallVector<const char*> tokens;
-            llvm::cl::TokenizeGNUCommandLine((*buffer)->getBuffer(), saver, tokens);
-            for(llvm::StringRef token: tokens)
-                next.emplace_back(token);
+                llvm::BumpPtrAllocator alloc;
+                llvm::StringSaver saver(alloc);
+                llvm::SmallVector<const char*> tokens;
+                llvm::cl::TokenizeGNUCommandLine((*buffer)->getBuffer(), saver, tokens);
+                for(llvm::StringRef token: tokens)
+                    next.emplace_back(token);
+            }
         }
 
         args = std::move(next);
@@ -279,12 +284,14 @@ std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> argu
             continue;
         }
 
-        /// nvcc packs several host flags into one comma-separated value.
+        /// nvcc packs several host flags into one comma-separated value,
+        /// under the same `\,` escape as every other list option
+        /// (`-Xcompiler=-Wl\,-z\,defs` reaches the host as one flag).
         if(value_of(i, {"-Xcompiler", "--compiler-options"}, value)) {
-            llvm::SmallVector<llvm::StringRef> pieces;
-            value.split(pieces, ',', -1, false);
-            for(auto piece: pieces)
-                result.emplace_back(piece);
+            llvm::SmallVector<std::string> pieces;
+            split_list(value, pieces);
+            for(auto& piece: pieces)
+                result.emplace_back(std::move(piece));
             continue;
         }
 
@@ -429,6 +436,7 @@ std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> argu
 
 std::expected<NVCCDryrunInfo, std::string> parse_nvcc_dryrun(llvm::StringRef output) {
     NVCCDryrunInfo info;
+    llvm::StringRef nvvm_dir;
 
     auto harvest_defines = [](llvm::ArrayRef<const char*> tokens, std::vector<std::string>& out) {
         for(llvm::StringRef token: tokens) {
@@ -454,6 +462,11 @@ std::expected<NVCCDryrunInfo, std::string> parse_nvcc_dryrun(llvm::StringRef out
 
         if(line.consume_front("TOP=")) {
             info.cuda_path = line.trim();
+            continue;
+        }
+
+        if(line.consume_front("NVVMIR_LIBRARY_DIR=")) {
+            nvvm_dir = line.trim();
             continue;
         }
 
@@ -516,8 +529,11 @@ std::expected<NVCCDryrunInfo, std::string> parse_nvcc_dryrun(llvm::StringRef out
         harvest_defines(tail, is_device ? info.device_defines : info.host_defines);
     }
 
-    if(info.cuda_path.empty())
-        return std::unexpected("nvcc dryrun output has no TOP= line naming the toolkit root");
+    /// A dryrun without `TOP=` still names the toolkit root indirectly:
+    /// `NVVMIR_LIBRARY_DIR=` is `<root>/nvvm/libdevice`.
+    if(info.cuda_path.empty() && !nvvm_dir.empty())
+        info.cuda_path = path::parent_path(path::parent_path(nvvm_dir));
+
     if(info.host_compiler.empty())
         return std::unexpected("nvcc dryrun output has no host preprocess command");
 

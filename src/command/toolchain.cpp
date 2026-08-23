@@ -471,7 +471,11 @@ kota::task<std::expected<std::vector<std::string>, std::string>>
                         std::format("Unsupported nvcc host compiler: {}", host));
             }
 
-            cuda_args.push_back("--cuda-path=" + info->cuda_path);
+            /// Without a root from the dryrun, clang's own CUDA detection
+            /// (which knows the distro-specific install locations) is the
+            /// remaining chance.
+            if(!info->cuda_path.empty())
+                cuda_args.push_back("--cuda-path=" + info->cuda_path);
             /// A toolkit newer than the linked clang still parses, modulo
             /// missing feature macros; without this the version warning
             /// would land in every file's diagnostics.

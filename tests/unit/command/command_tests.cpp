@@ -158,6 +158,17 @@ TEST_CASE(DefaultFallback) {
     auto h_results = database.lookup("foo.h", options);
     ASSERT_EQ(h_results.front().to_argv().size(), 2U);
     ASSERT_EQ(h_results.front().to_argv()[0], "clang"sv);
+
+    /// CUDA files pin cuda mode and the device-side view NVCC-backed
+    /// commands default to.
+    for(llvm::StringRef cuda_file: {"kern.cu", "kernels.cuh"}) {
+        auto cu_argv = database.lookup(cuda_file, options).front().to_argv();
+        ASSERT_EQ(cu_argv.size(), 6U);
+        ASSERT_EQ(cu_argv[0], "clang++"sv);
+        ASSERT_EQ(cu_argv[2], "-x"sv);
+        ASSERT_EQ(cu_argv[3], "cuda"sv);
+        ASSERT_EQ(cu_argv[4], "--cuda-device-only"sv);
+    }
 };
 
 TEST_CASE(FallbackAppliesAppend) {

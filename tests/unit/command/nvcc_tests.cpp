@@ -118,6 +118,10 @@ TEST_CASE(XcompilerUnwrapped) {
     EXPECT_TRUE(contains(args, "-pthread"));
     EXPECT_TRUE(contains(args, "-Wall"));
     EXPECT_FALSE(contains(args, "-Xcompiler"));
+
+    // The value follows the same `\,` escape as every other list option.
+    auto escaped = translate({"nvcc", R"(-Xcompiler=-Wl\,-z\,defs)"});
+    EXPECT_TRUE(contains(escaped, "-Wl,-z,defs"));
 }
 
 TEST_CASE(MacroToggles) {
@@ -226,12 +230,23 @@ TEST_CASE(OptionsFileExpanded) {
     EXPECT_TRUE(contains(args, "-std=c++20"));
     EXPECT_FALSE(contains(args, "--options-file"));
 
+    // The value is a comma-separated file list: every element expands.
+    auto second = fs::createTemporaryFile("clice-nvcc", "rsp");
+    ASSERT_TRUE(second.has_value());
+    ASSERT_TRUE(fs::write(*second, "-DFROM_SECOND=2\n"));
+
+    auto pair = *file + "," + *second;
+    auto both = llvm::join(translate({"nvcc", "-optf", pair.c_str()}), " ");
+    EXPECT_TRUE(llvm::StringRef(both).contains("-D API=2"));
+    EXPECT_TRUE(llvm::StringRef(both).contains("-D FROM_SECOND=2"));
+
     // An unreadable file drops with a warning; the rest of the command
     // still translates.
     auto missing = translate({"nvcc", "--options-file=missing.rsp", "-DX"}, "/clice-nonexistent");
     EXPECT_TRUE(contains(missing, "X"));
 
     fs::remove(*file);
+    fs::remove(*second);
 }
 
 TEST_CASE(StdNormalized) {
@@ -280,6 +295,23 @@ TEST_CASE(DryrunParsed) {
 TEST_CASE(DryrunRejectsIncomplete) {
     EXPECT_FALSE(parse_nvcc_dryrun("#$ PATH=/usr/bin").has_value());
     EXPECT_FALSE(parse_nvcc_dryrun("#$ TOP=/opt/cuda").has_value());
+}
+
+TEST_CASE(DryrunTopFallback) {
+    // A wrapper may swallow TOP=; NVVMIR_LIBRARY_DIR is <root>/nvvm/libdevice.
+    constexpr llvm::StringRef no_top = R"(#$ NVVMIR_LIBRARY_DIR=/opt/cuda/nvvm/libdevice
+#$ g++ -D__CUDACC_VER_MAJOR__=12 -E -x c++ "/tmp/a.cu" -o "/tmp/a.ii"
+)";
+    auto info = parse_nvcc_dryrun(no_top);
+    ASSERT_TRUE(info.has_value());
+    EXPECT_EQ(info->cuda_path, "/opt/cuda");
+
+    // With neither line the toolchain still resolves; CUDA detection is
+    // left to clang's own search.
+    auto bare = parse_nvcc_dryrun(R"(#$ g++ -E -x c++ "/tmp/a.cu")");
+    ASSERT_TRUE(bare.has_value());
+    EXPECT_TRUE(bare->cuda_path.empty());
+    EXPECT_EQ(bare->host_compiler, "g++");
 }
 
 TEST_CASE(CcbinAffectsKey) {

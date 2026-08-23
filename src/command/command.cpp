@@ -543,7 +543,11 @@ llvm::SmallVector<CompileCommand> CompilationDatabase::lookup(llvm::StringRef fi
         } else if(file.ends_with(".cu") || file.ends_with(".cuh")) {
             /// .cuh is not a clang-known extension: without -x the driver
             /// classifies it as linker input and builds no compile job.
-            flags = {"clang++", "-std=c++20", "-x", "cuda"};
+            /// Device-only pins the same device-side view NVCC-backed
+            /// commands default to, instead of whichever job the toolchain
+            /// query happens to pick from a two-sided compilation; a config
+            /// rule appending --cuda-host-only still wins as the later flag.
+            flags = {"clang++", "-std=c++20", "-x", "cuda", "--cuda-device-only"};
         } else {
             flags = {"clang"};
         }
