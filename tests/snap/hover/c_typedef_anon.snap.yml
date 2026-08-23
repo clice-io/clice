@@ -1,0 +1,27 @@
+---
+created_at: 2026-08-23
+input_file: c_typedef_anon.cpp
+---
+01_typedef: { range: "15:2-15:7" }
+### type `Point`  
+
+---
+Type: `struct c_typedef_anon::Point`  
+
+---
+```cpp
+// In namespace c_typedef_anon
+typedef struct Point Point
+```
+
+02_var: { range: "17:6-17:12" }
+### variable `origin`  
+
+---
+Type: `Point`  
+
+---
+```cpp
+// In namespace c_typedef_anon
+Point origin
+```

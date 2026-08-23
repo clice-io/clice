@@ -1,0 +1,79 @@
+---
+created_at: 2026-08-23
+input_file: decltype_deduction.cpp
+---
+01_value: { range: "21:2-21:10" }
+### type `decltype`  
+
+---
+```cpp
+int
+```
+
+02_const: { range: "22:2-22:10" }
+### type `decltype`  
+
+---
+```cpp
+const int
+```
+
+03_ref: { range: "23:2-23:10" }
+### type `decltype`  
+
+---
+```cpp
+int &
+```
+
+04_of_lvalue: { range: "24:2-24:10" }
+### type `decltype`  
+
+---
+```cpp
+int
+```
+
+05_of_paren: { range: "25:2-25:10" }
+### type `decltype`  
+
+---
+```cpp
+int &
+```
+
+06_of_rvalue: { range: "26:2-26:10" }
+### type `decltype`  
+
+---
+```cpp
+int &&
+```
+
+07_var_type: { range: "29:15-29:21" }
+### variable `mirror`  
+
+---
+Type: `int`  
+
+---
+```cpp
+// In namespace decltype_deduction
+decltype(base) mirror = base
+```
+
+08_undeduced: { range: "31:22-31:30" }
+### type `decltype`  
+
+---
+```cpp
+/* not deduced */
+```
+
+09_dependent: { range: "34:15-34:23" }
+### type `decltype`  
+
+---
+```cpp
+<dependent type>
+```

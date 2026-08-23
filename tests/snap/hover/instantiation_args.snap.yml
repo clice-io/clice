@@ -1,0 +1,26 @@
+---
+created_at: 2026-08-23
+input_file: instantiation_args.cpp
+---
+01_type_use: { range: "23:2-23:9" }
+### struct `Wrapper<int>`  
+
+---
+```cpp
+// In namespace instantiation_args
+template <> struct Wrapper<int> {}
+```
+
+02_call: { range: "24:10-24:18" }
+### function `identity`  
+
+---
+→ `int`  
+Parameters:  
+- `int x`
+
+---
+```cpp
+// In namespace instantiation_args
+template <> int identity<int>(int x)
+```

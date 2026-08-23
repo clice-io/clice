@@ -1,0 +1,11 @@
+---
+created_at: 2026-08-23
+input_file: sugared_auto.cpp
+---
+01_auto: { range: "19:2-19:6" }
+### type `auto`  
+
+---
+```cpp
+Outer // aka: int
+```

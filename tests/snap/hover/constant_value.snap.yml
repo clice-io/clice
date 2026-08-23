@@ -1,0 +1,55 @@
+---
+created_at: 2026-08-23
+input_file: constant_value.cpp
+---
+01_constexpr_call: { range: "16:4-16:13" }
+### variable `from_call`  
+
+---
+Type: `int`  
+Value = `25 (0x19)`  
+
+---
+```cpp
+// In namespace constant_value
+int from_call = square(5)
+```
+
+02_sizeof: { range: "18:4-18:15" }
+### variable `from_sizeof`  
+
+---
+Type: `int`  
+Value = `4`  
+
+---
+```cpp
+// In namespace constant_value
+int from_sizeof = sizeof(int)
+```
+
+03_enumerator: { range: "21:15-21:20" }
+### enumerator `Green`  
+
+---
+Type: `enum constant_value::Color`  
+Value = `5`  
+
+---
+```cpp
+// In Color
+Green = 5
+```
+
+04_static_member: { range: "24:4-24:15" }
+### variable `from_member`  
+
+---
+Type: `int`  
+Value = `7`  
+
+---
+```cpp
+// In namespace constant_value
+int from_member = Sum<3, 4>::value
+```

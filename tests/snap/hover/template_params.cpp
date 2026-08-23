@@ -1,3 +1,13 @@
+/// # Type Information
+///
+/// ## Template parameters — type, template-template, non-type
+///
+/// - status: supported
+/// - order: 4
+///
+/// Each template parameter kind reports its form: a type parameter, a
+/// template-template parameter, and a non-type parameter with its default.
+
 // Test cases ported from clangd's HoverTests.cpp (llvmorg-21.1.8), part of the LLVM project,
 // licensed under Apache License v2.0 with LLVM Exceptions.
 
