@@ -1,0 +1,7 @@
+---
+created_at: 2026-08-23
+input_file: quoted_include.cpp
+---
+- { range: "10:9-10:21", target: "${WS}/header_a.h" }
+- { range: "11:9-11:21", target: "${WS}/header_b.h" }
+- { range: "13:9-13:21", target: "${WS}/header_c.h" }

@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -101,6 +102,10 @@ auto document_links(CompilationUnitRef unit) -> std::vector<DocumentLink> {
             add_link(has_embed.loc, unit.file_path(*has_embed.file));
         }
     }
+
+    // Directives are collected grouped by kind; the reply promises
+    // document order.
+    std::ranges::sort(links, {}, [](const DocumentLink& link) { return link.range.begin; });
 
     return links;
 }

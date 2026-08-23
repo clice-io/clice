@@ -105,8 +105,20 @@ Triggered when cursor is after `import` or `export import`.
   <details>
   <summary>Example</summary>
 
+  `main.cpp`:
+
   ```cpp
   import ma
+  ```
+
+  `mod_math.cppm`:
+
+  ```cpp
+  export module math;
+
+  export int add(int a, int b) {
+      return a + b;
+  }
   ```
 
   </details>

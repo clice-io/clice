@@ -1,0 +1,10 @@
+---
+created_at: 2026-08-23
+input_file: include_next/main.cpp
+---
+--- first/wrap.h
+- { range: "6:23-6:31", target: "${WS}/include_next/first/wrap.h" }
+- { range: "7:14-7:22", target: "${WS}/include_next/first/wrap.h" }
+
+--- main.cpp
+- { range: "16:9-16:17", target: "${WS}/include_next/first/wrap.h" }

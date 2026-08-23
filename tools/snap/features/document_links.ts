@@ -38,10 +38,20 @@ export const documentLinks: Feature = {
                 if (link.target === undefined) {
                     throw new Error("clice always resolves link targets");
                 }
-                return {
-                    range: fmtRange(link.range),
-                    target: normalizeFileUri(link.target, ctx.root),
-                };
+                const target = normalizeFileUri(link.target, ctx.root);
+                // The tooltip mirrors the target as a raw absolute path; it
+                // is validated on every fixture instead of pinned, so shared
+                // snapshots stay byte-identical with the inspect path (whose
+                // payload has no tooltip).
+                if (link.tooltip === undefined) {
+                    throw new Error(`link ${link.target} carries no tooltip`);
+                }
+                if (normalizeFilePath(link.tooltip, ctx.root) !== target) {
+                    throw new Error(
+                        `tooltip ${link.tooltip} does not resolve to the link target ${link.target}`,
+                    );
+                }
+                return { range: fmtRange(link.range), target };
             }),
         );
     },

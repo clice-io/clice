@@ -1,0 +1,6 @@
+---
+created_at: 2026-08-23
+input_file: has_include.cpp
+---
+- { range: "7:18-7:30", target: "${WS}/header_c.h" }
+- { range: "8:9-8:21", target: "${WS}/header_c.h" }

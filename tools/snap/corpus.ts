@@ -210,7 +210,7 @@ export interface SnapCorpus {
     support: string[];
 }
 
-const C_FAMILY = /\.(cpp|cc|cxx|c|cppm|h|hpp|hh)$/;
+export const C_FAMILY = /\.(cpp|cc|cxx|c|cppm|h|hpp|hh)$/;
 const COMPILABLE = /\.(cpp|cppm)$/;
 export const HEADER = /\.(h|hpp|hh)$/;
 
