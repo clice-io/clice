@@ -1,0 +1,35 @@
+---
+created_at: 2026-08-23
+input_file: decl_vs_def_docs.cpp
+---
+01_at_decl: { range: "13:5-13:12" }
+### function `process`  
+
+---
+→ `void`  
+Parameters:  
+- `int x`
+
+Public API documentation.  
+
+---
+```cpp
+// In namespace decldef
+void process(int x)
+```
+
+02_at_def: { range: "16:5-16:12" }
+### function `process`  
+
+---
+→ `void`  
+Parameters:  
+- `int x`
+
+Public API documentation.  
+
+---
+```cpp
+// In namespace decldef
+void process(int x)
+```

@@ -1,0 +1,18 @@
+---
+created_at: 2026-08-23
+input_file: comment_indentation.cpp
+---
+01_indented: { range: "17:5-17:8" }
+### function `run`  
+
+---
+→ `void`  
+Summary line.  
+step_one();  
+step_two();  
+
+---
+```cpp
+// In namespace indented
+void run()
+```

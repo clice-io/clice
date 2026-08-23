@@ -1,0 +1,15 @@
+---
+created_at: 2026-08-23
+input_file: inherit_overridden_docs.cpp
+---
+01_override: { range: "18:9-18:13" }
+### method `draw`  
+
+---
+→ `void`  
+
+---
+```cpp
+// In Circle
+public: void draw() override
+```
