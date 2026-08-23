@@ -300,6 +300,12 @@ kota::task<std::expected<std::vector<std::string>, std::string>>
         if(auto e = fs::remove(src_path))
             LOG_ERROR("Fail to remove temporary file: {}", e);
     });
+
+    /// .cuh is not a clang-known extension: without a language override the
+    /// probe counts as linker input and the driver builds no compile job.
+    if(ext == "cuh" && !ranges::any_of(args, [](llvm::StringRef arg) { return arg == "-x"; }))
+        args.append({"-x", "cuda"});
+
     args.emplace_back(src_path.c_str());
 
     auto family = Toolchain::driver_family(driver);

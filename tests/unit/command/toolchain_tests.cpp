@@ -155,6 +155,32 @@ TEST_CASE(NVCC, skip = !(CIEnvironment && Linux)) {
     ASSERT_TRUE(unit.diagnostics().empty());
 };
 
+TEST_CASE(NVCCCudaHeader, skip = !(CIEnvironment && Linux)) {
+    auto file = fs::createTemporaryFile("clice", "cuh");
+    if(!file) {
+        LOG_ERROR_RET(void(), "{}", file.error());
+    }
+
+    auto result = Toolchain::query({"nvcc", "-resource-dir", resource_dir().data()}, file->c_str());
+    ASSERT_TRUE(result.has_value());
+
+    ASSERT_TRUE(result->size() > 2);
+    ASSERT_EQ((*result)[1], "-cc1"sv);
+    EXPECT_TRUE(std::ranges::contains(*result, "-fcuda-is-device"));
+
+    CompilationParams params;
+    for(auto& arg: *result) {
+        params.arguments.push_back(arg.c_str());
+    }
+    params.add_remapped_file(file->c_str(), R"(
+            __device__ float scale(float* p) { return p[threadIdx.x]; }
+        )");
+
+    auto unit = compile(params);
+    ASSERT_TRUE(unit.completed());
+    ASSERT_TRUE(unit.diagnostics().empty());
+};
+
 TEST_CASE(InitiallyEmpty) {
     Toolchain tc;
     EXPECT_FALSE(tc.has_cache());

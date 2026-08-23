@@ -33,6 +33,39 @@ function capture(client: CliceClient): InactiveRegionsParams[] {
     return captured;
 }
 
+test.skipIf(!runsNvcc)("nvcc direct cuh entry", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write(
+        "kernels.cuh",
+        "#pragma once\n" +
+            "__device__ inline float scale(float* p) { return p[threadIdx.x]; }\n" +
+            "#if defined(__CUDA_ARCH__)\n" +
+            "inline int device_world = 1;\n" +
+            "#else\n" +
+            "inline int host_world = 1;\n" +
+            "#endif\n",
+    );
+    workspace.write(
+        "compile_commands.json",
+        JSON.stringify([
+            {
+                directory: workspace.root,
+                file: workspace.path("kernels.cuh"),
+                command: `nvcc -c ${workspace.path("kernels.cuh")} -o kernels.o`,
+            },
+        ]),
+    );
+    const captured = capture(client);
+
+    await client.initialize(workspace);
+    const [uri] = await client.openAndWait("kernels.cuh");
+    client.assertCleanCompile(uri);
+
+    // The device view applies to the header exactly as it would to a .cu.
+    const regions = await waitRegions(captured);
+    expect(regions.map((r) => [r.start.line, r.end.line])).toEqual([[5, 6]]);
+});
+
 test.skipIf(!runsNvcc)("nvcc cuda device view", async ({ session }) => {
     const { client, workspace } = session.tmp();
     workspace.write(

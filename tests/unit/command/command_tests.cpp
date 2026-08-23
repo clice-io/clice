@@ -520,6 +520,21 @@ TEST_CASE(LoadErrorRecovery) {
     EXPECT_CONTAINS(print_argv(also.front().to_argv()), "-Wall");
 };
 
+TEST_CASE(LoadCudaHeader) {
+    /// .cuh entries are C-family despite clang's extension table; non-C
+    /// entries some build systems emit are skipped.
+    CompilationDatabase database;
+    auto count = load_json(database, R"([
+        {"directory": "/build", "file": "kernels.cuh",
+         "command": "nvcc -c kernels.cuh -o kernels.o"},
+        {"directory": "/build", "file": "app.rc",
+         "command": "rc /fo app.res app.rc"}
+    ])");
+
+    ASSERT_EQ(count, 1U);
+    EXPECT_TRUE(database.has_entry(path::join("/build", "kernels.cuh")));
+};
+
 TEST_CASE(LoadEmptyCommand) {
     /// Whitespace-only or empty "command" should not crash.
     CompilationDatabase database;
