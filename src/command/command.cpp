@@ -455,14 +455,18 @@ CompileCommand CompilationDatabase::build_command(std::uint32_t path_id,
         flags.insert(flags.end(), args.begin(), args.end());
     };
 
+    bool is_nvcc =
+        Toolchain::driver_family(info->canonical->arguments.front()) == CompilerFamily::NVCC;
+
     /// Rule flags for an NVCC entry arrive in the same nvcc spellings as
-    /// the command they edit — rewrite them like the command itself, so
-    /// removes match the translated canonical and appends reach clang in
-    /// spellings it parses.
-    auto translate_rule_flags = [&](llvm::ArrayRef<std::string> rule_flags) {
+    /// the command they edit — rewrite them like the command itself. Removes
+    /// translate standalone so they reproduce exactly the flags the base
+    /// translation emitted; appends translate as edits so an appended
+    /// default state (`-rdc=false` over an rdc base) cancels the base's
+    /// translated state instead of vanishing.
+    auto translate_rule_flags = [&](llvm::ArrayRef<std::string> rule_flags, bool edit) {
         std::vector<std::string> result(rule_flags.begin(), rule_flags.end());
-        if(result.empty() ||
-           Toolchain::driver_family(info->canonical->arguments.front()) != CompilerFamily::NVCC) {
+        if(result.empty() || !is_nvcc) {
             return result;
         }
         std::vector<const char*> argv;
@@ -471,7 +475,7 @@ CompileCommand CompilationDatabase::build_command(std::uint32_t path_id,
         for(auto& arg: result) {
             argv.push_back(arg.c_str());
         }
-        auto translated = translate_nvcc_command(argv, directory);
+        auto translated = translate_nvcc_command(argv, directory, edit);
         result.assign(std::make_move_iterator(translated.begin() + 1),
                       std::make_move_iterator(translated.end()));
         return result;
@@ -488,7 +492,31 @@ CompileCommand CompilationDatabase::build_command(std::uint32_t path_id,
     }
 
     // Apply remove filter.
-    auto remove_flags = translate_rule_flags(options.remove);
+    std::vector<std::string> remove_source(options.remove.begin(), options.remove.end());
+    if(is_nvcc) {
+        /// A wildcard arch removal (`-arch=*`, `--generate-code=*`) names no
+        /// concrete architecture, so translating it emits nothing and the
+        /// rule silently misses — rewrite it to the wildcard form of the
+        /// arch option the translated base actually carries.
+        for(std::size_t i = 0; i < remove_source.size(); i += 1) {
+            llvm::StringRef flag = remove_source[i];
+            for(llvm::StringRef spelling:
+                {"-arch", "--gpu-architecture", "-gencode", "--generate-code"}) {
+                bool joined = flag.starts_with(spelling) && flag.substr(spelling.size()) == "=*";
+                bool separate =
+                    flag == spelling && i + 1 < remove_source.size() && remove_source[i + 1] == "*";
+                if(!joined && !separate) {
+                    continue;
+                }
+                if(separate) {
+                    remove_source.erase(remove_source.begin() + i + 1);
+                }
+                remove_source[i] = "--cuda-gpu-arch=*";
+                break;
+            }
+        }
+    }
+    auto remove_flags = translate_rule_flags(remove_source, /*edit=*/false);
     if(!remove_flags.empty()) {
         std::vector<kota::option::ParsedArg> remove_args;
         for(auto& result: option::table().parse(remove_flags)) {
@@ -539,7 +567,7 @@ CompileCommand CompilationDatabase::build_command(std::uint32_t path_id,
         }
     }
 
-    for(auto& arg: translate_rule_flags(options.append)) {
+    for(auto& arg: translate_rule_flags(options.append, /*edit=*/true)) {
         append_arg(arg);
     }
 

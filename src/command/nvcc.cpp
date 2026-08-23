@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <format>
+#include <optional>
 
 #include "support/filesystem.h"
 #include "support/logging.h"
@@ -193,7 +194,8 @@ bool is_nvcc_probe_flag(llvm::StringRef arg) {
 }
 
 std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> arguments,
-                                                llvm::StringRef directory) {
+                                                llvm::StringRef directory,
+                                                bool edit) {
     std::vector<std::string> result;
     result.emplace_back(arguments[0]);
 
@@ -206,7 +208,7 @@ std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> argu
     std::string target_directory;
     llvm::StringRef default_stream;
     bool allow_unsupported = false;
-    bool rdc = false;
+    std::optional<bool> rdc;
     bool ewp = false;
     bool relaxed_constexpr = false;
     bool extended_lambda = false;
@@ -416,10 +418,13 @@ std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> argu
     /// later `-U` can undo them (`-dc -U__CUDACC_RDC__` parses without the
     /// RDC macro) — the synthetic ones render first.
     std::vector<std::string> prelude;
-    if(rdc) {
+    if(rdc == true) {
         prelude.emplace_back("-fgpu-rdc");
         /// nvcc defines it; clang's -fgpu-rdc does not.
         prelude.emplace_back("-D__CUDACC_RDC__");
+    } else if(edit && rdc == false) {
+        prelude.emplace_back("-fno-gpu-rdc");
+        prelude.emplace_back("-U__CUDACC_RDC__");
     }
     if(relaxed_constexpr)
         prelude.emplace_back("-D__CUDACC_RELAXED_CONSTEXPR__");
@@ -437,12 +442,17 @@ std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> argu
     /// preprocessor flags.
     if(default_stream == "per-thread")
         result.emplace_back("-DCUDA_API_PER_THREAD_DEFAULT_STREAM=1");
+    else if(edit && !default_stream.empty())
+        result.emplace_back("-UCUDA_API_PER_THREAD_DEFAULT_STREAM");
 
     /// nvcc rejects mixing -gencode with -arch, so at most one list is
     /// populated.
     auto& archs = gencode_archs.empty() ? arch_archs : gencode_archs;
-    if(!archs.empty())
+    if(!archs.empty()) {
+        if(edit)
+            result.emplace_back("--no-offload-arch=all");
         result.emplace_back("--cuda-gpu-arch=" + select_gpu_arch(archs));
+    }
 
     if(!host_compiler.empty())
         result.emplace_back((llvm::Twine(ccbin_prefix) + host_compiler).str());

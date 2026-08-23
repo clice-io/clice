@@ -14,8 +14,9 @@ using namespace std::string_view_literals;
 TEST_SUITE(NVCCTests) {
 
 std::vector<std::string> translate(std::vector<const char*> arguments,
-                                   llvm::StringRef directory = "") {
-    return translate_nvcc_command(arguments, directory);
+                                   llvm::StringRef directory = "",
+                                   bool edit = false) {
+    return translate_nvcc_command(arguments, directory, edit);
 }
 
 bool contains(llvm::ArrayRef<std::string> arguments, llvm::StringRef flag) {
@@ -275,6 +276,36 @@ TEST_CASE(StdNormalized) {
     EXPECT_TRUE(contains(translate({"nvcc", "--std=c++20"}), "-std=c++20"));
 }
 
+TEST_CASE(EditEmitsStateOverrides) {
+    // An edit lands after an already-translated base command: explicitly
+    // disabled stateful options must cancel the base's translated state,
+    // while a standalone command emits nothing for the default state.
+    auto off = translate({"nvcc", "-rdc=false", "--default-stream=legacy"}, "", true);
+    EXPECT_TRUE(contains(off, "-fno-gpu-rdc"));
+    EXPECT_TRUE(contains(off, "-U__CUDACC_RDC__"));
+    EXPECT_TRUE(contains(off, "-UCUDA_API_PER_THREAD_DEFAULT_STREAM"));
+
+    auto standalone = translate({"nvcc", "-rdc=false", "--default-stream=legacy"});
+    EXPECT_FALSE(contains(standalone, "-fno-gpu-rdc"));
+    EXPECT_FALSE(contains(standalone, "-U__CUDACC_RDC__"));
+    EXPECT_FALSE(contains(standalone, "-UCUDA_API_PER_THREAD_DEFAULT_STREAM"));
+
+    // Untouched state stays silent even as an edit.
+    auto untouched = translate({"nvcc", "-DX"}, "", true);
+    EXPECT_FALSE(contains(untouched, "-fno-gpu-rdc"));
+    EXPECT_FALSE(contains(untouched, "-U__CUDACC_RDC__"));
+    EXPECT_FALSE(contains(untouched, "-UCUDA_API_PER_THREAD_DEFAULT_STREAM"));
+    EXPECT_FALSE(contains(untouched, "--no-offload-arch=all"));
+
+    // clang accumulates --cuda-gpu-arch while nvcc's -arch is last-wins: an
+    // arch edit clears the base architectures right before its own choice.
+    auto arch = translate({"nvcc", "-arch=sm_80"}, "", true);
+    auto clear = std::ranges::find(arch, "--no-offload-arch=all");
+    ASSERT_TRUE(clear != arch.end() && clear + 1 != arch.end());
+    EXPECT_EQ(*(clear + 1), "--cuda-gpu-arch=sm_80"sv);
+    EXPECT_FALSE(contains(translate({"nvcc", "-arch=sm_80"}), "--no-offload-arch=all"));
+}
+
 constexpr static llvm::StringRef fake_dryrun = R"(#$ _NVVM_BRANCH_=nvvm
 #$ _SPACE_=
 #$ TOP=/opt/cuda/targets/x86_64-linux
@@ -429,6 +460,95 @@ TEST_CASE(RuleFlagsTranslated) {
         EXPECT_FALSE(flag.starts_with("--generate-code"));
         EXPECT_FALSE(flag.starts_with("--extended-lambda"));
     }
+}
+
+TEST_CASE(AppendOverridesBase) {
+    CompilationDatabase db;
+    std::vector<const char*> arguments =
+        {"nvcc", "-rdc=true", "-default-stream=per-thread", "-arch=sm_75", "-c", "/tmp/kern.cu"};
+    db.add_command("/tmp", "/tmp/kern.cu", arguments);
+
+    // NVCC's stateful options are last-wins across the whole command, so an
+    // appended disable must beat the state the base already translated.
+    CommandOptions options;
+    llvm::SmallVector<std::string> append = {"-rdc=false",
+                                             "--default-stream=legacy",
+                                             "-arch=sm_80"};
+    options.append = append;
+
+    auto commands = db.lookup("/tmp/kern.cu", options);
+    ASSERT_EQ(commands.size(), std::size_t(1));
+
+    auto& flags = commands[0].resolved.flags;
+    auto index_of = [&](llvm::StringRef flag) {
+        return std::ranges::find(flags,
+                                 flag,
+                                 [](const char* arg) { return llvm::StringRef(arg); }) -
+               flags.begin();
+    };
+    auto count = std::ptrdiff_t(flags.size());
+
+    // rdc: the appended negation follows the base's enable, so clang's own
+    // last-wins turns it off and undefines the macro the base defined.
+    EXPECT_TRUE(index_of("-fgpu-rdc") < index_of("-fno-gpu-rdc"));
+    EXPECT_TRUE(index_of("-fno-gpu-rdc") < count);
+    EXPECT_TRUE(index_of("__CUDACC_RDC__") < index_of("-U__CUDACC_RDC__"));
+    EXPECT_TRUE(index_of("-U__CUDACC_RDC__") < count);
+
+    // stream: undef after the base's define.
+    EXPECT_TRUE(index_of("CUDA_API_PER_THREAD_DEFAULT_STREAM=1") <
+                index_of("-UCUDA_API_PER_THREAD_DEFAULT_STREAM"));
+    EXPECT_TRUE(index_of("-UCUDA_API_PER_THREAD_DEFAULT_STREAM") < count);
+
+    // arch: the base's architecture is cleared before the appended one, not
+    // accumulated into a second device pass.
+    EXPECT_TRUE(index_of("--offload-arch=sm_75") < index_of("--no-offload-arch=all"));
+    EXPECT_TRUE(index_of("--no-offload-arch=all") < index_of("--cuda-gpu-arch=sm_80"));
+    EXPECT_TRUE(index_of("--cuda-gpu-arch=sm_80") < count);
+}
+
+TEST_CASE(WildcardRemoveClearsArch) {
+    CompilationDatabase db;
+    std::vector<const char*> gencode = {"nvcc",
+                                        "--generate-code=arch=compute_75,code=sm_75",
+                                        "-c",
+                                        "/tmp/kern.cu"};
+    db.add_command("/tmp", "/tmp/kern.cu", gencode);
+    std::vector<const char*> arch = {"nvcc", "-arch=sm_80", "-c", "/tmp/other.cu"};
+    db.add_command("/tmp", "/tmp/other.cu", arch);
+
+    auto arch_flags = [&](llvm::StringRef file, const CommandOptions& options) {
+        auto commands = db.lookup(file, options);
+        std::vector<std::string> result;
+        for(llvm::StringRef flag: commands[0].resolved.flags) {
+            if(flag.contains("arch")) {
+                result.push_back(flag.str());
+            }
+        }
+        return result;
+    };
+
+    EXPECT_TRUE(std::ranges::contains(arch_flags("/tmp/kern.cu", {}), "--offload-arch=sm_75"));
+    EXPECT_TRUE(std::ranges::contains(arch_flags("/tmp/other.cu", {}), "--offload-arch=sm_80"));
+
+    // The wildcard names no concrete architecture, so it cannot translate to
+    // a matching flag itself — it must still clear whatever the base carries.
+    CommandOptions options;
+    llvm::SmallVector<std::string> remove = {"--generate-code=*"};
+    options.remove = remove;
+    EXPECT_TRUE(arch_flags("/tmp/kern.cu", options).empty());
+
+    llvm::SmallVector<std::string> separate = {"-arch", "*"};
+    options.remove = separate;
+    EXPECT_TRUE(arch_flags("/tmp/other.cu", options).empty());
+
+    // Removes edit the base before appends land: replacing the architecture
+    // through remove-wildcard + append keeps the appended one.
+    llvm::SmallVector<std::string> append = {"-gencode=arch=compute_90a,code=sm_90a"};
+    options.append = append;
+    auto replaced = arch_flags("/tmp/other.cu", options);
+    EXPECT_FALSE(std::ranges::contains(replaced, "--offload-arch=sm_80"));
+    EXPECT_TRUE(std::ranges::contains(replaced, "--cuda-gpu-arch=sm_90a"));
 }
 
 TEST_CASE(RemoveMatchesUnknownSpelling) {

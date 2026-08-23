@@ -41,8 +41,17 @@ bool is_nvcc_probe_flag(llvm::StringRef arg);
 ///   against its working directory.
 /// - Remaining nvcc-only options are dropped, together with their values
 ///   when those could be mistaken for host flags (`-Xptxas -O3`).
+///
+/// With `edit` set the flags are a config-rule edit appended after an
+/// already-translated base command, not a self-contained command: stateful
+/// options set to their default state emit the flags that cancel the base's
+/// translated state instead of nothing (`-rdc=false` becomes `-fno-gpu-rdc
+/// -U__CUDACC_RDC__`, `--default-stream=legacy` undefines the per-thread
+/// macro), and an architecture choice is preceded by `--no-offload-arch=all`
+/// because clang accumulates architectures where nvcc's are last-wins.
 std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> arguments,
-                                                llvm::StringRef directory);
+                                                llvm::StringRef directory,
+                                                bool edit = false);
 
 /// What one `nvcc --dryrun` run reveals about the toolchain. The dryrun
 /// prints the whole compilation pipeline (host preprocess, cudafe++, device
