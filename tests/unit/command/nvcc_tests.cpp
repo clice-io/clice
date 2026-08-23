@@ -370,6 +370,12 @@ TEST_CASE(EditEmitsStateOverrides) {
     ASSERT_TRUE(clear != arch.end() && clear + 1 != arch.end());
     EXPECT_EQ(*(clear + 1), "--cuda-gpu-arch=sm_80"sv);
     EXPECT_FALSE(contains(translate({"nvcc", "-arch=sm_80"}), "--no-offload-arch=all"));
+
+    // -gencode accumulates in nvcc, so as an edit it adds its architecture
+    // without erasing the base's.
+    auto gencode = translate({"nvcc", "-gencode=arch=compute_75,code=sm_75"}, "", true);
+    EXPECT_TRUE(contains(gencode, "--cuda-gpu-arch=sm_75"));
+    EXPECT_FALSE(contains(gencode, "--no-offload-arch=all"));
 }
 
 constexpr static llvm::StringRef fake_dryrun = R"(#$ _NVVM_BRANCH_=nvvm
@@ -581,6 +587,44 @@ TEST_CASE(AppendOverridesBase) {
     EXPECT_TRUE(index_of("--offload-arch=sm_75") < index_of("--no-offload-arch=all"));
     EXPECT_TRUE(index_of("--no-offload-arch=all") < index_of("--cuda-gpu-arch=sm_80"));
     EXPECT_TRUE(index_of("--cuda-gpu-arch=sm_80") < count);
+}
+
+TEST_CASE(GencodeAppendAccumulates) {
+    CompilationDatabase db;
+    std::vector<const char*> arguments = {"nvcc",
+                                          "--generate-code=arch=compute_90,code=sm_90",
+                                          "-c",
+                                          "/tmp/kern.cu"};
+    db.add_command("/tmp", "/tmp/kern.cu", arguments);
+
+    auto arch_flags = [&](llvm::ArrayRef<std::string> append) {
+        CommandOptions options;
+        options.append = append;
+        auto commands = db.lookup("/tmp/kern.cu", options);
+        std::vector<std::string> result;
+        for(llvm::StringRef flag: commands[0].resolved.flags) {
+            if(flag.contains("arch")) {
+                result.push_back(flag.str());
+            }
+        }
+        return result;
+    };
+
+    // Appended -gencode entries accumulate onto the base's like nvcc's own,
+    // and the newest architecture keeps winning: an older append changes
+    // nothing.
+    llvm::SmallVector<std::string> older = {"-gencode=arch=compute_75,code=sm_75"};
+    auto kept = arch_flags(older);
+    EXPECT_TRUE(std::ranges::contains(kept, "--offload-arch=sm_90"));
+    EXPECT_FALSE(std::ranges::contains(kept, "--cuda-gpu-arch=sm_75"));
+    EXPECT_FALSE(std::ranges::contains(kept, "--no-offload-arch=all"));
+
+    // A newer append takes over — by numeric rank, not string order, which
+    // would sort sm_100a below sm_90.
+    llvm::SmallVector<std::string> newer = {"-gencode=arch=compute_100a,code=sm_100a"};
+    auto switched = arch_flags(newer);
+    EXPECT_TRUE(std::ranges::contains(switched, "--cuda-gpu-arch=sm_100a"));
+    EXPECT_FALSE(std::ranges::contains(switched, "--offload-arch=sm_90"));
 }
 
 TEST_CASE(WildcardRemoveClearsArch) {

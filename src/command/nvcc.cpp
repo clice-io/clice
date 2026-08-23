@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <format>
 #include <optional>
+#include <ranges>
 
 #include "support/filesystem.h"
 #include "support/logging.h"
@@ -78,12 +79,13 @@ void collect_gencode_archs(llvm::StringRef spec, llvm::SmallVectorImpl<ArchToken
 /// The newest architecture wins; at equal number the fuller feature set does
 /// ('a' unlocks the arch-specific instructions the family 'f' and plain
 /// forms hide, e.g. sm_90a for Hopper GMMA/TMA).
+std::pair<unsigned, int> arch_rank(const ArchToken& arch) {
+    int suffix_rank = arch.suffix == 'a' ? 2 : arch.suffix == 'f' ? 1 : 0;
+    return {arch.number, suffix_rank};
+}
+
 std::string select_gpu_arch(llvm::ArrayRef<ArchToken> archs) {
-    auto rank = [](const ArchToken& arch) {
-        auto suffix_rank = arch.suffix == 'a' ? 2 : arch.suffix == 'f' ? 1 : 0;
-        return std::pair(arch.number, suffix_rank);
-    };
-    auto best = *std::ranges::max_element(archs, {}, rank);
+    auto best = *std::ranges::max_element(archs, {}, arch_rank);
 
     auto result = std::format("sm_{}", best.number);
     if(best.suffix != 0)
@@ -473,7 +475,10 @@ std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> argu
     /// populated.
     auto& archs = gencode_archs.empty() ? arch_archs : gencode_archs;
     if(!archs.empty()) {
-        if(edit)
+        /// An -arch edit replaces the base's architectures like nvcc's own
+        /// last-wins; -gencode entries accumulate onto them instead, so an
+        /// appended one must not erase the base's choice.
+        if(edit && gencode_archs.empty())
             result.emplace_back("--no-offload-arch=all");
         result.emplace_back("--cuda-gpu-arch=" + select_gpu_arch(archs));
     } else if(!arch_special.empty()) {
@@ -493,6 +498,44 @@ std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> argu
         result.emplace_back((llvm::Twine(target_directory_prefix) + target_directory).str());
 
     return result;
+}
+
+void collapse_gpu_arch_flags(std::vector<const char*>& flags) {
+    struct ActiveArch {
+        std::size_t index;
+        std::pair<unsigned, int> rank;
+    };
+
+    /// The arch flags still alive under clang's accumulate semantics:
+    /// --no-offload-arch=all erases everything before it.
+    llvm::SmallVector<ActiveArch> active;
+    for(std::size_t i = 0; i < flags.size(); i += 1) {
+        llvm::StringRef arg = flags[i];
+        if(arg == "--no-offload-arch=all") {
+            active.clear();
+            continue;
+        }
+        if(!arg.starts_with("--cuda-gpu-arch=") && !arg.starts_with("--offload-arch="))
+            continue;
+
+        llvm::SmallVector<ArchToken> tokens;
+        collect_archs(arg.substr(arg.find('=') + 1), tokens);
+        /// A value without an sm_NN/compute_NN token (a raw clang spelling
+        /// like --offload-arch=native in a config append) is outside the
+        /// ranking — leave the whole command to clang's own semantics.
+        if(tokens.empty())
+            return;
+        auto rank = arch_rank(*std::ranges::max_element(tokens, {}, arch_rank));
+        active.push_back({.index = i, .rank = rank});
+    }
+    if(active.size() < 2)
+        return;
+
+    auto best = std::ranges::max(active, {}, &ActiveArch::rank).rank;
+    for(auto& arch: active | std::views::reverse) {
+        if(arch.rank < best)
+            flags.erase(flags.begin() + arch.index);
+    }
 }
 
 std::expected<NVCCDryrunInfo, std::string> parse_nvcc_dryrun(llvm::StringRef output) {

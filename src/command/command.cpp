@@ -578,6 +578,12 @@ CompileCommand CompilationDatabase::build_command(std::uint32_t path_id,
         append_arg(arg);
     }
 
+    /// An appended -gencode adds its architecture next to the base's, the
+    /// way nvcc itself accumulates them — resolve them to the newest.
+    if(is_nvcc) {
+        collapse_gpu_arch_flags(flags);
+    }
+
     return CompileCommand{
         ResolvedFlags{directory, std::move(flags), false},
         paths.resolve(path_id).data()
