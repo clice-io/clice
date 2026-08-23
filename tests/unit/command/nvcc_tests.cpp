@@ -145,6 +145,13 @@ TEST_CASE(MacroToggles) {
     EXPECT_TRUE(contains(dc, "-D__CUDACC_RDC__"));
     EXPECT_TRUE(contains(translate({"nvcc", "--extensible-whole-program"}), "-D__CUDACC_EWP__"));
 
+    // Device debug becomes its macro; -G must not survive, clang reads it
+    // as the small-data-threshold option.
+    auto debug = translate({"nvcc", "-G"});
+    EXPECT_TRUE(contains(debug, "-D__CUDACC_DEBUG__"));
+    EXPECT_FALSE(contains(debug, "-G"));
+    EXPECT_TRUE(contains(translate({"nvcc", "--device-debug"}), "-D__CUDACC_DEBUG__"));
+
     // Stateful options are last-wins, matching nvcc.
     EXPECT_FALSE(contains(translate({"nvcc", "-rdc=true", "-rdc=false"}), "-fgpu-rdc"));
     auto stream = translate({"nvcc", "-default-stream=per-thread", "-default-stream=legacy"});
@@ -229,6 +236,7 @@ TEST_CASE(OptionsFileExpanded) {
     EXPECT_TRUE(llvm::StringRef(joined).contains("-D API=2"));
     EXPECT_TRUE(contains(args, "-std=c++20"));
     EXPECT_FALSE(contains(args, "--options-file"));
+    EXPECT_FALSE(llvm::StringRef(joined).contains(*file));
 
     // The value is a comma-separated file list: every element expands.
     auto second = fs::createTemporaryFile("clice-nvcc", "rsp");
@@ -239,11 +247,16 @@ TEST_CASE(OptionsFileExpanded) {
     auto both = llvm::join(translate({"nvcc", "-optf", pair.c_str()}), " ");
     EXPECT_TRUE(llvm::StringRef(both).contains("-D API=2"));
     EXPECT_TRUE(llvm::StringRef(both).contains("-D FROM_SECOND=2"));
+    EXPECT_FALSE(llvm::StringRef(both).contains("-optf"));
+    EXPECT_FALSE(llvm::StringRef(both).contains(*file));
+    EXPECT_FALSE(llvm::StringRef(both).contains(*second));
 
     // An unreadable file drops with a warning; the rest of the command
     // still translates.
     auto missing = translate({"nvcc", "--options-file=missing.rsp", "-DX"}, "/clice-nonexistent");
     EXPECT_TRUE(contains(missing, "X"));
+    EXPECT_FALSE(contains(missing, "--options-file=missing.rsp"));
+    EXPECT_FALSE(contains(missing, "missing.rsp"));
 
     fs::remove(*file);
     fs::remove(*second);

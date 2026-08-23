@@ -210,6 +210,7 @@ std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> argu
     bool ewp = false;
     bool relaxed_constexpr = false;
     bool extended_lambda = false;
+    bool device_debug = false;
 
     auto args = expand_options_files(arguments.drop_front(), directory);
 
@@ -335,6 +336,12 @@ std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> argu
             extended_lambda = true;
             continue;
         }
+        /// Consumed rather than passed through: clang reads a bare -G as
+        /// its small-data-threshold option.
+        if(arg == "-G" || arg == "--device-debug") {
+            device_debug = true;
+            continue;
+        }
 
         /// Preprocessor list options, rewritten to the short spellings the
         /// CDB classification knows. The exact-spelling matches must come
@@ -411,6 +418,8 @@ std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> argu
         prelude.emplace_back("-D__CUDACC_EXTENDED_LAMBDA__");
     if(ewp)
         prelude.emplace_back("-D__CUDACC_EWP__");
+    if(device_debug)
+        prelude.emplace_back("-D__CUDACC_DEBUG__");
     result.insert(result.begin() + 1, prelude.begin(), prelude.end());
 
     /// The stream macro is nvcc's one exception: it lands after the user's
