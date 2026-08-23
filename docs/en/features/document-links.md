@@ -190,6 +190,7 @@ Clickable links from source directives to their resolved target files.
 
 | Date       | Change                                                        | PR                                                 |
 | ---------- | ------------------------------------------------------------- | -------------------------------------------------- |
+| 2026-08-23 | Resolved-path tooltips; replies sorted into document order    | [#632](https://github.com/clice-io/clice/pull/632) |
 | 2026-04-11 | `__has_include` argument links via unified directive scanning | [#421](https://github.com/clice-io/clice/pull/421) |
 | 2026-04-09 | `#embed` links; links inside the preamble preserved           | [#413](https://github.com/clice-io/clice/pull/413) |
 | 2025-03-16 | `#include` directive links                                    | [#107](https://github.com/clice-io/clice/pull/107) |
