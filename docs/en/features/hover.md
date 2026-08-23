@@ -1538,8 +1538,9 @@ Robustness on inputs that have broken other tooling.
 
 ## Changelog
 
-| Date       | Change                                          | PR                                                 |
-| ---------- | ----------------------------------------------- | -------------------------------------------------- |
-| 2026-08-23 | Macro hover: definitions, expansion preview     | [#629](https://github.com/clice-io/clice/pull/629) |
-| 2026-08-21 | Resolved paths for include and embed directives | [#581](https://github.com/clice-io/clice/pull/581) |
-| 2026-06-12 | Port clangd hover implementation                | [#452](https://github.com/clice-io/clice/pull/452) |
+| Date       | Change                                                         | PR                                                 |
+| ---------- | -------------------------------------------------------------- | -------------------------------------------------- |
+| 2026-08-23 | Fixture-generated checklist; corpus reorganized by card aspect | [#633](https://github.com/clice-io/clice/pull/633) |
+| 2026-08-23 | Macro hover: definitions, expansion preview                    | [#629](https://github.com/clice-io/clice/pull/629) |
+| 2026-08-21 | Resolved paths for include and embed directives                | [#581](https://github.com/clice-io/clice/pull/581) |
+| 2026-06-12 | Port clangd hover implementation                               | [#452](https://github.com/clice-io/clice/pull/452) |
