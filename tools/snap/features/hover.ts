@@ -18,9 +18,10 @@ function normalizeRoots(contents: string, root: string): string {
         .sort((a, b) => b.length - a.length);
     let out = contents;
     for (const form of forms) {
-        // Boundary-guarded: `/mnt/work` must not eat into `/mnt/workspace`.
+        // Boundary-guarded: `/mnt/work` must not eat into `/mnt/workspace`,
+        // so the root only matches when a separator (or the end) follows.
         const escaped = form.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
-        out = out.replace(new RegExp(`${escaped}(?![A-Za-z0-9_.-])`, "g"), WORKSPACE_PLACEHOLDER);
+        out = out.replace(new RegExp(`${escaped}(?=$|[\\\\/])`, "g"), WORKSPACE_PLACEHOLDER);
     }
     return out.replace(/\$\{WS\}[^\s`"')]*/g, (span) => span.replaceAll("\\", "/"));
 }
