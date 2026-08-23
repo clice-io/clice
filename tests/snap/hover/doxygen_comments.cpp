@@ -1,3 +1,6 @@
+// Test cases ported from clangd's HoverTests.cpp (llvmorg-21.1.8), part of the LLVM project,
+// licensed under Apache License v2.0 with LLVM Exceptions.
+
 /// # Documentation
 ///
 /// ## Doxygen `///` comments — extracted from the declaration and rendered on hover
@@ -8,8 +11,6 @@
 /// Applies to plain functions, primary templates and their specializations;
 /// a reference resolves to the most specialized declaration's comment.
 
-// Test cases ported from clangd's HoverTests.cpp (llvmorg-21.1.8), part of the LLVM project,
-// licensed under Apache License v2.0 with LLVM Exceptions.
 namespace docs {
 /// Adds two integers.
 int §(01_function)add(int a, int b);

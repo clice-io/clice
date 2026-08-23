@@ -19,7 +19,9 @@
 ///
 /// A file is a doc item iff its first line (after stripping `/// `) starts
 /// with `# `. Anything else is a supplementary edge-case test, excluded
-/// from docs. The heading hierarchy is plain markdown: with an `## item
+/// from docs. A plain-`//` prologue (license/attribution comments) may
+/// precede the header; it belongs to neither the header nor the example.
+/// The heading hierarchy is plain markdown: with an `## item
 /// title` under the h1, the h1 names the doc section the item belongs to —
 /// matched verbatim against the doc page's generated-region key
 /// (`<!-- BEGIN GENERATED ITEMS: Fold Kinds -->`); an h1 alone is the item
@@ -53,6 +55,7 @@ const FEATURES: Record<string, string> = {
     code_completion: "docs/en/features/completion.md",
     document_links: "docs/en/features/document-links.md",
     document_symbol: "docs/en/features/document-symbols.md",
+    hover: "docs/en/features/hover.md",
     folding_range: "docs/en/features/folding-ranges.md",
     inlay_hint: "docs/en/features/inlay-hints.md",
     semantic_tokens: "docs/en/features/semantic-tokens.md",
@@ -65,7 +68,7 @@ const FEATURES: Record<string, string> = {
 /// hand-assigned label from before the feature joined the pipeline.
 const OVERVIEW_ROWS: { name: string; page: string; key?: string; label?: string }[] = [
     { name: "Code Completion", page: "completion", key: "code_completion" },
-    { name: "Hover", page: "hover", label: "Implemented" },
+    { name: "Hover", page: "hover", key: "hover" },
     { name: "Signature Help", page: "signature-help", key: "signature_help" },
     { name: "Code Navigation", page: "navigation", label: "Partial" },
     { name: "Document Links", page: "document-links", key: "document_links" },
@@ -172,7 +175,21 @@ function parseIntStrict(value: string): number | null {
 /// Parse a fixture's doc header. Returns null for supplementary files.
 function parseFixture(filePath: string, featureDir: string, problems: string[]): Fixture | null {
     const text = fs.readFileSync(filePath, "utf8");
-    const lines = splitLines(text);
+    let lines = splitLines(text);
+
+    // A fixture may open with a plain-`//` prologue (license/attribution
+    // comments) before the doc header. It is not part of the header or the
+    // example, so drop it: detection and example extraction both work on
+    // the remaining lines.
+    let prologue = 0;
+    while (prologue < lines.length) {
+        const line = (lines[prologue] ?? "").trimStart();
+        if (line !== "" && !(line.startsWith("//") && !line.startsWith("///"))) {
+            break;
+        }
+        prologue += 1;
+    }
+    lines = lines.slice(prologue);
 
     /// Stripped `///` text at line i, or null if it is not a `///` line.
     const comment = (i: number): string | null => {

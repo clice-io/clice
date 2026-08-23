@@ -2,7 +2,7 @@
 created_at: 2026-08-23
 input_file: accessor_docs.cpp
 ---
-01_getter: { range: "15:8-15:16" }
+01_getter: { range: "16:8-16:16" }
 ### method `getWidth`  
 
 ---
@@ -15,7 +15,7 @@ Trivial accessor for `width`.
 public: int getWidth()
 ```
 
-02_setter: { range: "16:9-16:17" }
+02_setter: { range: "17:9-17:17" }
 ### method `setWidth`  
 
 ---

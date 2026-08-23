@@ -1,3 +1,6 @@
+// Test cases ported from clangd's HoverTests.cpp (llvmorg-21.1.8), part of the LLVM project,
+// licensed under Apache License v2.0 with LLVM Exceptions.
+
 /// # Type Information
 ///
 /// ## `auto` deduction — the type the placeholder resolves to
@@ -8,9 +11,6 @@
 /// Hovering an `auto` placeholder shows the type substituted for it —
 /// builtins, pointers, lambdas, template instantiations, and the
 /// `/* not deduced */` marker inside an uninstantiated template.
-
-// Test cases ported from clangd's HoverTests.cpp (llvmorg-21.1.8), part of the LLVM project,
-// licensed under Apache License v2.0 with LLVM Exceptions.
 
 namespace auto_deduction {
 

@@ -1,3 +1,6 @@
+// Test cases ported from clangd's HoverTests.cpp (llvmorg-21.1.8), part of the LLVM project,
+// licensed under Apache License v2.0 with LLVM Exceptions.
+
 /// # Documentation
 ///
 /// ## Synthesized accessor docs — trivial getters/setters get a generated one-line description
@@ -8,8 +11,6 @@
 /// A trivial getter or setter with no comment of its own gets a synthesized
 /// "Trivial accessor/setter for `field`." line in its hover card.
 
-// Test cases ported from clangd's HoverTests.cpp (llvmorg-21.1.8), part of the LLVM project,
-// licensed under Apache License v2.0 with LLVM Exceptions.
 namespace accessors {
 struct Widget {
     int width;

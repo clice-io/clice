@@ -1,5 +1,24 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
+
 import { markerPoints } from "../annotation.ts";
 import { fmtRange, OffsetConverter, sortedMarkers, type Feature } from "../render.ts";
+import { WORKSPACE_PLACEHOLDER } from "../snapshot.ts";
+
+/// Hover cards may embed resolved filesystem paths (the include directive
+/// card). Rewrite the corpus/workspace root to ${WS} and normalize the
+/// separators of the rewritten span, so the two paths pin one portable
+/// body. Only ${WS}-anchored spans are touched — a bare backslash
+/// elsewhere is real content (macro line splices).
+function normalizeRoots(contents: string, root: string): string {
+    let out = contents;
+    for (const form of new Set([root, fs.realpathSync.native(root)])) {
+        out = out
+            .replaceAll(form.split(path.sep).join("/"), WORKSPACE_PLACEHOLDER)
+            .replaceAll(form, WORKSPACE_PLACEHOLDER);
+    }
+    return out.replace(/\$\{WS\}[^\s`"')]*/g, (span) => span.replaceAll("\\", "/"));
+}
 
 type HoverItem = { rangeText: string | null; contents: string } | null;
 
@@ -47,7 +66,7 @@ export const hover: Feature = {
                 const end = map.position(raw.range.end);
                 rangeText = `${start.line}:${start.character}-${end.line}:${end.character}`;
             }
-            items.push([name, { rangeText, contents: raw.contents }]);
+            items.push([name, { rangeText, contents: normalizeRoots(raw.contents, ctx.root) }]);
         }
         return formatHover(items);
     },
@@ -69,7 +88,7 @@ export const hover: Feature = {
                 name,
                 {
                     rangeText: reply.range ? fmtRange(reply.range) : null,
-                    contents: contents.value,
+                    contents: normalizeRoots(contents.value, ctx.root),
                 },
             ]);
         }

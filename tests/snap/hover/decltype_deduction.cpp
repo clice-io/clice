@@ -1,3 +1,6 @@
+// Test cases ported from clangd's HoverTests.cpp (llvmorg-21.1.8), part of the LLVM project,
+// licensed under Apache License v2.0 with LLVM Exceptions.
+
 /// # Type Information
 ///
 /// ## `decltype` deduction — value, reference and dependent forms
@@ -7,9 +10,6 @@
 ///
 /// Hovering a `decltype` or `decltype(auto)` placeholder shows the resolved
 /// type, including the reference the parenthesized-expression rule adds.
-
-// Test cases ported from clangd's HoverTests.cpp (llvmorg-21.1.8), part of the LLVM project,
-// licensed under Apache License v2.0 with LLVM Exceptions.
 
 namespace decltype_deduction {
 

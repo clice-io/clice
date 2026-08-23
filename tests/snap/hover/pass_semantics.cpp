@@ -1,3 +1,6 @@
+// Test cases ported from clangd's HoverTests.cpp (llvmorg-21.1.8), part of the LLVM project,
+// licensed under Apache License v2.0 with LLVM Exceptions.
+
 /// # Expression Context
 ///
 /// ## Pass semantics — by value, by reference, by const reference
@@ -7,9 +10,6 @@
 ///
 /// The argument card states how the value reaches the callee: copied by
 /// value, or bound to a mutable or const reference parameter.
-
-// Test cases ported from clangd's HoverTests.cpp (llvmorg-21.1.8), part of the LLVM project,
-// licensed under Apache License v2.0 with LLVM Exceptions.
 
 namespace pass_semantics {
 

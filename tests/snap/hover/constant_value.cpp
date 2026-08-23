@@ -1,3 +1,6 @@
+// Test cases ported from clangd's HoverTests.cpp (llvmorg-21.1.8), part of the LLVM project,
+// licensed under Apache License v2.0 with LLVM Exceptions.
+
 /// # Expression Context
 ///
 /// ## Constant evaluation — constexpr, enumerators, sizeof
@@ -7,9 +10,6 @@
 ///
 /// When an initializer is a constant expression, the card evaluates it and
 /// shows the resulting value.
-
-// Test cases ported from clangd's HoverTests.cpp (llvmorg-21.1.8), part of the LLVM project,
-// licensed under Apache License v2.0 with LLVM Exceptions.
 
 namespace constant_value {
 

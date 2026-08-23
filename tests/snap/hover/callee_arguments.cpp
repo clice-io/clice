@@ -1,3 +1,6 @@
+// Test cases ported from clangd's HoverTests.cpp (llvmorg-21.1.8), part of the LLVM project,
+// licensed under Apache License v2.0 with LLVM Exceptions.
+
 /// # Expression Context
 ///
 /// ## Call arguments — which parameter each argument binds to
@@ -7,9 +10,6 @@
 ///
 /// Hovering an argument at a call site shows the parameter it is passed to,
 /// naming the parameter it binds.
-
-// Test cases ported from clangd's HoverTests.cpp (llvmorg-21.1.8), part of the LLVM project,
-// licensed under Apache License v2.0 with LLVM Exceptions.
 
 namespace callee_arguments {
 
