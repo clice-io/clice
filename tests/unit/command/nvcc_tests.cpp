@@ -152,6 +152,14 @@ TEST_CASE(MacroToggles) {
     EXPECT_FALSE(contains(debug, "-G"));
     EXPECT_TRUE(contains(translate({"nvcc", "--device-debug"}), "-D__CUDACC_DEBUG__"));
 
+    // Fast math becomes clang's approx-transcendentals flag, which selects
+    // the same fast variants in the math wrapper.
+    for(const char* spelling: {"--use_fast_math", "-use_fast_math"}) {
+        auto fast = translate({"nvcc", spelling});
+        EXPECT_TRUE(contains(fast, "-fgpu-approx-transcendentals"));
+        EXPECT_FALSE(contains(fast, spelling));
+    }
+
     // Stateful options are last-wins, matching nvcc.
     EXPECT_FALSE(contains(translate({"nvcc", "-rdc=true", "-rdc=false"}), "-fgpu-rdc"));
     auto stream = translate({"nvcc", "-default-stream=per-thread", "-default-stream=legacy"});
@@ -310,6 +318,23 @@ TEST_CASE(DryrunRejectsIncomplete) {
     EXPECT_FALSE(parse_nvcc_dryrun("#$ TOP=/opt/cuda").has_value());
 }
 
+TEST_CASE(DryrunHostOnly) {
+    // A host-language input (nvcc -c foo.cpp) has no preprocess stage: the
+    // single host compile line names the compiler, and its defines survive
+    // unfiltered — outside CUDA mode clang derives none of them.
+    constexpr llvm::StringRef host_only = R"(#$ TOP=/opt/cuda
+#$ INCLUDES="-I/opt/cuda/include"
+#$ g++ -D__CUDA_ARCH_LIST__=520 -c -x c++ -D__NVCC__ -D__CUDACC_VER_MAJOR__=12 -m64 "/tmp/a.cpp" -o "/tmp/a.o"
+)";
+    auto info = parse_nvcc_dryrun(host_only);
+    ASSERT_TRUE(info.has_value());
+    EXPECT_EQ(info->host_compiler, "g++");
+    EXPECT_TRUE(std::ranges::contains(info->host_defines, "__NVCC__"));
+    EXPECT_TRUE(std::ranges::contains(info->host_defines, "__CUDA_ARCH_LIST__=520"));
+    EXPECT_TRUE(std::ranges::contains(info->host_defines, "__CUDACC_VER_MAJOR__=12"));
+    EXPECT_TRUE(info->device_defines.empty());
+}
+
 TEST_CASE(DryrunTopFallback) {
     // A wrapper may swallow TOP=; NVVMIR_LIBRARY_DIR is <root>/nvvm/libdevice.
     constexpr llvm::StringRef no_top = R"(#$ NVVMIR_LIBRARY_DIR=/opt/cuda/nvvm/libdevice
@@ -369,6 +394,70 @@ TEST_CASE(DatabaseTranslatesNVCC) {
     for(llvm::StringRef flag: flags) {
         EXPECT_FALSE(flag.starts_with("--generate-code"));
     }
+}
+
+TEST_CASE(RuleFlagsTranslated) {
+    CompilationDatabase db;
+    std::vector<const char*> arguments = {"nvcc",
+                                          "--generate-code=arch=compute_75,code=sm_75",
+                                          "-c",
+                                          "/tmp/kern.cu"};
+    db.add_command("/tmp", "/tmp/kern.cu", arguments);
+
+    // Config rule flags for an NVCC entry go through the same translation
+    // as the command: the remove matches the arch through its translated
+    // spelling and the append reaches clang translated, not as raw nvcc
+    // tokens.
+    CommandOptions options;
+    llvm::SmallVector<std::string> remove = {"-gencode", "arch=compute_75,code=sm_75"};
+    options.remove = remove;
+    llvm::SmallVector<std::string> append = {"--extended-lambda",
+                                             "--generate-code=arch=compute_90a,code=sm_90a"};
+    options.append = append;
+
+    auto commands = db.lookup("/tmp/kern.cu", options);
+    ASSERT_EQ(commands.size(), std::size_t(1));
+
+    auto& flags = commands[0].resolved.flags;
+    auto has = [&](llvm::StringRef flag) {
+        return std::ranges::contains(flags, flag);
+    };
+    EXPECT_FALSE(has("--offload-arch=sm_75"));
+    EXPECT_TRUE(has("--cuda-gpu-arch=sm_90a"));
+    EXPECT_TRUE(has("-D__CUDACC_EXTENDED_LAMBDA__"));
+    for(llvm::StringRef flag: flags) {
+        EXPECT_FALSE(flag.starts_with("--generate-code"));
+        EXPECT_FALSE(flag.starts_with("--extended-lambda"));
+    }
+}
+
+TEST_CASE(RemoveMatchesUnknownSpelling) {
+    CompilationDatabase db;
+    std::vector<const char*> arguments = {"nvcc",
+                                          "-ccbin=/usr/bin/g++-12",
+                                          "-allow-unsupported-compiler",
+                                          "-target-dir",
+                                          "sbsa-linux",
+                                          "-c",
+                                          "/tmp/kern.cu"};
+    db.add_command("/tmp", "/tmp/kern.cu", arguments);
+
+    CommandOptions options;
+    llvm::SmallVector<std::string> remove = {"--allow-unsupported-compiler"};
+    options.remove = remove;
+
+    auto commands = db.lookup("/tmp/kern.cu", options);
+    ASSERT_EQ(commands.size(), std::size_t(1));
+
+    // Probe flags all parse as the shared unknown id; removal keys on the
+    // spelling, so the other probe tokens survive.
+    auto& flags = commands[0].resolved.flags;
+    auto has = [&](llvm::StringRef flag) {
+        return std::ranges::contains(flags, flag);
+    };
+    EXPECT_FALSE(has("--allow-unsupported-compiler"));
+    EXPECT_TRUE(has("-ccbin=/usr/bin/g++-12"));
+    EXPECT_TRUE(has("--target-directory=sbsa-linux"));
 }
 
 };  // TEST_SUITE(NVCCTests)

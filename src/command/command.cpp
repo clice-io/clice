@@ -455,6 +455,28 @@ CompileCommand CompilationDatabase::build_command(std::uint32_t path_id,
         flags.insert(flags.end(), args.begin(), args.end());
     };
 
+    /// Rule flags for an NVCC entry arrive in the same nvcc spellings as
+    /// the command they edit — rewrite them like the command itself, so
+    /// removes match the translated canonical and appends reach clang in
+    /// spellings it parses.
+    auto translate_rule_flags = [&](llvm::ArrayRef<std::string> rule_flags) {
+        std::vector<std::string> result(rule_flags.begin(), rule_flags.end());
+        if(result.empty() ||
+           Toolchain::driver_family(info->canonical->arguments.front()) != CompilerFamily::NVCC) {
+            return result;
+        }
+        std::vector<const char*> argv;
+        argv.reserve(result.size() + 1);
+        argv.push_back(info->canonical->arguments.front());
+        for(auto& arg: result) {
+            argv.push_back(arg.c_str());
+        }
+        auto translated = translate_nvcc_command(argv, directory);
+        result.assign(std::make_move_iterator(translated.begin() + 1),
+                      std::make_move_iterator(translated.end()));
+        return result;
+    };
+
     append_args(info->canonical->arguments);
     append_args(info->patch);
 
@@ -466,13 +488,10 @@ CompileCommand CompilationDatabase::build_command(std::uint32_t path_id,
     }
 
     // Apply remove filter.
-    if(!options.remove.empty()) {
-        std::vector<std::string> remove_strs;
-        for(auto& s: options.remove) {
-            remove_strs.push_back(s);
-        }
+    auto remove_flags = translate_rule_flags(options.remove);
+    if(!remove_flags.empty()) {
         std::vector<kota::option::ParsedArg> remove_args;
-        for(auto& result: option::table().parse(remove_strs)) {
+        for(auto& result: option::table().parse(remove_flags)) {
             if(result.has_value()) {
                 remove_args.push_back(*result);
             }
@@ -496,6 +515,15 @@ CompileCommand CompilationDatabase::build_command(std::uint32_t path_id,
             auto range = ranges::equal_range(remove_args, id, {}, get_id);
             bool removed = false;
             for(auto& remove: range) {
+                /// All unknown options share one id; their identity is the
+                /// spelling (NVCC probe flags persist as unknown tokens).
+                if(id == option::OPT_UNKNOWN) {
+                    if(arg.spelling == remove.spelling) {
+                        removed = true;
+                        break;
+                    }
+                    continue;
+                }
                 if(remove.values.size() == 1 && remove.values[0] == "*") {
                     removed = true;
                     break;
@@ -511,7 +539,7 @@ CompileCommand CompilationDatabase::build_command(std::uint32_t path_id,
         }
     }
 
-    for(auto& arg: options.append) {
+    for(auto& arg: translate_rule_flags(options.append)) {
         append_arg(arg);
     }
 

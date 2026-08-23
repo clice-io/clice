@@ -211,6 +211,7 @@ std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> argu
     bool relaxed_constexpr = false;
     bool extended_lambda = false;
     bool device_debug = false;
+    bool use_fast_math = false;
 
     auto args = expand_options_files(arguments.drop_front(), directory);
 
@@ -342,6 +343,14 @@ std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> argu
             device_debug = true;
             continue;
         }
+        /// Device fast math has no preprocess-visible effect in nvcc (cicc
+        /// swaps the transcendentals itself); clang's flag selects the same
+        /// fast variants in its math wrapper via
+        /// __CLANG_GPU_APPROX_TRANSCENDENTALS__.
+        if(arg == "--use_fast_math" || arg == "-use_fast_math") {
+            use_fast_math = true;
+            continue;
+        }
 
         /// Preprocessor list options, rewritten to the short spellings the
         /// CDB classification knows. The exact-spelling matches must come
@@ -420,6 +429,8 @@ std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> argu
         prelude.emplace_back("-D__CUDACC_EWP__");
     if(device_debug)
         prelude.emplace_back("-D__CUDACC_DEBUG__");
+    if(use_fast_math)
+        prelude.emplace_back("-fgpu-approx-transcendentals");
     result.insert(result.begin() + 1, prelude.begin(), prelude.end());
 
     /// The stream macro is nvcc's one exception: it lands after the user's
@@ -446,6 +457,7 @@ std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> argu
 std::expected<NVCCDryrunInfo, std::string> parse_nvcc_dryrun(llvm::StringRef output) {
     NVCCDryrunInfo info;
     llvm::StringRef nvvm_dir;
+    llvm::SmallVector<const char*, 64> first_command;
 
     auto harvest_defines = [](llvm::ArrayRef<const char*> tokens, std::vector<std::string>& out) {
         for(llvm::StringRef token: tokens) {
@@ -524,6 +536,10 @@ std::expected<NVCCDryrunInfo, std::string> parse_nvcc_dryrun(llvm::StringRef out
         }
 
         auto tail = llvm::ArrayRef(tokens).drop_front();
+
+        if(first_command.empty())
+            first_command.assign(tokens.begin(), tokens.end());
+
         bool is_preprocess = std::ranges::contains(tail, llvm::StringRef("-E"));
         if(!is_preprocess)
             continue;
@@ -543,8 +559,21 @@ std::expected<NVCCDryrunInfo, std::string> parse_nvcc_dryrun(llvm::StringRef out
     if(info.cuda_path.empty() && !nvvm_dir.empty())
         info.cuda_path = path::parent_path(path::parent_path(nvvm_dir));
 
+    /// A host-language input (`nvcc -c foo.cpp`) compiles in a single host
+    /// step with no preprocess stage: the first pipeline command is the
+    /// host compile line. Its defines are kept unfiltered — outside CUDA
+    /// mode clang derives none of them (nvcc injects even
+    /// __CUDA_ARCH_LIST__ there).
+    if(info.host_compiler.empty() && !first_command.empty()) {
+        info.host_compiler = first_command[0];
+        for(llvm::StringRef token: llvm::ArrayRef(first_command).drop_front()) {
+            if(token.consume_front("-D"))
+                info.host_defines.emplace_back(token);
+        }
+    }
+
     if(info.host_compiler.empty())
-        return std::unexpected("nvcc dryrun output has no host preprocess command");
+        return std::unexpected("nvcc dryrun output has no host compile command");
 
     return info;
 }

@@ -33,7 +33,9 @@ bool is_nvcc_probe_flag(llvm::StringRef arg);
 /// - `-Xcompiler` values unwrap into plain host flags, `-x cu` becomes
 ///   `-x cuda`, and macro-defining toggles (`--extended-lambda`,
 ///   `-rdc=true`, `-dc`, `-ewp`, `--default-stream per-thread`, ...) become
-///   their exact macro effect.
+///   their exact macro effect. `--use_fast_math` becomes clang's
+///   `-fgpu-approx-transcendentals`, which selects the same fast
+///   transcendentals in the math wrapper.
 /// - `--options-file` response files are expanded in place, resolved
 ///   against `directory` like a relative `-ccbin` — nvcc resolves both
 ///   against its working directory.
@@ -54,7 +56,8 @@ struct NVCCDryrunInfo {
     /// `targets/<triple>`).
     std::string cuda_path;
 
-    /// argv[0] of the host preprocess line — the compiler nvcc actually
+    /// argv[0] of the host preprocess line (or of the single host compile
+    /// line when the input is host-language) — the compiler nvcc actually
     /// drives, resolved from `-ccbin`, environment, or its defaults. Often
     /// a bare program name that only exists on `search_path`.
     std::string host_compiler;

@@ -2,6 +2,7 @@
 
 #include <expected>
 #include <format>
+#include <optional>
 #include <ranges>
 #include <string>
 #include <vector>
@@ -395,21 +396,34 @@ kota::task<std::expected<std::vector<std::string>, std::string>>
         // toolchain is then pinned as in the GCC branch and our own driver
         // builds the cc1 in CUDA mode.
         case CompilerFamily::NVCC: {
-            /// Only a .cu input makes nvcc print the offload pipeline; the
-            /// shared probe follows the real file's extension.
-            llvm::SmallString<64> cu_probe;
-            if(auto e = fs::createTemporaryFile("query-toolchain", "cu", cu_probe))
+            /// nvcc only offloads CUDA-language inputs; a host-language
+            /// entry (`nvcc -c foo.cpp`, or an explicit `-x c++`) compiles
+            /// in a single host step. The dryrun probe follows the effective
+            /// language so it reports the pipeline the real file gets —
+            /// only a .cu input makes nvcc print the offload pipeline (the
+            /// shared probe keeps the real file's extension).
+            bool cuda_input = ext == "cu" || ext == "cuh";
+            for(std::size_t i = 0; i + 1 < args.size(); i += 1) {
+                if(llvm::StringRef(args[i]) == "-x")
+                    cuda_input = llvm::StringRef(args[i + 1]) == "cuda";
+            }
+            llvm::StringRef probe_ext = "cu";
+            if(!cuda_input)
+                probe_ext = (ext == "cu" || ext == "cuh") ? "cpp" : ext;
+
+            llvm::SmallString<64> nvcc_probe;
+            if(auto e = fs::createTemporaryFile("query-toolchain", probe_ext, nvcc_probe))
                 co_return std::unexpected(
                     std::format("Failed to create temp file: {}", e.message()));
-            auto cu_cleanup = llvm::make_scope_exit([&] {
-                if(auto e = fs::remove(cu_probe))
+            auto nvcc_cleanup = llvm::make_scope_exit([&] {
+                if(auto e = fs::remove(nvcc_probe))
                     LOG_ERROR("Fail to remove temporary file: {}", e);
             });
 
             std::vector<std::string> dryrun_args = {driver.str(),
                                                     "--dryrun",
                                                     "-c",
-                                                    std::string(cu_probe)};
+                                                    std::string(nvcc_probe)};
             for(llvm::StringRef arg: args) {
                 if(is_nvcc_probe_flag(arg))
                     dryrun_args.push_back(arg.str());
@@ -471,45 +485,58 @@ kota::task<std::expected<std::vector<std::string>, std::string>>
                         std::format("Unsupported nvcc host compiler: {}", host));
             }
 
-            /// Without a root from the dryrun, clang's own CUDA detection
-            /// (which knows the distro-specific install locations) is the
-            /// remaining chance.
-            if(!info->cuda_path.empty())
-                cuda_args.push_back("--cuda-path=" + info->cuda_path);
-            /// A toolkit newer than the linked clang still parses, modulo
-            /// missing feature macros; without this the version warning
-            /// would land in every file's diagnostics.
-            cuda_args.push_back("--no-cuda-version-check");
+            if(cuda_input) {
+                /// Without a root from the dryrun, clang's own CUDA detection
+                /// (which knows the distro-specific install locations) is the
+                /// remaining chance.
+                if(!info->cuda_path.empty())
+                    cuda_args.push_back("--cuda-path=" + info->cuda_path);
+                /// A toolkit newer than the linked clang still parses, modulo
+                /// missing feature macros; without this the version warning
+                /// would land in every file's diagnostics.
+                cuda_args.push_back("--no-cuda-version-check");
 
-            auto contains_flag = [&](llvm::StringRef name) {
-                return ranges::any_of(args, [&](llvm::StringRef arg) { return arg == name; });
-            };
-            auto contains_prefix = [&](std::initializer_list<llvm::StringRef> prefixes) {
-                return ranges::any_of(args, [&](llvm::StringRef arg) {
-                    return ranges::any_of(prefixes, [&](llvm::StringRef prefix) {
-                        return arg.starts_with(prefix);
+                auto contains_prefix = [&](std::initializer_list<llvm::StringRef> prefixes) {
+                    return ranges::any_of(args, [&](llvm::StringRef arg) {
+                        return ranges::any_of(prefixes, [&](llvm::StringRef prefix) {
+                            return arg.starts_with(prefix);
+                        });
                     });
-                });
-            };
+                };
 
-            /// Default to the device-side view: reading CUDA code means
-            /// reading the `__CUDA_ARCH__` world — CUTLASS keeps every
-            /// arch-specific path behind it, and the host pass grays them
-            /// all out. `--cuda-host-only` in the command (e.g. a config
-            /// rule append) flips a file to the host view instead.
-            bool host_view = contains_flag("--cuda-host-only");
-            if(!host_view && !contains_flag("--cuda-device-only"))
-                cuda_args.push_back("--cuda-device-only");
+                /// Default to the device-side view: reading CUDA code means
+                /// reading the `__CUDA_ARCH__` world — CUTLASS keeps every
+                /// arch-specific path behind it, and the host pass grays them
+                /// all out. `--cuda-host-only` in the command (e.g. a config
+                /// rule append) flips a file to the host view instead; the
+                /// last selector wins, matching the driver's own reading of
+                /// the forwarded flags.
+                std::optional<bool> selected_host;
+                for(llvm::StringRef arg: args) {
+                    if(arg == "--cuda-host-only")
+                        selected_host = true;
+                    else if(arg == "--cuda-device-only")
+                        selected_host = false;
+                }
+                bool host_view = selected_host.value_or(false);
+                if(!selected_host.has_value())
+                    cuda_args.push_back("--cuda-device-only");
 
-            for(auto& define: host_view ? info->host_defines : info->device_defines)
-                cuda_args.push_back("-D" + define);
+                for(auto& define: host_view ? info->host_defines : info->device_defines)
+                    cuda_args.push_back("-D" + define);
 
-            if(!contains_prefix({"-std="}) && !info->cpp_dialect.empty())
-                cuda_args.push_back("-std=" + info->cpp_dialect);
+                if(!contains_prefix({"-std="}) && !info->cpp_dialect.empty())
+                    cuda_args.push_back("-std=" + info->cpp_dialect);
 
-            if(!contains_prefix({"--cuda-gpu-arch=", "--offload-arch="}) &&
-               !info->default_arch.empty())
-                cuda_args.push_back("--cuda-gpu-arch=" + info->default_arch);
+                if(!contains_prefix({"--cuda-gpu-arch=", "--offload-arch="}) &&
+                   !info->default_arch.empty())
+                    cuda_args.push_back("--cuda-gpu-arch=" + info->default_arch);
+            } else {
+                /// The single host step still carries nvcc's identity
+                /// macros (__NVCC__, version macros) — but no CUDA mode.
+                for(auto& define: info->host_defines)
+                    cuda_args.push_back("-D" + define);
+            }
 
             for(llvm::StringRef arg: llvm::ArrayRef(args).drop_front()) {
                 if(is_nvcc_probe_flag(arg))
