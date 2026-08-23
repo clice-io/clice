@@ -137,6 +137,10 @@ Rich information cards for the symbol under the cursor.
   struct Circle : Base {
       void draw() override;
   };
+
+  struct Dot final : Circle {
+      void draw() final;
+  };
   ```
 
   </details>
@@ -1285,10 +1289,12 @@ Rich information cards for the symbol under the cursor.
 
   </details>
 
-- [x] No hover on meaningless tokens — builtins, literals and empty braces yield no card
+- [x] No hover on meaningless tokens — builtin keywords and empty bodies yield no card
 
-  Hovering a builtin type keyword, a literal or the inside of an empty
-  body produces no card at all, so editors show nothing rather than noise.
+  Hovering a builtin type keyword or the inside of an empty body
+  produces no card at all, so editors show nothing rather than noise.
+  (Numeric and bool literals also have no card today, but that is a
+  tracked gap — see the numeric-literal item — not a promise.)
 
   <details>
   <summary>Example</summary>
@@ -1297,10 +1303,6 @@ Rich information cards for the symbol under the cursor.
   namespace negatives {
 
   int counter = 0;
-
-  auto enabled = true;
-
-  auto answer = 42;
 
   void noop() {}
 

@@ -9,13 +9,18 @@ import { WORKSPACE_PLACEHOLDER } from "../snapshot.ts";
 /// card). Rewrite the corpus/workspace root to ${WS} and normalize the
 /// separators of the rewritten span, so the two paths pin one portable
 /// body. Only ${WS}-anchored spans are touched — a bare backslash
-/// elsewhere is real content (macro line splices).
+/// elsewhere is real content (macro line splices) — and the span ends at
+/// whitespace, so a fixture path containing spaces would stay partly
+/// native (none does).
 function normalizeRoots(contents: string, root: string): string {
+    const forms = [...new Set([root, fs.realpathSync.native(root)])]
+        .flatMap((form) => [form.split(path.sep).join("/"), form])
+        .sort((a, b) => b.length - a.length);
     let out = contents;
-    for (const form of new Set([root, fs.realpathSync.native(root)])) {
-        out = out
-            .replaceAll(form.split(path.sep).join("/"), WORKSPACE_PLACEHOLDER)
-            .replaceAll(form, WORKSPACE_PLACEHOLDER);
+    for (const form of forms) {
+        // Boundary-guarded: `/mnt/work` must not eat into `/mnt/workspace`.
+        const escaped = form.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+        out = out.replace(new RegExp(`${escaped}(?![A-Za-z0-9_.-])`, "g"), WORKSPACE_PLACEHOLDER);
     }
     return out.replace(/\$\{WS\}[^\s`"')]*/g, (span) => span.replaceAll("\\", "/"));
 }

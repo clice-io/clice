@@ -16,3 +16,7 @@ struct Base {
 struct Circle : Base {
     void dr§(override_method)aw() override;
 };
+
+struct Dot final : Circle {
+    void dr§(final_method)aw() final;
+};

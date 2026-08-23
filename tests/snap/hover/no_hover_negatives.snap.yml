@@ -2,10 +2,6 @@
 created_at: 2026-08-23
 input_file: no_hover_negatives.cpp
 ---
-bool_literal: NO HOVER
-
 builtin_type: NO HOVER
 
 empty_braces: NO HOVER
-
-int_literal: NO HOVER
