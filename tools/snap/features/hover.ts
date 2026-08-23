@@ -18,10 +18,16 @@ function normalizeRoots(contents: string, root: string): string {
         .sort((a, b) => b.length - a.length);
     let out = contents;
     for (const form of forms) {
-        // Boundary-guarded: `/mnt/work` must not eat into `/mnt/workspace`,
-        // so the root only matches when a separator (or the end) follows.
+        // Boundary-guarded on both sides: `/mnt/work` must not eat into
+        // `/mnt/workspace`, and `/tmp/work` must not fire inside
+        // `/var/tmp/work`. The leading guard must stay a lookbehind — real
+        // matches sit mid-string after newlines and backticks, so a
+        // consuming `(^|[\\/])` group would miss them all.
         const escaped = form.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
-        out = out.replace(new RegExp(`${escaped}(?=$|[\\\\/])`, "g"), WORKSPACE_PLACEHOLDER);
+        out = out.replace(
+            new RegExp(`(?<![\\w.~+-])${escaped}(?=$|[\\\\/])`, "g"),
+            WORKSPACE_PLACEHOLDER,
+        );
     }
     return out.replace(/\$\{WS\}[^\s`"')]*/g, (span) => span.replaceAll("\\", "/"));
 }
