@@ -1,0 +1,18 @@
+---
+created_at: 2026-08-23
+input_file: predefined_identifiers.cpp
+---
+func_dependent: { range: "18:23-18:31" }
+### variable `__func__`  
+
+---
+Type: `const char[]`  
+Name of the current function (predefined variable)
+
+func_name: { range: "13:23-13:31" }
+### variable `__func__`  
+
+---
+Type: `const char[8]`  
+Value = `"current"`  
+Name of the current function (predefined variable)

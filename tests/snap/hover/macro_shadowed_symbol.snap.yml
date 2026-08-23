@@ -1,0 +1,14 @@
+---
+created_at: 2026-08-23
+input_file: macro_shadowed_symbol.cpp
+---
+shadowed_use: { range: "20:12-20:18" }
+### macro `lookup`  
+
+---
+```cpp
+#define lookup(key) ((key) + 100)
+
+// Expands to
+( ( 5 ) + 100 )
+```

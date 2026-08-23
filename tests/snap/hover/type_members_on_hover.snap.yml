@@ -1,0 +1,24 @@
+---
+created_at: 2026-08-23
+input_file: type_members_on_hover.cpp
+---
+enum_type: { range: "13:5-13:10" }
+### enum `Color`  
+
+---
+```cpp
+// In namespace members
+enum Color {}
+```
+
+struct_type: { range: "19:7-19:12" }
+### struct `Point`  
+
+---
+Size: 8 bytes, alignment 4 bytes  
+
+---
+```cpp
+// In namespace members
+struct Point {}
+```
