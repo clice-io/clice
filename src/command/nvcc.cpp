@@ -32,6 +32,8 @@ struct ArchToken {
 
     /// 'a' (arch-specific) or 'f' (family) variant, 0 for the plain form.
     char suffix = 0;
+
+    bool operator==(const ArchToken&) const = default;
 };
 
 /// Scan a spec like "compute_90a" or "arch=compute_90a" for sm_NN /
@@ -211,6 +213,8 @@ std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> argu
     std::string host_compiler;
     std::string target_directory;
     llvm::StringRef default_stream;
+    llvm::StringRef machine;
+    llvm::StringRef optimize;
     bool allow_unsupported = false;
     std::optional<bool> rdc;
     bool ewp = false;
@@ -317,17 +321,23 @@ std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> argu
             continue;
         }
 
-        /// The joined short forms -m32/-m64 are already clang's spellings
-        /// and fall through below; a value nvcc rejects pins nothing.
+        /// The joined short forms -m32/-m64 are nvcc-fatal and fall through
+        /// below as clang's own spellings; a value nvcc rejects pins
+        /// nothing.
         if(value_of(i, {"-m", "--machine"}, value)) {
             if(value == "32" || value == "64")
-                result.emplace_back(("-m" + value).str());
+                machine = value;
             continue;
         }
 
-        /// Joined -O3 is already clang's spelling and falls through below.
         if(value_of(i, {"-O", "--optimize"}, value)) {
-            result.emplace_back(("-O" + value).str());
+            optimize = value;
+            continue;
+        }
+        /// nvcc reads joined -O3 as its own option, not host passthrough.
+        if(arg.size() > 2 && arg.starts_with("-O") &&
+           std::ranges::all_of(arg.drop_front(2), llvm::isDigit)) {
+            optimize = arg.drop_front(2);
             continue;
         }
 
@@ -462,22 +472,39 @@ std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> argu
         prelude.emplace_back("-D__CUDACC_DEBUG__");
     if(use_fast_math)
         prelude.emplace_back("-fgpu-approx-transcendentals");
+    /// The stream cancellation also renders ahead of the segment's own
+    /// flags: the base's injected macro sits before the seam either way,
+    /// and an explicit -D of the macro inside this edit must survive the
+    /// -U, like it survives nvcc's absent injection.
+    if(edit && !default_stream.empty() && default_stream != "per-thread")
+        prelude.emplace_back("-UCUDA_API_PER_THREAD_DEFAULT_STREAM");
     result.insert(result.begin() + 1, prelude.begin(), prelude.end());
 
     /// The stream macro is nvcc's one exception: it lands after the user's
     /// preprocessor flags.
     if(default_stream == "per-thread")
         result.emplace_back("-DCUDA_API_PER_THREAD_DEFAULT_STREAM=1");
-    else if(edit && !default_stream.empty())
-        result.emplace_back("-UCUDA_API_PER_THREAD_DEFAULT_STREAM");
 
-    /// nvcc rejects mixing -gencode with -arch, so at most one list is
-    /// populated.
-    auto& archs = gencode_archs.empty() ? arch_archs : gencode_archs;
+    /// nvcc's own -O/-m always land after the -Xcompiler payloads on the
+    /// host line, beating them regardless of input order.
+    if(!machine.empty())
+        result.emplace_back(("-m" + machine).str());
+    if(!optimize.empty())
+        result.emplace_back(("-O" + optimize).str());
+
+    /// nvcc compiles the union of the -gencode entries and the (last-wins)
+    /// -arch choice, one device pass each — the newest of the union is the
+    /// view. A non-numeric -arch next to -gencode entries joins nvcc's
+    /// union too, but resolving it needs the dryrun; the numeric side
+    /// approximates the pick.
+    llvm::SmallVector<ArchToken> archs = gencode_archs;
+    archs.append(arch_archs.begin(), arch_archs.end());
     if(!archs.empty()) {
-        /// An -arch edit replaces the base's architectures like nvcc's own
-        /// last-wins; -gencode entries accumulate onto them instead, so an
-        /// appended one must not erase the base's choice.
+        /// A pure -arch edit replaces the base's architectures: nvcc itself
+        /// would union it with the base's -gencode entries, but an appended
+        /// -arch reads as the user picking the view outright. -gencode
+        /// edits accumulate like nvcc's own, emitted bare for
+        /// collapse_gpu_arch_flags to resolve against the base's.
         if(edit && gencode_archs.empty())
             result.emplace_back("--no-offload-arch=all");
         result.emplace_back("--cuda-gpu-arch=" + select_gpu_arch(archs));
@@ -503,16 +530,39 @@ std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> argu
 void collapse_gpu_arch_flags(std::vector<const char*>& flags) {
     struct ActiveArch {
         std::size_t index;
+        llvm::SmallVector<ArchToken, 1> tokens;
         std::pair<unsigned, int> rank;
     };
 
     /// The arch flags still alive under clang's accumulate semantics:
-    /// --no-offload-arch=all erases everything before it.
+    /// --no-offload-arch=all erases everything before it, a specific
+    /// --no-offload-arch=sm_NN only its matches.
     llvm::SmallVector<ActiveArch> active;
     for(std::size_t i = 0; i < flags.size(); i += 1) {
         llvm::StringRef arg = flags[i];
         if(arg == "--no-offload-arch=all") {
             active.clear();
+            continue;
+        }
+        if(arg.starts_with("--no-offload-arch=")) {
+            llvm::SmallVector<ArchToken> removed;
+            collect_archs(arg.substr(arg.find('=') + 1), removed);
+            if(removed.empty())
+                return;
+            auto matched = [&](const ArchToken& token) {
+                return std::ranges::contains(removed, token);
+            };
+            for(std::size_t j = active.size(); j > 0;) {
+                j -= 1;
+                auto& entry = active[j];
+                if(std::ranges::none_of(entry.tokens, matched))
+                    continue;
+                /// A flag naming both erased and surviving architectures
+                /// cannot drop at flag granularity — bail like below.
+                if(!std::ranges::all_of(entry.tokens, matched))
+                    return;
+                active.erase(active.begin() + j);
+            }
             continue;
         }
         if(!arg.starts_with("--cuda-gpu-arch=") && !arg.starts_with("--offload-arch="))
@@ -526,7 +576,7 @@ void collapse_gpu_arch_flags(std::vector<const char*>& flags) {
         if(tokens.empty())
             return;
         auto rank = arch_rank(*std::ranges::max_element(tokens, {}, arch_rank));
-        active.push_back({.index = i, .rank = rank});
+        active.push_back({.index = i, .tokens = std::move(tokens), .rank = rank});
     }
     if(active.size() < 2)
         return;

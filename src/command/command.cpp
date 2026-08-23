@@ -459,11 +459,10 @@ CompileCommand CompilationDatabase::build_command(std::uint32_t path_id,
         Toolchain::driver_family(info->canonical->arguments.front()) == CompilerFamily::NVCC;
 
     /// Rule flags for an NVCC entry arrive in the same nvcc spellings as
-    /// the command they edit — rewrite them like the command itself. Removes
-    /// translate standalone so they reproduce exactly the flags the base
-    /// translation emitted; appends translate as edits so an appended
-    /// default state (`-rdc=false` over an rdc base) cancels the base's
-    /// translated state instead of vanishing.
+    /// the command they edit — rewrite them like the command itself.
+    /// Appends translate as one command edit, so an appended default state
+    /// (`-rdc=false` over an rdc base) cancels the base's translated state
+    /// instead of vanishing.
     auto translate_rule_flags = [&](llvm::ArrayRef<std::string> rule_flags, bool edit) {
         std::vector<std::string> result(rule_flags.begin(), rule_flags.end());
         if(result.empty() || !is_nvcc) {
@@ -518,7 +517,29 @@ CompileCommand CompilationDatabase::build_command(std::uint32_t path_id,
             }
         }
     }
-    auto remove_flags = translate_rule_flags(remove_source, /*edit=*/false);
+    /// Remove patterns are an independent list, not one command: translated
+    /// whole, nvcc's last-wins would swallow every alternative value of a
+    /// stateful option but the last. Each pattern translates alone —
+    /// standalone, so it reproduces exactly the flags the base translation
+    /// emitted — pairing a separate value token (never dash-led) with its
+    /// spelling.
+    std::vector<std::string> remove_flags;
+    if(is_nvcc) {
+        for(std::size_t i = 0; i < remove_source.size(); i += 1) {
+            std::size_t count = 1;
+            if(llvm::StringRef(remove_source[i]).starts_with("-") && i + 1 < remove_source.size() &&
+               !llvm::StringRef(remove_source[i + 1]).starts_with("-"))
+                count = 2;
+            auto pattern = translate_rule_flags(llvm::ArrayRef(remove_source).slice(i, count),
+                                                /*edit=*/false);
+            remove_flags.insert(remove_flags.end(),
+                                std::make_move_iterator(pattern.begin()),
+                                std::make_move_iterator(pattern.end()));
+            i += count - 1;
+        }
+    } else {
+        remove_flags = std::move(remove_source);
+    }
     if(!remove_flags.empty()) {
         std::vector<kota::option::ParsedArg> remove_args;
         for(auto& result: option::table().parse(remove_flags)) {

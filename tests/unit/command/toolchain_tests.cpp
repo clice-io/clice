@@ -212,6 +212,26 @@ TEST_CASE(NVCCViewSelector, skip = !(CIEnvironment && Linux)) {
     EXPECT_FALSE(has_define(*host, "CUDA_DOUBLE_MATH_FUNCTIONS"));
 };
 
+TEST_CASE(NVCCArchEdit, skip = !(CIEnvironment && Linux)) {
+    auto file = fs::createTemporaryFile("clice", "cu");
+    if(!file) {
+        LOG_ERROR_RET(void(), "{}", file.error());
+    }
+
+    // An edit-appended -arch=<special> arrives as `--no-offload-arch=all`
+    // plus the probe token; the dryrun's resolution must land after the
+    // clear, or clang erases it again and falls back to its sm_52 default.
+    // -arch=all runs one cicc per toolkit architecture and the newest wins.
+    auto result = Toolchain::query(
+        {"nvcc", "--no-offload-arch=all", "-arch=all", "-resource-dir", resource_dir().data()},
+        file->c_str());
+    ASSERT_TRUE(result.has_value());
+
+    auto cpu = std::ranges::find(*result, "-target-cpu");
+    ASSERT_TRUE(cpu != result->end() && cpu + 1 != result->end());
+    EXPECT_NE(*(cpu + 1), "sm_52"sv);
+};
+
 TEST_CASE(NVCCHostInput, skip = !(CIEnvironment && Linux)) {
     auto file = fs::createTemporaryFile("clice", "cpp");
     if(!file) {

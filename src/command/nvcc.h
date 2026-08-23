@@ -23,14 +23,15 @@ bool is_nvcc_probe_flag(llvm::StringRef arg);
 /// so the regular CDB classification (canonical / user-content / discarded)
 /// applies unchanged:
 ///
-/// - `-gencode`/`-arch` collapse to the single best `--cuda-gpu-arch=`.
-///   Only `arch=` clauses count — they name the virtual architecture the
-///   device front end compiles for, while `code=` entries are ptxas targets
-///   that never set `__CUDA_ARCH__`. The newest wins; at equal number
-///   'a' > 'f' > plain ('a' unlocks e.g. Hopper GMMA/TMA). A non-numeric
-///   `-arch` value (`native`, `all`, ...) persists as an `-arch=<value>`
-///   probe token instead — the dryrun resolves it to a concrete
-///   architecture.
+/// - The `-gencode` entries and the (last-wins) `-arch` choice — nvcc
+///   compiles their union, one device pass each — collapse to the single
+///   best `--cuda-gpu-arch=`. Only `arch=` clauses count: they name the
+///   virtual architecture the device front end compiles for, while `code=`
+///   entries are ptxas targets that never set `__CUDA_ARCH__`. The newest
+///   wins; at equal number 'a' > 'f' > plain ('a' unlocks e.g. Hopper
+///   GMMA/TMA). A non-numeric `-arch` value (`native`, `all`, ...)
+///   persists as an `-arch=<value>` probe token instead — the dryrun
+///   resolves it to a concrete architecture.
 /// - Preprocessor options split their comma-separated values, short
 ///   spellings included: `-Ia,b` names two directories, `-DA=1,B=2` two
 ///   macros.
@@ -51,10 +52,11 @@ bool is_nvcc_probe_flag(llvm::StringRef arg);
 /// options set to their default state emit the flags that cancel the base's
 /// translated state instead of nothing (`-rdc=false` becomes `-fno-gpu-rdc
 /// -U__CUDACC_RDC__`, `--default-stream=legacy` undefines the per-thread
-/// macro). An `-arch` choice is preceded by `--no-offload-arch=all` because
-/// clang accumulates architectures where nvcc's `-arch` is last-wins; a
-/// `-gencode` entry accumulates in nvcc too, so it emits its architecture
-/// bare and `collapse_gpu_arch_flags` resolves it against the base's.
+/// macro). An `-arch` edit reads as picking the view outright — nvcc
+/// itself would union it with the base's `-gencode` entries — and is
+/// preceded by `--no-offload-arch=all`; a `-gencode` entry accumulates
+/// like nvcc's own, emitted bare for `collapse_gpu_arch_flags` to resolve
+/// against the base's.
 std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> arguments,
                                                 llvm::StringRef directory,
                                                 bool edit = false);

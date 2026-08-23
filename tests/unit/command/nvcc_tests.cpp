@@ -76,6 +76,16 @@ TEST_CASE(GencodeSelectsBest) {
     }
 }
 
+TEST_CASE(ArchGencodeUnion) {
+    // nvcc accepts -arch next to -gencode and compiles their union, one
+    // device pass each — the newest wins whichever side carries it.
+    auto arch_newer = translate({"nvcc", "-gencode=arch=compute_75,code=sm_75", "-arch=sm_90"});
+    EXPECT_TRUE(contains(arch_newer, "--cuda-gpu-arch=sm_90"));
+
+    auto gencode_newer = translate({"nvcc", "-arch=sm_75", "-gencode=arch=compute_90,code=sm_90"});
+    EXPECT_TRUE(contains(gencode_newer, "--cuda-gpu-arch=sm_90"));
+}
+
 TEST_CASE(SpecialArchCarried) {
     // Non-numeric selections only nvcc can resolve persist as probe tokens
     // for the dryrun instead of vanishing into no architecture at all.
@@ -332,6 +342,23 @@ TEST_CASE(OptimizeNormalized) {
     EXPECT_TRUE(contains(translate({"nvcc", "--optimize=3"}), "-O3"));
     EXPECT_TRUE(contains(translate({"nvcc", "-O", "2"}), "-O2"));
     EXPECT_TRUE(contains(translate({"nvcc", "-O3"}), "-O3"));
+
+    // Joined -O3 is nvcc's own option too, last-wins like the long form.
+    auto repeated = translate({"nvcc", "-O2", "--optimize=3"});
+    EXPECT_TRUE(contains(repeated, "-O3"));
+    EXPECT_FALSE(contains(repeated, "-O2"));
+}
+
+TEST_CASE(HostFlagsFollowXcompiler) {
+    // nvcc places its own -O/-m after the -Xcompiler payloads on the host
+    // line, beating them regardless of input order.
+    auto find_order = [](std::vector<std::string> args, llvm::StringRef a, llvm::StringRef b) {
+        auto joined = llvm::join(args, " ");
+        return llvm::StringRef(joined).find(a) < llvm::StringRef(joined).find(b);
+    };
+    EXPECT_TRUE(find_order(translate({"nvcc", "--optimize=3", "-Xcompiler=-O0"}), "-O0", "-O3"));
+    EXPECT_TRUE(find_order(translate({"nvcc", "-O3", "-Xcompiler=-O0"}), "-O0", "-O3"));
+    EXPECT_TRUE(find_order(translate({"nvcc", "--machine=64", "-Xcompiler=-m32"}), "-m32", "-m64"));
 }
 
 TEST_CASE(DisableWarningsMapped) {
@@ -355,6 +382,17 @@ TEST_CASE(EditEmitsStateOverrides) {
     EXPECT_FALSE(contains(standalone, "-fno-gpu-rdc"));
     EXPECT_FALSE(contains(standalone, "-U__CUDACC_RDC__"));
     EXPECT_FALSE(contains(standalone, "-UCUDA_API_PER_THREAD_DEFAULT_STREAM"));
+
+    // The cancellations render ahead of the segment's own flags: an
+    // explicit -D of the macro inside the edit survives them, like it
+    // survives nvcc's absent injection.
+    auto explicit_d = llvm::join(
+        translate({"nvcc", "-DCUDA_API_PER_THREAD_DEFAULT_STREAM=7", "--default-stream=legacy"},
+                  "",
+                  true),
+        " ");
+    EXPECT_TRUE(llvm::StringRef(explicit_d).find("-UCUDA_API_PER_THREAD_DEFAULT_STREAM") <
+                llvm::StringRef(explicit_d).find("CUDA_API_PER_THREAD_DEFAULT_STREAM=7"));
 
     // Untouched state stays silent even as an edit.
     auto untouched = translate({"nvcc", "-DX"}, "", true);
@@ -627,6 +665,42 @@ TEST_CASE(GencodeAppendAccumulates) {
     EXPECT_FALSE(std::ranges::contains(switched, "--offload-arch=sm_90"));
 }
 
+TEST_CASE(CollapseHonorsNegatives) {
+    // A specific --no-offload-arch erases only its matches from the ranking;
+    // the negated flag pair stays for clang to consume, and the newest of
+    // the survivors wins.
+    std::vector<const char*> flags = {"clang",
+                                      "--cuda-gpu-arch=sm_90",
+                                      "--no-offload-arch=sm_90",
+                                      "--cuda-gpu-arch=sm_75",
+                                      "--cuda-gpu-arch=sm_86"};
+    collapse_gpu_arch_flags(flags);
+    std::vector<std::string> collapsed(flags.begin(), flags.end());
+    std::vector<std::string> expected = {"clang",
+                                         "--cuda-gpu-arch=sm_90",
+                                         "--no-offload-arch=sm_90",
+                                         "--cuda-gpu-arch=sm_86"};
+    EXPECT_EQ(collapsed, expected);
+
+    // A single survivor leaves nothing to collapse.
+    std::vector<const char*> single = {"clang",
+                                       "--cuda-gpu-arch=sm_90",
+                                       "--no-offload-arch=sm_90",
+                                       "--cuda-gpu-arch=sm_75"};
+    auto kept = single;
+    collapse_gpu_arch_flags(single);
+    EXPECT_EQ(single, kept);
+
+    // An unrankable negative leaves the whole command to clang.
+    std::vector<const char*> native = {"clang",
+                                       "--cuda-gpu-arch=sm_90",
+                                       "--no-offload-arch=native",
+                                       "--cuda-gpu-arch=sm_75"};
+    auto untouched = native;
+    collapse_gpu_arch_flags(native);
+    EXPECT_EQ(native, untouched);
+}
+
 TEST_CASE(WildcardRemoveClearsArch) {
     CompilationDatabase db;
     std::vector<const char*> gencode = {"nvcc",
@@ -702,6 +776,36 @@ TEST_CASE(RemoveMatchesUnknownSpelling) {
     EXPECT_FALSE(has("--allow-unsupported-compiler"));
     EXPECT_TRUE(has("-ccbin=/usr/bin/g++-12"));
     EXPECT_TRUE(has("--target-directory=sbsa-linux"));
+}
+
+TEST_CASE(RemoveListAlternatives) {
+    CompilationDatabase db;
+    std::vector<const char*> arguments = {"nvcc",
+                                          "-ccbin=/usr/bin/g++-12",
+                                          "-default-stream=per-thread",
+                                          "-c",
+                                          "/tmp/kern.cu"};
+    db.add_command("/tmp", "/tmp/kern.cu", arguments);
+
+    // Remove patterns are alternatives, not one command: every value of the
+    // same stateful option becomes a pattern, where nvcc's last-wins over
+    // the whole list would keep only the final one and leave the base's
+    // g++-12 token in place.
+    CommandOptions options;
+    llvm::SmallVector<std::string> remove = {"-ccbin=/usr/bin/g++-13",
+                                             "-ccbin=/usr/bin/g++-12",
+                                             "--default-stream=per-thread"};
+    options.remove = remove;
+
+    auto commands = db.lookup("/tmp/kern.cu", options);
+    ASSERT_EQ(commands.size(), std::size_t(1));
+
+    auto& flags = commands[0].resolved.flags;
+    auto has = [&](llvm::StringRef flag) {
+        return std::ranges::contains(flags, flag);
+    };
+    EXPECT_FALSE(has("-ccbin=/usr/bin/g++-12"));
+    EXPECT_FALSE(has("CUDA_API_PER_THREAD_DEFAULT_STREAM=1"));
 }
 
 TEST_CASE(WildcardRemovesProbeValue) {

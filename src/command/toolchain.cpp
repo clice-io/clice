@@ -528,7 +528,9 @@ kota::task<std::expected<std::vector<std::string>, std::string>>
                 if(!contains_prefix({"-std="}) && !info->cpp_dialect.empty())
                     cuda_args.push_back("-std=" + info->cpp_dialect);
 
-                if(!contains_prefix({"--cuda-gpu-arch=", "--offload-arch="}) &&
+                /// An `-arch=` probe token is an explicit selection too: its
+                /// resolution replaces it in place below.
+                if(!contains_prefix({"--cuda-gpu-arch=", "--offload-arch=", "-arch="}) &&
                    !info->default_arch.empty())
                     cuda_args.push_back("--cuda-gpu-arch=" + info->default_arch);
             } else {
@@ -539,8 +541,16 @@ kota::task<std::expected<std::vector<std::string>, std::string>>
             }
 
             for(llvm::StringRef arg: llvm::ArrayRef(args).drop_front()) {
-                if(is_nvcc_probe_flag(arg))
+                if(is_nvcc_probe_flag(arg)) {
+                    /// The dryrun's resolution of an `-arch=<special>` token
+                    /// lands exactly where the token sat: an edit-appended
+                    /// selection carries `--no-offload-arch=all` right
+                    /// before it, and inserting the resolution any earlier
+                    /// would put it on the cleared side.
+                    if(cuda_input && arg.starts_with("-arch=") && !info->default_arch.empty())
+                        cuda_args.push_back("--cuda-gpu-arch=" + info->default_arch);
                     continue;
+                }
                 cuda_args.push_back(arg.str());
             }
 
