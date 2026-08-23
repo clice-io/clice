@@ -1,12 +1,13 @@
 /// # Type Information
 ///
-/// ## Concept constraints — the concept behind a constrained parameter
+/// ## Concept constraints — the constraint behind a parameter or `auto` placeholder
 ///
-/// - status: supported
+/// - status: partial
 /// - order: 13
 ///
-/// A constrained template parameter, the concept it names, and a concept
-/// reference; probing what each reports about the constraint.
+/// The constrained-parameter and concept-reference cards carry the
+/// constraint, but hovering the placeholder of a constrained `Addable auto`
+/// variable shows only the deduced type — the constraint is dropped.
 
 namespace concept_constraints {
 
@@ -17,5 +18,7 @@ template <§(01_concept_name)Addable §(02_param_name)U>
 void sum(U a, U b);
 
 auto flag = §(03_concept_ref)Addable<int>;
+
+Addable §(04_constrained_auto)auto §(05_constrained_var)total = 1;
 
 }

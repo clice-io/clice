@@ -120,11 +120,12 @@ Rich information cards for the symbol under the cursor.
 
   </details>
 
-- [x] Virtual modifiers — `virtual` / `override` / `final` show on method hover
+- [ ] Virtual modifiers — `virtual` / `override` / `final` show on method hover _(partial)_ ([clangd#2474](https://github.com/clangd/clangd/issues/2474))
 
-  The rendered definition carries the modifiers (`virtual … = 0`,
-  `override`); clangd tracks this gap as clangd#2474, clice's hover
-  port renders them already.
+  Modifiers written in the source render (`virtual … = 0`, `override`,
+  `final`), but an overriding method that omits the redundant `virtual`
+  keyword gives no sign of its virtuality — the card lacks the
+  `virtual void draw() override` form the issue asks for.
 
   <details>
   <summary>Example</summary>
@@ -467,33 +468,31 @@ Rich information cards for the symbol under the cursor.
 
   </details>
 
-- [x] Anonymous struct typedef — the classic `typedef struct {…} Name`
+- [x] Anonymous struct typedef — the classic C `typedef struct {…} Name` ([clangd#2219](https://github.com/clangd/clangd/issues/2219))
 
-  clangd tracks unhelpful hover on anonymous-struct typedefs as
-  clangd#2219; clice names the struct after its typedef, so both the alias
-  and a variable of it report a clean `Point` card.
+  Compiled as C11: clangd renders a misleading `struct Point` for the
+  alias of an anonymous struct; clice names the struct after its typedef,
+  so both the alias and a variable of it report a clean `Point` card.
 
   <details>
   <summary>Example</summary>
 
   ```cpp
-  namespace c_typedef_anon {
-
+  /// A 2-D point.
   typedef struct {
     int x, y;
   } Point;
 
-  Point origin;
-
-  }
+  Point origin = {.y = 2, .x = 1};
   ```
 
   </details>
 
-- [x] Concept constraints — the concept behind a constrained parameter
+- [ ] Concept constraints — the constraint behind a parameter or `auto` placeholder _(partial)_
 
-  A constrained template parameter, the concept it names, and a concept
-  reference; probing what each reports about the constraint.
+  The constrained-parameter and concept-reference cards carry the
+  constraint, but hovering the placeholder of a constrained `Addable auto`
+  variable shows only the deduced type — the constraint is dropped.
 
   <details>
   <summary>Example</summary>
@@ -508,6 +507,8 @@ Rich information cards for the symbol under the cursor.
   void sum(U a, U b);
 
   auto flag = Addable<int>;
+
+  Addable auto total = 1;
 
   }
   ```
