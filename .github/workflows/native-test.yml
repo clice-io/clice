@@ -85,16 +85,6 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-      # The NVCC toolchain tests need a real nvcc plus the toolkit headers
-      # clang's CUDA wrapper includes unconditionally (cudart, curand). No
-      # GPU is required — compilation and the --dryrun probe are pure CPU.
-      - name: Install CUDA toolchain
-        if: runner.os == 'Linux'
-        run: |
-          pixi global install "cuda-nvcc=12.9.*" --with "cuda-cudart-dev=12.9.*" --with libcurand-dev
-          pixi global expose add --environment cuda-nvcc nvcc
-          echo "$HOME/.pixi/bin" >> "$GITHUB_PATH"
-
       - name: Unit tests
         timeout-minutes: 5
         run: pixi run -e test-run unit-test ${{ matrix.build_type }}

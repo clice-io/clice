@@ -23,7 +23,7 @@ cross-linux-arm64 = ["build", "package", "cross-linux-arm64"]
 cross-windows-arm64 = ["build", "package", "cross-windows-arm64"]
 node = ["node"]
 format = ["format"]
-test-run = ["test"]
+test-run = ["test", "cuda"]
 editor = ["editor", "node"]
 
 # ============================================================================== #
@@ -97,6 +97,16 @@ gxx = "==15.2.0"
 # The symbolization round-trip test replays the release strip/GSYM flow
 # (linux-only, like the crash tests it builds on).
 llvm-tools = "==22.1.8"
+
+# The NVCC toolchain tests drive a real nvcc; cudart is the runtime the
+# probe compiles against and curand is included unconditionally by clang's
+# CUDA wrapper header. Linux-only: there are no osx packages and the
+# Windows host compiler (cl) is not supported by the query yet. No GPU is
+# needed — compilation and the --dryrun probe are pure CPU.
+[feature.cuda.target.linux-64.dependencies]
+cuda-nvcc = "13.*"
+cuda-cudart-dev = "13.*"
+libcurand-dev = "*"
 
 # The linux-aarch64 cross-test job runs the integration suite on a native
 # arm64 runner, so the symbolization test needs the same tools there.
