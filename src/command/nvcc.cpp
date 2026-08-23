@@ -90,22 +90,24 @@ std::string select_gpu_arch(llvm::ArrayRef<ArchToken> archs) {
 }
 
 /// nvcc resolves relative paths against its working directory — the compile
-/// directory — not against ours.
+/// directory — not against ours. A leading slash is absolute on POSIX and
+/// root-relative on Windows: never compile-directory-relative.
 std::string absolutize(llvm::StringRef value, llvm::StringRef directory) {
-    if(value.empty() || directory.empty() || path::is_absolute(value))
+    if(value.empty() || directory.empty() || path::is_absolute(value) || value.front() == '/')
         return value.str();
     return path::join(directory, value);
 }
 
-/// Split on unescaped commas. nvcc's backslash escapes the next character
-/// unconditionally (`a\,b` is one value with a comma, `a\\,b` is `a\` and
-/// `b`, `a\x` is `ax`).
+/// Split on unescaped commas, `\,` reading as a literal comma. Other
+/// backslashes stay verbatim: they are path separators on Windows, and
+/// nvcc's fuller Linux-side escape processing (a backslash escapes any next
+/// character) would destroy every native path.
 void split_list(llvm::StringRef value, llvm::SmallVectorImpl<std::string>& out) {
     std::string piece;
     for(std::size_t i = 0; i < value.size(); i += 1) {
         char c = value[i];
-        if(c == '\\' && i + 1 < value.size()) {
-            piece += value[i + 1];
+        if(c == '\\' && i + 1 < value.size() && value[i + 1] == ',') {
+            piece += ',';
             i += 1;
             continue;
         }
@@ -151,25 +153,23 @@ std::vector<std::string> expand_options_files(llvm::ArrayRef<const char*> argume
             }
 
             expanded = true;
-            llvm::SmallVector<std::string> files;
-            split_list(value, files);
-            for(llvm::StringRef file: files) {
-                auto file_path = absolutize(file, directory);
-                auto buffer = llvm::MemoryBuffer::getFile(file_path);
-                if(!buffer) {
-                    LOG_WARN("Cannot read nvcc options file {}: {}",
-                             file_path,
-                             buffer.getError().message());
-                    continue;
-                }
-
-                llvm::BumpPtrAllocator alloc;
-                llvm::StringSaver saver(alloc);
-                llvm::SmallVector<const char*> tokens;
-                llvm::cl::TokenizeGNUCommandLine((*buffer)->getBuffer(), saver, tokens);
-                for(llvm::StringRef token: tokens)
-                    next.emplace_back(token);
+            /// The value is one file path, taken verbatim: comma-splitting
+            /// it would shred native Windows paths.
+            auto file_path = absolutize(value, directory);
+            auto buffer = llvm::MemoryBuffer::getFile(file_path);
+            if(!buffer) {
+                LOG_WARN("Cannot read nvcc options file {}: {}",
+                         file_path,
+                         buffer.getError().message());
+                continue;
             }
+
+            llvm::BumpPtrAllocator alloc;
+            llvm::StringSaver saver(alloc);
+            llvm::SmallVector<const char*> tokens;
+            llvm::cl::TokenizeGNUCommandLine((*buffer)->getBuffer(), saver, tokens);
+            for(llvm::StringRef token: tokens)
+                next.emplace_back(token);
         }
 
         args = std::move(next);

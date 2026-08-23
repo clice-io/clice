@@ -93,9 +93,11 @@ TEST_CASE(ProbeFlagsCarried) {
     auto args = translate(
         {"nvcc", "-allow-unsupported-compiler", "-target-dir", "sbsa-linux", "-ccbin", "tools/g++"},
         "/base");
-    for(llvm::StringRef flag: {"--allow-unsupported-compiler",
-                               "--target-directory=sbsa-linux",
-                               "-ccbin=/base/tools/g++"}) {
+    // The join spells the separator natively, so the expectation must too.
+    auto anchored = "-ccbin=" + path::join("/base", "tools/g++");
+    for(llvm::StringRef flag: {llvm::StringRef("--allow-unsupported-compiler"),
+                               llvm::StringRef("--target-directory=sbsa-linux"),
+                               llvm::StringRef(anchored)}) {
         EXPECT_TRUE(contains(args, flag));
         EXPECT_TRUE(is_nvcc_probe_flag(flag));
     }
@@ -203,12 +205,13 @@ TEST_CASE(ListValuesSplit) {
         EXPECT_TRUE(llvm::StringRef(joined).contains(piece));
     }
 
-    // Backslash escapes the next character unconditionally: `\,` is a
-    // literal comma, `\\,` is a trailing backslash then a separator.
+    // `\,` reads as a literal comma; other backslashes stay verbatim so
+    // native Windows paths survive (deliberately shallower than nvcc's
+    // Linux-side escape processing, which consumes every backslash).
     EXPECT_TRUE(contains(translate({"nvcc", R"(-DP=a\,b)"}), "P=a,b"));
-    auto parity = translate({"nvcc", R"(-DQ=a\\,b)"});
-    EXPECT_TRUE(contains(parity, R"(Q=a\)"));
-    EXPECT_TRUE(contains(parity, "b"));
+    auto windows = translate({"nvcc", R"(-IC:\inc,D:\other)"});
+    EXPECT_TRUE(contains(windows, R"(C:\inc)"));
+    EXPECT_TRUE(contains(windows, R"(D:\other)"));
 }
 
 TEST_CASE(OptionsFileExpanded) {
@@ -241,7 +244,7 @@ constexpr static llvm::StringRef fake_dryrun = R"(#$ _NVVM_BRANCH_=nvvm
 #$ TOP=/opt/cuda/targets/x86_64-linux
 #$ NVVMIR_LIBRARY_DIR=/opt/cuda/targets/x86_64-linux/nvvm/libdevice
 #$ LD_LIBRARY_PATH=/opt/cuda/targets/x86_64-linux/lib:
-#$ PATH=/opt/cuda/targets/x86_64-linux/bin:/opt/host/bin:/usr/bin
+#$ PATH=/opt/host/bin
 #$ INCLUDES="-I/opt/cuda/targets/x86_64-linux/include"
 #$ g++ -D__CUDA_ARCH_LIST__=520 -D__NV_LEGACY_LAUNCH -E -x c++ -D__CUDACC__ -D__NVCC__ "-I/opt/cuda/targets/x86_64-linux/include" -D__CUDACC_VER_MAJOR__=12 -D__CUDACC_VER_MINOR__=9 -include "cuda_runtime.h" -m64 "/tmp/a.cu" -o "/tmp/a.cpp4.ii"
 #$ cudafe++ --c++17 --gnu_version=140400 "/tmp/a.cpp4.ii"
