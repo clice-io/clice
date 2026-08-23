@@ -23,6 +23,7 @@ namespace {
 constexpr llvm::StringLiteral ccbin_prefix = "-ccbin=";
 constexpr llvm::StringLiteral target_directory_prefix = "--target-directory=";
 constexpr llvm::StringLiteral allow_unsupported_flag = "--allow-unsupported-compiler";
+constexpr llvm::StringLiteral gpu_arch_prefix = "-arch=";
 
 /// One GPU architecture named inside an -arch/-gencode value.
 struct ArchToken {
@@ -190,7 +191,7 @@ std::vector<std::string> expand_options_files(llvm::ArrayRef<const char*> argume
 
 bool is_nvcc_probe_flag(llvm::StringRef arg) {
     return arg.starts_with(ccbin_prefix) || arg == allow_unsupported_flag ||
-           arg.starts_with(target_directory_prefix);
+           arg.starts_with(target_directory_prefix) || arg.starts_with(gpu_arch_prefix);
 }
 
 std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> arguments,
@@ -204,6 +205,7 @@ std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> argu
     /// once at the end. -gencode is the exception: entries accumulate.
     llvm::SmallVector<ArchToken> gencode_archs;
     llvm::SmallVector<ArchToken> arch_archs;
+    llvm::StringRef arch_special;
     std::string host_compiler;
     std::string target_directory;
     llvm::StringRef default_stream;
@@ -262,7 +264,10 @@ std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> argu
         }
         if(value_of(i, {"-arch", "--gpu-architecture"}, value)) {
             arch_archs.clear();
+            arch_special = {};
             collect_archs(value, arch_archs);
+            if(arch_archs.empty())
+                arch_special = value;
             continue;
         }
         /// ptxas targets only — consumed so the value cannot leak, never
@@ -307,6 +312,25 @@ std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> argu
         if(value_of(i, {"-x", "--x"}, value)) {
             result.emplace_back("-x");
             result.emplace_back(value == "cu" ? "cuda" : value.str());
+            continue;
+        }
+
+        /// The joined short forms -m32/-m64 are already clang's spellings
+        /// and fall through below; a value nvcc rejects pins nothing.
+        if(value_of(i, {"-m", "--machine"}, value)) {
+            if(value == "32" || value == "64")
+                result.emplace_back(("-m" + value).str());
+            continue;
+        }
+
+        /// Joined -O3 is already clang's spelling and falls through below.
+        if(value_of(i, {"-O", "--optimize"}, value)) {
+            result.emplace_back(("-O" + value).str());
+            continue;
+        }
+
+        if(arg == "--disable-warnings" || arg == "-disable-warnings") {
+            result.emplace_back("-w");
             continue;
         }
 
@@ -452,6 +476,13 @@ std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> argu
         if(edit)
             result.emplace_back("--no-offload-arch=all");
         result.emplace_back("--cuda-gpu-arch=" + select_gpu_arch(archs));
+    } else if(!arch_special.empty()) {
+        /// A non-numeric selection (native, all, all-major) only nvcc can
+        /// resolve: it persists as a probe token, the dryrun runs with it,
+        /// and its cicc line then names the concrete architecture.
+        if(edit)
+            result.emplace_back("--no-offload-arch=all");
+        result.emplace_back((llvm::Twine(gpu_arch_prefix) + arch_special).str());
     }
 
     if(!host_compiler.empty())
@@ -467,6 +498,7 @@ std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> argu
 std::expected<NVCCDryrunInfo, std::string> parse_nvcc_dryrun(llvm::StringRef output) {
     NVCCDryrunInfo info;
     llvm::StringRef nvvm_dir;
+    llvm::SmallVector<ArchToken> cicc_archs;
     llvm::SmallVector<const char*, 64> first_command;
 
     auto harvest_defines = [](llvm::ArrayRef<const char*> tokens, std::vector<std::string>& out) {
@@ -533,14 +565,13 @@ std::expected<NVCCDryrunInfo, std::string> parse_nvcc_dryrun(llvm::StringRef out
             continue;
         }
 
+        /// A probe carrying `-arch=all` runs one cicc per architecture:
+        /// collect them all and pick by the same newest-wins policy as the
+        /// translation.
         if(program == "cicc") {
             for(std::size_t i = 0; i + 1 < tokens.size(); i += 1) {
-                llvm::StringRef token = tokens[i];
-                llvm::StringRef arch = tokens[i + 1];
-                if(token == "-arch" && arch.consume_front("compute_")) {
-                    info.default_arch = ("sm_" + arch).str();
-                    break;
-                }
+                if(llvm::StringRef(tokens[i]) == "-arch")
+                    collect_archs(tokens[i + 1], cicc_archs);
             }
             continue;
         }
@@ -568,6 +599,9 @@ std::expected<NVCCDryrunInfo, std::string> parse_nvcc_dryrun(llvm::StringRef out
     /// `NVVMIR_LIBRARY_DIR=` is `<root>/nvvm/libdevice`.
     if(info.cuda_path.empty() && !nvvm_dir.empty())
         info.cuda_path = path::parent_path(path::parent_path(nvvm_dir));
+
+    if(!cicc_archs.empty())
+        info.default_arch = select_gpu_arch(cicc_archs);
 
     /// A host-language input (`nvcc -c foo.cpp`) compiles in a single host
     /// step with no preprocess stage: the first pipeline command is the

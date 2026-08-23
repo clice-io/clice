@@ -494,10 +494,10 @@ CompileCommand CompilationDatabase::build_command(std::uint32_t path_id,
     // Apply remove filter.
     std::vector<std::string> remove_source(options.remove.begin(), options.remove.end());
     if(is_nvcc) {
-        /// A wildcard arch removal (`-arch=*`, `--generate-code=*`) names no
-        /// concrete architecture, so translating it emits nothing and the
-        /// rule silently misses — rewrite it to the wildcard form of the
-        /// arch option the translated base actually carries.
+        /// A wildcard arch removal (`-arch=*`, `--generate-code=*`) must
+        /// clear whichever form the translated base carries: numeric archs
+        /// become `--cuda-gpu-arch=`, non-numeric selections persist as
+        /// `-arch=` probe tokens — rewrite to both wildcards.
         for(std::size_t i = 0; i < remove_source.size(); i += 1) {
             llvm::StringRef flag = remove_source[i];
             for(llvm::StringRef spelling:
@@ -512,6 +512,8 @@ CompileCommand CompilationDatabase::build_command(std::uint32_t path_id,
                     remove_source.erase(remove_source.begin() + i + 1);
                 }
                 remove_source[i] = "--cuda-gpu-arch=*";
+                remove_source.insert(remove_source.begin() + i + 1, "-arch=*");
+                i += 1;
                 break;
             }
         }
@@ -544,9 +546,14 @@ CompileCommand CompilationDatabase::build_command(std::uint32_t path_id,
             bool removed = false;
             for(auto& remove: range) {
                 /// All unknown options share one id; their identity is the
-                /// spelling (NVCC probe flags persist as unknown tokens).
+                /// spelling (NVCC probe flags persist as unknown tokens). A
+                /// trailing `=*` wildcards the value part, mirroring the
+                /// known-option value wildcard below.
                 if(id == option::OPT_UNKNOWN) {
-                    if(arg.spelling == remove.spelling) {
+                    llvm::StringRef pattern = remove.spelling;
+                    bool wildcard = pattern.consume_back("*") && pattern.ends_with("=");
+                    if(wildcard ? llvm::StringRef(arg.spelling).starts_with(pattern)
+                                : arg.spelling == remove.spelling) {
                         removed = true;
                         break;
                     }

@@ -76,6 +76,36 @@ TEST_CASE(GencodeSelectsBest) {
     }
 }
 
+TEST_CASE(SpecialArchCarried) {
+    // Non-numeric selections only nvcc can resolve persist as probe tokens
+    // for the dryrun instead of vanishing into no architecture at all.
+    for(auto arguments: {
+            std::vector<const char*>{"nvcc", "-arch=native"},
+            std::vector<const char*>{"nvcc", "-arch", "native"},
+            std::vector<const char*>{"nvcc", "--gpu-architecture=native"}
+    }) {
+        auto args = translate(arguments);
+        EXPECT_TRUE(contains(args, "-arch=native"));
+        EXPECT_FALSE(contains(args, "native"));
+    }
+    EXPECT_TRUE(is_nvcc_probe_flag("-arch=native"));
+    EXPECT_TRUE(contains(translate({"nvcc", "-arch=all"}), "-arch=all"));
+
+    // -arch stays last-wins across numeric and special values.
+    auto numeric_wins = translate({"nvcc", "-arch=native", "-arch=sm_80"});
+    EXPECT_TRUE(contains(numeric_wins, "--cuda-gpu-arch=sm_80"));
+    EXPECT_FALSE(contains(numeric_wins, "-arch=native"));
+    auto special_wins = translate({"nvcc", "-arch=sm_80", "-arch=native"});
+    EXPECT_TRUE(contains(special_wins, "-arch=native"));
+    EXPECT_FALSE(contains(special_wins, "--cuda-gpu-arch=sm_80"));
+
+    // As an edit it clears the base architectures like a numeric choice.
+    auto edit = translate({"nvcc", "-arch=native"}, "", true);
+    auto clear = std::ranges::find(edit, "--no-offload-arch=all");
+    ASSERT_TRUE(clear != edit.end() && clear + 1 != edit.end());
+    EXPECT_EQ(*(clear + 1), "-arch=native"sv);
+}
+
 TEST_CASE(CcbinBecomesToken) {
     for(auto arguments: {
             std::vector<const char*>{"nvcc", "-ccbin", "/usr/bin/g++-12"},
@@ -276,6 +306,42 @@ TEST_CASE(StdNormalized) {
     EXPECT_TRUE(contains(translate({"nvcc", "--std=c++20"}), "-std=c++20"));
 }
 
+TEST_CASE(MachineNormalized) {
+    for(auto arguments: {
+            std::vector<const char*>{"nvcc", "--machine=64"},
+            std::vector<const char*>{"nvcc", "--machine", "64"},
+            std::vector<const char*>{"nvcc", "-m=64"},
+            std::vector<const char*>{"nvcc", "-m", "64"}
+    }) {
+        auto args = translate(arguments);
+        EXPECT_TRUE(contains(args, "-m64"));
+        EXPECT_FALSE(contains(args, "64"));
+    }
+    EXPECT_TRUE(contains(translate({"nvcc", "--machine=32"}), "-m32"));
+
+    // The joined short form is already clang's own spelling.
+    EXPECT_TRUE(contains(translate({"nvcc", "-m64"}), "-m64"));
+
+    // A value nvcc rejects pins no machine model.
+    auto invalid = translate({"nvcc", "--machine=16"});
+    EXPECT_FALSE(contains(invalid, "-m16"));
+    EXPECT_FALSE(contains(invalid, "--machine=16"));
+}
+
+TEST_CASE(OptimizeNormalized) {
+    EXPECT_TRUE(contains(translate({"nvcc", "--optimize=3"}), "-O3"));
+    EXPECT_TRUE(contains(translate({"nvcc", "-O", "2"}), "-O2"));
+    EXPECT_TRUE(contains(translate({"nvcc", "-O3"}), "-O3"));
+}
+
+TEST_CASE(DisableWarningsMapped) {
+    for(const char* spelling: {"--disable-warnings", "-disable-warnings"}) {
+        auto args = translate({"nvcc", spelling});
+        EXPECT_TRUE(contains(args, "-w"));
+        EXPECT_FALSE(contains(args, spelling));
+    }
+}
+
 TEST_CASE(EditEmitsStateOverrides) {
     // An edit lands after an already-translated base command: explicitly
     // disabled stateful options must cancel the base's translated state,
@@ -342,6 +408,16 @@ TEST_CASE(DryrunParsed) {
     }
     EXPECT_TRUE(std::ranges::contains(info->device_defines, "CUDA_DOUBLE_MATH_FUNCTIONS"));
     EXPECT_FALSE(std::ranges::contains(info->host_defines, "CUDA_DOUBLE_MATH_FUNCTIONS"));
+
+    // A probe carrying -arch=all runs one cicc per architecture; the newest
+    // wins regardless of emission order.
+    constexpr llvm::StringRef multi = R"(#$ g++ -E -x c++ "/tmp/a.cu" -o "/tmp/a.ii"
+#$ cicc --c++17 -arch compute_90 "/tmp/a.cpp1.ii" -o "/tmp/a.ptx"
+#$ cicc --c++17 -arch compute_75 "/tmp/a.cpp1.ii" -o "/tmp/b.ptx"
+)";
+    auto multi_info = parse_nvcc_dryrun(multi);
+    ASSERT_TRUE(multi_info.has_value());
+    EXPECT_EQ(multi_info->default_arch, "sm_90");
 }
 
 TEST_CASE(DryrunRejectsIncomplete) {
@@ -516,6 +592,8 @@ TEST_CASE(WildcardRemoveClearsArch) {
     db.add_command("/tmp", "/tmp/kern.cu", gencode);
     std::vector<const char*> arch = {"nvcc", "-arch=sm_80", "-c", "/tmp/other.cu"};
     db.add_command("/tmp", "/tmp/other.cu", arch);
+    std::vector<const char*> native = {"nvcc", "-arch=native", "-c", "/tmp/native.cu"};
+    db.add_command("/tmp", "/tmp/native.cu", native);
 
     auto arch_flags = [&](llvm::StringRef file, const CommandOptions& options) {
         auto commands = db.lookup(file, options);
@@ -530,9 +608,10 @@ TEST_CASE(WildcardRemoveClearsArch) {
 
     EXPECT_TRUE(std::ranges::contains(arch_flags("/tmp/kern.cu", {}), "--offload-arch=sm_75"));
     EXPECT_TRUE(std::ranges::contains(arch_flags("/tmp/other.cu", {}), "--offload-arch=sm_80"));
+    EXPECT_TRUE(std::ranges::contains(arch_flags("/tmp/native.cu", {}), "-arch=native"));
 
-    // The wildcard names no concrete architecture, so it cannot translate to
-    // a matching flag itself — it must still clear whatever the base carries.
+    // The wildcard must clear whichever form the base carries: numeric archs
+    // translate to --offload-arch, non-numeric ones persist as probe tokens.
     CommandOptions options;
     llvm::SmallVector<std::string> remove = {"--generate-code=*"};
     options.remove = remove;
@@ -541,6 +620,7 @@ TEST_CASE(WildcardRemoveClearsArch) {
     llvm::SmallVector<std::string> separate = {"-arch", "*"};
     options.remove = separate;
     EXPECT_TRUE(arch_flags("/tmp/other.cu", options).empty());
+    EXPECT_TRUE(arch_flags("/tmp/native.cu", options).empty());
 
     // Removes edit the base before appends land: replacing the architecture
     // through remove-wildcard + append keeps the appended one.
@@ -578,6 +658,36 @@ TEST_CASE(RemoveMatchesUnknownSpelling) {
     EXPECT_FALSE(has("--allow-unsupported-compiler"));
     EXPECT_TRUE(has("-ccbin=/usr/bin/g++-12"));
     EXPECT_TRUE(has("--target-directory=sbsa-linux"));
+}
+
+TEST_CASE(WildcardRemovesProbeValue) {
+    CompilationDatabase db;
+    std::vector<const char*> arguments =
+        {"nvcc", "-ccbin=/usr/bin/g++-12", "-target-dir", "sbsa-linux", "-c", "/tmp/kern.cu"};
+    db.add_command("/tmp", "/tmp/kern.cu", arguments);
+
+    auto probe_flags = [&](llvm::ArrayRef<std::string> remove) {
+        CommandOptions options;
+        options.remove = remove;
+        auto commands = db.lookup("/tmp/kern.cu", options);
+        std::vector<std::string> result;
+        for(llvm::StringRef flag: commands[0].resolved.flags) {
+            if(is_nvcc_probe_flag(flag)) {
+                result.push_back(flag.str());
+            }
+        }
+        return result;
+    };
+
+    // A probe token's identity is its whole spelling; `=*` wildcards the
+    // value so the rule clears the concrete host compiler it never spelled.
+    llvm::SmallVector<std::string> ccbin = {"-ccbin=*"};
+    std::vector<std::string> target_only = {"--target-directory=sbsa-linux"};
+    EXPECT_EQ(probe_flags(ccbin), target_only);
+
+    llvm::SmallVector<std::string> target = {"--target-directory=*"};
+    std::vector<std::string> ccbin_only = {"-ccbin=/usr/bin/g++-12"};
+    EXPECT_EQ(probe_flags(target), ccbin_only);
 }
 
 };  // TEST_SUITE(NVCCTests)

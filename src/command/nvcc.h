@@ -9,8 +9,9 @@
 
 namespace clice {
 
-/// nvcc options that select the toolchain itself (`-ccbin=<path>`,
-/// `--allow-unsupported-compiler`, `--target-directory=<name>`): clang's
+/// nvcc options only nvcc itself can resolve (`-ccbin=<path>`,
+/// `--allow-unsupported-compiler`, `--target-directory=<name>`, and
+/// non-numeric architecture selections like `-arch=native`): clang's
 /// option table has no spelling for them, so the translation re-emits them
 /// as normalized verbatim tokens. They survive CDB classification into the
 /// canonical command — keying the toolchain cache — and the NVCC query
@@ -26,7 +27,10 @@ bool is_nvcc_probe_flag(llvm::StringRef arg);
 ///   Only `arch=` clauses count — they name the virtual architecture the
 ///   device front end compiles for, while `code=` entries are ptxas targets
 ///   that never set `__CUDA_ARCH__`. The newest wins; at equal number
-///   'a' > 'f' > plain ('a' unlocks e.g. Hopper GMMA/TMA).
+///   'a' > 'f' > plain ('a' unlocks e.g. Hopper GMMA/TMA). A non-numeric
+///   `-arch` value (`native`, `all`, ...) persists as an `-arch=<value>`
+///   probe token instead — the dryrun resolves it to a concrete
+///   architecture.
 /// - Preprocessor options split their comma-separated values, short
 ///   spellings included: `-Ia,b` names two directories, `-DA=1,B=2` two
 ///   macros.
