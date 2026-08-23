@@ -1,0 +1,15 @@
+---
+created_at: 2026-08-23
+input_file: type_layout.cpp
+---
+struct_size: { range: "13:7-13:13" }
+### struct `Widget`  
+
+---
+Size: 16 bytes, alignment 8 bytes  
+
+---
+```cpp
+// In namespace layout
+struct Widget {}
+```

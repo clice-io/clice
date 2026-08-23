@@ -1,17 +1,23 @@
+/// # Presentation
+///
+/// ## Markdown rendering — cards render as markdown, or plain text via `parse_comment_as_markdown = false`
+///
+/// - status: supported
+/// - order: 1
 /// - config: {"parse_comment_as_markdown": false}
 
-// The A/B halves pin the same cards in markdown (default) and plaintext
-// (configured): headings, rulers, code fences and backtick escaping all
-// render differently between the two modes.
+// snap: the A/B halves pin the same cards in markdown (default) and
+// snap: plaintext (configured): headings, rulers, code fences and backtick
+// snap: escaping all render differently between the two modes.
 
 /// Computes the answer. Tests primality of `p`.
-constexpr int an§(01_function)swer(int p) {
+constexpr int an§(function)swer(int p) {
     return p + 41;
 }
 
-int va§(02_variable)lue = answer(1);
+int va§(variable)lue = answer(1);
 
 struct Layout {
     char first;
-    int seco§(03_field)nd;
+    int seco§(field)nd;
 };

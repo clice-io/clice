@@ -1,0 +1,41 @@
+---
+created_at: 2026-08-23
+input_file: qualified_name.cpp
+---
+global_var: { range: "19:4-19:10" }
+### variable `global`  
+
+---
+Type: `int`  
+Value = `1`  
+
+---
+```cpp
+int global = 1
+```
+
+method_local: { range: "11:12-11:17" }
+### variable `count`  
+
+---
+Type: `int`  
+Value = `0`  
+
+---
+```cpp
+// In Engine::tick
+int count = 0
+```
+
+ns_var: { range: "15:4-15:11" }
+### variable `workers`  
+
+---
+Type: `int`  
+Value = `4`  
+
+---
+```cpp
+// In namespace app::detail
+int workers = 4
+```

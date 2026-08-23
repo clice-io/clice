@@ -1,0 +1,97 @@
+---
+created_at: 2026-08-23
+input_file: symbol_kind.cpp
+---
+enum: { range: "17:11-17:16" }
+### enum `Color`  
+
+---
+```cpp
+// In namespace kinds
+enum class Color : int {}
+```
+
+enumerator: { range: "18:4-18:7" }
+### enumerator `Red`  
+
+---
+Type: `enum kinds::Color`  
+Value = `0`  
+
+---
+```cpp
+// In Color
+Red
+```
+
+field: { range: "10:8-10:9" }
+### field `x`  
+
+---
+Type: `int`  
+Offset: 0 bytes  
+Size: 4 bytes, alignment 4 bytes  
+
+---
+```cpp
+// In Point
+public: int x
+```
+
+function: { range: "23:4-23:10" }
+### function `length`  
+
+---
+→ `int`  
+Parameters:  
+- `Point p`
+
+---
+```cpp
+// In namespace kinds
+int length(Point p)
+```
+
+namespace: { range: "7:10-7:15" }
+### namespace `kinds`  
+
+---
+```cpp
+namespace kinds {}
+```
+
+struct: { range: "9:7-9:12" }
+### struct `Point`  
+
+---
+Size: 4 bytes, alignment 4 bytes  
+
+---
+```cpp
+// In namespace kinds
+struct Point {}
+```
+
+typedef: { range: "21:6-21:11" }
+### type `Alias`  
+
+---
+Type: `struct kinds::Point`  
+
+---
+```cpp
+// In namespace kinds
+using Alias = Point
+```
+
+union: { range: "13:6-13:12" }
+### union `Packet`  
+
+---
+Size: 4 bytes, alignment 4 bytes  
+
+---
+```cpp
+// In namespace kinds
+union Packet {}
+```
