@@ -7,9 +7,7 @@
 /// - order: 5
 ///
 /// Go-to-definition on a local variable or parameter jumps to its
-/// declaration inside the function body, resolved from the in-memory AST
-/// without any index — the same resolution that keeps working while a
-/// buffer has unsaved edits.
+/// declaration inside the function body.
 
 int accumulate(int base) {
     int total = base;

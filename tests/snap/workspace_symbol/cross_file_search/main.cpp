@@ -6,8 +6,8 @@
 /// - verify: server
 /// - order: 2
 ///
-/// The search space is the project, not one buffer: a query typed while
-/// editing `main.cpp` still surfaces symbols defined in other sources.
+/// A query made from `main.cpp` also returns symbols defined in the
+/// project's other sources.
 
 // query: helper_elsewhere
 

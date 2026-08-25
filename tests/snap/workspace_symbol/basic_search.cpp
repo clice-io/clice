@@ -1,6 +1,6 @@
 /// # Workspace Symbol
 ///
-/// ## Basic workspace-wide symbol search — case-insensitive substring over all symbol kinds
+/// ## Basic workspace-wide symbol search — case-insensitive substring matching
 ///
 /// - status: supported
 /// - verify: server

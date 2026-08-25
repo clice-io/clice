@@ -38,6 +38,9 @@ function directiveLines(stripped: Buffer, directive: string): string[] {
         if (value === "") {
             throw new Error(`empty '// ${directive}:' line in workspace_symbol fixture`);
         }
+        if (out.includes(value)) {
+            throw new Error(`duplicate '// ${directive}:' line '${value}'`);
+        }
         out.push(value);
     }
     return out;
@@ -57,6 +60,11 @@ export const workspaceSymbol: Feature = {
         const out: string[] = [];
         for (const query of queries) {
             const reply = (await client.workspaceSymbols(query)) ?? [];
+            // The server truncates at 100 results during unordered index
+            // iteration; a reply that size is an arbitrary subset.
+            if (reply.length >= 100) {
+                throw new Error(`query '${query}' hits the server result cap; narrow the fixture`);
+            }
             const entries = reply.map((symbol) => {
                 const location = symbol.location;
                 if (!("range" in location)) {

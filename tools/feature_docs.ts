@@ -583,6 +583,30 @@ function processFeature(
 ): [string, string, string] {
     const docPath = path.join(REPO_ROOT, docRel);
 
+    // Corpora feeding one doc page must stay disjoint: a title duplicated
+    // across corpora would render twice (collectFixtures only checks
+    // within one corpus), and a section spanning two corpora would
+    // interleave their independently-sorted item order.
+    const corpusOf = (fx: Fixture): string =>
+        path.relative(REPO_ROOT, fx.path).split(path.sep)[2] ?? "";
+    const titleOwner = new Map<string, string>();
+    const sectionOwner = new Map<string, string>();
+    for (const fx of fixtures) {
+        const corpus = corpusOf(fx);
+        const title = titleOwner.get(fx.title);
+        if (title !== undefined && title !== corpus) {
+            problems.push(`${fx.path}: title '${fx.title}' duplicates one in corpus '${title}'`);
+        }
+        titleOwner.set(fx.title, corpus);
+        const section = sectionOwner.get(fx.section);
+        if (section !== undefined && section !== corpus) {
+            problems.push(
+                `${fx.path}: section '${fx.section}' spans corpora '${section}' and '${corpus}'`,
+            );
+        }
+        sectionOwner.set(fx.section, corpus);
+    }
+
     const sections = new Map<string, Fixture[]>();
     for (const fx of fixtures) {
         const list = sections.get(fx.section);

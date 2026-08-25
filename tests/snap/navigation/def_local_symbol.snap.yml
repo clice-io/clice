@@ -4,21 +4,21 @@ input_file: def_local_symbol.cpp
 ---
 local_use:
   definition:
-    - { file: "${WS}/def_local_symbol.cpp", range: "14:8-14:13" }
+    - { file: "${WS}/def_local_symbol.cpp", range: "12:8-12:13" }
   declaration:
-    - { file: "${WS}/def_local_symbol.cpp", range: "14:8-14:13" }
+    - { file: "${WS}/def_local_symbol.cpp", range: "12:8-12:13" }
   references:
-    - { file: "${WS}/def_local_symbol.cpp", range: "14:8-14:13" }
-    - { file: "${WS}/def_local_symbol.cpp", range: "15:4-15:9" }
-    - { file: "${WS}/def_local_symbol.cpp", range: "15:12-15:17" }
-    - { file: "${WS}/def_local_symbol.cpp", range: "16:11-16:16" }
+    - { file: "${WS}/def_local_symbol.cpp", range: "12:8-12:13" }
+    - { file: "${WS}/def_local_symbol.cpp", range: "13:4-13:9" }
+    - { file: "${WS}/def_local_symbol.cpp", range: "13:12-13:17" }
+    - { file: "${WS}/def_local_symbol.cpp", range: "14:11-14:16" }
 
 param_use:
   definition:
-    - { file: "${WS}/def_local_symbol.cpp", range: "13:19-13:23" }
+    - { file: "${WS}/def_local_symbol.cpp", range: "11:19-11:23" }
   declaration:
-    - { file: "${WS}/def_local_symbol.cpp", range: "13:19-13:23" }
+    - { file: "${WS}/def_local_symbol.cpp", range: "11:19-11:23" }
   references:
-    - { file: "${WS}/def_local_symbol.cpp", range: "13:19-13:23" }
-    - { file: "${WS}/def_local_symbol.cpp", range: "14:16-14:20" }
-    - { file: "${WS}/def_local_symbol.cpp", range: "15:20-15:24" }
+    - { file: "${WS}/def_local_symbol.cpp", range: "11:19-11:23" }
+    - { file: "${WS}/def_local_symbol.cpp", range: "12:16-12:20" }
+    - { file: "${WS}/def_local_symbol.cpp", range: "13:20-13:24" }

@@ -4,11 +4,11 @@
 
 <!-- BEGIN GENERATED ITEMS: Go to Definition -->
 
-- [x] Index-based cross-TU go-to-definition
+- [x] Cross-TU go-to-definition
 
-  A use in one translation unit resolves to a definition supplied by a
-  sibling source, drawing on the project-wide index rather than the
-  current file alone.
+  A use in one translation unit resolves to the definition supplied by
+  a sibling source — the answer spans the project, not the current
+  file alone.
 
   <details>
   <summary>Example</summary>
@@ -71,7 +71,7 @@
 - [x] Declaration-only symbols navigate to their declaration
 
   Symbols that carry only a declaration — pure virtuals, `extern`
-  variables, out-of-line static constants — resolve to that declaration
+  variables, in-class static constants — resolve to that declaration
   instead of returning nothing.
 
   <details>
@@ -82,8 +82,14 @@
 
   int probe(int value);
 
-  int watch(int value) {
-      return probe(value) + threshold;
+  struct Screen {
+      static const int margin = 4;
+      virtual void refresh() = 0;
+  };
+
+  int watch(Screen& screen, int value) {
+      screen.refresh();
+      return probe(value) + threshold + Screen::margin;
   }
   ```
 
@@ -93,7 +99,7 @@
 
   Invoked on an `#include` line, go-to-definition opens the included
   file. This works for the leading includes compiled into the preamble
-  (the PCH) as well as ordinary ones.
+  (the PCH) as well as ordinary ones later in the file.
 
   <details>
   <summary>Example</summary>
@@ -105,6 +111,20 @@
 
   int build() {
       return dimension();
+  }
+
+  #include "extra.h"
+
+  int total() {
+      return build() + spacing();
+  }
+  ```
+
+  `extra.h`:
+
+  ```cpp
+  inline int spacing() {
+      return 2;
   }
   ```
 
@@ -121,9 +141,7 @@
 - [x] Local variables and parameters navigate to their declaration
 
   Go-to-definition on a local variable or parameter jumps to its
-  declaration inside the function body, resolved from the in-memory AST
-  without any index — the same resolution that keeps working while a
-  buffer has unsaved edits.
+  declaration inside the function body.
 
   <details>
   <summary>Example</summary>
@@ -1091,7 +1109,7 @@ Search the whole project for a symbol by name (`workspace/symbol`).
 
 <!-- BEGIN GENERATED ITEMS: Workspace Symbol -->
 
-- [x] Basic workspace-wide symbol search — case-insensitive substring over all symbol kinds
+- [x] Basic workspace-wide symbol search — case-insensitive substring matching
 
   A query matches any symbol whose name contains it, ignoring case:
   functions, types, enumerators and macros all participate, and a query
@@ -1122,8 +1140,8 @@ Search the whole project for a symbol by name (`workspace/symbol`).
 
 - [x] Search spans the whole project — hits from files other than the queried one
 
-  The search space is the project, not one buffer: a query typed while
-  editing `main.cpp` still surfaces symbols defined in other sources.
+  A query made from `main.cpp` also returns symbols defined in the
+  project's other sources.
 
   <details>
   <summary>Example</summary>
