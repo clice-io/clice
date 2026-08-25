@@ -10,7 +10,7 @@ import type { Workspace } from "@clice/tools/workspace";
 import { expect, test, type SessionFactory } from "../fixtures.ts";
 
 const TEST_TOML =
-    '[project]\ncache_dir = "${workspace}/.clice"\nenable_indexing = false\n' +
+    '[project]\ncache_dir = "${workspace}/.clice"\nenable_indexing = false\npch_build = "on_open"\n' +
     "\n[tracker]\ncdb_poll_seconds = 0\nworkspace_poll_seconds = 0\n";
 
 // hello_world's main.cpp, recreated in a temp workspace so the pre-handshake

@@ -107,6 +107,22 @@ void MasterServer::initialize() {
         workspace.pch_build = PchBuild::OnOpen;
     }
 
+    // A didOpen racing ahead of the handshake created its session under
+    // the default policy; the configured one governs from here. Re-derive
+    // and settle those sessions now (a compile kicked before workers are
+    // up degrades to a dirty session the first request recompiles).
+    llvm::SmallVector<std::uint32_t> early_sessions;
+    sessions.for_each([&](std::uint32_t path_id, const Session&) {
+        early_sessions.push_back(path_id);
+        return true;
+    });
+    for(auto path_id: early_sessions) {
+        auto session = sessions.find(path_id);
+        session->serving = workspace.pch_build == PchBuild::OnOpen ? ServingMode::Escalated
+                                                                   : ServingMode::IndexOnly;
+        settle_open_serving(std::move(session));
+    }
+
     if(!cfg.logging_dir.empty()) {
         auto now = std::chrono::system_clock::now();
         auto pid = llvm::sys::Process::getProcessId();

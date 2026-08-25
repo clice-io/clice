@@ -105,7 +105,7 @@ struct ProjectConfig {
                          "answers from the best source currently available; "
                          "this option only decides when the expensive sources "
                          "get built.")
-    <std::string> pch_build = "on_open";
+    <std::string> pch_build = "on_edit";
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description =

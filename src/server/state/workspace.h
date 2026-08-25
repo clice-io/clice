@@ -231,10 +231,11 @@ struct Workspace {
     Toolchain toolchain;
 
     /// Parsed form of config.project.pch_build, resolved once at server
-    /// initialization (an unknown value warns and falls back here). The
-    /// initializer keeps directly-built Workspaces (unit tests, tools) on
-    /// the pre-policy behavior.
-    PchBuild pch_build = PchBuild::OnOpen;
+    /// initialization; an unknown value warns and falls back to on_open.
+    /// Directly-built Workspaces (unit tests, tools) keep the pre-policy
+    /// behavior through Session's Escalated default, not through this
+    /// field.
+    PchBuild pch_build = PchBuild::OnEdit;
 
     PathPool path_pool;
 

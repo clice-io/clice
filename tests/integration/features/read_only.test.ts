@@ -137,10 +137,12 @@ test("never builds no pch", async ({ session }) => {
     expect(client.diagnostics.has(uri)).toBe(false);
 });
 
+const ON_OPEN = { project: { pch_build: "on_open" } };
+
 test("on_open compiles eagerly", async ({ session }) => {
     const ws = writeProject(session);
     const client = session.spawn(ws);
-    await client.initialize(ws);
+    await client.initialize(ws, { initializationOptions: ON_OPEN });
 
     // No feature request at all: didOpen itself starts the compile.
     const uri = ws.uri("main.cpp");
@@ -159,10 +161,10 @@ test("index answers while eager compile runs", async ({ session }) => {
     expect(await first.waitForIndex(warm, "twice")).toBe(true);
     await first.shutdown();
 
-    // Default on_open: the compile is kicked at didOpen, but the very
-    // first request must not wait for it — the warm shard answers.
+    // on_open: the compile is kicked at didOpen, but the very first
+    // request must not wait for it — the warm shard answers.
     const second = session.spawn(ws);
-    await second.initialize(ws);
+    await second.initialize(ws, { initializationOptions: ON_OPEN });
     const [uri] = second.open("main.cpp");
     const symbols = (await second.documentSymbols(uri)) as proto.DocumentSymbol[] | null;
     expect(symbols?.map((s) => s.name)).toContain("twice");
