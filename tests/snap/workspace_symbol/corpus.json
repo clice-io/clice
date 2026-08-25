@@ -1,0 +1,4 @@
+{
+  "notes": "Freestanding, -undef and -nostdinc keep host stdlib symbols out of the search space, so query hits stay identical across hosts. Fixtures declare their queries as `// query:` comment lines in the entry source.",
+  "flags": ["-std=c++23", "-ffreestanding", "-undef", "-nostdinc"]
+}

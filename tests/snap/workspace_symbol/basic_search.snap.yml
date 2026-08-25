@@ -1,0 +1,18 @@
+---
+created_at: 2026-08-25
+input_file: basic_search.cpp
+---
+"widget":
+  - { name: "Widget", kind: Struct, file: "${WS}/basic_search.cpp", range: "18:7-18:13" }
+
+"parse_config":
+  - { name: "parse_config", kind: Function, file: "${WS}/basic_search.cpp", range: "26:5-26:17" }
+
+"MODE":
+  - { name: "Mode", kind: Enum, file: "${WS}/basic_search.cpp", range: "22:11-22:15" }
+  - { name: "MODE_DEFAULT", kind: Function, file: "${WS}/basic_search.cpp", range: "24:8-24:20" }
+
+"fast":
+  - { name: "Fast", kind: EnumMember, file: "${WS}/basic_search.cpp", range: "22:18-22:22" }
+
+"no_such_symbol": none

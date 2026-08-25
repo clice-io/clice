@@ -50,7 +50,9 @@ import { parseAnnotations } from "./snap/annotation.ts";
 import { C_FAMILY } from "./snap/corpus.ts";
 
 // feature -> doc path (relative to repo root). Extend as more features
-// adopt fixture-generated docs.
+// adopt fixture-generated docs. Several corpora may feed one doc page
+// (navigation.md aggregates the navigation and workspace_symbol corpora);
+// their fixtures must then use disjoint section keys.
 const FEATURES: Record<string, string> = {
     code_completion: "docs/en/features/completion.md",
     document_links: "docs/en/features/document-links.md",
@@ -58,24 +60,26 @@ const FEATURES: Record<string, string> = {
     hover: "docs/en/features/hover.md",
     folding_range: "docs/en/features/folding-ranges.md",
     inlay_hint: "docs/en/features/inlay-hints.md",
+    navigation: "docs/en/features/navigation.md",
     semantic_tokens: "docs/en/features/semantic-tokens.md",
     signature_help: "docs/en/features/signature-help.md",
+    workspace_symbol: "docs/en/features/navigation.md",
 };
 
-/// Rows of the overview status matrix, in display order. `key` names a
-/// corpus in FEATURES whose fixture statuses are aggregated into the row;
-/// a row without `key` is not fixture-backed yet and keeps the
+/// Rows of the overview status matrix, in display order. `keys` names the
+/// corpora in FEATURES whose fixture statuses are aggregated into the row;
+/// a row without `keys` is not fixture-backed yet and keeps the
 /// hand-assigned label from before the feature joined the pipeline.
-const OVERVIEW_ROWS: { name: string; page: string; key?: string; label?: string }[] = [
-    { name: "Code Completion", page: "completion", key: "code_completion" },
-    { name: "Hover", page: "hover", key: "hover" },
-    { name: "Signature Help", page: "signature-help", key: "signature_help" },
-    { name: "Code Navigation", page: "navigation", label: "Partial" },
-    { name: "Document Links", page: "document-links", key: "document_links" },
-    { name: "Semantic Tokens", page: "semantic-tokens", key: "semantic_tokens" },
-    { name: "Inlay Hints", page: "inlay-hints", key: "inlay_hint" },
-    { name: "Folding Ranges", page: "folding-ranges", key: "folding_range" },
-    { name: "Document Symbols", page: "document-symbols", key: "document_symbol" },
+const OVERVIEW_ROWS: { name: string; page: string; keys?: string[]; label?: string }[] = [
+    { name: "Code Completion", page: "completion", keys: ["code_completion"] },
+    { name: "Hover", page: "hover", keys: ["hover"] },
+    { name: "Signature Help", page: "signature-help", keys: ["signature_help"] },
+    { name: "Code Navigation", page: "navigation", keys: ["navigation", "workspace_symbol"] },
+    { name: "Document Links", page: "document-links", keys: ["document_links"] },
+    { name: "Semantic Tokens", page: "semantic-tokens", keys: ["semantic_tokens"] },
+    { name: "Inlay Hints", page: "inlay-hints", keys: ["inlay_hint"] },
+    { name: "Folding Ranges", page: "folding-ranges", keys: ["folding_range"] },
+    { name: "Document Symbols", page: "document-symbols", keys: ["document_symbol"] },
     { name: "Formatting", page: "formatting", label: "Implemented" },
     { name: "Diagnostics", page: "diagnostics", label: "Partial" },
     { name: "Code Action", page: "code-action", label: "Stub" },
@@ -183,7 +187,7 @@ function parseFixture(filePath: string, featureDir: string, problems: string[]):
     // the remaining lines.
     let prologue = 0;
     while (prologue < lines.length) {
-        const line = (lines[prologue] ?? "").trimStart();
+        const line = (lines[prologue] ?? "").trim();
         if (line !== "" && !(line.startsWith("//") && !line.startsWith("///"))) {
             break;
         }
@@ -607,7 +611,7 @@ function processOverview(
     const rows: string[][] = [["Feature", "Status", "Page"]];
     for (const row of OVERVIEW_ROWS) {
         let status = row.label ?? "";
-        const fixtures = row.key === undefined ? [] : (fixturesByFeature.get(row.key) ?? []);
+        const fixtures = (row.keys ?? []).flatMap((key) => fixturesByFeature.get(key) ?? []);
         if (fixtures.length > 0) {
             const counts = new Map<string, number>();
             for (const fx of fixtures) {
@@ -711,8 +715,18 @@ function main(argv: string[]): number {
     const fixturesByFeature = new Map<string, Fixture[]>(
         Object.keys(FEATURES).map((feature) => [feature, collectFixtures(feature, problems)]),
     );
-    const results = Object.entries(FEATURES).map(([feature, docRel]) =>
-        processFeature(docRel, fixturesByFeature.get(feature) ?? [], problems),
+    // A doc page fed by several corpora is processed once with their
+    // fixtures merged, so the later pass cannot clobber the earlier one.
+    const docFeatures = new Map<string, string[]>();
+    for (const [feature, docRel] of Object.entries(FEATURES)) {
+        docFeatures.set(docRel, [...(docFeatures.get(docRel) ?? []), feature]);
+    }
+    const results = [...docFeatures.entries()].map(([docRel, features]) =>
+        processFeature(
+            docRel,
+            features.flatMap((feature) => fixturesByFeature.get(feature) ?? []),
+            problems,
+        ),
     );
     results.push(processOverview(fixturesByFeature, problems));
 

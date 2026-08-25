@@ -513,36 +513,175 @@ Navigate to the type definition of a symbol. Applicable to variables, parameters
 
 ## Workspace Symbol
 
-- [ ] Basic workspace-wide symbol search
-- [ ] Fuzzy matching with word-boundary-aware scoring (camelCase, snake_case)
+Search the whole project for a symbol by name (`workspace/symbol`).
 
+<!-- BEGIN GENERATED ITEMS: Workspace Symbol -->
+
+- [x] Basic workspace-wide symbol search — case-insensitive substring over all symbol kinds
+
+  A query matches any symbol whose name contains it, ignoring case:
+  functions, types, enumerators and macros all participate, and a query
+  with no match returns an empty list rather than an error.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  // query: widget
+  // query: parse_config
+  // query: MODE
+  // query: fast
+  // query: no_such_symbol
+
+  struct Widget {
+      int width;
+  };
+
+  enum class Mode { Fast, Safe };
+
+  #define MODE_DEFAULT 1
+
+  void parse_config() {}
   ```
-  VecIt → matches std::vector<int>::iterator
-  strvi → matches std::string_view
+
+  </details>
+
+- [x] Search spans the whole project — hits from files other than the queried one
+
+  The search space is the project, not one buffer: a query typed while
+  editing `main.cpp` still surfaces symbols defined in other sources.
+
+  <details>
+  <summary>Example</summary>
+
+  `main.cpp`:
+
+  ```cpp
+  // query: helper_elsewhere
+
+  int local_anchor = 0;
   ```
+
+  `other.cpp`:
+
+  ```cpp
+  void helper_elsewhere() {}
+  ```
+
+  </details>
+
+- [ ] Overload disambiguation — parameter types shown in results _(partial)_ ([clangd#1344](https://github.com/clangd/clangd/issues/1344))
+
+  Querying an overloaded name finds every overload, but each entry
+  carries only the bare name — nothing tells the two `process` results
+  apart short of opening both locations.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  // query: process
+
+  void process(int value) {}
+  void process(bool flag, int level) {}
+  ```
+
+  </details>
+
+- [ ] Fuzzy matching — word-boundary-aware scoring for camelCase and snake_case ([clangd#914](https://github.com/clangd/clangd/issues/914))
+
+  Matching is a case-insensitive substring test: `LinLis` does not find
+  `LinkedList`, and `pcfg` does not find `parse_config`. Word-boundary
+  initials should match and score for every symbol kind, macros
+  included.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  // query: LinLis
+  // query: pcfg
+
+  struct LinkedList {};
+  void parse_config();
+  ```
+
+  </details>
 
 - [ ] Partially qualified name search ([clangd#550](https://github.com/clangd/clangd/issues/550))
 
-  ```
-  ns::Foo → matches deeply::nested::ns::Foo
+  Symbols match by bare name only: `net::Socket` finds nothing even
+  though `deep::net::Socket` exists, and neither does any other
+  qualifier-prefixed form.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  // query: net::Socket
+
+  namespace deep {
+  namespace net {
+  struct Socket {};
+  }
+  }
   ```
 
-- [ ] Include parameter types for overloaded function disambiguation ([clangd#1344](https://github.com/clangd/clangd/issues/1344))
+  </details>
 
-  ```
-  // query: "process"
-  // results: process(int), process(std::string), process(Widget&)
+- [ ] Enumerator lookup under the enum's scope ([clangd#931](https://github.com/clangd/clangd/issues/931))
+
+  `Color::Red` should find the enumerator — for scoped and unscoped
+  enums alike — but qualified queries match nothing; only the bare
+  `Red` does.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  // query: Color::Red
+
+  enum Color { Red, Green };
   ```
 
-- [ ] Enum enumerator lookup under enum scope ([clangd#931](https://github.com/clangd/clangd/issues/931))
+  </details>
 
-  ```
-  Color::Red → matches Color::Red (even for unscoped enums)
+- [ ] Underlying declarations ranked above type aliases ([clangd#2253](https://github.com/clangd/clangd/issues/2253))
+
+  When both `ConnectionImpl` and its alias `Connection` match a query,
+  the underlying declaration should rank first. Results carry no
+  ranking today.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  // query: Connection
+
+  struct ConnectionImpl {};
+  using Connection = ConnectionImpl;
   ```
 
-- [ ] Fuzzy matching for macros (consistent with other symbol types) ([clangd#914](https://github.com/clangd/clangd/issues/914))
-- [ ] Prioritize underlying declarations over type aliases in results ([clangd#2253](https://github.com/clangd/clangd/issues/2253))
+  </details>
+
 - [ ] Search by mangled (linker) name
+
+  Pasting a linker symbol such as `_Z7processi` should resolve to the
+  function it mangles — useful when chasing linker errors and stack
+  traces.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  // query: _Z7processi
+
+  void process(int value);
+  ```
+
+  </details>
+
+<!-- END GENERATED ITEMS -->
 
 ## Module Navigation
 
@@ -578,22 +717,98 @@ Navigate to the type definition of a symbol. Applicable to variables, parameters
 
 Highlight all references to the symbol under cursor within the current file (`textDocument/documentHighlight`).
 
-- [ ] Highlight all references to the symbol under cursor in the current file
-- [ ] Read/Write classification for symbol highlights
-- [ ] Control flow token highlighting (`return`, `break`, `continue`, `throw`, `case`/`default` for switch) ([clangd#1921](https://github.com/clangd/clangd/issues/1921))
+<!-- BEGIN GENERATED ITEMS: Document Highlight -->
+
+- [ ] Highlight every reference to the symbol under the cursor in the current file
+
+  Placing the cursor on `total` should light up its declaration and
+  every use in the file; the request is not implemented.
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
-  for (int i = 0; i < n; i++) {
-      for (int j = 0; j < m; j++) {
-          if (done) break;     // highlighting break → also highlights inner for
-          if (skip) continue;  // highlighting continue → also highlights inner for
+  int total = 0;
+
+  void accumulate(int amount) {
+      total = total + amount;
+  }
+  ```
+
+  </details>
+
+- [ ] Read/write classification for symbol highlights
+
+  Each highlight should carry its access kind, so editors can tint
+  writes differently from reads.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  void tally() {
+      int count = 0;      // write
+      int next = count;   // read
+      count = next;       // write
+  }
+  ```
+
+  </details>
+
+- [ ] Control flow token highlighting ([clangd#1921](https://github.com/clangd/clangd/issues/1921))
+
+  Highlighting `break` or `continue` should also light up the loop or
+  `switch` it belongs to — and `return` / `throw` the function exits
+  they mark.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  void drain(int outer, int inner) {
+      for (int i = 0; i < outer; i += 1) {
+          for (int j = 0; j < inner; j += 1) {
+              if (i == j) {
+                  break;      // highlighting break → also the inner for
+              }
+              if (j == 0) {
+                  continue;   // highlighting continue → also the inner for
+              }
+          }
       }
   }
   ```
 
+  </details>
+
+<!-- END GENERATED ITEMS -->
+
 ## Switch Source/Header
 
-- [ ] Switch between source and header file
+<!-- BEGIN GENERATED ITEMS: Switch Source/Header -->
+
+- [ ] Switch between a source file and its header
+
+  From `widget.cpp` a single command should jump to `widget.h` and
+  back — the `textDocument/switchSourceHeader` request clangd clients
+  rely on is not implemented.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  // widget.h
+  class Widget {
+      void draw();
+  };
+
+  // widget.cpp — #include "widget.h"
+  void Widget::draw() {}
+  ```
+
+  </details>
+
+<!-- END GENERATED ITEMS -->
 
 ## Changelog
 
