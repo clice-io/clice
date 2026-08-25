@@ -1301,105 +1301,611 @@ Navigate to the type definition of a symbol. Applicable to variables, parameters
 
 ## Find References
 
-- [x] Index-based cross-TU find references
-- [x] Include declarations option
-- [ ] Implicit references from range-based for loops ([clangd#1081](https://github.com/clangd/clangd/issues/1081))
+<!-- BEGIN GENERATED ITEMS: Find References -->
+
+- [x] Cross-TU find references
+
+  Find references gathers every use across the project: a function
+  defined in one source and called from a sibling reports both call
+  sites together with the declaration in the shared header, not only the
+  uses in the current file.
+
+  <details>
+  <summary>Example</summary>
+
+  `main.cpp`:
 
   ```cpp
-  struct Container { iterator begin(); iterator end(); };
-  for (auto& x : container) {}  // find-refs on begin() should include this loop
-  ```
+  #include "shared.h"
 
-- [ ] Implicit constructor/destructor calls
-
-  ```cpp
-  struct Blob { Blob(); };
-  Blob b;  // find-refs on Blob() should include this declaration
-  ```
-
-- [ ] References through forwarding functions — find-refs on a constructor should include calls via `std::make_unique`, `std::make_shared`, `emplace_back`, etc. ([clangd#716](https://github.com/clangd/clangd/issues/716), [clangd#1872](https://github.com/clangd/clangd/issues/1872))
-
-  ```cpp
-  struct Widget { Widget(int w, int h); };
-  auto p = std::make_unique<Widget>(800, 600);  // find-refs on Widget(int, int) should include this
-  vec.emplace_back(800, 600);                    // and this
-  ```
-
-- [ ] References in dependent/template contexts ([clangd#258](https://github.com/clangd/clangd/issues/258), [clangd#675](https://github.com/clangd/clangd/issues/675))
-
-  ```cpp
-  template<typename T>
-  void process(T& obj) {
-      obj.foo();  // find-refs on A::foo should include this (from instantiation T = A)
+  int run(int value) {
+      return compute(value);
   }
   ```
 
-- [ ] Read/write classification — annotate each reference as read or write access ([clangd#2139](https://github.com/clangd/clangd/issues/2139))
+  `lib.cpp`:
 
   ```cpp
-  int x = 0;        // write
-  int y = x + 1;    // read
-  x = y;            // write
+  #include "shared.h"
+
+  int compute(int value) {
+      return value * 2;
+  }
+
+  int again(int value) {
+      return compute(value) + 1;
+  }
   ```
 
-- [ ] Enclosing function context — include the name of the enclosing function in each reference result for better readability ([clangd#177](https://github.com/clangd/clangd/issues/177))
-- [x] Macro references across expansion, `#ifdef`/`#ifndef` and `#undef` sites; each `#define` of a name is its own symbol
+  `shared.h`:
+
+  ```cpp
+  #pragma once
+
+  int compute(int value);
+  ```
+
+  </details>
+
+- [x] Declaration and definition sites appear among references
+
+  A reference query returns the declaration and the out-of-line
+  definition together with every use, so the whole surface of a symbol
+  is reachable from any one of its sites.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  int scale(int value);
+
+  int scale(int value) {
+      return value * 2;
+  }
+
+  int use() {
+      return scale(3);
+  }
+  ```
+
+  </details>
+
+- [ ] Implicit references from range-based for loops ([clangd#1081](https://github.com/clangd/clangd/issues/1081))
+
+  Find references on `begin` reports only its own declaration; the
+  range-based for loop that implicitly calls it is not included among the
+  references.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  struct Iterator {
+      int operator*() const;
+      Iterator& operator++();
+      bool operator!=(const Iterator& other) const;
+  };
+
+  struct Range {
+      Iterator begin();  // find-refs here omits the range-for below
+      Iterator end();
+  };
+
+  void use(Range r) {
+      for (int x : r) {
+      }
+  }
+  ```
+
+  </details>
+
+- [ ] Implicit constructor and destructor calls
+
+  Find references on a constructor reports only its explicit sites; an
+  object definition that implicitly invokes the constructor or its
+  destructor is not included.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  struct Blob {
+      Blob();  // find-refs here omits the `Blob b;` definition below
+      ~Blob();
+  };
+
+  void use() {
+      Blob b;
+  }
+  ```
+
+  </details>
+
+- [ ] References through forwarding functions ([clangd#716](https://github.com/clangd/clangd/issues/716), [clangd#1872](https://github.com/clangd/clangd/issues/1872))
+
+  Find references on a constructor does not include call sites that reach
+  it indirectly through a perfect-forwarding factory.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  template <typename T, typename... Args>
+  T make(Args&&... args) {
+      return T(static_cast<Args&&>(args)...);
+  }
+
+  struct Widget {
+      Widget(int w, int h);  // find-refs here omits the make<Widget> call
+  };
+
+  Widget build() {
+      return make<Widget>(800, 600);
+  }
+  ```
+
+  </details>
+
+- [ ] References in dependent and template contexts ([clangd#258](https://github.com/clangd/clangd/issues/258), [clangd#675](https://github.com/clangd/clangd/issues/675))
+
+  Find references on a member does not include dependent call sites in a
+  template, even when the template is instantiated with the member's
+  class.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  struct A {
+      void foo();  // find-refs here omits the dependent obj.foo() below
+  };
+
+  template <typename T>
+  void process(T& obj) {
+      obj.foo();
+  }
+
+  void run(A a) {
+      process(a);
+  }
+  ```
+
+  </details>
+
+- [ ] Read/write classification of references ([clangd#2139](https://github.com/clangd/clangd/issues/2139))
+
+  The reference reply carries only locations, so a reader cannot tell a
+  write from a read; annotating each result with its access kind is not
+  offered.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  int use() {
+      int x = 0;      // write
+      int y = x + 1;  // read
+      x = y;          // write
+      return x;
+  }
+  ```
+
+  </details>
+
+- [ ] Enclosing function shown with each reference ([clangd#177](https://github.com/clangd/clangd/issues/177))
+
+  Each reference is reported as a bare location; the name of the function
+  that encloses it is not attached, so results carry no context beyond
+  the file and line.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  int shared_value = 0;
+
+  int reader() {
+      return shared_value;
+  }
+
+  int writer() {
+      shared_value = 1;
+      return shared_value;
+  }
+  ```
+
+  </details>
+
+- [x] Macro references across expansions, `#ifdef`/`#ifndef` and `#undef`
+
+  A macro's references span its expansions, the `#ifdef` / `#ifndef`
+  conditionals that test it and the `#undef` that cancels it. Each
+  `#define` of a name is its own symbol, so a redefinition after `#undef`
+  collects only its own uses.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  #define FEATURE 1
+
+  int on = FEATURE;
+
+  #ifdef FEATURE
+  int guarded = 1;
+  #endif
+
+  #ifndef FEATURE
+  int missing = 0;
+  #endif
+
+  #undef FEATURE
+
+  #define FEATURE 2
+
+  int again = FEATURE;
+  ```
+
+  </details>
+
 - [ ] Macro references spelled inside other macro definitions ([clangd#346](https://github.com/clangd/clangd/issues/346))
-- [ ] Label → goto references
+
+  Find references on a macro does not include the mentions of it written
+  inside the bodies of other macro definitions.
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
-  retry:
-    if (failed) goto retry;  // find-refs on retry label → list all gotos
+  #define WIDTH 100  // find-refs here omits the WIDTH tokens in AREA below
+
+  #define AREA (WIDTH * WIDTH)
+
+  int total = AREA;
   ```
+
+  </details>
+
+- [x] Label and goto references
+
+  Find references on a label lists the label itself together with every
+  `goto` that jumps to it.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  int loop(int failed) {
+      retry:
+      if (failed) {
+          goto retry;
+      }
+      return 0;
+  }
+  ```
+
+  </details>
+
+<!-- END GENERATED ITEMS -->
 
 ## Call Hierarchy
 
-- [x] Prepare call hierarchy (functions and methods)
+<!-- BEGIN GENERATED ITEMS: Call Hierarchy -->
+
+- [x] Prepare call hierarchy on functions and methods
+
+  Preparing a call hierarchy works on a free function and on a member
+  method alike, anchoring an item at the entity under the cursor.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  struct Service {
+      void start();
+  };
+
+  void Service::start() {}
+
+  void launch(Service& s) {
+      s.start();
+  }
+  ```
+
+  </details>
+
 - [x] Incoming calls
+
+  Incoming calls list every caller of a function, and a caller that
+  invokes it more than once contributes each call site.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  int helper(int v) {
+      return v;
+  }
+
+  int alpha() {
+      return helper(1);
+  }
+
+  int beta() {
+      return helper(2) + helper(3);
+  }
+  ```
+
+  </details>
+
 - [x] Outgoing calls
-- [ ] Show function signature in `detail` field
-- [ ] Include class name for member functions
 
-  ```
-  // current:  "draw" in file.cpp
-  // expected: "Circle::draw" in file.cpp
-  ```
+  Outgoing calls list every function a body invokes, one entry per
+  callee.
 
-- [ ] Follow virtual dispatch (callers of `Base::draw` should include calls via derived overrides)
-- [ ] Support non-function targets (variables, enum constants) ([clangd#1308](https://github.com/clangd/clangd/issues/1308))
-- [ ] Calls inside lambdas
+  <details>
+  <summary>Example</summary>
 
   ```cpp
-  auto task = [&] { foo(); };  // foo() should appear in foo's incoming calls
+  int one() {
+      return 1;
+  }
+
+  int two() {
+      return 2;
+  }
+
+  int three() {
+      return 3;
+  }
+
+  int dispatch() {
+      return one() + two() + three();
+  }
   ```
 
-- [ ] Constructor calls through forwarding functions — `make_unique`, `emplace_back` etc. should appear in incoming calls of the constructor ([clangd#2242](https://github.com/clangd/clangd/issues/2242))
+  </details>
+
+- [ ] Function signature in the item detail
+
+  A call hierarchy item carries only its name; the function signature is
+  not attached in a detail field, so overloads are indistinguishable in
+  the hierarchy.
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
-  struct Widget { Widget(int w, int h); };
-  auto p = std::make_unique<Widget>(800, 600);
-  // incoming calls for Widget(int, int) should include this call site
+  int compute(int a, int b) {  // no signature attached to this item
+      return a + b;
+  }
+
+  int caller() {
+      return compute(1, 2);
+  }
   ```
+
+  </details>
+
+- [ ] Qualified name for member functions _(partial)_
+
+  A member function's call hierarchy item is produced, but its name field
+  carries only the bare method name (`draw`), not the qualified
+  `Circle::draw` that would tell it apart from a free function.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  struct Circle {
+      void draw();
+  };
+
+  void Circle::draw() {}
+  ```
+
+  </details>
+
+- [ ] Follow virtual dispatch
+
+  Incoming calls of a base virtual method do not include calls made
+  through derived overrides; a call to an override is attributed only to
+  that override, never to the base it overrides.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  struct Base {
+      virtual void draw();
+  };
+
+  struct Derived : Base {
+      void draw() override;
+  };
+
+  void call_derived(Derived& d) {
+      d.draw();  // absent from the incoming calls of Base::draw
+  }
+  ```
+
+  </details>
+
+- [ ] Non-function targets — variables and enum constants ([clangd#1308](https://github.com/clangd/clangd/issues/1308))
+
+  Preparing a call hierarchy on a variable or an enum constant returns
+  nothing; the request is offered only for functions and methods.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  int counter = 0;  // prepare call hierarchy here → nothing
+
+  enum Mode {
+      Fast,  // prepare call hierarchy here → nothing
+      Slow,
+  };
+  ```
+
+  </details>
+
+- [x] Calls inside lambdas
+
+  A call written in a lambda body appears in the incoming calls of the
+  function it invokes, attributed to the function that encloses the
+  lambda.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  void foo() {}
+
+  void use() {
+      auto task = [] {
+          foo();
+      };
+      task();
+  }
+  ```
+
+  </details>
+
+- [ ] Constructor calls through forwarding functions ([clangd#2242](https://github.com/clangd/clangd/issues/2242))
+
+  Incoming calls of a constructor do not include the call sites that
+  reach it through a perfect-forwarding factory.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  template <typename T, typename... Args>
+  T make(Args&&... args) {
+      return T(static_cast<Args&&>(args)...);
+  }
+
+  struct Widget {
+      Widget(int w, int h);  // make<Widget> below is absent from incoming calls
+  };
+
+  Widget build() {
+      return make<Widget>(800, 600);
+  }
+  ```
+
+  </details>
+
+<!-- END GENERATED ITEMS -->
 
 ## Type Hierarchy
 
-- [x] Prepare type hierarchy (class/struct/enum/union)
-- [x] Supertypes (base classes)
-- [x] Subtypes (derived classes)
-- [ ] Template inheritance (derived classes via template specialization)
+<!-- BEGIN GENERATED ITEMS: Type Hierarchy -->
+
+- [x] Prepare type hierarchy on class, struct, enum and union
+
+  Preparing a type hierarchy anchors an item on any user-defined type
+  tag — class, struct, enum and union alike.
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
-  template<typename T>
+  class Handle {};
+
+  struct Point {};
+
+  enum class Mode {};
+
+  union Storage {
+      int i;
+      float f;
+  };
+  ```
+
+  </details>
+
+- [x] Supertypes
+
+  Supertypes list every direct base of a class, including each base of a
+  multiple-inheritance derived type.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  struct Alpha {};
+
+  struct Beta {};
+
+  struct Gamma : Alpha, Beta {};
+  ```
+
+  </details>
+
+- [x] Subtypes
+
+  Subtypes list every class that derives from a base, across sibling
+  derived types.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  struct Shape {};
+
+  struct Circle : Shape {};
+
+  struct Square : Shape {};
+
+  struct Triangle : Shape {};
+  ```
+
+  </details>
+
+- [x] Template inheritance
+
+  Subtypes of a base include classes that derive from it through a class
+  template, such as a CRTP wrapper.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  struct Base {};
+
+  template <typename T>
   struct CRTP : Base {};
-  // type hierarchy on Base should show CRTP<T> as subtype
+
+  struct Widget : CRTP<Widget> {};
   ```
 
-- [ ] Show template arguments in type hierarchy items ([clangd#31](https://github.com/clangd/clangd/issues/31))
+  </details>
 
+- [ ] Template arguments in type hierarchy items _(partial)_ ([clangd#31](https://github.com/clangd/clangd/issues/31))
+
+  A subtype produced by a class template specialization is listed, but
+  its item name carries only the bare template name (`Derived`), without
+  the template arguments that would distinguish `Derived<Foo>`.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  struct Foo {};
+
+  struct Base {};
+
+  template <typename T>
+  struct Derived : Base {};
+
+  Derived<Foo> instance;
   ```
-  // current:  CRTP (subtype of Base)
-  // expected: CRTP<Foo> (subtype of Base)
-  ```
+
+  </details>
+
+<!-- END GENERATED ITEMS -->
 
 ## Workspace Symbol
 

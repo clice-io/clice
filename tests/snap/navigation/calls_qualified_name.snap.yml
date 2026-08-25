@@ -1,0 +1,14 @@
+---
+created_at: 2026-08-25
+input_file: calls_qualified_name.cpp
+---
+method:
+  definition:
+    - { file: "${WS}/calls_qualified_name.cpp", range: "16:13-16:17" }
+  declaration:
+    - { file: "${WS}/calls_qualified_name.cpp", range: "16:13-16:17" }
+  references:
+    - { file: "${WS}/calls_qualified_name.cpp", range: "13:9-13:13" }
+    - { file: "${WS}/calls_qualified_name.cpp", range: "16:13-16:17" }
+  callHierarchy:
+    - { name: "draw", kind: Method, file: "${WS}/calls_qualified_name.cpp", range: "16:13-16:17" }

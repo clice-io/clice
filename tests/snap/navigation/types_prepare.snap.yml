@@ -1,0 +1,43 @@
+---
+created_at: 2026-08-25
+input_file: types_prepare.cpp
+---
+cls:
+  definition:
+    - { file: "${WS}/types_prepare.cpp", range: "11:6-11:12" }
+  declaration:
+    - { file: "${WS}/types_prepare.cpp", range: "11:6-11:12" }
+  references:
+    - { file: "${WS}/types_prepare.cpp", range: "11:6-11:12" }
+  typeHierarchy:
+    - { name: "Handle", kind: Class, file: "${WS}/types_prepare.cpp", range: "11:6-11:12" }
+
+enm:
+  definition:
+    - { file: "${WS}/types_prepare.cpp", range: "15:11-15:15" }
+  declaration:
+    - { file: "${WS}/types_prepare.cpp", range: "15:11-15:15" }
+  references:
+    - { file: "${WS}/types_prepare.cpp", range: "15:11-15:15" }
+  typeHierarchy:
+    - { name: "Mode", kind: Enum, file: "${WS}/types_prepare.cpp", range: "15:11-15:15" }
+
+strct:
+  definition:
+    - { file: "${WS}/types_prepare.cpp", range: "13:7-13:12" }
+  declaration:
+    - { file: "${WS}/types_prepare.cpp", range: "13:7-13:12" }
+  references:
+    - { file: "${WS}/types_prepare.cpp", range: "13:7-13:12" }
+  typeHierarchy:
+    - { name: "Point", kind: Struct, file: "${WS}/types_prepare.cpp", range: "13:7-13:12" }
+
+uni:
+  definition:
+    - { file: "${WS}/types_prepare.cpp", range: "17:6-17:13" }
+  declaration:
+    - { file: "${WS}/types_prepare.cpp", range: "17:6-17:13" }
+  references:
+    - { file: "${WS}/types_prepare.cpp", range: "17:6-17:13" }
+  typeHierarchy:
+    - { name: "Storage", kind: Class, file: "${WS}/types_prepare.cpp", range: "17:6-17:13" }
