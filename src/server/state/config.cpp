@@ -102,6 +102,9 @@ void Config::finalize(llvm::StringRef workspace_root) {
     reject_zero(p.stateless_worker_count,
                 defaults.stateless_worker_count,
                 "stateless_worker_count");
+    reject_zero(p.min_stateless_worker_count,
+                defaults.min_stateless_worker_count,
+                "min_stateless_worker_count");
     reject_zero(p.worker_memory_limit, defaults.worker_memory_limit, "worker_memory_limit");
 
     if(p.cache_dir.empty() && !workspace_root.empty()) {
@@ -282,6 +285,7 @@ constexpr std::array MACHINE_DERIVED_FIELDS = {"stateless_worker_count",
 /// The fields finalize() rejects `0` for.
 constexpr std::array ZERO_INVALID_FIELDS = {"stateful_worker_count",
                                             "stateless_worker_count",
+                                            "min_stateless_worker_count",
                                             "worker_memory_limit"};
 
 /// Scrub the machine-derived fields out of a `default` object: sections
@@ -314,8 +318,10 @@ static kota::codec::dyn::Object* field_schema(kota::codec::dyn::Object& properti
 /// Patch the field schemas with what the annotations cannot express:
 /// `default`s whose fresh value depends on the running machine are
 /// dropped — a committed schema must be byte-identical on every host, so
-/// the affected fields' descriptions state the derivation instead — and
-/// the zero-invalid fields carry the lower bound finalize() enforces.
+/// the affected fields' descriptions state the derivation instead — the
+/// zero-invalid fields carry the lower bound finalize() enforces, and
+/// `index_db` names the backends open_database() accepts, so editors
+/// flag a typo that would silently fall back to LMDB.
 static void patch_field_schemas(kota::codec::dyn::Value& value) {
     if(auto* object = value.get_object()) {
         for(auto& [key, child]: *object) {
@@ -330,6 +336,9 @@ static void patch_field_schemas(kota::codec::dyn::Value& value) {
                         if(auto* schema = field_schema(*properties, field)) {
                             schema->assign("minimum", std::uint64_t{1});
                         }
+                    }
+                    if(auto* schema = field_schema(*properties, "index_db")) {
+                        schema->assign("enum", kota::codec::dyn::Array{"lmdb", "files"});
                     }
                 }
             } else if(key == "default") {

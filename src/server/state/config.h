@@ -98,7 +98,7 @@ struct ProjectConfig {
                      description =
                          "Idle delay in milliseconds before background indexing "
                          "starts.")
-    <int> idle_timeout_ms = 3000;
+    <std::uint32_t> idle_timeout_ms = 3000;
 
     /// The hooks can generate load on demand (log floods).
     KOTATSU_ANNOTATE(defaulted = true,
@@ -124,13 +124,16 @@ struct ProjectConfig {
 
     /// See WorkerPoolOptions.
     KOTATSU_ANNOTATE(defaulted = true,
-                     description = "Lower bound for dynamic stateless-worker scaling.")
+                     description =
+                         "Lower bound for dynamic stateless-worker scaling; `0` "
+                         "is invalid and falls back to the default.")
     <std::uint32_t> min_stateless_worker_count = 1;
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
-                         "Upper bound for dynamic stateless-worker scaling; "
-                         "defaults to the machine's parallelism.")
+                         "Upper bound for dynamic stateless-worker scaling; `0` "
+                         "means the machine's parallelism, which is also the "
+                         "default.")
     <std::uint32_t> max_stateless_worker_count = default_max_stateless_worker_count();
 
     KOTATSU_ANNOTATE(defaulted = true,

@@ -90,7 +90,7 @@ TEST_CASE(ParsePartialProject) {
     EXPECT_EQ(std::string_view(result->cache_dir), "/tmp/test");
     EXPECT_EQ(result->clang_tidy.value, false);
     EXPECT_EQ(result->enable_indexing.value, true);
-    EXPECT_EQ(result->idle_timeout_ms.value, 3000);
+    EXPECT_EQ(result->idle_timeout_ms.value, 3000u);
 }
 
 TEST_CASE(ParseConfigRule) {
@@ -214,7 +214,7 @@ TEST_CASE(BornValidDefaults) {
     Config config;
     EXPECT_EQ(config.project.clang_tidy.value, false);
     EXPECT_EQ(config.project.enable_indexing.value, true);
-    EXPECT_EQ(config.project.idle_timeout_ms.value, 3000);
+    EXPECT_EQ(config.project.idle_timeout_ms.value, 3000u);
     EXPECT_EQ(config.project.test_hooks.value, false);
     EXPECT_EQ(config.project.stateful_worker_count.value, 2u);
     EXPECT_GE(config.project.stateless_worker_count.value, 2u);
@@ -373,7 +373,7 @@ TEST_CASE(ConfigPriorityJson) {
     auto from_json =
         Config::load_from_json(R"({ "project": { "idle_timeout_ms": 42 } })", "/workspace");
     EXPECT_TRUE(from_json.has_value());
-    EXPECT_EQ(from_json->project.idle_timeout_ms.value, 42);
+    EXPECT_EQ(from_json->project.idle_timeout_ms.value, 42u);
     // Unset fields still receive defaults.
     EXPECT_EQ(from_json->project.enable_indexing.value, true);
     EXPECT_EQ(from_json->project.stateful_worker_count.value, 2u);
@@ -605,10 +605,12 @@ TEST_CASE(ZeroWorkerCountRejected) {
     Config config;
     config.project.stateful_worker_count = 0;
     config.project.stateless_worker_count = 0;
+    config.project.min_stateless_worker_count = 0;
     config.project.worker_memory_limit = 0;
     config.finalize("");
     EXPECT_EQ(config.project.stateful_worker_count.value, 2u);
     EXPECT_GE(config.project.stateless_worker_count.value, 2u);
+    EXPECT_EQ(config.project.min_stateless_worker_count.value, 1u);
     EXPECT_EQ(config.project.worker_memory_limit.value, 4ULL * 1024 * 1024 * 1024);
 }
 
@@ -697,7 +699,7 @@ append = ["-DFROM_TOML"]
     auto config = Config::load_from_workspace(tmp.root.str());
     EXPECT_EQ(std::string_view(config.project.cache_dir), "/from/toml");
     EXPECT_EQ(config.project.clang_tidy.value, true);
-    EXPECT_EQ(config.project.idle_timeout_ms.value, 16);
+    EXPECT_EQ(config.project.idle_timeout_ms.value, 16u);
     EXPECT_EQ(config.compiled_rules.size(), 1u);
 
     // Overlay only `idle_timeout_ms` via JSON.
@@ -706,7 +708,7 @@ append = ["-DFROM_TOML"]
     config.finalize(tmp.root.str());
 
     // Overridden field.
-    EXPECT_EQ(config.project.idle_timeout_ms.value, 99);
+    EXPECT_EQ(config.project.idle_timeout_ms.value, 99u);
     // Untouched fields stay at TOML values.
     EXPECT_EQ(std::string_view(config.project.cache_dir), "/from/toml");
     EXPECT_EQ(config.project.clang_tidy.value, true);
@@ -806,22 +808,37 @@ TEST_CASE(JsonSchema) {
     // Control: a stable field does appear under the section default.
     EXPECT_TRUE(default_mentions(*doc, "idle_timeout_ms", false));
 
-    // A stable field initializer survives as the schema default.
+    // A stable field initializer survives as the schema default, and the
+    // unsigned field type keeps negative delays out of the schema.
     const auto* idle = find_property(*doc, "idle_timeout_ms");
     ASSERT_TRUE(idle != nullptr);
     EXPECT_TRUE(idle->get_object()->find("default") != nullptr);
+    const auto* idle_minimum = idle->get_object()->find("minimum");
+    ASSERT_TRUE(idle_minimum != nullptr);
+    EXPECT_EQ(idle_minimum->get_uint().value_or(1), 0u);
 
     // skip = true fields stay out of the schema entirely.
     EXPECT_TRUE(find_property(*doc, "compiled_rules") == nullptr);
 
     // The fields finalize() rejects `0` for carry the matching lower bound.
-    for(auto field: {"stateful_worker_count", "stateless_worker_count", "worker_memory_limit"}) {
+    for(auto field: {"stateful_worker_count",
+                     "stateless_worker_count",
+                     "min_stateless_worker_count",
+                     "worker_memory_limit"}) {
         const auto* property = find_property(*doc, field);
         ASSERT_TRUE(property != nullptr);
         const auto* minimum = property->get_object()->find("minimum");
         ASSERT_TRUE(minimum != nullptr);
         EXPECT_EQ(minimum->get_uint().value_or(0), 1u);
     }
+
+    // index_db names the accepted backends, so editors flag a typo that
+    // open_database() would silently turn into LMDB.
+    const auto* index_db = find_property(*doc, "index_db");
+    ASSERT_TRUE(index_db != nullptr);
+    const auto* backends = index_db->get_object()->find("enum");
+    ASSERT_TRUE(backends != nullptr);
+    EXPECT_EQ(*backends, kota::codec::dyn::Value(kota::codec::dyn::Array{"lmdb", "files"}));
 
     // Root and every section body reject unknown properties, so editors
     // flag typos the way the strict decode pass does.

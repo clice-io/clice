@@ -81,9 +81,6 @@ function renderType(field: FieldSchema): string {
             if (field.minimum >= 0 && field.maximum > 2 ** 53) {
                 return "`uint64`";
             }
-            if (field.minimum === -2147483648 && field.maximum === 2147483647) {
-                return "`int`";
-            }
             throw new Error(`unhandled integer bounds [${field.minimum}, ${field.maximum}]`);
         }
         case "array": {

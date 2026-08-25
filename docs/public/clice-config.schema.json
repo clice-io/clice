@@ -105,12 +105,16 @@
                 "index_db": {
                     "type": "string",
                     "description": "Index persistence backend: \"lmdb\" (single database file) or \"files\" (one file per blob).",
-                    "default": "lmdb"
+                    "default": "lmdb",
+                    "enum": [
+                        "lmdb",
+                        "files"
+                    ]
                 },
                 "idle_timeout_ms": {
                     "type": "integer",
-                    "minimum": -2147483648,
-                    "maximum": 2147483647,
+                    "minimum": 0,
+                    "maximum": 4294967295,
                     "description": "Idle delay in milliseconds before background indexing starts.",
                     "default": 3000
                 },
@@ -134,16 +138,16 @@
                 },
                 "min_stateless_worker_count": {
                     "type": "integer",
-                    "minimum": 0,
+                    "minimum": 1,
                     "maximum": 4294967295,
-                    "description": "Lower bound for dynamic stateless-worker scaling.",
+                    "description": "Lower bound for dynamic stateless-worker scaling; `0` is invalid and falls back to the default.",
                     "default": 1
                 },
                 "max_stateless_worker_count": {
                     "type": "integer",
                     "minimum": 0,
                     "maximum": 4294967295,
-                    "description": "Upper bound for dynamic stateless-worker scaling; defaults to the machine's parallelism."
+                    "description": "Upper bound for dynamic stateless-worker scaling; `0` means the machine's parallelism, which is also the default."
                 },
                 "worker_memory_limit": {
                     "type": "integer",

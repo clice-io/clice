@@ -68,9 +68,9 @@ Index persistence backend: "lmdb" (single database file) or "files" (one file pe
 
 ### `project.idle_timeout_ms`
 
-| Type  | Default |
-| ----- | ------- |
-| `int` | `3000`  |
+| Type     | Default |
+| -------- | ------- |
+| `uint32` | `3000`  |
 
 Idle delay in milliseconds before background indexing starts.
 
@@ -104,7 +104,7 @@ Initial number of stateless workers — they handle ephemeral tasks (PCH/PCM bui
 | -------- | ------- |
 | `uint32` | `1`     |
 
-Lower bound for dynamic stateless-worker scaling.
+Lower bound for dynamic stateless-worker scaling; `0` is invalid and falls back to the default.
 
 ### `project.max_stateless_worker_count`
 
@@ -112,7 +112,7 @@ Lower bound for dynamic stateless-worker scaling.
 | -------- | ------- |
 | `uint32` | —       |
 
-Upper bound for dynamic stateless-worker scaling; defaults to the machine's parallelism.
+Upper bound for dynamic stateless-worker scaling; `0` means the machine's parallelism, which is also the default.
 
 ### `project.worker_memory_limit`
 
