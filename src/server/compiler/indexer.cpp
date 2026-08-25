@@ -1323,11 +1323,20 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id,
     // the live buffer. Skipping loses no debt: BufferClosed re-checks the
     // shard against the disk on close. An index-only session is the
     // opposite case — its shard IS what the LSP serves (freshness clause
-    // 4), so it indexes like a closed file.
-    if(!index_open_files) {
-        if(auto session = sessions.find(server_path_id);
-           session && session->serving != ServingMode::IndexOnly)
+    // 4), so it indexes like a closed file, but only while its buffer
+    // matches the disk this index would read: rows from a diverged disk
+    // fail clause 4's content gate and would replace the one shard the
+    // session can serve from, blanking its features until an escalation.
+    // Keep the last matching rows instead — the close-time re-check
+    // covers the debt here too.
+    if(auto session = sessions.find(server_path_id)) {
+        if(session->serving != ServingMode::IndexOnly) {
+            if(!index_open_files) {
+                co_return;
+            }
+        } else if(auto disk = fs::read(file_path); !disk || *disk != session->text) {
             co_return;
+        }
     }
 
     // The engine's own observation is authoritative for content changes:

@@ -620,8 +620,9 @@ void LSPClient::register_extensions() {
                                                                context_path_id,
                                                                params);
             // A context choice asks for the context-pure AST view; the
-            // merged index cannot give it (union rows).
-            if(session) {
+            // merged index cannot give it (union rows). A rejected switch
+            // (stale epoch, bad host) changed no context and owes none.
+            if(result.success) {
                 this->server.compiler.escalate(session);
             }
             co_return to_raw(result);

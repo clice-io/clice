@@ -440,7 +440,15 @@ FeatureRouter::RawResult
                                                          session->line_starts,
                                                          feature::PositionEncoding::UTF16));
             }
-            case Route::Empty: co_return serde_raw{"null"};
+            case Route::Empty: {
+                // The client caches this null, and only a semanticTokens
+                // refresh makes it re-pull once the cold document's shard
+                // lands — the merge signals refreshes for sessions with
+                // this flag, so an empty pull registers the same interest
+                // as a served one.
+                session->index_served = true;
+                co_return serde_raw{"null"};
+            }
             case Route::Ast: break;
         }
     }
