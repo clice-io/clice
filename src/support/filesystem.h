@@ -75,6 +75,32 @@ inline void canonicalize([[maybe_unused]] std::string& p) {
 #endif
 }
 
+/// Identity spelling of a directory: canonical per the rule above, with "."
+/// components and duplicate or trailing separators collapsed.
+///
+/// ".." is left as written — collapsing it lexically merges distinct
+/// directories whenever the skipped component is a symlink — and the real path
+/// is never resolved, which would change the path handed to a spawned compiler
+/// and is not stable across mounts.
+inline std::string normalize_directory(llvm::StringRef directory) {
+    std::string result = directory.str();
+    canonicalize(result);
+
+    /// The style is pinned rather than native: on Windows the canonical spelling
+    /// is forward-slashed, which native (windows) style would reassemble with
+    /// backslashes and whose `c:/` root posix style would eat; on POSIX windows
+    /// style would take '\' in a legal filename for a separator.
+#ifdef _WIN32
+    constexpr auto style = Style::windows_slash;
+#else
+    constexpr auto style = Style::posix;
+#endif
+
+    llvm::SmallString<128> buf(result);
+    remove_dots(buf, /*remove_dot_dot=*/false, style);
+    return std::string(buf);
+}
+
 }  // namespace path
 
 namespace fs {

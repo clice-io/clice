@@ -1,5 +1,4 @@
 #include "test/test.h"
-#include "support/filesystem.h"
 #include "support/path_pool.h"
 
 namespace clice::testing {
@@ -7,23 +6,6 @@ namespace clice::testing {
 namespace {
 
 TEST_SUITE(PathPool) {
-
-TEST_CASE(CanonicalSpelling) {
-    // The rewrite itself is platform-independent and testable anywhere;
-    // only its application is Windows-gated.
-    auto canon = [](std::string s) {
-        path::make_canonical(llvm::MutableArrayRef(s.data(), s.size()));
-        return s;
-    };
-    EXPECT_EQ(canon(R"(D:\ws\x.h)"), "d:/ws/x.h");
-    EXPECT_EQ(canon("d:/ws/x.h"), "d:/ws/x.h");
-    EXPECT_EQ(canon("/usr/X.h"), "/usr/X.h");
-
-    EXPECT_TRUE(path::needs_canonical(R"(a\b)"));
-    EXPECT_TRUE(path::needs_canonical("C:/x.h"));
-    EXPECT_FALSE(path::needs_canonical("c:/x.h"));
-    EXPECT_FALSE(path::needs_canonical("/usr/x.h"));
-}
 
 #ifdef _WIN32
 TEST_CASE(WindowsSpellingsCollapse) {

@@ -87,6 +87,11 @@ object_ptr<CompilationInfo>
                                                llvm::ArrayRef<const char*> arguments) {
     assert(!arguments.empty() && "arguments must contain at least the driver");
 
+    /// Every use below — nvcc's absolutization, the -I patch joins, the interned
+    /// identity field — must see one spelling of the working directory.
+    auto normalized_directory = path::normalize_directory(directory);
+    directory = normalized_directory;
+
     /// clang's option table cannot parse nvcc's own spellings, and the loop
     /// below discards what it cannot parse — rewrite them first so the
     /// regular classification applies.
@@ -299,7 +304,9 @@ std::optional<std::size_t> CompilationDatabase::load(llvm::StringRef path) {
             continue;
         }
 
-        llvm::StringRef dir_ref(dir_sv.data(), dir_sv.size());
+        auto dir_normalized =
+            path::normalize_directory(llvm::StringRef(dir_sv.data(), dir_sv.size()));
+        llvm::StringRef dir_ref(dir_normalized);
         llvm::StringRef file_ref(file_sv.data(), file_sv.size());
 
         // Skip non-C-family files (e.g. .rc, .asm, .def) that some build

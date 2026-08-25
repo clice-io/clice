@@ -276,6 +276,27 @@ TEST_CASE(UniqueConfigsMultiFile) {
     }
 };
 
+TEST_CASE(DirectorySpellingNormalized) {
+    CompilationDatabase database;
+    database.add_command("/fake/build", "main.cpp", "clang++ -std=c++20 main.cpp"sv);
+    database.add_command("/fake/build/", "main.cpp", "clang++ -std=c++20 main.cpp"sv);
+    database.add_command("/fake/build/./", "main.cpp", "clang++ -std=c++20 main.cpp"sv);
+
+    // One directory in three spellings: the working directory is identity (it
+    // keys the toolchain cache), so they must not split into three configs.
+    EXPECT_EQ(database.unique_configs(quiet_options()).size(), 1U);
+};
+
+TEST_CASE(DirectoryDotDotKept) {
+    CompilationDatabase database;
+    database.add_command("/fake/build", "main.cpp", "clang++ -std=c++20 main.cpp"sv);
+    database.add_command("/fake/x/../build", "main.cpp", "clang++ -std=c++20 main.cpp"sv);
+
+    // ".." is left alone on purpose: collapsing it lexically merges distinct
+    // directories whenever the skipped component is a symlink.
+    EXPECT_EQ(database.unique_configs(quiet_options()).size(), 2U);
+};
+
 TEST_CASE(GroupCommandRebuild) {
     CompilationDatabase database;
     database.add_command("fake", "main.cpp", "clang++ -std=c++17 main.cpp"sv);
