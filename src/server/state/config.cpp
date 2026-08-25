@@ -340,6 +340,10 @@ static void patch_field_schemas(kota::codec::dyn::Value& value) {
                     if(auto* schema = field_schema(*properties, "index_db")) {
                         schema->assign("enum", kota::codec::dyn::Array{"lmdb", "files"});
                     }
+                    if(auto* schema = field_schema(*properties, "pch_build")) {
+                        schema->assign("enum",
+                                       kota::codec::dyn::Array{"on_open", "on_edit", "never"});
+                    }
                 }
             } else if(key == "default") {
                 remove_machine_fields(child);

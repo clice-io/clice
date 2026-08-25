@@ -116,8 +116,7 @@ inline LexicalClass classify_lexical_kind(clang::tok::TokenKind kind, llvm::Stri
             } else if(auto* punctuator = clang::tok::getPunctuatorSpelling(kind)) {
                 /// Alternative operator spellings (and, or, not, ...) lex
                 /// as their punctuator kinds but are written as words.
-                if(!spelling.empty() && llvm::isAlpha(spelling.front()) &&
-                   spelling != punctuator) {
+                if(!spelling.empty() && llvm::isAlpha(spelling.front()) && spelling != punctuator) {
                     result.kind = SymbolKind::Keyword;
                 }
             }

@@ -369,13 +369,24 @@ auto folding_ranges(CompilationUnitRef unit) -> std::vector<FoldingRange> {
 
 auto folding_ranges(CompilationUnitRef unit, PositionEncoding encoding)
     -> std::vector<protocol::FoldingRange> {
-    auto collected = folding_ranges(unit);
-    LineMap map(unit.interested_content(), unit.line_starts(), encoding);
+    return folding_ranges_to_protocol(folding_ranges(unit),
+                                      unit.interested_content(),
+                                      unit.line_starts(),
+                                      encoding);
+}
+
+auto folding_ranges_to_protocol(llvm::ArrayRef<FoldingRange> ranges,
+                                llvm::StringRef content,
+                                llvm::ArrayRef<std::uint32_t> line_starts,
+                                PositionEncoding encoding) -> std::vector<protocol::FoldingRange> {
+    LineMap map(content,
+                std::span<const std::uint32_t>(line_starts.data(), line_starts.size()),
+                encoding);
 
     std::vector<protocol::FoldingRange> result;
-    result.reserve(collected.size());
+    result.reserve(ranges.size());
 
-    for(const auto& item: collected) {
+    for(const auto& item: ranges) {
         auto start = to_position(map, item.range.begin);
         auto end = to_position(map, item.range.end);
         if(!start || !end)

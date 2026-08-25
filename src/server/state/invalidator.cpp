@@ -30,6 +30,21 @@ static void dedup(llvm::SmallVector<std::uint32_t>& ids) {
     ids.erase(llvm::unique(ids), ids.end());
 }
 
+/// An invalidated dependent recompiles when its session invests in an
+/// AST, reindexes when closed — and does both for an index-only session
+/// (freshness clause 4): the buffer is the compile truth, but the serving
+/// rows are the shard's, and only a reindex refreshes those.
+void Invalidator::mark_dependent(std::uint32_t path_id, DirtySet& dirty) {
+    if(auto session = store.find(path_id)) {
+        dirty.mark_ast_dirty.push_back(path_id);
+        if(session->serving == ServingMode::IndexOnly) {
+            dirty.add_reindex_deps_only(path_id);
+        }
+    } else {
+        dirty.add_reindex_deps_only(path_id);
+    }
+}
+
 void Invalidator::cascade_compile_graph(std::uint32_t path_id, DirtySet& dirty) {
     if(!workspace.compile_graph || !workspace.compile_graph->has_unit(path_id)) {
         return;
@@ -37,11 +52,7 @@ void Invalidator::cascade_compile_graph(std::uint32_t path_id, DirtySet& dirty) 
     for(auto dirty_id: workspace.compile_graph->update(path_id)) {
         workspace.pcm_paths.erase(dirty_id);
         workspace.pcm_cache.erase(dirty_id);
-        if(store.find(dirty_id)) {
-            dirty.mark_ast_dirty.push_back(dirty_id);
-        } else {
-            dirty.add_reindex_deps_only(dirty_id);
-        }
+        mark_dependent(dirty_id, dirty);
     }
 }
 
@@ -63,11 +74,7 @@ void Invalidator::cascade_disk_content_change(std::uint32_t path_id, DirtySet& d
     // products went stale.
     auto dirtied = workspace.rescan_after_save(path_id);
     for(auto dirty_id: dirtied) {
-        if(store.find(dirty_id)) {
-            dirty.mark_ast_dirty.push_back(dirty_id);
-        } else {
-            dirty.add_reindex_deps_only(dirty_id);
-        }
+        mark_dependent(dirty_id, dirty);
     }
 
     // The new content is a compile input of every TU that transitively
@@ -79,11 +86,7 @@ void Invalidator::cascade_disk_content_change(std::uint32_t path_id, DirtySet& d
     // TODO: observe on large projects before adding debouncing.
     auto split_dependents = [&](llvm::ArrayRef<std::uint32_t> roots) {
         for(auto root: roots) {
-            if(store.find(root)) {
-                dirty.mark_ast_dirty.push_back(root);
-            } else {
-                dirty.add_reindex_deps_only(root);
-            }
+            mark_dependent(root, dirty);
         }
     };
     split_dependents(old_dependents);
@@ -229,11 +232,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // closed ones reindex — nothing else would ever queue them.
                 // Snapshot before the scrub below rewrites the graph.
                 for(auto root: workspace.dep_graph.find_host_sources(path_id)) {
-                    if(store.find(root)) {
-                        dirty.mark_ast_dirty.push_back(root);
-                    } else {
-                        dirty.add_reindex_deps_only(root);
-                    }
+                    mark_dependent(root, dirty);
                 }
                 // A removed module unit takes its PCM with it: importers'
                 // build products went stale, and it stops providing its
@@ -348,8 +347,14 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                         // command too; its manifest is as stale as the
                         // host's (no-op for headers indexed only via TUs).
                         dirty.drop_index.push_back(header_id);
-                        if(store.find(header_id)) {
+                        if(auto session = store.find(header_id)) {
                             dirty.mark_ast_dirty.push_back(header_id);
+                            // An index-only session just lost its serving
+                            // rows with the drop; only a reindex under the
+                            // new command brings them back.
+                            if(session->serving == ServingMode::IndexOnly) {
+                                dirty.add_reindex_content_changed(header_id);
+                            }
                         } else {
                             dirty.add_reindex_content_changed(header_id);
                         }

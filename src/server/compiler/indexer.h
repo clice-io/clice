@@ -110,6 +110,12 @@ public:
     /// as stale as the edit makes it).
     void enqueue(std::uint32_t server_path_id, ReindexReason reason);
 
+    /// Someone is reading `server_path_id` through the index and nothing
+    /// serves it yet: enqueue it at the front of the un-consumed queue and
+    /// start a round without the idle delay. A running round finishes
+    /// undisturbed; the file then leads the next one.
+    void boost(std::uint32_t server_path_id);
+
     /// Why the file awaits re-indexing (queued or currently being indexed),
     /// or nullopt when its index is not pending an update. O(1), no I/O —
     /// the query path calls this per candidate file.

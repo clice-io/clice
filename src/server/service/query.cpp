@@ -909,6 +909,22 @@ static std::string extract_line(llvm::StringRef content, std::uint32_t offset) {
     return content.slice(line_start, line_end).str();
 }
 
+/// A definition's extent within one shard's stored content, or nullopt
+/// when the shard has no in-bounds Definition payload for the symbol.
+static std::optional<LocalSourceRange> definition_extent(const index::Shard& shard,
+                                                         index::SymbolHash hash,
+                                                         llvm::StringRef content) {
+    std::optional<LocalSourceRange> extent;
+    shard.lookup(hash, RelationKind::Definition, [&](const index::Relation& r) {
+        auto def_range = std::bit_cast<LocalSourceRange>(r.target_symbol);
+        if(def_range.begin >= def_range.end || def_range.end > content.size())
+            return true;
+        extent = def_range;
+        return false;
+    });
+    return extent;
+}
+
 std::optional<IndexQuery::DefinitionText> IndexQuery::get_definition_text(index::SymbolHash hash) {
     auto sym_it = workspace.project_index.symbols.find(hash);
     if(sym_it == workspace.project_index.symbols.end())
@@ -927,30 +943,127 @@ std::optional<IndexQuery::DefinitionText> IndexQuery::get_definition_text(index:
         if(!text)
             continue;
         llvm::StringRef content = *text;
-        lsp::LineMap map(content, merged_index.line_starts());
+        auto extent = definition_extent(merged_index, hash, content);
+        if(!extent)
+            continue;
 
-        std::optional<DefinitionText> result;
-        merged_index.lookup(hash, RelationKind::Definition, [&](const index::Relation& r) {
-            auto def_range = std::bit_cast<LocalSourceRange>(r.target_symbol);
-            if(def_range.begin >= def_range.end || def_range.end > content.size())
-                return true;
-            auto range = map.to_range(def_range.begin, def_range.end);
-            if(!range)
-                return true;
-            result = DefinitionText{
-                .file = file_path.str(),
-                .start_line = static_cast<int>(range->start.line) + 1,
-                .end_line = static_cast<int>(range->end.line) + 1,
-                .text =
-                    std::string(content.substr(def_range.begin, def_range.end - def_range.begin)),
-            };
-            return false;
-        });
-        if(result)
-            return result;
+        lsp::LineMap map(content, merged_index.line_starts());
+        auto range = map.to_range(extent->begin, extent->end);
+        if(!range)
+            continue;
+        return DefinitionText{
+            .file = file_path.str(),
+            .start_line = static_cast<int>(range->start.line) + 1,
+            .end_line = static_cast<int>(range->end.line) + 1,
+            .text = std::string(content.substr(extent->begin, extent->length())),
+        };
     }
 
     return std::nullopt;
+}
+
+const index::Shard* IndexQuery::open_session_shard(const Session& session) const {
+    if(session.index_current()) {
+        return nullptr;
+    }
+    auto it = workspace.shards.find(session.path_id);
+    if(it == workspace.shards.end() || !it->second.matches_content(session.text)) {
+        return nullptr;
+    }
+    return &it->second;
+}
+
+std::vector<feature::IndexIncludeEdge> IndexQuery::include_edges(const Session& session) const {
+    auto& project = workspace.project_index;
+    auto manifest_it = project.manifests.find(session.path_id);
+    if(manifest_it == project.manifests.end()) {
+        return {};
+    }
+
+    // Nodes without a parent node sit in the TU's own file — the manifest
+    // edges of the document itself. (Directives inside included headers
+    // hang off the node of the file that contains them.)
+    std::vector<feature::IndexIncludeEdge> edges;
+    for(const auto& node: manifest_it->second.nodes) {
+        if(node.parent != ~0u) {
+            continue;
+        }
+        auto version = project.file_versions.find(node.fv);
+        if(version == project.file_versions.end()) {
+            continue;
+        }
+        edges.push_back({
+            .line = node.line,
+            .target = std::string(workspace.path_pool.resolve(version->second.path_id)),
+        });
+    }
+    return edges;
+}
+
+std::optional<feature::HoverInfo> IndexQuery::hover_card(llvm::StringRef path,
+                                                         const protocol::Position& position,
+                                                         Session* session) {
+    auto hit = resolve_cursor(path, position, session);
+    if(hit.hash == 0) {
+        return std::nullopt;
+    }
+
+    feature::IndexSymbolInfo info;
+    if(!find_symbol_info(hit.hash, info.name, info.kind)) {
+        return std::nullopt;
+    }
+
+    // Definition text and its comment block, preferring the document's own
+    // serving source (buffer-true content); external symbols defined
+    // elsewhere fall back to the defining file's stored content.
+    std::string definition;
+    std::string comment;
+    auto slice_from = [&](const index::Shard& shard, llvm::StringRef content) {
+        auto extent = definition_extent(shard, hit.hash, content);
+        if(!extent) {
+            return false;
+        }
+        definition = std::string(content.substr(extent->begin, extent->length()));
+        comment = feature::preceding_comment(content, extent->begin);
+        return true;
+    };
+
+    bool sliced = false;
+    if(session) {
+        if(session->index_current()) {
+            sliced = slice_from(session->file_rows(), session->text);
+        } else if(auto* shard = open_session_shard(*session)) {
+            sliced = slice_from(*shard, session->text);
+        }
+    }
+    if(!sliced) {
+        if(auto sym_it = workspace.project_index.symbols.find(hit.hash);
+           sym_it != workspace.project_index.symbols.end()) {
+            for(auto file_id: sym_it->second.reference_files) {
+                if(skip_shard(file_id))
+                    continue;
+                auto shard_it = workspace.shards.find(file_id);
+                if(shard_it == workspace.shards.end())
+                    continue;
+                std::unique_ptr<llvm::MemoryBuffer> storage;
+                auto text =
+                    indexed_text(workspace.path_pool.resolve(file_id), shard_it->second, storage);
+                if(text && slice_from(shard_it->second, *text))
+                    break;
+            }
+        }
+    }
+
+    auto hover = feature::index_hover(info, definition, comment);
+    if(session) {
+        auto map = session->line_map();
+        auto begin = map.to_offset(hit.range.start);
+        auto end = map.to_offset(hit.range.end);
+        if(begin && end) {
+            hover.symbol_range = LocalSourceRange{*begin, *end};
+        }
+    }
+    return hover;
 }
 
 std::vector<IndexQuery::ReferenceWithContext> IndexQuery::collect_references(index::SymbolHash hash,

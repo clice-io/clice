@@ -74,6 +74,12 @@ private:
     /// initialized handler from the sessions' materialized output state.
     bool client_ready = false;
 
+    /// Whether the client accepts workspace/semanticTokens/refresh and
+    /// workspace/inlayHint/refresh — the upgrade signal after an
+    /// index-served session's compile lands (see push_output).
+    bool semantic_tokens_refresh = false;
+    bool inlay_hint_refresh = false;
+
     /// Subscription to compile outputs; disconnects on destruction.
     Signal<std::shared_ptr<Session>>::Connection output_conn;
 

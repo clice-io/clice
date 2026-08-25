@@ -104,6 +104,14 @@ void LSPClient::register_lifecycle() {
             path::canonicalize(srv.workspace_root);
         }
 
+        if(init.capabilities.workspace.has_value()) {
+            auto& ws_caps = *init.capabilities.workspace;
+            semantic_tokens_refresh =
+                ws_caps.semantic_tokens.has_value() && ws_caps.semantic_tokens->refresh_support;
+            inlay_hint_refresh =
+                ws_caps.inlay_hint.has_value() && ws_caps.inlay_hint->refresh_support;
+        }
+
         if(init.initialization_options.has_value()) {
             auto json =
                 kota::codec::json::to_string<kota::ipc::lsp_config>(*init.initialization_options);
@@ -258,6 +266,7 @@ void LSPClient::register_document_sync() {
         srv.contexts.validate_saved_context(*session);
 
         srv.dispatch(FileEvent::buffer_opened(path_id));
+        srv.settle_open_serving(session);
 
         LOG_DEBUG("didOpen: {} (v{})", path, params.text_document.version);
     });
@@ -290,6 +299,10 @@ void LSPClient::register_document_sync() {
         // the supersede: with no follow-up request the stale parse (or its
         // dependency prep) would run to completion and hold up its waiters.
         srv.compiler.abandon_superseded(*session);
+
+        // Editing is the canonical escalation trigger: from here on the
+        // session invests in PCH/AST.
+        srv.compiler.escalate(session);
 
         srv.dispatch(FileEvent::buffer_edited(path_id));
 
@@ -604,6 +617,11 @@ void LSPClient::register_extensions() {
                                                                context_path,
                                                                context_path_id,
                                                                params);
+            // A context choice asks for the context-pure AST view; the
+            // merged index cannot give it (union rows).
+            if(session) {
+                this->server.compiler.escalate(session);
+            }
             co_return to_raw(result);
         });
 
@@ -778,6 +796,29 @@ void LSPClient::push_output(const Session& session) {
         regions.uri = uri_str;
         regions.regions = format_inactive_regions(session, output);
         peer.send_notification("clice/inactiveRegions", regions);
+    }
+
+    // The session served index projections while this compile was
+    // pending: whole-document results the client already pulled (tokens,
+    // inlay hints) just got better, and only a refresh request makes it
+    // re-pull them. Peer lifetime discipline as in the progress
+    // handshake: the peer outlives this client, and teardown fails
+    // pending requests before run() returns.
+    if(session.index_served && output.version.has_value()) {
+        auto fire = [this](auto params) {
+            // Captureless coroutine lambda invoked immediately: parameters
+            // are copied into the frame, captures would dangle.
+            server.loop.schedule([](kota::ipc::JsonPeer* peer,
+                                    decltype(params) request) -> kota::task<> {
+                co_await peer->send_request(request, {.timeout = std::chrono::milliseconds(3000)});
+            }(&peer, params));
+        };
+        if(semantic_tokens_refresh) {
+            fire(protocol::SemanticTokensRefreshParams{});
+        }
+        if(inlay_hint_refresh) {
+            fire(protocol::InlayHintRefreshParams{});
+        }
     }
 }
 

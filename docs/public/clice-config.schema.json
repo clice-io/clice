@@ -12,6 +12,7 @@
                 "compile_commands_paths": [],
                 "enable_indexing": true,
                 "index_db": "lmdb",
+                "pch_build": "on_open",
                 "idle_timeout_ms": 3000,
                 "test_hooks": false,
                 "stateful_worker_count": 2,
@@ -109,6 +110,16 @@
                     "enum": [
                         "lmdb",
                         "files"
+                    ]
+                },
+                "pch_build": {
+                    "type": "string",
+                    "description": "What triggers PCH/AST builds for an open file: \"on_open\" compiles eagerly on didOpen, \"on_edit\" serves reads from the index and compiles only when an edit-intent trigger fires (edit, completion, signature help, context switch), \"never\" serves purely from the index. Feature routing always answers from the best source currently available; this option only decides when the expensive sources get built.",
+                    "default": "on_open",
+                    "enum": [
+                        "on_open",
+                        "on_edit",
+                        "never"
                     ]
                 },
                 "idle_timeout_ms": {

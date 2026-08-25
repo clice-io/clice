@@ -636,11 +636,14 @@ private:
 
 class SemanticTokenEncoder {
 public:
-    SemanticTokenEncoder(CompilationUnitRef unit,
+    SemanticTokenEncoder(llvm::StringRef content,
+                         llvm::ArrayRef<std::uint32_t> line_starts,
                          PositionEncoding encoding,
                          protocol::SemanticTokens& output) :
-        map(unit.interested_content(), unit.line_starts(), encoding), encoding(encoding),
-        output(output) {}
+        map(content,
+            std::span<const std::uint32_t>(line_starts.data(), line_starts.size()),
+            encoding),
+        encoding(encoding), output(output) {}
 
     void append(const SemanticToken& token) {
         auto content = map.content();
@@ -736,12 +739,20 @@ auto semantic_tokens(CompilationUnitRef unit) -> std::vector<SemanticToken> {
 
 auto semantic_tokens(CompilationUnitRef unit, PositionEncoding encoding)
     -> protocol::SemanticTokens {
-    auto tokens = semantic_tokens(unit);
+    return semantic_tokens_to_protocol(semantic_tokens(unit),
+                                       unit.interested_content(),
+                                       unit.line_starts(),
+                                       encoding);
+}
 
+auto semantic_tokens_to_protocol(llvm::ArrayRef<SemanticToken> tokens,
+                                 llvm::StringRef content,
+                                 llvm::ArrayRef<std::uint32_t> line_starts,
+                                 PositionEncoding encoding) -> protocol::SemanticTokens {
     protocol::SemanticTokens result;
     result.data.reserve(tokens.size() * 5);
 
-    SemanticTokenEncoder encoder(unit, encoding, result);
+    SemanticTokenEncoder encoder(content, line_starts, encoding, result);
     for(const auto& token: tokens) {
         encoder.append(token);
     }

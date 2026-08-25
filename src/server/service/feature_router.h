@@ -162,6 +162,54 @@ public:
     RawResult workspace_symbol(llvm::StringRef query);
 
 private:
+    /// Whether the worker's AST can answer for this session right now:
+    /// compiled, current, and not quarantined (the quarantine gate sits
+    /// before ensure_compiled's clean-AST fast path, so a quarantined
+    /// session's forward returns null even with a clean AST). When false,
+    /// the routing rules try the index before deciding to await a compile.
+    static bool ast_answerable(const Session& session);
+
+    /// The route decision for requests the index may serve: drains the
+    /// transport pipe (the handler resumed eagerly; a didChange or cancel
+    /// may be queued), then re-derives the source from current state.
+    enum class Route : std::uint8_t {
+        /// The request was superseded while draining (didChange, close);
+        /// answer empty — the client re-requests against the new state.
+        Superseded,
+        /// Serve from the index slice (the shard admitted by freshness
+        /// clause 4).
+        Index,
+        /// Fall through to the AST path (forward_query, which compiles
+        /// as needed).
+        Ast,
+        /// No source can serve and none is being invested in (IndexOnly
+        /// with no matching shard): answer honestly empty.
+        Empty,
+    };
+
+    /// See Route. Sets up escalated sessions' compile kick so an index
+    /// answer never strands the AST investment the policy asked for.
+    kota::task<FeatureRouter::Route> pick_route(std::shared_ptr<Session> session);
+
+    /// The compile gate of index-navigation requests: awaits the compile
+    /// exactly when the routing decided the AST is the serving source
+    /// (freshness clause 1 needs the settled file index), and lets
+    /// index-served sessions resolve through clauses 1/4 without forcing
+    /// the build. False means answer null — the compile failed or the
+    /// request was superseded.
+    kota::task<bool> nav_gate(std::shared_ptr<Session> session);
+
+    /// The document's rows extracted for the projections, plus the
+    /// resolver the projections share.
+    struct IndexRows {
+        std::vector<index::Occurrence> occurrences;
+        std::vector<feature::IndexDeclRow> decls;
+    };
+
+    static IndexRows extract_rows(const index::Shard& shard);
+
+    std::optional<feature::IndexSymbolInfo> resolve_symbol_info(index::SymbolHash hash);
+
     /// The preamble include links of a session's active PCH; empty when
     /// there is no PCH or its preamble no longer matches the buffer.
     std::vector<feature::DocumentLink> find_preamble_links(const Session& session);

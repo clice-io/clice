@@ -121,8 +121,8 @@ auto index_semantic_tokens(llvm::StringRef content,
             if(!info) {
                 continue;
             }
-            auto modifier = decl_it->definition ? SymbolModifiers::Definition
-                                                : SymbolModifiers::Declaration;
+            auto modifier =
+                decl_it->definition ? SymbolModifiers::Definition : SymbolModifiers::Declaration;
             combine(semantic, {info->kind, SymbolModifiers::to_mask(modifier)});
             covered.push_back(decl_it->symbol);
         }
@@ -245,8 +245,8 @@ auto index_semantic_tokens(llvm::StringRef content,
     return tokens;
 }
 
-auto index_document_symbols(llvm::ArrayRef<IndexDeclRow> decls,
-                            IndexSymbolResolver resolve) -> std::vector<DocumentSymbol> {
+auto index_document_symbols(llvm::ArrayRef<IndexDeclRow> decls, IndexSymbolResolver resolve)
+    -> std::vector<DocumentSymbol> {
     struct Entry {
         DocumentSymbol symbol;
         LocalSourceRange extent;
@@ -265,11 +265,13 @@ auto index_document_symbols(llvm::ArrayRef<IndexDeclRow> decls,
         if(selection.begin < row.extent.begin || selection.end > row.extent.end) {
             selection = row.extent;
         }
-        entries.push_back({{.name = std::move(info->name),
-                            .kind = info->kind,
-                            .range = row.extent,
-                            .selection_range = selection},
-                           row.extent});
+        entries.push_back({
+            {.name = std::move(info->name),
+             .kind = info->kind,
+             .range = row.extent,
+             .selection_range = selection},
+            row.extent
+        });
     }
 
     // Merged shard rows can duplicate an anchor (a symbol's Declaration
@@ -350,6 +352,7 @@ auto index_folding_ranges(llvm::StringRef content,
         LocalSourceRange range;
         bool open;
     };
+
     std::vector<Brace> braces;
     {
         Lexer lexer(content, {.lang_opts = &profile_for(lang_opts).opts});
@@ -420,10 +423,10 @@ auto index_folding_ranges(llvm::StringRef content,
     std::ranges::sort(ranges, [](const FoldingRange& lhs, const FoldingRange& rhs) {
         return std::tie(lhs.range.begin, lhs.range.end) < std::tie(rhs.range.begin, rhs.range.end);
     });
-    auto duplicates = std::ranges::unique(ranges, [](const FoldingRange& lhs,
-                                                     const FoldingRange& rhs) {
-        return lhs.range == rhs.range;
-    });
+    auto duplicates =
+        std::ranges::unique(ranges, [](const FoldingRange& lhs, const FoldingRange& rhs) {
+            return lhs.range == rhs.range;
+        });
     ranges.erase(duplicates.begin(), duplicates.end());
 
     return ranges;
@@ -450,10 +453,10 @@ auto index_document_links(llvm::StringRef content,
     std::ranges::sort(links, [](const DocumentLink& lhs, const DocumentLink& rhs) {
         return std::tie(lhs.range.begin, lhs.target) < std::tie(rhs.range.begin, rhs.target);
     });
-    auto duplicates = std::ranges::unique(links, [](const DocumentLink& lhs,
-                                                    const DocumentLink& rhs) {
-        return lhs.range == rhs.range && lhs.target == rhs.target;
-    });
+    auto duplicates =
+        std::ranges::unique(links, [](const DocumentLink& lhs, const DocumentLink& rhs) {
+            return lhs.range == rhs.range && lhs.target == rhs.target;
+        });
     links.erase(duplicates.begin(), duplicates.end());
 
     return links;

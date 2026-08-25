@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include "feature/feature.h"
 #include "semantic/symbol.h"
 #include "server/protocol/agentic.h"
 #include "server/state/workspace.h"
@@ -251,6 +252,27 @@ public:
     /// changed and awaits reindexing (clause 2), or — unless disk_only —
     /// the file is open and its session serves it instead.
     bool skip_shard(std::uint32_t path_id) const;
+
+    /// The shard that may serve `session`'s document as if closed
+    /// (freshness clause 4): the session has no current file index and
+    /// the buffer is byte-identical to the rows' content. Nullptr
+    /// otherwise — including when the session's own index is current and
+    /// would double-serve.
+    const index::Shard* open_session_shard(const Session& session) const;
+
+    /// The include edges of the session's document from its TU manifest:
+    /// the input of the document-link projection. Empty when the file has
+    /// no manifest (never indexed, or a header only reached through other
+    /// TUs).
+    std::vector<feature::IndexIncludeEdge> include_edges(const Session& session) const;
+
+    /// The read-only hover card for the symbol under the cursor: name and
+    /// kind from the symbol tables, definition text sliced from stored
+    /// content, the comment block above the definition. No Sema products
+    /// — see feature::index_hover.
+    std::optional<feature::HoverInfo> hover_card(llvm::StringRef path,
+                                                 const protocol::Position& position,
+                                                 Session* session);
 
     /// Iterate all open Sessions with valid, up-to-date file indices.
     void visit_sessions(SessionVisitor visitor) const;

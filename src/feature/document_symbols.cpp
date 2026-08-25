@@ -372,19 +372,31 @@ auto document_symbols(CompilationUnitRef unit) -> std::vector<DocumentSymbol> {
 
 auto document_symbols(CompilationUnitRef unit, PositionEncoding encoding)
     -> std::vector<protocol::DocumentSymbol> {
-    auto internal = document_symbols(unit);
-    LineMap map(unit.interested_content(), unit.line_starts(), encoding);
+    return document_symbols_to_protocol(document_symbols(unit),
+                                        unit.interested_content(),
+                                        unit.line_starts(),
+                                        encoding);
+}
 
-    std::vector<protocol::DocumentSymbol> symbols;
-    symbols.reserve(internal.size());
+auto document_symbols_to_protocol(llvm::ArrayRef<DocumentSymbol> symbols,
+                                  llvm::StringRef content,
+                                  llvm::ArrayRef<std::uint32_t> line_starts,
+                                  PositionEncoding encoding)
+    -> std::vector<protocol::DocumentSymbol> {
+    LineMap map(content,
+                std::span<const std::uint32_t>(line_starts.data(), line_starts.size()),
+                encoding);
 
-    for(const auto& symbol: internal) {
+    std::vector<protocol::DocumentSymbol> result;
+    result.reserve(symbols.size());
+
+    for(const auto& symbol: symbols) {
         if(auto converted = to_protocol_symbol(symbol, map)) {
-            symbols.push_back(std::move(*converted));
+            result.push_back(std::move(*converted));
         }
     }
 
-    return symbols;
+    return result;
 }
 
 }  // namespace clice::feature

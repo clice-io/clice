@@ -68,6 +68,17 @@ public:
     /// file_index, pch_key, ast_deps, and publishes diagnostics.
     kota::task<bool> ensure_compiled(std::shared_ptr<Session> session);
 
+    /// The escalation triggers' single write point: flip an index-only
+    /// session to Escalated and start its compile without awaiting it.
+    /// A no-op for already-escalated sessions and under pch_build =
+    /// "never" (there is nothing to escalate to).
+    void escalate(std::shared_ptr<Session> session);
+
+    /// Start (or join) the session's compile detached — the caller keeps
+    /// serving from the index while it lands. ensure_compiled's pending
+    /// state dedupes concurrent kicks.
+    void request_compile(std::shared_ptr<Session> session);
+
     /// Interrupt the in-flight compile if the buffer moved past it
     /// (generation mismatch): the worker abandons the stale parse at the
     /// next declaration, while the request still runs to its reply — crash

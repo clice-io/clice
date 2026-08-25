@@ -275,6 +275,10 @@ private:
     /// dependent module units), splitting dirtied units open/closed.
     void cascade_compile_graph(std::uint32_t path_id, DirtySet& dirty);
 
+    /// See the definition: the open/closed/index-only split of a
+    /// dependency invalidation.
+    void mark_dependent(std::uint32_t path_id, DirtySet& dirty);
+
     Workspace& workspace;
     const SessionStore& store;
     const ContextResolver& contexts;

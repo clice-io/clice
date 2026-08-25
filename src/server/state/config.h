@@ -96,6 +96,19 @@ struct ProjectConfig {
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
+                         "What triggers PCH/AST builds for an open file: "
+                         "\"on_open\" compiles eagerly on didOpen, \"on_edit\" "
+                         "serves reads from the index and compiles only when "
+                         "an edit-intent trigger fires (edit, completion, "
+                         "signature help, context switch), \"never\" serves "
+                         "purely from the index. Feature routing always "
+                         "answers from the best source currently available; "
+                         "this option only decides when the expensive sources "
+                         "get built.")
+    <std::string> pch_build = "on_open";
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
                          "Idle delay in milliseconds before background indexing "
                          "starts.")
     <std::uint32_t> idle_timeout_ms = 3000;

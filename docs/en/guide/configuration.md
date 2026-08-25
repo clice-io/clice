@@ -66,6 +66,14 @@ Build the background index that serves cross-TU features (find references, works
 
 Index persistence backend: "lmdb" (single database file) or "files" (one file per blob).
 
+### `project.pch_build`
+
+| Type     | Default     |
+| -------- | ----------- |
+| `string` | `"on_open"` |
+
+What triggers PCH/AST builds for an open file: "on_open" compiles eagerly on didOpen, "on_edit" serves reads from the index and compiles only when an edit-intent trigger fires (edit, completion, signature help, context switch), "never" serves purely from the index. Feature routing always answers from the best source currently available; this option only decides when the expensive sources get built.
+
 ### `project.idle_timeout_ms`
 
 | Type     | Default |

@@ -61,7 +61,9 @@ std::optional<feature::IndexSymbolInfo> resolve(index::SymbolHash hash) {
 }
 
 auto resolver() {
-    return [this](index::SymbolHash hash) { return resolve(hash); };
+    return [this](index::SymbolHash hash) {
+        return resolve(hash);
+    };
 }
 
 TEST_CASE(TokensMatchAst) {
@@ -138,7 +140,8 @@ int scale(int value) {
     auto ast = feature::document_symbols(*unit);
     auto projected = feature::index_document_symbols(decls, resolver());
 
-    auto compare = [](auto& self, const std::vector<feature::DocumentSymbol>& lhs,
+    auto compare = [](auto& self,
+                      const std::vector<feature::DocumentSymbol>& lhs,
                       const std::vector<feature::DocumentSymbol>& rhs) -> void {
         ASSERT_EQ(lhs.size(), rhs.size());
         for(std::size_t i = 0; i < lhs.size(); i += 1) {
@@ -196,12 +199,11 @@ int compute() {
 
 TEST_CASE(CollapsedRowsBecomeSiblings) {
     std::vector<feature::IndexDeclRow> rows = {
-        {.range = {8, 9}, .extent = {0, 100}, .symbol = 1, .definition = true},
+        {.range = {8, 9},   .extent = {0, 100}, .symbol = 1, .definition = true},
         {.range = {20, 25}, .extent = {20, 50}, .symbol = 2, .definition = true},
         {.range = {20, 25}, .extent = {20, 50}, .symbol = 3, .definition = true},
     };
-    auto resolve_synthetic =
-        [](index::SymbolHash hash) -> std::optional<feature::IndexSymbolInfo> {
+    auto resolve_synthetic = [](index::SymbolHash hash) -> std::optional<feature::IndexSymbolInfo> {
         switch(hash) {
             case 1: return feature::IndexSymbolInfo{"outer", SymbolKind::Struct};
             case 2: return feature::IndexSymbolInfo{"first", SymbolKind::Field};
@@ -224,8 +226,7 @@ TEST_CASE(MergedKindsConflict) {
         {.range = {0, 5}, .target = 1},
         {.range = {0, 5}, .target = 2},
     };
-    auto resolve_synthetic =
-        [](index::SymbolHash hash) -> std::optional<feature::IndexSymbolInfo> {
+    auto resolve_synthetic = [](index::SymbolHash hash) -> std::optional<feature::IndexSymbolInfo> {
         if(hash == 1) {
             return feature::IndexSymbolInfo{"value", SymbolKind::Variable};
         }
@@ -247,13 +248,12 @@ TEST_CASE(LinksFromEdges) {
 #include <second>
 )cpp";
     std::vector<feature::IndexIncludeEdge> edges = {
-        {.line = 1, .target = "/tmp/first.h"},
+        {.line = 1, .target = "/tmp/first.h"       },
         {.line = 3, .target = "/usr/include/second"},
     };
 
-    auto links = feature::index_document_links(content,
-                                               feature::index_lang_options("main.cpp"),
-                                               edges);
+    auto links =
+        feature::index_document_links(content, feature::index_lang_options("main.cpp"), edges);
     ASSERT_EQ(links.size(), std::size_t(2));
     ASSERT_EQ(content.substr(links[0].range.begin, links[0].range.length()), "\"first.h\"");
     ASSERT_EQ(links[0].target, "/tmp/first.h");
@@ -283,7 +283,7 @@ int gap();
     ASSERT_EQ(feature::preceding_comment(content, gap_offset), "");
 }
 
-};
+};  // TEST_SUITE(index_projection)
 
 }  // namespace
 

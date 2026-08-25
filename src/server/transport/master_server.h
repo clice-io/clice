@@ -104,6 +104,11 @@ public:
     std::shared_ptr<Session> find_session(std::uint32_t path_id);
     std::shared_ptr<Session> open_session(std::uint32_t path_id);
 
+    /// Apply the serving policy to a freshly opened buffer: kick the
+    /// eager compile (on_open), escalate a diverged restored buffer, or
+    /// boost the file's background indexing when nothing can serve it.
+    void settle_open_serving(std::shared_ptr<Session> session);
+
     /// Close the session. The diagnostics clear travels through the
     /// session's output + on_output signal; a transport whose client has
     /// not completed the handshake drops it (nothing was ever pushed, so

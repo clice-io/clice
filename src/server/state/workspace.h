@@ -203,6 +203,23 @@ struct PCMState {
 ///   - Initialization  (load_workspace at startup)
 ///   - didSave         (rescan_after_save: rescan disk, cascade invalidation)
 ///   - Background index (merge TUIndex results from stateless workers)
+/// What event triggers PCH/AST investment in an open file — the parsed
+/// form of the `pch_build` config option. Routing is not governed by
+/// this: every request is answered by the best source available at that
+/// moment (see FeatureRouter); the policy only decides when the expensive
+/// sources get built.
+enum class PchBuild : std::uint8_t {
+    /// didOpen compiles eagerly; the index serves until the AST lands.
+    OnOpen,
+    /// Only an escalation trigger (edit, completion, signature help, a
+    /// context switch, a restored buffer that diverged from the index)
+    /// starts investing; unedited documents serve from the index alone.
+    OnEdit,
+    /// Never build a PCH: pure index serving, completion compiles without
+    /// a preamble. The agent / low-resource profile.
+    Never,
+};
+
 struct Workspace {
     /// A default-constructed Config is born valid (every option holds its
     /// real default), so a directly-built Workspace (unit tests, tools)
@@ -212,6 +229,12 @@ struct Workspace {
     Config config;
     CompilationDatabase cdb;
     Toolchain toolchain;
+
+    /// Parsed form of config.project.pch_build, resolved once at server
+    /// initialization (an unknown value warns and falls back here). The
+    /// initializer keeps directly-built Workspaces (unit tests, tools) on
+    /// the pre-policy behavior.
+    PchBuild pch_build = PchBuild::OnOpen;
 
     PathPool path_pool;
 

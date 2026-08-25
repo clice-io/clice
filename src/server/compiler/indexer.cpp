@@ -1202,6 +1202,20 @@ bool Indexer::need_update(llvm::StringRef file_path) {
     return false;
 }
 
+void Indexer::boost(std::uint32_t server_path_id) {
+    enqueue(server_path_id, ReindexReason::DepsOnly);
+    // Front of the un-consumed tail: the file someone is reading beats
+    // the bulk backlog. A running round is not disturbed (its snapshot
+    // semantics stay, see run_background_indexing); the slot then leads
+    // the next round.
+    auto begin = index_queue.begin() + index_queue_pos;
+    auto it = std::find(begin, index_queue.end(), server_path_id);
+    if(it != index_queue.end()) {
+        std::rotate(begin, it, it + 1);
+    }
+    schedule(/*immediate=*/true);
+}
+
 void Indexer::enqueue(std::uint32_t server_path_id, ReindexReason reason) {
     // A fresh slot means any prior slot was already consumed (or none
     // existed); a queued-and-unconsumed slot makes this call a duplicate.
@@ -1290,13 +1304,19 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id,
                                 std::size_t total) {
     auto file_path = std::string(workspace.path_pool.resolve(server_path_id));
 
-    // Open files are skipped until an agent shows up: the LSP side never
-    // reads their shards (sessions serve them), so indexing them is pure
-    // waste — but agents read disk truth and need the shards, snapshot
-    // taken from disk regardless of the live buffer. Skipping loses no
-    // debt: BufferClosed re-checks the shard against the disk on close.
-    if(!index_open_files && sessions.find(server_path_id) != nullptr)
-        co_return;
+    // Open files whose session invests in an AST are skipped until an
+    // agent shows up: the LSP side never reads their shards (the session
+    // serves them), so indexing them is pure waste — but agents read disk
+    // truth and need the shards, snapshot taken from disk regardless of
+    // the live buffer. Skipping loses no debt: BufferClosed re-checks the
+    // shard against the disk on close. An index-only session is the
+    // opposite case — its shard IS what the LSP serves (freshness clause
+    // 4), so it indexes like a closed file.
+    if(!index_open_files) {
+        if(auto session = sessions.find(server_path_id);
+           session && session->serving != ServingMode::IndexOnly)
+            co_return;
+    }
 
     // The engine's own observation is authoritative for content changes:
     // it saw the event. The dep-hash check below cannot be trusted to see

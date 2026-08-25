@@ -349,12 +349,31 @@ auto semantic_tokens(CompilationUnitRef unit) -> std::vector<SemanticToken>;
 auto semantic_tokens(CompilationUnitRef unit, PositionEncoding encoding)
     -> protocol::SemanticTokens;
 
+/// Wire encoding of computed tokens against the text they describe — one
+/// encoder for the worker's AST results and the master's index
+/// projections, so both paths emit byte-identical replies.
+auto semantic_tokens_to_protocol(llvm::ArrayRef<SemanticToken> tokens,
+                                 llvm::StringRef content,
+                                 llvm::ArrayRef<std::uint32_t> line_starts,
+                                 PositionEncoding encoding) -> protocol::SemanticTokens;
+
 auto folding_ranges(CompilationUnitRef unit) -> std::vector<FoldingRange>;
 auto folding_ranges(CompilationUnitRef unit, PositionEncoding encoding)
     -> std::vector<protocol::FoldingRange>;
 
+auto folding_ranges_to_protocol(llvm::ArrayRef<FoldingRange> ranges,
+                                llvm::StringRef content,
+                                llvm::ArrayRef<std::uint32_t> line_starts,
+                                PositionEncoding encoding) -> std::vector<protocol::FoldingRange>;
+
 auto document_symbols(CompilationUnitRef unit) -> std::vector<DocumentSymbol>;
 auto document_symbols(CompilationUnitRef unit, PositionEncoding encoding)
+    -> std::vector<protocol::DocumentSymbol>;
+
+auto document_symbols_to_protocol(llvm::ArrayRef<DocumentSymbol> symbols,
+                                  llvm::StringRef content,
+                                  llvm::ArrayRef<std::uint32_t> line_starts,
+                                  PositionEncoding encoding)
     -> std::vector<protocol::DocumentSymbol>;
 
 auto inlay_hints(CompilationUnitRef unit,
@@ -456,8 +475,7 @@ struct IndexSymbolInfo {
     SymbolKind kind = SymbolKind::Invalid;
 };
 
-using IndexSymbolResolver =
-    llvm::function_ref<std::optional<IndexSymbolInfo>(index::SymbolHash)>;
+using IndexSymbolResolver = llvm::function_ref<std::optional<IndexSymbolInfo>(index::SymbolHash)>;
 
 /// Language options for raw-lexing `path` without a compile command:
 /// C for .c files, C++ (latest) otherwise. A default-constructed
@@ -477,8 +495,8 @@ auto index_semantic_tokens(llvm::StringRef content,
 /// Outline tree built from declaration extents by range containment;
 /// extents that merely overlap (macro-generated siblings collapse onto one
 /// invocation range) become siblings in source order. `detail` stays empty.
-auto index_document_symbols(llvm::ArrayRef<IndexDeclRow> decls,
-                            IndexSymbolResolver resolve) -> std::vector<DocumentSymbol>;
+auto index_document_symbols(llvm::ArrayRef<IndexDeclRow> decls, IndexSymbolResolver resolve)
+    -> std::vector<DocumentSymbol>;
 
 /// Declaration folds: each definition extent folds its last balanced brace
 /// group (brace matching over a raw lex, so braces in strings and comments

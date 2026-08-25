@@ -96,6 +96,17 @@ void MasterServer::initialize() {
 
     auto& cfg = workspace.config.project;
 
+    if(cfg.pch_build == "on_edit") {
+        workspace.pch_build = PchBuild::OnEdit;
+    } else if(cfg.pch_build == "never") {
+        workspace.pch_build = PchBuild::Never;
+    } else {
+        if(cfg.pch_build != "on_open") {
+            LOG_WARN("Unknown pch_build '{}'; using on_open", std::string(cfg.pch_build));
+        }
+        workspace.pch_build = PchBuild::OnOpen;
+    }
+
     if(!cfg.logging_dir.empty()) {
         auto now = std::chrono::system_clock::now();
         auto pid = llvm::sys::Process::getProcessId();
@@ -250,7 +261,34 @@ std::shared_ptr<Session> MasterServer::find_session(std::uint32_t path_id) {
 }
 
 std::shared_ptr<Session> MasterServer::open_session(std::uint32_t path_id) {
-    return sessions.open(path_id);
+    auto session = sessions.open(path_id);
+    // The serving mode's creation write point; the only other write is
+    // Compiler::escalate.
+    session->serving =
+        workspace.pch_build == PchBuild::OnOpen ? ServingMode::Escalated : ServingMode::IndexOnly;
+    return session;
+}
+
+void MasterServer::settle_open_serving(std::shared_ptr<Session> session) {
+    // on_open invests immediately; the index still answers until the
+    // compile lands.
+    if(session->serving == ServingMode::Escalated) {
+        compiler.request_compile(std::move(session));
+        return;
+    }
+    auto it = workspace.shards.find(session->path_id);
+    if(it != workspace.shards.end()) {
+        // A buffer that already diverges from the indexed content (a
+        // restored unsaved file) can never be served read-only: escalate
+        // now instead of answering empty until the first edit.
+        if(!it->second.matches_content(session->text)) {
+            compiler.escalate(std::move(session));
+        }
+        return;
+    }
+    // Nothing indexed yet: reading this file is the reason to index it
+    // first.
+    indexer.boost(session->path_id);
 }
 
 void MasterServer::close_session(std::uint32_t path_id) {
