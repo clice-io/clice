@@ -2,54 +2,289 @@
 
 ## Go to Definition
 
+<!-- BEGIN GENERATED ITEMS: Go to Definition -->
+
 - [x] Index-based cross-TU go-to-definition
-- [x] Definition and declaration alternate: invoking go-to-definition on the definition itself navigates to the declaration (an inline-defined symbol with no separate declaration keeps the definition site as the answer)
-- [x] Declaration-only symbols (pure virtuals, extern declarations, pre-C++17 class constants) navigate to their declaration instead of returning empty
-- [x] Go to definition on `#include` directives (navigate to the included file), including preamble includes compiled into the PCH
-- [ ] AST-based fallback for local/unsaved symbols
-- [x] Navigate through macro wrappers to the underlying declaration — a name spelled in a macro argument anchors at its spelling, so definition/declaration alternation works there like at plain sites
+
+  A use in one translation unit resolves to a definition supplied by a
+  sibling source, drawing on the project-wide index rather than the
+  current file alone.
+
+  <details>
+  <summary>Example</summary>
+
+  `main.cpp`:
 
   ```cpp
-  #define DECLARE_HANDLER(name) void name()
-  DECLARE_HANDLER(onReady);  // go-to-def on onReady reaches the underlying function
-  ```
+  #include "shared.h"
 
-- [x] Names conjured by a macro body or token paste anchor at the invocation — gtest-style pasted classes navigate to the registration site, and typed uses of such names jump there
-
-  ```cpp
-  #define MAKE_FLAG(name) bool flag_##name = false
-  MAKE_FLAG(verbose);       // definition site of flag_verbose
-  bool b = flag_verbose;    // go-to-def → the MAKE_FLAG invocation
-  ```
-
-- [x] Tokens inside a `#define` body carry no navigation of their own: their meaning belongs to each expansion, and the invocation token always resolves to the macro
-
-- [ ] Error recovery: navigate to variable definition even when its type is unresolved
-- [ ] Dependent type navigation in uninstantiated templates
-
-  ```cpp
-  template<typename T>
-  void process(std::vector<T>& v) {
-      v.push_back(val);  // go-to-def on push_back → vector::push_back
+  int run(int value) {
+      return transform(value);
   }
   ```
 
-- [ ] Template specialization → primary template ([clangd#212](https://github.com/clangd/clangd/issues/212))
+  `lib.cpp`:
 
   ```cpp
-  template<typename T>
-  struct Formatter { ... };           // primary template
+  #include "shared.h"
 
-  template<>
-  struct Formatter<std::string> { };  // go-to-def on Formatter → primary template
+  int transform(int value) {
+      return value * 2;
+  }
   ```
 
-- [ ] `auto` keyword → deduced type ([clangd#2055](https://github.com/clangd/clangd/issues/2055))
+  `shared.h`:
 
   ```cpp
-  auto widget = getWidget();
-  // go-to-def on auto → Widget (the deduced type)
+  #pragma once
+
+  int transform(int value);
   ```
+
+  </details>
+
+- [x] Definition and declaration alternate at the cursor site
+
+  On a use, go-to-definition reaches the definition. Invoked on the
+  definition it steps to the declaration, and on the declaration it
+  steps to the definition — the two sites alternate. A symbol defined
+  inline, with no separate declaration, keeps its definition as the
+  answer.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  int scale(int value);
+
+  int scale(int value) {
+      return value * 2;
+  }
+
+  int apply(int value) {
+      return scale(value);
+  }
+  ```
+
+  </details>
+
+- [x] Declaration-only symbols navigate to their declaration
+
+  Symbols that carry only a declaration — pure virtuals, `extern`
+  variables, out-of-line static constants — resolve to that declaration
+  instead of returning nothing.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  extern int threshold;
+
+  int probe(int value);
+
+  int watch(int value) {
+      return probe(value) + threshold;
+  }
+  ```
+
+  </details>
+
+- [x] Go-to-definition on `#include` directives
+
+  Invoked on an `#include` line, go-to-definition opens the included
+  file. This works for the leading includes compiled into the preamble
+  (the PCH) as well as ordinary ones.
+
+  <details>
+  <summary>Example</summary>
+
+  `main.cpp`:
+
+  ```cpp
+  #include "panel.h"
+
+  int build() {
+      return dimension();
+  }
+  ```
+
+  `panel.h`:
+
+  ```cpp
+  #pragma once
+
+  int dimension();
+  ```
+
+  </details>
+
+- [x] Local variables and parameters navigate to their declaration
+
+  Go-to-definition on a local variable or parameter jumps to its
+  declaration inside the function body, resolved from the in-memory AST
+  without any index — the same resolution that keeps working while a
+  buffer has unsaved edits.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  int accumulate(int base) {
+      int total = base;
+      total = total + base;
+      return total;
+  }
+  ```
+
+  </details>
+
+- [x] Navigate through macro wrappers to the underlying declaration
+
+  A name spelled in a macro argument anchors at its spelling, so
+  definition and declaration alternate there exactly as at a plain
+  site, and a later use resolves through the wrapper to the function it
+  declares.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  #define DECLARE_HOOK(name) int name(int value)
+
+  DECLARE_HOOK(notify);
+
+  DECLARE_HOOK(notify) {
+      return value + 1;
+  }
+
+  int trigger(int value) {
+      return notify(value);
+  }
+  ```
+
+  </details>
+
+- [x] Names conjured by a macro body or token paste anchor at the invocation
+
+  A name assembled by token paste has no spelling of its own in the
+  source, so it anchors at the macro invocation that creates it: the
+  invocation is its definition site, and a plain use of the name jumps
+  back to that invocation.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  #define MAKE_FLAG(name) bool flag_##name = false
+
+  MAKE_FLAG(verbose);
+
+  bool read_flag() {
+      return flag_verbose;
+  }
+  ```
+
+  </details>
+
+- [x] Tokens inside a `#define` body carry no navigation of their own
+
+  A token written inside a macro body has no meaning until an expansion
+  assigns one, so navigation on it yields nothing, while the invocation
+  token always resolves to the macro being expanded.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  #define DEFINE_COUNTER int counter = 0
+
+  DEFINE_COUNTER;
+  ```
+
+  </details>
+
+- [ ] Error recovery — navigate to a variable whose type is unresolved
+
+  When a variable's type name fails to resolve, go-to-definition on a
+  later use of the variable currently returns nothing, even though the
+  variable's own declaration is still recorded.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  Unresolved handle;  // 'Unresolved' does not name a type
+
+  void read() {
+      (void) handle;  // go-to-def on handle → the declaration above
+  }
+  ```
+
+  </details>
+
+- [x] Dependent member navigation in uninstantiated templates
+
+  Inside a template that is never instantiated, a member accessed on an
+  object of a dependent type resolves to the member declared on the
+  corresponding class template.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  template <typename T>
+  struct Sink {
+      void push(T value);
+  };
+
+  template <typename T>
+  void drain(Sink<T>& sink, T value) {
+      sink.push(value);
+  }
+  ```
+
+  </details>
+
+- [ ] Template specialization navigates to the primary template ([clangd#212](https://github.com/clangd/clangd/issues/212))
+
+  Go-to-definition on the name of an explicit specialization resolves to
+  the specialization itself; stepping from it to the primary template it
+  specializes is not offered.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  template <typename T>
+  struct Formatter {}; // primary template
+
+  template <>
+  struct Formatter<int> {}; // go-to-def on Formatter → primary template
+  ```
+
+  </details>
+
+- [ ] `auto` keyword navigates to the deduced type ([clangd#2055](https://github.com/clangd/clangd/issues/2055))
+
+  Go-to-definition on the `auto` keyword should reach the type it was
+  deduced to; today it returns nothing.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  struct Widget {};
+
+  Widget make_widget();
+
+  void use() {
+      auto widget = make_widget(); // go-to-def on auto → Widget
+  }
+  ```
+
+  </details>
+
+<!-- END GENERATED ITEMS -->
 
 ### Implicit Code Navigation
 
@@ -583,6 +818,7 @@ Search the whole project for a symbol by name (`workspace/symbol`).
   // query: process
 
   void process(int value) {}
+
   void process(bool flag, int level) {}
   ```
 
@@ -603,6 +839,7 @@ Search the whole project for a symbol by name (`workspace/symbol`).
   // query: pcfg
 
   struct LinkedList {};
+
   void parse_config();
   ```
 
@@ -622,9 +859,11 @@ Search the whole project for a symbol by name (`workspace/symbol`).
 
   namespace deep {
   namespace net {
+
   struct Socket {};
-  }
-  }
+
+  }  // namespace net
+  }  // namespace deep
   ```
 
   </details>
@@ -659,6 +898,7 @@ Search the whole project for a symbol by name (`workspace/symbol`).
   // query: Connection
 
   struct ConnectionImpl {};
+
   using Connection = ConnectionImpl;
   ```
 
@@ -685,33 +925,149 @@ Search the whole project for a symbol by name (`workspace/symbol`).
 
 ## Module Navigation
 
-- [x] `import module_name` → jump to module interface unit ([clangd#2310](https://github.com/clangd/clangd/issues/2310))
+<!-- BEGIN GENERATED ITEMS: Module Navigation -->
+
+- [x] `import module_name` navigates to the module interface unit ([clangd#2310](https://github.com/clangd/clangd/issues/2310))
+
+  Go-to-definition on the name in an `import` declaration opens the
+  module interface unit that exports it, and uses of an imported symbol
+  reach its definition in that unit.
+
+  <details>
+  <summary>Example</summary>
+
+  `main.cpp`:
 
   ```cpp
-  import mylib;  // go-to-def on mylib → module interface unit (export module mylib;)
+  import widget;
+
+  int build() {
+      return area(2, 3);
+  }
   ```
 
-- [ ] `import :partition` → jump to partition unit
+  `widget.cppm`:
 
   ```cpp
-  import :core;  // go-to-def on core → partition unit (export module mylib:core;)
+  export module widget;
+
+  export int area(int width, int height) {
+      return width * height;
+  }
   ```
 
-- [ ] Navigate between interface and implementation units of the same module (implementation → interface works via go-to-def on the `module m;` name; the reverse is not implemented)
+  </details>
+
+- [x] `import :partition` navigates to the partition unit
+
+  Go-to-definition on the partition name after the colon in a partition
+  import opens the partition unit that declares it.
+
+  <details>
+  <summary>Example</summary>
+
+  `main.cpp`:
 
   ```cpp
-  // interface unit:       export module mylib;
-  // implementation unit:  module mylib;
-  // go-to-def on mylib → switch between interface and implementation units
+  import pack;
+
+  int run() {
+      return count();
+  }
   ```
 
-- [ ] Dot-separated module name — navigate each segment to its module
+  `pack.cppm`:
 
   ```cpp
-  import std.io;
-  // go-to-def on io → std.io module interface
-  // go-to-def on std → std module interface (if exists)
+  export module pack;
+
+  export import :items;
   ```
+
+  `pack_items.cppm`:
+
+  ```cpp
+  export module pack:items;
+
+  export int count() {
+      return 3;
+  }
+  ```
+
+  </details>
+
+- [ ] Navigate between interface and implementation units of one module _(partial)_
+
+  Go-to-definition on the module name in an implementation unit
+  (`module m;`) jumps to the interface unit that declares the module;
+  the reverse direction, from the interface name to the implementation,
+  is not offered.
+
+  <details>
+  <summary>Example</summary>
+
+  `main.cpp`:
+
+  ```cpp
+  import store;
+
+  int lookup(int key) {
+      return fetch(key);
+  }
+  ```
+
+  `iface.cppm`:
+
+  ```cpp
+  export module store;
+
+  export int fetch(int key);
+  ```
+
+  `impl.cpp`:
+
+  ```cpp
+  module store;
+
+  int fetch(int key) {
+      return key * 2;
+  }
+  ```
+
+  </details>
+
+- [ ] Dot-separated module name — navigate each segment _(partial)_
+
+  Go-to-definition on the leading segment of a dot-separated module name
+  reaches the module's interface unit; the segments after a dot do not
+  resolve on their own yet.
+
+  <details>
+  <summary>Example</summary>
+
+  `main.cpp`:
+
+  ```cpp
+  import app.core;
+
+  int run() {
+      return value();
+  }
+  ```
+
+  `app_core.cppm`:
+
+  ```cpp
+  export module app.core;
+
+  export int value() {
+      return 1;
+  }
+  ```
+
+  </details>
+
+<!-- END GENERATED ITEMS -->
 
 ## Document Highlight
 

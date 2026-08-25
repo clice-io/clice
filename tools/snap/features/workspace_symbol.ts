@@ -48,7 +48,7 @@ export const workspaceSymbol: Feature = {
     fromInspect() {
         throw new Error("workspace symbol has no inspect path; use verify: server");
     },
-    async fromServer(client, uri, ctx) {
+    async fromServer(client, _uri, ctx) {
         const queries = directiveLines(ctx.stripped, "query");
         if (queries.length === 0) {
             throw new Error("workspace_symbol fixture declares no '// query:' lines");
