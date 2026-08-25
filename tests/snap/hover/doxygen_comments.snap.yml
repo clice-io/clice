@@ -1,0 +1,68 @@
+---
+created_at: 2026-08-23
+input_file: doxygen_comments.cpp
+---
+01_function: { range: "15:4-15:7" }
+### function `add`  
+
+---
+→ `int`  
+Parameters:  
+- `int a`
+- `int b`
+
+Adds two integers.  
+
+---
+```cpp
+// In namespace docs
+int add(int a, int b)
+```
+
+02_primary_def: { range: "18:29-18:32" }
+### struct `Box`  
+
+---
+A box holding a value.  
+
+---
+```cpp
+// In namespace docs
+template <typename T> struct Box {}
+```
+
+03_spec_def: { range: "21:29-21:32" }
+### struct `Box<T *>`  
+
+---
+A box of pointers.  
+
+---
+```cpp
+// In namespace docs
+template <typename T> struct Box<T *> {}
+```
+
+04_primary_ref: { range: "24:4-24:7" }
+### struct `Box<int>`  
+
+---
+A box holding a value.  
+
+---
+```cpp
+// In namespace docs
+template <> struct Box<int> {}
+```
+
+05_spec_ref: { range: "25:4-25:7" }
+### struct `Box<int *>`  
+
+---
+A box of pointers.  
+
+---
+```cpp
+// In namespace docs
+template <> struct Box<int *> {}
+```

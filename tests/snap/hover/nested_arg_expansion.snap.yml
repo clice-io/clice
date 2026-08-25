@@ -1,0 +1,11 @@
+---
+created_at: 2026-08-23
+input_file: nested_arg_expansion.cpp
+---
+01_nested_arg: { range: "16:18-16:27" }
+### macro `INNER_VAL`  
+
+---
+```cpp
+#define INNER_VAL 99
+```

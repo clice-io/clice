@@ -100,10 +100,11 @@ namespace clice::index {
 /// On-disk index blob schema version. Every persisted blob carries it as a
 /// regular field and every loader discards blobs with a different value —
 /// including version-less blobs from older builds, which read back as 0.
-/// Bump it whenever a persisted type's reflected layout changes, or when
+/// Bump it whenever a persisted type's reflected layout changes, when
 /// symbol-hash semantics change (stored rows keyed by old hashes would
-/// silently stop matching newly computed ones).
-constexpr inline std::uint32_t index_format_version = 8;
+/// silently stop matching newly computed ones), or when the meaning of
+/// stored data changes (v9: preamble document links are document-ordered).
+constexpr inline std::uint32_t index_format_version = 9;
 
 /// Serialize a reflected index blob to `os` as a verified-readable
 /// flatbuffer. Encoding only fails on structural impossibilities (e.g. more

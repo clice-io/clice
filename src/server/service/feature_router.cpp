@@ -135,6 +135,7 @@ kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
             return;
         protocol::DocumentLink out{.range = *range};
         out.target = feature::to_uri(link.target);
+        out.tooltip = link.target;
         links.push_back(std::move(out));
     };
     std::ranges::for_each(find_preamble_links(*session), append);
@@ -409,19 +410,8 @@ FeatureRouter::RawResult FeatureRouter::references(std::shared_ptr<Session> sess
         }
     }
 
-    auto locations =
-        index_query.query_relations(path, position, RelationKind::Reference, session.get());
-
-    if(include_declaration) {
-        for(auto kind: {RelationKind::Declaration, RelationKind::Definition}) {
-            auto extra = index_query.query_relations(path, position, kind, session.get());
-            locations.insert(locations.end(),
-                             std::make_move_iterator(extra.begin()),
-                             std::make_move_iterator(extra.end()));
-        }
-    }
-
-    co_return to_raw(locations);
+    co_return to_raw(
+        index_query.query_references(path, position, include_declaration, session.get()));
 }
 
 FeatureRouter::RawResult FeatureRouter::declaration(std::shared_ptr<Session> session,

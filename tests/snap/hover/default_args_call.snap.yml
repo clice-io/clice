@@ -1,0 +1,19 @@
+---
+created_at: 2026-08-23
+input_file: default_args_call.cpp
+---
+call_site: { range: "14:13-14:20" }
+### function `compute`  
+
+---
+→ `int`  
+Parameters:  
+- `int a`
+- `int b = 10`
+- `int c = 20`
+
+---
+```cpp
+// In namespace defaults
+int compute(int a, int b = 10, int c = 20)
+```

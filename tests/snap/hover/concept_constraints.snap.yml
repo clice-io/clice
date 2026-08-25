@@ -1,0 +1,59 @@
+---
+created_at: 2026-08-23
+input_file: concept_constraints.cpp
+---
+01_concept_name: { range: "16:10-16:17" }
+### concept `Addable`  
+
+---
+```cpp
+// In namespace concept_constraints
+template <typename T>
+concept Addable = requires(T a) { a + a; }
+```
+
+02_param_name: { range: "16:18-16:19" }
+### type `U`  
+
+---
+Type: `class`  
+
+---
+```cpp
+// In sum
+public: Addable U
+```
+
+03_concept_ref: { range: "19:12-19:19" }
+### concept `Addable`  
+
+---
+Value = `true`  
+
+---
+```cpp
+// In namespace concept_constraints
+template <typename T>
+concept Addable = requires(T a) { a + a; }
+```
+
+04_constrained_auto: { range: "21:8-21:12" }
+### type `auto`  
+
+---
+```cpp
+int
+```
+
+05_constrained_var: { range: "21:13-21:18" }
+### variable `total`  
+
+---
+Type: `int`  
+Value = `1`  
+
+---
+```cpp
+// In namespace concept_constraints
+Addable auto total = 1
+```

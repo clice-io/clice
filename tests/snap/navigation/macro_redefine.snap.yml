@@ -1,0 +1,51 @@
+---
+created_at: 2026-08-22
+input_file: macro_redefine.cpp
+---
+first_def:
+  definition:
+    - { file: "${WS}/macro_redefine.cpp", range: "6:8-6:13" }
+  declaration:
+    - { file: "${WS}/macro_redefine.cpp", range: "6:8-6:13" }
+  references:
+    - { file: "${WS}/macro_redefine.cpp", range: "6:8-6:13" }
+    - { file: "${WS}/macro_redefine.cpp", range: "8:13-8:18" }
+    - { file: "${WS}/macro_redefine.cpp", range: "10:7-10:12" }
+
+first_use:
+  definition:
+    - { file: "${WS}/macro_redefine.cpp", range: "6:8-6:13" }
+  declaration:
+    - { file: "${WS}/macro_redefine.cpp", range: "6:8-6:13" }
+  references:
+    - { file: "${WS}/macro_redefine.cpp", range: "6:8-6:13" }
+    - { file: "${WS}/macro_redefine.cpp", range: "8:13-8:18" }
+    - { file: "${WS}/macro_redefine.cpp", range: "10:7-10:12" }
+
+second_def:
+  definition:
+    - { file: "${WS}/macro_redefine.cpp", range: "12:8-12:13" }
+  declaration:
+    - { file: "${WS}/macro_redefine.cpp", range: "12:8-12:13" }
+  references:
+    - { file: "${WS}/macro_redefine.cpp", range: "12:8-12:13" }
+    - { file: "${WS}/macro_redefine.cpp", range: "14:12-14:17" }
+
+second_use:
+  definition:
+    - { file: "${WS}/macro_redefine.cpp", range: "12:8-12:13" }
+  declaration:
+    - { file: "${WS}/macro_redefine.cpp", range: "12:8-12:13" }
+  references:
+    - { file: "${WS}/macro_redefine.cpp", range: "12:8-12:13" }
+    - { file: "${WS}/macro_redefine.cpp", range: "14:12-14:17" }
+
+undef_site:
+  definition:
+    - { file: "${WS}/macro_redefine.cpp", range: "6:8-6:13" }
+  declaration:
+    - { file: "${WS}/macro_redefine.cpp", range: "6:8-6:13" }
+  references:
+    - { file: "${WS}/macro_redefine.cpp", range: "6:8-6:13" }
+    - { file: "${WS}/macro_redefine.cpp", range: "8:13-8:18" }
+    - { file: "${WS}/macro_redefine.cpp", range: "10:7-10:12" }

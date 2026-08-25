@@ -49,11 +49,16 @@ static std::expected<ResolvedSymbol, kota::ipc::Error>
     return std::move(candidates[0]);
 }
 
+/// Hierarchy items spell their symbol handle as a decimal string — a raw
+/// 64-bit integer would not survive a JavaScript client's JSON round trip.
 static std::uint64_t extract_symbol_id(const std::optional<protocol::LSPAny>& data) {
     if(!data.has_value())
         return 0;
-    if(auto* val = std::get_if<std::int64_t>(&static_cast<const protocol::LSPVariant&>(*data)))
-        return static_cast<std::uint64_t>(*val);
+    if(auto* str = std::get_if<std::string>(&static_cast<const protocol::LSPVariant&>(*data))) {
+        std::uint64_t id = 0;
+        if(!llvm::StringRef(*str).getAsInteger(10, id))
+            return id;
+    }
     LOG_WARN("extract_symbol_id: unexpected LSPAny variant type");
     return 0;
 }

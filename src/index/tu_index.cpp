@@ -107,31 +107,9 @@ public:
         return &file_indices[fid];
     }
 
-    void add_occurrence(const clang::NamedDecl* decl,
-                        RelationKind kind,
-                        clang::SourceLocation location) {
-        decl = decls::normalize(decl);
-
-        if(location.isMacroID()) {
-            auto spelling = unit.spelling_location(location);
-            auto expansion = unit.expansion_location(location);
-
-            /// FIXME: For location from macro, we only handle the case that the
-            /// spelling and expansion are in the same file currently.
-            if(unit.file_id(spelling) != unit.file_id(expansion)) {
-                return;
-            }
-
-            /// For occurrence, we always use spelling location.
-            location = spelling;
-        }
-
-        auto [fid, range] = unit.decompose_range(location);
-        auto* index = file_index(fid);
-        if(!index) {
-            return;
-        }
-
+    /// Symbol-table registration shared by every row writer: name lookups
+    /// need the entry even when a symbol's only rows are relations.
+    index::SymbolHash ensure_symbol(const clang::NamedDecl* decl) {
         auto symbol_id = unit.getSymbolID(decl);
         auto [it, success] = symbols.try_emplace(symbol_id.hash);
         if(success) {
@@ -140,7 +118,19 @@ public:
             symbol.kind = SymbolKind::from(decl);
             symbol.scope = classify_scope(decl);
         }
-        index->occurrences.emplace_back(range, symbol_id.hash);
+        return symbol_id.hash;
+    }
+
+    void add_occurrence(const clang::NamedDecl* decl,
+                        RelationKind kind,
+                        clang::SourceLocation location) {
+        auto [fid, range] = unit.decompose_range(location);
+        auto* index = file_index(fid);
+        if(!index) {
+            return;
+        }
+
+        index->occurrences.emplace_back(range, ensure_symbol(decls::normalize(decl)));
     }
 
     void add_macro(const clang::MacroInfo* def, RelationKind kind, clang::SourceLocation location) {
@@ -163,7 +153,7 @@ public:
         auto [it, success] = symbols.try_emplace(symbol_id.hash);
         if(success) {
             auto& symbol = it->second;
-            symbol.name = unit.token_spelling(location).str();
+            symbol.name = unit.token_spelling(location);
             symbol.kind = SymbolKind::Macro;
             symbol.scope = SymbolScope::External;
         }
@@ -190,12 +180,12 @@ public:
     }
 
     /// A Definition/Declaration/Reference row mirroring an occurrence: it
-    /// lands at the name's expansion location, and decl/def rows also carry
-    /// the declaration's full extent for definition-text consumers.
+    /// lands at the same range, and decl/def rows also carry the
+    /// declaration's full extent for definition-text consumers.
     void add_self_relation(const clang::NamedDecl* decl,
                            RelationKind kind,
                            clang::SourceLocation location) {
-        auto [fid, range] = unit.decompose_expansion_range(location);
+        auto [fid, range] = unit.decompose_range(location);
         auto* index = file_index(fid);
         if(!index) {
             return;
@@ -218,7 +208,7 @@ public:
             }
         }
 
-        index->relations[unit.getSymbolID(decls::normalize(decl)).hash].emplace_back(relation);
+        index->relations[ensure_symbol(decls::normalize(decl))].emplace_back(relation);
     }
 
     /// A symbol-to-symbol row (type-of, inheritance, overrides, ctor/dtor
@@ -551,11 +541,30 @@ public:
             }
 
             for(auto& occurrence: resolve_occurrences(semantics, i, &unit.resolver())) {
-                add_occurrence(occurrence.decl, occurrence.kind, occurrence.location);
+                /// Macro-generated names anchor at written source, following
+                /// clang's file-location rule: argument tokens at their
+                /// spelling in the invocation, body and pasted tokens at the
+                /// invocation point. Nothing may anchor inside a `#define`
+                /// body — those tokens have no meaning of their own, each
+                /// expansion assigns one, and projecting a TU's expansion
+                /// back into the shared definition is deliberately banned.
+                auto location = unit.file_location(occurrence.location);
 
-                /// Every occurrence is mirrored as a self-relation, so
-                /// find-references on the occurring decl finds this row.
-                add_self_relation(occurrence.decl, occurrence.kind, occurrence.location);
+                /// An occurrence claims "this range spells the name", so it
+                /// exists only where that holds. Names conjured by a macro
+                /// body or token paste still get the self-relation below —
+                /// reference lists and jump targets keep the invocation row —
+                /// but the invocation token itself stays the macro's, not
+                /// theirs.
+                if(location == unit.spelling_location(occurrence.location)) {
+                    add_occurrence(occurrence.decl, occurrence.kind, location);
+                }
+
+                /// Every occurrence is mirrored as a self-relation with the
+                /// identical range, so find-references on the occurring decl
+                /// finds this row and cursor-site detection can match the
+                /// two ranges exactly.
+                add_self_relation(occurrence.decl, occurrence.kind, location);
             }
 
             project_relations(semantics, i);

@@ -1,0 +1,27 @@
+---
+created_at: 2026-08-25
+input_file: module_partition_import/main.cpp
+---
+--- main.cpp
+use:
+  definition:
+    - { file: "${WS}/module_partition_import/pack_items.cppm", range: "2:11-2:16" }
+  declaration:
+    - { file: "${WS}/module_partition_import/pack_items.cppm", range: "2:11-2:16" }
+  references:
+    - { file: "${WS}/module_partition_import/main.cpp", range: "14:11-14:16" }
+    - { file: "${WS}/module_partition_import/pack_items.cppm", range: "2:11-2:16" }
+  callHierarchy:
+    - { name: "count", kind: Function, file: "${WS}/module_partition_import/pack_items.cppm", range: "2:11-2:16" }
+  incomingCalls:
+    - { name: "run", kind: Function, file: "${WS}/module_partition_import/main.cpp", range: "13:4-13:7", fromRanges: ["14:11-14:18"] }
+
+--- pack.cppm
+partition_ref:
+  definition:
+    - { file: "${WS}/module_partition_import/pack_items.cppm", range: "0:14-0:24" }
+  declaration:
+    - { file: "${WS}/module_partition_import/pack_items.cppm", range: "0:14-0:24" }
+  references:
+    - { file: "${WS}/module_partition_import/pack.cppm", range: "2:14-2:15" }
+    - { file: "${WS}/module_partition_import/pack_items.cppm", range: "0:14-0:24" }

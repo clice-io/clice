@@ -80,7 +80,18 @@ export function parseFixtureMeta(content: string, filePath: string): FixtureMeta
     // `///` meta block.
     let inMeta = false;
     const seen = new Set<string>();
-    for (let line of content.split("\n")) {
+    // A plain-`//` prologue (license/attribution comments) may precede the
+    // `///` header — skip it, mirroring parseFixture in feature_docs.ts.
+    const lines = content.split("\n");
+    let start = 0;
+    while (start < lines.length) {
+        const line = (lines[start] ?? "").trim();
+        if (line !== "" && !(line.startsWith("//") && !line.startsWith("///"))) {
+            break;
+        }
+        start += 1;
+    }
+    for (let line of lines.slice(start)) {
         line = line.trim();
         if (!line.startsWith("///")) {
             break;
@@ -210,7 +221,7 @@ export interface SnapCorpus {
     support: string[];
 }
 
-const C_FAMILY = /\.(cpp|cc|cxx|c|cppm|h|hpp|hh)$/;
+export const C_FAMILY = /\.(cpp|cc|cxx|c|cppm|h|hpp|hh)$/;
 const COMPILABLE = /\.(cpp|cppm)$/;
 export const HEADER = /\.(h|hpp|hh)$/;
 

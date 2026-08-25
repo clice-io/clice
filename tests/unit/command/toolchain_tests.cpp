@@ -121,6 +121,148 @@ TEST_CASE(Zig, skip = !CIEnvironment) {
     // TODO: add Zig toolchain test when available in CI.
 }
 
+TEST_CASE(NVCC, skip = !(CIEnvironment && Linux)) {
+    auto file = fs::createTemporaryFile("clice", "cu");
+    if(!file) {
+        LOG_ERROR_RET(void(), "{}", file.error());
+    }
+
+    auto result = Toolchain::query({"nvcc", "-resource-dir", resource_dir().data()}, file->c_str());
+    ASSERT_TRUE(result.has_value());
+
+    ASSERT_TRUE(result->size() > 2);
+    ASSERT_EQ((*result)[1], "-cc1"sv);
+
+    // The default view is the device pass — the __CUDA_ARCH__ world.
+    EXPECT_TRUE(std::ranges::contains(*result, "-fcuda-is-device"));
+
+    CompilationParams params;
+    for(auto& arg: *result) {
+        params.arguments.push_back(arg.c_str());
+    }
+    params.add_remapped_file(file->c_str(), R"(
+            #ifndef __CUDACC__
+            #error clang's CUDA wrapper presents __CUDACC__ to user code
+            #endif
+            __global__ void kern(float* p) { p[threadIdx.x] = 1.0f; }
+            int main() {
+                float* d = nullptr;
+                cudaMalloc(&d, 16);
+                kern<<<1, 1>>>(d);
+                return 0;
+            }
+        )");
+
+    auto unit = compile(params);
+    ASSERT_TRUE(unit.completed());
+    ASSERT_TRUE(unit.diagnostics().empty());
+};
+
+TEST_CASE(NVCCCudaHeader, skip = !(CIEnvironment && Linux)) {
+    auto file = fs::createTemporaryFile("clice", "cuh");
+    if(!file) {
+        LOG_ERROR_RET(void(), "{}", file.error());
+    }
+
+    auto result = Toolchain::query({"nvcc", "-resource-dir", resource_dir().data()}, file->c_str());
+    ASSERT_TRUE(result.has_value());
+
+    ASSERT_TRUE(result->size() > 2);
+    ASSERT_EQ((*result)[1], "-cc1"sv);
+    EXPECT_TRUE(std::ranges::contains(*result, "-fcuda-is-device"));
+
+    CompilationParams params;
+    for(auto& arg: *result) {
+        params.arguments.push_back(arg.c_str());
+    }
+    params.add_remapped_file(file->c_str(), R"(
+            __device__ float scale(float* p) { return p[threadIdx.x]; }
+        )");
+
+    auto unit = compile(params);
+    ASSERT_TRUE(unit.completed());
+    ASSERT_TRUE(unit.diagnostics().empty());
+};
+
+TEST_CASE(NVCCViewSelector, skip = !(CIEnvironment && Linux)) {
+    auto file = fs::createTemporaryFile("clice", "cu");
+    if(!file) {
+        LOG_ERROR_RET(void(), "{}", file.error());
+    }
+
+    auto has_define = [](llvm::ArrayRef<std::string> args, llvm::StringRef name) {
+        return std::ranges::any_of(args, [&](llvm::StringRef arg) { return arg.contains(name); });
+    };
+
+    // The last view selector wins, as in clang's driver, and the injected
+    // defines follow the selected pass (CUDA_DOUBLE_MATH_FUNCTIONS appears
+    // only on nvcc's device preprocess line).
+    auto device = Toolchain::query(
+        {"nvcc", "--cuda-host-only", "--cuda-device-only", "-resource-dir", resource_dir().data()},
+        file->c_str());
+    ASSERT_TRUE(device.has_value());
+    EXPECT_TRUE(std::ranges::contains(*device, "-fcuda-is-device"));
+    EXPECT_TRUE(has_define(*device, "CUDA_DOUBLE_MATH_FUNCTIONS"));
+
+    auto host = Toolchain::query(
+        {"nvcc", "--cuda-device-only", "--cuda-host-only", "-resource-dir", resource_dir().data()},
+        file->c_str());
+    ASSERT_TRUE(host.has_value());
+    EXPECT_FALSE(std::ranges::contains(*host, "-fcuda-is-device"));
+    EXPECT_FALSE(has_define(*host, "CUDA_DOUBLE_MATH_FUNCTIONS"));
+};
+
+TEST_CASE(NVCCArchEdit, skip = !(CIEnvironment && Linux)) {
+    auto file = fs::createTemporaryFile("clice", "cu");
+    if(!file) {
+        LOG_ERROR_RET(void(), "{}", file.error());
+    }
+
+    // An edit-appended -arch=<special> arrives as `--no-offload-arch=all`
+    // plus the probe token; the dryrun's resolution must land after the
+    // clear, or clang erases it again and falls back to its sm_52 default.
+    // -arch=all runs one cicc per toolkit architecture and the newest wins.
+    auto result = Toolchain::query(
+        {"nvcc", "--no-offload-arch=all", "-arch=all", "-resource-dir", resource_dir().data()},
+        file->c_str());
+    ASSERT_TRUE(result.has_value());
+
+    auto cpu = std::ranges::find(*result, "-target-cpu");
+    ASSERT_TRUE(cpu != result->end() && cpu + 1 != result->end());
+    EXPECT_NE(*(cpu + 1), "sm_52"sv);
+};
+
+TEST_CASE(NVCCHostInput, skip = !(CIEnvironment && Linux)) {
+    auto file = fs::createTemporaryFile("clice", "cpp");
+    if(!file) {
+        LOG_ERROR_RET(void(), "{}", file.error());
+    }
+
+    // A host-language input compiles in a single host step: no CUDA mode,
+    // but nvcc's injected identity macros still apply.
+    auto result = Toolchain::query({"nvcc", "-resource-dir", resource_dir().data()}, file->c_str());
+    ASSERT_TRUE(result.has_value());
+    EXPECT_FALSE(std::ranges::contains(*result, "-fcuda-is-device"));
+
+    CompilationParams params;
+    for(auto& arg: *result) {
+        params.arguments.push_back(arg.c_str());
+    }
+    params.add_remapped_file(file->c_str(), R"(
+            #ifndef __NVCC__
+            #error the host step keeps nvcc's identity macros
+            #endif
+            #ifdef __CUDACC__
+            #error a host-language input is not a CUDA compile
+            #endif
+            int main() { return 0; }
+        )");
+
+    auto unit = compile(params);
+    ASSERT_TRUE(unit.completed());
+    ASSERT_TRUE(unit.diagnostics().empty());
+};
+
 TEST_CASE(InitiallyEmpty) {
     Toolchain tc;
     EXPECT_FALSE(tc.has_cache());

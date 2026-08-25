@@ -2,12 +2,14 @@
 
 #include <expected>
 #include <format>
+#include <optional>
 #include <ranges>
 #include <string>
 #include <vector>
 
 #include "command/argument_parser.h"
 #include "command/command.h"
+#include "command/nvcc.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 
@@ -223,6 +225,39 @@ std::vector<std::string> parse_cc1_output(llvm::StringRef content) {
     return {};
 }
 
+/// The two flags that pin a gcc-style toolchain for our driver: the target
+/// triple and the gcc installation clang should derive its paths from.
+struct GCCToolchainFlags {
+    std::string target;
+    std::string install_dir;
+};
+
+kota::task<std::expected<GCCToolchainFlags, std::string>> query_gcc_flags(std::string driver) {
+    auto target = co_await execute_async({driver, "-dumpmachine"}, true);
+    if(!target)
+        co_return std::unexpected(std::move(target.error()));
+
+    auto search_dirs = co_await execute_async({driver, "-print-search-dirs"}, true);
+    if(!search_dirs)
+        co_return std::unexpected(std::move(search_dirs.error()));
+
+    std::string install_path;
+    llvm::SmallVector<llvm::StringRef, 5> lines;
+    llvm::StringRef(*search_dirs).split(lines, '\n', -1, false);
+    for(auto line: lines) {
+        line = line.trim();
+        if(line.consume_front_insensitive("install:")) {
+            install_path = line.trim().str();
+            break;
+        }
+    }
+
+    co_return GCCToolchainFlags{
+        .target = "--target=" + llvm::StringRef(*target).trim().str(),
+        .install_dir = "--gcc-install-dir=" + install_path,
+    };
+}
+
 kota::task<std::expected<std::vector<std::string>, std::string>>
     query_one(llvm::ArrayRef<const char*> arguments, llvm::StringRef file) {
     if(arguments.empty())
@@ -266,6 +301,12 @@ kota::task<std::expected<std::vector<std::string>, std::string>>
         if(auto e = fs::remove(src_path))
             LOG_ERROR("Fail to remove temporary file: {}", e);
     });
+
+    /// .cuh is not a clang-known extension: without a language override the
+    /// probe counts as linker input and the driver builds no compile job.
+    if(ext == "cuh" && !ranges::any_of(args, [](llvm::StringRef arg) { return arg == "-x"; }))
+        args.append({"-x", "cuda"});
+
     args.emplace_back(src_path.c_str());
 
     auto family = Toolchain::driver_family(driver);
@@ -275,34 +316,14 @@ kota::task<std::expected<std::vector<std::string>, std::string>>
         // Query g++ or mingw toolchain info. We detect the target and corresponding
         // gcc toolchain install path as default behavior.
         case CompilerFamily::GCC: {
-            std::string drv(driver.str());
-
-            auto target = co_await execute_async({drv, "-dumpmachine"}, true);
-            if(!target)
-                co_return std::unexpected(std::move(target.error()));
-
-            auto search_dirs = co_await execute_async({drv, "-print-search-dirs"}, true);
-            if(!search_dirs)
-                co_return std::unexpected(std::move(search_dirs.error()));
-
-            std::string install_path;
-            llvm::SmallVector<llvm::StringRef, 5> lines;
-            llvm::StringRef(*search_dirs).split(lines, '\n', -1, false);
-            for(auto line: lines) {
-                line = line.trim();
-                if(line.consume_front_insensitive("install:")) {
-                    install_path = line.trim().str();
-                    break;
-                }
-            }
-
-            auto target_flag = "--target=" + llvm::StringRef(*target).trim().str();
-            auto install_flag = "--gcc-install-dir=" + install_path;
+            auto gcc = co_await query_gcc_flags(driver.str());
+            if(!gcc)
+                co_return std::unexpected(std::move(gcc.error()));
 
             llvm::SmallVector<const char*, 256> gcc_args;
             gcc_args.emplace_back(driver.data());
-            gcc_args.emplace_back(target_flag.c_str());
-            gcc_args.emplace_back(install_flag.c_str());
+            gcc_args.emplace_back(gcc->target.c_str());
+            gcc_args.emplace_back(gcc->install_dir.c_str());
             gcc_args.append(args.begin() + 1, args.end());
 
             auto queried =
@@ -369,8 +390,189 @@ kota::task<std::expected<std::vector<std::string>, std::string>>
             break;
         }
 
+        // Query nvcc by asking for its compilation pipeline: the dryrun
+        // names the toolkit root, the host compiler and the macros nvcc
+        // injects — none of which clang can derive on its own. The host
+        // toolchain is then pinned as in the GCC branch and our own driver
+        // builds the cc1 in CUDA mode.
+        case CompilerFamily::NVCC: {
+            /// nvcc only offloads CUDA-language inputs; a host-language
+            /// entry (`nvcc -c foo.cpp`, or an explicit `-x c++`) compiles
+            /// in a single host step. The dryrun probe follows the effective
+            /// language so it reports the pipeline the real file gets —
+            /// only a .cu input makes nvcc print the offload pipeline (the
+            /// shared probe keeps the real file's extension).
+            bool cuda_input = ext == "cu" || ext == "cuh";
+            for(std::size_t i = 0; i + 1 < args.size(); i += 1) {
+                if(llvm::StringRef(args[i]) == "-x")
+                    cuda_input = llvm::StringRef(args[i + 1]) == "cuda";
+            }
+            llvm::StringRef probe_ext = "cu";
+            if(!cuda_input)
+                probe_ext = (ext == "cu" || ext == "cuh") ? "cpp" : ext;
+
+            llvm::SmallString<64> nvcc_probe;
+            if(auto e = fs::createTemporaryFile("query-toolchain", probe_ext, nvcc_probe))
+                co_return std::unexpected(
+                    std::format("Failed to create temp file: {}", e.message()));
+            auto nvcc_cleanup = llvm::make_scope_exit([&] {
+                if(auto e = fs::remove(nvcc_probe))
+                    LOG_ERROR("Fail to remove temporary file: {}", e);
+            });
+
+            std::vector<std::string> dryrun_args = {driver.str(),
+                                                    "--dryrun",
+                                                    "-c",
+                                                    std::string(nvcc_probe)};
+            for(llvm::StringRef arg: args) {
+                if(is_nvcc_probe_flag(arg))
+                    dryrun_args.push_back(arg.str());
+            }
+
+            auto dryrun = co_await execute_async(std::move(dryrun_args));
+            if(!dryrun)
+                co_return std::unexpected(std::move(dryrun.error()));
+
+            auto info = parse_nvcc_dryrun(*dryrun);
+            if(!info)
+                co_return std::unexpected(std::move(info.error()));
+
+            /// The dryrun spells the host compiler the way nvcc resolves it —
+            /// often a bare name that only exists on nvcc's own augmented
+            /// PATH. Try that PATH, then next to the nvcc binary, then ours.
+            std::string host = info->host_compiler;
+            if(!path::is_absolute(host)) {
+                std::string resolved_host;
+                for(auto& dir: info->search_path) {
+                    auto candidate = path::join(dir, host);
+                    if(fs::exists(candidate) && fs::can_execute(candidate)) {
+                        resolved_host = std::move(candidate);
+                        break;
+                    }
+                }
+                if(resolved_host.empty()) {
+                    auto sibling = path::join(path::parent_path(driver), host);
+                    if(fs::exists(sibling) && fs::can_execute(sibling))
+                        resolved_host = std::move(sibling);
+                }
+                if(resolved_host.empty()) {
+                    if(auto program = llvm::sys::findProgramByName(host))
+                        resolved_host = std::move(*program);
+                }
+                if(resolved_host.empty())
+                    co_return std::unexpected(
+                        std::format("Cannot find nvcc host compiler: {}", host));
+                host = std::move(resolved_host);
+            }
+
+            std::vector<std::string> cuda_args;
+            cuda_args.push_back(host);
+
+            switch(Toolchain::driver_family(host)) {
+                case CompilerFamily::GCC: {
+                    auto gcc = co_await query_gcc_flags(host);
+                    if(!gcc)
+                        co_return std::unexpected(std::move(gcc.error()));
+                    cuda_args.push_back(std::move(gcc->target));
+                    cuda_args.push_back(std::move(gcc->install_dir));
+                    break;
+                }
+                /// A clang host needs no pin: the in-process driver already
+                /// defaults to the running machine's triple.
+                case CompilerFamily::Clang: break;
+                default:
+                    co_return std::unexpected(
+                        std::format("Unsupported nvcc host compiler: {}", host));
+            }
+
+            if(cuda_input) {
+                /// Without a root from the dryrun, clang's own CUDA detection
+                /// (which knows the distro-specific install locations) is the
+                /// remaining chance.
+                if(!info->cuda_path.empty())
+                    cuda_args.push_back("--cuda-path=" + info->cuda_path);
+                /// A toolkit newer than the linked clang still parses, modulo
+                /// missing feature macros; without this the version warning
+                /// would land in every file's diagnostics.
+                cuda_args.push_back("--no-cuda-version-check");
+
+                auto contains_prefix = [&](std::initializer_list<llvm::StringRef> prefixes) {
+                    return ranges::any_of(args, [&](llvm::StringRef arg) {
+                        return ranges::any_of(prefixes, [&](llvm::StringRef prefix) {
+                            return arg.starts_with(prefix);
+                        });
+                    });
+                };
+
+                /// Default to the device-side view: reading CUDA code means
+                /// reading the `__CUDA_ARCH__` world — CUTLASS keeps every
+                /// arch-specific path behind it, and the host pass grays them
+                /// all out. `--cuda-host-only` in the command (e.g. a config
+                /// rule append) flips a file to the host view instead; the
+                /// last selector wins, matching the driver's own reading of
+                /// the forwarded flags.
+                std::optional<bool> selected_host;
+                for(llvm::StringRef arg: args) {
+                    if(arg == "--cuda-host-only")
+                        selected_host = true;
+                    else if(arg == "--cuda-device-only")
+                        selected_host = false;
+                }
+                bool host_view = selected_host.value_or(false);
+                if(!selected_host.has_value())
+                    cuda_args.push_back("--cuda-device-only");
+
+                for(auto& define: host_view ? info->host_defines : info->device_defines)
+                    cuda_args.push_back("-D" + define);
+
+                if(!contains_prefix({"-std="}) && !info->cpp_dialect.empty())
+                    cuda_args.push_back("-std=" + info->cpp_dialect);
+
+                /// An `-arch=` probe token is an explicit selection too: its
+                /// resolution replaces it in place below.
+                if(!contains_prefix({"--cuda-gpu-arch=", "--offload-arch=", "-arch="}) &&
+                   !info->default_arch.empty())
+                    cuda_args.push_back("--cuda-gpu-arch=" + info->default_arch);
+            } else {
+                /// The single host step still carries nvcc's identity
+                /// macros (__NVCC__, version macros) — but no CUDA mode.
+                for(auto& define: info->host_defines)
+                    cuda_args.push_back("-D" + define);
+            }
+
+            for(llvm::StringRef arg: llvm::ArrayRef(args).drop_front()) {
+                if(is_nvcc_probe_flag(arg)) {
+                    /// The dryrun's resolution of an `-arch=<special>` token
+                    /// lands exactly where the token sat: an edit-appended
+                    /// selection carries `--no-offload-arch=all` right
+                    /// before it, and inserting the resolution any earlier
+                    /// would put it on the cleared side.
+                    if(cuda_input && arg.starts_with("-arch=") && !info->default_arch.empty())
+                        cuda_args.push_back("--cuda-gpu-arch=" + info->default_arch);
+                    continue;
+                }
+                cuda_args.push_back(arg.str());
+            }
+
+            std::vector<const char*> cuda_argv;
+            cuda_argv.reserve(cuda_args.size());
+            for(auto& arg: cuda_args)
+                cuda_argv.push_back(arg.c_str());
+
+            auto queried =
+                query_driver(cuda_argv, [&](const char* d, llvm::ArrayRef<const char*> cc1) {
+                    cc1_args.emplace_back(d);
+                    cc1_args.emplace_back("-cc1");
+                    for(auto arg: cc1)
+                        cc1_args.emplace_back(arg);
+                });
+            if(!queried)
+                co_return std::unexpected(std::move(queried.error()));
+            break;
+        }
+
         default: {
-            /// TODO: nvcc and intel compilers need further exploration.
+            /// TODO: intel compilers need further exploration.
             LOG_ERROR("Unsupported compiler family: {}, driver is {}",
                       kota::meta::enum_name(family),
                       driver);
@@ -540,6 +742,13 @@ Toolchain::ToolchainExtract Toolchain::extract_flags(llvm::StringRef file,
 
         result.key += std::to_string(arg.id);
         result.key += '\0';
+        /// All unknown options share one id; their identity is the spelling
+        /// (the NVCC translation carries `-ccbin=<path>` through here, and
+        /// two commands differing only in host compiler must not collide).
+        if(arg.id == option::OPT_UNKNOWN) {
+            result.key += arg.spelling;
+            result.key += '\0';
+        }
         for(auto value: arg.values) {
             result.key += value;
             result.key += '\0';

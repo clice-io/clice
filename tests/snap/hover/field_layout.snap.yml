@@ -1,0 +1,59 @@
+---
+created_at: 2026-08-23
+input_file: field_layout.cpp
+---
+bitfield: { range: "18:8-18:13" }
+### field `ready`  
+
+---
+Type: `int`  
+Offset: 0 bytes  
+Size: 1 bit, alignment 4 bytes  
+
+---
+```cpp
+// In Flags
+public: int ready : 1
+```
+
+bitfield_padding: { range: "19:8-19:11" }
+### field `end`  
+
+---
+Type: `int`  
+Offset: 0 bytes and 1 bit  
+Size: 1 bit (+30 bits padding), alignment 4 bytes  
+
+---
+```cpp
+// In Flags
+public: int end : 1
+```
+
+padded_field: { range: "14:8-14:14" }
+### field `length`  
+
+---
+Type: `int`  
+Offset: 4 bytes  
+Size: 4 bytes, alignment 4 bytes  
+
+---
+```cpp
+// In Header
+public: int length
+```
+
+plain_field: { range: "13:9-13:12" }
+### field `tag`  
+
+---
+Type: `char`  
+Offset: 0 bytes  
+Size: 1 byte (+3 bytes padding), alignment 1 byte  
+
+---
+```cpp
+// In Header
+public: char tag
+```

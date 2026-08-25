@@ -1,0 +1,35 @@
+---
+created_at: 2026-08-25
+input_file: implicit_constructor_call.cpp
+---
+brace:
+  definition:
+    - { file: "${WS}/implicit_constructor_call.cpp", range: "13:4-13:10" }
+  declaration:
+    - { file: "${WS}/implicit_constructor_call.cpp", range: "13:4-13:10" }
+  typeDefinition:
+    - { file: "${WS}/implicit_constructor_call.cpp", range: "12:7-12:13" }
+  references:
+    - { file: "${WS}/implicit_constructor_call.cpp", range: "13:4-13:10" }
+    - { file: "${WS}/implicit_constructor_call.cpp", range: "17:12-17:13" }
+    - { file: "${WS}/implicit_constructor_call.cpp", range: "18:12-18:13" }
+  callHierarchy:
+    - { name: "Widget", kind: Method, file: "${WS}/implicit_constructor_call.cpp", range: "13:4-13:10" }
+  incomingCalls:
+    - { name: "build", kind: Function, file: "${WS}/implicit_constructor_call.cpp", range: "16:5-16:10", fromRanges: ["17:11-17:22", "18:11-18:22"] }
+
+paren:
+  definition:
+    - { file: "${WS}/implicit_constructor_call.cpp", range: "13:4-13:10" }
+  declaration:
+    - { file: "${WS}/implicit_constructor_call.cpp", range: "13:4-13:10" }
+  typeDefinition:
+    - { file: "${WS}/implicit_constructor_call.cpp", range: "12:7-12:13" }
+  references:
+    - { file: "${WS}/implicit_constructor_call.cpp", range: "13:4-13:10" }
+    - { file: "${WS}/implicit_constructor_call.cpp", range: "17:12-17:13" }
+    - { file: "${WS}/implicit_constructor_call.cpp", range: "18:12-18:13" }
+  callHierarchy:
+    - { name: "Widget", kind: Method, file: "${WS}/implicit_constructor_call.cpp", range: "13:4-13:10" }
+  incomingCalls:
+    - { name: "build", kind: Function, file: "${WS}/implicit_constructor_call.cpp", range: "16:5-16:10", fromRanges: ["17:11-17:22", "18:11-18:22"] }

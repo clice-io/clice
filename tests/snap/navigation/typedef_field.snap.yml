@@ -1,0 +1,47 @@
+---
+created_at: 2026-08-25
+input_file: typedef_field.cpp
+---
+class_field:
+  definition:
+    - { file: "${WS}/typedef_field.cpp", range: "17:10-17:15" }
+  declaration:
+    - { file: "${WS}/typedef_field.cpp", range: "17:10-17:15" }
+  typeDefinition:
+    - { file: "${WS}/typedef_field.cpp", range: "13:6-13:11" }
+  references:
+    - { file: "${WS}/typedef_field.cpp", range: "17:10-17:15" }
+    - { file: "${WS}/typedef_field.cpp", range: "22:8-22:13" }
+
+class_type:
+  definition:
+    - { file: "${WS}/typedef_field.cpp", range: "13:6-13:11" }
+  declaration:
+    - { file: "${WS}/typedef_field.cpp", range: "13:6-13:11" }
+  references:
+    - { file: "${WS}/typedef_field.cpp", range: "13:6-13:11" }
+    - { file: "${WS}/typedef_field.cpp", range: "17:4-17:9" }
+  typeHierarchy:
+    - { name: "Store", kind: Class, file: "${WS}/typedef_field.cpp", range: "13:6-13:11" }
+
+field:
+  definition:
+    - { file: "${WS}/typedef_field.cpp", range: "16:11-16:17" }
+  declaration:
+    - { file: "${WS}/typedef_field.cpp", range: "16:11-16:17" }
+  typeDefinition:
+    - { file: "${WS}/typedef_field.cpp", range: "11:7-11:13" }
+  references:
+    - { file: "${WS}/typedef_field.cpp", range: "16:11-16:17" }
+    - { file: "${WS}/typedef_field.cpp", range: "21:8-21:14" }
+
+type:
+  definition:
+    - { file: "${WS}/typedef_field.cpp", range: "11:7-11:13" }
+  declaration:
+    - { file: "${WS}/typedef_field.cpp", range: "11:7-11:13" }
+  references:
+    - { file: "${WS}/typedef_field.cpp", range: "11:7-11:13" }
+    - { file: "${WS}/typedef_field.cpp", range: "16:4-16:10" }
+  typeHierarchy:
+    - { name: "Logger", kind: Struct, file: "${WS}/typedef_field.cpp", range: "11:7-11:13" }

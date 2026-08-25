@@ -1,0 +1,17 @@
+---
+created_at: 2026-08-23
+input_file: record_value_misleading.cpp
+---
+01_record_arg: { range: "22:15-22:16" }
+### variable `t`  
+
+---
+Type: `Tag`  
+Value = `7`  
+Passed by value  
+
+---
+```cpp
+// In demo
+Tag t
+```

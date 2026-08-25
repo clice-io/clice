@@ -1,0 +1,41 @@
+---
+created_at: 2026-08-22
+input_file: macro_generated.cpp
+---
+body_name: none
+
+counter_site:
+  definition:
+    - { file: "${WS}/macro_generated.cpp", range: "8:8-8:22" }
+  declaration:
+    - { file: "${WS}/macro_generated.cpp", range: "8:8-8:22" }
+  references:
+    - { file: "${WS}/macro_generated.cpp", range: "8:8-8:22" }
+    - { file: "${WS}/macro_generated.cpp", range: "12:0-12:14" }
+
+counter_use:
+  definition:
+    - { file: "${WS}/macro_generated.cpp", range: "12:0-12:14" }
+  declaration:
+    - { file: "${WS}/macro_generated.cpp", range: "12:0-12:14" }
+  references:
+    - { file: "${WS}/macro_generated.cpp", range: "12:0-12:14" }
+    - { file: "${WS}/macro_generated.cpp", range: "13:11-13:24" }
+
+flag_site:
+  definition:
+    - { file: "${WS}/macro_generated.cpp", range: "10:8-10:17" }
+  declaration:
+    - { file: "${WS}/macro_generated.cpp", range: "10:8-10:17" }
+  references:
+    - { file: "${WS}/macro_generated.cpp", range: "10:8-10:17" }
+    - { file: "${WS}/macro_generated.cpp", range: "16:0-16:9" }
+
+flag_use:
+  definition:
+    - { file: "${WS}/macro_generated.cpp", range: "16:0-16:9" }
+  declaration:
+    - { file: "${WS}/macro_generated.cpp", range: "16:0-16:9" }
+  references:
+    - { file: "${WS}/macro_generated.cpp", range: "16:0-16:9" }
+    - { file: "${WS}/macro_generated.cpp", range: "19:11-19:23" }

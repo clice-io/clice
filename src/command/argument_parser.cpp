@@ -387,6 +387,11 @@ bool is_c_family_file(llvm::StringRef filename) {
     if(ext.empty()) {
         return false;
     }
+    /// CUDA's header convention is missing from clang's extension table
+    /// (classifying one needs -x cuda), but it is C-family.
+    if(ext == ".cuh") {
+        return true;
+    }
     /// Drop the leading dot: ".cpp" -> "cpp".
     auto type = types::lookupTypeForExtension(ext.drop_front());
     return type != types::TY_INVALID && types::isAcceptedByClang(type);

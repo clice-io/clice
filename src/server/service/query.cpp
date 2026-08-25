@@ -194,11 +194,9 @@ static void dedup_locations(std::vector<protocol::Location>& locations) {
 }
 
 /// Whether a location names the very occurrence site the cursor stands on.
-/// Occurrences and relations are written from the same record, so for
-/// sites spelled directly in a file the ranges match exactly. Macro-driven
-/// sites index the occurrence at the spelling but the relation at the
-/// expansion; the ranges differ, so cursor-site detection (and with it the
-/// definition/declaration alternation) simply does not trigger there.
+/// Occurrences and self-relations are written from the same record with
+/// identical ranges — names spelled in macro arguments included, since
+/// both anchor at the spelling — so an exact compare suffices.
 static bool is_cursor_site(const protocol::Location& location,
                            llvm::StringRef uri,
                            const protocol::Range& range) {
@@ -434,6 +432,8 @@ std::vector<protocol::Location> IndexQuery::collect_relation_locations(index::Sy
         return true;
     });
 
+    // Same-kind rows can share one anchor: a macro body using an
+    // argument twice spells both references at the one written token.
     dedup_locations(locations);
     return locations;
 }
@@ -453,6 +453,33 @@ std::vector<protocol::Location> IndexQuery::query_relations(llvm::StringRef path
     LOG_PERF("index_query",
              "kind=relations rel={} path={} results={} elapsed_ms={:.2f}",
              kota::meta::enum_name(static_cast<RelationKind::Kind>(kind), "Invalid"),
+             path,
+             locations.size(),
+             timer.ms_f());
+    return locations;
+}
+
+std::vector<protocol::Location> IndexQuery::query_references(llvm::StringRef path,
+                                                             const protocol::Position& position,
+                                                             bool include_declaration,
+                                                             Session* session) {
+    ScopedTimer timer;
+    auto hit = resolve_cursor(path, position, session);
+    std::vector<protocol::Location> locations;
+    if(hit.hash != 0) {
+        locations = collect_relation_locations(hit.hash, RelationKind::Reference);
+        if(include_declaration) {
+            for(auto kind: {RelationKind::Declaration, RelationKind::Definition}) {
+                auto extra = collect_relation_locations(hit.hash, kind);
+                locations.insert(locations.end(),
+                                 std::make_move_iterator(extra.begin()),
+                                 std::make_move_iterator(extra.end()));
+            }
+        }
+        dedup_locations(locations);
+    }
+    LOG_PERF("index_query",
+             "kind=references path={} results={} elapsed_ms={:.2f}",
              path,
              locations.size(),
              timer.ms_f());
@@ -690,12 +717,14 @@ std::optional<SymbolInfo>
                                        const std::optional<protocol::LSPAny>& data,
                                        Session* session) {
     if(data) {
-        if(auto* int_val = std::get_if<std::int64_t>(&*data)) {
-            auto hash = static_cast<index::SymbolHash>(*int_val);
-            std::string name;
-            SymbolKind kind;
-            if(find_symbol_info(hash, name, kind)) {
-                return SymbolInfo{hash, std::move(name), kind, uri, range};
+        if(auto* str = std::get_if<std::string>(&*data)) {
+            index::SymbolHash hash = 0;
+            if(!llvm::StringRef(*str).getAsInteger(10, hash)) {
+                std::string name;
+                SymbolKind kind;
+                if(find_symbol_info(hash, name, kind)) {
+                    return SymbolInfo{hash, std::move(name), kind, uri, range};
+                }
             }
         }
     }
@@ -1223,6 +1252,8 @@ protocol::SymbolKind IndexQuery::to_lsp_symbol_kind(SymbolKind kind) {
     }
 }
 
+/// The symbol handle travels as a decimal string: a 64-bit integer would
+/// be parsed into a double by a JavaScript client and come back rounded.
 protocol::CallHierarchyItem IndexQuery::build_call_hierarchy_item(const SymbolInfo& info) {
     protocol::CallHierarchyItem item;
     item.name = info.name;
@@ -1230,7 +1261,7 @@ protocol::CallHierarchyItem IndexQuery::build_call_hierarchy_item(const SymbolIn
     item.uri = info.uri;
     item.range = info.range;
     item.selection_range = info.range;
-    item.data = protocol::LSPAny(static_cast<std::int64_t>(info.hash));
+    item.data = protocol::LSPAny(std::format("{}", info.hash));
     return item;
 }
 
@@ -1241,7 +1272,7 @@ protocol::TypeHierarchyItem IndexQuery::build_type_hierarchy_item(const SymbolIn
     item.uri = info.uri;
     item.range = info.range;
     item.selection_range = info.range;
-    item.data = protocol::LSPAny(static_cast<std::int64_t>(info.hash));
+    item.data = protocol::LSPAny(std::format("{}", info.hash));
     return item;
 }
 

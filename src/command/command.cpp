@@ -8,6 +8,8 @@
 #include <string_view>
 
 #include "simdjson.h"
+#include "command/nvcc.h"
+#include "command/toolchain.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 
@@ -84,6 +86,18 @@ object_ptr<CompilationInfo>
                                                llvm::StringRef directory,
                                                llvm::ArrayRef<const char*> arguments) {
     assert(!arguments.empty() && "arguments must contain at least the driver");
+
+    /// clang's option table cannot parse nvcc's own spellings, and the loop
+    /// below discards what it cannot parse — rewrite them first so the
+    /// regular classification applies.
+    std::vector<std::string> nvcc_translated;
+    llvm::SmallVector<const char*, 32> nvcc_arguments;
+    if(Toolchain::driver_family(arguments[0]) == CompilerFamily::NVCC) {
+        nvcc_translated = translate_nvcc_command(arguments, directory);
+        for(auto& arg: nvcc_translated)
+            nvcc_arguments.push_back(arg.c_str());
+        arguments = nvcc_arguments;
+    }
 
     auto render_arg = [&](auto& out, const kota::option::ParsedArg& arg) {
         auto cb = [&](std::string_view s) {
@@ -166,6 +180,17 @@ object_ptr<CompilationInfo>
 
         /// Everything else goes into canonical.
         render_arg(canonical_args, arg);
+    }
+
+    /// The probe-flag tokens the translation appended are unknown to the
+    /// table and were dropped above — the NVCC toolchain query needs them
+    /// in canonical.
+    if(!nvcc_translated.empty()) {
+        for(llvm::StringRef arg: arguments) {
+            if(is_nvcc_probe_flag(arg)) {
+                canonical_args.push_back(strings.save(arg).data());
+            }
+        }
     }
 
     /// Dedup canonical command.
@@ -430,6 +455,31 @@ CompileCommand CompilationDatabase::build_command(std::uint32_t path_id,
         flags.insert(flags.end(), args.begin(), args.end());
     };
 
+    bool is_nvcc =
+        Toolchain::driver_family(info->canonical->arguments.front()) == CompilerFamily::NVCC;
+
+    /// Rule flags for an NVCC entry arrive in the same nvcc spellings as
+    /// the command they edit — rewrite them like the command itself.
+    /// Appends translate as one command edit, so an appended default state
+    /// (`-rdc=false` over an rdc base) cancels the base's translated state
+    /// instead of vanishing.
+    auto translate_rule_flags = [&](llvm::ArrayRef<std::string> rule_flags, bool edit) {
+        std::vector<std::string> result(rule_flags.begin(), rule_flags.end());
+        if(result.empty() || !is_nvcc) {
+            return result;
+        }
+        std::vector<const char*> argv;
+        argv.reserve(result.size() + 1);
+        argv.push_back(info->canonical->arguments.front());
+        for(auto& arg: result) {
+            argv.push_back(arg.c_str());
+        }
+        auto translated = translate_nvcc_command(argv, directory, edit);
+        result.assign(std::make_move_iterator(translated.begin() + 1),
+                      std::make_move_iterator(translated.end()));
+        return result;
+    };
+
     append_args(info->canonical->arguments);
     append_args(info->patch);
 
@@ -441,13 +491,58 @@ CompileCommand CompilationDatabase::build_command(std::uint32_t path_id,
     }
 
     // Apply remove filter.
-    if(!options.remove.empty()) {
-        std::vector<std::string> remove_strs;
-        for(auto& s: options.remove) {
-            remove_strs.push_back(s);
+    std::vector<std::string> remove_source(options.remove.begin(), options.remove.end());
+    if(is_nvcc) {
+        /// A wildcard arch removal (`-arch=*`, `--generate-code=*`) must
+        /// clear whichever form the translated base carries: numeric archs
+        /// become `--cuda-gpu-arch=`, non-numeric selections persist as
+        /// `-arch=` probe tokens — rewrite to both wildcards.
+        for(std::size_t i = 0; i < remove_source.size(); i += 1) {
+            llvm::StringRef flag = remove_source[i];
+            for(llvm::StringRef spelling:
+                {"-arch", "--gpu-architecture", "-gencode", "--generate-code"}) {
+                bool joined = flag.starts_with(spelling) && flag.substr(spelling.size()) == "=*";
+                bool separate =
+                    flag == spelling && i + 1 < remove_source.size() && remove_source[i + 1] == "*";
+                if(!joined && !separate) {
+                    continue;
+                }
+                if(separate) {
+                    remove_source.erase(remove_source.begin() + i + 1);
+                }
+                remove_source[i] = "--cuda-gpu-arch=*";
+                remove_source.insert(remove_source.begin() + i + 1, "-arch=*");
+                i += 1;
+                break;
+            }
         }
+    }
+    /// Remove patterns are an independent list, not one command: translated
+    /// whole, nvcc's last-wins would swallow every alternative value of a
+    /// stateful option but the last. Each pattern translates alone —
+    /// standalone, so it reproduces exactly the flags the base translation
+    /// emitted — pairing a separate value token (never dash-led) with its
+    /// spelling.
+    std::vector<std::string> remove_flags;
+    if(is_nvcc) {
+        for(std::size_t i = 0; i < remove_source.size(); i += 1) {
+            std::size_t count = 1;
+            if(llvm::StringRef(remove_source[i]).starts_with("-") && i + 1 < remove_source.size() &&
+               !llvm::StringRef(remove_source[i + 1]).starts_with("-"))
+                count = 2;
+            auto pattern = translate_rule_flags(llvm::ArrayRef(remove_source).slice(i, count),
+                                                /*edit=*/false);
+            remove_flags.insert(remove_flags.end(),
+                                std::make_move_iterator(pattern.begin()),
+                                std::make_move_iterator(pattern.end()));
+            i += count - 1;
+        }
+    } else {
+        remove_flags = std::move(remove_source);
+    }
+    if(!remove_flags.empty()) {
         std::vector<kota::option::ParsedArg> remove_args;
-        for(auto& result: option::table().parse(remove_strs)) {
+        for(auto& result: option::table().parse(remove_flags)) {
             if(result.has_value()) {
                 remove_args.push_back(*result);
             }
@@ -471,6 +566,20 @@ CompileCommand CompilationDatabase::build_command(std::uint32_t path_id,
             auto range = ranges::equal_range(remove_args, id, {}, get_id);
             bool removed = false;
             for(auto& remove: range) {
+                /// All unknown options share one id; their identity is the
+                /// spelling (NVCC probe flags persist as unknown tokens). A
+                /// trailing `=*` wildcards the value part, mirroring the
+                /// known-option value wildcard below.
+                if(id == option::OPT_UNKNOWN) {
+                    llvm::StringRef pattern = remove.spelling;
+                    bool wildcard = pattern.consume_back("*") && pattern.ends_with("=");
+                    if(wildcard ? llvm::StringRef(arg.spelling).starts_with(pattern)
+                                : arg.spelling == remove.spelling) {
+                        removed = true;
+                        break;
+                    }
+                    continue;
+                }
                 if(remove.values.size() == 1 && remove.values[0] == "*") {
                     removed = true;
                     break;
@@ -486,8 +595,14 @@ CompileCommand CompilationDatabase::build_command(std::uint32_t path_id,
         }
     }
 
-    for(auto& arg: options.append) {
+    for(auto& arg: translate_rule_flags(options.append, /*edit=*/true)) {
         append_arg(arg);
+    }
+
+    /// An appended -gencode adds its architecture next to the base's, the
+    /// way nvcc itself accumulates them — resolve them to the newest.
+    if(is_nvcc) {
+        collapse_gpu_arch_flags(flags);
     }
 
     return CompileCommand{
@@ -515,6 +630,14 @@ llvm::SmallVector<CompileCommand> CompilationDatabase::lookup(llvm::StringRef fi
         std::vector<const char*> flags;
         if(file.ends_with(".cpp") || file.ends_with(".hpp") || file.ends_with(".cc")) {
             flags = {"clang++", "-std=c++20"};
+        } else if(file.ends_with(".cu") || file.ends_with(".cuh")) {
+            /// .cuh is not a clang-known extension: without -x the driver
+            /// classifies it as linker input and builds no compile job.
+            /// Device-only pins the same device-side view NVCC-backed
+            /// commands default to, instead of whichever job the toolchain
+            /// query happens to pick from a two-sided compilation; a config
+            /// rule appending --cuda-host-only still wins as the later flag.
+            flags = {"clang++", "-std=c++20", "-x", "cuda", "--cuda-device-only"};
         } else {
             flags = {"clang"};
         }

@@ -6,4 +6,5 @@ hidden:
 - { label: "public_thing", kind: Variable, description: "int", edit: "14:8-14:10" }
 
 typed_underscore:
+- { label: "_Pragma", kind: Constant, edit: "15:8-15:10" }
 - { label: "_private_thing", kind: Variable, description: "int", edit: "15:8-15:10" }

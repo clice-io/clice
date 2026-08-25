@@ -63,7 +63,7 @@ clice 将整个命令处理流程自动化：从 CDB 中读取命令后，自动
 
 查找时，`CompilationDatabase` 将 `CompilationInfo` 组装为 `CompileCommand`——这是命令处理流水线的最终输出，包含完整的编译选项和源文件路径，可直接提交给工具链探测或 Clang 前端。
 
-对于没有 CDB 条目的文件（例如用户打开了一个不在项目中的文件），`CompilationDatabase` 会合成一个默认命令——根据文件扩展名选择 `clang` 或 `clang++ -std=c++20`。
+对于没有 CDB 条目的文件（例如用户打开了一个不在项目中的文件），`CompilationDatabase` 会合成一个默认命令——根据文件扩展名选择 `clang` 或 `clang++ -std=c++20`。CUDA 文件（`.cu`/`.cuh`）会额外强制 `-x cuda`：`.cuh` 不是 clang 认识的扩展名，不加语言标记时驱动器会把它当作链接器输入。
 
 `CompilationDatabase` 还提供了按配置分组的能力：`ConfigGroup` 将共享相同 `CompilationInfo` 的文件聚合在一起。这是依赖扫描中提取搜索路径配置的正确粒度——不同的 `-I` 路径产生不同的分组。对于工具链探测，粒度更粗（用户内容选项不影响探测结果），因此 `Toolchain` 会在 `ConfigGroup` 的基础上进一步去重。
 
@@ -162,7 +162,7 @@ CDB 加载使用 simdjson 流式解析 JSON，逐条处理：
 
 ## 已知局限
 
-- **部分编译器家族支持不完整。** NVCC 和 Intel 编译器（`icc`、`icx`、`dpcpp`）虽然被识别，但目前回退到通用的 Clang 驱动路径，没有专门的探测逻辑。这意味着这些编译器的特殊系统路径可能无法被正确发现。
+- **部分编译器家族支持不完整。** Intel 编译器（`icc`、`icx`、`dpcpp`）虽然被识别，但目前回退到通用的 Clang 驱动路径，没有专门的探测逻辑，其特殊系统路径可能无法被正确发现。NVCC 已有专门探测（解析 `nvcc --dryrun` 输出并合成 clang 的 CUDA 调用），但仅支持 GCC/Clang 宿主编译器——nvcc 驱动 MSVC `cl` 的形态尚不支持，多架构命令也只按最新架构解析。
 
 - **SearchConfig 不支持部分搜索路径选项。** `-cxx-isystem`（仅 C++ 模式生效的系统目录）、`-iwithsysroot`（拼接 sysroot 前缀）和 HeaderMap 支持尚未实现。这些选项在实际项目中不常见，但可能在特定的 Apple 或交叉编译工具链中出现。
 

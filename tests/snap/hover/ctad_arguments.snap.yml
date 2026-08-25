@@ -1,0 +1,24 @@
+---
+created_at: 2026-08-23
+input_file: ctad_arguments.cpp
+---
+01_ctad_type: { range: "18:0-18:3" }
+### struct `Box`  
+
+---
+```cpp
+// In namespace ctad_arguments
+template <typename T> struct Box {}
+```
+
+02_ctad_var: { range: "18:4-18:10" }
+### variable `picked`  
+
+---
+Type: `Box<int> (aka ctad_arguments::Box<int>)`  
+
+---
+```cpp
+// In namespace ctad_arguments
+Box picked(42)
+```

@@ -1,0 +1,16 @@
+---
+created_at: 2026-08-23
+input_file: whitespace_preserve.cpp
+---
+01_table: { range: "16:5-16:13" }
+### function `table_fn`  
+
+---
+→ `void`  
+| Column A | Column B | |----------|----------| | 1 | 2 |  
+
+---
+```cpp
+// In namespace tables
+void table_fn()
+```

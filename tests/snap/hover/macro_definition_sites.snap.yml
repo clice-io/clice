@@ -1,0 +1,38 @@
+---
+created_at: 2026-08-23
+input_file: macro_definition_sites.cpp
+---
+01_define_site: { range: "12:8-12:13" }
+### macro `LIMIT`  
+
+---
+```cpp
+#define LIMIT 64
+```
+
+02_use_site: { range: "14:10-14:15" }
+### macro `LIMIT`  
+
+---
+```cpp
+#define LIMIT 64
+
+// Expands to
+64
+```
+
+03_ifdef_site: { range: "16:7-16:12" }
+### macro `LIMIT`  
+
+---
+```cpp
+#define LIMIT 64
+```
+
+04_undef_site: { range: "20:7-20:12" }
+### macro `LIMIT`  
+
+---
+```cpp
+#define LIMIT 64
+```

@@ -1,0 +1,20 @@
+---
+created_at: 2026-08-25
+input_file: implicit_cast_conversion.cpp
+---
+cast_conv: none
+
+cast_ctor:
+  definition:
+    - { file: "${WS}/implicit_cast_conversion.cpp", range: "17:13-17:16" }
+  declaration:
+    - { file: "${WS}/implicit_cast_conversion.cpp", range: "17:13-17:16" }
+  typeDefinition:
+    - { file: "${WS}/implicit_cast_conversion.cpp", range: "16:7-16:10" }
+  references:
+    - { file: "${WS}/implicit_cast_conversion.cpp", range: "17:13-17:16" }
+    - { file: "${WS}/implicit_cast_conversion.cpp", range: "22:12-22:23" }
+  callHierarchy:
+    - { name: "Foo", kind: Method, file: "${WS}/implicit_cast_conversion.cpp", range: "17:13-17:16" }
+  incomingCalls:
+    - { name: "use", kind: Function, file: "${WS}/implicit_cast_conversion.cpp", range: "20:5-20:8", fromRanges: ["22:12-22:32"] }

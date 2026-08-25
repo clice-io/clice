@@ -19,7 +19,9 @@
 ///
 /// A file is a doc item iff its first line (after stripping `/// `) starts
 /// with `# `. Anything else is a supplementary edge-case test, excluded
-/// from docs. The heading hierarchy is plain markdown: with an `## item
+/// from docs. A plain-`//` prologue (license/attribution comments) may
+/// precede the header; it belongs to neither the header nor the example.
+/// The heading hierarchy is plain markdown: with an `## item
 /// title` under the h1, the h1 names the doc section the item belongs to —
 /// matched verbatim against the doc page's generated-region key
 /// (`<!-- BEGIN GENERATED ITEMS: Fold Kinds -->`); an h1 alone is the item
@@ -45,17 +47,47 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { REPO_ROOT } from "./compile_commands.ts";
 import { parseAnnotations } from "./snap/annotation.ts";
+import { C_FAMILY } from "./snap/corpus.ts";
 
 // feature -> doc path (relative to repo root). Extend as more features
-// adopt fixture-generated docs.
+// adopt fixture-generated docs. Several corpora may feed one doc page
+// (navigation.md aggregates the navigation and workspace_symbol corpora);
+// their fixtures must then use disjoint section keys.
 const FEATURES: Record<string, string> = {
     code_completion: "docs/en/features/completion.md",
+    document_links: "docs/en/features/document-links.md",
     document_symbol: "docs/en/features/document-symbols.md",
+    hover: "docs/en/features/hover.md",
     folding_range: "docs/en/features/folding-ranges.md",
     inlay_hint: "docs/en/features/inlay-hints.md",
+    navigation: "docs/en/features/navigation.md",
     semantic_tokens: "docs/en/features/semantic-tokens.md",
     signature_help: "docs/en/features/signature-help.md",
+    workspace_symbol: "docs/en/features/navigation.md",
 };
+
+/// Rows of the overview status matrix, in display order. `keys` names the
+/// corpora in FEATURES whose fixture statuses are aggregated into the row;
+/// a row without `keys` is not fixture-backed yet and keeps the
+/// hand-assigned label from before the feature joined the pipeline.
+const OVERVIEW_ROWS: { name: string; page: string; keys?: string[]; label?: string }[] = [
+    { name: "Code Completion", page: "completion", keys: ["code_completion"] },
+    { name: "Hover", page: "hover", keys: ["hover"] },
+    { name: "Signature Help", page: "signature-help", keys: ["signature_help"] },
+    { name: "Code Navigation", page: "navigation", keys: ["navigation", "workspace_symbol"] },
+    { name: "Document Links", page: "document-links", keys: ["document_links"] },
+    { name: "Semantic Tokens", page: "semantic-tokens", keys: ["semantic_tokens"] },
+    { name: "Inlay Hints", page: "inlay-hints", keys: ["inlay_hint"] },
+    { name: "Folding Ranges", page: "folding-ranges", keys: ["folding_range"] },
+    { name: "Document Symbols", page: "document-symbols", keys: ["document_symbol"] },
+    { name: "Formatting", page: "formatting", label: "Implemented" },
+    { name: "Diagnostics", page: "diagnostics", label: "Partial" },
+    { name: "Code Action", page: "code-action", label: "Stub" },
+];
+
+const OVERVIEW_DOC = "docs/en/features/overview.md";
+const OVERVIEW_BEGIN = "<!-- BEGIN GENERATED OVERVIEW -->";
+const OVERVIEW_END = "<!-- END GENERATED OVERVIEW -->";
 
 const ISSUE_TRACKERS: Record<string, string> = {
     clangd: "https://github.com/clangd/clangd/issues/",
@@ -96,6 +128,9 @@ interface Fixture {
     order: number | null;
     description: string;
     example: string;
+    /// Sibling sources of a multi-file unit fixture (unit-relative POSIX
+    /// path, §-stripped content), rendered as extra labeled example blocks.
+    siblings: { rel: string; content: string }[];
 }
 
 /// Split text into lines the way Python's str.splitlines() does: on any of
@@ -144,7 +179,21 @@ function parseIntStrict(value: string): number | null {
 /// Parse a fixture's doc header. Returns null for supplementary files.
 function parseFixture(filePath: string, featureDir: string, problems: string[]): Fixture | null {
     const text = fs.readFileSync(filePath, "utf8");
-    const lines = splitLines(text);
+    let lines = splitLines(text);
+
+    // A fixture may open with a plain-`//` prologue (license/attribution
+    // comments) before the doc header. It is not part of the header or the
+    // example, so drop it: detection and example extraction both work on
+    // the remaining lines.
+    let prologue = 0;
+    while (prologue < lines.length) {
+        const line = (lines[prologue] ?? "").trim();
+        if (line !== "" && !(line.startsWith("//") && !line.startsWith("///"))) {
+            break;
+        }
+        prologue += 1;
+    }
+    lines = lines.slice(prologue);
 
     /// Stripped `///` text at line i, or null if it is not a `///` line.
     const comment = (i: number): string | null => {
@@ -306,7 +355,39 @@ function parseFixture(filePath: string, featureDir: string, problems: string[]):
         order,
         description: trimBlank(desc).join("\n"),
         example,
+        siblings: collectSiblings(filePath, relParts),
     };
+}
+
+/// The sibling sources of a `<unit>/main.cpp` doc fixture, §-stripped like
+/// the entry's example code; empty for single-file fixtures. A leading
+/// `// snap:` comment block is harness commentary, dropped the same way
+/// the entry's example drops it.
+function collectSiblings(filePath: string, relParts: string[]): { rel: string; content: string }[] {
+    if (relParts.length !== 2 || relParts[1] !== "main.cpp") {
+        return [];
+    }
+    const unitDir = path.dirname(filePath);
+    const siblings: { rel: string; content: string }[] = [];
+    for (const name of fs.readdirSync(unitDir, { recursive: true, encoding: "utf8" })) {
+        const rel = name.split(path.sep).join("/");
+        const abs = path.join(unitDir, name);
+        if (rel === "main.cpp" || !C_FAMILY.test(rel) || !fs.statSync(abs).isFile()) {
+            continue;
+        }
+        const content = parseAnnotations(fs.readFileSync(abs, "utf8")).content;
+        let lines = trimBlank(content.split("\n"));
+        if ((lines[0] ?? "").trim().startsWith("// snap:")) {
+            let start = 0;
+            while ((lines[start] ?? "").trim().startsWith("//")) {
+                start += 1;
+            }
+            lines = trimBlank(lines.slice(start));
+        }
+        siblings.push({ rel, content: lines.join("\n") });
+    }
+    siblings.sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0));
+    return siblings;
 }
 
 function renderIssue(ref: string): string {
@@ -338,24 +419,44 @@ function renderItem(fx: Fixture): string {
         out.push(...indent(fx.description));
     }
     if (fx.example) {
-        // A fence longer than any backtick run in the example, so example
-        // code can never close the fence early.
-        const runs = fx.example.match(/`+/g) ?? [];
-        const longest = runs.reduce((max, run) => Math.max(max, run.length), 0);
-        const fence = "`".repeat(Math.max(3, longest + 1));
         // `<details>` rather than VitePress's `::: details` container so the
         // example collapses on GitHub too.
         out.push("");
         out.push("  <details>");
         out.push("  <summary>Example</summary>");
         out.push("");
-        out.push(`  ${fence}cpp`);
-        out.push(...indent(fx.example));
-        out.push(`  ${fence}`);
+        if (fx.siblings.length === 0) {
+            out.push(...fencedBlock(fx.example));
+        } else {
+            out.push(...fencedBlock(fx.example, "main.cpp"));
+            for (const sibling of fx.siblings) {
+                out.push("");
+                out.push(...fencedBlock(sibling.content, sibling.rel));
+            }
+        }
         out.push("");
         out.push("  </details>");
     }
     return out.join("\n");
+}
+
+/// One example code block, labeled with its unit-relative file name when
+/// the fixture has more than one file.
+function fencedBlock(content: string, label?: string): string[] {
+    // A fence longer than any backtick run in the example, so example
+    // code can never close the fence early.
+    const runs = content.match(/`+/g) ?? [];
+    const longest = runs.reduce((max, run) => Math.max(max, run.length), 0);
+    const fence = "`".repeat(Math.max(3, longest + 1));
+    const out: string[] = [];
+    if (label !== undefined) {
+        out.push(`  \`${label}\`:`);
+        out.push("");
+    }
+    out.push(`  ${fence}cpp`);
+    out.push(...indent(content));
+    out.push(`  ${fence}`);
+    return out;
 }
 
 function collectFixtures(feature: string, problems: string[]): Fixture[] {
@@ -476,12 +577,35 @@ function rewriteDoc(
 }
 
 function processFeature(
-    feature: string,
     docRel: string,
+    fixtures: Fixture[],
     problems: string[],
 ): [string, string, string] {
     const docPath = path.join(REPO_ROOT, docRel);
-    const fixtures = collectFixtures(feature, problems);
+
+    // Corpora feeding one doc page must stay disjoint: a title duplicated
+    // across corpora would render twice (collectFixtures only checks
+    // within one corpus), and a section spanning two corpora would
+    // interleave their independently-sorted item order.
+    const corpusOf = (fx: Fixture): string =>
+        path.relative(REPO_ROOT, fx.path).split(path.sep)[2] ?? "";
+    const titleOwner = new Map<string, string>();
+    const sectionOwner = new Map<string, string>();
+    for (const fx of fixtures) {
+        const corpus = corpusOf(fx);
+        const title = titleOwner.get(fx.title);
+        if (title !== undefined && title !== corpus) {
+            problems.push(`${fx.path}: title '${fx.title}' duplicates one in corpus '${title}'`);
+        }
+        titleOwner.set(fx.title, corpus);
+        const section = sectionOwner.get(fx.section);
+        if (section !== undefined && section !== corpus) {
+            problems.push(
+                `${fx.path}: section '${fx.section}' spans corpora '${section}' and '${corpus}'`,
+            );
+        }
+        sectionOwner.set(fx.section, corpus);
+    }
 
     const sections = new Map<string, Fixture[]>();
     for (const fx of fixtures) {
@@ -498,6 +622,66 @@ function processFeature(
     const current = fs.readFileSync(docPath, "utf8").replaceAll("\r\n", "\n");
     const updated = rewriteDoc(current, sections, docPath, problems);
     return [docPath, current, updated];
+}
+
+/// Render the overview status matrix between its GENERATED OVERVIEW
+/// markers: fixture-backed rows aggregate their corpus statuses, the rest
+/// keep their hand-assigned labels.
+function processOverview(
+    fixturesByFeature: Map<string, Fixture[]>,
+    problems: string[],
+): [string, string, string] {
+    const docPath = path.join(REPO_ROOT, OVERVIEW_DOC);
+    const rows: string[][] = [["Feature", "Status", "Page"]];
+    for (const row of OVERVIEW_ROWS) {
+        let status = row.label ?? "";
+        const fixtures = (row.keys ?? []).flatMap((key) => fixturesByFeature.get(key) ?? []);
+        if (fixtures.length > 0) {
+            const counts = new Map<string, number>();
+            for (const fx of fixtures) {
+                counts.set(fx.status, (counts.get(fx.status) ?? 0) + 1);
+            }
+            status = VALID_STATUS.filter((s) => counts.has(s))
+                .map((s) => `${counts.get(s)} ${s}`)
+                .join(" · ");
+        }
+        rows.push([row.name, status, `[${row.page}](./${row.page}.md)`]);
+    }
+
+    const current = fs.readFileSync(docPath, "utf8").replaceAll("\r\n", "\n");
+    const updated = rewriteOverview(current, renderTable(rows), docPath, problems);
+    return [docPath, current, updated];
+}
+
+/// A pipe table padded the way prettier formats markdown tables, so
+/// `pixi run format` leaves the generated region untouched.
+function renderTable(rows: string[][]): string {
+    const widths: number[] = [];
+    for (const row of rows) {
+        row.forEach((cell, i) => {
+            widths[i] = Math.max(widths[i] ?? 0, cell.length);
+        });
+    }
+    const line = (cells: string[]): string =>
+        `| ${cells.map((cell, i) => cell.padEnd(widths[i] ?? 0)).join(" | ")} |`;
+    const separator = widths.map((width) => "-".repeat(width));
+    return [line(rows[0] ?? []), line(separator), ...rows.slice(1).map(line)].join("\n");
+}
+
+function rewriteOverview(
+    docText: string,
+    table: string,
+    docPath: string,
+    problems: string[],
+): string {
+    const lines = docText.split("\n");
+    const begin = lines.indexOf(OVERVIEW_BEGIN);
+    const end = lines.indexOf(OVERVIEW_END);
+    if (begin < 0 || end < begin) {
+        problems.push(`${docPath}: missing GENERATED OVERVIEW region`);
+        return docText;
+    }
+    return [...lines.slice(0, begin + 1), "", table, "", ...lines.slice(end)].join("\n");
 }
 
 /// A compact unified-style diff of the differing lines, to report staleness.
@@ -552,7 +736,23 @@ function main(argv: string[]): number {
     }
 
     const problems: string[] = [];
-    const results = Object.entries(FEATURES).map(([f, d]) => processFeature(f, d, problems));
+    const fixturesByFeature = new Map<string, Fixture[]>(
+        Object.keys(FEATURES).map((feature) => [feature, collectFixtures(feature, problems)]),
+    );
+    // A doc page fed by several corpora is processed once with their
+    // fixtures merged, so the later pass cannot clobber the earlier one.
+    const docFeatures = new Map<string, string[]>();
+    for (const [feature, docRel] of Object.entries(FEATURES)) {
+        docFeatures.set(docRel, [...(docFeatures.get(docRel) ?? []), feature]);
+    }
+    const results = [...docFeatures.entries()].map(([docRel, features]) =>
+        processFeature(
+            docRel,
+            features.flatMap((feature) => fixturesByFeature.get(feature) ?? []),
+            problems,
+        ),
+    );
+    results.push(processOverview(fixturesByFeature, problems));
 
     if (problems.length > 0) {
         console.error("feature_docs: problems found:");

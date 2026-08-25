@@ -1,0 +1,5 @@
+---
+created_at: 2026-08-23
+input_file: macro_include.cpp
+---
+- { range: "9:9-9:15", target: "${WS}/header_b.h" }

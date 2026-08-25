@@ -1,0 +1,27 @@
+---
+created_at: 2026-08-23
+input_file: vtable_offset.cpp
+---
+first_virtual: { range: "11:17-11:21" }
+### method `draw`  
+
+---
+→ `void`  
+
+---
+```cpp
+// In Shape
+public: virtual void draw()
+```
+
+second_virtual: { range: "12:17-12:21" }
+### method `move`  
+
+---
+→ `void`  
+
+---
+```cpp
+// In Shape
+public: virtual void move()
+```

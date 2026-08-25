@@ -2,7 +2,7 @@
 created_at: 2026-07-28
 input_file: attributes.cpp
 ---
-01_attribute: { range: "3:30-3:37" }
+gnu_attribute: { range: "15:30-15:37" }
 ### `nonnull`  
 
 ---
@@ -22,4 +22,39 @@ e.g., remove null checks. The \`\`\_Nonnull\`\` type qualifier indicates that a 
 ---
 ```cpp
 __attribute__((nonnull))
+```
+
+std_attribute: { range: "17:2-17:11" }
+### `nodiscard`  
+
+---
+Clang supports the ability to diagnose when the results of a function call expression are discarded under suspicious circumstances. A diagnostic is generated when a function or its return type is marked with \`\`[[nodiscard]]\`\` (or \`\`\_\_attribute\_\_((warn_unused_result))\`\`) and the function call appears as a potentially-evaluated discarded-value expression that is not explicitly cast to  
+\`\`void\`\`.  
+A string literal may optionally be provided to the attribute, which will be reproduced in any resulting diagnostics. Redeclarations using different forms of the attribute (with or without the string literal or with different string literal contents) are allowed. If there are redeclarations of the entity with differing string literals, it is unspecified which one will be used by Clang in any resulting diagnostics.  
+.. code-block:: c++  
+struct [[nodiscard]] error_info { /\*...\*/ };  
+error_info enable_missile_safety_mode();  
+void launch_missiles();  
+void test_missiles() { enable_missile_safety_mode(); // diagnoses launch_missiles();  
+} error_info &foo();  
+void f() { foo(); } // Does not diagnose, error_info is a reference.  
+Additionally, discarded temporaries resulting from a call to a constructor marked with \`\`[[nodiscard]]\`\` or a constructor of a type marked  
+\`\`[[nodiscard]]\`\` will also diagnose. This also applies to type conversions that use the annotated \`\`[[nodiscard]]\`\` constructor or result in an annotated type.  
+.. code-block:: c++  
+struct [[nodiscard]] marked_type {/\*..\*/ };  
+struct marked_ctor { [[nodiscard]] marked_ctor();  
+marked_ctor(int);  
+};  
+struct S { operator marked_type() const;  
+[[nodiscard]] operator int() const;  
+};  
+void usages() { marked_type(); // diagnoses.  
+marked_ctor(); // diagnoses.  
+marked_ctor(3); // Does not diagnose, int constructor isn't marked nodiscard.  
+S s;  
+static_cast\<marked_type>(s); // diagnoses (int)s; // diagnoses }  
+
+---
+```cpp
+[[nodiscard("")]]
 ```

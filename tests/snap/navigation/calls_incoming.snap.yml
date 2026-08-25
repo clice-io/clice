@@ -1,0 +1,19 @@
+---
+created_at: 2026-08-25
+input_file: calls_incoming.cpp
+---
+target:
+  definition:
+    - { file: "${WS}/calls_incoming.cpp", range: "11:4-11:10" }
+  declaration:
+    - { file: "${WS}/calls_incoming.cpp", range: "11:4-11:10" }
+  references:
+    - { file: "${WS}/calls_incoming.cpp", range: "11:4-11:10" }
+    - { file: "${WS}/calls_incoming.cpp", range: "16:11-16:17" }
+    - { file: "${WS}/calls_incoming.cpp", range: "20:11-20:17" }
+    - { file: "${WS}/calls_incoming.cpp", range: "20:23-20:29" }
+  callHierarchy:
+    - { name: "helper", kind: Function, file: "${WS}/calls_incoming.cpp", range: "11:4-11:10" }
+  incomingCalls:
+    - { name: "alpha", kind: Function, file: "${WS}/calls_incoming.cpp", range: "15:4-15:9", fromRanges: ["16:11-16:20"] }
+    - { name: "beta", kind: Function, file: "${WS}/calls_incoming.cpp", range: "19:4-19:8", fromRanges: ["20:11-20:20", "20:23-20:32"] }

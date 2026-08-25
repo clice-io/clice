@@ -32,6 +32,9 @@ export interface RenderContext {
     /// on the inspect path, the materialized workspace root on the server
     /// path — the same `${WS}`-relative names either way.
     root: string;
+    /// Whether the fixture replays with background indexing enabled —
+    /// server path only, the inspect path has no server and no index.
+    indexing?: boolean;
 }
 
 /// The marker shape a feature consumes, deciding which files of a

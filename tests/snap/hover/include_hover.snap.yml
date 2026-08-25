@@ -1,0 +1,11 @@
+---
+created_at: 2026-08-23
+input_file: include_hover.cpp
+---
+include_path: { range: "9:9-9:23" }
+### `own_header.h`  
+
+---
+```cpp
+${WS}/own_header.h
+```

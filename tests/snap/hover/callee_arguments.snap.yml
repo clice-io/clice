@@ -1,0 +1,37 @@
+---
+created_at: 2026-08-23
+input_file: callee_arguments.cpp
+---
+01_by_name: { range: "20:12-20:13" }
+### variable `w`  
+
+---
+Type: `int`  
+Value = `1024 (0x400)`  
+Passed as width  
+
+---
+```cpp
+// In demo
+int w = 1024
+```
+
+02_by_ref: { range: "20:15-20:21" }
+### variable `result`  
+
+---
+Type: `int`  
+Value = `0`  
+Passed by reference as out  
+
+---
+```cpp
+// In demo
+int result = 0
+```
+
+03_literal: { range: "20:23-20:24" }
+### `literal`  
+
+---
+Passed as flags

@@ -158,6 +158,17 @@ TEST_CASE(DefaultFallback) {
     auto h_results = database.lookup("foo.h", options);
     ASSERT_EQ(h_results.front().to_argv().size(), 2U);
     ASSERT_EQ(h_results.front().to_argv()[0], "clang"sv);
+
+    /// CUDA files pin cuda mode and the device-side view NVCC-backed
+    /// commands default to.
+    for(llvm::StringRef cuda_file: {"kern.cu", "kernels.cuh"}) {
+        auto cu_argv = database.lookup(cuda_file, options).front().to_argv();
+        ASSERT_EQ(cu_argv.size(), 6U);
+        ASSERT_EQ(cu_argv[0], "clang++"sv);
+        ASSERT_EQ(cu_argv[2], "-x"sv);
+        ASSERT_EQ(cu_argv[3], "cuda"sv);
+        ASSERT_EQ(cu_argv[4], "--cuda-device-only"sv);
+    }
 };
 
 TEST_CASE(FallbackAppliesAppend) {
@@ -518,6 +529,21 @@ TEST_CASE(LoadErrorRecovery) {
     auto also = database.lookup(path::join("/build", "also_good.cpp"), options);
     ASSERT_EQ(also.size(), 1U);
     EXPECT_CONTAINS(print_argv(also.front().to_argv()), "-Wall");
+};
+
+TEST_CASE(LoadCudaHeader) {
+    /// .cuh entries are C-family despite clang's extension table; non-C
+    /// entries some build systems emit are skipped.
+    CompilationDatabase database;
+    auto count = load_json(database, R"([
+        {"directory": "/build", "file": "kernels.cuh",
+         "command": "nvcc -c kernels.cuh -o kernels.o"},
+        {"directory": "/build", "file": "app.rc",
+         "command": "rc /fo app.res app.rc"}
+    ])");
+
+    ASSERT_EQ(count, 1U);
+    EXPECT_TRUE(database.has_entry(path::join("/build", "kernels.cuh")));
 };
 
 TEST_CASE(LoadEmptyCommand) {

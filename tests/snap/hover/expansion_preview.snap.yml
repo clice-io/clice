@@ -1,0 +1,14 @@
+---
+created_at: 2026-08-23
+input_file: expansion_preview.cpp
+---
+01_expansion: { range: "14:8-14:11" }
+### macro `MAX`  
+
+---
+```cpp
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+
+// Expands to
+( ( x ) > ( y ) ? ( x ) : ( y ) )
+```

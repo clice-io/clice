@@ -1,0 +1,24 @@
+---
+created_at: 2026-08-25
+input_file: def_local_symbol.cpp
+---
+local_use:
+  definition:
+    - { file: "${WS}/def_local_symbol.cpp", range: "12:8-12:13" }
+  declaration:
+    - { file: "${WS}/def_local_symbol.cpp", range: "12:8-12:13" }
+  references:
+    - { file: "${WS}/def_local_symbol.cpp", range: "12:8-12:13" }
+    - { file: "${WS}/def_local_symbol.cpp", range: "13:4-13:9" }
+    - { file: "${WS}/def_local_symbol.cpp", range: "13:12-13:17" }
+    - { file: "${WS}/def_local_symbol.cpp", range: "14:11-14:16" }
+
+param_use:
+  definition:
+    - { file: "${WS}/def_local_symbol.cpp", range: "11:19-11:23" }
+  declaration:
+    - { file: "${WS}/def_local_symbol.cpp", range: "11:19-11:23" }
+  references:
+    - { file: "${WS}/def_local_symbol.cpp", range: "11:19-11:23" }
+    - { file: "${WS}/def_local_symbol.cpp", range: "12:16-12:20" }
+    - { file: "${WS}/def_local_symbol.cpp", range: "13:20-13:24" }

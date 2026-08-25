@@ -1,7 +1,8 @@
-/// - diagnostics: expected
-
 // Test cases ported from clangd's HoverTests.cpp (llvmorg-21.1.8), part of the LLVM project,
 // licensed under Apache License v2.0 with LLVM Exceptions.
+
+/// - diagnostics: expected
+
 // Should not crash on invalid semantic form of init-list-expr,
 // and the point is expected to produce NO hover.
 

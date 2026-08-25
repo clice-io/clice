@@ -1,0 +1,39 @@
+---
+created_at: 2026-08-23
+input_file: virtual_modifiers.cpp
+---
+final_method: { range: "22:9-22:13" }
+### method `draw`  
+
+---
+→ `void`  
+
+---
+```cpp
+// In Dot
+public: void draw() final
+```
+
+override_method: { range: "18:9-18:13" }
+### method `draw`  
+
+---
+→ `void`  
+
+---
+```cpp
+// In Circle
+public: void draw() override
+```
+
+pure_virtual: { range: "14:17-14:21" }
+### method `draw`  
+
+---
+→ `void`  
+
+---
+```cpp
+// In Base
+public: virtual void draw() = 0
+```

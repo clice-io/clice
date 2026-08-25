@@ -1,0 +1,45 @@
+---
+created_at: 2026-08-23
+input_file: access_specifier.cpp
+---
+private_field: { range: "15:8-15:11" }
+### field `pin`  
+
+---
+Type: `int`  
+Offset: 8 bytes  
+Size: 4 bytes, alignment 4 bytes  
+
+---
+```cpp
+// In Account
+private: int pin
+```
+
+protected_field: { range: "12:8-12:13" }
+### field `limit`  
+
+---
+Type: `int`  
+Offset: 4 bytes  
+Size: 4 bytes, alignment 4 bytes  
+
+---
+```cpp
+// In Account
+protected: int limit
+```
+
+public_field: { range: "9:8-9:15" }
+### field `balance`  
+
+---
+Type: `int`  
+Offset: 0 bytes  
+Size: 4 bytes, alignment 4 bytes  
+
+---
+```cpp
+// In Account
+public: int balance
+```

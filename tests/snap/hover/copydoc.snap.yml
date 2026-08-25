@@ -1,0 +1,29 @@
+---
+created_at: 2026-08-23
+input_file: copydoc.cpp
+---
+01_base: { range: "14:5-14:14" }
+### function `base_func`  
+
+---
+→ `void`  
+Detailed documentation.  
+
+---
+```cpp
+// In namespace copydoc
+void base_func()
+```
+
+02_wrapper: { range: "17:5-17:12" }
+### function `wrapper`  
+
+---
+→ `void`  
+@copydoc base_func()  
+
+---
+```cpp
+// In namespace copydoc
+void wrapper()
+```

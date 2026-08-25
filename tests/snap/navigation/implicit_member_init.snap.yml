@@ -1,0 +1,60 @@
+---
+created_at: 2026-08-25
+input_file: implicit_member_init.cpp
+---
+base_init:
+  definition:
+    - { file: "${WS}/implicit_member_init.cpp", range: "13:7-13:11" }
+  declaration:
+    - { file: "${WS}/implicit_member_init.cpp", range: "13:7-13:11" }
+  implementation:
+    - { file: "${WS}/implicit_member_init.cpp", range: "21:7-21:10" }
+  references:
+    - { file: "${WS}/implicit_member_init.cpp", range: "13:7-13:11" }
+    - { file: "${WS}/implicit_member_init.cpp", range: "21:13-21:17" }
+    - { file: "${WS}/implicit_member_init.cpp", range: "23:12-23:16" }
+  typeHierarchy:
+    - { name: "Base", kind: Struct, file: "${WS}/implicit_member_init.cpp", range: "13:7-13:11" }
+  subtypes:
+    - { name: "App", kind: Struct, file: "${WS}/implicit_member_init.cpp", range: "21:7-21:10" }
+
+base_paren:
+  definition:
+    - { file: "${WS}/implicit_member_init.cpp", range: "14:4-14:8" }
+  declaration:
+    - { file: "${WS}/implicit_member_init.cpp", range: "14:4-14:8" }
+  typeDefinition:
+    - { file: "${WS}/implicit_member_init.cpp", range: "13:7-13:11" }
+  references:
+    - { file: "${WS}/implicit_member_init.cpp", range: "14:4-14:8" }
+    - { file: "${WS}/implicit_member_init.cpp", range: "23:16-23:17" }
+  callHierarchy:
+    - { name: "Base", kind: Method, file: "${WS}/implicit_member_init.cpp", range: "14:4-14:8" }
+  incomingCalls:
+    - { name: "App", kind: Method, file: "${WS}/implicit_member_init.cpp", range: "23:4-23:7", fromRanges: ["23:12-23:20"] }
+
+member_init:
+  definition:
+    - { file: "${WS}/implicit_member_init.cpp", range: "22:11-22:17" }
+  declaration:
+    - { file: "${WS}/implicit_member_init.cpp", range: "22:11-22:17" }
+  typeDefinition:
+    - { file: "${WS}/implicit_member_init.cpp", range: "17:7-17:13" }
+  references:
+    - { file: "${WS}/implicit_member_init.cpp", range: "22:11-22:17" }
+    - { file: "${WS}/implicit_member_init.cpp", range: "23:22-23:28" }
+
+member_paren:
+  definition:
+    - { file: "${WS}/implicit_member_init.cpp", range: "18:4-18:10" }
+  declaration:
+    - { file: "${WS}/implicit_member_init.cpp", range: "18:4-18:10" }
+  typeDefinition:
+    - { file: "${WS}/implicit_member_init.cpp", range: "17:7-17:13" }
+  references:
+    - { file: "${WS}/implicit_member_init.cpp", range: "18:4-18:10" }
+    - { file: "${WS}/implicit_member_init.cpp", range: "23:28-23:29" }
+  callHierarchy:
+    - { name: "Logger", kind: Method, file: "${WS}/implicit_member_init.cpp", range: "18:4-18:10" }
+  incomingCalls:
+    - { name: "App", kind: Method, file: "${WS}/implicit_member_init.cpp", range: "23:4-23:7", fromRanges: ["23:22-23:31"] }

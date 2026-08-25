@@ -1,0 +1,35 @@
+---
+created_at: 2026-08-22
+input_file: macro_conditional.cpp
+---
+builtin_use: none
+
+guard_def:
+  definition:
+    - { file: "${WS}/macro_conditional.cpp", range: "5:8-5:18" }
+  declaration:
+    - { file: "${WS}/macro_conditional.cpp", range: "5:8-5:18" }
+  references:
+    - { file: "${WS}/macro_conditional.cpp", range: "5:8-5:18" }
+    - { file: "${WS}/macro_conditional.cpp", range: "7:7-7:17" }
+    - { file: "${WS}/macro_conditional.cpp", range: "11:8-11:18" }
+
+ifdef_use:
+  definition:
+    - { file: "${WS}/macro_conditional.cpp", range: "5:8-5:18" }
+  declaration:
+    - { file: "${WS}/macro_conditional.cpp", range: "5:8-5:18" }
+  references:
+    - { file: "${WS}/macro_conditional.cpp", range: "5:8-5:18" }
+    - { file: "${WS}/macro_conditional.cpp", range: "7:7-7:17" }
+    - { file: "${WS}/macro_conditional.cpp", range: "11:8-11:18" }
+
+ifndef_use:
+  definition:
+    - { file: "${WS}/macro_conditional.cpp", range: "5:8-5:18" }
+  declaration:
+    - { file: "${WS}/macro_conditional.cpp", range: "5:8-5:18" }
+  references:
+    - { file: "${WS}/macro_conditional.cpp", range: "5:8-5:18" }
+    - { file: "${WS}/macro_conditional.cpp", range: "7:7-7:17" }
+    - { file: "${WS}/macro_conditional.cpp", range: "11:8-11:18" }
