@@ -375,6 +375,18 @@ bool Indexer::merge(const void* tu_index_data, std::size_t size) {
         appended,
         rebuilt_ids.size(),
         workspace.shards.size());
+
+    // Sessions without a current file index serve these very rows
+    // (freshness clause 4); index_served says the client pulled some of
+    // them. Tell subscribers so those results get re-pulled.
+    auto serves_session = [&](std::uint32_t path_id) {
+        auto session = sessions.find(path_id);
+        return session && !session->index_current() && session->index_served;
+    };
+    if(llvm::any_of(llvm::make_first_range(replacements), serves_session) ||
+       llvm::any_of(affected, serves_session)) {
+        on_serving_rows_changed.emit();
+    }
     return true;
 }
 

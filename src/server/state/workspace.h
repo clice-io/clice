@@ -196,8 +196,9 @@ enum class PchBuild : std::uint8_t {
     /// context switch, a restored buffer that diverged from the index)
     /// starts investing; unedited documents serve from the index alone.
     OnEdit,
-    /// Never build a PCH: pure index serving, completion compiles without
-    /// a preamble. The agent / low-resource profile.
+    /// Never build a PCH: reads serve from the index alone, while
+    /// completion and signature help still compile on demand — without a
+    /// preamble. The agent / low-resource profile.
     Never,
 };
 

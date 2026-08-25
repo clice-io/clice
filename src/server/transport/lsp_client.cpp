@@ -53,6 +53,8 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(s
         [this](const std::shared_ptr<Session>& session) { push_output(*session); });
     progress_conn =
         server.indexer.on_progress_changed.connect([this]() { report_index_progress(); });
+    serving_conn =
+        server.indexer.on_serving_rows_changed.connect([this]() { refresh_index_served(); });
 
     // Guidance/anomaly messages travel as window/logMessage, which the LSP
     // spec allows before the initialize handshake — drain what a headless
@@ -820,6 +822,18 @@ void LSPClient::push_output(const Session& session) {
             fire(protocol::InlayHintRefreshParams{});
         }
     }
+}
+
+void LSPClient::refresh_index_served() {
+    if(!client_ready || !semantic_tokens_refresh) {
+        return;
+    }
+    // Same peer lifetime discipline as push_output's fire: the peer
+    // outlives this client, and teardown fails pending requests.
+    server.loop.schedule([](kota::ipc::JsonPeer* peer) -> kota::task<> {
+        co_await peer->send_request(protocol::SemanticTokensRefreshParams{},
+                                    {.timeout = std::chrono::milliseconds(3000)});
+    }(&peer));
 }
 
 void LSPClient::report_index_progress() {

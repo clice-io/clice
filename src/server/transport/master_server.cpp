@@ -107,22 +107,6 @@ void MasterServer::initialize() {
         workspace.pch_build = PchBuild::OnOpen;
     }
 
-    // A didOpen racing ahead of the handshake created its session under
-    // the default policy; the configured one governs from here. Re-derive
-    // and settle those sessions now (a compile kicked before workers are
-    // up degrades to a dirty session the first request recompiles).
-    llvm::SmallVector<std::uint32_t> early_sessions;
-    sessions.for_each([&](std::uint32_t path_id, const Session&) {
-        early_sessions.push_back(path_id);
-        return true;
-    });
-    for(auto path_id: early_sessions) {
-        auto session = sessions.find(path_id);
-        session->serving = workspace.pch_build == PchBuild::OnOpen ? ServingMode::Escalated
-                                                                   : ServingMode::IndexOnly;
-        settle_open_serving(std::move(session));
-    }
-
     if(!cfg.logging_dir.empty()) {
         auto now = std::chrono::system_clock::now();
         auto pid = llvm::sys::Process::getProcessId();
@@ -179,11 +163,19 @@ void MasterServer::initialize() {
     load_workspace();
 
     // Documents opened before the server became ready were validated
-    // against an empty resolver; re-check their persisted context choices
-    // now that the workspace cache is loaded.
+    // against an empty resolver and created under the default policy;
+    // re-check their persisted context choices and re-derive their
+    // serving mode now that the configuration governs. Settlement waits
+    // until here — after load_workspace — so divergence detection sees
+    // the persisted shards it just loaded (a restored unsaved buffer must
+    // escalate, not read as merely unindexed) and any compile it kicks
+    // lands on a started worker pool.
     for(auto& [path_id, session]: sessions.sessions) {
         if(session) {
             contexts.validate_saved_context(*session);
+            session->serving = workspace.pch_build == PchBuild::OnOpen ? ServingMode::Escalated
+                                                                       : ServingMode::IndexOnly;
+            settle_open_serving(session);
         }
     }
 
@@ -303,8 +295,13 @@ void MasterServer::settle_open_serving(std::shared_ptr<Session> session) {
         return;
     }
     // Nothing indexed yet: reading this file is the reason to index it
-    // first.
-    indexer.boost(session->path_id);
+    // first — unless indexing is disabled, in which case no shard will
+    // ever arrive and only an AST can serve the document.
+    if(workspace.config.project.enable_indexing.value) {
+        indexer.boost(session->path_id);
+    } else {
+        compiler.escalate(std::move(session));
+    }
 }
 
 void MasterServer::close_session(std::uint32_t path_id) {

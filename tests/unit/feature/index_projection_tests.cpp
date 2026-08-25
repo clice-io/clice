@@ -159,6 +159,8 @@ TEST_CASE(FoldsSubsetOfAst) {
     add_main("main.cpp", R"cpp(
 namespace app {
 
+struct Point { int x; };
+
 struct Holder {
     int value;
 
@@ -273,6 +275,13 @@ int add(int a, int b);
 // stale note
 
 int gap();
+
+/* Scales the
+   given input. */
+int scale(int value);
+
+int base = 1; /* setup */
+int next();
 )cpp";
 
     auto add_offset = static_cast<std::uint32_t>(content.find("int add"));
@@ -283,6 +292,16 @@ int gap();
     // attachment.
     auto gap_offset = static_cast<std::uint32_t>(content.find("int gap"));
     ASSERT_EQ(feature::preceding_comment(content, gap_offset), "");
+
+    // A block comment whose closing line only ends with the marker still
+    // attaches whole.
+    auto scale_offset = static_cast<std::uint32_t>(content.find("int scale"));
+    ASSERT_EQ(feature::preceding_comment(content, scale_offset), "Scales the\ngiven input.");
+
+    // A code line trailing a self-contained block comment is code, not
+    // documentation.
+    auto next_offset = static_cast<std::uint32_t>(content.find("int next"));
+    ASSERT_EQ(feature::preceding_comment(content, next_offset), "");
 }
 
 };  // TEST_SUITE(index_projection)

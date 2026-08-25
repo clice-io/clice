@@ -58,6 +58,11 @@ private:
     /// background indexer's on_progress_changed signal.
     void report_index_progress();
 
+    /// Ask the client to re-pull semantic tokens after a background merge
+    /// replaced rows an index-served session was serving. Invoked by the
+    /// indexer's on_serving_rows_changed signal; capability-gated.
+    void refresh_index_served();
+
     /// Send every not-yet-forwarded notify-log message as
     /// window/logMessage, advancing notify_cursor. Invoked once from the
     /// constructor (a headless server may have accumulated messages) and
@@ -85,6 +90,10 @@ private:
 
     /// Subscription to background-index progress; disconnects on destruction.
     Signal<>::Connection progress_conn;
+
+    /// Subscription to serving-row replacements by background merges;
+    /// disconnects on destruction.
+    Signal<>::Connection serving_conn;
 
     /// Subscription to guidance/anomaly message wake-ups; disconnects on
     /// destruction.

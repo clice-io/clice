@@ -244,6 +244,13 @@ public:
     /// file completes, round ends). A subscriber reads progress() on wake.
     Signal<> on_progress_changed;
 
+    /// Emitted when a merge replaced (or re-masked) rows that an open
+    /// index-served session is serving: results the client already pulled
+    /// describe the old rows, and only a refresh request makes it re-pull
+    /// them — index-only sessions never compile, so the compile-driven
+    /// refresh in the output push path cannot cover them.
+    Signal<> on_serving_rows_changed;
+
 private:
     kota::event_loop& loop;
     kota::task_group<> bg_tasks;

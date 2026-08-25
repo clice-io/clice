@@ -1040,6 +1040,19 @@ std::optional<feature::HoverInfo> IndexQuery::hover_card(llvm::StringRef path,
         if(auto sym_it = workspace.project_index.symbols.find(hit.hash);
            sym_it != workspace.project_index.symbols.end()) {
             for(auto file_id: sym_it->second.reference_files) {
+                // A defining file that is itself open serves through its
+                // session sources — the very reason skip_shard rejects
+                // its disk shard — so slice from those buffer-true rows
+                // instead of losing the definition text.
+                if(!options.disk_only) {
+                    if(auto other = sessions.find(file_id)) {
+                        if(other->index_current() && slice_from(other->file_rows(), other->text))
+                            break;
+                        if(auto* shard = open_session_shard(*other);
+                           shard && slice_from(*shard, other->text))
+                            break;
+                    }
+                }
                 if(skip_shard(file_id))
                     continue;
                 auto shard_it = workspace.shards.find(file_id);

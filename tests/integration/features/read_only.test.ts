@@ -12,7 +12,9 @@ const MAIN = [
     '#include "header.h"',
     "",
     "/// Doubles a value.",
-    "int twice(int x) { return add(x, x); }",
+    "int twice(int x) {",
+    "    return add(x, x);",
+    "}",
     "",
     "int main() { return twice(2); }",
     "",
@@ -57,18 +59,18 @@ test("index serves unedited reads", async ({ session }) => {
     const links = await client.documentLinks(uri);
     expect(links?.some((l) => l.target?.endsWith("header.h"))).toBe(true);
 
-    // `add` in `return add(x, x)` on line 3.
-    const hover = await client.hoverAt(uri, 3, 26);
+    // `add` in `return add(x, x)` on line 4.
+    const hover = await client.hoverAt(uri, 4, 11);
     expect(JSON.stringify(hover?.contents ?? "")).toContain("add");
 
-    const defs = (await client.definitionAt(uri, 3, 26)) as proto.Location[] | null;
+    const defs = (await client.definitionAt(uri, 4, 11)) as proto.Location[] | null;
     expect(defs?.length ?? 0).toBeGreaterThan(0);
     expect(defs![0]!.uri.endsWith("header.h")).toBe(true);
 
     // Pinned degradations of the read-only surface.
     const hints = await client.inlayHints(uri, {
         start: { line: 0, character: 0 },
-        end: { line: 6, character: 0 },
+        end: { line: 8, character: 0 },
     });
     expect(hints ?? []).toEqual([]);
     expect(client.diagnostics.has(uri)).toBe(false);
@@ -129,7 +131,7 @@ test("never builds no pch", async ({ session }) => {
     expect(await client.waitForIndex(uri, "twice")).toBe(true);
 
     // Completion still answers — a full parse without a preamble.
-    const completion = await client.completionAt(uri, 5, 22);
+    const completion = await client.completionAt(uri, 7, 22);
     expect(labelsOf(completion)).toContain("twice");
 
     // The whole point of the profile.
@@ -147,7 +149,7 @@ test("escalation upgrades inlay hints", async ({ session }) => {
 
     const range = {
         start: { line: 0, character: 0 },
-        end: { line: 6, character: 0 },
+        end: { line: 8, character: 0 },
     };
     expect((await client.inlayHints(uri, range)) ?? []).toEqual([]);
 

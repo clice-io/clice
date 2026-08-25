@@ -72,7 +72,7 @@ Index persistence backend: "lmdb" (single database file) or "files" (one file pe
 | -------- | ----------- |
 | `string` | `"on_edit"` |
 
-What triggers PCH/AST builds for an open file: "on_open" compiles eagerly on didOpen, "on_edit" serves reads from the index and compiles only when an edit-intent trigger fires (edit, completion, signature help, context switch), "never" serves purely from the index. Feature routing always answers from the best source currently available; this option only decides when the expensive sources get built.
+What triggers PCH/AST builds for an open file: "on_open" compiles eagerly on didOpen, "on_edit" serves reads from the index and compiles only when an edit-intent trigger fires (edit, completion, signature help, context switch), "never" never builds them — reads serve from the index alone, while completion and signature help still compile on demand without a preamble. Feature routing always answers from the best source currently available; this option only decides when the expensive sources get built.
 
 ### `project.idle_timeout_ms`
 

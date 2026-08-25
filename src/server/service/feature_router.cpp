@@ -232,13 +232,21 @@ kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
             // Manifest edges cover the whole document (the background
             // index has no preamble split); guard-skipped lines and
             // __has_include/#embed have no edge and produce no link.
-            auto path = workspace.path_pool.resolve(session->path_id);
-            auto raw = feature::index_document_links(session->text,
-                                                     feature::index_lang_options(path),
-                                                     index_query.include_edges(*session));
-            session->index_served = true;
+            // Unlike the rows the other projections serve, the edges are
+            // disk truth: the quarantine fallback (own index current,
+            // buffer edited) must not project them onto a buffer the
+            // manifest never described — an edited directive would get
+            // the old target, confidently wrong.
             std::vector<protocol::DocumentLink> links;
-            convert(raw, links);
+            auto it = workspace.shards.find(session->path_id);
+            if(it != workspace.shards.end() && it->second.matches_content(session->text)) {
+                auto path = workspace.path_pool.resolve(session->path_id);
+                auto raw = feature::index_document_links(session->text,
+                                                         feature::index_lang_options(path),
+                                                         index_query.include_edges(*session));
+                convert(raw, links);
+            }
+            session->index_served = true;
             co_return links;
         }
         case Route::Empty: co_return std::vector<protocol::DocumentLink>{};
@@ -289,12 +297,16 @@ kota::task<kota::codec::RawValue, kota::ipc::Error>
         co_return kota::outcome_error(document_not_open());
 
     // An index-only session never owes the compile the worker forward
-    // implies. What the worker leg covers — include directives, which
-    // have no symbol occurrence — the manifest edges answer instead,
-    // under the same content gate as every index answer: manifest lines
-    // are meaningless against a diverged buffer.
-    if(session->serving == ServingMode::IndexOnly) {
-        if(!index_query.open_session_shard(*session)) {
+    // implies — and a session served under freshness clause 4 (escalated,
+    // compile still in flight) already routed to the index, so waiting on
+    // the worker here would break nav_gate's no-compile-owed contract.
+    // What the worker leg covers — include directives, which have no
+    // symbol occurrence — the manifest edges answer instead, under the
+    // same content gate as every index answer: manifest lines are
+    // meaningless against a diverged buffer.
+    auto* shard = index_query.open_session_shard(*session);
+    if(session->serving == ServingMode::IndexOnly || shard) {
+        if(!shard) {
             co_return serde_raw{"[]"};
         }
         if(auto offset = session->line_map().to_offset(pos)) {

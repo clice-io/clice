@@ -405,6 +405,12 @@ auto index_folding_ranges(llvm::StringRef content,
             continue;
         }
 
+        // Single-line ranges are not worth folding — and the AST collector
+        // drops them too, so the projection stays a subset.
+        if(!content.substr(group->begin, group->length()).contains('\n')) {
+            continue;
+        }
+
         // Fold kinds mirror the AST collector's strings; a symbol the
         // resolver cannot name still folds, just without a kind.
         std::optional<protocol::FoldingRangeKind> kind;
@@ -484,8 +490,11 @@ auto preceding_comment(llvm::StringRef content, std::uint32_t offset) -> std::st
     while(begin > 0) {
         auto prev_begin = line_begin(begin - 1);
         auto line = content.substr(prev_begin, begin - prev_begin).rtrim("\r\n").trim();
+        // A trailing */ only marks a comment line when the opener is on an
+        // earlier line: `int a; /* note */` closes a comment it opened
+        // itself, and everything before the marker is code.
         bool comment_like = line.starts_with("//") || line.starts_with("/*") ||
-                            line.starts_with("*") || line.ends_with("*/");
+                            line.starts_with("*") || (line.ends_with("*/") && !line.contains("/*"));
         if(!comment_like || line.empty()) {
             break;
         }
