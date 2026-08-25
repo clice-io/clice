@@ -101,6 +101,18 @@ jobs:
         timeout-minutes: 20
         run: pixi run -e test-run snap-test ${{ matrix.build_type }}
 
+      # The committed config schema must match the binary that just built
+      # (the dump needs clice itself), and the generated doc regions must
+      # match their sources. One leg suffices — the outputs are
+      # machine-independent by construction.
+      - name: Generated docs check
+        if: ${{ matrix.os == 'ubuntu-24.04' && matrix.build_type == 'RelWithDebInfo' }}
+        run: |
+          build/RelWithDebInfo/bin/clice inspect --config-schema > docs/public/clice-config.schema.json
+          git diff --exit-code -- docs/public/clice-config.schema.json
+          pixi run -- node tools/feature_docs.ts check
+          pixi run -- node tools/config_docs.ts check
+
       # Package the exact binary the suites above just validated. These
       # artifacts are what releases promote — there is no separate release
       # build.

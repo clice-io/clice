@@ -4,6 +4,8 @@ clice reads configuration from `clice.toml` in the workspace root, or from `.cli
 
 Configuration is read once at server startup. Changing it — either file — requires restarting the server; there is no hot reload.
 
+A JSON schema of the whole configuration is published at [`clice-config.schema.json`](/clice-config.schema.json); editors that validate TOML or JSON against a schema can point at it.
+
 ## Variable Substitution
 
 The following variable is supported in string values:
@@ -14,29 +16,31 @@ The following variable is supported in string values:
 
 ## Project
 
+<!-- BEGIN GENERATED CONFIG: project -->
+
 ### `project.clang_tidy`
 
 | Type   | Default |
 | ------ | ------- |
 | `bool` | `false` |
 
-Enable experimental clang-tidy diagnostics. **Not yet wired** — the option is parsed but has no effect currently.
+Run clang-tidy alongside compiler diagnostics. Not yet wired: the option is parsed but has no effect.
 
 ### `project.cache_dir`
 
-| Type     | Default                                                             |
-| -------- | ------------------------------------------------------------------- |
-| `string` | `$XDG_CACHE_HOME/clice/<workspace>-<hash>` or `${workspace}/.clice` |
+| Type     | Default |
+| -------- | ------- |
+| `string` | `""`    |
 
-Directory for the unified on-disk cache (PCH, PCM, and index artifacts all live here). The default uses XDG_CACHE_HOME (or `~/.cache`) with a per-workspace subdirectory named after the workspace directory plus a short hash, e.g. `~/.cache/clice/myproject-1a2b3c4d`. Falls back to `${workspace}/.clice` if the XDG directory cannot be created. The resolved paths are printed at startup in the effective configuration dump (visible in your editor's clice output panel).
+Directory for the unified on-disk cache (PCH, PCM and index artifacts). Empty derives it from XDG_CACHE_HOME (or `~/.cache`) with a per-workspace subdirectory named after the workspace plus a short hash, falling back to `${workspace}/.clice`; the resolved path is printed at startup.
 
 ### `project.logging_dir`
 
-| Type     | Default             |
-| -------- | ------------------- |
-| `string` | `${cache_dir}/logs` |
+| Type     | Default |
+| -------- | ------- |
+| `string` | `""`    |
 
-Directory for log files. Each server session logs into its own timestamped subdirectory; the startup log line `Session log directory:` shows the exact path.
+Directory for log files; empty derives `${cache_dir}/logs`. Each server session logs into its own timestamped subdirectory.
 
 ### `project.compile_commands_paths`
 
@@ -44,7 +48,7 @@ Directory for log files. Each server session logs into its own timestamped subdi
 | ----------------- | ------- |
 | `array of string` | `[]`    |
 
-Paths to search for `compile_commands.json` files. Entries can be direct file paths or directories (clice looks for `compile_commands.json` inside). When empty (the default), clice searches the workspace root and then each of its immediate subdirectories, using the first `compile_commands.json` it finds.
+Paths searched for compile_commands.json — file paths, or directories to look inside. Empty searches the workspace root and then each of its immediate subdirectories, first hit wins.
 
 ### `project.enable_indexing`
 
@@ -52,7 +56,15 @@ Paths to search for `compile_commands.json` files. Entries can be direct file pa
 | ------ | ------- |
 | `bool` | `true`  |
 
-Enable background indexing for cross-TU features (find references, workspace symbols, etc.).
+Build the background index that serves cross-TU features (find references, workspace symbols, ...).
+
+### `project.index_db`
+
+| Type     | Default  |
+| -------- | -------- |
+| `string` | `"lmdb"` |
+
+Index persistence backend: "lmdb" (single database file) or "files" (one file per blob).
 
 ### `project.idle_timeout_ms`
 
@@ -60,7 +72,15 @@ Enable background indexing for cross-TU features (find references, workspace sym
 | ----- | ------- |
 | `int` | `3000`  |
 
-Idle time (milliseconds) before starting background indexing after the last edit.
+Idle delay in milliseconds after the last edit before background indexing starts.
+
+### `project.test_hooks`
+
+| Type   | Default |
+| ------ | ------- |
+| `bool` | `false` |
+
+Enable the clice/internal test hooks used by the test harness.
 
 ### `project.stateful_worker_count`
 
@@ -68,43 +88,47 @@ Idle time (milliseconds) before starting background indexing after the last edit
 | -------- | ------- |
 | `uint32` | `2`     |
 
-Number of stateful worker processes. These hold ASTs in memory and serve queries (hover, semantic tokens, etc.).
+Number of stateful workers — they hold ASTs in memory and serve queries (hover, semantic tokens, ...).
 
 ### `project.stateless_worker_count`
 
-| Type     | Default           |
-| -------- | ----------------- |
-| `uint32` | `max(cores/2, 2)` |
+| Type     | Default |
+| -------- | ------- |
+| `uint32` | —       |
 
-Number of stateless worker processes spawned at startup. These handle ephemeral tasks (PCH/PCM builds, completion, signature help).
+Initial number of stateless workers — they handle ephemeral tasks (PCH/PCM builds, completion, signature help); defaults to half the machine's parallelism, at least 2.
 
 ### `project.min_stateless_worker_count`
 
-| Type     | Default    |
-| -------- | ---------- |
-| `uint32` | `0` (auto) |
+| Type     | Default |
+| -------- | ------- |
+| `uint32` | `1`     |
 
-Lower bound for dynamic scale-down of stateless workers. `0` resolves to an automatic minimum.
+Lower bound for dynamic stateless-worker scaling.
 
 ### `project.max_stateless_worker_count`
 
-| Type     | Default    |
-| -------- | ---------- |
-| `uint32` | `0` (auto) |
+| Type     | Default |
+| -------- | ------- |
+| `uint32` | —       |
 
-Upper bound for dynamic scale-up of stateless workers. `0` resolves to the CPU core count.
+Upper bound for dynamic stateless-worker scaling; defaults to the machine's parallelism.
 
 ### `project.worker_memory_limit`
 
-| Type     | Default             |
-| -------- | ------------------- |
-| `uint64` | `4294967296` (4 GB) |
+| Type     | Default      |
+| -------- | ------------ |
+| `uint64` | `4294967296` |
 
-Per-worker memory limit in bytes. **Not yet enforced** — the option is parsed but memory-based eviction/restart is not implemented yet.
+Per-stateful-worker memory limit in bytes. Not yet enforced: parsed, but memory-based eviction is not implemented.
+
+<!-- END GENERATED CONFIG -->
 
 ## Tracker
 
 The file tracker polls for changes that happen outside the editor (a `git checkout`, a regenerated `compile_commands.json`, code generators writing headers) so the server picks them up without a restart. Setting an interval to `0` disables that polling loop.
+
+<!-- BEGIN GENERATED CONFIG: tracker -->
 
 ### `tracker.cdb_poll_seconds`
 
@@ -112,7 +136,7 @@ The file tracker polls for changes that happen outside the editor (a `git checko
 | -------- | ------- |
 | `uint32` | `3`     |
 
-Interval for re-checking the compilation database file.
+Compilation database poll interval in seconds; 0 disables polling.
 
 ### `tracker.workspace_poll_seconds`
 
@@ -120,11 +144,15 @@ Interval for re-checking the compilation database file.
 | -------- | ------- |
 | `uint32` | `30`    |
 
-Interval for sweeping workspace files for on-disk changes.
+Workspace file sweep interval in seconds; 0 disables polling.
+
+<!-- END GENERATED CONFIG -->
 
 ## Hover
 
-The `[hover]` section controls how hover cards render. Changes take effect after a server restart.
+The `[hover]` section controls how hover cards render.
+
+<!-- BEGIN GENERATED CONFIG: hover -->
 
 ### `hover.parse_comment_as_markdown`
 
@@ -132,7 +160,7 @@ The `[hover]` section controls how hover cards render. Changes take effect after
 | ------ | ------- |
 | `bool` | `true`  |
 
-Render the hover card as markdown. `false` produces plain text for clients that cannot display markdown.
+Render the hover card as markdown; `false` produces plain text for clients that cannot display it.
 
 ### `hover.show_aka`
 
@@ -142,9 +170,13 @@ Render the hover card as markdown. `false` produces plain text for clients that 
 
 Show the desugared form of a type, e.g. `vector<int>::size_type (aka unsigned long)`.
 
+<!-- END GENERATED CONFIG -->
+
 ## Inlay Hints
 
-The `[inlay_hints]` section controls which inlay hint categories the server produces. Configuration changes take effect after a server restart; a client-side refresh then requests hints with the updated values. No recompile is involved.
+The `[inlay_hints]` section controls which inlay hint categories the server produces. A client-side refresh then requests hints with the updated values; no recompile is involved.
+
+<!-- BEGIN GENERATED CONFIG: inlay_hints -->
 
 ### `inlay_hints.enabled`
 
@@ -168,7 +200,7 @@ Parameter name hints at call sites, e.g. `draw(width: 800, height: 600)`, includ
 | ------ | ------- |
 | `bool` | `true`  |
 
-Deduced type hints for `auto` variables, structured bindings, and deduced return types.
+Deduced type hints for `auto` variables, structured bindings and deduced return types.
 
 ### `inlay_hints.designators`
 
@@ -176,7 +208,7 @@ Deduced type hints for `auto` variables, structured bindings, and deduced return
 | ------ | ------- |
 | `bool` | `true`  |
 
-Field designator hints in aggregate initialization, e.g. `Point{.x=1, .y=2}` for `Point{1, 2}`.
+Field designator hints in aggregate initialization, e.g. `.x=` and `.y=` in `Point{1, 2}`.
 
 ### `inlay_hints.block_end`
 
@@ -200,11 +232,71 @@ Show the default arguments a call omitted, abbreviated when long.
 | -------- | ------- |
 | `uint32` | `32`    |
 
-Maximum length for printed type names; longer types fall back to a sugared spelling or are dropped. `0` means no limit.
+Character budget for rendered hint text (deduced types, default arguments); longer text is abbreviated. `0` means no limit.
+
+<!-- END GENERATED CONFIG -->
+
+## Code Completion
+
+The `[code_completion]` section controls completion item assembly.
+
+<!-- BEGIN GENERATED CONFIG: code_completion -->
+
+### `code_completion.enable_keyword_snippet`
+
+| Type   | Default |
+| ------ | ------- |
+| `bool` | `false` |
+
+Complete keywords as snippets (not yet implemented).
+
+### `code_completion.enable_function_arguments_snippet`
+
+| Type   | Default |
+| ------ | ------- |
+| `bool` | `false` |
+
+Insert function arguments as a snippet on completion.
+
+### `code_completion.enable_template_arguments_snippet`
+
+| Type   | Default |
+| ------ | ------- |
+| `bool` | `false` |
+
+Insert template arguments as a snippet on completion (not yet implemented).
+
+### `code_completion.insert_paren_in_function_call`
+
+| Type   | Default |
+| ------ | ------- |
+| `bool` | `false` |
+
+Insert parentheses when completing a function call (not yet implemented).
+
+### `code_completion.bundle_overloads`
+
+| Type   | Default |
+| ------ | ------- |
+| `bool` | `true`  |
+
+Collapse an overload set into a single completion item.
+
+### `code_completion.limit`
+
+| Type     | Default |
+| -------- | ------- |
+| `uint32` | `0`     |
+
+Maximum number of completion items (not yet implemented).
+
+<!-- END GENERATED CONFIG -->
 
 ## Rules
 
 `[[rules]]` is an array of rule objects. Rules are matched in declaration order — later rules override earlier ones.
+
+<!-- BEGIN GENERATED CONFIG: rules -->
 
 ### `[rules].patterns`
 
@@ -212,14 +304,7 @@ Maximum length for printed type names; longer types fall back to a sugared spell
 | ----------------- | ------- |
 | `array of string` | `[]`    |
 
-Glob patterns for matching file paths:
-
-- `*` — matches one or more characters in a path segment
-- `?` — matches a single character in a path segment
-- `**` — matches any number of path segments, including zero
-- `{}` — groups conditions (e.g., `**/*.{h,cpp}`)
-- `[]` — character range (e.g., `example.[0-9]`)
-- `[!...]` — negated character range
+Glob patterns selecting the files this rule applies to: `*` matches within a path segment, `?` a single character, `**` any number of segments, `{a,b}` alternatives, `[0-9]` a character range, `[!...]` a negated range.
 
 ### `[rules].append`
 
@@ -227,7 +312,7 @@ Glob patterns for matching file paths:
 | ----------------- | ------- |
 | `array of string` | `[]`    |
 
-Flags to append to the compilation command. Example: `["-std=c++20", "-DNDEBUG"]`.
+Compilation flags appended for matching files, e.g. `["-std=c++20", "-DNDEBUG"]`.
 
 ### `[rules].remove`
 
@@ -235,7 +320,9 @@ Flags to append to the compilation command. Example: `["-std=c++20", "-DNDEBUG"]
 | ----------------- | ------- |
 | `array of string` | `[]`    |
 
-Flags to remove from the compilation command. Example: `["-Wall", "-Werror"]`.
+Compilation flags removed for matching files, e.g. `["-Wall"]`.
+
+<!-- END GENERATED CONFIG -->
 
 ## Example
 

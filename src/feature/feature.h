@@ -118,7 +118,9 @@ struct CodeCompletionOptions {
 /// Corresponds to the `[hover]` section in clice.toml.
 struct HoverOptions {
     KOTATSU_ANNOTATE(defaulted = true,
-                     description = "Render the hover card as markdown rather than plain text.")
+                     description =
+                         "Render the hover card as markdown; `false` produces "
+                         "plain text for clients that cannot display it.")
     <bool> parse_comment_as_markdown = true;
 
     KOTATSU_ANNOTATE(defaulted = true,
@@ -230,31 +232,46 @@ void parse_documentation(llvm::StringRef input, markup::Document& output);
 
 /// Corresponds to the `[inlay_hints]` section in clice.toml.
 struct InlayHintsOptions {
-    KOTATSU_ANNOTATE(defaulted = true, description = "Master switch for inlay hints.")
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description = "Master switch: `false` disables all inlay hints.")
     <bool> enabled = true;
 
-    KOTATSU_ANNOTATE(defaulted = true, description = "Show parameter name hints at call sites.")
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Parameter name hints at call sites, e.g. `draw(width: "
+                         "800, height: 600)`, including `&` markers for arguments "
+                         "passed by mutable reference.")
     <bool> parameters = true;
 
     KOTATSU_ANNOTATE(defaulted = true,
-                     description = "Show deduced types for `auto` and templated declarations.")
+                     description =
+                         "Deduced type hints for `auto` variables, structured "
+                         "bindings and deduced return types.")
     <bool> deduced_types = true;
 
     KOTATSU_ANNOTATE(defaulted = true,
-                     description = "Show designators in aggregate initialization.")
+                     description =
+                         "Field designator hints in aggregate initialization, "
+                         "e.g. `.x=` and `.y=` in `Point{1, 2}`.")
     <bool> designators = true;
 
     KOTATSU_ANNOTATE(defaulted = true,
-                     description = "Show a hint naming the construct after a closing brace.")
+                     description =
+                         "`// name` hints after the closing brace of long blocks "
+                         "(functions, types, namespaces, control flow).")
     <bool> block_end = false;
 
-    KOTATSU_ANNOTATE(defaulted = true, description = "Show omitted default arguments.")
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Show the default arguments a call omitted, abbreviated "
+                         "when long.")
     <bool> default_arguments = false;
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
-                         "Character budget for a rendered type name; longer names "
-                         "are truncated; 0 means no limit.")
+                         "Character budget for rendered hint text (deduced types, "
+                         "default arguments); longer text is abbreviated. `0` "
+                         "means no limit.")
     <std::uint32_t> type_name_limit = 32;
 };
 
