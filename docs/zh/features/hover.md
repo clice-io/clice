@@ -237,7 +237,7 @@
 
 ## 特殊悬停目标
 
-- [ ] 类型级悬停显示结构体/枚举成员（[clangd#959](https://github.com/clangd/clangd/issues/959)）
+- [x] 类型级悬停显示结构体/枚举成员（[clangd#959](https://github.com/clangd/clangd/issues/959)）
 
   ```cpp
   enum Color { Red, Green, Blue };
