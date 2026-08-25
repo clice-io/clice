@@ -95,7 +95,7 @@ int total(Point point, int base) {
 
     auto ast = feature::semantic_tokens(*unit);
     auto projected = feature::index_semantic_tokens(unit->interested_content(),
-                                                    feature::index_lang_options("main.cpp"),
+                                                    feature::index_lang_options("main.cpp", false),
                                                     occurrences,
                                                     decls,
                                                     resolver());
@@ -180,7 +180,7 @@ int compute() {
 
     auto ast = feature::folding_ranges(*unit);
     auto projected = feature::index_folding_ranges(unit->interested_content(),
-                                                   feature::index_lang_options("main.cpp"),
+                                                   feature::index_lang_options("main.cpp", false),
                                                    decls,
                                                    resolver());
 
@@ -238,12 +238,41 @@ TEST_CASE(MergedKindsConflict) {
     };
 
     auto tokens = feature::index_semantic_tokens(content,
-                                                 feature::index_lang_options("main.cpp"),
+                                                 feature::index_lang_options("main.cpp", false),
                                                  merged,
                                                  {},
                                                  resolve_synthetic);
     ASSERT_EQ(tokens.size(), std::size_t(1));
     ASSERT_EQ(tokens[0].kind.value_of(), SymbolKind(SymbolKind::Conflict).value_of());
+}
+
+TEST_CASE(CDialectKeywords) {
+    // `class` is a valid C identifier: rows built by C parses must lex
+    // under the C keyword table, or the C++ keyword overlay would fight
+    // the row's kind.
+    llvm::StringRef content = "int class;\n";
+    std::vector<feature::IndexDeclRow> rows = {
+        {.range = {4, 9}, .extent = {0, 10}, .symbol = 1, .definition = true},
+    };
+    auto resolve_synthetic = [](index::SymbolHash) -> std::optional<feature::IndexSymbolInfo> {
+        return feature::IndexSymbolInfo{"class", SymbolKind::Variable};
+    };
+
+    auto c_tokens = feature::index_semantic_tokens(content,
+                                                   feature::index_lang_options("header.h", true),
+                                                   {},
+                                                   rows,
+                                                   resolve_synthetic);
+    ASSERT_EQ(c_tokens.size(), std::size_t(2));
+    ASSERT_EQ(c_tokens[1].kind.value_of(), SymbolKind(SymbolKind::Variable).value_of());
+
+    auto cpp_tokens = feature::index_semantic_tokens(content,
+                                                     feature::index_lang_options("header.h", false),
+                                                     {},
+                                                     rows,
+                                                     resolve_synthetic);
+    ASSERT_EQ(cpp_tokens.size(), std::size_t(2));
+    ASSERT_EQ(cpp_tokens[1].kind.value_of(), SymbolKind(SymbolKind::Conflict).value_of());
 }
 
 TEST_CASE(LinksFromEdges) {
@@ -256,8 +285,9 @@ TEST_CASE(LinksFromEdges) {
         {.line = 3, .target = "/usr/include/second"},
     };
 
-    auto links =
-        feature::index_document_links(content, feature::index_lang_options("main.cpp"), edges);
+    auto links = feature::index_document_links(content,
+                                               feature::index_lang_options("main.cpp", false),
+                                               edges);
     ASSERT_EQ(links.size(), std::size_t(2));
     ASSERT_EQ(content.substr(links[0].range.begin, links[0].range.length()), "\"first.h\"");
     ASSERT_EQ(links[0].target, "/tmp/first.h");

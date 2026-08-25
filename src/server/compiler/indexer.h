@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -250,6 +251,14 @@ public:
     /// them — index-only sessions never compile, so the compile-driven
     /// refresh in the output push path cannot cover them.
     Signal<> on_serving_rows_changed;
+
+    /// Invoked when an index attempt for a file with an open
+    /// ServingMode::IndexOnly session settled — no retry pending — without
+    /// a shard that can serve the session's buffer: the file is missing or
+    /// diverged on disk, has no real compile command, or failed to index.
+    /// No later round changes that on its own, so the owner escalates the
+    /// session instead of letting it answer empty forever.
+    std::function<void(std::uint32_t path_id)> on_session_unservable;
 
 private:
     kota::event_loop& loop;

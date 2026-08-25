@@ -257,6 +257,16 @@ void MasterServer::wire() {
     compiler.on_stale = [this](std::uint32_t path_id) {
         dispatch(FileEvent::disk_changed(path_id));
     };
+
+    // The boost in settle_open_serving promised the index would serve the
+    // cold session; an attempt that settles without a servable shard ends
+    // that promise — escalate like the disabled-indexing branch, or the
+    // session answers empty until its first edit.
+    indexer.on_session_unservable = [this](std::uint32_t path_id) {
+        if(auto session = sessions.find(path_id)) {
+            compiler.escalate(std::move(session));
+        }
+    };
 }
 
 void MasterServer::initialize(llvm::StringRef root) {
@@ -296,7 +306,8 @@ void MasterServer::settle_open_serving(std::shared_ptr<Session> session) {
     }
     // Nothing indexed yet: reading this file is the reason to index it
     // first — unless indexing is disabled, in which case no shard will
-    // ever arrive and only an AST can serve the document.
+    // ever arrive and only an AST can serve the document. A boost the
+    // indexer cannot fulfill escalates through on_session_unservable.
     if(workspace.config.project.enable_indexing.value) {
         indexer.boost(session->path_id);
     } else {

@@ -86,8 +86,8 @@ bool outline_kind(SymbolKind kind) {
 
 }  // namespace
 
-auto index_lang_options(llvm::StringRef path) -> const clang::LangOptions& {
-    return path.ends_with(".c") ? c_profile().opts : cpp_profile().opts;
+auto index_lang_options(llvm::StringRef path, bool c_rows) -> const clang::LangOptions& {
+    return c_rows || path.ends_with(".c") ? c_profile().opts : cpp_profile().opts;
 }
 
 auto index_semantic_tokens(llvm::StringRef content,

@@ -58,9 +58,10 @@ private:
     /// background indexer's on_progress_changed signal.
     void report_index_progress();
 
-    /// Ask the client to re-pull semantic tokens after a background merge
-    /// replaced rows an index-served session was serving. Invoked by the
-    /// indexer's on_serving_rows_changed signal; capability-gated.
+    /// Ask the client to re-pull semantic tokens and folding ranges after
+    /// a background merge replaced rows an index-served session was
+    /// serving. Invoked by the indexer's on_serving_rows_changed signal;
+    /// capability-gated.
     void refresh_index_served();
 
     /// Send every not-yet-forwarded notify-log message as
@@ -79,11 +80,13 @@ private:
     /// initialized handler from the sessions' materialized output state.
     bool client_ready = false;
 
-    /// Whether the client accepts workspace/semanticTokens/refresh and
-    /// workspace/inlayHint/refresh — the upgrade signal after an
-    /// index-served session's compile lands (see push_output).
+    /// Whether the client accepts workspace/semanticTokens/refresh,
+    /// workspace/inlayHint/refresh and workspace/foldingRange/refresh —
+    /// the upgrade signal after an index-served session's compile lands
+    /// (see push_output).
     bool semantic_tokens_refresh = false;
     bool inlay_hint_refresh = false;
+    bool folding_range_refresh = false;
 
     /// Subscription to compile outputs; disconnects on destruction.
     Signal<std::shared_ptr<Session>>::Connection output_conn;

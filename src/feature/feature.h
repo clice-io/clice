@@ -477,10 +477,11 @@ struct IndexSymbolInfo {
 
 using IndexSymbolResolver = llvm::function_ref<std::optional<IndexSymbolInfo>(index::SymbolHash)>;
 
-/// Language options for raw-lexing `path` without a compile command:
-/// C for .c files, C++ (latest) otherwise. A default-constructed
+/// Language options for raw-lexing `path` without a compile command: C
+/// for .c files and when `c_rows` says the served rows were built by C
+/// parses only, C++ (latest) otherwise. A default-constructed
 /// LangOptions is C89 — `class` would lex as an identifier.
-auto index_lang_options(llvm::StringRef path) -> const clang::LangOptions&;
+auto index_lang_options(llvm::StringRef path, bool c_rows) -> const clang::LangOptions&;
 
 /// Lexical layer (keywords, literals, comments, directives) from a raw lex
 /// of `content`, semantic kinds from `occurrences` resolved through

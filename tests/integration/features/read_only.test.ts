@@ -120,6 +120,29 @@ test("diverged open buffer escalates", async ({ session }) => {
     second.assertNoErrors(uri);
 });
 
+test("unservable boost escalates", async ({ session }) => {
+    const ws = writeProject(session);
+    // orphan.cpp is on disk but outside the CDB with no includer, so
+    // indexing refuses the guessed command; scratch.cpp has a CDB entry
+    // but exists only as the didOpen buffer, and indexing reads disk
+    // truth. Neither boost can deliver a shard: the failed attempt
+    // escalates, and diagnostics arrive with no edit.
+    ws.write("orphan.cpp", "int orphan() { return 1; }\n");
+    ws.writeCDB(["main.cpp", "scratch.cpp"]);
+    const client = session.spawn(ws);
+    await client.initialize(ws, { initializationOptions: ON_EDIT });
+
+    const orphanArrived = client.armDiagnostics(ws.uri("orphan.cpp"));
+    client.open("orphan.cpp");
+    await orphanArrived;
+    client.assertNoErrors(ws.uri("orphan.cpp"));
+
+    const scratchArrived = client.armDiagnostics(ws.uri("scratch.cpp"));
+    client.open("scratch.cpp", 0, { text: "int scratch() { return 2; }\n" });
+    await scratchArrived;
+    client.assertNoErrors(ws.uri("scratch.cpp"));
+});
+
 test("never builds no pch", async ({ session }) => {
     const ws = writeProject(session);
     const client = session.spawn(ws);

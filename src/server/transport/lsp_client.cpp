@@ -48,6 +48,18 @@ static bool past_shutdown(ServerLifecycle lifecycle) {
     return lifecycle == ServerLifecycle::ShuttingDown || lifecycle == ServerLifecycle::Exited;
 }
 
+/// Fire a workspace refresh request without awaiting the reply. Peer
+/// lifetime discipline as in the progress handshake: the peer outlives the
+/// client, and teardown fails pending requests before run() returns. A
+/// captureless coroutine lambda invoked immediately: parameters are copied
+/// into the frame, captures would dangle.
+template <typename Params>
+static void fire_refresh(kota::event_loop& loop, kota::ipc::JsonPeer& peer, Params params) {
+    loop.schedule([](kota::ipc::JsonPeer* peer, Params request) -> kota::task<> {
+        co_await peer->send_request(request, {.timeout = std::chrono::milliseconds(3000)});
+    }(&peer, std::move(params)));
+}
+
 LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(server), peer(peer) {
     output_conn = server.compiler.on_output.connect(
         [this](const std::shared_ptr<Session>& session) { push_output(*session); });
@@ -112,6 +124,8 @@ void LSPClient::register_lifecycle() {
                 ws_caps.semantic_tokens.has_value() && ws_caps.semantic_tokens->refresh_support;
             inlay_hint_refresh =
                 ws_caps.inlay_hint.has_value() && ws_caps.inlay_hint->refresh_support;
+            folding_range_refresh =
+                ws_caps.folding_range.has_value() && ws_caps.folding_range->refresh_support;
         }
 
         if(init.initialization_options.has_value()) {
@@ -803,38 +817,33 @@ void LSPClient::push_output(const Session& session) {
 
     // The session served index projections while this compile was
     // pending: whole-document results the client already pulled (tokens,
-    // inlay hints) just got better, and only a refresh request makes it
-    // re-pull them. Peer lifetime discipline as in the progress
-    // handshake: the peer outlives this client, and teardown fails
-    // pending requests before run() returns.
+    // folds, inlay hints) just got better, and only a refresh request
+    // makes it re-pull them.
     if(session.index_served && output.version.has_value()) {
-        auto fire = [this](auto params) {
-            // Captureless coroutine lambda invoked immediately: parameters
-            // are copied into the frame, captures would dangle.
-            server.loop.schedule([](kota::ipc::JsonPeer* peer,
-                                    decltype(params) request) -> kota::task<> {
-                co_await peer->send_request(request, {.timeout = std::chrono::milliseconds(3000)});
-            }(&peer, params));
-        };
         if(semantic_tokens_refresh) {
-            fire(protocol::SemanticTokensRefreshParams{});
+            fire_refresh(server.loop, peer, protocol::SemanticTokensRefreshParams{});
         }
         if(inlay_hint_refresh) {
-            fire(protocol::InlayHintRefreshParams{});
+            fire_refresh(server.loop, peer, protocol::InlayHintRefreshParams{});
+        }
+        if(folding_range_refresh) {
+            fire_refresh(server.loop, peer, protocol::FoldingRangeRefreshParams{});
         }
     }
 }
 
 void LSPClient::refresh_index_served() {
-    if(!client_ready || !semantic_tokens_refresh) {
+    if(!client_ready) {
         return;
     }
-    // Same peer lifetime discipline as push_output's fire: the peer
-    // outlives this client, and teardown fails pending requests.
-    server.loop.schedule([](kota::ipc::JsonPeer* peer) -> kota::task<> {
-        co_await peer->send_request(protocol::SemanticTokensRefreshParams{},
-                                    {.timeout = std::chrono::milliseconds(3000)});
-    }(&peer));
+    // Inlay hints stay out: index projections never produce them, so a
+    // background merge cannot have changed what the client holds.
+    if(semantic_tokens_refresh) {
+        fire_refresh(server.loop, peer, protocol::SemanticTokensRefreshParams{});
+    }
+    if(folding_range_refresh) {
+        fire_refresh(server.loop, peer, protocol::FoldingRangeRefreshParams{});
+    }
 }
 
 void LSPClient::report_index_progress() {

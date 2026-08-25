@@ -1635,6 +1635,18 @@ kota::task<> Indexer::run_index_task(std::uint32_t server_path_id,
        it != reindex_reasons.end() && it->second.ticket == ticket) {
         reindex_reasons.erase(it);
     }
+    // The attempt settled with no retry pending; an open session still
+    // waiting on the index with nothing servable will never be served by
+    // it (see on_session_unservable).
+    if(on_session_unservable && !reindex_reasons.contains(server_path_id)) {
+        if(auto session = sessions.find(server_path_id);
+           session && session->serving == ServingMode::IndexOnly) {
+            auto it = workspace.shards.find(server_path_id);
+            if(it == workspace.shards.end() || !it->second.matches_content(session->text)) {
+                on_session_unservable(server_path_id);
+            }
+        }
+    }
     round.completed += 1;
     round.inflight -= 1;
     round.task_done.set();

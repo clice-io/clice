@@ -19,6 +19,7 @@
 #include "syntax/include_resolver.h"
 
 #include "kota/codec/json/json.h"
+#include "llvm/ADT/STLExtras.h"
 
 namespace clice {
 
@@ -95,6 +96,16 @@ FeatureRouter::IndexRows FeatureRouter::extract_rows(const index::Shard& shard) 
         return true;
     });
     return rows;
+}
+
+const clang::LangOptions& FeatureRouter::index_lang_options(const Session& session) {
+    auto& contributions = workspace.project_index.contributions;
+    auto it = contributions.find(session.path_id);
+    bool c_rows = it != contributions.end() && !it->second.empty() &&
+                  llvm::all_of(llvm::make_first_range(it->second), [&](std::uint32_t tu) {
+                      return workspace.path_pool.resolve(tu).ends_with(".c");
+                  });
+    return feature::index_lang_options(workspace.path_pool.resolve(session.path_id), c_rows);
 }
 
 std::optional<feature::IndexSymbolInfo> FeatureRouter::resolve_symbol_info(index::SymbolHash hash) {
@@ -240,9 +251,8 @@ kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
             std::vector<protocol::DocumentLink> links;
             auto it = workspace.shards.find(session->path_id);
             if(it != workspace.shards.end() && it->second.matches_content(session->text)) {
-                auto path = workspace.path_pool.resolve(session->path_id);
                 auto raw = feature::index_document_links(session->text,
-                                                         feature::index_lang_options(path),
+                                                         index_lang_options(*session),
                                                          index_query.include_edges(*session));
                 convert(raw, links);
             }
@@ -311,7 +321,7 @@ kota::task<kota::codec::RawValue, kota::ipc::Error>
         }
         if(auto offset = session->line_map().to_offset(pos)) {
             auto links = feature::index_document_links(session->text,
-                                                       feature::index_lang_options(path),
+                                                       index_lang_options(*session),
                                                        index_query.include_edges(*session));
             for(const auto& link: links) {
                 if(*offset >= link.range.begin && *offset < link.range.end) {
@@ -426,10 +436,9 @@ FeatureRouter::RawResult
             case Route::Index: {
                 auto* source = index_rows_source(index_query, *session);
                 auto rows = extract_rows(*source);
-                auto path = workspace.path_pool.resolve(session->path_id);
                 auto tokens = feature::index_semantic_tokens(
                     session->text,
-                    feature::index_lang_options(path),
+                    index_lang_options(*session),
                     rows.occurrences,
                     rows.decls,
                     [&](index::SymbolHash hash) { return resolve_symbol_info(hash); });
@@ -486,10 +495,9 @@ FeatureRouter::RawResult
             case Route::Index: {
                 auto* source = index_rows_source(index_query, *session);
                 auto rows = extract_rows(*source);
-                auto path = workspace.path_pool.resolve(session->path_id);
                 auto folds = feature::index_folding_ranges(
                     session->text,
-                    feature::index_lang_options(path),
+                    index_lang_options(*session),
                     rows.decls,
                     [&](index::SymbolHash hash) { return resolve_symbol_info(hash); });
                 session->index_served = true;
@@ -499,7 +507,14 @@ FeatureRouter::RawResult
                                                         session->line_starts,
                                                         feature::PositionEncoding::UTF16));
             }
-            case Route::Empty: co_return serde_raw{"[]"};
+            case Route::Empty: {
+                // Same contract as the semantic-tokens Empty route: the
+                // client caches this reply, and only a foldingRange
+                // refresh makes it re-pull once the cold document's
+                // shard lands.
+                session->index_served = true;
+                co_return serde_raw{"[]"};
+            }
             case Route::Ast: break;
         }
     }
