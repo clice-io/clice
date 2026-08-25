@@ -643,6 +643,7 @@ struct PendingQuery {
 }  // namespace
 
 Toolchain::Toolchain() :
+    query_concurrency(kota::sys::parallelism()),
     allocator(std::make_unique<llvm::BumpPtrAllocator>()), strings(allocator.get()) {}
 
 Toolchain::~Toolchain() = default;
@@ -925,23 +926,34 @@ void Toolchain::warm(llvm::ArrayRef<CompileCommand> commands) {
         std::expected<std::vector<std::string>, std::string> result;
     };
 
-    // The query is moved into the coroutine frame as a parameter, so the
-    // argument references stay valid for the coroutine's whole lifetime.
-    auto make_task = [](PendingQuery q) -> kota::task<QueryOutcome> {
-        auto result = co_await query_one(q.query_args, q.file, q.directory);
-        co_return QueryOutcome{std::move(q.key), std::move(result)};
-    };
+    // Pullers rather than a semaphore around each query: kota::semaphore bounds
+    // the probes in flight just as well, but it would have to sit inside a
+    // when_all, which materializes every query's coroutine frame up front and
+    // holds it for the whole batch. A puller reuses one frame across the queue.
+    //
+    // The loop is single-threaded and a puller suspends only inside query_one(),
+    // so the shared cursor and result vector need no synchronization.
+    std::vector<QueryOutcome> outcomes;
+    outcomes.reserve(pending.size());
+    std::size_t next = 0;
 
-    kota::small_vector<QueryOutcome> outcomes;
+    auto puller = [&]() -> kota::task<> {
+        while(next < pending.size()) {
+            auto& q = pending[next++];
+            auto result = co_await query_one(q.query_args, q.file, q.directory);
+            outcomes.push_back({std::move(q.key), std::move(result)});
+        }
+    };
 
     kota::event_loop loop;
     auto run = [&]() -> kota::task<> {
-        std::vector<kota::task<QueryOutcome>> tasks;
-        tasks.reserve(pending.size());
-        for(auto& q: pending)
-            tasks.push_back(make_task(std::move(q)));
+        auto count = std::min<std::size_t>(std::max(query_concurrency, 1u), pending.size());
+        std::vector<kota::task<>> pullers;
+        pullers.reserve(count);
+        for(std::size_t i = 0; i != count; ++i)
+            pullers.push_back(puller());
 
-        outcomes = co_await kota::when_all(std::move(tasks));
+        co_await kota::when_all(std::move(pullers));
     };
     loop.schedule(run());
     loop.run();

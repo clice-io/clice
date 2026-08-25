@@ -504,6 +504,12 @@ void MasterServer::load_workspace() {
 
     auto& cfg = workspace.config.project;
 
+    // Driver probes and stateless workers are both compiler-weight processes
+    // competing for the same machine, so the configured worker ceiling bounds
+    // the probe fan-out too. 0 means auto there, which is the default already.
+    if(cfg.max_stateless_worker_count != 0)
+        workspace.toolchain.query_concurrency = cfg.max_stateless_worker_count;
+
     open_cache_store();
 
     auto cdb_path = discover_compile_commands(workspace.config, workspace_root);

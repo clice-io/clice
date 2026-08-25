@@ -502,6 +502,52 @@ TEST_CASE(WarmPartialFailure, skip = Windows) {
     EXPECT_EQ(tc.failed_size(), std::size_t(1));
 }
 
+TEST_CASE(WarmBoundsConcurrency, skip = Windows) {
+    auto log = fs::createTemporaryFile("clice-probe", "log");
+    ASSERT_TRUE(log.has_value());
+    auto log_cleanup = llvm::make_scope_exit([&] { fs::remove(*log); });
+
+    // Each probe brackets a sleep with an append, so the log records real-time
+    // overlap: a prefix sum over it is the number of probes alive at that point.
+    auto prelude = "printf '%s' + >> " + *log + "\nsleep 0.3\nprintf '%s' - >> " + *log + "\n";
+
+    llvm::SmallVector<std::string> drivers;
+    llvm::SmallVector<CompileCommand> cmds;
+    for(int i = 0; i != 5; ++i) {
+        auto driver = create_fake_clang(fake_cc1_line, prelude);
+        ASSERT_TRUE(driver.has_value());
+        drivers.push_back(*driver);
+    }
+    auto driver_cleanup = llvm::make_scope_exit([&] {
+        for(auto& driver: drivers)
+            fs::remove(driver);
+    });
+
+    // Distinct drivers, so none of the five collapses into one key.
+    for(std::size_t i = 0; i != drivers.size(); ++i) {
+        CompileCommand cmd;
+        cmd.resolved.flags = {drivers[i].c_str()};
+        cmd.source_file = "/tmp/a.cpp";
+        cmds.push_back(cmd);
+    }
+
+    Toolchain tc;
+    tc.query_concurrency = 2;
+    tc.warm(cmds);
+    EXPECT_EQ(tc.cache_size(), drivers.size());
+
+    auto content = fs::read(*log);
+    ASSERT_TRUE(content.has_value());
+
+    int alive = 0;
+    int peak = 0;
+    for(char c: *content) {
+        alive += c == '+' ? 1 : -1;
+        peak = std::max(peak, alive);
+    }
+    EXPECT_EQ(peak, 2);
+}
+
 TEST_CASE(ResolveFailNegativeCache, skip = Windows) {
     // A fake driver whose -### output contains no cc1 line, so the query fails.
     auto driver = create_fake_clang("this is not a cc1 line");

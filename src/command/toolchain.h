@@ -44,6 +44,14 @@ public:
     /// parallel internally. Blocks until all queries complete.
     void warm(llvm::ArrayRef<CompileCommand> commands);
 
+    /// How many probe subprocesses warm() may run at once. Defaults to the CPU
+    /// parallelism and follows the configured worker-process ceiling when the
+    /// server sets one. The bound matters beyond throughput: a probe forks a
+    /// compiler driver and holds two pipes, and a failed spawn caches its key as
+    /// permanently failed, so exhausting fds over a many-directory CDB would
+    /// leave those commands without flags for the rest of the session.
+    unsigned query_concurrency;
+
     /// Resolve a driver-level command to cc1 level by querying the toolchain.
     /// Modifies the command in-place.
     [[nodiscard]] std::expected<void, std::string> resolve(CompileCommand& cmd);
