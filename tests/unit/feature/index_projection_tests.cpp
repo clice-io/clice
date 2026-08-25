@@ -1,0 +1,290 @@
+#include <algorithm>
+#include <string>
+#include <vector>
+
+#include "test/test.h"
+#include "test/tester.h"
+#include "feature/feature.h"
+#include "index/tu_index.h"
+
+namespace clice::testing {
+
+namespace {
+
+TEST_SUITE(index_projection, Tester) {
+
+/// The compiled unit's envelope and the main file's rows, extracted the
+/// way the router's index slice does it in production.
+index::TUIndex tu;
+std::string envelope;
+std::vector<index::Occurrence> occurrences;
+std::vector<feature::IndexDeclRow> decls;
+
+void extract_rows() {
+    envelope = index::build_tu_index(*unit);
+    tu = index::TUIndex::from_bytes(envelope);
+
+    auto main_id = tu.path_count() - 1;
+    auto& shard = tu.shard_of(main_id);
+
+    occurrences.clear();
+    shard.for_each_occurrence([&](const index::Occurrence& occurrence) {
+        occurrences.push_back(occurrence);
+        return true;
+    });
+
+    decls.clear();
+    shard.for_each_relation([&](index::SymbolHash hash, const index::Relation& relation) {
+        RelationKind kind(relation.kind);
+        if(kind.isDeclOrDef()) {
+            auto copy = relation;
+            decls.push_back({.range = relation.range,
+                             .extent = copy.definition_range(),
+                             .symbol = hash,
+                             .definition = kind.is_one_of(RelationKind::Definition)});
+        }
+        return true;
+    });
+}
+
+std::optional<feature::IndexSymbolInfo> resolve(index::SymbolHash hash) {
+    if(auto identity = tu.find_symbol(hash)) {
+        return feature::IndexSymbolInfo{std::string(identity->name), identity->kind};
+    }
+    auto main_id = tu.path_count() - 1;
+    std::string name;
+    SymbolKind kind;
+    if(tu.shard_of(main_id).find_symbol(hash, name, kind)) {
+        return feature::IndexSymbolInfo{std::move(name), kind};
+    }
+    return std::nullopt;
+}
+
+auto resolver() {
+    return [this](index::SymbolHash hash) { return resolve(hash); };
+}
+
+TEST_CASE(TokensMatchAst) {
+    add_main("main.cpp", R"cpp(
+// a line comment
+#define VALUE 1
+
+struct Point {
+    int x;
+    int y;
+    int sum();
+};
+
+int Point::sum() {
+    return x + y + VALUE;
+}
+
+int total(Point point, int base) {
+    const char* label = "sum";
+    char letter = 's';
+    if(base > 0) {
+        return point.sum() + base;
+    }
+    return 0;
+}
+)cpp");
+    ASSERT_TRUE(compile());
+    extract_rows();
+
+    auto ast = feature::semantic_tokens(*unit);
+    auto projected = feature::index_semantic_tokens(unit->interested_content(),
+                                                    feature::index_lang_options("main.cpp"),
+                                                    occurrences,
+                                                    decls,
+                                                    resolver());
+
+    // The index knows Declaration/Definition; every other AST modifier
+    // (Readonly, Static, Virtual, ...) is a pinned degradation.
+    auto pinned = SymbolModifiers::to_mask(SymbolModifiers::Declaration) |
+                  SymbolModifiers::to_mask(SymbolModifiers::Definition);
+
+    ASSERT_EQ(projected.size(), ast.size());
+    for(std::size_t i = 0; i < ast.size(); i += 1) {
+        ASSERT_EQ(projected[i].range.begin, ast[i].range.begin);
+        ASSERT_EQ(projected[i].range.end, ast[i].range.end);
+        ASSERT_EQ(projected[i].kind.value_of(), ast[i].kind.value_of());
+        ASSERT_EQ(projected[i].modifiers, ast[i].modifiers & pinned);
+    }
+}
+
+TEST_CASE(OutlineMatchesAst) {
+    add_main("main.cpp", R"cpp(
+namespace app {
+
+struct Point {
+    int x;
+    int sum();
+};
+
+enum class Color {
+    Red,
+    Blue,
+};
+
+int scale(int value) {
+    return value * 2;
+}
+
+}
+)cpp");
+    ASSERT_TRUE(compile());
+    extract_rows();
+
+    auto ast = feature::document_symbols(*unit);
+    auto projected = feature::index_document_symbols(decls, resolver());
+
+    auto compare = [](auto& self, const std::vector<feature::DocumentSymbol>& lhs,
+                      const std::vector<feature::DocumentSymbol>& rhs) -> void {
+        ASSERT_EQ(lhs.size(), rhs.size());
+        for(std::size_t i = 0; i < lhs.size(); i += 1) {
+            ASSERT_EQ(lhs[i].name, rhs[i].name);
+            ASSERT_EQ(lhs[i].kind.value_of(), rhs[i].kind.value_of());
+            self(self, lhs[i].children, rhs[i].children);
+        }
+    };
+    compare(compare, projected, ast);
+}
+
+TEST_CASE(FoldsSubsetOfAst) {
+    add_main("main.cpp", R"cpp(
+namespace app {
+
+struct Holder {
+    int value;
+
+    Holder() : value{0} {
+        value += 1;
+    }
+};
+
+int compute() {
+    return Holder().value;
+}
+
+}
+)cpp");
+    ASSERT_TRUE(compile());
+    extract_rows();
+
+    auto ast = feature::folding_ranges(*unit);
+    auto projected = feature::index_folding_ranges(unit->interested_content(),
+                                                   feature::index_lang_options("main.cpp"),
+                                                   decls,
+                                                   resolver());
+
+    ASSERT_TRUE(!projected.empty());
+    for(auto& fold: projected) {
+        bool known = std::ranges::any_of(ast, [&](const feature::FoldingRange& twin) {
+            return twin.range == fold.range;
+        });
+        ASSERT_TRUE(known);
+    }
+
+    // The constructor's fold anchors at its body, not the member
+    // initializer's braces.
+    auto body = unit->interested_content().find("{\n        value += 1;");
+    bool anchored = std::ranges::any_of(projected, [&](const feature::FoldingRange& fold) {
+        return fold.range.begin == body;
+    });
+    ASSERT_TRUE(anchored);
+}
+
+TEST_CASE(CollapsedRowsBecomeSiblings) {
+    std::vector<feature::IndexDeclRow> rows = {
+        {.range = {8, 9}, .extent = {0, 100}, .symbol = 1, .definition = true},
+        {.range = {20, 25}, .extent = {20, 50}, .symbol = 2, .definition = true},
+        {.range = {20, 25}, .extent = {20, 50}, .symbol = 3, .definition = true},
+    };
+    auto resolve_synthetic =
+        [](index::SymbolHash hash) -> std::optional<feature::IndexSymbolInfo> {
+        switch(hash) {
+            case 1: return feature::IndexSymbolInfo{"outer", SymbolKind::Struct};
+            case 2: return feature::IndexSymbolInfo{"first", SymbolKind::Field};
+            case 3: return feature::IndexSymbolInfo{"second", SymbolKind::Field};
+            default: return std::nullopt;
+        }
+    };
+
+    auto symbols = feature::index_document_symbols(rows, resolve_synthetic);
+    ASSERT_EQ(symbols.size(), std::size_t(1));
+    ASSERT_EQ(symbols[0].name, "outer");
+    ASSERT_EQ(symbols[0].children.size(), std::size_t(2));
+    ASSERT_EQ(symbols[0].children[0].children.size(), std::size_t(0));
+    ASSERT_EQ(symbols[0].children[1].children.size(), std::size_t(0));
+}
+
+TEST_CASE(MergedKindsConflict) {
+    llvm::StringRef content = "value;\n";
+    std::vector<index::Occurrence> merged = {
+        {.range = {0, 5}, .target = 1},
+        {.range = {0, 5}, .target = 2},
+    };
+    auto resolve_synthetic =
+        [](index::SymbolHash hash) -> std::optional<feature::IndexSymbolInfo> {
+        if(hash == 1) {
+            return feature::IndexSymbolInfo{"value", SymbolKind::Variable};
+        }
+        return feature::IndexSymbolInfo{"value", SymbolKind::Function};
+    };
+
+    auto tokens = feature::index_semantic_tokens(content,
+                                                 feature::index_lang_options("main.cpp"),
+                                                 merged,
+                                                 {},
+                                                 resolve_synthetic);
+    ASSERT_EQ(tokens.size(), std::size_t(1));
+    ASSERT_EQ(tokens[0].kind.value_of(), SymbolKind(SymbolKind::Conflict).value_of());
+}
+
+TEST_CASE(LinksFromEdges) {
+    llvm::StringRef content = R"cpp(#include "first.h"
+#include "skipped.h"
+#include <second>
+)cpp";
+    std::vector<feature::IndexIncludeEdge> edges = {
+        {.line = 1, .target = "/tmp/first.h"},
+        {.line = 3, .target = "/usr/include/second"},
+    };
+
+    auto links = feature::index_document_links(content,
+                                               feature::index_lang_options("main.cpp"),
+                                               edges);
+    ASSERT_EQ(links.size(), std::size_t(2));
+    ASSERT_EQ(content.substr(links[0].range.begin, links[0].range.length()), "\"first.h\"");
+    ASSERT_EQ(links[0].target, "/tmp/first.h");
+    ASSERT_EQ(content.substr(links[1].range.begin, links[1].range.length()), "<second>");
+    ASSERT_EQ(links[1].target, "/usr/include/second");
+}
+
+TEST_CASE(CommentBlockExtraction) {
+    llvm::StringRef content = R"cpp(int unrelated;
+
+/// Adds two numbers.
+/// Returns their sum.
+int add(int a, int b);
+
+// stale note
+
+int gap();
+)cpp";
+
+    auto add_offset = static_cast<std::uint32_t>(content.find("int add"));
+    ASSERT_EQ(feature::preceding_comment(content, add_offset),
+              "Adds two numbers.\nReturns their sum.");
+
+    // A blank line between the comment and the declaration breaks the
+    // attachment.
+    auto gap_offset = static_cast<std::uint32_t>(content.find("int gap"));
+    ASSERT_EQ(feature::preceding_comment(content, gap_offset), "");
+}
+
+};
+
+}  // namespace
+
+}  // namespace clice::testing

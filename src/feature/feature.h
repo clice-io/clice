@@ -7,6 +7,7 @@
 
 #include "compile/compilation.h"
 #include "compile/compilation_unit.h"
+#include "index/types.h"
 #include "semantic/display.h"
 #include "semantic/symbol.h"
 #include "support/anomaly.h"
@@ -423,5 +424,90 @@ auto document_format(llvm::StringRef file,
                      std::optional<LocalSourceRange> range,
                      PositionEncoding encoding = PositionEncoding::UTF16)
     -> std::vector<protocol::TextEdit>;
+
+/// Index projections: whole-document features computed from index rows plus
+/// the document text, serving open files that have no AST yet (see
+/// FeatureRouter's routing rules). Inputs are index vocabulary types and
+/// narrow resolvers, never index storage — the caller extracts rows from
+/// shard/ProjectIndex and hands them over. Each projection's output is an
+/// honest subset of its AST twin's: missing pieces (Sema modifiers, outline
+/// detail, statement folds, ...) are pinned by the read-only test corpus.
+
+/// One Decl/Def relation row of the document: the name-token anchor, the
+/// declaration's full extent (invalid when the index recorded none — a
+/// cross-file or invalid source range) and the symbol it belongs to.
+struct IndexDeclRow {
+    LocalSourceRange range;
+    LocalSourceRange extent;
+    index::SymbolHash symbol = 0;
+    bool definition = false;
+};
+
+/// An include edge of the document, from the TU manifest: the 1-based
+/// directive line and the resolved target's absolute path.
+struct IndexIncludeEdge {
+    std::uint32_t line = 0;
+    std::string target;
+};
+
+/// A row symbol's identity as the resolver hands it back.
+struct IndexSymbolInfo {
+    std::string name;
+    SymbolKind kind = SymbolKind::Invalid;
+};
+
+using IndexSymbolResolver =
+    llvm::function_ref<std::optional<IndexSymbolInfo>(index::SymbolHash)>;
+
+/// Language options for raw-lexing `path` without a compile command:
+/// C for .c files, C++ (latest) otherwise. A default-constructed
+/// LangOptions is C89 — `class` would lex as an identifier.
+auto index_lang_options(llvm::StringRef path) -> const clang::LangOptions&;
+
+/// Lexical layer (keywords, literals, comments, directives) from a raw lex
+/// of `content`, semantic kinds from `occurrences` resolved through
+/// `resolve`, Declaration/Definition modifiers from `decls`. Both row
+/// arrays must be sorted by range, as shard readers hand them out.
+auto index_semantic_tokens(llvm::StringRef content,
+                           const clang::LangOptions& lang_opts,
+                           llvm::ArrayRef<index::Occurrence> occurrences,
+                           llvm::ArrayRef<IndexDeclRow> decls,
+                           IndexSymbolResolver resolve) -> std::vector<SemanticToken>;
+
+/// Outline tree built from declaration extents by range containment;
+/// extents that merely overlap (macro-generated siblings collapse onto one
+/// invocation range) become siblings in source order. `detail` stays empty.
+auto index_document_symbols(llvm::ArrayRef<IndexDeclRow> decls,
+                            IndexSymbolResolver resolve) -> std::vector<DocumentSymbol>;
+
+/// Declaration folds: each definition extent folds its last balanced brace
+/// group (brace matching over a raw lex, so braces in strings and comments
+/// do not count), keeping the name and signature visible like the AST
+/// folds do.
+auto index_folding_ranges(llvm::StringRef content,
+                          const clang::LangOptions& lang_opts,
+                          llvm::ArrayRef<IndexDeclRow> decls,
+                          IndexSymbolResolver resolve) -> std::vector<FoldingRange>;
+
+/// Document links from manifest include edges: each edge's argument span is
+/// located with find_directive_argument on its directive line. Lines the
+/// manifest has no edge for (guard-skipped includes, __has_include, #embed)
+/// produce no link.
+auto index_document_links(llvm::StringRef content,
+                          const clang::LangOptions& lang_opts,
+                          llvm::ArrayRef<IndexIncludeEdge> edges) -> std::vector<DocumentLink>;
+
+/// The comment block immediately preceding the line containing `offset`:
+/// contiguous //- or /*-style lines directly above it, comment markers
+/// stripped. Empty when a blank line or code intervenes. An approximation
+/// of clang's comment attachment, pinned as such by the read-only corpus.
+auto preceding_comment(llvm::StringRef content, std::uint32_t offset) -> std::string;
+
+/// Assemble the read-only hover card: name, kind and what the index can
+/// prove from stored text — no Sema products (type, value, size, aka) and
+/// no qualified scope (the index stores unqualified names).
+auto index_hover(const IndexSymbolInfo& info,
+                 llvm::StringRef definition_text,
+                 llvm::StringRef comment) -> HoverInfo;
 
 }  // namespace clice::feature
