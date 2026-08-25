@@ -171,7 +171,10 @@ void Config::match_rules(llvm::StringRef file_path,
     }
 }
 
-/// Codec config for the strict validation pass: reject unknown keys.
+/// Codec config that rejects unknown keys: the strict validation pass
+/// decodes under it, and the published schema derives its
+/// `additionalProperties: false` from it — the same typo surfaces both
+/// ways.
 struct DenyUnknownKeys {
     constexpr static bool deny_unknown_fields = true;
 };
@@ -276,6 +279,11 @@ Config Config::load_from_workspace(llvm::StringRef workspace_root,
 constexpr std::array MACHINE_DERIVED_FIELDS = {"stateless_worker_count",
                                                "max_stateless_worker_count"};
 
+/// The fields finalize() rejects `0` for.
+constexpr std::array ZERO_INVALID_FIELDS = {"stateful_worker_count",
+                                            "stateless_worker_count",
+                                            "worker_memory_limit"};
+
 /// Scrub the machine-derived fields out of a `default` object: sections
 /// carry whole-object defaults, so the values appear below `default`
 /// keys too, not only in the fields' own schemas.
@@ -294,41 +302,54 @@ static void remove_machine_fields(kota::codec::dyn::Value& value) {
     }
 }
 
-/// Drop the `default` annotations whose fresh value depends on the
-/// running machine: a committed schema must be byte-identical on every
-/// host, and the affected fields' descriptions state the derivation
-/// instead.
-static void strip_machine_defaults(kota::codec::dyn::Value& value) {
+/// The schema object of `field` inside a `properties` map, if present.
+static kota::codec::dyn::Object* field_schema(kota::codec::dyn::Object& properties,
+                                              std::string_view field) {
+    if(auto* schema = properties.find(field)) {
+        return schema->get_object();
+    }
+    return nullptr;
+}
+
+/// Patch the field schemas with what the annotations cannot express:
+/// `default`s whose fresh value depends on the running machine are
+/// dropped — a committed schema must be byte-identical on every host, so
+/// the affected fields' descriptions state the derivation instead — and
+/// the zero-invalid fields carry the lower bound finalize() enforces.
+static void patch_field_schemas(kota::codec::dyn::Value& value) {
     if(auto* object = value.get_object()) {
         for(auto& [key, child]: *object) {
             if(key == "properties") {
                 if(auto* properties = child.get_object()) {
                     for(auto field: MACHINE_DERIVED_FIELDS) {
-                        if(auto* schema = properties->find(field)) {
-                            if(auto* field_object = schema->get_object()) {
-                                field_object->remove("default");
-                            }
+                        if(auto* schema = field_schema(*properties, field)) {
+                            schema->remove("default");
+                        }
+                    }
+                    for(auto field: ZERO_INVALID_FIELDS) {
+                        if(auto* schema = field_schema(*properties, field)) {
+                            schema->assign("minimum", std::uint64_t{1});
                         }
                     }
                 }
             } else if(key == "default") {
                 remove_machine_fields(child);
             }
-            strip_machine_defaults(child);
+            patch_field_schemas(child);
         }
     } else if(auto* array = value.get_array()) {
         for(auto& child: *array) {
-            strip_machine_defaults(child);
+            patch_field_schemas(child);
         }
     }
 }
 
 std::expected<std::string, std::string> Config::json_schema() {
-    auto schema = kota::codec::json::schema<Config>();
+    auto schema = kota::codec::json::schema<Config, DenyUnknownKeys>();
     if(!schema) {
         return std::unexpected(schema.error().message);
     }
-    strip_machine_defaults(*schema);
+    patch_field_schemas(*schema);
 
     auto compact = kota::codec::json::to_string(std::move(*schema));
     if(!compact) {

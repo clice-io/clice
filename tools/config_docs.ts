@@ -68,12 +68,17 @@ function renderType(field: FieldSchema): string {
         case "string":
             return "`string`";
         case "integer": {
-            // Exact bounds only: a width this table does not know must
-            // fail loudly rather than render a wrong type name.
-            if (field.minimum === 0 && field.maximum === 4294967295) {
+            // The exact maximum decides the width — a maximum this table
+            // does not know must fail loudly rather than render a wrong
+            // type name. The minimum may sit above the width's floor when
+            // the field carries a validity bound (zero-invalid fields).
+            if (field.minimum === undefined || field.maximum === undefined) {
+                throw new Error(`missing integer bounds [${field.minimum}, ${field.maximum}]`);
+            }
+            if (field.minimum >= 0 && field.maximum === 4294967295) {
                 return "`uint32`";
             }
-            if (field.minimum === 0 && field.maximum !== undefined && field.maximum > 2 ** 53) {
+            if (field.minimum >= 0 && field.maximum > 2 ** 53) {
                 return "`uint64`";
             }
             if (field.minimum === -2147483648 && field.maximum === 2147483647) {

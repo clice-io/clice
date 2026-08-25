@@ -813,6 +813,28 @@ TEST_CASE(JsonSchema) {
 
     // skip = true fields stay out of the schema entirely.
     EXPECT_TRUE(find_property(*doc, "compiled_rules") == nullptr);
+
+    // The fields finalize() rejects `0` for carry the matching lower bound.
+    for(auto field: {"stateful_worker_count", "stateless_worker_count", "worker_memory_limit"}) {
+        const auto* property = find_property(*doc, field);
+        ASSERT_TRUE(property != nullptr);
+        const auto* minimum = property->get_object()->find("minimum");
+        ASSERT_TRUE(minimum != nullptr);
+        EXPECT_EQ(minimum->get_uint().value_or(0), 1u);
+    }
+
+    // Root and every section body reject unknown properties, so editors
+    // flag typos the way the strict decode pass does.
+    auto denies_unknown = [](const kota::codec::dyn::Value& body) {
+        const auto* additional = body.get_object()->find("additionalProperties");
+        return additional != nullptr && additional->get_bool() == false;
+    };
+    EXPECT_TRUE(denies_unknown(*doc));
+    const auto* defs = doc->get_object()->find("$defs");
+    ASSERT_TRUE(defs != nullptr);
+    for(const auto& [name, body]: *defs->get_object()) {
+        EXPECT_TRUE(denies_unknown(body));
+    }
 }
 
 };  // TEST_SUITE(Config)

@@ -93,8 +93,10 @@ struct CodeCompletionOptions {
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
                          "Insert function arguments as a snippet when completing "
-                         "a call; applies to individually listed overloads, so it "
-                         "requires `bundle_overloads = false`.")
+                         "a call. For functions this applies to individually "
+                         "listed overloads, so it requires `bundle_overloads = "
+                         "false`; function-like macros have no overload sets and "
+                         "always take the snippet.")
     <bool> enable_function_arguments_snippet = false;
 
     KOTATSU_ANNOTATE(defaulted = true,

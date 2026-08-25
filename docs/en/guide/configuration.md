@@ -256,7 +256,7 @@ Complete keywords as snippets (not yet implemented).
 | ------ | ------- |
 | `bool` | `false` |
 
-Insert function arguments as a snippet when completing a call; applies to individually listed overloads, so it requires `bundle_overloads = false`.
+Insert function arguments as a snippet when completing a call. For functions this applies to individually listed overloads, so it requires `bundle_overloads = false`; function-like macros have no overload sets and always take the snippet.
 
 ### `code_completion.enable_template_arguments_snippet`
 

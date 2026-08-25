@@ -264,7 +264,9 @@ struct Config {
     /// The configuration's JSON schema (draft 2020-12), pretty-printed.
     /// Fields whose defaults derive from the running machine (the worker
     /// counts follow the CPU count) carry no `default` annotation, so the
-    /// schema is byte-identical on every host.
+    /// schema is byte-identical on every host. Unknown properties are
+    /// rejected — the schema-side face of the strict decode pass's typo
+    /// warnings.
     static std::expected<std::string, std::string> json_schema();
 };
 

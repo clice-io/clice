@@ -69,6 +69,7 @@
             "default": []
         }
     },
+    "additionalProperties": false,
     "$defs": {
         "ProjectConfig": {
             "type": "object",
@@ -120,14 +121,14 @@
                 },
                 "stateful_worker_count": {
                     "type": "integer",
-                    "minimum": 0,
+                    "minimum": 1,
                     "maximum": 4294967295,
                     "description": "Number of stateful workers — they hold ASTs in memory and serve queries (hover, semantic tokens, ...); `0` is invalid and falls back to the default.",
                     "default": 2
                 },
                 "stateless_worker_count": {
                     "type": "integer",
-                    "minimum": 0,
+                    "minimum": 1,
                     "maximum": 4294967295,
                     "description": "Initial number of stateless workers — they handle ephemeral tasks (PCH/PCM builds, completion, signature help); defaults to half the machine's parallelism, at least 2. `0` is invalid and falls back to that default."
                 },
@@ -146,12 +147,13 @@
                 },
                 "worker_memory_limit": {
                     "type": "integer",
-                    "minimum": 0,
+                    "minimum": 1,
                     "maximum": 18446744073709551615,
                     "description": "Per-stateful-worker memory limit in bytes; `0` is invalid and falls back to the default. Not yet enforced: parsed, but memory-based eviction is not implemented.",
                     "default": 4294967296
                 }
-            }
+            },
+            "additionalProperties": false
         },
         "TrackerConfig": {
             "type": "object",
@@ -170,7 +172,8 @@
                     "description": "Workspace file sweep interval in seconds; 0 disables polling.",
                     "default": 30
                 }
-            }
+            },
+            "additionalProperties": false
         },
         "HoverOptions": {
             "type": "object",
@@ -185,7 +188,8 @@
                     "description": "Show the desugared form of a type, e.g. `vector<int>::size_type (aka unsigned long)`.",
                     "default": true
                 }
-            }
+            },
+            "additionalProperties": false
         },
         "InlayHintsOptions": {
             "type": "object",
@@ -227,7 +231,8 @@
                     "description": "Byte budget for rendered hint text: over-long deduced types fall back to a sugared spelling or are dropped, over-long default arguments are abbreviated. `0` means no limit.",
                     "default": 32
                 }
-            }
+            },
+            "additionalProperties": false
         },
         "CodeCompletionOptions": {
             "type": "object",
@@ -239,7 +244,7 @@
                 },
                 "enable_function_arguments_snippet": {
                     "type": "boolean",
-                    "description": "Insert function arguments as a snippet when completing a call; applies to individually listed overloads, so it requires `bundle_overloads = false`.",
+                    "description": "Insert function arguments as a snippet when completing a call. For functions this applies to individually listed overloads, so it requires `bundle_overloads = false`; function-like macros have no overload sets and always take the snippet.",
                     "default": false
                 },
                 "enable_template_arguments_snippet": {
@@ -264,7 +269,8 @@
                     "description": "Maximum number of completion items (not yet implemented).",
                     "default": 0
                 }
-            }
+            },
+            "additionalProperties": false
         },
         "ConfigRule": {
             "type": "object",
@@ -293,7 +299,8 @@
                     "description": "Compilation flags removed for matching files, e.g. `[\"-Wall\"]`.",
                     "default": []
                 }
-            }
+            },
+            "additionalProperties": false
         }
     }
 }
