@@ -849,157 +849,455 @@ Navigate from a symbol usage or definition to its declaration. In C++, many enti
 
 clice returns the declaration locations plus the definition — symbols defined inline have no separate declaration — minus the site the cursor already stands on, so declaration and definition sites alternate just like go-to-definition.
 
-- [x] Index-based cross-TU go-to-declaration
-- [x] Functions — from usage or out-of-line definition to the declaration/prototype
+<!-- BEGIN GENERATED ITEMS: Go to Declaration -->
+
+- [x] Cross-TU go-to-declaration
+
+  Go-to-declaration on a use resolves across the whole project: the
+  prototype lives in a shared header and the out-of-line definition in a
+  sibling source, and both are offered from a use in another file.
+
+  <details>
+  <summary>Example</summary>
+
+  `main.cpp`:
 
   ```cpp
-  // widget.h
-  class Widget {
-      void draw();  // declaration
+  #include "shared.h"
+
+  int run(int value) {
+      return scale(value);
+  }
+  ```
+
+  `lib.cpp`:
+
+  ```cpp
+  #include "shared.h"
+
+  int scale(int value) {
+      return value * 2;
+  }
+  ```
+
+  `shared.h`:
+
+  ```cpp
+  #pragma once
+
+  int scale(int value);
+  ```
+
+  </details>
+
+- [x] Functions — from a use or out-of-line definition to the prototype
+
+  Go-to-declaration reaches a function's prototype both from a call site
+  and from the out-of-line definition — the two non-cursor sites the
+  prototype alternates with.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  struct Widget {
+      void draw();
   };
 
-  // widget.cpp
-  void Widget::draw() { }  // out-of-line definition
-  // go-to-decl from usage or definition → in-class declaration in widget.h
+  void Widget::draw() {}
+
+  void render(Widget& widget) {
+      widget.draw();
+  }
   ```
 
-- [ ] Forward declarations of classes and structs
+  </details>
+
+- [x] Forward declarations of classes and structs
+
+  A class with a forward declaration and a later definition offers both
+  from a use — the forward declaration stays part of the declaration set
+  rather than being dropped in favour of the definition.
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
-  class Widget;           // forward declaration in fwd.h
-  class Widget { ... };   // full definition in widget.h
-  // go-to-decl on Widget (from usage or definition) → forward declaration
+  struct Widget;
+
+  struct Widget {
+      int value;
+  };
+
+  int probe(Widget& widget) {
+      return widget.value;
+  }
   ```
 
-- [ ] Static data member → in-class declaration
+  </details>
+
+- [x] Static data member — to the in-class declaration
+
+  A static data member is declared inside the class and defined out of
+  line; go-to-declaration on a use offers the in-class declaration
+  alongside the definition.
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   struct Config {
-      static int timeout;    // declaration
+      static int timeout;
   };
-  int Config::timeout = 30;  // out-of-class definition
-  // go-to-decl on timeout → in-class declaration
+
+  int Config::timeout = 30;
+
+  int read_config() {
+      return Config::timeout;
+  }
   ```
 
-- [ ] `extern` variable → declaration
+  </details>
+
+- [x] `extern` variable — to the declaration
+
+  An `extern` variable's declaration and its defining declaration
+  alternate from a use, so go-to-declaration on a use of the variable
+  reaches the `extern` declaration.
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
-  // globals.h
-  extern int log_level;      // declaration
-  // globals.cpp
-  int log_level = 0;         // definition
-  // go-to-decl on log_level → extern declaration in globals.h
+  extern int log_level;
+
+  int log_level = 0;
+
+  int read_level() {
+      return log_level;
+  }
   ```
 
-- [ ] Multiple declarations — list all when an entity is declared in more than one location
-- [ ] Navigate even when declaration and definition signatures mismatch (e.g., parameter names differ, const qualification)
+  </details>
+
+- [x] Multiple declarations — every declaration site
+
+  When an entity is declared in several places, go-to-declaration on a
+  use lists every declaration site, not only the nearest one.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  int clamp(int value);
+  int clamp(int value);
+
+  int clamp(int value) {
+      return value < 0 ? 0 : value;
+  }
+
+  int hold(int value) {
+      return clamp(value);
+  }
+  ```
+
+  </details>
+
+- [x] Declaration and definition with cosmetically different signatures
+
+  Parameter names, and a top-level `const` on a parameter, are not part
+  of a function's type: the declaration and the definition below spell the
+  same function differently, yet go-to-declaration still connects a use to
+  the prototype.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  int render(int width, const int height);
+
+  int render(int w, int h) {
+      return w * h;
+  }
+
+  int use_render() {
+      return render(800, 600);
+  }
+  ```
+
+  </details>
+
+<!-- END GENERATED ITEMS -->
 
 ## Go to Implementation
 
-- [x] Index-based go-to-implementation (direct overrides; each level of a
-      deep chain navigates to its own overriders)
-- [x] Virtual method → all override implementations
+<!-- BEGIN GENERATED ITEMS: Go to Implementation -->
+
+- [x] Virtual methods — each level of a chain to its own overriders
+
+  Along a three-level override chain, go-to-implementation from each method
+  reaches the override one level down — base to middle, middle to leaf.
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
-  struct Base { virtual void draw(); };
-  struct Circle : Base { void draw() override; };
-  struct Rect : Base { void draw() override; };
-  // go-to-impl on Base::draw → list Circle::draw, Rect::draw
-  ```
+  struct Base {
+      virtual void run() = 0;
+  };
 
-- [ ] Non-virtual function declaration → out-of-line definition (go-to-impl as superset of go-to-def) ([clangd#854](https://github.com/clangd/clangd/issues/854))
+  struct Middle : Base {
+      void run() override {}
+  };
 
-  ```cpp
-  // widget.h
-  class Widget {
-      void draw();  // go-to-impl on draw → out-of-line definition in widget.cpp
+  struct Leaf : Middle {
+      void run() override {}
   };
   ```
 
-- [ ] Go to implementation listing all derived classes for a base class
+  </details>
+
+- [x] Virtual method — every sibling override
+
+  Go-to-implementation on a virtual method lists every override across
+  the sibling derived classes.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  struct Shape {
+      virtual int area() = 0;
+  };
+
+  struct Circle : Shape {
+      int area() override { return 1; }
+  };
+
+  struct Square : Shape {
+      int area() override { return 2; }
+  };
+
+  struct Triangle : Shape {
+      int area() override { return 3; }
+  };
+  ```
+
+  </details>
+
+- [ ] Non-virtual function — declaration to out-of-line definition ([clangd#854](https://github.com/clangd/clangd/issues/854))
+
+  Go-to-implementation on a non-virtual function declaration should reach
+  its out-of-line definition, behaving as a superset of go-to-definition;
+  today it returns nothing.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  struct Widget {
+      void draw();  // go-to-impl on draw → out-of-line definition below
+  };
+
+  void Widget::draw() {}
+  ```
+
+  </details>
+
+- [x] Base class — every derived class
+
+  Go-to-implementation on a base class name lists the classes that derive
+  from it.
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   struct Base {};
+
   struct Circle : Base {};
-  struct Rect : Base {};
-  // go-to-impl on Base → list Circle, Rect
+
+  struct Square : Base {};
   ```
 
-- [ ] Template duck-type navigation — when a template has known instantiations, jump to the concrete implementations of dependent member calls. Also applies to generic lambdas with known call sites.
+  </details>
+
+- [ ] Template duck-type navigation
+
+  From a dependent member call, go-to-implementation should list the
+  concrete methods of every known instantiation; the same applies to a
+  generic lambda's dependent calls. Today it returns nothing.
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
-  template<typename T>
+  template <typename T>
   void process(T& obj) {
-      obj.foo();  // go-to-impl on foo → list A::foo, B::foo (from all instantiations)
+      obj.foo();  // go-to-impl on foo → A::foo (from the process(a) instantiation)
   }
 
-  process(a);  // T = A
-  process(b);  // T = B
+  struct A {
+      void foo() {}
+  };
+
+  void run(A a) {
+      process(a);
+  }
+
+  void generic() {
+      auto call = [](auto& x) { x.bar(); };  // go-to-impl on bar → the concrete bar
+  }
   ```
 
-  ```cpp
-  std::vector<std::string> names;
-  std::ranges::for_each(names, [](const auto& s) {
-      s.size();  // go-to-impl on size → std::string::size (from the single call site)
-  });
-  ```
+  </details>
+
+<!-- END GENERATED ITEMS -->
 
 ## Go to Type Definition
 
 Navigate to the type definition of a symbol. Applicable to variables, parameters, fields, and any other named entity that has a type. When the type is a type alias or a pointer-like wrapper, navigation should unwrap to the underlying/pointee type.
 
-- [x] Index-based go-to-type-definition for declared entities (variables,
-      parameters, fields). Known limitations: `auto`-deduced variables have no
-      type relation yet, and alias-typed variables navigate to the `using`
-      declaration rather than unwrapping to the underlying type.
-- [x] Local variables and parameters
+<!-- BEGIN GENERATED ITEMS: Go to Type Definition -->
+
+- [x] Variables and parameters
+
+  Go-to-type-definition on a local variable or a parameter reaches the
+  definition of its type.
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
-  void process(Widget w) {
-      auto result = w.compute();
-      // go-to-type-def on w → Widget
-      // go-to-type-def on result → return type of compute()
+  struct Widget {};
+
+  Widget make_widget();
+
+  int probe(Widget param) {
+      Widget local = make_widget();
+      return 0;
   }
   ```
 
-- [ ] Class/struct fields
+  </details>
+
+- [x] Class and struct fields
+
+  Go-to-type-definition on a field access reaches the definition of the
+  field's type.
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
-  struct App { Logger logger; };
-  App app;
-  // go-to-type-def on app.logger → Logger
+  struct Logger {};
+
+  struct App {
+      Logger logger;
+  };
+
+  int use(App& app) {
+      app.logger;
+      return 0;
+  }
   ```
 
-- [ ] `auto` deduced types
+  </details>
+
+- [ ] `auto`-deduced variables
+
+  Go-to-type-definition on an `auto`-deduced variable should reach the
+  deduced type's definition; today the variable carries no type relation,
+  so it returns nothing.
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
-  auto it = map.begin();
-  // go-to-type-def on it → map::iterator
+  struct Widget {};
+
+  Widget make_widget();
+
+  void probe() {
+      auto widget = make_widget();  // go-to-type-def on widget → Widget
+  }
   ```
 
-- [ ] Smart pointer → pointee type ([clangd#1026](https://github.com/clangd/clangd/issues/1026))
+  </details>
+
+- [ ] Smart pointer to the pointee type _(partial)_ ([clangd#1026](https://github.com/clangd/clangd/issues/1026))
+
+  Go-to-type-definition on a smart-pointer variable reaches the wrapper
+  type itself; unwrapping to the pointee type is not offered.
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
-  std::unique_ptr<Widget> w;
-  // go-to-type-def on w → Widget, not unique_ptr
+  template <typename T>
+  struct Ptr {
+      T* operator->();
+      T& operator*();
+      T* raw;
+  };
+
+  struct Widget {};
+
+  int use(Ptr<Widget> ptr) {
+      return 0;
+  }
   ```
 
-- [ ] Type aliases — unwrap `typedef` / `using` to the underlying type definition (behavior may depend on cursor position and context, e.g. whether the cursor is on the variable or on the alias name itself)
+  </details>
+
+- [ ] Type aliases _(partial)_
+
+  Go-to-type-definition on a variable of an aliased type reaches the
+  `using` (or `typedef`) declaration; it does not yet unwrap the alias to
+  the underlying type's definition.
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
-  using Connection = detail::ConnectionImpl;
-  Connection conn;
-  // go-to-type-def on conn → detail::ConnectionImpl (unwraps alias)
+  struct Impl {};
+
+  using Handle = Impl;
+
+  int use(Handle handle) {
+      return 0;
+  }
   ```
 
-- [ ] Structured binding variables
+  </details>
+
+- [x] Structured binding variables
+
+  Go-to-type-definition on a structured binding reaches the definition of
+  the bound member's type.
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
-  std::map<int, Widget> m;
-  auto& [id, widget] = *m.begin();
-  // go-to-type-def on id → int (from pair::first)
-  // go-to-type-def on widget → Widget (from pair::second)
+  struct Widget {};
+
+  struct Pair {
+      Widget first;
+      int second;
+  };
+
+  Pair make_pair();
+
+  int use() {
+      auto [widget, count] = make_pair();
+      return 0;
+  }
   ```
+
+  </details>
+
+<!-- END GENERATED ITEMS -->
 
 ## Find References
 

@@ -1,0 +1,27 @@
+---
+created_at: 2026-08-25
+input_file: impl_virtual_chain.cpp
+---
+base:
+  definition:
+    - { file: "${WS}/impl_virtual_chain.cpp", range: "12:17-12:20" }
+  declaration:
+    - { file: "${WS}/impl_virtual_chain.cpp", range: "12:17-12:20" }
+  implementation:
+    - { file: "${WS}/impl_virtual_chain.cpp", range: "16:9-16:12" }
+  references:
+    - { file: "${WS}/impl_virtual_chain.cpp", range: "12:17-12:20" }
+  callHierarchy:
+    - { name: "run", kind: Method, file: "${WS}/impl_virtual_chain.cpp", range: "12:17-12:20" }
+
+middle:
+  definition:
+    - { file: "${WS}/impl_virtual_chain.cpp", range: "16:9-16:12" }
+  declaration:
+    - { file: "${WS}/impl_virtual_chain.cpp", range: "16:9-16:12" }
+  implementation:
+    - { file: "${WS}/impl_virtual_chain.cpp", range: "20:9-20:12" }
+  references:
+    - { file: "${WS}/impl_virtual_chain.cpp", range: "16:9-16:12" }
+  callHierarchy:
+    - { name: "run", kind: Method, file: "${WS}/impl_virtual_chain.cpp", range: "16:9-16:12" }
