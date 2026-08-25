@@ -10,6 +10,7 @@
 #include "syntax/lexer.h"
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/TargetParser/Triple.h"
 #include "clang/Basic/IdentifierTable.h"
@@ -142,6 +143,17 @@ auto index_semantic_tokens(llvm::StringRef content,
         return semantic;
     };
 
+    // A module occurrence spans the whole written name (`demo.core`,
+    // `foo:part` — the index stores one row over all components), while
+    // the raw lex sees one token per component; collect the spans so the
+    // components past the first classify too, as on the AST path.
+    std::vector<LocalSourceRange> module_spans;
+    for(const auto& occ: occs) {
+        if(auto info = resolve(occ.target); info && info->kind == SymbolKind::Module) {
+            module_spans.push_back(occ.range);
+        }
+    }
+
     std::vector<SemanticToken> tokens;
     auto emit = [&](LocalSourceRange range, SymbolKind kind, std::uint32_t modifiers) {
         if(!tokens.empty()) {
@@ -226,6 +238,16 @@ auto index_semantic_tokens(llvm::StringRef content,
         Classified semantic;
         if(lexical_class.identifier_like || kind == clang::tok::tilde) {
             semantic = semantic_at(token.range.begin);
+        }
+        if(semantic.kind == SymbolKind::Invalid && lexical_class.identifier_like &&
+           !module_spans.empty()) {
+            auto covering = std::ranges::upper_bound(module_spans,
+                                                     token.range.begin,
+                                                     {},
+                                                     &LocalSourceRange::begin);
+            if(covering != module_spans.begin() && token.range.end <= (covering - 1)->end) {
+                semantic = {SymbolKind::Module, 0};
+            }
         }
 
         // Semantic classification beats the lexical directive kinds; any
@@ -352,22 +374,75 @@ auto index_folding_ranges(llvm::StringRef content,
                           const clang::LangOptions& lang_opts,
                           llvm::ArrayRef<IndexDeclRow> decls,
                           IndexSymbolResolver resolve) -> std::vector<FoldingRange> {
-    // One raw lex collects every brace outside comments and literals.
+    // One raw lex collects every brace outside comments, literals and
+    // directive lines (a #define body's brace pairs nothing in the file's
+    // own text). Conditional levels are tracked alongside: a branch switch
+    // or #endif observing a brace depth other than its #if's means the
+    // branches unbalance braces — any raw pairing is then wrong for some
+    // variant, and folds touching the region are suppressed below.
     struct Brace {
         LocalSourceRange range;
         bool open;
     };
 
+    struct CondLevel {
+        std::uint32_t begin;
+        std::int32_t depth;
+    };
+
     std::vector<Brace> braces;
+    std::vector<LocalSourceRange> ambiguous;
     {
+        std::vector<CondLevel> levels;
+        std::int32_t depth = 0;
+        std::uint32_t hash_begin = 0;
+        bool after_hash = false;
+        bool in_directive = false;
         Lexer lexer(content, {.lang_opts = &profile_for(lang_opts).opts});
         while(true) {
             auto token = lexer.advance();
             if(token.is_eof()) {
                 break;
             }
+            if(token.is_eod()) {
+                after_hash = false;
+                in_directive = false;
+                continue;
+            }
+            if(token.is_directive_hash()) {
+                hash_begin = token.range.begin;
+                after_hash = true;
+                in_directive = true;
+                continue;
+            }
+            if(after_hash) {
+                after_hash = false;
+                auto spelling = token.text(content);
+                if(spelling == "if" || spelling == "ifdef" || spelling == "ifndef") {
+                    levels.push_back({hash_begin, depth});
+                } else if(spelling == "elif" || spelling == "elifdef" || spelling == "elifndef" ||
+                          spelling == "else" || spelling == "endif") {
+                    if(!levels.empty() && depth != levels.back().depth) {
+                        ambiguous.push_back({levels.back().begin, token.range.end});
+                        levels.back().depth = depth;
+                    }
+                    if(spelling == "endif" && !levels.empty()) {
+                        levels.pop_back();
+                    }
+                }
+                continue;
+            }
+            if(in_directive) {
+                continue;
+            }
             if(token.kind == clang::tok::l_brace || token.kind == clang::tok::r_brace) {
                 braces.push_back({token.range, token.kind == clang::tok::l_brace});
+                depth += token.kind == clang::tok::l_brace ? 1 : -1;
+            }
+        }
+        for(const auto& level: levels) {
+            if(depth != level.depth) {
+                ambiguous.push_back({level.begin, static_cast<std::uint32_t>(content.size())});
             }
         }
     }
@@ -375,6 +450,11 @@ auto index_folding_ranges(llvm::StringRef content,
     std::vector<FoldingRange> ranges;
     for(const auto& row: decls) {
         if(!row.definition || !row.extent.valid() || row.extent.begin >= row.extent.end) {
+            continue;
+        }
+        if(llvm::any_of(ambiguous, [&](const LocalSourceRange& region) {
+               return region.begin < row.extent.end && row.extent.begin < region.end;
+           })) {
             continue;
         }
 

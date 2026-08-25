@@ -98,14 +98,69 @@ FeatureRouter::IndexRows FeatureRouter::extract_rows(const index::Shard& shard) 
     return rows;
 }
 
+/// The language the last -x of the file's own CDB entry forces, if any:
+/// the driver override beats every suffix heuristic. Rules applied, like
+/// the resolve path's effective command.
+static std::optional<bool> command_forces_c(Workspace& workspace, llvm::StringRef path) {
+    if(!workspace.cdb.has_entry(path)) {
+        return std::nullopt;
+    }
+    std::vector<std::string> append, remove;
+    workspace.config.match_rules(path, append, remove);
+    auto commands = workspace.cdb.lookup(path, {.remove = remove, .append = append});
+
+    std::optional<bool> forces_c;
+    auto& flags = commands.front().resolved.flags;
+    for(std::size_t i = 0; i < flags.size(); i += 1) {
+        llvm::StringRef flag = flags[i];
+        llvm::StringRef language;
+        if(flag == "-x") {
+            if(i + 1 < flags.size()) {
+                language = flags[i + 1];
+            }
+        } else if(flag.starts_with("-x")) {
+            language = flag.drop_front(2);
+        } else {
+            continue;
+        }
+        if(!language.empty()) {
+            forces_c = language == "c" || language == "c-header";
+        }
+    }
+    return forces_c;
+}
+
 const clang::LangOptions& FeatureRouter::index_lang_options(const Session& session) {
+    auto path = workspace.path_pool.resolve(session.path_id);
+    if(auto forces_c = command_forces_c(workspace, path)) {
+        return feature::index_lang_options("", *forces_c);
+    }
+
+    // A header's active context (the user's persisted choice, else the
+    // resolved host) names the view being read; its language beats the
+    // contributor union the way it does for the AST after an escalation.
+    auto host = no_path_id;
+    if(auto it = contexts.saved_contexts.find(session.path_id);
+       it != contexts.saved_contexts.end()) {
+        host = it->second.host_path_id;
+    }
+    if(host == no_path_id) {
+        if(const auto* context = contexts.header_context(session.path_id)) {
+            host = context->host_path_id;
+        }
+    }
+    if(host != no_path_id) {
+        bool c_host = workspace.path_pool.resolve(host).ends_with(".c");
+        return feature::index_lang_options(path, c_host);
+    }
+
     auto& contributions = workspace.project_index.contributions;
     auto it = contributions.find(session.path_id);
     bool c_rows = it != contributions.end() && !it->second.empty() &&
                   llvm::all_of(llvm::make_first_range(it->second), [&](std::uint32_t tu) {
                       return workspace.path_pool.resolve(tu).ends_with(".c");
                   });
-    return feature::index_lang_options(workspace.path_pool.resolve(session.path_id), c_rows);
+    return feature::index_lang_options(path, c_rows);
 }
 
 std::optional<feature::IndexSymbolInfo> FeatureRouter::resolve_symbol_info(index::SymbolHash hash) {
@@ -237,30 +292,47 @@ kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
         }
     };
 
-    switch(co_await pick_route(session)) {
-        case Route::Superseded: co_return std::vector<protocol::DocumentLink>{};
-        case Route::Index: {
-            // Manifest edges cover the whole document (the background
-            // index has no preamble split); guard-skipped lines and
-            // __has_include/#embed have no edge and produce no link.
-            // Unlike the rows the other projections serve, the edges are
-            // disk truth: the quarantine fallback (own index current,
-            // buffer edited) must not project them onto a buffer the
-            // manifest never described — an edited directive would get
-            // the old target, confidently wrong.
-            std::vector<protocol::DocumentLink> links;
-            auto it = workspace.shards.find(session->path_id);
-            if(it != workspace.shards.end() && it->second.matches_content(session->text)) {
-                auto raw = feature::index_document_links(session->text,
-                                                         index_lang_options(*session),
-                                                         index_query.include_edges(*session));
-                convert(raw, links);
+    for(bool waited = false;;) {
+        switch(co_await pick_route(session)) {
+            case Route::Superseded: co_return std::vector<protocol::DocumentLink>{};
+            case Route::Index: {
+                // Manifest edges cover the whole document (the background
+                // index has no preamble split); guard-skipped lines and
+                // __has_include/#embed have no edge and produce no link.
+                // Unlike the rows the other projections serve, the edges are
+                // disk truth: the quarantine fallback (own index current,
+                // buffer edited) must not project them onto a buffer the
+                // manifest never described — an edited directive would get
+                // the old target, confidently wrong.
+                std::vector<protocol::DocumentLink> links;
+                auto it = workspace.shards.find(session->path_id);
+                if(it != workspace.shards.end() && it->second.matches_content(session->text)) {
+                    auto raw = feature::index_document_links(session->text,
+                                                             index_lang_options(*session),
+                                                             index_query.include_edges(*session));
+                    convert(raw, links);
+                }
+                session->index_served = true;
+                co_return links;
             }
-            session->index_served = true;
-            co_return links;
+            case Route::Empty: {
+                // Like the outline, links have no refresh request; a cold
+                // document's empty reply would outlive the boost that is
+                // about to make them real. Await it once, then answer
+                // from the settled state.
+                if(!waited) {
+                    waited = true;
+                    auto gen = session->generation;
+                    co_await indexer.await_attempt(session->path_id);
+                    if(session->generation == gen) {
+                        continue;
+                    }
+                }
+                co_return std::vector<protocol::DocumentLink>{};
+            }
+            case Route::Ast: break;
         }
-        case Route::Empty: co_return std::vector<protocol::DocumentLink>{};
-        case Route::Ast: break;
+        break;
     }
 
     auto result = co_await compiler.forward_document_links(session, std::move(token));
@@ -529,24 +601,45 @@ FeatureRouter::RawResult
     FeatureRouter::document_symbol(std::shared_ptr<Session> session,
                                    std::optional<kota::cancellation_token> token) {
     if(session) {
-        switch(co_await pick_route(session)) {
-            case Route::Superseded: co_return serde_raw{"null"};
-            case Route::Index: {
-                auto* source = index_rows_source(index_query, *session);
-                auto rows = extract_rows(*source);
-                auto symbols =
-                    feature::index_document_symbols(rows.decls, [&](index::SymbolHash hash) {
-                        return resolve_symbol_info(hash);
-                    });
-                session->index_served = true;
-                co_return to_raw(
-                    feature::document_symbols_to_protocol(symbols,
-                                                          session->text,
-                                                          session->line_starts,
-                                                          feature::PositionEncoding::UTF16));
+        for(bool waited = false;;) {
+            switch(co_await pick_route(session)) {
+                case Route::Superseded: co_return serde_raw{"null"};
+                case Route::Index: {
+                    auto* source = index_rows_source(index_query, *session);
+                    auto rows = extract_rows(*source);
+                    auto symbols =
+                        feature::index_document_symbols(rows.decls, [&](index::SymbolHash hash) {
+                            return resolve_symbol_info(hash);
+                        });
+                    session->index_served = true;
+                    co_return to_raw(
+                        feature::document_symbols_to_protocol(symbols,
+                                                              session->text,
+                                                              session->line_starts,
+                                                              feature::PositionEncoding::UTF16));
+                }
+                case Route::Empty: {
+                    // The outline has no workspace refresh request: an
+                    // empty reply to a cold document would be cached by
+                    // the client for good — no signal ever makes it
+                    // re-pull. Await the didOpen boost instead (bounded
+                    // by one index attempt) and answer from whatever
+                    // source that settles: the shard, the escalated
+                    // compile, or honestly empty under `never`.
+                    if(!waited) {
+                        waited = true;
+                        auto gen = session->generation;
+                        co_await indexer.await_attempt(session->path_id);
+                        if(session->generation == gen) {
+                            continue;
+                        }
+                        co_return serde_raw{"null"};
+                    }
+                    co_return serde_raw{"[]"};
+                }
+                case Route::Ast: break;
             }
-            case Route::Empty: co_return serde_raw{"[]"};
-            case Route::Ast: break;
+            break;
         }
     }
     co_return co_await compiler.forward_query(worker::QueryKind::DocumentSymbol,

@@ -24,6 +24,7 @@
 #include "kota/ipc/lsp/uri.h"
 #include "kota/meta/enum.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
@@ -975,27 +976,72 @@ const index::Shard* IndexQuery::open_session_shard(const Session& session) const
 
 std::vector<feature::IndexIncludeEdge> IndexQuery::include_edges(const Session& session) const {
     auto& project = workspace.project_index;
-    auto manifest_it = project.manifests.find(session.path_id);
-    if(manifest_it == project.manifests.end()) {
+
+    // Every consumer projects the edges onto content the serving shard
+    // matches, so a manifest contributes only where the version it entered
+    // for this document carries that same content generation — a TU that
+    // indexed an older revision would place its lines in text that moved.
+    auto shard_it = workspace.shards.find(session.path_id);
+    if(shard_it == workspace.shards.end()) {
         return {};
     }
+    auto generation = shard_it->second.content_hash();
 
-    // Nodes without a parent node sit in the TU's own file — the manifest
-    // edges of the document itself. (Directives inside included headers
-    // hang off the node of the file that contains them.)
+    auto version_of = [&](std::uint32_t fv) -> const index::FileVersionRecord* {
+        auto it = project.file_versions.find(fv);
+        return it == project.file_versions.end() ? nullptr : &it->second;
+    };
+    auto is_document = [&](std::uint32_t fv) {
+        const auto* version = version_of(fv);
+        return version && version->path_id == session.path_id &&
+               version->content_hash == generation;
+    };
+
+    // A directive line of the document is a node whose parent node entered
+    // this file: the TU root (parent == ~0u) when the document is the TU
+    // itself, or any node of the document's own file version otherwise
+    // (directives inside included headers hang off the node of the file
+    // that contains them).
     std::vector<feature::IndexIncludeEdge> edges;
-    for(const auto& node: manifest_it->second.nodes) {
-        if(node.parent != ~0u) {
-            continue;
+    auto append = [&](const index::TUManifest& manifest) {
+        bool root_is_document = is_document(manifest.tu_fv);
+        llvm::SmallVector<bool> document_nodes(manifest.nodes.size());
+        for(auto [i, node]: llvm::enumerate(manifest.nodes)) {
+            document_nodes[i] = is_document(node.fv);
         }
-        auto version = project.file_versions.find(node.fv);
-        if(version == project.file_versions.end()) {
-            continue;
+        for(const auto& node: manifest.nodes) {
+            if(node.parent == ~0u ? !root_is_document : !document_nodes[node.parent]) {
+                continue;
+            }
+            const auto* target = version_of(node.fv);
+            if(!target) {
+                continue;
+            }
+            edges.push_back({
+                .line = node.line,
+                .target = std::string(workspace.path_pool.resolve(target->path_id)),
+            });
         }
-        edges.push_back({
-            .line = node.line,
-            .target = std::string(workspace.path_pool.resolve(version->second.path_id)),
-        });
+    };
+
+    // The document's own manifest is its own context and answers alone; a
+    // header reached only through source TUs has none, and its directives
+    // live in the contributing TUs' manifests instead. The generation gate
+    // above dedups divergent revisions; agreeing TUs collapse in the
+    // projection's dedup.
+    if(auto manifest_it = project.manifests.find(session.path_id);
+       manifest_it != project.manifests.end()) {
+        append(manifest_it->second);
+        return edges;
+    }
+    if(auto contribution_it = project.contributions.find(session.path_id);
+       contribution_it != project.contributions.end()) {
+        for(auto tu: llvm::make_first_range(contribution_it->second)) {
+            if(auto manifest_it = project.manifests.find(tu);
+               manifest_it != project.manifests.end()) {
+                append(manifest_it->second);
+            }
+        }
     }
     return edges;
 }

@@ -500,9 +500,11 @@ auto index_document_symbols(llvm::ArrayRef<IndexDeclRow> decls, IndexSymbolResol
     -> std::vector<DocumentSymbol>;
 
 /// Declaration folds: each definition extent folds its last balanced brace
-/// group (brace matching over a raw lex, so braces in strings and comments
-/// do not count), keeping the name and signature visible like the AST
-/// folds do.
+/// group (brace matching over a raw lex, so braces in strings, comments
+/// and directive lines do not count), keeping the name and signature
+/// visible like the AST folds do. Extents touching a conditional whose
+/// branches unbalance braces produce no fold — a raw pairing there is
+/// wrong for some preprocessing variant.
 auto index_folding_ranges(llvm::StringRef content,
                           const clang::LangOptions& lang_opts,
                           llvm::ArrayRef<IndexDeclRow> decls,

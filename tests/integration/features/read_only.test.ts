@@ -79,6 +79,24 @@ test("index serves unedited reads", async ({ session }) => {
     expect(ws.pchFiles()).toEqual([]);
 });
 
+test("cold outline awaits the boost", async ({ session }) => {
+    const ws = writeProject(session);
+    const client = session.spawn(ws);
+    await client.initialize(ws, { initializationOptions: ON_EDIT });
+
+    // No waitForIndex: outline and links have no refresh request, so the
+    // replies themselves await the didOpen boost instead of freezing an
+    // empty result in the client's cache.
+    const [uri] = client.open("main.cpp");
+    const [symbolsRaw, links] = await Promise.all([
+        client.documentSymbols(uri),
+        client.documentLinks(uri),
+    ]);
+    const symbols = symbolsRaw as proto.DocumentSymbol[] | null;
+    expect(symbols?.map((s) => s.name)).toContain("twice");
+    expect(links?.some((l) => l.target?.endsWith("header.h"))).toBe(true);
+});
+
 test("edit escalates to compile", async ({ session }) => {
     const ws = writeProject(session);
     const client = session.spawn(ws);
@@ -141,6 +159,25 @@ test("unservable boost escalates", async ({ session }) => {
     client.open("scratch.cpp", 0, { text: "int scratch() { return 2; }\n" });
     await scratchArrived;
     client.assertNoErrors(ws.uri("scratch.cpp"));
+});
+
+test("explicit -x beats the suffix", async ({ session }) => {
+    const ws = session.tmpdir();
+    // C++ code behind a C suffix, forced by the CDB's -x: the index
+    // projection must lex with the forced dialect — under the C keyword
+    // table `class` would go unpainted and the first token would start at
+    // `Widget` instead.
+    ws.write("legacy.c", "class Widget { public: int value; };\n");
+    ws.writeCDB(["legacy.c"], { extraArgs: ["-x", "c++"] });
+    ws.pinCacheDir();
+    const client = session.spawn(ws);
+    await client.initialize(ws, { initializationOptions: ON_EDIT });
+
+    const [uri] = client.open("legacy.c");
+    expect(await client.waitForIndex(uri, "Widget")).toBe(true);
+    const tokens = await client.semanticTokensFull(uri);
+    expect(tokens?.data.slice(0, 2)).toEqual([0, 0]);
+    expect(ws.pchFiles()).toEqual([]);
 });
 
 test("never builds no pch", async ({ session }) => {

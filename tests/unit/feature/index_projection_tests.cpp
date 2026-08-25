@@ -201,6 +201,48 @@ int compute() {
     ASSERT_TRUE(anchored);
 }
 
+TEST_CASE(ConditionalBracesSuppressFold) {
+    // f's branches unbalance braces: any raw pairing ends the fold in a
+    // branch the indexed parse never took, so the fold is suppressed. g's
+    // conditional keeps every branch balanced and folds normally.
+    llvm::StringRef content = R"cpp(void f() {
+#if defined(X)
+}
+#else
+}
+#endif
+
+void g() {
+#if defined(Y)
+    int a = 1;
+#else
+    int a = 2;
+#endif
+}
+)cpp";
+    auto f_end = static_cast<std::uint32_t>(content.find("#endif") + 6);
+    auto g_begin = static_cast<std::uint32_t>(content.find("void g"));
+    auto g_end = static_cast<std::uint32_t>(content.rfind('}') + 1);
+    std::vector<feature::IndexDeclRow> rows = {
+        {.range = {5, 6},                     .extent = {0, f_end}, .symbol = 1, .definition = true},
+        {.range = {g_begin + 5, g_begin + 6},
+         .extent = {g_begin, g_end},
+         .symbol = 2,
+         .definition = true                                                                        },
+    };
+    auto resolve_synthetic = [](index::SymbolHash hash) -> std::optional<feature::IndexSymbolInfo> {
+        return feature::IndexSymbolInfo{hash == 1 ? "f" : "g", SymbolKind::Function};
+    };
+
+    auto folds = feature::index_folding_ranges(content,
+                                               feature::index_lang_options("main.cpp", false),
+                                               rows,
+                                               resolve_synthetic);
+    ASSERT_EQ(folds.size(), std::size_t(1));
+    ASSERT_EQ(folds[0].range.begin, static_cast<std::uint32_t>(content.find("{", g_begin)));
+    ASSERT_EQ(folds[0].range.end, g_end);
+}
+
 TEST_CASE(CollapsedRowsBecomeSiblings) {
     std::vector<feature::IndexDeclRow> rows = {
         {.range = {8, 9},   .extent = {0, 100}, .symbol = 1, .definition = true},
@@ -244,6 +286,39 @@ TEST_CASE(MergedKindsConflict) {
                                                  resolve_synthetic);
     ASSERT_EQ(tokens.size(), std::size_t(1));
     ASSERT_EQ(tokens[0].kind.value_of(), SymbolKind(SymbolKind::Conflict).value_of());
+}
+
+TEST_CASE(ModuleNameComponents) {
+    // The index stores one occurrence spanning the whole written module
+    // name; every identifier component must classify, as on the AST path
+    // (separators and the contextual `module`/`import` stay unpainted).
+    llvm::StringRef content = "export module demo.core;\nimport foo:part;\n";
+    std::vector<index::Occurrence> merged = {
+        {.range = {14, 23}, .target = 1},
+        {.range = {32, 40}, .target = 1},
+    };
+    auto resolve_synthetic = [](index::SymbolHash) -> std::optional<feature::IndexSymbolInfo> {
+        return feature::IndexSymbolInfo{"demo.core", SymbolKind::Module};
+    };
+
+    auto tokens = feature::index_semantic_tokens(content,
+                                                 feature::index_lang_options("main.cppm", false),
+                                                 merged,
+                                                 {},
+                                                 resolve_synthetic);
+    std::vector<std::pair<std::uint32_t, std::uint32_t>> modules;
+    for(auto& token: tokens) {
+        if(token.kind == SymbolKind::Module) {
+            modules.emplace_back(token.range.begin, token.range.end);
+        }
+    }
+    std::vector<std::pair<std::uint32_t, std::uint32_t>> expected = {
+        {14, 18},
+        {19, 23},
+        {32, 35},
+        {36, 40},
+    };
+    ASSERT_EQ(modules, expected);
 }
 
 TEST_CASE(CDialectKeywords) {

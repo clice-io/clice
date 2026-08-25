@@ -260,10 +260,13 @@ public:
     /// would double-serve.
     const index::Shard* open_session_shard(const Session& session) const;
 
-    /// The include edges of the session's document from its TU manifest:
-    /// the input of the document-link projection. Empty when the file has
-    /// no manifest (never indexed, or a header only reached through other
-    /// TUs).
+    /// The include edges of the session's document, the input of the
+    /// document-link projection: from its own TU manifest when it has one,
+    /// else from the contributing TUs' manifests (a header reached only
+    /// through source TUs — its directives are nodes hanging off the
+    /// header's own node there). Only manifests that entered the document
+    /// at the serving shard's content generation contribute; empty when
+    /// the file was never indexed.
     std::vector<feature::IndexIncludeEdge> include_edges(const Session& session) const;
 
     /// The read-only hover card for the symbol under the cursor: name and

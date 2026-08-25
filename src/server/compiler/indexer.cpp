@@ -1266,6 +1266,31 @@ void Indexer::enqueue(std::uint32_t server_path_id, ReindexReason reason) {
     index_queue.push_back(server_path_id);
 }
 
+kota::task<> Indexer::await_attempt(std::uint32_t server_path_id) {
+    if(!reindex_reasons.contains(server_path_id)) {
+        co_return;
+    }
+    auto [it, inserted] = attempt_waits.try_emplace(server_path_id);
+    if(inserted) {
+        it->second = std::make_shared<kota::event>();
+    }
+    // Hold the shared_ptr across the await: the settle moves the event out
+    // of the map before setting it, and a fresh wait after that parks on a
+    // new instance.
+    auto event = it->second;
+    co_await event->wait();
+}
+
+void Indexer::settle_attempt_waits(std::uint32_t server_path_id) {
+    auto it = attempt_waits.find(server_path_id);
+    if(it == attempt_waits.end()) {
+        return;
+    }
+    auto event = std::move(it->second);
+    attempt_waits.erase(it);
+    event->set();
+}
+
 void Indexer::pause_indexing() {
     ++pause_depth;
     if(pause_depth == 1) {
@@ -1286,6 +1311,12 @@ void Indexer::resume_indexing() {
 kota::task<> Indexer::stop() {
     bg_tasks.cancel();
     co_await bg_tasks.join();
+    // Cancelled tasks unwind before their settle bookkeeping; release any
+    // parked feature request rather than stranding it past shutdown.
+    for(auto& event: llvm::make_second_range(attempt_waits)) {
+        event->set();
+    }
+    attempt_waits.clear();
 }
 
 void Indexer::schedule(bool immediate) {
@@ -1646,6 +1677,13 @@ kota::task<> Indexer::run_index_task(std::uint32_t server_path_id,
                 on_session_unservable(server_path_id);
             }
         }
+    }
+    // Wake await_attempt waiters after the unservable escalation above, so
+    // they re-derive their route against the settled state. A requeue kept
+    // the entry alive under a fresh ticket — the waiters stay parked for
+    // that newer attempt.
+    if(!reindex_reasons.contains(server_path_id)) {
+        settle_attempt_waits(server_path_id);
     }
     round.completed += 1;
     round.inflight -= 1;

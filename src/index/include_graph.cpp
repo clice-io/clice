@@ -39,11 +39,12 @@ static std::uint32_t addIncludeChain(CompilationUnitRef unit,
         }
         locations[index].path_id = iter->second;
 
-        uint32_t include = -1;
-        if(presumed.getIncludeLoc().isValid()) {
-            include =
-                addIncludeChain(unit, unit.file_id(presumed.getIncludeLoc()), graph, path_table);
-        }
+        // The location of the file CONTAINING the directive — the parent
+        // consumers pair `line` with. Recursing on the directive's own fid
+        // (not the presumed include loc, which names the containing
+        // file's includer and sat one level off) bottoms out at -1 for
+        // directives written in the interested file.
+        auto include = addIncludeChain(unit, unit.file_id(include_loc), graph, path_table);
         locations[index].include = include;
     }
 

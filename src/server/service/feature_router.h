@@ -204,9 +204,11 @@ private:
 
     static IndexRows extract_rows(const index::Shard& shard);
 
-    /// The lexing dialect of a session's index projections: C when the
-    /// file is a C source or every TU contributing its indexed rows is
-    /// one, C++ otherwise (mixed inclusion favors the superset).
+    /// The lexing dialect of a session's index projections. An explicit -x
+    /// in the file's own CDB entry decides outright; a header follows its
+    /// active context's host when one exists; otherwise C when the file is
+    /// a C source or every TU contributing its indexed rows is one, C++
+    /// else (mixed inclusion favors the superset).
     const clang::LangOptions& index_lang_options(const Session& session);
 
     std::optional<feature::IndexSymbolInfo> resolve_symbol_info(index::SymbolHash hash);

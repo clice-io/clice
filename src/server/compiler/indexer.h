@@ -117,6 +117,14 @@ public:
     /// undisturbed; the file then leads the next one.
     void boost(std::uint32_t server_path_id);
 
+    /// Wait until the file's pending (re)index state ends — the merge
+    /// landed, the attempt gave up, or the entry was cleared — and return
+    /// immediately when nothing is pending. For replies clients cache with
+    /// no refresh request (outline, links): answered while the didOpen
+    /// boost is still running, the empty result would freeze until the
+    /// next edit.
+    kota::task<> await_attempt(std::uint32_t server_path_id);
+
     /// Why the file awaits re-indexing (queued or currently being indexed),
     /// or nullopt when its index is not pending an update. O(1), no I/O —
     /// the query path calls this per candidate file.
@@ -137,6 +145,7 @@ public:
     void clear_pending(std::uint32_t server_path_id) {
         reindex_reasons.erase(server_path_id);
         pending_ids.erase(server_path_id);
+        settle_attempt_waits(server_path_id);
     }
 
     /// Schedule background indexing (respects idle timeout and dedup).
@@ -414,8 +423,15 @@ private:
     /// the verdicts above are cleared when a round starts, never here.
     bool need_update(llvm::StringRef file_path);
 
+    /// Wake every await_attempt waiter of the file and drop their event.
+    void settle_attempt_waits(std::uint32_t server_path_id);
+
     llvm::DenseMap<std::uint32_t, PendingReindex> reindex_reasons;
     llvm::DenseSet<std::uint32_t> failed_ids;
+
+    /// One shared event per file some await_attempt is parked on, fired
+    /// when its pending window ends (or wholesale at stop()).
+    llvm::DenseMap<std::uint32_t, std::shared_ptr<kota::event>> attempt_waits;
     std::uint64_t reindex_ticket = 0;
     bool indexing_active = false;
     bool indexing_scheduled = false;

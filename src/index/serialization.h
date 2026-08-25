@@ -103,8 +103,10 @@ namespace clice::index {
 /// Bump it whenever a persisted type's reflected layout changes, when
 /// symbol-hash semantics change (stored rows keyed by old hashes would
 /// silently stop matching newly computed ones), or when the meaning of
-/// stored data changes (v9: preamble document links are document-ordered).
-constexpr inline std::uint32_t index_format_version = 9;
+/// stored data changes (v9: preamble document links are document-ordered;
+/// v10: an include location's `include` names the directive's containing
+/// file, not that file's includer).
+constexpr inline std::uint32_t index_format_version = 10;
 
 /// Serialize a reflected index blob to `os` as a verified-readable
 /// flatbuffer. Encoding only fails on structural impossibilities (e.g. more
