@@ -11,6 +11,7 @@
 #include "feature/feature.h"
 #include "index/shard.h"
 #include "index/tu_index.h"
+#include "server/state/config.h"
 #include "support/filesystem.h"
 #include "syntax/annotation.h"
 #include "syntax/scan.h"
@@ -43,6 +44,11 @@ namespace {
 struct InspectOptions {
     DecoFlag(names = {"-h", "--help"}, help = "Show help", required = false)
     help;
+
+    DecoFlag(names = {"--config-schema"},
+             help = "Print the JSON schema of the clice configuration and exit",
+             required = false)
+    config_schema;
 
     DecoInput(meta_var = "<FEATURE> <PATH>",
               help =
@@ -1016,6 +1022,17 @@ void add_inspect(kota::deco::cli::SubCommander& root, int& exit_code) {
            if(opts.help) {
                auto help = make_command();
                print_usage(help);
+               exit_code = 0;
+               return;
+           }
+           // A mode flag like --help: ignores feature/path inputs.
+           if(opts.config_schema) {
+               auto schema = Config::json_schema();
+               if(!schema) {
+                   LOG_ERROR("config schema generation failed: {}", schema.error());
+                   return;
+               }
+               std::println("{}", *schema);
                exit_code = 0;
                return;
            }

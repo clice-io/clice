@@ -1,6 +1,7 @@
 #include "server/state/config.h"
 
 #include <algorithm>
+#include <array>
 
 #include "feature/feature.h"
 #include "support/filesystem.h"
@@ -8,6 +9,7 @@
 
 #include "kota/async/io/system.h"
 #include "kota/codec/json/json.h"
+#include "kota/codec/json/schema.h"
 #include "kota/codec/toml/toml.h"
 #include "kota/support/glob_pattern.h"
 #include "llvm/Support/FileSystem.h"
@@ -269,6 +271,74 @@ Config Config::load_from_workspace(llvm::StringRef workspace_root,
         config.finalize(workspace_root);
     }
     return config;
+}
+
+constexpr std::array MACHINE_DERIVED_FIELDS = {"stateless_worker_count",
+                                               "max_stateless_worker_count"};
+
+/// Scrub the machine-derived fields out of a `default` object: sections
+/// carry whole-object defaults, so the values appear below `default`
+/// keys too, not only in the fields' own schemas.
+static void remove_machine_fields(kota::codec::dyn::Value& value) {
+    if(auto* object = value.get_object()) {
+        for(auto field: MACHINE_DERIVED_FIELDS) {
+            object->remove(field);
+        }
+        for(auto& [key, child]: *object) {
+            remove_machine_fields(child);
+        }
+    } else if(auto* array = value.get_array()) {
+        for(auto& child: *array) {
+            remove_machine_fields(child);
+        }
+    }
+}
+
+/// Drop the `default` annotations whose fresh value depends on the
+/// running machine: a committed schema must be byte-identical on every
+/// host, and the affected fields' descriptions state the derivation
+/// instead.
+static void strip_machine_defaults(kota::codec::dyn::Value& value) {
+    if(auto* object = value.get_object()) {
+        for(auto& [key, child]: *object) {
+            if(key == "properties") {
+                if(auto* properties = child.get_object()) {
+                    for(auto field: MACHINE_DERIVED_FIELDS) {
+                        if(auto* schema = properties->find(field)) {
+                            if(auto* field_object = schema->get_object()) {
+                                field_object->remove("default");
+                            }
+                        }
+                    }
+                }
+            } else if(key == "default") {
+                remove_machine_fields(child);
+            }
+            strip_machine_defaults(child);
+        }
+    } else if(auto* array = value.get_array()) {
+        for(auto& child: *array) {
+            strip_machine_defaults(child);
+        }
+    }
+}
+
+std::expected<std::string, std::string> Config::json_schema() {
+    auto schema = kota::codec::json::schema<Config>();
+    if(!schema) {
+        return std::unexpected(schema.error().message);
+    }
+    strip_machine_defaults(*schema);
+
+    auto compact = kota::codec::json::to_string(std::move(*schema));
+    if(!compact) {
+        return std::unexpected(compact.error().message);
+    }
+    auto pretty = kota::codec::json::prettify(*compact);
+    if(!pretty) {
+        return std::unexpected(pretty.error().message);
+    }
+    return std::move(*pretty);
 }
 
 }  // namespace clice

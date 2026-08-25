@@ -5,6 +5,7 @@
 #include "server/state/config.h"
 #include "support/filesystem.h"
 
+#include "kota/codec/dyn/decode.h"
 #include "kota/codec/json/json.h"
 #include "kota/codec/toml/toml.h"
 
@@ -26,6 +27,57 @@ static void unset_env(const char* name) {
 #else
     ::unsetenv(name);
 #endif
+}
+
+/// The schema object of a property named `name`, found anywhere in the
+/// document's nested `properties` maps.
+const static kota::codec::dyn::Value* find_property(const kota::codec::dyn::Value& value,
+                                                    std::string_view name) {
+    if(const auto* object = value.get_object()) {
+        for(const auto& [key, child]: *object) {
+            if(key == "properties") {
+                if(const auto* properties = child.get_object()) {
+                    if(const auto* found = properties->find(name)) {
+                        return found;
+                    }
+                }
+            }
+            if(const auto* found = find_property(child, name)) {
+                return found;
+            }
+        }
+    } else if(const auto* array = value.get_array()) {
+        for(const auto& child: *array) {
+            if(const auto* found = find_property(child, name)) {
+                return found;
+            }
+        }
+    }
+    return nullptr;
+}
+
+/// Whether `name` appears as an object key anywhere below a `default`
+/// annotation in the schema document.
+static bool default_mentions(const kota::codec::dyn::Value& value,
+                             std::string_view name,
+                             bool under_default) {
+    if(const auto* object = value.get_object()) {
+        for(const auto& [key, child]: *object) {
+            if(under_default && key == name) {
+                return true;
+            }
+            if(default_mentions(child, name, under_default || key == "default")) {
+                return true;
+            }
+        }
+    } else if(const auto* array = value.get_array()) {
+        for(const auto& child: *array) {
+            if(default_mentions(child, name, under_default)) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 TEST_SUITE(Config) {
@@ -730,6 +782,37 @@ append = ["-DTOML_ONLY"]
     config.match_rules("/src/x.cc", append, remove);
     EXPECT_EQ(append.size(), 1u);
     EXPECT_EQ(append[0], "-DFROM_JSON");
+}
+
+TEST_CASE(JsonSchema) {
+    auto schema = Config::json_schema();
+    ASSERT_TRUE(schema.has_value());
+    auto doc = kota::codec::json::from_string<kota::codec::dyn::Value>(*schema);
+    ASSERT_TRUE(doc.has_value());
+
+    // Machine-derived worker counts describe their derivation but carry no
+    // default value anywhere — neither in their own schema nor inside a
+    // section's whole-object default — so the schema stays byte-identical
+    // across hosts.
+    for(auto field: {"stateless_worker_count", "max_stateless_worker_count"}) {
+        const auto* worker = find_property(*doc, field);
+        ASSERT_TRUE(worker != nullptr);
+        const auto* object = worker->get_object();
+        ASSERT_TRUE(object != nullptr);
+        EXPECT_TRUE(object->find("description") != nullptr);
+        EXPECT_TRUE(object->find("default") == nullptr);
+        EXPECT_TRUE(!default_mentions(*doc, field, false));
+    }
+    // Control: a stable field does appear under the section default.
+    EXPECT_TRUE(default_mentions(*doc, "idle_timeout_ms", false));
+
+    // A stable field initializer survives as the schema default.
+    const auto* idle = find_property(*doc, "idle_timeout_ms");
+    ASSERT_TRUE(idle != nullptr);
+    EXPECT_TRUE(idle->get_object()->find("default") != nullptr);
+
+    // skip = true fields stay out of the schema entirely.
+    EXPECT_TRUE(find_property(*doc, "compiled_rules") == nullptr);
 }
 
 };  // TEST_SUITE(Config)

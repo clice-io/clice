@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <expected>
 #include <optional>
 #include <string>
 #include <vector>
@@ -85,7 +86,10 @@ struct ProjectConfig {
     KOTATSU_ANNOTATE(defaulted = true, description = "Number of stateful workers.")
     <std::uint32_t> stateful_worker_count = 2;
 
-    KOTATSU_ANNOTATE(defaulted = true, description = "Initial number of stateless workers.")
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Initial number of stateless workers; defaults to half "
+                         "the machine's parallelism, at least 2.")
     <std::uint32_t> stateless_worker_count = default_stateless_worker_count();
 
     /// See WorkerPoolOptions.
@@ -94,7 +98,9 @@ struct ProjectConfig {
     <std::uint32_t> min_stateless_worker_count = 1;
 
     KOTATSU_ANNOTATE(defaulted = true,
-                     description = "Upper bound for dynamic stateless-worker scaling.")
+                     description =
+                         "Upper bound for dynamic stateless-worker scaling; "
+                         "defaults to the machine's parallelism.")
     <std::uint32_t> max_stateless_worker_count = default_max_stateless_worker_count();
 
     KOTATSU_ANNOTATE(defaulted = true, description = "Per-stateful-worker memory limit in bytes.")
@@ -219,6 +225,12 @@ struct Config {
                                       std::vector<ConfigIssue>* issues = nullptr,
                                       std::string* loaded_path = nullptr,
                                       bool finalized = true);
+
+    /// The configuration's JSON schema (draft 2020-12), pretty-printed.
+    /// Fields whose defaults derive from the running machine (the worker
+    /// counts follow the CPU count) carry no `default` annotation, so the
+    /// schema is byte-identical on every host.
+    static std::expected<std::string, std::string> json_schema();
 };
 
 }  // namespace clice
