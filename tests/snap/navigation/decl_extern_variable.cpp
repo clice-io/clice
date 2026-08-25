@@ -6,9 +6,9 @@
 /// - verify: server
 /// - order: 5
 ///
-/// An `extern` variable's declaration and its defining declaration
-/// alternate from a use, so go-to-declaration on a use of the variable
-/// reaches the `extern` declaration.
+/// A use of an `extern` variable offers the `extern` declaration and
+/// the defining declaration together, so the header-side declaration is
+/// always reachable from a use.
 
 extern int §(decl)log_level;
 

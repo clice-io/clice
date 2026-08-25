@@ -10,9 +10,9 @@
 /// definition together with every use, so the whole surface of a symbol
 /// is reachable from any one of its sites.
 
-int scale(int value);
+int §(decl)scale(int value);
 
-int scale(int value) {
+int §(def)scale(int value) {
     return value * 2;
 }
 

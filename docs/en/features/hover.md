@@ -1003,9 +1003,10 @@ Rich information cards for the symbol under the cursor.
 
 - [ ] Comment suppression option — a config switch to hide misattributed doc comments ([clangd#2148](https://github.com/clangd/clangd/issues/2148))
 
-  A stray comment picked up by the association heuristic (the banner
-  case above) always reaches the hover card: clice has no config
-  option to suppress doc comments whose attachment is a guess.
+  A stray comment picked up by the association heuristic — a section
+  banner separated from the code by a blank line, for example — always
+  reaches the hover card: clice has no config option to suppress doc
+  comments whose attachment is a guess.
 
   <details>
   <summary>Example</summary>

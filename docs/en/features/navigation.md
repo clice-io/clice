@@ -853,7 +853,7 @@ clice returns the declaration locations plus the definition — symbols defined 
 
 - [x] Cross-TU go-to-declaration
 
-  Go-to-declaration on a use resolves across the whole project: the
+  Go-to-declaration on a use resolves sites in other files: the
   prototype lives in a shared header and the out-of-line definition in a
   sibling source, and both are offered from a use in another file.
 
@@ -929,7 +929,13 @@ clice returns the declaration locations plus the definition — symbols defined 
       int value;
   };
 
-  int probe(Widget& widget) {
+  class Panel;
+
+  class Panel {
+      int width;
+  };
+
+  int probe(Widget& widget, Panel& panel) {
       return widget.value;
   }
   ```
@@ -961,9 +967,9 @@ clice returns the declaration locations plus the definition — symbols defined 
 
 - [x] `extern` variable — to the declaration
 
-  An `extern` variable's declaration and its defining declaration
-  alternate from a use, so go-to-declaration on a use of the variable
-  reaches the `extern` declaration.
+  A use of an `extern` variable offers the `extern` declaration and
+  the defining declaration together, so the header-side declaration is
+  always reachable from a use.
 
   <details>
   <summary>Example</summary>
@@ -1192,12 +1198,16 @@ Navigate to the type definition of a symbol. Applicable to variables, parameters
   ```cpp
   struct Logger {};
 
+  class Store {};
+
   struct App {
       Logger logger;
+      Store store;
   };
 
   int use(App& app) {
       app.logger;
+      app.store;
       return 0;
   }
   ```
@@ -1253,7 +1263,7 @@ Navigate to the type definition of a symbol. Applicable to variables, parameters
 - [ ] Type aliases _(partial)_
 
   Go-to-type-definition on a variable of an aliased type reaches the
-  `using` (or `typedef`) declaration; it does not yet unwrap the alias to
+  `using` or `typedef` declaration; it does not yet unwrap the alias to
   the underlying type's definition.
 
   <details>
@@ -1264,7 +1274,9 @@ Navigate to the type definition of a symbol. Applicable to variables, parameters
 
   using Handle = Impl;
 
-  int use(Handle handle) {
+  typedef Impl LegacyHandle;
+
+  int use(Handle handle, LegacyHandle legacy) {
       return 0;
   }
   ```
@@ -1305,7 +1317,7 @@ Navigate to the type definition of a symbol. Applicable to variables, parameters
 
 - [x] Cross-TU find references
 
-  Find references gathers every use across the project: a function
+  Find references gathers uses from other files too: a function
   defined in one source and called from a sibling reports both call
   sites together with the declaration in the shared header, not only the
   uses in the current file.
