@@ -49,8 +49,13 @@ export async function checkServerSnapFixture(
     materializeFixture(corpus, fixture, workspace.root);
 
     const initializationOptions = (configured: boolean): Record<string, unknown> => {
+        // A throwaway replay workspace has no edit storm to batch, so an
+        // indexing fixture skips the idle window instead of stalling every
+        // run on it.
         const options: Record<string, unknown> = {
-            project: { enable_indexing: fixture.meta.indexing },
+            project: fixture.meta.indexing
+                ? { enable_indexing: true, idle_timeout_ms: 10 }
+                : { enable_indexing: false },
         };
         if (configured && fixture.meta.config !== undefined) {
             options[corpus.configSection] = JSON.parse(fixture.meta.config) as Record<
@@ -121,6 +126,7 @@ export async function checkServerSnapFixture(
                     source: file.source,
                     stripped,
                     root: workspace.root,
+                    indexing: fixture.meta.indexing,
                 }),
             ]);
         }

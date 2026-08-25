@@ -1956,8 +1956,9 @@ Search the whole project for a symbol by name (`workspace/symbol`).
 
 - [x] Search spans the whole project — hits from files other than the queried one
 
-  A query made from `main.cpp` also returns symbols defined in the
-  project's other sources.
+  The query returns symbols from project files that are not even open
+  in the editor: `other.h` stays closed here, so its hit is served by
+  the background index.
 
   <details>
   <summary>Example</summary>
@@ -1970,7 +1971,7 @@ Search the whole project for a symbol by name (`workspace/symbol`).
   int local_anchor = 0;
   ```
 
-  `other.cpp`:
+  `other.h`:
 
   ```cpp
   void helper_elsewhere() {}
