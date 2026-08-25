@@ -116,6 +116,8 @@ int total(Point point, int base) {
 
 TEST_CASE(OutlineMatchesAst) {
     add_main("main.cpp", R"cpp(
+#define LIMIT 10
+
 namespace app {
 
 struct Point {

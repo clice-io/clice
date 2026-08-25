@@ -137,7 +137,71 @@ test("never builds no pch", async ({ session }) => {
     expect(client.diagnostics.has(uri)).toBe(false);
 });
 
+test("escalation upgrades inlay hints", async ({ session }) => {
+    const ws = writeProject(session);
+    const client = session.spawn(ws);
+    await client.initialize(ws, { initializationOptions: ON_EDIT });
+
+    const [uri] = client.open("main.cpp");
+    expect(await client.waitForIndex(uri, "twice")).toBe(true);
+
+    const range = {
+        start: { line: 0, character: 0 },
+        end: { line: 6, character: 0 },
+    };
+    expect((await client.inlayHints(uri, range)) ?? []).toEqual([]);
+
+    // After the edit-triggered compile lands, a re-pull gets real hints
+    // (parameter names at the call sites).
+    const arrived = client.armDiagnostics(uri);
+    client.change(uri, 2, MAIN + "// edited\n");
+    await arrived;
+    const upgraded = await client.inlayHints(uri, range);
+    expect(upgraded?.length ?? 0).toBeGreaterThan(0);
+});
+
+test("diverged buffer serves no links", async ({ session }) => {
+    const ws = writeProject(session);
+
+    const first = session.spawn(ws);
+    await first.initialize(ws, { initializationOptions: ON_EDIT });
+    const [warm] = first.open("main.cpp");
+    expect(await first.waitForIndex(warm, "twice")).toBe(true);
+    await first.shutdown();
+
+    // Under `never` a diverged buffer cannot escalate: every index answer
+    // must withdraw rather than map stale manifest lines onto new text.
+    const second = session.spawn(ws);
+    await second.initialize(ws, {
+        initializationOptions: { project: { pch_build: "never" } },
+    });
+    const [uri] = second.open("main.cpp", 0, {
+        text: '#include "renamed.h"\n' + MAIN.split("\n").slice(1).join("\n"),
+    });
+    expect((await second.documentLinks(uri)) ?? []).toEqual([]);
+    const defs = await second.definitionAt(uri, 0, 12);
+    expect(defs === null || (Array.isArray(defs) && defs.length === 0)).toBe(true);
+});
+
 const ON_OPEN = { project: { pch_build: "on_open" } };
+
+test("preamble define hovers under pch", async ({ session }) => {
+    const ws = session.tmpdir();
+    ws.write("header.h", HEADER);
+    ws.write("main.cpp", "#define LIMIT 10\n" + MAIN);
+    ws.writeCDB(["main.cpp"]);
+    ws.pinCacheDir();
+    const client = session.spawn(ws);
+    await client.initialize(ws, { initializationOptions: ON_OPEN });
+
+    // The define is compiled into the PCH and has no AST node; the null
+    // from the worker falls back to the index card for the preamble
+    // region (and only there).
+    await client.openAndWait("main.cpp");
+    const uri = ws.uri("main.cpp");
+    const hover = await client.hoverAt(uri, 0, 9);
+    expect(JSON.stringify(hover?.contents ?? "")).toContain("LIMIT");
+});
 
 test("on_open compiles eagerly", async ({ session }) => {
     const ws = writeProject(session);

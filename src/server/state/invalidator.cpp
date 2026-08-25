@@ -105,8 +105,10 @@ void Invalidator::cascade_disk_content_change(std::uint32_t path_id, DirtySet& d
         // Contexts outlive their sessions: a closed header's shard rows
         // were indexed under the old chain and only a background reindex
         // can refresh them. The header's own content did not change, so
-        // its rows keep serving meanwhile.
-        if(!store.find(header_id)) {
+        // its rows keep serving meanwhile. An open index-only session is
+        // in the same boat — its shard is what the LSP serves.
+        auto session = store.find(header_id);
+        if(!session || session->serving == ServingMode::IndexOnly) {
             dirty.add_reindex_deps_only(header_id);
         }
     }

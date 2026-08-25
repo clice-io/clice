@@ -290,8 +290,13 @@ kota::task<kota::codec::RawValue, kota::ipc::Error>
 
     // An index-only session never owes the compile the worker forward
     // implies. What the worker leg covers — include directives, which
-    // have no symbol occurrence — the manifest edges answer instead.
+    // have no symbol occurrence — the manifest edges answer instead,
+    // under the same content gate as every index answer: manifest lines
+    // are meaningless against a diverged buffer.
     if(session->serving == ServingMode::IndexOnly) {
+        if(!index_query.open_session_shard(*session)) {
+            co_return serde_raw{"[]"};
+        }
         if(auto offset = session->line_map().to_offset(pos)) {
             auto links = feature::index_document_links(session->text,
                                                        feature::index_lang_options(path),
@@ -442,6 +447,7 @@ FeatureRouter::RawResult FeatureRouter::inlay_hints(std::shared_ptr<Session> ses
     // that follows an escalation pushes an inlayHint refresh, so clients
     // re-pull once real hints exist.
     if(session && session->serving == ServingMode::IndexOnly) {
+        session->index_served = true;
         co_return serde_raw{"[]"};
     }
     co_return co_await compiler.forward_query(worker::QueryKind::InlayHints,
@@ -536,6 +542,13 @@ FeatureRouter::RawResult FeatureRouter::completion(std::shared_ptr<Session> sess
                                                    std::optional<kota::cancellation_token> token) {
     auto pause = indexer.scoped_pause();
 
+    // Asking for code completion is edit intent: escalate the session so
+    // the PCH/AST investment starts (a no-op when already escalated or
+    // under pch_build = "never"). Before the yield below on purpose — a
+    // didClose drained there replaces the Session object, and escalating
+    // the dead one would kick a compile of abandoned text.
+    compiler.escalate(session);
+
     // This handler is resumed eagerly, so a $/cancelRequest or didChange
     // sitting in the pipe (rapid-fire completions cancel and re-issue as
     // the user types) has not been read yet. Yield once BEFORE reading any
@@ -610,10 +623,6 @@ FeatureRouter::RawResult FeatureRouter::completion(std::shared_ptr<Session> sess
         }
     }
 
-    // Asking for code completion is edit intent: escalate the session so
-    // the PCH/AST investment starts (a no-op when already escalated or
-    // under pch_build = "never").
-    compiler.escalate(session);
     co_return co_await compiler.forward_build(worker::BuildKind::Completion,
                                               position,
                                               std::move(session),

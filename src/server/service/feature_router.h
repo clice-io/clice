@@ -31,13 +31,13 @@ namespace protocol = kota::ipc::protocol;
 ///     region;
 ///   - the index: disk-derived shards queried through IndexQuery.
 ///
-/// Features fall into two shapes. Whole-document results (document links,
-/// semantic tokens, folding ranges, ...) have a payload determined entirely
-/// by the document content, so they could in the future be served from a
-/// content-addressed result cache. Position-parameterized queries
-/// (definition, hover, completion) take a cursor and cannot be keyed that
-/// way; for these the index could in the future grow into a complete
-/// provider, serving files that are not open at all.
+/// Routing is derived per request from readiness, never from a mode
+/// flag: a current AST answers as today; otherwise an index source that
+/// is byte-identical to the buffer answers immediately (whole-document
+/// features through the feature::index_* projections, cursor queries
+/// through IndexQuery's freshness clauses); otherwise the request awaits
+/// the compile the policy owes, or answers honestly empty when it owes
+/// none (ServingMode::IndexOnly).
 ///
 /// Discipline: any feature whose answer is assembled from more than one
 /// source belongs here. Transports (LSP/agentic handlers) only translate
@@ -72,16 +72,12 @@ public:
                          const protocol::Position& pos,
                          std::optional<kota::cancellation_token> token = {});
 
-    /// Single-source features routed through the router as a matter of
-    /// discipline, not necessity. Each currently forwards to exactly one
-    /// provider (the worker's AST, a stateless build, or the index), so most
-    /// are one-line delegations. They live here as reserved tenants: the
-    /// router is where a feature's answer is assembled once it draws on more
-    /// than one source, and these are the designated hooks for a future
-    /// read-only provider strategy (e.g. serving closed files from the index).
-    /// They are NOT dead code to be inlined back into the transports.
-    /// Each takes the request's cancellation token and forwards it to the
-    /// worker sends (see Compiler::forward_query).
+    /// Whole-document features and hover, routed by readiness (see
+    /// pick_route): the AST answers when current, the index projections
+    /// answer while it is not, and a session the policy keeps un-compiled
+    /// answers with its pinned degraded surface (empty inlay hints and
+    /// code actions). Each takes the request's cancellation token and
+    /// forwards it to the worker sends (see Compiler::forward_query).
     RawResult hover(std::shared_ptr<Session> session,
                     const protocol::Position& position,
                     std::optional<kota::cancellation_token> token = {});

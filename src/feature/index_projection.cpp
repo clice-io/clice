@@ -66,6 +66,7 @@ std::vector<std::uint32_t> scan_line_starts(llvm::StringRef content) {
 
 bool outline_kind(SymbolKind kind) {
     switch(kind) {
+        case SymbolKind::Macro:
         case SymbolKind::Namespace:
         case SymbolKind::Class:
         case SymbolKind::Struct:
@@ -250,6 +251,7 @@ auto index_document_symbols(llvm::ArrayRef<IndexDeclRow> decls, IndexSymbolResol
     struct Entry {
         DocumentSymbol symbol;
         LocalSourceRange extent;
+        index::SymbolHash hash = 0;
     };
 
     std::vector<Entry> entries;
@@ -270,7 +272,8 @@ auto index_document_symbols(llvm::ArrayRef<IndexDeclRow> decls, IndexSymbolResol
              .kind = info->kind,
              .range = row.extent,
              .selection_range = selection},
-            row.extent
+            row.extent,
+            row.symbol,
         });
     }
 
@@ -288,12 +291,14 @@ auto index_document_symbols(llvm::ArrayRef<IndexDeclRow> decls, IndexSymbolResol
         if(lhs.symbol.selection_range.begin != rhs.symbol.selection_range.begin) {
             return lhs.symbol.selection_range.begin < rhs.symbol.selection_range.begin;
         }
-        return lhs.symbol.name < rhs.symbol.name;
+        if(lhs.symbol.name != rhs.symbol.name) {
+            return lhs.symbol.name < rhs.symbol.name;
+        }
+        return lhs.hash < rhs.hash;
     });
     auto duplicates = std::ranges::unique(entries, [](const Entry& lhs, const Entry& rhs) {
-        return lhs.extent == rhs.extent &&
-               lhs.symbol.selection_range == rhs.symbol.selection_range &&
-               lhs.symbol.name == rhs.symbol.name && lhs.symbol.kind == rhs.symbol.kind;
+        return lhs.hash == rhs.hash && lhs.extent == rhs.extent &&
+               lhs.symbol.selection_range == rhs.symbol.selection_range;
     });
     entries.erase(duplicates.begin(), duplicates.end());
 
