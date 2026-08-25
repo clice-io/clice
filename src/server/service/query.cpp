@@ -40,7 +40,7 @@ void IndexQuery::visit_sessions(SessionVisitor visitor) const {
     sessions.for_each([&](std::uint32_t path_id, const Session& session) -> bool {
         // Freshness contract, clause 3: a dirty session's file index may
         // describe a buffer that no longer exists — skip it.
-        if(session.index.loaded() && !session.ast_dirty) {
+        if(session.index_current()) {
             return visitor(path_id, session);
         }
         return true;
@@ -220,7 +220,25 @@ static void drop_cursor_site(std::vector<protocol::Location>& locations,
 }
 
 bool IndexQuery::skip_shard(std::uint32_t path_id) const {
-    return (!options.disk_only && is_path_open(path_id)) || skip_stale_contribution(path_id);
+    if(options.disk_only) {
+        return skip_stale_contribution(path_id);
+    }
+    auto session = sessions.find(path_id);
+    if(!session) {
+        return skip_stale_contribution(path_id);
+    }
+    if(session->index_current()) {
+        return true;
+    }
+    // Freshness contract, clause 4: an open document without a current
+    // file index is served by its shard as if closed, while the buffer is
+    // byte-identical to the content the rows were built from. The content
+    // gate replaces the stale-contribution check — it compares against
+    // the buffer being served, which is stricter than any disk baseline —
+    // and a diverged buffer (edit in flight, restored unsaved text)
+    // contributes nothing, exactly as before this clause.
+    auto it = workspace.shards.find(path_id);
+    return it == workspace.shards.end() || !it->second.matches_content(session->text);
 }
 
 bool IndexQuery::skip_stale_contribution(std::uint32_t path_id) const {
@@ -284,18 +302,10 @@ bool IndexQuery::find_symbol_info(index::SymbolHash hash,
 IndexQuery::CursorHit IndexQuery::resolve_cursor(llvm::StringRef path,
                                                  const protocol::Position& position,
                                                  Session* session) {
-    // Freshness contract, clause 1: callers awaited the session's compile,
-    // and the file index settles together with it. An open document
-    // resolves against that index or not at all — its shard describes a
-    // disk snapshot, and mapping live buffer offsets onto it is exactly
-    // the mixed-view lookup the contract exists to prevent (the
-    // cross-file visit already skips shards of open files for the same
-    // reason). A dirty-after-await session (failed or superseded compile)
-    // or an index-less one therefore reports no hit.
-    if(session && (!session->index.loaded() || session->ast_dirty)) {
-        return {};
-    }
-    if(session && session->index.loaded() && !session->ast_dirty) {
+    // Freshness contract, clause 1: an open document with a current file
+    // index resolves against it — the compile the caller awaited settled
+    // it together with the buffer.
+    if(session && session->index_current()) {
         auto map = session->line_map();
         auto offset = map.to_offset(position);
         if(!offset)
@@ -328,21 +338,25 @@ IndexQuery::CursorHit IndexQuery::resolve_cursor(llvm::StringRef path,
         return hit;
     }
 
-    // Fallback to the disk shard. Position -> offset uses the session text when
-    // one exists (open but not yet compiled); for closed files the shard's
-    // own stored content provides the mapping.
+    // Fallback to the disk shard. Freshness contract, clause 4: an open
+    // document without a current file index resolves against its shard
+    // while the buffer is byte-identical to the rows' content — the gate
+    // that keeps a diverged buffer (edit in flight, restored unsaved
+    // text) from the mixed-view lookup the contract exists to prevent.
+    // Closed files keep the stale-contribution gate against their disk
+    // baseline instead.
     auto path_id = workspace.path_pool.find(path);
     if(!path_id)
         return {};
-    // A content-changed pending file's rows describe stale text: a cursor
-    // resolved against them would name the wrong symbol.
-    if(skip_stale_contribution(*path_id))
+    if(!session && skip_stale_contribution(*path_id))
         return {};
     auto shard_it = workspace.shards.find(*path_id);
     if(shard_it == workspace.shards.end())
         return {};
 
     auto& merged_index = shard_it->second;
+    if(session && !merged_index.matches_content(session->text))
+        return {};
     IndexedLineMap map(merged_index.content(),
                        merged_index.content_size(),
                        merged_index.line_starts());

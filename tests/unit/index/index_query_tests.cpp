@@ -3,6 +3,7 @@
 
 #include "test/test.h"
 #include "test/tester.h"
+#include "feature/feature.h"
 #include "index/shard.h"
 #include "index/tu_index.h"
 #include "server/compiler/context_resolver.h"
@@ -158,6 +159,49 @@ TEST_CASE(LocalSymbolName) {
     SymbolKind kind;
     ASSERT_TRUE(query.find_symbol_info(symbol, name, kind));
     ASSERT_EQ(name, "hidden");
+}
+
+TEST_CASE(OpenSessionServedByShard) {
+    add_file("header.h", R"(
+        struct §(def)⟦§(def)Widget⟧ { int value; };
+    )");
+    add_main("main.cpp", R"(
+        #include "header.h"
+        §(use)⟦§(use)Widget⟧ instance;
+    )");
+    ASSERT_TRUE(compile());
+    merge_into_workspace();
+
+    // Open the document with exactly the indexed content and never
+    // compile it: freshness clause 4 serves it from its shard.
+    auto session = store.open(main_id);
+    store.apply_open(*session, unit->interested_content().str(), 1);
+    ASSERT_FALSE(session->index_current());
+
+    auto position = feature::to_position(session->line_map(), point("use"));
+    ASSERT_TRUE(position.has_value());
+    auto locations = query.query_definition(main_path(), *position, session.get());
+    ASSERT_FALSE(locations.empty());
+    ASSERT_TRUE(llvm::StringRef(locations.front().uri).ends_with("header.h"));
+}
+
+TEST_CASE(DivergedBufferWithdrawsShard) {
+    add_main("main.cpp", R"(
+        int stale_fn() { return 1; }
+        int use() { return §(use)⟦§(use)stale_fn⟧(); }
+    )");
+    ASSERT_TRUE(compile());
+    merge_into_workspace();
+
+    auto session = store.open(main_id);
+    auto edited = unit->interested_content().str() + "// edited\n";
+    store.apply_open(*session, edited, 1);
+
+    // The buffer no longer matches the rows' content: the shard withdraws
+    // and the un-compiled session resolves nothing.
+    auto position = feature::to_position(session->line_map(), point("use"));
+    ASSERT_TRUE(position.has_value());
+    ASSERT_TRUE(query.query_definition(main_path(), *position, session.get()).empty());
 }
 
 TEST_CASE(StaleContributionSuppressed) {

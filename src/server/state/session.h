@@ -156,6 +156,13 @@ struct Session {
     /// background indexing.
     index::TUIndex index;
 
+    /// Whether `index` describes the current buffer: the last compile
+    /// landed and no invalidation arrived since. The arbitration key of
+    /// the index freshness contract (IndexQuery clauses 3-4).
+    bool index_current() const {
+        return index.loaded() && !ast_dirty;
+    }
+
     /// The interested file's rows within `index` (an empty shard when the
     /// compile produced none).
     const index::Shard& file_rows() const {

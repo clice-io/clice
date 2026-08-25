@@ -78,6 +78,14 @@ struct ResolvedSymbol {
 ///      entirely (see visit_sessions): their buffer may have diverged from
 ///      the last file index, and unlike closed files their reindex is the
 ///      next compile, which the current file's request already awaits.
+///   4. An open session without a current file index is served by the
+///      file's shard under closed-file rules — but only while the buffer
+///      is byte-identical to the content the rows were built from
+///      (Shard::matches_content). This is what serves documents opened
+///      for reading before any compile is invested in them; the moment
+///      the buffer diverges (an edit, restored unsaved text) the shard
+///      withdraws and clauses 1-3 govern again. Arbitration is strict:
+///      a current file index always wins over the shard (never both).
 ///
 ///   Symbol identity lookups (find_symbol_info: hash → name/kind) are not
 ///   gated: a hash identifies one symbol, so even a stale shard answers
