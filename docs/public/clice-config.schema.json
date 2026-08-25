@@ -1,299 +1,300 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "type": "object",
-  "properties": {
-    "project": {
-      "$ref": "#/$defs/ProjectConfig",
-      "description": "The [project] section: project-wide server options.",
-      "default": {
-        "clang_tidy": false,
-        "cache_dir": "",
-        "logging_dir": "",
-        "compile_commands_paths": [],
-        "enable_indexing": true,
-        "index_db": "lmdb",
-        "idle_timeout_ms": 3000,
-        "test_hooks": false,
-        "stateful_worker_count": 2,
-        "min_stateless_worker_count": 1,
-        "worker_memory_limit": 4294967296
-      }
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+        "project": {
+            "$ref": "#/$defs/ProjectConfig",
+            "description": "The [project] section: project-wide server options.",
+            "default": {
+                "clang_tidy": false,
+                "cache_dir": "",
+                "logging_dir": "",
+                "compile_commands_paths": [],
+                "enable_indexing": true,
+                "index_db": "lmdb",
+                "idle_timeout_ms": 3000,
+                "test_hooks": false,
+                "stateful_worker_count": 2,
+                "min_stateless_worker_count": 1,
+                "worker_memory_limit": 4294967296
+            }
+        },
+        "tracker": {
+            "$ref": "#/$defs/TrackerConfig",
+            "description": "The [tracker] section: file tracker poll intervals.",
+            "default": {
+                "cdb_poll_seconds": 3,
+                "workspace_poll_seconds": 30
+            }
+        },
+        "hover": {
+            "$ref": "#/$defs/HoverOptions",
+            "description": "The [hover] section: hover rendering options.",
+            "default": {
+                "parse_comment_as_markdown": true,
+                "show_aka": true
+            }
+        },
+        "inlay_hints": {
+            "$ref": "#/$defs/InlayHintsOptions",
+            "description": "The [inlay_hints] section: inlay hint options.",
+            "default": {
+                "enabled": true,
+                "parameters": true,
+                "deduced_types": true,
+                "designators": true,
+                "block_end": false,
+                "default_arguments": false,
+                "type_name_limit": 32
+            }
+        },
+        "code_completion": {
+            "$ref": "#/$defs/CodeCompletionOptions",
+            "description": "The [code_completion] section: code completion options.",
+            "default": {
+                "enable_keyword_snippet": false,
+                "enable_function_arguments_snippet": false,
+                "enable_template_arguments_snippet": false,
+                "insert_paren_in_function_call": false,
+                "bundle_overloads": true,
+                "limit": 0
+            }
+        },
+        "rules": {
+            "type": "array",
+            "items": {
+                "$ref": "#/$defs/ConfigRule"
+            },
+            "description": "File-pattern rules that adjust compilation flags ([[rules]] in clice.toml).",
+            "default": []
+        }
     },
-    "tracker": {
-      "$ref": "#/$defs/TrackerConfig",
-      "description": "The [tracker] section: file tracker poll intervals.",
-      "default": {
-        "cdb_poll_seconds": 3,
-        "workspace_poll_seconds": 30
-      }
-    },
-    "hover": {
-      "$ref": "#/$defs/HoverOptions",
-      "description": "The [hover] section: hover rendering options.",
-      "default": {
-        "parse_comment_as_markdown": true,
-        "show_aka": true
-      }
-    },
-    "inlay_hints": {
-      "$ref": "#/$defs/InlayHintsOptions",
-      "description": "The [inlay_hints] section: inlay hint options.",
-      "default": {
-        "enabled": true,
-        "parameters": true,
-        "deduced_types": true,
-        "designators": true,
-        "block_end": false,
-        "default_arguments": false,
-        "type_name_limit": 32
-      }
-    },
-    "code_completion": {
-      "$ref": "#/$defs/CodeCompletionOptions",
-      "description": "The [code_completion] section: code completion options.",
-      "default": {
-        "enable_keyword_snippet": false,
-        "enable_function_arguments_snippet": false,
-        "enable_template_arguments_snippet": false,
-        "insert_paren_in_function_call": false,
-        "bundle_overloads": true,
-        "limit": 0
-      }
-    },
-    "rules": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/ConfigRule"
-      },
-      "description": "File-pattern rules that adjust compilation flags ([[rules]] in clice.toml).",
-      "default": []
+    "$defs": {
+        "ProjectConfig": {
+            "type": "object",
+            "properties": {
+                "clang_tidy": {
+                    "type": "boolean",
+                    "description": "Run clang-tidy alongside compiler diagnostics. Not yet wired: the option is parsed but has no effect.",
+                    "default": false
+                },
+                "cache_dir": {
+                    "type": "string",
+                    "description": "Directory for the unified on-disk cache (PCH, PCM and index artifacts). Empty derives it from XDG_CACHE_HOME (or `~/.cache`) with a per-workspace subdirectory named after the workspace plus a short hash, falling back to `${workspace}/.clice`; the resolved path is printed at startup.",
+                    "default": ""
+                },
+                "logging_dir": {
+                    "type": "string",
+                    "description": "Directory for log files; empty derives `${cache_dir}/logs`. Each server session logs into its own timestamped subdirectory.",
+                    "default": ""
+                },
+                "compile_commands_paths": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "Paths searched for compile_commands.json — file paths, or directories to look inside. When these all miss — or the list is empty — the workspace root and then each of its immediate subdirectories are searched.",
+                    "default": []
+                },
+                "enable_indexing": {
+                    "type": "boolean",
+                    "description": "Build the background index that serves cross-TU features (find references, workspace symbols, ...).",
+                    "default": true
+                },
+                "index_db": {
+                    "type": "string",
+                    "description": "Index persistence backend: \"lmdb\" (single database file) or \"files\" (one file per blob).",
+                    "default": "lmdb"
+                },
+                "idle_timeout_ms": {
+                    "type": "integer",
+                    "minimum": -2147483648,
+                    "maximum": 2147483647,
+                    "description": "Idle delay in milliseconds before background indexing starts.",
+                    "default": 3000
+                },
+                "test_hooks": {
+                    "type": "boolean",
+                    "description": "Enable the clice/internal test hooks used by the test harness.",
+                    "default": false
+                },
+                "stateful_worker_count": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 4294967295,
+                    "description": "Number of stateful workers — they hold ASTs in memory and serve queries (hover, semantic tokens, ...); `0` is invalid and falls back to the default.",
+                    "default": 2
+                },
+                "stateless_worker_count": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 4294967295,
+                    "description": "Initial number of stateless workers — they handle ephemeral tasks (PCH/PCM builds, completion, signature help); defaults to half the machine's parallelism, at least 2. `0` is invalid and falls back to that default."
+                },
+                "min_stateless_worker_count": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 4294967295,
+                    "description": "Lower bound for dynamic stateless-worker scaling.",
+                    "default": 1
+                },
+                "max_stateless_worker_count": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 4294967295,
+                    "description": "Upper bound for dynamic stateless-worker scaling; defaults to the machine's parallelism."
+                },
+                "worker_memory_limit": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 18446744073709551615,
+                    "description": "Per-stateful-worker memory limit in bytes; `0` is invalid and falls back to the default. Not yet enforced: parsed, but memory-based eviction is not implemented.",
+                    "default": 4294967296
+                }
+            }
+        },
+        "TrackerConfig": {
+            "type": "object",
+            "properties": {
+                "cdb_poll_seconds": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 4294967295,
+                    "description": "Compilation database poll interval in seconds; 0 disables polling.",
+                    "default": 3
+                },
+                "workspace_poll_seconds": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 4294967295,
+                    "description": "Workspace file sweep interval in seconds; 0 disables polling.",
+                    "default": 30
+                }
+            }
+        },
+        "HoverOptions": {
+            "type": "object",
+            "properties": {
+                "parse_comment_as_markdown": {
+                    "type": "boolean",
+                    "description": "Render the hover card as markdown; `false` produces plain text for clients that cannot display it.",
+                    "default": true
+                },
+                "show_aka": {
+                    "type": "boolean",
+                    "description": "Show the desugared form of a type, e.g. `vector<int>::size_type (aka unsigned long)`.",
+                    "default": true
+                }
+            }
+        },
+        "InlayHintsOptions": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean",
+                    "description": "Master switch: `false` disables all inlay hints.",
+                    "default": true
+                },
+                "parameters": {
+                    "type": "boolean",
+                    "description": "Parameter name hints at call sites, e.g. `draw(width: 800, height: 600)`, including `&` markers for arguments passed by mutable reference.",
+                    "default": true
+                },
+                "deduced_types": {
+                    "type": "boolean",
+                    "description": "Deduced type hints for `auto` variables, structured bindings and deduced return types.",
+                    "default": true
+                },
+                "designators": {
+                    "type": "boolean",
+                    "description": "Field designator hints in aggregate initialization, e.g. `.x=` and `.y=` in `Point{1, 2}`.",
+                    "default": true
+                },
+                "block_end": {
+                    "type": "boolean",
+                    "description": "`// name` hints after the closing brace of long blocks (functions, types, namespaces, control flow).",
+                    "default": false
+                },
+                "default_arguments": {
+                    "type": "boolean",
+                    "description": "Show the default arguments a call omitted, abbreviated when long.",
+                    "default": false
+                },
+                "type_name_limit": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 4294967295,
+                    "description": "Byte budget for rendered hint text: over-long deduced types fall back to a sugared spelling or are dropped, over-long default arguments are abbreviated. `0` means no limit.",
+                    "default": 32
+                }
+            }
+        },
+        "CodeCompletionOptions": {
+            "type": "object",
+            "properties": {
+                "enable_keyword_snippet": {
+                    "type": "boolean",
+                    "description": "Complete keywords as snippets (not yet implemented).",
+                    "default": false
+                },
+                "enable_function_arguments_snippet": {
+                    "type": "boolean",
+                    "description": "Insert function arguments as a snippet when completing a call; applies to individually listed overloads, so it requires `bundle_overloads = false`.",
+                    "default": false
+                },
+                "enable_template_arguments_snippet": {
+                    "type": "boolean",
+                    "description": "Insert template arguments as a snippet on completion (not yet implemented).",
+                    "default": false
+                },
+                "insert_paren_in_function_call": {
+                    "type": "boolean",
+                    "description": "Insert parentheses when completing a function call (not yet implemented).",
+                    "default": false
+                },
+                "bundle_overloads": {
+                    "type": "boolean",
+                    "description": "Collapse an overload set into a single completion item.",
+                    "default": true
+                },
+                "limit": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 4294967295,
+                    "description": "Maximum number of completion items (not yet implemented).",
+                    "default": 0
+                }
+            }
+        },
+        "ConfigRule": {
+            "type": "object",
+            "properties": {
+                "patterns": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "Glob patterns selecting the files this rule applies to: `*` matches within a path segment (a pattern of just `*` matches any path), `?` a single character, `**` any number of segments, `{a,b}` alternatives, `[0-9]` a character range, `[!...]` a negated range.",
+                    "default": []
+                },
+                "append": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "Compilation flags appended for matching files, e.g. `[\"-std=c++20\", \"-DNDEBUG\"]`.",
+                    "default": []
+                },
+                "remove": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "Compilation flags removed for matching files, e.g. `[\"-Wall\"]`.",
+                    "default": []
+                }
+            }
+        }
     }
-  },
-  "$defs": {
-    "ProjectConfig": {
-      "type": "object",
-      "properties": {
-        "clang_tidy": {
-          "type": "boolean",
-          "description": "Run clang-tidy alongside compiler diagnostics. Not yet wired: the option is parsed but has no effect.",
-          "default": false
-        },
-        "cache_dir": {
-          "type": "string",
-          "description": "Directory for the unified on-disk cache (PCH, PCM and index artifacts). Empty derives it from XDG_CACHE_HOME (or `~/.cache`) with a per-workspace subdirectory named after the workspace plus a short hash, falling back to `${workspace}/.clice`; the resolved path is printed at startup.",
-          "default": ""
-        },
-        "logging_dir": {
-          "type": "string",
-          "description": "Directory for log files; empty derives `${cache_dir}/logs`. Each server session logs into its own timestamped subdirectory.",
-          "default": ""
-        },
-        "compile_commands_paths": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "description": "Paths searched for compile_commands.json — file paths, or directories to look inside. Empty searches the workspace root and then each of its immediate subdirectories, first hit wins.",
-          "default": []
-        },
-        "enable_indexing": {
-          "type": "boolean",
-          "description": "Build the background index that serves cross-TU features (find references, workspace symbols, ...).",
-          "default": true
-        },
-        "index_db": {
-          "type": "string",
-          "description": "Index persistence backend: \"lmdb\" (single database file) or \"files\" (one file per blob).",
-          "default": "lmdb"
-        },
-        "idle_timeout_ms": {
-          "type": "integer",
-          "minimum": -2147483648,
-          "maximum": 2147483647,
-          "description": "Idle delay in milliseconds after the last edit before background indexing starts.",
-          "default": 3000
-        },
-        "test_hooks": {
-          "type": "boolean",
-          "description": "Enable the clice/internal test hooks used by the test harness.",
-          "default": false
-        },
-        "stateful_worker_count": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 4294967295,
-          "description": "Number of stateful workers — they hold ASTs in memory and serve queries (hover, semantic tokens, ...).",
-          "default": 2
-        },
-        "stateless_worker_count": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 4294967295,
-          "description": "Initial number of stateless workers — they handle ephemeral tasks (PCH/PCM builds, completion, signature help); defaults to half the machine's parallelism, at least 2."
-        },
-        "min_stateless_worker_count": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 4294967295,
-          "description": "Lower bound for dynamic stateless-worker scaling.",
-          "default": 1
-        },
-        "max_stateless_worker_count": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 4294967295,
-          "description": "Upper bound for dynamic stateless-worker scaling; defaults to the machine's parallelism."
-        },
-        "worker_memory_limit": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 18446744073709551615,
-          "description": "Per-stateful-worker memory limit in bytes. Not yet enforced: parsed, but memory-based eviction is not implemented.",
-          "default": 4294967296
-        }
-      }
-    },
-    "TrackerConfig": {
-      "type": "object",
-      "properties": {
-        "cdb_poll_seconds": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 4294967295,
-          "description": "Compilation database poll interval in seconds; 0 disables polling.",
-          "default": 3
-        },
-        "workspace_poll_seconds": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 4294967295,
-          "description": "Workspace file sweep interval in seconds; 0 disables polling.",
-          "default": 30
-        }
-      }
-    },
-    "HoverOptions": {
-      "type": "object",
-      "properties": {
-        "parse_comment_as_markdown": {
-          "type": "boolean",
-          "description": "Render the hover card as markdown; `false` produces plain text for clients that cannot display it.",
-          "default": true
-        },
-        "show_aka": {
-          "type": "boolean",
-          "description": "Show the desugared form of a type, e.g. `vector<int>::size_type (aka unsigned long)`.",
-          "default": true
-        }
-      }
-    },
-    "InlayHintsOptions": {
-      "type": "object",
-      "properties": {
-        "enabled": {
-          "type": "boolean",
-          "description": "Master switch: `false` disables all inlay hints.",
-          "default": true
-        },
-        "parameters": {
-          "type": "boolean",
-          "description": "Parameter name hints at call sites, e.g. `draw(width: 800, height: 600)`, including `&` markers for arguments passed by mutable reference.",
-          "default": true
-        },
-        "deduced_types": {
-          "type": "boolean",
-          "description": "Deduced type hints for `auto` variables, structured bindings and deduced return types.",
-          "default": true
-        },
-        "designators": {
-          "type": "boolean",
-          "description": "Field designator hints in aggregate initialization, e.g. `.x=` and `.y=` in `Point{1, 2}`.",
-          "default": true
-        },
-        "block_end": {
-          "type": "boolean",
-          "description": "`// name` hints after the closing brace of long blocks (functions, types, namespaces, control flow).",
-          "default": false
-        },
-        "default_arguments": {
-          "type": "boolean",
-          "description": "Show the default arguments a call omitted, abbreviated when long.",
-          "default": false
-        },
-        "type_name_limit": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 4294967295,
-          "description": "Character budget for rendered hint text (deduced types, default arguments); longer text is abbreviated. `0` means no limit.",
-          "default": 32
-        }
-      }
-    },
-    "CodeCompletionOptions": {
-      "type": "object",
-      "properties": {
-        "enable_keyword_snippet": {
-          "type": "boolean",
-          "description": "Complete keywords as snippets (not yet implemented).",
-          "default": false
-        },
-        "enable_function_arguments_snippet": {
-          "type": "boolean",
-          "description": "Insert function arguments as a snippet on completion.",
-          "default": false
-        },
-        "enable_template_arguments_snippet": {
-          "type": "boolean",
-          "description": "Insert template arguments as a snippet on completion (not yet implemented).",
-          "default": false
-        },
-        "insert_paren_in_function_call": {
-          "type": "boolean",
-          "description": "Insert parentheses when completing a function call (not yet implemented).",
-          "default": false
-        },
-        "bundle_overloads": {
-          "type": "boolean",
-          "description": "Collapse an overload set into a single completion item.",
-          "default": true
-        },
-        "limit": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 4294967295,
-          "description": "Maximum number of completion items (not yet implemented).",
-          "default": 0
-        }
-      }
-    },
-    "ConfigRule": {
-      "type": "object",
-      "properties": {
-        "patterns": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "description": "Glob patterns selecting the files this rule applies to: `*` matches within a path segment, `?` a single character, `**` any number of segments, `{a,b}` alternatives, `[0-9]` a character range, `[!...]` a negated range.",
-          "default": []
-        },
-        "append": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "description": "Compilation flags appended for matching files, e.g. `[\"-std=c++20\", \"-DNDEBUG\"]`.",
-          "default": []
-        },
-        "remove": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "description": "Compilation flags removed for matching files, e.g. `[\"-Wall\"]`.",
-          "default": []
-        }
-      }
-    }
-  }
 }
+

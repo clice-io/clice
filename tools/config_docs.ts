@@ -68,16 +68,27 @@ function renderType(field: FieldSchema): string {
         case "string":
             return "`string`";
         case "integer": {
-            if (field.minimum === 0 && field.maximum !== undefined) {
-                return field.maximum > 2 ** 53 ? "`uint64`" : "`uint32`";
+            // Exact bounds only: a width this table does not know must
+            // fail loudly rather than render a wrong type name.
+            if (field.minimum === 0 && field.maximum === 4294967295) {
+                return "`uint32`";
             }
-            return "`int`";
+            if (field.minimum === 0 && field.maximum !== undefined && field.maximum > 2 ** 53) {
+                return "`uint64`";
+            }
+            if (field.minimum === -2147483648 && field.maximum === 2147483647) {
+                return "`int`";
+            }
+            throw new Error(`unhandled integer bounds [${field.minimum}, ${field.maximum}]`);
         }
         case "array": {
             if (field.items?.type === "string") {
                 return "`array of string`";
             }
-            return "`array of table`";
+            if (field.items?.$ref !== undefined) {
+                return "`array of table`";
+            }
+            throw new Error(`unhandled array item schema '${JSON.stringify(field.items)}'`);
         }
         default:
             throw new Error(`unhandled schema type '${field.type}'`);

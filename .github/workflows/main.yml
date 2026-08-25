@@ -47,6 +47,11 @@ jobs:
               - '.github/workflows/main.yml'
             cmake:
               - 'CMakeLists.txt'
+              # Generated docs and the committed schema are verified against
+              # the built binary, so edits to them must run native-test.
+              - 'docs/public/clice-config.schema.json'
+              - 'docs/en/guide/configuration.md'
+              - 'docs/en/features/**'
               - 'src/**'
               - 'include/**'
               - 'tests/**'

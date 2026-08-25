@@ -27,10 +27,10 @@ struct ConfigRule {
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
                          "Glob patterns selecting the files this rule applies "
-                         "to: `*` matches within a path segment, `?` a single "
-                         "character, `**` any number of segments, `{a,b}` "
-                         "alternatives, `[0-9]` a character range, `[!...]` a "
-                         "negated range.")
+                         "to: `*` matches within a path segment (a pattern of "
+                         "just `*` matches any path), `?` a single character, "
+                         "`**` any number of segments, `{a,b}` alternatives, "
+                         "`[0-9]` a character range, `[!...]` a negated range.")
     <std::vector<std::string>> patterns;
 
     KOTATSU_ANNOTATE(defaulted = true,
@@ -77,9 +77,9 @@ struct ProjectConfig {
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
                          "Paths searched for compile_commands.json — file paths, "
-                         "or directories to look inside. Empty searches the "
-                         "workspace root and then each of its immediate "
-                         "subdirectories, first hit wins.")
+                         "or directories to look inside. When these all miss — or "
+                         "the list is empty — the workspace root and then each of "
+                         "its immediate subdirectories are searched.")
     <std::vector<std::string>> compile_commands_paths;
 
     KOTATSU_ANNOTATE(defaulted = true,
@@ -96,8 +96,8 @@ struct ProjectConfig {
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
-                         "Idle delay in milliseconds after the last edit before "
-                         "background indexing starts.")
+                         "Idle delay in milliseconds before background indexing "
+                         "starts.")
     <int> idle_timeout_ms = 3000;
 
     /// The hooks can generate load on demand (log floods).
@@ -110,7 +110,8 @@ struct ProjectConfig {
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
                          "Number of stateful workers — they hold ASTs in memory "
-                         "and serve queries (hover, semantic tokens, ...).")
+                         "and serve queries (hover, semantic tokens, ...); `0` is "
+                         "invalid and falls back to the default.")
     <std::uint32_t> stateful_worker_count = 2;
 
     KOTATSU_ANNOTATE(defaulted = true,
@@ -118,7 +119,7 @@ struct ProjectConfig {
                          "Initial number of stateless workers — they handle "
                          "ephemeral tasks (PCH/PCM builds, completion, signature "
                          "help); defaults to half the machine's parallelism, at "
-                         "least 2.")
+                         "least 2. `0` is invalid and falls back to that default.")
     <std::uint32_t> stateless_worker_count = default_stateless_worker_count();
 
     /// See WorkerPoolOptions.
@@ -134,7 +135,8 @@ struct ProjectConfig {
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
-                         "Per-stateful-worker memory limit in bytes. Not yet "
+                         "Per-stateful-worker memory limit in bytes; `0` is "
+                         "invalid and falls back to the default. Not yet "
                          "enforced: parsed, but memory-based eviction is not "
                          "implemented.")
     <std::uint64_t> worker_memory_limit = 4ULL * 1024 * 1024 * 1024;

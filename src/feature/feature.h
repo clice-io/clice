@@ -91,7 +91,10 @@ struct CodeCompletionOptions {
     <bool> enable_keyword_snippet = false;
 
     KOTATSU_ANNOTATE(defaulted = true,
-                     description = "Insert function arguments as a snippet on completion.")
+                     description =
+                         "Insert function arguments as a snippet when completing "
+                         "a call; applies to individually listed overloads, so it "
+                         "requires `bundle_overloads = false`.")
     <bool> enable_function_arguments_snippet = false;
 
     KOTATSU_ANNOTATE(defaulted = true,
@@ -269,9 +272,10 @@ struct InlayHintsOptions {
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
-                         "Character budget for rendered hint text (deduced types, "
-                         "default arguments); longer text is abbreviated. `0` "
-                         "means no limit.")
+                         "Byte budget for rendered hint text: over-long deduced "
+                         "types fall back to a sugared spelling or are dropped, "
+                         "over-long default arguments are abbreviated. `0` means "
+                         "no limit.")
     <std::uint32_t> type_name_limit = 32;
 };
 

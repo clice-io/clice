@@ -48,7 +48,7 @@ Directory for log files; empty derives `${cache_dir}/logs`. Each server session 
 | ----------------- | ------- |
 | `array of string` | `[]`    |
 
-Paths searched for compile_commands.json — file paths, or directories to look inside. Empty searches the workspace root and then each of its immediate subdirectories, first hit wins.
+Paths searched for compile_commands.json — file paths, or directories to look inside. When these all miss — or the list is empty — the workspace root and then each of its immediate subdirectories are searched.
 
 ### `project.enable_indexing`
 
@@ -72,7 +72,7 @@ Index persistence backend: "lmdb" (single database file) or "files" (one file pe
 | ----- | ------- |
 | `int` | `3000`  |
 
-Idle delay in milliseconds after the last edit before background indexing starts.
+Idle delay in milliseconds before background indexing starts.
 
 ### `project.test_hooks`
 
@@ -88,7 +88,7 @@ Enable the clice/internal test hooks used by the test harness.
 | -------- | ------- |
 | `uint32` | `2`     |
 
-Number of stateful workers — they hold ASTs in memory and serve queries (hover, semantic tokens, ...).
+Number of stateful workers — they hold ASTs in memory and serve queries (hover, semantic tokens, ...); `0` is invalid and falls back to the default.
 
 ### `project.stateless_worker_count`
 
@@ -96,7 +96,7 @@ Number of stateful workers — they hold ASTs in memory and serve queries (hover
 | -------- | ------- |
 | `uint32` | —       |
 
-Initial number of stateless workers — they handle ephemeral tasks (PCH/PCM builds, completion, signature help); defaults to half the machine's parallelism, at least 2.
+Initial number of stateless workers — they handle ephemeral tasks (PCH/PCM builds, completion, signature help); defaults to half the machine's parallelism, at least 2. `0` is invalid and falls back to that default.
 
 ### `project.min_stateless_worker_count`
 
@@ -120,7 +120,7 @@ Upper bound for dynamic stateless-worker scaling; defaults to the machine's para
 | -------- | ------------ |
 | `uint64` | `4294967296` |
 
-Per-stateful-worker memory limit in bytes. Not yet enforced: parsed, but memory-based eviction is not implemented.
+Per-stateful-worker memory limit in bytes; `0` is invalid and falls back to the default. Not yet enforced: parsed, but memory-based eviction is not implemented.
 
 <!-- END GENERATED CONFIG -->
 
@@ -232,7 +232,7 @@ Show the default arguments a call omitted, abbreviated when long.
 | -------- | ------- |
 | `uint32` | `32`    |
 
-Character budget for rendered hint text (deduced types, default arguments); longer text is abbreviated. `0` means no limit.
+Byte budget for rendered hint text: over-long deduced types fall back to a sugared spelling or are dropped, over-long default arguments are abbreviated. `0` means no limit.
 
 <!-- END GENERATED CONFIG -->
 
@@ -256,7 +256,7 @@ Complete keywords as snippets (not yet implemented).
 | ------ | ------- |
 | `bool` | `false` |
 
-Insert function arguments as a snippet on completion.
+Insert function arguments as a snippet when completing a call; applies to individually listed overloads, so it requires `bundle_overloads = false`.
 
 ### `code_completion.enable_template_arguments_snippet`
 
@@ -304,7 +304,7 @@ Maximum number of completion items (not yet implemented).
 | ----------------- | ------- |
 | `array of string` | `[]`    |
 
-Glob patterns selecting the files this rule applies to: `*` matches within a path segment, `?` a single character, `**` any number of segments, `{a,b}` alternatives, `[0-9]` a character range, `[!...]` a negated range.
+Glob patterns selecting the files this rule applies to: `*` matches within a path segment (a pattern of just `*` matches any path), `?` a single character, `**` any number of segments, `{a,b}` alternatives, `[0-9]` a character range, `[!...]` a negated range.
 
 ### `[rules].append`
 
