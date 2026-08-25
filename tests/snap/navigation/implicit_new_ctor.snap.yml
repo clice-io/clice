@@ -1,0 +1,14 @@
+---
+created_at: 2026-08-25
+input_file: implicit_new_ctor.cpp
+---
+new_kw:
+  definition:
+    - { file: "${WS}/implicit_new_ctor.cpp", range: "13:17-13:25" }
+  declaration:
+    - { file: "${WS}/implicit_new_ctor.cpp", range: "13:17-13:25" }
+  references:
+    - { file: "${WS}/implicit_new_ctor.cpp", range: "13:17-13:25" }
+    - { file: "${WS}/implicit_new_ctor.cpp", range: "17:14-17:17" }
+  callHierarchy:
+    - { name: "operator new", kind: Operator, file: "${WS}/implicit_new_ctor.cpp", range: "13:17-13:25" }

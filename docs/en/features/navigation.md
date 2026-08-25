@@ -292,199 +292,538 @@ Navigate to definitions of implicitly invoked code. In C++ many constructs gener
 
 Implicit navigation requires an unambiguous source token — patterns where the token already has a well-defined go-to-def target (e.g., a variable name always goes to its declaration) cannot be repurposed for implicit call navigation.
 
-**Keywords**
+<!-- BEGIN GENERATED ITEMS: Implicit Code Navigation -->
 
-- [ ] `override` / `final` → the overridden base class virtual method
+- [ ] `override` / `final` — navigate to the overridden base method
+
+  Go-to-definition on the `override` or `final` specifier should reach the
+  base class virtual method it overrides; today it returns nothing.
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
-  struct Base { virtual void draw(); };
+  struct Base {
+      virtual void draw();
+      virtual void paint();
+  };
+
   struct Derived : Base {
       void draw() override;  // go-to-def on override → Base::draw
+      void paint() final;    // go-to-def on final → Base::paint
   };
   ```
 
-- [ ] `break` / `continue` → enclosing loop or switch head ([clangd#1921](https://github.com/clangd/clangd/issues/1921)). See also [Document Highlight](#document-highlight) for highlighting all related control flow tokens in context.
+  </details>
 
-**Construction & destruction**
+- [ ] `break` / `continue` — navigate to the enclosing loop or switch head ([clangd#1921](https://github.com/clangd/clangd/issues/1921))
 
-- [ ] Constructor calls — from parentheses/braces to the selected constructor
+  Go-to-definition on `break` or `continue` should reach the head of the
+  loop or switch it controls; today it returns nothing.
 
-  ```cpp
-  struct Widget { Widget(int w, int h); };
-  Widget w(800, 600);        // go-to-def on ( → Widget(int, int)
-  Widget w2{800, 600};       // go-to-def on { → same
-  auto w3 = Widget(1, 2);   // go-to-def on ( → same
-  ```
-
-- [ ] Copy/move construction and assignment
+  <details>
+  <summary>Example</summary>
 
   ```cpp
-  Widget a(1, 2);
-  Widget b = a;              // go-to-def on = → Widget(const Widget&)
-  Widget c = std::move(a);   // go-to-def on = → Widget(Widget&&)
-  b = c;                     // go-to-def on = → operator=(const Widget&)
+  void loop() {
+      for (int i = 0; i < 10; i += 1) {
+          if (i == 5) break;  // go-to-def on break → the for loop
+          continue;           // go-to-def on continue → the for loop
+      }
+  }
   ```
 
-- [ ] CTAD — navigate to the selected constructor
+  </details>
 
-  ```cpp
-  std::vector v{1, 2, 3};  // go-to-def on { → vector(initializer_list<int>)
-  ```
+- [x] Constructor calls — from parentheses or braces to the selected constructor
 
-- [ ] Aggregate initialization → struct definition
+  Go-to-definition on the opening parenthesis or brace of a constructor
+  call reaches the constructor overload resolution selected, for both the
+  `T(args)` and `T{args}` forms.
 
-  ```cpp
-  struct Point { int x, y; };
-  auto p = Point{1, 2};  // go-to-def on { → Point
-  ```
-
-- [ ] `delete` expression → destructor
-
-  ```cpp
-  delete widget;  // go-to-def on delete → Widget::~Widget
-  ```
-
-- [ ] `new` expression → constructor (and custom `operator new` if overloaded)
-
-  ```cpp
-  struct Pool {
-      static void* operator new(size_t);
-  };
-  auto* p = new Pool();       // go-to-def on new → Pool() constructor
-                               // also: Pool::operator new (if overloaded)
-  auto* arr = new Pool[10];   // go-to-def on new → Pool() default constructor
-  ```
-
-- [ ] Member initializer list → base class and member constructors
-
-  ```cpp
-  struct Base { Base(int); };
-  struct Logger { Logger(std::string name); };
-  struct App : Base {
-      Logger logger;
-      App() : Base(42), logger("app") {}
-      // go-to-def on Base → Base::Base(int)
-      // go-to-def on logger → Logger(std::string)
-  };
-  ```
-
-- [ ] Delegating constructors
+  <details>
+  <summary>Example</summary>
 
   ```cpp
   struct Widget {
       Widget(int w, int h);
-      Widget() : Widget(0, 0) {}  // go-to-def on Widget → Widget(int, int)
   };
-  ```
 
-- [ ] Inherited constructors — navigate to the base constructors brought in by `using`
-
-  ```cpp
-  struct Base { Base(int x); Base(int x, int y); };
-  struct Derived : Base {
-      using Base::Base;  // go-to-def on Base::Base → list Base's constructors
-  };
-  ```
-
-- [ ] Return value implicit construction
-
-  ```cpp
-  Widget create() {
-      return {800, 600};  // go-to-def on { → Widget(int, int)
+  void build() {
+      Widget a(800, 600);
+      Widget b{800, 600};
   }
   ```
 
-- [ ] Lambda init-capture → constructor
+  </details>
+
+- [ ] Copy/move construction and assignment — to the constructor or assignment operator _(partial)_
+
+  Go-to-definition on the `=` of an assignment reaches the assignment
+  operator. The `=` that introduces a copy- or move-initialization
+  (`T b = a;`) is initialization syntax rather than an operator call and is
+  not yet resolved.
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
-  Widget w;
-  auto f = [w = std::move(w)] {};     // go-to-def on = → Widget(Widget&&)
-  auto g = [s = std::string("hi")] {};  // go-to-def on = → string(const char*)
-  ```
-
-**Operators**
-
-- [ ] Overloaded operators — from the operator token to its definition
-
-  ```cpp
-  Vec a, b;
-  auto c = a + b;   // go-to-def on + → Vec::operator+
-  a += b;            // go-to-def on += → Vec::operator+=
-  ++it;              // go-to-def on ++ → iterator::operator++
-  v[0];              // go-to-def on [ → vector::operator[]
-  fn(42);            // go-to-def on ( → Functor::operator()
-  ptr->member;       // go-to-def on -> → SmartPtr::operator->
-  ```
-
-- [ ] C++20 rewritten operators — navigate to the actual operator used by the rewrite
-
-  ```cpp
-  struct S {
-      bool operator==(const S&) const;
-      auto operator<=>(const S&) const = default;
+  struct Widget {
+      Widget(int v);
+      Widget(const Widget& other);
+      Widget(Widget&& other);
+      Widget& operator=(const Widget& other);
   };
-  S a, b;
-  a != b;   // go-to-def on != → S::operator==
-  a > b;    // go-to-def on > → S::operator<=>
+
+  void copies(Widget a) {
+      Widget b = a;
+      Widget c = static_cast<Widget&&>(a);
+      b = c;
+  }
   ```
 
-- [ ] User-defined literals
+  </details>
+
+- [x] CTAD — navigate to the selected constructor
+
+  When class template argument deduction picks a specialization, go-to-
+  definition on the constructor call reaches the constructor that was
+  selected, not merely the class template.
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
-  using namespace std::chrono_literals;
-  auto d = 500ms;  // go-to-def on ms → operator""ms
+  template <typename T>
+  struct Box {
+      Box(T input) : value(input) {}
+      T value;
+  };
+
+  template <typename T>
+  Box(T) -> Box<T>;
+
+  void use() {
+      Box b(7);
+  }
   ```
 
-**Conversions**
+  </details>
 
-- [ ] Implicit conversion operators — from contexts where a conversion is invoked
+- [x] Aggregate initialization — navigate to the struct definition
+
+  An aggregate has no constructor, so go-to-definition on its initializer
+  brace reaches the aggregate's definition.
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
-  struct Guard { explicit operator bool() const; };
-  Guard g;
-  if (g) {}              // go-to-def on ( → Guard::operator bool()
-  while (g) {}           // same
-  !g;                    // go-to-def on ! → Guard::operator bool()  ([clangd#1931](https://github.com/clangd/clangd/issues/1931))
-  bool ok = bool(g);     // go-to-def on bool( → Guard::operator bool()
+  struct Point {
+      int x;
+      int y;
+  };
+
+  void use() {
+      auto p = Point{1, 2};
+  }
   ```
 
-- [ ] Casts invoking constructor or conversion operator
+  </details>
+
+- [ ] `delete` expression — navigate to the destructor
+
+  Go-to-definition on `delete` should reach the destructor it runs; today
+  it returns nothing.
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
-  struct Meters { explicit operator double() const; };
-  Meters m;
-  double d = static_cast<double>(m);  // go-to-def on static_cast → Meters::operator double()
+  struct Widget {
+      ~Widget();
+  };
 
-  struct Foo { explicit Foo(int); };
-  auto f = static_cast<Foo>(42);      // go-to-def on static_cast → Foo(int)
+  void dispose(Widget* widget) {
+      delete widget;  // go-to-def on delete → Widget::~Widget
+  }
   ```
 
-**Range-for & structured bindings**
+  </details>
 
-- [ ] Range-based for — navigate to `begin()`/`end()`
+- [ ] `new` expression — navigate to the constructor and overloaded `operator new` _(partial)_
+
+  Go-to-definition on `new` reaches the class's overloaded `operator new`.
+  The constructor invoked by the same expression is not part of the reply.
+
+  <details>
+  <summary>Example</summary>
 
   ```cpp
-  std::vector<int> v;
-  for (auto& x : v) {}  // go-to-def on : → vector::begin
+  struct Pool {
+      Pool();
+      static void* operator new(decltype(sizeof(0)) size);
+  };
+
+  void make() {
+      Pool* p = new Pool();
+  }
   ```
+
+  </details>
+
+- [ ] Member initializer list — navigate to base and member constructors _(partial)_
+
+  The base and member constructors run by an initializer list are reached
+  from the opening parenthesis of each initializer. The initializer name
+  itself resolves to the base type or the member, so navigation to the
+  constructor goes through the parenthesis.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  struct Base {
+      Base(int x);
+  };
+
+  struct Logger {
+      Logger(int level);
+  };
+
+  struct App : Base {
+      Logger logger;
+      App() : Base(42), logger(1) {}
+  };
+  ```
+
+  </details>
+
+- [ ] Delegating constructors — navigate to the target constructor _(partial)_
+
+  A delegating constructor's target is reached from the opening parenthesis
+  of the delegated call. The constructor name itself resolves to the class
+  type, so navigation to the target constructor goes through the
+  parenthesis.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  struct Widget {
+      Widget(int w, int h);
+      Widget() : Widget(0, 0) {}
+  };
+  ```
+
+  </details>
+
+- [ ] Inherited constructors — navigate to the base constructors brought in by `using` _(partial)_
+
+  Go-to-definition on an inherited-constructor declaration
+  (`using Base::Base;`) reaches a base constructor. When the base declares
+  several constructors the reply resolves to one of them rather than
+  listing the whole set.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  struct Base {
+      Base(int x);
+      Base(int x, int y);
+  };
+
+  struct Derived : Base {
+      using Base::Base;
+  };
+  ```
+
+  </details>
+
+- [x] Return value implicit construction — navigate to the constructor
+
+  A braced `return {args}` implicitly constructs the function's return
+  type; go-to-definition on the brace reaches the selected constructor.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  struct Widget {
+      Widget(int w, int h);
+  };
+
+  Widget create() {
+      return {800, 600};
+  }
+  ```
+
+  </details>
+
+- [ ] Lambda init-capture — navigate to the constructor
+
+  Go-to-definition on the `=` of a lambda init-capture should reach the
+  constructor that builds the captured value; today it returns nothing.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  struct Widget {
+      Widget(int v);
+      Widget(Widget&& other);
+  };
+
+  void use(Widget w) {
+      // go-to-def on = → Widget(Widget&&)
+      auto f = [x = static_cast<Widget&&>(w)] {};
+  }
+  ```
+
+  </details>
+
+- [x] Overloaded operators — from the operator token to its definition
+
+  Go-to-definition on an overloaded operator token reaches the operator's
+  definition. The binary, subscript, call and arrow operators (`+`, `[]`,
+  `()`, `->`) are all resolved.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  struct Iterator {
+      int value;
+  };
+
+  struct Vec {
+      Vec operator+(const Vec& other) const;
+      int operator[](int index) const;
+      int operator()(int a, int b) const;
+      Iterator* operator->();
+  };
+
+  void use(Vec a, Vec b) {
+      Vec c = a + b;
+      int e = a[0];
+      int f = a(1, 2);
+      a->value;
+  }
+  ```
+
+  </details>
+
+- [x] C++20 rewritten operators — navigate to the operator the rewrite uses
+
+  For a comparison synthesized by the C++20 rewrite rules, go-to-definition
+  on the written operator reaches the operator that actually implements it:
+  `!=` reaches `operator==`, and `>` reaches `operator<=>`.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  namespace std {
+  struct strong_ordering {
+      int n;
+      constexpr operator int() const { return n; }
+      static const strong_ordering equal, greater, less;
+  };
+  constexpr strong_ordering strong_ordering::equal = {0};
+  constexpr strong_ordering strong_ordering::greater = {1};
+  constexpr strong_ordering strong_ordering::less = {-1};
+  }
+
+  struct S {
+      int value;
+      bool operator==(const S& other) const;
+      auto operator<=>(const S& other) const = default;
+  };
+
+  void use(S a, S b) {
+      bool ne = a != b;
+      bool gt = a > b;
+  }
+  ```
+
+  </details>
+
+- [ ] User-defined literals — navigate to the literal operator
+
+  Go-to-definition on a user-defined-literal suffix should reach its
+  `operator""`; today it returns nothing.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  struct Duration {
+      unsigned long long ticks;
+  };
+
+  Duration operator""_ms(unsigned long long value);
+
+  void use() {
+      Duration d = 500_ms;  // go-to-def on _ms → operator""_ms
+  }
+  ```
+
+  </details>
+
+- [ ] Implicit conversion operators — from a conversion context to the operator ([clangd#1931](https://github.com/clangd/clangd/issues/1931))
+
+  Go-to-definition from a context that runs a user-defined conversion (a
+  condition, `!`, an explicit `bool(...)`) should reach the conversion
+  operator; today it returns nothing.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  struct Guard {
+      explicit operator bool() const;
+  };
+
+  void use(Guard g) {
+      if (g) {}      // go-to-def on ( → Guard::operator bool
+      bool ok = !g;  // go-to-def on ! → Guard::operator bool
+  }
+  ```
+
+  </details>
+
+- [ ] Casts invoking a constructor or conversion operator _(partial)_
+
+  A `static_cast` that constructs its target reaches the selected
+  constructor. A `static_cast` that runs a user-defined conversion operator
+  does not yet reach the operator.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  struct Meters {
+      explicit operator double() const;
+  };
+
+  struct Foo {
+      explicit Foo(int value);
+  };
+
+  void use(Meters m) {
+      double d = static_cast<double>(m);
+      Foo f = static_cast<Foo>(42);
+  }
+  ```
+
+  </details>
+
+- [ ] Range-based for — navigate to `begin()` / `end()`
+
+  Go-to-definition on the `:` of a range-based for should reach the
+  `begin()` / `end()` chosen for the range; today it returns nothing.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  struct Iterator {
+      int operator*() const;
+      Iterator& operator++();
+      bool operator!=(const Iterator& other) const;
+  };
+
+  struct Range {
+      Iterator begin();
+      Iterator end();
+  };
+
+  void use(Range r) {
+      for (int x : r) {}  // go-to-def on : → Range::begin / Range::end
+  }
+  ```
+
+  </details>
 
 - [ ] Structured bindings — navigate to the underlying accessors or fields
 
-  ```cpp
-  std::map<int, std::string> m;
-  for (auto& [key, val] : m) {}  // go-to-def on key → pair::first
-                                  // go-to-def on val → pair::second
-  ```
+  Go-to-definition on a structured binding name resolves to the binding
+  itself rather than the underlying field or accessor it names.
 
-**Coroutines**
-
-- [ ] `co_await` / `co_yield` / `co_return` → the corresponding awaiter/promise method
+  <details>
+  <summary>Example</summary>
 
   ```cpp
-  co_await some_awaitable;   // go-to-def on co_await → operator co_await() or await_resume()
-  co_yield value;            // go-to-def on co_yield → promise::yield_value()
-  co_return result;          // go-to-def on co_return → promise::return_value()
+  struct Pair {
+      int first;
+      int second;
+  };
+
+  void use(Pair p) {
+      // go-to-def on a → Pair::first, on b → Pair::second
+      auto [a, b] = p;
+  }
   ```
+
+  </details>
+
+- [ ] `co_await` / `co_yield` / `co_return` — navigate to the awaiter or promise method _(partial)_
+
+  Go-to-definition on `co_yield` reaches the promise's `yield_value`. The
+  `co_await` and `co_return` keywords do not yet reach the awaiter's or
+  promise's methods.
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  namespace std {
+  template <typename Ret, typename...>
+  struct coroutine_traits {
+      using promise_type = typename Ret::promise_type;
+  };
+  template <typename = void>
+  struct coroutine_handle {
+      coroutine_handle() = default;
+      template <typename Promise>
+      coroutine_handle(coroutine_handle<Promise>) noexcept;
+      static coroutine_handle from_address(void*) noexcept;
+  };
+  struct suspend_never {
+      bool await_ready() const noexcept;
+      void await_suspend(coroutine_handle<>) const noexcept;
+      void await_resume() const noexcept;
+  };
+  }
+
+  struct Awaiter {
+      bool await_ready() const noexcept;
+      void await_suspend(std::coroutine_handle<>) const noexcept;
+      int await_resume() const noexcept;
+  };
+
+  struct Task {
+      struct promise_type {
+          Task get_return_object();
+          std::suspend_never initial_suspend();
+          std::suspend_never final_suspend() noexcept;
+          Awaiter yield_value(int value);
+          void return_value(int value);
+          void unhandled_exception();
+      };
+  };
+
+  Task example() {
+      co_await Awaiter{};
+      co_yield 1;
+      co_return 2;
+  }
+  ```
+
+  </details>
+
+<!-- END GENERATED ITEMS -->
 
 ## Go to Declaration
 
