@@ -98,6 +98,50 @@ TEST_CASE(NewProviderDirtiesImporters) {
     EXPECT_FALSE(llvm::is_contained(again.reindex_content_changed, importer));
 }
 
+TEST_CASE(FirstModulesDirtyCandidates) {
+    // The project's very first provider appears: the per-name import
+    // record does not exist yet (module scanning was gated off while the
+    // map was empty), so the lexical import-candidate set is re-dirtied.
+    TempDir tmp;
+    tmp.touch("m.cppm", "export module m;\nexport int mv();\n");
+
+    Workspace workspace;
+    SessionStore store;
+    auto iface = workspace.path_pool.intern(tmp.path("m.cppm"));
+    auto importer = workspace.path_pool.intern("/proj/main.cpp");
+    workspace.dep_graph.set_import_candidate(importer, true);
+
+    ContextResolver resolver(workspace);
+    PCMHarness ph(workspace, resolver);
+    Invalidator invalidator(workspace, store, resolver, ph.pcm);
+
+    FileEvent events[] = {FileEvent::disk_changed(iface)};
+    auto dirty = invalidator.apply(events);
+
+    EXPECT_TRUE(llvm::is_contained(dirty.drop_index, importer));
+    EXPECT_TRUE(llvm::is_contained(dirty.reindex_content_changed, importer));
+}
+
+TEST_CASE(DiskRemovedDropsProvider) {
+    // Deleting a provider must leave the module map too: a later
+    // replacement provider would otherwise sit behind the deleted one in
+    // the candidate list and never be selected.
+    Workspace workspace;
+    SessionStore store;
+    auto iface = workspace.path_pool.intern("/proj/m.cppm");
+    workspace.dep_graph.add_module("m", iface);
+    workspace.path_to_module[iface] = "m";
+
+    ContextResolver resolver(workspace);
+    PCMHarness ph(workspace, resolver);
+    Invalidator invalidator(workspace, store, resolver, ph.pcm);
+
+    FileEvent events[] = {FileEvent::disk_removed(iface)};
+    invalidator.apply(events);
+
+    EXPECT_TRUE(workspace.dep_graph.lookup_module("m").empty());
+}
+
 TEST_CASE(NoOpEventsNoEffects) {
     Workspace workspace;
     SessionStore store;

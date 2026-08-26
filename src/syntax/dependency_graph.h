@@ -12,6 +12,7 @@
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
@@ -120,9 +121,30 @@ public:
         return module_to_path;
     }
 
+    /// Files whose lexer scan saw an import declaration (names unknown —
+    /// lexical text is not a trustworthy source of edges). When a project
+    /// gains its first module providers, every one of them was importing
+    /// unresolved names and must recompile; the precise per-name record
+    /// (Workspace::module_importers) only exists once module code paths
+    /// start scanning.
+    void set_import_candidate(std::uint32_t path_id, bool has_import) {
+        if(has_import) {
+            import_candidates_.insert(path_id);
+        } else {
+            import_candidates_.erase(path_id);
+        }
+    }
+
+    const llvm::DenseSet<std::uint32_t>& import_candidates() const {
+        return import_candidates_;
+    }
+
 private:
     /// Module name -> PathIDs (multiple candidates possible, e.g. different targets).
     llvm::StringMap<llvm::SmallVector<std::uint32_t, 2>> module_to_path;
+
+    /// See set_import_candidate().
+    llvm::DenseSet<std::uint32_t> import_candidates_;
 
     /// (PathID, ConfigID) -> list of directly included PathIDs.
     /// Each PathID may have bit 31 set to indicate conditional include.

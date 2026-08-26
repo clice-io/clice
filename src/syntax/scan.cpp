@@ -83,6 +83,11 @@ ScanResult scan_quick(llvm::StringRef content) {
                 }
                 break;
             }
+            case dds::cxx_import_decl:
+            case dds::cxx_export_import_decl: {
+                result.has_import = true;
+                break;
+            }
             case dds::cxx_module_decl:
             case dds::cxx_export_module_decl: {
                 if(conditional_depth > 0) {
@@ -271,11 +276,11 @@ private:
 };
 
 /// Create and configure a CompilerInstance for scanning.
-/// If content is non-empty, it is used as remapped source for the main file.
+/// An engaged content remaps the main file to it, even when empty.
 std::unique_ptr<clang::CompilerInstance>
     create_scan_instance(llvm::ArrayRef<const char*> arguments,
                          llvm::StringRef directory,
-                         llvm::StringRef content,
+                         std::optional<llvm::StringRef> content,
                          llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs) {
     clang::DiagnosticOptions diag_opts;
     auto diag_engine = clang::CompilerInstance::createDiagnostics(*vfs,
@@ -309,7 +314,7 @@ std::unique_ptr<clang::CompilerInstance>
     invocation->getFrontendOpts().DisableFree = false;
     invocation->getFileSystemOpts().WorkingDir = directory.str();
 
-    if(!content.empty()) {
+    if(content.has_value()) {
         auto& inputs = invocation->getFrontendOpts().Inputs;
         if(!inputs.empty()) {
             auto main_file = inputs[0].getFile();
@@ -317,7 +322,9 @@ std::unique_ptr<clang::CompilerInstance>
             // both the preprocessor and the DependencyDirectivesGetter see it.
             auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(vfs);
             auto mem_fs = llvm::makeIntrusiveRefCnt<llvm::vfs::InMemoryFileSystem>();
-            mem_fs->addFile(main_file, 0, llvm::MemoryBuffer::getMemBufferCopy(content, main_file));
+            mem_fs->addFile(main_file,
+                            0,
+                            llvm::MemoryBuffer::getMemBufferCopy(*content, main_file));
             overlay->pushOverlay(std::move(mem_fs));
             vfs = std::move(overlay);
         }
@@ -336,7 +343,7 @@ std::unique_ptr<clang::CompilerInstance>
 
 ScanResult scan_precise(llvm::ArrayRef<const char*> arguments,
                         llvm::StringRef directory,
-                        llvm::StringRef content,
+                        std::optional<llvm::StringRef> content,
                         SharedScanCache* cache,
                         llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs) {
     ScanResult result;
@@ -383,7 +390,7 @@ ScanResult scan_precise(llvm::ArrayRef<const char*> arguments,
 
 ScanResult scan_module_decl(llvm::ArrayRef<const char*> arguments,
                             llvm::StringRef directory,
-                            llvm::StringRef content,
+                            std::optional<llvm::StringRef> content,
                             SharedScanCache* cache,
                             llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs) {
     ScanResult result;

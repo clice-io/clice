@@ -878,7 +878,16 @@ void Toolchain::warm(llvm::ArrayRef<CompileCommand> commands) {
 
         auto extract = extract_flags(cmd.source_file, cmd.resolved.flags);
         auto& key = extract.key;
-        if(cache.count(key) || failed.count(key) || !seen.try_emplace(key, true).second)
+        if(cache.count(key))
+            continue;
+        if(auto failed_it = failed.find(key); failed_it != failed.end()) {
+            // Same expiry as resolve(): a cooled-down failure retries
+            // through this warm instead of being skipped forever.
+            if(std::chrono::steady_clock::now() - failed_it->second.second < failed_retry)
+                continue;
+            failed.erase(failed_it);
+        }
+        if(!seen.try_emplace(key, true).second)
             continue;
 
         pending.push_back({std::move(key), std::move(extract.query_args), cmd.source_file});

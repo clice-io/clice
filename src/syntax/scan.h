@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -61,6 +62,11 @@ struct ScanResult {
 
     /// Dependent module names.
     std::vector<std::string> modules;
+
+    /// The lexer scan saw an import declaration. Detection only — the
+    /// names stay uncollected (`modules` empty, see scan_quick): the flag
+    /// marks files worth a precise scan when import identity matters.
+    bool has_import = false;
 };
 
 /// Shared cache for dependency directives across multiple scan invocations.
@@ -114,9 +120,11 @@ ScanResult scan_quick(llvm::StringRef content);
 /// ImportMacroExpandedName in module_import_tests) — and it resolves a
 /// partition import (`import :part;`) against the enclosing module's
 /// name. Keeps all directives including #define and conditionals.
+/// An engaged `content` remaps the main file to it — even when empty:
+/// an emptied buffer must scan as empty, not fall back to the disk.
 ScanResult scan_precise(llvm::ArrayRef<const char*> arguments,
                         llvm::StringRef directory,
-                        llvm::StringRef content = {},
+                        std::optional<llvm::StringRef> content = std::nullopt,
                         SharedScanCache* cache = nullptr,
                         llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs = nullptr);
 
@@ -131,7 +139,7 @@ ScanResult scan_precise(llvm::ArrayRef<const char*> arguments,
 /// `module_name` and `is_interface_unit` in the returned ScanResult.
 ScanResult scan_module_decl(llvm::ArrayRef<const char*> arguments,
                             llvm::StringRef directory,
-                            llvm::StringRef content = {},
+                            std::optional<llvm::StringRef> content = std::nullopt,
                             SharedScanCache* cache = nullptr,
                             llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs = nullptr);
 

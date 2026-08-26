@@ -58,22 +58,43 @@ void Invalidator::cascade_compile_graph(std::uint32_t path_id, DirtySet& dirty) 
     }
 }
 
+void Invalidator::dirty_unresolved_importer(std::uint32_t importer, DirtySet& dirty) {
+    // The importer compiled and indexed against an unresolved name: its
+    // rows lack the module's symbols and its dep snapshot never named
+    // the interface, so the content-hash gate would filter a DepsOnly
+    // reindex — ContentChanged bypasses it.
+    if(store.find(importer)) {
+        dirty.mark_ast_dirty.push_back(importer);
+    }
+    dirty.drop_index.push_back(importer);
+    dirty.add_reindex_content_changed(importer);
+    cascade_compile_graph(importer, dirty);
+}
+
 void Invalidator::dirty_new_provider(llvm::StringRef module_name, DirtySet& dirty) {
     auto it = workspace.module_importers.find(module_name);
     if(it == workspace.module_importers.end()) {
         return;
     }
     for(auto importer: it->second) {
-        // The importer compiled and indexed against the unresolved name:
-        // its rows lack the module's symbols and its dep snapshot never
-        // named the interface, so the content-hash gate would filter a
-        // DepsOnly reindex — ContentChanged bypasses it.
-        if(store.find(importer)) {
-            dirty.mark_ast_dirty.push_back(importer);
+        dirty_unresolved_importer(importer, dirty);
+    }
+}
+
+void Invalidator::dirty_first_modules(DirtySet& dirty) {
+    // The project just gained its first module providers, so every
+    // import anywhere was unresolved. The per-name record is usually
+    // empty here — the module code paths that populate it were gated off
+    // while path_to_module was empty — hence the lexical candidate set;
+    // the union covers a project whose providers all left and returned
+    // with records still standing.
+    for(auto importer: workspace.dep_graph.import_candidates()) {
+        dirty_unresolved_importer(importer, dirty);
+    }
+    for(auto& entry: workspace.module_importers) {
+        for(auto importer: entry.getValue()) {
+            dirty_unresolved_importer(importer, dirty);
         }
-        dirty.drop_index.push_back(importer);
-        dirty.add_reindex_content_changed(importer);
-        cascade_compile_graph(importer, dirty);
     }
 }
 
@@ -94,17 +115,23 @@ void Invalidator::cascade_disk_content_change(std::uint32_t path_id, DirtySet& d
     // through the module graph — importers' build products went stale, and
     // the cascade names every affected module unit.
     auto old_module = workspace.path_to_module.lookup(path_id);
+    bool had_modules = !workspace.path_to_module.empty();
     workspace.rescan_after_save(path_id);
     cascade_compile_graph(path_id, dirty);
 
     // A save that introduced a module declaration may have given the name
     // its first provider: importers that failed against the unresolved
     // name hold no graph edge for the cascade above to travel, so they
-    // are found through the scan-time import record instead.
+    // are found through the scan-time import record — or, when this is
+    // the project's very first provider, the lexical candidate set.
     if(auto it = workspace.path_to_module.find(path_id);
        it != workspace.path_to_module.end() && it->second != old_module &&
        workspace.dep_graph.lookup_module(it->second).size() == 1) {
-        dirty_new_provider(it->second, dirty);
+        if(had_modules) {
+            dirty_new_provider(it->second, dirty);
+        } else {
+            dirty_first_modules(dirty);
+        }
     }
 
     // The new content is a compile input of every TU that transitively
@@ -281,6 +308,10 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // event's final word for the file itself.
                 dirty.add_clear_reindex(path_id);
                 workspace.path_to_module.erase(path_id);
+                // The provider leaves the module map too, or a later
+                // replacement provider would sit behind the deleted one in
+                // the candidate list and never be selected.
+                workspace.dep_graph.update_module_decl(path_id, {});
                 // Scrub the includer role: the file's outgoing edges vanished
                 // with it, so it stops being a host-source candidate.
                 // Incoming edges stay — includers' text still names it, and
@@ -345,10 +376,15 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // that imported it unresolved hold no graph edge to
                 // cascade through (nothing existed to edge to), so the
                 // delta walk below cannot reach them.
+                bool has_providers = false;
                 for(auto& entry: workspace.dep_graph.modules()) {
                     if(!entry.getValue().empty() && !had_providers.contains(entry.getKey())) {
                         dirty_new_provider(entry.getKey(), dirty);
                     }
+                    has_providers = has_providers || !entry.getValue().empty();
+                }
+                if(had_providers.empty() && has_providers) {
+                    dirty_first_modules(dirty);
                 }
 
                 // Every delta entry needs the same treatment — the compile

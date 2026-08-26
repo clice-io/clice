@@ -443,6 +443,32 @@ TEST_CASE(FailedQueryRetries, skip = Windows) {
     EXPECT_FALSE(patient.has_cache());
 }
 
+TEST_CASE(WarmRetriesExpired, skip = Windows) {
+    // warm() honors the same negative-cache expiry as resolve(): a
+    // cooled-down failure re-queries instead of being skipped forever.
+    TempDir tmp;
+    auto driver = tmp.path("cc.clang");
+    auto src = tmp.path("a.cpp");
+
+    Toolchain tc(std::chrono::seconds(0));
+    CompileCommand cmd;
+    cmd.source_file = src.c_str();
+    cmd.resolved.flags = {driver.c_str(), "-std=c++23"};
+    llvm::SmallVector<CompileCommand> cmds = {cmd};
+
+    tc.warm(cmds);
+    EXPECT_EQ(tc.failed_size(), std::size_t(1));
+    EXPECT_FALSE(tc.has_cache());
+
+    auto script = "#!/bin/sh\necho '" + std::string(fake_cc1_line) + "' >&2\n";
+    ASSERT_TRUE(fs::write(driver, script));
+    ASSERT_TRUE(!fs::setPermissions(driver, fs::all_read | fs::all_exe));
+
+    tc.warm(cmds);
+    EXPECT_EQ(tc.failed_size(), std::size_t(0));
+    EXPECT_TRUE(tc.has_cache());
+}
+
 TEST_CASE(WarmPartialFailure, skip = Windows) {
     auto driver = create_fake_clang(fake_cc1_line);
     ASSERT_TRUE(driver.has_value());

@@ -24,6 +24,25 @@ int x = 1;
     EXPECT_FALSE(result.includes[1].is_angled);
     EXPECT_FALSE(result.includes[1].conditional);
     EXPECT_TRUE(result.module_name.empty());
+    EXPECT_FALSE(result.has_import);
+}
+
+TEST_CASE(ImportDetected) {
+    // Detection only: the names stay uncollected (imports macro-expand,
+    // so lexical text cannot name edges) — the flag marks the file worth
+    // a precise scan.
+    auto result = scan_quick(R"(
+import some.mod;
+int x = 1;
+)");
+    EXPECT_TRUE(result.has_import);
+    EXPECT_TRUE(result.modules.empty());
+
+    auto exported = scan_quick(R"(
+export module top;
+export import :part;
+)");
+    EXPECT_TRUE(exported.has_import);
 }
 
 TEST_CASE(IncludeOffsets) {

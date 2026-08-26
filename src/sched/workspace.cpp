@@ -158,6 +158,7 @@ void Workspace::rescan_after_save(std::uint32_t path_id) {
     if(auto buf = llvm::MemoryBuffer::getFile(file_path)) {
         auto result = scan_quick((*buf)->getBuffer());
         dep_graph.update_module_decl(path_id, result.module_name);
+        dep_graph.set_import_candidate(path_id, result.has_import);
         if(!result.module_name.empty()) {
             path_to_module[path_id] = std::move(result.module_name);
         } else {

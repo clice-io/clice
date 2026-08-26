@@ -343,24 +343,21 @@ kota::task<DependResult> ASTFamily::depend_modules(RoundContext& ctx,
     // next edit's round re-resolves — the superseded round's build loses
     // interest and winds down on its own (the PCH pattern). Module names
     // still resolve against the on-disk module map; a module unit is
-    // somebody else's saved file. An empty buffer has no imports — and
-    // scan_precise reads the disk when handed empty content, which would
-    // resurrect them.
+    // somebody else's saved file. The remap stays engaged even for an
+    // empty buffer: its own text has no imports, but the command's
+    // injected -include prefix can still carry them.
     //
     // The import list is scanner truth, not build output: commit it as
     // durable edges before waiting, so a document whose compile fails
     // stays cascade-reachable from its imports — fixing an import must
     // re-dirty the documents it broke. The per-round resolve keeps the
     // edges honest across CDB, buffer and import changes.
-    llvm::SmallVector<std::uint32_t> deps;
-    if(!text.empty()) {
-        llvm::SmallVector<const char*, 32> argv;
-        argv.reserve(arguments.size());
-        for(auto& arg: arguments) {
-            argv.push_back(arg.c_str());
-        }
-        deps = pcm.direct_deps(path_id, argv, directory, text);
+    llvm::SmallVector<const char*, 32> argv;
+    argv.reserve(arguments.size());
+    for(auto& arg: arguments) {
+        argv.push_back(arg.c_str());
     }
+    auto deps = pcm.direct_deps(path_id, argv, directory, std::optional<llvm::StringRef>(text));
     llvm::SmallVector<NodeId, 8> ids;
     for(auto dep: deps) {
         ids.push_back({pcm_family, dep});

@@ -11,6 +11,7 @@
 #include "syntax/scan.h"
 #include "worker/protocol.h"
 
+#include "llvm/ADT/StringSet.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/xxhash.h"
@@ -31,7 +32,7 @@ void PCMFamily::register_runner() {
 }
 
 llvm::SmallVector<std::uint32_t> PCMFamily::direct_deps(std::uint32_t path_id,
-                                                        llvm::StringRef content) {
+                                                        std::optional<llvm::StringRef> content) {
     auto file_path = workspace.path_pool.resolve(path_id);
     std::vector<std::string> rule_append, rule_remove;
     workspace.config.match_rules(file_path, rule_append, rule_remove);
@@ -47,14 +48,16 @@ llvm::SmallVector<std::uint32_t> PCMFamily::direct_deps(std::uint32_t path_id,
 llvm::SmallVector<std::uint32_t> PCMFamily::direct_deps(std::uint32_t path_id,
                                                         llvm::ArrayRef<const char*> arguments,
                                                         llvm::StringRef directory,
-                                                        llvm::StringRef content) {
+                                                        std::optional<llvm::StringRef> content) {
     auto scan_result = scan_precise(arguments, directory, content);
 
     // Every name the scan produced is recorded, resolved or not: an
     // unresolved import leaves no graph edge (there is no node to edge
     // to), and this record is how the invalidator later finds the TUs to
     // re-dirty when the name's first provider appears.
+    llvm::StringSet<> scanned;
     auto remember = [&](llvm::StringRef name) {
+        scanned.insert(name);
         auto& importers = workspace.module_importers[name];
         if(!llvm::is_contained(importers, path_id)) {
             importers.push_back(path_id);
@@ -76,6 +79,16 @@ llvm::SmallVector<std::uint32_t> PCMFamily::direct_deps(std::uint32_t path_id,
         auto mod_ids = workspace.dep_graph.lookup_module(scan_result.module_name);
         if(!mod_ids.empty()) {
             deps.push_back(mod_ids[0]);
+        }
+    }
+
+    // The record self-heals against dropped imports: this scan is the
+    // truth for the TU, so names it no longer uses release it. A stale
+    // entry costs at most one false reindex — which runs this scan and
+    // prunes — instead of one per provider flap.
+    for(auto& entry: workspace.module_importers) {
+        if(!scanned.contains(entry.getKey())) {
+            llvm::erase(entry.getValue(), path_id);
         }
     }
 

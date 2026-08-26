@@ -648,6 +648,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
             if(scan_result.scan_result.is_interface_unit) {
                 graph.add_module(scan_result.scan_result.module_name, scan_result.path_id);
             }
+            graph.set_import_candidate(scan_result.path_id, scan_result.scan_result.has_import);
 
             report.includes_found += scan_result.scan_result.includes.size();
 
