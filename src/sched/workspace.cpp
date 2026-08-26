@@ -150,10 +150,14 @@ void Workspace::rescan_after_save(std::uint32_t path_id) {
 
     context_epoch += 1;
 
-    // Re-scan the saved file for module declarations and update path_to_module.
+    // Re-scan the saved file for module declarations, updating both
+    // module maps: path_to_module gates the module code paths, and the
+    // dep_graph side is what import resolution reads — left stale, an
+    // interface saved mid-session could never satisfy its importers.
     auto file_path = path_pool.resolve(path_id);
     if(auto buf = llvm::MemoryBuffer::getFile(file_path)) {
         auto result = scan_quick((*buf)->getBuffer());
+        dep_graph.update_module_decl(path_id, result.module_name);
         if(!result.module_name.empty()) {
             path_to_module[path_id] = std::move(result.module_name);
         } else {

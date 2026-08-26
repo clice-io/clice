@@ -309,13 +309,6 @@ kota::task<bool> ASTFamily::ensure_compiled(std::shared_ptr<Session> session) {
         on_stale(path_id);
     }
 
-    // On-disk PCM blobs can be LRU-evicted while their nodes are clean;
-    // revalidate before joining so the round does not void itself by
-    // invalidating an import it holds a durable edge to.
-    if(!workspace.path_to_module.empty()) {
-        pcm.revalidate_blobs();
-    }
-
     // Join the document's round, retrying through stale attempts (a Lost
     // invalidation mid-flight lands Stale and the next attempt recompiles)
     // until a terminal outcome. A buffer edit or session replacement ends
@@ -330,20 +323,29 @@ kota::task<bool> ASTFamily::ensure_compiled(std::shared_ptr<Session> session) {
 
 kota::task<DependResult> ASTFamily::depend_modules(RoundContext& ctx,
                                                    std::uint32_t path_id,
+                                                   llvm::StringRef directory,
+                                                   const std::vector<std::string>& arguments,
                                                    llvm::StringRef text) {
     // A project without module units pays nothing — no CDB lookup, no
-    // precise scan.
+    // precise scan. The empty truth is still published: a durable import
+    // edge earned while providers existed must stop cascading here once
+    // they are gone, even when the compile itself later fails (failed
+    // rounds keep declared edges).
     if(workspace.path_to_module.empty()) {
+        graph.declare(node(path_id), {});
         co_return DependResult::Ready;
     }
 
-    // Imports come from the round's buffer snapshot, not the disk: an
-    // unsaved `import m;` builds its PCM now, and the next edit's round
-    // re-resolves — the superseded round's build loses interest and winds
-    // down on its own (the PCH pattern). Module names still resolve
-    // against the on-disk module map; a module unit is somebody else's
-    // saved file. An empty buffer has no imports — and scan_precise reads
-    // the disk when handed empty content, which would resurrect them.
+    // Imports come from the round's buffer snapshot under the round's own
+    // resolved command — the same text and flags the parse will consume,
+    // so a context choice or donated header host cannot enable an import
+    // the scan missed. An unsaved `import m;` builds its PCM now, and the
+    // next edit's round re-resolves — the superseded round's build loses
+    // interest and winds down on its own (the PCH pattern). Module names
+    // still resolve against the on-disk module map; a module unit is
+    // somebody else's saved file. An empty buffer has no imports — and
+    // scan_precise reads the disk when handed empty content, which would
+    // resurrect them.
     //
     // The import list is scanner truth, not build output: commit it as
     // durable edges before waiting, so a document whose compile fails
@@ -352,7 +354,12 @@ kota::task<DependResult> ASTFamily::depend_modules(RoundContext& ctx,
     // edges honest across CDB, buffer and import changes.
     llvm::SmallVector<std::uint32_t> deps;
     if(!text.empty()) {
-        deps = pcm.direct_deps(path_id, text);
+        llvm::SmallVector<const char*, 32> argv;
+        argv.reserve(arguments.size());
+        for(auto& arg: arguments) {
+            argv.push_back(arg.c_str());
+        }
+        deps = pcm.direct_deps(path_id, argv, directory, text);
     }
     llvm::SmallVector<NodeId, 8> ids;
     for(auto dep: deps) {
@@ -361,9 +368,9 @@ kota::task<DependResult> ASTFamily::depend_modules(RoundContext& ctx,
     graph.declare(node(path_id), ids);
 
     // Building a dependency can itself evict another clean module's PCM
-    // under budget pressure, which reopens the window the facade's
-    // revalidation just closed — hence the bounded retry until the set
-    // is stable.
+    // under budget pressure, reopening the window the previous attempt's
+    // revalidation closed — hence the bounded retry until the set is
+    // stable. Past the bound the parse fails visibly on the missing file.
     for(int attempt = 0; attempt < 3; attempt += 1) {
         bool any_evicted = pcm.revalidate_blobs();
         if(attempt > 0 && !any_evicted) {
@@ -452,7 +459,11 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, std::uint32_t path_id
                            header_context->preamble_path.empty() &&
                            contexts.header_mode(file_path, path_id) == HeaderMode::Unknown;
 
-        switch(co_await depend_modules(ctx, path_id, params.text)) {
+        switch(co_await depend_modules(ctx,
+                                       path_id,
+                                       params.directory,
+                                       params.arguments,
+                                       params.text)) {
             case DependResult::Ready: break;
             case DependResult::Failed:
                 LOG_WARN("Dependency preparation failed for {}, skipping compile", uri_str);
@@ -723,12 +734,6 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, std::uint32_t path_id
             co_return RoundOutcome::Failed;
         }
 
-        // The parse consumed the pair and completed without blaming it:
-        // the key's consumption strikes were transient, not the storage.
-        if(adopted_pch.has_value() && !params.pch.first.empty() && !result.value().pch_suspect) {
-            pch.consumed_ok(*adopted_pch);
-        }
-
         // A probe invalidated mid-flight is discarded whole: its verdict is
         // a conditional write like the projection's current flag (dispatch
         // reset trial_done and the header mode for the recompile to
@@ -777,6 +782,18 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, std::uint32_t path_id
         // recorded, published, but not current — and reports Stale so
         // waiters drive the recompile.
         bool current = ctx.current();
+
+        // The parse consumed the pair and completed without blaming it —
+        // and the round still describes live inputs: the key's strikes
+        // were transient, not the storage. A voided round earns no
+        // acquittal: the void may BE a fresh blame from another consumer
+        // of the shared key, and clearing here would reset the strike
+        // count it just paid for.
+        if(current && adopted_pch.has_value() && !params.pch.first.empty() &&
+           !result.value().pch_suspect) {
+            pch.consumed_ok(*adopted_pch);
+        }
+
         auto& index_data = result.value().tu_index_data;
         auto next = std::make_shared<ASTProjection>();
         next->pch_key = adopted_pch;

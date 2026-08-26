@@ -617,8 +617,9 @@ struct PendingQuery {
 
 }  // namespace
 
-Toolchain::Toolchain() :
-    allocator(std::make_unique<llvm::BumpPtrAllocator>()), strings(allocator.get()) {}
+Toolchain::Toolchain(std::chrono::steady_clock::duration failed_retry) :
+    allocator(std::make_unique<llvm::BumpPtrAllocator>()), strings(allocator.get()),
+    failed_retry(failed_retry) {}
 
 Toolchain::~Toolchain() = default;
 
@@ -772,14 +773,20 @@ std::expected<void, std::string> Toolchain::resolve(CompileCommand& cmd) {
 
     auto it = cache.find(key);
     if(it == cache.end()) {
-        if(auto failed_it = failed.find(key); failed_it != failed.end())
-            return std::unexpected(failed_it->second);
+        if(auto failed_it = failed.find(key); failed_it != failed.end()) {
+            if(std::chrono::steady_clock::now() - failed_it->second.second < failed_retry) {
+                return std::unexpected(failed_it->second.first);
+            }
+            // Cooldown over: the failure may have been transient — retry
+            // the real query (cf. CrashBudget's bounded-burn revival).
+            failed.erase(failed_it);
+        }
 
         LOG_WARN("Toolchain cache miss: file={}", cmd.source_file);
 
         auto result = query(query_args, cmd.source_file);
         if(!result) {
-            failed.try_emplace(key, result.error());
+            failed.try_emplace(key, std::pair{result.error(), std::chrono::steady_clock::now()});
             return std::unexpected(std::move(result.error()));
         }
 
@@ -915,7 +922,9 @@ void Toolchain::warm(llvm::ArrayRef<CompileCommand> commands) {
     for(auto& o: outcomes) {
         if(!o.result) {
             LOG_ERROR("Toolchain query failed: {}", o.result.error());
-            failed.try_emplace(std::move(o.key), std::move(o.result.error()));
+            failed.try_emplace(
+                std::move(o.key),
+                std::pair{std::move(o.result.error()), std::chrono::steady_clock::now()});
             continue;
         }
 

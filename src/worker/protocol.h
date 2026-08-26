@@ -225,6 +225,7 @@ struct TURunParams {
     std::vector<std::pair<std::string, std::string>> tidy_options;
     std::string tidy_warnings_as_errors;
     std::string tidy_header_filter;
+    std::string tidy_exclude_header_filter;
     bool tidy_system_headers = false;
     std::vector<std::string> tidy_extra_args;
     std::vector<std::string> tidy_extra_args_before;

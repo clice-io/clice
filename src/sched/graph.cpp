@@ -362,6 +362,17 @@ llvm::SmallVector<NodeId> TaskGraph::update(NodeId id) {
     return dirtied;
 }
 
+void TaskGraph::mark_dirty(NodeId id) {
+    auto it = nodes.find(id);
+    if(it == nodes.end()) {
+        return;
+    }
+    // No generation bump and no token: an in-flight round is already
+    // producing the fresh artifact this mark asks for, and its landing
+    // clears the flag it would find set.
+    it->second.dirty = true;
+}
+
 bool TaskGraph::has_wait_cycle(NodeId target, NodeId waiter) const {
     // BFS from the target through live rounds' candidate edges — the
     // exact set of waits currently in force.

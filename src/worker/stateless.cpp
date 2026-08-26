@@ -17,6 +17,7 @@
 #include "kota/ipc/codec/bincode.h"
 #include "kota/ipc/peer.h"
 #include "kota/ipc/transport.h"
+#include "llvm/Support/Regex.h"
 #include "llvm/Support/raw_ostream.h"
 
 namespace clice {
@@ -259,9 +260,25 @@ static worker::ArtifactBuildResult handle_build_pcm(const worker::BuildPCMParams
 
 /// Collect the tidy pass's findings with real per-file locations: unlike
 /// the LSP path, which folds header diagnostics onto their include line,
-/// the CLI reports them where they are.
+/// the CLI reports them where they are. clang-tidy's header-filter
+/// contract is applied here — our diagnostic path has no
+/// ClangTidyDiagnosticConsumer to apply it: main-file findings always
+/// report; a header finding needs HeaderFilterRegex to match (empty =
+/// main file only) and must not match ExcludeHeaderFilterRegex; system
+/// headers report only under SystemHeaders.
 static void collect_tidy_diagnostics(CompilationUnitRef unit,
+                                     const worker::TURunParams& params,
                                      std::vector<worker::TidyDiagnostic>& out) {
+    auto main_fid = unit.interested_file();
+    std::optional<llvm::Regex> keep;
+    if(!params.tidy_header_filter.empty()) {
+        keep.emplace(params.tidy_header_filter);
+    }
+    std::optional<llvm::Regex> drop;
+    if(!params.tidy_exclude_header_filter.empty()) {
+        drop.emplace(params.tidy_exclude_header_filter);
+    }
+
     for(const auto& raw: unit.diagnostics()) {
         if(raw.id.source != DiagnosticSource::ClangTidy ||
            raw.id.level == DiagnosticLevel::Ignored) {
@@ -270,13 +287,25 @@ static void collect_tidy_diagnostics(CompilationUnitRef unit,
         if(raw.fid.isInvalid() || !raw.range.valid()) {
             continue;
         }
+        auto file = unit.file_path(raw.fid);
+        if(raw.fid != main_fid) {
+            if(raw.in_system && !params.tidy_system_headers) {
+                continue;
+            }
+            if(!keep || !keep->match(file)) {
+                continue;
+            }
+            if(drop && drop->match(file)) {
+                continue;
+            }
+        }
         feature::LineMap map(unit.file_content(raw.fid), feature::PositionEncoding::UTF8);
         auto range = feature::to_range(map, raw.range);
         if(!range) {
             continue;
         }
         out.push_back({
-            .file = std::string(unit.file_path(raw.fid)),
+            .file = std::string(file),
             .line = range->start.line + 1,
             .column = range->start.character + 1,
             .error =
@@ -306,6 +335,7 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
                                    .options = params.tidy_options,
                                    .warnings_as_errors = params.tidy_warnings_as_errors,
                                    .header_filter = params.tidy_header_filter,
+                                   .exclude_header_filter = params.tidy_exclude_header_filter,
                                    .system_headers = params.tidy_system_headers,
                                    .extra_args = params.tidy_extra_args,
                                    .extra_args_before = params.tidy_extra_args_before};
@@ -333,7 +363,7 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
     }
     auto index_ms = index_timer.ms();
     if(params.tidy) {
-        collect_tidy_diagnostics(unit, result.tidy_diagnostics);
+        collect_tidy_diagnostics(unit, params, result.tidy_diagnostics);
     }
 
     // AST teardown for a large TU is material work that belongs to this

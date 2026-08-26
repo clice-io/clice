@@ -67,6 +67,11 @@ struct Diagnostic {
     /// The file location of this diagnostic.
     clang::FileID fid;
 
+    /// Whether the location sits in a system header — captured at
+    /// creation for clang-tidy's SystemHeaders filter, applied at
+    /// collection time where no SourceManager is at hand.
+    bool in_system = false;
+
     /// The source range of this diagnostic(may be invalid, if this diagnostic
     /// is from command line. e.g. unknown command line argument).
     LocalSourceRange range;

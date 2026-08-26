@@ -47,6 +47,10 @@ struct TidyParams {
     /// HeaderFilterRegex; empty = main file only).
     std::string header_filter;
 
+    /// Headers excluded from reporting even when header_filter matches
+    /// (clang-tidy's ExcludeHeaderFilterRegex).
+    std::string exclude_header_filter;
+
     /// Also report findings in system headers.
     bool system_headers = false;
 

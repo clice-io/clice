@@ -234,6 +234,15 @@ struct Workspace {
     /// declarations change.
     llvm::DenseMap<std::uint32_t, std::string> path_to_module;
 
+    /// Module name → TUs whose precise scans imported it, resolved or
+    /// not. An unresolved import leaves no graph edge (there is no node
+    /// to edge to), so when a name's first provider appears — a CDB
+    /// reload or a save introducing the interface — this is the only
+    /// record of who failed against it and must recompile/reindex.
+    /// Entries are only ever appended; a TU that dropped an import may
+    /// see one spurious reindex when that provider later appears.
+    llvm::StringMap<llvm::SmallVector<std::uint32_t, 2>> module_importers;
+
     /// PCH cache, keyed by content key (preamble text + canonical flags),
     /// so files with identical preambles share one PCH.  Hot-path mirror
     /// of CacheStore state; blob paths come from the store.

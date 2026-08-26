@@ -52,24 +52,46 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, std::uint32_t pat
 
     auto file_path = std::string(workspace.path_pool.resolve(path_id));
 
-    // For module interface units, wait on the unit's own PCM node first:
-    // its round builds the transitive imports and registers their
-    // artifacts, so the stateless worker below has what it needs. An
-    // ordinary TU in a module project waits on its imports the same way —
-    // the fill_pcm_deps snapshot below would otherwise race a cold build
-    // and parse without the module files. A failed PCM build is not
-    // terminal here — the parse consumes whatever artifacts landed and
-    // the worker reports its own failure if they are not enough.
-    if(workspace.path_to_module.contains(path_id)) {
-        if(co_await ctx.depend({pcm_family, path_id}) == DependResult::Cancelled) {
-            landed[path_id] = {.verdict = Verdict::Preempted};
-            co_return RoundOutcome::Stale;
+    // A module interface unit waits on its own PCM node — that round
+    // builds the transitive imports and registers their artifacts. An
+    // ordinary TU waits on its imports the same way: the fill_pcm_deps
+    // snapshot below would otherwise race a cold build and parse without
+    // the module files. A failed PCM build is not terminal on either
+    // shape — the parse consumes whatever artifacts landed and the
+    // worker reports its own failure if they are not enough.
+    if(!workspace.path_to_module.empty()) {
+        llvm::SmallVector<std::uint32_t> deps;
+        if(workspace.path_to_module.contains(path_id)) {
+            deps.push_back(path_id);
+        } else {
+            deps = pcm.direct_deps(path_id);
         }
-    } else if(!workspace.path_to_module.empty()) {
-        for(auto dep: pcm.direct_deps(path_id)) {
-            if(co_await ctx.depend({pcm_family, dep}) == DependResult::Cancelled) {
-                landed[path_id] = {.verdict = Verdict::Preempted};
-                co_return RoundOutcome::Stale;
+
+        // Scanner truth outlives the run: committed as durable edges even
+        // when the run or a build fails, so fixing an import re-dirties
+        // this TU — the invalidator reaches closed TUs through these
+        // edges alone (the include reverse map carries no import edges).
+        llvm::SmallVector<NodeId, 8> ids;
+        for(auto dep: deps) {
+            ids.push_back({pcm_family, dep});
+        }
+        graph.declare(node(path_id), ids);
+
+        // On-disk PCM blobs can be LRU-evicted while their nodes stay
+        // clean; re-dirty evicted ones so depend() rebuilds instead of
+        // handing the worker a dead path. Bounded: a rebuild can itself
+        // evict under budget pressure, and past the bound the parse fails
+        // visibly on the missing file.
+        for(int attempt = 0; attempt < 3; attempt += 1) {
+            bool any_evicted = pcm.revalidate_blobs();
+            if(attempt > 0 && !any_evicted) {
+                break;
+            }
+            for(auto dep: deps) {
+                if(co_await ctx.depend({pcm_family, dep}) == DependResult::Cancelled) {
+                    landed[path_id] = {.verdict = Verdict::Preempted};
+                    co_return RoundOutcome::Stale;
+                }
             }
         }
     }
@@ -82,6 +104,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, std::uint32_t pat
     params.tidy_options = std::move(plan.tidy_params.options);
     params.tidy_warnings_as_errors = std::move(plan.tidy_params.warnings_as_errors);
     params.tidy_header_filter = std::move(plan.tidy_params.header_filter);
+    params.tidy_exclude_header_filter = std::move(plan.tidy_params.exclude_header_filter);
     params.tidy_system_headers = plan.tidy_params.system_headers;
     params.tidy_extra_args = std::move(plan.tidy_params.extra_args);
     params.tidy_extra_args_before = std::move(plan.tidy_params.extra_args_before);

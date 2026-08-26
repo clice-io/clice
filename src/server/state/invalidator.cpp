@@ -5,6 +5,7 @@
 #include "sched/families/pcm.h"
 
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/Support/MemoryBuffer.h"
 
 namespace clice {
@@ -57,6 +58,25 @@ void Invalidator::cascade_compile_graph(std::uint32_t path_id, DirtySet& dirty) 
     }
 }
 
+void Invalidator::dirty_new_provider(llvm::StringRef module_name, DirtySet& dirty) {
+    auto it = workspace.module_importers.find(module_name);
+    if(it == workspace.module_importers.end()) {
+        return;
+    }
+    for(auto importer: it->second) {
+        // The importer compiled and indexed against the unresolved name:
+        // its rows lack the module's symbols and its dep snapshot never
+        // named the interface, so the content-hash gate would filter a
+        // DepsOnly reindex — ContentChanged bypasses it.
+        if(store.find(importer)) {
+            dirty.mark_ast_dirty.push_back(importer);
+        }
+        dirty.drop_index.push_back(importer);
+        dirty.add_reindex_content_changed(importer);
+        cascade_compile_graph(importer, dirty);
+    }
+}
+
 void Invalidator::cascade_disk_content_change(std::uint32_t path_id, DirtySet& dirty) {
     // The file's own self-containment may have changed; re-evaluate on its
     // next compile.
@@ -73,8 +93,19 @@ void Invalidator::cascade_disk_content_change(std::uint32_t path_id, DirtySet& d
     // Rescan disk state (include edges, module declaration); then cascade
     // through the module graph — importers' build products went stale, and
     // the cascade names every affected module unit.
+    auto old_module = workspace.path_to_module.lookup(path_id);
     workspace.rescan_after_save(path_id);
     cascade_compile_graph(path_id, dirty);
+
+    // A save that introduced a module declaration may have given the name
+    // its first provider: importers that failed against the unresolved
+    // name hold no graph edge for the cascade above to travel, so they
+    // are found through the scan-time import record instead.
+    if(auto it = workspace.path_to_module.find(path_id);
+       it != workspace.path_to_module.end() && it->second != old_module &&
+       workspace.dep_graph.lookup_module(it->second).size() == 1) {
+        dirty_new_provider(it->second, dirty);
+    }
 
     // The new content is a compile input of every TU that transitively
     // includes it: open dependents recompile, closed ones reindex so
@@ -287,6 +318,13 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // TODO: this scan runs synchronously on the event loop (same
                 // cost as the startup scan); if it shows up on large
                 // projects, move it off the dispatch path.
+                llvm::StringSet<> had_providers;
+                for(auto& entry: workspace.dep_graph.modules()) {
+                    if(!entry.getValue().empty()) {
+                        had_providers.insert(entry.getKey());
+                    }
+                }
+
                 workspace.dep_graph = DependencyGraph();
                 scan_dependency_graph(workspace.cdb,
                                       workspace.toolchain,
@@ -302,6 +340,16 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 workspace.path_to_module.clear();
                 workspace.build_module_map();
                 workspace.context_epoch += 1;
+
+                // A module name that just gained its first provider: TUs
+                // that imported it unresolved hold no graph edge to
+                // cascade through (nothing existed to edge to), so the
+                // delta walk below cannot reach them.
+                for(auto& entry: workspace.dep_graph.modules()) {
+                    if(!entry.getValue().empty() && !had_providers.contains(entry.getKey())) {
+                        dirty_new_provider(entry.getKey(), dirty);
+                    }
+                }
 
                 // Every delta entry needs the same treatment — the compile
                 // command is an input that content-based staleness cannot

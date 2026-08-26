@@ -41,10 +41,29 @@ llvm::SmallVector<std::uint32_t> PCMFamily::direct_deps(std::uint32_t path_id,
     workspace.toolchain.resolve_or_warn(results[0]);
 
     auto& cmd = results[0];
-    auto scan_result = scan_precise(cmd.to_argv(), cmd.resolved.directory, content);
+    return direct_deps(path_id, cmd.to_argv(), cmd.resolved.directory, content);
+}
+
+llvm::SmallVector<std::uint32_t> PCMFamily::direct_deps(std::uint32_t path_id,
+                                                        llvm::ArrayRef<const char*> arguments,
+                                                        llvm::StringRef directory,
+                                                        llvm::StringRef content) {
+    auto scan_result = scan_precise(arguments, directory, content);
+
+    // Every name the scan produced is recorded, resolved or not: an
+    // unresolved import leaves no graph edge (there is no node to edge
+    // to), and this record is how the invalidator later finds the TUs to
+    // re-dirty when the name's first provider appears.
+    auto remember = [&](llvm::StringRef name) {
+        auto& importers = workspace.module_importers[name];
+        if(!llvm::is_contained(importers, path_id)) {
+            importers.push_back(path_id);
+        }
+    };
 
     llvm::SmallVector<std::uint32_t> deps;
     for(auto& mod_name: scan_result.modules) {
+        remember(mod_name);
         auto mod_ids = workspace.dep_graph.lookup_module(mod_name);
         if(!mod_ids.empty()) {
             deps.push_back(mod_ids[0]);
@@ -53,6 +72,7 @@ llvm::SmallVector<std::uint32_t> PCMFamily::direct_deps(std::uint32_t path_id,
 
     // Module implementation units implicitly depend on their interface unit.
     if(!scan_result.module_name.empty() && !scan_result.is_interface_unit) {
+        remember(scan_result.module_name);
         auto mod_ids = workspace.dep_graph.lookup_module(scan_result.module_name);
         if(!mod_ids.empty()) {
             deps.push_back(mod_ids[0]);
@@ -273,7 +293,14 @@ bool PCMFamily::revalidate_blobs() {
         }
     }
     for(auto pid: evicted) {
-        invalidate(pid);
+        // Artifact tier only: the blob vanished, its content did not, so
+        // importers' landed results stay valid. A full invalidate() here
+        // would void the very consumer round that is revalidating before
+        // rebuilding its imports — under a cache budget smaller than the
+        // working set, that voids and respawns the waiter forever.
+        graph.mark_dirty(node(pid));
+        workspace.pcm_paths.erase(pid);
+        workspace.pcm_cache.erase(pid);
     }
     return !evicted.empty();
 }

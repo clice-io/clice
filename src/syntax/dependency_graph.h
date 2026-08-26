@@ -58,6 +58,12 @@ public:
     /// Register a module interface unit: module name -> PathID.
     void add_module(llvm::StringRef module_name, std::uint32_t path_id);
 
+    /// Re-register a file's module declaration after a save: the file
+    /// leaves whatever module it declared before and, when `module_name`
+    /// is non-empty, provides that one — so imports resolved between two
+    /// full scans see the declaration the disk actually holds.
+    void update_module_decl(std::uint32_t path_id, llvm::StringRef module_name);
+
     /// Look up all PathIDs that provide a given module (may have multiple candidates).
     llvm::ArrayRef<std::uint32_t> lookup_module(llvm::StringRef module_name) const;
 

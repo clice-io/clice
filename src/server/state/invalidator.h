@@ -214,10 +214,6 @@ public:
     /// Kick the background indexer's scheduler.
     bool reschedule_indexing = false;
 
-    /// A CDB reload may have introduced the first C++20 modules; create the
-    /// compile graph if it does not exist yet. Executed by the dispatcher,
-    /// which owns the Compiler.
-
     bool empty() const {
         return mark_ast_dirty.empty() && mark_lost.empty() && reset_trial.empty() &&
                reset_header_mode.empty() && force_revalidate.empty() &&
@@ -277,6 +273,11 @@ private:
     /// Cascade a module unit's compile-graph invalidation (PCM caches,
     /// dependent module units), splitting dirtied units open/closed.
     void cascade_compile_graph(std::uint32_t path_id, DirtySet& dirty);
+
+    /// A module name just gained its first provider: re-dirty the TUs
+    /// recorded as importing it while it was unresolved — they hold no
+    /// graph edge the ordinary cascades could travel.
+    void dirty_new_provider(llvm::StringRef module_name, DirtySet& dirty);
 
     /// See the definition: the open/closed/index-only split of a
     /// dependency invalidation.

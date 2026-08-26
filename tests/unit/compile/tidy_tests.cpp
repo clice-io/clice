@@ -79,7 +79,8 @@ TEST_CASE(ResolveConfigChain) {
     tmp.touch(".clang-tidy",
               "Checks: '-*,bugprone-*'\n"
               "WarningsAsErrors: 'bugprone-*'\n"
-              "HeaderFilterRegex: '.*'\n");
+              "HeaderFilterRegex: '.*'\n"
+              "ExcludeHeaderFilterRegex: 'third_party/.*'\n");
     tmp.touch("sub/.clang-tidy", "InheritParentConfig: true\nChecks: 'modernize-*'\n");
     tmp.touch("sub/a.cpp");
 
@@ -94,6 +95,7 @@ TEST_CASE(ResolveConfigChain) {
     ASSERT_FALSE(parent.checks.contains("modernize-*"));
     ASSERT_EQ(parent.warnings_as_errors, "bugprone-*");
     ASSERT_EQ(parent.header_filter, ".*");
+    ASSERT_EQ(parent.exclude_header_filter, "third_party/.*");
 }
 
 TEST_CASE(ResolveWithoutConfig) {

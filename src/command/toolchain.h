@@ -1,8 +1,10 @@
 #pragma once
 
+#include <chrono>
 #include <expected>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "support/object_pool.h"
@@ -33,7 +35,11 @@ enum class CompilerFamily {
 /// the query and are re-appended from the original command after resolution.
 class Toolchain {
 public:
-    Toolchain();
+    /// `failed_retry` bounds the negative cache: a failed key is retried
+    /// once the cooldown passes (cf. CrashBudget), so a transient driver
+    /// failure — an upgrade replacing the binary mid-stat, a full tmpfs —
+    /// cannot poison the key for the rest of the session.
+    explicit Toolchain(std::chrono::steady_clock::duration failed_retry = std::chrono::seconds(30));
     ~Toolchain();
 
     Toolchain(Toolchain&&) = default;
@@ -102,10 +108,14 @@ private:
     StringSet strings;
     llvm::StringMap<std::vector<const char*>> cache;
 
-    /// Negative cache: keys whose query failed, mapped to the error message.
-    /// Avoids re-spawning the same failing driver probe for every file that
-    /// shares the key (see clangd's SystemIncludeExtractor for precedent).
-    llvm::StringMap<std::string> failed;
+    /// Negative cache: keys whose query failed, mapped to the error message
+    /// and when it was recorded. Avoids re-spawning the same failing driver
+    /// probe for every file that shares the key (see clangd's
+    /// SystemIncludeExtractor for precedent); expires after `failed_retry`
+    /// so a transient failure is not cached for the session's lifetime.
+    llvm::StringMap<std::pair<std::string, std::chrono::steady_clock::time_point>> failed;
+
+    std::chrono::steady_clock::duration failed_retry;
 };
 
 }  // namespace clice

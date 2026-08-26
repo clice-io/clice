@@ -231,6 +231,62 @@ TEST_CASE(second_request_skips) {
     });
 }
 
+TEST_CASE(artifact_dirty_no_cascade) {
+    // The eviction tier: the marked node alone rebuilds on next demand.
+    // Dependents stay clean — they consumed the content, which did not
+    // change — so a later request through them touches nothing.
+    make_graph();
+    Adjacency adj;
+    adj[a(1)] = {a(2)};
+    graph->register_family(FamA, instant(adj));
+
+    Probe warm, hit, rebuild;
+    execute([&]() -> kota::task<> {
+        co_await run_request(a(1), warm);
+        CO_ASSERT_EQ(ran.size(), std::size_t(2));
+
+        graph->mark_dirty(a(2));
+        CO_ASSERT_TRUE(graph->is_dirty(a(2)));
+        CO_ASSERT_FALSE(graph->is_dirty(a(1)));
+
+        co_await run_request(a(1), hit);
+        CO_ASSERT_EQ(ran.size(), std::size_t(2));
+
+        co_await run_request(a(2), rebuild);
+        CO_ASSERT_EQ(ran.size(), std::size_t(3));
+        EXPECT_TRUE(ran.back() == a(2));
+        EXPECT_FALSE(graph->is_dirty(a(2)));
+    });
+    EXPECT_TRUE(warm.outcome == JoinOutcome::Success);
+    EXPECT_TRUE(hit.outcome == JoinOutcome::Success);
+    EXPECT_TRUE(rebuild.outcome == JoinOutcome::Success);
+}
+
+TEST_CASE(artifact_dirty_inflight_lands) {
+    // Marking while a round is in flight neither voids nor re-runs it:
+    // the round is already producing the fresh artifact, and its landing
+    // clears the flag it finds set.
+    make_graph();
+    ManualFamily mf;
+    graph->register_family(FamA, mf.runner());
+
+    Probe probe;
+    execute([&]() -> kota::task<> {
+        auto driver = [&]() -> kota::task<> {
+            co_await mf.gate(a(1)).started.wait();
+            graph->mark_dirty(a(1));
+            mf.open({a(1)});
+            co_return;
+        };
+
+        co_await kota::when_all(run_request(a(1), probe), driver());
+
+        EXPECT_TRUE(probe.outcome == JoinOutcome::Success);
+        EXPECT_EQ(mf.gate(a(1)).calls, 1);
+        EXPECT_FALSE(graph->is_dirty(a(1)));
+    });
+}
+
 TEST_CASE(concurrent_requests_share) {
     // Two concurrent requests for the same node join one round: a single
     // dispatch serves both.

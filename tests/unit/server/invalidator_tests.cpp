@@ -66,6 +66,38 @@ TEST_CASE(EmptyBatchNoEffects) {
     ASSERT_TRUE(dirty.empty());
 }
 
+TEST_CASE(NewProviderDirtiesImporters) {
+    // A change that gives a module name its first provider re-dirties the
+    // TUs recorded as importing it while it was unresolved: they hold no
+    // graph edge for the ordinary cascades to travel, and their index was
+    // built without the module's symbols (ContentChanged, because the dep
+    // snapshot never named the interface either).
+    TempDir tmp;
+    tmp.touch("m.cppm", "export module m;\nexport int mv();\n");
+
+    Workspace workspace;
+    SessionStore store;
+    auto iface = workspace.path_pool.intern(tmp.path("m.cppm"));
+    auto importer = workspace.path_pool.intern("/proj/main.cpp");
+    workspace.module_importers["m"].push_back(importer);
+
+    ContextResolver resolver(workspace);
+    PCMHarness ph(workspace, resolver);
+    Invalidator invalidator(workspace, store, resolver, ph.pcm);
+
+    FileEvent events[] = {FileEvent::disk_changed(iface)};
+    auto dirty = invalidator.apply(events);
+
+    EXPECT_TRUE(llvm::is_contained(dirty.drop_index, importer));
+    EXPECT_TRUE(llvm::is_contained(dirty.reindex_content_changed, importer));
+
+    // The same save again: the name already has its provider, importers
+    // are not re-dirtied.
+    auto again = invalidator.apply(events);
+    EXPECT_FALSE(llvm::is_contained(again.drop_index, importer));
+    EXPECT_FALSE(llvm::is_contained(again.reindex_content_changed, importer));
+}
+
 TEST_CASE(NoOpEventsNoEffects) {
     Workspace workspace;
     SessionStore store;

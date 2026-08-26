@@ -69,7 +69,10 @@ public:
 
     /// Mark a module unit and its transitive importers dirty, voiding
     /// in-flight rounds and dropping their cached PCM state — the single
-    /// write point for PCM invalidation. Returns the dirtied path_ids.
+    /// write point for PCM content invalidation. Artifact-only loss
+    /// (cache eviction) goes through revalidate_blobs' graph.mark_dirty
+    /// instead: no cascade, importers' results still describe unchanged
+    /// content. Returns the dirtied path_ids.
     llvm::SmallVector<std::uint32_t> invalidate(std::uint32_t path_id);
 
     /// Invoked after a PCM lands so background indexing can pick up the
@@ -85,6 +88,16 @@ public:
     /// buffer's imports count before they are saved).
     llvm::SmallVector<std::uint32_t> direct_deps(std::uint32_t path_id,
                                                  llvm::StringRef content = {});
+
+    /// The already-resolved-command flavor: scans under exactly the
+    /// arguments the caller will compile with. The AST path uses it so a
+    /// context choice or donated header host cannot diverge between the
+    /// scan and the parse — the path_id flavor re-picks a CDB entry,
+    /// which is only right for whole-TU runs on real commands.
+    llvm::SmallVector<std::uint32_t> direct_deps(std::uint32_t path_id,
+                                                 llvm::ArrayRef<const char*> arguments,
+                                                 llvm::StringRef directory,
+                                                 llvm::StringRef content);
 
 private:
     /// Commit the resolved imports as the unit's durable edges (see

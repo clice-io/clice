@@ -480,6 +480,8 @@ TEST_CASE(BufferImportBuildsPCM) {
     auto mod_ids = stack.workspace.dep_graph.lookup_module("m");
     ASSERT_FALSE(mod_ids.empty());
     EXPECT_TRUE(stack.workspace.pcm_cache.contains(mod_ids[0]));
+    // The scan-time import record feeds new-provider invalidation.
+    EXPECT_TRUE(stack.workspace.module_importers.contains("m"));
 }
 
 };  // TEST_SUITE(ASTFamilyGuards)

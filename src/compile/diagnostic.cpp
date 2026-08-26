@@ -251,6 +251,10 @@ public:
             auto [fid, range] = *pair;
             diagnostic.fid = fid;
             diagnostic.range = range;
+            if(raw_diagnostic.hasSourceManager()) {
+                diagnostic.in_system = raw_diagnostic.getSourceManager().isInSystemHeader(
+                    raw_diagnostic.getLocation());
+            }
         }
 
         if(unit->checker) {

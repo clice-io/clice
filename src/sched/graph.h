@@ -194,6 +194,17 @@ public:
     /// of nodes that were marked dirty.
     llvm::SmallVector<NodeId> update(NodeId id);
 
+    /// The artifact tier of invalidation: the node's landed verdict is
+    /// still true of its inputs — only its on-disk product vanished
+    /// (cache eviction). Marks the node alone so the next depend or
+    /// request rebuilds it: no dependent cascade (dependents consumed
+    /// the content, which did not change) and no round voiding (an
+    /// in-flight round is already producing a fresh artifact). Content
+    /// changes stay with update() — cascading eviction would void the
+    /// very consumer round waiting to rebuild the import, and a working
+    /// set larger than the cache budget would spin that waiter forever.
+    void mark_dirty(NodeId id);
+
     /// Commit `deps` as the durable edge set of `id` without running a
     /// round — the no-round counterpart of a successful round's candidate
     /// promotion. Facades use it for topology that is scanner truth

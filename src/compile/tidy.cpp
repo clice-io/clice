@@ -148,6 +148,9 @@ tidy::ClangTidyOptions create_options(const TidyParams& params) {
     if(!params.header_filter.empty()) {
         opts.HeaderFilterRegex = params.header_filter;
     }
+    if(!params.exclude_header_filter.empty()) {
+        opts.ExcludeHeaderFilterRegex = params.exclude_header_filter;
+    }
     if(params.system_headers) {
         opts.SystemHeaders = true;
     }
@@ -439,6 +442,7 @@ TidyParams resolve_tidy_params(llvm::StringRef file) {
     std::ranges::sort(params.options);
     params.warnings_as_errors = opts.WarningsAsErrors.value_or(std::string());
     params.header_filter = opts.HeaderFilterRegex.value_or(std::string());
+    params.exclude_header_filter = opts.ExcludeHeaderFilterRegex.value_or(std::string());
     params.system_headers = opts.SystemHeaders.value_or(false);
     params.extra_args = opts.ExtraArgs.value_or(std::vector<std::string>());
     params.extra_args_before = opts.ExtraArgsBefore.value_or(std::vector<std::string>());

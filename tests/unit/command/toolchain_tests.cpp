@@ -1,6 +1,8 @@
 #include <algorithm>
+#include <chrono>
 #include <optional>
 
+#include "test/temp_dir.h"
 #include "test/test.h"
 #include "command/argument_parser.h"
 #include "command/command.h"
@@ -399,6 +401,46 @@ TEST_CASE(QueryFakeDriver, skip = Windows) {
                                          "x86_64-unknown-linux-gnu",
                                          "-std=c++23"};
     EXPECT_EQ(*result, expected);
+}
+
+TEST_CASE(FailedQueryRetries, skip = Windows) {
+    // A transient driver failure must not poison the key for the session:
+    // the negative cache expires after the retry cooldown, and the next
+    // resolve re-queries the real driver.
+    TempDir tmp;
+    auto driver = tmp.path("cc.clang");
+    auto src = tmp.path("a.cpp");
+    auto script = "#!/bin/sh\necho '" + std::string(fake_cc1_line) + "' >&2\n";
+
+    Toolchain eager(std::chrono::seconds(0));
+    CompileCommand cmd;
+    cmd.source_file = src.c_str();
+    cmd.resolved.flags = {driver.c_str(), "-std=c++23"};
+
+    ASSERT_FALSE(eager.resolve(cmd).has_value());
+    EXPECT_EQ(eager.failed_size(), std::size_t(1));
+
+    // The driver appears; the expired entry re-queries and succeeds.
+    ASSERT_TRUE(fs::write(driver, script));
+    ASSERT_TRUE(!fs::setPermissions(driver, fs::all_read | fs::all_exe));
+    ASSERT_TRUE(eager.resolve(cmd).has_value());
+    EXPECT_EQ(eager.failed_size(), std::size_t(0));
+    EXPECT_TRUE(eager.has_cache());
+
+    // Control: within the cooldown the cached failure replays untouched
+    // even after the driver appears.
+    auto late = tmp.path("cc2.clang");
+    Toolchain patient;
+    CompileCommand cmd2;
+    cmd2.source_file = src.c_str();
+    cmd2.resolved.flags = {late.c_str(), "-std=c++23"};
+
+    ASSERT_FALSE(patient.resolve(cmd2).has_value());
+    ASSERT_TRUE(fs::write(late, script));
+    ASSERT_TRUE(!fs::setPermissions(late, fs::all_read | fs::all_exe));
+    ASSERT_FALSE(patient.resolve(cmd2).has_value());
+    EXPECT_EQ(patient.failed_size(), std::size_t(1));
+    EXPECT_FALSE(patient.has_cache());
 }
 
 TEST_CASE(WarmPartialFailure, skip = Windows) {

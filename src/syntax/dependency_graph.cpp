@@ -28,6 +28,17 @@ void DependencyGraph::add_module(llvm::StringRef module_name, std::uint32_t path
     }
 }
 
+void DependencyGraph::update_module_decl(std::uint32_t path_id, llvm::StringRef module_name) {
+    // An emptied name stays behind as an empty provider list — lookup
+    // treats it the same as absent.
+    for(auto& entry: module_to_path) {
+        llvm::erase(entry.getValue(), path_id);
+    }
+    if(!module_name.empty()) {
+        add_module(module_name, path_id);
+    }
+}
+
 llvm::ArrayRef<std::uint32_t> DependencyGraph::lookup_module(llvm::StringRef module_name) const {
     auto it = module_to_path.find(module_name);
     if(it != module_to_path.end()) {
