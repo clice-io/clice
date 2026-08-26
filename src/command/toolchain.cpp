@@ -82,6 +82,15 @@ kota::task<std::expected<std::string, std::string>>
     opts.cwd = directory.str();
 #ifndef _WIN32
     opts.env = process_env();
+    /// getcwd() in the child is `directory`, but an inherited PWD still names
+    /// clice's launch directory. A shell re-derives PWD at startup, so only a
+    /// wrapper that reads it without being one — a script in another language, a
+    /// compiled shim — sees the stale value, and it would resolve its relative
+    /// paths where the recorded build never ran.
+    if(!directory.empty()) {
+        std::erase_if(opts.env, [](llvm::StringRef entry) { return entry.starts_with("PWD="); });
+        opts.env.emplace_back("PWD=" + directory.str());
+    }
 #endif
     opts.streams = {
         kota::process::stdio::ignore(),
@@ -265,23 +274,30 @@ kota::task<std::expected<GCCToolchainFlags, std::string>>
 /// The directory a probe will actually run in. A CDB outlives the build
 /// directory it names, and spawning in one that is gone fails, so an unusable
 /// directory degrades to the clice process cwd — what every query used before.
+///
+/// Callers decide once and pass the result to both the cache key and the probe:
+/// deciding twice lets a directory that appears or vanishes in between store a
+/// probe's result under a key describing the other case.
 llvm::StringRef usable_directory(llvm::StringRef directory) {
     if(directory.empty() || fs::is_directory(directory))
         return directory;
     return {};
 }
 
+/// Announce a degraded directory where a probe is about to run, so the warning
+/// stays one per probe rather than one per command resolved.
+void warn_if_degraded(llvm::StringRef requested, llvm::StringRef effective) {
+    if(effective.empty() && !requested.empty())
+        LOG_WARN("Working directory {} is unusable; querying from the process cwd", requested);
+}
+
+/// `directory` is already vetted by `usable_directory`.
 kota::task<std::expected<std::vector<std::string>, std::string>>
     query_one(llvm::ArrayRef<const char*> arguments,
               llvm::StringRef file,
               llvm::StringRef directory) {
     if(arguments.empty())
         co_return std::unexpected(std::string("Empty arguments"));
-
-    if(auto usable = usable_directory(directory); usable.empty() && !directory.empty()) {
-        LOG_WARN("Working directory {} is unusable; querying from the process cwd", directory);
-        directory = usable;
-    }
 
     llvm::StringRef driver = arguments[0];
 
@@ -706,10 +722,12 @@ CompilerFamily Toolchain::driver_family(llvm::StringRef driver) {
     return try_get(name);
 }
 
-std::expected<std::vector<std::string>, std::string>
-    Toolchain::query(llvm::ArrayRef<const char*> arguments,
-                     llvm::StringRef file,
-                     llvm::StringRef directory) {
+/// Run one query to completion on a private loop. `directory` must already be
+/// vetted; the public entry point below is what vets it.
+static std::expected<std::vector<std::string>, std::string>
+    run_query_one(llvm::ArrayRef<const char*> arguments,
+                  llvm::StringRef file,
+                  llvm::StringRef directory) {
     std::expected<std::vector<std::string>, std::string> result;
     kota::event_loop loop;
     auto task = [&]() -> kota::task<> {
@@ -718,6 +736,15 @@ std::expected<std::vector<std::string>, std::string>
     loop.schedule(task());
     loop.run();
     return result;
+}
+
+std::expected<std::vector<std::string>, std::string>
+    Toolchain::query(llvm::ArrayRef<const char*> arguments,
+                     llvm::StringRef file,
+                     llvm::StringRef directory) {
+    auto usable = usable_directory(directory);
+    warn_if_degraded(directory, usable);
+    return run_query_one(arguments, file, usable);
 }
 
 /// Whether the command targets windows-gnu: an explicit target flag wins
@@ -764,11 +791,9 @@ Toolchain::ToolchainExtract Toolchain::extract_flags(llvm::StringRef file,
     /// Keyed unconditionally rather than detected: a wrong detection silently
     /// shares one entry between directories that need different flags.
     ///
-    /// Keyed on the directory the probe will really use: an unusable one degrades
-    /// to the process cwd, and nothing clears this cache within a session, so
-    /// keying the request would keep serving that degraded result once the
-    /// directory reappears.
-    result.key += usable_directory(directory);
+    /// Callers pass the directory already vetted by `usable_directory`, so the
+    /// key describes where the probe will really run.
+    result.key += directory;
     result.key += '\0';
     result.key += arguments[0];
     result.key += '\0';
@@ -818,12 +843,25 @@ Toolchain::ToolchainExtract Toolchain::extract_flags(llvm::StringRef file,
     return result;
 }
 
+#ifdef CLICE_ENABLE_TEST
+
+std::string Toolchain::cache_key(llvm::StringRef file,
+                                 llvm::ArrayRef<const char*> arguments,
+                                 llvm::StringRef directory) {
+    return extract_flags(file, arguments, usable_directory(directory)).key;
+}
+
+#endif
+
 std::expected<void, std::string> Toolchain::resolve(CompileCommand& cmd) {
     if(cmd.resolved.flags.empty())
         return std::unexpected("empty flags");
 
+    /// Decided once: the key and the probe must name the same directory.
+    auto directory = usable_directory(cmd.resolved.directory);
+
     auto [key, query_args, preserve_external_resource] =
-        extract_flags(cmd.source_file, cmd.resolved.flags, cmd.resolved.directory);
+        extract_flags(cmd.source_file, cmd.resolved.flags, directory);
 
     auto it = cache.find(key);
     if(it == cache.end()) {
@@ -831,8 +869,9 @@ std::expected<void, std::string> Toolchain::resolve(CompileCommand& cmd) {
             return std::unexpected(failed_it->second);
 
         LOG_WARN("Toolchain cache miss: file={}", cmd.source_file);
+        warn_if_degraded(cmd.resolved.directory, directory);
 
-        auto result = query(query_args, cmd.source_file, cmd.resolved.directory);
+        auto result = run_query_one(query_args, cmd.source_file, directory);
         if(!result) {
             failed.try_emplace(key, result.error());
             return std::unexpected(std::move(result.error()));
@@ -924,15 +963,23 @@ void Toolchain::warm(llvm::ArrayRef<CompileCommand> commands) {
         if(cmd.resolved.flags.empty())
             continue;
 
-        auto extract = extract_flags(cmd.source_file, cmd.resolved.flags, cmd.resolved.directory);
+        /// Decided once, then carried to the probe: a bounded warm() can queue
+        /// this entry for a while, and re-deciding inside the puller would let a
+        /// directory that appeared or vanished meanwhile store its result under a
+        /// key describing the other case.
+        auto directory = usable_directory(cmd.resolved.directory);
+
+        auto extract = extract_flags(cmd.source_file, cmd.resolved.flags, directory);
         auto& key = extract.key;
         if(cache.count(key) || failed.count(key) || !seen.try_emplace(key, true).second)
             continue;
 
+        warn_if_degraded(cmd.resolved.directory, directory);
+
         pending.push_back({.key = std::move(key),
                            .query_args = std::move(extract.query_args),
                            .file = cmd.source_file,
-                           .directory = cmd.resolved.directory});
+                           .directory = directory});
     }
 
     if(pending.empty())

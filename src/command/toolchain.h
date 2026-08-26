@@ -87,12 +87,11 @@ public:
 
 #ifdef CLICE_ENABLE_TEST
 
-    /// Compute the cache key for the given file and driver-level arguments.
+    /// Compute the cache key for the given file and driver-level arguments,
+    /// vetting `directory` the way resolve() does.
     std::string cache_key(llvm::StringRef file,
                           llvm::ArrayRef<const char*> arguments,
-                          llvm::StringRef directory = {}) {
-        return extract_flags(file, arguments, directory).key;
-    }
+                          llvm::StringRef directory = {});
 
     /// Number of cached toolchain query results.
     std::size_t cache_size() const {
