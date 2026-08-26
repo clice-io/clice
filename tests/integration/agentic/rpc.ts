@@ -228,5 +228,5 @@ export function runCli(
 /// alone.
 export function posix(p: string): string {
     const slashed = p.split(path.sep).join("/");
-    return /^[A-Z]:/.test(slashed) ? slashed[0].toLowerCase() + slashed.slice(1) : slashed;
+    return slashed.replace(/^[A-Z](?=:)/, (drive) => drive.toLowerCase());
 }
