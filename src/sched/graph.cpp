@@ -32,6 +32,10 @@ kota::task<DependResult> RoundContext::depend(NodeId dep) {
     return graph.depend_from(self, tok, dep);
 }
 
+void RoundContext::reference(NodeId dep) {
+    graph.reference_from(self, dep);
+}
+
 bool RoundContext::current() const {
     auto& node = graph.nodes.find(self)->second;
     return node.round->generation == node.generation;
@@ -224,6 +228,21 @@ void TaskGraph::declare(NodeId id, llvm::ArrayRef<NodeId> deps) {
         nodes[dep].id = dep;
     }
     set_durable_edges(id, unique);
+}
+
+void TaskGraph::reference_from(NodeId self, NodeId dep) {
+    if(dep == self) {
+        return;
+    }
+    auto round = nodes.find(self)->second.round;
+    if(!ranges::contains(round->candidates, dep)) {
+        round->candidates.push_back(dep);
+        acquire(dep);
+        nodes.find(dep)->second.candidate_dependents.push_back(self);
+        if(nodes.find(self)->second.foreground) {
+            mark_foreground(dep);
+        }
+    }
 }
 
 kota::task<DependResult> TaskGraph::depend_from(NodeId self,

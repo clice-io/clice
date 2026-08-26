@@ -83,7 +83,7 @@ llvm::SmallVector<NodeId> PCMFamily::provider_appeared(llvm::StringRef name) {
         // Dirtied module units drop their cached PCM state, exactly as
         // invalidate() does for content changes — a PCM built against
         // the unresolved name embeds the failure.
-        if(id.family == pcm_family && (id.key >> 63) == 0) {
+        if(id.family == pcm_family && !is_unresolved(id)) {
             auto pid = static_cast<std::uint32_t>(id.key);
             workspace.pcm_paths.erase(pid);
             workspace.pcm_cache.erase(pid);
@@ -106,6 +106,11 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, std::uint32_t path_id
     // foreground-visible immediately) and waits for the dependency.
     auto deps = direct_deps(path_id);
     declare_deps(path_id, deps.declared);
+    for(auto dep: deps.declared) {
+        if(is_unresolved(dep)) {
+            ctx.reference(dep);
+        }
+    }
     for(auto dep: deps.resolved) {
         switch(co_await ctx.depend(node(dep))) {
             case DependResult::Ready: break;
@@ -253,44 +258,6 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, std::uint32_t path_id
     co_return RoundOutcome::Success;
 }
 
-kota::task<bool> PCMFamily::build(std::uint32_t path_id, bool foreground) {
-    auto outcome = co_await graph.request(node(path_id), {.foreground = foreground});
-    co_return outcome == JoinOutcome::Success;
-}
-
-kota::task<bool> PCMFamily::build_deps(std::uint32_t path_id, bool foreground) {
-    // The dynamic equivalent of the old lazy-graph gate: a project
-    // without module units pays nothing — no CDB lookup, no precise scan.
-    // Unlike the retired startup detection, a CDB reload that introduces
-    // modules mid-session takes effect on the next call.
-    if(workspace.path_to_module.empty()) {
-        co_return true;
-    }
-
-    // Resolved fresh on every call — a stale list must never outlive a
-    // CDB change. The requester itself never runs a round here, but its
-    // consumer edges must live in the graph: a saved module cascades to
-    // the open TUs importing it through them. Declared even when empty,
-    // so a removed import stops cascading. (S6's Ast family will own
-    // these edges through its own rounds' depend().)
-    auto deps = direct_deps(path_id);
-    declare_deps(path_id, deps.declared);
-    if(deps.resolved.empty()) {
-        co_return true;
-    }
-
-    std::vector<kota::task<JoinOutcome>> waits;
-    waits.reserve(deps.resolved.size());
-    for(auto dep: deps.resolved) {
-        waits.push_back(graph.request(node(dep), {.foreground = foreground}));
-    }
-
-    auto results = co_await kota::when_all(std::move(waits));
-    co_return std::ranges::all_of(results, [](JoinOutcome outcome) {
-        return outcome == JoinOutcome::Success;
-    });
-}
-
 bool PCMFamily::revalidate_blobs() {
     llvm::SmallVector<std::uint32_t> evicted;
     for(auto& [pid, pcm_path]: workspace.pcm_paths) {
@@ -311,12 +278,26 @@ bool PCMFamily::revalidate_blobs() {
     return !evicted.empty();
 }
 
-kota::task<bool> PCMFamily::prepare_deps(std::uint32_t path_id, bool foreground) {
-    // The dynamic equivalent of the old lazy-graph gate: a project
-    // without module units pays nothing — no CDB lookup, no precise scan.
-    // Unlike the retired startup detection, a CDB reload that introduces
-    // modules mid-session takes effect on the next call.
+kota::task<bool> PCMFamily::prepare_deps(std::uint32_t path_id,
+                                         llvm::ArrayRef<const char*> arguments,
+                                         llvm::StringRef directory,
+                                         std::optional<llvm::StringRef> content,
+                                         bool foreground) {
+    // A project without module units pays nothing. A CDB reload that
+    // introduces modules mid-session takes effect on the next call.
     if(workspace.path_to_module.empty()) {
+        co_return true;
+    }
+
+    // Resolved fresh on every call — a stale list must never outlive a
+    // CDB change. The requester never runs a round here, but its
+    // consumer edges must live in the graph: a saved module (or a
+    // provider appearing for a sentinel) cascades to the open TUs
+    // importing it through them. Declared even when empty, so a removed
+    // import stops cascading.
+    auto deps = direct_deps(path_id, arguments, directory, content);
+    declare_deps(path_id, deps.declared);
+    if(deps.resolved.empty()) {
         co_return true;
     }
 
@@ -326,7 +307,16 @@ kota::task<bool> PCMFamily::prepare_deps(std::uint32_t path_id, bool foreground)
             break;
         }
 
-        if(!co_await build_deps(path_id, foreground)) {
+        std::vector<kota::task<JoinOutcome>> waits;
+        waits.reserve(deps.resolved.size());
+        for(auto dep: deps.resolved) {
+            waits.push_back(graph.request(node(dep), {.foreground = foreground}));
+        }
+        auto results = co_await kota::when_all(std::move(waits));
+        bool ok = std::ranges::all_of(results, [](JoinOutcome outcome) {
+            return outcome == JoinOutcome::Success;
+        });
+        if(!ok) {
             co_return false;
         }
     }

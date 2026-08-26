@@ -122,11 +122,10 @@ public:
     }
 
     /// Files whose lexer scan saw an import declaration (names unknown —
-    /// lexical text is not a trustworthy source of edges). When a project
-    /// gains its first module providers, every one of them was importing
-    /// unresolved names and must recompile; the precise per-name record
-    /// (Workspace::module_importers) only exists once module code paths
-    /// start scanning.
+    /// lexical text is not a trustworthy source of edges). In a project
+    /// without providers the module code paths skip their precise scans;
+    /// this set is what gates them back on for the files (and, via
+    /// reaches_import, the TUs) where an import could actually hide.
     void set_import_candidate(std::uint32_t path_id, bool has_import) {
         if(has_import) {
             import_candidates_.insert(path_id);
@@ -138,6 +137,11 @@ public:
     const llvm::DenseSet<std::uint32_t>& import_candidates() const {
         return import_candidates_;
     }
+
+    /// Whether the file or anything in its include closure carries
+    /// import syntax — the scan gate for projects without providers.
+    /// O(1) when no file does (the common, module-less case).
+    bool reaches_import(std::uint32_t path_id) const;
 
 private:
     /// Module name -> PathIDs (multiple candidates possible, e.g. different targets).

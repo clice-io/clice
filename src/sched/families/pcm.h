@@ -38,20 +38,18 @@ public:
     /// pcm_family instead.
     void register_runner();
 
-    /// Build a module unit's PCM and all its transitive dependencies.
-    /// `foreground` marks the chain's dispatches High-priority (a user
-    /// request waits on them).
-    kota::task<bool> build(std::uint32_t path_id, bool foreground = false);
-
-    /// Build all transitive module dependencies of path_id, but NOT
-    /// path_id itself — for plain TUs that import modules.
-    kota::task<bool> build_deps(std::uint32_t path_id, bool foreground = false);
-
     /// Re-validate on-disk PCM blobs and build the module dependencies of
-    /// `path_id`. Building dependencies can itself evict another clean
-    /// module's PCM under budget pressure, which reopens the window the
-    /// scan just closed — hence the bounded retry until the set is stable.
-    kota::task<bool> prepare_deps(std::uint32_t path_id, bool foreground = false);
+    /// a request that compiles under `arguments` with `content` as the
+    /// main file (the forwarder's per-request builds — the scan must see
+    /// the buffer's imports under the request's command). Building a
+    /// dependency can itself evict another clean module's PCM under
+    /// budget pressure, which reopens the window the revalidation just
+    /// closed — hence the bounded retry until the set is stable.
+    kota::task<bool> prepare_deps(std::uint32_t path_id,
+                                  llvm::ArrayRef<const char*> arguments,
+                                  llvm::StringRef directory,
+                                  std::optional<llvm::StringRef> content,
+                                  bool foreground);
 
     /// One pass of the on-disk revalidation: LRU eviction can remove a
     /// blob while its node is still clean, so evicted units are
@@ -98,6 +96,11 @@ public:
     /// The high bit keeps the key space disjoint from path_ids.
     static NodeId unresolved_node(llvm::StringRef name) {
         return {pcm_family, (1ull << 63) | (llvm::xxh3_64bits(name) >> 1)};
+    }
+
+    /// Whether a node is an unresolved-import sentinel.
+    static bool is_unresolved(NodeId id) {
+        return id.family == pcm_family && (id.key >> 63) != 0;
     }
 
     /// A module name gained a provider it lacked: void the sentinel's

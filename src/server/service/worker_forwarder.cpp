@@ -161,8 +161,19 @@ kota::task<bool>
     auto path_id = session->path_id;
 
     // A user request waits on these builds: dispatch them High so the
-    // background budget cannot throttle its own foreground.
-    if(!co_await pcm.prepare_deps(path_id, /*foreground=*/true)) {
+    // background budget cannot throttle its own foreground. The scan
+    // runs under the request's command with the buffer as the main file,
+    // so an unsaved `import m;` builds its PCM before the parse needs it.
+    llvm::SmallVector<const char*, 32> argv;
+    argv.reserve(arguments.size());
+    for(auto& arg: arguments) {
+        argv.push_back(arg.c_str());
+    }
+    if(!co_await pcm.prepare_deps(path_id,
+                                  argv,
+                                  directory,
+                                  std::optional<llvm::StringRef>(session->text),
+                                  /*foreground=*/true)) {
         co_return false;
     }
 

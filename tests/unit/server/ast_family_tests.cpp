@@ -517,9 +517,10 @@ TEST_CASE(BufferImportRecorded) {
     stack.loop.run();
     EXPECT_TRUE(done);
 
-    // The scan declared the unresolved name's sentinel edge — the hook
-    // a first provider later cascades through.
-    EXPECT_TRUE(stack.graph.has_node(PCMFamily::unresolved_node("m")));
+    // The sentinel edge survives the landing: a first provider's update
+    // must reach this document's node.
+    auto dirtied = stack.graph.update(PCMFamily::unresolved_node("m"));
+    EXPECT_TRUE(std::ranges::find(dirtied, NodeId{ast_family, session->path_id}) != dirtied.end());
 
     logging::reset_anomaly_for_testing();
 }
@@ -564,7 +565,8 @@ TEST_CASE(IncludeImportRecorded) {
     stack.loop.run();
     EXPECT_TRUE(done);
 
-    EXPECT_TRUE(stack.graph.has_node(PCMFamily::unresolved_node("m")));
+    auto dirtied = stack.graph.update(PCMFamily::unresolved_node("m"));
+    EXPECT_TRUE(std::ranges::find(dirtied, NodeId{ast_family, session->path_id}) != dirtied.end());
 
     logging::reset_anomaly_for_testing();
 }

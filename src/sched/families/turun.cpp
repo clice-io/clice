@@ -100,7 +100,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, std::uint32_t pat
     // worker reports its own failure if they are not enough.
     bool own_module = workspace.path_to_module.contains(path_id);
     if(own_module || !workspace.path_to_module.empty() ||
-       workspace.dep_graph.import_candidates().contains(path_id)) {
+       workspace.dep_graph.reaches_import(path_id)) {
         PCMFamily::ModuleDeps deps;
         if(own_module) {
             deps.resolved.push_back(path_id);
@@ -120,6 +120,11 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, std::uint32_t pat
         // these edges alone (the include reverse map carries no import
         // edges).
         graph.declare(node(path_id), deps.declared);
+        for(auto dep: deps.declared) {
+            if(PCMFamily::is_unresolved(dep)) {
+                ctx.reference(dep);
+            }
+        }
 
         // On-disk PCM blobs can be LRU-evicted while their nodes stay
         // clean; re-dirty evicted ones so depend() rebuilds instead of

@@ -70,7 +70,7 @@ void Invalidator::provider_appeared(llvm::StringRef module_name, DirtySet& dirty
     // rebuild replaces the rows, and a unit that can no longer build
     // (retired entry, deleted file) keeps serving its last-known ones.
     for(auto id: pcm.provider_appeared(module_name)) {
-        if((id.key >> 63) != 0) {
+        if(PCMFamily::is_unresolved(id)) {
             continue;
         }
         auto path_id = static_cast<std::uint32_t>(id.key);

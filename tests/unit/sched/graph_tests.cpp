@@ -231,6 +231,29 @@ TEST_CASE(second_request_skips) {
     });
 }
 
+TEST_CASE(reference_survives_landing) {
+    // reference() records a candidate edge to a node that never runs: it
+    // must survive the successful landing (candidates replace the durable
+    // set) so a later update on the referenced node re-dirties this one.
+    make_graph();
+    NodeId sentinel{FamB, (1ull << 63) | 42};
+    graph->register_family(FamA, [&](RoundContext& ctx, NodeId) -> kota::task<RoundOutcome> {
+        ctx.reference(sentinel);
+        ran.push_back(a(1));
+        co_return RoundOutcome::Success;
+    });
+
+    Probe probe;
+    execute([&]() -> kota::task<> {
+        co_await run_request(a(1), probe);
+        CO_ASSERT_TRUE(probe.outcome == JoinOutcome::Success);
+
+        auto dirtied = graph->update(sentinel);
+        EXPECT_TRUE(std::ranges::find(dirtied, a(1)) != dirtied.end());
+        EXPECT_TRUE(graph->is_dirty(a(1)));
+    });
+}
+
 TEST_CASE(artifact_dirty_no_cascade) {
     // The eviction tier: the marked node alone rebuilds on next demand.
     // Dependents stay clean — they consumed the content, which did not

@@ -327,16 +327,24 @@ kota::task<DependResult> ASTFamily::depend_modules(RoundContext& ctx,
                                                    const std::vector<std::string>& arguments,
                                                    llvm::StringRef text) {
     // A project without module units normally pays nothing — no CDB
-    // lookup, no precise scan. The lexical gates pay it anyway when an
-    // import could hide where the fast path cannot see: in the buffer
-    // itself, behind an -include'd file, or (for a header document)
-    // inside the appended suffix's includer. The scan's sentinel edges
+    // lookup, no precise scan. The gates pay it anyway when an import
+    // could hide where the fast path cannot see: in the buffer itself,
+    // behind an -include'd file, inside the appended suffix's includer
+    // (header documents), or through an include whose target carries
+    // import syntax — buffer includes are judged lexically because the
+    // disk edge set cannot see unsaved ones. The scan's sentinel edges
     // are what let the name's first provider re-dirty this document.
-    bool scan_worth = !workspace.path_to_module.empty() || scan_quick(text).has_import ||
+    bool scan_worth = !workspace.path_to_module.empty() ||
                       contexts.header_context(path_id) != nullptr ||
                       llvm::any_of(arguments, [](const std::string& arg) {
                           return llvm::StringRef(arg).starts_with("-include");
                       });
+    if(!scan_worth) {
+        auto quick = scan_quick(text);
+        scan_worth = quick.has_import ||
+                     (!workspace.dep_graph.import_candidates().empty() &&
+                      (!quick.includes.empty() || workspace.dep_graph.reaches_import(path_id)));
+    }
     if(!scan_worth) {
         // The empty truth is still published: a durable import edge
         // earned earlier must stop cascading here, even when the compile
@@ -368,6 +376,14 @@ kota::task<DependResult> ASTFamily::depend_modules(RoundContext& ctx,
     }
     auto deps = pcm.direct_deps(path_id, argv, directory, std::optional<llvm::StringRef>(text));
     graph.declare(node(path_id), deps.declared);
+    // Sentinels join the round's candidates too: a successful landing
+    // replaces the declaration with them, and a declare-only edge would
+    // vanish with it.
+    for(auto dep: deps.declared) {
+        if(PCMFamily::is_unresolved(dep)) {
+            ctx.reference(dep);
+        }
+    }
     if(deps.resolved.empty()) {
         co_return DependResult::Ready;
     }

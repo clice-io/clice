@@ -121,6 +121,13 @@ struct RoundContext {
     /// still current.
     kota::task<DependResult> depend(NodeId dep);
 
+    /// depend() without the dispatch or the wait: record the candidate
+    /// edge to a node that never runs (a sentinel a scan consumed the
+    /// absence of). Same cascade/interest/foreground semantics, same
+    /// durable promotion on a successful landing — which is the point: a
+    /// declared-only edge would be replaced by the landing's candidates.
+    void reference(NodeId dep);
+
     /// Whether this round's result would still count if it landed now.
     bool current() const;
 
@@ -346,6 +353,9 @@ private:
 
     /// RoundContext::depend() body.
     kota::task<DependResult> depend_from(NodeId self, kota::cancellation_token token, NodeId dep);
+
+    /// See RoundContext::reference().
+    void reference_from(NodeId self, NodeId dep);
 
     /// Wait until a node reaches a terminal outcome, respawning its round
     /// whenever a stale one invalidates the previous attempt. `waiter` is
