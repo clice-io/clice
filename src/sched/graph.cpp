@@ -114,10 +114,12 @@ void TaskGraph::mark_foreground(NodeId id) {
     // root: a dependency already running at Low re-reads its class when a
     // preempted round retries, and without the closure mark that retry
     // would stay Low — cancellable by the very foreground waiting on it.
-    // Edges the round declares later inherit through depend().
-    for(auto dep: node.deps) {
-        mark_foreground(dep);
-    }
+    // Only live rounds' candidate edges propagate: they hold interest, so
+    // the flag is guaranteed its refcount-zero reset. Durable edges would
+    // tag clean cached dependencies no request ever acquires — the mark
+    // could never clear, and an unrelated background rebuild much later
+    // would run at foreground class. Edges the round declares later
+    // inherit through depend().
     if(node.compiling && node.round) {
         for(auto dep: node.round->candidates) {
             mark_foreground(dep);

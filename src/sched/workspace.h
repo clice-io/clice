@@ -303,10 +303,10 @@ struct Workspace {
     /// added or removed.
     void rescan_includes(std::uint32_t path_id);
 
-    /// Rescan a file after it was saved to disk.  Cascades invalidation
-    /// through compile_graph and clears affected PCM caches.
-    /// Returns path_ids of all files dirtied by the cascade.
-    llvm::SmallVector<std::uint32_t> rescan_after_save(std::uint32_t path_id);
+    /// Rescan a file after it was saved to disk: refresh its include
+    /// edges and module declaration. The module-graph cascade is the
+    /// invalidator's job (PCMFamily::invalidate).
+    void rescan_after_save(std::uint32_t path_id);
 
     /// Called when a file is closed.  Notifies compile_graph if this file
     /// is a module unit so dependents can be re-evaluated on next compile.

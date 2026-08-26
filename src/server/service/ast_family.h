@@ -168,11 +168,14 @@ private:
     /// One compile round; see the class comment for its obligations.
     kota::task<RoundOutcome> run(RoundContext& ctx, std::uint32_t path_id);
 
-    /// The module-dependency phase of a round: revalidate on-disk PCM
-    /// blobs, declare the Ast→PCM durable edges (scanner truth — they
-    /// must survive a failed compile or fixing an import could never
-    /// re-dirty this document), and wait on each import through depend.
-    kota::task<DependResult> depend_modules(RoundContext& ctx, std::uint32_t path_id);
+    /// The module-dependency phase of a round: resolve imports from the
+    /// round's buffer snapshot, revalidate on-disk PCM blobs, declare the
+    /// Ast→PCM durable edges (scanner truth — they must survive a failed
+    /// compile or fixing an import could never re-dirty this document),
+    /// and wait on each import through depend.
+    kota::task<DependResult> depend_modules(RoundContext& ctx,
+                                            std::uint32_t path_id,
+                                            llvm::StringRef text);
 
     /// Non-const: a passing staleness check may repair the snapshots'
     /// stat fast paths in place (see deps_changed).

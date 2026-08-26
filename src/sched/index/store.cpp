@@ -16,6 +16,7 @@
 
 #include "kota/codec/json/json.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -528,6 +529,7 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<std::uint32_t>
         }
     }
 
+    bool had_global = global_dirty;
     dirty_shards.clear();
     dirty_manifests.clear();
     global_dirty = false;
@@ -558,7 +560,24 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<std::uint32_t>
     // commit is still running (and saved_shards still holds its reset).
     saving_shards = shard_count;
     llvm::SmallVector<std::size_t> failed;
+    // Cancellation while the write is still queued dequeues it (see
+    // kota::queue): the batch dies with this frame, so the snapshot-
+    // cleared dirty state must be restored or the final shutdown save
+    // sees nothing to commit and reports saved progress that is absent
+    // after restart. Restoration unions with whatever re-dirtied across
+    // the await; the sweep keys in `removals` go back to the deferred
+    // list they came from.
+    auto restore = llvm::make_scope_exit([&] {
+        dirty_shards.insert(shard_ids.begin(), shard_ids.end());
+        dirty_manifests.insert(manifest_ids.begin(), manifest_ids.end());
+        global_dirty = global_dirty || had_global;
+        cdb_dirty = cdb_dirty || cdb_index.has_value();
+        startup_removes.append(std::make_move_iterator(removals.begin()),
+                               std::make_move_iterator(removals.end()));
+        saving_shards = 0;
+    });
     co_await kota::queue([&] { failed = db.write(batch, removals); });
+    restore.release();
     // An entry the storage failed to commit is re-dirtied so a later save
     // retries it; discarded, the cache would trail the in-memory index
     // until an unrelated merge happens to dirty the same entry or a

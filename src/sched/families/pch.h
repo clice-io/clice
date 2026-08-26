@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "sched/context.h"
+#include "sched/crash_budget.h"
 #include "sched/graph.h"
 #include "sched/workspace.h"
 #include "worker/pool.h"
@@ -96,6 +97,20 @@ public:
     /// the life of the store.
     void invalidate(llvm::StringRef pch_key);
 
+    /// A parse consuming the pair died or blamed it: retract it AND book a
+    /// strike against the key. The build-side budget cannot bound this —
+    /// each successful rebuild clears it — so consumption strikes keep
+    /// their own ledger; enough of them park the key and acquisitions fail
+    /// fast, so consumers fall back to compiling without a PCH instead of
+    /// looping rebuild/blame forever over failing storage.
+    void blame(llvm::StringRef pch_key);
+
+    /// A parse consumed the key's pair and completed without blaming it:
+    /// clear its consumption strikes (cf. CrashBudget::on_land).
+    void consumed_ok(llvm::StringRef pch_key) {
+        consume_blames.on_land(pch_key);
+    }
+
 private:
     /// One PCH round: revalidate the registered pair, or dispatch a build
     /// with the dispatch owner's inputs and commit the pair.
@@ -118,6 +133,11 @@ private:
     Workspace& workspace;
     ContextResolver& contexts;
     WorkerPool& pool;
+
+    /// Consumption strikes per key (see blame); separate from the
+    /// build-side workspace.build_crashes, which every successful rebuild
+    /// clears.
+    CrashBudget consume_blames;
 
     llvm::StringMap<std::uint64_t> ids;
     std::vector<KeyState> states;

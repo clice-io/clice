@@ -2,6 +2,7 @@
 #include <string>
 #include <vector>
 
+#include "test/cdb_helper.h"
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "sched/context.h"
@@ -13,6 +14,7 @@
 #include "server/worker_test_helpers.h"
 #include "support/anomaly.h"
 #include "support/cache_store.h"
+#include "syntax/dependency_graph.h"
 
 namespace clice::testing {
 
@@ -411,6 +413,73 @@ TEST_CASE(SupersededCompileCancelled) {
     EXPECT_TRUE(done);
 
     logging::reset_anomaly_for_testing();
+}
+
+TEST_CASE(BufferImportBuildsPCM) {
+    // Imports resolve from the buffer, not the disk: the on-disk TU has
+    // no import, so only the round's buffer scan can discover `import m;`
+    // and build the PCM before the compile consumes it.
+    TempDir tmp;
+    tmp.touch("m.cppm",
+              "export module m;\n"
+              "export int mv() { return 1; }\n");
+    tmp.touch("main.cpp", "int main() { return 0; }\n");
+    auto src = tmp.path("main.cpp");
+
+    Stack stack;
+    write_cdb(tmp,
+              stack.workspace.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("m.cppm"), {}},
+                  {tmp.root, src,                {}},
+    }));
+    scan_dependency_graph(stack.workspace.cdb,
+                          stack.workspace.toolchain,
+                          stack.workspace.path_pool,
+                          stack.workspace.dep_graph);
+    stack.workspace.dep_graph.build_reverse_map();
+    stack.workspace.build_module_map();
+
+    auto store = CacheStore::open(tmp.path("root"), 1);
+    ASSERT_TRUE(store.has_value());
+    store->register_namespace({.name = "pch",
+                               .extension = ".pch",
+                               .aux_extension = ".pch.idx",
+                               .policy = CachePolicy::LRU,
+                               .max_bytes = 1ull << 30});
+    store->register_namespace(
+        {.name = "pcm", .extension = ".pcm", .policy = CachePolicy::LRU, .max_bytes = 1ull << 30});
+    stack.workspace.store.emplace(std::move(*store));
+
+    auto session = stack.open(src, "import m;\nint main() { return mv(); }\n");
+
+    bool ok = false;
+    bool done = false;
+    auto body = [&]() -> kota::task<> {
+        WorkerPoolOptions opts;
+        opts.self_path = clice_binary();
+        opts.stateless_count = 1;
+        opts.stateful_count = 1;
+        CO_ASSERT_TRUE(stack.pool.start(opts));
+        co_await kota::sleep(500);
+
+        ok = co_await stack.ast.ensure_compiled(session);
+
+        co_await stack.ast.stop();
+        co_await stack.graph.shutdown();
+        co_await stack.pool.stop();
+        done = true;
+    };
+    auto task = body();
+    stack.loop.schedule(task);
+    stack.loop.run();
+    EXPECT_TRUE(done);
+
+    EXPECT_TRUE(ok);
+    EXPECT_TRUE(stack.ast.projections.current(session->path_id));
+    auto mod_ids = stack.workspace.dep_graph.lookup_module("m");
+    ASSERT_FALSE(mod_ids.empty());
+    EXPECT_TRUE(stack.workspace.pcm_cache.contains(mod_ids[0]));
 }
 
 };  // TEST_SUITE(ASTFamilyGuards)

@@ -115,9 +115,17 @@ kota::task<RoundOutcome> PCHFamily::run(RoundContext& ctx, std::uint64_t key_id)
     // the dispatch: the artifact is shared, so one document's quarantine
     // cannot contain it — every session with this preamble would burn
     // workers of its own. The key is content-derived: editing the poison
-    // starts a fresh key with a fresh budget.
+    // starts a fresh key with a fresh budget. Consumption strikes park
+    // the key the same way: rebuilding a pair whose every rebuild gets
+    // blamed again would fare no better (see blame).
     if(workspace.build_crashes.blocked(pch_key)) {
         LOG_WARN("PCH build for {} refused: key {} keeps crashing workers", request.file, pch_key);
+        co_return RoundOutcome::Failed;
+    }
+    if(consume_blames.blocked(pch_key)) {
+        LOG_WARN("PCH build for {} refused: key {} keeps getting blamed by its consumers",
+                 request.file,
+                 pch_key);
         co_return RoundOutcome::Failed;
     }
 
@@ -276,6 +284,11 @@ void PCHFamily::invalidate(llvm::StringRef pch_key) {
        it != workspace.pch_cache.end() && !building(pch_key)) {
         workspace.pch_cache.erase(it);
     }
+}
+
+void PCHFamily::blame(llvm::StringRef pch_key) {
+    consume_blames.on_crash(pch_key);
+    invalidate(pch_key);
 }
 
 }  // namespace clice

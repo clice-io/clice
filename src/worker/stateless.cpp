@@ -303,7 +303,12 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
     if(params.tidy) {
         cp.tidy = tidy::TidyParams{.checks = params.tidy_checks,
                                    .fast_only = false,
-                                   .options = params.tidy_options};
+                                   .options = params.tidy_options,
+                                   .warnings_as_errors = params.tidy_warnings_as_errors,
+                                   .header_filter = params.tidy_header_filter,
+                                   .system_headers = params.tidy_system_headers,
+                                   .extra_args = params.tidy_extra_args,
+                                   .extra_args_before = params.tidy_extra_args_before};
     }
     cp.stop = stop;
 

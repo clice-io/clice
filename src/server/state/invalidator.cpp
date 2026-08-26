@@ -73,9 +73,7 @@ void Invalidator::cascade_disk_content_change(std::uint32_t path_id, DirtySet& d
     // Rescan disk state (include edges, module declaration); then cascade
     // through the module graph — importers' build products went stale, and
     // the cascade names every affected module unit.
-    for(auto dirty_id: workspace.rescan_after_save(path_id)) {
-        mark_dependent(dirty_id, dirty);
-    }
+    workspace.rescan_after_save(path_id);
     cascade_compile_graph(path_id, dirty);
 
     // The new content is a compile input of every TU that transitively

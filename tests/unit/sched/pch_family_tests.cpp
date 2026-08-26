@@ -185,6 +185,28 @@ TEST_CASE(SharedBuildBothReady) {
     EXPECT_FALSE(it->second.index_path.empty());
 }
 
+TEST_CASE(BlameParksKey) {
+    // Consumption strikes keep their own ledger: the build-side budget
+    // clears on every successful rebuild, so a pair whose every rebuild
+    // gets blamed again would rebuild forever without one. A clean
+    // consumption clears the strikes; consecutive blames park the key
+    // and acquisition fails fast, before any dispatch.
+    setup();
+
+    std::optional<PCHFamily::Outcome> cleared, parked;
+    execute([&]() -> kota::task<> {
+        pch->blame("shared-key");
+        pch->consumed_ok("shared-key");
+        pch->blame("shared-key");
+        cleared = co_await pch->acquire(request("#define X 1\n"), {});
+
+        pch->blame("shared-key");
+        parked = co_await pch->acquire(request("#define X 1\n"), {});
+    });
+    EXPECT_TRUE(cleared == PCHFamily::Outcome::Ready);
+    EXPECT_TRUE(parked == PCHFamily::Outcome::Failed);
+}
+
 };  // TEST_SUITE(PCHFamilyAcquisition)
 
 }  // namespace

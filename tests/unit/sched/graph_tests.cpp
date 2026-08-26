@@ -929,6 +929,46 @@ TEST_CASE(foreground_spreads_edges) {
     });
 }
 
+TEST_CASE(foreground_skips_clean_deps) {
+    // A foreground request answered by a clean cached chain must not tag
+    // the chain's durable dependencies: no request ever acquires a clean
+    // dependency, so nothing would reset the mark, and an unrelated
+    // background rebuild much later would dispatch at foreground class.
+    make_graph();
+    std::vector<bool> dep_classes;
+    Adjacency adj;
+    adj[a(1)] = {a(2)};
+    graph->register_family(FamA, [&](RoundContext& ctx, NodeId id) -> kota::task<RoundOutcome> {
+        if(auto it = adj.find(id); it != adj.end()) {
+            for(auto dep: it->second) {
+                if(co_await ctx.depend(dep) != DependResult::Ready) {
+                    co_return RoundOutcome::Failed;
+                }
+            }
+        }
+        if(id == a(2)) {
+            dep_classes.push_back(ctx.foreground());
+        }
+        co_return RoundOutcome::Success;
+    });
+
+    Probe warm, hit, rebuild;
+    execute([&]() -> kota::task<> {
+        // Build the chain clean at Low, then answer a foreground request
+        // from the clean root outright.
+        co_await run_request(a(1), warm);
+        co_await run_request(a(1), hit, {.foreground = true});
+
+        graph->update(a(2));
+        co_await run_request(a(2), rebuild);
+
+        EXPECT_TRUE(rebuild.outcome == JoinOutcome::Success);
+        CO_ASSERT_EQ(dep_classes.size(), std::size_t(2));
+        EXPECT_FALSE(dep_classes[0]);
+        EXPECT_FALSE(dep_classes[1]);
+    });
+}
+
 TEST_CASE(foreground_resets_zero) {
     // The foreground flag is sticky while any interest remains and reset
     // when the count returns to zero: a later background request runs Low.

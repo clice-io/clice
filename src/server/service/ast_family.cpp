@@ -328,15 +328,37 @@ kota::task<bool> ASTFamily::ensure_compiled(std::shared_ptr<Session> session) {
     co_return outcome == JoinOutcome::Success;
 }
 
-kota::task<DependResult> ASTFamily::depend_modules(RoundContext& ctx, std::uint32_t path_id) {
+kota::task<DependResult> ASTFamily::depend_modules(RoundContext& ctx,
+                                                   std::uint32_t path_id,
+                                                   llvm::StringRef text) {
     // A project without module units pays nothing — no CDB lookup, no
     // precise scan.
-    //
-    // FIXME: imports are resolved from disk state only; an unsaved
-    // `import std;` addition in the buffer is not discovered until saved.
     if(workspace.path_to_module.empty()) {
         co_return DependResult::Ready;
     }
+
+    // Imports come from the round's buffer snapshot, not the disk: an
+    // unsaved `import m;` builds its PCM now, and the next edit's round
+    // re-resolves — the superseded round's build loses interest and winds
+    // down on its own (the PCH pattern). Module names still resolve
+    // against the on-disk module map; a module unit is somebody else's
+    // saved file. An empty buffer has no imports — and scan_precise reads
+    // the disk when handed empty content, which would resurrect them.
+    //
+    // The import list is scanner truth, not build output: commit it as
+    // durable edges before waiting, so a document whose compile fails
+    // stays cascade-reachable from its imports — fixing an import must
+    // re-dirty the documents it broke. The per-round resolve keeps the
+    // edges honest across CDB, buffer and import changes.
+    llvm::SmallVector<std::uint32_t> deps;
+    if(!text.empty()) {
+        deps = pcm.direct_deps(path_id, text);
+    }
+    llvm::SmallVector<NodeId, 8> ids;
+    for(auto dep: deps) {
+        ids.push_back({pcm_family, dep});
+    }
+    graph.declare(node(path_id), ids);
 
     // Building a dependency can itself evict another clean module's PCM
     // under budget pressure, which reopens the window the facade's
@@ -347,18 +369,6 @@ kota::task<DependResult> ASTFamily::depend_modules(RoundContext& ctx, std::uint3
         if(attempt > 0 && !any_evicted) {
             break;
         }
-
-        // The import list is scanner truth, not build output: commit it
-        // as durable edges before waiting, so a document whose compile
-        // fails stays cascade-reachable from its imports — fixing an
-        // import must re-dirty the documents it broke. The lazy per-round
-        // resolve keeps the edges honest across CDB and import changes.
-        auto deps = pcm.direct_deps(path_id);
-        llvm::SmallVector<NodeId, 8> ids;
-        for(auto dep: deps) {
-            ids.push_back({pcm_family, dep});
-        }
-        graph.declare(node(path_id), ids);
 
         for(auto dep: deps) {
             switch(co_await ctx.depend({pcm_family, dep})) {
@@ -442,7 +452,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, std::uint32_t path_id
                            header_context->preamble_path.empty() &&
                            contexts.header_mode(file_path, path_id) == HeaderMode::Unknown;
 
-        switch(co_await depend_modules(ctx, path_id)) {
+        switch(co_await depend_modules(ctx, path_id, params.text)) {
             case DependResult::Ready: break;
             case DependResult::Failed:
                 LOG_WARN("Dependency preparation failed for {}, skipping compile", uri_str);
@@ -625,7 +635,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, std::uint32_t path_id
                 LOG_WARN("Compile crashed consuming PCH pair {} for {}; retracting the pair",
                          *adopted_pch,
                          uri_str);
-                pch.invalidate(*adopted_pch);
+                pch.blame(*adopted_pch);
             }
             // A quarantined document announces itself instead of hiding
             // behind the empty list; the clear path publishes empty
@@ -663,8 +673,12 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, std::uint32_t path_id
                      *adopted_pch,
                      uri_str);
             // Retract unconditionally — a blamed pair never survives, even
-            // when the retry budget is spent — but rerun only once.
-            pch.invalidate(*adopted_pch);
+            // when the retry budget is spent — but rerun only once. The
+            // strike ledger bounds the cross-round shape: this round lands
+            // Stale (the retract re-dirties the key its candidate edge
+            // points at), the waiter respawns it, and without the parked
+            // key each respawn would rebuild and blame forever.
+            pch.blame(*adopted_pch);
             if(!artifact_retried) {
                 artifact_retried = true;
                 // Rerun the same attempt so the trial semantics are
@@ -707,6 +721,12 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, std::uint32_t path_id
                                });
             }
             co_return RoundOutcome::Failed;
+        }
+
+        // The parse consumed the pair and completed without blaming it:
+        // the key's consumption strikes were transient, not the storage.
+        if(adopted_pch.has_value() && !params.pch.first.empty() && !result.value().pch_suspect) {
+            pch.consumed_ok(*adopted_pch);
         }
 
         // A probe invalidated mid-flight is discarded whole: its verdict is

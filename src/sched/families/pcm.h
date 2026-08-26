@@ -80,8 +80,11 @@ public:
     /// use — a re-resolve is inherent, so a CDB or import change is
     /// always seen by the next round). Consumers that wait on the
     /// resulting PCM nodes through their own rounds (the AST family)
-    /// resolve here and depend on {pcm_family, dep} directly.
-    llvm::SmallVector<std::uint32_t> direct_deps(std::uint32_t path_id);
+    /// resolve here and depend on {pcm_family, dep} directly. A non-empty
+    /// `content` scans it in place of the file's on-disk text (an open
+    /// buffer's imports count before they are saved).
+    llvm::SmallVector<std::uint32_t> direct_deps(std::uint32_t path_id,
+                                                 llvm::StringRef content = {});
 
 private:
     /// Commit the resolved imports as the unit's durable edges (see

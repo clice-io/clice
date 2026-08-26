@@ -39,6 +39,22 @@ struct TidyParams {
 
     /// Check options (the .clang-tidy CheckOptions map).
     std::vector<std::pair<std::string, std::string>> options;
+
+    /// Checks whose findings report as errors (WarningsAsErrors globs).
+    std::string warnings_as_errors;
+
+    /// Also report findings in headers matching this regex (clang-tidy's
+    /// HeaderFilterRegex; empty = main file only).
+    std::string header_filter;
+
+    /// Also report findings in system headers.
+    bool system_headers = false;
+
+    /// Extra compiler args from the configuration, consumed for their
+    /// -W<group> warning flags — the compile command itself is never
+    /// rewritten (the clangd approach, see tidy.cpp).
+    std::vector<std::string> extra_args;
+    std::vector<std::string> extra_args_before;
 };
 
 /// Resolve the effective clang-tidy configuration for `file` from its

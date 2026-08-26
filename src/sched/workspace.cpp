@@ -144,13 +144,11 @@ void Workspace::rescan_includes(std::uint32_t path_id) {
     dep_graph.build_reverse_map();
 }
 
-llvm::SmallVector<std::uint32_t> Workspace::rescan_after_save(std::uint32_t path_id) {
+void Workspace::rescan_after_save(std::uint32_t path_id) {
     // Contexts must see includes added/removed by this save.
     rescan_includes(path_id);
 
     context_epoch += 1;
-
-    llvm::SmallVector<std::uint32_t> dirtied;
 
     // Re-scan the saved file for module declarations and update path_to_module.
     auto file_path = path_pool.resolve(path_id);
@@ -162,8 +160,6 @@ llvm::SmallVector<std::uint32_t> Workspace::rescan_after_save(std::uint32_t path
             path_to_module.erase(path_id);
         }
     }
-
-    return dirtied;
 }
 
 void Workspace::on_file_closed(std::uint32_t path_id) {

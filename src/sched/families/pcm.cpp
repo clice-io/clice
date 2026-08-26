@@ -30,7 +30,8 @@ void PCMFamily::register_runner() {
     });
 }
 
-llvm::SmallVector<std::uint32_t> PCMFamily::direct_deps(std::uint32_t path_id) {
+llvm::SmallVector<std::uint32_t> PCMFamily::direct_deps(std::uint32_t path_id,
+                                                        llvm::StringRef content) {
     auto file_path = workspace.path_pool.resolve(path_id);
     std::vector<std::string> rule_append, rule_remove;
     workspace.config.match_rules(file_path, rule_append, rule_remove);
@@ -40,7 +41,7 @@ llvm::SmallVector<std::uint32_t> PCMFamily::direct_deps(std::uint32_t path_id) {
     workspace.toolchain.resolve_or_warn(results[0]);
 
     auto& cmd = results[0];
-    auto scan_result = scan_precise(cmd.to_argv(), cmd.resolved.directory);
+    auto scan_result = scan_precise(cmd.to_argv(), cmd.resolved.directory, content);
 
     llvm::SmallVector<std::uint32_t> deps;
     for(auto& mod_name: scan_result.modules) {

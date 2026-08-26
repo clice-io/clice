@@ -142,6 +142,21 @@ tidy::ClangTidyOptions create_options(const TidyParams& params) {
     for(auto& [key, value]: params.options) {
         opts.CheckOptions.insert_or_assign(key, tidy::ClangTidyOptions::ClangTidyValue(value));
     }
+    if(!params.warnings_as_errors.empty()) {
+        opts.WarningsAsErrors = params.warnings_as_errors;
+    }
+    if(!params.header_filter.empty()) {
+        opts.HeaderFilterRegex = params.header_filter;
+    }
+    if(params.system_headers) {
+        opts.SystemHeaders = true;
+    }
+    if(!params.extra_args.empty()) {
+        opts.ExtraArgs = params.extra_args;
+    }
+    if(!params.extra_args_before.empty()) {
+        opts.ExtraArgsBefore = params.extra_args_before;
+    }
     return opts;
 }
 
@@ -422,6 +437,11 @@ TidyParams resolve_tidy_params(llvm::StringRef file) {
     }
     // Deterministic plan bytes: the option map's iteration order is not.
     std::ranges::sort(params.options);
+    params.warnings_as_errors = opts.WarningsAsErrors.value_or(std::string());
+    params.header_filter = opts.HeaderFilterRegex.value_or(std::string());
+    params.system_headers = opts.SystemHeaders.value_or(false);
+    params.extra_args = opts.ExtraArgs.value_or(std::vector<std::string>());
+    params.extra_args_before = opts.ExtraArgsBefore.value_or(std::vector<std::string>());
     return params;
 }
 

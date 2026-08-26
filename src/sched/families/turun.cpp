@@ -54,14 +54,23 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, std::uint32_t pat
 
     // For module interface units, wait on the unit's own PCM node first:
     // its round builds the transitive imports and registers their
-    // artifacts, so the stateless worker below has what it needs. A failed
-    // PCM build is not terminal here — the parse consumes whatever
-    // artifacts landed and the worker reports its own failure if they are
-    // not enough.
+    // artifacts, so the stateless worker below has what it needs. An
+    // ordinary TU in a module project waits on its imports the same way —
+    // the fill_pcm_deps snapshot below would otherwise race a cold build
+    // and parse without the module files. A failed PCM build is not
+    // terminal here — the parse consumes whatever artifacts landed and
+    // the worker reports its own failure if they are not enough.
     if(workspace.path_to_module.contains(path_id)) {
         if(co_await ctx.depend({pcm_family, path_id}) == DependResult::Cancelled) {
             landed[path_id] = {.verdict = Verdict::Preempted};
             co_return RoundOutcome::Stale;
+        }
+    } else if(!workspace.path_to_module.empty()) {
+        for(auto dep: pcm.direct_deps(path_id)) {
+            if(co_await ctx.depend({pcm_family, dep}) == DependResult::Cancelled) {
+                landed[path_id] = {.verdict = Verdict::Preempted};
+                co_return RoundOutcome::Stale;
+            }
         }
     }
 
@@ -71,6 +80,11 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, std::uint32_t pat
     params.tidy = plan.tidy;
     params.tidy_checks = std::move(plan.tidy_params.checks);
     params.tidy_options = std::move(plan.tidy_params.options);
+    params.tidy_warnings_as_errors = std::move(plan.tidy_params.warnings_as_errors);
+    params.tidy_header_filter = std::move(plan.tidy_params.header_filter);
+    params.tidy_system_headers = plan.tidy_params.system_headers;
+    params.tidy_extra_args = std::move(plan.tidy_params.extra_args);
+    params.tidy_extra_args_before = std::move(plan.tidy_params.extra_args_before);
     // Whole-TU runs stick to real commands; synthesized fallback commands
     // would fill the index (and the lint report) with guesses.
     std::uint32_t host_path_id = no_path_id;
@@ -96,7 +110,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, std::uint32_t pat
     workspace.fill_pcm_deps(params.pcms);
 
     ScopedTimer timer;
-    auto result = co_await pool.send_stateless(params, worker::Priority::Low);
+    auto result = co_await pool.send_stateless(params, worker::Priority::Low, {}, ctx.token());
     if(result.has_value() && result.value().success) {
         auto run_ms = timer.ms();
         auto& value = result.value();

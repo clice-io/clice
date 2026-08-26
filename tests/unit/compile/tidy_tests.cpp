@@ -76,7 +76,10 @@ TEST_CASE(PlannedCheckFires) {
 
 TEST_CASE(ResolveConfigChain) {
     TempDir tmp;
-    tmp.touch(".clang-tidy", "Checks: '-*,bugprone-*'\n");
+    tmp.touch(".clang-tidy",
+              "Checks: '-*,bugprone-*'\n"
+              "WarningsAsErrors: 'bugprone-*'\n"
+              "HeaderFilterRegex: '.*'\n");
     tmp.touch("sub/.clang-tidy", "InheritParentConfig: true\nChecks: 'modernize-*'\n");
     tmp.touch("sub/a.cpp");
 
@@ -89,6 +92,8 @@ TEST_CASE(ResolveConfigChain) {
     auto parent = tidy::resolve_tidy_params(tmp.path("a.cpp"));
     ASSERT_TRUE(parent.checks.contains("bugprone-*"));
     ASSERT_FALSE(parent.checks.contains("modernize-*"));
+    ASSERT_EQ(parent.warnings_as_errors, "bugprone-*");
+    ASSERT_EQ(parent.header_filter, ".*");
 }
 
 TEST_CASE(ResolveWithoutConfig) {
