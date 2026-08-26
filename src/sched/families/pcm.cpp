@@ -296,7 +296,14 @@ kota::task<bool> PCMFamily::prepare_deps(std::uint32_t path_id,
     // importing it through them. Declared even when empty, so a removed
     // import stops cascading.
     auto deps = direct_deps(path_id, arguments, directory, content);
-    declare_deps(path_id, deps.declared);
+    // A module unit's PCM node carries its ARTIFACT's edge truth, owned
+    // by its own rounds — a request's buffer view must not overwrite it
+    // (an unsaved removed import would disconnect the cached PCM from
+    // the very dependency whose save should invalidate it). Plain TUs'
+    // consumer nodes never run rounds; the declaration is theirs alone.
+    if(!workspace.path_to_module.contains(path_id)) {
+        declare_deps(path_id, deps.declared);
+    }
     if(deps.resolved.empty()) {
         co_return true;
     }

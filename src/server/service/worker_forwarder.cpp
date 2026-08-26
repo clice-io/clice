@@ -162,17 +162,21 @@ kota::task<bool>
 
     // A user request waits on these builds: dispatch them High so the
     // background budget cannot throttle its own foreground. The scan
-    // runs under the request's command with the buffer as the main file,
-    // so an unsaved `import m;` builds its PCM before the parse needs it.
+    // runs under the request's command with the same text the dispatch
+    // will compile — buffer plus any appended suffix include — so an
+    // unsaved `import m;` (or one inside a contextual header's suffix)
+    // builds its PCM before the parse needs it.
     llvm::SmallVector<const char*, 32> argv;
     argv.reserve(arguments.size());
     for(auto& arg: arguments) {
         argv.push_back(arg.c_str());
     }
+    auto scan_text = session->text;
+    contexts.append_suffix_include(path_id, scan_text);
     if(!co_await pcm.prepare_deps(path_id,
                                   argv,
                                   directory,
-                                  std::optional<llvm::StringRef>(session->text),
+                                  std::optional<llvm::StringRef>(scan_text),
                                   /*foreground=*/true)) {
         co_return false;
     }

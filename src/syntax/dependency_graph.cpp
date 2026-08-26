@@ -28,27 +28,6 @@ void DependencyGraph::add_module(llvm::StringRef module_name, std::uint32_t path
     }
 }
 
-bool DependencyGraph::reaches_import(std::uint32_t path_id) const {
-    if(import_candidates_.empty()) {
-        return false;
-    }
-    llvm::SmallVector<std::uint32_t, 16> queue{path_id};
-    llvm::DenseSet<std::uint32_t> visited{path_id};
-    while(!queue.empty()) {
-        auto current = queue.pop_back_val();
-        if(import_candidates_.contains(current)) {
-            return true;
-        }
-        for(auto raw: get_all_includes(current)) {
-            auto id = raw & PATH_ID_MASK;
-            if(visited.insert(id).second) {
-                queue.push_back(id);
-            }
-        }
-    }
-    return false;
-}
-
 void DependencyGraph::update_module_decl(std::uint32_t path_id, llvm::StringRef module_name) {
     // An emptied name stays behind as an empty provider list — lookup
     // treats it the same as absent.

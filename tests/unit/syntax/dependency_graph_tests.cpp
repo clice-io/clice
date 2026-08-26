@@ -20,26 +20,6 @@ TEST_CASE(LookupModuleEmpty) {
     EXPECT_TRUE(graph.lookup_module("foo.bar").empty());
 }
 
-TEST_CASE(ReachesImport) {
-    // The scan gate: hits through the include closure, O(1) when no file
-    // carries import syntax.
-    clice::DependencyGraph graph;
-    EXPECT_FALSE(graph.reaches_import(1));
-
-    // main(1) -> deps.h(2) -> inner.h(3, candidate); other(4) standalone.
-    graph.set_includes(1, 0, {2});
-    graph.set_includes(2, 0, {3});
-    graph.set_import_candidate(3, true);
-
-    EXPECT_TRUE(graph.reaches_import(1));
-    EXPECT_TRUE(graph.reaches_import(2));
-    EXPECT_TRUE(graph.reaches_import(3));
-    EXPECT_FALSE(graph.reaches_import(4));
-
-    graph.set_import_candidate(3, false);
-    EXPECT_FALSE(graph.reaches_import(1));
-}
-
 TEST_CASE(AddAndLookupModule) {
     clice::DependencyGraph graph;
     graph.add_module("foo.bar", 42);

@@ -326,24 +326,24 @@ kota::task<DependResult> ASTFamily::depend_modules(RoundContext& ctx,
                                                    llvm::StringRef directory,
                                                    const std::vector<std::string>& arguments,
                                                    llvm::StringRef text) {
-    // A project without module units normally pays nothing — no CDB
-    // lookup, no precise scan. The gates pay it anyway when an import
-    // could hide where the fast path cannot see: in the buffer itself,
-    // behind an -include'd file, inside the appended suffix's includer
-    // (header documents), or through an include whose target carries
-    // import syntax — buffer includes are judged lexically because the
-    // disk edge set cannot see unsaved ones. The scan's sentinel edges
-    // are what let the name's first provider re-dirty this document.
+    // A project with no module code pays nothing — no CDB lookup, no
+    // precise scan. The moment import syntax exists anywhere (the
+    // lexical candidate set), every document scans precisely: that is
+    // the same cost the project pays once providers exist, and per-file
+    // reachability approximations of "could this TU see an import" have
+    // irreducible blind spots (macro includes, unsaved include chains).
+    // The remaining gates catch what the candidate set cannot: this
+    // buffer's own unsaved import, a header context's suffix, a forced
+    // include. The scan's sentinel edges are what let the name's first
+    // provider re-dirty this document.
     bool scan_worth = !workspace.path_to_module.empty() ||
+                      !workspace.dep_graph.import_candidates().empty() ||
                       contexts.header_context(path_id) != nullptr ||
                       llvm::any_of(arguments, [](const std::string& arg) {
                           return llvm::StringRef(arg).starts_with("-include");
                       });
     if(!scan_worth) {
-        auto quick = scan_quick(text);
-        scan_worth = quick.has_import ||
-                     (!workspace.dep_graph.import_candidates().empty() &&
-                      (!quick.includes.empty() || workspace.dep_graph.reaches_import(path_id)));
+        scan_worth = scan_quick(text).has_import;
     }
     if(!scan_worth) {
         // The empty truth is still published: a durable import edge
