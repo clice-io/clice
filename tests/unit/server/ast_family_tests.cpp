@@ -484,6 +484,46 @@ TEST_CASE(BufferImportBuildsPCM) {
     EXPECT_TRUE(stack.workspace.module_importers.contains("m"));
 }
 
+TEST_CASE(BufferImportRecorded) {
+    // Zero-provider window: the compile fails on the unresolved import,
+    // but the buffer scan must still record the name — the first
+    // provider's arrival has nothing else to find this document by (the
+    // disk candidate set cannot see unsaved edits).
+    logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
+
+    TempDir tmp;
+    tmp.touch("main.cpp", "int main() { return 0; }\n");
+    auto src = tmp.path("main.cpp");
+
+    Stack stack;
+    auto session = stack.open(src, "import m;\nint main() { return 0; }\n");
+
+    bool done = false;
+    auto body = [&]() -> kota::task<> {
+        WorkerPoolOptions opts;
+        opts.self_path = clice_binary();
+        opts.stateless_count = 0;
+        opts.stateful_count = 1;
+        CO_ASSERT_TRUE(stack.pool.start(opts));
+        co_await kota::sleep(500);
+
+        [[maybe_unused]] bool ok = co_await stack.ast.ensure_compiled(session);
+
+        co_await stack.ast.stop();
+        co_await stack.graph.shutdown();
+        co_await stack.pool.stop();
+        done = true;
+    };
+    auto task = body();
+    stack.loop.schedule(task);
+    stack.loop.run();
+    EXPECT_TRUE(done);
+
+    EXPECT_TRUE(stack.workspace.module_importers.contains("m"));
+
+    logging::reset_anomaly_for_testing();
+}
+
 };  // TEST_SUITE(ASTFamilyGuards)
 
 TEST_SUITE(ForwarderGuards) {

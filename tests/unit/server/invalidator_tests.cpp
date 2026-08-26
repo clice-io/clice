@@ -101,15 +101,19 @@ TEST_CASE(NewProviderDirtiesImporters) {
 TEST_CASE(FirstModulesDirtyCandidates) {
     // The project's very first provider appears: the per-name import
     // record does not exist yet (module scanning was gated off while the
-    // map was empty), so the lexical import-candidate set is re-dirtied.
+    // map was empty), so the lexical import-candidate set is re-dirtied —
+    // and a header candidate drags its consuming TUs along.
     TempDir tmp;
     tmp.touch("m.cppm", "export module m;\nexport int mv();\n");
 
     Workspace workspace;
     SessionStore store;
     auto iface = workspace.path_pool.intern(tmp.path("m.cppm"));
-    auto importer = workspace.path_pool.intern("/proj/main.cpp");
-    workspace.dep_graph.set_import_candidate(importer, true);
+    auto header = workspace.path_pool.intern("/proj/deps.h");
+    auto consumer = workspace.path_pool.intern("/proj/main.cpp");
+    workspace.dep_graph.set_import_candidate(header, true);
+    workspace.dep_graph.set_includes(consumer, 0, {header});
+    workspace.dep_graph.build_reverse_map();
 
     ContextResolver resolver(workspace);
     PCMHarness ph(workspace, resolver);
@@ -118,8 +122,38 @@ TEST_CASE(FirstModulesDirtyCandidates) {
     FileEvent events[] = {FileEvent::disk_changed(iface)};
     auto dirty = invalidator.apply(events);
 
-    EXPECT_TRUE(llvm::is_contained(dirty.drop_index, importer));
-    EXPECT_TRUE(llvm::is_contained(dirty.reindex_content_changed, importer));
+    EXPECT_TRUE(llvm::is_contained(dirty.drop_index, header));
+    EXPECT_TRUE(llvm::is_contained(dirty.reindex_content_changed, header));
+    EXPECT_TRUE(llvm::is_contained(dirty.drop_index, consumer));
+    EXPECT_TRUE(llvm::is_contained(dirty.reindex_content_changed, consumer));
+}
+
+TEST_CASE(RemovedImporterForgotten) {
+    // A removed file leaves the import bookkeeping: a later first
+    // provider must not drop its deliberately-kept last-known index for
+    // a reindex that can no longer run.
+    TempDir tmp;
+    tmp.touch("m.cppm", "export module m;\nexport int mv();\n");
+
+    Workspace workspace;
+    SessionStore store;
+    auto iface = workspace.path_pool.intern(tmp.path("m.cppm"));
+    auto retired = workspace.path_pool.intern("/proj/retired.cpp");
+    workspace.module_importers["m"].push_back(retired);
+    workspace.dep_graph.set_import_candidate(retired, true);
+
+    ContextResolver resolver(workspace);
+    PCMHarness ph(workspace, resolver);
+    Invalidator invalidator(workspace, store, resolver, ph.pcm);
+
+    FileEvent removal[] = {FileEvent::disk_removed(retired)};
+    invalidator.apply(removal);
+
+    FileEvent provider[] = {FileEvent::disk_changed(iface)};
+    auto dirty = invalidator.apply(provider);
+
+    EXPECT_FALSE(llvm::is_contained(dirty.drop_index, retired));
+    EXPECT_FALSE(llvm::is_contained(dirty.reindex_content_changed, retired));
 }
 
 TEST_CASE(DiskRemovedDropsProvider) {

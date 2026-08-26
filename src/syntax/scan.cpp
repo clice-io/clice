@@ -91,8 +91,11 @@ ScanResult scan_quick(llvm::StringRef content) {
             case dds::cxx_module_decl:
             case dds::cxx_export_module_decl: {
                 if(conditional_depth > 0) {
+                    // The name needs scan_module_decl(); keep scanning —
+                    // includes and import detection past this point are
+                    // still lexical truth.
                     result.need_preprocess = true;
-                    return result;
+                    break;
                 }
 
                 // Collect module name from tokens: skip keywords, then

@@ -62,13 +62,21 @@ void Invalidator::dirty_unresolved_importer(std::uint32_t importer, DirtySet& di
     // The importer compiled and indexed against an unresolved name: its
     // rows lack the module's symbols and its dep snapshot never named
     // the interface, so the content-hash gate would filter a DepsOnly
-    // reindex — ContentChanged bypasses it.
-    if(store.find(importer)) {
-        dirty.mark_ast_dirty.push_back(importer);
+    // reindex — ContentChanged bypasses it. A header importer (a legal
+    // place for `import`) drags its consuming TUs along: they inherited
+    // the unresolved import through the include.
+    auto dirty_one = [&](std::uint32_t path_id) {
+        if(store.find(path_id)) {
+            dirty.mark_ast_dirty.push_back(path_id);
+        }
+        dirty.drop_index.push_back(path_id);
+        dirty.add_reindex_content_changed(path_id);
+        cascade_compile_graph(path_id, dirty);
+    };
+    dirty_one(importer);
+    for(auto root: workspace.dep_graph.find_host_sources(importer)) {
+        dirty_one(root);
     }
-    dirty.drop_index.push_back(importer);
-    dirty.add_reindex_content_changed(importer);
-    cascade_compile_graph(importer, dirty);
 }
 
 void Invalidator::dirty_new_provider(llvm::StringRef module_name, DirtySet& dirty) {
@@ -312,6 +320,10 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // replacement provider would sit behind the deleted one in
                 // the candidate list and never be selected.
                 workspace.dep_graph.update_module_decl(path_id, {});
+                // And the import bookkeeping: a first-provider event must
+                // not drop this file's deliberately-kept index for a
+                // reindex that can no longer run.
+                workspace.forget_importer(path_id);
                 // Scrub the includer role: the file's outgoing edges vanished
                 // with it, so it stops being a host-source candidate.
                 // Incoming edges stay — includers' text still names it, and
@@ -457,8 +469,11 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                     // content still serves navigation, same conservative
                     // semantics as DiskRemoved. The graph rebuild above
                     // already dropped the file's source role, and the
-                    // orphan recheck cleans choices through it.
+                    // orphan recheck cleans choices through it. The import
+                    // bookkeeping forgets it for the same reason as
+                    // DiskRemoved (the rebuilt candidate set already has).
                     invalidate_entry(path_id, /*keep_index=*/true);
+                    workspace.forget_importer(path_id);
                 }
 
                 dirty.recheck_contexts = true;

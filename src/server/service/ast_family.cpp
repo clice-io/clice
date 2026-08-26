@@ -326,13 +326,26 @@ kota::task<DependResult> ASTFamily::depend_modules(RoundContext& ctx,
                                                    llvm::StringRef directory,
                                                    const std::vector<std::string>& arguments,
                                                    llvm::StringRef text) {
-    // A project without module units pays nothing — no CDB lookup, no
-    // precise scan. The empty truth is still published: a durable import
-    // edge earned while providers existed must stop cascading here once
-    // they are gone, even when the compile itself later fails (failed
-    // rounds keep declared edges).
+    // A project without module units normally pays nothing — no CDB
+    // lookup, no precise scan. The empty truth is still published: a
+    // durable import edge earned while providers existed must stop
+    // cascading here once they are gone, even when the compile itself
+    // later fails (failed rounds keep declared edges). A buffer that
+    // lexically carries import syntax still pays the precise scan for
+    // its recording side effect: the compile is about to fail on the
+    // unresolved names, and the name's first provider must be able to
+    // find this document (the disk-derived candidate set cannot see
+    // unsaved edits).
     if(workspace.path_to_module.empty()) {
         graph.declare(node(path_id), {});
+        if(scan_quick(text).has_import) {
+            llvm::SmallVector<const char*, 32> argv;
+            argv.reserve(arguments.size());
+            for(auto& arg: arguments) {
+                argv.push_back(arg.c_str());
+            }
+            pcm.direct_deps(path_id, argv, directory, std::optional<llvm::StringRef>(text));
+        }
         co_return DependResult::Ready;
     }
 

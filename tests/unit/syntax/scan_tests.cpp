@@ -43,6 +43,17 @@ export module top;
 export import :part;
 )");
     EXPECT_TRUE(exported.has_import);
+
+    // A conditional module declaration defers the name to the
+    // preprocessor fallback but must not hide later directives.
+    auto conditional = scan_quick(R"(
+#if 0
+export module maybe;
+#endif
+import m;
+)");
+    EXPECT_TRUE(conditional.need_preprocess);
+    EXPECT_TRUE(conditional.has_import);
 }
 
 TEST_CASE(IncludeOffsets) {
