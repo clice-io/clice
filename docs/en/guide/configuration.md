@@ -18,14 +18,6 @@ The following variable is supported in string values:
 
 <!-- BEGIN GENERATED CONFIG: project -->
 
-### `project.clang_tidy`
-
-| Type   | Default |
-| ------ | ------- |
-| `bool` | `false` |
-
-Run clang-tidy alongside compiler diagnostics. Not yet wired: the option is parsed but has no effect.
-
 ### `project.cache_dir`
 
 | Type     | Default |

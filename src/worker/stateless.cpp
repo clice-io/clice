@@ -257,15 +257,53 @@ static worker::ArtifactBuildResult handle_build_pcm(const worker::BuildPCMParams
     }
 }
 
-static worker::IndexResult handle_index(const worker::IndexParams& params,
+/// Collect the tidy pass's findings with real per-file locations: unlike
+/// the LSP path, which folds header diagnostics onto their include line,
+/// the CLI reports them where they are.
+static void collect_tidy_diagnostics(CompilationUnitRef unit,
+                                     std::vector<worker::TidyDiagnostic>& out) {
+    for(const auto& raw: unit.diagnostics()) {
+        if(raw.id.source != DiagnosticSource::ClangTidy ||
+           raw.id.level == DiagnosticLevel::Ignored) {
+            continue;
+        }
+        if(raw.fid.isInvalid() || !raw.range.valid()) {
+            continue;
+        }
+        feature::LineMap map(unit.file_content(raw.fid), feature::PositionEncoding::UTF8);
+        auto range = feature::to_range(map, raw.range);
+        if(!range) {
+            continue;
+        }
+        out.push_back({
+            .file = std::string(unit.file_path(raw.fid)),
+            .line = range->start.line + 1,
+            .column = range->start.character + 1,
+            .error =
+                raw.id.level == DiagnosticLevel::Error || raw.id.level == DiagnosticLevel::Fatal,
+            .message = raw.message,
+            .check = std::string(raw.id.name),
+        });
+    }
+}
+
+static worker::TURunResult handle_turun(const worker::TURunParams& params,
                                         const std::shared_ptr<std::atomic_bool>& stop) {
     ScopedTimer timer;
 
     CompilationParams cp;
-    cp.kind = CompilationKind::Indexing;
+    // One parse serves every product of the plan. Tidy's matcher walks the
+    // collected top-level declarations, which only a Content build
+    // gathers; a pure index run keeps the Indexing kind.
+    cp.kind = params.tidy ? CompilationKind::Content : CompilationKind::Indexing;
     fill_args(cp, params.directory, params.arguments);
     for(auto& [name, path]: params.pcms) {
         cp.pcms.try_emplace(name, path);
+    }
+    if(params.tidy) {
+        cp.tidy = tidy::TidyParams{.checks = params.tidy_checks,
+                                   .fast_only = false,
+                                   .options = params.tidy_options};
     }
     cp.stop = stop;
 
@@ -273,18 +311,25 @@ static worker::IndexResult handle_index(const worker::IndexParams& params,
     auto unit = compile(cp);
     auto compile_ms = compile_timer.ms();
     if(!unit.completed()) {
-        LOG_WARN("Index failed: file={}, {}ms", params.file, timer.ms());
-        return {false, "Index compilation failed"};
+        LOG_WARN("TU run failed: file={}, {}ms", params.file, timer.ms());
+        return {false, "TU run compilation failed"};
     }
 
     // Building and serializing the index costs a large share of the pass;
-    // skip both when the cancellation landed after the parse finished.
+    // skip it when the cancellation landed after the parse finished.
     if(stop->load(std::memory_order_relaxed)) {
-        return {false, "Index cancelled"};
+        return {false, "TU run cancelled"};
     }
+    worker::TURunResult result;
+    result.success = true;
     ScopedTimer index_timer;
-    auto serialized = index::build_tu_index(unit);
+    if(params.index) {
+        result.tu_index_data = index::build_tu_index(unit);
+    }
     auto index_ms = index_timer.ms();
+    if(params.tidy) {
+        collect_tidy_diagnostics(unit, result.tidy_diagnostics);
+    }
 
     // AST teardown for a large TU is material work that belongs to this
     // task: sample the total only after the unit is gone, so the logged
@@ -293,17 +338,16 @@ static worker::IndexResult handle_index(const worker::IndexParams& params,
     unit = CompilationUnit(nullptr);
     auto teardown_ms = teardown_timer.ms();
 
-    LOG_PERF("build",
-             "kind=index file={} bytes={} compile_ms={} index_ms={} teardown_ms={} total_ms={}",
-             params.file,
-             serialized.size(),
-             compile_ms,
-             index_ms,
-             teardown_ms,
-             timer.ms());
-    worker::IndexResult result;
-    result.success = true;
-    result.tu_index_data = std::move(serialized);
+    LOG_PERF(
+        "build",
+        "kind=turun file={} bytes={} findings={} compile_ms={} index_ms={} teardown_ms={} total_ms={}",
+        params.file,
+        result.tu_index_data.size(),
+        result.tidy_diagnostics.size(),
+        compile_ms,
+        index_ms,
+        teardown_ms,
+        timer.ms());
     return result;
 }
 
@@ -460,15 +504,15 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
         });
 
     peer.on_request([&](RequestContext& ctx,
-                        const worker::IndexParams& params) -> RequestResult<worker::IndexParams> {
+                        const worker::TURunParams& params) -> RequestResult<worker::TURunParams> {
         auto stop = arm_stop();
         auto result = co_await kota::queue(
-            [&]() -> worker::IndexResult {
+            [&]() -> worker::TURunResult {
                 if(stop->load(std::memory_order_relaxed)) {
                     return {false, "Build cancelled"};
                 }
                 ScopedNice guard;
-                return handle_index(params, stop);
+                return handle_turun(params, stop);
             },
             [stop] { stop->store(true, std::memory_order_relaxed); });
         co_return result.value();

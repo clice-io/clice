@@ -53,12 +53,6 @@ struct ConfigRule {
 struct ProjectConfig {
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
-                         "Run clang-tidy alongside compiler diagnostics. Not yet "
-                         "wired: the option is parsed but has no effect.")
-    <bool> clang_tidy = false;
-
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
                          "Directory for the unified on-disk cache (PCH, PCM and "
                          "index artifacts). Empty derives it from XDG_CACHE_HOME "
                          "(or `~/.cache`) with a per-workspace subdirectory named "

@@ -127,7 +127,8 @@ TEST_CASE(IndexRequest) {
     bool test_done = false;
 
     w.run([&]() -> kota::task<> {
-        worker::IndexParams params;
+        worker::TURunParams params;
+        params.index = true;
         params.file = src;
         params.directory = "/tmp";
         params.arguments = make_args(src);
@@ -279,7 +280,8 @@ TEST_CASE(MultipleStatelessRequests) {
     w.run([&]() -> kota::task<> {
         // Send multiple index requests to test stateless worker handles them sequentially.
         for(int i = 0; i < 3; i++) {
-            worker::IndexParams params;
+            worker::TURunParams params;
+            params.index = true;
             params.file = paths[i];
             params.directory = "/tmp";
             params.arguments = make_args(paths[i]);

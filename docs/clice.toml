@@ -7,9 +7,6 @@
 # - `${workspace}`:       The workspace directory provided by the client.
 
 [project]
-# Enable experimental clang-tidy diagnostics.
-# This feature is tracked in https://github.com/clice-io/clice/issues/90.
-clang_tidy = false
 # Directory for storing on-disk caches (PCH, PCM and index files) and logs.
 # When unset, clice defaults to a per-workspace directory under the XDG
 # cache: ~/.cache/clice/<workspace>-<hash>, with logs in its logs/

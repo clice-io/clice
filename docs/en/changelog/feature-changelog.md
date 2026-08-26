@@ -56,4 +56,4 @@ v1.0 ships first as rolling beta releases (`v1.0.0-beta.1`, `beta.2`, …) for a
 
 - Code completion, navigation, document links, and diagnostics are functional but not yet complete (see the feature overview pages for per-feature status).
 - Code actions are not implemented yet (and not advertised).
-- clang-tidy integration is planned; the `clang_tidy` config option is parsed but has no effect.
+- clang-tidy runs as a batch pass through `clice lint`; live clang-tidy diagnostics in the editor are planned.

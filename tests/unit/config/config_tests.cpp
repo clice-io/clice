@@ -88,7 +88,6 @@ TEST_CASE(ParsePartialProject) {
     auto result = kota::codec::toml::from_string<ProjectConfig>(R"(cache_dir = "/tmp/test")");
     EXPECT_TRUE(result.has_value());
     EXPECT_EQ(std::string_view(result->cache_dir), "/tmp/test");
-    EXPECT_EQ(result->clang_tidy.value, false);
     EXPECT_EQ(result->enable_indexing.value, true);
     EXPECT_EQ(result->idle_timeout_ms.value, 3000u);
 }
@@ -109,7 +108,6 @@ TEST_CASE(ParseFullConfig) {
     auto result = kota::codec::toml::from_string<Config>(R"(
 [project]
 cache_dir = "/tmp/test"
-clang_tidy = true
 enable_indexing = false
 
 [[rules]]
@@ -118,7 +116,6 @@ append = ["-std=c++20"]
 )");
     EXPECT_TRUE(result.has_value());
     EXPECT_EQ(std::string_view(result->project.cache_dir), "/tmp/test");
-    EXPECT_EQ(result->project.clang_tidy.value, true);
     EXPECT_EQ(result->project.enable_indexing.value, false);
     EXPECT_EQ(result->rules.size(), 1u);
     EXPECT_EQ(result->rules[0].patterns[0], "**/*.cpp");
@@ -212,7 +209,6 @@ TEST_CASE(BornValidDefaults) {
     // A default-constructed Config is fully valid without any init step;
     // the option defaults come from the field initializers alone.
     Config config;
-    EXPECT_EQ(config.project.clang_tidy.value, false);
     EXPECT_EQ(config.project.enable_indexing.value, true);
     EXPECT_EQ(config.project.idle_timeout_ms.value, 3000u);
     EXPECT_EQ(config.project.test_hooks.value, false);
@@ -272,7 +268,7 @@ TEST_CASE(LoadFromJson) {
     auto result = Config::load_from_json(R"({
         "project": {
             "cache_dir": "/opt/cache",
-            "clang_tidy": true,
+            "test_hooks": true,
             "enable_indexing": false
         },
         "rules": [
@@ -282,7 +278,6 @@ TEST_CASE(LoadFromJson) {
                                          "/workspace");
     EXPECT_TRUE(result.has_value());
     EXPECT_EQ(std::string_view(result->project.cache_dir), "/opt/cache");
-    EXPECT_EQ(result->project.clang_tidy.value, true);
     EXPECT_EQ(result->project.enable_indexing.value, false);
     EXPECT_EQ(result->rules.size(), 1u);
     EXPECT_EQ(result->compiled_rules.size(), 1u);
@@ -545,7 +540,7 @@ TEST_CASE(CompilePathsList) {
 TEST_CASE(TomlErrorLocated) {
     // Malformed TOML (bad table header, missing close-bracket) must return nullopt.
     TempDir tmp;
-    tmp.touch("clice.toml", "[project\nclang_tidy = true\n");
+    tmp.touch("clice.toml", "[project\ntest_hooks = true\n");
     auto result = Config::load(tmp.path("clice.toml"), tmp.root.str());
     EXPECT_FALSE(result.has_value());
 }
@@ -555,7 +550,7 @@ TEST_CASE(TomlErrorLocated) {
 // plumbing here already forwards rich_error.location when present.
 TEST_CASE(SyntaxIssueReported) {
     TempDir tmp;
-    tmp.touch("clice.toml", "[project\nclang_tidy = true\n");
+    tmp.touch("clice.toml", "[project\ntest_hooks = true\n");
     std::vector<ConfigIssue> issues;
     auto result = Config::load(tmp.path("clice.toml"), tmp.root.str(), &issues);
     EXPECT_FALSE(result.has_value());
@@ -565,13 +560,13 @@ TEST_CASE(SyntaxIssueReported) {
 
 TEST_CASE(TypeIssueReported) {
     TempDir tmp;
-    tmp.touch("clice.toml", "[project]\nclang_tidy = \"yes\"\n");
+    tmp.touch("clice.toml", "[project]\ntest_hooks = \"yes\"\n");
     std::vector<ConfigIssue> issues;
     auto result = Config::load(tmp.path("clice.toml"), tmp.root.str(), &issues);
     EXPECT_FALSE(result.has_value());
     ASSERT_EQ(issues.size(), 1u);
     EXPECT_EQ(issues[0].severity, ConfigIssue::Severity::Error);
-    EXPECT_NE(issues[0].message.find("clang_tidy"), std::string::npos);
+    EXPECT_NE(issues[0].message.find("test_hooks"), std::string::npos);
 }
 
 TEST_CASE(UnknownKeyIssueWarns) {
@@ -618,7 +613,7 @@ TEST_CASE(NullOptionRejected) {
     // `defaulted` means "may be absent", never "may be null": an explicit
     // JSON null on an option is a type error and fails the whole decode,
     // both flat and inside a feature section.
-    auto flat = Config::load_from_json(R"({ "project": { "clang_tidy": null } })", "/ws");
+    auto flat = Config::load_from_json(R"({ "project": { "test_hooks": null } })", "/ws");
     EXPECT_FALSE(flat.has_value());
     auto nested = Config::load_from_json(R"({ "inlay_hints": { "block_end": null } })", "/ws");
     EXPECT_FALSE(nested.has_value());
@@ -688,7 +683,7 @@ TEST_CASE(InitOptionsOverlayPreservesToml) {
     tmp.touch("clice.toml", R"(
 [project]
 cache_dir = "/from/toml"
-clang_tidy = true
+test_hooks = true
 idle_timeout_ms = 16
 
 [[rules]]
@@ -698,7 +693,7 @@ append = ["-DFROM_TOML"]
 
     auto config = Config::load_from_workspace(tmp.root.str());
     EXPECT_EQ(std::string_view(config.project.cache_dir), "/from/toml");
-    EXPECT_EQ(config.project.clang_tidy.value, true);
+    EXPECT_EQ(config.project.test_hooks.value, true);
     EXPECT_EQ(config.project.idle_timeout_ms.value, 16u);
     EXPECT_EQ(config.compiled_rules.size(), 1u);
 
@@ -711,7 +706,7 @@ append = ["-DFROM_TOML"]
     EXPECT_EQ(config.project.idle_timeout_ms.value, 99u);
     // Untouched fields stay at TOML values.
     EXPECT_EQ(std::string_view(config.project.cache_dir), "/from/toml");
-    EXPECT_EQ(config.project.clang_tidy.value, true);
+    EXPECT_EQ(config.project.test_hooks.value, true);
     // Rules from clice.toml must survive the overlay.
     EXPECT_EQ(config.rules.size(), 1u);
     EXPECT_EQ(config.compiled_rules.size(), 1u);

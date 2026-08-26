@@ -277,8 +277,8 @@ CompilationStatus CompilationUnitRef::Self::run_clang(
     /// Add PPCallbacks to collect preprocessing information.
     self.collect_directives();
 
-    if(params.clang_tidy) {
-        self.configure_tidy({});
+    if(params.tidy) {
+        self.configure_tidy(*params.tidy);
     }
 
     std::optional<clang::syntax::TokenCollector> token_collector;

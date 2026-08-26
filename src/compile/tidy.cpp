@@ -1,3 +1,5 @@
+#include <algorithm>
+
 #include "compile/implement.h"
 #include "support/logging.h"
 
@@ -72,7 +74,7 @@ tidy::ClangTidyCheckFactories get_fast_checks(const tidy::ClangTidyCheckFactorie
     return fast;
 }
 
-tidy::ClangTidyOptions create_options() {
+tidy::ClangTidyOptions create_options(const TidyParams& params) {
     // getDefaults instantiates all check factories, which are registered at link
     // time. So cache the results once.
     const static auto default_opts = [] {
@@ -125,15 +127,20 @@ tidy::ClangTidyOptions create_options() {
     if(std::optional<std::string> user = llvm::sys::Process::GetEnv("USER")) {
         opts.User = user;
     }
-    // TODO: Providers.push_back(provideClangTidyFiles(TFS)); Filename
-    // TODO: if(EnableConfig) Providers.push_back(provideClangdConfig());
-    // clang::clangd::provideDefaultChecks
-    if(!opts.Checks || opts.Checks->empty()) {
+    if(!params.checks.empty()) {
+        // An explicit frozen plan (batch lint, resolved from .clang-tidy)
+        // owns its list verbatim: the interactive defaults and their
+        // incomplete-code exclusions are about ASTs built mid-edit, which
+        // a batch parse never sees.
+        opts.Checks = params.checks;
+    } else {
+        // clang::clangd::provideDefaultChecks
         opts.Checks = default_checks;
-    }
-    // clang::clangd::disableUnusableChecks
-    if(opts.Checks && !opts.Checks->empty()) {
+        // clang::clangd::disableUnusableChecks
         opts.Checks->append(bad_checks);
+    }
+    for(auto& [key, value]: params.options) {
+        opts.CheckOptions.insert_or_assign(key, tidy::ClangTidyOptions::ClangTidyValue(value));
     }
     return opts;
 }
@@ -328,7 +335,7 @@ std::unique_ptr<ClangTidyChecker> configure(clang::CompilerInstance& instance,
     auto file_name = input.getFile();
     LOG_INFO("Tidy configure file: {}", file_name);
 
-    tidy::ClangTidyOptions opts = create_options();
+    tidy::ClangTidyOptions opts = create_options(params);
     if(opts.Checks) {
         LOG_INFO("Tidy configure checks: {}", *opts.Checks);
     }
@@ -371,7 +378,8 @@ std::unique_ptr<ClangTidyChecker> configure(clang::CompilerInstance& instance,
         }
         return factories;
     }();
-    tidy::ClangTidyCheckFactories factories = get_fast_checks(all_factories);
+    tidy::ClangTidyCheckFactories factories =
+        params.fast_only ? get_fast_checks(all_factories) : all_factories;
     std::unique_ptr<ClangTidyChecker> checker = std::make_unique<ClangTidyChecker>(
         std::make_unique<tidy::DefaultOptionsProvider>(tidy::ClangTidyGlobalOptions(), opts));
 
@@ -390,6 +398,31 @@ std::unique_ptr<ClangTidyChecker> configure(clang::CompilerInstance& instance,
         check->registerMatchers(&checker->finder);
     }
     return checker;
+}
+
+TidyParams resolve_tidy_params(llvm::StringRef file) {
+    // clang-tidy's own provider: walks the file's ancestor directories
+    // reading .clang-tidy, honoring InheritParentConfig. The defaults
+    // carry no checks, so a tree without any configuration resolves to an
+    // empty list and the consumer's built-in default set applies.
+    tidy::FileOptionsProvider provider(
+        tidy::ClangTidyGlobalOptions(),
+        [] {
+            auto opts = tidy::ClangTidyOptions::getDefaults();
+            opts.Checks->clear();
+            return opts;
+        }(),
+        tidy::ClangTidyOptions());
+    auto opts = provider.getOptions(file);
+
+    TidyParams params;
+    params.checks = opts.Checks.value_or(std::string());
+    for(auto& [key, value]: opts.CheckOptions) {
+        params.options.emplace_back(key.str(), value.Value);
+    }
+    // Deterministic plan bytes: the option map's iteration order is not.
+    std::ranges::sort(params.options);
+    return params;
 }
 
 }  // namespace clice::tidy

@@ -4,6 +4,7 @@
 #include <cassert>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -21,6 +22,32 @@ namespace clang {
 class CodeCompleteConsumer;
 
 }
+
+namespace clice::tidy {
+
+/// The frozen clang-tidy configuration of one run. Plain data on purpose:
+/// it travels in worker requests and in the TURun family's product plan,
+/// both of which freeze it at takeoff.
+struct TidyParams {
+    /// Effective checks glob list in clang-tidy syntax; empty falls back
+    /// to the built-in default set.
+    std::string checks;
+
+    /// Restrict the run to checks classified fast — the interactive
+    /// path's latency guard. Batch lint runs everything configured.
+    bool fast_only = true;
+
+    /// Check options (the .clang-tidy CheckOptions map).
+    std::vector<std::pair<std::string, std::string>> options;
+};
+
+/// Resolve the effective clang-tidy configuration for `file` from its
+/// nearest .clang-tidy files (clang-tidy's own search and inheritance
+/// semantics). Files without any configuration return empty checks — the
+/// consumer's default set applies.
+TidyParams resolve_tidy_params(llvm::StringRef file);
+
+}  // namespace clice::tidy
 
 namespace clice {
 
@@ -68,8 +95,8 @@ struct CompilationParams {
     /// The kind of this compilation.
     CompilationKind kind;
 
-    /// Whether to run clang-tidy.
-    bool clang_tidy = false;
+    /// Run clang-tidy over the parse with this frozen configuration.
+    std::optional<tidy::TidyParams> tidy;
 
     /// Whether to collect the syntax::TokenBuffer during the run. Features
     /// need it; measurement paths turn it off to isolate its cost.

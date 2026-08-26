@@ -4,7 +4,7 @@ import { sleep } from "@clice/tools/client";
 import { cliceExecutable, expect, test } from "../fixtures.ts";
 
 const SUBCOMMANDS = ["serve", "query", "worker", "index", "doc", "lint", "format"];
-const STUBS = ["doc", "lint", "format"];
+const STUBS = ["doc", "format"];
 
 function runClice(...args: string[]) {
     return spawnSync(cliceExecutable(), args, { encoding: "utf8", timeout: 30_000 });
@@ -112,7 +112,7 @@ test("index reports header losing host", async ({ session }) => {
 
     const second = runClice("index", "--workspace", ws.root, "--workers", "2");
     expect(second.status, `stderr: ${second.stderr}`).toBe(1);
-    expect(second.stderr).toContain("stays unindexed");
+    expect(second.stderr).toContain("stays uncovered");
     expect(second.stdout).toContain("failed to index");
 
     // The debt persists across runs: the snapshot keeps recording the
@@ -120,10 +120,47 @@ test("index reports header losing host", async ({ session }) => {
     // index rather than going silently clean.
     const third = runClice("index", "--workspace", ws.root, "--workers", "2");
     expect(third.status, `stderr: ${third.stderr}`).toBe(1);
-    expect(third.stderr).toContain("stays unindexed");
+    expect(third.stderr).toContain("stays uncovered");
 
     // Only deleting the file settles the debt.
     ws.rm("a.h");
     const fourth = runClice("index", "--workspace", ws.root, "--workers", "2");
     expect(fourth.status, `stderr: ${fourth.stderr}`).toBe(0);
+});
+
+test("lint subcommand reports findings", ({ session }) => {
+    const ws = session.tmpdir();
+    ws.pinCacheDir();
+    ws.write(".clang-tidy", 'Checks: "-*,bugprone-integer-division"\n');
+    ws.write("main.cpp", "double ratio(int a, int b) {\n    return a / b;\n}\n");
+    ws.writeCDB(["main.cpp"]);
+
+    const findings = runClice("lint", "--workspace", ws.root, "--workers", "2");
+    expect(findings.status, `stderr: ${findings.stderr}`).toBe(1);
+    expect(findings.stdout).toContain("bugprone-integer-division");
+    expect(findings.stdout).toContain("main.cpp:2:12");
+    expect(findings.stdout).toContain("Linted 1 translation units");
+
+    // The clean rewrite is the negative control: same setup, no finding.
+    ws.write("main.cpp", "int add(int a, int b) { return a + b; }\n");
+    const clean = runClice("lint", "--workspace", ws.root, "--workers", "2");
+    expect(clean.status, `stderr: ${clean.stderr}`).toBe(0);
+    expect(clean.stdout).toContain("0 findings");
+});
+
+test("lint with index persists both", ({ session }) => {
+    const ws = session.tmpdir();
+    ws.pinCacheDir();
+    ws.write(".clang-tidy", 'Checks: "-*,bugprone-integer-division"\n');
+    ws.write("main.cpp", "double ratio(int a, int b) {\n    return a / b;\n}\n");
+    ws.writeCDB(["main.cpp"]);
+
+    const run = runClice("lint", "--index", "--workspace", ws.root, "--workers", "2");
+    expect(run.status, `stderr: ${run.stderr}`).toBe(1);
+    expect(run.stdout).toContain("bugprone-integer-division");
+
+    // The same parse persisted the index: a stats reader sees the TU.
+    const stats = runClice("index", "--stats", "--workspace", ws.root);
+    expect(stats.status, `stderr: ${stats.stderr}`).toBe(0);
+    expect(stats.stdout).toContain("Translation units: 1");
 });

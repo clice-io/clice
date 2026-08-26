@@ -1,5 +1,6 @@
 #pragma once
 
+#include "compile/compilation.h"
 #include "compile/compilation_unit.h"
 #include "compile/diagnostic.h"
 #include "semantic/semantics.h"
@@ -17,8 +18,6 @@ using namespace clang::tidy;
 bool is_registered_tidy_check(llvm::StringRef check);
 
 std::optional<bool> is_fast_tidy_check(llvm::StringRef check);
-
-struct TidyParams {};
 
 class ClangTidyChecker;
 

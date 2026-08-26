@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "version.h"
+#include "sched/bootstrap.h"
 #include "server/state/file_tracker.h"
 #include "server/transport/agent_client.h"
 #include "server/transport/lsp_client.h"
@@ -605,116 +606,19 @@ void MasterServer::drain_store_evictions() {
     }
 }
 
-void MasterServer::open_cache_store() {
-    auto& cfg = workspace.config.project;
-    if(workspace.store || cfg.cache_dir.empty())
-        return;
-
-    auto store = CacheStore::open(cfg.cache_dir, cache_format_version);
-    if(!store) {
-        LOG_WARN("Failed to open cache store at {}: {}",
-                 std::string_view(cfg.cache_dir),
-                 store.error().message());
-        return;
-    }
-
-    // Size budgets are deliberately generous: eviction exists to bound
-    // disk usage, not to keep the working set tight.
-    constexpr std::uint64_t GiB = 1ull << 30;
-    store->register_namespace({.name = "pch",
-                               .extension = ".pch",
-                               .aux_extension = ".pch.idx",
-                               .policy = CachePolicy::LRU,
-                               .max_bytes = 8 * GiB});
-    store->register_namespace(
-        {.name = "pcm", .extension = ".pcm", .policy = CachePolicy::LRU, .max_bytes = 8 * GiB});
-    store->register_namespace(
-        {.name = "header_context", .extension = ".h", .policy = CachePolicy::Scratch});
-    workspace.store.emplace(std::move(*store));
-    workspace.index_db = index::open_database(*workspace.store, cfg.index_db);
-    LOG_INFO("Cache store: {}", workspace.store->base_dir());
-
-    workspace.load_cache(contexts);
-    bg_tasks.spawn(cache_checkpoint_task());
-}
-
 void MasterServer::load_workspace() {
     if(workspace_root.empty())
         return;
 
-    auto& cfg = workspace.config.project;
-
-    open_cache_store();
-
-    auto cdb_path = discover_compile_commands(workspace.config, workspace_root);
-    if(cdb_path.empty()) {
+    auto report = bootstrap_workspace(workspace, contexts, index_store, pump, workspace_root);
+    if(report.opened_store) {
+        bg_tasks.spawn(cache_checkpoint_task());
+    }
+    if(report.cdb_path.empty()) {
         LOG_GUIDANCE(
             "No compile_commands.json found in workspace {}. Compile commands will be "
             "guessed; see https://clice.io/en/guide/quick-start for setup.",
             workspace_root);
-        // Persisted index shards are CDB-independent; load them so a
-        // database generated later (picked up by the CDB poll) starts from
-        // the previous session's index.
-        pump.claim_report(index_store.load().report);
-        return;
-    }
-
-    ScopedTimer cdb_timer;
-    auto count = workspace.cdb.load(cdb_path).value_or(0);
-    LOG_INFO("Loaded CDB from {} with {} entries", cdb_path, count);
-    LOG_PERF("startup", "phase=cdb_load entries={} elapsed_ms={}", count, cdb_timer.ms());
-
-    auto report = scan_dependency_graph(workspace.cdb,
-                                        workspace.toolchain,
-                                        workspace.path_pool,
-                                        workspace.dep_graph,
-                                        /*cache=*/nullptr,
-                                        [this](llvm::StringRef path,
-                                               std::vector<std::string>& append,
-                                               std::vector<std::string>& remove) {
-                                            workspace.config.match_rules(path, append, remove);
-                                        });
-    workspace.dep_graph.build_reverse_map();
-
-    auto unresolved = report.includes_found - report.includes_resolved;
-    double accuracy =
-        report.includes_found > 0
-            ? 100.0 * static_cast<double>(report.includes_resolved) / report.includes_found
-            : 100.0;
-    LOG_INFO(
-        "Dependency scan: {}ms, {} files ({} source + {} header), "
-        "{} edges, {}/{} resolved ({:.1f}%), {} waves",
-        report.elapsed_ms,
-        report.total_files,
-        report.source_files,
-        report.header_files,
-        report.total_edges,
-        report.includes_resolved,
-        report.includes_found,
-        accuracy,
-        report.waves);
-    if(unresolved > 0)
-        LOG_WARN("{} unresolved includes", unresolved);
-    LOG_PERF("startup",
-             "phase=dep_scan files={} edges={} elapsed_ms={}",
-             report.total_files,
-             report.total_edges,
-             report.elapsed_ms);
-
-    workspace.build_module_map();
-    pump.claim_report(index_store.load().report);
-
-    if(cfg.enable_indexing.value) {
-        for(auto& entry: workspace.cdb.get_entries()) {
-            auto file = workspace.cdb.resolve_path(entry.file);
-            auto server_id = workspace.path_pool.intern(file);
-            // Bulk sweep of unknown staleness: the hash gate decides per
-            // file. DepsOnly — a cold start with a warm index cache must
-            // keep serving the loaded shards, not blank every query until
-            // the sweep drains.
-            pump.enqueue(server_id, ReindexReason::DepsOnly);
-        }
-        pump.schedule();
     }
 }
 

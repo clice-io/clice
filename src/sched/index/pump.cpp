@@ -266,8 +266,9 @@ kota::task<> IndexPump::run_index_task(PendingLedger::Claim claim,
         if(ledger.pending_reason(server_path_id) == ReindexReason::ContentChanged ||
            store.need_update(file_path)) {
             LOG_INFO("[{}/{}] Indexing {}", index, total, file_path);
-            auto outcome = co_await turun.run_index(
+            auto outcome = co_await turun.run(
                 server_path_id,
+                {.index = true},
                 {.superseded = [this, claim] { return ledger.superseded(claim); },
                  .landing =
                      [this, server_path_id] {
@@ -290,7 +291,7 @@ kota::task<> IndexPump::run_index_task(PendingLedger::Claim claim,
             claim_report(outcome.report);
             admit = outcome.landing;
             switch(outcome.verdict) {
-                case TURunFamily::Verdict::Indexed: {
+                case TURunFamily::Verdict::Completed: {
                     failed_ids.erase(server_path_id);
                     LOG_PERF("index",
                              "progress={}/{} file={} bytes={} index_ms={} merge_ms={}",

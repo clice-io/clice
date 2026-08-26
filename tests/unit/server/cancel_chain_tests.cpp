@@ -112,7 +112,8 @@ TEST_CASE(CancelBuildStopsBuild) {
 
     bool test_done = false;
     w.run([&]() -> kota::task<> {
-        worker::IndexParams bp;
+        worker::TURunParams bp;
+        bp.index = true;
         bp.file = src;
         bp.directory = "/tmp";
         bp.arguments = make_args(src);

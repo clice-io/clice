@@ -20,14 +20,14 @@ TURunFamily::TURunFamily(TaskGraph& graph,
 
 void TURunFamily::register_runner() {
     graph.register_family(turun_family, [this](RoundContext& ctx, NodeId id) {
-        return run(ctx, static_cast<std::uint32_t>(id.key));
+        return round(ctx, static_cast<std::uint32_t>(id.key));
     });
 }
 
-kota::task<TURunFamily::Outcome> TURunFamily::run_index(std::uint32_t path_id, Guards guards) {
-    inputs[path_id] = std::move(guards);
-    // A clean node left by an earlier success must not satisfy this claim
-    // without running: the claim's existence means work is owed, so
+kota::task<TURunFamily::Outcome> TURunFamily::run(std::uint32_t path_id, Plan plan, Guards guards) {
+    inputs[path_id] = {std::move(plan), std::move(guards)};
+    // A clean node left by an earlier success must not satisfy this request
+    // without running: the request's existence means work is owed, so
     // re-mark the node dirty. TURun nodes have no dependents — the update
     // cascades nowhere.
     graph.update(node(path_id));
@@ -43,12 +43,12 @@ kota::task<TURunFamily::Outcome> TURunFamily::run_index(std::uint32_t path_id, G
     co_return outcome;
 }
 
-kota::task<RoundOutcome> TURunFamily::run(RoundContext& ctx, std::uint32_t path_id) {
+kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, std::uint32_t path_id) {
     auto it = inputs.find(path_id);
-    assert(it != inputs.end() && "a TURun round spawns only under run_index's stash");
-    // Copied: the map may rehash under a concurrent run_index for another
+    assert(it != inputs.end() && "a TURun round spawns only under run()'s stash");
+    // Copied: the map may rehash under a concurrent run() for another
     // file while this round is suspended.
-    auto guards = it->second;
+    auto [plan, guards] = it->second;
 
     auto file_path = std::string(workspace.path_pool.resolve(path_id));
 
@@ -65,10 +65,14 @@ kota::task<RoundOutcome> TURunFamily::run(RoundContext& ctx, std::uint32_t path_
         }
     }
 
-    worker::IndexParams params;
+    worker::TURunParams params;
     params.file = file_path;
-    // Bulk background indexing sticks to real commands; synthesized fallback
-    // commands would fill the index with guesses.
+    params.index = plan.index;
+    params.tidy = plan.tidy;
+    params.tidy_checks = std::move(plan.tidy_params.checks);
+    params.tidy_options = std::move(plan.tidy_params.options);
+    // Whole-TU runs stick to real commands; synthesized fallback commands
+    // would fill the index (and the lint report) with guesses.
     std::uint32_t host_path_id = no_path_id;
     auto source = contexts.resolve_command(file_path,
                                            params.directory,
@@ -78,11 +82,11 @@ kota::task<RoundOutcome> TURunFamily::run(RoundContext& ctx, std::uint32_t path_
     if(source == CommandSource::Fallback) {
         // A file whose manifest survives keeps serving its last-known rows,
         // so skipping it loses nothing. One without a manifest (dropped or
-        // never built) stays unindexed — count that as a failure so a batch
+        // never built) stays uncovered — count that as a failure so a batch
         // run reports the debt instead of exiting clean.
         if(!workspace.project_index.manifests.contains(path_id)) {
             landed[path_id] = {.verdict = Verdict::Failed,
-                               .error = "no compile command found; it stays unindexed"};
+                               .error = "no compile command found; the file stays uncovered"};
             co_return RoundOutcome::Failed;
         }
         landed[path_id] = {.verdict = Verdict::Skipped};
@@ -93,61 +97,65 @@ kota::task<RoundOutcome> TURunFamily::run(RoundContext& ctx, std::uint32_t path_
 
     ScopedTimer timer;
     auto result = co_await pool.send_stateless(params, worker::Priority::Low);
-    if(result.has_value() && result.value().success && !result.value().tu_index_data.empty()) {
-        auto index_ms = timer.ms();
-        // Merge guard: a newer content-level invalidation during this build
-        // (or a removal clearing the entry) means this result describes text
-        // that no longer exists — e.g. a compile-command change whose
-        // erase+re-enqueue must not be undone by an in-flight merge of the
-        // old-command rows. Drop the merge; the follow-up slot redoes it.
-        if(guards.superseded && guards.superseded()) {
-            LOG_INFO("Discarding superseded index result for {}", file_path);
-            landed[path_id] = {.verdict = Verdict::Skipped};
-            co_return RoundOutcome::Stale;
-        }
-        // Landing-time admission: the serving side re-arbitrates before the
-        // merge lands — a session opened or diverged mid-flight vetoes the
-        // rows exactly as it would have at dispatch.
-        auto landing = guards.landing ? guards.landing() : Admission::Admit;
-        if(landing != Admission::Admit) {
-            LOG_INFO("Serving side vetoed the index result for {}", file_path);
-            landed[path_id] = {.verdict = Verdict::Skipped, .landing = landing};
-            co_return RoundOutcome::Stale;
-        }
-        ScopedTimer merge_timer;
-        auto report =
-            store.merge(result.value().tu_index_data.data(), result.value().tu_index_data.size());
-        if(!report) {
-            // Rejected wholesale: the file's rows are missing or stale,
-            // which is a failure, not a completed index.
+    if(result.has_value() && result.value().success) {
+        auto run_ms = timer.ms();
+        auto& value = result.value();
+        if(plan.index && value.tu_index_data.empty()) {
             landed[path_id] = {.verdict = Verdict::Failed,
-                               .error = "the TUIndex result failed verification"};
+                               .error = "the worker returned no TUIndex"};
             co_return RoundOutcome::Failed;
         }
-        // Record the borrowed host only for rows that landed: written at
-        // dispatch, a failed rebuild would leave the persisted CDB
-        // snapshot naming the new host while the retained rows were built
-        // through the old one — an unchanged new host then pins those
-        // stale rows fresh across restarts.
-        if(source == CommandSource::IncludeGraph) {
-            store.record_header_host(path_id, host_path_id);
+        Outcome outcome;
+        outcome.verdict = Verdict::Completed;
+        outcome.tidy_diagnostics = std::move(value.tidy_diagnostics);
+        outcome.perf = {.bytes = value.tu_index_data.size(), .index_ms = run_ms, .merge_ms = 0};
+        if(plan.index) {
+            // Merge guard: a newer content-level invalidation during this
+            // build (or a removal clearing the entry) means this result
+            // describes text that no longer exists — e.g. a compile-command
+            // change whose erase+re-enqueue must not be undone by an
+            // in-flight merge of the old-command rows. Drop the merge; the
+            // follow-up slot redoes it.
+            if(guards.superseded && guards.superseded()) {
+                LOG_INFO("Discarding superseded index result for {}", file_path);
+                landed[path_id] = {.verdict = Verdict::Skipped};
+                co_return RoundOutcome::Stale;
+            }
+            // Landing-time admission: the serving side re-arbitrates before
+            // the merge lands — a session opened or diverged mid-flight
+            // vetoes the rows exactly as it would have at dispatch.
+            auto landing = guards.landing ? guards.landing() : Admission::Admit;
+            if(landing != Admission::Admit) {
+                LOG_INFO("Serving side vetoed the index result for {}", file_path);
+                landed[path_id] = {.verdict = Verdict::Skipped, .landing = landing};
+                co_return RoundOutcome::Stale;
+            }
+            ScopedTimer merge_timer;
+            auto report = store.merge(value.tu_index_data.data(), value.tu_index_data.size());
+            if(!report) {
+                // Rejected wholesale: the file's rows are missing or stale,
+                // which is a failure, not a completed index.
+                landed[path_id] = {.verdict = Verdict::Failed,
+                                   .error = "the TUIndex result failed verification"};
+                co_return RoundOutcome::Failed;
+            }
+            // Record the borrowed host only for rows that landed: written at
+            // dispatch, a failed rebuild would leave the persisted CDB
+            // snapshot naming the new host while the retained rows were
+            // built through the old one — an unchanged new host then pins
+            // those stale rows fresh across restarts.
+            if(source == CommandSource::IncludeGraph) {
+                store.record_header_host(path_id, host_path_id);
+            }
+            outcome.report = std::move(*report);
+            outcome.perf.merge_ms = merge_timer.ms();
         }
-        landed[path_id] = {
-            .verdict = Verdict::Indexed,
-            .report = std::move(*report),
-            .perf = {.bytes = result.value().tu_index_data.size(),
-                     .index_ms = index_ms,
-                     .merge_ms = merge_timer.ms()},
-        };
+        landed[path_id] = std::move(outcome);
         co_return RoundOutcome::Success;
     }
 
-    if(result.has_value() && !result.value().success) {
-        landed[path_id] = {.verdict = Verdict::Failed, .error = result.value().error};
-        co_return RoundOutcome::Failed;
-    }
     if(result.has_value()) {
-        landed[path_id] = {.verdict = Verdict::Failed, .error = "the worker returned no TUIndex"};
+        landed[path_id] = {.verdict = Verdict::Failed, .error = result.value().error};
         co_return RoundOutcome::Failed;
     }
     if(result.error().code == worker::dispatch_errc::cancelled) {

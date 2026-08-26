@@ -22,7 +22,7 @@ void add_query(kota::deco::cli::SubCommander& root, int& exit_code);
 void add_worker(kota::deco::cli::SubCommander& root, int& exit_code);
 void add_index(kota::deco::cli::SubCommander& root, int& exit_code, const char* self_path);
 void add_doc(kota::deco::cli::SubCommander& root, int& exit_code);
-void add_lint(kota::deco::cli::SubCommander& root, int& exit_code);
+void add_lint(kota::deco::cli::SubCommander& root, int& exit_code, const char* self_path);
 void add_format(kota::deco::cli::SubCommander& root, int& exit_code);
 void add_inspect(kota::deco::cli::SubCommander& root, int& exit_code);
 

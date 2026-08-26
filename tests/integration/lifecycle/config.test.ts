@@ -73,7 +73,7 @@ test("config type error diagnostic", async ({ session }) => {
     // falls back to defaults. (Line/column pinpointing awaits the kotatsu
     // TOML error-location feature — see config_tests.cpp.)
     const workspace = session.tmpdir();
-    workspace.write("clice.toml", '[project]\nclang_tidy = "yes"\n');
+    workspace.write("clice.toml", '[project]\ntest_hooks = "yes"\n');
     workspace.write("main.cpp", "int main() { return 0; }\n");
     const client = session.spawn(workspace, {});
     await client.initialize(workspace);
@@ -82,7 +82,7 @@ test("config type error diagnostic", async ({ session }) => {
     const diags = client.diagnostics.get(tomlUri) ?? [];
     expect(diags.length, `expected one config diagnostic: ${JSON.stringify(diags)}`).toBe(1);
     expect(diags[0]!.severity).toBe(proto.DiagnosticSeverity.Error);
-    expect(diags[0]!.message).toContain("clang_tidy");
+    expect(diags[0]!.message).toContain("test_hooks");
 });
 
 test("config unknown key diagnostic", async ({ session }) => {
@@ -102,7 +102,7 @@ test("config unknown key diagnostic", async ({ session }) => {
 
 test("config diagnostic clears after fix", async ({ session }) => {
     const workspace = session.tmpdir();
-    workspace.write("clice.toml", '[project]\nclang_tidy = "yes"\n');
+    workspace.write("clice.toml", '[project]\ntest_hooks = "yes"\n');
     workspace.write("main.cpp", "int main() { return 0; }\n");
     let client = session.spawn(workspace, {});
     await client.initialize(workspace);
@@ -116,7 +116,7 @@ test("config diagnostic clears after fix", async ({ session }) => {
 
     // Fix the config and restart — the new session publishes an empty list
     // for the config URI so stale markers clear.
-    workspace.write("clice.toml", "[project]\nclang_tidy = true\n");
+    workspace.write("clice.toml", "[project]\ntest_hooks = true\n");
     client = session.spawn(workspace, {});
     await client.initialize(workspace);
     await client.waitDiagnostics(tomlUri, 10_000);

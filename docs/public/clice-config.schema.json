@@ -6,7 +6,6 @@
             "$ref": "#/$defs/ProjectConfig",
             "description": "The [project] section: project-wide server options.",
             "default": {
-                "clang_tidy": false,
                 "cache_dir": "",
                 "logging_dir": "",
                 "compile_commands_paths": [],
@@ -75,11 +74,6 @@
         "ProjectConfig": {
             "type": "object",
             "properties": {
-                "clang_tidy": {
-                    "type": "boolean",
-                    "description": "Run clang-tidy alongside compiler diagnostics. Not yet wired: the option is parsed but has no effect.",
-                    "default": false
-                },
                 "cache_dir": {
                     "type": "string",
                     "description": "Directory for the unified on-disk cache (PCH, PCM and index artifacts). Empty derives it from XDG_CACHE_HOME (or `~/.cache`) with a per-workspace subdirectory named after the workspace plus a short hash, falling back to `${workspace}/.clice`; the resolved path is printed at startup.",

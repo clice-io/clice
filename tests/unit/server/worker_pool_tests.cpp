@@ -1736,7 +1736,8 @@ TEST_CASE(StatelessRequest) {
         CO_ASSERT_TRUE(f.start(2, 0));
         co_await kota::sleep(500);
 
-        worker::IndexParams params;
+        worker::TURunParams params;
+        params.index = true;
         params.file = src;
         params.directory = "/tmp";
         params.arguments = make_args(src);
@@ -1770,7 +1771,8 @@ TEST_CASE(AdvisoryCancelCooperates) {
         CO_ASSERT_TRUE(f.start(1, 0));
         co_await kota::sleep(500);
 
-        worker::IndexParams params;
+        worker::TURunParams params;
+        params.index = true;
         params.file = big_src;
         params.directory = "/tmp";
         params.arguments = make_args(big_src);
@@ -1793,7 +1795,8 @@ TEST_CASE(AdvisoryCancelCooperates) {
 
         // The worker replied and survived: the same slot serves the next
         // request.
-        worker::IndexParams follow;
+        worker::TURunParams follow;
+        follow.index = true;
         follow.file = small_src;
         follow.directory = "/tmp";
         follow.arguments = make_args(small_src);
@@ -2018,7 +2021,8 @@ TEST_CASE(CrashDuringRequest) {
         f.kill_worker(0);
         f.kill_worker(1);
 
-        worker::IndexParams params;
+        worker::TURunParams params;
+        params.index = true;
         params.file = src;
         params.directory = "/tmp";
         params.arguments = make_args(src);
@@ -2044,7 +2048,8 @@ TEST_CASE(PreemptCancelsRequest) {
         CO_ASSERT_TRUE(f.start(2, 0));
         co_await kota::sleep(500);
 
-        worker::IndexParams params;
+        worker::TURunParams params;
+        params.index = true;
         params.file = src;
         params.directory = "/tmp";
         params.arguments = make_args(src);
@@ -2095,7 +2100,8 @@ TEST_CASE(CancelledCrashRetiresSlot) {
         CO_ASSERT_TRUE(f.start(1, 0));
         co_await kota::sleep(500);
 
-        worker::IndexParams params;
+        worker::TURunParams params;
+        params.index = true;
         params.file = src;
         params.directory = "/tmp";
         params.arguments = make_args(src);

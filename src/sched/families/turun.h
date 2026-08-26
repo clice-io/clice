@@ -3,7 +3,9 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <vector>
 
+#include "compile/compilation.h"
 #include "sched/context.h"
 #include "sched/graph.h"
 #include "sched/index/ledger.h"
@@ -21,13 +23,14 @@ class PCMFamily;
 /// widened into NodeId::key.
 constexpr inline std::uint8_t turun_family = 4;
 
-/// One-shot whole-TU runs as a task-graph family: today one round = one
-/// background index parse dispatched to a stateless worker and merged into
-/// the IndexStore. The product plan of a round is frozen at spawn; this
-/// stage's plan is always {index} — the batch driver widens it to
-/// {index, tidy} and becomes the second consumer, at which point a late
-/// joiner whose plan the frozen one does not cover waits for the settle
-/// and starts a fresh round.
+/// One-shot whole-TU runs as a task-graph family: one round = one parse on
+/// a stateless worker serving the products of the frozen plan — the full
+/// index merged into the IndexStore, a clang-tidy pass, or both from the
+/// single parse. The pump requests {index}; the batch lint driver requests
+/// {tidy} or {index, tidy}. A plan (products and their configuration) is
+/// frozen at the request; today each process hosts one consumer, so a
+/// late joiner with a different plan cannot arise — that protocol comes
+/// with the first concurrent consumer (in-server background checks).
 ///
 /// The family owns the run policy: command resolution, module-PCM edges,
 /// the worker dispatch, and the store merge with its supersede and
@@ -47,9 +50,19 @@ public:
     /// synthetic runner register their own under turun_family instead.
     void register_runner();
 
+    /// The frozen product plan of one run.
+    struct Plan {
+        bool index = false;
+        bool tidy = false;
+
+        /// Frozen tidy configuration; meaningful only with `tidy` set.
+        tidy::TidyParams tidy_params;
+    };
+
     enum class Verdict : std::uint8_t {
-        /// The worker's TUIndex merged into the store.
-        Indexed,
+        /// The run produced its planned products (the index merged into
+        /// the store, the tidy findings landed in the outcome).
+        Completed,
         /// Deliberately produced nothing: the result was superseded or
         /// vetoed at landing, or the TU has no real command but keeps its
         /// last-known rows.
@@ -80,7 +93,10 @@ public:
         /// before the attempt settles and its waiters wake.
         IndexStore::Report report;
 
-        /// Failure detail for the pump's logs.
+        /// Findings of the tidy pass (plan product `tidy`).
+        std::vector<worker::TidyDiagnostic> tidy_diagnostics;
+
+        /// Failure detail for the requester's logs.
         std::string error;
 
         struct Perf {
@@ -99,14 +115,15 @@ public:
         std::function<Admission()> landing;
     };
 
-    /// Run one index attempt for the TU through its graph node and return
-    /// the attempt's outcome. The node is re-marked dirty first: a claim's
-    /// existence means work is owed, and a clean node left by an earlier
-    /// success would otherwise satisfy the join without running anything.
-    kota::task<Outcome> run_index(std::uint32_t path_id, Guards guards);
+    /// Run one attempt of the plan for the TU through its graph node and
+    /// return the attempt's outcome. The node is re-marked dirty first: a
+    /// request's existence means work is owed, and a clean node left by an
+    /// earlier success would otherwise satisfy the join without running
+    /// anything.
+    kota::task<Outcome> run(std::uint32_t path_id, Plan plan, Guards guards = {});
 
 private:
-    kota::task<RoundOutcome> run(RoundContext& ctx, std::uint32_t path_id);
+    kota::task<RoundOutcome> round(RoundContext& ctx, std::uint32_t path_id);
 
     static NodeId node(std::uint32_t path_id) {
         return {turun_family, path_id};
@@ -119,11 +136,17 @@ private:
     IndexStore& store;
     WorkerPool& pool;
 
-    /// The stash-and-collect halves of run_index around the graph join:
-    /// guards go in before the request, the landed outcome comes out after
-    /// it. The ledger's single-flight-per-file discipline means at most
-    /// one live entry per TU.
-    llvm::DenseMap<std::uint32_t, Guards> inputs;
+    struct Inputs {
+        Plan plan;
+        Guards guards;
+    };
+
+    /// The stash-and-collect halves of run() around the graph join: the
+    /// plan and guards go in before the request, the landed outcome comes
+    /// out after it. Each consumer runs one attempt per file at a time
+    /// (the pump's ledger, the lint driver's sweep), so at most one live
+    /// entry per TU.
+    llvm::DenseMap<std::uint32_t, Inputs> inputs;
     llvm::DenseMap<std::uint32_t, Outcome> landed;
 };
 

@@ -205,14 +205,24 @@ struct BuildPCMParams {
     std::string output_path;
 };
 
-/// Compile a TU and serialize its full index.
-struct IndexParams {
+/// One whole-TU run: a single parse serving the products the frozen plan
+/// names — the full index, a clang-tidy pass, or both.
+struct TURunParams {
     std::string file;
     std::string directory;
     std::vector<std::string> arguments;
 
     /// PCM dependencies for TUs that import modules.
     std::unordered_map<std::string, std::string> pcms;
+
+    /// Products of the run.
+    bool index = false;
+    bool tidy = false;
+
+    /// Frozen clang-tidy configuration (see tidy::TidyParams); meaningful
+    /// only when `tidy` is set.
+    std::string tidy_checks;
+    std::vector<std::pair<std::string, std::string>> tidy_options;
 };
 
 /// Code completion over unsaved buffer content.
@@ -269,14 +279,33 @@ struct ArtifactBuildResult {
     std::vector<DepFile> deps;
 };
 
-struct IndexResult {
+/// One clang-tidy finding, located for CLI presentation (1-based line and
+/// column; the column counts bytes, like the compiler's).
+struct TidyDiagnostic {
+    std::string file;
+    std::uint32_t line = 0;
+    std::uint32_t column = 0;
+
+    /// Error (warning otherwise): the check is in WarningsAsErrors.
+    bool error = false;
+
+    std::string message;
+
+    /// Check name, e.g. "bugprone-integer-division".
+    std::string check;
+};
+
+struct TURunResult {
     bool success = true;
     std::string error;
     /// See ArtifactBuildResult::has_user_errors.
     bool has_user_errors = false;
 
-    /// Serialized TUIndex, merged by the master.
+    /// Serialized TUIndex, merged by the master (plan product `index`).
     std::string tu_index_data;
+
+    /// Findings of the tidy pass (plan product `tidy`).
+    std::vector<TidyDiagnostic> tidy_diagnostics;
 };
 
 /// Request the document links of an open file's AST. Only the main-file
@@ -353,9 +382,9 @@ struct RequestTraits<clice::worker::BuildPCMParams> {
 };
 
 template <>
-struct RequestTraits<clice::worker::IndexParams> {
-    using Result = clice::worker::IndexResult;
-    constexpr inline static std::string_view method = "clice/worker/index";
+struct RequestTraits<clice::worker::TURunParams> {
+    using Result = clice::worker::TURunResult;
+    constexpr inline static std::string_view method = "clice/worker/tuRun";
 };
 
 template <>

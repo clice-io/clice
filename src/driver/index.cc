@@ -1,14 +1,16 @@
 #include <chrono>
-#include <csignal>
 #include <format>
 #include <print>
 #include <ranges>
 #include <thread>
 
 #include "driver/driver.h"
+#include "index/database.h"
 #include "index/serialization.h"
+#include "sched/batch.h"
 #include "sched/index/store.h"
-#include "server/transport/master_server.h"
+#include "sched/workspace.h"
+#include "support/cache_store.h"
 #include "support/filesystem.h"
 #include "support/timer.h"
 
@@ -17,18 +19,20 @@
 
 namespace clice::driver {
 
+using kota::deco::decl::KVStyle;
+
 namespace {
 
 struct IndexOptions {
     DecoFlag(names = {"-h", "--help"}, help = "Show help", required = false)
     help;
 
-    DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
+    DecoKV(style = KVStyle::JoinedOrSeparate,
            help = "Workspace root directory (default: current directory)",
            required = false)
     <std::string> workspace;
 
-    DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
+    DecoKV(style = KVStyle::JoinedOrSeparate,
            help = "Number of indexing workers (default: from config)",
            required = false)
     <std::uint32_t> workers;
@@ -38,12 +42,12 @@ struct IndexOptions {
              required = false)
     stats;
 
-    DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
+    DecoKV(style = KVStyle::JoinedOrSeparate,
            help = "How many of the largest file shards --stats lists",
            required = false)
     <std::uint32_t> top;
 
-    DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
+    DecoKV(style = KVStyle::JoinedOrSeparate,
            names = {"--log-level", "--log-level="},
            help = "Log level: trace, debug, info, warn, error, off",
            required = false)
@@ -64,124 +68,33 @@ std::string format_size(std::uint64_t bytes) {
     return std::format("{} B", bytes);
 }
 
-/// Poll until the background pump has drained every round (requeue
-/// rounds included) and persisted its results.
-kota::task<> wait_until_indexed(const MasterServer& server) {
-    while(!server.pump.is_idle()) {
-        co_await kota::sleep(200);
-    }
-}
-
-/// The first signal asks for a graceful stop: in-flight files are
-/// abandoned, finished ones are persisted, and a rerun resumes from
-/// there. A second signal — of either watched kind, hence the shared
-/// flag — exits immediately.
-kota::task<> watch_signal(MasterServer& server, int signum, bool& stop_requested) {
-    auto watcher = kota::signal::create();
-    if(!watcher || watcher->start(signum).has_error()) {
-        co_return;
-    }
-    while(true) {
-        co_await watcher->wait();
-        if(stop_requested) {
-            std::_Exit(130);
-        }
-        stop_requested = true;
-        LOG_INFO("Interrupted; saving indexing progress");
-        server.schedule_shutdown();
-    }
-}
-
-kota::task<> run_indexing_task(MasterServer& server, std::string root, int& exit_code) {
-    ScopedTimer timer;
-    server.initialize(root);
-    if(server.lifecycle != ServerLifecycle::Ready) {
-        exit_code = 1;
-        co_await server.shutdown_and_cleanup();
-        co_return;
-    }
-    // The command's whole product is the persisted index: without storage
-    // (cache failed to open, another process holds the index writer lock,
-    // or an unreadable global blob disabled persistence) the run would
-    // only warm this process's memory and a rerun would start from
-    // nothing — fail instead of pretending.
-    if(!server.workspace.index_db) {
-        LOG_ERROR("Cannot persist the index at {}; see the log for the cause and rerun",
-                  std::string_view(server.workspace.config.project.cache_dir));
-        exit_code = 1;
-        co_await server.shutdown_and_cleanup();
-        co_return;
-    }
-    if(server.workspace.cdb.get_entries().empty()) {
-        LOG_ERROR("Nothing to index: no compile_commands.json found under {}", root);
-        exit_code = 1;
-        co_await server.shutdown_and_cleanup();
-        co_return;
-    }
-
-    bool stop_requested = false;
-    kota::task_group<> aux(server.loop);
-    aux.spawn(watch_signal(server, SIGINT, stop_requested));
-    aux.spawn(watch_signal(server, SIGTERM, stop_requested));
-
-    co_await kota::with_token(wait_until_indexed(server), server.shutdown_token());
-    co_await server.shutdown_and_cleanup();
-    aux.cancel();
-    co_await aux.join();
-
-    // Judged only after the watchers settle: a signal arriving while the
-    // final save/teardown ran must still report an interruption, not a
-    // normal completion with exit code 0.
-    if(stop_requested) {
+int run_indexing(std::string root, std::uint32_t workers, const char* self_path) {
+    auto result = run_batch_index({
+        .root = std::move(root),
+        .workers = workers,
+        .self_path = self_path,
+    });
+    if(result.interrupted) {
         std::println("Indexing interrupted; progress saved. Rerun `clice index` to resume.");
-        exit_code = 130;
-        co_return;
+        return result.exit_code;
     }
-    auto& workspace = server.workspace;
-    std::uint64_t total_bytes = 0;
-    for(auto& shard: llvm::make_second_range(workspace.shards)) {
-        total_bytes += shard.bytes().size();
+    if(!result.completed) {
+        return result.exit_code;
     }
     std::println("Indexed {} translation units in {:.1f}s: {} file shards ({}), {} symbols.",
-                 workspace.project_index.manifests.size(),
-                 timer.ms() / 1000.0,
-                 workspace.shards.size(),
-                 format_size(total_bytes),
-                 workspace.project_index.symbols.size());
-    if(auto failed = server.pump.failed_files()) {
+                 result.indexed_tus,
+                 result.seconds,
+                 result.shard_count,
+                 format_size(result.shard_bytes),
+                 result.symbol_count);
+    if(result.failed_files != 0) {
         std::println("{} translation units failed to index (see the log); the index is partial.",
-                     failed);
-        exit_code = 1;
+                     result.failed_files);
     }
-    // The shutdown save was the last retry for failed writes; whatever is
-    // still dirty never reached disk and a rerun cannot resume from it.
-    if(server.index_store.has_unsaved_state()) {
+    if(result.unsaved) {
         std::println("Part of the index could not be persisted (see the log).");
-        exit_code = 1;
     }
-}
-
-int run_indexing(std::string root, std::uint32_t workers, const char* self_path) {
-    kota::event_loop loop;
-    MasterServer server(loop, self_path);
-
-    // A one-shot batch run: rounds start immediately, disk polling stays
-    // off, and indexing happens even when the config keeps the background
-    // index disabled — running `clice index` is the request itself.
-    std::string worker_overlay;
-    if(workers != 0) {
-        worker_overlay = std::format(
-            R"(, "stateless_worker_count": {0}, "min_stateless_worker_count": {0}, "max_stateless_worker_count": {0})",
-            workers);
-    }
-    server.init_options_json = std::format(
-        R"({{"project": {{"idle_timeout_ms": 0, "enable_indexing": true{}}}, "tracker": {{"cdb_poll_seconds": 0, "workspace_poll_seconds": 0}}}})",
-        worker_overlay);
-
-    int exit_code = 0;
-    loop.schedule(run_indexing_task(server, std::move(root), exit_code));
-    loop.run();
-    return exit_code;
+    return result.exit_code;
 }
 
 /// Sentinel of run_stats_once: the load raced a live writer's batch;
