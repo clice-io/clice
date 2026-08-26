@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "command/argument_parser.h"
+#include "server/compiler/ast_family.h"
 #include "server/state/session_store.h"
 #include "support/logging.h"
 
@@ -279,7 +280,7 @@ ext::SwitchContextResult ContextService::switch_context(llvm::StringRef path,
     // in-flight compile and drop the state earned under the old one. It
     // also needs its own self-containment trial — a different host can
     // change the macro environment.
-    SessionStore::reset_compile_state(*session, ResetDepth::Superseded);
+    ast.switch_identity(*session);
     resolver.forget_self_contained(path_id);
 
     // The table entry is the active choice; persist it across sessions.
@@ -324,7 +325,7 @@ bool ContextService::drop_orphaned_choices(SessionStore& sessions) {
             LOG_INFO("Dropping orphaned context choice for {}: its basis no longer exists",
                      workspace.path_pool.resolve(session_id));
             resolver.drop_header_context(session_id);
-            SessionStore::reset_compile_state(*session, ResetDepth::Superseded);
+            ast.switch_identity(*session);
             resolver.saved_contexts.erase(it);
             dropped_saved = true;
         }

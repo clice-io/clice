@@ -35,15 +35,15 @@ constexpr static std::size_t notify_log_limit = 128;
 
 MasterServer::MasterServer(kota::event_loop& loop, std::string self_path) :
     loop(loop), pool(loop), contexts(workspace),
-    compiler(loop, workspace, contexts, pcm, pch, pool),
-    indexer(loop, workspace, pool, contexts, pcm, sessions),
-    index_query(workspace, sessions, indexer),
-    agent_query(workspace, sessions, indexer, {.disk_only = true}),
-    features(compiler, index_query, workspace, contexts, indexer, sessions),
+    indexer(loop, workspace, pool, contexts, pcm, sessions, ast.projections),
+    index_query(workspace, sessions, indexer, ast.projections),
+    agent_query(workspace, sessions, indexer, ast.projections, {.disk_only = true}),
+    features(ast, forwarder, index_query, workspace, contexts, indexer, sessions),
     invalidator(workspace, sessions, contexts, pcm), bg_tasks(loop),
     self_path(std::move(self_path)) {
     pcm.register_runner();
     pch.register_runner();
+    ast.register_runner();
     // The notify hook is process-wide because the logging layer cannot
     // depend on the server; the composition root owns it for the server's
     // lifetime and turns reports into state (notify_log) plus a wake-up
@@ -102,14 +102,14 @@ void MasterServer::initialize() {
     auto& cfg = workspace.config.project;
 
     if(cfg.readonly == "on") {
-        compiler.readonly = ReadonlyMode::On;
+        ast.readonly = ReadonlyMode::On;
     } else if(cfg.readonly == "auto") {
-        compiler.readonly = ReadonlyMode::Auto;
+        ast.readonly = ReadonlyMode::Auto;
     } else {
         if(cfg.readonly != "off") {
             LOG_WARN("Unknown readonly '{}'; using off", std::string(cfg.readonly));
         }
-        compiler.readonly = ReadonlyMode::Off;
+        ast.readonly = ReadonlyMode::Off;
     }
 
     if(!cfg.logging_dir.empty()) {
@@ -177,8 +177,8 @@ void MasterServer::initialize() {
     for(auto& [path_id, session]: sessions.sessions) {
         if(session) {
             contexts.validate_saved_context(session->path_id);
-            session->serving = compiler.readonly == ReadonlyMode::Off ? ServingMode::Escalated
-                                                                      : ServingMode::IndexOnly;
+            session->serving =
+                ast.readonly == ReadonlyMode::Off ? ServingMode::Escalated : ServingMode::IndexOnly;
             settle_open_serving(session);
         }
     }
@@ -222,8 +222,8 @@ kota::task<> MasterServer::workspace_poll_task() {
 void MasterServer::wire() {
     pool.on_crash = [this](const WorkerCrashInfo& info) {
         // A stateless crash loses only in-flight requests, which fail back
-        // to their callers with dispatch_errc::worker_crashed — the compiler
-        // resends idempotent builds, the indexer requeues the file. No state
+        // to their callers with dispatch_errc::worker_crashed — the families
+        // resend idempotent builds, the indexer requeues the file. No state
         // outlives the request, so there is nothing to invalidate and no
         // event to dispatch.
         if(!info.stateful)
@@ -250,18 +250,18 @@ void MasterServer::wire() {
         }
     };
 
-    compiler.on_indexing_needed = [this]() {
+    ast.on_indexing_needed = [this]() {
         indexer.schedule();
     };
     pcm.on_indexing_needed = [this]() {
         indexer.schedule();
     };
 
-    // The compiler's pull-side staleness check found a dependency changed
+    // The AST family's pull-side staleness check found a dependency changed
     // on disk: route it through the same DiskChanged path the file
     // tracker's polling uses, so lazy detection and polling share one
     // invalidation cascade.
-    compiler.on_stale = [this](std::uint32_t path_id) {
+    ast.on_stale = [this](std::uint32_t path_id) {
         dispatch(FileEvent::disk_changed(path_id));
     };
 
@@ -271,7 +271,7 @@ void MasterServer::wire() {
     // session answers empty until its first edit.
     indexer.on_session_unservable = [this](std::uint32_t path_id) {
         if(auto session = sessions.find(path_id)) {
-            compiler.escalate(*session);
+            ast.escalate(*session);
         }
     };
 }
@@ -286,11 +286,16 @@ std::shared_ptr<Session> MasterServer::find_session(std::uint32_t path_id) {
 }
 
 std::shared_ptr<Session> MasterServer::open_session(std::uint32_t path_id) {
+    // A replaced live session (an editor resending didOpen) leaves a
+    // projection describing the old session's compile; the fresh session
+    // starts with none, exactly like the pre-projection world's fresh
+    // Session fields.
+    ast.drop(path_id);
     auto session = sessions.open(path_id);
     // The serving mode's creation write point; the only other write is
-    // Compiler::escalate.
+    // ASTFamily::escalate.
     session->serving =
-        compiler.readonly == ReadonlyMode::Off ? ServingMode::Escalated : ServingMode::IndexOnly;
+        ast.readonly == ReadonlyMode::Off ? ServingMode::Escalated : ServingMode::IndexOnly;
     return session;
 }
 
@@ -307,7 +312,7 @@ void MasterServer::settle_open_serving(std::shared_ptr<Session> session) {
         // restored unsaved file) can never be served read-only: escalate
         // now instead of answering empty until the first edit.
         if(!it->second.matches_content(session->text)) {
-            compiler.escalate(*session);
+            ast.escalate(*session);
         }
         return;
     }
@@ -318,7 +323,7 @@ void MasterServer::settle_open_serving(std::shared_ptr<Session> session) {
     if(workspace.config.project.enable_indexing.value) {
         indexer.boost(session->path_id);
     } else {
-        compiler.escalate(*session);
+        ast.escalate(*session);
     }
 }
 
@@ -337,17 +342,18 @@ void MasterServer::close_session(std::uint32_t path_id) {
     // flow before the initialize response. CDBExact keeps
     // format_diagnostics from decorating the empty set with guidance.
     if(auto session = sessions.find(path_id)) {
-        session->output = CompileOutput{
-            .version = std::nullopt,
-            .source = CommandSource::CDBExact,
-            .diagnostics = {},
-            .line_limit = std::nullopt,
-            .inactive_regions = std::nullopt,
-        };
-        compiler.on_output.emit(session);
+        ast.publish_output(session,
+                           CompileOutput{
+                               .version = std::nullopt,
+                               .source = CommandSource::CDBExact,
+                               .diagnostics = {},
+                               .line_limit = std::nullopt,
+                               .inactive_regions = std::nullopt,
+                           });
     }
 
     sessions.close(path_id);
+    ast.drop(path_id);
 
     dispatch(FileEvent::buffer_closed(path_id));
 
@@ -397,22 +403,21 @@ void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
         contexts.reset_header_mode(path_id);
     }
 
-    // The Lost reset bumps dirty_epoch so an in-flight compile that
-    // consumed the pre-event world cannot clear ast_dirty when it lands;
-    // generation stays put — the buffer is still the same buffer, and
-    // results that pass their generation check may still be published
-    // (bounded staleness: the flag stays dirty, the next request recompiles).
+    // The Lost invalidation voids the projection's currency (and any
+    // in-flight round's landing-as-current) without touching generation —
+    // the buffer is still the same buffer, and the round still publishes
+    // its product as bounded staleness; the next request recompiles.
     for(auto path_id: dirty.mark_ast_dirty) {
         if(auto session = sessions.find(path_id)) {
-            SessionStore::reset_compile_state(*session, ResetDepth::Lost);
+            ast.invalidate(path_id);
             session->trial_done = false;
         }
         contexts.forget_self_contained(path_id);
     }
 
     for(auto path_id: dirty.mark_lost) {
-        if(auto session = sessions.find(path_id)) {
-            SessionStore::reset_compile_state(*session, ResetDepth::Lost);
+        if(sessions.find(path_id)) {
+            ast.invalidate(path_id);
         }
     }
 
@@ -423,7 +428,7 @@ void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
     for(auto path_id: dirty.force_revalidate) {
         contexts.invalidate_header_deps(path_id);
         if(auto session = sessions.find(path_id)) {
-            SessionStore::reset_compile_state(*session, ResetDepth::Lost);
+            ast.invalidate(path_id);
             session->trial_done = false;
         }
     }
@@ -483,7 +488,7 @@ kota::task<> MasterServer::shutdown_and_cleanup() {
     co_await bg_tasks.join();
     // Quiesce in-flight compilation and indexing first so the persisted
     // snapshot below covers everything that actually completed.
-    co_await kota::when_all(indexer.stop(), compiler.stop());
+    co_await kota::when_all(indexer.stop(), ast.stop());
     // Requests have unwound and released their interest; wind down the
     // graph's rounds before the persistence pass and the pool stop
     // (contract 11: quiesce -> final save -> pool/store).

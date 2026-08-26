@@ -226,7 +226,8 @@ int run_stats_once(llvm::StringRef root, std::uint32_t top, bool allow_retry) {
     PCMFamily pcm(graph, workspace, contexts, pool);
     pcm.register_runner();
     SessionStore sessions;
-    Indexer indexer(loop, workspace, pool, contexts, pcm, sessions);
+    ASTProjectionTable projections;
+    Indexer indexer(loop, workspace, pool, contexts, pcm, sessions, projections);
     if(!indexer.load(/*read_only=*/true)) {
         LOG_ERROR("Index cache at {} is in an old or corrupt format; run `clice index` to rebuild",
                   std::string_view(workspace.config.project.cache_dir));

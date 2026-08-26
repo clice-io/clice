@@ -24,6 +24,7 @@ namespace protocol = kota::ipc::protocol;
 namespace lsp = kota::ipc::lsp;
 
 class Indexer;
+struct ASTProjectionTable;
 struct Session;
 struct SessionStore;
 
@@ -118,8 +119,9 @@ public:
     IndexQuery(Workspace& workspace,
                const SessionStore& sessions,
                const Indexer& indexer,
+               const ASTProjectionTable& ast,
                IndexQueryOptions options = {}) :
-        workspace(workspace), sessions(sessions), indexer(indexer), options(options) {}
+        workspace(workspace), sessions(sessions), indexer(indexer), ast(ast), options(options) {}
 
     /// Query relations (Definition, Reference, etc.) for a symbol at cursor.
     /// @param session  Active Session for this file, or nullptr to use the disk shards only.
@@ -379,6 +381,7 @@ private:
     Workspace& workspace;
     const SessionStore& sessions;
     const Indexer& indexer;
+    const ASTProjectionTable& ast;
     IndexQueryOptions options;
 };
 

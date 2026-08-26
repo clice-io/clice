@@ -10,9 +10,9 @@
 
 #include "feature/feature.h"
 #include "index/tu_index.h"
-#include "server/compiler/compiler.h"
 #include "server/compiler/indexer.h"
 #include "server/protocol/position.h"
+#include "server/state/ast_projection.h"
 #include "server/state/session.h"
 #include "server/state/session_store.h"
 #include "server/transport/uri.h"
@@ -42,7 +42,7 @@ void IndexQuery::visit_sessions(SessionVisitor visitor) const {
     sessions.for_each([&](std::uint32_t path_id, const Session& session) -> bool {
         // Freshness contract, clause 3: a dirty session's file index may
         // describe a buffer that no longer exists — skip it.
-        if(session.index_current()) {
+        if(ast.index_current(path_id)) {
             return visitor(path_id, session);
         }
         return true;
@@ -54,12 +54,13 @@ bool IndexQuery::is_path_open(std::uint32_t path_id) const {
 }
 
 std::shared_ptr<index::TUIndex> IndexQuery::overlay_of(const Session& session) const {
-    if(!session.pch_key) {
+    auto projection = ast.projection(session.path_id);
+    if(!projection || !projection->pch_key) {
         return nullptr;
     }
     // Returned by value: consumers run synchronously, but a reference into
     // the map value would not survive a rehash.
-    return workspace.preamble_state(*session.pch_key);
+    return workspace.preamble_state(*projection->pch_key);
 }
 
 void IndexQuery::visit_overlays(llvm::function_ref<bool(const index::TUIndex&)> visitor) const {
@@ -68,8 +69,9 @@ void IndexQuery::visit_overlays(llvm::function_ref<bool(const index::TUIndex&)> 
     }
     // Sessions with identical preambles share one blob; visit it once.
     llvm::StringSet<> seen;
-    sessions.for_each([&](std::uint32_t, const Session& session) -> bool {
-        if(!session.pch_key || !seen.insert(*session.pch_key).second) {
+    sessions.for_each([&](std::uint32_t path_id, const Session& session) -> bool {
+        auto projection = ast.projection(path_id);
+        if(!projection || !projection->pch_key || !seen.insert(*projection->pch_key).second) {
             return true;
         }
         auto state = overlay_of(session);
@@ -229,7 +231,7 @@ bool IndexQuery::skip_shard(std::uint32_t path_id) const {
     if(!session) {
         return skip_stale_contribution(path_id);
     }
-    if(session->index_current()) {
+    if(ast.index_current(path_id)) {
         return true;
     }
     // Freshness contract, clause 4: an open document without a current
@@ -257,8 +259,8 @@ bool IndexQuery::find_symbol_info(index::SymbolHash hash,
                                   SymbolKind& kind) const {
     // Check open sessions first (has all symbols for unsaved buffers).
     bool found = false;
-    visit_sessions([&](std::uint32_t, const Session& session) -> bool {
-        if(auto identity = session.index.find_symbol(hash)) {
+    visit_sessions([&](std::uint32_t path_id, const Session& session) -> bool {
+        if(auto identity = ast.projection(path_id)->index->find_symbol(hash)) {
             name = std::string(identity->name);
             kind = identity->kind;
             found = true;
@@ -307,13 +309,14 @@ IndexQuery::CursorHit IndexQuery::resolve_cursor(llvm::StringRef path,
     // Freshness contract, clause 1: an open document with a current file
     // index resolves against it — the compile the caller awaited settled
     // it together with the buffer.
-    if(session && session->index_current()) {
+    if(session && ast.index_current(session->path_id)) {
         auto map = session->line_map();
         auto offset = map.to_offset(position);
         if(!offset)
             return {};
         CursorHit hit;
-        session->file_rows().lookup(*offset, [&](const index::Occurrence& occ) {
+        auto projection = ast.projection(session->path_id);
+        projection->file_rows().lookup(*offset, [&](const index::Occurrence& occ) {
             auto range = map.to_range(occ.range.begin, occ.range.end);
             if(range) {
                 hit = {occ.target, *range};
@@ -408,7 +411,7 @@ std::vector<protocol::Location> IndexQuery::collect_relation_locations(index::Sy
         if(!uri)
             return true;
         auto map = session.line_map();
-        session.file_rows().lookup(hash, kind, [&](const index::Relation& r) {
+        ast.projection(id)->file_rows().lookup(hash, kind, [&](const index::Relation& r) {
             if(auto range = map.to_range(r.range.begin, r.range.end))
                 locations.push_back({uri->str(), *range});
             return true;
@@ -632,7 +635,7 @@ std::optional<protocol::Location> IndexQuery::find_relation_location(index::Symb
         if(!uri)
             return true;
         auto map = session.line_map();
-        session.file_rows().lookup(hash, kind, [&](const index::Relation& r) {
+        ast.projection(id)->file_rows().lookup(hash, kind, [&](const index::Relation& r) {
             if(auto range = map.to_range(r.range.begin, r.range.end)) {
                 session_result = protocol::Location{uri->str(), *range};
                 return false;
@@ -770,9 +773,9 @@ void IndexQuery::collect_grouped_relations(
             });
         }
     }
-    visit_sessions([&](std::uint32_t, const Session& session) -> bool {
+    visit_sessions([&](std::uint32_t id, const Session& session) -> bool {
         auto map = session.line_map();
-        session.file_rows().lookup(hash, kind, [&](const index::Relation& r) {
+        ast.projection(id)->file_rows().lookup(hash, kind, [&](const index::Relation& r) {
             if(auto range = map.to_range(r.range.begin, r.range.end))
                 target_ranges[r.target_symbol].push_back(*range);
             return true;
@@ -833,8 +836,8 @@ void IndexQuery::collect_unique_targets(index::SymbolHash hash,
             });
         }
     }
-    visit_sessions([&](std::uint32_t, const Session& session) -> bool {
-        session.file_rows().lookup(hash, kind, [&](const index::Relation& r) {
+    visit_sessions([&](std::uint32_t id, const Session&) -> bool {
+        ast.projection(id)->file_rows().lookup(hash, kind, [&](const index::Relation& r) {
             if(seen.insert(r.target_symbol).second) {
                 targets.push_back(r.target_symbol);
             }
@@ -965,7 +968,7 @@ std::optional<IndexQuery::DefinitionText> IndexQuery::get_definition_text(index:
 }
 
 const index::Shard* IndexQuery::open_session_shard(const Session& session) const {
-    if(session.index_current()) {
+    if(ast.index_current(session.path_id)) {
         return nullptr;
     }
     auto it = workspace.shards.find(session.path_id);
@@ -1077,8 +1080,8 @@ std::optional<feature::HoverInfo> IndexQuery::hover_card(llvm::StringRef path,
 
     bool sliced = false;
     if(session) {
-        if(session->index_current()) {
-            sliced = slice_from(session->file_rows(), session->text);
+        if(ast.index_current(session->path_id)) {
+            sliced = slice_from(ast.projection(session->path_id)->file_rows(), session->text);
         } else if(auto* shard = open_session_shard(*session)) {
             sliced = slice_from(*shard, session->text);
         }
@@ -1093,7 +1096,8 @@ std::optional<feature::HoverInfo> IndexQuery::hover_card(llvm::StringRef path,
                 // instead of losing the definition text.
                 if(!options.disk_only) {
                     if(auto other = sessions.find(file_id)) {
-                        if(other->index_current() && slice_from(other->file_rows(), other->text))
+                        if(ast.index_current(file_id) &&
+                           slice_from(ast.projection(file_id)->file_rows(), other->text))
                             break;
                         if(auto* shard = open_session_shard(*other);
                            shard && slice_from(*shard, other->text))
@@ -1266,10 +1270,10 @@ std::vector<protocol::SymbolInformation> IndexQuery::search_symbols(llvm::String
         seen.insert(hash);
     }
 
-    visit_sessions([&](std::uint32_t, const Session& session) -> bool {
+    visit_sessions([&](std::uint32_t id, const Session&) -> bool {
         if(results.size() >= max_results)
             return false;
-        session.index.iterate_symbols(
+        ast.projection(id)->index->iterate_symbols(
             [&](index::SymbolHash hash, const index::SymbolIdentity& symbol, llvm::StringRef) {
                 if(results.size() >= max_results)
                     return false;

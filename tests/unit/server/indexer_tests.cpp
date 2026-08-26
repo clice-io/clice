@@ -18,6 +18,7 @@
 #include "sched/graph.h"
 #include "sched/workspace.h"
 #include "server/compiler/indexer.h"
+#include "server/state/ast_projection.h"
 #include "server/state/session_store.h"
 #include "worker/pool.h"
 
@@ -40,7 +41,8 @@ struct IndexerFixture {
     TaskGraph graph{loop};
     PCMFamily pcm{graph, workspace, contexts, pool};
     SessionStore sessions;
-    Indexer indexer{loop, workspace, pool, contexts, pcm, sessions};
+    ASTProjectionTable projections;
+    Indexer indexer{loop, workspace, pool, contexts, pcm, sessions, projections};
 
     /// Fail the entry's current dispatch: the launch ticket matches.
     Verdict fail(std::uint32_t id, bool crashed) {
@@ -273,7 +275,8 @@ WorkerPool pool{loop};
 ContextResolver resolver{workspace};
 TaskGraph graph{loop};
 PCMFamily pcm{graph, workspace, resolver, pool};
-Indexer indexer{loop, workspace, pool, resolver, pcm, store};
+ASTProjectionTable projections;
+Indexer indexer{loop, workspace, pool, resolver, pcm, store, projections};
 
 TEST_CASE(MergeRejectsGarbage) {
     // A worker shipping corrupted bytes (torn write, stale format) must not

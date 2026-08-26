@@ -22,6 +22,7 @@ namespace clice {
 class PCMFamily;
 
 class ContextResolver;
+struct ASTProjectionTable;
 struct SessionStore;
 class WorkerPool;
 
@@ -54,7 +55,8 @@ public:
             WorkerPool& pool,
             ContextResolver& contexts,
             PCMFamily& pcm,
-            const SessionStore& sessions);
+            const SessionStore& sessions,
+            const ASTProjectionTable& ast);
 
     /// Whether open files' disk snapshots are indexed like closed ones.
     /// Off by default: the LSP side never reads an open file's shard (its
@@ -267,6 +269,7 @@ private:
     ContextResolver& contexts;
     PCMFamily& pcm;
     const SessionStore& sessions;
+    const ASTProjectionTable& ast;
 
     /// Open documents, read-only. A file with an open Session is skipped by
     /// background indexing (its buffer index is authoritative).

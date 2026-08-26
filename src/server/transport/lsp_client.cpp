@@ -62,7 +62,7 @@ static void fire_refresh(kota::event_loop& loop, kota::ipc::JsonPeer& peer, Para
 }
 
 LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(server), peer(peer) {
-    output_conn = server.compiler.on_output.connect(
+    output_conn = server.ast.on_output.connect(
         [this](const std::shared_ptr<Session>& session) { push_output(*session); });
     progress_conn =
         server.indexer.on_progress_changed.connect([this]() { report_index_progress(); });
@@ -231,14 +231,15 @@ void LSPClient::register_lifecycle() {
         // output would pair stale inactive regions (whose notification
         // carries no version) with the new text — the next compile pushes
         // fresh results instead.
-        srv.sessions.for_each(
-            [this]([[maybe_unused]] std::uint32_t path_id, const Session& session) {
-                if(session.output.has_value() && !session.ast_dirty &&
-                   session.output->version == session.version) {
-                    this->push_output(session);
-                }
-                return true;
-            });
+        srv.sessions.for_each([this](std::uint32_t path_id, const Session& session) {
+            auto projection = this->server.ast.projections.projection(path_id);
+            if(projection && projection->output.has_value() &&
+               this->server.ast.projections.current(path_id) &&
+               projection->output->version == session.version) {
+                this->push_output(session);
+            }
+            return true;
+        });
     });
 
     peer.on_request(
@@ -311,15 +312,16 @@ void LSPClient::register_document_sync() {
 
         srv.sessions.apply_change(*session, params.content_changes, params.text_document.version);
 
-        // The edit just made any in-flight compile stale. Abandon it now
+        // The edit just made any in-flight compile stale. Supersede it now
         // instead of waiting for the next AST-backed request to observe
-        // the supersede: with no follow-up request the stale parse (or its
-        // dependency prep) would run to completion and hold up its waiters.
-        srv.compiler.abandon_superseded(*session);
+        // it: the round's advisory token releases its dependency waits,
+        // and the CancelCompile interrupt keeps a stale parse from
+        // holding up its waiters.
+        srv.ast.supersede(path_id);
 
         // Editing is the canonical escalation trigger: from here on the
         // session invests in PCH/AST.
-        srv.compiler.escalate(*session);
+        srv.ast.escalate(*session);
 
         srv.dispatch(FileEvent::buffer_edited(path_id));
 
@@ -639,7 +641,7 @@ void LSPClient::register_extensions() {
             // merged index cannot give it (union rows). A rejected switch
             // (stale epoch, bad host) changed no context and owes none.
             if(result.success) {
-                this->server.compiler.escalate(*session);
+                this->server.ast.escalate(*session);
             }
             co_return to_raw(result);
         });
@@ -787,14 +789,15 @@ void LSPClient::publish_config_diagnostics() {
 void LSPClient::push_output(const Session& session) {
     // Held back until the handshake completes (the LSP spec forbids
     // publishDiagnostics before the initialize response); the output stays
-    // materialized on the session and the initialized handler replays it.
+    // materialized in the projection and the initialized handler replays it.
     if(!client_ready) {
         return;
     }
-    if(!session.output.has_value()) {
+    auto projection = server.ast.projections.projection(session.path_id);
+    if(!projection || !projection->output.has_value()) {
         return;
     }
-    auto& output = *session.output;
+    auto& output = *projection->output;
 
     auto file_path = std::string(server.workspace.path_pool.resolve(session.path_id));
     auto uri = lsp::URI::from_file_path(file_path);

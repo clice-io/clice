@@ -16,9 +16,10 @@
 
 namespace clice {
 
-class Compiler;
+class ASTFamily;
 class ContextResolver;
 class Indexer;
+class WorkerForwarder;
 
 namespace protocol = kota::ipc::protocol;
 
@@ -46,14 +47,15 @@ namespace protocol = kota::ipc::protocol;
 /// or gate results themselves.
 class FeatureRouter {
 public:
-    FeatureRouter(Compiler& compiler,
+    FeatureRouter(ASTFamily& ast,
+                  WorkerForwarder& forwarder,
                   IndexQuery& index_query,
                   Workspace& workspace,
                   ContextResolver& contexts,
                   Indexer& indexer,
                   SessionStore& sessions) :
-        compiler(compiler), index_query(index_query), workspace(workspace), contexts(contexts),
-        indexer(indexer), sessions(sessions) {}
+        ast(ast), forwarder(forwarder), index_query(index_query), workspace(workspace),
+        contexts(contexts), indexer(indexer), sessions(sessions) {}
 
     using RawResult = kota::task<kota::codec::RawValue, kota::ipc::Error>;
 
@@ -68,7 +70,7 @@ public:
     /// retry after the forward's compile refreshes a dirty session.
     /// @param session may be null (document not open).
     /// @param token the request's cancellation token, forwarded to the
-    /// worker sends (see Compiler::forward_query).
+    /// worker sends (see WorkerForwarder::forward_query).
     RawResult definition(std::shared_ptr<Session> session,
                          llvm::StringRef path,
                          const protocol::Position& pos,
@@ -79,7 +81,7 @@ public:
     /// answer while it is not, and a session the policy keeps un-compiled
     /// answers with its pinned degraded surface (empty inlay hints and
     /// code actions). Each takes the request's cancellation token and
-    /// forwards it to the worker sends (see Compiler::forward_query).
+    /// forwards it to the worker sends (see WorkerForwarder::forward_query).
     RawResult hover(std::shared_ptr<Session> session,
                     const protocol::Position& position,
                     std::optional<kota::cancellation_token> token = {});
@@ -165,7 +167,7 @@ private:
     /// before ensure_compiled's clean-AST fast path, so a quarantined
     /// session's forward returns null even with a clean AST). When false,
     /// the routing rules try the index before deciding to await a compile.
-    static bool ast_answerable(const Session& session);
+    bool ast_answerable(const Session& session) const;
 
     /// The route decision for requests the index may serve: drains the
     /// transport pipe (the handler resumed eagerly; a didChange or cancel
@@ -234,7 +236,8 @@ private:
     std::optional<protocol::Hover> resolve_preamble_hover(Session& session,
                                                           const protocol::Position& position);
 
-    Compiler& compiler;
+    ASTFamily& ast;
+    WorkerForwarder& forwarder;
     IndexQuery& index_query;
     Workspace& workspace;
     ContextResolver& contexts;

@@ -4,6 +4,7 @@
 #include "sched/context.h"
 #include "sched/families/pcm.h"
 #include "sched/graph.h"
+#include "server/compiler/ast_family.h"
 #include "server/service/context_service.h"
 #include "server/state/invalidator.h"
 #include "worker/pool.h"
@@ -34,6 +35,21 @@ struct PCMHarness {
 
     PCMHarness(Workspace& workspace, ContextResolver& resolver) :
         pcm(graph, workspace, resolver, pool) {}
+};
+
+/// The orphaned-choice tests exercise ContextService's session reset,
+/// which goes through the AST family; this bundles its inert stack.
+struct ASTHarness {
+    kota::event_loop loop;
+    TaskGraph graph{loop};
+    WorkerPool pool{loop};
+    PCMFamily pcm;
+    PCHFamily pch;
+    ASTFamily ast;
+
+    ASTHarness(Workspace& workspace, ContextResolver& resolver, SessionStore& store) :
+        pcm(graph, workspace, resolver, pool), pch(graph, workspace, resolver, pool),
+        ast(workspace, resolver, graph, pcm, pch, pool, store, loop) {}
 };
 
 TEST_SUITE(Invalidator) {
@@ -814,7 +830,8 @@ TEST_CASE(SurvivingEdgeKeepsChoice) {
     auto session = store.open(header);
     resolver.saved_contexts[header] = SavedContext{host, std::nullopt, ""};
 
-    ASSERT_FALSE(ContextService{workspace, resolver}.drop_orphaned_choices(store));
+    ASTHarness harness(workspace, resolver, store);
+    ASSERT_FALSE(ContextService{workspace, resolver, harness.ast}.drop_orphaned_choices(store));
     ASSERT_TRUE(resolver.saved_contexts.contains(header));
 }
 
@@ -832,9 +849,11 @@ TEST_CASE(RemovedEdgeDropsChoice) {
     resolver.saved_contexts[header] = SavedContext{host, std::nullopt, ""};
     auto generation = session->generation;
 
-    ASSERT_TRUE(ContextService{workspace, resolver}.drop_orphaned_choices(store));
+    ASTHarness harness(workspace, resolver, store);
+    harness.ast.projections.entries[header].current = true;
+    ASSERT_TRUE(ContextService{workspace, resolver, harness.ast}.drop_orphaned_choices(store));
     ASSERT_FALSE(resolver.header_contexts.contains(header));
-    ASSERT_TRUE(session->ast_dirty);
+    ASSERT_FALSE(harness.ast.projections.current(header));
     ASSERT_FALSE(session->trial_done);
     ASSERT_EQ(session->generation, generation + 1);
     ASSERT_FALSE(resolver.saved_contexts.contains(header));
@@ -857,7 +876,8 @@ TEST_CASE(VanishedOccurrenceDropsChoice) {
     store.open(header);
     resolver.saved_contexts[header] = SavedContext{host, 1, ""};
 
-    ASSERT_TRUE(ContextService{workspace, resolver}.drop_orphaned_choices(store));
+    ASTHarness harness(workspace, resolver, store);
+    ASSERT_TRUE(ContextService{workspace, resolver, harness.ast}.drop_orphaned_choices(store));
     ASSERT_FALSE(resolver.saved_contexts.contains(header));
 }
 

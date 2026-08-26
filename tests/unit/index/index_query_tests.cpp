@@ -11,6 +11,7 @@
 #include "sched/graph.h"
 #include "server/compiler/indexer.h"
 #include "server/service/query.h"
+#include "server/state/ast_projection.h"
 #include "server/state/session_store.h"
 #include "worker/pool.h"
 
@@ -31,8 +32,9 @@ WorkerPool pool{loop};
 ContextResolver resolver{workspace};
 TaskGraph graph{loop};
 PCMFamily pcm{graph, workspace, resolver, pool};
-Indexer indexer{loop, workspace, pool, resolver, pcm, store};
-clice::IndexQuery query{workspace, store, indexer};
+ASTProjectionTable projections;
+Indexer indexer{loop, workspace, pool, resolver, pcm, store, projections};
+clice::IndexQuery query{workspace, store, indexer, projections};
 
 std::uint32_t main_id = 0;
 std::uint32_t header_id = 0;
@@ -196,7 +198,7 @@ TEST_CASE(OpenSessionServedByShard) {
     // compile it: freshness clause 4 serves it from its shard.
     auto session = store.open(main_id);
     store.apply_open(*session, unit->interested_content().str(), 1);
-    ASSERT_FALSE(session->index_current());
+    ASSERT_FALSE(projections.index_current(session->path_id));
 
     auto position = feature::to_position(session->line_map(), point("use"));
     ASSERT_TRUE(position.has_value());

@@ -12,6 +12,7 @@
 #include "sched/graph.h"
 #include "server/compiler/indexer.h"
 #include "server/service/query.h"
+#include "server/state/ast_projection.h"
 #include "server/state/session_store.h"
 #include "worker/pool.h"
 
@@ -31,9 +32,10 @@ WorkerPool pool{loop};
 ContextResolver resolver{workspace};
 TaskGraph graph{loop};
 PCMFamily pcm{graph, workspace, resolver, pool};
-Indexer indexer{loop, workspace, pool, resolver, pcm, store};
-IndexQuery index_query{workspace, store, indexer};
-IndexQuery agent_query{workspace, store, indexer, {.disk_only = true}};
+ASTProjectionTable projections;
+Indexer indexer{loop, workspace, pool, resolver, pcm, store, projections};
+IndexQuery index_query{workspace, store, indexer, projections};
+IndexQuery agent_query{workspace, store, indexer, projections, {.disk_only = true}};
 
 std::uint32_t main_id = 0;
 std::uint32_t header_id = 0;

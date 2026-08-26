@@ -112,29 +112,6 @@ void SessionStore::apply_change(Session& session,
     session.quarantine.on_edit(applied);
 
     session.generation++;
-    session.ast_dirty = true;
-}
-
-void SessionStore::reset_compile_state(Session& session, ResetDepth depth) {
-    session.ast_dirty = true;
-    switch(depth) {
-        case ResetDepth::Superseded: {
-            session.pch_key.reset();
-            session.ast_deps.reset();
-            session.trial_done = false;
-            // Invalidate any in-flight compile: without the bump it would
-            // pass its generation check on completion and publish results
-            // for the superseded identity.
-            session.generation++;
-            break;
-        }
-        case ResetDepth::Lost: {
-            // An in-flight compile consumed the pre-loss world; it must not
-            // clear ast_dirty when it lands (see Session::settle_compile).
-            session.dirty_epoch++;
-            break;
-        }
-    }
 }
 
 }  // namespace clice

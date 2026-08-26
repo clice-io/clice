@@ -28,8 +28,7 @@ std::uint64_t PCHFamily::intern(llvm::StringRef pch_key) {
     return it->second;
 }
 
-kota::task<PCHFamily::Outcome> PCHFamily::acquire(Request request,
-                                                  std::function<void(llvm::StringRef)> on_crash) {
+NodeId PCHFamily::prepare(Request request, std::function<void(llvm::StringRef)> on_crash) {
     auto key_id = intern(request.pch_key);
     auto id = node(key_id);
 
@@ -41,12 +40,18 @@ kota::task<PCHFamily::Outcome> PCHFamily::acquire(Request request,
         graph.update(id);
     }
 
-    // No round live means the request below spawns one synchronously —
-    // this acquire is the dispatch owner: stash its inputs and probe for
+    // No round live means the caller's join spawns one synchronously —
+    // that caller is the dispatch owner: stash its inputs and probe for
     // the round. (On a clean fresh node the stash is never consumed.)
     if(!graph.is_compiling(id)) {
         states[key_id] = {std::move(request), std::move(on_crash)};
     }
+    return id;
+}
+
+kota::task<PCHFamily::Outcome> PCHFamily::acquire(Request request,
+                                                  std::function<void(llvm::StringRef)> on_crash) {
+    auto id = prepare(std::move(request), std::move(on_crash));
 
     switch(co_await graph.request(id, {.flavor = JoinFlavor::OneAttempt, .foreground = true})) {
         case JoinOutcome::Success: co_return Outcome::Ready;

@@ -2,6 +2,7 @@
 
 #include <vector>
 
+#include "server/state/ast_projection.h"
 #include "server/state/session.h"
 
 #include "kota/ipc/lsp/protocol.h"

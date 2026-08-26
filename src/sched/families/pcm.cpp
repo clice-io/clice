@@ -30,7 +30,7 @@ void PCMFamily::register_runner() {
     });
 }
 
-llvm::SmallVector<std::uint32_t> PCMFamily::resolve(std::uint32_t path_id) {
+llvm::SmallVector<std::uint32_t> PCMFamily::direct_deps(std::uint32_t path_id) {
     auto file_path = workspace.path_pool.resolve(path_id);
     std::vector<std::string> rule_append, rule_remove;
     workspace.config.match_rules(file_path, rule_append, rule_remove);
@@ -77,7 +77,7 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, std::uint32_t path_id
     // edges honest: a CDB or import change is always seen by the next
     // round. Each depend() then records the candidate edge (interest- and
     // foreground-visible immediately) and waits for the dependency.
-    auto deps = resolve(path_id);
+    auto deps = direct_deps(path_id);
     declare_deps(path_id, deps);
     for(auto dep: deps) {
         switch(co_await ctx.depend(node(dep))) {
@@ -246,7 +246,7 @@ kota::task<bool> PCMFamily::build_deps(std::uint32_t path_id, bool foreground) {
     // the open TUs importing it through them. Declared even when empty,
     // so a removed import stops cascading. (S6's Ast family will own
     // these edges through its own rounds' depend().)
-    auto deps = resolve(path_id);
+    auto deps = direct_deps(path_id);
     declare_deps(path_id, deps);
     if(deps.empty()) {
         co_return true;
@@ -264,6 +264,19 @@ kota::task<bool> PCMFamily::build_deps(std::uint32_t path_id, bool foreground) {
     });
 }
 
+bool PCMFamily::revalidate_blobs() {
+    llvm::SmallVector<std::uint32_t> evicted;
+    for(auto& [pid, pcm_path]: workspace.pcm_paths) {
+        if(!llvm::sys::fs::exists(pcm_path)) {
+            evicted.push_back(pid);
+        }
+    }
+    for(auto pid: evicted) {
+        invalidate(pid);
+    }
+    return !evicted.empty();
+}
+
 kota::task<bool> PCMFamily::prepare_deps(std::uint32_t path_id, bool foreground) {
     // The dynamic equivalent of the old lazy-graph gate: a project
     // without module units pays nothing — no CDB lookup, no precise scan.
@@ -274,18 +287,9 @@ kota::task<bool> PCMFamily::prepare_deps(std::uint32_t path_id, bool foreground)
     }
 
     for(int attempt = 0; attempt < 3; ++attempt) {
-        llvm::SmallVector<std::uint32_t> evicted;
-        for(auto& [pid, pcm_path]: workspace.pcm_paths) {
-            if(!llvm::sys::fs::exists(pcm_path)) {
-                evicted.push_back(pid);
-            }
-        }
-        if(attempt > 0 && evicted.empty()) {
+        bool any_evicted = revalidate_blobs();
+        if(attempt > 0 && !any_evicted) {
             break;
-        }
-
-        for(auto pid: evicted) {
-            invalidate(pid);
         }
 
         if(!co_await build_deps(path_id, foreground)) {

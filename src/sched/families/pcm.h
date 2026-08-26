@@ -46,19 +46,22 @@ public:
     kota::task<bool> build_deps(std::uint32_t path_id, bool foreground = false);
 
     /// Re-validate on-disk PCM blobs and build the module dependencies of
-    /// `path_id`. LRU eviction can remove a blob while its node is still
-    /// clean, so evicted units are invalidated instead of handing clang a
-    /// dangling path. Building dependencies can itself evict another
-    /// clean module's PCM under budget pressure, which reopens the window
-    /// the scan just closed — hence the bounded retry until the set is
-    /// stable.
+    /// `path_id`. Building dependencies can itself evict another clean
+    /// module's PCM under budget pressure, which reopens the window the
+    /// scan just closed — hence the bounded retry until the set is stable.
+    kota::task<bool> prepare_deps(std::uint32_t path_id, bool foreground = false);
+
+    /// One pass of the on-disk revalidation: LRU eviction can remove a
+    /// blob while its node is still clean, so evicted units are
+    /// invalidated instead of handing clang a dangling path. Returns
+    /// whether anything was evicted.
     ///
     /// FIXME: this scans every pcm_paths entry (one stat() per module) on
     /// every compile, even in steady state when nothing was evicted. For
     /// large modular projects on NFS this adds measurable latency.
     /// Consider having CacheStore notify on eviction or caching the scan
     /// result.
-    kota::task<bool> prepare_deps(std::uint32_t path_id, bool foreground = false);
+    bool revalidate_blobs();
 
     /// Whether the graph has a node for this module unit (it was built or
     /// depended on before).
@@ -73,12 +76,14 @@ public:
     /// new artifact.
     std::function<void()> on_indexing_needed;
 
-private:
-    /// Scan a module unit for its direct module dependencies (lazy, on
-    /// every round — a re-resolve is inherent, so a CDB or import change
-    /// is always seen by the next round).
-    llvm::SmallVector<std::uint32_t> resolve(std::uint32_t path_id);
+    /// Scan a file for its direct module dependencies (lazy, on every
+    /// use — a re-resolve is inherent, so a CDB or import change is
+    /// always seen by the next round). Consumers that wait on the
+    /// resulting PCM nodes through their own rounds (the AST family)
+    /// resolve here and depend on {pcm_family, dep} directly.
+    llvm::SmallVector<std::uint32_t> direct_deps(std::uint32_t path_id);
 
+private:
     /// Commit the resolved imports as the unit's durable edges (see
     /// TaskGraph::declare).
     void declare_deps(std::uint32_t path_id, llvm::ArrayRef<std::uint32_t> deps);

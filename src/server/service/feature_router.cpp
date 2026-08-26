@@ -11,8 +11,9 @@
 #include "command/search_config.h"
 #include "sched/context.h"
 #include "semantic/symbol.h"
-#include "server/compiler/compiler.h"
+#include "server/compiler/ast_family.h"
 #include "server/compiler/indexer.h"
+#include "server/service/worker_forwarder.h"
 #include "syntax/completion.h"
 #include "syntax/include_resolver.h"
 #include "worker/protocol.h"
@@ -37,19 +38,34 @@ static kota::ipc::Error item_not_resolved(llvm::StringRef kind) {
                             std::format("Failed to resolve {} item", kind)};
 }
 
-bool FeatureRouter::ast_answerable(const Session& session) {
-    return session.index_current() && !session.quarantine.blocked();
+bool FeatureRouter::ast_answerable(const Session& session) const {
+    return ast.projections.index_current(session.path_id) && !session.quarantine.blocked();
 }
 
 /// The rows that may serve the session's document from the index: its own
 /// file index when current (the quarantine fallback — the worker cannot
 /// be asked, the rows are still true), else the disk shard admitted by
-/// freshness clause 4. Content is the buffer either way.
-const static index::Shard* index_rows_source(const IndexQuery& query, const Session& session) {
-    if(session.index_current()) {
-        return &session.file_rows();
+/// freshness clause 4. Content is the buffer either way. The projection
+/// shared_ptr keeps a family-side replacement from freeing the rows under
+/// the caller.
+struct IndexRowsSource {
+    std::shared_ptr<const ASTProjection> projection;
+    const index::Shard* shard = nullptr;
+
+    explicit operator bool() const {
+        return shard != nullptr;
     }
-    return query.open_session_shard(session);
+};
+
+static IndexRowsSource index_rows_source(const IndexQuery& query,
+                                         const ASTProjectionTable& table,
+                                         const Session& session) {
+    if(table.index_current(session.path_id)) {
+        auto projection = table.projection(session.path_id);
+        const auto& rows = projection->file_rows();
+        return {std::move(projection), &rows};
+    }
+    return {nullptr, query.open_session_shard(session)};
 }
 
 kota::task<FeatureRouter::Route> FeatureRouter::pick_route(std::shared_ptr<Session> session,
@@ -70,12 +86,13 @@ kota::task<FeatureRouter::Route> FeatureRouter::pick_route(std::shared_ptr<Sessi
     // index slice. Row-backed answers serve at any size.
     constexpr std::size_t full_lex_cap = 8 * 1024 * 1024;
     bool capped = full_lex && session->text.size() > full_lex_cap;
-    if(!capped && index_rows_source(index_query, *session)) {
+    if(!capped && index_rows_source(index_query, ast.projections, *session)) {
         // An index answer must not strand an escalated session's pending
         // build: this request still pulls the compile it would otherwise
         // have waited on, just without blocking.
-        if(session->serving == ServingMode::Escalated && session->ast_dirty) {
-            compiler.request_compile(session);
+        if(session->serving == ServingMode::Escalated &&
+           !ast.projections.current(session->path_id)) {
+            ast.request_compile(session);
         }
         co_return Route::Index;
     }
@@ -210,16 +227,17 @@ kota::task<bool> FeatureRouter::nav_gate(std::shared_ptr<Session> session) {
     // (buffer changed while awaiting) yields null rather than a lookup
     // against positions the buffer no longer has.
     auto gen = session->generation;
-    if(!co_await compiler.ensure_compiled(session) || session->generation != gen) {
+    if(!co_await ast.ensure_compiled(session) || session->generation != gen) {
         co_return false;
     }
     co_return true;
 }
 
 std::vector<feature::DocumentLink> FeatureRouter::find_preamble_links(const Session& session) {
-    if(!session.pch_key)
+    auto projection = ast.projections.projection(session.path_id);
+    if(!projection || !projection->pch_key)
         return {};
-    auto state = workspace.preamble_state(*session.pch_key);
+    auto state = workspace.preamble_state(*projection->pch_key);
     if(!state)
         return {};
     // Link offsets are buffer coordinates as of the PCH build; serve them
@@ -358,7 +376,7 @@ kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
         break;
     }
 
-    auto result = co_await compiler.forward_document_links(session, std::move(token));
+    auto result = co_await forwarder.forward_document_links(session, std::move(token));
     if(!result.has_value())
         co_return kota::outcome_error(std::move(result.error()));
 
@@ -380,12 +398,12 @@ kota::task<kota::codec::RawValue, kota::ipc::Error>
     }
 
     // Preamble include lines first: they have no symbol occurrence in
-    // the index and are invisible to the worker's AST. A session dirty even
-    // after the awaited compile means the world was re-dirtied mid-flight
-    // (dirty_epoch moved, so the settle did not clear the flag): the cached
+    // the index and are invisible to the worker's AST. A projection still
+    // not current after the awaited compile means the world was re-dirtied
+    // mid-flight (the round landed as bounded staleness): the cached
     // links may describe a pre-edit preamble — skip, and let the index and
     // worker paths below answer.
-    if(session && !session->ast_dirty) {
+    if(session && ast.projections.current(session->path_id)) {
         if(auto directive = resolve_directive_definition(*session, pos); !directive.empty()) {
             co_return to_raw(directive);
         }
@@ -434,20 +452,20 @@ kota::task<kota::codec::RawValue, kota::ipc::Error>
         co_return serde_raw{"[]"};
     }
 
-    auto raw = co_await compiler.forward_query(worker::QueryKind::GoToDefinition,
-                                               session,
-                                               pos,
-                                               {},
-                                               std::move(token));
+    auto raw = co_await forwarder.forward_query(worker::QueryKind::GoToDefinition,
+                                                session,
+                                                pos,
+                                                {},
+                                                std::move(token));
     if(raw.has_value() && raw.value().data != "[]" && raw.value().data != "null") {
         co_return std::move(raw.value());
     }
 
     // The forward compiled a dirty buffer: retry against the refreshed
-    // session index and preamble links, but only when the compile
-    // actually completed — a failed or superseded compile leaves
-    // ast_dirty set and the caches stale.
-    if(!session->ast_dirty) {
+    // projection and preamble links, but only when the compile actually
+    // completed — a failed or superseded compile leaves the projection
+    // non-current and the caches stale.
+    if(ast.projections.current(session->path_id)) {
         if(auto retry = index_query.query_definition(path, pos, session.get()); !retry.empty()) {
             co_return to_raw(retry);
         }
@@ -490,15 +508,15 @@ FeatureRouter::RawResult FeatureRouter::hover(std::shared_ptr<Session> session,
     /// Like document_links, the preamble and the worker's AST are disjoint, so merge the two
     /// sources.
     auto gen = session->generation;
-    auto raw = co_await compiler.forward_query(worker::QueryKind::Hover,
-                                               session,
-                                               position,
-                                               {},
-                                               std::move(token));
+    auto raw = co_await forwarder.forward_query(worker::QueryKind::Hover,
+                                                session,
+                                                position,
+                                                {},
+                                                std::move(token));
     if(session->generation != gen) {
         co_return serde_raw{"null"};
     }
-    if(raw.has_value() && raw.value().data == "null" && !session->ast_dirty) {
+    if(raw.has_value() && raw.value().data == "null" && ast.projections.current(session->path_id)) {
         if(auto hover = resolve_preamble_hover(*session, position)) {
             co_return to_raw(*hover);
         }
@@ -508,8 +526,9 @@ FeatureRouter::RawResult FeatureRouter::hover(std::shared_ptr<Session> session,
         // fills that gap, and only that gap: past the bound the AST saw
         // the code and declined on purpose (a lambda's auto parameter
         // must not hover, and the index would happily name it `auto:1`).
-        if(session->pch_key) {
-            if(auto it = workspace.pch_cache.find(*session->pch_key);
+        auto projection = ast.projections.projection(session->path_id);
+        if(projection && projection->pch_key) {
+            if(auto it = workspace.pch_cache.find(*projection->pch_key);
                it != workspace.pch_cache.end()) {
                 auto offset = session->line_map().to_offset(position);
                 if(offset && *offset < it->second.bound) {
@@ -530,8 +549,8 @@ FeatureRouter::RawResult
         switch(co_await pick_route(session, /*full_lex=*/true)) {
             case Route::Superseded: co_return serde_raw{"null"};
             case Route::Index: {
-                auto* source = index_rows_source(index_query, *session);
-                auto rows = extract_rows(*source);
+                auto source = index_rows_source(index_query, ast.projections, *session);
+                auto rows = extract_rows(*source.shard);
                 auto tokens = feature::index_semantic_tokens(
                     session->text,
                     index_lang_options(*session),
@@ -557,11 +576,11 @@ FeatureRouter::RawResult
             case Route::Ast: break;
         }
     }
-    co_return co_await compiler.forward_query(worker::QueryKind::SemanticTokens,
-                                              session,
-                                              {},
-                                              {},
-                                              std::move(token));
+    co_return co_await forwarder.forward_query(worker::QueryKind::SemanticTokens,
+                                               session,
+                                               {},
+                                               {},
+                                               std::move(token));
 }
 
 FeatureRouter::RawResult FeatureRouter::inlay_hints(std::shared_ptr<Session> session,
@@ -575,11 +594,11 @@ FeatureRouter::RawResult FeatureRouter::inlay_hints(std::shared_ptr<Session> ses
         session->index_served = true;
         co_return serde_raw{"[]"};
     }
-    co_return co_await compiler.forward_query(worker::QueryKind::InlayHints,
-                                              session,
-                                              {},
-                                              range,
-                                              std::move(token));
+    co_return co_await forwarder.forward_query(worker::QueryKind::InlayHints,
+                                               session,
+                                               {},
+                                               range,
+                                               std::move(token));
 }
 
 FeatureRouter::RawResult
@@ -589,8 +608,8 @@ FeatureRouter::RawResult
         switch(co_await pick_route(session, /*full_lex=*/true)) {
             case Route::Superseded: co_return serde_raw{"null"};
             case Route::Index: {
-                auto* source = index_rows_source(index_query, *session);
-                auto rows = extract_rows(*source);
+                auto source = index_rows_source(index_query, ast.projections, *session);
+                auto rows = extract_rows(*source.shard);
                 auto folds = feature::index_folding_ranges(
                     session->text,
                     index_lang_options(*session),
@@ -614,11 +633,11 @@ FeatureRouter::RawResult
             case Route::Ast: break;
         }
     }
-    co_return co_await compiler.forward_query(worker::QueryKind::FoldingRange,
-                                              session,
-                                              {},
-                                              {},
-                                              std::move(token));
+    co_return co_await forwarder.forward_query(worker::QueryKind::FoldingRange,
+                                               session,
+                                               {},
+                                               {},
+                                               std::move(token));
 }
 
 FeatureRouter::RawResult
@@ -629,8 +648,8 @@ FeatureRouter::RawResult
             switch(co_await pick_route(session, /*full_lex=*/false)) {
                 case Route::Superseded: co_return serde_raw{"null"};
                 case Route::Index: {
-                    auto* source = index_rows_source(index_query, *session);
-                    auto rows = extract_rows(*source);
+                    auto source = index_rows_source(index_query, ast.projections, *session);
+                    auto rows = extract_rows(*source.shard);
                     auto symbols =
                         feature::index_document_symbols(rows.decls, [&](index::SymbolHash hash) {
                             return resolve_symbol_info(hash);
@@ -666,11 +685,11 @@ FeatureRouter::RawResult
             break;
         }
     }
-    co_return co_await compiler.forward_query(worker::QueryKind::DocumentSymbol,
-                                              session,
-                                              {},
-                                              {},
-                                              std::move(token));
+    co_return co_await forwarder.forward_query(worker::QueryKind::DocumentSymbol,
+                                               session,
+                                               {},
+                                               {},
+                                               std::move(token));
 }
 
 FeatureRouter::RawResult FeatureRouter::code_action(std::shared_ptr<Session> session,
@@ -681,11 +700,11 @@ FeatureRouter::RawResult FeatureRouter::code_action(std::shared_ptr<Session> ses
     if(session && !ast_answerable(*session) && session->serving == ServingMode::IndexOnly) {
         co_return serde_raw{"[]"};
     }
-    co_return co_await compiler.forward_query(worker::QueryKind::CodeAction,
-                                              session,
-                                              {},
-                                              {},
-                                              std::move(token));
+    co_return co_await forwarder.forward_query(worker::QueryKind::CodeAction,
+                                               session,
+                                               {},
+                                               {},
+                                               std::move(token));
 }
 
 FeatureRouter::RawResult FeatureRouter::completion(std::shared_ptr<Session> session,
@@ -699,7 +718,7 @@ FeatureRouter::RawResult FeatureRouter::completion(std::shared_ptr<Session> sess
     // readonly = "on"). Before the yield below on purpose: it must tag
     // the session this request arrived for, not whatever a drained
     // didClose/didOpen pair put in its place.
-    compiler.escalate(*session);
+    ast.escalate(*session);
 
     // This handler is resumed eagerly, so a $/cancelRequest or didChange
     // sitting in the pipe (rapid-fire completions cancel and re-issue as
@@ -783,7 +802,7 @@ FeatureRouter::RawResult FeatureRouter::completion(std::shared_ptr<Session> sess
         }
     }
 
-    co_return co_await compiler.forward_completion(position, std::move(session), std::move(token));
+    co_return co_await forwarder.forward_completion(position, std::move(session), std::move(token));
 }
 
 FeatureRouter::RawResult
@@ -791,14 +810,14 @@ FeatureRouter::RawResult
                                   const protocol::Position& position,
                                   std::optional<kota::cancellation_token> token) {
     auto pause = indexer.scoped_pause();
-    compiler.escalate(*session);
-    co_return co_await compiler.forward_signature_help(position, session, std::move(token));
+    ast.escalate(*session);
+    co_return co_await forwarder.forward_signature_help(position, session, std::move(token));
 }
 
 FeatureRouter::RawResult FeatureRouter::formatting(std::shared_ptr<Session> session,
                                                    std::optional<kota::cancellation_token> token) {
     auto pause = indexer.scoped_pause();
-    co_return co_await compiler.forward_format(session, {}, std::move(token));
+    co_return co_await forwarder.forward_format(session, {}, std::move(token));
 }
 
 FeatureRouter::RawResult
@@ -806,7 +825,7 @@ FeatureRouter::RawResult
                                     const protocol::Range& range,
                                     std::optional<kota::cancellation_token> token) {
     auto pause = indexer.scoped_pause();
-    co_return co_await compiler.forward_format(session, range, std::move(token));
+    co_return co_await forwarder.forward_format(session, range, std::move(token));
 }
 
 FeatureRouter::RawResult FeatureRouter::references(std::shared_ptr<Session> session,

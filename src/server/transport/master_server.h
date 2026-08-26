@@ -12,11 +12,12 @@
 #include "sched/families/pcm.h"
 #include "sched/graph.h"
 #include "sched/workspace.h"
-#include "server/compiler/compiler.h"
+#include "server/compiler/ast_family.h"
 #include "server/compiler/indexer.h"
 #include "server/service/context_service.h"
 #include "server/service/feature_router.h"
 #include "server/service/query.h"
+#include "server/service/worker_forwarder.h"
 #include "server/state/invalidator.h"
 #include "server/state/session.h"
 #include "server/state/session_store.h"
@@ -150,16 +151,18 @@ public:
     Workspace workspace;
     WorkerPool pool;
     ContextResolver contexts;
-    ContextService context_service{workspace, contexts};
 
     /// The scheduling core and its resident families, registered at
     /// construction — nodes materialize on demand, so a module-free
-    /// project pays nothing.
+    /// project pays nothing. The AST family is assembled here in the
+    /// server: its rounds capture sessions, quarantine and publishing.
     TaskGraph graph{loop};
     PCMFamily pcm{graph, workspace, contexts, pool};
     PCHFamily pch{graph, workspace, contexts, pool};
+    ASTFamily ast{workspace, contexts, graph, pcm, pch, pool, sessions, loop};
 
-    Compiler compiler;
+    WorkerForwarder forwarder{workspace, contexts, pcm, pch, ast, pool};
+    ContextService context_service{workspace, contexts, ast};
     Indexer indexer;
     IndexQuery index_query;
 

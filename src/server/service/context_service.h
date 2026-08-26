@@ -11,6 +11,7 @@
 
 namespace clice {
 
+class ASTFamily;
 struct SessionStore;
 
 namespace protocol = kota::ipc::protocol;
@@ -29,6 +30,7 @@ bool indicates_missing_context(llvm::ArrayRef<protocol::Diagnostic> diagnostics)
 struct ContextService {
     Workspace& workspace;
     ContextResolver& resolver;
+    ASTFamily& ast;
 
     /// clice/queryContext: list the compilation contexts (host sources and
     /// the file's own CDB configurations) available for a file, paginated.

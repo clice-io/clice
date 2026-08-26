@@ -13,6 +13,7 @@
 #include "index/tu_index.h"
 #include "sched/context.h"
 #include "sched/families/pcm.h"
+#include "server/state/ast_projection.h"
 #include "server/state/session_store.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
@@ -137,9 +138,10 @@ Indexer::Indexer(kota::event_loop& loop,
                  WorkerPool& pool,
                  ContextResolver& contexts,
                  PCMFamily& pcm,
-                 const SessionStore& sessions) :
+                 const SessionStore& sessions,
+                 const ASTProjectionTable& ast) :
     loop(loop), bg_tasks(loop), workspace(workspace), pool(pool), contexts(contexts), pcm(pcm),
-    sessions(sessions) {
+    sessions(sessions), ast(ast) {
     capacity_conn = pool.on_stateless_capacity.connect([this] { capacity_event.set(); });
 }
 
@@ -393,7 +395,7 @@ bool Indexer::merge(const void* tu_index_data, std::size_t size) {
 
 bool Indexer::serves_session_rows(std::uint32_t path_id) const {
     auto session = sessions.find(path_id);
-    return session && !session->index_current() && session->index_served;
+    return session && !ast.index_current(path_id) && session->index_served;
 }
 
 void Indexer::drop_index(std::uint32_t tu_path_id) {

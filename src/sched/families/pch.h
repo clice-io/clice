@@ -74,6 +74,13 @@ public:
     /// caller.
     kota::task<Outcome> acquire(Request request, std::function<void(llvm::StringRef)> on_crash);
 
+    /// The stash-only half of acquire, for waits that must be recorded as
+    /// graph edges: intern the key, re-dirty a stale clean node, and
+    /// install the dispatch owner's inputs when no round is live. The
+    /// caller then waits through RoundContext::depend on the returned
+    /// node — the only wait form a family round may use.
+    NodeId prepare(Request request, std::function<void(llvm::StringRef)> on_crash);
+
     /// A complete, store-backed, deps-current pair is registered under
     /// the key. Non-const: a passing deps check may repair the snapshot's
     /// stat fast path in place.
