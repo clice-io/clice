@@ -18,7 +18,7 @@
 #include "index/tu_index.h"
 #include "semantic/symbol.h"
 #include "server/compiler/compile_graph.h"
-#include "server/state/config.h"
+#include "config/config.h"
 #include "server/state/quarantine.h"
 #include "support/cache_store.h"
 #include "support/path_pool.h"

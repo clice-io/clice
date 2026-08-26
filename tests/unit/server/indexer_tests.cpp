@@ -14,7 +14,7 @@
 #include "index/tu_index.h"
 #include "server/compiler/context_resolver.h"
 #include "server/compiler/indexer.h"
-#include "server/state/config.h"
+#include "config/config.h"
 #include "server/state/session_store.h"
 #include "server/state/workspace.h"
 #include "server/worker/worker_pool.h"

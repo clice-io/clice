@@ -11,7 +11,7 @@
 #include "server/compiler/indexer.h"
 #include "server/service/feature_router.h"
 #include "server/service/query.h"
-#include "server/state/config.h"
+#include "config/config.h"
 #include "server/state/invalidator.h"
 #include "server/state/session.h"
 #include "server/state/session_store.h"

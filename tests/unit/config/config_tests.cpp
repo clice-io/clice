@@ -2,7 +2,7 @@
 
 #include "test/temp_dir.h"
 #include "test/test.h"
-#include "server/state/config.h"
+#include "config/config.h"
 #include "support/filesystem.h"
 
 #include "kota/codec/dyn/decode.h"

@@ -11,7 +11,7 @@
 #include "feature/feature.h"
 #include "index/shard.h"
 #include "index/tu_index.h"
-#include "server/state/config.h"
+#include "config/config.h"
 #include "support/filesystem.h"
 #include "syntax/annotation.h"
 #include "syntax/scan.h"

@@ -1,4 +1,4 @@
-#include "server/state/config.h"
+#include "config/config.h"
 
 #include <algorithm>
 #include <array>

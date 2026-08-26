@@ -9,7 +9,7 @@
 
 #include "compile/dep_file.h"
 #include "feature/feature.h"
-#include "server/state/config.h"
+#include "config/config.h"
 #include "syntax/token.h"
 
 #include "kota/codec/json/json.h"
