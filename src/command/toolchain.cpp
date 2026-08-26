@@ -262,6 +262,15 @@ kota::task<std::expected<GCCToolchainFlags, std::string>>
     };
 }
 
+/// The directory a probe will actually run in. A CDB outlives the build
+/// directory it names, and spawning in one that is gone fails, so an unusable
+/// directory degrades to the clice process cwd — what every query used before.
+llvm::StringRef usable_directory(llvm::StringRef directory) {
+    if(directory.empty() || fs::is_directory(directory))
+        return directory;
+    return {};
+}
+
 kota::task<std::expected<std::vector<std::string>, std::string>>
     query_one(llvm::ArrayRef<const char*> arguments,
               llvm::StringRef file,
@@ -269,12 +278,9 @@ kota::task<std::expected<std::vector<std::string>, std::string>>
     if(arguments.empty())
         co_return std::unexpected(std::string("Empty arguments"));
 
-    /// A CDB outlives the build directory it names. Spawning there fails, and
-    /// warm() would keep that failure for the session, so an unusable directory
-    /// degrades to the clice process cwd — what every query used before.
-    if(!directory.empty() && !fs::is_directory(directory)) {
+    if(auto usable = usable_directory(directory); usable.empty() && !directory.empty()) {
         LOG_WARN("Working directory {} is unusable; querying from the process cwd", directory);
-        directory = {};
+        directory = usable;
     }
 
     llvm::StringRef driver = arguments[0];
@@ -325,6 +331,12 @@ kota::task<std::expected<std::vector<std::string>, std::string>>
         if(auto e = fs::remove(src_path))
             LOG_ERROR("Fail to remove temporary file: {}", e);
     });
+
+    /// TMPDIR is taken verbatim, so a relative one yields a relative probe path
+    /// — which the driver, spawned in `directory`, would resolve there instead of
+    /// where the file was created.
+    if(auto e = fs::make_absolute(src_path))
+        co_return std::unexpected(std::format("Failed to resolve temp file: {}", e.message()));
 
     /// .cuh is not a clang-known extension: without a language override the
     /// probe counts as linker input and the driver builds no compile job.
@@ -443,6 +455,11 @@ kota::task<std::expected<std::vector<std::string>, std::string>>
                 if(auto e = fs::remove(nvcc_probe))
                     LOG_ERROR("Fail to remove temporary file: {}", e);
             });
+
+            /// Absolute for the same reason `src_path` is.
+            if(auto e = fs::make_absolute(nvcc_probe))
+                co_return std::unexpected(
+                    std::format("Failed to resolve temp file: {}", e.message()));
 
             std::vector<std::string> dryrun_args = {driver.str(),
                                                     "--dryrun",
@@ -746,7 +763,12 @@ Toolchain::ToolchainExtract Toolchain::extract_flags(llvm::StringRef file,
     /// The probe subprocess runs in `directory`, so its result only holds there.
     /// Keyed unconditionally rather than detected: a wrong detection silently
     /// shares one entry between directories that need different flags.
-    result.key += directory;
+    ///
+    /// Keyed on the directory the probe will really use: an unusable one degrades
+    /// to the process cwd, and nothing clears this cache within a session, so
+    /// keying the request would keep serving that degraded result once the
+    /// directory reappears.
+    result.key += usable_directory(directory);
     result.key += '\0';
     result.key += arguments[0];
     result.key += '\0';

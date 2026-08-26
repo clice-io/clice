@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <optional>
 
+#include "test/temp_dir.h"
 #include "test/test.h"
 #include "command/argument_parser.h"
 #include "command/command.h"
@@ -309,21 +310,35 @@ TEST_CASE(KeyTracksWorkingDirectory) {
     Toolchain tc;
     std::vector<const char*> args = {"clang++", "-std=c++23"};
 
+    TempDir temp;
+    temp.mkdir("project-a");
+    temp.mkdir("project-b");
+    auto project_a = temp.path("project-a");
+    auto project_b = temp.path("project-b");
+
     // The driver runs in the working directory, so its query result belongs to
     // that directory — two directories never share a cache entry, however
     // cwd-independent the command looks.
-    EXPECT_NE(tc.cache_key("/tmp/a.cpp", args, "/tmp/project-a"),
-              tc.cache_key("/tmp/a.cpp", args, "/tmp/project-b"));
+    EXPECT_NE(tc.cache_key("/tmp/a.cpp", args, project_a),
+              tc.cache_key("/tmp/a.cpp", args, project_b));
 
     // The directory is a separate key field, not a prefix glued onto the driver
     // spelling: these two contrived pairs concatenate to the same bytes, so a
     // missing field separator would merge them.
-    EXPECT_NE(tc.cache_key("/tmp/a.cpp", {"b/clang++", "-std=c++23"}, "/tmp/a"),
-              tc.cache_key("/tmp/a.cpp", {"/clang++", "-std=c++23"}, "/tmp/ab"));
+    temp.mkdir("a");
+    temp.mkdir("ab");
+    EXPECT_NE(tc.cache_key("/tmp/a.cpp", {"b/clang++", "-std=c++23"}, temp.path("a")),
+              tc.cache_key("/tmp/a.cpp", {"/clang++", "-std=c++23"}, temp.path("ab")));
 
     // An absent directory (query() runs the driver in clice's own cwd) is one
     // more distinct case, not an alias of any real directory.
-    EXPECT_NE(tc.cache_key("/tmp/a.cpp", args), tc.cache_key("/tmp/a.cpp", args, "/tmp/project-a"));
+    EXPECT_NE(tc.cache_key("/tmp/a.cpp", args), tc.cache_key("/tmp/a.cpp", args, project_a));
+
+    // A directory that is gone is not a case of its own: the probe degrades to
+    // the process cwd, and keying that result under the requested path would
+    // keep serving it once the build directory reappears.
+    EXPECT_EQ(tc.cache_key("/tmp/a.cpp", args, temp.path("vanished")),
+              tc.cache_key("/tmp/a.cpp", args));
 }
 
 TEST_CASE(ResolveEmptyFlags) {

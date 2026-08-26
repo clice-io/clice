@@ -68,6 +68,11 @@ public:
     /// TODO: the GCC/MSVC/NVCC families synthesize their final cc1 through an
     /// in-process clang driver running in clice's cwd, so relative paths in their
     /// remaining flags escape `directory` — give that driver `directory` too.
+    /// A bare `arguments[0]` is looked up through PATH before the child changes
+    /// cwd, so a relative PATH entry anchors to clice's cwd where POSIX would
+    /// anchor it to `directory`. Left as is on purpose: anchoring it means
+    /// hand-rolling platform PATH lookup, for a spelling that is a security
+    /// hazard and effectively unused by build systems.
     /// Unlike resolve(), this is uncached and forwards `arguments` as-is; prefer
     /// resolve() for CDB commands so results are cached and per-file user-content
     /// flags are re-appended.
