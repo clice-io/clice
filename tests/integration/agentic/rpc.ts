@@ -220,8 +220,13 @@ export function runCli(
     return runQuery(executable, args);
 }
 
-/// Forward-slash form of a path; the agentic side channel speaks POSIX
-/// paths on every platform.
+/// Canonical spelling of a path for the agentic side channel: forward slashes
+/// on every platform, plus the lowercase drive letter that is Windows path
+/// identity for the server (`path::needs_canonical`). The compile database's
+/// `directory` is normalized to that form at load, so an expectation built from
+/// the raw OS spelling would differ from what the server reports by drive case
+/// alone.
 export function posix(p: string): string {
-    return p.split(path.sep).join("/");
+    const slashed = p.split(path.sep).join("/");
+    return /^[A-Z]:/.test(slashed) ? slashed[0].toLowerCase() + slashed.slice(1) : slashed;
 }
