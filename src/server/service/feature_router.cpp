@@ -98,10 +98,16 @@ FeatureRouter::IndexRows FeatureRouter::extract_rows(const index::Shard& shard) 
     return rows;
 }
 
-/// The language the last -x of the file's own CDB entry forces, if any:
-/// the driver override beats every suffix heuristic. Rules applied, like
-/// the resolve path's effective command.
-static std::optional<bool> command_forces_c(Workspace& workspace, llvm::StringRef path) {
+/// The language selectors of a file's CDB entry: what the last -x forces,
+/// if any (the driver override beats every suffix heuristic), and the
+/// last -std value. Rules applied, like the resolve path's effective
+/// command.
+struct CommandLang {
+    std::optional<bool> forces_c;
+    std::string standard;
+};
+
+static std::optional<CommandLang> command_lang(Workspace& workspace, llvm::StringRef path) {
     if(!workspace.cdb.has_entry(path)) {
         return std::nullopt;
     }
@@ -109,7 +115,7 @@ static std::optional<bool> command_forces_c(Workspace& workspace, llvm::StringRe
     workspace.config.match_rules(path, append, remove);
     auto commands = workspace.cdb.lookup(path, {.remove = remove, .append = append});
 
-    std::optional<bool> forces_c;
+    CommandLang result;
     auto& flags = commands.front().resolved.flags;
     for(std::size_t i = 0; i < flags.size(); i += 1) {
         llvm::StringRef flag = flags[i];
@@ -120,24 +126,28 @@ static std::optional<bool> command_forces_c(Workspace& workspace, llvm::StringRe
             }
         } else if(flag.starts_with("-x")) {
             language = flag.drop_front(2);
+        } else if(flag.consume_front("-std=") || flag.consume_front("--std=")) {
+            result.standard = flag.str();
+            continue;
         } else {
             continue;
         }
         if(!language.empty()) {
-            forces_c = language == "c" || language == "c-header";
+            result.forces_c = language == "c" || language == "c-header";
         }
     }
-    return forces_c;
+    return result;
 }
 
 const clang::LangOptions& FeatureRouter::index_lang_options(const Session& session) {
     auto path = workspace.path_pool.resolve(session.path_id);
-    if(auto forces_c = command_forces_c(workspace, path)) {
-        return feature::index_lang_options("", *forces_c);
+    auto own = command_lang(workspace, path);
+    if(own && own->forces_c) {
+        return feature::index_lang_options("", *own->forces_c, own->standard);
     }
 
     // A header's active context (the user's persisted choice, else the
-    // resolved host) names the view being read; its language beats the
+    // resolved host) names the view being read; its command beats the
     // contributor union the way it does for the AST after an escalation.
     auto host = no_path_id;
     if(auto it = contexts.saved_contexts.find(session.path_id);
@@ -150,8 +160,15 @@ const clang::LangOptions& FeatureRouter::index_lang_options(const Session& sessi
         }
     }
     if(host != no_path_id) {
-        bool c_host = workspace.path_pool.resolve(host).ends_with(".c");
-        return feature::index_lang_options(path, c_host);
+        auto host_path = workspace.path_pool.resolve(host);
+        auto host_lang = command_lang(workspace, host_path);
+        if(host_lang && host_lang->forces_c) {
+            return feature::index_lang_options("", *host_lang->forces_c, host_lang->standard);
+        }
+        return feature::index_lang_options(path,
+                                           host_path.ends_with(".c"),
+                                           host_lang ? llvm::StringRef(host_lang->standard)
+                                                     : llvm::StringRef());
     }
 
     auto& contributions = workspace.project_index.contributions;
@@ -160,7 +177,9 @@ const clang::LangOptions& FeatureRouter::index_lang_options(const Session& sessi
                   llvm::all_of(llvm::make_first_range(it->second), [&](std::uint32_t tu) {
                       return workspace.path_pool.resolve(tu).ends_with(".c");
                   });
-    return feature::index_lang_options(path, c_rows);
+    return feature::index_lang_options(path,
+                                       c_rows,
+                                       own ? llvm::StringRef(own->standard) : llvm::StringRef());
 }
 
 std::optional<feature::IndexSymbolInfo> FeatureRouter::resolve_symbol_info(index::SymbolHash hash) {

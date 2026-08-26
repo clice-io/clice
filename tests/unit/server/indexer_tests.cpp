@@ -69,6 +69,18 @@ struct IndexerFixture {
         indexer.pending_ids.erase(id);
     }
 
+    /// Complete an attempt for `ticket` on the loop, as run_index_task's
+    /// tail does — waking waiters requires a running loop.
+    void settle(std::uint32_t id, std::uint64_t ticket) {
+        auto body = [&]() -> kota::task<> {
+            indexer.settle_attempt_waits(id, ticket);
+            co_return;
+        };
+        auto task = body();
+        loop.schedule(task);
+        loop.run();
+    }
+
     /// Start a fresh staleness round: per-round FileVersion verdicts are
     /// cleared by run_background_indexing, which these tests bypass.
     void clear_verdicts() {
@@ -2514,6 +2526,46 @@ TEST_CASE(DroppedWithoutPending) {
     IndexerFixture f;
     auto id = f.workspace.path_pool.intern("/proj/gone.cpp");
     ASSERT_EQ(int(f.fail(id, /*crashed=*/true)), int(IndexerFixture::Verdict::Dropped));
+}
+
+TEST_CASE(AttemptWaitPerTicket) {
+    IndexerFixture f;
+    auto id = f.workspace.path_pool.intern("/proj/waited.cpp");
+    f.indexer.enqueue(id, ReindexReason::ContentChanged);
+    auto launch = f.ticket(id);
+
+    bool first_woke = false;
+    auto first_body = [&]() -> kota::task<> {
+        co_await f.indexer.await_attempt(id);
+        first_woke = true;
+    };
+    auto first = first_body();
+    f.loop.schedule(first);
+    f.loop.run();
+
+    // A requeue lands mid-flight: the entry stays pending under a fresh
+    // ticket, and a new waiter binds to that newer attempt.
+    f.consume(id);
+    f.indexer.enqueue(id, ReindexReason::DepsOnly);
+    bool second_woke = false;
+    auto second_body = [&]() -> kota::task<> {
+        co_await f.indexer.await_attempt(id);
+        second_woke = true;
+    };
+    auto second = second_body();
+    f.loop.schedule(second);
+    f.loop.run();
+
+    // The flight's completion covers the ticket its waiter observed, no
+    // matter the requeue: await_attempt promises one attempt, and holding
+    // the waiter through every follow-up would park a feature request for
+    // as long as edits keep landing.
+    f.settle(id, launch);
+    ASSERT_TRUE(first_woke);
+    ASSERT_FALSE(second_woke);
+
+    f.settle(id, f.ticket(id));
+    ASSERT_TRUE(second_woke);
 }
 
 TEST_CASE(ContentChangeResetsBudget) {

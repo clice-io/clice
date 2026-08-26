@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cstdint>
+#include <map>
 #include <optional>
 #include <string>
 #include <utility>
@@ -39,18 +40,15 @@ private:
     }
 };
 
-LangProfile& cpp_profile() {
-    static LangProfile profile(clang::Language::CXX, clang::LangStandard::lang_cxx23);
-    return profile;
-}
-
-LangProfile& c_profile() {
-    static LangProfile profile(clang::Language::C, clang::LangStandard::lang_c23);
-    return profile;
+LangProfile& profile_for(clang::Language lang, clang::LangStandard::Kind std) {
+    // Stable addresses: callers hold the profile's opts by reference.
+    static std::map<std::pair<clang::Language, clang::LangStandard::Kind>, LangProfile> profiles;
+    return profiles.try_emplace({lang, std}, lang, std).first->second;
 }
 
 LangProfile& profile_for(const clang::LangOptions& lang_opts) {
-    return lang_opts.CPlusPlus ? cpp_profile() : c_profile();
+    return profile_for(lang_opts.CPlusPlus ? clang::Language::CXX : clang::Language::C,
+                       lang_opts.LangStd);
 }
 
 /// Line start offsets of `content`, the plain scan (no encoding concerns:
@@ -87,8 +85,21 @@ bool outline_kind(SymbolKind kind) {
 
 }  // namespace
 
-auto index_lang_options(llvm::StringRef path, bool c_rows) -> const clang::LangOptions& {
-    return c_rows || path.ends_with(".c") ? c_profile().opts : cpp_profile().opts;
+auto index_lang_options(llvm::StringRef path, bool c_rows, llvm::StringRef standard)
+    -> const clang::LangOptions& {
+    bool c = c_rows || path.ends_with(".c");
+    auto lang = c ? clang::Language::C : clang::Language::CXX;
+    auto kind = c ? clang::LangStandard::lang_c23 : clang::LangStandard::lang_cxx23;
+    if(!standard.empty()) {
+        auto parsed = clang::LangStandard::getLangKind(standard);
+        // A standard of the other language contradicts the resolved rows'
+        // language; keep the language's latest rather than obeying it.
+        if(parsed != clang::LangStandard::lang_unspecified &&
+           clang::LangStandard::getLangStandardForKind(parsed).getLanguage() == lang) {
+            kind = parsed;
+        }
+    }
+    return profile_for(lang, kind).opts;
 }
 
 auto index_semantic_tokens(llvm::StringRef content,
@@ -567,19 +578,45 @@ auto preceding_comment(llvm::StringRef content, std::uint32_t offset) -> std::st
 
     auto begin = line_begin(offset);
     llvm::SmallVector<llvm::StringRef, 8> lines;
+    // Between a closing */ and its opener the scan is inside a block
+    // comment: interior lines need no marker of their own (`/*` above bare
+    // text above `*/`). `block_start` remembers where the block began in
+    // `lines` so one whose opener never surfaces can be dropped.
+    bool in_block = false;
+    std::size_t block_start = 0;
     while(begin > 0) {
         auto prev_begin = line_begin(begin - 1);
         auto line = content.substr(prev_begin, begin - prev_begin).rtrim("\r\n").trim();
-        // A trailing */ only marks a comment line when the opener is on an
-        // earlier line: `int a; /* note */` closes a comment it opened
-        // itself, and everything before the marker is code.
-        bool comment_like = line.starts_with("//") || line.starts_with("/*") ||
-                            line.starts_with("*") || (line.ends_with("*/") && !line.contains("/*"));
-        if(!comment_like || line.empty()) {
-            break;
+        if(in_block) {
+            // An opener sharing its line with code marks a comment trailing
+            // that code, not documentation of the decl below.
+            if(line.contains("/*") && !line.starts_with("/*")) {
+                break;
+            }
+            lines.push_back(line);
+            if(line.starts_with("/*")) {
+                in_block = false;
+            }
+        } else {
+            // A trailing */ only marks a comment line when the opener is on
+            // an earlier line: `int a; /* note */` closes a comment it
+            // opened itself, and everything before the marker is code.
+            bool closes_block = line.ends_with("*/") && !line.contains("/*");
+            bool comment_like = line.starts_with("//") || line.starts_with("/*") ||
+                                line.starts_with("*") || closes_block;
+            if(!comment_like || line.empty()) {
+                break;
+            }
+            if(closes_block) {
+                in_block = true;
+                block_start = lines.size();
+            }
+            lines.push_back(line);
         }
-        lines.push_back(line);
         begin = prev_begin;
+    }
+    if(in_block) {
+        lines.truncate(block_start);
     }
 
     std::string result;

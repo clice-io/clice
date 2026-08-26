@@ -117,10 +117,12 @@ public:
     /// undisturbed; the file then leads the next one.
     void boost(std::uint32_t server_path_id);
 
-    /// Wait until the file's pending (re)index state ends — the merge
-    /// landed, the attempt gave up, or the entry was cleared — and return
-    /// immediately when nothing is pending. For replies clients cache with
-    /// no refresh request (outline, links): answered while the didOpen
+    /// Wait until the pending (re)index attempt observed at call time
+    /// settles — the merge landed, the attempt gave up, or the entry was
+    /// cleared — and return immediately when nothing is pending. One
+    /// attempt, not a settled file: a requeue landing during the flight
+    /// does not extend the wait. For replies clients cache with no
+    /// refresh request (outline, links): answered while the didOpen
     /// boost is still running, the empty result would freeze until the
     /// next edit.
     kota::task<> await_attempt(std::uint32_t server_path_id);
@@ -423,15 +425,26 @@ private:
     /// the verdicts above are cleared when a round starts, never here.
     bool need_update(llvm::StringRef file_path);
 
-    /// Wake every await_attempt waiter of the file and drop their event.
-    void settle_attempt_waits(std::uint32_t server_path_id);
+    /// Wake the file's await_attempt waiters whose observed ticket the
+    /// settled attempt covers (`ticket` and older) and drop their events.
+    /// The default wakes every waiter — for the paths where no further
+    /// attempt will come (entry cleared, shutdown).
+    void settle_attempt_waits(std::uint32_t server_path_id, std::uint64_t ticket = -1);
 
     llvm::DenseMap<std::uint32_t, PendingReindex> reindex_reasons;
     llvm::DenseSet<std::uint32_t> failed_ids;
 
-    /// One shared event per file some await_attempt is parked on, fired
-    /// when its pending window ends (or wholesale at stop()).
-    llvm::DenseMap<std::uint32_t, std::shared_ptr<kota::event>> attempt_waits;
+    struct AttemptWait {
+        std::uint64_t ticket;
+        std::shared_ptr<kota::event> event;
+    };
+
+    /// The events await_attempt waiters park on, per file and per pending
+    /// ticket observed at wait time; each fires when an attempt covering
+    /// its ticket settles (or wholesale at stop()). Keyed by ticket so a
+    /// requeue during an attempt's flight cannot extend earlier waits —
+    /// await_attempt promises one attempt, not a settled file.
+    llvm::DenseMap<std::uint32_t, llvm::SmallVector<AttemptWait, 2>> attempt_waits;
     std::uint64_t reindex_ticket = 0;
     bool indexing_active = false;
     bool indexing_scheduled = false;

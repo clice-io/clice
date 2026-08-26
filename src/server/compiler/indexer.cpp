@@ -1267,28 +1267,42 @@ void Indexer::enqueue(std::uint32_t server_path_id, ReindexReason reason) {
 }
 
 kota::task<> Indexer::await_attempt(std::uint32_t server_path_id) {
-    if(!reindex_reasons.contains(server_path_id)) {
+    auto pending = reindex_reasons.find(server_path_id);
+    if(pending == reindex_reasons.end()) {
         co_return;
     }
-    auto [it, inserted] = attempt_waits.try_emplace(server_path_id);
-    if(inserted) {
-        it->second = std::make_shared<kota::event>();
+    auto ticket = pending->second.ticket;
+    auto& waits = attempt_waits[server_path_id];
+    auto it = llvm::find_if(waits, [&](const AttemptWait& wait) { return wait.ticket == ticket; });
+    if(it == waits.end()) {
+        waits.push_back({ticket, std::make_shared<kota::event>()});
+        it = waits.end() - 1;
     }
     // Hold the shared_ptr across the await: the settle moves the event out
     // of the map before setting it, and a fresh wait after that parks on a
     // new instance.
-    auto event = it->second;
+    auto event = it->event;
     co_await event->wait();
 }
 
-void Indexer::settle_attempt_waits(std::uint32_t server_path_id) {
+void Indexer::settle_attempt_waits(std::uint32_t server_path_id, std::uint64_t ticket) {
     auto it = attempt_waits.find(server_path_id);
     if(it == attempt_waits.end()) {
         return;
     }
-    auto event = std::move(it->second);
-    attempt_waits.erase(it);
-    event->set();
+    llvm::SmallVector<std::shared_ptr<kota::event>, 2> settled;
+    for(auto& wait: it->second) {
+        if(wait.ticket <= ticket) {
+            settled.push_back(std::move(wait.event));
+        }
+    }
+    llvm::erase_if(it->second, [&](const AttemptWait& wait) { return wait.ticket <= ticket; });
+    if(it->second.empty()) {
+        attempt_waits.erase(it);
+    }
+    for(auto& event: settled) {
+        event->set();
+    }
 }
 
 void Indexer::pause_indexing() {
@@ -1313,8 +1327,10 @@ kota::task<> Indexer::stop() {
     co_await bg_tasks.join();
     // Cancelled tasks unwind before their settle bookkeeping; release any
     // parked feature request rather than stranding it past shutdown.
-    for(auto& event: llvm::make_second_range(attempt_waits)) {
-        event->set();
+    for(auto& waits: llvm::make_second_range(attempt_waits)) {
+        for(auto& wait: waits) {
+            wait.event->set();
+        }
     }
     attempt_waits.clear();
 }
@@ -1678,13 +1694,12 @@ kota::task<> Indexer::run_index_task(std::uint32_t server_path_id,
             }
         }
     }
-    // Wake await_attempt waiters after the unservable escalation above, so
-    // they re-derive their route against the settled state. A requeue kept
-    // the entry alive under a fresh ticket — the waiters stay parked for
-    // that newer attempt.
-    if(!reindex_reasons.contains(server_path_id)) {
-        settle_attempt_waits(server_path_id);
-    }
+    // Wake the waiters parked on this attempt (and older tickets it
+    // covers) after the unservable escalation above, so they re-derive
+    // their route against the settled state. Waiters of a requeue made
+    // during the flight bound the fresh ticket and stay parked for that
+    // newer attempt.
+    settle_attempt_waits(server_path_id, ticket);
     round.completed += 1;
     round.inflight -= 1;
     round.task_done.set();

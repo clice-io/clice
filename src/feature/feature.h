@@ -479,9 +479,14 @@ using IndexSymbolResolver = llvm::function_ref<std::optional<IndexSymbolInfo>(in
 
 /// Language options for raw-lexing `path` without a compile command: C
 /// for .c files and when `c_rows` says the served rows were built by C
-/// parses only, C++ (latest) otherwise. A default-constructed
-/// LangOptions is C89 — `class` would lex as an identifier.
-auto index_lang_options(llvm::StringRef path, bool c_rows) -> const clang::LangOptions&;
+/// parses only, C++ otherwise. A default-constructed LangOptions is C89
+/// — `class` would lex as an identifier. `standard` is the serving
+/// command's -std value when known: the rows were classified under it,
+/// and the latest standard's extra keywords (`concept` in C++17 code)
+/// would conflict with them. Unknown or contradicting values fall back
+/// to the language's latest.
+auto index_lang_options(llvm::StringRef path, bool c_rows, llvm::StringRef standard = {})
+    -> const clang::LangOptions&;
 
 /// Lexical layer (keywords, literals, comments, directives) from a raw lex
 /// of `content`, semantic kinds from `occurrences` resolved through

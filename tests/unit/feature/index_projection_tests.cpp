@@ -350,6 +350,37 @@ TEST_CASE(CDialectKeywords) {
     ASSERT_EQ(cpp_tokens[1].kind.value_of(), SymbolKind(SymbolKind::Conflict).value_of());
 }
 
+TEST_CASE(StandardFromCommand) {
+    // `concept` is a plain identifier in C++17: rows built under an older
+    // -std must lex with that standard's keyword table, or the latest
+    // standard's overlay would fight the row's kind.
+    llvm::StringRef content = "int concept;\n";
+    std::vector<feature::IndexDeclRow> rows = {
+        {.range = {4, 11}, .extent = {0, 12}, .symbol = 1, .definition = true},
+    };
+    auto resolve_synthetic = [](index::SymbolHash) -> std::optional<feature::IndexSymbolInfo> {
+        return feature::IndexSymbolInfo{"concept", SymbolKind::Variable};
+    };
+
+    auto cxx17_tokens =
+        feature::index_semantic_tokens(content,
+                                       feature::index_lang_options("main.cpp", false, "c++17"),
+                                       {},
+                                       rows,
+                                       resolve_synthetic);
+    ASSERT_EQ(cxx17_tokens.size(), std::size_t(2));
+    ASSERT_EQ(cxx17_tokens[1].kind.value_of(), SymbolKind(SymbolKind::Variable).value_of());
+
+    auto latest_tokens =
+        feature::index_semantic_tokens(content,
+                                       feature::index_lang_options("main.cpp", false),
+                                       {},
+                                       rows,
+                                       resolve_synthetic);
+    ASSERT_EQ(latest_tokens.size(), std::size_t(2));
+    ASSERT_EQ(latest_tokens[1].kind.value_of(), SymbolKind(SymbolKind::Conflict).value_of());
+}
+
 TEST_CASE(LinksFromEdges) {
     llvm::StringRef content = R"cpp(#include "first.h"
 #include "skipped.h"
@@ -387,6 +418,17 @@ int scale(int value);
 
 int base = 1; /* setup */
 int next();
+
+/*
+Frees the buffer.
+Then clears it.
+*/
+int release();
+
+int done(); /* trailing block
+still trailing
+*/
+int after();
 )cpp";
 
     auto add_offset = static_cast<std::uint32_t>(content.find("int add"));
@@ -407,6 +449,16 @@ int next();
     // documentation.
     auto next_offset = static_cast<std::uint32_t>(content.find("int next"));
     ASSERT_EQ(feature::preceding_comment(content, next_offset), "");
+
+    // Interior lines of a block comment need no marker of their own.
+    auto release_offset = static_cast<std::uint32_t>(content.find("int release"));
+    ASSERT_EQ(feature::preceding_comment(content, release_offset),
+              "Frees the buffer.\nThen clears it.");
+
+    // A block comment opened behind code trails that code, even when it
+    // closes directly above the declaration.
+    auto after_offset = static_cast<std::uint32_t>(content.find("int after"));
+    ASSERT_EQ(feature::preceding_comment(content, after_offset), "");
 }
 
 };  // TEST_SUITE(index_projection)
