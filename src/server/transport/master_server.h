@@ -8,6 +8,7 @@
 
 #include "config/config.h"
 #include "sched/context.h"
+#include "sched/families/pch.h"
 #include "sched/families/pcm.h"
 #include "sched/graph.h"
 #include "sched/workspace.h"
@@ -156,6 +157,7 @@ public:
     /// project pays nothing.
     TaskGraph graph{loop};
     PCMFamily pcm{graph, workspace, contexts, pool};
+    PCHFamily pch{graph, workspace, contexts, pool};
 
     Compiler compiler;
     Indexer indexer;

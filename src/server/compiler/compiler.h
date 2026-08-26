@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "command/command.h"
+#include "sched/families/pch.h"
 #include "sched/families/pcm.h"
 #include "sched/workspace.h"
 #include "server/state/session.h"
@@ -57,6 +58,7 @@ public:
              Workspace& workspace,
              ContextResolver& contexts,
              PCMFamily& pcm,
+             PCHFamily& pch,
              WorkerPool& pool);
 
     /// Compile an open file's AST if dirty.  On success, updates session's
@@ -197,16 +199,19 @@ private:
     ///               before the event must not write pch_key back either.
     /// @param scope  When set, cancels the module-dependency wait if this
     ///               compile round is superseded by a newer one.
-    kota::task<bool> ensure_deps(Session& session,
+    kota::task<bool> ensure_deps(const std::shared_ptr<Session>& session,
                                  std::uint64_t launch_generation,
                                  std::uint64_t launch_epoch,
                                  const std::string& directory,
                                  const std::vector<std::string>& arguments,
-                                 std::pair<std::string, uint32_t>& pch,
+                                 std::pair<std::string, uint32_t>& pch_pair,
                                  std::unordered_map<std::string, std::string>& pcms,
                                  std::optional<kota::cancellation_token> scope = {});
 
-    kota::task<bool> ensure_pch(Session& session,
+    /// The session rides in by shared_ptr because the PCH round can
+    /// outlive this frame: the dispatch owner's crash probe holds the
+    /// session so evidence lands even after the requester unwound.
+    kota::task<bool> ensure_pch(const std::shared_ptr<Session>& session,
                                 std::uint64_t launch_generation,
                                 std::uint64_t launch_epoch,
                                 const std::string& directory,
@@ -217,16 +222,11 @@ private:
     bool is_stale(Session& session);
     void record_deps(Session& session, llvm::ArrayRef<DepFile> deps, std::int64_t build_at);
 
-    /// Retract a PCH pair the frontend could not consume: remove both
-    /// blobs from the store and drop the settled cache entry, so the next
-    /// ensure_pch misses and rebuilds instead of trusting corrupt bytes
-    /// for the life of the store.
-    void invalidate_pch(llvm::StringRef pch_key);
-
     kota::event_loop& loop;
     Workspace& workspace;
     ContextResolver& contexts;
     PCMFamily& pcm;
+    PCHFamily& pch;
     WorkerPool& pool;
     kota::task_group<> compile_tasks{loop};
 

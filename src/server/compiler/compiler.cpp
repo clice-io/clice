@@ -10,6 +10,7 @@
 #include "command/argument_parser.h"
 #include "index/tu_index.h"
 #include "sched/context.h"
+#include "sched/families/build_common.h"
 #include "server/protocol/extension.h"
 #include "server/protocol/position.h"
 #include "server/service/context_service.h"
@@ -28,66 +29,12 @@
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
-#include "llvm/Support/xxhash.h"
 #include "clang/Basic/Version.h"
 
 namespace clice {
 
 namespace lsp = kota::ipc::lsp;
 using serde_raw = kota::codec::RawValue;
-
-/// Render hash-input fragments into an unambiguous byte stream (length-
-/// prefixed, so embedded NULs cannot create colliding splits) and return
-/// the 32-hex xxh3_128bits cache key.
-///
-/// FIXME: this concatenates all parts (including the preamble text, which
-/// can be 10-100 KB) into a temporary std::string before hashing.  Use an
-/// incremental xxh3 hasher to feed each StringRef directly and avoid the
-/// large allocation on the ensure_pch hot path.
-static std::string cache_key(std::initializer_list<llvm::StringRef> parts) {
-    std::string input;
-    for(auto part: parts) {
-        input += std::format("{}:", part.size());
-        input += part;
-    }
-    auto hash = llvm::xxh3_128bits(llvm::arrayRefFromStringRef(input));
-    return std::format("{:016x}{:016x}", hash.high64, hash.low64);
-}
-
-/// RAII completion of an in-flight PCH build registration: wakes waiters
-/// and clears the building marker on every exit path — crucially also when
-/// the coroutine is cancelled and its frame unwinds at a suspension point,
-/// which would otherwise leave waiters suspended on the event forever.
-struct BuildingGuard {
-    Workspace& workspace;
-    llvm::StringRef key;
-    std::shared_ptr<kota::event> completion;
-
-    ~BuildingGuard() {
-        // Reset only our own registration: the entry may have been
-        // re-registered by a newer build in the meantime.
-        if(auto it = workspace.pch_cache.find(key);
-           it != workspace.pch_cache.end() && it->second.building == completion) {
-            it->second.building.reset();
-        }
-        completion->set();
-    }
-};
-
-/// A PCH/PCM build failure is expected when the worker reported user-code
-/// errors or the dispatch failed for an operational reason (memory-pressure
-/// preemption, crash/restart window); anything else is clice breakage and is
-/// reported as an anomaly.
-static bool expected_build_failure(const auto& result) {
-    return result.has_value() ? result.value().has_user_errors
-                              : worker::is_operational_error(result.error());
-}
-
-/// The error text of a failed build: the worker's message when it responded,
-/// the dispatch error otherwise.
-const static std::string& build_failure_message(const auto& result) {
-    return result.has_value() ? result.value().error : result.error().message;
-}
 
 /// A quarantined document must not hide behind empty diagnostics: publish
 /// one that says why every semantic feature went quiet, and how to lift it.
@@ -209,8 +156,9 @@ Compiler::Compiler(kota::event_loop& loop,
                    Workspace& workspace,
                    ContextResolver& contexts,
                    PCMFamily& pcm,
+                   PCHFamily& pch,
                    WorkerPool& pool) :
-    loop(loop), workspace(workspace), contexts(contexts), pcm(pcm), pool(pool) {}
+    loop(loop), workspace(workspace), contexts(contexts), pcm(pcm), pch(pch), pool(pool) {}
 
 kota::task<> Compiler::stop() {
     compile_tasks.cancel();
@@ -230,34 +178,21 @@ static bool may_write_pch_key(const Session& session,
     return session.generation == launch_generation && session.dirty_epoch == launch_epoch;
 }
 
-void Compiler::invalidate_pch(llvm::StringRef pch_key) {
-    if(workspace.store) {
-        workspace.store->invalidate("pch", pch_key);
-    }
-    // An in-flight rebuild owns the entry (BuildingGuard); its commit will
-    // republish fresh blobs over the retracted pair, so only a settled
-    // entry is dropped here.
-    if(auto it = workspace.pch_cache.find(pch_key);
-       it != workspace.pch_cache.end() && !it->second.building) {
-        workspace.pch_cache.erase(it);
-    }
-}
-
-kota::task<bool> Compiler::ensure_pch(Session& session,
+kota::task<bool> Compiler::ensure_pch(const std::shared_ptr<Session>& session,
                                       std::uint64_t launch_generation,
                                       std::uint64_t launch_epoch,
                                       const std::string& directory,
                                       const std::vector<std::string>& arguments) {
     // A round invalidated during the caller's earlier awaits (module
-    // dependencies) must not touch pch_key at all: the reset and cache-hit
-    // branches below write it before the first suspension point.
-    if(!may_write_pch_key(session, launch_generation, launch_epoch)) {
+    // dependencies) must not touch pch_key at all: the reset branch below
+    // writes it before the first suspension point.
+    if(!may_write_pch_key(*session, launch_generation, launch_epoch)) {
         co_return false;
     }
 
-    auto path_id = session.path_id;
+    auto path_id = session->path_id;
     auto path = workspace.path_pool.resolve(path_id);
-    auto& text = session.text;
+    auto& text = session->text;
     auto bound = compute_preamble_bound(text);
     auto* header_context = contexts.header_context(path_id);
     bool has_prefix = header_context && !header_context->preamble_path.empty();
@@ -265,7 +200,7 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
         // No preamble directives and no injected -include — PCH would be
         // empty. Self-contained header contexts land here too: they borrow
         // a command but inject nothing.
-        session.pch_key.reset();
+        session->pch_key.reset();
         co_return true;
     }
 
@@ -291,230 +226,66 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
                               preamble_text,
                               canonicalize(arguments, ArgsProfile::Frontend)});
 
-    // Reuse an existing PCH with the same content key — possibly built for
-    // a different file.  The store lookup refreshes the blob's LRU position
-    // and catches eviction.
-    llvm::StringRef pch_miss = "no_entry";
-    if(auto it = workspace.pch_cache.find(pch_key); it != workspace.pch_cache.end()) {
-        auto& st = it->second;
-        // Both halves of the pair must be present: a PCH whose
-        // pch.idx envelope is gone (crash between commits, failed aux
-        // commit) rebuilds whole.
-        bool in_store = workspace.store && workspace.store->lookup("pch", pch_key) &&
-                        workspace.store->lookup_aux("pch", pch_key);
-        if(st.path.empty()) {
-            pch_miss = "incomplete_entry";
-        } else if(!in_store) {
-            pch_miss = "evicted";
-        } else if(st.index_path.empty()) {
-            // load_state() found the blob unreadable earlier; republish the
-            // pair rather than serving a PCH with no index forever.
-            pch_miss = "idx_unreadable";
-        } else if(deps_changed(workspace.path_pool, st.deps)) {
-            pch_miss = "deps_changed";
-        } else {
-            session.pch_key = pch_key;
-            // Adopting a proven-good artifact disproves the session's PCH
-            // strikes as surely as building one.
-            session.quarantine.on_kind_land(pch_evidence);
-            LOG_PERF("cache", "ns=pch event=hit key={} file={}", pch_key, path);
-            co_return true;
-        }
-        // Blob evicted by the store's LRU: drop the metadata too, or the
-        // content-keyed map grows for the server's lifetime.
-        if(!in_store && !st.building) {
-            workspace.pch_cache.erase(it);
-        }
-    }
-    LOG_PERF("cache", "ns=pch event=miss reason={} key={} file={}", pch_miss, pch_key, path);
-
-    // Preamble incomplete (user still typing) — defer rebuild, keep using
-    // the session's previous PCH if it is still available.
-    if(!is_preamble_complete(text, bound)) {
+    // Preamble incomplete (user still typing) and nothing fresh to adopt
+    // under the new key — defer the rebuild, keep using the session's
+    // previous PCH if it is still available.
+    if(!pch.fresh(pch_key) && !is_preamble_complete(text, bound)) {
         LOG_DEBUG("Preamble incomplete for {}, deferring PCH rebuild", path);
-        if(session.pch_key.has_value()) {
-            auto it = workspace.pch_cache.find(*session.pch_key);
+        if(session->pch_key.has_value()) {
+            auto it = workspace.pch_cache.find(*session->pch_key);
             co_return it != workspace.pch_cache.end() && !it->second.path.empty();
         }
         co_return false;
     }
 
-    // If another coroutine is already building a PCH with this key
-    // (same file, or another file with an identical preamble), wait for it.
-    if(auto it = workspace.pch_cache.find(pch_key);
-       it != workspace.pch_cache.end() && it->second.building) {
-        co_await it->second.building->wait();
-        // Guard the pch_key write below against an invalidated round's
-        // continuation: a newer round (or a context switch) may have
-        // established the session's PCH identity while we waited.
-        if(!may_write_pch_key(session, launch_generation, launch_epoch)) {
-            co_return false;
-        }
-        if(auto it2 = workspace.pch_cache.find(pch_key);
-           it2 != workspace.pch_cache.end() && !it2->second.path.empty()) {
-            session.pch_key = pch_key;
-            session.quarantine.on_kind_land(pch_evidence);
-            co_return true;
-        }
+    // Revalidate or build through the family. This frame is the dispatch
+    // owner when its request spawns the round; the probe then pins every
+    // worker death of the build on this document (the preamble is its
+    // content), held by the round so the evidence lands even if this
+    // frame's launch goes stale meanwhile — a stale round's crashes still
+    // count. Joiners of an already-running round install nothing and
+    // replay nothing.
+    auto outcome = co_await pch.acquire({.pch_key = pch_key,
+                                         .file = std::string(path),
+                                         .directory = directory,
+                                         .arguments = arguments,
+                                         .content = text,
+                                         .preamble_bound = bound},
+                                        [session](llvm::StringRef death) {
+                                            session->quarantine.on_kind_crash(pch_evidence, death);
+                                        });
+    if(outcome != PCHFamily::Outcome::Ready) {
         co_return false;
     }
 
-    // A preamble whose PCH build keeps killing workers is refused before
-    // the dispatch: the artifact is shared, so one document's quarantine
-    // cannot contain it — every session with this preamble would burn
-    // workers of its own. The key is content-derived: editing the poison
-    // starts a fresh key with a fresh budget.
-    if(workspace.build_crashes.blocked(pch_key)) {
-        LOG_WARN("PCH build for {} refused: key {} keeps crashing workers", path, pch_key);
+    // Adoption is gated on the round outcome, never on leftover cache
+    // paths, and on this launch's own validity: a supersede or a
+    // Lost-type invalidation while we waited means the resolved command
+    // may describe nothing — neither the pch_key write nor the evidence
+    // wash belongs to this launch anymore.
+    if(!may_write_pch_key(*session, launch_generation, launch_epoch)) {
         co_return false;
     }
-
-    // Register in-flight build so concurrent requests wait on us.  The
-    // guard wakes them on every exit, including cancellation mid-await.
-    auto completion = std::make_shared<kota::event>();
-    workspace.pch_cache[pch_key].building = completion;
-    BuildingGuard guard{workspace, pch_key, completion};
-
-    if(!workspace.store) {
-        LOG_WARN("PCH build skipped: cache store is unavailable");
-        co_return false;
-    }
-
-    // Build a new PCH pair via stateless worker: it writes the PCH and its
-    // pch.idx envelope to the tmp paths allocated here; the store
-    // commits (fsync + rename) both on success, primary first.
-    auto pending = workspace.store->begin_store("pch", pch_key);
-    auto pending_idx = workspace.store->begin_store_aux("pch", pch_key);
-
-    worker::BuildPCHParams bp;
-    bp.file = std::string(path);
-    bp.directory = directory;
-    bp.arguments = arguments;
-    bp.content = text;
-    bp.preamble_bound = bound;
-    bp.output_path = pending.tmp_path;
-    bp.index_output_path = pending_idx.tmp_path;
-
-    LOG_DEBUG("Building PCH for {}, bound={}, key={}", path, bound, pch_key);
-
-    // Each worker kill lands in two ledgers by design: the session's (the
-    // preamble is this document's content) and the shared key's (other
-    // sessions with the same preamble must stop re-triggering the build).
-    auto result = co_await send_stateless_retrying(
-        pool,
-        bp,
-        worker::Priority::High,
-        [this, &session, &pch_key](const kota::ipc::protocol::Error& error) {
-            session.quarantine.on_kind_crash(pch_evidence, worker::death_of(error));
-            workspace.build_crashes.on_crash(pch_key);
-        });
-
-    if(!result.has_value() || !result.value().success) {
-        if(expected_build_failure(result)) {
-            LOG_WARN("PCH build failed for {}: {}", path, build_failure_message(result));
-        } else {
-            LOG_ANOMALY(PCHBuildFail,
-                        "PCH build failed for {}: {}",
-                        path,
-                        build_failure_message(result));
-        }
-        co_return false;
-    }
-
-    // Commit the pair on the thread pool as one job: the fsyncs stay off
-    // the event loop, and no cancellation can land between the two commits
-    // — the store either publishes the whole pair or retracts it (a half
-    // pair would let waiters adopt a PCH whose blob is gone). Opening the
-    // freshly committed blob (mmap + flatbuffer verification, which walks
-    // the whole file) also happens here so no later consumer pays that
-    // walk on the event loop.
-    struct PairCommit {
-        std::optional<std::string> pch_path;
-        std::optional<std::string> index_path;
-        std::shared_ptr<index::TUIndex> state;
-    };
-
-    auto committed = co_await kota::queue([&]() -> PairCommit {
-        PairCommit outcome;
-        auto pch_path = workspace.store->commit(std::move(pending));
-        if(!pch_path) {
-            // pending_idx cleans its own tmp blob when the frame unwinds.
-            return outcome;
-        }
-        outcome.pch_path = std::move(*pch_path);
-
-        // The pair is only usable complete: when the index blob cannot be
-        // published, retract the PCH too — the next compile rebuilds both.
-        auto index_path = workspace.store->commit(std::move(pending_idx));
-        if(!index_path) {
-            workspace.store->invalidate("pch", pch_key);
-            return outcome;
-        }
-        outcome.index_path = std::move(*index_path);
-        outcome.state = load_pch_envelope(*outcome.index_path);
-        return outcome;
-    });
-    if(!committed.has_value() || !committed.value().pch_path.has_value()) {
-        LOG_WARN("Failed to commit PCH for {}", path);
-        co_return false;
-    }
-    if(!committed.value().index_path.has_value()) {
-        LOG_WARN("Failed to commit pch.idx envelope for {}", path);
-        // A rebuild of an existing key just had its blobs retracted from
-        // the store; the entry's paths now dangle and waiters checking
-        // `!path.empty()` would hand the compile a deleted PCH. Drop it —
-        // the guard tolerates a missing entry.
-        workspace.pch_cache.erase(pch_key);
-        co_return false;
-    }
-
-    // The key built: its strikes were transient, not poison. The session
-    // ledger clears only when this build's launch is still current — a
-    // stale build must not launder strikes the new content recorded.
-    workspace.build_crashes.on_land(pch_key);
-    if(session.generation == launch_generation) {
-        session.quarantine.on_kind_land(pch_evidence);
-    }
-
-    auto& st = workspace.pch_cache[pch_key];
-    st.path = *committed.value().pch_path;
-    st.bound = bound;
-    st.deps =
-        capture_deps_snapshot(workspace.path_pool, result.value().deps, result.value().build_at);
-    st.index_path = *committed.value().index_path;
-    // Replace the previous blob's mapping (same key, rebuilt content);
-    // in-flight holders of the old shared_ptr stay valid.
-    st.state = committed.value().state;
-    workspace.touch_loaded_state(pch_key);
-    workspace.enforce_loaded_budget();
-
-    LOG_INFO("PCH built for {}: {}", path, st.path);
-
-    // Persist cache metadata after successful build.
-    workspace.save_cache(contexts);
-
-    // The cache entry above is content-keyed and correct regardless; only
-    // the session pointer must not be written by an invalidated round.
-    if(!may_write_pch_key(session, launch_generation, launch_epoch)) {
-        co_return false;
-    }
-    session.pch_key = pch_key;
-
+    session->pch_key = pch_key;
+    // Adopting a proven-good artifact disproves the session's PCH strikes
+    // as surely as building one — but only its own; every joiner washes
+    // for itself.
+    session->quarantine.on_kind_land(pch_evidence);
     co_return true;
 }
 
 /// Compile module dependencies, build/reuse PCH, and fill PCM paths.
 /// Shared preparation step used by both ensure_compiled() (stateful path)
 /// and forward_stateless() (completion/signatureHelp path).
-kota::task<bool> Compiler::ensure_deps(Session& session,
+kota::task<bool> Compiler::ensure_deps(const std::shared_ptr<Session>& session,
                                        std::uint64_t launch_generation,
                                        std::uint64_t launch_epoch,
                                        const std::string& directory,
                                        const std::vector<std::string>& arguments,
-                                       std::pair<std::string, uint32_t>& pch,
+                                       std::pair<std::string, uint32_t>& pch_pair,
                                        std::unordered_map<std::string, std::string>& pcms,
                                        std::optional<kota::cancellation_token> scope) {
-    auto path_id = session.path_id;
+    auto path_id = session->path_id;
 
     // Prepare module dependencies within the request scope: cancelling the
     // scope unwinds the wait and releases this request's interest in the
@@ -543,7 +314,7 @@ kota::task<bool> Compiler::ensure_deps(Session& session,
     // are never discovered. Needs the precise scan over the buffer text
     // when module support resumes.
     {
-        auto scan_result = scan_quick(session.text);
+        auto scan_result = scan_quick(session->text);
         for(auto& mod_name: scan_result.modules) {
             if(mod_name.empty())
                 continue;
@@ -584,10 +355,10 @@ kota::task<bool> Compiler::ensure_deps(Session& session,
     if(readonly != ReadonlyMode::On) {
         auto pch_ok =
             co_await ensure_pch(session, launch_generation, launch_epoch, directory, arguments);
-        if(pch_ok && session.pch_key.has_value()) {
-            if(auto pch_it = workspace.pch_cache.find(*session.pch_key);
+        if(pch_ok && session->pch_key.has_value()) {
+            if(auto pch_it = workspace.pch_cache.find(*session->pch_key);
                pch_it != workspace.pch_cache.end()) {
-                pch = {pch_it->second.path, pch_it->second.bound};
+                pch_pair = {pch_it->second.path, pch_it->second.bound};
             }
         }
     }
@@ -705,7 +476,7 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
                            header_context->preamble_path.empty() &&
                            contexts.header_mode(file_path, pid) == HeaderMode::Unknown;
 
-        bool deps_ok = co_await ensure_deps(*session,
+        bool deps_ok = co_await ensure_deps(session,
                                             gen,
                                             epoch,
                                             params.directory,
@@ -830,7 +601,7 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
                 LOG_WARN("Compile crashed consuming PCH pair {} for {}; retracting the pair",
                          *dispatched_pch_key,
                          uri_str);
-                invalidate_pch(*dispatched_pch_key);
+                pch.invalidate(*dispatched_pch_key);
                 if(session->pch_key == dispatched_pch_key) {
                     session->pch_key.reset();
                 }
@@ -873,7 +644,7 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
                      uri_str);
             // Retract unconditionally — a blamed pair never survives, even
             // when the retry budget is spent — but rerun only once.
-            invalidate_pch(*dispatched_pch_key);
+            pch.invalidate(*dispatched_pch_key);
             if(session->pch_key == dispatched_pch_key) {
                 session->pch_key.reset();
             }
@@ -1379,7 +1150,7 @@ Compiler::RawResult Compiler::forward_interactive(std::uint8_t evidence,
     wp.config = workspace.config;
 
     ScopedTimer timer;
-    if(!co_await ensure_deps(*session, gen, epoch, wp.directory, wp.arguments, wp.pch, wp.pcms)) {
+    if(!co_await ensure_deps(session, gen, epoch, wp.directory, wp.arguments, wp.pch, wp.pcms)) {
         LOG_WARN("forward_interactive: dependency preparation failed for {}", path);
         co_return kota::outcome_error(kota::ipc::Error{"Dependency preparation failed"});
     }

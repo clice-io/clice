@@ -34,7 +34,8 @@ namespace clice {
 constexpr static std::size_t notify_log_limit = 128;
 
 MasterServer::MasterServer(kota::event_loop& loop, std::string self_path) :
-    loop(loop), pool(loop), contexts(workspace), compiler(loop, workspace, contexts, pcm, pool),
+    loop(loop), pool(loop), contexts(workspace),
+    compiler(loop, workspace, contexts, pcm, pch, pool),
     indexer(loop, workspace, pool, contexts, pcm, sessions),
     index_query(workspace, sessions, indexer),
     agent_query(workspace, sessions, indexer, {.disk_only = true}),
@@ -42,6 +43,7 @@ MasterServer::MasterServer(kota::event_loop& loop, std::string self_path) :
     invalidator(workspace, sessions, contexts, pcm), bg_tasks(loop),
     self_path(std::move(self_path)) {
     pcm.register_runner();
+    pch.register_runner();
     // The notify hook is process-wide because the logging layer cannot
     // depend on the server; the composition root owns it for the server's
     // lifetime and turns reports into state (notify_log) plus a wake-up
@@ -526,7 +528,7 @@ void MasterServer::drain_store_evictions() {
             continue;
         }
         if(auto it = workspace.pch_cache.find(evicted.key);
-           it != workspace.pch_cache.end() && !it->second.building) {
+           it != workspace.pch_cache.end() && !pch.building(evicted.key)) {
             workspace.pch_cache.erase(it);
         }
     }

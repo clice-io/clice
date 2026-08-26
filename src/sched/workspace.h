@@ -168,11 +168,9 @@ struct PCHState {
 
     /// Open the blob on first use (memory-mapped, no deserialization).
     /// Returns nullptr when the blob is missing or unreadable — consumers
-    /// degrade (no overlay, no preamble links) and the next ensure_pch
+    /// degrade (no overlay, no preamble links) and the next PCH round
     /// treats the incomplete pair as a cache miss.
     const std::shared_ptr<index::TUIndex>& load_state();
-
-    std::shared_ptr<kota::event> building;
 };
 
 /// Cached PCM state for a single C++20 module.  Shared across all files that
