@@ -96,15 +96,15 @@ void MasterServer::initialize() {
 
     auto& cfg = workspace.config.project;
 
-    if(cfg.pch_build == "on_edit") {
-        workspace.pch_build = PchBuild::OnEdit;
-    } else if(cfg.pch_build == "never") {
-        workspace.pch_build = PchBuild::Never;
+    if(cfg.readonly == "on") {
+        workspace.readonly = ReadonlyMode::On;
+    } else if(cfg.readonly == "auto") {
+        workspace.readonly = ReadonlyMode::Auto;
     } else {
-        if(cfg.pch_build != "on_open") {
-            LOG_WARN("Unknown pch_build '{}'; using on_open", std::string(cfg.pch_build));
+        if(cfg.readonly != "off") {
+            LOG_WARN("Unknown readonly '{}'; using off", std::string(cfg.readonly));
         }
-        workspace.pch_build = PchBuild::OnOpen;
+        workspace.readonly = ReadonlyMode::Off;
     }
 
     if(!cfg.logging_dir.empty()) {
@@ -163,17 +163,16 @@ void MasterServer::initialize() {
     load_workspace();
 
     // Documents opened before the server became ready were validated
-    // against an empty resolver and created under the default policy;
+    // against an empty resolver and created under the default mode;
     // re-check their persisted context choices and re-derive their
     // serving mode now that the configuration governs. Settlement waits
     // until here — after load_workspace — so divergence detection sees
     // the persisted shards it just loaded (a restored unsaved buffer must
-    // escalate, not read as merely unindexed) and any compile it kicks
-    // lands on a started worker pool.
+    // escalate, not read as merely unindexed).
     for(auto& [path_id, session]: sessions.sessions) {
         if(session) {
             contexts.validate_saved_context(*session);
-            session->serving = workspace.pch_build == PchBuild::OnOpen ? ServingMode::Escalated
+            session->serving = workspace.readonly == ReadonlyMode::Off ? ServingMode::Escalated
                                                                        : ServingMode::IndexOnly;
             settle_open_serving(session);
         }
@@ -264,7 +263,7 @@ void MasterServer::wire() {
     // session answers empty until its first edit.
     indexer.on_session_unservable = [this](std::uint32_t path_id) {
         if(auto session = sessions.find(path_id)) {
-            compiler.escalate(std::move(session));
+            compiler.escalate(*session);
         }
     };
 }
@@ -283,15 +282,15 @@ std::shared_ptr<Session> MasterServer::open_session(std::uint32_t path_id) {
     // The serving mode's creation write point; the only other write is
     // Compiler::escalate.
     session->serving =
-        workspace.pch_build == PchBuild::OnOpen ? ServingMode::Escalated : ServingMode::IndexOnly;
+        workspace.readonly == ReadonlyMode::Off ? ServingMode::Escalated : ServingMode::IndexOnly;
     return session;
 }
 
 void MasterServer::settle_open_serving(std::shared_ptr<Session> session) {
-    // on_open invests immediately; the index still answers until the
-    // compile lands.
+    // An escalated session needs no settlement: builds stay pull-driven,
+    // and boosting its file would enqueue work the indexer skips for
+    // open non-IndexOnly documents.
     if(session->serving == ServingMode::Escalated) {
-        compiler.request_compile(std::move(session));
         return;
     }
     auto it = workspace.shards.find(session->path_id);
@@ -300,7 +299,7 @@ void MasterServer::settle_open_serving(std::shared_ptr<Session> session) {
         // restored unsaved file) can never be served read-only: escalate
         // now instead of answering empty until the first edit.
         if(!it->second.matches_content(session->text)) {
-            compiler.escalate(std::move(session));
+            compiler.escalate(*session);
         }
         return;
     }
@@ -311,7 +310,7 @@ void MasterServer::settle_open_serving(std::shared_ptr<Session> session) {
     if(workspace.config.project.enable_indexing.value) {
         indexer.boost(session->path_id);
     } else {
-        compiler.escalate(std::move(session));
+        compiler.escalate(*session);
     }
 }
 

@@ -819,10 +819,10 @@ kota::task<bool> Compiler::ensure_deps(Session& session,
         co_return false;
     }
 
-    // Build or reuse PCH. Under pch_build = "never" the build compiles
+    // Build or reuse PCH. Under readonly = "on" the build compiles
     // without a preamble instead — completion and signature help pay full
     // parses, the profile's stated trade.
-    if(workspace.pch_build != PchBuild::Never) {
+    if(workspace.readonly != ReadonlyMode::On) {
         auto pch_ok =
             co_await ensure_pch(session, launch_generation, launch_epoch, directory, arguments);
         if(pch_ok && session.pch_key.has_value()) {
@@ -1242,6 +1242,25 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
     }
 }
 
+void Compiler::escalate(Session& session) {
+    if(session.serving != ServingMode::IndexOnly) {
+        return;
+    }
+    if(workspace.readonly == ReadonlyMode::On) {
+        return;
+    }
+    session.serving = ServingMode::Escalated;
+}
+
+void Compiler::request_compile(std::shared_ptr<Session> session) {
+    auto kick = [](Compiler& self, std::shared_ptr<Session> session) -> kota::task<> {
+        co_await self.ensure_compiled(std::move(session));
+    };
+    if(!compile_tasks.spawn(kick(*this, std::move(session)))) {
+        LOG_WARN("request_compile: task group stopped, dropping kick");
+    }
+}
+
 /// AST and diagnostics have been published to the client.
 ///
 /// Lifecycle overview (pull-based model):
@@ -1265,26 +1284,6 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
 /// Compiler's task_group; subsequent ones wait on the shared event.
 /// The spawned task is not cancelled by LSP $/cancelRequest, preventing
 /// the race where cancellation wakes all waiters and they all start compiles.
-void Compiler::escalate(std::shared_ptr<Session> session) {
-    if(session->serving != ServingMode::IndexOnly) {
-        return;
-    }
-    if(workspace.pch_build == PchBuild::Never) {
-        return;
-    }
-    session->serving = ServingMode::Escalated;
-    request_compile(std::move(session));
-}
-
-void Compiler::request_compile(std::shared_ptr<Session> session) {
-    auto kick = [](Compiler& self, std::shared_ptr<Session> session) -> kota::task<> {
-        co_await self.ensure_compiled(std::move(session));
-    };
-    if(!compile_tasks.spawn(kick(*this, std::move(session)))) {
-        LOG_WARN("request_compile: task group stopped, dropping kick");
-    }
-}
-
 kota::task<bool> Compiler::ensure_compiled(std::shared_ptr<Session> session) {
     auto path_id = session->path_id;
     auto gen = session->generation;

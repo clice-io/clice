@@ -69,10 +69,11 @@ public:
     kota::task<bool> ensure_compiled(std::shared_ptr<Session> session);
 
     /// The escalation triggers' single write point: flip an index-only
-    /// session to Escalated and start its compile without awaiting it.
-    /// A no-op for already-escalated sessions and under pch_build =
-    /// "never" (there is nothing to escalate to).
-    void escalate(std::shared_ptr<Session> session);
+    /// session to Escalated. The build stays pull-driven — the next
+    /// request that needs the AST starts it. A no-op for
+    /// already-escalated sessions and under readonly = "on" (the mode
+    /// transition is disabled).
+    void escalate(Session& session);
 
     /// Start (or join) the session's compile detached — the caller keeps
     /// serving from the index while it lands. ensure_compiled's pending

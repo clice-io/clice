@@ -104,9 +104,10 @@ public:
     std::shared_ptr<Session> find_session(std::uint32_t path_id);
     std::shared_ptr<Session> open_session(std::uint32_t path_id);
 
-    /// Apply the serving policy to a freshly opened buffer: kick the
-    /// eager compile (on_open), escalate a diverged restored buffer, or
-    /// boost the file's background indexing when nothing can serve it.
+    /// Settle a freshly opened index-only buffer: escalate one that
+    /// already diverged from its shard, or boost the file's background
+    /// indexing when nothing can serve it. Escalated sessions need no
+    /// settlement — builds are pull-driven.
     void settle_open_serving(std::shared_ptr<Session> session);
 
     /// Close the session. The diagnostics clear travels through the

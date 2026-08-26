@@ -71,8 +71,9 @@ kota::task<FeatureRouter::Route> FeatureRouter::pick_route(std::shared_ptr<Sessi
     constexpr std::size_t full_lex_cap = 8 * 1024 * 1024;
     bool capped = full_lex && session->text.size() > full_lex_cap;
     if(!capped && index_rows_source(index_query, *session)) {
-        // The index answering must never strand the investment the policy
-        // asked for: keep the escalated session's compile moving.
+        // An index answer must not strand an escalated session's pending
+        // build: this request still pulls the compile it would otherwise
+        // have waited on, just without blocking.
         if(session->serving == ServingMode::Escalated && session->ast_dirty) {
             compiler.request_compile(session);
         }
@@ -647,7 +648,7 @@ FeatureRouter::RawResult
                     // re-pull. Await the didOpen boost instead (bounded
                     // by one index attempt) and answer from whatever
                     // source that settles: the shard, the escalated
-                    // compile, or honestly empty under `never`.
+                    // compile, or honestly empty under readonly "on".
                     if(!waited) {
                         waited = true;
                         auto gen = session->generation;
@@ -692,12 +693,12 @@ FeatureRouter::RawResult FeatureRouter::completion(std::shared_ptr<Session> sess
                                                    std::optional<kota::cancellation_token> token) {
     auto pause = indexer.scoped_pause();
 
-    // Asking for code completion is edit intent: escalate the session so
-    // the PCH/AST investment starts (a no-op when already escalated or
-    // under pch_build = "never"). Before the yield below on purpose — a
-    // didClose drained there replaces the Session object, and escalating
-    // the dead one would kick a compile of abandoned text.
-    compiler.escalate(session);
+    // Asking for code completion is edit intent: flip the session out of
+    // index-only serving (a no-op when already escalated or under
+    // readonly = "on"). Before the yield below on purpose: it must tag
+    // the session this request arrived for, not whatever a drained
+    // didClose/didOpen pair put in its place.
+    compiler.escalate(*session);
 
     // This handler is resumed eagerly, so a $/cancelRequest or didChange
     // sitting in the pipe (rapid-fire completions cancel and re-issue as
@@ -784,7 +785,7 @@ FeatureRouter::RawResult
                                   const protocol::Position& position,
                                   std::optional<kota::cancellation_token> token) {
     auto pause = indexer.scoped_pause();
-    compiler.escalate(session);
+    compiler.escalate(*session);
     co_return co_await compiler.forward_build(worker::BuildKind::SignatureHelp,
                                               position,
                                               session,

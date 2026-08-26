@@ -318,7 +318,7 @@ void LSPClient::register_document_sync() {
 
         // Editing is the canonical escalation trigger: from here on the
         // session invests in PCH/AST.
-        srv.compiler.escalate(session);
+        srv.compiler.escalate(*session);
 
         srv.dispatch(FileEvent::buffer_edited(path_id));
 
@@ -637,7 +637,7 @@ void LSPClient::register_extensions() {
             // merged index cannot give it (union rows). A rejected switch
             // (stale epoch, bad host) changed no context and owes none.
             if(result.success) {
-                this->server.compiler.escalate(session);
+                this->server.compiler.escalate(*session);
             }
             co_return to_raw(result);
         });

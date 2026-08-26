@@ -429,11 +429,6 @@ export class CliceClient {
         // counts via initializationOptions.
         project["stateless_worker_count"] ??= 1;
         project["stateful_worker_count"] ??= 1;
-        // The corpus predates the pch_build policy and drives compiles
-        // through feature requests (openAndWait's hover); pin the eager
-        // profile so those semantics hold. Policy behavior itself is
-        // tested by read_only.test.ts, which overrides this.
-        project["pch_build"] ??= "on_open";
         initializationOptions["project"] = project;
         // Disable the stat-polling loops: tests drive ticks deterministically
         // through the clice/internal/poll hook instead.

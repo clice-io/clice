@@ -12,7 +12,7 @@
                 "compile_commands_paths": [],
                 "enable_indexing": true,
                 "index_db": "lmdb",
-                "pch_build": "on_edit",
+                "readonly": "off",
                 "idle_timeout_ms": 3000,
                 "test_hooks": false,
                 "stateful_worker_count": 2,
@@ -112,14 +112,14 @@
                         "files"
                     ]
                 },
-                "pch_build": {
+                "readonly": {
                     "type": "string",
-                    "description": "What triggers PCH/AST builds for an open file: \"on_open\" compiles eagerly on didOpen, \"on_edit\" serves reads from the index and compiles only when an edit-intent trigger fires (edit, completion, signature help, context switch), \"never\" never builds them — reads serve from the index alone, while completion and signature help still compile on demand without a preamble. Feature routing always answers from the best source currently available; this option only decides when the expensive sources get built.",
-                    "default": "on_edit",
+                    "description": "Read-only serving for open files: \"off\" targets a full AST for every open file — builds are pulled by the first request that needs them, with the index answering in the meantime; \"on\" never builds a PCH — reads serve from the index alone (a cold file jumps the indexing queue), while completion and signature help still compile on demand without a preamble; \"auto\" starts every file as \"on\" and switches it to \"off\" at the first edit intent (edit, completion, signature help, context switch). Feature routing always answers from the best source currently available.",
+                    "default": "off",
                     "enum": [
-                        "on_open",
-                        "on_edit",
-                        "never"
+                        "off",
+                        "on",
+                        "auto"
                     ]
                 },
                 "idle_timeout_ms": {

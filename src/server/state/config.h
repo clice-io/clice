@@ -96,18 +96,19 @@ struct ProjectConfig {
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
-                         "What triggers PCH/AST builds for an open file: "
-                         "\"on_open\" compiles eagerly on didOpen, \"on_edit\" "
-                         "serves reads from the index and compiles only when "
-                         "an edit-intent trigger fires (edit, completion, "
-                         "signature help, context switch), \"never\" never "
-                         "builds them — reads serve from the index alone, "
-                         "while completion and signature help still compile "
-                         "on demand without a preamble. Feature routing "
-                         "always answers from the best source currently "
-                         "available; this option only decides when the "
-                         "expensive sources get built.")
-    <std::string> pch_build = "on_edit";
+                         "Read-only serving for open files: \"off\" targets a "
+                         "full AST for every open file — builds are pulled by "
+                         "the first request that needs them, with the index "
+                         "answering in the meantime; \"on\" never builds a "
+                         "PCH — reads serve from the index alone (a cold file "
+                         "jumps the indexing queue), while completion and "
+                         "signature help still compile on demand without a "
+                         "preamble; \"auto\" starts every file as \"on\" and "
+                         "switches it to \"off\" at the first edit intent "
+                         "(edit, completion, signature help, context switch). "
+                         "Feature routing always answers from the best source "
+                         "currently available.")
+    <std::string> readonly = "off";
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description =

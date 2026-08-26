@@ -22,7 +22,7 @@ namespace clice {
 enum class CommandSource : std::uint8_t;
 
 /// A session's resource-investment state. Written at exactly two points:
-/// session creation (from the policy) and Compiler::escalate (the
+/// session creation (from the readonly mode) and Compiler::escalate (the
 /// triggers). Everything else derives routing from readiness, not from
 /// this flag.
 enum class ServingMode : std::uint8_t {

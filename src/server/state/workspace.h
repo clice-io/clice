@@ -184,22 +184,25 @@ struct PCMState {
     DepsSnapshot deps;
 };
 
-/// What event triggers PCH/AST investment in an open file — the parsed
-/// form of the `pch_build` config option. Routing is not governed by
-/// this: every request is answered by the best source available at that
-/// moment (see FeatureRouter); the policy only decides when the expensive
-/// sources get built.
-enum class PchBuild : std::uint8_t {
-    /// didOpen compiles eagerly; the index serves until the AST lands.
-    OnOpen,
-    /// Only an escalation trigger (edit, completion, signature help, a
-    /// context switch, a restored buffer that diverged from the index)
-    /// starts investing; unedited documents serve from the index alone.
-    OnEdit,
-    /// Never build a PCH: reads serve from the index alone, while
-    /// completion and signature help still compile on demand — without a
-    /// preamble. The agent / low-resource profile.
-    Never,
+/// How open files are served — the parsed form of the `readonly` config
+/// option. Routing is not governed by this: every request is answered by
+/// the best source available at that moment (see FeatureRouter); the mode
+/// only decides whether PCH/AST builds are a goal at all. Builds are
+/// always pull-driven — no lifecycle event starts one, the first request
+/// that needs the AST does.
+enum class ReadonlyMode : std::uint8_t {
+    /// Every open file targets a full AST; the index answers while the
+    /// pulled compile is in flight.
+    Off,
+    /// Never build a PCH: reads serve from the index alone (a cold file
+    /// jumps the indexing queue), while completion and signature help
+    /// still compile on demand — without a preamble. The agent /
+    /// low-resource profile.
+    On,
+    /// Files start as On and switch to Off at the first edit intent
+    /// (edit, completion, signature help, a context switch, a restored
+    /// buffer that diverged from the index).
+    Auto,
 };
 
 /// All persistent, project-wide state derived from files on disk.
@@ -231,12 +234,9 @@ struct Workspace {
     CompilationDatabase cdb;
     Toolchain toolchain;
 
-    /// Parsed form of config.project.pch_build, resolved once at server
-    /// initialization; an unknown value warns and falls back to on_open.
-    /// Directly-built Workspaces (unit tests, tools) keep the pre-policy
-    /// behavior through Session's Escalated default, not through this
-    /// field.
-    PchBuild pch_build = PchBuild::OnEdit;
+    /// Parsed form of config.project.readonly, resolved once at server
+    /// initialization; an unknown value warns and falls back to off.
+    ReadonlyMode readonly = ReadonlyMode::Off;
 
     PathPool path_pool;
 
