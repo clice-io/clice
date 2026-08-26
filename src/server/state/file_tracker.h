@@ -3,9 +3,9 @@
 #include <cstdint>
 #include <string>
 
+#include "sched/workspace.h"
 #include "server/state/invalidator.h"
 #include "server/state/session_store.h"
-#include "server/state/workspace.h"
 
 #include "kota/async/async.h"
 #include "llvm/ADT/DenseMap.h"

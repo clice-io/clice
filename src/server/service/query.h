@@ -7,9 +7,9 @@
 #include <vector>
 
 #include "feature/feature.h"
+#include "sched/workspace.h"
 #include "semantic/symbol.h"
 #include "server/protocol/agentic.h"
-#include "server/state/workspace.h"
 
 #include "kota/ipc/lsp/position.h"
 #include "kota/ipc/lsp/protocol.h"

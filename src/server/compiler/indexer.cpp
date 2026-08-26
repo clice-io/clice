@@ -11,7 +11,7 @@
 #include "index/manifest.h"
 #include "index/shard.h"
 #include "index/tu_index.h"
-#include "server/compiler/context_resolver.h"
+#include "sched/context.h"
 #include "server/state/session_store.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
@@ -1423,7 +1423,7 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id,
     auto source = contexts.resolve_command(file_path,
                                            params.directory,
                                            params.arguments,
-                                           nullptr,
+                                           ContextUse::Background,
                                            &host_path_id);
     if(source == CommandSource::Fallback) {
         // A file whose manifest survives keeps serving its last-known rows,

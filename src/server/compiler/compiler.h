@@ -8,8 +8,8 @@
 #include <vector>
 
 #include "command/command.h"
+#include "sched/workspace.h"
 #include "server/state/session.h"
-#include "server/state/workspace.h"
 #include "support/signal.h"
 #include "worker/pool.h"
 
@@ -32,9 +32,6 @@ struct CompilerFixture;
 namespace protocol = kota::ipc::protocol;
 
 class ContextResolver;
-
-/// Convert a file:// URI to a local file path.
-std::string uri_to_path(const std::string& uri);
 
 /// Compilation service — drives worker processes to build ASTs, PCHs, and PCMs.
 ///
@@ -159,6 +156,10 @@ public:
 
     /// Cancel in-flight compile tasks and wait for them to finish.
     kota::task<> stop();
+
+    /// Parsed form of config.project.readonly, written once by the master
+    /// at initialization; an unknown value warns and falls back to off.
+    ReadonlyMode readonly = ReadonlyMode::Off;
 
 private:
     kota::task<> run_compile(std::shared_ptr<Session> session);

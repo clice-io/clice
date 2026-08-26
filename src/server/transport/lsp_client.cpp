@@ -9,12 +9,13 @@
 
 #include "version.h"
 #include "command/argument_parser.h"
+#include "sched/context.h"
 #include "semantic/symbol.h"
-#include "server/compiler/context_resolver.h"
 #include "server/protocol/extension.h"
 #include "server/service/format.h"
 #include "server/state/file_tracker.h"
 #include "server/transport/master_server.h"
+#include "server/transport/uri.h"
 #include "support/anomaly.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
@@ -279,7 +280,7 @@ void LSPClient::register_document_sync() {
 
         // A context choice persisted from an earlier session stays
         // authoritative only if it still holds.
-        srv.contexts.validate_saved_context(*session);
+        srv.contexts.validate_saved_context(session->path_id);
 
         srv.dispatch(FileEvent::buffer_opened(path_id));
         srv.settle_open_serving(session);
@@ -607,7 +608,7 @@ void LSPClient::register_extensions() {
         [this](RequestContext& ctx, const ext::QueryContextParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
             auto [path, path_id, session] = resolve_uri(params.uri);
-            co_return to_raw(this->server.contexts.query_contexts(path, path_id, params));
+            co_return to_raw(this->server.context_service.query_contexts(path, path_id, params));
         });
 
     peer.on_request(
@@ -615,7 +616,8 @@ void LSPClient::register_extensions() {
         [this](RequestContext& ctx, const ext::CurrentContextParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
             auto [path, path_id, session] = resolve_uri(params.uri);
-            co_return to_raw(this->server.contexts.current_context(path, session.get(), params));
+            co_return to_raw(
+                this->server.context_service.current_context(path, session.get(), params));
         });
 
     peer.on_request(
@@ -627,12 +629,12 @@ void LSPClient::register_extensions() {
             // The session reset lives inside switch_context (single owner,
             // synchronous, no cross-file cascade — exempt from the event
             // pipeline; see the Invalidator charter).
-            auto result = this->server.contexts.switch_context(path,
-                                                               path_id,
-                                                               session.get(),
-                                                               context_path,
-                                                               context_path_id,
-                                                               params);
+            auto result = this->server.context_service.switch_context(path,
+                                                                      path_id,
+                                                                      session.get(),
+                                                                      context_path,
+                                                                      context_path_id,
+                                                                      params);
             // A context choice asks for the context-pure AST view; the
             // merged index cannot give it (union rows). A rejected switch
             // (stale epoch, bad host) changed no context and owes none.

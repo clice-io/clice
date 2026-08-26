@@ -10,6 +10,7 @@
 #include "server/protocol/agentic.h"
 #include "server/protocol/position.h"
 #include "server/transport/master_server.h"
+#include "server/transport/uri.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 

@@ -2,7 +2,7 @@
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "command/argument_parser.h"
-#include "server/compiler/context_resolver.h"
+#include "sched/context.h"
 #include "server/state/session_store.h"
 
 namespace clice::testing {
@@ -36,12 +36,12 @@ TEST_CASE(ChoiceNeedsSession) {
     auto session = store.open(file);
     std::string directory;
     std::vector<std::string> arguments;
-    resolver.resolve_command(path, directory, arguments, session.get());
+    resolver.resolve_command(path, directory, arguments, ContextUse::Editor);
     ASSERT_TRUE(llvm::is_contained(arguments, "SECOND"));
 
     // ...but background indexing (no session) must never see user choices.
     arguments.clear();
-    resolver.resolve_command(path, directory, arguments, nullptr);
+    resolver.resolve_command(path, directory, arguments, ContextUse::Background);
     ASSERT_TRUE(llvm::is_contained(arguments, "FIRST"));
 }
 
@@ -65,7 +65,7 @@ TEST_CASE(ValidateKeepsValidChoice) {
     resolver.saved_contexts[header] = SavedContext{host, std::nullopt, ""};
 
     auto session = store.open(header);
-    resolver.validate_saved_context(*session);
+    resolver.validate_saved_context(session->path_id);
     ASSERT_TRUE(resolver.saved_contexts.contains(header));
 }
 
@@ -90,13 +90,13 @@ TEST_CASE(ValidateDropsStaleChoice) {
     // A host pin whose CDB entry disappeared while the server was down.
     resolver.saved_contexts[header] = SavedContext{host, std::nullopt, ""};
     auto header_session = store.open(header);
-    resolver.validate_saved_context(*header_session);
+    resolver.validate_saved_context(header_session->path_id);
     ASSERT_FALSE(resolver.saved_contexts.contains(header));
 
     // A command pin whose hash matches no current CDB entry.
     resolver.saved_contexts[main_file] = SavedContext{no_path_id, std::nullopt, "deadbeef"};
     auto main_session = store.open(main_file);
-    resolver.validate_saved_context(*main_session);
+    resolver.validate_saved_context(main_session->path_id);
     ASSERT_FALSE(resolver.saved_contexts.contains(main_file));
 }
 

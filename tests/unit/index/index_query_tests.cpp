@@ -6,7 +6,7 @@
 #include "feature/feature.h"
 #include "index/shard.h"
 #include "index/tu_index.h"
-#include "server/compiler/context_resolver.h"
+#include "sched/context.h"
 #include "server/compiler/indexer.h"
 #include "server/service/query.h"
 #include "server/state/session_store.h"

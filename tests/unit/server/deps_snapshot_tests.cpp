@@ -1,6 +1,6 @@
 #include "test/temp_dir.h"
 #include "test/test.h"
-#include "server/state/workspace.h"
+#include "sched/workspace.h"
 
 #include "llvm/Support/FileSystem.h"
 

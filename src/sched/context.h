@@ -6,10 +6,7 @@
 #include <vector>
 
 #include "command/command.h"
-#include "server/compiler/context_cache.h"
-#include "server/protocol/extension.h"
-#include "server/state/session.h"
-#include "server/state/workspace.h"
+#include "sched/workspace.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
@@ -17,10 +14,6 @@
 #include "llvm/ADT/StringRef.h"
 
 namespace clice {
-
-struct SessionStore;
-
-namespace protocol = kota::ipc::protocol;
 
 /// Where the compile command for a file came from. Anything other than
 /// CDBExact means the command was guessed to some degree, which is why
@@ -39,27 +32,46 @@ enum class CommandSource : std::uint8_t {
     Fallback,
 };
 
-/// Diagnostic codes that strictly indicate a missing includer context (as
-/// opposed to ordinary in-progress typing errors). Deliberately narrow:
-/// a false positive costs a pointless prefix synthesis, a false negative
-/// just leaves the header in trial mode.
-bool indicates_missing_context(llvm::ArrayRef<protocol::Diagnostic> diagnostics);
+/// Who a command resolution serves. User context choices steer
+/// editor-facing compiles of open files, never background indexing.
+enum class ContextUse : std::uint8_t {
+    Editor,
+    Background,
+};
+
+/// cache.json slice entries for context-domain state. The structs mirror the
+/// on-disk JSON layout field for field — changing them changes the format.
+
+struct CacheModeEntry {
+    std::uint32_t file;          // index into the cache path table
+    std::uint32_t mode;          // HeaderMode
+    std::uint64_t content_hash;  // header contents the verdict was scored on
+};
+
+struct CacheContextEntry {
+    std::uint32_t file;  // index into the cache path table
+    std::uint32_t host;  // index into the cache path table; ~0u = none
+    std::uint32_t occurrence;
+    std::string command_hash;
+};
+
+struct CacheArtifactEntry {
+    std::uint32_t file;  // index into the cache path table
+    std::uint32_t host;  // index into the cache path table
+};
 
 /// Domain logic for compilation contexts of header files.
 ///
 /// A header without its own compilation database entry borrows a host
 /// source's command through the include graph. ContextResolver owns that
 /// resolution and synthesis (prefix/suffix/self-snapshot files restoring the
-/// includer's preprocessor state), the editor-facing context protocol
-/// extension (clice/queryContext, currentContext, switchContext), and
-/// validating a persisted context choice on didOpen.
-///
-/// Owns the context-domain state: self-containment verdicts, user context
-/// choices and synthesized-artifact attribution (all persisted in
-/// cache.json), plus the resolved header contexts, which outlive their
-/// sessions so a reopened header reuses its synthesized preamble. Used by
-/// Compiler (compile-argument resolution) and LSPClient (protocol handlers)
-/// through a shared reference.
+/// includer's preprocessor state) plus the context-domain state: self-
+/// containment verdicts, user context choices and synthesized-artifact
+/// attribution (all persisted in cache.json), and the resolved header
+/// contexts, which outlive their sessions so a reopened header reuses its
+/// synthesized preamble. The editor-facing context protocol handlers
+/// (clice/queryContext, currentContext, switchContext) live on the server
+/// side and drive this state through its public surface.
 class ContextResolver {
 public:
     explicit ContextResolver(Workspace& workspace) : workspace(workspace) {}
@@ -185,13 +197,12 @@ public:
     /// Tries, in order: CDB entry, header context through the include graph,
     /// and finally a synthesized fallback command — so it always succeeds.
     /// Emits a per-file decision log (tiers tried, tier hit, command hash).
-    /// @param session  If non-null, used for header context resolution on open files.
     /// @param host_path_id  If non-null, receives the host source whose
     /// command an IncludeGraph resolution borrowed (untouched otherwise).
     CommandSource resolve_command(llvm::StringRef path,
                                   std::string& directory,
                                   std::vector<std::string>& arguments,
-                                  Session* session = nullptr,
+                                  ContextUse use = ContextUse::Background,
                                   std::uint32_t* host_path_id = nullptr);
 
     /// Append the header context's suffix as one trailing #include line: the
@@ -199,72 +210,43 @@ public:
     /// lives in its own file so features never see it, while the token stream
     /// still closes any braces the fragment is embedded in. The single extra
     /// line sits past the editor's EOF and is invisible to the client.
-    void append_suffix_include(const Session& session, std::string& text);
+    void append_suffix_include(std::uint32_t path_id, std::string& text);
 
     /// Fill compile arguments for a header from a host source's command found
     /// through the include graph, synthesizing a preamble prefix/suffix when
     /// the header needs includer context. Returns false when no usable host
-    /// context exists. @param session may be null (background indexing).
+    /// context exists.
     bool fill_header_context_args(llvm::StringRef path,
                                   std::uint32_t path_id,
                                   std::string& directory,
                                   std::vector<std::string>& arguments,
-                                  Session* session,
+                                  ContextUse use,
                                   std::uint32_t* host_path_id);
 
     /// Validate a context choice persisted from an earlier run against the
     /// current CDB and include graph, dropping it when stale. Called on
     /// didOpen; a surviving entry is the file's active context.
-    void validate_saved_context(Session& session);
+    void validate_saved_context(std::uint32_t path_id);
 
-    /// Drop active context choices whose include edge no longer exists. A
-    /// stale choice suppresses automatic host resolution, so it would strand
-    /// the header on the fallback command (or silently pin its command hash
-    /// to a different host). Expects the include graph to be current (the
-    /// caller rescans on save). Returns whether any persisted choice was
-    /// removed, i.e. whether the cache snapshot needs saving.
-    bool drop_orphaned_choices(SessionStore& sessions);
-
-    /// clice/queryContext: list the compilation contexts (host sources and
-    /// the file's own CDB configurations) available for a file, paginated.
-    ext::QueryContextResult query_contexts(llvm::StringRef path,
-                                           std::uint32_t path_id,
-                                           const ext::QueryContextParams& params);
-
-    /// clice/currentContext: describe the file's currently active context.
-    ext::CurrentContextResult current_context(llvm::StringRef path,
-                                              const Session* session,
-                                              const ext::CurrentContextParams& params);
-
-    /// clice/switchContext: pin a host source or CDB entry as the file's
-    /// compilation context and persist the choice across sessions.
-    ext::SwitchContextResult switch_context(llvm::StringRef path,
-                                            std::uint32_t path_id,
-                                            Session* session,
-                                            llvm::StringRef context_path,
-                                            std::uint32_t context_path_id,
-                                            const ext::SwitchContextParams& params);
-
-private:
-    std::optional<HeaderContext> resolve_header_context(std::uint32_t header_path_id,
-                                                        Session* session,
-                                                        bool synthesize);
-
-    /// Whether the CDB still holds an entry for `entry_path` whose canonical
-    /// command hash equals `hash` — the validity test for a pinned context
-    /// choice, shared by didOpen validation and the runtime orphan pass.
-    bool entry_has_hash(llvm::StringRef entry_path, llvm::StringRef hash) const;
-
-    /// The file's context choice, or nullptr. Gated on an open session:
-    /// user choices steer editor-facing compiles, never background indexing
-    /// (which passes no session).
-    const SavedContext* active_choice(const Session* session, std::uint32_t path_id) const {
-        if(!session) {
+    /// The file's context choice, or nullptr — editor use only: user
+    /// choices steer editor-facing compiles, never background indexing.
+    const SavedContext* active_choice(ContextUse use, std::uint32_t path_id) const {
+        if(use != ContextUse::Editor) {
             return nullptr;
         }
         auto it = saved_contexts.find(path_id);
         return it != saved_contexts.end() ? &it->second : nullptr;
     }
+
+    /// Whether the CDB still holds an entry for `entry_path` whose canonical
+    /// command hash equals `hash` — the validity test for a pinned context
+    /// choice, shared by didOpen validation and the server's orphan pass.
+    bool entry_has_hash(llvm::StringRef entry_path, llvm::StringRef hash) const;
+
+private:
+    std::optional<HeaderContext> resolve_header_context(std::uint32_t header_path_id,
+                                                        ContextUse use,
+                                                        bool synthesize);
 
     Workspace& workspace;
 };

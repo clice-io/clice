@@ -7,8 +7,8 @@
 #include <vector>
 
 #include "index/tu_index.h"
+#include "sched/workspace.h"
 #include "server/state/quarantine.h"
-#include "server/state/workspace.h"
 
 #include "kota/async/async.h"
 #include "kota/codec/visit/common.h"
@@ -17,9 +17,33 @@
 
 namespace clice {
 
-/// Defined in server/compiler/context_resolver.h — the resolver reports where
+/// Defined in sched/context.h — the resolver reports where
 /// the compile command came from; Session only stores the verdict.
 enum class CommandSource : std::uint8_t;
+
+/// How open files are served — the parsed form of the `readonly` config
+/// option. Routing is not governed by this: every request is answered by
+/// the best source available at that moment (see FeatureRouter); the mode
+/// only decides whether PCH/AST builds are a goal at all. Builds are
+/// always pull-driven — no lifecycle event starts one, the first request
+/// that needs the AST does.
+enum class ReadonlyMode : std::uint8_t {
+    /// Every open file targets a full AST; the index answers while the
+    /// pulled compile is in flight.
+    Off,
+    /// Never build a PCH: reads serve from the index alone (a cold file
+    /// jumps the indexing queue), while completion and signature help
+    /// still compile on demand — without a preamble. The agent /
+    /// low-resource profile.
+    On,
+    /// Files start as On and switch to Off at the first edit intent
+    /// (edit, completion, signature help, a context switch, a restored
+    /// buffer that diverged from the index). A file the index can never
+    /// serve — indexing disabled, or its boost attempt settled without a
+    /// servable shard — falls back to Off rather than answering empty
+    /// forever.
+    Auto,
+};
 
 /// A session's resource-investment state. Written at exactly two points:
 /// session creation (from the readonly mode) and Compiler::escalate (the

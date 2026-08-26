@@ -9,9 +9,10 @@
 
 #include "command/argument_parser.h"
 #include "index/tu_index.h"
-#include "server/compiler/context_resolver.h"
+#include "sched/context.h"
 #include "server/protocol/extension.h"
 #include "server/protocol/position.h"
+#include "server/service/context_service.h"
 #include "support/anomaly.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
@@ -415,17 +416,6 @@ void Compiler::init_compile_graph() {
     LOG_INFO("CompileGraph initialized with {} module(s)", workspace.path_to_module.size());
 }
 
-std::string uri_to_path(const std::string& uri) {
-    auto parsed = lsp::URI::parse(uri);
-    if(parsed.has_value()) {
-        auto path = parsed->file_path();
-        if(path.has_value()) {
-            return std::move(*path);
-        }
-    }
-    return uri;
-}
-
 /// The pch_key write license: a round may (re)write the session's PCH
 /// reference only while BOTH staleness tokens still hold their takeoff
 /// values. A supersede bumps generation; a Lost-type invalidation (disk or
@@ -826,7 +816,7 @@ kota::task<bool> Compiler::ensure_deps(Session& session,
     // Build or reuse PCH. Under readonly = "on" the build compiles
     // without a preamble instead — completion and signature help pay full
     // parses, the profile's stated trade.
-    if(workspace.readonly != ReadonlyMode::On) {
+    if(readonly != ReadonlyMode::On) {
         auto pch_ok =
             co_await ensure_pch(session, launch_generation, launch_epoch, directory, arguments);
         if(pch_ok && session.pch_key.has_value()) {
@@ -926,8 +916,10 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
         params.path = file_path;
         params.version = session->version;
         params.text = session->text;
-        auto source =
-            contexts.resolve_command(file_path, params.directory, params.arguments, session.get());
+        auto source = contexts.resolve_command(file_path,
+                                               params.directory,
+                                               params.arguments,
+                                               ContextUse::Editor);
 
         // The line the appended suffix #include lands on — anything at or
         // past it is phantom text the user cannot see.
@@ -938,7 +930,7 @@ kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
             suffix_line_limit =
                 static_cast<std::uint32_t>(newlines + (params.text.ends_with('\n') ? 0 : 1));
         }
-        contexts.append_suffix_include(*session, params.text);
+        contexts.append_suffix_include(session->path_id, params.text);
 
         // Whether this round is the self-containment probe: a header
         // deliberately compiled without its includer prefix to see if it
@@ -1250,7 +1242,7 @@ void Compiler::escalate(Session& session) {
     if(session.serving != ServingMode::IndexOnly) {
         return;
     }
-    if(workspace.readonly == ReadonlyMode::On) {
+    if(readonly == ReadonlyMode::On) {
         return;
     }
     session.serving = ServingMode::Escalated;
@@ -1617,8 +1609,8 @@ Compiler::RawResult Compiler::forward_interactive(std::uint8_t evidence,
     Params wp;
     wp.file = path;
     wp.text = session->text;
-    contexts.resolve_command(path, wp.directory, wp.arguments, session.get());
-    contexts.append_suffix_include(*session, wp.text);
+    contexts.resolve_command(path, wp.directory, wp.arguments, ContextUse::Editor);
+    contexts.append_suffix_include(session->path_id, wp.text);
     wp.config = workspace.config;
 
     ScopedTimer timer;

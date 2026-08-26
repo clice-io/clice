@@ -4,7 +4,7 @@
 #include "index/serialization.h"
 #include "index/shard.h"
 #include "index/tu_index.h"
-#include "server/state/workspace.h"
+#include "sched/workspace.h"
 
 #include "llvm/Support/raw_ostream.h"
 

@@ -15,6 +15,7 @@
 #include "server/protocol/position.h"
 #include "server/state/session.h"
 #include "server/state/session_store.h"
+#include "server/transport/uri.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 #include "support/timer.h"

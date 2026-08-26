@@ -1,8 +1,9 @@
 #include "test/cdb_helper.h"
 #include "test/temp_dir.h"
 #include "test/test.h"
+#include "sched/context.h"
 #include "sched/legacy_pcm_graph.h"
-#include "server/compiler/context_resolver.h"
+#include "server/service/context_service.h"
 #include "server/state/invalidator.h"
 
 namespace clice::testing {
@@ -803,7 +804,7 @@ TEST_CASE(SurvivingEdgeKeepsChoice) {
     auto session = store.open(header);
     resolver.saved_contexts[header] = SavedContext{host, std::nullopt, ""};
 
-    ASSERT_FALSE(resolver.drop_orphaned_choices(store));
+    ASSERT_FALSE(ContextService{workspace, resolver}.drop_orphaned_choices(store));
     ASSERT_TRUE(resolver.saved_contexts.contains(header));
 }
 
@@ -821,7 +822,7 @@ TEST_CASE(RemovedEdgeDropsChoice) {
     resolver.saved_contexts[header] = SavedContext{host, std::nullopt, ""};
     auto generation = session->generation;
 
-    ASSERT_TRUE(resolver.drop_orphaned_choices(store));
+    ASSERT_TRUE(ContextService{workspace, resolver}.drop_orphaned_choices(store));
     ASSERT_FALSE(resolver.header_contexts.contains(header));
     ASSERT_TRUE(session->ast_dirty);
     ASSERT_FALSE(session->trial_done);
@@ -846,7 +847,7 @@ TEST_CASE(VanishedOccurrenceDropsChoice) {
     store.open(header);
     resolver.saved_contexts[header] = SavedContext{host, 1, ""};
 
-    ASSERT_TRUE(resolver.drop_orphaned_choices(store));
+    ASSERT_TRUE(ContextService{workspace, resolver}.drop_orphaned_choices(store));
     ASSERT_FALSE(resolver.saved_contexts.contains(header));
 }
 

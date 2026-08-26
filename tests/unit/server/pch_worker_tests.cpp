@@ -3,7 +3,7 @@
 #include <vector>
 
 #include "test/test.h"
-#include "server/state/workspace.h"
+#include "sched/workspace.h"
 #include "server/worker_test_helpers.h"
 #include "syntax/scan.h"
 #include "worker/protocol.h"

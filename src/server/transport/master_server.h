@@ -7,15 +7,16 @@
 #include <vector>
 
 #include "config/config.h"
+#include "sched/context.h"
+#include "sched/workspace.h"
 #include "server/compiler/compiler.h"
-#include "server/compiler/context_resolver.h"
 #include "server/compiler/indexer.h"
+#include "server/service/context_service.h"
 #include "server/service/feature_router.h"
 #include "server/service/query.h"
 #include "server/state/invalidator.h"
 #include "server/state/session.h"
 #include "server/state/session_store.h"
-#include "server/state/workspace.h"
 #include "support/anomaly.h"
 #include "support/signal.h"
 #include "worker/pool.h"
@@ -146,6 +147,7 @@ public:
     Workspace workspace;
     WorkerPool pool;
     ContextResolver contexts;
+    ContextService context_service{workspace, contexts};
     Compiler compiler;
     Indexer indexer;
     IndexQuery index_query;

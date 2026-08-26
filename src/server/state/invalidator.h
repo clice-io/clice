@@ -6,9 +6,9 @@
 #include <optional>
 #include <string>
 
-#include "server/compiler/context_resolver.h"
+#include "sched/context.h"
+#include "sched/workspace.h"
 #include "server/state/session_store.h"
-#include "server/state/workspace.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"

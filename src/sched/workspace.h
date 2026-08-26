@@ -17,9 +17,9 @@
 #include "index/project_index.h"
 #include "index/shard.h"
 #include "index/tu_index.h"
-#include "semantic/symbol.h"
+#include "sched/crash_budget.h"
 #include "sched/legacy_pcm_graph.h"
-#include "server/state/quarantine.h"
+#include "semantic/symbol.h"
 #include "support/cache_store.h"
 #include "support/path_pool.h"
 #include "syntax/dependency_graph.h"
@@ -184,30 +184,6 @@ struct PCMState {
     DepsSnapshot deps;
 };
 
-/// How open files are served — the parsed form of the `readonly` config
-/// option. Routing is not governed by this: every request is answered by
-/// the best source available at that moment (see FeatureRouter); the mode
-/// only decides whether PCH/AST builds are a goal at all. Builds are
-/// always pull-driven — no lifecycle event starts one, the first request
-/// that needs the AST does.
-enum class ReadonlyMode : std::uint8_t {
-    /// Every open file targets a full AST; the index answers while the
-    /// pulled compile is in flight.
-    Off,
-    /// Never build a PCH: reads serve from the index alone (a cold file
-    /// jumps the indexing queue), while completion and signature help
-    /// still compile on demand — without a preamble. The agent /
-    /// low-resource profile.
-    On,
-    /// Files start as On and switch to Off at the first edit intent
-    /// (edit, completion, signature help, a context switch, a restored
-    /// buffer that diverged from the index). A file the index can never
-    /// serve — indexing disabled, or its boost attempt settled without a
-    /// servable shard — falls back to Off rather than answering empty
-    /// forever.
-    Auto,
-};
-
 /// All persistent, project-wide state derived from files on disk.
 ///
 /// Design principle: open files are never depended upon by other files.
@@ -236,10 +212,6 @@ struct Workspace {
     Config config;
     CompilationDatabase cdb;
     Toolchain toolchain;
-
-    /// Parsed form of config.project.readonly, resolved once at server
-    /// initialization; an unknown value warns and falls back to off.
-    ReadonlyMode readonly = ReadonlyMode::Off;
 
     PathPool path_pool;
 

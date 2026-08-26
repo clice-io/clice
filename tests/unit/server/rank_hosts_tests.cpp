@@ -1,5 +1,5 @@
 #include "test/test.h"
-#include "server/state/workspace.h"
+#include "sched/workspace.h"
 
 namespace clice::testing {
 namespace {

@@ -13,10 +13,10 @@
 #include "index/serialization.h"
 #include "index/shard.h"
 #include "index/tu_index.h"
-#include "server/compiler/context_resolver.h"
+#include "sched/context.h"
+#include "sched/workspace.h"
 #include "server/compiler/indexer.h"
 #include "server/state/session_store.h"
-#include "server/state/workspace.h"
 #include "worker/pool.h"
 
 #include "kota/ipc/lsp/text.h"

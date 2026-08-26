@@ -7,7 +7,7 @@
 #include <optional>
 #include <vector>
 
-#include "server/state/workspace.h"
+#include "sched/workspace.h"
 #include "support/signal.h"
 
 #include "kota/async/async.h"

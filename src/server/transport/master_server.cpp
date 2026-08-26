@@ -97,14 +97,14 @@ void MasterServer::initialize() {
     auto& cfg = workspace.config.project;
 
     if(cfg.readonly == "on") {
-        workspace.readonly = ReadonlyMode::On;
+        compiler.readonly = ReadonlyMode::On;
     } else if(cfg.readonly == "auto") {
-        workspace.readonly = ReadonlyMode::Auto;
+        compiler.readonly = ReadonlyMode::Auto;
     } else {
         if(cfg.readonly != "off") {
             LOG_WARN("Unknown readonly '{}'; using off", std::string(cfg.readonly));
         }
-        workspace.readonly = ReadonlyMode::Off;
+        compiler.readonly = ReadonlyMode::Off;
     }
 
     if(!cfg.logging_dir.empty()) {
@@ -171,9 +171,9 @@ void MasterServer::initialize() {
     // escalate, not read as merely unindexed).
     for(auto& [path_id, session]: sessions.sessions) {
         if(session) {
-            contexts.validate_saved_context(*session);
-            session->serving = workspace.readonly == ReadonlyMode::Off ? ServingMode::Escalated
-                                                                       : ServingMode::IndexOnly;
+            contexts.validate_saved_context(session->path_id);
+            session->serving = compiler.readonly == ReadonlyMode::Off ? ServingMode::Escalated
+                                                                      : ServingMode::IndexOnly;
             settle_open_serving(session);
         }
     }
@@ -282,7 +282,7 @@ std::shared_ptr<Session> MasterServer::open_session(std::uint32_t path_id) {
     // The serving mode's creation write point; the only other write is
     // Compiler::escalate.
     session->serving =
-        workspace.readonly == ReadonlyMode::Off ? ServingMode::Escalated : ServingMode::IndexOnly;
+        compiler.readonly == ReadonlyMode::Off ? ServingMode::Escalated : ServingMode::IndexOnly;
     return session;
 }
 
@@ -451,7 +451,7 @@ void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
 
     bool save = dirty.save_cache;
     if(dirty.recheck_contexts) {
-        save |= contexts.drop_orphaned_choices(sessions);
+        save |= context_service.drop_orphaned_choices(sessions);
     }
     if(save) {
         workspace.save_cache(contexts);

@@ -7,7 +7,7 @@
 #include <vector>
 
 #include "compile/diagnostic.h"
-#include "server/compiler/context_resolver.h"
+#include "sched/context.h"
 #include "support/logging.h"
 
 #include "kota/codec/json/json.h"

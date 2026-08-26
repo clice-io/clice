@@ -9,9 +9,9 @@
 #include <vector>
 
 #include "command/search_config.h"
+#include "sched/context.h"
 #include "semantic/symbol.h"
 #include "server/compiler/compiler.h"
-#include "server/compiler/context_resolver.h"
 #include "server/compiler/indexer.h"
 #include "syntax/completion.h"
 #include "syntax/include_resolver.h"
