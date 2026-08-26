@@ -402,16 +402,17 @@ kota::task<kota::codec::RawValue, kota::ipc::Error>
         co_return kota::outcome_error(document_not_open());
 
     // An index-only session never owes the compile the worker forward
-    // implies — and a session served under freshness clause 4 (escalated,
-    // compile still in flight) already routed to the index, so waiting on
-    // the worker here would break nav_gate's no-compile-owed contract.
-    // What the worker leg covers — include directives, which have no
-    // symbol occurrence — the manifest edges answer instead, under the
-    // same content gate as every index answer: manifest lines are
-    // meaningless against a diverged buffer.
-    auto* shard = index_query.open_session_shard(*session);
-    if(session->serving == ServingMode::IndexOnly || shard) {
-        if(!shard) {
+    // implies, a session served under freshness clause 4 (escalated,
+    // compile still in flight) already routed to the index, and a
+    // quarantined session cannot reach a worker at all. What the worker
+    // leg covers — include directives, which have no symbol occurrence —
+    // the manifest edges answer instead, under the same content gate as
+    // the links projection: manifest lines are meaningless against a
+    // buffer the index never described.
+    if(session->serving == ServingMode::IndexOnly || session->quarantine.blocked() ||
+       index_query.open_session_shard(*session)) {
+        auto it = workspace.shards.find(session->path_id);
+        if(it == workspace.shards.end() || !it->second.matches_content(session->text)) {
             co_return serde_raw{"[]"};
         }
         if(auto offset = session->line_map().to_offset(pos)) {
@@ -708,6 +709,14 @@ FeatureRouter::RawResult FeatureRouter::completion(std::shared_ptr<Session> sess
     // context are computed, so the synchronous include scan below never
     // serves candidates or ranges for a buffer that no longer exists.
     co_await kota::yield();
+
+    // The drain may also have replaced the Session object (a didClose,
+    // with or without a reopen). Downstream generation checks snapshot
+    // the dead object after its close already bumped it, so only the
+    // store can tell; the request belongs to the discarded buffer.
+    if(sessions.find(session->path_id) != session) {
+        co_return serde_raw{"null"};
+    }
 
     auto path_id = session->path_id;
     auto path = std::string(workspace.path_pool.resolve(path_id));

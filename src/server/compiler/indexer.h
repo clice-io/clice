@@ -272,6 +272,11 @@ public:
     std::function<void(std::uint32_t path_id)> on_session_unservable;
 
 private:
+    /// Whether an open session serves this file's project rows (freshness
+    /// clause 4) and a client already pulled some of them — the emit
+    /// condition of on_serving_rows_changed.
+    bool serves_session_rows(std::uint32_t path_id) const;
+
     kota::event_loop& loop;
     kota::task_group<> bg_tasks;
     Workspace& workspace;

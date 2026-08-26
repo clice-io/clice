@@ -37,7 +37,7 @@ MasterServer::MasterServer(kota::event_loop& loop, std::string self_path) :
     loop(loop), pool(loop), contexts(workspace), compiler(loop, workspace, contexts, pool),
     indexer(loop, workspace, pool, contexts, sessions), index_query(workspace, sessions, indexer),
     agent_query(workspace, sessions, indexer, {.disk_only = true}),
-    features(compiler, index_query, workspace, contexts, indexer),
+    features(compiler, index_query, workspace, contexts, indexer, sessions),
     invalidator(workspace, sessions, contexts), bg_tasks(loop), self_path(std::move(self_path)) {
     // The notify hook is process-wide because the logging layer cannot
     // depend on the server; the composition root owns it for the server's

@@ -103,11 +103,12 @@ struct ProjectConfig {
                          "PCH — reads serve from the index alone (a cold file "
                          "jumps the indexing queue), while completion and "
                          "signature help still compile on demand without a "
-                         "preamble; \"auto\" starts every file as \"on\" and "
+                         "preamble; \"auto\" starts every file as \"on\", "
                          "switches it to \"off\" at the first edit intent "
-                         "(edit, completion, signature help, context switch). "
-                         "Feature routing always answers from the best source "
-                         "currently available.")
+                         "(edit, completion, signature help, context switch), "
+                         "and falls back to \"off\" for a file the index "
+                         "cannot serve. Feature routing always answers from "
+                         "the best source currently available.")
     <std::string> readonly = "off";
 
     KOTATSU_ANNOTATE(defaulted = true,

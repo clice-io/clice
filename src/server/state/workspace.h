@@ -201,7 +201,10 @@ enum class ReadonlyMode : std::uint8_t {
     On,
     /// Files start as On and switch to Off at the first edit intent
     /// (edit, completion, signature help, a context switch, a restored
-    /// buffer that diverged from the index).
+    /// buffer that diverged from the index). A file the index can never
+    /// serve — indexing disabled, or its boost attempt settled without a
+    /// servable shard — falls back to Off rather than answering empty
+    /// forever.
     Auto,
 };
 

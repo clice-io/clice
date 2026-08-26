@@ -6,6 +6,7 @@
 #include "feature/feature.h"
 #include "server/service/query.h"
 #include "server/state/session.h"
+#include "server/state/session_store.h"
 #include "server/state/workspace.h"
 
 #include "kota/async/async.h"
@@ -49,9 +50,10 @@ public:
                   IndexQuery& index_query,
                   Workspace& workspace,
                   ContextResolver& contexts,
-                  Indexer& indexer) :
+                  Indexer& indexer,
+                  SessionStore& sessions) :
         compiler(compiler), index_query(index_query), workspace(workspace), contexts(contexts),
-        indexer(indexer) {}
+        indexer(indexer), sessions(sessions) {}
 
     using RawResult = kota::task<kota::codec::RawValue, kota::ipc::Error>;
 
@@ -237,6 +239,7 @@ private:
     Workspace& workspace;
     ContextResolver& contexts;
     Indexer& indexer;
+    SessionStore& sessions;
 };
 
 }  // namespace clice

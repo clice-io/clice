@@ -72,7 +72,7 @@ Index persistence backend: "lmdb" (single database file) or "files" (one file pe
 | -------- | ------- |
 | `string` | `"off"` |
 
-Read-only serving for open files: "off" targets a full AST for every open file — builds are pulled by the first request that needs them, with the index answering in the meantime; "on" never builds a PCH — reads serve from the index alone (a cold file jumps the indexing queue), while completion and signature help still compile on demand without a preamble; "auto" starts every file as "on" and switches it to "off" at the first edit intent (edit, completion, signature help, context switch). Feature routing always answers from the best source currently available.
+Read-only serving for open files: "off" targets a full AST for every open file — builds are pulled by the first request that needs them, with the index answering in the meantime; "on" never builds a PCH — reads serve from the index alone (a cold file jumps the indexing queue), while completion and signature help still compile on demand without a preamble; "auto" starts every file as "on", switches it to "off" at the first edit intent (edit, completion, signature help, context switch), and falls back to "off" for a file the index cannot serve. Feature routing always answers from the best source currently available.
 
 ### `project.idle_timeout_ms`
 

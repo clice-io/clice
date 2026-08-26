@@ -138,9 +138,15 @@ test("edit escalates to compile", async ({ session }) => {
     expect(client.diagnostics.has(uri)).toBe(false);
 
     // The edit flips the mode; the build itself stays pull-driven, so
-    // diagnostics ride the next read instead of the edit.
-    const arrived = client.armDiagnostics(uri);
+    // nothing lands until the next read pulls it.
+    let published = false;
+    const arrived = client.armDiagnostics(uri).then(() => {
+        published = true;
+    });
     client.change(uri, 2, MAIN + "// edited\n");
+    await sleep(SETTLE_TIME);
+    expect(published).toBe(false);
+
     const hover = await client.hoverAt(uri, 4, 11);
     expect(JSON.stringify(hover?.contents ?? "")).toContain("add");
     await arrived;
@@ -335,10 +341,14 @@ test("index answers while pull compile runs", async ({ session }) => {
     await first.shutdown();
 
     // off: the first read pulls the compile, but must not block on it —
-    // the warm shard answers instantly.
+    // the warm shard answers instantly, and the detached pull still
+    // lands the AST (diagnostics prove it).
     const second = session.spawn(ws);
     await second.initialize(ws, { initializationOptions: OFF });
+    const arrived = second.armDiagnostics(ws.uri("main.cpp"));
     const [uri] = second.open("main.cpp");
     const symbols = (await second.documentSymbols(uri)) as proto.DocumentSymbol[] | null;
     expect(symbols?.map((s) => s.name)).toContain("twice");
+    await arrived;
+    second.assertNoErrors(uri);
 });
