@@ -35,6 +35,16 @@ jobs:
             exit 1
           fi
 
+  layering:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Check src/ include layering
+        run: python3 scripts/check_layers.py
+
   format:
     if: ${{ inputs.format }}
     runs-on: ubuntu-latest

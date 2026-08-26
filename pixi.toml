@@ -178,6 +178,9 @@ depends-on = [
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 depends-on = [{ task = "lint-cpp", args = ["{{ type }}"] }]
 
+[feature.build.tasks.check-layers]
+cmd = "python3 scripts/check_layers.py"
+
 [feature.test.tasks.check-feature-docs]
 cmd = "node tools/feature_docs.ts check"
 

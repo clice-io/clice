@@ -171,7 +171,19 @@ add_custom_target(generate_version_header
     COMMENT "Generating version header"
 )
 
-file(GLOB_RECURSE CLICE_CORE_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/*.cpp")
+# Layered targets: core <- config <- worker <- sched <- server. Each layer
+# may include downward only; the link DAG plus the layering check in CI
+# (`pixi run check-layers`) enforce the boundary — sched and below never
+# see an LSP or server header.
+file(GLOB_RECURSE CLICE_CORE_SOURCES CONFIGURE_DEPENDS
+    "${PROJECT_SOURCE_DIR}/src/support/*.cpp"
+    "${PROJECT_SOURCE_DIR}/src/syntax/*.cpp"
+    "${PROJECT_SOURCE_DIR}/src/command/*.cpp"
+    "${PROJECT_SOURCE_DIR}/src/compile/*.cpp"
+    "${PROJECT_SOURCE_DIR}/src/semantic/*.cpp"
+    "${PROJECT_SOURCE_DIR}/src/index/*.cpp"
+    "${PROJECT_SOURCE_DIR}/src/feature/*.cpp"
+)
 add_library(clice-core STATIC ${CLICE_CORE_SOURCES})
 add_library(clice::core ALIAS clice-core)
 add_dependencies(clice-core generate_version_header)
@@ -195,9 +207,29 @@ target_link_libraries(clice-core PUBLIC
     lmdb
 )
 
+file(GLOB_RECURSE CLICE_CONFIG_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/config/*.cpp")
+add_library(clice-config STATIC ${CLICE_CONFIG_SOURCES})
+add_library(clice::config ALIAS clice-config)
+target_link_libraries(clice-config PUBLIC clice::core)
+
+file(GLOB_RECURSE CLICE_WORKER_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/worker/*.cpp")
+add_library(clice-worker STATIC ${CLICE_WORKER_SOURCES})
+add_library(clice::worker ALIAS clice-worker)
+target_link_libraries(clice-worker PUBLIC clice::config)
+
+file(GLOB_RECURSE CLICE_SCHED_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/sched/*.cpp")
+add_library(clice-sched STATIC ${CLICE_SCHED_SOURCES})
+add_library(clice::sched ALIAS clice-sched)
+target_link_libraries(clice-sched PUBLIC clice::worker)
+
+file(GLOB_RECURSE CLICE_SERVER_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/server/*.cpp")
+add_library(clice-server STATIC ${CLICE_SERVER_SOURCES})
+add_library(clice::server ALIAS clice-server)
+target_link_libraries(clice-server PUBLIC clice::sched)
+
 file(GLOB CLICE_DRIVER_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/driver/*.cc")
 add_executable(clice "${PROJECT_SOURCE_DIR}/src/clice.cc" ${CLICE_DRIVER_SOURCES})
-target_link_libraries(clice PRIVATE clice::core kota::deco)
+target_link_libraries(clice PRIVATE clice::server kota::deco)
 add_dependencies(clice generate_version_header)
 install(TARGETS clice RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
@@ -229,7 +261,7 @@ if(CLICE_ENABLE_TEST)
         "${PROJECT_SOURCE_DIR}/src"
         "${PROJECT_SOURCE_DIR}/tests/unit"
     )
-    target_link_libraries(unit_tests PRIVATE clice::core kota::zest kota::deco)
+    target_link_libraries(unit_tests PRIVATE clice::server kota::zest kota::deco)
     # The generated/ include dir propagates through clice::core, but the
     # generation order does not — depend explicitly so a test including
     # version.h cannot race the generator on a clean parallel build.
@@ -244,7 +276,7 @@ if(CLICE_ENABLE_BENCHMARK)
         target_include_directories(${benchmark} PRIVATE
             "${PROJECT_SOURCE_DIR}/src"
         )
-        target_link_libraries(${benchmark} PRIVATE clice::core kota::deco)
+        target_link_libraries(${benchmark} PRIVATE clice::server kota::deco)
         # The benchmarks locate lib/clang next to their binary; an explicit
         # `ninja <benchmark>` must not race or skip the resource copy.
         add_dependencies(${benchmark} copy_clang_resource)
