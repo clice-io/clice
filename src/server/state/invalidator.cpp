@@ -66,11 +66,27 @@ void Invalidator::dirty_unresolved_importer(std::uint32_t importer, DirtySet& di
     // place for `import`) drags its consuming TUs along: they inherited
     // the unresolved import through the include.
     auto dirty_one = [&](std::uint32_t path_id) {
+        // A file this batch already declared dead stays dead — the
+        // stale record or reverse map must not resurrect it and drop
+        // the deliberately-kept last-known index.
+        if(llvm::is_contained(dirty.clear_reindex, path_id)) {
+            return;
+        }
         if(store.find(path_id)) {
             dirty.mark_ast_dirty.push_back(path_id);
         }
-        dirty.drop_index.push_back(path_id);
-        dirty.add_reindex_content_changed(path_id);
+        // Index work is scheduled only where it can actually run: a
+        // retired CDB entry or a command-less header would fall to a
+        // Fallback skip after its index was dropped, converting stale
+        // rows into no rows. Such files recover through their host
+        // sources (below) or their open session (above) instead.
+        // has_entry, not lookup — lookup derives commands for headers,
+        // which is exactly the guess the whole-TU runner refuses.
+        auto file_path = workspace.path_pool.resolve(path_id);
+        if(workspace.cdb.has_entry(file_path) || contexts.header_context(path_id)) {
+            dirty.drop_index.push_back(path_id);
+            dirty.add_reindex_content_changed(path_id);
+        }
         cascade_compile_graph(path_id, dirty);
     };
     dirty_one(importer);
@@ -469,11 +485,12 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                     // content still serves navigation, same conservative
                     // semantics as DiskRemoved. The graph rebuild above
                     // already dropped the file's source role, and the
-                    // orphan recheck cleans choices through it. The import
-                    // bookkeeping forgets it for the same reason as
-                    // DiskRemoved (the rebuilt candidate set already has).
+                    // orphan recheck cleans choices through it. Import
+                    // bookkeeping stays: the file may live on as an
+                    // included header (the rebuild re-marked it), and a
+                    // truly retired entry is fenced by the reindexable
+                    // gate in dirty_unresolved_importer.
                     invalidate_entry(path_id, /*keep_index=*/true);
-                    workspace.forget_importer(path_id);
                 }
 
                 dirty.recheck_contexts = true;

@@ -74,11 +74,17 @@ TEST_CASE(NewProviderDirtiesImporters) {
     // snapshot never named the interface either).
     TempDir tmp;
     tmp.touch("m.cppm", "export module m;\nexport int mv();\n");
+    tmp.touch("main.cpp", "int main() { return 0; }\n");
 
     Workspace workspace;
     SessionStore store;
+    write_cdb(tmp,
+              workspace.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"), {}}
+    }));
     auto iface = workspace.path_pool.intern(tmp.path("m.cppm"));
-    auto importer = workspace.path_pool.intern("/proj/main.cpp");
+    auto importer = workspace.path_pool.intern(tmp.path("main.cpp"));
     workspace.module_importers["m"].push_back(importer);
 
     ContextResolver resolver(workspace);
@@ -102,15 +108,23 @@ TEST_CASE(FirstModulesDirtyCandidates) {
     // The project's very first provider appears: the per-name import
     // record does not exist yet (module scanning was gated off while the
     // map was empty), so the lexical import-candidate set is re-dirtied —
-    // and a header candidate drags its consuming TUs along.
+    // and a header candidate drags its consuming TUs along. The header
+    // itself has no command to reindex under, so only the consumer gets
+    // index work.
     TempDir tmp;
     tmp.touch("m.cppm", "export module m;\nexport int mv();\n");
+    tmp.touch("main.cpp", "int main() { return 0; }\n");
 
     Workspace workspace;
     SessionStore store;
+    write_cdb(tmp,
+              workspace.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"), {}}
+    }));
     auto iface = workspace.path_pool.intern(tmp.path("m.cppm"));
     auto header = workspace.path_pool.intern("/proj/deps.h");
-    auto consumer = workspace.path_pool.intern("/proj/main.cpp");
+    auto consumer = workspace.path_pool.intern(tmp.path("main.cpp"));
     workspace.dep_graph.set_import_candidate(header, true);
     workspace.dep_graph.set_includes(consumer, 0, {header});
     workspace.dep_graph.build_reverse_map();
@@ -122,10 +136,77 @@ TEST_CASE(FirstModulesDirtyCandidates) {
     FileEvent events[] = {FileEvent::disk_changed(iface)};
     auto dirty = invalidator.apply(events);
 
-    EXPECT_TRUE(llvm::is_contained(dirty.drop_index, header));
-    EXPECT_TRUE(llvm::is_contained(dirty.reindex_content_changed, header));
+    EXPECT_FALSE(llvm::is_contained(dirty.drop_index, header));
     EXPECT_TRUE(llvm::is_contained(dirty.drop_index, consumer));
     EXPECT_TRUE(llvm::is_contained(dirty.reindex_content_changed, consumer));
+}
+
+TEST_CASE(ReloadRetiresImporter) {
+    // One CDB reload removes a recorded importer while adding the first
+    // provider: the retired entry has no command left to reindex under,
+    // so the recovery hook must not drop its deliberately-kept index.
+    TempDir tmp;
+    tmp.touch("m.cppm", "export module m;\nexport int mv();\n");
+    tmp.touch("old.cpp", "int main() { return 0; }\n");
+
+    Workspace workspace;
+    SessionStore store;
+    // The producer already reloaded the CDB: only the provider remains.
+    write_cdb(tmp,
+              workspace.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("m.cppm"), {}}
+    }));
+    auto iface = workspace.path_pool.intern(tmp.path("m.cppm"));
+    auto retired = workspace.path_pool.intern(tmp.path("old.cpp"));
+    workspace.module_importers["m"].push_back(retired);
+    workspace.dep_graph.set_import_candidate(retired, true);
+
+    ContextResolver resolver(workspace);
+    PCMHarness ph(workspace, resolver);
+    Invalidator invalidator(workspace, store, resolver, ph.pcm);
+
+    FileEvent::CDBDelta delta;
+    delta.added = {iface};
+    delta.removed = {retired};
+    FileEvent events[] = {FileEvent::cdb_changed(std::move(delta))};
+    auto dirty = invalidator.apply(events);
+
+    EXPECT_FALSE(llvm::is_contained(dirty.drop_index, retired));
+    EXPECT_FALSE(llvm::is_contained(dirty.reindex_content_changed, retired));
+}
+
+TEST_CASE(RemovedHostStaysBuried) {
+    // DiskRemoved(A) and the first provider land in one batch: the stale
+    // reverse map still names A as a host of the candidate header, but a
+    // file the batch already declared dead stays dead.
+    TempDir tmp;
+    tmp.touch("m.cppm", "export module m;\nexport int mv();\n");
+    tmp.touch("a.cpp", "int main() { return 0; }\n");
+
+    Workspace workspace;
+    SessionStore store;
+    write_cdb(tmp,
+              workspace.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("a.cpp"), {}}
+    }));
+    auto iface = workspace.path_pool.intern(tmp.path("m.cppm"));
+    auto removed_host = workspace.path_pool.intern(tmp.path("a.cpp"));
+    auto header = workspace.path_pool.intern("/proj/deps.h");
+    workspace.dep_graph.set_import_candidate(header, true);
+    workspace.dep_graph.set_includes(removed_host, 0, {header});
+    workspace.dep_graph.build_reverse_map();
+
+    ContextResolver resolver(workspace);
+    PCMHarness ph(workspace, resolver);
+    Invalidator invalidator(workspace, store, resolver, ph.pcm);
+
+    FileEvent events[] = {FileEvent::disk_removed(removed_host), FileEvent::disk_changed(iface)};
+    auto dirty = invalidator.apply(events);
+
+    EXPECT_FALSE(llvm::is_contained(dirty.drop_index, removed_host));
+    EXPECT_FALSE(llvm::is_contained(dirty.reindex_content_changed, removed_host));
 }
 
 TEST_CASE(RemovedImporterForgotten) {

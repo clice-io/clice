@@ -338,7 +338,15 @@ kota::task<DependResult> ASTFamily::depend_modules(RoundContext& ctx,
     // unsaved edits).
     if(workspace.path_to_module.empty()) {
         graph.declare(node(path_id), {});
-        if(scan_quick(text).has_import) {
+        // The lexical check misses imports the buffer cannot show: an
+        // -include'd file's, or (for a header document) the appended
+        // suffix's includer — those gates pay the precise scan too.
+        bool might_import = scan_quick(text).has_import ||
+                            contexts.header_context(path_id) != nullptr ||
+                            llvm::any_of(arguments, [](const std::string& arg) {
+                                return llvm::StringRef(arg).starts_with("-include");
+                            });
+        if(might_import) {
             llvm::SmallVector<const char*, 32> argv;
             argv.reserve(arguments.size());
             for(auto& arg: arguments) {
