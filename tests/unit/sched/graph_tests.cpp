@@ -282,7 +282,8 @@ TEST_CASE(cross_family_edge) {
 ///
 /// An edge takes effect for cascade and interest the moment depend()
 /// records it; only a current successful round replaces the durable set,
-/// and overtaken rounds' candidates are discarded.
+/// and overtaken rounds' candidates are discarded. declare() commits
+/// facade-known topology into the same durable set without a round.
 
 TEST_CASE(edge_live_before_landing) {
     // The dependent's round is still in flight when its dependency is
@@ -392,6 +393,116 @@ TEST_CASE(voided_candidates_discarded) {
         auto outcome = co_await graph->request(a(1));
         EXPECT_EQ(outcome, JoinOutcome::Success);
         EXPECT_EQ(graph->dependencies(a(1))[0], b(3));
+    });
+}
+
+TEST_CASE(declare_no_round) {
+    // declare() commits durable edges without rounds or interest: the
+    // nodes exist, the cascade reaches the declared consumer, and nothing
+    // ever compiles.
+    make_graph();
+
+    execute([&]() -> kota::task<> {
+        graph->declare(a(2), {a(1)});
+        EXPECT_TRUE(graph->has_node(a(1)));
+        EXPECT_TRUE(graph->has_node(a(2)));
+        EXPECT_EQ(graph->refcount(a(1)), 0u);
+        EXPECT_EQ(graph->refcount(a(2)), 0u);
+        EXPECT_FALSE(graph->is_compiling(a(2)));
+
+        auto dirtied = graph->update(a(1));
+        EXPECT_TRUE(ranges::contains(dirtied, a(1)));
+        EXPECT_TRUE(ranges::contains(dirtied, a(2)));
+        co_return;
+    });
+}
+
+TEST_CASE(declare_replaces) {
+    // A later declare replaces the edge set — the no-round analogue of a
+    // successful round's promotion. An empty replacement clears the edges
+    // but keeps the node: a consumer whose last import was removed stops
+    // cascading yet stays tracked.
+    make_graph();
+
+    execute([&]() -> kota::task<> {
+        graph->declare(a(3), {a(1)});
+        graph->declare(a(3), {a(2)});
+        EXPECT_FALSE(ranges::contains(graph->update(a(1)), a(3)));
+        EXPECT_TRUE(ranges::contains(graph->update(a(2)), a(3)));
+
+        graph->declare(a(3), {});
+        EXPECT_FALSE(ranges::contains(graph->update(a(2)), a(3)));
+        EXPECT_TRUE(graph->has_node(a(3)));
+        co_return;
+    });
+}
+
+TEST_CASE(round_replaces_declared) {
+    // A declared node that later runs a real round: the current
+    // successful round's candidates replace the declared edges.
+    make_graph();
+    Adjacency adj;
+    adj[a(2)] = {a(3)};
+    graph->register_family(FamA, instant(adj));
+
+    execute([&]() -> kota::task<> {
+        graph->declare(a(2), {a(1)});
+        auto outcome = co_await graph->request(a(2));
+        EXPECT_EQ(outcome, JoinOutcome::Success);
+
+        EXPECT_FALSE(ranges::contains(graph->update(a(1)), a(2)));
+        EXPECT_TRUE(ranges::contains(graph->update(a(3)), a(2)));
+    });
+}
+
+TEST_CASE(failed_keeps_declared) {
+    // A failed round discards its candidates and leaves the declared
+    // topology standing: a unit whose build breaks must stay
+    // cascade-reachable from its declared imports, or fixing an import
+    // could never re-dirty it.
+    make_graph();
+    ManualFamily mf;
+    mf.adj[a(2)] = {a(3)};
+    graph->register_family(FamA, mf.runner());
+    mf.gate(a(2)).result = RoundOutcome::Failed;
+    mf.open({a(2), a(3)});
+
+    execute([&]() -> kota::task<> {
+        graph->declare(a(2), {a(1)});
+        auto outcome = co_await graph->request(a(2));
+        EXPECT_EQ(outcome, JoinOutcome::Failed);
+
+        EXPECT_TRUE(ranges::contains(graph->update(a(1)), a(2)));
+        EXPECT_FALSE(ranges::contains(graph->update(a(3)), a(2)));
+    });
+}
+
+TEST_CASE(landing_overwrites_declare) {
+    // A declare against an in-flight round is answered at landing: a
+    // current Success promotes its candidates over the interim
+    // declaration. Benign by the topology invariant — had the content
+    // changed between the two resolves, update() would have voided the
+    // round; unchanged content resolves to the same set.
+    make_graph();
+    ManualFamily mf;
+    mf.adj[a(2)] = {a(3)};
+    graph->register_family(FamA, mf.runner());
+    mf.open({a(3)});
+
+    Probe probe;
+    execute([&]() -> kota::task<> {
+        auto driver = [&]() -> kota::task<> {
+            co_await mf.gate(a(2)).started.wait();
+            graph->declare(a(2), {a(1)});
+            mf.open({a(2)});
+            co_return;
+        };
+
+        co_await kota::when_all(run_request(a(2), probe), driver());
+
+        EXPECT_TRUE(probe.outcome == JoinOutcome::Success);
+        EXPECT_FALSE(ranges::contains(graph->update(a(1)), a(2)));
+        EXPECT_TRUE(ranges::contains(graph->update(a(3)), a(2)));
     });
 }
 

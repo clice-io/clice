@@ -2,9 +2,11 @@
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "sched/context.h"
-#include "sched/legacy_pcm_graph.h"
+#include "sched/families/pcm.h"
+#include "sched/graph.h"
 #include "server/service/context_service.h"
 #include "server/state/invalidator.h"
+#include "worker/pool.h"
 
 namespace clice::testing {
 namespace {
@@ -22,13 +24,26 @@ index::Shard shard_of(llvm::StringRef content) {
     return index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
 }
 
+/// Non-module fixtures need the invalidator's PCMFamily reference but
+/// never drive it; this bundles the inert graph plumbing behind it.
+struct PCMHarness {
+    kota::event_loop loop;
+    TaskGraph graph{loop};
+    WorkerPool pool{loop};
+    PCMFamily pcm;
+
+    PCMHarness(Workspace& workspace, ContextResolver& resolver) :
+        pcm(graph, workspace, resolver, pool) {}
+};
+
 TEST_SUITE(Invalidator) {
 
 TEST_CASE(EmptyBatchNoEffects) {
     Workspace workspace;
     SessionStore store;
     ContextResolver resolver(workspace);
-    Invalidator invalidator(workspace, store, resolver);
+    PCMHarness ph(workspace, resolver);
+    Invalidator invalidator(workspace, store, resolver, ph.pcm);
 
     auto dirty = invalidator.apply({});
 
@@ -42,7 +57,8 @@ TEST_CASE(NoOpEventsNoEffects) {
     store.open(file);
 
     ContextResolver resolver(workspace);
-    Invalidator invalidator(workspace, store, resolver);
+    PCMHarness ph(workspace, resolver);
+    Invalidator invalidator(workspace, store, resolver, ph.pcm);
     // Buffer sync stays in SessionStore (exempt from the pipeline); these
     // events must produce no effects of their own.
     FileEvent events[] = {FileEvent::buffer_opened(file), FileEvent::buffer_edited(file)};
@@ -60,7 +76,8 @@ TEST_CASE(SaveResetsTrialOnly) {
 
     ContextResolver resolver(workspace);
     // A plain save: the disk holds exactly what the buffer holds.
-    Invalidator invalidator(workspace, store, resolver, [](llvm::StringRef) {
+    PCMHarness ph(workspace, resolver);
+    Invalidator invalidator(workspace, store, resolver, ph.pcm, [](llvm::StringRef) {
         return std::optional<std::string>{"int x;"};
     });
     auto dirty = invalidator.apply(FileEvent::buffer_saved(saved));
@@ -76,49 +93,33 @@ TEST_CASE(SaveResetsTrialOnly) {
 }
 
 TEST_CASE(CascadeSplitsOpenClosed) {
-    kota::event_loop loop;
     Workspace workspace;
     SessionStore store;
     auto mod = workspace.path_pool.intern("/proj/m.cppm");
     auto open_user = workspace.path_pool.intern("/proj/open_user.cppm");
     auto closed_user = workspace.path_pool.intern("/proj/closed_user.cppm");
 
-    llvm::DenseMap<std::uint32_t, llvm::SmallVector<std::uint32_t>> deps;
-    deps[open_user] = {mod};
-    deps[closed_user] = {mod};
-    workspace.compile_graph = std::make_unique<CompileGraph>(
-        loop,
-        [](std::uint32_t, bool) -> kota::task<CompileUnit::Outcome> {
-            co_return CompileUnit::Outcome::Success;
-        },
-        [deps = std::move(deps)](std::uint32_t id) -> llvm::SmallVector<std::uint32_t> {
-            auto it = deps.find(id);
-            return it != deps.end() ? it->second : llvm::SmallVector<std::uint32_t>{};
-        });
+    ContextResolver resolver(workspace);
+    PCMHarness ph(workspace, resolver);
+    // The consumer edges build_deps declares in production — no rounds.
+    auto node = [](std::uint32_t pid) {
+        return NodeId{pcm_family, pid};
+    };
+    ph.graph.declare(node(open_user), {node(mod)});
+    ph.graph.declare(node(closed_user), {node(mod)});
 
     store.open(open_user);
-    ContextResolver resolver(workspace);
-    Invalidator invalidator(workspace, store, resolver);
+    Invalidator invalidator(workspace, store, resolver, ph.pcm);
 
-    auto body = [&]() -> kota::task<> {
-        co_await workspace.compile_graph->compile(open_user);
-        co_await workspace.compile_graph->compile(closed_user);
+    auto dirty = invalidator.apply(FileEvent::buffer_saved(mod));
 
-        auto dirty = invalidator.apply(FileEvent::buffer_saved(mod));
-
-        // Cascade-dirtied module units split by session state: open buffers
-        // recompile, closed files go back to the background indexer.
-        EXPECT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{open_user});
-        llvm::SmallVector<std::uint32_t> reindexed{mod, closed_user};
-        llvm::sort(reindexed);
-        EXPECT_EQ(dirty.reindex_deps_only, reindexed);
-        EXPECT_TRUE(dirty.reindex_content_changed.empty());
-
-        co_await workspace.compile_graph->shutdown();
-    };
-    auto task = body();
-    loop.schedule(task);
-    loop.run();
+    // Cascade-dirtied module units split by session state: open buffers
+    // recompile, closed files go back to the background indexer.
+    EXPECT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{open_user});
+    llvm::SmallVector<std::uint32_t> reindexed{mod, closed_user};
+    llvm::sort(reindexed);
+    EXPECT_EQ(dirty.reindex_deps_only, reindexed);
+    EXPECT_TRUE(dirty.reindex_content_changed.empty());
 }
 
 TEST_CASE(ChainHitAndMiss) {
@@ -137,7 +138,8 @@ TEST_CASE(ChainHitAndMiss) {
     resolver.header_contexts[hit].chain = {saved};
     resolver.header_contexts[miss].chain = {other};
     resolver.header_contexts[closed].chain = {saved};
-    Invalidator invalidator(workspace, store, resolver);
+    PCMHarness ph(workspace, resolver);
+    Invalidator invalidator(workspace, store, resolver, ph.pcm);
     auto dirty = invalidator.apply(FileEvent::buffer_saved(saved));
 
     // Every context embedding the saved file re-validates and drops its
@@ -166,7 +168,8 @@ TEST_CASE(SaveMarksDependents) {
     store.open(open_tu);
 
     ContextResolver resolver(workspace);
-    Invalidator invalidator(workspace, store, resolver);
+    PCMHarness ph(workspace, resolver);
+    Invalidator invalidator(workspace, store, resolver, ph.pcm);
     auto dirty = invalidator.apply(FileEvent::buffer_saved(header));
 
     // Open dependents recompile, closed ones reindex; the old/new dependent
@@ -188,7 +191,8 @@ TEST_CASE(TransitiveDependentsEnqueue) {
     workspace.dep_graph.build_reverse_map();
 
     ContextResolver resolver(workspace);
-    Invalidator invalidator(workspace, store, resolver);
+    PCMHarness ph(workspace, resolver);
+    Invalidator invalidator(workspace, store, resolver, ph.pcm);
     auto dirty = invalidator.apply(FileEvent::buffer_saved(header));
 
     // Only root TUs own index shards; the intermediate header is not one.
@@ -210,7 +214,8 @@ TEST_CASE(StaleReverseMapUnion) {
     workspace.dep_graph.set_includes(unmapped, 0, {header});
 
     ContextResolver resolver(workspace);
-    Invalidator invalidator(workspace, store, resolver);
+    PCMHarness ph(workspace, resolver);
+    Invalidator invalidator(workspace, store, resolver, ph.pcm);
     auto dirty = invalidator.apply(FileEvent::buffer_saved(header));
 
     llvm::SmallVector<std::uint32_t> expected{known, unmapped};
@@ -226,7 +231,8 @@ TEST_CASE(CloseWithoutShardReindexes) {
 
     ContextResolver resolver(workspace);
     // The file exists on disk (injected read), it just was never indexed.
-    Invalidator invalidator(workspace, store, resolver, [](llvm::StringRef) {
+    PCMHarness ph(workspace, resolver);
+    Invalidator invalidator(workspace, store, resolver, ph.pcm, [](llvm::StringRef) {
         return std::optional<std::string>("int x;");
     });
     auto dirty = invalidator.apply(FileEvent::buffer_closed(closed));
@@ -247,7 +253,8 @@ TEST_CASE(CloseCurrentShardDepsOnly) {
     ContextResolver resolver(workspace);
     // Disk matches the content the shard was built from: a browse-and-close
     // must not blank the file's rows for the reindex queue's latency.
-    Invalidator invalidator(workspace, store, resolver, [](llvm::StringRef) {
+    PCMHarness ph(workspace, resolver);
+    Invalidator invalidator(workspace, store, resolver, ph.pcm, [](llvm::StringRef) {
         return std::optional<std::string>{"int x;"};
     });
     auto dirty = invalidator.apply(FileEvent::buffer_closed(closed));
@@ -265,7 +272,8 @@ TEST_CASE(CloseDivergentShardContentChanged) {
     ContextResolver resolver(workspace);
     // Disk holds edits the shard never saw (saved while open): the shard's
     // rows describe text that no longer exists.
-    Invalidator invalidator(workspace, store, resolver, [](llvm::StringRef) {
+    PCMHarness ph(workspace, resolver);
+    Invalidator invalidator(workspace, store, resolver, ph.pcm, [](llvm::StringRef) {
         return std::optional<std::string>{"int edited;"};
     });
     auto dirty = invalidator.apply(FileEvent::buffer_closed(closed));
@@ -283,7 +291,8 @@ TEST_CASE(CrashMarksLostDirty) {
     store.open(second);
 
     ContextResolver resolver(workspace);
-    Invalidator invalidator(workspace, store, resolver);
+    PCMHarness ph(workspace, resolver);
+    Invalidator invalidator(workspace, store, resolver, ph.pcm);
     std::uint32_t lost[] = {first, second};
     auto dirty = invalidator.apply(FileEvent::worker_crashed(lost));
 
@@ -302,7 +311,8 @@ TEST_CASE(EvictionMarksLost) {
     store.open(file);
 
     ContextResolver resolver(workspace);
-    Invalidator invalidator(workspace, store, resolver);
+    PCMHarness ph(workspace, resolver);
+    Invalidator invalidator(workspace, store, resolver, ph.pcm);
     auto dirty = invalidator.apply(FileEvent::document_evicted(file));
 
     // Same loss as a crash, scoped to one document.
@@ -318,7 +328,8 @@ TEST_CASE(BatchSavesDeduplicate) {
     store.open(saved);
 
     ContextResolver resolver(workspace);
-    Invalidator invalidator(workspace, store, resolver);
+    PCMHarness ph(workspace, resolver);
+    Invalidator invalidator(workspace, store, resolver, ph.pcm);
     FileEvent events[] = {FileEvent::buffer_saved(saved), FileEvent::buffer_saved(saved)};
     auto dirty = invalidator.apply(events);
 
@@ -334,7 +345,8 @@ TEST_CASE(SaveDivergentDiskDirties) {
 
     ContextResolver resolver(workspace);
     // A save hook rewrote the file as it landed: disk != buffer.
-    Invalidator invalidator(workspace, store, resolver, [](llvm::StringRef) {
+    PCMHarness ph(workspace, resolver);
+    Invalidator invalidator(workspace, store, resolver, ph.pcm, [](llvm::StringRef) {
         return std::optional<std::string>{"int disk;"};
     });
     auto dirty = invalidator.apply(FileEvent::buffer_saved(saved));
@@ -354,7 +366,8 @@ TEST_CASE(SaveUnreadableDiskDirties) {
     ContextResolver resolver(workspace);
     // The file cannot be read back after the save: the disk state is
     // unknown, which is treated as divergent (conservative).
-    Invalidator invalidator(workspace, store, resolver, [](llvm::StringRef) {
+    PCMHarness ph(workspace, resolver);
+    Invalidator invalidator(workspace, store, resolver, ph.pcm, [](llvm::StringRef) {
         return std::optional<std::string>{};
     });
     auto dirty = invalidator.apply(FileEvent::buffer_saved(saved));
@@ -369,7 +382,8 @@ TEST_CASE(DiskChangeOpenMarksDirty) {
     store.open(open_file);
 
     ContextResolver resolver(workspace);
-    Invalidator invalidator(workspace, store, resolver);
+    PCMHarness ph(workspace, resolver);
+    Invalidator invalidator(workspace, store, resolver, ph.pcm);
     auto dirty = invalidator.apply(FileEvent::disk_changed(open_file));
 
     // The buffer is the truth for an open file: recompile so the next
@@ -395,7 +409,8 @@ TEST_CASE(DiskChangeClosedCascades) {
     store.open(open_tu);
 
     ContextResolver resolver(workspace);
-    Invalidator invalidator(workspace, store, resolver);
+    PCMHarness ph(workspace, resolver);
+    Invalidator invalidator(workspace, store, resolver, ph.pcm);
     auto dirty = invalidator.apply(FileEvent::disk_changed(header));
 
     // A closed file's disk change cascades exactly like a save, plus the
@@ -421,7 +436,8 @@ TEST_CASE(DiskRemovedScrubsSourceRole) {
     auto epoch = workspace.context_epoch;
 
     ContextResolver resolver(workspace);
-    Invalidator invalidator(workspace, store, resolver);
+    PCMHarness ph(workspace, resolver);
+    Invalidator invalidator(workspace, store, resolver, ph.pcm);
     auto dirty = invalidator.apply(FileEvent::disk_removed(removed_tu));
 
     // The removed file stops being an includer (and thus a host-source
@@ -446,7 +462,8 @@ TEST_CASE(RemoveRecreateBatchOrder) {
     workspace.dep_graph.set_includes(file, 0, {});
     workspace.dep_graph.build_reverse_map();
     ContextResolver resolver(workspace);
-    Invalidator invalidator(workspace, store, resolver);
+    PCMHarness ph(workspace, resolver);
+    Invalidator invalidator(workspace, store, resolver, ph.pcm);
 
     // Change then delete: the removal is the later fact, the clear wins.
     {
@@ -483,7 +500,8 @@ TEST_CASE(EntryChangeThenRemoval) {
     auto file = workspace.path_pool.intern(tmp.path("a.cpp"));
 
     ContextResolver resolver(workspace);
-    Invalidator invalidator(workspace, store, resolver);
+    PCMHarness ph(workspace, resolver);
+    Invalidator invalidator(workspace, store, resolver, ph.pcm);
     FileEvent::CDBDelta delta;
     delta.changed = {file};
     FileEvent events[] = {FileEvent::cdb_changed(std::move(delta)), FileEvent::disk_removed(file)};
@@ -503,7 +521,8 @@ TEST_CASE(CloseOfDeletedFile) {
     auto file = workspace.path_pool.intern("/proj/gone.cpp");
     ContextResolver resolver(workspace);
     // Disk read fails: the file vanished while it was open.
-    Invalidator invalidator(workspace, store, resolver, [](llvm::StringRef) {
+    PCMHarness ph(workspace, resolver);
+    Invalidator invalidator(workspace, store, resolver, ph.pcm, [](llvm::StringRef) {
         return std::optional<std::string>{};
     });
 
@@ -532,7 +551,8 @@ TEST_CASE(CDBAddedScansAndEnqueues) {
     auto header_id = workspace.path_pool.intern(tmp.path("inc/header.h"));
 
     ContextResolver resolver(workspace);
-    Invalidator invalidator(workspace, store, resolver);
+    PCMHarness ph(workspace, resolver);
+    Invalidator invalidator(workspace, store, resolver, ph.pcm);
     FileEvent::CDBDelta delta;
     delta.added = {main_id};
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
@@ -544,7 +564,6 @@ TEST_CASE(CDBAddedScansAndEnqueues) {
     ASSERT_EQ(dirty.drop_index, llvm::SmallVector<std::uint32_t>{main_id});
     ASSERT_TRUE(dirty.reindex_deps_only.empty());
     ASSERT_TRUE(dirty.recheck_contexts);
-    ASSERT_TRUE(dirty.ensure_compile_graph);
 }
 
 TEST_CASE(CDBChangedSplitsOpenClosed) {
@@ -566,7 +585,8 @@ TEST_CASE(CDBChangedSplitsOpenClosed) {
     workspace.shards[closed_id];
 
     ContextResolver resolver(workspace);
-    Invalidator invalidator(workspace, store, resolver);
+    PCMHarness ph(workspace, resolver);
+    Invalidator invalidator(workspace, store, resolver, ph.pcm);
     FileEvent::CDBDelta delta;
     delta.changed = {open_id, closed_id};
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
@@ -600,7 +620,8 @@ TEST_CASE(CDBAddedOpenMarksDirty) {
     store.open(file);
 
     ContextResolver resolver(workspace);
-    Invalidator invalidator(workspace, store, resolver);
+    PCMHarness ph(workspace, resolver);
+    Invalidator invalidator(workspace, store, resolver, ph.pcm);
     FileEvent::CDBDelta delta;
     delta.added = {file};
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
@@ -628,7 +649,8 @@ TEST_CASE(CDBChangedDropsHostedContext) {
     resolver.header_contexts[open_header].host_path_id = host;
     resolver.header_contexts[closed_header].host_path_id = host;
     resolver.header_contexts[other_header].host_path_id = no_path_id;
-    Invalidator invalidator(workspace, store, resolver);
+    PCMHarness ph(workspace, resolver);
+    Invalidator invalidator(workspace, store, resolver, ph.pcm);
     FileEvent::CDBDelta delta;
     delta.changed = {host};
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
@@ -651,55 +673,39 @@ TEST_CASE(CDBChangedDropsHostedContext) {
 }
 
 TEST_CASE(CDBChangedCascadesModule) {
-    kota::event_loop loop;
     Workspace workspace;
     SessionStore store;
     auto mod = workspace.path_pool.intern("/proj/m.cppm");
     auto open_user = workspace.path_pool.intern("/proj/open_user.cppm");
     auto closed_user = workspace.path_pool.intern("/proj/closed_user.cppm");
 
-    llvm::DenseMap<std::uint32_t, llvm::SmallVector<std::uint32_t>> deps;
-    deps[open_user] = {mod};
-    deps[closed_user] = {mod};
-    workspace.compile_graph = std::make_unique<CompileGraph>(
-        loop,
-        [](std::uint32_t, bool) -> kota::task<CompileUnit::Outcome> {
-            co_return CompileUnit::Outcome::Success;
-        },
-        [deps = std::move(deps)](std::uint32_t id) -> llvm::SmallVector<std::uint32_t> {
-            auto it = deps.find(id);
-            return it != deps.end() ? it->second : llvm::SmallVector<std::uint32_t>{};
-        });
+    ContextResolver resolver(workspace);
+    PCMHarness ph(workspace, resolver);
+    // The consumer edges build_deps declares in production — no rounds.
+    auto node = [](std::uint32_t pid) {
+        return NodeId{pcm_family, pid};
+    };
+    ph.graph.declare(node(open_user), {node(mod)});
+    ph.graph.declare(node(closed_user), {node(mod)});
 
     store.open(open_user);
-    ContextResolver resolver(workspace);
-    Invalidator invalidator(workspace, store, resolver);
+    Invalidator invalidator(workspace, store, resolver, ph.pcm);
 
-    auto body = [&]() -> kota::task<> {
-        co_await workspace.compile_graph->compile(open_user);
-        co_await workspace.compile_graph->compile(closed_user);
+    FileEvent::CDBDelta delta;
+    delta.changed = {mod};
+    auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
 
-        FileEvent::CDBDelta delta;
-        delta.changed = {mod};
-        auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
-
-        // A module unit's flag change cascades through the compile graph
-        // exactly like a content change: importers' PCMs went stale. The
-        // unit itself lands in both lists (its own entry changed AND the
-        // cascade dirtied its PCM); the indexer's absorbing upgrade
-        // resolves the overlap to ContentChanged.
-        EXPECT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{open_user});
-        EXPECT_EQ(dirty.reindex_content_changed, llvm::SmallVector<std::uint32_t>{mod});
-        EXPECT_EQ(dirty.drop_index, llvm::SmallVector<std::uint32_t>{mod});
-        llvm::SmallVector<std::uint32_t> deps{mod, closed_user};
-        llvm::sort(deps);
-        EXPECT_EQ(dirty.reindex_deps_only, deps);
-
-        co_await workspace.compile_graph->shutdown();
-    };
-    auto task = body();
-    loop.schedule(task);
-    loop.run();
+    // A module unit's flag change cascades through the compile graph
+    // exactly like a content change: importers' PCMs went stale. The
+    // unit itself lands in both lists (its own entry changed AND the
+    // cascade dirtied its PCM); the indexer's absorbing upgrade
+    // resolves the overlap to ContentChanged.
+    EXPECT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{open_user});
+    EXPECT_EQ(dirty.reindex_content_changed, llvm::SmallVector<std::uint32_t>{mod});
+    EXPECT_EQ(dirty.drop_index, llvm::SmallVector<std::uint32_t>{mod});
+    llvm::SmallVector<std::uint32_t> deps{mod, closed_user};
+    llvm::sort(deps);
+    EXPECT_EQ(dirty.reindex_deps_only, deps);
 }
 
 TEST_CASE(DiskRemovedReindexesIncluders) {
@@ -714,7 +720,8 @@ TEST_CASE(DiskRemovedReindexesIncluders) {
     store.open(open_tu);
 
     ContextResolver resolver(workspace);
-    Invalidator invalidator(workspace, store, resolver);
+    PCMHarness ph(workspace, resolver);
+    Invalidator invalidator(workspace, store, resolver, ph.pcm);
     auto dirty = invalidator.apply(FileEvent::disk_removed(header));
 
     // Dependents now compile against a missing include: open ones
@@ -745,7 +752,8 @@ TEST_CASE(CDBRemovedDropsSourceRole) {
     auto kept_id = workspace.path_pool.intern(tmp.path("kept.cpp"));
 
     ContextResolver resolver(workspace);
-    Invalidator invalidator(workspace, store, resolver);
+    PCMHarness ph(workspace, resolver);
+    Invalidator invalidator(workspace, store, resolver, ph.pcm);
     FileEvent::CDBDelta delta;
     delta.removed = {gone_id};
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
@@ -763,7 +771,8 @@ TEST_CASE(CDBEmptyDeltaNoEffects) {
     SessionStore store;
 
     ContextResolver resolver(workspace);
-    Invalidator invalidator(workspace, store, resolver);
+    PCMHarness ph(workspace, resolver);
+    Invalidator invalidator(workspace, store, resolver, ph.pcm);
     auto dirty = invalidator.apply(FileEvent::cdb_changed({}));
 
     ASSERT_TRUE(dirty.empty());
@@ -776,7 +785,8 @@ TEST_CASE(BatchDiskEventsDeduplicate) {
     auto second = workspace.path_pool.intern("/proj/b.h");
 
     ContextResolver resolver(workspace);
-    Invalidator invalidator(workspace, store, resolver);
+    PCMHarness ph(workspace, resolver);
+    Invalidator invalidator(workspace, store, resolver, ph.pcm);
     FileEvent events[] = {FileEvent::disk_changed(first),
                           FileEvent::disk_changed(first),
                           FileEvent::disk_changed(second)};

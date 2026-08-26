@@ -18,6 +18,8 @@
 
 namespace clice {
 
+class PCMFamily;
+
 class ContextResolver;
 struct SessionStore;
 class WorkerPool;
@@ -66,6 +68,7 @@ public:
             Workspace& workspace,
             WorkerPool& pool,
             ContextResolver& contexts,
+            PCMFamily& pcm,
             const SessionStore& sessions);
 
     /// Whether open files' disk snapshots are indexed like closed ones.
@@ -282,6 +285,7 @@ private:
     Workspace& workspace;
     WorkerPool& pool;
     ContextResolver& contexts;
+    PCMFamily& pcm;
     const SessionStore& sessions;
 
     /// Open documents, read-only. A file with an open Session is skipped by

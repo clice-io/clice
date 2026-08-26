@@ -208,212 +208,13 @@ constexpr inline std::uint8_t format_evidence = 0x45;
 Compiler::Compiler(kota::event_loop& loop,
                    Workspace& workspace,
                    ContextResolver& contexts,
+                   PCMFamily& pcm,
                    WorkerPool& pool) :
-    loop(loop), workspace(workspace), contexts(contexts), pool(pool) {}
-
-Compiler::~Compiler() {
-    workspace.cancel_all();
-}
+    loop(loop), workspace(workspace), contexts(contexts), pcm(pcm), pool(pool) {}
 
 kota::task<> Compiler::stop() {
     compile_tasks.cancel();
     co_await compile_tasks.join();
-
-    // Requests have unwound and released their interest; now tear down the
-    // module compile graph's own unit tasks.
-    if(workspace.compile_graph) {
-        co_await workspace.compile_graph->shutdown();
-    }
-}
-
-void Compiler::init_compile_graph() {
-    // FIXME: this gate assumes "no module declarations anywhere" implies
-    // "no TU depends on modules", which is wrong: a plain TU may legally
-    // import — even solely through an #include'd header, since
-    // [cpp.import]/3 only forbids include-produced imports inside module
-    // files — so e.g. `import std;` against a prebuilt module is invisible
-    // here. Correct discovery needs a conservative preprocess of every TU,
-    // which is expensive; candidate mitigations when module support
-    // resumes: skip it while the preamble/PCH is unchanged, infer from
-    // compile options, or a global modules switch so module-free projects
-    // pay nothing.
-    if(workspace.path_to_module.empty()) {
-        LOG_INFO("No C++20 modules detected, skipping CompileGraph");
-        return;
-    }
-
-    // Lazy dependency resolver: scans a file on demand to discover imports.
-    auto resolve = [this](std::uint32_t path_id) -> llvm::SmallVector<std::uint32_t> {
-        auto file_path = workspace.path_pool.resolve(path_id);
-        std::vector<std::string> rule_append, rule_remove;
-        workspace.config.match_rules(file_path, rule_append, rule_remove);
-        auto results =
-            workspace.cdb.lookup(file_path, {.remove = rule_remove, .append = rule_append});
-        if(results.empty())
-            return {};
-        workspace.toolchain.resolve_or_warn(results[0]);
-
-        auto& cmd = results[0];
-        auto scan_result = scan_precise(cmd.to_argv(), cmd.resolved.directory);
-
-        llvm::SmallVector<std::uint32_t> deps;
-        for(auto& mod_name: scan_result.modules) {
-            auto mod_ids = workspace.dep_graph.lookup_module(mod_name);
-            if(!mod_ids.empty()) {
-                deps.push_back(mod_ids[0]);
-            }
-        }
-
-        // Module implementation units implicitly depend on their interface unit.
-        if(!scan_result.module_name.empty() && !scan_result.is_interface_unit) {
-            auto mod_ids = workspace.dep_graph.lookup_module(scan_result.module_name);
-            if(!mod_ids.empty()) {
-                deps.push_back(mod_ids[0]);
-            }
-        }
-
-        return deps;
-    };
-
-    // Dispatch: sends BuildPCM request to a stateless worker.
-    using Outcome = CompileUnit::Outcome;
-    auto dispatch = [this](std::uint32_t path_id, bool foreground) -> kota::task<Outcome> {
-        auto mod_it = workspace.path_to_module.find(path_id);
-        if(mod_it == workspace.path_to_module.end())
-            co_return Outcome::Failed;
-
-        // Copy out of the map before any suspension below: while a PCM build
-        // is awaited, a concurrent didSave can insert into (or erase from)
-        // path_to_module, rehashing the DenseMap and invalidating mod_it.
-        auto module_name = mod_it->second;
-
-        auto file_path = std::string(workspace.path_pool.resolve(path_id));
-
-        auto priority = foreground ? worker::Priority::High : worker::Priority::Low;
-        worker::BuildPcmParams bp;
-        bp.file = file_path;
-        contexts.resolve_command(file_path, bp.directory, bp.arguments);
-
-        if(!workspace.store) {
-            LOG_WARN("BuildPCM skipped for module {}: cache store is unavailable", module_name);
-            co_return Outcome::Failed;
-        }
-
-        // Deterministic content-addressed PCM key over the source path and
-        // the frontend-relevant subset of the compile flags.
-        auto safe_module_name = module_name;
-        std::ranges::replace(safe_module_name, ':', '-');
-        auto pcm_key = std::format("{}-{}",
-                                   safe_module_name,
-                                   cache_key({clang::getClangFullVersion(),
-                                              bp.directory,
-                                              file_path,
-                                              canonicalize(bp.arguments, ArgsProfile::Frontend)}));
-
-        // Check if cached PCM is still valid.
-        llvm::StringRef pcm_miss = "no_entry";
-        if(auto pcm_it = workspace.pcm_cache.find(path_id); pcm_it != workspace.pcm_cache.end()) {
-            if(pcm_it->second.key != pcm_key) {
-                pcm_miss = "key_changed";
-            } else if(!workspace.store->lookup("pcm", pcm_key)) {
-                pcm_miss = "evicted";
-            } else if(deps_changed(workspace.path_pool, pcm_it->second.deps)) {
-                pcm_miss = "deps_changed";
-            } else {
-                workspace.pcm_paths[path_id] = pcm_it->second.path;
-                LOG_PERF("cache", "ns=pcm event=hit key={} module={}", pcm_key, module_name);
-                co_return Outcome::Success;
-            }
-        }
-        LOG_PERF("cache",
-                 "ns=pcm event=miss reason={} key={} module={}",
-                 pcm_miss,
-                 pcm_key,
-                 module_name);
-
-        // Same shared-artifact budget as the PCH, but keyed with the
-        // module's current content: unlike pch_key (which embeds the
-        // preamble text), pcm_key is content-free, and a blocked budget
-        // must unlock the moment the poison is edited.
-        auto content = llvm::MemoryBuffer::getFile(file_path);
-        auto budget_key = std::format("{}-{:016x}",
-                                      pcm_key,
-                                      content ? llvm::xxh3_64bits((*content)->getBuffer()) : 0);
-        if(workspace.build_crashes.blocked(budget_key)) {
-            LOG_WARN("PCM build for module {} refused: key {} keeps crashing workers",
-                     module_name,
-                     budget_key);
-            co_return Outcome::Failed;
-        }
-
-        bp.module_name = module_name;
-        auto pending = workspace.store->begin_store("pcm", pcm_key);
-        bp.output_path = pending.tmp_path;
-
-        // Clang needs ALL transitive PCM deps, not just direct imports.
-        // Exclude the module being built — its old PCM path may still be
-        // in pcm_paths from a previous (now-invalidated) build.
-        workspace.fill_pcm_deps(bp.pcms, path_id);
-
-        auto result = co_await send_stateless_retrying(
-            pool,
-            bp,
-            priority,
-            [this, &budget_key](const kota::ipc::protocol::Error&) {
-                workspace.build_crashes.on_crash(budget_key);
-            });
-        // A scheduler preemption (foreground reclaim, memory pressure) is
-        // no verdict on the unit: report the round stale so waiters drive
-        // a retry instead of failing their whole chain.
-        if(!result.has_value() && result.error().code == worker::dispatch_errc::cancelled) {
-            LOG_INFO("BuildPCM preempted for module {}, will retry", module_name);
-            co_return Outcome::Stale;
-        }
-        if(!result.has_value() || !result.value().success) {
-            if(expected_build_failure(result)) {
-                LOG_WARN("BuildPCM failed for module {}: {}",
-                         module_name,
-                         build_failure_message(result));
-            } else {
-                LOG_ANOMALY(PCMBuildFail,
-                            "PCM build failed for module {}: {}",
-                            module_name,
-                            build_failure_message(result));
-            }
-            co_return Outcome::Failed;
-        }
-
-        // Commit on the thread pool: it fsyncs the freshly written PCM.
-        auto committed =
-            co_await kota::queue([&] { return workspace.store->commit(std::move(pending)); });
-        if(!committed.has_value() || !committed.value().has_value()) {
-            LOG_WARN("Failed to commit PCM for module {}", module_name);
-            co_return Outcome::Failed;
-        }
-
-        workspace.build_crashes.on_land(budget_key);
-        auto pcm_path = std::move(committed.value().value());
-        workspace.pcm_paths[path_id] = pcm_path;
-        workspace.pcm_cache[path_id] = {pcm_path,
-                                        pcm_key,
-                                        capture_deps_snapshot(workspace.path_pool,
-                                                              result.value().deps,
-                                                              result.value().build_at)};
-        LOG_INFO("Built PCM for module {}: {}", module_name, pcm_path);
-
-        // Persist cache metadata after successful build.
-        workspace.save_cache(contexts);
-
-        // Signal that new index data is available for background merge.
-        if(on_indexing_needed)
-            on_indexing_needed();
-
-        co_return Outcome::Success;
-    };
-
-    workspace.compile_graph =
-        std::make_unique<CompileGraph>(loop, std::move(dispatch), std::move(resolve));
-    LOG_INFO("CompileGraph initialized with {} module(s)", workspace.path_to_module.size());
 }
 
 /// The pch_key write license: a round may (re)write the session's PCH
@@ -585,7 +386,7 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
     auto pending = workspace.store->begin_store("pch", pch_key);
     auto pending_idx = workspace.store->begin_store_aux("pch", pch_key);
 
-    worker::BuildPchParams bp;
+    worker::BuildPCHParams bp;
     bp.file = std::string(path);
     bp.directory = directory;
     bp.arguments = arguments;
@@ -715,57 +516,21 @@ kota::task<bool> Compiler::ensure_deps(Session& session,
                                        std::optional<kota::cancellation_token> scope) {
     auto path_id = session.path_id;
 
-    // Compile module dependencies within the request scope: cancelling the
+    // Prepare module dependencies within the request scope: cancelling the
     // scope unwinds the wait and releases this request's interest in the
     // dependency graph, without touching the shared compilations themselves.
-    auto compile_deps = [&](std::uint32_t pid) -> kota::task<bool> {
-        // A user request waits on these builds: dispatch them High so the
-        // background budget cannot throttle its own foreground.
+    // A user request waits on these builds: dispatch them High so the
+    // background budget cannot throttle its own foreground.
+    auto scoped_deps = [&](kota::task<bool> wait) -> kota::task<bool> {
         if(!scope) {
-            co_return co_await workspace.compile_graph->compile_deps(pid, /*foreground=*/true);
+            co_return co_await std::move(wait);
         }
-        auto result = co_await kota::with_token(
-            workspace.compile_graph->compile_deps(pid, /*foreground=*/true),
-            *scope);
+        auto result = co_await kota::with_token(std::move(wait), *scope);
         co_return result.has_value() && *result;
     };
 
-    // Re-validate cached PCM blobs and compile module dependencies.  LRU
-    // eviction can remove a blob while its compile unit is still marked
-    // clean, so dirty those units instead of handing clang a dangling
-    // path.  Building dependencies can itself evict another clean
-    // module's PCM under budget pressure, which reopens the window the
-    // scan just closed — hence the bounded retry until the set is stable.
-    //
-    // FIXME: this scans every pcm_paths entry (one stat() per module) on
-    // every compile, even in steady state when nothing was evicted.  For
-    // large modular projects on NFS this adds measurable latency.  Consider
-    // having CacheStore notify on eviction or caching the scan result.
-    if(workspace.compile_graph) {
-        for(int attempt = 0; attempt < 3; ++attempt) {
-            llvm::SmallVector<std::uint32_t> evicted;
-            for(auto& [pid, pcm_path]: workspace.pcm_paths) {
-                if(!llvm::sys::fs::exists(pcm_path)) {
-                    evicted.push_back(pid);
-                }
-            }
-            if(attempt > 0 && evicted.empty()) {
-                break;
-            }
-
-            for(auto pid: evicted) {
-                for(auto id: workspace.compile_graph->update(pid)) {
-                    workspace.pcm_paths.erase(id);
-                    workspace.pcm_cache.erase(id);
-                }
-                workspace.pcm_paths.erase(pid);
-                workspace.pcm_cache.erase(pid);
-            }
-
-            if(!co_await compile_deps(path_id)) {
-                co_return false;
-            }
-        }
+    if(!co_await scoped_deps(pcm.prepare_deps(path_id, /*foreground=*/true))) {
+        co_return false;
     }
 
     // Scan buffer text for module imports that might not be in compile_graph yet.
@@ -800,8 +565,8 @@ kota::task<bool> Compiler::ensure_deps(Session& session,
             }
             // If PCM not already built, try to build it.
             if(workspace.pcm_paths.find(module_pid) == workspace.pcm_paths.end()) {
-                if(workspace.compile_graph && workspace.compile_graph->has_unit(module_pid)) {
-                    co_await compile_deps(module_pid);
+                if(pcm.tracks(module_pid)) {
+                    co_await scoped_deps(pcm.build_deps(module_pid, /*foreground=*/true));
                 }
             }
         }

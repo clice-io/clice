@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "command/command.h"
+#include "sched/families/pcm.h"
 #include "sched/workspace.h"
 #include "server/state/session.h"
 #include "support/signal.h"
@@ -55,11 +56,8 @@ public:
     Compiler(kota::event_loop& loop,
              Workspace& workspace,
              ContextResolver& contexts,
+             PCMFamily& pcm,
              WorkerPool& pool);
-
-    ~Compiler();
-
-    void init_compile_graph();
 
     /// Compile an open file's AST if dirty.  On success, updates session's
     /// file_index, pch_key, ast_deps, and publishes diagnostics.
@@ -228,6 +226,7 @@ private:
     kota::event_loop& loop;
     Workspace& workspace;
     ContextResolver& contexts;
+    PCMFamily& pcm;
     WorkerPool& pool;
     kota::task_group<> compile_tasks{loop};
 

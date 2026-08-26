@@ -8,6 +8,8 @@
 #include "index/shard.h"
 #include "index/tu_index.h"
 #include "sched/context.h"
+#include "sched/families/pcm.h"
+#include "sched/graph.h"
 #include "server/compiler/indexer.h"
 #include "server/service/query.h"
 #include "server/state/session_store.h"
@@ -27,7 +29,9 @@ Workspace workspace;
 SessionStore store;
 WorkerPool pool{loop};
 ContextResolver resolver{workspace};
-Indexer indexer{loop, workspace, pool, resolver, store};
+TaskGraph graph{loop};
+PCMFamily pcm{graph, workspace, resolver, pool};
+Indexer indexer{loop, workspace, pool, resolver, pcm, store};
 IndexQuery index_query{workspace, store, indexer};
 IndexQuery agent_query{workspace, store, indexer, {.disk_only = true}};
 

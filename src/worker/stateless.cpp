@@ -87,7 +87,7 @@ static std::optional<std::string> write_preamble_envelope(llvm::StringRef blob,
     return std::nullopt;
 }
 
-static worker::ArtifactBuildResult handle_build_pch(const worker::BuildPchParams& params,
+static worker::ArtifactBuildResult handle_build_pch(const worker::BuildPCHParams& params,
                                                     const std::shared_ptr<std::atomic_bool>& stop) {
     ScopedTimer timer;
 
@@ -185,7 +185,7 @@ static worker::ArtifactBuildResult handle_build_pch(const worker::BuildPchParams
     }
 }
 
-static worker::ArtifactBuildResult handle_build_pcm(const worker::BuildPcmParams& params,
+static worker::ArtifactBuildResult handle_build_pcm(const worker::BuildPCMParams& params,
                                                     const std::shared_ptr<std::atomic_bool>& stop) {
     ScopedTimer timer;
 
@@ -431,7 +431,7 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
 
     peer.on_request(
         [&](RequestContext& ctx,
-            const worker::BuildPchParams& params) -> RequestResult<worker::BuildPchParams> {
+            const worker::BuildPCHParams& params) -> RequestResult<worker::BuildPCHParams> {
             auto stop = arm_stop();
             auto result = co_await kota::queue(
                 [&]() -> worker::ArtifactBuildResult {
@@ -446,7 +446,7 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
 
     peer.on_request(
         [&](RequestContext& ctx,
-            const worker::BuildPcmParams& params) -> RequestResult<worker::BuildPcmParams> {
+            const worker::BuildPCMParams& params) -> RequestResult<worker::BuildPCMParams> {
             auto stop = arm_stop();
             auto result = co_await kota::queue(
                 [&]() -> worker::ArtifactBuildResult {

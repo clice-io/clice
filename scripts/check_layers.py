@@ -36,13 +36,17 @@ def main() -> int:
                 header = match.group(1)
                 for prefix in banned:
                     if header.startswith(prefix):
-                        violations.append(f"{path.relative_to(src.parent)}:{number}: "
-                                          f"{layer}/ must not include {header}")
+                        violations.append(
+                            f"{path.relative_to(src.parent)}:{number}: "
+                            f"{layer}/ must not include {header}"
+                        )
     for violation in violations:
         print(violation)
     if violations:
-        print(f"\n{len(violations)} layering violation(s): "
-              "core <- config <- worker <- sched <- server, includes go downward only.")
+        print(
+            f"\n{len(violations)} layering violation(s): "
+            "core <- config <- worker <- sched <- server, includes go downward only."
+        )
         return 1
     return 0
 

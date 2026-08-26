@@ -34,11 +34,14 @@ namespace clice {
 constexpr static std::size_t notify_log_limit = 128;
 
 MasterServer::MasterServer(kota::event_loop& loop, std::string self_path) :
-    loop(loop), pool(loop), contexts(workspace), compiler(loop, workspace, contexts, pool),
-    indexer(loop, workspace, pool, contexts, sessions), index_query(workspace, sessions, indexer),
+    loop(loop), pool(loop), contexts(workspace), compiler(loop, workspace, contexts, pcm, pool),
+    indexer(loop, workspace, pool, contexts, pcm, sessions),
+    index_query(workspace, sessions, indexer),
     agent_query(workspace, sessions, indexer, {.disk_only = true}),
     features(compiler, index_query, workspace, contexts, indexer, sessions),
-    invalidator(workspace, sessions, contexts), bg_tasks(loop), self_path(std::move(self_path)) {
+    invalidator(workspace, sessions, contexts, pcm), bg_tasks(loop),
+    self_path(std::move(self_path)) {
+    pcm.register_runner();
     // The notify hook is process-wide because the logging layer cannot
     // depend on the server; the composition root owns it for the server's
     // lifetime and turns reports into state (notify_log) plus a wake-up
@@ -248,6 +251,9 @@ void MasterServer::wire() {
     compiler.on_indexing_needed = [this]() {
         indexer.schedule();
     };
+    pcm.on_indexing_needed = [this]() {
+        indexer.schedule();
+    };
 
     // The compiler's pull-side staleness check found a dependency changed
     // on disk: route it through the same DiskChanged path the file
@@ -445,10 +451,6 @@ void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
         indexer.clear_pending(path_id);
     }
 
-    if(dirty.ensure_compile_graph && !workspace.compile_graph) {
-        compiler.init_compile_graph();
-    }
-
     bool save = dirty.save_cache;
     if(dirty.recheck_contexts) {
         save |= context_service.drop_orphaned_choices(sessions);
@@ -480,6 +482,10 @@ kota::task<> MasterServer::shutdown_and_cleanup() {
     // Quiesce in-flight compilation and indexing first so the persisted
     // snapshot below covers everything that actually completed.
     co_await kota::when_all(indexer.stop(), compiler.stop());
+    // Requests have unwound and released their interest; wind down the
+    // graph's rounds before the persistence pass and the pool stop
+    // (contract 11: quiesce -> final save -> pool/store).
+    co_await graph.shutdown();
     co_await indexer.save();
     workspace.save_cache(contexts);
     co_await pool.stop();
@@ -637,8 +643,6 @@ void MasterServer::load_workspace() {
         }
         indexer.schedule();
     }
-
-    compiler.init_compile_graph();
 }
 
 struct Connection {

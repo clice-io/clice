@@ -194,6 +194,18 @@ public:
     /// of nodes that were marked dirty.
     llvm::SmallVector<NodeId> update(NodeId id);
 
+    /// Commit `deps` as the durable edge set of `id` without running a
+    /// round — the no-round counterpart of a successful round's candidate
+    /// promotion. Facades use it for topology that is scanner truth
+    /// rather than build output: consumer TUs that never run rounds, and
+    /// a unit's imports, which must survive a failed build or fixing an
+    /// import could never re-dirty the unit. Materializes every named
+    /// node, replaces the previous set (self and duplicate edges
+    /// dropped), takes no interest and leaves dirtiness untouched —
+    /// invalidation stays with update(). A later current successful round
+    /// replaces the declaration with its candidates.
+    void declare(NodeId id, llvm::ArrayRef<NodeId> deps);
+
     /// Fire every round's token, refuse new rounds, and wait for all round
     /// frames to unwind. Must be awaited exactly once before the graph is
     /// destroyed.
@@ -315,6 +327,11 @@ private:
     /// durable set on current success, release edge references and wake
     /// waiters.
     void finish_round(NodeId id, Round& round, RoundOutcome reported);
+
+    /// Replace the durable edge set and its back-edges. Shared by round
+    /// landing (candidates promote) and declare(); every named node must
+    /// already exist.
+    void set_durable_edges(NodeId id, llvm::ArrayRef<NodeId> deps);
 
     /// RoundContext::depend() body.
     kota::task<DependResult> depend_from(NodeId self, kota::cancellation_token token, NodeId dep);

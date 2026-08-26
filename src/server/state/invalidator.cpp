@@ -2,6 +2,8 @@
 
 #include <utility>
 
+#include "sched/families/pcm.h"
+
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/MemoryBuffer.h"
 
@@ -19,8 +21,9 @@ static std::optional<std::string> read_from_disk(llvm::StringRef path) {
 Invalidator::Invalidator(Workspace& workspace,
                          const SessionStore& store,
                          const ContextResolver& contexts,
+                         PCMFamily& pcm,
                          ReadFile read_file) :
-    workspace(workspace), store(store), contexts(contexts),
+    workspace(workspace), store(store), contexts(contexts), pcm(pcm),
     read_file(read_file ? std::move(read_file) : ReadFile(read_from_disk)) {}
 
 /// Batch effects may name the same file twice (two saves in one batch);
@@ -46,12 +49,10 @@ void Invalidator::mark_dependent(std::uint32_t path_id, DirtySet& dirty) {
 }
 
 void Invalidator::cascade_compile_graph(std::uint32_t path_id, DirtySet& dirty) {
-    if(!workspace.compile_graph || !workspace.compile_graph->has_unit(path_id)) {
+    if(!pcm.tracks(path_id)) {
         return;
     }
-    for(auto dirty_id: workspace.compile_graph->update(path_id)) {
-        workspace.pcm_paths.erase(dirty_id);
-        workspace.pcm_cache.erase(dirty_id);
+    for(auto dirty_id: pcm.invalidate(path_id)) {
         mark_dependent(dirty_id, dirty);
     }
 }
@@ -69,13 +70,13 @@ void Invalidator::cascade_disk_content_change(std::uint32_t path_id, DirtySet& d
     // a reverse map that was stale when the change landed.
     auto old_dependents = workspace.dep_graph.find_host_sources(path_id);
 
-    // Rescan disk state (include edges, module declaration, compile-graph
-    // cascade, PCM caches); the cascade names the module units whose build
-    // products went stale.
-    auto dirtied = workspace.rescan_after_save(path_id);
-    for(auto dirty_id: dirtied) {
+    // Rescan disk state (include edges, module declaration); then cascade
+    // through the module graph — importers' build products went stale, and
+    // the cascade names every affected module unit.
+    for(auto dirty_id: workspace.rescan_after_save(path_id)) {
         mark_dependent(dirty_id, dirty);
     }
+    cascade_compile_graph(path_id, dirty);
 
     // The new content is a compile input of every TU that transitively
     // includes it: open dependents recompile, closed ones reindex so
@@ -376,18 +377,6 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                     // already dropped the file's source role, and the
                     // orphan recheck cleans choices through it.
                     invalidate_entry(path_id, /*keep_index=*/true);
-                }
-
-                // The first CDB of the session may have introduced C++20
-                // modules; the compile graph is otherwise created at startup.
-                // TODO: a reload that adds a brand-new module unit to an
-                // already existing graph is not registered (update() only
-                // touches known units) — importers resolved before it
-                // existed keep their stale dependency lists until restart.
-                // Rebuilding the graph mid-session needs coordination with
-                // in-flight compiles.
-                if(!workspace.compile_graph) {
-                    dirty.ensure_compile_graph = true;
                 }
 
                 dirty.recheck_contexts = true;

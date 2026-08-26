@@ -8,6 +8,8 @@
 
 #include "config/config.h"
 #include "sched/context.h"
+#include "sched/families/pcm.h"
+#include "sched/graph.h"
 #include "sched/workspace.h"
 #include "server/compiler/compiler.h"
 #include "server/compiler/indexer.h"
@@ -148,6 +150,13 @@ public:
     WorkerPool pool;
     ContextResolver contexts;
     ContextService context_service{workspace, contexts};
+
+    /// The scheduling core and its resident families, registered at
+    /// construction — nodes materialize on demand, so a module-free
+    /// project pays nothing.
+    TaskGraph graph{loop};
+    PCMFamily pcm{graph, workspace, contexts, pool};
+
     Compiler compiler;
     Indexer indexer;
     IndexQuery index_query;

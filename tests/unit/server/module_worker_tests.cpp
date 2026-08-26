@@ -40,7 +40,7 @@ TEST_CASE(BuildPCMThenCompileWithImport) {
     bool phase1_done = false;
 
     sl.run([&]() -> kota::task<> {
-        worker::BuildPcmParams params;
+        worker::BuildPCMParams params;
         params.file = iface;
         params.directory = "/tmp";
         params.arguments = {"clang++",
@@ -131,7 +131,7 @@ TEST_CASE(BuildPCMChainThenCompile) {
     sl.run([&]() -> kota::task<> {
         // Build PCM for A first.
         {
-            worker::BuildPcmParams params;
+            worker::BuildPCMParams params;
             params.file = mod_a;
             params.directory = "/tmp";
             params.arguments = {"clang++",
@@ -150,7 +150,7 @@ TEST_CASE(BuildPCMChainThenCompile) {
 
         // Build PCM for B, passing A's PCM (transitive dep).
         {
-            worker::BuildPcmParams params;
+            worker::BuildPCMParams params;
             params.file = mod_b;
             params.directory = "/tmp";
             params.arguments = {"clang++",
@@ -237,7 +237,7 @@ TEST_CASE(ModuleImplementationUnitWithWorker) {
     bool pcm_done = false;
 
     sl.run([&]() -> kota::task<> {
-        worker::BuildPcmParams params;
+        worker::BuildPCMParams params;
         params.file = iface;
         params.directory = "/tmp";
         params.arguments = {"clang++",

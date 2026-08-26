@@ -91,7 +91,7 @@ TEST_CASE(BuildPCHRequest) {
     bool test_done = false;
 
     w.run([&]() -> kota::task<> {
-        worker::BuildPchParams params;
+        worker::BuildPCHParams params;
         params.file = hdr;
         params.directory = "/tmp";
         params.arguments =
@@ -161,7 +161,7 @@ TEST_CASE(BuildPCMRequest) {
     bool test_done = false;
 
     w.run([&]() -> kota::task<> {
-        worker::BuildPcmParams params;
+        worker::BuildPCMParams params;
         params.file = src;
         params.directory = "/tmp";
         params.arguments = {"clang++",

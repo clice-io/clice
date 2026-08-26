@@ -18,12 +18,12 @@
 #include "index/shard.h"
 #include "index/tu_index.h"
 #include "sched/crash_budget.h"
-#include "sched/legacy_pcm_graph.h"
 #include "semantic/symbol.h"
 #include "support/cache_store.h"
 #include "support/path_pool.h"
 #include "syntax/dependency_graph.h"
 
+#include "kota/async/async.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
@@ -231,10 +231,6 @@ struct Workspace {
     /// Built once at startup from CDB scan; updated incrementally on didSave.
     DependencyGraph dep_graph;
 
-    /// C++20 module compilation ordering DAG.
-    /// Lazily resolves module dependencies; updated on didSave via cascade.
-    std::unique_ptr<CompileGraph> compile_graph;
-
     /// Reverse mapping: file path_id → module name (e.g. "std", "foo.bar").
     /// Built from dep_graph at startup; updated on didSave when module
     /// declarations change.
@@ -352,8 +348,6 @@ struct Workspace {
     /// Fill PCM paths for all built modules, excluding exclude_path_id.
     void fill_pcm_deps(std::unordered_map<std::string, std::string>& pcms,
                        std::uint32_t exclude_path_id = UINT32_MAX) const;
-    /// Cancel all in-flight compilations.
-    void cancel_all();
 };
 
 /// Find the workspace's compile_commands.json: the configured paths first

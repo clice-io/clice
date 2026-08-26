@@ -171,7 +171,7 @@ struct CompileResult {
 };
 
 /// Build a PCH (and its paired pch.idx envelope) from preamble content.
-struct BuildPchParams {
+struct BuildPCHParams {
     std::string file;
     std::string directory;
     std::vector<std::string> arguments;
@@ -191,7 +191,7 @@ struct BuildPchParams {
 };
 
 /// Build a module interface's PCM.
-struct BuildPcmParams {
+struct BuildPCMParams {
     std::string file;
     std::string directory;
     std::vector<std::string> arguments;
@@ -201,7 +201,7 @@ struct BuildPcmParams {
     /// Transitive PCM dependencies (module name -> artifact path).
     std::unordered_map<std::string, std::string> pcms;
 
-    /// Tmp path allocated by the master's store (see BuildPchParams).
+    /// Tmp path allocated by the master's store (see BuildPCHParams).
     std::string output_path;
 };
 
@@ -341,13 +341,13 @@ struct RequestTraits<clice::worker::DocumentLinkParams> {
 };
 
 template <>
-struct RequestTraits<clice::worker::BuildPchParams> {
+struct RequestTraits<clice::worker::BuildPCHParams> {
     using Result = clice::worker::ArtifactBuildResult;
     constexpr inline static std::string_view method = "clice/worker/buildPch";
 };
 
 template <>
-struct RequestTraits<clice::worker::BuildPcmParams> {
+struct RequestTraits<clice::worker::BuildPCMParams> {
     using Result = clice::worker::ArtifactBuildResult;
     constexpr inline static std::string_view method = "clice/worker/buildPcm";
 };

@@ -7,6 +7,7 @@
 #include <memory>
 #include <optional>
 
+#include "support/logging.h"
 #include "support/signal.h"
 #include "worker/protocol.h"
 
@@ -163,10 +164,20 @@ public:
                                         Suspect suspect = Suspect::No);
 
     /// Send a request to a stateless worker with priority-aware scheduling.
+    ///
+    /// `cancel` is an advisory cancellation: when it fires, the pool sends
+    /// the cooperative CancelBuild to the assigned worker and this call
+    /// KEEPS awaiting the real reply — the slot frees only when the
+    /// process is actually idle, and crash accounting keeps observing the
+    /// real outcome. Never a wire cancel: that would resume the sender
+    /// immediately and hand the slot out while the worker is still stuck
+    /// in the old parse. A cancelled result surfaces as
+    /// dispatch_errc::cancelled.
     template <typename Params>
     RequestResult<Params> send_stateless(const Params& params,
                                          worker::Priority priority,
-                                         kota::ipc::request_options opts = {});
+                                         kota::ipc::request_options opts = {},
+                                         std::optional<kota::cancellation_token> cancel = {});
 
     /// Send a notification to the stateful worker owning path_id (if any).
     template <typename Params>
@@ -730,7 +741,8 @@ RequestResult<Params> WorkerPool::send_stateful(std::uint32_t path_id,
 template <typename Params>
 RequestResult<Params> WorkerPool::send_stateless(const Params& params,
                                                  worker::Priority priority,
-                                                 kota::ipc::request_options opts) {
+                                                 kota::ipc::request_options opts,
+                                                 std::optional<kota::cancellation_token> cancel) {
     // High-priority stateless work (PCH, completion builds, foreground
     // PCMs) is foreground by the priority taxonomy; while it runs or
     // queues, foreground_busy() holds the window open.
@@ -746,6 +758,13 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
     auto peer = stateless_workers[idx].peer;
     auto gen = stateless_workers[idx].generation;
 
+    // An advisory cancellation that fired while this request queued for a
+    // slot: nothing was dispatched, give the claim back untouched.
+    if(cancel && cancel->cancelled()) {
+        co_return kota::outcome_error(
+            kota::ipc::Error{worker::dispatch_errc::cancelled, "Request cancelled by its round"});
+    }
+
     std::shared_ptr<kota::cancellation_source> preempt_src;
     if(priority == worker::Priority::Low) {
         // Reclaim demand that arose while this claim's sender was parked
@@ -757,11 +776,34 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
             co_return kota::outcome_error(kota::ipc::Error{worker::dispatch_errc::cancelled,
                                                            "Request preempted by the scheduler"});
         }
+    }
+    if(priority == worker::Priority::Low || cancel) {
         // The classification channel for scheduler-initiated cancels: the
-        // cooperative CancelBuild and the memory-preemption kill both mark
-        // it, and the sender consults it when the reply arrives.
+        // cooperative CancelBuild, the memory-preemption kill and the
+        // caller's advisory token all mark it, and the sender consults it
+        // when the reply arrives.
         preempt_src = std::make_shared<kota::cancellation_source>();
         stateless_workers[idx].preempt_source = preempt_src;
+    }
+
+    // Translate an advisory-token fire into the cooperative CancelBuild
+    // while this frame keeps awaiting the real reply below. The watcher's
+    // scope token fires when this frame exits, standing it down.
+    kota::cancellation_source watch_scope;
+    if(cancel) {
+        auto watcher = [](kota::cancellation_token advisory,
+                          kota::cancellation_token scope,
+                          std::shared_ptr<kota::ipc::BincodePeer> peer,
+                          std::shared_ptr<kota::cancellation_source> preempt) -> kota::task<> {
+            co_await kota::with_token(advisory.wait(), scope);
+            if(!advisory.cancelled()) {
+                co_return;  // the send finished first
+            }
+            LOG_DEBUG("Advisory cancel: sending cooperative CancelBuild");
+            peer->send_notification(worker::CancelBuildParams{});
+            preempt->cancel();
+        };
+        worker_tasks.spawn(watcher(*cancel, watch_scope.token(), peer, preempt_src));
     }
 
     auto result = co_await peer->send_request(params, opts);

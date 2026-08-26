@@ -178,16 +178,7 @@ void TaskGraph::finish_round(NodeId id, Round& round, RoundOutcome reported) {
 
         // Only a current successful round may replace the durable edge
         // set; stale and failed candidate sets are discarded above.
-        for(auto dep: node.deps) {
-            auto& backs = nodes.find(dep)->second.dependents;
-            auto pos = ranges::find(backs, id);
-            assert(pos != backs.end() && "durable back-edge lost");
-            backs.erase(pos);
-        }
-        node.deps.assign(round.candidates.begin(), round.candidates.end());
-        for(auto dep: round.candidates) {
-            nodes.find(dep)->second.dependents.push_back(id);
-        }
+        set_durable_edges(id, round.candidates);
     }
 
     node.compiling = false;
@@ -200,6 +191,37 @@ void TaskGraph::finish_round(NodeId id, Round& round, RoundOutcome reported) {
     // loop, so nothing re-enters the graph mid-landing.
     round.outcome = outcome;
     round.completion.set();
+}
+
+void TaskGraph::set_durable_edges(NodeId id, llvm::ArrayRef<NodeId> deps) {
+    auto& node = nodes.find(id)->second;
+    for(auto dep: node.deps) {
+        auto& backs = nodes.find(dep)->second.dependents;
+        auto pos = ranges::find(backs, id);
+        assert(pos != backs.end() && "durable back-edge lost");
+        backs.erase(pos);
+    }
+    node.deps.assign(deps.begin(), deps.end());
+    for(auto dep: deps) {
+        nodes.find(dep)->second.dependents.push_back(id);
+    }
+}
+
+void TaskGraph::declare(NodeId id, llvm::ArrayRef<NodeId> deps) {
+    nodes[id].id = id;
+
+    // Broken input can name a unit as its own import; a node never
+    // depends on itself (the same rule depend() enforces).
+    llvm::SmallVector<NodeId, 8> unique;
+    for(auto dep: deps) {
+        if(dep != id && !ranges::contains(unique, dep)) {
+            unique.push_back(dep);
+        }
+    }
+    for(auto dep: unique) {
+        nodes[dep].id = dep;
+    }
+    set_durable_edges(id, unique);
 }
 
 kota::task<DependResult> TaskGraph::depend_from(NodeId self,

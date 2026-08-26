@@ -14,6 +14,8 @@
 #include "index/shard.h"
 #include "index/tu_index.h"
 #include "sched/context.h"
+#include "sched/families/pcm.h"
+#include "sched/graph.h"
 #include "sched/workspace.h"
 #include "server/compiler/indexer.h"
 #include "server/state/session_store.h"
@@ -35,8 +37,10 @@ struct IndexerFixture {
     Workspace workspace;
     WorkerPool pool{loop};
     ContextResolver contexts{workspace};
+    TaskGraph graph{loop};
+    PCMFamily pcm{graph, workspace, contexts, pool};
     SessionStore sessions;
-    Indexer indexer{loop, workspace, pool, contexts, sessions};
+    Indexer indexer{loop, workspace, pool, contexts, pcm, sessions};
 
     /// Fail the entry's current dispatch: the launch ticket matches.
     Verdict fail(std::uint32_t id, bool crashed) {
@@ -267,7 +271,9 @@ Workspace workspace;
 SessionStore store;
 WorkerPool pool{loop};
 ContextResolver resolver{workspace};
-Indexer indexer{loop, workspace, pool, resolver, store};
+TaskGraph graph{loop};
+PCMFamily pcm{graph, workspace, resolver, pool};
+Indexer indexer{loop, workspace, pool, resolver, pcm, store};
 
 TEST_CASE(MergeRejectsGarbage) {
     // A worker shipping corrupted bytes (torn write, stale format) must not

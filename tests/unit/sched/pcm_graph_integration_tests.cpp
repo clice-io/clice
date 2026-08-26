@@ -4,7 +4,7 @@
 #include "command/command.h"
 #include "command/toolchain.h"
 #include "compile/compilation.h"
-#include "sched/legacy_pcm_graph.h"
+#include "sched/graph.h"
 #include "support/path_pool.h"
 #include "syntax/dependency_graph.h"
 #include "syntax/scan.h"
@@ -12,19 +12,86 @@
 namespace clice::testing {
 namespace {
 
+using DispatchFn = std::function<kota::task<RoundOutcome>(std::uint32_t path_id, bool foreground)>;
+using ResolveFn = std::function<llvm::SmallVector<std::uint32_t>(std::uint32_t path_id)>;
+
+constexpr std::uint8_t test_family = 1;
+
+NodeId nid(std::uint32_t path_id) {
+    return {test_family, path_id};
+}
+
+/// Legacy-shaped adapter driving the generalized TaskGraph, so the case
+/// bodies keep the old CompileGraph vocabulary: one family whose runner
+/// declares the resolver's edges via depend() and then dispatches.
+struct GraphShim {
+    TaskGraph graph;
+
+    GraphShim(kota::event_loop& loop, DispatchFn dispatch, ResolveFn resolve) : graph(loop) {
+        graph.register_family(test_family,
+                              [dispatch = std::move(dispatch), resolve = std::move(resolve)](
+                                  RoundContext& ctx,
+                                  NodeId id) -> kota::task<RoundOutcome> {
+                                  auto path_id = static_cast<std::uint32_t>(id.key);
+                                  for(auto dep: resolve(path_id)) {
+                                      switch(co_await ctx.depend(nid(dep))) {
+                                          case DependResult::Ready: break;
+                                          case DependResult::Failed: co_return RoundOutcome::Failed;
+                                          case DependResult::Cancelled:
+                                              co_return RoundOutcome::Stale;
+                                      }
+                                  }
+                                  co_return co_await dispatch(path_id, ctx.foreground());
+                              });
+    }
+
+    kota::task<bool> compile(std::uint32_t path_id, bool foreground = false) {
+        auto outcome = co_await graph.request(nid(path_id), {.foreground = foreground});
+        co_return outcome == JoinOutcome::Success;
+    }
+
+    llvm::SmallVector<std::uint32_t> update(std::uint32_t path_id) {
+        llvm::SmallVector<std::uint32_t> dirtied;
+        for(auto id: graph.update(nid(path_id))) {
+            dirtied.push_back(static_cast<std::uint32_t>(id.key));
+        }
+        return dirtied;
+    }
+
+    bool is_dirty(std::uint32_t path_id) const {
+        return graph.is_dirty(nid(path_id));
+    }
+
+    bool is_compiling(std::uint32_t path_id) const {
+        return graph.is_compiling(nid(path_id));
+    }
+
+    std::uint32_t refcount(std::uint32_t path_id) const {
+        return graph.refcount(nid(path_id));
+    }
+
+    bool idle() const {
+        return graph.idle();
+    }
+
+    kota::task<> shutdown() {
+        return graph.shutdown();
+    }
+};
+
 /// Build a dispatch_fn that compiles PCMs in-process (no workers).
 /// Clang requires ALL transitive PCM deps (not just direct imports)
 /// in PrebuiltModuleFiles, so we pass every available PCM.
-CompileGraph::dispatch_fn make_dispatch(CompilationDatabase& cdb,
-                                        Toolchain& toolchain,
-                                        PathPool& pool,
-                                        DependencyGraph& graph,
-                                        llvm::DenseMap<std::uint32_t, std::string>& pcm_paths) {
-    return [&](std::uint32_t path_id, bool) -> kota::task<CompileUnit::Outcome> {
+DispatchFn make_dispatch(CompilationDatabase& cdb,
+                         Toolchain& toolchain,
+                         PathPool& pool,
+                         DependencyGraph& graph,
+                         llvm::DenseMap<std::uint32_t, std::string>& pcm_paths) {
+    return [&](std::uint32_t path_id, bool) -> kota::task<RoundOutcome> {
         auto file_path = pool.resolve(path_id);
         auto results = cdb.lookup(file_path);
         if(results.empty()) {
-            co_return CompileUnit::Outcome::Failed;
+            co_return RoundOutcome::Failed;
         }
         toolchain.resolve_or_warn(results[0]);
 
@@ -45,7 +112,7 @@ CompileGraph::dispatch_fn make_dispatch(CompilationDatabase& cdb,
 
         auto tmp = fs::createTemporaryFile("test-pcm", "pcm");
         if(!tmp) {
-            co_return CompileUnit::Outcome::Failed;
+            co_return RoundOutcome::Failed;
         }
         cp.output_file = *tmp;
 
@@ -54,17 +121,17 @@ CompileGraph::dispatch_fn make_dispatch(CompilationDatabase& cdb,
 
         if(unit.completed()) {
             pcm_paths[path_id] = std::string(cp.output_file);
-            co_return CompileUnit::Outcome::Success;
+            co_return RoundOutcome::Success;
         }
-        co_return CompileUnit::Outcome::Failed;
+        co_return RoundOutcome::Failed;
     };
 }
 
 /// Build a resolve_fn that lazily scans module files for imports.
-CompileGraph::resolve_fn make_resolver(CompilationDatabase& cdb,
-                                       Toolchain& toolchain,
-                                       PathPool& pool,
-                                       DependencyGraph& graph) {
+ResolveFn make_resolver(CompilationDatabase& cdb,
+                        Toolchain& toolchain,
+                        PathPool& pool,
+                        DependencyGraph& graph) {
     return [&](std::uint32_t path_id) -> llvm::SmallVector<std::uint32_t> {
         auto file_path = pool.resolve(path_id);
         auto results = cdb.lookup(file_path);
@@ -106,21 +173,21 @@ struct ModuleTestEnv {
     }
 };
 
-TEST_SUITE(CompileGraphIntegration) {
+TEST_SUITE(PCMGraphIntegration) {
 
 ModuleTestEnv env;
 std::optional<kota::event_loop> loop;
-std::optional<CompileGraph> cg;
+std::optional<GraphShim> cg;
 
-CompileGraph::dispatch_fn default_dispatch() {
+DispatchFn default_dispatch() {
     return make_dispatch(env.cdb, env.toolchain, env.pool, env.graph, env.pcm_paths);
 }
 
-CompileGraph::resolve_fn default_resolver() {
+ResolveFn default_resolver() {
     return make_resolver(env.cdb, env.toolchain, env.pool, env.graph);
 }
 
-void make_graph(CompileGraph::dispatch_fn dispatch, CompileGraph::resolve_fn resolve) {
+void make_graph(DispatchFn dispatch, ResolveFn resolve) {
     loop.emplace();
     cg.emplace(*loop, std::move(dispatch), std::move(resolve));
 }
@@ -1117,7 +1184,7 @@ TEST_CASE(shared_dep_import_switch) {
     kota::event shared_proceed;
     int shared_calls = 0;
     auto inner = default_dispatch();
-    auto dispatch = [&](std::uint32_t pid, bool) -> kota::task<CompileUnit::Outcome> {
+    auto dispatch = [&](std::uint32_t pid, bool) -> kota::task<RoundOutcome> {
         if(pid == pid_shared) {
             shared_calls += 1;
             shared_started.set();
@@ -1215,7 +1282,7 @@ TEST_CASE(shared_dep_fails_both) {
     kota::event shared_proceed;
     int shared_calls = 0;
     auto inner = default_dispatch();
-    auto dispatch = [&](std::uint32_t pid, bool) -> kota::task<CompileUnit::Outcome> {
+    auto dispatch = [&](std::uint32_t pid, bool) -> kota::task<RoundOutcome> {
         if(pid == pid_shared) {
             shared_calls += 1;
             shared_started.set();
@@ -1262,7 +1329,7 @@ TEST_CASE(shared_dep_fails_both) {
     });
 }
 
-};  // TEST_SUITE(CompileGraphIntegration)
+};  // TEST_SUITE(PCMGraphIntegration)
 
 }  // namespace
 }  // namespace clice::testing

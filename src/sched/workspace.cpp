@@ -163,21 +163,10 @@ llvm::SmallVector<std::uint32_t> Workspace::rescan_after_save(std::uint32_t path
         }
     }
 
-    if(compile_graph) {
-        auto result = compile_graph->update(path_id);
-        for(auto id: result) {
-            dirtied.push_back(id);
-            pcm_paths.erase(id);
-            pcm_cache.erase(id);
-        }
-    }
     return dirtied;
 }
 
 void Workspace::on_file_closed(std::uint32_t path_id) {
-    if(compile_graph && compile_graph->has_unit(path_id)) {
-        compile_graph->update(path_id);
-    }
     // PCH entries are content-keyed and may be shared with other sessions,
     // so nothing entry-level to clean up — but the loaded-state budget
     // shrinks with the open count, and this is the moment it does.
@@ -668,12 +657,6 @@ void Workspace::fill_pcm_deps(std::unordered_map<std::string, std::string>& pcms
         if(mod_it != path_to_module.end()) {
             pcms[mod_it->second] = pcm_path;
         }
-    }
-}
-
-void Workspace::cancel_all() {
-    if(compile_graph) {
-        compile_graph->cancel_all();
     }
 }
 

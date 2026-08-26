@@ -5,6 +5,8 @@
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "sched/context.h"
+#include "sched/families/pcm.h"
+#include "sched/graph.h"
 #include "server/compiler/compiler.h"
 #include "server/worker_test_helpers.h"
 #include "support/anomaly.h"
@@ -28,12 +30,15 @@ namespace {
 
 TEST_SUITE(CompilerGuards) {
 
-TEST_CASE(EpochGuardsPchWrite) {
+TEST_CASE(EpochGuardsPCHWrite) {
     kota::event_loop loop;
     Workspace workspace;
     ContextResolver contexts(workspace);
     WorkerPool pool(loop);
-    Compiler compiler(loop, workspace, contexts, pool);
+    TaskGraph graph(loop);
+    PCMFamily pcm(graph, workspace, contexts, pool);
+    pcm.register_runner();
+    Compiler compiler(loop, workspace, contexts, pcm, pool);
 
     Session session;
     session.path_id = workspace.path_pool.intern("/proj/a.cpp");
@@ -76,7 +81,10 @@ TEST_CASE(QuarantineBlocksBuilds) {
     Workspace workspace;
     ContextResolver contexts(workspace);
     WorkerPool pool(loop);
-    Compiler compiler(loop, workspace, contexts, pool);
+    TaskGraph graph(loop);
+    PCMFamily pcm(graph, workspace, contexts, pool);
+    pcm.register_runner();
+    Compiler compiler(loop, workspace, contexts, pcm, pool);
 
     auto session = std::make_shared<Session>();
     session->path_id = workspace.path_pool.intern("/proj/poison.cpp");
@@ -100,7 +108,7 @@ TEST_CASE(QuarantineBlocksBuilds) {
     EXPECT_TRUE(done);
 }
 
-TEST_CASE(PchCrashCountsStreak) {
+TEST_CASE(PCHCrashCountsStreak) {
     // A PCH build that kills its stateless worker must count toward the
     // document's quarantine streak: the preamble is the document's content
     // too, and without this a poison preamble never quarantines.
@@ -123,7 +131,10 @@ TEST_CASE(PchCrashCountsStreak) {
 
     ContextResolver contexts(workspace);
     WorkerPool pool(loop);
-    Compiler compiler(loop, workspace, contexts, pool);
+    TaskGraph graph(loop);
+    PCMFamily pcm(graph, workspace, contexts, pool);
+    pcm.register_runner();
+    Compiler compiler(loop, workspace, contexts, pcm, pool);
 
     Session session;
     session.path_id = workspace.path_pool.intern(src);
@@ -170,7 +181,10 @@ TEST_CASE(QuarantineBlocksFormat) {
     Workspace workspace;
     ContextResolver contexts(workspace);
     WorkerPool pool(loop);
-    Compiler compiler(loop, workspace, contexts, pool);
+    TaskGraph graph(loop);
+    PCMFamily pcm(graph, workspace, contexts, pool);
+    pcm.register_runner();
+    Compiler compiler(loop, workspace, contexts, pcm, pool);
 
     auto session = std::make_shared<Session>();
     session->path_id = workspace.path_pool.intern("/proj/poison.cpp");
@@ -200,7 +214,10 @@ TEST_CASE(GateAnnouncesQuarantine) {
     Workspace workspace;
     ContextResolver contexts(workspace);
     WorkerPool pool(loop);
-    Compiler compiler(loop, workspace, contexts, pool);
+    TaskGraph graph(loop);
+    PCMFamily pcm(graph, workspace, contexts, pool);
+    pcm.register_runner();
+    Compiler compiler(loop, workspace, contexts, pcm, pool);
 
     auto session = std::make_shared<Session>();
     session->path_id = workspace.path_pool.intern("/proj/poison.cpp");
@@ -228,7 +245,7 @@ TEST_CASE(GateAnnouncesQuarantine) {
     EXPECT_TRUE(session->output->diagnostics.data.contains("quarantined"));
 }
 
-TEST_CASE(PchCrashBlocksBuild) {
+TEST_CASE(PCHCrashBlocksBuild) {
     // A PCH crash inside a completion build's dependency prep can tip the
     // document into quarantine after the entry gate: the build must stop
     // instead of dispatching the same content to one more worker.
@@ -251,7 +268,10 @@ TEST_CASE(PchCrashBlocksBuild) {
 
     ContextResolver contexts(workspace);
     WorkerPool pool(loop);
-    Compiler compiler(loop, workspace, contexts, pool);
+    TaskGraph graph(loop);
+    PCMFamily pcm(graph, workspace, contexts, pool);
+    pcm.register_runner();
+    Compiler compiler(loop, workspace, contexts, pcm, pool);
 
     auto session = std::make_shared<Session>();
     session->path_id = workspace.path_pool.intern(src);
@@ -299,7 +319,10 @@ TEST_CASE(StopUnblocksCompileWaiters) {
     Workspace workspace;
     ContextResolver contexts(workspace);
     WorkerPool pool(loop);
-    Compiler compiler(loop, workspace, contexts, pool);
+    TaskGraph graph(loop);
+    PCMFamily pcm(graph, workspace, contexts, pool);
+    pcm.register_runner();
+    Compiler compiler(loop, workspace, contexts, pcm, pool);
 
     auto session = std::make_shared<Session>();
     session->path_id = workspace.path_pool.intern(src);
@@ -371,7 +394,10 @@ TEST_CASE(AbandonCancelsDepsScope) {
     Workspace workspace;
     ContextResolver contexts(workspace);
     WorkerPool pool(loop);
-    Compiler compiler(loop, workspace, contexts, pool);
+    TaskGraph graph(loop);
+    PCMFamily pcm(graph, workspace, contexts, pool);
+    pcm.register_runner();
+    Compiler compiler(loop, workspace, contexts, pcm, pool);
 
     auto session = std::make_shared<Session>();
     session->path_id = workspace.path_pool.intern(tmp.path("scoped.cpp"));
@@ -409,7 +435,10 @@ TEST_CASE(EditInterruptsStaleCompile) {
     Workspace workspace;
     ContextResolver contexts(workspace);
     WorkerPool pool(loop);
-    Compiler compiler(loop, workspace, contexts, pool);
+    TaskGraph graph(loop);
+    PCMFamily pcm(graph, workspace, contexts, pool);
+    pcm.register_runner();
+    Compiler compiler(loop, workspace, contexts, pcm, pool);
 
     auto session = std::make_shared<Session>();
     session->path_id = workspace.path_pool.intern(src);
@@ -496,7 +525,10 @@ TEST_CASE(SupersededCompileCancelled) {
     Workspace workspace;
     ContextResolver contexts(workspace);
     WorkerPool pool(loop);
-    Compiler compiler(loop, workspace, contexts, pool);
+    TaskGraph graph(loop);
+    PCMFamily pcm(graph, workspace, contexts, pool);
+    pcm.register_runner();
+    Compiler compiler(loop, workspace, contexts, pcm, pool);
 
     auto session = std::make_shared<Session>();
     session->path_id = workspace.path_pool.intern(src);
@@ -579,7 +611,10 @@ TEST_CASE(ClientCancelSparesCompile) {
     Workspace workspace;
     ContextResolver contexts(workspace);
     WorkerPool pool(loop);
-    Compiler compiler(loop, workspace, contexts, pool);
+    TaskGraph graph(loop);
+    PCMFamily pcm(graph, workspace, contexts, pool);
+    pcm.register_runner();
+    Compiler compiler(loop, workspace, contexts, pcm, pool);
 
     auto session = std::make_shared<Session>();
     session->path_id = workspace.path_pool.intern(src);
@@ -680,7 +715,10 @@ TEST_CASE(PoisonPreambleBudget) {
 
     ContextResolver contexts(workspace);
     WorkerPool pool(loop);
-    Compiler compiler(loop, workspace, contexts, pool);
+    TaskGraph graph(loop);
+    PCMFamily pcm(graph, workspace, contexts, pool);
+    pcm.register_runner();
+    Compiler compiler(loop, workspace, contexts, pcm, pool);
 
     auto make_session = [&] {
         Session session;

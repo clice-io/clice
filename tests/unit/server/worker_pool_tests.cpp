@@ -1749,6 +1749,63 @@ TEST_CASE(StatelessRequest) {
     EXPECT_TRUE(done);
 }
 
+TEST_CASE(AdvisoryCancelCooperates) {
+    // s#1: an advisory-token fire mid-build turns into the cooperative
+    // CancelBuild. The sender keeps awaiting the real reply — the slot
+    // frees only once the worker is actually idle — and the result is
+    // classified as a cancellation, with the worker healthy afterwards.
+    TempDir tmp;
+    std::string big;
+    for(int i = 0; i < 200000; i += 1) {
+        big += "int v_" + std::to_string(i) + " = " + std::to_string(i) + ";\n";
+    }
+    tmp.touch("big.cpp", big);
+    auto big_src = tmp.path("big.cpp");
+    tmp.touch("small.cpp", "int y = 2;\n");
+    auto small_src = tmp.path("small.cpp");
+
+    WorkerPoolFixture f;
+    bool done = false;
+    f.run([&]() -> kota::task<> {
+        CO_ASSERT_TRUE(f.start(1, 0));
+        co_await kota::sleep(500);
+
+        worker::IndexParams params;
+        params.file = big_src;
+        params.directory = "/tmp";
+        params.arguments = make_args(big_src);
+
+        kota::cancellation_source advisory;
+        bool cancelled = false;
+        auto sender = [&]() -> kota::task<> {
+            auto result =
+                co_await f.pool.send_stateless(params, worker::Priority::Low, {}, advisory.token());
+            cancelled =
+                !result.has_value() && result.error().code == worker::dispatch_errc::cancelled;
+        };
+        auto driver = [&]() -> kota::task<> {
+            co_await kota::sleep(300);
+            advisory.cancel();
+            co_return;
+        };
+        co_await kota::when_all(sender(), driver());
+        EXPECT_TRUE(cancelled);
+
+        // The worker replied and survived: the same slot serves the next
+        // request.
+        worker::IndexParams follow;
+        follow.file = small_src;
+        follow.directory = "/tmp";
+        follow.arguments = make_args(small_src);
+        auto result = co_await f.pool.send_stateless(follow, worker::Priority::Low);
+        EXPECT_TRUE(result.has_value());
+
+        co_await f.stop();
+        done = true;
+    });
+    EXPECT_TRUE(done);
+}
+
 TEST_CASE(CrashAndRestart) {
     WorkerPoolFixture f;
     bool done = false;

@@ -12,6 +12,7 @@
 #include "index/shard.h"
 #include "index/tu_index.h"
 #include "sched/context.h"
+#include "sched/families/pcm.h"
 #include "server/state/session_store.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
@@ -135,8 +136,9 @@ Indexer::Indexer(kota::event_loop& loop,
                  Workspace& workspace,
                  WorkerPool& pool,
                  ContextResolver& contexts,
+                 PCMFamily& pcm,
                  const SessionStore& sessions) :
-    loop(loop), bg_tasks(loop), workspace(workspace), pool(pool), contexts(contexts),
+    loop(loop), bg_tasks(loop), workspace(workspace), pool(pool), contexts(contexts), pcm(pcm),
     sessions(sessions) {
     capacity_conn = pool.on_stateless_capacity.connect([this] { capacity_event.set(); });
 }
@@ -1411,8 +1413,8 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id,
 
     // For module interface units, compile their PCM (and transitive deps)
     // first so the stateless worker has the artifacts it needs.
-    if(workspace.compile_graph && workspace.path_to_module.contains(server_path_id)) {
-        co_await workspace.compile_graph->compile(server_path_id);
+    if(workspace.path_to_module.contains(server_path_id)) {
+        co_await pcm.build(server_path_id);
     }
 
     worker::IndexParams params;

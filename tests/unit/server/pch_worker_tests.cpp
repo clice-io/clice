@@ -41,7 +41,7 @@ TEST_CASE(BuildPCHThenCompile) {
     bool phase1_done = false;
 
     sl.run([&]() -> kota::task<> {
-        worker::BuildPchParams params;
+        worker::BuildPCHParams params;
         params.file = main_file;
         params.directory = dir;
         params.arguments = {"clang++",
@@ -134,7 +134,7 @@ TEST_CASE(BlobWriteFailure) {
 
     bool done = false;
     sl.run([&]() -> kota::task<> {
-        worker::BuildPchParams params;
+        worker::BuildPCHParams params;
         params.file = main_file;
         params.directory = dir;
         params.arguments = {"clang++",

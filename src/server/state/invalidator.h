@@ -16,6 +16,8 @@
 
 namespace clice {
 
+class PCMFamily;
+
 /// A change to a file the server cares about, described by what happened —
 /// not by what must be invalidated. Events are plain values handed to
 /// MasterServer::dispatch(); there is no log and no replay (this is not
@@ -211,17 +213,17 @@ public:
     bool save_cache = false;
     /// Kick the background indexer's scheduler.
     bool reschedule_indexing = false;
+
     /// A CDB reload may have introduced the first C++20 modules; create the
     /// compile graph if it does not exist yet. Executed by the dispatcher,
     /// which owns the Compiler.
-    bool ensure_compile_graph = false;
 
     bool empty() const {
         return mark_ast_dirty.empty() && mark_lost.empty() && reset_trial.empty() &&
                reset_header_mode.empty() && force_revalidate.empty() &&
                reindex_content_changed.empty() && reindex_deps_only.empty() &&
                clear_reindex.empty() && drop_index.empty() && drop_context.empty() &&
-               !recheck_contexts && !save_cache && !reschedule_indexing && !ensure_compile_graph;
+               !recheck_contexts && !save_cache && !reschedule_indexing;
     }
 };
 
@@ -257,6 +259,7 @@ public:
     Invalidator(Workspace& workspace,
                 const SessionStore& store,
                 const ContextResolver& contexts,
+                PCMFamily& pcm,
                 ReadFile read_file = {});
 
     /// Fold a batch of events into one deduplicated effect set.
@@ -282,6 +285,7 @@ private:
     Workspace& workspace;
     const SessionStore& store;
     const ContextResolver& contexts;
+    PCMFamily& pcm;
     ReadFile read_file;
 };
 
