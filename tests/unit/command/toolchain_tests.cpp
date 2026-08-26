@@ -341,6 +341,24 @@ TEST_CASE(KeyTracksWorkingDirectory) {
               tc.cache_key("/tmp/a.cpp", args));
 }
 
+TEST_CASE(KeyIgnoresUnenterableDirectory, skip = Windows) {
+    Toolchain tc;
+    std::vector<const char*> args = {"clang++", "-std=c++23"};
+
+    TempDir temp;
+    temp.mkdir("sealed");
+    auto sealed = temp.path("sealed");
+
+    // Denying search permission makes the child's chdir fail while stat still
+    // succeeds, so `is_directory` alone would accept it and the spawn failure
+    // would be cached for the session.
+    ASSERT_TRUE(!llvm::sys::fs::setPermissions(sealed, llvm::sys::fs::perms::no_perms));
+    auto restore = llvm::make_scope_exit(
+        [&] { llvm::sys::fs::setPermissions(sealed, llvm::sys::fs::perms::all_all); });
+
+    EXPECT_EQ(tc.cache_key("/tmp/a.cpp", args, sealed), tc.cache_key("/tmp/a.cpp", args));
+}
+
 TEST_CASE(ResolveEmptyFlags) {
     Toolchain tc;
     CompileCommand cmd;

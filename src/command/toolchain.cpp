@@ -279,9 +279,25 @@ kota::task<std::expected<GCCToolchainFlags, std::string>>
 /// deciding twice lets a directory that appears or vanishes in between store a
 /// probe's result under a key describing the other case.
 llvm::StringRef usable_directory(llvm::StringRef directory) {
-    if(directory.empty() || fs::is_directory(directory))
+    if(directory.empty())
         return directory;
-    return {};
+    if(!fs::is_directory(directory))
+        return {};
+#ifndef _WIN32
+    /// Existing is not enough: the child chdirs into it, which needs search
+    /// permission, while `is_directory` only stats it. A mode that denies search
+    /// would otherwise surface as a spawn failure that the negative cache keeps
+    /// for the session, unrecoverable even once the mode is fixed.
+    ///
+    /// `access` directly rather than `fs::can_execute`, which answers a different
+    /// question — it reports false for anything that is not a regular file, so
+    /// every directory would look unusable. Windows traverse rights are not
+    /// expressible this way, so there the spawn failure stays the only signal.
+    llvm::SmallString<128> terminated(directory);
+    if(::access(terminated.c_str(), X_OK) != 0)
+        return {};
+#endif
+    return directory;
 }
 
 /// Announce a degraded directory where a probe is about to run, so the warning
