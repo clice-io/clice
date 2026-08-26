@@ -18,7 +18,7 @@
 #include "index/shard.h"
 #include "index/tu_index.h"
 #include "semantic/symbol.h"
-#include "server/compiler/compile_graph.h"
+#include "sched/legacy_pcm_graph.h"
 #include "server/state/quarantine.h"
 #include "support/cache_store.h"
 #include "support/path_pool.h"

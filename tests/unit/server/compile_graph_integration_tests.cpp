@@ -4,7 +4,7 @@
 #include "command/command.h"
 #include "command/toolchain.h"
 #include "compile/compilation.h"
-#include "server/compiler/compile_graph.h"
+#include "sched/legacy_pcm_graph.h"
 #include "support/path_pool.h"
 #include "syntax/dependency_graph.h"
 #include "syntax/scan.h"

@@ -1,4 +1,4 @@
-#include "server/compiler/compile_graph.h"
+#include "sched/legacy_pcm_graph.h"
 
 #include <algorithm>
 #include <cassert>
