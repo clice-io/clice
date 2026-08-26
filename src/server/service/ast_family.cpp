@@ -327,33 +327,21 @@ kota::task<DependResult> ASTFamily::depend_modules(RoundContext& ctx,
                                                    const std::vector<std::string>& arguments,
                                                    llvm::StringRef text) {
     // A project without module units normally pays nothing — no CDB
-    // lookup, no precise scan. The empty truth is still published: a
-    // durable import edge earned while providers existed must stop
-    // cascading here once they are gone, even when the compile itself
-    // later fails (failed rounds keep declared edges). A buffer that
-    // lexically carries import syntax still pays the precise scan for
-    // its recording side effect: the compile is about to fail on the
-    // unresolved names, and the name's first provider must be able to
-    // find this document (the disk-derived candidate set cannot see
-    // unsaved edits).
-    if(workspace.path_to_module.empty()) {
+    // lookup, no precise scan. The lexical gates pay it anyway when an
+    // import could hide where the fast path cannot see: in the buffer
+    // itself, behind an -include'd file, or (for a header document)
+    // inside the appended suffix's includer. The scan's sentinel edges
+    // are what let the name's first provider re-dirty this document.
+    bool scan_worth = !workspace.path_to_module.empty() || scan_quick(text).has_import ||
+                      contexts.header_context(path_id) != nullptr ||
+                      llvm::any_of(arguments, [](const std::string& arg) {
+                          return llvm::StringRef(arg).starts_with("-include");
+                      });
+    if(!scan_worth) {
+        // The empty truth is still published: a durable import edge
+        // earned earlier must stop cascading here, even when the compile
+        // itself later fails (failed rounds keep declared edges).
         graph.declare(node(path_id), {});
-        // The lexical check misses imports the buffer cannot show: an
-        // -include'd file's, or (for a header document) the appended
-        // suffix's includer — those gates pay the precise scan too.
-        bool might_import = scan_quick(text).has_import ||
-                            contexts.header_context(path_id) != nullptr ||
-                            llvm::any_of(arguments, [](const std::string& arg) {
-                                return llvm::StringRef(arg).starts_with("-include");
-                            });
-        if(might_import) {
-            llvm::SmallVector<const char*, 32> argv;
-            argv.reserve(arguments.size());
-            for(auto& arg: arguments) {
-                argv.push_back(arg.c_str());
-            }
-            pcm.direct_deps(path_id, argv, directory, std::optional<llvm::StringRef>(text));
-        }
         co_return DependResult::Ready;
     }
 
@@ -370,20 +358,19 @@ kota::task<DependResult> ASTFamily::depend_modules(RoundContext& ctx,
     //
     // The import list is scanner truth, not build output: commit it as
     // durable edges before waiting, so a document whose compile fails
-    // stays cascade-reachable from its imports — fixing an import must
-    // re-dirty the documents it broke. The per-round resolve keeps the
-    // edges honest across CDB, buffer and import changes.
+    // stays cascade-reachable from its imports — fixing or providing an
+    // import must re-dirty the documents it broke. The per-round resolve
+    // keeps the edges honest across CDB, buffer and import changes.
     llvm::SmallVector<const char*, 32> argv;
     argv.reserve(arguments.size());
     for(auto& arg: arguments) {
         argv.push_back(arg.c_str());
     }
     auto deps = pcm.direct_deps(path_id, argv, directory, std::optional<llvm::StringRef>(text));
-    llvm::SmallVector<NodeId, 8> ids;
-    for(auto dep: deps) {
-        ids.push_back({pcm_family, dep});
+    graph.declare(node(path_id), deps.declared);
+    if(deps.resolved.empty()) {
+        co_return DependResult::Ready;
     }
-    graph.declare(node(path_id), ids);
 
     // Building a dependency can itself evict another clean module's PCM
     // under budget pressure, reopening the window the previous attempt's
@@ -395,7 +382,7 @@ kota::task<DependResult> ASTFamily::depend_modules(RoundContext& ctx,
             break;
         }
 
-        for(auto dep: deps) {
+        for(auto dep: deps.resolved) {
             switch(co_await ctx.depend({pcm_family, dep})) {
                 case DependResult::Ready: break;
                 case DependResult::Failed: co_return DependResult::Failed;

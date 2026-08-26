@@ -480,8 +480,6 @@ TEST_CASE(BufferImportBuildsPCM) {
     auto mod_ids = stack.workspace.dep_graph.lookup_module("m");
     ASSERT_FALSE(mod_ids.empty());
     EXPECT_TRUE(stack.workspace.pcm_cache.contains(mod_ids[0]));
-    // The scan-time import record feeds new-provider invalidation.
-    EXPECT_TRUE(stack.workspace.module_importers.contains("m"));
 }
 
 TEST_CASE(BufferImportRecorded) {
@@ -519,7 +517,9 @@ TEST_CASE(BufferImportRecorded) {
     stack.loop.run();
     EXPECT_TRUE(done);
 
-    EXPECT_TRUE(stack.workspace.module_importers.contains("m"));
+    // The scan declared the unresolved name's sentinel edge — the hook
+    // a first provider later cascades through.
+    EXPECT_TRUE(stack.graph.has_node(PCMFamily::unresolved_node("m")));
 
     logging::reset_anomaly_for_testing();
 }
@@ -564,7 +564,7 @@ TEST_CASE(IncludeImportRecorded) {
     stack.loop.run();
     EXPECT_TRUE(done);
 
-    EXPECT_TRUE(stack.workspace.module_importers.contains("m"));
+    EXPECT_TRUE(stack.graph.has_node(PCMFamily::unresolved_node("m")));
 
     logging::reset_anomaly_for_testing();
 }

@@ -92,13 +92,19 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, std::uint32_t pat
     // snapshot below would otherwise race a cold build and parse without
     // the module files. The scan runs under the command resolved above —
     // a borrowed header host's flags select the same imports the parse
-    // will see. A failed PCM build is not terminal on either shape — the
-    // parse consumes whatever artifacts landed and the worker reports its
-    // own failure if they are not enough.
-    if(!workspace.path_to_module.empty()) {
-        llvm::SmallVector<std::uint32_t> deps;
-        if(workspace.path_to_module.contains(path_id)) {
-            deps.push_back(path_id);
+    // will see — and its sentinel edges are what let an unresolved
+    // name's first provider re-dirty this TU. In a project without
+    // providers the lexical candidate set (from the dependency scan)
+    // gates the cost. A failed PCM build is not terminal on either
+    // shape — the parse consumes whatever artifacts landed and the
+    // worker reports its own failure if they are not enough.
+    bool own_module = workspace.path_to_module.contains(path_id);
+    if(own_module || !workspace.path_to_module.empty() ||
+       workspace.dep_graph.import_candidates().contains(path_id)) {
+        PCMFamily::ModuleDeps deps;
+        if(own_module) {
+            deps.resolved.push_back(path_id);
+            deps.declared.push_back({pcm_family, path_id});
         } else {
             llvm::SmallVector<const char*, 32> argv;
             argv.reserve(params.arguments.size());
@@ -109,26 +115,23 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, std::uint32_t pat
         }
 
         // Scanner truth outlives the run: committed as durable edges even
-        // when the run or a build fails, so fixing an import re-dirties
-        // this TU — the invalidator reaches closed TUs through these
-        // edges alone (the include reverse map carries no import edges).
-        llvm::SmallVector<NodeId, 8> ids;
-        for(auto dep: deps) {
-            ids.push_back({pcm_family, dep});
-        }
-        graph.declare(node(path_id), ids);
+        // when the run or a build fails, so fixing or providing an import
+        // re-dirties this TU — the invalidator reaches closed TUs through
+        // these edges alone (the include reverse map carries no import
+        // edges).
+        graph.declare(node(path_id), deps.declared);
 
         // On-disk PCM blobs can be LRU-evicted while their nodes stay
         // clean; re-dirty evicted ones so depend() rebuilds instead of
         // handing the worker a dead path. Bounded: a rebuild can itself
         // evict under budget pressure, and past the bound the parse fails
         // visibly on the missing file.
-        for(int attempt = 0; attempt < 3; attempt += 1) {
+        for(int attempt = 0; !deps.resolved.empty() && attempt < 3; attempt += 1) {
             bool any_evicted = pcm.revalidate_blobs();
             if(attempt > 0 && !any_evicted) {
                 break;
             }
-            for(auto dep: deps) {
+            for(auto dep: deps.resolved) {
                 if(co_await ctx.depend({pcm_family, dep}) == DependResult::Cancelled) {
                     landed[path_id] = {.verdict = Verdict::Preempted};
                     co_return RoundOutcome::Stale;

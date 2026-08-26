@@ -10,6 +10,7 @@
 #include "worker/pool.h"
 
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/xxhash.h"
 
 namespace clice {
 
@@ -80,31 +81,54 @@ public:
     /// new artifact.
     std::function<void()> on_indexing_needed;
 
+    /// A scan's module dependencies, split by what a consumer does with
+    /// them: `resolved` names module units to wait on; `declared` is the
+    /// full durable edge set — resolved units' nodes plus one sentinel
+    /// per unresolved name.
+    struct ModuleDeps {
+        llvm::SmallVector<std::uint32_t> resolved;
+        llvm::SmallVector<NodeId, 8> declared;
+    };
+
+    /// The graph identity of an import that resolves to nothing: a node
+    /// that never runs a round and exists only to be edged at. When the
+    /// name's first provider appears, provider_appeared() updates it and
+    /// the ordinary cascade reaches every consumer whose scan declared
+    /// the edge — no side bookkeeping of who failed against the name.
+    /// The high bit keeps the key space disjoint from path_ids.
+    static NodeId unresolved_node(llvm::StringRef name) {
+        return {pcm_family, (1ull << 63) | (llvm::xxh3_64bits(name) >> 1)};
+    }
+
+    /// A module name gained a provider it lacked: void the sentinel's
+    /// dependents (dropping dirtied units' cached PCM state on the way)
+    /// and return them for serving-side treatment.
+    llvm::SmallVector<NodeId> provider_appeared(llvm::StringRef name);
+
     /// Scan a file for its direct module dependencies (lazy, on every
     /// use — a re-resolve is inherent, so a CDB or import change is
-    /// always seen by the next round). Consumers that wait on the
-    /// resulting PCM nodes through their own rounds (the AST family)
-    /// resolve here and depend on {pcm_family, dep} directly. An
-    /// engaged `content` scans it in place of the file's on-disk text —
-    /// even when empty (an open buffer's imports count before they are
-    /// saved, and an emptied buffer has none).
-    llvm::SmallVector<std::uint32_t>
-        direct_deps(std::uint32_t path_id, std::optional<llvm::StringRef> content = std::nullopt);
+    /// always seen by the next round). Consumers declare the full edge
+    /// set and wait on the resolved subset. An engaged `content` scans
+    /// it in place of the file's on-disk text — even when empty (an open
+    /// buffer's imports count before they are saved, and an emptied
+    /// buffer has none).
+    ModuleDeps direct_deps(std::uint32_t path_id,
+                           std::optional<llvm::StringRef> content = std::nullopt);
 
     /// The already-resolved-command flavor: scans under exactly the
     /// arguments the caller will compile with. The AST path uses it so a
     /// context choice or donated header host cannot diverge between the
     /// scan and the parse — the path_id flavor re-picks a CDB entry,
     /// which is only right for whole-TU runs on real commands.
-    llvm::SmallVector<std::uint32_t> direct_deps(std::uint32_t path_id,
-                                                 llvm::ArrayRef<const char*> arguments,
-                                                 llvm::StringRef directory,
-                                                 std::optional<llvm::StringRef> content);
+    ModuleDeps direct_deps(std::uint32_t path_id,
+                           llvm::ArrayRef<const char*> arguments,
+                           llvm::StringRef directory,
+                           std::optional<llvm::StringRef> content);
 
 private:
-    /// Commit the resolved imports as the unit's durable edges (see
+    /// Commit the scan's full edge set as the unit's durable edges (see
     /// TaskGraph::declare).
-    void declare_deps(std::uint32_t path_id, llvm::ArrayRef<std::uint32_t> deps);
+    void declare_deps(std::uint32_t path_id, llvm::ArrayRef<NodeId> deps);
 
     /// One PCM round: declare dependency edges, revalidate the cache, and
     /// dispatch the build.

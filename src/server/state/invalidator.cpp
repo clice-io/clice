@@ -3,6 +3,8 @@
 #include <utility>
 
 #include "sched/families/pcm.h"
+#include "sched/families/turun.h"
+#include "server/service/ast_family.h"
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSet.h"
@@ -58,66 +60,33 @@ void Invalidator::cascade_compile_graph(std::uint32_t path_id, DirtySet& dirty) 
     }
 }
 
-void Invalidator::dirty_unresolved_importer(std::uint32_t importer, DirtySet& dirty) {
-    // The importer compiled and indexed against an unresolved name: its
-    // rows lack the module's symbols and its dep snapshot never named
-    // the interface, so the content-hash gate would filter a DepsOnly
-    // reindex — ContentChanged bypasses it. A header importer (a legal
-    // place for `import`) drags its consuming TUs along: they inherited
-    // the unresolved import through the include.
-    auto dirty_one = [&](std::uint32_t path_id) {
-        // A file this batch already declared dead stays dead — the
-        // stale record or reverse map must not resurrect it and drop
-        // the deliberately-kept last-known index.
-        if(llvm::is_contained(dirty.clear_reindex, path_id)) {
-            return;
+void Invalidator::provider_appeared(llvm::StringRef module_name, DirtySet& dirty) {
+    // Every consumer whose scan met the name unresolved holds a durable
+    // edge to its sentinel; the graph cascade is the complete list — no
+    // side bookkeeping, no reverse-map walk. Their rows lack the
+    // module's symbols and their dep snapshots never named the
+    // interface, so the content-hash gate would filter a DepsOnly
+    // reindex — ContentChanged bypasses it. Nothing is dropped: a
+    // rebuild replaces the rows, and a unit that can no longer build
+    // (retired entry, deleted file) keeps serving its last-known ones.
+    for(auto id: pcm.provider_appeared(module_name)) {
+        if((id.key >> 63) != 0) {
+            continue;
         }
-        if(store.find(path_id)) {
-            dirty.mark_ast_dirty.push_back(path_id);
-        }
-        // Index work is scheduled only where it can actually run: a
-        // retired CDB entry or a command-less header would fall to a
-        // Fallback skip after its index was dropped, converting stale
-        // rows into no rows. Such files recover through their host
-        // sources (below) or their open session (above) instead.
-        // has_entry, not lookup — lookup derives commands for headers,
-        // which is exactly the guess the whole-TU runner refuses.
-        auto file_path = workspace.path_pool.resolve(path_id);
-        if(workspace.cdb.has_entry(file_path) || contexts.header_context(path_id)) {
-            dirty.drop_index.push_back(path_id);
+        auto path_id = static_cast<std::uint32_t>(id.key);
+        if(id.family == turun_family) {
             dirty.add_reindex_content_changed(path_id);
-        }
-        cascade_compile_graph(path_id, dirty);
-    };
-    dirty_one(importer);
-    for(auto root: workspace.dep_graph.find_host_sources(importer)) {
-        dirty_one(root);
-    }
-}
-
-void Invalidator::dirty_new_provider(llvm::StringRef module_name, DirtySet& dirty) {
-    auto it = workspace.module_importers.find(module_name);
-    if(it == workspace.module_importers.end()) {
-        return;
-    }
-    for(auto importer: it->second) {
-        dirty_unresolved_importer(importer, dirty);
-    }
-}
-
-void Invalidator::dirty_first_modules(DirtySet& dirty) {
-    // The project just gained its first module providers, so every
-    // import anywhere was unresolved. The per-name record is usually
-    // empty here — the module code paths that populate it were gated off
-    // while path_to_module was empty — hence the lexical candidate set;
-    // the union covers a project whose providers all left and returned
-    // with records still standing.
-    for(auto importer: workspace.dep_graph.import_candidates()) {
-        dirty_unresolved_importer(importer, dirty);
-    }
-    for(auto& entry: workspace.module_importers) {
-        for(auto importer: entry.getValue()) {
-            dirty_unresolved_importer(importer, dirty);
+        } else if(id.family == ast_family) {
+            if(auto session = store.find(path_id)) {
+                dirty.mark_ast_dirty.push_back(path_id);
+                if(session->serving == ServingMode::IndexOnly) {
+                    dirty.add_reindex_content_changed(path_id);
+                }
+            }
+        } else {
+            // A dirtied module unit: the family already dropped its
+            // cached PCM state; its importers are in this same list.
+            mark_dependent(path_id, dirty);
         }
     }
 }
@@ -139,23 +108,17 @@ void Invalidator::cascade_disk_content_change(std::uint32_t path_id, DirtySet& d
     // through the module graph — importers' build products went stale, and
     // the cascade names every affected module unit.
     auto old_module = workspace.path_to_module.lookup(path_id);
-    bool had_modules = !workspace.path_to_module.empty();
     workspace.rescan_after_save(path_id);
     cascade_compile_graph(path_id, dirty);
 
     // A save that introduced a module declaration may have given the name
-    // its first provider: importers that failed against the unresolved
-    // name hold no graph edge for the cascade above to travel, so they
-    // are found through the scan-time import record — or, when this is
-    // the project's very first provider, the lexical candidate set.
+    // its first provider: consumers that scanned it unresolved hold
+    // edges to its sentinel, not to any real node the cascade above
+    // could reach.
     if(auto it = workspace.path_to_module.find(path_id);
        it != workspace.path_to_module.end() && it->second != old_module &&
        workspace.dep_graph.lookup_module(it->second).size() == 1) {
-        if(had_modules) {
-            dirty_new_provider(it->second, dirty);
-        } else {
-            dirty_first_modules(dirty);
-        }
+        provider_appeared(it->second, dirty);
     }
 
     // The new content is a compile input of every TU that transitively
@@ -336,10 +299,6 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // replacement provider would sit behind the deleted one in
                 // the candidate list and never be selected.
                 workspace.dep_graph.update_module_decl(path_id, {});
-                // And the import bookkeeping: a first-provider event must
-                // not drop this file's deliberately-kept index for a
-                // reindex that can no longer run.
-                workspace.forget_importer(path_id);
                 // Scrub the includer role: the file's outgoing edges vanished
                 // with it, so it stops being a host-source candidate.
                 // Incoming edges stay — includers' text still names it, and
@@ -400,19 +359,14 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 workspace.build_module_map();
                 workspace.context_epoch += 1;
 
-                // A module name that just gained its first provider: TUs
-                // that imported it unresolved hold no graph edge to
-                // cascade through (nothing existed to edge to), so the
-                // delta walk below cannot reach them.
-                bool has_providers = false;
+                // A module name that just gained its first provider: its
+                // sentinel's dependents are the TUs that scanned it
+                // unresolved — the delta walk below cannot reach them
+                // (they hold no edge to any real node).
                 for(auto& entry: workspace.dep_graph.modules()) {
                     if(!entry.getValue().empty() && !had_providers.contains(entry.getKey())) {
-                        dirty_new_provider(entry.getKey(), dirty);
+                        provider_appeared(entry.getKey(), dirty);
                     }
-                    has_providers = has_providers || !entry.getValue().empty();
-                }
-                if(had_providers.empty() && has_providers) {
-                    dirty_first_modules(dirty);
                 }
 
                 // Every delta entry needs the same treatment — the compile

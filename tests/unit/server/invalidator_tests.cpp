@@ -3,6 +3,7 @@
 #include "test/test.h"
 #include "sched/context.h"
 #include "sched/families/pcm.h"
+#include "sched/families/turun.h"
 #include "sched/graph.h"
 #include "server/service/ast_family.h"
 #include "server/service/context_service.h"
@@ -67,87 +68,48 @@ TEST_CASE(EmptyBatchNoEffects) {
 }
 
 TEST_CASE(NewProviderDirtiesImporters) {
-    // A change that gives a module name its first provider re-dirties the
-    // TUs recorded as importing it while it was unresolved: they hold no
-    // graph edge for the ordinary cascades to travel, and their index was
-    // built without the module's symbols (ContentChanged, because the dep
-    // snapshot never named the interface either).
+    // Consumers that scanned the name unresolved hold durable edges to
+    // its sentinel node; the first provider cascades through them. A
+    // closed TU reindexes as ContentChanged (its dep snapshot never
+    // named the interface, so the hash gate cannot see the change); an
+    // open document recompiles. Nothing is ever dropped — a consumer
+    // that can no longer build keeps serving its last-known rows.
     TempDir tmp;
     tmp.touch("m.cppm", "export module m;\nexport int mv();\n");
-    tmp.touch("main.cpp", "int main() { return 0; }\n");
 
     Workspace workspace;
     SessionStore store;
-    write_cdb(tmp,
-              workspace.cdb,
-              build_cdb_json({
-                  {tmp.root, tmp.path("main.cpp"), {}}
-    }));
     auto iface = workspace.path_pool.intern(tmp.path("m.cppm"));
-    auto importer = workspace.path_pool.intern(tmp.path("main.cpp"));
-    workspace.module_importers["m"].push_back(importer);
+    auto closed = workspace.path_pool.intern("/proj/closed.cpp");
+    auto open = workspace.path_pool.intern("/proj/open.cpp");
+    store.open(open);
 
     ContextResolver resolver(workspace);
     PCMHarness ph(workspace, resolver);
+    ph.graph.declare({turun_family, closed}, {PCMFamily::unresolved_node("m")});
+    ph.graph.declare({ast_family, open}, {PCMFamily::unresolved_node("m")});
     Invalidator invalidator(workspace, store, resolver, ph.pcm);
 
     FileEvent events[] = {FileEvent::disk_changed(iface)};
     auto dirty = invalidator.apply(events);
 
-    EXPECT_TRUE(llvm::is_contained(dirty.drop_index, importer));
-    EXPECT_TRUE(llvm::is_contained(dirty.reindex_content_changed, importer));
+    EXPECT_TRUE(llvm::is_contained(dirty.reindex_content_changed, closed));
+    EXPECT_TRUE(llvm::is_contained(dirty.mark_ast_dirty, open));
+    EXPECT_TRUE(dirty.drop_index.empty());
 
-    // The same save again: the name already has its provider, importers
-    // are not re-dirtied.
+    // The same save again: the name already has its provider.
     auto again = invalidator.apply(events);
-    EXPECT_FALSE(llvm::is_contained(again.drop_index, importer));
-    EXPECT_FALSE(llvm::is_contained(again.reindex_content_changed, importer));
+    EXPECT_FALSE(llvm::is_contained(again.reindex_content_changed, closed));
+    EXPECT_FALSE(llvm::is_contained(again.mark_ast_dirty, open));
 }
 
-TEST_CASE(FirstModulesDirtyCandidates) {
-    // The project's very first provider appears: the per-name import
-    // record does not exist yet (module scanning was gated off while the
-    // map was empty), so the lexical import-candidate set is re-dirtied —
-    // and a header candidate drags its consuming TUs along. The header
-    // itself has no command to reindex under, so only the consumer gets
-    // index work.
+TEST_CASE(ReloadProviderCascades) {
+    // The CDB-reload flavor of provider appearance: the provider-set diff
+    // drives the same sentinel cascade, and a consumer retired by the
+    // very same reload is enqueued harmlessly (its run falls to a skip)
+    // rather than having its deliberately-kept index dropped.
     TempDir tmp;
     tmp.touch("m.cppm", "export module m;\nexport int mv();\n");
-    tmp.touch("main.cpp", "int main() { return 0; }\n");
-
-    Workspace workspace;
-    SessionStore store;
-    write_cdb(tmp,
-              workspace.cdb,
-              build_cdb_json({
-                  {tmp.root, tmp.path("main.cpp"), {}}
-    }));
-    auto iface = workspace.path_pool.intern(tmp.path("m.cppm"));
-    auto header = workspace.path_pool.intern("/proj/deps.h");
-    auto consumer = workspace.path_pool.intern(tmp.path("main.cpp"));
-    workspace.dep_graph.set_import_candidate(header, true);
-    workspace.dep_graph.set_includes(consumer, 0, {header});
-    workspace.dep_graph.build_reverse_map();
-
-    ContextResolver resolver(workspace);
-    PCMHarness ph(workspace, resolver);
-    Invalidator invalidator(workspace, store, resolver, ph.pcm);
-
-    FileEvent events[] = {FileEvent::disk_changed(iface)};
-    auto dirty = invalidator.apply(events);
-
-    EXPECT_FALSE(llvm::is_contained(dirty.drop_index, header));
-    EXPECT_TRUE(llvm::is_contained(dirty.drop_index, consumer));
-    EXPECT_TRUE(llvm::is_contained(dirty.reindex_content_changed, consumer));
-}
-
-TEST_CASE(ReloadRetiresImporter) {
-    // One CDB reload removes a recorded importer while adding the first
-    // provider: the retired entry has no command left to reindex under,
-    // so the recovery hook must not drop its deliberately-kept index.
-    TempDir tmp;
-    tmp.touch("m.cppm", "export module m;\nexport int mv();\n");
-    tmp.touch("old.cpp", "int main() { return 0; }\n");
 
     Workspace workspace;
     SessionStore store;
@@ -159,11 +121,10 @@ TEST_CASE(ReloadRetiresImporter) {
     }));
     auto iface = workspace.path_pool.intern(tmp.path("m.cppm"));
     auto retired = workspace.path_pool.intern(tmp.path("old.cpp"));
-    workspace.module_importers["m"].push_back(retired);
-    workspace.dep_graph.set_import_candidate(retired, true);
 
     ContextResolver resolver(workspace);
     PCMHarness ph(workspace, resolver);
+    ph.graph.declare({turun_family, retired}, {PCMFamily::unresolved_node("m")});
     Invalidator invalidator(workspace, store, resolver, ph.pcm);
 
     FileEvent::CDBDelta delta;
@@ -172,69 +133,8 @@ TEST_CASE(ReloadRetiresImporter) {
     FileEvent events[] = {FileEvent::cdb_changed(std::move(delta))};
     auto dirty = invalidator.apply(events);
 
+    EXPECT_TRUE(llvm::is_contained(dirty.reindex_content_changed, retired));
     EXPECT_FALSE(llvm::is_contained(dirty.drop_index, retired));
-    EXPECT_FALSE(llvm::is_contained(dirty.reindex_content_changed, retired));
-}
-
-TEST_CASE(RemovedHostStaysBuried) {
-    // DiskRemoved(A) and the first provider land in one batch: the stale
-    // reverse map still names A as a host of the candidate header, but a
-    // file the batch already declared dead stays dead.
-    TempDir tmp;
-    tmp.touch("m.cppm", "export module m;\nexport int mv();\n");
-    tmp.touch("a.cpp", "int main() { return 0; }\n");
-
-    Workspace workspace;
-    SessionStore store;
-    write_cdb(tmp,
-              workspace.cdb,
-              build_cdb_json({
-                  {tmp.root, tmp.path("a.cpp"), {}}
-    }));
-    auto iface = workspace.path_pool.intern(tmp.path("m.cppm"));
-    auto removed_host = workspace.path_pool.intern(tmp.path("a.cpp"));
-    auto header = workspace.path_pool.intern("/proj/deps.h");
-    workspace.dep_graph.set_import_candidate(header, true);
-    workspace.dep_graph.set_includes(removed_host, 0, {header});
-    workspace.dep_graph.build_reverse_map();
-
-    ContextResolver resolver(workspace);
-    PCMHarness ph(workspace, resolver);
-    Invalidator invalidator(workspace, store, resolver, ph.pcm);
-
-    FileEvent events[] = {FileEvent::disk_removed(removed_host), FileEvent::disk_changed(iface)};
-    auto dirty = invalidator.apply(events);
-
-    EXPECT_FALSE(llvm::is_contained(dirty.drop_index, removed_host));
-    EXPECT_FALSE(llvm::is_contained(dirty.reindex_content_changed, removed_host));
-}
-
-TEST_CASE(RemovedImporterForgotten) {
-    // A removed file leaves the import bookkeeping: a later first
-    // provider must not drop its deliberately-kept last-known index for
-    // a reindex that can no longer run.
-    TempDir tmp;
-    tmp.touch("m.cppm", "export module m;\nexport int mv();\n");
-
-    Workspace workspace;
-    SessionStore store;
-    auto iface = workspace.path_pool.intern(tmp.path("m.cppm"));
-    auto retired = workspace.path_pool.intern("/proj/retired.cpp");
-    workspace.module_importers["m"].push_back(retired);
-    workspace.dep_graph.set_import_candidate(retired, true);
-
-    ContextResolver resolver(workspace);
-    PCMHarness ph(workspace, resolver);
-    Invalidator invalidator(workspace, store, resolver, ph.pcm);
-
-    FileEvent removal[] = {FileEvent::disk_removed(retired)};
-    invalidator.apply(removal);
-
-    FileEvent provider[] = {FileEvent::disk_changed(iface)};
-    auto dirty = invalidator.apply(provider);
-
-    EXPECT_FALSE(llvm::is_contained(dirty.drop_index, retired));
-    EXPECT_FALSE(llvm::is_contained(dirty.reindex_content_changed, retired));
 }
 
 TEST_CASE(DiskRemovedDropsProvider) {

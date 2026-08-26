@@ -234,26 +234,6 @@ struct Workspace {
     /// declarations change.
     llvm::DenseMap<std::uint32_t, std::string> path_to_module;
 
-    /// Module name → TUs whose precise scans imported it, resolved or
-    /// not. An unresolved import leaves no graph edge (there is no node
-    /// to edge to), so when a name's first provider appears — a CDB
-    /// reload or a save introducing the interface — this is the only
-    /// record of who failed against it and must recompile/reindex.
-    /// Self-healing: each scan releases names it no longer produces, and
-    /// removed files are forgotten outright (forget_importer) — a stale
-    /// entry would drop a retired TU's deliberately-kept last-known
-    /// index for a reindex that can no longer run.
-    llvm::StringMap<llvm::SmallVector<std::uint32_t, 2>> module_importers;
-
-    /// Drop a removed file from the import bookkeeping (the per-name
-    /// record and the lexical candidate set).
-    void forget_importer(std::uint32_t path_id) {
-        for(auto& entry: module_importers) {
-            llvm::erase(entry.getValue(), path_id);
-        }
-        dep_graph.set_import_candidate(path_id, false);
-    }
-
     /// PCH cache, keyed by content key (preamble text + canonical flags),
     /// so files with identical preambles share one PCH.  Hot-path mirror
     /// of CacheStore state; blob paths come from the store.

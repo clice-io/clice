@@ -11,7 +11,6 @@
 #include "syntax/scan.h"
 #include "worker/protocol.h"
 
-#include "llvm/ADT/StringSet.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/xxhash.h"
@@ -31,8 +30,8 @@ void PCMFamily::register_runner() {
     });
 }
 
-llvm::SmallVector<std::uint32_t> PCMFamily::direct_deps(std::uint32_t path_id,
-                                                        std::optional<llvm::StringRef> content) {
+PCMFamily::ModuleDeps PCMFamily::direct_deps(std::uint32_t path_id,
+                                             std::optional<llvm::StringRef> content) {
     auto file_path = workspace.path_pool.resolve(path_id);
     std::vector<std::string> rule_append, rule_remove;
     workspace.config.match_rules(file_path, rule_append, rule_remove);
@@ -45,62 +44,56 @@ llvm::SmallVector<std::uint32_t> PCMFamily::direct_deps(std::uint32_t path_id,
     return direct_deps(path_id, cmd.to_argv(), cmd.resolved.directory, content);
 }
 
-llvm::SmallVector<std::uint32_t> PCMFamily::direct_deps(std::uint32_t path_id,
-                                                        llvm::ArrayRef<const char*> arguments,
-                                                        llvm::StringRef directory,
-                                                        std::optional<llvm::StringRef> content) {
+PCMFamily::ModuleDeps PCMFamily::direct_deps(std::uint32_t path_id,
+                                             llvm::ArrayRef<const char*> arguments,
+                                             llvm::StringRef directory,
+                                             std::optional<llvm::StringRef> content) {
     auto scan_result = scan_precise(arguments, directory, content);
 
-    // Every name the scan produced is recorded, resolved or not: an
-    // unresolved import leaves no graph edge (there is no node to edge
-    // to), and this record is how the invalidator later finds the TUs to
-    // re-dirty when the name's first provider appears.
-    llvm::StringSet<> scanned;
-    auto remember = [&](llvm::StringRef name) {
-        scanned.insert(name);
-        auto& importers = workspace.module_importers[name];
-        if(!llvm::is_contained(importers, path_id)) {
-            importers.push_back(path_id);
+    // Every scanned name lands in the edge set, resolved or not: an
+    // unresolved name edges to its sentinel, which is what lets the
+    // name's first provider re-dirty this unit through the ordinary
+    // cascade later — no side bookkeeping of who failed against it.
+    ModuleDeps deps;
+    auto add = [&](llvm::StringRef name) {
+        auto mod_ids = workspace.dep_graph.lookup_module(name);
+        if(mod_ids.empty()) {
+            deps.declared.push_back(unresolved_node(name));
+        } else {
+            deps.resolved.push_back(mod_ids[0]);
+            deps.declared.push_back(node(mod_ids[0]));
         }
     };
 
-    llvm::SmallVector<std::uint32_t> deps;
     for(auto& mod_name: scan_result.modules) {
-        remember(mod_name);
-        auto mod_ids = workspace.dep_graph.lookup_module(mod_name);
-        if(!mod_ids.empty()) {
-            deps.push_back(mod_ids[0]);
-        }
+        add(mod_name);
     }
 
     // Module implementation units implicitly depend on their interface unit.
     if(!scan_result.module_name.empty() && !scan_result.is_interface_unit) {
-        remember(scan_result.module_name);
-        auto mod_ids = workspace.dep_graph.lookup_module(scan_result.module_name);
-        if(!mod_ids.empty()) {
-            deps.push_back(mod_ids[0]);
-        }
-    }
-
-    // The record self-heals against dropped imports: this scan is the
-    // truth for the TU, so names it no longer uses release it. A stale
-    // entry costs at most one false reindex — which runs this scan and
-    // prunes — instead of one per provider flap.
-    for(auto& entry: workspace.module_importers) {
-        if(!scanned.contains(entry.getKey())) {
-            llvm::erase(entry.getValue(), path_id);
-        }
+        add(scan_result.module_name);
     }
 
     return deps;
 }
 
-void PCMFamily::declare_deps(std::uint32_t path_id, llvm::ArrayRef<std::uint32_t> deps) {
-    llvm::SmallVector<NodeId, 8> ids;
-    for(auto dep: deps) {
-        ids.push_back(node(dep));
+llvm::SmallVector<NodeId> PCMFamily::provider_appeared(llvm::StringRef name) {
+    auto dirtied = graph.update(unresolved_node(name));
+    for(auto id: dirtied) {
+        // Dirtied module units drop their cached PCM state, exactly as
+        // invalidate() does for content changes — a PCM built against
+        // the unresolved name embeds the failure.
+        if(id.family == pcm_family && (id.key >> 63) == 0) {
+            auto pid = static_cast<std::uint32_t>(id.key);
+            workspace.pcm_paths.erase(pid);
+            workspace.pcm_cache.erase(pid);
+        }
     }
-    graph.declare(node(path_id), ids);
+    return dirtied;
+}
+
+void PCMFamily::declare_deps(std::uint32_t path_id, llvm::ArrayRef<NodeId> deps) {
+    graph.declare(node(path_id), deps);
 }
 
 kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, std::uint32_t path_id) {
@@ -112,8 +105,8 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, std::uint32_t path_id
     // round. Each depend() then records the candidate edge (interest- and
     // foreground-visible immediately) and waits for the dependency.
     auto deps = direct_deps(path_id);
-    declare_deps(path_id, deps);
-    for(auto dep: deps) {
+    declare_deps(path_id, deps.declared);
+    for(auto dep: deps.resolved) {
         switch(co_await ctx.depend(node(dep))) {
             case DependResult::Ready: break;
             case DependResult::Failed: co_return RoundOutcome::Failed;
@@ -281,14 +274,14 @@ kota::task<bool> PCMFamily::build_deps(std::uint32_t path_id, bool foreground) {
     // so a removed import stops cascading. (S6's Ast family will own
     // these edges through its own rounds' depend().)
     auto deps = direct_deps(path_id);
-    declare_deps(path_id, deps);
-    if(deps.empty()) {
+    declare_deps(path_id, deps.declared);
+    if(deps.resolved.empty()) {
         co_return true;
     }
 
     std::vector<kota::task<JoinOutcome>> waits;
-    waits.reserve(deps.size());
-    for(auto dep: deps) {
+    waits.reserve(deps.resolved.size());
+    for(auto dep: deps.resolved) {
         waits.push_back(graph.request(node(dep), {.foreground = foreground}));
     }
 

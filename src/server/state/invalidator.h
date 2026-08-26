@@ -274,21 +274,10 @@ private:
     /// dependent module units), splitting dirtied units open/closed.
     void cascade_compile_graph(std::uint32_t path_id, DirtySet& dirty);
 
-    /// One TU whose parse consumed an unresolved import: recompile if
-    /// open, drop and rebuild its index (ContentChanged — the dep
-    /// snapshot never named the interface, so the hash gate cannot see
-    /// the change).
-    void dirty_unresolved_importer(std::uint32_t importer, DirtySet& dirty);
-
-    /// A module name just gained its first provider: re-dirty the TUs
-    /// recorded as importing it while it was unresolved — they hold no
-    /// graph edge the ordinary cascades could travel.
-    void dirty_new_provider(llvm::StringRef module_name, DirtySet& dirty);
-
-    /// The project's very first providers appeared: the per-name record
-    /// does not exist yet (module scanning was gated off), so re-dirty
-    /// the lexical import-candidate set instead.
-    void dirty_first_modules(DirtySet& dirty);
+    /// A module name just gained its first provider: cascade through its
+    /// sentinel node and route the dirtied consumers to recompiles and
+    /// ContentChanged reindexes.
+    void provider_appeared(llvm::StringRef module_name, DirtySet& dirty);
 
     /// See the definition: the open/closed/index-only split of a
     /// dependency invalidation.
