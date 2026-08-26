@@ -6,7 +6,6 @@
 #include <vector>
 
 #include "version.h"
-#include "server/protocol/worker.h"
 #include "server/state/file_tracker.h"
 #include "server/transport/agent_client.h"
 #include "server/transport/lsp_client.h"
@@ -14,6 +13,7 @@
 #include "support/filesystem.h"
 #include "support/logging.h"
 #include "support/timer.h"
+#include "worker/protocol.h"
 
 #include "kota/async/async.h"
 #include "kota/codec/json/json.h"

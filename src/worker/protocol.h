@@ -8,8 +8,8 @@
 #include <vector>
 
 #include "compile/dep_file.h"
-#include "feature/feature.h"
 #include "config/config.h"
+#include "feature/feature.h"
 #include "syntax/token.h"
 
 #include "kota/codec/json/json.h"
@@ -170,77 +170,113 @@ struct CompileResult {
     std::vector<std::uint32_t> inactive_regions;
 };
 
-enum class Priority : uint8_t { High, Low };
-
-/// Kind of build task dispatched to a stateless worker.
-enum class BuildKind : uint8_t {
-    BuildPCH,
-    BuildPCM,
-    Index,
-    Completion,
-    SignatureHelp,
-    Format,
-};
-
-/// Unified parameters for all stateless build/compilation tasks.
-/// Fields are used selectively based on `kind`:
-///   - All:           file, directory, arguments
-///   - BuildPCH:      + content, preamble_bound, output_path
-///   - BuildPCM:      + module_name, pcms, output_path
-///   - Index:         + pcms
-///   - Completion:    + text, version, offset, pch, pcms
-///   - SignatureHelp: + text, version, offset, pch, pcms
-///   - Format:        + text, format_range (optional)
-struct BuildParams {
-    Priority priority = Priority::Low;
-    BuildKind kind;
+/// Build a PCH (and its paired pch.idx envelope) from preamble content.
+struct BuildPchParams {
     std::string file;
     std::string directory;
     std::vector<std::string> arguments;
 
-    /// Source text for Completion/SignatureHelp, preamble content for BuildPCH.
+    /// The preamble content, remapped over the file.
+    std::string content;
+    uint32_t preamble_bound = UINT32_MAX;
+
+    /// Tmp path allocated by the master's store; the master commits
+    /// (fsync + atomic rename) after the worker reports success.
+    std::string output_path;
+
+    /// Tmp path for the pch.idx envelope, allocated alongside output_path.
+    /// The worker serializes the preamble's index and feature state into
+    /// it; the master commits both blobs together.
+    std::string index_output_path;
+};
+
+/// Build a module interface's PCM.
+struct BuildPcmParams {
+    std::string file;
+    std::string directory;
+    std::vector<std::string> arguments;
+
+    std::string module_name;
+
+    /// Transitive PCM dependencies (module name -> artifact path).
+    std::unordered_map<std::string, std::string> pcms;
+
+    /// Tmp path allocated by the master's store (see BuildPchParams).
+    std::string output_path;
+};
+
+/// Compile a TU and serialize its full index.
+struct IndexParams {
+    std::string file;
+    std::string directory;
+    std::vector<std::string> arguments;
+
+    /// PCM dependencies for TUs that import modules.
+    std::unordered_map<std::string, std::string> pcms;
+};
+
+/// Code completion over unsaved buffer content.
+struct CompletionParams {
+    std::string file;
+    std::string directory;
+    std::vector<std::string> arguments;
+
     std::string text;
-    int version = 0;
     uint32_t offset = 0;
     std::pair<std::string, uint32_t> pch;
     std::unordered_map<std::string, std::string> pcms;
 
-    std::string output_path;  ///< BuildPCH, BuildPCM
-
-    /// BuildPCH: tmp path for the pch.idx envelope (the PCH's paired
-    /// `.pch.idx`), allocated by the master's store alongside output_path.
-    /// The worker serializes the preamble's index and feature state into
-    /// it; the master commits both blobs together.
-    std::string index_output_path;
-
-    std::string module_name;               ///< BuildPCM
-    uint32_t preamble_bound = UINT32_MAX;  ///< BuildPCH
-    LocalSourceRange format_range;         ///< Format (default = full document)
-
-    /// The workspace config, carried whole on interactive builds
-    /// (Completion/SignatureHelp) — the worker holds no config state and a
-    /// config change simply shows up on the next request. Features read
-    /// their own section; no per-feature forwarding field is ever added
-    /// here.
+    /// The workspace config, carried whole — the worker holds no config
+    /// state and a config change simply shows up on the next request.
     Config config;
 };
 
-/// Unified result for stateless build tasks.
-/// For Completion/SignatureHelp, the result JSON is in `result_json`.
-/// For BuildPCH/BuildPCM/Index, structured fields are used.
-struct BuildResult {
+/// Signature help over unsaved buffer content; same inputs as completion.
+struct SignatureHelpParams {
+    std::string file;
+    std::string directory;
+    std::vector<std::string> arguments;
+
+    std::string text;
+    uint32_t offset = 0;
+    std::pair<std::string, uint32_t> pch;
+    std::unordered_map<std::string, std::string> pcms;
+
+    Config config;
+};
+
+/// Format a document (or a byte range of it) with clang-format.
+struct FormatParams {
+    std::string file;
+    std::string text;
+    LocalSourceRange range;  ///< Invalid range = full document.
+};
+
+/// Result of an artifact build (PCH or PCM).
+struct ArtifactBuildResult {
     bool success = true;
     std::string error;
     /// On failure: whether `error` carries user-code compile errors. A failure
     /// without user errors indicates clice infrastructure breakage (anomaly).
     bool has_user_errors = false;
-    std::string output_path;  ///< PCH or PCM path
+
+    /// The tmp path the artifact was written to.
+    std::string output_path;
+
     /// Milliseconds since epoch, sampled before the build started. Files
     /// whose mtime is past this moment may differ from what the build read.
     std::int64_t build_at = 0;
     std::vector<DepFile> deps;
-    std::string tu_index_data;          ///< Index: serialized TUIndex, merged by the master
-    kota::codec::RawValue result_json;  ///< Completion/SignatureHelp result
+};
+
+struct IndexResult {
+    bool success = true;
+    std::string error;
+    /// See ArtifactBuildResult::has_user_errors.
+    bool has_user_errors = false;
+
+    /// Serialized TUIndex, merged by the master.
+    std::string tu_index_data;
 };
 
 /// Request the document links of an open file's AST. Only the main-file
@@ -305,9 +341,39 @@ struct RequestTraits<clice::worker::DocumentLinkParams> {
 };
 
 template <>
-struct RequestTraits<clice::worker::BuildParams> {
-    using Result = clice::worker::BuildResult;
-    constexpr inline static std::string_view method = "clice/worker/build";
+struct RequestTraits<clice::worker::BuildPchParams> {
+    using Result = clice::worker::ArtifactBuildResult;
+    constexpr inline static std::string_view method = "clice/worker/buildPch";
+};
+
+template <>
+struct RequestTraits<clice::worker::BuildPcmParams> {
+    using Result = clice::worker::ArtifactBuildResult;
+    constexpr inline static std::string_view method = "clice/worker/buildPcm";
+};
+
+template <>
+struct RequestTraits<clice::worker::IndexParams> {
+    using Result = clice::worker::IndexResult;
+    constexpr inline static std::string_view method = "clice/worker/index";
+};
+
+template <>
+struct RequestTraits<clice::worker::CompletionParams> {
+    using Result = kota::codec::RawValue;
+    constexpr inline static std::string_view method = "clice/worker/completion";
+};
+
+template <>
+struct RequestTraits<clice::worker::SignatureHelpParams> {
+    using Result = kota::codec::RawValue;
+    constexpr inline static std::string_view method = "clice/worker/signatureHelp";
+};
+
+template <>
+struct RequestTraits<clice::worker::FormatParams> {
+    using Result = kota::codec::RawValue;
+    constexpr inline static std::string_view method = "clice/worker/format";
 };
 
 template <>

@@ -2,8 +2,8 @@
 
 #include "test/temp_dir.h"
 #include "test/test.h"
-#include "server/protocol/worker.h"
 #include "server/worker_test_helpers.h"
+#include "worker/protocol.h"
 
 #include "kota/async/async.h"
 
@@ -112,8 +112,7 @@ TEST_CASE(CancelBuildStopsBuild) {
 
     bool test_done = false;
     w.run([&]() -> kota::task<> {
-        worker::BuildParams bp;
-        bp.kind = worker::BuildKind::Index;
+        worker::IndexParams bp;
         bp.file = src;
         bp.directory = "/tmp";
         bp.arguments = make_args(src);

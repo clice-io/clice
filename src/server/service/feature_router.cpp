@@ -13,10 +13,10 @@
 #include "server/compiler/compiler.h"
 #include "server/compiler/context_resolver.h"
 #include "server/compiler/indexer.h"
-#include "server/protocol/serialize.h"
-#include "server/protocol/worker.h"
 #include "syntax/completion.h"
 #include "syntax/include_resolver.h"
+#include "worker/protocol.h"
+#include "worker/serialize.h"
 
 #include "kota/codec/json/json.h"
 #include "llvm/ADT/STLExtras.h"
@@ -783,10 +783,7 @@ FeatureRouter::RawResult FeatureRouter::completion(std::shared_ptr<Session> sess
         }
     }
 
-    co_return co_await compiler.forward_build(worker::BuildKind::Completion,
-                                              position,
-                                              std::move(session),
-                                              std::move(token));
+    co_return co_await compiler.forward_completion(position, std::move(session), std::move(token));
 }
 
 FeatureRouter::RawResult
@@ -795,10 +792,7 @@ FeatureRouter::RawResult
                                   std::optional<kota::cancellation_token> token) {
     auto pause = indexer.scoped_pause();
     compiler.escalate(*session);
-    co_return co_await compiler.forward_build(worker::BuildKind::SignatureHelp,
-                                              position,
-                                              session,
-                                              std::move(token));
+    co_return co_await compiler.forward_signature_help(position, session, std::move(token));
 }
 
 FeatureRouter::RawResult FeatureRouter::formatting(std::shared_ptr<Session> session,

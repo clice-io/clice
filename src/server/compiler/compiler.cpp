@@ -12,12 +12,12 @@
 #include "server/compiler/context_resolver.h"
 #include "server/protocol/extension.h"
 #include "server/protocol/position.h"
-#include "server/protocol/worker.h"
 #include "support/anomaly.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 #include "support/timer.h"
 #include "syntax/scan.h"
+#include "worker/protocol.h"
 
 #include "kota/async/async.h"
 #include "kota/codec/json/json.h"
@@ -150,12 +150,13 @@ template <typename Params, typename OnCrash>
 static kota::ipc::RequestResult<Params>
     send_stateless_retrying(WorkerPool& pool,
                             Params params,
+                            worker::Priority priority,
                             OnCrash on_crash,
                             kota::ipc::request_options opts = {}) {
-    auto result = co_await pool.send_stateless(params, opts);
+    auto result = co_await pool.send_stateless(params, priority, opts);
     if(!result.has_value() && result.error().code == worker::dispatch_errc::worker_crashed) {
         on_crash(result.error());
-        result = co_await pool.send_stateless(params, opts);
+        result = co_await pool.send_stateless(params, priority, opts);
         if(!result.has_value() && result.error().code == worker::dispatch_errc::worker_crashed) {
             on_crash(result.error());
         }
@@ -175,10 +176,12 @@ static kota::ipc::RequestResult<Params> build_for(WorkerPool& pool,
                                                   Session& session,
                                                   std::uint8_t kind,
                                                   Params params,
+                                                  worker::Priority priority,
                                                   kota::ipc::request_options opts) {
     return send_stateless_retrying(
         pool,
         std::move(params),
+        priority,
         [&session, kind](const kota::ipc::protocol::Error& error) {
             session.quarantine.on_kind_crash(kind, worker::death_of(error));
         },
@@ -187,16 +190,19 @@ static kota::ipc::RequestResult<Params> build_for(WorkerPool& pool,
 
 /// Evidence-kind discriminators for Quarantine's per-kind ledgers. Queries
 /// and stateless builds share one space, offset so they cannot collide;
-/// document links have no QueryKind and get their own slot.
+/// document links have no QueryKind and get their own slot. The stateless
+/// slots keep the values of the retired BuildKind enum (0x40 + kind) —
+/// they are in-memory only, but drift within a session would misattribute
+/// evidence.
 constexpr std::uint8_t evidence_kind(worker::QueryKind kind) {
     return static_cast<std::uint8_t>(kind);
 }
 
-constexpr std::uint8_t evidence_kind(worker::BuildKind kind) {
-    return 0x40 + static_cast<std::uint8_t>(kind);
-}
-
 constexpr inline std::uint8_t document_link_evidence = 0x20;
+constexpr inline std::uint8_t pch_evidence = 0x40;
+constexpr inline std::uint8_t completion_evidence = 0x43;
+constexpr inline std::uint8_t signature_help_evidence = 0x44;
+constexpr inline std::uint8_t format_evidence = 0x45;
 
 Compiler::Compiler(kota::event_loop& loop,
                    Workspace& workspace,
@@ -282,9 +288,8 @@ void Compiler::init_compile_graph() {
 
         auto file_path = std::string(workspace.path_pool.resolve(path_id));
 
-        worker::BuildParams bp;
-        bp.priority = foreground ? worker::Priority::High : worker::Priority::Low;
-        bp.kind = worker::BuildKind::BuildPCM;
+        auto priority = foreground ? worker::Priority::High : worker::Priority::Low;
+        worker::BuildPcmParams bp;
         bp.file = file_path;
         contexts.resolve_command(file_path, bp.directory, bp.arguments);
 
@@ -352,6 +357,7 @@ void Compiler::init_compile_graph() {
         auto result = co_await send_stateless_retrying(
             pool,
             bp,
+            priority,
             [this, &budget_key](const kota::ipc::protocol::Error&) {
                 workspace.build_crashes.on_crash(budget_key);
             });
@@ -519,7 +525,7 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
             session.pch_key = pch_key;
             // Adopting a proven-good artifact disproves the session's PCH
             // strikes as surely as building one.
-            session.quarantine.on_kind_land(evidence_kind(worker::BuildKind::BuildPCH));
+            session.quarantine.on_kind_land(pch_evidence);
             LOG_PERF("cache", "ns=pch event=hit key={} file={}", pch_key, path);
             co_return true;
         }
@@ -556,7 +562,7 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
         if(auto it2 = workspace.pch_cache.find(pch_key);
            it2 != workspace.pch_cache.end() && !it2->second.path.empty()) {
             session.pch_key = pch_key;
-            session.quarantine.on_kind_land(evidence_kind(worker::BuildKind::BuildPCH));
+            session.quarantine.on_kind_land(pch_evidence);
             co_return true;
         }
         co_return false;
@@ -589,13 +595,11 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
     auto pending = workspace.store->begin_store("pch", pch_key);
     auto pending_idx = workspace.store->begin_store_aux("pch", pch_key);
 
-    worker::BuildParams bp;
-    bp.priority = worker::Priority::High;
-    bp.kind = worker::BuildKind::BuildPCH;
+    worker::BuildPchParams bp;
     bp.file = std::string(path);
     bp.directory = directory;
     bp.arguments = arguments;
-    bp.text = text;
+    bp.content = text;
     bp.preamble_bound = bound;
     bp.output_path = pending.tmp_path;
     bp.index_output_path = pending_idx.tmp_path;
@@ -608,9 +612,9 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
     auto result = co_await send_stateless_retrying(
         pool,
         bp,
+        worker::Priority::High,
         [this, &session, &pch_key](const kota::ipc::protocol::Error& error) {
-            session.quarantine.on_kind_crash(evidence_kind(worker::BuildKind::BuildPCH),
-                                             worker::death_of(error));
+            session.quarantine.on_kind_crash(pch_evidence, worker::death_of(error));
             workspace.build_crashes.on_crash(pch_key);
         });
 
@@ -678,7 +682,7 @@ kota::task<bool> Compiler::ensure_pch(Session& session,
     // stale build must not launder strikes the new content recorded.
     workspace.build_crashes.on_land(pch_key);
     if(session.generation == launch_generation) {
-        session.quarantine.on_kind_land(evidence_kind(worker::BuildKind::BuildPCH));
+        session.quarantine.on_kind_land(pch_evidence);
     }
 
     auto& st = workspace.pch_cache[pch_key];
@@ -867,7 +871,7 @@ void Compiler::record_deps(Session& session, llvm::ArrayRef<DepFile> deps, std::
 
 /// Pull-based compilation entry point for user-opened files.
 ///
-/// Called lazily by forward_query() / forward_build() before every
+/// Called lazily by forward_query() / forward_interactive() before every
 /// feature request (hover, semantic tokens, etc.). Guarantees that when it
 /// returns true the stateful worker assigned to `path_id` holds an up-to-date
 kota::task<> Compiler::run_compile(std::shared_ptr<Session> session) {
@@ -1579,10 +1583,12 @@ kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
     co_return std::move(result.value());
 }
 
-Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
-                                            const protocol::Position& position,
-                                            std::shared_ptr<Session> session,
-                                            std::optional<kota::cancellation_token> token) {
+template <typename Params>
+Compiler::RawResult Compiler::forward_interactive(std::uint8_t evidence,
+                                                  llvm::StringRef label,
+                                                  protocol::Position position,
+                                                  std::shared_ptr<Session> session,
+                                                  std::optional<kota::cancellation_token> token) {
     auto path_id = session->path_id;
     auto path = std::string(workspace.path_pool.resolve(path_id));
     auto gen = session->generation;
@@ -1592,8 +1598,8 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
     // holding the strikes, with the probe armed — may run. Anything else
     // is arbitrary work on proven-poisonous content. A refusal announces
     // the quarantine, or a completion-only client would never see it.
-    if(session->quarantine.active() && !session->quarantine.recovery_kind(evidence_kind(kind))) {
-        LOG_WARN("forward_build: {} is quarantined, refusing build", path);
+    if(session->quarantine.active() && !session->quarantine.recovery_kind(evidence)) {
+        LOG_WARN("forward_interactive: {} is quarantined, refusing build", path);
         if(session->quarantine.needs_announcement()) {
             publish_quarantined(session, std::nullopt, std::nullopt);
         }
@@ -1608,11 +1614,8 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
     // back stale after a disk/CDB change.
     auto epoch = session->dirty_epoch;
 
-    worker::BuildParams wp;
-    wp.priority = worker::Priority::High;
-    wp.kind = kind;
+    Params wp;
     wp.file = path;
-    wp.version = session->version;
     wp.text = session->text;
     contexts.resolve_command(path, wp.directory, wp.arguments, session.get());
     contexts.append_suffix_include(*session, wp.text);
@@ -1620,7 +1623,7 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
 
     ScopedTimer timer;
     if(!co_await ensure_deps(*session, gen, epoch, wp.directory, wp.arguments, wp.pch, wp.pcms)) {
-        LOG_WARN("forward_build: dependency preparation failed for {}", path);
+        LOG_WARN("forward_interactive: dependency preparation failed for {}", path);
         co_return kota::outcome_error(kota::ipc::Error{"Dependency preparation failed"});
     }
     // A PCH crash inside ensure_deps may have tipped the document into
@@ -1630,7 +1633,7 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
     // excuse dispatching content that just proved poisonous.
     if(session->quarantine.active() && session->quarantine.grew(flight)) {
         session->quarantine.spend_probe();
-        LOG_WARN("forward_build: {} quarantined during dependency prep", path);
+        LOG_WARN("forward_interactive: {} quarantined during dependency prep", path);
         if(session->quarantine.needs_announcement()) {
             publish_quarantined(session, std::nullopt, std::nullopt);
         }
@@ -1652,7 +1655,7 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
     // coroutine unwinds (cancellation) or fails before any attempt ran —
     // an unavailable retry after a crashed first attempt keeps it spent,
     // the crash was the licensed attempt.
-    bool recovery = session->quarantine.recovery_kind(evidence_kind(kind));
+    bool recovery = session->quarantine.recovery_kind(evidence);
     if(session->quarantine.active() && !recovery) {
         co_return kota::outcome_error(
             kota::ipc::Error{worker::dispatch_errc::worker_unavailable, "Document is quarantined"});
@@ -1661,13 +1664,17 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
     if(recovery) {
         probe_guard.emplace(session->quarantine);
     }
-    auto result =
-        co_await build_for(pool, *session, evidence_kind(kind), wp, {.token = std::move(token)});
+    auto result = co_await build_for(pool,
+                                     *session,
+                                     evidence,
+                                     wp,
+                                     worker::Priority::High,
+                                     {.token = std::move(token)});
     if(!result.has_value()) {
         if(!worker::is_operational_error(result.error())) {
             LOG_ANOMALY(WorkerRequestFail,
                         "build (kind={}) failed for {}: {}",
-                        kind,
+                        label,
                         path,
                         result.error().message);
         }
@@ -1679,18 +1686,39 @@ Compiler::RawResult Compiler::forward_build(worker::BuildKind kind,
     // runs to overwrite it.
     if(session->generation == gen) {
         bool was_active = session->quarantine.active();
-        session->quarantine.on_kind_land(evidence_kind(kind));
+        session->quarantine.on_kind_land(evidence);
         if(was_active && !session->quarantine.active()) {
             publish_recovered(session);
         }
     }
     LOG_PERF("request",
              "kind={} file={} wait_ms={:.2f} total_ms={:.2f}",
-             kind,
+             label,
              path,
              wait_ms,
              timer.ms_f());
-    co_return std::move(result.value().result_json);
+    co_return std::move(result.value());
+}
+
+Compiler::RawResult Compiler::forward_completion(const protocol::Position& position,
+                                                 std::shared_ptr<Session> session,
+                                                 std::optional<kota::cancellation_token> token) {
+    return forward_interactive<worker::CompletionParams>(completion_evidence,
+                                                         "Completion",
+                                                         position,
+                                                         std::move(session),
+                                                         std::move(token));
+}
+
+Compiler::RawResult
+    Compiler::forward_signature_help(const protocol::Position& position,
+                                     std::shared_ptr<Session> session,
+                                     std::optional<kota::cancellation_token> token) {
+    return forward_interactive<worker::SignatureHelpParams>(signature_help_evidence,
+                                                            "SignatureHelp",
+                                                            position,
+                                                            std::move(session),
+                                                            std::move(token));
 }
 
 Compiler::RawResult Compiler::forward_format(std::shared_ptr<Session> session,
@@ -1703,7 +1731,7 @@ Compiler::RawResult Compiler::forward_format(std::shared_ptr<Session> session,
     // Formatting runs no sema, but it is still this document's content on
     // a worker: while quarantined, only format-as-recovery may run, and a
     // refusal announces the quarantine.
-    bool recovery = session->quarantine.recovery_kind(evidence_kind(worker::BuildKind::Format));
+    bool recovery = session->quarantine.recovery_kind(format_evidence);
     if(session->quarantine.active() && !recovery) {
         LOG_WARN("forward_format: {} is quarantined, refusing format", path);
         if(session->quarantine.needs_announcement()) {
@@ -1713,16 +1741,14 @@ Compiler::RawResult Compiler::forward_format(std::shared_ptr<Session> session,
             kota::ipc::Error{worker::dispatch_errc::worker_unavailable, "Document is quarantined"});
     }
 
-    worker::BuildParams wp;
-    wp.priority = worker::Priority::High;
-    wp.kind = worker::BuildKind::Format;
+    worker::FormatParams wp;
     wp.file = path;
     wp.text = session->text;
 
     if(range) {
         lsp::LineMap map(wp.text);
-        wp.format_range = {clamped_offset(map, range->start), clamped_offset(map, range->end)};
-        if(wp.format_range.begin > wp.format_range.end) {
+        wp.range = {clamped_offset(map, range->start), clamped_offset(map, range->end)};
+        if(wp.range.begin > wp.range.end) {
             co_return kota::outcome_error(
                 kota::ipc::Error{kota::ipc::protocol::ErrorCode::InvalidParams,
                                  "Range start is after its end"});
@@ -1736,8 +1762,9 @@ Compiler::RawResult Compiler::forward_format(std::shared_ptr<Session> session,
     }
     auto result = co_await build_for(pool,
                                      *session,
-                                     evidence_kind(worker::BuildKind::Format),
+                                     format_evidence,
                                      wp,
+                                     worker::Priority::High,
                                      {.token = std::move(token)});
     if(!result.has_value()) {
         if(!worker::is_operational_error(result.error())) {
@@ -1750,13 +1777,13 @@ Compiler::RawResult Compiler::forward_format(std::shared_ptr<Session> session,
     }
     if(session->generation == gen) {
         bool was_active = session->quarantine.active();
-        session->quarantine.on_kind_land(evidence_kind(worker::BuildKind::Format));
+        session->quarantine.on_kind_land(format_evidence);
         if(was_active && !session->quarantine.active()) {
             publish_recovered(session);
         }
     }
     LOG_PERF("request", "kind=Format file={} total_ms={:.2f}", path, timer.ms_f());
-    co_return std::move(result.value().result_json);
+    co_return std::move(result.value());
 }
 
 }  // namespace clice

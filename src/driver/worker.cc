@@ -1,8 +1,8 @@
 #include <cstdint>
 
 #include "driver/driver.h"
-#include "server/worker/stateful_worker.h"
-#include "server/worker/stateless_worker.h"
+#include "worker/stateful.h"
+#include "worker/stateless.h"
 
 namespace clice::driver {
 

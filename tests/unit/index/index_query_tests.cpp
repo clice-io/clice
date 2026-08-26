@@ -10,7 +10,7 @@
 #include "server/compiler/indexer.h"
 #include "server/service/query.h"
 #include "server/state/session_store.h"
-#include "server/worker/worker_pool.h"
+#include "worker/pool.h"
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/MemoryBuffer.h"

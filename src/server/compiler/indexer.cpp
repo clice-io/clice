@@ -12,12 +12,12 @@
 #include "index/shard.h"
 #include "index/tu_index.h"
 #include "server/compiler/context_resolver.h"
-#include "server/protocol/worker.h"
 #include "server/state/session_store.h"
-#include "server/worker/worker_pool.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 #include "support/timer.h"
+#include "worker/pool.h"
+#include "worker/protocol.h"
 
 #include "kota/codec/json/json.h"
 #include "llvm/ADT/DenseSet.h"
@@ -1415,8 +1415,7 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id,
         co_await workspace.compile_graph->compile(server_path_id);
     }
 
-    worker::BuildParams params;
-    params.kind = worker::BuildKind::Index;
+    worker::IndexParams params;
     params.file = file_path;
     // Bulk background indexing sticks to real commands; synthesized fallback
     // commands would fill the index with guesses.
@@ -1446,7 +1445,7 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id,
     LOG_INFO("[{}/{}] Indexing {}", index, total, file_path);
 
     ScopedTimer timer;
-    auto result = co_await pool.send_stateless(params);
+    auto result = co_await pool.send_stateless(params, worker::Priority::Low);
     if(result.has_value() && result.value().success && !result.value().tu_index_data.empty()) {
         auto index_ms = timer.ms();
         // Merge guard: a newer content-level invalidation during this build

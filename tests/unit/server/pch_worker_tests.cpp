@@ -3,10 +3,10 @@
 #include <vector>
 
 #include "test/test.h"
-#include "server/protocol/worker.h"
 #include "server/state/workspace.h"
 #include "server/worker_test_helpers.h"
 #include "syntax/scan.h"
+#include "worker/protocol.h"
 
 namespace clice::testing {
 
@@ -41,8 +41,7 @@ TEST_CASE(BuildPCHThenCompile) {
     bool phase1_done = false;
 
     sl.run([&]() -> kota::task<> {
-        worker::BuildParams params;
-        params.kind = worker::BuildKind::BuildPCH;
+        worker::BuildPchParams params;
         params.file = main_file;
         params.directory = dir;
         params.arguments = {"clang++",
@@ -53,7 +52,7 @@ TEST_CASE(BuildPCHThenCompile) {
                             "-I",
                             dir,
                             main_file};
-        params.text = main_text;
+        params.content = main_text;
         params.preamble_bound = compute_preamble_bound(main_text);
         params.output_path = tmp.path("preamble.pch");
         params.index_output_path = tmp.path("preamble.pch.idx");
@@ -135,8 +134,7 @@ TEST_CASE(BlobWriteFailure) {
 
     bool done = false;
     sl.run([&]() -> kota::task<> {
-        worker::BuildParams params;
-        params.kind = worker::BuildKind::BuildPCH;
+        worker::BuildPchParams params;
         params.file = main_file;
         params.directory = dir;
         params.arguments = {"clang++",
@@ -147,7 +145,7 @@ TEST_CASE(BlobWriteFailure) {
                             "-I",
                             dir,
                             main_file};
-        params.text = main_text;
+        params.content = main_text;
         params.preamble_bound = compute_preamble_bound(main_text);
         params.output_path = tmp.path("preamble.pch");
         // Unwritable blob path: the whole build must fail (the PCH is only

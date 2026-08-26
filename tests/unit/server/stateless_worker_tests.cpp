@@ -2,8 +2,8 @@
 #include <vector>
 
 #include "test/test.h"
-#include "server/protocol/worker.h"
 #include "server/worker_test_helpers.h"
+#include "worker/protocol.h"
 
 #include "kota/codec/bincode/bincode.h"
 
@@ -91,13 +91,12 @@ TEST_CASE(BuildPCHRequest) {
     bool test_done = false;
 
     w.run([&]() -> kota::task<> {
-        worker::BuildParams params;
-        params.kind = worker::BuildKind::BuildPCH;
+        worker::BuildPchParams params;
         params.file = hdr;
         params.directory = "/tmp";
         params.arguments =
             {"clang++", "-resource-dir", std::string(resource_dir()), "-x", "c++-header", hdr};
-        params.text = "#pragma once\nint pch_global = 42;\n";
+        params.content = "#pragma once\nint pch_global = 42;\n";
         params.output_path = tmp.path("test_pch.pch");
         // The pair is mandatory: a PCH is only served with its blob.
         params.index_output_path = tmp.path("test_pch.pch.idx");
@@ -128,8 +127,7 @@ TEST_CASE(IndexRequest) {
     bool test_done = false;
 
     w.run([&]() -> kota::task<> {
-        worker::BuildParams params;
-        params.kind = worker::BuildKind::Index;
+        worker::IndexParams params;
         params.file = src;
         params.directory = "/tmp";
         params.arguments = make_args(src);
@@ -163,8 +161,7 @@ TEST_CASE(BuildPCMRequest) {
     bool test_done = false;
 
     w.run([&]() -> kota::task<> {
-        worker::BuildParams params;
-        params.kind = worker::BuildKind::BuildPCM;
+        worker::BuildPcmParams params;
         params.file = src;
         params.directory = "/tmp";
         params.arguments = {"clang++",
@@ -219,10 +216,8 @@ TEST_CASE(CompletionRequest) {
     bool test_done = false;
 
     w.run([&]() -> kota::task<> {
-        worker::BuildParams params;
-        params.kind = worker::BuildKind::Completion;
+        worker::CompletionParams params;
         params.file = src;
-        params.version = 1;
         params.text = text;
         params.directory = "/tmp";
         params.arguments = make_args(src);
@@ -249,10 +244,8 @@ TEST_CASE(SignatureHelpRequest) {
     bool test_done = false;
 
     w.run([&]() -> kota::task<> {
-        worker::BuildParams params;
-        params.kind = worker::BuildKind::SignatureHelp;
+        worker::SignatureHelpParams params;
         params.file = src;
-        params.version = 1;
         params.text = text;
         params.directory = "/tmp";
         params.arguments = make_args(src);
@@ -286,8 +279,7 @@ TEST_CASE(MultipleStatelessRequests) {
     w.run([&]() -> kota::task<> {
         // Send multiple index requests to test stateless worker handles them sequentially.
         for(int i = 0; i < 3; i++) {
-            worker::BuildParams params;
-            params.kind = worker::BuildKind::Index;
+            worker::IndexParams params;
             params.file = paths[i];
             params.directory = "/tmp";
             params.arguments = make_args(paths[i]);

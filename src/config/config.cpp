@@ -75,7 +75,7 @@ static std::string resolve_xdg_cache_dir(llvm::StringRef workspace_root) {
 
 std::uint32_t default_stateless_worker_count() {
     // Config is constructed on every worker request (QueryParams /
-    // BuildParams carry one); query the core count once, not per request.
+    // build params carry one); query the core count once, not per request.
     const static std::uint32_t count = std::max(kota::sys::parallelism() / 2, 2u);
     return count;
 }

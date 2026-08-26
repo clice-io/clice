@@ -86,7 +86,7 @@ TEST_CASE(QuarantineBlocksBuilds) {
 
     bool done = false;
     auto body = [&]() -> kota::task<> {
-        auto result = co_await compiler.forward_build(worker::BuildKind::Completion, {}, session);
+        auto result = co_await compiler.forward_completion({}, session);
         CO_ASSERT_FALSE(result.has_value());
         EXPECT_EQ(result.error().code, worker::dispatch_errc::worker_unavailable);
         // The gate's message, not the empty pool's: without the gate this
@@ -267,7 +267,7 @@ TEST_CASE(PchCrashBlocksBuild) {
         CO_ASSERT_TRUE(pool.start(opts));
         co_await kota::sleep(500);
 
-        auto result = co_await compiler.forward_build(worker::BuildKind::Completion, {}, session);
+        auto result = co_await compiler.forward_completion({}, session);
         CO_ASSERT_FALSE(result.has_value());
         EXPECT_EQ(result.error().code, worker::dispatch_errc::worker_unavailable);
         // One inherited strike plus both deaths of the doomed PCH build.

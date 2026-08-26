@@ -1,4 +1,4 @@
-#include "server/worker/stateless_worker.h"
+#include "worker/stateless.h"
 
 #include <atomic>
 #include <cstdlib>
@@ -8,10 +8,10 @@
 #include "compile/compilation.h"
 #include "feature/feature.h"
 #include "index/tu_index.h"
-#include "server/protocol/worker.h"
-#include "server/worker/worker_common.h"
 #include "support/logging.h"
 #include "support/stderr_sink.h"
+#include "worker/common.h"
+#include "worker/protocol.h"
 
 #include "kota/async/async.h"
 #include "kota/ipc/codec/bincode.h"
@@ -87,14 +87,14 @@ static std::optional<std::string> write_preamble_envelope(llvm::StringRef blob,
     return std::nullopt;
 }
 
-static worker::BuildResult handle_build_pch(const worker::BuildParams& params,
-                                            const std::shared_ptr<std::atomic_bool>& stop) {
+static worker::ArtifactBuildResult handle_build_pch(const worker::BuildPchParams& params,
+                                                    const std::shared_ptr<std::atomic_bool>& stop) {
     ScopedTimer timer;
 
     CompilationParams cp;
     cp.kind = CompilationKind::Preamble;
     fill_args(cp, params.directory, params.arguments);
-    cp.add_remapped_file(params.file, params.text, params.preamble_bound);
+    cp.add_remapped_file(params.file, params.content, params.preamble_bound);
     cp.stop = stop;
 
     // When the master provides an output path it is already a tmp path
@@ -168,7 +168,7 @@ static worker::BuildResult handle_build_pch(const worker::BuildParams& params,
                  flush_ms,
                  state_write_ms,
                  timer.ms());
-        worker::BuildResult result;
+        worker::ArtifactBuildResult result;
         result.success = true;
         result.output_path = tmp_path;
         result.build_at = build_at;
@@ -177,7 +177,7 @@ static worker::BuildResult handle_build_pch(const worker::BuildParams& params,
     } else {
         LOG_WARN("BuildPCH failed: file={}, {}ms, errors=[{}]", params.file, timer.ms(), errors);
         fs::remove(tmp_path);
-        worker::BuildResult result;
+        worker::ArtifactBuildResult result;
         result.success = false;
         result.error = errors.empty() ? "PCH compilation failed" : errors;
         result.has_user_errors = !internal_error && !errors.empty();
@@ -185,8 +185,8 @@ static worker::BuildResult handle_build_pch(const worker::BuildParams& params,
     }
 }
 
-static worker::BuildResult handle_build_pcm(const worker::BuildParams& params,
-                                            const std::shared_ptr<std::atomic_bool>& stop) {
+static worker::ArtifactBuildResult handle_build_pcm(const worker::BuildPcmParams& params,
+                                                    const std::shared_ptr<std::atomic_bool>& stop) {
     ScopedTimer timer;
 
     CompilationParams cp;
@@ -237,7 +237,7 @@ static worker::BuildResult handle_build_pcm(const worker::BuildParams& params,
                  compile_ms,
                  flush_ms,
                  timer.ms());
-        worker::BuildResult result;
+        worker::ArtifactBuildResult result;
         result.success = true;
         result.output_path = tmp_path;
         result.build_at = build_at;
@@ -249,7 +249,7 @@ static worker::BuildResult handle_build_pcm(const worker::BuildParams& params,
                  timer.ms(),
                  errors);
         fs::remove(tmp_path);
-        worker::BuildResult result;
+        worker::ArtifactBuildResult result;
         result.success = false;
         result.error = errors.empty() ? "PCM compilation failed" : errors;
         result.has_user_errors = !errors.empty();
@@ -257,7 +257,7 @@ static worker::BuildResult handle_build_pcm(const worker::BuildParams& params,
     }
 }
 
-static worker::BuildResult handle_index(const worker::BuildParams& params,
+static worker::IndexResult handle_index(const worker::IndexParams& params,
                                         const std::shared_ptr<std::atomic_bool>& stop) {
     ScopedTimer timer;
 
@@ -301,14 +301,14 @@ static worker::BuildResult handle_index(const worker::BuildParams& params,
              index_ms,
              teardown_ms,
              timer.ms());
-    worker::BuildResult result;
+    worker::IndexResult result;
     result.success = true;
     result.tu_index_data = std::move(serialized);
     return result;
 }
 
-static worker::BuildResult handle_completion(const worker::BuildParams& params,
-                                             const std::shared_ptr<std::atomic_bool>& stop) {
+static kota::codec::RawValue handle_completion(const worker::CompletionParams& params,
+                                               const std::shared_ptr<std::atomic_bool>& stop) {
     ScopedTimer timer;
 
     CompilationParams cp;
@@ -327,13 +327,11 @@ static worker::BuildResult handle_completion(const worker::BuildParams& params,
     auto items = feature::code_complete(cp, params.config.code_completion);
     LOG_DEBUG("Completion done: {} items, {}ms", items.size(), timer.ms());
 
-    worker::BuildResult result;
-    result.result_json = to_raw(items);
-    return result;
+    return to_raw(items);
 }
 
-static worker::BuildResult handle_signature_help(const worker::BuildParams& params,
-                                                 const std::shared_ptr<std::atomic_bool>& stop) {
+static kota::codec::RawValue handle_signature_help(const worker::SignatureHelpParams& params,
+                                                   const std::shared_ptr<std::atomic_bool>& stop) {
     ScopedTimer timer;
 
     CompilationParams cp;
@@ -352,25 +350,21 @@ static worker::BuildResult handle_signature_help(const worker::BuildParams& para
     auto help = feature::signature_help(cp);
     LOG_DEBUG("SignatureHelp done: {}ms", timer.ms());
 
-    worker::BuildResult result;
-    result.result_json = to_raw(help);
-    return result;
+    return to_raw(help);
 }
 
-static worker::BuildResult handle_format(const worker::BuildParams& params) {
+static kota::codec::RawValue handle_format(const worker::FormatParams& params) {
     ScopedTimer timer;
 
     std::optional<LocalSourceRange> range;
-    if(params.format_range.valid()) {
-        range = params.format_range;
+    if(params.range.valid()) {
+        range = params.range;
     }
 
     auto edits = feature::document_format(params.file, params.text, range);
     LOG_DEBUG("Format done: {} edits, {}ms", edits.size(), timer.ms());
 
-    worker::BuildResult result;
-    result.result_json = to_raw(edits);
-    return result;
+    return to_raw(edits);
 }
 
 int run_stateless_worker_mode(const std::string& worker_name, const std::string& log_dir) {
@@ -423,34 +417,101 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
         }
     });
 
-    peer.on_request([&](RequestContext& ctx,
-                        const worker::BuildParams& params) -> RequestResult<worker::BuildParams> {
-        using K = worker::BuildKind;
-        // A cancellation (peer close, wire-level $/cancelRequest) dequeues
-        // work that has not started; work already on the pool thread learns
-        // through the hook: the shared flag doubles as CompilationParams::
-        // stop, which clang polls after every top-level declaration, so
-        // even the parse itself stops instead of running to completion for
-        // a result nobody will read.
+    // A cancellation (peer close, wire-level $/cancelRequest) dequeues
+    // work that has not started; work already on the pool thread learns
+    // through the hook: the shared flag doubles as CompilationParams::
+    // stop, which clang polls after every top-level declaration, so even
+    // the parse itself stops instead of running to completion for a
+    // result nobody will read.
+    auto arm_stop = [&build_stop] {
         auto stop = std::make_shared<std::atomic_bool>(false);
         build_stop = stop;
+        return stop;
+    };
+
+    peer.on_request(
+        [&](RequestContext& ctx,
+            const worker::BuildPchParams& params) -> RequestResult<worker::BuildPchParams> {
+            auto stop = arm_stop();
+            auto result = co_await kota::queue(
+                [&]() -> worker::ArtifactBuildResult {
+                    if(stop->load(std::memory_order_relaxed)) {
+                        return {false, "Build cancelled"};
+                    }
+                    return handle_build_pch(params, stop);
+                },
+                [stop] { stop->store(true, std::memory_order_relaxed); });
+            co_return result.value();
+        });
+
+    peer.on_request(
+        [&](RequestContext& ctx,
+            const worker::BuildPcmParams& params) -> RequestResult<worker::BuildPcmParams> {
+            auto stop = arm_stop();
+            auto result = co_await kota::queue(
+                [&]() -> worker::ArtifactBuildResult {
+                    if(stop->load(std::memory_order_relaxed)) {
+                        return {false, "Build cancelled"};
+                    }
+                    return handle_build_pcm(params, stop);
+                },
+                [stop] { stop->store(true, std::memory_order_relaxed); });
+            co_return result.value();
+        });
+
+    peer.on_request([&](RequestContext& ctx,
+                        const worker::IndexParams& params) -> RequestResult<worker::IndexParams> {
+        auto stop = arm_stop();
         auto result = co_await kota::queue(
-            [&]() -> worker::BuildResult {
+            [&]() -> worker::IndexResult {
                 if(stop->load(std::memory_order_relaxed)) {
                     return {false, "Build cancelled"};
                 }
-                switch(params.kind) {
-                    case K::BuildPCH: return handle_build_pch(params, stop);
-                    case K::BuildPCM: return handle_build_pcm(params, stop);
-                    case K::Index: {
-                        ScopedNice guard;
-                        return handle_index(params, stop);
+                ScopedNice guard;
+                return handle_index(params, stop);
+            },
+            [stop] { stop->store(true, std::memory_order_relaxed); });
+        co_return result.value();
+    });
+
+    peer.on_request(
+        [&](RequestContext& ctx,
+            const worker::CompletionParams& params) -> RequestResult<worker::CompletionParams> {
+            auto stop = arm_stop();
+            auto result = co_await kota::queue(
+                [&]() -> kota::codec::RawValue {
+                    if(stop->load(std::memory_order_relaxed)) {
+                        return kota::codec::RawValue{"null"};
                     }
-                    case K::Completion: return handle_completion(params, stop);
-                    case K::SignatureHelp: return handle_signature_help(params, stop);
-                    case K::Format: return handle_format(params);
+                    return handle_completion(params, stop);
+                },
+                [stop] { stop->store(true, std::memory_order_relaxed); });
+            co_return result.value();
+        });
+
+    peer.on_request([&](RequestContext& ctx, const worker::SignatureHelpParams& params)
+                        -> RequestResult<worker::SignatureHelpParams> {
+        auto stop = arm_stop();
+        auto result = co_await kota::queue(
+            [&]() -> kota::codec::RawValue {
+                if(stop->load(std::memory_order_relaxed)) {
+                    return kota::codec::RawValue{"null"};
                 }
-                return {false, "Unknown build kind"};
+                return handle_signature_help(params, stop);
+            },
+            [stop] { stop->store(true, std::memory_order_relaxed); });
+        co_return result.value();
+    });
+
+    peer.on_request([&](RequestContext& ctx,
+                        const worker::FormatParams& params) -> RequestResult<worker::FormatParams> {
+        auto stop = arm_stop();
+        auto result = co_await kota::queue(
+            [&]() -> kota::codec::RawValue {
+                if(stop->load(std::memory_order_relaxed)) {
+                    return kota::codec::RawValue{"null"};
+                }
+                return handle_format(params);
             },
             [stop] { stop->store(true, std::memory_order_relaxed); });
         co_return result.value();

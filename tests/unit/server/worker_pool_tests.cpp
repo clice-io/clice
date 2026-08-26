@@ -1,10 +1,10 @@
 #include <chrono>
 
 #include "test/test.h"
-#include "server/protocol/worker.h"
-#include "server/worker/worker_pool.h"
 #include "server/worker_test_helpers.h"
 #include "support/anomaly.h"
+#include "worker/pool.h"
+#include "worker/protocol.h"
 
 #include "kota/async/async.h"
 
@@ -1736,14 +1736,12 @@ TEST_CASE(StatelessRequest) {
         CO_ASSERT_TRUE(f.start(2, 0));
         co_await kota::sleep(500);
 
-        worker::BuildParams params;
-        params.priority = worker::Priority::Low;
-        params.kind = worker::BuildKind::Index;
+        worker::IndexParams params;
         params.file = src;
         params.directory = "/tmp";
         params.arguments = make_args(src);
 
-        auto result = co_await f.pool.send_stateless(params);
+        auto result = co_await f.pool.send_stateless(params, worker::Priority::Low);
         EXPECT_TRUE(result.has_value());
         co_await f.stop();
         done = true;
@@ -1963,14 +1961,12 @@ TEST_CASE(CrashDuringRequest) {
         f.kill_worker(0);
         f.kill_worker(1);
 
-        worker::BuildParams params;
-        params.priority = worker::Priority::Low;
-        params.kind = worker::BuildKind::Index;
+        worker::IndexParams params;
         params.file = src;
         params.directory = "/tmp";
         params.arguments = make_args(src);
 
-        auto result = co_await f.pool.send_stateless(params);
+        auto result = co_await f.pool.send_stateless(params, worker::Priority::Low);
         CO_ASSERT_FALSE(result.has_value());
         EXPECT_EQ(result.error().code, worker::dispatch_errc::worker_crashed);
 
@@ -1991,9 +1987,7 @@ TEST_CASE(PreemptCancelsRequest) {
         CO_ASSERT_TRUE(f.start(2, 0));
         co_await kota::sleep(500);
 
-        worker::BuildParams params;
-        params.priority = worker::Priority::Low;
-        params.kind = worker::BuildKind::Index;
+        worker::IndexParams params;
         params.file = src;
         params.directory = "/tmp";
         params.arguments = make_args(src);
@@ -2001,7 +1995,7 @@ TEST_CASE(PreemptCancelsRequest) {
         worker::protocol::integer code = 0;
         kota::task_group<> group(f.loop);
         auto sender = [&]() -> kota::task<> {
-            auto result = co_await f.pool.send_stateless(params);
+            auto result = co_await f.pool.send_stateless(params, worker::Priority::Low);
             if(!result.has_value())
                 code = result.error().code;
         };
@@ -2044,9 +2038,7 @@ TEST_CASE(CancelledCrashRetiresSlot) {
         CO_ASSERT_TRUE(f.start(1, 0));
         co_await kota::sleep(500);
 
-        worker::BuildParams params;
-        params.priority = worker::Priority::Low;
-        params.kind = worker::BuildKind::Index;
+        worker::IndexParams params;
         params.file = src;
         params.directory = "/tmp";
         params.arguments = make_args(src);
@@ -2054,7 +2046,7 @@ TEST_CASE(CancelledCrashRetiresSlot) {
         worker::protocol::integer code = 0;
         kota::task_group<> group(f.loop);
         auto sender = [&]() -> kota::task<> {
-            auto result = co_await f.pool.send_stateless(params);
+            auto result = co_await f.pool.send_stateless(params, worker::Priority::Low);
             if(!result.has_value())
                 code = result.error().code;
         };

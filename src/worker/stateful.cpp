@@ -1,4 +1,4 @@
-#include "server/worker/stateful_worker.h"
+#include "worker/stateful.h"
 
 #include <algorithm>
 #include <atomic>
@@ -11,10 +11,10 @@
 #include "compile/compilation.h"
 #include "feature/feature.h"
 #include "index/tu_index.h"
-#include "server/protocol/worker.h"
-#include "server/worker/worker_common.h"
 #include "support/logging.h"
 #include "support/stderr_sink.h"
+#include "worker/common.h"
+#include "worker/protocol.h"
 
 #include "kota/async/async.h"
 #include "kota/ipc/codec/bincode.h"

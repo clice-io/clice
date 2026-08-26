@@ -10,8 +10,8 @@
 #include "command/command.h"
 #include "server/state/session.h"
 #include "server/state/workspace.h"
-#include "server/worker/worker_pool.h"
 #include "support/signal.h"
+#include "worker/pool.h"
 
 #include "kota/async/async.h"
 #include "kota/codec/json/json.h"
@@ -115,13 +115,17 @@ public:
                             std::optional<protocol::Range> range = {},
                             std::optional<kota::cancellation_token> token = {});
 
-    /// Forward a build request (signature help, etc.) to a stateless worker.
-    /// Sends the full buffer content and compile arguments. `token`: see
-    /// forward_query.
-    RawResult forward_build(worker::BuildKind kind,
-                            const protocol::Position& position,
-                            std::shared_ptr<Session> session,
-                            std::optional<kota::cancellation_token> token = {});
+    /// Forward a completion request to a stateless worker. Sends the full
+    /// buffer content and compile arguments. `token`: see forward_query.
+    RawResult forward_completion(const protocol::Position& position,
+                                 std::shared_ptr<Session> session,
+                                 std::optional<kota::cancellation_token> token = {});
+
+    /// Forward a signature-help request to a stateless worker; same inputs
+    /// as completion.
+    RawResult forward_signature_help(const protocol::Position& position,
+                                     std::shared_ptr<Session> session,
+                                     std::optional<kota::cancellation_token> token = {});
 
     /// Forward a document-link query to the stateful worker holding this
     /// file's AST. Covers the main-file region only: the preamble's links
@@ -158,6 +162,16 @@ public:
 
 private:
     kota::task<> run_compile(std::shared_ptr<Session> session);
+
+    /// Shared body of the interactive stateless builds (completion and
+    /// signature help): identical inputs and quarantine plumbing, different
+    /// wire type, evidence slot and log label.
+    template <typename Params>
+    RawResult forward_interactive(std::uint8_t evidence,
+                                  llvm::StringRef label,
+                                  protocol::Position position,
+                                  std::shared_ptr<Session> session,
+                                  std::optional<kota::cancellation_token> token);
 
     /// Publish the quarantine diagnostic as the session's current output
     /// and mark the spell announced. `source` falls back to the previous

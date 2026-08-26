@@ -2,8 +2,8 @@
 #include <vector>
 
 #include "test/test.h"
-#include "server/protocol/worker.h"
 #include "server/worker_test_helpers.h"
+#include "worker/protocol.h"
 
 namespace clice::testing {
 
@@ -40,8 +40,7 @@ TEST_CASE(BuildPCMThenCompileWithImport) {
     bool phase1_done = false;
 
     sl.run([&]() -> kota::task<> {
-        worker::BuildParams params;
-        params.kind = worker::BuildKind::BuildPCM;
+        worker::BuildPcmParams params;
         params.file = iface;
         params.directory = "/tmp";
         params.arguments = {"clang++",
@@ -132,8 +131,7 @@ TEST_CASE(BuildPCMChainThenCompile) {
     sl.run([&]() -> kota::task<> {
         // Build PCM for A first.
         {
-            worker::BuildParams params;
-            params.kind = worker::BuildKind::BuildPCM;
+            worker::BuildPcmParams params;
             params.file = mod_a;
             params.directory = "/tmp";
             params.arguments = {"clang++",
@@ -152,8 +150,7 @@ TEST_CASE(BuildPCMChainThenCompile) {
 
         // Build PCM for B, passing A's PCM (transitive dep).
         {
-            worker::BuildParams params;
-            params.kind = worker::BuildKind::BuildPCM;
+            worker::BuildPcmParams params;
             params.file = mod_b;
             params.directory = "/tmp";
             params.arguments = {"clang++",
@@ -240,8 +237,7 @@ TEST_CASE(ModuleImplementationUnitWithWorker) {
     bool pcm_done = false;
 
     sl.run([&]() -> kota::task<> {
-        worker::BuildParams params;
-        params.kind = worker::BuildKind::BuildPCM;
+        worker::BuildPcmParams params;
         params.file = iface;
         params.directory = "/tmp";
         params.arguments = {"clang++",

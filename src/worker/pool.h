@@ -7,14 +7,23 @@
 #include <memory>
 #include <optional>
 
-#include "server/protocol/worker.h"
 #include "support/signal.h"
+#include "worker/protocol.h"
 
 #include "kota/async/async.h"
 #include "kota/ipc/codec/bincode.h"
 #include "kota/ipc/peer.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
+
+namespace clice::worker {
+
+/// Scheduling class of a stateless dispatch. Deliberately not part of the
+/// wire protocol: priority is the pool's business, passed explicitly to
+/// send_stateless — the worker process never sees it.
+enum class Priority : uint8_t { High, Low };
+
+}  // namespace clice::worker
 
 namespace clice {
 
@@ -156,6 +165,7 @@ public:
     /// Send a request to a stateless worker with priority-aware scheduling.
     template <typename Params>
     RequestResult<Params> send_stateless(const Params& params,
+                                         worker::Priority priority,
                                          kota::ipc::request_options opts = {});
 
     /// Send a notification to the stateful worker owning path_id (if any).
@@ -719,13 +729,14 @@ RequestResult<Params> WorkerPool::send_stateful(std::uint32_t path_id,
 
 template <typename Params>
 RequestResult<Params> WorkerPool::send_stateless(const Params& params,
+                                                 worker::Priority priority,
                                                  kota::ipc::request_options opts) {
     // High-priority stateless work (PCH, completion builds, foreground
     // PCMs) is foreground by the priority taxonomy; while it runs or
     // queues, foreground_busy() holds the window open.
-    if(params.priority == worker::Priority::High)
+    if(priority == worker::Priority::High)
         note_foreground();
-    auto idx = co_await acquire_stateless_slot(params.priority);
+    auto idx = co_await acquire_stateless_slot(priority);
     if(idx == SIZE_MAX) {
         co_return kota::outcome_error(kota::ipc::Error{worker::dispatch_errc::worker_unavailable,
                                                        "No stateless workers available"});
@@ -736,7 +747,7 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
     auto gen = stateless_workers[idx].generation;
 
     std::shared_ptr<kota::cancellation_source> preempt_src;
-    if(params.priority == worker::Priority::Low) {
+    if(priority == worker::Priority::Low) {
         // Reclaim demand that arose while this claim's sender was parked
         // (a foreground edge, a queued High) was skipped by the cancel
         // sweep — an unarmed slot must never be stamped (see
