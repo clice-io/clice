@@ -482,9 +482,10 @@ using IndexSymbolResolver = llvm::function_ref<std::optional<IndexSymbolInfo>(in
 /// parses only, C++ otherwise. A default-constructed LangOptions is C89
 /// — `class` would lex as an identifier. `standard` is the serving
 /// command's -std value when known: the rows were classified under it,
-/// and the latest standard's extra keywords (`concept` in C++17 code)
-/// would conflict with them. Unknown or contradicting values fall back
-/// to the language's latest.
+/// and a newer standard's extra keywords (`concept` in C++17 code)
+/// would shadow them. Absent, unknown or contradicting values fall back
+/// to the driver's default standard — the dialect a -std-less command
+/// was indexed under.
 auto index_lang_options(llvm::StringRef path, bool c_rows, llvm::StringRef standard = {})
     -> const clang::LangOptions&;
 

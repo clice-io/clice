@@ -52,7 +52,8 @@ const static index::Shard* index_rows_source(const IndexQuery& query, const Sess
     return query.open_session_shard(session);
 }
 
-kota::task<FeatureRouter::Route> FeatureRouter::pick_route(std::shared_ptr<Session> session) {
+kota::task<FeatureRouter::Route> FeatureRouter::pick_route(std::shared_ptr<Session> session,
+                                                           bool full_lex) {
     // This handler is resumed eagerly: drain the transport pipe before
     // reading any buffer state, so a queued didChange or cancel lands
     // first (the same discipline as completion's yield).
@@ -64,10 +65,12 @@ kota::task<FeatureRouter::Route> FeatureRouter::pick_route(std::shared_ptr<Sessi
     if(ast_answerable(*session)) {
         co_return Route::Ast;
     }
-    // An oversized buffer is not worth a synchronous main-thread lex; it
-    // follows the investment policy instead of the index slice.
-    constexpr std::size_t index_projection_cap = 8 * 1024 * 1024;
-    if(session->text.size() <= index_projection_cap && index_rows_source(index_query, *session)) {
+    // An oversized buffer is not worth a synchronous main-thread lex; the
+    // full-lex projections follow the investment policy instead of the
+    // index slice. Row-backed answers serve at any size.
+    constexpr std::size_t full_lex_cap = 8 * 1024 * 1024;
+    bool capped = full_lex && session->text.size() > full_lex_cap;
+    if(!capped && index_rows_source(index_query, *session)) {
         // The index answering must never strand the investment the policy
         // asked for: keep the escalated session's compile moving.
         if(session->serving == ServingMode::Escalated && session->ast_dirty) {
@@ -191,7 +194,7 @@ std::optional<feature::IndexSymbolInfo> FeatureRouter::resolve_symbol_info(index
 }
 
 kota::task<bool> FeatureRouter::nav_gate(std::shared_ptr<Session> session) {
-    switch(co_await pick_route(session)) {
+    switch(co_await pick_route(session, /*full_lex=*/false)) {
         case Route::Superseded: co_return false;
         // The index sources resolve the cursor under clauses 1/4 — or
         // reject it, which the query layers answer as empty. Either way
@@ -312,7 +315,7 @@ kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
     };
 
     for(bool waited = false;;) {
-        switch(co_await pick_route(session)) {
+        switch(co_await pick_route(session, /*full_lex=*/false)) {
             case Route::Superseded: co_return std::vector<protocol::DocumentLink>{};
             case Route::Index: {
                 // Manifest edges cover the whole document (the background
@@ -469,7 +472,7 @@ FeatureRouter::RawResult FeatureRouter::hover(std::shared_ptr<Session> session,
         return std::nullopt;
     };
 
-    switch(co_await pick_route(session)) {
+    switch(co_await pick_route(session, /*full_lex=*/false)) {
         case Route::Superseded: co_return serde_raw{"null"};
         case Route::Index: {
             if(auto card = index_card()) {
@@ -522,7 +525,7 @@ FeatureRouter::RawResult
     FeatureRouter::semantic_tokens(std::shared_ptr<Session> session,
                                    std::optional<kota::cancellation_token> token) {
     if(session) {
-        switch(co_await pick_route(session)) {
+        switch(co_await pick_route(session, /*full_lex=*/true)) {
             case Route::Superseded: co_return serde_raw{"null"};
             case Route::Index: {
                 auto* source = index_rows_source(index_query, *session);
@@ -581,7 +584,7 @@ FeatureRouter::RawResult
     FeatureRouter::folding_range(std::shared_ptr<Session> session,
                                  std::optional<kota::cancellation_token> token) {
     if(session) {
-        switch(co_await pick_route(session)) {
+        switch(co_await pick_route(session, /*full_lex=*/true)) {
             case Route::Superseded: co_return serde_raw{"null"};
             case Route::Index: {
                 auto* source = index_rows_source(index_query, *session);
@@ -621,7 +624,7 @@ FeatureRouter::RawResult
                                    std::optional<kota::cancellation_token> token) {
     if(session) {
         for(bool waited = false;;) {
-            switch(co_await pick_route(session)) {
+            switch(co_await pick_route(session, /*full_lex=*/false)) {
                 case Route::Superseded: co_return serde_raw{"null"};
                 case Route::Index: {
                     auto* source = index_rows_source(index_query, *session);

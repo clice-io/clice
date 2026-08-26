@@ -79,6 +79,36 @@ test("index serves unedited reads", async ({ session }) => {
     expect(ws.pchFiles()).toEqual([]);
 });
 
+test("oversized buffer keeps row answers", async ({ session }) => {
+    const ws = session.tmpdir();
+    // Past the 8 MiB full-lex cap only semantic tokens and folds follow
+    // the investment policy; row- and cursor-backed projections still
+    // serve from the shard.
+    ws.write("header.h", HEADER);
+    ws.write("main.cpp", MAIN + "// padding\n".repeat(800_000));
+    ws.writeCDB(["main.cpp"]);
+    ws.pinCacheDir();
+    const client = session.spawn(ws);
+    await client.initialize(ws, { initializationOptions: ON_EDIT });
+
+    const [uri] = client.open("main.cpp");
+    expect(await client.waitForIndex(uri, "twice")).toBe(true);
+
+    const symbols = (await client.documentSymbols(uri)) as proto.DocumentSymbol[] | null;
+    expect(symbols?.map((s) => s.name)).toContain("twice");
+
+    const links = await client.documentLinks(uri);
+    expect(links?.some((l) => l.target?.endsWith("header.h"))).toBe(true);
+
+    // `add` in `return add(x, x)` on line 4.
+    const hover = await client.hoverAt(uri, 4, 11);
+    expect(JSON.stringify(hover?.contents ?? "")).toContain("add");
+
+    expect(await client.semanticTokensFull(uri)).toBeNull();
+    expect(await client.foldingRanges(uri)).toEqual([]);
+    expect(ws.pchFiles()).toEqual([]);
+});
+
 test("cold outline awaits the boost", async ({ session }) => {
     const ws = writeProject(session);
     const client = session.spawn(ws);

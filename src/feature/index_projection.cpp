@@ -89,11 +89,13 @@ auto index_lang_options(llvm::StringRef path, bool c_rows, llvm::StringRef stand
     -> const clang::LangOptions& {
     bool c = c_rows || path.ends_with(".c");
     auto lang = c ? clang::Language::C : clang::Language::CXX;
-    auto kind = c ? clang::LangStandard::lang_c23 : clang::LangStandard::lang_cxx23;
+    // A command without -std parses under the driver's default dialect;
+    // the same default keeps the keyword table aligned with the rows.
+    auto kind = clang::getDefaultLanguageStandard(lang, llvm::Triple());
     if(!standard.empty()) {
         auto parsed = clang::LangStandard::getLangKind(standard);
         // A standard of the other language contradicts the resolved rows'
-        // language; keep the language's latest rather than obeying it.
+        // language; keep the language's default rather than obeying it.
         if(parsed != clang::LangStandard::lang_unspecified &&
            clang::LangStandard::getLangStandardForKind(parsed).getLanguage() == lang) {
             kind = parsed;
@@ -245,9 +247,10 @@ auto index_semantic_tokens(llvm::StringRef content,
 
         // Only tokens that can spell a name take semantic classification —
         // mirroring the AST path, which anchors declaration names at
-        // identifiers and a destructor's `~` only.
+        // identifiers and a destructor's `~` only. Keywords stay lexical:
+        // a row anchored on `operator` names nothing written there.
         Classified semantic;
-        if(lexical_class.identifier_like || kind == clang::tok::tilde) {
+        if(kind == clang::tok::identifier || kind == clang::tok::tilde) {
             semantic = semantic_at(token.range.begin);
         }
         if(semantic.kind == SymbolKind::Invalid && lexical_class.identifier_like &&

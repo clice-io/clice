@@ -185,7 +185,11 @@ private:
 
     /// See Route. Sets up escalated sessions' compile kick so an index
     /// answer never strands the AST investment the policy asked for.
-    kota::task<FeatureRouter::Route> pick_route(std::shared_ptr<Session> session);
+    /// `full_lex` marks projections that raw-lex the whole buffer
+    /// (semantic tokens, folds): those follow the investment policy once
+    /// the buffer is oversized, while row- and cursor-backed answers
+    /// serve at any size.
+    kota::task<FeatureRouter::Route> pick_route(std::shared_ptr<Session> session, bool full_lex);
 
     /// The compile gate of index-navigation requests: awaits the compile
     /// exactly when the routing decided the AST is the serving source

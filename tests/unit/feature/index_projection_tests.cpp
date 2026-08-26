@@ -75,6 +75,7 @@ struct Point {
     int x;
     int y;
     int sum();
+    Point operator+(Point other);
 };
 
 int Point::sum() {
@@ -323,8 +324,8 @@ TEST_CASE(ModuleNameComponents) {
 
 TEST_CASE(CDialectKeywords) {
     // `class` is a valid C identifier: rows built by C parses must lex
-    // under the C keyword table, or the C++ keyword overlay would fight
-    // the row's kind.
+    // under the C keyword table, or the C++ table would take `class` as
+    // a keyword and shadow the row's kind.
     llvm::StringRef content = "int class;\n";
     std::vector<feature::IndexDeclRow> rows = {
         {.range = {4, 9}, .extent = {0, 10}, .symbol = 1, .definition = true},
@@ -347,13 +348,13 @@ TEST_CASE(CDialectKeywords) {
                                                      rows,
                                                      resolve_synthetic);
     ASSERT_EQ(cpp_tokens.size(), std::size_t(2));
-    ASSERT_EQ(cpp_tokens[1].kind.value_of(), SymbolKind(SymbolKind::Conflict).value_of());
+    ASSERT_EQ(cpp_tokens[1].kind.value_of(), SymbolKind(SymbolKind::Keyword).value_of());
 }
 
 TEST_CASE(StandardFromCommand) {
     // `concept` is a plain identifier in C++17: rows built under an older
-    // -std must lex with that standard's keyword table, or the latest
-    // standard's overlay would fight the row's kind.
+    // -std must lex with that standard's keyword table, or a newer
+    // table would take `concept` as a keyword and shadow the row.
     llvm::StringRef content = "int concept;\n";
     std::vector<feature::IndexDeclRow> rows = {
         {.range = {4, 11}, .extent = {0, 12}, .symbol = 1, .definition = true},
@@ -371,14 +372,25 @@ TEST_CASE(StandardFromCommand) {
     ASSERT_EQ(cxx17_tokens.size(), std::size_t(2));
     ASSERT_EQ(cxx17_tokens[1].kind.value_of(), SymbolKind(SymbolKind::Variable).value_of());
 
-    auto latest_tokens =
+    auto cxx20_tokens =
+        feature::index_semantic_tokens(content,
+                                       feature::index_lang_options("main.cpp", false, "c++20"),
+                                       {},
+                                       rows,
+                                       resolve_synthetic);
+    ASSERT_EQ(cxx20_tokens.size(), std::size_t(2));
+    ASSERT_EQ(cxx20_tokens[1].kind.value_of(), SymbolKind(SymbolKind::Keyword).value_of());
+
+    // No -std in the command means the rows were indexed under the
+    // driver's default dialect (C++17 today); the fallback matches it.
+    auto default_tokens =
         feature::index_semantic_tokens(content,
                                        feature::index_lang_options("main.cpp", false),
                                        {},
                                        rows,
                                        resolve_synthetic);
-    ASSERT_EQ(latest_tokens.size(), std::size_t(2));
-    ASSERT_EQ(latest_tokens[1].kind.value_of(), SymbolKind(SymbolKind::Conflict).value_of());
+    ASSERT_EQ(default_tokens.size(), std::size_t(2));
+    ASSERT_EQ(default_tokens[1].kind.value_of(), SymbolKind(SymbolKind::Variable).value_of());
 }
 
 TEST_CASE(LinksFromEdges) {
