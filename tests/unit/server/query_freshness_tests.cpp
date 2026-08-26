@@ -9,8 +9,10 @@
 #include "index/tu_index.h"
 #include "sched/context.h"
 #include "sched/families/pcm.h"
+#include "sched/families/turun.h"
 #include "sched/graph.h"
-#include "server/compiler/indexer.h"
+#include "sched/index/pump.h"
+#include "sched/index/store.h"
 #include "server/service/query.h"
 #include "server/state/ast_projection.h"
 #include "server/state/session_store.h"
@@ -33,7 +35,9 @@ ContextResolver resolver{workspace};
 TaskGraph graph{loop};
 PCMFamily pcm{graph, workspace, resolver, pool};
 ASTProjectionTable projections;
-Indexer indexer{loop, workspace, pool, resolver, pcm, store, projections};
+IndexStore index_store{loop, workspace};
+TURunFamily turun{graph, workspace, resolver, pcm, index_store, pool};
+IndexPump indexer{loop, workspace, turun, index_store, pool};
 IndexQuery index_query{workspace, store, indexer, projections};
 IndexQuery agent_query{workspace, store, indexer, projections, {.disk_only = true}};
 

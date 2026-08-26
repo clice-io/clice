@@ -5,7 +5,7 @@
 #include <vector>
 
 #include "command/argument_parser.h"
-#include "server/compiler/ast_family.h"
+#include "server/service/ast_family.h"
 #include "server/state/session_store.h"
 #include "support/logging.h"
 

@@ -35,15 +35,15 @@ constexpr static std::size_t notify_log_limit = 128;
 
 MasterServer::MasterServer(kota::event_loop& loop, std::string self_path) :
     loop(loop), pool(loop), contexts(workspace),
-    indexer(loop, workspace, pool, contexts, pcm, sessions, ast.projections),
-    index_query(workspace, sessions, indexer, ast.projections),
-    agent_query(workspace, sessions, indexer, ast.projections, {.disk_only = true}),
-    features(ast, forwarder, index_query, workspace, contexts, indexer, sessions),
+    index_query(workspace, sessions, pump, ast.projections),
+    agent_query(workspace, sessions, pump, ast.projections, {.disk_only = true}),
+    features(ast, forwarder, index_query, workspace, contexts, pump, sessions),
     invalidator(workspace, sessions, contexts, pcm), bg_tasks(loop),
     self_path(std::move(self_path)) {
     pcm.register_runner();
     pch.register_runner();
     ast.register_runner();
+    turun.register_runner();
     // The notify hook is process-wide because the logging layer cannot
     // depend on the server; the composition root owns it for the server's
     // lifetime and turns reports into state (notify_log) plus a wake-up
@@ -223,7 +223,7 @@ void MasterServer::wire() {
     pool.on_crash = [this](const WorkerCrashInfo& info) {
         // A stateless crash loses only in-flight requests, which fail back
         // to their callers with dispatch_errc::worker_crashed — the families
-        // resend idempotent builds, the indexer requeues the file. No state
+        // resend idempotent builds, the pump requeues the file. No state
         // outlives the request, so there is nothing to invalidate and no
         // event to dispatch.
         if(!info.stateful)
@@ -251,11 +251,22 @@ void MasterServer::wire() {
     };
 
     ast.on_indexing_needed = [this]() {
-        indexer.schedule();
+        pump.schedule();
     };
     pcm.on_indexing_needed = [this]() {
-        indexer.schedule();
+        pump.schedule();
     };
+
+    // The pump is serving-neutral; the session-side policy hooks live on
+    // this class and are installed here.
+    pump.admission = [this](std::uint32_t path_id) {
+        return index_admission(path_id);
+    };
+    pump.on_attempt_settled = [this](std::uint32_t path_id) {
+        index_attempt_settled(path_id);
+    };
+    index_rows_conn = pump.on_rows_changed.connect(
+        [this](llvm::ArrayRef<std::uint32_t> path_ids) { index_rows_changed(path_ids); });
 
     // The AST family's pull-side staleness check found a dependency changed
     // on disk: route it through the same DiskChanged path the file
@@ -263,16 +274,6 @@ void MasterServer::wire() {
     // invalidation cascade.
     ast.on_stale = [this](std::uint32_t path_id) {
         dispatch(FileEvent::disk_changed(path_id));
-    };
-
-    // The boost in settle_open_serving promised the index would serve the
-    // cold session; an attempt that settles without a servable shard ends
-    // that promise — escalate like the disabled-indexing branch, or the
-    // session answers empty until its first edit.
-    indexer.on_session_unservable = [this](std::uint32_t path_id) {
-        if(auto session = sessions.find(path_id)) {
-            ast.escalate(*session);
-        }
     };
 }
 
@@ -319,9 +320,10 @@ void MasterServer::settle_open_serving(std::shared_ptr<Session> session) {
     // Nothing indexed yet: reading this file is the reason to index it
     // first — unless indexing is disabled, in which case no shard will
     // ever arrive and only an AST can serve the document. A boost the
-    // indexer cannot fulfill escalates through on_session_unservable.
+    // pump cannot fulfill escalates through the adapter's attempt-settled
+    // check.
     if(workspace.config.project.enable_indexing.value) {
-        indexer.boost(session->path_id);
+        pump.boost(session->path_id);
     } else {
         ast.escalate(*session);
     }
@@ -360,15 +362,72 @@ void MasterServer::close_session(std::uint32_t path_id) {
     LOG_DEBUG("didClose: {}", path);
 }
 
+Admission MasterServer::index_admission(std::uint32_t server_path_id) const {
+    // Open files whose session invests in an AST are skipped until an
+    // agent shows up: the LSP side never reads their shards (the session
+    // serves them), so indexing them is pure waste — but agents read disk
+    // truth and need the shards, snapshot taken from disk regardless of
+    // the live buffer. Skipping loses no debt: the veto settles the
+    // claim, and BufferClosed re-checks the shard against the disk on
+    // close. An index-only session is the opposite case — its shard IS
+    // what the LSP serves (freshness clause 4), so it indexes like a
+    // closed file, but only while its buffer matches the disk this index
+    // would read: rows from a diverged disk fail clause 4's content gate
+    // and would replace the one shard the session can serve from,
+    // blanking its features until an escalation. Keep the last matching
+    // rows instead — the close-time re-check covers the debt here too.
+    auto session = sessions.find(server_path_id);
+    if(!session) {
+        return Admission::Admit;
+    }
+    if(session->serving != ServingMode::IndexOnly) {
+        return index_open_files ? Admission::Admit : Admission::SkipAndSettle;
+    }
+    auto file_path = workspace.path_pool.resolve(server_path_id);
+    if(auto disk = fs::read(file_path); !disk || *disk != session->text) {
+        return Admission::SkipAndSettle;
+    }
+    return Admission::Admit;
+}
+
+void MasterServer::index_attempt_settled(std::uint32_t server_path_id) {
+    // The boost in settle_open_serving promised the index would serve the
+    // cold session; an attempt that settles without a servable shard ends
+    // that promise — escalate like the disabled-indexing branch, or the
+    // session answers empty until its first edit.
+    auto session = sessions.find(server_path_id);
+    if(!session || session->serving != ServingMode::IndexOnly) {
+        return;
+    }
+    auto it = workspace.shards.find(server_path_id);
+    if(it == workspace.shards.end() || !it->second.matches_content(session->text)) {
+        ast.escalate(*session);
+    }
+}
+
+bool MasterServer::serves_session_rows(std::uint32_t path_id) const {
+    auto session = sessions.find(path_id);
+    return session && !ast.projections.index_current(path_id) && session->index_served;
+}
+
+void MasterServer::index_rows_changed(llvm::ArrayRef<std::uint32_t> path_ids) {
+    // Sessions without a current file index serve these very rows
+    // (freshness clause 4); index_served says the client pulled some of
+    // them. Tell subscribers so those results get re-pulled.
+    if(llvm::any_of(path_ids, [&](std::uint32_t id) { return serves_session_rows(id); })) {
+        on_serving_rows_changed.emit();
+    }
+}
+
 void MasterServer::on_agentic_query() {
-    if(indexer.index_open_files) {
+    if(index_open_files) {
         return;
     }
     // First agentic index query: agents read disk truth, so open files'
     // disk snapshots must be indexed too — background indexing skips
     // them otherwise, since the LSP side is fully served by their
     // sessions. Sticky for the server's lifetime.
-    indexer.index_open_files = true;
+    index_open_files = true;
     for(auto& [path_id, session]: sessions.sessions) {
         if(!session) {
             continue;
@@ -384,10 +443,10 @@ void MasterServer::on_agentic_query() {
         auto shard_it = workspace.shards.find(path_id);
         bool shard_current =
             shard_it != workspace.shards.end() && shard_it->second.matches_content(*disk);
-        indexer.enqueue(path_id,
-                        shard_current ? ReindexReason::DepsOnly : ReindexReason::ContentChanged);
+        pump.enqueue(path_id,
+                     shard_current ? ReindexReason::DepsOnly : ReindexReason::ContentChanged);
     }
-    indexer.schedule();
+    pump.schedule();
 }
 
 void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
@@ -442,20 +501,20 @@ void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
     }
 
     for(auto path_id: dirty.drop_index) {
-        indexer.drop_index(path_id);
+        pump.claim_report(index_store.drop_index(path_id));
     }
 
     for(auto path_id: dirty.reindex_content_changed) {
-        indexer.enqueue(path_id, ReindexReason::ContentChanged);
+        pump.enqueue(path_id, ReindexReason::ContentChanged);
     }
     for(auto path_id: dirty.reindex_deps_only) {
-        indexer.enqueue(path_id, ReindexReason::DepsOnly);
+        pump.enqueue(path_id, ReindexReason::DepsOnly);
     }
     // The engine keeps the reindex lists disjoint per file in event order
     // (see DirtySet's adders), so the clears may run in any order relative
     // to the enqueues above.
     for(auto path_id: dirty.clear_reindex) {
-        indexer.clear_pending(path_id);
+        pump.clear_pending(path_id);
     }
 
     bool save = dirty.save_cache;
@@ -472,7 +531,7 @@ void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
     // queue filled above is kept — the post-ready workspace load kicks the
     // scheduler.
     if(dirty.reschedule_indexing && lifecycle == ServerLifecycle::Ready) {
-        indexer.schedule();
+        pump.schedule();
     }
 }
 
@@ -488,12 +547,19 @@ kota::task<> MasterServer::shutdown_and_cleanup() {
     co_await bg_tasks.join();
     // Quiesce in-flight compilation and indexing first so the persisted
     // snapshot below covers everything that actually completed.
-    co_await kota::when_all(indexer.stop(), ast.stop());
+    co_await kota::when_all(pump.stop(), ast.stop());
     // Requests have unwound and released their interest; wind down the
     // graph's rounds before the persistence pass and the pool stop
     // (contract 11: quiesce -> final save -> pool/store).
     co_await graph.shutdown();
-    co_await indexer.save();
+    auto report = co_await index_store.save(pump.save_debt());
+    pump.claim_report(report);
+    if(report.snapshot_stale) {
+        // Debt surfaced after the snapshot serialized (write-time
+        // corruption recovery): one metadata retry, or a dropped
+        // standalone header's repair debt dies with this process.
+        pump.claim_report(co_await index_store.save(pump.save_debt()));
+    }
     workspace.save_cache(contexts);
     co_await pool.stop();
     if(workspace.store) {
@@ -589,7 +655,7 @@ void MasterServer::load_workspace() {
         // Persisted index shards are CDB-independent; load them so a
         // database generated later (picked up by the CDB poll) starts from
         // the previous session's index.
-        indexer.load();
+        pump.claim_report(index_store.load().report);
         return;
     }
 
@@ -636,7 +702,7 @@ void MasterServer::load_workspace() {
              report.elapsed_ms);
 
     workspace.build_module_map();
-    indexer.load();
+    pump.claim_report(index_store.load().report);
 
     if(cfg.enable_indexing.value) {
         for(auto& entry: workspace.cdb.get_entries()) {
@@ -646,9 +712,9 @@ void MasterServer::load_workspace() {
             // file. DepsOnly — a cold start with a warm index cache must
             // keep serving the loaded shards, not blank every query until
             // the sweep drains.
-            indexer.enqueue(server_id, ReindexReason::DepsOnly);
+            pump.enqueue(server_id, ReindexReason::DepsOnly);
         }
-        indexer.schedule();
+        pump.schedule();
     }
 }
 

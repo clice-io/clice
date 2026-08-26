@@ -7,7 +7,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "server/compiler/ast_family.h"
+#include "server/service/ast_family.h"
 #include "server/state/session.h"
 #include "worker/pool.h"
 

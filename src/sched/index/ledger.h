@@ -154,9 +154,16 @@ public:
     /// Every file with booked debt (batch debt reporting).
     llvm::SmallVector<std::uint32_t> pending_files() const;
 
-    /// No debt and no queued slots — the drained-queue invariant.
+    /// No debt and no queued slots.
     bool empty() const {
         return entries.empty() && queued.empty();
+    }
+
+    /// Some file still holds a queued-and-unconsumed slot. The drained
+    /// queue's compaction invariant: deferred debt (admission's Defer)
+    /// legitimately outlives the round, a queued slot must not.
+    bool has_queued_slots() const {
+        return !queued.empty();
     }
 
 private:

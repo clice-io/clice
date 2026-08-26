@@ -1,5 +1,5 @@
 #include "test/test.h"
-#include "sched/freshness.h"
+#include "sched/index/ledger.h"
 
 namespace clice::testing {
 namespace {

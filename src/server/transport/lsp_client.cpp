@@ -64,10 +64,8 @@ static void fire_refresh(kota::event_loop& loop, kota::ipc::JsonPeer& peer, Para
 LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(server), peer(peer) {
     output_conn = server.ast.on_output.connect(
         [this](const std::shared_ptr<Session>& session) { push_output(*session); });
-    progress_conn =
-        server.indexer.on_progress_changed.connect([this]() { report_index_progress(); });
-    serving_conn =
-        server.indexer.on_serving_rows_changed.connect([this]() { refresh_index_served(); });
+    progress_conn = server.pump.on_progress_changed.connect([this]() { report_index_progress(); });
+    serving_conn = server.on_serving_rows_changed.connect([this]() { refresh_index_served(); });
 
     // Guidance/anomaly messages travel as window/logMessage, which the LSP
     // spec allows before the initialize handshake — drain what a headless
@@ -716,11 +714,11 @@ void LSPClient::register_extensions() {
             stats.pch_cache_entries = static_cast<std::uint32_t>(srv.workspace.pch_cache.size());
 
             stats.index_inmemory_shards =
-                static_cast<std::uint32_t>(srv.indexer.pending_shard_writes());
+                static_cast<std::uint32_t>(srv.index_store.pending_shard_writes());
             for(auto& [path_id, shard]: srv.workspace.shards) {
                 stats.index_shard_content_bytes += shard.bytes().size();
             }
-            stats.last_save_shards = static_cast<std::uint32_t>(srv.indexer.last_save_shards());
+            stats.last_save_shards = static_cast<std::uint32_t>(srv.index_store.last_save_shards());
 
             if(srv.workspace.store) {
                 stats.pending_tmp_files =
@@ -852,8 +850,8 @@ void LSPClient::refresh_index_served() {
 }
 
 void LSPClient::report_index_progress() {
-    const auto& p = server.indexer.progress();
-    using Stage = Indexer::Progress::Stage;
+    const auto& p = server.pump.progress();
+    using Stage = IndexPump::Progress::Stage;
     auto& st = *index_progress;
     switch(p.stage) {
         case Stage::Begin: {

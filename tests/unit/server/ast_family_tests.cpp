@@ -8,7 +8,7 @@
 #include "sched/families/pch.h"
 #include "sched/families/pcm.h"
 #include "sched/graph.h"
-#include "server/compiler/ast_family.h"
+#include "server/service/ast_family.h"
 #include "server/service/worker_forwarder.h"
 #include "server/worker_test_helpers.h"
 #include "support/anomaly.h"

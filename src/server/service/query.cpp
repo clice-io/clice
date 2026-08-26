@@ -10,7 +10,7 @@
 
 #include "feature/feature.h"
 #include "index/tu_index.h"
-#include "server/compiler/indexer.h"
+#include "sched/index/pump.h"
 #include "server/protocol/position.h"
 #include "server/state/ast_projection.h"
 #include "server/state/session.h"
@@ -251,7 +251,7 @@ bool IndexQuery::skip_stale_contribution(std::uint32_t path_id) const {
     if(!workspace.config.project.enable_indexing.value) {
         return false;
     }
-    return indexer.pending_reason(path_id) == ReindexReason::ContentChanged;
+    return pump.pending_reason(path_id) == ReindexReason::ContentChanged;
 }
 
 bool IndexQuery::find_symbol_info(index::SymbolHash hash,

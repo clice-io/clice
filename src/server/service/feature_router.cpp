@@ -10,9 +10,9 @@
 
 #include "command/search_config.h"
 #include "sched/context.h"
+#include "sched/index/pump.h"
 #include "semantic/symbol.h"
-#include "server/compiler/ast_family.h"
-#include "server/compiler/indexer.h"
+#include "server/service/ast_family.h"
 #include "server/service/worker_forwarder.h"
 #include "syntax/completion.h"
 #include "syntax/include_resolver.h"
@@ -364,7 +364,7 @@ kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
                 if(!waited) {
                     waited = true;
                     auto gen = session->generation;
-                    co_await indexer.await_attempt(session->path_id);
+                    co_await pump.await_attempt(session->path_id);
                     if(session->generation == gen) {
                         continue;
                     }
@@ -672,7 +672,7 @@ FeatureRouter::RawResult
                     if(!waited) {
                         waited = true;
                         auto gen = session->generation;
-                        co_await indexer.await_attempt(session->path_id);
+                        co_await pump.await_attempt(session->path_id);
                         if(session->generation == gen) {
                             continue;
                         }
@@ -711,7 +711,7 @@ FeatureRouter::RawResult FeatureRouter::completion(std::shared_ptr<Session> sess
                                                    const protocol::Position& position,
                                                    llvm::StringRef trigger_character,
                                                    std::optional<kota::cancellation_token> token) {
-    auto pause = indexer.scoped_pause();
+    auto pause = pump.scoped_pause();
 
     // Asking for code completion is edit intent: flip the session out of
     // index-only serving (a no-op when already escalated or under
@@ -809,14 +809,14 @@ FeatureRouter::RawResult
     FeatureRouter::signature_help(std::shared_ptr<Session> session,
                                   const protocol::Position& position,
                                   std::optional<kota::cancellation_token> token) {
-    auto pause = indexer.scoped_pause();
+    auto pause = pump.scoped_pause();
     ast.escalate(*session);
     co_return co_await forwarder.forward_signature_help(position, session, std::move(token));
 }
 
 FeatureRouter::RawResult FeatureRouter::formatting(std::shared_ptr<Session> session,
                                                    std::optional<kota::cancellation_token> token) {
-    auto pause = indexer.scoped_pause();
+    auto pause = pump.scoped_pause();
     co_return co_await forwarder.forward_format(session, {}, std::move(token));
 }
 
@@ -824,7 +824,7 @@ FeatureRouter::RawResult
     FeatureRouter::range_formatting(std::shared_ptr<Session> session,
                                     const protocol::Range& range,
                                     std::optional<kota::cancellation_token> token) {
-    auto pause = indexer.scoped_pause();
+    auto pause = pump.scoped_pause();
     co_return co_await forwarder.forward_format(session, range, std::move(token));
 }
 

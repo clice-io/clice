@@ -23,7 +23,7 @@ namespace clice {
 namespace protocol = kota::ipc::protocol;
 namespace lsp = kota::ipc::lsp;
 
-class Indexer;
+class IndexPump;
 struct ASTProjectionTable;
 struct Session;
 struct SessionStore;
@@ -58,7 +58,7 @@ struct ResolvedSymbol {
 ///
 /// NOT responsible for:
 ///   - Compilation — handled by Compiler
-///   - Background indexing — handled by Indexer
+///   - Background indexing — handled by IndexPump
 ///   - Document lifecycle — handled by MasterServer
 ///
 /// Freshness contract — results may be incomplete, by design:
@@ -71,7 +71,7 @@ struct ResolvedSymbol {
 ///      the merged shard resolves against its own stored content snapshot
 ///      — unless the file's own content changed and its reindex is still
 ///      pending, in which case the cursor is unresolvable (clause 2).
-///   2. Cross-file contributions honor the indexer's pending state: a file
+///   2. Cross-file contributions honor the pump's pending state: a file
 ///      awaiting reindex only because a dependency changed keeps serving
 ///      its previous rows (its own text did not move), while a file whose
 ///      own content changed has its contribution skipped until the reindex
@@ -118,10 +118,10 @@ public:
 
     IndexQuery(Workspace& workspace,
                const SessionStore& sessions,
-               const Indexer& indexer,
+               const IndexPump& pump,
                const ASTProjectionTable& ast,
                IndexQueryOptions options = {}) :
-        workspace(workspace), sessions(sessions), indexer(indexer), ast(ast), options(options) {}
+        workspace(workspace), sessions(sessions), pump(pump), ast(ast), options(options) {}
 
     /// Query relations (Definition, Reference, etc.) for a symbol at cursor.
     /// @param session  Active Session for this file, or nullptr to use the disk shards only.
@@ -380,7 +380,7 @@ private:
 
     Workspace& workspace;
     const SessionStore& sessions;
-    const Indexer& indexer;
+    const IndexPump& pump;
     const ASTProjectionTable& ast;
     IndexQueryOptions options;
 };

@@ -10,10 +10,12 @@
 #include "sched/context.h"
 #include "sched/families/pch.h"
 #include "sched/families/pcm.h"
+#include "sched/families/turun.h"
 #include "sched/graph.h"
+#include "sched/index/pump.h"
+#include "sched/index/store.h"
 #include "sched/workspace.h"
-#include "server/compiler/ast_family.h"
-#include "server/compiler/indexer.h"
+#include "server/service/ast_family.h"
 #include "server/service/context_service.h"
 #include "server/service/feature_router.h"
 #include "server/service/query.h"
@@ -163,7 +165,32 @@ public:
 
     WorkerForwarder forwarder{workspace, contexts, pcm, pch, ast, pool};
     ContextService context_service{workspace, contexts, ast};
-    Indexer indexer;
+
+    /// Index scheduling, split along the serving boundary: the store and
+    /// the pump are serving-neutral sched machinery (the batch driver
+    /// reuses them); the session-side policy — admission vetoes,
+    /// unservable escalation, serving-row refresh — lives on this class
+    /// and is installed into the pump's hooks by wire().
+    IndexStore index_store{loop, workspace};
+    TURunFamily turun{graph, workspace, contexts, pcm, index_store, pool};
+    IndexPump pump{loop, workspace, turun, index_store, pool};
+
+    /// Whether open files' disk snapshots are indexed like closed ones.
+    /// Off by default: the LSP side never reads an open file's shard (its
+    /// session serves it), so the work would be pure waste — until an
+    /// agent shows up, whose disk-truth queries need those shards. Turned
+    /// on (sticky) by the first agentic index query; files closed before
+    /// that are already covered, because BufferClosed re-enqueues a file
+    /// whose shard does not match the disk.
+    bool index_open_files = false;
+
+    /// Emitted when rows an open index-served session is serving changed:
+    /// results the client already pulled describe the old rows, and only a
+    /// refresh request makes it re-pull them — index-only sessions never
+    /// compile, so the compile-driven refresh in the output push path
+    /// cannot cover them.
+    Signal<> on_serving_rows_changed;
+
     IndexQuery index_query;
 
     /// The agentic transport's view of the index: disk truth only.
@@ -218,6 +245,26 @@ private:
     /// plumbing in one place. domain→transport communication does not go
     /// through here — it uses Signal members that transports subscribe to.
     void wire();
+
+    /// Dispatch- and landing-time admission on one claimed pump file: the
+    /// serving side's veto (open sessions, index-only disk divergence).
+    Admission index_admission(std::uint32_t server_path_id) const;
+
+    /// An index attempt settled with no retry pending; a session waiting
+    /// on the index with nothing servable will never be served by it —
+    /// escalate instead of letting it answer empty forever.
+    void index_attempt_settled(std::uint32_t server_path_id);
+
+    /// Whether an open session serves this file's project rows (freshness
+    /// clause 4) and a client already pulled some of them — the emit
+    /// condition of on_serving_rows_changed.
+    bool serves_session_rows(std::uint32_t path_id) const;
+
+    /// Filter a store row-change report down to the sessions actually
+    /// serving those rows and wake the transports.
+    void index_rows_changed(llvm::ArrayRef<std::uint32_t> path_ids);
+
+    Signal<llvm::ArrayRef<std::uint32_t>>::Connection index_rows_conn;
 
     void load_workspace();
 

@@ -7,6 +7,7 @@
 
 #include "driver/driver.h"
 #include "index/serialization.h"
+#include "sched/index/store.h"
 #include "server/transport/master_server.h"
 #include "support/filesystem.h"
 #include "support/timer.h"
@@ -63,10 +64,10 @@ std::string format_size(std::uint64_t bytes) {
     return std::format("{} B", bytes);
 }
 
-/// Poll until the background indexer has drained every round (requeue
+/// Poll until the background pump has drained every round (requeue
 /// rounds included) and persisted its results.
 kota::task<> wait_until_indexed(const MasterServer& server) {
-    while(!server.indexer.is_idle()) {
+    while(!server.pump.is_idle()) {
         co_await kota::sleep(200);
     }
 }
@@ -147,14 +148,14 @@ kota::task<> run_indexing_task(MasterServer& server, std::string root, int& exit
                  workspace.shards.size(),
                  format_size(total_bytes),
                  workspace.project_index.symbols.size());
-    if(auto failed = server.indexer.failed_files()) {
+    if(auto failed = server.pump.failed_files()) {
         std::println("{} translation units failed to index (see the log); the index is partial.",
                      failed);
         exit_code = 1;
     }
     // The shutdown save was the last retry for failed writes; whatever is
     // still dirty never reached disk and a rerun cannot resume from it.
-    if(server.indexer.has_unsaved_state()) {
+    if(server.index_store.has_unsaved_state()) {
         std::println("Part of the index could not be persisted (see the log).");
         exit_code = 1;
     }
@@ -220,15 +221,9 @@ int run_stats_once(llvm::StringRef root, std::uint32_t top, bool allow_retry) {
                   ec.message());
         return 1;
     }
-    WorkerPool pool(loop);
-    ContextResolver contexts(workspace);
-    TaskGraph graph(loop);
-    PCMFamily pcm(graph, workspace, contexts, pool);
-    pcm.register_runner();
-    SessionStore sessions;
-    ASTProjectionTable projections;
-    Indexer indexer(loop, workspace, pool, contexts, pcm, sessions, projections);
-    if(!indexer.load(/*read_only=*/true)) {
+    IndexStore index_store(loop, workspace);
+    auto loaded = index_store.load(/*read_only=*/true);
+    if(!loaded.decoded) {
         LOG_ERROR("Index cache at {} is in an old or corrupt format; run `clice index` to rebuild",
                   std::string_view(workspace.config.project.cache_dir));
         return 1;
@@ -247,21 +242,22 @@ int run_stats_once(llvm::StringRef root, std::uint32_t top, bool allow_retry) {
     // may already have finished and unlocked by the time any post-load
     // probe runs, so retry on the drops themselves; genuine damage merely
     // spends the bounded retries before the final no-retry pass reports it.
-    if(allow_retry && indexer.pending_files() != 0) {
+    auto pending = loaded.report.reindex().size();
+    if(allow_retry && pending != 0) {
         return stats_retry;
     }
 
     auto& project = workspace.project_index;
     if(project.manifests.empty() && workspace.shards.empty()) {
-        // Nothing else fills the queue here, so pending files can only be
-        // load()'s recovery drops: every TU's blobs were missing, stale,
-        // or corrupt — a damaged cache, not a legitimately empty one.
-        if(indexer.pending_files() != 0) {
+        // With no pump attached the load report's debt can only be the
+        // recovery drops: every TU's blobs were missing, stale, or
+        // corrupt — a damaged cache, not a legitimately empty one.
+        if(pending != 0) {
             LOG_ERROR(
                 "Index cache at {} has no servable data ({} translation units need "
                 "reindexing); run `clice index` to rebuild",
                 std::string_view(workspace.config.project.cache_dir),
-                indexer.pending_files());
+                pending);
             return 1;
         }
         std::println("Index is empty; run `clice index` to build it.");
@@ -384,11 +380,11 @@ int run_stats_once(llvm::StringRef root, std::uint32_t top, bool allow_retry) {
     std::println("  variant tables       {:>10}  {:>5.1f}%",
                  format_size(columns.variants),
                  share(columns.variants));
-    if(indexer.pending_files() != 0) {
+    if(pending != 0) {
         std::println(
             "Translation units pending reindex (stale or partially written): {}; "
             "run `clice index` to repair",
-            indexer.pending_files());
+            pending);
     }
     std::println();
     std::println("Top {} file shards by size:", std::min<std::size_t>(top, files.size()));
@@ -402,7 +398,7 @@ int run_stats_once(llvm::StringRef root, std::uint32_t top, bool allow_retry) {
     }
     // Partial damage is still damage: automation must not read exit 0 as
     // "the cache is healthy" just because some TUs remained servable.
-    return indexer.pending_files() == 0 ? 0 : 1;
+    return pending == 0 ? 0 : 1;
 }
 
 int run_stats(llvm::StringRef root, std::uint32_t top) {

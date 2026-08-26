@@ -1,28 +1,20 @@
-#include "server/compiler/indexer.h"
+#include "sched/index/store.h"
 
 #include <algorithm>
 #include <cassert>
 #include <format>
-#include <optional>
-#include <string>
+#include <utility>
 #include <vector>
 
 #include "index/database.h"
 #include "index/manifest.h"
 #include "index/shard.h"
 #include "index/tu_index.h"
-#include "sched/context.h"
-#include "sched/families/pcm.h"
-#include "server/state/ast_projection.h"
-#include "server/state/session_store.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 #include "support/timer.h"
-#include "worker/pool.h"
-#include "worker/protocol.h"
 
 #include "kota/codec/json/json.h"
-#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringSet.h"
@@ -133,19 +125,10 @@ std::string serialize_cdb_snapshot(Workspace& workspace,
 
 }  // namespace
 
-Indexer::Indexer(kota::event_loop& loop,
-                 Workspace& workspace,
-                 WorkerPool& pool,
-                 ContextResolver& contexts,
-                 PCMFamily& pcm,
-                 const SessionStore& sessions,
-                 const ASTProjectionTable& ast) :
-    loop(loop), bg_tasks(loop), workspace(workspace), pool(pool), contexts(contexts), pcm(pcm),
-    sessions(sessions), ast(ast) {
-    capacity_conn = pool.on_stateless_capacity.connect([this] { capacity_event.set(); });
-}
+IndexStore::IndexStore(kota::event_loop& loop, Workspace& workspace) :
+    loop(loop), workspace(workspace) {}
 
-bool Indexer::merge(const void* tu_index_data, std::size_t size) {
+std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, std::size_t size) {
     // Zero-copy consumption: the wire stays serialized; a new variant's
     // blob bytes are sliced out and installed or merged without decoding
     // the envelope, and only genuinely new symbol names are materialized.
@@ -153,7 +136,7 @@ bool Indexer::merge(const void* tu_index_data, std::size_t size) {
         index::TUIndex::from_bytes(llvm::StringRef(static_cast<const char*>(tu_index_data), size));
     if(!view.loaded()) {
         LOG_WARN("Ignoring TUIndex that failed verification");
-        return false;
+        return std::nullopt;
     }
     auto main_local_id = view.path_count() - 1;
     llvm::StringRef main_tu_path = view.path(main_local_id);
@@ -215,7 +198,7 @@ bool Indexer::merge(const void* tu_index_data, std::size_t size) {
         // one membership test is the whole check — no IO, no bytes read.
         if(shard && shard->loaded() && shard->has_variant(blob_hash)) {
             if(!record_consumed(local_id, shard->content_hash())) {
-                return false;
+                return std::nullopt;
             }
             section_contributions.emplace_back(local_id, blob_hash);
             hits += 1;
@@ -235,17 +218,17 @@ bool Indexer::merge(const void* tu_index_data, std::size_t size) {
             LOG_WARN("Reject merge for {}: rows section for {} failed verification",
                      main_tu_path,
                      workspace.path_pool.resolve(global_id));
-            return false;
+            return std::nullopt;
         }
         auto fresh = index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
         if(!fresh.loaded()) {
             LOG_WARN("Reject merge for {}: rows for {} do not form a valid shard",
                      main_tu_path,
                      workspace.path_pool.resolve(global_id));
-            return false;
+            return std::nullopt;
         }
         if(!record_consumed(local_id, fresh.content_hash())) {
-            return false;
+            return std::nullopt;
         }
 
         index::Shard replacement;
@@ -279,7 +262,7 @@ bool Indexer::merge(const void* tu_index_data, std::size_t size) {
     // rebuilt.
     if(!project.merge(view, file_ids_map)) {
         LOG_WARN("Reject merge for {}: symbol reference bitmap failed verification", main_tu_path);
-        return false;
+        return std::nullopt;
     }
 
     // Intern a FileVersion per file of the parse. The freshness baseline is
@@ -336,9 +319,11 @@ bool Indexer::merge(const void* tu_index_data, std::size_t size) {
         manifest.contributions.emplace_back(fv_of[local_id], rows_hash);
     }
 
+    Report report;
     for(auto& [global_id, replacement]: replacements) {
         workspace.shards[global_id] = std::move(replacement);
         dirty_shards.insert(global_id);
+        report.add_rows_changed(global_id);
     }
 
     // Replace this TU's manifest wholesale: files it no longer touches lose
@@ -346,6 +331,7 @@ bool Indexer::merge(const void* tu_index_data, std::size_t size) {
     // no sweep over other shards is needed.
     auto affected = project.apply_manifest(tu_path_id, std::move(manifest));
     for(auto path_id: affected) {
+        report.add_rows_changed(path_id);
         auto it = workspace.shards.find(path_id);
         if(it == workspace.shards.end()) {
             continue;
@@ -363,7 +349,7 @@ bool Indexer::merge(const void* tu_index_data, std::size_t size) {
         auto& shard = workspace.shards.find(path_id)->second;
         for(auto& [tu, hash]: project.contributions.find(path_id)->second) {
             if(!shard.has_variant(hash)) {
-                enqueue(tu, ReindexReason::ContentChanged);
+                report.add_reindex(tu);
             }
         }
     }
@@ -380,25 +366,16 @@ bool Indexer::merge(const void* tu_index_data, std::size_t size) {
         rebuilt_ids.size(),
         workspace.shards.size());
 
-    // Sessions without a current file index serve these very rows
-    // (freshness clause 4); index_served says the client pulled some of
-    // them. Tell subscribers so those results get re-pulled.
-    auto serves = [this](std::uint32_t path_id) {
-        return serves_session_rows(path_id);
-    };
-    if(llvm::any_of(llvm::make_first_range(replacements), serves) ||
-       llvm::any_of(affected, serves)) {
-        on_serving_rows_changed.emit();
-    }
-    return true;
+    return report;
 }
 
-bool Indexer::serves_session_rows(std::uint32_t path_id) const {
-    auto session = sessions.find(path_id);
-    return session && !ast.index_current(path_id) && session->index_served;
+IndexStore::Report IndexStore::drop_index(std::uint32_t tu_path_id) {
+    Report report;
+    drop_index_into(tu_path_id, report);
+    return report;
 }
 
-void Indexer::drop_index(std::uint32_t tu_path_id) {
+void IndexStore::drop_index_into(std::uint32_t tu_path_id, Report& report) {
     auto& project = workspace.project_index;
     if(!project.manifests.contains(tu_path_id)) {
         return;
@@ -406,28 +383,25 @@ void Indexer::drop_index(std::uint32_t tu_path_id) {
     // Dropped rows change index-served answers exactly like merged rows
     // do; without the refresh the client keeps them forever, since no
     // later merge or compile is owed.
-    bool served = false;
     for(auto path_id: project.remove_manifest(tu_path_id)) {
         auto it = workspace.shards.find(path_id);
         if(it != workspace.shards.end()) {
             it->second.set_live(project.live_variants(path_id));
         }
-        served = served || serves_session_rows(path_id);
+        report.add_rows_changed(path_id);
     }
     dirty_manifests.insert(tu_path_id);
     global_dirty = true;
-    if(served) {
-        on_serving_rows_changed.emit();
-    }
 }
 
-kota::task<> Indexer::save() {
+kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<std::uint32_t> debt) {
+    Report report;
     // Reset up front: every early return below means this save committed
     // nothing, and the gauge must not keep exposing the previous round's
     // count as current.
     saved_shards = 0;
     if(!workspace.index_db)
-        co_return;
+        co_return report;
     auto& db = *workspace.index_db;
     auto& project = workspace.project_index;
     ScopedTimer timer;
@@ -463,7 +437,8 @@ kota::task<> Indexer::save() {
     for(auto path_id: retired) {
         workspace.shards.erase(path_id);
         dirty_shards.erase(path_id);
-        requeue_owners(path_id);
+        report.add_rows_changed(path_id);
+        requeue_owners(path_id, report);
     }
 
     // Snapshot the dirty state on the loop: everything below serializes
@@ -537,10 +512,14 @@ kota::task<> Indexer::save() {
     // (unless the snapshot itself is owed a rewrite): a pure CDB change
     // dirties no blob on its own — the invalidator's drops do — so the
     // next dirtying save carries the fresh snapshot.
+    // The debt input is the pump's snapshot at call time plus the owner
+    // debt the compaction above discovered; anything surfacing past this
+    // point is too late for these bytes and returns in the report.
     std::string cdb_bytes;
     std::optional<std::size_t> cdb_index;
     if(!batch.empty() || !removals.empty() || cdb_dirty) {
-        cdb_bytes = serialize_cdb_snapshot(workspace, header_hosts, standalone_debt());
+        debt.append(report.reindex().begin(), report.reindex().end());
+        cdb_bytes = serialize_cdb_snapshot(workspace, header_hosts, standalone_of(debt));
         if(!cdb_bytes.empty() && cdb_bytes != persisted_cdb_snapshot) {
             cdb_index = batch.size();
             batch.push_back({index::IndexBlobKind::CDB, "cdb", cdb_bytes});
@@ -569,7 +548,7 @@ kota::task<> Indexer::save() {
     }
 
     if(batch.empty() && removals.empty()) {
-        co_return;
+        co_return report;
     }
 
     // The dirty set was snapshot-cleared above so merges landing across
@@ -617,11 +596,11 @@ kota::task<> Indexer::save() {
         for(auto path_id: shard_ids) {
             dirty_shards.insert(path_id);
         }
-        recover_corrupt_database();
-        co_return;
+        recover_corrupt_database(report);
+        co_return report;
     }
 
-    co_await migrate_shard_views();
+    co_await migrate_shard_views(report);
 
     LOG_PERF("index",
              "phase=save shards={} manifests={} total={} elapsed_ms={}",
@@ -629,9 +608,10 @@ kota::task<> Indexer::save() {
              manifest_count,
              workspace.shards.size(),
              timer.ms());
+    co_return report;
 }
 
-kota::task<> Indexer::migrate_shard_views() {
+kota::task<> IndexStore::migrate_shard_views(Report& report) {
     if(!workspace.index_db) {
         co_return;
     }
@@ -649,9 +629,9 @@ kota::task<> Indexer::migrate_shard_views() {
         // their resident rows this session.
         LOG_ERROR("Index database growth failed: {}", grown.error());
         if(db.corrupted()) {
-            recover_corrupt_database();
+            recover_corrupt_database(report);
         } else {
-            shed_borrowed_shards();
+            shed_borrowed_shards(report);
         }
         co_return;
     }
@@ -669,7 +649,7 @@ kota::task<> Indexer::migrate_shard_views() {
         if(!advanced) {
             LOG_WARN("Index read-snapshot advance failed: {}", advanced.error());
             if(db.corrupted()) {
-                recover_corrupt_database();
+                recover_corrupt_database(report);
             }
             co_return;
         }
@@ -711,30 +691,31 @@ kota::task<> Indexer::migrate_shard_views() {
                       workspace.path_pool.resolve(path_id));
             assert(false && "persisted shard must survive snapshot migration");
             workspace.shards.erase(path_id);
-            requeue_owners(path_id);
+            report.add_rows_changed(path_id);
+            requeue_owners(path_id, report);
         }
     }
     // Corruption observed by any read since the write-time check — this
     // loop's, or a query's during its yields — condemns the database; the
     // recovery sheds every borrowed view before the environment closes.
     if(db.corrupted()) {
-        recover_corrupt_database();
+        recover_corrupt_database(report);
         co_return;
     }
     db.retire_old_snapshot();
 }
 
-void Indexer::requeue_owners(std::uint32_t path_id) {
+void IndexStore::requeue_owners(std::uint32_t path_id, Report& report) {
     auto it = workspace.project_index.contributions.find(path_id);
     if(it == workspace.project_index.contributions.end()) {
         return;
     }
     for(auto tu: llvm::make_first_range(it->second)) {
-        enqueue(tu, ReindexReason::ContentChanged);
+        report.add_reindex(tu);
     }
 }
 
-void Indexer::shed_borrowed_shards() {
+void IndexStore::shed_borrowed_shards(Report& report) {
     llvm::SmallVector<std::uint32_t> shed;
     for(auto path_id: llvm::make_first_range(workspace.shards)) {
         if(!dirty_shards.contains(path_id)) {
@@ -743,32 +724,39 @@ void Indexer::shed_borrowed_shards() {
     }
     for(auto path_id: shed) {
         workspace.shards.erase(path_id);
-        requeue_owners(path_id);
+        report.add_rows_changed(path_id);
+        requeue_owners(path_id, report);
     }
 }
 
-void Indexer::recover_corrupt_database() {
+void IndexStore::recover_corrupt_database(Report& report) {
     LOG_WARN("Index database is corrupt; discarding it and rebuilding from scratch");
     saved_shards = 0;
-    shed_borrowed_shards();
+    shed_borrowed_shards(report);
     for(auto tu_path_id: llvm::make_first_range(workspace.project_index.manifests)) {
         dirty_manifests.insert(tu_path_id);
     }
     global_dirty = true;
     cdb_dirty = true;
+    // The snapshot just persisted (if any) predates this recovery's debt
+    // and lives in a condemned database anyway: the caller's shutdown path
+    // owes one metadata retry so the fresh database records it.
+    report.snapshot_stale = true;
     persisted_cdb_snapshot.clear();
     reopen_fresh_database();
 }
 
-void Indexer::reopen_fresh_database() {
+void IndexStore::reopen_fresh_database() {
     workspace.index_db->condemn();
     workspace.index_db.reset();
     workspace.index_db = index::open_database(*workspace.store, workspace.config.project.index_db);
 }
 
-bool Indexer::load(bool read_only) {
+IndexStore::LoadResult IndexStore::load(bool read_only) {
+    LoadResult result;
+    auto& report = result.report;
     if(!workspace.index_db)
-        return true;
+        return result;
     auto& db = *workspace.index_db;
     auto& project = workspace.project_index;
     ScopedTimer timer;
@@ -805,12 +793,12 @@ bool Indexer::load(bool read_only) {
                 LOG_WARN("Index global blob unreadable; disabling index persistence this session");
                 workspace.index_db.reset();
             }
-            return true;
+            return result;
         }
         // No global table means no resolvable manifests: everything else
         // is unreachable data, swept so it cannot survive as orphans.
         sweep_all();
-        return true;
+        return result;
     }
     llvm::DenseMap<std::uint32_t, std::uint64_t> manifest_pins;
     if(!project.load_global(global.buffer->getBuffer(), workspace.path_pool, manifest_pins)) {
@@ -819,7 +807,8 @@ bool Indexer::load(bool read_only) {
         if(!read_only) {
             startup_removes.push_back({index::IndexBlobKind::Global, "global"});
         }
-        return false;
+        result.decoded = false;
+        return result;
     }
 
     // Adopt exactly the manifests the global blob pins, at exactly the
@@ -843,7 +832,7 @@ bool Indexer::load(bool read_only) {
             if(manifest) {
                 auto fv = project.file_versions.find(manifest->tu_fv);
                 if(fv != project.file_versions.end()) {
-                    enqueue(fv->second.path_id, ReindexReason::ContentChanged);
+                    report.add_reindex(fv->second.path_id);
                 }
             }
             return;
@@ -863,7 +852,7 @@ bool Indexer::load(bool read_only) {
     // load_global rejects a blob whose pins its own table cannot cover.
     for(auto fv: llvm::make_first_range(manifest_pins)) {
         if(!adopted_pins.contains(fv)) {
-            enqueue(project.file_versions.find(fv)->second.path_id, ReindexReason::ContentChanged);
+            report.add_reindex(project.file_versions.find(fv)->second.path_id);
         }
     }
 
@@ -940,7 +929,7 @@ bool Indexer::load(bool read_only) {
                 startup_removes.push_back(
                     {index::IndexBlobKind::Manifest, blob_key(workspace.path_pool.resolve(tu))});
             }
-            enqueue(tu, ReindexReason::ContentChanged);
+            report.add_reindex(tu);
         }
     }
     for(auto path_id: mask_refresh) {
@@ -957,7 +946,7 @@ bool Indexer::load(bool read_only) {
                 startup_removes.push_back({index::IndexBlobKind::Shard, key.str()});
             }
         });
-        reconcile_cdb_snapshot();
+        reconcile_cdb_snapshot(report);
     }
 
     // The reads above touch every adopted manifest and shard, so page
@@ -976,7 +965,7 @@ bool Indexer::load(bool read_only) {
         LOG_WARN("Index database is corrupt; discarding it and rebuilding from scratch");
         for(auto tu: llvm::make_first_range(project.manifests)) {
             if(!workspace.cdb.has_entry(workspace.path_pool.resolve(tu))) {
-                enqueue(tu, ReindexReason::ContentChanged);
+                report.add_reindex(tu);
             }
         }
         workspace.shards.clear();
@@ -985,7 +974,7 @@ bool Indexer::load(bool read_only) {
         persisted_cdb_snapshot.clear();
         cdb_dirty = true;
         reopen_fresh_database();
-        return true;
+        return result;
     }
 
     if(!workspace.shards.empty()) {
@@ -1000,29 +989,24 @@ bool Indexer::load(bool read_only) {
              workspace.shards.size(),
              project.manifests.size(),
              timer.ms());
-    return true;
+    return result;
 }
 
-llvm::SmallVector<std::uint32_t> Indexer::standalone_debt() {
+llvm::SmallVector<std::uint32_t>
+    IndexStore::standalone_of(llvm::ArrayRef<std::uint32_t> candidates) {
     llvm::SmallVector<std::uint32_t> debt;
     llvm::DenseSet<std::uint32_t> seen;
-    auto add = [&](std::uint32_t id) {
+    for(auto id: candidates) {
         if(workspace.project_index.manifests.contains(id) ||
            workspace.cdb.has_entry(workspace.path_pool.resolve(id)) || !seen.insert(id).second) {
-            return;
+            continue;
         }
         debt.push_back(id);
-    };
-    for(auto id: failed_ids) {
-        add(id);
-    }
-    for(auto id: ledger.pending_files()) {
-        add(id);
     }
     return debt;
 }
 
-void Indexer::reconcile_cdb_snapshot() {
+void IndexStore::reconcile_cdb_snapshot(Report& report) {
     auto blob = workspace.index_db->read(index::IndexBlobKind::CDB, "cdb");
     CDBSnapshot persisted;
     if(!blob ||
@@ -1061,8 +1045,8 @@ void Indexer::reconcile_cdb_snapshot() {
             continue;
         }
         LOG_INFO("Compile command changed since the last session; reindexing {}", entry.file);
-        drop_index(server_id);
-        enqueue(server_id, ReindexReason::ContentChanged);
+        drop_index_into(server_id, report);
+        report.add_reindex(server_id);
     }
 
     // A standalone-indexed header borrowed a host source's command and
@@ -1092,8 +1076,8 @@ void Indexer::reconcile_cdb_snapshot() {
         auto server_id = workspace.path_pool.intern(entry.file);
         if(old.rules != entry.rules) {
             LOG_INFO("Config rules changed since the last session; reindexing {}", entry.file);
-            drop_index(server_id);
-            enqueue(server_id, ReindexReason::ContentChanged);
+            drop_index_into(server_id, report);
+            report.add_reindex(server_id);
             continue;
         }
         if(old.host.empty()) {
@@ -1103,8 +1087,8 @@ void Indexer::reconcile_cdb_snapshot() {
         if(!workspace.cdb.has_entry(old.host) || llvm::is_contained(changed_ids, host_id)) {
             LOG_INFO("Host compile command changed since the last session; reindexing {}",
                      entry.file);
-            drop_index(server_id);
-            enqueue(server_id, ReindexReason::ContentChanged);
+            drop_index_into(server_id, report);
+            report.add_reindex(server_id);
             continue;
         }
         // The dependency scan preceding this load saw the offline edits, so
@@ -1119,7 +1103,7 @@ void Indexer::reconcile_cdb_snapshot() {
         if(workspace.dep_graph.find_include_chain(host_id, server_id).empty()) {
             LOG_INFO("Recorded host no longer includes {}; reindexing", entry.file);
             header_hosts[server_id] = host_id;
-            enqueue(server_id, ReindexReason::ContentChanged);
+            report.add_reindex(server_id);
             continue;
         }
         header_hosts[server_id] = host_id;
@@ -1136,12 +1120,11 @@ void Indexer::reconcile_cdb_snapshot() {
             continue;
         }
         auto server_id = workspace.path_pool.intern(old.file);
-        if(project.manifests.contains(server_id) || ledger.contains(server_id) ||
-           !fs::exists(old.file)) {
+        if(project.manifests.contains(server_id) || !fs::exists(old.file)) {
             continue;
         }
         LOG_INFO("Index owed from the last session; reindexing {}", old.file);
-        enqueue(server_id, ReindexReason::ContentChanged);
+        report.add_reindex(server_id);
     }
     if(changed_ids.empty()) {
         return;
@@ -1161,12 +1144,12 @@ void Indexer::reconcile_cdb_snapshot() {
     for(auto header_id: hosted) {
         LOG_INFO("Host compile command changed since the last session; reindexing {}",
                  workspace.path_pool.resolve(header_id));
-        drop_index(header_id);
-        enqueue(header_id, ReindexReason::ContentChanged);
+        drop_index_into(header_id, report);
+        report.add_reindex(header_id);
     }
 }
 
-bool Indexer::file_version_stale(std::uint32_t fv_id) {
+bool IndexStore::file_version_stale(std::uint32_t fv_id) {
     auto [cached, inserted] = fv_verdicts.try_emplace(fv_id, true);
     if(!inserted) {
         return cached->second;
@@ -1209,7 +1192,7 @@ bool Indexer::file_version_stale(std::uint32_t fv_id) {
     return stale;
 }
 
-bool Indexer::need_update(llvm::StringRef file_path) {
+bool IndexStore::need_update(llvm::StringRef file_path) {
     auto& project = workspace.project_index;
     auto manifest_it = project.manifests.find(workspace.path_pool.intern(file_path));
     if(manifest_it == project.manifests.end())
@@ -1228,527 +1211,6 @@ bool Indexer::need_update(llvm::StringRef file_path) {
         }
     }
     return false;
-}
-
-void Indexer::boost(std::uint32_t server_path_id) {
-    enqueue(server_path_id, ReindexReason::DepsOnly);
-    // Front of the un-consumed tail: the file someone is reading beats
-    // the bulk backlog. A running round is not disturbed (its snapshot
-    // semantics stay, see run_background_indexing); the slot then leads
-    // the next round.
-    auto begin = index_queue.begin() + index_queue_pos;
-    auto it = std::find(begin, index_queue.end(), server_path_id);
-    if(it != index_queue.end()) {
-        std::rotate(begin, it, it + 1);
-    }
-    schedule(/*immediate=*/true);
-}
-
-void Indexer::enqueue(std::uint32_t server_path_id, ReindexReason reason) {
-    if(!ledger.record(server_path_id, reason)) {
-        return;
-    }
-    index_queue.push_back(server_path_id);
-}
-
-kota::task<> Indexer::await_attempt(std::uint32_t server_path_id) {
-    auto pending = ledger.peek(server_path_id);
-    if(!pending) {
-        co_return;
-    }
-    auto ticket = pending->ticket;
-    auto& waits = attempt_waits[server_path_id];
-    auto it = llvm::find_if(waits, [&](const AttemptWait& wait) { return wait.ticket == ticket; });
-    if(it == waits.end()) {
-        waits.push_back({ticket, std::make_shared<kota::event>()});
-        it = waits.end() - 1;
-    }
-    // Hold the shared_ptr across the await: the settle moves the event out
-    // of the map before setting it, and a fresh wait after that parks on a
-    // new instance.
-    auto event = it->event;
-    co_await event->wait();
-}
-
-void Indexer::settle_attempt_waits(std::uint32_t server_path_id, std::uint64_t ticket) {
-    auto it = attempt_waits.find(server_path_id);
-    if(it == attempt_waits.end()) {
-        return;
-    }
-    llvm::SmallVector<std::shared_ptr<kota::event>, 2> settled;
-    for(auto& wait: it->second) {
-        if(wait.ticket <= ticket) {
-            settled.push_back(std::move(wait.event));
-        }
-    }
-    llvm::erase_if(it->second, [&](const AttemptWait& wait) { return wait.ticket <= ticket; });
-    if(it->second.empty()) {
-        attempt_waits.erase(it);
-    }
-    for(auto& event: settled) {
-        event->set();
-    }
-}
-
-void Indexer::pause_indexing() {
-    ++pause_depth;
-    if(pause_depth == 1) {
-        resume_event.reset();
-        LOG_DEBUG("Background indexing paused");
-    }
-}
-
-void Indexer::resume_indexing() {
-    if(pause_depth > 0)
-        --pause_depth;
-    if(pause_depth == 0) {
-        resume_event.set();
-        LOG_DEBUG("Background indexing resumed");
-    }
-}
-
-kota::task<> Indexer::stop() {
-    bg_tasks.cancel();
-    co_await bg_tasks.join();
-    // Cancelled tasks unwind before their settle bookkeeping; release any
-    // parked feature request rather than stranding it past shutdown.
-    for(auto& waits: llvm::make_second_range(attempt_waits)) {
-        for(auto& wait: waits) {
-            wait.event->set();
-        }
-    }
-    attempt_waits.clear();
-}
-
-void Indexer::schedule(bool immediate) {
-    if(!workspace.config.project.enable_indexing.value || indexing_active || indexing_scheduled)
-        return;
-    indexing_scheduled = true;
-
-    if(!index_idle_timer) {
-        index_idle_timer = std::make_shared<kota::timer>(kota::timer::create(loop));
-    }
-    // The idle timeout exists to batch edit storms into one round; a
-    // follow-up round for work requeued during the round just ended has
-    // already been batched by that round and starts right away — a crashed
-    // file's retry must not owe an extra idle window on top of the round
-    // boundary it already waited out.
-    index_idle_timer->start(
-        std::chrono::milliseconds(immediate ? 0 : workspace.config.project.idle_timeout_ms.value));
-
-    if(!bg_tasks.spawn(run_background_indexing())) {
-        indexing_scheduled = false;
-        LOG_WARN("Failed to spawn background indexing task (task group stopped)");
-    }
-}
-
-Admission Indexer::dispatch_admission(std::uint32_t server_path_id) {
-    // Open files whose session invests in an AST are skipped until an
-    // agent shows up: the LSP side never reads their shards (the session
-    // serves them), so indexing them is pure waste — but agents read disk
-    // truth and need the shards, snapshot taken from disk regardless of
-    // the live buffer. Skipping loses no debt: the veto settles the
-    // claim, and BufferClosed re-checks the shard against the disk on
-    // close. An index-only session is the opposite case — its shard IS
-    // what the LSP serves (freshness clause 4), so it indexes like a
-    // closed file, but only while its buffer matches the disk this index
-    // would read: rows from a diverged disk fail clause 4's content gate
-    // and would replace the one shard the session can serve from,
-    // blanking its features until an escalation. Keep the last matching
-    // rows instead — the close-time re-check covers the debt here too.
-    auto session = sessions.find(server_path_id);
-    if(!session) {
-        return Admission::Admit;
-    }
-    if(session->serving != ServingMode::IndexOnly) {
-        return index_open_files ? Admission::Admit : Admission::SkipAndSettle;
-    }
-    auto file_path = workspace.path_pool.resolve(server_path_id);
-    if(auto disk = fs::read(file_path); !disk || *disk != session->text) {
-        return Admission::SkipAndSettle;
-    }
-    return Admission::Admit;
-}
-
-kota::task<> Indexer::index_one(std::uint32_t server_path_id,
-                                PendingLedger::Claim claim,
-                                std::size_t index,
-                                std::size_t total) {
-    auto file_path = std::string(workspace.path_pool.resolve(server_path_id));
-
-    // The engine's own observation is authoritative for content changes:
-    // it saw the event. The dep-hash check below cannot be trusted to see
-    // a file's own edit (it validates the recorded dependencies), so only
-    // deps-only slots — where it exists to deduplicate cascade storms —
-    // may take the shortcut.
-    if(ledger.pending_reason(server_path_id) != ReindexReason::ContentChanged &&
-       !need_update(file_path)) {
-        co_return;
-    }
-
-    // For module interface units, compile their PCM (and transitive deps)
-    // first so the stateless worker has the artifacts it needs.
-    if(workspace.path_to_module.contains(server_path_id)) {
-        co_await pcm.build(server_path_id);
-    }
-
-    worker::IndexParams params;
-    params.file = file_path;
-    // Bulk background indexing sticks to real commands; synthesized fallback
-    // commands would fill the index with guesses.
-    std::uint32_t host_path_id = no_path_id;
-    auto source = contexts.resolve_command(file_path,
-                                           params.directory,
-                                           params.arguments,
-                                           ContextUse::Background,
-                                           &host_path_id);
-    if(source == CommandSource::Fallback) {
-        // A file whose manifest survives keeps serving its last-known rows,
-        // so skipping it loses nothing. One without a manifest (dropped or
-        // never built) stays unindexed — count that as a failure so a batch
-        // run reports the debt instead of exiting clean.
-        if(!workspace.project_index.manifests.contains(server_path_id)) {
-            LOG_WARN("[{}/{}] No compile command found for {}; it stays unindexed",
-                     index,
-                     total,
-                     file_path);
-            failed_ids.insert(server_path_id);
-        }
-        co_return;
-    }
-
-    workspace.fill_pcm_deps(params.pcms);
-
-    LOG_INFO("[{}/{}] Indexing {}", index, total, file_path);
-
-    ScopedTimer timer;
-    auto result = co_await pool.send_stateless(params, worker::Priority::Low);
-    if(result.has_value() && result.value().success && !result.value().tu_index_data.empty()) {
-        auto index_ms = timer.ms();
-        // Merge guard: a newer content-level invalidation during this build
-        // (or a removal clearing the entry) means this result describes text
-        // that no longer exists — e.g. a compile-command change whose
-        // erase+re-enqueue must not be undone by an in-flight merge of the
-        // old-command rows. Drop the merge; the follow-up slot redoes it.
-        if(ledger.superseded(claim)) {
-            LOG_INFO("Discarding superseded index result for {}", file_path);
-            co_return;
-        }
-        ScopedTimer merge_timer;
-        if(!merge(result.value().tu_index_data.data(), result.value().tu_index_data.size())) {
-            // Rejected wholesale: the file's rows are missing or stale,
-            // which is a failure, not a completed index.
-            failed_ids.insert(server_path_id);
-            co_return;
-        }
-        failed_ids.erase(server_path_id);
-        // Record the borrowed host only for rows that landed: written at
-        // dispatch, a failed rebuild would leave the persisted CDB
-        // snapshot naming the new host while the retained rows were built
-        // through the old one — an unchanged new host then pins those
-        // stale rows fresh across restarts.
-        if(source == CommandSource::IncludeGraph) {
-            header_hosts[server_path_id] = host_path_id;
-        }
-        LOG_PERF("index",
-                 "progress={}/{} file={} bytes={} index_ms={} merge_ms={}",
-                 index,
-                 total,
-                 file_path,
-                 result.value().tu_index_data.size(),
-                 index_ms,
-                 merge_timer.ms());
-    } else if(result.has_value() && !result.value().success) {
-        LOG_WARN("[{}/{}] Index failed for {}: {}", index, total, file_path, result.value().error);
-        failed_ids.insert(server_path_id);
-    } else if(result.has_value() && result.value().tu_index_data.empty()) {
-        LOG_WARN("[{}/{}] Index returned empty TUIndex for {}", index, total, file_path);
-        failed_ids.insert(server_path_id);
-    } else if(result.error().code == worker::dispatch_errc::cancelled ||
-              result.error().code == worker::dispatch_errc::worker_crashed ||
-              (result.error().code == worker::dispatch_errc::worker_unavailable &&
-               pool.revives_slots())) {
-        // Preempted under memory pressure or lost to a worker crash: the
-        // work itself is fine — requeue the file with its original reason so
-        // the next round redoes it instead of silently dropping coverage.
-        // worker_unavailable requeues (budget-free, like a preemption) only
-        // when the pool revives dead slots: the outage is then a window, not
-        // a verdict, and each retry round waits out the idle timer rather
-        // than spinning. Without revival a requeue could never succeed.
-        bool crashed = result.error().code == worker::dispatch_errc::worker_crashed;
-        switch(note_dispatch_failure(claim, crashed)) {
-            case PendingLedger::FailureVerdict::Dropped: {
-                LOG_INFO("[{}/{}] Index dropped for removed file {}", index, total, file_path);
-                break;
-            }
-            case PendingLedger::FailureVerdict::Superseded: {
-                LOG_INFO("[{}/{}] Index failure for superseded content of {}",
-                         index,
-                         total,
-                         file_path);
-                break;
-            }
-            case PendingLedger::FailureVerdict::GaveUp: {
-                // Log-only by design: the file is usually not open (open
-                // documents are served by their session, not the shard),
-                // so there is no diagnostic surface. Cross-file references
-                // into this file stay stale until its content changes.
-                LOG_WARN(
-                    "[{}/{}] Index giving up on {} after {} crash requeues; "
-                    "its cross-file data stays stale until it is edited: {}",
-                    index,
-                    total,
-                    file_path,
-                    max_requeue_attempts,
-                    result.error().message);
-                failed_ids.insert(server_path_id);
-                break;
-            }
-            case PendingLedger::FailureVerdict::Requeued: {
-                LOG_INFO("[{}/{}] Index requeued for {}: {}",
-                         index,
-                         total,
-                         file_path,
-                         result.error().message);
-                break;
-            }
-        }
-    } else {
-        LOG_WARN("[{}/{}] Index IPC error for {}: {}",
-                 index,
-                 total,
-                 file_path,
-                 result.error().message);
-        failed_ids.insert(server_path_id);
-    }
-}
-
-auto Indexer::note_dispatch_failure(const PendingLedger::Claim& claim, bool crashed)
-    -> PendingLedger::FailureVerdict {
-    auto outcome = ledger.on_dispatch_failure(claim, crashed);
-    if(outcome.needs_slot) {
-        index_queue.push_back(claim.id);
-    }
-    // Giving up cleared the ledger; no further attempt will come, so any
-    // parked waiter must not be left waiting for one.
-    if(outcome.verdict == PendingLedger::FailureVerdict::GaveUp) {
-        settle_attempt_waits(claim.id);
-    }
-    return outcome.verdict;
-}
-
-kota::task<> Indexer::run_round_feeder(kota::task_group<>& workers,
-                                       RoundState& round,
-                                       std::size_t round_end,
-                                       std::size_t total,
-                                       std::size_t& dispatched) {
-    while(index_queue_pos < round_end) {
-        // Every wait loops back to re-check ALL gates: a pause arriving
-        // while parked on capacity (or a capacity loss while parked on the
-        // pause) must not let one slot slip through on wake-up.
-        while(true) {
-            if(pause_depth > 0) {
-                co_await resume_event.wait();
-                continue;
-            }
-
-            // With no schedulable worker but revival pending, a dispatch
-            // would only convert the queue slot into an instant
-            // worker_unavailable failure; park until a slot returns to
-            // service. With revival off such failures are terminal and
-            // take the normal failure path.
-            if(pool.revives_slots() && pool.schedulable_stateless() == 0) {
-                capacity_event.reset();
-                co_await capacity_event.wait();
-                continue;
-            }
-
-            // Feed at most twice the pool's low budget: deep enough that
-            // workers never idle waiting for the feeder, shallow enough
-            // that the pool queue holds little when a pause or budget cut
-            // lands. The floor keeps the window alive when the budget
-            // reads zero (a pool that has not started yet); without it
-            // the feeder would wait on task_done with nothing in flight
-            // to ever set it.
-            if(round.inflight >= std::max<std::size_t>(2 * pool.effective_low_limit(), 2)) {
-                round.task_done.reset();
-                co_await round.task_done.wait();
-                continue;
-            }
-            break;
-        }
-
-        auto server_path_id = index_queue[index_queue_pos];
-        index_queue_pos += 1;
-        // No open-session or hash-freshness shortcut here: the index task
-        // is the single decision point for skipping (it knows the pending
-        // reason; a hash check alone cannot see a file's own edit), and
-        // its settle retires the claimed debt with newer recordings
-        // honored. A second, reason-blind copy of these checks here is
-        // exactly what once erased ContentChanged state early and let a
-        // stale shard keep serving.
-
-        // A queued slot whose debt was cleared mid-batch (the file was
-        // removed from disk) has nothing to index — skip the slot. Every
-        // other slot has an entry, because enqueue books it before the
-        // queue push.
-        auto claim = ledger.claim(server_path_id);
-        if(!claim) {
-            continue;
-        }
-
-        dispatched += 1;
-        round.inflight += 1;
-        // A member coroutine, not an immediately-invoked capturing lambda:
-        // a lambda's captures live in the lambda object, which dies at the
-        // end of this statement — anything read after the first suspension
-        // would dangle. Coroutine parameters are copied into the frame.
-        workers.spawn(run_index_task(*claim, dispatched, total, round));
-    }
-
-    LOG_DEBUG("Background indexing: all {} tasks spawned, waiting for completion", dispatched);
-}
-
-kota::task<> Indexer::run_index_task(PendingLedger::Claim claim,
-                                     std::size_t index,
-                                     std::size_t total,
-                                     RoundState& round) {
-    auto server_path_id = claim.id;
-    // Dispatch-time admission: the serving side may veto the work. A veto
-    // settles the claimed debt below (an ordinary open session's skip must
-    // clear it, or the pump spins); only a Defer keeps the debt for a
-    // later round. No dispatch-time admission defers today — landing-time
-    // admission is an S6 behavior decision.
-    auto admission = dispatch_admission(server_path_id);
-    if(admission == Admission::Admit) {
-        co_await index_one(server_path_id, claim, index, total);
-    }
-    // The pending window ends with the index attempt, success or not. On
-    // failure the last-known rows resume serving — deliberately: keeping
-    // the gate would hide a file that fails to index (broken compile,
-    // missing command) from every cross-file query with no recovery path,
-    // since only a future event re-enqueues it. Any such event re-judges
-    // staleness by content hash. A re-enqueue during the flight booked
-    // newer debt: the settle leaves it standing.
-    if(admission != Admission::Defer) {
-        ledger.settle(claim);
-    }
-    // The attempt settled with no retry pending; an open session still
-    // waiting on the index with nothing servable will never be served by
-    // it (see on_session_unservable).
-    if(on_session_unservable && !ledger.contains(server_path_id)) {
-        if(auto session = sessions.find(server_path_id);
-           session && session->serving == ServingMode::IndexOnly) {
-            auto it = workspace.shards.find(server_path_id);
-            if(it == workspace.shards.end() || !it->second.matches_content(session->text)) {
-                on_session_unservable(server_path_id);
-            }
-        }
-    }
-    // Wake the waiters parked on this attempt (and older tickets it
-    // covers) after the unservable escalation above, so they re-derive
-    // their route against the settled state. Waiters of a requeue made
-    // during the flight bound the fresh ticket and stay parked for that
-    // newer attempt.
-    settle_attempt_waits(server_path_id, claim.ticket);
-    round.completed += 1;
-    round.inflight -= 1;
-    round.task_done.set();
-    progress_data.stage = Progress::Stage::Report;
-    progress_data.completed = round.completed;
-    on_progress_changed.emit();
-}
-
-kota::task<> Indexer::run_background_indexing() {
-    if(index_idle_timer) {
-        co_await index_idle_timer->wait();
-    }
-    indexing_scheduled = false;
-
-    if(index_queue_pos >= index_queue.size()) {
-        LOG_DEBUG("Background indexing: queue exhausted");
-        co_return;
-    }
-
-    indexing_active = true;
-    LOG_DEBUG("Background indexing: starting, {} files queued",
-              index_queue.size() - index_queue_pos);
-
-    // FileVersion verdicts hold for one round: the disk can change under a
-    // running round, but staleness is re-judged per round anyway.
-    fv_verdicts.clear();
-
-    std::stable_partition(
-        index_queue.begin() + index_queue_pos,
-        index_queue.end(),
-        [this](std::uint32_t id) { return workspace.path_to_module.contains(id); });
-
-    // This round consumes [index_queue_pos, round_end) only. Anything
-    // appended during the round — including its own failures' requeues —
-    // waits for the next round; consuming a requeue in the round that
-    // produced it is what let a worker outage spin the dispatch loop
-    // against instant failures (#611).
-    auto round_end = index_queue.size();
-    auto total = round_end - index_queue_pos;
-    std::size_t dispatched = 0;
-    RoundState round;
-
-    // Announce the round; a progress reporter reads the counts from
-    // progress() and owns the LSP token's begin/report/end handshake. With
-    // no subscriber the signal is simply a no-op.
-    progress_data = Progress{.stage = Progress::Stage::Begin, .total = total};
-    on_progress_changed.emit();
-
-    // Timed at the start of real work; the reporter's token handshake runs
-    // off to the side and cannot inflate the reported indexing duration.
-    ScopedTimer timer;
-    kota::task_group<> workers(loop);
-
-    // The dispatch loop runs as a child of `workers`, so this frame's only
-    // suspension while children live is the join below: a shutdown cancel
-    // cascades through the join into the group, and the feeder plus every
-    // in-flight task unwind before `workers` is destroyed. Parking the
-    // feeder's waits on this frame instead would let the cancel finalize
-    // the frame — destroying the group with children still in flight.
-    workers.spawn(run_round_feeder(workers, round, round_end, total, dispatched));
-    co_await workers.join();
-
-    // Skipped files bump `completed` without a Report emit; refresh the
-    // materialized count so a subscriber waking up on End reads the truth.
-    progress_data.completed = round.completed;
-    progress_data.stage = Progress::Stage::End;
-    progress_data.dispatched = dispatched;
-    on_progress_changed.emit();
-
-    // Safe point to compact: no dispatch loop holds an index into the queue.
-    // Files enqueued or requeued past the round snapshot keep the queue
-    // alive for the next scheduled round.
-    if(index_queue_pos >= index_queue.size()) {
-        assert(ledger.empty() && "drained queue must have no pending debt");
-        index_queue.clear();
-        index_queue_pos = 0;
-    }
-
-    LOG_PERF("index",
-             "phase=run dispatched={} skipped={} total={} elapsed_ms={}",
-             dispatched,
-             total - dispatched,
-             total,
-             timer.ms());
-    co_await save();
-
-    // The round owns the "active" gate through its save: releasing it
-    // before the write await would let a next round's save overlap this
-    // one's in-flight batch, racing same-key blob writes on the pool.
-    indexing_active = false;
-
-    // Files enqueued or requeued while the round ran saw their schedule()
-    // no-op against indexing_active; without this kick they would wait for
-    // the next external event — and a content-changed pending file's rows
-    // stay skipped for that whole wait.
-    if(index_queue_pos < index_queue.size()) {
-        schedule(/*immediate=*/true);
-    }
 }
 
 }  // namespace clice

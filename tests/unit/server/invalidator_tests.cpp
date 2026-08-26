@@ -4,7 +4,7 @@
 #include "sched/context.h"
 #include "sched/families/pcm.h"
 #include "sched/graph.h"
-#include "server/compiler/ast_family.h"
+#include "server/service/ast_family.h"
 #include "server/service/context_service.h"
 #include "server/state/invalidator.h"
 #include "worker/pool.h"

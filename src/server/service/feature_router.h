@@ -18,7 +18,7 @@ namespace clice {
 
 class ASTFamily;
 class ContextResolver;
-class Indexer;
+class IndexPump;
 class WorkerForwarder;
 
 namespace protocol = kota::ipc::protocol;
@@ -52,10 +52,10 @@ public:
                   IndexQuery& index_query,
                   Workspace& workspace,
                   ContextResolver& contexts,
-                  Indexer& indexer,
+                  IndexPump& pump,
                   SessionStore& sessions) :
         ast(ast), forwarder(forwarder), index_query(index_query), workspace(workspace),
-        contexts(contexts), indexer(indexer), sessions(sessions) {}
+        contexts(contexts), pump(pump), sessions(sessions) {}
 
     using RawResult = kota::task<kota::codec::RawValue, kota::ipc::Error>;
 
@@ -241,7 +241,7 @@ private:
     IndexQuery& index_query;
     Workspace& workspace;
     ContextResolver& contexts;
-    Indexer& indexer;
+    IndexPump& pump;
     SessionStore& sessions;
 };
 

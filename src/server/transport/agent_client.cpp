@@ -602,10 +602,10 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
         // The progress numbers describe the current round — or the last
         // one, retained after it ends; the live queue is compacted between
         // rounds and would read as "nothing was ever indexed".
-        auto& progress = srv.indexer.progress();
+        auto& progress = srv.pump.progress();
         StatusResult result;
-        result.idle = srv.indexer.is_idle();
-        result.pending = static_cast<int>(srv.indexer.pending_files());
+        result.idle = srv.pump.is_idle();
+        result.pending = static_cast<int>(srv.pump.pending_files());
         result.total = static_cast<int>(progress.total);
         result.indexed = static_cast<int>(progress.completed);
         co_return result;
