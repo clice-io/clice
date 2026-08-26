@@ -1014,7 +1014,7 @@ llvm::SmallVector<std::uint32_t> Indexer::standalone_debt() {
     for(auto id: failed_ids) {
         add(id);
     }
-    for(auto id: llvm::make_first_range(reindex_reasons)) {
+    for(auto id: ledger.pending_files()) {
         add(id);
     }
     return debt;
@@ -1134,7 +1134,7 @@ void Indexer::reconcile_cdb_snapshot() {
             continue;
         }
         auto server_id = workspace.path_pool.intern(old.file);
-        if(project.manifests.contains(server_id) || reindex_reasons.contains(server_id) ||
+        if(project.manifests.contains(server_id) || ledger.contains(server_id) ||
            !fs::exists(old.file)) {
             continue;
         }
@@ -1243,49 +1243,18 @@ void Indexer::boost(std::uint32_t server_path_id) {
 }
 
 void Indexer::enqueue(std::uint32_t server_path_id, ReindexReason reason) {
-    // A fresh slot means any prior slot was already consumed (or none
-    // existed); a queued-and-unconsumed slot makes this call a duplicate.
-    bool fresh_slot = pending_ids.insert(server_path_id).second;
-
-    // Record (or refresh) why the file is pending. Within one queued slot
-    // ContentChanged is absorbing: a deps-only cascade cannot downgrade a
-    // file whose own content already changed. Across slots it is not: a
-    // deps-only requeue after the previous slot was consumed is new debt of
-    // its own kind — the in-flight (or finished) pass already covers the
-    // earlier content change, and keeping ContentChanged would suppress the
-    // file's rows past that pass. The fresh ticket invalidates the clear of
-    // any index task already in flight for this file.
-    ++reindex_ticket;
-    auto [it, inserted] =
-        reindex_reasons.try_emplace(server_path_id,
-                                    reason,
-                                    reindex_ticket,
-                                    reason == ReindexReason::ContentChanged ? reindex_ticket : 0);
-    if(!inserted) {
-        if(reason == ReindexReason::ContentChanged) {
-            it->second.reason = ReindexReason::ContentChanged;
-            it->second.content_ticket = reindex_ticket;
-            // New content starts a fresh poison budget: the crashes the
-            // old bytes caused say nothing about the fixed ones, and a
-            // stale ledger would abandon the file on its first hiccup.
-            it->second.requeue_attempts = 0;
-        } else if(fresh_slot) {
-            it->second.reason = ReindexReason::DepsOnly;
-        }
-        it->second.ticket = reindex_ticket;
-    }
-
-    if(!fresh_slot)
+    if(!ledger.record(server_path_id, reason)) {
         return;
+    }
     index_queue.push_back(server_path_id);
 }
 
 kota::task<> Indexer::await_attempt(std::uint32_t server_path_id) {
-    auto pending = reindex_reasons.find(server_path_id);
-    if(pending == reindex_reasons.end()) {
+    auto pending = ledger.peek(server_path_id);
+    if(!pending) {
         co_return;
     }
-    auto ticket = pending->second.ticket;
+    auto ticket = pending->ticket;
     auto& waits = attempt_waits[server_path_id];
     auto it = llvm::find_if(waits, [&](const AttemptWait& wait) { return wait.ticket == ticket; });
     if(it == waits.end()) {
@@ -1371,42 +1340,46 @@ void Indexer::schedule(bool immediate) {
     }
 }
 
-kota::task<> Indexer::index_one(std::uint32_t server_path_id,
-                                std::uint64_t ticket,
-                                std::size_t index,
-                                std::size_t total) {
-    auto file_path = std::string(workspace.path_pool.resolve(server_path_id));
-
+Admission Indexer::dispatch_admission(std::uint32_t server_path_id) {
     // Open files whose session invests in an AST are skipped until an
     // agent shows up: the LSP side never reads their shards (the session
     // serves them), so indexing them is pure waste — but agents read disk
     // truth and need the shards, snapshot taken from disk regardless of
-    // the live buffer. Skipping loses no debt: BufferClosed re-checks the
-    // shard against the disk on close. An index-only session is the
-    // opposite case — its shard IS what the LSP serves (freshness clause
-    // 4), so it indexes like a closed file, but only while its buffer
-    // matches the disk this index would read: rows from a diverged disk
-    // fail clause 4's content gate and would replace the one shard the
-    // session can serve from, blanking its features until an escalation.
-    // Keep the last matching rows instead — the close-time re-check
-    // covers the debt here too.
-    if(auto session = sessions.find(server_path_id)) {
-        if(session->serving != ServingMode::IndexOnly) {
-            if(!index_open_files) {
-                co_return;
-            }
-        } else if(auto disk = fs::read(file_path); !disk || *disk != session->text) {
-            co_return;
-        }
+    // the live buffer. Skipping loses no debt: the veto settles the
+    // claim, and BufferClosed re-checks the shard against the disk on
+    // close. An index-only session is the opposite case — its shard IS
+    // what the LSP serves (freshness clause 4), so it indexes like a
+    // closed file, but only while its buffer matches the disk this index
+    // would read: rows from a diverged disk fail clause 4's content gate
+    // and would replace the one shard the session can serve from,
+    // blanking its features until an escalation. Keep the last matching
+    // rows instead — the close-time re-check covers the debt here too.
+    auto session = sessions.find(server_path_id);
+    if(!session) {
+        return Admission::Admit;
     }
+    if(session->serving != ServingMode::IndexOnly) {
+        return index_open_files ? Admission::Admit : Admission::SkipAndSettle;
+    }
+    auto file_path = workspace.path_pool.resolve(server_path_id);
+    if(auto disk = fs::read(file_path); !disk || *disk != session->text) {
+        return Admission::SkipAndSettle;
+    }
+    return Admission::Admit;
+}
+
+kota::task<> Indexer::index_one(std::uint32_t server_path_id,
+                                PendingLedger::Claim claim,
+                                std::size_t index,
+                                std::size_t total) {
+    auto file_path = std::string(workspace.path_pool.resolve(server_path_id));
 
     // The engine's own observation is authoritative for content changes:
     // it saw the event. The dep-hash check below cannot be trusted to see
     // a file's own edit (it validates the recorded dependencies), so only
     // deps-only slots — where it exists to deduplicate cascade storms —
     // may take the shortcut.
-    if(auto it = reindex_reasons.find(server_path_id);
-       (it == reindex_reasons.end() || it->second.reason != ReindexReason::ContentChanged) &&
+    if(ledger.pending_reason(server_path_id) != ReindexReason::ContentChanged &&
        !need_update(file_path)) {
         co_return;
     }
@@ -1455,11 +1428,7 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id,
         // that no longer exists — e.g. a compile-command change whose
         // erase+re-enqueue must not be undone by an in-flight merge of the
         // old-command rows. Drop the merge; the follow-up slot redoes it.
-        // A deps-only requeue is deliberately NOT superseding: the in-flight
-        // rows are positionally right, and suppressing them would trade a
-        // tolerated semantic drift for a coverage hole.
-        if(auto it = reindex_reasons.find(server_path_id);
-           it == reindex_reasons.end() || it->second.content_ticket > ticket) {
+        if(ledger.superseded(claim)) {
             LOG_INFO("Discarding superseded index result for {}", file_path);
             co_return;
         }
@@ -1505,19 +1474,19 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id,
         // a verdict, and each retry round waits out the idle timer rather
         // than spinning. Without revival a requeue could never succeed.
         bool crashed = result.error().code == worker::dispatch_errc::worker_crashed;
-        switch(note_dispatch_failure(server_path_id, ticket, crashed)) {
-            case RequeueVerdict::Dropped: {
+        switch(note_dispatch_failure(claim, crashed)) {
+            case PendingLedger::FailureVerdict::Dropped: {
                 LOG_INFO("[{}/{}] Index dropped for removed file {}", index, total, file_path);
                 break;
             }
-            case RequeueVerdict::Superseded: {
+            case PendingLedger::FailureVerdict::Superseded: {
                 LOG_INFO("[{}/{}] Index failure for superseded content of {}",
                          index,
                          total,
                          file_path);
                 break;
             }
-            case RequeueVerdict::GaveUp: {
+            case PendingLedger::FailureVerdict::GaveUp: {
                 // Log-only by design: the file is usually not open (open
                 // documents are served by their session, not the shard),
                 // so there is no diagnostic surface. Cross-file references
@@ -1533,7 +1502,7 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id,
                 failed_ids.insert(server_path_id);
                 break;
             }
-            case RequeueVerdict::Requeued: {
+            case PendingLedger::FailureVerdict::Requeued: {
                 LOG_INFO("[{}/{}] Index requeued for {}: {}",
                          index,
                          total,
@@ -1552,56 +1521,18 @@ kota::task<> Indexer::index_one(std::uint32_t server_path_id,
     }
 }
 
-auto Indexer::note_dispatch_failure(std::uint32_t server_path_id,
-                                    std::uint64_t ticket,
-                                    bool crashed) -> RequeueVerdict {
-    // Only while the pending entry survives: a file removed from disk
-    // mid-flight was cleared and has nothing to redo.
-    auto it = reindex_reasons.find(server_path_id);
-    if(it == reindex_reasons.end()) {
-        return RequeueVerdict::Dropped;
+auto Indexer::note_dispatch_failure(const PendingLedger::Claim& claim, bool crashed)
+    -> PendingLedger::FailureVerdict {
+    auto outcome = ledger.on_dispatch_failure(claim, crashed);
+    if(outcome.needs_slot) {
+        index_queue.push_back(claim.id);
     }
-
-    // The failed dispatch carried bytes a ContentChanged enqueue has since
-    // replaced: its crash says nothing about the fixed content, so it
-    // neither spends the fresh budget nor requeues — the newer content's
-    // own slot redoes the work.
-    if(it->second.content_ticket > ticket) {
-        return RequeueVerdict::Superseded;
+    // Giving up cleared the ledger; no further attempt will come, so any
+    // parked waiter must not be left waiting for one.
+    if(outcome.verdict == PendingLedger::FailureVerdict::GaveUp) {
+        settle_attempt_waits(claim.id);
     }
-
-    // The budget both counts and gates crashes only: a preemption under
-    // memory pressure says nothing about the file, so it requeues even
-    // when the crash budget is already spent — giving up on it would
-    // clear the pending state and serve the stale shard as fresh.
-    if(crashed) {
-        if(it->second.requeue_attempts >= max_requeue_attempts) {
-            // Giving up accepts the staleness, so clear the pending slot
-            // here rather than relying on run_index_task's ticket-guarded
-            // clear: a deps-only enqueue that landed mid-flight bumped the
-            // ticket, and the guard would leave that downgraded entry
-            // queued — a doomed retry that spends one more worker.
-            clear_pending(server_path_id);
-            return RequeueVerdict::GaveUp;
-        }
-        it->second.requeue_attempts += 1;
-    }
-    // Requeue with the debt class this dispatch carried, not the entry's
-    // current one: a deps-only enqueue that landed mid-flight downgraded
-    // the reason betting on this content pass to land — a failed pass
-    // leaves the edit uncovered, and only a ContentChanged pending entry
-    // keeps suppressing the stale shard.
-    auto reason =
-        it->second.content_ticket == ticket ? ReindexReason::ContentChanged : it->second.reason;
-    // The enqueue bumps the entry's ticket, which shields it from the
-    // in-flight task's pending-state clear. It also resets the poison
-    // budget on ContentChanged — right for a user edit, wrong for this
-    // requeue of the same bytes — so restore the ledger afterwards
-    // (try_emplace on the existing key keeps `it` valid).
-    auto attempts = it->second.requeue_attempts;
-    enqueue(server_path_id, reason);
-    it->second.requeue_attempts = attempts;
-    return RequeueVerdict::Requeued;
+    return outcome.verdict;
 }
 
 kota::task<> Indexer::run_round_feeder(kota::task_group<>& workers,
@@ -1647,58 +1578,63 @@ kota::task<> Indexer::run_round_feeder(kota::task_group<>& workers,
 
         auto server_path_id = index_queue[index_queue_pos];
         index_queue_pos += 1;
-        pending_ids.erase(server_path_id);
-        // No open-session or hash-freshness shortcut here: index_one is the
-        // single decision point for skipping (it knows the pending reason;
-        // a hash check alone cannot see a file's own edit), and the
-        // completion clear in run_index_task retires the pending state with
-        // the ticket honored. A second, reason-blind copy of these checks
-        // here is exactly what once erased ContentChanged state early and
-        // let a stale shard keep serving.
+        // No open-session or hash-freshness shortcut here: the index task
+        // is the single decision point for skipping (it knows the pending
+        // reason; a hash check alone cannot see a file's own edit), and
+        // its settle retires the claimed debt with newer recordings
+        // honored. A second, reason-blind copy of these checks here is
+        // exactly what once erased ContentChanged state early and let a
+        // stale shard keep serving.
 
-        // A queued slot with no pending entry was cleared mid-batch: the
-        // file was removed from disk after being enqueued (clear_pending),
-        // so there is nothing to index — skip the slot. Every other slot
-        // has an entry, because enqueue writes it before the queue push.
-        auto pending_it = reindex_reasons.find(server_path_id);
-        if(pending_it == reindex_reasons.end()) {
+        // A queued slot whose debt was cleared mid-batch (the file was
+        // removed from disk) has nothing to index — skip the slot. Every
+        // other slot has an entry, because enqueue books it before the
+        // queue push.
+        auto claim = ledger.claim(server_path_id);
+        if(!claim) {
             continue;
         }
 
         dispatched += 1;
         round.inflight += 1;
-        auto ticket = pending_it->second.ticket;
         // A member coroutine, not an immediately-invoked capturing lambda:
         // a lambda's captures live in the lambda object, which dies at the
         // end of this statement — anything read after the first suspension
         // would dangle. Coroutine parameters are copied into the frame.
-        workers.spawn(run_index_task(server_path_id, ticket, dispatched, total, round));
+        workers.spawn(run_index_task(*claim, dispatched, total, round));
     }
 
     LOG_DEBUG("Background indexing: all {} tasks spawned, waiting for completion", dispatched);
 }
 
-kota::task<> Indexer::run_index_task(std::uint32_t server_path_id,
-                                     std::uint64_t ticket,
+kota::task<> Indexer::run_index_task(PendingLedger::Claim claim,
                                      std::size_t index,
                                      std::size_t total,
                                      RoundState& round) {
-    co_await index_one(server_path_id, ticket, index, total);
+    auto server_path_id = claim.id;
+    // Dispatch-time admission: the serving side may veto the work. A veto
+    // settles the claimed debt below (an ordinary open session's skip must
+    // clear it, or the pump spins); only a Defer keeps the debt for a
+    // later round. No dispatch-time admission defers today — landing-time
+    // admission is an S6 behavior decision.
+    auto admission = dispatch_admission(server_path_id);
+    if(admission == Admission::Admit) {
+        co_await index_one(server_path_id, claim, index, total);
+    }
     // The pending window ends with the index attempt, success or not. On
     // failure the last-known rows resume serving — deliberately: keeping
     // the gate would hide a file that fails to index (broken compile,
     // missing command) from every cross-file query with no recovery path,
     // since only a future event re-enqueues it. Any such event re-judges
-    // staleness by content hash. A re-enqueue during the flight bumped
-    // the ticket: that newer pending state must survive this clear.
-    if(auto it = reindex_reasons.find(server_path_id);
-       it != reindex_reasons.end() && it->second.ticket == ticket) {
-        reindex_reasons.erase(it);
+    // staleness by content hash. A re-enqueue during the flight booked
+    // newer debt: the settle leaves it standing.
+    if(admission != Admission::Defer) {
+        ledger.settle(claim);
     }
     // The attempt settled with no retry pending; an open session still
     // waiting on the index with nothing servable will never be served by
     // it (see on_session_unservable).
-    if(on_session_unservable && !reindex_reasons.contains(server_path_id)) {
+    if(on_session_unservable && !ledger.contains(server_path_id)) {
         if(auto session = sessions.find(server_path_id);
            session && session->serving == ServingMode::IndexOnly) {
             auto it = workspace.shards.find(server_path_id);
@@ -1712,7 +1648,7 @@ kota::task<> Indexer::run_index_task(std::uint32_t server_path_id,
     // their route against the settled state. Waiters of a requeue made
     // during the flight bound the fresh ticket and stay parked for that
     // newer attempt.
-    settle_attempt_waits(server_path_id, ticket);
+    settle_attempt_waits(server_path_id, claim.ticket);
     round.completed += 1;
     round.inflight -= 1;
     round.task_done.set();
@@ -1786,8 +1722,7 @@ kota::task<> Indexer::run_background_indexing() {
     // Files enqueued or requeued past the round snapshot keep the queue
     // alive for the next scheduled round.
     if(index_queue_pos >= index_queue.size()) {
-        assert(pending_ids.empty() && "drained queue must have no pending ids");
-        assert(reindex_reasons.empty() && "drained queue must have no pending reasons");
+        assert(ledger.empty() && "drained queue must have no pending debt");
         index_queue.clear();
         index_queue_pos = 0;
     }

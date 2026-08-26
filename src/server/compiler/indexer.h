@@ -7,6 +7,7 @@
 #include <optional>
 #include <vector>
 
+#include "sched/freshness.h"
 #include "sched/workspace.h"
 #include "support/signal.h"
 
@@ -29,22 +30,6 @@ namespace testing {
 struct IndexerFixture;
 
 }
-
-/// Why a file awaits re-indexing. The invalidation engine knows the cause
-/// at enqueue time, so queries can decide in O(1) whether a pending file's
-/// existing index rows are still trustworthy (see IndexQuery's freshness
-/// contract).
-enum class ReindexReason : std::uint8_t {
-    /// Enqueued by a dependency cascade (or a bulk sweep of unknown
-    /// staleness): the file's own content is not known to have changed, so
-    /// its index rows are positionally intact — at worst semantically
-    /// behind — and keep serving until the reindex lands.
-    DepsOnly,
-    /// The file's own content changed: its index rows describe text that
-    /// no longer exists, so queries skip this file's contribution until
-    /// the reindex lands.
-    ContentChanged,
-};
 
 /// Background indexing scheduler.
 ///
@@ -134,11 +119,7 @@ public:
     /// or nullopt when its index is not pending an update. O(1), no I/O —
     /// the query path calls this per candidate file.
     std::optional<ReindexReason> pending_reason(std::uint32_t server_path_id) const {
-        auto it = reindex_reasons.find(server_path_id);
-        if(it == reindex_reasons.end()) {
-            return std::nullopt;
-        }
-        return it->second.reason;
+        return ledger.pending_reason(server_path_id);
     }
 
     /// Forget a file's pending-reindex state (reason and queue membership):
@@ -146,10 +127,9 @@ public:
     /// and a lingering ContentChanged reason would suppress its deliberately
     /// still-serving shard forever. A queue slot already consumed stays
     /// consumed; one not yet consumed is skipped at dispatch time (the
-    /// consume loop treats a missing pending entry as a cleared slot).
+    /// consume loop treats a missing ledger entry as a cleared slot).
     void clear_pending(std::uint32_t server_path_id) {
-        reindex_reasons.erase(server_path_id);
-        pending_ids.erase(server_path_id);
+        ledger.clear(server_path_id);
         settle_attempt_waits(server_path_id);
     }
 
@@ -291,83 +271,30 @@ private:
     /// Open documents, read-only. A file with an open Session is skipped by
     /// background indexing (its buffer index is authoritative).
 
-    /// Background indexing queue and scheduling state.  pending_ids mirrors
-    /// the un-consumed tail of index_queue so enqueue can dedupe; the queue
-    /// is compacted once a round has fully drained.
+    /// Background indexing queue and scheduling state. The ledger tracks
+    /// which files hold an un-consumed slot so enqueue can dedupe; the
+    /// queue is compacted once a round has fully drained.
     std::vector<std::uint32_t> index_queue;
-    llvm::DenseSet<std::uint32_t> pending_ids;
     std::size_t index_queue_pos = 0;
 
-    /// The pending-reindex state machine, per file. This block is the
-    /// authoritative description; every rule below exists because its
-    /// absence was a concrete bug.
-    ///
-    /// States: absent → queued (slot in index_queue + entry here) →
-    /// in-flight (slot consumed, entry alive) → absent again.
-    ///
-    /// Invariants:
-    /// 1. index_one is the ONLY place that decides to skip work (open
-    ///    session, or hash-fresh shard for deps-only slots). Duplicating
-    ///    those checks elsewhere reintroduces reason-blind skips.
+    /// The pending-reindex debt: claim/settle bookkeeping, tickets and
+    /// the crash-requeue budget live in the ledger. The pump-side rules
+    /// on top of it, each born from a concrete bug:
+    /// 1. The admission + freshness checks inside the index task are the
+    ///    ONLY places that decide to skip work. Duplicating them at the
+    ///    feeder reintroduces reason-blind skips.
     /// 2. need_update() may shortcut deps-only slots ONLY: the engine
     ///    observed content changes itself, and the dep-hash check cannot
     ///    see a file's own edit.
-    /// 3. The merge lands iff the entry is alive and no ContentChanged
-    ///    enqueue happened after launch (content_ticket <= launch ticket).
-    ///    Deps-only requeues do not discard an in-flight pass.
-    /// 4. Completion erases the entry iff ticket == launch ticket: a
-    ///    requeue during the flight must survive the older task's clear.
-    /// 5. Within a queued slot, ContentChanged absorbs; a fresh slot after
-    ///    consumption carries its own reason (the consumed pass owns the
-    ///    earlier debt).
-    /// 6. clear_pending (file removal) drops entry and queue membership;
-    ///    the orphaned slot is skipped at dispatch.
-    /// 7. Queries suppress a file's contributions iff its entry's reason
-    ///    is ContentChanged (see pending_reason).
-    struct PendingReindex {
-        ReindexReason reason;
-        std::uint64_t ticket;
-        /// Ticket of the newest ContentChanged enqueue. The merge guard
-        /// compares against this, not `ticket`: a deps-only requeue during a
-        /// flight bumps `ticket` (to survive the completion clear) but must
-        /// not discard an in-flight content pass — its rows are positionally
-        /// right and the follow-up slot redoes the semantic drift anyway.
-        std::uint64_t content_ticket;
-
-        /// Crash requeues of this entry. Bounds the damage of a poison
-        /// file that reliably crashes workers: without a cap, every
-        /// requeue would burn another worker's crash budget until the
-        /// whole pool is dead. Preemption requeues do not count — they
-        /// say nothing about the file.
-        unsigned requeue_attempts = 0;
-    };
-
-    /// What a failed index dispatch did to the file's pending state.
-    enum class RequeueVerdict : std::uint8_t {
-        /// No pending entry survived (file removed mid-flight).
-        Dropped,
-        /// The failed dispatch carried bytes older than the pending
-        /// content; the newer content's own queued slot redoes the work.
-        Superseded,
-        /// The crash budget is spent; the file is abandoned.
-        GaveUp,
-        /// Re-enqueued for the next round.
-        Requeued,
-    };
+    PendingLedger ledger{max_requeue_attempts};
 
     constexpr static unsigned max_requeue_attempts = 3;
 
-    /// Requeue a file whose index dispatch failed with a crash or a
-    /// memory-pressure preemption. `ticket` is the failed dispatch's launch
-    /// ticket: a crash of superseded bytes says nothing about the current
-    /// content and must not spend its budget. Only crashes spend the
-    /// bounded budget: a preemption says nothing about the file, and
-    /// capping it would silently drop coverage — the pending reason is
-    /// erased after the attempt, so the stale shard would be served as
-    /// fresh.
-    RequeueVerdict note_dispatch_failure(std::uint32_t server_path_id,
-                                         std::uint64_t ticket,
-                                         bool crashed);
+    /// Merge a failed dispatch's claim back through the ledger and apply
+    /// the pump-side halves: a Requeued file gets its queue slot, an
+    /// abandoned one wakes its waiters.
+    PendingLedger::FailureVerdict note_dispatch_failure(const PendingLedger::Claim& claim,
+                                                        bool crashed);
 
     friend struct testing::IndexerFixture;
 
@@ -440,7 +367,6 @@ private:
     /// attempt will come (entry cleared, shutdown).
     void settle_attempt_waits(std::uint32_t server_path_id, std::uint64_t ticket = -1);
 
-    llvm::DenseMap<std::uint32_t, PendingReindex> reindex_reasons;
     llvm::DenseSet<std::uint32_t> failed_ids;
 
     struct AttemptWait {
@@ -454,7 +380,6 @@ private:
     /// requeue during an attempt's flight cannot extend earlier waits —
     /// await_attempt promises one attempt, not a settled file.
     llvm::DenseMap<std::uint32_t, llvm::SmallVector<AttemptWait, 2>> attempt_waits;
-    std::uint64_t reindex_ticket = 0;
     bool indexing_active = false;
     bool indexing_scheduled = false;
     std::size_t saved_shards = 0;
@@ -531,14 +456,19 @@ private:
                                   std::size_t total,
                                   std::size_t& dispatched);
     kota::task<> index_one(std::uint32_t server_path_id,
-                           std::uint64_t ticket,
+                           PendingLedger::Claim claim,
                            std::size_t index,
                            std::size_t total);
 
-    /// One dispatched unit of a background round: index the file, then end
-    /// its pending window (ticket-guarded) and report progress.
-    kota::task<> run_index_task(std::uint32_t server_path_id,
-                                std::uint64_t ticket,
+    /// Dispatch-time admission on one claimed file: the serving side's
+    /// veto (open sessions, index-only disk divergence). The pump-neutral
+    /// half of the contract is the Admission enum; this is the serving
+    /// implementation.
+    Admission dispatch_admission(std::uint32_t server_path_id);
+
+    /// One dispatched unit of a background round: admit, index the file,
+    /// settle the claimed debt and report progress.
+    kota::task<> run_index_task(PendingLedger::Claim claim,
                                 std::size_t index,
                                 std::size_t total,
                                 RoundState& round);

@@ -29,7 +29,7 @@ namespace clice::testing {
 
 /// Test fixture with friend access to Indexer internals.
 struct IndexerFixture {
-    using Verdict = Indexer::RequeueVerdict;
+    using Verdict = PendingLedger::FailureVerdict;
 
     constexpr static unsigned budget = Indexer::max_requeue_attempts;
 
@@ -44,33 +44,33 @@ struct IndexerFixture {
 
     /// Fail the entry's current dispatch: the launch ticket matches.
     Verdict fail(std::uint32_t id, bool crashed) {
-        return indexer.note_dispatch_failure(id, ticket(id), crashed);
+        return indexer.note_dispatch_failure({id, ticket(id)}, crashed);
     }
 
     /// Fail a dispatch launched with an explicit (possibly stale) ticket.
     Verdict fail_at(std::uint32_t id, std::uint64_t ticket, bool crashed) {
-        return indexer.note_dispatch_failure(id, ticket, crashed);
+        return indexer.note_dispatch_failure({id, ticket}, crashed);
     }
 
     std::uint64_t ticket(std::uint32_t id) {
-        auto it = indexer.reindex_reasons.find(id);
-        return it == indexer.reindex_reasons.end() ? std::numeric_limits<std::uint64_t>::max()
-                                                   : it->second.ticket;
+        auto it = indexer.ledger.entries.find(id);
+        return it == indexer.ledger.entries.end() ? std::numeric_limits<std::uint64_t>::max()
+                                                  : it->second.ticket;
     }
 
     unsigned attempts(std::uint32_t id) {
-        auto it = indexer.reindex_reasons.find(id);
-        return it == indexer.reindex_reasons.end() ? 0u : it->second.requeue_attempts;
+        auto it = indexer.ledger.entries.find(id);
+        return it == indexer.ledger.entries.end() ? 0u : it->second.requeue_attempts;
     }
 
     void set_attempts(std::uint32_t id, unsigned n) {
-        indexer.reindex_reasons.find(id)->second.requeue_attempts = n;
+        indexer.ledger.entries.find(id)->second.requeue_attempts = n;
     }
 
     /// Consume the queued slot as a dispatch would, so a later enqueue
     /// takes the fresh-slot (mid-flight) path.
     void consume(std::uint32_t id) {
-        indexer.pending_ids.erase(id);
+        indexer.ledger.queued.erase(id);
     }
 
     /// Complete an attempt for `ticket` on the loop, as run_index_task's
