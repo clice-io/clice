@@ -295,7 +295,11 @@ kota::task<bool> ASTFamily::ensure_compiled(std::shared_ptr<Session> session) {
         co_return false;
     }
 
-    if(projections.current(path_id)) {
+    // The projection flag alone cannot clear this fast path: another
+    // consumer's PCH staleness discovery dirties this node through the
+    // graph cascade without touching the projection table, and a PCH
+    // rebuilt before the next request would read fresh again here.
+    if(projections.current(path_id) && !graph.is_dirty(node(path_id))) {
         if(!is_stale(*session)) {
             co_return true;
         }

@@ -148,7 +148,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, std::uint32_t pat
         }
     }
 
-    workspace.fill_pcm_deps(params.pcms);
+    workspace.fill_pcm_deps(params.pcms, path_id);
 
     ScopedTimer timer;
     auto result = co_await pool.send_stateless(params, worker::Priority::Low, {}, ctx.token());

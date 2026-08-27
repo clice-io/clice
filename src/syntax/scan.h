@@ -121,7 +121,8 @@ ScanResult scan_quick(llvm::StringRef content);
 /// partition import (`import :part;`) against the enclosing module's
 /// name. Keeps all directives including #define and conditionals.
 /// An engaged `content` remaps the main file to it — even when empty:
-/// an emptied buffer must scan as empty, not fall back to the disk.
+/// an emptied buffer must scan as empty, not fall back to the disk. A
+/// remapped scan bypasses `cache`, which is keyed by path alone.
 ScanResult scan_precise(llvm::ArrayRef<const char*> arguments,
                         llvm::StringRef directory,
                         std::optional<llvm::StringRef> content = std::nullopt,

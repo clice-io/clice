@@ -32,10 +32,15 @@ struct BootstrapReport {
 /// indexing sweep. The caller has already finalized workspace.config; a
 /// second call is safe and skips the store open (live CDB reloads go
 /// through the invalidator instead).
+///
+/// `read_only_index` loads the persisted index without queueing any
+/// reconciliation or sweep writes, so a later save commits nothing — for
+/// runs whose product must not touch the index (plain `clice lint`).
 BootstrapReport bootstrap_workspace(Workspace& workspace,
                                     ContextResolver& contexts,
                                     IndexStore& store,
                                     IndexPump& pump,
-                                    llvm::StringRef root);
+                                    llvm::StringRef root,
+                                    bool read_only_index = false);
 
 }  // namespace clice

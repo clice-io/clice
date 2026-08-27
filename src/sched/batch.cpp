@@ -160,6 +160,10 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
 
     if(!start_batch(stack, options.root, options.workers, options.self_path, "index")) {
         result.exit_code = 1;
+        // A failed later spawn leaves earlier workers and their I/O tasks
+        // live; unstopped they keep the batch event loop spinning and the
+        // command hangs instead of exiting.
+        co_await stack.pool.stop();
         co_return;
     }
     workspace.config.project.enable_indexing.value = true;
@@ -335,15 +339,24 @@ kota::task<> run_lint(BatchStack& stack,
     auto& workspace = stack.workspace;
 
     if(!start_batch(stack, options.root, options.workers, options.self_path, "lint")) {
-        result.exit_code = 1;
+        result.exit_code = 2;
+        // See run(): stop the partially started pool or the loop never
+        // drains.
+        co_await stack.pool.stop();
         co_return;
     }
     // The command's product is the lint report: the background sweep must
     // not race the plan's own runs, and without --index nothing may touch
-    // the persisted index.
+    // the persisted index — the read-only load queues no reconciliation
+    // or sweep writes, so the shutdown save commits nothing.
     workspace.config.project.enable_indexing.value = false;
 
-    bootstrap_workspace(workspace, stack.contexts, stack.store, stack.pump, options.root);
+    bootstrap_workspace(workspace,
+                        stack.contexts,
+                        stack.store,
+                        stack.pump,
+                        options.root,
+                        /*read_only_index=*/!options.with_index);
 
     if(workspace.cdb.get_entries().empty()) {
         LOG_ERROR("Nothing to lint: no compile_commands.json found under {}", options.root);
@@ -394,10 +407,14 @@ kota::task<> run_lint(BatchStack& stack,
     result.checked_tus = sweep.checked;
     result.failed_tus = sweep.failed;
     result.findings = sweep.findings;
+    // The shutdown save was the last retry: with --index the persisted
+    // index is part of the product, so unsaved state must fail the run
+    // like the index-only batch does.
+    result.unsaved = options.with_index && stack.store.has_unsaved_state();
     if(sweep.findings != 0) {
         result.exit_code = 1;
     }
-    if(sweep.failed != 0) {
+    if(sweep.failed != 0 || result.unsaved) {
         result.exit_code = 2;
     }
     result.seconds = timer.ms() / 1000.0;

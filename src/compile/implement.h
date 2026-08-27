@@ -97,6 +97,11 @@ struct CompilationUnitRef::Self {
 
     std::unique_ptr<tidy::ClangTidyChecker> checker;
 
+    /// The tidy configuration reports on headers (HeaderFilterRegex or
+    /// SystemHeaders), so the matcher traversal must see their
+    /// declarations — top_level_decls holds the interested file only.
+    bool tidy_traverse_headers = false;
+
     std::chrono::milliseconds build_at;
     std::chrono::milliseconds build_duration;
 

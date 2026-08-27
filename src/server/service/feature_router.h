@@ -20,6 +20,7 @@ class ASTFamily;
 class ContextResolver;
 class IndexPump;
 class WorkerForwarder;
+struct IndexRowsSource;
 
 namespace protocol = kota::ipc::protocol;
 
@@ -192,8 +193,13 @@ private:
     /// `full_lex` marks projections that raw-lex the whole buffer
     /// (semantic tokens, folds): those follow the investment policy once
     /// the buffer is oversized, while row- and cursor-backed answers
-    /// serve at any size.
-    kota::task<FeatureRouter::Route> pick_route(std::shared_ptr<Session> session, bool full_lex);
+    /// serve at any size. A Route::Index decision stores the validated
+    /// rows source into `source` (when given) — callers must serve from
+    /// it rather than re-derive, or the state could shift between the
+    /// decision and the read.
+    kota::task<FeatureRouter::Route> pick_route(std::shared_ptr<Session> session,
+                                                bool full_lex,
+                                                IndexRowsSource* source = nullptr);
 
     /// The compile gate of index-navigation requests: awaits the compile
     /// exactly when the routing decided the AST is the serving source

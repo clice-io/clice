@@ -69,7 +69,8 @@ static IndexRowsSource index_rows_source(const IndexQuery& query,
 }
 
 kota::task<FeatureRouter::Route> FeatureRouter::pick_route(std::shared_ptr<Session> session,
-                                                           bool full_lex) {
+                                                           bool full_lex,
+                                                           IndexRowsSource* source) {
     // This handler is resumed eagerly: drain the transport pipe before
     // reading any buffer state, so a queued didChange or cancel lands
     // first (the same discipline as completion's yield).
@@ -86,15 +87,20 @@ kota::task<FeatureRouter::Route> FeatureRouter::pick_route(std::shared_ptr<Sessi
     // index slice. Row-backed answers serve at any size.
     constexpr std::size_t full_lex_cap = 8 * 1024 * 1024;
     bool capped = full_lex && session->text.size() > full_lex_cap;
-    if(!capped && index_rows_source(index_query, ast.projections, *session)) {
-        // An index answer must not strand an escalated session's pending
-        // build: this request still pulls the compile it would otherwise
-        // have waited on, just without blocking.
-        if(session->serving == ServingMode::Escalated &&
-           !ast.projections.current(session->path_id)) {
-            ast.request_compile(session);
+    if(!capped) {
+        if(auto rows = index_rows_source(index_query, ast.projections, *session)) {
+            // An index answer must not strand an escalated session's pending
+            // build: this request still pulls the compile it would otherwise
+            // have waited on, just without blocking.
+            if(session->serving == ServingMode::Escalated &&
+               !ast.projections.current(session->path_id)) {
+                ast.request_compile(session);
+            }
+            if(source) {
+                *source = std::move(rows);
+            }
+            co_return Route::Index;
         }
-        co_return Route::Index;
     }
     co_return session->serving == ServingMode::Escalated ? Route::Ast : Route::Empty;
 }
@@ -546,10 +552,10 @@ FeatureRouter::RawResult
     FeatureRouter::semantic_tokens(std::shared_ptr<Session> session,
                                    std::optional<kota::cancellation_token> token) {
     if(session) {
-        switch(co_await pick_route(session, /*full_lex=*/true)) {
+        IndexRowsSource source;
+        switch(co_await pick_route(session, /*full_lex=*/true, &source)) {
             case Route::Superseded: co_return serde_raw{"null"};
             case Route::Index: {
-                auto source = index_rows_source(index_query, ast.projections, *session);
                 auto rows = extract_rows(*source.shard);
                 auto tokens = feature::index_semantic_tokens(
                     session->text,
@@ -605,10 +611,10 @@ FeatureRouter::RawResult
     FeatureRouter::folding_range(std::shared_ptr<Session> session,
                                  std::optional<kota::cancellation_token> token) {
     if(session) {
-        switch(co_await pick_route(session, /*full_lex=*/true)) {
+        IndexRowsSource source;
+        switch(co_await pick_route(session, /*full_lex=*/true, &source)) {
             case Route::Superseded: co_return serde_raw{"null"};
             case Route::Index: {
-                auto source = index_rows_source(index_query, ast.projections, *session);
                 auto rows = extract_rows(*source.shard);
                 auto folds = feature::index_folding_ranges(
                     session->text,
@@ -645,10 +651,10 @@ FeatureRouter::RawResult
                                    std::optional<kota::cancellation_token> token) {
     if(session) {
         for(bool waited = false;;) {
-            switch(co_await pick_route(session, /*full_lex=*/false)) {
+            IndexRowsSource source;
+            switch(co_await pick_route(session, /*full_lex=*/false, &source)) {
                 case Route::Superseded: co_return serde_raw{"null"};
                 case Route::Index: {
-                    auto source = index_rows_source(index_query, ast.projections, *session);
                     auto rows = extract_rows(*source.shard);
                     auto symbols =
                         feature::index_document_symbols(rows.decls, [&](index::SymbolHash hash) {
@@ -761,7 +767,9 @@ FeatureRouter::RawResult FeatureRouter::completion(std::shared_ptr<Session> sess
            pctx.kind == CompletionContext::IncludeAngled) {
             std::string directory;
             std::vector<std::string> arguments;
-            contexts.resolve_command(path, directory, arguments);
+            // Editor use: candidates must come from the same command (host
+            // choice, chosen CDB entry) the open buffer compiles under.
+            contexts.resolve_command(path, directory, arguments, ContextUse::Editor);
 
             std::vector<const char*> args_ptrs;
             args_ptrs.reserve(arguments.size());

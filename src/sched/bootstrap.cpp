@@ -19,7 +19,8 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
                                     ContextResolver& contexts,
                                     IndexStore& store,
                                     IndexPump& pump,
-                                    llvm::StringRef root) {
+                                    llvm::StringRef root,
+                                    bool read_only_index) {
     BootstrapReport report;
     auto& cfg = workspace.config.project;
 
@@ -58,7 +59,7 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
         // Persisted index shards are CDB-independent; load them so a
         // database generated later (picked up by the CDB poll) starts from
         // the previous session's index.
-        pump.claim_report(store.load().report);
+        pump.claim_report(store.load(read_only_index).report);
         return report;
     }
 
@@ -105,7 +106,7 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
              scan.elapsed_ms);
 
     workspace.build_module_map();
-    pump.claim_report(store.load().report);
+    pump.claim_report(store.load(read_only_index).report);
 
     if(cfg.enable_indexing.value) {
         for(auto& entry: workspace.cdb.get_entries()) {

@@ -64,11 +64,24 @@ kota::task<PCHFamily::Outcome> PCHFamily::acquire(Request request,
 }
 
 kota::task<RoundOutcome> PCHFamily::run(RoundContext& ctx, std::uint64_t key_id) {
-    // Take the dispatch owner's stash: the round owns the inputs and the
-    // probe from here (the interned-key vector may grow while this frame
-    // is suspended, so never hold references into it).
-    auto request = std::move(states[key_id].inputs);
-    auto probe = std::move(states[key_id].on_crash);
+    auto outcome = co_await attempt(ctx, key_id);
+    // A stale round's replacement respawns through join_node without
+    // passing prepare(), so attempt() copies the stash instead of
+    // consuming it. Retire it only on a current round's verdict — an
+    // overtaken or preempted round is about to be retried and the retry
+    // still needs the inputs.
+    if(outcome != RoundOutcome::Stale && ctx.current()) {
+        states[key_id] = {};
+    }
+    co_return outcome;
+}
+
+kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key_id) {
+    // Copy the dispatch owner's stash: a stale round's retry re-reads it,
+    // and the interned-key vector may grow while this frame is suspended,
+    // so never hold references into it.
+    auto request = states[key_id].inputs;
+    auto probe = states[key_id].on_crash;
     const auto& pch_key = request.pch_key;
 
     // Authoritative revalidation of the registered pair. Both halves must

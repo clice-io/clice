@@ -157,6 +157,13 @@ void Workspace::rescan_after_save(std::uint32_t path_id) {
     auto file_path = path_pool.resolve(path_id);
     if(auto buf = llvm::MemoryBuffer::getFile(file_path)) {
         auto result = scan_quick((*buf)->getBuffer());
+        // Both maps hold interface units only, mirroring the startup scan:
+        // an implementation unit (`module foo;`) must never satisfy
+        // lookup_module — importers would edge to it and try to build it
+        // as an interface — nor claim a PCM node of its own.
+        if(!result.is_interface_unit) {
+            result.module_name.clear();
+        }
         dep_graph.update_module_decl(path_id, result.module_name);
         dep_graph.set_import_candidate(path_id, result.has_import);
         if(!result.module_name.empty()) {

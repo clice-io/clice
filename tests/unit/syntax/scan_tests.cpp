@@ -227,6 +227,28 @@ TEST_CASE(PreciseWithContent) {
     EXPECT_FALSE(result.includes[0].not_found);
 }
 
+TEST_CASE(RemapBypassesSharedCache) {
+    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
+    auto main_path = TestVFS::path("main.cpp");
+    vfs->add("main.cpp", R"(#include "header.h")");
+    vfs->add("header.h");
+
+    SharedScanCache cache;
+    auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
+
+    // A remapped scan must not seed the path-keyed cache with
+    // overlay-derived directives.
+    auto remapped = scan_precise(args, TestVFS::root(), llvm::StringRef("int x = 1;"), &cache, vfs);
+    EXPECT_TRUE(remapped.includes.empty());
+    EXPECT_FALSE(cache.entries.contains(main_path));
+
+    // Poisoned, this scan would hit the overlay's no-directives entry
+    // and miss the disk include.
+    auto disk = scan_precise(args, TestVFS::root(), {}, &cache, vfs);
+    ASSERT_EQ(disk.includes.size(), 1u);
+    EXPECT_TRUE(disk.includes[0].path.find("header.h") != std::string::npos);
+}
+
 };  // TEST_SUITE(Scan)
 
 TEST_SUITE(PreambleBound) {

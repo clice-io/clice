@@ -225,6 +225,9 @@ target_link_libraries(clice-sched PUBLIC clice::worker)
 file(GLOB_RECURSE CLICE_SERVER_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/server/*.cpp")
 add_library(clice-server STATIC ${CLICE_SERVER_SOURCES})
 add_library(clice::server ALIAS clice-server)
+# Server sources include the generated version.h; a link dependency alone
+# does not order another target's compilation after the custom command.
+add_dependencies(clice-server generate_version_header)
 target_link_libraries(clice-server PUBLIC clice::sched)
 
 file(GLOB CLICE_DRIVER_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/driver/*.cc")

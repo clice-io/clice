@@ -81,15 +81,19 @@ int run_indexing(std::string root, std::uint32_t workers, const char* self_path)
     if(!result.completed) {
         return result.exit_code;
     }
-    std::println("Indexed {} translation units in {:.1f}s: {} file shards ({}), {} symbols.",
+    std::println("Indexed {} translation unit{} in {:.1f}s: {} file shard{} ({}), {} symbol{}.",
                  result.indexed_tus,
+                 plural_s(result.indexed_tus),
                  result.seconds,
                  result.shard_count,
+                 plural_s(result.shard_count),
                  format_size(result.shard_bytes),
-                 result.symbol_count);
+                 result.symbol_count,
+                 plural_s(result.symbol_count));
     if(result.failed_files != 0) {
-        std::println("{} translation units failed to index (see the log); the index is partial.",
-                     result.failed_files);
+        std::println("{} translation unit{} failed to index (see the log); the index is partial.",
+                     result.failed_files,
+                     plural_s(result.failed_files));
     }
     if(result.unsaved) {
         std::println("Part of the index could not be persisted (see the log).");

@@ -265,7 +265,10 @@ static worker::ArtifactBuildResult handle_build_pcm(const worker::BuildPCMParams
 /// ClangTidyDiagnosticConsumer to apply it: main-file findings always
 /// report; a header finding needs HeaderFilterRegex to match (empty =
 /// main file only) and must not match ExcludeHeaderFilterRegex; system
-/// headers report only under SystemHeaders.
+/// headers report only under SystemHeaders. Compiler errors are kept
+/// regardless of location, as clang-tidy keeps them: a parse can complete
+/// with a usable AST despite errors, and a run that discarded them would
+/// pass broken code.
 static void collect_tidy_diagnostics(CompilationUnitRef unit,
                                      const worker::TURunParams& params,
                                      std::vector<worker::TidyDiagnostic>& out) {
@@ -280,15 +283,18 @@ static void collect_tidy_diagnostics(CompilationUnitRef unit,
     }
 
     for(const auto& raw: unit.diagnostics()) {
-        if(raw.id.source != DiagnosticSource::ClangTidy ||
-           raw.id.level == DiagnosticLevel::Ignored) {
+        bool clang_error =
+            raw.id.source == DiagnosticSource::Clang &&
+            (raw.id.level == DiagnosticLevel::Error || raw.id.level == DiagnosticLevel::Fatal);
+        if(!clang_error && (raw.id.source != DiagnosticSource::ClangTidy ||
+                            raw.id.level == DiagnosticLevel::Ignored)) {
             continue;
         }
         if(raw.fid.isInvalid() || !raw.range.valid()) {
             continue;
         }
         auto file = unit.file_path(raw.fid);
-        if(raw.fid != main_fid) {
+        if(raw.fid != main_fid && !clang_error) {
             if(raw.in_system && !params.tidy_system_headers) {
                 continue;
             }
@@ -311,7 +317,9 @@ static void collect_tidy_diagnostics(CompilationUnitRef unit,
             .error =
                 raw.id.level == DiagnosticLevel::Error || raw.id.level == DiagnosticLevel::Fatal,
             .message = raw.message,
-            .check = std::string(raw.id.name),
+            // clang-tidy's name for compiler errors; plain errors carry no
+            // warning-option name of their own.
+            .check = clang_error ? "clang-diagnostic-error" : std::string(raw.id.name),
         });
     }
 }

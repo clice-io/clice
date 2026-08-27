@@ -360,7 +360,10 @@ ScanResult scan_precise(llvm::ArrayRef<const char*> arguments,
         return result;
     }
 
-    auto getter = std::make_unique<ScanDirectivesGetter>(cache, instance->getFileManager());
+    // The cache is keyed by path alone; a remapped main file must not read
+    // a prior on-disk scan of the same path nor poison it for later ones.
+    auto getter = std::make_unique<ScanDirectivesGetter>(content ? nullptr : cache,
+                                                         instance->getFileManager());
     instance->setDependencyDirectivesGetter(std::move(getter));
 
     if(!instance->createTarget()) {
@@ -407,7 +410,9 @@ ScanResult scan_module_decl(llvm::ArrayRef<const char*> arguments,
         return result;
     }
 
-    auto getter = std::make_unique<ScanDirectivesGetter>(cache, instance->getFileManager());
+    // See scan_precise: a remapped main file bypasses the path-keyed cache.
+    auto getter = std::make_unique<ScanDirectivesGetter>(content ? nullptr : cache,
+                                                         instance->getFileManager());
     instance->setDependencyDirectivesGetter(std::move(getter));
 
     if(!instance->createTarget()) {

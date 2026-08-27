@@ -7,7 +7,7 @@
 #include "server/service/ast_family.h"
 
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringSet.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/Support/MemoryBuffer.h"
 
 namespace clice {
@@ -340,10 +340,14 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // TODO: this scan runs synchronously on the event loop (same
                 // cost as the startup scan); if it shows up on large
                 // projects, move it off the dispatch path.
-                llvm::StringSet<> had_providers;
+                // Per name, the provider import resolution selects
+                // (direct_deps takes the list head) — not mere existence:
+                // a reload can move the selection to another provider
+                // while the old one's own entry stays unchanged.
+                llvm::StringMap<std::uint32_t> selected_provider;
                 for(auto& entry: workspace.dep_graph.modules()) {
                     if(!entry.getValue().empty()) {
-                        had_providers.insert(entry.getKey());
+                        selected_provider[entry.getKey()] = entry.getValue().front();
                     }
                 }
 
@@ -366,10 +370,20 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // A module name that just gained its first provider: its
                 // sentinel's dependents are the TUs that scanned it
                 // unresolved — the delta walk below cannot reach them
-                // (they hold no edge to any real node).
+                // (they hold no edge to any real node). A name whose
+                // selection moved to another provider: importers hold
+                // edges to the old selected node, and when its own entry
+                // is unchanged the delta walk cannot reach them either —
+                // cascade from that node so their next rounds re-resolve.
                 for(auto& entry: workspace.dep_graph.modules()) {
-                    if(!entry.getValue().empty() && !had_providers.contains(entry.getKey())) {
+                    if(entry.getValue().empty()) {
+                        continue;
+                    }
+                    auto it = selected_provider.find(entry.getKey());
+                    if(it == selected_provider.end()) {
                         provider_appeared(entry.getKey(), dirty);
+                    } else if(it->second != entry.getValue().front()) {
+                        cascade_compile_graph(it->second, dirty);
                     }
                 }
 

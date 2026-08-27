@@ -307,7 +307,7 @@ private:
         std::shared_ptr<kota::cancellation_source> preempt_source;
 
         /// When a cooperative cancel was requested of this slot's in-flight
-        /// low request; zero when none is outstanding. The monitor kills the
+        /// request; zero when none is outstanding. The monitor kills the
         /// process if it blows past cancel_grace without returning.
         std::chrono::steady_clock::time_point cancel_requested_at{};
 
@@ -791,7 +791,10 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
     // scope token fires when this frame exits, standing it down.
     kota::cancellation_source watch_scope;
     if(cancel) {
-        auto watcher = [](kota::cancellation_token advisory,
+        auto watcher = [](WorkerPool& pool,
+                          std::size_t idx,
+                          unsigned gen,
+                          kota::cancellation_token advisory,
                           kota::cancellation_token scope,
                           std::shared_ptr<kota::ipc::BincodePeer> peer,
                           std::shared_ptr<kota::cancellation_source> preempt) -> kota::task<> {
@@ -802,8 +805,17 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
             LOG_DEBUG("Advisory cancel: sending cooperative CancelBuild");
             peer->send_notification(worker::CancelBuildParams{});
             preempt->cancel();
+            // Arm the grace deadline like cancel_low_priority does, or
+            // tick_cancel_grace() never reclaims a worker whose build
+            // ignores the stop flag. Guarded: the worker may have died and
+            // its respawned slot be serving someone else by now.
+            auto& w = pool.stateless_workers[idx];
+            if(w.generation == gen && w.state == SlotState::Alive && w.busy) {
+                w.cancel_requested_at = std::chrono::steady_clock::now();
+            }
         };
-        worker_tasks.spawn(watcher(*cancel, watch_scope.token(), peer, preempt_src));
+        worker_tasks.spawn(
+            watcher(*this, idx, gen, *cancel, watch_scope.token(), peer, preempt_src));
     }
 
     auto result = co_await peer->send_request(params, opts);

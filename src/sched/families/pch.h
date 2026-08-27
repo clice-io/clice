@@ -112,9 +112,13 @@ public:
     }
 
 private:
-    /// One PCH round: revalidate the registered pair, or dispatch a build
-    /// with the dispatch owner's inputs and commit the pair.
+    /// One PCH round: run one attempt and retire the stash once a current
+    /// round lands a verdict.
     kota::task<RoundOutcome> run(RoundContext& ctx, std::uint64_t key_id);
+
+    /// One attempt: revalidate the registered pair, or dispatch a build
+    /// with the dispatch owner's inputs and commit the pair.
+    kota::task<RoundOutcome> attempt(RoundContext& ctx, std::uint64_t key_id);
 
     std::uint64_t intern(llvm::StringRef pch_key);
 
@@ -123,7 +127,9 @@ private:
     }
 
     /// Per-key slot for the dispatch owner's stash; both fields are
-    /// replaced by the spawning acquire and consumed by its round.
+    /// replaced by the spawning acquire, read by its round and any
+    /// stale-retry rounds, and retired when a current round lands a
+    /// verdict.
     struct KeyState {
         Request inputs;
         std::function<void(llvm::StringRef)> on_crash;

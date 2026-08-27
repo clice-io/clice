@@ -866,7 +866,7 @@ void WorkerPool::tick_foreground() {
 }
 
 void WorkerPool::tick_cancel_grace() {
-    // A cancelled low request that ignored its stop flag past the grace
+    // A cancelled request that ignored its stop flag past the grace
     // window is stuck inside one declaration; reclaim the process.
     auto now = std::chrono::steady_clock::now();
     for(std::size_t i = 0; i < stateless_workers.size(); i += 1) {

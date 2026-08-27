@@ -152,14 +152,20 @@ std::unique_ptr<clang::CompilerInvocation>
 
 void CompilationUnitRef::Self::configure_tidy(tidy::TidyParams tidy_params) {
     checker = tidy::configure(*instance, tidy_params);
+    tidy_traverse_headers = !tidy_params.header_filter.empty() || tidy_params.system_headers;
 }
 
 void CompilationUnitRef::Self::run_tidy() {
     if(checker) {
         // AST traversals should exclude the preamble, to avoid performance cliffs.
         // TODO: is it okay to affect the unit-level traversal scope here?
+        // A configuration that reports on headers keeps the default
+        // whole-TU scope instead: the header filters are applied to the
+        // produced diagnostics at collection time.
         auto& Ctx = instance->getASTContext();
-        Ctx.setTraversalScope(top_level_decls);
+        if(!tidy_traverse_headers) {
+            Ctx.setTraversalScope(top_level_decls);
+        }
         checker->finder.matchAST(Ctx);
 
         /// XXX: This is messy: clang-tidy checks flush some diagnostics at EOF.

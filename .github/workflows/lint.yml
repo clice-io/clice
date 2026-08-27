@@ -9,6 +9,10 @@ on:
         default: false
   workflow_dispatch:
 
+# sync-labels widens its own scope at the job level.
+permissions:
+  contents: read
+
 jobs:
   conventional-commit:
     if: ${{ github.event_name != 'workflow_dispatch' }}

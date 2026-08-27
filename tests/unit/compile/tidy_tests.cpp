@@ -74,6 +74,34 @@ TEST_CASE(PlannedCheckFires) {
     ASSERT_TRUE(fired);
 }
 
+TEST_CASE(HeaderFilterTraversesHeaders) {
+    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
+    vfs->add("ratio.h", "inline double ratio(int a, int b) { return a / b; }\n");
+    vfs->add("main.cpp", "#include \"ratio.h\"\nint main() { return 0; }\n");
+
+    std::string main_path = TestVFS::path("main.cpp");
+    CompilationParams params;
+    // A header-reporting configuration widens the matcher traversal past
+    // the interested file; the finding lands with the header's location.
+    params.kind = CompilationKind::Content;
+    params.tidy = tidy::TidyParams{.checks = "-*,bugprone-integer-division",
+                                   .fast_only = false,
+                                   .header_filter = ".*"};
+    params.vfs = vfs;
+    params.arguments = {"clang++", "-ffreestanding", "-Xclang", "-undef", main_path.c_str()};
+    auto unit = compile(params);
+    ASSERT_TRUE(unit.completed());
+
+    bool header_finding = false;
+    for(auto& diag: unit.diagnostics()) {
+        if(diag.id.source == DiagnosticSource::ClangTidy && diag.fid != unit.interested_file()) {
+            ASSERT_EQ(diag.id.name, "bugprone-integer-division");
+            header_finding = true;
+        }
+    }
+    ASSERT_TRUE(header_finding);
+}
+
 TEST_CASE(ResolveConfigChain) {
     TempDir tmp;
     tmp.touch(".clang-tidy",

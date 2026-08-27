@@ -69,7 +69,7 @@ test("index subcommand builds and resumes", ({ session }) => {
     const first = runClice(...args);
     expect(first.status, `stderr: ${first.stderr}`).toBe(0);
     expect(first.stderr).toContain("] Indexing ");
-    expect(first.stdout).toContain("Indexed 1 translation units");
+    expect(first.stdout).toContain("Indexed 1 translation unit in");
 
     // The second run resumes from the persisted index: the hash gate
     // skips the fresh TU without recompiling it.
@@ -139,7 +139,7 @@ test("lint subcommand reports findings", ({ session }) => {
     expect(findings.status, `stderr: ${findings.stderr}`).toBe(1);
     expect(findings.stdout).toContain("bugprone-integer-division");
     expect(findings.stdout).toContain("main.cpp:2:12");
-    expect(findings.stdout).toContain("Linted 1 translation units");
+    expect(findings.stdout).toContain("Linted 1 translation unit in");
 
     // The clean rewrite is the negative control: same setup, no finding.
     ws.write("main.cpp", "int add(int a, int b) { return a + b; }\n");

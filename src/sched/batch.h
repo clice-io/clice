@@ -70,7 +70,8 @@ struct BatchLintOptions {
 };
 
 struct BatchLintResult {
-    /// 0 = clean, 1 = findings, 2 = some TUs failed to run (dominates),
+    /// 0 = clean, 1 = findings, 2 = some TUs failed to run or the
+    /// requested index could not be persisted (dominates),
     /// 130 = interrupted.
     int exit_code = 0;
 
@@ -82,6 +83,11 @@ struct BatchLintResult {
     std::size_t checked_tus = 0;
     std::size_t failed_tus = 0;
     std::size_t findings = 0;
+
+    /// --index only: index state remained that the final save could not
+    /// commit; a rerun cannot resume from it.
+    bool unsaved = false;
+
     double seconds = 0;
 };
 

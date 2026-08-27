@@ -53,4 +53,9 @@ void print_usage(Command& cmd) {
     std::print("{}", ss.str());
 }
 
+/// "s" when `count` warrants a plural noun, for user-facing summaries.
+const inline char* plural_s(std::size_t count) {
+    return count == 1 ? "" : "s";
+}
+
 }  // namespace clice::driver

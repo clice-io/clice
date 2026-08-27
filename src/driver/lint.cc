@@ -69,13 +69,19 @@ int run_lint(std::string root, std::uint32_t workers, bool with_index, const cha
     if(!result.completed) {
         return result.exit_code;
     }
-    std::println("Linted {} translation units in {:.1f}s: {} findings.",
+    std::println("Linted {} translation unit{} in {:.1f}s: {} finding{}.",
                  result.checked_tus,
+                 plural_s(result.checked_tus),
                  result.seconds,
-                 result.findings);
+                 result.findings,
+                 plural_s(result.findings));
     if(result.failed_tus != 0) {
-        std::println("{} translation units failed to run (see the log); the report is partial.",
-                     result.failed_tus);
+        std::println("{} translation unit{} failed to run (see the log); the report is partial.",
+                     result.failed_tus,
+                     plural_s(result.failed_tus));
+    }
+    if(result.unsaved) {
+        std::println("Part of the index could not be persisted (see the log).");
     }
     return result.exit_code;
 }
