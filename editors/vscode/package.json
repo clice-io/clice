@@ -27,9 +27,16 @@
     "onLanguage:c",
     "onLanguage:cpp",
     "onLanguage:cuda-cpp",
-    "onStartupFinished"
+    "workspaceContains:clice.toml",
+    "workspaceContains:.clice/config.toml",
+    "workspaceContains:**/compile_commands.json"
   ],
   "contributes": {
+    "configurationDefaults": {
+      "files.watcherExclude": {
+        "**/.clice/**": true
+      }
+    },
     "configuration": {
       "type": "object",
       "title": "C/C++ Language Client",

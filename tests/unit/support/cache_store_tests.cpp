@@ -95,6 +95,24 @@ TEST_CASE(StoreAndLookup) {
     ASSERT_TRUE(llvm::StringRef(path).ends_with("k1.pch"));
 }
 
+TEST_CASE(RootIgnoreMarkers) {
+    TempDir tmp;
+    auto store = open_store(tmp);
+
+    ASSERT_EQ(fs::read(tmp.path("root/.gitignore")).value_or(""), "*\n");
+    auto tag = fs::read(tmp.path("root/CACHEDIR.TAG")).value_or("");
+    ASSERT_TRUE(llvm::StringRef(tag).starts_with("Signature: 8a477f597d28d172789f06886806bc55"));
+}
+
+TEST_CASE(IgnoreMarkersPreserved) {
+    TempDir tmp;
+    { auto store = open_store(tmp); }
+    require(fs::write(tmp.path("root/.gitignore"), "custom\n").has_value(), "rewrite failed");
+
+    auto store = open_store(tmp);
+    ASSERT_EQ(fs::read(tmp.path("root/.gitignore")).value_or(""), "custom\n");
+}
+
 TEST_CASE(DropRemovesTmp) {
     TempDir tmp;
     auto store = open_store(tmp);

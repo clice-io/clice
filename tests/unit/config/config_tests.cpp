@@ -13,6 +13,8 @@ namespace clice::testing {
 
 // POSIX setenv/unsetenv don't exist on Windows; map to _putenv_s
 // (passing an empty value to _putenv_s removes the variable).
+// Used only by the disabled XDG cache-dir tests below.
+#if 0
 static void set_env(const char* name, const char* value) {
 #ifdef _WIN32
     ::_putenv_s(name, value);
@@ -28,6 +30,7 @@ static void unset_env(const char* name) {
     ::unsetenv(name);
 #endif
 }
+#endif
 
 /// The schema object of a property named `name`, found anywhere in the
 /// document's nested `properties` maps.
@@ -325,6 +328,10 @@ TEST_CASE(WorkspaceVarSubst) {
     EXPECT_EQ(config.project.compile_commands_paths[0], "/my/ws/build");
 }
 
+// FIXME: Out-of-tree cache placement is disabled (see
+// resolve_xdg_cache_dir in src/config/config.cpp); these tests pin its
+// behavior and return with it.
+#if 0
 TEST_CASE(XdgCacheDir) {
     TempDir tmp;
     auto cache_base = tmp.path("xdg");
@@ -341,6 +348,7 @@ TEST_CASE(XdgCacheDir) {
     EXPECT_TRUE(llvm::StringRef(cache).starts_with(base));
     EXPECT_TRUE(cache.find("/clice/") != std::string::npos);
 }
+#endif
 
 TEST_CASE(InvalidGlobPattern) {
     Config config;
@@ -374,6 +382,7 @@ TEST_CASE(ConfigPriorityJson) {
     EXPECT_EQ(from_json->project.stateful_worker_count.value, 2u);
 }
 
+#if 0
 TEST_CASE(XdgHashUnique) {
     // Different workspace roots must map to different cache dirs,
     // same workspace root must map to the same dir (deterministic).
@@ -485,19 +494,11 @@ TEST_CASE(HomeFallback) {
     path::canonicalize(home_posix);
     EXPECT_TRUE(llvm::StringRef(cache).starts_with(home_posix + "/.cache/clice/"));
 }
+#endif
 
-TEST_CASE(WorkspaceCacheFallback) {
-    // No XDG, no HOME → should fall back to ${workspace}/.clice.
-    unset_env("XDG_CACHE_HOME");
-    const char* prior = std::getenv("HOME");
-    std::string prior_home = prior ? prior : "";
-    unset_env("HOME");
-
+TEST_CASE(DefaultWorkspaceCache) {
     Config config;
     config.finalize("/ws/root");
-
-    if(!prior_home.empty())
-        set_env("HOME", prior_home.c_str());
 
     EXPECT_EQ(path::convert_to_slash(std::string_view(config.project.cache_dir)),
               "/ws/root/.clice");

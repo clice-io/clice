@@ -13,11 +13,10 @@ import { DATA_DIR, generateCDB, generateTestDataCDBs } from "./compile_commands.
 
 const USAGE = "Usage: node tools/prepare.ts <fixture> [<fixture> ...]";
 
-/// The XDG cache base clice would use — mirrors resolve_xdg_cache_dir() in
-/// src/server/state/config.cpp: $XDG_CACHE_HOME/clice/<basename>-<hash8>
-/// or ~/.cache/clice/<basename>-<hash8>. <hash8> is xxh3-derived and not
-/// available here, so cleanup globs all matching subdirectories instead
-/// (the same fallback the Python tool used without the xxhash package).
+/// The XDG cache base older clice builds used ($XDG_CACHE_HOME/clice or
+/// ~/.cache/clice, per-workspace <basename>-<hash8> leaves). XDG placement
+/// is disabled (caches are workspace-local now), but dev machines keep
+/// leftovers from before the switch, so cleanup still globs them.
 function xdgCliceDir(): string | null {
     let base = process.env["XDG_CACHE_HOME"] ?? "";
     if (!base) {

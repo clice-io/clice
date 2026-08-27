@@ -200,11 +200,19 @@ private:
 
 constexpr llvm::StringLiteral lmdb_file_name = "index.mdb";
 
-/// Virtual reservation; pages materialize on use. The file is created
-/// sparse on Windows (real allocation otherwise); when that fails the
-/// caller starts small and relies on grow().
-constexpr std::size_t lmdb_default_mapsize = 64ull << 30;
 constexpr std::size_t lmdb_small_mapsize = 256ull << 20;
+
+/// Virtual reservation; pages materialize on use. On POSIX the file's
+/// size tracks the data high-water mark, so the reservation is generous.
+/// On Windows the mapping extends the file to the whole mapsize — a
+/// 64 GiB file (sparse or not) alarms users and feeds backup and sync
+/// tools at its logical size — so the map starts small and grows on
+/// demand instead.
+#ifdef _WIN32
+constexpr std::size_t lmdb_default_mapsize = lmdb_small_mapsize;
+#else
+constexpr std::size_t lmdb_default_mapsize = 64ull << 30;
+#endif
 
 char kind_prefix(IndexBlobKind kind) {
     switch(kind) {
@@ -480,22 +488,21 @@ private:
 #ifdef _WIN32
 /// Without the sparse attribute Windows backs the whole mapsize with real
 /// disk (CreateFileMapping allocates eagerly), so the file is marked
-/// sparse before LMDB first maps it. Returns false when the volume does
-/// not support sparse files — the caller falls back to a small mapsize.
-bool make_sparse(llvm::StringRef path) {
+/// sparse before LMDB first maps it. Best effort: on a volume without
+/// sparse support each mapsize is simply committed up front, which the
+/// small default keeps tolerable.
+void make_sparse(llvm::StringRef path) {
     int fd = -1;
     if(llvm::sys::fs::openFileForReadWrite(path,
                                            fd,
                                            llvm::sys::fs::CD_OpenAlways,
                                            llvm::sys::fs::OF_None)) {
-        return false;
+        return;
     }
     auto handle = reinterpret_cast<HANDLE>(_get_osfhandle(fd));
     DWORD returned = 0;
-    bool ok =
-        DeviceIoControl(handle, FSCTL_SET_SPARSE, nullptr, 0, nullptr, 0, &returned, nullptr) != 0;
+    DeviceIoControl(handle, FSCTL_SET_SPARSE, nullptr, 0, nullptr, 0, &returned, nullptr);
     llvm::sys::Process::SafelyCloseFileDescriptor(fd);
-    return ok;
 }
 #endif
 
@@ -574,11 +581,8 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(CacheStore& store,
             }
         };
 #ifdef _WIN32
-        if(!read_only && !make_sparse(path) && initial_mapsize == 0) {
-            LOG_WARN("Index database at {} cannot be sparse; starting at {} bytes and growing",
-                     path,
-                     lmdb_small_mapsize);
-            mapsize = lmdb_small_mapsize;
+        if(!read_only) {
+            make_sparse(path);
         }
 #endif
         MDB_env* env = nullptr;

@@ -54,11 +54,10 @@ struct ProjectConfig {
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
                          "Directory for the unified on-disk cache (PCH, PCM and "
-                         "index artifacts). Empty derives it from XDG_CACHE_HOME "
-                         "(or `~/.cache`) with a per-workspace subdirectory named "
-                         "after the workspace plus a short hash, falling back to "
-                         "`${workspace}/.clice`; the resolved path is printed at "
-                         "startup.")
+                         "index artifacts). Empty defaults to `${workspace}/.clice`. "
+                         "The directory keeps itself out of version control and "
+                         "backups (a `*` .gitignore plus a CACHEDIR.TAG marker); "
+                         "the resolved path is printed at startup.")
     <std::string> cache_dir;
 
     KOTATSU_ANNOTATE(defaulted = true,

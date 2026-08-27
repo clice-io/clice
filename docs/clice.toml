@@ -8,9 +8,8 @@
 
 [project]
 # Directory for storing on-disk caches (PCH, PCM and index files) and logs.
-# When unset, clice defaults to a per-workspace directory under the XDG
-# cache: ~/.cache/clice/<workspace>-<hash>, with logs in its logs/
-# subdirectory. The values below relocate both into the workspace instead.
+# When unset, clice defaults to ${workspace}/.clice with logs in its logs/
+# subdirectory; the directory ignores itself via .gitignore and CACHEDIR.TAG.
 cache_dir = "${workspace}/.clice/cache"
 logging_dir = "${workspace}/.clice/logs"
 # Compile commands files or directories to search for compile_commands.json files.

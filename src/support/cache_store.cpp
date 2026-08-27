@@ -294,6 +294,26 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
         return std::unexpected(ec);
     }
 
+    // The cache root ignores itself, so a workspace-local root never
+    // pollutes the repository: `*` covers git and everything honoring
+    // gitignore (ripgrep, editor search), CACHEDIR.TAG is the standard
+    // marker backup and scanning tools skip. Best effort, and never
+    // overwritten — the user may customize either file.
+    auto write_marker = [&](llvm::StringRef name, llvm::StringRef content) {
+        auto marker = path::join(root, name);
+        if(llvm::sys::fs::exists(marker)) {
+            return;
+        }
+        if(auto err = fs::write(marker, content); !err) {
+            LOG_WARN("CacheStore: cannot write {}: {}", marker, err.error().message());
+        }
+    };
+    write_marker(".gitignore", "*\n");
+    write_marker("CACHEDIR.TAG",
+                 "Signature: 8a477f597d28d172789f06886806bc55\n"
+                 "# This file marks a cache directory created by clice.\n"
+                 "# For information see https://bford.info/cachedir/\n");
+
     // The pid marker created below is what shields a layout from another
     // version's sweep, but it only exists at the end of this function: a
     // sweeper scanning between our create_directories and the marker would

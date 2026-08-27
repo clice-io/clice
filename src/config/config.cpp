@@ -33,6 +33,13 @@ static void substitute_workspace(std::string& value, llvm::StringRef workspace_r
     }
 }
 
+// FIXME: Out-of-tree cache placement (XDG/system cache directory) is
+// disabled: the hashed leaf makes logs undiscoverable for bug reports and
+// orphaned directories outlive their workspaces with no GC. The
+// workspace-local `.clice` self-ignores via .gitignore/CACHEDIR.TAG, so
+// the original motivation (polluting the repository) is gone. Revisit
+// whether an out-of-tree location should exist at all before re-enabling.
+#if 0
 /// Try to resolve the default cache directory using XDG_CACHE_HOME.
 /// Returns empty string on failure.
 static std::string resolve_xdg_cache_dir(llvm::StringRef workspace_root) {
@@ -72,6 +79,7 @@ static std::string resolve_xdg_cache_dir(llvm::StringRef workspace_root) {
     }
     return dir;
 }
+#endif
 
 std::uint32_t default_stateless_worker_count() {
     // Config is constructed on every worker request (QueryParams /
@@ -108,9 +116,7 @@ void Config::finalize(llvm::StringRef workspace_root) {
     reject_zero(p.worker_memory_limit, defaults.worker_memory_limit, "worker_memory_limit");
 
     if(p.cache_dir.empty() && !workspace_root.empty()) {
-        p.cache_dir = resolve_xdg_cache_dir(workspace_root);
-        if(p.cache_dir.empty())
-            p.cache_dir = path::join(workspace_root, ".clice");
+        p.cache_dir = path::join(workspace_root, ".clice");
     }
     if(p.logging_dir.empty() && !p.cache_dir.empty())
         p.logging_dir = path::join(p.cache_dir, "logs");
