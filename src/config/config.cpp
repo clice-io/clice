@@ -117,6 +117,7 @@ void Config::finalize(llvm::StringRef workspace_root) {
 
     if(p.cache_dir.empty() && !workspace_root.empty()) {
         p.cache_dir = path::join(workspace_root, ".clice");
+        p.cache_dir_defaulted = true;
     }
     if(p.logging_dir.empty() && !p.cache_dir.empty())
         p.logging_dir = path::join(p.cache_dir, "logs");

@@ -9,8 +9,9 @@
 [project]
 # Directory for storing on-disk caches (PCH, PCM and index files) and logs.
 # Both default to the workspace: ${workspace}/.clice and its logs/
-# subdirectory; the cache keeps itself out of git and backups via a
-# generated .gitignore and CACHEDIR.TAG.
+# subdirectory; the default keeps itself out of git and backups via a
+# generated .gitignore and CACHEDIR.TAG (an explicitly configured
+# directory is never marked).
 # cache_dir = "${workspace}/.clice"
 # logging_dir = "${workspace}/.clice/logs"
 # Compile commands files or directories to search for compile_commands.json files.

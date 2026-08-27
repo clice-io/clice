@@ -31,6 +31,7 @@
 #include "llvm/Support/Error.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Process.h"
+#include "llvm/Support/raw_ostream.h"
 
 namespace clice {
 
@@ -294,32 +295,6 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
         return std::unexpected(ec);
     }
 
-    // The cache root ignores itself, so a workspace-local root never
-    // pollutes the repository: `*` covers git and everything honoring
-    // gitignore (ripgrep, editor search), except `config.toml` — the root
-    // doubles as the `.clice/config.toml` location, and user configuration
-    // must stay visible. CACHEDIR.TAG (the standard marker backup and
-    // scanning tools skip) sits at the root too: it must cover generated
-    // content outside this store (logs, header-context artifacts), and
-    // root-level files are safe from the layout sweep below, which only
-    // scans cache/. The known cost is that CACHEDIR-aware backups also
-    // skip a config.toml kept here — git, which sees it, is the intended
-    // preservation channel. Best effort, and never overwritten — the user
-    // may customize both files.
-    auto write_marker = [](llvm::StringRef path, llvm::StringRef content) {
-        if(llvm::sys::fs::exists(path)) {
-            return;
-        }
-        if(auto err = fs::write(path, content); !err) {
-            LOG_WARN("CacheStore: cannot write {}: {}", path, err.error().message());
-        }
-    };
-    write_marker(path::join(root, ".gitignore"), "*\n!config.toml\n");
-    write_marker(path::join(root, "CACHEDIR.TAG"),
-                 "Signature: 8a477f597d28d172789f06886806bc55\n"
-                 "# This file marks a cache directory created by clice.\n"
-                 "# For information see https://bford.info/cachedir/\n");
-
     // The pid marker created below is what shields a layout from another
     // version's sweep, but it only exists at the end of this function: a
     // sweeper scanning between our create_directories and the marker would
@@ -407,6 +382,38 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
     }
 
     return CacheStore(std::move(state));
+}
+
+void CacheStore::write_ignore_markers(llvm::StringRef root) {
+    // The root ignores itself, so the workspace-local default never
+    // pollutes the repository: `*` covers git and everything honoring
+    // gitignore (ripgrep, editor search), except `config.toml` — the root
+    // doubles as the `.clice/config.toml` location, and user configuration
+    // must stay visible. CACHEDIR.TAG (the standard marker backup and
+    // scanning tools skip) sits at the root too: it must cover generated
+    // content outside the store (logs, header-context artifacts), and
+    // root-level files are safe from open()'s layout sweep, which only
+    // scans cache/. The known cost is that CACHEDIR-aware backups also
+    // skip a config.toml kept here — git, which sees it, is the intended
+    // preservation channel.
+    auto write_marker = [](llvm::StringRef path, llvm::StringRef content) {
+        // CD_CreateNew makes creation the existence check, so a marker
+        // that appears concurrently is never overwritten either.
+        int fd = -1;
+        if(auto ec = llvm::sys::fs::openFileForWrite(path, fd, llvm::sys::fs::CD_CreateNew)) {
+            if(ec != std::errc::file_exists) {
+                LOG_WARN("CacheStore: cannot write {}: {}", path, ec.message());
+            }
+            return;
+        }
+        llvm::raw_fd_ostream out(fd, /*shouldClose=*/true);
+        out << content;
+    };
+    write_marker(path::join(root, ".gitignore"), "*\n!config.toml\n");
+    write_marker(path::join(root, "CACHEDIR.TAG"),
+                 "Signature: 8a477f597d28d172789f06886806bc55\n"
+                 "# This file marks a cache directory created by clice.\n"
+                 "# For information see https://bford.info/cachedir/\n");
 }
 
 void CacheStore::register_namespace(CacheNamespace ns) {

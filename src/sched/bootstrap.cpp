@@ -31,6 +31,9 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
                      std::string_view(cfg.cache_dir),
                      cache.error().message());
         } else {
+            if(cfg.cache_dir_defaulted.value) {
+                CacheStore::write_ignore_markers(cfg.cache_dir);
+            }
             // Size budgets are deliberately generous: eviction exists to
             // bound disk usage, not to keep the working set tight.
             constexpr std::uint64_t GiB = 1ull << 30;

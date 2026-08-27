@@ -245,6 +245,7 @@ TEST_CASE(FinalizeDerivesPaths) {
     config.finalize("/workspace");
     EXPECT_FALSE(config.project.cache_dir.empty());
     EXPECT_FALSE(config.project.logging_dir.empty());
+    EXPECT_EQ(config.project.cache_dir_defaulted.value, true);
 }
 
 TEST_CASE(FinalizeEmptyWorkspace) {
@@ -262,6 +263,7 @@ TEST_CASE(FinalizePreservesSet) {
     config.inlay_hints.block_end = true;
     config.finalize("/workspace");
     EXPECT_EQ(std::string_view(config.project.cache_dir), "/custom");
+    EXPECT_EQ(config.project.cache_dir_defaulted.value, false);
     EXPECT_EQ(config.project.enable_indexing.value, false);
     EXPECT_EQ(config.inlay_hints.parameters.value, false);
     EXPECT_EQ(config.inlay_hints.block_end.value, true);

@@ -150,6 +150,15 @@ public:
                                                            std::uint32_t version,
                                                            bool read_only = false);
 
+    /// Drop self-ignore markers into `root`: a `.gitignore` and a
+    /// CACHEDIR.TAG. Callers gate this on `root` being clice's own
+    /// dedicated directory (the default `${workspace}/.clice`) — an
+    /// explicitly configured directory may be shared with other content,
+    /// which the markers would hide from git and skip in backups. Best
+    /// effort; an existing marker (possibly user-customized) is never
+    /// touched.
+    static void write_ignore_markers(llvm::StringRef root);
+
     CacheStore(CacheStore&&) noexcept;
     CacheStore& operator=(CacheStore&&) noexcept;
     ~CacheStore();
