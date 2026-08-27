@@ -299,6 +299,10 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // replacement provider would sit behind the deleted one in
                 // the candidate list and never be selected.
                 workspace.dep_graph.update_module_decl(path_id, {});
+                // The file's import syntax is gone with it: deleting the
+                // last import-bearing file must release the project-wide
+                // scan gate.
+                workspace.dep_graph.set_import_candidate(path_id, false);
                 // Scrub the includer role: the file's outgoing edges vanished
                 // with it, so it stops being a host-source candidate.
                 // Incoming edges stay — includers' text still names it, and
