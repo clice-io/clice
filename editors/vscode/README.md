@@ -27,12 +27,24 @@ downloads live on the [GitHub releases and CI pages](https://github.com/clice-io
 
 ## Settings
 
-| Setting            | Default     | Description                                                            |
-| ------------------ | ----------- | ---------------------------------------------------------------------- |
-| `clice.executable` | _(bundled)_ | Path to a clice binary to use instead of the bundled one.              |
-| `clice.mode`       | `pipe`      | Server transport; `socket` connects to an external server (debugging). |
-| `clice.host`       | `127.0.0.1` | Host for socket mode.                                                  |
-| `clice.port`       | `50051`     | Port for socket mode.                                                  |
+| Setting              | Default     | Description                                                            |
+| -------------------- | ----------- | ---------------------------------------------------------------------- |
+| `clice.executable`   | _(bundled)_ | Path to a clice binary to use instead of the bundled one.              |
+| `clice.mode`         | `pipe`      | Server transport; `socket` connects to an external server (debugging). |
+| `clice.host`         | `127.0.0.1` | Host for socket mode.                                                  |
+| `clice.port`         | `50051`     | Port for socket mode.                                                  |
+| `clice.trace.server` | `off`       | Log LSP traffic to the `clice (LSP trace)` output channel.             |
+
+Changing a server setting offers to restart the server in place — no window
+reload is needed.
+
+## Conflicting extensions
+
+Other C/C++ language extensions running next to clice duplicate completion
+and diagnostics. Once clice is up, it detects the Microsoft C/C++
+(cpptools), clangd and ccls extensions and offers to turn their language
+features off and reload the window — cpptools keeps its debugger, only
+IntelliSense is disabled.
 
 ## Troubleshooting
 
@@ -42,6 +54,9 @@ under `<workspace>/.clice/logs/`). If the server crashes,
 please attach the newest log from there to a
 [GitHub issue](https://github.com/clice-io/clice/issues) — releases ship
 symbol packages that let us reconstruct the exact stack.
+
+For protocol-level debugging, set `clice.trace.server` to `verbose`: every
+LSP message then appears in the `clice (LSP trace)` output channel.
 
 Extension development is documented in the
 [contributor guide](https://docs.clice.io/clice/dev/extension).

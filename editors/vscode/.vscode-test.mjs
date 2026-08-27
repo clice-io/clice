@@ -28,8 +28,11 @@ function stageBundledServer(from) {
 
     const binDir = path.join(dir, "bin");
     fs.mkdirSync(binDir, { recursive: true });
-    fs.copyFileSync(from, path.join(binDir, "clice"));
-    fs.chmodSync(path.join(binDir, "clice"), 0o755);
+    const name = process.platform === "win32" ? "clice.exe" : "clice";
+    fs.copyFileSync(from, path.join(binDir, name));
+    if (process.platform !== "win32") {
+        fs.chmodSync(path.join(binDir, name), 0o755);
+    }
 
     fs.cpSync(
         path.resolve(path.dirname(from), "..", "lib", "clang"),

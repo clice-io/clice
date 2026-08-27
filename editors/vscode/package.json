@@ -10,7 +10,7 @@
   "publisher": "clice-io",
   "icon": "clice.png",
   "engines": {
-    "vscode": "^1.80.0"
+    "vscode": "^1.82.0"
   },
   "categories": [
     "Programming Languages",
@@ -26,11 +26,14 @@
   "activationEvents": [
     "onLanguage:c",
     "onLanguage:cpp",
-    "onLanguage:cuda-cpp",
-    "workspaceContains:clice.toml",
-    "workspaceContains:.clice/config.toml",
-    "workspaceContains:**/compile_commands.json"
+    "onLanguage:cuda-cpp"
   ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "clice compiles and indexes workspace code with Clang, which is not safe to run on untrusted code."
+    }
+  },
   "contributes": {
     "configurationDefaults": {
       "files.watcherExclude": {
@@ -39,15 +42,13 @@
     },
     "configuration": {
       "type": "object",
-      "title": "C/C++ Language Client",
+      "title": "clice",
       "properties": {
-        "clice-client.trace.server": {
-          "default": "verbose"
-        },
         "clice.executable": {
           "type": "string",
           "default": "",
-          "description": "The path of clice executable."
+          "scope": "machine-overridable",
+          "description": "Path of the clice executable. Leave empty to use the bundled server."
         },
         "clice.mode": {
           "type": "string",
@@ -56,17 +57,32 @@
             "pipe",
             "socket"
           ],
+          "scope": "machine-overridable",
           "description": "How to communicate with clice. pipe or socket. For daily use please use pipe."
         },
         "clice.host": {
           "type": "string",
           "default": "127.0.0.1",
-          "description": "The host to connect to (default: 127.0.0.1)"
+          "scope": "machine-overridable",
+          "description": "The host to connect to in socket mode."
         },
         "clice.port": {
-          "type": "number",
+          "type": "integer",
           "default": 50051,
-          "description": "The port to connect to"
+          "minimum": 1,
+          "maximum": 65535,
+          "scope": "machine-overridable",
+          "description": "The port to connect to in socket mode."
+        },
+        "clice.trace.server": {
+          "type": "string",
+          "default": "off",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "description": "Log the LSP traffic between VS Code and clice to the 'clice (LSP trace)' output channel."
         }
       }
     },
@@ -255,7 +271,7 @@
   "devDependencies": {
     "@types/mocha": "^10.0.10",
     "@types/node": "~25.0.3",
-    "@types/vscode": "^1.80.0",
+    "@types/vscode": "^1.82.0",
     "@vscode/test-cli": "^0.0.15",
     "@vscode/test-electron": "^3.1.0",
     "@vscode/vsce": "^3.7.1",
