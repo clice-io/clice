@@ -296,20 +296,26 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
 
     // The cache root ignores itself, so a workspace-local root never
     // pollutes the repository: `*` covers git and everything honoring
-    // gitignore (ripgrep, editor search), CACHEDIR.TAG is the standard
-    // marker backup and scanning tools skip. Best effort, and never
-    // overwritten — the user may customize either file.
-    auto write_marker = [&](llvm::StringRef name, llvm::StringRef content) {
-        auto marker = path::join(root, name);
-        if(llvm::sys::fs::exists(marker)) {
+    // gitignore (ripgrep, editor search), except `config.toml` — the root
+    // doubles as the `.clice/config.toml` location, and user configuration
+    // must stay visible. CACHEDIR.TAG (the standard marker backup and
+    // scanning tools skip) sits at the root too: it must cover generated
+    // content outside this store (logs, header-context artifacts), and
+    // root-level files are safe from the layout sweep below, which only
+    // scans cache/. The known cost is that CACHEDIR-aware backups also
+    // skip a config.toml kept here — git, which sees it, is the intended
+    // preservation channel. Best effort, and never overwritten — the user
+    // may customize both files.
+    auto write_marker = [](llvm::StringRef path, llvm::StringRef content) {
+        if(llvm::sys::fs::exists(path)) {
             return;
         }
-        if(auto err = fs::write(marker, content); !err) {
-            LOG_WARN("CacheStore: cannot write {}: {}", marker, err.error().message());
+        if(auto err = fs::write(path, content); !err) {
+            LOG_WARN("CacheStore: cannot write {}: {}", path, err.error().message());
         }
     };
-    write_marker(".gitignore", "*\n");
-    write_marker("CACHEDIR.TAG",
+    write_marker(path::join(root, ".gitignore"), "*\n!config.toml\n");
+    write_marker(path::join(root, "CACHEDIR.TAG"),
                  "Signature: 8a477f597d28d172789f06886806bc55\n"
                  "# This file marks a cache directory created by clice.\n"
                  "# For information see https://bford.info/cachedir/\n");

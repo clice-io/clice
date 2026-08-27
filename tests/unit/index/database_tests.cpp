@@ -201,6 +201,22 @@ TEST_CASE(CorruptDatabaseRebuilds) {
     ASSERT_TRUE(db->write({blob(index::IndexBlobKind::CDB, "cdb", "fresh")}, {}).empty());
 }
 
+TEST_CASE(DefaultOpenFileBounded) {
+    TempDir tmp;
+    auto store = open_store(tmp, "lmdb");
+    auto db = index::open_database(store, "lmdb");
+    ASSERT_TRUE(db != nullptr);
+    ASSERT_TRUE(db->write({blob(index::IndexBlobKind::CDB, "cdb", "x")}, {}).empty());
+
+    // On Windows the mapping extends index.mdb to the whole mapsize, so
+    // this pins the small default (a 64 GiB logical file is the bug the
+    // default exists to avoid); POSIX file sizes track the data
+    // high-water mark and pass trivially.
+    std::uint64_t size = 0;
+    ASSERT_TRUE(!llvm::sys::fs::file_size(path::join(store.base_dir(), "index.mdb"), size));
+    ASSERT_TRUE(size <= 256ull << 20);
+}
+
 TEST_CASE(FullMapFailsWholeBatchThenGrows) {
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
