@@ -422,6 +422,35 @@ TEST_CASE(CloseStaleModuleCascades) {
     EXPECT_TRUE(workspace.pcm_cache.empty());
 }
 
+TEST_CASE(CloseRefreshesEdges) {
+    // The shard can be current while the include edges are not (an
+    // agent-mode reindex read the rewritten disk while the file stayed
+    // open): the close refreshes the edges without a cascade.
+    TempDir tmp;
+    tmp.touch("new.h", "#pragma once\n");
+    tmp.touch("a.cpp", "#include \"new.h\"\nint main() { return 0; }\n");
+
+    Workspace workspace;
+    SessionStore store;
+    auto file = workspace.path_pool.intern(tmp.path("a.cpp"));
+    auto old_header = workspace.path_pool.intern("/proj/old.h");
+    auto new_header = workspace.path_pool.intern(tmp.path("new.h"));
+    workspace.dep_graph.set_includes(file, 0, {old_header});
+    workspace.dep_graph.build_reverse_map();
+
+    auto disk = llvm::MemoryBuffer::getFile(tmp.path("a.cpp"));
+    workspace.shards[file] = shard_of((*disk)->getBuffer());
+
+    ContextResolver resolver(workspace);
+    PCMHarness ph(workspace, resolver);
+    Invalidator invalidator(workspace, store, resolver, ph.pcm);
+    invalidator.apply(FileEvent::buffer_closed(file));
+
+    auto includes = workspace.dep_graph.get_all_includes(file);
+    EXPECT_TRUE(llvm::is_contained(includes, new_header));
+    EXPECT_FALSE(llvm::is_contained(includes, old_header));
+}
+
 TEST_CASE(CloseStalePCMCascades) {
     // Agent-mode corner: a reindex read the rewritten disk while the file
     // was open, so the shard is current — but the PCM consumed bytes the

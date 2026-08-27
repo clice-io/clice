@@ -153,6 +153,16 @@ TEST_CASE(ExtraArgsReachCommand) {
     std::vector<const char*> bare = {"-x", "c++"};
     tidy::apply_compile_args(params, bare);
     ASSERT_EQ(llvm::StringRef(bare[0]), "-std=c++17");
+
+    // A resolved cc1 command keeps -cc1 in mode position, and -Wp, is a
+    // driver pass-through, not a warning flag.
+    tidy::TidyParams pass;
+    pass.extra_args_before = {"-DX=1", "-Wp,-DY=2", "-Wall"};
+    std::vector<const char*> cc1 = {"clang", "-cc1", "main.cpp"};
+    tidy::apply_compile_args(pass, cc1);
+    std::vector<std::string> got(cc1.begin(), cc1.end());
+    std::vector<std::string> want = {"clang", "-cc1", "-DX=1", "-Wp,-DY=2", "main.cpp"};
+    ASSERT_EQ(got, want);
 }
 
 };  // TEST_SUITE(ClangTidy)

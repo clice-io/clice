@@ -3,6 +3,7 @@
 #include <cassert>
 #include <utility>
 
+#include "compile/compilation.h"
 #include "sched/families/pcm.h"
 #include "support/logging.h"
 #include "support/timer.h"
@@ -109,11 +110,16 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, std::uint32_t pat
             deps.resolved.push_back(path_id);
             deps.declared.push_back({pcm_family, path_id});
         } else {
-            llvm::SmallVector<const char*, 32> argv;
+            std::vector<const char*> argv;
             argv.reserve(params.arguments.size());
             for(auto& arg: params.arguments) {
                 argv.push_back(arg.c_str());
             }
+            // The scan must evaluate the same conditionals the worker's
+            // parse will: a lint plan's extra args can gate an import.
+            tidy::TidyParams scan_args{.extra_args = params.tidy_extra_args,
+                                       .extra_args_before = params.tidy_extra_args_before};
+            tidy::apply_compile_args(scan_args, argv);
             deps = pcm.direct_deps(path_id, argv, params.directory, std::nullopt);
         }
 

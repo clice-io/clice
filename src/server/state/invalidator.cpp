@@ -261,6 +261,14 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // reached it, and cascading would tax every close.
                 if((has_shard && !shard_current) || pcm_stale) {
                     cascade_disk_content_change(event.path_id, dirty);
+                } else if(has_shard) {
+                    // The shard can be current while the edges are not:
+                    // an agent-mode reindex refreshed the rows from the
+                    // rewritten disk while the include graph kept the
+                    // pre-change edges (open files skip the rescan).
+                    // Refresh the edges alone — the rows are proven
+                    // current, so no cascade.
+                    workspace.rescan_after_save(event.path_id);
                 }
                 if(shard_current) {
                     dirty.add_reindex_deps_only(event.path_id);

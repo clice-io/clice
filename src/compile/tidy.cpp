@@ -165,13 +165,23 @@ tidy::ClangTidyOptions create_options(const TidyParams& params) {
 }
 
 void apply_compile_args(const TidyParams& params, std::vector<const char*>& arguments) {
+    // -Wp,/-Wl,/-Wa, are driver pass-throughs, not warning flags: they
+    // must reach the command, while true -W warning flags stay on the
+    // warning-options path where the Checks gate applies.
     auto non_warning = [](const std::string& arg) {
-        return !llvm::StringRef(arg).starts_with("-W");
+        llvm::StringRef ref(arg);
+        return !ref.starts_with("-W") || ref.starts_with("-Wp,") || ref.starts_with("-Wl,") ||
+               ref.starts_with("-Wa,");
     };
     // clang-tidy skips the compiler binary name when inserting the
-    // before-args; mirror it so a bare flag list stays a flag list.
+    // before-args; mirror it so a bare flag list stays a flag list. A
+    // resolved cc1 command additionally keeps `-cc1` in mode position —
+    // clang rejects it anywhere but directly after the binary.
     std::size_t insert_at =
         !arguments.empty() && !llvm::StringRef(arguments[0]).starts_with("-") ? 1 : 0;
+    if(insert_at == 1 && arguments.size() > 1 && llvm::StringRef(arguments[1]) == "-cc1") {
+        insert_at = 2;
+    }
     for(const auto& arg: params.extra_args_before | std::views::filter(non_warning)) {
         arguments.insert(arguments.begin() + insert_at, arg.c_str());
         insert_at += 1;
