@@ -57,9 +57,9 @@ struct TidyParams {
     /// Extra compiler args from the configuration. -W<group> flags are
     /// consumed engine-side by apply_warning_options so the Checks gate
     /// applies (the clangd approach, see tidy.cpp); a batch lint run
-    /// additionally applies the remaining args to its compile command via
-    /// apply_compile_args, as clang-tidy itself does. The interactive
-    /// command is never rewritten.
+    /// additionally applies the remaining args (command_extra_args) to
+    /// its driver command at resolution, as clang-tidy itself does. The
+    /// interactive command is never rewritten.
     std::vector<std::string> extra_args;
     std::vector<std::string> extra_args_before;
 };
@@ -70,17 +70,24 @@ struct TidyParams {
 /// consumer's default set applies.
 TidyParams resolve_tidy_params(llvm::StringRef file);
 
-/// Apply the plan's compilation-affecting extra args to a compile command
-/// at clang-tidy's own insertion points: extra_args_before right after the
-/// binary name, extra_args appended at the end. -W flags are withheld —
-/// they reach the diagnostics engine through apply_warning_options, where
-/// the Checks gate applies; on the command they would bypass it. On a
-/// resolved cc1 command the driver pass-throughs are unwrapped: -Wp, is
-/// comma-split into its preprocessor arguments, -Wl,/-Wa, are dropped.
-/// The applied pointers alias the returned storage, which must outlive
-/// `arguments`.
-[[nodiscard]] std::vector<std::string> apply_compile_args(const TidyParams& params,
-                                                          std::vector<const char*>& arguments);
+/// The plan's compilation-affecting extra args, split for clang-tidy's
+/// own insertion points on the driver command: extra_args_before prepend
+/// right after the binary name, extra_args append at the end. Applied
+/// BEFORE toolchain resolution, so the driver itself interprets
+/// pass-throughs and driver-only options (-Wp,, -Xpreprocessor,
+/// --target) when it produces the cc1 line.
+struct CommandExtraArgs {
+    std::vector<std::string> prepend;
+    std::vector<std::string> append;
+};
+
+/// Split the plan's extra args into the command-affecting halves. -W
+/// warning flags are withheld — they reach the diagnostics engine through
+/// apply_warning_options, where the Checks gate applies; on the command
+/// they would bypass it. -Wp,/-Wl,/-Wa, are driver pass-throughs, not
+/// warning flags, and stay in.
+CommandExtraArgs command_extra_args(llvm::ArrayRef<std::string> extra_args,
+                                    llvm::ArrayRef<std::string> extra_args_before);
 
 }  // namespace clice::tidy
 

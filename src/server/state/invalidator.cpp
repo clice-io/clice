@@ -94,15 +94,27 @@ void Invalidator::provider_appeared(llvm::StringRef module_name, DirtySet& dirty
 void Invalidator::rescan_disk_state(std::uint32_t path_id, DirtySet& dirty) {
     auto old_module = workspace.path_to_module.lookup(path_id);
     workspace.rescan_after_save(path_id);
+    auto it = workspace.path_to_module.find(path_id);
+    llvm::StringRef new_module =
+        it != workspace.path_to_module.end() ? it->second : llvm::StringRef();
+    if(new_module == old_module) {
+        return;
+    }
 
     // A rescan that introduced a module declaration may have given the
     // name its first provider: consumers that scanned it unresolved hold
     // edges to its sentinel, not to any real node a module-graph cascade
     // could reach.
-    if(auto it = workspace.path_to_module.find(path_id);
-       it != workspace.path_to_module.end() && it->second != old_module &&
-       workspace.dep_graph.lookup_module(it->second).size() == 1) {
-        provider_appeared(it->second, dirty);
+    if(!new_module.empty() && workspace.dep_graph.lookup_module(new_module).size() == 1) {
+        provider_appeared(new_module, dirty);
+    }
+
+    // The dropped name's consumers hold edges to this provider's real
+    // node, and their builds embed a module the file no longer declares.
+    // The close path has no other probe for this: an evicted PCM leaves
+    // no cache entry for its staleness check to see.
+    if(!old_module.empty()) {
+        cascade_compile_graph(path_id, dirty);
     }
 }
 

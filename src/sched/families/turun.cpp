@@ -66,13 +66,20 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, std::uint32_t pat
     params.tidy_extra_args = std::move(plan.tidy_params.extra_args);
     params.tidy_extra_args_before = std::move(plan.tidy_params.extra_args_before);
     // Whole-TU runs stick to real commands; synthesized fallback commands
-    // would fill the index (and the lint report) with guesses.
+    // would fill the index (and the lint report) with guesses. A lint
+    // plan's extra args join the driver command here, before toolchain
+    // resolution — the driver interprets them (pass-throughs, --target)
+    // when it produces the resolved line, and every later consumer of
+    // params.arguments (dependency scan, worker parse) sees one truth.
+    auto extras = tidy::command_extra_args(params.tidy_extra_args, params.tidy_extra_args_before);
     std::uint32_t host_path_id = no_path_id;
     auto source = contexts.resolve_command(file_path,
                                            params.directory,
                                            params.arguments,
                                            ContextUse::Background,
-                                           &host_path_id);
+                                           &host_path_id,
+                                           extras.prepend,
+                                           extras.append);
     if(source == CommandSource::Fallback) {
         // A file whose manifest survives keeps serving its last-known rows,
         // so skipping it loses nothing. One without a manifest (dropped or
@@ -111,19 +118,16 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, std::uint32_t pat
             deps.declared.push_back({pcm_family, path_id});
         }
         // The scan must evaluate the same conditionals the worker's
-        // parse will: a lint plan's extra args can gate an import. A
-        // module unit's own PCM round scans under the unit's base
-        // command, so extras run their own scan even there.
-        bool has_extras = !params.tidy_extra_args.empty() || !params.tidy_extra_args_before.empty();
+        // parse will — the resolved command already carries the plan's
+        // extra args. A module unit's own PCM round resolves the base
+        // command without them, so extras run their own scan even there.
+        bool has_extras = !extras.prepend.empty() || !extras.append.empty();
         if(!own_module || has_extras) {
             std::vector<const char*> argv;
             argv.reserve(params.arguments.size());
             for(auto& arg: params.arguments) {
                 argv.push_back(arg.c_str());
             }
-            tidy::TidyParams scan_args{.extra_args = params.tidy_extra_args,
-                                       .extra_args_before = params.tidy_extra_args_before};
-            auto extra_storage = tidy::apply_compile_args(scan_args, argv);
             auto scanned = pcm.direct_deps(path_id, argv, params.directory, std::nullopt);
             llvm::append_range(deps.resolved, scanned.resolved);
             llvm::append_range(deps.declared, scanned.declared);

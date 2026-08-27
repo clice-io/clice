@@ -30,6 +30,11 @@ struct CommandOptions {
 
     /// Extra arguments to append to the original command line.
     llvm::ArrayRef<std::string> append;
+
+    /// Extra arguments to insert right after the binary name, ahead of
+    /// the command's own flags — clang-tidy's ExtraArgsBefore position,
+    /// where the command's later flags win on collision.
+    llvm::ArrayRef<std::string> prepend;
 };
 
 /// File-independent compilation flags (shareable, suitable as cache key input).

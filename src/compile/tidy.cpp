@@ -164,8 +164,8 @@ tidy::ClangTidyOptions create_options(const TidyParams& params) {
     return opts;
 }
 
-std::vector<std::string> apply_compile_args(const TidyParams& params,
-                                            std::vector<const char*>& arguments) {
+CommandExtraArgs command_extra_args(llvm::ArrayRef<std::string> extra_args,
+                                    llvm::ArrayRef<std::string> extra_args_before) {
     // -Wp,/-Wl,/-Wa, are driver pass-throughs, not warning flags: they
     // must reach the command, while true -W warning flags stay on the
     // warning-options path where the Checks gate applies.
@@ -174,54 +174,14 @@ std::vector<std::string> apply_compile_args(const TidyParams& params,
         return !ref.starts_with("-W") || ref.starts_with("-Wp,") || ref.starts_with("-Wl,") ||
                ref.starts_with("-Wa,");
     };
-    // clang-tidy skips the compiler binary name when inserting the
-    // before-args; mirror it so a bare flag list stays a flag list. A
-    // resolved cc1 command additionally keeps `-cc1` in mode position —
-    // clang rejects it anywhere but directly after the binary.
-    std::size_t insert_at =
-        !arguments.empty() && !llvm::StringRef(arguments[0]).starts_with("-") ? 1 : 0;
-    bool cc1 = insert_at == 1 && arguments.size() > 1 && llvm::StringRef(arguments[1]) == "-cc1";
-    if(cc1) {
-        insert_at = 2;
+    CommandExtraArgs split;
+    for(const auto& arg: extra_args_before | std::views::filter(non_warning)) {
+        split.prepend.push_back(arg);
     }
-    // A cc1 command has no driver to unwrap pass-throughs — cc1 parses
-    // -Wp, as an unknown warning name and defines nothing. Comma-split
-    // it into the preprocessor arguments the driver would have
-    // forwarded, and drop -Wl,/-Wa,: nothing is linked or assembled in
-    // a tidy parse.
-    auto expand = [&](const std::vector<std::string>& args, std::vector<std::string>& out) {
-        for(const auto& arg: args | std::views::filter(non_warning)) {
-            llvm::StringRef ref(arg);
-            if(cc1 && ref.consume_front("-Wp,")) {
-                llvm::SmallVector<llvm::StringRef> pieces;
-                ref.split(pieces, ',');
-                for(auto piece: pieces) {
-                    if(!piece.empty()) {
-                        out.emplace_back(piece);
-                    }
-                }
-            } else if(cc1 && (ref.starts_with("-Wl,") || ref.starts_with("-Wa,"))) {
-                continue;
-            } else {
-                out.emplace_back(arg);
-            }
-        }
-    };
-    // The applied pointers alias `storage`, fully built before the first
-    // pointer is taken — a small-string's bytes live inside the
-    // std::string object and would move with any later growth.
-    std::vector<std::string> storage;
-    expand(params.extra_args_before, storage);
-    std::size_t split = storage.size();
-    expand(params.extra_args, storage);
-    for(std::size_t i = 0; i < split; i += 1) {
-        arguments.insert(arguments.begin() + insert_at, storage[i].c_str());
-        insert_at += 1;
+    for(const auto& arg: extra_args | std::views::filter(non_warning)) {
+        split.append.push_back(arg);
     }
-    for(std::size_t i = split; i < storage.size(); i += 1) {
-        arguments.push_back(storage[i].c_str());
-    }
-    return storage;
+    return split;
 }
 
 // Filter for clang diagnostics groups enabled by CTOptions.Checks.

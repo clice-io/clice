@@ -199,11 +199,17 @@ public:
     /// Emits a per-file decision log (tiers tried, tier hit, command hash).
     /// @param host_path_id  If non-null, receives the host source whose
     /// command an IncludeGraph resolution borrowed (untouched otherwise).
+    /// @param extra_prepend / extra_append  Per-run additions to the CDB
+    /// driver command (a lint plan's extra args), applied before toolchain
+    /// resolution so the driver interprets them: prepends land right after
+    /// the binary name, appends win over config rule appends.
     CommandSource resolve_command(llvm::StringRef path,
                                   std::string& directory,
                                   std::vector<std::string>& arguments,
                                   ContextUse use = ContextUse::Background,
-                                  std::uint32_t* host_path_id = nullptr);
+                                  std::uint32_t* host_path_id = nullptr,
+                                  llvm::ArrayRef<std::string> extra_prepend = {},
+                                  llvm::ArrayRef<std::string> extra_append = {});
 
     /// Append the header context's suffix as one trailing #include line: the
     /// suffix content (everything after the include position along the chain)

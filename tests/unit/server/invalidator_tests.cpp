@@ -476,6 +476,39 @@ TEST_CASE(CloseFirstProviderCascades) {
     EXPECT_TRUE(llvm::is_contained(dirty.reindex_content_changed, importer));
 }
 
+TEST_CASE(CloseProviderRenameCascades) {
+    // An external rewrite can rename an open provider's module while an
+    // agent-mode reindex keeps the shard current and an evicted PCM
+    // leaves no cache entry for the close path's staleness probe: the
+    // rescan's map delta is the only remaining signal, and it must
+    // cascade the old name's consumers through the provider's node.
+    TempDir tmp;
+    tmp.touch("m.cppm", "export module b;\n");
+
+    Workspace workspace;
+    SessionStore store;
+    auto iface = workspace.path_pool.intern(tmp.path("m.cppm"));
+    auto importer = workspace.path_pool.intern("/proj/use.cpp");
+    workspace.path_to_module[iface] = "a";
+    workspace.dep_graph.update_module_decl(iface, "a");
+
+    auto disk = llvm::MemoryBuffer::getFile(tmp.path("m.cppm"));
+    workspace.shards[iface] = shard_of((*disk)->getBuffer());
+
+    ContextResolver resolver(workspace);
+    PCMHarness ph(workspace, resolver);
+    ph.graph.declare(
+        {
+            turun_family,
+            importer
+    },
+        {{pcm_family, iface}});
+    Invalidator invalidator(workspace, store, resolver, ph.pcm);
+
+    auto dirty = invalidator.apply(FileEvent::buffer_closed(iface));
+    EXPECT_TRUE(llvm::is_contained(dirty.reindex_deps_only, importer));
+}
+
 TEST_CASE(CloseStalePCMCascades) {
     // Agent-mode corner: a reindex read the rewritten disk while the file
     // was open, so the shard is current — but the PCM consumed bytes the

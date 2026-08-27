@@ -595,6 +595,12 @@ CompileCommand CompilationDatabase::build_command(std::uint32_t path_id,
         }
     }
 
+    std::size_t prepend_at = 1;
+    for(auto& arg: translate_rule_flags(options.prepend, /*edit=*/true)) {
+        flags.insert(flags.begin() + prepend_at, strings.save(arg).data());
+        prepend_at += 1;
+    }
+
     for(auto& arg: translate_rule_flags(options.append, /*edit=*/true)) {
         append_arg(arg);
     }
