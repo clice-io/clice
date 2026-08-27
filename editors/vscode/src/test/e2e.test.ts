@@ -2,7 +2,7 @@ import * as assert from "assert";
 import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
-import type { LanguageClient } from "vscode-languageclient/node";
+import type { ClientHandle } from "../client";
 // Shared protocol shapes — type-only, mirrors feature/context.ts.
 import type {
     CurrentContextResult,
@@ -188,7 +188,7 @@ suite("clice E2E", function () {
 
         const extension = vscode.extensions.getExtension("clice-io.clice");
         assert.ok(extension?.isActive, "extension not active");
-        const client = (extension.exports as { client: LanguageClient }).client;
+        const client = (extension.exports as { client: ClientHandle }).client;
         const uri = document.uri.toString();
 
         const query = await client.sendRequest<QueryContextResult>("clice/queryContext", { uri });

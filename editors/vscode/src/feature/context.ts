@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
-import { LanguageClient, State } from "vscode-languageclient/node";
+import { State } from "vscode-languageclient/node";
+import type { ClientHandle } from "../client";
 // Protocol shapes come from the shared definition in tools/protocol —
 // type-only, so the extension bundle carries no runtime dependency on it.
 import type {
@@ -69,7 +70,7 @@ class ContextTreeProvider implements vscode.TreeDataProvider<ContextTreeItem> {
     private generation = 0;
     epoch = 0;
 
-    constructor(private client: LanguageClient) {}
+    constructor(private client: ClientHandle) {}
 
     getTreeItem(element: ContextTreeItem) {
         return element;
@@ -210,7 +211,7 @@ export async function resyncDocument(uri: string) {
  * detector would race the restore and pin a c/cuda-cpp file to cpp. */
 const resyncing = new Set<string>();
 
-export function registerCompilationContext(client: LanguageClient, ext: vscode.ExtensionContext) {
+export function registerCompilationContext(client: ClientHandle, ext: vscode.ExtensionContext) {
     const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
     status.command = "clice.switchContext";
     status.tooltip = "clice: active compilation context (click to switch)";

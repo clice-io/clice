@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
-import { LanguageClient, State } from "vscode-languageclient/node";
+import { State } from "vscode-languageclient/node";
+import type { ClientHandle } from "../client";
 
 /// Write to user scope and clear any workspace or folder override:
 /// those scopes outrank global settings, so a repository shipping the
@@ -8,12 +9,12 @@ async function overrideSetting(section: string, key: string, value: unknown) {
     const config = vscode.workspace.getConfiguration(section);
     await config.update(key, value, vscode.ConfigurationTarget.Global);
     if (config.inspect(key)?.workspaceValue !== undefined) {
-        await config.update(key, value, vscode.ConfigurationTarget.Workspace);
+        await config.update(key, undefined, vscode.ConfigurationTarget.Workspace);
     }
     for (const folder of vscode.workspace.workspaceFolders ?? []) {
         const scoped = vscode.workspace.getConfiguration(section, folder.uri);
         if (scoped.inspect(key)?.workspaceFolderValue !== undefined) {
-            await scoped.update(key, value, vscode.ConfigurationTarget.WorkspaceFolder);
+            await scoped.update(key, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
         }
     }
 }
@@ -71,7 +72,7 @@ const ignoreKey = "ignoreConflictingExtensions";
 /// vscode.extensions only surfaces enabled extensions, so a hit means
 /// installed and enabled; there is no API to disable an extension, hence
 /// the settings-level switches.
-export function registerConflictCheck(client: LanguageClient, ext: vscode.ExtensionContext) {
+export function registerConflictCheck(client: ClientHandle, ext: vscode.ExtensionContext) {
     let prompting = false;
 
     async function check() {

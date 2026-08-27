@@ -8,14 +8,16 @@ import {
     LanguageClient,
     LanguageClientOptions,
     ServerOptions,
+    State,
     StreamInfo,
 } from "vscode-languageclient/node";
+import { ClientHandle } from "./client";
 import { getSetting, Setting } from "./setting";
 import { registerCompilationContext } from "./feature/context";
 import { registerConflictCheck } from "./feature/conflicts";
 import { registerInactiveRegions } from "./feature/inactive";
 
-let client: LanguageClient | undefined;
+let client: ClientHandle | undefined;
 
 // Platform-specific builds of the extension ship the server under clice/;
 // universal builds (a plain `vsce package` without the binary staged) carry
@@ -63,15 +65,19 @@ function connectSocket(host: string, port: number): Promise<net.Socket> {
 /// the connection — a probe that disconnects would burn the slot.
 let pendingSocket: net.Socket | undefined;
 
+/// The previously spawned server, awaited before the next spawn. Lives
+/// outside the factory because ClientHandle.renew() builds a fresh
+/// client mid-session and the successor must still wait for this exit.
+let child: cp.ChildProcess | undefined;
+
 // Settings are read fresh on every (re)start so a plain server restart picks
-// them up. A rejection here is terminal for the LanguageClient instance
-// (StartFailed keeps the rejected start promise forever), so everything
-// recoverable is validated in startServer before start() is ever called.
+// them up. Everything recoverable is validated in startServer before start()
+// is ever called: a rejection here is terminal for the client instance and
+// forces startServer to renew it.
 function makeServerOptions(
     context: ExtensionContext,
     channel: vscode.OutputChannel,
 ): ServerOptions {
-    let child: cp.ChildProcess | undefined;
     return async (): Promise<StreamInfo | cp.ChildProcess> => {
         const setting = getSetting();
         if (setting.mode === "socket") {
@@ -121,6 +127,32 @@ function makeServerOptions(
     };
 }
 
+/// clice.executable may be a bare command name; spawn resolves those
+/// against PATH, so the pre-start validation must look there too.
+function findOnPath(command: string): string | undefined {
+    const extensions =
+        process.platform === "win32"
+            ? (process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";")
+            : [];
+    for (const dir of (process.env.PATH ?? "").split(path.delimiter)) {
+        if (!dir) {
+            continue;
+        }
+        for (const candidate of [command, ...extensions.map((ext) => command + ext)]) {
+            const full = path.join(dir, candidate);
+            try {
+                fs.accessSync(full, fs.constants.X_OK);
+                if (fs.statSync(full).isFile()) {
+                    return full;
+                }
+            } catch {
+                // Not here; keep searching.
+            }
+        }
+    }
+    return undefined;
+}
+
 async function validateSettings(context: ExtensionContext): Promise<string | undefined> {
     let setting: Setting;
     try {
@@ -145,13 +177,17 @@ async function validateSettings(context: ExtensionContext): Promise<string | und
             "set 'clice.executable' to a locally installed binary."
         );
     }
-    try {
-        if (!fs.statSync(executable).isFile()) {
-            return `clice executable is not a file: ${executable}`;
+    if (executable.includes("/") || executable.includes("\\")) {
+        try {
+            if (!fs.statSync(executable).isFile()) {
+                return `clice executable is not a file: ${executable}`;
+            }
+            fs.accessSync(executable, fs.constants.X_OK);
+        } catch {
+            return `clice executable not found or not executable: ${executable} — check 'clice.executable'.`;
         }
-        fs.accessSync(executable, fs.constants.X_OK);
-    } catch {
-        return `clice executable not found or not executable: ${executable} — check 'clice.executable'.`;
+    } else if (!findOnPath(executable)) {
+        return `clice executable not found on PATH: ${executable} — check 'clice.executable'.`;
     }
     return undefined;
 }
@@ -188,7 +224,7 @@ async function startServer(context: ExtensionContext): Promise<void> {
             // validation must look at what is reachable afterwards.
             try {
                 if (client.isRunning()) {
-                    await client.stop();
+                    await client.current.stop();
                 }
             } catch {
                 // Stopping a hung server times out; start fresh regardless.
@@ -198,8 +234,14 @@ async function startServer(context: ExtensionContext): Promise<void> {
                 void window.showErrorMessage(`clice: ${problem}`);
                 continue;
             }
+            // A library-initiated restart may still be starting; renewing
+            // under it would leave that attempt running unsupervised, so
+            // join it instead — start() below returns its promise.
+            if (client.current.state !== State.Starting) {
+                client.renew();
+            }
             try {
-                await client.start();
+                await client.current.start();
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
                 void window.showErrorMessage(`clice failed to start: ${message}`);
@@ -262,11 +304,9 @@ export async function activate(context: ExtensionContext) {
         },
     };
 
-    client = new LanguageClient(
-        "clice",
-        "clice",
-        makeServerOptions(context, channel),
-        clientOptions,
+    const serverOptions = makeServerOptions(context, channel);
+    client = new ClientHandle(
+        () => new LanguageClient("clice", "clice", serverOptions, clientOptions),
     );
 
     context.subscriptions.push(
@@ -290,5 +330,5 @@ export function deactivate(): Thenable<void> | undefined {
     if (!client?.isRunning()) {
         return undefined;
     }
-    return client.stop();
+    return client.current.stop();
 }

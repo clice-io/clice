@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { LanguageClient } from "vscode-languageclient/node";
+import type { ClientHandle } from "../client";
 // Shared protocol shape — type-only, no runtime dependency.
 import type { InactiveRegionsParams } from "@clice/tools/protocol" with {
     "resolution-mode": "import",
@@ -9,7 +9,7 @@ import type { InactiveRegionsParams } from "@clice/tools/protocol" with {
 /// the server after each compile, dimmed like unreachable code. Switching
 /// the compilation context recompiles and re-pushes, so the dimming flips
 /// with the selected preprocessor state.
-export function registerInactiveRegions(client: LanguageClient, ext: vscode.ExtensionContext) {
+export function registerInactiveRegions(client: ClientHandle, ext: vscode.ExtensionContext) {
     const decoration = vscode.window.createTextEditorDecorationType({
         opacity: "0.45",
     });
