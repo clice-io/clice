@@ -200,9 +200,10 @@ public:
     /// @param host_path_id  If non-null, receives the host source whose
     /// command an IncludeGraph resolution borrowed (untouched otherwise).
     /// @param extra_prepend / extra_append  Per-run additions to the CDB
-    /// driver command (a lint plan's extra args), applied before toolchain
-    /// resolution so the driver interprets them: prepends land right after
-    /// the binary name, appends win over config rule appends.
+    /// driver command (a lint plan's clang-tool extra args), applied
+    /// before toolchain resolution so the driver interprets them. Unlike
+    /// config rule appends they are never NVCC-translated; prepends land
+    /// right after the binary name, appends win over rule appends.
     CommandSource resolve_command(llvm::StringRef path,
                                   std::string& directory,
                                   std::vector<std::string>& arguments,

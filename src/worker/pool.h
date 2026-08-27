@@ -803,21 +803,27 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
             if(!advisory.cancelled()) {
                 co_return;  // the send finished first
             }
+            // Guarded by generation AND claim: the worker may have died,
+            // and — when the advisory fire races the old reply on one
+            // tick — the freed slot may already carry a queued
+            // successor's claim. The worker's stop flag belongs to
+            // whatever build it armed last, so the successor's healthy
+            // build must see neither the CancelBuild nor the grace
+            // deadline: either would kill it. Fencing the send here also
+            // keeps the worker-side invariant that a CancelBuild only
+            // arrives while the master awaits that build's reply.
+            auto& w = pool.stateless_workers[idx];
+            if(w.generation != gen || w.claim_epoch != claim || w.state != SlotState::Alive ||
+               !w.busy) {
+                co_return;
+            }
             LOG_DEBUG("Advisory cancel: sending cooperative CancelBuild");
             peer->send_notification(worker::CancelBuildParams{});
             preempt->cancel();
             // Arm the grace deadline like cancel_low_priority does, or
             // tick_cancel_grace() never reclaims a worker whose build
-            // ignores the stop flag. Guarded by generation AND claim: the
-            // worker may have died, and — when the advisory fire races the
-            // old reply on one tick — the freed slot may already carry a
-            // queued successor's claim, whose healthy build must not
-            // inherit this deadline and get killed at grace expiry.
-            auto& w = pool.stateless_workers[idx];
-            if(w.generation == gen && w.claim_epoch == claim && w.state == SlotState::Alive &&
-               w.busy) {
-                w.cancel_requested_at = std::chrono::steady_clock::now();
-            }
+            // ignores the stop flag.
+            w.cancel_requested_at = std::chrono::steady_clock::now();
         };
         worker_tasks.spawn(watcher(*this,
                                    idx,

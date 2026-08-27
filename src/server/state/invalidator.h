@@ -11,6 +11,7 @@
 #include "server/state/session_store.h"
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 
@@ -294,6 +295,14 @@ private:
     const ContextResolver& contexts;
     PCMFamily& pcm;
     ReadFile read_file;
+
+    /// Files whose disk content changed while their buffer was open. The
+    /// DiskChanged case defers the dependent cascade (the buffer is the
+    /// truth until close) and the tracker has already consumed the event,
+    /// so this set is the only surviving record of the debt. BufferSaved
+    /// discharges it — the save's own cascade covers everything owed —
+    /// and BufferClosed drains it.
+    llvm::DenseSet<std::uint32_t> disk_changed_while_open;
 };
 
 }  // namespace clice

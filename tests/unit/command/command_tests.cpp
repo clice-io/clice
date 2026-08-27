@@ -130,7 +130,7 @@ TEST_CASE(PrependAfterBinary) {
 
     auto options = quiet_options();
     llvm::SmallVector<std::string> prepend = {"-std=c++17", "-DB"};
-    options.prepend = prepend;
+    options.extra_prepend = prepend;
     auto result = database.lookup("main.cpp", options).front().to_argv();
     // Prepends sit ahead of the command's own flags, so the command wins
     // on collision. (The base -DA renders canonicalized, as two tokens.)

@@ -31,10 +31,14 @@ struct CommandOptions {
     /// Extra arguments to append to the original command line.
     llvm::ArrayRef<std::string> append;
 
-    /// Extra arguments to insert right after the binary name, ahead of
-    /// the command's own flags — clang-tidy's ExtraArgsBefore position,
-    /// where the command's later flags win on collision.
-    llvm::ArrayRef<std::string> prepend;
+    /// Per-run additions in the resolved command's own dialect (a lint
+    /// plan's clang-tool extra args). Unlike the config rule lists above
+    /// they are never NVCC-translated — clang-tidy's extra args are clang
+    /// args by definition. Prepends land right after the binary name,
+    /// ahead of the command's own flags (the command wins on collision);
+    /// appends land after the rule appends and win.
+    llvm::ArrayRef<std::string> extra_prepend;
+    llvm::ArrayRef<std::string> extra_append;
 };
 
 /// File-independent compilation flags (shareable, suitable as cache key input).

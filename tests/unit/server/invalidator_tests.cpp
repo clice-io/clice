@@ -451,6 +451,37 @@ TEST_CASE(CloseRefreshesEdges) {
     EXPECT_FALSE(llvm::is_contained(includes, old_header));
 }
 
+TEST_CASE(DeferredDiskChangeCascades) {
+    // A DiskChanged consumed while the header was open defers the
+    // dependent cascade to the close, and an agent-mode reindex can
+    // refresh the shard from the rewritten disk before then: a current
+    // shard must not hide the recorded debt from the close.
+    Workspace workspace;
+    SessionStore store;
+    auto header = workspace.path_pool.intern("/proj/h.h");
+    auto tu = workspace.path_pool.intern("/proj/a.cpp");
+    workspace.dep_graph.set_includes(tu, 0, {header});
+    workspace.dep_graph.build_reverse_map();
+    workspace.shards[header] = shard_of("int rewritten;");
+    store.open(header);
+
+    ContextResolver resolver(workspace);
+    PCMHarness ph(workspace, resolver);
+    Invalidator invalidator(workspace, store, resolver, ph.pcm, [](llvm::StringRef) {
+        return std::optional<std::string>{"int rewritten;"};
+    });
+
+    auto deferred = invalidator.apply(FileEvent::disk_changed(header));
+    ASSERT_TRUE(deferred.reindex_deps_only.empty());
+
+    store.close(header);
+    auto dirty = invalidator.apply(FileEvent::buffer_closed(header));
+
+    EXPECT_TRUE(llvm::is_contained(dirty.reindex_deps_only, tu));
+    EXPECT_TRUE(llvm::is_contained(dirty.reindex_deps_only, header));
+    EXPECT_TRUE(dirty.recheck_contexts);
+}
+
 TEST_CASE(CloseFirstProviderCascades) {
     // An external rewrite can make an open file a module's first provider
     // with the shard already current (an agent-mode reindex read the
@@ -507,6 +538,33 @@ TEST_CASE(CloseProviderRenameCascades) {
 
     auto dirty = invalidator.apply(FileEvent::buffer_closed(iface));
     EXPECT_TRUE(llvm::is_contained(dirty.reindex_deps_only, importer));
+}
+
+TEST_CASE(CloseKeepsGuardedProvider) {
+    // A close/save rescan meeting a module declaration inside a
+    // preprocessor conditional must resolve it the way the startup scan
+    // does (scan_quick alone leaves the name empty) instead of dropping
+    // the provider and leaving its importers unresolved.
+    TempDir tmp;
+    tmp.touch("m.cpp", "#if 1\nexport module m;\n#endif\n");
+
+    Workspace workspace;
+    SessionStore store;
+    auto iface = workspace.path_pool.intern(tmp.path("m.cpp"));
+    workspace.path_to_module[iface] = "m";
+    workspace.dep_graph.update_module_decl(iface, "m");
+
+    auto disk = llvm::MemoryBuffer::getFile(tmp.path("m.cpp"));
+    workspace.shards[iface] = shard_of((*disk)->getBuffer());
+
+    ContextResolver resolver(workspace);
+    PCMHarness ph(workspace, resolver);
+    Invalidator invalidator(workspace, store, resolver, ph.pcm);
+
+    invalidator.apply(FileEvent::buffer_closed(iface));
+
+    EXPECT_EQ(workspace.path_to_module.lookup(iface), "m");
+    EXPECT_TRUE(llvm::is_contained(workspace.dep_graph.lookup_module("m"), iface));
 }
 
 TEST_CASE(CloseStalePCMCascades) {

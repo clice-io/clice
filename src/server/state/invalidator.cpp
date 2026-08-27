@@ -201,8 +201,11 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
             case FileEvent::Kind::BufferSaved: {
                 auto path_id = event.path_id;
                 // The disk now holds the buffer's content: the standard
-                // disk-content cascade covers everything a save invalidates.
+                // disk-content cascade covers everything a save invalidates —
+                // including anything a DiskChanged consumed while the buffer
+                // was open still owed, so that debt is discharged here.
                 cascade_disk_content_change(path_id, dirty);
+                disk_changed_while_open.erase(path_id);
 
                 // The file's own shard describes the pre-save disk. With
                 // open-file indexing off the queued slot is skipped and
@@ -236,6 +239,10 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
             }
             case FileEvent::Kind::BufferClosed: {
                 workspace.on_file_closed(event.path_id);
+                // Drained on every close — the deleted-while-open exit below
+                // (whose debt passes to DiskRemoved semantics) must not
+                // leave a stale entry behind.
+                bool changed_while_open = disk_changed_while_open.erase(event.path_id);
                 // Whether the shard's rows still describe the disk decides
                 // how queries treat the file until the reindex lands: a
                 // browse-and-close must not blank the file's references for
@@ -269,13 +276,17 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // chance to act on it: the DiskChanged path deliberately
                 // skips the rescan and the module/dependent cascades while
                 // a buffer is open, and the tracker has already consumed
-                // the event's mtime, so no later sweep will refire it. An
-                // observed divergence — rows or artifact built from bytes
-                // the disk no longer holds — gets the full disk-content
-                // cascade a save would have delivered. A file with no
-                // shard is no evidence either way: indexing simply never
+                // the event's mtime, so no later sweep will refire it.
+                // Divergence — rows or artifact built from bytes the disk
+                // no longer holds, or a disk change recorded while the
+                // buffer was open (an agent-mode reindex can refresh the
+                // shard from the rewritten disk before the close, blinding
+                // the content probe while dependents still embed the old
+                // bytes) — gets the full disk-content cascade a save would
+                // have delivered. A file with no shard and no recorded
+                // change is no evidence either way: indexing simply never
                 // reached it, and cascading would tax every close.
-                if((has_shard && !shard_current) || pcm_stale) {
+                if((has_shard && !shard_current) || pcm_stale || changed_while_open) {
                     cascade_disk_content_change(event.path_id, dirty);
                 } else if(has_shard) {
                     // The shard can be current while the edges are not:
@@ -305,8 +316,14 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                     // validation actually runs. The shard describes the old
                     // disk regardless of the buffer; queue its reindex like
                     // a save (skipped-and-repaired-on-close without agents).
+                    // The dependent cascade is deferred to the close, and
+                    // the tracker has consumed the event — record the debt,
+                    // or an agent-mode reindex that freshens the shard
+                    // before the close would hide it from the close-time
+                    // divergence probe.
                     dirty.mark_ast_dirty.push_back(path_id);
                     dirty.add_reindex_content_changed(path_id);
+                    disk_changed_while_open.insert(path_id);
                     break;
                 }
                 // Closed file: disk is the truth. Run the same cascade a

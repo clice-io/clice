@@ -627,6 +627,28 @@ TEST_CASE(AppendOverridesBase) {
     EXPECT_TRUE(index_of("--cuda-gpu-arch=sm_80") < count);
 }
 
+TEST_CASE(ExtrasStayClangDialect) {
+    CompilationDatabase db;
+    std::vector<const char*> arguments = {"nvcc", "-rdc=true", "-c", "/tmp/kern.cu"};
+    db.add_command("/tmp", "/tmp/kern.cu", arguments);
+
+    // A lint plan's extra args are clang args by definition (clang-tidy
+    // semantics): on an NVCC entry they join the translated command
+    // verbatim, never through the nvcc rule translation.
+    CommandOptions options;
+    llvm::SmallVector<std::string> prepend = {"-fno-gpu-rdc"};
+    llvm::SmallVector<std::string> append = {"-fgpu-rdc"};
+    options.extra_prepend = prepend;
+    options.extra_append = append;
+
+    auto commands = db.lookup("/tmp/kern.cu", options);
+    ASSERT_EQ(commands.size(), std::size_t(1));
+
+    auto& flags = commands[0].resolved.flags;
+    EXPECT_EQ(llvm::StringRef(flags[1]), "-fno-gpu-rdc");
+    EXPECT_EQ(llvm::StringRef(flags.back()), "-fgpu-rdc");
+}
+
 TEST_CASE(GencodeAppendAccumulates) {
     CompilationDatabase db;
     std::vector<const char*> arguments = {"nvcc",

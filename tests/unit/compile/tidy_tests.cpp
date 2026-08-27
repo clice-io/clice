@@ -142,6 +142,14 @@ TEST_CASE(ExtraArgsCommandSplit) {
     std::vector<std::string> append = {"-DFOO=1", "-Wp,-DY=2"};
     ASSERT_EQ(split.prepend, prepend);
     ASSERT_EQ(split.append, append);
+
+    // A -X<tool> pair filters on its operand's verdict — dropping just
+    // the operand would leave the forwarder to eat the next argument.
+    auto pairs = tidy::command_extra_args(
+        {"-Xclang", "-Wno-unused", "-Xclang", "-fno-exceptions", "-Xclang"},
+        {});
+    std::vector<std::string> kept = {"-Xclang", "-fno-exceptions", "-Xclang"};
+    ASSERT_EQ(pairs.append, kept);
 }
 
 };  // TEST_SUITE(ClangTidy)

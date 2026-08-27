@@ -1,5 +1,4 @@
 #include <algorithm>
-#include <ranges>
 
 #include "compile/implement.h"
 #include "support/logging.h"
@@ -169,18 +168,34 @@ CommandExtraArgs command_extra_args(llvm::ArrayRef<std::string> extra_args,
     // -Wp,/-Wl,/-Wa, are driver pass-throughs, not warning flags: they
     // must reach the command, while true -W warning flags stay on the
     // warning-options path where the Checks gate applies.
-    auto non_warning = [](const std::string& arg) {
-        llvm::StringRef ref(arg);
+    auto non_warning = [](llvm::StringRef ref) {
         return !ref.starts_with("-W") || ref.starts_with("-Wp,") || ref.starts_with("-Wl,") ||
                ref.starts_with("-Wa,");
     };
+    // A -X<tool> forwards its next token, so the pair filters as one
+    // unit on the operand's verdict — a lone survivor would consume
+    // whatever follows it on the final command (the source path, say).
+    auto forwards_operand = [](llvm::StringRef ref) {
+        return ref == "-Xclang" || ref == "-Xpreprocessor" || ref == "-Xlinker" ||
+               ref == "-Xassembler" || ref.starts_with("-Xarch_");
+    };
+    auto filter_into = [&](llvm::ArrayRef<std::string> args, std::vector<std::string>& out) {
+        for(std::size_t i = 0; i < args.size(); i += 1) {
+            llvm::StringRef ref(args[i]);
+            if(forwards_operand(ref) && i + 1 < args.size()) {
+                if(non_warning(args[i + 1])) {
+                    out.push_back(args[i]);
+                    out.push_back(args[i + 1]);
+                }
+                i += 1;
+            } else if(non_warning(ref)) {
+                out.push_back(args[i]);
+            }
+        }
+    };
     CommandExtraArgs split;
-    for(const auto& arg: extra_args_before | std::views::filter(non_warning)) {
-        split.prepend.push_back(arg);
-    }
-    for(const auto& arg: extra_args | std::views::filter(non_warning)) {
-        split.append.push_back(arg);
-    }
+    filter_into(extra_args_before, split.prepend);
+    filter_into(extra_args, split.append);
     return split;
 }
 

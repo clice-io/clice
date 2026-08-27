@@ -157,6 +157,24 @@ void Workspace::rescan_after_save(std::uint32_t path_id) {
     auto file_path = path_pool.resolve(path_id);
     if(auto buf = llvm::MemoryBuffer::getFile(file_path)) {
         auto result = scan_quick((*buf)->getBuffer());
+        // A module declaration inside a preprocessor conditional is beyond
+        // the lexical scan (need_preprocess, name left empty): resolve it
+        // with the same scan_module_decl() fallback the startup scan uses,
+        // or this save would drop a guarded interface from both provider
+        // maps and leave its importers unresolved until a reload.
+        if(result.need_preprocess) {
+            auto cmds = cdb.lookup(file_path);
+            if(!cmds.empty()) {
+                toolchain.resolve_or_warn(cmds[0]);
+                auto fallback = scan_module_decl(cmds[0].to_argv(),
+                                                 cmds[0].resolved.directory,
+                                                 (*buf)->getBuffer());
+                if(!fallback.module_name.empty()) {
+                    result.module_name = std::move(fallback.module_name);
+                    result.is_interface_unit = fallback.is_interface_unit;
+                }
+            }
+        }
         // Both maps hold interface units only, mirroring the startup scan:
         // an implementation unit (`module foo;`) must never satisfy
         // lookup_module — importers would edge to it and try to build it

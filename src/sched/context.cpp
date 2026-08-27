@@ -321,10 +321,11 @@ CommandSource ContextResolver::resolve_command(llvm::StringRef path,
     auto fill_from_cdb = [&] {
         std::vector<std::string> rule_append, rule_remove;
         workspace.config.match_rules(path, rule_append, rule_remove);
-        rule_append.insert(rule_append.end(), extra_append.begin(), extra_append.end());
-        auto results = workspace.cdb.lookup(
-            path,
-            {.remove = rule_remove, .append = rule_append, .prepend = extra_prepend});
+        auto results = workspace.cdb.lookup(path,
+                                            {.remove = rule_remove,
+                                             .append = rule_append,
+                                             .extra_prepend = extra_prepend,
+                                             .extra_append = extra_append});
         auto* cmd = &results.front();
         // Multi-config projects: honor the user's chosen CDB entry, matched
         // by canonical command hash so the choice survives CDB reordering.
