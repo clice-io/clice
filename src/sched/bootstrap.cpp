@@ -46,7 +46,13 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
             cache->register_namespace(
                 {.name = "header_context", .extension = ".h", .policy = CachePolicy::Scratch});
             workspace.store.emplace(std::move(*cache));
-            workspace.index_db = index::open_database(*workspace.store, cfg.index_db);
+            // A read-only bootstrap never opens the index database: it
+            // would hold the writer lock for the process lifetime while
+            // committing nothing, starving a concurrent server or index
+            // run. The store's entry points all tolerate its absence.
+            if(!read_only_index) {
+                workspace.index_db = index::open_database(*workspace.store, cfg.index_db);
+            }
             LOG_INFO("Cache store: {}", workspace.store->base_dir());
 
             workspace.load_cache(contexts);
