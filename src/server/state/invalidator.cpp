@@ -219,9 +219,6 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 break;
             }
             case FileEvent::Kind::BufferClosed: {
-                // Disk is the truth again: update the module graph and hand
-                // the file back to the background indexer, whose shard now
-                // supersedes the dropped session's index.
                 workspace.on_file_closed(event.path_id);
                 // Whether the shard's rows still describe the disk decides
                 // how queries treat the file until the reindex lands: a
@@ -242,8 +239,29 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                     break;
                 }
                 auto shard_it = workspace.shards.find(event.path_id);
-                bool shard_current =
-                    shard_it != workspace.shards.end() && shard_it->second.matches_content(*disk);
+                bool has_shard = shard_it != workspace.shards.end();
+                bool shard_current = has_shard && shard_it->second.matches_content(*disk);
+                // A module unit's PCM can be staler than the shard: an
+                // agent-mode reindex reads the rewritten disk while the
+                // artifact keeps the pre-change bytes. Its own deps
+                // snapshot is the judge; checked before the cascade below
+                // erases the entry.
+                auto pcm_it = workspace.pcm_cache.find(event.path_id);
+                bool pcm_stale = pcm_it != workspace.pcm_cache.end() &&
+                                 deps_changed(workspace.path_pool, pcm_it->second.deps);
+                // Disk is the truth again, and this close is the last
+                // chance to act on it: the DiskChanged path deliberately
+                // skips the rescan and the module/dependent cascades while
+                // a buffer is open, and the tracker has already consumed
+                // the event's mtime, so no later sweep will refire it. An
+                // observed divergence — rows or artifact built from bytes
+                // the disk no longer holds — gets the full disk-content
+                // cascade a save would have delivered. A file with no
+                // shard is no evidence either way: indexing simply never
+                // reached it, and cascading would tax every close.
+                if((has_shard && !shard_current) || pcm_stale) {
+                    cascade_disk_content_change(event.path_id, dirty);
+                }
                 if(shard_current) {
                     dirty.add_reindex_deps_only(event.path_id);
                 } else {

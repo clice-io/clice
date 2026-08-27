@@ -347,6 +347,7 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
                                    .system_headers = params.tidy_system_headers,
                                    .extra_args = params.tidy_extra_args,
                                    .extra_args_before = params.tidy_extra_args_before};
+        tidy::apply_compile_args(*cp.tidy, cp.arguments);
     }
     cp.stop = stop;
 

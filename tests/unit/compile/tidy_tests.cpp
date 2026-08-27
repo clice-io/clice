@@ -132,6 +132,29 @@ TEST_CASE(ResolveWithoutConfig) {
     ASSERT_TRUE(tidy::resolve_tidy_params(tmp.path("a.cpp")).checks.empty());
 }
 
+TEST_CASE(ExtraArgsReachCommand) {
+    tidy::TidyParams params;
+    params.extra_args = {"-DFOO=1", "-Wunused"};
+    params.extra_args_before = {"-std=c++17", "-Wall", "-fno-exceptions"};
+
+    // Before-args land after the binary name in order, extra args append
+    // at the end; -W flags stay on the warning-options path.
+    std::vector<const char*> args = {"clang++", "main.cpp"};
+    tidy::apply_compile_args(params, args);
+    std::vector<std::string> applied(args.begin(), args.end());
+    std::vector<std::string> expected = {"clang++",
+                                         "-std=c++17",
+                                         "-fno-exceptions",
+                                         "main.cpp",
+                                         "-DFOO=1"};
+    ASSERT_EQ(applied, expected);
+
+    // A command without a binary name keeps the before-args in front.
+    std::vector<const char*> bare = {"-x", "c++"};
+    tidy::apply_compile_args(params, bare);
+    ASSERT_EQ(llvm::StringRef(bare[0]), "-std=c++17");
+}
+
 };  // TEST_SUITE(ClangTidy)
 }  // namespace
 }  // namespace clice::testing

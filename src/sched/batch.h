@@ -94,8 +94,10 @@ struct BatchLintResult {
 /// Lint the workspace through TURun {tidy} (or {index, tidy}): bootstrap,
 /// run every CDB entry through the family under its .clang-tidy
 /// configuration, and hand each TU's sorted findings to `on_findings` as
-/// it lands. The background sweep stays off — the plan's own runs are the
-/// only consumer of the graph in this process.
+/// it lands. The background pump stays off during the sweep — the plan's
+/// own runs are the only consumer of the graph; with --index the pump
+/// then drains the reindex debt the sweep's merges booked before the
+/// final save.
 BatchLintResult run_batch_lint(
     const BatchLintOptions& options,
     llvm::function_ref<void(llvm::StringRef file, llvm::ArrayRef<worker::TidyDiagnostic>)>

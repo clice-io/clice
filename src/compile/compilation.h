@@ -54,9 +54,12 @@ struct TidyParams {
     /// Also report findings in system headers.
     bool system_headers = false;
 
-    /// Extra compiler args from the configuration, consumed for their
-    /// -W<group> warning flags — the compile command itself is never
-    /// rewritten (the clangd approach, see tidy.cpp).
+    /// Extra compiler args from the configuration. -W<group> flags are
+    /// consumed engine-side by apply_warning_options so the Checks gate
+    /// applies (the clangd approach, see tidy.cpp); a batch lint run
+    /// additionally applies the remaining args to its compile command via
+    /// apply_compile_args, as clang-tidy itself does. The interactive
+    /// command is never rewritten.
     std::vector<std::string> extra_args;
     std::vector<std::string> extra_args_before;
 };
@@ -66,6 +69,14 @@ struct TidyParams {
 /// semantics). Files without any configuration return empty checks — the
 /// consumer's default set applies.
 TidyParams resolve_tidy_params(llvm::StringRef file);
+
+/// Apply the plan's compilation-affecting extra args to a compile command
+/// at clang-tidy's own insertion points: extra_args_before right after the
+/// binary name, extra_args appended at the end. -W flags are withheld —
+/// they reach the diagnostics engine through apply_warning_options, where
+/// the Checks gate applies; on the command they would bypass it. The
+/// inserted pointers alias `params`, which must outlive `arguments`.
+void apply_compile_args(const TidyParams& params, std::vector<const char*>& arguments);
 
 }  // namespace clice::tidy
 

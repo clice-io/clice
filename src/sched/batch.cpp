@@ -393,6 +393,17 @@ kota::task<> run_lint(BatchStack& stack,
     LintSweep sweep;
     co_await kota::with_token(run_lint_sweep(stack, options, tus, sweep, on_findings),
                               stop_source.token());
+    if(options.with_index && !stop_requested) {
+        // The sweep's merges can owe other TUs a reindex (a rebuilt shared
+        // shard dropped their variants), and bootstrap may have claimed
+        // prior-session debt — the sweep runs outside the pump, so nothing
+        // settled any of it. Drain it through the pump like the index
+        // batch does, or an already-linted owner's rows stay missing while
+        // the run exits clean.
+        workspace.config.project.enable_indexing.value = true;
+        stack.pump.schedule(/*immediate=*/true);
+        co_await kota::with_token(wait_until_indexed(stack.pump), stop_source.token());
+    }
     co_await shutdown(stack);
     aux.cancel();
     co_await aux.join();
@@ -405,7 +416,7 @@ kota::task<> run_lint(BatchStack& stack,
 
     result.completed = true;
     result.checked_tus = sweep.checked;
-    result.failed_tus = sweep.failed;
+    result.failed_tus = sweep.failed + stack.pump.failed_files();
     result.findings = sweep.findings;
     // The shutdown save was the last retry: with --index the persisted
     // index is part of the product, so unsaved state must fail the run
@@ -414,7 +425,7 @@ kota::task<> run_lint(BatchStack& stack,
     if(sweep.findings != 0) {
         result.exit_code = 1;
     }
-    if(sweep.failed != 0 || result.unsaved) {
+    if(result.failed_tus != 0 || result.unsaved) {
         result.exit_code = 2;
     }
     result.seconds = timer.ms() / 1000.0;

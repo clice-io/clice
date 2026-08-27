@@ -389,6 +389,75 @@ TEST_CASE(CloseDivergentShardContentChanged) {
     ASSERT_TRUE(dirty.reindex_deps_only.empty());
 }
 
+TEST_CASE(CloseStaleModuleCascades) {
+    // An external rewrite consumed while the interface was open skipped the
+    // module cascade (buffer authoritative) and the tracker will not refire:
+    // the close must deliver it, or importers keep the pre-change PCM.
+    Workspace workspace;
+    SessionStore store;
+    auto mod = workspace.path_pool.intern("/proj/m.cppm");
+    auto user = workspace.path_pool.intern("/proj/user.cpp");
+    workspace.shards[mod] = shard_of("export module m;\nexport int v1();\n");
+    workspace.pcm_cache[mod] = {
+        .path = "/cache/m.pcm",
+        .key = "k",
+        .deps = {.deps = {DepState{.path_id = mod, .missing = true}}},
+    };
+
+    ContextResolver resolver(workspace);
+    PCMHarness ph(workspace, resolver);
+    ph.graph.declare(
+        {
+            turun_family,
+            user
+    },
+        {{pcm_family, mod}});
+    Invalidator invalidator(workspace, store, resolver, ph.pcm, [](llvm::StringRef) {
+        return std::optional<std::string>{"export module m;\nexport int v2();\n"};
+    });
+    auto dirty = invalidator.apply(FileEvent::buffer_closed(mod));
+
+    EXPECT_TRUE(llvm::is_contained(dirty.reindex_content_changed, mod));
+    EXPECT_TRUE(llvm::is_contained(dirty.reindex_deps_only, user));
+    EXPECT_TRUE(workspace.pcm_cache.empty());
+}
+
+TEST_CASE(CloseStalePCMCascades) {
+    // Agent-mode corner: a reindex read the rewritten disk while the file
+    // was open, so the shard is current — but the PCM consumed bytes the
+    // disk no longer holds. The artifact's deps snapshot is the judge, and
+    // the current shard keeps serving (deps-only).
+    Workspace workspace;
+    SessionStore store;
+    auto mod = workspace.path_pool.intern("/proj/m.cppm");
+    auto user = workspace.path_pool.intern("/proj/user.cpp");
+    workspace.shards[mod] = shard_of("export module m;\nexport int v2();\n");
+    workspace.pcm_cache[mod] = {
+        .path = "/cache/m.pcm",
+        .key = "k",
+        .deps = {.deps = {DepState{.path_id = mod, .hash = 1234}}},
+    };
+
+    ContextResolver resolver(workspace);
+    PCMHarness ph(workspace, resolver);
+    ph.graph.declare(
+        {
+            turun_family,
+            user
+    },
+        {{pcm_family, mod}});
+    Invalidator invalidator(workspace, store, resolver, ph.pcm, [](llvm::StringRef) {
+        return std::optional<std::string>{"export module m;\nexport int v2();\n"};
+    });
+    auto dirty = invalidator.apply(FileEvent::buffer_closed(mod));
+
+    llvm::SmallVector<std::uint32_t> reindexed{mod, user};
+    llvm::sort(reindexed);
+    EXPECT_EQ(dirty.reindex_deps_only, reindexed);
+    EXPECT_TRUE(dirty.reindex_content_changed.empty());
+    EXPECT_TRUE(workspace.pcm_cache.empty());
+}
+
 TEST_CASE(CrashMarksLostDirty) {
     Workspace workspace;
     SessionStore store;

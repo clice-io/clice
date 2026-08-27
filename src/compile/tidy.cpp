@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <ranges>
 
 #include "compile/implement.h"
 #include "support/logging.h"
@@ -161,6 +162,23 @@ tidy::ClangTidyOptions create_options(const TidyParams& params) {
         opts.ExtraArgsBefore = params.extra_args_before;
     }
     return opts;
+}
+
+void apply_compile_args(const TidyParams& params, std::vector<const char*>& arguments) {
+    auto non_warning = [](const std::string& arg) {
+        return !llvm::StringRef(arg).starts_with("-W");
+    };
+    // clang-tidy skips the compiler binary name when inserting the
+    // before-args; mirror it so a bare flag list stays a flag list.
+    std::size_t insert_at =
+        !arguments.empty() && !llvm::StringRef(arguments[0]).starts_with("-") ? 1 : 0;
+    for(const auto& arg: params.extra_args_before | std::views::filter(non_warning)) {
+        arguments.insert(arguments.begin() + insert_at, arg.c_str());
+        insert_at += 1;
+    }
+    for(const auto& arg: params.extra_args | std::views::filter(non_warning)) {
+        arguments.push_back(arg.c_str());
+    }
 }
 
 // Filter for clang diagnostics groups enabled by CTOptions.Checks.

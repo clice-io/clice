@@ -148,6 +148,23 @@ test("lint subcommand reports findings", ({ session }) => {
     expect(clean.stdout).toContain("0 findings");
 });
 
+test("lint applies config extra args", ({ session }) => {
+    const ws = session.tmpdir();
+    ws.pinCacheDir();
+    ws.write(".clang-tidy", 'Checks: "-*,bugprone-integer-division"\nExtraArgs: ["-DRATIO_DIV"]\n');
+    // The define exists only through the configuration's ExtraArgs: the
+    // finding proves the frozen plan's args reached the compile command.
+    ws.write(
+        "main.cpp",
+        "#ifdef RATIO_DIV\ndouble ratio(int a, int b) { return a / b; }\n#endif\nint main() { return 0; }\n",
+    );
+    ws.writeCDB(["main.cpp"]);
+
+    const run = runClice("lint", "--workspace", ws.root, "--workers", "2");
+    expect(run.status, `stderr: ${run.stderr}`).toBe(1);
+    expect(run.stdout).toContain("bugprone-integer-division");
+});
+
 test("lint with index persists both", ({ session }) => {
     const ws = session.tmpdir();
     ws.pinCacheDir();
