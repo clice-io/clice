@@ -44,6 +44,26 @@ TEST_CASE(DuplicateModuleDedup) {
     EXPECT_EQ(result[1], 20u);
 }
 
+TEST_CASE(RedeclareKeepsProviderOrder) {
+    clice::DependencyGraph graph;
+    graph.update_module_decl(1, "foo");
+    graph.update_module_decl(2, "foo");
+
+    // Providers are selected by list order: re-declaring the unchanged
+    // name must not rotate the duplicate-name list.
+    graph.update_module_decl(1, "foo");
+    auto result = graph.lookup_module("foo");
+    ASSERT_EQ(result.size(), 2u);
+    EXPECT_EQ(result[0], 1u);
+    EXPECT_EQ(result[1], 2u);
+
+    // A real name change still moves the path.
+    graph.update_module_decl(1, "bar");
+    ASSERT_EQ(graph.lookup_module("foo").size(), 1u);
+    EXPECT_EQ(graph.lookup_module("foo")[0], 2u);
+    ASSERT_EQ(graph.lookup_module("bar").size(), 1u);
+}
+
 TEST_CASE(MultipleModules) {
     clice::DependencyGraph graph;
     graph.add_module("mod.a", 1);

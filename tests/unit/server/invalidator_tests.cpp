@@ -451,6 +451,31 @@ TEST_CASE(CloseRefreshesEdges) {
     EXPECT_FALSE(llvm::is_contained(includes, old_header));
 }
 
+TEST_CASE(CloseFirstProviderCascades) {
+    // An external rewrite can make an open file a module's first provider
+    // with the shard already current (an agent-mode reindex read the
+    // rewritten disk): the close-time edge refresh must reach the name's
+    // sentinel-edged consumers exactly as a save would.
+    TempDir tmp;
+    tmp.touch("m.cppm", "export module m;\n");
+
+    Workspace workspace;
+    SessionStore store;
+    auto iface = workspace.path_pool.intern(tmp.path("m.cppm"));
+    auto importer = workspace.path_pool.intern("/proj/use.cpp");
+
+    auto disk = llvm::MemoryBuffer::getFile(tmp.path("m.cppm"));
+    workspace.shards[iface] = shard_of((*disk)->getBuffer());
+
+    ContextResolver resolver(workspace);
+    PCMHarness ph(workspace, resolver);
+    ph.graph.declare({turun_family, importer}, {PCMFamily::unresolved_node("m")});
+    Invalidator invalidator(workspace, store, resolver, ph.pcm);
+
+    auto dirty = invalidator.apply(FileEvent::buffer_closed(iface));
+    EXPECT_TRUE(llvm::is_contained(dirty.reindex_content_changed, importer));
+}
+
 TEST_CASE(CloseStalePCMCascades) {
     // Agent-mode corner: a reindex read the rewritten disk while the file
     // was open, so the shard is current — but the PCM consumed bytes the

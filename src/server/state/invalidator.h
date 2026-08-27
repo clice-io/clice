@@ -262,6 +262,11 @@ public:
     DirtySet apply(llvm::ArrayRef<FileEvent> events);
 
 private:
+    /// Rescan the file's disk state (include edges, module maps); a module
+    /// name the rescan gave its first provider cascades to the consumers
+    /// holding sentinel edges against it.
+    void rescan_disk_state(std::uint32_t path_id, DirtySet& dirty);
+
     /// The invalidation cascade for "this file's on-disk content is new":
     /// rescan the file's disk state, then split every affected file into
     /// open (recompile) and closed (reindex). Shared by BufferSaved (disk

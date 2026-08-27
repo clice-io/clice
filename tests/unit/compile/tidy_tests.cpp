@@ -140,7 +140,7 @@ TEST_CASE(ExtraArgsReachCommand) {
     // Before-args land after the binary name in order, extra args append
     // at the end; -W flags stay on the warning-options path.
     std::vector<const char*> args = {"clang++", "main.cpp"};
-    tidy::apply_compile_args(params, args);
+    auto owned = tidy::apply_compile_args(params, args);
     std::vector<std::string> applied(args.begin(), args.end());
     std::vector<std::string> expected = {"clang++",
                                          "-std=c++17",
@@ -151,17 +151,26 @@ TEST_CASE(ExtraArgsReachCommand) {
 
     // A command without a binary name keeps the before-args in front.
     std::vector<const char*> bare = {"-x", "c++"};
-    tidy::apply_compile_args(params, bare);
+    auto bare_owned = tidy::apply_compile_args(params, bare);
     ASSERT_EQ(llvm::StringRef(bare[0]), "-std=c++17");
 
-    // A resolved cc1 command keeps -cc1 in mode position, and -Wp, is a
-    // driver pass-through, not a warning flag.
+    // Driver pass-throughs are not warning flags: on a driver command
+    // they apply verbatim.
     tidy::TidyParams pass;
-    pass.extra_args_before = {"-DX=1", "-Wp,-DY=2", "-Wall"};
+    pass.extra_args_before = {"-DX=1", "-Wp,-DY=2,-DZ", "-Wl,-s", "-Wall"};
+    std::vector<const char*> drv = {"clang++", "main.cpp"};
+    auto drv_owned = tidy::apply_compile_args(pass, drv);
+    std::vector<std::string> drv_got(drv.begin(), drv.end());
+    std::vector<std::string> drv_want = {"clang++", "-DX=1", "-Wp,-DY=2,-DZ", "-Wl,-s", "main.cpp"};
+    ASSERT_EQ(drv_got, drv_want);
+
+    // A resolved cc1 command keeps -cc1 in mode position; with no driver
+    // to unwrap pass-throughs, -Wp, splits into its preprocessor
+    // arguments and -Wl,/-Wa, drop.
     std::vector<const char*> cc1 = {"clang", "-cc1", "main.cpp"};
-    tidy::apply_compile_args(pass, cc1);
+    auto cc1_owned = tidy::apply_compile_args(pass, cc1);
     std::vector<std::string> got(cc1.begin(), cc1.end());
-    std::vector<std::string> want = {"clang", "-cc1", "-DX=1", "-Wp,-DY=2", "main.cpp"};
+    std::vector<std::string> want = {"clang", "-cc1", "-DX=1", "-DY=2", "-DZ", "main.cpp"};
     ASSERT_EQ(got, want);
 }
 

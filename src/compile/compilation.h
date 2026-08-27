@@ -74,9 +74,13 @@ TidyParams resolve_tidy_params(llvm::StringRef file);
 /// at clang-tidy's own insertion points: extra_args_before right after the
 /// binary name, extra_args appended at the end. -W flags are withheld —
 /// they reach the diagnostics engine through apply_warning_options, where
-/// the Checks gate applies; on the command they would bypass it. The
-/// inserted pointers alias `params`, which must outlive `arguments`.
-void apply_compile_args(const TidyParams& params, std::vector<const char*>& arguments);
+/// the Checks gate applies; on the command they would bypass it. On a
+/// resolved cc1 command the driver pass-throughs are unwrapped: -Wp, is
+/// comma-split into its preprocessor arguments, -Wl,/-Wa, are dropped.
+/// The applied pointers alias the returned storage, which must outlive
+/// `arguments`.
+[[nodiscard]] std::vector<std::string> apply_compile_args(const TidyParams& params,
+                                                          std::vector<const char*>& arguments);
 
 }  // namespace clice::tidy
 

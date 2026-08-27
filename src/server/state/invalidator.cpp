@@ -91,6 +91,21 @@ void Invalidator::provider_appeared(llvm::StringRef module_name, DirtySet& dirty
     }
 }
 
+void Invalidator::rescan_disk_state(std::uint32_t path_id, DirtySet& dirty) {
+    auto old_module = workspace.path_to_module.lookup(path_id);
+    workspace.rescan_after_save(path_id);
+
+    // A rescan that introduced a module declaration may have given the
+    // name its first provider: consumers that scanned it unresolved hold
+    // edges to its sentinel, not to any real node a module-graph cascade
+    // could reach.
+    if(auto it = workspace.path_to_module.find(path_id);
+       it != workspace.path_to_module.end() && it->second != old_module &&
+       workspace.dep_graph.lookup_module(it->second).size() == 1) {
+        provider_appeared(it->second, dirty);
+    }
+}
+
 void Invalidator::cascade_disk_content_change(std::uint32_t path_id, DirtySet& dirty) {
     // The file's own self-containment may have changed; re-evaluate on its
     // next compile.
@@ -107,19 +122,8 @@ void Invalidator::cascade_disk_content_change(std::uint32_t path_id, DirtySet& d
     // Rescan disk state (include edges, module declaration); then cascade
     // through the module graph — importers' build products went stale, and
     // the cascade names every affected module unit.
-    auto old_module = workspace.path_to_module.lookup(path_id);
-    workspace.rescan_after_save(path_id);
+    rescan_disk_state(path_id, dirty);
     cascade_compile_graph(path_id, dirty);
-
-    // A save that introduced a module declaration may have given the name
-    // its first provider: consumers that scanned it unresolved hold
-    // edges to its sentinel, not to any real node the cascade above
-    // could reach.
-    if(auto it = workspace.path_to_module.find(path_id);
-       it != workspace.path_to_module.end() && it->second != old_module &&
-       workspace.dep_graph.lookup_module(it->second).size() == 1) {
-        provider_appeared(it->second, dirty);
-    }
 
     // The new content is a compile input of every TU that transitively
     // includes it: open dependents recompile, closed ones reindex so
@@ -267,8 +271,10 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                     // rewritten disk while the include graph kept the
                     // pre-change edges (open files skip the rescan).
                     // Refresh the edges alone — the rows are proven
-                    // current, so no cascade.
-                    workspace.rescan_after_save(event.path_id);
+                    // current, so no content cascade; a module name the
+                    // rewrite introduced still reaches its sentinel-edged
+                    // consumers through the rescan.
+                    rescan_disk_state(event.path_id, dirty);
                 }
                 if(shard_current) {
                     dirty.add_reindex_deps_only(event.path_id);

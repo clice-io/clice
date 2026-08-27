@@ -3,6 +3,7 @@
 #include <limits>
 #include <memory>
 
+#include "test/cdb_helper.h"
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "command/argument_parser.h"
@@ -21,6 +22,8 @@
 #include "sched/index/store.h"
 #include "sched/workspace.h"
 #include "server/worker_test_helpers.h"
+#include "support/cache_store.h"
+#include "syntax/dependency_graph.h"
 #include "worker/pool.h"
 
 #include "kota/ipc/lsp/text.h"
@@ -2999,6 +3002,81 @@ TEST_CASE(BoostRearmsIdleTimer) {
 }
 
 };  // TEST_SUITE(IndexReports)
+
+TEST_SUITE(TURunLint) {
+
+TEST_CASE(ModuleLintScanParity) {
+    // A module unit's own PCM round scans under its base command: only
+    // the lint round's extras-applied scan can discover an import the
+    // extra args gate, and edge it so the PCM exists when the worker's
+    // parse (which sees the extras) consumes it. Only n.cppm runs, so
+    // the import's PCM cannot arrive any other way.
+    TempDir tmp;
+    tmp.touch("m.cppm", "export module m;\nexport int mv() { return 1; }\n");
+    tmp.touch("n.cppm",
+              "export module n;\n"
+              "#ifdef USE_M\n"
+              "import m;\n"
+              "export double half(int a, int b) { return a / b; }\n"
+              "#endif\n");
+
+    IndexerFixture f;
+    write_cdb(tmp,
+              f.workspace.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("m.cppm"), {}},
+                  {tmp.root, tmp.path("n.cppm"), {}},
+    }));
+    scan_dependency_graph(f.workspace.cdb,
+                          f.workspace.toolchain,
+                          f.workspace.path_pool,
+                          f.workspace.dep_graph);
+    f.workspace.dep_graph.build_reverse_map();
+    f.workspace.build_module_map();
+
+    auto store = CacheStore::open(tmp.path("root"), 1);
+    ASSERT_TRUE(store.has_value());
+    store->register_namespace(
+        {.name = "pcm", .extension = ".pcm", .policy = CachePolicy::LRU, .max_bytes = 1ull << 30});
+    f.workspace.store.emplace(std::move(*store));
+
+    f.pcm.register_runner();
+
+    TURunFamily::Plan plan;
+    plan.tidy = true;
+    plan.tidy_params.checks = "-*,bugprone-integer-division";
+    plan.tidy_params.extra_args = {"-DUSE_M"};
+
+    auto n_id = f.workspace.path_pool.intern(tmp.path("n.cppm"));
+    TURunFamily::Outcome outcome;
+    bool done = false;
+    auto body = [&]() -> kota::task<> {
+        WorkerPoolOptions opts;
+        opts.self_path = clice_binary();
+        opts.stateless_count = 1;
+        opts.stateful_count = 0;
+        CO_ASSERT_TRUE(f.pool.start(opts));
+        co_await kota::sleep(500);
+
+        outcome = co_await f.turun.run(n_id, std::move(plan), {});
+
+        co_await f.graph.shutdown();
+        co_await f.pool.stop();
+        done = true;
+    };
+    auto task = body();
+    f.loop.schedule(task);
+    f.loop.run();
+    EXPECT_TRUE(done);
+
+    EXPECT_TRUE(outcome.verdict == TURunFamily::Verdict::Completed);
+    // The finding inside the gated region proves the parse saw the
+    // extras and consumed the edge-built PCM.
+    ASSERT_FALSE(outcome.tidy_diagnostics.empty());
+    EXPECT_EQ(outcome.tidy_diagnostics[0].check, "bugprone-integer-division");
+}
+
+};  // TEST_SUITE(TURunLint)
 
 }  // namespace
 }  // namespace clice::testing

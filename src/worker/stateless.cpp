@@ -337,6 +337,7 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
     for(auto& [name, path]: params.pcms) {
         cp.pcms.try_emplace(name, path);
     }
+    std::vector<std::string> tidy_extra_storage;
     if(params.tidy) {
         cp.tidy = tidy::TidyParams{.checks = params.tidy_checks,
                                    .fast_only = false,
@@ -347,7 +348,7 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
                                    .system_headers = params.tidy_system_headers,
                                    .extra_args = params.tidy_extra_args,
                                    .extra_args_before = params.tidy_extra_args_before};
-        tidy::apply_compile_args(*cp.tidy, cp.arguments);
+        tidy_extra_storage = tidy::apply_compile_args(*cp.tidy, cp.arguments);
     }
     cp.stop = stop;
 

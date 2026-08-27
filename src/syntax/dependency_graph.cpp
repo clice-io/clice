@@ -29,6 +29,12 @@ void DependencyGraph::add_module(llvm::StringRef module_name, std::uint32_t path
 }
 
 void DependencyGraph::update_module_decl(std::uint32_t path_id, llvm::StringRef module_name) {
+    // Re-declaring the unchanged name is a no-op: providers are selected
+    // by list order, so an erase-and-append would silently reselect
+    // among a duplicated name's providers without any cascade.
+    if(!module_name.empty() && llvm::is_contained(lookup_module(module_name), path_id)) {
+        return;
+    }
     // An emptied name stays behind as an empty provider list — lookup
     // treats it the same as absent.
     for(auto& entry: module_to_path) {

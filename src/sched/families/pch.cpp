@@ -40,10 +40,13 @@ NodeId PCHFamily::prepare(Request request, std::function<void(llvm::StringRef)> 
         graph.update(id);
     }
 
-    // No round live means the caller's join spawns one synchronously —
-    // that caller is the dispatch owner: stash its inputs and probe for
-    // the round. (On a clean fresh node the stash is never consumed.)
-    if(!graph.is_compiling(id)) {
+    // The caller's join spawns a round synchronously only for a dirty
+    // node with no round live (a missing node is created dirty) — that
+    // caller is the dispatch owner: stash its inputs and probe for the
+    // round. A clean fresh node's join consumes nothing, and a stash left
+    // there would pin the request's buffer and the probe's captured
+    // session in the monotonic table for as long as the key stays fresh.
+    if(!graph.is_compiling(id) && (!graph.has_node(id) || graph.is_dirty(id))) {
         states[key_id] = {std::move(request), std::move(on_crash)};
     }
     return id;
@@ -229,6 +232,12 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
         }
         outcome.index_path = std::move(*index_path);
         outcome.state = load_pch_envelope(*outcome.index_path);
+        // A committed envelope that fails verification is as unusable as
+        // an uncommitted one: retract the pair rather than publish a PCH
+        // whose preamble state every consumer would fail to load.
+        if(!outcome.state) {
+            workspace.store->invalidate("pch", pch_key);
+        }
         return outcome;
     });
     if(!committed.has_value() || !committed.value().pch_path.has_value()) {
@@ -240,6 +249,13 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
         // A rebuild of an existing key just had its blobs retracted from
         // the store; the entry's paths now dangle and a settled entry
         // would revalidate as a hit against deleted blobs. Drop it.
+        workspace.pch_cache.erase(pch_key);
+        co_return RoundOutcome::Failed;
+    }
+    if(!committed.value().state) {
+        LOG_WARN("Freshly committed pch.idx envelope for {} is unreadable", bp.file);
+        // The commit job retracted the pair; drop the entry for the same
+        // dangling-paths reason as above.
         workspace.pch_cache.erase(pch_key);
         co_return RoundOutcome::Failed;
     }
