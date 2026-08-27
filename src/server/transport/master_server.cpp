@@ -11,6 +11,7 @@
 #include "server/transport/agent_client.h"
 #include "server/transport/lsp_client.h"
 #include "support/anomaly.h"
+#include "support/cache_store.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 #include "support/timer.h"
@@ -111,6 +112,10 @@ void MasterServer::initialize() {
             LOG_WARN("Unknown readonly '{}'; using off", std::string(cfg.readonly));
         }
         ast.readonly = ReadonlyMode::Off;
+    }
+
+    if(cfg.cache_dir_defaulted.value) {
+        CacheStore::write_ignore_markers(cfg.cache_dir);
     }
 
     if(!cfg.logging_dir.empty()) {

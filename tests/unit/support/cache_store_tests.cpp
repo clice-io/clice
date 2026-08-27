@@ -111,6 +111,16 @@ TEST_CASE(RootIgnoreMarkers) {
     ASSERT_TRUE(llvm::StringRef(tag).starts_with("Signature: 8a477f597d28d172789f06886806bc55"));
 }
 
+TEST_CASE(MarkersCreateRoot) {
+    TempDir tmp;
+
+    // Sessions mark the defaulted root before anything else creates it.
+    CacheStore::write_ignore_markers(tmp.path("fresh"));
+
+    ASSERT_EQ(fs::read(tmp.path("fresh/.gitignore")).value_or(""), "*\n!config.toml\n");
+    ASSERT_TRUE(llvm::sys::fs::exists(tmp.path("fresh/CACHEDIR.TAG")));
+}
+
 TEST_CASE(IgnoreMarkersPreserved) {
     TempDir tmp;
     { auto store = open_store(tmp); }

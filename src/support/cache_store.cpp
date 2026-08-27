@@ -396,6 +396,10 @@ void CacheStore::write_ignore_markers(llvm::StringRef root) {
     // scans cache/. The known cost is that CACHEDIR-aware backups also
     // skip a config.toml kept here — git, which sees it, is the intended
     // preservation channel.
+    if(auto ec = llvm::sys::fs::create_directories(root)) {
+        LOG_WARN("CacheStore: cannot create {}: {}", root, ec.message());
+        return;
+    }
     auto write_marker = [](llvm::StringRef path, llvm::StringRef content) {
         // CD_CreateNew makes creation the existence check, so a marker
         // that appears concurrently is never overwritten either.
@@ -408,6 +412,16 @@ void CacheStore::write_ignore_markers(llvm::StringRef root) {
         }
         llvm::raw_fd_ostream out(fd, /*shouldClose=*/true);
         out << content;
+        out.close();
+        if(out.has_error()) {
+            LOG_WARN("CacheStore: cannot write {}: {}", path, out.error().message());
+            // An uncleared error aborts in the stream's destructor.
+            out.clear_error();
+            // CD_CreateNew proved this call created the file, so removing
+            // the partial marker clobbers no concurrent writer and lets a
+            // later session retry.
+            llvm::sys::fs::remove(path);
+        }
     };
     write_marker(path::join(root, ".gitignore"), "*\n!config.toml\n");
     write_marker(path::join(root, "CACHEDIR.TAG"),

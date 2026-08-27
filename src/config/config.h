@@ -57,9 +57,10 @@ struct ProjectConfig {
                          "index artifacts). Empty defaults to `${workspace}/.clice`, "
                          "which keeps itself out of version control and backups via "
                          "generated .gitignore and CACHEDIR.TAG markers (a "
-                         "`.clice/config.toml` stays visible); an explicitly "
-                         "configured directory is never marked. The resolved path "
-                         "is printed at startup.")
+                         "`.clice/config.toml` stays visible to Git; backup tools "
+                         "honoring CACHEDIR.TAG skip the whole directory); an "
+                         "explicitly configured directory is never marked. The "
+                         "resolved path is printed at startup.")
     <std::string> cache_dir;
 
     /// Whether finalize() derived cache_dir rather than the user setting

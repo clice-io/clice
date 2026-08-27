@@ -15,6 +15,7 @@
 #include "sched/index/store.h"
 #include "sched/workspace.h"
 #include "support/anomaly.h"
+#include "support/cache_store.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 #include "support/timer.h"
@@ -125,6 +126,10 @@ bool start_batch(BatchStack& stack,
         cfg.stateless_worker_count.value = workers;
         cfg.min_stateless_worker_count.value = workers;
         cfg.max_stateless_worker_count.value = workers;
+    }
+
+    if(cfg.cache_dir_defaulted.value) {
+        CacheStore::write_ignore_markers(cfg.cache_dir);
     }
 
     std::string session_log_dir;
