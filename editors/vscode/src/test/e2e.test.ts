@@ -11,6 +11,7 @@ import type {
 } from "@clice/tools/protocol" with { "resolution-mode": "import" };
 
 import { resyncDocument } from "../feature/context";
+import { inactiveRuns } from "../feature/inactive";
 
 // E2E smoke tests against a real clice binary. The binary path comes from
 // CLICE_EXECUTABLE; without it (plain `npm test`) the suite is skipped.
@@ -49,6 +50,36 @@ const scenarios: Record<string, Scenario> = {
         indexSymbol: "calc",
     },
 };
+
+// Pure decoding of the inactive-modifier line runs; no server involved.
+// Entries are (deltaLine, deltaStart, length, type, modifiers) tuples.
+suite("inactive run decoding", function () {
+    const MASK = 1 << 3;
+
+    test("merges runs and bridges token-free gaps", function () {
+        const data = [
+            ...[1, 0, 3, 0, MASK], // line 1, inactive
+            ...[2, 0, 3, 0, MASK], // line 3: the blank line between bridges
+            ...[1, 0, 3, 0, 0], // line 4, active — ends the run
+            ...[2, 0, 3, 0, MASK], // line 6, a separate region
+        ];
+        assert.deepStrictEqual(inactiveRuns(data, MASK), [
+            [1, 3],
+            [6, 6],
+        ]);
+    });
+
+    test("several tokens on one line", function () {
+        const data = [...[0, 0, 2, 0, MASK], ...[0, 3, 2, 0, MASK]];
+        assert.deepStrictEqual(inactiveRuns(data, MASK), [[0, 0]]);
+    });
+
+    test("empty without the modifier", function () {
+        assert.deepStrictEqual(inactiveRuns([1, 0, 3, 0, 0], MASK), []);
+        assert.deepStrictEqual(inactiveRuns([], MASK), []);
+        assert.deepStrictEqual(inactiveRuns([1, 0, 3, 0, MASK], 0), []);
+    });
+});
 
 suite("clice E2E", function () {
     // The bundled variant runs the server staged under clice/ by .vscode-test.mjs;

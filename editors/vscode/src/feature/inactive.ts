@@ -2,12 +2,44 @@ import * as vscode from "vscode";
 import type { DocumentSemanticsTokensSignature } from "vscode-languageclient/node";
 import type { ClientHandle } from "../client";
 
+/// Line runs `[startLine, endLine]` of tokens carrying `mask`, merged in
+/// stream order. Inactive regions are whole lines by construction (the
+/// server scans from the line after the opening directive to the line
+/// before the closing one), so an untagged token — which can only sit on
+/// an active line — ends a run, while token-free gaps inside a region
+/// (blank lines, bare punctuation) bridge it. Exported for the e2e suite.
+export function inactiveRuns(data: ArrayLike<number>, mask: number): [number, number][] {
+    const runs: [number, number][] = [];
+    let line = 0;
+    let runStart = -1;
+    let runEnd = -1;
+    const flush = () => {
+        if (runStart >= 0) {
+            runs.push([runStart, runEnd]);
+        }
+        runStart = -1;
+    };
+    for (let i = 0; i + 4 < data.length; i += 5) {
+        line += data[i] ?? 0;
+        if (((data[i + 4] ?? 0) & mask) === 0) {
+            flush();
+            continue;
+        }
+        if (runStart < 0) {
+            runStart = line;
+        }
+        runEnd = line;
+    }
+    flush();
+    return runs;
+}
+
 /// Renders preprocessor-inactive regions dimmed, like unreachable code.
 /// The server tags every token inside an inactive region with the
 /// `inactive` semantic token modifier (bare identifiers travel as the
 /// deliberately unstyled `identifier` type so they have a token to
 /// carry it). This middleware decodes the token stream VS Code pulls
-/// anyway, merges tagged tokens into whole-line ranges and dims them
+/// anyway, expands the tagged runs to whole-line ranges and dims them
 /// with an opacity decoration — TextMate keeps the syntax colors
 /// underneath. Recompiles that move regions without an edit (context
 /// switches, changed headers) arrive through the server's
@@ -36,45 +68,23 @@ export function registerInactiveRegions(
         return index < 0 ? 0 : 1 << index;
     }
 
-    /// Inactive regions are whole lines by construction (the server scans
-    /// from the line after the opening directive to the line before the
-    /// closing one), so tagged tokens merge into line runs: an untagged
-    /// token ends a run — it can only sit on an active line — while
-    /// token-free gaps inside a region (blank lines, bare punctuation)
-    /// bridge it. Expanding each run to full lines then covers those
-    /// gaps without ever touching an active line.
-    function decode(document: vscode.TextDocument, data: Uint32Array): vscode.Range[] {
+    function ranges(
+        document: vscode.TextDocument,
+        tokens: vscode.SemanticTokens | null | undefined,
+    ): vscode.Range[] {
         const mask = inactiveMask();
-        if (mask === 0) {
+        if (!tokens || mask === 0) {
             return [];
         }
-        const ranges: vscode.Range[] = [];
         // The response may describe a version the buffer already moved
         // past; clamping keeps lineAt in bounds until the re-pull.
         const lastLine = document.lineCount - 1;
-        let line = 0;
-        let runStart = -1;
-        let runEnd = -1;
-        const flush = () => {
-            if (runStart >= 0 && runStart <= lastLine) {
-                const end = Math.min(runEnd, lastLine);
-                ranges.push(new vscode.Range(runStart, 0, end, document.lineAt(end).text.length));
-            }
-            runStart = -1;
-        };
-        for (let i = 0; i + 4 < data.length; i += 5) {
-            line += data[i];
-            if ((data[i + 4] & mask) === 0) {
-                flush();
-                continue;
-            }
-            if (runStart < 0) {
-                runStart = line;
-            }
-            runEnd = line;
-        }
-        flush();
-        return ranges;
+        return inactiveRuns(tokens.data, mask)
+            .filter(([start]) => start <= lastLine)
+            .map(([start, end]) => {
+                const clamped = Math.min(end, lastLine);
+                return new vscode.Range(start, 0, clamped, document.lineAt(clamped).text.length);
+            });
     }
 
     ext.subscriptions.push(
@@ -89,8 +99,11 @@ export function registerInactiveRegions(
 
     return async (document, token, next) => {
         const tokens = await next(document, token);
-        if (tokens) {
-            byUri.set(document.uri.toString(), decode(document, tokens.data));
+        // A cancelled request says nothing about the document; any other
+        // response is authoritative — including null, which must clear
+        // stale dimming instead of leaving it applied indefinitely.
+        if (!token.isCancellationRequested) {
+            byUri.set(document.uri.toString(), ranges(document, tokens));
             for (const editor of vscode.window.visibleTextEditors) {
                 if (editor.document.uri.toString() === document.uri.toString()) {
                     apply(editor);

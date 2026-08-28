@@ -60,7 +60,8 @@ auto to_protocol_symbol_kind(SymbolKind kind) -> protocol::SymbolKind {
         case SymbolKind::Brace:
         case SymbolKind::Angle: return Operator;
         case SymbolKind::Conflict:
-        case SymbolKind::Invalid: return Variable;
+        case SymbolKind::Invalid:
+        case SymbolKind::Identifier: return Variable;
     }
 
     return Variable;

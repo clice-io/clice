@@ -339,6 +339,10 @@ void LSPClient::register_document_sync() {
         // pushed, and publishDiagnostics may not flow yet (push_output
         // drops the clear while !client_ready).
         auto [path, path_id, session] = resolve_uri(params.text_document.uri);
+        // LSP versions are scoped to an open document: a reopen restarts
+        // them, so a stale entry would misread the fresh document's first
+        // compile as an unchanged-text recompile.
+        published_versions.erase(path_id);
         srv.close_session(path_id);
     });
 
