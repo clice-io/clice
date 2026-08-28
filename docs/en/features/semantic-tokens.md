@@ -1481,8 +1481,9 @@ regions dimmed out of the box; other editors style the modifier directly
 
 ## Changelog
 
-| Date       | Change                                                                    | PR                                                 |
-| ---------- | ------------------------------------------------------------------------- | -------------------------------------------------- |
-| 2026-08-01 | Explicit instantiation directive names pinned as unpainted until clang 23 | [#571](https://github.com/clice-io/clice/pull/571) |
-| 2024-11-26 | Full document tokens (`textDocument/semanticTokens/full`)                 | —                                                  |
-| 2024-09-16 | Initial semantic token types and modifiers                                | —                                                  |
+| Date       | Change                                                                     | PR                                                 |
+| ---------- | -------------------------------------------------------------------------- | -------------------------------------------------- |
+| 2026-08-28 | Inactive regions carried as the `inactive` modifier; push protocol removed | [#644](https://github.com/clice-io/clice/pull/644) |
+| 2026-08-01 | Explicit instantiation directive names pinned as unpainted until clang 23  | [#571](https://github.com/clice-io/clice/pull/571) |
+| 2024-11-26 | Full document tokens (`textDocument/semanticTokens/full`)                  | —                                                  |
+| 2024-09-16 | Initial semantic token types and modifiers                                 | —                                                  |
