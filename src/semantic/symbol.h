@@ -50,12 +50,12 @@ struct SymbolKind {
         Conflict,        ///> This token have multiple kinds.
         Primitive,       ///< C/C++ built-in primitive type keyword.
         Invalid,
-        /// An identifier with no classification. Only emitted inside
-        /// inactive regions, where bare identifiers still need a token to
-        /// carry the Inactive modifier; deliberately unstyled everywhere
-        /// (no superType, no scope mapping), so editors keep their own
-        /// syntax coloring for it. Appended past Invalid: persisted index
-        /// blobs store these values.
+        /// A token with no classification — a bare identifier or plain
+        /// punctuation. Only emitted inside inactive regions, where every
+        /// token needs a carrier for the Inactive modifier; deliberately
+        /// unstyled everywhere (no superType, no scope mapping), so
+        /// editors keep their own syntax coloring for it. Appended past
+        /// Invalid: persisted index blobs store these values.
         Identifier,
     };
 

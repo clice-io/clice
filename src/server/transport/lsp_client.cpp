@@ -813,10 +813,10 @@ void LSPClient::push_output(const Session& session) {
     // holds: index projections served while this compile was pending
     // (their answers just got better), and a compile that landed for
     // unchanged text — a context switch or a changed dependency reshapes
-    // tokens, hints and folds (inactive regions travel as semantic tokens
-    // now) with no didChange to trigger the client's own re-pull.
-    // Edit-driven compiles need neither: the client re-pulls on didChange
-    // and that pull awaits the fresh AST.
+    // tokens (including their inactive regions), hints and folds with no
+    // didChange to trigger the client's own re-pull. Edit-driven compiles
+    // need neither: the client re-pulls on didChange and that pull awaits
+    // the fresh AST.
     if(output.version.has_value()) {
         auto [it, inserted] = published_versions.try_emplace(session.path_id, *output.version);
         bool same_text = !inserted && it->second == *output.version;

@@ -4,7 +4,6 @@
 #include <memory>
 #include <optional>
 #include <string>
-#include <unordered_map>
 
 #include "support/signal.h"
 
@@ -12,6 +11,7 @@
 #include "kota/codec/json/json.h"
 #include "kota/ipc/codec/json.h"
 #include "kota/ipc/lsp/progress.h"
+#include "llvm/ADT/DenseMap.h"
 
 namespace clice {
 
@@ -46,11 +46,11 @@ private:
     /// Push clice.toml load problems as diagnostics on the config file URI.
     void publish_config_diagnostics();
 
-    /// Push a session's materialized compile output (diagnostics and
-    /// inactive regions) to the client. Invoked by the compiler's
-    /// on_output signal, and by the initialized handler to replay outputs
-    /// that materialized before the client was ready. No-op until
-    /// client_ready.
+    /// Push a session's materialized compile output (diagnostics, plus
+    /// the refresh requests a landing warrants) to the client. Invoked by
+    /// the compiler's on_output signal, and by the initialized handler to
+    /// replay outputs that materialized before the client was ready.
+    /// No-op until client_ready.
     void push_output(const Session& session);
 
     /// React to a background-indexing progress change: drive the LSP
@@ -93,7 +93,7 @@ private:
     /// landing for an already-published version means the text did not
     /// change, so the client's pulled results went stale without any
     /// didChange to make it re-pull — the push path sends refreshes.
-    std::unordered_map<std::uint32_t, int> published_versions;
+    llvm::DenseMap<std::uint32_t, int> published_versions;
 
     /// Subscription to compile outputs; disconnects on destruction.
     Signal<std::shared_ptr<Session>>::Connection output_conn;

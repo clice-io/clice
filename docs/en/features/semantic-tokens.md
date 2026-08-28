@@ -112,7 +112,7 @@ Kinds derived from the token stream itself, independent of the AST.
 
   </details>
 
-- [x] Inactive regions — tokens in untaken branches keep their lexical kinds and carry the `inactive` modifier; unclassified identifiers become plain `identifier` tokens
+- [x] Inactive regions — tokens in untaken branches keep their lexical kinds and carry the `inactive` modifier; unclassified tokens become plain `identifier` carriers, so even a lone `}` line dims
 
   <details>
   <summary>Example</summary>
@@ -138,6 +138,12 @@ Kinds derived from the token stream itself, independent of the AST.
   elif_branch;
   #else
   int taken = 4;
+  #endif
+
+  #if 0
+  void edge() {
+      inner(5);
+  }
   #endif
   ```
 
@@ -1446,11 +1452,12 @@ Curated issues without a fixture yet:
 
 Every token inside an untaken preprocessor branch carries the `inactive`
 modifier while keeping its lexical kind, so editors dim the region by
-styling the modifier without losing the syntax colors underneath. Bare
-identifiers in dead code have no classification and are emitted as the
-plain `identifier` type, giving the whole region token coverage. The
-clice VS Code extension renders the regions dimmed out of the box; other
-editors style the modifier directly (e.g. `@lsp.mod.inactive` in Neovim).
+styling the modifier without losing the syntax colors underneath. Tokens
+without a classification in dead code — bare identifiers and plain
+punctuation — are emitted as the unstyled `identifier` type, giving the
+whole region token coverage. The clice VS Code extension renders the
+regions dimmed out of the box; other editors style the modifier directly
+(e.g. `@lsp.mod.inactive` in Neovim).
 
 - [x] Dim inactive preprocessor branches ([clangd#132](https://github.com/clangd/clangd/issues/132))
 - [x] Correct inactive boundaries with `#elif` chains ([clangd#602](https://github.com/clangd/clangd/issues/602))

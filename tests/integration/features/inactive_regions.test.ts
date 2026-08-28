@@ -7,6 +7,7 @@
 /// (conditions inside the bound never replay in the AST compile); a #if
 /// cut by the bound resumes via the open-conditional stack.
 
+import { sleep } from "@clice/tools/client";
 import { expect, test } from "../fixtures.ts";
 
 test("inactive after bound", async ({ session }) => {
@@ -55,6 +56,57 @@ test("inactive across bound", async ({ session }) => {
     await client.initialize(workspace);
     const [uri] = await client.openAndWait("render.h");
     expect(await client.inactiveLines(uri)).toEqual([4]);
+});
+
+test("inactive flips on context switch", async ({ session }) => {
+    // A context switch recompiles the same document version, so the
+    // client has no didChange to re-pull on: the landed compile must
+    // fire workspace/semanticTokens/refresh, and the re-pulled tokens
+    // carry the other branch's inactive lines.
+    const { client, workspace } = session.tmp();
+    workspace.write(
+        "render.h",
+        "#pragma once\n" +
+            "#if defined(USE_VULKAN)\n" +
+            'inline const char* backend() { return "vk"; }\n' +
+            "#elif defined(USE_METAL)\n" +
+            'inline const char* backend() { return "mt"; }\n' +
+            "#endif\n",
+    );
+    workspace.write("render_vk.cpp", '#include "render.h"\nint main() { return backend()[0]; }\n');
+    workspace.write("render_mt.cpp", '#include "render.h"\nint main() { return backend()[0]; }\n');
+    workspace.writeEntries([
+        ["render_vk.cpp", ["-DUSE_VULKAN"]],
+        ["render_mt.cpp", ["-DUSE_METAL"]],
+    ]);
+
+    await client.initialize(workspace, {
+        capabilities: { workspace: { semanticTokens: { refreshSupport: true } } },
+    });
+    const [uri] = await client.openAndWait("render.h");
+    const before = await client.inactiveLines(uri);
+    // Whichever host was ranked default, exactly one branch is dead.
+    expect([[2], [4]]).toContainEqual(before);
+
+    const target = before[0] === 4 ? "render_mt.cpp" : "render_vk.cpp";
+    const { contexts } = await client.queryContext(uri);
+    const host = contexts.find((c) => c.uri.includes(target));
+    expect(host, `no ${target} context in ${JSON.stringify(contexts)}`).toBeDefined();
+
+    const marker = client.serverRequests.length;
+    const switched = await client.switchContext(uri, host!.uri);
+    expect(switched.success).toBe(true);
+    await client.waitForRecompile(uri);
+
+    // The refresh request rides its own task after the diagnostics push.
+    const deadline = Date.now() + 10_000;
+    const refreshed = () =>
+        client.serverRequests.slice(marker).includes("workspace/semanticTokens/refresh");
+    while (!refreshed() && Date.now() < deadline) {
+        await sleep(50);
+    }
+    expect(refreshed(), "no semanticTokens refresh after the switch").toBe(true);
+    expect(await client.inactiveLines(uri)).toEqual(before[0] === 4 ? [2] : [4]);
 });
 
 test("inactive else branch", async ({ session }) => {

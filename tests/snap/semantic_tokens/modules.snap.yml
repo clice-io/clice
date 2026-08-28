@@ -25,5 +25,7 @@ input_file: modules.cpp
 - { loc: "17:0", text: "#if", kind: directive }
 - { loc: "17:4", text: "0", kind: number }
 - { loc: "18:0", text: "module", kind: identifier, modifiers: [inactive] }
+- { loc: "18:7", text: ":", kind: identifier, modifiers: [inactive] }
 - { loc: "18:8", text: "private", kind: keyword, modifiers: [inactive] }
+- { loc: "18:15", text: ";", kind: identifier, modifiers: [inactive] }
 - { loc: "19:0", text: "#endif", kind: directive }

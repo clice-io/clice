@@ -291,10 +291,11 @@ private:
             result.kind = SymbolKind::Conflict;
         }
 
-        /// A bare identifier in an inactive region classifies as nothing,
-        /// yet still needs a token to carry the Inactive modifier.
-        if(result.kind == SymbolKind::Invalid && clang::tok::isAnyIdentifier(token.kind()) &&
-           inactive(range)) {
+        /// Unclassified tokens in an inactive region (bare identifiers,
+        /// punctuation) still need a token to carry the Inactive modifier
+        /// — a region edge line holding only a `}` would otherwise have
+        /// nothing to dim.
+        if(result.kind == SymbolKind::Invalid && inactive(range)) {
             result.kind = SymbolKind::Identifier;
         }
 

@@ -68,7 +68,7 @@ export function registerInactiveRegions(
         return index < 0 ? 0 : 1 << index;
     }
 
-    function ranges(
+    function dimRanges(
         document: vscode.TextDocument,
         tokens: vscode.SemanticTokens | null | undefined,
     ): vscode.Range[] {
@@ -103,7 +103,7 @@ export function registerInactiveRegions(
         // response is authoritative — including null, which must clear
         // stale dimming instead of leaving it applied indefinitely.
         if (!token.isCancellationRequested) {
-            byUri.set(document.uri.toString(), ranges(document, tokens));
+            byUri.set(document.uri.toString(), dimRanges(document, tokens));
             for (const editor of vscode.window.visibleTextEditors) {
                 if (editor.document.uri.toString() === document.uri.toString()) {
                     apply(editor);

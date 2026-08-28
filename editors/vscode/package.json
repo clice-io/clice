@@ -195,7 +195,7 @@
       },
       {
         "id": "identifier",
-        "description": "Identifier without semantic classification, emitted only inside inactive preprocessor regions. Deliberately unstyled (no superType) so the editor's own syntax coloring shows through."
+        "description": "Token without semantic classification (a bare identifier or plain punctuation), emitted only inside inactive preprocessor regions. Deliberately unstyled (no superType) so the editor's own syntax coloring shows through."
       }
     ],
     "semanticTokenModifiers": [
