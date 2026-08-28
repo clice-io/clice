@@ -1,3 +1,5 @@
+#include <algorithm>
+
 #include "compile/directive.h"
 #include "feature/feature.h"
 
@@ -143,6 +145,27 @@ InactiveScan inactive_regions(CompilationUnitRef unit,
         }
         result.open_stack.push_back(encoded);
         close_pending(level, end_offset);
+    }
+
+    // Nested conditionals close inner regions before the enclosing one, so
+    // the list arrives unordered with inner regions contained in outer
+    // ones. Canonicalize to the sorted disjoint form consumers walk with a
+    // single cursor.
+    auto& regions = result.regions;
+    std::vector<std::pair<std::uint32_t, std::uint32_t>> pairs;
+    pairs.reserve(regions.size() / 2);
+    for(std::size_t i = 0; i + 1 < regions.size(); i += 2) {
+        pairs.emplace_back(regions[i], regions[i + 1]);
+    }
+    std::ranges::sort(pairs);
+    regions.clear();
+    for(auto [begin, end]: pairs) {
+        if(!regions.empty() && begin <= regions.back()) {
+            regions.back() = std::max(regions.back(), end);
+        } else {
+            regions.push_back(begin);
+            regions.push_back(end);
+        }
     }
 
     return result;

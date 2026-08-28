@@ -44,6 +44,11 @@ const SYMBOL_MODIFIERS = [
     "UsedAsMutablePointer",
     "ConstructorOrDestructor",
     "UserDefined",
+    "FunctionScope",
+    "ClassScope",
+    "FileScope",
+    "GlobalScope",
+    "Inactive",
 ];
 
 export function rawSemanticTokenPieces(result: unknown, stripped: Buffer): TokenPiece[] {

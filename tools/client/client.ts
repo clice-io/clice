@@ -953,6 +953,29 @@ export class CliceClient {
         });
     }
 
+    /// Lines carrying at least one token with the `inactive` semantic
+    /// token modifier — the wire form of preprocessor-inactive regions.
+    async inactiveLines(uri: string): Promise<number[]> {
+        const result = await this.semanticTokensFull(uri);
+        const provider = this.initResult?.capabilities.semanticTokensProvider as
+            | proto.SemanticTokensOptions
+            | undefined;
+        const bit = provider?.legend.tokenModifiers.indexOf("inactive") ?? -1;
+        if (bit < 0) {
+            throw new Error("server legend misses the inactive modifier");
+        }
+        const data = result?.data ?? [];
+        const lines = new Set<number>();
+        let line = 0;
+        for (let i = 0; i + 4 < data.length; i += 5) {
+            line += data[i] ?? 0;
+            if (((data[i + 4] ?? 0) & (1 << bit)) !== 0) {
+                lines.add(line);
+            }
+        }
+        return [...lines].sort((a, b) => a - b);
+    }
+
     inlayHints(uri: string, range: proto.Range) {
         return this.sendRequest(proto.InlayHintRequest.type, {
             textDocument: { uri },

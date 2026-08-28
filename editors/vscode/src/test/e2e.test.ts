@@ -161,6 +161,31 @@ suite("clice E2E", function () {
         assert.ok(hovers[0].contents.length > 0, "hover returned empty contents");
     });
 
+    test("semantic tokens through middleware", async function () {
+        this.timeout(60 * 1000);
+        assert.ok(document, "main file was not opened (earlier test failed)");
+
+        // The provider path runs through the inactive-regions middleware,
+        // so a decode failure or a swallowed response surfaces here as
+        // missing tokens. Poll: the provider registers dynamically after
+        // the handshake.
+        const deadline = Date.now() + 30 * 1000;
+        for (;;) {
+            const tokens = await vscode.commands.executeCommand<vscode.SemanticTokens | undefined>(
+                "vscode.provideDocumentSemanticTokens",
+                document.uri,
+            );
+            if (tokens && tokens.data.length > 0) {
+                return;
+            }
+            assert.ok(
+                Date.now() < deadline,
+                "no semantic tokens through the middleware within 30s",
+            );
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+    });
+
     test("definition", async function () {
         this.timeout(60 * 1000);
         if (!scenario.definitionFile) {

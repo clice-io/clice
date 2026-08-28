@@ -44,6 +44,8 @@ struct DocumentEntry {
     std::vector<std::string> arguments;
     std::pair<std::string, uint32_t> pch;
     llvm::StringMap<std::string> pcms;
+    std::vector<std::uint8_t> open_conditionals;
+    std::vector<std::uint32_t> preamble_inactive_regions;
 
     // Per-document serialization mutex
     kota::mutex strand;
@@ -183,167 +185,166 @@ public:
 
 void StatefulWorker::register_handlers() {
     // === Compile ===
-    peer.on_request([this](RequestContext& ctx, const worker::CompileParams& params)
-                        -> RequestResult<worker::CompileParams> {
-        LOG_INFO("Compile request: path={}, version={}", params.path, params.version);
+    peer.on_request(
+        [this](RequestContext& ctx,
+               const worker::CompileParams& params) -> RequestResult<worker::CompileParams> {
+            LOG_INFO("Compile request: path={}, version={}", params.path, params.version);
 
-        // Hold shared_ptr so Evict can't destroy the entry mid-compile.
-        auto doc = get_or_create(params.path);
-        touch_lru(params.path);
+            // Hold shared_ptr so Evict can't destroy the entry mid-compile.
+            auto doc = get_or_create(params.path);
+            touch_lru(params.path);
 
-        // Publish the stop flag before the strand wait: a CancelCompile for
-        // this round must land even while an earlier request still holds
-        // the strand — the preset flag then aborts the parse at its first
-        // declaration.
-        auto stop = std::make_shared<std::atomic_bool>(false);
-        doc->compile_stop = stop;
+            // Publish the stop flag before the strand wait: a CancelCompile for
+            // this round must land even while an earlier request still holds
+            // the strand — the preset flag then aborts the parse at its first
+            // declaration.
+            auto stop = std::make_shared<std::atomic_bool>(false);
+            doc->compile_stop = stop;
 
-        co_await doc->strand.lock();
+            co_await doc->strand.lock();
 
-        // Every exit — including a cancellation that destroys this frame at
-        // the queue await below — must release the strand and wake the AST
-        // waiters: an unset ast_ready would hang every later query for this
-        // document (they observe has_ast == false and return their missing
-        // value; the next Compile sets a real AST).
-        struct [[nodiscard]] CompileGuard {
-            DocumentEntry& doc;
+            // Every exit — including a cancellation that destroys this frame at
+            // the queue await below — must release the strand and wake the AST
+            // waiters: an unset ast_ready would hang every later query for this
+            // document (they observe has_ast == false and return their missing
+            // value; the next Compile sets a real AST).
+            struct [[nodiscard]] CompileGuard {
+                DocumentEntry& doc;
 
-            ~CompileGuard() {
-                doc.ast_ready.set();
-                doc.strand.unlock();
+                ~CompileGuard() {
+                    doc.ast_ready.set();
+                    doc.strand.unlock();
+                }
+            } guard{*doc};
+
+            // Copy params to doc AFTER acquiring the strand lock, so that
+            // concurrent Compile requests waiting on the strand don't
+            // overwrite our fields before we use them.
+            doc->version = params.version;
+            doc->text = params.text;
+            doc->directory = params.directory;
+            doc->arguments = params.arguments;
+            doc->pch = params.pch;
+            doc->open_conditionals = params.open_conditionals;
+            doc->preamble_inactive_regions = params.preamble_inactive_regions;
+            doc->pcms.clear();
+            for(auto& [name, pcm_path]: params.pcms) {
+                doc->pcms.try_emplace(name, pcm_path);
             }
-        } guard{*doc};
 
-        // Copy params to doc AFTER acquiring the strand lock, so that
-        // concurrent Compile requests waiting on the strand don't
-        // overwrite our fields before we use them.
-        doc->version = params.version;
-        doc->text = params.text;
-        doc->directory = params.directory;
-        doc->arguments = params.arguments;
-        doc->pch = params.pch;
-        doc->pcms.clear();
-        for(auto& [name, pcm_path]: params.pcms) {
-            doc->pcms.try_emplace(name, pcm_path);
-        }
+            // The old AST describes the text this request just replaced: drop
+            // it before the cancellable await, or a cancellation landing while
+            // the work is still queued would wake waiters with the previous
+            // unit installed next to the new buffer — with_ast_or would serve
+            // stale offsets as current. Waiters observe has_ast == false and
+            // return their missing value until a compile lands.
+            doc->has_ast = false;
+            doc->unit = CompilationUnit(nullptr);
 
-        // The old AST describes the text this request just replaced: drop
-        // it before the cancellable await, or a cancellation landing while
-        // the work is still queued would wake waiters with the previous
-        // unit installed next to the new buffer — with_ast_or would serve
-        // stale offsets as current. Waiters observe has_ast == false and
-        // return their missing value until a compile lands.
-        doc->has_ast = false;
-        doc->unit = CompilationUnit(nullptr);
+            // The parse itself is interruptible: CompilationParams::stop is
+            // polled after every top-level declaration, so both a CancelCompile
+            // notification and the queue hook (fired when this frame is
+            // cancelled) reach into the middle of the AST build instead of
+            // waiting for it to finish; an interrupted unit reports
+            // !completed() and the phases after it are skipped like any other
+            // incomplete compile. The document stays coherent at every early
+            // exit (unit and has_ast are set together).
+            auto compile_result = co_await kota::queue(
+                [&]() -> worker::CompileResult {
+                    ScopedTimer timer;
 
-        // The parse itself is interruptible: CompilationParams::stop is
-        // polled after every top-level declaration, so both a CancelCompile
-        // notification and the queue hook (fired when this frame is
-        // cancelled) reach into the middle of the AST build instead of
-        // waiting for it to finish; an interrupted unit reports
-        // !completed() and the phases after it are skipped like any other
-        // incomplete compile. The document stays coherent at every early
-        // exit (unit and has_ast are set together).
-        auto compile_result = co_await kota::queue(
-            [&]() -> worker::CompileResult {
-                ScopedTimer timer;
+                    CompilationParams cp;
+                    cp.kind = CompilationKind::Content;
+                    fill_args(cp, doc->directory, doc->arguments);
+                    if(!doc->pch.first.empty()) {
+                        cp.pch = doc->pch;
+                    }
+                    cp.add_remapped_file(params.path, doc->text);
+                    for(auto& entry: doc->pcms) {
+                        cp.pcms.try_emplace(entry.getKey(), entry.getValue());
+                    }
+                    cp.stop = stop;
 
-                CompilationParams cp;
-                cp.kind = CompilationKind::Content;
-                fill_args(cp, doc->directory, doc->arguments);
-                if(!doc->pch.first.empty()) {
-                    cp.pch = doc->pch;
-                }
-                cp.add_remapped_file(params.path, doc->text);
-                for(auto& entry: doc->pcms) {
-                    cp.pcms.try_emplace(entry.getKey(), entry.getValue());
-                }
-                cp.stop = stop;
+                    doc->unit = compile(cp);
+                    doc->has_ast = true;
 
-                doc->unit = compile(cp);
-                doc->has_ast = true;
+                    worker::CompileResult result;
+                    result.version = doc->version;
 
-                worker::CompileResult result;
-                result.version = doc->version;
-
-                // A failed parse that blames the consumed PCH: either a
-                // diagnostic names the blob's path outright, or it is an
-                // AST-deserialization error naming no other prebuilt input
-                // (that family's messages do not reliably carry the path —
-                // "malformed or corrupted precompiled file: 'Blob ends too
-                // soon'"). User-code failures (missing include, modified
-                // header, bad flags) match neither, so the master never
-                // rebuilds an innocent shared PCH over a failure it did
-                // not cause. An anonymous read error with PCMs in play is
-                // ambiguous; blaming the PCH costs at most one retracted
-                // pair per round and self-corrects on the retry.
-                if(!doc->unit.completed() && !doc->pch.first.empty()) {
-                    result.pch_suspect =
-                        std::ranges::any_of(doc->unit.diagnostics(), [&](auto& diag) {
-                            llvm::StringRef message = diag.message;
-                            if(message.contains(doc->pch.first)) {
-                                return true;
-                            }
-                            if(!diag.id.is_deserialization_error()) {
-                                return false;
-                            }
-                            return std::ranges::none_of(doc->pcms, [&](auto& entry) {
-                                return message.contains(entry.getValue());
+                    // A failed parse that blames the consumed PCH: either a
+                    // diagnostic names the blob's path outright, or it is an
+                    // AST-deserialization error naming no other prebuilt input
+                    // (that family's messages do not reliably carry the path —
+                    // "malformed or corrupted precompiled file: 'Blob ends too
+                    // soon'"). User-code failures (missing include, modified
+                    // header, bad flags) match neither, so the master never
+                    // rebuilds an innocent shared PCH over a failure it did
+                    // not cause. An anonymous read error with PCMs in play is
+                    // ambiguous; blaming the PCH costs at most one retracted
+                    // pair per round and self-corrects on the retry.
+                    if(!doc->unit.completed() && !doc->pch.first.empty()) {
+                        result.pch_suspect =
+                            std::ranges::any_of(doc->unit.diagnostics(), [&](auto& diag) {
+                                llvm::StringRef message = diag.message;
+                                if(message.contains(doc->pch.first)) {
+                                    return true;
+                                }
+                                if(!diag.id.is_deserialization_error()) {
+                                    return false;
+                                }
+                                return std::ranges::none_of(doc->pcms, [&](auto& entry) {
+                                    return message.contains(entry.getValue());
+                                });
                             });
-                        });
-                }
+                    }
 
-                if(doc->unit.completed() || doc->unit.fatal_error()) {
-                    auto diags = feature::diagnostics(doc->unit);
-                    auto json = kota::codec::json::to_string<kota::ipc::lsp_config>(diags);
-                    result.diagnostics = kota::codec::RawValue{json ? std::move(*json) : "[]"};
-                    LOG_INFO("Compile done: path={}, {}ms, {} diags, fatal={}",
-                             params.path,
-                             timer.ms(),
-                             diags.size(),
-                             doc->unit.fatal_error());
-                } else {
-                    result.status = doc->unit.setup_fail() ? worker::CompileStatus::SetupFail
-                                                           : worker::CompileStatus::Cancelled;
-                    result.diagnostics = kota::codec::RawValue{"[]"};
-                    LOG_WARN("Compile incomplete: path={}, {}ms, setup_fail={}",
-                             params.path,
-                             timer.ms(),
-                             doc->unit.setup_fail());
-                }
-                result.memory_usage = 0;  // TODO: query actual memory
-                if(doc->unit.completed() && !stop->load(std::memory_order_relaxed)) {
-                    result.inactive_regions = feature::inactive_regions(doc->unit,
-                                                                        params.open_conditionals,
-                                                                        doc->pch.second)
-                                                  .regions;
-                    result.build_at = doc->unit.build_at().count();
-                    result.deps = doc->unit.deps();
+                    if(doc->unit.completed() || doc->unit.fatal_error()) {
+                        auto diags = feature::diagnostics(doc->unit);
+                        auto json = kota::codec::json::to_string<kota::ipc::lsp_config>(diags);
+                        result.diagnostics = kota::codec::RawValue{json ? std::move(*json) : "[]"};
+                        LOG_INFO("Compile done: path={}, {}ms, {} diags, fatal={}",
+                                 params.path,
+                                 timer.ms(),
+                                 diags.size(),
+                                 doc->unit.fatal_error());
+                    } else {
+                        result.status = doc->unit.setup_fail() ? worker::CompileStatus::SetupFail
+                                                               : worker::CompileStatus::Cancelled;
+                        result.diagnostics = kota::codec::RawValue{"[]"};
+                        LOG_WARN("Compile incomplete: path={}, {}ms, setup_fail={}",
+                                 params.path,
+                                 timer.ms(),
+                                 doc->unit.setup_fail());
+                    }
+                    result.memory_usage = 0;  // TODO: query actual memory
+                    if(doc->unit.completed() && !stop->load(std::memory_order_relaxed)) {
+                        result.build_at = doc->unit.build_at().count();
+                        result.deps = doc->unit.deps();
 
-                    // Build index for main file only (interested_only=true).
-                    result.tu_index_data = index::build_tu_index(doc->unit, true);
-                }
+                        // Build index for main file only (interested_only=true).
+                        result.tu_index_data = index::build_tu_index(doc->unit, true);
+                    }
 
-                // A unit that is neither complete nor a fatal-error result
-                // can never serve a query (with_ast_or refuses it), yet it
-                // pins the consumed artifacts — on Windows a mapped PCH
-                // cannot be replaced on disk, so holding it would block
-                // the master's rebuild of a retracted pair. Drop it last,
-                // after every use of the unit above; queries observe
-                // has_ast == false and return their missing value until a
-                // compile lands.
-                if(!doc->unit.completed() && !doc->unit.fatal_error()) {
-                    doc->unit = CompilationUnit(nullptr);
-                    doc->has_ast = false;
-                }
-                return result;
-            },
-            [stop] { stop->store(true, std::memory_order_relaxed); });
+                    // A unit that is neither complete nor a fatal-error result
+                    // can never serve a query (with_ast_or refuses it), yet it
+                    // pins the consumed artifacts — on Windows a mapped PCH
+                    // cannot be replaced on disk, so holding it would block
+                    // the master's rebuild of a retracted pair. Drop it last,
+                    // after every use of the unit above; queries observe
+                    // has_ast == false and return their missing value until a
+                    // compile lands.
+                    if(!doc->unit.completed() && !doc->unit.fatal_error()) {
+                        doc->unit = CompilationUnit(nullptr);
+                        doc->has_ast = false;
+                    }
+                    return result;
+                },
+                [stop] { stop->store(true, std::memory_order_relaxed); });
 
-        shrink_if_over_limit();
+            shrink_if_over_limit();
 
-        co_return compile_result.value();
-    });
+            co_return compile_result.value();
+        });
 
     // === DocumentLink ===
     peer.on_request([this](RequestContext& ctx, const worker::DocumentLinkParams& params)
@@ -377,54 +378,61 @@ void StatefulWorker::register_handlers() {
     });
 
     // === Query (hover, definition, semantic tokens, etc.) ===
-    peer.on_request(
-        [this](RequestContext& ctx,
-               const worker::QueryParams& params) -> RequestResult<worker::QueryParams> {
-            using K = worker::QueryKind;
-            auto kind = kota::meta::enum_name(params.kind, "Unknown");
-            switch(params.kind) {
-                case K::Hover:
-                    co_return co_await with_ast(kind, params.path, [&](DocumentEntry& doc) {
-                        auto result = feature::hover(doc.unit, params.offset, params.config.hover);
-                        return result ? to_raw(*result) : kota::codec::RawValue{"null"};
-                    });
-                case K::GoToDefinition:
-                    // Include directives only; symbol definitions are served
-                    // from the index by the master.
-                    co_return co_await with_ast(kind, params.path, [&](DocumentEntry& doc) {
-                        return to_raw(feature::include_definition(doc.unit, params.offset));
-                    });
-                case K::SemanticTokens:
-                    co_return co_await with_ast(kind, params.path, [&](DocumentEntry& doc) {
-                        return to_raw(
-                            feature::semantic_tokens(doc.unit, feature::PositionEncoding::UTF16));
-                    });
-                case K::InlayHints:
-                    co_return co_await with_ast(kind, params.path, [&](DocumentEntry& doc) {
-                        auto range = params.range;
-                        if(range.begin == static_cast<uint32_t>(-1))
-                            range = LocalSourceRange{0, static_cast<uint32_t>(doc.text.size())};
-                        return to_raw(feature::inlay_hints(doc.unit,
-                                                           range,
-                                                           params.config.inlay_hints,
+    peer.on_request([this](RequestContext& ctx, const worker::QueryParams& params)
+                        -> RequestResult<worker::QueryParams> {
+        using K = worker::QueryKind;
+        auto kind = kota::meta::enum_name(params.kind, "Unknown");
+        switch(params.kind) {
+            case K::Hover:
+                co_return co_await with_ast(kind, params.path, [&](DocumentEntry& doc) {
+                    auto result = feature::hover(doc.unit, params.offset, params.config.hover);
+                    return result ? to_raw(*result) : kota::codec::RawValue{"null"};
+                });
+            case K::GoToDefinition:
+                // Include directives only; symbol definitions are served
+                // from the index by the master.
+                co_return co_await with_ast(kind, params.path, [&](DocumentEntry& doc) {
+                    return to_raw(feature::include_definition(doc.unit, params.offset));
+                });
+            case K::SemanticTokens:
+                co_return co_await with_ast(kind, params.path, [&](DocumentEntry& doc) {
+                    // The preamble share from the compile params, then
+                    // the own scan past the PCH bound, seeded by the
+                    // conditional stack the preamble left open.
+                    auto regions = doc.preamble_inactive_regions;
+                    auto scan =
+                        feature::inactive_regions(doc.unit, doc.open_conditionals, doc.pch.second);
+                    regions.insert(regions.end(), scan.regions.begin(), scan.regions.end());
+                    return to_raw(feature::semantic_tokens(doc.unit,
+                                                           regions,
                                                            feature::PositionEncoding::UTF16));
-                    });
-                case K::FoldingRange:
-                    co_return co_await with_ast(kind, params.path, [&](DocumentEntry& doc) {
-                        return to_raw(
-                            feature::folding_ranges(doc.unit, feature::PositionEncoding::UTF16));
-                    });
-                case K::DocumentSymbol:
-                    co_return co_await with_ast(kind, params.path, [&](DocumentEntry& doc) {
-                        return to_raw(
-                            feature::document_symbols(doc.unit, feature::PositionEncoding::UTF16));
-                    });
-                case K::CodeAction:
-                    // TODO: Implement code actions
-                    co_return kota::codec::RawValue{"[]"};
-            }
-            co_return kota::codec::RawValue{"null"};
-        });
+                });
+            case K::InlayHints:
+                co_return co_await with_ast(kind, params.path, [&](DocumentEntry& doc) {
+                    auto range = params.range;
+                    if(range.begin == static_cast<uint32_t>(-1))
+                        range = LocalSourceRange{0, static_cast<uint32_t>(doc.text.size())};
+                    return to_raw(feature::inlay_hints(doc.unit,
+                                                       range,
+                                                       params.config.inlay_hints,
+                                                       feature::PositionEncoding::UTF16));
+                });
+            case K::FoldingRange:
+                co_return co_await with_ast(kind, params.path, [&](DocumentEntry& doc) {
+                    return to_raw(
+                        feature::folding_ranges(doc.unit, feature::PositionEncoding::UTF16));
+                });
+            case K::DocumentSymbol:
+                co_return co_await with_ast(kind, params.path, [&](DocumentEntry& doc) {
+                    return to_raw(
+                        feature::document_symbols(doc.unit, feature::PositionEncoding::UTF16));
+                });
+            case K::CodeAction:
+                // TODO: Implement code actions
+                co_return kota::codec::RawValue{"[]"};
+        }
+        co_return kota::codec::RawValue{"null"};
+    });
 }
 
 int run_stateful_worker_mode(std::uint64_t memory_limit,

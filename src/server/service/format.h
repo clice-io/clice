@@ -19,9 +19,4 @@ namespace protocol = kota::ipc::protocol;
 /// compile semantics; sending the result is the transport's job.
 std::vector<protocol::Diagnostic> format_diagnostics(const CompileOutput& output);
 
-/// Convert a compile output's inactive-region byte offsets into LSP ranges
-/// using the session's line map.
-std::vector<protocol::Range> format_inactive_regions(const Session& session,
-                                                     const CompileOutput& output);
-
 }  // namespace clice

@@ -4,34 +4,11 @@
 /// which the query does not support yet.
 
 import { spawnSync } from "node:child_process";
-import type { Range } from "vscode-languageserver-protocol";
-import { asLocations, sleep, type CliceClient } from "@clice/tools/client";
-import { InactiveRegionsNotification, type InactiveRegionsParams } from "@clice/tools/protocol";
+import { asLocations } from "@clice/tools/client";
 import { expect, test } from "../fixtures.ts";
 
 const hasNvcc = spawnSync("nvcc", ["--version"], { stdio: "ignore" }).status === 0;
 const runsNvcc = hasNvcc && process.platform !== "win32";
-
-async function waitRegions(captured: InactiveRegionsParams[], timeout = 15_000): Promise<Range[]> {
-    const deadline = Date.now() + timeout;
-    while (Date.now() < deadline) {
-        const last = captured[captured.length - 1];
-        if (last && last.regions.length > 0) {
-            return last.regions;
-        }
-        await sleep(50);
-    }
-    const last = captured[captured.length - 1];
-    return last ? last.regions : [];
-}
-
-function capture(client: CliceClient): InactiveRegionsParams[] {
-    const captured: InactiveRegionsParams[] = [];
-    client.onNotification(InactiveRegionsNotification, (params) => {
-        captured.push(params);
-    });
-    return captured;
-}
 
 test.skipIf(!runsNvcc)("nvcc direct cuh entry", async ({ session }) => {
     const { client, workspace } = session.tmp();
@@ -55,15 +32,12 @@ test.skipIf(!runsNvcc)("nvcc direct cuh entry", async ({ session }) => {
             },
         ]),
     );
-    const captured = capture(client);
-
     await client.initialize(workspace);
     const [uri] = await client.openAndWait("kernels.cuh");
     client.assertCleanCompile(uri);
 
     // The device view applies to the header exactly as it would to a .cu.
-    const regions = await waitRegions(captured);
-    expect(regions.map((r) => [r.start.line, r.end.line])).toEqual([[5, 6]]);
+    expect(await client.inactiveLines(uri)).toEqual([5]);
 });
 
 test.skipIf(!runsNvcc)("nvcc cuda device view", async ({ session }) => {
@@ -96,8 +70,6 @@ test.skipIf(!runsNvcc)("nvcc cuda device view", async ({ session }) => {
             },
         ]),
     );
-    const captured = capture(client);
-
     await client.initialize(workspace);
     const [uri] = await client.openAndWait("main.cu");
     client.assertCleanCompile(uri);
@@ -108,6 +80,5 @@ test.skipIf(!runsNvcc)("nvcc cuda device view", async ({ session }) => {
     expect(locs.some((loc) => loc.range.start.line === 0)).toBe(true);
 
     // Device view: the host-side #else branch is the inactive one.
-    const regions = await waitRegions(captured);
-    expect(regions.map((r) => [r.start.line, r.end.line])).toEqual([[4, 5]]);
+    expect(await client.inactiveLines(uri)).toEqual([4]);
 });

@@ -4,6 +4,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 
 #include "support/signal.h"
 
@@ -87,6 +88,12 @@ private:
     bool semantic_tokens_refresh = false;
     bool inlay_hint_refresh = false;
     bool folding_range_refresh = false;
+
+    /// Document version last pushed per path (see push_output): a compile
+    /// landing for an already-published version means the text did not
+    /// change, so the client's pulled results went stale without any
+    /// didChange to make it re-pull — the push path sends refreshes.
+    std::unordered_map<std::uint32_t, int> published_versions;
 
     /// Subscription to compile outputs; disconnects on destruction.
     Signal<std::shared_ptr<Session>>::Connection output_conn;

@@ -310,6 +310,8 @@ struct DocumentLink {
 struct InactiveScan {
     /// Byte-offset ranges [begin0, end0, begin1, end1, ...] of inactive
     /// branch bodies in the interested file; directive lines excluded.
+    /// Sorted by begin and disjoint — nested inactive conditionals merge
+    /// into the enclosing region.
     std::vector<std::uint32_t> regions;
 
     /// Conditional levels still open at the end of the scanned content,
@@ -345,9 +347,18 @@ struct InlayHint {
     bool padding_right = false;
 };
 
+/// Semantic tokens of the interested file. Tokens inside inactive regions
+/// carry the Inactive modifier, and bare identifiers there emit as
+/// Identifier so every word of a dead region has a token to dim. The
+/// overloads without a regions argument scan the unit themselves — correct
+/// only for units compiled without a PCH; a PCH unit's preamble share
+/// needs the seeded regions the worker assembles at compile time.
 auto semantic_tokens(CompilationUnitRef unit) -> std::vector<SemanticToken>;
 auto semantic_tokens(CompilationUnitRef unit, PositionEncoding encoding)
     -> protocol::SemanticTokens;
+auto semantic_tokens(CompilationUnitRef unit,
+                     llvm::ArrayRef<std::uint32_t> inactive_regions,
+                     PositionEncoding encoding) -> protocol::SemanticTokens;
 
 /// Wire encoding of computed tokens against the text they describe — one
 /// encoder for the worker's AST results and the master's index

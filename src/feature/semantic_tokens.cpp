@@ -245,9 +245,10 @@ Classified classify_decl(const clang::NamedDecl* decl, RelationKind relation) {
 /// (a virtual file rendering the expansion with full semantic tokens).
 class SemanticTokensCollector {
 public:
-    explicit SemanticTokensCollector(CompilationUnitRef unit) :
+    SemanticTokensCollector(CompilationUnitRef unit,
+                            llvm::ArrayRef<std::uint32_t> inactive_regions) :
         unit(unit), semantics(unit.semantics()), content(unit.interested_content()),
-        comments(semantics.comments()) {}
+        comments(semantics.comments()), inactive_regions(inactive_regions) {}
 
     auto collect() -> std::vector<SemanticToken> {
         precompute_semantics();
@@ -288,6 +289,13 @@ private:
         } else if(lexical.kind != SymbolKind::Invalid && lexical.kind != SymbolKind::Directive &&
                   lexical.kind != SymbolKind::Header && lexical.kind != result.kind) {
             result.kind = SymbolKind::Conflict;
+        }
+
+        /// A bare identifier in an inactive region classifies as nothing,
+        /// yet still needs a token to carry the Inactive modifier.
+        if(result.kind == SymbolKind::Invalid && clang::tok::isAnyIdentifier(token.kind()) &&
+           inactive(range)) {
+            result.kind = SymbolKind::Identifier;
         }
 
         if(result.kind != SymbolKind::Invalid) {
@@ -600,7 +608,23 @@ private:
         return false;
     }
 
+    /// Whether `range` overlaps an inactive region. Emitted ranges ascend,
+    /// so one cursor over the sorted disjoint regions suffices.
+    bool inactive(LocalSourceRange range) {
+        while(next_region + 1 < inactive_regions.size() &&
+              inactive_regions[next_region + 1] <= range.begin) {
+            next_region += 2;
+        }
+        return next_region + 1 < inactive_regions.size() &&
+               inactive_regions[next_region] < range.end;
+    }
+
+    /// The single exit of every token — lexical, semantic and comment
+    /// streams alike — so the Inactive modifier cannot miss a path.
     void emit(LocalSourceRange range, SymbolKind kind, std::uint32_t modifiers) {
+        if(inactive(range)) {
+            modifiers |= SymbolModifiers::to_mask(SymbolModifiers::Inactive);
+        }
         if(!tokens.empty()) {
             auto& last = tokens.back();
             if(last.range.end == range.begin && last.kind == kind && last.modifiers == modifiers) {
@@ -631,6 +655,9 @@ private:
     std::size_t next_comment = 0;
     /// Cursor of has_logical_newline over `comments`.
     std::size_t newline_scan_comment = 0;
+    llvm::ArrayRef<std::uint32_t> inactive_regions;
+    /// Cursor of inactive() over `inactive_regions`.
+    std::size_t next_region = 0;
     std::vector<SemanticToken> tokens;
 };
 
@@ -733,13 +760,24 @@ private:
 }  // namespace
 
 auto semantic_tokens(CompilationUnitRef unit) -> std::vector<SemanticToken> {
-    SemanticTokensCollector collector(unit);
+    auto scan = inactive_regions(unit);
+    SemanticTokensCollector collector(unit, scan.regions);
     return collector.collect();
 }
 
 auto semantic_tokens(CompilationUnitRef unit, PositionEncoding encoding)
     -> protocol::SemanticTokens {
     return semantic_tokens_to_protocol(semantic_tokens(unit),
+                                       unit.interested_content(),
+                                       unit.line_starts(),
+                                       encoding);
+}
+
+auto semantic_tokens(CompilationUnitRef unit,
+                     llvm::ArrayRef<std::uint32_t> inactive_regions,
+                     PositionEncoding encoding) -> protocol::SemanticTokens {
+    SemanticTokensCollector collector(unit, inactive_regions);
+    return semantic_tokens_to_protocol(collector.collect(),
                                        unit.interested_content(),
                                        unit.line_starts(),
                                        encoding);

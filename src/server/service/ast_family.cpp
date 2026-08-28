@@ -132,7 +132,6 @@ void ASTFamily::publish_quarantined(const std::shared_ptr<Session>& session,
                                                                       : CommandSource::CDBExact),
                                .diagnostics = quarantine_diagnostics(session->quarantine.crashes()),
                                .line_limit = line_limit,
-                               .inactive_regions = std::nullopt,
                            });
     on_output.emit(session);
 }
@@ -147,7 +146,6 @@ void ASTFamily::publish_recovered(const std::shared_ptr<Session>& session) {
             .source = has_previous ? previous->output->source : CommandSource::CDBExact,
             .diagnostics = kota::codec::RawValue{},
             .line_limit = std::nullopt,
-            .inactive_regions = std::nullopt,
         });
     on_output.emit(session);
 }
@@ -592,18 +590,18 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, std::uint32_t path_id
             co_return RoundOutcome::Failed;
         }
 
-        // Seed the inactive-region scan with the conditional stack the
-        // PCH's preamble left open (a #if cut by the bound). Copy the state
-        // out: concurrent compiles can insert into pch_cache across the
-        // await below and rehash the map from under a held pointer.
-        std::vector<std::uint32_t> pch_inactive;
+        // Seed the worker's inactive-region state from the PCH's preamble:
+        // the conditional stack it left open (a #if cut by the bound) and
+        // the regions of the preamble share itself. Copy the state out:
+        // concurrent compiles can insert into pch_cache across the await
+        // below and rehash the map from under a held pointer.
         std::shared_ptr<index::TUIndex> preamble_state;
         if(adopted_pch.has_value()) {
             preamble_state = workspace.preamble_state(*adopted_pch);
         }
         if(preamble_state) {
             auto regions = preamble_state->inactive_regions();
-            pch_inactive.assign(regions.begin(), regions.end());
+            params.preamble_inactive_regions.assign(regions.begin(), regions.end());
             auto conditionals = preamble_state->open_conditionals();
             params.open_conditionals.assign(conditionals.begin(), conditionals.end());
         }
@@ -675,7 +673,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, std::uint32_t path_id
             }
             // A quarantined document announces itself instead of hiding
             // behind the empty list; the clear path publishes empty
-            // diagnostics without a version and no inactive regions.
+            // diagnostics without a version.
             if(session->quarantine.active()) {
                 publish_quarantined(session, source, suffix_line_limit);
             } else {
@@ -685,7 +683,6 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, std::uint32_t path_id
                                    .source = source,
                                    .diagnostics = kota::codec::RawValue{},
                                    .line_limit = suffix_line_limit,
-                                   .inactive_regions = std::nullopt,
                                });
             }
             co_return RoundOutcome::Failed;
@@ -753,7 +750,6 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, std::uint32_t path_id
                                    .source = source,
                                    .diagnostics = kota::codec::RawValue{},
                                    .line_limit = suffix_line_limit,
-                                   .inactive_regions = std::nullopt,
                                });
             }
             co_return RoundOutcome::Failed;
@@ -833,18 +829,11 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, std::uint32_t path_id
         }
 
         LOG_PERF("request", "kind=Compile file={} total_ms={:.2f}", file_path, timer.ms_f());
-        // The preamble's share lives with the PCH; the compile result
-        // covers the content past the bound. Publish both.
-        auto inactive = std::move(pch_inactive);
-        inactive.insert(inactive.end(),
-                        result.value().inactive_regions.begin(),
-                        result.value().inactive_regions.end());
         next->output = CompileOutput{
             .version = session->version,
             .source = source,
             .diagnostics = std::move(result.value().diagnostics),
             .line_limit = suffix_line_limit,
-            .inactive_regions = std::move(inactive),
         };
 
         auto& entry = projections.entries[path_id];

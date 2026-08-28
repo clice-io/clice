@@ -286,6 +286,7 @@ export async function activate(context: ExtensionContext) {
         outputChannel: channel,
         traceOutputChannel: traceChannel,
         middleware: {
+            provideDocumentSemanticTokens: registerInactiveRegions(() => client, context),
             // Space triggers exist only for `import ` module completion.
             // This guard is intentionally stricter than the server-side
             // detection (exact single-space forms only): it merely avoids
@@ -317,7 +318,6 @@ export async function activate(context: ExtensionContext) {
     );
 
     registerCompilationContext(client, context);
-    registerInactiveRegions(client, context);
     registerConflictCheck(client, context);
 
     await startServer(context);

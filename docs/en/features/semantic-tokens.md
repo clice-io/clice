@@ -112,6 +112,37 @@ Kinds derived from the token stream itself, independent of the AST.
 
   </details>
 
+- [x] Inactive regions — tokens in untaken branches keep their lexical kinds and carry the `inactive` modifier; unclassified identifiers become plain `identifier` tokens
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  int before = 0;
+
+  #if 0
+  int simple = 1;
+  bare identifiers;
+  call(arg);
+  "string in dead code";
+  // comment inside
+  #ifdef NESTED
+  int deeper = 2;
+  #endif
+  int tail = 3;
+  #endif
+
+  #if defined(MISSING)
+  first_branch;
+  #elif 0
+  elif_branch;
+  #else
+  int taken = 4;
+  #endif
+  ```
+
+  </details>
+
 - [x] Header names — quoted and angled `#include` filenames, including the split `# include` form
 
   <details>
@@ -123,6 +154,22 @@ Kinds derived from the token stream itself, independent of the AST.
   # include "inc/angled.h"
 
   int after_includes = 0;
+  ```
+
+  </details>
+
+- [x] Inactive regions at the top of a file — untaken branches among the leading directives dim the same way
+
+  <details>
+  <summary>Example</summary>
+
+  ```cpp
+  #define KEEP 1
+  #if 0
+  #define DEAD 2
+  #endif
+
+  int after = KEEP;
   ```
 
   </details>
@@ -1397,13 +1444,18 @@ Curated issues without a fixture yet:
 
 ## Inactive Code Regions
 
-Inactive preprocessor branches are reported through a separate channel, not
-as semantic tokens.
+Every token inside an untaken preprocessor branch carries the `inactive`
+modifier while keeping its lexical kind, so editors dim the region by
+styling the modifier without losing the syntax colors underneath. Bare
+identifiers in dead code have no classification and are emitted as the
+plain `identifier` type, giving the whole region token coverage. The
+clice VS Code extension renders the regions dimmed out of the box; other
+editors style the modifier directly (e.g. `@lsp.mod.inactive` in Neovim).
 
-- [ ] Dim inactive preprocessor branches ([clangd#132](https://github.com/clangd/clangd/issues/132))
-- [ ] Correct inactive boundaries with `#elif` chains ([clangd#602](https://github.com/clangd/clangd/issues/602))
-- [ ] Preserve syntax highlighting within inactive regions ([clangd#1664](https://github.com/clangd/clangd/issues/1664))
-- [ ] Keep inactive regions distinct from comments ([clangd#1545](https://github.com/clangd/clangd/issues/1545))
+- [x] Dim inactive preprocessor branches ([clangd#132](https://github.com/clangd/clangd/issues/132))
+- [x] Correct inactive boundaries with `#elif` chains ([clangd#602](https://github.com/clangd/clangd/issues/602))
+- [x] Preserve syntax highlighting within inactive regions ([clangd#1664](https://github.com/clangd/clangd/issues/1664))
+- [x] Keep inactive regions distinct from comments ([clangd#1545](https://github.com/clangd/clangd/issues/1545))
 - [ ] Unreachable code dimming ([clangd#1828](https://github.com/clangd/clangd/issues/1828))
 
 ## Format String Highlighting

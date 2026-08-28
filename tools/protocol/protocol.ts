@@ -2,12 +2,7 @@
 /// shared by the integration tests and the VSCode extension. Wire shapes
 /// mirror src/server/protocol/extension.h (camelCase on the wire).
 
-import {
-    NotificationType,
-    RequestType,
-    RequestType0,
-    type Range,
-} from "vscode-languageserver-protocol";
+import { RequestType, RequestType0 } from "vscode-languageserver-protocol";
 
 /// A selectable compilation context of a file.
 export interface ContextItem {
@@ -86,18 +81,6 @@ export interface SwitchContextResult {
 
 export const SwitchContextRequest = new RequestType<SwitchContextParams, SwitchContextResult, void>(
     "clice/switchContext",
-);
-
-/// Pushed after each compile: the preprocessor-inactive regions of the
-/// file under its current compilation context. Clients typically render
-/// them dimmed.
-export interface InactiveRegionsParams {
-    uri: string;
-    regions: Range[];
-}
-
-export const InactiveRegionsNotification = new NotificationType<InactiveRegionsParams>(
-    "clice/inactiveRegions",
 );
 
 /// clice/internal/poll — TEST-ONLY, not a stable API. Synchronously runs

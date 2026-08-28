@@ -81,27 +81,4 @@ std::vector<protocol::Diagnostic> format_diagnostics(const CompileOutput& output
     return diagnostics;
 }
 
-std::vector<protocol::Range> format_inactive_regions(const Session& session,
-                                                     const CompileOutput& output) {
-    std::vector<protocol::Range> result;
-    if(!output.inactive_regions.has_value()) {
-        return result;
-    }
-    auto& regions = *output.inactive_regions;
-    auto map = session.line_map();
-    result.reserve(regions.size() / 2);
-    for(std::size_t i = 0; i + 1 < regions.size(); i += 2) {
-        auto start = map.to_position(regions[i]);
-        auto end = map.to_position(regions[i + 1]);
-        if(!start || !end) {
-            continue;
-        }
-        protocol::Range range;
-        range.start = *start;
-        range.end = *end;
-        result.push_back(range);
-    }
-    return result;
-}
-
 }  // namespace clice

@@ -122,6 +122,11 @@ struct CompileParams {
     /// Conditional levels left open by the PCH's preamble (1 = branch
     /// inactive), seeding the main compile's inactive-region scan.
     std::vector<std::uint8_t> open_conditionals;
+
+    /// Inactive regions of the preamble share (byte-offset pairs up to the
+    /// PCH bound), read from the PCH's pch.idx envelope. The worker only
+    /// scans past the bound, yet serves semantic tokens for the whole file.
+    std::vector<std::uint32_t> preamble_inactive_regions;
 };
 
 /// Outcome of a stateful compile. Anything but `Done` is a non-result: the
@@ -162,12 +167,6 @@ struct CompileResult {
     std::vector<DepFile> deps;
     /// Serialized TUIndex for the main file (interested_only=true).
     std::string tu_index_data;
-
-    /// Preprocessor-inactive regions as flat byte-offset pairs
-    /// [begin0, end0, begin1, end1, ...] in the main file. Covers only
-    /// the content past the PCH bound; the preamble's share lives in
-    /// PCHState (analogous to document links).
-    std::vector<std::uint32_t> inactive_regions;
 };
 
 /// Build a PCH (and its paired pch.idx envelope) from preamble content.

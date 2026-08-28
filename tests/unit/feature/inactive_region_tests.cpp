@@ -83,6 +83,24 @@ int b();
     EXPECT_EQ(content.substr(scan.regions[0], scan.regions[1] - scan.regions[0]), "int dead();\n");
 }
 
+TEST_CASE(NestedRegionsMerge) {
+    run(R"cpp(
+#if 0
+int dead();
+#ifdef INNER
+int deeper();
+#endif
+int tail();
+#endif
+int b();
+)cpp");
+
+    ASSERT_EQ(scan.regions.size(), 2u);
+    auto content = unit->interested_content();
+    EXPECT_EQ(content.substr(scan.regions[0], scan.regions[1] - scan.regions[0]),
+              "int dead();\n#ifdef INNER\nint deeper();\n#endif\nint tail();\n");
+}
+
 };  // TEST_SUITE(inactive_regions)
 
 }  // namespace

@@ -73,14 +73,6 @@ struct SwitchContextResult {
     bool stale = false;
 };
 
-/// Pushed as the clice/inactiveRegions notification after each compile:
-/// the preprocessor-inactive regions of the file under its current
-/// compilation context. Clients typically render them dimmed.
-struct InactiveRegionsParams {
-    std::string uri;
-    std::vector<kota::ipc::protocol::Range> regions;
-};
-
 /// clice/internal/poll — TEST-ONLY, not a stable API. Synchronously runs
 /// one file-tracker tick (stat → diff → events → dispatch → effects) and
 /// responds only once the effects are applied, so integration tests can

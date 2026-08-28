@@ -1,0 +1,27 @@
+---
+created_at: 2026-08-28
+input_file: inactive_preamble.cpp
+---
+- { loc: "0:0", text: "/// # Lexical Tokens", kind: comment }
+- { loc: "1:0", text: "///", kind: comment }
+- { loc: "2:0", text: "/// ## Inactive regions at the top of a file — untaken branches among the leading directives dim the same way", kind: comment }
+- { loc: "3:0", text: "///", kind: comment }
+- { loc: "4:0", text: "/// - status: supported", kind: comment }
+- { loc: "5:0", text: "/// - order: 6", kind: comment }
+- { loc: "6:0", text: "/// - snap: separate", kind: comment }
+- { loc: "8:0", text: "// snap: the whole file is preamble up to `int after`; on the server path", kind: comment }
+- { loc: "9:0", text: "// it compiles into the PCH, whose defines have no semantic nodes in the", kind: comment }
+- { loc: "10:0", text: "// main parse — KEEP loses the `definition` modifier there (pre-existing", kind: comment }
+- { loc: "11:0", text: "// preamble gap, unrelated to the inactive tagging this fixture pins).", kind: comment }
+- { loc: "13:0", text: "#define", kind: directive }
+- { loc: "13:8", text: "KEEP", kind: macro }
+- { loc: "13:13", text: "1", kind: number }
+- { loc: "14:0", text: "#if", kind: directive }
+- { loc: "14:4", text: "0", kind: number }
+- { loc: "15:0", text: "#define", kind: directive, modifiers: [inactive] }
+- { loc: "15:8", text: "DEAD", kind: macro, modifiers: [inactive] }
+- { loc: "15:13", text: "2", kind: number, modifiers: [inactive] }
+- { loc: "16:0", text: "#endif", kind: directive }
+- { loc: "18:0", text: "int", kind: primitive }
+- { loc: "18:4", text: "after", kind: variable, modifiers: [definition] }
+- { loc: "18:12", text: "KEEP", kind: macro }

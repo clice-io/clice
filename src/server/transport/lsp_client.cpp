@@ -225,10 +225,8 @@ void LSPClient::register_lifecycle() {
         // was attached (documents opened and compiled before the
         // handshake, or while the server ran headless). Only outputs that
         // still describe the current buffer are replayed: an edit during
-        // the handshake marks the session dirty, and pushing the pre-edit
-        // output would pair stale inactive regions (whose notification
-        // carries no version) with the new text — the next compile pushes
-        // fresh results instead.
+        // the handshake marks the session dirty, and the next compile
+        // pushes fresh results instead.
         srv.sessions.for_each([this](std::uint32_t path_id, const Session& session) {
             auto projection = this->server.ast.projections.projection(path_id);
             if(projection && projection->output.has_value() &&
@@ -807,30 +805,28 @@ void LSPClient::push_output(const Session& session) {
     params.diagnostics = format_diagnostics(output);
     peer.send_notification(params);
 
-    // The clear path carries no inactive-regions update; a successful
-    // compile always pushes the current regions (even when empty) so a
-    // context switch immediately re-dims the regions selected away by
-    // the new preprocessor state.
-    if(output.inactive_regions.has_value()) {
-        ext::InactiveRegionsParams regions;
-        regions.uri = uri_str;
-        regions.regions = format_inactive_regions(session, output);
-        peer.send_notification("clice/inactiveRegions", regions);
-    }
-
-    // The session served index projections while this compile was
-    // pending: whole-document results the client already pulled (tokens,
-    // folds, inlay hints) just got better, and only a refresh request
-    // makes it re-pull them.
-    if(session.index_served && output.version.has_value()) {
-        if(semantic_tokens_refresh) {
-            fire_refresh(server.loop, peer, protocol::SemanticTokensRefreshParams{});
-        }
-        if(inlay_hint_refresh) {
-            fire_refresh(server.loop, peer, protocol::InlayHintRefreshParams{});
-        }
-        if(folding_range_refresh) {
-            fire_refresh(server.loop, peer, protocol::FoldingRangeRefreshParams{});
+    // Two cases make the client re-pull whole-document results it already
+    // holds: index projections served while this compile was pending
+    // (their answers just got better), and a compile that landed for
+    // unchanged text — a context switch or a changed dependency reshapes
+    // tokens, hints and folds (inactive regions travel as semantic tokens
+    // now) with no didChange to trigger the client's own re-pull.
+    // Edit-driven compiles need neither: the client re-pulls on didChange
+    // and that pull awaits the fresh AST.
+    if(output.version.has_value()) {
+        auto [it, inserted] = published_versions.try_emplace(session.path_id, *output.version);
+        bool same_text = !inserted && it->second == *output.version;
+        it->second = *output.version;
+        if(session.index_served || same_text) {
+            if(semantic_tokens_refresh) {
+                fire_refresh(server.loop, peer, protocol::SemanticTokensRefreshParams{});
+            }
+            if(inlay_hint_refresh) {
+                fire_refresh(server.loop, peer, protocol::InlayHintRefreshParams{});
+            }
+            if(folding_range_refresh) {
+                fire_refresh(server.loop, peer, protocol::FoldingRangeRefreshParams{});
+            }
         }
     }
 }

@@ -13,7 +13,8 @@ input_file: directives.cpp
 - { loc: "7:25", text: "0", kind: number }
 - { loc: "9:0", text: "#if", kind: directive }
 - { loc: "9:4", text: "0", kind: number }
-- { loc: "10:0", text: "int", kind: primitive }
+- { loc: "10:0", text: "int", kind: primitive, modifiers: [inactive] }
+- { loc: "10:4", text: "disabled_branch", kind: identifier, modifiers: [inactive] }
 - { loc: "11:0", text: "#else", kind: directive }
 - { loc: "12:0", text: "int", kind: primitive }
 - { loc: "12:4", text: "enabled_branch", kind: variable, modifiers: [definition] }

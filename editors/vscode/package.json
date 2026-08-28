@@ -192,6 +192,16 @@
         "id": "primitive",
         "description": "C/C++ primitive type (e.g., int, float)",
         "superType": "keyword"
+      },
+      {
+        "id": "identifier",
+        "description": "Identifier without semantic classification, emitted only inside inactive preprocessor regions. Deliberately unstyled (no superType) so the editor's own syntax coloring shows through."
+      }
+    ],
+    "semanticTokenModifiers": [
+      {
+        "id": "inactive",
+        "description": "Token inside a preprocessor-inactive region (e.g. an #if 0 branch). The clice extension dims these regions; other clients can style the modifier directly."
       }
     ],
     "views": {

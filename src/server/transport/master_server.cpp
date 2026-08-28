@@ -356,7 +356,6 @@ void MasterServer::close_session(std::uint32_t path_id) {
                                .source = CommandSource::CDBExact,
                                .diagnostics = {},
                                .line_limit = std::nullopt,
-                               .inactive_regions = std::nullopt,
                            });
     }
 

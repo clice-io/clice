@@ -102,7 +102,7 @@ Beyond automatic resolution, clice also provides three LSP extension requests th
 
 **`clice/switchContext`** switches to the user's chosen new context. The choice is validated: the host must actually (transitively) include the header, the occurrence must be in range, and the command hash must correspond to a real CDB entry of the file, otherwise the request fails.
 
-Besides the requests, after every compile the server pushes a **`clice/inactiveRegions`** notification carrying the file's preprocessor-inactive regions (bodies of untaken `#if` branches) under the current compilation context. Editors render them dimmed; a context switch recompiles and flips the regions — the most immediate visual feedback of switching.
+Besides the requests, the file's preprocessor-inactive regions (bodies of untaken `#if` branches) surface through semantic tokens: under the current compilation context, every token inside them carries the **`inactive`** modifier and editors render the regions dimmed. A context switch recompiles and the server requests a semantic-tokens refresh, so the client re-pulls and the dimming flips — the most immediate visual feedback of switching.
 
 ## Automatic Self-Containedness Detection
 

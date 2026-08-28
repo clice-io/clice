@@ -38,10 +38,6 @@ struct CompileOutput {
     /// First phantom line introduced by suffix include injection —
     /// diagnostics at or past it describe text the user cannot see.
     std::optional<std::uint32_t> line_limit;
-
-    /// Final inactive regions (PCH preamble + AST merged, byte offsets).
-    /// Empty optional on failure: no inactive-regions notification is due.
-    std::optional<std::vector<std::uint32_t>> inactive_regions;
 };
 
 /// One open document's compilation products, owned by the AST family and
