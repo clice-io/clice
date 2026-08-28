@@ -12,7 +12,12 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Readable, Writable } from "node:stream";
-import { anomalyGateFailure, anomaliesInMessages, processGateFailures } from "./process_gate.ts";
+import {
+    anomalyGateFailure,
+    anomaliesInMessages,
+    logFiles,
+    processGateFailures,
+} from "./process_gate.ts";
 
 // tools/ -> repo root.
 const REPO_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -357,6 +362,10 @@ async function replayOne(
 
     printTraceInfo(name, records, displayWs);
 
+    // The corpus workspace persists across runs and traces; only logs born
+    // in this session may gate it.
+    const preexistingLogs = new Set(logFiles(displayWs));
+
     const env = { ...process.env };
     if (process.platform === "darwin") {
         const prev = env["ASAN_OPTIONS"] ?? "";
@@ -606,7 +615,11 @@ async function replayOne(
         stderrComplete,
         stderrDrainedFromStart: true,
     });
-    const anomalyFailure = anomalyGateFailure(anomaliesInMessages(anomalies), displayWs);
+    const anomalyFailure = anomalyGateFailure(
+        anomaliesInMessages(anomalies),
+        displayWs,
+        preexistingLogs,
+    );
     if (anomalyFailure !== null) {
         failures.push(anomalyFailure);
     }

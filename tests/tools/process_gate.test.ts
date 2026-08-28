@@ -36,6 +36,29 @@ test("process gate rejects every incomplete or unsafe process outcome", () => {
     ]);
 });
 
+test("anomaly gate ignores logs predating the session", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "process-gate-"));
+    try {
+        const stale = path.join(root, ".clice", "logs", "old-session");
+        fs.mkdirSync(stale, { recursive: true });
+        const staleLog = path.join(stale, "worker.log");
+        fs.writeFileSync(staleLog, "[anomaly:WorkerCrash] leftover\n");
+        const preexisting = new Set([staleLog]);
+
+        expect(anomalyGateFailure([], root, preexisting)).toBeNull();
+
+        const fresh = path.join(root, ".clice", "logs", "new-session");
+        fs.mkdirSync(fresh, { recursive: true });
+        fs.writeFileSync(path.join(fresh, "master.log"), "[anomaly:MasterCrash] current\n");
+
+        const failure = anomalyGateFailure([], root, preexisting);
+        expect(failure).toContain("MasterCrash");
+        expect(failure).not.toContain("WorkerCrash");
+    } finally {
+        fs.rmSync(root, { recursive: true });
+    }
+});
+
 test("anomaly gate scans notification IDs and workspace logs", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "process-gate-"));
     try {

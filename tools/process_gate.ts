@@ -15,7 +15,7 @@ export const SANITIZER_MARKERS = [
 const ANOMALY_PATTERN = /\[anomaly:([A-Za-z]+)\]/;
 const CRASH_TRACE_MARKER = "=== CRASH STACK TRACE ===";
 
-export function logFiles(root: string | null): string[] {
+export function logFiles(root: string | null, ignoreLogs?: ReadonlySet<string>): string[] {
     if (root === null) {
         return [];
     }
@@ -27,12 +27,16 @@ export function logFiles(root: string | null): string[] {
         .readdirSync(logsDir, { recursive: true, encoding: "utf8" })
         .filter((name) => name.endsWith(".log"))
         .sort()
-        .map((name) => path.join(logsDir, name));
+        .map((name) => path.join(logsDir, name))
+        .filter((file) => !(ignoreLogs?.has(file) ?? false));
 }
 
-export function anomaliesInLogFiles(root: string | null): string[] {
+export function anomaliesInLogFiles(
+    root: string | null,
+    ignoreLogs?: ReadonlySet<string>,
+): string[] {
     const found: string[] = [];
-    for (const logFile of logFiles(root)) {
+    for (const logFile of logFiles(root, ignoreLogs)) {
         for (const line of fs.readFileSync(logFile, "utf8").split("\n")) {
             const match = ANOMALY_PATTERN.exec(line);
             if (match) {
@@ -50,9 +54,12 @@ export function anomaliesInMessages(messages: string[]): string[] {
     });
 }
 
-export function crashTracesInLogFiles(root: string | null): string[] {
+export function crashTracesInLogFiles(
+    root: string | null,
+    ignoreLogs?: ReadonlySet<string>,
+): string[] {
     const traces: string[] = [];
-    for (const logFile of logFiles(root)) {
+    for (const logFile of logFiles(root, ignoreLogs)) {
         const text = fs.readFileSync(logFile, "utf8");
         const pos = text.indexOf(CRASH_TRACE_MARKER);
         if (pos !== -1) {
@@ -113,12 +120,16 @@ export function processGateFailures(input: ProcessGateInput): string[] {
     return failures;
 }
 
-export function anomalyGateFailure(notifications: string[], root: string | null): string | null {
-    const found = [...notifications, ...anomaliesInLogFiles(root)];
+export function anomalyGateFailure(
+    notifications: string[],
+    root: string | null,
+    ignoreLogs?: ReadonlySet<string>,
+): string | null {
+    const found = [...notifications, ...anomaliesInLogFiles(root, ignoreLogs)];
     if (found.length === 0) {
         return null;
     }
-    const traces = crashTracesInLogFiles(root);
+    const traces = crashTracesInLogFiles(root, ignoreLogs);
     const detail = traces.length > 0 ? "\n" + traces.join("\n") : "";
     return `clice reported internal anomalies: ${found.join(", ")}${detail}`;
 }
