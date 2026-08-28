@@ -298,7 +298,7 @@ clang::SourceRange claimed_source_range(const SemanticNode& node) {
 
 }  // namespace
 
-// Builds the Semantics of the interested file: one full traversal of its AST,
+// Builds the Semantics of the main file: one full traversal of its AST,
 // claiming expanded tokens innermost-first, then attributing every claimed
 // expanded token to the spelled main-file token it came from:
 //   - tokens written in the main file attribute to themselves
@@ -329,8 +329,8 @@ clang::SourceRange claimed_source_range(const SemanticNode& node) {
 // VarDecl in the selection tree.
 class SemanticsBuilder : public clang::RecursiveASTVisitor<SemanticsBuilder> {
 public:
-    static void build(Semantics& semantics, CompilationUnitRef unit, bool interested_only) {
-        SemanticsBuilder builder(semantics, unit, interested_only);
+    static void build(Semantics& semantics, CompilationUnitRef unit, bool main_file_only) {
+        SemanticsBuilder builder(semantics, unit, main_file_only);
         builder.TraverseAST(unit.context());
         assert(builder.stack.size() == 1 && "Unpaired push/pop?");
         builder.append_directives();
@@ -348,7 +348,7 @@ public:
     bool TraverseDecl(clang::Decl* X) {
         if(llvm::isa_and_nonnull<clang::TranslationUnitDecl>(X)) {
             /// The TU decl is not stored; its children become roots.
-            if(interested_only) {
+            if(main_file_only) {
                 for(auto decl: unit.top_level_decls()) {
                     if(!TraverseDecl(decl)) {
                         return false;
@@ -543,10 +543,10 @@ public:
 private:
     using Base = RecursiveASTVisitor<SemanticsBuilder>;
 
-    SemanticsBuilder(Semantics& semantics, CompilationUnitRef unit, bool interested_only) :
-        semantics(semantics), unit(unit), interested_only(interested_only),
+    SemanticsBuilder(Semantics& semantics, CompilationUnitRef unit, bool main_file_only) :
+        semantics(semantics), unit(unit), main_file_only(main_file_only),
         SM(unit.context().getSourceManager()), unclaimed_expanded_tokens(unit.expanded_tokens()) {
-        main_fid = unit.interested_file();
+        main_fid = unit.main_file();
         main_file_range =
             clang::SourceRange(SM.getLocForStartOfFile(main_fid), SM.getLocForEndOfFile(main_fid));
 
@@ -557,7 +557,7 @@ private:
         // Tokens preprocessed to nothing (e.g. a disabled region or an empty
         // macro invocation) never contribute to a selection. Only relevant
         // when token ownership is recorded at all.
-        if(interested_only) {
+        if(main_file_only) {
             for(const clang::syntax::TokenBuffer::Expansion& expansion:
                 unit.expansions_overlapping(semantics.tokens)) {
                 if(expansion.Expanded.empty()) {
@@ -722,7 +722,7 @@ private:
     // preamble-state build runs a whole-TU pass over the preamble unit, and
     // claiming its entire expanded stream would be paid on every PCH build.
     void claim_range(clang::SourceRange S, std::uint32_t self) {
-        if(!interested_only) {
+        if(!main_file_only) {
             return;
         }
 
@@ -927,13 +927,13 @@ private:
         });
     }
 
-    // Append the interested file's preprocessor directives and lexically
+    // Append the main file's preprocessor directives and lexically
     // scanned entities as nodes owning their name tokens. These live outside
     // the AST segment: parent chains do not include them (yet), and selection
     // ignores them, but hover and document links see macros, includes and
     // imports as first-class nodes.
     void append_directives() {
-        semantics.lexical = lexical_scan(unit.interested_content(), &unit.lang_options());
+        semantics.lexical = lexical_scan(unit.main_content(), &unit.lang_options());
         filter_module_declarations();
 
         struct Row {
@@ -1048,7 +1048,7 @@ private:
 
     Semantics& semantics;
     CompilationUnitRef unit;
-    bool interested_only;
+    bool main_file_only;
     clang::SourceManager& SM;
     clang::FileID main_fid;
     clang::SourceRange main_file_range;
@@ -1063,9 +1063,9 @@ private:
     std::vector<std::pair<std::uint32_t, std::uint32_t>> entries;
 };
 
-Semantics Semantics::build(CompilationUnitRef unit, bool interested_only) {
+Semantics Semantics::build(CompilationUnitRef unit, bool main_file_only) {
     Semantics semantics;
-    SemanticsBuilder::build(semantics, unit, interested_only);
+    SemanticsBuilder::build(semantics, unit, main_file_only);
     return semantics;
 }
 

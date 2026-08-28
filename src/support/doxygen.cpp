@@ -51,7 +51,7 @@ std::vector<std::pair<llvm::StringRef, llvm::ArrayRef<DoxygenInfo::BlockCommandC
     return res;
 }
 
-/// Process inline commands, we only interested in `\b` (bold), `\e` (italic) and `\c` (inline code)
+/// Process only the inline commands `\b` (bold), `\e` (italic) and `\c` (inline code).
 ///
 /// \param line   The line
 /// \param result Where should we output the result to

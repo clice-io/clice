@@ -1154,7 +1154,7 @@ Derived* use();
 
 TEST_CASE(HeaderMacroDropped) {
     // Macro occurrences flow through the same gate: a definition in an
-    // included header is dropped from an interested-only build, while
+    // included header is dropped from an main-file-only build, while
     // the reference in the main file is kept.
     add_file("baz.h", R"(
 #define BAZ 1
@@ -1172,8 +1172,8 @@ int x = §(1)BAZ;
 
 TEST_CASE(UnknownFidFallback) {
     // A preamble header's loaded FileID is unknown to a graph built
-    // without indexed fids; lookups must degrade to the interested
-    // file instead of crashing.
+    // without indexed fids; lookups must degrade to the main file
+    // instead of crashing.
     add_file("foo.h", R"(
 struct Foo {};
 )");
@@ -1304,7 +1304,7 @@ TEST_CASE(EnvelopeSections) {
     auto& view = tu_index.view;
     ASSERT_TRUE(view.built_at() > 0);
 
-    // Sections ascend by path id and the interested file's rows are the
+    // Sections ascend by path id and the main file's rows are the
     // last path id's section.
     for(std::uint32_t i = 1; i < view.section_count(); i += 1) {
         ASSERT_TRUE(view.section_path(i - 1) < view.section_path(i));
@@ -1485,7 +1485,7 @@ TEST_CASE(FromRejectsOutOfRangePathIds) {
 }
 
 TEST_CASE(FromRejectsEmptyPathTable) {
-    // The builder ends every path table with the interested file, and
+    // The builder ends every path table with the main file, and
     // consumers address path_count() - 1 unchecked — an envelope with no
     // paths at all is corrupt.
     MirrorEnvelope hostile;

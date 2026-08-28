@@ -43,7 +43,7 @@ static std::uint32_t addIncludeChain(CompilationUnitRef unit,
         // consumers pair `line` with. Recursing on the directive's own fid
         // (not the presumed include loc, which names the containing
         // file's includer and sat one level off) bottoms out at -1 for
-        // directives written in the interested file.
+        // directives written in the main file.
         auto include = addIncludeChain(unit, unit.file_id(include_loc), graph, path_table);
         locations[index].include = include;
     }
@@ -82,9 +82,9 @@ IncludeGraph IncludeGraph::from(CompilationUnitRef unit,
         graph.file_table[fid] = addIncludeChain(unit, fid, graph, path_table);
     }
 
-    auto interested = unit.interested_file();
-    graph.file_table[interested] = addIncludeChain(unit, interested, graph, path_table);
-    graph.paths.emplace_back(unit.file_path(interested));
+    auto main_fid = unit.main_file();
+    graph.file_table[main_fid] = addIncludeChain(unit, main_fid, graph, path_table);
+    graph.paths.emplace_back(unit.file_path(main_fid));
 
     // Hash the consumed bytes per path from the compiler's own buffers.
     // Freshness checks compare the disk against these, so they must
@@ -105,14 +105,14 @@ IncludeGraph IncludeGraph::from(CompilationUnitRef unit,
             hash_fid(fid, graph.locations[location].path_id);
         }
     }
-    hash_fid(interested, graph.paths.size() - 1);
+    hash_fid(main_fid, graph.paths.size() - 1);
     return graph;
 }
 
 std::uint32_t IncludeGraph::include_location_id(clang::FileID fid) const {
     auto it = file_table.find(fid);
     if(it == file_table.end()) [[unlikely]] {
-        LOG_WARN("IncludeGraph: fid {} missing from file table, attributing to interested file",
+        LOG_WARN("IncludeGraph: fid {} missing from file table, attributing to main file",
                  fid.getHashValue());
         return -1;
     }

@@ -37,7 +37,7 @@ std::string write_fresh(const index::FileIndex& rows, llvm::StringRef content) {
     return bytes;
 }
 
-/// The interested file's worker-encoded blob, straight from the envelope.
+/// The main file's worker-encoded blob, straight from the envelope.
 std::string main_blob() {
     auto section = tu_index.section_of(tu_index.path_count() - 1);
     if(!section) {

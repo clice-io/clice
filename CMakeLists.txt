@@ -46,11 +46,9 @@ if(CLICE_USE_LIBCXX)
     string(APPEND CMAKE_SHARED_LINKER_FLAGS " -stdlib=libc++")
 endif()
 
-# Releases deliberately do NOT enable LTO yet: ThinLTO's cross-TU inlining
-# defeats kota's out-of-line workaround for llvm-project#105595 (clang < 21
-# drops coroutine promise policy writes under -O3), which silently breaks
-# cancellation — six cancellation unit tests fail on any ThinLTO build.
-# Re-enable together with the clang 21 toolchain upgrade.
+# Releases deliberately do NOT enable LTO yet. LLVM 22 removed the old
+# toolchain blocker, but enabling remains deferred until the cancellation
+# regression suite has been validated under ThinLTO.
 
 if(CLICE_ENABLE_LTO)
     string(APPEND CMAKE_C_FLAGS " -flto=thin")

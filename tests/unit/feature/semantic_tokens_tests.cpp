@@ -128,7 +128,7 @@ void run_utf8(llvm::StringRef code) {
     add_main("main.cpp", code);
     ASSERT_TRUE(compile_with_pch());
     tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
-    decoded = decode_utf8_tokens(unit->interested_content(), tokens);
+    decoded = decode_utf8_tokens(unit->main_content(), tokens);
 }
 
 auto find_by_range(llvm::StringRef name) -> const DecodedToken* {
@@ -204,7 +204,7 @@ int main() {
     auto utf8_tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
     auto utf16_tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF16);
 
-    auto utf8 = decode_utf8_tokens(unit->interested_content(), utf8_tokens);
+    auto utf8 = decode_utf8_tokens(unit->main_content(), utf8_tokens);
     auto utf16 = decode_relative_tokens(utf16_tokens);
 
     auto string_type = static_cast<std::uint32_t>(SymbolKind::String);
@@ -271,7 +271,7 @@ int y = x;
 )");
     ASSERT_TRUE(compile_with_modules());
     tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
-    decoded = decode_utf8_tokens(unit->interested_content(), tokens);
+    decoded = decode_utf8_tokens(unit->main_content(), tokens);
 
     EXPECT_TOKEN("kw", SymbolKind::Keyword);
     EXPECT_TOKEN("mod", SymbolKind::Module);
@@ -302,7 +302,7 @@ import :part;
     // The preprocessor callback channel must record every import form the
     // AST records: a named import, an export-import and a partition import
     // (whose full name resolves through the owning module).
-    auto& imports = unit->directives()[unit->interested_file()].imports;
+    auto& imports = unit->directives()[unit->main_file()].imports;
     ASSERT_EQ(imports.size(), 3U);
     ASSERT_EQ(imports[0].name, "a");
     ASSERT_EQ(imports[1].name, "b");
@@ -337,7 +337,7 @@ export §(kw)⟦import⟧ :§(part)⟦part⟧;
 )");
     ASSERT_TRUE(compile_with_modules());
     tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
-    decoded = decode_utf8_tokens(unit->interested_content(), tokens);
+    decoded = decode_utf8_tokens(unit->main_content(), tokens);
 
     EXPECT_TOKEN("kw", SymbolKind::Keyword);
     EXPECT_TOKEN("part", SymbolKind::Module);
@@ -355,7 +355,7 @@ int y = §(ref)⟦x⟧;
 )");
     ASSERT_TRUE(compile_with_modules());
     tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
-    decoded = decode_utf8_tokens(unit->interested_content(), tokens);
+    decoded = decode_utf8_tokens(unit->main_content(), tokens);
 
     EXPECT_TOKEN("kw", SymbolKind::Keyword);
     EXPECT_TOKEN("mod", SymbolKind::Module);
@@ -374,7 +374,7 @@ export §(kw)⟦import⟧ §(mod)⟦foo⟧;
 )");
     ASSERT_TRUE(compile_with_modules());
     tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
-    decoded = decode_utf8_tokens(unit->interested_content(), tokens);
+    decoded = decode_utf8_tokens(unit->main_content(), tokens);
 
     EXPECT_TOKEN("kw", SymbolKind::Keyword);
     EXPECT_TOKEN("mod", SymbolKind::Module);

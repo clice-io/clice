@@ -1,6 +1,6 @@
 /// Tests for the agentic protocol handlers.
 
-import { findFreePort, sleep, type CliceClient } from "@clice/tools/client";
+import { findFreePort, SETTLE_TIME, sleep, waitUntil, type CliceClient } from "@clice/tools/client";
 import type { Workspace } from "@clice/tools/workspace";
 import { cliceExecutable, expect, test, type SessionFactory } from "../fixtures.ts";
 import { AgenticRpcClient, jsonSafe, posix, runAgentic } from "./rpc.ts";
@@ -51,20 +51,19 @@ async function indexedAgentic(
     const rpc = new AgenticRpcClient();
     await rpc.connect(host, port);
 
-    let ready = false;
-    for (let i = 0; i < 300; i++) {
-        const resp = await rpc.request<{ symbols: unknown[] }>("agentic/symbolSearch", {
-            query: "add",
-        });
-        if (resp.result?.symbols.length) {
-            ready = true;
-            break;
-        }
-        await sleep(100);
-    }
-    if (!ready) {
-        throw new Error("agentic/symbolSearch never returned indexed symbols");
-    }
+    await waitUntil(
+        async () => {
+            const resp = await rpc.request<{ symbols: unknown[] }>("agentic/symbolSearch", {
+                query: "add",
+            });
+            return resp.result?.symbols.length ?? 0;
+        },
+        {
+            timeout: 30_000,
+            interval: 100,
+            description: "agentic/symbolSearch to return indexed symbols",
+        },
+    );
 
     return { rpc, client, workspace, uri };
 }
@@ -672,7 +671,7 @@ test("shutdown during indexing", async ({ session }) => {
         }
 
         // Give indexing a moment to start, then send shutdown.
-        await sleep(500);
+        await sleep(SETTLE_TIME);
 
         const rpc = new AgenticRpcClient();
         await rpc.connect(host, port);

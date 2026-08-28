@@ -128,14 +128,14 @@ public:
     /// reachability approximations have irreducible blind spots.
     void set_import_candidate(std::uint32_t path_id, bool has_import) {
         if(has_import) {
-            import_candidates_.insert(path_id);
+            import_candidates.insert(path_id);
         } else {
-            import_candidates_.erase(path_id);
+            import_candidates.erase(path_id);
         }
     }
 
-    const llvm::DenseSet<std::uint32_t>& import_candidates() const {
-        return import_candidates_;
+    const llvm::DenseSet<std::uint32_t>& import_candidate_files() const {
+        return import_candidates;
     }
 
 private:
@@ -143,7 +143,7 @@ private:
     llvm::StringMap<llvm::SmallVector<std::uint32_t, 2>> module_to_path;
 
     /// See set_import_candidate().
-    llvm::DenseSet<std::uint32_t> import_candidates_;
+    llvm::DenseSet<std::uint32_t> import_candidates;
 
     /// (PathID, ConfigID) -> list of directly included PathIDs.
     /// Each PathID may have bit 31 set to indicate conditional include.
@@ -154,7 +154,7 @@ private:
 
     /// Reverse include map: PathID -> list of PathIDs that directly include it.
     /// Populated by build_reverse_map().
-    llvm::DenseMap<std::uint32_t, llvm::SmallVector<std::uint32_t, 4>> reverse_includes_;
+    llvm::DenseMap<std::uint32_t, llvm::SmallVector<std::uint32_t, 4>> reverse_includes;
 };
 
 /// A (file, search-config) pair used to track per-wave work items.

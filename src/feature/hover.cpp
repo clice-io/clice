@@ -691,13 +691,13 @@ auto attr_hover(const clang::Attr* attr, clang::ASTContext& context) -> std::opt
 
 auto file_directive_hover(CompilationUnitRef unit, std::uint32_t offset)
     -> std::optional<HoverInfo> {
-    auto interested = unit.interested_file();
-    auto directives_it = unit.directives().find(interested);
+    auto main_fid = unit.main_file();
+    auto directives_it = unit.directives().find(main_fid);
     if(directives_it == unit.directives().end()) {
         return std::nullopt;
     }
 
-    auto content = unit.interested_content();
+    auto content = unit.main_content();
     auto* lang_opts = &unit.lang_options();
 
     auto file_name = [&](LocalSourceRange range) -> std::string {
@@ -725,7 +725,7 @@ auto file_directive_hover(CompilationUnitRef unit, std::uint32_t offset)
         /// rejects a cursor inside the argument before find_directive_argument()
         /// can match its range. Remove the same-line restriction once continued
         /// directive hover also handles the spliced argument spelling and range.
-        if(fid != interested || directive_offset < line_start || directive_offset >= line_end)
+        if(fid != main_fid || directive_offset < line_start || directive_offset >= line_end)
             return std::nullopt;
         auto range = find_directive_argument(content, directive_offset, lang_opts);
         if(!range || offset >= range->end || offset < range->begin)
@@ -774,7 +774,7 @@ auto file_directive_hover(CompilationUnitRef unit, std::uint32_t offset)
 /// macro semantics never reach the AST. The card shows the `#define` text,
 /// plus a preview of the expanded tokens at expansion sites.
 auto macro_hover(CompilationUnitRef unit, std::uint32_t offset) -> std::optional<HoverInfo> {
-    auto directives_it = unit.directives().find(unit.interested_file());
+    auto directives_it = unit.directives().find(unit.main_file());
     if(directives_it == unit.directives().end()) {
         return std::nullopt;
     }
@@ -1352,7 +1352,7 @@ auto hover_info(CompilationUnitRef unit, std::uint32_t offset, const HoverOption
         .show_aka = options.show_aka,
     };
 
-    auto location = unit.create_location(unit.interested_file(), offset);
+    auto location = unit.create_location(unit.main_file(), offset);
     auto tokens = unit.spelled_tokens_touch(location);
 
     /// Early exit if there were no tokens around the cursor.
@@ -1441,7 +1441,7 @@ auto hover(CompilationUnitRef unit,
         return std::nullopt;
     }
 
-    LineMap map(unit.interested_content(), unit.line_starts(), encoding);
+    LineMap map(unit.main_content(), unit.line_starts(), encoding);
     return to_protocol_hover(*info, options, map);
 }
 

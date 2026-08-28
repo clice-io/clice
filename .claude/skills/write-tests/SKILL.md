@@ -49,8 +49,8 @@ gates: `npm run check` at the repo root (tsc strict + ESLint, zero tolerance).
    ```
 
    Variants: `session("name", opts)` (data workspace, locked + initialized),
-   `session.tmp()` (tmpdir + un-initialized server), `session.bare()` (no
-   workspace). Options: `initializationOptions`, `allowAnomaly` (ONLY for
+   `session.tmp()` (tmpdir + un-initialized server). Options:
+   `initializationOptions`, `allowAnomaly` (ONLY for
    tests that deliberately crash workers — assert on the anomaly
    explicitly), `drainStderr: false` (backpressure tests), `args`,
    `socketPort`.
@@ -112,7 +112,7 @@ be workspace-relative. Requests: `hoverAt` `definitionAt` `referencesAt`
 `save` `close`. Waiting: `armDiagnostics` (arm BEFORE the trigger) /
 `waitDiagnostics` / `waitForRecompile` / `waitForIndex` /
 `waitForReference`. Asserts: `assertNoErrors` `assertHasErrors`
-`assertDiagnosticsCount` `assertCleanCompile` `assertNoAnomaly` `errors`.
+`assertCleanCompile` `assertNoAnomaly` `errors`.
 Lifecycle: `shutdown()` `killServer()` `assertExitedCleanly()`. Custom
 protocol (typed): `queryContext` `currentContext` `switchContext` `poll`
 `stats` `logFlood`; raw wire: `sendRequest(TypeOrMethod, params, token?)`,

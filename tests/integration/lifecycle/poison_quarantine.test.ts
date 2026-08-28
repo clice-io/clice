@@ -6,7 +6,7 @@
 /// that fixes it earns a probe that brings it back.
 
 import type * as proto from "vscode-languageserver-protocol";
-import { sleep } from "@clice/tools/client";
+import { sleep, waitUntil } from "@clice/tools/client";
 import { expect, test } from "../fixtures.ts";
 
 function poison(n: number): string {
@@ -21,6 +21,7 @@ function poisonPreamble(n: number): string {
 
 const FIXED = "int add(int a, int b) { return a + b; }\n";
 const HEALTHY = "int healthy(int x) { return x * 2; }\n";
+const CRASH_CYCLE_DELAY = 300;
 
 function isQuarantined(diags: proto.Diagnostic[]): boolean {
     return diags.some((d) => {
@@ -57,13 +58,11 @@ test("poison quarantine", async ({ session }) => {
         // The first two crashes may transiently take healthy's worker
         // with them (sub-second respawn); the guarantee under test is
         // that healthy is never PERMANENTLY lost.
-        for (let i = 0; i < 10; i++) {
-            if ((await client.hoverAt(healthyUri, 0, 5)) !== null) {
-                return;
-            }
-            await sleep(500);
-        }
-        throw new Error(`healthy hover permanently lost: ${context}`);
+        await waitUntil(async () => (await client.hoverAt(healthyUri, 0, 5)) !== null, {
+            timeout: 5_000,
+            interval: 500,
+            description: `healthy hover after ${context}`,
+        });
     };
 
     // Hammer the poison document: two crashes reach the quarantine
@@ -72,19 +71,16 @@ test("poison quarantine", async ({ session }) => {
     for (let i = 1; i < 5; i++) {
         await client.hoverAt(poisonUri, 0, 5);
         client.change(poisonUri, i, poison(i));
-        await sleep(300);
+        await sleep(CRASH_CYCLE_DELAY);
         await healthyAnswers(`poison cycle ${i}`);
     }
 
     // The quarantined document explains itself.
-    let deadline = 20;
-    while (deadline > 0) {
-        if (isQuarantined(client.diagnostics.get(poisonUri) ?? [])) {
-            break;
-        }
-        await sleep(500);
-        deadline -= 1;
-    }
+    await waitUntil(() => isQuarantined(client.diagnostics.get(poisonUri) ?? []), {
+        timeout: 10_000,
+        interval: 500,
+        description: "the poison document's quarantine diagnostic",
+    });
     expect(
         isQuarantined(client.diagnostics.get(poisonUri) ?? []),
         `missing quarantine diagnostic: ${JSON.stringify(client.diagnostics.get(poisonUri) ?? [])}`,
@@ -92,14 +88,11 @@ test("poison quarantine", async ({ session }) => {
 
     // Fixing the file earns a probe that brings it back.
     client.change(poisonUri, 100, FIXED);
-    let recovered = null;
-    for (let i = 0; i < 20; i++) {
-        await sleep(500);
-        recovered = await client.hoverAt(poisonUri, 0, 5);
-        if (recovered !== null) {
-            break;
-        }
-    }
+    const recovered = await waitUntil(() => client.hoverAt(poisonUri, 0, 5), {
+        timeout: 10_000,
+        interval: 500,
+        description: "the fixed poison document to recover",
+    });
     expect(recovered, "fixed poison file did not recover").not.toBeNull();
 
     const afterHover = await client.hoverAt(healthyUri, 0, 5);
@@ -129,42 +122,33 @@ test("poison preamble quarantine", async ({ session }) => {
     for (let i = 1; i < 4; i++) {
         await client.hoverAt(poisonUri, 2, 5);
         client.change(poisonUri, i, poisonPreamble(i));
-        await sleep(300);
+        await sleep(CRASH_CYCLE_DELAY);
     }
 
-    let deadline = 20;
-    while (deadline > 0) {
-        if (isQuarantined(client.diagnostics.get(poisonUri) ?? [])) {
-            break;
-        }
-        await sleep(500);
-        deadline -= 1;
-    }
+    await waitUntil(() => isQuarantined(client.diagnostics.get(poisonUri) ?? []), {
+        timeout: 10_000,
+        interval: 500,
+        description: "the poison preamble's quarantine diagnostic",
+    });
     expect(
         isQuarantined(client.diagnostics.get(poisonUri) ?? []),
         `missing quarantine diagnostic: ${JSON.stringify(client.diagnostics.get(poisonUri) ?? [])}`,
     ).toBe(true);
 
     // Healthy documents survive the stateless carnage.
-    let hover = null;
-    for (let i = 0; i < 10; i++) {
-        hover = await client.hoverAt(healthyUri, 0, 5);
-        if (hover !== null) {
-            break;
-        }
-        await sleep(500);
-    }
+    const hover = await waitUntil(() => client.hoverAt(healthyUri, 0, 5), {
+        timeout: 5_000,
+        interval: 500,
+        description: "healthy hover after poison preamble crashes",
+    });
     expect(hover, "healthy hover lost to poison preamble").not.toBeNull();
 
     // Fixing the preamble earns a probe that brings the file back.
     client.change(poisonUri, 100, FIXED);
-    let recovered = null;
-    for (let i = 0; i < 20; i++) {
-        await sleep(500);
-        recovered = await client.hoverAt(poisonUri, 0, 5);
-        if (recovered !== null) {
-            break;
-        }
-    }
+    const recovered = await waitUntil(() => client.hoverAt(poisonUri, 0, 5), {
+        timeout: 10_000,
+        interval: 500,
+        description: "the fixed poison preamble to recover",
+    });
     expect(recovered, "fixed preamble did not recover").not.toBeNull();
 });

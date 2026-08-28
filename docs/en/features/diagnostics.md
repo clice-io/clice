@@ -41,10 +41,10 @@
 
 - [x] Push diagnostics on compilation completion
 - [x] Clear diagnostics on file close
-- [x] Per-file diagnostic grouping (interested file + headers)
+- [x] Per-file diagnostic grouping (main file + headers)
 - [x] Diagnostic `code` field with Clang error codes
 - [ ] `codeDescription` with links to Clang documentation
-- [ ] Diagnostic `source` field distinguishing clang vs clang-tidy
+- [x] Diagnostic `source` field distinguishing clang vs clang-tidy
 - [ ] Configurable debounce delay before computing diagnostics ([clangd#1471](https://github.com/clangd/clangd/issues/1471))
 - [ ] Recompute diagnostics in open files when background indexing completes ([clangd#2604](https://github.com/clangd/clangd/issues/2604))
 

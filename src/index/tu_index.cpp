@@ -91,17 +91,17 @@ SymbolScope classify_scope(const clang::NamedDecl* decl) {
 /// relations from the resolve facts, macros from the preprocessor directives.
 class Projector {
 public:
-    Projector(CompilationUnitRef unit, bool interested_only) :
-        unit(unit), interested_only(interested_only) {}
+    Projector(CompilationUnitRef unit, bool main_file_only) :
+        unit(unit), main_file_only(main_file_only) {}
 
     /// The only gate through which rows enter `file_indices`. With
-    /// interested_only, the index covers just the interested file — yet
+    /// main_file_only, the index covers just the main file — yet
     /// AST nodes reachable from its top-level decls can carry locations
     /// in other files: inherited default arguments and base specifiers
     /// of classes defined in a preamble header land there. Such rows
     /// belong to the preamble's own index, so they are dropped here.
     FileIndex* file_index(clang::FileID fid) {
-        if(interested_only && fid != unit.interested_file()) {
+        if(main_file_only && fid != unit.main_file()) {
             return nullptr;
         }
         return &file_indices[fid];
@@ -326,7 +326,7 @@ public:
                                                             : module.partition_parts.back())
                                 .end;
             emit(module_name,
-                 unit.interested_file(),
+                 unit.main_file(),
                  LocalSourceRange{name_begin, name_end},
                  unit.is_module_interface_unit() ? RelationKind::Definition
                                                  : RelationKind::Reference);
@@ -590,14 +590,14 @@ public:
 
     std::string build(const PreambleExtras* extras) {
         ScopedTimer semantics_timer;
-        /// The interested-only shape is the one features share, cached on the
+        /// The main-file-only shape is the one features share, cached on the
         /// unit; the whole-TU shape is transient — projected and dropped.
         /// Both phases below share the one build.
         std::optional<Semantics> full;
-        if(!interested_only) {
+        if(!main_file_only) {
             full.emplace(Semantics::build(unit, false));
         }
-        const Semantics& semantics = interested_only ? unit.semantics() : *full;
+        const Semantics& semantics = main_file_only ? unit.semantics() : *full;
         auto semantics_ms = semantics_timer.ms_f();
 
         ScopedTimer project_timer;
@@ -637,8 +637,8 @@ public:
             // path_id() would misfile them under the source file. Real files
             // forced in via -include are not affected — clang records their
             // include edge in the predefines buffer, which is a valid
-            // location. The interested file legitimately has no edge.
-            if(fid != unit.interested_file() &&
+            // location. The main file legitimately has no edge.
+            if(fid != unit.main_file() &&
                graph.include_location_id(fid) == static_cast<std::uint32_t>(-1)) {
                 continue;
             }
@@ -711,7 +711,7 @@ public:
         LOG_PERF("index_detail",
                  "op=build scope={} semantics_ms={:.2f} project_ms={:.2f} finish_ms={:.2f} "
                  "encode_ms={:.2f} pack_ms={:.2f}",
-                 interested_only ? "interested" : "full",
+                 main_file_only ? "main" : "full",
                  semantics_ms,
                  project_ms,
                  finish_ms,
@@ -722,7 +722,7 @@ public:
 
 private:
     CompilationUnitRef unit;
-    bool interested_only;
+    bool main_file_only;
     IncludeGraph graph;
     SymbolTable symbols;
     /// Build-time working state keyed by FileID — clang::FileID means
@@ -734,8 +734,8 @@ private:
 
 }  // namespace
 
-std::string build_tu_index(CompilationUnitRef unit, bool interested_only) {
-    Projector projector(unit, interested_only);
+std::string build_tu_index(CompilationUnitRef unit, bool main_file_only) {
+    Projector projector(unit, main_file_only);
     return projector.build(nullptr);
 }
 
@@ -744,9 +744,9 @@ std::string build_preamble_index(CompilationUnitRef unit,
                                  llvm::ArrayRef<std::uint32_t> inactive_regions,
                                  llvm::ArrayRef<std::uint8_t> open_conditionals) {
     // The preamble compile remaps the buffer truncated at the bound, so
-    // interested_content() is exactly the preamble text the PCH was built
+    // main_content() is exactly the preamble text the PCH was built
     // from.
-    auto preamble_text = unit.interested_content();
+    auto preamble_text = unit.main_content();
     PreambleExtras extras{
         .hash = llvm::xxh3_64bits(preamble_text),
         .size = static_cast<std::uint32_t>(preamble_text.size()),
@@ -795,7 +795,7 @@ TUIndex TUIndex::from_bytes(llvm::StringRef data) {
     // Structural verification does not constrain field values; every path
     // id the merge dereferences against the path table is bounded here so
     // the accessors stay check-free. The builder ends every path table
-    // with the interested file, so consumers address path_count() - 1
+    // with the main file, so consumers address path_count() - 1
     // unchecked — an empty table marks a corrupt envelope.
     auto count = root[&EnvelopeBlob::paths].size();
     if(count == 0) {

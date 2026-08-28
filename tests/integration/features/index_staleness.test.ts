@@ -3,7 +3,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { MTIME_GRANULARITY, sleep } from "@clice/tools/client";
+import { MTIME_GRANULARITY, sleep, waitUntil } from "@clice/tools/client";
 import { Workspace } from "@clice/tools/workspace";
 import { expect, test } from "../fixtures.ts";
 
@@ -35,16 +35,6 @@ function globalMtime(workspace: Workspace): bigint {
     return fs.existsSync(p) ? fs.statSync(p, { bigint: true }).mtimeNs : 0n;
 }
 
-async function poll(predicate: () => boolean, timeoutSeconds = 30): Promise<boolean> {
-    for (let i = 0; i < timeoutSeconds; i++) {
-        if (predicate()) {
-            return true;
-        }
-        await sleep(1_000);
-    }
-    return false;
-}
-
 test("touch header no reindex", async ({ session }) => {
     const workspace = session.tmpdir();
     workspace.write("header.h", HEADER);
@@ -54,7 +44,11 @@ test("touch header no reindex", async ({ session }) => {
     // Session 1: background-index the closed TU into a shard.
     const c1 = session.spawn(workspace);
     await c1.initialize(workspace, { initializationOptions: NO_LMDB });
-    expect(await poll(() => shardMtimes(workspace).size > 0), "closed TU never indexed").toBe(true);
+    await waitUntil(() => shardMtimes(workspace).size > 0, {
+        timeout: 30_000,
+        interval: 1_000,
+        description: "the closed translation unit to be indexed",
+    });
     await c1.shutdown();
 
     // Touch the header: bump mtime, keep the bytes identical.
@@ -75,10 +69,11 @@ test("touch header no reindex", async ({ session }) => {
     // staleness check re-hashes, proves a mere touch, and repairs the stamp
     // — which dirties the global blob, so its mtime moving proves both that
     // the round ran and that the repair persisted.
-    expect(
-        await poll(() => globalMtime(workspace) !== globalBefore),
-        "indexing round never ran in session 2",
-    ).toBe(true);
+    await waitUntil(() => globalMtime(workspace) !== globalBefore, {
+        timeout: 30_000,
+        interval: 1_000,
+        description: "the second session's indexing round to persist",
+    });
     const after = shardMtimes(workspace);
     await c2.shutdown();
 

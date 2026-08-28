@@ -50,7 +50,6 @@ TEST_CASE(CompileResultRoundTrip) {
     worker::CompileResult result;
     result.version = 1;
     result.diagnostics = {};  // empty
-    result.memory_usage = 0;
 
     auto bytes = bincode::to_bytes(result);
     ASSERT_TRUE(bytes.has_value());

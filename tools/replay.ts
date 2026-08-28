@@ -3,8 +3,8 @@
 /// Usage: node tools/replay.ts tests/smoke/session.jsonl --clice build/clice
 ///
 /// Node builtins only — no npm dependencies — so it runs standalone with
-/// `node tools/replay.ts ...`. LSP framing, response defaults and the
-/// pass/fail rules mirror the former replay.py 1:1.
+/// `node tools/replay.ts ...`. LSP framing and response defaults mirror the
+/// former replay.py; process success uses the same gate as the test client.
 
 import { spawn } from "node:child_process";
 import * as fs from "node:fs";
@@ -12,6 +12,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Readable, Writable } from "node:stream";
+import { anomalyGateFailure, anomaliesInMessages, processGateFailures } from "./process_gate.ts";
 
 // tools/ -> repo root.
 const REPO_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -576,14 +577,18 @@ async function replayOne(
     await waitExitOrKill(proc, exited, 10000);
     await withTimeout(readerPromise, 2000).catch(() => undefined);
 
-    await withTimeout(stderrEnded, 2000).catch(() => undefined);
+    let stderrComplete = true;
+    try {
+        await withTimeout(stderrEnded, 2000);
+    } catch {
+        stderrComplete = false;
+    }
     const stderrData = Buffer.concat(stderrChunks);
-    const returncode = exitStatus(proc);
-    const signalName = proc.signalCode;
+    const stderrText = stderrData.toString("utf8");
 
     const printStderr = (): void => {
         if (stderrData.length > 0) {
-            for (const line of splitLines(stderrData.toString("utf-8")).slice(-20)) {
+            for (const line of splitLines(stderrText).slice(-20)) {
                 console.log(`  | ${line}`);
             }
         }
@@ -594,16 +599,22 @@ async function replayOne(
         return false;
     }
 
-    if (returncode !== null && returncode !== 0) {
-        const sig = signalName !== null ? ` (${signalName})` : "";
-        console.log(`  result: CRASH (exit=${returncode}${sig}, ${elapsed()}s)`);
-        printStderr();
-        return false;
+    const failures = processGateFailures({
+        exitCode: proc.exitCode,
+        signalCode: proc.signalCode,
+        stderrText,
+        stderrComplete,
+        stderrDrainedFromStart: true,
+    });
+    const anomalyFailure = anomalyGateFailure(anomaliesInMessages(anomalies), displayWs);
+    if (anomalyFailure !== null) {
+        failures.push(anomalyFailure);
     }
-
-    if (anomalies.length > 0) {
-        // Anomalies are internal clice bugs; a replay session must be clean.
-        console.log(`  result: FAIL (${anomalies.length} anomaly report(s), ${elapsed()}s)`);
+    if (failures.length > 0) {
+        console.log(`  result: FAIL (${failures.length} process gate failure(s), ${elapsed()}s)`);
+        for (const failure of failures) {
+            console.log(`  gate: ${failure}`);
+        }
         printStderr();
         return false;
     }

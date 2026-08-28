@@ -5,9 +5,11 @@
 /// back to disk after a save, saves write only the true dirty set, and
 /// cancelled builds leave no tmp blobs behind.
 
-import { MTIME_GRANULARITY, sleep, type CliceClient } from "@clice/tools/client";
+import { MTIME_GRANULARITY, sleep, waitUntil, type CliceClient } from "@clice/tools/client";
 import type { StatsResult } from "@clice/tools/protocol";
 import { expect, test } from "../fixtures.ts";
+
+const EDIT_INTERVAL = 50;
 
 /// Poll clice/internal/stats until predicate(stats) holds.
 async function waitStats(
@@ -15,17 +17,19 @@ async function waitStats(
     predicate: (stats: StatsResult) => boolean,
     message = "",
 ): Promise<StatsResult> {
-    const deadline = Date.now() + 30_000;
-    for (;;) {
-        const stats = await client.stats();
-        if (predicate(stats)) {
-            return stats;
-        }
-        if (Date.now() > deadline) {
-            throw new Error(`${message || "stats condition"} not met: ${JSON.stringify(stats)}`);
-        }
-        await sleep(200);
-    }
+    let last: StatsResult;
+    await waitUntil(
+        async () => {
+            last = await client.stats();
+            return predicate(last);
+        },
+        {
+            timeout: 30_000,
+            interval: 200,
+            description: message || "stats condition",
+        },
+    );
+    return last!;
 }
 
 test("shards flip back after save", async ({ session }) => {
@@ -120,7 +124,7 @@ test("cancel storm leaves no tmp", async ({ session }) => {
             i + 2,
             `#define STORM ${i}\n#include "header.h"\nint main() { return base_val; }\n`,
         );
-        await sleep(50);
+        await sleep(EDIT_INTERVAL);
     }
 
     await client.waitForRecompile(uri);

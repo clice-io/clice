@@ -86,7 +86,7 @@ struct CompilationUnitRef::Self {
     /// Cache for symbol id.
     llvm::DenseMap<const void*, std::uint64_t> symbol_hash_cache;
 
-    /// Cache for line starts of the interested file.
+    /// Cache for line starts of the main file.
     std::vector<std::uint32_t> line_starts_cache;
 
     llvm::BumpPtrAllocator path_storage;
@@ -99,11 +99,10 @@ struct CompilationUnitRef::Self {
 
     /// The tidy configuration reports on headers (HeaderFilterRegex or
     /// SystemHeaders), so the matcher traversal must see their
-    /// declarations — top_level_decls holds the interested file only.
+    /// declarations — top_level_decls holds the main file only.
     bool tidy_traverse_headers = false;
 
     std::chrono::milliseconds build_at;
-    std::chrono::milliseconds build_duration;
 
     auto& SM() {
         return instance->getSourceManager();

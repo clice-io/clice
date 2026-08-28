@@ -186,7 +186,7 @@ cmd = "node tools/feature_docs.ts check"
 
 [feature.test.tasks.unit-test]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
-cmd = './build/{{ type }}/bin/unit_tests --test-dir="./tests/data" --verbose'
+cmd = './build/{{ type }}/bin/unit_tests --verbose'
 depends-on = [{ task = "check-feature-docs" }]
 
 # npm workspaces: install runs at the repo root and covers tools/, tests/
@@ -220,9 +220,9 @@ node tools/replay.ts tests/smoke/*.jsonl \
     --clice=./build/{{ type }}/bin/clice
 """
 
-# Standalone feature snapshots: `clice inspect` over tests/snap corpora
-# (no server involved). Driver logic lives in tools/snap.ts; the vitest
-# glue schedules one inspect process per fixture concurrently.
+# Feature snapshots exercise `clice inspect` and real server paths over
+# tests/snap corpora. Driver logic lives under tools/snap/; the vitest glue
+# schedules fixture work concurrently within the suite.
 [feature.test.tasks.snap-test]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 cmd = """

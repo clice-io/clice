@@ -71,7 +71,7 @@ static kota::ipc::RequestResult<Params> build_for(WorkerPool& pool,
 }
 
 constexpr static std::uint8_t evidence_kind(worker::QueryKind kind) {
-    return static_cast<std::uint8_t>(kind);
+    return static_cast<std::uint8_t>(EvidenceKind::Count) + static_cast<std::uint8_t>(kind);
 }
 
 WorkerForwarder::WorkerForwarder(Workspace& workspace,
@@ -128,7 +128,7 @@ kota::task<bool> WorkerForwarder::ensure_pch(const std::shared_ptr<Session>& ses
     // count. Joiners of an already-running round install nothing and
     // replay nothing.
     auto outcome = co_await pch.acquire(std::move(plan.request), [session](llvm::StringRef death) {
-        session->quarantine.on_kind_crash(pch_evidence, death);
+        session->quarantine.on_kind_crash(evidence_kind(EvidenceKind::PCH), death);
     });
     if(outcome != PCHFamily::Outcome::Ready) {
         co_return false;
@@ -146,7 +146,7 @@ kota::task<bool> WorkerForwarder::ensure_pch(const std::shared_ptr<Session>& ses
     // Adopting a proven-good artifact disproves the session's PCH strikes
     // as surely as building one — but only its own; every consumer washes
     // for itself.
-    session->quarantine.on_kind_land(pch_evidence);
+    session->quarantine.on_kind_land(evidence_kind(EvidenceKind::PCH));
     co_return true;
 }
 
@@ -314,12 +314,12 @@ kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
     }
     auto wait_ms = timer.ms_f();
 
-    if(session->quarantine.kind_blocked(document_link_evidence)) {
+    if(session->quarantine.kind_blocked(evidence_kind(EvidenceKind::DocumentLink))) {
         co_return kota::outcome_error(
             kota::ipc::Error{worker::dispatch_errc::worker_unavailable, "Document is quarantined"});
     }
 
-    bool recovery = session->quarantine.recovery_kind(document_link_evidence);
+    bool recovery = session->quarantine.recovery_kind(evidence_kind(EvidenceKind::DocumentLink));
     auto suspect = recovery ? Suspect::InPlace : Suspect::No;
     std::optional<Quarantine::ProbeGuard> probe_guard;
     if(recovery) {
@@ -331,7 +331,7 @@ kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
                                               suspect);
     if(!result.has_value()) {
         if(result.error().code == worker::dispatch_errc::worker_crashed) {
-            session->quarantine.on_kind_crash(document_link_evidence,
+            session->quarantine.on_kind_crash(evidence_kind(EvidenceKind::DocumentLink),
                                               worker::death_of(result.error()));
         }
         if(!worker::is_operational_error(result.error())) {
@@ -351,7 +351,7 @@ kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
         co_return std::vector<feature::DocumentLink>{};
     }
     bool was_active = session->quarantine.active();
-    session->quarantine.on_kind_land(document_link_evidence);
+    session->quarantine.on_kind_land(evidence_kind(EvidenceKind::DocumentLink));
     if(was_active && !session->quarantine.active()) {
         ast.publish_recovered(session);
     }
@@ -485,7 +485,7 @@ WorkerForwarder::RawResult
     WorkerForwarder::forward_completion(const protocol::Position& position,
                                         std::shared_ptr<Session> session,
                                         std::optional<kota::cancellation_token> token) {
-    return forward_interactive<worker::CompletionParams>(completion_evidence,
+    return forward_interactive<worker::CompletionParams>(evidence_kind(EvidenceKind::Completion),
                                                          "Completion",
                                                          position,
                                                          std::move(session),
@@ -496,11 +496,12 @@ WorkerForwarder::RawResult
     WorkerForwarder::forward_signature_help(const protocol::Position& position,
                                             std::shared_ptr<Session> session,
                                             std::optional<kota::cancellation_token> token) {
-    return forward_interactive<worker::SignatureHelpParams>(signature_help_evidence,
-                                                            "SignatureHelp",
-                                                            position,
-                                                            std::move(session),
-                                                            std::move(token));
+    return forward_interactive<worker::SignatureHelpParams>(
+        evidence_kind(EvidenceKind::SignatureHelp),
+        "SignatureHelp",
+        position,
+        std::move(session),
+        std::move(token));
 }
 
 WorkerForwarder::RawResult
@@ -514,7 +515,7 @@ WorkerForwarder::RawResult
     // Formatting runs no sema, but it is still this document's content on
     // a worker: while quarantined, only format-as-recovery may run, and a
     // refusal announces the quarantine.
-    bool recovery = session->quarantine.recovery_kind(format_evidence);
+    bool recovery = session->quarantine.recovery_kind(evidence_kind(EvidenceKind::Format));
     if(session->quarantine.active() && !recovery) {
         LOG_WARN("forward_format: {} is quarantined, refusing format", path);
         if(session->quarantine.needs_announcement()) {
@@ -545,7 +546,7 @@ WorkerForwarder::RawResult
     }
     auto result = co_await build_for(pool,
                                      *session,
-                                     format_evidence,
+                                     evidence_kind(EvidenceKind::Format),
                                      wp,
                                      worker::Priority::High,
                                      {.token = std::move(token)});
@@ -560,7 +561,7 @@ WorkerForwarder::RawResult
     }
     if(session->generation == gen) {
         bool was_active = session->quarantine.active();
-        session->quarantine.on_kind_land(format_evidence);
+        session->quarantine.on_kind_land(evidence_kind(EvidenceKind::Format));
         if(was_active && !session->quarantine.active()) {
             ast.publish_recovered(session);
         }

@@ -50,7 +50,7 @@ std::string main_path;
 
 /// Compile the added sources, persist the preamble envelope (exactly what
 /// the PCH build produces), and open a session whose pch_key points at
-/// it. The session's own index is the interested-only envelope, mirroring
+/// it. The session's own index is the main-file-only envelope, mirroring
 /// the production per-edit index.
 void open_with_overlay(std::source_location location = std::source_location::current()) {
     ASSERT_TRUE(compile());

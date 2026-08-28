@@ -52,8 +52,6 @@
 #include <algorithm>
 #include <cassert>
 
-#include "llvm/Support/Format.h"
-
 namespace clice {
 
 static char lower(char C) {
@@ -77,13 +75,13 @@ FuzzyMatcher::FuzzyMatcher(llvm::StringRef pattern) :
     std::copy(pattern.begin(), pattern.begin() + pat_n, Pat);
     for(int I = 0; I < pat_n; ++I)
         low_pat[I] = lower(Pat[I]);
-    scores[0][0][Miss] = {0, Miss};
-    scores[0][0][Match] = {AwfulScore, Miss};
+    scores[0][0][action_index(Action::Miss)] = {0, Action::Miss};
+    scores[0][0][action_index(Action::Match)] = {AwfulScore, Action::Miss};
 
     for(int P = 0; P <= pat_n; ++P) {
         for(int W = 0; W < P; ++W) {
-            for(Action A: {Miss, Match}) {
-                scores[P][W][A] = {AwfulScore, Miss};
+            for(Action action: {Action::Miss, Action::Match}) {
+                scores[P][W][action_index(action)] = {AwfulScore, Action::Miss};
             }
         }
     }
@@ -102,7 +100,8 @@ std::optional<float> FuzzyMatcher::match(llvm::StringRef word) {
     }
 
     build_graph();
-    auto best = std::max(scores[pat_n][word_n][Miss].score, scores[pat_n][word_n][Match].score);
+    auto best = std::max(scores[pat_n][word_n][action_index(Action::Miss)].score,
+                         scores[pat_n][word_n][action_index(Action::Match)].score);
     if(is_awful(best)) {
         return std::nullopt;
     }
@@ -240,33 +239,39 @@ bool FuzzyMatcher::init(llvm::StringRef new_word) {
 // non-matched characters.
 void FuzzyMatcher::build_graph() {
     for(int W = 0; W < word_n; ++W) {
-        scores[0][W + 1][Miss] = {scores[0][W][Miss].score - skip_penalty(W, Miss), Miss};
-        scores[0][W + 1][Match] = {AwfulScore, Miss};
+        scores[0][W + 1][action_index(Action::Miss)] = {
+            scores[0][W][action_index(Action::Miss)].score - skip_penalty(W, Action::Miss),
+            Action::Miss,
+        };
+        scores[0][W + 1][action_index(Action::Match)] = {AwfulScore, Action::Miss};
     }
 
     for(int P = 0; P < pat_n; ++P) {
         for(int W = P; W < word_n; ++W) {
             auto &score = scores[P + 1][W + 1], &PreMiss = scores[P + 1][W];
 
-            auto match_miss_score = PreMiss[Match].score;
-            auto miss_miss_score = PreMiss[Miss].score;
+            auto match_miss_score = PreMiss[action_index(Action::Match)].score;
+            auto miss_miss_score = PreMiss[action_index(Action::Miss)].score;
             if(P < pat_n - 1) {  // Skipping trailing characters is always free.
-                match_miss_score -= skip_penalty(W, Match);
-                miss_miss_score -= skip_penalty(W, Miss);
+                match_miss_score -= skip_penalty(W, Action::Match);
+                miss_miss_score -= skip_penalty(W, Action::Miss);
             }
-            score[Miss] = (match_miss_score > miss_miss_score) ? ScoreInfo{match_miss_score, Match}
-                                                               : ScoreInfo{miss_miss_score, Miss};
+            score[action_index(Action::Miss)] = (match_miss_score > miss_miss_score)
+                                                    ? ScoreInfo{match_miss_score, Action::Match}
+                                                    : ScoreInfo{miss_miss_score, Action::Miss};
 
             auto& pre_match = scores[P][W];
-            auto match_match_score = allow_match(P, W, Match)
-                                         ? pre_match[Match].score + match_bonus(P, W, Match)
+            auto match_match_score = allow_match(P, W, Action::Match)
+                                         ? pre_match[action_index(Action::Match)].score +
+                                               match_bonus(P, W, Action::Match)
                                          : AwfulScore;
-            auto miss_match_score = allow_match(P, W, Miss)
-                                        ? pre_match[Miss].score + match_bonus(P, W, Miss)
-                                        : AwfulScore;
-            score[Match] = (match_match_score > miss_match_score)
-                               ? ScoreInfo{match_match_score, Match}
-                               : ScoreInfo{miss_match_score, Miss};
+            auto miss_match_score =
+                allow_match(P, W, Action::Miss)
+                    ? pre_match[action_index(Action::Miss)].score + match_bonus(P, W, Action::Miss)
+                    : AwfulScore;
+            score[action_index(Action::Match)] = (match_match_score > miss_match_score)
+                                                     ? ScoreInfo{match_match_score, Action::Match}
+                                                     : ScoreInfo{miss_match_score, Action::Miss};
         }
     }
 }
@@ -279,7 +284,7 @@ bool FuzzyMatcher::allow_match(int P, int W, Action last) const {
     // We require a "strong" match:
     // - for the first pattern character.  [foo] !~ "barefoot"
     // - after a gap.                      [pat] !~ "patnther"
-    if(last == Miss) {
+    if(last == Action::Miss) {
         // We're banning matches outright, so conservatively accept some other cases
         // where our segmentation might be wrong:
         //  - allow matching B in ABCDef (but not in NDEBUG)
@@ -321,12 +326,12 @@ int FuzzyMatcher::match_bonus(int P, int W, Action last) const {
 
     // Bonus: a consecutive match. First character match also gets a bonus to
     // ensure prefix final match score normalizes to 1.0.
-    if(W == 0 || last == Match) {
+    if(W == 0 || last == Action::Match) {
         S += 2;
     }
 
     // Penalty: matching inside a segment (and previous char wasn't matched).
-    if(word_role[W] == Tail && P && last == Miss) {
+    if(word_role[W] == Tail && P && last == Action::Miss) {
         S -= 3;
     }
 
@@ -342,108 +347,6 @@ int FuzzyMatcher::match_bonus(int P, int W, Action last) const {
 
     assert(S <= PerfectBonus);
     return S;
-}
-
-llvm::SmallString<256> FuzzyMatcher::dumpLast(llvm::raw_ostream& OS) const {
-    llvm::SmallString<256> result;
-    OS << "=== Match \"" << llvm::StringRef(word, word_n) << "\" against ["
-       << llvm::StringRef(Pat, pat_n) << "] ===\n";
-    if(pat_n == 0) {
-        OS << "Pattern is empty: perfect match.\n";
-        return result = llvm::StringRef(word, word_n);
-    }
-
-    if(word_n == 0) {
-        OS << "Word is empty: no match.\n";
-        return result;
-    }
-
-    if(!word_contains_pattern) {
-        OS << "Substring check failed.\n";
-        return result;
-    }
-
-    if(is_awful(std::max(scores[pat_n][word_n][Match].score, scores[pat_n][word_n][Miss].score))) {
-        OS << "Substring check passed, but all matches are forbidden\n";
-    }
-
-    if(!(pat_type_set & 1 << Upper)) {
-        OS << "Lowercase query, so scoring ignores case\n";
-    }
-
-    // Traverse Matched table backwards to reconstruct the Pattern/Word mapping.
-    // The Score table has cumulative scores, subtracting along this path gives
-    // us the per-letter scores.
-    Action last =
-        (scores[pat_n][word_n][Match].score > scores[pat_n][word_n][Miss].score) ? Match : Miss;
-    int S[MaxWord];
-    Action A[MaxWord];
-    for(int W = word_n - 1, P = pat_n - 1; W >= 0; --W) {
-        A[W] = last;
-        const auto& Cell = scores[P + 1][W + 1][last];
-        if(last == Match)
-            --P;
-        const auto& Prev = scores[P + 1][W][Cell.Prev];
-        S[W] = Cell.score - Prev.score;
-        last = Cell.Prev;
-    }
-    for(int I = 0; I < word_n; ++I) {
-        if(A[I] == Match && (I == 0 || A[I - 1] == Miss)) {
-            result.push_back('[');
-        }
-
-        if(A[I] == Miss && I > 0 && A[I - 1] == Match) {
-            result.push_back(']');
-        }
-
-        result.push_back(word[I]);
-    }
-
-    if(A[word_n - 1] == Match) {
-        result.push_back(']');
-    }
-
-    for(char C: llvm::StringRef(word, word_n))
-        OS << " " << C << " ";
-    OS << "\n";
-    for(int I = 0, J = 0; I < word_n; I++)
-        OS << " " << (A[I] == Match ? Pat[J++] : ' ') << " ";
-    OS << "\n";
-    for(int I = 0; I < word_n; I++)
-        OS << llvm::format("%2d ", S[I]);
-    OS << "\n";
-
-    OS << "\nSegmentation:";
-    OS << "\n'" << llvm::StringRef(word, word_n) << "'\n ";
-    for(int I = 0; I < word_n; ++I)
-        OS << "?-+ "[static_cast<int>(word_role[I])];
-    OS << "\n[" << llvm::StringRef(Pat, pat_n) << "]\n ";
-    for(int I = 0; I < pat_n; ++I)
-        OS << "?-+ "[static_cast<int>(pat_role[I])];
-    OS << "\n";
-
-    OS << "\nScoring table (last-Miss, last-Match):\n";
-    OS << " |    ";
-    for(char C: llvm::StringRef(word, word_n))
-        OS << "  " << C << " ";
-    OS << "\n";
-    OS << "-+----" << std::string(word_n * 4, '-') << "\n";
-    for(int I = 0; I <= pat_n; ++I) {
-        for(Action A: {Miss, Match}) {
-            OS << ((I && A == Miss) ? Pat[I - 1] : ' ') << "|";
-            for(int J = 0; J <= word_n; ++J) {
-                if(!is_awful(scores[I][J][A].score))
-                    OS << llvm::format("%3d%c",
-                                       scores[I][J][A].score,
-                                       scores[I][J][A].Prev == Match ? '*' : ' ');
-                else
-                    OS << "    ";
-            }
-            OS << "\n";
-        }
-    }
-
-    return result;
 }
 
 }  // namespace clice

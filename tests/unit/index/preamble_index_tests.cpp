@@ -340,7 +340,7 @@ int other = 1;
 
     // The preamble text itself is not stored; the envelope keeps only the
     // identity of the exact prefix it was built from.
-    auto content = unit->interested_content();
+    auto content = unit->main_content();
     EXPECT_TRUE(state->matches_prefix(content));
     EXPECT_TRUE(state->matches_prefix(content.str() + "\nint more = 2;"));
     EXPECT_FALSE(state->matches_prefix(content.drop_back(1)));

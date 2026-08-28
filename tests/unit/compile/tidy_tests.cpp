@@ -82,7 +82,7 @@ TEST_CASE(HeaderFilterTraversesHeaders) {
     std::string main_path = TestVFS::path("main.cpp");
     CompilationParams params;
     // A header-reporting configuration widens the matcher traversal past
-    // the interested file; the finding lands with the header's location.
+    // the main file; the finding lands with the header's location.
     params.kind = CompilationKind::Content;
     params.tidy = tidy::TidyParams{.checks = "-*,bugprone-integer-division",
                                    .fast_only = false,
@@ -94,7 +94,7 @@ TEST_CASE(HeaderFilterTraversesHeaders) {
 
     bool header_finding = false;
     for(auto& diag: unit.diagnostics()) {
-        if(diag.id.source == DiagnosticSource::ClangTidy && diag.fid != unit.interested_file()) {
+        if(diag.id.source == DiagnosticSource::ClangTidy && diag.fid != unit.main_file()) {
             ASSERT_EQ(diag.id.name, "bugprone-integer-division");
             header_finding = true;
         }

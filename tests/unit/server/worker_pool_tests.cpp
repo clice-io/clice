@@ -1734,7 +1734,6 @@ TEST_CASE(StatelessRequest) {
     bool done = false;
     f.run([&]() -> kota::task<> {
         CO_ASSERT_TRUE(f.start(2, 0));
-        co_await kota::sleep(500);
 
         worker::TURunParams params;
         params.index = true;
@@ -1769,7 +1768,6 @@ TEST_CASE(AdvisoryCancelCooperates) {
     bool done = false;
     f.run([&]() -> kota::task<> {
         CO_ASSERT_TRUE(f.start(1, 0));
-        co_await kota::sleep(500);
 
         worker::TURunParams params;
         params.index = true;
@@ -1843,7 +1841,6 @@ TEST_CASE(DeadSlotRevives) {
         CO_ASSERT_TRUE(f.start(1, 0));
         f.set_revive_after(std::chrono::milliseconds(300));
         f.set_max_crash_streak(0);
-        co_await kota::sleep(500);
 
         // The very first crash exceeds the zero budget: the slot dies...
         f.kill_worker(0);
@@ -1871,7 +1868,6 @@ TEST_CASE(InPlaceKeepsOwner) {
     bool done = false;
     f.run([&]() -> kota::task<> {
         CO_ASSERT_TRUE(f.start(0, 2));
-        co_await kota::sleep(500);
 
         // Two documents pin worker 0: it is the owner but not expendable.
         f.force_owner(7, 0);
@@ -1954,7 +1950,6 @@ TEST_CASE(ScaleUpRevivesDead) {
         // Cooldown far in the future: only scale-up can bring the slot back.
         f.set_revive_after(std::chrono::minutes(10));
         f.set_max_crash_streak(0);
-        co_await kota::sleep(500);
 
         f.kill_worker(0);
         for(int i = 0; i < 50 && !f.slot_dead(0); ++i) {
@@ -2013,7 +2008,6 @@ TEST_CASE(CrashDuringRequest) {
     bool done = false;
     f.run([&]() -> kota::task<> {
         CO_ASSERT_TRUE(f.start(2, 0));
-        co_await kota::sleep(500);
 
         // Kill both workers, then send without yielding: the claim lands on
         // a dead-but-not-yet-reaped slot, and the pool must surface
@@ -2046,7 +2040,6 @@ TEST_CASE(PreemptCancelsRequest) {
     bool done = false;
     f.run([&]() -> kota::task<> {
         CO_ASSERT_TRUE(f.start(2, 0));
-        co_await kota::sleep(500);
 
         worker::TURunParams params;
         params.index = true;
@@ -2098,7 +2091,6 @@ TEST_CASE(CancelledCrashRetiresSlot) {
     bool done = false;
     f.run([&]() -> kota::task<> {
         CO_ASSERT_TRUE(f.start(1, 0));
-        co_await kota::sleep(500);
 
         worker::TURunParams params;
         params.index = true;

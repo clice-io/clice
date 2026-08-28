@@ -241,7 +241,7 @@ struct NameOccurrence {
 llvm::SmallVector<NameOccurrence, 2>
     resolve_occurrences(const SemanticNode& node, types::TemplateResolver* resolver = nullptr);
 
-/// The semantic map of the interested file, built once after a successful
+/// The semantic map of the main file, built once after a successful
 /// parse and serving every consumer that used to run its own traversal:
 /// selection, semantic tokens, hover and the TUIndex projection.
 ///
@@ -302,12 +302,12 @@ public:
     /// Build the semantics of the unit: one full traversal claiming tokens
     /// innermost-first, plus one pass over the preprocessor directives.
     ///
-    /// With interested_only (the shape features consume, cached on the unit)
-    /// only the interested file's top-level decls are traversed. Without it
+    /// With main_file_only (the shape features consume, cached on the unit)
+    /// only the main file's top-level decls are traversed. Without it
     /// the whole TU is traversed — the transient shape the full index
-    /// projection uses; token ownership still only covers the interested
+    /// projection uses; token ownership still only covers the main
     /// file's spelled tokens.
-    static Semantics build(CompilationUnitRef unit, bool interested_only = true);
+    static Semantics build(CompilationUnitRef unit, bool main_file_only = true);
 
     /// All recorded nodes in one index space: first the AST segment in DFS
     /// pre-order (a parent always precedes its children), then preprocessor
@@ -320,7 +320,7 @@ public:
         return nodes[index];
     }
 
-    /// The spelled tokens of the interested file (a view into the unit's
+    /// The spelled tokens of the main file (a view into the unit's
     /// TokenBuffer, not a copy). They cover the whole file even under a
     /// preamble PCH — what the PCH consumes is the preamble's AST and
     /// directives (those travel through the pch.idx envelope instead), not its
@@ -329,7 +329,7 @@ public:
         return tokens;
     }
 
-    /// Byte offset of spelled token `index` in the interested file.
+    /// Byte offset of spelled token `index` in the main file.
     std::uint32_t token_offset(std::uint32_t index) const {
         return tokens[index].location().getRawEncoding() - file_begin.getRawEncoding();
     }
@@ -347,13 +347,13 @@ public:
             .slice(owner_begin[index], owner_begin[index + 1] - owner_begin[index]);
     }
 
-    /// The interested file's comments in source order (the spelled token
+    /// The main file's comments in source order (the spelled token
     /// stream drops them). The same objects back the Comment nodes.
     llvm::ArrayRef<LexicalInfo::Comment> comments() const {
         return lexical.comments;
     }
 
-    /// The interested file's module declarations, already cross-checked
+    /// The main file's module declarations, already cross-checked
     /// against the compiled module (bogus lexical matches are dropped at
     /// build time). The same objects back the Module nodes.
     llvm::ArrayRef<LexicalInfo::ModuleDeclaration> module_declarations() const {
@@ -367,7 +367,7 @@ private:
 
     llvm::ArrayRef<clang::syntax::Token> tokens;
 
-    /// Start location of the interested file, for O(1) offset computation.
+    /// Start location of the main file, for O(1) offset computation.
     clang::SourceLocation file_begin;
 
     /// Tokens preprocessed to nothing.

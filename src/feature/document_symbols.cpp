@@ -102,7 +102,7 @@ auto symbol_detail(clang::ASTContext& context, const clang::NamedDecl& decl) -> 
 }
 
 /// Collects the outline by walking the unit's cached Semantics node table —
-/// the DFS pre-order record of the interested file's written AST — instead of
+/// the DFS pre-order record of the main file's written AST — instead of
 /// running another RecursiveASTVisitor over the TU. Nesting comes for free:
 /// a symbol's frame stays open while the walk index is inside its subtree.
 class Collector {
@@ -181,7 +181,7 @@ private:
             childless_instantiation = true;
         }
 
-        if(!is_interested(decl)) {
+        if(!is_supported(decl)) {
             return true;
         }
 
@@ -201,8 +201,7 @@ private:
 
         auto [fid, selection_range] = unit.decompose_range(name_range);
         auto [fid2, range] = unit.decompose_expansion_range(named->getSourceRange());
-        if(fid != fid2 || fid != unit.interested_file() || !selection_range.valid() ||
-           !range.valid()) {
+        if(fid != fid2 || fid != unit.main_file() || !selection_range.valid() || !range.valid()) {
             return false;
         }
 
@@ -279,7 +278,7 @@ private:
         level->push_back(std::move(symbol));
     }
 
-    static bool is_interested(const clang::Decl* decl) {
+    static bool is_supported(const clang::Decl* decl) {
         switch(decl->getKind()) {
             case clang::Decl::Namespace:
             case clang::Decl::Enum:
@@ -374,7 +373,7 @@ auto document_symbols(CompilationUnitRef unit) -> std::vector<DocumentSymbol> {
 auto document_symbols(CompilationUnitRef unit, PositionEncoding encoding)
     -> std::vector<protocol::DocumentSymbol> {
     return document_symbols_to_protocol(document_symbols(unit),
-                                        unit.interested_content(),
+                                        unit.main_content(),
                                         unit.line_starts(),
                                         encoding);
 }

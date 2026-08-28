@@ -74,7 +74,6 @@ struct [[nodiscard]] StrandGuard {
 
 class StatefulWorker {
     kota::ipc::BincodePeer& peer;
-    std::uint64_t memory_limit;
     std::size_t max_documents;
 
     llvm::StringMap<std::shared_ptr<DocumentEntry>> documents;
@@ -93,8 +92,6 @@ class StatefulWorker {
     }
 
     void shrink_if_over_limit() {
-        // TODO: Implement memory-based eviction using memory_limit.
-        // For now, cap at a fixed number of documents.
         while(documents.size() > max_documents && !lru.empty()) {
             auto path = lru.back();
             lru.pop_back();
@@ -175,10 +172,8 @@ class StatefulWorker {
     }
 
 public:
-    StatefulWorker(kota::ipc::BincodePeer& peer,
-                   std::uint64_t memory_limit,
-                   std::size_t max_documents) :
-        peer(peer), memory_limit(memory_limit), max_documents(max_documents) {}
+    StatefulWorker(kota::ipc::BincodePeer& peer, std::size_t max_documents) :
+        peer(peer), max_documents(max_documents) {}
 
     void register_handlers();
 };
@@ -316,12 +311,11 @@ void StatefulWorker::register_handlers() {
                                  timer.ms(),
                                  doc->unit.setup_fail());
                     }
-                    result.memory_usage = 0;  // TODO: query actual memory
                     if(doc->unit.completed() && !stop->load(std::memory_order_relaxed)) {
                         result.build_at = doc->unit.build_at().count();
                         result.deps = doc->unit.deps();
 
-                        // Build index for main file only (interested_only=true).
+                        // Build index for main file only (main_file_only=true).
                         result.tu_index_data = index::build_tu_index(doc->unit, true);
                     }
 
@@ -435,8 +429,7 @@ void StatefulWorker::register_handlers() {
     });
 }
 
-int run_stateful_worker_mode(std::uint64_t memory_limit,
-                             const std::string& worker_name,
+int run_stateful_worker_mode(const std::string& worker_name,
                              const std::string& log_dir,
                              std::size_t max_documents) {
     logging::stderr_logger(worker_name, logging::options);
@@ -452,7 +445,7 @@ int run_stateful_worker_mode(std::uint64_t memory_limit,
         logging::file_logger(worker_name, log_dir, logging::options, /*mirror_stderr=*/false);
     }
 
-    LOG_INFO("Starting stateful worker, memory_limit={}MB", memory_limit / (1024 * 1024));
+    LOG_INFO("Starting stateful worker");
 
     kota::event_loop loop;
 
@@ -464,7 +457,7 @@ int run_stateful_worker_mode(std::uint64_t memory_limit,
 
     kota::ipc::BincodePeer peer(loop, std::move(*transport_result));
 
-    StatefulWorker worker(peer, memory_limit, max_documents);
+    StatefulWorker worker(peer, max_documents);
     worker.register_handlers();
 
     LOG_INFO("Stateful worker ready, waiting for requests");

@@ -1,6 +1,6 @@
 /// CLI-based tests for agentic mode and CLI entry points.
 
-import { findFreePort, sleep } from "@clice/tools/client";
+import { findFreePort, waitUntil } from "@clice/tools/client";
 import type { Workspace } from "@clice/tools/workspace";
 import { cliceExecutable, expect, test, type SessionFactory } from "../fixtures.ts";
 import { AgenticRpcClient, posix, runCli } from "./rpc.ts";
@@ -23,15 +23,19 @@ async function indexedServer(
 
     const rpc = new AgenticRpcClient();
     await rpc.connect(host, port);
-    for (let i = 0; i < 300; i++) {
-        const resp = await rpc.request<{ symbols: unknown[] }>("agentic/symbolSearch", {
-            query: "add",
-        });
-        if (resp.result?.symbols.length) {
-            break;
-        }
-        await sleep(100);
-    }
+    await waitUntil(
+        async () => {
+            const resp = await rpc.request<{ symbols: unknown[] }>("agentic/symbolSearch", {
+                query: "add",
+            });
+            return resp.result?.symbols.length ?? 0;
+        },
+        {
+            timeout: 30_000,
+            interval: 100,
+            description: "agentic/symbolSearch to return indexed symbols",
+        },
+    );
     rpc.close();
 
     return { host, port, workspace };

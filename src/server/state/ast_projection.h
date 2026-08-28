@@ -62,7 +62,7 @@ struct ASTProjection {
     /// transport push path (see CompileOutput).
     std::optional<CompileOutput> output;
 
-    /// The interested file's rows within `index` (an empty shard when the
+    /// The main file's rows within `index` (an empty shard when the
     /// compile produced none). Callers gate on index_current, which
     /// implies a loaded envelope.
     const index::Shard& file_rows() const {

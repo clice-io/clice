@@ -7,7 +7,7 @@
 /// (conditions inside the bound never replay in the AST compile); a #if
 /// cut by the bound resumes via the open-conditional stack.
 
-import { sleep } from "@clice/tools/client";
+import { waitUntil } from "@clice/tools/client";
 import { expect, test } from "../fixtures.ts";
 
 test("inactive after bound", async ({ session }) => {
@@ -99,12 +99,13 @@ test("inactive flips on context switch", async ({ session }) => {
     await client.waitForRecompile(uri);
 
     // The refresh request rides its own task after the diagnostics push.
-    const deadline = Date.now() + 10_000;
     const refreshed = () =>
         client.serverRequests.slice(marker).includes("workspace/semanticTokens/refresh");
-    while (!refreshed() && Date.now() < deadline) {
-        await sleep(50);
-    }
+    await waitUntil(refreshed, {
+        timeout: 10_000,
+        interval: 50,
+        description: "semantic token refresh after a context switch",
+    });
     expect(refreshed(), "no semanticTokens refresh after the switch").toBe(true);
     expect(await client.inactiveLines(uri)).toEqual(before[0] === 4 ? [2] : [4]);
 });

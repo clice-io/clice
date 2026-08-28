@@ -41,10 +41,10 @@
 
 - [x] 编译完成时推送诊断
 - [x] 文件关闭时清除诊断
-- [x] 按文件分组诊断（关注的文件 + 头文件）
+- [x] 按文件分组诊断（主文件 + 头文件）
 - [x] 诊断 `code` 字段包含 Clang 错误代码
 - [ ] `codeDescription` 链接到 Clang 文档
-- [ ] 诊断 `source` 字段区分 clang 与 clang-tidy
+- [x] 诊断 `source` 字段区分 clang 与 clang-tidy
 - [ ] 可配置的诊断计算防抖延迟（[clangd#1471](https://github.com/clangd/clangd/issues/1471)）
 - [ ] 后台索引完成后重新计算已打开文件的诊断（[clangd#2604](https://github.com/clangd/clangd/issues/2604)）
 

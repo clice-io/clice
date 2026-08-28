@@ -1401,7 +1401,6 @@ std::vector<ResolvedSymbol> IndexQuery::locate_symbols(const agentic::ReadSymbol
                 continue;
             bool found = false;
             merged_index.lookup(hash, RelationKind::Definition, [&](const index::Relation& r) {
-                // FIXME: unchecked optional dereference
                 auto range = map.to_range(r.range.begin, r.range.end);
                 if(range && range->start.line == target_line) {
                     found = true;

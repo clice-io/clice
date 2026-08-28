@@ -26,7 +26,7 @@ int b();
 )cpp");
 
     ASSERT_EQ(scan.regions.size(), 2u);
-    auto content = unit->interested_content();
+    auto content = unit->main_content();
     auto begin = scan.regions[0];
     auto end = scan.regions[1];
     EXPECT_EQ(content.substr(begin, end - begin), "int dead();\n");
@@ -43,7 +43,7 @@ int dead();
 )cpp");
 
     ASSERT_EQ(scan.regions.size(), 2u);
-    auto content = unit->interested_content();
+    auto content = unit->main_content();
     EXPECT_EQ(content.substr(scan.regions[0], scan.regions[1] - scan.regions[0]), "int dead();\n");
 }
 
@@ -66,7 +66,7 @@ int dead();
 )cpp");
 
     ASSERT_EQ(scan.regions.size(), 2u);
-    auto content = unit->interested_content();
+    auto content = unit->main_content();
     EXPECT_EQ(content.substr(scan.regions[0], scan.regions[1] - scan.regions[0]), "int dead();\n");
 }
 
@@ -79,7 +79,7 @@ int b();
 )cpp");
 
     ASSERT_EQ(scan.regions.size(), 2u);
-    auto content = unit->interested_content();
+    auto content = unit->main_content();
     EXPECT_EQ(content.substr(scan.regions[0], scan.regions[1] - scan.regions[0]), "int dead();\n");
 }
 
@@ -96,7 +96,7 @@ int b();
 )cpp");
 
     ASSERT_EQ(scan.regions.size(), 2u);
-    auto content = unit->interested_content();
+    auto content = unit->main_content();
     EXPECT_EQ(content.substr(scan.regions[0], scan.regions[1] - scan.regions[0]),
               "int dead();\n#ifdef INNER\nint deeper();\n#endif\nint tail();\n");
 }

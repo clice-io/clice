@@ -114,14 +114,6 @@ Lower bound for dynamic stateless-worker scaling; `0` is invalid and falls back 
 
 Upper bound for dynamic stateless-worker scaling; `0` means the machine's parallelism, which is also the default.
 
-### `project.worker_memory_limit`
-
-| Type     | Default      |
-| -------- | ------------ |
-| `uint64` | `4294967296` |
-
-Per-stateful-worker memory limit in bytes; `0` is invalid and falls back to the default. Not yet enforced: parsed, but memory-based eviction is not implemented.
-
 <!-- END GENERATED CONFIG -->
 
 ## Tracker

@@ -20,12 +20,6 @@ struct WorkerOptions {
     stateful;
 
     DecoKV(style = KVStyle::JoinedOrSeparate,
-           names = {"--memory-limit", "--memory-limit="},
-           help = "Memory limit in bytes (stateful worker only)",
-           required = false)
-    <std::uint64_t> memory_limit;
-
-    DecoKV(style = KVStyle::JoinedOrSeparate,
            names = {"--max-documents", "--max-documents="},
            help = "Max compiled documents kept before LRU eviction (stateful worker only)",
            required = false)
@@ -58,9 +52,8 @@ void add_worker(kota::deco::cli::SubCommander& root, int& exit_code) {
            auto name = opts.worker_name.value_or("worker");
            auto log_dir = opts.log_dir.value_or("");
            if(opts.stateful) {
-               auto limit = opts.memory_limit.value_or(4ULL * 1024 * 1024 * 1024);
                auto max_docs = opts.max_documents.value_or(default_max_documents);
-               exit_code = run_stateful_worker_mode(limit, name, log_dir, max_docs);
+               exit_code = run_stateful_worker_mode(name, log_dir, max_docs);
            } else {
                exit_code = run_stateless_worker_mode(name, log_dir);
            }

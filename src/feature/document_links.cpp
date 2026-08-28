@@ -59,19 +59,19 @@ auto find_directive_argument(llvm::StringRef content,
 auto document_links(CompilationUnitRef unit) -> std::vector<DocumentLink> {
     std::vector<DocumentLink> links;
 
-    auto interested = unit.interested_file();
-    auto directives_it = unit.directives().find(interested);
+    auto main_fid = unit.main_file();
+    auto directives_it = unit.directives().find(main_fid);
     if(directives_it == unit.directives().end()) {
         return links;
     }
 
-    auto content = unit.interested_content();
+    auto content = unit.main_content();
     auto& directives = directives_it->second;
     auto* lang_opts = &unit.lang_options();
 
     auto add_link = [&](clang::SourceLocation loc, llvm::StringRef target) {
         auto [fid, offset] = unit.decompose_location(loc);
-        if(fid != interested || offset >= content.size())
+        if(fid != main_fid || offset >= content.size())
             return;
         auto range = find_directive_argument(content, offset, lang_opts);
         if(!range)
@@ -114,13 +114,13 @@ auto include_definition(CompilationUnitRef unit, std::uint32_t offset)
     -> std::vector<protocol::Location> {
     std::vector<protocol::Location> locations;
 
-    auto interested = unit.interested_file();
-    auto directives_it = unit.directives().find(interested);
+    auto main_fid = unit.main_file();
+    auto directives_it = unit.directives().find(main_fid);
     if(directives_it == unit.directives().end()) {
         return locations;
     }
 
-    auto content = unit.interested_content();
+    auto content = unit.main_content();
     auto* lang_opts = &unit.lang_options();
 
     auto try_directive = [&](clang::SourceLocation loc, llvm::StringRef target) {
@@ -128,7 +128,7 @@ auto include_definition(CompilationUnitRef unit, std::uint32_t offset)
             return;
         }
         auto [fid, directive_offset] = unit.decompose_location(loc);
-        if(fid != interested || directive_offset >= content.size()) {
+        if(fid != main_fid || directive_offset >= content.size()) {
             return;
         }
         auto range = find_directive_argument(content, directive_offset, lang_opts);

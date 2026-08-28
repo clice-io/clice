@@ -69,7 +69,6 @@ void execute(F&& fn) {
         opts.stateless_count = 1;
         opts.stateful_count = 0;
         CO_ASSERT_TRUE(pool->start(opts));
-        co_await kota::sleep(500);
 
         co_await fn();
 

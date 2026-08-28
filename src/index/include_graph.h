@@ -68,7 +68,7 @@ struct IncludeGraph {
     /// Their include chains are recovered through the SourceManager,
     /// which preserves include locations across PCH boundaries.
     ///
-    /// The interested file's path is always the last entry of `paths`;
+    /// The main file's path is always the last entry of `paths`;
     /// serialization and the indexer rely on this convention.
     static IncludeGraph from(CompilationUnitRef unit,
                              llvm::ArrayRef<clang::FileID> indexed_fids = {});
@@ -79,16 +79,16 @@ struct IncludeGraph {
     }
 
     /// The include location introducing `fid`, or -1 for a file entered
-    /// without an include directive (the interested file, synthetic
+    /// without an include directive (the main file, synthetic
     /// buffers) — and, defensively, for a fid missing from the table:
     /// the indexer must never crash on unexpected input.
     std::uint32_t include_location_id(clang::FileID fid) const;
 
     /// The path of the file `fid` refers to. An fid without an include
-    /// location resolves to the interested file's path.
+    /// location resolves to the main file's path.
     ///
     /// FIXME: Synthetic buffers (<built-in>, <command line>) also resolve
-    /// to the interested file here. Once macro definitions from those
+    /// to the main file here. Once macro definitions from those
     /// buffers are indexed (see add_macro in directive.cpp), give them
     /// named path entries so consumers can route them to a preview
     /// document instead of misattributing them.

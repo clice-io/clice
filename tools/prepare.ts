@@ -13,35 +13,9 @@ import { DATA_DIR, generateCDB, generateTestDataCDBs } from "./compile_commands.
 
 const USAGE = "Usage: node tools/prepare.ts <fixture> [<fixture> ...]";
 
-/// The XDG cache base older clice builds used ($XDG_CACHE_HOME/clice or
-/// ~/.cache/clice, per-workspace <basename>-<hash8> leaves). XDG placement
-/// is disabled (caches are workspace-local now), but dev machines keep
-/// leftovers from before the switch, so cleanup still globs them.
-function xdgCliceDir(): string | null {
-    let base = process.env["XDG_CACHE_HOME"] ?? "";
-    if (!base) {
-        const home = process.env["HOME"] ?? "";
-        if (!home) {
-            return null;
-        }
-        base = path.join(home, ".cache");
-    }
-    return path.join(base, "clice");
-}
-
-/// Remove clice caches for the workspace (both in-tree and XDG).
+/// Remove the clice cache for the workspace.
 function cleanCache(workspace: string): void {
     fs.rmSync(path.join(workspace, ".clice"), { recursive: true, force: true });
-
-    const xdg = xdgCliceDir();
-    if (xdg === null || !fs.existsSync(xdg)) {
-        return;
-    }
-    for (const child of fs.readdirSync(xdg, { withFileTypes: true })) {
-        if (child.isDirectory() && /^.+-[0-9a-f]{8}$/.test(child.name)) {
-            fs.rmSync(path.join(xdg, child.name), { recursive: true, force: true });
-        }
-    }
 }
 
 function main(fixtures: string[]): number {

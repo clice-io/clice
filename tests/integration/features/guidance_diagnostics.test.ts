@@ -29,9 +29,9 @@ test("fallback guidance lifecycle", async ({ session }) => {
     const first = session.spawn(tmp);
     await first.initialize(tmp);
     const [uri] = await first.openAndWait("main.cpp");
-    expect(fileNotFoundDiags(first, uri).length, "broken include should surface").toBeGreaterThan(
-        0,
-    );
+    const missingIncludes = fileNotFoundDiags(first, uri);
+    expect(missingIncludes.length, "broken include should surface").toBeGreaterThan(0);
+    expect(missingIncludes.every((diagnostic) => diagnostic.source === "clang")).toBe(true);
     const guidance = guidanceDiags(first, uri);
     expect(guidance.length, `expected one guidance diagnostic: ${JSON.stringify(guidance)}`).toBe(
         1,

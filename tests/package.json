@@ -16,7 +16,6 @@
     "typescript": "~5.5.4",
     "typescript-eslint": "^8.65.0",
     "vitest": "^3.2.0",
-    "vscode-jsonrpc": "^8.2.1",
     "vscode-languageserver-protocol": "^3.17.5",
     "vscode-uri": "^3.1.0",
     "@clice/tools": "*"

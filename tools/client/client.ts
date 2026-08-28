@@ -1,4 +1,5 @@
-/// CliceClient — LSP client for integration testing, on vscode-jsonrpc.
+/// CliceClient — LSP client for integration testing, on
+/// vscode-languageserver-protocol.
 ///
 /// The client owns its whole lifecycle: spawn (stdio or socket), typed
 /// requests including clice's custom protocol, diagnostics tracking,
@@ -31,7 +32,21 @@ import {
     type StatsResult,
     type SwitchContextResult,
 } from "../protocol/protocol.ts";
+import {
+    anomalyGateFailure,
+    anomaliesInMessages,
+    processGateFailures,
+    SANITIZER_MARKERS,
+    serverStderrExcerpt,
+} from "../process_gate.ts";
 import { canonicalUri, Workspace } from "./workspace.ts";
+
+export {
+    anomaliesInLogFiles,
+    crashTracesInLogFiles,
+    logFiles,
+    SANITIZER_MARKERS,
+} from "../process_gate.ts";
 
 // Standard timing constants — use these instead of hardcoded sleep values.
 export const MTIME_GRANULARITY = 1_100; // Filesystem mtime precision + margin
@@ -40,6 +55,43 @@ export const IDLE_TIMEOUT = 5_000; // Idle soak time in lifecycle tests
 
 export function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export interface WaitUntilOptions {
+    timeout: number;
+    interval: number;
+    description: string;
+}
+
+function formatWaitState(state: unknown): string {
+    try {
+        return JSON.stringify({ value: state });
+    } catch {
+        return String(state);
+    }
+}
+
+export async function waitUntil<T>(
+    predicate: () => T | Promise<T>,
+    { timeout, interval, description }: WaitUntilOptions,
+): Promise<T> {
+    const deadline = Date.now() + timeout;
+    let lastState: T;
+    for (;;) {
+        lastState = await predicate();
+        if (lastState) {
+            return lastState;
+        }
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) {
+            break;
+        }
+        await sleep(Math.min(interval, remaining));
+    }
+    throw new Error(
+        `Timed out after ${timeout}ms waiting for ${description}; ` +
+            `last state: ${formatWaitState(lastState)}`,
+    );
 }
 
 /// Normalize a definition/references response to a list of Locations.
@@ -55,19 +107,6 @@ export function locationsOf<T>(result: T | T[] | null | undefined): T[] {
 export function asLocations(result: unknown): proto.Location[] {
     return locationsOf(result as proto.Location | proto.Location[] | null);
 }
-
-// Sanitizer/crash fingerprints scanned in server stderr. Detection happens
-// incrementally in the pump: a mid-session report (e.g. relayed from a
-// crashed worker) must survive the retention cap's eviction.
-export const SANITIZER_MARKERS = [
-    "AddressSanitizer",
-    "LeakSanitizer",
-    "MemorySanitizer",
-    "ThreadSanitizer",
-    "UndefinedBehaviorSanitizer",
-    "==ERROR:",
-    "runtime error:",
-] as const;
 
 const SANITIZER_MARKER_BUFFERS = SANITIZER_MARKERS.map((m) => Buffer.from(m));
 
@@ -122,69 +161,6 @@ export async function findFreePort(): Promise<number> {
         }
     }
     throw new Error(`no free port in range ${base}-${base + 99}`);
-}
-
-const ANOMALY_PATTERN = /\[anomaly:([A-Za-z]+)\]/;
-const CRASH_TRACE_MARKER = "=== CRASH STACK TRACE ===";
-
-/// All .log files under <workspace>/.clice/logs — one directory per server
-/// session, master and worker logs side by side.
-export function logFiles(root: string | null): string[] {
-    if (root === null) {
-        return [];
-    }
-    const logsDir = path.join(root, ".clice", "logs");
-    if (!fs.existsSync(logsDir)) {
-        return [];
-    }
-    return fs
-        .readdirSync(logsDir, { recursive: true, encoding: "utf8" })
-        .filter((name) => name.endsWith(".log"))
-        .sort()
-        .map((name) => path.join(logsDir, name));
-}
-
-/// Anomaly IDs from master/worker log files under <workspace>/.clice/logs.
-/// Workers don't forward logMessage in v1.0, so their anomalies are only
-/// visible in their log files.
-export function anomaliesInLogFiles(root: string | null): string[] {
-    const found: string[] = [];
-    for (const logFile of logFiles(root)) {
-        for (const line of fs.readFileSync(logFile, "utf8").split("\n")) {
-            const match = ANOMALY_PATTERN.exec(line);
-            if (match) {
-                found.push(`${match[1]} (${path.basename(logFile)}: ${line.trim()})`);
-            }
-        }
-    }
-    return found;
-}
-
-/// Crash stack traces recorded by crashed processes in their log files.
-export function crashTracesInLogFiles(root: string | null): string[] {
-    const traces: string[] = [];
-    for (const logFile of logFiles(root)) {
-        const text = fs.readFileSync(logFile, "utf8");
-        const pos = text.indexOf(CRASH_TRACE_MARKER);
-        if (pos !== -1) {
-            traces.push(`--- ${path.basename(logFile)} ---\n${text.slice(pos)}`);
-        }
-    }
-    return traces;
-}
-
-function serverStderrExcerpt(stderrText: string): string {
-    const interesting = stderrText
-        .split("\n")
-        .filter(
-            (line) =>
-                line.includes("[warn]") ||
-                line.includes("[error]") ||
-                line.includes("Sanitizer") ||
-                line.includes("==ERROR:") ||
-                line.includes("runtime error:"),
-        );
-    return interesting.slice(-80).join("\n");
 }
 
 export interface StartOptions {
@@ -518,12 +494,13 @@ export class CliceClient {
         // reports, late crash text) must reach the scan below. The pump owns
         // the stream — wait for it to see EOF instead of racing it with a
         // second reader.
+        let stderrComplete = true;
+        let stderrFailure: string | undefined;
         try {
             await withTimeout(this.stderrEof, 2_000, "stderr EOF");
         } catch (exc) {
-            // A pump that never saw EOF means the transcript below may be
-            // partial — the sanitizer scan must not silently pass on it.
-            failures.push(`stderr pump did not complete: ${String(exc)}`);
+            stderrComplete = false;
+            stderrFailure = String(exc);
         }
         const stderrText = this.drainedStderr().toString("utf8");
 
@@ -533,23 +510,17 @@ export class CliceClient {
             }
         }
 
-        if (this.child.exitCode !== 0) {
-            failures.push(`server exited with code ${this.child.exitCode}`);
-        }
-
-        // A client that drained continuously must never see the drop report:
-        // shedding under a live reader would mean ordinary tests silently
-        // lose parts of the stderr transcript they later assert on.
-        if (this.stderrDrainedFromStart && stderrText.includes("client not draining")) {
-            failures.push("stderr mirror shed lines despite a draining client");
-        }
-
-        if (this.stderrMarkerHit !== null) {
-            const excerpt = this.stderrMarkerHit.toString("utf8");
-            failures.push(`server stderr contains sanitizer/runtime error output:\n${excerpt}`);
-        } else if (SANITIZER_MARKERS.some((marker) => stderrText.includes(marker))) {
-            failures.push("server stderr contains sanitizer/runtime error output");
-        }
+        failures.push(
+            ...processGateFailures({
+                exitCode: this.child.exitCode,
+                signalCode: this.child.signalCode,
+                stderrText,
+                stderrComplete,
+                stderrFailure,
+                stderrDrainedFromStart: this.stderrDrainedFromStart,
+                sanitizerMarkerHit: this.stderrMarkerHit?.toString("utf8"),
+            }),
+        );
 
         if (failures.length > 0) {
             const excerpt = serverStderrExcerpt(stderrText);
@@ -605,9 +576,11 @@ export class CliceClient {
         });
     }
 
-    /// Latch the earliest sanitizer fingerprint and keep appending context
-    /// from later reads; the carry covers markers split across read
-    /// boundaries.
+    /// Detection happens incrementally in the pump: a mid-session report
+    /// (e.g. relayed from a crashed worker) must survive the retention
+    /// cap's eviction. Latch the earliest sanitizer fingerprint and keep
+    /// appending context from later reads; the carry covers markers split
+    /// across read boundaries.
     private scanForMarkers(data: Buffer): void {
         if (this.stderrMarkerHit !== null) {
             if (this.stderrMarkerHit.length < 4096) {
@@ -636,10 +609,6 @@ export class CliceClient {
 
     normalizeUri(uri: string): string {
         return canonicalUri(uri);
-    }
-
-    pathToUri(filepath: string): string {
-        return this.normalizeUri(URI.file(this.resolvePath(filepath)).toString());
     }
 
     /// Workspace-relative paths resolve against the bound workspace;
@@ -769,19 +738,6 @@ export class CliceClient {
         }
     }
 
-    assertDiagnosticsCount(uri: string, count: number, severity?: number): void {
-        let diags = this.diagnostics.get(uri) ?? [];
-        if (severity !== undefined) {
-            diags = diags.filter((d) => d.severity === severity);
-        }
-        if (diags.length !== count) {
-            throw new Error(
-                `Expected ${count} diagnostics (severity=${severity}), ` +
-                    `got ${diags.length}: ${JSON.stringify(diags)}`,
-            );
-        }
-    }
-
     assertCleanCompile(uri: string): void {
         const diags = this.diagnostics.get(uri) ?? [];
         if (diags.length > 0) {
@@ -793,14 +749,7 @@ export class CliceClient {
 
     /// Anomaly IDs from window/logMessage notifications (master process).
     anomaliesInLogMessages(): string[] {
-        const found: string[] = [];
-        for (const msg of this.logMessages) {
-            const id = ANOMALY_PATTERN.exec(msg.message)?.[1];
-            if (id !== undefined) {
-                found.push(id);
-            }
-        }
-        return found;
+        return anomaliesInMessages(this.logMessages.map((message) => message.message));
     }
 
     /// Assert the session produced zero anomalies (client messages + logs).
@@ -809,14 +758,9 @@ export class CliceClient {
     /// the log directory (defaults to the bound workspace).
     assertNoAnomaly(root?: string | null): void {
         const logsRoot = root !== undefined ? root : (this.workspace?.root ?? null);
-        const found = [...this.anomaliesInLogMessages(), ...anomaliesInLogFiles(logsRoot)];
-        // A crashed worker leaves its stack trace in its own log file;
-        // surface it here so a one-off CI crash is diagnosable from the
-        // test output.
-        const traces = found.length > 0 ? crashTracesInLogFiles(logsRoot) : [];
-        const detail = traces.length > 0 ? "\n" + traces.join("\n") : "";
-        if (found.length > 0) {
-            throw new Error(`clice reported internal anomalies: ${found.join(", ")}${detail}`);
+        const failure = anomalyGateFailure(this.anomaliesInLogMessages(), logsRoot);
+        if (failure !== null) {
+            throw new Error(failure);
         }
     }
 

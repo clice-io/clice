@@ -51,18 +51,6 @@ LangProfile& profile_for(const clang::LangOptions& lang_opts) {
                        lang_opts.LangStd);
 }
 
-/// Line start offsets of `content`, the plain scan (no encoding concerns:
-/// callers index with byte offsets).
-std::vector<std::uint32_t> scan_line_starts(llvm::StringRef content) {
-    std::vector<std::uint32_t> starts{0};
-    for(std::uint32_t i = 0; i < content.size(); i += 1) {
-        if(content[i] == '\n') {
-            starts.push_back(i + 1);
-        }
-    }
-    return starts;
-}
-
 bool outline_kind(SymbolKind kind) {
     switch(kind) {
         case SymbolKind::Macro:
@@ -540,7 +528,7 @@ auto index_folding_ranges(llvm::StringRef content,
 auto index_document_links(llvm::StringRef content,
                           const clang::LangOptions& lang_opts,
                           llvm::ArrayRef<IndexIncludeEdge> edges) -> std::vector<DocumentLink> {
-    auto line_starts = scan_line_starts(content);
+    auto line_starts = kota::ipc::lsp::build_line_starts({content.data(), content.size()});
 
     std::vector<DocumentLink> links;
     for(const auto& edge: edges) {

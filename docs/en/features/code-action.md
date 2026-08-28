@@ -1,6 +1,6 @@
 # Code Action
 
-clice advertises `textDocument/codeAction` support but currently returns an empty list. This page tracks the intended scope.
+clice does not advertise `textDocument/codeAction` support yet. Direct requests currently reach the stub handler and return an empty list. This page tracks the intended scope.
 
 ## Quick Fixes
 

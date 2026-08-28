@@ -27,6 +27,8 @@ enum class DiagnosticSource : std::uint8_t {
     Clice,
 };
 
+llvm::StringRef diagnostic_source_name(DiagnosticSource source);
+
 struct DiagnosticID {
     /// The diagnostic id value.
     std::uint32_t value;

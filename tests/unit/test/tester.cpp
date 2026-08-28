@@ -3,6 +3,7 @@
 #include <cassert>
 #include <format>
 
+#include "support/logging.h"
 #include "syntax/scan.h"
 
 namespace clice::testing {
@@ -262,17 +263,6 @@ bool Tester::compile_with_modules(llvm::StringRef standard) {
     return true;
 }
 
-bool Tester::compile_file(llvm::StringRef path, llvm::StringRef standard) {
-    auto buffer = llvm::MemoryBuffer::getFile(path);
-    if(!buffer) {
-        LOG_ERROR("Failed to read file: {}", path);
-        return false;
-    }
-    auto filename = llvm::sys::path::filename(path);
-    add_main(filename, (*buffer)->getBuffer());
-    return compile(standard);
-}
-
 std::uint32_t Tester::point(llvm::StringRef name, llvm::StringRef file) {
     if(file.empty()) {
         file = src_path;
@@ -346,60 +336,6 @@ void Tester::prepare_driver(llvm::StringRef standard) {
 
 bool Tester::compile_driver(llvm::StringRef standard) {
     prepare_driver(standard);
-    return try_compile();
-}
-
-bool Tester::compile_driver_with_pch(llvm::StringRef standard) {
-    prepare_driver(standard);
-
-    auto pch_path = fs::createTemporaryFile("clice", "pch");
-    if(!pch_path) {
-        LOG_ERROR("{}", pch_path.error().message());
-        return false;
-    }
-
-    // Phase 1: Build PCH from the preamble portion.
-    params.kind = CompilationKind::Preamble;
-    params.output_file = *pch_path;
-
-    // Clear buffers from prepare_driver() so we can re-add with preamble bound.
-    params.buffers.clear();
-    for(auto& [file, source]: sources.all_files) {
-        if(file == src_path) {
-            auto bound = compute_preamble_bound(source.content);
-            params.add_remapped_file(file, source.content, bound);
-        } else {
-            std::string path = path::is_absolute(file) ? file.str() : path::join(".", file);
-            params.add_remapped_file(path, source.content);
-        }
-    }
-
-    PCHInfo info;
-    {
-        auto preamble_unit = clice::compile(params, info);
-        if(!preamble_unit.completed()) {
-            for(auto& diag: preamble_unit.diagnostics()) {
-                LOG_ERROR("{}", diag.message);
-            }
-            return false;
-        }
-    }
-
-    // Phase 2: Compile content using the PCH. Re-add the buffers phase 1
-    // consumed: content compiles read the sources through remapping too.
-    params.output_file.clear();
-    params.kind = CompilationKind::Content;
-    params.pch = {info.path, static_cast<std::uint32_t>(info.preamble.size())};
-    params.buffers.clear();
-    for(auto& [file, source]: sources.all_files) {
-        if(file == src_path) {
-            params.add_remapped_file(file, source.content);
-        } else {
-            std::string path = path::is_absolute(file) ? file.str() : path::join(".", file);
-            params.add_remapped_file(path, source.content);
-        }
-    }
-
     return try_compile();
 }
 

@@ -106,8 +106,6 @@ std::optional<WorkerPool::SpawnedProcess> WorkerPool::spawn_process(const std::s
     opts.args = {options.self_path, "worker"};
     if(stateful) {
         opts.args.push_back("--stateful");
-        opts.args.push_back("--memory-limit");
-        opts.args.push_back(std::to_string(options.worker_memory_limit));
     }
     opts.args.push_back("--worker-name");
     opts.args.push_back(name);

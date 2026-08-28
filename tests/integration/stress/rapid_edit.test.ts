@@ -4,6 +4,7 @@ import { SETTLE_TIME, sleep, withTimeout } from "@clice/tools/client";
 import { cliceTest, expect } from "../fixtures.ts";
 
 const test = cliceTest("hello_world");
+const EDIT_INTERVAL = 20;
 
 /// 50 rapid edits, each followed by a hover on 'add' function.
 ///
@@ -24,7 +25,7 @@ test("rapid edits with hover", async ({ client }) => {
         // We don't await the result here to simulate real editor behavior
         // where requests overlap.
         void client.hoverAt(uri, 2, 4).catch(() => undefined);
-        await sleep(20); // ~20ms between edits
+        await sleep(EDIT_INTERVAL);
     }
 
     // Wait a moment for in-flight requests to settle.

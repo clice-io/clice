@@ -1,11 +1,14 @@
 #include "compile/compilation.h"
 
+#include <algorithm>
+
 #include "command/command.h"
 #include "compile/diagnostic.h"
 #include "compile/implement.h"
 #include "semantic/decls.h"
 #include "support/logging.h"
 
+#include "kota/ipc/lsp/position.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/xxhash.h"
 #include "clang/Basic/Stack.h"
@@ -184,7 +187,7 @@ public:
         clang::MultiplexConsumer(std::move(consumer)), unit(unit) {}
 
     void collect_decl(clang::Decl* decl) {
-        if(unit.file_id(unit.expansion_location(decl->getLocation())) != unit.interested_file()) {
+        if(unit.file_id(unit.expansion_location(decl->getLocation())) != unit.main_file()) {
             return;
         }
 
@@ -348,12 +351,8 @@ CompilationUnit run_clang(CompilationParams& params,
 
     using namespace std::chrono;
     self->build_at = duration_cast<milliseconds>(system_clock::now().time_since_epoch());
-    auto build_start = steady_clock::now().time_since_epoch();
 
     self->status = self->run_clang(params, std::move(action), before_execute);
-
-    auto build_end = steady_clock::now().time_since_epoch();
-    self->build_duration = duration_cast<milliseconds>(build_end - build_start);
 
     if(self->status == CompilationStatus::Completed && after_execute) {
         after_execute(self);
@@ -395,7 +394,7 @@ CompilationUnit compile(CompilationParams& params, PCHInfo& out) {
         },
         [&](CompilationUnitRef unit) {
             out.path = params.output_file.str();
-            out.preamble = unit.interested_content();
+            out.preamble = unit.main_content();
             out.deps = unit.deps();
             out.arguments = params.arguments;
         });
@@ -422,8 +421,8 @@ CompilationUnit compile(CompilationParams& params, PCMInfo& out) {
             // build input of its PCM all the same. Canonicalize it like
             // every other dep — srcPath keeps the command line's raw
             // spelling, which consumers cannot stat reliably.
-            out.deps.emplace_back(std::string(unit.file_path(unit.interested_file())),
-                                  llvm::xxh3_64bits(unit.interested_content()));
+            out.deps.emplace_back(std::string(unit.file_path(unit.main_file())),
+                                  llvm::xxh3_64bits(unit.main_content()));
 
             for(auto& [name, path]: params.pcms) {
                 out.mods.emplace_back(name);
@@ -434,22 +433,19 @@ CompilationUnit compile(CompilationParams& params, PCMInfo& out) {
 CompilationUnit complete(CompilationParams& params, clang::CodeCompleteConsumer* consumer) {
     auto& [file, offset] = params.completion;
 
-    /// The location of clang is 1-1 based.
-    std::uint32_t line = 1;
-    std::uint32_t column = 1;
-
     auto buffer = params.buffers.find(file);
     assert(buffer != params.buffers.end() && "completion file must be remapped");
     llvm::StringRef content = buffer->second->getBuffer();
+    kota::ipc::lsp::LineMap map({content.data(), content.size()},
+                                kota::ipc::lsp::PositionEncoding::UTF8);
+    auto completion_offset =
+        static_cast<std::uint32_t>(std::min<std::size_t>(offset, content.size()));
+    auto position = map.to_position(completion_offset);
+    assert(position && "clamped completion offset must be mappable");
 
-    for(auto c: content.substr(0, offset)) {
-        if(c == '\n') {
-            line += 1;
-            column = 1;
-            continue;
-        }
-        column += 1;
-    }
+    /// Clang completion locations are 1-based.
+    auto line = position->line + 1;
+    auto column = position->character + 1;
 
     return run_clang(params,
                      std::make_unique<clang::SyntaxOnlyAction>(),

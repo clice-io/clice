@@ -9,8 +9,6 @@
 #include "command/command.h"
 #include "command/toolchain.h"
 #include "compile/compilation.h"
-#include "feature/feature.h"
-#include "support/logging.h"
 #include "syntax/annotation.h"
 
 namespace clice::testing {
@@ -72,15 +70,10 @@ struct Tester {
 
     bool compile_with_modules(llvm::StringRef standard = "-std=c++20");
 
-    /// Read a file from disk and compile it directly (no VFS content needed).
-    bool compile_file(llvm::StringRef path, llvm::StringRef standard = "-std=c++20");
-
     /// Driver path: uses CompilationDatabase + toolchain cache, has system headers.
     void prepare_driver(llvm::StringRef standard = "-std=c++20");
 
     bool compile_driver(llvm::StringRef standard = "-std=c++20");
-
-    bool compile_driver_with_pch(llvm::StringRef standard = "-std=c++20");
 
     bool try_compile();
 
@@ -93,26 +86,6 @@ struct Tester {
     llvm::ArrayRef<std::uint32_t> nameless_points(llvm::StringRef file = "");
 
     LocalSourceRange range(llvm::StringRef name = "", llvm::StringRef file = "");
-
-    /// Convert a protocol range back to byte offsets in the compiled unit's
-    /// interested file. Shared by feature tests that compare protocol results
-    /// against annotation ranges. An unmappable range is a test bug — fail
-    /// loudly instead of dereferencing an empty optional.
-    LocalSourceRange to_local_range(const kota::ipc::protocol::Range& range) {
-        feature::LineMap map(unit->interested_content(),
-                             unit->line_starts(),
-                             feature::PositionEncoding::UTF8);
-        auto begin = map.to_offset(range.start);
-        auto end = map.to_offset(range.end);
-        if(!begin || !end) {
-            LOG_FATAL("to_local_range: unmappable range {}:{}-{}:{}",
-                      range.start.line,
-                      range.start.character,
-                      range.end.line,
-                      range.end.character);
-        }
-        return LocalSourceRange(*begin, *end);
-    }
 
     void clear();
 };

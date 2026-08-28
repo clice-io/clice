@@ -154,14 +154,6 @@ struct ProjectConfig {
                          "means the machine's parallelism, which is also the "
                          "default.")
     <std::uint32_t> max_stateless_worker_count = default_max_stateless_worker_count();
-
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "Per-stateful-worker memory limit in bytes; `0` is "
-                         "invalid and falls back to the default. Not yet "
-                         "enforced: parsed, but memory-based eviction is not "
-                         "implemented.")
-    <std::uint64_t> worker_memory_limit = 4ULL * 1024 * 1024 * 1024;
 };
 
 /// Corresponds to the `[tracker]` section in clice.toml: the stat-polling

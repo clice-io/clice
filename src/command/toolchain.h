@@ -1,6 +1,7 @@
 #pragma once
 
 #include <chrono>
+#include <cstdint>
 #include <expected>
 #include <memory>
 #include <string>
@@ -18,7 +19,7 @@ namespace clice {
 
 struct CompileCommand;
 
-enum class CompilerFamily {
+enum class CompilerFamily : std::uint8_t {
     Unknown,
     GCC,      // Covers gcc, g++, cc, c++, and versioned/arch variants
     Clang,    // Covers clang, clang++, and versioned variants (excluding clang-cl)

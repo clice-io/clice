@@ -396,7 +396,7 @@ test("host change resynthesizes preamble", async ({ session }) => {
     client.assertCleanCompile(utilsUri);
 
     // Ensure mtime advances past filesystem granularity (1s on some FSes).
-    await sleep(1_100);
+    await sleep(MTIME_GRANULARITY);
     workspace.write("main.cpp", '#include "utils.h"\nint main() { return 0; }\n');
 
     // No didSave: mtime-based chain snapshot must detect the change.
@@ -421,7 +421,7 @@ test("intermediate change resynthesizes preamble", async ({ session }) => {
     client.assertCleanCompile(targetUri);
 
     // Rename the macro in the intermediate wrapper.h.
-    await sleep(1_100);
+    await sleep(MTIME_GRANULARITY);
     workspace.write("wrapper.h", '#pragma once\n#define OTHER 42\n#include "target.h"\n');
 
     await client.waitForRecompile(targetUri);

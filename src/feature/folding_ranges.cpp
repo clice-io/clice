@@ -23,7 +23,7 @@ namespace clice::feature {
 namespace {
 
 /// Collects folding ranges by walking the unit's cached Semantics node table —
-/// the DFS pre-order record of the interested file's written AST — instead of
+/// the DFS pre-order record of the main file's written AST — instead of
 /// running another RecursiveASTVisitor over the TU. Folding needs no nesting
 /// state: every recorded decl and stmt contributes its ranges independently.
 ///
@@ -58,7 +58,7 @@ public:
             index += 1;
         }
 
-        auto directives_it = unit.directives().find(unit.interested_file());
+        auto directives_it = unit.directives().find(unit.main_file());
         if(directives_it != unit.directives().end()) {
             collect_condition_directives(directives_it->second.conditions);
             collect_pragma_region(directives_it->second.pragmas);
@@ -340,7 +340,7 @@ private:
         }
 
         auto [fid, local] = unit.decompose_range(clang::SourceRange(begin, end));
-        if(fid != unit.interested_file() || !local.valid() || local.end <= local.begin) {
+        if(fid != unit.main_file() || !local.valid() || local.end <= local.begin) {
             return;
         }
 
@@ -370,7 +370,7 @@ auto folding_ranges(CompilationUnitRef unit) -> std::vector<FoldingRange> {
 auto folding_ranges(CompilationUnitRef unit, PositionEncoding encoding)
     -> std::vector<protocol::FoldingRange> {
     return folding_ranges_to_protocol(folding_ranges(unit),
-                                      unit.interested_content(),
+                                      unit.main_content(),
                                       unit.line_starts(),
                                       encoding);
 }

@@ -102,11 +102,11 @@ llvm::SmallVector<std::uint32_t> DependencyGraph::get_all_includes(std::uint32_t
 
 llvm::SmallVector<std::uint32_t> DependencyGraph::all_files() const {
     llvm::SmallVector<std::uint32_t> files;
-    files.reserve(file_configs.size() + reverse_includes_.size());
+    files.reserve(file_configs.size() + reverse_includes.size());
     for(auto& [path_id, configs]: file_configs) {
         files.push_back(path_id);
     }
-    for(auto& [path_id, includers]: reverse_includes_) {
+    for(auto& [path_id, includers]: reverse_includes) {
         files.push_back(path_id);
     }
     llvm::sort(files);
@@ -144,11 +144,11 @@ void DependencyGraph::clear_includes(std::uint32_t path_id) {
 }
 
 void DependencyGraph::build_reverse_map() {
-    reverse_includes_.clear();
+    reverse_includes.clear();
     for(auto& [key, ids]: includes) {
         for(auto flagged_id: ids) {
             auto included_id = flagged_id & PATH_ID_MASK;
-            auto& vec = reverse_includes_[included_id];
+            auto& vec = reverse_includes[included_id];
             if(llvm::find(vec, key.path_id) == vec.end()) {
                 vec.push_back(key.path_id);
             }
@@ -157,8 +157,8 @@ void DependencyGraph::build_reverse_map() {
 }
 
 llvm::ArrayRef<std::uint32_t> DependencyGraph::get_includers(std::uint32_t path_id) const {
-    auto it = reverse_includes_.find(path_id);
-    if(it != reverse_includes_.end()) {
+    auto it = reverse_includes.find(path_id);
+    if(it != reverse_includes.end()) {
         return it->second;
     }
     return {};

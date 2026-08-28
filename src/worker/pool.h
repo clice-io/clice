@@ -61,7 +61,6 @@ struct WorkerPoolOptions {
     std::string self_path;
     std::uint32_t stateless_count = 2;
     std::uint32_t stateful_count = 2;
-    std::uint64_t worker_memory_limit = 4ULL * 1024 * 1024 * 1024;  // 4GB default
     std::string log_dir;
 
     /// A slot is given up once it crashes more than this many times in a

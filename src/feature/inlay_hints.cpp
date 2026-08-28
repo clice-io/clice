@@ -35,7 +35,7 @@ using llvm::dyn_cast;
 using llvm::dyn_cast_or_null;
 
 // For now, inlay hints are always anchored at the left or right of their range.
-enum class HintSide { Left, Right };
+enum class HintSide : std::uint8_t { Left, Right };
 
 bool is_expanded_from_param_pack(const clang::ParmVarDecl* param) {
     return decls::underlying_pack_type(param) != nullptr;
@@ -123,7 +123,7 @@ struct Callee {
 };
 
 /// Collects hints by walking the unit's cached Semantics node table — the
-/// DFS pre-order record of the interested file's written AST — instead of
+/// DFS pre-order record of the main file's written AST — instead of
 /// running another RecursiveASTVisitor over the TU. The table stores only
 /// structure; everything a hint needs is derived from the recorded node.
 class Collector {
@@ -210,7 +210,7 @@ private:
         auto [end_fid, end_offset] = unit.decompose_location(tokens.back().endLocation());
 
         // Hint must be within the main file, not e.g. a non-preamble include.
-        if(begin_fid != end_fid || begin_fid != unit.interested_file()) {
+        if(begin_fid != end_fid || begin_fid != unit.main_file()) {
             return std::nullopt;
         }
 
@@ -236,12 +236,11 @@ private:
         // require both source location to be in the main file. This prevents hint
         // to be shown in weird cases like '{' is actually in a "#include", but it's
         // rare anyway.
-        if(block_begin_fid != rbrace_fid || block_begin_fid != unit.interested_file()) {
+        if(block_begin_fid != rbrace_fid || block_begin_fid != unit.main_file()) {
             return std::nullopt;
         }
 
-        llvm::StringRef rest_of_line =
-            unit.interested_content().substr(rbrace_offset).split('\n').first;
+        llvm::StringRef rest_of_line = unit.main_content().substr(rbrace_offset).split('\n').first;
         if(!rest_of_line.starts_with("}")) {
             return std::nullopt;
         }
@@ -273,11 +272,11 @@ private:
     bool has_param_name_comment(const clang::Expr* expr, llvm::StringRef name) {
         auto location = unit.file_location(expr->getBeginLoc());
         auto [fid, offset] = unit.decompose_location(location);
-        if(fid != unit.interested_file()) {
+        if(fid != unit.main_file()) {
             return false;
         }
 
-        llvm::StringRef content = unit.interested_content().substr(0, offset);
+        llvm::StringRef content = unit.main_content().substr(0, offset);
 
         // Allow whitespace between comment and expression.
         content = content.rtrim();
@@ -1065,7 +1064,7 @@ auto inlay_hints(CompilationUnitRef unit,
                  const InlayHintsOptions& options,
                  PositionEncoding encoding) -> std::vector<protocol::InlayHint> {
     auto collected = inlay_hints(unit, target, options);
-    LineMap map(unit.interested_content(), unit.line_starts(), encoding);
+    LineMap map(unit.main_content(), unit.line_starts(), encoding);
 
     std::vector<protocol::InlayHint> hints;
     hints.reserve(collected.size());

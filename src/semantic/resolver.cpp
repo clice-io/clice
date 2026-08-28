@@ -1,5 +1,6 @@
 #include "semantic/resolver.h"
 
+#include <cstdint>
 #include <ranges>
 
 #include "semantic/unifier.h"
@@ -233,7 +234,7 @@ public:
     /// Rewrite policy. The two-phase split is the resolver's core invariant:
     /// typedef/alias expansion must never re-enter heuristic lookup, or
     /// mutually recursive typedefs cycle forever.
-    enum class Policy {
+    enum class Policy : std::uint8_t {
         /// Expand sugar and substitute stack parameters only.
         Substitute,
         /// Substitute plus dependent name resolution through lookup.

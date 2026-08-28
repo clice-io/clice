@@ -140,7 +140,7 @@ TEST_CASE(Error) {
     EXPECT_EQ(diag.id.diagnostic_code(), "err_expected_semi_after_stmt");
     EXPECT_EQ(diag.id.level, DiagnosticLevel::Error);
     EXPECT_EQ(diag.id.source, DiagnosticSource::Clang);
-    EXPECT_EQ(diag.fid, unit.interested_file());
+    EXPECT_EQ(diag.fid, unit.main_file());
     EXPECT_TRUE(diag.range.valid());
     EXPECT_EQ(diag.message, "expected ';' after return statement");
 };

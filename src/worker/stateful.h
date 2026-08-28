@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstddef>
-#include <cstdint>
 #include <string>
 
 namespace clice {
@@ -15,8 +14,7 @@ constexpr inline std::size_t default_max_documents = 16;
 /// Run the stateful worker process mode.
 /// The worker holds compiled ASTs and handles feature requests
 /// (hover, semantic tokens, etc.) alongside compile requests.
-int run_stateful_worker_mode(std::uint64_t memory_limit,
-                             const std::string& worker_name,
+int run_stateful_worker_mode(const std::string& worker_name,
                              const std::string& log_dir,
                              std::size_t max_documents = default_max_documents);
 

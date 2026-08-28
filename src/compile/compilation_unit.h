@@ -37,7 +37,7 @@ enum class CompilationKind : std::uint8_t {
     /// From building precompiled module for the module interface unit.
     ModuleInterface,
 
-    /// From building normal AST for source file(except preamble), interested file and top level
+    /// From building normal AST for source file(except preamble), main file and top level
     /// declarations are available.
     Content,
 
@@ -140,25 +140,18 @@ public:
     /// file_content, never falls back to a fake buffer.
     auto loaded_file_content(clang::FileID fid) -> std::optional<llvm::StringRef>;
 
-    /// Get the interested file ID. Currently, it is the same as the main
-    /// file id，i.e. the file id of source file.
-    auto interested_file() -> clang::FileID;
+    /// Return clang's main file ID, the file this unit was built for.
+    auto main_file() -> clang::FileID;
 
-    /// Get the content of interested file.
-    auto interested_content() -> llvm::StringRef;
+    /// Get the content of main file.
+    auto main_content() -> llvm::StringRef;
 
-    /// Get the byte offsets of each line start in the interested file.
+    /// Get the byte offsets of each line start in the main file.
     /// Lazily computed and cached.
     auto line_starts() -> std::span<const std::uint32_t>;
 
     /// Check if a file is a builtin file.
     bool is_builtin_file(clang::FileID fid);
-
-    /// Get the location of the file start of the file id.
-    auto start_location(clang::FileID fid) -> clang::SourceLocation;
-
-    /// Get the location of file end of the file id.
-    auto end_location(clang::FileID fid) -> clang::SourceLocation;
 
     /// Get the include location of the file id, i.e. where the file
     /// was introduced by `#include`.
@@ -236,8 +229,6 @@ public:
 
     std::chrono::milliseconds build_at();
 
-    std::chrono::milliseconds build_duration();
-
     clang::LangOptions& lang_options();
 
     clang::ASTContext& context();
@@ -246,7 +237,7 @@ public:
 
     types::TemplateResolver& resolver();
 
-    /// The semantic map of the interested file (token → owning node), built
+    /// The semantic map of the main file (token → owning node), built
     /// lazily on first use and cached for the unit's lifetime.
     const Semantics& semantics();
 

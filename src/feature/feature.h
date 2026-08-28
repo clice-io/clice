@@ -179,7 +179,7 @@ struct HoverInfo {
     /// Name of the symbol, does not contain any "::".
     std::string name;
 
-    /// The range of the symbol in the interested file, used by the client to
+    /// The range of the symbol in the main file, used by the client to
     /// highlight the hovered token.
     std::optional<LocalSourceRange> symbol_range;
 
@@ -309,7 +309,7 @@ struct DocumentLink {
 /// Result of scanning a unit for preprocessor-inactive regions.
 struct InactiveScan {
     /// Byte-offset ranges [begin0, end0, begin1, end1, ...] of inactive
-    /// branch bodies in the interested file; directive lines excluded.
+    /// branch bodies in the main file; directive lines excluded.
     /// Sorted by begin and disjoint — nested inactive conditionals merge
     /// into the enclosing region.
     std::vector<std::uint32_t> regions;
@@ -347,7 +347,7 @@ struct InlayHint {
     bool padding_right = false;
 };
 
-/// Semantic tokens of the interested file. Tokens inside inactive regions
+/// Semantic tokens of the main file. Tokens inside inactive regions
 /// carry the Inactive modifier, and bare identifiers there emit as
 /// Identifier so every word of a dead region has a token to dim. The
 /// overloads without a regions argument scan the unit themselves — correct
@@ -395,7 +395,7 @@ auto inlay_hints(CompilationUnitRef unit,
                  const InlayHintsOptions& options,
                  PositionEncoding encoding) -> std::vector<protocol::InlayHint>;
 
-/// Include-directive links of the interested file, in byte offsets; the
+/// Include-directive links of the main file, in byte offsets; the
 /// reply edge converts them with the session's line map.
 auto document_links(CompilationUnitRef unit) -> std::vector<DocumentLink>;
 
@@ -408,12 +408,12 @@ auto find_directive_argument(llvm::StringRef content,
     -> std::optional<LocalSourceRange>;
 
 /// Go-to-definition on an include directive: when `offset` falls on the
-/// argument of an #include or __has_include in the interested file, the
+/// argument of an #include or __has_include in the main file, the
 /// resolved file's location (at its start). Empty otherwise.
 auto include_definition(CompilationUnitRef unit, std::uint32_t offset)
     -> std::vector<protocol::Location>;
 
-/// Scan the interested file's condition directives. `open_stack` seeds the
+/// Scan the main file's condition directives. `open_stack` seeds the
 /// nesting state (from a preceding preamble scan) and `resume_offset` is
 /// where the scanned content starts — pending inactive levels from the
 /// seed begin there. A scan that ends with open levels closes their
@@ -432,7 +432,7 @@ auto code_complete(CompilationParams& params,
     -> std::vector<protocol::CompletionItem>;
 
 /// Get the hover information for the symbol at the given offset in the
-/// interested file of the unit.
+/// main file of the unit.
 auto hover_info(CompilationUnitRef unit, std::uint32_t offset, const HoverOptions& options = {})
     -> std::optional<HoverInfo>;
 

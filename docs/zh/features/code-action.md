@@ -1,6 +1,6 @@
 # 代码操作
 
-clice 已注册 `textDocument/codeAction` 支持，但目前始终返回空列表。本页记录预期范围。
+clice 尚未公布 `textDocument/codeAction` 支持。直接发送的请求目前会到达存根处理器并返回空列表。本页记录预期范围。
 
 ## 快速修复
 

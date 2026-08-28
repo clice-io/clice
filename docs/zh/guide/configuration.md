@@ -24,11 +24,11 @@ clice 从工作区根目录的 `clice.toml` 中读取配置；若该文件不存
 
 ### `project.cache_dir`
 
-| 类型     | 默认值                                                              |
-| -------- | ------------------------------------------------------------------- |
-| `string` | `$XDG_CACHE_HOME/clice/<workspace>-<hash>` 或 `${workspace}/.clice` |
+| 类型     | 默认值 |
+| -------- | ------ |
+| `string` | `""`   |
 
-统一磁盘缓存的存储目录（PCH、PCM 与索引产物都在这里）。默认使用 XDG_CACHE_HOME（或 `~/.cache`）下以工作区目录名加短哈希命名的子目录，例如 `~/.cache/clice/myproject-1a2b3c4d`。如果 XDG 目录无法创建，则回退到 `${workspace}/.clice`。实际解析出的路径会在启动时的有效配置日志中打印（可在编辑器的 clice 输出面板查看）。
+统一磁盘缓存的存储目录（PCH、PCM 与索引产物都在这里）。空值默认使用 `${workspace}/.clice`；clice 会生成 `.gitignore` 和 `CACHEDIR.TAG`，使缓存不进入版本控制并允许备份工具忽略它（`.clice/config.toml` 仍对 Git 可见）。显式配置的目录不会添加这些标记。实际解析出的路径会在启动时打印。
 
 ### `project.logging_dir`
 
@@ -93,14 +93,6 @@ clice 从工作区根目录的 `clice.toml` 中读取配置；若该文件不存
 | `uint32` | `0`（自动） |
 
 无状态工作进程动态扩容的上限。`0` 表示使用 CPU 核心数。
-
-### `project.worker_memory_limit`
-
-| 类型     | 默认值               |
-| -------- | -------------------- |
-| `uint64` | `4294967296`（4 GB） |
-
-每个工作进程的内存限制（字节）。**尚未强制执行**——该选项会被解析，但基于内存的淘汰/重启尚未实现。
 
 ## Tracker
 

@@ -1,6 +1,7 @@
 #include <optional>
 #include <random>
 
+#include "test/async.h"
 #include "test/test.h"
 #include "sched/graph.h"
 
@@ -148,17 +149,6 @@ kota::task<> run_request(NodeId id, Probe& probe, JoinOptions options = {}) {
     if(result.has_value()) {
         probe.outcome = *result;
     }
-}
-
-/// Zero-interest cancellation is deferred by one event-loop tick per
-/// cascade level; wait (bounded) until `pred` holds before asserting
-/// settled state.
-template <typename Pred>
-kota::task<> settle(Pred pred) {
-    for(int i = 0; i < 100 && !pred(); i += 1) {
-        co_await kota::sleep(1);
-    }
-    EXPECT_TRUE(pred());
 }
 
 /// ============================================================================

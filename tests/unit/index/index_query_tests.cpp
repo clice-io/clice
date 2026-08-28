@@ -201,7 +201,7 @@ TEST_CASE(OpenSessionServedByShard) {
     // Open the document with exactly the indexed content and never
     // compile it: freshness clause 4 serves it from its shard.
     auto session = store.open(main_id);
-    store.apply_open(*session, unit->interested_content().str(), 1);
+    store.apply_open(*session, unit->main_content().str(), 1);
     ASSERT_FALSE(projections.index_current(session->path_id));
 
     auto position = feature::to_position(session->line_map(), point("use"));
@@ -220,7 +220,7 @@ TEST_CASE(DivergedBufferWithdrawsShard) {
     merge_into_workspace();
 
     auto session = store.open(main_id);
-    auto edited = unit->interested_content().str() + "// edited\n";
+    auto edited = unit->main_content().str() + "// edited\n";
     store.apply_open(*session, edited, 1);
 
     // The buffer no longer matches the rows' content: the shard withdraws
@@ -255,7 +255,7 @@ TEST_CASE(HeaderEdgesFromHostManifest) {
 
     // The TU's own manifest still answers for the TU itself.
     auto main_session = store.open(main_id);
-    store.apply_open(*main_session, unit->interested_content().str(), 1);
+    store.apply_open(*main_session, unit->main_content().str(), 1);
     auto main_edges = query.include_edges(*main_session);
     ASSERT_EQ(main_edges.size(), std::size_t(1));
     ASSERT_TRUE(llvm::StringRef(main_edges[0].target).ends_with("header.h"));

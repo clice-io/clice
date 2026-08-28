@@ -387,7 +387,6 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                     continue;
 
                 merged_index.lookup(hash, RelationKind::Definition, [&](const index::Relation& r) {
-                    // FIXME: unchecked optional dereference
                     auto range = map.to_range(r.range.begin, r.range.end);
                     if(range) {
                         result.symbols.push_back(DocumentSymbolEntry{

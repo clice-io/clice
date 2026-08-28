@@ -6,6 +6,7 @@ import { sleep, SETTLE_TIME, withTimeout } from "@clice/tools/client";
 import { cliceExecutable, cliceTest, expect } from "../fixtures.ts";
 
 const test = cliceTest("hello_world");
+const EDIT_INTERVAL = 50;
 
 function capabilityEnabled(capability: unknown): boolean {
     return capability !== undefined && capability !== null && capability !== false;
@@ -102,7 +103,7 @@ test("incremental change", async ({ client }) => {
     for (let i = 0; i < 5; i++) {
         content += `\n// change ${i}`;
         client.change(uri, i + 1, content);
-        await sleep(50);
+        await sleep(EDIT_INTERVAL);
     }
     await sleep(SETTLE_TIME * 2);
     client.close(uri);

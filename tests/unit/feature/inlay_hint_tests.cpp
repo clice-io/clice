@@ -31,11 +31,11 @@ void run(llvm::StringRef code,
     add_main("main.cpp", code);
     ASSERT_TRUE(compile_with_pch("-std=c++23"));
 
-    LocalSourceRange range = LocalSourceRange(0, unit->interested_content().size());
+    LocalSourceRange range = LocalSourceRange(0, unit->main_content().size());
     hints = feature::inlay_hints(*unit, range, options, feature::PositionEncoding::UTF8);
 
     hints_map.clear();
-    auto content = unit->interested_content();
+    auto content = unit->main_content();
     auto line_starts = unit->line_starts();
     lsp::LineMap map(content, line_starts, feature::PositionEncoding::UTF8);
     for(auto& hint: hints) {

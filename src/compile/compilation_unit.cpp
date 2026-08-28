@@ -144,17 +144,17 @@ auto CompilationUnitRef::loaded_file_content(clang::FileID fid) -> std::optional
     return self->SM().getBufferDataOrNone(fid);
 }
 
-auto CompilationUnitRef::interested_file() -> clang::FileID {
+auto CompilationUnitRef::main_file() -> clang::FileID {
     return self->SM().getMainFileID();
 }
 
-auto CompilationUnitRef::interested_content() -> llvm::StringRef {
-    return file_content(interested_file());
+auto CompilationUnitRef::main_content() -> llvm::StringRef {
+    return file_content(main_file());
 }
 
 auto CompilationUnitRef::line_starts() -> std::span<const std::uint32_t> {
     if(self->line_starts_cache.empty()) {
-        auto content = interested_content();
+        auto content = main_content();
         self->line_starts_cache =
             kota::ipc::lsp::build_line_starts({content.data(), content.size()});
     }
@@ -171,14 +171,6 @@ bool CompilationUnitRef::is_builtin_file(clang::FileID fid) {
     }
 
     return false;
-}
-
-auto CompilationUnitRef::start_location(clang::FileID fid) -> clang::SourceLocation {
-    return self->SM().getLocForStartOfFile(fid);
-}
-
-auto CompilationUnitRef::end_location(clang::FileID fid) -> clang::SourceLocation {
-    return self->SM().getLocForEndOfFile(fid);
 }
 
 auto CompilationUnitRef::spelling_location(clang::SourceLocation loc) -> clang::SourceLocation {
@@ -269,10 +261,6 @@ auto CompilationUnitRef::top_level_decls() -> llvm::ArrayRef<clang::Decl*> {
 
 std::chrono::milliseconds CompilationUnitRef::build_at() {
     return self->build_at;
-}
-
-std::chrono::milliseconds CompilationUnitRef::build_duration() {
-    return self->build_duration;
 }
 
 clang::LangOptions& CompilationUnitRef::lang_options() {

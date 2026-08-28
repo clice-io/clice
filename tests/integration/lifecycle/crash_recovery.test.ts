@@ -8,10 +8,11 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { sleep, type CliceClient } from "@clice/tools/client";
+import { sleep, waitUntil, type CliceClient } from "@clice/tools/client";
 import { expect, test } from "../fixtures.ts";
 
 const FILE_COUNT = 20;
+const OUTAGE_RESPONSE_TIMEOUT = 15_000;
 
 function statelessWorkerPids(serverPid: number): number[] {
     const pids: number[] = [];
@@ -82,18 +83,23 @@ test.skipIf(process.platform !== "linux")(
 
         // Wait until the round demonstrably started (first symbols merged),
         // then kill a stateless worker mid-round.
-        let killed = false;
-        for (let i = 0; i < 300; i++) {
-            if ((await indexedFunctions(client)).size > 0) {
-                const workers = statelessWorkerPids(client.child.pid!);
-                if (workers.length > 0) {
-                    process.kill(workers[0]!, "SIGKILL");
-                    killed = true;
+        const killed = await waitUntil(
+            async () => {
+                if ((await indexedFunctions(client)).size > 0) {
+                    const workers = statelessWorkerPids(client.child.pid!);
+                    if (workers.length > 0) {
+                        process.kill(workers[0]!, "SIGKILL");
+                        return true;
+                    }
                 }
-                break;
-            }
-            await sleep(100);
-        }
+                return false;
+            },
+            {
+                timeout: 30_000,
+                interval: 100,
+                description: "indexing to start with a stateless worker available",
+            },
+        );
         expect(killed, "indexing never started or no stateless worker found").toBe(true);
 
         // The files that were in flight on the killed worker must be
@@ -104,13 +110,17 @@ test.skipIf(process.platform !== "linux")(
         // compiles plus a crash respawn and one round boundary for the
         // requeued file measure ~130s there (~60s locally).
         let found = new Set<string>();
-        for (let i = 0; i < 180; i++) {
-            found = await indexedFunctions(client);
-            if ([...expected].every((f) => found.has(f))) {
-                break;
-            }
-            await sleep(1_000);
-        }
+        await waitUntil(
+            async () => {
+                found = await indexedFunctions(client);
+                return [...expected].every((name) => found.has(name));
+            },
+            {
+                timeout: 180_000,
+                interval: 1_000,
+                description: "every translation unit to be reindexed after a worker crash",
+            },
+        );
         const missing = [...expected].filter((f) => !found.has(f)).sort();
         expect(
             [...expected].every((f) => found.has(f)),
@@ -175,17 +185,24 @@ test.skipIf(process.platform !== "linux")(
         // (a fast-crash streak past max_crash_streak); respawn backoff caps
         // at ~1s, so a few seconds of killing cover every respawn.
         let kills = 0;
-        for (let i = 0; i < 150 && !masterLog().includes("exceeded crash budget"); i += 1) {
-            for (const pid of statelessWorkerPids(client.child.pid!)) {
-                try {
-                    process.kill(pid, "SIGKILL");
-                    kills += 1;
-                } catch {
-                    // Already reaped.
+        await waitUntil(
+            () => {
+                for (const pid of statelessWorkerPids(client.child.pid!)) {
+                    try {
+                        process.kill(pid, "SIGKILL");
+                        kills += 1;
+                    } catch {
+                        // Already reaped.
+                    }
                 }
-            }
-            await sleep(200);
-        }
+                return masterLog().includes("exceeded crash budget");
+            },
+            {
+                timeout: 30_000,
+                interval: 200,
+                description: "the stateless worker pool to exhaust its crash budget",
+            },
+        );
         expect(kills, "no stateless worker was ever seen").toBeGreaterThanOrEqual(3);
         expect(
             masterLog().includes("exceeded crash budget"),
@@ -197,7 +214,7 @@ test.skipIf(process.platform !== "linux")(
         // the test timeout if it wedged.
         const during = await Promise.race([
             indexedFunctions(client),
-            sleep(15_000).then(() => null),
+            sleep(OUTAGE_RESPONSE_TIMEOUT).then(() => null),
         ]);
         expect(during, "master unresponsive during the outage").not.toBeNull();
 
@@ -206,13 +223,17 @@ test.skipIf(process.platform !== "linux")(
         // round snapshot, so no single file burns its budget.
         const expected = new Set(Array.from({ length: FILE_COUNT }, (_, i) => `func_${i}`));
         let found = new Set<string>();
-        for (let i = 0; i < 150; i += 1) {
-            found = await indexedFunctions(client);
-            if ([...expected].every((f) => found.has(f))) {
-                break;
-            }
-            await sleep(1_000);
-        }
+        await waitUntil(
+            async () => {
+                found = await indexedFunctions(client);
+                return [...expected].every((name) => found.has(name));
+            },
+            {
+                timeout: 150_000,
+                interval: 1_000,
+                description: "every translation unit to be indexed after pool revival",
+            },
+        );
         const missing = [...expected].filter((f) => !found.has(f)).sort();
         expect(
             [...expected].every((f) => found.has(f)),

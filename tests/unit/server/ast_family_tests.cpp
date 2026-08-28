@@ -211,7 +211,6 @@ TEST_CASE(ShutdownUnblocksWaiters) {
         opts.stateless_count = 0;
         opts.stateful_count = 1;
         CO_ASSERT_TRUE(stack.pool.start(opts));
-        co_await kota::sleep(500);
 
         kota::task_group<> group(stack.loop);
         auto waiter = [&]() -> kota::task<> {
@@ -285,7 +284,6 @@ TEST_CASE(EditInterruptsStaleCompile) {
         opts.stateless_count = 0;
         opts.stateful_count = 1;
         CO_ASSERT_TRUE(stack.pool.start(opts));
-        co_await kota::sleep(500);
 
         kota::task_group<> group(stack.loop);
         auto waiter = [&]() -> kota::task<> {
@@ -365,7 +363,6 @@ TEST_CASE(SupersededCompileCancelled) {
         opts.stateless_count = 0;
         opts.stateful_count = 1;
         CO_ASSERT_TRUE(stack.pool.start(opts));
-        co_await kota::sleep(500);
 
         kota::task_group<> group(stack.loop);
         auto first = [&]() -> kota::task<> {
@@ -461,7 +458,6 @@ TEST_CASE(BufferImportBuildsPCM) {
         opts.stateless_count = 1;
         opts.stateful_count = 1;
         CO_ASSERT_TRUE(stack.pool.start(opts));
-        co_await kota::sleep(500);
 
         ok = co_await stack.ast.ensure_compiled(session);
 
@@ -503,7 +499,6 @@ TEST_CASE(BufferImportRecorded) {
         opts.stateless_count = 0;
         opts.stateful_count = 1;
         CO_ASSERT_TRUE(stack.pool.start(opts));
-        co_await kota::sleep(500);
 
         [[maybe_unused]] bool ok = co_await stack.ast.ensure_compiled(session);
 
@@ -551,7 +546,6 @@ TEST_CASE(IncludeImportRecorded) {
         opts.stateless_count = 0;
         opts.stateful_count = 1;
         CO_ASSERT_TRUE(stack.pool.start(opts));
-        co_await kota::sleep(500);
 
         [[maybe_unused]] bool ok = co_await stack.ast.ensure_compiled(session);
 
@@ -682,7 +676,6 @@ TEST_CASE(PCHCrashCountsStreak) {
         opts.stateless_count = 1;
         opts.stateful_count = 0;
         CO_ASSERT_TRUE(stack.pool.start(opts));
-        co_await kota::sleep(500);
 
         bool built =
             co_await ForwarderFixture::ensure_pch(stack.forwarder,
@@ -729,7 +722,6 @@ TEST_CASE(PCHCrashBlocksBuild) {
         opts.stateless_count = 1;
         opts.stateful_count = 0;
         CO_ASSERT_TRUE(stack.pool.start(opts));
-        co_await kota::sleep(500);
 
         auto result = co_await stack.forwarder.forward_completion({}, session);
         CO_ASSERT_FALSE(result.has_value());
@@ -776,7 +768,6 @@ TEST_CASE(ClientCancelSparesCompile) {
         opts.stateless_count = 0;
         opts.stateful_count = 1;
         CO_ASSERT_TRUE(stack.pool.start(opts));
-        co_await kota::sleep(500);
 
         kota::cancellation_source source;
         kota::task_group<> group(stack.loop);
@@ -867,7 +858,6 @@ TEST_CASE(PoisonPreambleBudget) {
         opts.stateless_count = 1;
         opts.stateful_count = 0;
         CO_ASSERT_TRUE(stack.pool.start(opts));
-        co_await kota::sleep(500);
 
         auto build = [&](const std::shared_ptr<Session>& session) {
             return ForwarderFixture::ensure_pch(stack.forwarder,
@@ -913,7 +903,7 @@ TEST_CASE(EpochGuardsPCHWash) {
     stack.register_pch_store(tmp);
     auto session = stack.open(src, "#define X 1\nint x;\n");
     // One prior strike on the PCH ledger.
-    session->quarantine.on_kind_crash(pch_evidence, "w-1");
+    session->quarantine.on_kind_crash(evidence_kind(EvidenceKind::PCH), "w-1");
     ASSERT_EQ(session->quarantine.crashes(), 1u);
 
     std::string directory = tmp.path(".");
@@ -926,7 +916,6 @@ TEST_CASE(EpochGuardsPCHWash) {
         opts.stateless_count = 1;
         opts.stateful_count = 0;
         CO_ASSERT_TRUE(stack.pool.start(opts));
-        co_await kota::sleep(500);
 
         auto gen = session->generation;
         auto epoch = stack.ast.projections.epoch(session->path_id);
@@ -1019,7 +1008,6 @@ TEST_CASE(StaleDepsNoAdopt) {
         opts.stateless_count = 1;
         opts.stateful_count = 0;
         CO_ASSERT_TRUE(stack.pool.start(opts));
-        co_await kota::sleep(500);
 
         CO_ASSERT_TRUE(co_await build(builder));
         auto adopted = stack.ast.projections.projection(builder->path_id);

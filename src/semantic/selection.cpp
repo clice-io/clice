@@ -135,7 +135,7 @@ bool SelectionTree::create_each(CompilationUnitRef unit,
     // - if no tokens touched, and empty range.
     llvm::SmallVector<LocalSourceRange, 2> ranges;
 
-    auto location = unit.create_location(unit.interested_file(), begin);
+    auto location = unit.create_location(unit.main_file(), begin);
 
     // Prefer right token over left.
     for(const clang::syntax::Token& token: llvm::reverse(unit.spelled_tokens_touch(location))) {

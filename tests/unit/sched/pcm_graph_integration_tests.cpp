@@ -1,3 +1,4 @@
+#include "test/async.h"
 #include "test/cdb_helper.h"
 #include "test/temp_dir.h"
 #include "test/test.h"
@@ -194,16 +195,6 @@ void make_graph(DispatchFn dispatch, ResolveFn resolve) {
 
 void make_graph() {
     make_graph(default_dispatch(), default_resolver());
-}
-
-/// Zero-interest cancellation is deferred by one event-loop tick per cascade
-/// level; wait (bounded) until `pred` holds before asserting settled state.
-template <typename Pred>
-kota::task<> settle(Pred pred) {
-    for(int i = 0; i < 100 && !pred(); i++) {
-        co_await kota::sleep(1);
-    }
-    EXPECT_TRUE(pred());
 }
 
 /// Run the test body, then verify the shutdown protocol leaves the graph idle.

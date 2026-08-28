@@ -6,7 +6,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { URI } from "vscode-uri";
-import { generateCDB } from "../compile_commands.ts";
+import { buildCDBEntry, generateCDB } from "../compile_commands.ts";
 
 /// Versioned root of the unified cache store; bump together with
 /// cache_format_version in src/server/state/workspace.h.
@@ -105,17 +105,12 @@ export class Workspace {
     /// Write a compile_commands.json with per-file extra arguments; a file
     /// may appear multiple times to model multi-configuration projects.
     writeEntries(entries: [string, string[]][], options: CDBOptions = {}): void {
-        const data = entries.map(([f, args]) => ({
-            directory: this.root,
-            file: this.path(f),
-            arguments: [
-                "clang++",
-                `-std=${options.std ?? "c++17"}`,
-                "-fsyntax-only",
-                ...args,
-                this.path(f),
-            ],
-        }));
+        const data = entries.map(([f, args]) =>
+            buildCDBEntry(this.root, this.path(f), {
+                extraArgs: args,
+                std: options.std,
+            }),
+        );
         this.write("compile_commands.json", JSON.stringify(data, null, 2));
     }
 

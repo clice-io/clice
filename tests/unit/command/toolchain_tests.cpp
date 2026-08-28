@@ -85,10 +85,6 @@ TEST_CASE(GCC, skip = !(CIEnvironment && (Windows || Linux))) {
     ASSERT_TRUE(unit.diagnostics().empty());
 };
 
-TEST_CASE(MSVC, skip = !CIEnvironment) {
-    // TODO: add MSVC toolchain test when CI provides toolchain.
-}
-
 TEST_CASE(Clang, skip = !CIEnvironment) {
     auto file = fs::createTemporaryFile("clice", "cpp");
     if(!file) {
@@ -118,10 +114,6 @@ TEST_CASE(Clang, skip = !CIEnvironment) {
     ASSERT_TRUE(unit.completed());
     ASSERT_TRUE(unit.diagnostics().empty());
 };
-
-TEST_CASE(Zig, skip = !CIEnvironment) {
-    // TODO: add Zig toolchain test when available in CI.
-}
 
 TEST_CASE(NVCC, skip = !(CIEnvironment && Linux)) {
     auto file = fs::createTemporaryFile("clice", "cu");

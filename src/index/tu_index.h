@@ -30,8 +30,8 @@ namespace clice::index {
 /// merged into the file's disk shard). Rows of a header entered several
 /// times are one union blob. The envelope travels worker→server over IPC
 /// and is dismantled into the three persistent layers on arrival. With
-/// interested_only, only rows in the interested file are kept.
-std::string build_tu_index(CompilationUnitRef unit, bool interested_only = false);
+/// main_file_only, only rows in the main file are kept.
+std::string build_tu_index(CompilationUnitRef unit, bool main_file_only = false);
 
 /// The preamble variant: a preamble is a TU cut off at the preamble
 /// bound, and its index is the same envelope — persisted verbatim as the
@@ -82,7 +82,7 @@ public:
 
     std::int64_t built_at() const;
 
-    /// The interested file's path is always the last id, by IncludeGraph
+    /// The main file's path is always the last id, by IncludeGraph
     /// convention.
     std::uint32_t path_count() const;
 

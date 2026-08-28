@@ -8,7 +8,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { sleep } from "@clice/tools/client";
+import { MTIME_GRANULARITY, sleep } from "@clice/tools/client";
 import type { Workspace } from "@clice/tools/workspace";
 import { expect, test } from "../fixtures.ts";
 
@@ -173,7 +173,7 @@ test("header save resets verdict", async ({ session }) => {
     expect(prefixFiles(workspace).length, "Initial verdict: needs context").toBe(1);
 
     // Make the header self-contained on disk and in the buffer, then save.
-    await sleep(1_100);
+    await sleep(MTIME_GRANULARITY);
     const newText = '#include "types.h"\ninline int get_x(Point p) { return p.x; }\n';
     workspace.write("utils.h", newText);
     c.change(utilsUri, 2, newText);
@@ -208,7 +208,7 @@ test("dependency change retries trial", async ({ session }) => {
     expect(prefixFiles(workspace), "Initially self-contained").toEqual([]);
 
     // foo.h stops defining FOO; only the host's #define can provide it now.
-    await sleep(1_100);
+    await sleep(MTIME_GRANULARITY);
     workspace.write("foo.h", "#pragma once\n");
 
     await client.waitForRecompile(hUri);

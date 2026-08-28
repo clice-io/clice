@@ -22,7 +22,7 @@ test("snap format round trip", () => {
 
 test("snapshot check flows", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "snap-"));
-    const snapPath = path.join(dir, "a.cpp.snap.yml");
+    const snapPath = path.join(dir, "a.snap.yml");
 
     const ctx = new SnapshotContext(dir);
     ctx.check("a.cpp", "one\n"); // first run creates
@@ -51,13 +51,13 @@ test("snapshot check flows", () => {
     ctx.check("a.cpp", "two\n");
 });
 
-test("colocated snapshot layout", () => {
-    const ctx = new SnapshotContext("/corpus", { colocated: true });
+test("snapshot layout", () => {
+    const ctx = new SnapshotContext("/corpus");
     expect(ctx.snapPath("group/a.cpp")).toBe(path.join("/corpus", "group/a.snap.yml"));
     expect(ctx.snapPath("group/a.cpp", "server")).toBe(
         path.join("/corpus", "group/a.server.snap.yml"),
     );
-    expect(new SnapshotContext("/dir").snapPath("a.cpp")).toBe(path.join("/dir", "a.cpp.snap.yml"));
+    expect(new SnapshotContext("/dir").snapPath("a.cpp")).toBe(path.join("/dir", "a.snap.yml"));
 });
 
 test("normalize file uri", () => {

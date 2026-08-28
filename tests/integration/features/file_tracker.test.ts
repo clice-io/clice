@@ -2,7 +2,7 @@
 /// clice/internal/poll hook (loops disabled). The first workspace tick only
 /// seeds the stat baseline, so tests poll once before mutating the disk.
 
-import { MTIME_GRANULARITY, sleep, type CliceClient } from "@clice/tools/client";
+import { MTIME_GRANULARITY, sleep, waitUntil, type CliceClient } from "@clice/tools/client";
 import { test, expect } from "../fixtures.ts";
 
 const GATED_MAIN = `#ifndef FEATURE
@@ -183,17 +183,21 @@ test("cdb polling loop live", async ({ session }) => {
     // so poll for the errors to clear instead of trusting one fixed sleep.
     // Until the reload lands the hover fast-paths on a clean AST and no
     // diagnostics arrive — that round just times out and retries.
-    for (let i = 0; i < 30; i++) {
-        await sleep(1_000);
-        try {
-            await client.waitForRecompile(mainUri, 3_000);
-        } catch {
-            continue;
-        }
-        if (client.errors(mainUri).length === 0) {
-            break;
-        }
-    }
+    await waitUntil(
+        async () => {
+            try {
+                await client.waitForRecompile(mainUri, 3_000);
+            } catch {
+                return false;
+            }
+            return client.errors(mainUri).length === 0;
+        },
+        {
+            timeout: 120_000,
+            interval: 1_000,
+            description: "CDB polling to clear diagnostics after a flag change",
+        },
+    );
     client.assertNoErrors(mainUri, "the polling loop must reload the CDB on its own");
 });
 

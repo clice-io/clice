@@ -1,6 +1,5 @@
 import { spawnSync } from "node:child_process";
-import type { CliceClient } from "@clice/tools/client";
-import { sleep } from "@clice/tools/client";
+import { waitUntil, type CliceClient } from "@clice/tools/client";
 import { cliceExecutable, expect, test } from "../fixtures.ts";
 
 const SUBCOMMANDS = ["serve", "query", "worker", "index", "doc", "lint", "format"];
@@ -11,14 +10,17 @@ function runClice(...args: string[]) {
 }
 
 async function waitSymbol(client: CliceClient, name: string): Promise<boolean> {
-    for (let i = 0; i < 30; i += 1) {
-        const symbols = await client.workspaceSymbols(name);
-        if (symbols?.some((s) => s.name === name)) {
-            return true;
-        }
-        await sleep(1_000);
-    }
-    return false;
+    return waitUntil(
+        async () => {
+            const symbols = await client.workspaceSymbols(name);
+            return symbols?.some((symbol) => symbol.name === name) ?? false;
+        },
+        {
+            timeout: 30_000,
+            interval: 1_000,
+            description: `workspace symbol ${name}`,
+        },
+    );
 }
 
 test("root usage lists subcommands", () => {

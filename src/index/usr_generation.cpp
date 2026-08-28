@@ -731,7 +731,6 @@ void USRGenerator::VisitType(QualType T) {
             return;
         }
         if(const auto* DeducedSpec = T->getAs<DeducedTemplateSpecializationType>()) {
-            // TODO(sakria9): double check this
             Out << "D";
             VisitTemplateName(DeducedSpec->getTemplateName());
             if(!DeducedSpec->getDeducedType().isNull()) {

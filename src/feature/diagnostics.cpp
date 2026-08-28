@@ -60,7 +60,7 @@ void add_related(protocol::Diagnostic& diagnostic,
 
 auto diagnostics(CompilationUnitRef unit, PositionEncoding encoding)
     -> std::vector<protocol::Diagnostic> {
-    LineMap map(unit.interested_content(), unit.line_starts(), encoding);
+    LineMap map(unit.main_content(), unit.line_starts(), encoding);
     std::vector<protocol::Diagnostic> result;
     std::optional<protocol::Diagnostic> current;
 
@@ -110,8 +110,7 @@ auto diagnostics(CompilationUnitRef unit, PositionEncoding encoding)
             diagnostic.code_description = protocol::CodeDescription{.href = std::move(*uri)};
         }
 
-        // Keep legacy behavior: always report clang as source.
-        diagnostic.source = "clang";
+        diagnostic.source = diagnostic_source_name(raw.id.source).str();
 
         add_tag(diagnostic, raw.id);
 
@@ -124,7 +123,7 @@ auto diagnostics(CompilationUnitRef unit, PositionEncoding encoding)
             continue;
         }
 
-        if(raw.fid == unit.interested_file()) {
+        if(raw.fid == unit.main_file()) {
             auto range = to_range(map, raw.range);
             if(!range)
                 continue;

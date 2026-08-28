@@ -24,7 +24,7 @@ TEST_CASE(HandlerCancelChainsThrough) {
     auto src = tmp.path("probe.cpp");
 
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn(4ULL * 1024 * 1024 * 1024));
+    ASSERT_TRUE(w.spawn(true));
 
     bool observed_cancelled_reply = false;
     bool handler_resumed = false;

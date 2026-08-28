@@ -16,7 +16,7 @@ TEST_SUITE(StatefulWorker) {
 
 TEST_CASE(SpawnAndExit) {
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn(4ULL * 1024 * 1024 * 1024));
+    ASSERT_TRUE(w.spawn(true));
 
     w.peer->close_output();
     w.loop.schedule(w.peer->run());
@@ -29,7 +29,7 @@ TEST_CASE(CompileRequest) {
     auto src = tmp.path("compile_test.cpp");
 
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn(4ULL * 1024 * 1024 * 1024));
+    ASSERT_TRUE(w.spawn(true));
 
     bool test_done = false;
 
@@ -58,7 +58,7 @@ TEST_CASE(CancelledCompileFreesStrand) {
     auto src = tmp.path("cancel_test.cpp");
 
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn(4ULL * 1024 * 1024 * 1024));
+    ASSERT_TRUE(w.spawn(true));
 
     bool test_done = false;
 
@@ -134,7 +134,7 @@ TEST_CASE(CancelNotificationInterruptsCompile) {
     auto src = tmp.path("interrupt.cpp");
 
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn(4ULL * 1024 * 1024 * 1024));
+    ASSERT_TRUE(w.spawn(true));
 
     bool test_done = false;
 
@@ -190,7 +190,7 @@ TEST_CASE(CancelledQueryFreesStrand) {
     auto src = tmp.path("query_cancel.cpp");
 
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn(4ULL * 1024 * 1024 * 1024));
+    ASSERT_TRUE(w.spawn(true));
 
     bool test_done = false;
 
@@ -238,7 +238,7 @@ TEST_CASE(CancelledQueryFreesStrand) {
 
 TEST_CASE(HoverWithoutCompile) {
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn(4ULL * 1024 * 1024 * 1024));
+    ASSERT_TRUE(w.spawn(true));
 
     bool test_done = false;
 
@@ -266,7 +266,7 @@ TEST_CASE(CompileThenHover) {
     auto src = tmp.path("hover_test.cpp");
 
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn(4ULL * 1024 * 1024 * 1024));
+    ASSERT_TRUE(w.spawn(true));
 
     bool test_done = false;
 
@@ -302,7 +302,7 @@ TEST_CASE(CompileThenHover) {
 
 TEST_CASE(CodeActionReturnsEmpty) {
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn(4ULL * 1024 * 1024 * 1024));
+    ASSERT_TRUE(w.spawn(true));
 
     bool test_done = false;
 
@@ -323,7 +323,7 @@ TEST_CASE(CodeActionReturnsEmpty) {
 
 TEST_CASE(GoToDefinitionWithoutCompile) {
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn(4ULL * 1024 * 1024 * 1024));
+    ASSERT_TRUE(w.spawn(true));
 
     bool test_done = false;
 
@@ -345,7 +345,7 @@ TEST_CASE(GoToDefinitionWithoutCompile) {
 
 TEST_CASE(SemanticTokensWithoutCompile) {
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn(4ULL * 1024 * 1024 * 1024));
+    ASSERT_TRUE(w.spawn(true));
 
     bool test_done = false;
 
@@ -365,7 +365,7 @@ TEST_CASE(SemanticTokensWithoutCompile) {
 
 TEST_CASE(FoldingRangeWithoutCompile) {
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn(4ULL * 1024 * 1024 * 1024));
+    ASSERT_TRUE(w.spawn(true));
 
     bool test_done = false;
 
@@ -385,7 +385,7 @@ TEST_CASE(FoldingRangeWithoutCompile) {
 
 TEST_CASE(DocumentSymbolWithoutCompile) {
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn(4ULL * 1024 * 1024 * 1024));
+    ASSERT_TRUE(w.spawn(true));
 
     bool test_done = false;
 
@@ -405,7 +405,7 @@ TEST_CASE(DocumentSymbolWithoutCompile) {
 
 TEST_CASE(DocumentLinkWithoutCompile) {
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn(4ULL * 1024 * 1024 * 1024));
+    ASSERT_TRUE(w.spawn(true));
 
     bool test_done = false;
 
@@ -424,7 +424,7 @@ TEST_CASE(DocumentLinkWithoutCompile) {
 
 TEST_CASE(InlayHintsWithoutCompile) {
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn(4ULL * 1024 * 1024 * 1024));
+    ASSERT_TRUE(w.spawn(true));
 
     bool test_done = false;
 
@@ -454,7 +454,7 @@ TEST_CASE(MultipleSequentialRequests) {
     auto src = tmp.path("seq_test.cpp");
 
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn(4ULL * 1024 * 1024 * 1024));
+    ASSERT_TRUE(w.spawn(true));
 
     bool test_done = false;
 
@@ -525,7 +525,7 @@ TEST_CASE(MultipleDocuments) {
     }
 
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn(4ULL * 1024 * 1024 * 1024));
+    ASSERT_TRUE(w.spawn(true));
 
     bool test_done = false;
 
@@ -562,7 +562,7 @@ TEST_CASE(MultipleDocuments) {
 
 TEST_CASE(EvictNotification) {
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn(4ULL * 1024 * 1024 * 1024));
+    ASSERT_TRUE(w.spawn(true));
 
     bool test_done = false;
 
@@ -588,7 +588,7 @@ TEST_CASE(EvictNotification) {
     ASSERT_TRUE(test_done);
 }
 
-TEST_CASE(LowLimitDrivesEviction) {
+TEST_CASE(DocumentLimitEvicts) {
     TempDir tmp;
     std::vector<std::string> paths;
     std::vector<std::string> texts;
@@ -601,7 +601,7 @@ TEST_CASE(LowLimitDrivesEviction) {
     }
 
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn(4ULL * 1024 * 1024 * 1024, /*max_documents=*/2));
+    ASSERT_TRUE(w.spawn(true, /*max_documents=*/2));
 
     std::vector<std::string> evicted;
     w.peer->on_notification(
@@ -638,44 +638,6 @@ TEST_CASE(LowLimitDrivesEviction) {
 
     ASSERT_TRUE(test_done);
     ASSERT_EQ(evicted, std::vector<std::string>{paths[0]});
-}
-
-TEST_CASE(SpawnWithMemoryLimit) {
-    TempDir tmp;
-    tmp.touch("memlimit_test.cpp", "int memlimit_var = 42;\n");
-    auto src = tmp.path("memlimit_test.cpp");
-
-    WorkerHandle w;
-    // Spawn with a specific memory limit to test the CLI flag is accepted.
-    ASSERT_TRUE(w.spawn(2ULL * 1024 * 1024 * 1024));
-
-    bool test_done = false;
-
-    w.run([&]() -> kota::task<> {
-        // Compile first.
-        worker::CompileParams cp;
-        cp.path = src;
-        cp.version = 1;
-        cp.text = "int memlimit_var = 42;\n";
-        cp.directory = "/tmp";
-        cp.arguments = make_args(src);
-
-        auto cr = co_await w.peer->send_request(cp);
-        EXPECT_TRUE(cr.has_value());
-
-        // Feature request should work after compilation.
-        worker::QueryParams hp;
-        hp.kind = worker::QueryKind::Hover;
-        hp.path = src;
-        hp.offset = 4;  // 'memlimit_var'
-
-        auto result = co_await w.peer->send_request(hp);
-        EXPECT_TRUE(result.has_value());
-
-        test_done = true;
-    });
-
-    ASSERT_TRUE(test_done);
 }
 
 };  // TEST_SUITE(StatefulWorker)

@@ -1,5 +1,7 @@
 #include "compile/diagnostic.h"
 
+#include <utility>
+
 #include "compile/implement.h"
 #include "support/format.h"
 
@@ -13,6 +15,16 @@
 #include "clang/Lex/Preprocessor.h"
 
 namespace clice {
+
+llvm::StringRef diagnostic_source_name(DiagnosticSource source) {
+    switch(source) {
+        case DiagnosticSource::Unknown: return {};
+        case DiagnosticSource::Clang: return "clang";
+        case DiagnosticSource::ClangTidy: return "clang-tidy";
+        case DiagnosticSource::Clice: return "clice";
+    }
+    std::unreachable();
+}
 
 llvm::StringRef DiagnosticID::diagnostic_code() const {
     switch(value) {
@@ -152,6 +164,8 @@ bool DiagnosticID::is_deserialization_error() const {
            clang::DiagnosticIDs::getCategoryNumberForDiag(value) == category;
 }
 
+namespace {
+
 bool is_note(clang::DiagnosticsEngine::Level level) {
     return level == clang::DiagnosticsEngine::Note || level == clang::DiagnosticsEngine::Remark;
 }
@@ -270,6 +284,8 @@ public:
 private:
     CompilationUnitRef unit;
 };
+
+}  // namespace
 
 std::unique_ptr<clang::DiagnosticConsumer> CompilationUnitRef::Self::create_diagnostic() {
     return std::make_unique<DiagnosticCollector>(this);

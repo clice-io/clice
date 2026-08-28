@@ -15,8 +15,7 @@
                 "idle_timeout_ms": 3000,
                 "test_hooks": false,
                 "stateful_worker_count": 2,
-                "min_stateless_worker_count": 1,
-                "worker_memory_limit": 4294967296
+                "min_stateless_worker_count": 1
             }
         },
         "tracker": {
@@ -153,13 +152,6 @@
                     "minimum": 0,
                     "maximum": 4294967295,
                     "description": "Upper bound for dynamic stateless-worker scaling; `0` means the machine's parallelism, which is also the default."
-                },
-                "worker_memory_limit": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "maximum": 18446744073709551615,
-                    "description": "Per-stateful-worker memory limit in bytes; `0` is invalid and falls back to the default. Not yet enforced: parsed, but memory-based eviction is not implemented.",
-                    "default": 4294967296
                 }
             },
             "additionalProperties": false

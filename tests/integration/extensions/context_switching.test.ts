@@ -6,7 +6,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { MTIME_GRANULARITY, SETTLE_TIME, sleep } from "@clice/tools/client";
+import { MTIME_GRANULARITY, SETTLE_TIME, sleep, waitUntil } from "@clice/tools/client";
 import { expect, test } from "../fixtures.ts";
 
 /// Snapshot the artifact directory as name -> mtime (nanoseconds), matching
@@ -223,7 +223,7 @@ test("stale epoch rejected", async ({ session }) => {
 
     // Any save bumps the workspace epoch.
     client.save(mainUri);
-    await sleep(500);
+    await sleep(SETTLE_TIME);
 
     let switched = await client.switchContext(sharedUri, mainUri, { epoch: oldEpoch });
     expect(switched.success).toBe(false);
@@ -436,12 +436,11 @@ test("switched context survives reopen", async ({ session }) => {
     // The close publishes an empty retract that can race the reopen's
     // first publish; poll past it for the real compile's errors.
     const [uri2] = await client.openAndWait("main.cpp");
-    for (let i = 0; i < 50; i++) {
-        if (client.errors(uri2).length > 0) {
-            break;
-        }
-        await sleep(200);
-    }
+    await waitUntil(() => client.errors(uri2).length, {
+        timeout: 10_000,
+        interval: 200,
+        description: "reopened context diagnostics",
+    });
     expect(
         (client.diagnostics.get(uri2) ?? []).some((d) =>
             (typeof d.message === "string" ? d.message : d.message.value).includes(

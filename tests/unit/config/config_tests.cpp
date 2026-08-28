@@ -1,5 +1,3 @@
-#include <cstdlib>
-
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "config/config.h"
@@ -10,27 +8,6 @@
 #include "kota/codec/toml/toml.h"
 
 namespace clice::testing {
-
-// POSIX setenv/unsetenv don't exist on Windows; map to _putenv_s
-// (passing an empty value to _putenv_s removes the variable).
-// Used only by the disabled XDG cache-dir tests below.
-#if 0
-static void set_env(const char* name, const char* value) {
-#ifdef _WIN32
-    ::_putenv_s(name, value);
-#else
-    ::setenv(name, value, 1);
-#endif
-}
-
-static void unset_env(const char* name) {
-#ifdef _WIN32
-    ::_putenv_s(name, "");
-#else
-    ::unsetenv(name);
-#endif
-}
-#endif
 
 /// The schema object of a property named `name`, found anywhere in the
 /// document's nested `properties` maps.
@@ -222,7 +199,6 @@ TEST_CASE(BornValidDefaults) {
               default_max_stateless_worker_count());
     EXPECT_GE(config.project.max_stateless_worker_count.value,
               config.project.min_stateless_worker_count.value);
-    EXPECT_EQ(config.project.worker_memory_limit.value, 4ULL * 1024 * 1024 * 1024);
     EXPECT_EQ(config.tracker.cdb_poll_seconds.value, 3u);
     EXPECT_EQ(config.tracker.workspace_poll_seconds.value, 30u);
     EXPECT_EQ(config.inlay_hints.enabled.value, true);
@@ -300,14 +276,15 @@ TEST_CASE(LoadMalformedToml) {
     EXPECT_FALSE(result.has_value());
 }
 
-TEST_CASE(LegacyIndexDirIgnored) {
-    // Configs written for older clice may still set the removed
-    // project.index_dir key; unknown keys must not fail the parse.
+TEST_CASE(LegacyProjectKeysIgnored) {
+    // Configs written for older clice may still set removed project keys;
+    // unknown keys must not fail the parse.
     TempDir tmp;
     tmp.touch("clice.toml", R"(
 [project]
 cache_dir = "/opt/cache"
 index_dir = "/opt/index"
+worker_memory_limit = 4294967296
 )");
     auto result = Config::load(tmp.path("clice.toml"), tmp.root.str().str());
     EXPECT_TRUE(result.has_value());
@@ -329,28 +306,6 @@ TEST_CASE(WorkspaceVarSubst) {
     EXPECT_EQ(std::string_view(config.project.logging_dir), "/my/ws/logs");
     EXPECT_EQ(config.project.compile_commands_paths[0], "/my/ws/build");
 }
-
-// FIXME: Out-of-tree cache placement is disabled (see
-// resolve_xdg_cache_dir in src/config/config.cpp); these tests pin its
-// behavior and return with it.
-#if 0
-TEST_CASE(XdgCacheDir) {
-    TempDir tmp;
-    auto cache_base = tmp.path("xdg");
-    set_env("XDG_CACHE_HOME", cache_base.c_str());
-    Config config;
-    config.finalize("/some/ws");
-    unset_env("XDG_CACHE_HOME");
-
-    // Compare in the canonical spelling — finalize canonicalizes
-    // cache_dir (a no-op on POSIX).
-    std::string cache = path::convert_to_slash(std::string_view(config.project.cache_dir));
-    std::string base = path::convert_to_slash(cache_base);
-    path::canonicalize(base);
-    EXPECT_TRUE(llvm::StringRef(cache).starts_with(base));
-    EXPECT_TRUE(cache.find("/clice/") != std::string::npos);
-}
-#endif
 
 TEST_CASE(InvalidGlobPattern) {
     Config config;
@@ -383,120 +338,6 @@ TEST_CASE(ConfigPriorityJson) {
     EXPECT_EQ(from_json->project.enable_indexing.value, true);
     EXPECT_EQ(from_json->project.stateful_worker_count.value, 2u);
 }
-
-#if 0
-TEST_CASE(XdgHashUnique) {
-    // Different workspace roots must map to different cache dirs,
-    // same workspace root must map to the same dir (deterministic).
-    TempDir tmp;
-    auto cache_base = tmp.path("xdg");
-    set_env("XDG_CACHE_HOME", cache_base.c_str());
-
-    Config a, b, c;
-    a.finalize("/ws/project-a");
-    b.finalize("/ws/project-b");
-    c.finalize("/ws/project-a");
-    unset_env("XDG_CACHE_HOME");
-
-    EXPECT_NE(std::string_view(a.project.cache_dir), std::string_view(b.project.cache_dir));
-    EXPECT_EQ(std::string_view(a.project.cache_dir), std::string_view(c.project.cache_dir));
-}
-
-TEST_CASE(XdgNameHashFormat) {
-    // The cache leaf is "<basename>-<8 hex digits>" so users can map
-    // directories back to their workspaces.
-    TempDir tmp;
-    auto cache_base = tmp.path("xdg");
-    set_env("XDG_CACHE_HOME", cache_base.c_str());
-    Config config;
-    config.finalize("/some/ws/myproject");
-    unset_env("XDG_CACHE_HOME");
-
-    llvm::StringRef leaf = path::filename(std::string_view(config.project.cache_dir));
-    EXPECT_TRUE(leaf.starts_with("myproject-"));
-    llvm::StringRef hex = leaf.drop_front(std::string_view("myproject-").size());
-    EXPECT_EQ(hex.size(), 8u);
-    EXPECT_EQ(hex.find_first_not_of("0123456789abcdef"), llvm::StringRef::npos);
-}
-
-TEST_CASE(XdgSameNameDiffer) {
-    // Same basename under different parents: the hash must keep them apart.
-    TempDir tmp;
-    auto cache_base = tmp.path("xdg");
-    set_env("XDG_CACHE_HOME", cache_base.c_str());
-    Config a, b;
-    a.finalize("/first/proj");
-    b.finalize("/second/proj");
-    unset_env("XDG_CACHE_HOME");
-
-    EXPECT_TRUE(path::filename(std::string_view(a.project.cache_dir)).starts_with("proj-"));
-    EXPECT_TRUE(path::filename(std::string_view(b.project.cache_dir)).starts_with("proj-"));
-    EXPECT_NE(std::string_view(a.project.cache_dir), std::string_view(b.project.cache_dir));
-}
-
-TEST_CASE(XdgRootWorkspace) {
-    // A root workspace has no basename; the leaf must not degenerate to "-<hash>".
-    TempDir tmp;
-    auto cache_base = tmp.path("xdg");
-    set_env("XDG_CACHE_HOME", cache_base.c_str());
-    Config config;
-    config.finalize("/");
-    unset_env("XDG_CACHE_HOME");
-
-    EXPECT_TRUE(
-        path::filename(std::string_view(config.project.cache_dir)).starts_with("workspace-"));
-}
-
-TEST_CASE(XdgLongBasename) {
-    // A basename near the filesystem's 255-byte component limit must be
-    // truncated so the leaf (name + "-" + 8 hex) still fits.
-    TempDir tmp;
-    auto cache_base = tmp.path("xdg");
-    set_env("XDG_CACHE_HOME", cache_base.c_str());
-    Config config;
-    config.finalize("/ws/" + std::string(200, 'x'));
-    unset_env("XDG_CACHE_HOME");
-
-    llvm::StringRef leaf = path::filename(std::string_view(config.project.cache_dir));
-    EXPECT_TRUE(leaf.starts_with(std::string(64, 'x')));
-    EXPECT_EQ(leaf.size(), 64u + 9u);
-}
-
-TEST_CASE(XdgTrailingSlash) {
-    TempDir tmp;
-    auto cache_base = tmp.path("xdg");
-    set_env("XDG_CACHE_HOME", cache_base.c_str());
-    Config config;
-    config.finalize("/some/ws/");
-    unset_env("XDG_CACHE_HOME");
-
-    EXPECT_TRUE(path::filename(std::string_view(config.project.cache_dir)).starts_with("ws-"));
-}
-
-TEST_CASE(HomeFallback) {
-    // With XDG_CACHE_HOME unset but HOME set, cache dir should be under $HOME/.cache/clice.
-    TempDir tmp;
-    unset_env("XDG_CACHE_HOME");
-    auto home = tmp.path("home");
-    // Save prior value so we restore cleanly.
-    const char* prior = std::getenv("HOME");
-    std::string prior_home = prior ? prior : "";
-    set_env("HOME", home.c_str());
-
-    Config config;
-    config.finalize("/some/ws");
-
-    if(prior_home.empty())
-        unset_env("HOME");
-    else
-        set_env("HOME", prior_home.c_str());
-
-    std::string cache = path::convert_to_slash(std::string_view(config.project.cache_dir));
-    std::string home_posix = path::convert_to_slash(home);
-    path::canonicalize(home_posix);
-    EXPECT_TRUE(llvm::StringRef(cache).starts_with(home_posix + "/.cache/clice/"));
-}
-#endif
 
 TEST_CASE(DefaultWorkspaceCache) {
     Config config;
@@ -572,15 +413,15 @@ TEST_CASE(TypeIssueReported) {
     EXPECT_NE(issues[0].message.find("test_hooks"), std::string::npos);
 }
 
-TEST_CASE(UnknownKeyIssueWarns) {
+TEST_CASE(RemovedKeyIssueWarns) {
     TempDir tmp;
-    tmp.touch("clice.toml", "[project]\nclang_tdy = true\n");
+    tmp.touch("clice.toml", "[project]\nworker_memory_limit = 4294967296\n");
     std::vector<ConfigIssue> issues;
     auto result = Config::load(tmp.path("clice.toml"), tmp.root.str(), &issues);
     EXPECT_TRUE(result.has_value());
     ASSERT_EQ(issues.size(), 1u);
     EXPECT_EQ(issues[0].severity, ConfigIssue::Severity::Warning);
-    EXPECT_NE(issues[0].message.find("clang_tdy"), std::string::npos);
+    EXPECT_NE(issues[0].message.find("worker_memory_limit"), std::string::npos);
 }
 
 TEST_CASE(UnknownFeatureKeyWarns) {
@@ -604,12 +445,10 @@ TEST_CASE(ZeroWorkerCountRejected) {
     config.project.stateful_worker_count = 0;
     config.project.stateless_worker_count = 0;
     config.project.min_stateless_worker_count = 0;
-    config.project.worker_memory_limit = 0;
     config.finalize("");
     EXPECT_EQ(config.project.stateful_worker_count.value, 2u);
     EXPECT_GE(config.project.stateless_worker_count.value, 2u);
     EXPECT_EQ(config.project.min_stateless_worker_count.value, 1u);
-    EXPECT_EQ(config.project.worker_memory_limit.value, 4ULL * 1024 * 1024 * 1024);
 }
 
 TEST_CASE(NullOptionRejected) {
@@ -819,10 +658,8 @@ TEST_CASE(JsonSchema) {
     EXPECT_TRUE(find_property(*doc, "compiled_rules") == nullptr);
 
     // The fields finalize() rejects `0` for carry the matching lower bound.
-    for(auto field: {"stateful_worker_count",
-                     "stateless_worker_count",
-                     "min_stateless_worker_count",
-                     "worker_memory_limit"}) {
+    for(auto field:
+        {"stateful_worker_count", "stateless_worker_count", "min_stateless_worker_count"}) {
         const auto* property = find_property(*doc, field);
         ASSERT_TRUE(property != nullptr);
         const auto* minimum = property->get_object()->find("minimum");

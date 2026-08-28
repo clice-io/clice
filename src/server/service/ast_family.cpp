@@ -339,7 +339,7 @@ kota::task<DependResult> ASTFamily::depend_modules(RoundContext& ctx,
     // include. The scan's sentinel edges are what let the name's first
     // provider re-dirty this document.
     bool scan_worth = !workspace.path_to_module.empty() ||
-                      !workspace.dep_graph.import_candidates().empty() ||
+                      !workspace.dep_graph.import_candidate_files().empty() ||
                       contexts.header_context(path_id) != nullptr ||
                       llvm::any_of(arguments, [](const std::string& arg) {
                           return llvm::StringRef(arg).starts_with("-include");
@@ -534,7 +534,8 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, std::uint32_t path_id
                     // lands even if this round goes stale meanwhile.
                     auto dep =
                         pch.prepare(std::move(plan.request), [session](llvm::StringRef death) {
-                            session->quarantine.on_kind_crash(pch_evidence, death);
+                            session->quarantine.on_kind_crash(evidence_kind(EvidenceKind::PCH),
+                                                              death);
                         });
                     switch(co_await ctx.depend(dep)) {
                         case DependResult::Ready:
@@ -550,7 +551,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, std::uint32_t path_id
                                 // the session's PCH strikes as surely as
                                 // building one — but only its own; every
                                 // consumer washes for itself.
-                                session->quarantine.on_kind_land(pch_evidence);
+                                session->quarantine.on_kind_land(evidence_kind(EvidenceKind::PCH));
                             }
                             break;
                         case DependResult::Failed: break;

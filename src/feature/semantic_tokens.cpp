@@ -233,7 +233,7 @@ Classified classify_decl(const clang::NamedDecl* decl, RelationKind relation) {
     return {kind, modifiers};
 }
 
-/// Classifies every spelled token of the interested file in one ordered
+/// Classifies every spelled token of the main file in one ordered
 /// pass over the semantic map: lexical kinds straight from the token kind,
 /// macros/includes/imports/attributes from the owning SemanticNode, and
 /// declaration names by collecting the decls anchored at the token from its
@@ -247,7 +247,7 @@ class SemanticTokensCollector {
 public:
     SemanticTokensCollector(CompilationUnitRef unit,
                             llvm::ArrayRef<std::uint32_t> inactive_regions) :
-        unit(unit), semantics(unit.semantics()), content(unit.interested_content()),
+        unit(unit), semantics(unit.semantics()), content(unit.main_content()),
         comments(semantics.comments()), inactive_regions(inactive_regions) {}
 
     auto collect() -> std::vector<SemanticToken> {
@@ -769,7 +769,7 @@ auto semantic_tokens(CompilationUnitRef unit) -> std::vector<SemanticToken> {
 auto semantic_tokens(CompilationUnitRef unit, PositionEncoding encoding)
     -> protocol::SemanticTokens {
     return semantic_tokens_to_protocol(semantic_tokens(unit),
-                                       unit.interested_content(),
+                                       unit.main_content(),
                                        unit.line_starts(),
                                        encoding);
 }
@@ -779,7 +779,7 @@ auto semantic_tokens(CompilationUnitRef unit,
                      PositionEncoding encoding) -> protocol::SemanticTokens {
     SemanticTokensCollector collector(unit, inactive_regions);
     return semantic_tokens_to_protocol(collector.collect(),
-                                       unit.interested_content(),
+                                       unit.main_content(),
                                        unit.line_starts(),
                                        encoding);
 }

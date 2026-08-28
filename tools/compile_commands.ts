@@ -10,14 +10,38 @@ export const TESTS_DIR = path.join(REPO_ROOT, "tests");
 export const DATA_DIR = path.join(TESTS_DIR, "data");
 export const SNAP_DIR = path.join(TESTS_DIR, "snap");
 
-interface CDBEntry {
+export interface CDBEntry {
     directory: string;
     file: string;
     arguments: string[];
 }
 
+export interface CDBEntryOptions {
+    extraArgs?: string[] | undefined;
+    std?: string | undefined;
+}
+
 function posix(p: string): string {
     return p.split(path.sep).join("/");
+}
+
+export function buildCDBEntry(
+    directory: string,
+    source: string,
+    options: CDBEntryOptions = {},
+): CDBEntry {
+    const file = posix(source);
+    return {
+        directory: posix(directory),
+        file,
+        arguments: [
+            "clang++",
+            `-std=${options.std ?? "c++17"}`,
+            "-fsyntax-only",
+            ...(options.extraArgs ?? []),
+            file,
+        ],
+    };
 }
 
 /// Generate compile_commands.json using CMake with Ninja backend.
@@ -51,17 +75,11 @@ export function generateTestDataCDBs(dataDir: string = DATA_DIR): void {
         fs.renameSync(tmp, target);
     };
 
-    const entry = (directory: string, source: string, extraArgs: string[] = []): CDBEntry => ({
-        directory: posix(directory),
-        file: posix(source),
-        arguments: ["clang++", "-std=c++17", "-fsyntax-only", ...extraArgs, posix(source)],
-    });
-
     const single = (name: string, extraArgs: string[] = []) => {
         const dir = path.join(dataDir, name);
         const main = path.join(dir, "main.cpp");
         if (fs.existsSync(main)) {
-            write(dir, [entry(dir, main, extraArgs)]);
+            write(dir, [buildCDBEntry(dir, main, { extraArgs })]);
         }
     };
 
@@ -75,7 +93,10 @@ export function generateTestDataCDBs(dataDir: string = DATA_DIR): void {
     const mcDir = path.join(dataDir, "multi_context");
     const mcMain = path.join(mcDir, "main.cpp");
     if (fs.existsSync(mcMain)) {
-        write(mcDir, [entry(mcDir, mcMain, ["-DCONFIG_A"]), entry(mcDir, mcMain, ["-DCONFIG_B"])]);
+        write(mcDir, [
+            buildCDBEntry(mcDir, mcMain, { extraArgs: ["-DCONFIG_A"] }),
+            buildCDBEntry(mcDir, mcMain, { extraArgs: ["-DCONFIG_B"] }),
+        ]);
     }
 
     single("include_completion", ["-I."]);
@@ -94,7 +115,7 @@ export function generateTestDataCDBs(dataDir: string = DATA_DIR): void {
         const entries = ["main.cpp", "no_includes.cpp"]
             .map((name) => path.join(ptDir, name))
             .filter((src) => fs.existsSync(src))
-            .map((src) => entry(ptDir, src));
+            .map((src) => buildCDBEntry(ptDir, src));
         if (entries.length > 0) {
             write(ptDir, entries);
         }

@@ -5,7 +5,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as proto from "vscode-languageserver-protocol";
-import { sleep, withTimeout, type CliceClient } from "@clice/tools/client";
+import { waitUntil, withTimeout, type CliceClient } from "@clice/tools/client";
 import type { Workspace } from "@clice/tools/workspace";
 import { expect, test, type SessionFactory } from "../fixtures.ts";
 
@@ -112,23 +112,25 @@ test("desync range clamped", async ({ session }) => {
     expect(client.errors(uri).length).toBeGreaterThan(0);
 
     const logsDir = workspace.path(".clice/logs");
-    let clamped = false;
-    for (let i = 0; i < 50; i++) {
-        const logs = fs.existsSync(logsDir)
-            ? fs
-                  .readdirSync(logsDir, { recursive: true, encoding: "utf8" })
-                  .filter((name) => name.endsWith(".log"))
-                  .map((name) => fs.readFileSync(path.join(logsDir, name), "utf8"))
-                  .join("")
-            : "";
-        if (
-            logs.split("\n").some((ln) => ln.includes("didChange range") && ln.includes("clamped"))
-        ) {
-            clamped = true;
-            break;
-        }
-        await sleep(100);
-    }
+    const clamped = await waitUntil(
+        () => {
+            const logs = fs.existsSync(logsDir)
+                ? fs
+                      .readdirSync(logsDir, { recursive: true, encoding: "utf8" })
+                      .filter((name) => name.endsWith(".log"))
+                      .map((name) => fs.readFileSync(path.join(logsDir, name), "utf8"))
+                      .join("")
+                : "";
+            return logs
+                .split("\n")
+                .some((line) => line.includes("didChange range") && line.includes("clamped"));
+        },
+        {
+            timeout: 5_000,
+            interval: 100,
+            description: "the clamped out-of-sync edit log",
+        },
+    );
     expect(clamped, "clamped out-of-sync edit never produced a clamp log").toBe(true);
 });
 
@@ -243,14 +245,17 @@ test("startup guidance delivered", async ({ session }) => {
             // receive it (drained from the server's notify log).
         },
         async (client) => {
-            let delivered = false;
-            for (let i = 0; i < 300; i++) {
-                if (client.guidanceMessages().some((m) => m.includes("compile_commands.json"))) {
-                    delivered = true;
-                    break;
-                }
-                await sleep(100);
-            }
+            const delivered = await waitUntil(
+                () =>
+                    client
+                        .guidanceMessages()
+                        .some((message) => message.includes("compile_commands.json")),
+                {
+                    timeout: 30_000,
+                    interval: 100,
+                    description: "startup guidance to reach the client",
+                },
+            );
             expect(delivered, "startup guidance never reached the client").toBe(true);
         },
     );

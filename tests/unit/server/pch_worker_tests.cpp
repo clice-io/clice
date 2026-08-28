@@ -83,7 +83,7 @@ TEST_CASE(BuildPCHThenCompile) {
     EXPECT_TRUE(has_common_link);
 
     WorkerHandle sf;
-    ASSERT_TRUE(sf.spawn(4ULL * 1024 * 1024 * 1024));
+    ASSERT_TRUE(sf.spawn(true));
 
     bool phase2_done = false;
 
@@ -177,7 +177,7 @@ TEST_CASE(CompileWithoutPCHStillWorks) {
     auto dir = std::string(tmp.root);
 
     WorkerHandle sf;
-    ASSERT_TRUE(sf.spawn(4ULL * 1024 * 1024 * 1024));
+    ASSERT_TRUE(sf.spawn(true));
 
     bool compile_done = false;
 

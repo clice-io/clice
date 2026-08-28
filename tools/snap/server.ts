@@ -150,8 +150,8 @@ export async function checkServerSnapFixture(
 
     const shared = fixture.meta.verify === "both" && fixture.meta.snap === "shared";
     const snapshots = shared
-        ? new SnapshotContext(corpus.corpus, { colocated: true, update: false })
-        : new SnapshotContext(corpus.corpus, { colocated: true });
+        ? new SnapshotContext(corpus.corpus, { update: false })
+        : new SnapshotContext(corpus.corpus);
     const variant =
         fixture.meta.verify === "both" && fixture.meta.snap === "separate" ? "server" : "";
     snapshots.check(fixture.rel, body.join("\n"), variant);

@@ -3056,7 +3056,6 @@ TEST_CASE(ModuleLintScanParity) {
         opts.stateless_count = 1;
         opts.stateful_count = 0;
         CO_ASSERT_TRUE(f.pool.start(opts));
-        co_await kota::sleep(500);
 
         outcome = co_await f.turun.run(n_id, std::move(plan), {});
 

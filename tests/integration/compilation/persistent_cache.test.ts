@@ -6,10 +6,12 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { MTIME_GRANULARITY, SETTLE_TIME, sleep } from "@clice/tools/client";
+import { MTIME_GRANULARITY, SETTLE_TIME, sleep, waitUntil } from "@clice/tools/client";
 import { DATA_DIR } from "@clice/tools/compile-commands";
 import type { CacheJson, Workspace } from "@clice/tools/workspace";
 import { expect, test } from "../fixtures.ts";
+
+const KILL_DELAY = 300;
 
 function copySaveRecompile(workspace: Workspace): void {
     const src = path.join(DATA_DIR, "modules", "save_recompile");
@@ -69,24 +71,27 @@ function writeCacheJsonLossless(cachePath: string, cache: CacheJson): void {
 /// Wait until orphaned workers of a killed server release their handles
 /// on tmp residue (a rename probe fails on Windows while a file is open).
 async function waitResidueReleased(workspace: Workspace, deadlineMs = 20_000): Promise<void> {
-    const end = Date.now() + deadlineMs;
-    while (Date.now() < end) {
-        let locked = false;
-        for (const f of workspace.tmpFiles()) {
-            const probe = f + ".probe";
-            try {
-                fs.renameSync(f, probe);
-                fs.renameSync(probe, f);
-            } catch {
-                locked = true;
-                break;
+    await waitUntil(
+        () => {
+            let locked = false;
+            for (const f of workspace.tmpFiles()) {
+                const probe = f + ".probe";
+                try {
+                    fs.renameSync(f, probe);
+                    fs.renameSync(probe, f);
+                } catch {
+                    locked = true;
+                    break;
+                }
             }
-        }
-        if (!locked) {
-            return;
-        }
-        await sleep(500);
-    }
+            return !locked;
+        },
+        {
+            timeout: deadlineMs,
+            interval: 500,
+            description: "orphaned workers to release temporary cache files",
+        },
+    );
 }
 
 test("pch written to cache dir", async ({ session }) => {
@@ -547,7 +552,7 @@ test("kill9 recovery", async ({ session }) => {
     const c1 = session.spawn(workspace);
     await c1.initialize(workspace);
     c1.open("main.cpp");
-    await sleep(300);
+    await sleep(KILL_DELAY);
     c1.killServer();
     c1.dispose();
     await waitResidueReleased(workspace);
@@ -736,7 +741,7 @@ test("cache wiped while running", async ({ session }) => {
     wipeBestEffort(workspace.path(path.join(".clice", "cache")));
 
     // Change the preamble so a fresh PCH build is required.
-    await sleep(1_100);
+    await sleep(MTIME_GRANULARITY);
     workspace.write("header.h", "#pragma once\nstruct W { int x; int y; };\n");
 
     await client.waitForRecompile(uri);

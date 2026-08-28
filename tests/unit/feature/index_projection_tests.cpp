@@ -95,7 +95,7 @@ int total(Point point, int base) {
     extract_rows();
 
     auto ast = feature::semantic_tokens(*unit);
-    auto projected = feature::index_semantic_tokens(unit->interested_content(),
+    auto projected = feature::index_semantic_tokens(unit->main_content(),
                                                     feature::index_lang_options("main.cpp", false),
                                                     occurrences,
                                                     decls,
@@ -180,7 +180,7 @@ int compute() {
     extract_rows();
 
     auto ast = feature::folding_ranges(*unit);
-    auto projected = feature::index_folding_ranges(unit->interested_content(),
+    auto projected = feature::index_folding_ranges(unit->main_content(),
                                                    feature::index_lang_options("main.cpp", false),
                                                    decls,
                                                    resolver());
@@ -195,7 +195,7 @@ int compute() {
 
     // The constructor's fold anchors at its body, not the member
     // initializer's braces.
-    auto body = unit->interested_content().find("{\n        value += 1;");
+    auto body = unit->main_content().find("{\n        value += 1;");
     bool anchored = std::ranges::any_of(projected, [&](const feature::FoldingRange& fold) {
         return fold.range.begin == body;
     });

@@ -13,8 +13,8 @@ InactiveScan inactive_regions(CompilationUnitRef unit,
                               std::uint32_t end_offset) {
     InactiveScan result;
 
-    auto interested = unit.interested_file();
-    auto content = unit.file_content(interested);
+    auto main_fid = unit.main_file();
+    auto content = unit.file_content(main_fid);
     if(end_offset > content.size()) {
         end_offset = static_cast<std::uint32_t>(content.size());
     }
@@ -34,7 +34,7 @@ InactiveScan inactive_regions(CompilationUnitRef unit,
 
     auto local_offset = [&](clang::SourceLocation loc) -> std::optional<std::uint32_t> {
         auto [fid, offset] = unit.decompose_location(loc);
-        if(fid != interested) {
+        if(fid != main_fid) {
             return std::nullopt;
         }
         return offset;
@@ -78,7 +78,7 @@ InactiveScan inactive_regions(CompilationUnitRef unit,
         level.inactive_begin.reset();
     };
 
-    auto directives_it = unit.directives().find(interested);
+    auto directives_it = unit.directives().find(main_fid);
     if(directives_it != unit.directives().end()) {
         for(const auto& condition: directives_it->second.conditions) {
             auto offset = local_offset(condition.loc);

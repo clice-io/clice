@@ -21,12 +21,6 @@
 
 namespace clice {
 
-namespace testing {
-
-struct ASTFixture;
-
-}
-
 class ContextResolver;
 
 /// The AST family's id in the task graph. Node keys are document path_ids
@@ -199,8 +193,6 @@ private:
     /// Detached ensure_compiled joins from request_compile; the rounds
     /// live in the graph's task group.
     kota::task_group<> kicks;
-
-    friend struct testing::ASTFixture;
 };
 
 /// The PCH acquisition plan of a buffer state: whether a PCH is owed at
@@ -220,16 +212,18 @@ PCHPlan plan_pch(Workspace& workspace,
                  const std::string& directory,
                  const std::vector<std::string>& arguments);
 
-/// Evidence-kind discriminators for Quarantine's per-kind ledgers. Queries
-/// and stateless builds share one space, offset so they cannot collide;
-/// document links have no QueryKind and get their own slot. The stateless
-/// slots keep the values of the retired BuildKind enum (0x40 + kind) —
-/// they are in-memory only, but drift within a session would misattribute
-/// evidence.
-constexpr inline std::uint8_t document_link_evidence = 0x20;
-constexpr inline std::uint8_t pch_evidence = 0x40;
-constexpr inline std::uint8_t completion_evidence = 0x43;
-constexpr inline std::uint8_t signature_help_evidence = 0x44;
-constexpr inline std::uint8_t format_evidence = 0x45;
+/// Discriminators for Quarantine's per-kind ledgers.
+enum class EvidenceKind : std::uint8_t {
+    DocumentLink,
+    PCH,
+    Completion,
+    SignatureHelp,
+    Format,
+    Count,
+};
+
+constexpr std::uint8_t evidence_kind(EvidenceKind kind) {
+    return static_cast<std::uint8_t>(kind);
+}
 
 }  // namespace clice

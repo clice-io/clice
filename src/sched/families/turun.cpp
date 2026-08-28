@@ -108,7 +108,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, std::uint32_t pat
     // worker reports its own failure if they are not enough.
     bool own_module = workspace.path_to_module.contains(path_id);
     if(own_module || !workspace.path_to_module.empty() ||
-       !workspace.dep_graph.import_candidates().empty() ||
+       !workspace.dep_graph.import_candidate_files().empty() ||
        llvm::any_of(params.arguments, [](const std::string& arg) {
            return llvm::StringRef(arg).starts_with("-include");
        })) {

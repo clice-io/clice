@@ -21,7 +21,7 @@ using u32 = std::uint32_t;
 void run(llvm::StringRef code) {
     add_files("main.cpp", code);
     ASSERT_TRUE(compile("-std=c++23"));
-    auto fid = unit->interested_file();
+    auto fid = unit->main_file();
     includes = unit->directives()[fid].includes;
     has_includes = unit->directives()[fid].has_includes;
     conditions = unit->directives()[fid].conditions;

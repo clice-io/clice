@@ -174,6 +174,6 @@ export async function checkInspectFixture(
 
     const variant =
         fixture.meta.verify === "both" && fixture.meta.snap === "separate" ? "inspect" : "";
-    const snapshots = new SnapshotContext(corpus.corpus, { colocated: true });
+    const snapshots = new SnapshotContext(corpus.corpus);
     snapshots.check(fixture.rel, body.join("\n"), variant);
 }

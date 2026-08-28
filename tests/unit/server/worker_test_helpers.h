@@ -65,9 +65,9 @@ struct WorkerHandle {
     std::unique_ptr<kota::ipc::BincodePeer> peer;
     int stderr_fd = -1;
 
-    bool spawn(std::uint64_t memory_limit = 0, std::size_t max_documents = 0) {
+    bool spawn(bool stateful = false, std::size_t max_documents = 0) {
         auto binary = clice_binary();
-        auto label = memory_limit > 0 ? "stateful" : "stateless";
+        auto label = stateful ? "stateful" : "stateless";
 
 #ifndef _WIN32
         std::string stderr_path = std::string("/tmp/clice_worker_stderr_") + label + ".log";
@@ -77,10 +77,8 @@ struct WorkerHandle {
         kota::process::options opts;
         opts.file = binary;
         opts.args = {binary, "worker"};
-        if(memory_limit > 0) {
+        if(stateful) {
             opts.args.push_back("--stateful");
-            opts.args.push_back("--memory-limit");
-            opts.args.push_back(std::to_string(memory_limit));
         }
         if(max_documents > 0) {
             opts.args.push_back("--max-documents");

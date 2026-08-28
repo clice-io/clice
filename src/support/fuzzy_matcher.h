@@ -3,9 +3,7 @@
 #include <optional>
 
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Support/raw_ostream.h"
 
 namespace clice {
 
@@ -72,21 +70,18 @@ public:
         return pat_n == 0;
     }
 
-    // Dump internal state from the last match() to the stream, for debugging.
-    // Returns the pattern with [] around matched characters, e.g.
-    //   [u_p] + "unique_ptr" --> "[u]nique[_p]tr"
-    llvm::SmallString<256> dumpLast(llvm::raw_ostream&) const;
-
 private:
     // We truncate the pattern and the word to bound the cost of matching.
     constexpr inline static int MaxPat = 63, MaxWord = 127;
-    // Action describes how a word character was matched to the pattern.
-    // It should be an enum, but this causes bitfield problems:
-    //   - for MSVC the enum type must be explicitly unsigned for correctness
-    //   - GCC 4.8 complains not all values fit if the type is unsigned
-    using Action = bool;
-    constexpr static Action Miss = false;  // Word character was skipped.
-    constexpr static Action Match = true;  // Matched against a pattern character.
+    /// How a word character was matched to the pattern.
+    enum class Action : unsigned {
+        Miss,
+        Match,
+    };
+
+    constexpr static unsigned action_index(Action action) {
+        return static_cast<unsigned>(action);
+    }
 
     bool init(llvm::StringRef Word);
     void build_graph();

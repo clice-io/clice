@@ -180,8 +180,6 @@ export interface SessionFactory {
     /// Spawn a server initialized on tests/data/<name>. Acquire sessions
     /// for multiple workspaces in alphabetical order to avoid lock cycles.
     (name: string, options?: SessionOptions): Promise<Session>;
-    /// Spawn a bare server with no workspace/initialize.
-    bare(options?: SessionOptions): CliceClient;
     /// Spawn a server bound to a fresh, empty temp workspace, without
     /// initializing. The caller writes fixture files (and a CDB) then calls
     /// client.initialize(workspace). The whole temp directory is removed in
@@ -261,7 +259,6 @@ export function createSessionFactory(): SessionHandle {
         });
         return { client, workspace };
     };
-    factory.bare = (options: SessionOptions = {}): CliceClient => spawnTracked(null, options);
     factory.spawn = spawnTracked;
     factory.tmpdir = (): Workspace => {
         const workspace = Workspace.tmp();

@@ -272,7 +272,7 @@ static worker::ArtifactBuildResult handle_build_pcm(const worker::BuildPCMParams
 static void collect_tidy_diagnostics(CompilationUnitRef unit,
                                      const worker::TURunParams& params,
                                      std::vector<worker::TidyDiagnostic>& out) {
-    auto main_fid = unit.interested_file();
+    auto main_fid = unit.main_file();
     std::optional<llvm::Regex> keep;
     if(!params.tidy_header_filter.empty()) {
         keep.emplace(params.tidy_header_filter);

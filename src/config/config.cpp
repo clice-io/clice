@@ -14,8 +14,6 @@
 #include "kota/support/glob_pattern.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
-#include "llvm/Support/Process.h"
-#include "llvm/Support/xxhash.h"
 
 namespace clice {
 
@@ -32,54 +30,6 @@ static void substitute_workspace(std::string& value, llvm::StringRef workspace_r
         pos += workspace_root.size();
     }
 }
-
-// FIXME: Out-of-tree cache placement (XDG/system cache directory) is
-// disabled: the hashed leaf makes logs undiscoverable for bug reports and
-// orphaned directories outlive their workspaces with no GC. The
-// workspace-local `.clice` self-ignores via .gitignore/CACHEDIR.TAG, so
-// the original motivation (polluting the repository) is gone. Revisit
-// whether an out-of-tree location should exist at all before re-enabling.
-#if 0
-/// Try to resolve the default cache directory using XDG_CACHE_HOME.
-/// Returns empty string on failure.
-static std::string resolve_xdg_cache_dir(llvm::StringRef workspace_root) {
-    // Determine base: $XDG_CACHE_HOME or ~/.cache
-    std::string base;
-    if(auto xdg = llvm::sys::Process::GetEnv("XDG_CACHE_HOME"); xdg && !xdg->empty()) {
-        base = std::move(*xdg);
-    } else if(auto home = llvm::sys::Process::GetEnv("HOME"); home && !home->empty()) {
-        base = path::join(*home, ".cache");
-    } else {
-        return {};
-    }
-
-    // "<basename>-<hash>": the basename lets users map cache directories
-    // back to their workspaces, the hash keeps same-named workspaces apart.
-    auto hash = llvm::xxh3_64bits(workspace_root);
-    llvm::StringRef name = path::filename(workspace_root.rtrim("/\\"));
-    if(name.empty() || name == "." || name == "..")
-        name = "workspace";
-    // Keep the leaf well under filesystem name limits (255 bytes on common
-    // filesystems) without splitting a UTF-8 sequence mid-codepoint.
-    if(name.size() > 64) {
-        name = name.take_front(64);
-        while(!name.empty() && (static_cast<unsigned char>(name.back()) & 0xC0) == 0x80)
-            name = name.drop_back();
-        // A complete trailing character loses its continuation bytes above;
-        // drop its lead byte too rather than keep invalid UTF-8.
-        if(!name.empty() && static_cast<unsigned char>(name.back()) >= 0xC0)
-            name = name.drop_back();
-    }
-    auto dir =
-        path::join(base, "clice", std::format("{}-{:08x}", name, static_cast<std::uint32_t>(hash)));
-
-    if(auto ec = llvm::sys::fs::create_directories(dir)) {
-        LOG_WARN("Failed to create XDG cache directory {}: {}", dir, ec.message());
-        return {};
-    }
-    return dir;
-}
-#endif
 
 std::uint32_t default_stateless_worker_count() {
     // Config is constructed on every worker request (QueryParams /
@@ -113,8 +63,6 @@ void Config::finalize(llvm::StringRef workspace_root) {
     reject_zero(p.min_stateless_worker_count,
                 defaults.min_stateless_worker_count,
                 "min_stateless_worker_count");
-    reject_zero(p.worker_memory_limit, defaults.worker_memory_limit, "worker_memory_limit");
-
     if(p.cache_dir.empty() && !workspace_root.empty()) {
         p.cache_dir = path::join(workspace_root, ".clice");
         p.cache_dir_defaulted = true;
@@ -292,8 +240,7 @@ constexpr std::array MACHINE_DERIVED_FIELDS = {"stateless_worker_count",
 /// The fields finalize() rejects `0` for.
 constexpr std::array ZERO_INVALID_FIELDS = {"stateful_worker_count",
                                             "stateless_worker_count",
-                                            "min_stateless_worker_count",
-                                            "worker_memory_limit"};
+                                            "min_stateless_worker_count"};
 
 /// Scrub the machine-derived fields out of a `default` object: sections
 /// carry whole-object defaults, so the values appear below `default`

@@ -8,7 +8,7 @@
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { CliceClient, sleep } from "@clice/tools/client";
+import { CliceClient, waitUntil } from "@clice/tools/client";
 import { REPO_ROOT } from "@clice/tools/compile-commands";
 import { Workspace } from "@clice/tools/workspace";
 import { cliceExecutable, expect, test } from "../fixtures.ts";
@@ -128,12 +128,11 @@ test.skipIf(process.platform !== "linux" || isDebugBuild())(
             // handler and is not intercepted by sanitizers.
             process.kill(workers[0]!, "SIGABRT");
 
-            for (let i = 0; i < 50; i++) {
-                if (client.anomaliesInLogMessages().includes("WorkerCrash")) {
-                    break;
-                }
-                await sleep(200);
-            }
+            await waitUntil(() => client.anomaliesInLogMessages().includes("WorkerCrash"), {
+                timeout: 10_000,
+                interval: 200,
+                description: "the worker crash anomaly message",
+            });
         } finally {
             await client.shutdown();
         }
