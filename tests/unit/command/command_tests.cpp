@@ -5,6 +5,7 @@
 #include "command/command.h"
 #include "support/filesystem.h"
 
+#include "llvm/ADT/ScopeExit.h"
 #include "llvm/Support/raw_ostream.h"
 
 namespace clice::testing {
@@ -563,6 +564,29 @@ TEST_CASE(RelativeDirectoryAnchored) {
 
     auto file = path::join(tmp.root, "build", "main.cpp");
     auto candidates = database.candidate_entries(file);
+    ASSERT_EQ(candidates.size(), 1U);
+    EXPECT_EQ(llvm::StringRef(database.config(candidates.front().config).directory),
+              path::join(tmp.root, "build"));
+};
+
+TEST_CASE(RelativeLoadPathAnchored) {
+    /// A relative CDB path given to load() must not leak relative entry
+    /// identities: the anchor base is absolutized first.
+    TempDir tmp;
+    tmp.touch("compile_commands.json", R"([
+        {"directory": "build", "file": "main.cpp",
+         "arguments": ["clang++", "-std=c++20", "main.cpp"]}
+    ])");
+
+    llvm::SmallString<256> saved_cwd;
+    ASSERT_FALSE(bool(llvm::sys::fs::current_path(saved_cwd)));
+    ASSERT_FALSE(bool(llvm::sys::fs::set_current_path(tmp.root)));
+    auto restore = llvm::make_scope_exit([&] { llvm::sys::fs::set_current_path(saved_cwd); });
+
+    CompilationDatabase database;
+    ASSERT_EQ(database.load("compile_commands.json").value_or(0), 1U);
+
+    auto candidates = database.candidate_entries(path::join(tmp.root, "build", "main.cpp"));
     ASSERT_EQ(candidates.size(), 1U);
     EXPECT_EQ(llvm::StringRef(database.config(candidates.front().config).directory),
               path::join(tmp.root, "build"));
