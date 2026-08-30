@@ -359,11 +359,16 @@ public:
 
 #ifdef CLICE_ENABLE_TEST
 
-    void add_command(llvm::StringRef directory,
-                     llvm::StringRef file,
-                     llvm::ArrayRef<const char*> arguments);
+    /// Append one command and return its entry (candidate order among a
+    /// file's accumulated entries is content-based, not insertion-based);
+    /// nullopt when normalization fails.
+    std::optional<CompilationEntry> add_command(llvm::StringRef directory,
+                                                llvm::StringRef file,
+                                                llvm::ArrayRef<const char*> arguments);
 
-    void add_command(llvm::StringRef directory, llvm::StringRef file, llvm::StringRef command);
+    std::optional<CompilationEntry> add_command(llvm::StringRef directory,
+                                                llvm::StringRef file,
+                                                llvm::StringRef command);
 
 #endif
 

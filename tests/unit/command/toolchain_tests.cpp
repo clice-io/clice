@@ -45,6 +45,10 @@ TEST_CASE(Family) {
     EXPECT_FAMILY("clang-cl-20.exe", ClangCL);
 
     EXPECT_FAMILY("cl.exe", MSVC);
+    /// Windows casing is free-form: CL.exe is how msbuild spells it.
+    EXPECT_FAMILY("CL.exe", MSVC);
+    EXPECT_FAMILY("CL.EXE", MSVC);
+    EXPECT_FAMILY("Clang-Cl.exe", ClangCL);
     EXPECT_FAMILY("nvcc", NVCC);
     EXPECT_FAMILY("icx", Intel);
     EXPECT_FAMILY("icc", Intel);
@@ -334,9 +338,12 @@ TEST_CASE(KeyTracksConfigFile) {
     auto b = f.add("/fake/b", "/tmp/b.cpp", {"clang++", "--config", "clang.cfg", "/tmp/b.cpp"});
     EXPECT_NE(f.key(a), f.key(b));
 
-    /// An absolute config file is directory-independent.
-    auto c = f.add("/fake/a", "/tmp/c.cpp", {"clang++", "--config=/etc/clang.cfg", "/tmp/c.cpp"});
-    auto d = f.add("/fake/b", "/tmp/d.cpp", {"clang++", "--config=/etc/clang.cfg", "/tmp/d.cpp"});
+    /// An absolute config file is directory-independent (a platform-native
+    /// absolute path: POSIX spellings are not absolute on Windows).
+    TempDir tmp;
+    auto cfg = "--config=" + tmp.path("clang.cfg");
+    auto c = f.add("/fake/a", "/tmp/c.cpp", {"clang++", cfg.c_str(), "/tmp/c.cpp"});
+    auto d = f.add("/fake/b", "/tmp/d.cpp", {"clang++", cfg.c_str(), "/tmp/d.cpp"});
     EXPECT_EQ(f.key(c), f.key(d));
 }
 

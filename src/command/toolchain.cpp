@@ -268,11 +268,24 @@ kota::task<std::expected<GCCToolchainFlags, std::string>> query_gcc_flags(std::s
 /// suffix when the kind is a known language, the raw extension itself
 /// otherwise (the driver ends up exactly as confused as it would be by the
 /// real file — the probe fails the same way the real compile would).
+/// The probe working directory, empty when the wanted one does not exist
+/// (a stale CDB directory, or a foreign-platform path): probing from the
+/// process cwd degrades the answer instead of failing the spawn.
+std::string probe_cwd(llvm::StringRef wanted) {
+    if(wanted.empty() || !fs::is_directory(wanted)) {
+        return {};
+    }
+    return wanted.str();
+}
+
 std::string temp_suffix_for(llvm::StringRef kind) {
     namespace types = clang::driver::types;
     auto type = types::lookupTypeForTypeSpecifier(kind.str().c_str());
     if(type != types::TY_INVALID) {
-        return types::getTypeTempSuffix(type);
+        /// TY_Nothing ("-x none") has no temp suffix.
+        if(const char* suffix = types::getTypeTempSuffix(type)) {
+            return suffix;
+        }
     }
     return kind.str();
 }
@@ -785,7 +798,10 @@ CompilerFamily Toolchain::driver_family(llvm::StringRef driver) {
         return CompilerFamily::Unknown;
     };
 
-    auto name = llvm::sys::path::filename(driver);
+    /// Windows resolves executable names case-insensitively, and CDBs record
+    /// spellings like CL.exe or Clang-Cl.EXE — match lowercased.
+    std::string lowered = llvm::sys::path::filename(driver).lower();
+    llvm::StringRef name = lowered;
     if(auto f = try_get(name); f != CompilerFamily::Unknown)
         return f;
 
@@ -815,9 +831,20 @@ std::expected<std::vector<std::string>, std::string>
     spec.slot = spec.argv.size();
     spec.family = driver_family(arguments[0]);
 
+    /// The kind is a clang language name ("cuda", "c++"), the convention
+    /// every consumer speaks (`spec.kind == "cuda"`, temp_suffix_for's -x
+    /// table). `.cuh` is absent from clang's extension table; a raw
+    /// extension only survives when there is no mapping at all.
     auto ext = path::extension(file);
     ext.consume_front(".");
-    spec.kind = ext == "cuh" ? "cuda" : ext.str();
+    auto lang = clang::driver::types::lookupTypeForExtension(ext);
+    if(ext == "cuh") {
+        spec.kind = "cuda";
+    } else if(lang != clang::driver::types::TY_INVALID) {
+        spec.kind = clang::driver::types::getTypeName(lang);
+    } else {
+        spec.kind = ext.str();
+    }
     for(std::size_t i = 0; i + 1 < arguments.size(); i += 1) {
         if(llvm::StringRef(arguments[i]) == "-x")
             spec.kind = arguments[i + 1];
@@ -1119,7 +1146,7 @@ std::expected<Toolchain::ResolvedID, std::string> Toolchain::resolve(ConfigID id
         spec.slot = argv.slot;
         spec.kind = input.value;
         spec.family = config.family;
-        spec.cwd = pk.cwd_sensitive ? config.directory : db.workspace_root;
+        spec.cwd = probe_cwd(pk.cwd_sensitive ? config.directory : db.workspace_root);
 
         std::expected<std::vector<std::string>, std::string> result;
         kota::event_loop loop;
@@ -1180,7 +1207,7 @@ void Toolchain::warm(llvm::ArrayRef<std::pair<ConfigID, InputKind>> pairs) {
         spec.slot = argv.slot;
         spec.kind = input.value;
         spec.family = config.family;
-        spec.cwd = pk.cwd_sensitive ? config.directory : db.workspace_root;
+        spec.cwd = probe_cwd(pk.cwd_sensitive ? config.directory : db.workspace_root);
         pending.push_back({std::move(pk.key), std::move(spec)});
     }
 

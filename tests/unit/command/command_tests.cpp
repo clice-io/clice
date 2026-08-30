@@ -54,6 +54,8 @@ TEST_CASE(DefaultFilters) {
     EXPECT_STRIP("clang++ -o main.o main.cpp", "clang++ main.cpp");
     EXPECT_STRIP("clang++ -c -o main.o main.cpp", "clang++ main.cpp");
     EXPECT_STRIP("cl.exe /c /Fomain.cpp.o main.cpp", "cl.exe main.cpp");
+    /// CL options stay visible under Windows's free-form driver casing.
+    EXPECT_STRIP("CL.exe /FIfoo.h /c main.cpp", "CL.exe -include foo.h main.cpp");
 
     /// Filter PCH related.
 
@@ -132,6 +134,20 @@ TEST_CASE(RemoveAppend) {
     options.append = append;
     EXPECT_EQ(print_argv(render_entry(database, "main.cpp", options)),
               "clang++ -D A -D B=0 -D C main.cpp");
+};
+
+TEST_CASE(AppendUnknownValue) {
+    /// An appended option the table does not know keeps its separate value:
+    /// an edit cannot name the entry input, so an input-classified token is
+    /// really the option's value.
+    CompilationDatabase database;
+    database.add_command("/fake", "main.cpp", "clang++ main.cpp"sv);
+
+    CommandOptions options;
+    llvm::SmallVector<std::string> append = {"-fnot-a-real-flag", "value"};
+    options.append = append;
+    EXPECT_EQ(print_argv(render_entry(database, "main.cpp", options)),
+              "clang++ -fnot-a-real-flag value main.cpp");
 };
 
 TEST_CASE(AppendBeforeSlot) {
@@ -284,6 +300,17 @@ TEST_CASE(ResponseFileExpansion) {
     EXPECT_CONTAINS(argv, "-std=c++23");
     EXPECT_CONTAINS(argv, "FROM_RSP=1");
     EXPECT_NOT_CONTAINS(argv, "@");
+};
+
+TEST_CASE(DriverModeFromRsp) {
+    /// --driver-mode=cl inside a response file still switches on CL option
+    /// visibility (clang interprets the mode after expansion).
+    TempDir tmp;
+    tmp.touch("flags.rsp", "--driver-mode=cl /TP\n");
+    CompilationDatabase database;
+    database.add_command(tmp.root.str(), "main.cpp", "clang++ @flags.rsp main.cpp"sv);
+
+    EXPECT_CONTAINS(print_argv(render_entry(database, "main.cpp")), "/TP");
 };
 
 TEST_CASE(PrependAfterBinary) {

@@ -189,12 +189,13 @@ void render_arg(const Arg& arg, llvm::function_ref<void(std::string_view)> cb) {
 }
 
 unsigned family_visibility(CompilerFamily family) {
-    /// Exclude CLOption otherwise, to prevent /U, /D, /I from matching Unix
-    /// absolute paths like /Users/... .
+    /// Exclude the slash-prefixed CL and DXC options otherwise (/D and /I
+    /// carry both bits), to prevent /U, /D, /I from matching Unix absolute
+    /// paths like /Users/... .
     if(family == CompilerFamily::MSVC || family == CompilerFamily::ClangCL) {
         return ~0u;
     }
-    return ~static_cast<unsigned>(option::CLOption);
+    return ~static_cast<unsigned>(option::CLOption | option::DXCOption);
 }
 
 std::vector<std::string> to_strings(llvm::ArrayRef<const char*> argv) {
@@ -287,13 +288,17 @@ std::optional<CompilationDatabase::NormalizeResult>
         config.subcommand = strings.save(arguments[0]).data();
         arguments = arguments.drop_front();
     }
-    for(llvm::StringRef token: arguments) {
-        if(token.consume_front("--driver-mode=")) {
-            if(token == "cl") {
+    /// --driver-mode may also arrive from inside a response file (clang
+    /// interprets it post-expansion); the pre-expansion scan only picks the
+    /// response tokenization style.
+    auto scan_driver_mode = [&](llvm::ArrayRef<const char*> argv) {
+        for(llvm::StringRef token: argv) {
+            if(token.consume_front("--driver-mode=") && token == "cl") {
                 config.family = CompilerFamily::ClangCL;
             }
         }
-    }
+    };
+    scan_driver_mode(arguments);
 
     /// Response-file expansion, driver-mode aware: CL commands tokenize
     /// with Windows rules regardless of the server platform. Relative
@@ -302,6 +307,7 @@ std::optional<CompilationDatabase::NormalizeResult>
     llvm::StringSaver local_saver(local_alloc);
     llvm::SmallVector<const char*, 32> tokens(arguments.begin(), arguments.end());
     expand_response_files(tokens, directory, config.family, local_saver);
+    scan_driver_mode(tokens);
 
     /// ccache's --ccache-skip guards the NEXT token from ccache's own
     /// processing; the token itself belongs to the compiler command.
@@ -556,6 +562,7 @@ void CompilationDatabase::expand_response_files(llvm::SmallVectorImpl<const char
             llvm::ArrayRef<char> bytes(text.data(), text.size());
             if(!llvm::convertUTF16ToUTF8String(bytes, utf8)) {
                 LOG_WARN("Cannot decode UTF-16 response file {}", full);
+                expanded.push_back(token);
                 continue;
             }
             text = utf8;
@@ -621,12 +628,15 @@ void CompilationDatabase::sort_entries(std::vector<CompilationEntry>& list) {
     /// differences) still need a stable order: the full render decides,
     /// content-based, so generator reordering never flips the default
     /// selection.
-    llvm::DenseMap<std::uint32_t, std::string> full_keys;
+    /// Memoized in a pre-sized vector: the comparator materializes two keys
+    /// in one expression, so the memo storage must not relocate mid-compare
+    /// (a growing map would).
+    std::vector<std::optional<std::string>> full_keys(list.size());
     auto full_key = [&](std::size_t index) -> const std::string& {
-        auto [it, inserted] = full_keys.try_emplace(static_cast<std::uint32_t>(index));
-        if(inserted) {
+        auto& slot = full_keys[index];
+        if(!slot) {
             auto& entry = list[index];
-            auto& out = it->second;
+            auto& out = slot.emplace();
             auto append = [&](std::string_view fragment) {
                 out += fragment;
                 out += '\0';
@@ -655,7 +665,7 @@ void CompilationDatabase::sort_entries(std::vector<CompilationEntry>& list) {
                 render_arg(arg, append);
             }
         }
-        return it->second;
+        return *slot;
     };
 
     std::vector<std::size_t> order(list.size());
@@ -1070,9 +1080,11 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
     };
 
     /// Parse an edit list into structured args, absolutizing include paths
-    /// against the config's directory like the load pipeline. Input tokens
-    /// make no sense in an edit and drop; unknown tokens keep the user's
-    /// spelling and stay renderable (the user asked for them explicitly).
+    /// against the config's directory like the load pipeline. Unknown tokens
+    /// keep the user's spelling and stay renderable (the user asked for them
+    /// explicitly) — including input-classified ones: an edit cannot name
+    /// the entry's input, so such a token is really the separate value of an
+    /// option the table does not know.
     auto parse_edit = [&](llvm::ArrayRef<std::string> edit_flags, std::vector<LocalArg>& out) {
         std::vector<std::string> flags(edit_flags.begin(), edit_flags.end());
         for(auto& parsed: option::table().parse(flags, remove_parse_options)) {
@@ -1086,10 +1098,7 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
                 continue;
             }
             auto& arg = *parsed;
-            if(arg.id == option::OPT_INPUT) {
-                continue;
-            }
-            if(arg.id == option::OPT_UNKNOWN) {
+            if(arg.id == option::OPT_INPUT || arg.id == option::OPT_UNKNOWN) {
                 if(arg.index < flags.size()) {
                     out.push_back({.opt_id = option::OPT_UNKNOWN,
                                    .cls = ArgClass::Semantic,
@@ -1367,28 +1376,33 @@ SearchConfig CompilationDatabase::search_config(const CommandRef& ref) {
 
 #ifdef CLICE_ENABLE_TEST
 
-void CompilationDatabase::add_command(llvm::StringRef directory,
-                                      llvm::StringRef file,
-                                      llvm::ArrayRef<const char*> arguments) {
+std::optional<CompilationEntry>
+    CompilationDatabase::add_command(llvm::StringRef directory,
+                                     llvm::StringRef file,
+                                     llvm::ArrayRef<const char*> arguments) {
     auto path_id = pool.intern(file);
     auto normalized = normalize(directory, path_id, arguments);
     if(!normalized) {
-        return;
+        return std::nullopt;
     }
-    entry_list.push_back({path_id, normalized->config, normalized->wrapper});
+    CompilationEntry entry{path_id, normalized->config, normalized->wrapper};
+    entry_list.push_back(entry);
     sort_entries(entry_list);
+    return entry;
 }
 
-void CompilationDatabase::add_command(llvm::StringRef directory,
-                                      llvm::StringRef file,
-                                      llvm::StringRef command) {
+std::optional<CompilationEntry> CompilationDatabase::add_command(llvm::StringRef directory,
+                                                                 llvm::StringRef file,
+                                                                 llvm::StringRef command) {
     auto path_id = pool.intern(file);
     auto normalized = normalize(directory, path_id, command);
     if(!normalized) {
-        return;
+        return std::nullopt;
     }
-    entry_list.push_back({path_id, normalized->config, normalized->wrapper});
+    CompilationEntry entry{path_id, normalized->config, normalized->wrapper};
+    entry_list.push_back(entry);
     sort_entries(entry_list);
+    return entry;
 }
 
 #endif

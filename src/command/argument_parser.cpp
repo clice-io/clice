@@ -366,8 +366,9 @@ unsigned default_visibility(llvm::StringRef driver) {
     if(is_cl(name) || is_cl(name.rtrim("0123456789.-"))) {
         return ~0u;
     }
-    /// Exclude CLOption to prevent /U, /D, /I from matching Unix paths.
-    return ~static_cast<unsigned>(CLOption);
+    /// Exclude the slash-prefixed CL and DXC options (/D and /I carry both
+    /// bits) to prevent /U, /D, /I from matching Unix paths.
+    return ~static_cast<unsigned>(CLOption | DXCOption);
 }
 
 bool is_c_family_file(llvm::StringRef filename) {

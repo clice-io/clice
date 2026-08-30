@@ -310,14 +310,11 @@ void Tester::prepare_driver(llvm::StringRef standard) {
     }
 
     auto command = std::format("clang++ {} {} -fms-extensions", standard, src_path);
-    database.add_command("fake", src_path, command);
-
-    auto candidates = database.candidate_entries(src_path);
-    assert(!candidates.empty() && "no entry after add_command");
-    auto& entry = candidates.front();
-    CommandRef ref{entry.file,
-                   entry.config,
-                   database.input_kind(entry.config, src_path),
+    auto entry = database.add_command("fake", src_path, command);
+    assert(entry && "no entry after add_command");
+    CommandRef ref{entry->file,
+                   entry->config,
+                   database.input_kind(entry->config, src_path),
                    CommandSource::CDBExact};
     params.arguments = database.render(ref);
 

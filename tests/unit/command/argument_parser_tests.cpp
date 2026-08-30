@@ -82,6 +82,9 @@ TEST_CASE(CLVisibility) {
     ASSERT_EQ(parse_with_vis({"/DFOO"}, cl_vis), OPT_D);
     ASSERT_EQ(parse_with_vis({"-DFOO"}, gcc_vis), OPT_D);
     ASSERT_EQ(parse_with_vis({"-DFOO"}, cl_vis), OPT_D);
+    /// /D carries the DXC visibility bit besides CL; a Unix-driver mask must
+    /// exclude both or /Data-style paths misparse.
+    ASSERT_EQ(parse_with_vis({"/DFOO"}, gcc_vis), OPT_INPUT);
 };
 
 TEST_CASE(RenderRoundTrip) {
