@@ -237,9 +237,8 @@ public:
     CompilationDatabase(const CompilationDatabase&) = delete;
     CompilationDatabase& operator=(const CompilationDatabase&) = delete;
 
-    /// Where probes of cwd-insensitive configs run (and the base for
-    /// resolving a relative CDB `directory`). Set before load; empty means
-    /// the process working directory.
+    /// Where probes of cwd-insensitive configs run. Set before load; empty
+    /// means the process working directory.
     void set_workspace_root(llvm::StringRef root);
 
     /// The single path-id space, shared with the whole workspace.

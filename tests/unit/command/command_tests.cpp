@@ -551,17 +551,16 @@ TEST_CASE(LoadMixedFormats) {
 };
 
 TEST_CASE(RelativeDirectoryAnchored) {
-    /// A relative CDB `directory` anchors to the workspace root, both for
-    /// resolving the entry's file and as the config's directory.
+    /// A relative CDB `directory` anchors to the CDB file's own location,
+    /// both for resolving the entry's file and as the config's directory.
     TempDir tmp;
     CompilationDatabase database;
-    database.set_workspace_root(tmp.root);
-    auto count = load_json(database, R"([
+    tmp.touch("compile_commands.json", R"([
         {"directory": "build", "file": "main.cpp",
          "arguments": ["clang++", "-std=c++20", "main.cpp"]}
     ])");
+    ASSERT_EQ(database.load(tmp.path("compile_commands.json")).value_or(0), 1U);
 
-    ASSERT_EQ(count, 1U);
     auto file = path::join(tmp.root, "build", "main.cpp");
     auto candidates = database.candidate_entries(file);
     ASSERT_EQ(candidates.size(), 1U);

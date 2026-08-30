@@ -249,6 +249,31 @@ export module m;
     EXPECT_EQ(graph.lookup_module("m").size(), 1u);
 }
 
+TEST_CASE(GuardedModulePerCandidate) {
+    /// Two candidates whose defines select different module names: each
+    /// scan unit must preprocess under its own group's command, not
+    /// whichever candidate sorts first.
+    TempDir tmp;
+    tmp.touch("src/m.cppm", R"(#ifdef V2
+export module m2;
+#else
+export module m1;
+#endif
+)");
+
+    CompilationDatabase cdb;
+    DependencyGraph graph;
+    auto json = build_cdb_json({
+        {tmp.root, tmp.path("src/m.cppm"), {}      },
+        {tmp.root, tmp.path("src/m.cppm"), {"-DV2"}},
+    });
+    write_cdb(tmp, cdb, json);
+    scan_dependency_graph(cdb, graph);
+
+    EXPECT_EQ(graph.lookup_module("m1").size(), 1u);
+    EXPECT_EQ(graph.lookup_module("m2").size(), 1u);
+}
+
 TEST_CASE(SingleFileNoIncludes) {
     TempDir tmp;
     tmp.touch("src/main.cpp", R"(int main() { return 0; })");
