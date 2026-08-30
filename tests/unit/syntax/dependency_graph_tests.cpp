@@ -263,15 +263,24 @@ export module m1;
 
     CompilationDatabase cdb;
     DependencyGraph graph;
+    ScanCache cache;
     auto json = build_cdb_json({
         {tmp.root, tmp.path("src/m.cppm"), {}      },
         {tmp.root, tmp.path("src/m.cppm"), {"-DV2"}},
     });
     write_cdb(tmp, cdb, json);
-    scan_dependency_graph(cdb, graph);
+    scan_dependency_graph(cdb, graph, &cache);
 
     EXPECT_EQ(graph.lookup_module("m1").size(), 1u);
     EXPECT_EQ(graph.lookup_module("m2").size(), 1u);
+
+    // A warm run must reproduce both: the shared per-path cache cannot
+    // hold two names, so multi-group units re-derive under their own
+    // group command every run.
+    DependencyGraph graph2;
+    scan_dependency_graph(cdb, graph2, &cache);
+    EXPECT_EQ(graph2.lookup_module("m1").size(), 1u);
+    EXPECT_EQ(graph2.lookup_module("m2").size(), 1u);
 }
 
 TEST_CASE(SingleFileNoIncludes) {

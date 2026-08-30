@@ -319,11 +319,15 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
     // One scan group per unique (rules-applied config, input language) —
     // the SearchConfig granularity: different -I sets resolve differently,
     // and the same flags compiled as C and C++ pull different implicit
-    // include sets. Not cached — rebuilt on cold runs from CDB state.
+    // include sets. Groups are rebuilt on warm runs too: the preprocess
+    // fallback renders each unit's own group command, and the dense group
+    // ids assigned here line up with a warm cache's recorded ids because
+    // entry order is deterministic (apply_rules memoizes, so this pass is
+    // cheap next to the skipped probe and search-config work).
     llvm::SmallVector<CommandRef> group_refs;
     std::vector<WaveEntry> wave0;
 
-    if(!have_config_cache) {
+    {
         llvm::DenseMap<std::pair<std::uint32_t, const char*>, std::uint32_t> group_ids;
         for(auto& entry: cdb.entries()) {
             auto file_path = path_pool.resolve(entry.file);
@@ -343,9 +347,13 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
             if(inserted) {
                 group_refs.push_back({entry.file, applied, input, CommandSource::CDBExact});
             }
-            wave0.push_back({entry.file, it->second, /*found_dir_idx=*/0});
+            if(!have_config_cache) {
+                wave0.push_back({entry.file, it->second, /*found_dir_idx=*/0});
+            }
         }
+    }
 
+    if(!have_config_cache) {
         // Pre-warm the toolchain cache: probes key by non-user-content
         // flags, so groups differing only in -D/-I collapse to the same
         // probe — N groups often yield just 1-2 subprocess calls.
@@ -619,8 +627,9 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                     // Preprocess under the scan unit's own group command —
                     // only its flags (e.g. a define unguarding the
                     // declaration) can resolve this unit; a multi-entry
-                    // file has one group per candidate. Warm runs rebuild
-                    // no groups and re-derive from the first candidate.
+                    // file has one group per candidate. A cached unit whose
+                    // group id outlived the CDB it was recorded against
+                    // re-derives from the first candidate instead.
                     ConfigID applied;
                     InputKind input;
                     if(scan_result.config_id < group_refs.size()) {
@@ -642,8 +651,12 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                     if(!fallback.module_name.empty()) {
                         scan_result.scan_result.module_name = std::move(fallback.module_name);
                         scan_result.scan_result.is_interface_unit = fallback.is_interface_unit;
-                        // Update cache so warm runs don't re-trigger fallback.
-                        if(ext_cache) {
+                        // Update cache so warm runs don't re-trigger the
+                        // fallback — single-candidate files only: the cache
+                        // holds one result per path, and a multi-group
+                        // file's groups may resolve different names, so its
+                        // units must re-derive on every run.
+                        if(ext_cache && candidates.size() == 1) {
                             auto cache_it = ext_cache->scan_results.find(scan_result.path_id);
                             if(cache_it != ext_cache->scan_results.end()) {
                                 cache_it->second.module_name = scan_result.scan_result.module_name;

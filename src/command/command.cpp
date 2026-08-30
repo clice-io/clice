@@ -757,6 +757,7 @@ std::optional<std::size_t> CompilationDatabase::load(llvm::StringRef path) {
         llvm::SmallString<256> dir_abs;
         if(!path::is_absolute(dir_ref)) {
             dir_abs = path::parent_path(path);
+            fs::make_absolute(dir_abs);
             path::append(dir_abs, dir_ref);
             path::remove_dots(dir_abs, /*remove_dot_dot=*/true);
             dir_ref = dir_abs;
