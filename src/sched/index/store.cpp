@@ -53,12 +53,6 @@ struct CDBSnapshotEntry {
 
 struct CDBSnapshot {
     std::vector<CDBSnapshotEntry> entries;
-
-    /// Auto-discovered CDB origins (logical path + discovery anchor),
-    /// restored at startup so lazily discovered databases are re-loaded
-    /// before snapshot reconciliation. Explicitly configured origins are
-    /// never persisted — the current config is always authoritative.
-    std::vector<std::string> origins;
 };
 
 /// clice.toml append/remove rules change the effective indexing command
