@@ -389,7 +389,7 @@ private:
                                              llvm::StringRef command);
 
     /// Expand @file tokens in place, driver-mode aware (CL commands
-    /// tokenize with Windows rules), recording each file into rsp_deps.
+    /// tokenize with Windows rules).
     void expand_response_files(llvm::SmallVectorImpl<const char*>& tokens,
                                llvm::StringRef directory,
                                CompilerFamily family,
@@ -422,10 +422,6 @@ private:
     std::vector<CompilationEntry> entry_list;
 
     std::string workspace_root;
-
-    /// Response files expanded during the last load: path → content hash.
-    /// The command-domain dependency set the file tracker watches.
-    llvm::StringMap<std::uint64_t> rsp_deps;
 
     /// Derivation memos, append-only alongside the pools.
     llvm::DenseMap<std::uint32_t, std::uint64_t> entry_hashes;

@@ -176,10 +176,15 @@ void Workspace::rescan_after_save(std::uint32_t path_id) {
         if(result.need_preprocess) {
             auto candidates = cdb.candidate_entries(file_path);
             bool has_entry = !candidates.empty();
-            auto config = has_entry ? candidates.front().config : cdb.fallback_config(file_path);
+            auto base = has_entry ? candidates.front().config : cdb.fallback_config(file_path);
+            // Same rules-applied command as the startup scan: a rule-added
+            // define may be what unguards the module declaration.
+            std::vector<std::string> append, remove;
+            config.match_rules(file_path, append, remove);
+            auto applied = cdb.apply_rules(base, {.remove = remove, .append = append});
             CommandRef ref{path_id,
-                           config,
-                           cdb.input_kind(config, file_path),
+                           applied,
+                           cdb.input_kind(applied, file_path),
                            has_entry ? CommandSource::CDBExact : CommandSource::Fallback};
             auto fallback = scan_module_decl(cdb.render(ref),
                                              cdb.config(ref.config).directory,

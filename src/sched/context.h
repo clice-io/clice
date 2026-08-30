@@ -36,6 +36,7 @@ struct CacheContextEntry {
     std::uint32_t host;  // index into the cache path table; ~0u = none
     std::uint32_t occurrence;
     std::string command_hash;
+    std::string base_hash;
 };
 
 struct CacheArtifactEntry {
@@ -233,10 +234,13 @@ public:
         return it != saved_contexts.end() ? &it->second : nullptr;
     }
 
-    /// Whether the CDB still holds an entry for `entry_path` whose canonical
-    /// command hash equals `hash` — the validity test for a pinned context
-    /// choice, shared by didOpen validation and the server's orphan pass.
-    bool entry_has_hash(llvm::StringRef entry_path, llvm::StringRef hash) const;
+    /// Whether a pinned command choice still has a live basis among
+    /// `entry_path`'s CDB entries: its applied hash matches a candidate
+    /// under current rules, or its recorded base entry hash still names
+    /// one (a rule edit moves every applied hash; the base survives it).
+    /// The validity test shared by didOpen validation and the server's
+    /// orphan pass.
+    bool pin_alive(llvm::StringRef entry_path, const SavedContext& saved) const;
 
 private:
     std::optional<HeaderContext> resolve_header_context(std::uint32_t header_path_id,

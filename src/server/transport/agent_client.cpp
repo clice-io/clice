@@ -76,7 +76,10 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
             srv.pool.foreground_pulse();
             std::string directory;
             std::vector<std::string> arguments;
-            srv.contexts.resolve_command(params.path, directory, arguments);
+            // Editor semantics: an agent asks what the user's file compiles
+            // as — pins and header context included, never the background
+            // tier ladder (which offers a header nothing but fallback).
+            srv.contexts.resolve_command(params.path, directory, arguments, ContextUse::Editor);
 
             co_return CompileCommandResult{
                 .file = params.path,

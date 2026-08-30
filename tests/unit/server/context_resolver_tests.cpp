@@ -50,6 +50,48 @@ TEST_CASE(ChoiceNeedsSession) {
     ASSERT_TRUE(llvm::is_contained(arguments, define_of(candidates.front().config)));
 }
 
+TEST_CASE(PinBaseSurvivesRules) {
+    TempDir tmp;
+    Workspace workspace;
+    SessionStore store;
+    ContextResolver resolver(workspace);
+    tmp.touch("main.cpp");
+    auto path = tmp.path("main.cpp");
+    write_cdb(tmp,
+              workspace.cdb,
+              build_cdb_json({
+                  {tmp.root, path, {"-DFIRST"} },
+                  {tmp.root, path, {"-DSECOND"}}
+    }));
+
+    auto file = workspace.path_pool.intern(path);
+    auto candidates = workspace.cdb.candidate_entries(path);
+    ASSERT_EQ(candidates.size(), 2u);
+    auto define_of = [&](ConfigID config) -> llvm::StringRef {
+        auto argv = print_argv(workspace.cdb.render_full(config));
+        return llvm::StringRef(argv).contains("SECOND") ? "SECOND" : "FIRST";
+    };
+    auto pinned = candidates.back().config;
+
+    // A pin whose applied hash went stale (a rule edit since it was saved)
+    // but whose base identity is recorded still selects its candidate...
+    resolver.saved_contexts[file] = SavedContext{no_path_id,
+                                                 std::nullopt,
+                                                 "0123456789abcdef",
+                                                 workspace.cdb.entry_hash_hex(pinned)};
+    auto session = store.open(file);
+    std::string directory;
+    std::vector<std::string> arguments;
+    resolver.resolve_command(path, directory, arguments, ContextUse::Editor);
+    ASSERT_TRUE(llvm::is_contained(arguments, define_of(pinned)));
+
+    // ...while the same stale hash without a base falls back to the default.
+    resolver.saved_contexts[file] = SavedContext{no_path_id, std::nullopt, "0123456789abcdef", ""};
+    arguments.clear();
+    resolver.resolve_command(path, directory, arguments, ContextUse::Editor);
+    ASSERT_TRUE(llvm::is_contained(arguments, define_of(candidates.front().config)));
+}
+
 TEST_CASE(ValidateKeepsValidChoice) {
     TempDir tmp;
     Workspace workspace;

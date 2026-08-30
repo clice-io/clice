@@ -616,9 +616,17 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                 auto candidates = cdb.candidate_entries(file_path);
                 if(!candidates.empty()) {
                     auto& entry = candidates.front();
+                    // Same rules-applied command as the main scan groups: a
+                    // rule-added define may be what unguards the module
+                    // declaration this pass is trying to see.
+                    std::vector<std::string> rule_append, rule_remove;
+                    if(rule_matcher)
+                        rule_matcher(file_path, rule_append, rule_remove);
+                    auto applied = cdb.apply_rules(entry.config,
+                                                   {.remove = rule_remove, .append = rule_append});
                     CommandRef ref{entry.file,
-                                   entry.config,
-                                   cdb.input_kind(entry.config, file_path),
+                                   applied,
+                                   cdb.input_kind(applied, file_path),
                                    CommandSource::CDBExact};
                     auto fallback = scan_module_decl(cdb.render(ref),
                                                      cdb.config(ref.config).directory,

@@ -47,6 +47,27 @@ struct Bar {
     ASSERT_EQ(unit->top_level_decls().size(), 4U);
 }
 
+TEST_CASE(DirectoryAnchorsIncludes) {
+    /// The entry's `directory` governs relative search paths in the
+    /// compile: -Igen must resolve against it, not the process cwd.
+    TempDir tmp;
+    tmp.touch("gen/config.h", "#define FROM_GEN 1\n");
+    tmp.touch("main.cpp", R"(
+#include <config.h>
+int x = FROM_GEN;
+)");
+
+    std::vector<std::string> owned = {"clang++", "-std=c++20", "-Igen", tmp.path("main.cpp")};
+    for(auto& arg: owned) {
+        params.arguments.push_back(arg.c_str());
+    }
+    params.directory = tmp.root.str().str();
+
+    auto built = clice::compile(params);
+    ASSERT_TRUE(built.completed());
+    ASSERT_TRUE(built.diagnostics().empty());
+}
+
 TEST_CASE(StopCompilation) {
     std::shared_ptr<std::atomic_bool> stop = std::make_shared<std::atomic_bool>(false);
 

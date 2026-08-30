@@ -84,6 +84,14 @@ std::unique_ptr<clang::CompilerInvocation>
         }
     }
 
+    /// The entry's compilation directory governs relative paths in the
+    /// compile (inputs, -include, header search), the same way clang's
+    /// -working-directory does — which wins when the command carries one.
+    auto& fs_opts = invocation->getFileSystemOpts();
+    if(fs_opts.WorkingDir.empty() && !params.directory.empty()) {
+        fs_opts.WorkingDir = params.directory;
+    }
+
     auto& pp_opts = invocation->getPreprocessorOpts();
 
     // CompilerInstance does not deterministically clear RetainRemappedFileBuffers,

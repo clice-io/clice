@@ -109,6 +109,10 @@ struct HeaderContext {
     /// hosts); empty = the first entry.
     std::string host_command_hash;
 
+    /// Base entry hash of that entry (before rules): stays unique when
+    /// rules collapse two candidates' applied hashes onto one value.
+    std::string host_base_hash;
+
     /// Include chain from host to the target's direct includer (excludes the
     /// target itself). The synthesized preamble embeds these files' content,
     /// so clang never opens them — staleness must be tracked here.
@@ -136,7 +140,12 @@ struct SavedContext {
     /// Pinned include occurrence; no value = automatic.
     std::optional<std::uint32_t> occurrence;
 
-    std::string command_hash;  ///< Pinned CDB entry; empty = none.
+    std::string command_hash;  ///< Pinned CDB entry (rules applied); empty = none.
+
+    /// Base entry hash of the pinned entry, resolved at pin time. The
+    /// applied hash is the protocol identity; the base disambiguates
+    /// candidates whose applied hashes collapse under the current rules.
+    std::string base_hash;
 };
 
 /// Cached PCH state.  Stored in Workspace.pch_cache keyed by the content

@@ -233,27 +233,32 @@ ext::SwitchContextResult ContextService::switch_context(llvm::StringRef path,
         return result;
     }
 
-    // Validate that `hash` names a real CDB entry of `entry_path`.
-    auto has_command = [&](llvm::StringRef entry_path, llvm::StringRef hash) {
+    // Validate that `hash` names a real CDB entry of `entry_path` and
+    // resolve the matched candidate's base entry hash — the identity that
+    // stays unique when rules collapse two applied hashes onto one value.
+    auto find_command = [&](llvm::StringRef entry_path,
+                            llvm::StringRef hash) -> std::optional<std::string> {
         std::vector<std::string> rule_append, rule_remove;
         ws.config.match_rules(entry_path, rule_append, rule_remove);
         for(auto& entry: ws.cdb.candidate_entries(entry_path)) {
             auto applied =
                 ws.cdb.apply_rules(entry.config, {.remove = rule_remove, .append = rule_append});
             if(ws.cdb.entry_hash_hex(applied) == hash) {
-                return true;
+                return ws.cdb.entry_hash_hex(entry.config);
             }
         }
-        return false;
+        return std::nullopt;
     };
 
     SavedContext saved;
     if(context_path_id == path_id && params.command_hash.has_value()) {
         // Pin one of the file's own CDB entries.
-        if(!has_command(path, *params.command_hash)) {
+        auto base = find_command(path, *params.command_hash);
+        if(!base) {
             return result;
         }
         saved.command_hash = *params.command_hash;
+        saved.base_hash = std::move(*base);
     } else {
         // Pin a host source for a header: it must have a real CDB
         // entry, actually (transitively) include this header, and —
@@ -264,8 +269,12 @@ ext::SwitchContextResult ContextService::switch_context(llvm::StringRef path,
         if(ws.dep_graph.find_include_chain(context_path_id, path_id).empty()) {
             return result;
         }
-        if(params.command_hash.has_value() && !has_command(context_path, *params.command_hash)) {
-            return result;
+        std::optional<std::string> base;
+        if(params.command_hash.has_value()) {
+            base = find_command(context_path, *params.command_hash);
+            if(!base) {
+                return result;
+            }
         }
         if(params.occurrence.has_value() && *params.occurrence > 0) {
             auto count = ws.count_occurrences(context_path_id, path_id);
@@ -276,6 +285,7 @@ ext::SwitchContextResult ContextService::switch_context(llvm::StringRef path,
         saved.host_path_id = context_path_id;
         saved.occurrence = params.occurrence;
         saved.command_hash = params.command_hash.value_or("");
+        saved.base_hash = base.value_or("");
     }
 
     resolver.drop_header_context(path_id);
@@ -316,13 +326,11 @@ bool ContextService::drop_orphaned_choices(SessionStore& sessions) {
             // The pinned host command itself can vanish (a CDB reload
             // changed the entry's flags): same validation didOpen applies.
             if(!orphaned && !saved.command_hash.empty()) {
-                orphaned = !resolver.entry_has_hash(workspace.path_pool.resolve(host_id),
-                                                    saved.command_hash);
+                orphaned = !resolver.pin_alive(workspace.path_pool.resolve(host_id), saved);
             }
         } else if(!saved.command_hash.empty()) {
             // Own-entry pin: the pinned command must still exist in the CDB.
-            orphaned = !resolver.entry_has_hash(workspace.path_pool.resolve(session_id),
-                                                saved.command_hash);
+            orphaned = !resolver.pin_alive(workspace.path_pool.resolve(session_id), saved);
         }
         if(orphaned) {
             LOG_INFO("Dropping orphaned context choice for {}: its basis no longer exists",

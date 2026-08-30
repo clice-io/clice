@@ -52,7 +52,18 @@ static void log_command_decision(llvm::StringRef path,
 static ConfigID pick_host_config(Workspace& workspace,
                                  llvm::StringRef host_path,
                                  llvm::ArrayRef<CompilationEntry> candidates,
-                                 llvm::StringRef pinned_hash) {
+                                 llvm::StringRef pinned_hash,
+                                 llvm::StringRef pinned_base) {
+    // The base identity resolved at pin time is exact; the applied hash
+    // remains as the fallback for pins saved before the base was recorded
+    // (and cannot distinguish candidates the rules collapse together).
+    if(!pinned_base.empty()) {
+        for(auto& entry: candidates) {
+            if(workspace.cdb.entry_hash_hex(entry.config) == pinned_base) {
+                return entry.config;
+            }
+        }
+    }
     if(!pinned_hash.empty()) {
         std::vector<std::string> host_append, host_remove;
         workspace.config.match_rules(host_path, host_append, host_remove);
@@ -127,6 +138,7 @@ void ContextResolver::dump_cache_slices(
         entry.host = saved.host_path_id != no_path_id ? intern_id(saved.host_path_id) : ~0u;
         entry.occurrence = saved.occurrence.value_or(~0u);
         entry.command_hash = saved.command_hash;
+        entry.base_hash = saved.base_hash;
         contexts.push_back(std::move(entry));
     }
 }
@@ -164,6 +176,7 @@ void
             saved.occurrence = entry.occurrence;
         }
         saved.command_hash = entry.command_hash;
+        saved.base_hash = entry.base_hash;
         saved_contexts[workspace.path_pool.intern(file)] = std::move(saved);
     }
 
@@ -243,7 +256,8 @@ bool ContextResolver::fill_header_context_args(llvm::StringRef path,
             bool override_mismatch =
                 has_host_choice && (cached->host_path_id != choice->host_path_id ||
                                     cached->occurrence != choice->occurrence.value_or(0) ||
-                                    cached->host_command_hash != choice->command_hash);
+                                    cached->host_command_hash != choice->command_hash ||
+                                    cached->host_base_hash != choice->base_hash);
             bool mode_mismatch = cached->preamble_path.empty() == synthesize;
             if(override_mismatch || mode_mismatch ||
                deps_changed(workspace.path_pool, cached->deps)) {
@@ -281,7 +295,11 @@ bool ContextResolver::fill_header_context_args(llvm::StringRef path,
     // the host's command — rules are expected to apply uniformly to every file.
     std::vector<std::string> rule_append, rule_remove;
     workspace.config.match_rules(path, rule_append, rule_remove);
-    auto base = pick_host_config(workspace, host_path, candidates, ctx_ptr->host_command_hash);
+    auto base = pick_host_config(workspace,
+                                 host_path,
+                                 candidates,
+                                 ctx_ptr->host_command_hash,
+                                 ctx_ptr->host_base_hash);
     auto applied = workspace.cdb.apply_rules(base, {.remove = rule_remove, .append = rule_append});
 
     // The header compiles as the host's language, with the header injected
@@ -343,11 +361,23 @@ CommandSource ContextResolver::resolve_command(llvm::StringRef path,
             // matched by entry hash so the choice survives CDB reordering.
             const SavedContext* choice = active_choice(use, path_id);
             if(choice && choice->host_path_id == no_path_id && !choice->command_hash.empty()) {
-                for(auto& candidate: candidates) {
-                    auto applied = workspace.cdb.apply_rules(candidate.config, options);
-                    if(workspace.cdb.entry_hash_hex(applied) == choice->command_hash) {
-                        base = candidate.config;
-                        break;
+                bool base_matched = false;
+                if(!choice->base_hash.empty()) {
+                    for(auto& candidate: candidates) {
+                        if(workspace.cdb.entry_hash_hex(candidate.config) == choice->base_hash) {
+                            base = candidate.config;
+                            base_matched = true;
+                            break;
+                        }
+                    }
+                }
+                if(!base_matched) {
+                    for(auto& candidate: candidates) {
+                        auto applied = workspace.cdb.apply_rules(candidate.config, options);
+                        if(workspace.cdb.entry_hash_hex(applied) == choice->command_hash) {
+                            base = candidate.config;
+                            break;
+                        }
                     }
                 }
             }
@@ -487,8 +517,10 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(std::uint32
     // Self-contained route: borrow the host's command, no prefix needed.
     // The chain is kept so a didSave along it still invalidates the session.
     std::string host_command_hash;
+    std::string host_base_hash;
     if(has_host_choice) {
         host_command_hash = choice->command_hash;
+        host_base_hash = choice->base_hash;
     }
 
     if(!synthesize) {
@@ -499,6 +531,7 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(std::uint32
                              "",
                              occurrence.value_or(0),
                              std::move(host_command_hash),
+                             std::move(host_base_hash),
                              std::move(chain_ids),
                              {}};
     }
@@ -513,7 +546,8 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(std::uint32
     }
     std::vector<std::string> rule_append, rule_remove;
     workspace.config.match_rules(host_path, rule_append, rule_remove);
-    auto base = pick_host_config(workspace, host_path, candidates, host_command_hash);
+    auto base =
+        pick_host_config(workspace, host_path, candidates, host_command_hash, host_base_hash);
     auto applied = workspace.cdb.apply_rules(base, {.remove = rule_remove, .append = rule_append});
     CommandRef host_ref{host_path_id,
                         applied,
@@ -697,17 +731,22 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(std::uint32
                          std::move(suffix_path),
                          occurrence.value_or(0),
                          std::move(host_command_hash),
+                         std::move(host_base_hash),
                          std::move(chain_ids),
                          std::move(deps)};
 }
 
-bool ContextResolver::entry_has_hash(llvm::StringRef entry_path, llvm::StringRef hash) const {
+bool ContextResolver::pin_alive(llvm::StringRef entry_path, const SavedContext& saved) const {
     std::vector<std::string> rule_append, rule_remove;
     workspace.config.match_rules(entry_path, rule_append, rule_remove);
     for(auto& entry: workspace.cdb.candidate_entries(entry_path)) {
+        if(!saved.base_hash.empty() &&
+           workspace.cdb.entry_hash_hex(entry.config) == saved.base_hash) {
+            return true;
+        }
         auto applied =
             workspace.cdb.apply_rules(entry.config, {.remove = rule_remove, .append = rule_append});
-        if(workspace.cdb.entry_hash_hex(applied) == hash) {
+        if(workspace.cdb.entry_hash_hex(applied) == saved.command_hash) {
             return true;
         }
     }
@@ -730,9 +769,9 @@ void ContextResolver::validate_saved_context(std::uint32_t path_id) {
             auto host_path = ws.path_pool.resolve(saved.host_path_id);
             valid = ws.cdb.has_entry(host_path) &&
                     !ws.dep_graph.find_include_chain(saved.host_path_id, path_id).empty() &&
-                    (saved.command_hash.empty() || entry_has_hash(host_path, saved.command_hash));
+                    (saved.command_hash.empty() || pin_alive(host_path, saved));
         } else if(!saved.command_hash.empty()) {
-            valid = ws.cdb.has_entry(path) && entry_has_hash(path, saved.command_hash);
+            valid = ws.cdb.has_entry(path) && pin_alive(path, saved);
         }
         if(!valid) {
             LOG_INFO("didOpen: dropping stale saved context for {}", path);

@@ -257,6 +257,22 @@ TEST_CASE(WrapperStripped) {
     EXPECT_NOT_CONTAINS(print_argv(render_entry(database, "a.cpp")), "ccache");
 };
 
+TEST_CASE(WrapperValueOptions) {
+    /// A wrapper option's separate KEY=VAL value must not be mistaken for
+    /// the compiler.
+    CompilationDatabase database;
+    database.add_command("/fake",
+                         "a.cpp",
+                         "ccache --set-config cache_dir=/tmp/cc clang++ -std=c++20 a.cpp"sv);
+    database.add_command("/fake", "b.cpp", "clang++ -std=c++20 b.cpp"sv);
+
+    auto& a = database.candidate_entries("a.cpp").front();
+    auto& b = database.candidate_entries("b.cpp").front();
+    EXPECT_EQ(a.config, b.config);
+    EXPECT_EQ(llvm::StringRef(database.config(a.config).driver), "clang++");
+    ASSERT_EQ(a.wrapper.size(), 3U);
+};
+
 TEST_CASE(ResponseFileExpansion) {
     TempDir tmp;
     tmp.touch("flags.rsp", "-std=c++23 -DFROM_RSP=1\n");
@@ -532,6 +548,25 @@ TEST_CASE(LoadMixedFormats) {
                     "-std=c++20");
     EXPECT_CONTAINS(print_argv(render_entry(database, path::join("/build", "b.cpp"))),
                     "-std=c++23");
+};
+
+TEST_CASE(RelativeDirectoryAnchored) {
+    /// A relative CDB `directory` anchors to the workspace root, both for
+    /// resolving the entry's file and as the config's directory.
+    TempDir tmp;
+    CompilationDatabase database;
+    database.set_workspace_root(tmp.root);
+    auto count = load_json(database, R"([
+        {"directory": "build", "file": "main.cpp",
+         "arguments": ["clang++", "-std=c++20", "main.cpp"]}
+    ])");
+
+    ASSERT_EQ(count, 1U);
+    auto file = path::join(tmp.root, "build", "main.cpp");
+    auto candidates = database.candidate_entries(file);
+    ASSERT_EQ(candidates.size(), 1U);
+    EXPECT_EQ(llvm::StringRef(database.config(candidates.front().config).directory),
+              path::join(tmp.root, "build"));
 };
 
 TEST_CASE(LoadErrorRecovery) {

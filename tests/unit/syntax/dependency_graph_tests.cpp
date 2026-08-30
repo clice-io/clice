@@ -222,6 +222,33 @@ TEST_CASE(EmptyCDB) {
     EXPECT_EQ(graph.edge_count(), 0u);
 }
 
+TEST_CASE(GuardedModuleRuleDefine) {
+    /// A module declaration unguarded only by a rule-added define: the
+    /// preprocess fallback must scan with the rules-applied command, like
+    /// the main scan groups.
+    TempDir tmp;
+    tmp.touch("src/m.cppm", R"(#ifdef ENABLE_M
+export module m;
+#endif
+)");
+
+    CompilationDatabase cdb;
+    DependencyGraph graph;
+    auto json = build_cdb_json({
+        {tmp.root, tmp.path("src/m.cppm"), {}}
+    });
+    write_cdb(tmp, cdb, json);
+    scan_dependency_graph(cdb,
+                          graph,
+                          /*cache=*/nullptr,
+                          [](llvm::StringRef,
+                             std::vector<std::string>& append,
+                             std::vector<std::string>&) { append.push_back("-DENABLE_M"); });
+
+    EXPECT_EQ(graph.module_count(), 1u);
+    EXPECT_EQ(graph.lookup_module("m").size(), 1u);
+}
+
 TEST_CASE(SingleFileNoIncludes) {
     TempDir tmp;
     tmp.touch("src/main.cpp", R"(int main() { return 0; })");

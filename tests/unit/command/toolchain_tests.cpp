@@ -326,6 +326,20 @@ TEST_CASE(KeyTracksSemantics) {
     EXPECT_NE(f.key(base), f.key(semantic));
 }
 
+TEST_CASE(KeyTracksConfigFile) {
+    /// A relative --config resolves against the compilation directory, so
+    /// identical commands in different directories must not share a probe.
+    Fixture f;
+    auto a = f.add("/fake/a", "/tmp/a.cpp", {"clang++", "--config", "clang.cfg", "/tmp/a.cpp"});
+    auto b = f.add("/fake/b", "/tmp/b.cpp", {"clang++", "--config", "clang.cfg", "/tmp/b.cpp"});
+    EXPECT_NE(f.key(a), f.key(b));
+
+    /// An absolute config file is directory-independent.
+    auto c = f.add("/fake/a", "/tmp/c.cpp", {"clang++", "--config=/etc/clang.cfg", "/tmp/c.cpp"});
+    auto d = f.add("/fake/b", "/tmp/d.cpp", {"clang++", "--config=/etc/clang.cfg", "/tmp/d.cpp"});
+    EXPECT_EQ(f.key(c), f.key(d));
+}
+
 TEST_CASE(QueryEmptyArgs) {
     EXPECT_FALSE(Toolchain::query({}).has_value());
 }

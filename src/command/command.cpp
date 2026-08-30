@@ -137,6 +137,17 @@ void collapse_gpu_arch_args(std::vector<LocalArg>& args) {
     }
 }
 
+/// KEY=VAL-shaped token — a wrapper option's separate value (`ccache
+/// --set-config max_size=1G`), never the compiler: the key admits only
+/// [A-Za-z0-9_], which no driver path satisfies up to an '='.
+bool is_assignment_token(llvm::StringRef token) {
+    auto eq = token.find('=');
+    if(eq == llvm::StringRef::npos || eq == 0) {
+        return false;
+    }
+    return llvm::all_of(token.take_front(eq), [](char c) { return llvm::isAlnum(c) || c == '_'; });
+}
+
 /// Leading tokens forming a compiler-launcher prefix (ccache, distcc, ...,
 /// possibly chained), including the wrapper's own leading options. Zero when
 /// the command starts with the compiler itself.
@@ -144,7 +155,8 @@ std::size_t wrapper_prefix_len(llvm::ArrayRef<const char*> argv) {
     std::size_t i = 0;
     while(i < argv.size() && is_wrapper_name(path::filename(argv[i]))) {
         i += 1;
-        while(i < argv.size() && llvm::StringRef(argv[i]).starts_with("-")) {
+        while(i < argv.size() &&
+              (llvm::StringRef(argv[i]).starts_with("-") || is_assignment_token(argv[i]))) {
             i += 1;
         }
     }
@@ -531,13 +543,10 @@ void CompilationDatabase::expand_response_files(llvm::SmallVectorImpl<const char
         auto content = fs::read(full);
         if(!content) {
             /// Unreadable response file: the token survives verbatim (the
-            /// real compile would fail the same way), recorded as a missing
-            /// dependency so its appearance is noticed.
-            rsp_deps[full] = 0;
+            /// real compile would fail the same way).
             expanded.push_back(token);
             continue;
         }
-        rsp_deps[full] = hash_bytes(*content);
 
         /// UTF-16 response files (MSVC tooling emits them) convert first.
         llvm::StringRef text(*content);
@@ -705,7 +714,6 @@ std::optional<std::size_t> CompilationDatabase::load(llvm::StringRef path) {
     // entries before the cut still swap in) — the CDB poll's two-tick
     // settle debounce is what keeps half-written files from being read.
     std::vector<CompilationEntry> new_entries;
-    rsp_deps.clear();
 
     std::size_t index = 0;
     for(auto element: arr) {
@@ -742,6 +750,17 @@ std::optional<std::size_t> CompilationDatabase::load(llvm::StringRef path) {
 
         llvm::StringRef dir_ref(dir_sv.data(), dir_sv.size());
         llvm::StringRef file_ref(file_sv.data(), file_sv.size());
+
+        // A relative `directory` anchors to the workspace root (the
+        // set_workspace_root contract); without a root it stays relative
+        // and downstream consumers see the process working directory.
+        llvm::SmallString<256> dir_abs;
+        if(!path::is_absolute(dir_ref) && !workspace_root.empty()) {
+            dir_abs = workspace_root;
+            path::append(dir_abs, dir_ref);
+            path::remove_dots(dir_abs, /*remove_dot_dot=*/true);
+            dir_ref = dir_abs;
+        }
 
         // Skip non-C-family files (e.g. .rc, .asm, .def) that some build
         // systems emit into compile_commands.json.

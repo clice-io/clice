@@ -5,11 +5,13 @@
 #include <string>
 
 #include "server/protocol/agentic.h"
+#include "support/filesystem.h"
 #include "support/logging.h"
 
 #include "kota/async/async.h"
 #include "kota/ipc/codec/json.h"
 #include "kota/ipc/transport.h"
+#include "llvm/ADT/SmallString.h"
 
 namespace clice {
 
@@ -30,6 +32,14 @@ static kota::task<> agentic_request(kota::ipc::JsonPeer& peer,
                                     const QueryOptions& opts) {
     auto method = opts.method.value_or("compileCommand");
     auto path = opts.path.value_or("");
+    // The server matches paths against its absolute path pool; resolve a
+    // relative --path against this CLI's working directory before it ships.
+    if(!path.empty() && !path::is_absolute(path)) {
+        llvm::SmallString<256> abs(path);
+        fs::make_absolute(abs);
+        path::remove_dots(abs, /*remove_dot_dot=*/true);
+        path = abs.str();
+    }
     auto name = opts.name.value_or("");
     auto query = opts.query.value_or("");
     auto line = opts.line.value_or(0);

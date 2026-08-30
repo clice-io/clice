@@ -309,12 +309,22 @@ kota::task<std::expected<std::vector<std::string>, std::string>> query_one(const
     /// would lose the context needed for the driver to behave correctly (and break caching).
     llvm::SmallString<128> resolved_path;
     if(!path::is_absolute(driver)) {
-        /// If the path is not absolute path like g++, find it in the env vars.
-        auto program = llvm::sys::findProgramByName(driver);
-        if(!program)
-            co_return std::unexpected(std::format("Cannot find driver: {}", driver.str()));
-        resolved_path = *program;
-        driver = resolved_path.c_str();
+        if(driver.contains('/') || driver.contains('\\')) {
+            /// Relative with a separator (`./toolchain/clang++`): relative
+            /// to the probe working directory, never a PATH lookup.
+            if(!spec.cwd.empty()) {
+                resolved_path = spec.cwd;
+                path::append(resolved_path, driver);
+                driver = resolved_path.c_str();
+            }
+        } else {
+            /// A bare name like g++: find it in the env vars.
+            auto program = llvm::sys::findProgramByName(driver);
+            if(!program)
+                co_return std::unexpected(std::format("Cannot find driver: {}", driver.str()));
+            resolved_path = *program;
+            driver = resolved_path.c_str();
+        }
     }
 
     if(!fs::exists(driver) || !fs::can_execute(driver))
@@ -692,7 +702,10 @@ bool is_path_taking_option(unsigned id) {
         case option::OPT_gcc_install_dir_EQ:
         case option::OPT_cuda_path_EQ:
         case option::OPT_resource_dir:
-        case option::OPT_resource_dir_EQ: return true;
+        case option::OPT_resource_dir_EQ:
+        case option::OPT_config:
+        case option::OPT_config_system_dir_EQ:
+        case option::OPT_config_user_dir_EQ: return true;
         default: return false;
     }
 }
