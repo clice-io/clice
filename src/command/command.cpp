@@ -104,9 +104,11 @@ llvm::StringRef language_state_at_slot(llvm::ArrayRef<Arg> args) {
 }
 
 bool is_wrapper_name(llvm::StringRef filename) {
-    filename.consume_back(".exe");
-    return filename == "ccache" || filename == "sccache" || filename == "distcc" ||
-           filename == "icecc";
+    /// Windows tools emit spellings like CCACHE.EXE — match lowercased.
+    std::string lowered = filename.lower();
+    llvm::StringRef name = lowered;
+    name.consume_back(".exe");
+    return name == "ccache" || name == "sccache" || name == "distcc" || name == "icecc";
 }
 
 /// An appended -gencode adds its architecture next to the base's, the way

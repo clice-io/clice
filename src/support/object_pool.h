@@ -20,7 +20,9 @@ public:
     using ID = std::uint32_t;
 
     explicit StringSet(llvm::BumpPtrAllocator* allocator) : allocator(allocator) {
-        strings.emplace_back();
+        /// Slot 0 is the empty string; a real "" keeps data() non-null and
+        /// null-terminated for callers that treat results as C strings.
+        strings.emplace_back("");
     }
 
     StringSet(const StringSet&) = delete;

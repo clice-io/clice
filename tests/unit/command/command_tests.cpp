@@ -290,6 +290,29 @@ TEST_CASE(WrapperValueOptions) {
     ASSERT_EQ(a.wrapper.size(), 3U);
 };
 
+TEST_CASE(WrapperCaseInsensitive) {
+    /// Windows tools emit launcher spellings like CCACHE.EXE.
+    CompilationDatabase database;
+    database.add_command("/fake", "a.cpp", "CCACHE.EXE clang++ -std=c++20 a.cpp"sv);
+
+    auto& a = database.candidate_entries("a.cpp").front();
+    EXPECT_EQ(llvm::StringRef(database.config(a.config).driver), "clang++");
+    ASSERT_EQ(a.wrapper.size(), 1U);
+    EXPECT_EQ(llvm::StringRef(a.wrapper[0]), "CCACHE.EXE");
+};
+
+TEST_CASE(InputKindNoExtension) {
+    /// An extensionless file must yield a real (non-null) empty kind, not
+    /// a null C string.
+    CompilationDatabase database;
+    database.add_command("/fake", "noext", "clang++ -std=c++20 noext"sv);
+
+    auto& entry = database.candidate_entries("noext").front();
+    auto kind = database.input_kind(entry.config, "noext");
+    ASSERT_TRUE(kind.value != nullptr);
+    EXPECT_TRUE(llvm::StringRef(kind.value).empty());
+};
+
 TEST_CASE(ResponseFileExpansion) {
     TempDir tmp;
     tmp.touch("flags.rsp", "-std=c++23 -DFROM_RSP=1\n");
