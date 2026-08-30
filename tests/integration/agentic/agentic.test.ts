@@ -84,11 +84,14 @@ test("compile command", async ({ session }) => {
 });
 
 test("compile command fallback", async ({ session }) => {
-    const { host, port } = await agenticServer(session, "hello_world");
-    const result = await runAgentic(cliceExecutable(), host, port, "/nonexistent/file.cpp");
+    const { host, port, workspace } = await agenticServer(session, "hello_world");
+    // Absolute on every platform; a relative path would be resolved
+    // against the CLI's cwd before it reaches the server.
+    const probe = posix(workspace.path("nonexistent/file.cpp"));
+    const result = await runAgentic(cliceExecutable(), host, port, probe);
     expect(result.status, `stderr: ${result.stderr}`).toBe(0);
     const data = JSON.parse(result.stdout) as { file: string };
-    expect(data.file).toBe("/nonexistent/file.cpp");
+    expect(data.file).toBe(probe);
 });
 
 test("multiple requests", async ({ session }) => {
