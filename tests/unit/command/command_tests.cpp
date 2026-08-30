@@ -563,19 +563,17 @@ std::size_t load_json(CompilationDatabase& database, llvm::StringRef json) {
 
 TEST_CASE(LoadMixedFormats) {
     /// "arguments" array and "command" string can coexist in the same CDB.
+    TempDir tmp;
+    auto dir = json_escape(tmp.root);
     CompilationDatabase database;
-    auto count = load_json(database, R"([
-        {"directory": "/build", "file": "a.cpp",
-         "arguments": ["clang++", "-std=c++20", "a.cpp"]},
-        {"directory": "/build", "file": "b.cpp",
-         "command": "clang++ -std=c++23 b.cpp"}
-    ])");
+    auto count = load_json(database, R"([{"directory": ")" + dir + R"(", "file": "a.cpp",
+          "arguments": ["clang++", "-std=c++20", "a.cpp"]},
+         {"directory": ")" + dir + R"(", "file": "b.cpp",
+          "command": "clang++ -std=c++23 b.cpp"}])");
 
     ASSERT_EQ(count, 2U);
-    EXPECT_CONTAINS(print_argv(render_entry(database, path::join("/build", "a.cpp"))),
-                    "-std=c++20");
-    EXPECT_CONTAINS(print_argv(render_entry(database, path::join("/build", "b.cpp"))),
-                    "-std=c++23");
+    EXPECT_CONTAINS(print_argv(render_entry(database, tmp.path("a.cpp"))), "-std=c++20");
+    EXPECT_CONTAINS(print_argv(render_entry(database, tmp.path("b.cpp"))), "-std=c++23");
 };
 
 TEST_CASE(RelativeDirectoryAnchored) {
@@ -621,74 +619,77 @@ TEST_CASE(RelativeLoadPathAnchored) {
 
 TEST_CASE(LoadErrorRecovery) {
     /// Bad entries should be skipped; good entries still load.
+    TempDir tmp;
+    auto dir = json_escape(tmp.root);
     CompilationDatabase database;
-    auto count = load_json(database, R"([
-        {"file": "no_dir.cpp",
-         "arguments": ["clang++", "no_dir.cpp"]},
-        {"directory": "/build",
-         "arguments": ["clang++", "no_file.cpp"]},
-        {"directory": "/build", "file": "no_args.cpp"},
-        {"directory": "/build", "file": "good.cpp",
-         "arguments": ["clang++", "-std=c++20", "good.cpp"]},
-        42,
-        {"directory": "/build", "file": "also_good.cpp",
-         "command": "clang++ -Wall also_good.cpp"}
-    ])");
+    auto count = load_json(database,
+                           R"([{"file": "no_dir.cpp",
+          "arguments": ["clang++", "no_dir.cpp"]},
+         {"directory": ")" + dir +
+                               R"(",
+          "arguments": ["clang++", "no_file.cpp"]},
+         {"directory": ")" + dir +
+                               R"(", "file": "no_args.cpp"},
+         {"directory": ")" + dir +
+                               R"(", "file": "good.cpp",
+          "arguments": ["clang++", "-std=c++20", "good.cpp"]},
+         42,
+         {"directory": ")" + dir +
+                               R"(", "file": "also_good.cpp",
+          "command": "clang++ -Wall also_good.cpp"}])");
 
     ASSERT_EQ(count, 2U);
-    EXPECT_CONTAINS(print_argv(render_entry(database, path::join("/build", "good.cpp"))),
-                    "-std=c++20");
-    EXPECT_CONTAINS(print_argv(render_entry(database, path::join("/build", "also_good.cpp"))),
-                    "-Wall");
+    EXPECT_CONTAINS(print_argv(render_entry(database, tmp.path("good.cpp"))), "-std=c++20");
+    EXPECT_CONTAINS(print_argv(render_entry(database, tmp.path("also_good.cpp"))), "-Wall");
 };
 
 TEST_CASE(LoadCudaHeader) {
     /// .cuh entries are C-family despite clang's extension table; non-C
     /// entries some build systems emit are skipped.
+    TempDir tmp;
+    auto dir = json_escape(tmp.root);
     CompilationDatabase database;
-    auto count = load_json(database, R"([
-        {"directory": "/build", "file": "kernels.cuh",
-         "command": "nvcc -c kernels.cuh -o kernels.o"},
-        {"directory": "/build", "file": "app.rc",
-         "command": "rc /fo app.res app.rc"}
-    ])");
+    auto count = load_json(database, R"([{"directory": ")" + dir + R"(", "file": "kernels.cuh",
+          "command": "nvcc -c kernels.cuh -o kernels.o"},
+         {"directory": ")" + dir + R"(", "file": "app.rc",
+          "command": "rc /fo app.res app.rc"}])");
 
     ASSERT_EQ(count, 1U);
-    EXPECT_TRUE(database.has_entry(path::join("/build", "kernels.cuh")));
+    EXPECT_TRUE(database.has_entry(tmp.path("kernels.cuh")));
 };
 
 TEST_CASE(LoadEmptyCommand) {
     /// Whitespace-only or empty "command" should not crash.
+    TempDir tmp;
+    auto dir = json_escape(tmp.root);
     CompilationDatabase database;
-    auto count = load_json(database, R"([
-        {"directory": "/build", "file": "empty.cpp", "command": ""},
-        {"directory": "/build", "file": "spaces.cpp", "command": "   "},
-        {"directory": "/build", "file": "ok.cpp",
-         "command": "clang++ -std=c++20 ok.cpp"}
-    ])");
+    auto count = load_json(database,
+                           R"([{"directory": ")" + dir + R"(", "file": "empty.cpp", "command": ""},
+         {"directory": ")" + dir +
+                               R"(", "file": "spaces.cpp", "command": "   "},
+         {"directory": ")" + dir +
+                               R"(", "file": "ok.cpp",
+          "command": "clang++ -std=c++20 ok.cpp"}])");
 
     ASSERT_EQ(count, 1U);
-    EXPECT_CONTAINS(print_argv(render_entry(database, path::join("/build", "ok.cpp"))),
-                    "-std=c++20");
+    EXPECT_CONTAINS(print_argv(render_entry(database, tmp.path("ok.cpp"))), "-std=c++20");
 };
 
 TEST_CASE(LoadReload) {
     /// Second load() replaces all entries from the first.
+    TempDir tmp;
+    auto dir = json_escape(tmp.root);
     CompilationDatabase database;
 
-    auto file_a = path::join("/build", "a.cpp");
-    auto file_b = path::join("/build", "b.cpp");
+    auto file_a = tmp.path("a.cpp");
+    auto file_b = tmp.path("b.cpp");
 
-    load_json(database, R"([
-        {"directory": "/build", "file": "a.cpp",
-         "arguments": ["clang++", "-std=c++17", "a.cpp"]}
-    ])");
+    load_json(database, R"([{"directory": ")" + dir + R"(", "file": "a.cpp",
+          "arguments": ["clang++", "-std=c++17", "a.cpp"]}])");
     EXPECT_CONTAINS(print_argv(render_entry(database, file_a)), "-std=c++17");
 
-    auto count = load_json(database, R"([
-        {"directory": "/build", "file": "b.cpp",
-         "arguments": ["clang++", "-std=c++23", "b.cpp"]}
-    ])");
+    auto count = load_json(database, R"([{"directory": ")" + dir + R"(", "file": "b.cpp",
+          "arguments": ["clang++", "-std=c++23", "b.cpp"]}])");
     ASSERT_EQ(count, 1U);
 
     EXPECT_TRUE(database.candidate_entries(file_a).empty());
@@ -697,34 +698,37 @@ TEST_CASE(LoadReload) {
 
 TEST_CASE(LoadCommandQuoting) {
     /// "command" string with spaces in paths and quoted defines.
+    TempDir tmp;
+    auto dir = json_escape(tmp.root);
     CompilationDatabase database;
-    auto count = load_json(database, R"([
-        {"directory": "/build", "file": "main.cpp",
-         "command": "clang++ -std=c++20 \"-DMSG=hello world\" -I\"/path with spaces\" main.cpp"}
-    ])");
+    auto count = load_json(database, R"([{"directory": ")" + dir + R"(", "file": "main.cpp",
+          "command": "clang++ -std=c++20 \"-DMSG=hello world\" -I\"/path with spaces\" main.cpp"}])");
 
     ASSERT_EQ(count, 1U);
-    auto argv = print_argv(render_entry(database, path::join("/build", "main.cpp")));
+    auto argv = print_argv(render_entry(database, tmp.path("main.cpp")));
     EXPECT_CONTAINS(argv, "hello world");
-    EXPECT_CONTAINS(argv, "/path with spaces");
+    EXPECT_CONTAINS(argv, "with spaces");
 };
 
 TEST_CASE(LoadRelativePath) {
     /// load() resolves relative file paths against the directory.
+    TempDir tmp;
+    auto project = tmp.path("project/build");
+    auto other = tmp.path("other/build");
     CompilationDatabase database;
-    auto count = load_json(database, R"([
-        {"directory": "/project/build", "file": "src/main.cpp",
-         "arguments": ["clang++", "-std=c++20", "src/main.cpp"]},
-        {"directory": "/other/build", "file": "src/main.cpp",
-         "arguments": ["clang++", "-std=c++17", "src/main.cpp"]}
-    ])");
+    auto count = load_json(database,
+                           R"([{"directory": ")" + json_escape(project) +
+                               R"(", "file": "src/main.cpp",
+          "arguments": ["clang++", "-std=c++20", "src/main.cpp"]},
+         {"directory": ")" + json_escape(other) +
+                               R"(", "file": "src/main.cpp",
+          "arguments": ["clang++", "-std=c++17", "src/main.cpp"]}])");
 
     ASSERT_EQ(count, 2U);
 
-    EXPECT_CONTAINS(
-        print_argv(render_entry(database, path::join("/project/build", "src/main.cpp"))),
-        "-std=c++20");
-    EXPECT_CONTAINS(print_argv(render_entry(database, path::join("/other/build", "src/main.cpp"))),
+    EXPECT_CONTAINS(print_argv(render_entry(database, path::join(project, "src", "main.cpp"))),
+                    "-std=c++20");
+    EXPECT_CONTAINS(print_argv(render_entry(database, path::join(other, "src", "main.cpp"))),
                     "-std=c++17");
 
     /// A relative spelling is a different path — no entry.
@@ -734,14 +738,16 @@ TEST_CASE(LoadRelativePath) {
 TEST_CASE(LoadDotSegments) {
     /// Entry paths intern without . and .. segments, so lookups against
     /// clang-reported (realpath'd) spellings match.
+    TempDir tmp;
+    auto build = tmp.path("project/build");
     CompilationDatabase database;
-    auto count = load_json(database, R"([
-        {"directory": "/project/build", "file": "../src/./main.cpp",
-         "arguments": ["clang++", "-std=c++20", "../src/./main.cpp"]}
-    ])");
+    auto count = load_json(database,
+                           R"([{"directory": ")" + json_escape(build) +
+                               R"(", "file": "../src/./main.cpp",
+          "arguments": ["clang++", "-std=c++20", "../src/./main.cpp"]}])");
 
     ASSERT_EQ(count, 1U);
-    EXPECT_TRUE(database.has_entry(path::join("/project", "src", "main.cpp")));
+    EXPECT_TRUE(database.has_entry(tmp.path("project/src/main.cpp")));
 };
 
 TEST_CASE(ResourceDir) {

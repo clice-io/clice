@@ -338,12 +338,16 @@ TEST_CASE(KeyTracksConfigFile) {
     auto b = f.add("/fake/b", "/tmp/b.cpp", {"clang++", "--config", "clang.cfg", "/tmp/b.cpp"});
     EXPECT_NE(f.key(a), f.key(b));
 
-    /// An absolute config file is directory-independent (a platform-native
-    /// absolute path: POSIX spellings are not absolute on Windows).
+    /// An absolute config file is directory-independent. Both paths are
+    /// platform-native absolute (POSIX spellings are not absolute on
+    /// Windows), and the driver is absolute too: a bare driver name is
+    /// never cwd-exempt on Windows and would tie the key to the directory
+    /// on its own.
     TempDir tmp;
     auto cfg = "--config=" + tmp.path("clang.cfg");
-    auto c = f.add("/fake/a", "/tmp/c.cpp", {"clang++", cfg.c_str(), "/tmp/c.cpp"});
-    auto d = f.add("/fake/b", "/tmp/d.cpp", {"clang++", cfg.c_str(), "/tmp/d.cpp"});
+    auto driver = tmp.path("clang++");
+    auto c = f.add("/fake/a", "/tmp/c.cpp", {driver.c_str(), cfg.c_str(), "/tmp/c.cpp"});
+    auto d = f.add("/fake/b", "/tmp/d.cpp", {driver.c_str(), cfg.c_str(), "/tmp/d.cpp"});
     EXPECT_EQ(f.key(c), f.key(d));
 }
 
@@ -732,9 +736,15 @@ TEST_CASE(Resolve, skip = !CIEnvironment) {
         LOG_ERROR_RET(void(), "{}", file.error());
     }
 
+    /// A platform-native absolute include dir: a POSIX spelling would be
+    /// re-anchored (and separator-normalized) on Windows.
+    TempDir tmp;
+    auto inc = tmp.path("inc");
+    auto inc_flag = "-I" + inc;
+
     Fixture f;
     auto ref =
-        f.add("/tmp", *file, {"clang++", "-std=c++23", "-I/usr/include", "-DFOO=1", file->c_str()});
+        f.add("/tmp", *file, {"clang++", "-std=c++23", inc_flag.c_str(), "-DFOO=1", file->c_str()});
     auto resolved = f.db.toolchain().resolve(ref.config, ref.input);
     ASSERT_TRUE(resolved.has_value());
     EXPECT_TRUE(f.db.toolchain().has_cache());
@@ -748,7 +758,7 @@ TEST_CASE(Resolve, skip = !CIEnvironment) {
     for(std::size_t i = 0; i < argv.size(); ++i) {
         if(argv[i] == "-cc1"sv)
             has_cc1 = true;
-        if(argv[i] == "-I"sv && i + 1 < argv.size() && argv[i + 1] == "/usr/include"sv)
+        if(argv[i] == "-I"sv && i + 1 < argv.size() && llvm::StringRef(argv[i + 1]) == inc)
             has_include = true;
         if(argv[i] == "-D"sv && i + 1 < argv.size() && argv[i + 1] == "FOO=1"sv)
             has_define = true;

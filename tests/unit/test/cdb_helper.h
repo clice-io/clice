@@ -66,10 +66,16 @@ inline void write_cdb(TempDir& tmp, CompilationDatabase& cdb, llvm::StringRef js
 
 /// Rules-applied driver-level render of a file's default candidate, with
 /// the injected resource dir stripped so tests can assert exact argv.
+/// A file without candidates renders empty — the caller's assertion then
+/// fails readably instead of the front() of an empty list crashing.
 inline std::vector<const char*> render_entry(CompilationDatabase& cdb,
                                              llvm::StringRef file,
                                              const CommandOptions& options = {}) {
-    auto& entry = cdb.candidate_entries(file).front();
+    auto candidates = cdb.candidate_entries(file);
+    if(candidates.empty()) {
+        return {};
+    }
+    auto& entry = candidates.front();
     auto applied = cdb.apply_rules(entry.config, options);
     CommandRef ref{entry.file, applied, cdb.input_kind(applied, file), CommandSource::CDBExact};
     auto argv = cdb.render_driver(ref);
