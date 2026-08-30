@@ -135,32 +135,23 @@ struct CommandLang {
 };
 
 static std::optional<CommandLang> command_lang(Workspace& workspace, llvm::StringRef path) {
-    if(!workspace.cdb.has_entry(path)) {
+    auto candidates = workspace.cdb.candidate_entries(path);
+    if(candidates.empty()) {
         return std::nullopt;
     }
     std::vector<std::string> append, remove;
     workspace.config.match_rules(path, append, remove);
-    auto commands = workspace.cdb.lookup(path, {.remove = remove, .append = append});
+    auto applied =
+        workspace.cdb.apply_rules(candidates.front().config, {.remove = remove, .append = append});
 
     CommandLang result;
-    auto& flags = commands.front().resolved.flags;
-    for(std::size_t i = 0; i < flags.size(); i += 1) {
-        llvm::StringRef flag = flags[i];
-        llvm::StringRef language;
-        if(flag == "-x") {
-            if(i + 1 < flags.size()) {
-                language = flags[i + 1];
-            }
-        } else if(flag.starts_with("-x")) {
-            language = flag.drop_front(2);
-        } else if(flag.consume_front("-std=") || flag.consume_front("--std=")) {
-            result.standard = flag.str();
-            continue;
-        } else {
-            continue;
-        }
-        if(!language.empty()) {
-            result.forces_c = language == "c" || language == "c-header";
+    auto language = workspace.cdb.forced_language(applied);
+    if(!language.empty()) {
+        result.forces_c = language == "c" || language == "c-header";
+    }
+    for(auto& arg: workspace.cdb.config(applied).args) {
+        if(arg.opt_id == option::OPT_std_EQ && arg.values.size() == 1) {
+            result.standard = arg.values[0];
         }
     }
     return result;
@@ -769,14 +760,17 @@ FeatureRouter::RawResult FeatureRouter::completion(std::shared_ptr<Session> sess
             std::vector<std::string> arguments;
             // Editor use: candidates must come from the same command (host
             // choice, chosen CDB entry) the open buffer compiles under.
-            contexts.resolve_command(path, directory, arguments, ContextUse::Editor);
+            CommandRef ref;
+            contexts.resolve_command(path,
+                                     directory,
+                                     arguments,
+                                     ContextUse::Editor,
+                                     /*host_path_id=*/nullptr,
+                                     /*extra_prepend=*/{},
+                                     /*extra_append=*/{},
+                                     &ref);
 
-            std::vector<const char*> args_ptrs;
-            args_ptrs.reserve(arguments.size());
-            for(auto& arg: arguments)
-                args_ptrs.push_back(arg.c_str());
-
-            auto search_config = extract_search_config(args_ptrs, directory);
+            auto search_config = workspace.cdb.search_config(ref);
             DirListingCache dir_cache;
             auto resolved = resolve_search_config(search_config, dir_cache);
             bool angled = (pctx.kind == CompletionContext::IncludeAngled);

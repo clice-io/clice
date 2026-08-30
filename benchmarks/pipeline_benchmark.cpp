@@ -30,7 +30,6 @@
 
 #include "stats.h"
 #include "command/command.h"
-#include "command/toolchain.h"
 #include "compile/compilation.h"
 #include "feature/feature.h"
 #include "index/tu_index.h"
@@ -449,7 +448,6 @@ int main(int argc, const char** argv) {
     }
 
     CompilationDatabase cdb;
-    Toolchain toolchain;
     auto count = cdb.load(*opts.cdb_path);
     if(!count) {
         std::println(stderr, "Error: failed to load {}", *opts.cdb_path);
@@ -461,8 +459,8 @@ int main(int argc, const char** argv) {
     // several commands (multi-config CDB) is profiled under the first one,
     // like the server picks.
     std::vector<llvm::StringRef> files;
-    for(auto& entry: cdb.get_entries()) {
-        auto path = cdb.resolve_path(entry.file);
+    for(auto& entry: cdb.entries()) {
+        auto path = cdb.paths().resolve(entry.file);
         if(opts.filter.has_value() && !path.contains(*opts.filter)) {
             continue;
         }
@@ -504,12 +502,16 @@ int main(int argc, const char** argv) {
     BenchmarkOutput output;
     output.cdb = *opts.cdb_path;
     for(auto file: files) {
-        auto commands = cdb.lookup(file);
-        if(commands.empty()) {
+        auto candidates = cdb.candidate_entries(file);
+        if(candidates.empty()) {
             continue;
         }
-        toolchain.resolve_or_warn(commands[0]);
-        auto arguments = commands[0].to_argv();
+        auto& entry = candidates.front();
+        CommandRef ref{entry.file,
+                       entry.config,
+                       cdb.input_kind(entry.config, file),
+                       CommandSource::CDBExact};
+        auto arguments = cdb.render(ref);
 
         auto file_result = profile_file(file, arguments, runs, opts.time_trace_dir.value_or(""));
         print_file(file_result);

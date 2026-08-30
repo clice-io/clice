@@ -8,6 +8,8 @@
 
 namespace clice {
 
+struct Arg;
+
 struct SearchDir {
     std::string path;
 };
@@ -32,16 +34,10 @@ struct SearchConfig {
     unsigned after_start_idx = 0;
 };
 
-/// Extract header search configuration from compilation arguments.
-///
-/// Parses user-level flags (-I, -isystem, -iquote) and cc1-level flags
-/// (-internal-isystem, -internal-externc-isystem) using the clang argument
-/// parser. Relative paths are resolved against the given working directory
-/// and normalized with remove_dots().
-///
-/// This is intentionally a standalone function (not tied to CompilationDatabase)
-/// so it can be tested and improved independently to match clang's behavior.
-SearchConfig extract_search_config(llvm::ArrayRef<const char*> arguments,
-                                   llvm::StringRef directory);
+/// Extract header search configuration from a structured command (driver
+/// level or resolved cc1 level — the internal cc1 spellings are covered).
+/// Relative paths are resolved against the given working directory and
+/// normalized with remove_dots().
+SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef directory);
 
 }  // namespace clice

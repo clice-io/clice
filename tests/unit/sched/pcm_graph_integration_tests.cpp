@@ -3,7 +3,6 @@
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "command/command.h"
-#include "command/toolchain.h"
 #include "compile/compilation.h"
 #include "sched/graph.h"
 #include "support/path_pool.h"
@@ -84,22 +83,24 @@ struct GraphShim {
 /// Clang requires ALL transitive PCM deps (not just direct imports)
 /// in PrebuiltModuleFiles, so we pass every available PCM.
 DispatchFn make_dispatch(CompilationDatabase& cdb,
-                         Toolchain& toolchain,
-                         PathPool& pool,
                          DependencyGraph& graph,
                          llvm::DenseMap<std::uint32_t, std::string>& pcm_paths) {
     return [&](std::uint32_t path_id, bool) -> kota::task<RoundOutcome> {
-        auto file_path = pool.resolve(path_id);
-        auto results = cdb.lookup(file_path);
-        if(results.empty()) {
+        auto file_path = cdb.paths().resolve(path_id);
+        auto candidates = cdb.candidate_entries(file_path);
+        if(candidates.empty()) {
             co_return RoundOutcome::Failed;
         }
-        toolchain.resolve_or_warn(results[0]);
+        auto& entry = candidates.front();
+        CommandRef ref{entry.file,
+                       entry.config,
+                       cdb.input_kind(entry.config, file_path),
+                       CommandSource::CDBExact};
 
         CompilationParams cp;
         cp.kind = CompilationKind::ModuleInterface;
-        cp.directory = results[0].resolved.directory.str();
-        cp.arguments = results[0].to_argv();
+        cp.directory = cdb.config(entry.config).directory;
+        cp.arguments = cdb.render(ref);
 
         // Fill ALL available PCM paths (clang needs transitive deps too).
         for(auto& [pid, pcm_path]: pcm_paths) {
@@ -129,19 +130,20 @@ DispatchFn make_dispatch(CompilationDatabase& cdb,
 }
 
 /// Build a resolve_fn that lazily scans module files for imports.
-ResolveFn make_resolver(CompilationDatabase& cdb,
-                        Toolchain& toolchain,
-                        PathPool& pool,
-                        DependencyGraph& graph) {
+ResolveFn make_resolver(CompilationDatabase& cdb, DependencyGraph& graph) {
     return [&](std::uint32_t path_id) -> llvm::SmallVector<std::uint32_t> {
-        auto file_path = pool.resolve(path_id);
-        auto results = cdb.lookup(file_path);
-        if(results.empty()) {
+        auto file_path = cdb.paths().resolve(path_id);
+        auto candidates = cdb.candidate_entries(file_path);
+        if(candidates.empty()) {
             return {};
         }
-        toolchain.resolve_or_warn(results[0]);
+        auto& entry = candidates.front();
+        CommandRef ref{entry.file,
+                       entry.config,
+                       cdb.input_kind(entry.config, file_path),
+                       CommandSource::CDBExact};
 
-        auto scan_result = scan_precise(results[0].to_argv(), results[0].resolved.directory);
+        auto scan_result = scan_precise(cdb.render(ref), cdb.config(entry.config).directory);
 
         llvm::SmallVector<std::uint32_t> deps;
         for(auto& mod_name: scan_result.modules) {
@@ -158,14 +160,12 @@ ResolveFn make_resolver(CompilationDatabase& cdb,
 struct ModuleTestEnv {
     TempDir tmp;
     CompilationDatabase cdb;
-    Toolchain toolchain;
-    PathPool pool;
     DependencyGraph graph;
     llvm::DenseMap<std::uint32_t, std::string> pcm_paths;
 
     void setup(llvm::ArrayRef<CDBEntry> entries, llvm::StringRef json) {
         write_cdb(tmp, cdb, json);
-        scan_dependency_graph(cdb, toolchain, pool, graph);
+        scan_dependency_graph(cdb, graph);
     }
 
     std::uint32_t lookup(llvm::StringRef mod_name) {
@@ -181,11 +181,11 @@ std::optional<kota::event_loop> loop;
 std::optional<GraphShim> cg;
 
 DispatchFn default_dispatch() {
-    return make_dispatch(env.cdb, env.toolchain, env.pool, env.graph, env.pcm_paths);
+    return make_dispatch(env.cdb, env.graph, env.pcm_paths);
 }
 
 ResolveFn default_resolver() {
-    return make_resolver(env.cdb, env.toolchain, env.pool, env.graph);
+    return make_resolver(env.cdb, env.graph);
 }
 
 void make_graph(DispatchFn dispatch, ResolveFn resolve) {
@@ -1115,14 +1115,18 @@ TEST_CASE(module_implementation_unit) {
 
         // Now compile the implementation unit as Content (like a stateful worker would).
         auto impl_path = env.tmp.path("impl.cpp");
-        auto results = env.cdb.lookup(impl_path);
-        CO_ASSERT_FALSE(results.empty());
-        env.toolchain.resolve_or_warn(results[0]);
+        auto candidates = env.cdb.candidate_entries(impl_path);
+        CO_ASSERT_FALSE(candidates.empty());
+        auto& impl_entry = candidates.front();
+        CommandRef impl_ref{impl_entry.file,
+                            impl_entry.config,
+                            env.cdb.input_kind(impl_entry.config, impl_path),
+                            CommandSource::CDBExact};
 
         CompilationParams cp;
         cp.kind = CompilationKind::Content;
-        cp.directory = results[0].resolved.directory.str();
-        cp.arguments = results[0].to_argv();
+        cp.directory = env.cdb.config(impl_entry.config).directory;
+        cp.arguments = env.cdb.render(impl_ref);
         // Pass the built PCM so clang can resolve `module Greeter;`.
         for(auto& [pid, pcm_path]: env.pcm_paths) {
             for(auto& [mod_name, mod_ids]: env.graph.modules()) {

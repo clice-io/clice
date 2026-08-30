@@ -19,8 +19,6 @@
 
 namespace clice {
 
-class Toolchain;
-
 class DependencyGraph {
 public:
     /// Conditional flag: bit 31 marks an include inside #ifdef/#if.
@@ -306,8 +304,6 @@ using RuleMatcher = std::function<
 ///               dependency graph (otherwise rule-affected files would have
 ///               stale resolution).
 ScanReport scan_dependency_graph(CompilationDatabase& cdb,
-                                 Toolchain& toolchain,
-                                 PathPool& path_pool,
                                  DependencyGraph& graph,
                                  ScanCache* cache = nullptr,
                                  const RuleMatcher& rule_matcher = {});

@@ -10,7 +10,6 @@
 #include <vector>
 
 #include "command/command.h"
-#include "command/toolchain.h"
 #include "compile/dep_file.h"
 #include "config/config.h"
 #include "index/database.h"
@@ -36,7 +35,7 @@ class ContextResolver;
 
 /// On-disk cache layout version (CacheStore root `cache/v{N}`).
 /// Bump to discard all cached artifacts after incompatible format changes.
-constexpr inline std::uint32_t cache_format_version = 7;
+constexpr inline std::uint32_t cache_format_version = 8;
 
 /// Sentinel for "no path": path pool ids start at 0, so 0 is a real file.
 constexpr inline std::uint32_t no_path_id = ~0u;
@@ -209,9 +208,10 @@ struct Workspace {
     /// overlay.
     Config config;
     CompilationDatabase cdb;
-    Toolchain toolchain;
 
-    PathPool path_pool;
+    /// The single path-id space: the CDB owns it, everything else shares
+    /// it — CDB entry file ids and workspace path ids are the same ids.
+    PathPool& path_pool = cdb.paths();
 
     /// Unified on-disk blob store for PCH/PCM/index artifacts.  Opened by
     /// load_workspace() when cache_dir is configured; absent means caching

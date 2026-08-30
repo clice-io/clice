@@ -4,7 +4,6 @@
 #include <chrono>
 
 #include "command/search_config.h"
-#include "command/toolchain.h"
 #include "support/logging.h"
 #include "syntax/include_resolver.h"
 #include "syntax/scan.h"
@@ -297,13 +296,12 @@ FileScanResult scan_file_worker(const char* path, std::uint32_t path_id, std::ui
 
 /// The async scan implementation that runs on a local event loop.
 kota::task<> scan_impl(CompilationDatabase& cdb,
-                       Toolchain& toolchain,
-                       PathPool& path_pool,
                        DependencyGraph& graph,
                        ScanReport& report,
                        ScanCache* ext_cache,
                        kota::event_loop& loop,
                        const RuleMatcher& rule_matcher) {
+    auto& path_pool = cdb.paths();
     auto start_time = std::chrono::steady_clock::now();
 
     // On warm runs (ext_cache populated from a previous scan), skip the expensive
@@ -318,56 +316,52 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
 
     auto config_start = std::chrono::steady_clock::now();
 
-    // Intermediate: one ConfigGroup per unique CompilationInfo in the CDB.
-    // Used to build configs, initial_wave, and pre-warm the toolchain cache.
-    // Not cached — rebuilt on cold runs from CDB state which is cheap.
-    llvm::SmallVector<CompilationDatabase::ConfigGroup> config_groups;
+    // One scan group per unique (rules-applied config, input language) —
+    // the SearchConfig granularity: different -I sets resolve differently,
+    // and the same flags compiled as C and C++ pull different implicit
+    // include sets. Not cached — rebuilt on cold runs from CDB state.
+    llvm::SmallVector<CommandRef> group_refs;
+    std::vector<WaveEntry> wave0;
 
     if(!have_config_cache) {
-        // Ask CDB for unique compilation configs. Each ConfigGroup bundles:
-        //   - file_ids:  all CDB path_ids sharing the same (dir, canonical, patch)
-        //   - command:   a representative CompileCommand (driver-level flags)
-        //
-        // This is the right granularity for SearchConfig: different -I paths
-        // produce different groups. For toolchain queries the granularity is
-        // coarser (user-content flags don't affect the key), so warm()
-        // further deduplicates internally.
-        config_groups = cdb.unique_configs();
-
-        // Pre-warm toolchain cache: warm() keys each command by its
-        // non-user-content flags. Commands differing only in -D/-I collapse
-        // to the same key, so N config groups often yield just 1-2 subprocess
-        // calls.
-        auto prewarm_start = std::chrono::steady_clock::now();
-        llvm::SmallVector<CompileCommand> representative_cmds;
-        representative_cmds.reserve(config_groups.size());
-        for(auto& group: config_groups) {
-            representative_cmds.push_back(group.command);
-        }
-
-        toolchain.warm(representative_cmds);
-        auto prewarm_end = std::chrono::steady_clock::now();
-        report.prewarm_ms =
-            std::chrono::duration_cast<std::chrono::milliseconds>(prewarm_end - prewarm_start)
-                .count();
-
-        // Extract SearchConfig for each unique config group.
-        // Toolchain is now warm, so resolve() hits cache.
-        std::int64_t lookup_us = 0;
-        for(std::uint32_t config_id = 0; config_id < config_groups.size(); ++config_id) {
-            auto& group = config_groups[config_id];
-            auto representative_path = llvm::StringRef(group.command.source_file);
+        llvm::DenseMap<std::pair<std::uint32_t, const char*>, std::uint32_t> group_ids;
+        for(auto& entry: cdb.entries()) {
+            auto file_path = path_pool.resolve(entry.file);
 
             // Apply per-file rules so that [[rules]]-modified -I/-isystem/-std
             // flags are reflected in the search config used by the scan.
             std::vector<std::string> rule_append, rule_remove;
             if(rule_matcher)
-                rule_matcher(representative_path, rule_append, rule_remove);
+                rule_matcher(file_path, rule_append, rule_remove);
 
+            auto applied =
+                cdb.apply_rules(entry.config, {.remove = rule_remove, .append = rule_append});
+            auto input = cdb.input_kind(applied, file_path);
+            auto [it, inserted] =
+                group_ids.try_emplace({static_cast<std::uint32_t>(applied), input.value},
+                                      static_cast<std::uint32_t>(group_refs.size()));
+            if(inserted) {
+                group_refs.push_back({entry.file, applied, input, CommandSource::CDBExact});
+            }
+            wave0.push_back({entry.file, it->second, /*found_dir_idx=*/0});
+        }
+
+        // Pre-warm the toolchain cache: probes key by non-user-content
+        // flags, so groups differing only in -D/-I collapse to the same
+        // probe — N groups often yield just 1-2 subprocess calls.
+        auto prewarm_start = std::chrono::steady_clock::now();
+        cdb.warm(group_refs);
+        auto prewarm_end = std::chrono::steady_clock::now();
+        report.prewarm_ms =
+            std::chrono::duration_cast<std::chrono::milliseconds>(prewarm_end - prewarm_start)
+                .count();
+
+        // Extract SearchConfig for each group. The toolchain is warm, so
+        // resolution hits the cache.
+        std::int64_t lookup_us = 0;
+        for(std::uint32_t group_id = 0; group_id < group_refs.size(); ++group_id) {
             auto t0 = std::chrono::steady_clock::now();
-            auto cmd = cdb.group_command(group, {.remove = rule_remove, .append = rule_append});
-            toolchain.resolve_or_warn(cmd);
-            configs[config_id] = extract_search_config(cmd.to_argv(), cmd.resolved.directory);
+            configs[group_id] = cdb.search_config(group_refs[group_id]);
             auto t1 = std::chrono::steady_clock::now();
             lookup_us += std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
         }
@@ -408,8 +402,8 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
             }
         }
         // Also prefetch parent directories of source files (for quoted include resolution).
-        for(auto& entry: cdb.get_entries()) {
-            auto file_path = cdb.resolve_path(entry.file);
+        for(auto& entry: cdb.entries()) {
+            auto file_path = path_pool.resolve(entry.file);
             auto dir = llvm::sys::path::parent_path(file_path);
             if(!dir.empty()) {
                 unique_dirs.insert(dir);
@@ -439,28 +433,19 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
     // Value: found_dir_idx needed for #include_next.
     llvm::DenseMap<std::uint32_t, unsigned> scanned_files;
 
-    // Wave 0: all source files from CDB.
-    // Re-use the cached initial_wave when available; otherwise build from
-    // config_groups, converting CDB path_ids → PathPool path_ids.
+    // Wave 0: all source files from CDB (entry file ids are pool ids).
+    // Re-use the cached initial_wave when available.
     std::vector<WaveEntry> current_wave;
     if(have_config_cache) {
         current_wave = ext_cache->initial_wave;
-        for(auto& entry: current_wave) {
-            scanned_files.try_emplace(entry.path_id, entry.found_dir_idx);
-        }
     } else {
-        current_wave.reserve(cdb.get_entries().size());
-        for(std::uint32_t config_id = 0; config_id < config_groups.size(); ++config_id) {
-            for(auto cdb_file_id: config_groups[config_id].file_ids) {
-                auto file_path = cdb.resolve_path(cdb_file_id);
-                auto pool_id = path_pool.intern(file_path);
-                scanned_files.try_emplace(pool_id, 0u);
-                current_wave.push_back({pool_id, config_id, /*found_dir_idx=*/0});
-            }
-        }
+        current_wave = std::move(wave0);
         if(ext_cache) {
             ext_cache->initial_wave = current_wave;
         }
+    }
+    for(auto& entry: current_wave) {
+        scanned_files.try_emplace(entry.path_id, entry.found_dir_idx);
     }
 
     report.source_files = current_wave.size();
@@ -628,12 +613,16 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
             // headers cannot contain module declarations.
             if(scan_result.scan_result.need_preprocess && wave_num == 0) {
                 auto file_path = llvm::StringRef(scan_result.path);
-                auto contexts = cdb.lookup(file_path);
-                if(!contexts.empty()) {
-                    toolchain.resolve_or_warn(contexts[0]);
-                    auto& cmd = contexts[0];
-                    auto fallback =
-                        scan_module_decl(cmd.to_argv(), cmd.resolved.directory, /*content=*/{});
+                auto candidates = cdb.candidate_entries(file_path);
+                if(!candidates.empty()) {
+                    auto& entry = candidates.front();
+                    CommandRef ref{entry.file,
+                                   entry.config,
+                                   cdb.input_kind(entry.config, file_path),
+                                   CommandSource::CDBExact};
+                    auto fallback = scan_module_decl(cdb.render(ref),
+                                                     cdb.config(ref.config).directory,
+                                                     /*content=*/{});
                     if(!fallback.module_name.empty()) {
                         scan_result.scan_result.module_name = std::move(fallback.module_name);
                         scan_result.scan_result.is_interface_unit = fallback.is_interface_unit;
@@ -829,18 +818,16 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
 // Public sync entry point
 
 ScanReport scan_dependency_graph(CompilationDatabase& cdb,
-                                 Toolchain& toolchain,
-                                 PathPool& path_pool,
                                  DependencyGraph& graph,
                                  ScanCache* cache,
                                  const RuleMatcher& rule_matcher) {
     ScanReport report;
-    if(cdb.get_entries().empty()) {
+    if(cdb.entries().empty()) {
         return report;
     }
 
     kota::event_loop loop;
-    loop.schedule(scan_impl(cdb, toolchain, path_pool, graph, report, cache, loop, rule_matcher));
+    loop.schedule(scan_impl(cdb, graph, report, cache, loop, rule_matcher));
     loop.run();
     return report;
 }

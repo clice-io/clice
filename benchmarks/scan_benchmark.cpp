@@ -21,7 +21,6 @@
 #include <thread>
 
 #include "command/command.h"
-#include "command/toolchain.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 #include "support/path_pool.h"
@@ -269,8 +268,9 @@ int main(int argc, const char** argv) {
     // Load compilation database.
     auto t0 = std::chrono::steady_clock::now();
 
-    CompilationDatabase cdb;
-    Toolchain toolchain;
+    std::optional<CompilationDatabase> cdb_storage;
+    cdb_storage.emplace();
+    auto& cdb = *cdb_storage;
     auto loaded = cdb.load(cdb_path);
     if(!loaded) {
         std::println(stderr, "Error: failed to load {}", cdb_path);
@@ -284,72 +284,20 @@ int main(int argc, const char** argv) {
     std::println("CDB loaded: {} entries in {}ms", count, load_ms);
 
     {
-        std::set<const CompilationInfo*> unique_contexts;
-        std::set<const CanonicalCommand*> unique_canonicals;
-        std::map<const CanonicalCommand*, int> canonical_hist;
-        for(auto& entry: cdb.get_entries()) {
-            unique_contexts.insert(entry.info.ptr);
-            unique_canonicals.insert(entry.info->canonical.ptr);
-            canonical_hist[entry.info->canonical.ptr] += 1;
+        std::set<ConfigID> unique_configs;
+        for(auto& entry: cdb.entries()) {
+            unique_configs.insert(entry.config);
         }
         double dedup_ratio =
-            unique_contexts.empty() ? 0.0 : static_cast<double>(count) / unique_contexts.size();
-        std::println(
-            "Context dedup: {} files -> {} unique contexts ({:.1f}x), {} unique canonicals",
-            count,
-            unique_contexts.size(),
-            dedup_ratio,
-            unique_canonicals.size());
-
-        // If canonical dedup is poor, dump diagnostics.
-        if(unique_canonicals.size() > 200) {
-            // Sort canonicals by frequency (descending).
-            std::vector<std::pair<int, const CanonicalCommand*>> sorted;
-            for(auto& [ptr, cnt]: canonical_hist)
-                sorted.push_back({cnt, ptr});
-            std::ranges::sort(sorted,
-                              std::greater{},
-                              &std::pair<int, const CanonicalCommand*>::first);
-
-            // Show top-5 canonical commands.
-            for(int i = 0; i < std::min(5, (int)sorted.size()); i += 1) {
-                auto [cnt, cmd] = sorted[i];
-                std::println("  canonical[{}] ({} files, {} args):", i, cnt, cmd->arguments.size());
-                for(auto arg: cmd->arguments)
-                    std::println("    {}", arg);
-            }
-
-            // Show a singleton canonical (count==1) to see what per-file arg leaks in.
-            for(auto& [cnt, cmd]: sorted) {
-                if(cnt == 1) {
-                    std::println("  singleton canonical ({} args):", cmd->arguments.size());
-                    for(auto arg: cmd->arguments)
-                        std::println("    {}", arg);
-                    break;
-                }
-            }
-
-            // Find two canonicals that differ by only a few args.
-            if(sorted.size() >= 2) {
-                auto* a = sorted[0].second;
-                auto* b = sorted[1].second;
-                std::println("  --- Canonical diff (top-1 vs top-2) ---");
-                auto max_len = std::max(a->arguments.size(), b->arguments.size());
-                for(std::size_t i = 0; i < max_len; i += 1) {
-                    llvm::StringRef av = i < a->arguments.size() ? a->arguments[i] : "<missing>";
-                    llvm::StringRef bv = i < b->arguments.size() ? b->arguments[i] : "<missing>";
-                    if(av != bv)
-                        std::println("    DIFF[{}]: '{}' vs '{}'", i, av, bv);
-                    else
-                        std::println("    SAME[{}]: '{}'", i, av);
-                }
-            }
-        }
+            unique_configs.empty() ? 0.0 : static_cast<double>(count) / unique_configs.size();
+        std::println("Config dedup: {} files -> {} unique configs ({:.1f}x)",
+                     count,
+                     unique_configs.size(),
+                     dedup_ratio);
     }
 
     std::println("\nRunning {} cold start scan(s)...\n", runs);
 
-    PathPool path_pool;
     DependencyGraph graph;
     std::vector<std::int64_t> elapsed_times;
     std::vector<std::int64_t> config_times;
@@ -361,15 +309,13 @@ int main(int argc, const char** argv) {
     phase2_times.reserve(runs);
 
     for(int i = 0; i < runs; i += 1) {
-        // True cold start: rebuild CDB (clears toolchain & config caches),
-        // reset PathPool and DependencyGraph.
-        cdb = CompilationDatabase{};
-        toolchain = Toolchain{};
-        cdb.load(cdb_path);
-        path_pool = PathPool{};
+        // True cold start: rebuild CDB (clears toolchain & config caches)
+        // and the DependencyGraph.
+        cdb_storage.emplace();
+        cdb_storage->load(cdb_path);
         graph = DependencyGraph{};
 
-        auto report = scan_dependency_graph(cdb, toolchain, path_pool, graph);
+        auto report = scan_dependency_graph(*cdb_storage, graph);
 
         elapsed_times.push_back(report.elapsed_ms);
         config_times.push_back(report.config_ms);
@@ -412,7 +358,7 @@ int main(int argc, const char** argv) {
 
     // Export dependency graph as JSON if requested.
     if(opts.export_path.has_value()) {
-        export_graph_json(path_pool, graph, *opts.export_path);
+        export_graph_json(cdb_storage->paths(), graph, *opts.export_path);
     }
 
     return 0;

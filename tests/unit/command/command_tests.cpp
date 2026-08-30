@@ -1,3 +1,5 @@
+#include "test/cdb_helper.h"
+#include "test/temp_dir.h"
 #include "test/test.h"
 #include "command/argument_parser.h"
 #include "command/command.h"
@@ -11,27 +13,41 @@ namespace {
 
 using namespace std::literals;
 
-CommandOptions quiet_options() {
-    CommandOptions options;
-    options.inject_resource_dir = false;
-    return options;
-}
-
 #define EXPECT_CONTAINS(haystack, needle) EXPECT_TRUE(llvm::StringRef(haystack).contains(needle))
 #define EXPECT_NOT_CONTAINS(haystack, needle)                                                      \
     EXPECT_FALSE(llvm::StringRef(haystack).contains(needle))
 
 TEST_SUITE(Command) {
 
+/// The synthesized fallback render for a file without an entry, resource
+/// dir stripped like render_entry.
+std::vector<const char*> render_fallback(CompilationDatabase& db,
+                                         llvm::StringRef file,
+                                         const CommandOptions& options = {}) {
+    auto applied = db.apply_rules(db.fallback_config(file), options);
+    CommandRef ref{db.paths().intern(file),
+                   applied,
+                   db.input_kind(applied, file),
+                   CommandSource::Fallback};
+    auto argv = db.render_driver(ref);
+    for(std::size_t i = 0; i + 1 < argv.size(); i += 1) {
+        if(llvm::StringRef(argv[i]) == "-resource-dir") {
+            argv.erase(argv.begin() + i, argv.begin() + i + 2);
+            break;
+        }
+    }
+    return argv;
+}
+
 void EXPECT_STRIP(llvm::StringRef argv, llvm::StringRef result) {
     CompilationDatabase database;
     llvm::StringRef file = "main.cpp";
     database.add_command("fake/", file, argv);
-    ASSERT_EQ(result, print_argv(database.lookup(file, quiet_options()).front().to_argv()));
+    ASSERT_EQ(result, print_argv(render_entry(database, file)));
 };
 
 TEST_CASE(DefaultFilters) {
-    /// Filter -c, -o and input file.
+    /// Filter -c, -o and keep the input in place.
     EXPECT_STRIP("g++ main.cpp", "g++ main.cpp");
     EXPECT_STRIP("clang++ -c main.cpp", "clang++ main.cpp");
     EXPECT_STRIP("clang++ -o main.o main.cpp", "clang++ main.cpp");
@@ -48,28 +64,27 @@ TEST_CASE(DefaultFilters) {
         "clang++ -Winvalid-pch -Xclang -include -Xclang cmake_pch.hxx main.cpp");
     EXPECT_STRIP("cl.exe /Yufoo.h /FIfoo.h /Fpfoo.h_v143.pch /c /Fomain.cpp.o main.cpp",
                  "cl.exe -include foo.h main.cpp");
-
-    /// TODO: Test more commands from other build system.
 };
 
-TEST_CASE(Reuse) {
+TEST_CASE(ConfigDedup) {
     CompilationDatabase database;
     database.add_command("fake", "test.cpp", "clang++ -std=c++23 test.cpp"sv);
     database.add_command("fake", "test2.cpp", "clang++ -std=c++23 test2.cpp"sv);
+    database.add_command("fake", "test3.cpp", "clang++ -std=c++23 -DA test3.cpp"sv);
 
-    auto options = quiet_options();
-    auto command1 = database.lookup("test.cpp", options).front().to_argv();
-    auto command2 = database.lookup("test2.cpp", options).front().to_argv();
-    ASSERT_EQ(command1.size(), 3U);
-    ASSERT_EQ(command2.size(), 3U);
+    /// Same flags dedupe to one config; a user-content difference splits.
+    auto config1 = database.candidate_entries("test.cpp").front().config;
+    auto config2 = database.candidate_entries("test2.cpp").front().config;
+    auto config3 = database.candidate_entries("test3.cpp").front().config;
+    EXPECT_EQ(config1, config2);
+    EXPECT_NE(config1, config3);
 
-    ASSERT_EQ(command1[0], "clang++"sv);
-    ASSERT_EQ(command1[1], "-std=c++23"sv);
-    ASSERT_EQ(command1[2], "test.cpp"sv);
-
-    ASSERT_EQ(command1[0], command2[0]);
-    ASSERT_EQ(command1[1], command2[1]);
-    ASSERT_EQ(command2[2], "test2.cpp"sv);
+    auto argv1 = render_entry(database, "test.cpp");
+    ASSERT_EQ(argv1.size(), 3U);
+    EXPECT_EQ(argv1[0], "clang++"sv);
+    EXPECT_EQ(argv1[1], "-std=c++23"sv);
+    EXPECT_EQ(argv1[2], "test.cpp"sv);
+    EXPECT_EQ(render_entry(database, "test2.cpp").back(), "test2.cpp"sv);
 };
 
 TEST_CASE(RemoveAppend) {
@@ -86,40 +101,172 @@ TEST_CASE(RemoveAppend) {
     CompilationDatabase database;
     database.add_command("/fake", "main.cpp", args);
 
-    auto options = quiet_options();
+    CommandOptions options;
 
     llvm::SmallVector<std::string> remove;
     llvm::SmallVector<std::string> append;
 
     remove = {"-DA"};
     options.remove = remove;
-    auto result = database.lookup("main.cpp", options).front().to_argv();
-    ASSERT_EQ(print_argv(result), "clang++ -D B=0 main.cpp");
+    EXPECT_EQ(print_argv(render_entry(database, "main.cpp", options)), "clang++ -D B=0 main.cpp");
 
     remove = {"-D", "A"};
     options.remove = remove;
-    result = database.lookup("main.cpp", options).front().to_argv();
-    ASSERT_EQ(print_argv(result), "clang++ -D B=0 main.cpp");
+    EXPECT_EQ(print_argv(render_entry(database, "main.cpp", options)), "clang++ -D B=0 main.cpp");
 
     remove = {"-DA", "-D", "B=0"};
     options.remove = remove;
-    result = database.lookup("main.cpp", options).front().to_argv();
-    ASSERT_EQ(print_argv(result), "clang++ main.cpp");
+    EXPECT_EQ(print_argv(render_entry(database, "main.cpp", options)), "clang++ main.cpp");
 
     remove = {"-D*"};
     options.remove = remove;
-    result = database.lookup("main.cpp", options).front().to_argv();
-    ASSERT_EQ(print_argv(result), "clang++ main.cpp");
+    EXPECT_EQ(print_argv(render_entry(database, "main.cpp", options)), "clang++ main.cpp");
 
     remove = {"-D", "*"};
     options.remove = remove;
-    result = database.lookup("main.cpp", options).front().to_argv();
-    ASSERT_EQ(print_argv(result), "clang++ main.cpp");
+    EXPECT_EQ(print_argv(render_entry(database, "main.cpp", options)), "clang++ main.cpp");
 
+    options.remove = {};
     append = {"-D", "C"};
     options.append = append;
-    result = database.lookup("main.cpp", options).front().to_argv();
-    ASSERT_EQ(print_argv(result), "clang++ -D C main.cpp");
+    EXPECT_EQ(print_argv(render_entry(database, "main.cpp", options)),
+              "clang++ -D A -D B=0 -D C main.cpp");
+};
+
+TEST_CASE(AppendBeforeSlot) {
+    /// Appends insert before the input slot, so they always govern the
+    /// compile — even when the CDB command carries flags after the input.
+    CompilationDatabase database;
+    database.add_command("/fake", "a.c", "clang -x c a.c -x none"sv);
+
+    CommandOptions options;
+    llvm::SmallVector<std::string> append = {"-x", "c++"};
+    options.append = append;
+
+    EXPECT_EQ(print_argv(render_entry(database, "a.c", options)), "clang -x c -x c++ a.c -x none");
+
+    auto applied = database.apply_rules(database.candidate_entries("a.c").front().config, options);
+    EXPECT_EQ(llvm::StringRef(database.input_kind(applied, "a.c").value), "c++");
+};
+
+TEST_CASE(SelectorHistoryRestored) {
+    /// Removing the later selector re-exposes the earlier one.
+    CompilationDatabase database;
+    database.add_command("/fake", "a.c", "clang -x cuda -x c++ a.c"sv);
+
+    auto base = database.candidate_entries("a.c").front().config;
+    EXPECT_EQ(llvm::StringRef(database.input_kind(base, "a.c").value), "c++");
+
+    CommandOptions options;
+    llvm::SmallVector<std::string> remove = {"-x", "c++"};
+    options.remove = remove;
+    auto applied = database.apply_rules(base, options);
+    EXPECT_EQ(llvm::StringRef(database.input_kind(applied, "a.c").value), "cuda");
+};
+
+TEST_CASE(SelectorPositional) {
+    /// -x only governs inputs after it: a trailing selector leaves the
+    /// input to its extension, and removing the leading one restores it.
+    CompilationDatabase database;
+    database.add_command("/fake", "a.cu", "clang -x c++ a.cu -x c"sv);
+
+    auto base = database.candidate_entries("a.cu").front().config;
+    EXPECT_EQ(llvm::StringRef(database.input_kind(base, "a.cu").value), "c++");
+
+    CommandOptions options;
+    llvm::SmallVector<std::string> remove = {"-x", "c++"};
+    options.remove = remove;
+    auto applied = database.apply_rules(base, options);
+    EXPECT_EQ(llvm::StringRef(database.input_kind(applied, "a.cu").value), "cuda");
+
+    /// -x none resets the state; the extension decides again.
+    database.add_command("/fake", "b.c", "clang -x c++ -x none b.c"sv);
+    auto reset = database.candidate_entries("b.c").front().config;
+    EXPECT_EQ(llvm::StringRef(database.input_kind(reset, "b.c").value), "c");
+};
+
+TEST_CASE(PerFileClSelectors) {
+    /// /Tc<file> and /Tp<file> pair a selector with one input: the entry's
+    /// own selector rewrites to the equivalent global form, the other
+    /// input vanishes with its selector.
+    CompilationDatabase database;
+    database.add_command("/fake", "/fake/alpha.c", "cl /Tc/fake/alpha.c /Tp/fake/beta.c /c"sv);
+    database.add_command("/fake", "/fake/beta.c", "cl /Tc/fake/alpha.c /Tp/fake/beta.c /c"sv);
+
+    auto alpha = database.candidate_entries("/fake/alpha.c").front().config;
+    auto beta = database.candidate_entries("/fake/beta.c").front().config;
+    EXPECT_NE(alpha, beta);
+
+    EXPECT_EQ(llvm::StringRef(database.input_kind(alpha, "/fake/alpha.c").value), "c");
+    EXPECT_EQ(llvm::StringRef(database.input_kind(beta, "/fake/beta.c").value), "c++");
+
+    auto beta_argv = print_argv(render_entry(database, "/fake/beta.c"));
+    EXPECT_CONTAINS(beta_argv, "/TP");
+    EXPECT_NOT_CONTAINS(beta_argv, "alpha.c");
+
+    auto alpha_argv = print_argv(render_entry(database, "/fake/alpha.c"));
+    EXPECT_CONTAINS(alpha_argv, "/TC");
+    EXPECT_NOT_CONTAINS(alpha_argv, "beta.c");
+};
+
+TEST_CASE(IdentityHashes) {
+    CompilationDatabase database;
+    database.add_command("/fake", "a.cpp", "clang++ -std=c++20 a.cpp"sv);
+    database.add_command("/fake", "b.cpp", "clang++ -std=c++20 b.cpp"sv);
+    database.add_command("/fake", "c.cpp", "clang++ -std=c++17 c.cpp"sv);
+    database.add_command("/fake", "x1.c", "clang -x c++ x1.c"sv);
+    database.add_command("/fake", "x2.c", "clang -x c x2.c"sv);
+    database.add_command("/fake", "g.cpp", "clang++ -std=c++20 -g a.cpp"sv);
+
+    auto hash_of = [&](llvm::StringRef file) {
+        return database.entry_hash(database.candidate_entries(file).front().config);
+    };
+
+    /// Same command, different file: one config, one identity.
+    EXPECT_EQ(hash_of("a.cpp"), hash_of("b.cpp"));
+    /// A semantic flag difference changes the identity.
+    EXPECT_NE(hash_of("a.cpp"), hash_of("c.cpp"));
+    /// A selector difference changes the identity (selectors live in args).
+    EXPECT_NE(hash_of("x1.c"), hash_of("x2.c"));
+    /// Codegen-only flags never enter the identity.
+    EXPECT_EQ(hash_of("a.cpp"), hash_of("g.cpp"));
+
+    /// The input slot's position is part of the identity.
+    database.add_command("/fake", "p1.cpp", "clang++ p1.cpp -Wall"sv);
+    database.add_command("/fake", "p2.cpp", "clang++ -Wall p2.cpp"sv);
+    EXPECT_NE(hash_of("p1.cpp"), hash_of("p2.cpp"));
+
+    EXPECT_EQ(database.entry_hash_hex(database.candidate_entries("a.cpp").front().config).size(),
+              16U);
+};
+
+TEST_CASE(WrapperStripped) {
+    CompilationDatabase database;
+    database.add_command("/fake", "a.cpp", "ccache clang++ -std=c++20 a.cpp"sv);
+    database.add_command("/fake", "b.cpp", "clang++ -std=c++20 b.cpp"sv);
+
+    /// The wrapper is entry provenance, not config identity.
+    auto& a = database.candidate_entries("a.cpp").front();
+    auto& b = database.candidate_entries("b.cpp").front();
+    EXPECT_EQ(a.config, b.config);
+    ASSERT_EQ(a.wrapper.size(), 1U);
+    EXPECT_EQ(llvm::StringRef(a.wrapper[0]), "ccache");
+    EXPECT_TRUE(b.wrapper.empty());
+
+    EXPECT_EQ(llvm::StringRef(database.config(a.config).driver), "clang++");
+    EXPECT_NOT_CONTAINS(print_argv(render_entry(database, "a.cpp")), "ccache");
+};
+
+TEST_CASE(ResponseFileExpansion) {
+    TempDir tmp;
+    tmp.touch("flags.rsp", "-std=c++23 -DFROM_RSP=1\n");
+    CompilationDatabase database;
+    database.add_command(tmp.root.str(), "main.cpp", "clang++ @flags.rsp main.cpp"sv);
+
+    auto argv = print_argv(render_entry(database, "main.cpp"));
+    EXPECT_CONTAINS(argv, "-std=c++23");
+    EXPECT_CONTAINS(argv, "FROM_RSP=1");
+    EXPECT_NOT_CONTAINS(argv, "@");
 };
 
 TEST_CASE(PrependAfterBinary) {
@@ -128,61 +275,47 @@ TEST_CASE(PrependAfterBinary) {
     CompilationDatabase database;
     database.add_command("/fake", "main.cpp", args);
 
-    auto options = quiet_options();
+    CommandOptions options;
     llvm::SmallVector<std::string> prepend = {"-std=c++17", "-DB"};
     options.extra_prepend = prepend;
-    auto result = database.lookup("main.cpp", options).front().to_argv();
     // Prepends sit ahead of the command's own flags, so the command wins
-    // on collision. (The base -DA renders canonicalized, as two tokens.)
-    ASSERT_EQ(print_argv(result), "clang++ -std=c++17 -DB -D A main.cpp");
+    // on collision. (Defines render canonicalized, as two tokens.)
+    EXPECT_EQ(print_argv(render_entry(database, "main.cpp", options)),
+              "clang++ -std=c++17 -D B -D A main.cpp");
 };
 
 TEST_CASE(DefaultFallback) {
-    /// Lookup for a file not in the CDB should synthesize a default command.
     CompilationDatabase database;
-    auto options = quiet_options();
 
     /// C++ files get "clang++ -std=c++20 <file>".
-    auto cpp_results = database.lookup("unknown.cpp", options);
-    ASSERT_EQ(cpp_results.size(), 1U);
-    auto cpp_argv = cpp_results.front().to_argv();
+    auto cpp_argv = render_fallback(database, "unknown.cpp");
     ASSERT_EQ(cpp_argv.size(), 3U);
-    ASSERT_EQ(cpp_argv[0], "clang++"sv);
-    ASSERT_EQ(cpp_argv[1], "-std=c++20"sv);
-    ASSERT_EQ(cpp_argv[2], "unknown.cpp"sv);
+    EXPECT_EQ(cpp_argv[0], "clang++"sv);
+    EXPECT_EQ(cpp_argv[1], "-std=c++20"sv);
+    EXPECT_EQ(cpp_argv[2], "unknown.cpp"sv);
 
-    /// .hpp files also get C++ default.
-    auto hpp_results = database.lookup("header.hpp", options);
-    ASSERT_EQ(hpp_results.front().to_argv().size(), 3U);
-    ASSERT_EQ(hpp_results.front().to_argv()[0], "clang++"sv);
-
-    /// .cc files also get C++ default.
-    auto cc_results = database.lookup("file.cc", options);
-    ASSERT_EQ(cc_results.front().to_argv().size(), 3U);
-    ASSERT_EQ(cc_results.front().to_argv()[0], "clang++"sv);
+    /// .hpp and .cc also get the C++ default.
+    EXPECT_EQ(render_fallback(database, "header.hpp")[0], "clang++"sv);
+    EXPECT_EQ(render_fallback(database, "file.cc")[0], "clang++"sv);
 
     /// C files get "clang <file>".
-    auto c_results = database.lookup("unknown.c", options);
-    ASSERT_EQ(c_results.size(), 1U);
-    auto c_argv = c_results.front().to_argv();
+    auto c_argv = render_fallback(database, "unknown.c");
     ASSERT_EQ(c_argv.size(), 2U);
-    ASSERT_EQ(c_argv[0], "clang"sv);
-    ASSERT_EQ(c_argv[1], "unknown.c"sv);
+    EXPECT_EQ(c_argv[0], "clang"sv);
+    EXPECT_EQ(c_argv[1], "unknown.c"sv);
 
     /// Other extensions also get plain clang.
-    auto h_results = database.lookup("foo.h", options);
-    ASSERT_EQ(h_results.front().to_argv().size(), 2U);
-    ASSERT_EQ(h_results.front().to_argv()[0], "clang"sv);
+    EXPECT_EQ(render_fallback(database, "foo.h")[0], "clang"sv);
 
     /// CUDA files pin cuda mode and the device-side view NVCC-backed
-    /// commands default to.
+    /// commands default to (the render spells the unaliased form).
     for(llvm::StringRef cuda_file: {"kern.cu", "kernels.cuh"}) {
-        auto cu_argv = database.lookup(cuda_file, options).front().to_argv();
+        auto cu_argv = render_fallback(database, cuda_file);
         ASSERT_EQ(cu_argv.size(), 6U);
-        ASSERT_EQ(cu_argv[0], "clang++"sv);
-        ASSERT_EQ(cu_argv[2], "-x"sv);
-        ASSERT_EQ(cu_argv[3], "cuda"sv);
-        ASSERT_EQ(cu_argv[4], "--cuda-device-only"sv);
+        EXPECT_EQ(cu_argv[0], "clang++"sv);
+        EXPECT_EQ(cu_argv[2], "-x"sv);
+        EXPECT_EQ(cu_argv[3], "cuda"sv);
+        EXPECT_EQ(cu_argv[4], "--offload-device-only"sv);
     }
 };
 
@@ -190,22 +323,16 @@ TEST_CASE(FallbackAppliesAppend) {
     /// Config rule appends must reach the synthesized fallback command:
     /// users without a CDB rely on them to supply include paths.
     CompilationDatabase database;
-    auto options = quiet_options();
+    CommandOptions options;
     std::vector<std::string> append = {"-I/opt/include"};
     options.append = append;
 
-    auto results = database.lookup("unknown.cpp", options);
-    auto argv = results.front().to_argv();
-    ASSERT_EQ(argv.size(), 4U);
-    ASSERT_EQ(argv[0], "clang++"sv);
-    ASSERT_EQ(argv[1], "-std=c++20"sv);
-    ASSERT_EQ(argv[2], "-I/opt/include"sv);
+    auto argv = print_argv(render_fallback(database, "unknown.cpp", options));
+    EXPECT_CONTAINS(argv, "-std=c++20");
+    EXPECT_CONTAINS(argv, "/opt/include");
 
     /// The plain-clang branch applies them too.
-    auto c_argv = database.lookup("unknown.c", options).front().to_argv();
-    ASSERT_EQ(c_argv.size(), 3U);
-    ASSERT_EQ(c_argv[0], "clang"sv);
-    ASSERT_EQ(c_argv[1], "-I/opt/include"sv);
+    EXPECT_CONTAINS(print_argv(render_fallback(database, "unknown.c", options)), "/opt/include");
 };
 
 TEST_CASE(MultiCommand) {
@@ -215,15 +342,13 @@ TEST_CASE(MultiCommand) {
     database.add_command("fake", "main.cpp", "clang++ -std=c++20 main.cpp"sv);
     database.add_command("fake", "other.cpp", "clang++ -std=c++23 other.cpp"sv);
 
-    auto options = quiet_options();
+    auto candidates = database.candidate_entries("main.cpp");
+    ASSERT_EQ(candidates.size(), 2U);
 
-    auto results = database.lookup("main.cpp", options);
-    ASSERT_EQ(results.size(), 2U);
-
-    /// Both commands are present (order depends on insert position).
+    /// Both commands are present, in a stable content-based order.
     bool has_17 = false, has_20 = false;
-    for(auto& cmd: results) {
-        auto argv = print_argv(cmd.to_argv());
+    for(auto& entry: candidates) {
+        auto argv = print_argv(database.render_full(entry.config));
         if(llvm::StringRef(argv).contains("-std=c++17"))
             has_17 = true;
         if(llvm::StringRef(argv).contains("-std=c++20"))
@@ -232,95 +357,28 @@ TEST_CASE(MultiCommand) {
     EXPECT_TRUE(has_17);
     EXPECT_TRUE(has_20);
 
-    /// other.cpp has only one.
-    auto other = database.lookup("other.cpp", options);
-    ASSERT_EQ(other.size(), 1U);
+    ASSERT_EQ(database.candidate_entries("other.cpp").size(), 1U);
 };
 
-TEST_CASE(UniqueConfigsSameFile) {
-    CompilationDatabase database;
-    database.add_command("fake", "main.cpp", "clang++ -std=c++17 main.cpp"sv);
-    database.add_command("fake", "main.cpp", "clang++ -std=c++20 main.cpp"sv);
-    database.add_command("fake", "main.cpp", "clang++ -std=c++20 main.cpp"sv);
+TEST_CASE(CandidateOrderStable) {
+    /// The default selection is content-decided: loading the same entries
+    /// in a different order picks the same winner.
+    CompilationDatabase first;
+    first.add_command("fake", "main.cpp", "clang++ -std=c++17 main.cpp"sv);
+    first.add_command("fake", "main.cpp", "clang++ -std=c++20 main.cpp"sv);
 
-    auto groups = database.unique_configs(quiet_options());
-    ASSERT_EQ(groups.size(), 2U);
+    CompilationDatabase second;
+    second.add_command("fake", "main.cpp", "clang++ -std=c++20 main.cpp"sv);
+    second.add_command("fake", "main.cpp", "clang++ -std=c++17 main.cpp"sv);
 
-    bool has_17 = false;
-    bool has_20 = false;
-    for(auto& group: groups) {
-        ASSERT_EQ(group.file_ids.size(), 1U);
-        ASSERT_EQ(llvm::StringRef(group.command.source_file), "main.cpp"sv);
-
-        auto argv = print_argv(group.command.to_argv());
-        if(llvm::StringRef(argv).contains("-std=c++17")) {
-            has_17 = true;
-        }
-        if(llvm::StringRef(argv).contains("-std=c++20")) {
-            has_20 = true;
-        }
-    }
-
-    EXPECT_TRUE(has_17);
-    EXPECT_TRUE(has_20);
-};
-
-TEST_CASE(UniqueConfigsMultiFile) {
-    CompilationDatabase database;
-    database.add_command("fake", "a.cpp", "clang++ -std=c++20 -Wall a.cpp"sv);
-    database.add_command("fake", "b.cpp", "clang++ -std=c++20 -Wall b.cpp"sv);
-    database.add_command("fake", "c.cpp", "clang++ -std=c++17 c.cpp"sv);
-    database.add_command("fake", "d.cpp", "clang++ -std=c++20 -Wall -DA d.cpp"sv);
-
-    auto groups = database.unique_configs(quiet_options());
-
-    // a.cpp and b.cpp share canonical (-std=c++20 -Wall, no user-content diff).
-    // c.cpp has different canonical (-std=c++17).
-    // d.cpp has same canonical as a/b but different patch (-DA).
-    ASSERT_EQ(groups.size(), 3U);
-
-    for(auto& group: groups) {
-        auto argv = print_argv(group.command.to_argv());
-        if(llvm::StringRef(argv).contains("-std=c++17")) {
-            ASSERT_EQ(group.file_ids.size(), 1U);
-        } else if(llvm::StringRef(argv).contains("-D")) {
-            ASSERT_EQ(group.file_ids.size(), 1U);
-        } else {
-            ASSERT_EQ(group.file_ids.size(), 2U);
-        }
-    }
-};
-
-TEST_CASE(GroupCommandRebuild) {
-    CompilationDatabase database;
-    database.add_command("fake", "main.cpp", "clang++ -std=c++17 main.cpp"sv);
-    database.add_command("fake", "main.cpp", "clang++ -std=c++20 main.cpp"sv);
-
-    auto groups = database.unique_configs(quiet_options());
-    ASSERT_EQ(groups.size(), 2U);
-
-    llvm::SmallVector<std::string> append = {"-fms-extensions"};
-    auto options = quiet_options();
-    options.append = append;
-
-    // Both groups share the same source file; group_command must rebuild from
-    // each group's own info, not from a path lookup that always returns the
-    // first entry for the file.
-    bool has_17 = false, has_20 = false;
-    for(auto& group: groups) {
-        auto argv = print_argv(database.group_command(group, options).to_argv());
-        EXPECT_CONTAINS(argv, "-fms-extensions");
-        if(llvm::StringRef(argv).contains("-std=c++17"))
-            has_17 = true;
-        if(llvm::StringRef(argv).contains("-std=c++20"))
-            has_20 = true;
-    }
-    EXPECT_TRUE(has_17);
-    EXPECT_TRUE(has_20);
+    EXPECT_EQ(first.selected_hash(first.paths().intern("main.cpp")),
+              second.selected_hash(second.paths().intern("main.cpp")));
+    EXPECT_EQ(print_argv(render_entry(first, "main.cpp")),
+              print_argv(render_entry(second, "main.cpp")));
 };
 
 TEST_CASE(CodegenFilter) {
-    /// Codegen-only options should be stripped from the canonical command.
+    /// Codegen-only options never reach the compile render.
     CompilationDatabase database;
     database.add_command(
         "fake",
@@ -328,13 +386,10 @@ TEST_CASE(CodegenFilter) {
         "clang++ -std=c++20 -fPIC -fno-omit-frame-pointer -fstack-protector-strong "
         "-fdata-sections -ffunction-sections -flto -fcolor-diagnostics -g main.cpp"sv);
 
-    auto result = database.lookup("main.cpp", quiet_options()).front().to_argv();
-    auto argv = print_argv(result);
+    auto argv = print_argv(render_entry(database, "main.cpp"));
 
-    /// -std=c++20 must survive (semantic).
     EXPECT_CONTAINS(argv, "-std=c++20");
 
-    /// All codegen flags must be stripped.
     EXPECT_NOT_CONTAINS(argv, "-fPIC");
     EXPECT_NOT_CONTAINS(argv, "-fno-omit-frame-pointer");
     EXPECT_NOT_CONTAINS(argv, "-fstack-protector");
@@ -343,17 +398,21 @@ TEST_CASE(CodegenFilter) {
     EXPECT_NOT_CONTAINS(argv, "-flto");
     EXPECT_NOT_CONTAINS(argv, "-fcolor-diagnostics");
     EXPECT_NOT_CONTAINS(argv, "-g");
+
+    /// They survive in the full view.
+    auto full =
+        print_argv(database.render_full(database.candidate_entries("main.cpp").front().config));
+    EXPECT_CONTAINS(full, "-fPIC");
+    EXPECT_CONTAINS(full, "-flto");
 };
 
 TEST_CASE(DependencyScanFilter) {
-    /// Dependency scan options should be stripped.
     CompilationDatabase database;
     database.add_command("fake",
                          "main.cpp",
                          "clang++ -std=c++20 -MD -MF main.d -MT main.o main.cpp"sv);
 
-    auto result = database.lookup("main.cpp", quiet_options()).front().to_argv();
-    auto argv = print_argv(result);
+    auto argv = print_argv(render_entry(database, "main.cpp"));
 
     EXPECT_CONTAINS(argv, "-std=c++20");
     EXPECT_NOT_CONTAINS(argv, "-MD");
@@ -363,53 +422,45 @@ TEST_CASE(DependencyScanFilter) {
 };
 
 TEST_CASE(ModuleFilter) {
-    /// Module-related options should be stripped.
-    EXPECT_STRIP("clang++ -std=c++20 -fmodule-file=mod.pcm main.cpp",
+    /// A named module mapping is discarded (clice builds its own PCMs);
+    /// the bare header-unit form stays part of the frontend semantics.
+    EXPECT_STRIP("clang++ -std=c++20 -fmodule-file=m=mod.pcm main.cpp",
                  "clang++ -std=c++20 main.cpp");
+    EXPECT_STRIP("clang++ -std=c++20 -fmodule-file=mod.pcm main.cpp",
+                 "clang++ -std=c++20 -fmodule-file=mod.pcm main.cpp");
     EXPECT_STRIP("clang++ -std=c++20 -fprebuilt-module-path=/tmp main.cpp",
                  "clang++ -std=c++20 main.cpp");
 };
 
 TEST_CASE(UserContentClassification) {
-    /// -D, -U, -include go to per-file patch; -std=, -W go to canonical.
-    /// Files with different -D but same -std/-W share canonical.
     CompilationDatabase database;
     database.add_command("fake", "a.cpp", "clang++ -std=c++20 -Wall -DA=1 -DFOO a.cpp"sv);
     database.add_command("fake", "b.cpp", "clang++ -std=c++20 -Wall -DB=2 b.cpp"sv);
 
-    auto options = quiet_options();
+    auto a_argv = print_argv(render_entry(database, "a.cpp"));
+    auto b_argv = print_argv(render_entry(database, "b.cpp"));
 
-    auto a_argv = print_argv(database.lookup("a.cpp", options).front().to_argv());
-    auto b_argv = print_argv(database.lookup("b.cpp", options).front().to_argv());
-
-    /// Both must contain canonical flags.
     EXPECT_CONTAINS(a_argv, "-std=c++20");
     EXPECT_CONTAINS(a_argv, "-Wall");
     EXPECT_CONTAINS(b_argv, "-std=c++20");
     EXPECT_CONTAINS(b_argv, "-Wall");
 
-    /// a.cpp has its own defines.
-    EXPECT_CONTAINS(a_argv, "-D");
     EXPECT_CONTAINS(a_argv, "A=1");
     EXPECT_CONTAINS(a_argv, "FOO");
-
-    /// b.cpp has its own defines.
-    EXPECT_CONTAINS(b_argv, "-D");
     EXPECT_CONTAINS(b_argv, "B=2");
 
-    /// Cross check: a.cpp should not have B=2, b.cpp should not have A=1.
     EXPECT_NOT_CONTAINS(a_argv, "B=2");
     EXPECT_NOT_CONTAINS(b_argv, "A=1");
 };
 
 TEST_CASE(IncludePathAbsolutize) {
-    /// Relative include paths should be absolutized against the directory.
+    /// Relative include paths absolutize against the entry directory.
     CompilationDatabase database;
     database.add_command("/project/build",
                          "main.cpp",
                          "clang++ -Iinclude -isystem sys/inc -iquote ../src main.cpp"sv);
 
-    auto result = database.lookup("main.cpp", quiet_options()).front().to_argv();
+    auto result = render_entry(database, "main.cpp");
 
     /// Check each argument individually with separator normalization
     /// (print_argv escapes backslashes, breaking convert_to_slash on Windows).
@@ -421,56 +472,31 @@ TEST_CASE(IncludePathAbsolutize) {
         return false;
     };
 
-    /// Relative paths must be resolved against /project/build.
     EXPECT_TRUE(has_path(result, "/project/build/include"));
     EXPECT_TRUE(has_path(result, "/project/build/sys/inc"));
-    /// ../src relative to /project/build → /project/src (or /project/build/../src)
     EXPECT_TRUE(has_path(result, "/project/"));
 
-    /// Absolute paths should be kept as-is.
+    /// Absolute paths are kept as-is.
     CompilationDatabase database2;
     database2.add_command("/project/build", "main.cpp", "clang++ -I/usr/include main.cpp"sv);
-
-    auto result2 = database2.lookup("main.cpp", quiet_options()).front().to_argv();
-    EXPECT_TRUE(has_path(result2, "/usr/include"));
+    EXPECT_TRUE(has_path(render_entry(database2, "main.cpp"), "/usr/include"));
 };
 
 TEST_CASE(SemanticOptionsPreserved) {
-    /// Flags that affect semantics must survive.
     EXPECT_STRIP("clang++ -std=c++20 -fno-exceptions -fno-rtti -pedantic main.cpp",
                  "clang++ -std=c++20 -fno-exceptions -fno-rtti -pedantic main.cpp");
     EXPECT_STRIP("clang++ -std=c++20 -Wall -Werror main.cpp",
                  "clang++ -std=c++20 -Wall -Werror main.cpp");
 };
 
-TEST_CASE(ResolvePath) {
+TEST_CASE(ForcedLanguage) {
     CompilationDatabase database;
-    database.add_command("fake", "test/main.cpp", "clang++ test/main.cpp"sv);
+    database.add_command("fake", "a.h", "clang++ -x c++ a.h"sv);
+    database.add_command("fake", "b.cpp", "clang++ b.cpp"sv);
 
-    /// After add_command, lookup should work and resolve_path via the file in arguments.
-    auto result = database.lookup("test/main.cpp", quiet_options()).front().to_argv();
-    /// The last argument is the file, resolved from PathPool.
-    ASSERT_EQ(result.back(), "test/main.cpp"sv);
-};
-
-TEST_CASE(MoveSemantics) {
-    CompilationDatabase db1;
-    db1.add_command("fake", "main.cpp", "clang++ -std=c++23 main.cpp"sv);
-
-    /// Move construct.
-    CompilationDatabase db2 = std::move(db1);
-
-    auto options = quiet_options();
-    auto result = db2.lookup("main.cpp", options).front().to_argv();
-    ASSERT_EQ(result.size(), 3U);
-    ASSERT_EQ(result[1], "-std=c++23"sv);
-
-    /// Move assign.
-    CompilationDatabase db3;
-    db3 = std::move(db2);
-    result = db3.lookup("main.cpp", options).front().to_argv();
-    ASSERT_EQ(result.size(), 3U);
-    ASSERT_EQ(result[1], "-std=c++23"sv);
+    EXPECT_EQ(database.forced_language(database.candidate_entries("a.h").front().config), "c++");
+    EXPECT_TRUE(
+        database.forced_language(database.candidate_entries("b.cpp").front().config).empty());
 };
 
 /// Write JSON to a temp file, load into a CDB, remove the file.
@@ -493,8 +519,6 @@ std::size_t load_json(CompilationDatabase& database, llvm::StringRef json) {
 
 TEST_CASE(LoadMixedFormats) {
     /// "arguments" array and "command" string can coexist in the same CDB.
-    /// Use relative file paths so that the test works on both Linux and Windows
-    /// (paths like "/src/a.cpp" are not absolute on Windows — no drive letter).
     CompilationDatabase database;
     auto count = load_json(database, R"([
         {"directory": "/build", "file": "a.cpp",
@@ -504,16 +528,10 @@ TEST_CASE(LoadMixedFormats) {
     ])");
 
     ASSERT_EQ(count, 2U);
-
-    auto options = quiet_options();
-
-    auto a = database.lookup(path::join("/build", "a.cpp"), options);
-    ASSERT_EQ(a.size(), 1U);
-    EXPECT_CONTAINS(print_argv(a.front().to_argv()), "-std=c++20");
-
-    auto b = database.lookup(path::join("/build", "b.cpp"), options);
-    ASSERT_EQ(b.size(), 1U);
-    EXPECT_CONTAINS(print_argv(b.front().to_argv()), "-std=c++23");
+    EXPECT_CONTAINS(print_argv(render_entry(database, path::join("/build", "a.cpp"))),
+                    "-std=c++20");
+    EXPECT_CONTAINS(print_argv(render_entry(database, path::join("/build", "b.cpp"))),
+                    "-std=c++23");
 };
 
 TEST_CASE(LoadErrorRecovery) {
@@ -532,18 +550,11 @@ TEST_CASE(LoadErrorRecovery) {
          "command": "clang++ -Wall also_good.cpp"}
     ])");
 
-    /// Only the two valid entries should survive.
     ASSERT_EQ(count, 2U);
-
-    auto options = quiet_options();
-
-    auto good = database.lookup(path::join("/build", "good.cpp"), options);
-    ASSERT_EQ(good.size(), 1U);
-    EXPECT_CONTAINS(print_argv(good.front().to_argv()), "-std=c++20");
-
-    auto also = database.lookup(path::join("/build", "also_good.cpp"), options);
-    ASSERT_EQ(also.size(), 1U);
-    EXPECT_CONTAINS(print_argv(also.front().to_argv()), "-Wall");
+    EXPECT_CONTAINS(print_argv(render_entry(database, path::join("/build", "good.cpp"))),
+                    "-std=c++20");
+    EXPECT_CONTAINS(print_argv(render_entry(database, path::join("/build", "also_good.cpp"))),
+                    "-Wall");
 };
 
 TEST_CASE(LoadCudaHeader) {
@@ -571,12 +582,9 @@ TEST_CASE(LoadEmptyCommand) {
          "command": "clang++ -std=c++20 ok.cpp"}
     ])");
 
-    /// Only the valid entry survives.
     ASSERT_EQ(count, 1U);
-
-    auto ok = database.lookup(path::join("/build", "ok.cpp"), quiet_options());
-    ASSERT_EQ(ok.size(), 1U);
-    EXPECT_CONTAINS(print_argv(ok.front().to_argv()), "-std=c++20");
+    EXPECT_CONTAINS(print_argv(render_entry(database, path::join("/build", "ok.cpp"))),
+                    "-std=c++20");
 };
 
 TEST_CASE(LoadReload) {
@@ -590,30 +598,16 @@ TEST_CASE(LoadReload) {
         {"directory": "/build", "file": "a.cpp",
          "arguments": ["clang++", "-std=c++17", "a.cpp"]}
     ])");
+    EXPECT_CONTAINS(print_argv(render_entry(database, file_a)), "-std=c++17");
 
-    auto options = quiet_options();
-
-    auto a = database.lookup(file_a, options);
-    ASSERT_EQ(a.size(), 1U);
-    EXPECT_CONTAINS(print_argv(a.front().to_argv()), "-std=c++17");
-
-    /// Reload with different content.
     auto count = load_json(database, R"([
         {"directory": "/build", "file": "b.cpp",
          "arguments": ["clang++", "-std=c++23", "b.cpp"]}
     ])");
-
     ASSERT_EQ(count, 1U);
 
-    /// Old entry gone (falls back to default).
-    auto a2 = database.lookup(file_a, options);
-    ASSERT_EQ(a2.size(), 1U);
-    EXPECT_NOT_CONTAINS(print_argv(a2.front().to_argv()), "-std=c++17");
-
-    /// New entry present.
-    auto b = database.lookup(file_b, options);
-    ASSERT_EQ(b.size(), 1U);
-    EXPECT_CONTAINS(print_argv(b.front().to_argv()), "-std=c++23");
+    EXPECT_TRUE(database.candidate_entries(file_a).empty());
+    EXPECT_CONTAINS(print_argv(render_entry(database, file_b)), "-std=c++23");
 };
 
 TEST_CASE(LoadCommandQuoting) {
@@ -625,18 +619,13 @@ TEST_CASE(LoadCommandQuoting) {
     ])");
 
     ASSERT_EQ(count, 1U);
-
-    auto result = database.lookup(path::join("/build", "main.cpp"), quiet_options());
-    ASSERT_EQ(result.size(), 1U);
-    auto argv = print_argv(result.front().to_argv());
-
-    /// The define and include path should be present after shell tokenization.
+    auto argv = print_argv(render_entry(database, path::join("/build", "main.cpp")));
     EXPECT_CONTAINS(argv, "hello world");
     EXPECT_CONTAINS(argv, "/path with spaces");
 };
 
 TEST_CASE(LoadRelativePath) {
-    /// load() should resolve relative file paths against directory.
+    /// load() resolves relative file paths against the directory.
     CompilationDatabase database;
     auto count = load_json(database, R"([
         {"directory": "/project/build", "file": "src/main.cpp",
@@ -647,54 +636,66 @@ TEST_CASE(LoadRelativePath) {
 
     ASSERT_EQ(count, 2U);
 
-    auto options = quiet_options();
+    EXPECT_CONTAINS(
+        print_argv(render_entry(database, path::join("/project/build", "src/main.cpp"))),
+        "-std=c++20");
+    EXPECT_CONTAINS(print_argv(render_entry(database, path::join("/other/build", "src/main.cpp"))),
+                    "-std=c++17");
 
-    /// Lookup by the resolved absolute path (use path::join for correct separator).
-    auto results = database.lookup(path::join("/project/build", "src/main.cpp"), options);
-    ASSERT_EQ(results.size(), 1U);
-    EXPECT_CONTAINS(print_argv(results.front().to_argv()), "-std=c++20");
-
-    auto results2 = database.lookup(path::join("/other/build", "src/main.cpp"), options);
-    ASSERT_EQ(results2.size(), 1U);
-    EXPECT_CONTAINS(print_argv(results2.front().to_argv()), "-std=c++17");
-
-    /// Relative path lookup should not match (different path_id).
-    auto results3 = database.lookup("src/main.cpp", options);
-    ASSERT_EQ(results3.size(), 1U);
-    /// Falls back to default command since no match.
-    EXPECT_CONTAINS(print_argv(results3.front().to_argv()), "clang");
+    /// A relative spelling is a different path — no entry.
+    EXPECT_TRUE(database.candidate_entries("src/main.cpp").empty());
 };
 
-TEST_CASE(Module) {
-    // TODO: revisit module command handling.
-}
+TEST_CASE(LoadDotSegments) {
+    /// Entry paths intern without . and .. segments, so lookups against
+    /// clang-reported (realpath'd) spellings match.
+    CompilationDatabase database;
+    auto count = load_json(database, R"([
+        {"directory": "/project/build", "file": "../src/./main.cpp",
+         "arguments": ["clang++", "-std=c++20", "../src/./main.cpp"]}
+    ])");
+
+    ASSERT_EQ(count, 1U);
+    EXPECT_TRUE(database.has_entry(path::join("/project", "src", "main.cpp")));
+};
 
 TEST_CASE(ResourceDir) {
     CompilationDatabase database;
     database.add_command("/fake", "main.cpp", "clang++ -std=c++23 test.cpp"sv);
 
-    // With inject_resource_dir disabled, no resource dir in result.
-    auto args_no_rd = database.lookup("main.cpp", {.inject_resource_dir = false}).front().to_argv();
-    ASSERT_EQ(args_no_rd.size(), 3U);
-    ASSERT_EQ(args_no_rd[0], "clang++"sv);
-    ASSERT_EQ(args_no_rd[1], "-std=c++23"sv);
-    ASSERT_EQ(args_no_rd[2], "main.cpp"sv);
+    auto& entry = database.candidate_entries("main.cpp").front();
+    CommandRef ref{entry.file,
+                   entry.config,
+                   database.input_kind(entry.config, "main.cpp"),
+                   CommandSource::CDBExact};
+    auto argv = database.render_driver(ref);
 
-    // With inject_resource_dir enabled (default), resource dir is present.
-    auto args_tc = database.lookup("main.cpp").front().to_argv();
     bool has_resource_dir = false;
-    for(size_t i = 0; i + 1 < args_tc.size(); ++i) {
-        if(args_tc[i] == "-resource-dir"sv) {
-            EXPECT_EQ(llvm::StringRef(args_tc[i + 1]), resource_dir());
+    for(std::size_t i = 0; i + 1 < argv.size(); i += 1) {
+        if(argv[i] == "-resource-dir"sv) {
+            EXPECT_EQ(llvm::StringRef(argv[i + 1]), resource_dir());
             has_resource_dir = true;
             break;
         }
     }
-    if(resource_dir().empty()) {
-        EXPECT_FALSE(has_resource_dir);
-    } else {
-        EXPECT_TRUE(has_resource_dir);
+    EXPECT_EQ(has_resource_dir, !resource_dir().empty());
+
+    /// A command carrying its own resource dir is not double-injected.
+    CompilationDatabase database2;
+    database2.add_command("/fake", "main.cpp", "clang++ -resource-dir /custom main.cpp"sv);
+    auto& entry2 = database2.candidate_entries("main.cpp").front();
+    CommandRef ref2{entry2.file,
+                    entry2.config,
+                    database2.input_kind(entry2.config, "main.cpp"),
+                    CommandSource::CDBExact};
+    auto argv2 = database2.render_driver(ref2);
+    int count = 0;
+    for(auto* arg: argv2) {
+        if(arg == "-resource-dir"sv) {
+            count += 1;
+        }
     }
+    EXPECT_EQ(count, 1);
 };
 
 };  // TEST_SUITE(Command)

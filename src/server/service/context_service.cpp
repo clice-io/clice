@@ -38,8 +38,8 @@ bool indicates_missing_context(llvm::ArrayRef<protocol::Diagnostic> diagnostics)
 }
 
 /// Human-readable summary of the distinguishing flags of a command.
-static std::string flags_label(const CompileCommand& cmd) {
-    auto argv = cmd.to_argv();
+static std::string flags_label(Workspace& ws, ConfigID config) {
+    auto argv = ws.cdb.render_full(config);
     std::string desc;
     for(std::size_t j = 0; j < argv.size(); ++j) {
         llvm::StringRef a(argv[j]);
@@ -89,18 +89,20 @@ ext::QueryContextResult ContextService::query_contexts(llvm::StringRef path,
         // different preprocessor state.
         std::vector<std::string> host_append, host_remove;
         ws.config.match_rules(host_path, host_append, host_remove);
-        auto cmds = ws.cdb.lookup(host_path, {.remove = host_remove, .append = host_append});
+        auto candidates = ws.cdb.candidate_entries(host_path);
         auto occurrences = ws.count_occurrences(host_id, path_id);
 
-        for(auto& cmd: cmds) {
-            auto hash = canonical_command_hash(cmd.to_string_argv(), cmd.resolved.directory);
+        for(auto& entry: candidates) {
+            auto applied =
+                ws.cdb.apply_rules(entry.config, {.remove = host_remove, .append = host_append});
+            auto hash = ws.cdb.entry_hash_hex(applied);
             if(dedup_hosts && !seen_configs.insert(hash).second)
                 continue;
 
             ext::ContextItem item;
             item.label = llvm::sys::path::filename(host_path).str();
-            if(cmds.size() > 1) {
-                auto desc = flags_label(cmd);
+            if(candidates.size() > 1) {
+                auto desc = flags_label(ws, applied);
                 if(!desc.empty()) {
                     item.label = std::format("{} [{}]", item.label, desc);
                 }
@@ -132,18 +134,19 @@ ext::QueryContextResult ContextService::query_contexts(llvm::StringRef path,
     if(ws.cdb.has_entry(path)) {
         std::vector<std::string> rule_append, rule_remove;
         ws.config.match_rules(path, rule_append, rule_remove);
-        auto entries = ws.cdb.lookup(path, {.remove = rule_remove, .append = rule_append});
+        auto entries = ws.cdb.candidate_entries(path);
         auto uri_opt = lsp::URI::from_file_path(std::string(path));
         for(std::size_t i = 0; uri_opt && i < entries.size(); ++i) {
-            auto& cmd = entries[i];
-            auto hash = canonical_command_hash(cmd.to_string_argv(), cmd.resolved.directory);
+            auto applied = ws.cdb.apply_rules(entries[i].config,
+                                              {.remove = rule_remove, .append = rule_append});
+            auto hash = ws.cdb.entry_hash_hex(applied);
             if(!seen_configs.insert(hash).second)
                 continue;
 
-            auto desc = flags_label(cmd);
+            auto desc = flags_label(ws, applied);
             ext::ContextItem item;
             item.label = desc.empty() ? std::format("config #{}", i) : desc;
-            item.description = cmd.resolved.directory.str();
+            item.description = ws.cdb.config(applied).directory;
             item.uri = uri_opt->str();
             item.command_hash = std::move(hash);
             all_items.push_back(std::move(item));
@@ -191,14 +194,15 @@ ext::CurrentContextResult ContextService::current_context(llvm::StringRef path,
         if(ws.cdb.has_entry(path)) {
             std::vector<std::string> rule_append, rule_remove;
             ws.config.match_rules(path, rule_append, rule_remove);
-            for(auto& cmd: ws.cdb.lookup(path, {.remove = rule_remove, .append = rule_append})) {
-                if(canonical_command_hash(cmd.to_string_argv(), cmd.resolved.directory) ==
-                   choice->command_hash) {
-                    auto desc = flags_label(cmd);
+            for(auto& entry: ws.cdb.candidate_entries(path)) {
+                auto applied = ws.cdb.apply_rules(entry.config,
+                                                  {.remove = rule_remove, .append = rule_append});
+                if(ws.cdb.entry_hash_hex(applied) == choice->command_hash) {
+                    auto desc = flags_label(ws, applied);
                     if(!desc.empty()) {
                         item.label = std::move(desc);
                     }
-                    item.description = cmd.resolved.directory.str();
+                    item.description = ws.cdb.config(applied).directory;
                     break;
                 }
             }
@@ -231,13 +235,12 @@ ext::SwitchContextResult ContextService::switch_context(llvm::StringRef path,
 
     // Validate that `hash` names a real CDB entry of `entry_path`.
     auto has_command = [&](llvm::StringRef entry_path, llvm::StringRef hash) {
-        if(!ws.cdb.has_entry(entry_path)) {
-            return false;
-        }
         std::vector<std::string> rule_append, rule_remove;
         ws.config.match_rules(entry_path, rule_append, rule_remove);
-        for(auto& cmd: ws.cdb.lookup(entry_path, {.remove = rule_remove, .append = rule_append})) {
-            if(canonical_command_hash(cmd.to_string_argv(), cmd.resolved.directory) == hash) {
+        for(auto& entry: ws.cdb.candidate_entries(entry_path)) {
+            auto applied =
+                ws.cdb.apply_rules(entry.config, {.remove = rule_remove, .append = rule_append});
+            if(ws.cdb.entry_hash_hex(applied) == hash) {
                 return true;
             }
         }

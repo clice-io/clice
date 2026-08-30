@@ -3,86 +3,101 @@
 #include <chrono>
 #include <cstdint>
 #include <expected>
-#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "support/object_pool.h"
+#include "command/command.h"
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Support/Allocator.h"
 
 namespace clice {
 
-struct CompileCommand;
-
-enum class CompilerFamily : std::uint8_t {
-    Unknown,
-    GCC,      // Covers gcc, g++, cc, c++, and versioned/arch variants
-    Clang,    // Covers clang, clang++, and versioned variants (excluding clang-cl)
-    MSVC,     // Covers cl
-    ClangCL,  // Covers clang-cl explicitly
-    NVCC,     // Covers nvcc
-    Intel,    // Covers icc, icpc, icx, dpcpp
-    Zig,      // Covers zig cc / zig c++ (assumed GCC/Clang compatible for query)
-};
-
-/// Patches raw CDB commands into clang-acceptable cc1 arguments by querying
-/// the compiler driver. Results are cached by (driver, file extension,
-/// non-user-content flags); user-content flags (-I, -D, ...) don't affect
-/// the query and are re-appended from the original command after resolution.
+/// Resolves driver-level configs into full cc1-level configurations by
+/// probing the compiler driver, in two layers:
+///
+///   - Probe layer: keyed by (driver, input language, non-user-content
+///     args, and — only for cwd-sensitive configs — the directory). One
+///     driver spawn per unique key; results and failures (with a retry
+///     cooldown) are cached. User-content flags (-I, -D, ...) never affect
+///     the probe and are re-attached at synthesis.
+///
+///   - Synthesis layer: keyed by (config, input). Probe output parsed once
+///     into structured args, the config's own user-content re-attached,
+///     external resource dirs replaced with ours (except a matched
+///     LLVM-MinGW installation, which keeps its own tree).
 class Toolchain {
 public:
+    using ResolvedID = std::uint32_t;
+
+    /// A synthesized full compile configuration, self-contained: rendering
+    /// it needs no trip back to the source config.
+    struct Resolved {
+        /// The compiler binary the probe resolved.
+        const char* driver = nullptr;
+
+        /// Frontend-level args (cc1): render as `driver -cc1 <args>`.
+        /// False for driver-level results (cl mode).
+        bool is_cc1 = false;
+
+        llvm::ArrayRef<Arg> args;
+    };
+
     /// `failed_retry` bounds the negative cache: a failed key is retried
     /// once the cooldown passes (cf. CrashBudget), so a transient driver
     /// failure — an upgrade replacing the binary mid-stat, a full tmpfs —
     /// cannot poison the key for the rest of the session.
-    explicit Toolchain(std::chrono::steady_clock::duration failed_retry = std::chrono::seconds(30));
+    explicit Toolchain(CompilationDatabase& db,
+                       std::chrono::steady_clock::duration failed_retry = std::chrono::seconds(30));
     ~Toolchain();
 
-    Toolchain(Toolchain&&) = default;
-    Toolchain& operator=(Toolchain&&) = default;
+    /// Resolve a config for one input language. Blocks on a driver spawn on
+    /// probe miss; hits are lookups.
+    std::expected<ResolvedID, std::string> resolve(ConfigID id, InputKind input);
 
-    /// Batch pre-warm: deduplicate commands and query unique toolchains in
-    /// parallel internally. Blocks until all queries complete.
-    void warm(llvm::ArrayRef<CompileCommand> commands);
+    const Resolved& resolved(ResolvedID id) const {
+        return resolved_configs[id];
+    }
 
-    /// Resolve a driver-level command to cc1 level by querying the toolchain.
-    /// Modifies the command in-place.
-    [[nodiscard]] std::expected<void, std::string> resolve(CompileCommand& cmd);
+    /// Pre-probe in parallel, deduplicated by probe key. Blocks until all
+    /// unique probes complete.
+    void warm(llvm::ArrayRef<std::pair<ConfigID, InputKind>> pairs);
 
-    /// Like resolve(), but logs a warning on failure instead of returning it.
-    void resolve_or_warn(CompileCommand& cmd);
-
-    /// Single synchronous toolchain query. Returns cc1 arguments as owned strings.
-    /// `file` is used for temp file extension detection (optional if -x is set).
-    /// Unlike resolve(), this is uncached and forwards `arguments` as-is; prefer
-    /// resolve() for CDB commands so results are cached and per-file user-content
-    /// flags are re-appended.
-    static std::expected<std::vector<std::string>, std::string>
-        query(llvm::ArrayRef<const char*> arguments, llvm::StringRef file = {});
-
-    bool has_cache() const;
+    bool has_cache() const {
+        return !probes.empty();
+    }
 
     static CompilerFamily driver_family(llvm::StringRef driver);
 
+    /// Single synchronous toolchain query on a raw driver argv (no input
+    /// file among the arguments; a temp input with `file`'s extension is
+    /// appended). Uncached — prefer resolve() for CDB configs.
+    static std::expected<std::vector<std::string>, std::string>
+        query(llvm::ArrayRef<const char*> arguments, llvm::StringRef file = {});
+
 #ifdef CLICE_ENABLE_TEST
 
-    /// Compute the cache key for the given file and driver-level arguments.
-    std::string cache_key(llvm::StringRef file, llvm::ArrayRef<const char*> arguments) {
-        return extract_flags(file, arguments).key;
+    std::string probe_key_for(ConfigID id, InputKind input) {
+        return probe_key(id, input).key;
     }
 
-    /// Number of cached toolchain query results.
-    std::size_t cache_size() const {
-        return cache.size();
+    void set_failed_retry(std::chrono::steady_clock::duration retry) {
+        failed_retry = retry;
     }
 
-    /// Number of negatively cached (failed) toolchain queries.
-    std::size_t failed_size() const {
+    bool probe_cwd_sensitive_for(ConfigID id) {
+        return probe_key(id, {}).cwd_sensitive;
+    }
+
+    std::size_t probe_count() const {
+        return probes.size();
+    }
+
+    std::size_t failed_count() const {
         return failed.size();
     }
 
@@ -93,28 +108,43 @@ public:
 #endif
 
 private:
-    struct ToolchainExtract {
+    struct ProbeKey {
         std::string key;
-        std::vector<const char*> query_args;
-
-        /// The command targets windows-gnu (LLVM-MinGW): the injected
-        /// -resource-dir was dropped from the query, and resolve() keeps
-        /// an existing external resource tree instead of replacing it.
-        bool preserve_external_resource = false;
+        bool cwd_sensitive = false;
     };
 
-    ToolchainExtract extract_flags(llvm::StringRef file, llvm::ArrayRef<const char*> arguments);
+    ProbeKey probe_key(ConfigID id, InputKind input);
 
-    std::unique_ptr<llvm::BumpPtrAllocator> allocator;
-    StringSet strings;
-    llvm::StringMap<std::vector<const char*>> cache;
+    /// The probe argv: driver (+ subcommand) + non-user-content args, with
+    /// the input slot position recorded for the temp-file insertion.
+    /// Relative path-suspect values of cwd-sensitive configs absolutize
+    /// against the directory (the in-process driver cannot change cwd).
+    struct ProbeArgv {
+        std::vector<const char*> argv;
+        std::size_t slot = 0;
+    };
+
+    ProbeArgv probe_argv(const CompileConfig& config, bool cwd_sensitive);
+
+    /// Parse raw probe output into a Resolved entry for `id`, re-attaching
+    /// the config's user-content args and replacing external resource dirs.
+    ResolvedID synthesize(ConfigID id, llvm::ArrayRef<const char*> tokens);
+
+    CompilationDatabase& db;
+
+    /// Probe layer: key → raw probe output tokens (interned).
+    llvm::StringMap<llvm::SmallVector<const char*, 64>> probes;
 
     /// Negative cache: keys whose query failed, mapped to the error message
     /// and when it was recorded. Avoids re-spawning the same failing driver
     /// probe for every file that shares the key (see clangd's
-    /// SystemIncludeExtractor for precedent); expires after `failed_retry`
-    /// so a transient failure is not cached for the session's lifetime.
+    /// SystemIncludeExtractor for precedent); expires after `failed_retry`.
     llvm::StringMap<std::pair<std::string, std::chrono::steady_clock::time_point>> failed;
+
+    /// Synthesis layer: (config, input language) → resolved entry.
+    llvm::DenseMap<std::pair<std::uint32_t, const char*>, ResolvedID> synth_cache;
+
+    std::vector<Resolved> resolved_configs;
 
     std::chrono::steady_clock::duration failed_retry;
 };

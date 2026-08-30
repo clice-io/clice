@@ -36,7 +36,6 @@
 #include <vector>
 
 #include "command/command.h"
-#include "command/toolchain.h"
 #include "compile/compilation.h"
 #include "index/tu_index.h"
 #include "support/filesystem.h"
@@ -1069,7 +1068,6 @@ int main(int argc, const char** argv) {
     clice::logging::stderr_logger("index_stats_benchmark", clice::logging::options);
 
     CompilationDatabase cdb;
-    Toolchain toolchain;
     auto count = cdb.load(*opts.cdb_path);
     if(!count) {
         std::println(stderr, "Error: failed to load {}", *opts.cdb_path);
@@ -1081,8 +1079,8 @@ int main(int argc, const char** argv) {
     // file at once, and the --limit selection sizes files, not entries.
     std::vector<llvm::StringRef> files;
     llvm::StringSet<> seen_files;
-    for(auto& entry: cdb.get_entries()) {
-        auto path = cdb.resolve_path(entry.file);
+    for(auto& entry: cdb.entries()) {
+        auto path = cdb.paths().resolve(entry.file);
         if(opts.filter.has_value() && !path.contains(*opts.filter)) {
             continue;
         }
@@ -1125,9 +1123,12 @@ int main(int argc, const char** argv) {
     jobs.reserve(files.size());
     llvm::DenseSet<std::uint64_t> seen_commands;
     for(auto file: files) {
-        for(auto& command: cdb.lookup(file)) {
-            toolchain.resolve_or_warn(command);
-            auto argv = command.to_argv();
+        for(auto& entry: cdb.candidate_entries(file)) {
+            CommandRef ref{entry.file,
+                           entry.config,
+                           cdb.input_kind(entry.config, file),
+                           CommandSource::CDBExact};
+            auto argv = cdb.render(ref);
             std::string joined;
             for(auto* arg: argv) {
                 joined += arg;

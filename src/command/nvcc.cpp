@@ -527,7 +527,8 @@ std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> argu
     return result;
 }
 
-void collapse_gpu_arch_flags(std::vector<const char*>& flags) {
+std::optional<llvm::SmallVector<std::size_t>>
+    collapse_gpu_archs(llvm::ArrayRef<std::pair<ArchFlagKind, llvm::StringRef>> sequence) {
     struct ActiveArch {
         std::size_t index;
         llvm::SmallVector<ArchToken, 1> tokens;
@@ -538,17 +539,17 @@ void collapse_gpu_arch_flags(std::vector<const char*>& flags) {
     /// --no-offload-arch=all erases everything before it, a specific
     /// --no-offload-arch=sm_NN only its matches.
     llvm::SmallVector<ActiveArch> active;
-    for(std::size_t i = 0; i < flags.size(); i += 1) {
-        llvm::StringRef arg = flags[i];
-        if(arg == "--no-offload-arch=all") {
-            active.clear();
-            continue;
-        }
-        if(arg.starts_with("--no-offload-arch=")) {
+    for(std::size_t i = 0; i < sequence.size(); i += 1) {
+        auto [kind, value] = sequence[i];
+        if(kind == ArchFlagKind::NoOffloadArch) {
+            if(value == "all") {
+                active.clear();
+                continue;
+            }
             llvm::SmallVector<ArchToken> removed;
-            collect_archs(arg.substr(arg.find('=') + 1), removed);
+            collect_archs(value, removed);
             if(removed.empty())
-                return;
+                return std::nullopt;
             auto matched = [&](const ArchToken& token) {
                 return std::ranges::contains(removed, token);
             };
@@ -560,32 +561,32 @@ void collapse_gpu_arch_flags(std::vector<const char*>& flags) {
                 /// A flag naming both erased and surviving architectures
                 /// cannot drop at flag granularity — bail like below.
                 if(!std::ranges::all_of(entry.tokens, matched))
-                    return;
+                    return std::nullopt;
                 active.erase(active.begin() + j);
             }
             continue;
         }
-        if(!arg.starts_with("--cuda-gpu-arch=") && !arg.starts_with("--offload-arch="))
-            continue;
 
         llvm::SmallVector<ArchToken> tokens;
-        collect_archs(arg.substr(arg.find('=') + 1), tokens);
+        collect_archs(value, tokens);
         /// A value without an sm_NN/compute_NN token (a raw clang spelling
         /// like --offload-arch=native in a config append) is outside the
         /// ranking — leave the whole command to clang's own semantics.
         if(tokens.empty())
-            return;
+            return std::nullopt;
         auto rank = arch_rank(*std::ranges::max_element(tokens, {}, arch_rank));
         active.push_back({.index = i, .tokens = std::move(tokens), .rank = rank});
     }
     if(active.size() < 2)
-        return;
+        return llvm::SmallVector<std::size_t>{};
 
     auto best = std::ranges::max(active, {}, &ActiveArch::rank).rank;
-    for(auto& arch: active | std::views::reverse) {
+    llvm::SmallVector<std::size_t> dropped;
+    for(auto& arch: active) {
         if(arch.rank < best)
-            flags.erase(flags.begin() + arch.index);
+            dropped.push_back(arch.index);
     }
+    return dropped;
 }
 
 std::expected<NVCCDryrunInfo, std::string> parse_nvcc_dryrun(llvm::StringRef output) {

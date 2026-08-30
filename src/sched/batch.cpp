@@ -186,7 +186,7 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
         co_await shutdown(stack);
         co_return;
     }
-    if(workspace.cdb.get_entries().empty()) {
+    if(workspace.cdb.entries().empty()) {
         LOG_ERROR("Nothing to index: no compile_commands.json found under {}", options.root);
         result.exit_code = 1;
         co_await shutdown(stack);
@@ -362,7 +362,7 @@ kota::task<> run_lint(BatchStack& stack,
                         options.root,
                         /*read_only_index=*/!options.with_index);
 
-    if(workspace.cdb.get_entries().empty()) {
+    if(workspace.cdb.entries().empty()) {
         LOG_ERROR("Nothing to lint: no compile_commands.json found under {}", options.root);
         result.exit_code = 2;
         co_await shutdown(stack);
@@ -380,10 +380,9 @@ kota::task<> run_lint(BatchStack& stack,
     // the command resolve_command picks — same as the indexing sweep.
     llvm::SmallVector<std::uint32_t> tus;
     llvm::DenseSet<std::uint32_t> seen;
-    for(auto& entry: workspace.cdb.get_entries()) {
-        auto id = workspace.path_pool.intern(workspace.cdb.resolve_path(entry.file));
-        if(seen.insert(id).second) {
-            tus.push_back(id);
+    for(auto& entry: workspace.cdb.entries()) {
+        if(seen.insert(entry.file).second) {
+            tus.push_back(entry.file);
         }
     }
 

@@ -257,52 +257,73 @@ TEST_CASE(NVCCHostInput, skip = !(CIEnvironment && Linux)) {
     ASSERT_TRUE(unit.diagnostics().empty());
 };
 
+/// A database wrapping test entries — the unit tests' handle on the two
+/// toolchain layers.
+struct Fixture {
+    CompilationDatabase db;
+
+    CommandRef add(llvm::StringRef directory,
+                   llvm::StringRef file,
+                   llvm::ArrayRef<const char*> arguments) {
+        db.add_command(directory, file, arguments);
+        auto& entry = db.candidate_entries(file).front();
+        return {entry.file,
+                entry.config,
+                db.input_kind(entry.config, file),
+                CommandSource::CDBExact};
+    }
+
+    std::string key(const CommandRef& ref) {
+        return db.toolchain().probe_key_for(ref.config, ref.input);
+    }
+};
+
 TEST_CASE(InitiallyEmpty) {
-    Toolchain tc;
-    EXPECT_FALSE(tc.has_cache());
+    CompilationDatabase db;
+    EXPECT_FALSE(db.toolchain().has_cache());
 }
 
 TEST_CASE(KeyIgnoresUserContent) {
-    Toolchain tc;
-    std::vector<const char*> base = {"clang++", "-std=c++23"};
-    std::vector<const char*> with_user = {"clang++",
-                                          "-std=c++23",
-                                          "-I/usr/include",
-                                          "-DFOO=1",
-                                          "-include",
-                                          "foo.h",
-                                          "-isystem",
-                                          "/opt/include"};
-    EXPECT_EQ(tc.cache_key("/tmp/a.cpp", base), tc.cache_key("/tmp/a.cpp", with_user));
+    Fixture f;
+    auto base = f.add("/fake", "/tmp/a.cpp", {"clang++", "-std=c++23", "/tmp/a.cpp"});
+    auto user = f.add("/fake",
+                      "/tmp/b.cpp",
+                      {"clang++",
+                       "-std=c++23",
+                       "-I/usr/include",
+                       "-DFOO=1",
+                       "-include",
+                       "foo.h",
+                       "-isystem",
+                       "/opt/include",
+                       "/tmp/b.cpp"});
+    EXPECT_EQ(f.key(base), f.key(user));
 }
 
 TEST_CASE(KeyTracksSemantics) {
-    Toolchain tc;
-    std::vector<const char*> base = {"clang++", "-std=c++23"};
-    auto key = tc.cache_key("/tmp/a.cpp", base);
+    Fixture f;
+    auto base = f.add("/fake", "/tmp/a.cpp", {"clang++", "-std=c++23", "/tmp/a.cpp"});
 
-    std::vector<const char*> driver = {"g++", "-std=c++23"};
-    EXPECT_NE(key, tc.cache_key("/tmp/a.cpp", driver));
+    auto driver = f.add("/fake", "/tmp/b.cpp", {"g++", "-std=c++23", "/tmp/b.cpp"});
+    EXPECT_NE(f.key(base), f.key(driver));
 
-    std::vector<const char*> target = {"clang++", "-std=c++23", "--target=aarch64-linux-gnu"};
-    EXPECT_NE(key, tc.cache_key("/tmp/a.cpp", target));
+    auto target = f.add("/fake",
+                        "/tmp/c.cpp",
+                        {"clang++", "-std=c++23", "--target=aarch64-linux-gnu", "/tmp/c.cpp"});
+    EXPECT_NE(f.key(base), f.key(target));
 
-    std::vector<const char*> lang = {"clang++", "-std=c++23", "-x", "c"};
-    EXPECT_NE(key, tc.cache_key("/tmp/a.cpp", lang));
+    /// The language dimension: an -x selector and a C extension both
+    /// change the key.
+    auto lang = f.add("/fake", "/tmp/d.cpp", {"clang++", "-std=c++23", "-x", "c", "/tmp/d.cpp"});
+    EXPECT_NE(f.key(base), f.key(lang));
 
-    EXPECT_NE(key, tc.cache_key("/tmp/a.c", base));
+    auto ext = f.add("/fake", "/tmp/e.c", {"clang++", "-std=c++23", "/tmp/e.c"});
+    EXPECT_NE(f.key(base), f.key(ext));
 
     // Any non-user-content flag affects the key, not just toolchain options.
-    std::vector<const char*> semantic = {"clang++", "-std=c++23", "-fno-exceptions"};
-    EXPECT_NE(key, tc.cache_key("/tmp/a.cpp", semantic));
-}
-
-TEST_CASE(ResolveEmptyFlags) {
-    Toolchain tc;
-    CompileCommand cmd;
-    cmd.source_file = "main.cpp";
-    EXPECT_FALSE(tc.resolve(cmd).has_value());
-    EXPECT_FALSE(tc.has_cache());
+    auto semantic =
+        f.add("/fake", "/tmp/g.cpp", {"clang++", "-std=c++23", "-fno-exceptions", "/tmp/g.cpp"});
+    EXPECT_NE(f.key(base), f.key(semantic));
 }
 
 TEST_CASE(QueryEmptyArgs) {
@@ -311,16 +332,6 @@ TEST_CASE(QueryEmptyArgs) {
 
 TEST_CASE(QueryMissingDriver) {
     EXPECT_FALSE(Toolchain::query({"clice-nonexistent-driver"}).has_value());
-}
-
-TEST_CASE(WarmSkipsEmptyFlags) {
-    Toolchain tc;
-    CompileCommand cmd;
-    cmd.source_file = "main.cpp";
-    llvm::SmallVector<CompileCommand> cmds = {cmd};
-    tc.warm(cmds);
-    EXPECT_FALSE(tc.has_cache());
-    EXPECT_EQ(tc.cache_size(), std::size_t(0));
 }
 
 TEST_CASE(ParseCC1FirstLine) {
@@ -404,35 +415,32 @@ TEST_CASE(FailedQueryRetries, skip = Windows) {
     auto src = tmp.path("a.cpp");
     auto script = "#!/bin/sh\necho '" + std::string(fake_cc1_line) + "' >&2\n";
 
-    Toolchain eager(std::chrono::seconds(0));
-    CompileCommand cmd;
-    cmd.source_file = src.c_str();
-    cmd.resolved.flags = {driver.c_str(), "-std=c++23"};
+    Fixture eager;
+    eager.db.toolchain().set_failed_retry(std::chrono::seconds(0));
+    auto ref = eager.add(tmp.root.str(), src, {driver.c_str(), "-std=c++23", src.c_str()});
 
-    ASSERT_FALSE(eager.resolve(cmd).has_value());
-    EXPECT_EQ(eager.failed_size(), std::size_t(1));
+    ASSERT_FALSE(eager.db.toolchain().resolve(ref.config, ref.input).has_value());
+    EXPECT_EQ(eager.db.toolchain().failed_count(), std::size_t(1));
 
     // The driver appears; the expired entry re-queries and succeeds.
     ASSERT_TRUE(fs::write(driver, script));
     ASSERT_TRUE(!fs::setPermissions(driver, fs::all_read | fs::all_exe));
-    ASSERT_TRUE(eager.resolve(cmd).has_value());
-    EXPECT_EQ(eager.failed_size(), std::size_t(0));
-    EXPECT_TRUE(eager.has_cache());
+    ASSERT_TRUE(eager.db.toolchain().resolve(ref.config, ref.input).has_value());
+    EXPECT_EQ(eager.db.toolchain().failed_count(), std::size_t(0));
+    EXPECT_TRUE(eager.db.toolchain().has_cache());
 
     // Control: within the cooldown the cached failure replays untouched
     // even after the driver appears.
     auto late = tmp.path("cc2.clang");
-    Toolchain patient;
-    CompileCommand cmd2;
-    cmd2.source_file = src.c_str();
-    cmd2.resolved.flags = {late.c_str(), "-std=c++23"};
+    Fixture patient;
+    auto ref2 = patient.add(tmp.root.str(), src, {late.c_str(), "-std=c++23", src.c_str()});
 
-    ASSERT_FALSE(patient.resolve(cmd2).has_value());
+    ASSERT_FALSE(patient.db.toolchain().resolve(ref2.config, ref2.input).has_value());
     ASSERT_TRUE(fs::write(late, script));
     ASSERT_TRUE(!fs::setPermissions(late, fs::all_read | fs::all_exe));
-    ASSERT_FALSE(patient.resolve(cmd2).has_value());
-    EXPECT_EQ(patient.failed_size(), std::size_t(1));
-    EXPECT_FALSE(patient.has_cache());
+    ASSERT_FALSE(patient.db.toolchain().resolve(ref2.config, ref2.input).has_value());
+    EXPECT_EQ(patient.db.toolchain().failed_count(), std::size_t(1));
+    EXPECT_FALSE(patient.db.toolchain().has_cache());
 }
 
 TEST_CASE(WarmRetriesExpired, skip = Windows) {
@@ -442,50 +450,46 @@ TEST_CASE(WarmRetriesExpired, skip = Windows) {
     auto driver = tmp.path("cc.clang");
     auto src = tmp.path("a.cpp");
 
-    Toolchain tc(std::chrono::seconds(0));
-    CompileCommand cmd;
-    cmd.source_file = src.c_str();
-    cmd.resolved.flags = {driver.c_str(), "-std=c++23"};
-    llvm::SmallVector<CompileCommand> cmds = {cmd};
+    Fixture f;
+    f.db.toolchain().set_failed_retry(std::chrono::seconds(0));
+    auto ref = f.add(tmp.root.str(), src, {driver.c_str(), "-std=c++23", src.c_str()});
+    llvm::SmallVector<CommandRef> refs = {ref};
 
-    tc.warm(cmds);
-    EXPECT_EQ(tc.failed_size(), std::size_t(1));
-    EXPECT_FALSE(tc.has_cache());
+    f.db.warm(refs);
+    EXPECT_EQ(f.db.toolchain().failed_count(), std::size_t(1));
+    EXPECT_FALSE(f.db.toolchain().has_cache());
 
     auto script = "#!/bin/sh\necho '" + std::string(fake_cc1_line) + "' >&2\n";
     ASSERT_TRUE(fs::write(driver, script));
     ASSERT_TRUE(!fs::setPermissions(driver, fs::all_read | fs::all_exe));
 
-    tc.warm(cmds);
-    EXPECT_EQ(tc.failed_size(), std::size_t(0));
-    EXPECT_TRUE(tc.has_cache());
+    f.db.warm(refs);
+    EXPECT_EQ(f.db.toolchain().failed_count(), std::size_t(0));
+    EXPECT_TRUE(f.db.toolchain().has_cache());
 }
 
 TEST_CASE(WarmPartialFailure, skip = Windows) {
     auto driver = create_fake_clang(fake_cc1_line);
     ASSERT_TRUE(driver.has_value());
 
-    CompileCommand good;
-    good.resolved.flags = {driver->c_str(), "-std=c++23"};
-    good.source_file = "/tmp/a.cpp";
+    Fixture f;
+    auto good = f.add("/tmp", "/tmp/a.cpp", {driver->c_str(), "-std=c++23", "/tmp/a.cpp"});
+    auto bad =
+        f.add("/tmp", "/tmp/b.cpp", {"clice-nonexistent-driver", "-std=c++23", "/tmp/b.cpp"});
 
-    CompileCommand bad;
-    bad.resolved.flags = {"clice-nonexistent-driver", "-std=c++23"};
-    bad.source_file = "/tmp/b.cpp";
-
-    Toolchain tc;
-    llvm::SmallVector<CompileCommand> cmds = {good, bad};
-    tc.warm(cmds);
+    llvm::SmallVector<CommandRef> refs = {good, bad};
+    f.db.warm(refs);
 
     // The successful query is cached; the failed one is negatively cached
     // so later resolve() calls fail fast without re-probing the driver.
-    EXPECT_EQ(tc.cache_size(), std::size_t(1));
-    EXPECT_EQ(tc.failed_size(), std::size_t(1));
+    EXPECT_EQ(f.db.toolchain().probe_count(), std::size_t(1));
+    EXPECT_EQ(f.db.toolchain().failed_count(), std::size_t(1));
 
-    ASSERT_TRUE(tc.resolve(good).has_value());
-    EXPECT_TRUE(good.resolved.is_cc1);
-    EXPECT_FALSE(tc.resolve(bad).has_value());
-    EXPECT_EQ(tc.failed_size(), std::size_t(1));
+    auto resolved = f.db.toolchain().resolve(good.config, good.input);
+    ASSERT_TRUE(resolved.has_value());
+    EXPECT_TRUE(f.db.toolchain().resolved(*resolved).is_cc1);
+    EXPECT_FALSE(f.db.toolchain().resolve(bad.config, bad.input).has_value());
+    EXPECT_EQ(f.db.toolchain().failed_count(), std::size_t(1));
 }
 
 TEST_CASE(ResolveFailNegativeCache, skip = Windows) {
@@ -493,24 +497,22 @@ TEST_CASE(ResolveFailNegativeCache, skip = Windows) {
     auto driver = create_fake_clang("this is not a cc1 line");
     ASSERT_TRUE(driver.has_value());
 
-    CompileCommand cmd;
-    cmd.resolved.flags = {driver->c_str(), "-std=c++23"};
-    cmd.source_file = "/tmp/a.cpp";
+    Fixture f;
+    auto ref = f.add("/tmp", "/tmp/a.cpp", {driver->c_str(), "-std=c++23", "/tmp/a.cpp"});
 
-    Toolchain tc;
-    auto first = tc.resolve(cmd);
+    auto first = f.db.toolchain().resolve(ref.config, ref.input);
     ASSERT_FALSE(first.has_value());
-    EXPECT_EQ(tc.cache_size(), std::size_t(0));
-    EXPECT_EQ(tc.failed_size(), std::size_t(1));
+    EXPECT_EQ(f.db.toolchain().probe_count(), std::size_t(0));
+    EXPECT_EQ(f.db.toolchain().failed_count(), std::size_t(1));
 
     // Remove the driver: a re-probe would now fail differently ("not found or
     // not executable"), so getting the original error back proves the second
     // resolve() hit the negative cache without spawning the driver again.
     ASSERT_TRUE(!fs::remove(*driver));
-    auto second = tc.resolve(cmd);
+    auto second = f.db.toolchain().resolve(ref.config, ref.input);
     ASSERT_FALSE(second.has_value());
     EXPECT_EQ(second.error(), first.error());
-    EXPECT_EQ(tc.failed_size(), std::size_t(1));
+    EXPECT_EQ(f.db.toolchain().failed_count(), std::size_t(1));
 }
 
 TEST_CASE(ResolveReplacesResourceDir, skip = Windows) {
@@ -519,19 +521,17 @@ TEST_CASE(ResolveReplacesResourceDir, skip = Windows) {
     auto driver = create_fake_clang(line);
     ASSERT_TRUE(driver.has_value());
 
-    CompileCommand cmd;
-    cmd.resolved.flags = {driver->c_str(), "-std=c++23"};
-    cmd.source_file = "/tmp/a.cpp";
-
-    Toolchain tc;
-    ASSERT_TRUE(tc.resolve(cmd).has_value());
+    Fixture f;
+    auto ref = f.add("/tmp", "/tmp/a.cpp", {driver->c_str(), "-std=c++23", "/tmp/a.cpp"});
+    ASSERT_TRUE(f.db.toolchain().resolve(ref.config, ref.input).has_value());
 
     // The external driver's resource dir is rewritten to ours, including
     // derived paths sharing the prefix.
+    auto argv = f.db.render(ref);
     auto expected_include = resource_dir().str() + "/include";
-    EXPECT_TRUE(std::ranges::contains(cmd.resolved.flags, resource_dir()));
-    EXPECT_TRUE(std::ranges::contains(cmd.resolved.flags, llvm::StringRef(expected_include)));
-    for(llvm::StringRef arg: cmd.resolved.flags) {
+    EXPECT_TRUE(std::ranges::contains(argv, resource_dir()));
+    EXPECT_TRUE(std::ranges::contains(argv, llvm::StringRef(expected_include)));
+    for(llvm::StringRef arg: argv) {
         EXPECT_FALSE(arg.starts_with("/clice-fake"));
     }
 }
@@ -576,8 +576,9 @@ echo " \"/usr/bin/clang-22\" \"-cc1\" \"-resource-dir\" \"$rd\" \"-internal-isys
 }
 
 /// The MinGW preservation tests share one shape: an external resource tree,
-/// an echoing driver, and the expectation that the resolved flags keep the
-/// external tree and never mention clice's own.
+/// an echoing driver (deriving that tree when no -resource-dir is forced),
+/// and the expectation that the resolved config keeps the external tree and
+/// never mentions clice's own.
 void EXPECT_KEEPS_EXTERNAL(llvm::StringRef driver_name,
                            llvm::ArrayRef<const char*> extra_flags,
                            bool warm_first = false) {
@@ -589,23 +590,23 @@ void EXPECT_KEEPS_EXTERNAL(llvm::StringRef driver_name,
     auto driver = create_echo_clang(external_dir, driver_name);
     ASSERT_TRUE(driver.has_value());
 
-    CompileCommand cmd;
-    cmd.resolved.flags = {driver->c_str(), "-std=c++23"};
-    cmd.resolved.flags.insert(cmd.resolved.flags.end(), extra_flags.begin(), extra_flags.end());
-    cmd.resolved.flags.push_back("-resource-dir");
-    cmd.resolved.flags.push_back(resource_dir().data());
-    cmd.source_file = "/tmp/a.cpp";
+    Fixture f;
+    std::vector<const char*> arguments = {driver->c_str(), "-std=c++23"};
+    arguments.insert(arguments.end(), extra_flags.begin(), extra_flags.end());
+    arguments.push_back("/tmp/a.cpp");
+    auto ref = f.add("/tmp", "/tmp/a.cpp", arguments);
 
-    Toolchain tc;
     if(warm_first) {
-        tc.warm({cmd});
+        llvm::SmallVector<CommandRef> refs = {ref};
+        f.db.warm(refs);
         // The driver disappears after warming: the resolve below can only
         // succeed from the warmed cache entry, never from a fresh query.
         fs::remove(*driver);
     }
-    ASSERT_TRUE(tc.resolve(cmd).has_value());
-    EXPECT_TRUE(std::ranges::contains(cmd.resolved.flags, llvm::StringRef(external_dir)));
-    EXPECT_FALSE(std::ranges::contains(cmd.resolved.flags, resource_dir()));
+    ASSERT_TRUE(f.db.toolchain().resolve(ref.config, ref.input).has_value());
+    auto argv = f.db.render(ref);
+    EXPECT_TRUE(std::ranges::contains(argv, llvm::StringRef(external_dir)));
+    EXPECT_FALSE(std::ranges::contains(argv, resource_dir()));
 
     fs::remove(*driver);
     if(!driver_name.empty()) {
@@ -640,15 +641,14 @@ TEST_CASE(ResolveReplacesNonMingwResource, skip = Windows) {
     auto driver = create_echo_clang(external_dir, "");
     ASSERT_TRUE(driver.has_value());
 
-    CompileCommand cmd;
-    cmd.resolved.flags = {driver->c_str(), "-std=c++23"};
-    cmd.source_file = "/tmp/a.cpp";
+    Fixture f;
+    auto ref = f.add("/tmp", "/tmp/a.cpp", {driver->c_str(), "-std=c++23", "/tmp/a.cpp"});
+    ASSERT_TRUE(f.db.toolchain().resolve(ref.config, ref.input).has_value());
 
-    Toolchain tc;
-    ASSERT_TRUE(tc.resolve(cmd).has_value());
+    auto argv = f.db.render(ref);
     auto expected_include = resource_dir().str() + "/include";
-    EXPECT_TRUE(std::ranges::contains(cmd.resolved.flags, resource_dir()));
-    EXPECT_TRUE(std::ranges::contains(cmd.resolved.flags, llvm::StringRef(expected_include)));
+    EXPECT_TRUE(std::ranges::contains(argv, resource_dir()));
+    EXPECT_TRUE(std::ranges::contains(argv, llvm::StringRef(expected_include)));
 
     fs::remove(*driver);
     llvm::sys::fs::remove(external_dir_buf);
@@ -660,25 +660,21 @@ TEST_CASE(ResolveMainFileName, skip = Windows) {
     auto driver = create_fake_clang(line);
     ASSERT_TRUE(driver.has_value());
 
-    CompileCommand cmd;
-    cmd.resolved.flags = {driver->c_str(), "-std=c++23"};
-    cmd.source_file = "/tmp/dir/a.cpp";
+    Fixture f;
+    auto ref = f.add("/tmp", "/tmp/dir/a.cpp", {driver->c_str(), "-std=c++23", "/tmp/dir/a.cpp"});
+    ASSERT_TRUE(f.db.toolchain().resolve(ref.config, ref.input).has_value());
 
-    Toolchain tc;
-    ASSERT_TRUE(tc.resolve(cmd).has_value());
-    EXPECT_TRUE(cmd.resolved.is_cc1);
-
-    // The probe file's -main-file-name is stripped from the cached result...
-    EXPECT_FALSE(std::ranges::contains(cmd.resolved.flags, llvm::StringRef("-main-file-name")));
-
-    // ...and to_argv() re-injects it with the real file's basename.
-    auto argv = cmd.to_argv();
-    bool reinjected = false;
-    for(std::size_t i = 0; i + 1 < argv.size(); ++i) {
-        if(argv[i] == "-main-file-name"sv && argv[i + 1] == "a.cpp"sv)
-            reinjected = true;
+    // The probe file's -main-file-name is stripped; the render re-injects
+    // it with the real file's basename, exactly once.
+    auto argv = f.db.render(ref);
+    int injected = 0;
+    for(std::size_t i = 0; i + 1 < argv.size(); i += 1) {
+        if(argv[i] == "-main-file-name"sv) {
+            EXPECT_EQ(llvm::StringRef(argv[i + 1]), "a.cpp");
+            injected += 1;
+        }
     }
-    EXPECT_TRUE(reinjected);
+    EXPECT_EQ(injected, 1);
 }
 
 TEST_CASE(ResolveKeepsSemanticFlags, skip = !CIEnvironment) {
@@ -687,19 +683,19 @@ TEST_CASE(ResolveKeepsSemanticFlags, skip = !CIEnvironment) {
         LOG_ERROR_RET(void(), "{}", file.error());
     }
 
-    CompileCommand cmd;
-    cmd.resolved.flags = {"clang++", "-std=c++23", "-fms-extensions", "-Wno-everything"};
-    cmd.source_file = file->c_str();
-
-    Toolchain tc;
-    ASSERT_TRUE(tc.resolve(cmd).has_value());
-    EXPECT_TRUE(cmd.resolved.is_cc1);
+    Fixture f;
+    auto ref =
+        f.add("/tmp",
+              *file,
+              {"clang++", "-std=c++23", "-fms-extensions", "-Wno-everything", file->c_str()});
+    ASSERT_TRUE(f.db.toolchain().resolve(ref.config, ref.input).has_value());
 
     // Semantic flags must survive resolution to cc1 (they were dropped when
     // the query only forwarded toolchain options).
+    auto argv = f.db.render(ref);
     bool has_ms_extensions = false;
     bool has_wno_everything = false;
-    for(auto* arg: cmd.to_argv()) {
+    for(auto* arg: argv) {
         if(arg == "-fms-extensions"sv)
             has_ms_extensions = true;
         if(arg == "-Wno-everything"sv)
@@ -715,18 +711,15 @@ TEST_CASE(Resolve, skip = !CIEnvironment) {
         LOG_ERROR_RET(void(), "{}", file.error());
     }
 
-    CompileCommand cmd;
-    std::vector<const char*> flags = {"clang++", "-std=c++23", "-I/usr/include", "-DFOO=1"};
-    cmd.resolved.flags = std::move(flags);
-    cmd.source_file = file->c_str();
+    Fixture f;
+    auto ref =
+        f.add("/tmp", *file, {"clang++", "-std=c++23", "-I/usr/include", "-DFOO=1", file->c_str()});
+    auto resolved = f.db.toolchain().resolve(ref.config, ref.input);
+    ASSERT_TRUE(resolved.has_value());
+    EXPECT_TRUE(f.db.toolchain().has_cache());
+    EXPECT_TRUE(f.db.toolchain().resolved(*resolved).is_cc1);
 
-    Toolchain tc;
-    auto ok = tc.resolve(cmd);
-    ASSERT_TRUE(ok.has_value());
-    EXPECT_TRUE(tc.has_cache());
-    EXPECT_TRUE(cmd.resolved.is_cc1);
-
-    auto argv = cmd.to_argv();
+    auto argv = f.db.render(ref);
     bool has_cc1 = false;
     bool has_include = false;
     bool has_define = false;
@@ -750,31 +743,24 @@ TEST_CASE(Resolve, skip = !CIEnvironment) {
 TEST_CASE(Warm, skip = !CIEnvironment) {
     auto file1 = fs::createTemporaryFile("clice", "cpp");
     auto file2 = fs::createTemporaryFile("clice", "cpp");
-    if(!file1 || !file2) {
+    auto file3 = fs::createTemporaryFile("clice", "cpp");
+    if(!file1 || !file2 || !file3) {
         LOG_ERROR_RET(void(), "failed to create temp files");
     }
 
-    CompileCommand cmd1;
-    cmd1.resolved.flags = {"clang++", "-std=c++23"};
-    cmd1.source_file = file1->c_str();
+    Fixture f;
+    auto ref1 = f.add("/tmp", *file1, {"clang++", "-std=c++23", file1->c_str()});
+    auto ref2 = f.add("/tmp", *file2, {"clang++", "-std=c++23", file2->c_str()});
+    auto ref3 = f.add("/tmp", *file3, {"clang++", "-std=c++17", file3->c_str()});
 
-    CompileCommand cmd2;
-    cmd2.resolved.flags = {"clang++", "-std=c++23"};
-    cmd2.source_file = file2->c_str();
+    llvm::SmallVector<CommandRef> refs = {ref1, ref2, ref3};
+    f.db.warm(refs);
+    EXPECT_TRUE(f.db.toolchain().has_cache());
 
-    CompileCommand cmd3;
-    cmd3.resolved.flags = {"clang++", "-std=c++17"};
-    cmd3.source_file = file1->c_str();
-
-    Toolchain tc;
-    llvm::SmallVector<CompileCommand> cmds = {cmd1, cmd2, cmd3};
-    tc.warm(cmds);
-    EXPECT_TRUE(tc.has_cache());
-
-    // After warm, resolve should hit cache (no subprocess).
-    auto ok = tc.resolve(cmd1);
-    ASSERT_TRUE(ok.has_value());
-    EXPECT_TRUE(cmd1.resolved.is_cc1);
+    // After warm, resolve should hit the probe cache (no subprocess).
+    auto resolved = f.db.toolchain().resolve(ref1.config, ref1.input);
+    ASSERT_TRUE(resolved.has_value());
+    EXPECT_TRUE(f.db.toolchain().resolved(*resolved).is_cc1);
 }
 
 };  // TEST_SUITE(ToolchainTests)

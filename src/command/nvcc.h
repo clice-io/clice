@@ -1,10 +1,14 @@
 #pragma once
 
+#include <cstdint>
 #include <expected>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace clice {
@@ -67,7 +71,20 @@ std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> argu
 /// accumulated, clang would build one device job per architecture in
 /// ascending order and the toolchain query reads the first — pinning the
 /// oldest architecture instead of the newest.
-void collapse_gpu_arch_flags(std::vector<const char*>& flags);
+///
+/// The caller hands the arch-flag values in command order (the value of
+/// each --cuda-gpu-arch= / --offload-arch= / --no-offload-arch= argument)
+/// and erases the returned indices. nullopt means a value outside the
+/// ranking (a raw clang spelling like --offload-arch=native) was present —
+/// leave the whole command to clang's own semantics.
+enum class ArchFlagKind : std::uint8_t {
+    GpuArch,
+    OffloadArch,
+    NoOffloadArch,
+};
+
+std::optional<llvm::SmallVector<std::size_t>>
+    collapse_gpu_archs(llvm::ArrayRef<std::pair<ArchFlagKind, llvm::StringRef>> sequence);
 
 /// What one `nvcc --dryrun` run reveals about the toolchain. The dryrun
 /// prints the whole compilation pipeline (host preprocess, cudafe++, device

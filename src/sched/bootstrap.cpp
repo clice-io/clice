@@ -60,6 +60,7 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
         }
     }
 
+    workspace.cdb.set_workspace_root(root);
     report.cdb_path = discover_compile_commands(workspace.config, root);
     if(report.cdb_path.empty()) {
         // Persisted index shards are CDB-independent; load them so a
@@ -75,8 +76,6 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
     LOG_PERF("startup", "phase=cdb_load entries={} elapsed_ms={}", count, cdb_timer.ms());
 
     auto scan = scan_dependency_graph(workspace.cdb,
-                                      workspace.toolchain,
-                                      workspace.path_pool,
                                       workspace.dep_graph,
                                       /*cache=*/nullptr,
                                       [&workspace](llvm::StringRef path,
@@ -115,14 +114,12 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
     pump.claim_report(store.load(read_only_index).report);
 
     if(cfg.enable_indexing.value) {
-        for(auto& entry: workspace.cdb.get_entries()) {
-            auto file = workspace.cdb.resolve_path(entry.file);
-            auto server_id = workspace.path_pool.intern(file);
+        for(auto& entry: workspace.cdb.entries()) {
             // Bulk sweep of unknown staleness: the hash gate decides per
             // file. DepsOnly — a cold start with a warm index cache must
             // keep serving the loaded shards, not blank every query until
             // the sweep drains.
-            pump.enqueue(server_id, ReindexReason::DepsOnly);
+            pump.enqueue(entry.file, ReindexReason::DepsOnly);
         }
         pump.schedule();
     }

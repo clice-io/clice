@@ -429,8 +429,7 @@ std::optional<FileCommand> file_command(FileEntry& entry,
                                         const std::string& file,
                                         llvm::ArrayRef<std::string> flags,
                                         llvm::StringRef flags_directory,
-                                        CompilationDatabase* database,
-                                        Toolchain& toolchain) {
+                                        CompilationDatabase* database) {
     namespace types = clang::driver::types;
     auto type = file_type(file);
     bool is_header = is_header_type(type);
@@ -482,8 +481,8 @@ std::optional<FileCommand> file_command(FileEntry& entry,
     llvm::StringRef donor;
     if(is_header && database != nullptr && !database->has_entry(file)) {
         std::pair<int, std::size_t> best{-1, 0};
-        for(auto& candidate: database->get_entries()) {
-            llvm::StringRef donor_path = database->resolve_path(candidate.file);
+        for(auto& candidate: database->entries()) {
+            llvm::StringRef donor_path = database->paths().resolve(candidate.file);
             auto donor_ext = path::extension(donor_path);
             auto donor_type = donor_ext.empty()
                                   ? types::TY_INVALID
@@ -502,27 +501,24 @@ std::optional<FileCommand> file_command(FileEntry& entry,
         }
     }
 
-    // lookup() synthesizes a default command for unknown files, so an
-    // explicit entry check decides between the CDB and our fallback.
     if(database != nullptr && database->has_entry(file)) {
-        auto commands = database->lookup(file);
-        auto& cdb_command = commands.front();
-        toolchain.resolve_or_warn(cdb_command);
-        for(const char* arg: cdb_command.to_argv()) {
-            command.arguments.emplace_back(arg);
-        }
-        command.directory = cdb_command.resolved.directory.str();
+        auto& cdb_entry = database->candidate_entries(file).front();
+        CommandRef ref{cdb_entry.file,
+                       cdb_entry.config,
+                       database->input_kind(cdb_entry.config, file),
+                       CommandSource::CDBExact};
+        command.arguments = to_strings(database->render(ref));
+        command.directory = database->config(cdb_entry.config).directory;
     } else if(!donor.empty()) {
-        auto commands = database->lookup(donor);
-        auto& cdb_command = commands.front();
-        toolchain.resolve_or_warn(cdb_command);
-        // The donor's resolved flags (including its -x language) apply to
-        // the header itself; to_argv() re-derives -main-file-name from it.
-        cdb_command.source_file = file.c_str();
-        for(const char* arg: cdb_command.to_argv()) {
-            command.arguments.emplace_back(arg);
-        }
-        command.directory = cdb_command.resolved.directory.str();
+        auto& cdb_entry = database->candidate_entries(donor).front();
+        // The donor's language applies to the header itself — it compiles
+        // as a fragment of that TU's world, not by its own extension.
+        CommandRef ref{database->paths().intern(file),
+                       cdb_entry.config,
+                       database->input_kind(cdb_entry.config, donor),
+                       CommandSource::IncludeGraph};
+        command.arguments = to_strings(database->render(ref));
+        command.directory = database->config(cdb_entry.config).directory;
     } else {
         // No CDB entry for this file: query the toolchain with default
         // flags. Uncached, but this path only runs for files outside any
@@ -827,7 +823,6 @@ int run_inspect(const InspectOptions& opts) {
         return &it->second;
     };
 
-    Toolchain toolchain;
     llvm::StringRef unit_directory =
         is_dir ? llvm::StringRef(abs_path) : path::parent_path(abs_path);
     auto command_for = [&](FileEntry& entry, const SourceFile& file) {
@@ -835,8 +830,7 @@ int run_inspect(const InspectOptions& opts) {
                             file.abs,
                             flags,
                             unit_directory,
-                            flags.empty() ? database_for(file.abs) : nullptr,
-                            toolchain);
+                            flags.empty() ? database_for(file.abs) : nullptr);
     };
 
     // Serial module builder (directory mode): scan for module declarations

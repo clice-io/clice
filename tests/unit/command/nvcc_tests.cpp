@@ -1,5 +1,6 @@
 #include <algorithm>
 
+#include "test/cdb_helper.h"
 #include "test/test.h"
 #include "command/command.h"
 #include "command/nvcc.h"
@@ -504,11 +505,18 @@ TEST_CASE(DryrunTopFallback) {
 }
 
 TEST_CASE(CcbinAffectsKey) {
-    Toolchain tc;
-    std::vector<const char*> a = {"nvcc", "-ccbin=/usr/bin/g++-12"};
-    std::vector<const char*> b = {"nvcc", "-ccbin=/usr/bin/g++-13"};
-    EXPECT_NE(tc.cache_key("/tmp/a.cu", a), tc.cache_key("/tmp/a.cu", b));
-    EXPECT_EQ(tc.cache_key("/tmp/a.cu", a), tc.cache_key("/tmp/a.cu", a));
+    /// -ccbin persists as an unknown probe token; two commands differing
+    /// only in host compiler must not share a probe.
+    CompilationDatabase db;
+    db.add_command("/tmp", "/tmp/a.cu", "nvcc -ccbin=/usr/bin/g++-12 -c /tmp/a.cu"sv);
+    db.add_command("/tmp", "/tmp/b.cu", "nvcc -ccbin=/usr/bin/g++-13 -c /tmp/b.cu"sv);
+
+    auto key_of = [&](llvm::StringRef file) {
+        auto& entry = db.candidate_entries(file).front();
+        return db.toolchain().probe_key_for(entry.config, db.input_kind(entry.config, file));
+    };
+    EXPECT_NE(key_of("/tmp/a.cu"), key_of("/tmp/b.cu"));
+    EXPECT_EQ(key_of("/tmp/a.cu"), key_of("/tmp/a.cu"));
 }
 
 TEST_CASE(DatabaseTranslatesNVCC) {
@@ -527,10 +535,9 @@ TEST_CASE(DatabaseTranslatesNVCC) {
                                           "kern.cu.o"};
     db.add_command("/tmp", "/tmp/kern.cu", arguments);
 
-    auto commands = db.lookup("/tmp/kern.cu");
-    ASSERT_EQ(commands.size(), std::size_t(1));
-
-    auto& flags = commands[0].resolved.flags;
+    // Probe tokens (-ccbin, ...) are unknown-class: visible in the full
+    // view and the probe, never in the compile render.
+    auto flags = db.render_full(db.candidate_entries("/tmp/kern.cu").front().config);
     auto has = [&](llvm::StringRef flag) {
         return std::ranges::contains(flags, flag);
     };
@@ -541,7 +548,10 @@ TEST_CASE(DatabaseTranslatesNVCC) {
     EXPECT_TRUE(has("-x"));
     EXPECT_TRUE(has("cuda"));
     EXPECT_TRUE(has("MY_FLAG=1"));
-    EXPECT_FALSE(has("-forward-unknown-to-host-compiler"));
+    /// nvcc-only leftovers are unknown-class: full view keeps them for
+    /// identity, the compile render must not pass them to clang.
+    EXPECT_FALSE(std::ranges::contains(render_entry(db, "/tmp/kern.cu"),
+                                       llvm::StringRef("-forward-unknown-to-host-compiler")));
     for(llvm::StringRef flag: flags) {
         EXPECT_FALSE(flag.starts_with("--generate-code"));
     }
@@ -566,16 +576,14 @@ TEST_CASE(RuleFlagsTranslated) {
                                              "--generate-code=arch=compute_90a,code=sm_90a"};
     options.append = append;
 
-    auto commands = db.lookup("/tmp/kern.cu", options);
-    ASSERT_EQ(commands.size(), std::size_t(1));
-
-    auto& flags = commands[0].resolved.flags;
+    auto flags = db.render_full(
+        db.apply_rules(db.candidate_entries("/tmp/kern.cu").front().config, options));
     auto has = [&](llvm::StringRef flag) {
         return std::ranges::contains(flags, flag);
     };
     EXPECT_FALSE(has("--offload-arch=sm_75"));
-    EXPECT_TRUE(has("--cuda-gpu-arch=sm_90a"));
-    EXPECT_TRUE(has("-D__CUDACC_EXTENDED_LAMBDA__"));
+    EXPECT_TRUE(has("--offload-arch=sm_90a"));
+    EXPECT_TRUE(has("__CUDACC_EXTENDED_LAMBDA__"));
     for(llvm::StringRef flag: flags) {
         EXPECT_FALSE(flag.starts_with("--generate-code"));
         EXPECT_FALSE(flag.starts_with("--extended-lambda"));
@@ -596,35 +604,43 @@ TEST_CASE(AppendOverridesBase) {
                                              "-arch=sm_80"};
     options.append = append;
 
-    auto commands = db.lookup("/tmp/kern.cu", options);
-    ASSERT_EQ(commands.size(), std::size_t(1));
-
-    auto& flags = commands[0].resolved.flags;
+    auto flags = render_entry(db, "/tmp/kern.cu", options);
+    auto count = std::ptrdiff_t(flags.size());
     auto index_of = [&](llvm::StringRef flag) {
         return std::ranges::find(flags,
                                  flag,
                                  [](const char* arg) { return llvm::StringRef(arg); }) -
                flags.begin();
     };
-    auto count = std::ptrdiff_t(flags.size());
+    /// Defines and undefs render as two tokens; locate the value preceded
+    /// by the given option token.
+    auto pair_index = [&](llvm::StringRef option_token, llvm::StringRef value) {
+        for(std::ptrdiff_t i = 0; i + 1 < count; i += 1) {
+            if(llvm::StringRef(flags[i]) == option_token &&
+               llvm::StringRef(flags[i + 1]) == value) {
+                return i;
+            }
+        }
+        return count;
+    };
 
     // rdc: the appended negation follows the base's enable, so clang's own
     // last-wins turns it off and undefines the macro the base defined.
     EXPECT_TRUE(index_of("-fgpu-rdc") < index_of("-fno-gpu-rdc"));
     EXPECT_TRUE(index_of("-fno-gpu-rdc") < count);
-    EXPECT_TRUE(index_of("__CUDACC_RDC__") < index_of("-U__CUDACC_RDC__"));
-    EXPECT_TRUE(index_of("-U__CUDACC_RDC__") < count);
+    EXPECT_TRUE(pair_index("-D", "__CUDACC_RDC__") < pair_index("-U", "__CUDACC_RDC__"));
+    EXPECT_TRUE(pair_index("-U", "__CUDACC_RDC__") < count);
 
     // stream: undef after the base's define.
-    EXPECT_TRUE(index_of("CUDA_API_PER_THREAD_DEFAULT_STREAM=1") <
-                index_of("-UCUDA_API_PER_THREAD_DEFAULT_STREAM"));
-    EXPECT_TRUE(index_of("-UCUDA_API_PER_THREAD_DEFAULT_STREAM") < count);
+    EXPECT_TRUE(pair_index("-D", "CUDA_API_PER_THREAD_DEFAULT_STREAM=1") <
+                pair_index("-U", "CUDA_API_PER_THREAD_DEFAULT_STREAM"));
+    EXPECT_TRUE(pair_index("-U", "CUDA_API_PER_THREAD_DEFAULT_STREAM") < count);
 
     // arch: the base's architecture is cleared before the appended one, not
     // accumulated into a second device pass.
     EXPECT_TRUE(index_of("--offload-arch=sm_75") < index_of("--no-offload-arch=all"));
-    EXPECT_TRUE(index_of("--no-offload-arch=all") < index_of("--cuda-gpu-arch=sm_80"));
-    EXPECT_TRUE(index_of("--cuda-gpu-arch=sm_80") < count);
+    EXPECT_TRUE(index_of("--no-offload-arch=all") < index_of("--offload-arch=sm_80"));
+    EXPECT_TRUE(index_of("--offload-arch=sm_80") < count);
 }
 
 TEST_CASE(ExtrasStayClangDialect) {
@@ -641,12 +657,10 @@ TEST_CASE(ExtrasStayClangDialect) {
     options.extra_prepend = prepend;
     options.extra_append = append;
 
-    auto commands = db.lookup("/tmp/kern.cu", options);
-    ASSERT_EQ(commands.size(), std::size_t(1));
-
-    auto& flags = commands[0].resolved.flags;
+    auto flags = render_entry(db, "/tmp/kern.cu", options);
     EXPECT_EQ(llvm::StringRef(flags[1]), "-fno-gpu-rdc");
-    EXPECT_EQ(llvm::StringRef(flags.back()), "-fgpu-rdc");
+    /// The input sits at its slot after the extra append.
+    EXPECT_EQ(llvm::StringRef(flags[flags.size() - 2]), "-fgpu-rdc");
 }
 
 TEST_CASE(GencodeAppendAccumulates) {
@@ -660,9 +674,8 @@ TEST_CASE(GencodeAppendAccumulates) {
     auto arch_flags = [&](llvm::ArrayRef<std::string> append) {
         CommandOptions options;
         options.append = append;
-        auto commands = db.lookup("/tmp/kern.cu", options);
         std::vector<std::string> result;
-        for(llvm::StringRef flag: commands[0].resolved.flags) {
+        for(llvm::StringRef flag: render_entry(db, "/tmp/kern.cu", options)) {
             if(flag.contains("arch")) {
                 result.push_back(flag.str());
             }
@@ -676,51 +689,55 @@ TEST_CASE(GencodeAppendAccumulates) {
     llvm::SmallVector<std::string> older = {"-gencode=arch=compute_75,code=sm_75"};
     auto kept = arch_flags(older);
     EXPECT_TRUE(std::ranges::contains(kept, "--offload-arch=sm_90"));
-    EXPECT_FALSE(std::ranges::contains(kept, "--cuda-gpu-arch=sm_75"));
+    EXPECT_FALSE(std::ranges::contains(kept, "--offload-arch=sm_75"));
     EXPECT_FALSE(std::ranges::contains(kept, "--no-offload-arch=all"));
 
     // A newer append takes over — by numeric rank, not string order, which
     // would sort sm_100a below sm_90.
     llvm::SmallVector<std::string> newer = {"-gencode=arch=compute_100a,code=sm_100a"};
     auto switched = arch_flags(newer);
-    EXPECT_TRUE(std::ranges::contains(switched, "--cuda-gpu-arch=sm_100a"));
+    EXPECT_TRUE(std::ranges::contains(switched, "--offload-arch=sm_100a"));
     EXPECT_FALSE(std::ranges::contains(switched, "--offload-arch=sm_90"));
 }
 
 TEST_CASE(CollapseHonorsNegatives) {
+    using K = ArchFlagKind;
+
     // A specific --no-offload-arch erases only its matches from the ranking;
     // the negated flag pair stays for clang to consume, and the newest of
-    // the survivors wins.
-    std::vector<const char*> flags = {"clang",
-                                      "--cuda-gpu-arch=sm_90",
-                                      "--no-offload-arch=sm_90",
-                                      "--cuda-gpu-arch=sm_75",
-                                      "--cuda-gpu-arch=sm_86"};
-    collapse_gpu_arch_flags(flags);
-    std::vector<std::string> collapsed(flags.begin(), flags.end());
-    std::vector<std::string> expected = {"clang",
-                                         "--cuda-gpu-arch=sm_90",
-                                         "--no-offload-arch=sm_90",
-                                         "--cuda-gpu-arch=sm_86"};
-    EXPECT_EQ(collapsed, expected);
+    // the survivors wins (dropping the rest).
+    auto dropped = collapse_gpu_archs({
+        {
+         {K::GpuArch, "sm_90"},
+         {K::NoOffloadArch, "sm_90"},
+         {K::GpuArch, "sm_75"},
+         {K::GpuArch, "sm_86"},
+         }
+    });
+    ASSERT_TRUE(dropped.has_value());
+    ASSERT_EQ(dropped->size(), 1U);
+    EXPECT_EQ((*dropped)[0], 2U);
 
     // A single survivor leaves nothing to collapse.
-    std::vector<const char*> single = {"clang",
-                                       "--cuda-gpu-arch=sm_90",
-                                       "--no-offload-arch=sm_90",
-                                       "--cuda-gpu-arch=sm_75"};
-    auto kept = single;
-    collapse_gpu_arch_flags(single);
-    EXPECT_EQ(single, kept);
+    auto single = collapse_gpu_archs({
+        {
+         {K::GpuArch, "sm_90"},
+         {K::NoOffloadArch, "sm_90"},
+         {K::GpuArch, "sm_75"},
+         }
+    });
+    ASSERT_TRUE(single.has_value());
+    EXPECT_TRUE(single->empty());
 
     // An unrankable negative leaves the whole command to clang.
-    std::vector<const char*> native = {"clang",
-                                       "--cuda-gpu-arch=sm_90",
-                                       "--no-offload-arch=native",
-                                       "--cuda-gpu-arch=sm_75"};
-    auto untouched = native;
-    collapse_gpu_arch_flags(native);
-    EXPECT_EQ(native, untouched);
+    auto native = collapse_gpu_archs({
+        {
+         {K::GpuArch, "sm_90"},
+         {K::NoOffloadArch, "native"},
+         {K::GpuArch, "sm_75"},
+         }
+    });
+    EXPECT_FALSE(native.has_value());
 }
 
 TEST_CASE(WildcardRemoveClearsArch) {
@@ -736,9 +753,9 @@ TEST_CASE(WildcardRemoveClearsArch) {
     db.add_command("/tmp", "/tmp/native.cu", native);
 
     auto arch_flags = [&](llvm::StringRef file, const CommandOptions& options) {
-        auto commands = db.lookup(file, options);
+        auto applied = db.apply_rules(db.candidate_entries(file).front().config, options);
         std::vector<std::string> result;
-        for(llvm::StringRef flag: commands[0].resolved.flags) {
+        for(llvm::StringRef flag: db.render_full(applied)) {
             if(flag.contains("arch")) {
                 result.push_back(flag.str());
             }
@@ -768,7 +785,7 @@ TEST_CASE(WildcardRemoveClearsArch) {
     options.append = append;
     auto replaced = arch_flags("/tmp/other.cu", options);
     EXPECT_FALSE(std::ranges::contains(replaced, "--offload-arch=sm_80"));
-    EXPECT_TRUE(std::ranges::contains(replaced, "--cuda-gpu-arch=sm_90a"));
+    EXPECT_TRUE(std::ranges::contains(replaced, "--offload-arch=sm_90a"));
 }
 
 TEST_CASE(RemoveMatchesUnknownSpelling) {
@@ -786,12 +803,10 @@ TEST_CASE(RemoveMatchesUnknownSpelling) {
     llvm::SmallVector<std::string> remove = {"--allow-unsupported-compiler"};
     options.remove = remove;
 
-    auto commands = db.lookup("/tmp/kern.cu", options);
-    ASSERT_EQ(commands.size(), std::size_t(1));
-
     // Probe flags all parse as the shared unknown id; removal keys on the
     // spelling, so the other probe tokens survive.
-    auto& flags = commands[0].resolved.flags;
+    auto flags = db.render_full(
+        db.apply_rules(db.candidate_entries("/tmp/kern.cu").front().config, options));
     auto has = [&](llvm::StringRef flag) {
         return std::ranges::contains(flags, flag);
     };
@@ -819,10 +834,8 @@ TEST_CASE(RemoveListAlternatives) {
                                              "--default-stream=per-thread"};
     options.remove = remove;
 
-    auto commands = db.lookup("/tmp/kern.cu", options);
-    ASSERT_EQ(commands.size(), std::size_t(1));
-
-    auto& flags = commands[0].resolved.flags;
+    auto flags = db.render_full(
+        db.apply_rules(db.candidate_entries("/tmp/kern.cu").front().config, options));
     auto has = [&](llvm::StringRef flag) {
         return std::ranges::contains(flags, flag);
     };
@@ -839,9 +852,9 @@ TEST_CASE(WildcardRemovesProbeValue) {
     auto probe_flags = [&](llvm::ArrayRef<std::string> remove) {
         CommandOptions options;
         options.remove = remove;
-        auto commands = db.lookup("/tmp/kern.cu", options);
+        auto applied = db.apply_rules(db.candidate_entries("/tmp/kern.cu").front().config, options);
         std::vector<std::string> result;
-        for(llvm::StringRef flag: commands[0].resolved.flags) {
+        for(llvm::StringRef flag: db.render_full(applied)) {
             if(is_nvcc_probe_flag(flag)) {
                 result.push_back(flag.str());
             }

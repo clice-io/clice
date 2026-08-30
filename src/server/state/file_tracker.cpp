@@ -99,18 +99,11 @@ llvm::SmallVector<FileEvent> FileTracker::tick_cdb(bool force) {
         return {};
     }
 
-    // The diff speaks in the CDB's own path ids; events speak in master
-    // path-pool ids.
+    // Diff ids and event ids share the single path pool.
     FileEvent::CDBDelta delta;
-    auto convert = [&](llvm::ArrayRef<std::uint32_t> cdb_ids,
-                       llvm::SmallVectorImpl<std::uint32_t>& out) {
-        for(auto id: cdb_ids) {
-            out.push_back(workspace.path_pool.intern(workspace.cdb.resolve_path(id)));
-        }
-    };
-    convert(diff->added, delta.added);
-    convert(diff->removed, delta.removed);
-    convert(diff->changed, delta.changed);
+    delta.added.assign(diff->added.begin(), diff->added.end());
+    delta.removed.assign(diff->removed.begin(), diff->removed.end());
+    delta.changed.assign(diff->changed.begin(), diff->changed.end());
 
     llvm::SmallVector<FileEvent> events;
     events.push_back(FileEvent::cdb_changed(std::move(delta)));

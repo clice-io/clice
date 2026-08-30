@@ -2,7 +2,6 @@
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "command/command.h"
-#include "command/toolchain.h"
 #include "support/path_pool.h"
 #include "syntax/dependency_graph.h"
 
@@ -214,11 +213,9 @@ TEST_SUITE(ScanDependencyGraph) {
 
 TEST_CASE(EmptyCDB) {
     CompilationDatabase cdb;
-    PathPool pool;
     DependencyGraph graph;
 
-    Toolchain tc;
-    scan_dependency_graph(cdb, tc, pool, graph);
+    scan_dependency_graph(cdb, graph);
 
     EXPECT_EQ(graph.file_count(), 0u);
     EXPECT_EQ(graph.module_count(), 0u);
@@ -230,15 +227,13 @@ TEST_CASE(SingleFileNoIncludes) {
     tmp.touch("src/main.cpp", R"(int main() { return 0; })");
 
     CompilationDatabase cdb;
-    PathPool pool;
     DependencyGraph graph;
 
     auto json = build_cdb_json({
         {tmp.root, tmp.path("src/main.cpp"), {}}
     });
     write_cdb(tmp, cdb, json);
-    Toolchain tc;
-    scan_dependency_graph(cdb, tc, pool, graph);
+    scan_dependency_graph(cdb, graph);
 
     EXPECT_EQ(graph.file_count(), 1u);
     EXPECT_EQ(graph.edge_count(), 0u);
@@ -254,15 +249,13 @@ int main() { return x; }
 )");
 
     CompilationDatabase cdb;
-    PathPool pool;
     DependencyGraph graph;
 
     auto json = build_cdb_json({
         {tmp.root, tmp.path("src/main.cpp"), {"-I", tmp.path("include")}}
     });
     write_cdb(tmp, cdb, json);
-    Toolchain tc;
-    scan_dependency_graph(cdb, tc, pool, graph);
+    scan_dependency_graph(cdb, graph);
 
     EXPECT_GE(graph.file_count(), 1u);
     EXPECT_GE(graph.edge_count(), 1u);
@@ -279,15 +272,13 @@ int main() {}
 )");
 
     CompilationDatabase cdb;
-    PathPool pool;
     DependencyGraph graph;
 
     auto json = build_cdb_json({
         {tmp.root, tmp.path("src/main.cpp"), {"-I", tmp.path("inc")}}
     });
     write_cdb(tmp, cdb, json);
-    Toolchain tc;
-    scan_dependency_graph(cdb, tc, pool, graph);
+    scan_dependency_graph(cdb, graph);
 
     // main->a, a->b, b->c across 4 waves.
     EXPECT_GE(graph.file_count(), 3u);
@@ -307,7 +298,6 @@ void b() {}
 )");
 
     CompilationDatabase cdb;
-    PathPool pool;
     DependencyGraph graph;
 
     std::vector<std::string> inc = {"-I", tmp.path("inc")};
@@ -316,8 +306,7 @@ void b() {}
         {tmp.root, tmp.path("src/b.cpp"), inc},
     });
     write_cdb(tmp, cdb, json);
-    Toolchain tc;
-    scan_dependency_graph(cdb, tc, pool, graph);
+    scan_dependency_graph(cdb, graph);
 
     EXPECT_GE(graph.file_count(), 2u);
     EXPECT_GE(graph.edge_count(), 2u);
@@ -335,15 +324,13 @@ TEST_CASE(ConditionalIncludes) {
 )");
 
     CompilationDatabase cdb;
-    PathPool pool;
     DependencyGraph graph;
 
     auto json = build_cdb_json({
         {tmp.root, tmp.path("src/main.cpp"), {"-I", tmp.path("inc")}}
     });
     write_cdb(tmp, cdb, json);
-    Toolchain tc;
-    scan_dependency_graph(cdb, tc, pool, graph);
+    scan_dependency_graph(cdb, graph);
 
     // Both headers discovered (over-approximate).
     EXPECT_GE(graph.edge_count(), 2u);
@@ -351,7 +338,7 @@ TEST_CASE(ConditionalIncludes) {
     // Verify conditional flag.
     bool found_unconditional = false;
     bool found_conditional = false;
-    auto includes = graph.get_includes(pool.cache[tmp.path("src/main.cpp")], 0);
+    auto includes = graph.get_includes(cdb.paths().intern(tmp.path("src/main.cpp")), 0);
     for(auto id: includes) {
         if(id & DependencyGraph::CONDITIONAL_FLAG) {
             found_conditional = true;
@@ -371,20 +358,18 @@ export int foo() { return 42; }
 )");
 
     CompilationDatabase cdb;
-    PathPool pool;
     DependencyGraph graph;
 
     auto json = build_cdb_json({
         {tmp.root, tmp.path("src/mymod.cpp"), {}}
     });
     write_cdb(tmp, cdb, json);
-    Toolchain tc;
-    scan_dependency_graph(cdb, tc, pool, graph);
+    scan_dependency_graph(cdb, graph);
 
     auto result = graph.lookup_module("my.module");
     ASSERT_EQ(result.size(), 1u);
 
-    auto path = pool.resolve(result[0]);
+    auto path = cdb.paths().resolve(result[0]);
     EXPECT_TRUE(llvm::sys::fs::equivalent(path, tmp.path("src/mymod.cpp")));
 }
 
@@ -396,15 +381,13 @@ void impl() {}
 )");
 
     CompilationDatabase cdb;
-    PathPool pool;
     DependencyGraph graph;
 
     auto json = build_cdb_json({
         {tmp.root, tmp.path("src/mod.cpp"), {}}
     });
     write_cdb(tmp, cdb, json);
-    Toolchain tc;
-    scan_dependency_graph(cdb, tc, pool, graph);
+    scan_dependency_graph(cdb, graph);
 
     ASSERT_EQ(graph.lookup_module("my.mod:part").size(), 1u);
 }
@@ -427,15 +410,13 @@ int main() {}
 )");
 
     CompilationDatabase cdb;
-    PathPool pool;
     DependencyGraph graph;
 
     auto json = build_cdb_json({
         {tmp.root, tmp.path("src/main.cpp"), {"-I", tmp.path("inc")}}
     });
     write_cdb(tmp, cdb, json);
-    Toolchain tc;
-    scan_dependency_graph(cdb, tc, pool, graph);
+    scan_dependency_graph(cdb, graph);
 
     // main->a, main->b, a->common, b->common.
     EXPECT_GE(graph.edge_count(), 4u);
@@ -453,7 +434,6 @@ int main() {}
 )");
 
     CompilationDatabase cdb;
-    PathPool pool;
     DependencyGraph graph;
 
     auto json = build_cdb_json({
@@ -462,8 +442,7 @@ int main() {}
          {"-iquote", tmp.path("quoted"), "-I", tmp.path("angled")}}
     });
     write_cdb(tmp, cdb, json);
-    Toolchain tc;
-    scan_dependency_graph(cdb, tc, pool, graph);
+    scan_dependency_graph(cdb, graph);
 
     EXPECT_GE(graph.edge_count(), 2u);
 }
@@ -476,15 +455,13 @@ int main() {}
 )");
 
     CompilationDatabase cdb;
-    PathPool pool;
     DependencyGraph graph;
 
     auto json = build_cdb_json({
         {tmp.root, tmp.path("src/main.cpp"), {}}
     });
     write_cdb(tmp, cdb, json);
-    Toolchain tc;
-    scan_dependency_graph(cdb, tc, pool, graph);
+    scan_dependency_graph(cdb, graph);
 
     EXPECT_EQ(graph.file_count(), 1u);
     EXPECT_EQ(graph.edge_count(), 0u);
@@ -506,7 +483,6 @@ void a_impl() {}
 )");
 
     CompilationDatabase cdb;
-    PathPool pool;
     DependencyGraph graph;
 
     auto json = build_cdb_json({
@@ -515,8 +491,7 @@ void a_impl() {}
         {tmp.root, tmp.path("src/impl.cpp"),  {}},
     });
     write_cdb(tmp, cdb, json);
-    Toolchain tc;
-    scan_dependency_graph(cdb, tc, pool, graph);
+    scan_dependency_graph(cdb, graph);
 
     EXPECT_EQ(graph.module_count(), 2u);
     ASSERT_FALSE(graph.lookup_module("mod.a").empty());
@@ -536,15 +511,13 @@ int main() {}
 )");
 
     CompilationDatabase cdb;
-    PathPool pool;
     DependencyGraph graph;
 
     auto json = build_cdb_json({
         {tmp.root, tmp.path("src/main.cpp"), {"-I", tmp.path("inc")}}
     });
     write_cdb(tmp, cdb, json);
-    Toolchain tc;
-    scan_dependency_graph(cdb, tc, pool, graph);
+    scan_dependency_graph(cdb, graph);
 
     // main->h0->h1->h2->h3->h4 across 5 waves.
     EXPECT_GE(graph.edge_count(), 5u);
@@ -562,15 +535,13 @@ export int value() { return util; }
 )");
 
     CompilationDatabase cdb;
-    PathPool pool;
     DependencyGraph graph;
 
     auto json = build_cdb_json({
         {tmp.root, tmp.path("src/mymod.cpp"), {"-I", tmp.path("inc")}}
     });
     write_cdb(tmp, cdb, json);
-    Toolchain tc;
-    scan_dependency_graph(cdb, tc, pool, graph);
+    scan_dependency_graph(cdb, graph);
 
     ASSERT_FALSE(graph.lookup_module("my.lib").empty());
     EXPECT_GE(graph.edge_count(), 1u);
@@ -585,9 +556,7 @@ int main() {}
 )");
 
     CompilationDatabase cdb;
-    PathPool pool;
     ScanCache cache;
-    Toolchain tc;
 
     auto json = build_cdb_json({
         {tmp.root, tmp.path("src/main.cpp"), {"-I", tmp.path("inc")}}
@@ -595,13 +564,13 @@ int main() {}
     write_cdb(tmp, cdb, json);
 
     DependencyGraph graph;
-    auto cold = scan_dependency_graph(cdb, tc, pool, graph, &cache);
+    auto cold = scan_dependency_graph(cdb, graph, &cache);
     EXPECT_GE(graph.edge_count(), 1u);
 
     // Warm run with the same cache and pool reproduces the same graph
     // and hits the scan result cache instead of re-reading files.
     DependencyGraph graph2;
-    auto warm = scan_dependency_graph(cdb, tc, pool, graph2, &cache);
+    auto warm = scan_dependency_graph(cdb, graph2, &cache);
     EXPECT_GT(warm.scan_cache_hits, std::size_t(0));
     EXPECT_EQ(graph2.edge_count(), graph.edge_count());
     EXPECT_EQ(graph2.file_count(), graph.file_count());

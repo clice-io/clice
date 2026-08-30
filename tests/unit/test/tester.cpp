@@ -312,10 +312,14 @@ void Tester::prepare_driver(llvm::StringRef standard) {
     auto command = std::format("clang++ {} {} -fms-extensions", standard, src_path);
     database.add_command("fake", src_path, command);
 
-    auto commands = database.lookup(src_path);
-    assert(!commands.empty() && "lookup failed after add_command");
-    toolchain.resolve_or_warn(commands.front());
-    params.arguments = commands.front().to_argv();
+    auto candidates = database.candidate_entries(src_path);
+    assert(!candidates.empty() && "no entry after add_command");
+    auto& entry = candidates.front();
+    CommandRef ref{entry.file,
+                   entry.config,
+                   database.input_kind(entry.config, src_path),
+                   CommandSource::CDBExact};
+    params.arguments = database.render(ref);
 
     params.kind = CompilationKind::Content;
 
@@ -341,8 +345,6 @@ bool Tester::compile_driver(llvm::StringRef standard) {
 
 void Tester::clear() {
     params = CompilationParams();
-    database = CompilationDatabase();
-    toolchain = Toolchain();
     unit.reset();
     sources.all_files.clear();
     src_path.clear();

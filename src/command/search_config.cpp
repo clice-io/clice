@@ -1,6 +1,7 @@
 #include "command/search_config.h"
 
 #include "command/argument_parser.h"
+#include "command/command.h"
 
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringSet.h"
@@ -11,8 +12,7 @@ namespace clice {
 
 using namespace option;
 
-SearchConfig extract_search_config(llvm::ArrayRef<const char*> arguments,
-                                   llvm::StringRef directory) {
+SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef directory) {
     // Replicate clang's InitHeaderSearch::Realize layout:
     //   Quoted (-iquote) → Angled (-I) → System (-isystem, -internal-isystem, etc.)
     // Then deduplicate across [Angled..end) matching clang's RemoveDuplicates.
@@ -34,39 +34,35 @@ SearchConfig extract_search_config(llvm::ArrayRef<const char*> arguments,
     // Track -iprefix state for -iwithprefix/-iwithprefixbefore.
     std::string prefix;
 
-    std::vector<std::string> parse_args(arguments.begin() + 1, arguments.end());
-    auto options = kota::option::ParseOptions{.dash_dash_parsing = true,
-                                              .visibility = default_visibility(arguments[0])};
-    for(auto& result: option::table().parse(parse_args, options)) {
-        if(!result.has_value()) {
+    for(auto& arg: args) {
+        if(arg.values.empty()) {
             continue;
         }
-        auto& arg = *result;
-        auto vals = arg.values;
-        switch(arg.id) {
+        std::string_view value = arg.values[0];
+        switch(arg.opt_id) {
             // Quoted group (clang: frontend::Quoted)
-            case OPT_iquote: quoted.push_back({make_absolute(vals[0])}); break;
+            case OPT_iquote: quoted.push_back({make_absolute(value)}); break;
 
             // Angled group (clang: frontend::Angled)
-            case OPT_I: angled.push_back({make_absolute(vals[0])}); break;
+            case OPT_I: angled.push_back({make_absolute(value)}); break;
 
             // System group (clang: frontend::System / ExternCSystem)
             case OPT_isystem:
             case OPT_internal_isystem:
-            case OPT_internal_externc_isystem: system.push_back({make_absolute(vals[0])}); break;
+            case OPT_internal_externc_isystem: system.push_back({make_absolute(value)}); break;
 
             // Prefix options: must be processed in argument order.
-            case OPT_iprefix: prefix = vals[0]; break;
+            case OPT_iprefix: prefix = value; break;
             case OPT_iwithprefix:
                 // clang maps to After group.
-                after.push_back({make_absolute(prefix + std::string(vals[0]))});
+                after.push_back({make_absolute(prefix + std::string(value))});
                 break;
             case OPT_iwithprefixbefore:
                 // clang maps to Angled group.
-                angled.push_back({make_absolute(prefix + std::string(vals[0]))});
+                angled.push_back({make_absolute(prefix + std::string(value))});
                 break;
 
-            case OPT_idirafter: after.push_back({make_absolute(vals[0])}); break;
+            case OPT_idirafter: after.push_back({make_absolute(value)}); break;
 
             // TODO: -cxx-isystem (clang: frontend::CXXSystem, C++-only system dirs)
             // TODO: -iwithsysroot (prepends sysroot to path, then adds to System)

@@ -16,7 +16,7 @@ namespace ranges = std::ranges;
 
 /// path_id that `cdb` assigns to a file under the temp root.
 std::uint32_t id_of(CompilationDatabase& cdb, TempDir& tmp, llvm::StringRef rel) {
-    return cdb.intern_path(path::join(tmp.root.str(), rel));
+    return cdb.paths().intern(path::join(tmp.root.str(), rel));
 }
 
 bool contains(llvm::ArrayRef<std::uint32_t> list, std::uint32_t id) {
@@ -258,9 +258,11 @@ TEST_CASE(CorruptKeepsEntries) {
     ASSERT_FALSE(diff.has_value());
     EXPECT_TRUE(cdb.has_entry(path::join(tmp.root.str(), "a.cpp")));
 
-    auto results = cdb.lookup(path::join(tmp.root.str(), "a.cpp"), {.inject_resource_dir = false});
-    ASSERT_EQ(results.size(), 1U);
-    EXPECT_TRUE(llvm::StringRef(print_argv(results.front().to_argv())).contains("-std=c++20"));
+    auto file = path::join(tmp.root.str(), "a.cpp");
+    auto candidates = cdb.candidate_entries(file);
+    ASSERT_EQ(candidates.size(), 1U);
+    EXPECT_TRUE(llvm::StringRef(print_argv(cdb.render_full(candidates.front().config)))
+                    .contains("-std=c++20"));
 };
 
 TEST_CASE(MissingFileFails) {

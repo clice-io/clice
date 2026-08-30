@@ -3027,10 +3027,7 @@ TEST_CASE(ModuleLintScanParity) {
                   {tmp.root, tmp.path("m.cppm"), {}},
                   {tmp.root, tmp.path("n.cppm"), {}},
     }));
-    scan_dependency_graph(f.workspace.cdb,
-                          f.workspace.toolchain,
-                          f.workspace.path_pool,
-                          f.workspace.dep_graph);
+    scan_dependency_graph(f.workspace.cdb, f.workspace.dep_graph);
     f.workspace.dep_graph.build_reverse_map();
     f.workspace.build_module_map();
 

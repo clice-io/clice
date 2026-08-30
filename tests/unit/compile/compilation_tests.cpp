@@ -283,18 +283,25 @@ export int a_value() { return b_value() + 1; }
 )");
 
     CompilationDatabase cdb;
-    Toolchain tc;
+
+    auto render_entry = [&](llvm::StringRef file) {
+        auto& entry = cdb.candidate_entries(file).front();
+        CommandRef ref{entry.file,
+                       entry.config,
+                       cdb.input_kind(entry.config, file),
+                       CommandSource::CDBExact};
+        EXPECT_TRUE(cdb.toolchain().resolve(ref.config, ref.input).has_value());
+        return cdb.render(ref);
+    };
 
     // Build PCM for mod_b.
     cdb.add_command(tmp.root.str(),
                     tmp.path("mod_b.cppm"),
                     std::format("clang++ -std=c++20 {}", tmp.path("mod_b.cppm")));
 
-    auto cmds_b = cdb.lookup(tmp.path("mod_b.cppm"));
-    ASSERT_TRUE(tc.resolve(cmds_b.front()).has_value());
     CompilationParams params_b;
     params_b.kind = CompilationKind::ModuleInterface;
-    params_b.arguments = cmds_b.front().to_argv();
+    params_b.arguments = render_entry(tmp.path("mod_b.cppm"));
 
     auto pcm_b_path = fs::createTemporaryFile("mod_b", "pcm");
     ASSERT_TRUE(pcm_b_path.operator bool());
@@ -310,11 +317,9 @@ export int a_value() { return b_value() + 1; }
                     tmp.path("mod_a.cppm"),
                     std::format("clang++ -std=c++20 {}", tmp.path("mod_a.cppm")));
 
-    auto cmds_a = cdb.lookup(tmp.path("mod_a.cppm"));
-    ASSERT_TRUE(tc.resolve(cmds_a.front()).has_value());
     CompilationParams params_a;
     params_a.kind = CompilationKind::ModuleInterface;
-    params_a.arguments = cmds_a.front().to_argv();
+    params_a.arguments = render_entry(tmp.path("mod_a.cppm"));
     params_a.pcms.try_emplace("mod_b", info_b.path);
 
     auto pcm_a_path = fs::createTemporaryFile("mod_a", "pcm");

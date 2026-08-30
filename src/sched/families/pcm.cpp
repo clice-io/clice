@@ -32,16 +32,20 @@ void PCMFamily::register_runner() {
 
 PCMFamily::ModuleDeps PCMFamily::direct_deps(std::uint32_t path_id,
                                              std::optional<llvm::StringRef> content) {
+    // The same resolution the real build uses (run() below): a module unit
+    // scanned with a different command than it compiles with would edge
+    // against a different dependency set.
     auto file_path = workspace.path_pool.resolve(path_id);
-    std::vector<std::string> rule_append, rule_remove;
-    workspace.config.match_rules(file_path, rule_append, rule_remove);
-    auto results = workspace.cdb.lookup(file_path, {.remove = rule_remove, .append = rule_append});
-    if(results.empty())
-        return {};
-    workspace.toolchain.resolve_or_warn(results[0]);
+    std::string directory;
+    std::vector<std::string> arguments;
+    contexts.resolve_command(file_path, directory, arguments);
 
-    auto& cmd = results[0];
-    return direct_deps(path_id, cmd.to_argv(), cmd.resolved.directory, content);
+    std::vector<const char*> argv;
+    argv.reserve(arguments.size());
+    for(auto& arg: arguments) {
+        argv.push_back(arg.c_str());
+    }
+    return direct_deps(path_id, argv, directory, content);
 }
 
 PCMFamily::ModuleDeps PCMFamily::direct_deps(std::uint32_t path_id,

@@ -64,4 +64,22 @@ inline void write_cdb(TempDir& tmp, CompilationDatabase& cdb, llvm::StringRef js
     cdb.load(tmp.path("compile_commands.json"));
 }
 
+/// Rules-applied driver-level render of a file's default candidate, with
+/// the injected resource dir stripped so tests can assert exact argv.
+inline std::vector<const char*> render_entry(CompilationDatabase& cdb,
+                                             llvm::StringRef file,
+                                             const CommandOptions& options = {}) {
+    auto& entry = cdb.candidate_entries(file).front();
+    auto applied = cdb.apply_rules(entry.config, options);
+    CommandRef ref{entry.file, applied, cdb.input_kind(applied, file), CommandSource::CDBExact};
+    auto argv = cdb.render_driver(ref);
+    for(std::size_t i = 0; i + 1 < argv.size(); i += 1) {
+        if(llvm::StringRef(argv[i]) == "-resource-dir") {
+            argv.erase(argv.begin() + i, argv.begin() + i + 2);
+            break;
+        }
+    }
+    return argv;
+}
+
 }  // namespace clice::testing

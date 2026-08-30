@@ -20,7 +20,8 @@ function snapshotMtimes(dir: string): Record<string, bigint> {
 }
 
 /// Switching between two CDB entries of one source must recompile it
-/// under the selected flags.
+/// under the selected flags. The unswitched default is content-decided
+/// (not CDB order), so the test drives both states explicitly.
 test("source command switch", async ({ session }) => {
     const { client, workspace } = session.tmp();
     workspace.write(
@@ -33,9 +34,7 @@ test("source command switch", async ({ session }) => {
     ]);
     await client.initialize(workspace);
 
-    // Default entry is the first one: EXPECTED defined, clean.
     const [mainUri] = await client.openAndWait("main.cpp");
-    client.assertCleanCompile(mainUri);
 
     const query = await client.queryContext(mainUri);
     expect(query.total).toBe(2);
@@ -47,8 +46,14 @@ test("source command switch", async ({ session }) => {
     const plainHash = contexts.find((c) => !c.label.includes("-DEXPECTED"))!.commandHash!;
     const definedHash = contexts.find((c) => c.label.includes("-DEXPECTED"))!.commandHash!;
 
+    // Pin the entry with the define: clean compile.
+    let switched = await client.switchContext(mainUri, mainUri, { commandHash: definedHash });
+    expect(switched.success).toBe(true);
+    await client.waitForRecompile(mainUri);
+    client.assertCleanCompile(mainUri);
+
     // Switch to the entry without the define: the #error must fire.
-    let switched = await client.switchContext(mainUri, mainUri, { commandHash: plainHash });
+    switched = await client.switchContext(mainUri, mainUri, { commandHash: plainHash });
     expect(switched.success).toBe(true);
     await client.waitForRecompile(mainUri);
     client.assertHasErrors(mainUri, "Expected #error without -DEXPECTED");
@@ -416,17 +421,24 @@ test("switched context survives reopen", async ({ session }) => {
     await client.initialize(workspace);
 
     const [uri] = await client.openAndWait("main.cpp");
-    client.assertCleanCompile(uri);
 
     const query = await client.queryContext(uri);
     const contexts = query.contexts;
     expect(query.total, `expected both entries: ${JSON.stringify(contexts)}`).toBe(2);
+    const cleanHash = contexts.find((c) => (c.label || "").includes("USE_A"))!.commandHash!;
     const targetHash = contexts.find((c) => (c.label || "").includes("USE_B"))!.commandHash!;
 
-    const switched = await client.switchContext(uri, uri, {
-        commandHash: targetHash,
+    // The unswitched default is content-decided; pin USE_A for a known
+    // starting state.
+    let switched = await client.switchContext(uri, uri, {
+        commandHash: cleanHash,
         epoch: query.epoch,
     });
+    expect(switched.success, `switch failed: ${JSON.stringify(switched)}`).toBe(true);
+    await client.waitForRecompile(uri);
+    client.assertCleanCompile(uri);
+
+    switched = await client.switchContext(uri, uri, { commandHash: targetHash });
     expect(switched.success, `switch failed: ${JSON.stringify(switched)}`).toBe(true);
 
     client.close(uri);

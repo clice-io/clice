@@ -106,7 +106,21 @@ void Workspace::rescan_includes(std::uint32_t path_id) {
 
         std::vector<std::string> rule_append, rule_remove;
         config.match_rules(cmd_path, rule_append, rule_remove);
-        auto cmds = cdb.lookup(cmd_path, {.remove = rule_remove, .append = rule_append});
+        auto candidates = cdb.candidate_entries(cmd_path);
+        llvm::SmallVector<CommandRef> refs;
+        for(auto& entry: candidates) {
+            auto applied =
+                cdb.apply_rules(entry.config, {.remove = rule_remove, .append = rule_append});
+            refs.push_back(
+                {entry.file, applied, cdb.input_kind(applied, cmd_path), CommandSource::CDBExact});
+        }
+        if(refs.empty()) {
+            auto fallback = cdb.fallback_config(cmd_path);
+            auto applied =
+                cdb.apply_rules(fallback, {.remove = rule_remove, .append = rule_append});
+            refs.push_back(
+                {path_id, applied, cdb.input_kind(applied, cmd_path), CommandSource::Fallback});
+        }
 
         // Resolve under every configuration: an include may only be
         // reachable through the -I set of a non-first CDB entry. The local
@@ -115,11 +129,8 @@ void Workspace::rescan_includes(std::uint32_t path_id) {
         auto includes = scan_quick((*buf)->getBuffer()).includes;
         DirListingCache dir_cache;
         auto dir = llvm::sys::path::parent_path(path);
-        for(std::uint32_t ci = 0; ci < cmds.size(); ++ci) {
-            auto& cmd = cmds[ci];
-            toolchain.resolve_or_warn(cmd);
-            auto argv = cmd.to_argv();
-            auto search_config = extract_search_config(argv, cmd.resolved.directory);
+        for(std::uint32_t ci = 0; ci < refs.size(); ++ci) {
+            auto search_config = cdb.search_config(refs[ci]);
             auto resolved_config = resolve_search_config(search_config, dir_cache);
             auto entries = resolve_dir(dir, dir_cache);
 
@@ -163,16 +174,19 @@ void Workspace::rescan_after_save(std::uint32_t path_id) {
         // or this save would drop a guarded interface from both provider
         // maps and leave its importers unresolved until a reload.
         if(result.need_preprocess) {
-            auto cmds = cdb.lookup(file_path);
-            if(!cmds.empty()) {
-                toolchain.resolve_or_warn(cmds[0]);
-                auto fallback = scan_module_decl(cmds[0].to_argv(),
-                                                 cmds[0].resolved.directory,
-                                                 (*buf)->getBuffer());
-                if(!fallback.module_name.empty()) {
-                    result.module_name = std::move(fallback.module_name);
-                    result.is_interface_unit = fallback.is_interface_unit;
-                }
+            auto candidates = cdb.candidate_entries(file_path);
+            bool has_entry = !candidates.empty();
+            auto config = has_entry ? candidates.front().config : cdb.fallback_config(file_path);
+            CommandRef ref{path_id,
+                           config,
+                           cdb.input_kind(config, file_path),
+                           has_entry ? CommandSource::CDBExact : CommandSource::Fallback};
+            auto fallback = scan_module_decl(cdb.render(ref),
+                                             cdb.config(ref.config).directory,
+                                             (*buf)->getBuffer());
+            if(!fallback.module_name.empty()) {
+                result.module_name = std::move(fallback.module_name);
+                result.is_interface_unit = fallback.is_interface_unit;
             }
         }
         // Both maps hold interface units only, mirroring the startup scan:

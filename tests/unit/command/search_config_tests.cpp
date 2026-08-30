@@ -1,5 +1,6 @@
 #include "test/temp_dir.h"
 #include "test/test.h"
+#include "command/command.h"
 #include "command/search_config.h"
 
 namespace clice::testing {
@@ -7,6 +8,15 @@ namespace clice::testing {
 namespace {
 
 TEST_SUITE(ExtractSearchConfig) {
+
+/// Normalize a raw argv through the database and extract from the
+/// structured command (the only extraction path).
+SearchConfig extract(llvm::ArrayRef<const char*> args, llvm::StringRef directory) {
+    CompilationDatabase db;
+    db.add_command(directory, "main.cpp", args);
+    auto& entry = db.candidate_entries("main.cpp").front();
+    return extract_search_config(db.config(entry.config).args, directory);
+}
 
 TEST_CASE(ReordersDirectoryGroups) {
     // TempDir gives cross-platform absolute paths (drive letter on Windows).
@@ -23,7 +33,7 @@ TEST_CASE(ReordersDirectoryGroups) {
                                      "-iquote",
                                      tmp.c_path("quoted"),
                                      "main.cpp"};
-    auto config = extract_search_config(args, tmp.root.str());
+    auto config = extract(args, tmp.root.str());
 
     // Expected order: [quoted | user | stdlib, clang, sysroot]
     ASSERT_EQ(config.dirs.size(), 5u);
@@ -49,7 +59,7 @@ TEST_CASE(PreservesWithinGroupOrder) {
                                      "-isystem",
                                      tmp.c_path("s1"),
                                      "main.cpp"};
-    auto config = extract_search_config(args, tmp.root.str());
+    auto config = extract(args, tmp.root.str());
 
     ASSERT_EQ(config.dirs.size(), 4u);
     EXPECT_EQ(config.angled_start_idx, 0u);
@@ -70,7 +80,7 @@ TEST_CASE(DeduplicatesAngledSystem) {
                                      "-internal-isystem",
                                      tmp.c_path("only_sys"),
                                      "main.cpp"};
-    auto config = extract_search_config(args, tmp.root.str());
+    auto config = extract(args, tmp.root.str());
 
     // /shared in both Angled and System → keep Angled copy.
     ASSERT_EQ(config.dirs.size(), 2u);
@@ -93,7 +103,7 @@ TEST_CASE(QuotedAngledSamePathKeptInBoth) {
                                      "-I",
                                      tmp.c_path("other"),
                                      "main.cpp"};
-    auto config = extract_search_config(args, tmp.root.str());
+    auto config = extract(args, tmp.root.str());
 
     // "shared" must appear in both Quoted and Angled segments.
     ASSERT_EQ(config.dirs.size(), 3u);
@@ -117,7 +127,7 @@ TEST_CASE(DeduplicateAdjustsIndices) {
                                      "-isystem",
                                      tmp.c_path("s"),
                                      "main.cpp"};
-    auto config = extract_search_config(args, tmp.root.str());
+    auto config = extract(args, tmp.root.str());
 
     // Before dedup: [q | dup, a2 | dup, s] angled=1, system=3
     // dup in system removed. system_start_idx stays 3.
@@ -148,7 +158,7 @@ TEST_CASE(PrefixIncludeOptions) {
                                      "-iwithprefix",
                                      "include",
                                      "main.cpp"};
-    auto config = extract_search_config(args, tmp.root.str());
+    auto config = extract(args, tmp.root.str());
 
     // -iwithprefixbefore → Angled, -iwithprefix → After
     ASSERT_EQ(config.dirs.size(), 3u);
@@ -170,7 +180,7 @@ TEST_CASE(DirafterGroup) {
                                      "-idirafter",
                                      tmp.c_path("fallback"),
                                      "main.cpp"};
-    auto config = extract_search_config(args, tmp.root.str());
+    auto config = extract(args, tmp.root.str());
 
     ASSERT_EQ(config.dirs.size(), 3u);
     EXPECT_EQ(config.angled_start_idx, 0u);
@@ -191,7 +201,7 @@ TEST_CASE(DirafterDeduplication) {
                                      "-idirafter",
                                      tmp.c_path("extra"),
                                      "main.cpp"};
-    auto config = extract_search_config(args, tmp.root.str());
+    auto config = extract(args, tmp.root.str());
 
     ASSERT_EQ(config.dirs.size(), 2u);
     EXPECT_EQ(config.angled_start_idx, 0u);

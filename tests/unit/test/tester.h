@@ -7,7 +7,6 @@
 
 #include "test/test.h"
 #include "command/command.h"
-#include "command/toolchain.h"
 #include "compile/compilation.h"
 #include "syntax/annotation.h"
 
@@ -16,7 +15,6 @@ namespace clice::testing {
 struct Tester {
     CompilationParams params;
     CompilationDatabase database;
-    Toolchain toolchain;
     std::optional<CompilationUnit> unit;
     std::string src_path;
 
@@ -87,6 +85,8 @@ struct Tester {
 
     LocalSourceRange range(llvm::StringRef name = "", llvm::StringRef file = "");
 
+    /// Reset per-compile state so one case can compile several sources.
+    /// The database persists — entries are append-only and harmless.
     void clear();
 };
 

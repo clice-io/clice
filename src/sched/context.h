@@ -15,23 +15,6 @@
 
 namespace clice {
 
-/// Where the compile command for a file came from. Anything other than
-/// CDBExact means the command was guessed to some degree, which is why
-/// diagnostics produced with it may deserve a guidance note (see
-/// format_diagnostics).
-enum class CommandSource : std::uint8_t {
-    /// Direct compilation database entry for the file.
-    CDBExact,
-    /// Header compiled in the context of a host source found through the
-    /// include graph (automatic or via clice/switchContext).
-    IncludeGraph,
-    /// Reserved for command transfer heuristics (e.g. nearest CDB entry);
-    /// no producer yet.
-    Inferred,
-    /// Synthesized default command — no CDB entry and no usable host source.
-    Fallback,
-};
-
 /// Who a command resolution serves. User context choices steer
 /// editor-facing compiles of open files, never background indexing.
 enum class ContextUse : std::uint8_t {
@@ -204,13 +187,17 @@ public:
     /// before toolchain resolution so the driver interprets them. Unlike
     /// config rule appends they are never NVCC-translated; prepends land
     /// right after the binary name, appends win over rule appends.
+    /// @param out_ref  If non-null, receives the resolved command selection
+    /// (the ref behind `arguments`) for structured consumers — search
+    /// config, language queries.
     CommandSource resolve_command(llvm::StringRef path,
                                   std::string& directory,
                                   std::vector<std::string>& arguments,
                                   ContextUse use = ContextUse::Background,
                                   std::uint32_t* host_path_id = nullptr,
                                   llvm::ArrayRef<std::string> extra_prepend = {},
-                                  llvm::ArrayRef<std::string> extra_append = {});
+                                  llvm::ArrayRef<std::string> extra_append = {},
+                                  CommandRef* out_ref = nullptr);
 
     /// Append the header context's suffix as one trailing #include line: the
     /// suffix content (everything after the include position along the chain)
@@ -228,7 +215,8 @@ public:
                                   std::string& directory,
                                   std::vector<std::string>& arguments,
                                   ContextUse use,
-                                  std::uint32_t* host_path_id);
+                                  std::uint32_t* host_path_id,
+                                  CommandRef* out_ref = nullptr);
 
     /// Validate a context choice persisted from an earlier run against the
     /// current CDB and include graph, dropping it when stale. Called on

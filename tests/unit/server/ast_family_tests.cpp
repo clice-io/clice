@@ -430,10 +430,7 @@ TEST_CASE(BufferImportBuildsPCM) {
                   {tmp.root, tmp.path("m.cppm"), {}},
                   {tmp.root, src,                {}},
     }));
-    scan_dependency_graph(stack.workspace.cdb,
-                          stack.workspace.toolchain,
-                          stack.workspace.path_pool,
-                          stack.workspace.dep_graph);
+    scan_dependency_graph(stack.workspace.cdb, stack.workspace.dep_graph);
     stack.workspace.dep_graph.build_reverse_map();
     stack.workspace.build_module_map();
 
