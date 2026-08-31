@@ -6,6 +6,7 @@
 #include <optional>
 
 #include "support/filesystem.h"
+#include "syntax/scan.h"
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallString.h"
@@ -297,6 +298,54 @@ struct FileTable {
         /// The file exists but cannot be read right now.
         Unreadable,
     };
+
+    /// The lexical scan of a version's bytes: scan_quick is a pure
+    /// function of the content, so the result is pinned by the version
+    /// identity (fid, content hash) and every consumer at that version
+    /// shares one lex — the startup scan feeds it, didSave rescans and
+    /// CDB-reload rescans hit it when only the stat moved. Keyed by the
+    /// identity pair rather than a version id so the scan (which runs
+    /// before the persisted id space loads) never allocates ids. Raw
+    /// results only — the module-name backfill below is configuration
+    /// output and must not enter a content-keyed slot.
+    llvm::DenseMap<std::pair<std::uint32_t, std::uint64_t>, ScanResult> scan_results;
+
+    /// The scan of exactly these bytes, whose hash the caller proved to be
+    /// `content_hash` (a paired read), computed on first sight.
+    const ScanResult& scan_of(std::uint32_t fid, std::uint64_t content_hash,
+                              llvm::StringRef content) {
+        auto [it, inserted] = scan_results.try_emplace({fid, content_hash});
+        if(inserted) {
+            it->second = scan_quick(content);
+        }
+        return it->second;
+    }
+
+    /// The cached scan for a live stat of the file, when the shared pair
+    /// proves which bytes the stat describes — the zero-IO warm path of a
+    /// rescan. nullptr = someone must read and lex.
+    const ScanResult* cached_scan(std::uint32_t fid, std::uint64_t size,
+                                  std::int64_t mtime_ns) const {
+        auto hash = cached_hash(fid, size, mtime_ns);
+        if(!hash) {
+            return nullptr;
+        }
+        auto it = scan_results.find({fid, *hash});
+        return it == scan_results.end() ? nullptr : &it->second;
+    }
+
+    /// A module declaration hidden behind preprocessor conditionals,
+    /// resolved by a real preprocessor run under one compile
+    /// configuration: keyed by (content hash, semantic hash of the
+    /// rendered command) — the same bytes legitimately resolve differently
+    /// under different flag sets, and dense config ids are CDB-local
+    /// (multiple CDBs share this table).
+    struct ModuleDecl {
+        std::string name;
+        bool is_interface_unit = false;
+    };
+
+    llvm::DenseMap<std::pair<std::uint64_t, std::uint64_t>, ModuleDecl> module_decls;
 
     /// Wave-scoped verdict memo: one top-level check operation (a
     /// deps_changed chain, an index need_update batch) opens a wave, and

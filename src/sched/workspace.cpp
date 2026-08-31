@@ -82,11 +82,20 @@ llvm::SmallVector<std::uint32_t> Workspace::rank_hosts(std::uint32_t header_path
     return ranked;
 }
 
-void Workspace::rescan_includes(std::uint32_t path_id) {
+void Workspace::rescan_after_save(std::uint32_t path_id) {
     auto path = file_table.resolve(path_id);
     dep_graph.clear_includes(path_id);
 
-    if(auto buf = llvm::MemoryBuffer::getFile(path)) {
+    // One read serves everything a save invalidates: the shared pair (so
+    // hash comparisons elsewhere stop re-reading), the lexical scan
+    // (include edges and the module declaration), and the bytes the
+    // module-decl preprocessor fallback must consume.
+    auto observed = read_file_observed(path.data());
+    if(observed) {
+        file_table.observe(path_id, observed->obs);
+        const auto& scan =
+            file_table.scan_of(path_id, observed->obs.hash, observed->content->getBuffer());
+
         // Search paths come from the file's own command, or a host's for
         // headers without a CDB entry; the synthesized default still
         // resolves quote includes via the includer directory.
@@ -123,7 +132,6 @@ void Workspace::rescan_includes(std::uint32_t path_id) {
         // reachable through the -I set of a non-first CDB entry. The local
         // index serves as config id — prior keys were just cleared and
         // consumers read the union.
-        auto includes = scan_quick((*buf)->getBuffer()).includes;
         DirListingCache dir_cache;
         auto dir = llvm::sys::path::parent_path(path);
         for(std::uint32_t ci = 0; ci < refs.size(); ++ci) {
@@ -132,7 +140,7 @@ void Workspace::rescan_includes(std::uint32_t path_id) {
             auto entries = resolve_dir(dir, dir_cache);
 
             llvm::SmallVector<std::uint32_t> ids;
-            for(auto& include: includes) {
+            for(auto& include: scan.includes) {
                 auto resolved = resolve_include(include.path,
                                                 include.is_angled,
                                                 entries,
@@ -147,65 +155,67 @@ void Workspace::rescan_includes(std::uint32_t path_id) {
             }
             dep_graph.set_includes(path_id, ci, std::move(ids));
         }
-    }
 
-    dep_graph.build_reverse_map();
-}
+        dep_graph.build_reverse_map();
+        context_epoch += 1;
 
-void Workspace::rescan_after_save(std::uint32_t path_id) {
-    // Contexts must see includes added/removed by this save.
-    rescan_includes(path_id);
-
-    context_epoch += 1;
-
-    // Re-scan the saved file for module declarations, updating both
-    // module maps: path_to_module gates the module code paths, and the
-    // dep_graph side is what import resolution reads — left stale, an
-    // interface saved mid-session could never satisfy its importers.
-    auto file_path = file_table.resolve(path_id);
-    if(auto buf = llvm::MemoryBuffer::getFile(file_path)) {
-        auto result = scan_quick((*buf)->getBuffer());
+        // Update both module maps: path_to_module gates the module code
+        // paths, and the dep_graph side is what import resolution reads —
+        // left stale, an interface saved mid-session could never satisfy
+        // its importers.
+        auto module_name = scan.module_name;
+        bool is_interface_unit = scan.is_interface_unit;
         // A module declaration inside a preprocessor conditional is beyond
         // the lexical scan (need_preprocess, name left empty): resolve it
         // with the same scan_module_decl() fallback the startup scan uses,
         // or this save would drop a guarded interface from both provider
         // maps and leave its importers unresolved until a reload.
-        if(result.need_preprocess) {
-            auto candidates = cdb.candidate_entries(file_path);
-            bool has_entry = !candidates.empty();
-            auto base = has_entry ? candidates.front().config : cdb.fallback_config(file_path);
-            // Same rules-applied command as the startup scan: a rule-added
-            // define may be what unguards the module declaration.
-            std::vector<std::string> append, remove;
-            config.match_rules(file_path, append, remove);
-            auto applied = cdb.apply_rules(base, {.remove = remove, .append = append});
-            CommandRef ref{path_id,
-                           applied,
-                           cdb.input_kind(applied, file_path),
-                           has_entry ? CommandSource::CDBExact : CommandSource::Fallback};
-            auto fallback = scan_module_decl(cdb.render(ref),
-                                             cdb.config(ref.config).directory,
-                                             (*buf)->getBuffer());
-            if(!fallback.module_name.empty()) {
-                result.module_name = std::move(fallback.module_name);
-                result.is_interface_unit = fallback.is_interface_unit;
+        if(scan.need_preprocess && !refs.empty()) {
+            auto& ref = refs.front();
+            auto rendered = cdb.render(ref);
+            llvm::SmallString<512> joined;
+            for(auto* arg: rendered) {
+                joined.append(arg);
+                joined.push_back('\0');
+            }
+            auto key = std::pair{observed->obs.hash, llvm::xxh3_64bits(joined)};
+            auto cached = file_table.module_decls.find(key);
+            if(cached == file_table.module_decls.end()) {
+                // The preprocessor consumes the very bytes that produced
+                // the scan; negative results memoize too.
+                auto fallback = scan_module_decl(rendered,
+                                                 cdb.config(ref.config).directory,
+                                                 observed->content->getBuffer());
+                cached = file_table.module_decls
+                             .try_emplace(key,
+                                          FileTable::ModuleDecl{fallback.module_name,
+                                                                fallback.is_interface_unit})
+                             .first;
+            }
+            if(!cached->second.name.empty()) {
+                module_name = cached->second.name;
+                is_interface_unit = cached->second.is_interface_unit;
             }
         }
         // Both maps hold interface units only, mirroring the startup scan:
         // an implementation unit (`module foo;`) must never satisfy
         // lookup_module — importers would edge to it and try to build it
         // as an interface — nor claim a PCM node of its own.
-        if(!result.is_interface_unit) {
-            result.module_name.clear();
+        if(!is_interface_unit) {
+            module_name.clear();
         }
-        dep_graph.update_module_decl(path_id, result.module_name);
-        dep_graph.set_import_candidate(path_id, result.has_import);
-        if(!result.module_name.empty()) {
-            path_to_module[path_id] = std::move(result.module_name);
+        dep_graph.update_module_decl(path_id, module_name);
+        dep_graph.set_import_candidate(path_id, scan.has_import);
+        if(!module_name.empty()) {
+            path_to_module[path_id] = std::move(module_name);
         } else {
             path_to_module.erase(path_id);
         }
+        return;
     }
+
+    dep_graph.build_reverse_map();
+    context_epoch += 1;
 }
 
 void Workspace::on_file_closed(std::uint32_t path_id) {

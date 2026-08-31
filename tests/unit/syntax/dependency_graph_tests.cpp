@@ -242,7 +242,6 @@ export module m;
     write_cdb(tmp, cdb, json);
     scan_dependency_graph(cdb,
                           graph,
-                          /*cache=*/nullptr,
                           [](llvm::StringRef,
                              std::vector<std::string>& append,
                              std::vector<std::string>&) { append.push_back("-DENABLE_M"); });
@@ -266,22 +265,20 @@ export module m1;
     FileTable file_table;
     CompilationDatabase cdb{file_table};
     DependencyGraph graph;
-    ScanCache cache;
     auto json = build_cdb_json({
         {tmp.root, tmp.path("src/m.cppm"), {}      },
         {tmp.root, tmp.path("src/m.cppm"), {"-DV2"}},
     });
     write_cdb(tmp, cdb, json);
-    scan_dependency_graph(cdb, graph, &cache);
+    scan_dependency_graph(cdb, graph);
 
     EXPECT_EQ(graph.lookup_module("m1").size(), 1u);
     EXPECT_EQ(graph.lookup_module("m2").size(), 1u);
 
-    // A warm run must reproduce both: the shared per-path cache cannot
-    // hold two names, so multi-group units re-derive under their own
-    // group command every run.
+    // A warm run must reproduce both: the module-decl memo keys by
+    // (content, rendered command), so each group resolves its own name.
     DependencyGraph graph2;
-    scan_dependency_graph(cdb, graph2, &cache);
+    scan_dependency_graph(cdb, graph2);
     EXPECT_EQ(graph2.lookup_module("m1").size(), 1u);
     EXPECT_EQ(graph2.lookup_module("m2").size(), 1u);
 }
@@ -631,10 +628,14 @@ TEST_CASE(ScanCacheWarmRun) {
 #include "util.h"
 int main() {}
 )");
+    // Out of the mtime guard window, or the cold scan's pairs stay
+    // unreliable and cannot vouch for the warm run.
+    set_file_mtime(tmp.path("inc/util.h"), file_mtime_ns(tmp.path("inc/util.h")) - 10'000'000'000);
+    set_file_mtime(tmp.path("src/main.cpp"),
+                   file_mtime_ns(tmp.path("src/main.cpp")) - 10'000'000'000);
 
     FileTable file_table;
     CompilationDatabase cdb{file_table};
-    ScanCache cache;
 
     auto json = build_cdb_json({
         {tmp.root, tmp.path("src/main.cpp"), {"-I", tmp.path("inc")}}
@@ -642,13 +643,13 @@ int main() {}
     write_cdb(tmp, cdb, json);
 
     DependencyGraph graph;
-    auto cold = scan_dependency_graph(cdb, graph, &cache);
+    auto cold = scan_dependency_graph(cdb, graph);
     EXPECT_GE(graph.edge_count(), 1u);
 
-    // Warm run with the same cache and pool reproduces the same graph
-    // and hits the scan result cache instead of re-reading files.
+    // A rescan against the same shared table skips the read and the lex
+    // for every unchanged file (stat-validated through the shared pairs).
     DependencyGraph graph2;
-    auto warm = scan_dependency_graph(cdb, graph2, &cache);
+    auto warm = scan_dependency_graph(cdb, graph2);
     EXPECT_GT(warm.scan_cache_hits, std::size_t(0));
     EXPECT_EQ(graph2.edge_count(), graph.edge_count());
     EXPECT_EQ(graph2.file_count(), graph.file_count());

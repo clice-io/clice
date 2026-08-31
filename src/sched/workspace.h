@@ -320,14 +320,11 @@ struct Workspace {
     llvm::SmallVector<std::uint32_t> rank_hosts(std::uint32_t header_path_id,
                                                 llvm::ArrayRef<std::uint32_t> hosts) const;
 
-    /// Re-resolve a saved file's direct include edges from its disk
-    /// content, so host lookups and context queries see includes the save
-    /// added or removed.
-    void rescan_includes(std::uint32_t path_id);
-
-    /// Rescan a file after it was saved to disk: refresh its include
-    /// edges and module declaration. The module-graph cascade is the
-    /// invalidator's job (PCMFamily::invalidate).
+    /// Rescan a file after it was saved to disk, from one read: refresh
+    /// its include edges (so host lookups and context queries see includes
+    /// the save added or removed) and its module declaration. The
+    /// module-graph cascade is the invalidator's job
+    /// (PCMFamily::invalidate).
     void rescan_after_save(std::uint32_t path_id);
 
     /// Called when a file is closed.  Notifies compile_graph if this file

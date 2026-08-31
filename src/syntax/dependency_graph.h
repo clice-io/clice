@@ -240,51 +240,6 @@ struct ScanReport {
     std::vector<UnresolvedInclude> unresolved;
 };
 
-/// Persistent cache that can be reused across successive scan calls.
-/// Holding onto this between incremental re-scans eliminates repeated
-/// readdir() calls, angled-include resolution, and file I/O on warm runs.
-///
-/// Thread safety: not thread-safe; callers must serialise scan calls.
-///
-/// Invalidation: callers must clear (or discard) this cache whenever the
-/// compilation database or filesystem state changes.
-///
-/// TODO: add a generation counter or single invalidate() method to prevent
-/// partial clearing from causing inconsistency between inter-dependent fields.
-struct ScanCache {
-    /// Directory listing cache: dir path → set of filenames.
-    DirListingCache dir_cache;
-
-    /// Angled-include resolution cache: (config_id bytes + header) → {path_id, found_dir_idx}.
-    /// path_id values are valid only for the FileTable used during the scan
-    /// that populated this cache.  If FileTable is reset between scans, clear
-    /// this cache too (or pass nullptr to scan_dependency_graph).
-    struct CachedInclude {
-        std::uint32_t path_id;
-        unsigned found_dir_idx;
-    };
-
-    llvm::StringMap<CachedInclude> include_cache;
-
-    /// Lexer scan result cache: path_id → ScanResult.
-    /// Populated on the first scan of each file.  On subsequent calls the
-    /// worker-thread file read and lexer scan are skipped entirely, making
-    /// warm-run Phase 1 effectively free.
-    /// Invalidate per-entry when a file changes on disk.
-    llvm::DenseMap<std::uint32_t, ScanResult> scan_results;
-
-    // Populated during the first scan and reused on all subsequent calls
-    // when the compilation database has not changed.
-
-    /// Per-config search configuration, keyed by dense config_id.
-    /// Each config_id corresponds to one unique CDB CompilationInfo group —
-    /// files with identical (directory, canonical flags, user-content flags).
-    llvm::DenseMap<std::uint32_t, SearchConfig> configs;
-
-    /// Pre-built initial wave (wave 0): all source files with their config IDs.
-    std::vector<WaveEntry> initial_wave;
-};
-
 /// Callback for per-file rule-based flag modification. Given a file path,
 /// populates `append`/`remove` with rule-configured arguments so they can be
 /// layered on top of the CDB command when extracting the search config.
@@ -295,17 +250,12 @@ using RuleMatcher = std::function<
 /// Internally creates a local event loop for async I/O (file reads via worker
 /// thread pool, stat calls via libuv). Blocks until the scan is complete.
 ///
-/// @param cache  Optional persistent cache. When non-null and pre-populated,
-///               avoids repeated readdir() and include-resolution work across
-///               successive calls.  FileTable must NOT be reset between calls
-///               when a persistent cache is used (path_id values must remain stable).
 /// @param rule_matcher  Optional callback applied per context group so that
 ///               `[[rules]]`-modified include/std flags are reflected in the
 ///               dependency graph (otherwise rule-affected files would have
 ///               stale resolution).
 ScanReport scan_dependency_graph(CompilationDatabase& cdb,
                                  DependencyGraph& graph,
-                                 ScanCache* cache = nullptr,
                                  const RuleMatcher& rule_matcher = {});
 
 }  // namespace clice

@@ -407,7 +407,6 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 workspace.dep_graph = DependencyGraph();
                 scan_dependency_graph(workspace.cdb,
                                       workspace.dep_graph,
-                                      /*cache=*/nullptr,
                                       [this](llvm::StringRef path,
                                              std::vector<std::string>& append,
                                              std::vector<std::string>& remove) {

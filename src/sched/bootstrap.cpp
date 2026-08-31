@@ -75,7 +75,6 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
 
     auto scan = scan_dependency_graph(workspace.cdb,
                                       workspace.dep_graph,
-                                      /*cache=*/nullptr,
                                       [&workspace](llvm::StringRef path,
                                                    std::vector<std::string>& append,
                                                    std::vector<std::string>& remove) {
