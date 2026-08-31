@@ -266,8 +266,8 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, std::uint32_t path_id
 
     // Commit on the thread pool: it fsyncs the freshly written PCM.
     BlobBinding binding;
-    auto committed = co_await kota::queue(
-        [&] { return workspace.store->commit(std::move(pending), &binding); });
+    auto committed =
+        co_await kota::queue([&] { return workspace.store->commit(std::move(pending), &binding); });
     if(!committed.has_value() || !committed.value().has_value()) {
         LOG_WARN("Failed to commit PCM for module {}", module_name);
         co_return RoundOutcome::Failed;

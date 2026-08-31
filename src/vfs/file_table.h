@@ -12,8 +12,8 @@
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
-#include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/MemoryBuffer.h"
 
@@ -31,6 +31,10 @@ struct DiskObservation {
     std::uint64_t size = 0;
     std::int64_t mtime_ns = 0;
     std::uint64_t hash = 0;
+    /// Filesystem identity of the inode the bytes were read from
+    /// (fstat's UniqueID) — what binds a spelling to an entity.
+    std::uint64_t uid_device = 0;
+    std::uint64_t uid_file = 0;
     bool paired = false;
     bool reliable = false;
 };
@@ -71,6 +75,11 @@ std::optional<ObservedFile> read_file_observed(const char* path);
 /// are raw bytes; a non-UTF-8 path survives interning but breaks
 /// downstream where it is embedded into JSON (worker IPC, the agentic
 /// protocol) or percent-decoded by clients that interpret URIs as UTF-8.
+///
+/// FIXME: @rsp and NVCC option files are read during CDB parsing but
+/// never tracked here — editing one changes commands without touching
+/// compile_commands.json, so nothing notices until the CDB itself
+/// changes. Folding their paths into the CDB stamp is a follow-up.
 struct FileTable {
     llvm::BumpPtrAllocator allocator;
     llvm::SmallVector<llvm::StringRef> spellings;
@@ -110,21 +119,80 @@ struct FileTable {
         return it->second;
     }
 
-    /// Last reliable same-source {stat, hash} pair per fid: the shared
-    /// baseline every consumer's staleness check draws from and repairs.
-    /// Consumer-specific observation state (what a consumer has *seen*,
-    /// e.g. the tracker's last-reported baseline) stays with the
-    /// consumer — sharing it would swallow events.
+    /// Entities: on-disk files merged by filesystem UniqueID, the way
+    /// clang's FileManager merges FileEntries — hardlinked or symlinked
+    /// spellings of one file share the content-derived facts below. A
+    /// fid's binding to an entity is itself stat-verified: every
+    /// observation carries the UniqueID its stat returned, and a mismatch
+    /// rebinds (editors save via tmp+rename, so a spelling changes inode
+    /// on every save). Consumer-specific observation state (what a
+    /// consumer has *seen*, e.g. the tracker's last-reported baseline)
+    /// stays with the consumer and per fid — shared, a save through one
+    /// hardlink spelling would swallow the other spelling's change event.
+    ///
+    /// FIXME: UniqueID reliability on network filesystems is inherited
+    /// from clang's known limitation — some report unstable or colliding
+    /// ids, which here degrades to spurious rebinds (extra reads), never
+    /// wrong hashes (the first read through a rebound fid re-earns trust).
+    llvm::DenseMap<std::pair<std::uint64_t, std::uint64_t>, std::uint32_t> entity_ids;
+
+    struct EntityBinding {
+        std::uint32_t entity = ~0u;
+
+        /// A read through THIS fid confirmed the binding. Until then the
+        /// entity's pair is withheld from the fid: a recycled inode can
+        /// hand an unrelated new file an existing entity with an
+        /// equal-looking stat, and inheriting its pair would serve the
+        /// old file's hash for the new file's bytes.
+        bool earned = false;
+    };
+
+    llvm::DenseMap<std::uint32_t, EntityBinding> bindings;
+
+    /// Last reliable same-source {stat, hash} pair per entity: the shared
+    /// baseline every consumer's staleness check draws from and repairs —
+    /// computed once, shared by every spelling of the file.
     llvm::DenseMap<std::uint32_t, DiskObservation> disk_states;
 
-    /// The cached hash of exactly this (size, mtime), or nullopt when
-    /// someone must read. Equality against the shared pair, never a
-    /// watermark: the hash is "the hash of the bytes that had this
-    /// stat", nothing else.
+    /// The entity for a filesystem identity, allocating on first sight.
+    /// `fresh` reports allocation — a fid binding to a brand-new entity
+    /// has nothing to wrongly inherit.
+    std::uint32_t intern_entity(std::uint64_t uid_device, std::uint64_t uid_file, bool& fresh) {
+        auto [it, inserted] = entity_ids.try_emplace({uid_device, uid_file},
+                                                     static_cast<std::uint32_t>(entity_ids.size()));
+        fresh = inserted;
+        return it->second;
+    }
+
+    /// Re-verify (and if needed re-establish) the fid's entity binding
+    /// against the identity a live stat just returned. Returns the
+    /// binding; `earned` is false until a read through this fid confirms
+    /// it (see EntityBinding).
+    EntityBinding& bind(std::uint32_t fid, std::uint64_t uid_device, std::uint64_t uid_file) {
+        bool fresh = false;
+        auto entity = intern_entity(uid_device, uid_file, fresh);
+        auto& binding = bindings[fid];
+        if(binding.entity != entity) {
+            binding.entity = entity;
+            binding.earned = fresh;
+        }
+        return binding;
+    }
+
+    /// The cached hash of exactly this (size, mtime) at exactly this
+    /// filesystem identity, or nullopt when someone must read. Equality
+    /// against the shared pair, never a watermark: the hash is "the hash
+    /// of the bytes that had this stat", nothing else.
     std::optional<std::uint64_t> cached_hash(std::uint32_t fid,
                                              std::uint64_t size,
-                                             std::int64_t mtime_ns) const {
-        auto it = disk_states.find(fid);
+                                             std::int64_t mtime_ns,
+                                             std::uint64_t uid_device,
+                                             std::uint64_t uid_file) {
+        auto& binding = bind(fid, uid_device, uid_file);
+        if(!binding.earned) {
+            return std::nullopt;
+        }
+        auto it = disk_states.find(binding.entity);
         if(it == disk_states.end()) {
             return std::nullopt;
         }
@@ -136,11 +204,15 @@ struct FileTable {
     }
 
     /// Record a same-source read (the scan worker's, or one made through
-    /// read()) as the fid's shared pair. Unpaired reads carry a true
-    /// hash but no stat proof, so they never enter.
+    /// read()) as the entity's shared pair; the read also earns the fid
+    /// its binding. Unpaired reads carry a true hash but no stat proof,
+    /// so they never become the pair.
     void observe(std::uint32_t fid, const DiskObservation& obs) {
+        bool fresh = false;
+        auto entity = intern_entity(obs.uid_device, obs.uid_file, fresh);
+        bindings[fid] = {entity, true};
         if(obs.reliable) {
-            disk_states[fid] = obs;
+            disk_states[entity] = obs;
         }
     }
 
@@ -163,22 +235,26 @@ struct FileTable {
         if(llvm::sys::fs::status(resolve(fid), status)) {
             return std::nullopt;
         }
-        return observe_for(fid, status.getSize(), fs::mtime_ns(status));
+        return observe_for(fid, status);
     }
 
     /// The two-layer primitive: a same-source observation for a live
     /// stat the caller just took — the shared pair when it matches by
-    /// equality, else a real read (which repairs the pair for every
-    /// later consumer; its observation may describe a newer stat than
-    /// the caller's, which is then simply newer truth). nullopt =
-    /// unreadable right now.
+    /// equality (and the filesystem identity confirms the binding), else
+    /// a real read (which repairs the pair for every later consumer; its
+    /// observation may describe a newer stat than the caller's, which is
+    /// then simply newer truth). nullopt = unreadable right now.
     std::optional<DiskObservation> observe_for(std::uint32_t fid,
-                                               std::uint64_t size,
-                                               std::int64_t mtime_ns) {
-        if(auto hash = cached_hash(fid, size, mtime_ns)) {
+                                               const llvm::sys::fs::file_status& status) {
+        auto size = status.getSize();
+        auto mtime_ns = fs::mtime_ns(status);
+        auto uid = status.getUniqueID();
+        if(auto hash = cached_hash(fid, size, mtime_ns, uid.getDevice(), uid.getFile())) {
             return DiskObservation{.size = size,
                                    .mtime_ns = mtime_ns,
                                    .hash = *hash,
+                                   .uid_device = uid.getDevice(),
+                                   .uid_file = uid.getFile(),
                                    .paired = true,
                                    .reliable = true};
         }
@@ -247,12 +323,21 @@ struct FileTable {
         if(version.mtime_ns != 0 || version.content_hash == 0) {
             return;
         }
-        if(auto hash = cached_hash(version.fid, size, mtime_ns);
-           hash && *hash == version.content_hash) {
-            version.size = size;
-            version.mtime_ns = mtime_ns;
-            stamp_generation += 1;
+        // Corroborate through the fid's earned binding: no live stat is in
+        // hand here, so an unverified or missing binding simply declines
+        // the stamp and the first check earns it by reading.
+        auto binding = bindings.find(version.fid);
+        if(binding == bindings.end() || !binding->second.earned) {
+            return;
         }
+        auto pair = disk_states.find(binding->second.entity);
+        if(pair == disk_states.end() || pair->second.size != size ||
+           pair->second.mtime_ns != mtime_ns || pair->second.hash != version.content_hash) {
+            return;
+        }
+        version.size = size;
+        version.mtime_ns = mtime_ns;
+        stamp_generation += 1;
     }
 
     /// Adopt a stamp persisted by an earlier session — it was earned under
@@ -276,7 +361,11 @@ struct FileTable {
     /// reading, and verdicts already memoized in the current wave, which
     /// would bypass the forced point entirely.
     void force_revalidate(std::uint32_t fid) {
-        disk_states.erase(fid);
+        // Entity-level: dropping only a fid-scoped anchor would leave the
+        // pair reachable through a hardlinked spelling of the same file.
+        if(auto binding = bindings.find(fid); binding != bindings.end()) {
+            disk_states.erase(binding->second.entity);
+        }
         for(auto& [vid, version]: versions) {
             if(version.fid == fid) {
                 version.size = 0;
@@ -313,26 +402,14 @@ struct FileTable {
 
     /// The scan of exactly these bytes, whose hash the caller proved to be
     /// `content_hash` (a paired read), computed on first sight.
-    const ScanResult& scan_of(std::uint32_t fid, std::uint64_t content_hash,
+    const ScanResult& scan_of(std::uint32_t fid,
+                              std::uint64_t content_hash,
                               llvm::StringRef content) {
         auto [it, inserted] = scan_results.try_emplace({fid, content_hash});
         if(inserted) {
             it->second = scan_quick(content);
         }
         return it->second;
-    }
-
-    /// The cached scan for a live stat of the file, when the shared pair
-    /// proves which bytes the stat describes — the zero-IO warm path of a
-    /// rescan. nullptr = someone must read and lex.
-    const ScanResult* cached_scan(std::uint32_t fid, std::uint64_t size,
-                                  std::int64_t mtime_ns) const {
-        auto hash = cached_hash(fid, size, mtime_ns);
-        if(!hash) {
-            return nullptr;
-        }
-        auto it = scan_results.find({fid, *hash});
-        return it == scan_results.end() ? nullptr : &it->second;
     }
 
     /// A module declaration hidden behind preprocessor conditionals,
@@ -415,7 +492,7 @@ private:
             return Verdict::Stale;
         }
 
-        auto obs = observe_for(version.fid, size, mtime_ns);
+        auto obs = observe_for(version.fid, status);
         if(!obs) {
             return Verdict::Unreadable;
         }

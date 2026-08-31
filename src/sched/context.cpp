@@ -146,9 +146,8 @@ void ContextResolver::dump_choice_slices(
     }
 }
 
-void ContextResolver::load_mode_slices(
-    const std::vector<CacheModeEntry>& modes,
-    llvm::function_ref<llvm::StringRef(std::uint32_t)> resolve) {
+void ContextResolver::load_mode_slices(const std::vector<CacheModeEntry>& modes,
+                                       llvm::function_ref<llvm::StringRef(std::uint32_t)> resolve) {
     for(auto& entry: modes) {
         auto file = resolve(entry.file);
         if(file.empty() || static_cast<HeaderMode>(entry.mode) != HeaderMode::NeedsContext)

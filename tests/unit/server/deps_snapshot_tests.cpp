@@ -92,8 +92,16 @@ TEST_CASE(SnapshotsShareOneVersion) {
 
     FileTable pool;
     auto build_at = generous_build_at();
-    auto first = capture_deps_snapshot(pool, {DepFile{dep, consumed_hash(dep)}}, build_at);
-    auto second = capture_deps_snapshot(pool, {DepFile{dep, consumed_hash(dep)}}, build_at);
+    auto first = capture_deps_snapshot(pool,
+                                       {
+                                           DepFile{dep, consumed_hash(dep)}
+    },
+                                       build_at);
+    auto second = capture_deps_snapshot(pool,
+                                        {
+                                            DepFile{dep, consumed_hash(dep)}
+    },
+                                        build_at);
     ASSERT_EQ(pool.versions.size(), 1u);
 
     // A repair through one snapshot's check serves the other.

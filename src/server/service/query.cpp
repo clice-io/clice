@@ -997,8 +997,7 @@ std::vector<feature::IndexIncludeEdge> IndexQuery::include_edges(const Session& 
     };
     auto is_document = [&](std::uint32_t fv) {
         const auto* version = version_of(fv);
-        return version && version->fid == session.path_id &&
-               version->content_hash == generation;
+        return version && version->fid == session.path_id && version->content_hash == generation;
     };
 
     // A directive line of the document is a node whose parent node entered

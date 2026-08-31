@@ -19,8 +19,8 @@
 #include "sched/crash_budget.h"
 #include "semantic/symbol.h"
 #include "support/cache_store.h"
-#include "vfs/file_table.h"
 #include "syntax/dependency_graph.h"
+#include "vfs/file_table.h"
 
 #include "kota/async/async.h"
 #include "llvm/ADT/ArrayRef.h"

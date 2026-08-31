@@ -6,9 +6,9 @@
 #include <vector>
 
 #include "command/command.h"
-#include "vfs/file_table.h"
 #include "syntax/include_resolver.h"
 #include "syntax/scan.h"
+#include "vfs/file_table.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"

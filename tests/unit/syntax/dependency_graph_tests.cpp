@@ -2,8 +2,8 @@
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "command/command.h"
-#include "vfs/file_table.h"
 #include "syntax/dependency_graph.h"
+#include "vfs/file_table.h"
 
 namespace clice::testing {
 namespace {

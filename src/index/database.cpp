@@ -578,10 +578,8 @@ MetaCheck check_meta(MDB_env* env, MDB_dbi dbi, MDB_txn* txn, bool read_only) {
     return mdb_txn_commit(wtxn) == 0 ? MetaCheck::Ok : MetaCheck::Transient;
 }
 
-std::unique_ptr<LmdbDatabase> open_lmdb_env(CacheStore& store,
-                                            int lock_fd,
-                                            std::size_t initial_mapsize,
-                                            bool read_only) {
+std::unique_ptr<LmdbDatabase>
+    open_lmdb_env(CacheStore& store, int lock_fd, std::size_t initial_mapsize, bool read_only) {
     auto path = path::join(store.base_dir(), lmdb_file_name);
 
     auto mapsize = initial_mapsize != 0 ? initial_mapsize : lmdb_default_mapsize;

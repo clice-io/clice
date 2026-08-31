@@ -1297,7 +1297,9 @@ std::vector<const char*> CompilationDatabase::render(const CommandRef& ref,
                                                      const RenderOptions& opts) {
     auto resolved = chain->resolve(ref.config, ref.input);
     if(!resolved) {
-        LOG_WARN("Toolchain resolve failed for {}: {}", file_table.resolve(ref.file), resolved.error());
+        LOG_WARN("Toolchain resolve failed for {}: {}",
+                 file_table.resolve(ref.file),
+                 resolved.error());
         return render_driver(ref, opts);
     }
 

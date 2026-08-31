@@ -1692,8 +1692,8 @@ TEST_CASE(DeferredSweepYieldsToFreshWrite) {
         f.save();
         // The indexer keys blobs by the pool-canonical path, which need
         // not equal the raw temp path byte-for-byte (Windows 8.3 names).
-        auto key =
-            blob_key(f.workspace.file_table.resolve(f.workspace.file_table.intern(indexed.tu_path)));
+        auto key = blob_key(
+            f.workspace.file_table.resolve(f.workspace.file_table.intern(indexed.tu_path)));
         // Replace the persisted manifest with an unresolvable one: the
         // next load sweeps it — deferred into the first save — and the
         // TU's shard turns orphan, deferred too.
@@ -2216,7 +2216,8 @@ TEST_CASE(RecordedHostChangeDrops) {
         auto indexed = index_file(tmp, header);
         ASSERT_FALSE(indexed.data.empty());
         ASSERT_TRUE(f.merge(indexed.data.data(), indexed.data.size()));
-        f.set_header_host(f.workspace.file_table.intern(header), f.workspace.file_table.intern(src));
+        f.set_header_host(f.workspace.file_table.intern(header),
+                          f.workspace.file_table.intern(src));
         f.save();
     }
 
@@ -2250,7 +2251,8 @@ TEST_CASE(PinnedHostKeepsHeader) {
         auto indexed = index_file(tmp, header);
         ASSERT_FALSE(indexed.data.empty());
         ASSERT_TRUE(f.merge(indexed.data.data(), indexed.data.size()));
-        f.set_header_host(f.workspace.file_table.intern(header), f.workspace.file_table.intern(src));
+        f.set_header_host(f.workspace.file_table.intern(header),
+                          f.workspace.file_table.intern(src));
         f.save();
     }
 
@@ -2287,7 +2289,8 @@ TEST_CASE(UnreachableHostRebuilds) {
         auto indexed = index_file(tmp, header);
         ASSERT_FALSE(indexed.data.empty());
         ASSERT_TRUE(f.merge(indexed.data.data(), indexed.data.size()));
-        f.set_header_host(f.workspace.file_table.intern(header), f.workspace.file_table.intern(src));
+        f.set_header_host(f.workspace.file_table.intern(header),
+                          f.workspace.file_table.intern(src));
         f.save();
     }
 
@@ -2429,7 +2432,8 @@ TEST_CASE(DroppedHeaderDebtRetried) {
         auto indexed = index_file(tmp, header);
         ASSERT_FALSE(indexed.data.empty());
         ASSERT_TRUE(f.merge(indexed.data.data(), indexed.data.size()));
-        f.set_header_host(f.workspace.file_table.intern(header), f.workspace.file_table.intern(src));
+        f.set_header_host(f.workspace.file_table.intern(header),
+                          f.workspace.file_table.intern(src));
         f.save();
     }
 
@@ -2472,7 +2476,8 @@ TEST_CASE(VanishedHeaderDebtDies) {
         auto indexed = index_file(tmp, header);
         ASSERT_FALSE(indexed.data.empty());
         ASSERT_TRUE(f.merge(indexed.data.data(), indexed.data.size()));
-        f.set_header_host(f.workspace.file_table.intern(header), f.workspace.file_table.intern(src));
+        f.set_header_host(f.workspace.file_table.intern(header),
+                          f.workspace.file_table.intern(src));
         f.save();
     }
 

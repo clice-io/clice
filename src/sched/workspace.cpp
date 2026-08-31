@@ -311,7 +311,7 @@ DepsSnapshot capture_deps_snapshot(FileTable& files,
             // bytes, so their hash can be taken from the shared pair — or
             // one read, unless the file moved between the stat and the
             // read, which voids the proof.
-            auto obs = files.observe_for(dep.path_id, size, mtime_ns);
+            auto obs = files.observe_for(dep.path_id, status);
             if(!obs || obs->size != size || obs->mtime_ns != mtime_ns) {
                 continue;
             }
@@ -355,7 +355,6 @@ bool deps_changed(FileTable& files, const DepsSnapshot& snap) {
     }
     return false;
 }
-
 
 std::shared_ptr<index::TUIndex> load_pch_envelope(llvm::StringRef path,
                                                   std::uint64_t expected_hash) {

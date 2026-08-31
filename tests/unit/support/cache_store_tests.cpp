@@ -76,6 +76,82 @@ std::string
 
 TEST_SUITE(CacheStore) {
 
+TEST_CASE(BindingCatchesRepublish) {
+    // A record made for one blob generation must not vouch for a
+    // republished one: the commit-time binding pins the tmp file's inode,
+    // and every republish is a fresh tmp file — a free generation token
+    // even when size and mtime tick collide.
+    TempDir tmp;
+    auto store = open_store(tmp);
+    register_lru(store);
+
+    BlobBinding first;
+    {
+        auto pending = store.begin_store("pch", "k1");
+        require(fs::write(pending.tmp_path, "generation-A").has_value(), "tmp write");
+        auto committed = store.commit(std::move(pending), &first);
+        require(committed.has_value(), "commit failed");
+        ASSERT_TRUE(binding_stat_matches(*committed, first));
+        ASSERT_TRUE(binding_content_matches(*committed, first));
+    }
+
+    BlobBinding second;
+    {
+        // Same byte count as generation-A: size alone cannot tell them
+        // apart, the UniqueID does.
+        auto pending = store.begin_store("pch", "k1");
+        require(fs::write(pending.tmp_path, "generation-B").has_value(), "tmp write");
+        auto committed = store.commit(std::move(pending), &second);
+        require(committed.has_value(), "commit failed");
+        ASSERT_FALSE(binding_stat_matches(*committed, first));
+        ASSERT_TRUE(binding_stat_matches(*committed, second));
+        ASSERT_FALSE(binding_content_matches(*committed, first));
+    }
+}
+
+TEST_CASE(DirtyMarkerLifecycle) {
+    // A durable commit marks the writer dirty before publishing; the
+    // metadata barrier clears it — but only when nothing was published
+    // after the barrier's snapshot.
+    TempDir tmp;
+    auto store = open_store(tmp);
+    register_lru(store);
+    auto marker = tmp.path("root/cache/v1/tmp/" +
+                           std::to_string(llvm::sys::Process::getProcessId()) + "/dirty");
+
+    put(store, "pch", "k1", "blob");
+    ASSERT_TRUE(llvm::sys::fs::exists(marker));
+
+    auto marks = store.writer_mark_count();
+    put(store, "pch", "k2", "published after the snapshot");
+    store.clear_writer_dirty(marks);
+    ASSERT_TRUE(llvm::sys::fs::exists(marker));
+
+    store.clear_writer_dirty(store.writer_mark_count());
+    ASSERT_FALSE(llvm::sys::fs::exists(marker));
+}
+
+TEST_CASE(DeadWriterDirtyDetected) {
+    // A dead instance's dirty marker means it crashed between publishing
+    // blobs and persisting their metadata: the next open latches the
+    // verification debt (and re-marks itself so a crash before the first
+    // barrier cannot launder it).
+    TempDir tmp;
+    {
+        auto store = open_store(tmp);
+        register_lru(store);
+        put(store, "pch", "k1", "blob");
+        store.shutdown();
+    }
+    tmp.touch("root/cache/v1/tmp/" + std::string(dead_pid) + "/dirty", "1");
+
+    auto store = open_store(tmp);
+    ASSERT_TRUE(store.dead_writer_dirty());
+    auto own_marker = tmp.path("root/cache/v1/tmp/" +
+                               std::to_string(llvm::sys::Process::getProcessId()) + "/dirty");
+    ASSERT_TRUE(llvm::sys::fs::exists(own_marker));
+}
+
 TEST_CASE(StoreAndLookup) {
     TempDir tmp;
     auto store = open_store(tmp);

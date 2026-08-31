@@ -5,9 +5,9 @@
 #include "command/command.h"
 #include "compile/compilation.h"
 #include "sched/graph.h"
-#include "vfs/file_table.h"
 #include "syntax/dependency_graph.h"
 #include "syntax/scan.h"
+#include "vfs/file_table.h"
 
 namespace clice::testing {
 namespace {

@@ -86,7 +86,9 @@ TEST_CASE(ManifestVarintOverflowRejected) {
 /// A project whose FileVersion for `path` is referenced by one manifest of
 /// `tu` (so garbage collection keeps it) and whose only symbol references
 /// `path` through `pool`.
-index::ProjectIndex build_project(clice::FileTable& pool, llvm::StringRef path, llvm::StringRef tu) {
+index::ProjectIndex build_project(clice::FileTable& pool,
+                                  llvm::StringRef path,
+                                  llvm::StringRef tu) {
     index::ProjectIndex project;
     auto path_id = pool.intern(path);
     auto fv = pool.intern_version(path_id, 0xabcd);

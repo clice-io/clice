@@ -9,8 +9,6 @@
 #include "syntax/scan.h"
 #include "vfs/file_table.h"
 
-#include "llvm/Support/xxhash.h"
-
 #include "kota/async/async.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringSet.h"
@@ -18,6 +16,7 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/StringSaver.h"
+#include "llvm/Support/xxhash.h"
 
 namespace clice {
 
@@ -498,7 +497,8 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
         }
         auto size = status.getSize();
         auto mtime_ns = fs::mtime_ns(status);
-        auto hash = file_table.cached_hash(path_id, size, mtime_ns);
+        auto uid = status.getUniqueID();
+        auto hash = file_table.cached_hash(path_id, size, mtime_ns, uid.getDevice(), uid.getFile());
         if(!hash) {
             return false;
         }
@@ -506,13 +506,19 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
         if(it == file_table.scan_results.end()) {
             return false;
         }
-        pending_warm.push_back(
-            {.path = path.data(),
-             .path_id = path_id,
-             .config_id = config_id,
-             .scan_result = it->second,
-             .obs = {.size = size, .mtime_ns = mtime_ns, .hash = *hash, .paired = true,
-                     .reliable = true}});
+        pending_warm.push_back({
+            .path = path.data(),
+            .path_id = path_id,
+            .config_id = config_id,
+            .scan_result = it->second,
+            .obs = {.size = size,
+                    .mtime_ns = mtime_ns,
+                    .hash = *hash,
+                    .uid_device = uid.getDevice(),
+                    .uid_file = uid.getFile(),
+                    .paired = true,
+                    .reliable = true}
+        });
         report.scan_cache_hits++;
         return true;
     };
@@ -604,8 +610,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                 for(auto& r: *scan_outcome) {
                     if(!r.read_failed) {
                         file_table.observe(r.path_id, r.obs);
-                        file_table.scan_results.try_emplace({r.path_id, r.obs.hash},
-                                                            r.scan_result);
+                        file_table.scan_results.try_emplace({r.path_id, r.obs.hash}, r.scan_result);
                     }
                     scan_results.push_back(std::move(r));
                 }
@@ -695,8 +700,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                     CommandRef ref{entry.file, applied, input, CommandSource::CDBExact};
                     auto rendered = cdb.render(ref);
                     auto config_hash = hash_rendered_command(rendered);
-                    auto cached = file_table.module_decls.find(
-                        {scan_result.obs.hash, config_hash});
+                    auto cached = file_table.module_decls.find({scan_result.obs.hash, config_hash});
                     if(cached != file_table.module_decls.end()) {
                         if(!cached->second.name.empty()) {
                             scan_result.scan_result.module_name = cached->second.name;
@@ -711,18 +715,16 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                         // one version, never a chimera of two.
                         if(observed->obs.hash != scan_result.obs.hash) {
                             file_table.observe(scan_result.path_id, observed->obs);
-                            scan_result.scan_result =
-                                scan_quick(observed->content->getBuffer());
+                            scan_result.scan_result = scan_quick(observed->content->getBuffer());
                             scan_result.obs = observed->obs;
                             file_table.scan_results.try_emplace(
                                 {scan_result.path_id, observed->obs.hash},
                                 scan_result.scan_result);
                         }
                         if(scan_result.scan_result.need_preprocess) {
-                            auto fallback =
-                                scan_module_decl(rendered,
-                                                 cdb.config(ref.config).directory,
-                                                 observed->content->getBuffer());
+                            auto fallback = scan_module_decl(rendered,
+                                                             cdb.config(ref.config).directory,
+                                                             observed->content->getBuffer());
                             // Negative results memoize too: preprocessing the
                             // same bytes under the same flags again cannot
                             // resolve differently.
@@ -808,8 +810,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                     std::chrono::duration_cast<std::chrono::microseconds>(r_t1 - r_t0).count();
                 if(!resolved.has_value()) {
                     if(cache_eligible) {
-                        include_cache.try_emplace(cache_key,
-                                                  CachedInclude{UINT32_MAX, 0});
+                        include_cache.try_emplace(cache_key, CachedInclude{UINT32_MAX, 0});
                     }
                     report.unresolved.push_back({
                         std::move(inc.path),
@@ -824,9 +825,8 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                 report.includes_resolved++;
 
                 if(cache_eligible) {
-                    include_cache.try_emplace(
-                        cache_key,
-                        CachedInclude{inc_path_id, resolved->found_dir_idx});
+                    include_cache.try_emplace(cache_key,
+                                              CachedInclude{inc_path_id, resolved->found_dir_idx});
                 }
 
                 std::uint32_t flagged_id = inc_path_id;

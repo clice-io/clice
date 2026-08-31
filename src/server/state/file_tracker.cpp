@@ -176,9 +176,7 @@ kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
                 FileState state;
                 state.missing = !exists;
                 if(exists) {
-                    auto obs = workspace.file_table.observe_for(path_id,
-                                                                status.getSize(),
-                                                                fs::mtime_ns(status));
+                    auto obs = workspace.file_table.observe_for(path_id, status);
                     if(!obs) {
                         // Unreadable right now: don't seed a baseline that
                         // would later compare as a change. Retry next tick.
@@ -210,7 +208,7 @@ kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
 
             // The stamp moved: only a confirmed content change counts, so
             // touches and checkouts of identical bytes stay silent.
-            auto obs = workspace.file_table.observe_for(path_id, size, mtime_ns);
+            auto obs = workspace.file_table.observe_for(path_id, status);
             if(!obs) {
                 // The file stats fine but cannot be read right now (e.g. an
                 // antivirus scanner briefly holding a fresh file on Windows).

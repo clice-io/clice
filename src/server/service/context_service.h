@@ -7,7 +7,6 @@
 #include "server/state/session.h"
 
 #include "kota/async/async.h"
-
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 

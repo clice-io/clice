@@ -31,8 +31,8 @@
 #include "llvm/Support/Error.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Process.h"
-#include "llvm/Support/xxhash.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/xxhash.h"
 
 namespace clice {
 
@@ -394,9 +394,10 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
                 continue;
             }
             if(llvm::sys::fs::exists(path::join(it->path(), "dirty"))) {
-                LOG_WARN("CacheStore: instance {} died with unflushed blob metadata; "
-                         "verifying adopted records against blob content",
-                         pid);
+                LOG_WARN(
+                    "CacheStore: instance {} died with unflushed blob metadata; "
+                    "verifying adopted records against blob content",
+                    pid);
                 state->dead_dirty = true;
             }
         }

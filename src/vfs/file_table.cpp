@@ -42,6 +42,8 @@ std::optional<ObservedFile> read_file_observed(const char* path) {
     }
     result.obs.size = after.getSize();
     result.obs.mtime_ns = fs::mtime_ns(after);
+    result.obs.uid_device = after.getUniqueID().getDevice();
+    result.obs.uid_file = after.getUniqueID().getFile();
     result.obs.paired = have_before && before.getSize() == after.getSize() &&
                         fs::mtime_ns(before) == result.obs.mtime_ns;
 

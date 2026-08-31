@@ -1,18 +1,18 @@
 #include "sched/index/store.h"
 
 #include <algorithm>
-#include <unordered_map>
 #include <cassert>
 #include <format>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "index/database.h"
 #include "index/manifest.h"
 #include "index/serialization.h"
-#include "sched/context.h"
 #include "index/shard.h"
 #include "index/tu_index.h"
+#include "sched/context.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 #include "support/timer.h"
@@ -580,9 +580,7 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
             // holds the consumed bytes, so take their hash from the shared
             // pair — or one read, unless the file moved between the stat
             // and the read, which voids the proof.
-            auto obs = workspace.file_table.observe_for(file_ids_map[i],
-                                                        status.getSize(),
-                                                        fs::mtime_ns(status));
+            auto obs = workspace.file_table.observe_for(file_ids_map[i], status);
             if(obs && obs->size == status.getSize() && obs->mtime_ns == fs::mtime_ns(status)) {
                 hash = obs->hash;
             }
@@ -598,9 +596,7 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
             // read (usually the shared pair, already paid for); an
             // already-stamped version earned its stamp the same way and
             // need not re-prove it every merge.
-            if(auto obs = workspace.file_table.observe_for(file_ids_map[i],
-                                                          status.getSize(),
-                                                          fs::mtime_ns(status))) {
+            if(auto obs = workspace.file_table.observe_for(file_ids_map[i], status)) {
                 workspace.file_table.try_stamp(fv, obs->size, obs->mtime_ns);
             }
         }
