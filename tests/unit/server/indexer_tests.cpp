@@ -1243,8 +1243,10 @@ struct Indexed {
         header = tmp.path("dep.h");
         // Age the files out of the mtime guard window so the merge records
         // stat stamps, the way real project files predate an index run.
-        set_file_mtime(src, file_mtime_ns(src) - 10'000'000'000);
-        set_file_mtime(header, file_mtime_ns(header) - 10'000'000'000);
+        if(!set_file_mtime(src, file_mtime_ns(src) - 10'000'000'000) ||
+           !set_file_mtime(header, file_mtime_ns(header) - 10'000'000'000)) {
+            return false;
+        }
         auto indexed = index_file(tmp, src);
         if(indexed.data.empty()) {
             return false;

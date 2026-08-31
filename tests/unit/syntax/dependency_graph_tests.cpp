@@ -630,9 +630,10 @@ int main() {}
 )");
     // Out of the mtime guard window, or the cold scan's pairs stay
     // unreliable and cannot vouch for the warm run.
-    set_file_mtime(tmp.path("inc/util.h"), file_mtime_ns(tmp.path("inc/util.h")) - 10'000'000'000);
-    set_file_mtime(tmp.path("src/main.cpp"),
-                   file_mtime_ns(tmp.path("src/main.cpp")) - 10'000'000'000);
+    ASSERT_TRUE(set_file_mtime(tmp.path("inc/util.h"),
+                               file_mtime_ns(tmp.path("inc/util.h")) - 10'000'000'000));
+    ASSERT_TRUE(set_file_mtime(tmp.path("src/main.cpp"),
+                               file_mtime_ns(tmp.path("src/main.cpp")) - 10'000'000'000));
 
     FileTable file_table;
     CompilationDatabase cdb{file_table};

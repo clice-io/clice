@@ -99,16 +99,30 @@ void ContextResolver::forget_self_contained(std::uint32_t path_id) {
     }
 }
 
+std::uint64_t ContextResolver::persisted_mode_hash(std::uint32_t path_id) const {
+    if(header_modes.lookup(path_id) != HeaderMode::NeedsContext) {
+        return 0;
+    }
+    return header_mode_hashes.lookup(path_id);
+}
+
 void ContextResolver::record_header_mode(std::uint32_t path_id,
                                          HeaderMode mode,
                                          std::uint64_t content_hash) {
+    auto persisted = persisted_mode_hash(path_id);
     header_modes[path_id] = mode;
     if(mode == HeaderMode::NeedsContext) {
         header_mode_hashes[path_id] = content_hash;
     }
+    if(persisted_mode_hash(path_id) != persisted) {
+        workspace.mark_artifacts_dirty();
+    }
 }
 
 void ContextResolver::reset_header_mode(std::uint32_t path_id) {
+    if(persisted_mode_hash(path_id) != 0) {
+        workspace.mark_artifacts_dirty();
+    }
     header_modes.erase(path_id);
     header_mode_hashes.erase(path_id);
 }
@@ -119,10 +133,14 @@ void ContextResolver::dump_mode_slices(
     for(auto& [path_id, mode]: header_modes) {
         if(mode != HeaderMode::NeedsContext)
             continue;
-        auto hash_it = header_mode_hashes.find(path_id);
-        modes.push_back({intern_id(path_id),
-                         static_cast<std::uint32_t>(mode),
-                         hash_it != header_mode_hashes.end() ? hash_it->second : 0});
+        // A verdict scored with no disk observation (hash 0) cannot be
+        // validated on load, so it stays in memory: persisted, it would
+        // skip the self-containment trial for whatever bytes the next
+        // session finds on disk.
+        auto hash = header_mode_hashes.lookup(path_id);
+        if(hash == 0)
+            continue;
+        modes.push_back({intern_id(path_id), static_cast<std::uint32_t>(mode), hash});
     }
 }
 
@@ -150,16 +168,17 @@ void ContextResolver::load_mode_slices(llvm::ArrayRef<CacheModeEntry> modes,
                                        llvm::function_ref<llvm::StringRef(std::uint32_t)> resolve) {
     for(auto& entry: modes) {
         auto file = resolve(entry.file);
-        if(file.empty() || static_cast<HeaderMode>(entry.mode) != HeaderMode::NeedsContext)
+        // The writer never emits unbound (hash 0) verdicts; an entry
+        // carrying one is corrupt and must not bypass the content gate.
+        if(file.empty() || entry.content_hash == 0 ||
+           static_cast<HeaderMode>(entry.mode) != HeaderMode::NeedsContext)
             continue;
         auto id = workspace.file_table.intern(file);
         // The verdict is tied to the header's contents — a file edited
         // while the server was down must re-earn its trial.
-        if(entry.content_hash != 0) {
-            auto disk = workspace.file_table.current(id);
-            if(!disk || disk->hash != entry.content_hash)
-                continue;
-        }
+        auto disk = workspace.file_table.current(id);
+        if(!disk || disk->hash != entry.content_hash)
+            continue;
         header_modes[id] = HeaderMode::NeedsContext;
         header_mode_hashes[id] = entry.content_hash;
     }

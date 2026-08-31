@@ -495,12 +495,21 @@ void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
     // dropping the snapshot's fast paths forces deps_changed() to re-validate
     // every chain file by content hash; open sessions also recompile and
     // re-trial.
+    auto stamps = workspace.file_table.stamp_generation;
     for(auto path_id: dirty.force_revalidate) {
         contexts.invalidate_header_deps(path_id);
         if(auto session = sessions.find(path_id)) {
             ast.invalidate(path_id);
             session->trial_done = false;
         }
+    }
+    // Revoked stamps live on in the global blob's version table and the
+    // artifacts blob's dep records; both must rewrite, or a restart after
+    // a same-stat dependency edit re-adopts the dropped fast paths and
+    // judges the edited file fresh without a read.
+    if(workspace.file_table.stamp_generation != stamps) {
+        index_store.mark_global_dirty();
+        workspace.mark_artifacts_dirty();
     }
 
     // The header's borrowed compile command changed: its resolved context
@@ -528,13 +537,8 @@ void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
         pump.clear_pending(path_id);
     }
 
-    bool save = dirty.save_cache;
-    if(dirty.recheck_contexts) {
-        save |= context_service.drop_orphaned_choices(sessions);
-    }
-    if(save) {
+    if(dirty.recheck_contexts && context_service.drop_orphaned_choices(sessions)) {
         workspace.mark_contexts_dirty();
-        workspace.mark_artifacts_dirty();
     }
 
     // Not before the server is ready: document-sync events are accepted

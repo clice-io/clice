@@ -858,9 +858,11 @@ bool binding_stat_matches(llvm::StringRef path, const BlobBinding& binding) {
     if(llvm::sys::fs::status(path, status)) {
         return false;
     }
+    // The UniqueID is the generation token only where it identifies the
+    // file (fs::stable_file_ids); elsewhere the mtime carries the check.
     return status.getSize() == binding.size && fs::mtime_ns(status) == binding.mtime_ns &&
-           status.getUniqueID().getDevice() == binding.uid_device &&
-           status.getUniqueID().getFile() == binding.uid_file;
+           (!fs::stable_file_ids || (status.getUniqueID().getDevice() == binding.uid_device &&
+                                     status.getUniqueID().getFile() == binding.uid_file));
 }
 
 bool binding_content_matches(llvm::StringRef path, const BlobBinding& binding) {

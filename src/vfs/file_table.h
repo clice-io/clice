@@ -134,6 +134,9 @@ struct FileTable {
     /// from clang's known limitation — some report unstable or colliding
     /// ids, which here degrades to spurious rebinds (extra reads), never
     /// wrong hashes (the first read through a rebound fid re-earns trust).
+    /// On Windows the ids are not file-stable everywhere (see
+    /// fs::stable_file_ids), so entity merging is disabled there wholesale
+    /// via entity_key: identity-based defenses are POSIX-only.
     llvm::DenseMap<std::pair<std::uint64_t, std::uint64_t>, std::uint32_t> entity_ids;
 
     struct EntityBinding {
@@ -154,6 +157,20 @@ struct FileTable {
     /// computed once, shared by every spelling of the file.
     llvm::DenseMap<std::uint32_t, DiskObservation> disk_states;
 
+    /// The entity-map key for an identity observed through a fid. Where
+    /// file IDs are not file-stable (see fs::stable_file_ids), every
+    /// spelling is its own entity and the observed id is ignored:
+    /// hardlinks stay unmerged, and replace detection falls back to the
+    /// stat pair — the pre-entity behavior.
+    static std::pair<std::uint64_t, std::uint64_t> entity_key(std::uint32_t fid,
+                                                              std::uint64_t uid_device,
+                                                              std::uint64_t uid_file) {
+        if constexpr(!fs::stable_file_ids) {
+            return {~0ull, fid};
+        }
+        return {uid_device, uid_file};
+    }
+
     /// The entity for a filesystem identity, allocating on first sight.
     /// `fresh` reports allocation — a fid binding to a brand-new entity
     /// has nothing to wrongly inherit.
@@ -170,7 +187,8 @@ struct FileTable {
     /// it (see EntityBinding).
     EntityBinding& bind(std::uint32_t fid, std::uint64_t uid_device, std::uint64_t uid_file) {
         bool fresh = false;
-        auto entity = intern_entity(uid_device, uid_file, fresh);
+        auto [key_device, key_file] = entity_key(fid, uid_device, uid_file);
+        auto entity = intern_entity(key_device, key_file, fresh);
         auto& binding = bindings[fid];
         if(binding.entity != entity) {
             binding.entity = entity;
@@ -209,7 +227,8 @@ struct FileTable {
     /// so they never become the pair.
     void observe(std::uint32_t fid, const DiskObservation& obs) {
         bool fresh = false;
-        auto entity = intern_entity(obs.uid_device, obs.uid_file, fresh);
+        auto [key_device, key_file] = entity_key(fid, obs.uid_device, obs.uid_file);
+        auto entity = intern_entity(key_device, key_file, fresh);
         bindings[fid] = {.entity = entity, .earned = true};
         if(obs.reliable) {
             disk_states[entity] = obs;
@@ -287,8 +306,9 @@ struct FileTable {
     std::uint32_t next_version_id = 0;
 
     /// Bumped whenever a version's stat fast path is written (stamped at
-    /// capture or repaired by a check). Persistence compares it around an
-    /// operation to learn whether the table changed under it.
+    /// capture or repaired by a check) or revoked (force_revalidate).
+    /// Persistence compares it around an operation to learn whether the
+    /// table changed under it.
     std::uint64_t stamp_generation = 0;
 
     const FileVersion& version(std::uint32_t vid) const {
@@ -338,7 +358,7 @@ struct FileTable {
         // The live stat's identity must be the earned binding's: a
         // same-stat replace (new inode, forged size and mtime) would
         // otherwise corroborate through the replaced file's pair.
-        auto entity = entity_ids.find({uid_device, uid_file});
+        auto entity = entity_ids.find(entity_key(version.fid, uid_device, uid_file));
         if(entity == entity_ids.end() || entity->second != binding->second.entity) {
             return;
         }
@@ -381,6 +401,7 @@ struct FileTable {
             entity = binding->second.entity;
             disk_states.erase(entity);
         }
+        bool revoked = false;
         for(auto& [vid, version]: versions) {
             bool same_file = version.fid == fid;
             if(!same_file && entity != ~0u) {
@@ -388,10 +409,17 @@ struct FileTable {
                 same_file = alias != bindings.end() && alias->second.entity == entity;
             }
             if(same_file) {
+                revoked = revoked || version.mtime_ns != 0;
                 version.size = 0;
                 version.mtime_ns = 0;
                 wave_verdicts.erase(vid);
             }
+        }
+        // Revocation is stamp movement like any other: persisted stamps
+        // (the global blob, artifact dep records) must not outlive it, or
+        // the next session re-adopts trust this call just dropped.
+        if(revoked) {
+            stamp_generation += 1;
         }
     }
 
@@ -503,7 +531,7 @@ private:
             return true;
         }
         auto uid = status.getUniqueID();
-        auto entity = entity_ids.find({uid.getDevice(), uid.getFile()});
+        auto entity = entity_ids.find(entity_key(fid, uid.getDevice(), uid.getFile()));
         return entity != entity_ids.end() && entity->second == binding->second.entity;
     }
 

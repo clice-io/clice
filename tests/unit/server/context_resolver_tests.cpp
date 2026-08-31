@@ -166,10 +166,100 @@ TEST_CASE(InvalidateDropsBorrowed) {
     auto vid = workspace.file_table.intern_version(borrowed, 7);
     workspace.file_table.adopt_stamp(vid, 42, 123);
     ASSERT_EQ(workspace.file_table.version(vid).mtime_ns, 123);
+    auto stamps = workspace.file_table.stamp_generation;
     resolver.invalidate_header_deps(synthesized);
     ASSERT_TRUE(resolver.header_contexts.contains(synthesized));
     ASSERT_EQ(workspace.file_table.version(vid).mtime_ns, 0);
     ASSERT_EQ(resolver.header_contexts[synthesized].deps.deps[0].hash, 7u);
+    // The revocation is stamp movement — what tells persistence the
+    // dropped fast path must not survive in the global blob.
+    ASSERT_TRUE(workspace.file_table.stamp_generation != stamps);
+}
+
+TEST_CASE(UnboundVerdictStaysLocal) {
+    // A NeedsContext verdict scored with no disk observation has no hash
+    // to validate on load: it serves this session but must neither
+    // persist nor, if found in a blob, bypass the content gate — the next
+    // session's bytes never earned it.
+    TempDir tmp;
+    Workspace workspace;
+    ContextResolver resolver(workspace);
+    tmp.touch("h.h", "int x;\n");
+    auto path = tmp.path("h.h");
+    auto id = workspace.file_table.intern(path);
+
+    resolver.record_header_mode(id, HeaderMode::NeedsContext);
+    ASSERT_TRUE(resolver.header_mode(path, id) == HeaderMode::NeedsContext);
+
+    std::vector<CacheModeEntry> slices;
+    resolver.dump_mode_slices(slices, [](std::uint32_t fid) { return fid; });
+    ASSERT_TRUE(slices.empty());
+
+    ContextResolver restarted(workspace);
+    slices.push_back({id, static_cast<std::uint32_t>(HeaderMode::NeedsContext), 0});
+    restarted.load_mode_slices(slices, [&](std::uint32_t) -> llvm::StringRef { return path; });
+    ASSERT_TRUE(restarted.header_mode(path, id) == HeaderMode::Unknown);
+}
+
+TEST_CASE(ModeSliceContentGate) {
+    // A content-bound verdict survives a restart only while the disk
+    // still holds the bytes it was scored on.
+    TempDir tmp;
+    Workspace workspace;
+    ContextResolver resolver(workspace);
+    tmp.touch("h.h", "int x;\n");
+    auto path = tmp.path("h.h");
+    auto id = workspace.file_table.intern(path);
+    auto disk = workspace.file_table.current(id);
+    ASSERT_TRUE(disk.has_value());
+
+    resolver.record_header_mode(id, HeaderMode::NeedsContext, disk->hash);
+    std::vector<CacheModeEntry> slices;
+    resolver.dump_mode_slices(slices, [](std::uint32_t fid) { return fid; });
+    ASSERT_EQ(slices.size(), 1u);
+
+    auto resolve = [&](std::uint32_t) -> llvm::StringRef {
+        return path;
+    };
+    ContextResolver same_disk(workspace);
+    same_disk.load_mode_slices(slices, resolve);
+    ASSERT_TRUE(same_disk.header_mode(path, id) == HeaderMode::NeedsContext);
+
+    tmp.touch("h.h", "int y;\n");
+    ContextResolver edited(workspace);
+    edited.load_mode_slices(slices, resolve);
+    ASSERT_TRUE(edited.header_mode(path, id) == HeaderMode::Unknown);
+}
+
+TEST_CASE(VerdictPersistenceMarksDirty) {
+    // The persisted mode slice and the artifacts blob move together: any
+    // transition of a content-bound NeedsContext — earned, downgraded by
+    // a trial, or reset by a dependency change — must rewrite the blob,
+    // or a restart resurrects the dropped verdict (the header's own hash
+    // still matches). Session-local transitions must not thrash it.
+    Workspace workspace;
+    ContextResolver resolver(workspace);
+    auto id = workspace.file_table.intern("/proj/h.h");
+
+    resolver.record_header_mode(id, HeaderMode::NeedsContext, 7);
+    ASSERT_TRUE(workspace.artifacts_dirty);
+
+    workspace.artifacts_dirty = false;
+    resolver.reset_header_mode(id);
+    ASSERT_TRUE(workspace.artifacts_dirty);
+
+    // Unbound verdicts and self-contained impressions are never persisted.
+    workspace.artifacts_dirty = false;
+    resolver.record_header_mode(id, HeaderMode::NeedsContext);
+    resolver.record_header_mode(id, HeaderMode::SelfContained);
+    resolver.reset_header_mode(id);
+    ASSERT_FALSE(workspace.artifacts_dirty);
+
+    // A trial downgrading a persisted verdict drops it from the blob.
+    resolver.record_header_mode(id, HeaderMode::NeedsContext, 7);
+    workspace.artifacts_dirty = false;
+    resolver.record_header_mode(id, HeaderMode::SelfContained);
+    ASSERT_TRUE(workspace.artifacts_dirty);
 }
 
 };  // TEST_SUITE(ContextResolver)

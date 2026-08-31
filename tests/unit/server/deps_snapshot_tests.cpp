@@ -31,7 +31,7 @@ std::uint64_t consumed_hash(llvm::StringRef path) {
 /// is deliberately untrusted (see read_file_observed), so tests exercising
 /// stamps and repairs must age their files first.
 void age_file(llvm::StringRef path) {
-    set_file_mtime(path, file_mtime_ns(path) - 10'000'000'000);
+    EXPECT_TRUE(set_file_mtime(path, file_mtime_ns(path) - 10'000'000'000));
 }
 
 /// The shared stat fast path of the version a dep names (0 = none).
@@ -146,7 +146,7 @@ TEST_CASE(BackdatedEditDetected) {
     ASSERT_TRUE(recorded_mtime != 0);
 
     tmp.touch("dep.h", "int new_name();\n");  // same length
-    set_file_mtime(dep, recorded_mtime - 5'000'000'000);
+    ASSERT_TRUE(set_file_mtime(dep, recorded_mtime - 5'000'000'000));
     ASSERT_TRUE(changed(pool, snap));
 }
 
@@ -166,7 +166,7 @@ TEST_CASE(TouchRepairsFastPath) {
 
     // Rewrite identical bytes: the stat moves, the content does not.
     tmp.touch("dep.h", "int f();\n");
-    set_file_mtime(dep, stamp_of(pool, snap.deps[0]) + 5'000'000'000);
+    ASSERT_TRUE(set_file_mtime(dep, stamp_of(pool, snap.deps[0]) + 5'000'000'000));
     ASSERT_FALSE(changed(pool, snap));
 
     // The passing hash comparison repaired the fast path in place.
@@ -297,7 +297,7 @@ TEST_CASE(RevalidateGoesByHash) {
     // An edit that restores the recorded stat exactly would pass the fast
     // path; force_revalidate drops it, so the hash still catches the edit.
     tmp.touch("dep.h", "int new_name();\n");  // same length
-    set_file_mtime(dep, recorded_mtime);
+    ASSERT_TRUE(set_file_mtime(dep, recorded_mtime));
 
     snap.force_revalidate(pool);
     ASSERT_TRUE(changed(pool, snap));
@@ -324,7 +324,7 @@ TEST_CASE(RevalidatePurgesWaveMemo) {
     ASSERT_FALSE(deps_changed(pool, snap));
 
     tmp.touch("dep.h", "int new_name();\n");  // same length
-    set_file_mtime(dep, recorded_mtime);
+    ASSERT_TRUE(set_file_mtime(dep, recorded_mtime));
     snap.force_revalidate(pool);
     ASSERT_TRUE(deps_changed(pool, snap));
 }

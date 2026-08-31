@@ -790,7 +790,6 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, std::uint32_t path_id
                 contexts.record_header_mode(path_id,
                                             HeaderMode::NeedsContext,
                                             disk ? disk->hash : 0);
-                workspace.mark_artifacts_dirty();
                 contexts.drop_header_context(path_id);
                 adopted_pch.reset();
                 continue;

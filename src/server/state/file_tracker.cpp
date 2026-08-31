@@ -206,7 +206,8 @@ kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
             auto mtime_ns = fs::mtime_ns(status);
             auto uid = status.getUniqueID();
             if(!state.missing && state.size == size && state.mtime_ns == mtime_ns &&
-               state.uid_device == uid.getDevice() && state.uid_file == uid.getFile()) {
+               (!fs::stable_file_ids ||
+                (state.uid_device == uid.getDevice() && state.uid_file == uid.getFile()))) {
                 continue;
             }
 

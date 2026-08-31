@@ -209,8 +209,6 @@ public:
     /// Include edges changed: context choices may now be orphaned; run the
     /// context resolver's orphan cleanup.
     bool recheck_contexts = false;
-    /// Persist the workspace cache snapshot.
-    bool save_cache = false;
     /// Kick the background indexer's scheduler.
     bool reschedule_indexing = false;
 
@@ -219,7 +217,7 @@ public:
                reset_header_mode.empty() && force_revalidate.empty() &&
                reindex_content_changed.empty() && reindex_deps_only.empty() &&
                clear_reindex.empty() && drop_index.empty() && drop_context.empty() &&
-               !recheck_contexts && !save_cache && !reschedule_indexing;
+               !recheck_contexts && !reschedule_indexing;
     }
 };
 

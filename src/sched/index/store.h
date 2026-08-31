@@ -167,6 +167,13 @@ public:
         return !dirty_shards.empty() || !dirty_manifests.empty() || global_dirty || cdb_dirty;
     }
 
+    /// The FileVersion table's persisted stamps moved outside the store's
+    /// own checks (force_revalidate revoked them): rewrite the global blob
+    /// on the next save so the revocation survives a restart.
+    void mark_global_dirty() {
+        global_dirty = true;
+    }
+
 private:
     friend struct testing::IndexerFixture;
 

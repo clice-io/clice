@@ -110,6 +110,17 @@ inline std::int64_t mtime_ns(const llvm::sys::fs::file_status& status) {
 /// hash comparison instead.
 constexpr inline std::int64_t mtime_guard_ns = 2'000'000'000;
 
+/// Whether the filesystem's UniqueID identifies a file rather than a
+/// path. Windows file IDs are not file-stable everywhere (ReFS dev
+/// drives report path-derived values, and handle- and path-derived
+/// stats of one file can disagree), so identity-based staleness
+/// defenses are POSIX-only.
+#ifdef _WIN32
+constexpr inline bool stable_file_ids = false;
+#else
+constexpr inline bool stable_file_ids = true;
+#endif
+
 /// The newest mtime (ns) a file may carry and still be provably untouched
 /// since the reference moment `at_ms` (a build start, or "now" for
 /// content read on the spot).

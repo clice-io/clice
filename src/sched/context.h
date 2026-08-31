@@ -154,11 +154,14 @@ public:
     void forget_self_contained(std::uint32_t path_id);
 
     /// Record a header trial's verdict. NeedsContext carries the content
-    /// hash it was scored on so a stale verdict is dropped on cache load.
+    /// hash it was scored on so a stale verdict is dropped on cache load;
+    /// scored with no disk observation (hash 0) it stays session-local.
+    /// Marks the artifacts blob dirty when the persisted slice changes.
     void record_header_mode(std::uint32_t path_id, HeaderMode mode, std::uint64_t content_hash = 0);
 
     /// Drop a header's verdict entirely (its content changed); the next
-    /// compile re-earns it.
+    /// compile re-earns it. Marks the artifacts blob dirty when a
+    /// persisted verdict is dropped.
     void reset_header_mode(std::uint32_t path_id);
 
     /// Fill the validation slice of the artifacts blob (header-mode
@@ -257,6 +260,14 @@ private:
     std::optional<HeaderContext> resolve_header_context(std::uint32_t header_path_id,
                                                         ContextUse use,
                                                         bool synthesize);
+
+    /// What dump_mode_slices would emit for this file (0 = nothing) — the
+    /// before/after probe record and reset compare to mark the artifacts
+    /// blob dirty exactly when the persisted slice changes. A persisted
+    /// verdict must not outlive its in-memory drop: the header's own
+    /// content hash still matches on restart even though a dependency
+    /// change deliberately reset the verdict.
+    std::uint64_t persisted_mode_hash(std::uint32_t path_id) const;
 
     Workspace& workspace;
 };

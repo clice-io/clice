@@ -83,6 +83,7 @@ PCMFamily::ModuleDeps PCMFamily::direct_deps(std::uint32_t path_id,
 
 llvm::SmallVector<NodeId> PCMFamily::provider_appeared(llvm::StringRef name) {
     auto dirtied = graph.update(unresolved_node(name));
+    bool erased = false;
     for(auto id: dirtied) {
         // Dirtied module units drop their cached PCM state, exactly as
         // invalidate() does for content changes — a PCM built against
@@ -90,8 +91,14 @@ llvm::SmallVector<NodeId> PCMFamily::provider_appeared(llvm::StringRef name) {
         if(id.family == pcm_family && !is_unresolved(id)) {
             auto pid = static_cast<std::uint32_t>(id.key);
             workspace.pcm_paths.erase(pid);
-            workspace.pcm_cache.erase(pid);
+            erased |= workspace.pcm_cache.erase(pid);
         }
+    }
+    // The records are persisted, and this drop is invisible to their own
+    // validation (the missing provider never entered the dep snapshots) —
+    // without a rewrite, a restart resurrects them.
+    if(erased) {
+        workspace.mark_artifacts_dirty();
     }
     return dirtied;
 }
@@ -371,11 +378,15 @@ bool PCMFamily::tracks(std::uint32_t path_id) const {
 
 llvm::SmallVector<std::uint32_t> PCMFamily::invalidate(std::uint32_t path_id) {
     llvm::SmallVector<std::uint32_t> dirtied;
+    bool erased = false;
     for(auto id: graph.update(node(path_id))) {
         auto pid = static_cast<std::uint32_t>(id.key);
         workspace.pcm_paths.erase(pid);
-        workspace.pcm_cache.erase(pid);
+        erased |= workspace.pcm_cache.erase(pid);
         dirtied.push_back(pid);
+    }
+    if(erased) {
+        workspace.mark_artifacts_dirty();
     }
     return dirtied;
 }

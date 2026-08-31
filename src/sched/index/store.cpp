@@ -1160,6 +1160,12 @@ void IndexStore::reopen_fresh_database() {
     workspace.index_db->condemn();
     workspace.index_db.reset();
     workspace.index_db = index::open_database(*workspace.store, workspace.config.project.index_db);
+    // The metadata blobs died with the condemned database while their
+    // loaded state lives on in memory; without a re-dirty the next save
+    // skips them and a restart loses the user's context choices and every
+    // rebuildable artifact record.
+    workspace.mark_artifacts_dirty();
+    workspace.mark_contexts_dirty();
     // Durability waiters re-evaluate against the new database: a failed
     // reopen disables persistence for the session, and a parked
     // switchContext would otherwise sleep forever — no later save pulses,

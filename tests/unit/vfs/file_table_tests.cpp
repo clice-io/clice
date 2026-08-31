@@ -71,6 +71,10 @@ TEST_CASE(HardlinkFirstBindReads) {
                     .has_value());
 }
 
+#ifndef _WIN32
+// The four tests below pin identity-based defenses (rename-over rebinds,
+// hardlink merging, live-identity stamp gates) that require file-stable
+// UniqueIDs — POSIX-only; see fs::stable_file_ids and FileTable::entity_key.
 TEST_CASE(RenameSaveRebinds) {
     // An editor-style save (write tmp, rename over) replaces the inode.
     // The forged stat makes the old pair match by (size, mtime): only the
@@ -180,6 +184,7 @@ TEST_CASE(FastPathChecksIdentity) {
     pool.begin_wave();
     ASSERT_TRUE(pool.check_version(vid) == FileTable::Verdict::Stale);
 }
+#endif
 
 TEST_CASE(FreshReadCannotStamp) {
     // A check that reads a just-written file gets the right verdict but
@@ -208,6 +213,7 @@ TEST_CASE(ListingSeesNewFile) {
     tmp.touch("inc/a.h", "");
     auto dir = tmp.path("inc");
     age(dir);
+    auto aged = file_mtime_ns(dir);
 
     FileTable pool;
     DirListingCache first_op;
@@ -218,7 +224,11 @@ TEST_CASE(ListingSeesNewFile) {
     ASSERT_FALSE(entries->contains("b.h"));
 
     tmp.touch("inc/b.h", "");
-    age(dir);
+    // A second age() rewinds relative to now and can land on the first
+    // listing's exact stamp within one coarse mtime tick, revalidating the
+    // cached listing; a fixed offset keeps the stamps distinct while
+    // staying outside the guard window.
+    ASSERT_TRUE(set_file_mtime(dir, aged + 1'000'000'000));
 
     DirListingCache second_op;
     second_op.shared = &pool;
