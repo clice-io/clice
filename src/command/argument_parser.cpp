@@ -127,6 +127,8 @@ bool is_discarded_option(unsigned id) {
     /// Options the driver accepts and ignores (gcc compat knobs, e.g. the
     /// per-file -frandom-seed=<output> bazel stamps on every command): a
     /// per-file value here must not fracture probe and identity keys.
+    /// Deliberately also drops clang's -Wignored-optimization-argument
+    /// compat warnings for them — under -Werror those abort the analysis.
     if(auto opt = option::table().option(id); opt && opt->has_flag(option::detail::Ignored)) {
         return true;
     }
