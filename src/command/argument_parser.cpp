@@ -56,23 +56,23 @@ constexpr std::string_view str_at(unsigned offset) {
 
 }  // namespace detail
 
+enum ClangDriverFlag : unsigned {
+    HelpHidden = eo::HelpHidden,
+    RenderAsInput = eo::RenderAsInput,
+    RenderJoined = eo::RenderJoined,
+    Ignored = 1u << 4,
+    LinkOption = 1u << 5,
+    LinkerInput = 1u << 6,
+    NoArgumentUnused = 1u << 7,
+    NoXarchOption = 1u << 8,
+    TargetSpecific = 1u << 9,
+    Unsupported = 1u << 10,
+};
+
 const eo::OptTable& table() {
     using enum eo::Kind;
     using detail::prefixes;
     using detail::str_at;
-
-    enum ClangDriverFlag : unsigned {
-        HelpHidden = eo::HelpHidden,
-        RenderAsInput = eo::RenderAsInput,
-        RenderJoined = eo::RenderJoined,
-        Ignored = 1u << 4,
-        LinkOption = 1u << 5,
-        LinkerInput = 1u << 6,
-        NoArgumentUnused = 1u << 7,
-        NoXarchOption = 1u << 8,
-        TargetSpecific = 1u << 9,
-        Unsupported = 1u << 10,
-    };
 
     constexpr static eo::Option option_infos[] = {
 #define OPTION(PREFIXES_OFFSET,                                                                    \
@@ -121,6 +121,13 @@ const eo::OptTable& table() {
 using namespace option;
 
 bool is_discarded_option(unsigned id) {
+    /// Options the driver accepts and ignores (gcc compat knobs, e.g. the
+    /// per-file -frandom-seed=<output> bazel stamps on every command): a
+    /// per-file value here must not fracture probe and identity keys.
+    if(auto opt = option::table().option(id); opt && opt->has_flag(ClangDriverFlag::Ignored)) {
+        return true;
+    }
+
     switch(id) {
         /// Input file, unknown args, and output — we manage these ourselves.
         /// -main-file-name is per-file input identity injected by to_argv()
