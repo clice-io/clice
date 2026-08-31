@@ -60,7 +60,8 @@ const kota::option::OptTable& table();
 bool is_codegen_option(unsigned id);
 
 /// Options that are completely irrelevant to an LSP and should be discarded
-/// (input/output, PCH building, dependency scan, C++ modules).
+/// (input/output, PCH building, dependency scan, C++ modules, and anything
+/// the driver itself accepts and ignores).
 bool is_discarded_option(unsigned id);
 
 /// User-content options that go into the per-file patch rather than the

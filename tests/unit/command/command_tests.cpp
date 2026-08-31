@@ -247,6 +247,9 @@ TEST_CASE(IdentityHashes) {
     EXPECT_NE(hash_of("x1.c"), hash_of("x2.c"));
     /// Codegen-only flags never enter the identity.
     EXPECT_EQ(hash_of("a.cpp"), hash_of("g.cpp"));
+    /// Driver-ignored flags never enter the identity.
+    database.add_command("/fake", "r.cpp", "clang++ -std=c++20 -frandom-seed=r.o r.cpp"sv);
+    EXPECT_EQ(hash_of("a.cpp"), hash_of("r.cpp"));
 
     /// The input slot's position is part of the identity.
     database.add_command("/fake", "p1.cpp", "clang++ p1.cpp -Wall"sv);

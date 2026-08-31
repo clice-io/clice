@@ -304,6 +304,22 @@ TEST_CASE(KeyIgnoresUserContent) {
     EXPECT_EQ(f.key(base), f.key(user));
 }
 
+TEST_CASE(KeyIgnoresDriverIgnored) {
+    /// Driver-ignored flags carry per-file values in the wild (bazel's GCC
+    /// toolchain stamps -frandom-seed=<output> on every command); keying on
+    /// them would spawn one probe per file instead of one per toolchain.
+    Fixture f;
+    auto base = f.add("/fake", "/tmp/a.cpp", {"g++", "-std=c++23", "/tmp/a.cpp"});
+    auto seed_a = f.add("/fake",
+                        "/tmp/b.cpp",
+                        {"g++", "-std=c++23", "-frandom-seed=bazel-out/b.o", "/tmp/b.cpp"});
+    auto seed_b = f.add("/fake",
+                        "/tmp/c.cpp",
+                        {"g++", "-std=c++23", "-frandom-seed=bazel-out/c.o", "/tmp/c.cpp"});
+    EXPECT_EQ(f.key(base), f.key(seed_a));
+    EXPECT_EQ(f.key(base), f.key(seed_b));
+}
+
 TEST_CASE(KeyTracksSemantics) {
     Fixture f;
     auto base = f.add("/fake", "/tmp/a.cpp", {"clang++", "-std=c++23", "/tmp/a.cpp"});

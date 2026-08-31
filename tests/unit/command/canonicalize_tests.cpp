@@ -29,6 +29,10 @@ TEST_CASE(CodegenFlagsIgnored) {
     ASSERT_EQ(base, canon({"clang++", "-std=c++20", "-fPIC", "-DFOO", "main.cpp"}));
     ASSERT_EQ(base, canon({"clang++", "-std=c++20", "-DFOO", "-flto", "main.cpp"}));
     ASSERT_EQ(base, canon({"clang++", "-std=c++20", "-ffunction-sections", "-DFOO", "main.cpp"}));
+    // Driver-ignored flags: bazel stamps a per-file -frandom-seed=<output>.
+    ASSERT_EQ(base,
+              canon({"clang++", "-frandom-seed=out/main.o", "-std=c++20", "-DFOO", "main.cpp"}));
+    ASSERT_EQ(base, canon({"clang++", "-std=c++20", "-fgcse", "-DFOO", "main.cpp"}));
 }
 
 TEST_CASE(SemanticFlagsChangeKey) {
