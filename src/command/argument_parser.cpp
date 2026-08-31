@@ -54,8 +54,8 @@ constexpr std::string_view str_at(unsigned offset) {
     return {ref.data(), ref.size()};
 }
 
-}  // namespace detail
-
+/// Plain enum: Options.inc combines these with bitwise-or, which needs the
+/// implicit conversion an enum class forbids.
 enum ClangDriverFlag : unsigned {
     HelpHidden = eo::HelpHidden,
     RenderAsInput = eo::RenderAsInput,
@@ -69,8 +69,11 @@ enum ClangDriverFlag : unsigned {
     Unsupported = 1u << 10,
 };
 
+}  // namespace detail
+
 const eo::OptTable& table() {
     using enum eo::Kind;
+    using enum detail::ClangDriverFlag;
     using detail::prefixes;
     using detail::str_at;
 
@@ -124,7 +127,7 @@ bool is_discarded_option(unsigned id) {
     /// Options the driver accepts and ignores (gcc compat knobs, e.g. the
     /// per-file -frandom-seed=<output> bazel stamps on every command): a
     /// per-file value here must not fracture probe and identity keys.
-    if(auto opt = option::table().option(id); opt && opt->has_flag(ClangDriverFlag::Ignored)) {
+    if(auto opt = option::table().option(id); opt && opt->has_flag(option::detail::Ignored)) {
         return true;
     }
 
