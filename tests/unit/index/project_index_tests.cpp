@@ -37,7 +37,7 @@ index::SymbolHash find_symbol(const index::ProjectIndex& project, llvm::StringRe
 
 /// The TU-local id -> pool id mapping merge() consumes, as Indexer::merge
 /// computes it.
-llvm::SmallVector<std::uint32_t> intern_paths(const index::TUIndex& view, clice::PathPool& pool) {
+llvm::SmallVector<std::uint32_t> intern_paths(const index::TUIndex& view, clice::FileTable& pool) {
     llvm::SmallVector<std::uint32_t> ids;
     for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
         ids.push_back(pool.intern(view.path(i)));
@@ -60,7 +60,7 @@ TEST_CASE(MergeCollectsExternalSymbols) {
     )");
     ASSERT_TRUE(compile());
 
-    clice::PathPool pool;
+    clice::FileTable pool;
     index::ProjectIndex project;
     auto view = build_view();
     ASSERT_TRUE(view.loaded());
@@ -108,7 +108,7 @@ TEST_CASE(MergeRejectsBadBitmap) {
     ASSERT_TRUE(valid.has_value());
     auto valid_view = index::TUIndex::from_bytes(bytes_of(*valid));
     ASSERT_TRUE(valid_view.loaded());
-    clice::PathPool pool;
+    clice::FileTable pool;
     index::ProjectIndex accepting;
     ASSERT_TRUE(accepting.merge(valid_view, intern_paths(valid_view, pool)));
     ASSERT_EQ(find_symbol(accepting, "good_sym"), 42u);
@@ -216,7 +216,7 @@ TEST_CASE(GlobalRoundTripWithRealMerge) {
     )");
     ASSERT_TRUE(compile());
 
-    clice::PathPool pool;
+    clice::FileTable pool;
     index::ProjectIndex project;
     auto view = build_view();
     ASSERT_TRUE(view.loaded());
@@ -235,7 +235,7 @@ TEST_CASE(GlobalRoundTripWithRealMerge) {
     llvm::raw_svector_ostream os(buf);
     project.serialize_global(os, pool);
 
-    clice::PathPool fresh;
+    clice::FileTable fresh;
     index::ProjectIndex loaded;
     llvm::DenseMap<std::uint32_t, std::uint64_t> pins;
     ASSERT_TRUE(loaded.load_global(buf.str(), fresh, pins));

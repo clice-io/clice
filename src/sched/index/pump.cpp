@@ -257,7 +257,7 @@ kota::task<> IndexPump::run_index_task(PendingLedger::Claim claim,
     // later round.
     auto admit = admission ? admission(server_path_id) : Admission::Admit;
     if(admit == Admission::Admit) {
-        auto file_path = std::string(workspace.path_pool.resolve(server_path_id));
+        auto file_path = std::string(workspace.file_table.resolve(server_path_id));
         // The engine's own observation is authoritative for content
         // changes: it saw the event. The dep-hash check cannot be trusted
         // to see a file's own edit (it validates the recorded

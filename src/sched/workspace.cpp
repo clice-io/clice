@@ -38,8 +38,8 @@ std::uint32_t Workspace::count_occurrences(std::uint32_t host_id, std::uint32_t 
     if(chain.size() < 2) {
         return 0;
     }
-    auto includer_path = path_pool.resolve(chain[chain.size() - 2]);
-    auto target_path = path_pool.resolve(target_id);
+    auto includer_path = file_table.resolve(chain[chain.size() - 2]);
+    auto target_path = file_table.resolve(target_id);
     auto buf = llvm::MemoryBuffer::getFile(includer_path);
     if(!buf) {
         return 0;
@@ -56,12 +56,12 @@ std::uint32_t Workspace::count_occurrences(std::uint32_t host_id, std::uint32_t 
 
 llvm::SmallVector<std::uint32_t> Workspace::rank_hosts(std::uint32_t header_path_id,
                                                        llvm::ArrayRef<std::uint32_t> hosts) const {
-    auto header_path = path_pool.resolve(header_path_id);
+    auto header_path = file_table.resolve(header_path_id);
     auto header_stem = llvm::sys::path::stem(header_path);
     auto header_dir = llvm::sys::path::parent_path(header_path);
 
     auto score = [&](std::uint32_t host_id) -> std::tuple<int, int, std::size_t> {
-        auto host_path = path_pool.resolve(host_id);
+        auto host_path = file_table.resolve(host_id);
         int stem_match = llvm::sys::path::stem(host_path) == header_stem ? 0 : 1;
         int same_dir = llvm::sys::path::parent_path(host_path) == header_dir ? 0 : 1;
         // Longer shared prefix means "closer" in the tree; negate for
@@ -80,13 +80,13 @@ llvm::SmallVector<std::uint32_t> Workspace::rank_hosts(std::uint32_t header_path
         if(sa != sb) {
             return sa < sb;
         }
-        return path_pool.resolve(a) < path_pool.resolve(b);
+        return file_table.resolve(a) < file_table.resolve(b);
     });
     return ranked;
 }
 
 void Workspace::rescan_includes(std::uint32_t path_id) {
-    auto path = path_pool.resolve(path_id);
+    auto path = file_table.resolve(path_id);
     dep_graph.clear_includes(path_id);
 
     if(auto buf = llvm::MemoryBuffer::getFile(path)) {
@@ -96,7 +96,7 @@ void Workspace::rescan_includes(std::uint32_t path_id) {
         llvm::StringRef cmd_path = path;
         if(!cdb.has_entry(path)) {
             for(auto host: rank_hosts(path_id, dep_graph.find_host_sources(path_id))) {
-                auto host_path = path_pool.resolve(host);
+                auto host_path = file_table.resolve(host);
                 if(cdb.has_entry(host_path)) {
                     cmd_path = host_path;
                     break;
@@ -145,7 +145,7 @@ void Workspace::rescan_includes(std::uint32_t path_id) {
                                                 resolved_config,
                                                 dir_cache);
                 if(resolved) {
-                    ids.push_back(path_pool.intern(resolved->path));
+                    ids.push_back(file_table.intern(resolved->path));
                 }
             }
             dep_graph.set_includes(path_id, ci, std::move(ids));
@@ -165,7 +165,7 @@ void Workspace::rescan_after_save(std::uint32_t path_id) {
     // module maps: path_to_module gates the module code paths, and the
     // dep_graph side is what import resolution reads — left stale, an
     // interface saved mid-session could never satisfy its importers.
-    auto file_path = path_pool.resolve(path_id);
+    auto file_path = file_table.resolve(path_id);
     if(auto buf = llvm::MemoryBuffer::getFile(file_path)) {
         auto result = scan_quick((*buf)->getBuffer());
         // A module declaration inside a preprocessor conditional is beyond
@@ -267,7 +267,7 @@ std::uint64_t hash_file(llvm::StringRef path) {
     return llvm::xxh3_64bits((*buf)->getBuffer());
 }
 
-DepsSnapshot capture_deps_snapshot(PathPool& pool,
+DepsSnapshot capture_deps_snapshot(FileTable& pool,
                                    llvm::ArrayRef<DepFile> deps,
                                    std::int64_t build_at) {
     // Files whose mtime falls within the guard of the build start count as
@@ -318,7 +318,7 @@ DepsSnapshot capture_deps_snapshot(PathPool& pool,
     return snap;
 }
 
-bool deps_changed(const PathPool& pool, DepsSnapshot& snap) {
+bool deps_changed(const FileTable& pool, DepsSnapshot& snap) {
     for(auto& dep: snap.deps) {
         auto path = pool.resolve(dep.path_id);
         llvm::sys::fs::file_status status;
@@ -533,7 +533,7 @@ void Workspace::load_cache(ContextResolver& contexts) {
             auto dep_path = resolve(dep.path);
             if(dep_path.empty())
                 continue;
-            deps.deps.push_back({.path_id = path_pool.intern(dep_path),
+            deps.deps.push_back({.path_id = file_table.intern(dep_path),
                                  .size = dep.size,
                                  .mtime_ns = dep.mtime_ns,
                                  .hash = dep.hash,
@@ -584,7 +584,7 @@ void Workspace::load_cache(ContextResolver& contexts) {
             continue;
         }
 
-        auto path_id = path_pool.intern(source);
+        auto path_id = file_table.intern(source);
         pcm_cache[path_id] = {*pcm_path, entry.key, load_deps(entry.deps)};
         pcm_paths[path_id] = *pcm_path;
 
@@ -608,7 +608,7 @@ void Workspace::save_cache(const ContextResolver& contexts) {
     std::unordered_map<std::string, std::uint32_t> index_map;
 
     auto intern = [&](std::uint32_t runtime_path_id) -> std::uint32_t {
-        auto path = std::string(path_pool.resolve(runtime_path_id));
+        auto path = std::string(file_table.resolve(runtime_path_id));
         auto [it, inserted] =
             index_map.try_emplace(path, static_cast<std::uint32_t>(data.paths.size()));
         if(inserted) {

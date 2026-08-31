@@ -248,7 +248,7 @@ kota::task<> lint_one(BatchStack& stack,
                       std::uint32_t path_id,
                       LintSweep& sweep,
                       FindingsSink on_findings) {
-    auto file = stack.workspace.path_pool.resolve(path_id);
+    auto file = stack.workspace.file_table.resolve(path_id);
     TURunFamily::Plan plan;
     plan.tidy = true;
     plan.index = with_index;

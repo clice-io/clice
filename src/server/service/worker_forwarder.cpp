@@ -111,7 +111,7 @@ kota::task<bool> WorkerForwarder::ensure_pch(const std::shared_ptr<Session>& ses
     // adopted PCH if it is still available.
     if(!pch.fresh(pch_key) && !is_preamble_complete(session->text, plan.request.preamble_bound)) {
         LOG_DEBUG("Preamble incomplete for {}, deferring PCH rebuild",
-                  workspace.path_pool.resolve(path_id));
+                  workspace.file_table.resolve(path_id));
         auto projection = ast.projections.projection(path_id);
         if(projection && projection->pch_key.has_value()) {
             auto it = workspace.pch_cache.find(*projection->pch_key);
@@ -210,7 +210,7 @@ WorkerForwarder::RawResult
                                    std::optional<protocol::Range> range,
                                    std::optional<kota::cancellation_token> token) {
     auto path_id = session->path_id;
-    auto path = std::string(workspace.path_pool.resolve(path_id));
+    auto path = std::string(workspace.file_table.resolve(path_id));
     auto gen = session->generation;
     auto map = session->line_map();
 
@@ -302,7 +302,7 @@ kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
     WorkerForwarder::forward_document_links(std::shared_ptr<Session> session,
                                             std::optional<kota::cancellation_token> token) {
     auto path_id = session->path_id;
-    auto path = std::string(workspace.path_pool.resolve(path_id));
+    auto path = std::string(workspace.file_table.resolve(path_id));
     auto gen = session->generation;
 
     ScopedTimer timer;
@@ -371,7 +371,7 @@ WorkerForwarder::RawResult
                                          std::shared_ptr<Session> session,
                                          std::optional<kota::cancellation_token> token) {
     auto path_id = session->path_id;
-    auto path = std::string(workspace.path_pool.resolve(path_id));
+    auto path = std::string(workspace.file_table.resolve(path_id));
     auto gen = session->generation;
 
     // This build compiles the same content the quarantine watches: while
@@ -509,7 +509,7 @@ WorkerForwarder::RawResult
                                     std::optional<protocol::Range> range,
                                     std::optional<kota::cancellation_token> token) {
     auto path_id = session->path_id;
-    auto path = std::string(workspace.path_pool.resolve(path_id));
+    auto path = std::string(workspace.file_table.resolve(path_id));
     auto gen = session->generation;
 
     // Formatting runs no sema, but it is still this document's content on

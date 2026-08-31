@@ -23,8 +23,8 @@
 #include "command/command.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
-#include "support/path_pool.h"
 #include "syntax/dependency_graph.h"
+#include "vfs/file_table.h"
 
 #include "kota/codec/json/json.h"
 #include "kota/deco/deco.h"
@@ -61,7 +61,7 @@ struct GraphExport {
     std::vector<FileNode> files;
 };
 
-void export_graph_json(const PathPool& path_pool,
+void export_graph_json(const FileTable& file_table,
                        const DependencyGraph& graph,
                        llvm::StringRef output_path) {
     // Build reverse module map: path_id -> module_name.
@@ -73,14 +73,14 @@ void export_graph_json(const PathPool& path_pool,
     }
 
     GraphExport export_data;
-    for(std::uint32_t id = 0; id < path_pool.paths.size(); id += 1) {
+    for(std::uint32_t id = 0; id < file_table.spellings.size(); id += 1) {
         auto inc_ids = graph.get_all_includes(id);
         if(inc_ids.empty()) {
             continue;
         }
 
         FileNode node;
-        node.path = path_pool.paths[id].str();
+        node.path = file_table.resolve(id).str();
 
         auto mod_it = path_to_module.find(id);
         if(mod_it != path_to_module.end()) {
@@ -89,7 +89,7 @@ void export_graph_json(const PathPool& path_pool,
 
         for(auto flagged_id: inc_ids) {
             auto raw_id = flagged_id & DependencyGraph::PATH_ID_MASK;
-            node.includes.push_back(path_pool.paths[raw_id].str());
+            node.includes.push_back(file_table.resolve(raw_id).str());
         }
 
         export_data.files.push_back(std::move(node));
@@ -268,8 +268,10 @@ int main(int argc, const char** argv) {
     // Load compilation database.
     auto t0 = std::chrono::steady_clock::now();
 
+    std::optional<FileTable> table_storage;
     std::optional<CompilationDatabase> cdb_storage;
-    cdb_storage.emplace();
+    table_storage.emplace();
+    cdb_storage.emplace(*table_storage);
     auto& cdb = *cdb_storage;
     auto loaded = cdb.load(cdb_path);
     if(!loaded) {
@@ -311,7 +313,9 @@ int main(int argc, const char** argv) {
     for(int i = 0; i < runs; i += 1) {
         // True cold start: rebuild CDB (clears toolchain & config caches)
         // and the DependencyGraph.
-        cdb_storage.emplace();
+        cdb_storage.reset();
+        table_storage.emplace();
+        cdb_storage.emplace(*table_storage);
         cdb_storage->load(cdb_path);
         graph = DependencyGraph{};
 
@@ -358,7 +362,7 @@ int main(int argc, const char** argv) {
 
     // Export dependency graph as JSON if requested.
     if(opts.export_path.has_value()) {
-        export_graph_json(cdb_storage->paths(), graph, *opts.export_path);
+        export_graph_json(cdb_storage->files(), graph, *opts.export_path);
     }
 
     return 0;

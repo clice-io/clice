@@ -447,7 +447,8 @@ int main(int argc, const char** argv) {
         }
     }
 
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     auto count = cdb.load(*opts.cdb_path);
     if(!count) {
         std::println(stderr, "Error: failed to load {}", *opts.cdb_path);
@@ -460,7 +461,7 @@ int main(int argc, const char** argv) {
     // like the server picks.
     std::vector<llvm::StringRef> files;
     for(auto& entry: cdb.entries()) {
-        auto path = cdb.paths().resolve(entry.file);
+        auto path = cdb.files().resolve(entry.file);
         if(opts.filter.has_value() && !path.contains(*opts.filter)) {
             continue;
         }

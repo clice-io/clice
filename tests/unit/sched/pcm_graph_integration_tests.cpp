@@ -5,7 +5,7 @@
 #include "command/command.h"
 #include "compile/compilation.h"
 #include "sched/graph.h"
-#include "support/path_pool.h"
+#include "vfs/file_table.h"
 #include "syntax/dependency_graph.h"
 #include "syntax/scan.h"
 
@@ -86,7 +86,7 @@ DispatchFn make_dispatch(CompilationDatabase& cdb,
                          DependencyGraph& graph,
                          llvm::DenseMap<std::uint32_t, std::string>& pcm_paths) {
     return [&](std::uint32_t path_id, bool) -> kota::task<RoundOutcome> {
-        auto file_path = cdb.paths().resolve(path_id);
+        auto file_path = cdb.files().resolve(path_id);
         auto candidates = cdb.candidate_entries(file_path);
         if(candidates.empty()) {
             co_return RoundOutcome::Failed;
@@ -132,7 +132,7 @@ DispatchFn make_dispatch(CompilationDatabase& cdb,
 /// Build a resolve_fn that lazily scans module files for imports.
 ResolveFn make_resolver(CompilationDatabase& cdb, DependencyGraph& graph) {
     return [&](std::uint32_t path_id) -> llvm::SmallVector<std::uint32_t> {
-        auto file_path = cdb.paths().resolve(path_id);
+        auto file_path = cdb.files().resolve(path_id);
         auto candidates = cdb.candidate_entries(file_path);
         if(candidates.empty()) {
             return {};
@@ -159,7 +159,8 @@ ResolveFn make_resolver(CompilationDatabase& cdb, DependencyGraph& graph) {
 /// Helper to set up infra, compile a module, and verify all PCMs are produced.
 struct ModuleTestEnv {
     TempDir tmp;
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     DependencyGraph graph;
     llvm::DenseMap<std::uint32_t, std::string> pcm_paths;
 

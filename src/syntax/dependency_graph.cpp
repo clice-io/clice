@@ -251,7 +251,7 @@ namespace {
 
 /// Result of scanning a single file (returned from worker thread).
 struct FileScanResult {
-    const char* path;  // Stable pointer from PathPool.
+    const char* path;  // Stable pointer from FileTable.
     std::uint32_t path_id;
     std::uint32_t config_id;
     ScanResult scan_result;
@@ -262,7 +262,7 @@ struct FileScanResult {
 
 /// Scan a single file: read content + lexer scan.
 /// Runs on libuv worker thread via queue().
-/// @param path  Stable pointer from PathPool (must outlive the task).
+/// @param path  Stable pointer from FileTable (must outlive the task).
 FileScanResult scan_file_worker(const char* path, std::uint32_t path_id, std::uint32_t config_id) {
     FileScanResult result;
     result.path = path;
@@ -301,7 +301,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                        ScanCache* ext_cache,
                        kota::event_loop& loop,
                        const RuleMatcher& rule_matcher) {
-    auto& path_pool = cdb.paths();
+    auto& file_table = cdb.files();
     auto start_time = std::chrono::steady_clock::now();
 
     // On warm runs (ext_cache populated from a previous scan), skip the expensive
@@ -330,7 +330,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
     {
         llvm::DenseMap<std::pair<std::uint32_t, const char*>, std::uint32_t> group_ids;
         for(auto& entry: cdb.entries()) {
-            auto file_path = path_pool.resolve(entry.file);
+            auto file_path = file_table.resolve(entry.file);
 
             // Apply per-file rules so that [[rules]]-modified -I/-isystem/-std
             // flags are reflected in the search config used by the scan.
@@ -411,7 +411,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
         }
         // Also prefetch parent directories of source files (for quoted include resolution).
         for(auto& entry: cdb.entries()) {
-            auto file_path = path_pool.resolve(entry.file);
+            auto file_path = file_table.resolve(entry.file);
             auto dir = llvm::sys::path::parent_path(file_path);
             if(!dir.empty()) {
                 unique_dirs.insert(dir);
@@ -486,7 +486,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
             if(ext_cache) {
                 auto it = ext_cache->scan_results.find(entry.path_id);
                 if(it != ext_cache->scan_results.end()) {
-                    scan_results.push_back({path_pool.resolve(entry.path_id).data(),
+                    scan_results.push_back({file_table.resolve(entry.path_id).data(),
                                             entry.path_id,
                                             entry.config_id,
                                             it->second,
@@ -524,7 +524,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                 if(ext_cache && ext_cache->scan_results.count(pid)) {
                     continue;
                 }
-                auto path = path_pool.resolve(pid).data();
+                auto path = file_table.resolve(pid).data();
                 scan_tasks.push_back(
                     kota::queue([path, pid, cid]() { return scan_file_worker(path, pid, cid); },
                                 loop));
@@ -697,7 +697,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                         if(cached.path_id == UINT32_MAX) {
                             report.unresolved.push_back({
                                 std::move(inc.path),
-                                std::string(path_pool.resolve(scan_result.path_id)),
+                                std::string(file_table.resolve(scan_result.path_id)),
                                 inc.is_angled,
                                 inc.conditional,
                             });
@@ -742,14 +742,14 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                     }
                     report.unresolved.push_back({
                         std::move(inc.path),
-                        std::string(path_pool.resolve(scan_result.path_id)),
+                        std::string(file_table.resolve(scan_result.path_id)),
                         inc.is_angled,
                         inc.conditional,
                     });
                     continue;
                 }
 
-                auto inc_path_id = path_pool.intern(resolved->path);
+                auto inc_path_id = file_table.intern(resolved->path);
                 report.includes_resolved++;
 
                 if(cache_eligible) {
@@ -775,7 +775,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                     // thread pool so it's ready when the next wave begins.
                     if(!ext_cache ||
                        ext_cache->scan_results.find(inc_path_id) == ext_cache->scan_results.end()) {
-                        auto inc_path = path_pool.resolve(inc_path_id).data();
+                        auto inc_path = file_table.resolve(inc_path_id).data();
                         prefetch_tasks.push_back(kota::queue(
                             [inc_path, inc_path_id, cid = scan_result.config_id]() {
                                 return scan_file_worker(inc_path, inc_path_id, cid);

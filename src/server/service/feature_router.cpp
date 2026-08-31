@@ -158,7 +158,7 @@ static std::optional<CommandLang> command_lang(Workspace& workspace, llvm::Strin
 }
 
 const clang::LangOptions& FeatureRouter::index_lang_options(const Session& session) {
-    auto path = workspace.path_pool.resolve(session.path_id);
+    auto path = workspace.file_table.resolve(session.path_id);
     auto own = command_lang(workspace, path);
     if(own && own->forces_c) {
         return feature::index_lang_options("", *own->forces_c, own->standard);
@@ -178,7 +178,7 @@ const clang::LangOptions& FeatureRouter::index_lang_options(const Session& sessi
         }
     }
     if(host != no_path_id) {
-        auto host_path = workspace.path_pool.resolve(host);
+        auto host_path = workspace.file_table.resolve(host);
         auto host_lang = command_lang(workspace, host_path);
         if(host_lang && host_lang->forces_c) {
             return feature::index_lang_options("", *host_lang->forces_c, host_lang->standard);
@@ -193,7 +193,7 @@ const clang::LangOptions& FeatureRouter::index_lang_options(const Session& sessi
     auto it = contributions.find(session.path_id);
     bool c_rows = it != contributions.end() && !it->second.empty() &&
                   llvm::all_of(llvm::make_first_range(it->second), [&](std::uint32_t tu) {
-                      return workspace.path_pool.resolve(tu).ends_with(".c");
+                      return workspace.file_table.resolve(tu).ends_with(".c");
                   });
     return feature::index_lang_options(path,
                                        c_rows,
@@ -480,7 +480,7 @@ FeatureRouter::RawResult FeatureRouter::hover(std::shared_ptr<Session> session,
         co_return kota::outcome_error(document_not_open());
     }
 
-    auto path = workspace.path_pool.resolve(session->path_id);
+    auto path = workspace.file_table.resolve(session->path_id);
     auto index_card = [&]() -> std::optional<serde_raw> {
         if(auto info = index_query.hover_card(path, position, session.get())) {
             return to_raw(
@@ -735,7 +735,7 @@ FeatureRouter::RawResult FeatureRouter::completion(std::shared_ptr<Session> sess
     }
 
     auto path_id = session->path_id;
-    auto path = std::string(workspace.path_pool.resolve(path_id));
+    auto path = std::string(workspace.file_table.resolve(path_id));
 
     auto map = session->line_map();
     auto offset = map.to_offset(position);

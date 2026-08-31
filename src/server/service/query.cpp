@@ -103,7 +103,7 @@ bool IndexQuery::serves_preamble(const Session& session, const index::TUIndex& s
     // gating is needed on top. The blob stores clang's native path
     // (backslashes on Windows) while the pool normalizes separators, so
     // compare through the pool's lookup, not raw strings.
-    return workspace.path_pool.find(state.path(state.path_count() - 1)) == session.path_id &&
+    return workspace.file_table.find(state.path(state.path_count() - 1)) == session.path_id &&
            state.matches_prefix(session.text);
 }
 
@@ -115,7 +115,7 @@ bool IndexQuery::should_serve_overlay_file(llvm::StringRef path) const {
     // Freshness contract, clause 2, same as shards: a file whose own
     // content changed on disk has its rows suppressed until an up-to-date
     // view lands — the blob snapshot describes text that no longer exists.
-    if(auto path_id = workspace.path_pool.find(path)) {
+    if(auto path_id = workspace.file_table.find(path)) {
         if(is_path_open(*path_id) || skip_stale_contribution(*path_id)) {
             return false;
         }
@@ -350,7 +350,7 @@ IndexQuery::CursorHit IndexQuery::resolve_cursor(llvm::StringRef path,
     // text) from the mixed-view lookup the contract exists to prevent.
     // Closed files keep the stale-contribution gate against their disk
     // baseline instead.
-    auto path_id = workspace.path_pool.find(path);
+    auto path_id = workspace.file_table.find(path);
     if(!path_id)
         return {};
     if(!session && skip_stale_contribution(*path_id))
@@ -391,7 +391,7 @@ std::vector<protocol::Location> IndexQuery::collect_relation_locations(index::Sy
             auto shard_it = workspace.shards.find(file_id);
             if(shard_it == workspace.shards.end())
                 continue;
-            auto uri = lsp::URI::from_file_path(workspace.path_pool.resolve(file_id));
+            auto uri = lsp::URI::from_file_path(workspace.file_table.resolve(file_id));
             if(!uri)
                 continue;
             auto& merged_index = shard_it->second;
@@ -407,7 +407,7 @@ std::vector<protocol::Location> IndexQuery::collect_relation_locations(index::Sy
     }
 
     visit_sessions([&](std::uint32_t id, const Session& session) -> bool {
-        auto uri = lsp::URI::from_file_path(std::string(workspace.path_pool.resolve(id)));
+        auto uri = lsp::URI::from_file_path(std::string(workspace.file_table.resolve(id)));
         if(!uri)
             return true;
         auto map = session.line_map();
@@ -439,7 +439,7 @@ std::vector<protocol::Location> IndexQuery::collect_relation_locations(index::Sy
 
     // Preamble entries: the buffers' own preamble regions.
     visit_preambles([&](std::uint32_t id, const Session& session, const index::TUIndex& state) {
-        auto uri = lsp::URI::from_file_path(std::string(workspace.path_pool.resolve(id)));
+        auto uri = lsp::URI::from_file_path(std::string(workspace.file_table.resolve(id)));
         if(!uri)
             return true;
         auto map = session.line_map();
@@ -509,10 +509,10 @@ std::string IndexQuery::self_uri(llvm::StringRef path) {
     // Collected locations spell URIs from the pool's canonical form; the
     // transport's raw path can differ (drive case on Windows), which would
     // defeat cursor-site detection.
-    auto path_id = workspace.path_pool.find(path);
+    auto path_id = workspace.file_table.find(path);
     if(!path_id)
         return {};
-    auto uri = lsp::URI::from_file_path(workspace.path_pool.resolve(*path_id));
+    auto uri = lsp::URI::from_file_path(workspace.file_table.resolve(*path_id));
     return uri ? uri->str() : std::string{};
 }
 
@@ -631,7 +631,7 @@ std::optional<protocol::Location> IndexQuery::find_relation_location(index::Symb
                                                                      RelationKind kind) {
     std::optional<protocol::Location> session_result;
     visit_sessions([&](std::uint32_t id, const Session& session) -> bool {
-        auto uri = lsp::URI::from_file_path(std::string(workspace.path_pool.resolve(id)));
+        auto uri = lsp::URI::from_file_path(std::string(workspace.file_table.resolve(id)));
         if(!uri)
             return true;
         auto map = session.line_map();
@@ -653,7 +653,7 @@ std::optional<protocol::Location> IndexQuery::find_relation_location(index::Symb
     // First the buffers' own preamble regions, then the header entries.
     std::optional<protocol::Location> overlay_result;
     visit_preambles([&](std::uint32_t id, const Session& session, const index::TUIndex& state) {
-        auto uri = lsp::URI::from_file_path(std::string(workspace.path_pool.resolve(id)));
+        auto uri = lsp::URI::from_file_path(std::string(workspace.file_table.resolve(id)));
         if(!uri)
             return true;
         auto map = session.line_map();
@@ -697,7 +697,7 @@ std::optional<protocol::Location> IndexQuery::find_relation_location(index::Symb
         auto shard_it = workspace.shards.find(file_id);
         if(shard_it == workspace.shards.end())
             continue;
-        auto uri = lsp::URI::from_file_path(workspace.path_pool.resolve(file_id));
+        auto uri = lsp::URI::from_file_path(workspace.file_table.resolve(file_id));
         if(!uri)
             continue;
         auto& merged_index = shard_it->second;
@@ -942,7 +942,7 @@ std::optional<IndexQuery::DefinitionText> IndexQuery::get_definition_text(index:
         if(shard_it == workspace.shards.end())
             continue;
         auto& merged_index = shard_it->second;
-        auto file_path = workspace.path_pool.resolve(file_id);
+        auto file_path = workspace.file_table.resolve(file_id);
         std::unique_ptr<llvm::MemoryBuffer> storage;
         auto text = indexed_text(file_path, merged_index, storage);
         if(!text)
@@ -1023,7 +1023,7 @@ std::vector<feature::IndexIncludeEdge> IndexQuery::include_edges(const Session& 
             }
             edges.push_back({
                 .line = node.line,
-                .target = std::string(workspace.path_pool.resolve(target->path_id)),
+                .target = std::string(workspace.file_table.resolve(target->path_id)),
             });
         }
     };
@@ -1111,7 +1111,7 @@ std::optional<feature::HoverInfo> IndexQuery::hover_card(llvm::StringRef path,
                     continue;
                 std::unique_ptr<llvm::MemoryBuffer> storage;
                 auto text =
-                    indexed_text(workspace.path_pool.resolve(file_id), shard_it->second, storage);
+                    indexed_text(workspace.file_table.resolve(file_id), shard_it->second, storage);
                 if(text && slice_from(shard_it->second, *text))
                     break;
             }
@@ -1143,7 +1143,7 @@ std::vector<IndexQuery::ReferenceWithContext> IndexQuery::collect_references(ind
             if(shard_it == workspace.shards.end())
                 continue;
             auto& merged_index = shard_it->second;
-            auto file_path = workspace.path_pool.resolve(file_id);
+            auto file_path = workspace.file_table.resolve(file_id);
             // A moved-on ASCII file yields no text: positions still map
             // through the line table, only the context line degrades.
             std::unique_ptr<llvm::MemoryBuffer> storage;
@@ -1378,7 +1378,7 @@ std::vector<ResolvedSymbol> IndexQuery::locate_symbols(const agentic::ReadSymbol
         auto path_str = *loc.path;
         auto target_line = static_cast<protocol::uinteger>(*loc.line - 1);
 
-        auto path_id = workspace.path_pool.find(path_str);
+        auto path_id = workspace.file_table.find(path_str);
         if(!path_id)
             return {};
 

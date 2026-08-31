@@ -12,7 +12,8 @@ TEST_SUITE(ExtractSearchConfig) {
 /// Normalize a raw argv through the database and extract from the
 /// structured command (the only extraction path).
 SearchConfig extract(llvm::ArrayRef<const char*> args, llvm::StringRef directory) {
-    CompilationDatabase db;
+    FileTable file_table;
+    CompilationDatabase db{file_table};
     db.add_command(directory, "main.cpp", args);
     auto& entry = db.candidate_entries("main.cpp").front();
     return extract_search_config(db.config(entry.config).args, directory);

@@ -219,7 +219,7 @@ llvm::SmallVector<std::uint64_t> ProjectIndex::live_variants(this const ProjectI
 
 void ProjectIndex::serialize_global(this ProjectIndex& self,
                                     llvm::raw_ostream& os,
-                                    const clice::PathPool& pool) {
+                                    const clice::FileTable& pool) {
     // Garbage-collect the FileVersion table down to what some manifest
     // still references — in memory too, so ids of dead versions stop
     // accumulating across the session (they are never reused either way).
@@ -303,7 +303,7 @@ void ProjectIndex::serialize_global(this ProjectIndex& self,
 
 bool ProjectIndex::load_global(this ProjectIndex& self,
                                llvm::StringRef data,
-                               clice::PathPool& pool,
+                               clice::FileTable& pool,
                                llvm::DenseMap<std::uint32_t, std::uint64_t>& manifest_pins) {
     GlobalBlob blob;
     if(!deserialize_blob(data, blob) || blob.format_version != index_format_version) {

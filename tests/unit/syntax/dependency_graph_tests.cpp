@@ -2,7 +2,7 @@
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "command/command.h"
-#include "support/path_pool.h"
+#include "vfs/file_table.h"
 #include "syntax/dependency_graph.h"
 
 namespace clice::testing {
@@ -212,7 +212,8 @@ TEST_CASE(EmptyIncludes) {
 TEST_SUITE(ScanDependencyGraph) {
 
 TEST_CASE(EmptyCDB) {
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     DependencyGraph graph;
 
     scan_dependency_graph(cdb, graph);
@@ -232,7 +233,8 @@ export module m;
 #endif
 )");
 
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     DependencyGraph graph;
     auto json = build_cdb_json({
         {tmp.root, tmp.path("src/m.cppm"), {}}
@@ -261,7 +263,8 @@ export module m1;
 #endif
 )");
 
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     DependencyGraph graph;
     ScanCache cache;
     auto json = build_cdb_json({
@@ -287,7 +290,8 @@ TEST_CASE(SingleFileNoIncludes) {
     TempDir tmp;
     tmp.touch("src/main.cpp", R"(int main() { return 0; })");
 
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     DependencyGraph graph;
 
     auto json = build_cdb_json({
@@ -309,7 +313,8 @@ TEST_CASE(SingleFileWithInclude) {
 int main() { return x; }
 )");
 
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     DependencyGraph graph;
 
     auto json = build_cdb_json({
@@ -332,7 +337,8 @@ TEST_CASE(TransitiveIncludes) {
 int main() {}
 )");
 
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     DependencyGraph graph;
 
     auto json = build_cdb_json({
@@ -358,7 +364,8 @@ void a() {}
 void b() {}
 )");
 
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     DependencyGraph graph;
 
     std::vector<std::string> inc = {"-I", tmp.path("inc")};
@@ -384,7 +391,8 @@ TEST_CASE(ConditionalIncludes) {
 #endif
 )");
 
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     DependencyGraph graph;
 
     auto json = build_cdb_json({
@@ -399,7 +407,7 @@ TEST_CASE(ConditionalIncludes) {
     // Verify conditional flag.
     bool found_unconditional = false;
     bool found_conditional = false;
-    auto includes = graph.get_includes(cdb.paths().intern(tmp.path("src/main.cpp")), 0);
+    auto includes = graph.get_includes(cdb.files().intern(tmp.path("src/main.cpp")), 0);
     for(auto id: includes) {
         if(id & DependencyGraph::CONDITIONAL_FLAG) {
             found_conditional = true;
@@ -418,7 +426,8 @@ export module my.module;
 export int foo() { return 42; }
 )");
 
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     DependencyGraph graph;
 
     auto json = build_cdb_json({
@@ -430,7 +439,7 @@ export int foo() { return 42; }
     auto result = graph.lookup_module("my.module");
     ASSERT_EQ(result.size(), 1u);
 
-    auto path = cdb.paths().resolve(result[0]);
+    auto path = cdb.files().resolve(result[0]);
     EXPECT_TRUE(llvm::sys::fs::equivalent(path, tmp.path("src/mymod.cpp")));
 }
 
@@ -441,7 +450,8 @@ export module my.mod:part;
 void impl() {}
 )");
 
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     DependencyGraph graph;
 
     auto json = build_cdb_json({
@@ -470,7 +480,8 @@ int b = 1;
 int main() {}
 )");
 
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     DependencyGraph graph;
 
     auto json = build_cdb_json({
@@ -494,7 +505,8 @@ TEST_CASE(AngledVsQuoted) {
 int main() {}
 )");
 
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     DependencyGraph graph;
 
     auto json = build_cdb_json({
@@ -515,7 +527,8 @@ TEST_CASE(MissingInclude) {
 int main() {}
 )");
 
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     DependencyGraph graph;
 
     auto json = build_cdb_json({
@@ -543,7 +556,8 @@ module mod.a;
 void a_impl() {}
 )");
 
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     DependencyGraph graph;
 
     auto json = build_cdb_json({
@@ -571,7 +585,8 @@ TEST_CASE(DeepIncludeChain) {
 int main() {}
 )");
 
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     DependencyGraph graph;
 
     auto json = build_cdb_json({
@@ -595,7 +610,8 @@ export module my.lib;
 export int value() { return util; }
 )");
 
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     DependencyGraph graph;
 
     auto json = build_cdb_json({
@@ -616,7 +632,8 @@ TEST_CASE(ScanCacheWarmRun) {
 int main() {}
 )");
 
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     ScanCache cache;
 
     auto json = build_cdb_json({

@@ -93,7 +93,7 @@ void LSPClient::forward_notify_messages() {
 
 LSPClient::ResolvedDoc LSPClient::resolve_uri(const std::string& uri) {
     auto path = uri_to_path(uri);
-    auto path_id = this->server.workspace.path_pool.intern(path);
+    auto path_id = this->server.workspace.file_table.intern(path);
     return ResolvedDoc{std::move(path), path_id, this->server.find_session(path_id)};
 }
 
@@ -799,7 +799,7 @@ void LSPClient::push_output(const Session& session) {
     }
     auto& output = *projection->output;
 
-    auto file_path = std::string(server.workspace.path_pool.resolve(session.path_id));
+    auto file_path = std::string(server.workspace.file_table.resolve(session.path_id));
     auto uri = lsp::URI::from_file_path(file_path);
     std::string uri_str = uri.has_value() ? uri->str() : file_path;
 

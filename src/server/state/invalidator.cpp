@@ -230,7 +230,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // the pull-side staleness check alone can miss when the
                 // rewrite lands within mtime granularity of the compile.
                 if(auto session = store.find(path_id)) {
-                    auto disk = read_file(workspace.path_pool.resolve(path_id));
+                    auto disk = read_file(workspace.file_table.resolve(path_id));
                     if(!disk || *disk != session->text) {
                         dirty.mark_ast_dirty.push_back(path_id);
                     }
@@ -249,7 +249,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // the queue's latency, while a close after saved edits must
                 // not serve rows for text that no longer exists. One disk
                 // read settles it; an unreadable file counts as changed.
-                auto disk = read_file(workspace.path_pool.resolve(event.path_id));
+                auto disk = read_file(workspace.file_table.resolve(event.path_id));
                 if(!disk) {
                     // Deleted while it was open: the tracker skips open
                     // files, so this close is the first observation of the
@@ -271,7 +271,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // erases the entry.
                 auto pcm_it = workspace.pcm_cache.find(event.path_id);
                 bool pcm_stale = pcm_it != workspace.pcm_cache.end() &&
-                                 deps_changed(workspace.path_pool, pcm_it->second.deps);
+                                 deps_changed(workspace.file_table, pcm_it->second.deps);
                 // Disk is the truth again, and this close is the last
                 // chance to act on it: the DiskChanged path deliberately
                 // skips the rescan and the module/dependent cascades while

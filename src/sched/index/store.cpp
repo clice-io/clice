@@ -83,7 +83,7 @@ CDBSnapshot build_cdb_snapshot(Workspace& workspace,
                                llvm::ArrayRef<std::uint32_t> standalone_debt) {
     CDBSnapshot snapshot;
     for(auto& [path_id, hashes]: workspace.cdb.command_hash_snapshot()) {
-        auto file = workspace.path_pool.resolve(path_id).str();
+        auto file = workspace.file_table.resolve(path_id).str();
         auto rules = rules_hash(workspace.config, file);
         snapshot.entries.push_back({
             .file = std::move(file),
@@ -96,7 +96,7 @@ CDBSnapshot build_cdb_snapshot(Workspace& workspace,
     // depends on their own matched rules and their borrowed host's command
     // — both must be snapshot to detect offline changes.
     auto add_standalone = [&](std::uint32_t tu) {
-        auto file = workspace.path_pool.resolve(tu);
+        auto file = workspace.file_table.resolve(tu);
         if(workspace.cdb.has_entry(file)) {
             return;
         }
@@ -105,7 +105,7 @@ CDBSnapshot build_cdb_snapshot(Workspace& workspace,
             .file = file.str(),
             .rules = rules_hash(workspace.config, file),
             .host = host_it != header_hosts.end()
-                        ? workspace.path_pool.resolve(host_it->second).str()
+                        ? workspace.file_table.resolve(host_it->second).str()
                         : std::string(),
         });
     };
@@ -157,7 +157,7 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
     llvm::SmallVector<std::uint32_t> file_ids_map;
     file_ids_map.resize_for_overwrite(view.path_count());
     for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
-        file_ids_map[i] = workspace.path_pool.intern(view.path(i));
+        file_ids_map[i] = workspace.file_table.intern(view.path(i));
     }
     auto tu_path_id = file_ids_map[main_local_id];
 
@@ -187,7 +187,7 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
         if(path_hash != 0 && path_hash != content_hash) {
             LOG_WARN("Reject merge for {}: rows for {} consumed other content than the compiler",
                      main_tu_path,
-                     workspace.path_pool.resolve(file_ids_map[local_id]));
+                     workspace.file_table.resolve(file_ids_map[local_id]));
             return false;
         }
         consumed_hashes[local_id] = content_hash;
@@ -225,14 +225,14 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
         if(llvm::xxh3_64bits(bytes) != blob_hash) {
             LOG_WARN("Reject merge for {}: rows section for {} failed verification",
                      main_tu_path,
-                     workspace.path_pool.resolve(global_id));
+                     workspace.file_table.resolve(global_id));
             return std::nullopt;
         }
         auto fresh = index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
         if(!fresh.loaded()) {
             LOG_WARN("Reject merge for {}: rows for {} do not form a valid shard",
                      main_tu_path,
-                     workspace.path_pool.resolve(global_id));
+                     workspace.file_table.resolve(global_id));
             return std::nullopt;
         }
         if(!record_consumed(local_id, fresh.content_hash())) {
@@ -460,13 +460,13 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<std::uint32_t>
     startup_removes.clear();
     for(auto path_id: retired) {
         removals.push_back(
-            {index::IndexBlobKind::Shard, blob_key(workspace.path_pool.resolve(path_id))});
+            {index::IndexBlobKind::Shard, blob_key(workspace.file_table.resolve(path_id))});
     }
     for(auto path_id: dirty_shards) {
         auto it = workspace.shards.find(path_id);
         assert(it != workspace.shards.end() && "dirty shards stay resident until retirement");
         batch.push_back({index::IndexBlobKind::Shard,
-                         blob_key(workspace.path_pool.resolve(path_id)),
+                         blob_key(workspace.file_table.resolve(path_id)),
                          it->second.bytes().str()});
         shard_ids.push_back(path_id);
     }
@@ -484,7 +484,7 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<std::uint32_t>
     }
     for(auto tu_path_id: dirty_manifests) {
         auto it = project.manifests.find(tu_path_id);
-        auto key = blob_key(workspace.path_pool.resolve(tu_path_id));
+        auto key = blob_key(workspace.file_table.resolve(tu_path_id));
         // Dirty with no in-memory manifest means dropped (drop_index): the
         // persisted blob must go too, or a restart resurrects the TU's
         // rows as fresh.
@@ -508,7 +508,7 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<std::uint32_t>
     if(global_dirty) {
         std::string bytes;
         llvm::raw_string_ostream os(bytes);
-        project.serialize_global(os, workspace.path_pool);
+        project.serialize_global(os, workspace.file_table);
         batch.push_back({index::IndexBlobKind::Global, "global", std::move(bytes)});
     }
 
@@ -702,7 +702,7 @@ kota::task<> IndexStore::migrate_shard_views(Report& report) {
             continue;
         }
         auto blob =
-            db.read(index::IndexBlobKind::Shard, blob_key(workspace.path_pool.resolve(path_id)));
+            db.read(index::IndexBlobKind::Shard, blob_key(workspace.file_table.resolve(path_id)));
         if(!blob || !it->second.rebind(std::move(blob.buffer))) {
             // Corruption can also surface first here (a damaged page only
             // this re-read reaches); the recovery below sheds the whole
@@ -714,7 +714,7 @@ kota::task<> IndexStore::migrate_shard_views(Report& report) {
             // its owners requeued to rebuild the rows, while keeping the
             // old view would dangle once the snapshot retires.
             LOG_ERROR("Index shard for {} diverged during snapshot migration",
-                      workspace.path_pool.resolve(path_id));
+                      workspace.file_table.resolve(path_id));
             assert(false && "persisted shard must survive snapshot migration");
             workspace.shards.erase(path_id);
             report.add_rows_changed(path_id);
@@ -827,7 +827,7 @@ IndexStore::LoadResult IndexStore::load(bool read_only) {
         return result;
     }
     llvm::DenseMap<std::uint32_t, std::uint64_t> manifest_pins;
-    if(!project.load_global(global.buffer->getBuffer(), workspace.path_pool, manifest_pins)) {
+    if(!project.load_global(global.buffer->getBuffer(), workspace.file_table, manifest_pins)) {
         LOG_INFO("Discarding old-format index global blob");
         sweep_all();
         if(!read_only) {
@@ -910,7 +910,7 @@ IndexStore::LoadResult IndexStore::load(bool read_only) {
     llvm::StringSet<> expected_keys;
     llvm::SmallVector<std::uint32_t> unservable;
     for(auto& [path_id, entry]: project.contributions) {
-        auto key = blob_key(workspace.path_pool.resolve(path_id));
+        auto key = blob_key(workspace.file_table.resolve(path_id));
         auto shard = index::Shard::from_buffer(db.read(index::IndexBlobKind::Shard, key).buffer);
         // A blob can verify yet miss a contributed variant, or carry
         // another content generation than the contributions pin (crash or
@@ -927,7 +927,7 @@ IndexStore::LoadResult IndexStore::load(bool read_only) {
                         llvm::all_of(llvm::make_second_range(entry),
                                      [&](std::uint64_t hash) { return shard.has_variant(hash); });
         if(!servable) {
-            LOG_INFO("Discarding unservable shard for {}", workspace.path_pool.resolve(path_id));
+            LOG_INFO("Discarding unservable shard for {}", workspace.file_table.resolve(path_id));
             unservable.push_back(path_id);
             continue;
         }
@@ -953,7 +953,7 @@ IndexStore::LoadResult IndexStore::load(bool read_only) {
             mask_refresh.append(affected.begin(), affected.end());
             if(!read_only) {
                 startup_removes.push_back(
-                    {index::IndexBlobKind::Manifest, blob_key(workspace.path_pool.resolve(tu))});
+                    {index::IndexBlobKind::Manifest, blob_key(workspace.file_table.resolve(tu))});
             }
             report.add_reindex(tu);
         }
@@ -990,7 +990,7 @@ IndexStore::LoadResult IndexStore::load(bool read_only) {
     if(!read_only && db.corrupted()) {
         LOG_WARN("Index database is corrupt; discarding it and rebuilding from scratch");
         for(auto tu: llvm::make_first_range(project.manifests)) {
-            if(!workspace.cdb.has_entry(workspace.path_pool.resolve(tu))) {
+            if(!workspace.cdb.has_entry(workspace.file_table.resolve(tu))) {
                 report.add_reindex(tu);
             }
         }
@@ -1024,7 +1024,7 @@ llvm::SmallVector<std::uint32_t>
     llvm::DenseSet<std::uint32_t> seen;
     for(auto id: candidates) {
         if(workspace.project_index.manifests.contains(id) ||
-           workspace.cdb.has_entry(workspace.path_pool.resolve(id)) || !seen.insert(id).second) {
+           workspace.cdb.has_entry(workspace.file_table.resolve(id)) || !seen.insert(id).second) {
             continue;
         }
         debt.push_back(id);
@@ -1059,7 +1059,7 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
         if(entry.hashes.empty()) {
             continue;
         }
-        auto server_id = workspace.path_pool.intern(entry.file);
+        auto server_id = workspace.file_table.intern(entry.file);
         cdb_ids.insert(server_id);
         auto it = before.find(entry.file);
         // `selected` guards the offline winner flip: the candidate multiset
@@ -1102,7 +1102,7 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
         if(!old.hashes.empty()) {
             continue;
         }
-        auto server_id = workspace.path_pool.intern(entry.file);
+        auto server_id = workspace.file_table.intern(entry.file);
         if(old.rules != entry.rules) {
             LOG_INFO("Config rules changed since the last session; reindexing {}", entry.file);
             drop_index_into(server_id, report);
@@ -1112,7 +1112,7 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
         if(old.host.empty()) {
             continue;
         }
-        auto host_id = workspace.path_pool.intern(old.host);
+        auto host_id = workspace.file_table.intern(old.host);
         if(!workspace.cdb.has_entry(old.host) || llvm::is_contained(changed_ids, host_id)) {
             LOG_INFO("Host compile command changed since the last session; reindexing {}",
                      entry.file);
@@ -1148,7 +1148,7 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
         if(!old.hashes.empty() || workspace.cdb.has_entry(old.file)) {
             continue;
         }
-        auto server_id = workspace.path_pool.intern(old.file);
+        auto server_id = workspace.file_table.intern(old.file);
         if(project.manifests.contains(server_id) || !fs::exists(old.file)) {
             continue;
         }
@@ -1172,7 +1172,7 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
     }
     for(auto header_id: hosted) {
         LOG_INFO("Host compile command changed since the last session; reindexing {}",
-                 workspace.path_pool.resolve(header_id));
+                 workspace.file_table.resolve(header_id));
         drop_index_into(header_id, report);
         report.add_reindex(header_id);
     }
@@ -1189,7 +1189,7 @@ bool IndexStore::file_version_stale(std::uint32_t fv_id) {
         return true;
     }
     auto& record = record_it->second;
-    auto path = workspace.path_pool.resolve(record.path_id);
+    auto path = workspace.file_table.resolve(record.path_id);
 
     // Two-layer test on the shared FileVersion: Layer 1 trusts a stat EQUAL
     // to the recorded stamp (no file read) — equality, not a watermark, so
@@ -1223,7 +1223,7 @@ bool IndexStore::file_version_stale(std::uint32_t fv_id) {
 
 bool IndexStore::need_update(llvm::StringRef file_path) {
     auto& project = workspace.project_index;
-    auto manifest_it = project.manifests.find(workspace.path_pool.intern(file_path));
+    auto manifest_it = project.manifests.find(workspace.file_table.intern(file_path));
     if(manifest_it == project.manifests.end())
         return true;
 

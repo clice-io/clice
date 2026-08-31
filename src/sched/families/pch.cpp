@@ -104,7 +104,7 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
             // load_state() found the blob unreadable earlier; republish
             // the pair rather than serving a PCH with no index forever.
             pch_miss = "idx_unreadable";
-        } else if(deps_changed(workspace.path_pool, st.deps)) {
+        } else if(deps_changed(workspace.file_table, st.deps)) {
             pch_miss = "deps_changed";
         } else {
             LOG_PERF("cache", "ns=pch event=hit key={} file={}", pch_key, request.file);
@@ -269,7 +269,7 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
     st.path = *committed.value().pch_path;
     st.bound = request.preamble_bound;
     st.deps =
-        capture_deps_snapshot(workspace.path_pool, result.value().deps, result.value().build_at);
+        capture_deps_snapshot(workspace.file_table, result.value().deps, result.value().build_at);
     st.index_path = *committed.value().index_path;
     // Replace the previous blob's mapping (same key, rebuilt content);
     // in-flight holders of the old shared_ptr stay valid.
@@ -295,7 +295,7 @@ bool PCHFamily::fresh(llvm::StringRef pch_key) {
        !workspace.store->lookup_aux("pch", pch_key)) {
         return false;
     }
-    return !deps_changed(workspace.path_pool, it->second.deps);
+    return !deps_changed(workspace.file_table, it->second.deps);
 }
 
 bool PCHFamily::building(llvm::StringRef pch_key) const {

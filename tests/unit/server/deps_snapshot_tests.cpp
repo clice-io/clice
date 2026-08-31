@@ -24,7 +24,7 @@ TEST_CASE(FreshWhenUntouched) {
     tmp.touch("dep.h", "int f();\n");
     auto dep = tmp.path("dep.h");
 
-    PathPool pool;
+    FileTable pool;
     auto snap = capture_deps_snapshot(pool,
                                       {
                                           DepFile{dep, hash_file(dep)}
@@ -42,7 +42,7 @@ TEST_CASE(ImmediateEditDetected) {
     tmp.touch("dep.h", "int value();\n");
     auto dep = tmp.path("dep.h");
 
-    PathPool pool;
+    FileTable pool;
     auto snap = capture_deps_snapshot(pool,
                                       {
                                           DepFile{dep, hash_file(dep)}
@@ -60,7 +60,7 @@ TEST_CASE(BackdatedEditDetected) {
     tmp.touch("dep.h", "int old_name();\n");
     auto dep = tmp.path("dep.h");
 
-    PathPool pool;
+    FileTable pool;
     auto snap = capture_deps_snapshot(pool,
                                       {
                                           DepFile{dep, hash_file(dep)}
@@ -77,7 +77,7 @@ TEST_CASE(TouchRepairsFastPath) {
     tmp.touch("dep.h", "int f();\n");
     auto dep = tmp.path("dep.h");
 
-    PathPool pool;
+    FileTable pool;
     auto snap = capture_deps_snapshot(pool,
                                       {
                                           DepFile{dep, hash_file(dep)}
@@ -105,7 +105,7 @@ TEST_CASE(PoisonedCaptureDetected) {
     tmp.touch("dep.h", "int v2();\n");
     // build_at in the past: the file's mtime falls inside "modified during
     // or after the build", so no fast path is recorded.
-    PathPool pool;
+    FileTable pool;
     auto snap = capture_deps_snapshot(pool,
                                       {
                                           DepFile{dep, consumed}
@@ -122,7 +122,7 @@ TEST_CASE(NoBaselineConverges) {
     tmp.touch("dep.h", "int f();\n");
     auto dep = tmp.path("dep.h");
 
-    PathPool pool;
+    FileTable pool;
     auto snap = capture_deps_snapshot(pool,
                                       {
                                           DepFile{dep, hash_file(dep)}
@@ -138,7 +138,7 @@ TEST_CASE(MissingTransitions) {
     TempDir tmp;
     auto dep = tmp.path("ghost.h");
 
-    PathPool pool;
+    FileTable pool;
     auto snap = capture_deps_snapshot(pool,
                                       {
                                           DepFile{dep, 0}
@@ -159,7 +159,7 @@ TEST_CASE(RemovedAfterBuild) {
     tmp.touch("dep.h", "int f();\n");
     auto dep = tmp.path("dep.h");
 
-    PathPool pool;
+    FileTable pool;
     auto snap = capture_deps_snapshot(pool,
                                       {
                                           DepFile{dep, hash_file(dep)}
@@ -175,7 +175,7 @@ TEST_CASE(ForceRevalidateGoesByHash) {
     tmp.touch("dep.h", "int old_name();\n");
     auto dep = tmp.path("dep.h");
 
-    PathPool pool;
+    FileTable pool;
     auto snap = capture_deps_snapshot(pool,
                                       {
                                           DepFile{dep, hash_file(dep)}

@@ -24,7 +24,7 @@ TEST_CASE(ChoiceNeedsSession) {
                   {tmp.root, path, {"-DSECOND"}}
     }));
 
-    auto file = workspace.path_pool.intern(path);
+    auto file = workspace.file_table.intern(path);
     auto candidates = workspace.cdb.candidate_entries(path);
     ASSERT_EQ(candidates.size(), 2u);
     // Pin the non-default candidate (candidate order is content-decided,
@@ -64,7 +64,7 @@ TEST_CASE(PinBaseSurvivesRules) {
                   {tmp.root, path, {"-DSECOND"}}
     }));
 
-    auto file = workspace.path_pool.intern(path);
+    auto file = workspace.file_table.intern(path);
     auto candidates = workspace.cdb.candidate_entries(path);
     ASSERT_EQ(candidates.size(), 2u);
     auto define_of = [&](ConfigID config) -> llvm::StringRef {
@@ -105,8 +105,8 @@ TEST_CASE(ValidateKeepsValidChoice) {
                   {tmp.root, tmp.path("host.cpp"), {}}
     }));
 
-    auto host = workspace.path_pool.intern(tmp.path("host.cpp"));
-    auto header = workspace.path_pool.intern(tmp.path("h.h"));
+    auto host = workspace.file_table.intern(tmp.path("host.cpp"));
+    auto header = workspace.file_table.intern(tmp.path("h.h"));
     workspace.dep_graph.set_includes(host, 0, {header});
     workspace.dep_graph.build_reverse_map();
     resolver.saved_contexts[header] = SavedContext{host, std::nullopt, ""};
@@ -130,9 +130,9 @@ TEST_CASE(ValidateDropsStaleChoice) {
                   {tmp.root, tmp.path("main.cpp"), {}}
     }));
 
-    auto host = workspace.path_pool.intern(tmp.path("host.cpp"));
-    auto header = workspace.path_pool.intern(tmp.path("h.h"));
-    auto main_file = workspace.path_pool.intern(tmp.path("main.cpp"));
+    auto host = workspace.file_table.intern(tmp.path("host.cpp"));
+    auto header = workspace.file_table.intern(tmp.path("h.h"));
+    auto main_file = workspace.file_table.intern(tmp.path("main.cpp"));
 
     // A host pin whose CDB entry disappeared while the server was down.
     resolver.saved_contexts[header] = SavedContext{host, std::nullopt, ""};
@@ -150,8 +150,8 @@ TEST_CASE(ValidateDropsStaleChoice) {
 TEST_CASE(InvalidateDropsBorrowed) {
     Workspace workspace;
     ContextResolver resolver(workspace);
-    auto borrowed = workspace.path_pool.intern("/proj/borrowed.h");
-    auto synthesized = workspace.path_pool.intern("/proj/synthesized.h");
+    auto borrowed = workspace.file_table.intern("/proj/borrowed.h");
+    auto synthesized = workspace.file_table.intern("/proj/synthesized.h");
 
     // A self-contained borrow tracks no chain deps: forcing re-validation
     // could never trigger anything, so invalidation drops it outright.

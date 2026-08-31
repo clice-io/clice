@@ -164,7 +164,7 @@ kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
                 continue;
             }
 
-            auto path = workspace.path_pool.resolve(path_id);
+            auto path = workspace.file_table.resolve(path_id);
             llvm::sys::fs::file_status status;
             bool exists = !llvm::sys::fs::status(path, status);
 

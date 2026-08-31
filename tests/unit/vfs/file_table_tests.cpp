@@ -1,12 +1,12 @@
 #include "test/test.h"
 #include "support/filesystem.h"
-#include "support/path_pool.h"
+#include "vfs/file_table.h"
 
 namespace clice::testing {
 
 namespace {
 
-TEST_SUITE(PathPool) {
+TEST_SUITE(FileTable) {
 
 TEST_CASE(CanonicalSpelling) {
     // The rewrite itself is platform-independent and testable anywhere;
@@ -31,7 +31,7 @@ TEST_CASE(WindowsSpellingsCollapse) {
     // uppercase; on Windows every spelling of one file interns to one ID
     // and resolves to the client-facing form, or every CDB lookup misses
     // and compiles fall back to guessed commands.
-    PathPool pool;
+    FileTable pool;
     EXPECT_EQ(pool.intern("c:/a/b.h"), pool.intern(R"(C:\a\b.h)"));
     EXPECT_EQ(pool.resolve(pool.intern("C:/a/b.h")), "c:/a/b.h");
     EXPECT_EQ(pool.find(R"(c:\a\b.h)"), pool.find("C:/a/b.h"));
@@ -40,7 +40,7 @@ TEST_CASE(WindowsSpellingsCollapse) {
 TEST_CASE(PosixBytesPreserved) {
     // '\' and "C:" are ordinary filename characters on POSIX; identity is
     // the raw bytes and the Windows rewrite must not touch them.
-    PathPool pool;
+    FileTable pool;
     EXPECT_NE(pool.intern(R"(a\b)"), pool.intern("a/b"));
     EXPECT_NE(pool.intern("C:/x.h"), pool.intern("c:/x.h"));
     EXPECT_NE(pool.intern("/c/x.h"), pool.intern("/C/x.h"));
@@ -48,7 +48,7 @@ TEST_CASE(PosixBytesPreserved) {
 }
 #endif
 
-};  // TEST_SUITE(PathPool)
+};  // TEST_SUITE(FileTable)
 
 }  // namespace
 

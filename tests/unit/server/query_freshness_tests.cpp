@@ -53,7 +53,7 @@ void merge_into_workspace() {
 
     llvm::SmallVector<std::uint32_t> file_ids_map;
     for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
-        file_ids_map.push_back(workspace.path_pool.intern(view.path(i)));
+        file_ids_map.push_back(workspace.file_table.intern(view.path(i)));
     }
     ASSERT_TRUE(workspace.project_index.merge(view, file_ids_map));
     main_id = file_ids_map[view.path_count() - 1];
@@ -88,7 +88,7 @@ std::vector<std::string> reference_files(index::SymbolHash hash) {
 }
 
 TEST_CASE(PendingReasonUpgrade) {
-    auto file = workspace.path_pool.intern("/proj/upgrade.cpp");
+    auto file = workspace.file_table.intern("/proj/upgrade.cpp");
     ASSERT_FALSE(indexer.pending_reason(file).has_value());
 
     indexer.enqueue(file, ReindexReason::DepsOnly);
@@ -134,7 +134,7 @@ TEST_CASE(PendingGateSplitsRows) {
 
     // Line-based resolution in the file works while its rows are current.
     agentic::ReadSymbolParams by_line;
-    by_line.path = std::string(workspace.path_pool.resolve(main_id));
+    by_line.path = std::string(workspace.file_table.resolve(main_id));
     by_line.line = 3;
     ASSERT_FALSE(agent_query.locate_symbols(by_line).empty());
 

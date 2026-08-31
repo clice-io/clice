@@ -35,7 +35,7 @@ PCMFamily::ModuleDeps PCMFamily::direct_deps(std::uint32_t path_id,
     // The same resolution the real build uses (run() below): a module unit
     // scanned with a different command than it compiles with would edge
     // against a different dependency set.
-    auto file_path = workspace.path_pool.resolve(path_id);
+    auto file_path = workspace.file_table.resolve(path_id);
     std::string directory;
     std::vector<std::string> arguments;
     contexts.resolve_command(file_path, directory, arguments);
@@ -132,7 +132,7 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, std::uint32_t path_id
     // path_to_module, rehashing the DenseMap and invalidating mod_it.
     auto module_name = mod_it->second;
 
-    auto file_path = std::string(workspace.path_pool.resolve(path_id));
+    auto file_path = std::string(workspace.file_table.resolve(path_id));
 
     worker::BuildPCMParams bp;
     bp.file = file_path;
@@ -161,7 +161,7 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, std::uint32_t path_id
             pcm_miss = "key_changed";
         } else if(!workspace.store->lookup("pcm", pcm_key)) {
             pcm_miss = "evicted";
-        } else if(deps_changed(workspace.path_pool, pcm_it->second.deps)) {
+        } else if(deps_changed(workspace.file_table, pcm_it->second.deps)) {
             pcm_miss = "deps_changed";
         } else {
             workspace.pcm_paths[path_id] = pcm_it->second.path;
@@ -249,7 +249,7 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, std::uint32_t path_id
     workspace.pcm_cache[path_id] = {
         pcm_path,
         pcm_key,
-        capture_deps_snapshot(workspace.path_pool, result.value().deps, result.value().build_at)};
+        capture_deps_snapshot(workspace.file_table, result.value().deps, result.value().build_at)};
     LOG_INFO("Built PCM for module {}: {}", module_name, pcm_path);
 
     // Persist cache metadata after successful build.

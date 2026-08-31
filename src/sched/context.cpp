@@ -156,7 +156,7 @@ void
         // while the server was down must re-earn its trial.
         if(entry.content_hash != 0 && hash_file(file) != entry.content_hash)
             continue;
-        auto id = workspace.path_pool.intern(file);
+        auto id = workspace.file_table.intern(file);
         header_modes[id] = HeaderMode::NeedsContext;
         header_mode_hashes[id] = entry.content_hash;
     }
@@ -170,14 +170,14 @@ void
             auto host = resolve(entry.host);
             if(host.empty())
                 continue;
-            saved.host_path_id = workspace.path_pool.intern(host);
+            saved.host_path_id = workspace.file_table.intern(host);
         }
         if(entry.occurrence != ~0u) {
             saved.occurrence = entry.occurrence;
         }
         saved.command_hash = entry.command_hash;
         saved.base_hash = entry.base_hash;
-        saved_contexts[workspace.path_pool.intern(file)] = std::move(saved);
+        saved_contexts[workspace.file_table.intern(file)] = std::move(saved);
     }
 
     for(auto& entry: artifacts) {
@@ -185,7 +185,7 @@ void
         auto host = resolve(entry.host);
         if(file.empty() || host.empty())
             continue;
-        synthesized_hosts[file] = workspace.path_pool.intern(host);
+        synthesized_hosts[file] = workspace.file_table.intern(host);
     }
 }
 
@@ -207,7 +207,7 @@ bool ContextResolver::fill_header_context_args(llvm::StringRef path,
         if(it == synthesized_hosts.end()) {
             return false;
         }
-        auto host_path = workspace.path_pool.resolve(it->second);
+        auto host_path = workspace.file_table.resolve(it->second);
         auto candidates = workspace.cdb.candidate_entries(host_path);
         if(candidates.empty()) {
             return false;
@@ -260,7 +260,7 @@ bool ContextResolver::fill_header_context_args(llvm::StringRef path,
                                     cached->host_base_hash != choice->base_hash);
             bool mode_mismatch = cached->preamble_path.empty() == synthesize;
             if(override_mismatch || mode_mismatch ||
-               deps_changed(workspace.path_pool, cached->deps)) {
+               deps_changed(workspace.file_table, cached->deps)) {
                 drop_header_context(path_id);
             }
         }
@@ -284,7 +284,7 @@ bool ContextResolver::fill_header_context_args(llvm::StringRef path,
         }
     }
 
-    auto host_path = workspace.path_pool.resolve(ctx_ptr->host_path_id);
+    auto host_path = workspace.file_table.resolve(ctx_ptr->host_path_id);
     auto candidates = workspace.cdb.candidate_entries(host_path);
     if(candidates.empty()) {
         LOG_WARN("fill_header_context_args: host {} has no CDB entry", host_path);
@@ -337,7 +337,7 @@ CommandSource ContextResolver::resolve_command(llvm::StringRef path,
                                                llvm::ArrayRef<std::string> extra_prepend,
                                                llvm::ArrayRef<std::string> extra_append,
                                                CommandRef* out_ref) {
-    auto path_id = workspace.path_pool.intern(path);
+    auto path_id = workspace.file_table.intern(path);
     llvm::SmallVector<llvm::StringRef, 3> tried;
 
     // Fill from the CDB layer with config rules applied (append/remove flags
@@ -481,7 +481,7 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(std::uint32
     bool has_host_choice = choice && choice->host_path_id != no_path_id;
     if(has_host_choice) {
         auto preferred = choice->host_path_id;
-        auto preferred_path = workspace.path_pool.resolve(preferred);
+        auto preferred_path = workspace.file_table.resolve(preferred);
         if(workspace.cdb.has_entry(preferred_path)) {
             auto c = workspace.dep_graph.find_include_chain(preferred, header_path_id);
             if(!c.empty()) {
@@ -496,7 +496,7 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(std::uint32
     // a host with a synthesized command would just be a fallback in disguise.
     if(chain.empty()) {
         for(auto candidate: workspace.rank_hosts(header_path_id, hosts)) {
-            auto candidate_path = workspace.path_pool.resolve(candidate);
+            auto candidate_path = workspace.file_table.resolve(candidate);
             if(!workspace.cdb.has_entry(candidate_path))
                 continue;
             auto c = workspace.dep_graph.find_include_chain(candidate, header_path_id);
@@ -539,7 +539,7 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(std::uint32
     // Include directives along the chain are resolved with the host's real
     // search configuration, so same-named headers in different directories
     // cannot be confused.
-    auto host_path = workspace.path_pool.resolve(host_path_id);
+    auto host_path = workspace.file_table.resolve(host_path_id);
     auto candidates = workspace.cdb.candidate_entries(host_path);
     if(candidates.empty()) {
         return std::nullopt;
@@ -576,7 +576,7 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(std::uint32
         }
         // Normalize through the path pool: resolve_include builds native
         // separators, but chain paths compared against it are pool-normalized.
-        return std::string(workspace.path_pool.resolve(workspace.path_pool.intern(result->path)));
+        return std::string(workspace.file_table.resolve(workspace.file_table.intern(result->path)));
     };
 
     // Read the chain files (all but the target) from disk. The synthesized
@@ -597,7 +597,7 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(std::uint32
     chain_entries.reserve(chain.size() - 1);
     deps.deps.reserve(chain.size());
     for(std::size_t i = 0; i + 1 < chain.size(); ++i) {
-        auto cur_path = workspace.path_pool.resolve(chain[i]);
+        auto cur_path = workspace.file_table.resolve(chain[i]);
         auto buf = llvm::MemoryBuffer::getFile(cur_path);
         if(!buf) {
             LOG_WARN("resolve_header_context: cannot read {}", cur_path);
@@ -623,7 +623,7 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(std::uint32
     // Snapshot the header itself for other occurrences along the chain:
     // its real path is remapped to the open buffer at compile time, so
     // includes of it inside the prefix/suffix must point at a copy.
-    auto target_path = workspace.path_pool.resolve(chain.back());
+    auto target_path = workspace.file_table.resolve(chain.back());
     std::string self_snapshot_path;
     std::uint64_t target_hash = 0;
     llvm::sys::fs::file_status target_status;
@@ -754,7 +754,7 @@ bool ContextResolver::pin_alive(llvm::StringRef entry_path, const SavedContext& 
 }
 
 void ContextResolver::validate_saved_context(std::uint32_t path_id) {
-    auto path = workspace.path_pool.resolve(path_id);
+    auto path = workspace.file_table.resolve(path_id);
 
     // A context choice persisted from an earlier session stays authoritative
     // only if it still holds: the CDB or include graph may have changed
@@ -766,7 +766,7 @@ void ContextResolver::validate_saved_context(std::uint32_t path_id) {
 
         bool valid = false;
         if(saved.host_path_id != no_path_id) {
-            auto host_path = ws.path_pool.resolve(saved.host_path_id);
+            auto host_path = ws.file_table.resolve(saved.host_path_id);
             valid = ws.cdb.has_entry(host_path) &&
                     !ws.dep_graph.find_include_chain(saved.host_path_id, path_id).empty() &&
                     (saved.command_hash.empty() || pin_alive(host_path, saved));

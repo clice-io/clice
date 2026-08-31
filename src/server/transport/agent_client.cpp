@@ -98,7 +98,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
         llvm::DenseSet<std::uint32_t> seen;
 
         for(auto& entry: ws.cdb.entries()) {
-            auto file_path = ws.path_pool.resolve(entry.file);
+            auto file_path = ws.file_table.resolve(entry.file);
             if(file_path.empty())
                 continue;
 
@@ -133,7 +133,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
             for(auto& [path_id, shard]: ws.shards) {
                 if(seen.contains(path_id))
                     continue;
-                auto path_str = ws.path_pool.resolve(path_id);
+                auto path_str = ws.file_table.resolve(path_id);
                 auto ext = llvm::sys::path::extension(path_str);
                 if(ext == ".h" || ext == ".hpp" || ext == ".hxx" || ext == ".hh") {
                     seen.insert(path_id);
@@ -155,7 +155,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
             auto& ws = srv.workspace;
             // find() applies the canonical spelling; a native uppercase-drive
             // path from an agentic client must hit the same ID.
-            auto pool_id = ws.path_pool.find(params.path);
+            auto pool_id = ws.file_table.find(params.path);
             if(!pool_id)
                 co_return FileDepsResult{.file = params.path};
             auto path_id = *pool_id;
@@ -169,7 +169,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                 auto includes = ws.dep_graph.get_all_includes(path_id);
                 for(auto inc_id: includes) {
                     auto real_id = inc_id & DependencyGraph::PATH_ID_MASK;
-                    auto inc_path = ws.path_pool.resolve(real_id);
+                    auto inc_path = ws.file_table.resolve(real_id);
                     result.includes.push_back(DepEntry{.path = inc_path.str(), .depth = 1});
                 }
 
@@ -177,18 +177,18 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                     llvm::DenseSet<std::uint32_t> visited;
                     visited.insert(path_id);
                     for(auto& dep: result.includes)
-                        visited.insert(ws.path_pool.intern(dep.path));
+                        visited.insert(ws.file_table.intern(dep.path));
 
                     for(std::size_t i = 0; i < result.includes.size(); ++i) {
                         if(max_depth > 0 && result.includes[i].depth >= max_depth)
                             continue;
-                        auto dep_id = ws.path_pool.intern(result.includes[i].path);
+                        auto dep_id = ws.file_table.intern(result.includes[i].path);
                         auto sub = ws.dep_graph.get_all_includes(dep_id);
                         for(auto sub_id: sub) {
                             auto real_id = sub_id & DependencyGraph::PATH_ID_MASK;
                             if(!visited.insert(real_id).second)
                                 continue;
-                            auto sub_path = ws.path_pool.resolve(real_id);
+                            auto sub_path = ws.file_table.resolve(real_id);
                             result.includes.push_back(DepEntry{
                                 .path = sub_path.str(),
                                 .depth = result.includes[i].depth + 1,
@@ -201,7 +201,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
             if(direction == "includers" || direction == "both") {
                 auto includers = ws.dep_graph.get_includers(path_id);
                 for(auto inc_id: includers) {
-                    auto inc_path = ws.path_pool.resolve(inc_id);
+                    auto inc_path = ws.file_table.resolve(inc_id);
                     result.includers.push_back(DepEntry{.path = inc_path.str(), .depth = 1});
                 }
 
@@ -209,21 +209,21 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                     llvm::DenseSet<std::uint32_t> visited;
                     visited.insert(path_id);
                     for(auto& dep: result.includers) {
-                        if(auto id = ws.path_pool.find(dep.path))
+                        if(auto id = ws.file_table.find(dep.path))
                             visited.insert(*id);
                     }
 
                     for(std::size_t i = 0; i < result.includers.size(); ++i) {
                         if(max_depth > 0 && result.includers[i].depth >= max_depth)
                             continue;
-                        auto dep_id = ws.path_pool.find(result.includers[i].path);
+                        auto dep_id = ws.file_table.find(result.includers[i].path);
                         if(!dep_id)
                             continue;
                         auto sub = ws.dep_graph.get_includers(*dep_id);
                         for(auto sub_id: sub) {
                             if(!visited.insert(sub_id).second)
                                 continue;
-                            auto sub_path = ws.path_pool.resolve(sub_id);
+                            auto sub_path = ws.file_table.resolve(sub_id);
                             result.includers.push_back(DepEntry{
                                 .path = sub_path.str(),
                                 .depth = result.includers[i].depth + 1,
@@ -241,7 +241,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                const ImpactAnalysisParams& params) -> RequestResult<ImpactAnalysisParams> {
             srv.pool.foreground_pulse();
             auto& ws = srv.workspace;
-            auto pool_id = ws.path_pool.find(params.path);
+            auto pool_id = ws.file_table.find(params.path);
             if(!pool_id)
                 co_return ImpactAnalysisResult{};
             auto path_id = *pool_id;
@@ -250,7 +250,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
 
             auto direct_includers = ws.dep_graph.get_includers(path_id);
             for(auto inc_id: direct_includers) {
-                result.direct_dependents.push_back(ws.path_pool.resolve(inc_id).str());
+                result.direct_dependents.push_back(ws.file_table.resolve(inc_id).str());
             }
 
             auto hosts = ws.dep_graph.find_host_sources(path_id);
@@ -260,7 +260,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                 seen.insert(inc_id);
             for(auto host_id: hosts) {
                 if(seen.insert(host_id).second)
-                    result.transitive_dependents.push_back(ws.path_pool.resolve(host_id).str());
+                    result.transitive_dependents.push_back(ws.file_table.resolve(host_id).str());
             }
 
             for(auto host_id: hosts) {
@@ -362,7 +362,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
 
             DocumentSymbolsResult result;
 
-            auto path_id = srv.workspace.path_pool.find(params.path);
+            auto path_id = srv.workspace.file_table.find(params.path);
             if(!path_id)
                 co_return result;
 

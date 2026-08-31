@@ -57,7 +57,7 @@ PCHPlan plan_pch(Workspace& workspace,
                  llvm::StringRef text,
                  const std::string& directory,
                  const std::vector<std::string>& arguments) {
-    auto path = workspace.path_pool.resolve(path_id);
+    auto path = workspace.file_table.resolve(path_id);
     auto bound = compute_preamble_bound(text);
     auto* header_context = contexts.header_context(path_id);
     bool has_prefix = header_context && !header_context->preamble_path.empty();
@@ -158,14 +158,14 @@ void ASTFamily::publish_output(const std::shared_ptr<Session>& session, CompileO
 bool ASTFamily::is_stale(const Session& session) {
     auto it = projections.entries.find(session.path_id);
     if(it != projections.entries.end() && it->second.deps.has_value() &&
-       deps_changed(workspace.path_pool, *it->second.deps)) {
+       deps_changed(workspace.file_table, *it->second.deps)) {
         return true;
     }
 
     // Chain files of a header context are embedded in the synthesized
     // preamble, invisible to the deps snapshot — check them explicitly.
     if(auto* header_context = contexts.header_context(session.path_id);
-       header_context && deps_changed(workspace.path_pool, header_context->deps)) {
+       header_context && deps_changed(workspace.file_table, header_context->deps)) {
         return true;
     }
 
@@ -174,7 +174,7 @@ bool ASTFamily::is_stale(const Session& session) {
     if(projection && projection->pch_key.has_value()) {
         auto pch_it = workspace.pch_cache.find(*projection->pch_key);
         if(pch_it != workspace.pch_cache.end() &&
-           deps_changed(workspace.path_pool, pch_it->second.deps)) {
+           deps_changed(workspace.file_table, pch_it->second.deps)) {
             return true;
         }
     }
@@ -199,7 +199,7 @@ void ASTFamily::supersede(std::uint32_t path_id) {
     if(graph.is_compiling(node(path_id))) {
         pool.notify_stateful(
             path_id,
-            worker::CancelCompileParams{std::string(workspace.path_pool.resolve(path_id))});
+            worker::CancelCompileParams{std::string(workspace.file_table.resolve(path_id))});
     }
 }
 
@@ -259,7 +259,7 @@ kota::task<> ASTFamily::stop() {
         if(graph.is_compiling(node(path_id))) {
             pool.notify_stateful(
                 path_id,
-                worker::CancelCompileParams{std::string(workspace.path_pool.resolve(path_id))});
+                worker::CancelCompileParams{std::string(workspace.file_table.resolve(path_id))});
         }
         return true;
     });
@@ -281,7 +281,7 @@ kota::task<bool> ASTFamily::ensure_compiled(std::shared_ptr<Session> session) {
     // burning slot after slot. A content change grants one probe attempt.
     if(session->quarantine.blocked()) {
         LOG_WARN("ensure_compiled: {} quarantined after {} worker crashes",
-                 workspace.path_pool.resolve(path_id),
+                 workspace.file_table.resolve(path_id),
                  session->quarantine.crashes());
         // A quarantine reached outside the compile-failure landing (a
         // completion or PCH build tipped the streak, or the crash landed on
@@ -436,7 +436,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, std::uint32_t path_id
     }
 
     ScopedTimer timer;
-    auto file_path = std::string(workspace.path_pool.resolve(path_id));
+    auto file_path = std::string(workspace.file_table.resolve(path_id));
     auto uri = lsp::URI::from_file_path(file_path);
     std::string uri_str = uri.has_value() ? uri->str() : file_path;
 
@@ -839,7 +839,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, std::uint32_t path_id
 
         auto& entry = projections.entries[path_id];
         entry.projection = std::move(next);
-        entry.deps = capture_deps_snapshot(workspace.path_pool,
+        entry.deps = capture_deps_snapshot(workspace.file_table,
                                            result.value().deps,
                                            result.value().build_at);
         entry.current = current;

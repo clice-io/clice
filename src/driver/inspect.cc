@@ -482,7 +482,7 @@ std::optional<FileCommand> file_command(FileEntry& entry,
     if(is_header && database != nullptr && !database->has_entry(file)) {
         std::pair<int, std::size_t> best{-1, 0};
         for(auto& candidate: database->entries()) {
-            llvm::StringRef donor_path = database->paths().resolve(candidate.file);
+            llvm::StringRef donor_path = database->files().resolve(candidate.file);
             auto donor_ext = path::extension(donor_path);
             auto donor_type = donor_ext.empty()
                                   ? types::TY_INVALID
@@ -513,7 +513,7 @@ std::optional<FileCommand> file_command(FileEntry& entry,
         auto& cdb_entry = database->candidate_entries(donor).front();
         // The donor's language applies to the header itself — it compiles
         // as a fragment of that TU's world, not by its own extension.
-        CommandRef ref{database->paths().intern(file),
+        CommandRef ref{database->files().intern(file),
                        cdb_entry.config,
                        database->input_kind(cdb_entry.config, donor),
                        CommandSource::IncludeGraph};
@@ -807,14 +807,16 @@ int run_inspect(const InspectOptions& opts) {
     // Each file resolves against the compile_commands.json nearest to it,
     // so a directory spanning nested projects picks up every inner
     // database. Files without a CDB entry fall back to a per-file
-    // toolchain query in file_command.
+    // toolchain query in file_command. All databases share one file
+    // table: nested projects live in a single fid space.
+    FileTable file_table;
     std::map<std::string, CompilationDatabase> databases;
     auto database_for = [&](llvm::StringRef file) -> CompilationDatabase* {
         auto cdb = find_cdb(path::parent_path(file));
         if(!cdb) {
             return nullptr;
         }
-        auto [it, inserted] = databases.try_emplace(*cdb);
+        auto [it, inserted] = databases.try_emplace(*cdb, file_table);
         if(inserted && !it->second.load(*cdb)) {
             // Keep the empty entry so the failure is logged once; its files
             // take the default-flags fallback.

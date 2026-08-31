@@ -77,7 +77,7 @@ ext::QueryContextResult ContextService::query_contexts(llvm::StringRef path,
 
     auto hosts = ws.dep_graph.find_host_sources(path_id);
     for(auto host_id: ws.rank_hosts(path_id, hosts)) {
-        auto host_path = ws.path_pool.resolve(host_id);
+        auto host_path = ws.file_table.resolve(host_id);
         if(!ws.cdb.has_entry(host_path))
             continue;
         auto host_uri_opt = lsp::URI::from_file_path(std::string(host_path));
@@ -169,7 +169,7 @@ ext::CurrentContextResult ContextService::current_context(llvm::StringRef path,
     const SavedContext* choice =
         session ? resolver.active_choice(ContextUse::Editor, session->path_id) : nullptr;
     if(choice && choice->host_path_id != no_path_id) {
-        auto ctx_path = workspace.path_pool.resolve(choice->host_path_id);
+        auto ctx_path = workspace.file_table.resolve(choice->host_path_id);
         auto ctx_uri_opt = lsp::URI::from_file_path(std::string(ctx_path));
         if(ctx_uri_opt) {
             ext::ContextItem item;
@@ -326,15 +326,15 @@ bool ContextService::drop_orphaned_choices(SessionStore& sessions) {
             // The pinned host command itself can vanish (a CDB reload
             // changed the entry's flags): same validation didOpen applies.
             if(!orphaned && !saved.command_hash.empty()) {
-                orphaned = !resolver.pin_alive(workspace.path_pool.resolve(host_id), saved);
+                orphaned = !resolver.pin_alive(workspace.file_table.resolve(host_id), saved);
             }
         } else if(!saved.command_hash.empty()) {
             // Own-entry pin: the pinned command must still exist in the CDB.
-            orphaned = !resolver.pin_alive(workspace.path_pool.resolve(session_id), saved);
+            orphaned = !resolver.pin_alive(workspace.file_table.resolve(session_id), saved);
         }
         if(orphaned) {
             LOG_INFO("Dropping orphaned context choice for {}: its basis no longer exists",
-                     workspace.path_pool.resolve(session_id));
+                     workspace.file_table.resolve(session_id));
             resolver.drop_header_context(session_id);
             ast.switch_identity(*session);
             resolver.saved_contexts.erase(it);

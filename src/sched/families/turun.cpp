@@ -51,7 +51,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, std::uint32_t pat
     // file while this round is suspended.
     auto [plan, guards] = it->second;
 
-    auto file_path = std::string(workspace.path_pool.resolve(path_id));
+    auto file_path = std::string(workspace.file_table.resolve(path_id));
 
     worker::TURunParams params;
     params.file = file_path;

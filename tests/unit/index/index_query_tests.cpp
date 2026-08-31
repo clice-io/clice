@@ -54,7 +54,7 @@ void merge_into_workspace() {
     auto& project = workspace.project_index;
     llvm::SmallVector<std::uint32_t> file_ids_map;
     for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
-        file_ids_map.push_back(workspace.path_pool.intern(view.path(i)));
+        file_ids_map.push_back(workspace.file_table.intern(view.path(i)));
     }
     ASSERT_TRUE(project.merge(view, file_ids_map));
     main_id = file_ids_map[view.path_count() - 1];
@@ -102,7 +102,7 @@ void merge_into_workspace() {
 }
 
 std::string main_path() {
-    return std::string(workspace.path_pool.resolve(main_id));
+    return std::string(workspace.file_table.resolve(main_id));
 }
 
 TEST_CASE(DefinitionAcrossFiles) {

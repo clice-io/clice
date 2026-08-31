@@ -5,7 +5,7 @@
 
 #include "index/manifest.h"
 #include "index/tu_index.h"
-#include "support/path_pool.h"
+#include "vfs/file_table.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
@@ -47,7 +47,7 @@ struct FileVersionRecord {
 ///   the file's live variants — the mask Shard queries filter by — and its
 ///   emptiness is what retires a shard blob.
 ///
-/// There is a single path-id space at runtime (clice::PathPool); persisted
+/// There is a single path-id space at runtime (clice::FileTable); persisted
 /// blobs are self-contained through path tables and remap on load.
 struct ProjectIndex {
     SymbolTable symbols;
@@ -122,7 +122,7 @@ struct ProjectIndex {
     /// of every manifest's generation stamp.
     void serialize_global(this ProjectIndex& self,
                           llvm::raw_ostream& os,
-                          const clice::PathPool& pool);
+                          const clice::FileTable& pool);
 
     /// Restore the global blob, interning its paths into `pool`. Returns
     /// false for an unreadable or old-format blob, leaving the index (and
@@ -133,7 +133,7 @@ struct ProjectIndex {
     /// adopted.
     bool load_global(this ProjectIndex& self,
                      llvm::StringRef data,
-                     clice::PathPool& pool,
+                     clice::FileTable& pool,
                      llvm::DenseMap<std::uint32_t, std::uint64_t>& manifest_pins);
 };
 

@@ -14,7 +14,10 @@
 
 namespace clice {
 
-/// Intern pool that maps file paths to compact uint32_t IDs.
+/// The master-side table of every file the workspace touches: a path
+/// spelling is interned once to a compact fid, and downstream code
+/// references files by fid. A fid names a spelling, not an on-disk
+/// file — case variants or links to one file are distinct fids.
 ///
 /// Paths are opaque byte strings interned in the canonical spelling of
 /// path::canonical, so on Windows the URI form VS Code sends
@@ -30,16 +33,16 @@ namespace clice {
 /// are raw bytes; a non-UTF-8 path survives interning but breaks
 /// downstream where it is embedded into JSON (worker IPC, the agentic
 /// protocol) or percent-decoded by clients that interpret URIs as UTF-8.
-struct PathPool {
+struct FileTable {
     llvm::BumpPtrAllocator allocator;
-    llvm::SmallVector<llvm::StringRef> paths;
-    llvm::StringMap<std::uint32_t> cache;
+    llvm::SmallVector<llvm::StringRef> spellings;
+    llvm::StringMap<std::uint32_t> ids;
 
     std::uint32_t intern(llvm::StringRef path) {
         llvm::SmallString<256> storage;
         path = path::canonical(path, storage);
 
-        auto [it, inserted] = cache.try_emplace(path, paths.size());
+        auto [it, inserted] = ids.try_emplace(path, spellings.size());
         if(inserted) {
             // Allocate with null terminator so that resolve().data() is safe
             // to use as const char* (e.g. in MemoryBuffer::getFile which calls strlen).
@@ -47,14 +50,14 @@ struct PathPool {
             char* buf = allocator.Allocate<char>(n + 1);
             std::copy(path.begin(), path.end(), buf);
             buf[n] = '\0';
-            paths.push_back(llvm::StringRef(buf, n));
+            spellings.push_back(llvm::StringRef(buf, n));
         }
         return it->second;
     }
 
-    llvm::StringRef resolve(std::uint32_t id) const {
-        assert(id < paths.size());
-        return paths[id];
+    llvm::StringRef resolve(std::uint32_t fid) const {
+        assert(fid < spellings.size());
+        return spellings[fid];
     }
 
     /// Look up a path without interning it, applying the same
@@ -62,8 +65,8 @@ struct PathPool {
     std::optional<std::uint32_t> find(llvm::StringRef path) const {
         llvm::SmallString<256> storage;
         path = path::canonical(path, storage);
-        auto it = cache.find(path);
-        if(it == cache.end()) {
+        auto it = ids.find(path);
+        if(it == ids.end()) {
             return std::nullopt;
         }
         return it->second;

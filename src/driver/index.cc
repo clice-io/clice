@@ -213,7 +213,7 @@ int run_stats_once(llvm::StringRef root, std::uint32_t top, bool allow_retry) {
     files.reserve(workspace.shards.size());
     std::uint64_t total_bytes = 0, total_occurrences = 0, total_relations = 0;
     for(auto& [path_id, shard]: workspace.shards) {
-        ShardStat stat{.path = workspace.path_pool.resolve(path_id),
+        ShardStat stat{.path = workspace.file_table.resolve(path_id),
                        .bytes = shard.bytes().size(),
                        .variants = shard.variants().size()};
         shard.for_each_occurrence([&](const index::Occurrence&) {

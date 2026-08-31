@@ -9,7 +9,7 @@
 #include "command/argument_parser.h"
 #include "command/search_config.h"
 #include "support/object_pool.h"
-#include "support/path_pool.h"
+#include "vfs/file_table.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
@@ -187,7 +187,7 @@ struct RenderOptions {
 
 /// A single entry in the compilation database.
 struct CompilationEntry {
-    /// Path id of the source file (shared PathPool).
+    /// Fid of the source file (shared FileTable).
     std::uint32_t file = ~0u;
 
     ConfigID config = invalid_config;
@@ -213,7 +213,7 @@ unsigned family_visibility(CompilerFamily family);
 std::vector<std::string> to_strings(llvm::ArrayRef<const char*> argv);
 
 /// Per-file delta of a compilation database reload. Path ids are the shared
-/// pool's ids (stable across reloads).
+/// file table's fids (stable across reloads).
 struct CDBDiff {
     /// Files present only after the reload (gained their first entry).
     llvm::SmallVector<std::uint32_t> added;
@@ -231,7 +231,10 @@ struct CDBDiff {
 
 class CompilationDatabase {
 public:
-    CompilationDatabase();
+    /// The database interns entry files into the workspace-wide table it
+    /// is constructed over; entry file ids and workspace fids are the
+    /// same ids.
+    explicit CompilationDatabase(FileTable& files);
     ~CompilationDatabase();
 
     CompilationDatabase(const CompilationDatabase&) = delete;
@@ -241,9 +244,8 @@ public:
     /// means the process working directory.
     void set_workspace_root(llvm::StringRef root);
 
-    /// The single path-id space, shared with the whole workspace.
-    PathPool& paths() {
-        return pool;
+    FileTable& files() {
+        return file_table;
     }
 
     /// Load (or reload) the compilation database from the given file.
@@ -419,8 +421,9 @@ private:
 
     ObjectSet<CompileConfig> configs{allocator.get()};
 
-    /// The workspace's single path-id space (Workspace::path_pool aliases it).
-    PathPool pool;
+    /// The workspace-wide file table (owned by Workspace, or by the
+    /// driver in multi-CDB tools — nested databases share one id space).
+    FileTable& file_table;
 
     /// All compilation entries, sorted by (file, candidate order).
     std::vector<CompilationEntry> entry_list;

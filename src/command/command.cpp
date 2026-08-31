@@ -209,7 +209,8 @@ std::vector<std::string> to_strings(llvm::ArrayRef<const char*> argv) {
     return result;
 }
 
-CompilationDatabase::CompilationDatabase() : chain(std::make_unique<Toolchain>(*this)) {}
+CompilationDatabase::CompilationDatabase(FileTable& files) :
+    file_table(files), chain(std::make_unique<Toolchain>(*this)) {}
 
 CompilationDatabase::~CompilationDatabase() = default;
 
@@ -344,8 +345,8 @@ std::optional<CompilationDatabase::NormalizeResult>
         staged.push_back(parsed);
     }
 
-    /// Does this token name the entry's file? Compared through the path
-    /// pool (canonical spelling + dot removal), relative tokens resolved
+    /// Does this token name the entry's file? Compared through the file
+    /// table (canonical spelling + dot removal), relative tokens resolved
     /// against the entry directory — and as spelled, for entries interned
     /// under a relative spelling (tests, hand-built databases).
     auto matches_entry = [&](llvm::StringRef token) {
@@ -360,7 +361,7 @@ std::optional<CompilationDatabase::NormalizeResult>
             path::append(abs, token);
         }
         path::remove_dots(abs, /*remove_dot_dot=*/true);
-        return pool.intern(abs) == file || pool.intern(token) == file;
+        return file_table.intern(abs) == file || file_table.intern(token) == file;
     };
 
     /// A per-file selector naming the entry file forces its language and
@@ -792,7 +793,7 @@ std::optional<std::size_t> CompilationDatabase::load(llvm::StringRef path) {
             path::append(file_abs, file_ref);
         }
         path::remove_dots(file_abs, /*remove_dot_dot=*/true);
-        auto path_id = pool.intern(file_abs);
+        auto path_id = file_table.intern(file_abs);
 
         std::optional<NormalizeResult> normalized;
 
@@ -904,7 +905,7 @@ llvm::ArrayRef<CompilationEntry>
 }
 
 llvm::ArrayRef<CompilationEntry> CompilationDatabase::candidate_entries(llvm::StringRef file) {
-    return candidate_entries(pool.intern(file));
+    return candidate_entries(file_table.intern(file));
 }
 
 bool CompilationDatabase::has_entry(llvm::StringRef file) {
@@ -1215,7 +1216,7 @@ ConfigID CompilationDatabase::fallback_config(llvm::StringRef file) {
 std::vector<const char*> CompilationDatabase::render_driver(const CommandRef& ref,
                                                             const RenderOptions& opts) {
     auto& cfg = config(ref.config);
-    auto source = pool.resolve(ref.file);
+    auto source = file_table.resolve(ref.file);
 
     std::vector<const char*> argv;
     argv.reserve(cfg.args.size() + 8);
@@ -1296,12 +1297,12 @@ std::vector<const char*> CompilationDatabase::render(const CommandRef& ref,
                                                      const RenderOptions& opts) {
     auto resolved = chain->resolve(ref.config, ref.input);
     if(!resolved) {
-        LOG_WARN("Toolchain resolve failed for {}: {}", pool.resolve(ref.file), resolved.error());
+        LOG_WARN("Toolchain resolve failed for {}: {}", file_table.resolve(ref.file), resolved.error());
         return render_driver(ref, opts);
     }
 
     auto& rc = chain->resolved(*resolved);
-    auto source = pool.resolve(ref.file);
+    auto source = file_table.resolve(ref.file);
 
     std::vector<const char*> argv;
     argv.reserve(rc.args.size() + 8);
@@ -1382,7 +1383,7 @@ std::optional<CompilationEntry>
     CompilationDatabase::add_command(llvm::StringRef directory,
                                      llvm::StringRef file,
                                      llvm::ArrayRef<const char*> arguments) {
-    auto path_id = pool.intern(file);
+    auto path_id = file_table.intern(file);
     auto normalized = normalize(directory, path_id, arguments);
     if(!normalized) {
         return std::nullopt;
@@ -1396,7 +1397,7 @@ std::optional<CompilationEntry>
 std::optional<CompilationEntry> CompilationDatabase::add_command(llvm::StringRef directory,
                                                                  llvm::StringRef file,
                                                                  llvm::StringRef command) {
-    auto path_id = pool.intern(file);
+    auto path_id = file_table.intern(file);
     auto normalized = normalize(directory, path_id, command);
     if(!normalized) {
         return std::nullopt;

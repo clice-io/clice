@@ -237,7 +237,7 @@ void MasterServer::wire() {
     };
 
     pool.on_evicted = [this](const std::string& path, std::size_t worker_index) {
-        auto id = workspace.path_pool.find(path);
+        auto id = workspace.file_table.find(path);
         if(!id) {
             LOG_WARN("Evicted path not in pool: {}", path);
             return;
@@ -335,7 +335,7 @@ void MasterServer::settle_open_serving(std::shared_ptr<Session> session) {
 }
 
 void MasterServer::close_session(std::uint32_t path_id) {
-    auto path = workspace.path_pool.resolve(path_id);
+    auto path = workspace.file_table.resolve(path_id);
     // Route the eviction notification before dropping ownership:
     // notify_stateful uses the owner table to find the worker.
     pool.notify_stateful(path_id, worker::EvictParams{std::string(path)});
@@ -387,7 +387,7 @@ Admission MasterServer::index_admission(std::uint32_t server_path_id) const {
     if(session->serving != ServingMode::IndexOnly) {
         return index_open_files ? Admission::Admit : Admission::SkipAndSettle;
     }
-    auto file_path = workspace.path_pool.resolve(server_path_id);
+    auto file_path = workspace.file_table.resolve(server_path_id);
     if(auto disk = fs::read(file_path); !disk || *disk != session->text) {
         return Admission::SkipAndSettle;
     }
@@ -440,7 +440,7 @@ void MasterServer::on_agentic_query() {
         // keeps serving through the catch-up, while a stale or missing one
         // (a save that landed while its reindex slot was still skipped)
         // must not answer agents with the pre-save rows.
-        auto disk = fs::read(workspace.path_pool.resolve(path_id));
+        auto disk = fs::read(workspace.file_table.resolve(path_id));
         if(!disk) {
             continue;
         }

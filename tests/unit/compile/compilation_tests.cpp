@@ -303,7 +303,8 @@ import mod_b;
 export int a_value() { return b_value() + 1; }
 )");
 
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
 
     auto render_entry = [&](llvm::StringRef file) {
         auto& entry = cdb.candidate_entries(file).front();

@@ -16,7 +16,7 @@ namespace ranges = std::ranges;
 
 /// path_id that `cdb` assigns to a file under the temp root.
 std::uint32_t id_of(CompilationDatabase& cdb, TempDir& tmp, llvm::StringRef rel) {
-    return cdb.paths().intern(path::join(tmp.root.str(), rel));
+    return cdb.files().intern(path::join(tmp.root.str(), rel));
 }
 
 bool contains(llvm::ArrayRef<std::uint32_t> list, std::uint32_t id) {
@@ -32,7 +32,8 @@ TEST_SUITE(ReloadDiff) {
 
 TEST_CASE(AddedEntry) {
     TempDir tmp;
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     auto cdb_path = tmp.path("compile_commands.json");
 
     write_json(tmp,
@@ -56,7 +57,8 @@ TEST_CASE(AddedEntry) {
 
 TEST_CASE(RemovedEntry) {
     TempDir tmp;
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     auto cdb_path = tmp.path("compile_commands.json");
 
     write_json(tmp,
@@ -80,7 +82,8 @@ TEST_CASE(RemovedEntry) {
 
 TEST_CASE(ChangedFlag) {
     TempDir tmp;
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     auto cdb_path = tmp.path("compile_commands.json");
 
     write_json(tmp,
@@ -103,7 +106,8 @@ TEST_CASE(ChangedFlag) {
 
 TEST_CASE(IdenticalReload) {
     TempDir tmp;
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     auto cdb_path = tmp.path("compile_commands.json");
 
     write_json(tmp,
@@ -121,7 +125,8 @@ TEST_CASE(ReorderNoDiff) {
     // A file's entries are compared as a set, so shuffling the JSON must not
     // register as a change — even when one file owns several entries.
     TempDir tmp;
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     auto cdb_path = tmp.path("compile_commands.json");
 
     write_json(tmp,
@@ -149,7 +154,8 @@ TEST_CASE(CodegenChangeIgnored) {
     // (Note: -O* is NOT codegen-only here — it defines __OPTIMIZE__ and is
     // kept, so an -O change does count; see OptLevelIsSemantic.)
     TempDir tmp;
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     auto cdb_path = tmp.path("compile_commands.json");
 
     write_json(tmp,
@@ -171,7 +177,8 @@ TEST_CASE(OptLevelIsSemantic) {
     // Anchors that -O* is semantic (defines __OPTIMIZE__), not codegen-only:
     // changing the optimization level must be reported as a change.
     TempDir tmp;
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     auto cdb_path = tmp.path("compile_commands.json");
 
     write_json(tmp,
@@ -195,7 +202,8 @@ TEST_CASE(OptLevelIsSemantic) {
 TEST_CASE(MultiEntryOneChanged) {
     // A file with several entries appears in `changed` once, not per entry.
     TempDir tmp;
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     auto cdb_path = tmp.path("compile_commands.json");
 
     write_json(tmp,
@@ -221,7 +229,8 @@ TEST_CASE(MultiEntryOneChanged) {
 TEST_CASE(FirstLoadAllAdded) {
     // Discovering a CDB for the first time: every file is `added`.
     TempDir tmp;
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     auto cdb_path = tmp.path("compile_commands.json");
 
     write_json(tmp,
@@ -242,7 +251,8 @@ TEST_CASE(CorruptKeepsEntries) {
     // A half-written / corrupt CDB must leave the loaded entries intact and
     // signal failure so the caller retries instead of seeing "no change".
     TempDir tmp;
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     auto cdb_path = tmp.path("compile_commands.json");
 
     write_json(tmp,
@@ -269,7 +279,8 @@ TEST_CASE(MissingFileFails) {
     // An unreadable file (deleted, or still locked by the generator) is a
     // failure, not an empty database: entries survive and the caller retries.
     TempDir tmp;
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     auto cdb_path = tmp.path("compile_commands.json");
 
     write_json(tmp,

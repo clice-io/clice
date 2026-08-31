@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "command/command.h"
-#include "support/path_pool.h"
+#include "vfs/file_table.h"
 #include "syntax/include_resolver.h"
 #include "syntax/scan.h"
 
@@ -256,8 +256,8 @@ struct ScanCache {
     DirListingCache dir_cache;
 
     /// Angled-include resolution cache: (config_id bytes + header) → {path_id, found_dir_idx}.
-    /// path_id values are valid only for the PathPool used during the scan
-    /// that populated this cache.  If PathPool is reset between scans, clear
+    /// path_id values are valid only for the FileTable used during the scan
+    /// that populated this cache.  If FileTable is reset between scans, clear
     /// this cache too (or pass nullptr to scan_dependency_graph).
     struct CachedInclude {
         std::uint32_t path_id;
@@ -297,7 +297,7 @@ using RuleMatcher = std::function<
 ///
 /// @param cache  Optional persistent cache. When non-null and pre-populated,
 ///               avoids repeated readdir() and include-resolution work across
-///               successive calls.  PathPool must NOT be reset between calls
+///               successive calls.  FileTable must NOT be reset between calls
 ///               when a persistent cache is used (path_id values must remain stable).
 /// @param rule_matcher  Optional callback applied per context group so that
 ///               `[[rules]]`-modified include/std flags are reflected in the

@@ -86,7 +86,7 @@ TEST_CASE(ManifestVarintOverflowRejected) {
 /// A project whose FileVersion for `path` is referenced by one manifest of
 /// `tu` (so garbage collection keeps it) and whose only symbol references
 /// `path` through `pool`.
-index::ProjectIndex build_project(clice::PathPool& pool, llvm::StringRef path, llvm::StringRef tu) {
+index::ProjectIndex build_project(clice::FileTable& pool, llvm::StringRef path, llvm::StringRef tu) {
     index::ProjectIndex project;
     auto path_id = pool.intern(path);
     auto fv = project.intern_file_version(path_id, 0xabcd);
@@ -110,7 +110,7 @@ index::ProjectIndex build_project(clice::PathPool& pool, llvm::StringRef path, l
 }
 
 TEST_CASE(GlobalRoundTripRemap) {
-    clice::PathPool pool;
+    clice::FileTable pool;
     auto project = build_project(pool, "/proj/used.h", "/proj/tu.cpp");
     project.global_generation = 9;
     auto& manifest = project.manifests.find(pool.intern("/proj/tu.cpp"))->second;
@@ -123,7 +123,7 @@ TEST_CASE(GlobalRoundTripRemap) {
     // The next session interns other paths first, so the same file gets a
     // different pool id; both the FileVersion table and the loaded bitmap
     // must follow the path, not the id.
-    clice::PathPool fresh;
+    clice::FileTable fresh;
     fresh.intern("/proj/opened-first.cpp");
     index::ProjectIndex loaded;
     llvm::DenseMap<std::uint32_t, std::uint64_t> pins;
@@ -147,7 +147,7 @@ TEST_CASE(GlobalRoundTripRemap) {
 }
 
 TEST_CASE(GlobalCollectsGarbage) {
-    clice::PathPool pool;
+    clice::FileTable pool;
     auto project = build_project(pool, "/proj/used.h", "/proj/tu.cpp");
     // Interned but referenced by no manifest — must not reach disk, and
     // must be dropped from memory by the write.
@@ -159,7 +159,7 @@ TEST_CASE(GlobalCollectsGarbage) {
     project.serialize_global(os, pool);
     ASSERT_FALSE(project.fv_ids.contains({dead_id, std::uint64_t(0xdead)}));
 
-    clice::PathPool fresh;
+    clice::FileTable fresh;
     index::ProjectIndex loaded;
     llvm::DenseMap<std::uint32_t, std::uint64_t> pins;
     ASSERT_TRUE(loaded.load_global(buf.str(), fresh, pins));
@@ -174,7 +174,7 @@ TEST_CASE(GlobalVersionGate) {
         std::uint32_t format_version = 0;
     };
 
-    clice::PathPool pool;
+    clice::FileTable pool;
     index::ProjectIndex loaded;
     llvm::DenseMap<std::uint32_t, std::uint64_t> pins;
 
@@ -227,7 +227,7 @@ TEST_CASE(GlobalBitmapPayloadGate) {
         {3, "/proj/ref.h"}
     };
 
-    clice::PathPool pool;
+    clice::FileTable pool;
     llvm::DenseMap<std::uint32_t, std::uint64_t> pins;
     auto valid = kota::codec::fbs::to_bytes(mirror);
     ASSERT_TRUE(valid.has_value());
@@ -254,7 +254,7 @@ TEST_CASE(GlobalBitmapPayloadGate) {
     auto corrupt = kota::codec::fbs::to_bytes(mirror);
     ASSERT_TRUE(corrupt.has_value());
     index::ProjectIndex rejecting;
-    clice::PathPool untouched;
+    clice::FileTable untouched;
     ASSERT_FALSE(rejecting.load_global(bytes_of(*corrupt), untouched, pins));
     ASSERT_TRUE(rejecting.symbols.empty());
     ASSERT_TRUE(rejecting.file_versions.empty());
@@ -274,7 +274,7 @@ TEST_CASE(UncoveredBitmapIdRejected) {
     bits.add(3);
     mirror.sym_bitmaps = {index::write_bitmap(bits)};
 
-    clice::PathPool pool;
+    clice::FileTable pool;
     llvm::DenseMap<std::uint32_t, std::uint64_t> pins;
     auto uncovered = kota::codec::fbs::to_bytes(mirror);
     ASSERT_TRUE(uncovered.has_value());
@@ -305,7 +305,7 @@ TEST_CASE(GlobalDuplicateVersionsRejected) {
     mirror.fv_sizes = {1, 2};
     mirror.fv_mtimes = {1, 2};
 
-    clice::PathPool pool;
+    clice::FileTable pool;
     llvm::DenseMap<std::uint32_t, std::uint64_t> pins;
     auto dup_id = kota::codec::fbs::to_bytes(mirror);
     ASSERT_TRUE(dup_id.has_value());
@@ -342,7 +342,7 @@ TEST_CASE(GlobalBadCounterRejected) {
     mirror.fv_sizes = {1};
     mirror.fv_mtimes = {1};
 
-    clice::PathPool pool;
+    clice::FileTable pool;
     llvm::DenseMap<std::uint32_t, std::uint64_t> pins;
     auto ahead = kota::codec::fbs::to_bytes(mirror);
     ASSERT_TRUE(ahead.has_value());
@@ -381,7 +381,7 @@ TEST_CASE(GlobalDuplicateSymbolRejected) {
         {3, "/proj/ref.h"}
     };
 
-    clice::PathPool pool;
+    clice::FileTable pool;
     llvm::DenseMap<std::uint32_t, std::uint64_t> pins;
     auto dup = kota::codec::fbs::to_bytes(mirror);
     ASSERT_TRUE(dup.has_value());
@@ -401,7 +401,7 @@ TEST_CASE(GlobalReservedKeysRejected) {
     // tables, so the writer can never emit them; a blob carrying one is
     // corrupt, and inserting it would corrupt (or assert in) the loader's
     // own containers.
-    clice::PathPool pool;
+    clice::FileTable pool;
     llvm::DenseMap<std::uint32_t, std::uint64_t> pins;
     index::ProjectIndex loaded;
 

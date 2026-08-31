@@ -264,7 +264,8 @@ TEST_CASE(NVCCHostInput, skip = !(CIEnvironment && Linux)) {
 /// A database wrapping test entries — the unit tests' handle on the two
 /// toolchain layers.
 struct Fixture {
-    CompilationDatabase db;
+    FileTable file_table;
+    CompilationDatabase db{file_table};
 
     CommandRef add(llvm::StringRef directory,
                    llvm::StringRef file,
@@ -283,7 +284,8 @@ struct Fixture {
 };
 
 TEST_CASE(InitiallyEmpty) {
-    CompilationDatabase db;
+    FileTable file_table;
+    CompilationDatabase db{file_table};
     EXPECT_FALSE(db.toolchain().has_cache());
 }
 

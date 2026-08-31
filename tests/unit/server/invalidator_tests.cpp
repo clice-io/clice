@@ -79,9 +79,9 @@ TEST_CASE(NewProviderDirtiesImporters) {
 
     Workspace workspace;
     SessionStore store;
-    auto iface = workspace.path_pool.intern(tmp.path("m.cppm"));
-    auto closed = workspace.path_pool.intern("/proj/closed.cpp");
-    auto open = workspace.path_pool.intern("/proj/open.cpp");
+    auto iface = workspace.file_table.intern(tmp.path("m.cppm"));
+    auto closed = workspace.file_table.intern("/proj/closed.cpp");
+    auto open = workspace.file_table.intern("/proj/open.cpp");
     store.open(open);
 
     ContextResolver resolver(workspace);
@@ -119,8 +119,8 @@ TEST_CASE(ReloadProviderCascades) {
               build_cdb_json({
                   {tmp.root, tmp.path("m.cppm"), {}}
     }));
-    auto iface = workspace.path_pool.intern(tmp.path("m.cppm"));
-    auto retired = workspace.path_pool.intern(tmp.path("old.cpp"));
+    auto iface = workspace.file_table.intern(tmp.path("m.cppm"));
+    auto retired = workspace.file_table.intern(tmp.path("old.cpp"));
 
     ContextResolver resolver(workspace);
     PCMHarness ph(workspace, resolver);
@@ -143,7 +143,7 @@ TEST_CASE(DiskRemovedDropsProvider) {
     // the candidate list and never be selected.
     Workspace workspace;
     SessionStore store;
-    auto iface = workspace.path_pool.intern("/proj/m.cppm");
+    auto iface = workspace.file_table.intern("/proj/m.cppm");
     workspace.dep_graph.add_module("m", iface);
     workspace.path_to_module[iface] = "m";
 
@@ -160,7 +160,7 @@ TEST_CASE(DiskRemovedDropsProvider) {
 TEST_CASE(NoOpEventsNoEffects) {
     Workspace workspace;
     SessionStore store;
-    auto file = workspace.path_pool.intern("/proj/a.cpp");
+    auto file = workspace.file_table.intern("/proj/a.cpp");
     store.open(file);
 
     ContextResolver resolver(workspace);
@@ -177,7 +177,7 @@ TEST_CASE(NoOpEventsNoEffects) {
 TEST_CASE(SaveResetsTrialOnly) {
     Workspace workspace;
     SessionStore store;
-    auto saved = workspace.path_pool.intern("/proj/a.h");
+    auto saved = workspace.file_table.intern("/proj/a.h");
     auto session = store.open(saved);
     store.apply_open(*session, "int x;", 1);
 
@@ -202,9 +202,9 @@ TEST_CASE(SaveResetsTrialOnly) {
 TEST_CASE(CascadeSplitsOpenClosed) {
     Workspace workspace;
     SessionStore store;
-    auto mod = workspace.path_pool.intern("/proj/m.cppm");
-    auto open_user = workspace.path_pool.intern("/proj/open_user.cppm");
-    auto closed_user = workspace.path_pool.intern("/proj/closed_user.cppm");
+    auto mod = workspace.file_table.intern("/proj/m.cppm");
+    auto open_user = workspace.file_table.intern("/proj/open_user.cppm");
+    auto closed_user = workspace.file_table.intern("/proj/closed_user.cppm");
 
     ContextResolver resolver(workspace);
     PCMHarness ph(workspace, resolver);
@@ -232,12 +232,12 @@ TEST_CASE(CascadeSplitsOpenClosed) {
 TEST_CASE(ChainHitAndMiss) {
     Workspace workspace;
     SessionStore store;
-    auto saved = workspace.path_pool.intern("/proj/inner.h");
-    auto other = workspace.path_pool.intern("/proj/other.h");
-    auto hit = workspace.path_pool.intern("/proj/hit.h");
-    auto miss = workspace.path_pool.intern("/proj/miss.h");
+    auto saved = workspace.file_table.intern("/proj/inner.h");
+    auto other = workspace.file_table.intern("/proj/other.h");
+    auto hit = workspace.file_table.intern("/proj/hit.h");
+    auto miss = workspace.file_table.intern("/proj/miss.h");
 
-    auto closed = workspace.path_pool.intern("/proj/closed.h");
+    auto closed = workspace.file_table.intern("/proj/closed.h");
     store.open(hit);
     store.open(miss);
 
@@ -266,9 +266,9 @@ TEST_CASE(ChainHitAndMiss) {
 TEST_CASE(SaveMarksDependents) {
     Workspace workspace;
     SessionStore store;
-    auto header = workspace.path_pool.intern("/proj/h.h");
-    auto open_tu = workspace.path_pool.intern("/proj/a.cpp");
-    auto closed_tu = workspace.path_pool.intern("/proj/b.cpp");
+    auto header = workspace.file_table.intern("/proj/h.h");
+    auto open_tu = workspace.file_table.intern("/proj/a.cpp");
+    auto closed_tu = workspace.file_table.intern("/proj/b.cpp");
     workspace.dep_graph.set_includes(open_tu, 0, {header});
     workspace.dep_graph.set_includes(closed_tu, 0, {header});
     workspace.dep_graph.build_reverse_map();
@@ -290,9 +290,9 @@ TEST_CASE(SaveMarksDependents) {
 TEST_CASE(TransitiveDependentsEnqueue) {
     Workspace workspace;
     SessionStore store;
-    auto header = workspace.path_pool.intern("/proj/h.h");
-    auto middle = workspace.path_pool.intern("/proj/g.h");
-    auto root = workspace.path_pool.intern("/proj/c.cpp");
+    auto header = workspace.file_table.intern("/proj/h.h");
+    auto middle = workspace.file_table.intern("/proj/g.h");
+    auto root = workspace.file_table.intern("/proj/c.cpp");
     workspace.dep_graph.set_includes(middle, 0, {header});
     workspace.dep_graph.set_includes(root, 0, {middle});
     workspace.dep_graph.build_reverse_map();
@@ -311,9 +311,9 @@ TEST_CASE(TransitiveDependentsEnqueue) {
 TEST_CASE(StaleReverseMapUnion) {
     Workspace workspace;
     SessionStore store;
-    auto header = workspace.path_pool.intern("/proj/h.h");
-    auto known = workspace.path_pool.intern("/proj/a.cpp");
-    auto unmapped = workspace.path_pool.intern("/proj/b.cpp");
+    auto header = workspace.file_table.intern("/proj/h.h");
+    auto known = workspace.file_table.intern("/proj/a.cpp");
+    auto unmapped = workspace.file_table.intern("/proj/b.cpp");
     workspace.dep_graph.set_includes(known, 0, {header});
     workspace.dep_graph.build_reverse_map();
     // Edge added without rebuilding the reverse map: visible only after the
@@ -334,7 +334,7 @@ TEST_CASE(StaleReverseMapUnion) {
 TEST_CASE(CloseWithoutShardReindexes) {
     Workspace workspace;
     SessionStore store;
-    auto closed = workspace.path_pool.intern("/proj/a.cpp");
+    auto closed = workspace.file_table.intern("/proj/a.cpp");
 
     ContextResolver resolver(workspace);
     // The file exists on disk (injected read), it just was never indexed.
@@ -354,7 +354,7 @@ TEST_CASE(CloseWithoutShardReindexes) {
 TEST_CASE(CloseCurrentShardDepsOnly) {
     Workspace workspace;
     SessionStore store;
-    auto closed = workspace.path_pool.intern("/proj/a.cpp");
+    auto closed = workspace.file_table.intern("/proj/a.cpp");
     workspace.shards[closed] = shard_of("int x;");
 
     ContextResolver resolver(workspace);
@@ -373,7 +373,7 @@ TEST_CASE(CloseCurrentShardDepsOnly) {
 TEST_CASE(CloseDivergentShardContentChanged) {
     Workspace workspace;
     SessionStore store;
-    auto closed = workspace.path_pool.intern("/proj/a.cpp");
+    auto closed = workspace.file_table.intern("/proj/a.cpp");
     workspace.shards[closed] = shard_of("int x;");
 
     ContextResolver resolver(workspace);
@@ -395,8 +395,8 @@ TEST_CASE(CloseStaleModuleCascades) {
     // the close must deliver it, or importers keep the pre-change PCM.
     Workspace workspace;
     SessionStore store;
-    auto mod = workspace.path_pool.intern("/proj/m.cppm");
-    auto user = workspace.path_pool.intern("/proj/user.cpp");
+    auto mod = workspace.file_table.intern("/proj/m.cppm");
+    auto user = workspace.file_table.intern("/proj/user.cpp");
     workspace.shards[mod] = shard_of("export module m;\nexport int v1();\n");
     workspace.pcm_cache[mod] = {
         .path = "/cache/m.pcm",
@@ -432,9 +432,9 @@ TEST_CASE(CloseRefreshesEdges) {
 
     Workspace workspace;
     SessionStore store;
-    auto file = workspace.path_pool.intern(tmp.path("a.cpp"));
-    auto old_header = workspace.path_pool.intern("/proj/old.h");
-    auto new_header = workspace.path_pool.intern(tmp.path("new.h"));
+    auto file = workspace.file_table.intern(tmp.path("a.cpp"));
+    auto old_header = workspace.file_table.intern("/proj/old.h");
+    auto new_header = workspace.file_table.intern(tmp.path("new.h"));
     workspace.dep_graph.set_includes(file, 0, {old_header});
     workspace.dep_graph.build_reverse_map();
 
@@ -458,8 +458,8 @@ TEST_CASE(DeferredDiskChangeCascades) {
     // shard must not hide the recorded debt from the close.
     Workspace workspace;
     SessionStore store;
-    auto header = workspace.path_pool.intern("/proj/h.h");
-    auto tu = workspace.path_pool.intern("/proj/a.cpp");
+    auto header = workspace.file_table.intern("/proj/h.h");
+    auto tu = workspace.file_table.intern("/proj/a.cpp");
     workspace.dep_graph.set_includes(tu, 0, {header});
     workspace.dep_graph.build_reverse_map();
     workspace.shards[header] = shard_of("int rewritten;");
@@ -492,8 +492,8 @@ TEST_CASE(CloseFirstProviderCascades) {
 
     Workspace workspace;
     SessionStore store;
-    auto iface = workspace.path_pool.intern(tmp.path("m.cppm"));
-    auto importer = workspace.path_pool.intern("/proj/use.cpp");
+    auto iface = workspace.file_table.intern(tmp.path("m.cppm"));
+    auto importer = workspace.file_table.intern("/proj/use.cpp");
 
     auto disk = llvm::MemoryBuffer::getFile(tmp.path("m.cppm"));
     workspace.shards[iface] = shard_of((*disk)->getBuffer());
@@ -518,8 +518,8 @@ TEST_CASE(CloseProviderRenameCascades) {
 
     Workspace workspace;
     SessionStore store;
-    auto iface = workspace.path_pool.intern(tmp.path("m.cppm"));
-    auto importer = workspace.path_pool.intern("/proj/use.cpp");
+    auto iface = workspace.file_table.intern(tmp.path("m.cppm"));
+    auto importer = workspace.file_table.intern("/proj/use.cpp");
     workspace.path_to_module[iface] = "a";
     workspace.dep_graph.update_module_decl(iface, "a");
 
@@ -550,7 +550,7 @@ TEST_CASE(CloseKeepsGuardedProvider) {
 
     Workspace workspace;
     SessionStore store;
-    auto iface = workspace.path_pool.intern(tmp.path("m.cpp"));
+    auto iface = workspace.file_table.intern(tmp.path("m.cpp"));
     workspace.path_to_module[iface] = "m";
     workspace.dep_graph.update_module_decl(iface, "m");
 
@@ -574,8 +574,8 @@ TEST_CASE(CloseStalePCMCascades) {
     // the current shard keeps serving (deps-only).
     Workspace workspace;
     SessionStore store;
-    auto mod = workspace.path_pool.intern("/proj/m.cppm");
-    auto user = workspace.path_pool.intern("/proj/user.cpp");
+    auto mod = workspace.file_table.intern("/proj/m.cppm");
+    auto user = workspace.file_table.intern("/proj/user.cpp");
     workspace.shards[mod] = shard_of("export module m;\nexport int v2();\n");
     workspace.pcm_cache[mod] = {
         .path = "/cache/m.pcm",
@@ -606,8 +606,8 @@ TEST_CASE(CloseStalePCMCascades) {
 TEST_CASE(CrashMarksLostDirty) {
     Workspace workspace;
     SessionStore store;
-    auto first = workspace.path_pool.intern("/proj/a.cpp");
-    auto second = workspace.path_pool.intern("/proj/b.cpp");
+    auto first = workspace.file_table.intern("/proj/a.cpp");
+    auto second = workspace.file_table.intern("/proj/b.cpp");
     store.open(first);
     store.open(second);
 
@@ -628,7 +628,7 @@ TEST_CASE(CrashMarksLostDirty) {
 TEST_CASE(EvictionMarksLost) {
     Workspace workspace;
     SessionStore store;
-    auto file = workspace.path_pool.intern("/proj/a.cpp");
+    auto file = workspace.file_table.intern("/proj/a.cpp");
     store.open(file);
 
     ContextResolver resolver(workspace);
@@ -645,7 +645,7 @@ TEST_CASE(EvictionMarksLost) {
 TEST_CASE(BatchSavesDeduplicate) {
     Workspace workspace;
     SessionStore store;
-    auto saved = workspace.path_pool.intern("/proj/a.h");
+    auto saved = workspace.file_table.intern("/proj/a.h");
     store.open(saved);
 
     ContextResolver resolver(workspace);
@@ -660,7 +660,7 @@ TEST_CASE(BatchSavesDeduplicate) {
 TEST_CASE(SaveDivergentDiskDirties) {
     Workspace workspace;
     SessionStore store;
-    auto saved = workspace.path_pool.intern("/proj/a.h");
+    auto saved = workspace.file_table.intern("/proj/a.h");
     auto session = store.open(saved);
     store.apply_open(*session, "int buffer;", 1);
 
@@ -680,7 +680,7 @@ TEST_CASE(SaveDivergentDiskDirties) {
 TEST_CASE(SaveUnreadableDiskDirties) {
     Workspace workspace;
     SessionStore store;
-    auto saved = workspace.path_pool.intern("/proj/a.h");
+    auto saved = workspace.file_table.intern("/proj/a.h");
     auto session = store.open(saved);
     store.apply_open(*session, "int buffer;", 1);
 
@@ -699,7 +699,7 @@ TEST_CASE(SaveUnreadableDiskDirties) {
 TEST_CASE(DiskChangeOpenMarksDirty) {
     Workspace workspace;
     SessionStore store;
-    auto open_file = workspace.path_pool.intern("/proj/a.cpp");
+    auto open_file = workspace.file_table.intern("/proj/a.cpp");
     store.open(open_file);
 
     ContextResolver resolver(workspace);
@@ -721,9 +721,9 @@ TEST_CASE(DiskChangeOpenMarksDirty) {
 TEST_CASE(DiskChangeClosedCascades) {
     Workspace workspace;
     SessionStore store;
-    auto header = workspace.path_pool.intern("/proj/h.h");
-    auto open_tu = workspace.path_pool.intern("/proj/a.cpp");
-    auto closed_tu = workspace.path_pool.intern("/proj/b.cpp");
+    auto header = workspace.file_table.intern("/proj/h.h");
+    auto open_tu = workspace.file_table.intern("/proj/a.cpp");
+    auto closed_tu = workspace.file_table.intern("/proj/b.cpp");
     workspace.dep_graph.set_includes(open_tu, 0, {header});
     workspace.dep_graph.set_includes(closed_tu, 0, {header});
     workspace.dep_graph.build_reverse_map();
@@ -748,9 +748,9 @@ TEST_CASE(DiskChangeClosedCascades) {
 TEST_CASE(DiskRemovedScrubsSourceRole) {
     Workspace workspace;
     SessionStore store;
-    auto header = workspace.path_pool.intern("/proj/h.h");
-    auto removed_tu = workspace.path_pool.intern("/proj/gone.cpp");
-    auto other_tu = workspace.path_pool.intern("/proj/kept.cpp");
+    auto header = workspace.file_table.intern("/proj/h.h");
+    auto removed_tu = workspace.file_table.intern("/proj/gone.cpp");
+    auto other_tu = workspace.file_table.intern("/proj/kept.cpp");
     workspace.dep_graph.set_includes(removed_tu, 0, {header});
     workspace.dep_graph.set_includes(other_tu, 0, {header});
     workspace.dep_graph.build_reverse_map();
@@ -779,7 +779,7 @@ TEST_CASE(DiskRemovedScrubsSourceRole) {
 TEST_CASE(RemoveRecreateBatchOrder) {
     Workspace workspace;
     SessionStore store;
-    auto file = workspace.path_pool.intern("/proj/a.cpp");
+    auto file = workspace.file_table.intern("/proj/a.cpp");
     workspace.dep_graph.set_includes(file, 0, {});
     workspace.dep_graph.build_reverse_map();
     ContextResolver resolver(workspace);
@@ -818,7 +818,7 @@ TEST_CASE(EntryChangeThenRemoval) {
         {tmp.root, tmp.path("a.cpp"), {}}
     });
     write_cdb(tmp, workspace.cdb, json);
-    auto file = workspace.path_pool.intern(tmp.path("a.cpp"));
+    auto file = workspace.file_table.intern(tmp.path("a.cpp"));
 
     ContextResolver resolver(workspace);
     PCMHarness ph(workspace, resolver);
@@ -839,7 +839,7 @@ TEST_CASE(EntryChangeThenRemoval) {
 TEST_CASE(CloseOfDeletedFile) {
     Workspace workspace;
     SessionStore store;
-    auto file = workspace.path_pool.intern("/proj/gone.cpp");
+    auto file = workspace.file_table.intern("/proj/gone.cpp");
     ContextResolver resolver(workspace);
     // Disk read fails: the file vanished while it was open.
     PCMHarness ph(workspace, resolver);
@@ -868,8 +868,8 @@ TEST_CASE(CDBAddedScansAndEnqueues) {
         {tmp.root, tmp.path("src/main.cpp"), {"-I", tmp.path("inc")}}
     });
     write_cdb(tmp, workspace.cdb, json);
-    auto main_id = workspace.path_pool.intern(tmp.path("src/main.cpp"));
-    auto header_id = workspace.path_pool.intern(tmp.path("inc/header.h"));
+    auto main_id = workspace.file_table.intern(tmp.path("src/main.cpp"));
+    auto header_id = workspace.file_table.intern(tmp.path("inc/header.h"));
 
     ContextResolver resolver(workspace);
     PCMHarness ph(workspace, resolver);
@@ -899,8 +899,8 @@ TEST_CASE(CDBChangedSplitsOpenClosed) {
         {tmp.root, tmp.path("b.cpp"), {}}
     });
     write_cdb(tmp, workspace.cdb, json);
-    auto open_id = workspace.path_pool.intern(tmp.path("a.cpp"));
-    auto closed_id = workspace.path_pool.intern(tmp.path("b.cpp"));
+    auto open_id = workspace.file_table.intern(tmp.path("a.cpp"));
+    auto closed_id = workspace.file_table.intern(tmp.path("b.cpp"));
     store.open(open_id);
     workspace.shards[open_id];
     workspace.shards[closed_id];
@@ -937,7 +937,7 @@ TEST_CASE(CDBChangedSplitsOpenClosed) {
 TEST_CASE(CDBAddedOpenMarksDirty) {
     Workspace workspace;
     SessionStore store;
-    auto file = workspace.path_pool.intern("/proj/a.cpp");
+    auto file = workspace.file_table.intern("/proj/a.cpp");
     store.open(file);
 
     ContextResolver resolver(workspace);
@@ -959,10 +959,10 @@ TEST_CASE(CDBAddedOpenMarksDirty) {
 TEST_CASE(CDBChangedDropsHostedContext) {
     Workspace workspace;
     SessionStore store;
-    auto host = workspace.path_pool.intern("/proj/host.cpp");
-    auto open_header = workspace.path_pool.intern("/proj/open.h");
-    auto closed_header = workspace.path_pool.intern("/proj/closed.h");
-    auto other_header = workspace.path_pool.intern("/proj/other.h");
+    auto host = workspace.file_table.intern("/proj/host.cpp");
+    auto open_header = workspace.file_table.intern("/proj/open.h");
+    auto closed_header = workspace.file_table.intern("/proj/closed.h");
+    auto other_header = workspace.file_table.intern("/proj/other.h");
     store.open(open_header);
     workspace.shards[closed_header];
 
@@ -996,9 +996,9 @@ TEST_CASE(CDBChangedDropsHostedContext) {
 TEST_CASE(CDBChangedCascadesModule) {
     Workspace workspace;
     SessionStore store;
-    auto mod = workspace.path_pool.intern("/proj/m.cppm");
-    auto open_user = workspace.path_pool.intern("/proj/open_user.cppm");
-    auto closed_user = workspace.path_pool.intern("/proj/closed_user.cppm");
+    auto mod = workspace.file_table.intern("/proj/m.cppm");
+    auto open_user = workspace.file_table.intern("/proj/open_user.cppm");
+    auto closed_user = workspace.file_table.intern("/proj/closed_user.cppm");
 
     ContextResolver resolver(workspace);
     PCMHarness ph(workspace, resolver);
@@ -1032,9 +1032,9 @@ TEST_CASE(CDBChangedCascadesModule) {
 TEST_CASE(DiskRemovedReindexesIncluders) {
     Workspace workspace;
     SessionStore store;
-    auto header = workspace.path_pool.intern("/proj/h.h");
-    auto open_tu = workspace.path_pool.intern("/proj/a.cpp");
-    auto closed_tu = workspace.path_pool.intern("/proj/b.cpp");
+    auto header = workspace.file_table.intern("/proj/h.h");
+    auto open_tu = workspace.file_table.intern("/proj/a.cpp");
+    auto closed_tu = workspace.file_table.intern("/proj/b.cpp");
     workspace.dep_graph.set_includes(open_tu, 0, {header});
     workspace.dep_graph.set_includes(closed_tu, 0, {header});
     workspace.dep_graph.build_reverse_map();
@@ -1062,15 +1062,15 @@ TEST_CASE(CDBRemovedDropsSourceRole) {
     SessionStore store;
     // The pre-reload graph still shows gone.cpp as an includer; the CDB has
     // already been reloaded without it.
-    auto gone_id = workspace.path_pool.intern(tmp.path("gone.cpp"));
-    auto header_id = workspace.path_pool.intern(tmp.path("inc/h.h"));
+    auto gone_id = workspace.file_table.intern(tmp.path("gone.cpp"));
+    auto header_id = workspace.file_table.intern(tmp.path("inc/h.h"));
     workspace.dep_graph.set_includes(gone_id, 0, {header_id});
     workspace.dep_graph.build_reverse_map();
     auto json = build_cdb_json({
         {tmp.root, tmp.path("kept.cpp"), {}}
     });
     write_cdb(tmp, workspace.cdb, json);
-    auto kept_id = workspace.path_pool.intern(tmp.path("kept.cpp"));
+    auto kept_id = workspace.file_table.intern(tmp.path("kept.cpp"));
 
     ContextResolver resolver(workspace);
     PCMHarness ph(workspace, resolver);
@@ -1102,8 +1102,8 @@ TEST_CASE(CDBEmptyDeltaNoEffects) {
 TEST_CASE(BatchDiskEventsDeduplicate) {
     Workspace workspace;
     SessionStore store;
-    auto first = workspace.path_pool.intern("/proj/a.h");
-    auto second = workspace.path_pool.intern("/proj/b.h");
+    auto first = workspace.file_table.intern("/proj/a.h");
+    auto second = workspace.file_table.intern("/proj/b.h");
 
     ContextResolver resolver(workspace);
     PCMHarness ph(workspace, resolver);
@@ -1127,8 +1127,8 @@ TEST_CASE(SurvivingEdgeKeepsChoice) {
     Workspace workspace;
     SessionStore store;
     ContextResolver resolver(workspace);
-    auto host = workspace.path_pool.intern("/proj/host.cpp");
-    auto header = workspace.path_pool.intern("/proj/h.h");
+    auto host = workspace.file_table.intern("/proj/host.cpp");
+    auto header = workspace.file_table.intern("/proj/h.h");
     workspace.dep_graph.set_includes(host, 0, {header});
     workspace.dep_graph.build_reverse_map();
 
@@ -1144,8 +1144,8 @@ TEST_CASE(RemovedEdgeDropsChoice) {
     Workspace workspace;
     SessionStore store;
     ContextResolver resolver(workspace);
-    auto host = workspace.path_pool.intern("/proj/host.cpp");
-    auto header = workspace.path_pool.intern("/proj/h.h");
+    auto host = workspace.file_table.intern("/proj/host.cpp");
+    auto header = workspace.file_table.intern("/proj/h.h");
     workspace.dep_graph.build_reverse_map();
 
     auto session = store.open(header);
@@ -1173,8 +1173,8 @@ TEST_CASE(VanishedOccurrenceDropsChoice) {
     // occurrence #1 no longer exists.
     tmp.touch("host.cpp", R"(#include "h.h")");
     tmp.touch("h.h");
-    auto host = workspace.path_pool.intern(tmp.path("host.cpp"));
-    auto header = workspace.path_pool.intern(tmp.path("h.h"));
+    auto host = workspace.file_table.intern(tmp.path("host.cpp"));
+    auto header = workspace.file_table.intern(tmp.path("h.h"));
     workspace.dep_graph.set_includes(host, 0, {header});
     workspace.dep_graph.build_reverse_map();
 

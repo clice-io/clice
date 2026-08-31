@@ -19,7 +19,7 @@
 #include "sched/crash_budget.h"
 #include "semantic/symbol.h"
 #include "support/cache_store.h"
-#include "support/path_pool.h"
+#include "vfs/file_table.h"
 #include "syntax/dependency_graph.h"
 
 #include "kota/async/async.h"
@@ -216,11 +216,12 @@ struct Workspace {
     /// loaded user config and finalizes it after the initializationOptions
     /// overlay.
     Config config;
-    CompilationDatabase cdb;
 
-    /// The single path-id space: the CDB owns it, everything else shares
-    /// it — CDB entry file ids and workspace path ids are the same ids.
-    PathPool& path_pool = cdb.paths();
+    /// The single fid space, shared by everything below — CDB entry file
+    /// ids and workspace fids are the same ids.
+    FileTable file_table;
+
+    CompilationDatabase cdb{file_table};
 
     /// Unified on-disk blob store for PCH/PCM/index artifacts.  Opened by
     /// load_workspace() when cache_dir is configured; absent means caching
@@ -374,12 +375,12 @@ std::uint64_t hash_file(llvm::StringRef path);
 /// `build_at` gets a {size, mtime_ns} fast-path baseline, a file modified
 /// during or after the build gets none — the next check must prove the disk
 /// still matches the consumed hash before trusting (and repairing) the stat.
-DepsSnapshot capture_deps_snapshot(PathPool& pool,
+DepsSnapshot capture_deps_snapshot(FileTable& pool,
                                    llvm::ArrayRef<DepFile> deps,
                                    std::int64_t build_at);
 
 /// Two-layer staleness check; see DepsSnapshot. Repairs fast-path baselines
 /// in place when a hash comparison proves a touched file unchanged.
-bool deps_changed(const PathPool& pool, DepsSnapshot& snap);
+bool deps_changed(const FileTable& pool, DepsSnapshot& snap);
 
 }  // namespace clice
