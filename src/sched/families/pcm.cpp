@@ -276,11 +276,12 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, std::uint32_t path_id
     workspace.build_crashes.on_land(budget_key);
     auto pcm_path = std::move(committed.value().value());
     workspace.pcm_paths[path_id] = pcm_path;
-    workspace.pcm_cache[path_id] = {
-        pcm_path,
-        pcm_key,
-        capture_deps_snapshot(workspace.file_table, result.value().deps, result.value().build_at),
-        binding};
+    workspace.pcm_cache[path_id] = {.path = pcm_path,
+                                    .key = pcm_key,
+                                    .deps = capture_deps_snapshot(workspace.file_table,
+                                                                  result.value().deps,
+                                                                  result.value().build_at),
+                                    .binding = binding};
     LOG_INFO("Built PCM for module {}: {}", module_name, pcm_path);
 
     workspace.mark_artifacts_dirty();

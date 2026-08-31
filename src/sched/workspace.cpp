@@ -323,7 +323,8 @@ DepsSnapshot capture_deps_snapshot(FileTable& files,
             // Untouched since before the build started — the disk still
             // holds the consumed bytes, so the stat is a trustworthy fast
             // path (recorded only when corroborated, see try_stamp).
-            files.try_stamp(vid, size, mtime_ns);
+            auto uid = status.getUniqueID();
+            files.try_stamp(vid, size, mtime_ns, uid.getDevice(), uid.getFile());
         }
     }
     return snap;

@@ -146,7 +146,7 @@ void ContextResolver::dump_choice_slices(
     }
 }
 
-void ContextResolver::load_mode_slices(const std::vector<CacheModeEntry>& modes,
+void ContextResolver::load_mode_slices(llvm::ArrayRef<CacheModeEntry> modes,
                                        llvm::function_ref<llvm::StringRef(std::uint32_t)> resolve) {
     for(auto& entry: modes) {
         auto file = resolve(entry.file);
@@ -166,8 +166,8 @@ void ContextResolver::load_mode_slices(const std::vector<CacheModeEntry>& modes,
 }
 
 void ContextResolver::load_choice_slices(
-    const std::vector<CacheContextEntry>& contexts,
-    const std::vector<CacheArtifactEntry>& artifacts,
+    llvm::ArrayRef<CacheContextEntry> contexts,
+    llvm::ArrayRef<CacheArtifactEntry> artifacts,
     llvm::function_ref<llvm::StringRef(std::uint32_t)> resolve) {
     for(auto& entry: contexts) {
         auto file = resolve(entry.file);
@@ -584,8 +584,8 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(std::uint32
         if(!result) {
             return std::nullopt;
         }
-        // Normalize through the path pool: resolve_include builds native
-        // separators, but chain paths compared against it are pool-normalized.
+        // Normalize through the file table: resolve_include builds native
+        // separators, but chain paths compared against it are table-normalized.
         return std::string(workspace.file_table.resolve(workspace.file_table.intern(result->path)));
     };
 
@@ -616,7 +616,9 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(std::uint32
         workspace.file_table.try_stamp(
             workspace.file_table.intern_version(chain[i], observed->obs.hash),
             observed->obs.size,
-            observed->obs.mtime_ns);
+            observed->obs.mtime_ns,
+            observed->obs.uid_device,
+            observed->obs.uid_file);
     }
 
     // Snapshot the header itself for other occurrences along the chain:
@@ -716,7 +718,9 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(std::uint32
         workspace.file_table.try_stamp(
             workspace.file_table.intern_version(chain.back(), target_observed->obs.hash),
             target_observed->obs.size,
-            target_observed->obs.mtime_ns);
+            target_observed->obs.mtime_ns,
+            target_observed->obs.uid_device,
+            target_observed->obs.uid_file);
     }
 
     return HeaderContext{host_path_id,

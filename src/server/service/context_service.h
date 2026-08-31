@@ -45,10 +45,12 @@ struct ContextService {
                                               const ext::CurrentContextParams& params);
 
     /// clice/switchContext: pin a host source or CDB entry as the file's
-    /// compilation context and persist the choice across sessions. Success
-    /// is acknowledged only once the choice is durably committed (the
-    /// interface promises cross-session persistence): the request marks
-    /// the contexts blob dirty and awaits the write pipeline's ticket.
+    /// compilation context and persist the choice across sessions. When
+    /// persistence is available, success is acknowledged only once the
+    /// choice is durably committed: the request marks the contexts blob
+    /// dirty and awaits the write pipeline's ticket. Sessions without a
+    /// writable database (read-only, caching disabled, open failure) apply
+    /// the choice in memory and acknowledge immediately.
     kota::task<ext::SwitchContextResult> switch_context(llvm::StringRef path,
                                                         std::uint32_t path_id,
                                                         Session* session,

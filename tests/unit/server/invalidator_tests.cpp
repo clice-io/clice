@@ -694,8 +694,9 @@ TEST_CASE(SaveUnreadableDiskDirties) {
     store.apply_open(*session, "int buffer;", 1);
 
     ContextResolver resolver(workspace);
-    // The file cannot be read back after the save: the disk state is
-    // unknown, which is treated as divergent (conservative).
+    // The file cannot be read back after the save (missing here; a
+    // present-but-unreadable file lands in the same nullopt): the disk
+    // state is unknown, which is treated as divergent (conservative).
     PCMHarness ph(workspace, resolver);
     Invalidator invalidator(workspace, store, resolver, ph.pcm);
     auto dirty = invalidator.apply(FileEvent::buffer_saved(saved));

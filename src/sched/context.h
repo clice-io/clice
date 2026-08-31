@@ -170,7 +170,7 @@ public:
 
     /// Restore header-mode verdicts. @param resolve maps a path table
     /// index back to a path (empty when the index is invalid).
-    void load_mode_slices(const std::vector<CacheModeEntry>& modes,
+    void load_mode_slices(llvm::ArrayRef<CacheModeEntry> modes,
                           llvm::function_ref<llvm::StringRef(std::uint32_t)> resolve);
 
     /// Fill the sovereignty slices of the contexts blob (user context
@@ -184,8 +184,8 @@ public:
                             llvm::function_ref<std::uint32_t(llvm::StringRef)> intern_path) const;
 
     /// Restore the sovereignty slices; see dump_choice_slices.
-    void load_choice_slices(const std::vector<CacheContextEntry>& contexts,
-                            const std::vector<CacheArtifactEntry>& artifacts,
+    void load_choice_slices(llvm::ArrayRef<CacheContextEntry> contexts,
+                            llvm::ArrayRef<CacheArtifactEntry> artifacts,
                             llvm::function_ref<llvm::StringRef(std::uint32_t)> resolve);
 
     /// Fill compile arguments for a file and report where they came from.

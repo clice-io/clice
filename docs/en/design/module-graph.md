@@ -139,7 +139,7 @@ All compilation tasks are managed through kota::task_group, providing structured
 
 PCM files use content-addressed path naming — the filename is determined by the module name and a hash of the compilation arguments, stored in a dedicated cache directory. This is fully isolated from build system artifacts, avoiding file-locking conflicts.
 
-PCM cache uses two-layer staleness detection: first comparing dependency files' modification times (mtime), then re-hashing content when times have changed. Recompilation only occurs when dependency content has actually changed, avoiding unnecessary rebuilds caused by "touch without modification." Cache metadata is persisted to `cache.json` on disk and can be restored on server restart.
+PCM cache uses two-layer staleness detection: first comparing dependency files' modification times (mtime), then re-hashing content when times have changed. Recompilation only occurs when dependency content has actually changed, avoiding unnecessary rebuilds caused by "touch without modification." Cache metadata is persisted into the index database and restored on server restart.
 
 ### Integration with the Compilation Pipeline
 

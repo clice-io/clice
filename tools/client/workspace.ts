@@ -120,9 +120,15 @@ export class Workspace {
         generateCDB(this.root);
     }
 
-    /// Write a clice.toml that pins cache_dir to <workspace>/.clice/.
-    pinCacheDir(): void {
-        this.write("clice.toml", '[project]\ncache_dir = "${workspace}/.clice"\n');
+    /// Write a clice.toml that pins cache_dir to <workspace>/.clice/. With
+    /// fsIndex, the index database uses the per-file backend so tests can
+    /// read (and rewrite) the persisted metadata blobs directly.
+    pinCacheDir(opts: { fsIndex?: boolean } = {}): void {
+        const lines = ["[project]", 'cache_dir = "${workspace}/.clice"'];
+        if (opts.fsIndex) {
+            lines.push('index_db = "files"');
+        }
+        this.write("clice.toml", lines.join("\n") + "\n");
     }
 
     /// The versioned cache store root.
@@ -180,41 +186,73 @@ export class Workspace {
             .sort();
     }
 
-    /// Read and parse cache.json, or return null if absent. Plain JSON.parse
-    /// mangles the 64-bit dep hashes; tests that rewrite the file use the
-    /// lossless helpers in persistent_cache.test.ts.
-    readCacheJson(): CacheJson | null {
-        const p = path.join(this.cacheRoot(), "cache.json");
+    /// The persisted artifact-metadata blob of the per-file index backend
+    /// (pin it with pinCacheDir({ fsIndex: true })).
+    artifactsBlobPath(): string {
+        return path.join(this.cacheRoot(), "index-artifacts", "artifacts.idx");
+    }
+
+    /// Read and parse the artifacts blob, or return null if absent. Dep
+    /// hashes are 64-bit integers that overflow JS doubles; oversized
+    /// values ride as BigInt (reviver source text in) and writeArtifactsBlob
+    /// emits them back verbatim (JSON.rawJSON out) — a mangled hash fails
+    /// revalidation and forces a spurious rebuild.
+    readArtifactsBlob(): ArtifactsBlob | null {
+        const p = this.artifactsBlobPath();
         if (!fs.existsSync(p)) {
             return null;
         }
-        return JSON.parse(fs.readFileSync(p, "utf8")) as CacheJson;
+        type Reviver = (key: string, value: unknown, ctx: { source?: string }) => unknown;
+        const parse = JSON.parse as unknown as (text: string, reviver: Reviver) => unknown;
+        return parse(fs.readFileSync(p, "utf8"), (_key, value, ctx) =>
+            typeof value === "number" && !Number.isSafeInteger(value) && ctx.source !== undefined
+                ? BigInt(ctx.source)
+                : value,
+        ) as ArtifactsBlob;
+    }
+
+    writeArtifactsBlob(blob: ArtifactsBlob): void {
+        const raw = (JSON as unknown as { rawJSON: (text: string) => unknown }).rawJSON;
+        fs.writeFileSync(
+            this.artifactsBlobPath(),
+            JSON.stringify(blob, (_key, value: unknown) =>
+                typeof value === "bigint" ? raw(value.toString()) : value,
+            ),
+        );
     }
 }
 
-export interface CacheDep {
+export interface ArtifactDep {
     path: number;
-    /// 64-bit content hash; bigint when read through a lossless parser
-    /// (the value overflows a JS double).
+    /// 64-bit content hash; bigint when the value overflows a JS double.
     hash: number | bigint;
-    mtime_ns?: number;
-    size?: number;
+    size: number | bigint;
+    mtime_ns: number | bigint;
+    missing: boolean;
+}
+
+export interface ArtifactPchEntry {
+    key: string;
+    bound: number;
+    deps: ArtifactDep[];
+    verify_content: boolean;
     [key: string]: unknown;
 }
 
-export interface CacheEntry {
-    key?: string;
-    deps: CacheDep[];
-    bound?: number;
-    build_at?: number;
-    source_file?: number;
-    module_name?: string;
+export interface ArtifactPcmEntry {
+    key: string;
+    source_file: number;
+    module_name: string;
+    deps: ArtifactDep[];
+    verify_content: boolean;
     [key: string]: unknown;
 }
 
-export interface CacheJson {
-    pch: CacheEntry[];
-    pcm?: CacheEntry[];
+export interface ArtifactsBlob {
     paths: string[];
+    pch_index_format: number;
+    pch: ArtifactPchEntry[];
+    pcm: ArtifactPcmEntry[];
+    header_modes: unknown[];
     [key: string]: unknown;
 }

@@ -4,7 +4,7 @@
 /// command, no prefix synthesis). When the trial diagnostics indicate missing
 /// includer context, the server falls back to prefix synthesis transparently —
 /// only the final diagnostics are published. Verdicts and user context
-/// choices persist across server sessions via cache.json.
+/// choices persist across server sessions via the index database.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -67,8 +67,10 @@ test("fallback on missing context", async ({ session }) => {
 });
 
 test("verdict persisted across sessions", async ({ session }) => {
-    // The NeedsContext verdict lands in cache.json and survives restarts.
+    // The NeedsContext verdict lands in the artifacts blob and survives
+    // restarts.
     const workspace = session.tmpdir();
+    workspace.pinCacheDir({ fsIndex: true });
     workspace.write("types.h", "#pragma once\nstruct Point { int x; int y; };\n");
     workspace.write("utils.h", "inline int get_x(Point p) { return p.x; }\n");
     workspace.write(
@@ -84,12 +86,8 @@ test("verdict persisted across sessions", async ({ session }) => {
     c1.assertCleanCompile(utilsUri);
     await c1.shutdown();
 
-    const cache = workspace.readCacheJson();
-    expect(cache, `Expected a persisted header mode, got: ${JSON.stringify(cache)}`).not.toBeNull();
-    expect(
-        ((cache!["header_modes"] ?? []) as unknown[]).length,
-        `Expected a persisted header mode, got: ${JSON.stringify(cache)}`,
-    ).toBeGreaterThan(0);
+    const modes = workspace.readArtifactsBlob()?.header_modes ?? [];
+    expect(modes.length, "Expected a persisted header mode").toBeGreaterThan(0);
 
     const c2 = session.spawn(workspace);
     await c2.initialize(workspace);
@@ -157,6 +155,7 @@ test("header save resets verdict", async ({ session }) => {
     // Saving the header itself re-evaluates its self-containment: a header
     // that gains its own include stops using the synthesized prefix.
     const workspace = session.tmpdir();
+    workspace.pinCacheDir({ fsIndex: true });
     workspace.write("types.h", "#pragma once\nstruct Point { int x; int y; };\n");
     workspace.write("utils.h", "inline int get_x(Point p) { return p.x; }\n");
     workspace.write(
@@ -184,11 +183,8 @@ test("header save resets verdict", async ({ session }) => {
     await c.shutdown();
 
     // After shutdown the persisted verdict must be gone.
-    const cache = workspace.readCacheJson();
-    expect(
-        (cache?.["header_modes"] ?? []) as unknown[],
-        `Verdict should be reset after the header was saved, got: ${JSON.stringify(cache)}`,
-    ).toEqual([]);
+    const modes = workspace.readArtifactsBlob()?.header_modes ?? [];
+    expect(modes, "Verdict should be reset after the header was saved").toEqual([]);
 });
 
 test("dependency change retries trial", async ({ session }) => {

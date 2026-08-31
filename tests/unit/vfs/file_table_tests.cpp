@@ -25,7 +25,7 @@ llvm::sys::fs::file_status stat_of(llvm::StringRef path) {
 
 TEST_SUITE(FileTable) {
 
-TEST_CASE(FirstBindToExistingEntityReads) {
+TEST_CASE(HardlinkFirstBindReads) {
     // Two spellings hardlinked to one inode: the second spelling's first
     // sight of the (already known) entity must not inherit the pair — a
     // recycled inode can hand an unrelated new file an equal-looking stat.
@@ -72,9 +72,10 @@ TEST_CASE(FirstBindToExistingEntityReads) {
 }
 
 TEST_CASE(RenameSaveRebinds) {
-    // An editor-style save (write tmp, rename over) replaces the inode:
-    // the spelling rebinds to the fresh entity and nothing serves the old
-    // pair for the new bytes.
+    // An editor-style save (write tmp, rename over) replaces the inode.
+    // The forged stat makes the old pair match by (size, mtime): only the
+    // rebind on the changed UniqueID keeps it from vouching for the new
+    // bytes.
     TempDir tmp;
     tmp.touch("f.h", "int v1();\n");
     auto f = tmp.path("f.h");
@@ -82,14 +83,17 @@ TEST_CASE(RenameSaveRebinds) {
 
     FileTable pool;
     auto fid = pool.intern(f);
-    ASSERT_TRUE(pool.read(fid).has_value());
+    auto first = pool.read(fid);
+    ASSERT_TRUE(first.has_value());
 
     tmp.touch("f.h.tmp", "int v2();\n");
     ASSERT_TRUE(bool(fs::rename(tmp.path("f.h.tmp"), f)));
-    age(f);
+    EXPECT_TRUE(set_file_mtime(f, first->mtime_ns));
 
     auto status = stat_of(f);
     auto uid = status.getUniqueID();
+    ASSERT_EQ(status.getSize(), first->size);
+    ASSERT_EQ(fs::mtime_ns(status), first->mtime_ns);
     ASSERT_FALSE(pool.cached_hash(fid,
                                   status.getSize(),
                                   fs::mtime_ns(status),
@@ -99,12 +103,57 @@ TEST_CASE(RenameSaveRebinds) {
 
     auto reread = pool.read(fid);
     ASSERT_TRUE(reread.has_value());
+    ASSERT_NE(reread->hash, first->hash);
     ASSERT_TRUE(
         pool.cached_hash(fid, reread->size, reread->mtime_ns, reread->uid_device, reread->uid_file)
             .has_value());
 }
 
-TEST_CASE(DirListingSeesNewFile) {
+TEST_CASE(RevalidateClearsAliasStamps) {
+    // force_revalidate through one spelling must clear the version stamps
+    // of a hardlinked twin: its stamp would otherwise vouch for a
+    // same-stat edit before the erased entity pair is ever consulted.
+    TempDir tmp;
+    tmp.touch("a.h", "int shared();\n");
+    auto a = tmp.path("a.h");
+    auto b = tmp.path("b.h");
+    ASSERT_FALSE(bool(llvm::sys::fs::create_hard_link(a, b)));
+    age(a);
+
+    FileTable pool;
+    auto a_id = pool.intern(a);
+    auto b_id = pool.intern(b);
+    ASSERT_TRUE(pool.read(a_id).has_value());
+    auto read = pool.read(b_id);
+    ASSERT_TRUE(read.has_value());
+    auto vid = pool.intern_version(b_id, read->hash);
+    pool.try_stamp(vid, read->size, read->mtime_ns, read->uid_device, read->uid_file);
+    ASSERT_TRUE(pool.version(vid).mtime_ns != 0);
+
+    pool.force_revalidate(a_id);
+    ASSERT_EQ(pool.version(vid).mtime_ns, 0);
+}
+
+TEST_CASE(FreshReadCannotStamp) {
+    // A check that reads a just-written file gets the right verdict but
+    // must not stamp the version: on a coarse-mtime filesystem a same-tick
+    // write could later forge the stamped stat.
+    TempDir tmp;
+    tmp.touch("f.h", "int fresh();\n");
+    auto f = tmp.path("f.h");
+
+    FileTable pool;
+    auto fid = pool.intern(f);
+    auto read = pool.read(fid);
+    ASSERT_TRUE(read.has_value());
+    auto vid = pool.intern_version(fid, read->hash);
+
+    pool.begin_wave();
+    ASSERT_TRUE(pool.check_version(vid) == FileTable::Verdict::Fresh);
+    ASSERT_EQ(pool.version(vid).mtime_ns, 0);
+}
+
+TEST_CASE(ListingSeesNewFile) {
     // An external generator dropping a header into a cached directory
     // produces no event; the directory's own mtime is the anchor that
     // makes the next operation re-list it.
@@ -131,7 +180,7 @@ TEST_CASE(DirListingSeesNewFile) {
     ASSERT_TRUE(refreshed->contains("b.h"));
 }
 
-TEST_CASE(DirListingWarmWithoutChange) {
+TEST_CASE(WarmListingReused) {
     TempDir tmp;
     tmp.touch("inc/a.h", "");
     auto dir = tmp.path("inc");

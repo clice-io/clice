@@ -1,14 +1,15 @@
 /// Integration tests for persistent PCH/PCM cache.
 ///
 /// Verifies that PCH/PCM artifacts are written to the unified cache store
-/// (.clice/cache/v4/{pch,pcm}/) with content-addressed filenames, survive
-/// server restarts via cache.json, and are properly reused across sessions.
+/// (.clice/cache/v8/{pch,pcm}/) with content-addressed filenames, survive
+/// server restarts via the artifact metadata persisted in the index
+/// database, and are properly reused across sessions.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { MTIME_GRANULARITY, SETTLE_TIME, sleep, waitUntil } from "@clice/tools/client";
 import { DATA_DIR } from "@clice/tools/compile-commands";
-import type { CacheJson, Workspace } from "@clice/tools/workspace";
+import type { Workspace } from "@clice/tools/workspace";
 import { expect, test } from "../fixtures.ts";
 
 const KILL_DELAY = 300;
@@ -41,31 +42,6 @@ function corruptPreservingStat(p: string, where = "garbage", span = 4096): Buffe
     fs.writeFileSync(p, data);
     fs.utimesSync(p, stat.atime, stat.mtime);
     return data;
-}
-
-/// cache.json dep hashes are 64-bit integers that overflow JS doubles;
-/// Python round-trips them losslessly through json.loads/dumps, so the
-/// cache-rewriting tests must too — a mangled hash fails revalidation and
-/// forces a spurious rebuild. Oversized integers ride as BigInt (reviver
-/// source text in, JSON.rawJSON out).
-function readCacheJsonLossless(cachePath: string): CacheJson {
-    type Reviver = (key: string, value: unknown, ctx: { source?: string }) => unknown;
-    const parse = JSON.parse as unknown as (text: string, reviver: Reviver) => unknown;
-    return parse(fs.readFileSync(cachePath, "utf8"), (_key, value, ctx) =>
-        typeof value === "number" && !Number.isSafeInteger(value) && ctx.source !== undefined
-            ? BigInt(ctx.source)
-            : value,
-    ) as CacheJson;
-}
-
-function writeCacheJsonLossless(cachePath: string, cache: CacheJson): void {
-    const raw = (JSON as unknown as { rawJSON: (text: string) => unknown }).rawJSON;
-    fs.writeFileSync(
-        cachePath,
-        JSON.stringify(cache, (_key, value: unknown) =>
-            typeof value === "bigint" ? raw(value.toString()) : value,
-        ),
-    );
 }
 
 /// Wait until orphaned workers of a killed server release their handles
@@ -119,10 +95,12 @@ test("pch written to cache dir", async ({ session }) => {
     );
 });
 
-test("cache json persisted", async ({ session }) => {
-    // After a PCH build, cache.json should be written with the entry.
+test("artifacts metadata persisted", async ({ session }) => {
+    // After a PCH build, the artifact metadata blob in the index database
+    // records the entry with its validated deps. The metadata flush is
+    // debounced, so the blob appears shortly after the build lands.
     const { client, workspace } = session.tmp();
-    workspace.pinCacheDir();
+    workspace.pinCacheDir({ fsIndex: true });
     workspace.write("header.h", "#pragma once\nint global_val = 42;\n");
     workspace.write("main.cpp", '#include "header.h"\nint main() { return global_val; }\n');
     workspace.writeCDB(["main.cpp"]);
@@ -131,21 +109,18 @@ test("cache json persisted", async ({ session }) => {
     const [uri] = await client.openAndWait("main.cpp");
     client.assertCleanCompile(uri);
 
-    const cache = workspace.readCacheJson();
-    expect(cache, "cache.json should exist after PCH build").not.toBeNull();
-    expect(cache!.pch, "cache.json should have 'pch' section").toBeDefined();
-    expect(
-        cache!.pch.length,
-        "Expected at least one PCH entry in cache.json",
-    ).toBeGreaterThanOrEqual(1);
-
-    // Verify the entry has expected fields.
-    const entry = cache!.pch[0]!;
+    await waitUntil(() => (workspace.readArtifactsBlob()?.pch ?? []).length > 0, {
+        timeout: 10_000,
+        interval: 100,
+        description: "the artifacts blob to record the PCH entry",
+    });
+    const entry = workspace.readArtifactsBlob()!.pch[0]!;
     expect(entry).toHaveProperty("key");
     expect(entry).toHaveProperty("deps");
     expect(entry).toHaveProperty("bound");
+    expect(entry.deps.length, "PCH deps must be recorded").toBeGreaterThan(0);
     for (const dep of entry.deps) {
-        expect(dep.hash).not.toBe(0);
+        expect(BigInt(dep.hash)).not.toBe(0n);
         expect(dep).toHaveProperty("mtime_ns");
         expect(dep).toHaveProperty("size");
     }
@@ -186,8 +161,8 @@ test("pch reused on close reopen", async ({ session }) => {
 });
 
 test("pch survives server restart", async ({ session }) => {
-    // PCH cache should survive a full server restart — cache.json is
-    // loaded on startup and the existing .pch file is reused.
+    // PCH cache should survive a full server restart — the artifact
+    // metadata is loaded on startup and the existing .pch file is reused.
     const workspace = session.tmpdir();
     workspace.pinCacheDir();
     workspace.write("header.h", "#pragma once\nstruct Baz { int z; };\n");
@@ -203,9 +178,6 @@ test("pch survives server restart", async ({ session }) => {
     const pchFilesS1 = workspace.pchFiles();
     expect(pchFilesS1.length, "PCH should be created in session 1").toBeGreaterThanOrEqual(1);
     const pchMtimeS1 = fs.statSync(pchFilesS1[0]!).mtimeMs;
-
-    const cacheS1 = workspace.readCacheJson();
-    expect(cacheS1, "cache.json should exist after session 1").not.toBeNull();
 
     c1.assertNoAnomaly();
     await c1.shutdown();
@@ -230,13 +202,13 @@ test("pch survives server restart", async ({ session }) => {
     await c2.shutdown();
 });
 
-test("old cache json upgrades", async ({ session }) => {
-    // A cache.json written before the per-dep stat baselines (entry-level
-    // build_at, deps as bare {path, hash}) must still load: unknown fields are
-    // skipped, absent ones read back zeroed, and the entry revalidates by hash
-    // instead of being dropped.
+test("stale artifacts format rebuilds", async ({ session }) => {
+    // An artifacts blob written under an older index format must be
+    // dropped wholesale at load — the .pch.idx envelopes it describes are
+    // unreadable — and the pair rebuilds cleanly. A cache.json left by an
+    // older clice in the same store is removed alongside.
     const workspace = session.tmpdir();
-    workspace.pinCacheDir();
+    workspace.pinCacheDir({ fsIndex: true });
     workspace.write("header.h", "#pragma once\nstruct Old { int v; };\n");
     workspace.write("main.cpp", '#include "header.h"\nint main() { Old o; return o.v; }\n');
     workspace.writeCDB(["main.cpp"]);
@@ -248,21 +220,24 @@ test("old cache json upgrades", async ({ session }) => {
     const pchMtimeS1 = fs.statSync(workspace.pchFiles()[0]!).mtimeMs;
     await c1.shutdown();
 
-    // Rewrite cache.json into the pre-baseline shape.
-    const cachePath = path.join(workspace.cacheRoot(), "cache.json");
-    const cache = readCacheJsonLossless(cachePath);
-    for (const entry of [...cache.pch, ...(cache.pcm ?? [])]) {
-        entry.build_at = 0;
-        entry.deps = entry.deps.map((d) => ({ path: d.path, hash: d.hash }));
-    }
-    writeCacheJsonLossless(cachePath, cache);
+    const blob = workspace.readArtifactsBlob();
+    expect(blob, "artifacts blob should exist after session 1").not.toBeNull();
+    blob!.pch_index_format = blob!.pch_index_format - 1;
+    workspace.writeArtifactsBlob(blob!);
+    const legacyCacheJson = path.join(workspace.cacheRoot(), "cache.json");
+    fs.writeFileSync(legacyCacheJson, "{}");
 
     const c2 = session.spawn(workspace);
     await c2.initialize(workspace);
     const [uri2] = await c2.openAndWait("main.cpp");
     c2.assertCleanCompile(uri2);
-    // Loaded, hash-validated, reused — not rebuilt.
-    expect(fs.statSync(workspace.pchFiles()[0]!).mtimeMs).toBe(pchMtimeS1);
+    // The format-mismatched entry was dropped: the PCH was rebuilt at the
+    // same content-addressed path, and the legacy file is gone.
+    expect(
+        fs.statSync(workspace.pchFiles()[0]!).mtimeMs,
+        "PCH must be rebuilt, not reused through a format mismatch",
+    ).not.toBe(pchMtimeS1);
+    expect(fs.existsSync(legacyCacheJson), "legacy cache.json should be removed").toBe(false);
     await c2.shutdown();
 });
 
@@ -304,7 +279,7 @@ test("depless pcm entry dropped", async ({ session }) => {
     // populated) is unvalidatable and must be dropped at load, not trusted.
     const workspace = session.tmpdir();
     copySaveRecompile(workspace);
-    workspace.pinCacheDir();
+    workspace.pinCacheDir({ fsIndex: true });
     workspace.generateCDB();
 
     const c1 = session.spawn(workspace);
@@ -315,12 +290,12 @@ test("depless pcm entry dropped", async ({ session }) => {
 
     // Simulate a pre-upgrade cache: strip the PCM deps, then break the
     // interface offline. A trusted dep-less entry would compile mid clean.
-    const cachePath = path.join(workspace.cacheRoot(), "cache.json");
-    const cache = readCacheJsonLossless(cachePath);
-    for (const entry of cache.pcm ?? []) {
+    const blob = workspace.readArtifactsBlob();
+    expect(blob, "artifacts blob should exist after session 1").not.toBeNull();
+    for (const entry of blob!.pcm) {
         entry.deps = [];
     }
-    writeCacheJsonLossless(cachePath, cache);
+    workspace.writeArtifactsBlob(blob!);
     workspace.write(
         "leaf.cppm",
         "export module Leaf;\n\nexport int renamed_leaf() {\n    return 1;\n}\n",
@@ -333,32 +308,76 @@ test("depless pcm entry dropped", async ({ session }) => {
     await c2.shutdown();
 });
 
+test("dead marker persists verify debt", async ({ session }) => {
+    // A dead instance's dirty marker latches content-verification debt
+    // onto every adopted record. The debt must be re-persisted promptly:
+    // an unrelated save (shards only, here from indexing a plain file)
+    // clears the recovery session's own marker, and if the flags were
+    // still memory-only the session after next would trust the records on
+    // a stat match alone.
+    const workspace = session.tmpdir();
+    workspace.pinCacheDir({ fsIndex: true });
+    workspace.write("header.h", "#pragma once\nstruct D { int x; };\n");
+    workspace.write("main.cpp", '#include "header.h"\nint main() { D d; return d.x; }\n');
+    workspace.write("other.cpp", "int other() { return 1; }\n");
+    workspace.writeCDB(["main.cpp", "other.cpp"]);
+
+    const c1 = session.spawn(workspace);
+    await c1.initialize(workspace);
+    const [uri] = await c1.openAndWait("main.cpp");
+    c1.assertCleanCompile(uri);
+    await c1.shutdown();
+    const blobS1 = workspace.readArtifactsBlob();
+    expect(blobS1, "artifacts blob should exist after session 1").not.toBeNull();
+    const key = blobS1!.pch[0]!.key;
+
+    const deadDir = path.join(workspace.cacheRoot(), "tmp", "999999999");
+    fs.mkdirSync(deadDir, { recursive: true });
+    fs.writeFileSync(path.join(deadDir, "dirty"), "1");
+
+    // Session 2 never consumes the PCH (other.cpp has no preamble), so the
+    // debt cannot be discharged by verification — it must round-trip.
+    const c2 = session.spawn(workspace);
+    await c2.initialize(workspace);
+    const [uri2] = await c2.openAndWait("other.cpp");
+    c2.assertCleanCompile(uri2);
+    await c2.shutdown();
+
+    const blob = workspace.readArtifactsBlob()!;
+    expect(blob.pch.length, "other.cpp must not have built a PCH of its own").toBe(1);
+    const entry = blob.pch.find((e) => e.key === key);
+    expect(entry, "the adopted record must survive session 2").toBeDefined();
+    expect(entry!.verify_content, "the latched debt must be persisted").toBe(true);
+});
+
 test("pcm cache entry has deps", async ({ session }) => {
-    // cache.json PCM entries must record dependencies, including the module
+    // Persisted PCM entries must record dependencies, including the module
     // source file itself — an empty list is permanently blind.
     const { client, workspace } = session.tmp();
     copySaveRecompile(workspace);
-    workspace.pinCacheDir();
+    workspace.pinCacheDir({ fsIndex: true });
     workspace.generateCDB();
     await client.initialize(workspace);
 
     const [midUri] = await client.openAndWait("mid.cppm");
     client.assertCleanCompile(midUri);
 
-    const cache = workspace.readCacheJson();
-    expect((cache?.pcm ?? []).length, "Expected PCM cache entries").toBeGreaterThan(0);
-    const paths = cache!.paths;
-    for (const entry of cache!.pcm ?? []) {
+    await waitUntil(() => (workspace.readArtifactsBlob()?.pcm ?? []).length > 0, {
+        timeout: 10_000,
+        interval: 100,
+        description: "the artifacts blob to record the PCM entries",
+    });
+    const blob = workspace.readArtifactsBlob()!;
+    const paths = blob.paths;
+    for (const entry of blob.pcm) {
         const deps = entry.deps;
-        expect(deps.length, `PCM entry ${String(entry.module_name)} has no deps`).toBeGreaterThan(
-            0,
-        );
+        expect(deps.length, `PCM entry ${entry.module_name} has no deps`).toBeGreaterThan(0);
         // Deps are canonicalized through real_path; compare resolved forms
         // (on macOS the pytest tmp dir sits behind the /var symlink).
-        const source = fs.realpathSync(paths[entry.source_file!]!);
+        const source = fs.realpathSync(paths[entry.source_file]!);
         const depPaths = new Set(deps.map((d) => fs.realpathSync(paths[d.path]!)));
         expect(depPaths.has(source), "Module source must be its own dependency").toBe(true);
-        expect(deps.every((d) => d.hash !== 0)).toBe(true);
+        expect(deps.every((d) => BigInt(d.hash) !== 0n)).toBe(true);
     }
 });
 
@@ -463,9 +482,15 @@ test("no tmp files after build", async ({ session }) => {
     const [uri] = await client.openAndWait("main.cpp");
     client.assertCleanCompile(uri);
 
-    // No in-flight tmp files should linger after the build settles. The
-    // pch namespace legitimately holds the paired .pch.idx blobs.
-    expect(workspace.tmpFiles(), "Stale tmp files found").toEqual([]);
+    // No in-flight tmp files should linger once the build settles: the
+    // writer-dirty marker legitimately lives from the first blob commit
+    // until the debounced metadata flush confirms it, then must drain.
+    // The pch namespace legitimately holds the paired .pch.idx blobs.
+    await waitUntil(() => workspace.tmpFiles().length === 0, {
+        timeout: 10_000,
+        interval: 100,
+        description: "in-flight tmp files and the writer-dirty marker to drain",
+    });
     const expected: Record<string, string[]> = { pch: [".pch", ".pch.idx"], pcm: [".pcm"] };
     for (const [subdir, extensions] of Object.entries(expected)) {
         const blobDir = path.join(workspace.cacheRoot(), subdir);

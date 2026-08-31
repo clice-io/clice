@@ -445,9 +445,10 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                     for(; !ec && di != llvm::sys::fs::directory_iterator(); di.increment(ec)) {
                         result.entries.insert(llvm::sys::path::filename(di->path()));
                     }
-                    // Same pre/post-stat + guard discipline as resolve_dir.
+                    // Same pre/post-stat + guard + complete-readdir
+                    // discipline as resolve_dir.
                     llvm::sys::fs::file_status post_status;
-                    if(pre_ok && !llvm::sys::fs::status(result.dir_path, post_status) &&
+                    if(pre_ok && !ec && !llvm::sys::fs::status(result.dir_path, post_status) &&
                        fs::mtime_ns(pre_status) == fs::mtime_ns(post_status)) {
                         auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                                           std::chrono::system_clock::now().time_since_epoch())

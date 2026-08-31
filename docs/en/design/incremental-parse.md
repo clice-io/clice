@@ -86,7 +86,7 @@ The benefit of this model is avoiding wasteful compilations during rapid success
 PCH files on disk are named by a hash of the preamble content together with the frontend-relevant compile flags, directories, and clang version (e.g., `a3f7e8c1d2b4f6e9.pch`), implementing content-addressed storage. This provides two benefits:
 
 - **Disk sharing**: Different files whose preamble content and compile configuration agree naturally share the same PCH file on disk, with no additional deduplication logic needed.
-- **Cross-session persistence**: PCH cache metadata (path, hash, boundary, dependency snapshot) is serialized to a `cache.json` file on disk. On server restart, this metadata is loaded and each PCH's validity is verified through two-layer invalidation detection, avoiding the need to rebuild all PCHs on a cold start.
+- **Cross-session persistence**: PCH cache metadata (path, hash, boundary, dependency snapshot) is persisted into the index database alongside the symbol index. On server restart, this metadata is loaded and each PCH's validity is verified through two-layer invalidation detection, avoiding the need to rebuild all PCHs on a cold start.
 
 When preamble content changes, the new PCH uses a different hash for its filename and the old file becomes orphaned. A cleanup mechanism periodically reclaims orphaned PCH files that have not been used beyond a certain age.
 
@@ -172,7 +172,7 @@ For non-self-contained headers, the compilation context system synthesizes a pre
 
 ### Cache Persistence
 
-PCH and PCM cache metadata are persisted to disk via a `cache.json` file. This file is updated after each successful build and loaded on server startup. Writes use a write-to-temp-then-atomic-rename pattern to prevent file corruption from mid-write crashes.
+PCH and PCM cache metadata are persisted as a metadata blob in the index database. The blob is flushed shortly after each successful build and loaded on server startup; blob writes are atomic, and each record additionally pins the exact artifact file it describes (size, mtime, filesystem identity, content hash), so a crash between publishing an artifact and flushing its metadata is detected and the artifact re-verified instead of trusted.
 
 After loading the cache on startup, all PCH entries are validated through two-layer invalidation detection. Stale entries are automatically rebuilt on the next compilation, requiring no special cache consistency recovery logic.
 

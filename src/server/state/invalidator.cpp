@@ -386,10 +386,10 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // follow. Rebuild the include graph and module map from
                 // scratch against the new database: entry additions,
                 // removals and flag changes all funnel into one uniform
-                // rescan instead of per-entry graph surgery. No ScanCache is
-                // retained anywhere: the cache's contract requires clearing
-                // it on every CDB change, and CDB changes are the only
-                // rescan trigger, so a persistent cache would never be warm.
+                // rescan instead of per-entry graph surgery. The rescan is
+                // still cheap: per-file scan results are content-keyed in
+                // the file table, so unchanged files re-resolve without a
+                // read or lex.
                 // TODO: this scan runs synchronously on the event loop (same
                 // cost as the startup scan); if it shows up on large
                 // projects, move it off the dispatch path.

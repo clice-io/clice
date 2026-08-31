@@ -99,7 +99,7 @@ llvm::SmallVector<FileEvent> FileTracker::tick_cdb(bool force) {
         return {};
     }
 
-    // Diff ids and event ids share the single path pool.
+    // Diff ids and event ids share the single file table.
     FileEvent::CDBDelta delta;
     delta.added.assign(diff->added.begin(), diff->added.end());
     delta.removed.assign(diff->removed.begin(), diff->removed.end());

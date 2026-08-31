@@ -32,7 +32,7 @@ static kota::task<> agentic_request(kota::ipc::JsonPeer& peer,
                                     const QueryOptions& opts) {
     auto method = opts.method.value_or("compileCommand");
     auto path = opts.path.value_or("");
-    // The server matches paths against its absolute path pool; resolve a
+    // The server matches paths against its absolute file table; resolve a
     // relative --path against this CLI's working directory before it ships.
     if(!path.empty() && !path::is_absolute(path)) {
         llvm::SmallString<256> abs(path);

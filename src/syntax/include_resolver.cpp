@@ -70,7 +70,10 @@ const llvm::StringSet<>* resolve_dir(llvm::StringRef dir,
     if(cache.shared) {
         std::int64_t reliable_mtime = 0;
         llvm::sys::fs::file_status post_status;
-        if(pre_ok && !llvm::sys::fs::status(dir, post_status) &&
+        // A failed or partial readdir (ec set) must not earn a trusted
+        // mtime: the incomplete listing would be reused until the
+        // directory itself changes.
+        if(pre_ok && !ec && !llvm::sys::fs::status(dir, post_status) &&
            fs::mtime_ns(pre_status) == fs::mtime_ns(post_status)) {
             auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                               std::chrono::system_clock::now().time_since_epoch())

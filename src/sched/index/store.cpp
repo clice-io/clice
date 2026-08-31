@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cassert>
 #include <format>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -203,11 +202,19 @@ struct ContextsData {
 };
 
 BlobBinding to_binding(const CacheBindingEntry& entry) {
-    return {entry.size, entry.mtime_ns, entry.uid_device, entry.uid_file, entry.hash};
+    return {.size = entry.size,
+            .mtime_ns = entry.mtime_ns,
+            .uid_device = entry.uid_device,
+            .uid_file = entry.uid_file,
+            .hash = entry.hash};
 }
 
 CacheBindingEntry from_binding(const BlobBinding& binding) {
-    return {binding.size, binding.mtime_ns, binding.uid_device, binding.uid_file, binding.hash};
+    return {.size = binding.size,
+            .mtime_ns = binding.mtime_ns,
+            .uid_device = binding.uid_device,
+            .uid_file = binding.uid_file,
+            .hash = binding.hash};
 }
 
 }  // namespace
@@ -218,7 +225,7 @@ IndexStore::IndexStore(kota::event_loop& loop, Workspace& workspace, ContextReso
 std::string IndexStore::serialize_artifacts() {
     ArtifactsData data;
     data.pch_index_format = index::index_format_version;
-    std::unordered_map<std::string, std::uint32_t> index_map;
+    llvm::StringMap<std::uint32_t> index_map;
 
     auto intern = [&](std::uint32_t fid) -> std::uint32_t {
         auto path = std::string(workspace.file_table.resolve(fid));
@@ -287,7 +294,7 @@ std::string IndexStore::serialize_artifacts() {
 
 std::string IndexStore::serialize_contexts() {
     ContextsData data;
-    std::unordered_map<std::string, std::uint32_t> index_map;
+    llvm::StringMap<std::uint32_t> index_map;
 
     auto intern_path = [&](llvm::StringRef path) -> std::uint32_t {
         auto [it, inserted] =
@@ -397,6 +404,14 @@ void IndexStore::load_artifacts(llvm::StringRef bytes) {
         return resolve(idx);
     };
     contexts.load_mode_slices(data.header_modes, intern_resolve);
+
+    // The latched debt must reach the blob before the writer-dirty marker
+    // may clear: an unrelated save would otherwise clear it with the flags
+    // only in memory, and the session after next would trust the records
+    // on a stat match alone.
+    if(verify_content && (!workspace.pch_cache.empty() || !workspace.pcm_cache.empty())) {
+        workspace.mark_artifacts_dirty();
+    }
 
     LOG_INFO("Loaded artifact metadata: {} PCH entries, {} PCM entries",
              workspace.pch_cache.size(),
@@ -597,7 +612,11 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
             // already-stamped version earned its stamp the same way and
             // need not re-prove it every merge.
             if(auto obs = workspace.file_table.observe_for(file_ids_map[i], status)) {
-                workspace.file_table.try_stamp(fv, obs->size, obs->mtime_ns);
+                workspace.file_table.try_stamp(fv,
+                                               obs->size,
+                                               obs->mtime_ns,
+                                               obs->uid_device,
+                                               obs->uid_file);
             }
         }
         fv_of[i] = fv;
@@ -701,6 +720,10 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<std::uint32_t>
         co_return report;
     co_await save_gate.acquire();
     auto gate = llvm::make_scope_exit([this] { save_gate.release(); });
+    // Re-checked: the gate holder we just waited out may have hit
+    // corruption and failed to reopen the database.
+    if(!workspace.index_db || workspace.index_db->read_only())
+        co_return report;
     auto& db = *workspace.index_db;
     auto& project = workspace.project_index;
     ScopedTimer timer;
@@ -959,6 +982,12 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<std::uint32_t>
         if(workspace.store && failed.empty() && !db.corrupted()) {
             workspace.store->clear_writer_dirty(store_marks);
         }
+    } else {
+        // Waiters must see failed attempts too, or a permanently failing
+        // metadata write (full disk, unserializable path) parks every
+        // durability wait forever; they give up after a few of these.
+        workspace.metadata_committed.set();
+        workspace.metadata_committed.reset();
     }
 
     // Corruption can surface first at write time (a damaged page only the
@@ -1124,6 +1153,12 @@ void IndexStore::reopen_fresh_database() {
     workspace.index_db->condemn();
     workspace.index_db.reset();
     workspace.index_db = index::open_database(*workspace.store, workspace.config.project.index_db);
+    // Durability waiters re-evaluate against the new database: a failed
+    // reopen disables persistence for the session, and a parked
+    // switchContext would otherwise sleep forever — no later save pulses,
+    // they all early-return on the null database.
+    workspace.metadata_committed.set();
+    workspace.metadata_committed.reset();
 }
 
 IndexStore::LoadResult IndexStore::load(bool read_only) {
@@ -1143,6 +1178,17 @@ IndexStore::LoadResult IndexStore::load(bool read_only) {
             db.for_each_key(kind, [&](llvm::StringRef key) {
                 startup_removes.push_back({kind, key.str()});
             });
+        }
+    };
+
+    // Everything a read-only session keeps is deserialized or copied, so
+    // nothing borrows the opening snapshot; retiring it keeps a long
+    // read-only session (batch lint) from pinning a concurrent writer's
+    // page reclamation to session start. Every return path that leaves
+    // the database open owes this.
+    auto retire_snapshot = [&] {
+        if(read_only && workspace.index_db && db.advance_read_snapshot()) {
+            db.retire_old_snapshot();
         }
     };
 
@@ -1189,6 +1235,7 @@ IndexStore::LoadResult IndexStore::load(bool read_only) {
         // is unreachable data, swept so it cannot survive as orphans.
         sweep_all();
         load_metadata();
+        retire_snapshot();
         return result;
     }
     llvm::DenseMap<std::uint32_t, std::uint64_t> manifest_pins;
@@ -1200,6 +1247,7 @@ IndexStore::LoadResult IndexStore::load(bool read_only) {
             startup_removes.push_back({index::IndexBlobKind::Global, "global"});
         }
         result.decoded = false;
+        retire_snapshot();
         return result;
     }
     load_metadata();
@@ -1379,15 +1427,7 @@ IndexStore::LoadResult IndexStore::load(bool read_only) {
         return result;
     }
 
-    if(read_only) {
-        // Everything is deserialized or copied by now, so nothing borrows
-        // the opening snapshot; retiring it keeps a long read-only session
-        // (batch lint) from pinning a concurrent writer's page
-        // reclamation to session start.
-        if(db.advance_read_snapshot()) {
-            db.retire_old_snapshot();
-        }
-    }
+    retire_snapshot();
 
     if(!workspace.shards.empty()) {
         LOG_INFO("Loaded {} index shards, {} manifests, {} symbols",

@@ -40,8 +40,11 @@ CacheStore open_store(const TempDir& tmp, std::uint32_t ver = version) {
 }
 
 void register_lru(CacheStore& store, std::uint64_t max_bytes = 0) {
-    store.register_namespace(
-        {.name = "pch", .extension = ".pch", .policy = CachePolicy::LRU, .max_bytes = max_bytes});
+    store.register_namespace({.name = "pch",
+                              .extension = ".pch",
+                              .policy = CachePolicy::LRU,
+                              .max_bytes = max_bytes,
+                              .deferred_metadata = true});
 }
 
 void register_paired(CacheStore& store, std::uint64_t max_bytes = 0) {
@@ -49,7 +52,8 @@ void register_paired(CacheStore& store, std::uint64_t max_bytes = 0) {
                               .extension = ".pch",
                               .aux_extension = ".pch.idx",
                               .policy = CachePolicy::LRU,
-                              .max_bytes = max_bytes});
+                              .max_bytes = max_bytes,
+                              .deferred_metadata = true});
 }
 
 /// Run a full two-phase aux write with the given content.
@@ -129,6 +133,20 @@ TEST_CASE(DirtyMarkerLifecycle) {
 
     store.clear_writer_dirty(store.writer_mark_count());
     ASSERT_FALSE(llvm::sys::fs::exists(marker));
+}
+
+TEST_CASE(RecycledPidMarkerDetected) {
+    // A dirty marker under this process's own pid is a crashed predecessor
+    // that recycled the pid: open must latch the debt (and re-mark) before
+    // recreating the directory, not silently sweep it.
+    TempDir tmp;
+    auto pid = std::to_string(llvm::sys::Process::getProcessId());
+    tmp.touch("root/cache/v1/tmp/" + pid + "/dirty", "1");
+
+    auto store = open_store(tmp);
+    register_lru(store);
+    ASSERT_TRUE(store.dead_writer_dirty());
+    ASSERT_TRUE(llvm::sys::fs::exists(tmp.path("root/cache/v1/tmp/" + pid + "/dirty")));
 }
 
 TEST_CASE(DeadWriterDirtyDetected) {

@@ -65,7 +65,7 @@ TEST_CASE(FreshWhenUntouched) {
     ASSERT_EQ(stamp_of(pool, snap.deps[0]), file_mtime_ns(dep));
 }
 
-TEST_CASE(ScanPairStampsAtCapture) {
+TEST_CASE(PairStampsAtCapture) {
     // With the startup scan's read in the shared pair, the capture-time
     // stat is corroborated and the fast path exists before any check.
     TempDir tmp;
@@ -195,7 +195,7 @@ TEST_CASE(PoisonedCaptureDetected) {
     ASSERT_TRUE(changed(pool, snap));
 }
 
-TEST_CASE(StaleScanPairCannotStamp) {
+TEST_CASE(StalePairCannotStamp) {
     // The pair describes bytes the scan read; after an edit the capture's
     // live stat no longer matches the pair, so the stale hash cannot
     // corroborate a stamp for the newly consumed version.
@@ -278,7 +278,7 @@ TEST_CASE(RemovedAfterBuild) {
     ASSERT_TRUE(changed(pool, snap));
 }
 
-TEST_CASE(ForceRevalidateGoesByHash) {
+TEST_CASE(RevalidateGoesByHash) {
     TempDir tmp;
     tmp.touch("dep.h", "int old_name();\n");
     auto dep = tmp.path("dep.h");
@@ -303,7 +303,7 @@ TEST_CASE(ForceRevalidateGoesByHash) {
     ASSERT_TRUE(changed(pool, snap));
 }
 
-TEST_CASE(ForceRevalidatePurgesWaveMemo) {
+TEST_CASE(RevalidatePurgesWaveMemo) {
     // A force point inside a wave must not be bypassed by a verdict the
     // wave already memoized.
     TempDir tmp;

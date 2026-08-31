@@ -95,7 +95,7 @@ struct FileTable {
             // to use as const char* (e.g. in MemoryBuffer::getFile which calls strlen).
             const std::size_t n = path.size();
             char* buf = allocator.Allocate<char>(n + 1);
-            std::copy(path.begin(), path.end(), buf);
+            std::ranges::copy(path, buf);
             buf[n] = '\0';
             spellings.push_back(llvm::StringRef(buf, n));
         }
@@ -210,7 +210,7 @@ struct FileTable {
     void observe(std::uint32_t fid, const DiskObservation& obs) {
         bool fresh = false;
         auto entity = intern_entity(obs.uid_device, obs.uid_file, fresh);
-        bindings[fid] = {entity, true};
+        bindings[fid] = {.entity = entity, .earned = true};
         if(obs.reliable) {
             disk_states[entity] = obs;
         }
@@ -302,7 +302,8 @@ struct FileTable {
     std::uint32_t intern_version(std::uint32_t fid, std::uint64_t content_hash) {
         auto [it, inserted] = version_ids.try_emplace({fid, content_hash}, next_version_id);
         if(inserted) {
-            versions.try_emplace(next_version_id, FileVersion{fid, content_hash, 0, 0});
+            versions.try_emplace(next_version_id,
+                                 FileVersion{.fid = fid, .content_hash = content_hash});
             next_version_id += 1;
         }
         return it->second;
@@ -316,18 +317,29 @@ struct FileTable {
     /// path would then judge them fresh forever. An already-stamped version
     /// keeps its stamp (it was earned the same way; concurrent captures of
     /// one version must not regress each other).
-    void try_stamp(std::uint32_t vid, std::uint64_t size, std::int64_t mtime_ns) {
+    void try_stamp(std::uint32_t vid,
+                   std::uint64_t size,
+                   std::int64_t mtime_ns,
+                   std::uint64_t uid_device,
+                   std::uint64_t uid_file) {
         auto it = versions.find(vid);
         assert(it != versions.end());
         auto& version = it->second;
         if(version.mtime_ns != 0 || version.content_hash == 0) {
             return;
         }
-        // Corroborate through the fid's earned binding: no live stat is in
-        // hand here, so an unverified or missing binding simply declines
-        // the stamp and the first check earns it by reading.
+        // Corroborate through the fid's earned binding; an unverified or
+        // missing binding simply declines the stamp and the first check
+        // earns it by reading.
         auto binding = bindings.find(version.fid);
         if(binding == bindings.end() || !binding->second.earned) {
+            return;
+        }
+        // The live stat's identity must be the earned binding's: a
+        // same-stat replace (new inode, forged size and mtime) would
+        // otherwise corroborate through the replaced file's pair.
+        auto entity = entity_ids.find({uid_device, uid_file});
+        if(entity == entity_ids.end() || entity->second != binding->second.entity) {
             return;
         }
         auto pair = disk_states.find(binding->second.entity);
@@ -361,13 +373,21 @@ struct FileTable {
     /// reading, and verdicts already memoized in the current wave, which
     /// would bypass the forced point entirely.
     void force_revalidate(std::uint32_t fid) {
-        // Entity-level: dropping only a fid-scoped anchor would leave the
-        // pair reachable through a hardlinked spelling of the same file.
+        // Entity-level: dropping only fid-scoped anchors would leave the
+        // pair — and the version stamps of a hardlinked spelling of the
+        // same file — vouching for bytes this call says to re-read.
+        auto entity = ~0u;
         if(auto binding = bindings.find(fid); binding != bindings.end()) {
-            disk_states.erase(binding->second.entity);
+            entity = binding->second.entity;
+            disk_states.erase(entity);
         }
         for(auto& [vid, version]: versions) {
-            if(version.fid == fid) {
+            bool same_file = version.fid == fid;
+            if(!same_file && entity != ~0u) {
+                auto alias = bindings.find(version.fid);
+                same_file = alias != bindings.end() && alias->second.entity == entity;
+            }
+            if(same_file) {
                 version.size = 0;
                 version.mtime_ns = 0;
                 wave_verdicts.erase(vid);

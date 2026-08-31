@@ -38,6 +38,11 @@ void IndexPump::boost(std::uint32_t server_path_id) {
 }
 
 void IndexPump::enqueue(std::uint32_t server_path_id, ReindexReason reason) {
+    // New debt voids the running round's freshness memos: a claim taken
+    // after this recording must re-judge against the disk, or its skip
+    // would settle the fresh ticket on a verdict memoized before the
+    // change and the file would never re-index.
+    store.begin_round();
     if(!ledger.record(server_path_id, reason)) {
         return;
     }

@@ -112,7 +112,7 @@ void LSPClient::register_lifecycle() {
         if(init.root_uri.has_value()) {
             // Canonicalize so downstream prefix checks (cache_dir,
             // ${workspace} expansion, artifact detection) compare against
-            // the same spelling the path pool stores.
+            // the same spelling the file table stores.
             srv.workspace_root = uri_to_path(*init.root_uri);
             path::canonicalize(srv.workspace_root);
         }

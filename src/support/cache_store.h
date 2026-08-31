@@ -50,6 +50,13 @@ struct CacheNamespace {
     /// Size budget for LRU namespaces; 0 means unlimited.
     /// Ignored for Persistent and Scratch.
     std::uint64_t max_bytes = 0;
+
+    /// The blobs' validity metadata lives outside this store (the index
+    /// database's artifacts blob) and is flushed after the fact: commits
+    /// here raise the writer-dirty marker until that metadata is durable.
+    /// Self-describing namespaces (the index database's own files) leave
+    /// it unset, or the marker could never clear while they keep writing.
+    bool deferred_metadata = false;
 };
 
 /// The identity of one committed blob, captured while the bytes were still

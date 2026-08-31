@@ -105,7 +105,9 @@ namespace clice::index {
 /// silently stop matching newly computed ones), or when the meaning of
 /// stored data changes (v9: preamble document links are document-ordered;
 /// v10: an include location's `include` names the directive's containing
-/// file, not that file's includer).
+/// file, not that file's includer; v11: file-version stamps are the file
+/// table's corroborated shared stamps, adopted verbatim at load, and the
+/// artifact metadata blobs joined the database).
 constexpr inline std::uint32_t index_format_version = 11;
 
 /// Serialize a reflected index blob to `os` as a verified-readable

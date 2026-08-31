@@ -37,7 +37,7 @@ class ContextResolver;
 /// Bump to discard all cached artifacts after incompatible format changes.
 constexpr inline std::uint32_t cache_format_version = 8;
 
-/// Sentinel for "no path": path pool ids start at 0, so 0 is a real file.
+/// Sentinel for "no path": file ids start at 0, so 0 is a real file.
 constexpr inline std::uint32_t no_path_id = ~0u;
 
 /// One dependency's freshness record inside a DepsSnapshot.

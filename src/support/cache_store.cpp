@@ -405,6 +405,16 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
     sweep_dead_pid_dirs(tmp_parent, state->self_pid);
 
     state->tmp_dir = path::join(tmp_parent, std::to_string(state->self_pid));
+    // This process has not written a marker yet, so one under its own pid
+    // is a crashed predecessor that recycled the pid — the scan above
+    // skipped it and the removal below would silently launder its debt.
+    if(llvm::sys::fs::exists(path::join(state->tmp_dir, "dirty"))) {
+        LOG_WARN(
+            "CacheStore: a previous instance reusing pid {} died with unflushed "
+            "blob metadata; verifying adopted records against blob content",
+            state->self_pid);
+        state->dead_dirty = true;
+    }
     fs::remove_all(state->tmp_dir);
     if(auto ec2 = llvm::sys::fs::create_directories(state->tmp_dir)) {
         return std::unexpected(ec2);
@@ -702,6 +712,7 @@ std::expected<std::string, std::error_code> CacheStore::commit(PendingEntry pend
     // Scratch blobs are cheap derivatives with no durability requirement;
     // they skip the fsync.
     bool durable;
+    bool deferred_metadata;
     {
         std::lock_guard guard(state->mutex);
         auto* ns_state = state->find_namespace(pending.ns);
@@ -709,6 +720,7 @@ std::expected<std::string, std::error_code> CacheStore::commit(PendingEntry pend
             return std::unexpected(std::make_error_code(std::errc::invalid_argument));
         }
         durable = ns_state->config.policy != CachePolicy::Scratch;
+        deferred_metadata = ns_state->config.deferred_metadata;
     }
 
     // fsync outside the lock so lookups are not blocked behind disk flushes.
@@ -720,7 +732,9 @@ std::expected<std::string, std::error_code> CacheStore::commit(PendingEntry pend
         // The marker must be durable before the blob becomes visible: a
         // crash right after the rename must read as "published without a
         // metadata barrier".
-        mark_writer_dirty();
+        if(deferred_metadata) {
+            mark_writer_dirty();
+        }
     }
 
     std::string final_path;
@@ -860,11 +874,14 @@ std::uint64_t CacheStore::mark_writer_dirty() {
                      result.error().message());
         } else {
             // Durable before the publication it covers, or a crash between
-            // the rename and the marker reaching disk goes unnoticed.
+            // the rename and the marker reaching disk goes unnoticed. An
+            // unsynced marker may not survive that crash, so failure here
+            // leaves the latch unset and the next commit retries.
             if(auto ec = sync_file(marker)) {
                 LOG_WARN("CacheStore: cannot sync dirty marker {}: {}", marker, ec.message());
+            } else {
+                state->writer_marked = true;
             }
-            state->writer_marked = true;
         }
     }
     return state->writer_marks;

@@ -9,6 +9,7 @@
 #include "sched/index/store.h"
 #include "sched/workspace.h"
 #include "support/cache_store.h"
+#include "support/filesystem.h"
 #include "support/logging.h"
 #include "support/timer.h"
 #include "syntax/dependency_graph.h"
@@ -38,11 +39,13 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
                                        .extension = ".pch",
                                        .aux_extension = ".pch.idx",
                                        .policy = CachePolicy::LRU,
-                                       .max_bytes = 8 * GiB});
+                                       .max_bytes = 8 * GiB,
+                                       .deferred_metadata = true});
             cache->register_namespace({.name = "pcm",
                                        .extension = ".pcm",
                                        .policy = CachePolicy::LRU,
-                                       .max_bytes = 8 * GiB});
+                                       .max_bytes = 8 * GiB,
+                                       .deferred_metadata = true});
             cache->register_namespace(
                 {.name = "header_context", .extension = ".h", .policy = CachePolicy::Scratch});
             workspace.store.emplace(std::move(*cache));
@@ -53,6 +56,12 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
             // metadata stays in memory and exits with it.
             workspace.index_db =
                 index::open_database(*workspace.store, cfg.index_db, read_only_index);
+            if(!read_only_index) {
+                // The artifact metadata moved into the index database; a
+                // cache.json left in the store by an older clice would sit
+                // there forever.
+                fs::remove(path::join(workspace.store->base_dir(), "cache.json"));
+            }
             LOG_INFO("Cache store: {}", workspace.store->base_dir());
             report.opened_store = true;
         }
