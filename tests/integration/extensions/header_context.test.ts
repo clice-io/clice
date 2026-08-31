@@ -9,7 +9,7 @@
 /// server cannot compile utils.h at all.
 
 import * as proto from "vscode-languageserver-protocol";
-import { withTimeout } from "@clice/tools/client";
+import { waitUntil, withTimeout } from "@clice/tools/client";
 import { expect, test } from "../fixtures.ts";
 
 /// clice/queryContext on a header should return source files that include it.
@@ -210,20 +210,25 @@ test("switch between two hosts", async ({ session }) => {
     const [bUri] = await client.openAndWait("b.cpp");
     const [sharedUri] = client.open("shared.h");
 
-    const hoverGetValueContains = async (text: string): Promise<boolean> => {
-        const hover = await client.hoverAt(sharedUri, 0, 12); // 'get_value'
-        expect(hover, "Hover on get_value should work").not.toBeNull();
-        return JSON.stringify(hover!.contents).includes(text);
-    };
+    /// switchContext only flips server state; the recompile under the new
+    /// host is asynchronous (pull model), so the hover polls until it lands.
+    const hoverGetValueShows = (text: string, host: string) =>
+        waitUntil(
+            async () => {
+                const hover = await client.hoverAt(sharedUri, 0, 12); // 'get_value'
+                return hover !== null && JSON.stringify(hover.contents).includes(text);
+            },
+            { timeout: 10_000, interval: 500, description: `${text} under host ${host}` },
+        );
 
     // Host a.cpp: VALUE_TYPE is int.
     let switched = await client.switchContext(sharedUri, aUri);
     expect(switched.success).toBe(true);
-    expect(await hoverGetValueContains("int"), "Expected int under host a.cpp").toBe(true);
+    await hoverGetValueShows("int", "a.cpp");
 
     // Host b.cpp: VALUE_TYPE is float. This exercises the cached-context
     // invalidation branch (active context differs from cached host).
     switched = await client.switchContext(sharedUri, bUri);
     expect(switched.success).toBe(true);
-    expect(await hoverGetValueContains("float"), "Expected float under host b.cpp").toBe(true);
+    await hoverGetValueShows("float", "b.cpp");
 });
