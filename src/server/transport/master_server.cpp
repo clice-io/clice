@@ -57,6 +57,11 @@ MasterServer::MasterServer(kota::event_loop& loop, std::string self_path) :
     workspace.open_documents = [this] {
         return sessions.sessions.size();
     };
+    // Metadata marks (a PCH landing, a context switch) flush through the
+    // next save; the wiring schedules one soon after the first mark.
+    workspace.request_flush = [this] {
+        schedule_metadata_flush();
+    };
 
     logging::set_notify_hook([this](logging::NotifyLevel level, std::string_view message) {
         notify_log.push_back(NotifyMessage{level, std::string(message)});
@@ -528,7 +533,8 @@ void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
         save |= context_service.drop_orphaned_choices(sessions);
     }
     if(save) {
-        workspace.save_cache(contexts);
+        workspace.mark_contexts_dirty();
+        workspace.mark_artifacts_dirty();
     }
 
     // Not before the server is ready: document-sync events are accepted
@@ -566,12 +572,35 @@ kota::task<> MasterServer::shutdown_and_cleanup() {
         // standalone header's repair debt dies with this process.
         pump.claim_report(co_await index_store.save(pump.save_debt()));
     }
-    workspace.save_cache(contexts);
     co_await pool.stop();
     if(workspace.store) {
         workspace.store->shutdown();
     }
     lifecycle = ServerLifecycle::Exited;
+}
+
+void MasterServer::schedule_metadata_flush() {
+    if(metadata_flush_scheduled || lifecycle == ServerLifecycle::ShuttingDown ||
+       lifecycle == ServerLifecycle::Exited) {
+        return;
+    }
+    metadata_flush_scheduled = true;
+    bg_tasks.spawn(metadata_flush_task());
+}
+
+kota::task<> MasterServer::metadata_flush_task() {
+    // One loop turn of debounce coalesces a burst of marks into one save;
+    // the save itself batches whatever else is dirty by then. Marks
+    // arriving while the save runs re-schedule through request_flush, and
+    // a save that could not clear the flags (serialization or write
+    // failure) retries on the next spawn with this backoff.
+    co_await kota::sleep(std::chrono::milliseconds(50));
+    metadata_flush_scheduled = false;
+    pump.claim_report(co_await index_store.save(pump.save_debt()));
+    if(workspace.artifacts_dirty || workspace.contexts_dirty) {
+        co_await kota::sleep(std::chrono::seconds(5));
+        schedule_metadata_flush();
+    }
 }
 
 kota::task<> MasterServer::cache_checkpoint_task() {

@@ -75,17 +75,22 @@ llvm::StringRef namespace_of(IndexBlobKind kind) {
         case IndexBlobKind::Manifest: return "index-manifest";
         case IndexBlobKind::Global: return "index-global";
         case IndexBlobKind::CDB: return "index-cdb";
+        case IndexBlobKind::Artifacts: return "index-artifacts";
+        case IndexBlobKind::Contexts: return "index-contexts";
     }
     std::unreachable();
 }
 
 class FsDatabase final : public BlobDatabase {
 public:
-    FsDatabase(CacheStore& store, int lock_fd) : store(store), lock_fd(lock_fd) {
+    FsDatabase(CacheStore& store, int lock_fd, bool read_only) :
+        store(store), lock_fd(lock_fd), read_only_(read_only) {
         for(auto kind: {IndexBlobKind::Shard,
                         IndexBlobKind::Manifest,
                         IndexBlobKind::Global,
-                        IndexBlobKind::CDB}) {
+                        IndexBlobKind::CDB,
+                        IndexBlobKind::Artifacts,
+                        IndexBlobKind::Contexts}) {
             store.register_namespace({
                 .name = std::string(namespace_of(kind)),
                 .extension = ".idx",
@@ -133,6 +138,10 @@ public:
 
     void for_each_key(IndexBlobKind kind, llvm::function_ref<void(llvm::StringRef)> fn) override {
         store.for_each_key(namespace_of(kind), fn);
+    }
+
+    bool read_only() const override {
+        return read_only_;
     }
 
     std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
@@ -194,6 +203,7 @@ private:
 
     CacheStore& store;
     int lock_fd;
+    bool read_only_ = false;
 };
 
 // ── LMDB backend ────────────────────────────────────────────────────
@@ -220,6 +230,8 @@ char kind_prefix(IndexBlobKind kind) {
         case IndexBlobKind::Manifest: return 'M';
         case IndexBlobKind::Global: return 'G';
         case IndexBlobKind::CDB: return 'C';
+        case IndexBlobKind::Artifacts: return 'A';
+        case IndexBlobKind::Contexts: return 'X';
     }
     std::unreachable();
 }
@@ -266,8 +278,18 @@ void remove_database_files(llvm::StringRef path) {
 
 class LmdbDatabase final : public BlobDatabase {
 public:
-    LmdbDatabase(MDB_env* env, MDB_dbi dbi, MDB_txn* txn, std::string path, int lock_fd) :
-        env(env), dbi(dbi), txn(txn), path(std::move(path)), lock_fd(lock_fd) {}
+    LmdbDatabase(MDB_env* env,
+                 MDB_dbi dbi,
+                 MDB_txn* txn,
+                 std::string path,
+                 int lock_fd,
+                 bool read_only) :
+        env(env), dbi(dbi), txn(txn), path(std::move(path)), lock_fd(lock_fd),
+        read_only_(read_only) {}
+
+    bool read_only() const override {
+        return read_only_;
+    }
 
     ~LmdbDatabase() override {
         retire_old_snapshot();
@@ -483,6 +505,7 @@ private:
     std::atomic<bool> poisoned = false;
     bool condemned = false;
     int lock_fd;
+    bool read_only_ = false;
 };
 
 #ifdef _WIN32
@@ -557,9 +580,9 @@ MetaCheck check_meta(MDB_env* env, MDB_dbi dbi, MDB_txn* txn, bool read_only) {
 
 std::unique_ptr<LmdbDatabase> open_lmdb_env(CacheStore& store,
                                             int lock_fd,
-                                            std::size_t initial_mapsize) {
+                                            std::size_t initial_mapsize,
+                                            bool read_only) {
     auto path = path::join(store.base_dir(), lmdb_file_name);
-    bool read_only = store.read_only();
 
     auto mapsize = initial_mapsize != 0 ? initial_mapsize : lmdb_default_mapsize;
 
@@ -670,7 +693,7 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(CacheStore& store,
                 return nullptr;
             }
         }
-        return std::make_unique<LmdbDatabase>(env, dbi, txn, std::move(path), lock_fd);
+        return std::make_unique<LmdbDatabase>(env, dbi, txn, std::move(path), lock_fd, read_only);
     }
     return nullptr;
 }
@@ -719,37 +742,43 @@ FsLocality filesystem_locality(llvm::StringRef dir) {
 
 }  // namespace
 
-std::unique_ptr<BlobDatabase> open_fs_database(CacheStore& store) {
+std::unique_ptr<BlobDatabase> open_fs_database(CacheStore& store, bool read_only) {
+    read_only = read_only || store.read_only();
     int lock_fd = -1;
-    if(!store.read_only()) {
+    if(!read_only) {
         auto locked = acquire_writer_lock(store);
         if(!locked) {
             return nullptr;
         }
         lock_fd = *locked;
     }
-    return std::make_unique<FsDatabase>(store, lock_fd);
+    return std::make_unique<FsDatabase>(store, lock_fd, read_only);
 }
 
-std::unique_ptr<BlobDatabase> open_lmdb_database(CacheStore& store, std::size_t initial_mapsize) {
+std::unique_ptr<BlobDatabase> open_lmdb_database(CacheStore& store,
+                                                 std::size_t initial_mapsize,
+                                                 bool read_only) {
+    read_only = read_only || store.read_only();
     int lock_fd = -1;
-    if(!store.read_only()) {
+    if(!read_only) {
         auto locked = acquire_writer_lock(store);
         if(!locked) {
             return nullptr;
         }
         lock_fd = *locked;
     }
-    auto db = open_lmdb_env(store, lock_fd, initial_mapsize);
+    auto db = open_lmdb_env(store, lock_fd, initial_mapsize, read_only);
     if(!db) {
         release_writer_lock(lock_fd);
     }
     return db;
 }
 
-std::unique_ptr<BlobDatabase> open_database(CacheStore& store, llvm::StringRef backend) {
+std::unique_ptr<BlobDatabase> open_database(CacheStore& store,
+                                            llvm::StringRef backend,
+                                            bool read_only) {
     if(backend == "files") {
-        return open_fs_database(store);
+        return open_fs_database(store, read_only);
     }
     if(backend != "lmdb") {
         LOG_WARN("Unknown index_db backend '{}'; using lmdb", backend);
@@ -761,7 +790,7 @@ std::unique_ptr<BlobDatabase> open_database(CacheStore& store, llvm::StringRef b
                 "{} is on a remote filesystem, which LMDB does not support; "
                 "using per-file index storage",
                 store.base_dir());
-            return open_fs_database(store);
+            return open_fs_database(store, read_only);
         }
         case FsLocality::Unknown: {
             LOG_WARN(
@@ -773,10 +802,11 @@ std::unique_ptr<BlobDatabase> open_database(CacheStore& store, llvm::StringRef b
     }
     // A reader before any LMDB writer ever ran (or after "files" runs)
     // reads whatever the per-file backend left behind — including nothing.
-    if(store.read_only() && !llvm::sys::fs::exists(path::join(store.base_dir(), lmdb_file_name))) {
-        return open_fs_database(store);
+    if((read_only || store.read_only()) &&
+       !llvm::sys::fs::exists(path::join(store.base_dir(), lmdb_file_name))) {
+        return open_fs_database(store, read_only);
     }
-    return open_lmdb_database(store);
+    return open_lmdb_database(store, 0, read_only);
 }
 
 }  // namespace clice::index

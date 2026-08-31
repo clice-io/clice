@@ -31,6 +31,7 @@
 #include "llvm/Support/Error.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Process.h"
+#include "llvm/Support/xxhash.h"
 #include "llvm/Support/raw_ostream.h"
 
 namespace clice {
@@ -211,6 +212,13 @@ struct CacheStore::State {
     /// swept, and writes are a caller bug.
     bool read_only = false;
 
+    /// Dirty-writer marker state (see mark_writer_dirty): mark count of
+    /// this instance, whether the marker file currently exists, and
+    /// whether open() found a dead writer's marker.
+    std::uint64_t writer_marks = 0;
+    bool writer_marked = false;
+    bool dead_dirty = false;
+
     /// First namespace directory scan that failed (permissions, IO):
     /// the affected namespace looks empty while its blobs exist, so
     /// readers must not mistake the store for empty.
@@ -371,14 +379,49 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
 
     // The only crash residue are in-flight tmp files; committed blobs are
     // complete by construction (atomic rename).  Sweep tmp directories of
-    // instances that no longer exist.
+    // instances that no longer exist — reading their dirty markers first:
+    // a dead writer that crashed between publishing a blob and persisting
+    // its metadata leaves one, and this session must then verify adopted
+    // records against blob content on first use.
     auto tmp_parent = path::join(state->base, "tmp");
+    {
+        std::error_code iter_ec;
+        for(llvm::sys::fs::directory_iterator it(tmp_parent, iter_ec), end; it != end && !iter_ec;
+            it.increment(iter_ec)) {
+            std::uint32_t pid = 0;
+            auto name = llvm::sys::path::filename(it->path());
+            if(name.getAsInteger(10, pid) || pid == state->self_pid || is_pid_alive(pid)) {
+                continue;
+            }
+            if(llvm::sys::fs::exists(path::join(it->path(), "dirty"))) {
+                LOG_WARN("CacheStore: instance {} died with unflushed blob metadata; "
+                         "verifying adopted records against blob content",
+                         pid);
+                state->dead_dirty = true;
+            }
+        }
+    }
     sweep_dead_pid_dirs(tmp_parent, state->self_pid);
 
     state->tmp_dir = path::join(tmp_parent, std::to_string(state->self_pid));
     fs::remove_all(state->tmp_dir);
     if(auto ec2 = llvm::sys::fs::create_directories(state->tmp_dir)) {
         return std::unexpected(ec2);
+    }
+
+    if(state->dead_dirty) {
+        // The dead writer's marker is consumed by the sweep above, but the
+        // verification debt it signals is only durable once the adopted
+        // records persist with their per-record flags — which takes a
+        // successful save. Carry the marker in this instance's own
+        // directory across that window, or a crash before the first save
+        // would launder the debt.
+        auto marker = path::join(state->tmp_dir, "dirty");
+        if(fs::write(marker, "1")) {
+            sync_file(marker);
+            state->writer_marked = true;
+            state->writer_marks += 1;
+        }
     }
 
     return CacheStore(std::move(state));
@@ -629,7 +672,8 @@ CacheStore::PendingEntry CacheStore::begin_store_aux(llvm::StringRef ns, llvm::S
     return PendingEntry{ns.str(), key.str(), path::join(state->tmp_dir, tmp_name), /*aux=*/true};
 }
 
-std::expected<std::string, std::error_code> CacheStore::commit(PendingEntry pending) {
+std::expected<std::string, std::error_code> CacheStore::commit(PendingEntry pending,
+                                                               BlobBinding* binding) {
     if(pending.tmp_path.empty()) {
         return std::unexpected(std::make_error_code(std::errc::invalid_argument));
     }
@@ -637,6 +681,21 @@ std::expected<std::string, std::error_code> CacheStore::commit(PendingEntry pend
     llvm::sys::fs::file_status status;
     if(auto ec = llvm::sys::fs::status(pending.tmp_path, status)) {
         return std::unexpected(ec);
+    }
+
+    if(binding) {
+        // Capture the identity while the bytes are still private: reading
+        // the final path after the rename would race a concurrent
+        // replacer of the same key and bind its bytes into our record.
+        auto bytes = llvm::MemoryBuffer::getFile(pending.tmp_path);
+        if(!bytes) {
+            return std::unexpected(bytes.getError());
+        }
+        *binding = BlobBinding{.size = status.getSize(),
+                               .mtime_ns = fs::mtime_ns(status),
+                               .uid_device = status.getUniqueID().getDevice(),
+                               .uid_file = status.getUniqueID().getFile(),
+                               .hash = llvm::xxh3_64bits((*bytes)->getBuffer())};
     }
 
     // Scratch blobs are cheap derivatives with no durability requirement;
@@ -657,6 +716,10 @@ std::expected<std::string, std::error_code> CacheStore::commit(PendingEntry pend
             llvm::sys::fs::remove(pending.tmp_path);
             return std::unexpected(ec);
         }
+        // The marker must be durable before the blob becomes visible: a
+        // crash right after the rename must read as "published without a
+        // metadata barrier".
+        mark_writer_dirty();
     }
 
     std::string final_path;
@@ -694,6 +757,15 @@ std::expected<std::string, std::error_code> CacheStore::commit(PendingEntry pend
                 llvm::sys::fs::remove(pending.tmp_path);
                 if(llvm::sys::fs::status(final_path, status)) {
                     return std::unexpected(result.error());
+                }
+                if(binding) {
+                    // The survivor's bytes are proven identical but its
+                    // inode and mtime are its own — a binding carrying the
+                    // dead tmp file's identity would read as stale forever.
+                    binding->size = status.getSize();
+                    binding->mtime_ns = fs::mtime_ns(status);
+                    binding->uid_device = status.getUniqueID().getDevice();
+                    binding->uid_file = status.getUniqueID().getFile();
                 }
             } else {
                 // The destination is stale — a rewritten mutable key
@@ -756,6 +828,63 @@ std::expected<std::string, std::error_code> CacheStore::commit(PendingEntry pend
 
     maybe_checkpoint();
     return final_path;
+}
+
+bool binding_stat_matches(llvm::StringRef path, const BlobBinding& binding) {
+    if(binding.size == 0 && binding.mtime_ns == 0) {
+        return false;
+    }
+    llvm::sys::fs::file_status status;
+    if(llvm::sys::fs::status(path, status)) {
+        return false;
+    }
+    return status.getSize() == binding.size && fs::mtime_ns(status) == binding.mtime_ns &&
+           status.getUniqueID().getDevice() == binding.uid_device &&
+           status.getUniqueID().getFile() == binding.uid_file;
+}
+
+bool binding_content_matches(llvm::StringRef path, const BlobBinding& binding) {
+    auto bytes = llvm::MemoryBuffer::getFile(path);
+    return bytes && llvm::xxh3_64bits((*bytes)->getBuffer()) == binding.hash;
+}
+
+std::uint64_t CacheStore::mark_writer_dirty() {
+    std::lock_guard guard(state->mutex);
+    state->writer_marks += 1;
+    if(!state->writer_marked && !state->read_only) {
+        auto marker = path::join(state->tmp_dir, "dirty");
+        if(auto result = fs::write(marker, "1"); !result) {
+            LOG_WARN("CacheStore: cannot write dirty marker {}: {}",
+                     marker,
+                     result.error().message());
+        } else {
+            // Durable before the publication it covers, or a crash between
+            // the rename and the marker reaching disk goes unnoticed.
+            if(auto ec = sync_file(marker)) {
+                LOG_WARN("CacheStore: cannot sync dirty marker {}: {}", marker, ec.message());
+            }
+            state->writer_marked = true;
+        }
+    }
+    return state->writer_marks;
+}
+
+void CacheStore::clear_writer_dirty(std::uint64_t upto) {
+    std::lock_guard guard(state->mutex);
+    if(!state->writer_marked || state->writer_marks != upto) {
+        return;
+    }
+    llvm::sys::fs::remove(path::join(state->tmp_dir, "dirty"));
+    state->writer_marked = false;
+}
+
+std::uint64_t CacheStore::writer_mark_count() const {
+    std::lock_guard guard(state->mutex);
+    return state->writer_marks;
+}
+
+bool CacheStore::dead_writer_dirty() const {
+    return state->dead_dirty;
 }
 
 void CacheStore::PendingEntry::remove_tmp() {
@@ -968,6 +1097,11 @@ void CacheStore::shutdown() {
     }
     state->checkpoint_locked();
 
+    // The dirty marker dies with the tmp directory, deliberately: an
+    // orderly exit means every commit's bytes were fsynced whole, so the
+    // byte-level damage the marker's verify mode exists for cannot have
+    // happened — and metadata a failed final save left behind mismatches
+    // its blobs' stat bindings, which reads as a plain miss.
     fs::remove_all(state->tmp_dir);
     for(auto& [name, ns_state]: state->namespaces) {
         if(ns_state.config.policy == CachePolicy::Scratch) {

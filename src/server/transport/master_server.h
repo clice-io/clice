@@ -171,7 +171,7 @@ public:
     /// reuses them); the session-side policy — admission vetoes,
     /// unservable escalation, serving-row refresh — lives on this class
     /// and is installed into the pump's hooks by wire().
-    IndexStore index_store{loop, workspace};
+    IndexStore index_store{loop, workspace, contexts};
     TURunFamily turun{graph, workspace, contexts, pcm, index_store, pool};
     IndexPump pump{loop, workspace, turun, index_store, pool};
 
@@ -270,6 +270,13 @@ private:
 
     /// Periodically checkpoint the cache store manifest so last-accessed
     /// times survive crashes (the store itself is passive by design).
+    /// Schedule a save carrying dirty artifact/context metadata; no-op
+    /// when one is already scheduled or the server is shutting down (the
+    /// final shutdown save covers it).
+    void schedule_metadata_flush();
+    kota::task<> metadata_flush_task();
+    bool metadata_flush_scheduled = false;
+
     kota::task<> cache_checkpoint_task();
 
     /// Drop pch_cache metadata for blobs the store's LRU evicted from

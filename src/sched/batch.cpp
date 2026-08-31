@@ -39,7 +39,7 @@ struct BatchStack {
     ContextResolver contexts{workspace};
     TaskGraph graph;
     PCMFamily pcm{graph, workspace, contexts, pool};
-    IndexStore store{loop, workspace};
+    IndexStore store{loop, workspace, contexts};
     TURunFamily turun{graph, workspace, contexts, pcm, store, pool};
     IndexPump pump{loop, workspace, turun, store, pool};
 
@@ -103,7 +103,6 @@ kota::task<> shutdown(BatchStack& stack) {
     if(report.snapshot_stale) {
         stack.pump.claim_report(co_await stack.store.save(stack.pump.save_debt()));
     }
-    stack.workspace.save_cache(stack.contexts);
     co_await stack.pool.stop();
     if(stack.workspace.store) {
         stack.workspace.store->shutdown();

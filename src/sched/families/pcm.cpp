@@ -162,8 +162,36 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, std::uint32_t path_id
             pcm_miss = "key_changed";
         } else if(!workspace.store->lookup("pcm", pcm_key)) {
             pcm_miss = "evicted";
+        } else if(!binding_stat_matches(pcm_it->second.path, pcm_it->second.binding)) {
+            // The key is content-free: a concurrent writer can republish
+            // different bytes under it, and this metadata does not vouch
+            // for those.
+            pcm_miss = "blob_replaced";
         } else if(deps_changed(workspace.file_table, pcm_it->second.deps)) {
             pcm_miss = "deps_changed";
+        } else if(pcm_it->second.verify_content) {
+            // Adopted after a writer died before its metadata barrier:
+            // prove once that the record describes these bytes.
+            auto blob_path = pcm_it->second.path;
+            auto binding = pcm_it->second.binding;
+            auto verify =
+                co_await kota::queue([&] { return binding_content_matches(blob_path, binding); });
+            if(!verify.has_value()) {
+                co_return RoundOutcome::Stale;
+            }
+            bool verified = verify.value();
+            auto settled = workspace.pcm_cache.find(path_id);
+            if(settled != workspace.pcm_cache.end() && verified) {
+                settled->second.verify_content = false;
+                workspace.mark_artifacts_dirty();
+                workspace.pcm_paths[path_id] = settled->second.path;
+                LOG_PERF("cache", "ns=pcm event=hit key={} module={}", pcm_key, module_name);
+                co_return RoundOutcome::Success;
+            }
+            if(settled != workspace.pcm_cache.end() && !verified) {
+                workspace.pcm_cache.erase(settled);
+            }
+            pcm_miss = "verify_content";
         } else {
             workspace.pcm_paths[path_id] = pcm_it->second.path;
             LOG_PERF("cache", "ns=pcm event=hit key={} module={}", pcm_key, module_name);
@@ -237,8 +265,9 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, std::uint32_t path_id
     }
 
     // Commit on the thread pool: it fsyncs the freshly written PCM.
-    auto committed =
-        co_await kota::queue([&] { return workspace.store->commit(std::move(pending)); });
+    BlobBinding binding;
+    auto committed = co_await kota::queue(
+        [&] { return workspace.store->commit(std::move(pending), &binding); });
     if(!committed.has_value() || !committed.value().has_value()) {
         LOG_WARN("Failed to commit PCM for module {}", module_name);
         co_return RoundOutcome::Failed;
@@ -250,11 +279,11 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, std::uint32_t path_id
     workspace.pcm_cache[path_id] = {
         pcm_path,
         pcm_key,
-        capture_deps_snapshot(workspace.file_table, result.value().deps, result.value().build_at)};
+        capture_deps_snapshot(workspace.file_table, result.value().deps, result.value().build_at),
+        binding};
     LOG_INFO("Built PCM for module {}: {}", module_name, pcm_path);
 
-    // Persist cache metadata after successful build.
-    workspace.save_cache(contexts);
+    workspace.mark_artifacts_dirty();
 
     // Signal that new index data is available for background merge.
     if(on_indexing_needed)

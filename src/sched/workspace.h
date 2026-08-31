@@ -147,13 +147,30 @@ struct SavedContext {
 /// Open a PCH's `.pch.idx` envelope (memory-mapped). Returns nullptr when
 /// the file is unreadable, structurally invalid, of a different format
 /// version, or any embedded shard blob fails verification — callers treat
-/// all of these as a PCH cache miss.
-std::shared_ptr<index::TUIndex> load_pch_envelope(llvm::StringRef path);
+/// all of these as a PCH cache miss. `expected_hash`, when nonzero, is the
+/// committed envelope's xxh3 (BlobBinding::hash): the bytes are in hand
+/// anyway, so a swapped or torn blob behind a matching path is rejected
+/// for free.
+std::shared_ptr<index::TUIndex> load_pch_envelope(llvm::StringRef path,
+                                                  std::uint64_t expected_hash = 0);
 
 struct PCHState {
     std::string path;
     std::uint32_t bound = 0;
     DepsSnapshot deps;
+
+    /// Identities of the committed pair (see BlobBinding): the stat triple
+    /// is verified on every freshness judgment — the PCH key is not fully
+    /// content-addressed, so a concurrent writer (batch lint shares the
+    /// store) can republish different bytes under this key, and metadata
+    /// adopted for the old generation must not vouch for the new one.
+    BlobBinding binding;
+    BlobBinding index_binding;
+
+    /// Adopted after a writer died with unflushed metadata: the records
+    /// may describe blobs that never matched them, so the first use also
+    /// verifies the content hashes, not just the stat triples.
+    bool verify_content = false;
 
     /// Path of the paired pch.idx envelope.
     std::string index_path;
@@ -176,6 +193,12 @@ struct PCMState {
     /// CacheStore key: "{module}-{hash}" over source path + canonical flags.
     std::string key;
     DepsSnapshot deps;
+
+    /// Identity of the committed blob; see PCHState::binding.
+    BlobBinding binding;
+
+    /// See PCHState::verify_content.
+    bool verify_content = false;
 };
 
 /// All persistent, project-wide state derived from files on disk.
@@ -214,7 +237,8 @@ struct Workspace {
     /// Unified on-disk blob store for PCH/PCM/index artifacts.  Opened by
     /// load_workspace() when cache_dir is configured; absent means caching
     /// is disabled.  Owns blob lifecycle (atomic writes, LRU, crash
-    /// recovery); validity metadata (deps snapshots) stays in cache.json.
+    /// recovery); validity metadata (deps snapshots) lives in the index
+    /// database, written by IndexStore::save.
     std::optional<CacheStore> store;
 
     /// Index blob persistence, opened together with the cache store.
@@ -313,7 +337,7 @@ struct Workspace {
     /// Open the pch.idx envelope of a cached PCH. The single consumption
     /// gate for `.pch.idx` blobs: when the blob turns out unreadable, the
     /// on-disk pair is retracted from the store as well — otherwise every
-    /// later session re-adopts the corrupt pair from cache.json and
+    /// later session re-adopts the corrupt pair from the artifacts blob and
     /// silently degrades again. With the pair gone the next ensure_pch is
     /// a miss and rebuilds both halves. Loads count against the
     /// loaded-state budget (see enforce_loaded_budget).
@@ -332,13 +356,38 @@ struct Workspace {
     /// reopens the blob from disk.
     void enforce_loaded_budget();
 
-    /// Load PCH/PCM validity metadata plus the context resolver's slices
-    /// from cache.json (under the store's versioned root); entries whose
-    /// blob is gone from the store are dropped.
-    void load_cache(ContextResolver& contexts);
-    /// Save PCH/PCM validity metadata plus the context resolver's slices
-    /// to cache.json.
-    void save_cache(const ContextResolver& contexts);
+    /// Persistence signals for the metadata the index database carries
+    /// beyond the index itself: artifact validity (PCH/PCM records, header
+    /// modes) and user context choices. Producers mark; the single write
+    /// pipeline (IndexStore::save) flushes both on its next run and
+    /// advances `committed_metadata_epoch`, waking `metadata_committed` —
+    /// the ticket a caller needing durability (switchContext) waits on.
+    bool artifacts_dirty = false;
+    bool contexts_dirty = false;
+    std::uint64_t metadata_epoch = 0;
+    std::uint64_t committed_metadata_epoch = 0;
+    kota::event metadata_committed;
+
+    /// Wired by the master to schedule a flush soon after a mark; unset
+    /// (tests, batch tools) means the owner saves on its own cadence.
+    std::function<void()> request_flush;
+
+    void mark_artifacts_dirty() {
+        artifacts_dirty = true;
+        metadata_epoch += 1;
+        if(request_flush) {
+            request_flush();
+        }
+    }
+
+    void mark_contexts_dirty() {
+        contexts_dirty = true;
+        metadata_epoch += 1;
+        if(request_flush) {
+            request_flush();
+        }
+    }
+
     /// Build path_to_module reverse mapping from dep_graph.
     void build_module_map();
     /// Fill PCM paths for all built modules, excluding exclude_path_id.

@@ -16,6 +16,8 @@
 
 namespace clice {
 
+class ContextResolver;
+
 namespace testing {
 
 struct IndexerFixture;
@@ -85,7 +87,7 @@ public:
         Report report;
     };
 
-    IndexStore(kota::event_loop& loop, Workspace& workspace);
+    IndexStore(kota::event_loop& loop, Workspace& workspace, ContextResolver& contexts);
 
     /// Merge a TUIndex result: intern FileVersions, replace the TU's
     /// manifest, and write row blobs only for variants no shard stores yet
@@ -170,6 +172,25 @@ private:
 
     kota::event_loop& loop;
     Workspace& workspace;
+
+    /// Context-domain state the contexts and artifacts blobs persist
+    /// (header modes, saved choices, synthesized hosts).
+    ContextResolver& contexts;
+
+    /// Serializes concurrent save() calls: the pump's round-end save, the
+    /// master's metadata flush and the shutdown save may overlap on the
+    /// event loop, and the dirty-snapshot/restore discipline inside save()
+    /// assumes one save at a time.
+    kota::semaphore save_gate{1};
+
+    /// Serialize the artifact-validity / user-context blob from live
+    /// state; empty on serialization failure (stays dirty, retried).
+    std::string serialize_artifacts();
+    std::string serialize_contexts();
+
+    /// Restore the blobs read at load; a null blob is a first run.
+    void load_artifacts(llvm::StringRef data);
+    void load_contexts(llvm::StringRef data);
 
     /// Blobs mutated since the last save, plus whether the global blob
     /// (symbols, FileVersion table) changed.

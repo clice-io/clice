@@ -32,6 +32,13 @@ enum class IndexBlobKind : std::uint8_t {
     /// against, key "cdb" — how a cold start detects compile-command
     /// changes that happened while no server was running.
     CDB,
+    /// The single artifact-validity blob (PCH/PCM records with their deps
+    /// and blob bindings, header-mode verdicts), key "artifacts".
+    Artifacts,
+    /// The single user-context blob (saved context choices, synthesized
+    /// artifact hosts), key "contexts" — sovereignty records, never
+    /// garbage-collected by content.
+    Contexts,
 };
 
 /// One blob read out of the database. The bytes' lifetime is
@@ -143,6 +150,13 @@ public:
     /// corruption observed at read time. The files go away under the
     /// writer lock, so the next open starts from an empty database.
     virtual void condemn() {}
+
+    /// Whether this handle was opened read-only (a session that must not
+    /// take the writer lock — batch lint, `clice index --stats`). Writes
+    /// are a caller bug then; persistence-side callers skip them.
+    virtual bool read_only() const {
+        return false;
+    }
 };
 
 /// Filesystem backend over the cache store; registers the index
@@ -151,7 +165,7 @@ public:
 /// returns nullptr when another clice process already holds it — the
 /// global/manifest blobs form one mutable lineage that tolerates no second
 /// writer. Read-only stores skip the lock.
-std::unique_ptr<BlobDatabase> open_fs_database(CacheStore& store);
+std::unique_ptr<BlobDatabase> open_fs_database(CacheStore& store, bool read_only = false);
 
 /// LMDB backend: a single `index.mdb` (plus its `-lock` file) in the
 /// store's version directory. Takes the same writer lock as the
@@ -166,7 +180,8 @@ std::unique_ptr<BlobDatabase> open_fs_database(CacheStore& store);
 /// reservation (tests exercise the growth path with a tiny map); 0 keeps
 /// the default.
 std::unique_ptr<BlobDatabase> open_lmdb_database(CacheStore& store,
-                                                 std::size_t initial_mapsize = 0);
+                                                 std::size_t initial_mapsize = 0,
+                                                 bool read_only = false);
 
 /// Backend selection: `backend` is the `project.index_db` config value
 /// ("lmdb" or "files"). Remote filesystems (which LMDB cannot run on) fall
@@ -174,6 +189,8 @@ std::unique_ptr<BlobDatabase> open_lmdb_database(CacheStore& store,
 /// cannot be opened safely disables persistence (nullptr) rather than
 /// falling back — a second lineage of filesystem blobs next to a live
 /// index.mdb would split the index's history.
-std::unique_ptr<BlobDatabase> open_database(CacheStore& store, llvm::StringRef backend);
+std::unique_ptr<BlobDatabase> open_database(CacheStore& store,
+                                            llvm::StringRef backend,
+                                            bool read_only = false);
 
 }  // namespace clice::index

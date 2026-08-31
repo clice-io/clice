@@ -14,13 +14,11 @@
 #include "syntax/preamble_synthesis.h"
 #include "syntax/scan.h"
 
-#include "kota/codec/json/json.h"
-#include "kota/codec/macro.h"
 #include "llvm/Support/Chrono.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
-#include "llvm/Support/Process.h"
+#include "llvm/Support/xxhash.h"
 
 namespace clice {
 
@@ -347,60 +345,14 @@ bool deps_changed(FileTable& files, const DepsSnapshot& snap) {
     return false;
 }
 
-namespace {
 
-struct CacheDepEntry {
-    std::uint32_t path;  // index into CacheData::paths
-    std::uint64_t hash;
-    // Defaulted so cache.json files written before the per-dep stat baseline
-    // still load: the fields read back zeroed ("no fast path") and the first
-    // staleness check re-earns them by hash. Their old entry-level build_at
-    // is skipped as an unknown field.
-    KOTATSU_ANNOTATE(defaulted = true)
-    <std::uint64_t> size;
-
-    KOTATSU_ANNOTATE(defaulted = true)
-    <std::int64_t> mtime_ns;
-
-    KOTATSU_ANNOTATE(defaulted = true)
-    <bool> missing;
-};
-
-struct CachePCHEntry {
-    std::string key;  // CacheStore key in the "pch" namespace
-    std::uint32_t bound;
-    std::vector<CacheDepEntry> deps;
-};
-
-struct CachePCMEntry {
-    std::string key;  // CacheStore key in the "pcm" namespace
-    std::uint32_t source_file;
-    std::string module_name;
-    std::vector<CacheDepEntry> deps;
-};
-
-struct CacheData {
-    std::vector<std::string> paths;
-
-    // index_format_version the .pch.idx envelopes were written with (one
-    // binary writes them all). A mismatch drops every PCH entry at load so
-    // the pairs rebuild immediately, instead of the mismatch surfacing
-    // lazily on the first overlay query — which cannot trigger a rebuild.
-    // Old cache.json files read back 0 and are dropped the same way.
-    std::uint32_t pch_index_format = 0;
-
-    std::vector<CachePCHEntry> pch;
-    std::vector<CachePCMEntry> pcm;
-    std::vector<CacheModeEntry> header_modes;
-    std::vector<CacheContextEntry> contexts;
-    std::vector<CacheArtifactEntry> artifacts;
-};
-
-}  // namespace
-
-std::shared_ptr<index::TUIndex> load_pch_envelope(llvm::StringRef path) {
+std::shared_ptr<index::TUIndex> load_pch_envelope(llvm::StringRef path,
+                                                  std::uint64_t expected_hash) {
     auto buffer = llvm::MemoryBuffer::getFile(path);
     if(!buffer) {
+        return nullptr;
+    }
+    if(expected_hash != 0 && llvm::xxh3_64bits((*buffer)->getBuffer()) != expected_hash) {
         return nullptr;
     }
     // A stale or truncated pair must never crash the server: the envelope
@@ -416,7 +368,7 @@ std::shared_ptr<index::TUIndex> load_pch_envelope(llvm::StringRef path) {
 
 const std::shared_ptr<index::TUIndex>& PCHState::load_state() {
     if(!state && !index_path.empty()) {
-        state = load_pch_envelope(index_path);
+        state = load_pch_envelope(index_path, index_binding.hash);
         if(!state) {
             // Unreadable blob: clear the path so queries don't retry the
             // mmap + verification on every call. The pair now looks
@@ -491,199 +443,6 @@ void Workspace::enforce_loaded_budget() {
         LOG_DEBUG("Unloading pch.idx envelope of {} (budget {})", loaded_state_lru[i], budget);
         it->second.state.reset();
         loaded_state_lru.erase(loaded_state_lru.begin() + i);
-    }
-}
-
-void Workspace::load_cache(ContextResolver& contexts) {
-    if(!store)
-        return;
-
-    auto cache_path = path::join(store->base_dir(), "cache.json");
-    auto content = fs::read(cache_path);
-    if(!content) {
-        LOG_DEBUG("No cache.json found at {}", cache_path);
-        return;
-    }
-
-    CacheData data;
-    auto status = kota::codec::json::from_string(*content, data);
-    if(!status) {
-        LOG_WARN("Failed to parse cache.json");
-        return;
-    }
-
-    auto resolve = [&](std::uint32_t idx) -> llvm::StringRef {
-        return idx < data.paths.size() ? llvm::StringRef(data.paths[idx]) : "";
-    };
-
-    auto load_deps = [&](const auto& dep_entries) -> DepsSnapshot {
-        DepsSnapshot deps;
-        for(auto& dep: dep_entries) {
-            auto dep_path = resolve(dep.path);
-            if(dep_path.empty())
-                continue;
-            auto path_id = file_table.intern(dep_path);
-            deps.deps.push_back({.path_id = path_id, .hash = dep.hash, .missing = dep.missing});
-            if(dep.hash != 0) {
-                file_table.adopt_stamp(file_table.intern_version(path_id, dep.hash),
-                                       dep.size,
-                                       dep.mtime_ns);
-            }
-        }
-        return deps;
-    };
-
-    bool pch_format_ok = data.pch_index_format == index::index_format_version;
-    for(auto& entry: data.pch) {
-        if(!pch_format_ok) {
-            break;
-        }
-
-        auto pch_path = store->lookup("pch", entry.key);
-        if(!pch_path)
-            continue;
-
-        // A PCH without its pch.idx envelope is an incomplete pair
-        // (crash between the two commits): treat it as absent so the next
-        // compile rebuilds both.
-        auto index_path = store->lookup_aux("pch", entry.key);
-        if(!index_path)
-            continue;
-
-        auto& st = pch_cache[entry.key];
-        st.path = *pch_path;
-        st.bound = entry.bound;
-        st.deps = load_deps(entry.deps);
-        st.index_path = *index_path;
-
-        LOG_DEBUG("Loaded cached PCH: {} -> {}", entry.key, *pch_path);
-    }
-
-    for(auto& entry: data.pcm) {
-        auto pcm_path = store->lookup("pcm", entry.key);
-        auto source = resolve(entry.source_file);
-        if(!pcm_path || source.empty())
-            continue;
-
-        // PCM builds now always record at least the module source itself as
-        // a dependency, so an empty list marks an entry from before deps
-        // were populated — an unvalidatable snapshot that would blindly
-        // serve a stale PCM (the key embeds no content). Drop it and let
-        // the module rebuild once.
-        if(entry.deps.empty()) {
-            LOG_INFO("Dropping dep-less cached PCM for {} (pre-upgrade entry)", source);
-            continue;
-        }
-
-        auto path_id = file_table.intern(source);
-        pcm_cache[path_id] = {*pcm_path, entry.key, load_deps(entry.deps)};
-        pcm_paths[path_id] = *pcm_path;
-
-        LOG_DEBUG("Loaded cached PCM: {} (module {}) -> {}", source, entry.module_name, *pcm_path);
-    }
-
-    contexts.load_cache_slices(data.header_modes, data.contexts, data.artifacts, resolve);
-
-    LOG_INFO("Loaded cache.json: {} PCH entries, {} PCM entries, {} context choices",
-             pch_cache.size(),
-             pcm_cache.size(),
-             contexts.saved_contexts.size());
-}
-
-void Workspace::save_cache(const ContextResolver& contexts) {
-    if(!store)
-        return;
-
-    CacheData data;
-    data.pch_index_format = index::index_format_version;
-    std::unordered_map<std::string, std::uint32_t> index_map;
-
-    auto intern = [&](std::uint32_t runtime_path_id) -> std::uint32_t {
-        auto path = std::string(file_table.resolve(runtime_path_id));
-        auto [it, inserted] =
-            index_map.try_emplace(path, static_cast<std::uint32_t>(data.paths.size()));
-        if(inserted) {
-            data.paths.push_back(path);
-        }
-        return it->second;
-    };
-
-    // The persisted per-dep stamp is the shared version's — earned once,
-    // written for every artifact referencing the version.
-    auto stamp_of = [&](const DepState& dep) -> std::pair<std::uint64_t, std::int64_t> {
-        auto it = file_table.version_ids.find({dep.path_id, dep.hash});
-        if(it == file_table.version_ids.end()) {
-            return {0, 0};
-        }
-        auto& version = file_table.versions.find(it->second)->second;
-        return {version.size, version.mtime_ns};
-    };
-
-    for(auto& e: pch_cache) {
-        auto& st = e.second;
-        if(st.path.empty())
-            continue;
-
-        CachePCHEntry entry;
-        entry.key = e.getKey().str();
-        entry.bound = st.bound;
-        for(auto& dep: st.deps.deps) {
-            auto [size, mtime_ns] = stamp_of(dep);
-            entry.deps.push_back({intern(dep.path_id), dep.hash, size, mtime_ns, dep.missing});
-        }
-        data.pch.push_back(std::move(entry));
-    }
-
-    for(auto& [path_id, st]: pcm_cache) {
-        if(st.path.empty())
-            continue;
-
-        CachePCMEntry entry;
-        entry.key = st.key;
-        entry.source_file = intern(path_id);
-        auto mod_it = path_to_module.find(path_id);
-        entry.module_name = mod_it != path_to_module.end() ? mod_it->second : "";
-        for(auto& dep: st.deps.deps) {
-            auto [size, mtime_ns] = stamp_of(dep);
-            entry.deps.push_back({intern(dep.path_id), dep.hash, size, mtime_ns, dep.missing});
-        }
-        data.pcm.push_back(std::move(entry));
-    }
-
-    auto intern_path = [&](llvm::StringRef path) -> std::uint32_t {
-        auto [it, inserted] =
-            index_map.try_emplace(path.str(), static_cast<std::uint32_t>(data.paths.size()));
-        if(inserted) {
-            data.paths.push_back(path.str());
-        }
-        return it->second;
-    };
-    contexts.dump_cache_slices(data.header_modes,
-                               data.contexts,
-                               data.artifacts,
-                               intern,
-                               intern_path);
-
-    auto json_str = kota::codec::json::to_string(data);
-    if(!json_str) {
-        LOG_WARN("Failed to serialize cache.json");
-        return;
-    }
-
-    auto cache_path = path::join(store->base_dir(), "cache.json");
-    // Stage inside this instance's store tmp directory: other instances of
-    // the same workspace must not clobber each other's half-written file.
-    auto pid = llvm::sys::Process::getProcessId();
-    auto tmp_path = path::join(store->base_dir(), "tmp", std::to_string(pid), "cache.json");
-    auto write_result = fs::write(tmp_path, *json_str);
-    if(!write_result) {
-        LOG_WARN("Failed to write cache.json.tmp: {}", write_result.error().message());
-        return;
-    }
-    auto rename_result = fs::rename(tmp_path, cache_path);
-    if(!rename_result) {
-        LOG_WARN("Failed to rename cache.json.tmp to cache.json: {}",
-                 rename_result.error().message());
     }
 }
 

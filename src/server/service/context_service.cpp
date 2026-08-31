@@ -212,12 +212,13 @@ ext::CurrentContextResult ContextService::current_context(llvm::StringRef path,
     return result;
 }
 
-ext::SwitchContextResult ContextService::switch_context(llvm::StringRef path,
-                                                        std::uint32_t path_id,
-                                                        Session* session,
-                                                        llvm::StringRef context_path,
-                                                        std::uint32_t context_path_id,
-                                                        const ext::SwitchContextParams& params) {
+kota::task<ext::SwitchContextResult>
+    ContextService::switch_context(llvm::StringRef path,
+                                   std::uint32_t path_id,
+                                   Session* session,
+                                   llvm::StringRef context_path,
+                                   std::uint32_t context_path_id,
+                                   const ext::SwitchContextParams& params) {
     auto& ws = workspace;
 
     ext::SwitchContextResult result;
@@ -226,11 +227,11 @@ ext::SwitchContextResult ContextService::switch_context(llvm::StringRef path,
     // contexts that no longer exist — make the client re-query.
     if(params.epoch.has_value() && *params.epoch != ws.context_epoch) {
         result.stale = true;
-        return result;
+        co_return result;
     }
 
     if(!session) {
-        return result;
+        co_return result;
     }
 
     // Validate that `hash` names a real CDB entry of `entry_path` and
@@ -255,7 +256,7 @@ ext::SwitchContextResult ContextService::switch_context(llvm::StringRef path,
         // Pin one of the file's own CDB entries.
         auto base = find_command(path, *params.command_hash);
         if(!base) {
-            return result;
+            co_return result;
         }
         saved.command_hash = *params.command_hash;
         saved.base_hash = std::move(*base);
@@ -264,22 +265,22 @@ ext::SwitchContextResult ContextService::switch_context(llvm::StringRef path,
         // entry, actually (transitively) include this header, and —
         // for multi-configuration hosts — own the pinned entry.
         if(!ws.cdb.has_entry(context_path)) {
-            return result;
+            co_return result;
         }
         if(ws.dep_graph.find_include_chain(context_path_id, path_id).empty()) {
-            return result;
+            co_return result;
         }
         std::optional<std::string> base;
         if(params.command_hash.has_value()) {
             base = find_command(context_path, *params.command_hash);
             if(!base) {
-                return result;
+                co_return result;
             }
         }
         if(params.occurrence.has_value() && *params.occurrence > 0) {
             auto count = ws.count_occurrences(context_path_id, path_id);
             if(count > 0 && *params.occurrence >= count) {
-                return result;
+                co_return result;
             }
         }
         saved.host_path_id = context_path_id;
@@ -296,12 +297,20 @@ ext::SwitchContextResult ContextService::switch_context(llvm::StringRef path,
     ast.switch_identity(*session);
     resolver.forget_self_contained(path_id);
 
-    // The table entry is the active choice; persist it across sessions.
+    // The table entry is the active choice; persist it across sessions:
+    // the ticket resolves once a write batch whose snapshot covers this
+    // mark has committed — an already-running save that snapshotted
+    // earlier cannot acknowledge it, the next one does.
     resolver.saved_contexts[path_id] = std::move(saved);
-    ws.save_cache(resolver);
+    ws.mark_contexts_dirty();
+    auto ticket = ws.metadata_epoch;
+    while(ws.request_flush && ws.index_db && !ws.index_db->read_only() &&
+          ws.committed_metadata_epoch < ticket) {
+        co_await ws.metadata_committed.wait();
+    }
 
     result.success = true;
-    return result;
+    co_return result;
 }
 
 bool ContextService::drop_orphaned_choices(SessionStore& sessions) {

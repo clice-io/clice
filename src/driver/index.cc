@@ -8,6 +8,7 @@
 #include "index/database.h"
 #include "index/serialization.h"
 #include "sched/batch.h"
+#include "sched/context.h"
 #include "sched/index/store.h"
 #include "sched/workspace.h"
 #include "support/cache_store.h"
@@ -138,7 +139,8 @@ int run_stats_once(llvm::StringRef root, std::uint32_t top, bool allow_retry) {
                   ec.message());
         return 1;
     }
-    IndexStore index_store(loop, workspace);
+    ContextResolver contexts(workspace);
+    IndexStore index_store(loop, workspace, contexts);
     auto loaded = index_store.load(/*read_only=*/true);
     if(!loaded.decoded) {
         LOG_ERROR("Index cache at {} is in an old or corrupt format; run `clice index` to rebuild",

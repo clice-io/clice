@@ -6,6 +6,8 @@
 #include "server/protocol/extension.h"
 #include "server/state/session.h"
 
+#include "kota/async/async.h"
+
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 
@@ -44,13 +46,16 @@ struct ContextService {
                                               const ext::CurrentContextParams& params);
 
     /// clice/switchContext: pin a host source or CDB entry as the file's
-    /// compilation context and persist the choice across sessions.
-    ext::SwitchContextResult switch_context(llvm::StringRef path,
-                                            std::uint32_t path_id,
-                                            Session* session,
-                                            llvm::StringRef context_path,
-                                            std::uint32_t context_path_id,
-                                            const ext::SwitchContextParams& params);
+    /// compilation context and persist the choice across sessions. Success
+    /// is acknowledged only once the choice is durably committed (the
+    /// interface promises cross-session persistence): the request marks
+    /// the contexts blob dirty and awaits the write pipeline's ticket.
+    kota::task<ext::SwitchContextResult> switch_context(llvm::StringRef path,
+                                                        std::uint32_t path_id,
+                                                        Session* session,
+                                                        llvm::StringRef context_path,
+                                                        std::uint32_t context_path_id,
+                                                        const ext::SwitchContextParams& params);
 
     /// Drop active context choices whose include edge no longer exists. A
     /// stale choice suppresses automatic host resolution, so it would strand

@@ -113,12 +113,9 @@ void ContextResolver::reset_header_mode(std::uint32_t path_id) {
     header_mode_hashes.erase(path_id);
 }
 
-void ContextResolver::dump_cache_slices(
+void ContextResolver::dump_mode_slices(
     std::vector<CacheModeEntry>& modes,
-    std::vector<CacheContextEntry>& contexts,
-    std::vector<CacheArtifactEntry>& artifacts,
-    llvm::function_ref<std::uint32_t(std::uint32_t)> intern_id,
-    llvm::function_ref<std::uint32_t(llvm::StringRef)> intern_path) const {
+    llvm::function_ref<std::uint32_t(std::uint32_t)> intern_id) const {
     for(auto& [path_id, mode]: header_modes) {
         if(mode != HeaderMode::NeedsContext)
             continue;
@@ -127,7 +124,13 @@ void ContextResolver::dump_cache_slices(
                          static_cast<std::uint32_t>(mode),
                          hash_it != header_mode_hashes.end() ? hash_it->second : 0});
     }
+}
 
+void ContextResolver::dump_choice_slices(
+    std::vector<CacheContextEntry>& contexts,
+    std::vector<CacheArtifactEntry>& artifacts,
+    llvm::function_ref<std::uint32_t(std::uint32_t)> intern_id,
+    llvm::function_ref<std::uint32_t(llvm::StringRef)> intern_path) const {
     for(auto& entry: synthesized_hosts) {
         artifacts.push_back({intern_path(entry.getKey()), intern_id(entry.second)});
     }
@@ -143,11 +146,9 @@ void ContextResolver::dump_cache_slices(
     }
 }
 
-void
-    ContextResolver::load_cache_slices(const std::vector<CacheModeEntry>& modes,
-                                       const std::vector<CacheContextEntry>& contexts,
-                                       const std::vector<CacheArtifactEntry>& artifacts,
-                                       llvm::function_ref<llvm::StringRef(std::uint32_t)> resolve) {
+void ContextResolver::load_mode_slices(
+    const std::vector<CacheModeEntry>& modes,
+    llvm::function_ref<llvm::StringRef(std::uint32_t)> resolve) {
     for(auto& entry: modes) {
         auto file = resolve(entry.file);
         if(file.empty() || static_cast<HeaderMode>(entry.mode) != HeaderMode::NeedsContext)
@@ -163,7 +164,12 @@ void
         header_modes[id] = HeaderMode::NeedsContext;
         header_mode_hashes[id] = entry.content_hash;
     }
+}
 
+void ContextResolver::load_choice_slices(
+    const std::vector<CacheContextEntry>& contexts,
+    const std::vector<CacheArtifactEntry>& artifacts,
+    llvm::function_ref<llvm::StringRef(std::uint32_t)> resolve) {
     for(auto& entry: contexts) {
         auto file = resolve(entry.file);
         if(file.empty())

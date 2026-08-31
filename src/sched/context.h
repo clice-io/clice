@@ -22,8 +22,9 @@ enum class ContextUse : std::uint8_t {
     Background,
 };
 
-/// cache.json slice entries for context-domain state. The structs mirror the
-/// on-disk JSON layout field for field — changing them changes the format.
+/// Persisted slice entries for context-domain state (the artifacts and
+/// contexts blobs in the index database). The structs mirror the on-disk
+/// JSON layout field for field — changing them changes the format.
 
 struct CacheModeEntry {
     std::uint32_t file;          // index into the cache path table
@@ -51,7 +52,7 @@ struct CacheArtifactEntry {
 /// resolution and synthesis (prefix/suffix/self-snapshot files restoring the
 /// includer's preprocessor state) plus the context-domain state: self-
 /// containment verdicts, user context choices and synthesized-artifact
-/// attribution (all persisted in cache.json), and the resolved header
+/// attribution (all persisted through the index database), and the resolved header
 /// contexts, which outlive their sessions so a reopened header reuses its
 /// synthesized preamble. The editor-facing context protocol handlers
 /// (clice/queryContext, currentContext, switchContext) live on the server
@@ -60,22 +61,22 @@ class ContextResolver {
 public:
     explicit ContextResolver(Workspace& workspace) : workspace(workspace) {}
 
-    /// Self-containment verdicts for headers, persisted in cache.json.
-    /// Reset when the header itself is saved.
+    /// Self-containment verdicts for headers, persisted in the artifacts
+    /// blob. Reset when the header itself is saved.
     llvm::DenseMap<std::uint32_t, HeaderMode> header_modes;
 
     /// Content hash of the header at the time its NeedsContext verdict was
     /// scored — persisted so a stale verdict is dropped on cache load.
     llvm::DenseMap<std::uint32_t, std::uint64_t> header_mode_hashes;
 
-    /// User context choices (clice/switchContext), persisted in cache.json
+    /// User context choices (clice/switchContext), persisted in the contexts blob
     /// and validated against the CDB and include graph on didOpen. The
     /// single source of truth for a file's active context.
     llvm::DenseMap<std::uint32_t, SavedContext> saved_contexts;
 
     /// Host source of each synthesized artifact (prefix/suffix/snapshot
     /// file path -> host path_id), recorded at synthesis time and
-    /// persisted in cache.json. Opening an artifact compiles it with its
+    /// persisted in the contexts blob. Opening an artifact compiles it with its
     /// host's command — it is a fragment of that TU, and treated as
     /// self-contained (an artifact needing context itself is out of scope).
     llvm::StringMap<std::uint32_t> synthesized_hosts;
@@ -160,22 +161,32 @@ public:
     /// compile re-earns it.
     void reset_header_mode(std::uint32_t path_id);
 
-    /// Fill the context-domain cache.json slices. @param intern_id maps a
-    /// runtime path id and @param intern_path a raw path into the shared
-    /// cache path table; interning order is part of the on-disk format.
-    void dump_cache_slices(std::vector<CacheModeEntry>& modes,
-                           std::vector<CacheContextEntry>& contexts,
-                           std::vector<CacheArtifactEntry>& artifacts,
-                           llvm::function_ref<std::uint32_t(std::uint32_t)> intern_id,
-                           llvm::function_ref<std::uint32_t(llvm::StringRef)> intern_path) const;
+    /// Fill the validation slice of the artifacts blob (header-mode
+    /// verdicts, content-hash gated at load). @param intern_id maps a
+    /// runtime path id into the blob's path table; interning order is part
+    /// of the on-disk format.
+    void dump_mode_slices(std::vector<CacheModeEntry>& modes,
+                          llvm::function_ref<std::uint32_t(std::uint32_t)> intern_id) const;
 
-    /// Restore the context-domain state from cache.json slices. @param
-    /// resolve maps a cache path table index back to a path (empty when the
-    /// index is invalid).
-    void load_cache_slices(const std::vector<CacheModeEntry>& modes,
-                           const std::vector<CacheContextEntry>& contexts,
-                           const std::vector<CacheArtifactEntry>& artifacts,
-                           llvm::function_ref<llvm::StringRef(std::uint32_t)> resolve);
+    /// Restore header-mode verdicts. @param resolve maps a path table
+    /// index back to a path (empty when the index is invalid).
+    void load_mode_slices(const std::vector<CacheModeEntry>& modes,
+                          llvm::function_ref<llvm::StringRef(std::uint32_t)> resolve);
+
+    /// Fill the sovereignty slices of the contexts blob (user context
+    /// choices and synthesized-artifact hosts — never invalidated by
+    /// content, only by the user or a vanished CDB anchor). @param
+    /// intern_path interns a raw path (synthesized artifacts have no fid
+    /// requirement at this layer).
+    void dump_choice_slices(std::vector<CacheContextEntry>& contexts,
+                            std::vector<CacheArtifactEntry>& artifacts,
+                            llvm::function_ref<std::uint32_t(std::uint32_t)> intern_id,
+                            llvm::function_ref<std::uint32_t(llvm::StringRef)> intern_path) const;
+
+    /// Restore the sovereignty slices; see dump_choice_slices.
+    void load_choice_slices(const std::vector<CacheContextEntry>& contexts,
+                            const std::vector<CacheArtifactEntry>& artifacts,
+                            llvm::function_ref<llvm::StringRef(std::uint32_t)> resolve);
 
     /// Fill compile arguments for a file and report where they came from.
     /// Tries, in order: CDB entry, header context through the include graph,

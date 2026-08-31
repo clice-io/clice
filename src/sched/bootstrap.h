@@ -26,7 +26,7 @@ struct BootstrapReport {
 
 /// The one workspace loading sequence, shared by the server's initialize
 /// and the batch driver so the two can never drift apart: open the cache
-/// store and register its namespaces, load cache.json, discover and load
+/// store and register its namespaces, discover and load
 /// the CDB, scan the dependency graph and build the module map, restore
 /// the persisted index (claiming its report into the pump), and seed the
 /// indexing sweep. The caller has already finalized workspace.config; a

@@ -46,13 +46,13 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
             cache->register_namespace(
                 {.name = "header_context", .extension = ".h", .policy = CachePolicy::Scratch});
             workspace.store.emplace(std::move(*cache));
-            // A read-only bootstrap never opens the index database: it
-            // would hold the writer lock for the process lifetime while
-            // committing nothing, starving a concurrent server or index
-            // run. The store's entry points all tolerate its absence.
-            if(!read_only_index) {
-                workspace.index_db = index::open_database(*workspace.store, cfg.index_db);
-            }
+            // A read-only bootstrap opens the index database read-only:
+            // no writer lock (a concurrent server or index run keeps
+            // owning it), while the persisted version stamps and artifact
+            // metadata still seed this session's fast paths. Its own
+            // metadata stays in memory and exits with it.
+            workspace.index_db =
+                index::open_database(*workspace.store, cfg.index_db, read_only_index);
             LOG_INFO("Cache store: {}", workspace.store->base_dir());
             report.opened_store = true;
         }
@@ -65,9 +65,6 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
         // database generated later (picked up by the CDB poll) starts from
         // the previous session's index.
         pump.claim_report(store.load(read_only_index).report);
-        // After the index load: the global blob restores file versions
-        // id-for-id, so it must run before cache.json interns any.
-        workspace.load_cache(contexts);
         return report;
     }
 
@@ -113,9 +110,6 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
 
     workspace.build_module_map();
     pump.claim_report(store.load(read_only_index).report);
-    // After the index load: the global blob restores file versions
-    // id-for-id, so it must run before cache.json interns any.
-    workspace.load_cache(contexts);
 
     if(cfg.enable_indexing.value) {
         for(auto& entry: workspace.cdb.entries()) {

@@ -52,6 +52,33 @@ struct CacheNamespace {
     std::uint64_t max_bytes = 0;
 };
 
+/// The identity of one committed blob, captured while the bytes were still
+/// private (the tmp file, before the publishing rename — capturing from
+/// the final path would race a concurrent replacer of the same key). The
+/// rename preserves inode and mtime, so the values stay true afterwards:
+/// the stat triple is a cheap per-use freshness check, and — since every
+/// commit is a fresh tmp file — the UniqueID changes whenever the blob is
+/// republished, making it a free generation token that same-size same-tick
+/// rewrites cannot forge. `hash` (xxh3 of the bytes) is the deep anchor
+/// for whole-read consumers and post-crash verification.
+struct BlobBinding {
+    std::uint64_t size = 0;
+    std::int64_t mtime_ns = 0;
+    std::uint64_t uid_device = 0;
+    std::uint64_t uid_file = 0;
+    std::uint64_t hash = 0;
+};
+
+/// Whether the file at `path` still carries the binding's stat identity
+/// (size, mtime, UniqueID) — the cheap per-use check that the blob was not
+/// republished since the record was made. A zeroed binding (record from
+/// before the blob existed) never matches.
+bool binding_stat_matches(llvm::StringRef path, const BlobBinding& binding);
+
+/// Whether the file's bytes hash to the binding's. Reads the whole file;
+/// used for post-crash verification and whole-read consumers.
+bool binding_content_matches(llvm::StringRef path, const BlobBinding& binding);
+
 /// Content-addressed blob store with atomic writes, crash recovery and
 /// per-namespace lifecycle policies.
 ///
@@ -199,7 +226,36 @@ public:
     /// is kept only when verified byte-identical to the new one; otherwise
     /// the stale destination is removed and the rename retried, and if the
     /// new blob still cannot be published an error is returned.
-    std::expected<std::string, std::error_code> commit(PendingEntry pending);
+    ///
+    /// `binding`, when set, receives the committed blob's identity (see
+    /// BlobBinding) — read and stat'ed from the tmp file before the
+    /// rename, or from the byte-identical survivor of a benign collision.
+    /// Durable commits also drop this writer's dirty marker first (see
+    /// mark_writer_dirty).
+    std::expected<std::string, std::error_code> commit(PendingEntry pending,
+                                                       BlobBinding* binding = nullptr);
+
+    /// Persist a durable "this writer has published blobs whose metadata
+    /// may not have reached the database yet" marker in this instance's
+    /// tmp directory, before the publication it covers. Cleared by
+    /// clear_writer_dirty once the metadata barrier completes; a crash in
+    /// between leaves the marker for the next open() to find. Returns the
+    /// mark count (see clear_writer_dirty).
+    std::uint64_t mark_writer_dirty();
+
+    /// Drop the dirty marker — but only when no publication happened since
+    /// the caller observed mark count `upto`: a blob committed while the
+    /// metadata barrier was in flight is not covered by it.
+    void clear_writer_dirty(std::uint64_t upto);
+
+    /// Marks issued so far (monotonic); pair with clear_writer_dirty.
+    std::uint64_t writer_mark_count() const;
+
+    /// Whether open() found the dirty marker of a dead writer: that
+    /// session crashed between publishing blobs and persisting their
+    /// metadata, so records adopted from the database must verify their
+    /// blob's content hash on first use.
+    bool dead_writer_dirty() const;
 
     /// Remove a blob.  Primarily for Persistent namespaces, whose cleanup
     /// is the caller's mark-and-sweep; LRU namespaces rarely need it.

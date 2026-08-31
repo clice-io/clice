@@ -631,12 +631,12 @@ void LSPClient::register_extensions() {
             // The session reset lives inside switch_context (single owner,
             // synchronous, no cross-file cascade — exempt from the event
             // pipeline; see the Invalidator charter).
-            auto result = this->server.context_service.switch_context(path,
-                                                                      path_id,
-                                                                      session.get(),
-                                                                      context_path,
-                                                                      context_path_id,
-                                                                      params);
+            auto result = co_await this->server.context_service.switch_context(path,
+                                                                               path_id,
+                                                                               session.get(),
+                                                                               context_path,
+                                                                               context_path_id,
+                                                                               params);
             // A context choice asks for the context-pure AST view; the
             // merged index cannot give it (union rows). A rejected switch
             // (stale epoch, bad host) changed no context and owes none.

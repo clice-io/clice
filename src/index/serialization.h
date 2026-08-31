@@ -106,7 +106,7 @@ namespace clice::index {
 /// stored data changes (v9: preamble document links are document-ordered;
 /// v10: an include location's `include` names the directive's containing
 /// file, not that file's includer).
-constexpr inline std::uint32_t index_format_version = 10;
+constexpr inline std::uint32_t index_format_version = 11;
 
 /// Serialize a reflected index blob to `os` as a verified-readable
 /// flatbuffer. Encoding only fails on structural impossibilities (e.g. more

@@ -1,6 +1,7 @@
 #include "sched/index/store.h"
 
 #include <algorithm>
+#include <unordered_map>
 #include <cassert>
 #include <format>
 #include <utility>
@@ -8,6 +9,8 @@
 
 #include "index/database.h"
 #include "index/manifest.h"
+#include "index/serialization.h"
+#include "sched/context.h"
 #include "index/shard.h"
 #include "index/tu_index.h"
 #include "support/filesystem.h"
@@ -131,10 +134,289 @@ std::string serialize_cdb_snapshot(Workspace& workspace,
     return json ? std::move(*json) : std::string();
 }
 
+/// The artifacts and contexts blobs: JSON envelopes in the index
+/// database, the persisted form of PCH/PCM validity metadata, header-mode
+/// verdicts and user context choices (the cache.json successor). Paths are
+/// persisted as spellings and re-interned at load — runtime fids are not
+/// stable across sessions. Per-dep stamps are the shared versions',
+/// written at save and adopted back at load, so the fast paths survive a
+/// restart without the records referencing version ids (they self-heal
+/// against any index state).
+
+struct CacheDepEntry {
+    std::uint32_t path;  // index into the envelope's paths table
+    std::uint64_t hash;
+    std::uint64_t size;
+    std::int64_t mtime_ns;
+    bool missing;
+};
+
+struct CacheBindingEntry {
+    std::uint64_t size;
+    std::int64_t mtime_ns;
+    std::uint64_t uid_device;
+    std::uint64_t uid_file;
+    std::uint64_t hash;
+};
+
+struct CachePCHEntry {
+    std::string key;  // CacheStore key in the "pch" namespace
+    std::uint32_t bound;
+    std::vector<CacheDepEntry> deps;
+    CacheBindingEntry blob;
+    CacheBindingEntry index_blob;
+
+    // Still owing the post-unclean-shutdown content verification. Persisted
+    // per record: the dead writer's dirty marker is consumed by the open
+    // that finds it, and a session can crash before verifying — the debt
+    // must survive that chain until the verification actually runs.
+    bool verify_content;
+};
+
+struct CachePCMEntry {
+    std::string key;  // CacheStore key in the "pcm" namespace
+    std::uint32_t source_file;
+    std::string module_name;
+    std::vector<CacheDepEntry> deps;
+    CacheBindingEntry blob;
+    bool verify_content;
+};
+
+struct ArtifactsData {
+    std::vector<std::string> paths;
+
+    // index_format_version the .pch.idx envelopes were written with (one
+    // binary writes them all). A mismatch drops every PCH entry at load so
+    // the pairs rebuild immediately, instead of the mismatch surfacing
+    // lazily on the first overlay query — which cannot trigger a rebuild.
+    std::uint32_t pch_index_format = 0;
+
+    std::vector<CachePCHEntry> pch;
+    std::vector<CachePCMEntry> pcm;
+    std::vector<CacheModeEntry> header_modes;
+};
+
+struct ContextsData {
+    std::vector<std::string> paths;
+    std::vector<CacheContextEntry> contexts;
+    std::vector<CacheArtifactEntry> artifacts;
+};
+
+BlobBinding to_binding(const CacheBindingEntry& entry) {
+    return {entry.size, entry.mtime_ns, entry.uid_device, entry.uid_file, entry.hash};
+}
+
+CacheBindingEntry from_binding(const BlobBinding& binding) {
+    return {binding.size, binding.mtime_ns, binding.uid_device, binding.uid_file, binding.hash};
+}
+
 }  // namespace
 
-IndexStore::IndexStore(kota::event_loop& loop, Workspace& workspace) :
-    loop(loop), workspace(workspace) {}
+IndexStore::IndexStore(kota::event_loop& loop, Workspace& workspace, ContextResolver& contexts) :
+    loop(loop), workspace(workspace), contexts(contexts) {}
+
+std::string IndexStore::serialize_artifacts() {
+    ArtifactsData data;
+    data.pch_index_format = index::index_format_version;
+    std::unordered_map<std::string, std::uint32_t> index_map;
+
+    auto intern = [&](std::uint32_t fid) -> std::uint32_t {
+        auto path = std::string(workspace.file_table.resolve(fid));
+        auto [it, inserted] =
+            index_map.try_emplace(path, static_cast<std::uint32_t>(data.paths.size()));
+        if(inserted) {
+            data.paths.push_back(path);
+        }
+        return it->second;
+    };
+
+    // The persisted per-dep stamp is the shared version's — earned once,
+    // written for every artifact referencing the version.
+    auto stamp_of = [&](const DepState& dep) -> std::pair<std::uint64_t, std::int64_t> {
+        auto it = workspace.file_table.version_ids.find({dep.path_id, dep.hash});
+        if(it == workspace.file_table.version_ids.end()) {
+            return {0, 0};
+        }
+        auto& version = workspace.file_table.version(it->second);
+        return {version.size, version.mtime_ns};
+    };
+    auto dump_deps = [&](const DepsSnapshot& snap, std::vector<CacheDepEntry>& out) {
+        for(auto& dep: snap.deps) {
+            auto [size, mtime_ns] = stamp_of(dep);
+            out.push_back({intern(dep.path_id), dep.hash, size, mtime_ns, dep.missing});
+        }
+    };
+
+    for(auto& e: workspace.pch_cache) {
+        auto& st = e.second;
+        if(st.path.empty())
+            continue;
+        CachePCHEntry entry;
+        entry.key = e.getKey().str();
+        entry.bound = st.bound;
+        dump_deps(st.deps, entry.deps);
+        entry.blob = from_binding(st.binding);
+        entry.index_blob = from_binding(st.index_binding);
+        entry.verify_content = st.verify_content;
+        data.pch.push_back(std::move(entry));
+    }
+
+    for(auto& [path_id, st]: workspace.pcm_cache) {
+        if(st.path.empty())
+            continue;
+        CachePCMEntry entry;
+        entry.key = st.key;
+        entry.source_file = intern(path_id);
+        auto mod_it = workspace.path_to_module.find(path_id);
+        entry.module_name = mod_it != workspace.path_to_module.end() ? mod_it->second : "";
+        dump_deps(st.deps, entry.deps);
+        entry.blob = from_binding(st.binding);
+        entry.verify_content = st.verify_content;
+        data.pcm.push_back(std::move(entry));
+    }
+
+    contexts.dump_mode_slices(data.header_modes, intern);
+
+    auto json = kota::codec::json::to_string(data);
+    if(!json) {
+        LOG_WARN("Failed to serialize the artifacts blob");
+        return {};
+    }
+    return std::move(*json);
+}
+
+std::string IndexStore::serialize_contexts() {
+    ContextsData data;
+    std::unordered_map<std::string, std::uint32_t> index_map;
+
+    auto intern_path = [&](llvm::StringRef path) -> std::uint32_t {
+        auto [it, inserted] =
+            index_map.try_emplace(path.str(), static_cast<std::uint32_t>(data.paths.size()));
+        if(inserted) {
+            data.paths.push_back(path.str());
+        }
+        return it->second;
+    };
+    auto intern = [&](std::uint32_t fid) -> std::uint32_t {
+        return intern_path(workspace.file_table.resolve(fid));
+    };
+
+    contexts.dump_choice_slices(data.contexts, data.artifacts, intern, intern_path);
+
+    auto json = kota::codec::json::to_string(data);
+    if(!json) {
+        LOG_WARN("Failed to serialize the contexts blob");
+        return {};
+    }
+    return std::move(*json);
+}
+
+void IndexStore::load_artifacts(llvm::StringRef bytes) {
+    if(bytes.empty() || !workspace.store) {
+        return;
+    }
+    ArtifactsData data;
+    if(!kota::codec::json::from_string(bytes, data)) {
+        LOG_WARN("Failed to parse the artifacts blob");
+        return;
+    }
+
+    auto resolve = [&](std::uint32_t idx) -> llvm::StringRef {
+        return idx < data.paths.size() ? llvm::StringRef(data.paths[idx]) : "";
+    };
+    auto load_deps = [&](const std::vector<CacheDepEntry>& dep_entries) -> DepsSnapshot {
+        DepsSnapshot deps;
+        for(auto& dep: dep_entries) {
+            auto dep_path = resolve(dep.path);
+            if(dep_path.empty())
+                continue;
+            auto path_id = workspace.file_table.intern(dep_path);
+            deps.deps.push_back({.path_id = path_id, .hash = dep.hash, .missing = dep.missing});
+            if(dep.hash != 0) {
+                workspace.file_table.adopt_stamp(
+                    workspace.file_table.intern_version(path_id, dep.hash),
+                    dep.size,
+                    dep.mtime_ns);
+            }
+        }
+        return deps;
+    };
+
+    // Records published by a writer that died before its metadata barrier
+    // may describe blobs they never matched: verify content hashes on the
+    // records' first use.
+    bool verify_content = workspace.store->dead_writer_dirty();
+
+    bool pch_format_ok = data.pch_index_format == index::index_format_version;
+    for(auto& entry: data.pch) {
+        if(!pch_format_ok) {
+            break;
+        }
+        auto pch_path = workspace.store->lookup("pch", entry.key);
+        if(!pch_path)
+            continue;
+        // A PCH without its pch.idx envelope is an incomplete pair
+        // (crash between the two commits): treat it as absent so the next
+        // compile rebuilds both.
+        auto index_path = workspace.store->lookup_aux("pch", entry.key);
+        if(!index_path)
+            continue;
+
+        auto& st = workspace.pch_cache[entry.key];
+        st.path = *pch_path;
+        st.bound = entry.bound;
+        st.deps = load_deps(entry.deps);
+        st.binding = to_binding(entry.blob);
+        st.index_binding = to_binding(entry.index_blob);
+        st.verify_content = entry.verify_content || verify_content;
+        st.index_path = *index_path;
+    }
+
+    for(auto& entry: data.pcm) {
+        auto pcm_path = workspace.store->lookup("pcm", entry.key);
+        auto source = resolve(entry.source_file);
+        if(!pcm_path || source.empty())
+            continue;
+        // A dep-less entry is an unvalidatable snapshot that would blindly
+        // serve a stale PCM (the key embeds no content). Drop it and let
+        // the module rebuild once.
+        if(entry.deps.empty()) {
+            continue;
+        }
+        auto path_id = workspace.file_table.intern(source);
+        auto& st = workspace.pcm_cache[path_id];
+        st.path = *pcm_path;
+        st.key = entry.key;
+        st.deps = load_deps(entry.deps);
+        st.binding = to_binding(entry.blob);
+        st.verify_content = entry.verify_content || verify_content;
+        workspace.pcm_paths[path_id] = *pcm_path;
+    }
+
+    auto intern_resolve = [&](std::uint32_t idx) -> llvm::StringRef {
+        return resolve(idx);
+    };
+    contexts.load_mode_slices(data.header_modes, intern_resolve);
+
+    LOG_INFO("Loaded artifact metadata: {} PCH entries, {} PCM entries",
+             workspace.pch_cache.size(),
+             workspace.pcm_cache.size());
+}
+
+void IndexStore::load_contexts(llvm::StringRef bytes) {
+    if(bytes.empty()) {
+        return;
+    }
+    ContextsData data;
+    if(!kota::codec::json::from_string(bytes, data)) {
+        LOG_WARN("Failed to parse the contexts blob");
+        return;
+    }
+    auto resolve = [&](std::uint32_t idx) -> llvm::StringRef {
+        return idx < data.paths.size() ? llvm::StringRef(data.paths[idx]) : "";
+    };
+    contexts.load_choice_slices(data.contexts, data.artifacts, resolve);
+}
 
 std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, std::size_t size) {
     // Zero-copy consumption: the wire stays serialized; a new variant's
@@ -416,8 +698,13 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<std::uint32_t>
     // nothing, and the gauge must not keep exposing the previous round's
     // count as current.
     saved_shards = 0;
-    if(!workspace.index_db)
+    // A read-only session (batch lint, stats) keeps its metadata in memory
+    // and exits with it — it must never write into a database a concurrent
+    // writer owns.
+    if(!workspace.index_db || workspace.index_db->read_only())
         co_return report;
+    co_await save_gate.acquire();
+    auto gate = llvm::make_scope_exit([this] { save_gate.release(); });
     auto& db = *workspace.index_db;
     auto& project = workspace.project_index;
     ScopedTimer timer;
@@ -544,10 +831,45 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<std::uint32_t>
         }
     }
 
+    // Metadata blobs ride every save: dirty artifact records and context
+    // choices flush on whatever save runs next. The epoch is snapshotted
+    // here — marks landing past this point are not covered by these bytes
+    // and wait for the next save (a durability waiter's ticket compares
+    // against committed_metadata_epoch). The writer-dirty marker clears
+    // below only when no blob was published after this same point.
+    auto flush_epoch = workspace.metadata_epoch;
+    auto store_marks = workspace.store ? workspace.store->writer_mark_count() : 0;
+    std::optional<std::size_t> artifacts_index;
+    std::optional<std::size_t> contexts_index;
+    bool metadata_ok = true;
+    if(workspace.artifacts_dirty) {
+        if(auto bytes = serialize_artifacts(); !bytes.empty()) {
+            artifacts_index = batch.size();
+            batch.push_back({index::IndexBlobKind::Artifacts, "artifacts", std::move(bytes)});
+        } else {
+            metadata_ok = false;
+        }
+    }
+    if(workspace.contexts_dirty) {
+        if(auto bytes = serialize_contexts(); !bytes.empty()) {
+            contexts_index = batch.size();
+            batch.push_back({index::IndexBlobKind::Contexts, "contexts", std::move(bytes)});
+        } else {
+            metadata_ok = false;
+        }
+    }
+
     bool had_global = global_dirty;
     dirty_shards.clear();
     dirty_manifests.clear();
     global_dirty = false;
+    // Serialization failures keep their dirty flag for the next attempt.
+    if(artifacts_index) {
+        workspace.artifacts_dirty = false;
+    }
+    if(contexts_index) {
+        workspace.contexts_dirty = false;
+    }
 
     // A deferred load-time sweep can name a key this very save re-writes:
     // the swept TU was re-enqueued at load and has already re-indexed.
@@ -587,6 +909,8 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<std::uint32_t>
         dirty_manifests.insert(manifest_ids.begin(), manifest_ids.end());
         global_dirty = global_dirty || had_global;
         cdb_dirty = cdb_dirty || cdb_index.has_value();
+        workspace.artifacts_dirty = workspace.artifacts_dirty || artifacts_index.has_value();
+        workspace.contexts_dirty = workspace.contexts_dirty || contexts_index.has_value();
         startup_removes.append(std::make_move_iterator(removals.begin()),
                                std::make_move_iterator(removals.end()));
         saving_shards = 0;
@@ -610,6 +934,12 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<std::uint32_t>
             // save retries even when nothing else changes by then.
             cdb_dirty = true;
             cdb_index.reset();
+        } else if(artifacts_index && i == *artifacts_index) {
+            workspace.artifacts_dirty = true;
+            metadata_ok = false;
+        } else if(contexts_index && i == *contexts_index) {
+            workspace.contexts_dirty = true;
+            metadata_ok = false;
         } else {
             global_dirty = true;
         }
@@ -620,6 +950,20 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<std::uint32_t>
     }
     saved_shards = shard_count - failed_shards;
     saving_shards = 0;
+
+    // Metadata as of the snapshot point is durable: advance the epoch and
+    // wake durability waiters (switchContext tickets). The writer-dirty
+    // marker clears only when no blob was published since the snapshot —
+    // a commit landing across the write await is not covered.
+    if(metadata_ok) {
+        workspace.committed_metadata_epoch =
+            std::max(workspace.committed_metadata_epoch, flush_epoch);
+        workspace.metadata_committed.set();
+        workspace.metadata_committed.reset();
+        if(workspace.store && failed.empty() && !db.corrupted()) {
+            workspace.store->clear_writer_dirty(store_marks);
+        }
+    }
 
     // Corruption can surface first at write time (a damaged page only the
     // write's tree descent reaches): heal like load-time corruption instead
@@ -806,6 +1150,19 @@ IndexStore::LoadResult IndexStore::load(bool read_only) {
         }
     };
 
+    // Artifact metadata and context choices are index-independent: they
+    // load (and self-validate) whatever happened to the global blob. Must
+    // run after load_global though — the deps they intern would otherwise
+    // occupy version ids the blob restores id-for-id.
+    auto load_metadata = [&] {
+        if(auto artifacts = db.read(index::IndexBlobKind::Artifacts, "artifacts")) {
+            load_artifacts(artifacts.buffer->getBuffer());
+        }
+        if(auto choices = db.read(index::IndexBlobKind::Contexts, "contexts")) {
+            load_contexts(choices.buffer->getBuffer());
+        }
+    };
+
     auto global = db.read(index::IndexBlobKind::Global, "global");
     if(!global) {
         // A global blob that exists but failed to open is a transient IO
@@ -824,6 +1181,9 @@ IndexStore::LoadResult IndexStore::load(bool read_only) {
                 LOG_WARN("Index database is corrupt; discarding it and rebuilding from scratch");
                 reopen_fresh_database();
             } else {
+                // Best effort before detaching: the metadata blobs may
+                // still read while only the global is unreadable.
+                load_metadata();
                 LOG_WARN("Index global blob unreadable; disabling index persistence this session");
                 workspace.index_db.reset();
             }
@@ -832,18 +1192,21 @@ IndexStore::LoadResult IndexStore::load(bool read_only) {
         // No global table means no resolvable manifests: everything else
         // is unreachable data, swept so it cannot survive as orphans.
         sweep_all();
+        load_metadata();
         return result;
     }
     llvm::DenseMap<std::uint32_t, std::uint64_t> manifest_pins;
     if(!project.load_global(global.buffer->getBuffer(), workspace.file_table, manifest_pins)) {
         LOG_INFO("Discarding old-format index global blob");
         sweep_all();
+        load_metadata();
         if(!read_only) {
             startup_removes.push_back({index::IndexBlobKind::Global, "global"});
         }
         result.decoded = false;
         return result;
     }
+    load_metadata();
 
     // Adopt exactly the manifests the global blob pins, at exactly the
     // pinned generation stamp and with every FileVersion resolvable. The
@@ -919,7 +1282,16 @@ IndexStore::LoadResult IndexStore::load(bool read_only) {
     llvm::SmallVector<std::uint32_t> unservable;
     for(auto& [path_id, entry]: project.contributions) {
         auto key = blob_key(workspace.file_table.resolve(path_id));
-        auto shard = index::Shard::from_buffer(db.read(index::IndexBlobKind::Shard, key).buffer);
+        auto blob = db.read(index::IndexBlobKind::Shard, key);
+        if(read_only && blob && blob.generation != 0) {
+            // A read-only session never advances snapshots, so borrowed
+            // bytes would pin the opening snapshot for its whole lifetime
+            // while a concurrent writer churns; copies let the snapshot
+            // retire right after the load.
+            blob.buffer = llvm::MemoryBuffer::getMemBufferCopy(blob.buffer->getBuffer());
+            blob.generation = 0;
+        }
+        auto shard = index::Shard::from_buffer(std::move(blob.buffer));
         // A blob can verify yet miss a contributed variant, or carry
         // another content generation than the contributions pin (crash or
         // failed write left a manifest newer than its shard); set_live
@@ -1009,6 +1381,16 @@ IndexStore::LoadResult IndexStore::load(bool read_only) {
         cdb_dirty = true;
         reopen_fresh_database();
         return result;
+    }
+
+    if(read_only) {
+        // Everything is deserialized or copied by now, so nothing borrows
+        // the opening snapshot; retiring it keeps a long read-only session
+        // (batch lint) from pinning a concurrent writer's page
+        // reclamation to session start.
+        if(db.advance_read_snapshot()) {
+            db.retire_old_snapshot();
+        }
     }
 
     if(!workspace.shards.empty()) {

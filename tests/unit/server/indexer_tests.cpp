@@ -46,7 +46,7 @@ struct IndexerFixture {
     ContextResolver contexts{workspace};
     TaskGraph graph{loop};
     PCMFamily pcm{graph, workspace, contexts, pool};
-    IndexStore index_store{loop, workspace};
+    IndexStore index_store{loop, workspace, contexts};
     TURunFamily turun{graph, workspace, contexts, pcm, index_store, pool};
     IndexPump pump{loop, workspace, turun, index_store, pool};
 

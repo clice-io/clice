@@ -35,7 +35,7 @@ ContextResolver resolver{workspace};
 TaskGraph graph{loop};
 PCMFamily pcm{graph, workspace, resolver, pool};
 ASTProjectionTable projections;
-IndexStore index_store{loop, workspace};
+IndexStore index_store{loop, workspace, resolver};
 TURunFamily turun{graph, workspace, resolver, pcm, index_store, pool};
 IndexPump indexer{loop, workspace, turun, index_store, pool};
 IndexQuery index_query{workspace, store, indexer, projections};
