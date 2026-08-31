@@ -182,6 +182,188 @@ struct FileTable {
         }
         return read(fid);
     }
+
+    /// A content version of a file: `content_hash` names the bytes (for
+    /// build artifacts, the bytes the build consumed — reported by the
+    /// worker, never replaced by a later disk read), and the stat is the
+    /// shared fast path proving the disk still holds them. Recorded only
+    /// when the file provably did not change since before the consuming
+    /// build started; mtime_ns == 0 means "no fast path" and a check
+    /// falls through to the hash comparison, which repairs the fast path
+    /// in place — once, for every consumer of the version.
+    struct FileVersion {
+        std::uint32_t fid = 0;
+        std::uint64_t content_hash = 0;
+        std::uint64_t size = 0;
+        std::int64_t mtime_ns = 0;
+    };
+
+    /// Version table. Ids are monotonic and never reused — persisted
+    /// index manifests stay resolvable against any later table (or are
+    /// detected as stale). Within a session the table is append-only:
+    /// persistence garbage-collects unreferenced versions from the blob it
+    /// writes, never from memory, so a version one consumer stops
+    /// referencing can still anchor another consumer's staleness check.
+    llvm::DenseMap<std::uint32_t, FileVersion> versions;
+    llvm::DenseMap<std::pair<std::uint32_t, std::uint64_t>, std::uint32_t> version_ids;
+    std::uint32_t next_version_id = 0;
+
+    /// Bumped whenever a version's stat fast path is written (stamped at
+    /// capture or repaired by a check). Persistence compares it around an
+    /// operation to learn whether the table changed under it.
+    std::uint64_t stamp_generation = 0;
+
+    const FileVersion& version(std::uint32_t vid) const {
+        auto it = versions.find(vid);
+        assert(it != versions.end());
+        return it->second;
+    }
+
+    /// The version id for (fid, content hash), interning a new record on
+    /// first sight.
+    std::uint32_t intern_version(std::uint32_t fid, std::uint64_t content_hash) {
+        auto [it, inserted] = version_ids.try_emplace({fid, content_hash}, next_version_id);
+        if(inserted) {
+            versions.try_emplace(next_version_id, FileVersion{fid, content_hash, 0, 0});
+            next_version_id += 1;
+        }
+        return it->second;
+    }
+
+    /// Give a version its stat fast path, but only corroborated: the shared
+    /// pair must prove the bytes at exactly this stat hash to the version's
+    /// content hash. A caller's own proof (e.g. "mtime predates the build")
+    /// is not enough — a same-stat rewrite forging the mtime would stamp a
+    /// stat describing bytes the consumer never saw, and the equality fast
+    /// path would then judge them fresh forever. An already-stamped version
+    /// keeps its stamp (it was earned the same way; concurrent captures of
+    /// one version must not regress each other).
+    void try_stamp(std::uint32_t vid, std::uint64_t size, std::int64_t mtime_ns) {
+        auto it = versions.find(vid);
+        assert(it != versions.end());
+        auto& version = it->second;
+        if(version.mtime_ns != 0 || version.content_hash == 0) {
+            return;
+        }
+        if(auto hash = cached_hash(version.fid, size, mtime_ns);
+           hash && *hash == version.content_hash) {
+            version.size = size;
+            version.mtime_ns = mtime_ns;
+            stamp_generation += 1;
+        }
+    }
+
+    /// Adopt a stamp persisted by an earlier session — it was earned under
+    /// try_stamp's corroboration discipline back then, which is what makes
+    /// it trustworthy without a live pair now. Only fills a hole: a stamp
+    /// earned this session describes the same bytes at least as recently.
+    void adopt_stamp(std::uint32_t vid, std::uint64_t size, std::int64_t mtime_ns) {
+        auto it = versions.find(vid);
+        assert(it != versions.end());
+        auto& version = it->second;
+        if(version.mtime_ns == 0 && version.content_hash != 0 && mtime_ns != 0) {
+            version.size = size;
+            version.mtime_ns = mtime_ns;
+        }
+    }
+
+    /// A save embedded this file's content into artifacts that will not be
+    /// re-read from disk (synthesized preambles): drop every trust anchor
+    /// so the next check of any of its versions performs a real read — the
+    /// stat fast paths, the shared pair a check would consult instead of
+    /// reading, and verdicts already memoized in the current wave, which
+    /// would bypass the forced point entirely.
+    void force_revalidate(std::uint32_t fid) {
+        disk_states.erase(fid);
+        for(auto& [vid, version]: versions) {
+            if(version.fid == fid) {
+                version.size = 0;
+                version.mtime_ns = 0;
+                wave_verdicts.erase(vid);
+            }
+        }
+    }
+
+    /// How one wave's check of a version came out. Policy-free facts;
+    /// what Missing or Unreadable *means* differs per consumer (see the
+    /// policy table in the plan) and stays with the caller.
+    enum class Verdict : std::uint8_t {
+        /// The disk provably holds the version's bytes.
+        Fresh,
+        /// The disk holds different bytes.
+        Stale,
+        /// The file does not exist now.
+        Missing,
+        /// The file exists but cannot be read right now.
+        Unreadable,
+    };
+
+    /// Wave-scoped verdict memo: one top-level check operation (a
+    /// deps_changed chain, an index need_update batch) opens a wave, and
+    /// every version is settled at most once inside it. Within a wave, a
+    /// version with no fast path is validated by a real read exactly once;
+    /// the repair the read performs is what later waves' fast paths are
+    /// made of. A wave must not span a suspension point — a save landing
+    /// mid-wave would leave memoized verdicts describing the old disk.
+    llvm::DenseMap<std::uint32_t, Verdict> wave_verdicts;
+
+    void begin_wave() {
+        wave_verdicts.clear();
+    }
+
+    /// The unified two-layer staleness check: stat equality against the
+    /// version's shared fast path, else a read through the disk-state
+    /// compartment (feeding both compartments), comparing the bytes'
+    /// hash against the version's and repairing the fast path on a
+    /// match. Memoized within the current wave.
+    Verdict check_version(std::uint32_t vid) {
+        if(auto it = wave_verdicts.find(vid); it != wave_verdicts.end()) {
+            return it->second;
+        }
+        auto verdict = check_version_uncached(vid);
+        wave_verdicts.try_emplace(vid, verdict);
+        return verdict;
+    }
+
+private:
+    Verdict check_version_uncached(std::uint32_t vid) {
+        auto it = versions.find(vid);
+        assert(it != versions.end());
+        auto& version = it->second;
+
+        llvm::sys::fs::file_status status;
+        if(llvm::sys::fs::status(resolve(version.fid), status)) {
+            return Verdict::Missing;
+        }
+        auto size = status.getSize();
+        auto mtime_ns = fs::mtime_ns(status);
+        if(version.mtime_ns != 0 && version.size == size && version.mtime_ns == mtime_ns) {
+            return Verdict::Fresh;
+        }
+
+        // No trusted hash to compare against: never fresh (0 is the
+        // consumed-hash sentinel for "the worker had no bytes to hash").
+        if(version.content_hash == 0) {
+            return Verdict::Stale;
+        }
+
+        auto obs = observe_for(version.fid, size, mtime_ns);
+        if(!obs) {
+            return Verdict::Unreadable;
+        }
+        if(obs->hash != version.content_hash) {
+            return Verdict::Stale;
+        }
+        // Touched but not modified — repair the fast path so the next
+        // check is a single stat again, for every consumer at once. An
+        // unpaired or guard-window observation must not become one.
+        if(obs->reliable) {
+            version.size = obs->size;
+            version.mtime_ns = obs->mtime_ns;
+            stamp_generation += 1;
+        }
+        return Verdict::Fresh;
+    }
 };
 
 }  // namespace clice

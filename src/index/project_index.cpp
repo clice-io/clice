@@ -128,30 +128,19 @@ bool ProjectIndex::merge(this ProjectIndex& self,
     return true;
 }
 
-std::uint32_t ProjectIndex::intern_file_version(this ProjectIndex& self,
-                                                std::uint32_t path_id,
-                                                std::uint64_t content_hash) {
-    auto [it, inserted] = self.fv_ids.try_emplace({path_id, content_hash}, self.next_fv_id);
-    if(inserted) {
-        self.file_versions.try_emplace(
-            self.next_fv_id,
-            FileVersionRecord{.path_id = path_id, .content_hash = content_hash});
-        self.next_fv_id += 1;
-    }
-    return it->second;
-}
-
-bool ProjectIndex::knows_file_versions(this const ProjectIndex& self, const TUManifest& manifest) {
-    if(!self.file_versions.contains(manifest.tu_fv)) {
+bool ProjectIndex::knows_file_versions(this const ProjectIndex& self,
+                                       const clice::FileTable& files,
+                                       const TUManifest& manifest) {
+    if(!files.versions.contains(manifest.tu_fv)) {
         return false;
     }
     for(auto& node: manifest.nodes) {
-        if(!self.file_versions.contains(node.fv)) {
+        if(!files.versions.contains(node.fv)) {
             return false;
         }
     }
     for(auto& [fv, hash]: manifest.contributions) {
-        if(!self.file_versions.contains(fv)) {
+        if(!files.versions.contains(fv)) {
             return false;
         }
     }
@@ -159,12 +148,13 @@ bool ProjectIndex::knows_file_versions(this const ProjectIndex& self, const TUMa
 }
 
 llvm::SmallVector<std::uint32_t> ProjectIndex::apply_manifest(this ProjectIndex& self,
+                                                              const clice::FileTable& files,
                                                               std::uint32_t tu_path_id,
                                                               TUManifest manifest) {
-    llvm::SmallVector<std::uint32_t> affected = self.remove_manifest(tu_path_id);
+    llvm::SmallVector<std::uint32_t> affected = self.remove_manifest(files, tu_path_id);
 
     for(auto& [fv, hash]: manifest.contributions) {
-        auto path_id = self.file_versions.at(fv).path_id;
+        auto path_id = files.version(fv).fid;
         self.contributions[path_id][tu_path_id] = hash;
         affected.push_back(path_id);
     }
@@ -176,6 +166,7 @@ llvm::SmallVector<std::uint32_t> ProjectIndex::apply_manifest(this ProjectIndex&
 }
 
 llvm::SmallVector<std::uint32_t> ProjectIndex::remove_manifest(this ProjectIndex& self,
+                                                               const clice::FileTable& files,
                                                                std::uint32_t tu_path_id) {
     llvm::SmallVector<std::uint32_t> affected;
     auto it = self.manifests.find(tu_path_id);
@@ -184,7 +175,7 @@ llvm::SmallVector<std::uint32_t> ProjectIndex::remove_manifest(this ProjectIndex
     }
 
     for(auto& [fv, hash]: it->second.contributions) {
-        auto path_id = self.file_versions.at(fv).path_id;
+        auto path_id = files.version(fv).fid;
         auto contribution_it = self.contributions.find(path_id);
         if(contribution_it == self.contributions.end()) {
             continue;
@@ -219,10 +210,11 @@ llvm::SmallVector<std::uint64_t> ProjectIndex::live_variants(this const ProjectI
 
 void ProjectIndex::serialize_global(this ProjectIndex& self,
                                     llvm::raw_ostream& os,
-                                    const clice::FileTable& pool) {
-    // Garbage-collect the FileVersion table down to what some manifest
-    // still references — in memory too, so ids of dead versions stop
-    // accumulating across the session (they are never reused either way).
+                                    const clice::FileTable& files) {
+    // The blob carries only the versions some manifest still references —
+    // the persisted form's garbage collection. The shared table itself is
+    // left alone: other consumers may still anchor checks on a version the
+    // index dropped, and ids are never reused either way.
     llvm::DenseSet<std::uint32_t> referenced;
     for(auto& manifest: llvm::make_second_range(self.manifests)) {
         referenced.insert(manifest.tu_fv);
@@ -234,33 +226,17 @@ void ProjectIndex::serialize_global(this ProjectIndex& self,
         }
     }
 
-    llvm::SmallVector<std::uint32_t> dead;
-    for(auto id: llvm::make_first_range(self.file_versions)) {
-        if(!referenced.contains(id)) {
-            dead.push_back(id);
-        }
-    }
-    for(auto id: dead) {
-        auto& record = self.file_versions.at(id);
-        self.fv_ids.erase({record.path_id, record.content_hash});
-        self.file_versions.erase(id);
-    }
-
     GlobalBlob blob;
     blob.format_version = index_format_version;
     blob.generation = self.global_generation;
-    blob.next_fv_id = self.next_fv_id;
+    blob.next_fv_id = files.next_version_id;
 
-    llvm::SmallVector<std::uint32_t> ids;
-    ids.reserve(self.file_versions.size());
-    for(auto id: llvm::make_first_range(self.file_versions)) {
-        ids.push_back(id);
-    }
+    llvm::SmallVector<std::uint32_t> ids(referenced.begin(), referenced.end());
     llvm::sort(ids);
     for(auto id: ids) {
-        auto& record = self.file_versions.at(id);
+        auto& record = files.version(id);
         blob.fv_ids.push_back(id);
-        blob.fv_paths.emplace_back(pool.resolve(record.path_id));
+        blob.fv_paths.emplace_back(files.resolve(record.fid));
         blob.fv_hashes.push_back(record.content_hash);
         blob.fv_sizes.push_back(record.size);
         blob.fv_mtimes.push_back(record.mtime_ns);
@@ -289,7 +265,7 @@ void ProjectIndex::serialize_global(this ProjectIndex& self,
     }
     blob.sym_paths.reserve(bitmap_referenced.cardinality());
     for(auto id: bitmap_referenced) {
-        blob.sym_paths.emplace_back(id, pool.resolve(id).str());
+        blob.sym_paths.emplace_back(id, files.resolve(id).str());
     }
 
     serialize_blob(blob, os);
@@ -303,7 +279,7 @@ void ProjectIndex::serialize_global(this ProjectIndex& self,
 
 bool ProjectIndex::load_global(this ProjectIndex& self,
                                llvm::StringRef data,
-                               clice::FileTable& pool,
+                               clice::FileTable& files,
                                llvm::DenseMap<std::uint32_t, std::uint64_t>& manifest_pins) {
     GlobalBlob blob;
     if(!deserialize_blob(data, blob) || blob.format_version != index_format_version) {
@@ -429,13 +405,18 @@ bool ProjectIndex::load_global(this ProjectIndex& self,
         bitmaps.push_back(std::move(*decoded));
     }
 
+    // Adopting the blob's version ids verbatim is what keeps persisted
+    // manifests resolvable; it requires an untouched table — ids already
+    // handed out by this session could collide with the blob's.
+    assert(files.versions.empty() && "the global blob must load before any version interning");
+
     self.global_generation = blob.generation;
-    self.next_fv_id = blob.next_fv_id;
+    files.next_version_id = blob.next_fv_id;
     for(std::size_t i = 0; i < count; i += 1) {
-        auto path_id = pool.intern(blob.fv_paths[i]);
+        auto path_id = files.intern(blob.fv_paths[i]);
         auto id = blob.fv_ids[i];
-        self.file_versions[id] = {path_id, blob.fv_hashes[i], blob.fv_sizes[i], blob.fv_mtimes[i]};
-        self.fv_ids[{path_id, blob.fv_hashes[i]}] = id;
+        files.versions[id] = {path_id, blob.fv_hashes[i], blob.fv_sizes[i], blob.fv_mtimes[i]};
+        files.version_ids[{path_id, blob.fv_hashes[i]}] = id;
     }
 
     for(std::size_t k = 0; k < blob.manifest_fvs.size(); k += 1) {
@@ -448,7 +429,7 @@ bool ProjectIndex::load_global(this ProjectIndex& self,
     llvm::DenseMap<std::uint32_t, std::uint32_t> remap;
     remap.reserve(blob.sym_paths.size());
     for(auto& [id, path]: blob.sym_paths) {
-        remap.try_emplace(id, pool.intern(path));
+        remap.try_emplace(id, files.intern(path));
     }
 
     self.symbols.reserve(sym_count);

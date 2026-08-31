@@ -156,6 +156,7 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, std::uint32_t path_id
 
     // Check if cached PCM is still valid.
     llvm::StringRef pcm_miss = "no_entry";
+    workspace.file_table.begin_wave();
     if(auto pcm_it = workspace.pcm_cache.find(path_id); pcm_it != workspace.pcm_cache.end()) {
         if(pcm_it->second.key != pcm_key) {
             pcm_miss = "key_changed";

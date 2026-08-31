@@ -89,19 +89,19 @@ TEST_CASE(ManifestVarintOverflowRejected) {
 index::ProjectIndex build_project(clice::FileTable& pool, llvm::StringRef path, llvm::StringRef tu) {
     index::ProjectIndex project;
     auto path_id = pool.intern(path);
-    auto fv = project.intern_file_version(path_id, 0xabcd);
-    project.file_versions.find(fv)->second.size = 100;
-    project.file_versions.find(fv)->second.mtime_ns = 5555;
+    auto fv = pool.intern_version(path_id, 0xabcd);
+    pool.versions.find(fv)->second.size = 100;
+    pool.versions.find(fv)->second.mtime_ns = 5555;
 
     index::TUManifest manifest;
-    manifest.tu_fv = project.intern_file_version(pool.intern(tu), 0x1111);
+    manifest.tu_fv = pool.intern_version(pool.intern(tu), 0x1111);
     manifest.nodes = {
         {fv, ~0u, 3}
     };
     manifest.contributions = {
         {fv, 777}
     };
-    project.apply_manifest(pool.intern(tu), std::move(manifest));
+    project.apply_manifest(pool, pool.intern(tu), std::move(manifest));
 
     auto& symbol = project.symbols[42];
     symbol.name = "sym";
@@ -132,16 +132,16 @@ TEST_CASE(GlobalRoundTripRemap) {
     auto id = fresh.find("/proj/used.h");
     ASSERT_TRUE(id.has_value());
     ASSERT_TRUE(loaded.symbols[42].reference_files.contains(*id));
-    ASSERT_EQ(loaded.next_fv_id, project.next_fv_id);
+    ASSERT_EQ(fresh.next_version_id, pool.next_version_id);
     ASSERT_EQ(loaded.global_generation, 9u);
 
     // The blob pins the TU's manifest at the stamp it was saved under.
     ASSERT_EQ(pins.size(), std::size_t(1));
     ASSERT_EQ(pins.find(manifest.tu_fv)->second, 9u);
 
-    auto fv_it = loaded.fv_ids.find({*id, std::uint64_t(0xabcd)});
-    ASSERT_TRUE(fv_it != loaded.fv_ids.end());
-    auto& record = loaded.file_versions.find(fv_it->second)->second;
+    auto fv_it = fresh.version_ids.find({*id, std::uint64_t(0xabcd)});
+    ASSERT_TRUE(fv_it != fresh.version_ids.end());
+    auto& record = fresh.version(fv_it->second);
     ASSERT_EQ(record.size, 100u);
     ASSERT_EQ(record.mtime_ns, 5555);
 }
@@ -149,15 +149,15 @@ TEST_CASE(GlobalRoundTripRemap) {
 TEST_CASE(GlobalCollectsGarbage) {
     clice::FileTable pool;
     auto project = build_project(pool, "/proj/used.h", "/proj/tu.cpp");
-    // Interned but referenced by no manifest — must not reach disk, and
-    // must be dropped from memory by the write.
+    // Interned but referenced by no manifest — must not reach disk. The
+    // shared table keeps it: other consumers may still anchor on it.
     auto dead_id = pool.intern("/proj/dead.h");
-    project.intern_file_version(dead_id, 0xdead);
+    pool.intern_version(dead_id, 0xdead);
 
     llvm::SmallString<1024> buf;
     llvm::raw_svector_ostream os(buf);
     project.serialize_global(os, pool);
-    ASSERT_FALSE(project.fv_ids.contains({dead_id, std::uint64_t(0xdead)}));
+    ASSERT_TRUE(pool.version_ids.contains({dead_id, std::uint64_t(0xdead)}));
 
     clice::FileTable fresh;
     index::ProjectIndex loaded;
@@ -257,7 +257,7 @@ TEST_CASE(GlobalBitmapPayloadGate) {
     clice::FileTable untouched;
     ASSERT_FALSE(rejecting.load_global(bytes_of(*corrupt), untouched, pins));
     ASSERT_TRUE(rejecting.symbols.empty());
-    ASSERT_TRUE(rejecting.file_versions.empty());
+    ASSERT_TRUE(untouched.versions.empty());
     ASSERT_FALSE(untouched.find("/proj/partial.h").has_value());
 }
 
@@ -311,7 +311,7 @@ TEST_CASE(GlobalDuplicateVersionsRejected) {
     ASSERT_TRUE(dup_id.has_value());
     index::ProjectIndex loaded;
     ASSERT_FALSE(loaded.load_global(bytes_of(*dup_id), pool, pins));
-    ASSERT_TRUE(loaded.file_versions.empty());
+    ASSERT_TRUE(pool.versions.empty());
 
     mirror.fv_ids = {7, 8};
     mirror.fv_paths = {"/proj/a.h", "/proj/a.h"};
@@ -326,7 +326,7 @@ TEST_CASE(GlobalDuplicateVersionsRejected) {
     auto distinct = kota::codec::fbs::to_bytes(mirror);
     ASSERT_TRUE(distinct.has_value());
     ASSERT_TRUE(loaded.load_global(bytes_of(*distinct), pool, pins));
-    ASSERT_EQ(loaded.file_versions.size(), std::size_t(2));
+    ASSERT_EQ(pool.versions.size(), std::size_t(2));
 }
 
 TEST_CASE(GlobalBadCounterRejected) {
@@ -443,23 +443,24 @@ TEST_CASE(GlobalReservedKeysRejected) {
         ASSERT_TRUE(bytes.has_value());
         ASSERT_FALSE(loaded.load_global(bytes_of(*bytes), pool, pins));
     }
-    ASSERT_TRUE(loaded.file_versions.empty());
+    ASSERT_TRUE(pool.versions.empty());
     ASSERT_TRUE(loaded.symbols.empty());
 }
 
 TEST_CASE(UnknownFileVersionsDetected) {
+    clice::FileTable pool;
     index::ProjectIndex project;
-    auto known = project.intern_file_version(0, 0x1);
+    auto known = pool.intern_version(0, 0x1);
 
     index::TUManifest manifest;
     manifest.tu_fv = known;
     manifest.nodes = {
         {known, ~0u, 1}
     };
-    ASSERT_TRUE(project.knows_file_versions(manifest));
+    ASSERT_TRUE(project.knows_file_versions(pool, manifest));
 
     manifest.nodes.push_back({known + 1, ~0u, 2});
-    ASSERT_FALSE(project.knows_file_versions(manifest));
+    ASSERT_FALSE(project.knows_file_versions(pool, manifest));
 }
 
 };  // TEST_SUITE(PersistedIndex)

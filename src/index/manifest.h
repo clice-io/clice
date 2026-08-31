@@ -15,7 +15,7 @@ namespace clice::index {
 /// where. Multiple entries of one file (headers without guards) are
 /// distinct nodes.
 struct ManifestNode {
-    /// FileVersion id (ProjectIndex::file_versions).
+    /// FileVersion id (FileTable::versions).
     std::uint32_t fv = 0;
 
     /// Index of the including node, ~0 when the directive sits in the TU's

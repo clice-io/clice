@@ -109,7 +109,7 @@ public:
     }
 
     /// Drop the header context's dependency fast paths so the next use
-    /// re-validates every chain file by content hash. The context itself is
+    /// re-validates every chain file by a real read. The context itself is
     /// kept: an in-flight compile can clobber ast_dirty when it finishes,
     /// and the surviving snapshot is what lets is_stale() recover. A
     /// self-contained borrow tracks no chain deps, so forcing its
@@ -124,7 +124,7 @@ public:
         if(context->deps.empty()) {
             drop_header_context(path_id);
         } else {
-            context->deps.force_revalidate();
+            context->deps.force_revalidate(workspace.file_table);
         }
     }
 

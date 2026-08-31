@@ -262,7 +262,7 @@ int run_stats_once(llvm::StringRef root, std::uint32_t top, bool allow_retry) {
                  total_relations);
     std::println("Global symbols: {}, file versions: {}",
                  project.symbols.size(),
-                 project.file_versions.size());
+                 workspace.file_table.versions.size());
 
     auto payload = columns.content + columns.variants + columns.symbols + columns.local_names +
                    columns.occ_rows + columns.occ_masks + columns.rel_rows + columns.rel_masks;

@@ -54,8 +54,6 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
                 workspace.index_db = index::open_database(*workspace.store, cfg.index_db);
             }
             LOG_INFO("Cache store: {}", workspace.store->base_dir());
-
-            workspace.load_cache(contexts);
             report.opened_store = true;
         }
     }
@@ -67,6 +65,9 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
         // database generated later (picked up by the CDB poll) starts from
         // the previous session's index.
         pump.claim_report(store.load(read_only_index).report);
+        // After the index load: the global blob restores file versions
+        // id-for-id, so it must run before cache.json interns any.
+        workspace.load_cache(contexts);
         return report;
     }
 
@@ -112,6 +113,9 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
 
     workspace.build_module_map();
     pump.claim_report(store.load(read_only_index).report);
+    // After the index load: the global blob restores file versions
+    // id-for-id, so it must run before cache.json interns any.
+    workspace.load_cache(contexts);
 
     if(cfg.enable_indexing.value) {
         for(auto& entry: workspace.cdb.entries()) {

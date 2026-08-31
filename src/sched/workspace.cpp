@@ -21,7 +21,6 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Process.h"
-#include "llvm/Support/xxhash.h"
 
 namespace clice {
 
@@ -260,26 +259,19 @@ std::string discover_compile_commands(const Config& config, llvm::StringRef work
     return {};
 }
 
-std::uint64_t hash_file(llvm::StringRef path) {
-    auto buf = llvm::MemoryBuffer::getFile(path);
-    if(!buf)
-        return 0;
-    return llvm::xxh3_64bits((*buf)->getBuffer());
-}
-
-DepsSnapshot capture_deps_snapshot(FileTable& pool,
+DepsSnapshot capture_deps_snapshot(FileTable& files,
                                    llvm::ArrayRef<DepFile> deps,
                                    std::int64_t build_at) {
     // Files whose mtime falls within the guard of the build start count as
-    // "possibly modified during the build" and get no fast-path baseline;
-    // one passing hash comparison repairs them (see deps_changed).
+    // "possibly modified during the build" and offer no fast-path
+    // baseline; one passing hash comparison repairs them (check_version).
     auto baseline_before_ns = fs::stat_baseline_before_ns(build_at);
 
     DepsSnapshot snap;
     snap.deps.reserve(deps.size());
     for(const auto& file: deps) {
         auto& dep = snap.deps.emplace_back();
-        dep.path_id = pool.intern(file.path);
+        dep.path_id = files.intern(file.path);
         dep.hash = file.hash;
 
         llvm::sys::fs::file_status status;
@@ -295,65 +287,62 @@ DepsSnapshot capture_deps_snapshot(FileTable& pool,
             continue;
         }
 
+        auto size = status.getSize();
         auto mtime_ns = fs::mtime_ns(status);
-        if(mtime_ns > baseline_before_ns) {
-            // Possibly modified during or after the build: this stat may
-            // describe content the build never saw, so it must not become a
-            // fast-path baseline. The consumed hash stays; the next check
-            // compares the disk against it and repairs the fast path on a
-            // match.
-            continue;
+        bool untouched = mtime_ns <= baseline_before_ns;
+        if(dep.hash == 0) {
+            if(!untouched) {
+                // The worker could not hash the consumed bytes and the file
+                // may have changed during the build — no version can name
+                // them. The zero hash reads as changed and the rebuild's
+                // capture retries.
+                continue;
+            }
+            // The unchanged mtime proves the disk still holds the consumed
+            // bytes, so their hash can be taken from the shared pair — or
+            // one read, unless the file moved between the stat and the
+            // read, which voids the proof.
+            auto obs = files.observe_for(dep.path_id, size, mtime_ns);
+            if(!obs || obs->size != size || obs->mtime_ns != mtime_ns) {
+                continue;
+            }
+            dep.hash = obs->hash;
         }
 
-        // Untouched since before the build started — the disk still holds
-        // the consumed bytes, so the stat is a trustworthy fast path.
-        dep.size = status.getSize();
-        dep.mtime_ns = mtime_ns;
-        if(dep.hash == 0) {
-            // The worker could not hash the consumed bytes; the unchanged
-            // mtime proves the disk still holds them, so hash it here.
-            dep.hash = hash_file(file.path);
+        auto vid = files.intern_version(dep.path_id, dep.hash);
+        if(untouched) {
+            // Untouched since before the build started — the disk still
+            // holds the consumed bytes, so the stat is a trustworthy fast
+            // path (recorded only when corroborated, see try_stamp).
+            files.try_stamp(vid, size, mtime_ns);
         }
     }
     return snap;
 }
 
-bool deps_changed(const FileTable& pool, DepsSnapshot& snap) {
+bool deps_changed(FileTable& files, const DepsSnapshot& snap) {
     for(auto& dep: snap.deps) {
-        auto path = pool.resolve(dep.path_id);
-        llvm::sys::fs::file_status status;
-        if(auto ec = llvm::sys::fs::status(path, status)) {
-            // Gone now: a change unless it was already missing at build time.
-            if(!dep.missing)
-                return true;
-            continue;
-        }
         if(dep.missing) {
-            // Missing at build time, present now.
-            return true;
-        }
-
-        // Layer 1: an unchanged stat proves unchanged content — the baseline
-        // is only ever recorded or repaired against the consumed hash.
-        auto size = status.getSize();
-        auto mtime_ns = fs::mtime_ns(status);
-        if(dep.mtime_ns != 0 && dep.size == size && dep.mtime_ns == mtime_ns)
+            // Gone at build time: reappearing is the change; still-missing
+            // stays unchanged (see the capture).
+            if(fs::exists(files.resolve(dep.path_id))) {
+                return true;
+            }
             continue;
+        }
 
         // No trusted hash to compare against: rebuild once to converge.
-        if(dep.hash == 0)
+        if(dep.hash == 0) {
             return true;
+        }
 
-        // Layer 2: compare the disk against the consumed bytes. hash_file's
-        // 0 sentinel (unreadable right now) cannot match and counts as
-        // changed — conservative, retried by the next check.
-        if(hash_file(path) != dep.hash)
+        // Missing means gone now — a change, since the build saw the file.
+        // Unreadable cannot prove the disk unchanged and counts as changed
+        // — conservative, retried by the rebuild's capture.
+        if(files.check_version(files.intern_version(dep.path_id, dep.hash)) !=
+           FileTable::Verdict::Fresh) {
             return true;
-
-        // Touched but not modified — repair the fast path so the next check
-        // is a single stat again.
-        dep.size = size;
-        dep.mtime_ns = mtime_ns;
+        }
     }
     return false;
 }
@@ -533,11 +522,13 @@ void Workspace::load_cache(ContextResolver& contexts) {
             auto dep_path = resolve(dep.path);
             if(dep_path.empty())
                 continue;
-            deps.deps.push_back({.path_id = file_table.intern(dep_path),
-                                 .size = dep.size,
-                                 .mtime_ns = dep.mtime_ns,
-                                 .hash = dep.hash,
-                                 .missing = dep.missing});
+            auto path_id = file_table.intern(dep_path);
+            deps.deps.push_back({.path_id = path_id, .hash = dep.hash, .missing = dep.missing});
+            if(dep.hash != 0) {
+                file_table.adopt_stamp(file_table.intern_version(path_id, dep.hash),
+                                       dep.size,
+                                       dep.mtime_ns);
+            }
         }
         return deps;
     };
@@ -617,6 +608,17 @@ void Workspace::save_cache(const ContextResolver& contexts) {
         return it->second;
     };
 
+    // The persisted per-dep stamp is the shared version's — earned once,
+    // written for every artifact referencing the version.
+    auto stamp_of = [&](const DepState& dep) -> std::pair<std::uint64_t, std::int64_t> {
+        auto it = file_table.version_ids.find({dep.path_id, dep.hash});
+        if(it == file_table.version_ids.end()) {
+            return {0, 0};
+        }
+        auto& version = file_table.versions.find(it->second)->second;
+        return {version.size, version.mtime_ns};
+    };
+
     for(auto& e: pch_cache) {
         auto& st = e.second;
         if(st.path.empty())
@@ -626,8 +628,8 @@ void Workspace::save_cache(const ContextResolver& contexts) {
         entry.key = e.getKey().str();
         entry.bound = st.bound;
         for(auto& dep: st.deps.deps) {
-            entry.deps.push_back(
-                {intern(dep.path_id), dep.hash, dep.size, dep.mtime_ns, dep.missing});
+            auto [size, mtime_ns] = stamp_of(dep);
+            entry.deps.push_back({intern(dep.path_id), dep.hash, size, mtime_ns, dep.missing});
         }
         data.pch.push_back(std::move(entry));
     }
@@ -642,8 +644,8 @@ void Workspace::save_cache(const ContextResolver& contexts) {
         auto mod_it = path_to_module.find(path_id);
         entry.module_name = mod_it != path_to_module.end() ? mod_it->second : "";
         for(auto& dep: st.deps.deps) {
-            entry.deps.push_back(
-                {intern(dep.path_id), dep.hash, dep.size, dep.mtime_ns, dep.missing});
+            auto [size, mtime_ns] = stamp_of(dep);
+            entry.deps.push_back({intern(dep.path_id), dep.hash, size, mtime_ns, dep.missing});
         }
         data.pcm.push_back(std::move(entry));
     }

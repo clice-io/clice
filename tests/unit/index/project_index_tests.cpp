@@ -145,20 +145,21 @@ TEST_CASE(MergeRejectsBadBitmap) {
 }
 
 TEST_CASE(FileVersionInterning) {
-    index::ProjectIndex project;
-    auto a = project.intern_file_version(7, 0x1111);
-    ASSERT_EQ(project.intern_file_version(7, 0x1111), a);
+    clice::FileTable pool;
+    auto a = pool.intern_version(7, 0x1111);
+    ASSERT_EQ(pool.intern_version(7, 0x1111), a);
 
-    auto b = project.intern_file_version(7, 0x2222);
+    auto b = pool.intern_version(7, 0x2222);
     ASSERT_TRUE(b != a);
-    ASSERT_EQ(project.file_versions.find(b)->second.path_id, 7u);
-    ASSERT_EQ(project.file_versions.find(b)->second.content_hash, 0x2222u);
+    ASSERT_EQ(pool.version(b).fid, 7u);
+    ASSERT_EQ(pool.version(b).content_hash, 0x2222u);
 }
 
 TEST_CASE(ManifestContributions) {
+    clice::FileTable pool;
     index::ProjectIndex project;
-    auto fv_a = project.intern_file_version(1, 0xa);
-    auto fv_b = project.intern_file_version(2, 0xb);
+    auto fv_a = pool.intern_version(1, 0xa);
+    auto fv_b = pool.intern_version(2, 0xb);
 
     auto manifest_for = [&](std::uint32_t tu_fv,
                             std::initializer_list<std::pair<std::uint32_t, std::uint64_t>> rows) {
@@ -168,11 +169,12 @@ TEST_CASE(ManifestContributions) {
         return manifest;
     };
 
-    auto tu1_fv = project.intern_file_version(10, 0x1);
-    auto tu2_fv = project.intern_file_version(11, 0x2);
+    auto tu1_fv = pool.intern_version(10, 0x1);
+    auto tu2_fv = pool.intern_version(11, 0x2);
 
     // TU 1 contributes h1 to file 1 and h2 to file 2.
-    auto affected = project.apply_manifest(10,
+    auto affected = project.apply_manifest(pool,
+                                           10,
                                            manifest_for(tu1_fv,
                                                         {
                                                             {fv_a, 100},
@@ -182,7 +184,8 @@ TEST_CASE(ManifestContributions) {
     ASSERT_EQ(project.live_variants(1).size(), std::size_t(1));
 
     // TU 2 shares file 1's variant: the live set does not grow.
-    project.apply_manifest(11,
+    project.apply_manifest(pool,
+                           11,
                            manifest_for(tu2_fv,
                                         {
                                             {fv_a, 100}
@@ -192,7 +195,8 @@ TEST_CASE(ManifestContributions) {
     // TU 1 re-indexes with a new variant for file 1 and drops file 2: both
     // hashes stay live on file 1 (TU 2 still holds the old one), file 2
     // loses its only contribution.
-    project.apply_manifest(10,
+    project.apply_manifest(pool,
+                           10,
                            manifest_for(tu1_fv,
                                         {
                                             {fv_a, 300}
@@ -200,12 +204,12 @@ TEST_CASE(ManifestContributions) {
     ASSERT_EQ(project.live_variants(1).size(), std::size_t(2));
     ASSERT_TRUE(project.live_variants(2).empty());
 
-    project.remove_manifest(11);
+    project.remove_manifest(pool, 11);
     auto live = project.live_variants(1);
     ASSERT_EQ(live.size(), std::size_t(1));
     ASSERT_EQ(live.front(), 300u);
 
-    project.remove_manifest(10);
+    project.remove_manifest(pool, 10);
     ASSERT_TRUE(project.contributions.empty());
 }
 
@@ -225,11 +229,11 @@ TEST_CASE(GlobalRoundTripWithRealMerge) {
 
     // A manifest referencing the main file keeps its FileVersion alive
     // through the write's garbage collection.
-    auto main_fv = project.intern_file_version(file_ids_map[view.path_count() - 1],
-                                               view.path_hash(view.path_count() - 1));
+    auto main_fv = pool.intern_version(file_ids_map[view.path_count() - 1],
+                                       view.path_hash(view.path_count() - 1));
     index::TUManifest manifest;
     manifest.tu_fv = main_fv;
-    project.apply_manifest(file_ids_map[view.path_count() - 1], std::move(manifest));
+    project.apply_manifest(pool, file_ids_map[view.path_count() - 1], std::move(manifest));
 
     llvm::SmallString<4096> buf;
     llvm::raw_svector_ostream os(buf);

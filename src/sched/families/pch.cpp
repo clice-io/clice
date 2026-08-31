@@ -92,6 +92,7 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
     // (crash between commits, failed aux commit) rebuilds whole. The
     // store lookup refreshes the blob's LRU position.
     llvm::StringRef pch_miss = "no_entry";
+    workspace.file_table.begin_wave();
     if(auto it = workspace.pch_cache.find(pch_key); it != workspace.pch_cache.end()) {
         auto& st = it->second;
         bool in_store = workspace.store && workspace.store->lookup("pch", pch_key) &&
@@ -295,6 +296,7 @@ bool PCHFamily::fresh(llvm::StringRef pch_key) {
        !workspace.store->lookup_aux("pch", pch_key)) {
         return false;
     }
+    workspace.file_table.begin_wave();
     return !deps_changed(workspace.file_table, it->second.deps);
 }
 

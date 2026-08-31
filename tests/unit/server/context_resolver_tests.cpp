@@ -160,14 +160,16 @@ TEST_CASE(InvalidateDropsBorrowed) {
     ASSERT_FALSE(resolver.header_contexts.contains(borrowed));
 
     // A synthesized context re-validates its chain by content hash: the
-    // fast paths are dropped, the consumed hash stays.
+    // shared version's fast path is dropped, the consumed hash stays.
     auto& context = resolver.header_contexts[synthesized];
-    context.deps.deps.push_back({.path_id = borrowed, .size = 42, .mtime_ns = 123, .hash = 7});
+    context.deps.deps.push_back({.path_id = borrowed, .hash = 7});
+    auto vid = workspace.file_table.intern_version(borrowed, 7);
+    workspace.file_table.adopt_stamp(vid, 42, 123);
+    ASSERT_EQ(workspace.file_table.version(vid).mtime_ns, 123);
     resolver.invalidate_header_deps(synthesized);
     ASSERT_TRUE(resolver.header_contexts.contains(synthesized));
-    auto& dep = resolver.header_contexts[synthesized].deps.deps[0];
-    ASSERT_EQ(dep.mtime_ns, 0);
-    ASSERT_EQ(dep.hash, 7u);
+    ASSERT_EQ(workspace.file_table.version(vid).mtime_ns, 0);
+    ASSERT_EQ(resolver.header_contexts[synthesized].deps.deps[0].hash, 7u);
 }
 
 };  // TEST_SUITE(ContextResolver)

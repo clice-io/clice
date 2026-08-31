@@ -295,23 +295,31 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
         if(hash == 0 && untouched) {
             // The worker had no buffer to hash (e.g. behind a PCM) and no
             // rows recorded one; the unchanged mtime proves the disk still
-            // holds the consumed bytes, so hash it here.
-            hash = hash_file(path);
+            // holds the consumed bytes, so take their hash from the shared
+            // pair — or one read, unless the file moved between the stat
+            // and the read, which voids the proof.
+            auto obs = workspace.file_table.observe_for(file_ids_map[i],
+                                                        status.getSize(),
+                                                        fs::mtime_ns(status));
+            if(obs && obs->size == status.getSize() && obs->mtime_ns == fs::mtime_ns(status)) {
+                hash = obs->hash;
+            }
         }
 
-        auto fv = project.intern_file_version(file_ids_map[i], hash);
-        if(untouched && hash != 0) {
+        auto fv = workspace.file_table.intern_version(file_ids_map[i], hash);
+        if(untouched && hash != 0 && workspace.file_table.version(fv).mtime_ns == 0) {
             // The untouched mtime alone is no proof: a rewrite during the
             // build that preserves the size and backdates the mtime
             // (rsync -t) would stamp a stat describing bytes the rows were
-            // never built from, and file_version_stale's equality fast
-            // path would then judge them fresh forever. Stamp only under a
-            // disk-hash match; an already-stamped version earned its stamp
-            // the same way, so it need not re-prove it every merge.
-            auto& record = project.file_versions.find(fv)->second;
-            if(record.mtime_ns == 0 && hash_file(path) == hash) {
-                record.size = status.getSize();
-                record.mtime_ns = fs::mtime_ns(status);
+            // never built from, and the equality fast path would then judge
+            // them fresh forever. So the stamp must be corroborated by a
+            // read (usually the shared pair, already paid for); an
+            // already-stamped version earned its stamp the same way and
+            // need not re-prove it every merge.
+            if(auto obs = workspace.file_table.observe_for(file_ids_map[i],
+                                                          status.getSize(),
+                                                          fs::mtime_ns(status))) {
+                workspace.file_table.try_stamp(fv, obs->size, obs->mtime_ns);
             }
         }
         fv_of[i] = fv;
@@ -337,7 +345,7 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
     // Replace this TU's manifest wholesale: files it no longer touches lose
     // their contribution here, which is also what retires their variants —
     // no sweep over other shards is needed.
-    auto affected = project.apply_manifest(tu_path_id, std::move(manifest));
+    auto affected = project.apply_manifest(workspace.file_table, tu_path_id, std::move(manifest));
     for(auto path_id: affected) {
         report.add_rows_changed(path_id);
         auto it = workspace.shards.find(path_id);
@@ -391,7 +399,7 @@ void IndexStore::drop_index_into(std::uint32_t tu_path_id, Report& report) {
     // Dropped rows change index-served answers exactly like merged rows
     // do; without the refresh the client keeps them forever, since no
     // later merge or compile is owed.
-    for(auto path_id: project.remove_manifest(tu_path_id)) {
+    for(auto path_id: project.remove_manifest(workspace.file_table, tu_path_id)) {
         auto it = workspace.shards.find(path_id);
         if(it != workspace.shards.end()) {
             it->second.set_live(project.live_variants(path_id));
@@ -849,23 +857,23 @@ IndexStore::LoadResult IndexStore::load(bool read_only) {
         auto manifest = blob ? index::deserialize_manifest(blob.buffer->getBuffer()) : std::nullopt;
         auto pin = manifest ? manifest_pins.find(manifest->tu_fv) : manifest_pins.end();
         if(!manifest || pin == manifest_pins.end() || pin->second != manifest->global_gen ||
-           !project.knows_file_versions(*manifest)) {
+           !project.knows_file_versions(workspace.file_table, *manifest)) {
             dead_manifests.push_back(key.str());
             // The manifest raced a crash ahead of the global blob (its own
             // pin never landed). When the TU's version is still resolvable,
             // re-enqueue it: the CDB sweep never covers standalone-indexed
             // headers.
             if(manifest) {
-                auto fv = project.file_versions.find(manifest->tu_fv);
-                if(fv != project.file_versions.end()) {
-                    report.add_reindex(fv->second.path_id);
+                auto fv = workspace.file_table.versions.find(manifest->tu_fv);
+                if(fv != workspace.file_table.versions.end()) {
+                    report.add_reindex(fv->second.fid);
                 }
             }
             return;
         }
         adopted_pins.insert(manifest->tu_fv);
-        auto tu_path_id = project.file_versions.find(manifest->tu_fv)->second.path_id;
-        project.apply_manifest(tu_path_id, std::move(*manifest));
+        auto tu_path_id = workspace.file_table.version(manifest->tu_fv).fid;
+        project.apply_manifest(workspace.file_table, tu_path_id, std::move(*manifest));
     });
     if(!read_only) {
         for(auto& key: dead_manifests) {
@@ -878,7 +886,7 @@ IndexStore::LoadResult IndexStore::load(bool read_only) {
     // load_global rejects a blob whose pins its own table cannot cover.
     for(auto fv: llvm::make_first_range(manifest_pins)) {
         if(!adopted_pins.contains(fv)) {
-            report.add_reindex(project.file_versions.find(fv)->second.path_id);
+            report.add_reindex(workspace.file_table.version(fv).fid);
         }
     }
 
@@ -892,11 +900,11 @@ IndexStore::LoadResult IndexStore::load(bool read_only) {
     llvm::DenseMap<std::uint32_t, llvm::SmallVector<std::uint64_t, 1>> generations;
     for(auto& manifest: llvm::make_second_range(project.manifests)) {
         for(auto fv: llvm::make_first_range(manifest.contributions)) {
-            auto& record = project.file_versions.find(fv)->second;
+            auto& record = workspace.file_table.version(fv);
             if(record.content_hash == 0) {
                 continue;
             }
-            auto& pinned = generations[record.path_id];
+            auto& pinned = generations[record.fid];
             if(!llvm::is_contained(pinned, record.content_hash)) {
                 pinned.push_back(record.content_hash);
             }
@@ -949,7 +957,7 @@ IndexStore::LoadResult IndexStore::load(bool read_only) {
             // The removal retires the TU's contributions to EVERY file it
             // touched, not just the unservable one; the affected set feeds
             // the mask refresh below, like the merge path's.
-            auto affected = project.remove_manifest(tu);
+            auto affected = project.remove_manifest(workspace.file_table, tu);
             mask_refresh.append(affected.begin(), affected.end());
             if(!read_only) {
                 startup_removes.push_back(
@@ -1184,44 +1192,21 @@ bool IndexStore::file_version_stale(std::uint32_t fv_id) {
         return cached->second;
     }
 
-    auto record_it = workspace.project_index.file_versions.find(fv_id);
-    if(record_it == workspace.project_index.file_versions.end()) {
-        return true;
-    }
-    auto& record = record_it->second;
-    auto path = workspace.file_table.resolve(record.path_id);
-
-    // Two-layer test on the shared FileVersion: Layer 1 trusts a stat EQUAL
-    // to the recorded stamp (no file read) — equality, not a watermark, so
-    // backdated or preserved mtimes cannot masquerade as fresh; Layer 2
-    // re-hashes the disk against the consumed-content hash and treats a
-    // match as a mere touch, repairing the stamp in place — once, for every
-    // TU that consumes this version.
-    auto stale = [&] {
-        fs::file_status status;
-        if(auto err = fs::status(path, status)) {
-            return true;
-        }
-        if(record.mtime_ns != 0 && record.size == status.getSize() &&
-           record.mtime_ns == fs::mtime_ns(status)) {
-            return false;
-        }
-        if(record.content_hash == 0) {
-            return true;
-        }
-        if(hash_file(path) != record.content_hash) {
-            return true;
-        }
-        record.size = status.getSize();
-        record.mtime_ns = fs::mtime_ns(status);
+    // Missing and unreadable both read as stale — conservative, the
+    // reindex re-observes. A repair of the version's stat fast path must
+    // reach the persisted global blob, or the next session re-earns it by
+    // hash for every repaired version at once.
+    auto generation = workspace.file_table.stamp_generation;
+    bool stale = workspace.file_table.check_version(fv_id) != FileTable::Verdict::Fresh;
+    if(workspace.file_table.stamp_generation != generation) {
         global_dirty = true;
-        return false;
-    }();
+    }
     fv_verdicts[fv_id] = stale;
     return stale;
 }
 
 bool IndexStore::need_update(llvm::StringRef file_path) {
+    workspace.file_table.begin_wave();
     auto& project = workspace.project_index;
     auto manifest_it = project.manifests.find(workspace.file_table.intern(file_path));
     if(manifest_it == project.manifests.end())

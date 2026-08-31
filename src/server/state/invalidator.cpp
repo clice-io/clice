@@ -260,6 +260,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // artifact keeps the pre-change bytes. Its own deps
                 // snapshot is the judge; checked before the cascade below
                 // erases the entry.
+                workspace.file_table.begin_wave();
                 auto pcm_it = workspace.pcm_cache.find(event.path_id);
                 bool pcm_stale = pcm_it != workspace.pcm_cache.end() &&
                                  deps_changed(workspace.file_table, pcm_it->second.deps);

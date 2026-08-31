@@ -156,6 +156,7 @@ void ASTFamily::publish_output(const std::shared_ptr<Session>& session, CompileO
 }
 
 bool ASTFamily::is_stale(const Session& session) {
+    workspace.file_table.begin_wave();
     auto it = projections.entries.find(session.path_id);
     if(it != projections.entries.end() && it->second.deps.has_value() &&
        deps_changed(workspace.file_table, *it->second.deps)) {
@@ -785,9 +786,10 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, std::uint32_t path_id
 
             if(indicates_missing_context(diagnostics)) {
                 LOG_INFO("Header {} needs includer context, re-compiling with prefix", uri_str);
+                auto disk = workspace.file_table.current(path_id);
                 contexts.record_header_mode(path_id,
                                             HeaderMode::NeedsContext,
-                                            hash_file(file_path));
+                                            disk ? disk->hash : 0);
                 workspace.save_cache(contexts);
                 contexts.drop_header_context(path_id);
                 adopted_pch.reset();

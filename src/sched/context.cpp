@@ -152,11 +152,14 @@ void
         auto file = resolve(entry.file);
         if(file.empty() || static_cast<HeaderMode>(entry.mode) != HeaderMode::NeedsContext)
             continue;
+        auto id = workspace.file_table.intern(file);
         // The verdict is tied to the header's contents — a file edited
         // while the server was down must re-earn its trial.
-        if(entry.content_hash != 0 && hash_file(file) != entry.content_hash)
-            continue;
-        auto id = workspace.file_table.intern(file);
+        if(entry.content_hash != 0) {
+            auto disk = workspace.file_table.current(id);
+            if(!disk || disk->hash != entry.content_hash)
+                continue;
+        }
         header_modes[id] = HeaderMode::NeedsContext;
         header_mode_hashes[id] = entry.content_hash;
     }
@@ -259,6 +262,7 @@ bool ContextResolver::fill_header_context_args(llvm::StringRef path,
                                     cached->host_command_hash != choice->command_hash ||
                                     cached->host_base_hash != choice->base_hash);
             bool mode_mismatch = cached->preamble_path.empty() == synthesize;
+            workspace.file_table.begin_wave();
             if(override_mismatch || mode_mismatch ||
                deps_changed(workspace.file_table, cached->deps)) {
                 drop_header_context(path_id);
@@ -581,15 +585,11 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(std::uint32
 
     // Read the chain files (all but the target) from disk. The synthesized
     // preamble deliberately reflects disk state, never open-document buffers:
-    // open files must not be depended upon by other files. Each file is
-    // stat'ed AFTER it is read, and only a stat older than the mtime guard
-    // becomes a fast path: a write racing the read stamps an mtime inside
-    // the guard, so such a file keeps only its hash and the next check
-    // compares the disk against the embedded bytes.
-    auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                      std::chrono::system_clock::now().time_since_epoch())
-                      .count();
-    auto baseline_before_ns = fs::stat_baseline_before_ns(now_ms);
+    // open files must not be depended upon by other files. The hash covers
+    // the bytes just read — the bytes the synthesized preamble embeds —
+    // and the paired stat becomes the version's fast path only when the
+    // read proved it reliable (see read_file_observed); otherwise the next
+    // check compares the disk against the embedded bytes.
     std::vector<std::string> chain_contents;
     llvm::SmallVector<ChainEntry> chain_entries;
     DepsSnapshot deps;
@@ -598,26 +598,19 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(std::uint32
     deps.deps.reserve(chain.size());
     for(std::size_t i = 0; i + 1 < chain.size(); ++i) {
         auto cur_path = workspace.file_table.resolve(chain[i]);
-        auto buf = llvm::MemoryBuffer::getFile(cur_path);
-        if(!buf) {
+        auto observed = read_file_observed(cur_path.data());
+        if(!observed) {
             LOG_WARN("resolve_header_context: cannot read {}", cur_path);
             return std::nullopt;
         }
-        chain_contents.emplace_back((*buf)->getBuffer());
+        chain_contents.emplace_back(observed->content->getBuffer());
         chain_entries.push_back({cur_path, chain_contents.back()});
-        llvm::sys::fs::file_status status;
-        if(llvm::sys::fs::status(cur_path, status)) {
-            LOG_WARN("resolve_header_context: cannot stat {}", cur_path);
-            return std::nullopt;
-        }
-        // The hash covers the buffer just read — the bytes the synthesized
-        // preamble embeds — never a re-read that could be newer.
-        auto mtime_ns = fs::mtime_ns(status);
-        bool untouched = mtime_ns <= baseline_before_ns;
-        deps.deps.push_back({.path_id = chain[i],
-                             .size = untouched ? status.getSize() : 0,
-                             .mtime_ns = untouched ? mtime_ns : 0,
-                             .hash = llvm::xxh3_64bits(chain_contents.back())});
+        workspace.file_table.observe(chain[i], observed->obs);
+        deps.deps.push_back({.path_id = chain[i], .hash = observed->obs.hash});
+        workspace.file_table.try_stamp(
+            workspace.file_table.intern_version(chain[i], observed->obs.hash),
+            observed->obs.size,
+            observed->obs.mtime_ns);
     }
 
     // Snapshot the header itself for other occurrences along the chain:
@@ -625,16 +618,13 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(std::uint32
     // includes of it inside the prefix/suffix must point at a copy.
     auto target_path = workspace.file_table.resolve(chain.back());
     std::string self_snapshot_path;
-    std::uint64_t target_hash = 0;
-    llvm::sys::fs::file_status target_status;
-    bool target_stat_ok = false;
+    std::optional<ObservedFile> target_observed;
     auto preamble_dir = path::join(workspace.config.project.cache_dir, "header_context");
-    if(auto target_buf = llvm::MemoryBuffer::getFile(target_path)) {
-        auto content = (*target_buf)->getBuffer();
-        target_hash = llvm::xxh3_64bits(content);
-        // Stat after the read, same discipline as the chain files above.
-        target_stat_ok = !llvm::sys::fs::status(target_path, target_status);
-        self_snapshot_path = path::join(preamble_dir, std::format("{:016x}.self.h", target_hash));
+    if((target_observed = read_file_observed(target_path.data()))) {
+        auto content = target_observed->content->getBuffer();
+        workspace.file_table.observe(chain.back(), target_observed->obs);
+        self_snapshot_path =
+            path::join(preamble_dir, std::format("{:016x}.self.h", target_observed->obs.hash));
         if(!llvm::sys::fs::exists(self_snapshot_path)) {
             auto ec = llvm::sys::fs::create_directories(preamble_dir);
             if(ec) {
@@ -715,14 +705,12 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(std::uint32
     llvm::SmallVector<std::uint32_t> chain_ids(chain.begin(), chain.end() - 1);
     if(!self_snapshot_path.empty()) {
         // The self-snapshot mirrors the header's disk state; re-synthesize
-        // when it changes so other-occurrence expansions stay current. A
-        // failed or too-recent stat leaves no fast path — the next check
-        // goes by hash.
-        bool target_untouched = target_stat_ok && fs::mtime_ns(target_status) <= baseline_before_ns;
-        deps.deps.push_back({.path_id = chain.back(),
-                             .size = target_untouched ? target_status.getSize() : 0,
-                             .mtime_ns = target_untouched ? fs::mtime_ns(target_status) : 0,
-                             .hash = target_hash});
+        // when it changes so other-occurrence expansions stay current.
+        deps.deps.push_back({.path_id = chain.back(), .hash = target_observed->obs.hash});
+        workspace.file_table.try_stamp(
+            workspace.file_table.intern_version(chain.back(), target_observed->obs.hash),
+            target_observed->obs.size,
+            target_observed->obs.mtime_ns);
     }
 
     return HeaderContext{host_path_id,

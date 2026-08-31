@@ -918,7 +918,7 @@ TEST_CASE(RejectsCorruptSection) {
     // fill empty names), and stray FileVersions would persist with the
     // next save.
     ASSERT_TRUE(workspace.project_index.symbols.empty());
-    ASSERT_TRUE(workspace.project_index.file_versions.empty());
+    ASSERT_TRUE(workspace.file_table.versions.empty());
 
     // The intact result still lands afterwards.
     merge(indexed.data.data(), indexed.data.size());
@@ -1241,6 +1241,10 @@ struct Indexed {
         tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
         src = tmp.path("main.cpp");
         header = tmp.path("dep.h");
+        // Age the files out of the mtime guard window so the merge records
+        // stat stamps, the way real project files predate an index run.
+        set_file_mtime(src, file_mtime_ns(src) - 10'000'000'000);
+        set_file_mtime(header, file_mtime_ns(header) - 10'000'000'000);
         auto indexed = index_file(tmp, src);
         if(indexed.data.empty()) {
             return false;
@@ -1255,9 +1259,9 @@ TEST_CASE(TouchRepairsStamp) {
     ASSERT_TRUE(x.setup());
     ASSERT_FALSE(x.f.need_update(x.src));
 
-    // Same bytes, new mtime: the stat fast path misses, the hash proves a
-    // mere touch, and the stamp is repaired in place (dirtying the global
-    // blob so the repair persists).
+    // Same bytes, new mtime (still outside the guard window): the stat
+    // fast path misses, the hash proves a mere touch, and the stamp is
+    // repaired in place (dirtying the global blob so the repair persists).
     ASSERT_TRUE(set_file_mtime(x.header, file_mtime_ns(x.header) + 5'000'000'000));
     x.f.reset_global_dirty();
     x.f.clear_verdicts();
@@ -1627,8 +1631,8 @@ TEST_CASE(LoadRequeuesStaleManifest) {
         // standalone index no CDB sweep would ever rebuild.
         auto header_id = f.workspace.file_table.intern(header);
         std::uint32_t header_fv = ~0u;
-        for(auto& [fv, record]: f.workspace.project_index.file_versions) {
-            if(record.path_id == header_id) {
+        for(auto& [fv, record]: f.workspace.file_table.versions) {
+            if(record.fid == header_id) {
                 header_fv = fv;
             }
         }

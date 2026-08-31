@@ -79,7 +79,7 @@ void merge_into_workspace() {
     llvm::SmallVector<std::uint32_t> fv_of;
     for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
         auto hash = consumed[i] != 0 ? consumed[i] : view.path_hash(i);
-        fv_of.push_back(project.intern_file_version(file_ids_map[i], hash));
+        fv_of.push_back(workspace.file_table.intern_version(file_ids_map[i], hash));
     }
 
     index::TUManifest manifest;
@@ -93,7 +93,7 @@ void merge_into_workspace() {
                                             view.section_hash(section));
     }
 
-    for(auto path_id: project.apply_manifest(main_id, std::move(manifest))) {
+    for(auto path_id: project.apply_manifest(workspace.file_table, main_id, std::move(manifest))) {
         auto it = workspace.shards.find(path_id);
         if(it != workspace.shards.end()) {
             it->second.set_live(project.live_variants(path_id));

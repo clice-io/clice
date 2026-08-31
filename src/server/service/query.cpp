@@ -991,13 +991,13 @@ std::vector<feature::IndexIncludeEdge> IndexQuery::include_edges(const Session& 
     }
     auto generation = shard_it->second.content_hash();
 
-    auto version_of = [&](std::uint32_t fv) -> const index::FileVersionRecord* {
-        auto it = project.file_versions.find(fv);
-        return it == project.file_versions.end() ? nullptr : &it->second;
+    auto version_of = [&](std::uint32_t fv) -> const FileTable::FileVersion* {
+        auto it = workspace.file_table.versions.find(fv);
+        return it == workspace.file_table.versions.end() ? nullptr : &it->second;
     };
     auto is_document = [&](std::uint32_t fv) {
         const auto* version = version_of(fv);
-        return version && version->path_id == session.path_id &&
+        return version && version->fid == session.path_id &&
                version->content_hash == generation;
     };
 
@@ -1023,7 +1023,7 @@ std::vector<feature::IndexIncludeEdge> IndexQuery::include_edges(const Session& 
             }
             edges.push_back({
                 .line = node.line,
-                .target = std::string(workspace.file_table.resolve(target->path_id)),
+                .target = std::string(workspace.file_table.resolve(target->fid)),
             });
         }
     };
