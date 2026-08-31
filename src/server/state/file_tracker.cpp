@@ -185,6 +185,8 @@ kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
                     state.size = obs->size;
                     state.mtime_ns = obs->mtime_ns;
                     state.hash = obs->hash;
+                    state.uid_device = obs->uid_device;
+                    state.uid_file = obs->uid_file;
                 }
                 baseline.try_emplace(path_id, state);
                 continue;
@@ -202,7 +204,9 @@ kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
 
             auto size = status.getSize();
             auto mtime_ns = fs::mtime_ns(status);
-            if(!state.missing && state.size == size && state.mtime_ns == mtime_ns) {
+            auto uid = status.getUniqueID();
+            if(!state.missing && state.size == size && state.mtime_ns == mtime_ns &&
+               state.uid_device == uid.getDevice() && state.uid_file == uid.getFile()) {
                 continue;
             }
 
@@ -218,7 +222,11 @@ kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
                 continue;
             }
             bool content_changed = state.missing || obs->hash != state.hash;
-            state = FileState{.size = obs->size, .mtime_ns = obs->mtime_ns, .hash = obs->hash};
+            state = FileState{.size = obs->size,
+                              .mtime_ns = obs->mtime_ns,
+                              .hash = obs->hash,
+                              .uid_device = obs->uid_device,
+                              .uid_file = obs->uid_file};
             if(content_changed) {
                 events.push_back(FileEvent::disk_changed(path_id));
                 changed += 1;

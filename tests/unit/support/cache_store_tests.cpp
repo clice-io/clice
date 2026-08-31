@@ -135,6 +135,25 @@ TEST_CASE(DirtyMarkerLifecycle) {
     ASSERT_FALSE(llvm::sys::fs::exists(marker));
 }
 
+TEST_CASE(UndischargedDebtHandsOn) {
+    // A session that cannot persist the latched debt (read-only index
+    // database) leaves its marker at shutdown; the next open re-latches
+    // it through the recycled-pid path.
+    TempDir tmp;
+    tmp.touch("root/cache/v1/tmp/" + std::string(dead_pid) + "/dirty", "1");
+    {
+        auto store =
+            CacheStore::open(tmp.path("root"), version, false, /*adopt_writer_debt=*/false);
+        require(store.has_value(), "CacheStore::open failed");
+        register_lru(*store);
+        ASSERT_TRUE(store->dead_writer_dirty());
+        store->shutdown();
+    }
+
+    auto store = open_store(tmp);
+    ASSERT_TRUE(store.dead_writer_dirty());
+}
+
 TEST_CASE(RecycledPidMarkerDetected) {
     // A dirty marker under this process's own pid is a crashed predecessor
     // that recycled the pid: open must latch the debt (and re-mark) before

@@ -218,6 +218,9 @@ struct CacheStore::State {
     std::uint64_t writer_marks = 0;
     bool writer_marked = false;
     bool dead_dirty = false;
+    /// Whether this session can discharge a dead writer's verification
+    /// debt (see open()); false hands the marker on at shutdown.
+    bool adopt_debt = true;
 
     /// First namespace directory scan that failed (permissions, IO):
     /// the affected namespace looks empty while its blobs exist, so
@@ -279,12 +282,14 @@ CacheStore::~CacheStore() = default;
 
 std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root,
                                                             std::uint32_t version,
-                                                            bool read_only) {
+                                                            bool read_only,
+                                                            bool adopt_writer_debt) {
     assert(!root.empty() && "cache root must not be empty");
 
     auto state = std::make_unique<State>();
     state->self_pid = static_cast<std::uint32_t>(llvm::sys::Process::getProcessId());
     state->read_only = read_only;
+    state->adopt_debt = adopt_writer_debt;
 
     auto parent = path::join(root, "cache");
     auto version_dir = std::format("v{}", version);
@@ -426,10 +431,10 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
         // records persist with their per-record flags — which takes a
         // successful save. Carry the marker in this instance's own
         // directory across that window, or a crash before the first save
-        // would launder the debt.
+        // would launder the debt. An unsynced relay may not survive that
+        // crash either, so only a synced one counts as latched.
         auto marker = path::join(state->tmp_dir, "dirty");
-        if(fs::write(marker, "1")) {
-            sync_file(marker);
+        if(fs::write(marker, "1") && !sync_file(marker)) {
             state->writer_marked = true;
             state->writer_marks += 1;
         }
@@ -1114,6 +1119,19 @@ void CacheStore::shutdown() {
         return;
     }
     state->checkpoint_locked();
+
+    // A session that latched a dead writer's debt but cannot persist it
+    // (read-only index database) hands the marker on: its tmp directory
+    // stays, reads as a dead instance's next time, and re-latches the
+    // debt there.
+    if(!state->adopt_debt && state->dead_dirty && state->writer_marked) {
+        for(auto& [name, ns_state]: state->namespaces) {
+            if(ns_state.config.policy == CachePolicy::Scratch) {
+                fs::remove_all(ns_state.dir);
+            }
+        }
+        return;
+    }
 
     // The dirty marker dies with the tmp directory, deliberately: an
     // orderly exit means every commit's bytes were fsynced whole, so the

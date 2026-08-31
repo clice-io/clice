@@ -180,9 +180,14 @@ public:
     /// an older layout version) is live on must survive being inspected.
     /// Fails with `no_such_file_or_directory` when the versioned directory
     /// does not exist; only lookups and enumeration may be used.
+    /// `adopt_writer_debt` says this session can discharge a dead writer's
+    /// verification debt (it persists artifact metadata). A session that
+    /// cannot (read-only index database) still verifies adopted records
+    /// itself but hands the marker on at shutdown instead of clearing it.
     static std::expected<CacheStore, std::error_code> open(llvm::StringRef root,
                                                            std::uint32_t version,
-                                                           bool read_only = false);
+                                                           bool read_only = false,
+                                                           bool adopt_writer_debt = true);
 
     /// Drop self-ignore markers into `root` (created if missing): a
     /// `.gitignore` and a CACHEDIR.TAG. Sessions call this right after

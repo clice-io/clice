@@ -906,6 +906,13 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<std::uint32_t>
     }
 
     if(batch.empty() && removals.empty()) {
+        // A serialize-only failure builds no batch: waiters still must see
+        // the failed attempt (see the failure pulse below), or a request
+        // bounded on failed saves never counts one.
+        if(!metadata_ok) {
+            workspace.metadata_committed.set();
+            workspace.metadata_committed.reset();
+        }
         co_return report;
     }
 

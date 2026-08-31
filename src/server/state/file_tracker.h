@@ -81,11 +81,15 @@ private:
 
     CDBStamp stat_cdb() const;
 
-    /// Last-known on-disk state of a tracked file.
+    /// Last-known on-disk state of a tracked file. The filesystem
+    /// identity is part of the stamp: a rename-over with a forged equal
+    /// size and mtime still changes the UniqueID.
     struct FileState {
         std::uint64_t size = 0;
         std::int64_t mtime_ns = 0;
         std::uint64_t hash = 0;
+        std::uint64_t uid_device = 0;
+        std::uint64_t uid_file = 0;
         bool missing = false;
     };
 

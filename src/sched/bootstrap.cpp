@@ -26,7 +26,10 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
     auto& cfg = workspace.config.project;
 
     if(!workspace.store && !cfg.cache_dir.empty()) {
-        auto cache = CacheStore::open(cfg.cache_dir, cache_format_version);
+        auto cache = CacheStore::open(cfg.cache_dir,
+                                      cache_format_version,
+                                      /*read_only=*/false,
+                                      /*adopt_writer_debt=*/!read_only_index);
         if(!cache) {
             LOG_WARN("Failed to open cache store at {}: {}",
                      std::string_view(cfg.cache_dir),

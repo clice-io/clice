@@ -134,6 +134,53 @@ TEST_CASE(RevalidateClearsAliasStamps) {
     ASSERT_EQ(pool.version(vid).mtime_ns, 0);
 }
 
+TEST_CASE(StampNeedsLiveIdentity) {
+    // A stamp corroborates only through the identity the pair was earned
+    // under: a stat carrying a different UniqueID (same-stat replace)
+    // must decline even when size and mtime match the pair.
+    TempDir tmp;
+    tmp.touch("f.h", "int v1();\n");
+    auto f = tmp.path("f.h");
+    age(f);
+
+    FileTable pool;
+    auto fid = pool.intern(f);
+    auto read = pool.read(fid);
+    ASSERT_TRUE(read.has_value());
+    auto vid = pool.intern_version(fid, read->hash);
+
+    pool.try_stamp(vid, read->size, read->mtime_ns, read->uid_device + 1, read->uid_file + 1);
+    ASSERT_EQ(pool.version(vid).mtime_ns, 0);
+
+    pool.try_stamp(vid, read->size, read->mtime_ns, read->uid_device, read->uid_file);
+    ASSERT_TRUE(pool.version(vid).mtime_ns != 0);
+}
+
+TEST_CASE(FastPathChecksIdentity) {
+    // A stamped version's stat fast path must not survive a rename-over
+    // that forges the same size and mtime: the inode changed, and the
+    // session knows this fid's identity.
+    TempDir tmp;
+    tmp.touch("f.h", "int v1();\n");
+    auto f = tmp.path("f.h");
+    age(f);
+
+    FileTable pool;
+    auto fid = pool.intern(f);
+    auto read = pool.read(fid);
+    ASSERT_TRUE(read.has_value());
+    auto vid = pool.intern_version(fid, read->hash);
+    pool.try_stamp(vid, read->size, read->mtime_ns, read->uid_device, read->uid_file);
+    ASSERT_TRUE(pool.version(vid).mtime_ns != 0);
+
+    tmp.touch("f.h.tmp", "int v2();\n");
+    ASSERT_TRUE(bool(fs::rename(tmp.path("f.h.tmp"), f)));
+    EXPECT_TRUE(set_file_mtime(f, read->mtime_ns));
+
+    pool.begin_wave();
+    ASSERT_TRUE(pool.check_version(vid) == FileTable::Verdict::Stale);
+}
+
 TEST_CASE(FreshReadCannotStamp) {
     // A check that reads a just-written file gets the right verdict but
     // must not stamp the version: on a coarse-mtime filesystem a same-tick

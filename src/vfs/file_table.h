@@ -491,6 +491,22 @@ struct FileTable {
     }
 
 private:
+    /// Whether a stat-equality fast path may stand for this fid: once the
+    /// session has learned the file's identity (an earned binding), the
+    /// live stat must still carry it — a rename-over with a forged equal
+    /// stat changes the UniqueID and must fall through to a read. A fid
+    /// with no earned binding keeps cross-session trust: adopted stamps
+    /// serve the cold start before any read has happened.
+    bool stamp_identity_holds(std::uint32_t fid, const llvm::sys::fs::file_status& status) const {
+        auto binding = bindings.find(fid);
+        if(binding == bindings.end() || !binding->second.earned) {
+            return true;
+        }
+        auto uid = status.getUniqueID();
+        auto entity = entity_ids.find({uid.getDevice(), uid.getFile()});
+        return entity != entity_ids.end() && entity->second == binding->second.entity;
+    }
+
     Verdict check_version_uncached(std::uint32_t vid) {
         auto it = versions.find(vid);
         assert(it != versions.end());
@@ -502,7 +518,8 @@ private:
         }
         auto size = status.getSize();
         auto mtime_ns = fs::mtime_ns(status);
-        if(version.mtime_ns != 0 && version.size == size && version.mtime_ns == mtime_ns) {
+        if(version.mtime_ns != 0 && version.size == size && version.mtime_ns == mtime_ns &&
+           stamp_identity_holds(version.fid, status)) {
             return Verdict::Fresh;
         }
 
