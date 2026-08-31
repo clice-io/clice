@@ -13,6 +13,8 @@
 
 namespace clice {
 
+struct FileTable;
+
 struct ResolveResult {
     /// The resolved absolute path (stack-allocated for paths < 256 chars).
     llvm::SmallString<256> path;
@@ -30,18 +32,25 @@ struct StatCounters {
     std::int64_t us = 0;           // Microseconds spent in filesystem ops.
 };
 
-/// Cache of directory listings for fast file existence checks.
-/// Instead of calling stat() for each candidate path, we list directory
-/// contents once via readdir() and do in-memory set lookups thereafter.
-/// This is dramatically faster on Windows where individual stat() calls
-/// are very expensive (~10x slower than Linux).
+/// Per-operation view over directory listings. Instead of calling stat()
+/// for each candidate path, directory contents are listed once via
+/// readdir() and checked with in-memory set lookups thereafter — this is
+/// dramatically faster on Windows where individual stat() calls are very
+/// expensive (~10x slower than Linux).
 ///
-/// TODO: add per-directory invalidation for incremental updates (currently
-/// the entire cache must be discarded when files change on disk).
+/// With `shared` set, listings live in the FileTable's directory
+/// compartment and survive the operation: the first use inside an
+/// operation validates a cached listing by the directory's own mtime (one
+/// stat instead of one readdir), later uses within the operation trust
+/// the validation (`validated`). Without it, `dirs` owns the listings and
+/// they die with the view — the standalone mode of tools and tests.
+///
 /// TODO: on case-insensitive filesystems (macOS HFS+/APFS, Windows NTFS),
 /// the readdir-based first-component optimization in resolve_include may
 /// produce false negatives when the #include casing differs from disk.
 struct DirListingCache {
+    FileTable* shared = nullptr;
+    llvm::StringSet<> validated;
     llvm::StringMap<llvm::StringSet<>> dirs;
 };
 

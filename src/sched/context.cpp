@@ -566,6 +566,7 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(std::uint32
 
     auto search_config = workspace.cdb.search_config(host_ref);
     DirListingCache dir_cache;
+    dir_cache.shared = &workspace.file_table;
     auto resolved_config = resolve_search_config(search_config, dir_cache);
 
     auto resolver = [&](llvm::StringRef filename,

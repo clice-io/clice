@@ -392,6 +392,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
         std::chrono::duration_cast<std::chrono::milliseconds>(config_end - config_start).count();
 
     DirListingCache dir_cache;
+    dir_cache.shared = &file_table;
     llvm::StringMap<CachedInclude> include_cache;
 
     // Collect all unique search dirs and launch readdir tasks on the
@@ -403,11 +404,12 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
     struct DirEntry {
         std::string dir_path;
         llvm::StringSet<> entries;
+        std::int64_t reliable_mtime = 0;
     };
 
     std::vector<kota::task<DirEntry, kota::error>> pending_dir_tasks;
 
-    if(dir_cache.dirs.empty()) {
+    {
         llvm::StringSet<> unique_dirs;
         for(auto& [config_id, config]: configs) {
             for(auto& dir: config.dirs) {
@@ -425,15 +427,35 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
 
         pending_dir_tasks.reserve(unique_dirs.size());
         for(auto& entry: unique_dirs) {
+            // A listing the shared compartment can still vouch for skips
+            // the readdir; its one validation stat happens lazily at first
+            // use.
+            auto cached = file_table.dir_listings.find(entry.getKey());
+            if(cached != file_table.dir_listings.end() && cached->second.mtime_ns != 0) {
+                continue;
+            }
             auto dir_path = entry.getKey().str();
             pending_dir_tasks.push_back(kota::queue(
                 [dir_path = std::move(dir_path)]() -> DirEntry {
                     DirEntry result;
                     result.dir_path = dir_path;
+                    llvm::sys::fs::file_status pre_status;
+                    bool pre_ok = !llvm::sys::fs::status(result.dir_path, pre_status);
                     std::error_code ec;
                     llvm::sys::fs::directory_iterator di(result.dir_path, ec);
                     for(; !ec && di != llvm::sys::fs::directory_iterator(); di.increment(ec)) {
                         result.entries.insert(llvm::sys::path::filename(di->path()));
+                    }
+                    // Same pre/post-stat + guard discipline as resolve_dir.
+                    llvm::sys::fs::file_status post_status;
+                    if(pre_ok && !llvm::sys::fs::status(result.dir_path, post_status) &&
+                       fs::mtime_ns(pre_status) == fs::mtime_ns(post_status)) {
+                        auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                          std::chrono::system_clock::now().time_since_epoch())
+                                          .count();
+                        if(fs::mtime_ns(post_status) <= fs::stat_baseline_before_ns(now_ms)) {
+                            result.reliable_mtime = fs::mtime_ns(post_status);
+                        }
                     }
                     return result;
                 },
@@ -561,7 +583,10 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                 pending_dir_tasks.clear();
                 if(dir_outcome.has_value()) {
                     for(auto& entry: *dir_outcome) {
-                        dir_cache.dirs.try_emplace(entry.dir_path, std::move(entry.entries));
+                        auto& listing = file_table.dir_listings[entry.dir_path];
+                        listing.entries = std::move(entry.entries);
+                        listing.mtime_ns = entry.reliable_mtime;
+                        dir_cache.validated.insert(entry.dir_path);
                     }
                     LOG_INFO("Pre-populated dir cache: {} directories", dir_outcome->size());
                 }

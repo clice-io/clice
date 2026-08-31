@@ -133,6 +133,7 @@ void Workspace::rescan_after_save(std::uint32_t path_id) {
         // index serves as config id — prior keys were just cleared and
         // consumers read the union.
         DirListingCache dir_cache;
+        dir_cache.shared = &file_table;
         auto dir = llvm::sys::path::parent_path(path);
         for(std::uint32_t ci = 0; ci < refs.size(); ++ci) {
             auto search_config = cdb.search_config(refs[ci]);

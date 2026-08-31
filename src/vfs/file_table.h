@@ -12,6 +12,7 @@
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -346,6 +347,24 @@ struct FileTable {
     };
 
     llvm::DenseMap<std::pair<std::uint64_t, std::uint64_t>, ModuleDecl> module_decls;
+
+    /// Directory listings, validated by the directory's own mtime: POSIX
+    /// and Windows bump it on entry creation and deletion, so one stat per
+    /// operation proves a cached listing current — external generators
+    /// dropping files into include directories produce no event, making
+    /// the mtime the only anchor there is. mtime_ns == 0 means the listing
+    /// was taken inside the mtime-granularity guard window (or the stat
+    /// failed) and must not be trusted across operations; a listing
+    /// re-earns trust at the next readdir. Deliberate residual: a forged
+    /// (backdated) directory mtime defeats this — files have the content
+    /// hash as a second anchor, a directory's only deeper truth is the
+    /// readdir itself, and re-reading every use would mean not caching.
+    struct DirListing {
+        llvm::StringSet<> entries;
+        std::int64_t mtime_ns = 0;
+    };
+
+    llvm::StringMap<DirListing> dir_listings;
 
     /// Wave-scoped verdict memo: one top-level check operation (a
     /// deps_changed chain, an index need_update batch) opens a wave, and

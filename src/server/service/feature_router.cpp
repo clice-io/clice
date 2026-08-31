@@ -772,6 +772,7 @@ FeatureRouter::RawResult FeatureRouter::completion(std::shared_ptr<Session> sess
 
             auto search_config = workspace.cdb.search_config(ref);
             DirListingCache dir_cache;
+            dir_cache.shared = &workspace.file_table;
             auto resolved = resolve_search_config(search_config, dir_cache);
             bool angled = (pctx.kind == CompletionContext::IncludeAngled);
             auto candidates = complete_include_path(resolved, pctx.prefix, angled, dir_cache);
