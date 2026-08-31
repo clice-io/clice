@@ -248,7 +248,7 @@ private:
 
     /// Dispatch- and landing-time admission on one claimed pump file: the
     /// serving side's veto (open sessions, index-only disk divergence).
-    Admission index_admission(std::uint32_t server_path_id) const;
+    Admission index_admission(std::uint32_t server_path_id);
 
     /// An index attempt settled with no retry pending; a session waiting
     /// on the index with nothing servable will never be served by it —

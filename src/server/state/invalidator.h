@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <functional>
 #include <optional>
 #include <string>
 
@@ -247,17 +246,10 @@ public:
 /// not add ceremonial event kinds for exempt logic.
 class Invalidator {
 public:
-    /// Read a file's current on-disk content, or nullopt if unreadable.
-    /// Defaults to the real filesystem; unit tests inject file content
-    /// through it. Used by BufferSaved to detect a save hook or formatter
-    /// rewriting the file as it lands (disk ahead of the buffer).
-    using ReadFile = std::function<std::optional<std::string>(llvm::StringRef path)>;
-
     Invalidator(Workspace& workspace,
                 const SessionStore& store,
                 const ContextResolver& contexts,
-                PCMFamily& pcm,
-                ReadFile read_file = {});
+                PCMFamily& pcm);
 
     /// Fold a batch of events into one deduplicated effect set.
     DirtySet apply(llvm::ArrayRef<FileEvent> events);
@@ -294,7 +286,6 @@ private:
     const SessionStore& store;
     const ContextResolver& contexts;
     PCMFamily& pcm;
-    ReadFile read_file;
 
     /// Files whose disk content changed while their buffer was open. The
     /// DiskChanged case defers the dependent cascade (the buffer is the

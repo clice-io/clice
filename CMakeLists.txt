@@ -175,6 +175,7 @@ add_custom_target(generate_version_header
 # see an LSP or server header.
 file(GLOB_RECURSE CLICE_CORE_SOURCES CONFIGURE_DEPENDS
     "${PROJECT_SOURCE_DIR}/src/support/*.cpp"
+    "${PROJECT_SOURCE_DIR}/src/vfs/*.cpp"
     "${PROJECT_SOURCE_DIR}/src/syntax/*.cpp"
     "${PROJECT_SOURCE_DIR}/src/command/*.cpp"
     "${PROJECT_SOURCE_DIR}/src/compile/*.cpp"

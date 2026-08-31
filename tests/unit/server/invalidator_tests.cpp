@@ -175,18 +175,19 @@ TEST_CASE(NoOpEventsNoEffects) {
 }
 
 TEST_CASE(SaveResetsTrialOnly) {
+    TempDir tmp;
+    tmp.touch("a.h", "int x;");
+
     Workspace workspace;
     SessionStore store;
-    auto saved = workspace.file_table.intern("/proj/a.h");
+    auto saved = workspace.file_table.intern(tmp.path("a.h"));
     auto session = store.open(saved);
     store.apply_open(*session, "int x;", 1);
 
     ContextResolver resolver(workspace);
     // A plain save: the disk holds exactly what the buffer holds.
     PCMHarness ph(workspace, resolver);
-    Invalidator invalidator(workspace, store, resolver, ph.pcm, [](llvm::StringRef) {
-        return std::optional<std::string>{"int x;"};
-    });
+    Invalidator invalidator(workspace, store, resolver, ph.pcm);
     auto dirty = invalidator.apply(FileEvent::buffer_saved(saved));
 
     // The saved file itself is not stale — its buffer was already current —
@@ -332,16 +333,17 @@ TEST_CASE(StaleReverseMapUnion) {
 }
 
 TEST_CASE(CloseWithoutShardReindexes) {
+    TempDir tmp;
+    tmp.touch("a.cpp", "int x;");
+
     Workspace workspace;
     SessionStore store;
-    auto closed = workspace.file_table.intern("/proj/a.cpp");
+    auto closed = workspace.file_table.intern(tmp.path("a.cpp"));
 
     ContextResolver resolver(workspace);
-    // The file exists on disk (injected read), it just was never indexed.
+    // The file exists on disk, it just was never indexed.
     PCMHarness ph(workspace, resolver);
-    Invalidator invalidator(workspace, store, resolver, ph.pcm, [](llvm::StringRef) {
-        return std::optional<std::string>("int x;");
-    });
+    Invalidator invalidator(workspace, store, resolver, ph.pcm);
     auto dirty = invalidator.apply(FileEvent::buffer_closed(closed));
 
     // No shard to compare against: nothing serves this file's rows anyway.
@@ -352,18 +354,19 @@ TEST_CASE(CloseWithoutShardReindexes) {
 }
 
 TEST_CASE(CloseCurrentShardDepsOnly) {
+    TempDir tmp;
+    tmp.touch("a.cpp", "int x;");
+
     Workspace workspace;
     SessionStore store;
-    auto closed = workspace.file_table.intern("/proj/a.cpp");
+    auto closed = workspace.file_table.intern(tmp.path("a.cpp"));
     workspace.shards[closed] = shard_of("int x;");
 
     ContextResolver resolver(workspace);
     // Disk matches the content the shard was built from: a browse-and-close
     // must not blank the file's rows for the reindex queue's latency.
     PCMHarness ph(workspace, resolver);
-    Invalidator invalidator(workspace, store, resolver, ph.pcm, [](llvm::StringRef) {
-        return std::optional<std::string>{"int x;"};
-    });
+    Invalidator invalidator(workspace, store, resolver, ph.pcm);
     auto dirty = invalidator.apply(FileEvent::buffer_closed(closed));
 
     ASSERT_EQ(dirty.reindex_deps_only, llvm::SmallVector<std::uint32_t>{closed});
@@ -371,18 +374,19 @@ TEST_CASE(CloseCurrentShardDepsOnly) {
 }
 
 TEST_CASE(CloseDivergentShardContentChanged) {
+    TempDir tmp;
+    tmp.touch("a.cpp", "int edited;");
+
     Workspace workspace;
     SessionStore store;
-    auto closed = workspace.file_table.intern("/proj/a.cpp");
+    auto closed = workspace.file_table.intern(tmp.path("a.cpp"));
     workspace.shards[closed] = shard_of("int x;");
 
     ContextResolver resolver(workspace);
     // Disk holds edits the shard never saw (saved while open): the shard's
     // rows describe text that no longer exists.
     PCMHarness ph(workspace, resolver);
-    Invalidator invalidator(workspace, store, resolver, ph.pcm, [](llvm::StringRef) {
-        return std::optional<std::string>{"int edited;"};
-    });
+    Invalidator invalidator(workspace, store, resolver, ph.pcm);
     auto dirty = invalidator.apply(FileEvent::buffer_closed(closed));
 
     ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<std::uint32_t>{closed});
@@ -393,9 +397,12 @@ TEST_CASE(CloseStaleModuleCascades) {
     // An external rewrite consumed while the interface was open skipped the
     // module cascade (buffer authoritative) and the tracker will not refire:
     // the close must deliver it, or importers keep the pre-change PCM.
+    TempDir tmp;
+    tmp.touch("m.cppm", "export module m;\nexport int v2();\n");
+
     Workspace workspace;
     SessionStore store;
-    auto mod = workspace.file_table.intern("/proj/m.cppm");
+    auto mod = workspace.file_table.intern(tmp.path("m.cppm"));
     auto user = workspace.file_table.intern("/proj/user.cpp");
     workspace.shards[mod] = shard_of("export module m;\nexport int v1();\n");
     workspace.pcm_cache[mod] = {
@@ -412,9 +419,7 @@ TEST_CASE(CloseStaleModuleCascades) {
             user
     },
         {{pcm_family, mod}});
-    Invalidator invalidator(workspace, store, resolver, ph.pcm, [](llvm::StringRef) {
-        return std::optional<std::string>{"export module m;\nexport int v2();\n"};
-    });
+    Invalidator invalidator(workspace, store, resolver, ph.pcm);
     auto dirty = invalidator.apply(FileEvent::buffer_closed(mod));
 
     EXPECT_TRUE(llvm::is_contained(dirty.reindex_content_changed, mod));
@@ -456,9 +461,12 @@ TEST_CASE(DeferredDiskChangeCascades) {
     // dependent cascade to the close, and an agent-mode reindex can
     // refresh the shard from the rewritten disk before then: a current
     // shard must not hide the recorded debt from the close.
+    TempDir tmp;
+    tmp.touch("h.h", "int rewritten;");
+
     Workspace workspace;
     SessionStore store;
-    auto header = workspace.file_table.intern("/proj/h.h");
+    auto header = workspace.file_table.intern(tmp.path("h.h"));
     auto tu = workspace.file_table.intern("/proj/a.cpp");
     workspace.dep_graph.set_includes(tu, 0, {header});
     workspace.dep_graph.build_reverse_map();
@@ -467,9 +475,7 @@ TEST_CASE(DeferredDiskChangeCascades) {
 
     ContextResolver resolver(workspace);
     PCMHarness ph(workspace, resolver);
-    Invalidator invalidator(workspace, store, resolver, ph.pcm, [](llvm::StringRef) {
-        return std::optional<std::string>{"int rewritten;"};
-    });
+    Invalidator invalidator(workspace, store, resolver, ph.pcm);
 
     auto deferred = invalidator.apply(FileEvent::disk_changed(header));
     ASSERT_TRUE(deferred.reindex_deps_only.empty());
@@ -572,9 +578,12 @@ TEST_CASE(CloseStalePCMCascades) {
     // was open, so the shard is current — but the PCM consumed bytes the
     // disk no longer holds. The artifact's deps snapshot is the judge, and
     // the current shard keeps serving (deps-only).
+    TempDir tmp;
+    tmp.touch("m.cppm", "export module m;\nexport int v2();\n");
+
     Workspace workspace;
     SessionStore store;
-    auto mod = workspace.file_table.intern("/proj/m.cppm");
+    auto mod = workspace.file_table.intern(tmp.path("m.cppm"));
     auto user = workspace.file_table.intern("/proj/user.cpp");
     workspace.shards[mod] = shard_of("export module m;\nexport int v2();\n");
     workspace.pcm_cache[mod] = {
@@ -591,9 +600,7 @@ TEST_CASE(CloseStalePCMCascades) {
             user
     },
         {{pcm_family, mod}});
-    Invalidator invalidator(workspace, store, resolver, ph.pcm, [](llvm::StringRef) {
-        return std::optional<std::string>{"export module m;\nexport int v2();\n"};
-    });
+    Invalidator invalidator(workspace, store, resolver, ph.pcm);
     auto dirty = invalidator.apply(FileEvent::buffer_closed(mod));
 
     llvm::SmallVector<std::uint32_t> reindexed{mod, user};
@@ -658,18 +665,19 @@ TEST_CASE(BatchSavesDeduplicate) {
 }
 
 TEST_CASE(SaveDivergentDiskDirties) {
+    TempDir tmp;
+    tmp.touch("a.h", "int disk;");
+
     Workspace workspace;
     SessionStore store;
-    auto saved = workspace.file_table.intern("/proj/a.h");
+    auto saved = workspace.file_table.intern(tmp.path("a.h"));
     auto session = store.open(saved);
     store.apply_open(*session, "int buffer;", 1);
 
     ContextResolver resolver(workspace);
     // A save hook rewrote the file as it landed: disk != buffer.
     PCMHarness ph(workspace, resolver);
-    Invalidator invalidator(workspace, store, resolver, ph.pcm, [](llvm::StringRef) {
-        return std::optional<std::string>{"int disk;"};
-    });
+    Invalidator invalidator(workspace, store, resolver, ph.pcm);
     auto dirty = invalidator.apply(FileEvent::buffer_saved(saved));
 
     // The session recompiles so its deps snapshot re-validates against the
@@ -678,9 +686,10 @@ TEST_CASE(SaveDivergentDiskDirties) {
 }
 
 TEST_CASE(SaveUnreadableDiskDirties) {
+    TempDir tmp;
     Workspace workspace;
     SessionStore store;
-    auto saved = workspace.file_table.intern("/proj/a.h");
+    auto saved = workspace.file_table.intern(tmp.path("a.h"));
     auto session = store.open(saved);
     store.apply_open(*session, "int buffer;", 1);
 
@@ -688,9 +697,7 @@ TEST_CASE(SaveUnreadableDiskDirties) {
     // The file cannot be read back after the save: the disk state is
     // unknown, which is treated as divergent (conservative).
     PCMHarness ph(workspace, resolver);
-    Invalidator invalidator(workspace, store, resolver, ph.pcm, [](llvm::StringRef) {
-        return std::optional<std::string>{};
-    });
+    Invalidator invalidator(workspace, store, resolver, ph.pcm);
     auto dirty = invalidator.apply(FileEvent::buffer_saved(saved));
 
     ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{saved});
@@ -837,15 +844,14 @@ TEST_CASE(EntryChangeThenRemoval) {
 }
 
 TEST_CASE(CloseOfDeletedFile) {
+    TempDir tmp;
     Workspace workspace;
     SessionStore store;
-    auto file = workspace.file_table.intern("/proj/gone.cpp");
+    auto file = workspace.file_table.intern(tmp.path("gone.cpp"));
     ContextResolver resolver(workspace);
     // Disk read fails: the file vanished while it was open.
     PCMHarness ph(workspace, resolver);
-    Invalidator invalidator(workspace, store, resolver, ph.pcm, [](llvm::StringRef) {
-        return std::optional<std::string>{};
-    });
+    Invalidator invalidator(workspace, store, resolver, ph.pcm);
 
     auto dirty = invalidator.apply(FileEvent::buffer_closed(file));
 

@@ -7,6 +7,7 @@
 #include "support/logging.h"
 #include "syntax/include_resolver.h"
 #include "syntax/scan.h"
+#include "vfs/file_table.h"
 
 #include "kota/async/async.h"
 #include "llvm/ADT/DenseSet.h"
@@ -255,6 +256,9 @@ struct FileScanResult {
     std::uint32_t path_id;
     std::uint32_t config_id;
     ScanResult scan_result;
+    /// Same-source {stat, hash} of the bytes scanned — the cold-start
+    /// read doubles as the workspace's first disk observation.
+    DiskObservation obs;
     bool read_failed = false;
     std::int64_t read_us = 0;
     std::int64_t scan_us = 0;
@@ -270,24 +274,17 @@ FileScanResult scan_file_worker(const char* path, std::uint32_t path_id, std::ui
     result.config_id = config_id;
 
     auto t0 = std::chrono::steady_clock::now();
-    // Force read() instead of mmap: RequiresNullTerminator=true makes LLVM
-    // fall back to read() for page-aligned files, and IsVolatile=true forces
-    // read() unconditionally — bypassing mmap entirely.  This separates
-    // actual I/O cost from page-fault cost that was previously hidden inside
-    // the lexer timing.
-    auto buf = llvm::MemoryBuffer::getFile(result.path,
-                                           /*FileSize=*/-1,
-                                           /*RequiresNullTerminator=*/true,
-                                           /*IsVolatile=*/true);
+    auto observed = read_file_observed(path);
     auto t1 = std::chrono::steady_clock::now();
     result.read_us = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
 
-    if(!buf) {
+    if(!observed) {
         result.read_failed = true;
         return result;
     }
+    result.obs = observed->obs;
 
-    result.scan_result = scan_quick((*buf)->getBuffer());
+    result.scan_result = scan_quick(observed->content->getBuffer());
     auto t2 = std::chrono::steady_clock::now();
     result.scan_us = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
 
@@ -508,8 +505,11 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                 break;
             }
             for(auto& r: *scan_outcome) {
-                if(!r.read_failed && ext_cache) {
-                    ext_cache->scan_results.try_emplace(r.path_id, r.scan_result);
+                if(!r.read_failed) {
+                    file_table.observe(r.path_id, r.obs);
+                    if(ext_cache) {
+                        ext_cache->scan_results.try_emplace(r.path_id, r.scan_result);
+                    }
                 }
                 scan_results.push_back(std::move(r));
             }
@@ -556,8 +556,11 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                     break;
                 }
                 for(auto& r: *scan_outcome) {
-                    if(!r.read_failed && ext_cache) {
-                        ext_cache->scan_results.try_emplace(r.path_id, r.scan_result);
+                    if(!r.read_failed) {
+                        file_table.observe(r.path_id, r.obs);
+                        if(ext_cache) {
+                            ext_cache->scan_results.try_emplace(r.path_id, r.scan_result);
+                        }
                     }
                     scan_results.push_back(std::move(r));
                 }

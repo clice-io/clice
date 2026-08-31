@@ -26,6 +26,7 @@
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Process.h"
+#include "llvm/Support/xxhash.h"
 
 namespace clice {
 
@@ -366,7 +367,7 @@ void MasterServer::close_session(std::uint32_t path_id) {
     LOG_DEBUG("didClose: {}", path);
 }
 
-Admission MasterServer::index_admission(std::uint32_t server_path_id) const {
+Admission MasterServer::index_admission(std::uint32_t server_path_id) {
     // Open files whose session invests in an AST are skipped until an
     // agent shows up: the LSP side never reads their shards (the session
     // serves them), so indexing them is pure waste — but agents read disk
@@ -387,8 +388,9 @@ Admission MasterServer::index_admission(std::uint32_t server_path_id) const {
     if(session->serving != ServingMode::IndexOnly) {
         return index_open_files ? Admission::Admit : Admission::SkipAndSettle;
     }
-    auto file_path = workspace.file_table.resolve(server_path_id);
-    if(auto disk = fs::read(file_path); !disk || *disk != session->text) {
+    auto disk = workspace.file_table.current(server_path_id);
+    if(!disk || disk->size != session->text.size() ||
+       disk->hash != llvm::xxh3_64bits(session->text)) {
         return Admission::SkipAndSettle;
     }
     return Admission::Admit;
@@ -440,13 +442,13 @@ void MasterServer::on_agentic_query() {
         // keeps serving through the catch-up, while a stale or missing one
         // (a save that landed while its reindex slot was still skipped)
         // must not answer agents with the pre-save rows.
-        auto disk = fs::read(workspace.file_table.resolve(path_id));
+        auto disk = workspace.file_table.current(path_id);
         if(!disk) {
             continue;
         }
         auto shard_it = workspace.shards.find(path_id);
-        bool shard_current =
-            shard_it != workspace.shards.end() && shard_it->second.matches_content(*disk);
+        bool shard_current = shard_it != workspace.shards.end() &&
+                             shard_it->second.matches_content(disk->size, disk->hash);
         pump.enqueue(path_id,
                      shard_current ? ReindexReason::DepsOnly : ReindexReason::ContentChanged);
     }

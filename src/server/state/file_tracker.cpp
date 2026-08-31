@@ -170,19 +170,23 @@ kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
 
             auto it = baseline.find(path_id);
             if(it == baseline.end()) {
-                // First sight seeds the baseline silently.
+                // First sight seeds the baseline silently. The startup
+                // scan usually observed the file already, so the common
+                // seed is a shared-pair hit with no second read.
                 FileState state;
                 state.missing = !exists;
                 if(exists) {
-                    state.size = status.getSize();
-                    state.mtime_ns = fs::mtime_ns(status);
-                    state.hash = hash_file(path);
-                    if(state.hash == 0) {
-                        // Read failure (hash_file's sentinel): don't seed a
-                        // baseline that would later compare as a change.
-                        // Retry next tick.
+                    auto obs = workspace.file_table.observe_for(path_id,
+                                                                status.getSize(),
+                                                                fs::mtime_ns(status));
+                    if(!obs) {
+                        // Unreadable right now: don't seed a baseline that
+                        // would later compare as a change. Retry next tick.
                         continue;
                     }
+                    state.size = obs->size;
+                    state.mtime_ns = obs->mtime_ns;
+                    state.hash = obs->hash;
                 }
                 baseline.try_emplace(path_id, state);
                 continue;
@@ -206,8 +210,8 @@ kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
 
             // The stamp moved: only a confirmed content change counts, so
             // touches and checkouts of identical bytes stay silent.
-            auto hash = hash_file(path);
-            if(hash == 0) {
+            auto obs = workspace.file_table.observe_for(path_id, size, mtime_ns);
+            if(!obs) {
                 // The file stats fine but cannot be read right now (e.g. an
                 // antivirus scanner briefly holding a fresh file on Windows).
                 // No signal either way — leave the baseline untouched so the
@@ -215,8 +219,8 @@ kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
                 // emit nothing: a failed read must never count as a change.
                 continue;
             }
-            bool content_changed = state.missing || hash != state.hash;
-            state = FileState{.size = size, .mtime_ns = mtime_ns, .hash = hash};
+            bool content_changed = state.missing || obs->hash != state.hash;
+            state = FileState{.size = obs->size, .mtime_ns = obs->mtime_ns, .hash = obs->hash};
             if(content_changed) {
                 events.push_back(FileEvent::disk_changed(path_id));
                 changed += 1;

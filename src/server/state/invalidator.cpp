@@ -8,26 +8,15 @@
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringMap.h"
-#include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/xxhash.h"
 
 namespace clice {
-
-/// Default ReadFile: the real filesystem.
-static std::optional<std::string> read_from_disk(llvm::StringRef path) {
-    auto buffer = llvm::MemoryBuffer::getFile(path);
-    if(!buffer) {
-        return std::nullopt;
-    }
-    return std::string((*buffer)->getBuffer());
-}
 
 Invalidator::Invalidator(Workspace& workspace,
                          const SessionStore& store,
                          const ContextResolver& contexts,
-                         PCMFamily& pcm,
-                         ReadFile read_file) :
-    workspace(workspace), store(store), contexts(contexts), pcm(pcm),
-    read_file(read_file ? std::move(read_file) : ReadFile(read_from_disk)) {}
+                         PCMFamily& pcm) :
+    workspace(workspace), store(store), contexts(contexts), pcm(pcm) {}
 
 /// Batch effects may name the same file twice (two saves in one batch);
 /// execution must see each id once.
@@ -230,8 +219,9 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // the pull-side staleness check alone can miss when the
                 // rewrite lands within mtime granularity of the compile.
                 if(auto session = store.find(path_id)) {
-                    auto disk = read_file(workspace.file_table.resolve(path_id));
-                    if(!disk || *disk != session->text) {
+                    auto disk = workspace.file_table.current(path_id);
+                    if(!disk || disk->size != session->text.size() ||
+                       disk->hash != llvm::xxh3_64bits(session->text)) {
                         dirty.mark_ast_dirty.push_back(path_id);
                     }
                 }
@@ -249,7 +239,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // the queue's latency, while a close after saved edits must
                 // not serve rows for text that no longer exists. One disk
                 // read settles it; an unreadable file counts as changed.
-                auto disk = read_file(workspace.file_table.resolve(event.path_id));
+                auto disk = workspace.file_table.current(event.path_id);
                 if(!disk) {
                     // Deleted while it was open: the tracker skips open
                     // files, so this close is the first observation of the
@@ -263,7 +253,8 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 }
                 auto shard_it = workspace.shards.find(event.path_id);
                 bool has_shard = shard_it != workspace.shards.end();
-                bool shard_current = has_shard && shard_it->second.matches_content(*disk);
+                bool shard_current =
+                    has_shard && shard_it->second.matches_content(disk->size, disk->hash);
                 // A module unit's PCM can be staler than the shard: an
                 // agent-mode reindex reads the rewritten disk while the
                 // artifact keeps the pre-change bytes. Its own deps
