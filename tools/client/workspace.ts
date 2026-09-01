@@ -9,7 +9,7 @@ import { URI } from "vscode-uri";
 import { buildCDBEntry, generateCDB } from "../compile_commands.ts";
 
 /// Versioned root of the unified cache store; bump together with
-/// cache_format_version in src/server/state/workspace.h.
+/// cache_format_version in src/sched/workspace.h.
 const CACHE_ROOT = path.join(".clice", "cache", "v8");
 
 /// The harness-wide canonical URI spelling: percent-decoded. vscode-uri

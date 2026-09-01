@@ -181,7 +181,7 @@ struct CacheStore::State {
     struct Namespace {
         CacheNamespace config;
         /// Directory holding this namespace's blobs: `{base}/{name}` for
-        /// LRU/Persistent, `{base}/{name}/{pid}` for Scratch.
+        /// LRU, `{base}/{name}/{pid}` for Scratch.
         std::string dir;
         llvm::StringMap<Entry> entries;
         std::uint64_t total_size = 0;
@@ -211,11 +211,6 @@ struct CacheStore::State {
     /// Inspection mode (open's read_only): no directory is created or
     /// swept, and writes are a caller bug.
     bool read_only = false;
-
-    /// First namespace directory scan that failed (permissions, IO):
-    /// the affected namespace looks empty while its blobs exist, so
-    /// readers must not mistake the store for empty.
-    std::error_code scan_failure;
 
     /// Logical clock: strictly increasing per issued stamp so that LRU
     /// ordering is deterministic even within one millisecond.
@@ -511,10 +506,8 @@ void CacheStore::register_namespace(CacheNamespace ns) {
     }
     // A read-only open of a store whose namespace was never created is a
     // legitimately empty scan; any other failure hides existing blobs.
-    if(ec && !(state->read_only && ec == std::errc::no_such_file_or_directory) &&
-       !state->scan_failure) {
+    if(ec && !(state->read_only && ec == std::errc::no_such_file_or_directory)) {
         LOG_WARN("CacheStore: failed to scan namespace {}: {}", ns_state.dir, ec.message());
-        state->scan_failure = ec;
     }
 
     // Attach aux blobs to their entries. An aux without a primary is crash
@@ -697,11 +690,10 @@ std::expected<std::string, std::error_code> CacheStore::commit(PendingEntry pend
                     return std::unexpected(result.error());
                 }
             } else {
-                // The destination is stale — a rewritten mutable key
-                // (Persistent/Scratch) or an LRU blob whose content drifted
-                // from its key.  Remove it and retry; if the rename still
-                // fails, report the error instead of silently dropping the
-                // new data.
+                // The destination is stale — a rewritten Scratch key or an
+                // LRU blob whose content drifted from its key.  Remove it
+                // and retry; if the rename still fails, report the error
+                // instead of silently dropping the new data.
                 llvm::sys::fs::remove(final_path);
                 if(auto retry = fs::rename(pending.tmp_path, final_path); !retry) {
                     llvm::sys::fs::remove(pending.tmp_path);
@@ -815,36 +807,12 @@ std::size_t CacheStore::pending_tmp_files() const {
     return count;
 }
 
-void CacheStore::for_each_key(llvm::StringRef ns, llvm::function_ref<void(llvm::StringRef)> fn) {
-    llvm::SmallVector<std::string> keys;
-    {
-        std::lock_guard guard(state->mutex);
-        auto* ns_state = state->find_namespace(ns);
-        if(!ns_state) {
-            return;
-        }
-        keys.reserve(ns_state->entries.size());
-        for(auto& entry: ns_state->entries) {
-            keys.push_back(entry.first().str());
-        }
-    }
-
-    for(auto& key: keys) {
-        fn(key);
-    }
-}
-
 llvm::StringRef CacheStore::base_dir() const {
     return state->base;
 }
 
 bool CacheStore::read_only() const {
     return state->read_only;
-}
-
-std::error_code CacheStore::scan_error() const {
-    std::lock_guard guard(state->mutex);
-    return state->scan_failure;
 }
 
 void CacheStore::State::evict_locked(Namespace& ns, llvm::StringRef keep_key) {

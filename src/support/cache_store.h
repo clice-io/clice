@@ -19,10 +19,6 @@ enum class CachePolicy : std::uint8_t {
     /// artifacts (PCH, PCM).
     LRU,
 
-    /// Never evicted automatically, only via explicit invalidate():
-    /// data that is expensive to accumulate (index).
-    Persistent,
-
     /// Per-instance working files: not tracked in the manifest, not part
     /// of LRU.  Stored under a pid subdirectory; directories of dead pids
     /// are cleaned up when the namespace is registered.
@@ -48,7 +44,7 @@ struct CacheNamespace {
     CachePolicy policy = CachePolicy::LRU;
 
     /// Size budget for LRU namespaces; 0 means unlimited.
-    /// Ignored for Persistent and Scratch.
+    /// Ignored for Scratch.
     std::uint64_t max_bytes = 0;
 };
 
@@ -82,7 +78,7 @@ struct CacheNamespace {
 /// On-disk layout under `{root}/cache/v{version}/`:
 ///   manifest.json        last-accessed checkpoint (not a source of truth)
 ///   tmp/{pid}/           in-flight writes of one live instance
-///   {ns}/{key}{ext}      committed blobs (LRU / Persistent)
+///   {ns}/{key}{ext}      committed blobs (LRU)
 ///   {ns}/{pid}/{key}{ext}  Scratch blobs of one live instance
 ///
 /// A blob is complete iff it exists at its final path (atomic rename); the
@@ -218,13 +214,9 @@ public:
     /// new blob still cannot be published an error is returned.
     std::expected<std::string, std::error_code> commit(PendingEntry pending);
 
-    /// Remove a blob.  Primarily for Persistent namespaces, whose cleanup
-    /// is the caller's mark-and-sweep; LRU namespaces rarely need it.
+    /// Remove a blob before the LRU budget would get to it — retraction of
+    /// an artifact the owner has judged unusable (corrupt, invalidated).
     void invalidate(llvm::StringRef ns, llvm::StringRef key);
-
-    /// Enumerate all keys in a namespace (for caller-side mark-and-sweep).
-    /// Iterates over a snapshot, so fn may call back into the store.
-    void for_each_key(llvm::StringRef ns, llvm::function_ref<void(llvm::StringRef)> fn);
 
     /// Number of in-flight tmp blobs of this instance (files under
     /// `tmp/{pid}`). A settled server has zero: every PendingEntry either
@@ -252,13 +244,6 @@ public:
 
     /// Whether the store was opened in read-only inspection mode.
     bool read_only() const;
-
-    /// First namespace directory scan that failed since open (default
-    /// error_code when none did).  A failed scan makes the namespace look
-    /// empty while its blobs exist, so a reader that would report "no
-    /// data" must check this first.  A read-only open of a namespace that
-    /// was never created scans empty legitimately and is not a failure.
-    std::error_code scan_error() const;
 
     /// Atomically persist the manifest (key sizes and last-accessed times)
     /// if anything changed.  Also runs automatically every few commits;

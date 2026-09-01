@@ -298,44 +298,16 @@ TEST_CASE(FreshCommitNotEvicted) {
     ASSERT_TRUE(store.lookup("pch", "big").has_value());
 }
 
-TEST_CASE(PersistentNeverEvicted) {
+TEST_CASE(RewriteWins) {
     TempDir tmp;
     auto store = open_store(tmp);
-    store.register_namespace(
-        {.name = "index", .extension = ".idx", .policy = CachePolicy::Persistent, .max_bytes = 1});
+    register_lru(store);
 
-    put(store, "index", "a", "aaaaaaaaaa");
-    put(store, "index", "b", "bbbbbbbbbb");
-
-    ASSERT_TRUE(store.lookup("index", "a").has_value());
-    ASSERT_TRUE(store.lookup("index", "b").has_value());
-}
-
-TEST_CASE(PersistentRewriteWins) {
-    TempDir tmp;
-    auto store = open_store(tmp);
-    store.register_namespace(
-        {.name = "index", .extension = ".idx", .policy = CachePolicy::Persistent});
-
-    // Persistent keys are mutable: a rewrite of the same key must serve
-    // the new content, never the old blob.
-    put(store, "index", "project", "first snapshot");
-    auto path = put(store, "index", "project", "second");
+    // Keys are mutable (not fully content-addressed): a rewrite of the
+    // same key must serve the new content, never the old blob.
+    put(store, "pch", "k1", "first snapshot");
+    auto path = put(store, "pch", "k1", "second");
     ASSERT_EQ(fs::read(path).value_or(""), "second");
-}
-
-TEST_CASE(PersistentRenameRetry) {
-    TempDir tmp;
-    auto store = open_store(tmp);
-    store.register_namespace(
-        {.name = "index", .extension = ".idx", .policy = CachePolicy::Persistent});
-
-    // Squat the blob path with an empty directory: the first rename fails,
-    // and the store must remove the obstacle and publish the new blob.
-    tmp.mkdir("root/cache/v1/index/project.idx");
-    auto path = put(store, "index", "project", "fresh");
-    ASSERT_EQ(fs::read(path).value_or(""), "fresh");
-    ASSERT_TRUE(store.lookup("index", "project").has_value());
 }
 
 TEST_CASE(LruStaleBlobReplaced) {
@@ -353,19 +325,18 @@ TEST_CASE(LruStaleBlobReplaced) {
     ASSERT_TRUE(store.lookup("pch", "k1").has_value());
 }
 
-TEST_CASE(PersistentCommitFailureSurfaces) {
+TEST_CASE(CommitFailureSurfaces) {
     TempDir tmp;
     auto store = open_store(tmp);
-    store.register_namespace(
-        {.name = "index", .extension = ".idx", .policy = CachePolicy::Persistent});
+    register_lru(store);
 
     // A non-empty directory can neither be renamed over nor removed: the
     // commit must report the failure, not silently claim the data is stored.
-    tmp.touch("root/cache/v1/index/project.idx/squatter", "x");
-    auto pending = store.begin_store("index", "project");
+    tmp.touch("root/cache/v1/pch/k1.pch/squatter", "x");
+    auto pending = store.begin_store("pch", "k1");
     ASSERT_TRUE(fs::write(pending.tmp_path, "dropped").has_value());
     ASSERT_FALSE(store.commit(std::move(pending)).has_value());
-    ASSERT_FALSE(store.lookup("index", "project").has_value());
+    ASSERT_FALSE(store.lookup("pch", "k1").has_value());
 }
 
 TEST_CASE(InvalidateRemovesBlob) {
@@ -378,25 +349,6 @@ TEST_CASE(InvalidateRemovesBlob) {
 
     ASSERT_FALSE(store.lookup("pch", "k1").has_value());
     ASSERT_FALSE(llvm::sys::fs::exists(path));
-}
-
-TEST_CASE(ForEachKey) {
-    TempDir tmp;
-    auto store = open_store(tmp);
-    register_lru(store);
-
-    put(store, "pch", "a", "1");
-    put(store, "pch", "b", "2");
-
-    std::vector<std::string> keys;
-    store.for_each_key("pch", [&](llvm::StringRef key) { keys.push_back(key.str()); });
-    std::ranges::sort(keys);
-    ASSERT_EQ(keys, (std::vector<std::string>{"a", "b"}));
-
-    // Snapshot semantics: invalidating from the callback must be safe.
-    store.for_each_key("pch", [&](llvm::StringRef key) { store.invalidate("pch", key); });
-    ASSERT_FALSE(store.lookup("pch", "a").has_value());
-    ASSERT_FALSE(store.lookup("pch", "b").has_value());
 }
 
 TEST_CASE(MissingManifestRescans) {
