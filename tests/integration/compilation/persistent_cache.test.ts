@@ -1,9 +1,9 @@
 /// Integration tests for persistent PCH/PCM cache.
 ///
-/// Verifies that PCH/PCM artifacts are written to the unified cache store
-/// (.clice/cache/v8/{pch,pcm}/) with content-addressed filenames, survive
-/// server restarts via the artifact metadata persisted in the index
-/// database, and are properly reused across sessions.
+/// Verifies that PCH/PCM artifacts are written to the versioned cache
+/// store ({pch,pcm}/ namespaces) with content-addressed filenames,
+/// survive server restarts via the artifact metadata persisted in the
+/// index database, and are properly reused across sessions.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -95,37 +95,6 @@ test("pch written to cache dir", async ({ session }) => {
     );
 });
 
-test("artifacts metadata persisted", async ({ session }) => {
-    // After a PCH build, the artifact metadata blob in the index database
-    // records the entry with its validated deps. The metadata flush is
-    // debounced, so the blob appears shortly after the build lands.
-    const { client, workspace } = session.tmp();
-    workspace.pinCacheDir({ fsIndex: true });
-    workspace.write("header.h", "#pragma once\nint global_val = 42;\n");
-    workspace.write("main.cpp", '#include "header.h"\nint main() { return global_val; }\n');
-    workspace.writeCDB(["main.cpp"]);
-    await client.initialize(workspace);
-
-    const [uri] = await client.openAndWait("main.cpp");
-    client.assertCleanCompile(uri);
-
-    await waitUntil(() => (workspace.readArtifactsBlob()?.pch ?? []).length > 0, {
-        timeout: 10_000,
-        interval: 100,
-        description: "the artifacts blob to record the PCH entry",
-    });
-    const entry = workspace.readArtifactsBlob()!.pch[0]!;
-    expect(entry).toHaveProperty("key");
-    expect(entry).toHaveProperty("deps");
-    expect(entry).toHaveProperty("bound");
-    expect(entry.deps.length, "PCH deps must be recorded").toBeGreaterThan(0);
-    for (const dep of entry.deps) {
-        expect(BigInt(dep.hash)).not.toBe(0n);
-        expect(dep).toHaveProperty("mtime_ns");
-        expect(dep).toHaveProperty("size");
-    }
-});
-
 test("pch reused on close reopen", async ({ session }) => {
     // Closing and reopening a file within the same session should reuse
     // the cached PCH — no additional .pch files should be created.
@@ -182,6 +151,11 @@ test("pch survives server restart", async ({ session }) => {
     c1.assertNoAnomaly();
     await c1.shutdown();
 
+    // A cache.json left in the store by an older clice must be removed by
+    // the next writable session.
+    const legacyCacheJson = path.join(workspace.cacheRoot(), "cache.json");
+    fs.writeFileSync(legacyCacheJson, "{}");
+
     // Session 2: restart server, reopen file.
     const c2 = session.spawn(workspace);
     await c2.initialize(workspace);
@@ -197,47 +171,9 @@ test("pch survives server restart", async ({ session }) => {
     expect(pchMtimeS2, "PCH file should not be rebuilt (mtime should be unchanged)").toBe(
         pchMtimeS1,
     );
+    expect(fs.existsSync(legacyCacheJson), "legacy cache.json should be removed").toBe(false);
 
     c2.assertNoAnomaly();
-    await c2.shutdown();
-});
-
-test("stale artifacts format rebuilds", async ({ session }) => {
-    // An artifacts blob written under an older index format must be
-    // dropped wholesale at load — the .pch.idx envelopes it describes are
-    // unreadable — and the pair rebuilds cleanly. A cache.json left by an
-    // older clice in the same store is removed alongside.
-    const workspace = session.tmpdir();
-    workspace.pinCacheDir({ fsIndex: true });
-    workspace.write("header.h", "#pragma once\nstruct Old { int v; };\n");
-    workspace.write("main.cpp", '#include "header.h"\nint main() { Old o; return o.v; }\n');
-    workspace.writeCDB(["main.cpp"]);
-
-    const c1 = session.spawn(workspace);
-    await c1.initialize(workspace);
-    const [uri] = await c1.openAndWait("main.cpp");
-    c1.assertCleanCompile(uri);
-    const pchMtimeS1 = fs.statSync(workspace.pchFiles()[0]!).mtimeMs;
-    await c1.shutdown();
-
-    const blob = workspace.readArtifactsBlob();
-    expect(blob, "artifacts blob should exist after session 1").not.toBeNull();
-    blob!.pch_index_format = blob!.pch_index_format - 1;
-    workspace.writeArtifactsBlob(blob!);
-    const legacyCacheJson = path.join(workspace.cacheRoot(), "cache.json");
-    fs.writeFileSync(legacyCacheJson, "{}");
-
-    const c2 = session.spawn(workspace);
-    await c2.initialize(workspace);
-    const [uri2] = await c2.openAndWait("main.cpp");
-    c2.assertCleanCompile(uri2);
-    // The format-mismatched entry was dropped: the PCH was rebuilt at the
-    // same content-addressed path, and the legacy file is gone.
-    expect(
-        fs.statSync(workspace.pchFiles()[0]!).mtimeMs,
-        "PCH must be rebuilt, not reused through a format mismatch",
-    ).not.toBe(pchMtimeS1);
-    expect(fs.existsSync(legacyCacheJson), "legacy cache.json should be removed").toBe(false);
     await c2.shutdown();
 });
 
@@ -272,71 +208,6 @@ test("pcm offline edit invalidates", async ({ session }) => {
     const [midUri2] = await c2.openAndWait("mid.cppm");
     c2.assertHasErrors(midUri2, "Expected errors after offline interface edit");
     await c2.shutdown();
-});
-
-test("depless pcm entry dropped", async ({ session }) => {
-    // A PCM cache entry with an empty deps list (written before deps were
-    // populated) is unvalidatable and must be dropped at load, not trusted.
-    const workspace = session.tmpdir();
-    copySaveRecompile(workspace);
-    workspace.pinCacheDir({ fsIndex: true });
-    workspace.generateCDB();
-
-    const c1 = session.spawn(workspace);
-    await c1.initialize(workspace);
-    const [midUri] = await c1.openAndWait("mid.cppm");
-    c1.assertCleanCompile(midUri);
-    await c1.shutdown();
-
-    // Simulate a pre-upgrade cache: strip the PCM deps, then break the
-    // interface offline. A trusted dep-less entry would compile mid clean.
-    const blob = workspace.readArtifactsBlob();
-    expect(blob, "artifacts blob should exist after session 1").not.toBeNull();
-    for (const entry of blob!.pcm) {
-        entry.deps = [];
-    }
-    workspace.writeArtifactsBlob(blob!);
-    workspace.write(
-        "leaf.cppm",
-        "export module Leaf;\n\nexport int renamed_leaf() {\n    return 1;\n}\n",
-    );
-
-    const c2 = session.spawn(workspace);
-    await c2.initialize(workspace);
-    const [midUri2] = await c2.openAndWait("mid.cppm");
-    c2.assertHasErrors(midUri2, "Expected errors after offline interface edit");
-    await c2.shutdown();
-});
-
-test("pcm cache entry has deps", async ({ session }) => {
-    // Persisted PCM entries must record dependencies, including the module
-    // source file itself — an empty list is permanently blind.
-    const { client, workspace } = session.tmp();
-    copySaveRecompile(workspace);
-    workspace.pinCacheDir({ fsIndex: true });
-    workspace.generateCDB();
-    await client.initialize(workspace);
-
-    const [midUri] = await client.openAndWait("mid.cppm");
-    client.assertCleanCompile(midUri);
-
-    await waitUntil(() => (workspace.readArtifactsBlob()?.pcm ?? []).length > 0, {
-        timeout: 10_000,
-        interval: 100,
-        description: "the artifacts blob to record the PCM entries",
-    });
-    const blob = workspace.readArtifactsBlob()!;
-    const paths = blob.paths;
-    for (const entry of blob.pcm) {
-        const deps = entry.deps;
-        expect(deps.length, `PCM entry ${entry.module_name} has no deps`).toBeGreaterThan(0);
-        // Deps are canonicalized through real_path; compare resolved forms
-        // (on macOS the pytest tmp dir sits behind the /var symlink).
-        const source = fs.realpathSync(paths[entry.source_file]!);
-        const depPaths = new Set(deps.map((d) => fs.realpathSync(paths[d.path]!)));
-        expect(depPaths.has(source), "Module source must be its own dependency").toBe(true);
-        expect(deps.every((d) => BigInt(d.hash) !== 0n)).toBe(true);
-    }
 });
 
 test("shared preamble shares pch", async ({ session }) => {

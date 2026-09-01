@@ -197,6 +197,7 @@ TEST_CASE(GlobalVersionGate) {
 struct GlobalBlobMirror {
     std::uint32_t format_version = 0;
     std::uint64_t generation = 0;
+    std::uint64_t revocation_generation = 0;
     std::uint32_t next_fv_id = 0;
     std::vector<std::uint32_t> fv_ids;
     std::vector<std::string> fv_paths;
@@ -370,6 +371,13 @@ TEST_CASE(GlobalBadCounterRejected) {
     auto reserved = kota::codec::fbs::to_bytes(mirror);
     ASSERT_TRUE(reserved.has_value());
     ASSERT_FALSE(loaded.load_global(bytes_of(*reserved), pool, pins));
+
+    // A garbage high-water mark far beyond any real table must reject
+    // before the id-space resize tries to allocate it.
+    mirror.next_fv_id = 0xf0000000;
+    auto oversized = kota::codec::fbs::to_bytes(mirror);
+    ASSERT_TRUE(oversized.has_value());
+    ASSERT_FALSE(loaded.load_global(bytes_of(*oversized), pool, pins));
 }
 
 TEST_CASE(GlobalDuplicateSymbolRejected) {

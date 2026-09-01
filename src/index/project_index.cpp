@@ -24,6 +24,15 @@ bool reserved_key(T value) {
            value == llvm::DenseMapInfo<T>::getTombstoneKey();
 }
 
+/// Adopting a blob's id space resizes the version table to its counter
+/// before any other rejection can run, so a structurally valid blob
+/// carrying a garbage high-water mark would OOM the load instead of
+/// failing it. The cap is far beyond any table a writer accumulates
+/// (ids grow only with newly seen (file, content-hash) pairs), and a
+/// table that ever drifts there is better compacted by the rebuild the
+/// rejection triggers.
+constexpr inline std::uint32_t max_persisted_versions = 1u << 24;
+
 /// The global layer's persisted form: the FileVersion table as parallel
 /// columns plus the symbol table with a self-contained path table for its
 /// reference bitmaps.
@@ -32,6 +41,9 @@ struct GlobalBlob {
 
     /// See ProjectIndex::global_generation.
     std::uint64_t generation = 0;
+
+    /// See FileTable::revocation_generation.
+    std::uint64_t revocation_generation = 0;
 
     std::uint32_t next_fv_id = 0;
 
@@ -229,6 +241,7 @@ void ProjectIndex::serialize_global(this ProjectIndex& self,
     GlobalBlob blob;
     blob.format_version = index_format_version;
     blob.generation = self.global_generation;
+    blob.revocation_generation = files.revocation_generation;
     blob.next_fv_id = static_cast<std::uint32_t>(files.versions.size());
 
     llvm::SmallVector<VersionID> ids(referenced.begin(), referenced.end());
@@ -326,7 +339,7 @@ bool ProjectIndex::load_global(this ProjectIndex& self,
     // itself, and the writer hands ids out from it, so ids must sit below
     // it — a bound that (with the sentinels at the top of the id space)
     // also keeps every id non-reserved.
-    if(reserved_key(blob.next_fv_id)) {
+    if(reserved_key(blob.next_fv_id) || blob.next_fv_id > max_persisted_versions) {
         return false;
     }
     for(auto id: blob.fv_ids) {
@@ -412,6 +425,7 @@ bool ProjectIndex::load_global(this ProjectIndex& self,
     assert(files.versions.empty() && "the global blob must load before any version interning");
 
     self.global_generation = blob.generation;
+    files.revocation_generation = blob.revocation_generation;
     files.versions.resize(blob.next_fv_id);
     for(std::size_t i = 0; i < count; i += 1) {
         auto path_id = files.intern(blob.fv_paths[i]);

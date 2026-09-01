@@ -14,7 +14,6 @@ namespace clice::testing {
 namespace {
 
 constexpr std::uint32_t version = 1;
-constexpr llvm::StringLiteral backends[] = {"files", "lmdb"};
 
 /// Helper precondition check that survives NDEBUG builds; failures abort
 /// with a message instead of becoming UB on a bad expected access.
@@ -46,82 +45,75 @@ TEST_SUITE(IndexDatabase) {
 
 TEST_CASE(WriteReadRoundTrip) {
     TempDir tmp;
-    for(auto backend: backends) {
-        auto store = open_store(tmp, backend);
-        auto db = index::open_database(store, backend);
-        ASSERT_TRUE(db != nullptr);
+    auto store = open_store(tmp, "lmdb");
+    auto db = index::open_database(store);
+    ASSERT_TRUE(db != nullptr);
 
-        auto rejected = db->write({blob(index::IndexBlobKind::Shard, "a", large_value('a')),
-                                   blob(index::IndexBlobKind::Global, "global", "gg")},
-                                  {});
-        ASSERT_TRUE(rejected.empty());
-        // Reads serve the resident snapshot; committed writes become
-        // visible only after an advance (a no-op on the files backend).
-        ASSERT_TRUE(db->advance_read_snapshot().has_value());
-        db->retire_old_snapshot();
+    auto rejected = db->write({blob(index::IndexBlobKind::Shard, "a", large_value('a')),
+                               blob(index::IndexBlobKind::Global, "global", "gg")},
+                              {});
+    ASSERT_TRUE(rejected.empty());
+    // Reads serve the resident snapshot; committed writes become
+    // visible only after an advance.
+    ASSERT_TRUE(db->advance_read_snapshot().has_value());
+    db->retire_old_snapshot();
 
-        auto shard = db->read(index::IndexBlobKind::Shard, "a");
-        ASSERT_TRUE(bool(shard));
-        ASSERT_TRUE(shard.buffer->getBuffer() == large_value('a'));
-        ASSERT_TRUE(db->contains(index::IndexBlobKind::Global, "global"));
-        ASSERT_FALSE(db->contains(index::IndexBlobKind::Shard, "missing"));
-        ASSERT_FALSE(bool(db->read(index::IndexBlobKind::Shard, "missing")));
-    }
+    auto shard = db->read(index::IndexBlobKind::Shard, "a");
+    ASSERT_TRUE(bool(shard));
+    ASSERT_TRUE(shard.buffer->getBuffer() == large_value('a'));
+    ASSERT_TRUE(db->contains(index::IndexBlobKind::Global, "global"));
+    ASSERT_FALSE(db->contains(index::IndexBlobKind::Shard, "missing"));
+    ASSERT_FALSE(bool(db->read(index::IndexBlobKind::Shard, "missing")));
 }
 
 TEST_CASE(WriteRemoves) {
     TempDir tmp;
-    for(auto backend: backends) {
-        auto store = open_store(tmp, backend);
-        auto db = index::open_database(store, backend);
-        ASSERT_TRUE(db != nullptr);
+    auto store = open_store(tmp, "lmdb");
+    auto db = index::open_database(store);
+    ASSERT_TRUE(db != nullptr);
 
-        ASSERT_TRUE(db->write({blob(index::IndexBlobKind::Manifest, "m1", "one"),
-                               blob(index::IndexBlobKind::Manifest, "m2", "two")},
-                              {})
-                        .empty());
-        ASSERT_TRUE(db->write(
-                          {
-        },
-                          {{index::IndexBlobKind::Manifest, "m1"}})
-                        .empty());
-        ASSERT_TRUE(db->advance_read_snapshot().has_value());
-        db->retire_old_snapshot();
+    ASSERT_TRUE(db->write({blob(index::IndexBlobKind::Manifest, "m1", "one"),
+                           blob(index::IndexBlobKind::Manifest, "m2", "two")},
+                          {})
+                    .empty());
+    ASSERT_TRUE(db->write(
+                      {
+    },
+                      {{index::IndexBlobKind::Manifest, "m1"}})
+                    .empty());
+    ASSERT_TRUE(db->advance_read_snapshot().has_value());
+    db->retire_old_snapshot();
 
-        ASSERT_FALSE(db->contains(index::IndexBlobKind::Manifest, "m1"));
-        ASSERT_TRUE(db->contains(index::IndexBlobKind::Manifest, "m2"));
-    }
+    ASSERT_FALSE(db->contains(index::IndexBlobKind::Manifest, "m1"));
+    ASSERT_TRUE(db->contains(index::IndexBlobKind::Manifest, "m2"));
 }
 
 TEST_CASE(KindsAreIsolated) {
     TempDir tmp;
-    for(auto backend: backends) {
-        auto store = open_store(tmp, backend);
-        auto db = index::open_database(store, backend);
-        ASSERT_TRUE(db != nullptr);
+    auto store = open_store(tmp, "lmdb");
+    auto db = index::open_database(store);
+    ASSERT_TRUE(db != nullptr);
 
-        ASSERT_TRUE(db->write({blob(index::IndexBlobKind::Shard, "same", "shard"),
-                               blob(index::IndexBlobKind::Manifest, "same", "manifest")},
-                              {})
-                        .empty());
-        ASSERT_TRUE(db->advance_read_snapshot().has_value());
-        db->retire_old_snapshot();
+    ASSERT_TRUE(db->write({blob(index::IndexBlobKind::Shard, "same", "shard"),
+                           blob(index::IndexBlobKind::Manifest, "same", "manifest")},
+                          {})
+                    .empty());
+    ASSERT_TRUE(db->advance_read_snapshot().has_value());
+    db->retire_old_snapshot();
 
-        llvm::SmallVector<std::string> shard_keys;
-        db->for_each_key(index::IndexBlobKind::Shard,
-                         [&](llvm::StringRef key) { shard_keys.push_back(key.str()); });
-        ASSERT_TRUE(shard_keys.size() == 1);
-        ASSERT_TRUE(shard_keys.front() == "same");
-        ASSERT_TRUE(db->read(index::IndexBlobKind::Manifest, "same").buffer->getBuffer() ==
-                    "manifest");
-        ASSERT_FALSE(db->contains(index::IndexBlobKind::Global, "same"));
-    }
+    llvm::SmallVector<std::string> shard_keys;
+    db->for_each_key(index::IndexBlobKind::Shard,
+                     [&](llvm::StringRef key) { shard_keys.push_back(key.str()); });
+    ASSERT_TRUE(shard_keys.size() == 1);
+    ASSERT_TRUE(shard_keys.front() == "same");
+    ASSERT_TRUE(db->read(index::IndexBlobKind::Manifest, "same").buffer->getBuffer() == "manifest");
+    ASSERT_FALSE(db->contains(index::IndexBlobKind::Global, "same"));
 }
 
 TEST_CASE(SnapshotPinsUntilAdvance) {
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
-    auto db = index::open_database(store, "lmdb");
+    auto db = index::open_database(store);
     ASSERT_TRUE(db != nullptr);
 
     ASSERT_TRUE(db->write({blob(index::IndexBlobKind::Shard, "k", large_value('1'))}, {}).empty());
@@ -150,7 +142,7 @@ TEST_CASE(SnapshotPinsUntilAdvance) {
 TEST_CASE(SmallValuesCopiedAligned) {
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
-    auto db = index::open_database(store, "lmdb");
+    auto db = index::open_database(store);
     ASSERT_TRUE(db != nullptr);
 
     ASSERT_TRUE(db->write({blob(index::IndexBlobKind::Manifest, "small", "tiny"),
@@ -177,11 +169,11 @@ TEST_CASE(ReopenServesPersistedBlobs) {
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
     {
-        auto db = index::open_database(store, "lmdb");
+        auto db = index::open_database(store);
         ASSERT_TRUE(db != nullptr);
         ASSERT_TRUE(db->write({blob(index::IndexBlobKind::CDB, "cdb", "snapshot")}, {}).empty());
     }
-    auto db = index::open_database(store, "lmdb");
+    auto db = index::open_database(store);
     ASSERT_TRUE(db != nullptr);
     ASSERT_TRUE(db->read(index::IndexBlobKind::CDB, "cdb").buffer->getBuffer() == "snapshot");
 }
@@ -195,7 +187,7 @@ TEST_CASE(CorruptDatabaseRebuilds) {
         require(!ec, "writing garbage failed");
         os << "this is not an lmdb file, not even close, but long enough to map";
     }
-    auto db = index::open_database(store, "lmdb");
+    auto db = index::open_database(store);
     ASSERT_TRUE(db != nullptr);
     ASSERT_FALSE(db->contains(index::IndexBlobKind::CDB, "cdb"));
     ASSERT_TRUE(db->write({blob(index::IndexBlobKind::CDB, "cdb", "fresh")}, {}).empty());
@@ -204,7 +196,7 @@ TEST_CASE(CorruptDatabaseRebuilds) {
 TEST_CASE(DefaultOpenFileBounded) {
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
-    auto db = index::open_database(store, "lmdb");
+    auto db = index::open_database(store);
     ASSERT_TRUE(db != nullptr);
     ASSERT_TRUE(db->write({blob(index::IndexBlobKind::CDB, "cdb", "x")}, {}).empty());
 
@@ -251,27 +243,28 @@ TEST_CASE(FullMapFailsWholeBatchThenGrows) {
                 large_value('x'));
 }
 
-TEST_CASE(ReadOnlyWithoutDatabaseFallsBack) {
+TEST_CASE(ReadOnlyMissingDatabase) {
     TempDir tmp;
     { auto store = open_store(tmp, "empty"); }
     auto store = open_store(tmp, "empty", /*read_only=*/true);
-    // A reader before any LMDB writer ran gets the filesystem view (empty
-    // here) instead of failing on a missing index.mdb.
-    auto db = index::open_database(store, "lmdb");
-    ASSERT_TRUE(db != nullptr);
-    ASSERT_FALSE(db->contains(index::IndexBlobKind::Global, "global"));
+    // A reader before any writer ran has nothing to read: persistence is
+    // disabled rather than creating an index.mdb a read-only session must
+    // not leave behind.
+    auto db = index::open_database(store, /*read_only=*/true);
+    ASSERT_TRUE(db == nullptr);
+    ASSERT_FALSE(llvm::sys::fs::exists(path::join(store.base_dir(), "index.mdb")));
 }
 
 TEST_CASE(ReadOnlyServesExistingDatabase) {
     TempDir tmp;
     {
         auto store = open_store(tmp, "ws");
-        auto db = index::open_database(store, "lmdb");
+        auto db = index::open_database(store);
         ASSERT_TRUE(db != nullptr);
         ASSERT_TRUE(db->write({blob(index::IndexBlobKind::Global, "global", "gg")}, {}).empty());
     }
     auto store = open_store(tmp, "ws", /*read_only=*/true);
-    auto db = index::open_database(store, "lmdb");
+    auto db = index::open_database(store);
     ASSERT_TRUE(db != nullptr);
     ASSERT_TRUE(db->contains(index::IndexBlobKind::Global, "global"));
     ASSERT_TRUE(db->read(index::IndexBlobKind::Global, "global").buffer->getBuffer() == "gg");
@@ -281,13 +274,13 @@ TEST_CASE(CondemnedDatabaseDeletesOnClose) {
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
     {
-        auto db = index::open_database(store, "lmdb");
+        auto db = index::open_database(store);
         ASSERT_TRUE(db != nullptr);
         ASSERT_TRUE(db->write({blob(index::IndexBlobKind::CDB, "cdb", "bytes")}, {}).empty());
         db->condemn();
     }
     ASSERT_FALSE(llvm::sys::fs::exists(path::join(store.base_dir(), "index.mdb")));
-    auto db = index::open_database(store, "lmdb");
+    auto db = index::open_database(store);
     ASSERT_TRUE(db != nullptr);
     ASSERT_FALSE(db->contains(index::IndexBlobKind::CDB, "cdb"));
 }
@@ -295,7 +288,7 @@ TEST_CASE(CondemnedDatabaseDeletesOnClose) {
 TEST_CASE(OutstandingSnapshotsStack) {
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
-    auto db = index::open_database(store, "lmdb");
+    auto db = index::open_database(store);
     ASSERT_TRUE(db != nullptr);
 
     ASSERT_TRUE(db->write({blob(index::IndexBlobKind::Shard, "k", large_value('1'))}, {}).empty());
@@ -315,14 +308,6 @@ TEST_CASE(OutstandingSnapshotsStack) {
     ASSERT_TRUE(db->read(index::IndexBlobKind::Shard, "k").buffer->getBuffer() == large_value('3'));
     db->retire_old_snapshot();
     ASSERT_TRUE(db->read(index::IndexBlobKind::Shard, "k").buffer->getBuffer() == large_value('3'));
-}
-
-TEST_CASE(UnknownBackendFallsBackToLmdb) {
-    TempDir tmp;
-    auto store = open_store(tmp, "lmdb");
-    auto db = index::open_database(store, "bogus");
-    ASSERT_TRUE(db != nullptr);
-    ASSERT_TRUE(llvm::sys::fs::exists(path::join(store.base_dir(), "index.mdb")));
 }
 
 };  // TEST_SUITE(IndexDatabase)

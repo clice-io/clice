@@ -667,13 +667,13 @@ TEST_CASE(JsonSchema) {
         EXPECT_EQ(minimum->get_uint().value_or(0), 1u);
     }
 
-    // index_db names the accepted backends, so editors flag a typo that
-    // open_database() would silently turn into LMDB.
-    const auto* index_db = find_property(*doc, "index_db");
-    ASSERT_TRUE(index_db != nullptr);
-    const auto* backends = index_db->get_object()->find("enum");
-    ASSERT_TRUE(backends != nullptr);
-    EXPECT_EQ(*backends, kota::codec::dyn::Value(kota::codec::dyn::Array{"lmdb", "files"}));
+    // Enum fields name their accepted values, so editors flag a typo that
+    // the lenient decode would silently turn into the default.
+    const auto* readonly = find_property(*doc, "readonly");
+    ASSERT_TRUE(readonly != nullptr);
+    const auto* modes = readonly->get_object()->find("enum");
+    ASSERT_TRUE(modes != nullptr);
+    EXPECT_EQ(*modes, kota::codec::dyn::Value(kota::codec::dyn::Array{"off", "on", "auto"}));
 
     // Root and every section body reject unknown properties, so editors
     // flag typos the way the strict decode pass does.

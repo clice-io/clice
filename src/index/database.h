@@ -41,11 +41,11 @@ enum class IndexBlobKind : std::uint8_t {
     Contexts,
 };
 
-/// One blob read out of the database. The bytes' lifetime is
-/// backend-defined, and `generation` says which contract applies:
+/// One blob read out of the database. `generation` says which lifetime
+/// contract applies:
 ///
-/// - 0: the buffer owns its bytes (filesystem backend, and small LMDB
-///   values copied out for alignment) — valid for the buffer's lifetime.
+/// - 0: the buffer owns its bytes (small LMDB values copied out for
+///   alignment) — valid for the buffer's lifetime.
 /// - nonzero: the bytes are borrowed from the backend's read snapshot of
 ///   that generation and die when it is retired (advance_read_snapshot()
 ///   followed by retire_old_snapshot(), or grow()). A caller keeping such
@@ -70,9 +70,9 @@ struct BlobKey {
 /// Boundary with CacheStore: CacheStore manages the versioned cache
 /// directory and file-shaped artifacts (PCH/PCM/header contexts — clang
 /// consumes those by path, so they must be real files); BlobDatabase is
-/// the index's keyed blob store living inside that directory. The
-/// filesystem backend materializes each blob as one CacheStore-namespace
-/// file; the LMDB backend keeps them all in a single `index.mdb`.
+/// the index's keyed blob store living inside that directory, a single
+/// LMDB `index.mdb`. The interface stays virtual for test doubles (spies,
+/// failure injection).
 ///
 /// `write` does the heavy IO and belongs off the event loop; every other
 /// method is cheap and event-loop-only (read snapshots are owned by the
@@ -115,8 +115,7 @@ public:
     /// read out of it — stays valid until retire_old_snapshot(), so the
     /// caller can migrate long-lived borrowers incrementally, yielding
     /// between batches. On failure the current snapshot keeps serving and
-    /// nothing is invalidated. No-op on backends without snapshots
-    /// (filesystem): returns the current generation, 0.
+    /// nothing is invalidated.
     virtual std::expected<std::uint64_t, std::string> advance_read_snapshot() = 0;
 
     /// Retire every snapshot advance_read_snapshot() has replaced,
@@ -130,12 +129,11 @@ public:
     /// read snapshot first — all borrowed buffers die immediately — and
     /// opening a fresh one. Returns true when the map was resized: the
     /// caller must then rebind every borrower before yielding the event
-    /// loop. False when no growth was pending (including the filesystem
-    /// backend, where this is a no-op). An error return also means growth
-    /// was attempted, so every snapshot has already been retired: borrowed
-    /// buffers are dead and must be shed or re-read, and a replacement
-    /// snapshot may not have opened — reads then miss until a later grow()
-    /// succeeds.
+    /// loop. False when no growth was pending. An error return also means
+    /// growth was attempted, so every snapshot has already been retired:
+    /// borrowed buffers are dead and must be shed or re-read, and a
+    /// replacement snapshot may not have opened — reads then miss until a
+    /// later grow() succeeds.
     virtual std::expected<bool, std::string> grow() = 0;
 
     /// Whether the backend observed page-level corruption after open
@@ -159,18 +157,12 @@ public:
     }
 };
 
-/// Filesystem backend over the cache store; registers the index
-/// namespaces on construction. On a writable store this takes an exclusive
+/// A single `index.mdb` (plus its `-lock` file) in the store's version
+/// directory. On a writable store this first takes an exclusive
 /// cross-process writer lock for the index (held until destruction) and
 /// returns nullptr when another clice process already holds it — the
-/// global/manifest blobs form one mutable lineage that tolerates no second
-/// writer. Read-only stores skip the lock.
-std::unique_ptr<BlobDatabase> open_fs_database(CacheStore& store, bool read_only = false);
-
-/// LMDB backend: a single `index.mdb` (plus its `-lock` file) in the
-/// store's version directory. Takes the same writer lock as the
-/// filesystem backend before touching the environment. Returns nullptr
-/// when the lock is held elsewhere or the environment cannot be opened
+/// global/manifest blobs form one mutable lineage that tolerates no
+/// second writer. Also nullptr when the environment cannot be opened
 /// safely — only confirmed corruption (or a meta mismatch) is repaired by
 /// deleting and rebuilding the database; transient errors disable index
 /// persistence for the session and touch nothing. A read-only open uses
@@ -183,14 +175,11 @@ std::unique_ptr<BlobDatabase> open_lmdb_database(CacheStore& store,
                                                  std::size_t initial_mapsize = 0,
                                                  bool read_only = false);
 
-/// Backend selection: `backend` is the `project.index_db` config value
-/// ("lmdb" or "files"). Remote filesystems (which LMDB cannot run on) fall
-/// back to the filesystem backend with a warning; an LMDB environment that
-/// cannot be opened safely disables persistence (nullptr) rather than
-/// falling back — a second lineage of filesystem blobs next to a live
-/// index.mdb would split the index's history.
-std::unique_ptr<BlobDatabase> open_database(CacheStore& store,
-                                            llvm::StringRef backend,
-                                            bool read_only = false);
+/// The production entry: open_lmdb_database gated on the store living on
+/// a local filesystem. On a remote filesystem (NFS/SMB/9p — where LMDB is
+/// documented to break) index persistence is disabled with a warning; a
+/// FUSE mount gets the warning but proceeds, since FUSE fronts anything
+/// from a local overlay to sshfs.
+std::unique_ptr<BlobDatabase> open_database(CacheStore& store, bool read_only = false);
 
 }  // namespace clice::index

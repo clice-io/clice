@@ -392,6 +392,16 @@ struct FileTable {
     /// table changed under it.
     std::uint64_t stamp_generation = 0;
 
+    /// Bumped only when force_revalidate revokes stamps, and persisted in
+    /// both metadata blobs that carry them (the global blob's version
+    /// table, the artifacts blob's dep records). The blobs commit
+    /// non-atomically, so a crash can land a global recording a revocation
+    /// next to an artifacts blob that predates it — whose stamps
+    /// adopt_stamp would then restore into the revoked holes. Adoption is
+    /// gated on the artifacts blob being at least as revocation-current as
+    /// the loaded global.
+    std::uint64_t revocation_generation = 0;
+
     const FileVersion& version(VersionID vid) const {
         assert(vid.raw < versions.size());
         return versions[vid.raw];
@@ -502,6 +512,7 @@ struct FileTable {
         // the next session re-adopts trust this call just dropped.
         if(revoked) {
             stamp_generation += 1;
+            revocation_generation += 1;
         }
     }
 

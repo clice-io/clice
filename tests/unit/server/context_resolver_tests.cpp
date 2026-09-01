@@ -133,10 +133,13 @@ TEST_CASE(ValidateDropsStaleChoice) {
     auto main_file = workspace.file_table.intern(tmp.path("main.cpp"));
 
     // A host pin whose CDB entry disappeared while the server was down.
+    // The drop must dirty the contexts blob, or the stale choice
+    // resurrects from disk at the next start.
     resolver.saved_contexts[header] = SavedContext{host, std::nullopt, ""};
     auto header_session = store.open(header);
     resolver.validate_saved_context(header_session->path_id);
     ASSERT_FALSE(resolver.saved_contexts.contains(header));
+    ASSERT_TRUE(workspace.contexts_dirty);
 
     // A command pin whose hash matches no current CDB entry.
     resolver.saved_contexts[main_file] = SavedContext{Fid{}, std::nullopt, "deadbeef"};

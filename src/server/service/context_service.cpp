@@ -306,13 +306,13 @@ kota::task<ext::SwitchContextResult>
     // cannot take the metadata (the choice stays active in memory).
     resolver.saved_contexts[path_id] = std::move(saved);
     ws.mark_contexts_dirty();
-    auto ticket = ws.metadata_epoch;
+    auto ticket = ws.contexts_epoch;
     int failed_saves = 0;
     while(ws.request_flush && ws.index_db && !ws.index_db->read_only() &&
-          ws.committed_metadata_epoch < ticket) {
-        auto seen = ws.committed_metadata_epoch;
-        co_await ws.metadata_committed.wait();
-        if(ws.committed_metadata_epoch == seen) {
+          ws.committed_contexts_epoch < ticket) {
+        auto seen = ws.committed_contexts_epoch;
+        co_await ws.contexts_committed.wait();
+        if(ws.committed_contexts_epoch == seen) {
             failed_saves += 1;
             if(failed_saves >= 3) {
                 co_return result;

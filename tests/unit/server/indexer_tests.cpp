@@ -298,10 +298,21 @@ void open_store(TempDir& tmp, Workspace& workspace) {
     auto store = CacheStore::open(tmp.path("cache"), 1);
     ASSERT_TRUE(store.has_value());
     workspace.store.emplace(std::move(*store));
-    workspace.index_db = index::open_fs_database(*workspace.store);
+    workspace.index_db = index::open_lmdb_database(*workspace.store);
 }
 
-/// The storage key of a file's shard or manifest blob (the store's naming).
+/// Plant a blob between sessions (no fixture may be alive — the writer
+/// lock), as the residue of a crash or a foreign writer.
+void inject_blob(TempDir& tmp, index::IndexBlobKind kind, llvm::StringRef key, std::string bytes) {
+    auto store = CacheStore::open(tmp.path("cache"), 1);
+    ASSERT_TRUE(store.has_value());
+    auto db = index::open_lmdb_database(*store);
+    ASSERT_TRUE(db != nullptr);
+    index::BlobDatabase::Blob blob{kind, key.str(), std::move(bytes)};
+    ASSERT_TRUE(db->write(blob, {}).empty());
+}
+
+/// The storage key of a file's shard or manifest blob (the database's naming).
 std::string blob_key(llvm::StringRef path) {
     return std::format("{:016x}", llvm::xxh3_64bits(path));
 }
@@ -1199,32 +1210,6 @@ TEST_CASE(MigrationCorruptionRebuildsDatabase) {
     ASSERT_FALSE(index_store.has_unsaved_state());
 }
 
-TEST_CASE(WriteFailureStopsBatch) {
-    TempDir tmp;
-    open_store(tmp, workspace);
-    auto& db = *workspace.index_db;
-
-    // Wedge the manifest's destination with a non-empty directory so its
-    // commit fails while the shard before it lands.
-    tmp.touch("cache/cache/v1/index-manifest/k.idx/wedge");
-
-    auto failures = db.write(
-        {
-            {index::IndexBlobKind::Shard,    "k",      "shard bytes"   },
-            {index::IndexBlobKind::Manifest, "k",      "manifest bytes"},
-            {index::IndexBlobKind::Global,   "global", "global bytes"  },
-    },
-        {});
-
-    // The failure fails the rest of the batch: a global must never land
-    // above a manifest that did not.
-    ASSERT_EQ(failures.size(), 2u);
-    ASSERT_EQ(failures[0], 1u);
-    ASSERT_EQ(failures[1], 2u);
-    ASSERT_TRUE(db.contains(index::IndexBlobKind::Shard, "k"));
-    ASSERT_FALSE(db.contains(index::IndexBlobKind::Global, "global"));
-}
-
 };  // TEST_SUITE(IndexerMerge)
 
 TEST_SUITE(IndexerStaleness) {
@@ -1361,10 +1346,9 @@ TEST_CASE(LoadHealsBrokenShard) {
             f.workspace.file_table.resolve(f.workspace.file_table.intern(tmp.path("dep.h"))));
     }
 
-    // Corrupt the header's blob and plant an orphan nothing references
-    // (the store's layout is {root}/cache/v{N}, under the "cache" root).
-    tmp.touch("cache/cache/v1/index/" + header_key + ".idx", "corrupted beyond verification");
-    tmp.touch("cache/cache/v1/index/deadbeefdeadbeef.idx", "orphan");
+    // Corrupt the header's blob and plant an orphan nothing references.
+    inject_blob(tmp, index::IndexBlobKind::Shard, header_key, "corrupted beyond verification");
+    inject_blob(tmp, index::IndexBlobKind::Shard, "deadbeefdeadbeef", "orphan");
 
     IndexerFixture f;
     open_store(tmp, f.workspace);
@@ -1420,8 +1404,8 @@ TEST_CASE(ReadOnlyLoadKeepsDisk) {
         manifest_key = blob_key(f.workspace.file_table.resolve(f.workspace.file_table.intern(src)));
     }
 
-    tmp.touch("cache/cache/v1/index/" + header_key + ".idx", "corrupted beyond verification");
-    tmp.touch("cache/cache/v1/index/deadbeefdeadbeef.idx", "orphan");
+    inject_blob(tmp, index::IndexBlobKind::Shard, header_key, "corrupted beyond verification");
+    inject_blob(tmp, index::IndexBlobKind::Shard, "deadbeefdeadbeef", "orphan");
 
     IndexerFixture f;
     open_store(tmp, f.workspace);
@@ -1469,8 +1453,10 @@ TEST_CASE(LoadHealsMissingVariant) {
     // Replace the header's blob with one that verifies but stores a variant
     // no manifest contributed — the residue of a crash or failed write that
     // landed the manifest without its shard.
-    tmp.touch("cache/cache/v1/index/" + header_key + ".idx",
-              planted_blob("#pragma once\ninline int dep() { return 1; }\n", 0x1234));
+    inject_blob(tmp,
+                index::IndexBlobKind::Shard,
+                header_key,
+                planted_blob("#pragma once\ninline int dep() { return 1; }\n", 0x1234));
 
     IndexerFixture f;
     open_store(tmp, f.workspace);
@@ -1511,7 +1497,10 @@ TEST_CASE(LoadHealsWrongGeneration) {
     // the residue of a crash between shard and manifest writes. Every
     // recorded FileVersion matches the disk, so only the generation pin
     // can tell that positions would map through stale text.
-    tmp.touch("cache/cache/v1/index/" + header_key + ".idx", planted_blob("stale text", rows_hash));
+    inject_blob(tmp,
+                index::IndexBlobKind::Shard,
+                header_key,
+                planted_blob("stale text", rows_hash));
 
     IndexerFixture f;
     open_store(tmp, f.workspace);
@@ -2350,13 +2339,15 @@ TEST_CASE(CDBWriteFailureRetried) {
         }
 
         std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
-            return 0;
+            return real->advance_read_snapshot();
         }
 
-        void retire_old_snapshot() override {}
+        void retire_old_snapshot() override {
+            real->retire_old_snapshot();
+        }
 
         std::expected<bool, std::string> grow() override {
-            return false;
+            return real->grow();
         }
     };
 
@@ -2500,6 +2491,202 @@ TEST_CASE(VanishedHeaderDebtDies) {
     f.workspace.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=2 -c main.cpp"));
     f.load();
     ASSERT_FALSE(f.pump.pending_reason(f.workspace.file_table.intern(header)).has_value());
+}
+
+TEST_CASE(RevokedStampStaysRevoked) {
+    // The global and artifacts blobs commit non-atomically; a crash
+    // between the two writes of a revocation save leaves a global
+    // recording the revocation next to an artifacts blob predating it.
+    // Adopting the old blob's dep stamps would undo the revocation.
+    TempDir tmp;
+    tmp.touch("dep.h", "int x;\n");
+    auto dep_path = tmp.path("dep.h");
+    std::string stale_artifacts;
+
+    auto setup = [&](IndexerFixture& f) {
+        open_store(tmp, f.workspace);
+        f.workspace.store->register_namespace(
+            {.name = "pcm", .extension = ".pcm", .policy = CachePolicy::LRU});
+    };
+    auto dep_version = [&](IndexerFixture& f) {
+        return f.workspace.file_table.intern_version(f.workspace.file_table.intern(dep_path), 7);
+    };
+
+    {
+        IndexerFixture f;
+        setup(f);
+        auto pending = f.workspace.store->begin_store("pcm", "k");
+        ASSERT_TRUE(fs::write(pending.tmp_path, "pcm-bytes").has_value());
+        ASSERT_TRUE(f.workspace.store->commit(std::move(pending)).has_value());
+
+        auto dep_id = f.workspace.file_table.intern(dep_path);
+        auto vid = dep_version(f);
+        f.workspace.file_table.adopt_stamp(vid, 42, 123);
+        auto& st = f.workspace.pcm_cache[dep_id];
+        st.path = "dep.pcm";
+        st.key = "k";
+        st.deps.push_back({.path_id = dep_id, .version = vid});
+        f.workspace.mark_artifacts_dirty();
+        f.index_store.mark_global_dirty();
+        f.save();
+
+        auto blob = f.workspace.index_db->read(index::IndexBlobKind::Artifacts, "artifacts");
+        ASSERT_TRUE(bool(blob));
+        stale_artifacts = blob.buffer->getBuffer().str();
+    }
+
+    {
+        // Matching revocation generations adopt the persisted stamp...
+        IndexerFixture f;
+        setup(f);
+        f.load();
+        ASSERT_EQ(f.workspace.file_table.version(dep_version(f)).mtime_ns, std::int64_t(123));
+
+        // ...then revoke, persist both blobs, and put the pre-revocation
+        // artifacts blob back — the on-disk pair a mid-batch crash leaves.
+        f.workspace.file_table.force_revalidate(f.workspace.file_table.intern(dep_path));
+        f.workspace.mark_artifacts_dirty();
+        f.index_store.mark_global_dirty();
+        f.save();
+        index::BlobDatabase::Blob stale{index::IndexBlobKind::Artifacts,
+                                        "artifacts",
+                                        stale_artifacts};
+        ASSERT_TRUE(f.workspace.index_db->write(stale, {}).empty());
+    }
+
+    IndexerFixture f;
+    setup(f);
+    f.load();
+    ASSERT_EQ(f.workspace.file_table.version(dep_version(f)).mtime_ns, std::int64_t(0));
+}
+
+TEST_CASE(StaleFormatDropsPch) {
+    // A .pch.idx envelope written under an older index format is
+    // unreadable; the format gate drops every PCH entry at load so the
+    // pairs rebuild immediately, instead of the mismatch surfacing lazily
+    // on the first overlay query — which cannot trigger a rebuild.
+    TempDir tmp;
+    tmp.touch("dep.h", "int x;\n");
+    auto dep_path = tmp.path("dep.h");
+    std::string artifacts;
+
+    auto setup = [&](IndexerFixture& f) {
+        open_store(tmp, f.workspace);
+        f.workspace.store->register_namespace({.name = "pch",
+                                               .extension = ".pch",
+                                               .aux_extension = ".pch.idx",
+                                               .policy = CachePolicy::LRU});
+    };
+
+    {
+        IndexerFixture f;
+        setup(f);
+        auto pending = f.workspace.store->begin_store("pch", "k");
+        ASSERT_TRUE(fs::write(pending.tmp_path, "pch-bytes").has_value());
+        ASSERT_TRUE(f.workspace.store->commit(std::move(pending)).has_value());
+        auto aux = f.workspace.store->begin_store_aux("pch", "k");
+        ASSERT_TRUE(fs::write(aux.tmp_path, "idx-bytes").has_value());
+        ASSERT_TRUE(f.workspace.store->commit(std::move(aux)).has_value());
+
+        auto dep_id = f.workspace.file_table.intern(dep_path);
+        auto& st = f.workspace.pch_cache["k"];
+        st.path = "k.pch";
+        st.deps.push_back(
+            {.path_id = dep_id, .version = f.workspace.file_table.intern_version(dep_id, 7)});
+        f.workspace.mark_artifacts_dirty();
+        f.save();
+
+        auto blob = f.workspace.index_db->read(index::IndexBlobKind::Artifacts, "artifacts");
+        ASSERT_TRUE(bool(blob));
+        artifacts = blob.buffer->getBuffer().str();
+    }
+
+    {
+        // The premise: under the current format the entry loads.
+        IndexerFixture f;
+        setup(f);
+        f.load();
+        ASSERT_EQ(f.workspace.pch_cache.size(), std::size_t(1));
+
+        // Put back the blob as an older binary would have written it.
+        auto current = std::format("\"pch_index_format\":{}", index::index_format_version);
+        auto stale = std::format("\"pch_index_format\":{}", index::index_format_version - 1);
+        auto pos = artifacts.find(current);
+        ASSERT_TRUE(pos != std::string::npos);
+        artifacts.replace(pos, current.size(), stale);
+        index::BlobDatabase::Blob blob{index::IndexBlobKind::Artifacts, "artifacts", artifacts};
+        ASSERT_TRUE(f.workspace.index_db->write(blob, {}).empty());
+    }
+
+    IndexerFixture f;
+    setup(f);
+    f.load();
+    ASSERT_TRUE(f.workspace.pch_cache.empty());
+}
+
+TEST_CASE(DeplessPcmDropped) {
+    // A dep-less PCM entry is an unvalidatable snapshot (the key embeds
+    // no content): trusted, it would blindly serve a stale PCM after an
+    // offline edit. Load drops it so the module rebuilds once.
+    TempDir tmp;
+    tmp.touch("mod.cppm", "export module m;\n");
+    auto src = tmp.path("mod.cppm");
+
+    auto setup = [&](IndexerFixture& f) {
+        open_store(tmp, f.workspace);
+        f.workspace.store->register_namespace(
+            {.name = "pcm", .extension = ".pcm", .policy = CachePolicy::LRU});
+    };
+
+    {
+        IndexerFixture f;
+        setup(f);
+        auto pending = f.workspace.store->begin_store("pcm", "k");
+        ASSERT_TRUE(fs::write(pending.tmp_path, "pcm-bytes").has_value());
+        ASSERT_TRUE(f.workspace.store->commit(std::move(pending)).has_value());
+
+        auto& st = f.workspace.pcm_cache[f.workspace.file_table.intern(src)];
+        st.path = "m.pcm";
+        st.key = "k";
+        f.workspace.mark_artifacts_dirty();
+        f.save();
+
+        // The premise: the dep-less entry was persisted, so the tail
+        // assertion exercises the load-side drop, not a write-side skip.
+        auto blob = f.workspace.index_db->read(index::IndexBlobKind::Artifacts, "artifacts");
+        ASSERT_TRUE(bool(blob));
+        ASSERT_TRUE(blob.buffer->getBuffer().contains("\"key\":\"k\""));
+    }
+
+    IndexerFixture f;
+    setup(f);
+    f.load();
+    ASSERT_TRUE(f.workspace.pcm_cache.empty());
+}
+
+TEST_CASE(HeaderModePersisted) {
+    // The NeedsContext verdict rides the artifacts blob: a restart with
+    // unchanged disk content adopts it instead of re-running the trial.
+    TempDir tmp;
+    tmp.touch("utils.h", "inline int f();\n");
+    auto path = tmp.path("utils.h");
+
+    {
+        IndexerFixture f;
+        open_store(tmp, f.workspace);
+        auto id = f.workspace.file_table.intern(path);
+        auto disk = f.workspace.file_table.current(id);
+        ASSERT_TRUE(disk.has_value());
+        f.contexts.record_header_mode(id, HeaderMode::NeedsContext, disk->hash);
+        f.workspace.mark_artifacts_dirty();
+        f.save();
+    }
+
+    IndexerFixture f;
+    open_store(tmp, f.workspace);
+    f.load();
+    auto id = f.workspace.file_table.intern(path);
+    ASSERT_TRUE(f.contexts.header_mode(path, id) == HeaderMode::NeedsContext);
 }
 
 };  // TEST_SUITE(IndexerLoad)

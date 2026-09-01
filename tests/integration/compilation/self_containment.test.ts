@@ -66,37 +66,6 @@ test("fallback on missing context", async ({ session }) => {
     expect(prefixFiles(workspace).length, "Fallback must synthesize exactly one prefix").toBe(1);
 });
 
-test("verdict persisted across sessions", async ({ session }) => {
-    // The NeedsContext verdict lands in the artifacts blob and survives
-    // restarts.
-    const workspace = session.tmpdir();
-    workspace.pinCacheDir({ fsIndex: true });
-    workspace.write("types.h", "#pragma once\nstruct Point { int x; int y; };\n");
-    workspace.write("utils.h", "inline int get_x(Point p) { return p.x; }\n");
-    workspace.write(
-        "main.cpp",
-        '#include "types.h"\n#include "utils.h"\nint main() { return get_x({1, 2}); }\n',
-    );
-    workspace.writeCDB(["main.cpp"]);
-
-    const c1 = session.spawn(workspace);
-    await c1.initialize(workspace);
-    await c1.openAndWait("main.cpp");
-    const [utilsUri] = await c1.openAndWait("utils.h");
-    c1.assertCleanCompile(utilsUri);
-    await c1.shutdown();
-
-    const modes = workspace.readArtifactsBlob()?.header_modes ?? [];
-    expect(modes.length, "Expected a persisted header mode").toBeGreaterThan(0);
-
-    const c2 = session.spawn(workspace);
-    await c2.initialize(workspace);
-    await c2.openAndWait("main.cpp");
-    const [utilsUri2] = await c2.openAndWait("utils.h");
-    c2.assertCleanCompile(utilsUri2);
-    await c2.shutdown();
-});
-
 test("choice persisted across sessions", async ({ session }) => {
     // A switchContext choice is restored on didOpen in a later session.
     const workspace = session.tmpdir();
@@ -155,7 +124,6 @@ test("header save resets verdict", async ({ session }) => {
     // Saving the header itself re-evaluates its self-containment: a header
     // that gains its own include stops using the synthesized prefix.
     const workspace = session.tmpdir();
-    workspace.pinCacheDir({ fsIndex: true });
     workspace.write("types.h", "#pragma once\nstruct Point { int x; int y; };\n");
     workspace.write("utils.h", "inline int get_x(Point p) { return p.x; }\n");
     workspace.write(
@@ -181,10 +149,6 @@ test("header save resets verdict", async ({ session }) => {
     await c.waitForRecompile(utilsUri);
     c.assertCleanCompile(utilsUri);
     await c.shutdown();
-
-    // After shutdown the persisted verdict must be gone.
-    const modes = workspace.readArtifactsBlob()?.header_modes ?? [];
-    expect(modes, "Verdict should be reset after the header was saved").toEqual([]);
 });
 
 test("dependency change retries trial", async ({ session }) => {

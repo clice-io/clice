@@ -172,6 +172,10 @@ struct ArtifactsData {
     // lazily on the first overlay query — which cannot trigger a rebuild.
     std::uint32_t pch_index_format = 0;
 
+    // FileTable::revocation_generation at write time; gates adopt_stamp
+    // against a global blob recording revocations these records predate.
+    std::uint64_t revocation_generation = 0;
+
     std::vector<CachePCHEntry> pch;
     std::vector<CachePCMEntry> pcm;
     std::vector<CacheModeEntry> header_modes;
@@ -191,6 +195,7 @@ IndexStore::IndexStore(kota::event_loop& loop, Workspace& workspace, ContextReso
 std::string IndexStore::serialize_artifacts() {
     ArtifactsData data;
     data.pch_index_format = index::index_format_version;
+    data.revocation_generation = workspace.file_table.revocation_generation;
     llvm::StringMap<std::uint32_t> index_map;
 
     auto intern = [&](Fid fid) -> std::uint32_t {
@@ -295,6 +300,11 @@ void IndexStore::load_artifacts(llvm::StringRef bytes) {
     auto resolve = [&](std::uint32_t idx) -> llvm::StringRef {
         return idx < data.paths.size() ? llvm::StringRef(data.paths[idx]) : "";
     };
+    // A blob written before the loaded global's last revocation carries
+    // stamps that revocation dropped; adopting them would undo it (a crash
+    // between the two non-atomic blob writes leaves exactly this pair on
+    // disk). The dep records themselves stay: they self-validate by hash.
+    bool adopt_stamps = data.revocation_generation >= workspace.file_table.revocation_generation;
     auto load_deps = [&](const std::vector<CacheDepEntry>& dep_entries) -> DepsSnapshot {
         DepsSnapshot deps;
         for(auto& dep: dep_entries) {
@@ -306,7 +316,9 @@ void IndexStore::load_artifacts(llvm::StringRef bytes) {
             state.missing = dep.missing;
             if(dep.hash != 0) {
                 state.version = workspace.file_table.intern_version(state.path_id, dep.hash);
-                workspace.file_table.adopt_stamp(state.version, dep.size, dep.mtime_ns);
+                if(adopt_stamps) {
+                    workspace.file_table.adopt_stamp(state.version, dep.size, dep.mtime_ns);
+                }
             }
         }
         return deps;
@@ -795,20 +807,20 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt) {
     }
 
     // Metadata blobs ride every save: dirty artifact records and context
-    // choices flush on whatever save runs next. The epoch is snapshotted
-    // here — marks landing past this point are not covered by these bytes
-    // and wait for the next save (a durability waiter's ticket compares
-    // against committed_metadata_epoch).
-    auto flush_epoch = workspace.metadata_epoch;
+    // choices flush on whatever save runs next. The contexts epoch is
+    // snapshotted here — marks landing past this point are not covered by
+    // these bytes and wait for the next save (a durability waiter's ticket
+    // compares against committed_contexts_epoch). The contexts blob's fate
+    // is tracked on its own: a failing artifacts blob must not park a
+    // switchContext ack whose choice is already durable.
+    auto flush_epoch = workspace.contexts_epoch;
     std::optional<std::size_t> artifacts_index;
     std::optional<std::size_t> contexts_index;
-    bool metadata_ok = true;
+    bool contexts_ok = true;
     if(workspace.artifacts_dirty) {
         if(auto bytes = serialize_artifacts(); !bytes.empty()) {
             artifacts_index = batch.size();
             batch.push_back({index::IndexBlobKind::Artifacts, "artifacts", std::move(bytes)});
-        } else {
-            metadata_ok = false;
         }
     }
     if(workspace.contexts_dirty) {
@@ -816,7 +828,7 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt) {
             contexts_index = batch.size();
             batch.push_back({index::IndexBlobKind::Contexts, "contexts", std::move(bytes)});
         } else {
-            metadata_ok = false;
+            contexts_ok = false;
         }
     }
 
@@ -851,9 +863,9 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt) {
         // A serialize-only failure builds no batch: waiters still must see
         // the failed attempt (see the failure pulse below), or a request
         // bounded on failed saves never counts one.
-        if(!metadata_ok) {
-            workspace.metadata_committed.set();
-            workspace.metadata_committed.reset();
+        if(!contexts_ok) {
+            workspace.contexts_committed.set();
+            workspace.contexts_committed.reset();
         }
         co_return report;
     }
@@ -904,10 +916,9 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt) {
             cdb_index.reset();
         } else if(artifacts_index && i == *artifacts_index) {
             workspace.artifacts_dirty = true;
-            metadata_ok = false;
         } else if(contexts_index && i == *contexts_index) {
             workspace.contexts_dirty = true;
-            metadata_ok = false;
+            contexts_ok = false;
         } else {
             global_dirty = true;
         }
@@ -919,20 +930,17 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt) {
     saved_shards = shard_count - failed_shards;
     saving_shards = 0;
 
-    // Metadata as of the snapshot point is durable: advance the epoch and
-    // wake durability waiters (switchContext tickets).
-    if(metadata_ok) {
-        workspace.committed_metadata_epoch =
-            std::max(workspace.committed_metadata_epoch, flush_epoch);
-        workspace.metadata_committed.set();
-        workspace.metadata_committed.reset();
-    } else {
-        // Waiters must see failed attempts too, or a permanently failing
-        // metadata write (full disk, unserializable path) parks every
-        // durability wait forever; they give up after a few of these.
-        workspace.metadata_committed.set();
-        workspace.metadata_committed.reset();
+    // Context choices as of the snapshot point are durable: advance the
+    // epoch and wake durability waiters (switchContext tickets). Failed
+    // attempts pulse too, or a permanently failing write (full disk,
+    // unserializable path) parks every durability wait forever; they give
+    // up after a few of these.
+    if(contexts_ok) {
+        workspace.committed_contexts_epoch =
+            std::max(workspace.committed_contexts_epoch, flush_epoch);
     }
+    workspace.contexts_committed.set();
+    workspace.contexts_committed.reset();
 
     // Corruption can surface first at write time (a damaged page only the
     // write's tree descent reaches): heal like load-time corruption instead
@@ -1096,7 +1104,7 @@ void IndexStore::recover_corrupt_database(Report& report) {
 void IndexStore::reopen_fresh_database() {
     workspace.index_db->condemn();
     workspace.index_db.reset();
-    workspace.index_db = index::open_database(*workspace.store, workspace.config.project.index_db);
+    workspace.index_db = index::open_database(*workspace.store);
     // The metadata blobs died with the condemned database while their
     // loaded state lives on in memory; without a re-dirty the next save
     // skips them and a restart loses the user's context choices and every
@@ -1107,8 +1115,8 @@ void IndexStore::reopen_fresh_database() {
     // reopen disables persistence for the session, and a parked
     // switchContext would otherwise sleep forever — no later save pulses,
     // they all early-return on the null database.
-    workspace.metadata_committed.set();
-    workspace.metadata_committed.reset();
+    workspace.contexts_committed.set();
+    workspace.contexts_committed.reset();
 }
 
 IndexStore::LoadResult IndexStore::load(bool read_only) {

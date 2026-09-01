@@ -261,6 +261,12 @@ private:
                                                         ContextUse use,
                                                         bool synthesize);
 
+    /// Record a synthesized artifact's host attribution, marking the
+    /// contexts blob dirty when the mapping actually changes — synthesis
+    /// re-derives the same content-addressed paths on every resolve, and
+    /// an unconditional mark would rewrite the blob each time.
+    void record_synthesized_host(llvm::StringRef path, Fid host_path_id);
+
     /// What dump_mode_slices would emit for this file (0 = nothing) — the
     /// before/after probe record and reset compare to mark the artifacts
     /// blob dirty exactly when the persisted slice changes. A persisted

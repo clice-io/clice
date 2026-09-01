@@ -52,8 +52,7 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
             // owning it), while the persisted version stamps and artifact
             // metadata still seed this session's fast paths. Its own
             // metadata stays in memory and exits with it.
-            workspace.index_db =
-                index::open_database(*workspace.store, cfg.index_db, read_only_index);
+            workspace.index_db = index::open_database(*workspace.store, read_only_index);
             if(!read_only_index) {
                 // The artifact metadata moved into the index database; a
                 // cache.json left in the store by an older clice would sit

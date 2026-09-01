@@ -274,8 +274,8 @@ static kota::codec::dyn::Object* field_schema(kota::codec::dyn::Object& properti
 /// dropped — a committed schema must be byte-identical on every host, so
 /// the affected fields' descriptions state the derivation instead — the
 /// zero-invalid fields carry the lower bound finalize() enforces, and
-/// `index_db` names the backends open_database() accepts, so editors
-/// flag a typo that would silently fall back to LMDB.
+/// the enum fields name their accepted values so editors flag a typo
+/// that would silently fall back to the default.
 static void patch_field_schemas(kota::codec::dyn::Value& value) {
     if(auto* object = value.get_object()) {
         for(auto& [key, child]: *object) {
@@ -290,9 +290,6 @@ static void patch_field_schemas(kota::codec::dyn::Value& value) {
                         if(auto* schema = field_schema(*properties, field)) {
                             schema->assign("minimum", std::uint64_t{1});
                         }
-                    }
-                    if(auto* schema = field_schema(*properties, "index_db")) {
-                        schema->assign("enum", kota::codec::dyn::Array{"lmdb", "files"});
                     }
                     if(auto* schema = field_schema(*properties, "readonly")) {
                         schema->assign("enum", kota::codec::dyn::Array{"off", "on", "auto"});

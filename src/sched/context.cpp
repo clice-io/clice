@@ -213,6 +213,15 @@ void ContextResolver::load_choice_slices(
     }
 }
 
+void ContextResolver::record_synthesized_host(llvm::StringRef path, Fid host_path_id) {
+    auto [it, inserted] = synthesized_hosts.try_emplace(path, host_path_id);
+    if(!inserted && it->second == host_path_id) {
+        return;
+    }
+    it->second = host_path_id;
+    workspace.mark_contexts_dirty();
+}
+
 bool ContextResolver::fill_header_context_args(llvm::StringRef path,
                                                Fid path_id,
                                                std::string& directory,
@@ -667,7 +676,7 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(Fid header_
     }
 
     if(!self_snapshot_path.empty()) {
-        synthesized_hosts[self_snapshot_path] = host_path_id;
+        record_synthesized_host(self_snapshot_path, host_path_id);
     }
 
     auto synthesized =
@@ -703,7 +712,7 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(Fid header_
                  preamble_path,
                  header_path_id);
     }
-    synthesized_hosts[preamble_path] = host_path_id;
+    record_synthesized_host(preamble_path, host_path_id);
 
     // The suffix restores everything after the include position (closing
     // braces of enums/functions the fragment is embedded in). Injected by
@@ -720,7 +729,7 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(Fid header_
                 return std::nullopt;
             }
         }
-        synthesized_hosts[suffix_path] = host_path_id;
+        record_synthesized_host(suffix_path, host_path_id);
     }
 
     // The chain files' snapshot (`deps`) was recorded as they were read:
@@ -790,6 +799,9 @@ void ContextResolver::validate_saved_context(Fid path_id) {
         if(!valid) {
             LOG_INFO("didOpen: dropping stale saved context for {}", path);
             saved_contexts.erase(it);
+            // The drop must reach the contexts blob, or the stale choice
+            // resurrects from disk at the next start.
+            workspace.mark_contexts_dirty();
         }
     }
 }

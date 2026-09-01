@@ -130,7 +130,7 @@ int run_stats_once(llvm::StringRef root, std::uint32_t top, bool allow_retry) {
     Workspace workspace;
     workspace.config = std::move(config);
     workspace.store.emplace(std::move(*store));
-    workspace.index_db = index::open_database(*workspace.store, workspace.config.project.index_db);
+    workspace.index_db = index::open_database(*workspace.store);
     // A namespace whose directory scan failed looks empty while its blobs
     // exist — reporting "Index is empty" with exit code 0 would be a lie.
     if(auto ec = workspace.store->scan_error()) {
