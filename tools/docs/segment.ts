@@ -62,8 +62,8 @@ function rangeOf(node: Nodes, page: string): Range {
     };
 }
 
-/// Block structure, recursively through flow containers (blockquotes and
-/// lists); everything below a paragraph, heading or table cell is
+/// Block structure, recursively through flow containers (blockquotes,
+/// lists, tables); everything below a paragraph, heading or table cell is
 /// phrasing, which a translation may reflow freely.
 function shapeOf(node: Nodes, ordered: boolean): string {
     switch (node.type) {
@@ -71,16 +71,20 @@ function shapeOf(node: Nodes, ordered: boolean): string {
             return `heading:${node.depth}`;
         case "tableRow":
             return `tableRow:${node.children.length}`;
+        case "table":
+            return `table(${node.children.map((row) => shapeOf(row, false)).join(",")})`;
         case "list": {
             const inner = node.children.map((child) => shapeOf(child, node.ordered === true));
             return `${node.ordered === true ? "list:ordered" : "list"}(${inner.join(",")})`;
         }
-        case "listItem":
-        case "blockquote": {
+        case "listItem": {
             const inner = node.children.map((child) => shapeOf(child, false));
-            const label = node.type === "listItem" && ordered ? "listItem:ordered" : node.type;
-            return `${label}(${inner.join(",")})`;
+            const checked =
+                node.checked === true ? ":checked" : node.checked === false ? ":unchecked" : "";
+            return `listItem${ordered ? ":ordered" : ""}${checked}(${inner.join(",")})`;
         }
+        case "blockquote":
+            return `blockquote(${node.children.map((child) => shapeOf(child, false)).join(",")})`;
         default:
             return node.type;
     }
@@ -117,6 +121,12 @@ export function splitSegments(source: string, page: string): Segment[] {
     const segments: Segment[] = [];
     const push = (node: RootContent, ordered: boolean, translatable: boolean) => {
         const range = rangeOf(node, page);
+        // Take the indentation in front of a block along with it: for a
+        // list item it decides how much is stripped from the lines below.
+        const lineStart = source.lastIndexOf("\n", range.start - 1) + 1;
+        if (source.slice(lineStart, range.start).trim() === "") {
+            range.start = lineStart;
+        }
         segments.push({
             ...range,
             kind: node.type,

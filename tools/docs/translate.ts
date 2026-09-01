@@ -418,6 +418,11 @@ function report(roots: Roots, pages: string[]): number {
                     pageDrifts += 1;
                 }
             }
+            const removed = [...recorded.values()].reduce((sum, count) => sum + count, 0);
+            if (removed > 0) {
+                console.log(`  ${removed} recorded pairs are no longer on the page`);
+                pageDrifts += removed;
+            }
             driftedSegments += pageDrifts;
             continue;
         }
@@ -616,6 +621,9 @@ interface MaskedText {
 }
 
 function maskCode(text: string, segment: Segment): MaskedText {
+    if (/⟦B\d+⟧/.test(text)) {
+        throw new Error("segment already contains placeholder-like text ⟦B…⟧");
+    }
     const blocks: string[] = [];
     let masked = "";
     let cursor = 0;
