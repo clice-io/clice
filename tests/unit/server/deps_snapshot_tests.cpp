@@ -209,6 +209,11 @@ TEST_CASE(StalePairCannotStamp) {
 
     tmp.touch("dep.h", "int v2();\n");
     age_file(dep);
+    // Same-tick touches can age to a stat identical to the pair's on
+    // coarse-timestamp filesystems, and an equal-stat same-size rewrite
+    // is the accepted mtime residual — the premise here is a stat that
+    // does differ, so force it apart.
+    ASSERT_TRUE(set_file_mtime(dep, file_mtime_ns(dep) - 5'000'000'000));
     auto snap = capture_deps_snapshot(pool,
                                       {
                                           DepFile{dep, consumed_hash(dep)}
