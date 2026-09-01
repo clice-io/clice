@@ -47,15 +47,15 @@ void extract_rows() {
     });
 }
 
-std::optional<feature::IndexSymbolInfo> resolve(index::SymbolHash hash) {
+std::optional<index::SymbolRef> resolve(index::SymbolHash hash) {
     if(auto identity = tu.find_symbol(hash)) {
-        return feature::IndexSymbolInfo{std::string(identity->name), identity->kind};
+        return index::SymbolRef{.name = std::string(identity->name), .kind = identity->kind};
     }
     auto main_id = tu.path_count() - 1;
     std::string name;
     SymbolKind kind;
     if(tu.shard_of(main_id).find_symbol(hash, name, kind)) {
-        return feature::IndexSymbolInfo{std::move(name), kind};
+        return index::SymbolRef{.name = std::move(name), .kind = kind};
     }
     return std::nullopt;
 }
@@ -231,8 +231,8 @@ void g() {
          .symbol = 2,
          .definition = true                                                                        },
     };
-    auto resolve_synthetic = [](index::SymbolHash hash) -> std::optional<feature::IndexSymbolInfo> {
-        return feature::IndexSymbolInfo{hash == 1 ? "f" : "g", SymbolKind::Function};
+    auto resolve_synthetic = [](index::SymbolHash hash) -> std::optional<index::SymbolRef> {
+        return index::SymbolRef{.name = hash == 1 ? "f" : "g", .kind = SymbolKind::Function};
     };
 
     auto folds = feature::index_folding_ranges(content,
@@ -250,11 +250,11 @@ TEST_CASE(CollapsedRowsBecomeSiblings) {
         {.range = {20, 25}, .extent = {20, 50}, .symbol = 2, .definition = true},
         {.range = {20, 25}, .extent = {20, 50}, .symbol = 3, .definition = true},
     };
-    auto resolve_synthetic = [](index::SymbolHash hash) -> std::optional<feature::IndexSymbolInfo> {
+    auto resolve_synthetic = [](index::SymbolHash hash) -> std::optional<index::SymbolRef> {
         switch(hash) {
-            case 1: return feature::IndexSymbolInfo{"outer", SymbolKind::Struct};
-            case 2: return feature::IndexSymbolInfo{"first", SymbolKind::Field};
-            case 3: return feature::IndexSymbolInfo{"second", SymbolKind::Field};
+            case 1: return index::SymbolRef{.name = "outer", .kind = SymbolKind::Struct};
+            case 2: return index::SymbolRef{.name = "first", .kind = SymbolKind::Field};
+            case 3: return index::SymbolRef{.name = "second", .kind = SymbolKind::Field};
             default: return std::nullopt;
         }
     };
@@ -273,11 +273,11 @@ TEST_CASE(MergedKindsConflict) {
         {.range = {0, 5}, .target = 1},
         {.range = {0, 5}, .target = 2},
     };
-    auto resolve_synthetic = [](index::SymbolHash hash) -> std::optional<feature::IndexSymbolInfo> {
+    auto resolve_synthetic = [](index::SymbolHash hash) -> std::optional<index::SymbolRef> {
         if(hash == 1) {
-            return feature::IndexSymbolInfo{"value", SymbolKind::Variable};
+            return index::SymbolRef{.name = "value", .kind = SymbolKind::Variable};
         }
-        return feature::IndexSymbolInfo{"value", SymbolKind::Function};
+        return index::SymbolRef{.name = "value", .kind = SymbolKind::Function};
     };
 
     auto tokens = feature::index_semantic_tokens(content,
@@ -298,8 +298,8 @@ TEST_CASE(ModuleNameComponents) {
         {.range = {14, 23}, .target = 1},
         {.range = {32, 40}, .target = 1},
     };
-    auto resolve_synthetic = [](index::SymbolHash) -> std::optional<feature::IndexSymbolInfo> {
-        return feature::IndexSymbolInfo{"demo.core", SymbolKind::Module};
+    auto resolve_synthetic = [](index::SymbolHash) -> std::optional<index::SymbolRef> {
+        return index::SymbolRef{.name = "demo.core", .kind = SymbolKind::Module};
     };
 
     auto tokens = feature::index_semantic_tokens(content,
@@ -330,8 +330,8 @@ TEST_CASE(CDialectKeywords) {
     std::vector<feature::IndexDeclRow> rows = {
         {.range = {4, 9}, .extent = {0, 10}, .symbol = 1, .definition = true},
     };
-    auto resolve_synthetic = [](index::SymbolHash) -> std::optional<feature::IndexSymbolInfo> {
-        return feature::IndexSymbolInfo{"class", SymbolKind::Variable};
+    auto resolve_synthetic = [](index::SymbolHash) -> std::optional<index::SymbolRef> {
+        return index::SymbolRef{.name = "class", .kind = SymbolKind::Variable};
     };
 
     auto c_tokens = feature::index_semantic_tokens(content,
@@ -359,8 +359,8 @@ TEST_CASE(StandardFromCommand) {
     std::vector<feature::IndexDeclRow> rows = {
         {.range = {4, 11}, .extent = {0, 12}, .symbol = 1, .definition = true},
     };
-    auto resolve_synthetic = [](index::SymbolHash) -> std::optional<feature::IndexSymbolInfo> {
-        return feature::IndexSymbolInfo{"concept", SymbolKind::Variable};
+    auto resolve_synthetic = [](index::SymbolHash) -> std::optional<index::SymbolRef> {
+        return index::SymbolRef{.name = "concept", .kind = SymbolKind::Variable};
     };
 
     auto cxx17_tokens =

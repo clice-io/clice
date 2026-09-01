@@ -88,7 +88,7 @@ Concrete implementations of LSP features. Each feature takes a `CompilationUnitR
 
 Includes: code completion, hover information, signature help, semantic highlighting, inlay hints, document symbols, document links, folding ranges, formatting, diagnostics, etc.
 
-> `feature/` only covers single-file, AST-based feature implementations. Cross-file navigation features (go to definition, find references, etc.) are served from index data by the server's `service/` layer (`FeatureRouter`/`IndexQuery`). Some features involve multi-phase processing -- for example, include path completion in code completion can be resolved at the syntax layer without full compilation.
+> `feature/` only covers single-file, AST-based feature implementations. Cross-file navigation features (go to definition, find references, etc.) are served from index data by the server's `service/` layer (`Features`/`IndexQuery`). Some features involve multi-phase processing -- for example, include path completion in code completion can be resolved at the syntax layer without full compilation.
 
 ### `src/sched/` — Compile Scheduling Core
 
@@ -123,10 +123,10 @@ The language server's core runtime, responsible for assembling all the layers ab
 
 **`service/`** — Read-side services consuming compilation and index results.
 
-- `FeatureRouter`: Routes each feature request by readiness — an up-to-date AST answers when available, otherwise index-backed projections answer immediately. Under `readonly = on/auto`, documents serve exclusively from the index until an edit escalates them to full AST service; compilation is pull-based throughout, triggered by requests rather than lifecycle events
+- `Features`: Assembles each feature's answer from its providers — the worker's AST, the PCH's cached preamble products, or the index — routing each request by readiness: an up-to-date AST answers when available, otherwise index-backed projections answer immediately. Under `readonly = on/auto`, documents serve exclusively from the index until an edit escalates them to full AST service; compilation is pull-based throughout, triggered by requests rather than lifecycle events
 - `ASTFamily`: The document-AST node family in the task graph — schedules compiles for open documents and publishes their results
-- `WorkerForwarder`: Dispatches feature work to workers (stateful queries, interactive completion/signature builds, formatting) with quarantine admission and result landing
-- `IndexQuery`: The query facade over the project index, per-file shards, and the live data of open files
+- `Dispatcher`: The document side of talking to workers — every request carrying an open document's content (stateful queries, interactive completion/signature builds, formatting) is admitted through the document's quarantine, dispatched, and landed through one exit that answers `ContentModified` for a buffer the client already edited away
+- `IndexQuery`: Read-only queries over every index source — the project index, per-file shards, and the live data of open files — under one freshness arbitration, answering in domain values that the transports project onto their protocols
 - `ContextService`: The protocol adapter for compilation-context queries and switching
 
 **`transport/`** — Protocol endpoints driving the server.

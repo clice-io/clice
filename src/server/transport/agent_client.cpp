@@ -8,17 +8,13 @@
 #include <vector>
 
 #include "server/protocol/agentic.h"
-#include "server/protocol/position.h"
+#include "server/service/query.h"
 #include "server/transport/master_server.h"
-#include "server/transport/uri.h"
 #include "support/filesystem.h"
 #include "support/logging.h"
 
-#include "kota/ipc/lsp/position.h"
-#include "kota/ipc/lsp/uri.h"
 #include "kota/meta/enum.h"
 #include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/SmallVector.h"
 
 namespace clice {
 
@@ -37,9 +33,9 @@ static std::string_view symbol_kind_name(SymbolKind kind) {
 
 /// Resolve a locator and require a unique match: no candidate is "symbol not
 /// found", several candidates ask the client to disambiguate via symbolId.
-static std::expected<ResolvedSymbol, kota::ipc::Error>
-    resolve_unique(const agentic::ReadSymbolParams& loc, IndexQuery& index_query) {
-    auto candidates = index_query.locate_symbols(loc);
+static std::expected<IndexQuery::Located, kota::ipc::Error>
+    resolve_unique(const agentic::ReadSymbolParams& loc, const IndexQuery& query) {
+    auto candidates = query.locate(loc);
     if(candidates.empty())
         return std::unexpected(kota::ipc::Error{"symbol not found"});
     if(candidates.size() > 1) {
@@ -50,18 +46,19 @@ static std::expected<ResolvedSymbol, kota::ipc::Error>
     return std::move(candidates[0]);
 }
 
-/// Hierarchy items spell their symbol handle as a decimal string — a raw
-/// 64-bit integer would not survive a JavaScript client's JSON round trip.
-static std::uint64_t extract_symbol_id(const std::optional<protocol::LSPAny>& data) {
-    if(!data.has_value())
-        return 0;
-    if(auto* str = std::get_if<std::string>(&static_cast<const protocol::LSPVariant&>(*data))) {
-        std::uint64_t id = 0;
-        if(!llvm::StringRef(*str).getAsInteger(10, id))
-            return id;
-    }
-    LOG_WARN("extract_symbol_id: unexpected LSPAny variant type");
-    return 0;
+/// The 1-based lines a site spans, as agents read files; nullopt when its
+/// bytes fall outside the source's text.
+struct AgentLines {
+    int start;
+    int end;
+};
+
+static std::optional<AgentLines> agent_lines(const Site& site) {
+    auto range = site.coords.to_range(site.range.begin, site.range.end);
+    if(!range)
+        return std::nullopt;
+    return AgentLines{.start = static_cast<int>(range->start.line) + 1,
+                      .end = static_cast<int>(range->end.line) + 1};
 }
 
 AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
@@ -281,39 +278,34 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
         std::string query_lower = llvm::StringRef(params.query).lower();
 
         SymbolSearchResult result;
-        llvm::DenseSet<index::SymbolHash> seen;
-
-        auto try_symbol = [&](index::SymbolHash hash, const index::Symbol& symbol) {
+        for(auto& [hash, symbol]: srv.workspace.project_index.symbols) {
             if(static_cast<int>(result.symbols.size()) >= max)
-                return;
+                break;
             if(symbol.name.empty())
-                return;
+                continue;
             if(!query_lower.empty() &&
                llvm::StringRef(symbol.name).lower().find(query_lower) == std::string::npos)
-                return;
+                continue;
             if(params.kind_filter.has_value()) {
                 auto kind_name = std::string(symbol_kind_name(symbol.kind));
                 auto& filter = *params.kind_filter;
                 if(std::ranges::find(filter, kind_name) == filter.end())
-                    return;
+                    continue;
             }
-            auto def_loc = srv.agent_query.find_definition_location(hash);
-            if(!def_loc)
-                return;
-            if(!seen.insert(hash).second)
-                return;
-            auto file = uri_to_path(def_loc->uri);
+            auto site = srv.agent_query.first_site(hash, RelationKind::Definition);
+            if(!site)
+                continue;
+            auto lines = agent_lines(*site);
+            if(!lines)
+                continue;
             result.symbols.push_back(SymbolEntry{
                 .name = symbol.name,
                 .kind = std::string(symbol_kind_name(symbol.kind)),
-                .file = std::move(file),
-                .line = static_cast<int>(def_loc->range.start.line) + 1,
+                .file = std::string(site->path),
+                .line = lines->start,
                 .symbol_id = hash,
             });
-        };
-
-        for(auto& [hash, symbol]: srv.workspace.project_index.symbols)
-            try_symbol(hash, symbol);
+        }
 
         co_return result;
     });
@@ -327,18 +319,21 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                 co_return kota::outcome_error(std::move(resolved.error()));
 
             auto& rs = *resolved;
-            auto def_text = srv.agent_query.get_definition_text(rs.hash);
-            if(!def_text)
+            auto definition = srv.agent_query.definition_text(rs.symbol.hash);
+            if(!definition)
+                co_return kota::outcome_error(kota::ipc::Error{"definition not found"});
+            auto lines = agent_lines(definition->extent);
+            if(!lines)
                 co_return kota::outcome_error(kota::ipc::Error{"definition not found"});
 
             co_return ReadSymbolResult{
-                .name = rs.name,
-                .kind = std::string(symbol_kind_name(rs.kind)),
-                .file = std::move(def_text->file),
-                .start_line = def_text->start_line,
-                .end_line = def_text->end_line,
-                .text = std::move(def_text->text),
-                .symbol_id = rs.hash,
+                .name = rs.symbol.name,
+                .kind = std::string(symbol_kind_name(rs.symbol.kind)),
+                .file = std::string(definition->extent.path),
+                .start_line = lines->start,
+                .end_line = lines->end,
+                .text = std::move(definition->text),
+                .symbol_id = rs.symbol.hash,
             };
         });
 
@@ -364,41 +359,21 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
             if(!path_id)
                 co_return result;
 
-            // The same shard gate every other agentic lookup applies
+            // The same serving gate every other agentic lookup applies
             // (freshness contract, clause 2): a shard whose file changed
             // on disk serves nothing until its reindex lands.
-            if(srv.agent_query.skip_shard(*path_id))
-                co_return result;
-
-            auto shard_it = srv.workspace.shards.find(*path_id);
-            if(shard_it == srv.workspace.shards.end())
-                co_return result;
-
-            auto& merged_index = shard_it->second;
-            IndexedLineMap map(merged_index.content(),
-                               merged_index.content_size(),
-                               merged_index.line_starts());
-
-            for(auto& [hash, symbol]: srv.workspace.project_index.symbols) {
-                if(symbol.name.empty())
+            for(auto& located: srv.agent_query.definitions_in(*path_id)) {
+                if(!is_document_level(located.symbol.kind))
                     continue;
-                if(!is_document_level(symbol.kind))
+                auto lines = agent_lines(located.site);
+                if(!lines)
                     continue;
-                if(!symbol.reference_files.contains(path_id->raw))
-                    continue;
-
-                merged_index.lookup(hash, RelationKind::Definition, [&](const index::Relation& r) {
-                    auto range = map.to_range(r.range.begin, r.range.end);
-                    if(range) {
-                        result.symbols.push_back(DocumentSymbolEntry{
-                            .name = symbol.name,
-                            .kind = std::string(symbol_kind_name(symbol.kind)),
-                            .start_line = static_cast<int>(range->start.line) + 1,
-                            .end_line = static_cast<int>(range->end.line) + 1,
-                            .symbol_id = hash,
-                        });
-                    }
-                    return true;
+                result.symbols.push_back(DocumentSymbolEntry{
+                    .name = located.symbol.name,
+                    .kind = std::string(symbol_kind_name(located.symbol.kind)),
+                    .start_line = lines->start,
+                    .end_line = lines->end,
+                    .symbol_id = located.symbol.hash,
                 });
             }
 
@@ -418,59 +393,61 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
             auto& rs = *resolved;
 
             DefinitionResult result;
-            result.name = rs.name;
-            result.kind = std::string(symbol_kind_name(rs.kind));
-            result.symbol_id = rs.hash;
+            result.name = rs.symbol.name;
+            result.kind = std::string(symbol_kind_name(rs.symbol.kind));
+            result.symbol_id = rs.symbol.hash;
 
-            if(auto def_text = srv.agent_query.get_definition_text(rs.hash)) {
-                result.definition = LocationEntry{
-                    .file = std::move(def_text->file),
-                    .start_line = def_text->start_line,
-                    .end_line = def_text->end_line,
-                    .text = std::move(def_text->text),
-                };
+            if(auto definition = srv.agent_query.definition_text(rs.symbol.hash)) {
+                if(auto lines = agent_lines(definition->extent)) {
+                    result.definition = LocationEntry{
+                        .file = std::string(definition->extent.path),
+                        .start_line = lines->start,
+                        .end_line = lines->end,
+                        .text = std::move(definition->text),
+                    };
+                }
             }
 
             co_return result;
         });
 
-    peer.on_request([&srv](RequestContext&,
-                           const ReferencesParams& params) -> RequestResult<ReferencesParams> {
-        srv.pool.foreground_pulse();
-        srv.on_agentic_query();
-        auto resolved = resolve_unique(
-            ReadSymbolParams{params.name, params.path, params.line, params.symbol_id},
-            srv.agent_query);
-        if(!resolved)
-            co_return kota::outcome_error(std::move(resolved.error()));
+    peer.on_request(
+        [&srv](RequestContext&, const ReferencesParams& params) -> RequestResult<ReferencesParams> {
+            srv.pool.foreground_pulse();
+            srv.on_agentic_query();
+            auto resolved = resolve_unique(
+                ReadSymbolParams{params.name, params.path, params.line, params.symbol_id},
+                srv.agent_query);
+            if(!resolved)
+                co_return kota::outcome_error(std::move(resolved.error()));
 
-        auto& rs = *resolved;
+            auto& rs = *resolved;
 
-        ReferencesResult result;
-        result.name = rs.name;
-        result.kind = std::string(symbol_kind_name(rs.kind));
-        result.symbol_id = rs.hash;
+            ReferencesResult result;
+            result.name = rs.symbol.name;
+            result.kind = std::string(symbol_kind_name(rs.symbol.kind));
+            result.symbol_id = rs.symbol.hash;
 
-        for(auto& ref: srv.agent_query.collect_references(rs.hash, RelationKind::Reference)) {
-            result.references.push_back(ReferenceEntry{
-                .file = std::move(ref.file),
-                .line = ref.line,
-                .context = std::move(ref.context),
-            });
-        }
-        if(params.include_declaration.value_or(false)) {
-            for(auto& ref: srv.agent_query.collect_references(rs.hash, RelationKind::Definition)) {
-                result.references.push_back(ReferenceEntry{
-                    .file = std::move(ref.file),
-                    .line = ref.line,
-                    .context = std::move(ref.context),
-                });
+            auto collect = [&](RelationKind kind) {
+                for(auto& site: srv.agent_query.sites(rs.symbol.hash, kind)) {
+                    auto lines = agent_lines(site);
+                    if(!lines)
+                        continue;
+                    result.references.push_back(ReferenceEntry{
+                        .file = std::string(site.path),
+                        .line = lines->start,
+                        .context = srv.agent_query.context_line(site),
+                    });
+                }
+            };
+            collect(RelationKind::Reference);
+            if(params.include_declaration.value_or(false)) {
+                collect(RelationKind::Definition);
             }
-        }
 
-        result.total = static_cast<int>(result.references.size());
-        co_return result;
-    });
+            result.total = static_cast<int>(result.references.size());
+            co_return result;
+        });
 
     peer.on_request(
         [&srv](RequestContext&, const CallGraphParams& params) -> RequestResult<CallGraphParams> {
@@ -485,51 +462,38 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
             auto& rs = *resolved;
             auto direction = params.direction.value_or("both");
 
+            auto root_lines = agent_lines(rs.site);
             CallGraphResult result;
             result.root = CallGraphEntry{
-                .name = rs.name,
-                .kind = std::string(symbol_kind_name(rs.kind)),
-                .file = rs.file,
-                .line = rs.line,
-                .symbol_id = rs.hash,
+                .name = rs.symbol.name,
+                .kind = std::string(symbol_kind_name(rs.symbol.kind)),
+                .file = std::string(rs.site.path),
+                .line = root_lines ? root_lines->start : 0,
+                .symbol_id = rs.symbol.hash,
             };
 
-            auto resolve_kind = [&](std::uint64_t sym_id) -> std::string {
-                if(sym_id == 0)
-                    return "Function";
-                std::string name;
-                SymbolKind kind;
-                if(srv.agent_query.find_symbol_info(sym_id, name, kind))
-                    return std::string(symbol_kind_name(kind));
-                return "Function";
+            auto collect = [&](RelationKind kind, std::vector<CallGraphEntry>& into) {
+                for(auto& group: srv.agent_query.grouped(rs.symbol.hash, kind)) {
+                    auto located = srv.agent_query.resolve(group.symbol);
+                    if(!located)
+                        continue;
+                    auto lines = agent_lines(located->site);
+                    if(!lines)
+                        continue;
+                    into.push_back(CallGraphEntry{
+                        .name = located->symbol.name,
+                        .kind = std::string(symbol_kind_name(located->symbol.kind)),
+                        .file = std::string(located->site.path),
+                        .line = lines->start,
+                        .symbol_id = group.symbol,
+                    });
+                }
             };
-
             if(direction == "callers" || direction == "both") {
-                auto incoming = srv.agent_query.find_incoming_calls(rs.hash);
-                for(auto& call: incoming) {
-                    auto sid = extract_symbol_id(call.from.data);
-                    result.callers.push_back(CallGraphEntry{
-                        .name = call.from.name,
-                        .kind = resolve_kind(sid),
-                        .file = uri_to_path(call.from.uri),
-                        .line = static_cast<int>(call.from.range.start.line) + 1,
-                        .symbol_id = sid,
-                    });
-                }
+                collect(RelationKind::Caller, result.callers);
             }
-
             if(direction == "callees" || direction == "both") {
-                auto outgoing = srv.agent_query.find_outgoing_calls(rs.hash);
-                for(auto& call: outgoing) {
-                    auto sid = extract_symbol_id(call.to.data);
-                    result.callees.push_back(CallGraphEntry{
-                        .name = call.to.name,
-                        .kind = resolve_kind(sid),
-                        .file = uri_to_path(call.to.uri),
-                        .line = static_cast<int>(call.to.range.start.line) + 1,
-                        .symbol_id = sid,
-                    });
-                }
+                collect(RelationKind::Callee, result.callees);
             }
 
             co_return result;
@@ -549,49 +513,38 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
             auto& rs = *resolved;
             auto direction = params.direction.value_or("both");
 
+            auto root_lines = agent_lines(rs.site);
             TypeHierarchyResult result;
             result.root = TypeHierarchyEntry{
-                .name = rs.name,
-                .kind = std::string(symbol_kind_name(rs.kind)),
-                .file = rs.file,
-                .line = rs.line,
-                .symbol_id = rs.hash,
+                .name = rs.symbol.name,
+                .kind = std::string(symbol_kind_name(rs.symbol.kind)),
+                .file = std::string(rs.site.path),
+                .line = root_lines ? root_lines->start : 0,
+                .symbol_id = rs.symbol.hash,
             };
 
-            auto resolve_kind = [&](std::uint64_t sym_id) -> std::string {
-                if(sym_id == 0)
-                    return "Class";
-                std::string name;
-                SymbolKind kind;
-                if(srv.agent_query.find_symbol_info(sym_id, name, kind))
-                    return std::string(symbol_kind_name(kind));
-                return "Class";
+            auto collect = [&](RelationKind kind, std::vector<TypeHierarchyEntry>& into) {
+                for(auto target: srv.agent_query.targets(rs.symbol.hash, kind)) {
+                    auto located = srv.agent_query.resolve(target);
+                    if(!located)
+                        continue;
+                    auto lines = agent_lines(located->site);
+                    if(!lines)
+                        continue;
+                    into.push_back(TypeHierarchyEntry{
+                        .name = located->symbol.name,
+                        .kind = std::string(symbol_kind_name(located->symbol.kind)),
+                        .file = std::string(located->site.path),
+                        .line = lines->start,
+                        .symbol_id = target,
+                    });
+                }
             };
-
             if(direction == "supertypes" || direction == "both") {
-                for(auto& item: srv.agent_query.find_supertypes(rs.hash)) {
-                    auto sid = extract_symbol_id(item.data);
-                    result.supertypes.push_back(TypeHierarchyEntry{
-                        .name = item.name,
-                        .kind = resolve_kind(sid),
-                        .file = uri_to_path(item.uri),
-                        .line = static_cast<int>(item.range.start.line) + 1,
-                        .symbol_id = sid,
-                    });
-                }
+                collect(RelationKind::Base, result.supertypes);
             }
-
             if(direction == "subtypes" || direction == "both") {
-                for(auto& item: srv.agent_query.find_subtypes(rs.hash)) {
-                    auto sid = extract_symbol_id(item.data);
-                    result.subtypes.push_back(TypeHierarchyEntry{
-                        .name = item.name,
-                        .kind = resolve_kind(sid),
-                        .file = uri_to_path(item.uri),
-                        .line = static_cast<int>(item.range.start.line) + 1,
-                        .symbol_id = sid,
-                    });
-                }
+                collect(RelationKind::Derived, result.subtypes);
             }
 
             co_return result;

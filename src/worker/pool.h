@@ -883,4 +883,32 @@ void WorkerPool::notify_stateful(std::uint32_t path_id, const Params& params) {
     assigned.peer->send_notification(params);
 }
 
+/// Send a stateless request, resending once if the worker died mid-request.
+/// The pool does not retry on its own — it marks the dead slot and surfaces
+/// worker_crashed, so the resend lands on a healthy worker. Build tasks are
+/// idempotent; one retry suffices, since a request that kills two workers in
+/// a row is a poison workload that a third attempt would not survive either.
+///
+/// `on_crash` fires once per attempt that killed a worker — evidence is
+/// counted per death, not per request, so a poison build that burns two
+/// workers spends two strikes. Callers must count ONLY through it: the
+/// returned error is the retry's status, which may not be a crash.
+template <typename Params, typename OnCrash>
+RequestResult<Params> send_stateless_retrying(WorkerPool& pool,
+                                              const Params& params,
+                                              worker::Priority priority,
+                                              OnCrash on_crash,
+                                              kota::ipc::request_options opts = {},
+                                              std::optional<kota::cancellation_token> cancel = {}) {
+    auto result = co_await pool.send_stateless(params, priority, opts, cancel);
+    if(!result.has_value() && result.error().code == worker::dispatch_errc::worker_crashed) {
+        on_crash(result.error());
+        result = co_await pool.send_stateless(params, priority, opts, cancel);
+        if(!result.has_value() && result.error().code == worker::dispatch_errc::worker_crashed) {
+            on_crash(result.error());
+        }
+    }
+    co_return std::move(result);
+}
+
 }  // namespace clice

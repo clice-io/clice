@@ -38,7 +38,10 @@ ASTProjectionTable projections;
 IndexStore index_store{loop, workspace, resolver};
 TURunFamily turun{graph, workspace, resolver, pcm, index_store, pool};
 IndexPump indexer{loop, workspace, turun, index_store, pool};
-clice::IndexQuery query{workspace, store, indexer, projections};
+clice::IndexQuery query{
+    workspace,
+    {.sessions = &store, .projections = &projections, .pump = &indexer}
+};
 
 Fid main_id;
 Fid header_id;
@@ -101,10 +104,6 @@ void merge_into_workspace() {
     }
 }
 
-std::string main_path() {
-    return std::string(workspace.file_table.resolve(main_id));
-}
-
 TEST_CASE(DefinitionAcrossFiles) {
     add_file("header.h", R"(
         struct §(def)⟦§(def)Widget⟧ { int value; };
@@ -124,9 +123,9 @@ TEST_CASE(DefinitionAcrossFiles) {
     });
     ASSERT_TRUE(symbol != 0);
 
-    auto location = query.find_definition_location(symbol);
-    ASSERT_TRUE(location.has_value());
-    ASSERT_TRUE(llvm::StringRef(location->uri).ends_with("header.h"));
+    auto site = query.first_site(symbol, RelationKind::Definition);
+    ASSERT_TRUE(site.has_value());
+    ASSERT_TRUE(site->path.ends_with("header.h"));
 }
 
 TEST_CASE(ReferencesAcrossFiles) {
@@ -147,7 +146,7 @@ TEST_CASE(ReferencesAcrossFiles) {
     });
     ASSERT_TRUE(symbol != 0);
 
-    auto references = query.collect_references(symbol, RelationKind::Reference);
+    auto references = query.sites(symbol, RelationKind::Reference);
     ASSERT_FALSE(references.empty());
 }
 
@@ -159,9 +158,9 @@ TEST_CASE(SearchSymbols) {
     ASSERT_TRUE(compile());
     merge_into_workspace();
 
-    auto results = query.search_symbols("Searchable", 10);
+    auto results = query.search("Searchable", 10);
     ASSERT_FALSE(results.empty());
-    ASSERT_EQ(results.front().name, "Searchable");
+    ASSERT_EQ(results.front().symbol.name, "Searchable");
 }
 
 TEST_CASE(LocalSymbolName) {
@@ -181,10 +180,9 @@ TEST_CASE(LocalSymbolName) {
 
     // TU-local names are not in the project table; the query falls back to
     // the shard's own local-name table.
-    std::string name;
-    SymbolKind kind;
-    ASSERT_TRUE(query.find_symbol_info(symbol, name, kind));
-    ASSERT_EQ(name, "hidden");
+    auto info = query.symbol_info(symbol);
+    ASSERT_TRUE(info.has_value());
+    ASSERT_EQ(info->name, "hidden");
 }
 
 TEST_CASE(OpenSessionServedByShard) {
@@ -204,11 +202,11 @@ TEST_CASE(OpenSessionServedByShard) {
     store.apply_open(*session, unit->main_content().str(), 1);
     ASSERT_FALSE(projections.index_current(session->path_id));
 
-    auto position = feature::to_position(session->line_map(), point("use"));
-    ASSERT_TRUE(position.has_value());
-    auto locations = query.query_definition(main_path(), *position, session.get());
-    ASSERT_FALSE(locations.empty());
-    ASSERT_TRUE(llvm::StringRef(locations.front().uri).ends_with("header.h"));
+    auto cursor = query.symbol_at(main_id, point("use"));
+    ASSERT_TRUE(cursor.has_value());
+    auto sites = query.definition(*cursor);
+    ASSERT_FALSE(sites.empty());
+    ASSERT_TRUE(sites.front().path.ends_with("header.h"));
 }
 
 TEST_CASE(DivergedBufferWithdrawsShard) {
@@ -225,9 +223,8 @@ TEST_CASE(DivergedBufferWithdrawsShard) {
 
     // The buffer no longer matches the rows' content: the shard withdraws
     // and the un-compiled session resolves nothing.
-    auto position = feature::to_position(session->line_map(), point("use"));
-    ASSERT_TRUE(position.has_value());
-    ASSERT_TRUE(query.query_definition(main_path(), *position, session.get()).empty());
+    ASSERT_EQ(query.serving_source(main_id).by, ServingSource::By::None);
+    ASSERT_FALSE(query.symbol_at(main_id, point("use")).has_value());
 }
 
 TEST_CASE(HeaderEdgesFromHostManifest) {
@@ -274,13 +271,13 @@ TEST_CASE(StaleContributionSuppressed) {
         symbol = o.target;
         return false;
     });
-    ASSERT_FALSE(query.collect_references(symbol, RelationKind::Reference).empty());
+    ASSERT_FALSE(query.sites(symbol, RelationKind::Reference).empty());
 
     // A content-changed pending file's rows describe text that no longer
     // exists: its contribution disappears from cross-file results until
     // the reindex lands.
     indexer.enqueue(main_id, ReindexReason::ContentChanged);
-    ASSERT_TRUE(query.collect_references(symbol, RelationKind::Reference).empty());
+    ASSERT_TRUE(query.sites(symbol, RelationKind::Reference).empty());
 }
 
 };  // TEST_SUITE(IndexQuery)

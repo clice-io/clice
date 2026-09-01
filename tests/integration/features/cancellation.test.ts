@@ -145,8 +145,9 @@ test("cancelled requests while compiling", async ({ session }) => {
 
 test("edit supersedes compile", async ({ session }) => {
     // An edit mid-compile abandons the stale parse end-to-end: the request
-    // that launched it resolves promptly (null — the editor re-queries
-    // after an edit), and the next request answers on the new content.
+    // that launched it rejects promptly with ContentModified (the editor
+    // keeps what it has and re-queries), and the next request answers on
+    // the new content.
     const { client, workspace } = session.tmp();
     workspace.write("edited.cpp", SLOW);
     workspace.writeCDB(["edited.cpp"]);
@@ -158,7 +159,9 @@ test("edit supersedes compile", async ({ session }) => {
     await sleep(EDIT_SUPERSEDE_DELAY);
     client.change(uri, 1, "int fixed;\n");
 
-    expect(await withTimeout(first, 10_000, "first hover")).toBeNull();
+    await expect(withTimeout(first, 10_000, "first hover")).rejects.toMatchObject({
+        code: proto.LSPErrorCodes.ContentModified,
+    });
 
     const hover = await client.hoverAt(uri, 0, 4);
     expect(hover).not.toBeNull();

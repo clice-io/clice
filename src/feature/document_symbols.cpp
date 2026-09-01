@@ -18,8 +18,6 @@
 
 namespace clice::feature {
 
-namespace {
-
 auto to_protocol_symbol_kind(SymbolKind kind) -> protocol::SymbolKind {
     using enum protocol::SymbolKind;
 
@@ -66,6 +64,8 @@ auto to_protocol_symbol_kind(SymbolKind kind) -> protocol::SymbolKind {
 
     return Variable;
 }
+
+namespace {
 
 auto symbol_detail(clang::ASTContext& context, const clang::NamedDecl& decl) -> std::string {
     display::Options options = {

@@ -51,12 +51,22 @@ static kota::codec::RawValue quarantine_diagnostics(unsigned crashes) {
     return kota::codec::RawValue{json ? std::move(*json) : "[]"};
 }
 
-PCHPlan plan_pch(Workspace& workspace,
-                 ContextResolver& contexts,
-                 Fid path_id,
-                 llvm::StringRef text,
-                 const std::string& directory,
-                 const std::vector<std::string>& arguments) {
+/// The PCH acquisition plan of a buffer state: whether a PCH is owed at
+/// all, and the request that identifies/builds it when so. Shared by the
+/// AST round (depend path) and the stateless build path (acquire path).
+struct PCHPlan {
+    /// False when the preamble is empty and no prefix is injected — a
+    /// PCH would be empty, and a previously adopted key must be cleared.
+    bool wanted = false;
+    PCHFamily::Request request;
+};
+
+static PCHPlan plan_pch(Workspace& workspace,
+                        ContextResolver& contexts,
+                        Fid path_id,
+                        llvm::StringRef text,
+                        const std::string& directory,
+                        const std::vector<std::string>& arguments) {
     auto path = workspace.file_table.resolve(path_id);
     auto bound = compute_preamble_bound(text);
     auto* header_context = contexts.header_context(path_id);
@@ -857,6 +867,117 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
     // Every arm of the two-send loop lands or returns; the trial's
     // continue only fires on the first send, the artifact retry only once.
     std::unreachable();
+}
+
+kota::task<bool> ASTFamily::ensure_pch(const std::shared_ptr<Session>& session,
+                                       std::uint64_t license_generation,
+                                       std::uint64_t license_epoch,
+                                       const std::string& directory,
+                                       const std::vector<std::string>& arguments) {
+    auto path_id = session->path_id;
+    auto license = [&] {
+        return session->generation == license_generation &&
+               projections.epoch(path_id) == license_epoch;
+    };
+    // A request invalidated during its earlier awaits (module
+    // dependencies) must not touch the adopted key at all: the reset
+    // branch below writes it before the first suspension point.
+    if(!license()) {
+        co_return false;
+    }
+
+    auto plan = plan_pch(workspace, contexts, path_id, session->text, directory, arguments);
+    if(!plan.wanted) {
+        projections.set_pch_key(path_id, std::nullopt);
+        co_return true;
+    }
+    auto pch_key = plan.request.pch_key;
+
+    // Preamble incomplete (user still typing) and nothing fresh to adopt
+    // under the new key — defer the rebuild, keep using the previously
+    // adopted PCH if it is still available.
+    if(!pch.fresh(pch_key) && !is_preamble_complete(session->text, plan.request.preamble_bound)) {
+        LOG_DEBUG("Preamble incomplete for {}, deferring PCH rebuild",
+                  workspace.file_table.resolve(path_id));
+        auto projection = projections.projection(path_id);
+        if(projection && projection->pch_key.has_value()) {
+            auto it = workspace.pch_cache.find(*projection->pch_key);
+            co_return it != workspace.pch_cache.end() && !it->second.path.empty();
+        }
+        co_return false;
+    }
+
+    // Joiners of an already-running round install nothing and replay
+    // nothing; only the dispatch owner's probe pins the build's deaths.
+    auto outcome = co_await pch.acquire(std::move(plan.request), [session](llvm::StringRef death) {
+        session->quarantine.on_kind_crash(evidence_kind(EvidenceKind::PCH), death);
+    });
+    if(outcome != PCHFamily::Outcome::Ready) {
+        co_return false;
+    }
+
+    // Adoption is gated on the round outcome, never on leftover cache
+    // paths, and on this request's own license: a supersede or a
+    // Lost-type invalidation while we waited means the resolved command
+    // may describe nothing — neither the key write nor the evidence
+    // wash belongs to this request anymore.
+    if(!license()) {
+        co_return false;
+    }
+    projections.set_pch_key(path_id, pch_key);
+    // Adopting a proven-good artifact disproves the session's PCH strikes
+    // as surely as building one — but only its own; every consumer washes
+    // for itself.
+    session->quarantine.on_kind_land(evidence_kind(EvidenceKind::PCH));
+    co_return true;
+}
+
+kota::task<bool> ASTFamily::prepare_stateless_inputs(const Ticket& ticket,
+                                                     const std::string& directory,
+                                                     const std::vector<std::string>& arguments,
+                                                     StatelessInputs& inputs) {
+    auto& session = ticket.session;
+    auto path_id = session->path_id;
+    auto license_epoch = projections.epoch(path_id);
+
+    // A user request waits on these builds: dispatch them High so the
+    // background budget cannot throttle its own foreground. The scan
+    // runs under the request's command with the same text the dispatch
+    // will compile — buffer plus any appended suffix include — so an
+    // unsaved `import m;` (or one inside a contextual header's suffix)
+    // builds its PCM before the parse needs it.
+    llvm::SmallVector<const char*, 32> argv;
+    argv.reserve(arguments.size());
+    for(auto& arg: arguments) {
+        argv.push_back(arg.c_str());
+    }
+    auto scan_text = session->text;
+    contexts.append_suffix_include(path_id, scan_text);
+    if(!co_await pcm.prepare_deps(path_id,
+                                  argv,
+                                  directory,
+                                  std::optional<llvm::StringRef>(scan_text),
+                                  /*foreground=*/true)) {
+        co_return false;
+    }
+
+    if(readonly != ReadonlyMode::On) {
+        auto pch_ok =
+            co_await ensure_pch(session, ticket.generation, license_epoch, directory, arguments);
+        auto projection = projections.projection(path_id);
+        if(pch_ok && projection && projection->pch_key.has_value()) {
+            if(auto pch_it = workspace.pch_cache.find(*projection->pch_key);
+               pch_it != workspace.pch_cache.end()) {
+                inputs.pch = {pch_it->second.path, pch_it->second.bound};
+            }
+        }
+    }
+
+    // Fill all available PCM paths, excluding the file's own PCM
+    // to avoid "multiple module declarations".
+    workspace.fill_pcm_deps(inputs.pcms, path_id);
+
+    co_return true;
 }
 
 }  // namespace clice

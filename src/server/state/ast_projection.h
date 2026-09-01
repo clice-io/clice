@@ -73,7 +73,7 @@ struct ASTProjection {
 /// The AST family's per-document table: projections plus the freshness
 /// state that used to live on the Session (ast_dirty, dirty_epoch). Owned
 /// and written by the family and its facade; readers (IndexQuery,
-/// FeatureRouter, transports) only look things up. A separate type so
+/// Features, transports) only look things up. A separate type so
 /// read-side tests can populate one without the family's machinery.
 struct ASTProjectionTable {
     struct Entry {
@@ -93,7 +93,7 @@ struct ASTProjectionTable {
         bool current = false;
 
         /// Bumped by every invalidation of this document. The stateless
-        /// forward path snapshots it before its PCH acquisition and may
+        /// build path snapshots it before its PCH acquisition and may
         /// adopt the key only if it is unchanged — the dirty_epoch half
         /// of the retired pch_key write license (a Lost-type invalidation
         /// means the resolved command may describe nothing).

@@ -5,6 +5,8 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "sched/families/pch.h"
@@ -20,6 +22,12 @@
 #include "kota/async/async.h"
 
 namespace clice {
+
+namespace testing {
+
+struct ASTFamilyFixture;
+
+}
 
 class ContextResolver;
 
@@ -62,7 +70,7 @@ public:
     void register_runner();
 
     /// Per-document projections and freshness state; the read surface for
-    /// IndexQuery, FeatureRouter and the transports.
+    /// IndexQuery, Features and the transports.
     ASTProjectionTable projections;
 
     /// Parsed form of config.project.readonly, written once by the master
@@ -88,6 +96,28 @@ public:
     /// already-escalated sessions and under readonly = "on" (the mode
     /// transition is disabled).
     void escalate(Session& session);
+
+    /// The inputs of a stateless build carrying the session's buffer:
+    /// module dependencies built or revalidated, the preamble PCH built or
+    /// reused, and the PCM path table. Under readonly = "on" the PCH step
+    /// is skipped — the build compiles without a preamble, the profile's
+    /// stated trade.
+    struct StatelessInputs {
+        std::pair<std::string, std::uint32_t> pch;
+        std::unordered_map<std::string, std::string> pcms;
+    };
+
+    /// `ticket` is the pch_key write license together with the projection
+    /// epoch snapshotted here, before the first suspension: a supersede
+    /// bumps the generation, a Lost-type invalidation bumps only the
+    /// epoch — either way the resolved command may describe a command
+    /// that no longer exists, and adopting the key would hand later
+    /// incomplete-preamble edits a stale-flag PCH. This path runs no
+    /// graph round it could ask instead.
+    kota::task<bool> prepare_stateless_inputs(const Ticket& ticket,
+                                              const std::string& directory,
+                                              const std::vector<std::string>& arguments,
+                                              StatelessInputs& inputs);
 
     /// The edit path's whole supersede (didChange): the buffer moved, so
     /// the projection is no longer current and the in-flight round's
@@ -178,6 +208,20 @@ private:
     /// stat fast paths in place (see deps_changed).
     bool is_stale(const Session& session);
 
+    /// Revalidate or build the session's preamble PCH through the family
+    /// and adopt its key under the request's license (see
+    /// prepare_stateless_inputs). This request is the dispatch owner when
+    /// its acquire spawns the round; the probe then pins every worker
+    /// death of the build on this document, held by the round so the
+    /// evidence lands even if this request goes stale meanwhile.
+    kota::task<bool> ensure_pch(const std::shared_ptr<Session>& session,
+                                std::uint64_t license_generation,
+                                std::uint64_t license_epoch,
+                                const std::string& directory,
+                                const std::vector<std::string>& arguments);
+
+    friend struct testing::ASTFamilyFixture;
+
     /// current=false + epoch bump: the shared prefix of every
     /// invalidation flavor.
     void touch(Fid path_id);
@@ -194,23 +238,6 @@ private:
     /// live in the graph's task group.
     kota::task_group<> kicks;
 };
-
-/// The PCH acquisition plan of a buffer state: whether a PCH is owed at
-/// all, and the request that identifies/builds it when so. Shared by the
-/// AST round (depend path) and the stateless forward path (acquire path).
-struct PCHPlan {
-    /// False when the preamble is empty and no prefix is injected — a
-    /// PCH would be empty, and a previously adopted key must be cleared.
-    bool wanted = false;
-    PCHFamily::Request request;
-};
-
-PCHPlan plan_pch(Workspace& workspace,
-                 ContextResolver& contexts,
-                 Fid path_id,
-                 llvm::StringRef text,
-                 const std::string& directory,
-                 const std::vector<std::string>& arguments);
 
 /// Discriminators for Quarantine's per-kind ledgers.
 enum class EvidenceKind : std::uint8_t {

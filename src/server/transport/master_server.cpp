@@ -38,9 +38,9 @@ constexpr static std::size_t notify_log_limit = 128;
 
 MasterServer::MasterServer(kota::event_loop& loop, std::string self_path) :
     loop(loop), pool(loop), contexts(workspace),
-    index_query(workspace, sessions, pump, ast.projections),
-    agent_query(workspace, sessions, pump, ast.projections, {.disk_only = true}),
-    features(ast, forwarder, index_query, workspace, contexts, pump, sessions),
+    index_query(workspace, {.sessions = &sessions, .projections = &ast.projections, .pump = &pump}),
+    agent_query(workspace, {.pump = &pump}),
+    features(ast, dispatcher, index_query, workspace, contexts, pump, sessions),
     invalidator(workspace, sessions, contexts, pcm), bg_tasks(loop),
     self_path(std::move(self_path)) {
     pcm.register_runner();
