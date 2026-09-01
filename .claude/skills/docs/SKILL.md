@@ -16,8 +16,9 @@ description: The clice documentation system — generated feature/config pages, 
 - `docs/zh/` — Chinese pages, equally real and equally hand-edited (by a
   person or a model). Each zh page must stay **segment-isomorphic** to its
   en counterpart: same sequence of markdown blocks, translated text in the
-  translatable blocks, code blocks and HTML comments byte-identical. The
-  tool never writes these files.
+  translatable blocks, code blocks and HTML comments byte-identical.
+  `check`, `report` and `record` never write these files; only an
+  explicit `translate <page>` overwrites the named zh page.
 - `docs/meta/translations/` — one JSON per page pair: an ordered list of
   `{kind, en-hash, zh-hash}` pairs, each attesting "these two segments were
   last reviewed as translations of each other". Maintained exclusively by
@@ -44,9 +45,10 @@ Pages split into segments: headings, paragraphs, blockquotes, list items,
 table rows, and index.md's YAML frontmatter are translatable; everything
 else (code blocks, HTML comments including GENERATED markers) is verbatim
 and must be byte-identical across the two trees, as must any fenced code
-nested inside a translatable segment (a snap example under its checklist
-item). Segment shapes must match too: heading depth, ordered vs. bulleted
-list, table column count. No text is stored twice — the mapping holds
+or HTML comment nested inside a translatable segment (a snap example
+under its checklist item). Segment shapes must match too: heading depth,
+ordered vs. bulleted list, task-list state, table column count and
+alignment, and the mapping/sequence skeleton of index.md's frontmatter. No text is stored twice — the mapping holds
 hashes only. Old wording of a drifted segment comes from git history of
 the markdown page.
 
