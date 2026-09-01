@@ -214,7 +214,7 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
     }
 
     result.completed = true;
-    result.indexed_tus = workspace.project_index.manifests.size();
+    result.indexed_tus = stack.pump.indexed_files();
     result.shard_count = workspace.shards.size();
     for(auto& shard: llvm::make_second_range(workspace.shards)) {
         result.shard_bytes += shard.bytes().size();

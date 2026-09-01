@@ -178,6 +178,13 @@ public:
         return failed_ids.size();
     }
 
+    /// TUs actually indexed and merged this session — dispatched claims the
+    /// freshness gate skipped do not count. The one-shot `clice index`
+    /// reports its work from this, so a warm rerun honestly says 0.
+    std::size_t indexed_files() const {
+        return indexed_total;
+    }
+
     /// Progress of the current (or last) indexing round. The reporter reads
     /// this on each on_progress_changed emission — the signal only wakes it,
     /// the numbers live here.
@@ -239,6 +246,7 @@ private:
     void settle_attempt_waits(Fid server_path_id, std::uint64_t ticket = -1);
 
     llvm::DenseSet<Fid> failed_ids;
+    std::size_t indexed_total = 0;
 
     struct AttemptWait {
         std::uint64_t ticket;

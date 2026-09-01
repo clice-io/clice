@@ -298,6 +298,7 @@ kota::task<> IndexPump::run_index_task(PendingLedger::Claim claim,
             switch(outcome.verdict) {
                 case TURunFamily::Verdict::Completed: {
                     failed_ids.erase(server_path_id);
+                    indexed_total += 1;
                     LOG_PERF("index",
                              "progress={}/{} file={} bytes={} index_ms={} merge_ms={}",
                              index,
