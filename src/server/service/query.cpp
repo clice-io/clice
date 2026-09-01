@@ -772,28 +772,28 @@ std::optional<IndexQuery::Located> IndexQuery::resolve(index::SymbolHash hash) c
 std::vector<IndexQuery::Located> IndexQuery::search(llvm::StringRef query,
                                                     std::size_t limit) const {
     ScopedTimer timer;
-    std::string query_lower = query.lower();
 
     // Exact name, prefix, substring — ranked before the cut, so a weak
     // match never displaces the exact one behind an arbitrary table order.
     auto score = [&](llvm::StringRef name) -> int {
-        if(query_lower.empty()) {
+        if(query.empty()) {
             return 0;
         }
-        auto lower = name.lower();
-        auto at = lower.find(query_lower);
-        if(at == std::string::npos) {
+        auto at = name.find_insensitive(query);
+        if(at == llvm::StringRef::npos) {
             return -1;
         }
-        if(lower.size() == query_lower.size()) {
+        if(name.size() == query.size()) {
             return 0;
         }
         return at == 0 ? 1 : 2;
     };
 
     struct Candidate {
-        SymbolRef symbol;
         int score;
+        llvm::StringRef name;
+        index::SymbolHash hash;
+        SymbolKind kind;
     };
 
     std::vector<Candidate> candidates;
@@ -803,13 +803,9 @@ std::vector<IndexQuery::Located> IndexQuery::search(llvm::StringRef query,
             return;
         }
         auto rank = score(name);
-        if(rank < 0) {
-            return;
+        if(rank >= 0) {
+            candidates.push_back({.score = rank, .name = name, .hash = hash, .kind = kind});
         }
-        candidates.push_back({
-            .symbol = {.hash = hash, .name = std::string(name), .kind = kind},
-            .score = rank
-        });
     };
 
     for(auto& [hash, symbol]: workspace.project_index.symbols) {
@@ -824,18 +820,27 @@ std::vector<IndexQuery::Located> IndexQuery::search(llvm::StringRef query,
         return true;
     });
 
-    std::ranges::sort(candidates, [](const Candidate& lhs, const Candidate& rhs) {
-        return std::tie(lhs.score, lhs.symbol.name, lhs.symbol.hash) <
-               std::tie(rhs.score, rhs.symbol.name, rhs.symbol.hash);
-    });
+    // Ranked lazily through a heap: a broad query matches most of the
+    // table, and the cut should cost its `limit` results, not a sort of
+    // every match. A candidate without a definition site cedes its slot
+    // to the next one, which a top-k cut ahead of the site check could not.
+    auto worse = [](const Candidate& lhs, const Candidate& rhs) {
+        return std::tie(lhs.score, lhs.name, lhs.hash) > std::tie(rhs.score, rhs.name, rhs.hash);
+    };
+    std::ranges::make_heap(candidates, worse);
 
     std::vector<Located> results;
-    for(auto& candidate: candidates) {
-        if(results.size() >= limit) {
-            break;
-        }
-        if(auto site = first_site(candidate.symbol.hash, RelationKind::Definition)) {
-            results.push_back({.symbol = std::move(candidate.symbol), .site = *site});
+    while(!candidates.empty() && results.size() < limit) {
+        std::ranges::pop_heap(candidates, worse);
+        auto candidate = candidates.back();
+        candidates.pop_back();
+        if(auto site = first_site(candidate.hash, RelationKind::Definition)) {
+            results.push_back({
+                .symbol = {.hash = candidate.hash,
+                           .name = std::string(candidate.name),
+                           .kind = candidate.kind},
+                .site = *site,
+            });
         }
     }
     // The query is arbitrary LSP input; its length is logged instead of its

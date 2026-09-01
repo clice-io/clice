@@ -442,6 +442,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
             };
             collect(RelationKind::Reference);
             if(params.include_declaration.value_or(false)) {
+                collect(RelationKind::Declaration);
                 collect(RelationKind::Definition);
             }
 
