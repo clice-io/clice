@@ -15,9 +15,10 @@ The development flow is: branch off `main` → write code (discussing requiremen
 
 Never push anything unverified — "it compiles" is not verified, and CI is not a debugger.
 
-1. `pixi run format`.
-2. `npm run check` at the repo root when TypeScript changed.
-3. All four test suites pass locally (the test skill). Every failure on the branch is yours to fix now — even if it looks pre-existing (main is green), and never by skipping, disabling, or weakening the test.
+1. **Docs sync — once, at the end, delegated.** If the branch touched snap fixtures, config annotations, or anything under `docs/`, the generated regions and the zh translations must be brought back in step before pushing. Do not chase them while developing: batch the whole sync here, and hand it to a subagent following the docs skill's "Syncing docs at the end of a branch" recipe so the report output and page texts stay out of the main context. Repeat on later pushes only when those inputs changed again.
+2. `pixi run format`.
+3. `npm run check` at the repo root when TypeScript changed.
+4. All four test suites pass locally (the test skill). Every failure on the branch is yours to fix now — even if it looks pre-existing (main is green), and never by skipping, disabling, or weakening the test.
 
 ## Self-review (before opening)
 

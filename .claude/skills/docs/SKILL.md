@@ -68,7 +68,7 @@ Workflow for any edit touching translated pages:
 
 This applies to generated regions too: after `update-feature-docs` changes
 an en feature page, the zh page must receive the translated equivalent in
-the same PR once the gate is live.
+the same PR — batched at the end of the branch, see below.
 
 Machine drafting: `DEEPSEEK_API_KEY=... node tools/docs/translate.ts
 translate [page...]` produces isomorphic zh drafts via the DeepSeek API
@@ -79,6 +79,32 @@ byte-for-byte. A segment the model cannot render validly is left in
 English and the run exits non-zero naming the page — rerun `translate`
 on it after review. The key comes from the environment and is never
 stored. Drafts still go through review and `record`.
+
+## Syncing docs at the end of a branch
+
+Generated regions and translations are synced **once per branch, right
+before the pre-push checks** of the pr skill — not after every fixture or
+page edit, and not in the main conversation: delegate it to a subagent so
+the report output and page texts never enter the main context. Give the
+subagent this skill and `git diff --name-only origin/main...HEAD`; its
+brief is:
+
+1. If snap fixtures with doc headers or config annotations changed:
+   `pixi run update-feature-docs` and `pixi run update-config-docs`
+   rewrite the en GENERATED regions.
+2. `pixi run report-doc-translations` lists every broken pair with both
+   texts. Translate each new or drifted en segment into the zh page,
+   keeping the skeleton (same block kind, list marker, heading depth,
+   nested code byte-identical) and the terminology of the surrounding
+   page; delete zh segments whose en segment is gone. For whole new
+   pages, or dozens of drifted pages, `DEEPSEEK_API_KEY=... node
+tools/docs/translate.ts translate <pages>` drafts them when a key is
+   available — otherwise translate by hand.
+3. `pixi run format`, then `pixi run record-doc-translations`, then
+   `pixi run check-doc-translations`, `check-feature-docs` and
+   `check-config-docs` — all green.
+4. Report back: pages touched, how many segments were translated, and
+   anything deliberately left as is.
 
 **docs/ contains no changelog content at all** — neither per-page
 "Changelog" sections nor standalone changelog pages. Both were removed

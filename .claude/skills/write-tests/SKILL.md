@@ -97,6 +97,11 @@ gates: `npm run check` at the repo root (tsc strict + ESLint, zero tolerance).
    first and own shared bodies; the server side can only update its own
    variants.
 
+   Fixture doc headers feed the generated feature pages, but do not
+   regenerate or translate them per edit — that happens once at the end
+   of the branch, delegated (the docs skill's "Syncing docs at the end
+   of a branch").
+
 ## API cheat sheet
 
 `Workspace` (`@clice/tools/workspace`): `path(rel)` `uri(rel)` `write`
