@@ -202,11 +202,12 @@ public:
     std::vector<Site> implementation(index::SymbolHash hash) const;
 
     /// A symbol's definition as text: the extent's site, the text it
-    /// spans and the comment block above it, sliced from the serving
-    /// source that holds the definition (an open buffer's text, a blob's
-    /// stored text, or the disk re-read for pure-ASCII blobs — verified
-    /// against the rows' content hash, so a moved-on file degrades to no
-    /// text rather than mismatched text).
+    /// spans and the comment block above it, sliced from the first source
+    /// that holds the definition in first-hit order (an open buffer's
+    /// text, its preamble region, an overlay's stored text or the disk
+    /// re-read for pure-ASCII blobs — verified against the rows' content
+    /// hash, so a moved-on file degrades to no text rather than mismatched
+    /// text).
     struct Definition {
         Site extent;
         std::string text;
@@ -302,6 +303,13 @@ private:
     /// The session's PCH overlay blob, or null when it has no PCH or the
     /// blob is unreadable.
     std::shared_ptr<index::TUIndex> overlay_of(const Session& session) const;
+
+    /// A current session's own rows, and its overlay's preamble rows, as
+    /// row sources in buffer coordinates.
+    RowSource session_source(Fid path_id, const Session& session) const;
+    RowSource preamble_source(Fid path_id,
+                              const Session& session,
+                              const index::TUIndex& state) const;
 
     /// Clause 2: a closed file whose own content changed and whose reindex
     /// has not landed contributes nothing.

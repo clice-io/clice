@@ -557,18 +557,14 @@ void LSPClient::register_language_features() {
                            const protocol::CallHierarchyIncomingCallsParams& params) -> RawResult {
         this->server.pool.foreground_pulse();
         auto [path, path_id, session] = resolve_uri(params.item.uri);
-        co_return co_await this->server.features.call_hierarchy_incoming(session,
-                                                                         path_id,
-                                                                         params.item);
+        co_return co_await this->server.features.call_hierarchy_incoming(path_id, params.item);
     });
 
     peer.on_request([this](RequestContext& ctx,
                            const protocol::CallHierarchyOutgoingCallsParams& params) -> RawResult {
         this->server.pool.foreground_pulse();
         auto [path, path_id, session] = resolve_uri(params.item.uri);
-        co_return co_await this->server.features.call_hierarchy_outgoing(session,
-                                                                         path_id,
-                                                                         params.item);
+        co_return co_await this->server.features.call_hierarchy_outgoing(path_id, params.item);
     });
 
     peer.on_request([this](RequestContext& ctx,
@@ -584,18 +580,14 @@ void LSPClient::register_language_features() {
                            const protocol::TypeHierarchySupertypesParams& params) -> RawResult {
         this->server.pool.foreground_pulse();
         auto [path, path_id, session] = resolve_uri(params.item.uri);
-        co_return co_await this->server.features.type_hierarchy_supertypes(session,
-                                                                           path_id,
-                                                                           params.item);
+        co_return co_await this->server.features.type_hierarchy_supertypes(path_id, params.item);
     });
 
     peer.on_request([this](RequestContext& ctx,
                            const protocol::TypeHierarchySubtypesParams& params) -> RawResult {
         this->server.pool.foreground_pulse();
         auto [path, path_id, session] = resolve_uri(params.item.uri);
-        co_return co_await this->server.features.type_hierarchy_subtypes(session,
-                                                                         path_id,
-                                                                         params.item);
+        co_return co_await this->server.features.type_hierarchy_subtypes(path_id, params.item);
     });
 
     peer.on_request(

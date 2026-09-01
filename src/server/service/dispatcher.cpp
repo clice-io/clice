@@ -40,9 +40,9 @@ constexpr std::uint8_t evidence_kind(worker::QueryKind kind) {
 /// flies. The guard spends the probe and hands it back unless the attempt
 /// recorded a strike, so a cancelled recovery does not strand the document
 /// until another edit.
-class Admission {
+class QuarantineGate {
 public:
-    enum class Gate : std::uint8_t {
+    enum class Scope : std::uint8_t {
         /// A query against the settled AST: only strikes of this very kind
         /// bar it — the compile that produced the AST is the recovery for
         /// compile strikes, and a harmless hover must not spend a
@@ -54,13 +54,13 @@ public:
         Content,
     };
 
-    Admission(Quarantine& quarantine, std::uint8_t kind, Gate gate) :
-        quarantine(quarantine), kind(kind), recovery(quarantine.recovery_kind(kind)),
-        refuse(gate == Gate::Kind ? quarantine.kind_blocked(kind)
-                                  : quarantine.active() && !recovery) {}
+    QuarantineGate(Quarantine& quarantine, std::uint8_t kind, Scope scope) :
+        quarantine(quarantine), recovery(quarantine.recovery_kind(kind)),
+        refuse(scope == Scope::Kind ? quarantine.kind_blocked(kind)
+                                    : quarantine.active() && !recovery) {}
 
-    Admission(const Admission&) = delete;
-    Admission& operator=(const Admission&) = delete;
+    QuarantineGate(const QuarantineGate&) = delete;
+    QuarantineGate& operator=(const QuarantineGate&) = delete;
 
     bool refused() const {
         return refuse;
@@ -82,7 +82,6 @@ public:
 
 private:
     Quarantine& quarantine;
-    std::uint8_t kind;
     bool recovery;
     bool refuse;
     std::optional<Quarantine::ProbeGuard> guard;
@@ -179,15 +178,13 @@ Dispatcher::RawResult Dispatcher::query(worker::QueryKind kind,
         }
     }
 
-    Admission admission(session.quarantine, evidence, Admission::Gate::Kind);
-    if(admission.refused()) {
+    QuarantineGate gate(session.quarantine, evidence, QuarantineGate::Scope::Kind);
+    if(gate.refused()) {
         co_return kota::outcome_error(quarantined());
     }
-    admission.arm();
-    auto result = co_await pool.send_stateful(path_id.raw,
-                                              wp,
-                                              {.token = std::move(token)},
-                                              admission.suspect());
+    gate.arm();
+    auto result =
+        co_await pool.send_stateful(path_id.raw, wp, {.token = std::move(token)}, gate.suspect());
     // A query that kills the worker is this document's doing even though
     // its compile landed: per-kind ledger, since only this query kind
     // answering disproves it (see Quarantine::on_kind_crash).
@@ -226,15 +223,15 @@ kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
     }
     auto wait_ms = timer.ms_f();
 
-    Admission admission(session.quarantine, evidence, Admission::Gate::Kind);
-    if(admission.refused()) {
+    QuarantineGate gate(session.quarantine, evidence, QuarantineGate::Scope::Kind);
+    if(gate.refused()) {
         co_return kota::outcome_error(quarantined());
     }
-    admission.arm();
+    gate.arm();
     auto result = co_await pool.send_stateful(path_id.raw,
                                               worker::DocumentLinkParams{path},
                                               {.token = std::move(token)},
-                                              admission.suspect());
+                                              gate.suspect());
     if(!result.has_value() && result.error().code == worker::dispatch_errc::worker_crashed) {
         session.quarantine.on_kind_crash(evidence, worker::death_of(result.error()));
     }
@@ -260,7 +257,7 @@ Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
     auto path = std::string(workspace.file_table.resolve(path_id));
 
     // This build compiles the same content the quarantine watches.
-    Admission entry(session.quarantine, evidence, Admission::Gate::Content);
+    QuarantineGate entry(session.quarantine, evidence, QuarantineGate::Scope::Content);
     if(entry.refused()) {
         LOG_WARN("{}: {} is quarantined, refusing build", label, path);
         co_return kota::outcome_error(refuse(ticket.session));
@@ -303,11 +300,11 @@ Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
 
     // The license is re-taken here: the entry gate's answer may have been
     // spent by a concurrent recovery during the dependency awaits.
-    Admission dispatch(session.quarantine, evidence, Admission::Gate::Content);
-    if(dispatch.refused()) {
+    QuarantineGate license(session.quarantine, evidence, QuarantineGate::Scope::Content);
+    if(license.refused()) {
         co_return kota::outcome_error(quarantined());
     }
-    dispatch.arm();
+    license.arm();
     auto result = co_await send_stateless_retrying(
         pool,
         std::move(wp),
@@ -355,8 +352,8 @@ Dispatcher::RawResult Dispatcher::format(const Ticket& ticket,
     auto path = std::string(workspace.file_table.resolve(session.path_id));
     auto evidence = evidence_kind(EvidenceKind::Format);
 
-    Admission admission(session.quarantine, evidence, Admission::Gate::Content);
-    if(admission.refused()) {
+    QuarantineGate gate(session.quarantine, evidence, QuarantineGate::Scope::Content);
+    if(gate.refused()) {
         LOG_WARN("Format: {} is quarantined, refusing format", path);
         co_return kota::outcome_error(refuse(ticket.session));
     }
@@ -376,7 +373,7 @@ Dispatcher::RawResult Dispatcher::format(const Ticket& ticket,
     }
 
     ScopedTimer timer;
-    admission.arm();
+    gate.arm();
     auto result = co_await send_stateless_retrying(
         pool,
         std::move(wp),

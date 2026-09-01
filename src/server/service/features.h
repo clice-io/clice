@@ -146,22 +146,14 @@ public:
     RawResult call_hierarchy_prepare(std::shared_ptr<Session> session,
                                      Fid path_id,
                                      const protocol::Position& position);
-    RawResult call_hierarchy_incoming(std::shared_ptr<Session> session,
-                                      Fid path_id,
-                                      const protocol::CallHierarchyItem& item);
-    RawResult call_hierarchy_outgoing(std::shared_ptr<Session> session,
-                                      Fid path_id,
-                                      const protocol::CallHierarchyItem& item);
+    RawResult call_hierarchy_incoming(Fid path_id, const protocol::CallHierarchyItem& item);
+    RawResult call_hierarchy_outgoing(Fid path_id, const protocol::CallHierarchyItem& item);
 
     RawResult type_hierarchy_prepare(std::shared_ptr<Session> session,
                                      Fid path_id,
                                      const protocol::Position& position);
-    RawResult type_hierarchy_supertypes(std::shared_ptr<Session> session,
-                                        Fid path_id,
-                                        const protocol::TypeHierarchyItem& item);
-    RawResult type_hierarchy_subtypes(std::shared_ptr<Session> session,
-                                      Fid path_id,
-                                      const protocol::TypeHierarchyItem& item);
+    RawResult type_hierarchy_supertypes(Fid path_id, const protocol::TypeHierarchyItem& item);
+    RawResult type_hierarchy_subtypes(Fid path_id, const protocol::TypeHierarchyItem& item);
 
     RawResult workspace_symbol(llvm::StringRef query);
 

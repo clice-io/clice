@@ -463,14 +463,19 @@ Features::RawResult Features::definition(std::shared_ptr<Session> session,
                                          position,
                                          {},
                                          std::move(token));
-    if(raw.has_value() && !to_lsp::is_empty(raw.value())) {
+    // A dispatch error is final: a ContentModified in particular must not
+    // be replaced by an index answer computed on the newer buffer.
+    if(!raw.has_value()) {
+        co_return kota::outcome_error(std::move(raw.error()));
+    }
+    if(!to_lsp::is_empty(raw.value())) {
         co_return std::move(raw.value());
     }
 
     // The dispatch compiled a dirty buffer: retry against the refreshed
     // projection and preamble links, but only when the compile actually
-    // completed — a failed or superseded compile leaves the projection
-    // non-current and the caches stale.
+    // completed — a failed compile leaves the projection non-current and
+    // the caches stale.
     if(ast.projections.current(path_id)) {
         if(auto retry = index_definition(); !retry.empty()) {
             co_return to_raw(retry);
@@ -941,8 +946,7 @@ static std::optional<index::SymbolHash> item_symbol(const IndexQuery& query,
     return std::nullopt;
 }
 
-Features::RawResult Features::call_hierarchy_incoming(std::shared_ptr<Session>,
-                                                      Fid path_id,
+Features::RawResult Features::call_hierarchy_incoming(Fid path_id,
                                                       const protocol::CallHierarchyItem& item) {
     auto symbol = item_symbol(query, cursor_at(path_id, item.range.start), item.data);
     if(!symbol)
@@ -966,8 +970,7 @@ Features::RawResult Features::call_hierarchy_incoming(std::shared_ptr<Session>,
     co_return to_raw(results);
 }
 
-Features::RawResult Features::call_hierarchy_outgoing(std::shared_ptr<Session>,
-                                                      Fid path_id,
+Features::RawResult Features::call_hierarchy_outgoing(Fid path_id,
                                                       const protocol::CallHierarchyItem& item) {
     auto symbol = item_symbol(query, cursor_at(path_id, item.range.start), item.data);
     if(!symbol)
@@ -1031,8 +1034,7 @@ static std::vector<protocol::TypeHierarchyItem> type_items(const IndexQuery& que
     return results;
 }
 
-Features::RawResult Features::type_hierarchy_supertypes(std::shared_ptr<Session>,
-                                                        Fid path_id,
+Features::RawResult Features::type_hierarchy_supertypes(Fid path_id,
                                                         const protocol::TypeHierarchyItem& item) {
     auto symbol = item_symbol(query, cursor_at(path_id, item.range.start), item.data);
     if(!symbol)
@@ -1040,8 +1042,7 @@ Features::RawResult Features::type_hierarchy_supertypes(std::shared_ptr<Session>
     co_return to_raw(type_items(query, *symbol, RelationKind::Base));
 }
 
-Features::RawResult Features::type_hierarchy_subtypes(std::shared_ptr<Session>,
-                                                      Fid path_id,
+Features::RawResult Features::type_hierarchy_subtypes(Fid path_id,
                                                       const protocol::TypeHierarchyItem& item) {
     auto symbol = item_symbol(query, cursor_at(path_id, item.range.start), item.data);
     if(!symbol)

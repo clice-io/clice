@@ -235,9 +235,16 @@ int main() { return 0; }
     // the cursor can only resolve through the overlay's main-file entry.
     install_empty_index();
 
-    auto info = index_query.symbol_info(cursor_of("macro").symbol);
+    auto cursor = cursor_of("macro");
+    auto info = index_query.symbol_info(cursor.symbol);
     ASSERT_TRUE(info.has_value());
     EXPECT_EQ(info->name, "FOO");
+
+    // The definition text comes from the same preamble rows, sliced from
+    // the buffer: the hover card for a `#define` above the PCH bound.
+    auto definition = index_query.definition_text(cursor.symbol);
+    ASSERT_TRUE(definition.has_value());
+    EXPECT_TRUE(llvm::StringRef(definition->text).contains("FOO"));
 }
 
 TEST_CASE(OverlaySymbolInfo) {

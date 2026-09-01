@@ -315,6 +315,24 @@ void IndexQuery::visit_overlay_files(const index::TUIndex& state,
     }
 }
 
+RowSource IndexQuery::session_source(Fid path_id, const Session& session) const {
+    return {.kind = RowSource::Kind::SessionRows,
+            .file = path_id,
+            .path = workspace.file_table.resolve(path_id),
+            .rows = &sources.projections->projection(path_id)->file_rows(),
+            .coords = buffer_coordinates(session)};
+}
+
+RowSource IndexQuery::preamble_source(Fid path_id,
+                                      const Session& session,
+                                      const index::TUIndex& state) const {
+    return {.kind = RowSource::Kind::PreambleRows,
+            .file = path_id,
+            .path = workspace.file_table.resolve(path_id),
+            .rows = &preamble_rows(state),
+            .coords = buffer_coordinates(session)};
+}
+
 void IndexQuery::for_each_relation(index::SymbolHash hash,
                                    RelationKind kind,
                                    Order order,
@@ -362,12 +380,7 @@ void IndexQuery::for_each_relation(index::SymbolHash hash,
             return true;
         }
         visit_sessions([&](Fid path_id, const Session& session) -> bool {
-            RowSource source{.kind = RowSource::Kind::SessionRows,
-                             .file = path_id,
-                             .path = workspace.file_table.resolve(path_id),
-                             .rows = &sources.projections->projection(path_id)->file_rows(),
-                             .coords = buffer_coordinates(session)};
-            return emit(source);
+            return emit(session_source(path_id, session));
         });
         return !stopped;
     };
@@ -376,12 +389,7 @@ void IndexQuery::for_each_relation(index::SymbolHash hash,
             return true;
         }
         visit_preambles([&](Fid path_id, const Session& session, const index::TUIndex& state) {
-            RowSource source{.kind = RowSource::Kind::PreambleRows,
-                             .file = path_id,
-                             .path = workspace.file_table.resolve(path_id),
-                             .rows = &preamble_rows(state),
-                             .coords = buffer_coordinates(session)};
-            return emit(source);
+            return emit(preamble_source(path_id, session, state));
         });
         return !stopped;
     };
@@ -686,15 +694,26 @@ std::optional<IndexQuery::Definition> IndexQuery::definition_text(index::SymbolH
         return true;
     };
 
-    // Buffer-true rows first: they also know symbols the project table
-    // has never seen (an unsaved definition).
+    // Live sources first, in the first-hit order: buffer-true rows also
+    // know symbols the project table has never seen (an unsaved
+    // definition), the preamble region holds the buffer's own macros, and
+    // an overlay is the only source for a header seen under the live
+    // context.
     visit_sessions([&](Fid path_id, const Session& session) -> bool {
-        RowSource source{.kind = RowSource::Kind::SessionRows,
-                         .file = path_id,
-                         .path = workspace.file_table.resolve(path_id),
-                         .rows = &sources.projections->projection(path_id)->file_rows(),
-                         .coords = buffer_coordinates(session)};
-        return !slice(source);
+        return !slice(session_source(path_id, session));
+    });
+    if(found) {
+        return found;
+    }
+    visit_preambles([&](Fid path_id, const Session& session, const index::TUIndex& state) -> bool {
+        return !slice(preamble_source(path_id, session, state));
+    });
+    if(found) {
+        return found;
+    }
+    visit_overlays([&](const index::TUIndex& state) -> bool {
+        visit_overlay_files(state, [&](const RowSource& source) { return !slice(source); });
+        return !found;
     });
     if(found) {
         return found;

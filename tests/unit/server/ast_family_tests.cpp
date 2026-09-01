@@ -818,6 +818,117 @@ TEST_CASE(ClientCancelSparesCompile) {
     logging::reset_anomaly_for_testing();
 }
 
+TEST_CASE(StaleReplyLandsContentModified) {
+    // A reply for a buffer the client edited away never leaves as a value:
+    // the landing turns it into ContentModified even when the worker
+    // answered after the compile had settled — the edit landed while the
+    // query itself was in flight.
+    logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
+
+    TempDir tmp;
+    tmp.touch("stale.cpp", "");
+    auto src = tmp.path("stale.cpp");
+
+    Stack stack;
+    std::string text;
+    text.reserve(1 << 20);
+    for(int i = 0; i < 50'000; i += 1) {
+        text += std::format("int v{};\n", i);
+    }
+    auto session = stack.open(src, std::move(text));
+
+    bool stale = false;
+    bool done = false;
+    auto body = [&]() -> kota::task<> {
+        WorkerPoolOptions opts;
+        opts.self_path = clice_binary();
+        opts.stateless_count = 0;
+        opts.stateful_count = 1;
+        CO_ASSERT_TRUE(stack.pool.start(opts));
+
+        // Warm the AST: the next query's only suspension is its worker send.
+        auto warm = co_await stack.dispatcher.query(worker::QueryKind::Hover,
+                                                    Ticket::take(session),
+                                                    protocol::Position{0, 4});
+        CO_ASSERT_TRUE(warm.has_value());
+
+        auto ticket = Ticket::take(session);
+        kota::task_group<> group(stack.loop);
+        auto tokens = [&]() -> kota::task<> {
+            auto result =
+                co_await stack.dispatcher.query(worker::QueryKind::SemanticTokens, ticket);
+            stale = !result.has_value() && result.error().code == content_modified_code;
+        };
+        group.spawn(tokens());
+        // Walking fifty thousand declarations keeps the reply in flight
+        // while the edit lands.
+        co_await kota::sleep(20);
+        session->generation += 1;
+        co_await group.join();
+        EXPECT_TRUE(stale);
+
+        co_await stack.ast.stop();
+        co_await stack.graph.shutdown();
+        co_await stack.pool.stop();
+        done = true;
+    };
+    auto task = body();
+    stack.loop.schedule(task);
+    stack.loop.run();
+    EXPECT_TRUE(done);
+
+    logging::reset_anomaly_for_testing();
+}
+
+TEST_CASE(HarmlessKindKeepsProbe) {
+    // A quarantine held by one query kind refuses only that kind: a hover
+    // on a semantic-tokens-quarantined document is ordinary work — it is
+    // answered, and the edit-granted probe stays armed for the tokens
+    // retry instead of being spent on it.
+    logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
+
+    TempDir tmp;
+    tmp.touch("a.cpp", "");
+    auto src = tmp.path("a.cpp");
+
+    Stack stack;
+    auto session = stack.open(src, "int x;\n");
+    constexpr auto tokens_kind = static_cast<std::uint8_t>(EvidenceKind::Count) +
+                                 static_cast<std::uint8_t>(worker::QueryKind::SemanticTokens);
+    session->quarantine.on_kind_crash(tokens_kind, "w-1");
+    session->quarantine.on_kind_crash(tokens_kind, "w-2");
+    ASSERT_TRUE(session->quarantine.active());
+    session->quarantine.on_edit(true);
+    ASSERT_TRUE(session->quarantine.recovery_kind(tokens_kind));
+
+    bool done = false;
+    auto body = [&]() -> kota::task<> {
+        WorkerPoolOptions opts;
+        opts.self_path = clice_binary();
+        opts.stateless_count = 0;
+        opts.stateful_count = 1;
+        CO_ASSERT_TRUE(stack.pool.start(opts));
+
+        auto result = co_await stack.dispatcher.query(worker::QueryKind::Hover,
+                                                      Ticket::take(session),
+                                                      protocol::Position{0, 4});
+        EXPECT_TRUE(result.has_value());
+        EXPECT_TRUE(session->quarantine.active());
+        EXPECT_TRUE(session->quarantine.recovery_kind(tokens_kind));
+
+        co_await stack.ast.stop();
+        co_await stack.graph.shutdown();
+        co_await stack.pool.stop();
+        done = true;
+    };
+    auto task = body();
+    stack.loop.schedule(task);
+    stack.loop.run();
+    EXPECT_TRUE(done);
+
+    logging::reset_anomaly_for_testing();
+}
+
 TEST_CASE(PoisonPreambleBudget) {
     // One document's quarantine cannot contain a poison preamble: the PCH
     // is shared, so every session with the same preamble would re-trigger

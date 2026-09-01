@@ -88,7 +88,7 @@ LSP 功能的具体实现。每个功能接收 `CompilationUnitRef`，返回对�
 
 包括：代码补全、hover 信息、签名帮助、语义高亮、内嵌提示、文档符号、文档链接、折叠范围、格式化、诊断等。
 
-> `feature/` 只涵盖单文件、基于 AST 的功能实现。跨文件导航功能（go to definition、find references 等）由服务器的 `service/` 层（`FeatureRouter`/`IndexQuery`）基于索引数据提供。部分功能涉及多阶段处理——例如，代码补全中的 include 路径补全可以在语法层完成，无需完整编译。
+> `feature/` 只涵盖单文件、基于 AST 的功能实现。跨文件导航功能（go to definition、find references 等）由服务器的 `service/` 层（`Features`/`IndexQuery`）基于索引数据提供。部分功能涉及多阶段处理——例如，代码补全中的 include 路径补全可以在语法层完成，无需完整编译。
 
 ### `src/sched/` — 编译调度核心
 
@@ -123,10 +123,10 @@ LSP 功能的具体实现。每个功能接收 `CompilationUnitRef`，返回对�
 
 **`service/`** — 消费编译与索引结果的读侧服务。
 
-- `FeatureRouter`：按就绪程度路由每个 feature 请求——有最新的 AST 时由 AST 回答，否则由索引支持的投影立即回答。在 `readonly = on/auto` 下，文档完全从索引提供服务，直到编辑将其升级为完整的 AST 服务；编译始终是 pull 驱动的，由请求触发而非生命周期事件
+- `Features`：从各个提供方——worker 的 AST、PCH 缓存的 preamble 产物或索引——组装每个 feature 的回答，并按就绪程度路由每个请求：有最新的 AST 时由 AST 回答，否则由索引支持的投影立即回答。在 `readonly = on/auto` 下，文档完全从索引提供服务，直到编辑将其升级为完整的 AST 服务；编译始终是 pull 驱动的，由请求触发而非生命周期事件
 - `ASTFamily`：任务图中的文档 AST 节点族——为打开文档调度编译并发布其结果
-- `WorkerForwarder`：将 feature 工作分发给 worker（有状态查询、交互式补全/签名构建、格式化），并带有隔离准入和结果落地
-- `IndexQuery`：项目索引、按文件分片以及打开文件实时数据之上的查询门面
+- `Dispatcher`：与 worker 通信的文档侧——每个携带打开文档内容的请求（有状态查询、交互式补全/签名构建、格式化）都经由该文档的隔离准入、分发，并从唯一的出口落地；对于客户端已经编辑掉的缓冲区，该出口回答 `ContentModified`
+- `IndexQuery`：对所有索引来源——项目索引、按文件分片以及打开文件的实时数据——的只读查询，置于统一的新鲜度仲裁之下，以领域值作答，再由各 transport 投影到各自的协议上
 - `ContextService`：编译上下文查询与切换的协议适配器
 
 **`transport/`** — 驱动服务器的协议端点。
