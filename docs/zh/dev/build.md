@@ -6,7 +6,7 @@ clice 依赖 C++23 特性，需要使用现代 C++ 工具链。同时需要链�
 
 如果你不想使用 pixi，请参考下方的 [Manual Build](#manual-build)。
 
-## Quick Start
+## 快速开始
 
 请按照 [官方指南](https://pixi.prefix.dev/latest/installation) 安装 pixi。
 

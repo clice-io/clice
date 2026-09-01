@@ -2,11 +2,13 @@
 ///
 /// Both trees are real sources, edited directly (by hand or by a model).
 /// The contract is that a Chinese page is segment-isomorphic to its
-/// English counterpart: the same sequence of markdown blocks, where
+/// English counterpart: the same sequence of markdown blocks with the
+/// same shape (heading depth, list orderedness, table width), where
 /// translatable segments (headings, paragraphs, blockquotes, list items,
 /// table rows, index.md's YAML frontmatter) carry the translated text and
 /// every other segment (code blocks, HTML comments including GENERATED
-/// region markers, ...) is byte-identical. The only stored link between
+/// region markers, ...) is byte-identical — as is any fenced code block
+/// nested inside a translatable segment. The only stored link between
 /// the two sides is docs/meta/translations/<page>.json — one hash pair
 /// per translatable segment, in document order:
 ///
@@ -38,7 +40,9 @@
 /// round-trips through the model. No args = only pages missing a zh
 /// counterpart; explicit pages are overwritten, feeding the current zh
 /// text back as terminology reference. `--model=NAME` overrides the
-/// default deepseek-v4-pro. Drafts still go through review + record.
+/// default deepseek-v4-pro. A segment the model cannot render validly is
+/// left in English and fails the run, so the page shows up again on the
+/// next attempt. Drafts still go through review + record.
 ///
 /// `--en=DIR --zh=DIR --meta=DIR` override the tree roots (for testing).
 
@@ -46,7 +50,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import pLimit from "p-limit";
 import { REPO_ROOT } from "../compile_commands.ts";
-import { analyzeSource, parser, splitSegments, type SegmentInfo } from "./segment.ts";
+import { analyzeSource, splitSegments, type Segment, type SegmentInfo } from "./segment.ts";
 
 const UNTRANSLATED_PREFIXES: string[] = [];
 
@@ -129,55 +133,63 @@ function zip<A, B>(a: A[], b: B[]): [A, B][] {
     return out;
 }
 
-interface PageAnalysis {
+interface TreeComparison {
+    /// Human-readable description of a block-layout divergence, or null
+    /// when the two sides are isomorphic.
+    structureProblem: string | null;
+    /// Segment pairs whose verbatim bytes differ (structure was isomorphic).
+    verbatimDiffs: [SegmentInfo, SegmentInfo][];
+}
+
+function describe(info: SegmentInfo | undefined): string {
+    return info === undefined ? "ends" : `has ${info.shape} (line ${info.line})`;
+}
+
+function sameVerbatim(left: SegmentInfo, right: SegmentInfo): boolean {
+    return (
+        left.verbatim.length === right.verbatim.length &&
+        left.verbatim.every((text, i) => text === right.verbatim.at(i))
+    );
+}
+
+function compareTrees(en: SegmentInfo[], zh: SegmentInfo[]): TreeComparison {
+    const total = Math.max(en.length, zh.length);
+    for (let i = 0; i < total; i += 1) {
+        const left = en.at(i);
+        const right = zh.at(i);
+        if (left?.shape !== right?.shape) {
+            return {
+                structureProblem:
+                    `segment layouts diverge at segment ${i + 1}: ` +
+                    `en ${describe(left)}, zh ${describe(right)} — ` +
+                    `en has ${en.length} segments, zh has ${zh.length}`,
+                verbatimDiffs: [],
+            };
+        }
+    }
+    return {
+        structureProblem: null,
+        verbatimDiffs: zip(en, zh).filter(([left, right]) => !sameVerbatim(left, right)),
+    };
+}
+
+interface PageAnalysis extends TreeComparison {
     page: string;
     en: SegmentInfo[];
     /// null when the Chinese page does not exist.
     zh: SegmentInfo[] | null;
     mapping: Mapping | null;
-    /// Human-readable description of a block-layout divergence, or null
-    /// when the two sides are isomorphic (or zh is missing).
-    structureProblem: string | null;
-    /// Verbatim segment pairs whose bytes differ (structure was isomorphic).
-    verbatimDiffs: [SegmentInfo, SegmentInfo][];
-}
-
-function describe(info: SegmentInfo | undefined): string {
-    return info === undefined ? "ends" : `has ${info.kind} (line ${info.line})`;
 }
 
 function analyzePage(roots: Roots, page: string): PageAnalysis {
     const en = analyzeSource(fs.readFileSync(path.join(roots.en, page), "utf8"), page);
+    const mapping = loadMapping(roots, page);
     const zhFile = path.join(roots.zh, page);
     if (!fs.existsSync(zhFile)) {
-        return {
-            page,
-            en,
-            zh: null,
-            mapping: loadMapping(roots, page),
-            structureProblem: null,
-            verbatimDiffs: [],
-        };
+        return { page, en, zh: null, mapping, structureProblem: null, verbatimDiffs: [] };
     }
     const zh = analyzeSource(fs.readFileSync(zhFile, "utf8"), `zh/${page}`);
-    let structureProblem: string | null = null;
-    const total = Math.max(en.length, zh.length);
-    for (let i = 0; i < total; i += 1) {
-        const left = en.at(i);
-        const right = zh.at(i);
-        if (left?.kind !== right?.kind) {
-            structureProblem =
-                `segment layouts diverge at segment ${i + 1}: ` +
-                `en ${describe(left)}, zh ${describe(right)} — ` +
-                `en has ${en.length} segments, zh has ${zh.length}`;
-            break;
-        }
-    }
-    const verbatimDiffs =
-        structureProblem === null
-            ? zip(en, zh).filter(([left, right]) => !left.translatable && left.text !== right.text)
-            : [];
-    return { page, en, zh, mapping: loadMapping(roots, page), structureProblem, verbatimDiffs };
+    return { page, en, zh, mapping, ...compareTrees(en, zh) };
 }
 
 function translatable(segments: SegmentInfo[]): SegmentInfo[] {
@@ -188,27 +200,34 @@ function segmentLabel(left: SegmentInfo, right: SegmentInfo): string {
     return `segment ${left.index} (${left.kind}, en line ${left.line} / zh line ${right.line})`;
 }
 
-type Drift = "en-changed" | "zh-changed" | "both-changed";
+function verbatimLabel(left: SegmentInfo, right: SegmentInfo): string {
+    return left.translatable
+        ? `code block inside ${segmentLabel(left, right)}`
+        : `verbatim ${segmentLabel(left, right)}`;
+}
 
-const DRIFT_TEXT: Record<Drift, string> = {
-    "en-changed": "English changed since last record — update the Chinese to match",
-    "zh-changed": "Chinese changed since last record — confirm it still translates the English",
-    "both-changed": "both sides changed since last record — verify they still correspond",
-};
+function verbatimReason(left: SegmentInfo): string {
+    return left.translatable
+        ? "nested code block must be byte-identical"
+        : "verbatim segment must be byte-identical";
+}
 
-/// Positional comparison of the recorded pairs against the current hashes.
+/// Positional comparison of a recorded pair against the current segments.
 /// Only meaningful when the pair count still matches the page.
-function driftOf(pair: Pair, left: SegmentInfo, right: SegmentInfo): Drift | null {
+function driftOf(pair: Pair, left: SegmentInfo, right: SegmentInfo): string | null {
+    if (pair.kind !== left.kind) {
+        return `recorded as ${pair.kind}, now ${left.kind} — review the page pair, then run record`;
+    }
     const enChanged = pair.en !== left.hash;
     const zhChanged = pair.zh !== right.hash;
     if (enChanged && zhChanged) {
-        return "both-changed";
+        return "both sides changed since last record — verify they still correspond";
     }
     if (enChanged) {
-        return "en-changed";
+        return "English changed since last record — update the Chinese to match";
     }
     if (zhChanged) {
-        return "zh-changed";
+        return "Chinese changed since last record — confirm it still translates the English";
     }
     return null;
 }
@@ -231,6 +250,18 @@ function findStrays(roots: Roots, pages: string[]): StrayFiles {
     };
 }
 
+function strayMessages(roots: Roots, pages: string[]): string[] {
+    const strays = findStrays(roots, pages);
+    return [
+        ...strays.zhPages.map(
+            (stray) => `zh/${stray}: no English counterpart — remove it or add the English page`,
+        ),
+        ...strays.mappings.map(
+            (stray) => `meta stray ${stray}: no English counterpart — run record to clean up`,
+        ),
+    ];
+}
+
 function check(roots: Roots, pages: string[]): number {
     const problems: string[] = [];
     let attested = 0;
@@ -249,8 +280,7 @@ function check(roots: Roots, pages: string[]): number {
         }
         for (const [left, right] of analysis.verbatimDiffs) {
             problems.push(
-                `${page}: verbatim ${segmentLabel(left, right)} ` +
-                    `must be byte-identical between en and zh`,
+                `${page}: ${verbatimLabel(left, right)} must be byte-identical between en and zh`,
             );
         }
         const pairsNow = zip(translatable(analysis.en), translatable(analysis.zh));
@@ -273,7 +303,7 @@ function check(roots: Roots, pages: string[]): number {
         for (const [pair, [left, right]] of zip(analysis.mapping.pairs, pairsNow)) {
             const drift = driftOf(pair, left, right);
             if (drift !== null) {
-                problems.push(`${page}: ${segmentLabel(left, right)}: ${DRIFT_TEXT[drift]}`);
+                problems.push(`${page}: ${segmentLabel(left, right)}: ${drift}`);
             } else {
                 attested += 1;
             }
@@ -288,13 +318,7 @@ function check(roots: Roots, pages: string[]): number {
             problems.push(`${page}: page is marked untranslated — remove the mapping file`);
         }
     }
-    const strays = findStrays(roots, pages);
-    for (const stray of strays.zhPages) {
-        problems.push(`zh/${stray}: no English counterpart — remove it or add the English page`);
-    }
-    for (const stray of strays.mappings) {
-        problems.push(`meta stray ${stray}: no English counterpart — run record to clean up`);
-    }
+    problems.push(...strayMessages(roots, pages));
     if (problems.length > 0) {
         for (const problem of problems) {
             console.error(problem);
@@ -345,19 +369,29 @@ function report(roots: Roots, pages: string[]): number {
             untranslatedPages += 1;
             continue;
         }
+        let pageDrifts = 0;
+        const drifted = (left: SegmentInfo, right: SegmentInfo, reason: string) => {
+            if (pageDrifts === 0) {
+                console.log(`${page}:`);
+            }
+            reportDrift(left, right, reason);
+            pageDrifts += 1;
+        };
         for (const [left, right] of analysis.verbatimDiffs) {
-            console.log(`${page}: verbatim ${segmentLabel(left, right)} differs`);
-            console.log(quoted("en", left.text));
-            console.log(quoted("zh", right.text));
-            driftedSegments += 1;
+            drifted(left, right, verbatimReason(left));
         }
         const pairsNow = zip(translatable(analysis.en), translatable(analysis.zh));
-        if (analysis.mapping === null) {
+        if (analysis.mapping?.version !== 1) {
+            const status =
+                analysis.mapping === null
+                    ? "not recorded"
+                    : `unsupported mapping version ${analysis.mapping.version}`;
             console.log(
-                `${page}: not recorded (${pairsNow.length} segments) — ` +
+                `${page}: ${status} (${pairsNow.length} segments) — ` +
                     `review the translation, then run record`,
             );
             untranslatedPages += 1;
+            driftedSegments += pageDrifts;
             continue;
         }
         if (analysis.mapping.pairs.length !== pairsNow.length) {
@@ -373,26 +407,25 @@ function report(roots: Roots, pages: string[]): number {
             for (const [left, right] of pairsNow) {
                 if (!recorded.has(`${left.hash}:${right.hash}`)) {
                     reportDrift(left, right, "no recorded pair");
-                    driftedSegments += 1;
+                    pageDrifts += 1;
                 }
             }
+            driftedSegments += pageDrifts;
             continue;
         }
-        let pageDrifts = 0;
         for (const [pair, [left, right]] of zip(analysis.mapping.pairs, pairsNow)) {
             const drift = driftOf(pair, left, right);
             if (drift !== null) {
-                if (pageDrifts === 0) {
-                    console.log(`${page}:`);
-                }
-                reportDrift(left, right, DRIFT_TEXT[drift]);
-                pageDrifts += 1;
+                drifted(left, right, drift);
             }
         }
         driftedSegments += pageDrifts;
         if (pageDrifts === 0) {
             cleanPages += 1;
         }
+    }
+    for (const message of strayMessages(roots, pages)) {
+        console.log(message);
     }
     console.log(
         `${cleanPages} pages clean, ${untranslatedPages} pages untranslated or ` +
@@ -421,7 +454,7 @@ function record(roots: Roots, pages: string[]): number {
         if (analysis.verbatimDiffs.length > 0) {
             for (const [left, right] of analysis.verbatimDiffs) {
                 console.error(
-                    `${page}: verbatim ${segmentLabel(left, right)} ` +
+                    `${page}: ${verbatimLabel(left, right)} ` +
                         `must be byte-identical — fix before recording`,
                 );
             }
@@ -566,24 +599,31 @@ function parseSegmentsJson(raw: string, expected: number[]): Map<number, string>
     return out;
 }
 
-/// Fenced code inside a translatable segment (snap example blocks live
-/// inside their checklist items) never round-trips through the model: it
+/// Code blocks nested in a translatable segment (snap example blocks live
+/// inside their checklist items) never round-trip through the model: each
 /// is masked to a placeholder and restored byte-for-byte afterwards.
 interface MaskedText {
     masked: string;
     blocks: string[];
 }
 
-function maskFences(text: string): MaskedText {
+function maskCode(text: string, segment: Segment): MaskedText {
     const blocks: string[] = [];
-    const masked = text.replace(/^([ \t]*)```[^\n]*\n[\s\S]*?\n\1```[ \t]*$/gm, (match) => {
-        blocks.push(match);
-        return `⟦B${blocks.length}⟧`;
-    });
+    let masked = "";
+    let cursor = 0;
+    for (const range of segment.verbatim) {
+        const start = range.start - segment.start;
+        const end = range.end - segment.start;
+        masked += text.slice(cursor, start);
+        blocks.push(text.slice(start, end));
+        masked += `⟦B${blocks.length}⟧`;
+        cursor = end;
+    }
+    masked += text.slice(cursor);
     return { masked, blocks };
 }
 
-function restoreFences(masked: string, blocks: string[]): { text: string } | { problem: string } {
+function restoreCode(masked: string, blocks: string[]): { text: string } | { problem: string } {
     let text = masked;
     for (const [index, block] of blocks.entries()) {
         const placeholder = `⟦B${index + 1}⟧`;
@@ -603,61 +643,37 @@ function restoreFences(masked: string, blocks: string[]): { text: string } | { p
 }
 
 /// Re-parse the translated segment standalone and reject anything that
-/// broke the block-level shape the isomorphism contract depends on.
-function validateSegment(enText: string, zhText: string, kind: string): string | null {
+/// broke the shape the isomorphism contract depends on.
+function validateSegment(en: Segment, enText: string, zhText: string): string | null {
     if (zhText.trim() === "") {
         return "empty";
     }
     if (/\n\s*\n/.test(zhText) && !/\n\s*\n/.test(enText)) {
         return "introduced blank line";
     }
-    switch (kind) {
-        case "heading": {
-            const depth = /^#+/.exec(enText)?.[0] ?? "";
-            if (!zhText.startsWith(depth + " ")) {
-                return `heading must start with "${depth} "`;
-            }
-            if (parser.parse(zhText).children.length !== 1) {
-                return "not a single heading";
-            }
-            return null;
+    if (en.kind === "tableRow") {
+        // A lone row does not parse as a table, so check its skeleton.
+        if (zhText.includes("\n")) {
+            return "table row must stay one line";
         }
-        case "paragraph":
-        case "blockquote": {
-            const children = parser.parse(zhText).children;
-            if (children.length !== 1 || children.at(0)?.type !== kind) {
-                return `not a single ${kind}`;
-            }
-            return null;
+        const pipes = (text: string) => (text.match(/(?<!\\)\|/g) ?? []).length;
+        if (pipes(zhText) !== pipes(enText)) {
+            return "pipe count changed";
         }
-        case "listItem": {
-            const first = parser.parse(zhText).children.at(0);
-            if (first?.type !== "list" || first.children.length !== 1) {
-                return "not a single list item";
-            }
-            return null;
-        }
-        case "tableRow": {
-            if (zhText.includes("\n")) {
-                return "table row must stay one line";
-            }
-            const pipes = (text: string) => (text.match(/(?<!\\)\|/g) ?? []).length;
-            if (pipes(zhText) !== pipes(enText)) {
-                return "pipe count changed";
-            }
-            return null;
-        }
-        case "yaml": {
-            const keys = (text: string) =>
-                [...text.matchAll(/^\s*([\w-]+):/gm)].map((match) => match[1]).join(",");
-            if (keys(zhText) !== keys(enText)) {
-                return "yaml keys changed";
-            }
-            return null;
-        }
-        default:
-            return null;
+        return null;
     }
+    const parsed = splitSegments(zhText, "reply");
+    if (parsed.length !== 1 || parsed.at(0)?.shape !== en.shape) {
+        return `not a single ${en.shape}`;
+    }
+    if (en.kind === "yaml") {
+        const keys = (text: string) =>
+            [...text.matchAll(/^\s*([\w-]+):/gm)].map((match) => match[1]).join(",");
+        if (keys(zhText) !== keys(enText)) {
+            return "yaml keys changed";
+        }
+    }
+    return null;
 }
 
 function chunkIndices(texts: string[], indices: number[], budget: number): number[][] {
@@ -787,7 +803,7 @@ async function translatePage(roots: Roots, model: string, page: string): Promise
     const maskedTexts = texts.slice();
     const masks = new Map<number, string[]>();
     for (const i of todo) {
-        const { masked, blocks } = maskFences(at(texts, i));
+        const { masked, blocks } = maskCode(at(texts, i), at(segments, i));
         maskedTexts[i] = masked;
         masks.set(i, blocks);
     }
@@ -801,20 +817,22 @@ async function translatePage(roots: Roots, model: string, page: string): Promise
     let fallbacks = 0;
     for (const i of todo) {
         const enText = at(texts, i);
-        const kind = at(segments, i).kind;
+        const segment = at(segments, i);
         const blocks = mustGet(masks, i);
-        let restored = restoreFences(mustGet(translations, i), blocks);
+        let restored = restoreCode(mustGet(translations, i), blocks);
         let problem =
-            "problem" in restored ? restored.problem : validateSegment(enText, restored.text, kind);
+            "problem" in restored
+                ? restored.problem
+                : validateSegment(segment, enText, restored.text);
         for (let round = 0; problem !== null && round < 2; round += 1) {
-            console.error(`  ${page} segment ${i + 1} (${kind}): ${problem} — retrying`);
+            console.error(`  ${page} segment ${i + 1} (${segment.shape}): ${problem} — retrying`);
             try {
                 const reply = await retrySegment(model, context, at(maskedTexts, i), i, problem);
-                restored = restoreFences(reply, blocks);
+                restored = restoreCode(reply, blocks);
                 problem =
                     "problem" in restored
                         ? restored.problem
-                        : validateSegment(enText, restored.text, kind);
+                        : validateSegment(segment, enText, restored.text);
             } catch (error) {
                 problem = String(error);
             }
@@ -839,17 +857,14 @@ async function translatePage(roots: Roots, model: string, page: string): Promise
     });
     out += source.slice(cursor);
 
-    const zhSegments = splitSegments(out, `zh/${page}`);
-    if (
-        zhSegments.length !== segments.length ||
-        zhSegments.some((segment, i) => segment.kind !== segments.at(i)?.kind)
-    ) {
-        throw new Error(`${page}: assembled page is not isomorphic`);
+    const comparison = compareTrees(analyzeSource(source, page), analyzeSource(out, `zh/${page}`));
+    if (comparison.structureProblem !== null) {
+        throw new Error(
+            `${page}: assembled page is not isomorphic — ${comparison.structureProblem}`,
+        );
     }
-    for (const [i, segment] of zhSegments.entries()) {
-        if (!segment.translatable && out.slice(segment.start, segment.end) !== texts.at(i)) {
-            throw new Error(`${page}: verbatim segment ${i + 1} corrupted`);
-        }
+    for (const [left, right] of comparison.verbatimDiffs) {
+        throw new Error(`${page}: ${verbatimLabel(left, right)} corrupted`);
     }
 
     fs.mkdirSync(path.dirname(zhFile), { recursive: true });
@@ -860,19 +875,24 @@ async function translatePage(roots: Roots, model: string, page: string): Promise
 async function machineTranslate(roots: Roots, pages: string[], rest: string[]): Promise<number> {
     const model =
         rest.find((argument) => argument.startsWith("--model="))?.slice(8) ?? "deepseek-v4-pro";
-    const requested = rest.filter((argument) => !argument.startsWith("--"));
+    const requested = [...new Set(rest.filter((argument) => !argument.startsWith("--")))];
+    const translatablePages = pages.filter((page) => !isUntranslated(page));
+    const unknown = requested.filter((page) => !translatablePages.includes(page));
+    if (unknown.length > 0) {
+        console.error(`not a translatable page under docs/en: ${unknown.join(", ")}`);
+        return 2;
+    }
     const targets =
         requested.length > 0
             ? requested
-            : pages.filter(
-                  (page) => !isUntranslated(page) && !fs.existsSync(path.join(roots.zh, page)),
-              );
+            : translatablePages.filter((page) => !fs.existsSync(path.join(roots.zh, page)));
     if (targets.length === 0) {
         console.log("nothing to translate: every page has a zh counterpart");
         return 0;
     }
     console.log(`translating ${targets.length} pages with ${model}`);
     const limit = pLimit(3);
+    const incomplete: string[] = [];
     const results = await Promise.allSettled(
         targets.map((page) =>
             limit(async () => {
@@ -883,6 +903,9 @@ async function machineTranslate(roots: Roots, pages: string[], rest: string[]): 
                     `done ${page}: ${info.segments} segments, ` +
                         `${info.fallbacks} fallbacks, ${seconds}s`,
                 );
+                if (info.fallbacks > 0) {
+                    incomplete.push(page);
+                }
             }),
         ),
     );
@@ -895,8 +918,14 @@ async function machineTranslate(roots: Roots, pages: string[], rest: string[]): 
             failed += 1;
         }
     }
+    if (incomplete.length > 0) {
+        console.error(
+            `segments left in English on ${incomplete.length} pages — review, then rerun ` +
+                `translate on: ${incomplete.sort().join(" ")}`,
+        );
+    }
     console.log(`finished: ${targets.length - failed} ok, ${failed} failed`);
-    return failed > 0 ? 1 : 0;
+    return failed > 0 || incomplete.length > 0 ? 1 : 0;
 }
 
 async function main(): Promise<number> {

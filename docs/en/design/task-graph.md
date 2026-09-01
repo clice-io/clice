@@ -104,7 +104,7 @@ Request enters
   │                             ├─ Lazily resolve dependencies (scan import declarations)
   │                             ├─ Check for self-cycle
   │                             ├─ Acquire interest on direct dependencies
-  │                             ├─ Wait for all deps to compile (parallel)
+  │                             ├─ Wait for each dependency to compile
   │                             ├─ Dispatch to worker process (produce PCM)
   │                             └─ Check generation counter ──→ Mismatch = Stale
   │
@@ -113,7 +113,7 @@ Request enters
   └─ Based on result: Success → return / Failed → error / Stale → retry
 ```
 
-Lazy resolution uses the Clang preprocessor for precise scanning, which differs from the fast lexer-based scan used during startup [dependency scanning](dependency-scanning.md). The fast scan does not expand macros or evaluate conditionals, suitable for building a global overview of include relationships; precise scanning expands all preprocessor directives to obtain the file's actual module dependencies under its current compile command. Resolution results are cached and reused by subsequent compilations until reset by a file update.
+Lazy resolution uses the Clang preprocessor for precise scanning, which differs from the fast lexer-based scan used during startup [dependency scanning](dependency-scanning.md). The fast scan does not expand macros or evaluate conditionals, suitable for building a global overview of include relationships; precise scanning expands all preprocessor directives to obtain the file's actual module dependencies under its current compile command. Resolution runs at the start of every build round rather than being cached, so a changed compile command or import list is always seen by the next round.
 
 > Module implementation units (those with `module X;` but no `export`) implicitly depend on their corresponding module interface unit. Precise scanning detects this and automatically adds the dependency.
 
@@ -127,13 +127,11 @@ This handles the scenario where a compilation request is superseded. When the us
 
 When a module file is saved (didSave), the graph performs a cascading update:
 
-1. Reset the modified file's resolved flag — the next compilation will rescan dependencies, since the file may have added or removed `import` statements
-2. Clear old forward dependency edges
-3. Mark as dirty, increment the generation counter
-4. Traverse all transitive dependents along reverse dependency edges; for each affected module: supersede its running round, mark dirty, increment generation
-5. Invalidate the affected cached PCMs so nothing consumes a stale product
+1. Mark the saved file's node dirty, increment its generation counter, and supersede any round in flight
+2. Traverse all transitive dependents along reverse edges — both the durable edges recorded by earlier rounds and the candidate edges of rounds still in flight; for each affected module: supersede its running round, mark dirty, increment generation
+3. Invalidate the affected cached PCMs so nothing consumes a stale product
 
-Cascading updates do not modify interest — existing waiters retain theirs. Upon observing a Stale outcome, they automatically drive a new round.
+Forward edges are left untouched: the saved file's next round rescans its `import` declarations and replaces them, so an import removed by the edit stops cascading only after that rescan. Cascading updates do not modify interest — existing waiters retain theirs. Upon observing a Stale outcome, they automatically drive a new round.
 
 ### Cycle Detection
 
@@ -145,7 +143,7 @@ All rounds run as tasks inside a task group owned by the graph, providing struct
 
 ### PCM Caching
 
-PCM files use content-addressed path naming — the filename is determined by the module name and a hash of the compilation arguments, stored in a dedicated cache directory. This is fully isolated from build system artifacts, avoiding file-locking conflicts.
+PCM files are named by configuration, not by content: the module name plus a hash of the compiler version, working directory, source path and frontend-relevant flags, stored in a dedicated cache directory. This is fully isolated from build system artifacts, avoiding file-locking conflicts. Content changes are caught by the dependency snapshots described next, not by the name.
 
 Cached PCMs are validated through their dependency snapshots: each dependency's identity and observed content version are checked against the shared file table (stat fast path, content hash confirmation — see [Incremental Compilation](incremental-parse.md)). Recompilation only occurs when dependency content has actually changed, avoiding unnecessary rebuilds caused by "touch without modification." Cache metadata is persisted alongside the index and restored on server restart, and Clang's own PCM validation remains as the final backstop.
 
@@ -167,7 +165,7 @@ Before a document AST or interactive build is dispatched, its dependency prepara
 
 - **Why are failures not sticky?** Users are actively editing code — syntax errors are the norm. If failures were marked as persistent, users couldn't get correct results after fixing errors without restarting the server. Retaining the dirty flag lets the next request naturally trigger a retry.
 
-- **Why store PCMs in a separate cache directory?** clangd shares PCM files with the build system, which causes file-locking conflicts — the language server holds the PCM open, preventing the build system from overwriting it (see [clangd/clangd#2292](https://github.com/clangd/clangd/issues/2292)). clice uses content-addressed isolated caching, avoiding this problem. The trade-off is additional disk space usage and extra time for first-time compilation.
+- **Why store PCMs in a separate cache directory?** clangd shares PCM files with the build system, which causes file-locking conflicts — the language server holds the PCM open, preventing the build system from overwriting it (see [clangd/clangd#2292](https://github.com/clangd/clangd/issues/2292)). clice keeps its PCMs in its own cache directory, avoiding this problem. The trade-off is additional disk space usage and extra time for first-time compilation.
 
 ## Known Limitations
 

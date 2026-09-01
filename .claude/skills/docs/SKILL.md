@@ -43,9 +43,12 @@ description: The clice documentation system — generated feature/config pages, 
 Pages split into segments: headings, paragraphs, blockquotes, list items,
 table rows, and index.md's YAML frontmatter are translatable; everything
 else (code blocks, HTML comments including GENERATED markers) is verbatim
-and must be byte-identical across the two trees. No text is stored twice —
-the mapping holds hashes only. Old wording of a drifted segment comes from
-git history of the markdown page.
+and must be byte-identical across the two trees, as must any fenced code
+nested inside a translatable segment (a snap example under its checklist
+item). Segment shapes must match too: heading depth, ordered vs. bulleted
+list, table column count. No text is stored twice — the mapping holds
+hashes only. Old wording of a drifted segment comes from git history of
+the markdown page.
 
 Workflow for any edit touching translated pages:
 
@@ -72,8 +75,10 @@ translate [page...]` produces isomorphic zh drafts via the DeepSeek API
 (no args = only pages missing a zh counterpart; explicit pages overwrite,
 feeding the current zh text to the model as terminology reference).
 Fenced code inside segments is masked out of the round trip and restored
-byte-for-byte. The key comes from the environment and is never stored.
-Drafts still go through review and `record`.
+byte-for-byte. A segment the model cannot render validly is left in
+English and the run exits non-zero naming the page — rerun `translate`
+on it after review. The key comes from the environment and is never
+stored. Drafts still go through review and `record`.
 
 **docs/ contains no changelog content at all** — neither per-page
 "Changelog" sections nor standalone changelog pages. Both were removed
