@@ -51,20 +51,20 @@ public:
     /// A veto settles the claimed debt — an ordinary open session's skip
     /// must clear it, or the pump spins; only Defer keeps the debt for a
     /// later round.
-    std::function<Admission(std::uint32_t)> admission;
+    std::function<Admission(Fid)> admission;
 
     /// Invoked when an index attempt settled with no retry pending, before
     /// the attempt's waiters wake (contract 15): the serving side decides
     /// whether the settled state can ever serve an open session and
     /// escalates it otherwise, so the waking waiters re-derive their route
     /// against the escalated state.
-    std::function<void(std::uint32_t path_id)> on_attempt_settled;
+    std::function<void(Fid path_id)> on_attempt_settled;
 
     /// Emitted when store rows that may be index-served changed (merged,
     /// re-masked, dropped or shed). Carries the affected path_ids; the
     /// serving adapter checks which of them an open session serves and
     /// refreshes those clients.
-    Signal<llvm::ArrayRef<std::uint32_t>> on_rows_changed;
+    Signal<llvm::ArrayRef<Fid>> on_rows_changed;
 
     /// Temporarily pause background indexing to give priority to user
     /// requests.  Indexing tasks already dispatched to workers continue,
@@ -98,13 +98,13 @@ public:
     /// keeps a single queue entry; its reason is upgraded to ContentChanged
     /// if either enqueue says so (a file both cascaded onto and edited is
     /// as stale as the edit makes it).
-    void enqueue(std::uint32_t server_path_id, ReindexReason reason);
+    void enqueue(Fid server_path_id, ReindexReason reason);
 
     /// Someone is reading `server_path_id` through the index and nothing
     /// serves it yet: enqueue it at the front of the un-consumed queue and
     /// start a round without the idle delay. A running round finishes
     /// undisturbed; the file then leads the next one.
-    void boost(std::uint32_t server_path_id);
+    void boost(Fid server_path_id);
 
     /// Wait until the pending (re)index attempt observed at call time
     /// settles — the merge landed, the attempt gave up, or the entry was
@@ -114,12 +114,12 @@ public:
     /// refresh request (outline, links): answered while the didOpen
     /// boost is still running, the empty result would freeze until the
     /// next edit.
-    kota::task<> await_attempt(std::uint32_t server_path_id);
+    kota::task<> await_attempt(Fid server_path_id);
 
     /// Why the file awaits re-indexing (queued or currently being indexed),
     /// or nullopt when its index is not pending an update. O(1), no I/O —
     /// the query path calls this per candidate file.
-    std::optional<ReindexReason> pending_reason(std::uint32_t server_path_id) const {
+    std::optional<ReindexReason> pending_reason(Fid server_path_id) const {
         return ledger.pending_reason(server_path_id);
     }
 
@@ -129,7 +129,7 @@ public:
     /// still-serving shard forever. A queue slot already consumed stays
     /// consumed; one not yet consumed is skipped at dispatch time (the
     /// consume loop treats a missing ledger entry as a cleared slot).
-    void clear_pending(std::uint32_t server_path_id) {
+    void clear_pending(Fid server_path_id) {
         ledger.clear(server_path_id);
         settle_attempt_waits(server_path_id);
     }
@@ -149,7 +149,7 @@ public:
 
     /// The pump debt a save()'s CDB snapshot persists: files whose latest
     /// attempt failed for good plus everything still booked in the ledger.
-    llvm::SmallVector<std::uint32_t> save_debt() const;
+    llvm::SmallVector<Fid> save_debt() const;
 
     /// Cancel background indexing and wait for all tasks to settle.
     kota::task<> stop();
@@ -210,7 +210,7 @@ private:
     /// Background indexing queue and scheduling state. The ledger tracks
     /// which files hold an un-consumed slot so enqueue can dedupe; the
     /// queue is compacted once a round has fully drained.
-    std::vector<std::uint32_t> index_queue;
+    std::vector<Fid> index_queue;
     std::size_t index_queue_pos = 0;
 
     /// The pending-reindex debt: claim/settle bookkeeping, tickets and
@@ -236,9 +236,9 @@ private:
     /// settled attempt covers (`ticket` and older) and drop their events.
     /// The default wakes every waiter — for the paths where no further
     /// attempt will come (entry cleared, shutdown).
-    void settle_attempt_waits(std::uint32_t server_path_id, std::uint64_t ticket = -1);
+    void settle_attempt_waits(Fid server_path_id, std::uint64_t ticket = -1);
 
-    llvm::DenseSet<std::uint32_t> failed_ids;
+    llvm::DenseSet<Fid> failed_ids;
 
     struct AttemptWait {
         std::uint64_t ticket;
@@ -250,7 +250,7 @@ private:
     /// its ticket settles (or wholesale at stop()). Keyed by ticket so a
     /// requeue during an attempt's flight cannot extend earlier waits —
     /// await_attempt promises one attempt, not a settled file.
-    llvm::DenseMap<std::uint32_t, llvm::SmallVector<AttemptWait, 2>> attempt_waits;
+    llvm::DenseMap<Fid, llvm::SmallVector<AttemptWait, 2>> attempt_waits;
     bool indexing_active = false;
     bool indexing_scheduled = false;
     std::shared_ptr<kota::timer> index_idle_timer;

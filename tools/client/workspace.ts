@@ -235,7 +235,6 @@ export interface ArtifactPchEntry {
     key: string;
     bound: number;
     deps: ArtifactDep[];
-    verify_content: boolean;
     [key: string]: unknown;
 }
 
@@ -244,7 +243,6 @@ export interface ArtifactPcmEntry {
     source_file: number;
     module_name: string;
     deps: ArtifactDep[];
-    verify_content: boolean;
     [key: string]: unknown;
 }
 

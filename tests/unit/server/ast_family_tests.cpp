@@ -64,8 +64,8 @@ struct Stack {
         return session;
     }
 
-    bool is_compiling(std::uint32_t path_id) const {
-        return graph.is_compiling({ast_family, path_id});
+    bool is_compiling(Fid path_id) const {
+        return graph.is_compiling({ast_family, path_id.raw});
     }
 
     void register_pch_store(TempDir& tmp) {
@@ -512,7 +512,8 @@ TEST_CASE(BufferImportRecorded) {
     // The sentinel edge survives the landing: a first provider's update
     // must reach this document's node.
     auto dirtied = stack.graph.update(PCMFamily::unresolved_node("m"));
-    EXPECT_TRUE(std::ranges::find(dirtied, NodeId{ast_family, session->path_id}) != dirtied.end());
+    EXPECT_TRUE(std::ranges::find(dirtied, NodeId{ast_family, session->path_id.raw}) !=
+                dirtied.end());
 
     logging::reset_anomaly_for_testing();
 }
@@ -557,7 +558,8 @@ TEST_CASE(IncludeImportRecorded) {
     EXPECT_TRUE(done);
 
     auto dirtied = stack.graph.update(PCMFamily::unresolved_node("m"));
-    EXPECT_TRUE(std::ranges::find(dirtied, NodeId{ast_family, session->path_id}) != dirtied.end());
+    EXPECT_TRUE(std::ranges::find(dirtied, NodeId{ast_family, session->path_id.raw}) !=
+                dirtied.end());
 
     logging::reset_anomaly_for_testing();
 }

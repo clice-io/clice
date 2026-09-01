@@ -167,17 +167,17 @@ const clang::LangOptions& FeatureRouter::index_lang_options(const Session& sessi
     // A header's active context (the user's persisted choice, else the
     // resolved host) names the view being read; its command beats the
     // contributor union the way it does for the AST after an escalation.
-    auto host = no_path_id;
+    Fid host;
     if(auto it = contexts.saved_contexts.find(session.path_id);
        it != contexts.saved_contexts.end()) {
         host = it->second.host_path_id;
     }
-    if(host == no_path_id) {
+    if(!host.valid()) {
         if(const auto* context = contexts.header_context(session.path_id)) {
             host = context->host_path_id;
         }
     }
-    if(host != no_path_id) {
+    if(host.valid()) {
         auto host_path = workspace.file_table.resolve(host);
         auto host_lang = command_lang(workspace, host_path);
         if(host_lang && host_lang->forces_c) {
@@ -192,7 +192,7 @@ const clang::LangOptions& FeatureRouter::index_lang_options(const Session& sessi
     auto& contributions = workspace.project_index.contributions;
     auto it = contributions.find(session.path_id);
     bool c_rows = it != contributions.end() && !it->second.empty() &&
-                  llvm::all_of(llvm::make_first_range(it->second), [&](std::uint32_t tu) {
+                  llvm::all_of(llvm::make_first_range(it->second), [&](Fid tu) {
                       return workspace.file_table.resolve(tu).ends_with(".c");
                   });
     return feature::index_lang_options(path,

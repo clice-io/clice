@@ -81,8 +81,8 @@ std::string rules_hash(const Config& config, llvm::StringRef file) {
 }
 
 CDBSnapshot build_cdb_snapshot(Workspace& workspace,
-                               const llvm::DenseMap<std::uint32_t, std::uint32_t>& header_hosts,
-                               llvm::ArrayRef<std::uint32_t> standalone_debt) {
+                               const llvm::DenseMap<Fid, Fid>& header_hosts,
+                               llvm::ArrayRef<Fid> standalone_debt) {
     CDBSnapshot snapshot;
     for(auto& [path_id, hashes]: workspace.cdb.command_hash_snapshot()) {
         auto file = workspace.file_table.resolve(path_id).str();
@@ -97,7 +97,7 @@ CDBSnapshot build_cdb_snapshot(Workspace& workspace,
     // Standalone-indexed TUs have no CDB entry, yet their effective command
     // depends on their own matched rules and their borrowed host's command
     // — both must be snapshot to detect offline changes.
-    auto add_standalone = [&](std::uint32_t tu) {
+    auto add_standalone = [&](Fid tu) {
         auto file = workspace.file_table.resolve(tu);
         if(workspace.cdb.has_entry(file)) {
             return;
@@ -126,8 +126,8 @@ CDBSnapshot build_cdb_snapshot(Workspace& workspace,
 }
 
 std::string serialize_cdb_snapshot(Workspace& workspace,
-                                   const llvm::DenseMap<std::uint32_t, std::uint32_t>& header_hosts,
-                                   llvm::ArrayRef<std::uint32_t> standalone_debt) {
+                                   const llvm::DenseMap<Fid, Fid>& header_hosts,
+                                   llvm::ArrayRef<Fid> standalone_debt) {
     auto json =
         kota::codec::json::to_string(build_cdb_snapshot(workspace, header_hosts, standalone_debt));
     return json ? std::move(*json) : std::string();
@@ -150,26 +150,10 @@ struct CacheDepEntry {
     bool missing;
 };
 
-struct CacheBindingEntry {
-    std::uint64_t size;
-    std::int64_t mtime_ns;
-    std::uint64_t uid_device;
-    std::uint64_t uid_file;
-    std::uint64_t hash;
-};
-
 struct CachePCHEntry {
     std::string key;  // CacheStore key in the "pch" namespace
     std::uint32_t bound;
     std::vector<CacheDepEntry> deps;
-    CacheBindingEntry blob;
-    CacheBindingEntry index_blob;
-
-    // Still owing the post-unclean-shutdown content verification. Persisted
-    // per record: the dead writer's dirty marker is consumed by the open
-    // that finds it, and a session can crash before verifying — the debt
-    // must survive that chain until the verification actually runs.
-    bool verify_content;
 };
 
 struct CachePCMEntry {
@@ -177,8 +161,6 @@ struct CachePCMEntry {
     std::uint32_t source_file;
     std::string module_name;
     std::vector<CacheDepEntry> deps;
-    CacheBindingEntry blob;
-    bool verify_content;
 };
 
 struct ArtifactsData {
@@ -201,22 +183,6 @@ struct ContextsData {
     std::vector<CacheArtifactEntry> artifacts;
 };
 
-BlobBinding to_binding(const CacheBindingEntry& entry) {
-    return {.size = entry.size,
-            .mtime_ns = entry.mtime_ns,
-            .uid_device = entry.uid_device,
-            .uid_file = entry.uid_file,
-            .hash = entry.hash};
-}
-
-CacheBindingEntry from_binding(const BlobBinding& binding) {
-    return {.size = binding.size,
-            .mtime_ns = binding.mtime_ns,
-            .uid_device = binding.uid_device,
-            .uid_file = binding.uid_file,
-            .hash = binding.hash};
-}
-
 }  // namespace
 
 IndexStore::IndexStore(kota::event_loop& loop, Workspace& workspace, ContextResolver& contexts) :
@@ -227,7 +193,7 @@ std::string IndexStore::serialize_artifacts() {
     data.pch_index_format = index::index_format_version;
     llvm::StringMap<std::uint32_t> index_map;
 
-    auto intern = [&](std::uint32_t fid) -> std::uint32_t {
+    auto intern = [&](Fid fid) -> std::uint32_t {
         auto path = std::string(workspace.file_table.resolve(fid));
         auto [it, inserted] =
             index_map.try_emplace(path, static_cast<std::uint32_t>(data.paths.size()));
@@ -237,20 +203,23 @@ std::string IndexStore::serialize_artifacts() {
         return it->second;
     };
 
-    // The persisted per-dep stamp is the shared version's — earned once,
-    // written for every artifact referencing the version.
-    auto stamp_of = [&](const DepState& dep) -> std::pair<std::uint64_t, std::int64_t> {
-        auto it = workspace.file_table.version_ids.find({dep.path_id, dep.hash});
-        if(it == workspace.file_table.version_ids.end()) {
-            return {0, 0};
-        }
-        auto& version = workspace.file_table.version(it->second);
-        return {version.size, version.mtime_ns};
-    };
+    // Deps persist as (spelling, hash) pairs so they self-heal against any
+    // index state; the per-dep stamp is the shared version's — earned
+    // once, written for every artifact referencing the version. A
+    // version-less dep (missing or unhashable at capture) writes hash 0
+    // and reloads as one.
     auto dump_deps = [&](const DepsSnapshot& snap, std::vector<CacheDepEntry>& out) {
-        for(auto& dep: snap.deps) {
-            auto [size, mtime_ns] = stamp_of(dep);
-            out.push_back({intern(dep.path_id), dep.hash, size, mtime_ns, dep.missing});
+        for(auto& dep: snap) {
+            if(!dep.version.valid()) {
+                out.push_back({intern(dep.path_id), 0, 0, 0, dep.missing});
+                continue;
+            }
+            auto& version = workspace.file_table.version(dep.version);
+            out.push_back({intern(dep.path_id),
+                           version.content_hash,
+                           version.size,
+                           version.mtime_ns,
+                           dep.missing});
         }
     };
 
@@ -262,9 +231,6 @@ std::string IndexStore::serialize_artifacts() {
         entry.key = e.getKey().str();
         entry.bound = st.bound;
         dump_deps(st.deps, entry.deps);
-        entry.blob = from_binding(st.binding);
-        entry.index_blob = from_binding(st.index_binding);
-        entry.verify_content = st.verify_content;
         data.pch.push_back(std::move(entry));
     }
 
@@ -277,8 +243,6 @@ std::string IndexStore::serialize_artifacts() {
         auto mod_it = workspace.path_to_module.find(path_id);
         entry.module_name = mod_it != workspace.path_to_module.end() ? mod_it->second : "";
         dump_deps(st.deps, entry.deps);
-        entry.blob = from_binding(st.binding);
-        entry.verify_content = st.verify_content;
         data.pcm.push_back(std::move(entry));
     }
 
@@ -304,7 +268,7 @@ std::string IndexStore::serialize_contexts() {
         }
         return it->second;
     };
-    auto intern = [&](std::uint32_t fid) -> std::uint32_t {
+    auto intern = [&](Fid fid) -> std::uint32_t {
         return intern_path(workspace.file_table.resolve(fid));
     };
 
@@ -337,22 +301,16 @@ void IndexStore::load_artifacts(llvm::StringRef bytes) {
             auto dep_path = resolve(dep.path);
             if(dep_path.empty())
                 continue;
-            auto path_id = workspace.file_table.intern(dep_path);
-            deps.deps.push_back({.path_id = path_id, .hash = dep.hash, .missing = dep.missing});
+            auto& state = deps.emplace_back();
+            state.path_id = workspace.file_table.intern(dep_path);
+            state.missing = dep.missing;
             if(dep.hash != 0) {
-                workspace.file_table.adopt_stamp(
-                    workspace.file_table.intern_version(path_id, dep.hash),
-                    dep.size,
-                    dep.mtime_ns);
+                state.version = workspace.file_table.intern_version(state.path_id, dep.hash);
+                workspace.file_table.adopt_stamp(state.version, dep.size, dep.mtime_ns);
             }
         }
         return deps;
     };
-
-    // Records published by a writer that died before its metadata barrier
-    // may describe blobs they never matched: verify content hashes on the
-    // records' first use.
-    bool verify_content = workspace.store->dead_writer_dirty();
 
     bool pch_format_ok = data.pch_index_format == index::index_format_version;
     for(auto& entry: data.pch) {
@@ -373,9 +331,6 @@ void IndexStore::load_artifacts(llvm::StringRef bytes) {
         st.path = *pch_path;
         st.bound = entry.bound;
         st.deps = load_deps(entry.deps);
-        st.binding = to_binding(entry.blob);
-        st.index_binding = to_binding(entry.index_blob);
-        st.verify_content = entry.verify_content || verify_content;
         st.index_path = *index_path;
     }
 
@@ -395,23 +350,12 @@ void IndexStore::load_artifacts(llvm::StringRef bytes) {
         st.path = *pcm_path;
         st.key = entry.key;
         st.deps = load_deps(entry.deps);
-        st.binding = to_binding(entry.blob);
-        st.verify_content = entry.verify_content || verify_content;
-        workspace.pcm_paths[path_id] = *pcm_path;
     }
 
     auto intern_resolve = [&](std::uint32_t idx) -> llvm::StringRef {
         return resolve(idx);
     };
     contexts.load_mode_slices(data.header_modes, intern_resolve);
-
-    // The latched debt must reach the blob before the writer-dirty marker
-    // may clear: an unrelated save would otherwise clear it with the flags
-    // only in memory, and the session after next would trust the records
-    // on a stat match alone.
-    if(verify_content && (!workspace.pch_cache.empty() || !workspace.pcm_cache.empty())) {
-        workspace.mark_artifacts_dirty();
-    }
 
     LOG_INFO("Loaded artifact metadata: {} PCH entries, {} PCM entries",
              workspace.pch_cache.size(),
@@ -451,7 +395,7 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
     // FileVersions, the manifest, shards) commits only below the section
     // loop, once every part of the result validated.
     auto& project = workspace.project_index;
-    llvm::SmallVector<std::uint32_t> file_ids_map;
+    llvm::SmallVector<Fid> file_ids_map;
     file_ids_map.resize_for_overwrite(view.path_count());
     for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
         file_ids_map[i] = workspace.file_table.intern(view.path(i));
@@ -467,11 +411,11 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
     // whole result mid-loop, and shards installed before that point would
     // leave the surviving manifest referencing variants the new blobs no
     // longer store.
-    llvm::SmallVector<std::pair<std::uint32_t, index::Shard>> replacements;
+    llvm::SmallVector<std::pair<Fid, index::Shard>> replacements;
     // (TU-local path id, variant identity) per serving section; the
     // FileVersions these will reference are interned only at commit.
     llvm::SmallVector<std::pair<std::uint32_t, std::uint64_t>> section_contributions;
-    llvm::SmallVector<std::uint32_t> rebuilt_ids;
+    llvm::SmallVector<Fid> rebuilt_ids;
     // TU-local path id -> content hash of the bytes each section's rows
     // were built from (0 = no section). A section's shard already records
     // that hash, so the FileVersion baseline below adopts it: pairing the
@@ -578,7 +522,7 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
     // were never built from, so those files re-earn their fast path
     // through a hash check instead (see file_version_stale).
     auto baseline_before_ns = fs::stat_baseline_before_ns(view.built_at());
-    llvm::SmallVector<std::uint32_t> fv_of;
+    llvm::SmallVector<VersionID> fv_of;
     fv_of.resize_for_overwrite(view.path_count());
     for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
         llvm::StringRef path = view.path(i);
@@ -682,13 +626,13 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
     return report;
 }
 
-IndexStore::Report IndexStore::drop_index(std::uint32_t tu_path_id) {
+IndexStore::Report IndexStore::drop_index(Fid tu_path_id) {
     Report report;
     drop_index_into(tu_path_id, report);
     return report;
 }
 
-void IndexStore::drop_index_into(std::uint32_t tu_path_id, Report& report) {
+void IndexStore::drop_index_into(Fid tu_path_id, Report& report) {
     auto& project = workspace.project_index;
     if(!project.manifests.contains(tu_path_id)) {
         return;
@@ -707,7 +651,7 @@ void IndexStore::drop_index_into(std::uint32_t tu_path_id, Report& report) {
     global_dirty = true;
 }
 
-kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<std::uint32_t> debt) {
+kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt) {
     Report report;
     // Reset up front: every early return below means this save committed
     // nothing, and the gauge must not keep exposing the previous round's
@@ -738,7 +682,7 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<std::uint32_t>
     // already does. The pinning TUs are re-enqueued: no in-process event
     // would rebuild their rows otherwise (a reverted file even reads fresh
     // by hash), only a restart reaching load()'s re-enqueue.
-    llvm::SmallVector<std::uint32_t> retired;
+    llvm::SmallVector<Fid> retired;
     for(auto& [path_id, shard]: workspace.shards) {
         auto live = project.live_variants(path_id);
         if(llvm::none_of(live, [&](std::uint64_t hash) { return shard.has_variant(hash); })) {
@@ -768,8 +712,8 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<std::uint32_t>
     // for the next save. The id vectors parallel the batch so a failed
     // entry can be re-dirtied by its batch index.
     std::vector<index::BlobDatabase::Blob> batch;
-    llvm::SmallVector<std::uint32_t> shard_ids;
-    llvm::SmallVector<std::uint32_t> manifest_ids;
+    llvm::SmallVector<Fid> shard_ids;
+    llvm::SmallVector<Fid> manifest_ids;
     llvm::SmallVector<index::BlobKey> removals = std::move(startup_removes);
     startup_removes.clear();
     for(auto path_id: retired) {
@@ -854,10 +798,8 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<std::uint32_t>
     // choices flush on whatever save runs next. The epoch is snapshotted
     // here — marks landing past this point are not covered by these bytes
     // and wait for the next save (a durability waiter's ticket compares
-    // against committed_metadata_epoch). The writer-dirty marker clears
-    // below only when no blob was published after this same point.
+    // against committed_metadata_epoch).
     auto flush_epoch = workspace.metadata_epoch;
-    auto store_marks = workspace.store ? workspace.store->writer_mark_count() : 0;
     std::optional<std::size_t> artifacts_index;
     std::optional<std::size_t> contexts_index;
     bool metadata_ok = true;
@@ -978,17 +920,12 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<std::uint32_t>
     saving_shards = 0;
 
     // Metadata as of the snapshot point is durable: advance the epoch and
-    // wake durability waiters (switchContext tickets). The writer-dirty
-    // marker clears only when no blob was published since the snapshot —
-    // a commit landing across the write await is not covered.
+    // wake durability waiters (switchContext tickets).
     if(metadata_ok) {
         workspace.committed_metadata_epoch =
             std::max(workspace.committed_metadata_epoch, flush_epoch);
         workspace.metadata_committed.set();
         workspace.metadata_committed.reset();
-        if(workspace.store && failed.empty() && !db.corrupted()) {
-            workspace.store->clear_writer_dirty(store_marks);
-        }
     } else {
         // Waiters must see failed attempts too, or a permanently failing
         // metadata write (full disk, unserializable path) parks every
@@ -1070,7 +1007,7 @@ kota::task<> IndexStore::migrate_shard_views(Report& report) {
     }
 
     constexpr std::size_t rebind_batch = 512;
-    llvm::SmallVector<std::uint32_t> resident;
+    llvm::SmallVector<Fid> resident;
     for(auto path_id: llvm::make_first_range(workspace.shards)) {
         if(!dirty_shards.contains(path_id)) {
             resident.push_back(path_id);
@@ -1115,7 +1052,7 @@ kota::task<> IndexStore::migrate_shard_views(Report& report) {
     db.retire_old_snapshot();
 }
 
-void IndexStore::requeue_owners(std::uint32_t path_id, Report& report) {
+void IndexStore::requeue_owners(Fid path_id, Report& report) {
     auto it = workspace.project_index.contributions.find(path_id);
     if(it == workspace.project_index.contributions.end()) {
         return;
@@ -1126,7 +1063,7 @@ void IndexStore::requeue_owners(std::uint32_t path_id, Report& report) {
 }
 
 void IndexStore::shed_borrowed_shards(Report& report) {
-    llvm::SmallVector<std::uint32_t> shed;
+    llvm::SmallVector<Fid> shed;
     for(auto path_id: llvm::make_first_range(workspace.shards)) {
         if(!dirty_shards.contains(path_id)) {
             shed.push_back(path_id);
@@ -1251,7 +1188,7 @@ IndexStore::LoadResult IndexStore::load(bool read_only) {
         retire_snapshot();
         return result;
     }
-    llvm::DenseMap<std::uint32_t, std::uint64_t> manifest_pins;
+    llvm::DenseMap<VersionID, std::uint64_t> manifest_pins;
     if(!project.load_global(global.buffer->getBuffer(), workspace.file_table, manifest_pins)) {
         LOG_INFO("Discarding old-format index global blob");
         sweep_all();
@@ -1270,7 +1207,7 @@ IndexStore::LoadResult IndexStore::load(bool read_only) {
     // rest are stale residue — a crash between batch phases, a failed
     // write under a landed global, a dropped TU whose removal was lost —
     // and are swept, with their TUs re-enqueued where recoverable.
-    llvm::DenseSet<std::uint32_t> adopted_pins;
+    llvm::DenseSet<VersionID> adopted_pins;
     llvm::SmallVector<std::string> dead_manifests;
     db.for_each_key(index::IndexBlobKind::Manifest, [&](llvm::StringRef key) {
         auto blob = db.read(index::IndexBlobKind::Manifest, key);
@@ -1284,9 +1221,8 @@ IndexStore::LoadResult IndexStore::load(bool read_only) {
             // re-enqueue it: the CDB sweep never covers standalone-indexed
             // headers.
             if(manifest) {
-                auto fv = workspace.file_table.versions.find(manifest->tu_fv);
-                if(fv != workspace.file_table.versions.end()) {
-                    report.add_reindex(fv->second.fid);
+                if(workspace.file_table.knows_version(manifest->tu_fv)) {
+                    report.add_reindex(workspace.file_table.version(manifest->tu_fv).fid);
                 }
             }
             return;
@@ -1317,7 +1253,7 @@ IndexStore::LoadResult IndexStore::load(bool read_only) {
     // versions would match the disk while positions map through the old
     // text, forever. A version with no consumed-content hash (0) pins
     // nothing — it is permanently stale and reindexes its TU anyway.
-    llvm::DenseMap<std::uint32_t, llvm::SmallVector<std::uint64_t, 1>> generations;
+    llvm::DenseMap<Fid, llvm::SmallVector<std::uint64_t, 1>> generations;
     for(auto& manifest: llvm::make_second_range(project.manifests)) {
         for(auto fv: llvm::make_first_range(manifest.contributions)) {
             auto& record = workspace.file_table.version(fv);
@@ -1336,7 +1272,7 @@ IndexStore::LoadResult IndexStore::load(bool read_only) {
     // unservable, so those manifests are dropped and the TUs reindex (for
     // headers no CDB entry would ever re-enqueue them otherwise).
     llvm::StringSet<> expected_keys;
-    llvm::SmallVector<std::uint32_t> unservable;
+    llvm::SmallVector<Fid> unservable;
     for(auto& [path_id, entry]: project.contributions) {
         auto key = blob_key(workspace.file_table.resolve(path_id));
         auto blob = db.read(index::IndexBlobKind::Shard, key);
@@ -1372,13 +1308,13 @@ IndexStore::LoadResult IndexStore::load(bool read_only) {
         shard.set_live(project.live_variants(path_id));
         workspace.shards[path_id] = std::move(shard);
     }
-    llvm::SmallVector<std::uint32_t> mask_refresh;
+    llvm::SmallVector<Fid> mask_refresh;
     for(auto path_id: unservable) {
         auto contribution_it = project.contributions.find(path_id);
         if(contribution_it == project.contributions.end()) {
             continue;
         }
-        llvm::SmallVector<std::uint32_t> owners;
+        llvm::SmallVector<Fid> owners;
         for(auto tu: llvm::make_first_range(contribution_it->second)) {
             owners.push_back(tu);
         }
@@ -1457,10 +1393,9 @@ IndexStore::LoadResult IndexStore::load(bool read_only) {
     return result;
 }
 
-llvm::SmallVector<std::uint32_t>
-    IndexStore::standalone_of(llvm::ArrayRef<std::uint32_t> candidates) {
-    llvm::SmallVector<std::uint32_t> debt;
-    llvm::DenseSet<std::uint32_t> seen;
+llvm::SmallVector<Fid> IndexStore::standalone_of(llvm::ArrayRef<Fid> candidates) {
+    llvm::SmallVector<Fid> debt;
+    llvm::DenseSet<Fid> seen;
     for(auto id: candidates) {
         if(workspace.project_index.manifests.contains(id) ||
            workspace.cdb.has_entry(workspace.file_table.resolve(id)) || !seen.insert(id).second) {
@@ -1491,8 +1426,8 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
         before[entry.file] = &entry;
     }
     auto& project = workspace.project_index;
-    llvm::DenseSet<std::uint32_t> cdb_ids;
-    llvm::SmallVector<std::uint32_t> changed_ids;
+    llvm::DenseSet<Fid> cdb_ids;
+    llvm::SmallVector<Fid> changed_ids;
     auto snapshot = build_cdb_snapshot(workspace, header_hosts, {});
     for(auto& entry: snapshot.entries) {
         if(entry.hashes.empty()) {
@@ -1523,7 +1458,7 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
     // invalidation. A header whose recorded host survives unchanged and
     // still includes it is pinned fresh; one with no recorded host (older
     // snapshot) falls back to the include-reachability approximation below.
-    llvm::DenseSet<std::uint32_t> pinned_fresh;
+    llvm::DenseSet<Fid> pinned_fresh;
     for(auto& entry: snapshot.entries) {
         if(!entry.hashes.empty()) {
             continue;
@@ -1598,12 +1533,12 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
         return;
     }
 
-    llvm::SmallVector<std::uint32_t> hosted;
+    llvm::SmallVector<Fid> hosted;
     for(auto tu: llvm::make_first_range(project.manifests)) {
         if(cdb_ids.contains(tu) || pinned_fresh.contains(tu)) {
             continue;
         }
-        if(llvm::any_of(changed_ids, [&](std::uint32_t host) {
+        if(llvm::any_of(changed_ids, [&](Fid host) {
                return !workspace.dep_graph.find_include_chain(host, tu).empty();
            })) {
             hosted.push_back(tu);
@@ -1617,7 +1552,7 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
     }
 }
 
-bool IndexStore::file_version_stale(std::uint32_t fv_id) {
+bool IndexStore::file_version_stale(VersionID fv_id) {
     auto [cached, inserted] = fv_verdicts.try_emplace(fv_id, true);
     if(!inserted) {
         return cached->second;
@@ -1637,7 +1572,7 @@ bool IndexStore::file_version_stale(std::uint32_t fv_id) {
 }
 
 bool IndexStore::need_update(llvm::StringRef file_path) {
-    workspace.file_table.begin_wave();
+    auto wave = workspace.file_table.wave();
     auto& project = workspace.project_index;
     auto manifest_it = project.manifests.find(workspace.file_table.intern(file_path));
     if(manifest_it == project.manifests.end())

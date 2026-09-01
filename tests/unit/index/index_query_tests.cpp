@@ -40,8 +40,8 @@ TURunFamily turun{graph, workspace, resolver, pcm, index_store, pool};
 IndexPump indexer{loop, workspace, turun, index_store, pool};
 clice::IndexQuery query{workspace, store, indexer, projections};
 
-std::uint32_t main_id = 0;
-std::uint32_t header_id = 0;
+Fid main_id;
+Fid header_id;
 
 /// Mirror of the indexer's merge over in-memory sources: project symbols,
 /// per-section shard blobs, and the TU manifest with its contributions —
@@ -52,7 +52,7 @@ void merge_into_workspace() {
     ASSERT_TRUE(view.loaded());
 
     auto& project = workspace.project_index;
-    llvm::SmallVector<std::uint32_t> file_ids_map;
+    llvm::SmallVector<Fid> file_ids_map;
     for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
         file_ids_map.push_back(workspace.file_table.intern(view.path(i)));
     }
@@ -76,7 +76,7 @@ void merge_into_workspace() {
         }
     }
 
-    llvm::SmallVector<std::uint32_t> fv_of;
+    llvm::SmallVector<VersionID> fv_of;
     for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
         auto hash = consumed[i] != 0 ? consumed[i] : view.path_hash(i);
         fv_of.push_back(workspace.file_table.intern_version(file_ids_map[i], hash));

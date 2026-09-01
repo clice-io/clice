@@ -227,7 +227,7 @@ void LSPClient::register_lifecycle() {
         // still describe the current buffer are replayed: an edit during
         // the handshake marks the session dirty, and the next compile
         // pushes fresh results instead.
-        srv.sessions.for_each([this](std::uint32_t path_id, const Session& session) {
+        srv.sessions.for_each([this](Fid path_id, const Session& session) {
             auto projection = this->server.ast.projections.projection(path_id);
             if(projection && projection->output.has_value() &&
                this->server.ast.projections.current(path_id) &&
@@ -728,7 +728,7 @@ void LSPClient::register_extensions() {
             }
 
             stats.header_contexts = static_cast<std::uint32_t>(srv.contexts.header_contexts.size());
-            srv.sessions.for_each([&](std::uint32_t, const Session&) -> bool {
+            srv.sessions.for_each([&](Fid, const Session&) -> bool {
                 stats.sessions += 1;
                 return true;
             });

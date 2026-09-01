@@ -57,7 +57,7 @@ static std::string flags_label(Workspace& ws, ConfigID config) {
 }
 
 ext::QueryContextResult ContextService::query_contexts(llvm::StringRef path,
-                                                       std::uint32_t path_id,
+                                                       Fid path_id,
                                                        const ext::QueryContextParams& params) {
     auto& ws = workspace;
     int offset_val = std::max(0, params.offset.value_or(0));
@@ -168,7 +168,7 @@ ext::CurrentContextResult ContextService::current_context(llvm::StringRef path,
     ext::CurrentContextResult result;
     const SavedContext* choice =
         session ? resolver.active_choice(ContextUse::Editor, session->path_id) : nullptr;
-    if(choice && choice->host_path_id != no_path_id) {
+    if(choice && choice->host_path_id.valid()) {
         auto ctx_path = workspace.file_table.resolve(choice->host_path_id);
         auto ctx_uri_opt = lsp::URI::from_file_path(std::string(ctx_path));
         if(ctx_uri_opt) {
@@ -214,10 +214,10 @@ ext::CurrentContextResult ContextService::current_context(llvm::StringRef path,
 
 kota::task<ext::SwitchContextResult>
     ContextService::switch_context(llvm::StringRef path,
-                                   std::uint32_t path_id,
+                                   Fid path_id,
                                    Session* session,
                                    llvm::StringRef context_path,
-                                   std::uint32_t context_path_id,
+                                   Fid context_path_id,
                                    const ext::SwitchContextParams& params) {
     auto& ws = workspace;
 
@@ -335,7 +335,7 @@ bool ContextService::drop_orphaned_choices(SessionStore& sessions) {
         auto host_id = saved.host_path_id;
         auto& occurrence = saved.occurrence;
         bool orphaned = false;
-        if(host_id != no_path_id) {
+        if(host_id.valid()) {
             orphaned = workspace.dep_graph.find_include_chain(host_id, session_id).empty();
             // A pinned occurrence can vanish while other inclusions of the
             // header survive (the chain stays non-empty) — recount it.

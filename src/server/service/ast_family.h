@@ -95,18 +95,18 @@ public:
     /// the worker's parse with a CancelCompile notification — FIFO order
     /// puts it ahead of any replacement Compile, and the round still
     /// observes its real reply (crash accounting depends on it).
-    void supersede(std::uint32_t path_id);
+    void supersede(Fid path_id);
 
     /// A Lost-type invalidation (dependency changed on disk, worker
     /// crash, eviction — the buffer itself is unchanged): the projection
     /// is no longer current and an in-flight round must not land as
     /// such, but its parse keeps running — the round publishes the
     /// product as bounded staleness before reporting Stale.
-    void invalidate(std::uint32_t path_id);
+    void invalidate(Fid path_id);
 
     /// didClose (and didOpen replacing a live session): the document's
     /// products die with it.
-    void drop(std::uint32_t path_id);
+    void drop(Fid path_id);
 
     /// clice/switchContext: the new context is a different compilation
     /// identity. Supersede any in-flight compile and drop the state
@@ -128,7 +128,7 @@ public:
     /// it into the event pipeline as a DiskChanged (synchronously), so lazy
     /// detection and the file tracker's polling share one invalidation
     /// cascade instead of maintaining two.
-    std::function<void(std::uint32_t path_id)> on_stale;
+    std::function<void(Fid path_id)> on_stale;
 
     /// Publish the quarantine diagnostic as the document's current output
     /// and mark the spell announced. `source` falls back to the previous
@@ -155,12 +155,12 @@ public:
     kota::task<> stop();
 
 private:
-    static NodeId node(std::uint32_t path_id) {
-        return {ast_family, path_id};
+    static NodeId node(Fid path_id) {
+        return {ast_family, path_id.raw};
     }
 
     /// One compile round; see the class comment for its obligations.
-    kota::task<RoundOutcome> run(RoundContext& ctx, std::uint32_t path_id);
+    kota::task<RoundOutcome> run(RoundContext& ctx, Fid path_id);
 
     /// The module-dependency phase of a round: resolve imports from the
     /// round's buffer snapshot under the round's resolved command,
@@ -169,7 +169,7 @@ private:
     /// import could never re-dirty this document), and wait on each
     /// import through depend.
     kota::task<DependResult> depend_modules(RoundContext& ctx,
-                                            std::uint32_t path_id,
+                                            Fid path_id,
                                             llvm::StringRef directory,
                                             const std::vector<std::string>& arguments,
                                             llvm::StringRef text);
@@ -180,7 +180,7 @@ private:
 
     /// current=false + epoch bump: the shared prefix of every
     /// invalidation flavor.
-    void touch(std::uint32_t path_id);
+    void touch(Fid path_id);
 
     Workspace& workspace;
     ContextResolver& contexts;
@@ -207,7 +207,7 @@ struct PCHPlan {
 
 PCHPlan plan_pch(Workspace& workspace,
                  ContextResolver& contexts,
-                 std::uint32_t path_id,
+                 Fid path_id,
                  llvm::StringRef text,
                  const std::string& directory,
                  const std::vector<std::string>& arguments);

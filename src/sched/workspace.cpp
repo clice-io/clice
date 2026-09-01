@@ -30,7 +30,7 @@ bool Workspace::is_synthesized_artifact(llvm::StringRef path) const {
     return path.starts_with(artifact_dir);
 }
 
-std::uint32_t Workspace::count_occurrences(std::uint32_t host_id, std::uint32_t target_id) const {
+std::uint32_t Workspace::count_occurrences(Fid host_id, Fid target_id) const {
     auto chain = dep_graph.find_include_chain(host_id, target_id);
     if(chain.size() < 2) {
         return 0;
@@ -51,13 +51,12 @@ std::uint32_t Workspace::count_occurrences(std::uint32_t host_id, std::uint32_t 
                                      null_resolver);
 }
 
-llvm::SmallVector<std::uint32_t> Workspace::rank_hosts(std::uint32_t header_path_id,
-                                                       llvm::ArrayRef<std::uint32_t> hosts) const {
+llvm::SmallVector<Fid> Workspace::rank_hosts(Fid header_path_id, llvm::ArrayRef<Fid> hosts) const {
     auto header_path = file_table.resolve(header_path_id);
     auto header_stem = llvm::sys::path::stem(header_path);
     auto header_dir = llvm::sys::path::parent_path(header_path);
 
-    auto score = [&](std::uint32_t host_id) -> std::tuple<int, int, std::size_t> {
+    auto score = [&](Fid host_id) -> std::tuple<int, int, std::size_t> {
         auto host_path = file_table.resolve(host_id);
         int stem_match = llvm::sys::path::stem(host_path) == header_stem ? 0 : 1;
         int same_dir = llvm::sys::path::parent_path(host_path) == header_dir ? 0 : 1;
@@ -71,8 +70,8 @@ llvm::SmallVector<std::uint32_t> Workspace::rank_hosts(std::uint32_t header_path
         return {stem_match, same_dir, n - common};
     };
 
-    llvm::SmallVector<std::uint32_t> ranked(hosts.begin(), hosts.end());
-    std::ranges::sort(ranked, [&](std::uint32_t a, std::uint32_t b) {
+    llvm::SmallVector<Fid> ranked(hosts.begin(), hosts.end());
+    std::ranges::sort(ranked, [&](Fid a, Fid b) {
         auto sa = score(a), sb = score(b);
         if(sa != sb) {
             return sa < sb;
@@ -82,7 +81,7 @@ llvm::SmallVector<std::uint32_t> Workspace::rank_hosts(std::uint32_t header_path
     return ranked;
 }
 
-void Workspace::rescan_after_save(std::uint32_t path_id) {
+void Workspace::rescan_after_save(Fid path_id) {
     auto path = file_table.resolve(path_id);
     dep_graph.clear_includes(path_id);
 
@@ -140,7 +139,7 @@ void Workspace::rescan_after_save(std::uint32_t path_id) {
             auto resolved_config = resolve_search_config(search_config, dir_cache);
             auto entries = resolve_dir(dir, dir_cache);
 
-            llvm::SmallVector<std::uint32_t> ids;
+            llvm::SmallVector<IncludeEdge> edges;
             for(auto& include: scan.includes) {
                 auto resolved = resolve_include(include.path,
                                                 include.is_angled,
@@ -151,10 +150,10 @@ void Workspace::rescan_after_save(std::uint32_t path_id) {
                                                 resolved_config,
                                                 dir_cache);
                 if(resolved) {
-                    ids.push_back(file_table.intern(resolved->path));
+                    edges.push_back({file_table.intern(resolved->path), include.conditional});
                 }
             }
-            dep_graph.set_includes(path_id, ci, std::move(ids));
+            dep_graph.set_includes(path_id, ci, std::move(edges));
         }
 
         dep_graph.build_reverse_map();
@@ -219,7 +218,7 @@ void Workspace::rescan_after_save(std::uint32_t path_id) {
     context_epoch += 1;
 }
 
-void Workspace::on_file_closed(std::uint32_t path_id) {
+void Workspace::on_file_closed(Fid path_id) {
     // PCH entries are content-keyed and may be shared with other sessions,
     // so nothing entry-level to clean up — but the loaded-state budget
     // shrinks with the open count, and this is the moment it does.
@@ -277,11 +276,11 @@ DepsSnapshot capture_deps_snapshot(FileTable& files,
     auto baseline_before_ns = fs::stat_baseline_before_ns(build_at);
 
     DepsSnapshot snap;
-    snap.deps.reserve(deps.size());
+    snap.reserve(deps.size());
     for(const auto& file: deps) {
-        auto& dep = snap.deps.emplace_back();
+        auto& dep = snap.emplace_back();
         dep.path_id = files.intern(file.path);
-        dep.hash = file.hash;
+        auto hash = file.hash;
 
         llvm::sys::fs::file_status status;
         if(llvm::sys::fs::status(file.path, status)) {
@@ -292,19 +291,18 @@ DepsSnapshot capture_deps_snapshot(FileTable& files,
             // last remaining truth for the file (and dependents' recovery
             // is the DiskRemoved cascade's job, not this snapshot's).
             dep.missing = true;
-            dep.hash = 0;
             continue;
         }
 
         auto size = status.getSize();
         auto mtime_ns = fs::mtime_ns(status);
         bool untouched = mtime_ns <= baseline_before_ns;
-        if(dep.hash == 0) {
+        if(hash == 0) {
             if(!untouched) {
                 // The worker could not hash the consumed bytes and the file
                 // may have changed during the build — no version can name
-                // them. The zero hash reads as changed and the rebuild's
-                // capture retries.
+                // them. The dep stays version-less and reads as changed
+                // until the rebuild's capture retries.
                 continue;
             }
             // The unchanged mtime proves the disk still holds the consumed
@@ -315,23 +313,23 @@ DepsSnapshot capture_deps_snapshot(FileTable& files,
             if(!obs || obs->size != size || obs->mtime_ns != mtime_ns) {
                 continue;
             }
-            dep.hash = obs->hash;
+            hash = obs->hash;
         }
 
-        auto vid = files.intern_version(dep.path_id, dep.hash);
+        dep.version = files.intern_version(dep.path_id, hash);
         if(untouched) {
             // Untouched since before the build started — the disk still
             // holds the consumed bytes, so the stat is a trustworthy fast
             // path (recorded only when corroborated, see try_stamp).
             auto uid = status.getUniqueID();
-            files.try_stamp(vid, size, mtime_ns, uid.getDevice(), uid.getFile());
+            files.try_stamp(dep.version, size, mtime_ns, uid.getDevice(), uid.getFile());
         }
     }
     return snap;
 }
 
 bool deps_changed(FileTable& files, const DepsSnapshot& snap) {
-    for(auto& dep: snap.deps) {
+    for(auto& dep: snap) {
         if(dep.missing) {
             // Gone at build time: reappearing is the change; still-missing
             // stays unchanged (see the capture).
@@ -341,29 +339,30 @@ bool deps_changed(FileTable& files, const DepsSnapshot& snap) {
             continue;
         }
 
-        // No trusted hash to compare against: rebuild once to converge.
-        if(dep.hash == 0) {
+        // No version names the consumed bytes: rebuild once to converge.
+        if(!dep.version.valid()) {
             return true;
         }
 
         // Missing means gone now — a change, since the build saw the file.
         // Unreadable cannot prove the disk unchanged and counts as changed
         // — conservative, retried by the rebuild's capture.
-        if(files.check_version(files.intern_version(dep.path_id, dep.hash)) !=
-           FileTable::Verdict::Fresh) {
+        if(files.check_version(dep.version) != FileTable::Verdict::Fresh) {
             return true;
         }
     }
     return false;
 }
 
-std::shared_ptr<index::TUIndex> load_pch_envelope(llvm::StringRef path,
-                                                  std::uint64_t expected_hash) {
+void force_revalidate_deps(FileTable& files, const DepsSnapshot& snap) {
+    for(auto& dep: snap) {
+        files.force_revalidate(dep.path_id);
+    }
+}
+
+std::shared_ptr<index::TUIndex> load_pch_envelope(llvm::StringRef path) {
     auto buffer = llvm::MemoryBuffer::getFile(path);
     if(!buffer) {
-        return nullptr;
-    }
-    if(expected_hash != 0 && llvm::xxh3_64bits((*buffer)->getBuffer()) != expected_hash) {
         return nullptr;
     }
     // A stale or truncated pair must never crash the server: the envelope
@@ -379,7 +378,7 @@ std::shared_ptr<index::TUIndex> load_pch_envelope(llvm::StringRef path,
 
 const std::shared_ptr<index::TUIndex>& PCHState::load_state() {
     if(!state && !index_path.empty()) {
-        state = load_pch_envelope(index_path, index_binding.hash);
+        state = load_pch_envelope(index_path);
         if(!state) {
             // Unreadable blob: clear the path so queries don't retry the
             // mmap + verification on every call. The pair now looks
@@ -466,13 +465,13 @@ void Workspace::build_module_map() {
 }
 
 void Workspace::fill_pcm_deps(std::unordered_map<std::string, std::string>& pcms,
-                              std::uint32_t exclude_path_id) const {
-    for(auto& [pid, pcm_path]: pcm_paths) {
+                              Fid exclude_path_id) const {
+    for(auto& [pid, st]: pcm_cache) {
         if(pid == exclude_path_id)
             continue;
         auto mod_it = path_to_module.find(pid);
         if(mod_it != path_to_module.end()) {
-            pcms[mod_it->second] = pcm_path;
+            pcms[mod_it->second] = st.path;
         }
     }
 }

@@ -244,7 +244,7 @@ using FindingsSink =
 
 kota::task<> lint_one(BatchStack& stack,
                       bool with_index,
-                      std::uint32_t path_id,
+                      Fid path_id,
                       LintSweep& sweep,
                       FindingsSink on_findings) {
     auto file = stack.workspace.file_table.resolve(path_id);
@@ -304,7 +304,7 @@ kota::task<> lint_one(BatchStack& stack,
 
 kota::task<> run_lint_sweep(BatchStack& stack,
                             const BatchLintOptions& options,
-                            llvm::ArrayRef<std::uint32_t> tus,
+                            llvm::ArrayRef<Fid> tus,
                             LintSweep& sweep,
                             FindingsSink on_findings) {
     kota::task_group<> workers(stack.loop);
@@ -314,7 +314,7 @@ kota::task<> run_lint_sweep(BatchStack& stack,
     // task unwinds before the group is destroyed.
     auto feeder = [](BatchStack& stack,
                      const BatchLintOptions& options,
-                     llvm::ArrayRef<std::uint32_t> tus,
+                     llvm::ArrayRef<Fid> tus,
                      LintSweep& sweep,
                      FindingsSink on_findings,
                      kota::task_group<>& workers) -> kota::task<> {
@@ -377,8 +377,8 @@ kota::task<> run_lint(BatchStack& stack,
 
     // One run per file: a file with several CDB entries lints once, under
     // the command resolve_command picks — same as the indexing sweep.
-    llvm::SmallVector<std::uint32_t> tus;
-    llvm::DenseSet<std::uint32_t> seen;
+    llvm::SmallVector<Fid> tus;
+    llvm::DenseSet<Fid> seen;
     for(auto& entry: workspace.cdb.entries()) {
         if(seen.insert(entry.file).second) {
             tus.push_back(entry.file);

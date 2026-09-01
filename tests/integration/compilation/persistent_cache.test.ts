@@ -308,48 +308,6 @@ test("depless pcm entry dropped", async ({ session }) => {
     await c2.shutdown();
 });
 
-test("dead marker persists verify debt", async ({ session }) => {
-    // A dead instance's dirty marker latches content-verification debt
-    // onto every adopted record. The debt must be re-persisted promptly:
-    // an unrelated save (shards only, here from indexing a plain file)
-    // clears the recovery session's own marker, and if the flags were
-    // still memory-only the session after next would trust the records on
-    // a stat match alone.
-    const workspace = session.tmpdir();
-    workspace.pinCacheDir({ fsIndex: true });
-    workspace.write("header.h", "#pragma once\nstruct D { int x; };\n");
-    workspace.write("main.cpp", '#include "header.h"\nint main() { D d; return d.x; }\n');
-    workspace.write("other.cpp", "int other() { return 1; }\n");
-    workspace.writeCDB(["main.cpp", "other.cpp"]);
-
-    const c1 = session.spawn(workspace);
-    await c1.initialize(workspace);
-    const [uri] = await c1.openAndWait("main.cpp");
-    c1.assertCleanCompile(uri);
-    await c1.shutdown();
-    const blobS1 = workspace.readArtifactsBlob();
-    expect(blobS1, "artifacts blob should exist after session 1").not.toBeNull();
-    const key = blobS1!.pch[0]!.key;
-
-    const deadDir = path.join(workspace.cacheRoot(), "tmp", "999999999");
-    fs.mkdirSync(deadDir, { recursive: true });
-    fs.writeFileSync(path.join(deadDir, "dirty"), "1");
-
-    // Session 2 never consumes the PCH (other.cpp has no preamble), so the
-    // debt cannot be discharged by verification — it must round-trip.
-    const c2 = session.spawn(workspace);
-    await c2.initialize(workspace);
-    const [uri2] = await c2.openAndWait("other.cpp");
-    c2.assertCleanCompile(uri2);
-    await c2.shutdown();
-
-    const blob = workspace.readArtifactsBlob()!;
-    expect(blob.pch.length, "other.cpp must not have built a PCH of its own").toBe(1);
-    const entry = blob.pch.find((e) => e.key === key);
-    expect(entry, "the adopted record must survive session 2").toBeDefined();
-    expect(entry!.verify_content, "the latched debt must be persisted").toBe(true);
-});
-
 test("pcm cache entry has deps", async ({ session }) => {
     // Persisted PCM entries must record dependencies, including the module
     // source file itself — an empty list is permanently blind.
@@ -482,14 +440,12 @@ test("no tmp files after build", async ({ session }) => {
     const [uri] = await client.openAndWait("main.cpp");
     client.assertCleanCompile(uri);
 
-    // No in-flight tmp files should linger once the build settles: the
-    // writer-dirty marker legitimately lives from the first blob commit
-    // until the debounced metadata flush confirms it, then must drain.
+    // No in-flight tmp files should linger once the build settles.
     // The pch namespace legitimately holds the paired .pch.idx blobs.
     await waitUntil(() => workspace.tmpFiles().length === 0, {
         timeout: 10_000,
         interval: 100,
-        description: "in-flight tmp files and the writer-dirty marker to drain",
+        description: "in-flight tmp files to drain",
     });
     const expected: Record<string, string[]> = { pch: [".pch", ".pch.idx"], pcm: [".pcm"] };
     for (const [subdir, extensions] of Object.entries(expected)) {

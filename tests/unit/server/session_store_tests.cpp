@@ -29,7 +29,7 @@ TEST_SUITE(SessionStore) {
 
 TEST_CASE(ApplyOpenInitializesBuffer) {
     SessionStore store;
-    auto session = store.open(1);
+    auto session = store.open(Fid{1});
     store.apply_open(*session, "int a;\nint b;\n", 3);
 
     ASSERT_EQ(session->version, 3);
@@ -40,7 +40,7 @@ TEST_CASE(ApplyOpenInitializesBuffer) {
 
 TEST_CASE(RangeReplace) {
     SessionStore store;
-    auto session = store.open(1);
+    auto session = store.open(Fid{1});
     store.apply_open(*session, "int a;\nint b;\n", 1);
 
     auto change = partial_change(1, 4, 1, 5, "value");
@@ -54,7 +54,7 @@ TEST_CASE(RangeReplace) {
 
 TEST_CASE(SequentialChangesFold) {
     SessionStore store;
-    auto session = store.open(1);
+    auto session = store.open(Fid{1});
     store.apply_open(*session, "ab\ncd\n", 1);
 
     // The second range addresses the buffer as left by the first change.
@@ -71,7 +71,7 @@ TEST_CASE(SequentialChangesFold) {
 
 TEST_CASE(WholeDocumentReplace) {
     SessionStore store;
-    auto session = store.open(1);
+    auto session = store.open(Fid{1});
     store.apply_open(*session, "old\n", 1);
 
     protocol::TextDocumentContentChangeEvent change =
@@ -84,7 +84,7 @@ TEST_CASE(WholeDocumentReplace) {
 
 TEST_CASE(InvertedRangeCollapsed) {
     SessionStore store;
-    auto session = store.open(1);
+    auto session = store.open(Fid{1});
     store.apply_open(*session, "ab\ncd\n", 1);
 
     // A range whose start lies after its end deletes nothing; the text is
@@ -98,7 +98,7 @@ TEST_CASE(InvertedRangeCollapsed) {
 
 TEST_CASE(SelectAllDeleteClamped) {
     SessionStore store;
-    auto session = store.open(1);
+    auto session = store.open(Fid{1});
     store.apply_open(*session, "int foo() { return 1; }\n", 1);
 
     // Several clients emit select-all-delete as an oversized range; per
@@ -114,7 +114,7 @@ TEST_CASE(SelectAllDeleteClamped) {
 
 TEST_CASE(InsertPastLastLine) {
     SessionStore store;
-    auto session = store.open(1);
+    auto session = store.open(Fid{1});
     store.apply_open(*session, "int a;\n", 1);
 
     // Line 1 (after the trailing newline) is the last line; line 2 clamps
@@ -128,7 +128,7 @@ TEST_CASE(InsertPastLastLine) {
 
 TEST_CASE(InsertPastLineEnd) {
     SessionStore store;
-    auto session = store.open(1);
+    auto session = store.open(Fid{1});
     store.apply_open(*session, "ab\ncd\n", 1);
 
     // A character beyond the line length clamps to the line end.
@@ -141,7 +141,7 @@ TEST_CASE(InsertPastLineEnd) {
 
 TEST_CASE(ClampedChangeFolds) {
     SessionStore store;
-    auto session = store.open(1);
+    auto session = store.open(Fid{1});
     store.apply_open(*session, "ab\ncd\n", 1);
 
     // The clamp for the second change must resolve against the buffer as
@@ -158,7 +158,7 @@ TEST_CASE(ClampedChangeFolds) {
 
 TEST_CASE(EmptyDocumentClamped) {
     SessionStore store;
-    auto session = store.open(1);
+    auto session = store.open(Fid{1});
     store.apply_open(*session, "", 1);
 
     auto change = partial_change(5, 3, 8, 0, "int x;");
@@ -170,7 +170,7 @@ TEST_CASE(EmptyDocumentClamped) {
 
 TEST_CASE(RangeEndPastEof) {
     SessionStore store;
-    auto session = store.open(1);
+    auto session = store.open(Fid{1});
     store.apply_open(*session, "int a;\nint b;\n", 1);
 
     // The end position sits on the last (empty) line but one character
@@ -184,32 +184,32 @@ TEST_CASE(RangeEndPastEof) {
 
 TEST_CASE(ReopenBumpsGeneration) {
     SessionStore store;
-    auto first = store.open(7);
+    auto first = store.open(Fid{7});
     first->generation = 5;
 
-    auto second = store.open(7);
+    auto second = store.open(Fid{7});
     ASSERT_EQ(first->generation, 6u);
     ASSERT_NE(first.get(), second.get());
-    ASSERT_EQ(store.find(7).get(), second.get());
+    ASSERT_EQ(store.find(Fid{7}).get(), second.get());
 }
 
 TEST_CASE(CloseBumpsGeneration) {
     SessionStore store;
-    auto session = store.open(7);
+    auto session = store.open(Fid{7});
     session->generation = 5;
 
-    store.close(7);
+    store.close(Fid{7});
     ASSERT_EQ(session->generation, 6u);
-    ASSERT_EQ(store.find(7), nullptr);
+    ASSERT_EQ(store.find(Fid{7}), nullptr);
 }
 
 TEST_CASE(ForEachVisitsAll) {
     SessionStore store;
-    store.open(1);
-    store.open(2);
+    store.open(Fid{1});
+    store.open(Fid{2});
 
     int visited = 0;
-    store.for_each([&](std::uint32_t, const Session&) -> bool {
+    store.for_each([&](Fid, const Session&) -> bool {
         ++visited;
         return true;
     });
@@ -217,7 +217,7 @@ TEST_CASE(ForEachVisitsAll) {
 
     // A false return stops the iteration early.
     visited = 0;
-    store.for_each([&](std::uint32_t, const Session&) -> bool {
+    store.for_each([&](Fid, const Session&) -> bool {
         ++visited;
         return false;
     });
@@ -229,7 +229,7 @@ TEST_CASE(QuarantineProbeOnEdit) {
     // that apply_change feeds real edits into it without resetting the
     // record — only a successful compile proves the document healthy.
     SessionStore store;
-    auto session = store.open(1);
+    auto session = store.open(Fid{1});
     store.apply_open(*session, "int a;\n", 1);
 
     session->quarantine.on_crash();
@@ -248,7 +248,7 @@ TEST_CASE(QuarantineProbeOnEdit) {
 
 TEST_CASE(NoopEditNoProbe) {
     SessionStore store;
-    auto session = store.open(1);
+    auto session = store.open(Fid{1});
     store.apply_open(*session, "int a;\n", 1);
     session->quarantine.on_crash();
     session->quarantine.on_crash();
@@ -279,7 +279,7 @@ TEST_CASE(NoopEditNoProbe) {
 
 TEST_CASE(ReopenClearsQuarantine) {
     SessionStore store;
-    auto session = store.open(1);
+    auto session = store.open(Fid{1});
     session->quarantine.on_crash();
     session->quarantine.on_crash();
 

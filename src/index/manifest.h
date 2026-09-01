@@ -5,6 +5,8 @@
 #include <utility>
 #include <vector>
 
+#include "vfs/file_table.h"
+
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -16,7 +18,7 @@ namespace clice::index {
 /// distinct nodes.
 struct ManifestNode {
     /// FileVersion id (FileTable::versions).
-    std::uint32_t fv = 0;
+    VersionID fv;
 
     /// Index of the including node, ~0 when the directive sits in the TU's
     /// own file (the TU root is not itself a node).
@@ -47,14 +49,14 @@ struct TUManifest {
     std::uint64_t built_at = 0;
 
     /// The TU's own file version.
-    std::uint32_t tu_fv = 0;
+    VersionID tu_fv;
 
     std::vector<ManifestNode> nodes;
 
     /// FileVersion -> rows hash for every file this TU contributed rows to,
     /// the TU's own file included. Deduplicated: one entry per file version
     /// even when the file was entered several times.
-    std::vector<std::pair<std::uint32_t, std::uint64_t>> contributions;
+    std::vector<std::pair<VersionID, std::uint64_t>> contributions;
 
     friend bool operator==(const TUManifest&, const TUManifest&) = default;
 };

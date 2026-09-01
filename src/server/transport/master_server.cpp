@@ -239,7 +239,8 @@ void MasterServer::wire() {
         // event to dispatch.
         if(!info.stateful)
             return;
-        dispatch(FileEvent::worker_crashed(info.lost_documents));
+        dispatch(FileEvent::worker_crashed(llvm::to_vector(
+            llvm::map_range(info.lost_documents, [](std::uint32_t id) { return Fid{id}; }))));
     };
 
     pool.on_evicted = [this](const std::string& path, std::size_t worker_index) {
@@ -254,7 +255,7 @@ void MasterServer::wire() {
         // Only the current owner's eviction counts: a stale copy left
         // behind by a probe reassignment says nothing about the document
         // the new owner still holds.
-        if(pool.remove_owner_from(*id, worker_index)) {
+        if(pool.remove_owner_from(id->raw, worker_index)) {
             dispatch(FileEvent::document_evicted(*id));
         } else {
             LOG_INFO("Ignoring eviction of {} from non-owner worker {}", path, worker_index);
@@ -270,20 +271,20 @@ void MasterServer::wire() {
 
     // The pump is serving-neutral; the session-side policy hooks live on
     // this class and are installed here.
-    pump.admission = [this](std::uint32_t path_id) {
+    pump.admission = [this](Fid path_id) {
         return index_admission(path_id);
     };
-    pump.on_attempt_settled = [this](std::uint32_t path_id) {
+    pump.on_attempt_settled = [this](Fid path_id) {
         index_attempt_settled(path_id);
     };
     index_rows_conn = pump.on_rows_changed.connect(
-        [this](llvm::ArrayRef<std::uint32_t> path_ids) { index_rows_changed(path_ids); });
+        [this](llvm::ArrayRef<Fid> path_ids) { index_rows_changed(path_ids); });
 
     // The AST family's pull-side staleness check found a dependency changed
     // on disk: route it through the same DiskChanged path the file
     // tracker's polling uses, so lazy detection and polling share one
     // invalidation cascade.
-    ast.on_stale = [this](std::uint32_t path_id) {
+    ast.on_stale = [this](Fid path_id) {
         dispatch(FileEvent::disk_changed(path_id));
     };
 }
@@ -293,11 +294,11 @@ void MasterServer::initialize(llvm::StringRef root) {
     initialize();
 }
 
-std::shared_ptr<Session> MasterServer::find_session(std::uint32_t path_id) {
+std::shared_ptr<Session> MasterServer::find_session(Fid path_id) {
     return sessions.find(path_id);
 }
 
-std::shared_ptr<Session> MasterServer::open_session(std::uint32_t path_id) {
+std::shared_ptr<Session> MasterServer::open_session(Fid path_id) {
     // A replaced live session (an editor resending didOpen) leaves a
     // projection describing the old session's compile; the fresh session
     // starts with none, exactly like the pre-projection world's fresh
@@ -340,12 +341,12 @@ void MasterServer::settle_open_serving(std::shared_ptr<Session> session) {
     }
 }
 
-void MasterServer::close_session(std::uint32_t path_id) {
+void MasterServer::close_session(Fid path_id) {
     auto path = workspace.file_table.resolve(path_id);
     // Route the eviction notification before dropping ownership:
     // notify_stateful uses the owner table to find the worker.
-    pool.notify_stateful(path_id, worker::EvictParams{std::string(path)});
-    pool.remove_owner(path_id);
+    pool.notify_stateful(path_id.raw, worker::EvictParams{std::string(path)});
+    pool.remove_owner(path_id.raw);
 
     // Retract the document's published diagnostics through the standard
     // output path: materialize an empty output and signal the transports
@@ -372,7 +373,7 @@ void MasterServer::close_session(std::uint32_t path_id) {
     LOG_DEBUG("didClose: {}", path);
 }
 
-Admission MasterServer::index_admission(std::uint32_t server_path_id) {
+Admission MasterServer::index_admission(Fid server_path_id) {
     // Open files whose session invests in an AST are skipped until an
     // agent shows up: the LSP side never reads their shards (the session
     // serves them), so indexing them is pure waste — but agents read disk
@@ -401,7 +402,7 @@ Admission MasterServer::index_admission(std::uint32_t server_path_id) {
     return Admission::Admit;
 }
 
-void MasterServer::index_attempt_settled(std::uint32_t server_path_id) {
+void MasterServer::index_attempt_settled(Fid server_path_id) {
     // The boost in settle_open_serving promised the index would serve the
     // cold session; an attempt that settles without a servable shard ends
     // that promise — escalate like the disabled-indexing branch, or the
@@ -416,16 +417,16 @@ void MasterServer::index_attempt_settled(std::uint32_t server_path_id) {
     }
 }
 
-bool MasterServer::serves_session_rows(std::uint32_t path_id) const {
+bool MasterServer::serves_session_rows(Fid path_id) const {
     auto session = sessions.find(path_id);
     return session && !ast.projections.index_current(path_id) && session->index_served;
 }
 
-void MasterServer::index_rows_changed(llvm::ArrayRef<std::uint32_t> path_ids) {
+void MasterServer::index_rows_changed(llvm::ArrayRef<Fid> path_ids) {
     // Sessions without a current file index serve these very rows
     // (freshness clause 4); index_served says the client pulled some of
     // them. Tell subscribers so those results get re-pulled.
-    if(llvm::any_of(path_ids, [&](std::uint32_t id) { return serves_session_rows(id); })) {
+    if(llvm::any_of(path_ids, [&](Fid id) { return serves_session_rows(id); })) {
         on_serving_rows_changed.emit();
     }
 }

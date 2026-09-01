@@ -18,7 +18,7 @@ TEST_CASE(ManifestRoundTrip) {
     index::TUManifest manifest;
     manifest.global_gen = 7;
     manifest.built_at = 1234567;
-    manifest.tu_fv = 300;
+    manifest.tu_fv = VersionID{300};
     // A root node, a multi-byte-varint line, and a parent that FOLLOWS its
     // child (the include graph resolves parent chains after appending).
     manifest.nodes = {
@@ -27,8 +27,8 @@ TEST_CASE(ManifestRoundTrip) {
         {302, 0,   12   },
     };
     manifest.contributions = {
-        {300, 0xdeadbeefdeadbeefull},
-        {302, 42                   },
+        {VersionID{300}, 0xdeadbeefdeadbeefull},
+        {VersionID{302}, 42                   },
     };
 
     llvm::SmallString<256> buf;
@@ -92,8 +92,8 @@ index::ProjectIndex build_project(clice::FileTable& pool,
     index::ProjectIndex project;
     auto path_id = pool.intern(path);
     auto fv = pool.intern_version(path_id, 0xabcd);
-    pool.versions.find(fv)->second.size = 100;
-    pool.versions.find(fv)->second.mtime_ns = 5555;
+    pool.versions[fv.raw].size = 100;
+    pool.versions[fv.raw].mtime_ns = 5555;
 
     index::TUManifest manifest;
     manifest.tu_fv = pool.intern_version(pool.intern(tu), 0x1111);
@@ -107,7 +107,7 @@ index::ProjectIndex build_project(clice::FileTable& pool,
 
     auto& symbol = project.symbols[42];
     symbol.name = "sym";
-    symbol.reference_files.add(path_id);
+    symbol.reference_files.add(path_id.raw);
     return project;
 }
 
@@ -128,13 +128,13 @@ TEST_CASE(GlobalRoundTripRemap) {
     clice::FileTable fresh;
     fresh.intern("/proj/opened-first.cpp");
     index::ProjectIndex loaded;
-    llvm::DenseMap<std::uint32_t, std::uint64_t> pins;
+    llvm::DenseMap<VersionID, std::uint64_t> pins;
     ASSERT_TRUE(loaded.load_global(buf.str(), fresh, pins));
 
     auto id = fresh.find("/proj/used.h");
     ASSERT_TRUE(id.has_value());
-    ASSERT_TRUE(loaded.symbols[42].reference_files.contains(*id));
-    ASSERT_EQ(fresh.next_version_id, pool.next_version_id);
+    ASSERT_TRUE(loaded.symbols[42].reference_files.contains(id->raw));
+    ASSERT_EQ(fresh.versions.size(), pool.versions.size());
     ASSERT_EQ(loaded.global_generation, 9u);
 
     // The blob pins the TU's manifest at the stamp it was saved under.
@@ -163,7 +163,7 @@ TEST_CASE(GlobalCollectsGarbage) {
 
     clice::FileTable fresh;
     index::ProjectIndex loaded;
-    llvm::DenseMap<std::uint32_t, std::uint64_t> pins;
+    llvm::DenseMap<VersionID, std::uint64_t> pins;
     ASSERT_TRUE(loaded.load_global(buf.str(), fresh, pins));
     ASSERT_FALSE(fresh.find("/proj/dead.h").has_value());
     ASSERT_TRUE(fresh.find("/proj/used.h").has_value());
@@ -178,7 +178,7 @@ TEST_CASE(GlobalVersionGate) {
 
     clice::FileTable pool;
     index::ProjectIndex loaded;
-    llvm::DenseMap<std::uint32_t, std::uint64_t> pins;
+    llvm::DenseMap<VersionID, std::uint64_t> pins;
 
     auto stale = kota::codec::fbs::to_bytes(VersionOnly{});
     ASSERT_TRUE(stale.has_value());
@@ -230,7 +230,7 @@ TEST_CASE(GlobalBitmapPayloadGate) {
     };
 
     clice::FileTable pool;
-    llvm::DenseMap<std::uint32_t, std::uint64_t> pins;
+    llvm::DenseMap<VersionID, std::uint64_t> pins;
     auto valid = kota::codec::fbs::to_bytes(mirror);
     ASSERT_TRUE(valid.has_value());
     index::ProjectIndex loaded;
@@ -277,7 +277,7 @@ TEST_CASE(UncoveredBitmapIdRejected) {
     mirror.sym_bitmaps = {index::write_bitmap(bits)};
 
     clice::FileTable pool;
-    llvm::DenseMap<std::uint32_t, std::uint64_t> pins;
+    llvm::DenseMap<VersionID, std::uint64_t> pins;
     auto uncovered = kota::codec::fbs::to_bytes(mirror);
     ASSERT_TRUE(uncovered.has_value());
     index::ProjectIndex loaded;
@@ -308,7 +308,7 @@ TEST_CASE(GlobalDuplicateVersionsRejected) {
     mirror.fv_mtimes = {1, 2};
 
     clice::FileTable pool;
-    llvm::DenseMap<std::uint32_t, std::uint64_t> pins;
+    llvm::DenseMap<VersionID, std::uint64_t> pins;
     auto dup_id = kota::codec::fbs::to_bytes(mirror);
     ASSERT_TRUE(dup_id.has_value());
     index::ProjectIndex loaded;
@@ -323,12 +323,17 @@ TEST_CASE(GlobalDuplicateVersionsRejected) {
     ASSERT_FALSE(loaded.load_global(bytes_of(*dup_pair), pool, pins));
 
     // The same path under two content hashes is the legitimate shape: two
-    // observed versions of one file.
+    // observed versions of one file. The table adopts the writer's id
+    // space up to its counter; garbage-collected ids stay behind as
+    // holes, not live versions.
     mirror.fv_hashes = {0x1, 0x2};
     auto distinct = kota::codec::fbs::to_bytes(mirror);
     ASSERT_TRUE(distinct.has_value());
     ASSERT_TRUE(loaded.load_global(bytes_of(*distinct), pool, pins));
-    ASSERT_EQ(pool.versions.size(), std::size_t(2));
+    ASSERT_EQ(pool.versions.size(), std::size_t(9));
+    ASSERT_TRUE(pool.knows_version(VersionID{7}));
+    ASSERT_TRUE(pool.knows_version(VersionID{8}));
+    ASSERT_FALSE(pool.knows_version(VersionID{0}));
 }
 
 TEST_CASE(GlobalBadCounterRejected) {
@@ -345,7 +350,7 @@ TEST_CASE(GlobalBadCounterRejected) {
     mirror.fv_mtimes = {1};
 
     clice::FileTable pool;
-    llvm::DenseMap<std::uint32_t, std::uint64_t> pins;
+    llvm::DenseMap<VersionID, std::uint64_t> pins;
     auto ahead = kota::codec::fbs::to_bytes(mirror);
     ASSERT_TRUE(ahead.has_value());
     index::ProjectIndex loaded;
@@ -384,7 +389,7 @@ TEST_CASE(GlobalDuplicateSymbolRejected) {
     };
 
     clice::FileTable pool;
-    llvm::DenseMap<std::uint32_t, std::uint64_t> pins;
+    llvm::DenseMap<VersionID, std::uint64_t> pins;
     auto dup = kota::codec::fbs::to_bytes(mirror);
     ASSERT_TRUE(dup.has_value());
     index::ProjectIndex loaded;
@@ -404,7 +409,7 @@ TEST_CASE(GlobalReservedKeysRejected) {
     // corrupt, and inserting it would corrupt (or assert in) the loader's
     // own containers.
     clice::FileTable pool;
-    llvm::DenseMap<std::uint32_t, std::uint64_t> pins;
+    llvm::DenseMap<VersionID, std::uint64_t> pins;
     index::ProjectIndex loaded;
 
     {
@@ -452,7 +457,7 @@ TEST_CASE(GlobalReservedKeysRejected) {
 TEST_CASE(UnknownFileVersionsDetected) {
     clice::FileTable pool;
     index::ProjectIndex project;
-    auto known = pool.intern_version(0, 0x1);
+    auto known = pool.intern_version(Fid{0}, 0x1);
 
     index::TUManifest manifest;
     manifest.tu_fv = known;
@@ -461,7 +466,7 @@ TEST_CASE(UnknownFileVersionsDetected) {
     };
     ASSERT_TRUE(project.knows_file_versions(pool, manifest));
 
-    manifest.nodes.push_back({known + 1, ~0u, 2});
+    manifest.nodes.push_back({VersionID{known.raw + 1}, ~0u, 2});
     ASSERT_FALSE(project.knows_file_versions(pool, manifest));
 }
 

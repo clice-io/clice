@@ -40,11 +40,8 @@ CacheStore open_store(const TempDir& tmp, std::uint32_t ver = version) {
 }
 
 void register_lru(CacheStore& store, std::uint64_t max_bytes = 0) {
-    store.register_namespace({.name = "pch",
-                              .extension = ".pch",
-                              .policy = CachePolicy::LRU,
-                              .max_bytes = max_bytes,
-                              .deferred_metadata = true});
+    store.register_namespace(
+        {.name = "pch", .extension = ".pch", .policy = CachePolicy::LRU, .max_bytes = max_bytes});
 }
 
 void register_paired(CacheStore& store, std::uint64_t max_bytes = 0) {
@@ -52,8 +49,7 @@ void register_paired(CacheStore& store, std::uint64_t max_bytes = 0) {
                               .extension = ".pch",
                               .aux_extension = ".pch.idx",
                               .policy = CachePolicy::LRU,
-                              .max_bytes = max_bytes,
-                              .deferred_metadata = true});
+                              .max_bytes = max_bytes});
 }
 
 /// Run a full two-phase aux write with the given content.
@@ -79,115 +75,6 @@ std::string
 }
 
 TEST_SUITE(CacheStore) {
-
-TEST_CASE(BindingCatchesRepublish) {
-    // A record made for one blob generation must not vouch for a
-    // republished one: the commit-time binding pins the tmp file's inode,
-    // and every republish is a fresh tmp file — a free generation token
-    // even when size and mtime tick collide.
-    TempDir tmp;
-    auto store = open_store(tmp);
-    register_lru(store);
-
-    BlobBinding first;
-    {
-        auto pending = store.begin_store("pch", "k1");
-        require(fs::write(pending.tmp_path, "generation-A").has_value(), "tmp write");
-        auto committed = store.commit(std::move(pending), &first);
-        require(committed.has_value(), "commit failed");
-        ASSERT_TRUE(binding_stat_matches(*committed, first));
-        ASSERT_TRUE(binding_content_matches(*committed, first));
-    }
-
-    BlobBinding second;
-    {
-        // Same byte count as generation-A: size alone cannot tell them
-        // apart, the UniqueID does.
-        auto pending = store.begin_store("pch", "k1");
-        require(fs::write(pending.tmp_path, "generation-B").has_value(), "tmp write");
-        auto committed = store.commit(std::move(pending), &second);
-        require(committed.has_value(), "commit failed");
-        ASSERT_FALSE(binding_stat_matches(*committed, first));
-        ASSERT_TRUE(binding_stat_matches(*committed, second));
-        ASSERT_FALSE(binding_content_matches(*committed, first));
-    }
-}
-
-TEST_CASE(DirtyMarkerLifecycle) {
-    // A durable commit marks the writer dirty before publishing; the
-    // metadata barrier clears it — but only when nothing was published
-    // after the barrier's snapshot.
-    TempDir tmp;
-    auto store = open_store(tmp);
-    register_lru(store);
-    auto marker = tmp.path("root/cache/v1/tmp/" +
-                           std::to_string(llvm::sys::Process::getProcessId()) + "/dirty");
-
-    put(store, "pch", "k1", "blob");
-    ASSERT_TRUE(llvm::sys::fs::exists(marker));
-
-    auto marks = store.writer_mark_count();
-    put(store, "pch", "k2", "published after the snapshot");
-    store.clear_writer_dirty(marks);
-    ASSERT_TRUE(llvm::sys::fs::exists(marker));
-
-    store.clear_writer_dirty(store.writer_mark_count());
-    ASSERT_FALSE(llvm::sys::fs::exists(marker));
-}
-
-TEST_CASE(UndischargedDebtHandsOn) {
-    // A session that cannot persist the latched debt (read-only index
-    // database) leaves its marker at shutdown; the next open re-latches
-    // it through the recycled-pid path.
-    TempDir tmp;
-    tmp.touch("root/cache/v1/tmp/" + std::string(dead_pid) + "/dirty", "1");
-    {
-        auto store =
-            CacheStore::open(tmp.path("root"), version, false, /*adopt_writer_debt=*/false);
-        require(store.has_value(), "CacheStore::open failed");
-        register_lru(*store);
-        ASSERT_TRUE(store->dead_writer_dirty());
-        store->shutdown();
-    }
-
-    auto store = open_store(tmp);
-    ASSERT_TRUE(store.dead_writer_dirty());
-}
-
-TEST_CASE(RecycledPidMarkerDetected) {
-    // A dirty marker under this process's own pid is a crashed predecessor
-    // that recycled the pid: open must latch the debt (and re-mark) before
-    // recreating the directory, not silently sweep it.
-    TempDir tmp;
-    auto pid = std::to_string(llvm::sys::Process::getProcessId());
-    tmp.touch("root/cache/v1/tmp/" + pid + "/dirty", "1");
-
-    auto store = open_store(tmp);
-    register_lru(store);
-    ASSERT_TRUE(store.dead_writer_dirty());
-    ASSERT_TRUE(llvm::sys::fs::exists(tmp.path("root/cache/v1/tmp/" + pid + "/dirty")));
-}
-
-TEST_CASE(DeadWriterDirtyDetected) {
-    // A dead instance's dirty marker means it crashed between publishing
-    // blobs and persisting their metadata: the next open latches the
-    // verification debt (and re-marks itself so a crash before the first
-    // barrier cannot launder it).
-    TempDir tmp;
-    {
-        auto store = open_store(tmp);
-        register_lru(store);
-        put(store, "pch", "k1", "blob");
-        store.shutdown();
-    }
-    tmp.touch("root/cache/v1/tmp/" + std::string(dead_pid) + "/dirty", "1");
-
-    auto store = open_store(tmp);
-    ASSERT_TRUE(store.dead_writer_dirty());
-    auto own_marker = tmp.path("root/cache/v1/tmp/" +
-                               std::to_string(llvm::sys::Process::getProcessId()) + "/dirty");
-    ASSERT_TRUE(llvm::sys::fs::exists(own_marker));
-}
 
 TEST_CASE(StoreAndLookup) {
     TempDir tmp;

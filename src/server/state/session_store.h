@@ -5,6 +5,7 @@
 #include <string>
 
 #include "server/state/session.h"
+#include "vfs/file_table.h"
 
 #include "kota/ipc/lsp/protocol.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -29,22 +30,22 @@ namespace protocol = kota::ipc::protocol;
 /// Future work: this store does not yet bound the number of concurrently
 /// open sessions.
 struct SessionStore {
-    llvm::DenseMap<std::uint32_t, std::shared_ptr<Session>> sessions;
+    llvm::DenseMap<Fid, std::shared_ptr<Session>> sessions;
 
     /// Look up the open Session for a path_id, or nullptr if none.
-    std::shared_ptr<Session> find(std::uint32_t path_id) const;
+    std::shared_ptr<Session> find(Fid path_id) const;
 
     /// Open a fresh Session for a path_id. If one already exists its
     /// generation is bumped (superseding any in-flight compile) before it is
     /// replaced.
-    std::shared_ptr<Session> open(std::uint32_t path_id);
+    std::shared_ptr<Session> open(Fid path_id);
 
     /// Drop the Session for a path_id, bumping its generation first so a
     /// late-arriving compile result cannot resurrect stale state.
-    void close(std::uint32_t path_id);
+    void close(Fid path_id);
 
     /// Visit every open Session. The callback returns false to stop early.
-    void for_each(llvm::function_ref<bool(std::uint32_t, const Session&)> visitor) const;
+    void for_each(llvm::function_ref<bool(Fid, const Session&)> visitor) const;
 
     /// Apply a didOpen: install the initial buffer text, version and line
     /// starts, and bump the generation.

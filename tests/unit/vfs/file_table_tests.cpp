@@ -181,7 +181,7 @@ TEST_CASE(FastPathChecksIdentity) {
     ASSERT_TRUE(bool(fs::rename(tmp.path("f.h.tmp"), f)));
     EXPECT_TRUE(set_file_mtime(f, read->mtime_ns));
 
-    pool.begin_wave();
+    auto wave = pool.wave();
     ASSERT_TRUE(pool.check_version(vid) == FileTable::Verdict::Stale);
 }
 #endif
@@ -200,7 +200,7 @@ TEST_CASE(FreshReadCannotStamp) {
     ASSERT_TRUE(read.has_value());
     auto vid = pool.intern_version(fid, read->hash);
 
-    pool.begin_wave();
+    auto wave = pool.wave();
     ASSERT_TRUE(pool.check_version(vid) == FileTable::Verdict::Fresh);
     ASSERT_EQ(pool.version(vid).mtime_ns, 0);
 }

@@ -13,12 +13,12 @@ namespace clice {
 
 namespace lsp = kota::ipc::lsp;
 
-std::shared_ptr<Session> SessionStore::find(std::uint32_t path_id) const {
+std::shared_ptr<Session> SessionStore::find(Fid path_id) const {
     auto it = sessions.find(path_id);
     return it != sessions.end() ? it->second : nullptr;
 }
 
-std::shared_ptr<Session> SessionStore::open(std::uint32_t path_id) {
+std::shared_ptr<Session> SessionStore::open(Fid path_id) {
     auto it = sessions.find(path_id);
     if(it != sessions.end()) {
         it->second->generation++;
@@ -29,7 +29,7 @@ std::shared_ptr<Session> SessionStore::open(std::uint32_t path_id) {
     return session;
 }
 
-void SessionStore::close(std::uint32_t path_id) {
+void SessionStore::close(Fid path_id) {
     auto it = sessions.find(path_id);
     if(it != sessions.end()) {
         it->second->generation++;
@@ -37,7 +37,7 @@ void SessionStore::close(std::uint32_t path_id) {
     }
 }
 
-void SessionStore::for_each(llvm::function_ref<bool(std::uint32_t, const Session&)> visitor) const {
+void SessionStore::for_each(llvm::function_ref<bool(Fid, const Session&)> visitor) const {
     for(auto& [path_id, session]: sessions) {
         if(!session)
             continue;

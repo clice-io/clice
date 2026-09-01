@@ -41,8 +41,8 @@ IndexPump indexer{loop, workspace, turun, index_store, pool};
 IndexQuery index_query{workspace, store, indexer, projections};
 IndexQuery agent_query{workspace, store, indexer, projections, {.disk_only = true}};
 
-std::uint32_t main_id = 0;
-std::uint32_t header_id = 0;
+Fid main_id;
+Fid header_id;
 
 /// Build an envelope from the added sources and merge it into the
 /// workspace, installing each section's blob verbatim as the file's shard.
@@ -51,7 +51,7 @@ void merge_into_workspace() {
     auto view = index::TUIndex::from_bytes(wire);
     ASSERT_TRUE(view.loaded());
 
-    llvm::SmallVector<std::uint32_t> file_ids_map;
+    llvm::SmallVector<Fid> file_ids_map;
     for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
         file_ids_map.push_back(workspace.file_table.intern(view.path(i)));
     }
@@ -69,7 +69,7 @@ void merge_into_workspace() {
 }
 
 /// The symbol hash at an offset in a file's merged shard.
-index::SymbolHash symbol_at(std::uint32_t path_id, std::uint32_t offset) {
+index::SymbolHash symbol_at(Fid path_id, std::uint32_t offset) {
     index::SymbolHash result = 0;
     workspace.shards[path_id].lookup(offset, [&](const index::Occurrence& o) {
         result = o.target;

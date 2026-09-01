@@ -68,7 +68,7 @@ struct GlobalBlob {
 
 bool ProjectIndex::merge(this ProjectIndex& self,
                          const TUIndex& index,
-                         llvm::ArrayRef<std::uint32_t> file_ids_map) {
+                         llvm::ArrayRef<Fid> file_ids_map) {
     // Decode and bound every reference bitmap before touching the table:
     // merged bits persist in the global blob while the result's recorded
     // versions all match the disk, so a malformed image normalized to
@@ -121,7 +121,7 @@ bool ProjectIndex::merge(this ProjectIndex& self,
             target.kind = identity.kind;
         }
         for(auto ref: references) {
-            target.reference_files.add(file_ids_map[ref]);
+            target.reference_files.add(file_ids_map[ref].raw);
         }
     }
 
@@ -131,27 +131,27 @@ bool ProjectIndex::merge(this ProjectIndex& self,
 bool ProjectIndex::knows_file_versions(this const ProjectIndex& self,
                                        const clice::FileTable& files,
                                        const TUManifest& manifest) {
-    if(!files.versions.contains(manifest.tu_fv)) {
+    if(!files.knows_version(manifest.tu_fv)) {
         return false;
     }
     for(auto& node: manifest.nodes) {
-        if(!files.versions.contains(node.fv)) {
+        if(!files.knows_version(node.fv)) {
             return false;
         }
     }
     for(auto& [fv, hash]: manifest.contributions) {
-        if(!files.versions.contains(fv)) {
+        if(!files.knows_version(fv)) {
             return false;
         }
     }
     return true;
 }
 
-llvm::SmallVector<std::uint32_t> ProjectIndex::apply_manifest(this ProjectIndex& self,
-                                                              const clice::FileTable& files,
-                                                              std::uint32_t tu_path_id,
-                                                              TUManifest manifest) {
-    llvm::SmallVector<std::uint32_t> affected = self.remove_manifest(files, tu_path_id);
+llvm::SmallVector<Fid> ProjectIndex::apply_manifest(this ProjectIndex& self,
+                                                    const clice::FileTable& files,
+                                                    Fid tu_path_id,
+                                                    TUManifest manifest) {
+    llvm::SmallVector<Fid> affected = self.remove_manifest(files, tu_path_id);
 
     for(auto& [fv, hash]: manifest.contributions) {
         auto path_id = files.version(fv).fid;
@@ -165,10 +165,10 @@ llvm::SmallVector<std::uint32_t> ProjectIndex::apply_manifest(this ProjectIndex&
     return affected;
 }
 
-llvm::SmallVector<std::uint32_t> ProjectIndex::remove_manifest(this ProjectIndex& self,
-                                                               const clice::FileTable& files,
-                                                               std::uint32_t tu_path_id) {
-    llvm::SmallVector<std::uint32_t> affected;
+llvm::SmallVector<Fid> ProjectIndex::remove_manifest(this ProjectIndex& self,
+                                                     const clice::FileTable& files,
+                                                     Fid tu_path_id) {
+    llvm::SmallVector<Fid> affected;
     auto it = self.manifests.find(tu_path_id);
     if(it == self.manifests.end()) {
         return affected;
@@ -194,7 +194,7 @@ llvm::SmallVector<std::uint32_t> ProjectIndex::remove_manifest(this ProjectIndex
 }
 
 llvm::SmallVector<std::uint64_t> ProjectIndex::live_variants(this const ProjectIndex& self,
-                                                             std::uint32_t path_id) {
+                                                             Fid path_id) {
     llvm::SmallVector<std::uint64_t> variants;
     auto it = self.contributions.find(path_id);
     if(it == self.contributions.end()) {
@@ -215,7 +215,7 @@ void ProjectIndex::serialize_global(this ProjectIndex& self,
     // the persisted form's garbage collection. The shared table itself is
     // left alone: other consumers may still anchor checks on a version the
     // index dropped, and ids are never reused either way.
-    llvm::DenseSet<std::uint32_t> referenced;
+    llvm::DenseSet<VersionID> referenced;
     for(auto& manifest: llvm::make_second_range(self.manifests)) {
         referenced.insert(manifest.tu_fv);
         for(auto& node: manifest.nodes) {
@@ -229,13 +229,13 @@ void ProjectIndex::serialize_global(this ProjectIndex& self,
     GlobalBlob blob;
     blob.format_version = index_format_version;
     blob.generation = self.global_generation;
-    blob.next_fv_id = files.next_version_id;
+    blob.next_fv_id = static_cast<std::uint32_t>(files.versions.size());
 
-    llvm::SmallVector<std::uint32_t> ids(referenced.begin(), referenced.end());
+    llvm::SmallVector<VersionID> ids(referenced.begin(), referenced.end());
     llvm::sort(ids);
     for(auto id: ids) {
         auto& record = files.version(id);
-        blob.fv_ids.push_back(id);
+        blob.fv_ids.push_back(id.raw);
         blob.fv_paths.emplace_back(files.resolve(record.fid));
         blob.fv_hashes.push_back(record.content_hash);
         blob.fv_sizes.push_back(record.size);
@@ -245,7 +245,7 @@ void ProjectIndex::serialize_global(this ProjectIndex& self,
     blob.manifest_fvs.reserve(self.manifests.size());
     blob.manifest_gens.reserve(self.manifests.size());
     for(auto& manifest: llvm::make_second_range(self.manifests)) {
-        blob.manifest_fvs.push_back(manifest.tu_fv);
+        blob.manifest_fvs.push_back(manifest.tu_fv.raw);
         blob.manifest_gens.push_back(manifest.global_gen);
     }
 
@@ -265,7 +265,7 @@ void ProjectIndex::serialize_global(this ProjectIndex& self,
     }
     blob.sym_paths.reserve(bitmap_referenced.cardinality());
     for(auto id: bitmap_referenced) {
-        blob.sym_paths.emplace_back(id, files.resolve(id).str());
+        blob.sym_paths.emplace_back(id, files.resolve(Fid{id}).str());
     }
 
     serialize_blob(blob, os);
@@ -280,7 +280,7 @@ void ProjectIndex::serialize_global(this ProjectIndex& self,
 bool ProjectIndex::load_global(this ProjectIndex& self,
                                llvm::StringRef data,
                                clice::FileTable& files,
-                               llvm::DenseMap<std::uint32_t, std::uint64_t>& manifest_pins) {
+                               llvm::DenseMap<VersionID, std::uint64_t>& manifest_pins) {
     GlobalBlob blob;
     if(!deserialize_blob(data, blob) || blob.format_version != index_format_version) {
         return false;
@@ -407,26 +407,28 @@ bool ProjectIndex::load_global(this ProjectIndex& self,
 
     // Adopting the blob's version ids verbatim is what keeps persisted
     // manifests resolvable; it requires an untouched table — ids already
-    // handed out by this session could collide with the blob's.
+    // handed out by this session could collide with the blob's. Ids the
+    // writer garbage-collected stay behind as holes (see knows_version).
     assert(files.versions.empty() && "the global blob must load before any version interning");
 
     self.global_generation = blob.generation;
-    files.next_version_id = blob.next_fv_id;
+    files.versions.resize(blob.next_fv_id);
     for(std::size_t i = 0; i < count; i += 1) {
         auto path_id = files.intern(blob.fv_paths[i]);
-        auto id = blob.fv_ids[i];
-        files.versions[id] = {path_id, blob.fv_hashes[i], blob.fv_sizes[i], blob.fv_mtimes[i]};
+        auto id = VersionID{blob.fv_ids[i]};
+        files.versions[id.raw] =
+            FileTable::FileVersion{path_id, blob.fv_hashes[i], blob.fv_sizes[i], blob.fv_mtimes[i]};
         files.version_ids[{path_id, blob.fv_hashes[i]}] = id;
     }
 
     for(std::size_t k = 0; k < blob.manifest_fvs.size(); k += 1) {
-        manifest_pins[blob.manifest_fvs[k]] = blob.manifest_gens[k];
+        manifest_pins[VersionID{blob.manifest_fvs[k]}] = blob.manifest_gens[k];
     }
 
     // The blob's bitmap ids are the writing session's pool ids: intern its
     // path table and remap every decoded id into this session's pool. Every
     // id was proven covered by the table above.
-    llvm::DenseMap<std::uint32_t, std::uint32_t> remap;
+    llvm::DenseMap<std::uint32_t, Fid> remap;
     remap.reserve(blob.sym_paths.size());
     for(auto& [id, path]: blob.sym_paths) {
         remap.try_emplace(id, files.intern(path));
@@ -436,7 +438,7 @@ bool ProjectIndex::load_global(this ProjectIndex& self,
     for(std::size_t k = 0; k < sym_count; k += 1) {
         Bitmap remapped;
         for(auto id: bitmaps[k]) {
-            remapped.add(remap.find(id)->second);
+            remapped.add(remap.find(id)->second.raw);
         }
         auto& symbol = self.symbols[blob.sym_hashes[k]];
         symbol.name = std::move(blob.sym_names[k]);

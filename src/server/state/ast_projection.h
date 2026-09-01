@@ -100,22 +100,22 @@ struct ASTProjectionTable {
         std::uint64_t epoch = 0;
     };
 
-    llvm::DenseMap<std::uint32_t, Entry> entries;
+    llvm::DenseMap<Fid, Entry> entries;
 
-    const Entry* find(std::uint32_t path_id) const {
+    const Entry* find(Fid path_id) const {
         auto it = entries.find(path_id);
         return it == entries.end() ? nullptr : &it->second;
     }
 
     /// The document's projection, or null before its first compile.
-    std::shared_ptr<const ASTProjection> projection(std::uint32_t path_id) const {
+    std::shared_ptr<const ASTProjection> projection(Fid path_id) const {
         const auto* entry = find(path_id);
         return entry ? entry->projection : nullptr;
     }
 
     /// The last compile landed and no invalidation arrived since
     /// (!ast_dirty of the old world).
-    bool current(std::uint32_t path_id) const {
+    bool current(Fid path_id) const {
         const auto* entry = find(path_id);
         return entry && entry->current;
     }
@@ -124,27 +124,27 @@ struct ASTProjectionTable {
     /// arbitration key of the index freshness contract (IndexQuery
     /// clauses 3-4): a current-but-indexless projection (fatal error, no
     /// AST) is an honest gap, not a servable index.
-    bool index_current(std::uint32_t path_id) const {
+    bool index_current(Fid path_id) const {
         const auto* entry = find(path_id);
         return entry && entry->current && entry->projection && entry->projection->index &&
                entry->projection->index->loaded();
     }
 
-    std::uint64_t epoch(std::uint32_t path_id) const {
+    std::uint64_t epoch(Fid path_id) const {
         const auto* entry = find(path_id);
         return entry ? entry->epoch : 0;
     }
 
     /// Replace one field of the projection, keeping the rest (readers
     /// holding the old shared_ptr are unaffected).
-    void set_pch_key(std::uint32_t path_id, std::optional<std::string> pch_key) {
+    void set_pch_key(Fid path_id, std::optional<std::string> pch_key) {
         auto& entry = entries[path_id];
         auto next = entry.projection ? ASTProjection(*entry.projection) : ASTProjection();
         next.pch_key = std::move(pch_key);
         entry.projection = std::make_shared<const ASTProjection>(std::move(next));
     }
 
-    void set_output(std::uint32_t path_id, CompileOutput output) {
+    void set_output(Fid path_id, CompileOutput output) {
         auto& entry = entries[path_id];
         auto next = entry.projection ? ASTProjection(*entry.projection) : ASTProjection();
         next.output = std::move(output);

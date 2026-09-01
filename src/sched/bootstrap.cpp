@@ -26,10 +26,7 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
     auto& cfg = workspace.config.project;
 
     if(!workspace.store && !cfg.cache_dir.empty()) {
-        auto cache = CacheStore::open(cfg.cache_dir,
-                                      cache_format_version,
-                                      /*read_only=*/false,
-                                      /*adopt_writer_debt=*/!read_only_index);
+        auto cache = CacheStore::open(cfg.cache_dir, cache_format_version);
         if(!cache) {
             LOG_WARN("Failed to open cache store at {}: {}",
                      std::string_view(cfg.cache_dir),
@@ -42,13 +39,11 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
                                        .extension = ".pch",
                                        .aux_extension = ".pch.idx",
                                        .policy = CachePolicy::LRU,
-                                       .max_bytes = 8 * GiB,
-                                       .deferred_metadata = true});
+                                       .max_bytes = 8 * GiB});
             cache->register_namespace({.name = "pcm",
                                        .extension = ".pcm",
                                        .policy = CachePolicy::LRU,
-                                       .max_bytes = 8 * GiB,
-                                       .deferred_metadata = true});
+                                       .max_bytes = 8 * GiB});
             cache->register_namespace(
                 {.name = "header_context", .extension = ".h", .policy = CachePolicy::Scratch});
             workspace.store.emplace(std::move(*cache));

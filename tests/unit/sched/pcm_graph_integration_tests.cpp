@@ -86,7 +86,7 @@ DispatchFn make_dispatch(CompilationDatabase& cdb,
                          DependencyGraph& graph,
                          llvm::DenseMap<std::uint32_t, std::string>& pcm_paths) {
     return [&](std::uint32_t path_id, bool) -> kota::task<RoundOutcome> {
-        auto file_path = cdb.files().resolve(path_id);
+        auto file_path = cdb.files().resolve(Fid{path_id});
         auto candidates = cdb.candidate_entries(file_path);
         if(candidates.empty()) {
             co_return RoundOutcome::Failed;
@@ -105,7 +105,7 @@ DispatchFn make_dispatch(CompilationDatabase& cdb,
         // Fill ALL available PCM paths (clang needs transitive deps too).
         for(auto& [pid, pcm_path]: pcm_paths) {
             for(auto& [mod_name, mod_ids]: graph.modules()) {
-                if(llvm::find(mod_ids, pid) != mod_ids.end()) {
+                if(llvm::find(mod_ids, Fid{pid}) != mod_ids.end()) {
                     cp.pcms.try_emplace(mod_name, pcm_path);
                     break;
                 }
@@ -132,7 +132,7 @@ DispatchFn make_dispatch(CompilationDatabase& cdb,
 /// Build a resolve_fn that lazily scans module files for imports.
 ResolveFn make_resolver(CompilationDatabase& cdb, DependencyGraph& graph) {
     return [&](std::uint32_t path_id) -> llvm::SmallVector<std::uint32_t> {
-        auto file_path = cdb.files().resolve(path_id);
+        auto file_path = cdb.files().resolve(Fid{path_id});
         auto candidates = cdb.candidate_entries(file_path);
         if(candidates.empty()) {
             return {};
@@ -149,7 +149,7 @@ ResolveFn make_resolver(CompilationDatabase& cdb, DependencyGraph& graph) {
         for(auto& mod_name: scan_result.modules) {
             auto mod_ids = graph.lookup_module(mod_name);
             if(!mod_ids.empty()) {
-                deps.push_back(mod_ids[0]);
+                deps.push_back(mod_ids[0].raw);
             }
         }
         return deps;
@@ -171,7 +171,7 @@ struct ModuleTestEnv {
 
     std::uint32_t lookup(llvm::StringRef mod_name) {
         auto ids = graph.lookup_module(mod_name);
-        return ids.empty() ? UINT32_MAX : ids[0];
+        return ids.empty() ? UINT32_MAX : ids[0].raw;
     }
 };
 
@@ -1131,7 +1131,7 @@ TEST_CASE(module_implementation_unit) {
         // Pass the built PCM so clang can resolve `module Greeter;`.
         for(auto& [pid, pcm_path]: env.pcm_paths) {
             for(auto& [mod_name, mod_ids]: env.graph.modules()) {
-                if(llvm::find(mod_ids, pid) != mod_ids.end()) {
+                if(llvm::find(mod_ids, Fid{pid}) != mod_ids.end()) {
                     cp.pcms.try_emplace(mod_name, pcm_path);
                     break;
                 }

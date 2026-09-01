@@ -36,7 +36,7 @@ struct ContextService {
     /// clice/queryContext: list the compilation contexts (host sources and
     /// the file's own CDB configurations) available for a file, paginated.
     ext::QueryContextResult query_contexts(llvm::StringRef path,
-                                           std::uint32_t path_id,
+                                           Fid path_id,
                                            const ext::QueryContextParams& params);
 
     /// clice/currentContext: describe the file's currently active context.
@@ -52,10 +52,10 @@ struct ContextService {
     /// writable database (read-only, caching disabled, open failure) apply
     /// the choice in memory and acknowledge immediately.
     kota::task<ext::SwitchContextResult> switch_context(llvm::StringRef path,
-                                                        std::uint32_t path_id,
+                                                        Fid path_id,
                                                         Session* session,
                                                         llvm::StringRef context_path,
-                                                        std::uint32_t context_path_id,
+                                                        Fid context_path_id,
                                                         const ext::SwitchContextParams& params);
 
     /// Drop active context choices whose include edge no longer exists. A

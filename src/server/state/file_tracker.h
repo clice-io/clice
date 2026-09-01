@@ -106,7 +106,7 @@ private:
     bool has_pending = false;
 
     /// Workspace sweep baseline.
-    llvm::DenseMap<std::uint32_t, FileState> baseline;
+    llvm::DenseMap<Fid, FileState> baseline;
 
     /// True while a sweep is in flight (it suspends between batches);
     /// concurrent ticks are skipped instead of racing on the baseline.

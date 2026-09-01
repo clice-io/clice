@@ -4,6 +4,8 @@
 #include <string>
 #include <vector>
 
+#include "vfs/file_table.h"
+
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/StringRef.h"
 
@@ -33,9 +35,8 @@ PreambleCompletionContext detect_completion_context(llvm::StringRef text, std::u
 /// Return module names matching a prefix, suitable for `import` completion.
 /// @param modules  Module name map (path_id → module name).
 /// @param prefix   Partially-typed module name to match against.
-std::vector<std::string>
-    complete_module_import(const llvm::DenseMap<std::uint32_t, std::string>& modules,
-                           llvm::StringRef prefix);
+std::vector<std::string> complete_module_import(const llvm::DenseMap<Fid, std::string>& modules,
+                                                llvm::StringRef prefix);
 
 /// Entry in the include path completion result.
 struct IncludeCandidate {

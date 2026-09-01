@@ -128,8 +128,8 @@ kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
 
     // Files that left the graph (e.g. a CDB reload rebuilt it) stop being
     // tracked; their baseline entries would otherwise be stat'd forever.
-    llvm::DenseSet<std::uint32_t> known(files.begin(), files.end());
-    llvm::SmallVector<std::uint32_t> gone;
+    llvm::DenseSet<Fid> known(files.begin(), files.end());
+    llvm::SmallVector<Fid> gone;
     for(auto& [path_id, state]: baseline) {
         if(!known.contains(path_id)) {
             gone.push_back(path_id);
@@ -242,7 +242,7 @@ kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
     // their baseline entries are pruned on the next sweep.
     if(workspace.context_epoch != epoch && !events.empty()) {
         auto current = workspace.dep_graph.all_files();
-        llvm::DenseSet<std::uint32_t> still_known(current.begin(), current.end());
+        llvm::DenseSet<Fid> still_known(current.begin(), current.end());
         llvm::erase_if(events, [&](const FileEvent& event) {
             return !still_known.contains(event.path_id);
         });

@@ -77,50 +77,50 @@ struct IndexerFixture {
         return result.decoded;
     }
 
-    void drop_index(std::uint32_t id) {
+    void drop_index(Fid id) {
         pump.claim_report(index_store.drop_index(id));
     }
 
     /// Record a terminally failed attempt, as run_index_task's failure
     /// verdicts do.
-    void mark_failed(std::uint32_t id) {
+    void mark_failed(Fid id) {
         pump.failed_ids.insert(id);
     }
 
     /// Fail the entry's current dispatch: the launch ticket matches.
-    Verdict fail(std::uint32_t id, bool crashed) {
+    Verdict fail(Fid id, bool crashed) {
         return pump.note_dispatch_failure({id, ticket(id)}, crashed);
     }
 
     /// Fail a dispatch launched with an explicit (possibly stale) ticket.
-    Verdict fail_at(std::uint32_t id, std::uint64_t ticket, bool crashed) {
+    Verdict fail_at(Fid id, std::uint64_t ticket, bool crashed) {
         return pump.note_dispatch_failure({id, ticket}, crashed);
     }
 
-    std::uint64_t ticket(std::uint32_t id) {
+    std::uint64_t ticket(Fid id) {
         auto it = pump.ledger.entries.find(id);
         return it == pump.ledger.entries.end() ? std::numeric_limits<std::uint64_t>::max()
                                                : it->second.ticket;
     }
 
-    unsigned attempts(std::uint32_t id) {
+    unsigned attempts(Fid id) {
         auto it = pump.ledger.entries.find(id);
         return it == pump.ledger.entries.end() ? 0u : it->second.requeue_attempts;
     }
 
-    void set_attempts(std::uint32_t id, unsigned n) {
+    void set_attempts(Fid id, unsigned n) {
         pump.ledger.entries.find(id)->second.requeue_attempts = n;
     }
 
     /// Consume the queued slot as a dispatch would, so a later enqueue
     /// takes the fresh-slot (mid-flight) path.
-    void consume(std::uint32_t id) {
+    void consume(Fid id) {
         pump.ledger.queued.erase(id);
     }
 
     /// Complete an attempt for `ticket` on the loop, as run_index_task's
     /// tail does — waking waiters requires a running loop.
-    void settle(std::uint32_t id, std::uint64_t ticket) {
+    void settle(Fid id, std::uint64_t ticket) {
         auto body = [&]() -> kota::task<> {
             pump.settle_attempt_waits(id, ticket);
             co_return;
@@ -153,7 +153,7 @@ struct IndexerFixture {
 
     /// Record a standalone header's borrowed host, as the TURun round does
     /// after its merge lands (these tests merge worker results directly).
-    void set_header_host(std::uint32_t header_id, std::uint32_t host_id) {
+    void set_header_host(Fid header_id, Fid host_id) {
         index_store.record_header_host(header_id, host_id);
     }
 
@@ -326,7 +326,7 @@ bool load(bool read_only = false) {
     return fx.load(read_only);
 }
 
-void drop_index(std::uint32_t id) {
+void drop_index(Fid id) {
     fx.drop_index(id);
 }
 
@@ -1632,16 +1632,16 @@ TEST_CASE(LoadRequeuesStaleManifest) {
         // while the TU's own version is known — here for the header, whose
         // standalone index no CDB sweep would ever rebuild.
         auto header_id = f.workspace.file_table.intern(header);
-        std::uint32_t header_fv = ~0u;
-        for(auto& [fv, record]: f.workspace.file_table.versions) {
-            if(record.fid == header_id) {
-                header_fv = fv;
+        VersionID header_fv;
+        for(std::uint32_t fv = 0; fv < f.workspace.file_table.versions.size(); fv += 1) {
+            if(f.workspace.file_table.versions[fv].fid == header_id) {
+                header_fv = VersionID{fv};
             }
         }
-        ASSERT_TRUE(header_fv != ~0u);
+        ASSERT_TRUE(header_fv.valid());
         index::TUManifest stale;
         stale.tu_fv = header_fv;
-        stale.nodes.push_back({.fv = 9999});
+        stale.nodes.push_back({.fv = VersionID{9999}});
         std::string bytes;
         llvm::raw_string_ostream os(bytes);
         index::serialize_manifest(stale, os);
@@ -1700,8 +1700,8 @@ TEST_CASE(DeferredSweepYieldsToFreshWrite) {
         // next load sweeps it — deferred into the first save — and the
         // TU's shard turns orphan, deferred too.
         index::TUManifest stale;
-        stale.tu_fv = 999999;
-        stale.nodes.push_back({.fv = 9999});
+        stale.tu_fv = VersionID{999999};
+        stale.nodes.push_back({.fv = VersionID{9999}});
         std::string bytes;
         llvm::raw_string_ostream os(bytes);
         index::serialize_manifest(stale, os);
@@ -2166,7 +2166,7 @@ TEST_CASE(HostChangeDropsHeader) {
     f.workspace.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=2 -c main.cpp"));
     auto src_id = f.workspace.file_table.intern(src);
     auto header_id = f.workspace.file_table.intern(header);
-    f.workspace.dep_graph.set_includes(src_id, 0, {header_id});
+    f.workspace.dep_graph.set_includes(src_id, 0, {{header_id}});
     f.workspace.dep_graph.build_reverse_map();
     f.load();
 
@@ -2268,8 +2268,8 @@ TEST_CASE(PinnedHostKeepsHeader) {
     auto src_id = f.workspace.file_table.intern(src);
     auto other_id = f.workspace.file_table.intern(other);
     auto header_id = f.workspace.file_table.intern(header);
-    f.workspace.dep_graph.set_includes(src_id, 0, {header_id});
-    f.workspace.dep_graph.set_includes(other_id, 0, {header_id});
+    f.workspace.dep_graph.set_includes(src_id, 0, {{header_id}});
+    f.workspace.dep_graph.set_includes(other_id, 0, {{header_id}});
     f.workspace.dep_graph.build_reverse_map();
     f.load();
 
@@ -2754,9 +2754,9 @@ TEST_CASE(MergeReportsRowsChanged) {
     auto indexed = index_file(tmp, tmp.path("main.cpp"));
     ASSERT_FALSE(indexed.data.empty());
 
-    llvm::SmallVector<std::uint32_t> notified;
+    llvm::SmallVector<Fid> notified;
     auto conn = f.pump.on_rows_changed.connect(
-        [&](llvm::ArrayRef<std::uint32_t> ids) { notified.append(ids.begin(), ids.end()); });
+        [&](llvm::ArrayRef<Fid> ids) { notified.append(ids.begin(), ids.end()); });
     ASSERT_TRUE(f.merge(indexed.data.data(), indexed.data.size()));
 
     ASSERT_TRUE(llvm::is_contained(notified, f.workspace.file_table.intern(indexed.tu_path)));
@@ -2778,9 +2778,9 @@ TEST_CASE(DropReportsServedRows) {
     auto tu_id = f.workspace.file_table.intern(indexed.tu_path);
     auto header_id = f.workspace.file_table.intern(tmp.path("dep.h"));
 
-    llvm::SmallVector<std::uint32_t> notified;
+    llvm::SmallVector<Fid> notified;
     auto conn = f.pump.on_rows_changed.connect(
-        [&](llvm::ArrayRef<std::uint32_t> ids) { notified.append(ids.begin(), ids.end()); });
+        [&](llvm::ArrayRef<Fid> ids) { notified.append(ids.begin(), ids.end()); });
     auto report = f.index_store.drop_index(tu_id);
     ASSERT_TRUE(llvm::is_contained(report.rows_changed(), tu_id));
     ASSERT_TRUE(llvm::is_contained(report.rows_changed(), header_id));
@@ -2813,9 +2813,9 @@ TEST_CASE(RetireReportsRowsChanged) {
     auto header_id = f.workspace.file_table.intern(tmp.path("dep.h"));
     ASSERT_TRUE(f.workspace.shards.contains(header_id));
 
-    llvm::SmallVector<std::uint32_t> notified;
+    llvm::SmallVector<Fid> notified;
     auto conn = f.pump.on_rows_changed.connect(
-        [&](llvm::ArrayRef<std::uint32_t> ids) { notified.append(ids.begin(), ids.end()); });
+        [&](llvm::ArrayRef<Fid> ids) { notified.append(ids.begin(), ids.end()); });
     f.save();
 
     ASSERT_FALSE(f.workspace.shards.contains(header_id));
@@ -2937,7 +2937,7 @@ TEST_CASE(DispatchDeferKeepsDebt) {
     auto id = f.workspace.file_table.intern("/fake/a.cpp");
     f.pump.enqueue(id, ReindexReason::ContentChanged);
 
-    f.pump.admission = [](std::uint32_t) {
+    f.pump.admission = [](Fid) {
         return Admission::Defer;
     };
     f.run_round();
@@ -2968,7 +2968,7 @@ TEST_CASE(LandingVetoDropsResult) {
     f.pump.enqueue(id, ReindexReason::ContentChanged);
 
     int asks = 0;
-    f.pump.admission = [&](std::uint32_t) {
+    f.pump.admission = [&](Fid) {
         asks += 1;
         // First ask = dispatch (admit); second = landing, where the
         // serving side has changed its mind.

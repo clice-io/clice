@@ -112,7 +112,7 @@ std::string header_path(llvm::StringRef basename) {
 /// Merge the full envelope into the workspace's disk index, installing
 /// each section's blob verbatim as background indexing would.
 void merge_disk_index() {
-    llvm::SmallVector<std::uint32_t> file_ids_map;
+    llvm::SmallVector<Fid> file_ids_map;
     for(std::uint32_t i = 0; i < full_index.path_count(); i += 1) {
         file_ids_map.push_back(workspace.file_table.intern(full_index.path(i)));
     }
@@ -426,7 +426,7 @@ TEST_CASE(AsciiPreviewFromDisk) {
         index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
     ASSERT_TRUE(workspace.shards[path_id].ascii());
     workspace.project_index.symbols[sym].name = "value";
-    workspace.project_index.symbols[sym].reference_files.add(path_id);
+    workspace.project_index.symbols[sym].reference_files.add(path_id.raw);
 
     auto definition = agent_query.get_definition_text(sym);
     ASSERT_TRUE(definition.has_value());
@@ -531,7 +531,7 @@ int main() { §(ref)⟦foo⟧(); return 0; }
     index::write_shard(fake, {}, "xxx\n", os);
     workspace.shards[header_id] =
         index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
-    workspace.project_index.symbols[foo].reference_files.add(header_id);
+    workspace.project_index.symbols[foo].reference_files.add(header_id.raw);
 
     auto def_loc = index_query.find_definition_location(foo);
     ASSERT_TRUE(def_loc.has_value());

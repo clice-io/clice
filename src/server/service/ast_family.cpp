@@ -53,7 +53,7 @@ static kota::codec::RawValue quarantine_diagnostics(unsigned crashes) {
 
 PCHPlan plan_pch(Workspace& workspace,
                  ContextResolver& contexts,
-                 std::uint32_t path_id,
+                 Fid path_id,
                  llvm::StringRef text,
                  const std::string& directory,
                  const std::vector<std::string>& arguments) {
@@ -115,7 +115,7 @@ ASTFamily::ASTFamily(Workspace& workspace,
 
 void ASTFamily::register_runner() {
     graph.register_family(ast_family, [this](RoundContext& ctx, NodeId id) {
-        return run(ctx, static_cast<std::uint32_t>(id.key));
+        return run(ctx, Fid{static_cast<std::uint32_t>(id.key)});
     });
 }
 
@@ -156,7 +156,7 @@ void ASTFamily::publish_output(const std::shared_ptr<Session>& session, CompileO
 }
 
 bool ASTFamily::is_stale(const Session& session) {
-    workspace.file_table.begin_wave();
+    auto wave = workspace.file_table.wave();
     auto it = projections.entries.find(session.path_id);
     if(it != projections.entries.end() && it->second.deps.has_value() &&
        deps_changed(workspace.file_table, *it->second.deps)) {
@@ -183,13 +183,13 @@ bool ASTFamily::is_stale(const Session& session) {
     return false;
 }
 
-void ASTFamily::touch(std::uint32_t path_id) {
+void ASTFamily::touch(Fid path_id) {
     auto& entry = projections.entries[path_id];
     entry.current = false;
     entry.epoch += 1;
 }
 
-void ASTFamily::supersede(std::uint32_t path_id) {
+void ASTFamily::supersede(Fid path_id) {
     touch(path_id);
     graph.update(node(path_id));
     // Not a wire cancel: the notification flips the compile's stop flag
@@ -199,12 +199,12 @@ void ASTFamily::supersede(std::uint32_t path_id) {
     // round lands.
     if(graph.is_compiling(node(path_id))) {
         pool.notify_stateful(
-            path_id,
+            path_id.raw,
             worker::CancelCompileParams{std::string(workspace.file_table.resolve(path_id))});
     }
 }
 
-void ASTFamily::invalidate(std::uint32_t path_id) {
+void ASTFamily::invalidate(Fid path_id) {
     touch(path_id);
     // The in-flight round's token fires, but its parse keeps running: the
     // buffer is unchanged, so the product is worth publishing as bounded
@@ -212,7 +212,7 @@ void ASTFamily::invalidate(std::uint32_t path_id) {
     graph.update(node(path_id));
 }
 
-void ASTFamily::drop(std::uint32_t path_id) {
+void ASTFamily::drop(Fid path_id) {
     graph.update(node(path_id));
     projections.entries.erase(path_id);
 }
@@ -256,10 +256,10 @@ kota::task<> ASTFamily::stop() {
     // Sessions, not projection entries: a first compile has no entry
     // until it lands, and its round is exactly the parse worth
     // interrupting.
-    sessions.for_each([&](std::uint32_t path_id, const Session&) {
+    sessions.for_each([&](Fid path_id, const Session&) {
         if(graph.is_compiling(node(path_id))) {
             pool.notify_stateful(
-                path_id,
+                path_id.raw,
                 worker::CancelCompileParams{std::string(workspace.file_table.resolve(path_id))});
         }
         return true;
@@ -325,7 +325,7 @@ kota::task<bool> ASTFamily::ensure_compiled(std::shared_ptr<Session> session) {
 }
 
 kota::task<DependResult> ASTFamily::depend_modules(RoundContext& ctx,
-                                                   std::uint32_t path_id,
+                                                   Fid path_id,
                                                    llvm::StringRef directory,
                                                    const std::vector<std::string>& arguments,
                                                    llvm::StringRef text) {
@@ -402,7 +402,7 @@ kota::task<DependResult> ASTFamily::depend_modules(RoundContext& ctx,
         }
 
         for(auto dep: deps.resolved) {
-            switch(co_await ctx.depend({pcm_family, dep})) {
+            switch(co_await ctx.depend({pcm_family, dep.raw})) {
                 case DependResult::Ready: break;
                 case DependResult::Failed: co_return DependResult::Failed;
                 case DependResult::Cancelled: co_return DependResult::Cancelled;
@@ -412,7 +412,7 @@ kota::task<DependResult> ASTFamily::depend_modules(RoundContext& ctx,
     co_return DependResult::Ready;
 }
 
-kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, std::uint32_t path_id) {
+kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
     // The session is resolved at round start: a didClose between spawn
     // and entry leaves nothing to compile.
     auto session = sessions.find(path_id);
@@ -622,7 +622,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, std::uint32_t path_id
         // on it (contract 2). A supersede interrupts the worker with a
         // CancelCompile notification instead (see supersede/stop), and
         // the stale reply is discarded at the validity gate below.
-        auto result = co_await pool.send_stateful(path_id, params, {}, suspect);
+        auto result = co_await pool.send_stateful(path_id.raw, params, {}, suspect);
 
         // Crash accounting runs even for superseded rounds: the crash came
         // from content this document dispatched, and skipping it would let a

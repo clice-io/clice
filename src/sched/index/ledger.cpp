@@ -4,7 +4,7 @@
 
 namespace clice {
 
-bool PendingLedger::record(std::uint32_t id, ReindexReason reason) {
+bool PendingLedger::record(Fid id, ReindexReason reason) {
     // A fresh slot means any prior slot was already consumed (or none
     // existed); a queued-and-unconsumed slot makes this call a duplicate.
     bool fresh_slot = queued.insert(id).second;
@@ -36,7 +36,7 @@ bool PendingLedger::record(std::uint32_t id, ReindexReason reason) {
     return fresh_slot;
 }
 
-std::optional<PendingLedger::Claim> PendingLedger::claim(std::uint32_t id) {
+std::optional<PendingLedger::Claim> PendingLedger::claim(Fid id) {
     queued.erase(id);
     auto it = entries.find(id);
     if(it == entries.end()) {
@@ -45,7 +45,7 @@ std::optional<PendingLedger::Claim> PendingLedger::claim(std::uint32_t id) {
     return Claim{id, it->second.ticket};
 }
 
-std::optional<PendingLedger::Claim> PendingLedger::peek(std::uint32_t id) const {
+std::optional<PendingLedger::Claim> PendingLedger::peek(Fid id) const {
     auto it = entries.find(id);
     if(it == entries.end()) {
         return std::nullopt;
@@ -105,8 +105,8 @@ PendingLedger::FailureOutcome PendingLedger::on_dispatch_failure(const Claim& cl
     return {FailureVerdict::Requeued, needs_slot};
 }
 
-llvm::SmallVector<std::uint32_t> PendingLedger::pending_files() const {
-    llvm::SmallVector<std::uint32_t> files;
+llvm::SmallVector<Fid> PendingLedger::pending_files() const {
+    llvm::SmallVector<Fid> files;
     files.reserve(entries.size());
     for(auto id: llvm::make_first_range(entries)) {
         files.push_back(id);

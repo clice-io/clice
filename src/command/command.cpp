@@ -254,7 +254,7 @@ ConfigID CompilationDatabase::save_config(CompileConfig config, llvm::ArrayRef<A
 
 std::optional<CompilationDatabase::NormalizeResult>
     CompilationDatabase::normalize(llvm::StringRef directory,
-                                   std::uint32_t file,
+                                   Fid file,
                                    llvm::ArrayRef<const char*> arguments) {
     if(arguments.empty()) {
         return std::nullopt;
@@ -350,7 +350,7 @@ std::optional<CompilationDatabase::NormalizeResult>
     /// against the entry directory — and as spelled, for entries interned
     /// under a relative spelling (tests, hand-built databases).
     auto matches_entry = [&](llvm::StringRef token) {
-        if(file == ~0u || token.empty()) {
+        if(!file.valid() || token.empty()) {
             return false;
         }
         llvm::SmallString<256> abs;
@@ -508,9 +508,7 @@ std::optional<CompilationDatabase::NormalizeResult>
 }
 
 std::optional<CompilationDatabase::NormalizeResult>
-    CompilationDatabase::normalize(llvm::StringRef directory,
-                                   std::uint32_t file,
-                                   llvm::StringRef command) {
+    CompilationDatabase::normalize(llvm::StringRef directory, Fid file, llvm::StringRef command) {
     llvm::BumpPtrAllocator local;
     llvm::StringSaver saver(local);
 
@@ -839,9 +837,9 @@ std::optional<std::size_t> CompilationDatabase::load(llvm::StringRef path) {
     return entry_list.size();
 }
 
-llvm::DenseMap<std::uint32_t, llvm::SmallVector<std::string, 1>>
+llvm::DenseMap<Fid, llvm::SmallVector<std::string, 1>>
     CompilationDatabase::command_hash_snapshot() {
-    llvm::DenseMap<std::uint32_t, llvm::SmallVector<std::string, 1>> snapshot;
+    llvm::DenseMap<Fid, llvm::SmallVector<std::string, 1>> snapshot;
     for(auto& entry: entry_list) {
         snapshot[entry.file].push_back(entry_hash_hex(entry.config));
     }
@@ -853,7 +851,7 @@ llvm::DenseMap<std::uint32_t, llvm::SmallVector<std::string, 1>>
     return snapshot;
 }
 
-std::optional<std::string> CompilationDatabase::selected_hash(std::uint32_t path_id) {
+std::optional<std::string> CompilationDatabase::selected_hash(Fid path_id) {
     auto candidates = candidate_entries(path_id);
     if(candidates.empty()) {
         return std::nullopt;
@@ -895,8 +893,7 @@ std::optional<CDBDiff> CompilationDatabase::reload_and_diff(llvm::StringRef path
     return diff;
 }
 
-llvm::ArrayRef<CompilationEntry>
-    CompilationDatabase::candidate_entries(std::uint32_t path_id) const {
+llvm::ArrayRef<CompilationEntry> CompilationDatabase::candidate_entries(Fid path_id) const {
     auto [first, last] = ranges::equal_range(entry_list, path_id, {}, &CompilationEntry::file);
     if(first == last) {
         return {};
@@ -1206,7 +1203,7 @@ ConfigID CompilationDatabase::fallback_config(llvm::StringRef file) {
 
     auto [it, inserted] = fallback_configs.try_emplace(variant, invalid_config);
     if(inserted) {
-        auto normalized = normalize("", ~0u, arguments);
+        auto normalized = normalize("", Fid{}, arguments);
         assert(normalized && "fallback synthesis cannot fail");
         it->second = normalized->config;
     }

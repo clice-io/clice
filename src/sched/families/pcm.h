@@ -45,7 +45,7 @@ public:
     /// dependency can itself evict another clean module's PCM under
     /// budget pressure, which reopens the window the revalidation just
     /// closed — hence the bounded retry until the set is stable.
-    kota::task<bool> prepare_deps(std::uint32_t path_id,
+    kota::task<bool> prepare_deps(Fid path_id,
                                   llvm::ArrayRef<const char*> arguments,
                                   llvm::StringRef directory,
                                   std::optional<llvm::StringRef> content,
@@ -56,7 +56,7 @@ public:
     /// invalidated instead of handing clang a dangling path. Returns
     /// whether anything was evicted.
     ///
-    /// FIXME: this scans every pcm_paths entry (one stat() per module) on
+    /// FIXME: this scans every pcm_cache entry (one stat() per module) on
     /// every compile, even in steady state when nothing was evicted. For
     /// large modular projects on NFS this adds measurable latency.
     /// Consider having CacheStore notify on eviction or caching the scan
@@ -65,7 +65,7 @@ public:
 
     /// Whether the graph has a node for this module unit (it was built or
     /// depended on before).
-    bool tracks(std::uint32_t path_id) const;
+    bool tracks(Fid path_id) const;
 
     /// Mark a module unit and its transitive importers dirty, voiding
     /// in-flight rounds and dropping their cached PCM state — the single
@@ -73,7 +73,7 @@ public:
     /// (cache eviction) goes through revalidate_blobs' graph.mark_dirty
     /// instead: no cascade, importers' results still describe unchanged
     /// content. Returns the dirtied path_ids.
-    llvm::SmallVector<std::uint32_t> invalidate(std::uint32_t path_id);
+    llvm::SmallVector<Fid> invalidate(Fid path_id);
 
     /// Invoked after a PCM lands so background indexing can pick up the
     /// new artifact.
@@ -84,7 +84,7 @@ public:
     /// full durable edge set — resolved units' nodes plus one sentinel
     /// per unresolved name.
     struct ModuleDeps {
-        llvm::SmallVector<std::uint32_t> resolved;
+        llvm::SmallVector<Fid> resolved;
         llvm::SmallVector<NodeId, 8> declared;
     };
 
@@ -115,15 +115,14 @@ public:
     /// it in place of the file's on-disk text — even when empty (an open
     /// buffer's imports count before they are saved, and an emptied
     /// buffer has none).
-    ModuleDeps direct_deps(std::uint32_t path_id,
-                           std::optional<llvm::StringRef> content = std::nullopt);
+    ModuleDeps direct_deps(Fid path_id, std::optional<llvm::StringRef> content = std::nullopt);
 
     /// The already-resolved-command flavor: scans under exactly the
     /// arguments the caller will compile with. The AST path uses it so a
     /// context choice or donated header host cannot diverge between the
     /// scan and the parse — the path_id flavor re-picks a CDB entry,
     /// which is only right for whole-TU runs on real commands.
-    ModuleDeps direct_deps(std::uint32_t path_id,
+    ModuleDeps direct_deps(Fid path_id,
                            llvm::ArrayRef<const char*> arguments,
                            llvm::StringRef directory,
                            std::optional<llvm::StringRef> content);
@@ -131,14 +130,14 @@ public:
 private:
     /// Commit the scan's full edge set as the unit's durable edges (see
     /// TaskGraph::declare).
-    void declare_deps(std::uint32_t path_id, llvm::ArrayRef<NodeId> deps);
+    void declare_deps(Fid path_id, llvm::ArrayRef<NodeId> deps);
 
     /// One PCM round: declare dependency edges, revalidate the cache, and
     /// dispatch the build.
-    kota::task<RoundOutcome> run(RoundContext& ctx, std::uint32_t path_id);
+    kota::task<RoundOutcome> run(RoundContext& ctx, Fid path_id);
 
-    static NodeId node(std::uint32_t path_id) {
-        return {pcm_family, path_id};
+    static NodeId node(Fid path_id) {
+        return {pcm_family, path_id.raw};
     }
 
     TaskGraph& graph;

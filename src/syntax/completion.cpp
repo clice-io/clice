@@ -65,9 +65,8 @@ PreambleCompletionContext detect_completion_context(llvm::StringRef text, std::u
     return {CompletionContext::Import, prefix.str()};
 }
 
-std::vector<std::string>
-    complete_module_import(const llvm::DenseMap<std::uint32_t, std::string>& modules,
-                           llvm::StringRef prefix) {
+std::vector<std::string> complete_module_import(const llvm::DenseMap<Fid, std::string>& modules,
+                                                llvm::StringRef prefix) {
     std::vector<std::string> results;
     // FIXME: exclude the current file's own module name from results
     // (self-import is never valid). Needs the requesting path_id passed in.

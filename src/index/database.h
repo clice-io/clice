@@ -32,8 +32,8 @@ enum class IndexBlobKind : std::uint8_t {
     /// against, key "cdb" — how a cold start detects compile-command
     /// changes that happened while no server was running.
     CDB,
-    /// The single artifact-validity blob (PCH/PCM records with their deps
-    /// and blob bindings, header-mode verdicts), key "artifacts".
+    /// The single artifact-validity blob (PCH/PCM records with their deps,
+    /// header-mode verdicts), key "artifacts".
     Artifacts,
     /// The single user-context blob (saved context choices, synthesized
     /// artifact hosts), key "contexts" — sovereignty records, never

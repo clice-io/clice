@@ -37,8 +37,8 @@ index::SymbolHash find_symbol(const index::ProjectIndex& project, llvm::StringRe
 
 /// The TU-local id -> pool id mapping merge() consumes, as Indexer::merge
 /// computes it.
-llvm::SmallVector<std::uint32_t> intern_paths(const index::TUIndex& view, clice::FileTable& pool) {
-    llvm::SmallVector<std::uint32_t> ids;
+llvm::SmallVector<Fid> intern_paths(const index::TUIndex& view, clice::FileTable& pool) {
+    llvm::SmallVector<Fid> ids;
     for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
         ids.push_back(pool.intern(view.path(i)));
     }
@@ -146,70 +146,66 @@ TEST_CASE(MergeRejectsBadBitmap) {
 
 TEST_CASE(FileVersionInterning) {
     clice::FileTable pool;
-    auto a = pool.intern_version(7, 0x1111);
-    ASSERT_EQ(pool.intern_version(7, 0x1111), a);
+    auto a = pool.intern_version(Fid{7}, 0x1111);
+    ASSERT_EQ(pool.intern_version(Fid{7}, 0x1111), a);
 
-    auto b = pool.intern_version(7, 0x2222);
+    auto b = pool.intern_version(Fid{7}, 0x2222);
     ASSERT_TRUE(b != a);
-    ASSERT_EQ(pool.version(b).fid, 7u);
+    ASSERT_EQ(pool.version(b).fid.raw, 7u);
     ASSERT_EQ(pool.version(b).content_hash, 0x2222u);
 }
 
 TEST_CASE(ManifestContributions) {
     clice::FileTable pool;
     index::ProjectIndex project;
-    auto fv_a = pool.intern_version(1, 0xa);
-    auto fv_b = pool.intern_version(2, 0xb);
+    auto fv_a = pool.intern_version(Fid{1}, 0xa);
+    auto fv_b = pool.intern_version(Fid{2}, 0xb);
 
-    auto manifest_for = [&](std::uint32_t tu_fv,
-                            std::initializer_list<std::pair<std::uint32_t, std::uint64_t>> rows) {
+    auto manifest_for = [&](VersionID tu_fv,
+                            std::initializer_list<std::pair<VersionID, std::uint64_t>> rows) {
         index::TUManifest manifest;
         manifest.tu_fv = tu_fv;
         manifest.contributions = rows;
         return manifest;
     };
 
-    auto tu1_fv = pool.intern_version(10, 0x1);
-    auto tu2_fv = pool.intern_version(11, 0x2);
+    auto tu1_fv = pool.intern_version(Fid{10}, 0x1);
+    auto tu2_fv = pool.intern_version(Fid{11}, 0x2);
 
     // TU 1 contributes h1 to file 1 and h2 to file 2.
     auto affected = project.apply_manifest(pool,
-                                           10,
-                                           manifest_for(tu1_fv,
-                                                        {
-                                                            {fv_a, 100},
-                                                            {fv_b, 200}
-    }));
+                                           Fid{
+                                               10
+    },
+                                           manifest_for(tu1_fv, {{fv_a, 100}, {fv_b, 200}}));
     ASSERT_EQ(affected.size(), std::size_t(2));
-    ASSERT_EQ(project.live_variants(1).size(), std::size_t(1));
+    ASSERT_EQ(project.live_variants(Fid{1}).size(), std::size_t(1));
 
     // TU 2 shares file 1's variant: the live set does not grow.
     project.apply_manifest(pool,
-                           11,
-                           manifest_for(tu2_fv,
-                                        {
-                                            {fv_a, 100}
-    }));
-    ASSERT_EQ(project.live_variants(1).size(), std::size_t(1));
+                           Fid{
+                               11
+    },
+                           manifest_for(tu2_fv, {{fv_a, 100}}));
+    ASSERT_EQ(project.live_variants(Fid{1}).size(), std::size_t(1));
 
     // TU 1 re-indexes with a new variant for file 1 and drops file 2: both
     // hashes stay live on file 1 (TU 2 still holds the old one), file 2
     // loses its only contribution.
     project.apply_manifest(pool,
-                           10,
-                           manifest_for(tu1_fv,
-                                        {
-                                            {fv_a, 300}
-    }));
-    ASSERT_EQ(project.live_variants(1).size(), std::size_t(2));
-    ASSERT_TRUE(project.live_variants(2).empty());
+                           Fid{
+                               10
+    },
+                           manifest_for(tu1_fv, {{fv_a, 300}}));
+    ASSERT_EQ(project.live_variants(Fid{1}).size(), std::size_t(2));
+    ASSERT_TRUE(project.live_variants(Fid{2}).empty());
 
-    project.remove_manifest(pool, 11);
-    auto live = project.live_variants(1);
+    project.remove_manifest(pool, Fid{11});
+    auto live = project.live_variants(Fid{1});
     ASSERT_EQ(live.size(), std::size_t(1));
     ASSERT_EQ(live.front(), 300u);
 
-    project.remove_manifest(pool, 10);
+    project.remove_manifest(pool, Fid{10});
     ASSERT_TRUE(project.contributions.empty());
 }
 
@@ -241,7 +237,7 @@ TEST_CASE(GlobalRoundTripWithRealMerge) {
 
     clice::FileTable fresh;
     index::ProjectIndex loaded;
-    llvm::DenseMap<std::uint32_t, std::uint64_t> pins;
+    llvm::DenseMap<VersionID, std::uint64_t> pins;
     ASSERT_TRUE(loaded.load_global(buf.str(), fresh, pins));
 
     auto symbol = find_symbol(loaded, "global_value");
@@ -249,7 +245,7 @@ TEST_CASE(GlobalRoundTripWithRealMerge) {
     auto main_path = pool.resolve(file_ids_map[view.path_count() - 1]);
     auto fresh_id = fresh.find(main_path);
     ASSERT_TRUE(fresh_id.has_value());
-    ASSERT_TRUE(loaded.symbols[symbol].reference_files.contains(*fresh_id));
+    ASSERT_TRUE(loaded.symbols[symbol].reference_files.contains(fresh_id->raw));
 }
 
 };  // TEST_SUITE(ProjectIndex)

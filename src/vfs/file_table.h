@@ -2,6 +2,7 @@
 
 #include <cassert>
 #include <cstdint>
+#include <format>
 #include <memory>
 #include <optional>
 
@@ -45,6 +46,89 @@ struct ObservedFile {
     std::unique_ptr<llvm::MemoryBuffer> content;
 };
 
+/// A file id: the FileTable's compact handle for one interned path
+/// spelling. A distinct type so fids, version ids and other integers
+/// cannot mix silently. Default-constructed = invalid ("no file").
+struct Fid {
+    std::uint32_t raw = ~0u;
+
+    constexpr bool valid() const {
+        return raw != ~0u;
+    }
+
+    friend constexpr auto operator<=>(Fid, Fid) = default;
+};
+
+/// A version id: the FileTable's handle for one (file, content hash)
+/// pair. Default-constructed = invalid ("no version").
+struct VersionID {
+    std::uint32_t raw = ~0u;
+
+    constexpr bool valid() const {
+        return raw != ~0u;
+    }
+
+    friend constexpr auto operator<=>(VersionID, VersionID) = default;
+};
+
+}  // namespace clice
+
+template <>
+struct llvm::DenseMapInfo<clice::Fid> {
+    static clice::Fid getEmptyKey() {
+        return {DenseMapInfo<std::uint32_t>::getEmptyKey()};
+    }
+
+    static clice::Fid getTombstoneKey() {
+        return {DenseMapInfo<std::uint32_t>::getTombstoneKey()};
+    }
+
+    static unsigned getHashValue(clice::Fid fid) {
+        return DenseMapInfo<std::uint32_t>::getHashValue(fid.raw);
+    }
+
+    static bool isEqual(clice::Fid lhs, clice::Fid rhs) {
+        return lhs == rhs;
+    }
+};
+
+template <>
+struct llvm::DenseMapInfo<clice::VersionID> {
+    static clice::VersionID getEmptyKey() {
+        return {DenseMapInfo<std::uint32_t>::getEmptyKey()};
+    }
+
+    static clice::VersionID getTombstoneKey() {
+        return {DenseMapInfo<std::uint32_t>::getTombstoneKey()};
+    }
+
+    static unsigned getHashValue(clice::VersionID vid) {
+        return DenseMapInfo<std::uint32_t>::getHashValue(vid.raw);
+    }
+
+    static bool isEqual(clice::VersionID lhs, clice::VersionID rhs) {
+        return lhs == rhs;
+    }
+};
+
+/// Ids appear directly in log messages and test-failure output; format
+/// as the raw id.
+template <>
+struct std::formatter<clice::Fid> : std::formatter<std::uint32_t> {
+    auto format(clice::Fid fid, auto& ctx) const {
+        return std::formatter<std::uint32_t>::format(fid.raw, ctx);
+    }
+};
+
+template <>
+struct std::formatter<clice::VersionID> : std::formatter<std::uint32_t> {
+    auto format(clice::VersionID vid, auto& ctx) const {
+        return std::formatter<std::uint32_t>::format(vid.raw, ctx);
+    }
+};
+
+namespace clice {
+
 /// Read a file and hash its bytes under the pairing discipline: open a
 /// handle, fstat it, read through it, fstat again. Equal fstats prove
 /// the stat describes the bytes (an in-place write racing the read moves
@@ -83,13 +167,14 @@ std::optional<ObservedFile> read_file_observed(const char* path);
 struct FileTable {
     llvm::BumpPtrAllocator allocator;
     llvm::SmallVector<llvm::StringRef> spellings;
-    llvm::StringMap<std::uint32_t> ids;
+    llvm::StringMap<Fid> ids;
 
-    std::uint32_t intern(llvm::StringRef path) {
+    Fid intern(llvm::StringRef path) {
         llvm::SmallString<256> storage;
         path = path::canonical(path, storage);
 
-        auto [it, inserted] = ids.try_emplace(path, spellings.size());
+        auto [it, inserted] =
+            ids.try_emplace(path, Fid{static_cast<std::uint32_t>(spellings.size())});
         if(inserted) {
             // Allocate with null terminator so that resolve().data() is safe
             // to use as const char* (e.g. in MemoryBuffer::getFile which calls strlen).
@@ -102,14 +187,14 @@ struct FileTable {
         return it->second;
     }
 
-    llvm::StringRef resolve(std::uint32_t fid) const {
-        assert(fid < spellings.size());
-        return spellings[fid];
+    llvm::StringRef resolve(Fid fid) const {
+        assert(fid.raw < spellings.size());
+        return spellings[fid.raw];
     }
 
     /// Look up a path without interning it, applying the same
     /// normalization as intern().
-    std::optional<std::uint32_t> find(llvm::StringRef path) const {
+    std::optional<Fid> find(llvm::StringRef path) const {
         llvm::SmallString<256> storage;
         path = path::canonical(path, storage);
         auto it = ids.find(path);
@@ -150,7 +235,7 @@ struct FileTable {
         bool earned = false;
     };
 
-    llvm::DenseMap<std::uint32_t, EntityBinding> bindings;
+    llvm::DenseMap<Fid, EntityBinding> bindings;
 
     /// Last reliable same-source {stat, hash} pair per entity: the shared
     /// baseline every consumer's staleness check draws from and repairs —
@@ -162,33 +247,24 @@ struct FileTable {
     /// spelling is its own entity and the observed id is ignored:
     /// hardlinks stay unmerged, and replace detection falls back to the
     /// stat pair — the pre-entity behavior.
-    static std::pair<std::uint64_t, std::uint64_t> entity_key(std::uint32_t fid,
+    static std::pair<std::uint64_t, std::uint64_t> entity_key(Fid fid,
                                                               std::uint64_t uid_device,
                                                               std::uint64_t uid_file) {
         if constexpr(!fs::stable_file_ids) {
-            return {~0ull, fid};
+            return {~0ull, fid.raw};
         }
         return {uid_device, uid_file};
-    }
-
-    /// The entity for a filesystem identity, allocating on first sight.
-    /// `fresh` reports allocation — a fid binding to a brand-new entity
-    /// has nothing to wrongly inherit.
-    std::uint32_t intern_entity(std::uint64_t uid_device, std::uint64_t uid_file, bool& fresh) {
-        auto [it, inserted] = entity_ids.try_emplace({uid_device, uid_file},
-                                                     static_cast<std::uint32_t>(entity_ids.size()));
-        fresh = inserted;
-        return it->second;
     }
 
     /// Re-verify (and if needed re-establish) the fid's entity binding
     /// against the identity a live stat just returned. Returns the
     /// binding; `earned` is false until a read through this fid confirms
-    /// it (see EntityBinding).
-    EntityBinding& bind(std::uint32_t fid, std::uint64_t uid_device, std::uint64_t uid_file) {
-        bool fresh = false;
-        auto [key_device, key_file] = entity_key(fid, uid_device, uid_file);
-        auto entity = intern_entity(key_device, key_file, fresh);
+    /// it (see EntityBinding). A fid binding to a brand-new entity has
+    /// nothing to wrongly inherit, so it is born earned.
+    EntityBinding& bind(Fid fid, std::uint64_t uid_device, std::uint64_t uid_file) {
+        auto [it, fresh] = entity_ids.try_emplace(entity_key(fid, uid_device, uid_file),
+                                                  static_cast<std::uint32_t>(entity_ids.size()));
+        auto entity = it->second;
         auto& binding = bindings[fid];
         if(binding.entity != entity) {
             binding.entity = entity;
@@ -201,7 +277,7 @@ struct FileTable {
     /// filesystem identity, or nullopt when someone must read. Equality
     /// against the shared pair, never a watermark: the hash is "the hash
     /// of the bytes that had this stat", nothing else.
-    std::optional<std::uint64_t> cached_hash(std::uint32_t fid,
+    std::optional<std::uint64_t> cached_hash(Fid fid,
                                              std::uint64_t size,
                                              std::int64_t mtime_ns,
                                              std::uint64_t uid_device,
@@ -225,20 +301,18 @@ struct FileTable {
     /// read()) as the entity's shared pair; the read also earns the fid
     /// its binding. Unpaired reads carry a true hash but no stat proof,
     /// so they never become the pair.
-    void observe(std::uint32_t fid, const DiskObservation& obs) {
-        bool fresh = false;
-        auto [key_device, key_file] = entity_key(fid, obs.uid_device, obs.uid_file);
-        auto entity = intern_entity(key_device, key_file, fresh);
-        bindings[fid] = {.entity = entity, .earned = true};
+    void observe(Fid fid, const DiskObservation& obs) {
+        auto& binding = bind(fid, obs.uid_device, obs.uid_file);
+        binding.earned = true;
         if(obs.reliable) {
-            disk_states[entity] = obs;
+            disk_states[binding.entity] = obs;
         }
     }
 
     /// Read the file under the pairing discipline and refresh the shared
     /// pair. nullopt = unreadable right now (the pair is left untouched;
     /// what a failed read means is the caller's policy).
-    std::optional<DiskObservation> read(std::uint32_t fid) {
+    std::optional<DiskObservation> read(Fid fid) {
         auto observed = read_file_observed(resolve(fid).data());
         if(!observed) {
             return std::nullopt;
@@ -249,7 +323,7 @@ struct FileTable {
 
     /// Stat the file and produce a same-source observation of its
     /// current content. nullopt = missing or unreadable.
-    std::optional<DiskObservation> current(std::uint32_t fid) {
+    std::optional<DiskObservation> current(Fid fid) {
         llvm::sys::fs::file_status status;
         if(llvm::sys::fs::status(resolve(fid), status)) {
             return std::nullopt;
@@ -263,8 +337,7 @@ struct FileTable {
     /// a real read (which repairs the pair for every later consumer; its
     /// observation may describe a newer stat than the caller's, which is
     /// then simply newer truth). nullopt = unreadable right now.
-    std::optional<DiskObservation> observe_for(std::uint32_t fid,
-                                               const llvm::sys::fs::file_status& status) {
+    std::optional<DiskObservation> observe_for(Fid fid, const llvm::sys::fs::file_status& status) {
         auto size = status.getSize();
         auto mtime_ns = fs::mtime_ns(status);
         auto uid = status.getUniqueID();
@@ -289,21 +362,29 @@ struct FileTable {
     /// falls through to the hash comparison, which repairs the fast path
     /// in place — once, for every consumer of the version.
     struct FileVersion {
-        std::uint32_t fid = 0;
+        Fid fid;
         std::uint64_t content_hash = 0;
         std::uint64_t size = 0;
         std::int64_t mtime_ns = 0;
     };
 
-    /// Version table. Ids are monotonic and never reused — persisted
-    /// index manifests stay resolvable against any later table (or are
-    /// detected as stale). Within a session the table is append-only:
-    /// persistence garbage-collects unreferenced versions from the blob it
-    /// writes, never from memory, so a version one consumer stops
-    /// referencing can still anchor another consumer's staleness check.
-    llvm::DenseMap<std::uint32_t, FileVersion> versions;
-    llvm::DenseMap<std::pair<std::uint32_t, std::uint64_t>, std::uint32_t> version_ids;
-    std::uint32_t next_version_id = 0;
+    /// Version table, indexed by VersionID. Ids are monotonic and never
+    /// reused — persisted index manifests stay resolvable against any
+    /// later table (or are detected as stale). Within a session the table
+    /// is append-only: persistence garbage-collects unreferenced versions
+    /// from the blob it writes, never from memory, so a version one
+    /// consumer stops referencing can still anchor another consumer's
+    /// staleness check. Adopting a persisted table (load_global) leaves
+    /// the garbage-collected ids as holes — records with an invalid fid
+    /// that nothing references; knows_version tells them apart.
+    llvm::SmallVector<FileVersion> versions;
+    llvm::DenseMap<std::pair<Fid, std::uint64_t>, VersionID> version_ids;
+
+    /// Whether the id names a live version (in range and not a hole left
+    /// by adopting a garbage-collected persisted table).
+    bool knows_version(VersionID vid) const {
+        return vid.raw < versions.size() && versions[vid.raw].fid.valid();
+    }
 
     /// Bumped whenever a version's stat fast path is written (stamped at
     /// capture or repaired by a check) or revoked (force_revalidate).
@@ -311,20 +392,19 @@ struct FileTable {
     /// table changed under it.
     std::uint64_t stamp_generation = 0;
 
-    const FileVersion& version(std::uint32_t vid) const {
-        auto it = versions.find(vid);
-        assert(it != versions.end());
-        return it->second;
+    const FileVersion& version(VersionID vid) const {
+        assert(vid.raw < versions.size());
+        return versions[vid.raw];
     }
 
     /// The version id for (fid, content hash), interning a new record on
     /// first sight.
-    std::uint32_t intern_version(std::uint32_t fid, std::uint64_t content_hash) {
-        auto [it, inserted] = version_ids.try_emplace({fid, content_hash}, next_version_id);
+    VersionID intern_version(Fid fid, std::uint64_t content_hash) {
+        auto [it, inserted] =
+            version_ids.try_emplace({fid, content_hash},
+                                    VersionID{static_cast<std::uint32_t>(versions.size())});
         if(inserted) {
-            versions.try_emplace(next_version_id,
-                                 FileVersion{.fid = fid, .content_hash = content_hash});
-            next_version_id += 1;
+            versions.push_back(FileVersion{.fid = fid, .content_hash = content_hash});
         }
         return it->second;
     }
@@ -337,14 +417,13 @@ struct FileTable {
     /// path would then judge them fresh forever. An already-stamped version
     /// keeps its stamp (it was earned the same way; concurrent captures of
     /// one version must not regress each other).
-    void try_stamp(std::uint32_t vid,
+    void try_stamp(VersionID vid,
                    std::uint64_t size,
                    std::int64_t mtime_ns,
                    std::uint64_t uid_device,
                    std::uint64_t uid_file) {
-        auto it = versions.find(vid);
-        assert(it != versions.end());
-        auto& version = it->second;
+        assert(vid.raw < versions.size());
+        auto& version = versions[vid.raw];
         if(version.mtime_ns != 0 || version.content_hash == 0) {
             return;
         }
@@ -376,10 +455,9 @@ struct FileTable {
     /// try_stamp's corroboration discipline back then, which is what makes
     /// it trustworthy without a live pair now. Only fills a hole: a stamp
     /// earned this session describes the same bytes at least as recently.
-    void adopt_stamp(std::uint32_t vid, std::uint64_t size, std::int64_t mtime_ns) {
-        auto it = versions.find(vid);
-        assert(it != versions.end());
-        auto& version = it->second;
+    void adopt_stamp(VersionID vid, std::uint64_t size, std::int64_t mtime_ns) {
+        assert(vid.raw < versions.size());
+        auto& version = versions[vid.raw];
         if(version.mtime_ns == 0 && version.content_hash != 0 && mtime_ns != 0) {
             version.size = size;
             version.mtime_ns = mtime_ns;
@@ -392,7 +470,7 @@ struct FileTable {
     /// stat fast paths, the shared pair a check would consult instead of
     /// reading, and verdicts already memoized in the current wave, which
     /// would bypass the forced point entirely.
-    void force_revalidate(std::uint32_t fid) {
+    void force_revalidate(Fid fid) {
         // Entity-level: dropping only fid-scoped anchors would leave the
         // pair — and the version stamps of a hardlinked spelling of the
         // same file — vouching for bytes this call says to re-read.
@@ -402,7 +480,11 @@ struct FileTable {
             disk_states.erase(entity);
         }
         bool revoked = false;
-        for(auto& [vid, version]: versions) {
+        for(std::uint32_t i = 0; i < versions.size(); i += 1) {
+            auto& version = versions[i];
+            if(!version.fid.valid()) {
+                continue;
+            }
             bool same_file = version.fid == fid;
             if(!same_file && entity != ~0u) {
                 auto alias = bindings.find(version.fid);
@@ -412,7 +494,7 @@ struct FileTable {
                 revoked = revoked || version.mtime_ns != 0;
                 version.size = 0;
                 version.mtime_ns = 0;
-                wave_verdicts.erase(vid);
+                wave_verdicts.erase(VersionID{i});
             }
         }
         // Revocation is stamp movement like any other: persisted stamps
@@ -446,13 +528,11 @@ struct FileTable {
     /// before the persisted id space loads) never allocates ids. Raw
     /// results only — the module-name backfill below is configuration
     /// output and must not enter a content-keyed slot.
-    llvm::DenseMap<std::pair<std::uint32_t, std::uint64_t>, ScanResult> scan_results;
+    llvm::DenseMap<std::pair<Fid, std::uint64_t>, ScanResult> scan_results;
 
     /// The scan of exactly these bytes, whose hash the caller proved to be
     /// `content_hash` (a paired read), computed on first sight.
-    const ScanResult& scan_of(std::uint32_t fid,
-                              std::uint64_t content_hash,
-                              llvm::StringRef content) {
+    const ScanResult& scan_of(Fid fid, std::uint64_t content_hash, llvm::StringRef content) {
         auto [it, inserted] = scan_results.try_emplace({fid, content_hash});
         if(inserted) {
             it->second = scan_quick(content);
@@ -492,16 +572,40 @@ struct FileTable {
     llvm::StringMap<DirListing> dir_listings;
 
     /// Wave-scoped verdict memo: one top-level check operation (a
-    /// deps_changed chain, an index need_update batch) opens a wave, and
+    /// deps_changed chain, an index need_update batch) opens a Wave, and
     /// every version is settled at most once inside it. Within a wave, a
     /// version with no fast path is validated by a real read exactly once;
     /// the repair the read performs is what later waves' fast paths are
-    /// made of. A wave must not span a suspension point — a save landing
-    /// mid-wave would leave memoized verdicts describing the old disk.
-    llvm::DenseMap<std::uint32_t, Verdict> wave_verdicts;
+    /// made of.
+    llvm::DenseMap<VersionID, Verdict> wave_verdicts;
+    bool wave_open = false;
 
-    void begin_wave() {
-        wave_verdicts.clear();
+    /// RAII scope of one memo wave: verdicts live exactly as long as the
+    /// guard, so a memo of one operation can never leak into the next.
+    /// Waves do not nest, and a wave must not span a suspension point —
+    /// a save landing mid-wave would leave memoized verdicts describing
+    /// the old disk.
+    class [[nodiscard]] Wave {
+    public:
+        explicit Wave(FileTable& table) : table(table) {
+            assert(!table.wave_open && "waves do not nest");
+            table.wave_open = true;
+        }
+
+        ~Wave() {
+            table.wave_verdicts.clear();
+            table.wave_open = false;
+        }
+
+        Wave(const Wave&) = delete;
+        Wave& operator=(const Wave&) = delete;
+
+    private:
+        FileTable& table;
+    };
+
+    Wave wave() {
+        return Wave(*this);
     }
 
     /// The unified two-layer staleness check: stat equality against the
@@ -509,7 +613,8 @@ struct FileTable {
     /// compartment (feeding both compartments), comparing the bytes'
     /// hash against the version's and repairing the fast path on a
     /// match. Memoized within the current wave.
-    Verdict check_version(std::uint32_t vid) {
+    Verdict check_version(VersionID vid) {
+        assert(wave_open && "check_version outside a Wave");
         if(auto it = wave_verdicts.find(vid); it != wave_verdicts.end()) {
             return it->second;
         }
@@ -525,7 +630,7 @@ private:
     /// stat changes the UniqueID and must fall through to a read. A fid
     /// with no earned binding keeps cross-session trust: adopted stamps
     /// serve the cold start before any read has happened.
-    bool stamp_identity_holds(std::uint32_t fid, const llvm::sys::fs::file_status& status) const {
+    bool stamp_identity_holds(Fid fid, const llvm::sys::fs::file_status& status) const {
         auto binding = bindings.find(fid);
         if(binding == bindings.end() || !binding->second.earned) {
             return true;
@@ -535,10 +640,9 @@ private:
         return entity != entity_ids.end() && entity->second == binding->second.entity;
     }
 
-    Verdict check_version_uncached(std::uint32_t vid) {
-        auto it = versions.find(vid);
-        assert(it != versions.end());
-        auto& version = it->second;
+    Verdict check_version_uncached(VersionID vid) {
+        assert(vid.raw < versions.size());
+        auto& version = versions[vid.raw];
 
         llvm::sys::fs::file_status status;
         if(llvm::sys::fs::status(resolve(version.fid), status)) {

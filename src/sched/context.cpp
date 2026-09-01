@@ -79,7 +79,7 @@ static ConfigID pick_host_config(Workspace& workspace,
     return candidates.front().config;
 }
 
-HeaderMode ContextResolver::header_mode(llvm::StringRef path, std::uint32_t path_id) const {
+HeaderMode ContextResolver::header_mode(llvm::StringRef path, Fid path_id) const {
     // Keep in sync with the client's C++ fragment detection
     // (editors/vscode/src/feature/context.ts).
     if(path.ends_with(".def") || path.ends_with(".inc") || path.ends_with(".inl") ||
@@ -92,23 +92,21 @@ HeaderMode ContextResolver::header_mode(llvm::StringRef path, std::uint32_t path
     return HeaderMode::Unknown;
 }
 
-void ContextResolver::forget_self_contained(std::uint32_t path_id) {
+void ContextResolver::forget_self_contained(Fid path_id) {
     if(auto it = header_modes.find(path_id);
        it != header_modes.end() && it->second == HeaderMode::SelfContained) {
         header_modes.erase(it);
     }
 }
 
-std::uint64_t ContextResolver::persisted_mode_hash(std::uint32_t path_id) const {
+std::uint64_t ContextResolver::persisted_mode_hash(Fid path_id) const {
     if(header_modes.lookup(path_id) != HeaderMode::NeedsContext) {
         return 0;
     }
     return header_mode_hashes.lookup(path_id);
 }
 
-void ContextResolver::record_header_mode(std::uint32_t path_id,
-                                         HeaderMode mode,
-                                         std::uint64_t content_hash) {
+void ContextResolver::record_header_mode(Fid path_id, HeaderMode mode, std::uint64_t content_hash) {
     auto persisted = persisted_mode_hash(path_id);
     header_modes[path_id] = mode;
     if(mode == HeaderMode::NeedsContext) {
@@ -119,7 +117,7 @@ void ContextResolver::record_header_mode(std::uint32_t path_id,
     }
 }
 
-void ContextResolver::reset_header_mode(std::uint32_t path_id) {
+void ContextResolver::reset_header_mode(Fid path_id) {
     if(persisted_mode_hash(path_id) != 0) {
         workspace.mark_artifacts_dirty();
     }
@@ -127,9 +125,8 @@ void ContextResolver::reset_header_mode(std::uint32_t path_id) {
     header_mode_hashes.erase(path_id);
 }
 
-void ContextResolver::dump_mode_slices(
-    std::vector<CacheModeEntry>& modes,
-    llvm::function_ref<std::uint32_t(std::uint32_t)> intern_id) const {
+void ContextResolver::dump_mode_slices(std::vector<CacheModeEntry>& modes,
+                                       llvm::function_ref<std::uint32_t(Fid)> intern_id) const {
     for(auto& [path_id, mode]: header_modes) {
         if(mode != HeaderMode::NeedsContext)
             continue;
@@ -147,7 +144,7 @@ void ContextResolver::dump_mode_slices(
 void ContextResolver::dump_choice_slices(
     std::vector<CacheContextEntry>& contexts,
     std::vector<CacheArtifactEntry>& artifacts,
-    llvm::function_ref<std::uint32_t(std::uint32_t)> intern_id,
+    llvm::function_ref<std::uint32_t(Fid)> intern_id,
     llvm::function_ref<std::uint32_t(llvm::StringRef)> intern_path) const {
     for(auto& entry: synthesized_hosts) {
         artifacts.push_back({intern_path(entry.getKey()), intern_id(entry.second)});
@@ -156,7 +153,7 @@ void ContextResolver::dump_choice_slices(
     for(auto& [path_id, saved]: saved_contexts) {
         CacheContextEntry entry;
         entry.file = intern_id(path_id);
-        entry.host = saved.host_path_id != no_path_id ? intern_id(saved.host_path_id) : ~0u;
+        entry.host = saved.host_path_id.valid() ? intern_id(saved.host_path_id) : ~0u;
         entry.occurrence = saved.occurrence.value_or(~0u);
         entry.command_hash = saved.command_hash;
         entry.base_hash = saved.base_hash;
@@ -217,11 +214,11 @@ void ContextResolver::load_choice_slices(
 }
 
 bool ContextResolver::fill_header_context_args(llvm::StringRef path,
-                                               std::uint32_t path_id,
+                                               Fid path_id,
                                                std::string& directory,
                                                std::vector<std::string>& arguments,
                                                ContextUse use,
-                                               std::uint32_t* host_path_id,
+                                               Fid* host_path_id,
                                                CommandRef* out_ref) {
     // Opening one of our own synthesized files (prefix/suffix/snapshot):
     // it is a fragment of the host TU it was synthesized for, so compile
@@ -267,7 +264,7 @@ bool ContextResolver::fill_header_context_args(llvm::StringRef path,
     // occurrence — even #0 — only has meaning under includer-context
     // semantics, so it forces synthesis regardless of the verdict.
     const SavedContext* choice = active_choice(use, path_id);
-    bool has_host_choice = choice && choice->host_path_id != no_path_id;
+    bool has_host_choice = choice && choice->host_path_id.valid();
     bool synthesize = header_mode(path, path_id) == HeaderMode::NeedsContext ||
                       (has_host_choice && choice->occurrence.has_value());
 
@@ -286,7 +283,7 @@ bool ContextResolver::fill_header_context_args(llvm::StringRef path,
                                     cached->host_command_hash != choice->command_hash ||
                                     cached->host_base_hash != choice->base_hash);
             bool mode_mismatch = cached->preamble_path.empty() == synthesize;
-            workspace.file_table.begin_wave();
+            auto wave = workspace.file_table.wave();
             if(override_mismatch || mode_mismatch ||
                deps_changed(workspace.file_table, cached->deps)) {
                 drop_header_context(path_id);
@@ -361,7 +358,7 @@ CommandSource ContextResolver::resolve_command(llvm::StringRef path,
                                                std::string& directory,
                                                std::vector<std::string>& arguments,
                                                ContextUse use,
-                                               std::uint32_t* host_path_id,
+                                               Fid* host_path_id,
                                                llvm::ArrayRef<std::string> extra_prepend,
                                                llvm::ArrayRef<std::string> extra_append,
                                                CommandRef* out_ref) {
@@ -388,7 +385,7 @@ CommandSource ContextResolver::resolve_command(llvm::StringRef path,
             // Multi-config projects: honor the user's chosen CDB entry,
             // matched by entry hash so the choice survives CDB reordering.
             const SavedContext* choice = active_choice(use, path_id);
-            if(choice && choice->host_path_id == no_path_id && !choice->command_hash.empty()) {
+            if(choice && !choice->host_path_id.valid() && !choice->command_hash.empty()) {
                 bool base_matched = false;
                 if(!choice->base_hash.empty()) {
                     for(auto& candidate: candidates) {
@@ -421,7 +418,7 @@ CommandSource ContextResolver::resolve_command(llvm::StringRef path,
     };
 
     const SavedContext* choice = active_choice(use, path_id);
-    bool has_host_choice = choice && choice->host_path_id != no_path_id;
+    bool has_host_choice = choice && choice->host_path_id.valid();
 
     // 1. If the file has an active header context via switchContext, use the
     //    host source's CDB entry with file path replaced and preamble injected.
@@ -470,7 +467,7 @@ CommandSource ContextResolver::resolve_command(llvm::StringRef path,
     return CommandSource::Fallback;
 }
 
-void ContextResolver::append_suffix_include(std::uint32_t path_id, std::string& text) {
+void ContextResolver::append_suffix_include(Fid path_id, std::string& text) {
     auto* context = header_context(path_id);
     if(!context || context->suffix_path.empty()) {
         return;
@@ -490,7 +487,7 @@ void ContextResolver::append_suffix_include(std::uint32_t path_id, std::string& 
     text += "\"\n";
 }
 
-std::optional<HeaderContext> ContextResolver::resolve_header_context(std::uint32_t header_path_id,
+std::optional<HeaderContext> ContextResolver::resolve_header_context(Fid header_path_id,
                                                                      ContextUse use,
                                                                      bool synthesize) {
     // Find source files that transitively include this header.
@@ -502,11 +499,11 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(std::uint32
 
     // If there's an active context override, prefer that host (and its
     // chosen include occurrence).
-    std::uint32_t host_path_id = 0;
+    Fid host_path_id;
     std::optional<std::uint32_t> occurrence;
-    std::vector<std::uint32_t> chain;
+    std::vector<Fid> chain;
     const SavedContext* choice = active_choice(use, header_path_id);
-    bool has_host_choice = choice && choice->host_path_id != no_path_id;
+    bool has_host_choice = choice && choice->host_path_id.valid();
     if(has_host_choice) {
         auto preferred = choice->host_path_id;
         auto preferred_path = workspace.file_table.resolve(preferred);
@@ -552,7 +549,7 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(std::uint32
     }
 
     if(!synthesize) {
-        llvm::SmallVector<std::uint32_t> chain_ids(chain.begin(), chain.end() - 1);
+        llvm::SmallVector<Fid> chain_ids(chain.begin(), chain.end() - 1);
         return HeaderContext{host_path_id,
                              "",
                              0,
@@ -620,7 +617,7 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(std::uint32
     DepsSnapshot deps;
     chain_contents.reserve(chain.size() - 1);
     chain_entries.reserve(chain.size() - 1);
-    deps.deps.reserve(chain.size());
+    deps.reserve(chain.size());
     for(std::size_t i = 0; i + 1 < chain.size(); ++i) {
         auto cur_path = workspace.file_table.resolve(chain[i]);
         auto observed = read_file_observed(cur_path.data());
@@ -631,13 +628,13 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(std::uint32
         chain_contents.emplace_back(observed->content->getBuffer());
         chain_entries.push_back({cur_path, chain_contents.back()});
         workspace.file_table.observe(chain[i], observed->obs);
-        deps.deps.push_back({.path_id = chain[i], .hash = observed->obs.hash});
-        workspace.file_table.try_stamp(
-            workspace.file_table.intern_version(chain[i], observed->obs.hash),
-            observed->obs.size,
-            observed->obs.mtime_ns,
-            observed->obs.uid_device,
-            observed->obs.uid_file);
+        auto vid = workspace.file_table.intern_version(chain[i], observed->obs.hash);
+        deps.push_back({.path_id = chain[i], .version = vid});
+        workspace.file_table.try_stamp(vid,
+                                       observed->obs.size,
+                                       observed->obs.mtime_ns,
+                                       observed->obs.uid_device,
+                                       observed->obs.uid_file);
     }
 
     // Snapshot the header itself for other occurrences along the chain:
@@ -729,17 +726,17 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(std::uint32
     // The chain files' snapshot (`deps`) was recorded as they were read:
     // their content lives inside the synthesized preamble, so clang's own
     // dependency tracking never sees them.
-    llvm::SmallVector<std::uint32_t> chain_ids(chain.begin(), chain.end() - 1);
+    llvm::SmallVector<Fid> chain_ids(chain.begin(), chain.end() - 1);
     if(!self_snapshot_path.empty()) {
         // The self-snapshot mirrors the header's disk state; re-synthesize
         // when it changes so other-occurrence expansions stay current.
-        deps.deps.push_back({.path_id = chain.back(), .hash = target_observed->obs.hash});
-        workspace.file_table.try_stamp(
-            workspace.file_table.intern_version(chain.back(), target_observed->obs.hash),
-            target_observed->obs.size,
-            target_observed->obs.mtime_ns,
-            target_observed->obs.uid_device,
-            target_observed->obs.uid_file);
+        auto vid = workspace.file_table.intern_version(chain.back(), target_observed->obs.hash);
+        deps.push_back({.path_id = chain.back(), .version = vid});
+        workspace.file_table.try_stamp(vid,
+                                       target_observed->obs.size,
+                                       target_observed->obs.mtime_ns,
+                                       target_observed->obs.uid_device,
+                                       target_observed->obs.uid_file);
     }
 
     return HeaderContext{host_path_id,
@@ -770,7 +767,7 @@ bool ContextResolver::pin_alive(llvm::StringRef entry_path, const SavedContext& 
     return false;
 }
 
-void ContextResolver::validate_saved_context(std::uint32_t path_id) {
+void ContextResolver::validate_saved_context(Fid path_id) {
     auto path = workspace.file_table.resolve(path_id);
 
     // A context choice persisted from an earlier session stays authoritative
@@ -782,7 +779,7 @@ void ContextResolver::validate_saved_context(std::uint32_t path_id) {
         auto& saved = it->second;
 
         bool valid = false;
-        if(saved.host_path_id != no_path_id) {
+        if(saved.host_path_id.valid()) {
             auto host_path = ws.file_table.resolve(saved.host_path_id);
             valid = ws.cdb.has_entry(host_path) &&
                     !ws.dep_graph.find_include_chain(saved.host_path_id, path_id).empty() &&

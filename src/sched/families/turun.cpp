@@ -21,11 +21,11 @@ TURunFamily::TURunFamily(TaskGraph& graph,
 
 void TURunFamily::register_runner() {
     graph.register_family(turun_family, [this](RoundContext& ctx, NodeId id) {
-        return round(ctx, static_cast<std::uint32_t>(id.key));
+        return round(ctx, Fid{static_cast<std::uint32_t>(id.key)});
     });
 }
 
-kota::task<TURunFamily::Outcome> TURunFamily::run(std::uint32_t path_id, Plan plan, Guards guards) {
+kota::task<TURunFamily::Outcome> TURunFamily::run(Fid path_id, Plan plan, Guards guards) {
     inputs[path_id] = {std::move(plan), std::move(guards)};
     // A clean node left by an earlier success must not satisfy this request
     // without running: the request's existence means work is owed, so
@@ -44,7 +44,7 @@ kota::task<TURunFamily::Outcome> TURunFamily::run(std::uint32_t path_id, Plan pl
     co_return outcome;
 }
 
-kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, std::uint32_t path_id) {
+kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
     auto it = inputs.find(path_id);
     assert(it != inputs.end() && "a TURun round spawns only under run()'s stash");
     // Copied: the map may rehash under a concurrent run() for another
@@ -72,7 +72,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, std::uint32_t pat
     // when it produces the resolved line, and every later consumer of
     // params.arguments (dependency scan, worker parse) sees one truth.
     auto extras = tidy::command_extra_args(params.tidy_extra_args, params.tidy_extra_args_before);
-    std::uint32_t host_path_id = no_path_id;
+    Fid host_path_id;
     auto source = contexts.resolve_command(file_path,
                                            params.directory,
                                            params.arguments,
@@ -115,7 +115,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, std::uint32_t pat
         PCMFamily::ModuleDeps deps;
         if(own_module) {
             deps.resolved.push_back(path_id);
-            deps.declared.push_back({pcm_family, path_id});
+            deps.declared.push_back({pcm_family, path_id.raw});
         }
         // The scan must evaluate the same conditionals the worker's
         // parse will — the resolved command already carries the plan's
@@ -156,7 +156,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, std::uint32_t pat
                 break;
             }
             for(auto dep: deps.resolved) {
-                if(co_await ctx.depend({pcm_family, dep}) == DependResult::Cancelled) {
+                if(co_await ctx.depend({pcm_family, dep.raw}) == DependResult::Cancelled) {
                     landed[path_id] = {.verdict = Verdict::Preempted};
                     co_return RoundOutcome::Stale;
                 }

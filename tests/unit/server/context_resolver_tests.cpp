@@ -35,7 +35,7 @@ TEST_CASE(ChoiceNeedsSession) {
     };
     auto pinned = candidates.back().config;
     resolver.saved_contexts[file] =
-        SavedContext{no_path_id, std::nullopt, workspace.cdb.entry_hash_hex(pinned)};
+        SavedContext{Fid{}, std::nullopt, workspace.cdb.entry_hash_hex(pinned)};
 
     // An open session honors the pinned CDB entry...
     auto session = store.open(file);
@@ -75,10 +75,8 @@ TEST_CASE(PinBaseSurvivesRules) {
 
     // A pin whose applied hash went stale (a rule edit since it was saved)
     // but whose base identity is recorded still selects its candidate...
-    resolver.saved_contexts[file] = SavedContext{no_path_id,
-                                                 std::nullopt,
-                                                 "0123456789abcdef",
-                                                 workspace.cdb.entry_hash_hex(pinned)};
+    resolver.saved_contexts[file] =
+        SavedContext{Fid{}, std::nullopt, "0123456789abcdef", workspace.cdb.entry_hash_hex(pinned)};
     auto session = store.open(file);
     std::string directory;
     std::vector<std::string> arguments;
@@ -86,7 +84,7 @@ TEST_CASE(PinBaseSurvivesRules) {
     ASSERT_TRUE(llvm::is_contained(arguments, define_of(pinned)));
 
     // ...while the same stale hash without a base falls back to the default.
-    resolver.saved_contexts[file] = SavedContext{no_path_id, std::nullopt, "0123456789abcdef", ""};
+    resolver.saved_contexts[file] = SavedContext{Fid{}, std::nullopt, "0123456789abcdef", ""};
     arguments.clear();
     resolver.resolve_command(path, directory, arguments, ContextUse::Editor);
     ASSERT_TRUE(llvm::is_contained(arguments, define_of(candidates.front().config)));
@@ -107,7 +105,7 @@ TEST_CASE(ValidateKeepsValidChoice) {
 
     auto host = workspace.file_table.intern(tmp.path("host.cpp"));
     auto header = workspace.file_table.intern(tmp.path("h.h"));
-    workspace.dep_graph.set_includes(host, 0, {header});
+    workspace.dep_graph.set_includes(host, 0, {{header}});
     workspace.dep_graph.build_reverse_map();
     resolver.saved_contexts[header] = SavedContext{host, std::nullopt, ""};
 
@@ -141,7 +139,7 @@ TEST_CASE(ValidateDropsStaleChoice) {
     ASSERT_FALSE(resolver.saved_contexts.contains(header));
 
     // A command pin whose hash matches no current CDB entry.
-    resolver.saved_contexts[main_file] = SavedContext{no_path_id, std::nullopt, "deadbeef"};
+    resolver.saved_contexts[main_file] = SavedContext{Fid{}, std::nullopt, "deadbeef"};
     auto main_session = store.open(main_file);
     resolver.validate_saved_context(main_session->path_id);
     ASSERT_FALSE(resolver.saved_contexts.contains(main_file));
@@ -160,17 +158,17 @@ TEST_CASE(InvalidateDropsBorrowed) {
     ASSERT_FALSE(resolver.header_contexts.contains(borrowed));
 
     // A synthesized context re-validates its chain by content hash: the
-    // shared version's fast path is dropped, the consumed hash stays.
+    // shared version's fast path is dropped, the consumed version stays.
     auto& context = resolver.header_contexts[synthesized];
-    context.deps.deps.push_back({.path_id = borrowed, .hash = 7});
     auto vid = workspace.file_table.intern_version(borrowed, 7);
+    context.deps.push_back({.path_id = borrowed, .version = vid});
     workspace.file_table.adopt_stamp(vid, 42, 123);
     ASSERT_EQ(workspace.file_table.version(vid).mtime_ns, 123);
     auto stamps = workspace.file_table.stamp_generation;
     resolver.invalidate_header_deps(synthesized);
     ASSERT_TRUE(resolver.header_contexts.contains(synthesized));
     ASSERT_EQ(workspace.file_table.version(vid).mtime_ns, 0);
-    ASSERT_EQ(resolver.header_contexts[synthesized].deps.deps[0].hash, 7u);
+    ASSERT_EQ(resolver.header_contexts[synthesized].deps[0].version, vid);
     // The revocation is stamp movement — what tells persistence the
     // dropped fast path must not survive in the global blob.
     ASSERT_TRUE(workspace.file_table.stamp_generation != stamps);
@@ -192,11 +190,11 @@ TEST_CASE(UnboundVerdictStaysLocal) {
     ASSERT_TRUE(resolver.header_mode(path, id) == HeaderMode::NeedsContext);
 
     std::vector<CacheModeEntry> slices;
-    resolver.dump_mode_slices(slices, [](std::uint32_t fid) { return fid; });
+    resolver.dump_mode_slices(slices, [](Fid fid) { return fid.raw; });
     ASSERT_TRUE(slices.empty());
 
     ContextResolver restarted(workspace);
-    slices.push_back({id, static_cast<std::uint32_t>(HeaderMode::NeedsContext), 0});
+    slices.push_back({id.raw, static_cast<std::uint32_t>(HeaderMode::NeedsContext), 0});
     restarted.load_mode_slices(slices, [&](std::uint32_t) -> llvm::StringRef { return path; });
     ASSERT_TRUE(restarted.header_mode(path, id) == HeaderMode::Unknown);
 }
@@ -215,7 +213,7 @@ TEST_CASE(ModeSliceContentGate) {
 
     resolver.record_header_mode(id, HeaderMode::NeedsContext, disk->hash);
     std::vector<CacheModeEntry> slices;
-    resolver.dump_mode_slices(slices, [](std::uint32_t fid) { return fid; });
+    resolver.dump_mode_slices(slices, [](Fid fid) { return fid.raw; });
     ASSERT_EQ(slices.size(), 1u);
 
     auto resolve = [&](std::uint32_t) -> llvm::StringRef {

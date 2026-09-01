@@ -86,8 +86,8 @@ TEST_CASE(NewProviderDirtiesImporters) {
 
     ContextResolver resolver(workspace);
     PCMHarness ph(workspace, resolver);
-    ph.graph.declare({turun_family, closed}, {PCMFamily::unresolved_node("m")});
-    ph.graph.declare({ast_family, open}, {PCMFamily::unresolved_node("m")});
+    ph.graph.declare({turun_family, closed.raw}, {PCMFamily::unresolved_node("m")});
+    ph.graph.declare({ast_family, open.raw}, {PCMFamily::unresolved_node("m")});
     Invalidator invalidator(workspace, store, resolver, ph.pcm);
 
     FileEvent events[] = {FileEvent::disk_changed(iface)};
@@ -124,7 +124,7 @@ TEST_CASE(ReloadProviderCascades) {
 
     ContextResolver resolver(workspace);
     PCMHarness ph(workspace, resolver);
-    ph.graph.declare({turun_family, retired}, {PCMFamily::unresolved_node("m")});
+    ph.graph.declare({turun_family, retired.raw}, {PCMFamily::unresolved_node("m")});
     Invalidator invalidator(workspace, store, resolver, ph.pcm);
 
     FileEvent::CDBDelta delta;
@@ -192,8 +192,8 @@ TEST_CASE(SaveResetsTrialOnly) {
 
     // The saved file itself is not stale — its buffer was already current —
     // only its self-containment verdict needs re-evaluation.
-    ASSERT_EQ(dirty.reset_trial, llvm::SmallVector<std::uint32_t>{saved});
-    ASSERT_EQ(dirty.reset_header_mode, llvm::SmallVector<std::uint32_t>{saved});
+    ASSERT_EQ(dirty.reset_trial, llvm::SmallVector<Fid>{saved});
+    ASSERT_EQ(dirty.reset_header_mode, llvm::SmallVector<Fid>{saved});
     ASSERT_TRUE(dirty.mark_ast_dirty.empty());
     ASSERT_TRUE(dirty.force_revalidate.empty());
     ASSERT_TRUE(dirty.recheck_contexts);
@@ -210,8 +210,8 @@ TEST_CASE(CascadeSplitsOpenClosed) {
     ContextResolver resolver(workspace);
     PCMHarness ph(workspace, resolver);
     // The consumer edges build_deps declares in production — no rounds.
-    auto node = [](std::uint32_t pid) {
-        return NodeId{pcm_family, pid};
+    auto node = [](Fid pid) {
+        return NodeId{pcm_family, pid.raw};
     };
     ph.graph.declare(node(open_user), {node(mod)});
     ph.graph.declare(node(closed_user), {node(mod)});
@@ -223,8 +223,8 @@ TEST_CASE(CascadeSplitsOpenClosed) {
 
     // Cascade-dirtied module units split by session state: open buffers
     // recompile, closed files go back to the background indexer.
-    EXPECT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{open_user});
-    llvm::SmallVector<std::uint32_t> reindexed{mod, closed_user};
+    EXPECT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<Fid>{open_user});
+    llvm::SmallVector<Fid> reindexed{mod, closed_user};
     llvm::sort(reindexed);
     EXPECT_EQ(dirty.reindex_deps_only, reindexed);
     EXPECT_TRUE(dirty.reindex_content_changed.empty());
@@ -253,14 +253,14 @@ TEST_CASE(ChainHitAndMiss) {
     // Every context embedding the saved file re-validates and drops its
     // verdict; a closed one additionally reindexes in the background — its
     // shard rows were built under the old chain.
-    llvm::SmallVector<std::uint32_t> revalidated{hit, closed};
+    llvm::SmallVector<Fid> revalidated{hit, closed};
     llvm::sort(revalidated);
     ASSERT_EQ(dirty.force_revalidate, revalidated);
-    llvm::SmallVector<std::uint32_t> reset{saved, hit, closed};
+    llvm::SmallVector<Fid> reset{saved, hit, closed};
     llvm::sort(reset);
     ASSERT_EQ(dirty.reset_header_mode, reset);
     // The closed header's own content did not change — only its chain did.
-    ASSERT_EQ(dirty.reindex_deps_only, llvm::SmallVector<std::uint32_t>{closed});
+    ASSERT_EQ(dirty.reindex_deps_only, llvm::SmallVector<Fid>{closed});
     ASSERT_TRUE(dirty.reindex_content_changed.empty());
 }
 
@@ -270,8 +270,8 @@ TEST_CASE(SaveMarksDependents) {
     auto header = workspace.file_table.intern("/proj/h.h");
     auto open_tu = workspace.file_table.intern("/proj/a.cpp");
     auto closed_tu = workspace.file_table.intern("/proj/b.cpp");
-    workspace.dep_graph.set_includes(open_tu, 0, {header});
-    workspace.dep_graph.set_includes(closed_tu, 0, {header});
+    workspace.dep_graph.set_includes(open_tu, 0, {{header}});
+    workspace.dep_graph.set_includes(closed_tu, 0, {{header}});
     workspace.dep_graph.build_reverse_map();
     store.open(open_tu);
 
@@ -283,8 +283,8 @@ TEST_CASE(SaveMarksDependents) {
     // Open dependents recompile, closed ones reindex; the old/new dependent
     // snapshots overlap fully here, so this also proves the dedup. A
     // dependent's own content did not change: deps-only.
-    ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{open_tu});
-    ASSERT_EQ(dirty.reindex_deps_only, llvm::SmallVector<std::uint32_t>{closed_tu});
+    ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<Fid>{open_tu});
+    ASSERT_EQ(dirty.reindex_deps_only, llvm::SmallVector<Fid>{closed_tu});
     ASSERT_TRUE(dirty.reindex_content_changed.empty());
 }
 
@@ -294,8 +294,8 @@ TEST_CASE(TransitiveDependentsEnqueue) {
     auto header = workspace.file_table.intern("/proj/h.h");
     auto middle = workspace.file_table.intern("/proj/g.h");
     auto root = workspace.file_table.intern("/proj/c.cpp");
-    workspace.dep_graph.set_includes(middle, 0, {header});
-    workspace.dep_graph.set_includes(root, 0, {middle});
+    workspace.dep_graph.set_includes(middle, 0, {{header}});
+    workspace.dep_graph.set_includes(root, 0, {{middle}});
     workspace.dep_graph.build_reverse_map();
 
     ContextResolver resolver(workspace);
@@ -304,7 +304,7 @@ TEST_CASE(TransitiveDependentsEnqueue) {
     auto dirty = invalidator.apply(FileEvent::buffer_saved(header));
 
     // Only root TUs own index shards; the intermediate header is not one.
-    ASSERT_EQ(dirty.reindex_deps_only, llvm::SmallVector<std::uint32_t>{root});
+    ASSERT_EQ(dirty.reindex_deps_only, llvm::SmallVector<Fid>{root});
     ASSERT_TRUE(dirty.reindex_content_changed.empty());
     ASSERT_TRUE(dirty.mark_ast_dirty.empty());
 }
@@ -315,18 +315,18 @@ TEST_CASE(StaleReverseMapUnion) {
     auto header = workspace.file_table.intern("/proj/h.h");
     auto known = workspace.file_table.intern("/proj/a.cpp");
     auto unmapped = workspace.file_table.intern("/proj/b.cpp");
-    workspace.dep_graph.set_includes(known, 0, {header});
+    workspace.dep_graph.set_includes(known, 0, {{header}});
     workspace.dep_graph.build_reverse_map();
     // Edge added without rebuilding the reverse map: visible only after the
     // save's rescan rebuilds it. Both snapshots must contribute.
-    workspace.dep_graph.set_includes(unmapped, 0, {header});
+    workspace.dep_graph.set_includes(unmapped, 0, {{header}});
 
     ContextResolver resolver(workspace);
     PCMHarness ph(workspace, resolver);
     Invalidator invalidator(workspace, store, resolver, ph.pcm);
     auto dirty = invalidator.apply(FileEvent::buffer_saved(header));
 
-    llvm::SmallVector<std::uint32_t> expected{known, unmapped};
+    llvm::SmallVector<Fid> expected{known, unmapped};
     llvm::sort(expected);
     ASSERT_EQ(dirty.reindex_deps_only, expected);
     ASSERT_TRUE(dirty.reindex_content_changed.empty());
@@ -347,7 +347,7 @@ TEST_CASE(CloseWithoutShardReindexes) {
     auto dirty = invalidator.apply(FileEvent::buffer_closed(closed));
 
     // No shard to compare against: nothing serves this file's rows anyway.
-    ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<std::uint32_t>{closed});
+    ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<Fid>{closed});
     ASSERT_TRUE(dirty.reindex_deps_only.empty());
     ASSERT_TRUE(dirty.reschedule_indexing);
     ASSERT_TRUE(dirty.mark_ast_dirty.empty());
@@ -369,7 +369,7 @@ TEST_CASE(CloseCurrentShardDepsOnly) {
     Invalidator invalidator(workspace, store, resolver, ph.pcm);
     auto dirty = invalidator.apply(FileEvent::buffer_closed(closed));
 
-    ASSERT_EQ(dirty.reindex_deps_only, llvm::SmallVector<std::uint32_t>{closed});
+    ASSERT_EQ(dirty.reindex_deps_only, llvm::SmallVector<Fid>{closed});
     ASSERT_TRUE(dirty.reindex_content_changed.empty());
 }
 
@@ -389,7 +389,7 @@ TEST_CASE(CloseDivergentShardContentChanged) {
     Invalidator invalidator(workspace, store, resolver, ph.pcm);
     auto dirty = invalidator.apply(FileEvent::buffer_closed(closed));
 
-    ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<std::uint32_t>{closed});
+    ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<Fid>{closed});
     ASSERT_TRUE(dirty.reindex_deps_only.empty());
 }
 
@@ -408,7 +408,7 @@ TEST_CASE(CloseStaleModuleCascades) {
     workspace.pcm_cache[mod] = {
         .path = "/cache/m.pcm",
         .key = "k",
-        .deps = {.deps = {DepState{.path_id = mod, .missing = true}}},
+        .deps = {DepState{.path_id = mod, .missing = true}},
     };
 
     ContextResolver resolver(workspace);
@@ -416,9 +416,9 @@ TEST_CASE(CloseStaleModuleCascades) {
     ph.graph.declare(
         {
             turun_family,
-            user
+            user.raw
     },
-        {{pcm_family, mod}});
+        {{pcm_family, mod.raw}});
     Invalidator invalidator(workspace, store, resolver, ph.pcm);
     auto dirty = invalidator.apply(FileEvent::buffer_closed(mod));
 
@@ -440,7 +440,7 @@ TEST_CASE(CloseRefreshesEdges) {
     auto file = workspace.file_table.intern(tmp.path("a.cpp"));
     auto old_header = workspace.file_table.intern("/proj/old.h");
     auto new_header = workspace.file_table.intern(tmp.path("new.h"));
-    workspace.dep_graph.set_includes(file, 0, {old_header});
+    workspace.dep_graph.set_includes(file, 0, {{old_header}});
     workspace.dep_graph.build_reverse_map();
 
     auto disk = llvm::MemoryBuffer::getFile(tmp.path("a.cpp"));
@@ -468,7 +468,7 @@ TEST_CASE(DeferredDiskChangeCascades) {
     SessionStore store;
     auto header = workspace.file_table.intern(tmp.path("h.h"));
     auto tu = workspace.file_table.intern("/proj/a.cpp");
-    workspace.dep_graph.set_includes(tu, 0, {header});
+    workspace.dep_graph.set_includes(tu, 0, {{header}});
     workspace.dep_graph.build_reverse_map();
     workspace.shards[header] = shard_of("int rewritten;");
     store.open(header);
@@ -506,7 +506,7 @@ TEST_CASE(CloseFirstProviderCascades) {
 
     ContextResolver resolver(workspace);
     PCMHarness ph(workspace, resolver);
-    ph.graph.declare({turun_family, importer}, {PCMFamily::unresolved_node("m")});
+    ph.graph.declare({turun_family, importer.raw}, {PCMFamily::unresolved_node("m")});
     Invalidator invalidator(workspace, store, resolver, ph.pcm);
 
     auto dirty = invalidator.apply(FileEvent::buffer_closed(iface));
@@ -537,9 +537,9 @@ TEST_CASE(CloseProviderRenameCascades) {
     ph.graph.declare(
         {
             turun_family,
-            importer
+            importer.raw
     },
-        {{pcm_family, iface}});
+        {{pcm_family, iface.raw}});
     Invalidator invalidator(workspace, store, resolver, ph.pcm);
 
     auto dirty = invalidator.apply(FileEvent::buffer_closed(iface));
@@ -589,7 +589,8 @@ TEST_CASE(CloseStalePCMCascades) {
     workspace.pcm_cache[mod] = {
         .path = "/cache/m.pcm",
         .key = "k",
-        .deps = {.deps = {DepState{.path_id = mod, .hash = 1234}}},
+        .deps = {DepState{.path_id = mod,
+                          .version = workspace.file_table.intern_version(mod, 1234)}},
     };
 
     ContextResolver resolver(workspace);
@@ -597,13 +598,13 @@ TEST_CASE(CloseStalePCMCascades) {
     ph.graph.declare(
         {
             turun_family,
-            user
+            user.raw
     },
-        {{pcm_family, mod}});
+        {{pcm_family, mod.raw}});
     Invalidator invalidator(workspace, store, resolver, ph.pcm);
     auto dirty = invalidator.apply(FileEvent::buffer_closed(mod));
 
-    llvm::SmallVector<std::uint32_t> reindexed{mod, user};
+    llvm::SmallVector<Fid> reindexed{mod, user};
     llvm::sort(reindexed);
     EXPECT_EQ(dirty.reindex_deps_only, reindexed);
     EXPECT_TRUE(dirty.reindex_content_changed.empty());
@@ -621,10 +622,10 @@ TEST_CASE(CrashMarksLostDirty) {
     ContextResolver resolver(workspace);
     PCMHarness ph(workspace, resolver);
     Invalidator invalidator(workspace, store, resolver, ph.pcm);
-    std::uint32_t lost[] = {first, second};
+    Fid lost[] = {first, second};
     auto dirty = invalidator.apply(FileEvent::worker_crashed(lost));
 
-    llvm::SmallVector<std::uint32_t> expected{first, second};
+    llvm::SmallVector<Fid> expected{first, second};
     llvm::sort(expected);
     ASSERT_EQ(dirty.mark_lost, expected);
     // A crash loses build products, not compile inputs: no trial reset.
@@ -644,7 +645,7 @@ TEST_CASE(EvictionMarksLost) {
     auto dirty = invalidator.apply(FileEvent::document_evicted(file));
 
     // Same loss as a crash, scoped to one document.
-    ASSERT_EQ(dirty.mark_lost, llvm::SmallVector<std::uint32_t>{file});
+    ASSERT_EQ(dirty.mark_lost, llvm::SmallVector<Fid>{file});
     ASSERT_TRUE(dirty.mark_ast_dirty.empty());
     ASSERT_TRUE(dirty.reset_trial.empty());
 }
@@ -661,7 +662,7 @@ TEST_CASE(BatchSavesDeduplicate) {
     FileEvent events[] = {FileEvent::buffer_saved(saved), FileEvent::buffer_saved(saved)};
     auto dirty = invalidator.apply(events);
 
-    ASSERT_EQ(dirty.reset_trial, llvm::SmallVector<std::uint32_t>{saved});
+    ASSERT_EQ(dirty.reset_trial, llvm::SmallVector<Fid>{saved});
 }
 
 TEST_CASE(SaveDivergentDiskDirties) {
@@ -682,7 +683,7 @@ TEST_CASE(SaveDivergentDiskDirties) {
 
     // The session recompiles so its deps snapshot re-validates against the
     // rewritten disk instead of describing a state that no longer exists.
-    ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{saved});
+    ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<Fid>{saved});
 }
 
 TEST_CASE(SaveUnreadableDiskDirties) {
@@ -701,7 +702,7 @@ TEST_CASE(SaveUnreadableDiskDirties) {
     Invalidator invalidator(workspace, store, resolver, ph.pcm);
     auto dirty = invalidator.apply(FileEvent::buffer_saved(saved));
 
-    ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{saved});
+    ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<Fid>{saved});
 }
 
 TEST_CASE(DiskChangeOpenMarksDirty) {
@@ -719,8 +720,8 @@ TEST_CASE(DiskChangeOpenMarksDirty) {
     // compile's deps validation judges the disk change, but no rescan and
     // no cascade. The file's shard describes the old disk, so its reindex
     // queues alongside (skipped while open-file indexing is off).
-    ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{open_file});
-    ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<std::uint32_t>{open_file});
+    ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<Fid>{open_file});
+    ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<Fid>{open_file});
     ASSERT_TRUE(dirty.reindex_deps_only.empty());
     ASSERT_TRUE(dirty.reset_trial.empty());
     ASSERT_FALSE(dirty.recheck_contexts);
@@ -732,8 +733,8 @@ TEST_CASE(DiskChangeClosedCascades) {
     auto header = workspace.file_table.intern("/proj/h.h");
     auto open_tu = workspace.file_table.intern("/proj/a.cpp");
     auto closed_tu = workspace.file_table.intern("/proj/b.cpp");
-    workspace.dep_graph.set_includes(open_tu, 0, {header});
-    workspace.dep_graph.set_includes(closed_tu, 0, {header});
+    workspace.dep_graph.set_includes(open_tu, 0, {{header}});
+    workspace.dep_graph.set_includes(closed_tu, 0, {{header}});
     workspace.dep_graph.build_reverse_map();
     store.open(open_tu);
 
@@ -745,10 +746,10 @@ TEST_CASE(DiskChangeClosedCascades) {
     // A closed file's disk change cascades exactly like a save, plus the
     // file's own stale shard is refreshed. The changed file's own rows are
     // untrustworthy; its dependent only rebuilds semantics.
-    ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{open_tu});
-    ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<std::uint32_t>{header});
-    ASSERT_EQ(dirty.reindex_deps_only, llvm::SmallVector<std::uint32_t>{closed_tu});
-    ASSERT_EQ(dirty.reset_trial, llvm::SmallVector<std::uint32_t>{header});
+    ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<Fid>{open_tu});
+    ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<Fid>{header});
+    ASSERT_EQ(dirty.reindex_deps_only, llvm::SmallVector<Fid>{closed_tu});
+    ASSERT_EQ(dirty.reset_trial, llvm::SmallVector<Fid>{header});
     ASSERT_TRUE(dirty.recheck_contexts);
     ASSERT_TRUE(dirty.reschedule_indexing);
 }
@@ -759,8 +760,8 @@ TEST_CASE(DiskRemovedScrubsSourceRole) {
     auto header = workspace.file_table.intern("/proj/h.h");
     auto removed_tu = workspace.file_table.intern("/proj/gone.cpp");
     auto other_tu = workspace.file_table.intern("/proj/kept.cpp");
-    workspace.dep_graph.set_includes(removed_tu, 0, {header});
-    workspace.dep_graph.set_includes(other_tu, 0, {header});
+    workspace.dep_graph.set_includes(removed_tu, 0, {{header}});
+    workspace.dep_graph.set_includes(other_tu, 0, {{header}});
     workspace.dep_graph.build_reverse_map();
     auto epoch = workspace.context_epoch;
 
@@ -771,7 +772,7 @@ TEST_CASE(DiskRemovedScrubsSourceRole) {
 
     // The removed file stops being an includer (and thus a host-source
     // candidate); surviving includers are untouched, shards are kept.
-    ASSERT_EQ(workspace.dep_graph.get_includers(header), llvm::ArrayRef<std::uint32_t>{other_tu});
+    ASSERT_EQ(workspace.dep_graph.get_includers(header), llvm::ArrayRef<Fid>{other_tu});
     ASSERT_TRUE(workspace.dep_graph.get_all_includes(removed_tu).empty());
     ASSERT_TRUE(dirty.recheck_contexts);
     ASSERT_TRUE(dirty.reindex_content_changed.empty());
@@ -781,7 +782,7 @@ TEST_CASE(DiskRemovedScrubsSourceRole) {
     // The removal clears any pending-reindex state recorded earlier (e.g. a
     // DiskChanged observed just before deletion): the shard keeps serving
     // and nothing is left to reindex.
-    ASSERT_EQ(dirty.clear_reindex, llvm::SmallVector<std::uint32_t>{removed_tu});
+    ASSERT_EQ(dirty.clear_reindex, llvm::SmallVector<Fid>{removed_tu});
 }
 
 TEST_CASE(RemoveRecreateBatchOrder) {
@@ -800,7 +801,7 @@ TEST_CASE(RemoveRecreateBatchOrder) {
         auto dirty = invalidator.apply(events);
         ASSERT_TRUE(llvm::find(dirty.reindex_content_changed, file) ==
                     dirty.reindex_content_changed.end());
-        ASSERT_EQ(dirty.clear_reindex, llvm::SmallVector<std::uint32_t>{file});
+        ASSERT_EQ(dirty.clear_reindex, llvm::SmallVector<Fid>{file});
     }
 
     // Delete then recreate (an editor's atomic save): the later change must
@@ -841,7 +842,7 @@ TEST_CASE(EntryChangeThenRemoval) {
     // surviving drop would mask the shard and let the next save retire it.
     ASSERT_TRUE(dirty.drop_index.empty());
     ASSERT_TRUE(dirty.reindex_content_changed.empty());
-    ASSERT_EQ(dirty.clear_reindex, llvm::SmallVector<std::uint32_t>{file});
+    ASSERT_EQ(dirty.clear_reindex, llvm::SmallVector<Fid>{file});
 }
 
 TEST_CASE(CloseOfDeletedFile) {
@@ -859,7 +860,7 @@ TEST_CASE(CloseOfDeletedFile) {
     // The close is the first observation of the removal (the tracker skips
     // open files): keep any shard serving, do not record ContentChanged,
     // do not enqueue a nonexistent file.
-    ASSERT_EQ(dirty.clear_reindex, llvm::SmallVector<std::uint32_t>{file});
+    ASSERT_EQ(dirty.clear_reindex, llvm::SmallVector<Fid>{file});
     ASSERT_TRUE(dirty.reindex_content_changed.empty());
     ASSERT_TRUE(dirty.reindex_deps_only.empty());
 }
@@ -887,9 +888,9 @@ TEST_CASE(CDBAddedScansAndEnqueues) {
 
     // The rescan resolved the new entry's includes; the new file reindexes.
     // A command change rewrites rows as thoroughly as an edit.
-    ASSERT_EQ(workspace.dep_graph.get_includers(header_id), llvm::ArrayRef<std::uint32_t>{main_id});
-    ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<std::uint32_t>{main_id});
-    ASSERT_EQ(dirty.drop_index, llvm::SmallVector<std::uint32_t>{main_id});
+    ASSERT_EQ(workspace.dep_graph.get_includers(header_id), llvm::ArrayRef<Fid>{main_id});
+    ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<Fid>{main_id});
+    ASSERT_EQ(dirty.drop_index, llvm::SmallVector<Fid>{main_id});
     ASSERT_TRUE(dirty.reindex_deps_only.empty());
     ASSERT_TRUE(dirty.recheck_contexts);
 }
@@ -921,8 +922,8 @@ TEST_CASE(CDBChangedSplitsOpenClosed) {
 
     // Flag changes recompile open files and reindex closed ones; the
     // pull-side cache keys (canonical flags) miss on their own.
-    ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{open_id});
-    llvm::SmallVector<std::uint32_t> reindexed{open_id, closed_id};
+    ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<Fid>{open_id});
+    llvm::SmallVector<Fid> reindexed{open_id, closed_id};
     llvm::sort(reindexed);
     auto content_changed = dirty.reindex_content_changed;
     llvm::sort(content_changed);
@@ -957,9 +958,9 @@ TEST_CASE(CDBAddedOpenMarksDirty) {
     // The open file gained its first real entry: drop the guessed command
     // it was compiled with, and queue the reindex that builds its shard
     // under the real command once open-file indexing is on.
-    ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{file});
-    ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<std::uint32_t>{file});
-    ASSERT_EQ(dirty.drop_index, llvm::SmallVector<std::uint32_t>{file});
+    ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<Fid>{file});
+    ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<Fid>{file});
+    ASSERT_EQ(dirty.drop_index, llvm::SmallVector<Fid>{file});
     ASSERT_TRUE(dirty.reindex_deps_only.empty());
 }
 
@@ -976,7 +977,7 @@ TEST_CASE(CDBChangedDropsHostedContext) {
     ContextResolver resolver(workspace);
     resolver.header_contexts[open_header].host_path_id = host;
     resolver.header_contexts[closed_header].host_path_id = host;
-    resolver.header_contexts[other_header].host_path_id = no_path_id;
+    resolver.header_contexts[other_header].host_path_id = Fid{};
     PCMHarness ph(workspace, resolver);
     Invalidator invalidator(workspace, store, resolver, ph.pcm);
     FileEvent::CDBDelta delta;
@@ -987,10 +988,10 @@ TEST_CASE(CDBChangedDropsHostedContext) {
     // open one recompiles, the closed one reindexes. Any standalone index
     // of theirs borrowed the changed command too, so it is dropped along
     // with the host's. Unrelated contexts are untouched.
-    llvm::SmallVector<std::uint32_t> dropped{open_header, closed_header};
+    llvm::SmallVector<Fid> dropped{open_header, closed_header};
     llvm::sort(dropped);
     ASSERT_EQ(dirty.drop_context, dropped);
-    llvm::SmallVector<std::uint32_t> evicted{host, open_header, closed_header};
+    llvm::SmallVector<Fid> evicted{host, open_header, closed_header};
     llvm::sort(evicted);
     auto drop = dirty.drop_index;
     llvm::sort(drop);
@@ -1010,8 +1011,8 @@ TEST_CASE(CDBChangedCascadesModule) {
     ContextResolver resolver(workspace);
     PCMHarness ph(workspace, resolver);
     // The consumer edges build_deps declares in production — no rounds.
-    auto node = [](std::uint32_t pid) {
-        return NodeId{pcm_family, pid};
+    auto node = [](Fid pid) {
+        return NodeId{pcm_family, pid.raw};
     };
     ph.graph.declare(node(open_user), {node(mod)});
     ph.graph.declare(node(closed_user), {node(mod)});
@@ -1028,10 +1029,10 @@ TEST_CASE(CDBChangedCascadesModule) {
     // unit itself lands in both lists (its own entry changed AND the
     // cascade dirtied its PCM); the indexer's absorbing upgrade
     // resolves the overlap to ContentChanged.
-    EXPECT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{open_user});
-    EXPECT_EQ(dirty.reindex_content_changed, llvm::SmallVector<std::uint32_t>{mod});
-    EXPECT_EQ(dirty.drop_index, llvm::SmallVector<std::uint32_t>{mod});
-    llvm::SmallVector<std::uint32_t> deps{mod, closed_user};
+    EXPECT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<Fid>{open_user});
+    EXPECT_EQ(dirty.reindex_content_changed, llvm::SmallVector<Fid>{mod});
+    EXPECT_EQ(dirty.drop_index, llvm::SmallVector<Fid>{mod});
+    llvm::SmallVector<Fid> deps{mod, closed_user};
     llvm::sort(deps);
     EXPECT_EQ(dirty.reindex_deps_only, deps);
 }
@@ -1042,8 +1043,8 @@ TEST_CASE(DiskRemovedReindexesIncluders) {
     auto header = workspace.file_table.intern("/proj/h.h");
     auto open_tu = workspace.file_table.intern("/proj/a.cpp");
     auto closed_tu = workspace.file_table.intern("/proj/b.cpp");
-    workspace.dep_graph.set_includes(open_tu, 0, {header});
-    workspace.dep_graph.set_includes(closed_tu, 0, {header});
+    workspace.dep_graph.set_includes(open_tu, 0, {{header}});
+    workspace.dep_graph.set_includes(closed_tu, 0, {{header}});
     workspace.dep_graph.build_reverse_map();
     store.open(open_tu);
 
@@ -1054,8 +1055,8 @@ TEST_CASE(DiskRemovedReindexesIncluders) {
 
     // Dependents now compile against a missing include: open ones
     // recompile, closed ones reindex.
-    ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{open_tu});
-    ASSERT_EQ(dirty.reindex_deps_only, llvm::SmallVector<std::uint32_t>{closed_tu});
+    ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<Fid>{open_tu});
+    ASSERT_EQ(dirty.reindex_deps_only, llvm::SmallVector<Fid>{closed_tu});
     ASSERT_TRUE(dirty.reindex_content_changed.empty());
     ASSERT_TRUE(dirty.recheck_contexts);
 }
@@ -1071,7 +1072,7 @@ TEST_CASE(CDBRemovedDropsSourceRole) {
     // already been reloaded without it.
     auto gone_id = workspace.file_table.intern(tmp.path("gone.cpp"));
     auto header_id = workspace.file_table.intern(tmp.path("inc/h.h"));
-    workspace.dep_graph.set_includes(gone_id, 0, {header_id});
+    workspace.dep_graph.set_includes(gone_id, 0, {{header_id}});
     workspace.dep_graph.build_reverse_map();
     auto json = build_cdb_json({
         {tmp.root, tmp.path("kept.cpp"), {}}
@@ -1089,7 +1090,7 @@ TEST_CASE(CDBRemovedDropsSourceRole) {
     // The rebuild resolves includes from the surviving entries only. A
     // removed entry keeps its index — the last-known rows still serve.
     ASSERT_TRUE(workspace.dep_graph.get_all_includes(gone_id).empty());
-    ASSERT_EQ(workspace.dep_graph.get_includers(header_id), llvm::ArrayRef<std::uint32_t>{kept_id});
+    ASSERT_EQ(workspace.dep_graph.get_includers(header_id), llvm::ArrayRef<Fid>{kept_id});
     ASSERT_TRUE(dirty.drop_index.empty());
     ASSERT_TRUE(dirty.recheck_contexts);
 }
@@ -1120,7 +1121,7 @@ TEST_CASE(BatchDiskEventsDeduplicate) {
                           FileEvent::disk_changed(second)};
     auto dirty = invalidator.apply(events);
 
-    llvm::SmallVector<std::uint32_t> expected{first, second};
+    llvm::SmallVector<Fid> expected{first, second};
     llvm::sort(expected);
     ASSERT_EQ(dirty.reindex_content_changed, expected);
     ASSERT_TRUE(dirty.reindex_deps_only.empty());
@@ -1136,7 +1137,7 @@ TEST_CASE(SurvivingEdgeKeepsChoice) {
     ContextResolver resolver(workspace);
     auto host = workspace.file_table.intern("/proj/host.cpp");
     auto header = workspace.file_table.intern("/proj/h.h");
-    workspace.dep_graph.set_includes(host, 0, {header});
+    workspace.dep_graph.set_includes(host, 0, {{header}});
     workspace.dep_graph.build_reverse_map();
 
     auto session = store.open(header);
@@ -1182,7 +1183,7 @@ TEST_CASE(VanishedOccurrenceDropsChoice) {
     tmp.touch("h.h");
     auto host = workspace.file_table.intern(tmp.path("host.cpp"));
     auto header = workspace.file_table.intern(tmp.path("h.h"));
-    workspace.dep_graph.set_includes(host, 0, {header});
+    workspace.dep_graph.set_includes(host, 0, {{header}});
     workspace.dep_graph.build_reverse_map();
 
     store.open(header);

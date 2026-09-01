@@ -41,8 +41,8 @@ TEST_CASE(RoundTripIdentity) {
     // Ingest of an emitted URI must intern to the same ID as the original
     // canonical path — including the client-style encoded-colon spelling.
     FileTable pool;
-    constexpr std::uint32_t bad = 0xFFFFFFFF;
-    auto ingest = [&](llvm::StringRef uri) -> std::uint32_t {
+    constexpr Fid bad{0xFFFFFFFF};
+    auto ingest = [&](llvm::StringRef uri) -> Fid {
         auto parsed = kota::ipc::lsp::URI::parse(std::string_view(uri.data(), uri.size()));
         if(!parsed.has_value()) {
             return bad;

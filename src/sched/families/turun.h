@@ -120,13 +120,13 @@ public:
     /// request's existence means work is owed, and a clean node left by an
     /// earlier success would otherwise satisfy the join without running
     /// anything.
-    kota::task<Outcome> run(std::uint32_t path_id, Plan plan, Guards guards = {});
+    kota::task<Outcome> run(Fid path_id, Plan plan, Guards guards = {});
 
 private:
-    kota::task<RoundOutcome> round(RoundContext& ctx, std::uint32_t path_id);
+    kota::task<RoundOutcome> round(RoundContext& ctx, Fid path_id);
 
-    static NodeId node(std::uint32_t path_id) {
-        return {turun_family, path_id};
+    static NodeId node(Fid path_id) {
+        return {turun_family, path_id.raw};
     }
 
     TaskGraph& graph;
@@ -146,8 +146,8 @@ private:
     /// out after it. Each consumer runs one attempt per file at a time
     /// (the pump's ledger, the lint driver's sweep), so at most one live
     /// entry per TU.
-    llvm::DenseMap<std::uint32_t, Inputs> inputs;
-    llvm::DenseMap<std::uint32_t, Outcome> landed;
+    llvm::DenseMap<Fid, Inputs> inputs;
+    llvm::DenseMap<Fid, Outcome> landed;
 };
 
 }  // namespace clice

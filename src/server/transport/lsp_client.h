@@ -6,6 +6,7 @@
 #include <string>
 
 #include "support/signal.h"
+#include "vfs/file_table.h"
 
 #include "kota/async/async.h"
 #include "kota/codec/json/json.h"
@@ -30,7 +31,7 @@ private:
     /// interned path_id → open session (null when the document is not open).
     struct ResolvedDoc {
         std::string path;
-        std::uint32_t path_id;
+        Fid path_id;
         std::shared_ptr<Session> session;
     };
 
@@ -93,7 +94,7 @@ private:
     /// landing for an already-published version means the text did not
     /// change, so the client's pulled results went stale without any
     /// didChange to make it re-pull — the push path sends refreshes.
-    llvm::DenseMap<std::uint32_t, int> published_versions;
+    llvm::DenseMap<Fid, int> published_versions;
 
     /// Subscription to compile outputs; disconnects on destruction.
     Signal<std::shared_ptr<Session>>::Connection output_conn;

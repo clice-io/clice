@@ -108,8 +108,8 @@ public:
 
     kota::task<> shutdown_and_cleanup();
 
-    std::shared_ptr<Session> find_session(std::uint32_t path_id);
-    std::shared_ptr<Session> open_session(std::uint32_t path_id);
+    std::shared_ptr<Session> find_session(Fid path_id);
+    std::shared_ptr<Session> open_session(Fid path_id);
 
     /// Settle a freshly opened index-only buffer: escalate one that
     /// already diverged from its shard, or boost the file's background
@@ -121,7 +121,7 @@ public:
     /// session's output + on_output signal; a transport whose client has
     /// not completed the handshake drops it (nothing was ever pushed, so
     /// there is nothing to clear).
-    void close_session(std::uint32_t path_id);
+    void close_session(Fid path_id);
 
     /// The single entry point for file events: fold the batch through the
     /// Invalidator, then execute the resulting effects against the mutable
@@ -248,23 +248,23 @@ private:
 
     /// Dispatch- and landing-time admission on one claimed pump file: the
     /// serving side's veto (open sessions, index-only disk divergence).
-    Admission index_admission(std::uint32_t server_path_id);
+    Admission index_admission(Fid server_path_id);
 
     /// An index attempt settled with no retry pending; a session waiting
     /// on the index with nothing servable will never be served by it —
     /// escalate instead of letting it answer empty forever.
-    void index_attempt_settled(std::uint32_t server_path_id);
+    void index_attempt_settled(Fid server_path_id);
 
     /// Whether an open session serves this file's project rows (freshness
     /// clause 4) and a client already pulled some of them — the emit
     /// condition of on_serving_rows_changed.
-    bool serves_session_rows(std::uint32_t path_id) const;
+    bool serves_session_rows(Fid path_id) const;
 
     /// Filter a store row-change report down to the sessions actually
     /// serving those rows and wake the transports.
-    void index_rows_changed(llvm::ArrayRef<std::uint32_t> path_ids);
+    void index_rows_changed(llvm::ArrayRef<Fid> path_ids);
 
-    Signal<llvm::ArrayRef<std::uint32_t>>::Connection index_rows_conn;
+    Signal<llvm::ArrayRef<Fid>>::Connection index_rows_conn;
 
     void load_workspace();
 

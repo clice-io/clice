@@ -39,14 +39,14 @@ public:
         /// TUs owed a ContentChanged reindex: their rows are missing,
         /// stale or discarded and no in-process event would rebuild them.
         /// The pump claims these before the current attempt settles.
-        llvm::ArrayRef<std::uint32_t> reindex() const {
+        llvm::ArrayRef<Fid> reindex() const {
             return reindex_ids;
         }
 
         /// Files whose stored rows were replaced, re-masked or dropped
         /// while possibly index-served: the serving adapter checks which
         /// of them an open session actually serves and refreshes those.
-        llvm::ArrayRef<std::uint32_t> rows_changed() const {
+        llvm::ArrayRef<Fid> rows_changed() const {
             return rows_ids;
         }
 
@@ -55,13 +55,13 @@ public:
         /// one metadata retry; a live session's next save covers it.
         bool snapshot_stale = false;
 
-        void add_reindex(std::uint32_t id) {
+        void add_reindex(Fid id) {
             if(reindex_seen.insert(id).second) {
                 reindex_ids.push_back(id);
             }
         }
 
-        void add_rows_changed(std::uint32_t id) {
+        void add_rows_changed(Fid id) {
             if(rows_seen.insert(id).second) {
                 rows_ids.push_back(id);
             }
@@ -72,10 +72,10 @@ public:
         }
 
     private:
-        llvm::SmallVector<std::uint32_t> reindex_ids;
-        llvm::SmallVector<std::uint32_t> rows_ids;
-        llvm::DenseSet<std::uint32_t> reindex_seen;
-        llvm::DenseSet<std::uint32_t> rows_seen;
+        llvm::SmallVector<Fid> reindex_ids;
+        llvm::SmallVector<Fid> rows_ids;
+        llvm::DenseSet<Fid> reindex_seen;
+        llvm::DenseSet<Fid> rows_seen;
     };
 
     struct LoadResult {
@@ -103,7 +103,7 @@ public:
     /// compile-command change — where a surviving manifest would keep
     /// judging the old-command rows fresh, in this session and after a
     /// restart.
-    Report drop_index(std::uint32_t tu_path_id);
+    Report drop_index(Fid tu_path_id);
 
     /// Persist the dirty state (rewritten shards, replaced manifests, the
     /// global blob) through the index storage. Serialization runs on the
@@ -116,7 +116,7 @@ public:
     /// discovers before serializing joins the same snapshot; debt surfaced
     /// after it (write-time corruption recovery) comes back in the report
     /// with snapshot_stale set.
-    kota::task<Report> save(llvm::SmallVector<std::uint32_t> debt);
+    kota::task<Report> save(llvm::SmallVector<Fid> debt);
 
     /// Load the global blob, adopt every resolvable manifest, fetch the
     /// shard blobs the contributions expect, and sweep the rest.
@@ -128,7 +128,7 @@ public:
     /// Record the host source whose command a standalone-indexed header's
     /// retained rows borrowed. Written when a merge lands, persisted in
     /// the CDB snapshot for the offline invalidation diff.
-    void record_header_host(std::uint32_t header, std::uint32_t host) {
+    void record_header_host(Fid header, Fid host) {
         header_hosts[header] = host;
     }
 
@@ -201,8 +201,8 @@ private:
 
     /// Blobs mutated since the last save, plus whether the global blob
     /// (symbols, FileVersion table) changed.
-    llvm::DenseSet<std::uint32_t> dirty_shards;
-    llvm::DenseSet<std::uint32_t> dirty_manifests;
+    llvm::DenseSet<Fid> dirty_shards;
+    llvm::DenseSet<Fid> dirty_manifests;
     bool global_dirty = false;
 
     /// Blob removals discovered during load (stale manifests, orphan
@@ -230,16 +230,16 @@ private:
     /// include graph is rebuilt from the NEW commands before load(), so
     /// reachability alone cannot see a change that removed or redirected
     /// the very include edge the header's context came through.
-    llvm::DenseMap<std::uint32_t, std::uint32_t> header_hosts;
+    llvm::DenseMap<Fid, Fid> header_hosts;
 
     /// Filter the debt candidates down to standalone TUs the CDB snapshot
     /// must record: no manifest pin and no CDB entry means the snapshot is
     /// the only record that an index is owed.
-    llvm::SmallVector<std::uint32_t> standalone_of(llvm::ArrayRef<std::uint32_t> candidates);
+    llvm::SmallVector<Fid> standalone_of(llvm::ArrayRef<Fid> candidates);
 
     /// drop_index body, appending into the caller's report — reconcile
     /// drops several TUs into the one load report.
-    void drop_index_into(std::uint32_t tu_path_id, Report& report);
+    void drop_index_into(Fid tu_path_id, Report& report);
 
     /// Diff the persisted CDB snapshot against the live CDB and drop the
     /// index of every TU whose compile command changed while no server was
@@ -252,18 +252,18 @@ private:
 
     /// Per-round FileVersion staleness verdicts: many TUs share the same
     /// versions, and one stat (or repair) per version per round is enough.
-    llvm::DenseMap<std::uint32_t, bool> fv_verdicts;
+    llvm::DenseMap<VersionID, bool> fv_verdicts;
 
     /// Two-layer staleness test on a FileVersion, cached per round; a hash
     /// match after a stat mismatch repairs the version's stat fast path in
     /// place for every consumer.
-    bool file_version_stale(std::uint32_t fv_id);
+    bool file_version_stale(VersionID fv_id);
 
     /// Add every TU contributing to `path_id`'s shard to the report's
     /// reindex debt. Used when the file's resident rows are lost while its
     /// manifests still read fresh: no in-process event would ever rebuild
     /// them, and for standalone headers no restart sweep would either.
-    void requeue_owners(std::uint32_t path_id, Report& report);
+    void requeue_owners(Fid path_id, Report& report);
 
     /// Drop every resident shard that may borrow database memory —
     /// everything not dirty, since dirty shards own their bytes by

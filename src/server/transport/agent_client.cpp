@@ -95,7 +95,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
         auto filter = params.filter.value_or("all");
 
         ProjectFilesResult result;
-        llvm::DenseSet<std::uint32_t> seen;
+        llvm::DenseSet<Fid> seen;
 
         for(auto& entry: ws.cdb.entries()) {
             auto file_path = ws.file_table.resolve(entry.file);
@@ -168,13 +168,12 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
             if(direction == "includes" || direction == "both") {
                 auto includes = ws.dep_graph.get_all_includes(path_id);
                 for(auto inc_id: includes) {
-                    auto real_id = inc_id & DependencyGraph::PATH_ID_MASK;
-                    auto inc_path = ws.file_table.resolve(real_id);
+                    auto inc_path = ws.file_table.resolve(inc_id);
                     result.includes.push_back(DepEntry{.path = inc_path.str(), .depth = 1});
                 }
 
                 if(max_depth == 0 || max_depth > 1) {
-                    llvm::DenseSet<std::uint32_t> visited;
+                    llvm::DenseSet<Fid> visited;
                     visited.insert(path_id);
                     for(auto& dep: result.includes)
                         visited.insert(ws.file_table.intern(dep.path));
@@ -185,10 +184,9 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                         auto dep_id = ws.file_table.intern(result.includes[i].path);
                         auto sub = ws.dep_graph.get_all_includes(dep_id);
                         for(auto sub_id: sub) {
-                            auto real_id = sub_id & DependencyGraph::PATH_ID_MASK;
-                            if(!visited.insert(real_id).second)
+                            if(!visited.insert(sub_id).second)
                                 continue;
-                            auto sub_path = ws.file_table.resolve(real_id);
+                            auto sub_path = ws.file_table.resolve(sub_id);
                             result.includes.push_back(DepEntry{
                                 .path = sub_path.str(),
                                 .depth = result.includes[i].depth + 1,
@@ -206,7 +204,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                 }
 
                 if(max_depth == 0 || max_depth > 1) {
-                    llvm::DenseSet<std::uint32_t> visited;
+                    llvm::DenseSet<Fid> visited;
                     visited.insert(path_id);
                     for(auto& dep: result.includers) {
                         if(auto id = ws.file_table.find(dep.path))
@@ -254,7 +252,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
             }
 
             auto hosts = ws.dep_graph.find_host_sources(path_id);
-            llvm::DenseSet<std::uint32_t> seen;
+            llvm::DenseSet<Fid> seen;
             seen.insert(path_id);
             for(auto inc_id: direct_includers)
                 seen.insert(inc_id);
@@ -386,7 +384,7 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                     continue;
                 if(!is_document_level(symbol.kind))
                     continue;
-                if(!symbol.reference_files.contains(*path_id))
+                if(!symbol.reference_files.contains(path_id->raw))
                     continue;
 
                 merged_index.lookup(hash, RelationKind::Definition, [&](const index::Relation& r) {

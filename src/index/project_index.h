@@ -43,12 +43,11 @@ struct ProjectIndex {
     /// leave an older on-disk manifest serving as current.
     std::uint64_t global_generation = 0;
 
-    /// TU path_id -> its manifest.
-    llvm::DenseMap<std::uint32_t, TUManifest> manifests;
+    /// TU fid -> its manifest.
+    llvm::DenseMap<Fid, TUManifest> manifests;
 
-    /// Derived from `manifests`: file path_id -> (TU path_id -> rows hash).
-    llvm::DenseMap<std::uint32_t, llvm::SmallDenseMap<std::uint32_t, std::uint64_t, 2>>
-        contributions;
+    /// Derived from `manifests`: file fid -> (TU fid -> rows hash).
+    llvm::DenseMap<Fid, llvm::SmallDenseMap<Fid, std::uint64_t, 2>> contributions;
 
     /// Merge a TU's external symbols straight off the wire; `file_ids_map`
     /// maps the TU-local ids of `index`'s path table to pool ids. Symbol
@@ -59,9 +58,7 @@ struct ProjectIndex {
     /// caller rejects the whole result, because merged bits persist while
     /// the result's recorded versions match the disk, so lost bits would
     /// never be rebuilt.
-    bool merge(this ProjectIndex& self,
-               const TUIndex& index,
-               llvm::ArrayRef<std::uint32_t> file_ids_map);
+    bool merge(this ProjectIndex& self, const TUIndex& index, llvm::ArrayRef<Fid> file_ids_map);
 
     /// Whether every FileVersion id the manifest references is known —
     /// the loader's staleness gate for manifests read from disk.
@@ -72,21 +69,20 @@ struct ProjectIndex {
     /// Install (or replace) a TU's manifest and rederive the affected
     /// contribution entries. Returns the file path_ids whose contribution
     /// set changed — the caller refreshes those shards' live-variant masks.
-    llvm::SmallVector<std::uint32_t> apply_manifest(this ProjectIndex& self,
-                                                    const clice::FileTable& files,
-                                                    std::uint32_t tu_path_id,
-                                                    TUManifest manifest);
+    llvm::SmallVector<Fid> apply_manifest(this ProjectIndex& self,
+                                          const clice::FileTable& files,
+                                          Fid tu_path_id,
+                                          TUManifest manifest);
 
     /// Drop a TU's manifest and its contribution entries. Returns the
     /// affected file path_ids, like apply_manifest.
-    llvm::SmallVector<std::uint32_t> remove_manifest(this ProjectIndex& self,
-                                                     const clice::FileTable& files,
-                                                     std::uint32_t tu_path_id);
+    llvm::SmallVector<Fid> remove_manifest(this ProjectIndex& self,
+                                           const clice::FileTable& files,
+                                           Fid tu_path_id);
 
     /// The distinct rows hashes contributed to `path_id` — the file's live
     /// variant set.
-    llvm::SmallVector<std::uint64_t> live_variants(this const ProjectIndex& self,
-                                                   std::uint32_t path_id);
+    llvm::SmallVector<std::uint64_t> live_variants(this const ProjectIndex& self, Fid path_id);
 
     /// Serialize the global blob: the versions some manifest still
     /// references (the shared table is not touched — a version the index
@@ -109,7 +105,7 @@ struct ProjectIndex {
     bool load_global(this ProjectIndex& self,
                      llvm::StringRef data,
                      clice::FileTable& files,
-                     llvm::DenseMap<std::uint32_t, std::uint64_t>& manifest_pins);
+                     llvm::DenseMap<VersionID, std::uint64_t>& manifest_pins);
 };
 
 }  // namespace clice::index

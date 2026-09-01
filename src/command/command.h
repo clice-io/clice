@@ -152,7 +152,7 @@ enum class CommandSource : std::uint8_t {
 /// config plus the language the toolchain layer probes with. For a header
 /// borrowing a host command, `input` is the host's.
 struct CommandRef {
-    std::uint32_t file = ~0u;
+    Fid file;
     ConfigID config = invalid_config;
     InputKind input;
     CommandSource source = CommandSource::Fallback;
@@ -188,7 +188,7 @@ struct RenderOptions {
 /// A single entry in the compilation database.
 struct CompilationEntry {
     /// Fid of the source file (shared FileTable).
-    std::uint32_t file = ~0u;
+    Fid file;
 
     ConfigID config = invalid_config;
 
@@ -216,13 +216,13 @@ std::vector<std::string> to_strings(llvm::ArrayRef<const char*> argv);
 /// file table's fids (stable across reloads).
 struct CDBDiff {
     /// Files present only after the reload (gained their first entry).
-    llvm::SmallVector<std::uint32_t> added;
+    llvm::SmallVector<Fid> added;
 
     /// Files present only before the reload (lost all their entries).
-    llvm::SmallVector<std::uint32_t> removed;
+    llvm::SmallVector<Fid> removed;
 
     /// Files present on both sides whose set of command hashes differs.
-    llvm::SmallVector<std::uint32_t> changed;
+    llvm::SmallVector<Fid> changed;
 
     bool empty() const {
         return added.empty() && removed.empty() && changed.empty();
@@ -278,7 +278,7 @@ public:
 
     /// All entries for a file, in deterministic candidate order (the first
     /// is the default selection). Empty when the file has none.
-    llvm::ArrayRef<CompilationEntry> candidate_entries(std::uint32_t path_id) const;
+    llvm::ArrayRef<CompilationEntry> candidate_entries(Fid path_id) const;
     llvm::ArrayRef<CompilationEntry> candidate_entries(llvm::StringRef file);
 
     bool has_entry(llvm::StringRef file);
@@ -324,12 +324,12 @@ public:
     /// file may own several entries with different flags) — the identity
     /// reload_and_diff() diffs on and the indexer persists to catch command
     /// changes across sessions.
-    llvm::DenseMap<std::uint32_t, llvm::SmallVector<std::string, 1>> command_hash_snapshot();
+    llvm::DenseMap<Fid, llvm::SmallVector<std::string, 1>> command_hash_snapshot();
 
     /// The entry hash of a file's default selection (its first candidate);
     /// nullopt when the file has no entry. Persisted so an offline change
     /// of the winning candidate is detected at startup.
-    std::optional<std::string> selected_hash(std::uint32_t path_id);
+    std::optional<std::string> selected_hash(Fid path_id);
 
     /// Render the full compile argv for a ref: resolve the config through
     /// the toolchain (probe cached; may spawn the driver once per unique
@@ -385,13 +385,14 @@ private:
     /// The normalization pipeline (§ wrapper strip → driver info → @rsp
     /// expansion → nvcc translation → parse → classify → path normalize →
     /// dedup). `file` is the entry's normalized path used to pick the input
-    /// slot among the command's inputs; ~0u synthesizes the slot at the end.
+    /// slot among the command's inputs; invalid synthesizes the slot at the
+    /// end.
     std::optional<NormalizeResult> normalize(llvm::StringRef directory,
-                                             std::uint32_t file,
+                                             Fid file,
                                              llvm::ArrayRef<const char*> arguments);
 
     std::optional<NormalizeResult> normalize(llvm::StringRef directory,
-                                             std::uint32_t file,
+                                             Fid file,
                                              llvm::StringRef command);
 
     /// Expand @file tokens in place, driver-mode aware (CL commands

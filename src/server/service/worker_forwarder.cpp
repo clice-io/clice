@@ -261,7 +261,8 @@ WorkerForwarder::RawResult
     if(recovery) {
         probe_guard.emplace(session->quarantine);
     }
-    auto result = co_await pool.send_stateful(path_id, wp, {.token = std::move(token)}, suspect);
+    auto result =
+        co_await pool.send_stateful(path_id.raw, wp, {.token = std::move(token)}, suspect);
     if(!result.has_value()) {
         // A query that kills the worker is this document's doing even
         // though its compile landed: per-kind ledger, since only this query
@@ -325,7 +326,7 @@ kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
     if(recovery) {
         probe_guard.emplace(session->quarantine);
     }
-    auto result = co_await pool.send_stateful(path_id,
+    auto result = co_await pool.send_stateful(path_id.raw,
                                               worker::DocumentLinkParams{path},
                                               {.token = std::move(token)},
                                               suspect);

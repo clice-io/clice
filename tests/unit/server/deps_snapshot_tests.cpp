@@ -36,11 +36,11 @@ void age_file(llvm::StringRef path) {
 
 /// The shared stat fast path of the version a dep names (0 = none).
 std::int64_t stamp_of(FileTable& pool, const DepState& dep) {
-    return pool.version(pool.intern_version(dep.path_id, dep.hash)).mtime_ns;
+    return pool.version(dep.version).mtime_ns;
 }
 
 bool changed(FileTable& pool, const DepsSnapshot& snap) {
-    pool.begin_wave();
+    auto wave = pool.wave();
     return deps_changed(pool, snap);
 }
 
@@ -58,11 +58,11 @@ TEST_CASE(FreshWhenUntouched) {
                                           DepFile{dep, consumed_hash(dep)}
     },
                                       generous_build_at());
-    ASSERT_EQ(snap.deps.size(), 1u);
+    ASSERT_EQ(snap.size(), 1u);
     ASSERT_FALSE(changed(pool, snap));
 
     // The passing check earned the version its stat fast path.
-    ASSERT_EQ(stamp_of(pool, snap.deps[0]), file_mtime_ns(dep));
+    ASSERT_EQ(stamp_of(pool, snap[0]), file_mtime_ns(dep));
 }
 
 TEST_CASE(PairStampsAtCapture) {
@@ -80,7 +80,7 @@ TEST_CASE(PairStampsAtCapture) {
                                           DepFile{dep, consumed_hash(dep)}
     },
                                       generous_build_at());
-    ASSERT_EQ(stamp_of(pool, snap.deps[0]), file_mtime_ns(dep));
+    ASSERT_EQ(stamp_of(pool, snap[0]), file_mtime_ns(dep));
     ASSERT_FALSE(changed(pool, snap));
 }
 
@@ -106,7 +106,7 @@ TEST_CASE(SnapshotsShareOneVersion) {
 
     // A repair through one snapshot's check serves the other.
     ASSERT_FALSE(changed(pool, first));
-    ASSERT_EQ(stamp_of(pool, second.deps[0]), file_mtime_ns(dep));
+    ASSERT_EQ(stamp_of(pool, second[0]), file_mtime_ns(dep));
 }
 
 TEST_CASE(ImmediateEditDetected) {
@@ -142,7 +142,7 @@ TEST_CASE(BackdatedEditDetected) {
                                           DepFile{dep, consumed_hash(dep)}
     },
                                       generous_build_at());
-    auto recorded_mtime = stamp_of(pool, snap.deps[0]);
+    auto recorded_mtime = stamp_of(pool, snap[0]);
     ASSERT_TRUE(recorded_mtime != 0);
 
     tmp.touch("dep.h", "int new_name();\n");  // same length
@@ -166,11 +166,11 @@ TEST_CASE(TouchRepairsFastPath) {
 
     // Rewrite identical bytes: the stat moves, the content does not.
     tmp.touch("dep.h", "int f();\n");
-    ASSERT_TRUE(set_file_mtime(dep, stamp_of(pool, snap.deps[0]) + 5'000'000'000));
+    ASSERT_TRUE(set_file_mtime(dep, stamp_of(pool, snap[0]) + 5'000'000'000));
     ASSERT_FALSE(changed(pool, snap));
 
     // The passing hash comparison repaired the fast path in place.
-    ASSERT_EQ(stamp_of(pool, snap.deps[0]), file_mtime_ns(dep));
+    ASSERT_EQ(stamp_of(pool, snap[0]), file_mtime_ns(dep));
 }
 
 TEST_CASE(PoisonedCaptureDetected) {
@@ -191,7 +191,7 @@ TEST_CASE(PoisonedCaptureDetected) {
                                           DepFile{dep, consumed}
     },
                                       /*build_at=*/1);
-    ASSERT_EQ(stamp_of(pool, snap.deps[0]), 0);
+    ASSERT_EQ(stamp_of(pool, snap[0]), 0);
     ASSERT_TRUE(changed(pool, snap));
 }
 
@@ -214,11 +214,11 @@ TEST_CASE(StalePairCannotStamp) {
                                           DepFile{dep, consumed_hash(dep)}
     },
                                       generous_build_at());
-    ASSERT_EQ(stamp_of(pool, snap.deps[0]), 0);
+    ASSERT_EQ(stamp_of(pool, snap[0]), 0);
 
     // The first check reads, proves the consumed bytes and repairs.
     ASSERT_FALSE(changed(pool, snap));
-    ASSERT_EQ(stamp_of(pool, snap.deps[0]), file_mtime_ns(dep));
+    ASSERT_EQ(stamp_of(pool, snap[0]), file_mtime_ns(dep));
 }
 
 TEST_CASE(NoBaselineConverges) {
@@ -236,10 +236,10 @@ TEST_CASE(NoBaselineConverges) {
                                           DepFile{dep, consumed_hash(dep)}
     },
                                       /*build_at=*/1);
-    ASSERT_EQ(stamp_of(pool, snap.deps[0]), 0);
+    ASSERT_EQ(stamp_of(pool, snap[0]), 0);
 
     ASSERT_FALSE(changed(pool, snap));
-    ASSERT_EQ(stamp_of(pool, snap.deps[0]), file_mtime_ns(dep));
+    ASSERT_EQ(stamp_of(pool, snap[0]), file_mtime_ns(dep));
 }
 
 TEST_CASE(MissingTransitions) {
@@ -252,7 +252,7 @@ TEST_CASE(MissingTransitions) {
                                           DepFile{dep, 0}
     },
                                       generous_build_at());
-    ASSERT_TRUE(snap.deps[0].missing);
+    ASSERT_TRUE(snap[0].missing);
 
     // Still missing: unchanged.
     ASSERT_FALSE(changed(pool, snap));
@@ -291,7 +291,7 @@ TEST_CASE(RevalidateGoesByHash) {
                                           DepFile{dep, consumed_hash(dep)}
     },
                                       generous_build_at());
-    auto recorded_mtime = stamp_of(pool, snap.deps[0]);
+    auto recorded_mtime = stamp_of(pool, snap[0]);
     ASSERT_TRUE(recorded_mtime != 0);
 
     // An edit that restores the recorded stat exactly would pass the fast
@@ -299,7 +299,7 @@ TEST_CASE(RevalidateGoesByHash) {
     tmp.touch("dep.h", "int new_name();\n");  // same length
     ASSERT_TRUE(set_file_mtime(dep, recorded_mtime));
 
-    snap.force_revalidate(pool);
+    force_revalidate_deps(pool, snap);
     ASSERT_TRUE(changed(pool, snap));
 }
 
@@ -318,14 +318,14 @@ TEST_CASE(RevalidatePurgesWaveMemo) {
                                           DepFile{dep, consumed_hash(dep)}
     },
                                       generous_build_at());
-    auto recorded_mtime = stamp_of(pool, snap.deps[0]);
+    auto recorded_mtime = stamp_of(pool, snap[0]);
 
-    pool.begin_wave();
+    auto wave = pool.wave();
     ASSERT_FALSE(deps_changed(pool, snap));
 
     tmp.touch("dep.h", "int new_name();\n");  // same length
     ASSERT_TRUE(set_file_mtime(dep, recorded_mtime));
-    snap.force_revalidate(pool);
+    force_revalidate_deps(pool, snap);
     ASSERT_TRUE(deps_changed(pool, snap));
 }
 

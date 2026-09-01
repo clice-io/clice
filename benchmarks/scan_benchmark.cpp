@@ -65,7 +65,7 @@ void export_graph_json(const FileTable& file_table,
                        const DependencyGraph& graph,
                        llvm::StringRef output_path) {
     // Build reverse module map: path_id -> module_name.
-    llvm::DenseMap<std::uint32_t, llvm::StringRef> path_to_module;
+    llvm::DenseMap<Fid, llvm::StringRef> path_to_module;
     for(auto& [name, path_ids]: graph.modules()) {
         for(auto path_id: path_ids) {
             path_to_module[path_id] = name;
@@ -73,7 +73,8 @@ void export_graph_json(const FileTable& file_table,
     }
 
     GraphExport export_data;
-    for(std::uint32_t id = 0; id < file_table.spellings.size(); id += 1) {
+    for(std::uint32_t i = 0; i < file_table.spellings.size(); i += 1) {
+        auto id = Fid{i};
         auto inc_ids = graph.get_all_includes(id);
         if(inc_ids.empty()) {
             continue;
@@ -87,9 +88,8 @@ void export_graph_json(const FileTable& file_table,
             node.module_name = mod_it->second.str();
         }
 
-        for(auto flagged_id: inc_ids) {
-            auto raw_id = flagged_id & DependencyGraph::PATH_ID_MASK;
-            node.includes.push_back(file_table.resolve(raw_id).str());
+        for(auto inc: inc_ids) {
+            node.includes.push_back(file_table.resolve(inc).str());
         }
 
         export_data.files.push_back(std::move(node));

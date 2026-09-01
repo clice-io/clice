@@ -15,11 +15,11 @@ namespace {
 namespace ranges = std::ranges;
 
 /// path_id that `cdb` assigns to a file under the temp root.
-std::uint32_t id_of(CompilationDatabase& cdb, TempDir& tmp, llvm::StringRef rel) {
+Fid id_of(CompilationDatabase& cdb, TempDir& tmp, llvm::StringRef rel) {
     return cdb.files().intern(path::join(tmp.root.str(), rel));
 }
 
-bool contains(llvm::ArrayRef<std::uint32_t> list, std::uint32_t id) {
+bool contains(llvm::ArrayRef<Fid> list, Fid id) {
     return ranges::find(list, id) != list.end();
 }
 

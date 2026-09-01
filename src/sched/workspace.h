@@ -37,52 +37,39 @@ class ContextResolver;
 /// Bump to discard all cached artifacts after incompatible format changes.
 constexpr inline std::uint32_t cache_format_version = 8;
 
-/// Sentinel for "no path": file ids start at 0, so 0 is a real file.
-constexpr inline std::uint32_t no_path_id = ~0u;
-
-/// One dependency's freshness record inside a DepsSnapshot.
+/// One dependency of a compilation artifact.
 ///
-/// `hash` describes the bytes the build actually consumed (reported by the
-/// worker from the compiler's own buffers) — it names a FileVersion in the
-/// shared table, where the stat fast path and the two-layer check live
-/// (FileTable::check_version), shared by every artifact and TU consuming
-/// the version. What stays per reference is capture state: `missing` is
-/// what THIS build saw, not a property of the version.
+/// `version` names the FileVersion the build actually consumed (interned
+/// from the worker-reported content hash) — the stat fast path and the
+/// two-layer freshness test live on the shared version, paid once per
+/// wave for every artifact and TU referencing it (FileTable::
+/// check_version). An invalid version means the build saw no nameable
+/// bytes: `missing` distinguishes "the file was absent" (reappearing is
+/// the change) from "the bytes could not be hashed" (stale until a
+/// rebuild's capture converges).
 struct DepState {
-    std::uint32_t path_id = no_path_id;
-    std::uint64_t hash = 0;
-    /// The file did not exist when the artifact was built (hash is 0 then).
+    Fid path_id;
+    VersionID version;
     bool missing = false;
 };
 
 /// Staleness snapshot for compilation artifacts (PCH, PCM, AST, synthesized
-/// header preambles): the consumed versions, checked through the shared
-/// version table (see FileTable::check_version for the two-layer test).
-struct DepsSnapshot {
-    llvm::SmallVector<DepState> deps;
+/// header preambles): the consumed versions, checked via deps_changed.
+using DepsSnapshot = llvm::SmallVector<DepState>;
 
-    bool empty() const {
-        return deps.empty();
-    }
-
-    /// Drop every trust anchor of the snapshot's files so the next check
-    /// re-validates each dependency by a real read (the hashes stay: they
-    /// describe what the artifact was built from). Used when embedded
-    /// copies of dependency content may disagree with the files
-    /// themselves. Shared-level on purpose: the anchors live on the
-    /// versions, so other consumers of a forced file pay one re-read too.
-    void force_revalidate(FileTable& files) const {
-        for(auto& dep: deps) {
-            files.force_revalidate(dep.path_id);
-        }
-    }
-};
+/// Drop every trust anchor of the snapshot's files so the next check
+/// re-validates each dependency by a real read (the versions stay: they
+/// describe what the artifact was built from). Used when embedded copies
+/// of dependency content may disagree with the files themselves.
+/// Shared-level on purpose: the anchors live on the versions, so other
+/// consumers of a forced file pay one re-read too.
+void force_revalidate_deps(FileTable& files, const DepsSnapshot& snap);
 
 /// Context for compiling a header file that lacks its own CDB entry.
 struct HeaderContext {
-    std::uint32_t host_path_id = no_path_id;  ///< Source file acting as host.
-    std::string preamble_path;                ///< Path to generated preamble file on disk.
-    std::uint64_t preamble_hash;              ///< Hash of preamble content for staleness.
+    Fid host_path_id;             ///< Source file acting as host.
+    std::string preamble_path;    ///< Path to generated preamble file on disk.
+    std::uint64_t preamble_hash;  ///< Hash of preamble content for staleness.
 
     /// Path to the generated suffix file (content after the include
     /// position along the chain), appended to the header's buffer as one
@@ -104,7 +91,7 @@ struct HeaderContext {
     /// Include chain from host to the target's direct includer (excludes the
     /// target itself). The synthesized preamble embeds these files' content,
     /// so clang never opens them — staleness must be tracked here.
-    llvm::SmallVector<std::uint32_t> chain;
+    llvm::SmallVector<Fid> chain;
 
     /// Staleness snapshot over the chain files (mtime + content hash).
     DepsSnapshot deps;
@@ -122,8 +109,8 @@ enum class HeaderMode : std::uint32_t {
 
 /// A user's context choice, persisted across sessions.
 struct SavedContext {
-    /// Header context host; no_path_id = none.
-    std::uint32_t host_path_id = no_path_id;
+    /// Header context host; invalid = none.
+    Fid host_path_id;
 
     /// Pinned include occurrence; no value = automatic.
     std::optional<std::uint32_t> occurrence;
@@ -147,30 +134,13 @@ struct SavedContext {
 /// Open a PCH's `.pch.idx` envelope (memory-mapped). Returns nullptr when
 /// the file is unreadable, structurally invalid, of a different format
 /// version, or any embedded shard blob fails verification — callers treat
-/// all of these as a PCH cache miss. `expected_hash`, when nonzero, is the
-/// committed envelope's xxh3 (BlobBinding::hash): the bytes are in hand
-/// anyway, so a swapped or torn blob behind a matching path is rejected
-/// for free.
-std::shared_ptr<index::TUIndex> load_pch_envelope(llvm::StringRef path,
-                                                  std::uint64_t expected_hash = 0);
+/// all of these as a PCH cache miss.
+std::shared_ptr<index::TUIndex> load_pch_envelope(llvm::StringRef path);
 
 struct PCHState {
     std::string path;
     std::uint32_t bound = 0;
     DepsSnapshot deps;
-
-    /// Identities of the committed pair (see BlobBinding): the stat triple
-    /// is verified on every freshness judgment — the PCH key is not fully
-    /// content-addressed, so a concurrent writer (batch lint shares the
-    /// store) can republish different bytes under this key, and metadata
-    /// adopted for the old generation must not vouch for the new one.
-    BlobBinding binding;
-    BlobBinding index_binding;
-
-    /// Adopted after a writer died with unflushed metadata: the records
-    /// may describe blobs that never matched them, so the first use also
-    /// verifies the content hashes, not just the stat triples.
-    bool verify_content = false;
 
     /// Path of the paired pch.idx envelope.
     std::string index_path;
@@ -193,12 +163,6 @@ struct PCMState {
     /// CacheStore key: "{module}-{hash}" over source path + canonical flags.
     std::string key;
     DepsSnapshot deps;
-
-    /// Identity of the committed blob; see PCHState::binding.
-    BlobBinding binding;
-
-    /// See PCHState::verify_content.
-    bool verify_content = false;
 };
 
 /// All persistent, project-wide state derived from files on disk.
@@ -254,7 +218,7 @@ struct Workspace {
     /// Reverse mapping: file path_id → module name (e.g. "std", "foo.bar").
     /// Built from dep_graph at startup; updated on didSave when module
     /// declarations change.
-    llvm::DenseMap<std::uint32_t, std::string> path_to_module;
+    llvm::DenseMap<Fid, std::string> path_to_module;
 
     /// PCH cache, keyed by content key (preamble text + canonical flags),
     /// so files with identical preambles share one PCH.  Hot-path mirror
@@ -278,11 +242,7 @@ struct Workspace {
     CrashBudget build_crashes;
 
     /// PCM cache, keyed by module source path_id.
-    llvm::DenseMap<std::uint32_t, PCMState> pcm_cache;
-
-    /// PCM output paths, keyed by module source path_id.
-    /// Maps to the .pcm file on disk used as -fmodule-file argument.
-    llvm::DenseMap<std::uint32_t, std::string> pcm_paths;
+    llvm::DenseMap<Fid, PCMState> pcm_cache;
 
     /// The index's global layer: symbols, FileVersions, per-TU manifests
     /// and the derived contribution map.
@@ -291,7 +251,7 @@ struct Workspace {
     /// Per-file row blobs from background indexing, keyed by project-level
     /// path_id: symbol occurrences, relations and stored content for
     /// position mapping, served zero-copy.
-    llvm::DenseMap<std::uint32_t, index::Shard> shards;
+    llvm::DenseMap<Fid, index::Shard> shards;
 
     /// Monotonic generation of context-affecting workspace state (include
     /// graph, CDB, disk contents). Bumped on didSave; clice/queryContext
@@ -311,25 +271,24 @@ struct Workspace {
     /// the target. Spelling-based (no search-path resolution): multiple
     /// inclusions of one header always share a spelling, and synthesis
     /// validates the real occurrence anyway.
-    std::uint32_t count_occurrences(std::uint32_t host_id, std::uint32_t target_id) const;
+    std::uint32_t count_occurrences(Fid host_id, Fid target_id) const;
 
     /// Rank host source candidates for a header by relevance: a source
     /// with the header's stem (utils.h -> utils.cpp) wins, then sources in
     /// the same directory, then longer common path prefixes; ties break
     /// lexicographically so the choice is deterministic.
-    llvm::SmallVector<std::uint32_t> rank_hosts(std::uint32_t header_path_id,
-                                                llvm::ArrayRef<std::uint32_t> hosts) const;
+    llvm::SmallVector<Fid> rank_hosts(Fid header_path_id, llvm::ArrayRef<Fid> hosts) const;
 
     /// Rescan a file after it was saved to disk, from one read: refresh
     /// its include edges (so host lookups and context queries see includes
     /// the save added or removed) and its module declaration. The
     /// module-graph cascade is the invalidator's job
     /// (PCMFamily::invalidate).
-    void rescan_after_save(std::uint32_t path_id);
+    void rescan_after_save(Fid path_id);
 
     /// Called when a file is closed.  Notifies compile_graph if this file
     /// is a module unit so dependents can be re-evaluated on next compile.
-    void on_file_closed(std::uint32_t path_id);
+    void on_file_closed(Fid path_id);
 
     /// Open the pch.idx envelope of a cached PCH. The single consumption
     /// gate for `.pch.idx` blobs: when the blob turns out unreadable, the
@@ -389,7 +348,7 @@ struct Workspace {
     void build_module_map();
     /// Fill PCM paths for all built modules, excluding exclude_path_id.
     void fill_pcm_deps(std::unordered_map<std::string, std::string>& pcms,
-                       std::uint32_t exclude_path_id = UINT32_MAX) const;
+                       Fid exclude_path_id = {}) const;
 };
 
 /// Find the workspace's compile_commands.json: the configured paths first
