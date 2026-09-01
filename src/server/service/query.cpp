@@ -36,6 +36,8 @@ struct RowSource {
     Coordinates coords;
 
     Site site(LocalSourceRange range) const {
+        assert(range.begin <= range.end && range.end <= coords.size() &&
+               "served rows lie within their source's text");
         return {.file = file, .path = path, .range = range, .coords = coords};
     }
 };
