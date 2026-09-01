@@ -97,9 +97,8 @@ brief is:
    keeping the skeleton (same block kind, list marker, heading depth,
    nested code byte-identical) and the terminology of the surrounding
    page; delete zh segments whose en segment is gone. For whole new
-   pages, or dozens of drifted pages, `DEEPSEEK_API_KEY=... node
-tools/docs/translate.ts translate <pages>` drafts them when a key is
-   available — otherwise translate by hand.
+   pages, or dozens of drifted pages, the `translate` mode below drafts
+   them when a DeepSeek key is available — otherwise translate by hand.
 3. `pixi run format`, then `pixi run record-doc-translations`, then
    `pixi run check-doc-translations`, `check-feature-docs` and
    `check-config-docs` — all green.
