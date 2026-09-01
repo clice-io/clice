@@ -1,21 +1,21 @@
-# Editor Setup
+# 编辑器设置
 
-clice 实现了 [Language Server Protocol](https://microsoft.github.io/language-server-protocol)，任何带 LSP 客户端的编辑器都可以使用它。下面的编辑器分为两类：有官方 clice 插件的，以及通过通用 LSP 客户端配置的。
+clice 实现了 [Language Server Protocol](https://microsoft.github.io/language-server-protocol)，所以任何带 LSP 客户端的编辑器都可以使用它。下面的编辑器分为两类：有官方 clice 插件的编辑器，以及通过通用 LSP 客户端配置的编辑器。
 
 所有配置的前提：
 
-- `clice` 可执行文件在 `PATH` 中（或在下面的片段中使用绝对路径）。
-- 项目提供 `compile_commands.json`（clice 默认先搜索工作区根目录，再依次搜索其各个直接子目录）。
+- `clice` 可执行文件位于 `PATH` 中（或在下面的代码片段中使用绝对路径）。
+- 你的项目提供 `compile_commands.json`（clice 默认先搜索工作区根目录，再搜索其每个直接子目录）。
 
-## Official Plugins
+## 官方插件
 
 ### Visual Studio Code
 
-从市场安装 [clice 扩展](https://marketplace.visualstudio.com/items?itemName=clice-io.clice)。市场上的扩展按平台分发，clice 服务端已内置在扩展中，安装后无需下载、无需访问网络；如需使用自己构建的版本，设置 `clice.executable`。
+从市场安装 [clice 扩展](https://marketplace.visualstudio.com/items?itemName=clice-io.clice)。市场构建按平台分发，并在扩展内附带 clice 服务端，因此安装后无需下载或访问网络；若要使用自己的构建，请设置 `clice.executable`。
 
 ### Neovim
 
-clice 在 [`editors/nvim`](https://github.com/clice-io/clice/tree/main/editors/nvim) 中提供了 Neovim ≥ 0.11 的 LSP 配置。把 `doc/clice.lua` 复制到你配置目录的 `lsp/` 下，然后启用：
+clice 在 [`editors/nvim`](https://github.com/clice-io/clice/tree/main/editors/nvim) 中随附了 Neovim ≥ 0.11 的 LSP 配置。将 `doc/clice.lua` 复制到配置目录的 `lsp/` 下，然后启用：
 
 ```lua
 vim.lsp.enable('clice')
@@ -25,7 +25,7 @@ vim.lsp.enable('clice')
 
 Zed 扩展位于 [`editors/zed`](https://github.com/clice-io/clice/tree/main/editors/zed)。
 
-## Generic LSP Clients
+## 通用 LSP 客户端
 
 ### Helix
 
@@ -74,7 +74,7 @@ language-servers = ["clice"]
 
 ### Kate
 
-打开 `设置 → 配置 Kate → LSP 客户端 → 用户服务器设置`，添加：
+打开 `Settings → Configure Kate → LSP Client → User Server Settings`，然后添加：
 
 ```json
 {

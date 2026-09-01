@@ -2339,13 +2339,3 @@ Highlight all references to the symbol under cursor within the current file (`te
   </details>
 
 <!-- END GENERATED ITEMS -->
-
-## Changelog
-
-| Date       | Change                                                                                             | PR                                                 |
-| ---------- | -------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| 2026-08-25 | docs fully generated from snap fixtures; workspace symbol pinned by its own corpus                 | [#634](https://github.com/clice-io/clice/pull/634) |
-| 2026-08-22 | definition/declaration alternate at the cursor site; declaration-only symbols serve declarations   | [#626](https://github.com/clice-io/clice/pull/626) |
-| 2026-07-04 | go-to-definition on include directives and module names                                            | [#481](https://github.com/clice-io/clice/pull/481) |
-| 2026-07-03 | declaration / implementation / typeDefinition; references includeDeclaration includes declarations | [#480](https://github.com/clice-io/clice/pull/480) |
-| 2026-04-02 | Index-based go-to-definition and find references; call hierarchy; type hierarchy                   | [#382](https://github.com/clice-io/clice/pull/382) |

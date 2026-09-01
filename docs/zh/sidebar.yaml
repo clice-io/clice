@@ -31,7 +31,7 @@ design:
     - command-resolve
     - symbol-index
     - multi-process
-    - module-graph
+    - task-graph
     - incremental-parse
     - template-resolver
     - dependency-scanning

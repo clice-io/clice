@@ -3,7 +3,7 @@
 <!-- The checklist sections below are generated from the snapshot fixtures in
      tests/snap/document_symbol/. Do not edit the regions between the GENERATED
      markers by hand — edit the fixture spec headers and run
-     `node tools/feature_docs.ts update`. -->
+     `node tools/docs/feature.ts update`. -->
 
 Provides the file outline and breadcrumb navigation via `textDocument/documentSymbol`: a nested symbol tree with ranges, selection ranges and a `detail` field that disambiguates overloads and shows declared types.
 
@@ -716,11 +716,3 @@ Provides the file outline and breadcrumb navigation via `textDocument/documentSy
   </details>
 
 <!-- END GENERATED ITEMS -->
-
-## Changelog
-
-| Date       | Change                                                                                                                                  | PR                                                 |
-| ---------- | --------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| 2026-08-01 | Explicit instantiation directives pinned: class forms as childless symbols, function and variable forms missing until clang 23          | [#571](https://github.com/clice-io/clice/pull/571) |
-| 2026-08-01 | Template specializations, type aliases, full-name selection ranges, macro-argument names; traversal moved onto the semantics node table | [#566](https://github.com/clice-io/clice/pull/566) |
-| 2025-01-13 | Nested symbol hierarchy, basic symbol kinds                                                                                             | [#17](https://github.com/clice-io/clice/pull/17)   |

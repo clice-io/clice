@@ -24,7 +24,13 @@
     "check": "npm run typecheck && npm run lint"
   },
   "dependencies": {
+    "@types/mdast": "^4.0.4",
     "diff": "^9.0.0",
+    "p-limit": "^7.1.1",
+    "remark-frontmatter": "^5.0.0",
+    "remark-gfm": "^4.0.1",
+    "remark-parse": "^11.0.0",
+    "unified": "^11.0.5",
     "vscode-languageserver-protocol": "^3.17.5",
     "vscode-uri": "^3.1.0"
   },

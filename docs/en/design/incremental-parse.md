@@ -58,18 +58,18 @@ The preamble is compiled into a PCH file and cached on disk. Subsequent compilat
 
 A PCH caches the preprocessing results of all headers included in the preamble. When the content of any dependency header changes, the PCH is stale and needs rebuilding. The challenge is precisely determining "whether the content actually changed."
 
-The most direct approach is checking file modification times (mtime): if all dependency files have mtimes no later than the PCH's build timestamp, no file has been modified. This check requires only `stat` system calls and is very fast. However, mtime checks produce false positives: build tool dependency scanning, VCS branch switching, editor auto-save, and similar operations update mtime without changing file content.
+The most direct approach is checking file stat data: if a dependency's size and modification time still equal the values recorded when its content was last observed, the file has not changed. This check requires only `stat` system calls and is very fast. However, stamps produce false positives: build tool dependency scanning, VCS branch switching, editor auto-save, and similar operations rewrite files without changing their content.
 
 An alternative is directly comparing content hashes: recompute the hash of every dependency file on each check and compare against the hashes recorded at build time. This approach is perfectly precise but requires reading and hashing the contents of all dependency files. A typical C++ file may depend on hundreds of headers, making the I/O cost of full hashing on every check non-negligible.
 
-clice combines both into a two-layer detection strategy:
+clice combines both into a two-layer detection strategy, implemented once in the master's file table and shared by every consumer that needs file freshness (PCH validation, index staleness, disk polling):
 
-- **Layer 1 (mtime fast screening)**: Iterate over all dependency files and compare each file's mtime against the PCH's build timestamp. If all mtimes are no later than the build timestamp, the PCH is valid and can be reused directly.
-- **Layer 2 (content hash precise verification)**: For files flagged as "possibly modified" by Layer 1 (mtime later than the build timestamp), recompute their xxh3 content hash and compare against the hash recorded at build time. Only trigger a rebuild when hashes differ.
+- **Layer 1 (stat fast path)**: Compare each dependency's (size, mtime) stamp against the stamp recorded for the file version the PCH was built from. An equal stamp means the file is unchanged.
+- **Layer 2 (content hash verification)**: For files whose stamp differs, recompute the xxh3 content hash and compare against the recorded one. If the content is in fact identical, the recorded stamp is repaired in place so the next check takes the fast path again; only a hash mismatch invalidates the PCH.
 
-Layer 1 filters out the vast majority of unchanged files (the common-case path). Layer 2 eliminates mtime false positives (build tool touches, VCS checkouts, etc.). The combined effect: PCH is rebuilt only when the content of a dependency file has actually changed.
+Layer 1 filters out the vast majority of unchanged files (the common-case path). Layer 2 eliminates stamp false positives (build tool touches, VCS checkouts, etc.). The combined effect: PCH is rebuilt only when the content of a dependency file has actually changed.
 
-`DepsSnapshot` is the underlying data structure for two-layer detection, captured when a PCH build completes. It records the path identifiers, content hashes, and build timestamp of all dependency files.
+`DepsSnapshot` is the per-artifact record for two-layer detection, captured when a PCH build completes. It stores each dependency's file identity and observed version (plus markers for files that were missing at build time) and delegates the actual comparison to the shared file table.
 
 ### Pull-Based Compilation
 
@@ -88,7 +88,7 @@ PCH files on disk are named by a hash of the preamble content together with the 
 - **Disk sharing**: Different files whose preamble content and compile configuration agree naturally share the same PCH file on disk, with no additional deduplication logic needed.
 - **Cross-session persistence**: PCH cache metadata (path, hash, boundary, dependency snapshot) is persisted into the index database alongside the symbol index. On server restart, this metadata is loaded and each PCH's validity is verified through two-layer invalidation detection, avoiding the need to rebuild all PCHs on a cold start.
 
-When preamble content changes, the new PCH uses a different hash for its filename and the old file becomes orphaned. A cleanup mechanism periodically reclaims orphaned PCH files that have not been used beyond a certain age.
+When preamble content changes, the new PCH uses a different hash for its filename and the old file becomes orphaned. Orphans are reclaimed by the artifact store's eviction: PCH and PCM caches live in a capacity-budgeted namespace, and once the budget is exceeded the coldest entries are evicted first.
 
 ## Implementation
 
@@ -144,7 +144,7 @@ PCH builds are executed by stateless worker processes (see [multi-process archit
 
 ### Concurrent Build Serialization
 
-Multiple feature requests may simultaneously trigger a PCH build for the same file. `PCHState` contains a shared event (`building`): the first coroutine to initiate a build sets this event, and subsequent coroutines that find the event present wait for its completion and then use the build result. This ensures the PCH for a given file is built only once.
+Multiple feature requests may simultaneously trigger a PCH build for the same content. PCH builds run as nodes in the compile task graph, keyed by the PCH's content key: the first request to acquire the node spawns its build round, and later requests join the same node and wait for the round's outcome instead of starting their own. This ensures a given PCH is built only once at a time, and files sharing a preamble share the build.
 
 ### Dependency Snapshot Timing Guarantee
 
@@ -159,7 +159,7 @@ If the order were reversed -- hashing first, then obtaining the timestamp -- a w
 When a feature request arrives, the compilation pipeline executes in this order:
 
 1. Check whether the AST is cached and not stale -- if so, reuse it directly
-2. If C++20 modules are used, ensure module dependencies are ready (see [module compilation](module-graph.md))
+2. If C++20 modules are used, ensure module dependencies are ready (see [module compilation](task-graph.md))
 3. Ensure the PCH is ready
 4. Dispatch the compilation task to a stateful worker process with the PCH path and module file paths
 5. The worker loads the PCH and compiles only the user code after the preamble

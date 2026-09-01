@@ -1,23 +1,21 @@
-# What is clice?
+# 什么是 clice？
 
-clice 是一个全新的 C++ 的语言服务器，旨在解决现存 C++ 语言服务器的不足，它可以为你的编辑器提供代码导航和智能提示等服务。
+clice 是一个全新的 C++ language server，旨在解决现有 C++ language server 的不足。它为你的编辑器提供代码导航和智能提示。
 
-## Why a New Language Server?
+## 为什么需要一个新的 Language Server？
 
-那么第一个问题，为什么要去开发一个新的语言服务器？重复造轮子有必要吗？
+那么第一个问题是，为什么开发一个新的 language server？有必要重复造轮子吗？
 
-这个问题值得去认真回答。在这个项目之前，我自己也编写过或大或小的很多项目。但它们绝大多数都是 toy project，只是为了验证某个想法或者个人学习而编写的，并没有解决任何的实际问题。clice 并不是这样的，它确实打算解决现有的问题（具体的问题后面再说），而不是为了重写而重写。
+这个问题值得认真回答。在这个项目之前，我写过许多大小不一的项目。但其中绝大多数都是 toy project，只是为了验证某个想法或个人学习而写，没有解决任何实际问题。clice 不是这样——它确实打算解决现有问题（具体问题后面再谈），而不是为了重写而重写。
 
-在今年年初，我想参与到 llvm 项目的开发中。我想从我较为熟悉的地方，C++，也就是 clang 开始。但是，没需求的话，总不能干瞪源码吧。一般这种时候的正常流程是从一些 first issue 开始，一点点熟悉项目。但是我觉得这样很无聊，一上来我就想来干点大的，比如实现某个 C++ 新标准的特性。但是，我发现这里几乎没有我能插手的地方，新特性的实现几乎总是由几位 clang 的核心开发者完成。好吧，既然这里没什么机会，那就看看别的地方吧。注意力自然而然的转移到了 clangd 身上去了，毕竟我主要使用 vscode 进行开发，而 vscode 上最好用的 C++ 语言服务器就是 clangd 了。
+今年年初，我想参与 LLVM 项目的开发。我想从自己更熟悉的部分——C++，具体说就是 clang——开始。但如果没有需求，我总不能只是盯着源码看。这种情况下通常的流程是从一些 first issue 开始，逐步熟悉项目。但我觉得这很无聊——我想从一开始就做点大事，比如实现某个 C++ 新标准特性。然而，我发现这里几乎没有我能插手的空间，因为新特性的实现几乎总是由几位核心 clang 开发者完成。好吧，既然这里没有机会，那就看看别的地方。我的注意力自然转向了 clangd，因为我主要使用 VSCode 开发，而 VSCode 上最好的 C++ language server 就是 clangd。
 
-当时我对 clangd 一无所知，只是发现它似乎对关键字的高亮渲染并不正确。然后呢我就开始一边阅读 clangd 的源码，一边翻翻 clangd 数量众多的 issue 看看有没有什么我能解决的。在翻了几百个 issue 过后，我发现这里的问题还真不少。当时我特别感兴趣的是一个有关模板内代码补全的 [issue](https://github.com/clangd/clangd/issues/443)，为什么我对这个感兴趣呢？熟悉我的读者可能知道，我算是一个资深的元编程玩家了，在这之前也写过很多相关的文章。那很自然的，我不仅仅好奇模板元它本身是如何运作的，也好奇 clang 作为一个编译器是如何实现相关的特性的，这个 issue 对我来说是一个很好的切入点。在花了几个星期摸索原型实现后，我初步解决了那个 issue，**但是，这时我发现根本没有人可以 review 相关的代码！**
+当时我对 clangd 一无所知，只觉得它似乎对关键字的高亮渲染不正确。于是，我一边阅读 clangd 的源码，一边浏览 clangd 的大量 issue，看看有没有我能解决的问题。翻了几百个 issue 之后，我发现这里问题还真不少。当时我特别感兴趣的是一个关于模板内代码补全的 [issue](https://github.com/clangd/clangd/issues/443)。为什么我对这个感兴趣？熟悉我的读者可能知道，我算是个资深的元编程玩家，之前也写过很多相关文章。自然，我不仅好奇模板元编程本身如何运作，也好奇 clang 作为编译器是如何实现相关特性的。这个 issue 对我来说是个很好的切入点。花了几周时间摸索原型实现后，我初步解决了那个 issue，**但这时我发现根本没有人能 review 相关代码！**
 
-一番调查过后，我发现 clangd 目前的情况很糟糕。让我们来捋一捋时间线，clangd 最初只是 llvm 内部一个简单的小项目，在功能性和易用性上都不出色。正如 MaskRay 在 ccls 中的这篇 [博客](https://maskray.me/blog/2017-12-03-c++-language-server-cquery) 中所说，clangd 在当时只能处理单个编译单元，跨编译单元的请求无法处理。这篇博客发布的时间是 2017 年，这也是为什么 MaskRay 选择编写 ccls 的一个原因。ccls 也是一个 C/C++ 语言服务器，在当时那个节点上是强于 clangd 的。但是，后来，Google 开始派人对 clangd 进行改进以满足他们内部的大型代码库需求。与此同时，LSP 标准的内容也在不断地扩充，clangd 在不断地跟进新标准的内容，但是 ccls 的作者似乎逐渐忙于其它事情没有太多的时间去维护 ccls。于是最后，总体上 clangd 已经超越了 ccls。事情的转折发生在大概 2023 年，clangd 对 Google 内部来说，似乎已经达到了一个高度可用的状态，原先负责 clangd 的几位员工也被调离去做其他事情了。目前来说，clangd 的 issue 主要只有 [HighCommander4](https://github.com/HighCommander4) 一个人在负责处理，纯粹出于热爱，并没有被任何人雇佣。由于并没有被专门雇佣来维护 clangd，所以他只能在有限的空闲时间来处理 issue，而且也仅限于答疑和十分有限的 review。正如他在这条 [评论](https://github.com/clangd/clangd/issues/1690#issuecomment-1619735578) 中提到的一样：
+一番调查之后，我发现 clangd 目前的情况相当糟糕。让我们梳理一下时间线：clangd 最初只是 LLVM 内部一个简单的小项目，功能和易用性都不突出。正如 MaskRay 在这篇关于 ccls 的 [博客](https://maskray.me/blog/2017-12-03-c++-language-server-cquery) 中提到的，当时的 clangd 只能处理单个编译单元，跨编译单元的请求无法处理。这篇博客发布于 2017 年，这也是 MaskRay 选择编写 ccls 的原因之一。ccls 也是一个 C/C++ language server，在那个时间点上比 clangd 更强。然而，后来 Google 开始派人改进 clangd，以满足其内部大型代码库的需求。与此同时，LSP 标准的内容不断扩充，clangd 也在持续跟进新的标准内容，但 ccls 的作者似乎逐渐忙于其他事情，没有太多时间维护 ccls。所以最终，clangd 在整体上已经超越了 ccls。转折点大约发生在 2023 年，对 Google 内部来说，clangd 似乎已经达到了高度可用的状态，原先负责 clangd 的几位员工也被调去做其他事情了。目前，clangd 的 issue 主要由 [HighCommander4](https://github.com/HighCommander4) 一个人处理，纯粹出于热爱，并没有被任何人雇佣。由于没有被专门雇来维护 clangd，他只能在有限的空闲时间处理 issue，而且仅限于答疑和非常有限的 review。正如他在这条 [评论](https://github.com/clangd/clangd/issues/1690#issuecomment-1619735578) 中提到的：
 
-> The other part of the reason is lack of resources to pursue the ideas we do have, such as the idea mentioned above of trying to shift more of the burden to disk usage through more aggressive preamble caching. I'm a casual contributor, and the limited time I have to spend on clangd is mostly taken up by answering questions, some code reviews, and the occasional small fix / improvement; I haven't had the bandwidth to drive this type of performance-related experimentation.
->
-> 另一部分原因是缺乏资源去实践我们已有的一些想法，例如上面提到的通过更积极的预编译缓存，将更多的负担转移到磁盘使用上的想法。我只是一个非正式的贡献者，我能投入到 clangd 上的时间非常有限，主要用于回答问题、进行一些代码审查以及偶尔的小修复或改进；我没有足够的精力来推动这种与性能相关的实验。
+> 另一部分原因是缺乏资源去实践我们已有的一些想法，例如上面提到的通过更积极的 preamble 缓存，将更多负担转移到磁盘使用上的想法。我只是一个非正式贡献者，能投入到 clangd 上的时间非常有限，主要用于回答问题、一些代码审查以及偶尔的小修复或改进；我没有足够的精力来推动这类与性能相关的实验。
 
-既然如此，那么像为 clangd [初步支持 C++20 module](https://github.com/llvm/llvm-project/pull/66462) 这样的大型 PR 被拖了将近一年也就不奇怪了。意识到这个现状之后，我萌生了自己编写一个语言服务器的想法。我估计了一下项目大小，去除测试代码，大概 2w 行就能完成，是一个人花一段时间能完成的工作量，而且也有先例，例如 ccls 和 rust analyzer。另外一点就是 clangd 的代码已经上了年代了，尽管有非常多的注释，但是相关的逻辑仍然很绕，进行大范围修改所花费的时间可能还不如重写来得快。
+既然如此，那么像为 clangd [初步支持 C++20 modules](https://github.com/llvm/llvm-project/pull/66462) 这样的大型 PR 被拖了将近一年也就不奇怪了。意识到这个现状之后，我萌生了自己编写一个 language server 的想法。我估计了一下项目规模，去掉测试代码，大概两万行就能完成，是一个人花一段时间能完成的工作量，而且也有先例，例如 ccls 和 rust-analyzer。另外一点就是 clangd 的代码已经有些年头了，尽管有非常多的注释，但相关的逻辑仍然很绕，进行大范围修改所花费的时间可能还不如重写来得快。
 
-于是说干就干，我对 clangd 的几百个 issue 进行了分类，看看有没有一些问题是因为 clangd 一开始的架构设计错误而导致很难解决，然后被搁置的。如果有的话，是否能在重新设计的时候就考虑这个问题来解决呢？我发现，确实有一些！于是接下来的时间里，我花了大概两个月的时间来学习研究 clang 里面相关的机制，摸索相关问题的解决方法，探索原型实现，在确定相关的问题基本都可以解决之后，正式开始了 clice 的开发。
+于是我就开始动手了。我对 clangd 的几百个 issue 进行了分类，看看是否有一些问题因为 clangd 最初的架构设计错误而难以解决、因此被搁置。如果有的话，能否在重新设计时就考虑并解决这些问题呢？我发现，确实有一些！于是在接下来的时间里，我花了大约两个月时间学习研究 clang 中的相关机制，探索解决相关问题的方法，并尝试原型实现。在确认相关问题基本都能解决之后，我正式开始开发 clice。

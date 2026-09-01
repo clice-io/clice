@@ -102,7 +102,7 @@ Poll CI until all platforms pass. CMake downloads the correct artifact automatic
 
 ## Step 7: Write LLVM Changelog (REQUIRED)
 
-**Every LLVM upgrade MUST append to `docs/en/changelog/llvm-changelog.md`.**
+**Every LLVM upgrade MUST append to `llvm-changelog.md` in this skill's directory** (`.claude/skills/upgrade-llvm/llvm-changelog.md`). It is maintainer reference material, deliberately not a docs page.
 
 Add a new H2 section (e.g., `## LLVM 22 → 23`) documenting all breaking changes encountered. For each API change, record:
 

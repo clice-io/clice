@@ -26,9 +26,3 @@ Beyond the LSP `textDocument/formatting` request (which formats a single open fi
 - [ ] Parallel formatting across project files
 - [ ] Incremental format (only modified files since last run)
 - [ ] Dry-run / diff mode (show what would change)
-
-## Changelog
-
-| Date       | Change                                                 | PR                                                 |
-| ---------- | ------------------------------------------------------ | -------------------------------------------------- |
-| 2025-08-23 | Document formatting, range formatting, include sorting | [#188](https://github.com/clice-io/clice/pull/188) |

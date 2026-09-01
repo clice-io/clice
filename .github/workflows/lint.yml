@@ -49,6 +49,23 @@ jobs:
       - name: Check src/ include layering
         run: python3 scripts/check_layers.py
 
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: node
+
+      - name: Check generated docs and translations
+        run: |
+          pixi run -e node check-feature-docs
+          pixi run -e node check-config-docs
+          pixi run -e node check-doc-translations
+
   format:
     if: ${{ inputs.format }}
     runs-on: ubuntu-latest

@@ -1,19 +1,19 @@
 # Extension
 
-本节汇总各编辑器插件的开发与发布流程。目前包含 VSCode / Neovim / Zed。
+本节汇总各编辑器扩展（VSCode / Neovim / Zed）的开发与发布流程。
 
 ## VSCode
 
-VSCode 插件使用 Node/npm/VSCE 链路。推荐在 pixi 的 `node` 环境下操作以获得一致的工具链版本。
+VSCode 扩展使用 Node/npm/VSCE 工具链。请在 pixi 的 `node` 环境中操作，以确保版本一致。
 
 ```shell
-# 准备环境（先安装 pixi）
+# prepare environment (install pixi first)
 pixi shell -e node
 
-# 安装依赖（基于 package-lock）
+# install deps (uses package-lock)
 pixi run install-vscode
 
-# 打包扩展，产物位于 editors/vscode/*.vsix
+# package the extension; outputs editors/vscode/*.vsix
 pixi run build-vscode
 ```
 
@@ -24,42 +24,42 @@ pixi run publish-vscode
 ```
 
 > [!IMPORTANT]
-> 开发构建与本地打包的扩展不内置 clice 服务端（发布 CI 才会按平台注入），因此必须在 VSCode 设置中填写 `clice.executable`（或设置 `CLICE_EXECUTABLE` 环境变量）指向本地构建的二进制，否则扩展会提示找不到服务端。
+> 开发构建和本地打包的扩展不会内置 clice 服务端（发布 CI 才会按平台注入），所以请在 VSCode 设置中配置 `clice.executable`（或 `CLICE_EXECUTABLE` 环境变量）指向本地构建的二进制。否则扩展会提示找不到服务端。
 
 开发与调试：
 
 1. `pixi shell -e node`
 2. 在 `editors/vscode` 下运行 `npm run watch`（增量构建）
-3. VSCode 中使用”Run Extension/Launch Extension”调试配置，或执行 `code --extensionDevelopmentPath=$(pwd)/editors/vscode`
+3. 在 VSCode 中使用“Run Extension/Launch Extension”配置，或运行 `code --extensionDevelopmentPath=$(pwd)/editors/vscode`
 
 常用脚本（在 `pixi shell -e node` 下）：
 
 ```bash
-npm run package # 等价于 pixi run build-vscode
-npm run publish # 等价于 pixi run publish-vscode
+npm run package # same as pixi run build-vscode
+npm run publish # same as pixi run publish-vscode
 ```
 
-如果不使用 pixi，请自行准备 node.js >= 20（自带 npm）。扩展是仓库 npm workspace 的一部分，依赖安装在仓库根目录执行，打包在 `editors/vscode` 下执行：
+如果不使用 pixi，请自行安装 node.js >= 20（自带 npm）。扩展是仓库 npm workspace 的一部分，请在仓库根目录安装依赖，然后在 `editors/vscode` 下打包：
 
 ```bash
-npm install          # 在仓库根目录
+npm install          # at the repo root
 cd editors/vscode
 npm run package
 ```
 
 ## Neovim
 
-Neovim 插件位于 `editors/nvim`，使用 Lua 编写。目前功能仍在演进中。
+Neovim 扩展位于 `editors/nvim`，使用 Lua 编写。目前仍在演进中。
 
 - 将仓库路径加入 `runtimepath`，例如：`set rtp+=/path/to/clice/editors/nvim`
-- 或在本地创建软链接：`~/.config/nvim/pack/clice/start/clice` -> `<repo>/editors/nvim`
-- 需要 `clice` 可执行文件可在 `$PATH` 中被找到
+- 或创建本地符号链接：`~/.config/nvim/pack/clice/start/clice` -> `<repo>/editors/nvim`
+- 确保 `clice` 可执行文件能在 `$PATH` 中找到
 
-开发提示：代码量较小，可直接在 Neovim 中加载并通过 `:messages`/LSP 日志观察效果；格式化可使用 `stylua`（仓库中已提供 `stylua.toml`）。
+开发提示：代码量较小——直接在 Neovim 中加载，观察 `:messages`/LSP 日志；使用 `stylua` 格式化（配置已包含）。
 
 ## Zed
 
-Zed 插件位于 `editors/zed`，使用 Rust 和 `zed_extension_api`。
+Zed 扩展位于 `editors/zed`，使用 Rust 和 `zed_extension_api`。
 
 建议的本地验证流程：
 
@@ -68,4 +68,4 @@ cd editors/zed
 cargo build --release
 ```
 
-随后按 Zed 官方指南加载本地扩展（需安装 Zed CLI），在启动前确保 `clice` 已在 PATH 中。发布时同样遵循 Zed 扩展发布流程。
+然后按 Zed 官方指南加载本地扩展（需要 Zed CLI）。启动前确保 `clice` 在 `PATH` 中。发布时遵循 Zed 扩展发布流程。

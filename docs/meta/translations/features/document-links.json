@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "pairs": [
+    { "kind": "heading", "en": "8edfadf4e7017f8c", "zh": "e424fe8a93004aa8" },
+    { "kind": "paragraph", "en": "217ab44dfc1dc191", "zh": "1013f492a93ea08b" },
+    { "kind": "heading", "en": "92b192d9f11dc64f", "zh": "9ad3ad47eaa7ea8b" },
+    { "kind": "listItem", "en": "26f0a1573db93c92", "zh": "d02cf3cac2c9790c" },
+    { "kind": "listItem", "en": "8307049d57d239c9", "zh": "e77dd0f444df8413" },
+    { "kind": "listItem", "en": "0d2149918cf0bf14", "zh": "bd774c6f6c5a2d0d" },
+    { "kind": "listItem", "en": "e755bae3d75512cf", "zh": "e341fc57a5893503" },
+    { "kind": "listItem", "en": "f707fcce46add21d", "zh": "07a543cd27949bc3" },
+    { "kind": "heading", "en": "d7e5400e3c504c75", "zh": "fe6c950b08b53b82" },
+    { "kind": "listItem", "en": "11c665896aff14e7", "zh": "fd1f5c387661d504" },
+    { "kind": "listItem", "en": "b2585c360ee10388", "zh": "f4fe96670ea81885" },
+    { "kind": "heading", "en": "acb37318481cf033", "zh": "341d8c557b3f1a46" },
+    { "kind": "listItem", "en": "7c0d71225db464b3", "zh": "934bbe3dabe87c86" },
+    { "kind": "heading", "en": "e9980824b716b40c", "zh": "b0a20cc0269cf140" },
+    { "kind": "listItem", "en": "f8db3ec67d45b9ae", "zh": "768005961ccf8e27" }
+  ]
+}

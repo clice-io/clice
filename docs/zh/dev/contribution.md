@@ -1,13 +1,13 @@
-# Contribution
+# 贡献
 
 我们欢迎任何贡献！
 
-请参考 [build](./build.md) 来构建 clice，参考 [test and debug](./test-and-debug.md) 来测试和调试 clice。
+请参考 [build](./build.md) 构建 clice，参考 [test and debug](./test-and-debug.md) 运行测试。
 
 ## 提交前
 
 1. **格式化**：运行 `pixi run format` 格式化所有源文件。
-2. **测试**：三种测试套件必须全部通过（`pixi run test`）。
+2. **测试**：四种测试套件——单元、集成、冒烟和快照——必须全部通过（`pixi run test`）。
 3. **提交信息**：使用 [conventional commits](https://www.conventionalcommits.org/)：
 
    ```
@@ -16,7 +16,7 @@
 
    类型：`feat`、`fix`、`refactor`、`chore`、`docs`、`ci`、`test`、`perf`
 
-   作用域：与 `src/` 下的目录或功能名匹配（如 `completion`、`server`、`index`）。
+   作用域：匹配 `src/` 子目录或功能名（如 `completion`、`server`、`index`）。
 
    标题行不超过 70 个字符。
 
@@ -31,7 +31,7 @@
 | 枚举值           | `PascalCase` | `GoToDefinition`、`IncludeAngled` |
 | 模板参数         | `PascalCase` | `typename Result`                 |
 
-类成员变量不使用前缀或后缀（不用 `m_`，不用尾随 `_`）。
+类成员字段不使用前缀或后缀（不用 `m_`，不用尾随 `_`）。
 
 ### 字符串参数
 

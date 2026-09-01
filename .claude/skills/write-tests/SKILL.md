@@ -71,7 +71,7 @@ gates: `npm run check` at the repo root (tsc strict + ESLint, zero tolerance).
    something to update over.
 
    Fixture meta (strict — unknown keys are errors, validated by
-   `tools/snap/corpus.ts` and `tools/feature_docs.ts`), declared as
+   `tools/snap/corpus.ts` and `tools/docs/feature.ts`), declared as
    `- key: value` lines in the leading `///` header:
    - `verify: both` (default) runs inspect and server; `inspect`/`server`
      runs only that path, which then owns the plain `<name>.snap.yml`.

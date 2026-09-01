@@ -14,12 +14,12 @@
 /// separate binary-backed step keeps the committed schema itself fresh.
 ///
 /// Usage:
-///     node tools/config_docs.ts update   # rewrite generated regions
-///     node tools/config_docs.ts check    # fail if regions are stale
+///     node tools/docs/config.ts update   # rewrite generated regions
+///     node tools/docs/config.ts check    # fail if regions are stale
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { REPO_ROOT } from "./compile_commands.ts";
+import { REPO_ROOT } from "../compile_commands.ts";
 
 const SCHEMA_PATH = "docs/public/clice-config.schema.json";
 const DOC_PATH = "docs/en/guide/configuration.md";
@@ -207,7 +207,7 @@ function rewriteDoc(docText: string, root: StructSchema, problems: string[]): st
 function main(argv: string[]): number {
     const mode = argv[0];
     if (mode !== "update" && mode !== "check") {
-        console.error("usage: config_docs.ts update|check");
+        console.error("usage: docs/config.ts update|check");
         return 2;
     }
 
@@ -220,7 +220,7 @@ function main(argv: string[]): number {
     const updated = rewriteDoc(current, root, problems);
 
     if (problems.length > 0) {
-        console.error("config_docs: problems found:");
+        console.error("config docs: problems found:");
         for (const problem of problems) {
             console.error(`  - ${problem}`);
         }
@@ -234,7 +234,7 @@ function main(argv: string[]): number {
         console.log(`updated ${DOC_PATH}`);
         return 0;
     }
-    console.error(`config_docs: ${DOC_PATH} is stale; run 'config_docs.ts update'`);
+    console.error(`config docs: ${DOC_PATH} is stale; run 'docs/config.ts update'`);
     return 1;
 }
 

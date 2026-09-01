@@ -40,14 +40,14 @@
 /// test/fixture.h, which reads the same header).
 ///
 /// Usage:
-///     node tools/feature_docs.ts update   # rewrite generated regions
-///     node tools/feature_docs.ts check    # fail if regions are stale
+///     node tools/docs/feature.ts update   # rewrite generated regions
+///     node tools/docs/feature.ts check    # fail if regions are stale
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { REPO_ROOT } from "./compile_commands.ts";
-import { parseAnnotations } from "./snap/annotation.ts";
-import { C_FAMILY } from "./snap/corpus.ts";
+import { REPO_ROOT } from "../compile_commands.ts";
+import { parseAnnotations } from "../snap/annotation.ts";
+import { C_FAMILY } from "../snap/corpus.ts";
 
 // feature -> doc path (relative to repo root). Extend as more features
 // adopt fixture-generated docs. Several corpora may feed one doc page
@@ -731,7 +731,7 @@ function unifiedDiff(current: string, updated: string, fromFile: string, toFile:
 function main(argv: string[]): number {
     const mode = argv[0];
     if (mode !== "update" && mode !== "check") {
-        console.error("usage: feature_docs.ts update|check");
+        console.error("usage: docs/feature.ts update|check");
         return 2;
     }
 
@@ -755,7 +755,7 @@ function main(argv: string[]): number {
     results.push(processOverview(fixturesByFeature, problems));
 
     if (problems.length > 0) {
-        console.error("feature_docs: problems found:");
+        console.error("feature docs: problems found:");
         for (const problem of problems) {
             console.error(`  - ${problem}`);
         }
@@ -778,7 +778,7 @@ function main(argv: string[]): number {
     }
 
     if (mode === "check" && stale) {
-        console.error("feature_docs: docs are stale; run 'feature_docs.ts update'");
+        console.error("feature docs: docs are stale; run 'docs/feature.ts update'");
         return 1;
     }
     return 0;

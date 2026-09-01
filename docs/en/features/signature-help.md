@@ -396,9 +396,3 @@ Registered: `(`, `)`, `{`, `}`, `<`, `>`, `,`
 - [ ] Respect `documentationFormat` capability ([clangd#945](https://github.com/clangd/clangd/issues/945))
 - [ ] Propagate documentation through inherited constructors ([clangd#1936](https://github.com/clangd/clangd/issues/1936))
 - [ ] Overload set count indicator
-
-## Changelog
-
-| Date       | Change                                                                      | PR                                                 |
-| ---------- | --------------------------------------------------------------------------- | -------------------------------------------------- |
-| 2025-08-23 | Function overload signatures, active parameter tracking, trigger characters | [#187](https://github.com/clice-io/clice/pull/187) |

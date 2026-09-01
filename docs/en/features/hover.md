@@ -5,7 +5,7 @@ Rich information cards for the symbol under the cursor.
 <!-- The checklist sections below are generated from the snapshot fixtures in
      tests/snap/hover/. Do not edit the regions between the GENERATED
      markers by hand — edit the fixture doc headers and run
-     `node tools/feature_docs.ts update`. -->
+     `node tools/docs/feature.ts update`. -->
 
 ## Symbol Information
 
@@ -1556,12 +1556,3 @@ Robustness on inputs that have broken other tooling.
   </details>
 
 <!-- END GENERATED ITEMS -->
-
-## Changelog
-
-| Date       | Change                                                         | PR                                                 |
-| ---------- | -------------------------------------------------------------- | -------------------------------------------------- |
-| 2026-08-23 | Fixture-generated checklist; corpus reorganized by card aspect | [#633](https://github.com/clice-io/clice/pull/633) |
-| 2026-08-23 | Macro hover: definitions, expansion preview                    | [#629](https://github.com/clice-io/clice/pull/629) |
-| 2026-08-21 | Resolved paths for include and embed directives                | [#581](https://github.com/clice-io/clice/pull/581) |
-| 2026-06-12 | Port clangd hover implementation                               | [#452](https://github.com/clice-io/clice/pull/452) |

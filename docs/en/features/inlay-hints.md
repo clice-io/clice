@@ -3,7 +3,7 @@
 <!-- The checklist sections below are generated from the snapshot fixtures in
      tests/snap/inlay_hint/. Do not edit the regions between the GENERATED
      markers by hand — edit the fixture spec headers and run
-     `node tools/feature_docs.ts update`. -->
+     `node tools/docs/feature.ts update`. -->
 
 clice renders inline annotations for the information the code leaves implicit: parameter names at call sites, deduced types, and the field names behind positional aggregate initialization. Hint categories can be toggled individually through the `[inlay_hints]` configuration section; the sections below describe the categories that are on by default.
 
@@ -1205,11 +1205,3 @@ The `[inlay_hints]` section of `clice.toml` (or the same keys via `initializatio
 - Clickable type names — go-to-definition on the hinted type ([clangd#1535](https://github.com/clangd/clangd/issues/1535))
 - Scope-aware type shortening — print `Bar` instead of `foo::Bar` inside `namespace foo` ([clangd#2270](https://github.com/clangd/clangd/issues/2270))
 - Parameter hints lost when a coroutine returns a template type ([clangd#2437](https://github.com/clangd/clangd/issues/2437))
-
-## Changelog
-
-| Date       | Change                                                                                                  | PR                                                 |
-| ---------- | ------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| 2026-08-01 | Instantiation-subtree skip: no duplicate or contradictory hints from instantiated bodies                | [#571](https://github.com/clice-io/clice/pull/571) |
-| 2026-08-01 | Designator hints, dependent-call parameter hints, `[inlay_hints]` configuration, fixture-generated docs | [#565](https://github.com/clice-io/clice/pull/565) |
-| 2025-01-13 | Parameter name hints, type hints, range-scoped queries                                                  | [#19](https://github.com/clice-io/clice/pull/19)   |

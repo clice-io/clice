@@ -18,5 +18,12 @@
     "allowImportingTsExtensions": true,
     "skipLibCheck": true
   },
-  "include": ["bench/**/*.ts", "client/**/*.ts", "snap/**/*.ts", "protocol/**/*.ts", "*.ts"]
+  "include": [
+    "bench/**/*.ts",
+    "client/**/*.ts",
+    "docs/**/*.ts",
+    "snap/**/*.ts",
+    "protocol/**/*.ts",
+    "*.ts"
+  ]
 }

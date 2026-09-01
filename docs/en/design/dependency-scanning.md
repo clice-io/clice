@@ -97,11 +97,9 @@ In this case, the scanner sets a `need_preprocess` flag, triggering a precise fa
 
 Scan results are cached at multiple levels:
 
-- **Scan result cache**: Each file's scan results (include list, module declarations) are cached by path_id and reused within a single scan to avoid redundant reads.
+- **Scan result cache**: Each file's scan result (include list, module declaration) is recorded against the file's identity and content version in the master's file table, and reused across rescans for as long as the content version still matches — a rescan after a save only re-reads the files whose content actually changed. The cache is in-memory only; a server restart scans from scratch.
 - **Directory listing cache**: File listings for each directory in the search paths are cached in memory, populated via concurrent readdir tasks during the initial scan.
 - **Include resolution cache**: Resolution results for angle-bracket includes are cached by (configuration, header name), including negative caches for resolution failures.
-
-These caches are currently valid within a single scan invocation. The cache infrastructure is designed to support cross-scan persistence (warm starts), but this has not yet been enabled in the server integration.
 
 ### Collaboration with Host Source File Lookup
 
