@@ -11,7 +11,7 @@
   在编译之前由服务器应答，因此该 fixture 只存在服务器路径。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   #include "snap"
@@ -22,7 +22,7 @@
 - [x] 尖括号 include 路径 — 同一搜索路径候选的尖括号形式
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   #include <snap>
@@ -612,7 +612,7 @@
 - [x] 使用声明 — 通过 `using` 引入的名字可以非限定补全
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   // The completion prefix dangles as an unfinished statement.
@@ -670,7 +670,7 @@
 - [x] 签名与返回类型详情 — 参数列表和返回类型作为 label 详情附带显示
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   // The completion prefix cuts the initializer mid-expression.
@@ -684,7 +684,7 @@
 - [x] 重载合并 — 重载集合折叠为一个条目并显示重载数量
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   // The completion prefix cuts the initializer mid-expression.
@@ -700,7 +700,7 @@
 - [x] 不合并重载 — 关闭合并后，每个重载都是独立条目并带有自己的签名
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   // The completion prefix cuts the initializer mid-expression.
@@ -716,7 +716,7 @@
 - [x] 参数占位符 snippet — 调用按参数插入 tab-stop 占位符；无参函数保持纯文本
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   // The completion prefixes dangle as unfinished statements.
@@ -740,7 +740,7 @@
 - [x] snippet 遵循合并设置 — 重载合并开启时，即使启用了参数 snippet 也不生效
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   // The completion prefix cuts the initializer mid-expression.
@@ -758,7 +758,7 @@
   `int retries = 3` 被省略。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   // The completion prefix cuts the initializer mid-expression.
@@ -772,7 +772,7 @@
 - [x] 可变参数签名 — 尾部的 `...` 显示在参数详情中
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   // The completion prefix cuts the initializer mid-expression.
@@ -935,7 +935,7 @@
 - [x] 弃用标记 — [[deprecated]] 候选带有 Deprecated 标记，普通同名符号没有
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   // The completion prefix cuts the initializer mid-expression.
@@ -953,7 +953,7 @@
   `foo_bar_baz` 在 `foo`/`bar` 词边界上匹配，保留下来。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   // The completion prefix dangles as an unfinished statement.
@@ -970,7 +970,7 @@
 - [x] 大小写不敏感前缀 — 小写前缀匹配混合大小写标识符
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   // The completion prefix dangles as an unfinished statement.
@@ -989,7 +989,7 @@
   仅作为子序列匹配的 `fast_math_operation`。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   // The completion prefix dangles as an unfinished statement.

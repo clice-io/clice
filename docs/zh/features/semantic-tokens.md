@@ -246,7 +246,7 @@ clice 用自有的 token 类型词汇表对文档中的每个 token 分类，这
 - [ ] 括号 token 类型 — 将匹配的 `()`、`[]`、`{}`、`<>` 对作为不同种类
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   template <typename T>
@@ -274,7 +274,7 @@ clice 用自有的 token 类型词汇表对文档中的每个 token 分类，这
 - [x] 命名空间 — 定义、引用、嵌套命名空间和命名空间别名
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   namespace demo {
@@ -295,7 +295,7 @@ clice 用自有的 token 类型词汇表对文档中的每个 token 分类，这
 - [x] 类型 — 类、结构体、联合体、枚举和类型别名，包括定义和引用处
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   class Widget {};
@@ -320,7 +320,7 @@ clice 用自有的 token 类型词汇表对文档中的每个 token 分类，这
 - [x] 函数与方法 — 声明、定义和调用点
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   int twice(int value);
@@ -346,7 +346,7 @@ clice 用自有的 token 类型词汇表对文档中的每个 token 分类，这
 - [x] 变量 — 全局变量、局部变量、参数、字段和枚举成员
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Holder {
@@ -372,7 +372,7 @@ clice 用自有的 token 类型词汇表对文档中的每个 token 分类，这
 - [x] 模板 — 类型与非类型模板参数，模板名称带有 `templated` 修饰符
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   template <typename T, int N>
@@ -397,7 +397,7 @@ clice 用自有的 token 类型词汇表对文档中的每个 token 分类，这
 - [x] 概念 — 定义及作为模板约束的使用
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   template <typename T>
@@ -416,7 +416,7 @@ clice 用自有的 token 类型词汇表对文档中的每个 token 分类，这
 - [x] 标签 — `goto` 目标和标签定义
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   void retry(bool again) {
@@ -435,7 +435,7 @@ clice 用自有的 token 类型词汇表对文档中的每个 token 分类，这
   前导 `[` 特意不产生 token；仅高亮绑定名称本身。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Pair {
@@ -453,7 +453,7 @@ clice 用自有的 token 类型词汇表对文档中的每个 token 分类，这
 - [x] 成员初始化列表 — 初始化字段高亮为字段 ([clangd#122](https://github.com/clangd/clangd/issues/122))
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Widget {
@@ -469,7 +469,7 @@ clice 用自有的 token 类型词汇表对文档中的每个 token 分类，这
 - [x] using 声明 — 引入的名称保持其目标实体的种类 ([clangd#2619](https://github.com/clangd/clangd/issues/2619))
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   namespace tools {
@@ -491,7 +491,7 @@ clice 用自有的 token 类型词汇表对文档中的每个 token 分类，这
 - [x] Lambda init-capture — 捕获的名称高亮为变量 ([clangd#868](https://github.com/clangd/clangd/issues/868))
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   int compute();
@@ -506,7 +506,7 @@ clice 用自有的 token 类型词汇表对文档中的每个 token 分类，这
 - [x] `sizeof...` — 参数包保持其类型参数 token ([clangd#213](https://github.com/clangd/clangd/issues/213))
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   template <typename... Ts>
@@ -766,7 +766,7 @@ clice 用自有的 token 类型词汇表对文档中的每个 token 分类，这
   引入的名称及其使用当前不会产生 token；保留的 dependent-name 修饰符尚未输出。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   template <typename T>
@@ -784,7 +784,7 @@ clice 用自有的 token 类型词汇表对文档中的每个 token 分类，这
 - [ ] Function explicit instantiation directives — clang builds no node for the directive, so every identifier on it goes unpainted: the name, the template arguments and the parameter types _（部分）_ ([llvm#191658](https://github.com/llvm/llvm-project/issues/191658))
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Widget {};
@@ -802,7 +802,7 @@ clice 用自有的 token 类型词汇表对文档中的每个 token 分类，这
 - [ ] Variable explicit instantiation directives — clang builds no node for the directive, so every identifier on it goes unpainted: the name, the template arguments, even the declarator's type _（部分）_ ([llvm#191658](https://github.com/llvm/llvm-project/issues/191658))
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Widget {};
@@ -820,7 +820,7 @@ clice 用自有的 token 类型词汇表对文档中的每个 token 分类，这
 - [x] Explicit instantiation member bodies — a dependent name paints as its actual resolution: agreeing kinds keep the modifiers all instantiations share, disagreeing kinds paint a conflict
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct A {
@@ -867,7 +867,7 @@ clice 用自有的 token 类型词汇表对文档中的每个 token 分类，这
 - [x] Module declarations — the contextual `module` keyword, dotted module names and the private fragment
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   module;
@@ -890,7 +890,7 @@ clice 用自有的 token 类型词汇表对文档中的每个 token 分类，这
 - [x] Module partitions — partition names in the module declaration
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   export module demo.core:part;
@@ -903,7 +903,7 @@ clice 用自有的 token 类型词汇表对文档中的每个 token 分类，这
 - [x] `module` and `import` as identifiers — contextual keywords keep their semantic kinds outside module declarations
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   void f() {
@@ -925,7 +925,7 @@ clice 用自有的 token 类型词汇表对文档中的每个 token 分类，这
 - [x] Declaration vs definition — the modifier distinguishes the two
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   int measure(int value);
@@ -944,7 +944,7 @@ clice 用自有的 token 类型词汇表对文档中的每个 token 分类，这
 - [x] Static — class-level members and static locals
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Counter {
@@ -968,7 +968,7 @@ clice 用自有的 token 类型词汇表对文档中的每个 token 分类，这
   readonly，即使指针本身可以改变。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   enum class Level { High };
@@ -993,7 +993,7 @@ clice 用自有的 token 类型词汇表对文档中的每个 token 分类，这
 - [x] Virtual 与 abstract — 虚方法、纯虚方法和抽象类
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Shape {
@@ -1016,7 +1016,7 @@ clice 用自有的 token 类型词汇表对文档中的每个 token 分类，这
 - [x] Deprecated — `[[deprecated]]` 声明及其使用
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   [[deprecated("use next_api")]] void old_api();
@@ -1032,7 +1032,7 @@ clice 用自有的 token 类型词汇表对文档中的每个 token 分类，这
 - [x] Default library — 系统头文件中声明的符号
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   int before_includes = 0;
@@ -1047,7 +1047,7 @@ clice 用自有的 token 类型词汇表对文档中的每个 token 分类，这
 - [ ] 作用域修饰符 — 函数、类、文件和全局作用域 ([clangd#352](https://github.com/clangd/clangd/issues/352))
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   int global_scope;
@@ -1067,7 +1067,7 @@ clice 用自有的 token 类型词汇表对文档中的每个 token 分类，这
 - [ ] 可变引用与指针 — 通过非 const 引用或指针传递的参数 ([clangd#839](https://github.com/clangd/clangd/issues/839))
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   void modify(int& out);
@@ -1087,7 +1087,7 @@ clice 用自有的 token 类型词汇表对文档中的每个 token 分类，这
 - [ ] Deduced — 标记推导类型，如 `auto` 和 `decltype`
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   auto deduced_int = 1;
@@ -1099,7 +1099,7 @@ clice 用自有的 token 类型词汇表对文档中的每个 token 分类，这
 - [ ] 用户定义运算符 — 区分重载运算符与内置运算符 ([clangd#1521](https://github.com/clangd/clangd/issues/1521))
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Vec {
@@ -1128,7 +1128,7 @@ C++ 允许结构上不同的实体共享同一个名称。当一个书写名称�
 - [x] 类型 vs 函数 — 同时命名两者的名称显示为 `conflict`
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   namespace shop {
@@ -1144,7 +1144,7 @@ C++ 允许结构上不同的实体共享同一个名称。当一个书写名称�
 - [x] 类型 vs 变量 — 同时命名两者的名称显示为 `conflict`
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   namespace mixed {
@@ -1160,7 +1160,7 @@ C++ 允许结构上不同的实体共享同一个名称。当一个书写名称�
 - [x] 同类型重载集合 — 仅命名函数的名称不构成冲突
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   namespace ops {
@@ -1183,7 +1183,7 @@ C++ 允许结构上不同的实体共享同一个名称。当一个书写名称�
   书写名称显示为类；它隐含的构造函数引用不会额外着色 — `(` 保持无 token 状态。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Widget {
@@ -1210,7 +1210,7 @@ clice 刻意固定的行为，包括 clangd 曾经出错的问题。
   析构函数名称显示为两个 token：`~` 携带 method 类型以及声明/定义修饰符，其后的类名保持为对类的引用。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Session {
@@ -1234,7 +1234,7 @@ clice 刻意固定的行为，包括 clangd 曾经出错的问题。
   未命名参数类型之后的标点保持无 token 状态。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   void take_one(int) {}
@@ -1248,7 +1248,7 @@ clice 刻意固定的行为，包括 clangd 曾经出错的问题。
   运算符的书写名称是关键字加标点，所以不产生名称 token：`operator` 保持其关键字分类，调用点在运算符符号上不产生任何内容。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Value {
@@ -1267,7 +1267,7 @@ clice 刻意固定的行为，包括 clangd 曾经出错的问题。
 - [x] 类模板的析构函数 — 模板下的 `~` 形式保持一致
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   template <typename T>
@@ -1284,7 +1284,7 @@ clice 刻意固定的行为，包括 clangd 曾经出错的问题。
 - [x] 转换运算符 — 书写为关键字，转换使用不额外着色
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Ratio {
@@ -1305,7 +1305,7 @@ clice 刻意固定的行为，包括 clangd 曾经出错的问题。
 - [x] 模板参数上的伪析构函数 — `~` 不着色；类型名保持其类型
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   template <typename T>
@@ -1319,7 +1319,7 @@ clice 刻意固定的行为，包括 clangd 曾经出错的问题。
 - [x] defaulted 和 deleted 成员 — 特殊成员名称保持其定义 token
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Session {
@@ -1340,7 +1340,7 @@ clice 刻意固定的行为，包括 clangd 曾经出错的问题。
 - [ ] 属性名称 — 标准属性和厂商属性，以及它们内部的表达式 ([clangd#2209](https://github.com/clangd/clangd/issues/2209))
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   [[nodiscard]] int compute();
@@ -1363,7 +1363,7 @@ clice 刻意固定的行为，包括 clangd 曾经出错的问题。
 - [x] 宏定义与展开
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   #define SQUARE(x) ((x) * (x))
@@ -1376,7 +1376,7 @@ clice 刻意固定的行为，包括 clangd 曾经出错的问题。
 - [x] 展开处与实参 — 展开名称是宏，书写的实参保持其语义，定义体保持词法
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   int value = 1;

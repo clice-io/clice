@@ -14,7 +14,7 @@
 - [x] 嵌套符号树 — 符号按书写作用域嵌套；类外定义出现在其词法位置并使用限定名
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   namespace demo {
@@ -55,7 +55,7 @@
 - [x] 符号范围和选择范围 — 范围覆盖整个声明；选择范围覆盖完整书写名称，包括 `~Widget`、`operator==` 和 `operator bool` 这样的多 token 名称
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   namespace members {
@@ -90,7 +90,7 @@
 - [ ] 访问修饰符分组 — 将 `public:` / `private:` / `protected:` 作为分组节点用于面包屑导航（[clangd#499](https://github.com/clangd/clangd/issues/499)）
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   class Widget {
@@ -109,7 +109,7 @@
 - [x] 匿名作用域和 inline 作用域 — 匿名命名空间、无名结构体和 union 将其成员归入占位名称下；inline namespace 成员保留在 inline namespace 节点下
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   namespace {
@@ -145,7 +145,7 @@
 - [x] UTF-16 位置编码 — 非 ASCII 文本之后的列按 UTF-16 代码单元计数
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   // π ≈ 3.14159, 中文注释
@@ -164,7 +164,7 @@
 - [x] 核心符号种类 — 命名空间、类、结构体、联合体、枚举及其成员、函数、变量、字段、结构化绑定和 lambda 都会出现在大纲中，并映射到对应的 LSP 符号种类
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   namespace kinds {
@@ -204,7 +204,7 @@
 - [x] 模板声明 — 类模板、函数模板和变量模板带有 `template ` detail 前缀；concept 和缩写函数模板（`concept auto` 参数）也会出现
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   namespace templates {
@@ -240,7 +240,7 @@
 - [x] 模板特化和推导指南 — 类和变量模板的显式与部分特化在名称中带模板实参出现；成员嵌套在对应特化下；推导指南渲染其推导出的签名
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   namespace spec {
@@ -300,7 +300,7 @@
 - [x] 类型别名 — `typedef`、`using` 别名和别名模板以 `type alias` detail 出现在大纲中
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   namespace aliases {
@@ -329,7 +329,7 @@
 - [ ] 显式实例化指令 — 类形式显示为无子节点符号；clang 将函数和变量形式定位到模式处，因此它们在大纲中缺失 _(部分实现)_ ([llvm#191658](https://github.com/llvm/llvm-project/issues/191658))
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   template <typename T>
@@ -356,7 +356,7 @@
 - [x] 宏定义 — 对象式宏和函数式宏定义出现在大纲中，参数列表作为函数式宏的 detail ([clangd#1744](https://github.com/clangd/clangd/issues/1744))
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   // The assertion holds the directives out of the preamble region, whose
@@ -380,7 +380,7 @@
 - [ ] preamble 区域中的宏 — 前导指令序列中的定义在 inspect 路径上会产生大纲，而服务器的 preamble 记录尚未呈现它们 _(部分实现)_
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   #define PREAMBLE_LIMIT 8
@@ -400,7 +400,7 @@
 - [x] 函数签名 — `detail` 字段中的参数和返回类型用于重载区分；构造函数省略 `void` 返回类型 ([clangd#520](https://github.com/clangd/clangd/issues/520), [clangd#601](https://github.com/clangd/clangd/issues/601), [clangd#1232](https://github.com/clangd/clangd/issues/1232))
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   namespace detail {
@@ -423,7 +423,7 @@
 - [x] 变量和字段类型 — `detail` 字段中的声明类型；lambda 渲染为 `(lambda)`
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   namespace detail {
@@ -448,7 +448,7 @@
 - [x] 默认参数剥离 — 签名从函数类型推导得出，因此默认参数值绝不会泄漏到大纲中 ([clangd#221](https://github.com/clangd/clangd/issues/221))
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   namespace detail {
@@ -467,7 +467,7 @@
 - [ ] 基类在 detail 中 — 在派生类声明上显示 `: Shape`
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Shape {};
@@ -482,7 +482,7 @@
 - [x] 多行签名范围 — 符号范围从声明开头开始并跨越完整签名，因此编辑器 sticky scroll 能正确锚定 ([clangd#2221](https://github.com/clangd/clangd/issues/2221))
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Config {};
@@ -498,7 +498,7 @@
 - [x] 作用域类型 — detail 中写出的类作用域恰好出现一次，无论嵌套类、模板 ID、别名还是依赖名称都是如此
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   namespace scoped {
@@ -537,7 +537,7 @@
 - [ ] include 指令 — 大纲中的 `#include` 条目（[clangd#2226](https://github.com/clangd/clangd/issues/2226)）
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   #include "config.h"
@@ -550,7 +550,7 @@
 - [x] 局部符号 — 函数体内声明的变量和类型嵌套在其函数下方（[clangd#616](https://github.com/clangd/clangd/issues/616)）
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   int compute() {
@@ -580,7 +580,7 @@
 - [ ] 模块声明 — 大纲中的 `export module`、`module` 和 `import` 声明
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   export module app.core;
@@ -595,7 +595,7 @@
 - [ ] `#pragma mark` 导航标记 — 作为大纲条目的编辑器分段标记
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   #pragma mark - Lifecycle
@@ -612,7 +612,7 @@
 - [x] 友元函数定义 — 在类内联定义的友元函数出现在该类下方
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Owner {
@@ -635,7 +635,7 @@
 - [ ] Deprecated 标签 — 用 LSP `deprecated` 符号标签标记 `[[deprecated]]` 符号
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   [[deprecated("use open_v2")]] void open_v1();
@@ -648,7 +648,7 @@
 - [ ] 访问和存储指示符 — 大纲条目上的 public / private / protected、static、virtual 和 abstract 标记（[clangd#2123](https://github.com/clangd/clangd/issues/2123)）
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   class Base {
@@ -674,7 +674,7 @@
 - [x] 宏展开产生的符号 — 宏调用生成的符号定位在调用处，而不是宏定义处（[clangd#475](https://github.com/clangd/clangd/issues/475)）
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   // The assertion holds the directives out of the preamble region, whose
@@ -697,7 +697,7 @@
 - [x] 宏参数中拼写的名称 — 选择范围指向宏参数中写出的名称；宏体里拼写的名称回退到调用位置（[clangd#1941](https://github.com/clangd/clangd/issues/1941)）
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   // The assertion holds the directives out of the preamble region, whose

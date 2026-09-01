@@ -45,7 +45,7 @@ The rest of this section describes the graph's general contract; module-specific
 
 ### Lazy Construction
 
-Unlike build systems that scan all files and build a complete DAG before compilation, the graph is lazily constructed — a node's dependencies are resolved and added only when first touched by a compilation request. When the user opens a file, only the module chain actually needed by that file is scanned and compiled, not the entire project's module graph.
+Unlike build systems that scan all files and build a complete DAG before compilation, the graph is lazily constructed — a node is created only when a compilation request first reaches it, and each of its build rounds re-resolves that node's dependencies. When the user opens a file, only the module chain actually needed by that file is scanned and compiled, not the entire project's module graph.
 
 Two module entry points exist:
 

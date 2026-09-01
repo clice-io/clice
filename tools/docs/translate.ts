@@ -86,7 +86,7 @@ function listFiles(root: string, extension: string): string[] {
             if (entry.isDirectory()) {
                 walk(full);
             } else if (entry.name.endsWith(extension)) {
-                files.push(path.relative(root, full));
+                files.push(path.relative(root, full).split(path.sep).join("/"));
             }
         }
     };
@@ -398,14 +398,22 @@ function report(roots: Roots, pages: string[]): number {
             // Positions shifted (segments were added or removed), so pair
             // them by content instead: anything not covered by a recorded
             // pair needs review.
-            const recorded = new Set(analysis.mapping.pairs.map((pair) => `${pair.en}:${pair.zh}`));
+            const recorded = new Map<string, number>();
+            for (const pair of analysis.mapping.pairs) {
+                const key = `${pair.en}:${pair.zh}`;
+                recorded.set(key, (recorded.get(key) ?? 0) + 1);
+            }
             console.log(
                 `${page}: layout changed since last record ` +
                     `(${analysis.mapping.pairs.length} pairs recorded, ` +
                     `${pairsNow.length} segments now); segments not covered:`,
             );
             for (const [left, right] of pairsNow) {
-                if (!recorded.has(`${left.hash}:${right.hash}`)) {
+                const key = `${left.hash}:${right.hash}`;
+                const remaining = recorded.get(key) ?? 0;
+                if (remaining > 0) {
+                    recorded.set(key, remaining - 1);
+                } else {
                     reportDrift(left, right, "no recorded pair");
                     pageDrifts += 1;
                 }
@@ -624,47 +632,54 @@ function maskCode(text: string, segment: Segment): MaskedText {
 }
 
 function restoreCode(masked: string, blocks: string[]): { text: string } | { problem: string } {
-    let text = masked;
-    for (const [index, block] of blocks.entries()) {
+    const seen = new Map<string, number>();
+    for (const found of masked.match(/⟦B\d+⟧/g) ?? []) {
+        seen.set(found, (seen.get(found) ?? 0) + 1);
+    }
+    for (let index = 0; index < blocks.length; index += 1) {
         const placeholder = `⟦B${index + 1}⟧`;
-        const first = text.indexOf(placeholder);
-        if (first === -1) {
-            return { problem: `placeholder ${placeholder} missing` };
+        const count = seen.get(placeholder) ?? 0;
+        if (count !== 1) {
+            return {
+                problem: `placeholder ${placeholder} ${count === 0 ? "missing" : "duplicated"}`,
+            };
         }
-        if (text.includes(placeholder, first + placeholder.length)) {
-            return { problem: `placeholder ${placeholder} duplicated` };
-        }
-        text = text.replace(placeholder, () => block);
+        seen.delete(placeholder);
     }
-    if (/⟦B\d+⟧/.test(text)) {
-        return { problem: "unknown placeholder left in output" };
+    if (seen.size > 0) {
+        return { problem: `unknown placeholder ${[...seen.keys()].join(" ")}` };
     }
+    const text = masked.replace(/⟦B(\d+)⟧/g, (_, n: string) => at(blocks, Number(n) - 1));
     return { text };
 }
 
 /// Re-parse the translated segment standalone and reject anything that
 /// broke the shape the isomorphism contract depends on.
-function validateSegment(en: Segment, enText: string, zhText: string): string | null {
+function validateSegment(
+    en: Segment,
+    enText: string,
+    zhText: string,
+    blocks: string[],
+): string | null {
     if (zhText.trim() === "") {
         return "empty";
     }
     if (/\n\s*\n/.test(zhText) && !/\n\s*\n/.test(enText)) {
         return "introduced blank line";
     }
-    if (en.kind === "tableRow") {
-        // A lone row does not parse as a table, so check its skeleton.
-        if (zhText.includes("\n")) {
-            return "table row must stay one line";
-        }
-        const pipes = (text: string) => (text.match(/(?<!\\)\|/g) ?? []).length;
-        if (pipes(zhText) !== pipes(enText)) {
-            return "pipe count changed";
-        }
-        return null;
-    }
-    const parsed = splitSegments(zhText, "reply");
-    if (parsed.length !== 1 || parsed.at(0)?.shape !== en.shape) {
+    // A lone row does not parse as a table: give it the delimiter line
+    // the page will, so a row that would stop the page being a table
+    // fails here instead of at the page level.
+    const width = /^tableRow:(\d+)$/.exec(en.shape)?.[1];
+    const probe = width === undefined ? zhText : `${zhText}\n|${" --- |".repeat(Number(width))}`;
+    const parsed = splitSegments(probe, "reply");
+    const reply = parsed.at(0);
+    if (parsed.length !== 1 || reply?.shape !== en.shape) {
         return `not a single ${en.shape}`;
+    }
+    const code = reply.verbatim.map((range) => probe.slice(range.start, range.end));
+    if (code.length !== blocks.length || code.some((text, i) => text !== blocks.at(i))) {
+        return "nested code block altered";
     }
     if (en.kind === "yaml") {
         const keys = (text: string) =>
@@ -823,7 +838,7 @@ async function translatePage(roots: Roots, model: string, page: string): Promise
         let problem =
             "problem" in restored
                 ? restored.problem
-                : validateSegment(segment, enText, restored.text);
+                : validateSegment(segment, enText, restored.text, blocks);
         for (let round = 0; problem !== null && round < 2; round += 1) {
             console.error(`  ${page} segment ${i + 1} (${segment.shape}): ${problem} — retrying`);
             try {
@@ -832,7 +847,7 @@ async function translatePage(roots: Roots, model: string, page: string): Promise
                 problem =
                     "problem" in restored
                         ? restored.problem
-                        : validateSegment(segment, enText, restored.text);
+                        : validateSegment(segment, enText, restored.text, blocks);
             } catch (error) {
                 problem = String(error);
             }
@@ -924,7 +939,8 @@ async function machineTranslate(roots: Roots, pages: string[], rest: string[]): 
                 `translate on: ${incomplete.sort().join(" ")}`,
         );
     }
-    console.log(`finished: ${targets.length - failed} ok, ${failed} failed`);
+    const ok = targets.length - failed - incomplete.length;
+    console.log(`finished: ${ok} ok, ${incomplete.length} incomplete, ${failed} failed`);
     return failed > 0 || incomplete.length > 0 ? 1 : 0;
 }
 

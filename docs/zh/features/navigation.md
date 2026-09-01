@@ -9,7 +9,7 @@
   一个翻译单元中的使用解析到同级源文件提供的定义——答案覆盖整个项目，而不只是当前文件。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   `main.cpp`:
 
@@ -46,7 +46,7 @@
   在用法上，go-to-definition 到达定义。在定义上调用时它会跳转到声明，在声明上调用时它跳转到定义——两个位置交替切换。内联定义且没有单独声明的符号，其定义仍作为答案。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   int scale(int value);
@@ -67,7 +67,7 @@
   只有声明的符号——纯虚函数、`extern` 变量、类内静态常量——解析到该声明，而不是返回空结果。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   extern int threshold;
@@ -92,7 +92,7 @@
   在 `#include` 行上调用 go-to-definition 会打开被包含的文件。这适用于编译进 preamble（PCH）的前置包含，也适用于文件后面普通的包含。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   `main.cpp`:
 
@@ -133,7 +133,7 @@
   对局部变量或参数使用 go-to-definition 会跳转到它在函数体内的声明。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   int accumulate(int base) {
@@ -150,7 +150,7 @@
   在宏参数中拼写的名字锚定在其拼写位置，因此定义和声明在那里与普通位置一样交替切换；后续的使用会穿透包装解析到它所声明的函数。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   #define DECLARE_HOOK(name) int name(int value)
@@ -173,7 +173,7 @@
   通过 token 粘贴组装的名字在源代码中没有自己的拼写，因此它锚定在创建它的宏调用处：该调用就是它的定义位置，而对名字的普通使用会跳回该调用点。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   #define MAKE_FLAG(name) bool flag_##name = false
@@ -192,7 +192,7 @@
   写在宏体中的 token 在展开赋予其含义之前没有意义，因此在其上导航不会产生结果；而调用位置的 token 总是解析到正在展开的宏。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   #define DEFINE_COUNTER int counter = 0
@@ -207,7 +207,7 @@
   当变量的类型名无法解析时，对该变量后续使用的 go-to-definition 目前返回空结果，即使变量自身的声明仍被记录。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   Unresolved handle;  // 'Unresolved' does not name a type
@@ -224,7 +224,7 @@
   在从未实例化的模板内部，对依赖类型对象的成员访问解析到对应类模板上声明的成员。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   template <typename T>
@@ -245,7 +245,7 @@
   对显式特化名称的 go-to-definition 解析到特化本身；从它跳转到所特化的主模板的功能尚未提供。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   template <typename T>
@@ -262,7 +262,7 @@
   对 `auto` 关键字的 go-to-definition 应该到达它推导出的类型；目前返回空结果。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Widget {};
@@ -291,7 +291,7 @@
   在 `override` 或 `final` 说明符上执行 go-to-definition 应到达它所重写的基类虚函数；目前返回空结果。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Base {
@@ -312,7 +312,7 @@
   在 `break` 或 `continue` 上执行 go-to-definition 应到达它控制的循环或 switch 头部；目前返回空结果。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   void loop() {
@@ -330,7 +330,7 @@
   在构造函数调用的左括号或左花括号上执行 go-to-definition 会到达重载决议选中的构造函数，`T(args)` 和 `T{args}` 两种形式都适用。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Widget {
@@ -350,7 +350,7 @@
   在赋值的 `=` 上执行 go-to-definition 会到达赋值运算符。用于引入拷贝或移动初始化的 `=`（`T b = a;`）是初始化语法而不是运算符调用，目前尚未解析。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Widget {
@@ -374,7 +374,7 @@
   当类模板实参推导选出一个特化时，在构造函数调用上执行 go-to-definition 会到达被选中的构造函数，而不仅仅是类模板。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   template <typename T>
@@ -398,7 +398,7 @@
   聚合体没有构造函数，因此在其初始化花括号上执行 go-to-definition 会到达该聚合体的定义。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Point {
@@ -418,7 +418,7 @@
   在 `delete` 上执行 go-to-definition 应到达它运行的析构函数；目前返回空结果。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Widget {
@@ -437,7 +437,7 @@
   在 `new` 上执行 go-to-definition 会到达类的重载 `operator new`。同一表达式调用的构造函数不在回复中。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Pool {
@@ -457,7 +457,7 @@
   初始化列表运行的基类和成员构造函数通过每个初始化器的左括号到达。初始化器的名称本身解析为基类类型或成员，因此到构造函数的导航经过括号。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Base {
@@ -481,7 +481,7 @@
   委托构造函数的目标通过委托调用的左括号到达。构造函数名本身解析为类类型，因此到目标构造函数的导航经过括号。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Widget {
@@ -497,7 +497,7 @@
   在继承构造函数声明（`using Base::Base;`）上执行 go-to-definition 会到达一个基类构造函数。当基类声明了多个构造函数时，回复解析为其中之一，而不是列出整个集合。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Base {
@@ -517,7 +517,7 @@
   花括号形式的 `return {args}` 隐式构造函数的返回类型；在花括号上执行 go-to-definition 会到达选中的构造函数。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Widget {
@@ -536,7 +536,7 @@
   在 lambda init-capture 的 `=` 上执行 go-to-definition 应到达构造捕获值的构造函数；目前返回空结果。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Widget {
@@ -558,7 +558,7 @@
   二元、下标、调用和箭头运算符（`+`、`[]`、`()`、`->`）均可解析。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Iterator {
@@ -587,7 +587,7 @@
   对于由 C++20 重写规则合成的比较，在书写的运算符上执行 go-to-definition 会到达实际实现它的运算符：`!=` 到达 `operator==`，`>` 到达 `operator<=>`。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   namespace std {
@@ -620,7 +620,7 @@
   在用户定义字面量后缀上执行 go-to-definition 应该到达对应的 `operator""`；目前返回空结果。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Duration {
@@ -641,7 +641,7 @@
   从执行用户定义转换的上下文（条件、`!`、显式 `bool(...)`）执行 go-to-definition 应该到达转换运算符；目前返回空结果。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Guard {
@@ -661,7 +661,7 @@
   构造其目标的 `static_cast` 会到达选中的构造函数。运行用户定义转换运算符的 `static_cast` 尚未到达该运算符。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Meters {
@@ -685,7 +685,7 @@
   对 range-based for 的 `:` 执行 go-to-definition 应该到达为该范围选择的 `begin()` / `end()`；目前返回空结果。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Iterator {
@@ -711,7 +711,7 @@
   对 structured binding 名称执行 go-to-definition 会解析到绑定本身，而不是它命名的底层字段或访问器。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Pair {
@@ -732,7 +732,7 @@
   对 `co_yield` 执行 go-to-definition 会到达 promise 的 `yield_value`。`co_await` 和 `co_return` 关键字尚未到达 awaiter 或 promise 的方法。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   namespace std {
@@ -795,7 +795,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   对使用处执行 go-to-declaration 会解析到其他文件中的位置：原型位于共享头文件中，行外定义位于相邻源文件中，两者都会从另一文件的使用处一并提供。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   `main.cpp`:
 
@@ -832,7 +832,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   从调用处和行外定义执行 go-to-declaration 都能到达函数原型 — 这是原型交替出现的两个非光标位置。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Widget {
@@ -853,7 +853,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   具有前向声明和后续定义的类，从使用处会同时提供两者 — 前向声明保留在声明集合中，而不是被定义替代。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Widget;
@@ -880,7 +880,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   静态数据成员在类内声明并在类外定义；对使用处执行 go-to-declaration 会同时提供类内声明和定义。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Config {
@@ -901,7 +901,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   使用 `extern` 变量会同时提供 `extern` 声明和定义性声明，因此使用处始终可以到达头文件侧的声明。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   extern int log_level;
@@ -920,7 +920,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   当实体在多个位置声明时，对使用处执行 go-to-declaration 会列出所有声明位置，而不只是最近的那个。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   int clamp(int value);
@@ -942,7 +942,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   参数名和参数上的顶层 `const` 不属于函数类型的一部分：下面的声明和定义拼写不同，但 go-to-declaration 仍能将使用处连接到原型。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   int render(int width, const int height);
@@ -969,7 +969,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   在三级重写链中，对每个方法执行 go-to-implementation 都会到达下一层的重写：基类到中间类，中间类到叶子类。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Base {
@@ -992,7 +992,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   对虚方法执行 go-to-implementation 会列出所有同级派生类中的重写。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Shape {
@@ -1019,7 +1019,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   对非虚函数声明执行 go-to-implementation 应到达其行外定义，表现为 go-to-definition 的超集；目前返回空。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Widget {
@@ -1036,7 +1036,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   对基类名执行 go-to-implementation 会列出所有从它派生的类。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Base {};
@@ -1053,7 +1053,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   从依赖成员调用出发，go-to-implementation 应列出每个已知实例化的具体方法；对泛型 lambda 的依赖调用同样适用。目前返回空。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   template <typename T>
@@ -1089,7 +1089,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   对局部变量或参数执行 go-to-type-definition 会到达其类型的定义。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Widget {};
@@ -1109,7 +1109,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   对字段访问执行 go-to-type-definition 会到达其字段类型的定义。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Logger {};
@@ -1135,7 +1135,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   对 `auto` 推导出的变量执行 go-to-type-definition 应到达推导类型的定义；目前该变量不带类型关系，因此返回空。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Widget {};
@@ -1154,7 +1154,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   对智能指针变量执行 go-to-type-definition 会到达包装类型本身；不会提供到指向类型的解包。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   template <typename T>
@@ -1178,7 +1178,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   对别名类型变量执行 go-to-type-definition 会到达 `using` 或 `typedef` 声明；目前还不会将别名解包到底层类型的定义。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Impl {};
@@ -1199,7 +1199,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   对结构化绑定执行 go-to-type-definition 会到达所绑定成员类型的定义。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Widget {};
@@ -1230,7 +1230,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   find references 也会收集其他文件中的使用：一个函数在一个源文件中定义并在另一个源文件中被调用时，会同时报告两个调用点以及共享头文件中的声明，而不只是当前文件中的使用。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   `main.cpp`:
 
@@ -1271,7 +1271,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   引用查询会返回声明和行外定义以及每个使用位置，因此从符号的任意一处都能到达它的全部出现位置。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   int scale(int value);
@@ -1293,7 +1293,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   range-based for 循环不会出现在引用结果中。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Iterator {
@@ -1320,7 +1320,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   对构造函数执行 find references 只报告显式调用位置；隐式调用构造函数或析构函数的对象定义不会被包含。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Blob {
@@ -1340,7 +1340,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   对构造函数执行 find references 不包含通过完美转发工厂间接到达它的调用位置。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   template <typename T, typename... Args>
@@ -1364,7 +1364,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   对成员执行 find references 不包含模板中的依赖调用位置，即使模板以该成员所在类实例化。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct A {
@@ -1388,7 +1388,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   引用回复只携带位置信息，读者无法区分写与读；未提供为每条结果标注访问类型的支持。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   int use() {
@@ -1406,7 +1406,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   每条引用只报告为裸位置；未附加包含它的函数名，因此结果只有文件和行号，没有更多上下文。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   int shared_value = 0;
@@ -1428,7 +1428,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   宏的引用涵盖其展开、测试它的 `#ifdef` / `#ifndef` 条件以及取消它的 `#undef`。每次 `#define` 同名符号都是独立的符号，因此 `#undef` 之后的重新定义只收集其自身的用例。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   #define FEATURE 1
@@ -1457,7 +1457,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   对宏执行 find references 不包含写在其他宏定义体内的提及该宏的地方。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   #define WIDTH 100  // find-refs here omits the WIDTH tokens in AREA below
@@ -1474,7 +1474,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   对 label 执行 find references 会列出该 label 本身以及所有跳转到它的 `goto`。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   int loop(int failed) {
@@ -1499,7 +1499,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   对自由函数和成员方法执行 prepare call hierarchy 均可正常工作，在光标所在的实体处建立条目。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Service {
@@ -1520,7 +1520,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   Incoming calls 列出函数的所有调用者，若某个调用者多次调用它，每个调用位置都会计入。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   int helper(int v) {
@@ -1543,7 +1543,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   Outgoing calls 列出函数体调用的每个函数，每个被调用者对应一个条目。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   int one() {
@@ -1570,7 +1570,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   Call hierarchy 条目只携带名称；函数签名未附加到 detail 字段，因此重载函数在层级中无法区分。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   int compute(int a, int b) {  // no signature attached to this item
@@ -1589,7 +1589,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   成员函数的 call hierarchy 条目已经生成，但其 name 字段只携带裸方法名（`draw`），而非能将其与自由函数区分的限定名 `Circle::draw`。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Circle {
@@ -1606,7 +1606,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   基类虚方法的 incoming calls 不包含通过派生类 override 进行的调用；对 override 的调用只归因于该 override，从不归因于其重写的基类方法。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Base {
@@ -1629,7 +1629,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   在变量或枚举常量上准备 call hierarchy 不返回任何结果；该请求仅对函数和方法提供。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   int counter = 0;  // prepare call hierarchy here → nothing
@@ -1647,7 +1647,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   写在 lambda 体内的调用会出现在它所调用函数的 incoming calls 中，并归属到包含该 lambda 的函数。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   void foo() {}
@@ -1667,7 +1667,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   构造函数的 incoming calls 不包含通过完美转发工厂函数到达它的调用点。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   template <typename T, typename... Args>
@@ -1697,7 +1697,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   准备 type hierarchy 会在任意用户定义类型标签（class、struct、enum、union 皆可）上锚定一个条目。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   class Handle {};
@@ -1719,7 +1719,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   Supertypes 列出类的每个直接基类，包括多重继承派生类型的每个基类。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Alpha {};
@@ -1736,7 +1736,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   Subtypes 列出从基类派生的每个类，涵盖所有同级派生类型。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Shape {};
@@ -1755,7 +1755,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   基类的 Subtypes 包括通过类模板派生自它的类，例如 CRTP 包装器。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Base {};
@@ -1773,7 +1773,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   类模板特化产生的 subtype 会被列出，但其条目名称只带有裸模板名（`Derived`），没有用于区分 `Derived<Foo>` 的模板参数。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Foo {};
@@ -1801,7 +1801,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   查询会匹配名称包含它的任何符号（忽略大小写）：函数、类型、枚举值和宏都参与；没有任何匹配的查询返回空列表而不是错误。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   // query: widget
@@ -1828,7 +1828,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   查询会返回来自甚至未在编辑器中打开的项目文件的符号：这里的 `other.h` 保持关闭，因此它的命中由后台索引提供。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   `main.cpp`:
 
@@ -1851,7 +1851,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   查询重载名称会找到每个重载，但每个条目只带有裸名称——除非打开两个位置，否则无法区分两个 `process` 结果。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   // query: process
@@ -1868,7 +1868,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   目前匹配是不区分大小写的子串测试：`LinLis` 找不到 `LinkedList`，`pcfg` 也找不到 `parse_config`。词边界首字母应该匹配并为每种符号类型（包括宏）评分。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   // query: LinLis
@@ -1886,7 +1886,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   符号目前只按裸名称匹配：即使 `deep::net::Socket` 存在，`net::Socket` 也找不到任何结果，其他带限定符前缀的形式也一样。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   // query: net::Socket
@@ -1907,7 +1907,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   `Color::Red` 应该能找到枚举值——无论 scoped 还是 unscoped 枚举——但带限定符的查询匹配不到任何结果；只有裸 `Red` 可以。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   // query: Color::Red
@@ -1923,7 +1923,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   底层声明应排在前面。当前结果没有排序。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   // query: Connection
@@ -1940,7 +1940,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   粘贴如 `_Z7processi` 这样的链接器符号，应解析到它修饰的函数——在追踪链接错误和堆栈时很有用。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   // query: _Z7processi
@@ -1961,7 +1961,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   在 `import` 声明中的名称上执行 go-to-definition 会打开导出它的模块接口单元；对导入符号的使用会到达该单元中的定义。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   `main.cpp`:
 
@@ -1990,7 +1990,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   在 partition 导入中冒号后的 partition 名称上执行 go-to-definition 会打开声明它的 partition 单元。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   `main.cpp`:
 
@@ -2027,7 +2027,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   在实现单元（`module m;`）中的模块名称上执行 go-to-definition 会跳到声明该模块的接口单元；反向方向（从接口名称到实现）未提供。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   `main.cpp`:
 
@@ -2064,7 +2064,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   在点分隔模块名的首个段上执行 go-to-definition 会到达该模块的接口单元；点后的段目前还不能自行解析。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   `main.cpp`:
 
@@ -2101,7 +2101,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   将光标放在 `total` 上应点亮它的声明和文件中的每个使用；该请求尚未实现。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   int total = 0;
@@ -2118,7 +2118,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   每个高亮应携带其访问类型，使编辑器能将写操作与读操作区分着色。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   void tally() {
@@ -2135,7 +2135,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   高亮 `break` 或 `continue` 也应点亮它所属的循环或 `switch`——以及 `return` / `throw` 标记的函数退出点。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   void drain(int outer, int inner) {
@@ -2165,7 +2165,7 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
   从 `widget.cpp` 一条命令应跳到 `widget.h` 并返回——clangd 客户端依赖的 `textDocument/switchSourceHeader` 请求尚未实现。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   // widget.h

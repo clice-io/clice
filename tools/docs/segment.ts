@@ -6,7 +6,7 @@
 /// translate mode feeds the translatable ones to a model.
 
 import { createHash } from "node:crypto";
-import type { List, Nodes, RootContent } from "mdast";
+import type { Nodes, RootContent } from "mdast";
 import remarkFrontmatter from "remark-frontmatter";
 import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
@@ -62,26 +62,42 @@ function rangeOf(node: Nodes, page: string): Range {
     };
 }
 
-function shapeOf(node: RootContent, parent: List | null): string {
+/// Block structure, recursively through flow containers (blockquotes and
+/// lists); everything below a paragraph, heading or table cell is
+/// phrasing, which a translation may reflow freely.
+function shapeOf(node: Nodes, ordered: boolean): string {
     switch (node.type) {
         case "heading":
             return `heading:${node.depth}`;
-        case "listItem":
-            return parent?.ordered === true ? "listItem:ordered" : "listItem";
         case "tableRow":
             return `tableRow:${node.children.length}`;
+        case "list": {
+            const inner = node.children.map((child) => shapeOf(child, node.ordered === true));
+            return `${node.ordered === true ? "list:ordered" : "list"}(${inner.join(",")})`;
+        }
+        case "listItem":
+        case "blockquote": {
+            const inner = node.children.map((child) => shapeOf(child, false));
+            const label = node.type === "listItem" && ordered ? "listItem:ordered" : node.type;
+            return `${label}(${inner.join(",")})`;
+        }
         default:
             return node.type;
     }
 }
 
 /// Fenced or indented code blocks anywhere below `node` (inline code is
-/// prose and may be reflowed by a translation).
-function nestedCode(node: Nodes, page: string): Range[] {
+/// prose and may be reflowed by a translation). The range starts at the
+/// beginning of the opening fence's line, so the list or blockquote
+/// prefix in front of the fence is compared too — it decides how much
+/// indentation is stripped from the block's lines.
+function nestedCode(node: Nodes, source: string, from: number, page: string): Range[] {
     const out: Range[] = [];
     const visit = (current: Nodes) => {
         if (current.type === "code") {
-            out.push(rangeOf(current, page));
+            const range = rangeOf(current, page);
+            const lineStart = source.lastIndexOf("\n", range.start - 1) + 1;
+            out.push({ start: Math.max(lineStart, from), end: range.end });
         } else if ("children" in current) {
             for (const child of current.children) {
                 visit(child);
@@ -99,21 +115,21 @@ function nestedCode(node: Nodes, page: string): Range[] {
 export function splitSegments(source: string, page: string): Segment[] {
     const tree = parser.parse(source);
     const segments: Segment[] = [];
-    const push = (node: RootContent, parent: List | null, translatable: boolean) => {
+    const push = (node: RootContent, ordered: boolean, translatable: boolean) => {
         const range = rangeOf(node, page);
         segments.push({
             ...range,
             kind: node.type,
-            shape: shapeOf(node, parent),
+            shape: shapeOf(node, ordered),
             translatable,
-            verbatim: translatable ? nestedCode(node, page) : [range],
+            verbatim: translatable ? nestedCode(node, source, range.start, page) : [range],
         });
     };
     for (const node of tree.children) {
         switch (node.type) {
             case "list":
                 for (const item of node.children) {
-                    push(item, node, true);
+                    push(item, node.ordered === true, true);
                 }
                 break;
             case "table":
@@ -121,22 +137,22 @@ export function splitSegments(source: string, page: string): Segment[] {
                 // node; it lands in the gap between rows and is not
                 // compared, so the two sides may align columns differently.
                 for (const row of node.children) {
-                    push(row, null, true);
+                    push(row, false, true);
                 }
                 break;
             case "heading":
             case "paragraph":
             case "blockquote":
-                push(node, null, true);
+                push(node, false, true);
                 break;
             // VitePress home-page copy (hero text, feature cards) lives in
             // the YAML frontmatter, so the whole block is one coarse
             // translation segment.
             case "yaml":
-                push(node, null, true);
+                push(node, false, true);
                 break;
             default:
-                push(node, null, false);
+                push(node, false, false);
         }
     }
     return segments;

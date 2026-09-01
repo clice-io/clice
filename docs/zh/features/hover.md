@@ -710,7 +710,7 @@
   悬停一个可常量求值调用的 record 类型实参时，当前会把该调用的值（`Value = 7`）报告到该变量上——这个值并不是该 record 自身的值。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   namespace record_value_misleading {
@@ -742,7 +742,7 @@
   适用于普通函数、主模板及其特化；引用会解析到最特化声明的注释。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   namespace docs {
@@ -770,7 +770,7 @@
   "Trivial accessor/setter for `field`." 文本。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   namespace accessors {
@@ -789,7 +789,7 @@
   `@copydoc target` 标签应将 `target` 的文档复制到当前符号的悬停卡片中。clice 目前还不解析该标签——卡片显示的是字面文本 `@copydoc base_func()`。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   namespace copydoc {
@@ -808,7 +808,7 @@
   悬停一个自身没有注释的重写方法时，应显示它所重写方法的文档。clice 目前还不继承该文档——重写方法的卡片中没有任何描述。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   namespace inherit_docs {
@@ -829,7 +829,7 @@
   连续的重载通常只给第一个写文档；后续未写文档的重载应复用这份共享描述。clice 目前还不共享该文档——后续重载的卡片中没有任何描述。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   namespace overloads {
@@ -846,7 +846,7 @@
   通过 `using Base::Base;` 引入的构造函数在悬停时应带有基类构造函数的文档。目前没有对应的悬停界面：using 声明中的名字解析到类，而不是继承的构造函数。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   namespace inherited_ctor {
@@ -867,7 +867,7 @@
   `// ==== Section ====` 这样的横幅后跟空行时，不应被误当作其下声明的文档。clice 目前仍会附着它——横幅文本会出现在卡片中。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   namespace banners {
@@ -884,7 +884,7 @@
   clangd 将其跟踪为 clangd#829；clice 已经优先使用声明处的 `///` 文档，而不是定义处的普通 `//` 注释，并在声明处和定义处都显示它。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   namespace decldef {
@@ -903,7 +903,7 @@
   跨多行 `///` 编写的 markdown 表格应按保留换行的方式渲染为表格。clice 目前将多行压成一行，因此表格无法渲染。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   namespace tables {
@@ -921,7 +921,7 @@
   文档注释正文包含缩进代码块时，应以正确的缩进渲染。clice 目前会去掉前导缩进，导致缩进代码块丢失偏移量，空行也会塌陷。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   namespace indented {

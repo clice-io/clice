@@ -410,7 +410,7 @@
 - [x] 协程体 — 原始代码块恰好折叠一次，协程转换包装不会产生重复折叠；协程 lambda 的函数体仍可折叠
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   namespace std {
@@ -470,7 +470,7 @@
 - [x] 初始化列表构造 — 构造函数的大括号与嵌套初始化列表共用分隔符，只折叠一次；圆括号包裹的列表参数保留两处折叠
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   namespace std {
@@ -516,7 +516,7 @@
   > 折叠仍然有效，只是缺少占位文本。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Config {
@@ -543,7 +543,7 @@
   > — 仍为 open）。其他客户端可能不同。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   struct Config {
@@ -568,7 +568,7 @@
   > **备注**：这与 semantic tokens（非活跃代码灰显）重叠，并且部分是客户端 UX 范畴的问题。服务器可以用 `FoldingRangeKind.Region` 标记这些范围，客户端可以选择自动折叠它们。
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   #ifdef _WIN32
@@ -583,7 +583,7 @@
 - [x] 单行结构保持不折叠——隐藏不了任何内容的折叠是噪音
 
   <details>
-  <summary>Example</summary>
+  <summary>示例</summary>
 
   ```cpp
   namespace tiny { }
