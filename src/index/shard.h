@@ -87,6 +87,10 @@ public:
     /// hash, so it works for ASCII blobs, whose text is not stored.
     bool matches_content(llvm::StringRef text) const;
 
+    /// The same comparison for a caller that already holds the disk
+    /// content's size and hash (a FileTable observation) — no read.
+    bool matches_content(std::uint64_t size, std::uint64_t hash) const;
+
     /// All variant identities stored in the blob, in mask-bit order. A
     /// worker-emitted blob holds one anonymous variant identified by its
     /// own byte hash.

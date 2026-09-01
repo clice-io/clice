@@ -8,6 +8,7 @@
 #include "index/database.h"
 #include "index/serialization.h"
 #include "sched/batch.h"
+#include "sched/context.h"
 #include "sched/index/store.h"
 #include "sched/workspace.h"
 #include "support/cache_store.h"
@@ -129,16 +130,9 @@ int run_stats_once(llvm::StringRef root, std::uint32_t top, bool allow_retry) {
     Workspace workspace;
     workspace.config = std::move(config);
     workspace.store.emplace(std::move(*store));
-    workspace.index_db = index::open_database(*workspace.store, workspace.config.project.index_db);
-    // A namespace whose directory scan failed looks empty while its blobs
-    // exist — reporting "Index is empty" with exit code 0 would be a lie.
-    if(auto ec = workspace.store->scan_error()) {
-        LOG_ERROR("Failed to read the index cache at {}: {}",
-                  std::string_view(workspace.config.project.cache_dir),
-                  ec.message());
-        return 1;
-    }
-    IndexStore index_store(loop, workspace);
+    workspace.index_db = index::open_database(*workspace.store);
+    ContextResolver contexts(workspace);
+    IndexStore index_store(loop, workspace, contexts);
     auto loaded = index_store.load(/*read_only=*/true);
     if(!loaded.decoded) {
         LOG_ERROR("Index cache at {} is in an old or corrupt format; run `clice index` to rebuild",
@@ -213,7 +207,7 @@ int run_stats_once(llvm::StringRef root, std::uint32_t top, bool allow_retry) {
     files.reserve(workspace.shards.size());
     std::uint64_t total_bytes = 0, total_occurrences = 0, total_relations = 0;
     for(auto& [path_id, shard]: workspace.shards) {
-        ShardStat stat{.path = workspace.path_pool.resolve(path_id),
+        ShardStat stat{.path = workspace.file_table.resolve(path_id),
                        .bytes = shard.bytes().size(),
                        .variants = shard.variants().size()};
         shard.for_each_occurrence([&](const index::Occurrence&) {
@@ -262,7 +256,7 @@ int run_stats_once(llvm::StringRef root, std::uint32_t top, bool allow_retry) {
                  total_relations);
     std::println("Global symbols: {}, file versions: {}",
                  project.symbols.size(),
-                 project.file_versions.size());
+                 workspace.file_table.versions.size());
 
     auto payload = columns.content + columns.variants + columns.symbols + columns.local_names +
                    columns.occ_rows + columns.occ_masks + columns.rel_rows + columns.rel_masks;

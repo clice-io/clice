@@ -58,14 +58,14 @@ struct Stack {
     }
 
     std::shared_ptr<Session> open(llvm::StringRef path, std::string text) {
-        auto session = sessions.open(workspace.path_pool.intern(path));
+        auto session = sessions.open(workspace.file_table.intern(path));
         session->text = std::move(text);
         session->line_starts = kota::ipc::lsp::build_line_starts(session->text);
         return session;
     }
 
-    bool is_compiling(std::uint32_t path_id) const {
-        return graph.is_compiling({ast_family, path_id});
+    bool is_compiling(Fid path_id) const {
+        return graph.is_compiling({ast_family, path_id.raw});
     }
 
     void register_pch_store(TempDir& tmp) {
@@ -512,7 +512,8 @@ TEST_CASE(BufferImportRecorded) {
     // The sentinel edge survives the landing: a first provider's update
     // must reach this document's node.
     auto dirtied = stack.graph.update(PCMFamily::unresolved_node("m"));
-    EXPECT_TRUE(std::ranges::find(dirtied, NodeId{ast_family, session->path_id}) != dirtied.end());
+    EXPECT_TRUE(std::ranges::find(dirtied, NodeId{ast_family, session->path_id.raw}) !=
+                dirtied.end());
 
     logging::reset_anomaly_for_testing();
 }
@@ -557,7 +558,8 @@ TEST_CASE(IncludeImportRecorded) {
     EXPECT_TRUE(done);
 
     auto dirtied = stack.graph.update(PCMFamily::unresolved_node("m"));
-    EXPECT_TRUE(std::ranges::find(dirtied, NodeId{ast_family, session->path_id}) != dirtied.end());
+    EXPECT_TRUE(std::ranges::find(dirtied, NodeId{ast_family, session->path_id.raw}) !=
+                dirtied.end());
 
     logging::reset_anomaly_for_testing();
 }
@@ -837,7 +839,7 @@ TEST_CASE(PoisonPreambleBudget) {
 
     auto make_session = [&] {
         auto session = std::make_shared<Session>();
-        session->path_id = stack.workspace.path_pool.intern(src);
+        session->path_id = stack.workspace.file_table.intern(src);
         session->text = "#pragma clang __debug crash\n";
         return session;
     };
@@ -978,7 +980,7 @@ TEST_CASE(StaleDepsNoAdopt) {
 
     auto make_session = [&] {
         auto session = std::make_shared<Session>();
-        session->path_id = stack.workspace.path_pool.intern(src);
+        session->path_id = stack.workspace.file_table.intern(src);
         session->text = "#include \"dep.h\"\nint x;\n";
         return session;
     };

@@ -71,12 +71,12 @@ void serialize_manifest(const TUManifest& manifest, llvm::raw_ostream& os) {
     blob.format_version = index_format_version;
     blob.global_gen = manifest.global_gen;
     blob.built_at = manifest.built_at;
-    blob.tu_fv = manifest.tu_fv;
+    blob.tu_fv = manifest.tu_fv.raw;
 
     blob.node_count = static_cast<std::uint32_t>(manifest.nodes.size());
     blob.nodes.reserve(manifest.nodes.size() * 6);
     for(auto& node: manifest.nodes) {
-        write_varint(blob.nodes, node.fv);
+        write_varint(blob.nodes, node.fv.raw);
         write_varint(blob.nodes, node.parent + 1);
         write_varint(blob.nodes, node.line);
     }
@@ -84,7 +84,7 @@ void serialize_manifest(const TUManifest& manifest, llvm::raw_ostream& os) {
     blob.contribution_count = static_cast<std::uint32_t>(manifest.contributions.size());
     blob.contributions.reserve(manifest.contributions.size() * 10);
     for(auto& [fv, hash]: manifest.contributions) {
-        write_varint(blob.contributions, fv);
+        write_varint(blob.contributions, fv.raw);
         std::uint8_t bytes[8];
         std::memcpy(bytes, &hash, sizeof(hash));
         blob.contributions.insert(blob.contributions.end(), bytes, bytes + sizeof(bytes));
@@ -111,7 +111,7 @@ std::optional<TUManifest> deserialize_manifest(llvm::StringRef data) {
     TUManifest manifest;
     manifest.global_gen = blob.global_gen;
     manifest.built_at = blob.built_at;
-    manifest.tu_fv = blob.tu_fv;
+    manifest.tu_fv = VersionID{blob.tu_fv};
 
     constexpr std::uint64_t id_max = std::numeric_limits<std::uint32_t>::max();
     std::span<const std::uint8_t> nodes(blob.nodes);
@@ -135,7 +135,7 @@ std::optional<TUManifest> deserialize_manifest(llvm::StringRef data) {
         if(parent > blob.node_count) {
             return std::nullopt;
         }
-        manifest.nodes.push_back({static_cast<std::uint32_t>(fv),
+        manifest.nodes.push_back({VersionID{static_cast<std::uint32_t>(fv)},
                                   static_cast<std::uint32_t>(parent) - 1,
                                   static_cast<std::uint32_t>(line)});
     }
@@ -157,7 +157,7 @@ std::optional<TUManifest> deserialize_manifest(llvm::StringRef data) {
         std::uint64_t hash = 0;
         std::memcpy(&hash, contributions.data() + pos, sizeof(hash));
         pos += 8;
-        manifest.contributions.emplace_back(static_cast<std::uint32_t>(fv), hash);
+        manifest.contributions.emplace_back(VersionID{static_cast<std::uint32_t>(fv)}, hash);
     }
     if(pos != contributions.size()) {
         return std::nullopt;

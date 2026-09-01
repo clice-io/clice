@@ -92,28 +92,36 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
     // (crash between commits, failed aux commit) rebuilds whole. The
     // store lookup refreshes the blob's LRU position.
     llvm::StringRef pch_miss = "no_entry";
-    if(auto it = workspace.pch_cache.find(pch_key); it != workspace.pch_cache.end()) {
-        auto& st = it->second;
-        bool in_store = workspace.store && workspace.store->lookup("pch", pch_key) &&
-                        workspace.store->lookup_aux("pch", pch_key);
-        if(st.path.empty()) {
-            pch_miss = "incomplete_entry";
-        } else if(!in_store) {
-            pch_miss = "evicted";
-        } else if(st.index_path.empty()) {
-            // load_state() found the blob unreadable earlier; republish
-            // the pair rather than serving a PCH with no index forever.
-            pch_miss = "idx_unreadable";
-        } else if(deps_changed(workspace.path_pool, st.deps)) {
-            pch_miss = "deps_changed";
-        } else {
-            LOG_PERF("cache", "ns=pch event=hit key={} file={}", pch_key, request.file);
-            co_return RoundOutcome::Success;
-        }
-        // Blob evicted by the store's LRU: drop the metadata too, or the
-        // content-keyed map grows for the server's lifetime.
-        if(!in_store) {
-            workspace.pch_cache.erase(it);
+    {
+        auto wave = workspace.file_table.wave();
+        if(auto it = workspace.pch_cache.find(pch_key); it != workspace.pch_cache.end()) {
+            auto& st = it->second;
+            bool in_store = workspace.store && workspace.store->lookup("pch", pch_key) &&
+                            workspace.store->lookup_aux("pch", pch_key);
+            if(st.path.empty()) {
+                pch_miss = "incomplete_entry";
+            } else if(!in_store) {
+                pch_miss = "evicted";
+            } else if(st.index_path.empty()) {
+                // load_state() found the blob unreadable earlier; republish
+                // the pair rather than serving a PCH with no index forever.
+                pch_miss = "idx_unreadable";
+            } else if(deps_changed(workspace.file_table, st.deps)) {
+                // FIXME: deps are the only revalidation — the blobs
+                // themselves are not pinned, so metadata surviving a
+                // crashed flush or a concurrent writer's republish is
+                // trusted on its deps alone (see CacheStore's FIXME);
+                // clang's own validation backstops.
+                pch_miss = "deps_changed";
+            } else {
+                LOG_PERF("cache", "ns=pch event=hit key={} file={}", pch_key, request.file);
+                co_return RoundOutcome::Success;
+            }
+            // Blob evicted by the store's LRU: drop the metadata too, or
+            // the content-keyed map grows for the server's lifetime.
+            if(!in_store) {
+                workspace.pch_cache.erase(pch_key);
+            }
         }
     }
     LOG_PERF("cache",
@@ -269,7 +277,7 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
     st.path = *committed.value().pch_path;
     st.bound = request.preamble_bound;
     st.deps =
-        capture_deps_snapshot(workspace.path_pool, result.value().deps, result.value().build_at);
+        capture_deps_snapshot(workspace.file_table, result.value().deps, result.value().build_at);
     st.index_path = *committed.value().index_path;
     // Replace the previous blob's mapping (same key, rebuilt content);
     // in-flight holders of the old shared_ptr stay valid.
@@ -279,8 +287,7 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
 
     LOG_INFO("PCH built for {}: {}", bp.file, st.path);
 
-    // Persist cache metadata after successful build.
-    workspace.save_cache(contexts);
+    workspace.mark_artifacts_dirty();
 
     co_return RoundOutcome::Success;
 }
@@ -295,7 +302,9 @@ bool PCHFamily::fresh(llvm::StringRef pch_key) {
        !workspace.store->lookup_aux("pch", pch_key)) {
         return false;
     }
-    return !deps_changed(workspace.path_pool, it->second.deps);
+    auto& st = it->second;
+    auto wave = workspace.file_table.wave();
+    return !deps_changed(workspace.file_table, st.deps);
 }
 
 bool PCHFamily::building(llvm::StringRef pch_key) const {

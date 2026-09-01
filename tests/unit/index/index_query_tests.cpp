@@ -35,13 +35,13 @@ ContextResolver resolver{workspace};
 TaskGraph graph{loop};
 PCMFamily pcm{graph, workspace, resolver, pool};
 ASTProjectionTable projections;
-IndexStore index_store{loop, workspace};
+IndexStore index_store{loop, workspace, resolver};
 TURunFamily turun{graph, workspace, resolver, pcm, index_store, pool};
 IndexPump indexer{loop, workspace, turun, index_store, pool};
 clice::IndexQuery query{workspace, store, indexer, projections};
 
-std::uint32_t main_id = 0;
-std::uint32_t header_id = 0;
+Fid main_id;
+Fid header_id;
 
 /// Mirror of the indexer's merge over in-memory sources: project symbols,
 /// per-section shard blobs, and the TU manifest with its contributions —
@@ -52,9 +52,9 @@ void merge_into_workspace() {
     ASSERT_TRUE(view.loaded());
 
     auto& project = workspace.project_index;
-    llvm::SmallVector<std::uint32_t> file_ids_map;
+    llvm::SmallVector<Fid> file_ids_map;
     for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
-        file_ids_map.push_back(workspace.path_pool.intern(view.path(i)));
+        file_ids_map.push_back(workspace.file_table.intern(view.path(i)));
     }
     ASSERT_TRUE(project.merge(view, file_ids_map));
     main_id = file_ids_map[view.path_count() - 1];
@@ -76,10 +76,10 @@ void merge_into_workspace() {
         }
     }
 
-    llvm::SmallVector<std::uint32_t> fv_of;
+    llvm::SmallVector<VersionID> fv_of;
     for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
         auto hash = consumed[i] != 0 ? consumed[i] : view.path_hash(i);
-        fv_of.push_back(project.intern_file_version(file_ids_map[i], hash));
+        fv_of.push_back(workspace.file_table.intern_version(file_ids_map[i], hash));
     }
 
     index::TUManifest manifest;
@@ -93,7 +93,7 @@ void merge_into_workspace() {
                                             view.section_hash(section));
     }
 
-    for(auto path_id: project.apply_manifest(main_id, std::move(manifest))) {
+    for(auto path_id: project.apply_manifest(workspace.file_table, main_id, std::move(manifest))) {
         auto it = workspace.shards.find(path_id);
         if(it != workspace.shards.end()) {
             it->second.set_live(project.live_variants(path_id));
@@ -102,7 +102,7 @@ void merge_into_workspace() {
 }
 
 std::string main_path() {
-    return std::string(workspace.path_pool.resolve(main_id));
+    return std::string(workspace.file_table.resolve(main_id));
 }
 
 TEST_CASE(DefinitionAcrossFiles) {

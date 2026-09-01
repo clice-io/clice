@@ -1,6 +1,6 @@
 #include "test/test.h"
 #include "feature/feature.h"
-#include "support/path_pool.h"
+#include "vfs/file_table.h"
 
 namespace clice::testing {
 
@@ -40,9 +40,9 @@ TEST_CASE(PlusStaysLiteral) {
 TEST_CASE(RoundTripIdentity) {
     // Ingest of an emitted URI must intern to the same ID as the original
     // canonical path — including the client-style encoded-colon spelling.
-    PathPool pool;
-    constexpr std::uint32_t bad = 0xFFFFFFFF;
-    auto ingest = [&](llvm::StringRef uri) -> std::uint32_t {
+    FileTable pool;
+    constexpr Fid bad{0xFFFFFFFF};
+    auto ingest = [&](llvm::StringRef uri) -> Fid {
         auto parsed = kota::ipc::lsp::URI::parse(std::string_view(uri.data(), uri.size()));
         if(!parsed.has_value()) {
             return bad;

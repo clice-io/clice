@@ -10,7 +10,6 @@
                 "logging_dir": "",
                 "compile_commands_paths": [],
                 "enable_indexing": true,
-                "index_db": "lmdb",
                 "readonly": "off",
                 "idle_timeout_ms": 3000,
                 "test_hooks": false,
@@ -95,15 +94,6 @@
                     "type": "boolean",
                     "description": "Build the background index that serves cross-TU features (find references, workspace symbols, ...).",
                     "default": true
-                },
-                "index_db": {
-                    "type": "string",
-                    "description": "Index persistence backend: \"lmdb\" (single database file) or \"files\" (one file per blob).",
-                    "default": "lmdb",
-                    "enum": [
-                        "lmdb",
-                        "files"
-                    ]
                 },
                 "readonly": {
                     "type": "string",

@@ -20,7 +20,7 @@ clice is a brand-new C++ language server, redesigned from the architecture level
 
 General-purpose utilities and infrastructure shared by all other modules.
 
-- `PathPool`: Internalizes file paths as `uint32_t` identifiers, used as stable file identifiers throughout the system
+- `FileTable` (in `src/vfs/`): Internalizes file paths as `uint32_t` identifiers used as stable file identifiers throughout the system, and holds the shared per-file facts derived from them — disk state, content versions, scan results, directory listings
 - `FuzzyMatcher`: Token-aware fuzzy matching for code completion and symbol search
 - Markup / Doxygen: Parsing and formatting of documentation comments
 - Logging, filesystem abstractions, string utilities, etc.
@@ -87,7 +87,7 @@ The language server's core runtime, responsible for assembling all the layers ab
 
 **`state/`** — Project and document state, plus the invalidation machinery.
 
-- `Workspace`: Project-level global state — the compilation database, toolchain, path pool, dependency graph, cache store, and project index. Core invariant: unsaved buffer contents of open files never modify the `Workspace` -- it only reflects the state on disk
+- `Workspace`: Project-level global state — the compilation database, toolchain, file table, dependency graph, cache store, and project index. Core invariant: unsaved buffer contents of open files never modify the `Workspace` -- it only reflects the state on disk
 - `Session` / `SessionStore`: The editing state for each open file (buffer contents, document version, in-memory index, PCH reference, etc.), created on didOpen and destroyed on didClose; `SessionStore` owns the table of open sessions and the buffer-synchronization logic
 - `Invalidator`: The invalidation engine — folds file events (buffer opens/saves, on-disk changes, compilation-database reloads, worker crashes) into a deduplicated set of invalidation effects
 - `FileTracker`: Stat-polling discovery of changes that happen outside the editor (a regenerated `compile_commands.json`, `git checkout`), feeding events to the `Invalidator`

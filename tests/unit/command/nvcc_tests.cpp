@@ -507,7 +507,8 @@ TEST_CASE(DryrunTopFallback) {
 TEST_CASE(CcbinAffectsKey) {
     /// -ccbin persists as an unknown probe token; two commands differing
     /// only in host compiler must not share a probe.
-    CompilationDatabase db;
+    FileTable file_table;
+    CompilationDatabase db{file_table};
     db.add_command("/tmp", "/tmp/a.cu", "nvcc -ccbin=/usr/bin/g++-12 -c /tmp/a.cu"sv);
     db.add_command("/tmp", "/tmp/b.cu", "nvcc -ccbin=/usr/bin/g++-13 -c /tmp/b.cu"sv);
 
@@ -520,7 +521,8 @@ TEST_CASE(CcbinAffectsKey) {
 }
 
 TEST_CASE(DatabaseTranslatesNVCC) {
-    CompilationDatabase db;
+    FileTable file_table;
+    CompilationDatabase db{file_table};
     std::vector<const char*> arguments = {"nvcc",
                                           "-forward-unknown-to-host-compiler",
                                           "-DMY_FLAG=1",
@@ -558,7 +560,8 @@ TEST_CASE(DatabaseTranslatesNVCC) {
 }
 
 TEST_CASE(RuleFlagsTranslated) {
-    CompilationDatabase db;
+    FileTable file_table;
+    CompilationDatabase db{file_table};
     std::vector<const char*> arguments = {"nvcc",
                                           "--generate-code=arch=compute_75,code=sm_75",
                                           "-c",
@@ -591,7 +594,8 @@ TEST_CASE(RuleFlagsTranslated) {
 }
 
 TEST_CASE(AppendOverridesBase) {
-    CompilationDatabase db;
+    FileTable file_table;
+    CompilationDatabase db{file_table};
     std::vector<const char*> arguments =
         {"nvcc", "-rdc=true", "-default-stream=per-thread", "-arch=sm_75", "-c", "/tmp/kern.cu"};
     db.add_command("/tmp", "/tmp/kern.cu", arguments);
@@ -644,7 +648,8 @@ TEST_CASE(AppendOverridesBase) {
 }
 
 TEST_CASE(ExtrasStayClangDialect) {
-    CompilationDatabase db;
+    FileTable file_table;
+    CompilationDatabase db{file_table};
     std::vector<const char*> arguments = {"nvcc", "-rdc=true", "-c", "/tmp/kern.cu"};
     db.add_command("/tmp", "/tmp/kern.cu", arguments);
 
@@ -664,7 +669,8 @@ TEST_CASE(ExtrasStayClangDialect) {
 }
 
 TEST_CASE(GencodeAppendAccumulates) {
-    CompilationDatabase db;
+    FileTable file_table;
+    CompilationDatabase db{file_table};
     std::vector<const char*> arguments = {"nvcc",
                                           "--generate-code=arch=compute_90,code=sm_90",
                                           "-c",
@@ -741,7 +747,8 @@ TEST_CASE(CollapseHonorsNegatives) {
 }
 
 TEST_CASE(WildcardRemoveClearsArch) {
-    CompilationDatabase db;
+    FileTable file_table;
+    CompilationDatabase db{file_table};
     std::vector<const char*> gencode = {"nvcc",
                                         "--generate-code=arch=compute_75,code=sm_75",
                                         "-c",
@@ -789,7 +796,8 @@ TEST_CASE(WildcardRemoveClearsArch) {
 }
 
 TEST_CASE(RemoveMatchesUnknownSpelling) {
-    CompilationDatabase db;
+    FileTable file_table;
+    CompilationDatabase db{file_table};
     std::vector<const char*> arguments = {"nvcc",
                                           "-ccbin=/usr/bin/g++-12",
                                           "-allow-unsupported-compiler",
@@ -816,7 +824,8 @@ TEST_CASE(RemoveMatchesUnknownSpelling) {
 }
 
 TEST_CASE(RemoveListAlternatives) {
-    CompilationDatabase db;
+    FileTable file_table;
+    CompilationDatabase db{file_table};
     std::vector<const char*> arguments = {"nvcc",
                                           "-ccbin=/usr/bin/g++-12",
                                           "-default-stream=per-thread",
@@ -844,7 +853,8 @@ TEST_CASE(RemoveListAlternatives) {
 }
 
 TEST_CASE(WildcardRemovesProbeValue) {
-    CompilationDatabase db;
+    FileTable file_table;
+    CompilationDatabase db{file_table};
     std::vector<const char*> arguments =
         {"nvcc", "-ccbin=/usr/bin/g++-12", "-target-dir", "sbsa-linux", "-c", "/tmp/kern.cu"};
     db.add_command("/tmp", "/tmp/kern.cu", arguments);

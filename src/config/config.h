@@ -92,12 +92,6 @@ struct ProjectConfig {
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
-                         "Index persistence backend: \"lmdb\" (single database "
-                         "file) or \"files\" (one file per blob).")
-    <std::string> index_db = "lmdb";
-
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
                          "Read-only serving for open files: \"off\" targets a "
                          "full AST for every open file — builds are pulled by "
                          "the first request that needs them, with the index "

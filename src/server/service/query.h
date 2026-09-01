@@ -113,8 +113,7 @@ struct IndexQueryOptions {
 class IndexQuery {
 public:
     /// Visitor for iterating open Sessions.  Returns false to stop early.
-    using SessionVisitor =
-        std::function<bool(std::uint32_t server_path_id, const Session& session)>;
+    using SessionVisitor = std::function<bool(Fid server_path_id, const Session& session)>;
 
     IndexQuery(Workspace& workspace,
                const SessionStore& sessions,
@@ -253,7 +252,7 @@ public:
     /// Whether a file's shard sits this query out: its own disk content
     /// changed and awaits reindexing (clause 2), or — unless disk_only —
     /// the file is open and its session serves it instead.
-    bool skip_shard(std::uint32_t path_id) const;
+    bool skip_shard(Fid path_id) const;
 
     /// The shard that may serve `session`'s document as if closed
     /// (freshness clause 4): the session has no current file index and
@@ -325,7 +324,7 @@ private:
 
     /// Visit each open session whose overlay preamble entry may serve
     /// (see serves_preamble), paired with that blob.
-    void visit_preambles(llvm::function_ref<bool(std::uint32_t server_path_id,
+    void visit_preambles(llvm::function_ref<bool(Fid server_path_id,
                                                  const Session& session,
                                                  const index::TUIndex& state)> visitor) const;
 
@@ -371,12 +370,12 @@ private:
                                                              RelationKind kind);
 
     /// Check whether a path_id has an active Session.
-    bool is_path_open(std::uint32_t path_id) const;
+    bool is_path_open(Fid path_id) const;
 
     /// Freshness contract, clause 2: whether a closed file's contribution
     /// must be skipped because its own content changed and the reindex has
     /// not landed yet. O(1) per candidate file, no I/O.
-    bool skip_stale_contribution(std::uint32_t path_id) const;
+    bool skip_stale_contribution(Fid path_id) const;
 
     Workspace& workspace;
     const SessionStore& sessions;

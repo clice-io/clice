@@ -554,7 +554,7 @@ test("rpc file deps", async ({ session }) => {
 
 // Agentic clients pass native path spellings; on Windows an uppercase
 // drive must hit the same pool entry as the lowercase canonical form
-// (the lookup goes through PathPool::find, not a raw map probe).
+// (the lookup goes through FileTable::find, not a raw map probe).
 test.skipIf(process.platform !== "win32")("rpc file deps native spelling", async ({ session }) => {
     const { rpc, workspace } = await indexedAgentic(session);
     try {

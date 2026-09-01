@@ -35,14 +35,14 @@ ContextResolver resolver{workspace};
 TaskGraph graph{loop};
 PCMFamily pcm{graph, workspace, resolver, pool};
 ASTProjectionTable projections;
-IndexStore index_store{loop, workspace};
+IndexStore index_store{loop, workspace, resolver};
 TURunFamily turun{graph, workspace, resolver, pcm, index_store, pool};
 IndexPump indexer{loop, workspace, turun, index_store, pool};
 IndexQuery index_query{workspace, store, indexer, projections};
 IndexQuery agent_query{workspace, store, indexer, projections, {.disk_only = true}};
 
-std::uint32_t main_id = 0;
-std::uint32_t header_id = 0;
+Fid main_id;
+Fid header_id;
 
 /// Build an envelope from the added sources and merge it into the
 /// workspace, installing each section's blob verbatim as the file's shard.
@@ -51,9 +51,9 @@ void merge_into_workspace() {
     auto view = index::TUIndex::from_bytes(wire);
     ASSERT_TRUE(view.loaded());
 
-    llvm::SmallVector<std::uint32_t> file_ids_map;
+    llvm::SmallVector<Fid> file_ids_map;
     for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
-        file_ids_map.push_back(workspace.path_pool.intern(view.path(i)));
+        file_ids_map.push_back(workspace.file_table.intern(view.path(i)));
     }
     ASSERT_TRUE(workspace.project_index.merge(view, file_ids_map));
     main_id = file_ids_map[view.path_count() - 1];
@@ -69,7 +69,7 @@ void merge_into_workspace() {
 }
 
 /// The symbol hash at an offset in a file's merged shard.
-index::SymbolHash symbol_at(std::uint32_t path_id, std::uint32_t offset) {
+index::SymbolHash symbol_at(Fid path_id, std::uint32_t offset) {
     index::SymbolHash result = 0;
     workspace.shards[path_id].lookup(offset, [&](const index::Occurrence& o) {
         result = o.target;
@@ -88,7 +88,7 @@ std::vector<std::string> reference_files(index::SymbolHash hash) {
 }
 
 TEST_CASE(PendingReasonUpgrade) {
-    auto file = workspace.path_pool.intern("/proj/upgrade.cpp");
+    auto file = workspace.file_table.intern("/proj/upgrade.cpp");
     ASSERT_FALSE(indexer.pending_reason(file).has_value());
 
     indexer.enqueue(file, ReindexReason::DepsOnly);
@@ -134,7 +134,7 @@ TEST_CASE(PendingGateSplitsRows) {
 
     // Line-based resolution in the file works while its rows are current.
     agentic::ReadSymbolParams by_line;
-    by_line.path = std::string(workspace.path_pool.resolve(main_id));
+    by_line.path = std::string(workspace.file_table.resolve(main_id));
     by_line.line = 3;
     ASSERT_FALSE(agent_query.locate_symbols(by_line).empty());
 

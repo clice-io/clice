@@ -6,9 +6,9 @@
 #include <vector>
 
 #include "command/command.h"
-#include "support/path_pool.h"
 #include "syntax/include_resolver.h"
 #include "syntax/scan.h"
+#include "vfs/file_table.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
@@ -19,17 +19,18 @@
 
 namespace clice {
 
+/// One include edge: the included file and whether the directive sits
+/// inside a preprocessor conditional (#if/#ifdef).
+struct IncludeEdge {
+    Fid fid;
+    bool conditional = false;
+};
+
 class DependencyGraph {
 public:
-    /// Conditional flag: bit 31 marks an include inside #ifdef/#if.
-    constexpr static std::uint32_t CONDITIONAL_FLAG = 0x80000000u;
-
-    /// Mask to extract the actual PathID from a flagged value.
-    constexpr static std::uint32_t PATH_ID_MASK = 0x7FFFFFFFu;
-
     /// Key for per-(file, SearchConfig) include storage.
     struct IncludeKey {
-        std::uint32_t path_id;
+        Fid path_id;
         std::uint32_t config_id;
 
         bool operator==(const IncludeKey&) const = default;
@@ -37,16 +38,16 @@ public:
 
     struct IncludeKeyInfo {
         static IncludeKey getEmptyKey() {
-            return {~0u, ~0u};
+            return {Fid{~0u}, ~0u};
         }
 
         static IncludeKey getTombstoneKey() {
-            return {~0u - 1, ~0u - 1};
+            return {Fid{~0u - 1}, ~0u - 1};
         }
 
         static unsigned getHashValue(const IncludeKey& key) {
             return llvm::DenseMapInfo<std::uint64_t>::getHashValue(
-                (std::uint64_t(key.path_id) << 32) | key.config_id);
+                (std::uint64_t(key.path_id.raw) << 32) | key.config_id);
         }
 
         static bool isEqual(const IncludeKey& lhs, const IncludeKey& rhs) {
@@ -54,56 +55,54 @@ public:
         }
     };
 
-    /// Register a module interface unit: module name -> PathID.
-    void add_module(llvm::StringRef module_name, std::uint32_t path_id);
+    /// Register a module interface unit: module name -> fid.
+    void add_module(llvm::StringRef module_name, Fid path_id);
 
     /// Re-register a file's module declaration after a save: the file
     /// leaves whatever module it declared before and, when `module_name`
     /// is non-empty, provides that one — so imports resolved between two
     /// full scans see the declaration the disk actually holds.
-    void update_module_decl(std::uint32_t path_id, llvm::StringRef module_name);
+    void update_module_decl(Fid path_id, llvm::StringRef module_name);
 
-    /// Look up all PathIDs that provide a given module (may have multiple candidates).
-    llvm::ArrayRef<std::uint32_t> lookup_module(llvm::StringRef module_name) const;
+    /// Look up all fids that provide a given module (may have multiple candidates).
+    llvm::ArrayRef<Fid> lookup_module(llvm::StringRef module_name) const;
 
     /// Set the direct include list for a (file, config) pair.
-    void set_includes(std::uint32_t path_id,
+    void set_includes(Fid path_id,
                       std::uint32_t config_id,
-                      llvm::SmallVector<std::uint32_t> included_ids);
+                      llvm::SmallVector<IncludeEdge> included);
 
     /// Get direct includes for a specific (file, config) pair.
-    llvm::ArrayRef<std::uint32_t> get_includes(std::uint32_t path_id,
-                                               std::uint32_t config_id) const;
+    llvm::ArrayRef<IncludeEdge> get_includes(Fid path_id, std::uint32_t config_id) const;
 
-    /// Get the union of includes across all configs for a file.
-    llvm::SmallVector<std::uint32_t> get_all_includes(std::uint32_t path_id) const;
+    /// Get the union of included fids across all configs for a file.
+    llvm::SmallVector<Fid> get_all_includes(Fid path_id) const;
 
     /// Erase every config's include list for a file. Incremental didSave
     /// rescans clear first, then re-add one list per configuration.
-    void clear_includes(std::uint32_t path_id);
+    void clear_includes(Fid path_id);
 
     /// Build the reverse include map from the forward includes.
     /// Must be called after all set_includes() calls are complete.
     void build_reverse_map();
 
     /// Get the direct includers of a file (files that directly include path_id).
-    llvm::ArrayRef<std::uint32_t> get_includers(std::uint32_t path_id) const;
+    llvm::ArrayRef<Fid> get_includers(Fid path_id) const;
 
     /// BFS upward through reverse edges to find all source files (roots)
     /// that transitively include header_path_id.
     /// Source files are those that have no includers (i.e. they are roots in the graph).
-    llvm::SmallVector<std::uint32_t, 4> find_host_sources(std::uint32_t header_path_id) const;
+    llvm::SmallVector<Fid, 4> find_host_sources(Fid header_path_id) const;
 
     /// BFS forward through include edges to find the shortest include chain
     /// from host_path_id to target_path_id.
     /// Returns [host, intermediate1, ..., target], or empty if no path exists.
-    std::vector<std::uint32_t> find_include_chain(std::uint32_t host_path_id,
-                                                  std::uint32_t target_path_id) const;
+    std::vector<Fid> find_include_chain(Fid host_path_id, Fid target_path_id) const;
 
     /// Every file the graph knows: files with include entries plus files
     /// that only appear as include targets. Sorted so callers scan in a
     /// deterministic order. Requires build_reverse_map() to be current.
-    llvm::SmallVector<std::uint32_t> all_files() const;
+    llvm::SmallVector<Fid> all_files() const;
 
     /// Number of files with include entries.
     std::size_t file_count() const;
@@ -114,8 +113,8 @@ public:
     /// Total number of include edges across all (file, config) pairs.
     std::size_t edge_count() const;
 
-    /// Access the module name -> PathID mapping.
-    const llvm::StringMap<llvm::SmallVector<std::uint32_t, 2>>& modules() const {
+    /// Access the module name -> fid mapping.
+    const llvm::StringMap<llvm::SmallVector<Fid, 2>>& modules() const {
         return module_to_path;
     }
 
@@ -124,7 +123,7 @@ public:
     /// set means module code exists somewhere: the scan gates treat the
     /// whole project as modular from that point, because per-file
     /// reachability approximations have irreducible blind spots.
-    void set_import_candidate(std::uint32_t path_id, bool has_import) {
+    void set_import_candidate(Fid path_id, bool has_import) {
         if(has_import) {
             import_candidates.insert(path_id);
         } else {
@@ -132,32 +131,31 @@ public:
         }
     }
 
-    const llvm::DenseSet<std::uint32_t>& import_candidate_files() const {
+    const llvm::DenseSet<Fid>& import_candidate_files() const {
         return import_candidates;
     }
 
 private:
-    /// Module name -> PathIDs (multiple candidates possible, e.g. different targets).
-    llvm::StringMap<llvm::SmallVector<std::uint32_t, 2>> module_to_path;
+    /// Module name -> fids (multiple candidates possible, e.g. different targets).
+    llvm::StringMap<llvm::SmallVector<Fid, 2>> module_to_path;
 
     /// See set_import_candidate().
-    llvm::DenseSet<std::uint32_t> import_candidates;
+    llvm::DenseSet<Fid> import_candidates;
 
-    /// (PathID, ConfigID) -> list of directly included PathIDs.
-    /// Each PathID may have bit 31 set to indicate conditional include.
-    llvm::DenseMap<IncludeKey, llvm::SmallVector<std::uint32_t>, IncludeKeyInfo> includes;
+    /// (fid, ConfigID) -> directly included files.
+    llvm::DenseMap<IncludeKey, llvm::SmallVector<IncludeEdge>, IncludeKeyInfo> includes;
 
     /// Track which files have any include entries (for file_count).
-    llvm::DenseMap<std::uint32_t, llvm::SmallVector<std::uint32_t>> file_configs;
+    llvm::DenseMap<Fid, llvm::SmallVector<std::uint32_t>> file_configs;
 
-    /// Reverse include map: PathID -> list of PathIDs that directly include it.
+    /// Reverse include map: fid -> files that directly include it.
     /// Populated by build_reverse_map().
-    llvm::DenseMap<std::uint32_t, llvm::SmallVector<std::uint32_t, 4>> reverse_includes;
+    llvm::DenseMap<Fid, llvm::SmallVector<Fid, 4>> reverse_includes;
 };
 
 /// A (file, search-config) pair used to track per-wave work items.
 struct WaveEntry {
-    std::uint32_t path_id;
+    Fid path_id;
     std::uint32_t config_id;
     /// Search dir index where this file was found. Used for #include_next.
     /// Source files (wave 0) use 0.
@@ -240,51 +238,6 @@ struct ScanReport {
     std::vector<UnresolvedInclude> unresolved;
 };
 
-/// Persistent cache that can be reused across successive scan calls.
-/// Holding onto this between incremental re-scans eliminates repeated
-/// readdir() calls, angled-include resolution, and file I/O on warm runs.
-///
-/// Thread safety: not thread-safe; callers must serialise scan calls.
-///
-/// Invalidation: callers must clear (or discard) this cache whenever the
-/// compilation database or filesystem state changes.
-///
-/// TODO: add a generation counter or single invalidate() method to prevent
-/// partial clearing from causing inconsistency between inter-dependent fields.
-struct ScanCache {
-    /// Directory listing cache: dir path → set of filenames.
-    DirListingCache dir_cache;
-
-    /// Angled-include resolution cache: (config_id bytes + header) → {path_id, found_dir_idx}.
-    /// path_id values are valid only for the PathPool used during the scan
-    /// that populated this cache.  If PathPool is reset between scans, clear
-    /// this cache too (or pass nullptr to scan_dependency_graph).
-    struct CachedInclude {
-        std::uint32_t path_id;
-        unsigned found_dir_idx;
-    };
-
-    llvm::StringMap<CachedInclude> include_cache;
-
-    /// Lexer scan result cache: path_id → ScanResult.
-    /// Populated on the first scan of each file.  On subsequent calls the
-    /// worker-thread file read and lexer scan are skipped entirely, making
-    /// warm-run Phase 1 effectively free.
-    /// Invalidate per-entry when a file changes on disk.
-    llvm::DenseMap<std::uint32_t, ScanResult> scan_results;
-
-    // Populated during the first scan and reused on all subsequent calls
-    // when the compilation database has not changed.
-
-    /// Per-config search configuration, keyed by dense config_id.
-    /// Each config_id corresponds to one unique CDB CompilationInfo group —
-    /// files with identical (directory, canonical flags, user-content flags).
-    llvm::DenseMap<std::uint32_t, SearchConfig> configs;
-
-    /// Pre-built initial wave (wave 0): all source files with their config IDs.
-    std::vector<WaveEntry> initial_wave;
-};
-
 /// Callback for per-file rule-based flag modification. Given a file path,
 /// populates `append`/`remove` with rule-configured arguments so they can be
 /// layered on top of the CDB command when extracting the search config.
@@ -295,17 +248,12 @@ using RuleMatcher = std::function<
 /// Internally creates a local event loop for async I/O (file reads via worker
 /// thread pool, stat calls via libuv). Blocks until the scan is complete.
 ///
-/// @param cache  Optional persistent cache. When non-null and pre-populated,
-///               avoids repeated readdir() and include-resolution work across
-///               successive calls.  PathPool must NOT be reset between calls
-///               when a persistent cache is used (path_id values must remain stable).
 /// @param rule_matcher  Optional callback applied per context group so that
 ///               `[[rules]]`-modified include/std flags are reflected in the
 ///               dependency graph (otherwise rule-affected files would have
 ///               stale resolution).
 ScanReport scan_dependency_graph(CompilationDatabase& cdb,
                                  DependencyGraph& graph,
-                                 ScanCache* cache = nullptr,
                                  const RuleMatcher& rule_matcher = {});
 
 }  // namespace clice

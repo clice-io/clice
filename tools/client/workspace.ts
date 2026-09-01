@@ -9,7 +9,7 @@ import { URI } from "vscode-uri";
 import { buildCDBEntry, generateCDB } from "../compile_commands.ts";
 
 /// Versioned root of the unified cache store; bump together with
-/// cache_format_version in src/server/state/workspace.h.
+/// cache_format_version in src/sched/workspace.h.
 const CACHE_ROOT = path.join(".clice", "cache", "v8");
 
 /// The harness-wide canonical URI spelling: percent-decoded. vscode-uri
@@ -179,42 +179,4 @@ export class Workspace {
             })
             .sort();
     }
-
-    /// Read and parse cache.json, or return null if absent. Plain JSON.parse
-    /// mangles the 64-bit dep hashes; tests that rewrite the file use the
-    /// lossless helpers in persistent_cache.test.ts.
-    readCacheJson(): CacheJson | null {
-        const p = path.join(this.cacheRoot(), "cache.json");
-        if (!fs.existsSync(p)) {
-            return null;
-        }
-        return JSON.parse(fs.readFileSync(p, "utf8")) as CacheJson;
-    }
-}
-
-export interface CacheDep {
-    path: number;
-    /// 64-bit content hash; bigint when read through a lossless parser
-    /// (the value overflows a JS double).
-    hash: number | bigint;
-    mtime_ns?: number;
-    size?: number;
-    [key: string]: unknown;
-}
-
-export interface CacheEntry {
-    key?: string;
-    deps: CacheDep[];
-    bound?: number;
-    build_at?: number;
-    source_file?: number;
-    module_name?: string;
-    [key: string]: unknown;
-}
-
-export interface CacheJson {
-    pch: CacheEntry[];
-    pcm?: CacheEntry[];
-    paths: string[];
-    [key: string]: unknown;
 }

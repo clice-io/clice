@@ -23,7 +23,7 @@ IndexPump::IndexPump(kota::event_loop& loop,
     capacity_conn = pool.on_stateless_capacity.connect([this] { capacity_event.set(); });
 }
 
-void IndexPump::boost(std::uint32_t server_path_id) {
+void IndexPump::boost(Fid server_path_id) {
     enqueue(server_path_id, ReindexReason::DepsOnly);
     // Front of the un-consumed tail: the file someone is reading beats
     // the bulk backlog. A running round is not disturbed (its snapshot
@@ -37,7 +37,12 @@ void IndexPump::boost(std::uint32_t server_path_id) {
     schedule(/*immediate=*/true);
 }
 
-void IndexPump::enqueue(std::uint32_t server_path_id, ReindexReason reason) {
+void IndexPump::enqueue(Fid server_path_id, ReindexReason reason) {
+    // New debt voids the running round's freshness memos: a claim taken
+    // after this recording must re-judge against the disk, or its skip
+    // would settle the fresh ticket on a verdict memoized before the
+    // change and the file would never re-index.
+    store.begin_round();
     if(!ledger.record(server_path_id, reason)) {
         return;
     }
@@ -53,14 +58,14 @@ void IndexPump::claim_report(const IndexStore::Report& report) {
     }
 }
 
-llvm::SmallVector<std::uint32_t> IndexPump::save_debt() const {
-    llvm::SmallVector<std::uint32_t> debt(failed_ids.begin(), failed_ids.end());
+llvm::SmallVector<Fid> IndexPump::save_debt() const {
+    llvm::SmallVector<Fid> debt(failed_ids.begin(), failed_ids.end());
     auto pending = ledger.pending_files();
     debt.append(pending.begin(), pending.end());
     return debt;
 }
 
-kota::task<> IndexPump::await_attempt(std::uint32_t server_path_id) {
+kota::task<> IndexPump::await_attempt(Fid server_path_id) {
     auto pending = ledger.peek(server_path_id);
     if(!pending) {
         co_return;
@@ -79,7 +84,7 @@ kota::task<> IndexPump::await_attempt(std::uint32_t server_path_id) {
     co_await event->wait();
 }
 
-void IndexPump::settle_attempt_waits(std::uint32_t server_path_id, std::uint64_t ticket) {
+void IndexPump::settle_attempt_waits(Fid server_path_id, std::uint64_t ticket) {
     auto it = attempt_waits.find(server_path_id);
     if(it == attempt_waits.end()) {
         return;
@@ -257,7 +262,7 @@ kota::task<> IndexPump::run_index_task(PendingLedger::Claim claim,
     // later round.
     auto admit = admission ? admission(server_path_id) : Admission::Admit;
     if(admit == Admission::Admit) {
-        auto file_path = std::string(workspace.path_pool.resolve(server_path_id));
+        auto file_path = std::string(workspace.file_table.resolve(server_path_id));
         // The engine's own observation is authoritative for content
         // changes: it saw the event. The dep-hash check cannot be trusted
         // to see a file's own edit (it validates the recorded
@@ -293,6 +298,7 @@ kota::task<> IndexPump::run_index_task(PendingLedger::Claim claim,
             switch(outcome.verdict) {
                 case TURunFamily::Verdict::Completed: {
                     failed_ids.erase(server_path_id);
+                    indexed_total += 1;
                     LOG_PERF("index",
                              "progress={}/{} file={} bytes={} index_ms={} merge_ms={}",
                              index,
@@ -422,10 +428,9 @@ kota::task<> IndexPump::run_background_indexing() {
     // running round, but staleness is re-judged per round anyway.
     store.begin_round();
 
-    std::stable_partition(
-        index_queue.begin() + index_queue_pos,
-        index_queue.end(),
-        [this](std::uint32_t id) { return workspace.path_to_module.contains(id); });
+    std::stable_partition(index_queue.begin() + index_queue_pos, index_queue.end(), [this](Fid id) {
+        return workspace.path_to_module.contains(id);
+    });
 
     // This round consumes [index_queue_pos, round_end) only. Anything
     // appended during the round — including its own failures' requeues —

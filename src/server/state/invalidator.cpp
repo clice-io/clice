@@ -8,30 +8,19 @@
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringMap.h"
-#include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/xxhash.h"
 
 namespace clice {
-
-/// Default ReadFile: the real filesystem.
-static std::optional<std::string> read_from_disk(llvm::StringRef path) {
-    auto buffer = llvm::MemoryBuffer::getFile(path);
-    if(!buffer) {
-        return std::nullopt;
-    }
-    return std::string((*buffer)->getBuffer());
-}
 
 Invalidator::Invalidator(Workspace& workspace,
                          const SessionStore& store,
                          const ContextResolver& contexts,
-                         PCMFamily& pcm,
-                         ReadFile read_file) :
-    workspace(workspace), store(store), contexts(contexts), pcm(pcm),
-    read_file(read_file ? std::move(read_file) : ReadFile(read_from_disk)) {}
+                         PCMFamily& pcm) :
+    workspace(workspace), store(store), contexts(contexts), pcm(pcm) {}
 
 /// Batch effects may name the same file twice (two saves in one batch);
 /// execution must see each id once.
-static void dedup(llvm::SmallVector<std::uint32_t>& ids) {
+static void dedup(llvm::SmallVector<Fid>& ids) {
     llvm::sort(ids);
     ids.erase(llvm::unique(ids), ids.end());
 }
@@ -40,7 +29,7 @@ static void dedup(llvm::SmallVector<std::uint32_t>& ids) {
 /// AST, reindexes when closed — and does both for an index-only session
 /// (freshness clause 4): the buffer is the compile truth, but the serving
 /// rows are the shard's, and only a reindex refreshes those.
-void Invalidator::mark_dependent(std::uint32_t path_id, DirtySet& dirty) {
+void Invalidator::mark_dependent(Fid path_id, DirtySet& dirty) {
     if(auto session = store.find(path_id)) {
         dirty.mark_ast_dirty.push_back(path_id);
         if(session->serving == ServingMode::IndexOnly) {
@@ -51,7 +40,7 @@ void Invalidator::mark_dependent(std::uint32_t path_id, DirtySet& dirty) {
     }
 }
 
-void Invalidator::cascade_compile_graph(std::uint32_t path_id, DirtySet& dirty) {
+void Invalidator::cascade_compile_graph(Fid path_id, DirtySet& dirty) {
     if(!pcm.tracks(path_id)) {
         return;
     }
@@ -73,7 +62,7 @@ void Invalidator::provider_appeared(llvm::StringRef module_name, DirtySet& dirty
         if(PCMFamily::is_unresolved(id)) {
             continue;
         }
-        auto path_id = static_cast<std::uint32_t>(id.key);
+        auto path_id = Fid{static_cast<std::uint32_t>(id.key)};
         if(id.family == turun_family) {
             dirty.add_reindex_content_changed(path_id);
         } else if(id.family == ast_family) {
@@ -91,7 +80,7 @@ void Invalidator::provider_appeared(llvm::StringRef module_name, DirtySet& dirty
     }
 }
 
-void Invalidator::rescan_disk_state(std::uint32_t path_id, DirtySet& dirty) {
+void Invalidator::rescan_disk_state(Fid path_id, DirtySet& dirty) {
     auto old_module = workspace.path_to_module.lookup(path_id);
     workspace.rescan_after_save(path_id);
     auto it = workspace.path_to_module.find(path_id);
@@ -118,7 +107,7 @@ void Invalidator::rescan_disk_state(std::uint32_t path_id, DirtySet& dirty) {
     }
 }
 
-void Invalidator::cascade_disk_content_change(std::uint32_t path_id, DirtySet& dirty) {
+void Invalidator::cascade_disk_content_change(Fid path_id, DirtySet& dirty) {
     // The file's own self-containment may have changed; re-evaluate on its
     // next compile.
     dirty.reset_header_mode.push_back(path_id);
@@ -144,7 +133,7 @@ void Invalidator::cascade_disk_content_change(std::uint32_t path_id, DirtySet& d
     // staleness check filters TUs whose dependencies did not actually
     // change, and the idle/priority scheduling throttles the rest.
     // TODO: observe on large projects before adding debouncing.
-    auto split_dependents = [&](llvm::ArrayRef<std::uint32_t> roots) {
+    auto split_dependents = [&](llvm::ArrayRef<Fid> roots) {
         for(auto root: roots) {
             mark_dependent(root, dirty);
         }
@@ -230,8 +219,9 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // the pull-side staleness check alone can miss when the
                 // rewrite lands within mtime granularity of the compile.
                 if(auto session = store.find(path_id)) {
-                    auto disk = read_file(workspace.path_pool.resolve(path_id));
-                    if(!disk || *disk != session->text) {
+                    auto disk = workspace.file_table.current(path_id);
+                    if(!disk || disk->size != session->text.size() ||
+                       disk->hash != llvm::xxh3_64bits(session->text)) {
                         dirty.mark_ast_dirty.push_back(path_id);
                     }
                 }
@@ -249,7 +239,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // the queue's latency, while a close after saved edits must
                 // not serve rows for text that no longer exists. One disk
                 // read settles it; an unreadable file counts as changed.
-                auto disk = read_file(workspace.path_pool.resolve(event.path_id));
+                auto disk = workspace.file_table.current(event.path_id);
                 if(!disk) {
                     // Deleted while it was open: the tracker skips open
                     // files, so this close is the first observation of the
@@ -263,15 +253,20 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 }
                 auto shard_it = workspace.shards.find(event.path_id);
                 bool has_shard = shard_it != workspace.shards.end();
-                bool shard_current = has_shard && shard_it->second.matches_content(*disk);
+                bool shard_current =
+                    has_shard && shard_it->second.matches_content(disk->size, disk->hash);
                 // A module unit's PCM can be staler than the shard: an
                 // agent-mode reindex reads the rewritten disk while the
                 // artifact keeps the pre-change bytes. Its own deps
                 // snapshot is the judge; checked before the cascade below
                 // erases the entry.
-                auto pcm_it = workspace.pcm_cache.find(event.path_id);
-                bool pcm_stale = pcm_it != workspace.pcm_cache.end() &&
-                                 deps_changed(workspace.path_pool, pcm_it->second.deps);
+                bool pcm_stale = false;
+                {
+                    auto wave = workspace.file_table.wave();
+                    auto pcm_it = workspace.pcm_cache.find(event.path_id);
+                    pcm_stale = pcm_it != workspace.pcm_cache.end() &&
+                                deps_changed(workspace.file_table, pcm_it->second.deps);
+                }
                 // Disk is the truth again, and this close is the last
                 // chance to act on it: the DiskChanged path deliberately
                 // skips the rescan and the module/dependent cascades while
@@ -394,10 +389,10 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // follow. Rebuild the include graph and module map from
                 // scratch against the new database: entry additions,
                 // removals and flag changes all funnel into one uniform
-                // rescan instead of per-entry graph surgery. No ScanCache is
-                // retained anywhere: the cache's contract requires clearing
-                // it on every CDB change, and CDB changes are the only
-                // rescan trigger, so a persistent cache would never be warm.
+                // rescan instead of per-entry graph surgery. The rescan is
+                // still cheap: per-file scan results are content-keyed in
+                // the file table, so unchanged files re-resolve without a
+                // read or lex.
                 // TODO: this scan runs synchronously on the event loop (same
                 // cost as the startup scan); if it shows up on large
                 // projects, move it off the dispatch path.
@@ -405,7 +400,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // (direct_deps takes the list head) — not mere existence:
                 // a reload can move the selection to another provider
                 // while the old one's own entry stays unchanged.
-                llvm::StringMap<std::uint32_t> selected_provider;
+                llvm::StringMap<Fid> selected_provider;
                 for(auto& entry: workspace.dep_graph.modules()) {
                     if(!entry.getValue().empty()) {
                         selected_provider[entry.getKey()] = entry.getValue().front();
@@ -415,7 +410,6 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 workspace.dep_graph = DependencyGraph();
                 scan_dependency_graph(workspace.cdb,
                                       workspace.dep_graph,
-                                      /*cache=*/nullptr,
                                       [this](llvm::StringRef path,
                                              std::vector<std::string>& append,
                                              std::vector<std::string>& remove) {
@@ -451,7 +445,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // see, whether it appeared, changed or vanished. PCH/PCM
                 // keys embed the canonical flags, so pull-side caches miss
                 // naturally.
-                auto invalidate_entry = [&](std::uint32_t path_id, bool keep_index) {
+                auto invalidate_entry = [&](Fid path_id, bool keep_index) {
                     if(store.find(path_id)) {
                         // The next compile re-resolves the command (added:
                         // first real entry replaces the guessed one;

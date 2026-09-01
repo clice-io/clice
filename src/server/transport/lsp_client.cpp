@@ -93,7 +93,7 @@ void LSPClient::forward_notify_messages() {
 
 LSPClient::ResolvedDoc LSPClient::resolve_uri(const std::string& uri) {
     auto path = uri_to_path(uri);
-    auto path_id = this->server.workspace.path_pool.intern(path);
+    auto path_id = this->server.workspace.file_table.intern(path);
     return ResolvedDoc{std::move(path), path_id, this->server.find_session(path_id)};
 }
 
@@ -112,7 +112,7 @@ void LSPClient::register_lifecycle() {
         if(init.root_uri.has_value()) {
             // Canonicalize so downstream prefix checks (cache_dir,
             // ${workspace} expansion, artifact detection) compare against
-            // the same spelling the path pool stores.
+            // the same spelling the file table stores.
             srv.workspace_root = uri_to_path(*init.root_uri);
             path::canonicalize(srv.workspace_root);
         }
@@ -227,7 +227,7 @@ void LSPClient::register_lifecycle() {
         // still describe the current buffer are replayed: an edit during
         // the handshake marks the session dirty, and the next compile
         // pushes fresh results instead.
-        srv.sessions.for_each([this](std::uint32_t path_id, const Session& session) {
+        srv.sessions.for_each([this](Fid path_id, const Session& session) {
             auto projection = this->server.ast.projections.projection(path_id);
             if(projection && projection->output.has_value() &&
                this->server.ast.projections.current(path_id) &&
@@ -631,12 +631,12 @@ void LSPClient::register_extensions() {
             // The session reset lives inside switch_context (single owner,
             // synchronous, no cross-file cascade — exempt from the event
             // pipeline; see the Invalidator charter).
-            auto result = this->server.context_service.switch_context(path,
-                                                                      path_id,
-                                                                      session.get(),
-                                                                      context_path,
-                                                                      context_path_id,
-                                                                      params);
+            auto result = co_await this->server.context_service.switch_context(path,
+                                                                               path_id,
+                                                                               session.get(),
+                                                                               context_path,
+                                                                               context_path_id,
+                                                                               params);
             // A context choice asks for the context-pure AST view; the
             // merged index cannot give it (union rows). A rejected switch
             // (stale epoch, bad host) changed no context and owes none.
@@ -728,7 +728,7 @@ void LSPClient::register_extensions() {
             }
 
             stats.header_contexts = static_cast<std::uint32_t>(srv.contexts.header_contexts.size());
-            srv.sessions.for_each([&](std::uint32_t, const Session&) -> bool {
+            srv.sessions.for_each([&](Fid, const Session&) -> bool {
                 stats.sessions += 1;
                 return true;
             });
@@ -799,7 +799,7 @@ void LSPClient::push_output(const Session& session) {
     }
     auto& output = *projection->output;
 
-    auto file_path = std::string(server.workspace.path_pool.resolve(session.path_id));
+    auto file_path = std::string(server.workspace.file_table.resolve(session.path_id));
     auto uri = lsp::URI::from_file_path(file_path);
     std::string uri_str = uri.has_value() ? uri->str() : file_path;
 

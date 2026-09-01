@@ -26,6 +26,7 @@
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Process.h"
+#include "llvm/Support/xxhash.h"
 
 namespace clice {
 
@@ -55,6 +56,11 @@ MasterServer::MasterServer(kota::event_loop& loop, std::string self_path) :
     // cannot see SessionStore, so the master wires the provider.
     workspace.open_documents = [this] {
         return sessions.sessions.size();
+    };
+    // Metadata marks (a PCH landing, a context switch) flush through the
+    // next save; the wiring schedules one soon after the first mark.
+    workspace.request_flush = [this] {
+        schedule_metadata_flush();
     };
 
     logging::set_notify_hook([this](logging::NotifyLevel level, std::string_view message) {
@@ -233,11 +239,12 @@ void MasterServer::wire() {
         // event to dispatch.
         if(!info.stateful)
             return;
-        dispatch(FileEvent::worker_crashed(info.lost_documents));
+        dispatch(FileEvent::worker_crashed(llvm::to_vector(
+            llvm::map_range(info.lost_documents, [](std::uint32_t id) { return Fid{id}; }))));
     };
 
     pool.on_evicted = [this](const std::string& path, std::size_t worker_index) {
-        auto id = workspace.path_pool.find(path);
+        auto id = workspace.file_table.find(path);
         if(!id) {
             LOG_WARN("Evicted path not in pool: {}", path);
             return;
@@ -248,7 +255,7 @@ void MasterServer::wire() {
         // Only the current owner's eviction counts: a stale copy left
         // behind by a probe reassignment says nothing about the document
         // the new owner still holds.
-        if(pool.remove_owner_from(*id, worker_index)) {
+        if(pool.remove_owner_from(id->raw, worker_index)) {
             dispatch(FileEvent::document_evicted(*id));
         } else {
             LOG_INFO("Ignoring eviction of {} from non-owner worker {}", path, worker_index);
@@ -264,20 +271,20 @@ void MasterServer::wire() {
 
     // The pump is serving-neutral; the session-side policy hooks live on
     // this class and are installed here.
-    pump.admission = [this](std::uint32_t path_id) {
+    pump.admission = [this](Fid path_id) {
         return index_admission(path_id);
     };
-    pump.on_attempt_settled = [this](std::uint32_t path_id) {
+    pump.on_attempt_settled = [this](Fid path_id) {
         index_attempt_settled(path_id);
     };
     index_rows_conn = pump.on_rows_changed.connect(
-        [this](llvm::ArrayRef<std::uint32_t> path_ids) { index_rows_changed(path_ids); });
+        [this](llvm::ArrayRef<Fid> path_ids) { index_rows_changed(path_ids); });
 
     // The AST family's pull-side staleness check found a dependency changed
     // on disk: route it through the same DiskChanged path the file
     // tracker's polling uses, so lazy detection and polling share one
     // invalidation cascade.
-    ast.on_stale = [this](std::uint32_t path_id) {
+    ast.on_stale = [this](Fid path_id) {
         dispatch(FileEvent::disk_changed(path_id));
     };
 }
@@ -287,11 +294,11 @@ void MasterServer::initialize(llvm::StringRef root) {
     initialize();
 }
 
-std::shared_ptr<Session> MasterServer::find_session(std::uint32_t path_id) {
+std::shared_ptr<Session> MasterServer::find_session(Fid path_id) {
     return sessions.find(path_id);
 }
 
-std::shared_ptr<Session> MasterServer::open_session(std::uint32_t path_id) {
+std::shared_ptr<Session> MasterServer::open_session(Fid path_id) {
     // A replaced live session (an editor resending didOpen) leaves a
     // projection describing the old session's compile; the fresh session
     // starts with none, exactly like the pre-projection world's fresh
@@ -334,12 +341,12 @@ void MasterServer::settle_open_serving(std::shared_ptr<Session> session) {
     }
 }
 
-void MasterServer::close_session(std::uint32_t path_id) {
-    auto path = workspace.path_pool.resolve(path_id);
+void MasterServer::close_session(Fid path_id) {
+    auto path = workspace.file_table.resolve(path_id);
     // Route the eviction notification before dropping ownership:
     // notify_stateful uses the owner table to find the worker.
-    pool.notify_stateful(path_id, worker::EvictParams{std::string(path)});
-    pool.remove_owner(path_id);
+    pool.notify_stateful(path_id.raw, worker::EvictParams{std::string(path)});
+    pool.remove_owner(path_id.raw);
 
     // Retract the document's published diagnostics through the standard
     // output path: materialize an empty output and signal the transports
@@ -366,7 +373,7 @@ void MasterServer::close_session(std::uint32_t path_id) {
     LOG_DEBUG("didClose: {}", path);
 }
 
-Admission MasterServer::index_admission(std::uint32_t server_path_id) const {
+Admission MasterServer::index_admission(Fid server_path_id) {
     // Open files whose session invests in an AST are skipped until an
     // agent shows up: the LSP side never reads their shards (the session
     // serves them), so indexing them is pure waste — but agents read disk
@@ -387,14 +394,15 @@ Admission MasterServer::index_admission(std::uint32_t server_path_id) const {
     if(session->serving != ServingMode::IndexOnly) {
         return index_open_files ? Admission::Admit : Admission::SkipAndSettle;
     }
-    auto file_path = workspace.path_pool.resolve(server_path_id);
-    if(auto disk = fs::read(file_path); !disk || *disk != session->text) {
+    auto disk = workspace.file_table.current(server_path_id);
+    if(!disk || disk->size != session->text.size() ||
+       disk->hash != llvm::xxh3_64bits(session->text)) {
         return Admission::SkipAndSettle;
     }
     return Admission::Admit;
 }
 
-void MasterServer::index_attempt_settled(std::uint32_t server_path_id) {
+void MasterServer::index_attempt_settled(Fid server_path_id) {
     // The boost in settle_open_serving promised the index would serve the
     // cold session; an attempt that settles without a servable shard ends
     // that promise — escalate like the disabled-indexing branch, or the
@@ -409,16 +417,16 @@ void MasterServer::index_attempt_settled(std::uint32_t server_path_id) {
     }
 }
 
-bool MasterServer::serves_session_rows(std::uint32_t path_id) const {
+bool MasterServer::serves_session_rows(Fid path_id) const {
     auto session = sessions.find(path_id);
     return session && !ast.projections.index_current(path_id) && session->index_served;
 }
 
-void MasterServer::index_rows_changed(llvm::ArrayRef<std::uint32_t> path_ids) {
+void MasterServer::index_rows_changed(llvm::ArrayRef<Fid> path_ids) {
     // Sessions without a current file index serve these very rows
     // (freshness clause 4); index_served says the client pulled some of
     // them. Tell subscribers so those results get re-pulled.
-    if(llvm::any_of(path_ids, [&](std::uint32_t id) { return serves_session_rows(id); })) {
+    if(llvm::any_of(path_ids, [&](Fid id) { return serves_session_rows(id); })) {
         on_serving_rows_changed.emit();
     }
 }
@@ -440,13 +448,13 @@ void MasterServer::on_agentic_query() {
         // keeps serving through the catch-up, while a stale or missing one
         // (a save that landed while its reindex slot was still skipped)
         // must not answer agents with the pre-save rows.
-        auto disk = fs::read(workspace.path_pool.resolve(path_id));
+        auto disk = workspace.file_table.current(path_id);
         if(!disk) {
             continue;
         }
         auto shard_it = workspace.shards.find(path_id);
-        bool shard_current =
-            shard_it != workspace.shards.end() && shard_it->second.matches_content(*disk);
+        bool shard_current = shard_it != workspace.shards.end() &&
+                             shard_it->second.matches_content(disk->size, disk->hash);
         pump.enqueue(path_id,
                      shard_current ? ReindexReason::DepsOnly : ReindexReason::ContentChanged);
     }
@@ -488,12 +496,21 @@ void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
     // dropping the snapshot's fast paths forces deps_changed() to re-validate
     // every chain file by content hash; open sessions also recompile and
     // re-trial.
+    auto stamps = workspace.file_table.stamp_generation;
     for(auto path_id: dirty.force_revalidate) {
         contexts.invalidate_header_deps(path_id);
         if(auto session = sessions.find(path_id)) {
             ast.invalidate(path_id);
             session->trial_done = false;
         }
+    }
+    // Revoked stamps live on in the global blob's version table and the
+    // artifacts blob's dep records; both must rewrite, or a restart after
+    // a same-stat dependency edit re-adopts the dropped fast paths and
+    // judges the edited file fresh without a read.
+    if(workspace.file_table.stamp_generation != stamps) {
+        index_store.mark_global_dirty();
+        workspace.mark_artifacts_dirty();
     }
 
     // The header's borrowed compile command changed: its resolved context
@@ -521,12 +538,8 @@ void MasterServer::dispatch(llvm::ArrayRef<FileEvent> events) {
         pump.clear_pending(path_id);
     }
 
-    bool save = dirty.save_cache;
-    if(dirty.recheck_contexts) {
-        save |= context_service.drop_orphaned_choices(sessions);
-    }
-    if(save) {
-        workspace.save_cache(contexts);
+    if(dirty.recheck_contexts && context_service.drop_orphaned_choices(sessions)) {
+        workspace.mark_contexts_dirty();
     }
 
     // Not before the server is ready: document-sync events are accepted
@@ -564,12 +577,35 @@ kota::task<> MasterServer::shutdown_and_cleanup() {
         // standalone header's repair debt dies with this process.
         pump.claim_report(co_await index_store.save(pump.save_debt()));
     }
-    workspace.save_cache(contexts);
     co_await pool.stop();
     if(workspace.store) {
         workspace.store->shutdown();
     }
     lifecycle = ServerLifecycle::Exited;
+}
+
+void MasterServer::schedule_metadata_flush() {
+    if(metadata_flush_scheduled || lifecycle == ServerLifecycle::ShuttingDown ||
+       lifecycle == ServerLifecycle::Exited) {
+        return;
+    }
+    metadata_flush_scheduled = true;
+    bg_tasks.spawn(metadata_flush_task());
+}
+
+kota::task<> MasterServer::metadata_flush_task() {
+    // One loop turn of debounce coalesces a burst of marks into one save;
+    // the save itself batches whatever else is dirty by then. Marks
+    // arriving while the save runs re-schedule through request_flush, and
+    // a save that could not clear the flags (serialization or write
+    // failure) retries on the next spawn with this backoff.
+    co_await kota::sleep(std::chrono::milliseconds(50));
+    metadata_flush_scheduled = false;
+    pump.claim_report(co_await index_store.save(pump.save_debt()));
+    if(workspace.artifacts_dirty || workspace.contexts_dirty) {
+        co_await kota::sleep(std::chrono::seconds(5));
+        schedule_metadata_flush();
+    }
 }
 
 kota::task<> MasterServer::cache_checkpoint_task() {

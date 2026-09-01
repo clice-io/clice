@@ -9,6 +9,7 @@
 #include "sched/index/store.h"
 #include "sched/workspace.h"
 #include "support/cache_store.h"
+#include "support/filesystem.h"
 #include "support/logging.h"
 #include "support/timer.h"
 #include "syntax/dependency_graph.h"
@@ -46,16 +47,19 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
             cache->register_namespace(
                 {.name = "header_context", .extension = ".h", .policy = CachePolicy::Scratch});
             workspace.store.emplace(std::move(*cache));
-            // A read-only bootstrap never opens the index database: it
-            // would hold the writer lock for the process lifetime while
-            // committing nothing, starving a concurrent server or index
-            // run. The store's entry points all tolerate its absence.
+            // A read-only bootstrap opens the index database read-only:
+            // no writer lock (a concurrent server or index run keeps
+            // owning it), while the persisted version stamps and artifact
+            // metadata still seed this session's fast paths. Its own
+            // metadata stays in memory and exits with it.
+            workspace.index_db = index::open_database(*workspace.store, read_only_index);
             if(!read_only_index) {
-                workspace.index_db = index::open_database(*workspace.store, cfg.index_db);
+                // The artifact metadata moved into the index database; a
+                // cache.json left in the store by an older clice would sit
+                // there forever.
+                fs::remove(path::join(workspace.store->base_dir(), "cache.json"));
             }
             LOG_INFO("Cache store: {}", workspace.store->base_dir());
-
-            workspace.load_cache(contexts);
             report.opened_store = true;
         }
     }
@@ -77,7 +81,6 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
 
     auto scan = scan_dependency_graph(workspace.cdb,
                                       workspace.dep_graph,
-                                      /*cache=*/nullptr,
                                       [&workspace](llvm::StringRef path,
                                                    std::vector<std::string>& append,
                                                    std::vector<std::string>& remove) {

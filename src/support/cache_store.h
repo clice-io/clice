@@ -19,10 +19,6 @@ enum class CachePolicy : std::uint8_t {
     /// artifacts (PCH, PCM).
     LRU,
 
-    /// Never evicted automatically, only via explicit invalidate():
-    /// data that is expensive to accumulate (index).
-    Persistent,
-
     /// Per-instance working files: not tracked in the manifest, not part
     /// of LRU.  Stored under a pid subdirectory; directories of dead pids
     /// are cleaned up when the namespace is registered.
@@ -48,7 +44,7 @@ struct CacheNamespace {
     CachePolicy policy = CachePolicy::LRU;
 
     /// Size budget for LRU namespaces; 0 means unlimited.
-    /// Ignored for Persistent and Scratch.
+    /// Ignored for Scratch.
     std::uint64_t max_bytes = 0;
 };
 
@@ -62,10 +58,27 @@ struct CacheNamespace {
 /// hex of llvm::xxh3_128bits, optionally with a readable prefix).
 /// Dependency tracking and staleness decisions are the caller's job.
 ///
+/// FIXME: Whether several processes (a server plus a batch `clice lint`)
+/// may share one store read-write — and how blob metadata stays truthful
+/// if they do — is an undecided design question this layer does not
+/// answer. The exposure: PCH/PCM keys are not fully content-addressed (a
+/// dependency edit changes the bytes but not the key), and their validity
+/// metadata is flushed debounced by the owner, so a crash before the
+/// flush — or a concurrent writer republishing a key mid-session — can
+/// leave metadata that validates against its deps while describing bytes
+/// it never saw; clang's own PCH/PCM validation is the backstop. An
+/// earlier revision pinned each record to its blob's identity (size,
+/// mtime, UniqueID and xxh3, captured from the tmp file before the
+/// publishing rename) and revalidated it on every use, with per-writer
+/// durable dirty markers latching content-verification debt across
+/// crashes; it was backed out of PR #650 to keep the scope on the file
+/// table until the concurrency model is decided — see that PR's history
+/// to resurrect it.
+///
 /// On-disk layout under `{root}/cache/v{version}/`:
 ///   manifest.json        last-accessed checkpoint (not a source of truth)
 ///   tmp/{pid}/           in-flight writes of one live instance
-///   {ns}/{key}{ext}      committed blobs (LRU / Persistent)
+///   {ns}/{key}{ext}      committed blobs (LRU)
 ///   {ns}/{pid}/{key}{ext}  Scratch blobs of one live instance
 ///
 /// A blob is complete iff it exists at its final path (atomic rename); the
@@ -145,7 +158,7 @@ public:
     /// is created, swept or discarded — a store another process (possibly
     /// an older layout version) is live on must survive being inspected.
     /// Fails with `no_such_file_or_directory` when the versioned directory
-    /// does not exist; only lookups and enumeration may be used.
+    /// does not exist; only lookups may be used.
     static std::expected<CacheStore, std::error_code> open(llvm::StringRef root,
                                                            std::uint32_t version,
                                                            bool read_only = false);
@@ -201,13 +214,9 @@ public:
     /// new blob still cannot be published an error is returned.
     std::expected<std::string, std::error_code> commit(PendingEntry pending);
 
-    /// Remove a blob.  Primarily for Persistent namespaces, whose cleanup
-    /// is the caller's mark-and-sweep; LRU namespaces rarely need it.
+    /// Remove a blob before the LRU budget would get to it — retraction of
+    /// an artifact the owner has judged unusable (corrupt, invalidated).
     void invalidate(llvm::StringRef ns, llvm::StringRef key);
-
-    /// Enumerate all keys in a namespace (for caller-side mark-and-sweep).
-    /// Iterates over a snapshot, so fn may call back into the store.
-    void for_each_key(llvm::StringRef ns, llvm::function_ref<void(llvm::StringRef)> fn);
 
     /// Number of in-flight tmp blobs of this instance (files under
     /// `tmp/{pid}`). A settled server has zero: every PendingEntry either
@@ -235,13 +244,6 @@ public:
 
     /// Whether the store was opened in read-only inspection mode.
     bool read_only() const;
-
-    /// First namespace directory scan that failed since open (default
-    /// error_code when none did).  A failed scan makes the namespace look
-    /// empty while its blobs exist, so a reader that would report "no
-    /// data" must check this first.  A read-only open of a namespace that
-    /// was never created scans empty legitimately and is not a failure.
-    std::error_code scan_error() const;
 
     /// Atomically persist the manifest (key sizes and last-accessed times)
     /// if anything changed.  Also runs automatically every few commits;

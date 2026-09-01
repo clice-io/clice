@@ -2,8 +2,8 @@
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "command/command.h"
-#include "support/path_pool.h"
 #include "syntax/dependency_graph.h"
+#include "vfs/file_table.h"
 
 namespace clice::testing {
 namespace {
@@ -21,60 +21,60 @@ TEST_CASE(LookupModuleEmpty) {
 
 TEST_CASE(AddAndLookupModule) {
     clice::DependencyGraph graph;
-    graph.add_module("foo.bar", 42);
+    graph.add_module("foo.bar", Fid{42});
 
     auto result = graph.lookup_module("foo.bar");
     ASSERT_EQ(result.size(), 1u);
-    EXPECT_EQ(result[0], 42u);
+    EXPECT_EQ(result[0].raw, 42u);
 }
 
 TEST_CASE(DuplicateModuleDedup) {
     clice::DependencyGraph graph;
     // Same module name, same path_id — should dedup.
-    graph.add_module("foo", 10);
-    graph.add_module("foo", 10);
+    graph.add_module("foo", Fid{10});
+    graph.add_module("foo", Fid{10});
     ASSERT_EQ(graph.lookup_module("foo").size(), 1u);
 
     // Same module name, different path_id — multiple candidates.
-    graph.add_module("foo", 20);
+    graph.add_module("foo", Fid{20});
     auto result = graph.lookup_module("foo");
     ASSERT_EQ(result.size(), 2u);
-    EXPECT_EQ(result[0], 10u);
-    EXPECT_EQ(result[1], 20u);
+    EXPECT_EQ(result[0].raw, 10u);
+    EXPECT_EQ(result[1].raw, 20u);
 }
 
 TEST_CASE(RedeclareKeepsProviderOrder) {
     clice::DependencyGraph graph;
-    graph.update_module_decl(1, "foo");
-    graph.update_module_decl(2, "foo");
+    graph.update_module_decl(Fid{1}, "foo");
+    graph.update_module_decl(Fid{2}, "foo");
 
     // Providers are selected by list order: re-declaring the unchanged
     // name must not rotate the duplicate-name list.
-    graph.update_module_decl(1, "foo");
+    graph.update_module_decl(Fid{1}, "foo");
     auto result = graph.lookup_module("foo");
     ASSERT_EQ(result.size(), 2u);
-    EXPECT_EQ(result[0], 1u);
-    EXPECT_EQ(result[1], 2u);
+    EXPECT_EQ(result[0].raw, 1u);
+    EXPECT_EQ(result[1].raw, 2u);
 
     // A real name change still moves the path.
-    graph.update_module_decl(1, "bar");
+    graph.update_module_decl(Fid{1}, "bar");
     ASSERT_EQ(graph.lookup_module("foo").size(), 1u);
-    EXPECT_EQ(graph.lookup_module("foo")[0], 2u);
+    EXPECT_EQ(graph.lookup_module("foo")[0].raw, 2u);
     ASSERT_EQ(graph.lookup_module("bar").size(), 1u);
 }
 
 TEST_CASE(MultipleModules) {
     clice::DependencyGraph graph;
-    graph.add_module("mod.a", 1);
-    graph.add_module("mod.b", 2);
-    graph.add_module("mod.c:part", 3);
+    graph.add_module("mod.a", Fid{1});
+    graph.add_module("mod.b", Fid{2});
+    graph.add_module("mod.c:part", Fid{3});
 
     ASSERT_EQ(graph.lookup_module("mod.a").size(), 1u);
-    EXPECT_EQ(graph.lookup_module("mod.a")[0], 1u);
+    EXPECT_EQ(graph.lookup_module("mod.a")[0].raw, 1u);
     ASSERT_EQ(graph.lookup_module("mod.b").size(), 1u);
-    EXPECT_EQ(graph.lookup_module("mod.b")[0], 2u);
+    EXPECT_EQ(graph.lookup_module("mod.b")[0].raw, 2u);
     ASSERT_EQ(graph.lookup_module("mod.c:part").size(), 1u);
-    EXPECT_EQ(graph.lookup_module("mod.c:part")[0], 3u);
+    EXPECT_EQ(graph.lookup_module("mod.c:part")[0].raw, 3u);
     EXPECT_TRUE(graph.lookup_module("mod.d").empty());
 }
 
@@ -82,14 +82,14 @@ TEST_CASE(ModuleCount) {
     clice::DependencyGraph graph;
     EXPECT_EQ(graph.module_count(), 0u);
 
-    graph.add_module("a", 1);
+    graph.add_module("a", Fid{1});
     EXPECT_EQ(graph.module_count(), 1u);
 
-    graph.add_module("b", 2);
+    graph.add_module("b", Fid{2});
     EXPECT_EQ(graph.module_count(), 2u);
 
     // Second candidate for "a" doesn't increase module name count.
-    graph.add_module("a", 3);
+    graph.add_module("a", Fid{3});
     EXPECT_EQ(graph.module_count(), 2u);
 }
 
@@ -99,86 +99,89 @@ TEST_CASE(ModuleCount) {
 
 TEST_CASE(EmptyGraphIncludes) {
     clice::DependencyGraph graph;
-    auto includes = graph.get_includes(0, 0);
+    auto includes = graph.get_includes(Fid{0}, 0);
     EXPECT_TRUE(includes.empty());
 }
 
 TEST_CASE(SetAndGetIncludes) {
     clice::DependencyGraph graph;
-    llvm::SmallVector<std::uint32_t> ids = {10, 20, 30};
-    graph.set_includes(1, 0, ids);
+    llvm::SmallVector<IncludeEdge> ids = {{Fid{10}}, {Fid{20}}, {Fid{30}}};
+    graph.set_includes(Fid{1}, 0, ids);
 
-    auto result = graph.get_includes(1, 0);
+    auto result = graph.get_includes(Fid{1}, 0);
     ASSERT_EQ(result.size(), 3u);
-    EXPECT_EQ(result[0], 10u);
-    EXPECT_EQ(result[1], 20u);
-    EXPECT_EQ(result[2], 30u);
+    EXPECT_EQ(result[0].fid.raw, 10u);
+    EXPECT_EQ(result[1].fid.raw, 20u);
+    EXPECT_EQ(result[2].fid.raw, 30u);
 }
 
 TEST_CASE(IncludesPerConfig) {
     clice::DependencyGraph graph;
 
     // Same file, different configs.
-    graph.set_includes(1, 0, {10, 20});
-    graph.set_includes(1, 1, {20, 30});
+    graph.set_includes(Fid{1}, 0, {{Fid{10}}, {Fid{20}}});
+    graph.set_includes(Fid{1}, 1, {{Fid{20}}, {Fid{30}}});
 
-    auto config0 = graph.get_includes(1, 0);
+    auto config0 = graph.get_includes(Fid{1}, 0);
     ASSERT_EQ(config0.size(), 2u);
-    EXPECT_EQ(config0[0], 10u);
-    EXPECT_EQ(config0[1], 20u);
+    EXPECT_EQ(config0[0].fid.raw, 10u);
+    EXPECT_EQ(config0[1].fid.raw, 20u);
 
-    auto config1 = graph.get_includes(1, 1);
+    auto config1 = graph.get_includes(Fid{1}, 1);
     ASSERT_EQ(config1.size(), 2u);
-    EXPECT_EQ(config1[0], 20u);
-    EXPECT_EQ(config1[1], 30u);
+    EXPECT_EQ(config1[0].fid.raw, 20u);
+    EXPECT_EQ(config1[1].fid.raw, 30u);
 }
 
 TEST_CASE(GetAllIncludesUnion) {
     clice::DependencyGraph graph;
 
-    graph.set_includes(1, 0, {10, 20});
-    graph.set_includes(1, 1, {20, 30});
+    graph.set_includes(Fid{1}, 0, {{Fid{10}}, {Fid{20}}});
+    graph.set_includes(Fid{1}, 1, {{Fid{20}}, {Fid{30}}});
 
-    auto all = graph.get_all_includes(1);
+    auto all = graph.get_all_includes(Fid{1});
     // Union of {10, 20} and {20, 30} = {10, 20, 30}.
     ASSERT_EQ(all.size(), 3u);
+    EXPECT_TRUE(llvm::is_contained(all, Fid{10}));
+    EXPECT_TRUE(llvm::is_contained(all, Fid{20}));
+    EXPECT_TRUE(llvm::is_contained(all, Fid{30}));
 }
 
 TEST_CASE(ConditionalFlag) {
     clice::DependencyGraph graph;
 
-    constexpr auto FLAG = clice::DependencyGraph::CONDITIONAL_FLAG;
-    constexpr auto MASK = clice::DependencyGraph::PATH_ID_MASK;
-
     // PathID 5 unconditional, PathID 7 conditional.
-    llvm::SmallVector<std::uint32_t> ids = {5, 7 | FLAG};
-    graph.set_includes(1, 0, ids);
+    llvm::SmallVector<IncludeEdge> ids = {
+        {Fid{5}},
+        {Fid{7}, /*conditional=*/true}
+    };
+    graph.set_includes(Fid{1}, 0, ids);
 
-    auto result = graph.get_includes(1, 0);
+    auto result = graph.get_includes(Fid{1}, 0);
     ASSERT_EQ(result.size(), 2u);
 
     // First: unconditional.
-    EXPECT_EQ(result[0] & MASK, 5u);
-    EXPECT_EQ(result[0] & FLAG, 0u);
+    EXPECT_EQ(result[0].fid.raw, 5u);
+    EXPECT_FALSE(result[0].conditional);
 
     // Second: conditional.
-    EXPECT_EQ(result[1] & MASK, 7u);
-    EXPECT_NE(result[1] & FLAG, 0u);
+    EXPECT_EQ(result[1].fid.raw, 7u);
+    EXPECT_TRUE(result[1].conditional);
 }
 
 TEST_CASE(FileCount) {
     clice::DependencyGraph graph;
     EXPECT_EQ(graph.file_count(), 0u);
 
-    graph.set_includes(1, 0, {10});
+    graph.set_includes(Fid{1}, 0, {{Fid{10}}});
     EXPECT_EQ(graph.file_count(), 1u);
 
     // Same file, different config.
-    graph.set_includes(1, 1, {20});
+    graph.set_includes(Fid{1}, 1, {{Fid{20}}});
     EXPECT_EQ(graph.file_count(), 1u);
 
     // Different file.
-    graph.set_includes(2, 0, {30});
+    graph.set_includes(Fid{2}, 0, {{Fid{30}}});
     EXPECT_EQ(graph.file_count(), 2u);
 }
 
@@ -186,18 +189,18 @@ TEST_CASE(EdgeCount) {
     clice::DependencyGraph graph;
     EXPECT_EQ(graph.edge_count(), 0u);
 
-    graph.set_includes(1, 0, {10, 20});
+    graph.set_includes(Fid{1}, 0, {{Fid{10}}, {Fid{20}}});
     EXPECT_EQ(graph.edge_count(), 2u);
 
-    graph.set_includes(2, 0, {30});
+    graph.set_includes(Fid{2}, 0, {{Fid{30}}});
     EXPECT_EQ(graph.edge_count(), 3u);
 }
 
 TEST_CASE(EmptyIncludes) {
     clice::DependencyGraph graph;
-    graph.set_includes(1, 0, {});
+    graph.set_includes(Fid{1}, 0, {});
 
-    auto result = graph.get_includes(1, 0);
+    auto result = graph.get_includes(Fid{1}, 0);
     EXPECT_TRUE(result.empty());
     EXPECT_EQ(graph.file_count(), 1u);
     EXPECT_EQ(graph.edge_count(), 0u);
@@ -212,7 +215,8 @@ TEST_CASE(EmptyIncludes) {
 TEST_SUITE(ScanDependencyGraph) {
 
 TEST_CASE(EmptyCDB) {
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     DependencyGraph graph;
 
     scan_dependency_graph(cdb, graph);
@@ -232,7 +236,8 @@ export module m;
 #endif
 )");
 
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     DependencyGraph graph;
     auto json = build_cdb_json({
         {tmp.root, tmp.path("src/m.cppm"), {}}
@@ -240,7 +245,6 @@ export module m;
     write_cdb(tmp, cdb, json);
     scan_dependency_graph(cdb,
                           graph,
-                          /*cache=*/nullptr,
                           [](llvm::StringRef,
                              std::vector<std::string>& append,
                              std::vector<std::string>&) { append.push_back("-DENABLE_M"); });
@@ -261,24 +265,23 @@ export module m1;
 #endif
 )");
 
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     DependencyGraph graph;
-    ScanCache cache;
     auto json = build_cdb_json({
         {tmp.root, tmp.path("src/m.cppm"), {}      },
         {tmp.root, tmp.path("src/m.cppm"), {"-DV2"}},
     });
     write_cdb(tmp, cdb, json);
-    scan_dependency_graph(cdb, graph, &cache);
+    scan_dependency_graph(cdb, graph);
 
     EXPECT_EQ(graph.lookup_module("m1").size(), 1u);
     EXPECT_EQ(graph.lookup_module("m2").size(), 1u);
 
-    // A warm run must reproduce both: the shared per-path cache cannot
-    // hold two names, so multi-group units re-derive under their own
-    // group command every run.
+    // A warm run must reproduce both: the module-decl memo keys by
+    // (content, rendered command), so each group resolves its own name.
     DependencyGraph graph2;
-    scan_dependency_graph(cdb, graph2, &cache);
+    scan_dependency_graph(cdb, graph2);
     EXPECT_EQ(graph2.lookup_module("m1").size(), 1u);
     EXPECT_EQ(graph2.lookup_module("m2").size(), 1u);
 }
@@ -287,7 +290,8 @@ TEST_CASE(SingleFileNoIncludes) {
     TempDir tmp;
     tmp.touch("src/main.cpp", R"(int main() { return 0; })");
 
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     DependencyGraph graph;
 
     auto json = build_cdb_json({
@@ -309,7 +313,8 @@ TEST_CASE(SingleFileWithInclude) {
 int main() { return x; }
 )");
 
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     DependencyGraph graph;
 
     auto json = build_cdb_json({
@@ -332,7 +337,8 @@ TEST_CASE(TransitiveIncludes) {
 int main() {}
 )");
 
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     DependencyGraph graph;
 
     auto json = build_cdb_json({
@@ -358,7 +364,8 @@ void a() {}
 void b() {}
 )");
 
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     DependencyGraph graph;
 
     std::vector<std::string> inc = {"-I", tmp.path("inc")};
@@ -384,7 +391,8 @@ TEST_CASE(ConditionalIncludes) {
 #endif
 )");
 
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     DependencyGraph graph;
 
     auto json = build_cdb_json({
@@ -399,9 +407,9 @@ TEST_CASE(ConditionalIncludes) {
     // Verify conditional flag.
     bool found_unconditional = false;
     bool found_conditional = false;
-    auto includes = graph.get_includes(cdb.paths().intern(tmp.path("src/main.cpp")), 0);
-    for(auto id: includes) {
-        if(id & DependencyGraph::CONDITIONAL_FLAG) {
+    auto includes = graph.get_includes(cdb.files().intern(tmp.path("src/main.cpp")), 0);
+    for(auto edge: includes) {
+        if(edge.conditional) {
             found_conditional = true;
         } else {
             found_unconditional = true;
@@ -418,7 +426,8 @@ export module my.module;
 export int foo() { return 42; }
 )");
 
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     DependencyGraph graph;
 
     auto json = build_cdb_json({
@@ -430,7 +439,7 @@ export int foo() { return 42; }
     auto result = graph.lookup_module("my.module");
     ASSERT_EQ(result.size(), 1u);
 
-    auto path = cdb.paths().resolve(result[0]);
+    auto path = cdb.files().resolve(result[0]);
     EXPECT_TRUE(llvm::sys::fs::equivalent(path, tmp.path("src/mymod.cpp")));
 }
 
@@ -441,7 +450,8 @@ export module my.mod:part;
 void impl() {}
 )");
 
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     DependencyGraph graph;
 
     auto json = build_cdb_json({
@@ -470,7 +480,8 @@ int b = 1;
 int main() {}
 )");
 
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     DependencyGraph graph;
 
     auto json = build_cdb_json({
@@ -494,7 +505,8 @@ TEST_CASE(AngledVsQuoted) {
 int main() {}
 )");
 
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     DependencyGraph graph;
 
     auto json = build_cdb_json({
@@ -515,7 +527,8 @@ TEST_CASE(MissingInclude) {
 int main() {}
 )");
 
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     DependencyGraph graph;
 
     auto json = build_cdb_json({
@@ -543,7 +556,8 @@ module mod.a;
 void a_impl() {}
 )");
 
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     DependencyGraph graph;
 
     auto json = build_cdb_json({
@@ -571,7 +585,8 @@ TEST_CASE(DeepIncludeChain) {
 int main() {}
 )");
 
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     DependencyGraph graph;
 
     auto json = build_cdb_json({
@@ -595,7 +610,8 @@ export module my.lib;
 export int value() { return util; }
 )");
 
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     DependencyGraph graph;
 
     auto json = build_cdb_json({
@@ -615,9 +631,15 @@ TEST_CASE(ScanCacheWarmRun) {
 #include "util.h"
 int main() {}
 )");
+    // Out of the mtime guard window, or the cold scan's pairs stay
+    // unreliable and cannot vouch for the warm run.
+    ASSERT_TRUE(set_file_mtime(tmp.path("inc/util.h"),
+                               file_mtime_ns(tmp.path("inc/util.h")) - 10'000'000'000));
+    ASSERT_TRUE(set_file_mtime(tmp.path("src/main.cpp"),
+                               file_mtime_ns(tmp.path("src/main.cpp")) - 10'000'000'000));
 
-    CompilationDatabase cdb;
-    ScanCache cache;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
 
     auto json = build_cdb_json({
         {tmp.root, tmp.path("src/main.cpp"), {"-I", tmp.path("inc")}}
@@ -625,13 +647,13 @@ int main() {}
     write_cdb(tmp, cdb, json);
 
     DependencyGraph graph;
-    auto cold = scan_dependency_graph(cdb, graph, &cache);
+    auto cold = scan_dependency_graph(cdb, graph);
     EXPECT_GE(graph.edge_count(), 1u);
 
-    // Warm run with the same cache and pool reproduces the same graph
-    // and hits the scan result cache instead of re-reading files.
+    // A rescan against the same shared table skips the read and the lex
+    // for every unchanged file (stat-validated through the shared pairs).
     DependencyGraph graph2;
-    auto warm = scan_dependency_graph(cdb, graph2, &cache);
+    auto warm = scan_dependency_graph(cdb, graph2);
     EXPECT_GT(warm.scan_cache_hits, std::size_t(0));
     EXPECT_EQ(graph2.edge_count(), graph.edge_count());
     EXPECT_EQ(graph2.file_count(), graph.file_count());
@@ -639,8 +661,9 @@ int main() {}
 
 // TODO: add tests for:
 // - Circular includes (A→B→A) to verify BFS terminates correctly
-// - get_all_includes flag merge: same header conditional in one config,
-//   unconditional in another — unconditional should win
+// - get_all_includes across configs: a header in one config but not
+//   another appears once in the deduped union (the union carries plain
+//   fids — conditionality is per-config, asserted via get_includes)
 // - set_includes overwrite: calling twice with same (path_id, config_id)
 
 };  // TEST_SUITE(ScanDependencyGraph)

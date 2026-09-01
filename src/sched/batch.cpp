@@ -39,7 +39,7 @@ struct BatchStack {
     ContextResolver contexts{workspace};
     TaskGraph graph;
     PCMFamily pcm{graph, workspace, contexts, pool};
-    IndexStore store{loop, workspace};
+    IndexStore store{loop, workspace, contexts};
     TURunFamily turun{graph, workspace, contexts, pcm, store, pool};
     IndexPump pump{loop, workspace, turun, store, pool};
 
@@ -103,7 +103,6 @@ kota::task<> shutdown(BatchStack& stack) {
     if(report.snapshot_stale) {
         stack.pump.claim_report(co_await stack.store.save(stack.pump.save_debt()));
     }
-    stack.workspace.save_cache(stack.contexts);
     co_await stack.pool.stop();
     if(stack.workspace.store) {
         stack.workspace.store->shutdown();
@@ -215,7 +214,7 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
     }
 
     result.completed = true;
-    result.indexed_tus = workspace.project_index.manifests.size();
+    result.indexed_tus = stack.pump.indexed_files();
     result.shard_count = workspace.shards.size();
     for(auto& shard: llvm::make_second_range(workspace.shards)) {
         result.shard_bytes += shard.bytes().size();
@@ -245,10 +244,10 @@ using FindingsSink =
 
 kota::task<> lint_one(BatchStack& stack,
                       bool with_index,
-                      std::uint32_t path_id,
+                      Fid path_id,
                       LintSweep& sweep,
                       FindingsSink on_findings) {
-    auto file = stack.workspace.path_pool.resolve(path_id);
+    auto file = stack.workspace.file_table.resolve(path_id);
     TURunFamily::Plan plan;
     plan.tidy = true;
     plan.index = with_index;
@@ -305,7 +304,7 @@ kota::task<> lint_one(BatchStack& stack,
 
 kota::task<> run_lint_sweep(BatchStack& stack,
                             const BatchLintOptions& options,
-                            llvm::ArrayRef<std::uint32_t> tus,
+                            llvm::ArrayRef<Fid> tus,
                             LintSweep& sweep,
                             FindingsSink on_findings) {
     kota::task_group<> workers(stack.loop);
@@ -315,7 +314,7 @@ kota::task<> run_lint_sweep(BatchStack& stack,
     // task unwinds before the group is destroyed.
     auto feeder = [](BatchStack& stack,
                      const BatchLintOptions& options,
-                     llvm::ArrayRef<std::uint32_t> tus,
+                     llvm::ArrayRef<Fid> tus,
                      LintSweep& sweep,
                      FindingsSink on_findings,
                      kota::task_group<>& workers) -> kota::task<> {
@@ -378,8 +377,8 @@ kota::task<> run_lint(BatchStack& stack,
 
     // One run per file: a file with several CDB entries lints once, under
     // the command resolve_command picks — same as the indexing sweep.
-    llvm::SmallVector<std::uint32_t> tus;
-    llvm::DenseSet<std::uint32_t> seen;
+    llvm::SmallVector<Fid> tus;
+    llvm::DenseSet<Fid> seen;
     for(auto& entry: workspace.cdb.entries()) {
         if(seen.insert(entry.file).second) {
             tus.push_back(entry.file);

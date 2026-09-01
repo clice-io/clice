@@ -46,7 +46,7 @@ struct IndexerFixture {
     ContextResolver contexts{workspace};
     TaskGraph graph{loop};
     PCMFamily pcm{graph, workspace, contexts, pool};
-    IndexStore index_store{loop, workspace};
+    IndexStore index_store{loop, workspace, contexts};
     TURunFamily turun{graph, workspace, contexts, pcm, index_store, pool};
     IndexPump pump{loop, workspace, turun, index_store, pool};
 
@@ -77,50 +77,50 @@ struct IndexerFixture {
         return result.decoded;
     }
 
-    void drop_index(std::uint32_t id) {
+    void drop_index(Fid id) {
         pump.claim_report(index_store.drop_index(id));
     }
 
     /// Record a terminally failed attempt, as run_index_task's failure
     /// verdicts do.
-    void mark_failed(std::uint32_t id) {
+    void mark_failed(Fid id) {
         pump.failed_ids.insert(id);
     }
 
     /// Fail the entry's current dispatch: the launch ticket matches.
-    Verdict fail(std::uint32_t id, bool crashed) {
+    Verdict fail(Fid id, bool crashed) {
         return pump.note_dispatch_failure({id, ticket(id)}, crashed);
     }
 
     /// Fail a dispatch launched with an explicit (possibly stale) ticket.
-    Verdict fail_at(std::uint32_t id, std::uint64_t ticket, bool crashed) {
+    Verdict fail_at(Fid id, std::uint64_t ticket, bool crashed) {
         return pump.note_dispatch_failure({id, ticket}, crashed);
     }
 
-    std::uint64_t ticket(std::uint32_t id) {
+    std::uint64_t ticket(Fid id) {
         auto it = pump.ledger.entries.find(id);
         return it == pump.ledger.entries.end() ? std::numeric_limits<std::uint64_t>::max()
                                                : it->second.ticket;
     }
 
-    unsigned attempts(std::uint32_t id) {
+    unsigned attempts(Fid id) {
         auto it = pump.ledger.entries.find(id);
         return it == pump.ledger.entries.end() ? 0u : it->second.requeue_attempts;
     }
 
-    void set_attempts(std::uint32_t id, unsigned n) {
+    void set_attempts(Fid id, unsigned n) {
         pump.ledger.entries.find(id)->second.requeue_attempts = n;
     }
 
     /// Consume the queued slot as a dispatch would, so a later enqueue
     /// takes the fresh-slot (mid-flight) path.
-    void consume(std::uint32_t id) {
+    void consume(Fid id) {
         pump.ledger.queued.erase(id);
     }
 
     /// Complete an attempt for `ticket` on the loop, as run_index_task's
     /// tail does — waking waiters requires a running loop.
-    void settle(std::uint32_t id, std::uint64_t ticket) {
+    void settle(Fid id, std::uint64_t ticket) {
         auto body = [&]() -> kota::task<> {
             pump.settle_attempt_waits(id, ticket);
             co_return;
@@ -153,7 +153,7 @@ struct IndexerFixture {
 
     /// Record a standalone header's borrowed host, as the TURun round does
     /// after its merge lands (these tests merge worker results directly).
-    void set_header_host(std::uint32_t header_id, std::uint32_t host_id) {
+    void set_header_host(Fid header_id, Fid host_id) {
         index_store.record_header_host(header_id, host_id);
     }
 
@@ -298,10 +298,21 @@ void open_store(TempDir& tmp, Workspace& workspace) {
     auto store = CacheStore::open(tmp.path("cache"), 1);
     ASSERT_TRUE(store.has_value());
     workspace.store.emplace(std::move(*store));
-    workspace.index_db = index::open_fs_database(*workspace.store);
+    workspace.index_db = index::open_lmdb_database(*workspace.store);
 }
 
-/// The storage key of a file's shard or manifest blob (the store's naming).
+/// Plant a blob between sessions (no fixture may be alive — the writer
+/// lock), as the residue of a crash or a foreign writer.
+void inject_blob(TempDir& tmp, index::IndexBlobKind kind, llvm::StringRef key, std::string bytes) {
+    auto store = CacheStore::open(tmp.path("cache"), 1);
+    ASSERT_TRUE(store.has_value());
+    auto db = index::open_lmdb_database(*store);
+    ASSERT_TRUE(db != nullptr);
+    index::BlobDatabase::Blob blob{kind, key.str(), std::move(bytes)};
+    ASSERT_TRUE(db->write(blob, {}).empty());
+}
+
+/// The storage key of a file's shard or manifest blob (the database's naming).
 std::string blob_key(llvm::StringRef path) {
     return std::format("{:016x}", llvm::xxh3_64bits(path));
 }
@@ -326,7 +337,7 @@ bool load(bool read_only = false) {
     return fx.load(read_only);
 }
 
-void drop_index(std::uint32_t id) {
+void drop_index(Fid id) {
     fx.drop_index(id);
 }
 
@@ -352,7 +363,7 @@ TEST_CASE(MergeIgnoresDiskDrift) {
     ASSERT_FALSE(indexed.data.empty());
 
     merge(indexed.data.data(), indexed.data.size());
-    auto path_id = workspace.path_pool.intern(indexed.tu_path);
+    auto path_id = workspace.file_table.intern(indexed.tu_path);
     auto it = workspace.shards.find(path_id);
     ASSERT_TRUE(it != workspace.shards.end());
     ASSERT_EQ(it->second.content_hash(), llvm::xxh3_64bits("int value() { return 1; }\n"));
@@ -384,7 +395,7 @@ TEST_CASE(SaveCommitsDirtyShard) {
     ASSERT_FALSE(indexed.data.empty());
     merge(indexed.data.data(), indexed.data.size());
 
-    auto path_id = workspace.path_pool.intern(indexed.tu_path);
+    auto path_id = workspace.file_table.intern(indexed.tu_path);
     ASSERT_EQ(index_store.pending_shard_writes(), 1u);
 
     // Named body: a temporary lambda's captures die with the statement
@@ -464,7 +475,7 @@ TEST_CASE(SaveMigratesShardViews) {
     auto indexed = index_file(tmp, src);
     ASSERT_FALSE(indexed.data.empty());
     merge(indexed.data.data(), indexed.data.size());
-    auto path_id = workspace.path_pool.intern(indexed.tu_path);
+    auto path_id = workspace.file_table.intern(indexed.tu_path);
     auto before = workspace.shards.find(path_id);
     ASSERT_TRUE(before != workspace.shards.end());
     auto variants_before = before->second.variants();
@@ -554,13 +565,13 @@ TEST_CASE(GrowFailureShedsCleanShards) {
     // which need not equal the raw temp path byte-for-byte (Windows 8.3
     // names).
     spy->fail_key =
-        blob_key(workspace.path_pool.resolve(workspace.path_pool.intern(indexed_dirty.tu_path)));
+        blob_key(workspace.file_table.resolve(workspace.file_table.intern(indexed_dirty.tu_path)));
     workspace.index_db = std::move(spy);
 
     merge(indexed_clean.data.data(), indexed_clean.data.size());
     merge(indexed_dirty.data.data(), indexed_dirty.data.size());
-    auto clean_id = workspace.path_pool.intern(indexed_clean.tu_path);
-    auto dirty_id = workspace.path_pool.intern(indexed_dirty.tu_path);
+    auto clean_id = workspace.file_table.intern(indexed_clean.tu_path);
+    auto dirty_id = workspace.file_table.intern(indexed_dirty.tu_path);
 
     auto save_body = [&]() -> kota::task<> {
         co_await async_save();
@@ -583,7 +594,7 @@ TEST_CASE(MidSaveMergeKept) {
     auto indexed = index_file(tmp, src);
     ASSERT_FALSE(indexed.data.empty());
     merge(indexed.data.data(), indexed.data.size());
-    auto path_id = workspace.path_pool.intern(indexed.tu_path);
+    auto path_id = workspace.file_table.intern(indexed.tu_path);
 
     // Prepared before save() starts so the interleaved merge is purely an
     // in-memory event.
@@ -674,7 +685,7 @@ TEST_CASE(SharedHeaderVariants) {
     // one blob, each TU's contribution live.
     merge(a.data.data(), a.data.size());
     merge(b.data.data(), b.data.size());
-    auto header_id = workspace.path_pool.intern(tmp.path("shared.h"));
+    auto header_id = workspace.file_table.intern(tmp.path("shared.h"));
     auto& shard = workspace.shards[header_id];
     ASSERT_EQ(shard.variants().size(), std::size_t(2));
     ASSERT_EQ(workspace.project_index.contributions.lookup(header_id).size(), std::size_t(2));
@@ -707,8 +718,8 @@ TEST_CASE(HeaderRegenerationReplaces) {
     auto v1 = index_file(tmp, src);
     ASSERT_FALSE(v1.data.empty());
     merge(v1.data.data(), v1.data.size());
-    auto header_id = workspace.path_pool.intern(tmp.path("dep.h"));
-    auto tu_id = workspace.path_pool.intern(v1.tu_path);
+    auto header_id = workspace.file_table.intern(tmp.path("dep.h"));
+    auto tu_id = workspace.file_table.intern(v1.tu_path);
     auto old_hash = workspace.project_index.contributions.lookup(header_id).lookup(tu_id);
     ASSERT_TRUE(old_hash != 0);
 
@@ -747,7 +758,7 @@ TEST_CASE(SaveCompactsAndRetires) {
     ASSERT_FALSE(b.data.empty());
     merge(a.data.data(), a.data.size());
     merge(b.data.data(), b.data.size());
-    auto header_id = workspace.path_pool.intern(tmp.path("shared.h"));
+    auto header_id = workspace.file_table.intern(tmp.path("shared.h"));
     ASSERT_EQ(workspace.shards[header_id].variants().size(), std::size_t(2));
 
     auto save = [&] {
@@ -778,9 +789,9 @@ TEST_CASE(SaveCompactsAndRetires) {
     merge(a2.data.data(), a2.data.size());
     save();
     ASSERT_FALSE(workspace.shards.contains(header_id));
-    ASSERT_FALSE(pump.pending_reason(workspace.path_pool.intern(a2.tu_path)).has_value());
+    ASSERT_FALSE(pump.pending_reason(workspace.file_table.intern(a2.tu_path)).has_value());
     bool on_disk = false;
-    auto key = blob_key(workspace.path_pool.resolve(header_id));
+    auto key = blob_key(workspace.file_table.resolve(header_id));
     workspace.index_db->for_each_key(index::IndexBlobKind::Shard,
                                      [&](llvm::StringRef k) { on_disk |= k == key; });
     ASSERT_FALSE(on_disk);
@@ -801,7 +812,7 @@ TEST_CASE(SaveRetiresPinnedShard) {
     ASSERT_FALSE(b.data.empty());
     merge(a.data.data(), a.data.size());
     merge(b.data.data(), b.data.size());
-    auto header_id = workspace.path_pool.intern(tmp.path("pinned.h"));
+    auto header_id = workspace.file_table.intern(tmp.path("pinned.h"));
     ASSERT_EQ(workspace.shards[header_id].variants().size(), std::size_t(2));
 
     // The header moves to a new content generation and only pa catches up:
@@ -817,12 +828,12 @@ TEST_CASE(SaveRetiresPinnedShard) {
 
     // The rebuild re-enqueued pb; its pass then runs and fails, consuming
     // the slot — the state the retirement below must repair on its own.
-    pump.clear_pending(workspace.path_pool.intern(b.tu_path));
+    pump.clear_pending(workspace.file_table.intern(b.tu_path));
 
     // pa's index drops before pb reindexes: every stored variant is dead,
     // but pb's pinned hash keeps the live set nonempty. The save must
     // retire the shard rather than compact to an empty variant set.
-    drop_index(workspace.path_pool.intern(a2.tu_path));
+    drop_index(workspace.file_table.intern(a2.tu_path));
     auto body = [&]() -> kota::task<> {
         co_await async_save();
     };
@@ -832,7 +843,7 @@ TEST_CASE(SaveRetiresPinnedShard) {
 
     ASSERT_FALSE(workspace.shards.contains(header_id));
     bool on_disk = false;
-    auto key = blob_key(workspace.path_pool.resolve(header_id));
+    auto key = blob_key(workspace.file_table.resolve(header_id));
     workspace.index_db->for_each_key(index::IndexBlobKind::Shard,
                                      [&](llvm::StringRef k) { on_disk |= k == key; });
     ASSERT_FALSE(on_disk);
@@ -841,7 +852,7 @@ TEST_CASE(SaveRetiresPinnedShard) {
     // unservable; nothing else in this process would rebuild them (a
     // reverted header even reads fresh by hash), so the retirement must
     // re-enqueue pb itself.
-    ASSERT_TRUE(pump.pending_reason(workspace.path_pool.intern(b.tu_path)) ==
+    ASSERT_TRUE(pump.pending_reason(workspace.file_table.intern(b.tu_path)) ==
                 ReindexReason::ContentChanged);
 }
 
@@ -859,7 +870,7 @@ TEST_CASE(RebuildRequeuesPinnedOwner) {
     ASSERT_FALSE(b.data.empty());
     merge(a.data.data(), a.data.size());
     merge(b.data.data(), b.data.size());
-    auto b_tu = workspace.path_pool.intern(b.tu_path);
+    auto b_tu = workspace.file_table.intern(b.tu_path);
     ASSERT_FALSE(pump.pending_reason(b_tu).has_value());
 
     // The header moves to a new content generation and only ga catches up:
@@ -873,12 +884,12 @@ TEST_CASE(RebuildRequeuesPinnedOwner) {
     auto a2 = index_file(tmp, tmp.path("ga.cpp"));
     ASSERT_FALSE(a2.data.empty());
     merge(a2.data.data(), a2.data.size());
-    auto header_id = workspace.path_pool.intern(tmp.path("gen.h"));
+    auto header_id = workspace.file_table.intern(tmp.path("gen.h"));
     ASSERT_EQ(workspace.shards[header_id].variants().size(), std::size_t(1));
 
     ASSERT_TRUE(pump.pending_reason(b_tu) == ReindexReason::ContentChanged);
     // ga's own fresh pin is stored: the rebuild must not re-enqueue it.
-    ASSERT_FALSE(pump.pending_reason(workspace.path_pool.intern(a2.tu_path)).has_value());
+    ASSERT_FALSE(pump.pending_reason(workspace.file_table.intern(a2.tu_path)).has_value());
 }
 
 TEST_CASE(RejectsCorruptSection) {
@@ -909,8 +920,8 @@ TEST_CASE(RejectsCorruptSection) {
     // result — a manifest whose recorded versions all match the disk would
     // otherwise be judged fresh forever with the main file's rows missing.
     merge(corrupt.data(), corrupt.size());
-    auto tu_id = workspace.path_pool.intern(indexed.tu_path);
-    auto header_id = workspace.path_pool.intern(tmp.path("cor.h"));
+    auto tu_id = workspace.file_table.intern(indexed.tu_path);
+    auto header_id = workspace.file_table.intern(tmp.path("cor.h"));
     ASSERT_FALSE(workspace.project_index.manifests.contains(tu_id));
     ASSERT_FALSE(workspace.shards.contains(header_id));
     // No global trace either: symbol identities from an untrusted result
@@ -918,7 +929,7 @@ TEST_CASE(RejectsCorruptSection) {
     // fill empty names), and stray FileVersions would persist with the
     // next save.
     ASSERT_TRUE(workspace.project_index.symbols.empty());
-    ASSERT_TRUE(workspace.project_index.file_versions.empty());
+    ASSERT_TRUE(workspace.file_table.versions.empty());
 
     // The intact result still lands afterwards.
     merge(indexed.data.data(), indexed.data.size());
@@ -940,7 +951,7 @@ TEST_CASE(HashlessRemergeHits) {
     ASSERT_FALSE(wire.empty());
 
     merge(wire.data(), wire.size());
-    auto path_id = workspace.path_pool.intern(src);
+    auto path_id = workspace.file_table.intern(src);
     ASSERT_EQ(workspace.shards[path_id].variants().size(), std::size_t(1));
 
     // Re-merging the same rows must register as a hit, not append the
@@ -1104,8 +1115,8 @@ TEST_CASE(WriteCorruptionRebuildsDatabase) {
 
     ASSERT_TRUE(condemned);
     ASSERT_TRUE(workspace.index_db != nullptr);
-    auto clean_id = workspace.path_pool.intern(indexed_clean.tu_path);
-    auto dirty_id = workspace.path_pool.intern(indexed_dirty.tu_path);
+    auto clean_id = workspace.file_table.intern(indexed_clean.tu_path);
+    auto dirty_id = workspace.file_table.intern(indexed_dirty.tu_path);
     ASSERT_FALSE(workspace.shards.contains(clean_id));
     ASSERT_TRUE(workspace.shards.contains(dirty_id));
     ASSERT_TRUE(pump.pending_reason(clean_id) == ReindexReason::ContentChanged);
@@ -1186,7 +1197,7 @@ TEST_CASE(MigrationCorruptionRebuildsDatabase) {
     };
     save();
 
-    auto path_id = workspace.path_pool.intern(indexed.tu_path);
+    auto path_id = workspace.file_table.intern(indexed.tu_path);
     ASSERT_TRUE(condemned);
     ASSERT_TRUE(workspace.index_db != nullptr);
     ASSERT_FALSE(workspace.shards.contains(path_id));
@@ -1197,32 +1208,6 @@ TEST_CASE(MigrationCorruptionRebuildsDatabase) {
     // the fresh database.
     save();
     ASSERT_FALSE(index_store.has_unsaved_state());
-}
-
-TEST_CASE(WriteFailureStopsBatch) {
-    TempDir tmp;
-    open_store(tmp, workspace);
-    auto& db = *workspace.index_db;
-
-    // Wedge the manifest's destination with a non-empty directory so its
-    // commit fails while the shard before it lands.
-    tmp.touch("cache/cache/v1/index-manifest/k.idx/wedge");
-
-    auto failures = db.write(
-        {
-            {index::IndexBlobKind::Shard,    "k",      "shard bytes"   },
-            {index::IndexBlobKind::Manifest, "k",      "manifest bytes"},
-            {index::IndexBlobKind::Global,   "global", "global bytes"  },
-    },
-        {});
-
-    // The failure fails the rest of the batch: a global must never land
-    // above a manifest that did not.
-    ASSERT_EQ(failures.size(), 2u);
-    ASSERT_EQ(failures[0], 1u);
-    ASSERT_EQ(failures[1], 2u);
-    ASSERT_TRUE(db.contains(index::IndexBlobKind::Shard, "k"));
-    ASSERT_FALSE(db.contains(index::IndexBlobKind::Global, "global"));
 }
 
 };  // TEST_SUITE(IndexerMerge)
@@ -1241,6 +1226,12 @@ struct Indexed {
         tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
         src = tmp.path("main.cpp");
         header = tmp.path("dep.h");
+        // Age the files out of the mtime guard window so the merge records
+        // stat stamps, the way real project files predate an index run.
+        if(!set_file_mtime(src, file_mtime_ns(src) - 10'000'000'000) ||
+           !set_file_mtime(header, file_mtime_ns(header) - 10'000'000'000)) {
+            return false;
+        }
         auto indexed = index_file(tmp, src);
         if(indexed.data.empty()) {
             return false;
@@ -1255,9 +1246,9 @@ TEST_CASE(TouchRepairsStamp) {
     ASSERT_TRUE(x.setup());
     ASSERT_FALSE(x.f.need_update(x.src));
 
-    // Same bytes, new mtime: the stat fast path misses, the hash proves a
-    // mere touch, and the stamp is repaired in place (dirtying the global
-    // blob so the repair persists).
+    // Same bytes, new mtime (still outside the guard window): the stat
+    // fast path misses, the hash proves a mere touch, and the stamp is
+    // repaired in place (dirtying the global blob so the repair persists).
     ASSERT_TRUE(set_file_mtime(x.header, file_mtime_ns(x.header) + 5'000'000'000));
     x.f.reset_global_dirty();
     x.f.clear_verdicts();
@@ -1324,8 +1315,8 @@ TEST_CASE(LoadRestoresIndex) {
     open_store(tmp, f.workspace);
     f.load();
 
-    auto tu_id = f.workspace.path_pool.intern(src);
-    auto header_id = f.workspace.path_pool.intern(tmp.path("dep.h"));
+    auto tu_id = f.workspace.file_table.intern(src);
+    auto header_id = f.workspace.file_table.intern(tmp.path("dep.h"));
     ASSERT_TRUE(f.workspace.shards.contains(tu_id));
     ASSERT_TRUE(f.workspace.shards.contains(header_id));
     ASSERT_TRUE(f.workspace.project_index.contributions.lookup(header_id).contains(tu_id));
@@ -1352,13 +1343,12 @@ TEST_CASE(LoadHealsBrokenShard) {
         f.merge(indexed.data.data(), indexed.data.size());
         f.save();
         header_key = blob_key(
-            f.workspace.path_pool.resolve(f.workspace.path_pool.intern(tmp.path("dep.h"))));
+            f.workspace.file_table.resolve(f.workspace.file_table.intern(tmp.path("dep.h"))));
     }
 
-    // Corrupt the header's blob and plant an orphan nothing references
-    // (the store's layout is {root}/cache/v{N}, under the "cache" root).
-    tmp.touch("cache/cache/v1/index/" + header_key + ".idx", "corrupted beyond verification");
-    tmp.touch("cache/cache/v1/index/deadbeefdeadbeef.idx", "orphan");
+    // Corrupt the header's blob and plant an orphan nothing references.
+    inject_blob(tmp, index::IndexBlobKind::Shard, header_key, "corrupted beyond verification");
+    inject_blob(tmp, index::IndexBlobKind::Shard, "deadbeefdeadbeef", "orphan");
 
     IndexerFixture f;
     open_store(tmp, f.workspace);
@@ -1367,14 +1357,14 @@ TEST_CASE(LoadHealsBrokenShard) {
     // The header's rows are unservable, so its contributing TU's manifest
     // is dropped and the TU re-enqueued — no CDB entry would ever re-index
     // a header otherwise. The orphan is swept.
-    auto tu_id = f.workspace.path_pool.intern(src);
+    auto tu_id = f.workspace.file_table.intern(src);
     ASSERT_TRUE(f.workspace.project_index.manifests.empty());
     ASSERT_TRUE(f.pump.pending_reason(tu_id).has_value());
 
     // The dropped manifest also retired the TU's contribution to the
     // OTHER header: its loaded shard's live mask must follow, or it keeps
     // serving a variant nothing contributes any more.
-    auto extra_id = f.workspace.path_pool.intern(tmp.path("extra.h"));
+    auto extra_id = f.workspace.file_table.intern(tmp.path("extra.h"));
     auto extra_it = f.workspace.shards.find(extra_id);
     ASSERT_TRUE(extra_it != f.workspace.shards.end());
     ASSERT_TRUE(extra_it->second.has_dead_variants());
@@ -1410,12 +1400,12 @@ TEST_CASE(ReadOnlyLoadKeepsDisk) {
         f.merge(indexed.data.data(), indexed.data.size());
         f.save();
         header_key = blob_key(
-            f.workspace.path_pool.resolve(f.workspace.path_pool.intern(tmp.path("dep.h"))));
-        manifest_key = blob_key(f.workspace.path_pool.resolve(f.workspace.path_pool.intern(src)));
+            f.workspace.file_table.resolve(f.workspace.file_table.intern(tmp.path("dep.h"))));
+        manifest_key = blob_key(f.workspace.file_table.resolve(f.workspace.file_table.intern(src)));
     }
 
-    tmp.touch("cache/cache/v1/index/" + header_key + ".idx", "corrupted beyond verification");
-    tmp.touch("cache/cache/v1/index/deadbeefdeadbeef.idx", "orphan");
+    inject_blob(tmp, index::IndexBlobKind::Shard, header_key, "corrupted beyond verification");
+    inject_blob(tmp, index::IndexBlobKind::Shard, "deadbeefdeadbeef", "orphan");
 
     IndexerFixture f;
     open_store(tmp, f.workspace);
@@ -1423,7 +1413,7 @@ TEST_CASE(ReadOnlyLoadKeepsDisk) {
 
     // The in-memory sweeps still run: the unservable header drops its
     // contributing TU's manifest and re-enqueues the TU.
-    auto tu_id = f.workspace.path_pool.intern(src);
+    auto tu_id = f.workspace.file_table.intern(src);
     ASSERT_TRUE(f.workspace.project_index.manifests.empty());
     ASSERT_TRUE(f.pump.pending_reason(tu_id).has_value());
 
@@ -1457,14 +1447,16 @@ TEST_CASE(LoadHealsMissingVariant) {
         f.merge(indexed.data.data(), indexed.data.size());
         f.save();
         header_key = blob_key(
-            f.workspace.path_pool.resolve(f.workspace.path_pool.intern(tmp.path("dep.h"))));
+            f.workspace.file_table.resolve(f.workspace.file_table.intern(tmp.path("dep.h"))));
     }
 
     // Replace the header's blob with one that verifies but stores a variant
     // no manifest contributed — the residue of a crash or failed write that
     // landed the manifest without its shard.
-    tmp.touch("cache/cache/v1/index/" + header_key + ".idx",
-              planted_blob("#pragma once\ninline int dep() { return 1; }\n", 0x1234));
+    inject_blob(tmp,
+                index::IndexBlobKind::Shard,
+                header_key,
+                planted_blob("#pragma once\ninline int dep() { return 1; }\n", 0x1234));
 
     IndexerFixture f;
     open_store(tmp, f.workspace);
@@ -1473,7 +1465,7 @@ TEST_CASE(LoadHealsMissingVariant) {
     // set_live would silently drop the missing rows, so the shard is as
     // unservable as an unreadable one: the TU's manifest goes and the TU
     // re-enqueues.
-    auto tu_id = f.workspace.path_pool.intern(src);
+    auto tu_id = f.workspace.file_table.intern(src);
     ASSERT_TRUE(f.workspace.project_index.manifests.empty());
     ASSERT_TRUE(f.pump.pending_reason(tu_id).has_value());
 }
@@ -1493,11 +1485,11 @@ TEST_CASE(LoadHealsWrongGeneration) {
         ASSERT_FALSE(indexed.data.empty());
         f.merge(indexed.data.data(), indexed.data.size());
         f.save();
-        auto header_id = f.workspace.path_pool.intern(tmp.path("dep.h"));
-        auto tu_id = f.workspace.path_pool.intern(src);
+        auto header_id = f.workspace.file_table.intern(tmp.path("dep.h"));
+        auto tu_id = f.workspace.file_table.intern(src);
         rows_hash = f.workspace.project_index.contributions.lookup(header_id).lookup(tu_id);
         ASSERT_TRUE(rows_hash != 0);
-        header_key = blob_key(f.workspace.path_pool.resolve(header_id));
+        header_key = blob_key(f.workspace.file_table.resolve(header_id));
     }
 
     // Replace the header's blob with one from ANOTHER content generation
@@ -1505,13 +1497,16 @@ TEST_CASE(LoadHealsWrongGeneration) {
     // the residue of a crash between shard and manifest writes. Every
     // recorded FileVersion matches the disk, so only the generation pin
     // can tell that positions would map through stale text.
-    tmp.touch("cache/cache/v1/index/" + header_key + ".idx", planted_blob("stale text", rows_hash));
+    inject_blob(tmp,
+                index::IndexBlobKind::Shard,
+                header_key,
+                planted_blob("stale text", rows_hash));
 
     IndexerFixture f;
     open_store(tmp, f.workspace);
     f.load();
 
-    auto tu_id = f.workspace.path_pool.intern(src);
+    auto tu_id = f.workspace.file_table.intern(src);
     ASSERT_TRUE(f.workspace.project_index.manifests.empty());
     ASSERT_TRUE(f.pump.pending_reason(tu_id).has_value());
 }
@@ -1534,7 +1529,7 @@ TEST_CASE(LoadDropsNewerManifest) {
         // FileVersion it references is known and its shard variant stored
         // (a rows-only reindex), so only the stamp can tell that the
         // global's symbols never landed.
-        auto tu_id = f.workspace.path_pool.intern(src);
+        auto tu_id = f.workspace.file_table.intern(src);
         auto raced = f.workspace.project_index.manifests.find(tu_id)->second;
         raced.global_gen = f.workspace.project_index.global_generation + 1;
         std::string bytes;
@@ -1545,7 +1540,7 @@ TEST_CASE(LoadDropsNewerManifest) {
         f.workspace.index_db->write(
             {
                 {index::IndexBlobKind::Manifest,
-                 blob_key(f.workspace.path_pool.resolve(tu_id)),
+                 blob_key(f.workspace.file_table.resolve(tu_id)),
                  std::move(bytes)}
         },
             {});
@@ -1557,7 +1552,7 @@ TEST_CASE(LoadDropsNewerManifest) {
 
     // The raced manifest is dropped and its TU re-enqueued; the reindex
     // rewrites the manifest and the global together.
-    auto tu_id = f.workspace.path_pool.intern(src);
+    auto tu_id = f.workspace.file_table.intern(src);
     ASSERT_TRUE(f.workspace.project_index.manifests.empty());
     ASSERT_TRUE(f.pump.pending_reason(tu_id) == ReindexReason::ContentChanged);
 }
@@ -1580,7 +1575,7 @@ TEST_CASE(LoadDropsLostManifest) {
         // FileVersion still resolvable and its shard variant stored (a
         // reindex that changed rows or the include tree only). Only the
         // global's pin can tell it is not the manifest the save meant.
-        auto tu_id = f.workspace.path_pool.intern(src);
+        auto tu_id = f.workspace.file_table.intern(src);
         auto lost = f.workspace.project_index.manifests.find(tu_id)->second;
         lost.global_gen = f.workspace.project_index.global_generation - 1;
         std::string bytes;
@@ -1589,7 +1584,7 @@ TEST_CASE(LoadDropsLostManifest) {
         f.workspace.index_db->write(
             {
                 {index::IndexBlobKind::Manifest,
-                 blob_key(f.workspace.path_pool.resolve(tu_id)),
+                 blob_key(f.workspace.file_table.resolve(tu_id)),
                  std::move(bytes)}
         },
             {});
@@ -1601,7 +1596,7 @@ TEST_CASE(LoadDropsLostManifest) {
 
     // The mistamped manifest is dropped and the TU re-enqueued instead of
     // the previous reindex's dependency set and rows serving as current.
-    auto tu_id = f.workspace.path_pool.intern(src);
+    auto tu_id = f.workspace.file_table.intern(src);
     ASSERT_TRUE(f.workspace.project_index.manifests.empty());
     ASSERT_TRUE(f.pump.pending_reason(tu_id) == ReindexReason::ContentChanged);
 }
@@ -1625,17 +1620,17 @@ TEST_CASE(LoadRequeuesStaleManifest) {
         // dependency FileVersion the persisted global table never learned,
         // while the TU's own version is known — here for the header, whose
         // standalone index no CDB sweep would ever rebuild.
-        auto header_id = f.workspace.path_pool.intern(header);
-        std::uint32_t header_fv = ~0u;
-        for(auto& [fv, record]: f.workspace.project_index.file_versions) {
-            if(record.path_id == header_id) {
-                header_fv = fv;
+        auto header_id = f.workspace.file_table.intern(header);
+        VersionID header_fv;
+        for(std::uint32_t fv = 0; fv < f.workspace.file_table.versions.size(); fv += 1) {
+            if(f.workspace.file_table.versions[fv].fid == header_id) {
+                header_fv = VersionID{fv};
             }
         }
-        ASSERT_TRUE(header_fv != ~0u);
+        ASSERT_TRUE(header_fv.valid());
         index::TUManifest stale;
         stale.tu_fv = header_fv;
-        stale.nodes.push_back({.fv = 9999});
+        stale.nodes.push_back({.fv = VersionID{9999}});
         std::string bytes;
         llvm::raw_string_ostream os(bytes);
         index::serialize_manifest(stale, os);
@@ -1653,7 +1648,7 @@ TEST_CASE(LoadRequeuesStaleManifest) {
     // The unresolvable manifest is dropped and its TU re-enqueued instead
     // of losing its persisted index forever; the blob itself dies at the
     // first save (load defers cleanup off the startup event loop).
-    auto header_id = f.workspace.path_pool.intern(header);
+    auto header_id = f.workspace.file_table.intern(header);
     ASSERT_TRUE(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
     ASSERT_FALSE(f.workspace.project_index.manifests.contains(header_id));
     auto save_body = [&]() -> kota::task<> {
@@ -1669,7 +1664,7 @@ TEST_CASE(LoadRequeuesStaleManifest) {
     ASSERT_FALSE(stale_alive);
 
     // The TU whose manifest resolved is untouched.
-    auto tu_id = f.workspace.path_pool.intern(src);
+    auto tu_id = f.workspace.file_table.intern(src);
     ASSERT_TRUE(f.workspace.project_index.manifests.contains(tu_id));
     ASSERT_FALSE(f.pump.pending_reason(tu_id).has_value());
 }
@@ -1688,14 +1683,14 @@ TEST_CASE(DeferredSweepYieldsToFreshWrite) {
         f.save();
         // The indexer keys blobs by the pool-canonical path, which need
         // not equal the raw temp path byte-for-byte (Windows 8.3 names).
-        auto key =
-            blob_key(f.workspace.path_pool.resolve(f.workspace.path_pool.intern(indexed.tu_path)));
+        auto key = blob_key(
+            f.workspace.file_table.resolve(f.workspace.file_table.intern(indexed.tu_path)));
         // Replace the persisted manifest with an unresolvable one: the
         // next load sweeps it — deferred into the first save — and the
         // TU's shard turns orphan, deferred too.
         index::TUManifest stale;
-        stale.tu_fv = 999999;
-        stale.nodes.push_back({.fv = 9999});
+        stale.tu_fv = VersionID{999999};
+        stale.nodes.push_back({.fv = VersionID{9999}});
         std::string bytes;
         llvm::raw_string_ostream os(bytes);
         index::serialize_manifest(stale, os);
@@ -1719,7 +1714,7 @@ TEST_CASE(DeferredSweepYieldsToFreshWrite) {
     f.save();
 
     auto key =
-        blob_key(f.workspace.path_pool.resolve(f.workspace.path_pool.intern(indexed.tu_path)));
+        blob_key(f.workspace.file_table.resolve(f.workspace.file_table.intern(indexed.tu_path)));
     bool manifest_alive = false;
     f.workspace.index_db->for_each_key(index::IndexBlobKind::Manifest,
                                        [&](llvm::StringRef k) { manifest_alive |= k == key; });
@@ -1755,7 +1750,7 @@ TEST_CASE(LmdbLoadServesAcrossSaves) {
     IndexerFixture f;
     open_lmdb(f.workspace);
     ASSERT_TRUE(f.load());
-    auto path_id = f.workspace.path_pool.intern(src);
+    auto path_id = f.workspace.file_table.intern(src);
     ASSERT_TRUE(f.workspace.shards.contains(path_id));
 
     // The loaded shard borrows the open-time snapshot. A save that commits
@@ -1912,7 +1907,7 @@ TEST_CASE(CorruptShardCondemnsDatabase) {
     // The TU has no CDB entry, so nothing else records the debt: it is
     // re-enqueued before the adopted state unwinds, and the fresh
     // database's first save persists it as standalone debt.
-    ASSERT_TRUE(f.pump.pending_reason(f.workspace.path_pool.intern(tu_path)) ==
+    ASSERT_TRUE(f.pump.pending_reason(f.workspace.file_table.intern(tu_path)) ==
                 ReindexReason::ContentChanged);
     ASSERT_TRUE(f.workspace.index_db != nullptr);
     f.save();
@@ -2006,7 +2001,7 @@ TEST_CASE(DropIndexEvictsPersisted) {
 
         // The compile command changed: content freshness cannot see it, so
         // the TU's index is dropped wholesale and staleness flips at once.
-        f.drop_index(f.workspace.path_pool.intern(src));
+        f.drop_index(f.workspace.file_table.intern(src));
         ASSERT_TRUE(f.workspace.project_index.manifests.empty());
         ASSERT_TRUE(f.need_update(src));
         f.save();
@@ -2044,7 +2039,7 @@ TEST_CASE(OfflineCommandChangeReindexed) {
     f.workspace.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=2 -c main.cpp"));
     f.load();
 
-    auto tu_id = f.workspace.path_pool.intern(src);
+    auto tu_id = f.workspace.file_table.intern(src);
     ASSERT_FALSE(f.workspace.project_index.manifests.contains(tu_id));
     ASSERT_TRUE(f.pump.pending_reason(tu_id) == ReindexReason::ContentChanged);
 }
@@ -2069,7 +2064,7 @@ TEST_CASE(UnchangedCommandKept) {
     f.workspace.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=1 -c main.cpp"));
     f.load();
 
-    auto tu_id = f.workspace.path_pool.intern(src);
+    auto tu_id = f.workspace.file_table.intern(src);
     ASSERT_TRUE(f.workspace.project_index.manifests.contains(tu_id));
     ASSERT_FALSE(f.pump.pending_reason(tu_id).has_value());
 }
@@ -2095,7 +2090,7 @@ TEST_CASE(RemovedEntryKeepsIndex) {
     open_store(tmp, f.workspace);
     f.load();
 
-    auto tu_id = f.workspace.path_pool.intern(src);
+    auto tu_id = f.workspace.file_table.intern(src);
     ASSERT_TRUE(f.workspace.project_index.manifests.contains(tu_id));
     ASSERT_FALSE(f.pump.pending_reason(tu_id).has_value());
 }
@@ -2128,7 +2123,7 @@ TEST_CASE(RuleChangeReindexed) {
     f.workspace.config.finalize(tmp.root);
     f.load();
 
-    auto tu_id = f.workspace.path_pool.intern(src);
+    auto tu_id = f.workspace.file_table.intern(src);
     ASSERT_FALSE(f.workspace.project_index.manifests.contains(tu_id));
     ASSERT_TRUE(f.pump.pending_reason(tu_id) == ReindexReason::ContentChanged);
 }
@@ -2158,9 +2153,9 @@ TEST_CASE(HostChangeDropsHeader) {
     IndexerFixture f;
     open_store(tmp, f.workspace);
     f.workspace.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=2 -c main.cpp"));
-    auto src_id = f.workspace.path_pool.intern(src);
-    auto header_id = f.workspace.path_pool.intern(header);
-    f.workspace.dep_graph.set_includes(src_id, 0, {header_id});
+    auto src_id = f.workspace.file_table.intern(src);
+    auto header_id = f.workspace.file_table.intern(header);
+    f.workspace.dep_graph.set_includes(src_id, 0, {{header_id}});
     f.workspace.dep_graph.build_reverse_map();
     f.load();
 
@@ -2193,7 +2188,7 @@ TEST_CASE(HeaderRuleChangeReindexed) {
     f.workspace.config.finalize(tmp.root);
     f.load();
 
-    auto header_id = f.workspace.path_pool.intern(header);
+    auto header_id = f.workspace.file_table.intern(header);
     ASSERT_FALSE(f.workspace.project_index.manifests.contains(header_id));
     ASSERT_TRUE(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
 }
@@ -2212,7 +2207,8 @@ TEST_CASE(RecordedHostChangeDrops) {
         auto indexed = index_file(tmp, header);
         ASSERT_FALSE(indexed.data.empty());
         ASSERT_TRUE(f.merge(indexed.data.data(), indexed.data.size()));
-        f.set_header_host(f.workspace.path_pool.intern(header), f.workspace.path_pool.intern(src));
+        f.set_header_host(f.workspace.file_table.intern(header),
+                          f.workspace.file_table.intern(src));
         f.save();
     }
 
@@ -2224,7 +2220,7 @@ TEST_CASE(RecordedHostChangeDrops) {
     f.workspace.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=2 -c main.cpp"));
     f.load();
 
-    auto header_id = f.workspace.path_pool.intern(header);
+    auto header_id = f.workspace.file_table.intern(header);
     ASSERT_FALSE(f.workspace.project_index.manifests.contains(header_id));
     ASSERT_TRUE(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
 }
@@ -2246,7 +2242,8 @@ TEST_CASE(PinnedHostKeepsHeader) {
         auto indexed = index_file(tmp, header);
         ASSERT_FALSE(indexed.data.empty());
         ASSERT_TRUE(f.merge(indexed.data.data(), indexed.data.size()));
-        f.set_header_host(f.workspace.path_pool.intern(header), f.workspace.path_pool.intern(src));
+        f.set_header_host(f.workspace.file_table.intern(header),
+                          f.workspace.file_table.intern(src));
         f.save();
     }
 
@@ -2257,11 +2254,11 @@ TEST_CASE(PinnedHostKeepsHeader) {
     open_store(tmp, f.workspace);
     f.workspace.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
     f.workspace.cdb.add_command(tmp.root, other, llvm::StringRef("clang++ -DBAR=1 -c other.cpp"));
-    auto src_id = f.workspace.path_pool.intern(src);
-    auto other_id = f.workspace.path_pool.intern(other);
-    auto header_id = f.workspace.path_pool.intern(header);
-    f.workspace.dep_graph.set_includes(src_id, 0, {header_id});
-    f.workspace.dep_graph.set_includes(other_id, 0, {header_id});
+    auto src_id = f.workspace.file_table.intern(src);
+    auto other_id = f.workspace.file_table.intern(other);
+    auto header_id = f.workspace.file_table.intern(header);
+    f.workspace.dep_graph.set_includes(src_id, 0, {{header_id}});
+    f.workspace.dep_graph.set_includes(other_id, 0, {{header_id}});
     f.workspace.dep_graph.build_reverse_map();
     f.load();
 
@@ -2283,7 +2280,8 @@ TEST_CASE(UnreachableHostRebuilds) {
         auto indexed = index_file(tmp, header);
         ASSERT_FALSE(indexed.data.empty());
         ASSERT_TRUE(f.merge(indexed.data.data(), indexed.data.size()));
-        f.set_header_host(f.workspace.path_pool.intern(header), f.workspace.path_pool.intern(src));
+        f.set_header_host(f.workspace.file_table.intern(header),
+                          f.workspace.file_table.intern(src));
         f.save();
     }
 
@@ -2295,7 +2293,7 @@ TEST_CASE(UnreachableHostRebuilds) {
     f.workspace.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
     f.load();
 
-    auto header_id = f.workspace.path_pool.intern(header);
+    auto header_id = f.workspace.file_table.intern(header);
     ASSERT_TRUE(f.workspace.project_index.manifests.contains(header_id));
     ASSERT_TRUE(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
 }
@@ -2341,13 +2339,15 @@ TEST_CASE(CDBWriteFailureRetried) {
         }
 
         std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
-            return 0;
+            return real->advance_read_snapshot();
         }
 
-        void retire_old_snapshot() override {}
+        void retire_old_snapshot() override {
+            real->retire_old_snapshot();
+        }
 
         std::expected<bool, std::string> grow() override {
-            return false;
+            return real->grow();
         }
     };
 
@@ -2425,7 +2425,8 @@ TEST_CASE(DroppedHeaderDebtRetried) {
         auto indexed = index_file(tmp, header);
         ASSERT_FALSE(indexed.data.empty());
         ASSERT_TRUE(f.merge(indexed.data.data(), indexed.data.size()));
-        f.set_header_host(f.workspace.path_pool.intern(header), f.workspace.path_pool.intern(src));
+        f.set_header_host(f.workspace.file_table.intern(header),
+                          f.workspace.file_table.intern(src));
         f.save();
     }
 
@@ -2438,7 +2439,7 @@ TEST_CASE(DroppedHeaderDebtRetried) {
         open_store(tmp, f.workspace);
         f.workspace.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=2 -c main.cpp"));
         f.load();
-        auto header_id = f.workspace.path_pool.intern(header);
+        auto header_id = f.workspace.file_table.intern(header);
         ASSERT_FALSE(f.workspace.project_index.manifests.contains(header_id));
         ASSERT_TRUE(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
         f.save();
@@ -2449,7 +2450,7 @@ TEST_CASE(DroppedHeaderDebtRetried) {
     f.workspace.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=2 -c main.cpp"));
     f.load();
 
-    auto header_id = f.workspace.path_pool.intern(header);
+    auto header_id = f.workspace.file_table.intern(header);
     ASSERT_FALSE(f.workspace.project_index.manifests.contains(header_id));
     ASSERT_TRUE(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
 }
@@ -2468,7 +2469,8 @@ TEST_CASE(VanishedHeaderDebtDies) {
         auto indexed = index_file(tmp, header);
         ASSERT_FALSE(indexed.data.empty());
         ASSERT_TRUE(f.merge(indexed.data.data(), indexed.data.size()));
-        f.set_header_host(f.workspace.path_pool.intern(header), f.workspace.path_pool.intern(src));
+        f.set_header_host(f.workspace.file_table.intern(header),
+                          f.workspace.file_table.intern(src));
         f.save();
     }
 
@@ -2488,7 +2490,203 @@ TEST_CASE(VanishedHeaderDebtDies) {
     open_store(tmp, f.workspace);
     f.workspace.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=2 -c main.cpp"));
     f.load();
-    ASSERT_FALSE(f.pump.pending_reason(f.workspace.path_pool.intern(header)).has_value());
+    ASSERT_FALSE(f.pump.pending_reason(f.workspace.file_table.intern(header)).has_value());
+}
+
+TEST_CASE(RevokedStampStaysRevoked) {
+    // The global and artifacts blobs commit non-atomically; a crash
+    // between the two writes of a revocation save leaves a global
+    // recording the revocation next to an artifacts blob predating it.
+    // Adopting the old blob's dep stamps would undo the revocation.
+    TempDir tmp;
+    tmp.touch("dep.h", "int x;\n");
+    auto dep_path = tmp.path("dep.h");
+    std::string stale_artifacts;
+
+    auto setup = [&](IndexerFixture& f) {
+        open_store(tmp, f.workspace);
+        f.workspace.store->register_namespace(
+            {.name = "pcm", .extension = ".pcm", .policy = CachePolicy::LRU});
+    };
+    auto dep_version = [&](IndexerFixture& f) {
+        return f.workspace.file_table.intern_version(f.workspace.file_table.intern(dep_path), 7);
+    };
+
+    {
+        IndexerFixture f;
+        setup(f);
+        auto pending = f.workspace.store->begin_store("pcm", "k");
+        ASSERT_TRUE(fs::write(pending.tmp_path, "pcm-bytes").has_value());
+        ASSERT_TRUE(f.workspace.store->commit(std::move(pending)).has_value());
+
+        auto dep_id = f.workspace.file_table.intern(dep_path);
+        auto vid = dep_version(f);
+        f.workspace.file_table.adopt_stamp(vid, 42, 123);
+        auto& st = f.workspace.pcm_cache[dep_id];
+        st.path = "dep.pcm";
+        st.key = "k";
+        st.deps.push_back({.path_id = dep_id, .version = vid});
+        f.workspace.mark_artifacts_dirty();
+        f.index_store.mark_global_dirty();
+        f.save();
+
+        auto blob = f.workspace.index_db->read(index::IndexBlobKind::Artifacts, "artifacts");
+        ASSERT_TRUE(bool(blob));
+        stale_artifacts = blob.buffer->getBuffer().str();
+    }
+
+    {
+        // Matching revocation generations adopt the persisted stamp...
+        IndexerFixture f;
+        setup(f);
+        f.load();
+        ASSERT_EQ(f.workspace.file_table.version(dep_version(f)).mtime_ns, std::int64_t(123));
+
+        // ...then revoke, persist both blobs, and put the pre-revocation
+        // artifacts blob back — the on-disk pair a mid-batch crash leaves.
+        f.workspace.file_table.force_revalidate(f.workspace.file_table.intern(dep_path));
+        f.workspace.mark_artifacts_dirty();
+        f.index_store.mark_global_dirty();
+        f.save();
+        index::BlobDatabase::Blob stale{index::IndexBlobKind::Artifacts,
+                                        "artifacts",
+                                        stale_artifacts};
+        ASSERT_TRUE(f.workspace.index_db->write(stale, {}).empty());
+    }
+
+    IndexerFixture f;
+    setup(f);
+    f.load();
+    ASSERT_EQ(f.workspace.file_table.version(dep_version(f)).mtime_ns, std::int64_t(0));
+}
+
+TEST_CASE(StaleFormatDropsPch) {
+    // A .pch.idx envelope written under an older index format is
+    // unreadable; the format gate drops every PCH entry at load so the
+    // pairs rebuild immediately, instead of the mismatch surfacing lazily
+    // on the first overlay query — which cannot trigger a rebuild.
+    TempDir tmp;
+    tmp.touch("dep.h", "int x;\n");
+    auto dep_path = tmp.path("dep.h");
+    std::string artifacts;
+
+    auto setup = [&](IndexerFixture& f) {
+        open_store(tmp, f.workspace);
+        f.workspace.store->register_namespace({.name = "pch",
+                                               .extension = ".pch",
+                                               .aux_extension = ".pch.idx",
+                                               .policy = CachePolicy::LRU});
+    };
+
+    {
+        IndexerFixture f;
+        setup(f);
+        auto pending = f.workspace.store->begin_store("pch", "k");
+        ASSERT_TRUE(fs::write(pending.tmp_path, "pch-bytes").has_value());
+        ASSERT_TRUE(f.workspace.store->commit(std::move(pending)).has_value());
+        auto aux = f.workspace.store->begin_store_aux("pch", "k");
+        ASSERT_TRUE(fs::write(aux.tmp_path, "idx-bytes").has_value());
+        ASSERT_TRUE(f.workspace.store->commit(std::move(aux)).has_value());
+
+        auto dep_id = f.workspace.file_table.intern(dep_path);
+        auto& st = f.workspace.pch_cache["k"];
+        st.path = "k.pch";
+        st.deps.push_back(
+            {.path_id = dep_id, .version = f.workspace.file_table.intern_version(dep_id, 7)});
+        f.workspace.mark_artifacts_dirty();
+        f.save();
+
+        auto blob = f.workspace.index_db->read(index::IndexBlobKind::Artifacts, "artifacts");
+        ASSERT_TRUE(bool(blob));
+        artifacts = blob.buffer->getBuffer().str();
+    }
+
+    {
+        // The premise: under the current format the entry loads.
+        IndexerFixture f;
+        setup(f);
+        f.load();
+        ASSERT_EQ(f.workspace.pch_cache.size(), std::size_t(1));
+
+        // Put back the blob as an older binary would have written it.
+        auto current = std::format("\"pch_index_format\":{}", index::index_format_version);
+        auto stale = std::format("\"pch_index_format\":{}", index::index_format_version - 1);
+        auto pos = artifacts.find(current);
+        ASSERT_TRUE(pos != std::string::npos);
+        artifacts.replace(pos, current.size(), stale);
+        index::BlobDatabase::Blob blob{index::IndexBlobKind::Artifacts, "artifacts", artifacts};
+        ASSERT_TRUE(f.workspace.index_db->write(blob, {}).empty());
+    }
+
+    IndexerFixture f;
+    setup(f);
+    f.load();
+    ASSERT_TRUE(f.workspace.pch_cache.empty());
+}
+
+TEST_CASE(DeplessPcmDropped) {
+    // A dep-less PCM entry is an unvalidatable snapshot (the key embeds
+    // no content): trusted, it would blindly serve a stale PCM after an
+    // offline edit. Load drops it so the module rebuilds once.
+    TempDir tmp;
+    tmp.touch("mod.cppm", "export module m;\n");
+    auto src = tmp.path("mod.cppm");
+
+    auto setup = [&](IndexerFixture& f) {
+        open_store(tmp, f.workspace);
+        f.workspace.store->register_namespace(
+            {.name = "pcm", .extension = ".pcm", .policy = CachePolicy::LRU});
+    };
+
+    {
+        IndexerFixture f;
+        setup(f);
+        auto pending = f.workspace.store->begin_store("pcm", "k");
+        ASSERT_TRUE(fs::write(pending.tmp_path, "pcm-bytes").has_value());
+        ASSERT_TRUE(f.workspace.store->commit(std::move(pending)).has_value());
+
+        auto& st = f.workspace.pcm_cache[f.workspace.file_table.intern(src)];
+        st.path = "m.pcm";
+        st.key = "k";
+        f.workspace.mark_artifacts_dirty();
+        f.save();
+
+        // The premise: the dep-less entry was persisted, so the tail
+        // assertion exercises the load-side drop, not a write-side skip.
+        auto blob = f.workspace.index_db->read(index::IndexBlobKind::Artifacts, "artifacts");
+        ASSERT_TRUE(bool(blob));
+        ASSERT_TRUE(blob.buffer->getBuffer().contains("\"key\":\"k\""));
+    }
+
+    IndexerFixture f;
+    setup(f);
+    f.load();
+    ASSERT_TRUE(f.workspace.pcm_cache.empty());
+}
+
+TEST_CASE(HeaderModePersisted) {
+    // The NeedsContext verdict rides the artifacts blob: a restart with
+    // unchanged disk content adopts it instead of re-running the trial.
+    TempDir tmp;
+    tmp.touch("utils.h", "inline int f();\n");
+    auto path = tmp.path("utils.h");
+
+    {
+        IndexerFixture f;
+        open_store(tmp, f.workspace);
+        auto id = f.workspace.file_table.intern(path);
+        auto disk = f.workspace.file_table.current(id);
+        ASSERT_TRUE(disk.has_value());
+        f.contexts.record_header_mode(id, HeaderMode::NeedsContext, disk->hash);
+        f.workspace.mark_artifacts_dirty();
+        f.save();
+    }
+
+    IndexerFixture f;
+    open_store(tmp, f.workspace);
+    f.load();
+    auto id = f.workspace.file_table.intern(path);
+    ASSERT_TRUE(f.contexts.header_mode(path, id) == HeaderMode::NeedsContext);
 }
 
 };  // TEST_SUITE(IndexerLoad)
@@ -2497,7 +2695,7 @@ TEST_SUITE(IndexerRequeue) {
 
 TEST_CASE(PreemptionKeepsBudget) {
     IndexerFixture f;
-    auto id = f.workspace.path_pool.intern("/proj/a.cpp");
+    auto id = f.workspace.file_table.intern("/proj/a.cpp");
     f.pump.enqueue(id, ReindexReason::ContentChanged);
 
     // A preemption under memory pressure requeues without spending the
@@ -2511,7 +2709,7 @@ TEST_CASE(PreemptionKeepsBudget) {
 
 TEST_CASE(CrashSpendsBudget) {
     IndexerFixture f;
-    auto id = f.workspace.path_pool.intern("/proj/poison.cpp");
+    auto id = f.workspace.file_table.intern("/proj/poison.cpp");
     f.pump.enqueue(id, ReindexReason::ContentChanged);
 
     for(unsigned i = 0; i < IndexerFixture::budget; ++i) {
@@ -2534,7 +2732,7 @@ TEST_CASE(CrashSpendsBudget) {
 
 TEST_CASE(StaleCrashKeepsBudget) {
     IndexerFixture f;
-    auto id = f.workspace.path_pool.intern("/proj/edited.cpp");
+    auto id = f.workspace.file_table.intern("/proj/edited.cpp");
     f.pump.enqueue(id, ReindexReason::ContentChanged);
     auto stale = f.ticket(id);
 
@@ -2550,7 +2748,7 @@ TEST_CASE(StaleCrashKeepsBudget) {
 
 TEST_CASE(DepsDowngradeKeepsDebt) {
     IndexerFixture f;
-    auto id = f.workspace.path_pool.intern("/proj/c.cpp");
+    auto id = f.workspace.file_table.intern("/proj/c.cpp");
     f.pump.enqueue(id, ReindexReason::ContentChanged);
     auto launch = f.ticket(id);
 
@@ -2569,7 +2767,7 @@ TEST_CASE(DepsDowngradeKeepsDebt) {
 
 TEST_CASE(GaveUpClearsDowngraded) {
     IndexerFixture f;
-    auto id = f.workspace.path_pool.intern("/proj/d.cpp");
+    auto id = f.workspace.file_table.intern("/proj/d.cpp");
     f.pump.enqueue(id, ReindexReason::ContentChanged);
     auto launch = f.ticket(id);
     f.set_attempts(id, IndexerFixture::budget);
@@ -2585,13 +2783,13 @@ TEST_CASE(GaveUpClearsDowngraded) {
 
 TEST_CASE(DroppedWithoutPending) {
     IndexerFixture f;
-    auto id = f.workspace.path_pool.intern("/proj/gone.cpp");
+    auto id = f.workspace.file_table.intern("/proj/gone.cpp");
     ASSERT_EQ(int(f.fail(id, /*crashed=*/true)), int(IndexerFixture::Verdict::Dropped));
 }
 
 TEST_CASE(AttemptWaitPerTicket) {
     IndexerFixture f;
-    auto id = f.workspace.path_pool.intern("/proj/waited.cpp");
+    auto id = f.workspace.file_table.intern("/proj/waited.cpp");
     f.pump.enqueue(id, ReindexReason::ContentChanged);
     auto launch = f.ticket(id);
 
@@ -2631,7 +2829,7 @@ TEST_CASE(AttemptWaitPerTicket) {
 
 TEST_CASE(ContentChangeResetsBudget) {
     IndexerFixture f;
-    auto id = f.workspace.path_pool.intern("/proj/fixed.cpp");
+    auto id = f.workspace.file_table.intern("/proj/fixed.cpp");
     f.pump.enqueue(id, ReindexReason::ContentChanged);
 
     ASSERT_EQ(int(f.fail(id, /*crashed=*/true)), int(IndexerFixture::Verdict::Requeued));
@@ -2654,9 +2852,9 @@ TEST_CASE(RoundSnapshotBoundary) {
     // the two rounds stays observable.
     f.workspace.config.project.enable_indexing.value = false;
 
-    auto a = f.workspace.path_pool.intern("/fake/a.cpp");
-    auto b = f.workspace.path_pool.intern("/fake/b.cpp");
-    auto c = f.workspace.path_pool.intern("/fake/c.cpp");
+    auto a = f.workspace.file_table.intern("/fake/a.cpp");
+    auto b = f.workspace.file_table.intern("/fake/b.cpp");
+    auto c = f.workspace.file_table.intern("/fake/c.cpp");
 
     f.pump.enqueue(a, ReindexReason::ContentChanged);
     f.pump.enqueue(b, ReindexReason::ContentChanged);
@@ -2696,8 +2894,8 @@ TEST_CASE(PauseResumesRound) {
     IndexerFixture f;
     f.workspace.config.project.enable_indexing.value = false;
 
-    auto a = f.workspace.path_pool.intern("/fake/a.cpp");
-    auto b = f.workspace.path_pool.intern("/fake/b.cpp");
+    auto a = f.workspace.file_table.intern("/fake/a.cpp");
+    auto b = f.workspace.file_table.intern("/fake/b.cpp");
     f.pump.enqueue(a, ReindexReason::ContentChanged);
     f.pump.enqueue(b, ReindexReason::ContentChanged);
 
@@ -2743,12 +2941,12 @@ TEST_CASE(MergeReportsRowsChanged) {
     auto indexed = index_file(tmp, tmp.path("main.cpp"));
     ASSERT_FALSE(indexed.data.empty());
 
-    llvm::SmallVector<std::uint32_t> notified;
+    llvm::SmallVector<Fid> notified;
     auto conn = f.pump.on_rows_changed.connect(
-        [&](llvm::ArrayRef<std::uint32_t> ids) { notified.append(ids.begin(), ids.end()); });
+        [&](llvm::ArrayRef<Fid> ids) { notified.append(ids.begin(), ids.end()); });
     ASSERT_TRUE(f.merge(indexed.data.data(), indexed.data.size()));
 
-    ASSERT_TRUE(llvm::is_contained(notified, f.workspace.path_pool.intern(indexed.tu_path)));
+    ASSERT_TRUE(llvm::is_contained(notified, f.workspace.file_table.intern(indexed.tu_path)));
 }
 
 TEST_CASE(DropReportsServedRows) {
@@ -2764,12 +2962,12 @@ TEST_CASE(DropReportsServedRows) {
     ASSERT_FALSE(indexed.data.empty());
     ASSERT_TRUE(f.merge(indexed.data.data(), indexed.data.size()));
 
-    auto tu_id = f.workspace.path_pool.intern(indexed.tu_path);
-    auto header_id = f.workspace.path_pool.intern(tmp.path("dep.h"));
+    auto tu_id = f.workspace.file_table.intern(indexed.tu_path);
+    auto header_id = f.workspace.file_table.intern(tmp.path("dep.h"));
 
-    llvm::SmallVector<std::uint32_t> notified;
+    llvm::SmallVector<Fid> notified;
     auto conn = f.pump.on_rows_changed.connect(
-        [&](llvm::ArrayRef<std::uint32_t> ids) { notified.append(ids.begin(), ids.end()); });
+        [&](llvm::ArrayRef<Fid> ids) { notified.append(ids.begin(), ids.end()); });
     auto report = f.index_store.drop_index(tu_id);
     ASSERT_TRUE(llvm::is_contained(report.rows_changed(), tu_id));
     ASSERT_TRUE(llvm::is_contained(report.rows_changed(), header_id));
@@ -2799,12 +2997,12 @@ TEST_CASE(RetireReportsRowsChanged) {
     ASSERT_FALSE(second.data.empty());
     ASSERT_TRUE(f.merge(second.data.data(), second.data.size()));
 
-    auto header_id = f.workspace.path_pool.intern(tmp.path("dep.h"));
+    auto header_id = f.workspace.file_table.intern(tmp.path("dep.h"));
     ASSERT_TRUE(f.workspace.shards.contains(header_id));
 
-    llvm::SmallVector<std::uint32_t> notified;
+    llvm::SmallVector<Fid> notified;
     auto conn = f.pump.on_rows_changed.connect(
-        [&](llvm::ArrayRef<std::uint32_t> ids) { notified.append(ids.begin(), ids.end()); });
+        [&](llvm::ArrayRef<Fid> ids) { notified.append(ids.begin(), ids.end()); });
     f.save();
 
     ASSERT_FALSE(f.workspace.shards.contains(header_id));
@@ -2826,7 +3024,7 @@ TEST_CASE(FailedStandaloneInSnapshot) {
         IndexerFixture f;
         open_store(tmp, f.workspace);
         f.workspace.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
-        f.mark_failed(f.workspace.path_pool.intern(header));
+        f.mark_failed(f.workspace.file_table.intern(header));
         // Something dirty so the save writes at all; the snapshot rides
         // the same batch.
         auto indexed = index_file(tmp, src);
@@ -2839,7 +3037,7 @@ TEST_CASE(FailedStandaloneInSnapshot) {
     open_store(tmp, f.workspace);
     f.workspace.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
     f.load();
-    ASSERT_TRUE(f.pump.pending_reason(f.workspace.path_pool.intern(header)) ==
+    ASSERT_TRUE(f.pump.pending_reason(f.workspace.file_table.intern(header)) ==
                 ReindexReason::ContentChanged);
 }
 
@@ -2896,7 +3094,7 @@ TEST_CASE(LateDebtShutdownRetry) {
     open_store(tmp, f.workspace);
     f.workspace.index_db = std::make_unique<CorruptOnWrite>();
 
-    f.mark_failed(f.workspace.path_pool.intern(tmp.path("dep.h")));
+    f.mark_failed(f.workspace.file_table.intern(tmp.path("dep.h")));
     auto indexed = index_file(tmp, tmp.path("main.cpp"));
     ASSERT_FALSE(indexed.data.empty());
     ASSERT_TRUE(f.merge(indexed.data.data(), indexed.data.size()));
@@ -2923,10 +3121,10 @@ TEST_CASE(LateDebtShutdownRetry) {
 TEST_CASE(DispatchDeferKeepsDebt) {
     IndexerFixture f;
     f.workspace.config.project.enable_indexing.value = false;
-    auto id = f.workspace.path_pool.intern("/fake/a.cpp");
+    auto id = f.workspace.file_table.intern("/fake/a.cpp");
     f.pump.enqueue(id, ReindexReason::ContentChanged);
 
-    f.pump.admission = [](std::uint32_t) {
+    f.pump.admission = [](Fid) {
         return Admission::Defer;
     };
     f.run_round();
@@ -2953,11 +3151,11 @@ TEST_CASE(LandingVetoDropsResult) {
         src,
         std::format("clang++ -fsyntax-only -resource-dir {} -c {}", resource_dir(), src));
 
-    auto id = f.workspace.path_pool.intern(src);
+    auto id = f.workspace.file_table.intern(src);
     f.pump.enqueue(id, ReindexReason::ContentChanged);
 
     int asks = 0;
-    f.pump.admission = [&](std::uint32_t) {
+    f.pump.admission = [&](Fid) {
         asks += 1;
         // First ask = dispatch (admit); second = landing, where the
         // serving side has changed its mind.
@@ -2991,7 +3189,7 @@ TEST_CASE(BoostRearmsIdleTimer) {
     f.workspace.config.project.enable_indexing.value = true;
     f.workspace.config.project.idle_timeout_ms.value = 60'000;
 
-    auto id = f.workspace.path_pool.intern("/fake/a.cpp");
+    auto id = f.workspace.file_table.intern("/fake/a.cpp");
     f.pump.enqueue(id, ReindexReason::ContentChanged);
     f.pump.schedule();
     f.pump.boost(id);
@@ -3044,7 +3242,7 @@ TEST_CASE(ModuleLintScanParity) {
     plan.tidy_params.checks = "-*,bugprone-integer-division";
     plan.tidy_params.extra_args = {"-DUSE_M"};
 
-    auto n_id = f.workspace.path_pool.intern(tmp.path("n.cppm"));
+    auto n_id = f.workspace.file_table.intern(tmp.path("n.cppm"));
     TURunFamily::Outcome outcome;
     bool done = false;
     auto body = [&]() -> kota::task<> {

@@ -9,7 +9,6 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
-#include "llvm/Support/Process.h"
 #include "llvm/Support/raw_ostream.h"
 
 namespace clice::testing {
@@ -84,22 +83,11 @@ private:
     std::deque<std::string> pool;
 };
 
-/// Rewrite a file's mtime, for freshness tests that simulate backdated or
-/// preserved timestamps (rsync -t, git-restore-mtime). Returns false on
-/// failure so callers can assert.
-inline bool set_file_mtime(llvm::StringRef path, std::int64_t mtime_ns) {
-    int fd = -1;
-    if(llvm::sys::fs::openFileForWrite(path,
-                                       fd,
-                                       llvm::sys::fs::CD_OpenExisting,
-                                       llvm::sys::fs::OF_Append)) {
-        return false;
-    }
-    auto time = llvm::sys::TimePoint<>(std::chrono::nanoseconds(mtime_ns));
-    bool ok = !llvm::sys::fs::setLastAccessAndModificationTime(fd, time, time);
-    llvm::sys::Process::SafelyCloseFileDescriptor(fd);
-    return ok;
-}
+/// Rewrite a file's or directory's mtime, for freshness tests that simulate
+/// backdated or preserved timestamps (rsync -t, git-restore-mtime, a project
+/// tree older than the server). Returns false on failure so callers can
+/// assert.
+bool set_file_mtime(llvm::StringRef path, std::int64_t mtime_ns);
 
 /// A file's current mtime in nanoseconds, or -1 when it cannot be stat'ed.
 inline std::int64_t file_mtime_ns(llvm::StringRef path) {

@@ -3,8 +3,23 @@
 #include <cassert>
 #include <format>
 
+#ifdef _WIN32
+// See cache_store.cpp: windows.h must not spill min/max macros.
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#else
+#include <fcntl.h>
+#include <sys/stat.h>
+#endif
+
+#include "test/temp_dir.h"
 #include "support/logging.h"
 #include "syntax/scan.h"
+
+#ifdef _WIN32
+#include "llvm/Support/ConvertUTF.h"
+#endif
 
 namespace clice::testing {
 
@@ -338,6 +353,42 @@ void Tester::prepare_driver(llvm::StringRef standard) {
 bool Tester::compile_driver(llvm::StringRef standard) {
     prepare_driver(standard);
     return try_compile();
+}
+
+bool set_file_mtime(llvm::StringRef path, std::int64_t mtime_ns) {
+#ifdef _WIN32
+    // Path-based instead of fd-based: opening a directory needs
+    // FILE_FLAG_BACKUP_SEMANTICS, which no LLVM open wrapper passes.
+    std::wstring wide;
+    if(!llvm::ConvertUTF8toWide(path, wide)) {
+        return false;
+    }
+    HANDLE handle = ::CreateFileW(wide.c_str(),
+                                  FILE_WRITE_ATTRIBUTES,
+                                  FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                  nullptr,
+                                  OPEN_EXISTING,
+                                  FILE_FLAG_BACKUP_SEMANTICS,
+                                  nullptr);
+    if(handle == INVALID_HANDLE_VALUE) {
+        return false;
+    }
+    // FILETIME counts 100ns intervals since 1601-01-01.
+    std::uint64_t intervals = static_cast<std::uint64_t>(mtime_ns / 100) + 116444736000000000ull;
+    FILETIME time;
+    time.dwLowDateTime = static_cast<DWORD>(intervals);
+    time.dwHighDateTime = static_cast<DWORD>(intervals >> 32);
+    bool ok = ::SetFileTime(handle, nullptr, &time, &time);
+    ::CloseHandle(handle);
+    return ok;
+#else
+    timespec times[2];
+    times[0].tv_sec = mtime_ns / 1'000'000'000;
+    times[0].tv_nsec = mtime_ns % 1'000'000'000;
+    times[1] = times[0];
+    std::string buffer(path);
+    return ::utimensat(AT_FDCWD, buffer.c_str(), times, 0) == 0;
+#endif
 }
 
 void Tester::clear() {

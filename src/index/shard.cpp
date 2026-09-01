@@ -603,7 +603,11 @@ bool Shard::ascii() const {
 }
 
 bool Shard::matches_content(llvm::StringRef text) const {
-    return loaded() && text.size() == content_size() && llvm::xxh3_64bits(text) == content_hash();
+    return matches_content(text.size(), llvm::xxh3_64bits(text));
+}
+
+bool Shard::matches_content(std::uint64_t size, std::uint64_t hash) const {
+    return loaded() && size == content_size() && hash == content_hash();
 }
 
 std::vector<RowsHash> Shard::variants() const {

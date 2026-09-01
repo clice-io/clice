@@ -50,14 +50,6 @@ Paths searched for compile_commands.json — file paths, or directories to look 
 
 Build the background index that serves cross-TU features (find references, workspace symbols, ...).
 
-### `project.index_db`
-
-| Type     | Default  |
-| -------- | -------- |
-| `string` | `"lmdb"` |
-
-Index persistence backend: "lmdb" (single database file) or "files" (one file per blob).
-
 ### `project.readonly`
 
 | Type     | Default |

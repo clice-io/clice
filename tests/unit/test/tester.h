@@ -14,7 +14,8 @@ namespace clice::testing {
 
 struct Tester {
     CompilationParams params;
-    CompilationDatabase database;
+    FileTable file_table;
+    CompilationDatabase database{file_table};
     std::optional<CompilationUnit> unit;
     std::string src_path;
 

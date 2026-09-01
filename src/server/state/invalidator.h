@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <functional>
 #include <optional>
 #include <string>
 
@@ -52,9 +51,9 @@ struct FileEvent {
     /// CDBChanged payload: the reload's per-file delta, as master path-pool
     /// ids. `changed` means the file kept an entry but its command differs.
     struct CDBDelta {
-        llvm::SmallVector<std::uint32_t, 0> added;
-        llvm::SmallVector<std::uint32_t, 0> removed;
-        llvm::SmallVector<std::uint32_t, 0> changed;
+        llvm::SmallVector<Fid, 0> added;
+        llvm::SmallVector<Fid, 0> removed;
+        llvm::SmallVector<Fid, 0> changed;
 
         bool empty() const {
             return added.empty() && removed.empty() && changed.empty();
@@ -62,33 +61,33 @@ struct FileEvent {
     };
 
     Kind kind;
-    std::uint32_t path_id = no_path_id;
+    Fid path_id;
     /// WorkerCrashed only: the crashed worker's lost documents.
-    llvm::SmallVector<std::uint32_t> paths;
+    llvm::SmallVector<Fid> paths;
     /// CDBChanged only: the reload delta.
     CDBDelta cdb;
 
-    static FileEvent buffer_opened(std::uint32_t path_id) {
+    static FileEvent buffer_opened(Fid path_id) {
         return {Kind::BufferOpened, path_id};
     }
 
-    static FileEvent buffer_edited(std::uint32_t path_id) {
+    static FileEvent buffer_edited(Fid path_id) {
         return {Kind::BufferEdited, path_id};
     }
 
-    static FileEvent buffer_saved(std::uint32_t path_id) {
+    static FileEvent buffer_saved(Fid path_id) {
         return {Kind::BufferSaved, path_id};
     }
 
-    static FileEvent buffer_closed(std::uint32_t path_id) {
+    static FileEvent buffer_closed(Fid path_id) {
         return {Kind::BufferClosed, path_id};
     }
 
-    static FileEvent disk_changed(std::uint32_t path_id) {
+    static FileEvent disk_changed(Fid path_id) {
         return {Kind::DiskChanged, path_id};
     }
 
-    static FileEvent disk_removed(std::uint32_t path_id) {
+    static FileEvent disk_removed(Fid path_id) {
         return {Kind::DiskRemoved, path_id};
     }
 
@@ -98,13 +97,13 @@ struct FileEvent {
         return event;
     }
 
-    static FileEvent worker_crashed(llvm::ArrayRef<std::uint32_t> lost_documents) {
+    static FileEvent worker_crashed(llvm::ArrayRef<Fid> lost_documents) {
         FileEvent event{Kind::WorkerCrashed};
         event.paths.assign(lost_documents.begin(), lost_documents.end());
         return event;
     }
 
-    static FileEvent document_evicted(std::uint32_t path_id) {
+    static FileEvent document_evicted(Fid path_id) {
         return {Kind::DocumentEvicted, path_id};
     }
 };
@@ -125,37 +124,37 @@ struct FileEvent {
 struct DirtySet {
     /// Compile inputs changed: ast_dirty + trial_done=false + forget the
     /// cached self-containment verdict.
-    llvm::SmallVector<std::uint32_t> mark_ast_dirty;
+    llvm::SmallVector<Fid> mark_ast_dirty;
     /// Built AST lost (worker crash) but compile inputs did not change:
     /// recompile only, without re-running the header trial or touching the
     /// self-containment verdict.
-    llvm::SmallVector<std::uint32_t> mark_lost;
+    llvm::SmallVector<Fid> mark_lost;
     /// Re-run the header trial only (trial_done=false); the AST itself is
     /// not stale.
-    llvm::SmallVector<std::uint32_t> reset_trial;
+    llvm::SmallVector<Fid> reset_trial;
     /// The header's content (or its preamble chain) changed: drop its
     /// persisted self-containment verdict so the next compile re-earns it.
     /// Executed by the context resolver, which owns the verdicts.
-    llvm::SmallVector<std::uint32_t> reset_header_mode;
+    llvm::SmallVector<Fid> reset_header_mode;
     /// Header sessions whose synthesized preamble embeds changed content:
     /// drop the chain snapshot's fast paths so every chain file is
     /// re-validated by hash, plus the mark_ast_dirty treatment.
-    llvm::SmallVector<std::uint32_t> force_revalidate;
+    llvm::SmallVector<Fid> force_revalidate;
     /// Closed files whose own content changed: their index rows describe
     /// text that no longer exists. Enqueue for background reindexing as
     /// ReindexReason::ContentChanged — queries skip these files'
     /// contributions until the reindex lands.
-    llvm::SmallVector<std::uint32_t> reindex_content_changed;
+    llvm::SmallVector<Fid> reindex_content_changed;
     /// Closed files enqueued only because a dependency changed: their own
     /// rows are positionally intact. Enqueue as ReindexReason::DepsOnly —
     /// queries keep serving the previous rows. A file in both lists is
     /// ContentChanged (the indexer's reason upgrade is absorbing).
-    llvm::SmallVector<std::uint32_t> reindex_deps_only;
+    llvm::SmallVector<Fid> reindex_deps_only;
 
     /// Files whose pending-reindex state must be discarded: a removed file
     /// has nothing left to reindex, and a stale ContentChanged reason would
     /// otherwise suppress its (deliberately still-serving) shard forever.
-    llvm::SmallVector<std::uint32_t> clear_reindex;
+    llvm::SmallVector<Fid> clear_reindex;
 
     /// The three reindex effect lists are kept disjoint per file, in event
     /// order: a batch can hold delete-then-recreate (atomic saves) as well
@@ -163,17 +162,17 @@ struct DirtySet {
     /// right as a fixed rule — the later event for a given file wins. All
     /// emission goes through these adders to keep that true by construction,
     /// letting the executor apply the lists in any order.
-    void add_reindex_content_changed(std::uint32_t path_id) {
+    void add_reindex_content_changed(Fid path_id) {
         erase_id(clear_reindex, path_id);
         reindex_content_changed.push_back(path_id);
     }
 
-    void add_reindex_deps_only(std::uint32_t path_id) {
+    void add_reindex_deps_only(Fid path_id) {
         erase_id(clear_reindex, path_id);
         reindex_deps_only.push_back(path_id);
     }
 
-    void add_clear_reindex(std::uint32_t path_id) {
+    void add_clear_reindex(Fid path_id) {
         erase_id(reindex_content_changed, path_id);
         erase_id(reindex_deps_only, path_id);
         // A removal retains the last-known index, so it also cancels an
@@ -188,7 +187,7 @@ struct DirtySet {
     }
 
 private:
-    static void erase_id(llvm::SmallVector<std::uint32_t>& ids, std::uint32_t path_id) {
+    static void erase_id(llvm::SmallVector<Fid>& ids, Fid path_id) {
         ids.erase(std::remove(ids.begin(), ids.end(), path_id), ids.end());
     }
 
@@ -200,18 +199,16 @@ public:
     /// the old-command rows serving, in this session and after a restart.
     /// Follows the later-event rule above: a later removal's clear cancels
     /// the drop, since the deleted file's last-known index keeps serving.
-    llvm::SmallVector<std::uint32_t> drop_index;
+    llvm::SmallVector<Fid> drop_index;
     /// Headers whose resolved context borrows a compile command that no
     /// longer exists in that form (the host's CDB entry changed): drop the
     /// context so the next use re-resolves. Content validation cannot see
     /// a flag change, so neither force_revalidate nor the deps snapshot
     /// covers this. Executed by the context resolver.
-    llvm::SmallVector<std::uint32_t> drop_context;
+    llvm::SmallVector<Fid> drop_context;
     /// Include edges changed: context choices may now be orphaned; run the
     /// context resolver's orphan cleanup.
     bool recheck_contexts = false;
-    /// Persist the workspace cache snapshot.
-    bool save_cache = false;
     /// Kick the background indexer's scheduler.
     bool reschedule_indexing = false;
 
@@ -220,7 +217,7 @@ public:
                reset_header_mode.empty() && force_revalidate.empty() &&
                reindex_content_changed.empty() && reindex_deps_only.empty() &&
                clear_reindex.empty() && drop_index.empty() && drop_context.empty() &&
-               !recheck_contexts && !save_cache && !reschedule_indexing;
+               !recheck_contexts && !reschedule_indexing;
     }
 };
 
@@ -247,17 +244,10 @@ public:
 /// not add ceremonial event kinds for exempt logic.
 class Invalidator {
 public:
-    /// Read a file's current on-disk content, or nullopt if unreadable.
-    /// Defaults to the real filesystem; unit tests inject file content
-    /// through it. Used by BufferSaved to detect a save hook or formatter
-    /// rewriting the file as it lands (disk ahead of the buffer).
-    using ReadFile = std::function<std::optional<std::string>(llvm::StringRef path)>;
-
     Invalidator(Workspace& workspace,
                 const SessionStore& store,
                 const ContextResolver& contexts,
-                PCMFamily& pcm,
-                ReadFile read_file = {});
+                PCMFamily& pcm);
 
     /// Fold a batch of events into one deduplicated effect set.
     DirtySet apply(llvm::ArrayRef<FileEvent> events);
@@ -267,7 +257,7 @@ private:
     /// name the rescan gave its first provider cascades to the consumers
     /// holding sentinel edges against it; a name the file stopped
     /// providing cascades through the provider's real node instead.
-    void rescan_disk_state(std::uint32_t path_id, DirtySet& dirty);
+    void rescan_disk_state(Fid path_id, DirtySet& dirty);
 
     /// The invalidation cascade for "this file's on-disk content is new":
     /// rescan the file's disk state, then split every affected file into
@@ -275,11 +265,11 @@ private:
     /// now holds the buffer) and DiskChanged on closed files (disk changed
     /// behind the server's back), and used verbatim — the two differ only
     /// in what the caller adds around it.
-    void cascade_disk_content_change(std::uint32_t path_id, DirtySet& dirty);
+    void cascade_disk_content_change(Fid path_id, DirtySet& dirty);
 
     /// Cascade a module unit's compile-graph invalidation (PCM caches,
     /// dependent module units), splitting dirtied units open/closed.
-    void cascade_compile_graph(std::uint32_t path_id, DirtySet& dirty);
+    void cascade_compile_graph(Fid path_id, DirtySet& dirty);
 
     /// A module name just gained its first provider: cascade through its
     /// sentinel node and route the dirtied consumers to recompiles and
@@ -288,13 +278,12 @@ private:
 
     /// See the definition: the open/closed/index-only split of a
     /// dependency invalidation.
-    void mark_dependent(std::uint32_t path_id, DirtySet& dirty);
+    void mark_dependent(Fid path_id, DirtySet& dirty);
 
     Workspace& workspace;
     const SessionStore& store;
     const ContextResolver& contexts;
     PCMFamily& pcm;
-    ReadFile read_file;
 
     /// Files whose disk content changed while their buffer was open. The
     /// DiskChanged case defers the dependent cascade (the buffer is the
@@ -302,7 +291,7 @@ private:
     /// so this set is the only surviving record of the debt. BufferSaved
     /// discharges it — the save's own cascade covers everything owed —
     /// and BufferClosed drains it.
-    llvm::DenseSet<std::uint32_t> disk_changed_while_open;
+    llvm::DenseSet<Fid> disk_changed_while_open;
 };
 
 }  // namespace clice

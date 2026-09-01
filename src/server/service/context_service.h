@@ -6,6 +6,7 @@
 #include "server/protocol/extension.h"
 #include "server/state/session.h"
 
+#include "kota/async/async.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 
@@ -35,7 +36,7 @@ struct ContextService {
     /// clice/queryContext: list the compilation contexts (host sources and
     /// the file's own CDB configurations) available for a file, paginated.
     ext::QueryContextResult query_contexts(llvm::StringRef path,
-                                           std::uint32_t path_id,
+                                           Fid path_id,
                                            const ext::QueryContextParams& params);
 
     /// clice/currentContext: describe the file's currently active context.
@@ -44,13 +45,18 @@ struct ContextService {
                                               const ext::CurrentContextParams& params);
 
     /// clice/switchContext: pin a host source or CDB entry as the file's
-    /// compilation context and persist the choice across sessions.
-    ext::SwitchContextResult switch_context(llvm::StringRef path,
-                                            std::uint32_t path_id,
-                                            Session* session,
-                                            llvm::StringRef context_path,
-                                            std::uint32_t context_path_id,
-                                            const ext::SwitchContextParams& params);
+    /// compilation context and persist the choice across sessions. When
+    /// persistence is available, success is acknowledged only once the
+    /// choice is durably committed: the request marks the contexts blob
+    /// dirty and awaits the write pipeline's ticket. Sessions without a
+    /// writable database (read-only, caching disabled, open failure) apply
+    /// the choice in memory and acknowledge immediately.
+    kota::task<ext::SwitchContextResult> switch_context(llvm::StringRef path,
+                                                        Fid path_id,
+                                                        Session* session,
+                                                        llvm::StringRef context_path,
+                                                        Fid context_path_id,
+                                                        const ext::SwitchContextParams& params);
 
     /// Drop active context choices whose include edge no longer exists. A
     /// stale choice suppresses automatic host resolution, so it would strand

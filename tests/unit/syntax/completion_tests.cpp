@@ -146,11 +146,11 @@ TEST_CASE(ImportCursorMidLine) {
 TEST_SUITE(CompleteModuleImport) {
 
 TEST_CASE(PrefixMatch) {
-    llvm::DenseMap<std::uint32_t, std::string> modules;
-    modules[1] = "std";
-    modules[2] = "std.io";
-    modules[3] = "std.net";
-    modules[4] = "my_lib";
+    llvm::DenseMap<Fid, std::string> modules;
+    modules[Fid{1}] = "std";
+    modules[Fid{2}] = "std.io";
+    modules[Fid{3}] = "std.net";
+    modules[Fid{4}] = "my_lib";
 
     auto results = complete_module_import(modules, "std");
     EXPECT_EQ(results.size(), 3u);
@@ -160,35 +160,35 @@ TEST_CASE(PrefixMatch) {
 }
 
 TEST_CASE(EmptyPrefix) {
-    llvm::DenseMap<std::uint32_t, std::string> modules;
-    modules[1] = "std";
-    modules[2] = "my_lib";
+    llvm::DenseMap<Fid, std::string> modules;
+    modules[Fid{1}] = "std";
+    modules[Fid{2}] = "my_lib";
 
     auto results = complete_module_import(modules, "");
     EXPECT_EQ(results.size(), 2u);
 }
 
 TEST_CASE(NoMatch) {
-    llvm::DenseMap<std::uint32_t, std::string> modules;
-    modules[1] = "std";
-    modules[2] = "my_lib";
+    llvm::DenseMap<Fid, std::string> modules;
+    modules[Fid{1}] = "std";
+    modules[Fid{2}] = "my_lib";
 
     auto results = complete_module_import(modules, "xyz");
     EXPECT_TRUE(results.empty());
 }
 
 TEST_CASE(EmptyModules) {
-    llvm::DenseMap<std::uint32_t, std::string> modules;
+    llvm::DenseMap<Fid, std::string> modules;
     auto results = complete_module_import(modules, "std");
     EXPECT_TRUE(results.empty());
 }
 
 TEST_CASE(DottedPrefix) {
-    llvm::DenseMap<std::uint32_t, std::string> modules;
-    modules[1] = "std";
-    modules[2] = "std.io";
-    modules[3] = "std.core";
-    modules[4] = "boost.asio";
+    llvm::DenseMap<Fid, std::string> modules;
+    modules[Fid{1}] = "std";
+    modules[Fid{2}] = "std.io";
+    modules[Fid{3}] = "std.core";
+    modules[Fid{4}] = "boost.asio";
 
     auto results = complete_module_import(modules, "std.");
     EXPECT_EQ(results.size(), 2u);
@@ -198,11 +198,11 @@ TEST_CASE(DottedPrefix) {
 }
 
 TEST_CASE(PartitionPrefix) {
-    llvm::DenseMap<std::uint32_t, std::string> modules;
-    modules[1] = "foo";
-    modules[2] = "foo:core";
-    modules[3] = "foo:utils";
-    modules[4] = "bar:impl";
+    llvm::DenseMap<Fid, std::string> modules;
+    modules[Fid{1}] = "foo";
+    modules[Fid{2}] = "foo:core";
+    modules[Fid{3}] = "foo:utils";
+    modules[Fid{4}] = "bar:impl";
 
     auto results = complete_module_import(modules, "foo:");
     EXPECT_EQ(results.size(), 2u);
@@ -212,9 +212,9 @@ TEST_CASE(PartitionPrefix) {
 }
 
 TEST_CASE(PrefixIsFullName) {
-    llvm::DenseMap<std::uint32_t, std::string> modules;
-    modules[1] = "std";
-    modules[2] = "std.io";
+    llvm::DenseMap<Fid, std::string> modules;
+    modules[Fid{1}] = "std";
+    modules[Fid{2}] = "std.io";
 
     auto results = complete_module_import(modules, "std");
     EXPECT_EQ(results.size(), 2u);

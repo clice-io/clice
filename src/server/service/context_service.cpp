@@ -57,7 +57,7 @@ static std::string flags_label(Workspace& ws, ConfigID config) {
 }
 
 ext::QueryContextResult ContextService::query_contexts(llvm::StringRef path,
-                                                       std::uint32_t path_id,
+                                                       Fid path_id,
                                                        const ext::QueryContextParams& params) {
     auto& ws = workspace;
     int offset_val = std::max(0, params.offset.value_or(0));
@@ -77,7 +77,7 @@ ext::QueryContextResult ContextService::query_contexts(llvm::StringRef path,
 
     auto hosts = ws.dep_graph.find_host_sources(path_id);
     for(auto host_id: ws.rank_hosts(path_id, hosts)) {
-        auto host_path = ws.path_pool.resolve(host_id);
+        auto host_path = ws.file_table.resolve(host_id);
         if(!ws.cdb.has_entry(host_path))
             continue;
         auto host_uri_opt = lsp::URI::from_file_path(std::string(host_path));
@@ -168,8 +168,8 @@ ext::CurrentContextResult ContextService::current_context(llvm::StringRef path,
     ext::CurrentContextResult result;
     const SavedContext* choice =
         session ? resolver.active_choice(ContextUse::Editor, session->path_id) : nullptr;
-    if(choice && choice->host_path_id != no_path_id) {
-        auto ctx_path = workspace.path_pool.resolve(choice->host_path_id);
+    if(choice && choice->host_path_id.valid()) {
+        auto ctx_path = workspace.file_table.resolve(choice->host_path_id);
         auto ctx_uri_opt = lsp::URI::from_file_path(std::string(ctx_path));
         if(ctx_uri_opt) {
             ext::ContextItem item;
@@ -212,12 +212,13 @@ ext::CurrentContextResult ContextService::current_context(llvm::StringRef path,
     return result;
 }
 
-ext::SwitchContextResult ContextService::switch_context(llvm::StringRef path,
-                                                        std::uint32_t path_id,
-                                                        Session* session,
-                                                        llvm::StringRef context_path,
-                                                        std::uint32_t context_path_id,
-                                                        const ext::SwitchContextParams& params) {
+kota::task<ext::SwitchContextResult>
+    ContextService::switch_context(llvm::StringRef path,
+                                   Fid path_id,
+                                   Session* session,
+                                   llvm::StringRef context_path,
+                                   Fid context_path_id,
+                                   const ext::SwitchContextParams& params) {
     auto& ws = workspace;
 
     ext::SwitchContextResult result;
@@ -226,11 +227,11 @@ ext::SwitchContextResult ContextService::switch_context(llvm::StringRef path,
     // contexts that no longer exist — make the client re-query.
     if(params.epoch.has_value() && *params.epoch != ws.context_epoch) {
         result.stale = true;
-        return result;
+        co_return result;
     }
 
     if(!session) {
-        return result;
+        co_return result;
     }
 
     // Validate that `hash` names a real CDB entry of `entry_path` and
@@ -255,7 +256,7 @@ ext::SwitchContextResult ContextService::switch_context(llvm::StringRef path,
         // Pin one of the file's own CDB entries.
         auto base = find_command(path, *params.command_hash);
         if(!base) {
-            return result;
+            co_return result;
         }
         saved.command_hash = *params.command_hash;
         saved.base_hash = std::move(*base);
@@ -264,22 +265,22 @@ ext::SwitchContextResult ContextService::switch_context(llvm::StringRef path,
         // entry, actually (transitively) include this header, and —
         // for multi-configuration hosts — own the pinned entry.
         if(!ws.cdb.has_entry(context_path)) {
-            return result;
+            co_return result;
         }
         if(ws.dep_graph.find_include_chain(context_path_id, path_id).empty()) {
-            return result;
+            co_return result;
         }
         std::optional<std::string> base;
         if(params.command_hash.has_value()) {
             base = find_command(context_path, *params.command_hash);
             if(!base) {
-                return result;
+                co_return result;
             }
         }
         if(params.occurrence.has_value() && *params.occurrence > 0) {
             auto count = ws.count_occurrences(context_path_id, path_id);
             if(count > 0 && *params.occurrence >= count) {
-                return result;
+                co_return result;
             }
         }
         saved.host_path_id = context_path_id;
@@ -296,12 +297,31 @@ ext::SwitchContextResult ContextService::switch_context(llvm::StringRef path,
     ast.switch_identity(*session);
     resolver.forget_self_contained(path_id);
 
-    // The table entry is the active choice; persist it across sessions.
+    // The table entry is the active choice; persist it across sessions:
+    // the ticket resolves once a write batch whose snapshot covers this
+    // mark has committed — an already-running save that snapshotted
+    // earlier cannot acknowledge it, the next one does. Failed saves pulse
+    // the event without advancing the epoch; after a few such wakeups the
+    // request reports failure instead of parking forever on a disk that
+    // cannot take the metadata (the choice stays active in memory).
     resolver.saved_contexts[path_id] = std::move(saved);
-    ws.save_cache(resolver);
+    ws.mark_contexts_dirty();
+    auto ticket = ws.contexts_epoch;
+    int failed_saves = 0;
+    while(ws.request_flush && ws.index_db && !ws.index_db->read_only() &&
+          ws.committed_contexts_epoch < ticket) {
+        auto seen = ws.committed_contexts_epoch;
+        co_await ws.contexts_committed.wait();
+        if(ws.committed_contexts_epoch == seen) {
+            failed_saves += 1;
+            if(failed_saves >= 3) {
+                co_return result;
+            }
+        }
+    }
 
     result.success = true;
-    return result;
+    co_return result;
 }
 
 bool ContextService::drop_orphaned_choices(SessionStore& sessions) {
@@ -315,7 +335,7 @@ bool ContextService::drop_orphaned_choices(SessionStore& sessions) {
         auto host_id = saved.host_path_id;
         auto& occurrence = saved.occurrence;
         bool orphaned = false;
-        if(host_id != no_path_id) {
+        if(host_id.valid()) {
             orphaned = workspace.dep_graph.find_include_chain(host_id, session_id).empty();
             // A pinned occurrence can vanish while other inclusions of the
             // header survive (the chain stays non-empty) — recount it.
@@ -326,15 +346,15 @@ bool ContextService::drop_orphaned_choices(SessionStore& sessions) {
             // The pinned host command itself can vanish (a CDB reload
             // changed the entry's flags): same validation didOpen applies.
             if(!orphaned && !saved.command_hash.empty()) {
-                orphaned = !resolver.pin_alive(workspace.path_pool.resolve(host_id), saved);
+                orphaned = !resolver.pin_alive(workspace.file_table.resolve(host_id), saved);
             }
         } else if(!saved.command_hash.empty()) {
             // Own-entry pin: the pinned command must still exist in the CDB.
-            orphaned = !resolver.pin_alive(workspace.path_pool.resolve(session_id), saved);
+            orphaned = !resolver.pin_alive(workspace.file_table.resolve(session_id), saved);
         }
         if(orphaned) {
             LOG_INFO("Dropping orphaned context choice for {}: its basis no longer exists",
-                     workspace.path_pool.resolve(session_id));
+                     workspace.file_table.resolve(session_id));
             resolver.drop_header_context(session_id);
             ast.switch_identity(*session);
             resolver.saved_contexts.erase(it);

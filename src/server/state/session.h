@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "server/state/quarantine.h"
+#include "vfs/file_table.h"
 
 #include "kota/ipc/lsp/position.h"
 
@@ -57,8 +58,8 @@ enum class ServingMode : std::uint8_t {
 /// the AST family's projection (see server/state/ast_projection.h) and
 /// NEVER leak to Workspace or other Sessions.
 struct Session {
-    /// Path ID of this file in PathPool.  Set on creation, never changes.
-    std::uint32_t path_id = 0;
+    /// Path ID of this file in FileTable.  Set on creation, never changes.
+    Fid path_id;
 
     /// LSP document version, incremented by the client on each edit.
     int version = 0;

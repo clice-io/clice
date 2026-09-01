@@ -34,8 +34,8 @@ TEST_CASE(CDBTickDebounces) {
     auto events = tracker.tick_cdb();
     ASSERT_EQ(events.size(), 1u);
     ASSERT_EQ(events[0].kind, FileEvent::Kind::CDBChanged);
-    auto lib_id = workspace.path_pool.intern(tmp.path("lib.cpp"));
-    ASSERT_EQ(events[0].cdb.added, llvm::SmallVector<std::uint32_t>{lib_id});
+    auto lib_id = workspace.file_table.intern(tmp.path("lib.cpp"));
+    ASSERT_EQ(events[0].cdb.added, llvm::SmallVector<Fid>{lib_id});
     ASSERT_TRUE(events[0].cdb.removed.empty());
 
     // Settled: further ticks are quiet.
@@ -61,8 +61,8 @@ TEST_CASE(CDBTickForceImmediate) {
     }));
     auto events = tracker.tick_cdb(/*force=*/true);
     ASSERT_EQ(events.size(), 1u);
-    auto main_id = workspace.path_pool.intern(tmp.path("main.cpp"));
-    ASSERT_EQ(events[0].cdb.changed, llvm::SmallVector<std::uint32_t>{main_id});
+    auto main_id = workspace.file_table.intern(tmp.path("main.cpp"));
+    ASSERT_EQ(events[0].cdb.changed, llvm::SmallVector<Fid>{main_id});
 }
 
 TEST_CASE(CDBTickDiscoversLate) {
@@ -81,8 +81,8 @@ TEST_CASE(CDBTickDiscoversLate) {
     }));
     auto events = tracker.tick_cdb(/*force=*/true);
     ASSERT_EQ(events.size(), 1u);
-    auto main_id = workspace.path_pool.intern(tmp.path("main.cpp"));
-    ASSERT_EQ(events[0].cdb.added, llvm::SmallVector<std::uint32_t>{main_id});
+    auto main_id = workspace.file_table.intern(tmp.path("main.cpp"));
+    ASSERT_EQ(events[0].cdb.added, llvm::SmallVector<Fid>{main_id});
 }
 
 TEST_CASE(CDBTickDeleteRecreate) {
@@ -109,8 +109,8 @@ TEST_CASE(CDBTickDeleteRecreate) {
     }));
     auto events = tracker.tick_cdb(/*force=*/true);
     ASSERT_EQ(events.size(), 1u);
-    auto main_id = workspace.path_pool.intern(tmp.path("main.cpp"));
-    ASSERT_EQ(events[0].cdb.changed, llvm::SmallVector<std::uint32_t>{main_id});
+    auto main_id = workspace.file_table.intern(tmp.path("main.cpp"));
+    ASSERT_EQ(events[0].cdb.changed, llvm::SmallVector<Fid>{main_id});
 }
 
 TEST_CASE(WorkspaceTickStateMachine) {
@@ -120,9 +120,9 @@ TEST_CASE(WorkspaceTickStateMachine) {
     kota::event_loop loop;
     Workspace workspace;
     SessionStore store;
-    auto tu = workspace.path_pool.intern(tmp.path("main.cpp"));
-    auto header = workspace.path_pool.intern(tmp.path("header.h"));
-    workspace.dep_graph.set_includes(tu, 0, {header});
+    auto tu = workspace.file_table.intern(tmp.path("main.cpp"));
+    auto header = workspace.file_table.intern(tmp.path("header.h"));
+    workspace.dep_graph.set_includes(tu, 0, {{header}});
     workspace.dep_graph.build_reverse_map();
     FileTracker tracker(workspace, store, tmp.root.str().str());
 
@@ -181,7 +181,7 @@ TEST_CASE(WorkspaceTickSkipsOpen) {
     kota::event_loop loop;
     Workspace workspace;
     SessionStore store;
-    auto header = workspace.path_pool.intern(tmp.path("header.h"));
+    auto header = workspace.file_table.intern(tmp.path("header.h"));
     workspace.dep_graph.set_includes(header, 0, {});
     workspace.dep_graph.build_reverse_map();
     store.open(header);

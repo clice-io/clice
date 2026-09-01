@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <optional>
 
+#include "vfs/file_table.h"
+
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
@@ -64,7 +66,7 @@ enum class Admission : std::uint8_t {
 class PendingLedger {
 public:
     struct Claim {
-        std::uint32_t id = 0;
+        Fid id;
         std::uint64_t ticket = 0;
     };
 
@@ -97,16 +99,16 @@ public:
     /// Every recording shields the entry from an in-flight attempt's
     /// settle; ContentChanged additionally starts a fresh crash budget —
     /// the crashes the old bytes caused say nothing about the fixed ones.
-    bool record(std::uint32_t id, ReindexReason reason);
+    bool record(Fid id, ReindexReason reason);
 
     /// Atomically claim the file's current debt at dispatch, consuming
     /// its queued-slot state. Empty when the entry was cleared while the
     /// slot sat in the queue (file removed): the slot is skipped.
-    std::optional<Claim> claim(std::uint32_t id);
+    std::optional<Claim> claim(Fid id);
 
     /// The claim a dispatch of the file's current debt would take, with
     /// nothing consumed — for waiters binding to the pending attempt.
-    std::optional<Claim> peek(std::uint32_t id) const;
+    std::optional<Claim> peek(Fid id) const;
 
     /// Settle the claimed debt after its attempt: erases the entry unless
     /// a recording during the flight booked newer debt, which survives.
@@ -130,7 +132,7 @@ public:
 
     /// Why the file awaits re-indexing (queued or in flight), or nullopt
     /// when nothing is pending. O(1), no I/O.
-    std::optional<ReindexReason> pending_reason(std::uint32_t id) const {
+    std::optional<ReindexReason> pending_reason(Fid id) const {
         auto it = entries.find(id);
         if(it == entries.end()) {
             return std::nullopt;
@@ -138,7 +140,7 @@ public:
         return it->second.reason;
     }
 
-    bool contains(std::uint32_t id) const {
+    bool contains(Fid id) const {
         return entries.count(id);
     }
 
@@ -146,13 +148,13 @@ public:
     /// disk): nothing is left to reindex, and a lingering ContentChanged
     /// reason would suppress its deliberately still-serving shard
     /// forever.
-    void clear(std::uint32_t id) {
+    void clear(Fid id) {
         entries.erase(id);
         queued.erase(id);
     }
 
     /// Every file with booked debt (batch debt reporting).
-    llvm::SmallVector<std::uint32_t> pending_files() const;
+    llvm::SmallVector<Fid> pending_files() const;
 
     /// No debt and no queued slots.
     bool empty() const {
@@ -185,12 +187,12 @@ private:
         unsigned requeue_attempts = 0;
     };
 
-    llvm::DenseMap<std::uint32_t, Entry> entries;
+    llvm::DenseMap<Fid, Entry> entries;
 
     /// Files holding a queued-and-unconsumed slot, for record()'s
     /// fresh-slot decision; the queue itself (ordering, rounds) belongs
     /// to the pump.
-    llvm::DenseSet<std::uint32_t> queued;
+    llvm::DenseSet<Fid> queued;
 
     std::uint64_t ticket = 0;
     unsigned max_requeue_attempts;

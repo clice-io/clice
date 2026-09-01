@@ -3,6 +3,7 @@
 #include <chrono>
 
 #include "support/logging.h"
+#include "vfs/file_table.h"
 
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
@@ -12,12 +13,33 @@ namespace clice {
 const llvm::StringSet<>* resolve_dir(llvm::StringRef dir,
                                      DirListingCache& cache,
                                      StatCounters* counters) {
-    auto it = cache.dirs.find(dir);
-    if(it != cache.dirs.end()) {
+    if(auto it = cache.dirs.find(dir); it != cache.dirs.end()) {
         if(counters) {
             counters->dir_hits++;
         }
         return &it->second;
+    }
+
+    if(cache.shared) {
+        auto listing = cache.shared->dir_listings.find(dir);
+        if(listing != cache.shared->dir_listings.end()) {
+            // Validated once per operation: the directory's own mtime
+            // proves the listing current (entry creation and deletion bump
+            // it); later uses inside the operation trust the validation.
+            bool fresh = cache.validated.contains(dir);
+            if(!fresh && listing->second.mtime_ns != 0) {
+                llvm::sys::fs::file_status status;
+                fresh = !llvm::sys::fs::status(dir, status) &&
+                        fs::mtime_ns(status) == listing->second.mtime_ns;
+            }
+            if(fresh) {
+                cache.validated.insert(dir);
+                if(counters) {
+                    counters->dir_hits++;
+                }
+                return &listing->second.entries;
+            }
+        }
     }
 
     if(counters) {
@@ -25,6 +47,12 @@ const llvm::StringSet<>* resolve_dir(llvm::StringRef dir,
     }
 
     auto t0 = std::chrono::steady_clock::now();
+    // The pre/post-stat pairing discipline of file reads, on the
+    // directory: equal stats prove the listing describes this mtime, and
+    // an mtime inside the guard window must not be trusted across
+    // operations (a same-tick entry creation would be invisible).
+    llvm::sys::fs::file_status pre_status;
+    bool pre_ok = !llvm::sys::fs::status(dir, pre_status);
     llvm::StringSet<> entries;
     std::error_code ec;
     llvm::sys::fs::directory_iterator di(dir, ec);
@@ -37,6 +65,28 @@ const llvm::StringSet<>* resolve_dir(llvm::StringRef dir,
     auto t1 = std::chrono::steady_clock::now();
     if(counters) {
         counters->us += std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+    }
+
+    if(cache.shared) {
+        std::int64_t reliable_mtime = 0;
+        llvm::sys::fs::file_status post_status;
+        // A failed or partial readdir (ec set) must not earn a trusted
+        // mtime: the incomplete listing would be reused until the
+        // directory itself changes.
+        if(pre_ok && !ec && !llvm::sys::fs::status(dir, post_status) &&
+           fs::mtime_ns(pre_status) == fs::mtime_ns(post_status)) {
+            auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                              std::chrono::system_clock::now().time_since_epoch())
+                              .count();
+            if(fs::mtime_ns(post_status) <= fs::stat_baseline_before_ns(now_ms)) {
+                reliable_mtime = fs::mtime_ns(post_status);
+            }
+        }
+        auto& listing = cache.shared->dir_listings[dir];
+        listing.entries = std::move(entries);
+        listing.mtime_ns = reliable_mtime;
+        cache.validated.insert(dir);
+        return &listing.entries;
     }
 
     auto [new_it, _] = cache.dirs.try_emplace(dir, std::move(entries));

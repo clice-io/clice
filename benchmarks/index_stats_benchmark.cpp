@@ -1067,7 +1067,8 @@ int main(int argc, const char** argv) {
     clice::logging::options.level = spdlog::level::from_str(*opts.log_level);
     clice::logging::stderr_logger("index_stats_benchmark", clice::logging::options);
 
-    CompilationDatabase cdb;
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
     auto count = cdb.load(*opts.cdb_path);
     if(!count) {
         std::println(stderr, "Error: failed to load {}", *opts.cdb_path);
@@ -1080,7 +1081,7 @@ int main(int argc, const char** argv) {
     std::vector<llvm::StringRef> files;
     llvm::StringSet<> seen_files;
     for(auto& entry: cdb.entries()) {
-        auto path = cdb.paths().resolve(entry.file);
+        auto path = cdb.files().resolve(entry.file);
         if(opts.filter.has_value() && !path.contains(*opts.filter)) {
             continue;
         }

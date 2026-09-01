@@ -17,7 +17,6 @@
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Process.h"
-#include "llvm/Support/raw_ostream.h"
 
 #ifdef _WIN32
 #include <io.h>
@@ -67,137 +66,6 @@ void release_writer_lock(int lock_fd) {
     }
 }
 
-// ── Filesystem backend ──────────────────────────────────────────────
-
-llvm::StringRef namespace_of(IndexBlobKind kind) {
-    switch(kind) {
-        case IndexBlobKind::Shard: return "index";
-        case IndexBlobKind::Manifest: return "index-manifest";
-        case IndexBlobKind::Global: return "index-global";
-        case IndexBlobKind::CDB: return "index-cdb";
-    }
-    std::unreachable();
-}
-
-class FsDatabase final : public BlobDatabase {
-public:
-    FsDatabase(CacheStore& store, int lock_fd) : store(store), lock_fd(lock_fd) {
-        for(auto kind: {IndexBlobKind::Shard,
-                        IndexBlobKind::Manifest,
-                        IndexBlobKind::Global,
-                        IndexBlobKind::CDB}) {
-            store.register_namespace({
-                .name = std::string(namespace_of(kind)),
-                .extension = ".idx",
-                .policy = CachePolicy::Persistent,
-            });
-        }
-    }
-
-    ~FsDatabase() override {
-        release_writer_lock(lock_fd);
-    }
-
-    ReadBlob read(IndexBlobKind kind, llvm::StringRef key) override {
-        auto path = store.lookup(namespace_of(kind), key);
-        if(!path) {
-            return {};
-        }
-        auto buffer = llvm::MemoryBuffer::getFile(*path);
-        if(!buffer) {
-            return {};
-        }
-        return {.buffer = std::move(*buffer)};
-    }
-
-    bool contains(IndexBlobKind kind, llvm::StringRef key) override {
-        return store.lookup(namespace_of(kind), key).has_value();
-    }
-
-    llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> puts,
-                                         llvm::ArrayRef<BlobKey> removes) override {
-        // A failed batch keeps its removals too, mirroring the LMDB
-        // backend's all-or-nothing commit: a removal landing without the
-        // puts it was batched behind can delete a blob the surviving
-        // on-disk state still references. load() re-sweeps whatever the
-        // skip leaves behind.
-        auto failed = write_puts(puts);
-        if(!failed.empty()) {
-            return failed;
-        }
-        for(auto& [kind, key]: removes) {
-            store.invalidate(namespace_of(kind), key);
-        }
-        return {};
-    }
-
-    void for_each_key(IndexBlobKind kind, llvm::function_ref<void(llvm::StringRef)> fn) override {
-        store.for_each_key(namespace_of(kind), fn);
-    }
-
-    std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
-        return 0;
-    }
-
-    void retire_old_snapshot() override {}
-
-    std::expected<bool, std::string> grow() override {
-        return false;
-    }
-
-private:
-    llvm::SmallVector<std::size_t> write_puts(llvm::ArrayRef<Blob> puts) {
-        // Batch order encodes dependency (shards → manifests → global →
-        // CDB snapshot), so the first failure fails the rest of the batch:
-        // continuing would publish an entry whose prerequisites never
-        // landed — e.g. a CDB snapshot vouching for a global that failed —
-        // and load paths only tolerate a committed prefix, the crash shape.
-        auto fail_from = [&](std::size_t i) {
-            llvm::SmallVector<std::size_t> failed;
-            for(; i < puts.size(); i += 1) {
-                failed.push_back(i);
-            }
-            return failed;
-        };
-        for(std::size_t i = 0; i < puts.size(); i += 1) {
-            auto& blob = puts[i];
-            auto ns = namespace_of(blob.kind);
-            auto pending = store.begin_store(ns, blob.key);
-            std::error_code ec;
-            llvm::raw_fd_ostream os(pending.tmp_path, ec);
-            if(ec) {
-                LOG_WARN("Failed to write index blob {}/{}: {}", ns, blob.key, ec.message());
-                return fail_from(i);
-            }
-            os.write(blob.bytes.data(), blob.bytes.size());
-            os.close();
-            // A truncated blob (disk full) must never be committed: the
-            // namespaces are Persistent, so it would be served forever.
-            if(os.has_error()) {
-                LOG_WARN("Failed to write index blob {}/{}: {}",
-                         ns,
-                         blob.key,
-                         os.error().message());
-                os.clear_error();
-                return fail_from(i);
-            }
-            if(auto committed = store.commit(std::move(pending)); !committed) {
-                LOG_WARN("Failed to commit index blob {}/{}: {}",
-                         ns,
-                         blob.key,
-                         committed.error().message());
-                return fail_from(i);
-            }
-        }
-        return {};
-    }
-
-    CacheStore& store;
-    int lock_fd;
-};
-
-// ── LMDB backend ────────────────────────────────────────────────────
-
 constexpr llvm::StringLiteral lmdb_file_name = "index.mdb";
 
 constexpr std::size_t lmdb_small_mapsize = 256ull << 20;
@@ -220,6 +88,8 @@ char kind_prefix(IndexBlobKind kind) {
         case IndexBlobKind::Manifest: return 'M';
         case IndexBlobKind::Global: return 'G';
         case IndexBlobKind::CDB: return 'C';
+        case IndexBlobKind::Artifacts: return 'A';
+        case IndexBlobKind::Contexts: return 'X';
     }
     std::unreachable();
 }
@@ -266,8 +136,18 @@ void remove_database_files(llvm::StringRef path) {
 
 class LmdbDatabase final : public BlobDatabase {
 public:
-    LmdbDatabase(MDB_env* env, MDB_dbi dbi, MDB_txn* txn, std::string path, int lock_fd) :
-        env(env), dbi(dbi), txn(txn), path(std::move(path)), lock_fd(lock_fd) {}
+    LmdbDatabase(MDB_env* env,
+                 MDB_dbi dbi,
+                 MDB_txn* txn,
+                 std::string path,
+                 int lock_fd,
+                 bool read_only) :
+        env(env), dbi(dbi), txn(txn), path(std::move(path)), lock_fd(lock_fd),
+        read_only_(read_only) {}
+
+    bool read_only() const override {
+        return read_only_;
+    }
 
     ~LmdbDatabase() override {
         retire_old_snapshot();
@@ -483,6 +363,7 @@ private:
     std::atomic<bool> poisoned = false;
     bool condemned = false;
     int lock_fd;
+    bool read_only_ = false;
 };
 
 #ifdef _WIN32
@@ -555,11 +436,9 @@ MetaCheck check_meta(MDB_env* env, MDB_dbi dbi, MDB_txn* txn, bool read_only) {
     return mdb_txn_commit(wtxn) == 0 ? MetaCheck::Ok : MetaCheck::Transient;
 }
 
-std::unique_ptr<LmdbDatabase> open_lmdb_env(CacheStore& store,
-                                            int lock_fd,
-                                            std::size_t initial_mapsize) {
+std::unique_ptr<LmdbDatabase>
+    open_lmdb_env(CacheStore& store, int lock_fd, std::size_t initial_mapsize, bool read_only) {
     auto path = path::join(store.base_dir(), lmdb_file_name);
-    bool read_only = store.read_only();
 
     auto mapsize = initial_mapsize != 0 ? initial_mapsize : lmdb_default_mapsize;
 
@@ -571,9 +450,9 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(CacheStore& store,
     // same discipline the loader applies to an unreadable global blob.
     for(int attempt = 0; attempt < 2; attempt += 1) {
         // Giving up must not leave behind a file this attempt created
-        // (make_sparse and mdb_env_open both create on demand): read-only
-        // opens select the LMDB backend on bare existence, so an abandoned
-        // uninitialized placeholder would shadow the per-file blobs.
+        // (make_sparse and mdb_env_open both create on demand): a later
+        // session would misread the abandoned uninitialized placeholder as
+        // corruption and log a spurious rebuild.
         bool created = !read_only && !llvm::sys::fs::exists(path);
         auto discard_created = [&] {
             if(created) {
@@ -670,7 +549,7 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(CacheStore& store,
                 return nullptr;
             }
         }
-        return std::make_unique<LmdbDatabase>(env, dbi, txn, std::move(path), lock_fd);
+        return std::make_unique<LmdbDatabase>(env, dbi, txn, std::move(path), lock_fd, read_only);
     }
     return nullptr;
 }
@@ -719,64 +598,55 @@ FsLocality filesystem_locality(llvm::StringRef dir) {
 
 }  // namespace
 
-std::unique_ptr<BlobDatabase> open_fs_database(CacheStore& store) {
+std::unique_ptr<BlobDatabase> open_lmdb_database(CacheStore& store,
+                                                 std::size_t initial_mapsize,
+                                                 bool read_only) {
+    read_only = read_only || store.read_only();
     int lock_fd = -1;
-    if(!store.read_only()) {
+    if(!read_only) {
         auto locked = acquire_writer_lock(store);
         if(!locked) {
             return nullptr;
         }
         lock_fd = *locked;
     }
-    return std::make_unique<FsDatabase>(store, lock_fd);
-}
-
-std::unique_ptr<BlobDatabase> open_lmdb_database(CacheStore& store, std::size_t initial_mapsize) {
-    int lock_fd = -1;
-    if(!store.read_only()) {
-        auto locked = acquire_writer_lock(store);
-        if(!locked) {
-            return nullptr;
-        }
-        lock_fd = *locked;
-    }
-    auto db = open_lmdb_env(store, lock_fd, initial_mapsize);
+    auto db = open_lmdb_env(store, lock_fd, initial_mapsize, read_only);
     if(!db) {
         release_writer_lock(lock_fd);
     }
     return db;
 }
 
-std::unique_ptr<BlobDatabase> open_database(CacheStore& store, llvm::StringRef backend) {
-    if(backend == "files") {
-        return open_fs_database(store);
-    }
-    if(backend != "lmdb") {
-        LOG_WARN("Unknown index_db backend '{}'; using lmdb", backend);
-    }
+std::unique_ptr<BlobDatabase> open_database(CacheStore& store, bool read_only) {
+    // FIXME: no index persistence on remote filesystems. A per-file blob
+    // backend used to fill this gap (one CacheStore-namespace file per
+    // blob, removed in PR #650 — see its history to resurrect it), but it
+    // duplicated everything the database gives for free — atomic batches,
+    // read snapshots, corruption detection — while the remote scenarios
+    // it claimed to serve (NFS home directories, SMB project shares,
+    // WSL drvfs checkouts) differ enough in locking and cache-coherence
+    // behavior that one untested fallback cannot honestly cover them.
+    // What remote workspaces actually need is an open design question;
+    // until it is answered, such sessions run with an in-memory index
+    // and this warning.
     switch(filesystem_locality(store.base_dir())) {
         case FsLocality::Local: break;
         case FsLocality::Remote: {
             LOG_WARN(
-                "{} is on a remote filesystem, which LMDB does not support; "
-                "using per-file index storage",
+                "{} is on a remote filesystem, which the index database does not "
+                "support; index persistence is disabled for this session",
                 store.base_dir());
-            return open_fs_database(store);
+            return nullptr;
         }
         case FsLocality::Unknown: {
             LOG_WARN(
-                "{} is on a FUSE filesystem; LMDB needs local-filesystem semantics — "
-                "set index_db = \"files\" if the index database misbehaves",
+                "{} is on a FUSE filesystem; the index database needs "
+                "local-filesystem semantics and may misbehave there",
                 store.base_dir());
             break;
         }
     }
-    // A reader before any LMDB writer ever ran (or after "files" runs)
-    // reads whatever the per-file backend left behind — including nothing.
-    if(store.read_only() && !llvm::sys::fs::exists(path::join(store.base_dir(), lmdb_file_name))) {
-        return open_fs_database(store);
-    }
-    return open_lmdb_database(store);
+    return open_lmdb_database(store, 0, read_only);
 }
 
 }  // namespace clice::index
