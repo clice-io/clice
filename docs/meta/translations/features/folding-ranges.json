@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "pairs": [
+    { "kind": "heading", "en": "afa0f1f139929318", "zh": "7478e0e0a0aee57f" },
+    { "kind": "heading", "en": "f4e50d3a780aa5f9", "zh": "50d6b68140da55f4" },
+    { "kind": "listItem", "en": "94a49ff497b56a6d", "zh": "59d78103467521d6" },
+    { "kind": "listItem", "en": "f4cb4c8471f9b453", "zh": "75e2e92d9da9c98e" },
+    { "kind": "listItem", "en": "d936bba28f7bbf20", "zh": "d97213cbee1a4753" },
+    { "kind": "listItem", "en": "3c0bd5179b516f1f", "zh": "2a79d7dda297fff9" },
+    { "kind": "listItem", "en": "7a2919351c6fbd79", "zh": "e57f1212d02abb37" },
+    { "kind": "listItem", "en": "6aca42801f09cb0c", "zh": "7aab26f88a23f0c5" },
+    { "kind": "listItem", "en": "89f82821054b414d", "zh": "264538578ab6f505" },
+    { "kind": "listItem", "en": "e9eede22d5f40138", "zh": "a1bc2d35c5cec50d" },
+    { "kind": "listItem", "en": "d6c22fa6b8cf0412", "zh": "97e269445f2d5fcc" },
+    { "kind": "listItem", "en": "650a45a1e753f45b", "zh": "708d9e4e64aa4de0" },
+    { "kind": "listItem", "en": "fd4c01be8511482d", "zh": "591c0ec242c4ecc8" },
+    { "kind": "listItem", "en": "0e093c48b4ff7e92", "zh": "d05bd58c02a1e600" },
+    { "kind": "listItem", "en": "51223ed5b7a5363f", "zh": "e6c5c48594df4ce9" },
+    { "kind": "listItem", "en": "f5a03d1b0f6e84f4", "zh": "7f6a90db09479d16" },
+    { "kind": "listItem", "en": "6cd1993fa28fb372", "zh": "8590863c8a417648" },
+    { "kind": "listItem", "en": "7fe20fe1ae8d43a5", "zh": "67aced73e4bb1534" },
+    { "kind": "listItem", "en": "d03924f15b88c571", "zh": "98fe6bdb0c961d81" },
+    { "kind": "heading", "en": "dbd8f4e78d57720c", "zh": "e584eebe9840acf0" },
+    { "kind": "listItem", "en": "5d4fab3293c2492d", "zh": "cdc66ddee4a87f91" },
+    { "kind": "listItem", "en": "ee4ef1866ef9e4c1", "zh": "681b96fd7219fbee" },
+    { "kind": "listItem", "en": "009cd83b94ead537", "zh": "e76280c2854e08b1" },
+    { "kind": "listItem", "en": "28629e123225c8e4", "zh": "24dade064aa1736a" }
+  ]
+}

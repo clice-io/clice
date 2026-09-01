@@ -181,8 +181,37 @@ depends-on = [{ task = "lint-cpp", args = ["{{ type }}"] }]
 [feature.build.tasks.check-layers]
 cmd = "python3 scripts/check_layers.py"
 
-[feature.test.tasks.check-feature-docs]
-cmd = "node tools/feature_docs.ts check"
+# Workspace-level (default feature) so every environment can run them —
+# the lint job uses the bare `node` env, local runs use `default`.
+[tasks.check-feature-docs]
+cmd = "node tools/docs/feature.ts check"
+depends-on = ["install-tests"]
+
+[tasks.update-feature-docs]
+cmd = "node tools/docs/feature.ts update"
+depends-on = ["install-tests"]
+
+[tasks.check-config-docs]
+cmd = "node tools/docs/config.ts check"
+depends-on = ["install-tests"]
+
+[tasks.update-config-docs]
+cmd = "node tools/docs/config.ts update"
+depends-on = ["install-tests"]
+
+# docs/en and docs/zh are both hand-edited; docs/meta/translations holds
+# the per-segment hash pairs tying them together (tools/docs/translate.ts).
+[tasks.check-doc-translations]
+cmd = "node tools/docs/translate.ts check"
+depends-on = ["install-tests"]
+
+[tasks.report-doc-translations]
+cmd = "node tools/docs/translate.ts report"
+depends-on = ["install-tests"]
+
+[tasks.record-doc-translations]
+cmd = "node tools/docs/translate.ts record"
+depends-on = ["install-tests"]
 
 [feature.test.tasks.unit-test]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
@@ -191,7 +220,7 @@ depends-on = [{ task = "check-feature-docs" }]
 
 # npm workspaces: install runs at the repo root and covers tools/, tests/
 # and editors/vscode/.
-[feature.test.tasks.install-tests]
+[tasks.install-tests]
 cmd = "npm install"
 inputs = [
     "package.json",

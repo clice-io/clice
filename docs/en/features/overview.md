@@ -8,8 +8,8 @@ Language Server Protocol features available when using clice as an editor backen
 
 <!-- The status matrix is generated from the snapshot fixtures under
      tests/snap/. Do not edit the region between the GENERATED markers by
-     hand — edit the fixtures (or OVERVIEW_ROWS in tools/feature_docs.ts)
-     and run `node tools/feature_docs.ts update`. -->
+     hand — edit the fixtures (or OVERVIEW_ROWS in tools/docs/feature.ts)
+     and run `node tools/docs/feature.ts update`. -->
 
 <!-- BEGIN GENERATED OVERVIEW -->
 
@@ -36,7 +36,10 @@ Project-wide static analysis powered by clang-tidy, with cross-TU optimizations 
 
 | Feature                | Status  | Page              |
 | ---------------------- | ------- | ----------------- |
-| clang-tidy integration | Planned | [lint](./lint.md) |
+| clang-tidy integration | Partial | [lint](./lint.md) |
+
+The project-wide CLI (`clice lint`) is implemented; in-editor live
+diagnostics and cross-TU deduplication are still planned.
 
 ## Legend
 

@@ -71,7 +71,7 @@ gates: `npm run check` at the repo root (tsc strict + ESLint, zero tolerance).
    something to update over.
 
    Fixture meta (strict — unknown keys are errors, validated by
-   `tools/snap/corpus.ts` and `tools/feature_docs.ts`), declared as
+   `tools/snap/corpus.ts` and `tools/docs/feature.ts`), declared as
    `- key: value` lines in the leading `///` header:
    - `verify: both` (default) runs inspect and server; `inspect`/`server`
      runs only that path, which then owns the plain `<name>.snap.yml`.
@@ -96,6 +96,11 @@ gates: `npm run check` at the repo root (tsc strict + ESLint, zero tolerance).
    `UPDATE_SNAPSHOTS=1` updates everything in one run: inspect tests run
    first and own shared bodies; the server side can only update its own
    variants.
+
+   Fixture doc headers feed the generated feature pages, but do not
+   regenerate or translate them per edit — that happens once at the end
+   of the branch, delegated (the docs skill's "Syncing docs at the end
+   of a branch").
 
 ## API cheat sheet
 

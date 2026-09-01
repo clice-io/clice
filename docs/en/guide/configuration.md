@@ -313,7 +313,6 @@ Compilation flags removed for matching files, e.g. `["-Wall"]`.
 ```toml
 [project]
 compile_commands_paths = ["${workspace}/build", "${workspace}/cmake-build-debug"]
-clang_tidy = true
 
 [[rules]]
 patterns = ["**/*"]

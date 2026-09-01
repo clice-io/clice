@@ -28,50 +28,52 @@ The core task of command processing is to convert the raw driver commands in the
 
 ### Argument Classification
 
-When loading the CDB, each compilation option is classified into one of four categories:
+When loading the CDB, each compilation option is classified into one of seven categories:
 
-- **Discarded**: Options related to build artifacts that the language server does not need. These include output file (`-o`), compile mode (`-c`), dependency scanning (`-M` family), PCH building (`-emit-pch`), and C++20 modules (`-fmodule-file`, etc., managed by the language server itself).
+- **Discarded**: Options related to build artifacts that the language server does not need. These include output file (`-o`), compile mode (`-c`), dependency scanning (`-M` family), PCH building (`-emit-pch`), and options the driver itself would ignore for this input.
 
-- **Codegen-only**: Options that only affect the code generation backend and do not affect semantic analysis. These include position-independent code (`-fPIC`), stack protection (`-fstack-protector`), frame pointer (`-fomit-frame-pointer`), debug info (`-g` family), LTO, etc. They do not change the AST or diagnostic output.
+- **Codegen**: Options that only affect the code generation backend and do not affect semantic analysis. These include position-independent code (`-fPIC`), stack protection (`-fstack-protector`), frame pointer (`-fomit-frame-pointer`), debug info (`-g` family), LTO, etc. They do not change the AST or diagnostic output.
 
   > Note: `-O` and `-fsanitize=` are not in this category despite appearing code-generation-related. `-O` defines the `__OPTIMIZE__` macro, and `-fsanitize=address` affects `__has_feature(address_sanitizer)`. They alter preprocessor state and are therefore semantic options.
 
+- **Diagnostics**: Warning-control options (`-Wall`, `-Wno-*`, `-Werror`). They change which diagnostics are emitted but neither the AST nor toolchain probing results.
+
 - **User-content**: Options that may differ per file but do not affect toolchain probing results. These include include paths (`-I`, `-isystem`, `-iquote`, `-idirafter`), macro definitions (`-D`, `-U`), and forced includes (`-include`). Their meaning is "what this particular file additionally needs."
 
-- **Semantic**: All remaining options -- they affect compilation semantics and play a role in toolchain probing. Examples include `-std=c++20`, `-Wall`, `-target`, `-march=`, etc.
+- **Semantic**: The remaining recognized options -- they affect compilation semantics and play a role in toolchain probing. Examples include `-std=c++20`, `-target`, `-march=`, etc.
+
+- **Input**: The source file itself, which occupies an explicit slot in the parsed command rather than being a plain string among others.
+
+- **Unknown**: Options the parser does not recognize (for example, flags from a compiler newer than clice's embedded LLVM). They participate in command identity, but unknown tokens coming from the CDB are not rendered into the compile commands clice executes; unknown tokens the user wrote in configuration rules are kept.
 
 Classification is based on Clang's own option table (`OptTable`), using option IDs rather than string matching.
 
-### Command Separation
+### Structured Commands
 
-After classification, each compilation command is split into two parts:
+After classification, each command is parsed **once** into a structured configuration (`CompileConfig`): an interned sequence of classified arguments in which the input file occupies an explicit slot. Identical configurations deduplicate to a single instance identified by a stable `ConfigID`; strings are interned for pointer-stable comparison. Everything downstream — toolchain probing, rendering, rules, identity — consumes the structured form; nothing re-parses command strings.
 
-- **`CanonicalCommand`**: Driver path + all semantic options. Represents "the identity and semantic configuration of the compiler."
-- **Patch**: All user-content options. Represents "the include paths and macro definitions this file additionally needs."
+Two derived views matter:
 
-Together with the working directory, these form `CompilationInfo` -- an abstract representation of a file's complete compilation configuration.
+- **Rendering**: the same structured configuration can be rendered on demand as a driver command line (for probing or for handing agents a runnable command) or combined with probe results into frontend arguments. Rendering normalizes alias spellings, so identity is not disturbed by cosmetic variation in the CDB.
+- **Entry identity**: the frontend-relevant view of the configuration, together with the input's slot position and working directory, is hashed into the entry's **identity hash** — the stable identity used for CDB diffing, index snapshot validation, and pinned context choices.
 
-The core purpose of this separation is toolchain probing cache efficiency. Toolchain probing requires actually invoking the compiler driver (e.g., running `g++ -dumpmachine` or `clang++ -###`), typically taking 100ms or more. The probing result depends only on the driver and semantic options -- user-content options (`-I`, `-D`) do not affect the system paths or target triple output by the driver. Therefore, regardless of what different `-I` paths files may have, as long as the semantic options are the same, they can share the same probing result.
-
-In real projects, tens of thousands of files may have only a few dozen distinct `CanonicalCommand` instances, meaning the toolchain needs to be probed only a few dozen times rather than tens of thousands.
-
-Both `CanonicalCommand` and `CompilationInfo` are deduplicated via `ObjectSet` -- instances with identical content exist only once in memory and are shared by pointer. String arguments are interned through `StringSet`, ensuring pointer stability and enabling direct comparison.
+The classification also buys toolchain probing cache efficiency. Probing requires actually invoking the compiler driver (e.g., running `g++ -dumpmachine` or `clang++ -###`), typically taking 100ms or more. The probing result depends only on the driver and probe-relevant options -- user-content options (`-I`, `-D`) do not affect the system paths or target triple output by the driver. Therefore, regardless of what different `-I` paths files may have, files sharing the probe-relevant view share one probing result. In real projects, tens of thousands of files typically collapse to a few dozen distinct probe keys.
 
 ### Compilation Database
 
-`CompilationDatabase` loads `compile_commands.json`, parsing, classifying, and deduplicating each entry into `CompilationEntry` (file path ID -> `CompilationInfo`). All entries are sorted by file path ID for binary search lookups.
+`CompilationDatabase` loads `compile_commands.json`, parsing and deduplicating each entry into a mapping from the file's path to its `ConfigID` (a file may have several candidate entries; see [Compilation Context](compilation-context.md) for how one is chosen).
 
-On lookup, `CompilationDatabase` assembles a `CompilationInfo` into a `CompileCommand` -- the final output of the command processing pipeline, containing the complete compilation flags and source file path, ready to be submitted to toolchain probing or the Clang frontend.
+On lookup, the database renders the file's effective command from the structured configuration — complete compilation flags plus the source file path, ready to be combined with toolchain results and submitted to the Clang frontend.
 
 For files without a CDB entry (e.g., a file the user opens that is not part of the project), `CompilationDatabase` synthesizes a default command -- selecting `clang` or `clang++ -std=c++20` based on the file extension. CUDA files (`.cu`/`.cuh`) additionally force `-x cuda`: `.cuh` is not an extension clang recognizes, so without it the driver would treat the file as linker input.
 
-`CompilationDatabase` also provides the ability to group by configuration: `ConfigGroup` aggregates files that share the same `CompilationInfo`. This is the right granularity for extracting search path configurations during dependency scanning -- different `-I` paths produce different groups. For toolchain probing, the granularity is coarser (user-content options don't affect probing results), so `Toolchain` further deduplicates on top of `ConfigGroup`.
+Configuration granularity is preserved throughout the pipeline: search-path extraction for dependency scanning is per configuration (different `-I` sets produce different search configs), while toolchain probing deduplicates further still, since user-content options do not affect probe results.
 
 ### Configuration Rules
 
 Beyond the compilation commands in the CDB itself, users can append or remove compilation options via `[[rules]]` in `clice.toml`. Each rule contains file matching patterns (globs) and lists of options to append or remove.
 
-When looking up a file's compilation command, matching rules are applied on top of the CDB command -- specified options are first removed from the base command, then new options are appended. This allows users to fine-tune compilation flags at the project level without modifying the build system's output.
+When looking up a file's compilation command, matching rules are applied on top of the CDB command -- removals and appends operate on the classified argument structure (not raw strings), and the result is memoized per configuration. This allows users to fine-tune compilation flags at the project level without modifying the build system's output.
 
 ### Toolchain
 
@@ -79,7 +81,7 @@ When looking up a file's compilation command, matching rules are applied on top 
 
 **Compiler family identification.** `Toolchain` identifies the compiler family from the executable name -- the `CompilerFamily` enum includes GCC, Clang, MSVC, ClangCL, NVCC, Intel, and Zig. The identification logic handles various naming variants: version suffixes (`clang++-17`), architecture prefixes (`arm-none-eabi-g++`), and Windows `.exe` suffixes. The family determines which probing strategy is used.
 
-**Caching strategy.** Probing results are cached by (driver path, file extension, non-user-content flags). File extension is part of the cache key because `.c` and `.cpp` may trigger different driver rules. Failed probes are also cached (negative caching) to avoid retrying the same nonexistent compiler repeatedly.
+**Caching strategy.** The cache has two layers. The **probe layer** caches raw driver invocation results, keyed by the probe-relevant shape of the command (driver, probe-relevant flags, input kind — `.c` and `.cpp` may trigger different driver rules; the working directory joins the key when the command is sensitive to it). The **synthesis layer** turns probe results into the per-input-kind flag sets that command rendering consumes. Failed probes are cached too (negative caching), but transient failures are retried after a cooldown rather than being remembered forever.
 
 ### Search Paths
 
@@ -101,12 +103,12 @@ This four-tier model corresponds to Clang's internal search layout. Paths within
 CDB loading uses simdjson for streaming JSON parsing, processing entries one by one:
 
 1. Read each entry's `directory`, `file`, and `arguments` (or `command`) fields
-2. Filter out non-C/C++ files (e.g., `.rc`, `.asm`, `.def`)
-3. Resolve relative file paths to absolute paths
-4. Classify each option in the `arguments` field, routing them into canonical or patch
-5. Absolutize relative paths in include path options (resolved against `directory`)
-6. Deduplicate `CanonicalCommand` and `CompilationInfo` via `ObjectSet`
-7. Sort all entries by file path ID
+2. Expand response files (`@file`), driver-mode aware, tolerating UTF-16 encoded files and nesting
+3. Translate NVCC commands into an equivalent clang CUDA invocation
+4. Filter out non-C/C++ files (e.g., `.rc`, `.asm`, `.def`)
+5. Resolve relative file paths to absolute paths
+6. Parse and classify each option once into the structured configuration, absolutizing relative include paths against `directory`
+7. Deduplicate identical configurations into shared `ConfigID`s
 
 The parsing process also handles a special case: CMake-generated CDBs sometimes contain `-Xclang -include-pch -Xclang <pchfile>` sequences (CMake's PCH workaround), which are detected and discarded during loading.
 
@@ -142,7 +144,7 @@ After the four tiers are concatenated, deduplication begins from the Angled tier
 
 - **Why don't user-content options participate in the toolchain cache key?**
 
-  This is the core benefit of the two-level separation design. `-I` and `-D` do not change the system paths, target triple, or language defaults output by the compiler driver. Excluding them from the cache key reduces the number of keys from "one per file" to "one per configuration." A project with tens of thousands of files typically has only a few dozen distinct cache keys, requiring only a few dozen subprocess calls at startup.
+  This is the core benefit of the classification design. `-I` and `-D` do not change the system paths, target triple, or language defaults output by the compiler driver. Excluding them from the cache key reduces the number of keys from "one per file" to "one per configuration." A project with tens of thousands of files typically has only a few dozen distinct cache keys, requiring only a few dozen subprocess calls at startup.
 
 - **Why must search path deduplication precisely match Clang's behavior?**
 
@@ -169,3 +171,5 @@ After the four tiers are concatenated, deduplication begins from the Angled tier
 - **Global impact of configuration rules.** `[[rules]]` in `clice.toml` can append or remove options from compilation commands. If the user modifies a rule that affects all files (e.g., appending a global `-I`), all files' compilation configurations change, potentially triggering a full re-index. There is currently no mechanism to detect which rule changes actually affect which files.
 
 - **MSVC-style option parsing.** On non-Windows systems, MSVC-style option prefixes (`/U`, `/D`, `/I`) must be handled specially to prevent Unix absolute paths (such as `/Users/...`) from being misparsed as MSVC options. This is currently resolved by dynamically adjusting option visibility based on the driver name, but edge cases may still exist.
+
+- **Compiler launchers are not recognized.** CDB commands wrapped in a launcher (`ccache g++ ...`, `sccache clang++ ...`) are parsed as if the launcher were the compiler, so family identification and toolchain probing target the wrong binary. Strip the launcher from the compilation database, or override the flags with configuration rules.

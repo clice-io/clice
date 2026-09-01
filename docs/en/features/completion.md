@@ -125,13 +125,13 @@ Triggered when cursor is after `import` or `export import`.
 
 <!-- END GENERATED ITEMS -->
 
-- [ ] Trigger on space character ([#460](https://github.com/clice-io/clice/pull/460))
+- [x] Trigger on space character ([#460](https://github.com/clice-io/clice/pull/460))
 
-  Requires two-layer gating to avoid firing on every space keystroke:
-  1. **Server-side**: register ` ` (space) as a trigger character so the client sends completion requests on space.
-  2. **Extension-side middleware**: intercept space-triggered requests and only forward them when the current line matches `import ` or `export import ` (cheap string check, zero IPC overhead for non-import spaces). All other spaces return empty immediately.
-
-  This follows the same pattern used by TypeScript/Haxe language extensions ([vscode#67714](https://github.com/microsoft/vscode/issues/67714)).
+  Two-layer gating avoids firing on every space keystroke: the server
+  registers ` ` (space) as a trigger character, and space-triggered requests
+  only proceed in import contexts (`import `, `export import `); all other
+  spaces return empty immediately. This follows the same pattern used by
+  TypeScript/Haxe language extensions ([vscode#67714](https://github.com/microsoft/vscode/issues/67714)).
 
 - [ ] Exclude self-module from results (self-import is invalid) — **FIXME**
 - [ ] Partition import within the same module
@@ -1130,10 +1130,3 @@ Registered: `. < > : " / *`. Space (` `) is planned but not yet merged ([#460](h
 - [ ] `CompletionList.isIncomplete` flag for incremental filtering
 - [ ] `commitCharacters` for auto-accepting completions on specific keystrokes
 - [ ] `filterText` / `sortText` for client-side re-filtering
-
-## Changelog
-
-| Date       | Change                                                                | PR                                                 |
-| ---------- | --------------------------------------------------------------------- | -------------------------------------------------- |
-| 2026-04-06 | `#include` path completion and module import completion (flat prefix) | [#394](https://github.com/clice-io/clice/pull/394) |
-| 2024-12-01 | Initial semantic completion                                           | —                                                  |

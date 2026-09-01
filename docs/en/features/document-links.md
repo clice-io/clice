@@ -5,7 +5,7 @@ Clickable links from source directives to their resolved target files.
 <!-- The checklist sections below are generated from the snapshot fixtures in
      tests/snap/document_links/. Do not edit the regions between the GENERATED
      markers by hand — edit the fixture doc headers and run
-     `node tools/feature_docs.ts update`. -->
+     `node tools/docs/feature.ts update`. -->
 
 ## Include Directives
 
@@ -185,12 +185,3 @@ Clickable links from source directives to their resolved target files.
   </details>
 
 <!-- END GENERATED ITEMS -->
-
-## Changelog
-
-| Date       | Change                                                        | PR                                                 |
-| ---------- | ------------------------------------------------------------- | -------------------------------------------------- |
-| 2026-08-23 | Resolved-path tooltips; replies sorted into document order    | [#632](https://github.com/clice-io/clice/pull/632) |
-| 2026-04-11 | `__has_include` argument links via unified directive scanning | [#421](https://github.com/clice-io/clice/pull/421) |
-| 2026-04-09 | `#embed` links; links inside the preamble preserved           | [#413](https://github.com/clice-io/clice/pull/413) |
-| 2025-03-16 | `#include` directive links                                    | [#107](https://github.com/clice-io/clice/pull/107) |

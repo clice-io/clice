@@ -11,26 +11,26 @@
 - [ ] 报告所有缺失的 `#include` 错误，而非仅第一个 — 解析器在首个致命错误后停止
 
   ```cpp
-  #include "missing_a.h"  // 报告错误
-  #include "missing_b.h"  // 未报告（解析器已停止）
-  #include "missing_c.h"  // 未报告
+  #include "missing_a.h"  // error reported
+  #include "missing_b.h"  // error NOT reported (parser already stopped)
+  #include "missing_c.h"  // error NOT reported
   ```
 
 - [ ] 为源自头文件的诊断显示完整的 include 链（[clangd#1392](https://github.com/clangd/clangd/issues/1392)）
 
   ```
-  // 当前："In included file: expected ';'"
-  // 期望："In main.cpp → utils.h → detail/impl.h: expected ';'"
+  // current:  "In included file: expected ';'"
+  // expected: "In main.cpp → utils.h → detail/impl.h: expected ';'"
   ```
 
 - [ ] 在诊断中反映头文件的未保存更改（[clangd#488](https://github.com/clangd/clangd/issues/488)）
 
   ```
-  // header.h（未保存缓冲区）：添加了 new_func()
-  // main.cpp：调用 new_func() → 不应显示 "undeclared identifier"
+  // header.h (unsaved buffer): added new_func()
+  // main.cpp: calls new_func() → should NOT show "undeclared identifier"
   ```
 
-- [ ] 预编译头中模板实例化错误的诊断（[clangd#137](https://github.com/clangd/clangd/issues/137)）
+- [ ] preamble 头文件中模板实例化错误的诊断（[clangd#137](https://github.com/clangd/clangd/issues/137)）
 
 ## 标签
 
@@ -69,11 +69,11 @@
   ```cpp
   // utils.h
   static inline int helper() { return 42; }
-  // 单独检查头文件时不应警告 "unused function"
+  // should NOT warn "unused function" when checking header standalone
   ```
 
 - [ ] 从头文件传播 `-Wpadded` 等布局警告（[clangd#1429](https://github.com/clangd/clangd/issues/1429)）
-- [ ] 抑制预编译头优化导致的误报 `-Wempty-translation-unit`（[clangd#2358](https://github.com/clangd/clangd/issues/2358)）
+- [ ] 抑制 preamble 优化导致的误报 `-Wempty-translation-unit`（[clangd#2358](https://github.com/clangd/clangd/issues/2358)）
 - [ ] 跨头文件边界的线程安全分析（[clangd#2386](https://github.com/clangd/clangd/issues/2386)）
 
 ## clang-tidy 集成
@@ -90,8 +90,8 @@
 
   ```cpp
   ns::Inner obj(42);
-  //  ^^^^^ 仅基本名称被标注
-  // 应标注 "ns::Inner"
+  //  ^^^^^ only base name underlined
+  // should underline "ns::Inner"
   ```
 
 - [ ] 将优化备注（`-Rpass`）显示为诊断（[clangd#2519](https://github.com/clangd/clangd/issues/2519)）
@@ -107,12 +107,6 @@
 
 - [ ] 宏重定义警告指向同一位置（[clangd#2479](https://github.com/clangd/clangd/issues/2479)）
 - [ ] 嵌套数组初始化的错误 `-Wmissing-braces` 修复建议（[clangd#2434](https://github.com/clangd/clangd/issues/2434)）
-- [ ] 预编译头失效时混合诊断消息产生无效严重性 0（[clangd#2124](https://github.com/clangd/clangd/issues/2124)）
-- [ ] 未声明标识符诊断被纠正相关诊断隐藏（[clangd#547](https://github.com/clangd/clangd/issues/547)）
-- [ ] `--include` 文件缺失时产生误导性的下游诊断（[clangd#2229](https://github.com/clangd/clangd/issues/2229)）
-
-## 变更记录
-
-| 日期 | 变更                                   | PR  |
-| ---- | -------------------------------------- | --- |
-| —    | Clang 诊断、严重性映射、标签、推送发布 | —   |
+- [ ] preamble 失效时混合诊断消息产生无效严重性 0 ([clangd#2124](https://github.com/clangd/clangd/issues/2124))
+- [ ] 未声明标识符诊断被纠正相关诊断隐藏 ([clangd#547](https://github.com/clangd/clangd/issues/547))
+- [ ] `--include` 文件缺失时产生误导性的下游诊断 ([clangd#2229](https://github.com/clangd/clangd/issues/2229))

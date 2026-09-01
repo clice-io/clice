@@ -110,9 +110,3 @@ Known issues that should be handled correctly:
 - [ ] Invalid severity 0 when preamble invalidation mixes diagnostic messages ([clangd#2124](https://github.com/clangd/clangd/issues/2124))
 - [ ] Undeclared identifier diagnostic hidden by correction-related diagnostics ([clangd#547](https://github.com/clangd/clangd/issues/547))
 - [ ] Misleading downstream diagnostics when `--include` file is missing ([clangd#2229](https://github.com/clangd/clangd/issues/2229))
-
-## Changelog
-
-| Date       | Change                                                     | PR                                                 |
-| ---------- | ---------------------------------------------------------- | -------------------------------------------------- |
-| 2025-07-30 | Clang diagnostics, severity mapping, tags, push publishing | [#164](https://github.com/clice-io/clice/pull/164) |

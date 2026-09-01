@@ -4,12 +4,17 @@
 
 clice integrates clang-tidy as a built-in linting engine. Unlike standalone clang-tidy which processes each TU independently, clice's architecture enables cross-TU coordination to eliminate redundant work.
 
-**Usage**: `clice lint` (not yet implemented)
+**Usage**: `clice lint [--workspace <dir>] [--workers <n>] [--index]`
+
+Runs clang-tidy over every translation unit in the compilation database with a
+worker pool, prints diagnostics, and exits non-zero when problems are found.
+`--index` additionally builds and persists the project index from the same
+parses, so a follow-up `clice index` run has nothing left to do.
 
 ## Current Status
 
+- [x] Project-wide lint via CLI (`clice lint`)
 - [ ] Basic clang-tidy integration (single-TU, in-editor diagnostics)
-- [ ] Project-wide lint via CLI (`clice lint`)
 - [ ] Cross-TU header deduplication
 - [ ] Incremental re-lint (only changed files)
 - [ ] Lint result caching
@@ -54,11 +59,6 @@ Issues that affect the quality of clang-tidy diagnostics within a language serve
 
 ## Configuration
 
-Respects standard `.clang-tidy` configuration files in the project tree.
-
-## Changelog
-
-| Date       | Change                                       | PR                                                 |
-| ---------- | -------------------------------------------- | -------------------------------------------------- |
-| 2026-07-22 | Stub `clice lint` subcommand                 | [#539](https://github.com/clice-io/clice/pull/539) |
-| 2026-03-28 | Dependency graph tracking for included files | [#368](https://github.com/clice-io/clice/pull/368) |
+Check selection currently uses a built-in fast-check set plus per-file
+compilation flags from the configuration rules. Discovery of standard
+`.clang-tidy` configuration files is not wired up yet.

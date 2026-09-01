@@ -1,9 +1,9 @@
 # Folding Ranges
 
 <!-- The checklist sections below are generated from the snapshot fixtures in
-     tests/data/folding_range/. Do not edit the regions between the GENERATED
+     tests/snap/folding_range/. Do not edit the regions between the GENERATED
      markers by hand — edit the fixture spec headers and run
-     `node tools/feature_docs.ts update`. -->
+     `node tools/docs/feature.ts update`. -->
 
 ## Fold Kinds
 
@@ -614,10 +614,3 @@
   </details>
 
 <!-- END GENERATED ITEMS -->
-
-## Changelog
-
-| Date       | Change                                                                                                                     | PR                                                 |
-| ---------- | -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| 2026-08-01 | Nested compound statements, abbreviated function templates and coroutine bodies; instantiation dedup; semantics-table walk | [#568](https://github.com/clice-io/clice/pull/568) |
-| 2024-12-17 | Block folding, list folding, access specifiers, preprocessor regions                                                       | [#13](https://github.com/clice-io/clice/pull/13)   |

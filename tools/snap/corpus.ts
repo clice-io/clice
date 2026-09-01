@@ -73,15 +73,15 @@ export function parseFixtureMeta(content: string, filePath: string): FixtureMeta
     // Scan only the metadata list of the leading `///` block: heading
     // lines and blank separators before it, then `- key: value` lines
     // until the next blank `///`. The markdown description after that may
-    // legitimately contain bulleted `word:` lines (feature_docs renders
-    // it) — mirroring parseFixture in tools/feature_docs.ts, they are not
+    // legitimately contain bulleted `word:` lines (docs/feature.ts renders
+    // it) — mirroring parseFixture in tools/docs/feature.ts, they are not
     // metadata. A doc heading is not required: a supplementary fixture
-    // (no `# ` title, ignored by feature_docs) may still open with a bare
+    // (no `# ` title, ignored by docs/feature.ts) may still open with a bare
     // `///` meta block.
     let inMeta = false;
     const seen = new Set<string>();
     // A plain-`//` prologue (license/attribution comments) may precede the
-    // `///` header — skip it, mirroring parseFixture in feature_docs.ts.
+    // `///` header — skip it, mirroring parseFixture in docs/feature.ts.
     const lines = content.split("\n");
     let start = 0;
     while (start < lines.length) {

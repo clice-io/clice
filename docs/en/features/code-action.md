@@ -71,9 +71,3 @@ Cursor/selection-driven refactorings.
 - [ ] Declare implicit copy/move special members
 - [ ] Rename symbol (as code action)
 - [ ] Include-cleaner: batch fix unused/missing includes
-
-## Changelog
-
-| Date       | Change                                   | PR  |
-| ---------- | ---------------------------------------- | --- |
-| 2024-11-24 | Stub handler (always returns empty list) | —   |

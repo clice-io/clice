@@ -22,8 +22,9 @@ clice solves the above problems through a multi-process architecture: each compi
 Master Process (MasterServer)
 ├── Event loop (kota)
 ├── LSP / Agentic protocol handling
-├── State management (Workspace, Session)
-├── Compilation scheduling (Compiler, Indexer)
+├── State management (workspace, sessions, invalidation)
+├── Compile scheduling (task graph: PCH / PCM / AST / TU-run families)
+├── Background indexing (index store + pump)
 │
 ├── Stateful Worker Processes × N
 │   ├── SF-0: holds AST, serves queries
@@ -90,22 +91,24 @@ Stateless workers execute one-shot compilation tasks using a priority-aware sche
 
 ### Two-Level Priority Queue
 
-- **High priority**: User-interactive tasks — code completion, signature help. These need immediate response; the user is actively waiting for results.
-- **Low priority**: Background tasks — index building, PCH/PCM builds, formatting. These can be deferred without affecting user experience.
+- **High priority**: Work a user request is actively waiting on — interactive builds (code completion, signature help), formatting, and the PCH/PCM builds a foreground request depends on.
+- **Low priority**: Background indexing runs, which can be deferred without affecting user experience.
 
-High-priority tasks always take precedence in acquiring worker resources. Low-priority tasks are subject to a concurrency limit — the number of low-priority tasks running simultaneously has an upper bound (`low_limit`), ensuring that workers are always available to handle high-priority requests.
+Priority is a property of the dispatch, not of the task type: the same PCH build is dispatched High when a user request is blocked on it and Low when produced by background indexing.
 
-Additionally, the OS process priority of low-priority tasks is lowered (via the `nice` system call), reducing their CPU impact on other system processes, including the editor itself.
+High-priority tasks always take precedence in acquiring worker resources. Low-priority tasks are subject to a concurrency limit — the number of low-priority tasks running simultaneously has an upper bound, ensuring that workers are always available to handle high-priority requests. Background index runs additionally lower their OS process priority (via the `nice` system call), reducing their CPU impact on other system processes, including the editor itself.
 
 ### Dynamic Concurrency Control
 
 The concurrency cap for low-priority tasks is dynamically adjusted based on system state:
 
-**Memory pressure feedback**: The master process periodically (every 3 seconds) checks available system memory. When available memory drops below 20% of total, `low_limit` is decremented by 1; when available memory recovers above 40%, `low_limit` is incremented by 1. This linear adjustment smoothly reduces background load under memory pressure.
+**Foreground-aware budget**: While foreground activity is detected (user requests in flight), background work is capped at roughly 30% of the stateless workers; once the foreground goes idle, background may use full capacity. When foreground activity returns, workers are reclaimed quickly — running low-priority tasks hit cooperative cancellation checkpoints and requeue themselves, with a kill as the timeout fallback — so a burst of typing never waits behind a wall of index builds.
 
-**Crash backoff**: When a stateless worker crashes, `low_limit` is multiplied by 3/4 (multiplicative decrease). Crashes typically indicate encountering code that triggers a Clang bug; continuing at high concurrency risks more workers hitting the same problem. Multiplicative decrease is more aggressive than linear decrease, reducing system load more quickly.
+**Memory pressure feedback**: The master process periodically (every 3 seconds) checks available system memory. When available memory drops below 20% of total, the background allowance is decremented by 1; when available memory recovers above 40%, it is incremented by 1. Under severe pressure the allowance can drop all the way to zero, pausing background work entirely.
 
-This combined strategy — linear adjustment for memory pressure plus multiplicative backoff for crashes — ensures graceful degradation under high load rather than sudden OOM or cascading crashes.
+**Crash backoff**: When a stateless worker crashes, the background allowance is multiplied by 3/4 (multiplicative decrease). Crashes typically indicate encountering code that triggers a Clang bug; continuing at high concurrency risks more workers hitting the same problem. Multiplicative decrease is more aggressive than linear decrease, reducing system load more quickly.
+
+This combined strategy — a foreground-first budget, linear adjustment for memory pressure, and multiplicative backoff for crashes — ensures graceful degradation under load rather than sudden OOM or cascading crashes.
 
 ## Crash Recovery
 
@@ -123,12 +126,12 @@ The core value of process isolation lies in crash recovery — containing a work
 
 1. The master process detects the exit
 2. Crash backoff is triggered, lowering the concurrency cap
-3. In-flight tasks on the crashed worker are lost; they are only redone if a later request or scheduling cycle requeues them
+3. In-flight build requests are resent once to a healthy worker (build tasks are idempotent; a request that kills two workers in a row is treated as poisonous and surfaces its failure instead of retrying forever). Background index attempts are requeued by the scheduler
 4. If the maximum restart count has not been exceeded, a new worker is launched
 
-### Maximum Restart Count
+### Crash Budget and Revival
 
-Each worker slot has a maximum restart count. If the same slot crashes repeatedly (e.g., crashing immediately after each startup), it indicates a systemic issue and no further restarts are attempted to avoid an infinite loop. The master process continues running with a reduced worker count — functionality may degrade (e.g., slower background indexing) but will not be completely interrupted.
+Each worker slot has a crash budget with exponential backoff between restarts. A stretch of healthy uptime resets the budget, so occasional crashes do not accumulate into a death sentence. A slot that exhausts its budget stops being restarted — but not permanently: after a cooldown period its budget is restored and the slot can be revived on demand. The pool therefore degrades temporarily under systemic failure (fewer workers, slower background indexing) and heals itself once the trigger passes, without ever interrupting the master.
 
 ## Design Decisions and Trade-offs
 
@@ -137,3 +140,11 @@ Each worker slot has a maximum restart count. If the same slot crashes repeatedl
 **Why separate stateful and stateless workers instead of a unified worker pool?** Their scheduling strategies are fundamentally different. Stateful workers need file affinity (to ensure AST reuse); stateless workers need load balancing and priority queues. A unified pool would sacrifice either affinity (causing frequent recompilation) or scheduling flexibility (inability to differentiate priorities). Separating them lets each kind of worker focus on its own scheduling needs.
 
 **Why is the master process single-threaded?** The master process has a light workload — it only performs routing and state management, not compilation. A single thread avoids all concurrency control complexity (locks, atomic operations, race conditions), while a coroutine-based event loop is sufficient for the I/O-intensive routing work.
+
+## Known Limitations
+
+- **No per-worker memory enforcement.** Worker memory usage is not capped or watermark-evicted; a pathological translation unit can grow a worker until the operating system's OOM killer intervenes, at which point normal crash recovery takes over. System-wide memory pressure only throttles background concurrency, it does not bound any single worker.
+
+- **No hang detection.** Worker health is observed through process exit only. A worker stuck inside Clang (an infinite loop rather than a crash) is not detected or restarted automatically; the affected request waits until it is cancelled.
+
+- **Synchronous startup.** Loading the compilation database, warming the toolchain cache, and the initial dependency scan run to completion before the server starts answering requests, and there is no progress reporting yet — on very large projects the server can appear unresponsive for a while right after startup.
