@@ -139,8 +139,9 @@ one chunk of segments per call (a paired row and heading always in the
 same chunk), code blocks masked out — the model never sees a code block,
 and a reply that breaks a segment's shape, alters an inline literal, or
 names a row and its heading differently keeps the current text. The
-default backend is the codex CLI run in a read-only sandbox from an
-empty scratch directory (`--jobs=N` parallel calls, `--effort=LEVEL`);
+default backend is the codex CLI with every tool switched off, so the
+contributor-written text it reads can reach neither the host filesystem
+nor the network (`--jobs=N` parallel calls, `--effort=LEVEL`);
 `--backend=deepseek` uses the API. Review the diff, then `format` and
 `record`. Prefer this over handing a model whole pages: the code blocks
 would only burn its context.

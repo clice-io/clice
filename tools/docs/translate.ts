@@ -56,9 +56,9 @@
 /// next to its en counterpart and asks a model for the corrected Chinese —
 /// meaning, the wording conventions of the docs skill, naturalness —
 /// segment by segment, so no code block ever enters the model's context.
-/// The default backend runs the codex CLI (GPT-5.6-sol) in a read-only
-/// sandbox from an empty scratch directory, one call per chunk of
-/// segments (a paired row and heading always in the same chunk),
+/// The default backend runs the codex CLI (GPT-5.6-sol) with every tool
+/// switched off, one call per chunk of segments (a paired row and
+/// heading always in the same chunk),
 /// `--jobs=N` calls in parallel and `--effort=LEVEL` reasoning;
 /// `--backend=deepseek` uses the API instead. A reply that breaks a
 /// segment's shape, alters an inline literal, or names a row and its
@@ -1200,10 +1200,33 @@ function runCodex(args: string[], cwd: string): Promise<void> {
     });
 }
 
-/// One codex call per chunk, in a read-only sandbox from an empty scratch
-/// directory: the segments are contributor-written text, so the model
-/// gets nothing to write to and no network, and only the reply the CLI
-/// itself writes through `-o` comes back.
+/// The segments are contributor-written text, so the model gets no tool
+/// at all: the codex sandbox only stops writes, a shell tool could still
+/// read any host file or the environment and hand it to the model. With
+/// the shell, exec, subagent, app, image and web-search surfaces off and
+/// no MCP servers, the reply the CLI writes through `-o` is the only
+/// channel back; the read-only sandbox and the empty scratch directory
+/// stay as a second wall.
+const CODEX_NO_TOOLS = [
+    "--disable",
+    "shell_tool",
+    "--disable",
+    "unified_exec",
+    "--disable",
+    "multi_agent",
+    "--disable",
+    "apps",
+    "-c",
+    "tools.view_image=false",
+    "-c",
+    'web_search="disabled"',
+    "-c",
+    "mcp_servers={}",
+    "--sandbox",
+    "read-only",
+];
+
+/// One codex call per chunk.
 function codexBackend(effort: string): Backend {
     return async (payload, expected) => {
         const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "clice-docs-review-"));
@@ -1218,8 +1241,7 @@ function codexBackend(effort: string): Backend {
                         "gpt-5.6-sol",
                         "-c",
                         `model_reasoning_effort=${effort}`,
-                        "--sandbox",
-                        "read-only",
+                        ...CODEX_NO_TOOLS,
                         "-o",
                         reply,
                         `${REVIEW_PROMPT}\n\n输入：\n${payload}`,
