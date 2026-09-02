@@ -572,6 +572,17 @@ std::optional<std::string> CacheStore::lookup_aux(llvm::StringRef ns, llvm::Stri
 
 CacheStore::PendingEntry CacheStore::begin_store(llvm::StringRef ns, llvm::StringRef key) {
     std::lock_guard guard(state->mutex);
+    return begin_store_locked(ns, key, /*aux=*/false);
+}
+
+CacheStore::PendingEntry CacheStore::begin_store_aux(llvm::StringRef ns, llvm::StringRef key) {
+    std::lock_guard guard(state->mutex);
+    return begin_store_locked(ns, key, /*aux=*/true);
+}
+
+CacheStore::PendingEntry CacheStore::begin_store_locked(llvm::StringRef ns,
+                                                        llvm::StringRef key,
+                                                        bool aux) {
     assert(!state->read_only && "write on a read-only store");
     if(state->read_only) {
         LOG_ERROR("CacheStore: begin_store on a read-only store");
@@ -584,6 +595,11 @@ CacheStore::PendingEntry CacheStore::begin_store(llvm::StringRef ns, llvm::Strin
         LOG_ERROR("CacheStore: begin_store on unregistered namespace {}", ns);
         return {};
     }
+    auto& extension = aux ? ns_state->config.aux_extension : ns_state->config.extension;
+    if(aux && extension.empty()) {
+        LOG_ERROR("CacheStore: begin_store_aux on namespace {} without aux extension", ns);
+        return {};
+    }
 
     // The cache directory can be wiped externally while the server runs
     // (a user resetting state with `rm -rf`); re-create the tmp dir so
@@ -592,35 +608,10 @@ CacheStore::PendingEntry CacheStore::begin_store(llvm::StringRef ns, llvm::Strin
         LOG_WARN("CacheStore: cannot re-create tmp dir {}: {}", state->tmp_dir, ec.message());
     }
 
-    auto tmp_name = std::format("{}{}", state->next_tmp_id++, ns_state->config.extension);
-    return PendingEntry{ns.str(), key.str(), path::join(state->tmp_dir, tmp_name)};
-}
-
-CacheStore::PendingEntry CacheStore::begin_store_aux(llvm::StringRef ns, llvm::StringRef key) {
-    std::lock_guard guard(state->mutex);
-    assert(!state->read_only && "write on a read-only store");
-    if(state->read_only) {
-        LOG_ERROR("CacheStore: begin_store_aux on a read-only store");
-        return {};
-    }
-
-    auto* ns_state = state->find_namespace(ns);
-    assert(ns_state && "begin_store_aux on unregistered namespace");
-    if(!ns_state) {
-        LOG_ERROR("CacheStore: begin_store_aux on unregistered namespace {}", ns);
-        return {};
-    }
-    if(ns_state->config.aux_extension.empty()) {
-        LOG_ERROR("CacheStore: begin_store_aux on namespace {} without aux extension", ns);
-        return {};
-    }
-
-    if(auto ec = llvm::sys::fs::create_directories(state->tmp_dir)) {
-        LOG_WARN("CacheStore: cannot re-create tmp dir {}: {}", state->tmp_dir, ec.message());
-    }
-
-    auto tmp_name = std::format("{}{}", state->next_tmp_id++, ns_state->config.aux_extension);
-    return PendingEntry{ns.str(), key.str(), path::join(state->tmp_dir, tmp_name), /*aux=*/true};
+    auto tmp_id = state->next_tmp_id;
+    state->next_tmp_id += 1;
+    auto tmp_name = std::format("{}{}", tmp_id, extension);
+    return PendingEntry{ns.str(), key.str(), path::join(state->tmp_dir, tmp_name), aux};
 }
 
 std::expected<std::string, std::error_code> CacheStore::commit(PendingEntry pending) {

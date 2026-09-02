@@ -15,7 +15,6 @@
 
 namespace clice {
 
-
 /// Preamble artifacts (a PCH and its pch.idx envelope, committed as one
 /// pair) as a task-graph family: one node per content-addressed pch_key,
 /// no edges, one round = one revalidation or build. The facade is the

@@ -806,10 +806,9 @@ std::vector<IndexQuery::Located> IndexQuery::search(llvm::StringRef query,
     return results;
 }
 
-std::vector<IndexQuery::Located>
-    IndexQuery::locate(const agentic::ReadSymbolParams& locator) const {
-    if(locator.symbol_id.has_value() && *locator.symbol_id != 0) {
-        auto hash = static_cast<index::SymbolHash>(*locator.symbol_id);
+std::vector<IndexQuery::Located> IndexQuery::locate(const SymbolLocator& locator) const {
+    if(locator.symbol) {
+        auto hash = *locator.symbol;
         auto info = symbol_info(hash);
         if(!info) {
             return {};
@@ -823,8 +822,8 @@ std::vector<IndexQuery::Located>
         };
     }
 
-    if(locator.name.has_value() && !locator.name->empty()) {
-        std::string query_lower = llvm::StringRef(*locator.name).lower();
+    if(!locator.name.empty()) {
+        std::string query_lower = locator.name.lower();
         std::vector<Located> candidates;
         std::vector<Located> exact_matches;
 
@@ -837,8 +836,8 @@ std::vector<IndexQuery::Located>
             if(!site) {
                 continue;
             }
-            if(locator.path.has_value() && !locator.path->empty()) {
-                llvm::StringRef wanted(*locator.path);
+            if(!locator.path.empty()) {
+                llvm::StringRef wanted = locator.path;
                 bool basename_only = wanted.find_last_of("/\\") == llvm::StringRef::npos;
                 if(basename_only) {
                     if(llvm::sys::path::filename(site->path) != wanted)
@@ -849,7 +848,7 @@ std::vector<IndexQuery::Located>
             }
 
             bool is_exact = llvm::StringRef(symbol.name).lower() == query_lower ||
-                            llvm::StringRef(symbol.name).ends_with("::" + *locator.name);
+                            llvm::StringRef(symbol.name).ends_with(("::" + locator.name).str());
             Located located{
                 .symbol = {.hash = hash, .name = symbol.name, .kind = symbol.kind},
                 .site = *site,
@@ -865,8 +864,8 @@ std::vector<IndexQuery::Located>
         return candidates;
     }
 
-    if(locator.path.has_value() && locator.line.has_value()) {
-        auto path_id = workspace.file_table.find(*locator.path);
+    if(!locator.path.empty() && locator.line.has_value()) {
+        auto path_id = workspace.file_table.find(locator.path);
         if(!path_id) {
             return {};
         }

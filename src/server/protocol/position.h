@@ -1,11 +1,15 @@
 #pragma once
 
-/// Shared LSP position clamping for master-side buffer access.
+/// Positions, coordinate systems and sites shared by the master's buffer
+/// access and its index projections.
 
 #include <algorithm>
 #include <optional>
 #include <span>
 #include <string_view>
+
+#include "syntax/token.h"
+#include "vfs/file_table.h"
 
 #include "kota/ipc/lsp/position.h"
 #include "llvm/ADT/StringRef.h"
@@ -119,6 +123,18 @@ private:
     llvm::StringRef content;
     std::uint32_t content_size = 0;
     std::span<const std::uint32_t> starts;
+};
+
+/// One row's site: the file it lies in, its byte range in that file's
+/// serving source, and the coordinates that turn the bytes into positions.
+/// `file` is invalid when the path is unknown to the file table (an overlay
+/// header no scan interned); `path` always names it, in the table's
+/// canonical spelling whenever the file is known.
+struct Site {
+    Fid file;
+    llvm::StringRef path;
+    LocalSourceRange range;
+    Coordinates coords;
 };
 
 }  // namespace clice

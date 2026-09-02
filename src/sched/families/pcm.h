@@ -14,7 +14,6 @@
 
 namespace clice {
 
-
 /// C++20 module artifacts (PCM) as a task-graph family: one node per
 /// module unit, edges to the modules it imports, one round = one PCM
 /// build (or cache revalidation). The facade is the only surface

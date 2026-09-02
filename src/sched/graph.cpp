@@ -1,8 +1,8 @@
 #include "sched/graph.h"
 
 #include <algorithm>
-#include <utility>
 #include <cassert>
+#include <utility>
 
 #include "llvm/ADT/DenseSet.h"
 

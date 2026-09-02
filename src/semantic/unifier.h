@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/DeclTemplate.h"
 
@@ -96,6 +98,36 @@ bool more_specialized(clang::ASTContext& context,
 bool more_specialized(clang::ASTContext& context,
                       clang::VarTemplatePartialSpecializationDecl* left,
                       clang::VarTemplatePartialSpecializationDecl* right);
+
+/// The verdict of select_partial: a winner, or why there is none. Real
+/// instantiation diagnoses an ambiguity (no partial dominates every other
+/// match); constraint satisfaction is not evaluated here (`requires false`
+/// would need subsumption machinery), so a structurally matching
+/// constrained winner is unverifiable. Callers degrade on both rather than
+/// pick arbitrarily or trust the unverified.
+enum class PartialVerdict : std::uint8_t {
+    None,
+    Selected,
+    Ambiguous,
+    Constrained,
+};
+
+template <typename Partial>
+struct PartialChoice {
+    PartialVerdict verdict = PartialVerdict::None;
+    /// Set for Selected only.
+    Partial* winner = nullptr;
+};
+
+/// The partial specialization real instantiation would pick among
+/// `viable` — the ones whose pattern deduced against the arguments.
+PartialChoice<clang::ClassTemplatePartialSpecializationDecl>
+    select_partial(clang::ASTContext& context,
+                   llvm::ArrayRef<clang::ClassTemplatePartialSpecializationDecl*> viable);
+
+PartialChoice<clang::VarTemplatePartialSpecializationDecl>
+    select_partial(clang::ASTContext& context,
+                   llvm::ArrayRef<clang::VarTemplatePartialSpecializationDecl*> viable);
 
 /// If `expr` is a (possibly parenthesized/casted) reference to a non-type
 /// template parameter, return its declaration.

@@ -174,6 +174,11 @@ export interface StartOptions {
 
 export interface InitializeOptions {
     initializationOptions?: Record<string, unknown> | undefined;
+    /// Whether to overlay the test defaults — one worker of each kind and
+    /// the tracker's polling loops off — onto the initialization options.
+    /// A benchmark switches them off to run the server's real defaults,
+    /// which stay spelled in one place: the C++ config initializers.
+    testDefaults?: boolean | undefined;
     /// Client capabilities to advertise; empty by default so servers see
     /// the most conservative client unless a test opts in.
     capabilities?: proto.ClientCapabilities | undefined;
@@ -408,19 +413,21 @@ export class CliceClient {
         // Force cache_dir into the workspace so .clice/ cleanup prevents
         // stale PCH.
         project["cache_dir"] = ws.path(".clice");
-        // One worker of each kind is enough for tests and halves the
-        // per-test process-spawn cost. Tests needing more pass their own
-        // counts via initializationOptions.
-        project["stateless_worker_count"] ??= 1;
-        project["stateful_worker_count"] ??= 1;
-        initializationOptions["project"] = project;
-        // Disable the stat-polling loops: tests drive ticks deterministically
-        // through the clice/internal/poll hook instead.
         const tracker = {
             ...((initializationOptions["tracker"] ?? {}) as Record<string, unknown>),
         };
-        tracker["cdb_poll_seconds"] ??= 0;
-        tracker["workspace_poll_seconds"] ??= 0;
+        if (options.testDefaults ?? true) {
+            // One worker of each kind is enough for tests and halves the
+            // per-test process-spawn cost. Tests needing more pass their own
+            // counts via initializationOptions.
+            project["stateless_worker_count"] ??= 1;
+            project["stateful_worker_count"] ??= 1;
+            // Disable the stat-polling loops: tests drive ticks deterministically
+            // through the clice/internal/poll hook instead.
+            tracker["cdb_poll_seconds"] ??= 0;
+            tracker["workspace_poll_seconds"] ??= 0;
+        }
+        initializationOptions["project"] = project;
         initializationOptions["tracker"] = tracker;
 
         // Wire URIs stay percent-encoded (a '#' in the path must travel as

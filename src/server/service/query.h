@@ -9,7 +9,6 @@
 #include "feature/feature.h"
 #include "sched/workspace.h"
 #include "semantic/symbol.h"
-#include "server/protocol/agentic.h"
 #include "server/protocol/position.h"
 
 #include "llvm/ADT/SmallVector.h"
@@ -25,18 +24,6 @@ struct Session;
 struct SessionStore;
 
 using index::SymbolRef;
-
-/// One row's site: the file it lies in, its byte range in that file's
-/// serving source, and the coordinates that turn the bytes into positions.
-/// `file` is invalid when the path is unknown to the file table (an overlay
-/// header no scan interned); `path` always names it, in the table's
-/// canonical spelling whenever the file is known.
-struct Site {
-    Fid file;
-    llvm::StringRef path;
-    LocalSourceRange range;
-    Coordinates coords;
-};
 
 /// Which of a file's index sources serves it right now — the freshness
 /// contract's arbitration, decided in one place (IndexQuery::serving_source).
@@ -68,6 +55,17 @@ struct QuerySources {
     const SessionStore* sessions = nullptr;
     const ASTProjectionTable* projections = nullptr;
     const IndexPump* pump = nullptr;
+};
+
+/// How an agent names a symbol, tried in this order: by handle; by name,
+/// case-insensitively, optionally narrowed to a path — a bare file name
+/// matches the site's file name, anything longer the tail of its path;
+/// by path and 1-based line.
+struct SymbolLocator {
+    std::optional<index::SymbolHash> symbol;
+    llvm::StringRef name;
+    llvm::StringRef path;
+    std::optional<int> line;
 };
 
 /// Read-only queries over every index source: disk shards, open sessions'
@@ -234,9 +232,8 @@ public:
     /// site are listed.
     std::vector<Located> search(llvm::StringRef query, std::size_t limit) const;
 
-    /// Resolve an agentic locator: by symbol id, by name (optionally
-    /// narrowed to a path), or by path and 1-based line.
-    std::vector<Located> locate(const agentic::ReadSymbolParams& locator) const;
+    /// The symbols a locator names; several when a name is ambiguous.
+    std::vector<Located> locate(const SymbolLocator& locator) const;
 
     /// Every project symbol with a definition site in the file's serving
     /// source, anchored at the definition's name token.

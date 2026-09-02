@@ -263,6 +263,10 @@ private:
     /// Checkpoint if enough changes accumulated since the last one.
     void maybe_checkpoint();
 
+    /// The admission both begin_store entry points share; the caller holds
+    /// the state lock.
+    PendingEntry begin_store_locked(llvm::StringRef ns, llvm::StringRef key, bool aux);
+
     std::unique_ptr<State> state;
 };
 

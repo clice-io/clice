@@ -226,7 +226,6 @@ struct Workspace {
     /// Built once at startup from CDB scan; updated incrementally on didSave.
     DependencyGraph dep_graph;
 
-
     /// PCH cache, keyed by content key (preamble text + canonical flags),
     /// so files with identical preambles share one PCH.  Hot-path mirror
     /// of CacheStore state; blob paths come from the store.
@@ -354,7 +353,6 @@ struct Workspace {
             request_flush();
         }
     }
-
 
     /// Fill PCM paths for all built modules, excluding exclude_path_id.
     void fill_pcm_deps(std::unordered_map<std::string, std::string>& pcms,

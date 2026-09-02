@@ -35,7 +35,18 @@ static std::string_view symbol_kind_name(SymbolKind kind) {
 /// found", several candidates ask the client to disambiguate via symbolId.
 static std::expected<IndexQuery::Located, kota::ipc::Error>
     resolve_unique(const agentic::ReadSymbolParams& loc, const IndexQuery& query) {
-    auto candidates = query.locate(loc);
+    SymbolLocator locator;
+    if(loc.symbol_id.value_or(0) != 0) {
+        locator.symbol = static_cast<index::SymbolHash>(*loc.symbol_id);
+    }
+    if(loc.name) {
+        locator.name = *loc.name;
+    }
+    if(loc.path) {
+        locator.path = *loc.path;
+    }
+    locator.line = loc.line;
+    auto candidates = query.locate(locator);
     if(candidates.empty())
         return std::unexpected(kota::ipc::Error{"symbol not found"});
     if(candidates.size() > 1) {
@@ -44,6 +55,35 @@ static std::expected<IndexQuery::Located, kota::ipc::Error>
                                          candidates.size())});
     }
     return std::move(candidates[0]);
+}
+
+/// The files reachable from `root` along `adjacent`, breadth first and
+/// each once: direct neighbours at depth 1, `max_depth` levels at most,
+/// 0 meaning unbounded.
+static std::vector<agentic::DepEntry>
+    collect_deps(Workspace& ws,
+                 Fid root,
+                 int max_depth,
+                 llvm::function_ref<llvm::SmallVector<Fid>(Fid)> adjacent) {
+    std::vector<agentic::DepEntry> entries;
+    llvm::SmallVector<std::pair<Fid, int>> queue{
+        {root, 0}
+    };
+    llvm::DenseSet<Fid> visited{root};
+    for(std::size_t i = 0; i < queue.size(); i += 1) {
+        auto [id, depth] = queue[i];
+        if(max_depth > 0 && depth >= max_depth) {
+            continue;
+        }
+        for(auto next: adjacent(id)) {
+            if(!visited.insert(next).second) {
+                continue;
+            }
+            queue.push_back({next, depth + 1});
+            entries.push_back({.path = ws.file_table.resolve(next).str(), .depth = depth + 1});
+        }
+    }
+    return entries;
 }
 
 /// The 1-based lines a site spans, as agents read files; nullopt when its
@@ -163,69 +203,14 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
             result.file = params.path;
 
             if(direction == "includes" || direction == "both") {
-                auto includes = ws.dep_graph.get_all_includes(path_id);
-                for(auto inc_id: includes) {
-                    auto inc_path = ws.file_table.resolve(inc_id);
-                    result.includes.push_back(DepEntry{.path = inc_path.str(), .depth = 1});
-                }
-
-                if(max_depth == 0 || max_depth > 1) {
-                    llvm::DenseSet<Fid> visited;
-                    visited.insert(path_id);
-                    for(auto& dep: result.includes)
-                        visited.insert(ws.file_table.intern(dep.path));
-
-                    for(std::size_t i = 0; i < result.includes.size(); ++i) {
-                        if(max_depth > 0 && result.includes[i].depth >= max_depth)
-                            continue;
-                        auto dep_id = ws.file_table.intern(result.includes[i].path);
-                        auto sub = ws.dep_graph.get_all_includes(dep_id);
-                        for(auto sub_id: sub) {
-                            if(!visited.insert(sub_id).second)
-                                continue;
-                            auto sub_path = ws.file_table.resolve(sub_id);
-                            result.includes.push_back(DepEntry{
-                                .path = sub_path.str(),
-                                .depth = result.includes[i].depth + 1,
-                            });
-                        }
-                    }
-                }
+                result.includes = collect_deps(ws, path_id, max_depth, [&](Fid id) {
+                    return ws.dep_graph.get_all_includes(id);
+                });
             }
-
             if(direction == "includers" || direction == "both") {
-                auto includers = ws.dep_graph.get_includers(path_id);
-                for(auto inc_id: includers) {
-                    auto inc_path = ws.file_table.resolve(inc_id);
-                    result.includers.push_back(DepEntry{.path = inc_path.str(), .depth = 1});
-                }
-
-                if(max_depth == 0 || max_depth > 1) {
-                    llvm::DenseSet<Fid> visited;
-                    visited.insert(path_id);
-                    for(auto& dep: result.includers) {
-                        if(auto id = ws.file_table.find(dep.path))
-                            visited.insert(*id);
-                    }
-
-                    for(std::size_t i = 0; i < result.includers.size(); ++i) {
-                        if(max_depth > 0 && result.includers[i].depth >= max_depth)
-                            continue;
-                        auto dep_id = ws.file_table.find(result.includers[i].path);
-                        if(!dep_id)
-                            continue;
-                        auto sub = ws.dep_graph.get_includers(*dep_id);
-                        for(auto sub_id: sub) {
-                            if(!visited.insert(sub_id).second)
-                                continue;
-                            auto sub_path = ws.file_table.resolve(sub_id);
-                            result.includers.push_back(DepEntry{
-                                .path = sub_path.str(),
-                                .depth = result.includers[i].depth + 1,
-                            });
-                        }
-                    }
-                }
+                result.includers = collect_deps(ws, path_id, max_depth, [&](Fid id) {
+                    return llvm::SmallVector<Fid>(ws.dep_graph.get_includers(id));
+                });
             }
 
             co_return result;

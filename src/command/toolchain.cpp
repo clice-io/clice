@@ -1119,57 +1119,87 @@ Toolchain::ResolvedID Toolchain::synthesize(ConfigID id, llvm::ArrayRef<const ch
     return static_cast<ResolvedID>(resolved_configs.size() - 1);
 }
 
+struct Toolchain::ProbeAdmission {
+    enum class Kind : std::uint8_t { Hit, CoolingDown, Ready };
+
+    Kind kind;
+    std::string key;
+    /// Ready: the query to run.
+    QuerySpec spec;
+    /// CoolingDown: the cached failure.
+    std::string error;
+};
+
+Toolchain::ProbeAdmission Toolchain::admit_probe(ConfigID id, InputKind input) {
+    auto pk = probe_key(id, input);
+    ProbeAdmission admission{.kind = ProbeAdmission::Kind::Hit, .key = std::move(pk.key)};
+    if(probes.contains(admission.key)) {
+        return admission;
+    }
+    if(auto failed_it = failed.find(admission.key); failed_it != failed.end()) {
+        if(std::chrono::steady_clock::now() - failed_it->second.second < failed_retry) {
+            admission.kind = ProbeAdmission::Kind::CoolingDown;
+            admission.error = failed_it->second.first;
+            return admission;
+        }
+        // Cooldown over: the failure may have been transient — retry the
+        // real query (cf. CrashBudget's bounded-burn revival).
+        failed.erase(failed_it);
+    }
+
+    auto& config = db.config(id);
+    auto argv = probe_argv(config, pk.cwd_sensitive);
+    admission.kind = ProbeAdmission::Kind::Ready;
+    admission.spec.argv = std::move(argv.argv);
+    admission.spec.slot = argv.slot;
+    admission.spec.kind = input.value;
+    admission.spec.family = config.family;
+    admission.spec.cwd = probe_cwd(pk.cwd_sensitive ? config.directory : db.workspace_root);
+    return admission;
+}
+
+void Toolchain::land_probe(llvm::StringRef key,
+                           const std::expected<std::vector<std::string>, std::string>& result) {
+    if(!result) {
+        failed.try_emplace(key, std::pair{result.error(), std::chrono::steady_clock::now()});
+        return;
+    }
+    llvm::SmallVector<const char*, 64> saved;
+    saved.reserve(result->size());
+    for(auto& token: *result) {
+        saved.push_back(db.strings.save(token).data());
+    }
+    probes.try_emplace(key, std::move(saved));
+}
+
 std::expected<Toolchain::ResolvedID, std::string> Toolchain::resolve(ConfigID id, InputKind input) {
     auto synth_key = std::pair{static_cast<std::uint32_t>(id), input.value};
     if(auto it = synth_cache.find(synth_key); it != synth_cache.end()) {
         return it->second;
     }
 
-    auto pk = probe_key(id, input);
-    auto it = probes.find(pk.key);
-    if(it == probes.end()) {
-        if(auto failed_it = failed.find(pk.key); failed_it != failed.end()) {
-            if(std::chrono::steady_clock::now() - failed_it->second.second < failed_retry) {
-                return std::unexpected(failed_it->second.first);
-            }
-            // Cooldown over: the failure may have been transient — retry
-            // the real query (cf. CrashBudget's bounded-burn revival).
-            failed.erase(failed_it);
-        }
-
-        auto& config = db.config(id);
-        LOG_WARN("Toolchain probe miss: driver={} kind={}", config.driver, input.value);
-
-        QuerySpec spec;
-        auto argv = probe_argv(config, pk.cwd_sensitive);
-        spec.argv = std::move(argv.argv);
-        spec.slot = argv.slot;
-        spec.kind = input.value;
-        spec.family = config.family;
-        spec.cwd = probe_cwd(pk.cwd_sensitive ? config.directory : db.workspace_root);
+    auto admission = admit_probe(id, input);
+    if(admission.kind == ProbeAdmission::Kind::CoolingDown) {
+        return std::unexpected(std::move(admission.error));
+    }
+    if(admission.kind == ProbeAdmission::Kind::Ready) {
+        LOG_WARN("Toolchain probe miss: driver={} kind={}", db.config(id).driver, input.value);
 
         std::expected<std::vector<std::string>, std::string> result;
         kota::event_loop loop;
         auto task = [&]() -> kota::task<> {
-            result = co_await query_one(spec);
+            result = co_await query_one(admission.spec);
         };
         loop.schedule(task());
         loop.run();
 
+        land_probe(admission.key, result);
         if(!result) {
-            failed.try_emplace(pk.key, std::pair{result.error(), std::chrono::steady_clock::now()});
             return std::unexpected(std::move(result.error()));
         }
-
-        llvm::SmallVector<const char*, 64> saved;
-        saved.reserve(result->size());
-        for(auto& token: *result) {
-            saved.push_back(db.strings.save(token).data());
-        }
-        it = probes.try_emplace(pk.key, std::move(saved)).first;
     }
 
-    auto resolved_id = synthesize(id, it->second);
+    auto resolved_id = synthesize(id, probes.find(admission.key)->second);
     synth_cache.try_emplace(synth_key, resolved_id);
     return resolved_id;
 }
@@ -1184,31 +1214,12 @@ void Toolchain::warm(llvm::ArrayRef<std::pair<ConfigID, InputKind>> pairs) {
     std::vector<Pending> pending;
 
     for(auto& [id, input]: pairs) {
-        auto pk = probe_key(id, input);
-        if(probes.contains(pk.key)) {
+        auto admission = admit_probe(id, input);
+        if(admission.kind != ProbeAdmission::Kind::Ready ||
+           !seen.try_emplace(admission.key, true).second) {
             continue;
         }
-        if(auto failed_it = failed.find(pk.key); failed_it != failed.end()) {
-            // Same expiry as resolve(): a cooled-down failure retries
-            // through this warm instead of being skipped forever.
-            if(std::chrono::steady_clock::now() - failed_it->second.second < failed_retry) {
-                continue;
-            }
-            failed.erase(failed_it);
-        }
-        if(!seen.try_emplace(pk.key, true).second) {
-            continue;
-        }
-
-        auto& config = db.config(id);
-        auto argv = probe_argv(config, pk.cwd_sensitive);
-        QuerySpec spec;
-        spec.argv = std::move(argv.argv);
-        spec.slot = argv.slot;
-        spec.kind = input.value;
-        spec.family = config.family;
-        spec.cwd = probe_cwd(pk.cwd_sensitive ? config.directory : db.workspace_root);
-        pending.push_back({std::move(pk.key), std::move(spec)});
+        pending.push_back({std::move(admission.key), std::move(admission.spec)});
     }
 
     if(pending.empty()) {
@@ -1249,21 +1260,12 @@ void Toolchain::warm(llvm::ArrayRef<std::pair<ConfigID, InputKind>> pairs) {
 
     std::size_t succeeded = 0;
     for(auto& o: outcomes) {
-        if(!o.result) {
+        if(o.result) {
+            succeeded += 1;
+        } else {
             LOG_ERROR("Toolchain query failed: {}", o.result.error());
-            failed.try_emplace(
-                std::move(o.key),
-                std::pair{std::move(o.result.error()), std::chrono::steady_clock::now()});
-            continue;
         }
-
-        llvm::SmallVector<const char*, 64> saved;
-        saved.reserve(o.result->size());
-        for(auto& token: *o.result) {
-            saved.push_back(db.strings.save(token).data());
-        }
-        probes.try_emplace(std::move(o.key), std::move(saved));
-        succeeded += 1;
+        land_probe(o.key, o.result);
     }
 
     LOG_INFO("Toolchain cache warmed: {} succeeded, {} failed", succeeded, total - succeeded);

@@ -98,6 +98,35 @@ kota::task<> shutdown(BatchStack& stack) {
     co_await shutdown_indexing(stack.graph, stack.pump, stack.store, stack.pool, stack.workspace);
 }
 
+/// A batch run's signal handling and the order of its ending. Interruption
+/// is judged only after the scheduling stack shut down and the watchers
+/// settled: a signal arriving while the final save/teardown ran must still
+/// report an interruption, not a normal completion with exit code 0.
+struct BatchLifetime {
+    bool stop_requested = false;
+    kota::cancellation_source stop;
+    kota::task_group<> aux;
+
+    explicit BatchLifetime(BatchStack& stack) : aux(stack.loop) {
+        aux.spawn(watch_signal(SIGINT, stop, stop_requested));
+        aux.spawn(watch_signal(SIGTERM, stop, stop_requested));
+        aux.spawn(checkpoint_task(stack.workspace));
+    }
+
+    kota::cancellation_token token() {
+        return stop.token();
+    }
+
+    /// Shuts the stack down and settles the watchers; whether the run was
+    /// interrupted.
+    kota::task<bool> finish(BatchStack& stack) {
+        co_await shutdown(stack);
+        aux.cancel();
+        co_await aux.join();
+        co_return stop_requested;
+    }
+};
+
 /// Shared batch startup: the finalized config with the run's overrides,
 /// the session file logger, and the worker pool. `log_tag` names the log
 /// files after the subcommand.
@@ -181,22 +210,9 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
         co_return;
     }
 
-    bool stop_requested = false;
-    kota::cancellation_source stop_source;
-    kota::task_group<> aux(stack.loop);
-    aux.spawn(watch_signal(SIGINT, stop_source, stop_requested));
-    aux.spawn(watch_signal(SIGTERM, stop_source, stop_requested));
-    aux.spawn(checkpoint_task(workspace));
-
-    co_await kota::with_token(wait_until_indexed(stack.pump), stop_source.token());
-    co_await shutdown(stack);
-    aux.cancel();
-    co_await aux.join();
-
-    // Judged only after the watchers settle: a signal arriving while the
-    // final save/teardown ran must still report an interruption, not a
-    // normal completion with exit code 0.
-    if(stop_requested) {
+    BatchLifetime lifetime(stack);
+    co_await kota::with_token(wait_until_indexed(stack.pump), lifetime.token());
+    if(co_await lifetime.finish(stack)) {
         result.interrupted = true;
         result.exit_code = 130;
         co_return;
@@ -374,17 +390,11 @@ kota::task<> run_lint(BatchStack& stack,
         }
     }
 
-    bool stop_requested = false;
-    kota::cancellation_source stop_source;
-    kota::task_group<> aux(stack.loop);
-    aux.spawn(watch_signal(SIGINT, stop_source, stop_requested));
-    aux.spawn(watch_signal(SIGTERM, stop_source, stop_requested));
-    aux.spawn(checkpoint_task(workspace));
-
+    BatchLifetime lifetime(stack);
     LintSweep sweep;
     co_await kota::with_token(run_lint_sweep(stack, options, tus, sweep, on_findings),
-                              stop_source.token());
-    if(options.with_index && !stop_requested) {
+                              lifetime.token());
+    if(options.with_index && !lifetime.stop_requested) {
         // The sweep's merges can owe other TUs a reindex (a rebuilt shared
         // shard dropped their variants), and bootstrap may have claimed
         // prior-session debt — the sweep runs outside the pump, so nothing
@@ -393,13 +403,9 @@ kota::task<> run_lint(BatchStack& stack,
         // the run exits clean.
         workspace.config.project.enable_indexing.value = true;
         stack.pump.schedule(/*immediate=*/true);
-        co_await kota::with_token(wait_until_indexed(stack.pump), stop_source.token());
+        co_await kota::with_token(wait_until_indexed(stack.pump), lifetime.token());
     }
-    co_await shutdown(stack);
-    aux.cancel();
-    co_await aux.join();
-
-    if(stop_requested) {
+    if(co_await lifetime.finish(stack)) {
         result.interrupted = true;
         result.exit_code = 130;
         co_return;

@@ -31,7 +31,6 @@ struct ASTFamilyFixture;
 
 class ContextResolver;
 
-
 /// Open documents' ASTs as a task-graph family: one node per document,
 /// candidate/durable edges to the PCM and PCH nodes its rounds wait on,
 /// one round = one compile (up to two worker sends for the

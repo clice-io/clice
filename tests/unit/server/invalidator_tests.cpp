@@ -146,7 +146,6 @@ TEST_CASE(DiskRemovedDropsProvider) {
     auto iface = workspace.file_table.intern("/proj/m.cppm");
     workspace.dep_graph.add_module("m", iface);
 
-
     ContextResolver resolver(workspace);
     PCMHarness ph(workspace, resolver);
     Invalidator invalidator(workspace, store, resolver, ph.pcm);

@@ -4,6 +4,8 @@
 #include <string>
 #include <variant>
 
+#include "feature/feature.h"
+
 #include "llvm/ADT/StringRef.h"
 
 namespace clice::to_lsp {
@@ -40,7 +42,7 @@ protocol::SymbolKind symbol_kind(SymbolKind kind) {
     }
 }
 
-std::optional<protocol::SymbolInformation> symbol_information(const SymbolRef& symbol,
+std::optional<protocol::SymbolInformation> symbol_information(const index::SymbolRef& symbol,
                                                               const Site& site) {
     auto mapped = location(site);
     if(!mapped) {
@@ -54,7 +56,7 @@ std::optional<protocol::SymbolInformation> symbol_information(const SymbolRef& s
 }
 
 template <typename Item>
-static std::optional<Item> hierarchy_item(const SymbolRef& symbol, const Site& site) {
+static std::optional<Item> hierarchy_item(const index::SymbolRef& symbol, const Site& site) {
     auto mapped = location(site);
     if(!mapped) {
         return std::nullopt;
@@ -69,12 +71,12 @@ static std::optional<Item> hierarchy_item(const SymbolRef& symbol, const Site& s
     return item;
 }
 
-std::optional<protocol::CallHierarchyItem> call_hierarchy_item(const SymbolRef& symbol,
+std::optional<protocol::CallHierarchyItem> call_hierarchy_item(const index::SymbolRef& symbol,
                                                                const Site& site) {
     return hierarchy_item<protocol::CallHierarchyItem>(symbol, site);
 }
 
-std::optional<protocol::TypeHierarchyItem> type_hierarchy_item(const SymbolRef& symbol,
+std::optional<protocol::TypeHierarchyItem> type_hierarchy_item(const index::SymbolRef& symbol,
                                                                const Site& site) {
     return hierarchy_item<protocol::TypeHierarchyItem>(symbol, site);
 }

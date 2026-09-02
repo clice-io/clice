@@ -674,7 +674,6 @@ public:
         /// most specialized one, as real instantiation would — but only among
         /// partials whose dependent pattern constraints survive the
         /// pseudo-SFINAE probe (see member_absent).
-        clang::ClassTemplatePartialSpecializationDecl* best = nullptr;
         llvm::SmallVector<clang::ClassTemplatePartialSpecializationDecl*, 4> matched;
         for(auto partial: partials) {
             if(deduce_template_arguments(partial, arguments)) {
@@ -689,32 +688,22 @@ public:
                     continue;
                 }
                 matched.push_back(partial);
-                if(!best || more_specialized(context, partial, best)) {
-                    best = partial;
-                }
             }
         }
 
-        /// Real instantiation diagnoses ambiguity: if the winner does not
-        /// dominate every other match, neither a partial nor the primary may
-        /// be chosen — degrade to unresolved rather than picking arbitrarily.
-        if(best && matched.size() > 1) {
-            for(auto partial: matched) {
-                if(partial != best && !more_specialized(context, best, partial)) {
-                    LOG_DEBUG(
-                        "{}"
-                        "ambiguous partials; degrading",
-                        pad());
-                    indent -= 1;
-                    return lookup_result();
-                }
-            }
+        /// An ambiguous or constrained winner degrades to unresolved:
+        /// neither a partial nor the primary may be chosen (see
+        /// select_partial).
+        auto choice = select_partial(context, matched);
+        if(choice.verdict == PartialVerdict::Ambiguous) {
+            LOG_DEBUG(
+                "{}"
+                "ambiguous partials; degrading",
+                pad());
+            indent -= 1;
+            return lookup_result();
         }
-
-        /// Constraint satisfaction is not evaluated (`requires false` would
-        /// need subsumption machinery); a structurally matching constrained
-        /// partial is therefore unverifiable — degrade rather than trust it.
-        if(best && best->getTemplateParameters()->hasAssociatedConstraints()) {
+        if(choice.verdict == PartialVerdict::Constrained) {
             LOG_DEBUG(
                 "{}"
                 "constrained partial; degrading",
@@ -722,6 +711,7 @@ public:
             indent -= 1;
             return lookup_result();
         }
+        auto* best = choice.winner;
 
         if(best && deduce_template_arguments(best, arguments)) {
             LOG_DEBUG(
