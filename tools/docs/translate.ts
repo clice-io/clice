@@ -10,9 +10,12 @@
 /// region markers, ...) is byte-identical — as is any fenced code block
 /// nested inside a translatable segment. A table row and a later heading
 /// that share their text in en (a capability's status row and its
-/// section) share it in zh as well. The only stored link between
-/// the two sides is docs/meta/translations/<page>.json — one hash pair
-/// per translatable segment, in document order:
+/// section) share it in zh as well, and the inline literals of a
+/// segment — code spans, link and image targets in order, issue
+/// references, frontmatter paths — are identical on both sides. The only
+/// stored link between the two sides is
+/// docs/meta/translations/<page>.json — one hash pair per translatable
+/// segment, in document order:
 ///
 ///     { "version": 1,
 ///       "pairs": [
@@ -172,6 +175,13 @@ interface LabelDiff {
     heading: SegmentInfo;
 }
 
+interface LiteralDiff {
+    left: SegmentInfo;
+    right: SegmentInfo;
+    /// What zh changed against en, as literalChanges words it.
+    changes: string;
+}
+
 interface TreeComparison {
     /// Human-readable description of a block-layout divergence, or null
     /// when the two sides are isomorphic.
@@ -181,6 +191,9 @@ interface TreeComparison {
     /// zh row/heading pairs named alike in en but not in zh (structure was
     /// isomorphic).
     labelDiffs: LabelDiff[];
+    /// Segment pairs whose inline literals differ (structure was
+    /// isomorphic).
+    literalDiffs: LiteralDiff[];
 }
 
 function labelProblem(diff: LabelDiff): string {
@@ -189,6 +202,24 @@ function labelProblem(diff: LabelDiff): string {
         `are both "${diff.name}" in en but "${diff.row.label ?? ""}" and ` +
         `"${diff.heading.label ?? ""}" in zh — give them one name`
     );
+}
+
+/// The literals zh dropped from and added to en's set, or null when the
+/// sets agree.
+function literalChanges(en: string[], zh: string[]): string | null {
+    const dropped = en.filter((literal) => !zh.includes(literal));
+    const added = zh.filter((literal) => !en.includes(literal));
+    if (dropped.length === 0 && added.length === 0) {
+        return null;
+    }
+    return [
+        ...dropped.map((literal) => `dropped ${literal}`),
+        ...added.map((literal) => `added ${literal}`),
+    ].join(", ");
+}
+
+function literalProblem(diff: LiteralDiff): string {
+    return `${segmentLabel(diff.left, diff.right)}: inline literals differ — ${diff.changes}`;
 }
 
 function describe(info: SegmentInfo | undefined): string {
@@ -215,6 +246,7 @@ function compareTrees(en: SegmentInfo[], zh: SegmentInfo[]): TreeComparison {
                     `en has ${en.length} segments, zh has ${zh.length}`,
                 verbatimDiffs: [],
                 labelDiffs: [],
+                literalDiffs: [],
             };
         }
     }
@@ -226,10 +258,19 @@ function compareTrees(en: SegmentInfo[], zh: SegmentInfo[]): TreeComparison {
             labelDiffs.push({ name: at(en, r).label ?? "", row, heading });
         }
     }
+    const pairs = zip(en, zh);
+    const literalDiffs: LiteralDiff[] = [];
+    for (const [left, right] of pairs) {
+        const changes = literalChanges(left.literals, right.literals);
+        if (changes !== null) {
+            literalDiffs.push({ left, right, changes });
+        }
+    }
     return {
         structureProblem: null,
-        verbatimDiffs: zip(en, zh).filter(([left, right]) => !sameVerbatim(left, right)),
+        verbatimDiffs: pairs.filter(([left, right]) => !sameVerbatim(left, right)),
         labelDiffs,
+        literalDiffs,
     };
 }
 
@@ -254,6 +295,7 @@ function analyzePage(roots: Roots, page: string): PageAnalysis {
             structureProblem: null,
             verbatimDiffs: [],
             labelDiffs: [],
+            literalDiffs: [],
         };
     }
     const zh = analyzeSource(fs.readFileSync(zhFile, "utf8"), `zh/${page}`);
@@ -353,6 +395,9 @@ function check(roots: Roots, pages: string[]): number {
         }
         for (const diff of analysis.labelDiffs) {
             problems.push(`${page}: ${labelProblem(diff)}`);
+        }
+        for (const diff of analysis.literalDiffs) {
+            problems.push(`${page}: ${literalProblem(diff)}`);
         }
         const pairsNow = zip(translatable(analysis.en), translatable(analysis.zh));
         if (analysis.mapping === null) {
@@ -461,6 +506,9 @@ function report(roots: Roots, pages: string[]): number {
                 console.log(`  ${labelProblem(diff)}`);
             });
         }
+        for (const diff of analysis.literalDiffs) {
+            drifted(diff.left, diff.right, `inline literals differ — ${diff.changes}`);
+        }
         const pairsNow = zip(translatable(analysis.en), translatable(analysis.zh));
         if (analysis.mapping?.version !== 1) {
             const status =
@@ -551,6 +599,7 @@ function record(roots: Roots, pages: string[]): number {
                     `${verbatimLabel(left, right)} must be byte-identical — fix before recording`,
             ),
             ...analysis.labelDiffs.map(labelProblem),
+            ...analysis.literalDiffs.map(literalProblem),
         ];
         if (problems.length > 0) {
             for (const problem of problems) {
@@ -797,14 +846,9 @@ function validateSegment(
     if (code.length !== blocks.length || code.some((text, i) => text !== blocks.at(i))) {
         return "nested verbatim block altered";
     }
-    const dropped = en.literals.filter((literal) => !reply.literals.includes(literal));
-    const added = reply.literals.filter((literal) => !en.literals.includes(literal));
-    if (dropped.length > 0 || added.length > 0) {
-        const changes = [
-            ...dropped.map((literal) => `dropped ${literal}`),
-            ...added.map((literal) => `added ${literal}`),
-        ];
-        return `inline literals changed: ${changes.join(", ")}`;
+    const changes = literalChanges(en.literals, reply.literals);
+    if (changes !== null) {
+        return `inline literals changed: ${changes}`;
     }
     return null;
 }
@@ -1374,6 +1418,9 @@ async function reviewPages(roots: Roots, pages: string[], rest: string[]): Promi
         }
         for (const diff of comparison.labelDiffs) {
             throw new Error(`${page}: ${labelProblem(diff)}`);
+        }
+        for (const diff of comparison.literalDiffs) {
+            throw new Error(`${page}: ${literalProblem(diff)}`);
         }
         fs.writeFileSync(path.join(roots.zh, page), out);
         console.log(

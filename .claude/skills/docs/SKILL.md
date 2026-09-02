@@ -52,9 +52,11 @@ ordered vs. bulleted list, task-list state, table column count and
 alignment, and the mapping/sequence skeleton of index.md's frontmatter.
 A table row and a later heading that share their text in en (a
 capability's status row and its section) must share it in zh — `check`
-fails on a pair named two ways. No text is stored twice — the mapping holds
-hashes only. Old wording of a drifted segment comes from git history of
-the markdown page.
+fails on a pair named two ways. The inline literals of a segment — code
+spans, link and image targets (in order), issue references, frontmatter
+paths — must be identical on both sides. No text is stored twice — the
+mapping holds hashes only. Old wording of a drifted segment comes from
+git history of the markdown page.
 
 Workflow for any edit touching translated pages:
 
@@ -116,8 +118,9 @@ Keep English (never transliterate):
 - Acronyms: LSP, AST, PCH, PCM, CDB, TU, ADL, CTAD, DAG, ABI, URI, C++23.
 - Anything in code font: identifiers, keywords, file paths, config keys
   and TOML sections, command lines, diagnostics text quoted from the
-  compiler. Option values are code too (`"off"`, `"on"`) and keep their
-  backticks.
+  compiler. Code font follows the English exactly: a span the English
+  sets in backticks stays in backticks, and the Chinese adds none of its
+  own — `check` compares the inline literals of every segment pair.
 - Terms that are commonly used untranslated by Chinese C++ developers
   and whose translations are less recognizable: Lambda, Token, Concept
   when naming the language feature (概念 in prose is fine), `this`,

@@ -37,11 +37,13 @@ export interface Segment {
     /// capability's status row and its section), so zh must keep them
     /// equal too.
     label: string | null;
-    /// Inline literals a translation carries over unchanged — inline code,
-    /// link and image destinations, issue references — as a sorted set:
-    /// prose may reorder or repeat them, not alter them. Frontmatter paths
-    /// are keyed by the YAML key holding them, as the block's structure is
-    /// fixed.
+    /// Inline literals a translation carries over unchanged, as a sorted
+    /// set. Inline code and issue references stand alone: prose may
+    /// reorder or repeat them, not alter them. Link and image
+    /// destinations are keyed by their position among the segment's links
+    /// (`link[0]: ./x`), so each label keeps its own target — a
+    /// translation keeps the links in order — and frontmatter paths by
+    /// the YAML key holding them, as the block's structure is fixed.
     literals: string[];
 }
 
@@ -199,6 +201,7 @@ function yamlLiterals(value: unknown, key: string): string[] {
 /// anywhere below `node` except inside code blocks and comments.
 function inlineLiterals(node: Nodes): string[] {
     const out = new Set<string>();
+    const counts = { link: 0, image: 0 };
     const visit = (current: Nodes) => {
         switch (current.type) {
             case "code":
@@ -209,6 +212,9 @@ function inlineLiterals(node: Nodes): string[] {
                 return;
             case "link":
             case "image":
+                out.add(`${current.type}[${counts[current.type]}]: ${current.url}`);
+                counts[current.type] += 1;
+                break;
             case "definition":
                 out.add(current.url);
                 break;
