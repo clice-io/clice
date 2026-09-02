@@ -195,6 +195,14 @@
   #else                    // │
   void run_inline();       // │
   #endif                   // ┘
+
+  #ifdef USE_EPOLL         // ┐
+  void poll_epoll();       // │ no fold yet: the branch before #elifdef
+  #elifdef USE_KQUEUE      // │ ┐
+  void poll_kqueue();      // │ │ folds: the #elifdef branch, delimited by #else
+  #else                    // │ ┘
+  void poll_select();      // │
+  #endif                   // ┘
   ```
 
   </details>
