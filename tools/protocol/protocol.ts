@@ -76,7 +76,7 @@ export interface SwitchContextResult {
     success: boolean;
 
     /// The request referenced an outdated queryContext listing.
-    stale?: boolean;
+    stale: boolean;
 }
 
 export const SwitchContextRequest = new RequestType<SwitchContextParams, SwitchContextResult, void>(
@@ -132,3 +132,13 @@ export interface StatsResult {
 }
 
 export const StatsRequest = new RequestType0<StatsResult, void>("clice/internal/stats");
+
+/// The keys of a wire type, for pinning a live reply's shape against the
+/// hand-written C++ struct: the listing is checked complete at compile
+/// time (a key the type gains must be added here), and a test compares it
+/// with the reply's `Object.keys`.
+export function wireKeys<T>() {
+    return <const K extends readonly (keyof T)[]>(
+        keys: Exclude<keyof T, K[number]> extends never ? K : never,
+    ): readonly (keyof T)[] => keys;
+}

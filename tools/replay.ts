@@ -18,6 +18,7 @@ import {
     logFiles,
     processGateFailures,
 } from "./process_gate.ts";
+import { TimeoutError, withTimeout } from "./promise.ts";
 
 // tools/ -> repo root.
 const REPO_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -189,27 +190,6 @@ function printTraceInfo(name: string, records: TraceRecord[], workspace: string 
     // Python's sorted(..., key=lambda x: -x[1]) over an insertion-ordered dict.
     const top = [...methods.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
     console.log(`  methods: ${top.map(([m, n]) => `${m}(${n})`).join(", ")}`);
-}
-
-class TimeoutError extends Error {}
-
-/// Reject with a TimeoutError after `ms`; otherwise settle with `promise`.
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-    return new Promise<T>((resolve, reject) => {
-        const timer = setTimeout(() => {
-            reject(new TimeoutError());
-        }, ms);
-        promise.then(
-            (v) => {
-                clearTimeout(timer);
-                resolve(v);
-            },
-            (e: unknown) => {
-                clearTimeout(timer);
-                reject(e instanceof Error ? e : new Error(String(e)));
-            },
-        );
-    });
 }
 
 function sleep(ms: number): Promise<void> {

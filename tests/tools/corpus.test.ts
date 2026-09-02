@@ -6,8 +6,10 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { expect, test } from "vitest";
 import {
+    headingLevel,
     orphanSnapshots,
     parseFixtureMeta,
+    scanFixtureHeader,
     type SnapCorpus,
     type SnapFixture,
 } from "@clice/tools/snap/corpus";
@@ -145,4 +147,71 @@ test("snapshot ownership follows verify and snap modes", () => {
     } finally {
         fs.rmSync(tmp, { recursive: true, force: true });
     }
+});
+
+test("fixture header scanning", () => {
+    const content = [
+        "// license",
+        "",
+        "/// # Section",
+        "///",
+        "/// ## Title",
+        "///",
+        "/// - status: partial",
+        "/// - order : 3",
+        "///",
+        "/// Prose, with",
+        "///   - a bullet",
+        "int x;",
+        "",
+    ].join("\n");
+    const header = scanFixtureHeader(content);
+    expect(header.headings).toEqual(["# Section", "## Title"]);
+    expect(header.meta).toEqual([{ key: "status", value: "partial" }]);
+    expect(header.malformed).toEqual(["- order : 3"]);
+    expect(header.description).toEqual(["", "Prose, with", "  - a bullet"]);
+    expect(header.lines[header.bodyStart]).toBe("int x;");
+    // A malformed entry is an error for the snap suite too, not the end
+    // of the list on defaults.
+    expect(() => parseFixtureMeta(content, "f")).toThrow("malformed fixture meta line");
+    // No header at all.
+    const bare = scanFixtureHeader("int x;\n");
+    expect(bare.headings).toEqual([]);
+    expect(bare.bodyStart).toBe(0);
+    // A leading `///` block that opens with prose is a doc comment on the
+    // code, not a header: nothing is malformed and the snap suite sees the
+    // defaults.
+    const doc = scanFixtureHeader("/// Documents f.\n/// - not: a key\nint f();\n");
+    expect(doc).toMatchObject({ headings: [], meta: [], malformed: [], bodyStart: 0 });
+    expect(parseFixtureMeta("/// Documents f.\nint f();\n", "f")).toEqual(DEFAULTS);
+    // So are a bullet without a colon and a `#` line that is no heading.
+    for (const prose of ["/// - first bullet\nint f();\n", "/// #include usage\nint f();\n"]) {
+        expect(scanFixtureHeader(prose)).toMatchObject({
+            headings: [],
+            malformed: [],
+            bodyStart: 0,
+        });
+        expect(parseFixtureMeta(prose, "f")).toEqual(DEFAULTS);
+    }
+    // A colon-bearing bullet is an entry attempt even when misspelled.
+    expect(() => parseFixtureMeta("/// - snap : skip\n", "f")).toThrow(
+        "malformed fixture meta line",
+    );
+    // Headings are markdown headings of any level; `##x` is not one.
+    const levels = scanFixtureHeader("/// # T\n/// ### Sub\n/// ##x\n");
+    expect(levels.headings).toEqual(["# T", "### Sub"]);
+    expect(levels.malformed).toEqual(["##x"]);
+    expect(["# T", "##\tT", "###", "##x", "- x: y"].map(headingLevel)).toEqual([1, 2, 3, 0, 0]);
+    // Without a list, the blank `///` after the headings separates the
+    // description (bullets in it are prose); unseparated prose is a
+    // malformed entry.
+    const prose = scanFixtureHeader("/// # T\n///\n/// Documents T.\n/// - a: bullet\nint x;\n");
+    expect(prose).toMatchObject({ headings: ["# T"], meta: [], malformed: [] });
+    expect(prose.description).toEqual(["", "Documents T.", "- a: bullet"]);
+    expect(prose.lines[prose.bodyStart]).toBe("int x;");
+    expect(parseFixtureMeta("/// # T\n///\n/// Documents T.\n", "f")).toEqual(DEFAULTS);
+    expect(scanFixtureHeader("/// # T\n/// Documents T.\n").malformed).toEqual(["Documents T."]);
+    // Blank `///` lines before the opening heading are skipped.
+    expect(scanFixtureHeader("///\n/// # T\n///\n/// - snap: skip\n").headings).toEqual(["# T"]);
+    expect(parseFixtureMeta("///\n/// - snap: skip\n", "f").snap).toBe("skip");
 });
