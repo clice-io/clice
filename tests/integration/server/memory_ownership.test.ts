@@ -134,10 +134,23 @@ test("cancel storm leaves no tmp", async ({ session }) => {
     // session must both register.
     const stats = await client.stats();
     expect(
-        stats["pchCacheEntries"],
+        stats.pchCacheEntries,
         `a PCH was built: ${JSON.stringify(stats)}`,
     ).toBeGreaterThanOrEqual(1);
-    expect(stats["sessions"], `one open document: ${JSON.stringify(stats)}`).toBe(1);
+    expect(stats.sessions, `one open document: ${JSON.stringify(stats)}`).toBe(1);
+    // The C++ and TS shapes of the reply are hand-written on both sides; a
+    // gauge added to one and not the other shows up here.
+    expect(Object.keys(stats).sort()).toEqual([
+        "headerContexts",
+        "indexInmemoryShards",
+        "indexShardContentBytes",
+        "lastSaveShards",
+        "pchCacheEntries",
+        "pchLoadedStates",
+        "pchStateBytes",
+        "pendingTmpFiles",
+        "sessions",
+    ]);
     client.assertNoAnomaly();
 });
 
@@ -208,6 +221,6 @@ test("same preamble shared", async ({ session }) => {
     // blob: opening more consumers must not multiply loaded states.
     const stats = await client.stats();
     expect(stats.pchLoadedStates, `one shared key: ${JSON.stringify(stats)}`).toBe(1);
-    expect(stats["pchCacheEntries"], `one shared entry: ${JSON.stringify(stats)}`).toBe(1);
+    expect(stats.pchCacheEntries, `one shared entry: ${JSON.stringify(stats)}`).toBe(1);
     client.assertNoAnomaly();
 });

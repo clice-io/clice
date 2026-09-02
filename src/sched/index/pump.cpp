@@ -6,6 +6,7 @@
 #include <utility>
 
 #include "sched/families/turun.h"
+#include "sched/graph.h"
 #include "support/logging.h"
 #include "support/timer.h"
 #include "worker/pool.h"
@@ -497,6 +498,26 @@ kota::task<> IndexPump::run_background_indexing() {
     // stay skipped for that whole wait.
     if(index_queue_pos < index_queue.size()) {
         schedule(/*immediate=*/true);
+    }
+}
+
+kota::task<> shutdown_indexing(TaskGraph& graph,
+                               IndexPump& pump,
+                               IndexStore& store,
+                               WorkerPool& pool,
+                               Workspace& workspace) {
+    co_await graph.shutdown();
+    auto report = co_await store.save(pump.save_debt());
+    pump.claim_report(report);
+    if(report.snapshot_stale) {
+        // Debt surfaced after the snapshot serialized (write-time
+        // corruption recovery): one metadata retry, or a dropped
+        // standalone header's repair debt dies with this process.
+        pump.claim_report(co_await store.save(pump.save_debt()));
+    }
+    co_await pool.stop();
+    if(workspace.store) {
+        workspace.store->shutdown();
     }
 }
 

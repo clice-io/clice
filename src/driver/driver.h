@@ -6,9 +6,13 @@
 #include <sstream>
 #include <string>
 
+#include "support/filesystem.h"
 #include "support/logging.h"
 
 #include "kota/deco/deco.h"
+#include "llvm/ADT/SmallString.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/Support/FileSystem.h"
 
 namespace clice::driver {
 
@@ -44,6 +48,21 @@ inline bool apply_log_level(const std::string& level_str) {
     }
     logging::options.level = level;
     return true;
+}
+
+/// The workspace root of a batch subcommand: the --workspace argument
+/// made absolute, or the current directory when it is empty,
+/// canonicalized either way.
+inline std::string workspace_root(llvm::StringRef argument) {
+    llvm::SmallString<256> workspace(argument);
+    if(workspace.empty()) {
+        llvm::sys::fs::current_path(workspace);
+    } else {
+        llvm::sys::fs::make_absolute(workspace);
+    }
+    std::string root(workspace.str());
+    path::canonicalize(root);
+    return root;
 }
 
 template <typename Command>

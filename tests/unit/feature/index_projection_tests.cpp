@@ -25,26 +25,9 @@ void extract_rows() {
     tu = index::TUIndex::from_bytes(envelope);
 
     auto main_id = tu.path_count() - 1;
-    auto& shard = tu.shard_of(main_id);
-
-    occurrences.clear();
-    shard.for_each_occurrence([&](const index::Occurrence& occurrence) {
-        occurrences.push_back(occurrence);
-        return true;
-    });
-
-    decls.clear();
-    shard.for_each_relation([&](index::SymbolHash hash, const index::Relation& relation) {
-        RelationKind kind(relation.kind);
-        if(kind.isDeclOrDef()) {
-            auto copy = relation;
-            decls.push_back({.range = relation.range,
-                             .extent = copy.definition_range(),
-                             .symbol = hash,
-                             .definition = kind.is_one_of(RelationKind::Definition)});
-        }
-        return true;
-    });
+    auto rows = feature::extract_index_rows(tu.shard_of(main_id));
+    occurrences = std::move(rows.occurrences);
+    decls = std::move(rows.decls);
 }
 
 std::optional<index::SymbolRef> resolve(index::SymbolHash hash) {

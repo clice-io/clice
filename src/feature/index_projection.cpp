@@ -8,6 +8,7 @@
 
 #include "feature/feature.h"
 #include "feature/lexical_classify.h"
+#include "index/shard.h"
 #include "syntax/lexer.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -18,6 +19,26 @@
 #include "clang/Basic/LangStandard.h"
 
 namespace clice::feature {
+
+IndexRows extract_index_rows(const index::Shard& shard) {
+    IndexRows rows;
+    shard.for_each_occurrence([&](const index::Occurrence& occurrence) {
+        rows.occurrences.push_back(occurrence);
+        return true;
+    });
+    shard.for_each_relation([&](index::SymbolHash hash, const index::Relation& relation) {
+        RelationKind kind(relation.kind);
+        if(kind.isDeclOrDef()) {
+            auto copy = relation;
+            rows.decls.push_back({.range = relation.range,
+                                  .extent = copy.definition_range(),
+                                  .symbol = hash,
+                                  .definition = kind.is_one_of(RelationKind::Definition)});
+        }
+        return true;
+    });
+    return rows;
+}
 
 namespace {
 
@@ -156,16 +177,6 @@ auto index_semantic_tokens(llvm::StringRef content,
     }
 
     std::vector<SemanticToken> tokens;
-    auto emit = [&](LocalSourceRange range, SymbolKind kind, std::uint32_t modifiers) {
-        if(!tokens.empty()) {
-            auto& last = tokens.back();
-            if(last.range.end == range.begin && last.kind == kind && last.modifiers == modifiers) {
-                last.range.end = range.end;
-                return;
-            }
-        }
-        tokens.push_back({.range = range, .kind = kind, .modifiers = modifiers});
-    };
 
     enum class Directive : std::uint8_t {
         None,
@@ -186,7 +197,7 @@ auto index_semantic_tokens(llvm::StringRef content,
             continue;
         }
         if(token.kind == clang::tok::comment) {
-            emit(token.range, SymbolKind::Comment, 0);
+            append_token(tokens, token.range, SymbolKind::Comment, 0);
             continue;
         }
 
@@ -252,18 +263,10 @@ auto index_semantic_tokens(llvm::StringRef content,
             }
         }
 
-        // Semantic classification beats the lexical directive kinds; any
-        // other disagreement is a Conflict, matching the AST path's rule.
-        Classified result = semantic;
-        if(result.kind == SymbolKind::Invalid) {
-            result = lexical;
-        } else if(lexical.kind != SymbolKind::Invalid && lexical.kind != SymbolKind::Directive &&
-                  lexical.kind != SymbolKind::Header && lexical.kind != result.kind) {
-            result.kind = SymbolKind::Conflict;
-        }
+        Classified result = settle(semantic, lexical);
 
         if(result.kind != SymbolKind::Invalid) {
-            emit(token.range, result.kind, result.modifiers);
+            append_token(tokens, token.range, result.kind, result.modifiers);
         }
     }
 

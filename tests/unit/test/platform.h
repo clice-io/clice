@@ -39,14 +39,20 @@ public:
 #endif
     }
 
-    /// root() + relative → absolute path.
+    /// root() + relative → absolute path; an absolute path stays as is
+    /// (a file that must live outside the root, e.g. inside a cache
+    /// store's directory).
     static std::string path(llvm::StringRef relative) {
+        if(llvm::sys::path::is_absolute(relative)) {
+            return relative.str();
+        }
         llvm::SmallString<128> result;
         llvm::sys::path::append(result, root(), relative);
         return std::string(result);
     }
 
-    /// Add a file with an optional content (relative path, auto-prefixed with root()).
+    /// Add a file with an optional content (relative path, auto-prefixed
+    /// with root(), or absolute).
     void add(llvm::StringRef relative, llvm::StringRef content = {}) {
         auto p = path(relative);
         addFile(p, 0, llvm::MemoryBuffer::getMemBufferCopy(content, p));

@@ -66,6 +66,12 @@ using DepsSnapshot = llvm::SmallVector<DepState>;
 void force_revalidate_deps(FileTable& files, const DepsSnapshot& snap);
 
 /// Context for compiling a header file that lacks its own CDB entry.
+/// The cache-store namespace of synthesized header-context files
+/// (preamble, suffix and self snapshot): content-addressed blobs, so a
+/// header reopened in a later session finds its preamble — and the PCH
+/// keyed on the preamble's path — intact.
+constexpr inline llvm::StringLiteral header_context_ns = "header_context";
+
 struct HeaderContext {
     Fid host_path_id;             ///< Source file acting as host.
     std::string preamble_path;    ///< Path to generated preamble file on disk.

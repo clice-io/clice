@@ -333,7 +333,7 @@ test("reopen reuses preamble", async ({ session }) => {
     expect(switched.success).toBe(true);
     await client.waitForRecompile(defUri);
 
-    const artifactDir = workspace.path(path.join(".clice", "header_context"));
+    const artifactDir = workspace.headerContextDir();
     const snapshot = snapshotMtimes(artifactDir);
     expect(Object.keys(snapshot).length, "expected synthesized preamble artifacts").toBeGreaterThan(
         0,
@@ -375,7 +375,7 @@ test("chain change resynthesizes", async ({ session }) => {
     expect(switched.success).toBe(true);
     await client.waitForRecompile(defUri);
 
-    const artifactDir = workspace.path(path.join(".clice", "header_context"));
+    const artifactDir = workspace.headerContextDir();
     const snapshot = snapshotMtimes(artifactDir);
     expect(Object.keys(snapshot).length, "expected synthesized preamble artifacts").toBeGreaterThan(
         0,

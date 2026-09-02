@@ -92,21 +92,10 @@ kota::task<> checkpoint_task(Workspace& workspace) {
     }
 }
 
-/// Quiesce and persist in contract-11 order: pump and graph first, then
-/// the final save (with the one metadata retry late debt may owe), the
-/// artifact cache, and last the pool and the store.
+/// Quiesce the pump, then the shared contract-11 tail.
 kota::task<> shutdown(BatchStack& stack) {
     co_await stack.pump.stop();
-    co_await stack.graph.shutdown();
-    auto report = co_await stack.store.save(stack.pump.save_debt());
-    stack.pump.claim_report(report);
-    if(report.snapshot_stale) {
-        stack.pump.claim_report(co_await stack.store.save(stack.pump.save_debt()));
-    }
-    co_await stack.pool.stop();
-    if(stack.workspace.store) {
-        stack.workspace.store->shutdown();
-    }
+    co_await shutdown_indexing(stack.graph, stack.pump, stack.store, stack.pool, stack.workspace);
 }
 
 /// Shared batch startup: the finalized config with the run's overrides,

@@ -21,6 +21,12 @@
 #include "kota/meta/annotation.h"
 #include "llvm/ADT/ArrayRef.h"
 
+namespace clice::index {
+
+class Shard;
+
+}
+
 namespace clice::feature {
 
 namespace lsp = kota::ipc::lsp;
@@ -472,6 +478,16 @@ struct IndexDeclRow {
     index::SymbolHash symbol = 0;
     bool definition = false;
 };
+
+/// The rows of one document the projections consume, extracted from its
+/// serving shard: every occurrence, and the Decl/Def relations as decl
+/// rows.
+struct IndexRows {
+    std::vector<index::Occurrence> occurrences;
+    std::vector<IndexDeclRow> decls;
+};
+
+auto extract_index_rows(const index::Shard& shard) -> IndexRows;
 
 /// An include edge of the document, from the TU manifest: the 1-based
 /// directive line and the resolved target's absolute path.

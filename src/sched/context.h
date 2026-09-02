@@ -61,13 +61,18 @@ class ContextResolver {
 public:
     explicit ContextResolver(Workspace& workspace) : workspace(workspace) {}
 
+    /// A header's self-containment verdict. NeedsContext carries the
+    /// content hash it was scored on — persisted so a stale verdict is
+    /// dropped on cache load; 0 means scored with no disk observation,
+    /// which keeps the verdict session-local.
+    struct HeaderVerdict {
+        HeaderMode mode = HeaderMode::Unknown;
+        std::uint64_t content_hash = 0;
+    };
+
     /// Self-containment verdicts for headers, persisted in the artifacts
     /// blob. Reset when the header itself is saved.
-    llvm::DenseMap<Fid, HeaderMode> header_modes;
-
-    /// Content hash of the header at the time its NeedsContext verdict was
-    /// scored — persisted so a stale verdict is dropped on cache load.
-    llvm::DenseMap<Fid, std::uint64_t> header_mode_hashes;
+    llvm::DenseMap<Fid, HeaderVerdict> header_verdicts;
 
     /// User context choices (clice/switchContext), persisted in the contexts blob
     /// and validated against the CDB and include graph on didOpen. The
@@ -108,6 +113,12 @@ public:
     void drop_header_context(Fid path_id) {
         header_contexts.erase(path_id);
     }
+
+    /// The store evicted synthesized files. Any resolved context may
+    /// embed one (its preamble includes the self snapshot), so every
+    /// context re-resolves on its next compile, and the host records of
+    /// the files gone from disk are dropped.
+    void drop_evicted_artifacts();
 
     /// Drop the header context's dependency fast paths so the next use
     /// re-validates every chain file by a real read. The context itself is

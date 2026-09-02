@@ -359,15 +359,13 @@ export function registerCompilationContext(client: ClientHandle, ext: vscode.Ext
         }
     }
 
-    // X-macro style fragments (.def/.inc/.inl/...) open as plain text and
-    // never reach the language server. If clice knows the file is included
-    // by some C++ TU (it has compilation contexts), flip its language so
-    // the whole toolchain attaches.
+    // X-macro style fragments (.def/.inc/...) open as plain text and never
+    // reach the language server. If clice knows the file is included by
+    // some C++ TU (it has compilation contexts), flip its language so the
+    // whole toolchain attaches. Which files count is the server's call —
+    // the query is the whole check, one cheap lookup per plain-text open.
     async function detectCxxFragment(document: vscode.TextDocument) {
         if (document.languageId !== "plaintext" || resyncing.has(document.uri.toString())) {
-            return;
-        }
-        if (!/\.(def|inc|inl|tpp|ipp)$/.test(document.uri.fsPath)) {
             return;
         }
         try {

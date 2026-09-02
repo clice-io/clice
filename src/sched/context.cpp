@@ -80,38 +80,37 @@ static ConfigID pick_host_config(Workspace& workspace,
 }
 
 HeaderMode ContextResolver::header_mode(llvm::StringRef path, Fid path_id) const {
-    // Keep in sync with the client's C++ fragment detection
-    // (editors/vscode/src/feature/context.ts).
     if(path.ends_with(".def") || path.ends_with(".inc") || path.ends_with(".inl") ||
        path.ends_with(".tpp") || path.ends_with(".ipp")) {
         return HeaderMode::NeedsContext;
     }
-    if(auto it = header_modes.find(path_id); it != header_modes.end()) {
-        return it->second;
+    if(auto it = header_verdicts.find(path_id); it != header_verdicts.end()) {
+        return it->second.mode;
     }
     return HeaderMode::Unknown;
 }
 
 void ContextResolver::forget_self_contained(Fid path_id) {
-    if(auto it = header_modes.find(path_id);
-       it != header_modes.end() && it->second == HeaderMode::SelfContained) {
-        header_modes.erase(it);
+    if(auto it = header_verdicts.find(path_id);
+       it != header_verdicts.end() && it->second.mode == HeaderMode::SelfContained) {
+        header_verdicts.erase(it);
     }
 }
 
 std::uint64_t ContextResolver::persisted_mode_hash(Fid path_id) const {
-    if(header_modes.lookup(path_id) != HeaderMode::NeedsContext) {
+    auto it = header_verdicts.find(path_id);
+    if(it == header_verdicts.end() || it->second.mode != HeaderMode::NeedsContext) {
         return 0;
     }
-    return header_mode_hashes.lookup(path_id);
+    return it->second.content_hash;
 }
 
 void ContextResolver::record_header_mode(Fid path_id, HeaderMode mode, std::uint64_t content_hash) {
     auto persisted = persisted_mode_hash(path_id);
-    header_modes[path_id] = mode;
-    if(mode == HeaderMode::NeedsContext) {
-        header_mode_hashes[path_id] = content_hash;
-    }
+    header_verdicts[path_id] = {
+        .mode = mode,
+        .content_hash = mode == HeaderMode::NeedsContext ? content_hash : 0,
+    };
     if(persisted_mode_hash(path_id) != persisted) {
         workspace.mark_artifacts_dirty();
     }
@@ -121,23 +120,20 @@ void ContextResolver::reset_header_mode(Fid path_id) {
     if(persisted_mode_hash(path_id) != 0) {
         workspace.mark_artifacts_dirty();
     }
-    header_modes.erase(path_id);
-    header_mode_hashes.erase(path_id);
+    header_verdicts.erase(path_id);
 }
 
 void ContextResolver::dump_mode_slices(std::vector<CacheModeEntry>& modes,
                                        llvm::function_ref<std::uint32_t(Fid)> intern_id) const {
-    for(auto& [path_id, mode]: header_modes) {
-        if(mode != HeaderMode::NeedsContext)
-            continue;
+    for(auto& [path_id, verdict]: header_verdicts) {
         // A verdict scored with no disk observation (hash 0) cannot be
         // validated on load, so it stays in memory: persisted, it would
         // skip the self-containment trial for whatever bytes the next
         // session finds on disk.
-        auto hash = header_mode_hashes.lookup(path_id);
-        if(hash == 0)
+        if(verdict.mode != HeaderMode::NeedsContext || verdict.content_hash == 0)
             continue;
-        modes.push_back({intern_id(path_id), static_cast<std::uint32_t>(mode), hash});
+        modes.push_back(
+            {intern_id(path_id), static_cast<std::uint32_t>(verdict.mode), verdict.content_hash});
     }
 }
 
@@ -176,8 +172,8 @@ void ContextResolver::load_mode_slices(llvm::ArrayRef<CacheModeEntry> modes,
         auto disk = workspace.file_table.current(id);
         if(!disk || disk->hash != entry.content_hash)
             continue;
-        header_modes[id] = HeaderMode::NeedsContext;
-        header_mode_hashes[id] = entry.content_hash;
+        header_verdicts[id] = {.mode = HeaderMode::NeedsContext,
+                               .content_hash = entry.content_hash};
     }
 }
 
@@ -207,9 +203,27 @@ void ContextResolver::load_choice_slices(
     for(auto& entry: artifacts) {
         auto file = resolve(entry.file);
         auto host = resolve(entry.host);
-        if(file.empty() || host.empty())
+        // A file the store evicted since (or a wiped cache) has nothing
+        // left to open under the host's command.
+        if(file.empty() || host.empty() || !llvm::sys::fs::exists(file))
             continue;
         synthesized_hosts[file] = workspace.file_table.intern(host);
+    }
+}
+
+void ContextResolver::drop_evicted_artifacts() {
+    header_contexts.clear();
+    llvm::SmallVector<std::string> gone;
+    for(auto& entry: synthesized_hosts) {
+        if(!llvm::sys::fs::exists(entry.getKey())) {
+            gone.push_back(entry.getKey().str());
+        }
+    }
+    for(auto& path: gone) {
+        synthesized_hosts.erase(path);
+    }
+    if(!gone.empty()) {
+        workspace.mark_contexts_dirty();
     }
 }
 
@@ -646,36 +660,53 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(Fid header_
                                        observed->obs.uid_file);
     }
 
+    if(!workspace.store) {
+        LOG_WARN("resolve_header_context: no cache store to hold the preamble of {}",
+                 workspace.file_table.resolve(chain.back()));
+        return std::nullopt;
+    }
+    // Every synthesized file is a content-addressed blob of the store: the
+    // same bytes land on the same path across sessions, so a reopened
+    // header finds its preamble — and the PCH keyed on that path — intact,
+    // and the store's budget bounds what a long-lived cache accumulates.
+    auto store_blob = [&](std::string key, llvm::StringRef content) -> std::optional<std::string> {
+        if(auto hit = workspace.store->lookup(header_context_ns, key)) {
+            return hit;
+        }
+        auto pending = workspace.store->begin_store(header_context_ns, key);
+        if(auto result = fs::write(pending.tmp_path, content); !result) {
+            LOG_WARN("resolve_header_context: cannot write {}: {}",
+                     pending.tmp_path,
+                     result.error().message());
+            return std::nullopt;
+        }
+        auto published = workspace.store->commit(std::move(pending));
+        if(!published) {
+            LOG_WARN("resolve_header_context: cannot publish {}: {}",
+                     key,
+                     published.error().message());
+            return std::nullopt;
+        }
+        LOG_INFO("resolve_header_context: stored {} for header path_id={}",
+                 *published,
+                 header_path_id);
+        return *published;
+    };
+
     // Snapshot the header itself for other occurrences along the chain:
     // its real path is remapped to the open buffer at compile time, so
     // includes of it inside the prefix/suffix must point at a copy.
     auto target_path = workspace.file_table.resolve(chain.back());
     std::string self_snapshot_path;
     std::optional<ObservedFile> target_observed;
-    auto preamble_dir = path::join(workspace.config.project.cache_dir, "header_context");
     if((target_observed = read_file_observed(target_path.data()))) {
         auto content = target_observed->content->getBuffer();
         workspace.file_table.observe(chain.back(), target_observed->obs);
-        self_snapshot_path =
-            path::join(preamble_dir, std::format("{:016x}.self.h", target_observed->obs.hash));
-        if(!llvm::sys::fs::exists(self_snapshot_path)) {
-            auto ec = llvm::sys::fs::create_directories(preamble_dir);
-            if(ec) {
-                LOG_WARN("resolve_header_context: cannot create dir {}: {}",
-                         preamble_dir,
-                         ec.message());
-                return std::nullopt;
-            }
-            if(auto result = fs::write(self_snapshot_path, content); !result) {
-                LOG_WARN("resolve_header_context: cannot write snapshot {}: {}",
-                         self_snapshot_path,
-                         result.error().message());
-                return std::nullopt;
-            }
+        auto stored = store_blob(std::format("{:016x}.self", target_observed->obs.hash), content);
+        if(!stored) {
+            return std::nullopt;
         }
-    }
-
-    if(!self_snapshot_path.empty()) {
+        self_snapshot_path = std::move(*stored);
         record_synthesized_host(self_snapshot_path, host_path_id);
     }
 
@@ -689,29 +720,12 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(Fid header_
     }
     auto& preamble = synthesized->prefix;
 
-    // Hash the preamble and write to cache directory.
     auto preamble_hash = llvm::xxh3_64bits(llvm::StringRef(preamble));
-    auto preamble_filename = std::format("{:016x}.h", preamble_hash);
-    auto preamble_path = path::join(preamble_dir, preamble_filename);
-
-    if(!llvm::sys::fs::exists(preamble_path)) {
-        auto ec = llvm::sys::fs::create_directories(preamble_dir);
-        if(ec) {
-            LOG_WARN("resolve_header_context: cannot create dir {}: {}",
-                     preamble_dir,
-                     ec.message());
-            return std::nullopt;
-        }
-        if(auto result = fs::write(preamble_path, preamble); !result) {
-            LOG_WARN("resolve_header_context: cannot write preamble {}: {}",
-                     preamble_path,
-                     result.error().message());
-            return std::nullopt;
-        }
-        LOG_INFO("resolve_header_context: wrote preamble {} for header path_id={}",
-                 preamble_path,
-                 header_path_id);
+    auto stored_preamble = store_blob(std::format("{:016x}", preamble_hash), preamble);
+    if(!stored_preamble) {
+        return std::nullopt;
     }
+    auto preamble_path = std::move(*stored_preamble);
     record_synthesized_host(preamble_path, host_path_id);
 
     // The suffix restores everything after the include position (closing
@@ -720,15 +734,11 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(Fid header_
     std::string suffix_path;
     if(!synthesized->suffix.empty()) {
         auto suffix_hash = llvm::xxh3_64bits(llvm::StringRef(synthesized->suffix));
-        suffix_path = path::join(preamble_dir, std::format("{:016x}.suffix.h", suffix_hash));
-        if(!llvm::sys::fs::exists(suffix_path)) {
-            if(auto result = fs::write(suffix_path, synthesized->suffix); !result) {
-                LOG_WARN("resolve_header_context: cannot write suffix {}: {}",
-                         suffix_path,
-                         result.error().message());
-                return std::nullopt;
-            }
+        auto stored = store_blob(std::format("{:016x}.suffix", suffix_hash), synthesized->suffix);
+        if(!stored) {
+            return std::nullopt;
         }
+        suffix_path = std::move(*stored);
         record_synthesized_host(suffix_path, host_path_id);
     }
 

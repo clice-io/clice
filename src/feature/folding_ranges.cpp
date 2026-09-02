@@ -280,6 +280,7 @@ private:
                 case Condition::BranchKind::Ifdef:
                 case Condition::BranchKind::Ifndef:
                 case Condition::BranchKind::Elif:
+                case Condition::BranchKind::Elifdef:
                 case Condition::BranchKind::Elifndef: stack.push_back(&condition); break;
 
                 case Condition::BranchKind::Else: {
@@ -299,8 +300,6 @@ private:
                         (void)stack.pop_back_val();
                     }
                     break;
-
-                default: break;
             }
         }
     }

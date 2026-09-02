@@ -10,6 +10,7 @@
 #include "semantic/decls.h"
 #include "semantic/semantics.h"
 #include "semantic/symbol.h"
+#include "syntax/lexer.h"
 #include "syntax/token.h"
 
 #include "llvm/ADT/DenseMap.h"
@@ -281,15 +282,7 @@ private:
             semantic = it->second;
         }
 
-        /// Semantic classification beats the lexical directive kinds; any
-        /// other disagreement is a Conflict, matching the historical rule.
-        Classified result = semantic;
-        if(result.kind == SymbolKind::Invalid) {
-            result = lexical;
-        } else if(lexical.kind != SymbolKind::Invalid && lexical.kind != SymbolKind::Directive &&
-                  lexical.kind != SymbolKind::Header && lexical.kind != result.kind) {
-            result.kind = SymbolKind::Conflict;
-        }
+        Classified result = settle(semantic, lexical);
 
         /// Unclassified tokens in an inactive region (bare identifiers,
         /// punctuation) still need a token to carry the Inactive modifier
@@ -329,8 +322,7 @@ private:
                 }
 
                 auto spelling = content.substr(offset, token.length());
-                if(spelling == "include" || spelling == "include_next" || spelling == "import" ||
-                   spelling == "embed") {
+                if(takes_header_name(spelling)) {
                     directive_context = DirectiveContext::InIncludeName;
                 } else if(spelling == "define") {
                     directive_context = DirectiveContext::AfterDefine;
@@ -626,15 +618,7 @@ private:
         if(inactive(range)) {
             modifiers |= SymbolModifiers::to_mask(SymbolModifiers::Inactive);
         }
-        if(!tokens.empty()) {
-            auto& last = tokens.back();
-            if(last.range.end == range.begin && last.kind == kind && last.modifiers == modifiers) {
-                last.range.end = range.end;
-                return;
-            }
-        }
-
-        tokens.push_back({.range = range, .kind = kind, .modifiers = modifiers});
+        append_token(tokens, range, kind, modifiers);
     }
 
     enum class DirectiveContext : std::uint8_t {

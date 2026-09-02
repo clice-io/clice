@@ -23,11 +23,10 @@
 namespace clice {
 
 bool Workspace::is_synthesized_artifact(llvm::StringRef path) const {
-    if(config.project.cache_dir.empty()) {
+    if(!store) {
         return false;
     }
-    auto artifact_dir = path::join(config.project.cache_dir, "header_context");
-    return path.starts_with(artifact_dir);
+    return path.starts_with(path::join(store->base_dir(), header_context_ns));
 }
 
 std::uint32_t Workspace::count_occurrences(Fid host_id, Fid target_id) const {

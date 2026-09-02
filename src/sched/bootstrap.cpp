@@ -44,8 +44,10 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
                                        .extension = ".pcm",
                                        .policy = CachePolicy::LRU,
                                        .max_bytes = 8 * GiB});
-            cache->register_namespace(
-                {.name = "header_context", .extension = ".h", .policy = CachePolicy::Scratch});
+            cache->register_namespace({.name = std::string(header_context_ns),
+                                       .extension = ".h",
+                                       .policy = CachePolicy::LRU,
+                                       .max_bytes = 1 * GiB});
             workspace.store.emplace(std::move(*cache));
             // A read-only bootstrap opens the index database read-only:
             // no writer lock (a concurrent server or index run keeps

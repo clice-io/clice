@@ -506,14 +506,14 @@ bool is_preamble_complete(llvm::StringRef content, std::uint32_t bound) {
     llvm::SmallVector<Token, 8> line;
 
     auto line_complete = [&] {
-        // A #include/#import directive is complete once it has a terminated
-        // filename argument (or a macro identifier standing in for one).
+        // A header-name directive (#include, #embed, ...) is complete once
+        // it has a terminated filename argument (or a macro identifier
+        // standing in for one).
         if(line.front().is_directive_hash()) {
             if(line.size() < 2 || !line[1].is_identifier()) {
                 return true;
             }
-            auto keyword = line[1].text(content);
-            if(keyword != "include" && keyword != "include_next" && keyword != "import") {
+            if(!takes_header_name(line[1].text(content))) {
                 return true;
             }
             if(line.size() < 3) {

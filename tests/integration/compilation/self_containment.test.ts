@@ -6,25 +6,14 @@
 /// only the final diagnostics are published. Verdicts and user context
 /// choices persist across server sessions via the index database.
 
-import * as fs from "node:fs";
-import * as path from "node:path";
 import { MTIME_GRANULARITY, sleep } from "@clice/tools/client";
 import type { Workspace } from "@clice/tools/workspace";
 import { expect, test } from "../fixtures.ts";
 
 function prefixFiles(workspace: Workspace): string[] {
-    const prefixDir = workspace.path(path.join(".clice", "header_context"));
-    if (!fs.existsSync(prefixDir)) {
-        return [];
-    }
-    return fs
-        .readdirSync(prefixDir)
-        .filter(
-            (name) =>
-                name.endsWith(".h") && !name.endsWith(".suffix.h") && !name.endsWith(".self.h"),
-        )
-        .sort()
-        .map((name) => path.join(prefixDir, name));
+    return workspace
+        .headerContextFiles()
+        .filter((file) => !file.endsWith(".suffix.h") && !file.endsWith(".self.h"));
 }
 
 test("self contained skips synthesis", async ({ session }) => {

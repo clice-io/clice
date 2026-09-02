@@ -216,15 +216,6 @@ private:
     std::optional<IndexQuery::Cursor> cursor_at(Fid path_id,
                                                 const protocol::Position& position) const;
 
-    /// The document's rows extracted for the projections, plus the
-    /// resolver the projections share.
-    struct IndexRows {
-        std::vector<index::Occurrence> occurrences;
-        std::vector<feature::IndexDeclRow> decls;
-    };
-
-    static IndexRows extract_rows(const index::Shard& shard);
-
     /// The lexing dialect of a session's index projections. An explicit -x
     /// in the file's own CDB entry decides outright; a header follows its
     /// active context's host when one exists; otherwise C when the file is

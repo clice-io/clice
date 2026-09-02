@@ -62,20 +62,6 @@ LocalSourceRange to_local(const index::Occurrence& occurrence) {
     return {occurrence.range.begin, occurrence.range.end};
 }
 
-/// A definition's extent within one source's rows, or nullopt when the
-/// rows carry no in-bounds Definition payload for the symbol.
-std::optional<LocalSourceRange> definition_extent(const RowSource& source, index::SymbolHash hash) {
-    std::optional<LocalSourceRange> extent;
-    source.rows->lookup(hash, RelationKind::Definition, [&](const index::Relation& r) {
-        auto def_range = std::bit_cast<LocalSourceRange>(r.target_symbol);
-        if(def_range.begin >= def_range.end || def_range.end > source.coords.size())
-            return true;
-        extent = def_range;
-        return false;
-    });
-    return extent;
-}
-
 std::string extract_line(llvm::StringRef content, std::uint32_t offset) {
     if(content.empty() || offset >= content.size())
         return {};
@@ -677,70 +663,34 @@ std::optional<llvm::StringRef>
 }
 
 std::optional<IndexQuery::Definition> IndexQuery::definition_text(index::SymbolHash hash) const {
+    // Live sources first: buffer-true rows also know symbols the project
+    // table has never seen (an unsaved definition), the preamble region
+    // holds the buffer's own macros, and an overlay is the only source for
+    // a header seen under the live context. The first in-bounds Definition
+    // payload whose text is available wins.
     std::optional<Definition> found;
-    auto slice = [&](const RowSource& source) {
-        auto extent = definition_extent(source, hash);
-        if(!extent) {
-            return false;
-        }
-        std::unique_ptr<llvm::MemoryBuffer> storage;
-        auto text = source_text(source, storage);
-        if(!text) {
-            return false;
-        }
-        found = Definition{
-            .extent = source.site(*extent),
-            .text = std::string(text->substr(extent->begin, extent->length())),
-            .comment = feature::preceding_comment(*text, extent->begin),
-        };
-        return true;
-    };
-
-    // Live sources first, in the first-hit order: buffer-true rows also
-    // know symbols the project table has never seen (an unsaved
-    // definition), the preamble region holds the buffer's own macros, and
-    // an overlay is the only source for a header seen under the live
-    // context.
-    visit_sessions([&](Fid path_id, const Session& session) -> bool {
-        return !slice(session_source(path_id, session));
-    });
-    if(found) {
-        return found;
-    }
-    visit_preambles([&](Fid path_id, const Session& session, const index::TUIndex& state) -> bool {
-        return !slice(preamble_source(path_id, session, state));
-    });
-    if(found) {
-        return found;
-    }
-    visit_overlays([&](const index::TUIndex& state) -> bool {
-        visit_overlay_files(state, [&](const RowSource& source) { return !slice(source); });
-        return !found;
-    });
-    if(found) {
-        return found;
-    }
-
-    auto it = workspace.project_index.symbols.find(hash);
-    if(it == workspace.project_index.symbols.end()) {
-        return std::nullopt;
-    }
-    for(auto file_id: it->second.reference_files) {
-        Fid file{file_id};
-        auto serving = serving_source(file);
-        if(serving.by != ServingSource::By::ShardAsClosed) {
-            continue;
-        }
-        RowSource source{.kind = RowSource::Kind::Shard,
-                         .file = file,
-                         .path = workspace.file_table.resolve(file),
-                         .rows = serving.rows,
-                         .coords = serving.coords};
-        if(slice(source)) {
-            return found;
-        }
-    }
-    return std::nullopt;
+    for_each_relation(hash,
+                      RelationKind::Definition,
+                      Order::LiveFirst,
+                      {},
+                      [&](const RowSource& source, const index::Relation& relation) {
+                          auto extent = std::bit_cast<LocalSourceRange>(relation.target_symbol);
+                          if(extent.begin >= extent.end || extent.end > source.coords.size()) {
+                              return true;
+                          }
+                          std::unique_ptr<llvm::MemoryBuffer> storage;
+                          auto text = source_text(source, storage);
+                          if(!text) {
+                              return true;
+                          }
+                          found = Definition{
+                              .extent = source.site(extent),
+                              .text = std::string(text->substr(extent.begin, extent.length())),
+                              .comment = feature::preceding_comment(*text, extent.begin),
+                          };
+                          return false;
+                      });
+    return found;
 }
 
 std::string IndexQuery::context_line(const Site& site) const {
