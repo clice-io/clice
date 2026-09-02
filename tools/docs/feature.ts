@@ -161,16 +161,18 @@ function parseFixture(filePath: string, featureDir: string, problems: string[]):
     // title with the fixture's subdirectory as the legacy section fallback.
     let section = "";
     let title = "";
+    let used = 1;
     if (second?.startsWith("## ")) {
         section = first.slice(2).trim();
         title = second.slice(3).trim();
+        used = 2;
     } else {
         title = first.slice(2).trim();
         section = relParts.length >= 2 ? (relParts[0] ?? "") : "";
     }
-    if (header.headings.length > 2) {
+    for (const heading of header.headings.slice(used)) {
         problems.push(
-            `${filePath}: unexpected heading '${header.headings[2] ?? ""}' ` +
+            `${filePath}: unexpected heading '${heading}' ` +
                 "(a doc header has an '# section' and at most one '## title')",
         );
     }

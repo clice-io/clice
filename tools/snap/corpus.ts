@@ -70,7 +70,8 @@ export interface FixtureHeader {
     /// The file's lines after any plain-`//` prologue (license or
     /// attribution comments belong to neither the header nor the example).
     lines: string[];
-    /// The `#` heading lines opening the block, comment prefix stripped.
+    /// The markdown heading lines opening the block, comment prefix
+    /// stripped.
     headings: string[];
     /// The `- key: value` list after the headings, in order; keys and
     /// duplicates unchecked.
@@ -107,7 +108,12 @@ function stripComment(line: string): string {
     return text;
 }
 
+const HEADING_RE = /^#{1,6}(?:\s|$)/;
 const META_RE = /^-\s+(\w+):\s*(.*)$/;
+/// Looser than META_RE on purpose: a misspelled entry (`- Snap:`, `- snap :`)
+/// must open the header and error rather than leave the fixture silently on
+/// defaults, while a bullet without a colon is prose.
+const ENTRY_RE = /^-\s+[^:]+:/;
 
 export function scanFixtureHeader(content: string): FixtureHeader {
     const all = splitLines(content);
@@ -147,13 +153,13 @@ export function scanFixtureHeader(content: string): FixtureHeader {
     const first = (lines[opening] ?? "").trimStart().startsWith("///")
         ? stripComment(lines[opening] ?? "").trim()
         : "";
-    if (!first.startsWith("#") && !first.startsWith("- ")) {
+    if (!HEADING_RE.test(first) && !ENTRY_RE.test(first)) {
         return header;
     }
     // The headings and the blank lines around them.
     for (let line = comment(); line !== null; line = comment()) {
         const text = line.trim();
-        if (text.startsWith("#")) {
+        if (HEADING_RE.test(text)) {
             header.headings.push(text);
         } else if (text !== "") {
             break;

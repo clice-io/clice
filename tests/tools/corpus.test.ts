@@ -183,6 +183,23 @@ test("fixture header scanning", () => {
     const doc = scanFixtureHeader("/// Documents f.\n/// - not: a key\nint f();\n");
     expect(doc).toMatchObject({ headings: [], meta: [], malformed: [], bodyStart: 0 });
     expect(parseFixtureMeta("/// Documents f.\nint f();\n", "f")).toEqual(DEFAULTS);
+    // So are a bullet without a colon and a `#` line that is no heading.
+    for (const prose of ["/// - first bullet\nint f();\n", "/// #include usage\nint f();\n"]) {
+        expect(scanFixtureHeader(prose)).toMatchObject({
+            headings: [],
+            malformed: [],
+            bodyStart: 0,
+        });
+        expect(parseFixtureMeta(prose, "f")).toEqual(DEFAULTS);
+    }
+    // A colon-bearing bullet is an entry attempt even when misspelled.
+    expect(() => parseFixtureMeta("/// - snap : skip\n", "f")).toThrow(
+        "malformed fixture meta line",
+    );
+    // Headings are markdown headings of any level; `##x` is not one.
+    const levels = scanFixtureHeader("/// # T\n/// ### Sub\n/// ##x\n");
+    expect(levels.headings).toEqual(["# T", "### Sub"]);
+    expect(levels.malformed).toEqual(["##x"]);
     // Blank `///` lines before the opening heading are skipped.
     expect(scanFixtureHeader("///\n/// # T\n///\n/// - snap: skip\n").headings).toEqual(["# T"]);
     expect(parseFixtureMeta("///\n/// - snap: skip\n", "f").snap).toBe("skip");
