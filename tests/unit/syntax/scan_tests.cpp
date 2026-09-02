@@ -374,6 +374,18 @@ TEST_CASE(IncludeWithNoPath) {
     EXPECT_FALSE(is_preamble_complete(content, bound));
 }
 
+TEST_CASE(IncompleteEmbed) {
+    llvm::StringRef content = "#embed <data\nint x;";
+    auto bound = compute_preamble_bound(content);
+    EXPECT_FALSE(is_preamble_complete(content, bound));
+}
+
+TEST_CASE(CompleteEmbed) {
+    llvm::StringRef content = "#embed \"data.bin\" limit(4)\nint x;";
+    auto bound = compute_preamble_bound(content);
+    EXPECT_TRUE(is_preamble_complete(content, bound));
+}
+
 TEST_CASE(IncludeMacroUsage) {
     llvm::StringRef content = "#include FOO\nint x;";
     auto bound = compute_preamble_bound(content);

@@ -126,7 +126,9 @@ export interface StatsResult {
     indexShardContentBytes: number;
     lastSaveShards: number;
     pendingTmpFiles: number;
-    [key: string]: number;
+    pchCacheEntries: number;
+    headerContexts: number;
+    sessions: number;
 }
 
 export const StatsRequest = new RequestType0<StatsResult, void>("clice/internal/stats");

@@ -156,6 +156,16 @@ export class Workspace {
         return this.globCache("pcm", ".pcm");
     }
 
+    /// The cache store's namespace of synthesized header-context files
+    /// (preamble `<hash>.h`, `<hash>.suffix.h`, `<hash>.self.h`).
+    headerContextDir(): string {
+        return path.join(this.cacheRoot(), "header_context");
+    }
+
+    headerContextFiles(): string[] {
+        return this.globCache("header_context", ".h");
+    }
+
     /// In-flight tmp files of all store instances. Committed blobs appear
     /// atomically, so anything under tmp/ is either an in-flight write of a
     /// live server or crash residue awaiting cleanup.

@@ -333,7 +333,7 @@ test("reopen reuses preamble", async ({ session }) => {
     expect(switched.success).toBe(true);
     await client.waitForRecompile(defUri);
 
-    const artifactDir = workspace.path(path.join(".clice", "header_context"));
+    const artifactDir = workspace.headerContextDir();
     const snapshot = snapshotMtimes(artifactDir);
     expect(Object.keys(snapshot).length, "expected synthesized preamble artifacts").toBeGreaterThan(
         0,
@@ -348,6 +348,50 @@ test("reopen reuses preamble", async ({ session }) => {
 
     const after = snapshotMtimes(artifactDir);
     expect(after, "reopen must reuse the preamble, not re-synthesize").toEqual(snapshot);
+});
+
+/// A synthesized preamble wiped from the cache while the server runs (a
+/// user resetting state, or the store's own budget) is re-synthesized on
+/// the header's next compile instead of reaching clang as a missing
+/// -include.
+test("wiped artifacts resynthesize", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("list.def", "X(alpha)\nX(beta)\n");
+    workspace.write(
+        "main.cpp",
+        "#define X(name) int name = 1;\n" +
+            '#include "list.def"\n' +
+            "#undef X\n" +
+            "#define X(name) void get_##name();\n" +
+            '#include "list.def"\n' +
+            "#undef X\n" +
+            "int main() { return alpha; }\n",
+    );
+    workspace.writeCDB(["main.cpp"]);
+    await client.initialize(workspace);
+
+    const [mainUri] = await client.openAndWait("main.cpp");
+    const [defUri] = await client.openAndWait("list.def");
+    const switched = await client.switchContext(defUri, mainUri, { occurrence: 1 });
+    expect(switched.success).toBe(true);
+    await client.waitForRecompile(defUri);
+    client.assertCleanCompile(defUri);
+
+    const artifactDir = workspace.headerContextDir();
+    const before = Object.keys(snapshotMtimes(artifactDir)).sort();
+    expect(before.length, "expected synthesized preamble artifacts").toBeGreaterThan(0);
+    for (const name of before) {
+        fs.rmSync(path.join(artifactDir, name));
+    }
+
+    client.change(defUri, 2, "X(alpha)\nX(beta)\nX(gamma)\n");
+    await client.waitForRecompile(defUri);
+    client.assertCleanCompile(defUri);
+    // Content-addressed: the header's current context synthesizes the same
+    // file names again; the other occurrence's files stay gone until used.
+    const after = Object.keys(snapshotMtimes(artifactDir));
+    expect(after.length, "expected re-synthesized artifacts").toBeGreaterThan(0);
+    expect(before).toEqual(expect.arrayContaining(after));
 });
 
 /// Reopening a header after its chain file changed on disk must NOT
@@ -375,7 +419,7 @@ test("chain change resynthesizes", async ({ session }) => {
     expect(switched.success).toBe(true);
     await client.waitForRecompile(defUri);
 
-    const artifactDir = workspace.path(path.join(".clice", "header_context"));
+    const artifactDir = workspace.headerContextDir();
     const snapshot = snapshotMtimes(artifactDir);
     expect(Object.keys(snapshot).length, "expected synthesized preamble artifacts").toBeGreaterThan(
         0,

@@ -208,6 +208,25 @@ private:
     /// stat fast paths in place (see deps_changed).
     bool is_stale(const Session& session);
 
+    /// What a buffer state owes the PCH family: nothing (an empty
+    /// preamble with no injected prefix — a previously adopted key must
+    /// be cleared), a deferral (the preamble is mid-edit and nothing
+    /// fresh exists under its key: keep `previous`, the last adopted key,
+    /// while its artifact is still built), or the acquisition of
+    /// `request`.
+    struct PCHPlan {
+        enum class Verdict : std::uint8_t { None, Defer, Acquire };
+
+        Verdict verdict = Verdict::None;
+        PCHFamily::Request request;
+        std::optional<std::string> previous;
+    };
+
+    PCHPlan plan_pch(Fid path_id,
+                     llvm::StringRef text,
+                     const std::string& directory,
+                     const std::vector<std::string>& arguments);
+
     /// Revalidate or build the session's preamble PCH through the family
     /// and adopt its key under the request's license (see
     /// prepare_stateless_inputs). This request is the dispatch owner when

@@ -230,19 +230,25 @@ void TaskGraph::declare(NodeId id, llvm::ArrayRef<NodeId> deps) {
     set_durable_edges(id, unique);
 }
 
+void TaskGraph::record_candidate(NodeId self, NodeId dep) {
+    auto round = nodes.find(self)->second.round;
+    if(ranges::contains(round->candidates, dep)) {
+        return;
+    }
+    round->candidates.push_back(dep);
+    acquire(dep);
+    nodes.find(dep)->second.candidate_dependents.push_back(self);
+    // Re-find: acquire may rehash the map.
+    if(nodes.find(self)->second.foreground) {
+        mark_foreground(dep);
+    }
+}
+
 void TaskGraph::reference_from(NodeId self, NodeId dep) {
     if(dep == self) {
         return;
     }
-    auto round = nodes.find(self)->second.round;
-    if(!ranges::contains(round->candidates, dep)) {
-        round->candidates.push_back(dep);
-        acquire(dep);
-        nodes.find(dep)->second.candidate_dependents.push_back(self);
-        if(nodes.find(self)->second.foreground) {
-            mark_foreground(dep);
-        }
-    }
+    record_candidate(self, dep);
 }
 
 kota::task<DependResult> TaskGraph::depend_from(NodeId self,
@@ -256,16 +262,7 @@ kota::task<DependResult> TaskGraph::depend_from(NodeId self,
     // Synchronous phase: the edge takes effect for cascade, interest and
     // foreground the moment it is declared — no window between "the round
     // uses dep" and "update(dep) reaches the round".
-    auto round = nodes.find(self)->second.round;
-    if(!ranges::contains(round->candidates, dep)) {
-        round->candidates.push_back(dep);
-        acquire(dep);
-        nodes.find(dep)->second.candidate_dependents.push_back(self);
-        // Re-find: acquire may rehash the map.
-        if(nodes.find(self)->second.foreground) {
-            mark_foreground(dep);
-        }
-    }
+    record_candidate(self, dep);
 
     // Race the dependency wait against this round's own advisory token: a
     // voided round must stop blocking on slow dependencies and wind down,

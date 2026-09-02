@@ -1,5 +1,9 @@
 #pragma once
 
+#include <cstdint>
+#include <vector>
+
+#include "feature/feature.h"
 #include "semantic/symbol.h"
 
 #include "llvm/ADT/StringRef.h"
@@ -29,6 +33,38 @@ inline void combine(Classified& result, Classified candidate) {
     if(result.kind != candidate.kind) {
         result.kind = SymbolKind::Conflict;
     }
+}
+
+/// A token's classification once the semantic layer has spoken: the
+/// semantic kind when there is one, the lexical kind otherwise. A
+/// semantic kind beats the lexical directive kinds (a macro named in an
+/// `#ifdef` is a macro); any other disagreement is a Conflict.
+inline Classified settle(Classified semantic, Classified lexical) {
+    if(semantic.kind == SymbolKind::Invalid) {
+        return lexical;
+    }
+    if(lexical.kind != SymbolKind::Invalid && lexical.kind != SymbolKind::Directive &&
+       lexical.kind != SymbolKind::Header && lexical.kind != semantic.kind) {
+        semantic.kind = SymbolKind::Conflict;
+    }
+    return semantic;
+}
+
+/// Append a token to a document's stream, extending the previous token
+/// instead when the two abut with the same kind and modifiers: one token
+/// per colored span, however the lexer split it.
+inline void append_token(std::vector<SemanticToken>& tokens,
+                         LocalSourceRange range,
+                         SymbolKind kind,
+                         std::uint32_t modifiers) {
+    if(!tokens.empty()) {
+        auto& last = tokens.back();
+        if(last.range.end == range.begin && last.kind == kind && last.modifiers == modifiers) {
+            last.range.end = range.end;
+            return;
+        }
+    }
+    tokens.push_back({.range = range, .kind = kind, .modifiers = modifiers});
 }
 
 /// Lexical classification of one token, shared by the AST semantic-token

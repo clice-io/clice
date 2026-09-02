@@ -351,6 +351,11 @@ private:
     /// already exist.
     void set_durable_edges(NodeId id, llvm::ArrayRef<NodeId> deps);
 
+    /// Register `dep` in the current round's candidate set of `self`: one
+    /// interest reference, the back-edge, and foreground propagation, all
+    /// at once. Idempotent per round.
+    void record_candidate(NodeId self, NodeId dep);
+
     /// RoundContext::depend() body.
     kota::task<DependResult> depend_from(NodeId self, kota::cancellation_token token, NodeId dep);
 

@@ -1,3 +1,4 @@
+#include <format>
 #include <string>
 #include <vector>
 
@@ -16,6 +17,8 @@
 #include "server/service/query.h"
 #include "server/state/ast_projection.h"
 #include "server/state/session_store.h"
+#include "support/cache_store.h"
+#include "support/filesystem.h"
 #include "worker/pool.h"
 
 #include "kota/ipc/lsp/text.h"
@@ -552,18 +555,25 @@ int main() { §(ref)⟦foo⟧(); return 0; }
 }
 
 TEST_CASE(SynthesizedArtifactSkipped) {
-    workspace.config.project.cache_dir = TestVFS::root();
-    add_file("header_context/gen.h", R"(
-inline void §(def)⟦gen⟧() {}
+    auto store = CacheStore::open(dir.path("cache"), cache_format_version);
+    ASSERT_TRUE(store.has_value());
+    store->register_namespace({.name = std::string(header_context_ns), .extension = ".h"});
+    workspace.store.emplace(std::move(*store));
+
+    // The header lives inside the store's synthesized-artifact namespace:
+    // its overlay rows must never send the user into the cache.
+    auto header = path::join(workspace.store->base_dir(), header_context_ns, "gen.h");
+    add_file(header, R"(
+inline void gen() {}
 )");
-    add_main("main.cpp", R"(
-#include "header_context/gen.h"
-int main() { §(ref)⟦gen⟧(); return 0; }
-)");
+    add_main("main.cpp",
+             std::format(R"(
+#include "{}"
+int main() {{ gen(); return 0; }}
+)",
+                         header));
     open_with_overlay();
 
-    // The header lives inside the synthesized-artifact directory: its
-    // overlay rows must never send the user into the cache.
     EXPECT_FALSE(index_query.first_site(hash_of("gen"), RelationKind::Definition).has_value());
 }
 

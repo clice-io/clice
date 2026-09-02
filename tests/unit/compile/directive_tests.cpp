@@ -173,6 +173,36 @@ TEST_CASE(Condition) {
     EXPECT_CON(7, Condition::BranchKind::EndIf, "7");
 };
 
+TEST_CASE(ElifndefBranches) {
+    run(R"cpp(
+#[main.cpp]
+#define other
+#§(0)ifdef name
+#§(1)elifndef name
+#§(2)else
+#§(3)endif
+
+#§(4)ifdef name
+#§(5)elifndef other
+#§(6)else
+#§(7)endif
+)cpp");
+
+    ASSERT_EQ(conditions.size(), 8U);
+    EXPECT_CON(0, Condition::BranchKind::Ifdef, "0");
+    EXPECT_CON(1, Condition::BranchKind::Elifndef, "1");
+    EXPECT_CON(2, Condition::BranchKind::Else, "2");
+    EXPECT_CON(3, Condition::BranchKind::EndIf, "3");
+    EXPECT_CON(4, Condition::BranchKind::Ifdef, "4");
+    EXPECT_CON(5, Condition::BranchKind::Elifndef, "5");
+    EXPECT_CON(6, Condition::BranchKind::Else, "6");
+    EXPECT_CON(7, Condition::BranchKind::EndIf, "7");
+    // The recorded value is the branch truth: an #elifndef of an undefined
+    // macro is taken, of a defined one is not.
+    EXPECT_EQ(int(conditions[1].value), int(Condition::True));
+    EXPECT_EQ(int(conditions[5].value), int(Condition::False));
+};
+
 TEST_CASE(Macro) {
     run(R"cpp(
 #[main.cpp]

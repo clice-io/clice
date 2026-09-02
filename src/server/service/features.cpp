@@ -126,26 +126,6 @@ std::optional<IndexQuery::Cursor> Features::cursor_at(Fid path_id,
     return query.symbol_at(path_id, *offset);
 }
 
-Features::IndexRows Features::extract_rows(const index::Shard& shard) {
-    IndexRows rows;
-    shard.for_each_occurrence([&](const index::Occurrence& occurrence) {
-        rows.occurrences.push_back(occurrence);
-        return true;
-    });
-    shard.for_each_relation([&](index::SymbolHash hash, const index::Relation& relation) {
-        RelationKind kind(relation.kind);
-        if(kind.isDeclOrDef()) {
-            auto copy = relation;
-            rows.decls.push_back({.range = relation.range,
-                                  .extent = copy.definition_range(),
-                                  .symbol = hash,
-                                  .definition = kind.is_one_of(RelationKind::Definition)});
-        }
-        return true;
-    });
-    return rows;
-}
-
 /// The language selectors of a file's CDB entry: what the last -x forces,
 /// if any (the driver override beats every suffix heuristic), and the
 /// last -std value. Rules applied, like the resolve path's effective
@@ -554,7 +534,7 @@ Features::RawResult Features::semantic_tokens(std::shared_ptr<Session> session,
     switch(co_await pick_route(ticket, /*full_lex=*/true, &source)) {
         case Route::Superseded: co_return kota::outcome_error(content_modified());
         case Route::Index: {
-            auto rows = extract_rows(*source.rows);
+            auto rows = feature::extract_index_rows(*source.rows);
             auto tokens = feature::index_semantic_tokens(
                 session->text,
                 index_lang_options(*session),
@@ -611,7 +591,7 @@ Features::RawResult Features::folding_range(std::shared_ptr<Session> session,
     switch(co_await pick_route(ticket, /*full_lex=*/true, &source)) {
         case Route::Superseded: co_return kota::outcome_error(content_modified());
         case Route::Index: {
-            auto rows = extract_rows(*source.rows);
+            auto rows = feature::extract_index_rows(*source.rows);
             auto folds = feature::index_folding_ranges(
                 session->text,
                 index_lang_options(*session),
@@ -648,7 +628,7 @@ Features::RawResult Features::document_symbol(std::shared_ptr<Session> session,
         switch(co_await pick_route(ticket, /*full_lex=*/false, &source)) {
             case Route::Superseded: co_return kota::outcome_error(content_modified());
             case Route::Index: {
-                auto rows = extract_rows(*source.rows);
+                auto rows = feature::extract_index_rows(*source.rows);
                 auto symbols =
                     feature::index_document_symbols(rows.decls, [&](index::SymbolHash hash) {
                         return query.symbol_info(hash);

@@ -51,22 +51,10 @@ static kota::codec::RawValue quarantine_diagnostics(unsigned crashes) {
     return kota::codec::RawValue{json ? std::move(*json) : "[]"};
 }
 
-/// The PCH acquisition plan of a buffer state: whether a PCH is owed at
-/// all, and the request that identifies/builds it when so. Shared by the
-/// AST round (depend path) and the stateless build path (acquire path).
-struct PCHPlan {
-    /// False when the preamble is empty and no prefix is injected — a
-    /// PCH would be empty, and a previously adopted key must be cleared.
-    bool wanted = false;
-    PCHFamily::Request request;
-};
-
-static PCHPlan plan_pch(Workspace& workspace,
-                        ContextResolver& contexts,
-                        Fid path_id,
-                        llvm::StringRef text,
-                        const std::string& directory,
-                        const std::vector<std::string>& arguments) {
+ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
+                                       llvm::StringRef text,
+                                       const std::string& directory,
+                                       const std::vector<std::string>& arguments) {
     auto path = workspace.file_table.resolve(path_id);
     auto bound = compute_preamble_bound(text);
     auto* header_context = contexts.header_context(path_id);
@@ -99,16 +87,31 @@ static PCHPlan plan_pch(Workspace& workspace,
                               path::parent_path(path),
                               preamble_text,
                               canonicalize(arguments, ArgsProfile::Frontend)});
+    if(!pch.fresh(pch_key) && !is_preamble_complete(text, bound)) {
+        // Preamble incomplete (user still typing) and nothing fresh to
+        // adopt under the new key: defer the rebuild, keep using the
+        // previously adopted PCH while its artifact is still available.
+        LOG_DEBUG("Preamble incomplete for {}, deferring PCH rebuild", path);
+        PCHPlan plan{.verdict = PCHPlan::Verdict::Defer};
+        if(auto previous = projections.projection(path_id); previous && previous->pch_key) {
+            auto it = workspace.pch_cache.find(*previous->pch_key);
+            if(it != workspace.pch_cache.end() && !it->second.path.empty()) {
+                plan.previous = previous->pch_key;
+            }
+        }
+        return plan;
+    }
     return {
-        .wanted = true,
-        .request = {
-                    .pch_key = std::move(pch_key),
-                    .file = std::string(path),
-                    .directory = directory,
-                    .arguments = arguments,
-                    .content = std::string(text),
-                    .preamble_bound = bound,
-                    }
+        .verdict = PCHPlan::Verdict::Acquire,
+        .request =
+            {
+                      .pch_key = std::move(pch_key),
+                      .file = std::string(path),
+                      .directory = directory,
+                      .arguments = arguments,
+                      .content = std::string(text),
+                      .preamble_bound = bound,
+                      },
     };
 }
 
@@ -518,26 +521,12 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         // degradation: the compile proceeds preamble-less.
         std::optional<std::string> adopted_pch;
         if(readonly != ReadonlyMode::On) {
-            auto plan = plan_pch(workspace,
-                                 contexts,
-                                 path_id,
-                                 params.text,
-                                 params.directory,
-                                 params.arguments);
-            if(plan.wanted) {
-                auto pch_key = plan.request.pch_key;
-                if(!pch.fresh(pch_key) &&
-                   !is_preamble_complete(params.text, plan.request.preamble_bound)) {
-                    // Preamble incomplete (user still typing) and nothing
-                    // fresh to adopt under the new key — defer the
-                    // rebuild, keep using the previous PCH if it is still
-                    // available.
-                    LOG_DEBUG("Preamble incomplete for {}, deferring PCH rebuild", file_path);
-                    if(auto previous = projections.projection(path_id);
-                       previous && previous->pch_key.has_value()) {
-                        adopted_pch = previous->pch_key;
-                    }
-                } else {
+            auto plan = plan_pch(path_id, params.text, params.directory, params.arguments);
+            switch(plan.verdict) {
+                case PCHPlan::Verdict::None: break;
+                case PCHPlan::Verdict::Defer: adopted_pch = plan.previous; break;
+                case PCHPlan::Verdict::Acquire: {
+                    auto pch_key = plan.request.pch_key;
                     // This round is the dispatch owner when its depend
                     // spawns the PCH round: the probe pins every worker
                     // death of the build on this document (the preamble is
@@ -568,6 +557,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                         case DependResult::Failed: break;
                         case DependResult::Cancelled: co_return RoundOutcome::Stale;
                     }
+                    break;
                 }
             }
         }
@@ -886,26 +876,13 @@ kota::task<bool> ASTFamily::ensure_pch(const std::shared_ptr<Session>& session,
         co_return false;
     }
 
-    auto plan = plan_pch(workspace, contexts, path_id, session->text, directory, arguments);
-    if(!plan.wanted) {
-        projections.set_pch_key(path_id, std::nullopt);
-        co_return true;
+    auto plan = plan_pch(path_id, session->text, directory, arguments);
+    switch(plan.verdict) {
+        case PCHPlan::Verdict::None: projections.set_pch_key(path_id, std::nullopt); co_return true;
+        case PCHPlan::Verdict::Defer: co_return plan.previous.has_value();
+        case PCHPlan::Verdict::Acquire: break;
     }
     auto pch_key = plan.request.pch_key;
-
-    // Preamble incomplete (user still typing) and nothing fresh to adopt
-    // under the new key — defer the rebuild, keep using the previously
-    // adopted PCH if it is still available.
-    if(!pch.fresh(pch_key) && !is_preamble_complete(session->text, plan.request.preamble_bound)) {
-        LOG_DEBUG("Preamble incomplete for {}, deferring PCH rebuild",
-                  workspace.file_table.resolve(path_id));
-        auto projection = projections.projection(path_id);
-        if(projection && projection->pch_key.has_value()) {
-            auto it = workspace.pch_cache.find(*projection->pch_key);
-            co_return it != workspace.pch_cache.end() && !it->second.path.empty();
-        }
-        co_return false;
-    }
 
     // Joiners of an already-running round install nothing and replay
     // nothing; only the dispatch owner's probe pins the build's deaths.

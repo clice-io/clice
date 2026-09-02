@@ -4,6 +4,7 @@
 
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "compile/compilation_unit.h"
@@ -1011,6 +1012,9 @@ auto format_offset(std::uint64_t offset_in_bits) -> std::string {
     return offset;
 }
 
+/// The noun a hover card heads its title with; empty for the lexical
+/// kinds no card is about. Exhaustive so a new kind fails to compile
+/// rather than silently lose its noun.
 auto symbol_kind_string(SymbolKind kind) -> llvm::StringRef {
     switch(kind) {
         case SymbolKind::Module: return "module";
@@ -1029,8 +1033,26 @@ auto symbol_kind_string(SymbolKind kind) -> llvm::StringRef {
         case SymbolKind::Parameter: return "parameter";
         case SymbolKind::Label: return "label";
         case SymbolKind::Macro: return "macro";
-        default: return "";
+        case SymbolKind::MacroParameter:
+        case SymbolKind::Comment:
+        case SymbolKind::Number:
+        case SymbolKind::Character:
+        case SymbolKind::String:
+        case SymbolKind::Keyword:
+        case SymbolKind::Directive:
+        case SymbolKind::Header:
+        case SymbolKind::Attribute:
+        case SymbolKind::Operator:
+        case SymbolKind::Paren:
+        case SymbolKind::Bracket:
+        case SymbolKind::Brace:
+        case SymbolKind::Angle:
+        case SymbolKind::Conflict:
+        case SymbolKind::Primitive:
+        case SymbolKind::Invalid:
+        case SymbolKind::Identifier: return "";
     }
+    std::unreachable();
 }
 
 /// If the backtick at the offset starts a probable quoted range, return the

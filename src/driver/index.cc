@@ -12,11 +12,9 @@
 #include "sched/index/store.h"
 #include "sched/workspace.h"
 #include "support/cache_store.h"
-#include "support/filesystem.h"
 #include "support/timer.h"
 
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/Support/FileSystem.h"
 
 namespace clice::driver {
 
@@ -340,15 +338,7 @@ void add_index(kota::deco::cli::SubCommander& root, int& exit_code, const char* 
                return;
            logging::stderr_logger("index", logging::options);
 
-           llvm::SmallString<256> workspace(opts.workspace.value_or(""));
-           if(workspace.empty()) {
-               llvm::sys::fs::current_path(workspace);
-           } else {
-               llvm::sys::fs::make_absolute(workspace);
-           }
-           std::string ws(workspace.str());
-           path::canonicalize(ws);
-
+           auto ws = workspace_root(opts.workspace.value_or(""));
            if(opts.stats) {
                exit_code = run_stats(ws, opts.top.value_or(20));
                return;

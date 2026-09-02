@@ -565,22 +565,10 @@ kota::task<> MasterServer::shutdown_and_cleanup() {
     // Quiesce in-flight compilation and indexing first so the persisted
     // snapshot below covers everything that actually completed.
     co_await kota::when_all(pump.stop(), ast.stop());
-    // Requests have unwound and released their interest; wind down the
-    // graph's rounds before the persistence pass and the pool stop
-    // (contract 11: quiesce -> final save -> pool/store).
-    co_await graph.shutdown();
-    auto report = co_await index_store.save(pump.save_debt());
-    pump.claim_report(report);
-    if(report.snapshot_stale) {
-        // Debt surfaced after the snapshot serialized (write-time
-        // corruption recovery): one metadata retry, or a dropped
-        // standalone header's repair debt dies with this process.
-        pump.claim_report(co_await index_store.save(pump.save_debt()));
-    }
-    co_await pool.stop();
-    if(workspace.store) {
-        workspace.store->shutdown();
-    }
+    // Requests have unwound and released their interest; the shared tail
+    // winds down the graph's rounds before the persistence pass and the
+    // pool stop.
+    co_await shutdown_indexing(graph, pump, index_store, pool, workspace);
     lifecycle = ServerLifecycle::Exited;
 }
 
@@ -627,7 +615,12 @@ void MasterServer::drain_store_evictions() {
     // lifetime even for keys never requested again. An entry mid-rebuild
     // keeps its slot — its commit republishes fresh blobs over the
     // eviction.
+    bool artifacts_evicted = false;
     for(auto& evicted: workspace.store->take_evictions()) {
+        if(evicted.ns == header_context_ns) {
+            artifacts_evicted = true;
+            continue;
+        }
         if(evicted.ns != "pch") {
             continue;
         }
@@ -642,6 +635,9 @@ void MasterServer::drain_store_evictions() {
            it != workspace.pch_cache.end() && !pch.building(evicted.key)) {
             workspace.pch_cache.erase(it);
         }
+    }
+    if(artifacts_evicted) {
+        contexts.drop_evicted_artifacts();
     }
 }
 

@@ -359,22 +359,26 @@ export function registerCompilationContext(client: ClientHandle, ext: vscode.Ext
         }
     }
 
-    // X-macro style fragments (.def/.inc/.inl/...) open as plain text and
-    // never reach the language server. If clice knows the file is included
-    // by some C++ TU (it has compilation contexts), flip its language so
-    // the whole toolchain attaches.
+    // X-macro style fragments (.def/.inc/...) open as plain text and never
+    // reach the language server. If clice knows the file is included by
+    // some C++ TU (it has compilation contexts), flip its language so the
+    // whole toolchain attaches. Which files count is the server's call —
+    // the query is the whole check, one cheap lookup per plain-text open.
     async function detectCxxFragment(document: vscode.TextDocument) {
-        if (document.languageId !== "plaintext" || resyncing.has(document.uri.toString())) {
-            return;
-        }
-        if (!/\.(def|inc|inl|tpp|ipp)$/.test(document.uri.fsPath)) {
+        const uri = document.uri.toString();
+        const awaitingDetection = () =>
+            !document.isClosed && document.languageId === "plaintext" && !resyncing.has(uri);
+        if (!awaitingDetection()) {
             return;
         }
         try {
             const query = await client.sendRequest<QueryContextResult>("clice/queryContext", {
-                uri: document.uri.toString(),
+                uri,
             });
-            if (query.total > 0) {
+            // The document may have moved on while the query was in flight:
+            // closed, re-languaged by the user, or entered a resync whose
+            // plaintext hop must not be pinned to cpp.
+            if (query.total > 0 && awaitingDetection()) {
                 await vscode.languages.setTextDocumentLanguage(document, "cpp");
             }
         } catch {

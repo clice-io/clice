@@ -457,6 +457,37 @@ static kota::codec::RawValue handle_format(const worker::FormatParams& params) {
     return to_raw(edits);
 }
 
+/// Register the handler of one request type. Each request arms a fresh
+/// stop flag as the most recent build's — published before the
+/// pool-thread hop so a CancelBuild aimed at it still lands — and runs
+/// the handler on the pool thread. A cancellation (peer close, wire-level
+/// $/cancelRequest) dequeues work that has not started, which answers
+/// `cancelled`; work already on the pool thread learns through the hook:
+/// the flag doubles as CompilationParams::stop, which clang polls after
+/// every top-level declaration, so even the parse itself stops instead of
+/// running to completion for a result nobody will read.
+template <typename Params, typename Result, typename Handler>
+static void serve(kota::ipc::BincodePeer& peer,
+                  std::shared_ptr<std::atomic_bool>& build_stop,
+                  Result cancelled,
+                  Handler handler) {
+    peer.on_request([&build_stop,
+                     cancelled,
+                     handler](RequestContext&, const Params& params) -> RequestResult<Params> {
+        auto stop = std::make_shared<std::atomic_bool>(false);
+        build_stop = stop;
+        auto result = co_await kota::queue(
+            [&]() -> Result {
+                if(stop->load(std::memory_order_relaxed)) {
+                    return cancelled;
+                }
+                return handler(params, stop);
+            },
+            [stop] { stop->store(true, std::memory_order_relaxed); });
+        co_return result.value();
+    });
+}
+
 int run_stateless_worker_mode(const std::string& worker_name, const std::string& log_dir) {
     // Limit libuv thread pool to 1 thread so each stateless worker executes
     // only one compilation at a time. Must be set before any kota::queue call.
@@ -507,105 +538,27 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
         }
     });
 
-    // A cancellation (peer close, wire-level $/cancelRequest) dequeues
-    // work that has not started; work already on the pool thread learns
-    // through the hook: the shared flag doubles as CompilationParams::
-    // stop, which clang polls after every top-level declaration, so even
-    // the parse itself stops instead of running to completion for a
-    // result nobody will read.
-    auto arm_stop = [&build_stop] {
-        auto stop = std::make_shared<std::atomic_bool>(false);
-        build_stop = stop;
-        return stop;
-    };
-
-    peer.on_request(
-        [&](RequestContext& ctx,
-            const worker::BuildPCHParams& params) -> RequestResult<worker::BuildPCHParams> {
-            auto stop = arm_stop();
-            auto result = co_await kota::queue(
-                [&]() -> worker::ArtifactBuildResult {
-                    if(stop->load(std::memory_order_relaxed)) {
-                        return {false, "Build cancelled"};
-                    }
-                    return handle_build_pch(params, stop);
-                },
-                [stop] { stop->store(true, std::memory_order_relaxed); });
-            co_return result.value();
+    const worker::ArtifactBuildResult cancelled_build{.success = false, .error = "Build cancelled"};
+    serve<worker::BuildPCHParams>(peer, build_stop, cancelled_build, &handle_build_pch);
+    serve<worker::BuildPCMParams>(peer, build_stop, cancelled_build, &handle_build_pcm);
+    serve<worker::TURunParams>(
+        peer,
+        build_stop,
+        worker::TURunResult{.success = false, .error = "Build cancelled"},
+        [](const worker::TURunParams& params, const std::shared_ptr<std::atomic_bool>& stop) {
+            ScopedNice guard;
+            return handle_turun(params, stop);
         });
-
-    peer.on_request(
-        [&](RequestContext& ctx,
-            const worker::BuildPCMParams& params) -> RequestResult<worker::BuildPCMParams> {
-            auto stop = arm_stop();
-            auto result = co_await kota::queue(
-                [&]() -> worker::ArtifactBuildResult {
-                    if(stop->load(std::memory_order_relaxed)) {
-                        return {false, "Build cancelled"};
-                    }
-                    return handle_build_pcm(params, stop);
-                },
-                [stop] { stop->store(true, std::memory_order_relaxed); });
-            co_return result.value();
+    const kota::codec::RawValue cancelled_query{"null"};
+    serve<worker::CompletionParams>(peer, build_stop, cancelled_query, &handle_completion);
+    serve<worker::SignatureHelpParams>(peer, build_stop, cancelled_query, &handle_signature_help);
+    serve<worker::FormatParams>(
+        peer,
+        build_stop,
+        cancelled_query,
+        [](const worker::FormatParams& params, const std::shared_ptr<std::atomic_bool>&) {
+            return handle_format(params);
         });
-
-    peer.on_request([&](RequestContext& ctx,
-                        const worker::TURunParams& params) -> RequestResult<worker::TURunParams> {
-        auto stop = arm_stop();
-        auto result = co_await kota::queue(
-            [&]() -> worker::TURunResult {
-                if(stop->load(std::memory_order_relaxed)) {
-                    return {false, "Build cancelled"};
-                }
-                ScopedNice guard;
-                return handle_turun(params, stop);
-            },
-            [stop] { stop->store(true, std::memory_order_relaxed); });
-        co_return result.value();
-    });
-
-    peer.on_request(
-        [&](RequestContext& ctx,
-            const worker::CompletionParams& params) -> RequestResult<worker::CompletionParams> {
-            auto stop = arm_stop();
-            auto result = co_await kota::queue(
-                [&]() -> kota::codec::RawValue {
-                    if(stop->load(std::memory_order_relaxed)) {
-                        return kota::codec::RawValue{"null"};
-                    }
-                    return handle_completion(params, stop);
-                },
-                [stop] { stop->store(true, std::memory_order_relaxed); });
-            co_return result.value();
-        });
-
-    peer.on_request([&](RequestContext& ctx, const worker::SignatureHelpParams& params)
-                        -> RequestResult<worker::SignatureHelpParams> {
-        auto stop = arm_stop();
-        auto result = co_await kota::queue(
-            [&]() -> kota::codec::RawValue {
-                if(stop->load(std::memory_order_relaxed)) {
-                    return kota::codec::RawValue{"null"};
-                }
-                return handle_signature_help(params, stop);
-            },
-            [stop] { stop->store(true, std::memory_order_relaxed); });
-        co_return result.value();
-    });
-
-    peer.on_request([&](RequestContext& ctx,
-                        const worker::FormatParams& params) -> RequestResult<worker::FormatParams> {
-        auto stop = arm_stop();
-        auto result = co_await kota::queue(
-            [&]() -> kota::codec::RawValue {
-                if(stop->load(std::memory_order_relaxed)) {
-                    return kota::codec::RawValue{"null"};
-                }
-                return handle_format(params);
-            },
-            [stop] { stop->store(true, std::memory_order_relaxed); });
-        co_return result.value();
-    });
 
     LOG_INFO("Stateless worker ready, waiting for requests");
     loop.schedule(peer.run());

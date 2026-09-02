@@ -24,6 +24,15 @@ struct LexerOptions {
     const clang::LangOptions* lang_opts = nullptr;
 };
 
+/// Whether a directive keyword takes a header-name argument: `#include`,
+/// `#include_next`, `#import` and `#embed`. The lexer switches to
+/// header-name mode after one, and every consumer hunting the filename
+/// token keys on the same set.
+inline bool takes_header_name(llvm::StringRef keyword) {
+    return keyword == "include" || keyword == "include_next" || keyword == "import" ||
+           keyword == "embed";
+}
+
 /// A pull-style wrapper over clang's raw lexer with just enough
 /// preprocessor awareness for scanning: directive lines are terminated by
 /// eod tokens, directive keywords are flagged via Token::is_pp_keyword, and

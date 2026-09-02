@@ -82,8 +82,7 @@ void Lexer::lex(Token& token) {
         auto kw = token.text(content);
         // `import` here is the directive form (`#import`), which takes a
         // filename; a module import never sets parse_pp_keyword.
-        parse_header_name =
-            kw == "include" || kw == "include_next" || kw == "embed" || kw == "import";
+        parse_header_name = takes_header_name(kw);
     }
 
     // The __has_include family takes a parenthesized filename argument the

@@ -2,10 +2,7 @@
 
 #include "driver/driver.h"
 #include "sched/batch.h"
-#include "support/filesystem.h"
 #include "support/logging.h"
-
-#include "llvm/Support/FileSystem.h"
 
 namespace clice::driver {
 
@@ -101,16 +98,7 @@ void add_lint(kota::deco::cli::SubCommander& root, int& exit_code, const char* s
                return;
            logging::stderr_logger("lint", logging::options);
 
-           llvm::SmallString<256> workspace(opts.workspace.value_or(""));
-           if(workspace.empty()) {
-               llvm::sys::fs::current_path(workspace);
-           } else {
-               llvm::sys::fs::make_absolute(workspace);
-           }
-           std::string ws(workspace.str());
-           path::canonicalize(ws);
-
-           exit_code = run_lint(std::move(ws),
+           exit_code = run_lint(workspace_root(opts.workspace.value_or("")),
                                 opts.workers.value_or(0),
                                 static_cast<bool>(opts.index),
                                 self_path);

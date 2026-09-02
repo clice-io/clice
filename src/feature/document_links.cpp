@@ -38,8 +38,7 @@ auto find_directive_argument(llvm::StringRef content,
             // A directive keyword only counts before the first match; a
             // later one is a macro standing in for the filename (legal
             // pre-C++20 even for one literally named `import`).
-            if(!after_keyword && (text == "include" || text == "include_next" || text == "import" ||
-                                  text == "embed")) {
+            if(!after_keyword && takes_header_name(text)) {
                 after_keyword = true;
                 continue;
             }
