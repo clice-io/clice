@@ -21,15 +21,15 @@
 /// list, the description) is read by scanFixtureHeader in
 /// tools/snap/corpus.ts, which the snap suite shares; the keys it may
 /// carry are FIXTURE_META_KEYS there. A file is a doc item iff the header
-/// opens with an `# ` heading; anything else is a supplementary edge-case
-/// test, excluded from docs. With an `## item title` under the h1, the h1
-/// names the doc section the item belongs to — matched verbatim against
-/// the doc page's generated-region key (`<!-- BEGIN GENERATED ITEMS: Fold
-/// Kinds -->`); an h1 alone is the item title, with the fixture's
-/// subdirectory as the legacy section fallback. This tool renders `status`
-/// (required; `supported`, `partial` or `unsupported`), `issues` and
-/// `order`; the other keys drive the snapshot suites. Everything after the
-/// last `///` line (trimmed of blank lines) is the example code.
+/// opens with an h1 (`#`) heading; anything else is a supplementary
+/// edge-case test, excluded from docs. With an `## item title` under the
+/// h1, the h1 names the doc section the item belongs to — matched verbatim
+/// against the doc page's generated-region key (`<!-- BEGIN GENERATED
+/// ITEMS: Fold Kinds -->`); an h1 alone is the item title, with the
+/// fixture's subdirectory as the legacy section fallback. This tool renders
+/// `status` (required; `supported`, `partial` or `unsupported`), `issues`
+/// and `order`; the other keys drive the snapshot suites. Everything after
+/// the last `///` line (trimmed of blank lines) is the example code.
 ///
 /// `partial` items render unchecked with a _(partial)_ marker but are still
 /// compiled and snapshotted, so the snapshot records the current partial
@@ -43,7 +43,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { REPO_ROOT } from "../compile_commands.ts";
 import { parseAnnotations } from "../snap/annotation.ts";
-import { C_FAMILY, FIXTURE_META_KEYS, scanFixtureHeader } from "../snap/corpus.ts";
+import { C_FAMILY, FIXTURE_META_KEYS, headingLevel, scanFixtureHeader } from "../snap/corpus.ts";
 import { renderMarkdownTable, rewriteRegions, type RegionMarkers } from "./generated.ts";
 
 // feature -> doc path (relative to repo root). Extend as more features
@@ -141,7 +141,7 @@ function parseIntStrict(value: string): number | null {
 function parseFixture(filePath: string, featureDir: string, problems: string[]): Fixture | null {
     const header = scanFixtureHeader(fs.readFileSync(filePath, "utf8"));
     const [first, second] = header.headings;
-    if (!first?.startsWith("# ")) {
+    if (first === undefined || headingLevel(first) !== 1) {
         // Not an h1 heading: supplementary fixture, not a doc item.
         return null;
     }
@@ -162,12 +162,12 @@ function parseFixture(filePath: string, featureDir: string, problems: string[]):
     let section = "";
     let title = "";
     let used = 1;
-    if (second?.startsWith("## ")) {
-        section = first.slice(2).trim();
-        title = second.slice(3).trim();
+    if (second !== undefined && headingLevel(second) === 2) {
+        section = first.slice(1).trim();
+        title = second.slice(2).trim();
         used = 2;
     } else {
-        title = first.slice(2).trim();
+        title = first.slice(1).trim();
         section = relParts.length >= 2 ? (relParts[0] ?? "") : "";
     }
     for (const heading of header.headings.slice(used)) {

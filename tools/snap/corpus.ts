@@ -79,8 +79,8 @@ export interface FixtureHeader {
     /// Lines inside the list that are not entries: a misspelled entry must
     /// error, not silently end the list on defaults.
     malformed: string[];
-    /// The stripped `///` lines after the list's blank separator: the
-    /// markdown description.
+    /// The stripped `///` lines from the blank separator after the list
+    /// (or after the headings, without a list): the markdown description.
     description: string[];
     /// Index into `lines` of the first line after the block.
     bodyStart: number;
@@ -108,12 +108,18 @@ function stripComment(line: string): string {
     return text;
 }
 
-const HEADING_RE = /^#{1,6}(?:\s|$)/;
+const HEADING_RE = /^(#{1,6})(?:\s|$)/;
 const META_RE = /^-\s+(\w+):\s*(.*)$/;
 /// Looser than META_RE on purpose: a misspelled entry (`- Snap:`, `- snap :`)
 /// must open the header and error rather than leave the fixture silently on
 /// defaults, while a bullet without a colon is prose.
 const ENTRY_RE = /^-\s+[^:]+:/;
+
+/// The level of a markdown heading line (`## Title` is 2); 0 for any
+/// other text.
+export function headingLevel(text: string): number {
+    return HEADING_RE.exec(text)?.[1]?.length ?? 0;
+}
 
 export function scanFixtureHeader(content: string): FixtureHeader {
     const all = splitLines(content);
@@ -153,18 +159,27 @@ export function scanFixtureHeader(content: string): FixtureHeader {
     const first = (lines[opening] ?? "").trimStart().startsWith("///")
         ? stripComment(lines[opening] ?? "").trim()
         : "";
-    if (!HEADING_RE.test(first) && !ENTRY_RE.test(first)) {
+    if (headingLevel(first) === 0 && !ENTRY_RE.test(first)) {
         return header;
     }
     // The headings and the blank lines around them.
+    let headingsEnd = 0;
     for (let line = comment(); line !== null; line = comment()) {
         const text = line.trim();
-        if (HEADING_RE.test(text)) {
+        if (headingLevel(text) > 0) {
             header.headings.push(text);
+            headingsEnd = i + 1;
         } else if (text !== "") {
             break;
         }
         i += 1;
+    }
+    // No list: when the line after the headings' blank separator is not an
+    // entry attempt, the description starts at that separator. (Without a
+    // separator the line is in list position, and malformed.)
+    const next = comment();
+    if (next !== null && i > headingsEnd && !ENTRY_RE.test(next.trim())) {
+        i = headingsEnd;
     }
     // The metadata list, up to its blank separator. Any `- something:` here
     // is an entry attempt (a misspelled key must error), anything else is

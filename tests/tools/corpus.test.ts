@@ -6,6 +6,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { expect, test } from "vitest";
 import {
+    headingLevel,
     orphanSnapshots,
     parseFixtureMeta,
     scanFixtureHeader,
@@ -200,6 +201,16 @@ test("fixture header scanning", () => {
     const levels = scanFixtureHeader("/// # T\n/// ### Sub\n/// ##x\n");
     expect(levels.headings).toEqual(["# T", "### Sub"]);
     expect(levels.malformed).toEqual(["##x"]);
+    expect(["# T", "##\tT", "###", "##x", "- x: y"].map(headingLevel)).toEqual([1, 2, 3, 0, 0]);
+    // Without a list, the blank `///` after the headings separates the
+    // description (bullets in it are prose); unseparated prose is a
+    // malformed entry.
+    const prose = scanFixtureHeader("/// # T\n///\n/// Documents T.\n/// - a: bullet\nint x;\n");
+    expect(prose).toMatchObject({ headings: ["# T"], meta: [], malformed: [] });
+    expect(prose.description).toEqual(["", "Documents T.", "- a: bullet"]);
+    expect(prose.lines[prose.bodyStart]).toBe("int x;");
+    expect(parseFixtureMeta("/// # T\n///\n/// Documents T.\n", "f")).toEqual(DEFAULTS);
+    expect(scanFixtureHeader("/// # T\n/// Documents T.\n").malformed).toEqual(["Documents T."]);
     // Blank `///` lines before the opening heading are skipped.
     expect(scanFixtureHeader("///\n/// # T\n///\n/// - snap: skip\n").headings).toEqual(["# T"]);
     expect(parseFixtureMeta("///\n/// - snap: skip\n", "f").snap).toBe("skip");
