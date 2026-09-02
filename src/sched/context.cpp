@@ -203,16 +203,38 @@ void ContextResolver::load_choice_slices(
     for(auto& entry: artifacts) {
         auto file = resolve(entry.file);
         auto host = resolve(entry.host);
-        // A file the store evicted since (or a wiped cache) has nothing
-        // left to open under the host's command.
-        if(file.empty() || host.empty() || !llvm::sys::fs::exists(file))
+        if(file.empty() || host.empty())
             continue;
+        // A file the store evicted since (or a wiped cache) has nothing
+        // left to open under the host's command; the record leaves the
+        // blob with the next save.
+        if(!llvm::sys::fs::exists(file)) {
+            workspace.mark_contexts_dirty();
+            continue;
+        }
         synthesized_hosts[file] = workspace.file_table.intern(host);
     }
 }
 
+/// Whether the store still serves a synthesized file: a blob the budget
+/// evicted, or a directory wiped from outside, must not reach a compile
+/// command. The lookup also refreshes the blob's last use, so a context
+/// in service never ages out under the budget.
+static bool artifact_alive(Workspace& workspace, llvm::StringRef path) {
+    if(path.empty()) {
+        return true;
+    }
+    auto served = workspace.store->lookup(header_context_ns, llvm::sys::path::stem(path));
+    return served && llvm::sys::fs::exists(*served);
+}
+
+static bool artifacts_alive(Workspace& workspace, const HeaderContext& context) {
+    return artifact_alive(workspace, context.preamble_path) &&
+           artifact_alive(workspace, context.suffix_path) &&
+           artifact_alive(workspace, context.snapshot_path);
+}
+
 void ContextResolver::drop_evicted_artifacts() {
-    header_contexts.clear();
     llvm::SmallVector<std::string> gone;
     for(auto& entry: synthesized_hosts) {
         if(!llvm::sys::fs::exists(entry.getKey())) {
@@ -307,7 +329,7 @@ bool ContextResolver::fill_header_context_args(llvm::StringRef path,
                                     cached->host_base_hash != choice->base_hash);
             bool mode_mismatch = cached->preamble_path.empty() == synthesize;
             auto wave = workspace.file_table.wave();
-            if(override_mismatch || mode_mismatch ||
+            if(override_mismatch || mode_mismatch || !artifacts_alive(workspace, *cached) ||
                deps_changed(workspace.file_table, cached->deps)) {
                 drop_header_context(path_id);
             }
@@ -577,6 +599,7 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(Fid header_
                              "",
                              0,
                              "",
+                             "",
                              occurrence.value_or(0),
                              std::move(host_command_hash),
                              std::move(host_base_hash),
@@ -670,7 +693,11 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(Fid header_
     // header finds its preamble — and the PCH keyed on that path — intact,
     // and the store's budget bounds what a long-lived cache accumulates.
     auto store_blob = [&](std::string key, llvm::StringRef content) -> std::optional<std::string> {
-        if(auto hit = workspace.store->lookup(header_context_ns, key)) {
+        // A hit is the manifest's word; the file may have been wiped from
+        // outside (the store survives that), so a missing one is
+        // republished under its key.
+        if(auto hit = workspace.store->lookup(header_context_ns, key);
+           hit && llvm::sys::fs::exists(*hit)) {
             return hit;
         }
         auto pending = workspace.store->begin_store(header_context_ns, key);
@@ -762,6 +789,7 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(Fid header_
                          preamble_path,
                          preamble_hash,
                          std::move(suffix_path),
+                         std::move(self_snapshot_path),
                          occurrence.value_or(0),
                          std::move(host_command_hash),
                          std::move(host_base_hash),

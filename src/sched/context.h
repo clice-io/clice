@@ -114,10 +114,9 @@ public:
         header_contexts.erase(path_id);
     }
 
-    /// The store evicted synthesized files. Any resolved context may
-    /// embed one (its preamble includes the self snapshot), so every
-    /// context re-resolves on its next compile, and the host records of
-    /// the files gone from disk are dropped.
+    /// The store evicted synthesized files: drop the host records of the
+    /// files gone from disk. A resolved context checks its own files on
+    /// every reuse, so none needs dropping here.
     void drop_evicted_artifacts();
 
     /// Drop the header context's dependency fast paths so the next use

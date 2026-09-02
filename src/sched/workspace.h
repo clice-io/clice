@@ -82,6 +82,11 @@ struct HeaderContext {
     /// trailing #include line. Empty when the suffix is empty.
     std::string suffix_path;
 
+    /// Path to the disk snapshot of the header itself, which the prefix
+    /// includes in place of the header's other occurrences along the
+    /// chain. Empty when the header could not be read.
+    std::string snapshot_path;
+
     /// Which include of this header in its direct includer produced the
     /// preamble (0-based, in directive order).
     std::uint32_t occurrence = 0;
