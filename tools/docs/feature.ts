@@ -351,25 +351,7 @@ function collectFixtures(feature: string, problems: string[]): Fixture[] {
     const dataDir = fs.existsSync(snapDir)
         ? snapDir
         : path.join(REPO_ROOT, "tests", "data", feature);
-    const fixtures: Fixture[] = [];
-    const titles = new Map<string, string>();
-    for (const filePath of globCpp(dataDir)) {
-        const fx = parseFixture(filePath, dataDir, problems);
-        if (fx === null) {
-            continue;
-        }
-        // The page shows the name before the dash: two items differing
-        // only in their details would render as one heading twice.
-        const name = splitTitle(fx.title).name;
-        const prev = titles.get(name);
-        if (prev !== undefined) {
-            problems.push(`${filePath}: duplicate capability name '${name}' (also in ${prev})`);
-        } else {
-            titles.set(name, filePath);
-        }
-        fixtures.push(fx);
-    }
-    return fixtures;
+    return globCpp(dataDir).flatMap((filePath) => parseFixture(filePath, dataDir, problems) ?? []);
 }
 
 /// All *.cpp under dir at any depth, sorted by full path (matches
@@ -419,21 +401,23 @@ function processFeature(
 ): [string, string, string] {
     const docPath = path.join(REPO_ROOT, docRel);
 
-    // Corpora feeding one doc page must stay disjoint: a title duplicated
-    // across corpora would render twice (collectFixtures only checks
-    // within one corpus), and a section spanning two corpora would
-    // interleave their independently-sorted item order.
+    // The page shows the name before the dash: two items differing only
+    // in their details would render as one heading twice, whichever of
+    // the corpora feeding this page they come from. A section spanning
+    // two corpora would interleave their independently-sorted item order.
     const corpusOf = (fx: Fixture): string =>
         path.relative(REPO_ROOT, fx.path).split(path.sep)[2] ?? "";
-    const titleOwner = new Map<string, string>();
+    const nameOwner = new Map<string, string>();
     const sectionOwner = new Map<string, string>();
     for (const fx of fixtures) {
-        const corpus = corpusOf(fx);
-        const title = titleOwner.get(fx.title);
-        if (title !== undefined && title !== corpus) {
-            problems.push(`${fx.path}: title '${fx.title}' duplicates one in corpus '${title}'`);
+        const name = splitTitle(fx.title).name;
+        const prev = nameOwner.get(name);
+        if (prev !== undefined) {
+            problems.push(`${fx.path}: duplicate capability name '${name}' (also in ${prev})`);
+        } else {
+            nameOwner.set(name, fx.path);
         }
-        titleOwner.set(fx.title, corpus);
+        const corpus = corpusOf(fx);
         const section = sectionOwner.get(fx.section);
         if (section !== undefined && section !== corpus) {
             problems.push(

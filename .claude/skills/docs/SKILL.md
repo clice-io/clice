@@ -17,8 +17,9 @@ description: The clice documentation system — generated feature/config pages, 
   person or a model). Each zh page must stay **segment-isomorphic** to its
   en counterpart: same sequence of markdown blocks, translated text in the
   translatable blocks, code blocks and HTML comments byte-identical.
-  `check`, `report` and `record` never write these files; only an
-  explicit `translate <page>` overwrites the named zh page.
+  `check`, `report` and `record` never write these files;
+  `translate <page>` overwrites the named zh page, and `review` rewrites
+  the zh pages it is given — every zh page when given none.
 - `docs/meta/translations/` — one JSON per page pair: an ordered list of
   `{kind, en-hash, zh-hash}` pairs, each attesting "these two segments were
   last reviewed as translations of each other". Maintained exclusively by
