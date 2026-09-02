@@ -600,3 +600,22 @@ test("cache wiped while running", async ({ session }) => {
     client.assertCleanCompile(uri);
     expect(workspace.pchFiles().length, "PCH build must recover after a cache wipe").toBe(1);
 });
+
+/// Synthesized header-context files once lived directly under the cache
+/// root, outside the store. A directory an earlier version left there is
+/// removed at startup, so its files cannot be navigated into through the
+/// metadata that still names them; the store's own namespace is untouched.
+test("legacy header_context directory removed", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.pinCacheDir();
+    const legacy = workspace.path(path.join(".clice", "header_context"));
+    fs.mkdirSync(legacy, { recursive: true });
+    fs.writeFileSync(path.join(legacy, "0123456789abcdef.h"), "// stale prefix\n");
+    workspace.write("main.cpp", "int main() { return 0; }\n");
+    workspace.writeCDB(["main.cpp"]);
+    await client.initialize(workspace);
+    await client.openAndWait("main.cpp");
+
+    expect(fs.existsSync(legacy)).toBe(false);
+    expect(fs.existsSync(workspace.headerContextDir())).toBe(true);
+});

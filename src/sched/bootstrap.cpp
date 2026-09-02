@@ -48,6 +48,12 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
                                        .extension = ".h",
                                        .policy = CachePolicy::LRU,
                                        .max_bytes = 1 * GiB});
+            // Synthesized header-context files once lived directly under
+            // the cache root, outside the store. A directory an earlier
+            // version left there is regenerable, and its files would
+            // otherwise stay navigable through the metadata that names
+            // them.
+            fs::remove_all(path::join(cfg.cache_dir, header_context_ns));
             workspace.store.emplace(std::move(*cache));
             // A read-only bootstrap opens the index database read-only:
             // no writer lock (a concurrent server or index run keeps
