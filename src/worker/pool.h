@@ -152,6 +152,13 @@ public:
     /// Gracefully stop all workers.
     kota::task<> stop();
 
+    /// Whether foreground work is in flight right now — a stateful request
+    /// dispatched and unanswered, or high-priority stateless work queued or
+    /// running. The hold window only starts counting once this drains.
+    bool foreground_busy() const {
+        return stateful_inflight > 0 || !high_queue.empty() || high_busy_count() > 0;
+    }
+
     /// Send a request to a stateful worker with path_id affinity routing.
     /// A suspect dispatch's crash does not spend the slot's budget — the
     /// failure says something about the document, not the slot; see
@@ -566,12 +573,6 @@ private:
     std::size_t stateful_inflight = 0;
     std::chrono::steady_clock::time_point last_fg_activity{};
     std::uint64_t next_claim_epoch = 0;
-
-    /// Whether foreground work is in flight right now — the hold window
-    /// only starts counting once this drains.
-    bool foreground_busy() const {
-        return stateful_inflight > 0 || !high_queue.empty() || high_busy_count() > 0;
-    }
 
     /// Alive stateless slots busy with high-priority work.
     std::size_t high_busy_count() const;

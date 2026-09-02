@@ -860,9 +860,12 @@ TEST_CASE(StaleReplyLandsContentModified) {
             stale = !result.has_value() && result.error().code == content_modified_code;
         };
         group.spawn(tokens());
-        // Walking fifty thousand declarations keeps the reply in flight
-        // while the edit lands.
-        co_await kota::sleep(20);
+        // The pool reports the stateful request in flight the moment it is
+        // sent; bumping the generation after that observation puts the
+        // edit provably between dispatch and reply, whatever the machine.
+        while(!stack.pool.foreground_busy()) {
+            co_await kota::sleep(1);
+        }
         session->generation += 1;
         co_await group.join();
         EXPECT_TRUE(stale);
