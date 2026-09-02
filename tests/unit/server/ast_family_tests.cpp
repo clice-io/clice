@@ -860,12 +860,10 @@ TEST_CASE(StaleReplyLandsContentModified) {
             stale = !result.has_value() && result.error().code == content_modified_code;
         };
         group.spawn(tokens());
-        // The pool reports the stateful request in flight the moment it is
-        // sent; bumping the generation after that observation puts the
-        // edit provably between dispatch and reply, whatever the machine.
-        while(!stack.pool.foreground_busy()) {
-            co_await kota::sleep(1);
-        }
+        // spawn runs the query inline to that suspension, so the pool
+        // already reports it in flight: the bump lands provably between
+        // dispatch and reply.
+        CO_ASSERT_TRUE(stack.pool.foreground_busy());
         session->generation += 1;
         co_await group.join();
         EXPECT_TRUE(stale);
