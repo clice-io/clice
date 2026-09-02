@@ -11,27 +11,27 @@ clice 为代码中未显式给出的信息渲染内联标注：调用处的参�
 
 <!-- BEGIN GENERATED ITEMS: parameter_hints -->
 
-| 能力                   | 状态     | 问题                                                                                                                     |
-| ---------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------ |
-| 参数名提示             | 支持     |                                                                                                                          |
-| 提示抑制               | 支持     | [clangd#1877](https://github.com/clangd/clangd/issues/1877)                                                              |
-| Setter 与内建函数抑制  | 支持     |                                                                                                                          |
-| 可变引用标记           | 支持     | [clangd#1123](https://github.com/clangd/clangd/issues/1123)                                                              |
-| 转发解析               | 支持     | [clangd#2324](https://github.com/clangd/clangd/issues/2324)                                                              |
-| 定义中的名称           | 支持     |                                                                                                                          |
-| 函数指针与调用运算符   | 支持     | [clangd#1734](https://github.com/clangd/clangd/issues/1734), [clangd#1742](https://github.com/clangd/clangd/issues/1742) |
-| 推导 `this`            | 支持     | [clangd#1777](https://github.com/clangd/clangd/issues/1777)                                                              |
-| 依赖调用               | 支持     |                                                                                                                          |
-| 未展开的参数包         | 支持     |                                                                                                                          |
-| 调用处的宏             | 支持     | [clangd#2620](https://github.com/clangd/clangd/issues/2620)                                                              |
-| 隐式构造函数调用       | 支持     |                                                                                                                          |
-| 伪对象表达式           | 支持     |                                                                                                                          |
-| 显式实例化             | 支持     | [clangd#1034](https://github.com/clangd/clangd/issues/1034)                                                              |
-| 宽松名称匹配           | 部分支持 | [clangd#2248](https://github.com/clangd/clangd/issues/2248)                                                              |
-| 继承构造函数           | 部分支持 | [clangd#1364](https://github.com/clangd/clangd/issues/1364)                                                              |
-| 匿名参数               | 支持     |                                                                                                                          |
-| 运算符与字面量         | 支持     |                                                                                                                          |
-| 构造函数实参中的参数包 | 部分支持 |                                                                                                                          |
+| 能力                        | 状态     | 问题                                                                                                                     |
+| --------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------ |
+| 参数名提示                  | 支持     |                                                                                                                          |
+| 提示抑制                    | 支持     | [clangd#1877](https://github.com/clangd/clangd/issues/1877)                                                              |
+| Setter 与内建函数的提示抑制 | 支持     |                                                                                                                          |
+| 可变引用标记                | 支持     | [clangd#1123](https://github.com/clangd/clangd/issues/1123)                                                              |
+| 转发解析                    | 支持     | [clangd#2324](https://github.com/clangd/clangd/issues/2324)                                                              |
+| 来自定义的名称              | 支持     |                                                                                                                          |
+| 函数指针与调用运算符        | 支持     | [clangd#1734](https://github.com/clangd/clangd/issues/1734), [clangd#1742](https://github.com/clangd/clangd/issues/1742) |
+| 推导 `this`                 | 支持     | [clangd#1777](https://github.com/clangd/clangd/issues/1777)                                                              |
+| 依赖调用                    | 支持     |                                                                                                                          |
+| 未展开的参数包              | 支持     |                                                                                                                          |
+| 调用处的宏                  | 支持     | [clangd#2620](https://github.com/clangd/clangd/issues/2620)                                                              |
+| 隐式构造函数调用            | 支持     |                                                                                                                          |
+| 伪对象表达式                | 支持     |                                                                                                                          |
+| 显式实例化                  | 支持     | [clangd#1034](https://github.com/clangd/clangd/issues/1034)                                                              |
+| 宽松名称匹配                | 部分支持 | [clangd#2248](https://github.com/clangd/clangd/issues/2248)                                                              |
+| 继承构造函数                | 部分支持 | [clangd#1364](https://github.com/clangd/clangd/issues/1364)                                                              |
+| 匿名参数                    | 支持     |                                                                                                                          |
+| 运算符与字面量              | 支持     |                                                                                                                          |
+| 构造函数实参中的参数包      | 部分支持 |                                                                                                                          |
 
 ### 参数名提示
 
@@ -551,11 +551,11 @@ void use() {
 
 | 能力                              | 状态     | 问题                                                                                                                     |
 | --------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------ |
-| 由 `auto` 推导的变量              | 支持     |                                                                                                                          |
+| 类型由 `auto` 推导的变量          | 支持     |                                                                                                                          |
 | 类型语法糖与长度限制              | 支持     | [clangd#1298](https://github.com/clangd/clangd/issues/1298), [clangd#1357](https://github.com/clangd/clangd/issues/1357) |
 | 结构化绑定（structured bindings） | 支持     |                                                                                                                          |
 | Lambda                            | 支持     | [clangd#1163](https://github.com/clangd/clangd/issues/1163)                                                              |
-| 推导返回类型                      | 支持     |                                                                                                                          |
+| 推导出的返回类型                  | 支持     |                                                                                                                          |
 | `decltype` 写法                   | 支持     |                                                                                                                          |
 | `auto` 参数                       | 支持     |                                                                                                                          |
 | 显式写出的初始化器                | 部分支持 | [clangd#1749](https://github.com/clangd/clangd/issues/1749)                                                              |
@@ -611,7 +611,7 @@ void use() {
 }
 ```
 
-### 结构化绑定
+### 结构化绑定（structured bindings）
 
 每个绑定都会提示其规范类型；聚合体本身则不显示提示。
 
@@ -889,8 +889,8 @@ template struct Twice<int>;
 | 嵌套聚合体             | 支持   |                                                             |
 | 匿名成员               | 支持   |                                                             |
 | 指派符提示抑制         | 支持   |                                                             |
-| 仅限聚合体             | 支持   |                                                             |
-| 存在错误的初始化器     | 支持   |                                                             |
+| 仅限聚合类型           | 支持   |                                                             |
+| 无效的初始化器         | 支持   |                                                             |
 | 圆括号形式的聚合初始化 | 不支持 | [clangd#2540](https://github.com/clangd/clangd/issues/2540) |
 
 ### 字段和索引指派符
@@ -1017,7 +1017,7 @@ void use() {
 }
 ```
 
-### 括号聚合初始化
+### 圆括号形式的聚合初始化
 
 C++20 `Point(1, 2)` 尚不产生提示
 

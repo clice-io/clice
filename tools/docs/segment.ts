@@ -31,6 +31,16 @@ export interface Segment {
     /// segment when it is not translatable, otherwise the fenced code
     /// blocks nested inside it (a snap example under a capability's text).
     verbatim: Range[];
+    /// The name a heading or a table body row carries — the heading text,
+    /// the first cell — as markdown source; null elsewhere. A row and a
+    /// later heading with the same label in en name one thing (a
+    /// capability's status row and its section), so zh must keep them
+    /// equal too.
+    label: string | null;
+    /// Inline literals a translation carries over unchanged — inline code,
+    /// link and image destinations, issue references, frontmatter paths —
+    /// as a sorted set: prose may reorder or repeat them, not alter them.
+    literals: string[];
 }
 
 /// A segment enriched with everything comparisons need. `index` is the
@@ -45,6 +55,8 @@ export interface SegmentInfo {
     hash: string;
     line: number;
     verbatim: string[];
+    label: string | null;
+    literals: string[];
 }
 
 export const parser = unified().use(remarkParse).use(remarkGfm).use(remarkFrontmatter);
@@ -120,11 +132,11 @@ function shapeOf(node: Nodes, ordered: boolean, align = ""): string {
     }
 }
 
-/// Code blocks and HTML comments anywhere below `node` (inline code and
-/// other inline HTML are prose and may be reflowed by a translation). A
-/// code range starts at the beginning of the opening fence's line, so the
-/// list or blockquote prefix in front of the fence is compared too — it
-/// decides how much indentation is stripped from the block's lines.
+/// Code blocks and HTML comments anywhere below `node` (inline code may
+/// move with the prose; `literals` holds it to its value). A code range
+/// starts at the beginning of the opening fence's line, so the list or
+/// blockquote prefix in front of the fence is compared too — it decides
+/// how much indentation is stripped from the block's lines.
 function nestedVerbatim(node: Nodes, source: string, from: number, page: string): Range[] {
     const out: Range[] = [];
     const visit = (current: Nodes) => {
@@ -148,10 +160,118 @@ function nestedVerbatim(node: Nodes, source: string, from: number, page: string)
     return out;
 }
 
+/// Source text of a node's phrasing content — a heading without its
+/// markers, a table cell without its padding — or null when it is empty.
+function phrasingOf(node: Nodes, source: string, page: string): string | null {
+    if (!("children" in node)) {
+        return null;
+    }
+    const first = node.children.at(0);
+    const last = node.children.at(-1);
+    if (first === undefined || last === undefined) {
+        return null;
+    }
+    return source.slice(rangeOf(first, page).start, rangeOf(last, page).end);
+}
+
+function yamlStrings(value: unknown): string[] {
+    if (typeof value === "string") {
+        return [value];
+    }
+    if (Array.isArray(value)) {
+        return value.flatMap(yamlStrings);
+    }
+    if (value !== null && typeof value === "object") {
+        return Object.values(value as Record<string, unknown>).flatMap(yamlStrings);
+    }
+    return [];
+}
+
+/// Inline code, link and image destinations, issue references such as
+/// clangd#1455 in text, and path-like scalars of YAML frontmatter,
+/// anywhere below `node` except inside code blocks and comments.
+function inlineLiterals(node: Nodes): string[] {
+    const out = new Set<string>();
+    const visit = (current: Nodes) => {
+        switch (current.type) {
+            case "code":
+            case "html":
+                return;
+            case "inlineCode":
+                out.add(`\`${current.value}\``);
+                return;
+            case "link":
+            case "image":
+            case "definition":
+                out.add(current.url);
+                break;
+            case "text":
+                for (const match of current.value.matchAll(/[A-Za-z][\w-]*#\d+/g)) {
+                    out.add(match[0]);
+                }
+                return;
+            case "yaml": {
+                let parsed: unknown;
+                try {
+                    parsed = parseYaml(current.value);
+                } catch {
+                    return;
+                }
+                for (const value of yamlStrings(parsed)) {
+                    if (/^(\.{0,2}\/|https?:\/\/)/.test(value)) {
+                        out.add(value);
+                    }
+                }
+                return;
+            }
+            default:
+                break;
+        }
+        if ("children" in current) {
+            for (const child of current.children) {
+                visit(child);
+            }
+        }
+    };
+    visit(node);
+    return [...out].sort();
+}
+
+/// Table body rows paired with the nearest later heading carrying the
+/// same label: a feature page emits each capability as one status-table
+/// row and one section heading from one name. Index pairs into
+/// `segments`, in row order.
+export function pairedLabels(
+    segments: { kind: string; label: string | null }[],
+): [number, number][] {
+    const out: [number, number][] = [];
+    const taken = new Set<number>();
+    segments.forEach((row, r) => {
+        if (row.kind !== "tableRow" || row.label === null) {
+            return;
+        }
+        for (let h = r + 1; h < segments.length; h += 1) {
+            const candidate = segments.at(h);
+            if (candidate?.kind === "heading" && candidate.label === row.label && !taken.has(h)) {
+                taken.add(h);
+                out.push([r, h]);
+                return;
+            }
+        }
+    });
+    return out;
+}
+
 export function splitSegments(source: string, page: string): Segment[] {
     const tree = parser.parse(source);
     const segments: Segment[] = [];
-    const push = (node: RootContent, ordered: boolean, translatable: boolean, align = "") => {
+    const push = (
+        node: RootContent,
+        ordered: boolean,
+        translatable: boolean,
+        align = "",
+        label: string | null = null,
+    ) => {
         const range = rangeOf(node, page);
         // Take the indentation in front of a block along with it: for a
         // list item it decides how much is stripped from the lines below.
@@ -165,6 +285,8 @@ export function splitSegments(source: string, page: string): Segment[] {
             shape: shapeOf(node, ordered, align),
             translatable,
             verbatim: translatable ? nestedVerbatim(node, source, range.start, page) : [range],
+            label,
+            literals: translatable ? inlineLiterals(node) : [],
         });
     };
     for (const node of tree.children) {
@@ -179,11 +301,16 @@ export function splitSegments(source: string, page: string): Segment[] {
                 // node; it lands in the gap between rows and is not
                 // compared. Its alignment travels with each row's shape,
                 // so only dash count and padding may differ.
-                for (const row of node.children) {
-                    push(row, false, true, tableAlign(node));
-                }
+                node.children.forEach((row, r) => {
+                    const first = row.children.at(0);
+                    const label =
+                        r === 0 || first === undefined ? null : phrasingOf(first, source, page);
+                    push(row, false, true, tableAlign(node), label);
+                });
                 break;
             case "heading":
+                push(node, false, true, "", phrasingOf(node, source, page));
+                break;
             case "paragraph":
             case "blockquote":
                 push(node, false, true);
@@ -227,6 +354,8 @@ export function analyzeSource(source: string, page: string): SegmentInfo[] {
             hash: hashSegment(text),
             line: lineOf(source, segment.start),
             verbatim: segment.verbatim.map((range) => source.slice(range.start, range.end)),
+            label: segment.label,
+            literals: segment.literals,
         };
     });
 }

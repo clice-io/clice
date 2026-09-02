@@ -160,21 +160,21 @@ int sum = hidden + outer::nested;
 
 <!-- BEGIN GENERATED ITEMS: type_information -->
 
-| 能力                | 状态     | 问题                                                        |
-| ------------------- | -------- | ----------------------------------------------------------- |
-| 变量类型            | 支持     |                                                             |
-| 类型别名            | 支持     |                                                             |
-| 函数签名            | 支持     |                                                             |
-| 模板参数            | 支持     |                                                             |
-| `auto` 推导         | 支持     |                                                             |
-| `decltype` 推导     | 支持     |                                                             |
-| CTAD                | 部分支持 | [clangd#435](https://github.com/clangd/clangd/issues/435)   |
-| 实例化实参          | 部分支持 | [clangd#230](https://github.com/clangd/clangd/issues/230)   |
-| Lambda `auto` 参数  | 不支持   | [clangd#493](https://github.com/clangd/clangd/issues/493)   |
-| 保留语法糖的 `auto` | 支持     |                                                             |
-| 类型格式化          | 不支持   | [clangd#2156](https://github.com/clangd/clangd/issues/2156) |
-| 匿名结构体 typedef  | 支持     | [clangd#2219](https://github.com/clangd/clangd/issues/2219) |
-| Concept 约束        | 部分支持 |                                                             |
+| 能力               | 状态     | 问题                                                        |
+| ------------------ | -------- | ----------------------------------------------------------- |
+| 变量类型           | 支持     |                                                             |
+| 类型别名           | 支持     |                                                             |
+| 函数签名           | 支持     |                                                             |
+| 模板形参           | 支持     |                                                             |
+| `auto` 推导        | 支持     |                                                             |
+| `decltype` 推导    | 支持     |                                                             |
+| CTAD               | 部分支持 | [clangd#435](https://github.com/clangd/clangd/issues/435)   |
+| 实例化实参         | 部分支持 | [clangd#230](https://github.com/clangd/clangd/issues/230)   |
+| Lambda `auto` 形参 | 不支持   | [clangd#493](https://github.com/clangd/clangd/issues/493)   |
+| 带语法糖的 `auto`  | 支持     |                                                             |
+| 类型格式化         | 不支持   | [clangd#2156](https://github.com/clangd/clangd/issues/2156) |
+| 匿名结构体 typedef | 支持     | [clangd#2219](https://github.com/clangd/clangd/issues/2219) |
+| 概念约束           | 部分支持 |                                                             |
 
 ### 变量类型
 
@@ -686,15 +686,15 @@ void demo() {
 | Doxygen `///` 注释           | 支持     |                                                             |
 | 合成访问器文档               | 支持     |                                                             |
 | `@copydoc` 标签              | 部分支持 | [clangd#1320](https://github.com/clangd/clangd/issues/1320) |
-| 重写方法继承的文档           | 部分支持 | [clangd#2504](https://github.com/clangd/clangd/issues/2504) |
+| 继承的重写方法文档           | 部分支持 | [clangd#2504](https://github.com/clangd/clangd/issues/2504) |
 | 重载文档共享                 | 部分支持 | [clangd#2506](https://github.com/clangd/clangd/issues/2506) |
 | 继承构造函数文档             | 不支持   | [clangd#1936](https://github.com/clangd/clangd/issues/1936) |
 | 横幅注释                     | 部分支持 | [clangd#974](https://github.com/clangd/clangd/issues/974)   |
-| 声明处与定义处的注释         | 支持     |                                                             |
+| 声明与定义注释               | 支持     |                                                             |
 | 空白和换行                   | 部分支持 | [clangd#2057](https://github.com/clangd/clangd/issues/2057) |
 | 注释缩进                     | 部分支持 | [clangd#1040](https://github.com/clangd/clangd/issues/1040) |
 | 宏展开产生的 template 关键字 | 部分支持 | [clangd#1226](https://github.com/clangd/clangd/issues/1226) |
-| 注释抑制选项                 | 不支持   | [clangd#2148](https://github.com/clangd/clangd/issues/2148) |
+| 注释隐藏选项                 | 不支持   | [clangd#2148](https://github.com/clangd/clangd/issues/2148) |
 
 ### Doxygen `///` 注释
 

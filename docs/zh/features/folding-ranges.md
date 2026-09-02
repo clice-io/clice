@@ -14,16 +14,16 @@
 | 块折叠                                                      | 支持     |                                                                                                                          |
 | 嵌套复合语句折叠                                            | 支持     |                                                                                                                          |
 | 多行列表折叠                                                | 支持     |                                                                                                                          |
-| 访问说明符区域折叠                                          | 支持     | [clangd#1455](https://github.com/clangd/clangd/issues/1455)                                                              |
+| 访问说明符区段折叠                                          | 支持     | [clangd#1455](https://github.com/clangd/clangd/issues/1455)                                                              |
 | 预处理条件折叠（`#if` / `#ifdef` / `#ifndef` ... `#endif`） | 部分支持 | [clangd#1661](https://github.com/clangd/clangd/issues/1661), [clangd#2059](https://github.com/clangd/clangd/issues/2059) |
 | 自定义区域折叠（`#pragma region` / `#pragma endregion`）    | 支持     | [clangd#1623](https://github.com/clangd/clangd/issues/1623)                                                              |
 | Pragma 分类                                                 | 支持     |                                                                                                                          |
 | 注释折叠                                                    | 不支持   |                                                                                                                          |
-| Include 区域折叠                                            | 不支持   |                                                                                                                          |
+| 包含指令区域折叠                                            | 不支持   |                                                                                                                          |
 | 原始字符串字面量折叠                                        | 不支持   |                                                                                                                          |
 | `using` 声明块                                              | 不支持   |                                                                                                                          |
 | 模板参数列表折叠                                            | 不支持   |                                                                                                                          |
-| 模板特化和实例化                                            | 支持     |                                                                                                                          |
+| 模板特化与实例化                                            | 支持     |                                                                                                                          |
 | 简写函数模板                                                | 支持     |                                                                                                                          |
 | 宏生成结构的折叠                                            | 支持     |                                                                                                                          |
 | 协程体                                                      | 支持     |                                                                                                                          |
@@ -481,9 +481,9 @@ Bag nested({
 | 能力                                 | 状态     | 问题                                                        |
 | ------------------------------------ | -------- | ----------------------------------------------------------- |
 | `collapsedText` 占位文本（LSP 3.17） | 支持     | [clangd#2667](https://github.com/clangd/clangd/issues/2667) |
-| 从声明行开始折叠函数体和类体         | 不支持   | [clangd#2666](https://github.com/clangd/clangd/issues/2666) |
-| 非活动预处理分支标识                 | 部分支持 |                                                             |
-| 单行结构保持展开                     | 支持     |                                                             |
+| 从声明行开始折叠函数体/类体          | 不支持   | [clangd#2666](https://github.com/clangd/clangd/issues/2666) |
+| 非活跃预处理分支指示                 | 部分支持 |                                                             |
+| 单行结构保持不折叠                   | 支持     |                                                             |
 
 ### `collapsedText` 占位文本（LSP 3.17）
 

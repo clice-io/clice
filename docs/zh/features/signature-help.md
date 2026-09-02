@@ -174,15 +174,15 @@ int main() {
 
 <!-- BEGIN GENERATED ITEMS: special_call_contexts -->
 
-| 能力               | 状态 | 问题                                                                                                                   |
-| ------------------ | ---- | ---------------------------------------------------------------------------------------------------------------------- |
-| 构造函数和聚合类型 | 支持 | [clangd#726](https://github.com/clangd/clangd/issues/726)、[clangd#2541](https://github.com/clangd/clangd/issues/2541) |
-| 函数指针调用       | 支持 |                                                                                                                        |
-| 模板实参列表       | 支持 | [clangd#299](https://github.com/clangd/clangd/issues/299)、[clangd#1387](https://github.com/clangd/clangd/issues/1387) |
-| 嵌套调用           | 支持 |                                                                                                                        |
-| 仿函数调用         | 支持 |                                                                                                                        |
-| Lambda 调用        | 支持 |                                                                                                                        |
-| new 表达式         | 支持 |                                                                                                                        |
+| 能力             | 状态 | 问题                                                                                                                   |
+| ---------------- | ---- | ---------------------------------------------------------------------------------------------------------------------- |
+| 构造函数和聚合体 | 支持 | [clangd#726](https://github.com/clangd/clangd/issues/726)、[clangd#2541](https://github.com/clangd/clangd/issues/2541) |
+| 函数指针调用     | 支持 |                                                                                                                        |
+| 模板实参列表     | 支持 | [clangd#299](https://github.com/clangd/clangd/issues/299)、[clangd#1387](https://github.com/clangd/clangd/issues/1387) |
+| 嵌套调用         | 支持 |                                                                                                                        |
+| 仿函数调用       | 支持 |                                                                                                                        |
+| Lambda 调用      | 支持 |                                                                                                                        |
+| new 表达式       | 支持 |                                                                                                                        |
 
 ### 构造函数和聚合体
 
@@ -215,7 +215,7 @@ int main() {
 }
 ```
 
-### 模板参数列表
+### 模板实参列表
 
 模板参数显示为签名；类模板会标明其类别，而非返回类型
 

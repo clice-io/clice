@@ -49,7 +49,10 @@ and must be byte-identical across the two trees, as must any fenced code
 or HTML comment nested inside a translatable segment (a snap example
 under a generated capability's paragraph). Segment shapes must match too: heading depth,
 ordered vs. bulleted list, task-list state, table column count and
-alignment, and the mapping/sequence skeleton of index.md's frontmatter. No text is stored twice — the mapping holds
+alignment, and the mapping/sequence skeleton of index.md's frontmatter.
+A table row and a later heading that share their text in en (a
+capability's status row and its section) must share it in zh — `check`
+fails on a pair named two ways. No text is stored twice — the mapping holds
 hashes only. Old wording of a drifted segment comes from git history of
 the markdown page.
 
@@ -78,7 +81,9 @@ translate [page...]` produces isomorphic zh drafts via the DeepSeek API
 (no args = only pages missing a zh counterpart; explicit pages overwrite,
 feeding the current zh text to the model as terminology reference).
 Fenced code inside segments is masked out of the round trip and restored
-byte-for-byte. A segment the model cannot render validly is left in
+byte-for-byte; inline code, link targets, issue references and
+frontmatter paths must come back unchanged. A segment the model cannot
+render validly — or a row/heading pair it names two ways — is left in
 English and the run exits non-zero naming the page — rerun `translate`
 on it after review. The key comes from the environment and is never
 stored. Drafts still go through review and `record`.
@@ -127,10 +132,12 @@ what the English says rather than word for word.
 Reviewing existing Chinese pages: `pixi run review-doc-translations
 [page...]` (default: every page) feeds each translatable segment with
 its current Chinese to a model and writes the corrected Chinese back,
-one chunk of segments per call, code blocks masked out — the model
-never sees a code block, and a reply that breaks a segment's shape keeps
-the current text. The default backend is the codex CLI run from an empty
-scratch directory (`--jobs=N` parallel calls, `--effort=LEVEL`);
+one chunk of segments per call (a paired row and heading always in the
+same chunk), code blocks masked out — the model never sees a code block,
+and a reply that breaks a segment's shape, alters an inline literal, or
+names a row and its heading differently keeps the current text. The
+default backend is the codex CLI run in a read-only sandbox from an
+empty scratch directory (`--jobs=N` parallel calls, `--effort=LEVEL`);
 `--backend=deepseek` uses the API. Review the diff, then `format` and
 `record`. Prefer this over handing a model whole pages: the code blocks
 would only burn its context.

@@ -16,8 +16,8 @@
 | `#define` 体内的 Token 本身不提供导航     | 支持   |                                                             |
 | 错误恢复                                  | 不支持 |                                                             |
 | 未实例化模板中的依赖成员导航              | 支持   |                                                             |
-| 模板特化跳转到主模板                      | 不支持 | [clangd#212](https://github.com/clangd/clangd/issues/212)   |
-| `auto` 关键字跳转到推导出的类型           | 不支持 | [clangd#2055](https://github.com/clangd/clangd/issues/2055) |
+| 模板特化导航到主模板                      | 不支持 | [clangd#212](https://github.com/clangd/clangd/issues/212)   |
+| `auto` 关键字导航到推导得到的类型         | 不支持 | [clangd#2055](https://github.com/clangd/clangd/issues/2055) |
 
 ### 跨 TU 跳转到定义
 
@@ -263,7 +263,7 @@ void use() {
 | 用户定义字面量                        | 不支持   |                                                             |
 | 隐式转换运算符                        | 不支持   | [clangd#1931](https://github.com/clangd/clangd/issues/1931) |
 | 调用构造函数或转换运算符的类型转换    | 部分支持 |                                                             |
-| 范围 for 循环                         | 不支持   |                                                             |
+| 范围 for 循环（range-based for）      | 不支持   |                                                             |
 | 结构化绑定（structured bindings）     | 不支持   |                                                             |
 | `co_await` / `co_yield` / `co_return` | 部分支持 |                                                             |
 
@@ -706,15 +706,15 @@ clice 会返回所有声明位置和定义位置（直接在声明处定义的�
 
 <!-- BEGIN GENERATED ITEMS: go_to_declaration -->
 
-| 能力                           | 状态 | 问题 |
-| ------------------------------ | ---- | ---- |
-| 跨 TU 跳转到声明               | 支持 |      |
-| 函数                           | 支持 |      |
-| 类和结构体的前向声明           | 支持 |      |
-| 静态数据成员                   | 支持 |      |
-| `extern` 变量                  | 支持 |      |
-| 多重声明                       | 支持 |      |
-| 签名仅在形式上不同的声明与定义 | 支持 |      |
+| 能力                         | 状态 | 问题 |
+| ---------------------------- | ---- | ---- |
+| 跨 TU 跳转到声明             | 支持 |      |
+| 函数                         | 支持 |      |
+| 类和结构体的前向声明         | 支持 |      |
+| 静态数据成员                 | 支持 |      |
+| `extern` 变量                | 支持 |      |
+| 多重声明                     | 支持 |      |
+| 签名仅有形式差异的声明与定义 | 支持 |      |
 
 ### 跨 TU 跳转到声明
 
@@ -1094,19 +1094,19 @@ int use() {
 
 <!-- BEGIN GENERATED ITEMS: find_references -->
 
-| 能力                                                 | 状态   | 问题                                                                                                                   |
-| ---------------------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------- |
-| 跨 TU 查找引用                                       | 支持   |                                                                                                                        |
-| 引用结果中包含声明和定义位置                         | 支持   |                                                                                                                        |
-| 范围 for 循环（range-based for loop）的隐式引用      | 不支持 | [clangd#1081](https://github.com/clangd/clangd/issues/1081)                                                            |
-| 隐式构造函数与析构函数调用                           | 不支持 |                                                                                                                        |
-| 通过转发函数产生的引用                               | 不支持 | [clangd#716](https://github.com/clangd/clangd/issues/716), [clangd#1872](https://github.com/clangd/clangd/issues/1872) |
-| 依赖上下文和模板上下文中的引用                       | 不支持 | [clangd#258](https://github.com/clangd/clangd/issues/258), [clangd#675](https://github.com/clangd/clangd/issues/675)   |
-| 引用的读写分类                                       | 不支持 | [clangd#2139](https://github.com/clangd/clangd/issues/2139)                                                            |
-| 显示每条引用所在的函数                               | 不支持 | [clangd#177](https://github.com/clangd/clangd/issues/177)                                                              |
-| 宏展开以及 `#ifdef`/`#ifndef` 和 `#undef` 中的宏引用 | 支持   |                                                                                                                        |
-| 写在其他宏定义体内的宏引用                           | 不支持 | [clangd#346](https://github.com/clangd/clangd/issues/346)                                                              |
-| 标签与 goto 引用                                     | 支持   |                                                                                                                        |
+| 能力                                               | 状态   | 问题                                                                                                                   |
+| -------------------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------- |
+| 跨 TU 查找引用                                     | 支持   |                                                                                                                        |
+| 引用结果中包含声明和定义位置                       | 支持   |                                                                                                                        |
+| 范围 for 循环（range-based for loop）的隐式引用    | 不支持 | [clangd#1081](https://github.com/clangd/clangd/issues/1081)                                                            |
+| 隐式构造函数与析构函数调用                         | 不支持 |                                                                                                                        |
+| 通过转发函数产生的引用                             | 不支持 | [clangd#716](https://github.com/clangd/clangd/issues/716), [clangd#1872](https://github.com/clangd/clangd/issues/1872) |
+| 依赖上下文和模板上下文中的引用                     | 不支持 | [clangd#258](https://github.com/clangd/clangd/issues/258), [clangd#675](https://github.com/clangd/clangd/issues/675)   |
+| 引用的读/写分类                                    | 不支持 | [clangd#2139](https://github.com/clangd/clangd/issues/2139)                                                            |
+| 随每条引用显示其所在函数                           | 不支持 | [clangd#177](https://github.com/clangd/clangd/issues/177)                                                              |
+| 宏展开、`#ifdef`、`#ifndef` 与 `#undef` 中的宏引用 | 支持   |                                                                                                                        |
+| 写在其他宏定义体内的宏引用                         | 不支持 | [clangd#346](https://github.com/clangd/clangd/issues/346)                                                              |
+| 标签与 goto 引用                                   | 支持   |                                                                                                                        |
 
 ### 跨 TU 查找引用
 
@@ -1331,7 +1331,7 @@ int loop(int failed) {
 | 跟踪虚函数派发               | 不支持   |                                                             |
 | 非函数目标                   | 不支持   | [clangd#1308](https://github.com/clangd/clangd/issues/1308) |
 | Lambda 内部的调用            | 支持     |                                                             |
-| 通过转发函数的构造函数调用   | 不支持   | [clangd#2242](https://github.com/clangd/clangd/issues/2242) |
+| 经由转发函数的构造函数调用   | 不支持   | [clangd#2242](https://github.com/clangd/clangd/issues/2242) |
 
 ### 为函数和方法准备调用层次结构
 
@@ -1575,16 +1575,16 @@ Derived<Foo> instance;
 
 <!-- BEGIN GENERATED ITEMS: workspace_symbol -->
 
-| 能力                       | 状态     | 问题                                                        |
-| -------------------------- | -------- | ----------------------------------------------------------- |
-| 基本的工作区符号搜索       | 支持     |                                                             |
-| 搜索覆盖整个项目           | 支持     |                                                             |
-| 重载区分                   | 部分支持 | [clangd#1344](https://github.com/clangd/clangd/issues/1344) |
-| 模糊匹配                   | 不支持   | [clangd#914](https://github.com/clangd/clangd/issues/914)   |
-| 部分限定名称搜索           | 不支持   | [clangd#550](https://github.com/clangd/clangd/issues/550)   |
-| 在枚举作用域中查找枚举项   | 不支持   | [clangd#931](https://github.com/clangd/clangd/issues/931)   |
-| 原始声明排在类型别名之前   | 不支持   | [clangd#2253](https://github.com/clangd/clangd/issues/2253) |
-| 按修饰名（链接器名称）搜索 | 不支持   |                                                             |
+| 能力                             | 状态     | 问题                                                        |
+| -------------------------------- | -------- | ----------------------------------------------------------- |
+| 基本的工作区符号搜索             | 支持     |                                                             |
+| 搜索覆盖整个项目                 | 支持     |                                                             |
+| 重载区分                         | 部分支持 | [clangd#1344](https://github.com/clangd/clangd/issues/1344) |
+| 模糊匹配                         | 不支持   | [clangd#914](https://github.com/clangd/clangd/issues/914)   |
+| 部分限定名搜索                   | 不支持   | [clangd#550](https://github.com/clangd/clangd/issues/550)   |
+| 在枚举作用域内查找枚举项         | 不支持   | [clangd#931](https://github.com/clangd/clangd/issues/931)   |
+| 别名所指向的声明排在类型别名前面 | 不支持   | [clangd#2253](https://github.com/clangd/clangd/issues/2253) |
+| 按修饰名（链接器名称）搜索       | 不支持   |                                                             |
 
 ### 基本的工作区符号搜索
 
@@ -1845,7 +1845,7 @@ export int value() {
 | 能力                                 | 状态   | 问题                                                        |
 | ------------------------------------ | ------ | ----------------------------------------------------------- |
 | 高亮当前文件中光标所在符号的所有引用 | 不支持 |                                                             |
-| 符号高亮的读取和写入分类             | 不支持 |                                                             |
+| 符号高亮的读/写分类                  | 不支持 |                                                             |
 | 控制流 Token 高亮                    | 不支持 | [clangd#1921](https://github.com/clangd/clangd/issues/1921) |
 
 ### 高亮当前文件中光标所在符号的所有引用

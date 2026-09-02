@@ -267,7 +267,7 @@ int first(Grid<int>& grid) {
 | `using enum`                      | 支持     | [clangd#1283](https://github.com/clangd/clangd/issues/1283)                                                          |
 | 推导指引                          | 支持     |                                                                                                                      |
 | 显式实例化                        | 支持     | [clangd#316](https://github.com/clangd/clangd/issues/316)                                                            |
-| 依赖名                            | 部分支持 | [clangd#154](https://github.com/clangd/clangd/issues/154), [clangd#297](https://github.com/clangd/clangd/issues/297) |
+| 依赖名称                          | 部分支持 | [clangd#154](https://github.com/clangd/clangd/issues/154), [clangd#297](https://github.com/clangd/clangd/issues/297) |
 | 变量模板                          | 支持     |                                                                                                                      |
 | 类外成员定义                      | 支持     |                                                                                                                      |
 | 别名模板                          | 支持     |                                                                                                                      |
@@ -278,7 +278,7 @@ int first(Grid<int>& grid) {
 | 友元声明                          | 支持     |                                                                                                                      |
 | 依赖 using 声明                   | 部分支持 |                                                                                                                      |
 | 函数显式实例化指令                | 部分支持 | [llvm#191658](https://github.com/llvm/llvm-project/issues/191658)                                                    |
-| 变量显式实例化指令                | 部分支持 | [llvm#191658](https://github.com/llvm/llvm-project/issues/191658)                                                    |
+| 变量的显式实例化指令              | 部分支持 | [llvm#191658](https://github.com/llvm/llvm-project/issues/191658)                                                    |
 | 显式实例化的成员函数体            | 支持     |                                                                                                                      |
 
 ### 命名空间
@@ -419,7 +419,7 @@ done:
 }
 ```
 
-### 结构化绑定
+### 结构化绑定（structured bindings）
 
 定义处和使用处的绑定名称
 
