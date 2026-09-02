@@ -1,5 +1,6 @@
 #include "test/test.h"
 #include "syntax/completion.h"
+#include "syntax/dependency_graph.h"
 
 #include "llvm/ADT/DenseMap.h"
 
@@ -146,11 +147,11 @@ TEST_CASE(ImportCursorMidLine) {
 TEST_SUITE(CompleteModuleImport) {
 
 TEST_CASE(PrefixMatch) {
-    llvm::DenseMap<Fid, std::string> modules;
-    modules[Fid{1}] = "std";
-    modules[Fid{2}] = "std.io";
-    modules[Fid{3}] = "std.net";
-    modules[Fid{4}] = "my_lib";
+    clice::DependencyGraph modules;
+    modules.add_module("std", Fid{1});
+    modules.add_module("std.io", Fid{2});
+    modules.add_module("std.net", Fid{3});
+    modules.add_module("my_lib", Fid{4});
 
     auto results = complete_module_import(modules, "std");
     EXPECT_EQ(results.size(), 3u);
@@ -160,35 +161,35 @@ TEST_CASE(PrefixMatch) {
 }
 
 TEST_CASE(EmptyPrefix) {
-    llvm::DenseMap<Fid, std::string> modules;
-    modules[Fid{1}] = "std";
-    modules[Fid{2}] = "my_lib";
+    clice::DependencyGraph modules;
+    modules.add_module("std", Fid{1});
+    modules.add_module("my_lib", Fid{2});
 
     auto results = complete_module_import(modules, "");
     EXPECT_EQ(results.size(), 2u);
 }
 
 TEST_CASE(NoMatch) {
-    llvm::DenseMap<Fid, std::string> modules;
-    modules[Fid{1}] = "std";
-    modules[Fid{2}] = "my_lib";
+    clice::DependencyGraph modules;
+    modules.add_module("std", Fid{1});
+    modules.add_module("my_lib", Fid{2});
 
     auto results = complete_module_import(modules, "xyz");
     EXPECT_TRUE(results.empty());
 }
 
 TEST_CASE(EmptyModules) {
-    llvm::DenseMap<Fid, std::string> modules;
+    clice::DependencyGraph modules;
     auto results = complete_module_import(modules, "std");
     EXPECT_TRUE(results.empty());
 }
 
 TEST_CASE(DottedPrefix) {
-    llvm::DenseMap<Fid, std::string> modules;
-    modules[Fid{1}] = "std";
-    modules[Fid{2}] = "std.io";
-    modules[Fid{3}] = "std.core";
-    modules[Fid{4}] = "boost.asio";
+    clice::DependencyGraph modules;
+    modules.add_module("std", Fid{1});
+    modules.add_module("std.io", Fid{2});
+    modules.add_module("std.core", Fid{3});
+    modules.add_module("boost.asio", Fid{4});
 
     auto results = complete_module_import(modules, "std.");
     EXPECT_EQ(results.size(), 2u);
@@ -198,11 +199,11 @@ TEST_CASE(DottedPrefix) {
 }
 
 TEST_CASE(PartitionPrefix) {
-    llvm::DenseMap<Fid, std::string> modules;
-    modules[Fid{1}] = "foo";
-    modules[Fid{2}] = "foo:core";
-    modules[Fid{3}] = "foo:utils";
-    modules[Fid{4}] = "bar:impl";
+    clice::DependencyGraph modules;
+    modules.add_module("foo", Fid{1});
+    modules.add_module("foo:core", Fid{2});
+    modules.add_module("foo:utils", Fid{3});
+    modules.add_module("bar:impl", Fid{4});
 
     auto results = complete_module_import(modules, "foo:");
     EXPECT_EQ(results.size(), 2u);
@@ -212,9 +213,9 @@ TEST_CASE(PartitionPrefix) {
 }
 
 TEST_CASE(PrefixIsFullName) {
-    llvm::DenseMap<Fid, std::string> modules;
-    modules[Fid{1}] = "std";
-    modules[Fid{2}] = "std.io";
+    clice::DependencyGraph modules;
+    modules.add_module("std", Fid{1});
+    modules.add_module("std.io", Fid{2});
 
     auto results = complete_module_import(modules, "std");
     EXPECT_EQ(results.size(), 2u);

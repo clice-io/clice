@@ -158,8 +158,7 @@ void Workspace::rescan_after_save(Fid path_id) {
         dep_graph.build_reverse_map();
         context_epoch += 1;
 
-        // Update both module maps: path_to_module gates the module code
-        // paths, and the dep_graph side is what import resolution reads —
+        // The graph's module declaration is what import resolution reads —
         // left stale, an interface saved mid-session could never satisfy
         // its importers.
         auto module_name = scan.module_name;
@@ -196,8 +195,8 @@ void Workspace::rescan_after_save(Fid path_id) {
                 is_interface_unit = cached->second.is_interface_unit;
             }
         }
-        // Both maps hold interface units only, mirroring the startup scan:
-        // an implementation unit (`module foo;`) must never satisfy
+        // Interface units only, mirroring the startup scan: an
+        // implementation unit (`module foo;`) must never satisfy
         // lookup_module — importers would edge to it and try to build it
         // as an interface — nor claim a PCM node of its own.
         if(!is_interface_unit) {
@@ -205,11 +204,6 @@ void Workspace::rescan_after_save(Fid path_id) {
         }
         dep_graph.update_module_decl(path_id, module_name);
         dep_graph.set_import_candidate(path_id, scan.has_import);
-        if(!module_name.empty()) {
-            path_to_module[path_id] = std::move(module_name);
-        } else {
-            path_to_module.erase(path_id);
-        }
         return;
     }
 
@@ -455,22 +449,15 @@ void Workspace::enforce_loaded_budget() {
     }
 }
 
-void Workspace::build_module_map() {
-    for(auto& [module_name, path_ids]: dep_graph.modules()) {
-        for(auto path_id: path_ids) {
-            path_to_module[path_id] = module_name.str();
-        }
-    }
-}
 
 void Workspace::fill_pcm_deps(std::unordered_map<std::string, std::string>& pcms,
                               Fid exclude_path_id) const {
     for(auto& [pid, st]: pcm_cache) {
         if(pid == exclude_path_id)
             continue;
-        auto mod_it = path_to_module.find(pid);
-        if(mod_it != path_to_module.end()) {
-            pcms[mod_it->second] = st.path;
+        auto module_name = dep_graph.module_of(pid);
+        if(!module_name.empty()) {
+            pcms[module_name.str()] = st.path;
         }
     }
 }

@@ -11,6 +11,8 @@
 
 namespace clice {
 
+class DependencyGraph;
+
 struct ResolvedSearchConfig;
 struct DirListingCache;
 
@@ -35,7 +37,7 @@ PreambleCompletionContext detect_completion_context(llvm::StringRef text, std::u
 /// Return module names matching a prefix, suitable for `import` completion.
 /// @param modules  Module name map (path_id → module name).
 /// @param prefix   Partially-typed module name to match against.
-std::vector<std::string> complete_module_import(const llvm::DenseMap<Fid, std::string>& modules,
+std::vector<std::string> complete_module_import(const DependencyGraph& graph,
                                                 llvm::StringRef prefix);
 
 /// Entry in the include path completion result.

@@ -3,8 +3,6 @@
 #include <utility>
 
 #include "sched/families/pcm.h"
-#include "sched/families/turun.h"
-#include "server/service/ast_family.h"
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringMap.h"
@@ -63,9 +61,9 @@ void Invalidator::provider_appeared(llvm::StringRef module_name, DirtySet& dirty
             continue;
         }
         auto path_id = Fid{static_cast<std::uint32_t>(id.key)};
-        if(id.family == turun_family) {
+        if(id.family == Family::TURun) {
             dirty.add_reindex_content_changed(path_id);
-        } else if(id.family == ast_family) {
+        } else if(id.family == Family::AST) {
             if(auto session = store.find(path_id)) {
                 dirty.mark_ast_dirty.push_back(path_id);
                 if(session->serving == ServingMode::IndexOnly) {
@@ -81,11 +79,9 @@ void Invalidator::provider_appeared(llvm::StringRef module_name, DirtySet& dirty
 }
 
 void Invalidator::rescan_disk_state(Fid path_id, DirtySet& dirty) {
-    auto old_module = workspace.path_to_module.lookup(path_id);
+    std::string old_module(workspace.dep_graph.module_of(path_id));
     workspace.rescan_after_save(path_id);
-    auto it = workspace.path_to_module.find(path_id);
-    llvm::StringRef new_module =
-        it != workspace.path_to_module.end() ? it->second : llvm::StringRef();
+    auto new_module = workspace.dep_graph.module_of(path_id);
     if(new_module == old_module) {
         return;
     }
@@ -350,7 +346,6 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // module itself among its dirtied units: the removal is this
                 // event's final word for the file itself.
                 dirty.add_clear_reindex(path_id);
-                workspace.path_to_module.erase(path_id);
                 // The provider leaves the module map too, or a later
                 // replacement provider would sit behind the deleted one in
                 // the candidate list and never be selected.
@@ -416,8 +411,6 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                                           workspace.config.match_rules(path, append, remove);
                                       });
                 workspace.dep_graph.build_reverse_map();
-                workspace.path_to_module.clear();
-                workspace.build_module_map();
                 workspace.context_epoch += 1;
 
                 // A module name that just gained its first provider: its

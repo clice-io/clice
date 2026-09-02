@@ -27,6 +27,7 @@ void DependencyGraph::add_module(llvm::StringRef module_name, Fid path_id) {
     if(llvm::find(ids, path_id) == ids.end()) {
         ids.push_back(path_id);
     }
+    module_by_path[path_id] = module_name.str();
 }
 
 void DependencyGraph::update_module_decl(Fid path_id, llvm::StringRef module_name) {
@@ -41,9 +42,15 @@ void DependencyGraph::update_module_decl(Fid path_id, llvm::StringRef module_nam
     for(auto& entry: module_to_path) {
         llvm::erase(entry.getValue(), path_id);
     }
+    module_by_path.erase(path_id);
     if(!module_name.empty()) {
         add_module(module_name, path_id);
     }
+}
+
+llvm::StringRef DependencyGraph::module_of(Fid path_id) const {
+    auto it = module_by_path.find(path_id);
+    return it == module_by_path.end() ? llvm::StringRef() : llvm::StringRef(it->second);
 }
 
 llvm::ArrayRef<Fid> DependencyGraph::lookup_module(llvm::StringRef module_name) const {

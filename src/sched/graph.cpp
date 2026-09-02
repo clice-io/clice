@@ -1,6 +1,7 @@
 #include "sched/graph.h"
 
 #include <algorithm>
+#include <utility>
 #include <cassert>
 
 #include "llvm/ADT/DenseSet.h"
@@ -47,9 +48,9 @@ bool RoundContext::foreground() const {
 
 TaskGraph::TaskGraph(kota::event_loop& loop) : tasks(loop) {}
 
-void TaskGraph::register_family(std::uint8_t family, RoundRunner run) {
-    assert(!families.contains(family) && "family registered twice");
-    families[family] = std::move(run);
+void TaskGraph::register_family(Family family, RoundRunner run) {
+    assert(!families.contains(std::to_underlying(family)) && "family registered twice");
+    families[std::to_underlying(family)] = std::move(run);
 }
 
 void TaskGraph::acquire(NodeId id) {
@@ -138,7 +139,8 @@ bool TaskGraph::spawn_round(NodeId id) {
 
     auto& node = nodes.find(id)->second;
     assert(!node.compiling && "spawn requested while a round is in flight");
-    assert(families.contains(id.family) && "request for an unregistered family");
+    assert(families.contains(std::to_underlying(id.family)) &&
+           "request for an unregistered family");
     node.compiling = true;
     node.round = std::make_shared<Round>();
     node.round->generation = node.generation;
@@ -157,7 +159,7 @@ kota::task<> TaskGraph::round_task(NodeId id,
                                    std::shared_ptr<Round> round,
                                    kota::cancellation_token token) {
     RoundContext ctx(*this, id, std::move(token));
-    auto reported = co_await families.find(id.family)->second(ctx, id);
+    auto reported = co_await families.find(std::to_underlying(id.family))->second(ctx, id);
     finish_round(id, *round, reported);
 }
 

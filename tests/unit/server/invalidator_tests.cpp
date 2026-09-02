@@ -86,8 +86,8 @@ TEST_CASE(NewProviderDirtiesImporters) {
 
     ContextResolver resolver(workspace);
     PCMHarness ph(workspace, resolver);
-    ph.graph.declare({turun_family, closed.raw}, {PCMFamily::unresolved_node("m")});
-    ph.graph.declare({ast_family, open.raw}, {PCMFamily::unresolved_node("m")});
+    ph.graph.declare({Family::TURun, closed.raw}, {PCMFamily::unresolved_node("m")});
+    ph.graph.declare({Family::AST, open.raw}, {PCMFamily::unresolved_node("m")});
     Invalidator invalidator(workspace, store, resolver, ph.pcm);
 
     FileEvent events[] = {FileEvent::disk_changed(iface)};
@@ -124,7 +124,7 @@ TEST_CASE(ReloadProviderCascades) {
 
     ContextResolver resolver(workspace);
     PCMHarness ph(workspace, resolver);
-    ph.graph.declare({turun_family, retired.raw}, {PCMFamily::unresolved_node("m")});
+    ph.graph.declare({Family::TURun, retired.raw}, {PCMFamily::unresolved_node("m")});
     Invalidator invalidator(workspace, store, resolver, ph.pcm);
 
     FileEvent::CDBDelta delta;
@@ -145,7 +145,7 @@ TEST_CASE(DiskRemovedDropsProvider) {
     SessionStore store;
     auto iface = workspace.file_table.intern("/proj/m.cppm");
     workspace.dep_graph.add_module("m", iface);
-    workspace.path_to_module[iface] = "m";
+
 
     ContextResolver resolver(workspace);
     PCMHarness ph(workspace, resolver);
@@ -211,7 +211,7 @@ TEST_CASE(CascadeSplitsOpenClosed) {
     PCMHarness ph(workspace, resolver);
     // The consumer edges build_deps declares in production — no rounds.
     auto node = [](Fid pid) {
-        return NodeId{pcm_family, pid.raw};
+        return NodeId{Family::PCM, pid.raw};
     };
     ph.graph.declare(node(open_user), {node(mod)});
     ph.graph.declare(node(closed_user), {node(mod)});
@@ -415,10 +415,10 @@ TEST_CASE(CloseStaleModuleCascades) {
     PCMHarness ph(workspace, resolver);
     ph.graph.declare(
         {
-            turun_family,
+            Family::TURun,
             user.raw
     },
-        {{pcm_family, mod.raw}});
+        {{Family::PCM, mod.raw}});
     Invalidator invalidator(workspace, store, resolver, ph.pcm);
     auto dirty = invalidator.apply(FileEvent::buffer_closed(mod));
 
@@ -506,7 +506,7 @@ TEST_CASE(CloseFirstProviderCascades) {
 
     ContextResolver resolver(workspace);
     PCMHarness ph(workspace, resolver);
-    ph.graph.declare({turun_family, importer.raw}, {PCMFamily::unresolved_node("m")});
+    ph.graph.declare({Family::TURun, importer.raw}, {PCMFamily::unresolved_node("m")});
     Invalidator invalidator(workspace, store, resolver, ph.pcm);
 
     auto dirty = invalidator.apply(FileEvent::buffer_closed(iface));
@@ -526,7 +526,6 @@ TEST_CASE(CloseProviderRenameCascades) {
     SessionStore store;
     auto iface = workspace.file_table.intern(tmp.path("m.cppm"));
     auto importer = workspace.file_table.intern("/proj/use.cpp");
-    workspace.path_to_module[iface] = "a";
     workspace.dep_graph.update_module_decl(iface, "a");
 
     auto disk = llvm::MemoryBuffer::getFile(tmp.path("m.cppm"));
@@ -536,10 +535,10 @@ TEST_CASE(CloseProviderRenameCascades) {
     PCMHarness ph(workspace, resolver);
     ph.graph.declare(
         {
-            turun_family,
+            Family::TURun,
             importer.raw
     },
-        {{pcm_family, iface.raw}});
+        {{Family::PCM, iface.raw}});
     Invalidator invalidator(workspace, store, resolver, ph.pcm);
 
     auto dirty = invalidator.apply(FileEvent::buffer_closed(iface));
@@ -557,7 +556,6 @@ TEST_CASE(CloseKeepsGuardedProvider) {
     Workspace workspace;
     SessionStore store;
     auto iface = workspace.file_table.intern(tmp.path("m.cpp"));
-    workspace.path_to_module[iface] = "m";
     workspace.dep_graph.update_module_decl(iface, "m");
 
     auto disk = llvm::MemoryBuffer::getFile(tmp.path("m.cpp"));
@@ -569,7 +567,7 @@ TEST_CASE(CloseKeepsGuardedProvider) {
 
     invalidator.apply(FileEvent::buffer_closed(iface));
 
-    EXPECT_EQ(workspace.path_to_module.lookup(iface), "m");
+    EXPECT_EQ(workspace.dep_graph.module_of(iface), "m");
     EXPECT_TRUE(llvm::is_contained(workspace.dep_graph.lookup_module("m"), iface));
 }
 
@@ -597,10 +595,10 @@ TEST_CASE(CloseStalePCMCascades) {
     PCMHarness ph(workspace, resolver);
     ph.graph.declare(
         {
-            turun_family,
+            Family::TURun,
             user.raw
     },
-        {{pcm_family, mod.raw}});
+        {{Family::PCM, mod.raw}});
     Invalidator invalidator(workspace, store, resolver, ph.pcm);
     auto dirty = invalidator.apply(FileEvent::buffer_closed(mod));
 
@@ -1012,7 +1010,7 @@ TEST_CASE(CDBChangedCascadesModule) {
     PCMHarness ph(workspace, resolver);
     // The consumer edges build_deps declares in production — no rounds.
     auto node = [](Fid pid) {
-        return NodeId{pcm_family, pid.raw};
+        return NodeId{Family::PCM, pid.raw};
     };
     ph.graph.declare(node(open_user), {node(mod)});
     ph.graph.declare(node(closed_user), {node(mod)});

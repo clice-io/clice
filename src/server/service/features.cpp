@@ -772,7 +772,7 @@ Features::RawResult Features::completion(std::shared_ptr<Session> session,
             co_return serde_raw{json ? std::move(*json) : "[]"};
         }
         if(pctx.kind == CompletionContext::Import) {
-            auto module_names = complete_module_import(workspace.path_to_module, pctx.prefix);
+            auto module_names = complete_module_import(workspace.dep_graph, pctx.prefix);
 
             std::vector<protocol::CompletionItem> items;
             items.reserve(module_names.size());

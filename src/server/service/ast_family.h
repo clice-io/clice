@@ -31,9 +31,6 @@ struct ASTFamilyFixture;
 
 class ContextResolver;
 
-/// The AST family's id in the task graph. Node keys are document path_ids
-/// widened into NodeId::key.
-constexpr inline std::uint8_t ast_family = 3;
 
 /// Open documents' ASTs as a task-graph family: one node per document,
 /// candidate/durable edges to the PCM and PCH nodes its rounds wait on,
@@ -66,7 +63,7 @@ public:
               kota::event_loop& loop);
 
     /// Register the production runner. Tests that drive the facade
-    /// against a synthetic runner register their own under ast_family.
+    /// against a synthetic runner register their own under Family::AST.
     void register_runner();
 
     /// Per-document projections and freshness state; the read surface for
@@ -186,7 +183,7 @@ public:
 
 private:
     static NodeId node(Fid path_id) {
-        return {ast_family, path_id.raw};
+        return {Family::AST, path_id.raw};
     }
 
     /// One compile round; see the class comment for its obligations.

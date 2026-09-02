@@ -127,7 +127,7 @@ ASTFamily::ASTFamily(Workspace& workspace,
     sessions(sessions), kicks(loop) {}
 
 void ASTFamily::register_runner() {
-    graph.register_family(ast_family, [this](RoundContext& ctx, NodeId id) {
+    graph.register_family(Family::AST, [this](RoundContext& ctx, NodeId id) {
         return run(ctx, Fid{static_cast<std::uint32_t>(id.key)});
     });
 }
@@ -352,7 +352,7 @@ kota::task<DependResult> ASTFamily::depend_modules(RoundContext& ctx,
     // buffer's own unsaved import, a header context's suffix, a forced
     // include. The scan's sentinel edges are what let the name's first
     // provider re-dirty this document.
-    bool scan_worth = !workspace.path_to_module.empty() ||
+    bool scan_worth = workspace.dep_graph.has_modules() ||
                       !workspace.dep_graph.import_candidate_files().empty() ||
                       contexts.header_context(path_id) != nullptr ||
                       llvm::any_of(arguments, [](const std::string& arg) {
@@ -415,7 +415,7 @@ kota::task<DependResult> ASTFamily::depend_modules(RoundContext& ctx,
         }
 
         for(auto dep: deps.resolved) {
-            switch(co_await ctx.depend({pcm_family, dep.raw})) {
+            switch(co_await ctx.depend({Family::PCM, dep.raw})) {
                 case DependResult::Ready: break;
                 case DependResult::Failed: co_return DependResult::Failed;
                 case DependResult::Cancelled: co_return DependResult::Cancelled;

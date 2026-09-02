@@ -19,9 +19,6 @@ namespace clice {
 
 class PCMFamily;
 
-/// The TURun family's id in the task graph. Node keys are TU path_ids
-/// widened into NodeId::key.
-constexpr inline std::uint8_t turun_family = 4;
 
 /// One-shot whole-TU runs as a task-graph family: one round = one parse on
 /// a stateless worker serving the products of the frozen plan — the full
@@ -47,7 +44,7 @@ public:
                 WorkerPool& pool);
 
     /// Register the production runner. Tests that drive the pump against a
-    /// synthetic runner register their own under turun_family instead.
+    /// synthetic runner register their own under Family::TURun instead.
     void register_runner();
 
     /// The frozen product plan of one run.
@@ -126,7 +123,7 @@ private:
     kota::task<RoundOutcome> round(RoundContext& ctx, Fid path_id);
 
     static NodeId node(Fid path_id) {
-        return {turun_family, path_id.raw};
+        return {Family::TURun, path_id.raw};
     }
 
     TaskGraph& graph;

@@ -245,8 +245,7 @@ std::string IndexStore::serialize_artifacts() {
         CachePCMEntry entry;
         entry.key = st.key;
         entry.source_file = intern(path_id);
-        auto mod_it = workspace.path_to_module.find(path_id);
-        entry.module_name = mod_it != workspace.path_to_module.end() ? mod_it->second : "";
+        entry.module_name = workspace.dep_graph.module_of(path_id).str();
         dump_deps(st.deps, entry.deps);
         data.pcm.push_back(std::move(entry));
     }

@@ -63,6 +63,29 @@ TEST_CASE(RedeclareKeepsProviderOrder) {
     ASSERT_EQ(graph.lookup_module("bar").size(), 1u);
 }
 
+TEST_CASE(ModuleOfFollowsDeclarations) {
+    clice::DependencyGraph graph;
+    EXPECT_FALSE(graph.has_modules());
+    EXPECT_TRUE(graph.module_of(Fid{1}).empty());
+
+    graph.add_module("foo", Fid{1});
+    EXPECT_TRUE(graph.has_modules());
+    EXPECT_EQ(graph.module_of(Fid{1}), "foo");
+
+    // A re-declaration moves the file: the old name loses it, the
+    // reverse view follows in the same write.
+    graph.update_module_decl(Fid{1}, "bar");
+    EXPECT_EQ(graph.module_of(Fid{1}), "bar");
+    EXPECT_TRUE(graph.lookup_module("foo").empty());
+
+    // Dropping the declaration leaves the name behind as an empty
+    // provider list, yet the file declares nothing and no module remains.
+    graph.update_module_decl(Fid{1}, {});
+    EXPECT_TRUE(graph.module_of(Fid{1}).empty());
+    EXPECT_FALSE(graph.has_modules());
+    EXPECT_TRUE(graph.lookup_module("bar").empty());
+}
+
 TEST_CASE(MultipleModules) {
     clice::DependencyGraph graph;
     graph.add_module("mod.a", Fid{1});

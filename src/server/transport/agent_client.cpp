@@ -104,8 +104,8 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                 continue;
 
             std::string kind_str;
-            auto mod_it = ws.path_to_module.find(path_id);
-            if(mod_it != ws.path_to_module.end()) {
+            auto module_name = ws.dep_graph.module_of(path_id);
+            if(!module_name.empty()) {
                 kind_str = "module";
             } else {
                 auto ext = llvm::sys::path::extension(file_path);
@@ -121,8 +121,8 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
             FileInfo fi;
             fi.path = file_path.str();
             fi.kind = std::move(kind_str);
-            if(mod_it != ws.path_to_module.end())
-                fi.module_name = mod_it->second;
+            if(!module_name.empty())
+                fi.module_name = module_name.str();
             result.files.push_back(std::move(fi));
         }
 
@@ -259,13 +259,13 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
             }
 
             for(auto host_id: hosts) {
-                auto it = ws.path_to_module.find(host_id);
-                if(it != ws.path_to_module.end())
-                    result.affected_modules.push_back(it->second);
+                auto module_name = ws.dep_graph.module_of(host_id);
+                if(!module_name.empty())
+                    result.affected_modules.push_back(module_name.str());
             }
-            auto mod_it = ws.path_to_module.find(path_id);
-            if(mod_it != ws.path_to_module.end())
-                result.affected_modules.push_back(mod_it->second);
+            auto module_name = ws.dep_graph.module_of(path_id);
+            if(!module_name.empty())
+                result.affected_modules.push_back(module_name.str());
 
             co_return result;
         });

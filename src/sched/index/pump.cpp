@@ -430,7 +430,7 @@ kota::task<> IndexPump::run_background_indexing() {
     store.begin_round();
 
     std::stable_partition(index_queue.begin() + index_queue_pos, index_queue.end(), [this](Fid id) {
-        return workspace.path_to_module.contains(id);
+        return !workspace.dep_graph.module_of(id).empty();
     });
 
     // This round consumes [index_queue_pos, round_end) only. Anything

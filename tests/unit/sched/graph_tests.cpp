@@ -11,8 +11,8 @@ namespace {
 namespace ranges = std::ranges;
 
 /// Two arbitrary families exercising the multi-family surface.
-constexpr std::uint8_t FamA = 1;
-constexpr std::uint8_t FamB = 2;
+constexpr Family FamA = Family{1};
+constexpr Family FamB = Family{2};
 
 NodeId a(std::uint64_t key) {
     return {FamA, key};

@@ -4,6 +4,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <utility>
 
 #include "kota/async/async.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -13,12 +14,23 @@
 
 namespace clice {
 
+/// The families partitioning the graph's node space, each with its own
+/// key convention: PCM nodes are module-unit path ids (unresolved-import
+/// sentinels take the high half of the key space), PCH nodes are
+/// family-interned preamble keys, AST nodes are open documents' path ids,
+/// TURun nodes are TU path ids. 0xFF is reserved for map sentinels.
+enum class Family : std::uint8_t {
+    PCM = 1,
+    PCH = 2,
+    AST = 3,
+    TURun = 4,
+};
+
 /// Identity of a task-graph node. Each family interns its own keys —
 /// monotonically, never recycling: the graph may retain an id in edges or
-/// rounds long after the family dropped the underlying artifact. Family
-/// 0xFF is reserved for map sentinels.
+/// rounds long after the family dropped the underlying artifact.
 struct NodeId {
-    std::uint8_t family = 0;
+    Family family = Family{0};
     std::uint64_t key = 0;
 
     friend bool operator==(const NodeId&, const NodeId&) = default;
@@ -29,16 +41,16 @@ struct NodeId {
 template <>
 struct llvm::DenseMapInfo<clice::NodeId> {
     static clice::NodeId getEmptyKey() {
-        return {0xFF, 0};
+        return {clice::Family{0xFF}, 0};
     }
 
     static clice::NodeId getTombstoneKey() {
-        return {0xFF, 1};
+        return {clice::Family{0xFF}, 1};
     }
 
     static unsigned getHashValue(const clice::NodeId& id) {
         return llvm::detail::combineHashValue(
-            id.family,
+            std::to_underlying(id.family),
             llvm::DenseMapInfo<std::uint64_t>::getHashValue(id.key));
     }
 
@@ -191,7 +203,7 @@ public:
     explicit TaskGraph(kota::event_loop& loop);
 
     /// Families register once, before any request for their nodes.
-    void register_family(std::uint8_t family, RoundRunner run);
+    void register_family(Family family, RoundRunner run);
 
     /// Join a node's compilation from outside the graph (root interest).
     kota::task<JoinOutcome> request(NodeId id, JoinOptions options = {});
