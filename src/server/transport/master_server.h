@@ -17,9 +17,9 @@
 #include "sched/workspace.h"
 #include "server/service/ast_family.h"
 #include "server/service/context_service.h"
-#include "server/service/feature_router.h"
+#include "server/service/dispatcher.h"
+#include "server/service/features.h"
 #include "server/service/query.h"
-#include "server/service/worker_forwarder.h"
 #include "server/state/invalidator.h"
 #include "server/state/session.h"
 #include "server/state/session_store.h"
@@ -163,7 +163,7 @@ public:
     PCHFamily pch{graph, workspace, contexts, pool};
     ASTFamily ast{workspace, contexts, graph, pcm, pch, pool, sessions, loop};
 
-    WorkerForwarder forwarder{workspace, contexts, pcm, pch, ast, pool};
+    Dispatcher dispatcher{workspace, contexts, ast, pool};
     ContextService context_service{workspace, contexts, ast};
 
     /// Index scheduling, split along the serving boundary: the store and
@@ -195,10 +195,10 @@ public:
 
     /// The agentic transport's view of the index: disk truth only.
     /// Agents read files from disk, so buffer state must not leak into
-    /// their answers — see IndexQueryOptions::disk_only.
+    /// their answers — see QuerySources.
     IndexQuery agent_query;
 
-    FeatureRouter features;
+    Features features;
     Invalidator invalidator;
 
     /// Stat-polling discovery of CDB and on-disk file changes. Created by

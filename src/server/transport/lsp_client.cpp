@@ -438,14 +438,17 @@ void LSPClient::register_language_features() {
             co_return co_await srv.features.code_action(session, ctx.cancellation);
         });
 
-    peer.on_request([this](RequestContext& ctx,
-                           const protocol::DefinitionParams& params) -> RawResult {
-        this->server.pool.foreground_pulse();
-        auto& uri = params.text_document_position_params.text_document.uri;
-        auto& pos = params.text_document_position_params.position;
-        auto [path, path_id, session] = resolve_uri(uri);
-        co_return co_await this->server.features.definition(session, path, pos, ctx.cancellation);
-    });
+    peer.on_request(
+        [this](RequestContext& ctx, const protocol::DefinitionParams& params) -> RawResult {
+            this->server.pool.foreground_pulse();
+            auto& uri = params.text_document_position_params.text_document.uri;
+            auto& pos = params.text_document_position_params.position;
+            auto [path, path_id, session] = resolve_uri(uri);
+            co_return co_await this->server.features.definition(session,
+                                                                path_id,
+                                                                pos,
+                                                                ctx.cancellation);
+        });
 
     // The navigation handlers below are index-only: closed documents are
     // fully serveable from the index, and an empty result is a real answer,
@@ -457,7 +460,7 @@ void LSPClient::register_language_features() {
             auto& pos = params.text_document_position_params.position;
             auto [path, path_id, session] = resolve_uri(uri);
             co_return co_await this->server.features.references(session,
-                                                                path,
+                                                                path_id,
                                                                 pos,
                                                                 params.context.include_declaration);
         });
@@ -468,7 +471,7 @@ void LSPClient::register_language_features() {
             auto& uri = params.text_document_position_params.text_document.uri;
             auto& pos = params.text_document_position_params.position;
             auto [path, path_id, session] = resolve_uri(uri);
-            co_return co_await this->server.features.type_definition(session, path, pos);
+            co_return co_await this->server.features.type_definition(session, path_id, pos);
         });
 
     peer.on_request(
@@ -477,7 +480,7 @@ void LSPClient::register_language_features() {
             auto& uri = params.text_document_position_params.text_document.uri;
             auto& pos = params.text_document_position_params.position;
             auto [path, path_id, session] = resolve_uri(uri);
-            co_return co_await this->server.features.implementation(session, path, pos);
+            co_return co_await this->server.features.implementation(session, path_id, pos);
         });
 
     peer.on_request(
@@ -486,7 +489,7 @@ void LSPClient::register_language_features() {
             auto& uri = params.text_document_position_params.text_document.uri;
             auto& pos = params.text_document_position_params.position;
             auto [path, path_id, session] = resolve_uri(uri);
-            co_return co_await this->server.features.declaration(session, path, pos);
+            co_return co_await this->server.features.declaration(session, path_id, pos);
         });
 
     peer.on_request([this](RequestContext& ctx,
@@ -547,25 +550,21 @@ void LSPClient::register_language_features() {
         auto& uri = params.text_document_position_params.text_document.uri;
         auto& pos = params.text_document_position_params.position;
         auto [path, path_id, session] = resolve_uri(uri);
-        co_return co_await this->server.features.call_hierarchy_prepare(session, uri, path, pos);
+        co_return co_await this->server.features.call_hierarchy_prepare(session, path_id, pos);
     });
 
     peer.on_request([this](RequestContext& ctx,
                            const protocol::CallHierarchyIncomingCallsParams& params) -> RawResult {
         this->server.pool.foreground_pulse();
         auto [path, path_id, session] = resolve_uri(params.item.uri);
-        co_return co_await this->server.features.call_hierarchy_incoming(session,
-                                                                         path,
-                                                                         params.item);
+        co_return co_await this->server.features.call_hierarchy_incoming(path_id, params.item);
     });
 
     peer.on_request([this](RequestContext& ctx,
                            const protocol::CallHierarchyOutgoingCallsParams& params) -> RawResult {
         this->server.pool.foreground_pulse();
         auto [path, path_id, session] = resolve_uri(params.item.uri);
-        co_return co_await this->server.features.call_hierarchy_outgoing(session,
-                                                                         path,
-                                                                         params.item);
+        co_return co_await this->server.features.call_hierarchy_outgoing(path_id, params.item);
     });
 
     peer.on_request([this](RequestContext& ctx,
@@ -574,25 +573,21 @@ void LSPClient::register_language_features() {
         auto& uri = params.text_document_position_params.text_document.uri;
         auto& pos = params.text_document_position_params.position;
         auto [path, path_id, session] = resolve_uri(uri);
-        co_return co_await this->server.features.type_hierarchy_prepare(session, uri, path, pos);
+        co_return co_await this->server.features.type_hierarchy_prepare(session, path_id, pos);
     });
 
     peer.on_request([this](RequestContext& ctx,
                            const protocol::TypeHierarchySupertypesParams& params) -> RawResult {
         this->server.pool.foreground_pulse();
         auto [path, path_id, session] = resolve_uri(params.item.uri);
-        co_return co_await this->server.features.type_hierarchy_supertypes(session,
-                                                                           path,
-                                                                           params.item);
+        co_return co_await this->server.features.type_hierarchy_supertypes(path_id, params.item);
     });
 
     peer.on_request([this](RequestContext& ctx,
                            const protocol::TypeHierarchySubtypesParams& params) -> RawResult {
         this->server.pool.foreground_pulse();
         auto [path, path_id, session] = resolve_uri(params.item.uri);
-        co_return co_await this->server.features.type_hierarchy_subtypes(session,
-                                                                         path,
-                                                                         params.item);
+        co_return co_await this->server.features.type_hierarchy_subtypes(path_id, params.item);
     });
 
     peer.on_request(

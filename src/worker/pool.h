@@ -152,6 +152,13 @@ public:
     /// Gracefully stop all workers.
     kota::task<> stop();
 
+    /// Whether foreground work is in flight right now — a stateful request
+    /// dispatched and unanswered, or high-priority stateless work queued or
+    /// running. The hold window only starts counting once this drains.
+    bool foreground_busy() const {
+        return stateful_inflight > 0 || !high_queue.empty() || high_busy_count() > 0;
+    }
+
     /// Send a request to a stateful worker with path_id affinity routing.
     /// A suspect dispatch's crash does not spend the slot's budget — the
     /// failure says something about the document, not the slot; see
@@ -567,12 +574,6 @@ private:
     std::chrono::steady_clock::time_point last_fg_activity{};
     std::uint64_t next_claim_epoch = 0;
 
-    /// Whether foreground work is in flight right now — the hold window
-    /// only starts counting once this drains.
-    bool foreground_busy() const {
-        return stateful_inflight > 0 || !high_queue.empty() || high_busy_count() > 0;
-    }
-
     /// Alive stateless slots busy with high-priority work.
     std::size_t high_busy_count() const;
 
@@ -881,6 +882,34 @@ void WorkerPool::notify_stateful(std::uint32_t path_id, const Params& params) {
     if(assigned.state != SlotState::Alive)
         return;
     assigned.peer->send_notification(params);
+}
+
+/// Send a stateless request, resending once if the worker died mid-request.
+/// The pool does not retry on its own — it marks the dead slot and surfaces
+/// worker_crashed, so the resend lands on a healthy worker. Build tasks are
+/// idempotent; one retry suffices, since a request that kills two workers in
+/// a row is a poison workload that a third attempt would not survive either.
+///
+/// `on_crash` fires once per attempt that killed a worker — evidence is
+/// counted per death, not per request, so a poison build that burns two
+/// workers spends two strikes. Callers must count ONLY through it: the
+/// returned error is the retry's status, which may not be a crash.
+template <typename Params, typename OnCrash>
+RequestResult<Params> send_stateless_retrying(WorkerPool& pool,
+                                              const Params& params,
+                                              worker::Priority priority,
+                                              OnCrash on_crash,
+                                              kota::ipc::request_options opts = {},
+                                              std::optional<kota::cancellation_token> cancel = {}) {
+    auto result = co_await pool.send_stateless(params, priority, opts, cancel);
+    if(!result.has_value() && result.error().code == worker::dispatch_errc::worker_crashed) {
+        on_crash(result.error());
+        result = co_await pool.send_stateless(params, priority, opts, cancel);
+        if(!result.has_value() && result.error().code == worker::dispatch_errc::worker_crashed) {
+            on_crash(result.error());
+        }
+    }
+    co_return std::move(result);
 }
 
 }  // namespace clice

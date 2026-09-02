@@ -103,4 +103,12 @@ struct SymbolIdentity {
     SymbolScope scope;
 };
 
+/// A symbol as queries hand it out: its identity plus the stored name and
+/// kind, owned — the name outlives whichever table answered.
+struct SymbolRef {
+    SymbolHash hash = 0;
+    std::string name;
+    SymbolKind kind;
+};
+
 }  // namespace clice::index

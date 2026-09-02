@@ -457,7 +457,7 @@ auto document_format(llvm::StringRef file,
 
 /// Index projections: whole-document features computed from index rows plus
 /// the document text, serving open files that have no AST yet (see
-/// FeatureRouter's routing rules). Inputs are index vocabulary types and
+/// Features' routing rules). Inputs are index vocabulary types and
 /// narrow resolvers, never index storage — the caller extracts rows from
 /// shard/ProjectIndex and hands them over. Each projection's output is an
 /// honest subset of its AST twin's: missing pieces (Sema modifiers, outline
@@ -480,13 +480,7 @@ struct IndexIncludeEdge {
     std::string target;
 };
 
-/// A row symbol's identity as the resolver hands it back.
-struct IndexSymbolInfo {
-    std::string name;
-    SymbolKind kind = SymbolKind::Invalid;
-};
-
-using IndexSymbolResolver = llvm::function_ref<std::optional<IndexSymbolInfo>(index::SymbolHash)>;
+using IndexSymbolResolver = llvm::function_ref<std::optional<index::SymbolRef>(index::SymbolHash)>;
 
 /// Language options for raw-lexing `path` without a compile command: C
 /// for .c files and when `c_rows` says the served rows were built by C
@@ -509,6 +503,12 @@ auto index_semantic_tokens(llvm::StringRef content,
                            llvm::ArrayRef<index::Occurrence> occurrences,
                            llvm::ArrayRef<IndexDeclRow> decls,
                            IndexSymbolResolver resolve) -> std::vector<SemanticToken>;
+
+/// The outline's SymbolKind -> LSP mapping, exhaustive over the enum so a
+/// new kind fails to compile rather than fall into a default. The index
+/// navigation surfaces layer their own policy for the kinds whose display
+/// differs (see to_lsp::symbol_kind).
+auto to_protocol_symbol_kind(SymbolKind kind) -> protocol::SymbolKind;
 
 /// Outline tree built from declaration extents by range containment;
 /// extents that merely overlap (macro-generated siblings collapse onto one
@@ -544,7 +544,7 @@ auto preceding_comment(llvm::StringRef content, std::uint32_t offset) -> std::st
 /// Assemble the read-only hover card: name, kind and what the index can
 /// prove from stored text — no Sema products (type, value, size, aka) and
 /// no qualified scope (the index stores unqualified names).
-auto index_hover(const IndexSymbolInfo& info,
+auto index_hover(const index::SymbolRef& info,
                  llvm::StringRef definition_text,
                  llvm::StringRef comment) -> HoverInfo;
 

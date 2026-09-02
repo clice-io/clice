@@ -30,16 +30,30 @@ inline kota::ipc::lsp::LineMap::Offset clamped_offset(const kota::ipc::lsp::Line
     return map.line_bounds(starts[position.line]).end;
 }
 
-/// Position mapping in an indexed file's coordinates. Index blobs omit
-/// pure-ASCII text — byte offsets are UTF-16 offsets there, so the
-/// mapping is line-table arithmetic over the blob's content size;
-/// non-ASCII content delegates to LineMap over the stored text.
-class IndexedLineMap {
+/// The coordinate system of one index source: the mapping between its
+/// byte offsets and positions. Borrowed, never owning — an open buffer's
+/// text and line table, or an index blob's. Blobs omit pure-ASCII text —
+/// byte offsets are UTF-16 offsets there, so the mapping is line-table
+/// arithmetic over the blob's content size; non-ASCII content delegates
+/// to LineMap over the stored text.
+class Coordinates {
 public:
-    IndexedLineMap(llvm::StringRef content,
-                   std::uint32_t content_size,
-                   std::span<const std::uint32_t> line_starts) :
+    Coordinates() = default;
+
+    Coordinates(llvm::StringRef content,
+                std::uint32_t content_size,
+                std::span<const std::uint32_t> line_starts) :
         content(content), content_size(content_size), starts(line_starts) {}
+
+    /// The text the offsets index, when this source stores it.
+    llvm::StringRef text() const {
+        return content;
+    }
+
+    /// The byte length of the indexed text, stored or not.
+    std::uint32_t size() const {
+        return content_size;
+    }
 
     std::optional<protocol::Position> to_position(std::uint32_t offset) const {
         if(!content.empty()) {
@@ -103,7 +117,7 @@ private:
     }
 
     llvm::StringRef content;
-    std::uint32_t content_size;
+    std::uint32_t content_size = 0;
     std::span<const std::uint32_t> starts;
 };
 

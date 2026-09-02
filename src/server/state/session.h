@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -13,7 +14,7 @@ namespace clice {
 
 /// How open files are served — the parsed form of the `readonly` config
 /// option. Routing is not governed by this: every request is answered by
-/// the best source available at that moment (see FeatureRouter); the mode
+/// the best source available at that moment (see Features); the mode
 /// only decides whether PCH/AST builds are a goal at all. Builds are
 /// always pull-driven — no lifecycle event starts one, the first request
 /// that needs the AST does.
@@ -102,6 +103,26 @@ struct Session {
     /// verdict re-evaluates on dependency changes but ordinary typing
     /// errors never trigger a pointless prefix synthesis.
     bool trial_done = false;
+};
+
+/// A request's claim on the buffer it was asked about: the generation
+/// snapshot taken at the request's entry, before its first suspension.
+/// Every later decision — adopting a compile product, landing a worker
+/// reply, answering at all — asks `fresh()` first; a didChange or
+/// didClose bumped the generation, and whatever the request computed
+/// describes a buffer that no longer exists.
+struct Ticket {
+    std::shared_ptr<Session> session;
+    std::uint64_t generation = 0;
+
+    static Ticket take(std::shared_ptr<Session> session) {
+        auto generation = session->generation;
+        return {std::move(session), generation};
+    }
+
+    bool fresh() const {
+        return session->generation == generation;
+    }
 };
 
 }  // namespace clice

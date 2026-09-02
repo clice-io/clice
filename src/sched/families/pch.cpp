@@ -181,18 +181,13 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
 
     // The advisory token rides into the pool, which translates a fire
     // into the cooperative CancelBuild while this frame keeps awaiting
-    // the real reply (contract 2). One resend if the worker died: the
-    // pool marks the dead slot, so the retry lands on a healthy worker; a
-    // request that kills two workers in a row is a poison workload a
-    // third attempt would not survive either.
-    auto result = co_await pool.send_stateless(bp, worker::Priority::High, {}, ctx.token());
-    if(!result.has_value() && result.error().code == worker::dispatch_errc::worker_crashed) {
-        crashed(result.error());
-        result = co_await pool.send_stateless(bp, worker::Priority::High, {}, ctx.token());
-        if(!result.has_value() && result.error().code == worker::dispatch_errc::worker_crashed) {
-            crashed(result.error());
-        }
-    }
+    // the real reply (contract 2).
+    auto result = co_await send_stateless_retrying(pool,
+                                                   bp,
+                                                   worker::Priority::High,
+                                                   crashed,
+                                                   {},
+                                                   ctx.token());
 
     if(!result.has_value() && result.error().code == worker::dispatch_errc::cancelled) {
         LOG_INFO("PCH build preempted for {}, will retry", bp.file);

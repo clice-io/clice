@@ -215,14 +215,13 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
     // CancelBuild while this frame keeps awaiting the real reply
     // (contract 2 — the slot frees only when the worker is truly idle).
     auto priority = ctx.foreground() ? worker::Priority::High : worker::Priority::Low;
-    auto result = co_await pool.send_stateless(bp, priority, {}, ctx.token());
-    if(!result.has_value() && result.error().code == worker::dispatch_errc::worker_crashed) {
-        workspace.build_crashes.on_crash(budget_key);
-        result = co_await pool.send_stateless(bp, priority, {}, ctx.token());
-        if(!result.has_value() && result.error().code == worker::dispatch_errc::worker_crashed) {
-            workspace.build_crashes.on_crash(budget_key);
-        }
-    }
+    auto result = co_await send_stateless_retrying(
+        pool,
+        bp,
+        priority,
+        [&](const kota::ipc::protocol::Error&) { workspace.build_crashes.on_crash(budget_key); },
+        {},
+        ctx.token());
 
     // A scheduler preemption (foreground reclaim, memory pressure) or an
     // advisory cancel is no verdict on the unit: report the round stale so

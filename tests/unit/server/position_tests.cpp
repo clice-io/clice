@@ -6,7 +6,7 @@
 namespace clice::testing {
 namespace {
 
-TEST_SUITE(IndexedLineMap) {
+TEST_SUITE(Coordinates) {
 
 // Line starts of "ab\ncd\n" — two 2-byte lines plus the empty last line.
 std::vector<std::uint32_t> starts = {0, 3, 6};
@@ -14,7 +14,7 @@ std::vector<std::uint32_t> starts = {0, 3, 6};
 TEST_CASE(AsciiArithmetic) {
     // No stored content: byte offsets are UTF-16 offsets, mapping is pure
     // line-table arithmetic bounded by the content size.
-    IndexedLineMap map("", 6, starts);
+    Coordinates map("", 6, starts);
 
     auto pos = map.to_position(4);
     ASSERT_TRUE(pos.has_value());
@@ -47,7 +47,7 @@ TEST_CASE(AsciiArithmetic) {
 }
 
 TEST_CASE(EmptyLineTable) {
-    IndexedLineMap map("", 6, {});
+    Coordinates map("", 6, {});
     EXPECT_FALSE(map.to_position(0).has_value());
     EXPECT_FALSE(map.to_offset({.line = 0, .character = 0}).has_value());
 }
@@ -58,7 +58,7 @@ TEST_CASE(StoredContentDelegates) {
     // a smaller character than its byte column.
     llvm::StringRef content = "ab\né!\n";
     std::vector<std::uint32_t> line_starts = {0, 3, 7};
-    IndexedLineMap map(content, static_cast<std::uint32_t>(content.size()), line_starts);
+    Coordinates map(content, static_cast<std::uint32_t>(content.size()), line_starts);
 
     auto pos = map.to_position(5);
     ASSERT_TRUE(pos.has_value());
@@ -70,7 +70,7 @@ TEST_CASE(StoredContentDelegates) {
     EXPECT_EQ(*offset, 5u);
 }
 
-};  // TEST_SUITE(IndexedLineMap)
+};  // TEST_SUITE(Coordinates)
 
 }  // namespace
 }  // namespace clice::testing

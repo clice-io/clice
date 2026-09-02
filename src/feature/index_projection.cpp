@@ -631,7 +631,7 @@ auto preceding_comment(llvm::StringRef content, std::uint32_t offset) -> std::st
     return llvm::StringRef(result).trim().str();
 }
 
-auto index_hover(const IndexSymbolInfo& info,
+auto index_hover(const index::SymbolRef& info,
                  llvm::StringRef definition_text,
                  llvm::StringRef comment) -> HoverInfo {
     HoverInfo hover;

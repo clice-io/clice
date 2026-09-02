@@ -10,7 +10,7 @@
 #include "sched/families/pcm.h"
 #include "sched/graph.h"
 #include "server/service/ast_family.h"
-#include "server/service/worker_forwarder.h"
+#include "server/service/dispatcher.h"
 #include "server/worker_test_helpers.h"
 #include "support/anomaly.h"
 #include "support/cache_store.h"
@@ -18,19 +18,15 @@
 
 namespace clice::testing {
 
-/// Reaches the forwarder's private input-preparation steps for guard tests.
-struct ForwarderFixture {
-    static kota::task<bool> ensure_pch(WorkerForwarder& forwarder,
+/// Reaches the family's private PCH adoption step for guard tests.
+struct ASTFamilyFixture {
+    static kota::task<bool> ensure_pch(ASTFamily& ast,
                                        const std::shared_ptr<Session>& session,
                                        std::uint64_t license_generation,
                                        std::uint64_t license_epoch,
                                        const std::string& directory,
                                        const std::vector<std::string>& arguments) {
-        return forwarder.ensure_pch(session,
-                                    license_generation,
-                                    license_epoch,
-                                    directory,
-                                    arguments);
+        return ast.ensure_pch(session, license_generation, license_epoch, directory, arguments);
     }
 };
 
@@ -49,7 +45,7 @@ struct Stack {
     PCHFamily pch{graph, workspace, contexts, pool};
     SessionStore sessions;
     ASTFamily ast{workspace, contexts, graph, pcm, pch, pool, sessions, loop};
-    WorkerForwarder forwarder{workspace, contexts, pcm, pch, ast, pool};
+    Dispatcher dispatcher{workspace, contexts, ast, pool};
 
     Stack() {
         pcm.register_runner();
@@ -566,7 +562,7 @@ TEST_CASE(IncludeImportRecorded) {
 
 };  // TEST_SUITE(ASTFamilyGuards)
 
-TEST_SUITE(ForwarderGuards) {
+TEST_SUITE(DispatcherGuards) {
 
 TEST_CASE(QuarantineBlocksBuilds) {
     // A quarantined document gets no stateless builds either: completion
@@ -578,7 +574,7 @@ TEST_CASE(QuarantineBlocksBuilds) {
 
     bool done = false;
     auto body = [&]() -> kota::task<> {
-        auto result = co_await stack.forwarder.forward_completion({}, session);
+        auto result = co_await stack.dispatcher.completion(Ticket::take(session), {});
         CO_ASSERT_FALSE(result.has_value());
         EXPECT_EQ(result.error().code, worker::dispatch_errc::worker_unavailable);
         // The gate's message, not the empty pool's: without the gate this
@@ -602,7 +598,7 @@ TEST_CASE(QuarantineBlocksFormat) {
 
     bool done = false;
     auto body = [&]() -> kota::task<> {
-        auto result = co_await stack.forwarder.forward_format(session, std::nullopt);
+        auto result = co_await stack.dispatcher.format(Ticket::take(session), std::nullopt);
         CO_ASSERT_FALSE(result.has_value());
         EXPECT_EQ(result.error().code, worker::dispatch_errc::worker_unavailable);
         EXPECT_TRUE(result.error().message.contains("quarantined"));
@@ -633,7 +629,7 @@ TEST_CASE(EpochGuardsPCHWrite) {
     std::vector<std::string> arguments = {"clang++", "-fsyntax-only", "/proj/a.cpp"};
     bool wrote = true;
     auto body = [&]() -> kota::task<> {
-        wrote = co_await ForwarderFixture::ensure_pch(stack.forwarder,
+        wrote = co_await ASTFamilyFixture::ensure_pch(stack.ast,
                                                       session,
                                                       gen,
                                                       epoch,
@@ -677,7 +673,7 @@ TEST_CASE(PCHCrashCountsStreak) {
         CO_ASSERT_TRUE(stack.pool.start(opts));
 
         bool built =
-            co_await ForwarderFixture::ensure_pch(stack.forwarder,
+            co_await ASTFamilyFixture::ensure_pch(stack.ast,
                                                   session,
                                                   session->generation,
                                                   stack.ast.projections.epoch(session->path_id),
@@ -722,7 +718,7 @@ TEST_CASE(PCHCrashBlocksBuild) {
         opts.stateful_count = 0;
         CO_ASSERT_TRUE(stack.pool.start(opts));
 
-        auto result = co_await stack.forwarder.forward_completion({}, session);
+        auto result = co_await stack.dispatcher.completion(Ticket::take(session), {});
         CO_ASSERT_FALSE(result.has_value());
         EXPECT_EQ(result.error().code, worker::dispatch_errc::worker_unavailable);
         // One inherited strike plus both deaths of the doomed PCH build.
@@ -771,20 +767,20 @@ TEST_CASE(ClientCancelSparesCompile) {
         kota::cancellation_source source;
         kota::task_group<> group(stack.loop);
         auto cancelled_waiter = [&]() -> kota::task<> {
-            auto hover = [&]() -> WorkerForwarder::RawResult {
-                co_return co_await stack.forwarder.forward_query(worker::QueryKind::Hover,
-                                                                 session,
-                                                                 protocol::Position{0, 4},
-                                                                 {},
-                                                                 source.token());
+            auto hover = [&]() -> Dispatcher::RawResult {
+                co_return co_await stack.dispatcher.query(worker::QueryKind::Hover,
+                                                          Ticket::take(session),
+                                                          protocol::Position{0, 4},
+                                                          {},
+                                                          source.token());
             };
             auto r = co_await kota::with_token(hover(), source.token());
             cancelled_returned = r.is_cancelled();
         };
         auto other_waiter = [&]() -> kota::task<> {
-            auto result = co_await stack.forwarder.forward_query(worker::QueryKind::Hover,
-                                                                 session,
-                                                                 protocol::Position{0, 4});
+            auto result = co_await stack.dispatcher.query(worker::QueryKind::Hover,
+                                                          Ticket::take(session),
+                                                          protocol::Position{0, 4});
             other_answered = result.has_value();
         };
         group.spawn(cancelled_waiter());
@@ -808,6 +804,118 @@ TEST_CASE(ClientCancelSparesCompile) {
         EXPECT_TRUE(other_answered);
         EXPECT_TRUE(stack.ast.projections.current(session->path_id));
         EXPECT_FALSE(stack.is_compiling(session->path_id));
+
+        co_await stack.ast.stop();
+        co_await stack.graph.shutdown();
+        co_await stack.pool.stop();
+        done = true;
+    };
+    auto task = body();
+    stack.loop.schedule(task);
+    stack.loop.run();
+    EXPECT_TRUE(done);
+
+    logging::reset_anomaly_for_testing();
+}
+
+TEST_CASE(StaleReplyLandsContentModified) {
+    // A reply for a buffer the client edited away never leaves as a value:
+    // the landing turns it into ContentModified even when the worker
+    // answered after the compile had settled — the edit landed while the
+    // query itself was in flight.
+    logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
+
+    TempDir tmp;
+    tmp.touch("stale.cpp", "");
+    auto src = tmp.path("stale.cpp");
+
+    Stack stack;
+    std::string text;
+    text.reserve(1 << 20);
+    for(int i = 0; i < 50'000; i += 1) {
+        text += std::format("int v{};\n", i);
+    }
+    auto session = stack.open(src, std::move(text));
+
+    bool stale = false;
+    bool done = false;
+    auto body = [&]() -> kota::task<> {
+        WorkerPoolOptions opts;
+        opts.self_path = clice_binary();
+        opts.stateless_count = 0;
+        opts.stateful_count = 1;
+        CO_ASSERT_TRUE(stack.pool.start(opts));
+
+        // Warm the AST: the next query's only suspension is its worker send.
+        auto warm = co_await stack.dispatcher.query(worker::QueryKind::Hover,
+                                                    Ticket::take(session),
+                                                    protocol::Position{0, 4});
+        CO_ASSERT_TRUE(warm.has_value());
+
+        auto ticket = Ticket::take(session);
+        kota::task_group<> group(stack.loop);
+        auto tokens = [&]() -> kota::task<> {
+            auto result =
+                co_await stack.dispatcher.query(worker::QueryKind::SemanticTokens, ticket);
+            stale = !result.has_value() && result.error().code == content_modified_code;
+        };
+        group.spawn(tokens());
+        // spawn runs the query inline to that suspension, so the pool
+        // already reports it in flight: the bump lands provably between
+        // dispatch and reply.
+        CO_ASSERT_TRUE(stack.pool.foreground_busy());
+        session->generation += 1;
+        co_await group.join();
+        EXPECT_TRUE(stale);
+
+        co_await stack.ast.stop();
+        co_await stack.graph.shutdown();
+        co_await stack.pool.stop();
+        done = true;
+    };
+    auto task = body();
+    stack.loop.schedule(task);
+    stack.loop.run();
+    EXPECT_TRUE(done);
+
+    logging::reset_anomaly_for_testing();
+}
+
+TEST_CASE(HarmlessKindKeepsProbe) {
+    // A quarantine held by one query kind refuses only that kind: a hover
+    // on a semantic-tokens-quarantined document is ordinary work — it is
+    // answered, and the edit-granted probe stays armed for the tokens
+    // retry instead of being spent on it.
+    logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
+
+    TempDir tmp;
+    tmp.touch("a.cpp", "");
+    auto src = tmp.path("a.cpp");
+
+    Stack stack;
+    auto session = stack.open(src, "int x;\n");
+    constexpr auto tokens_kind = static_cast<std::uint8_t>(EvidenceKind::Count) +
+                                 static_cast<std::uint8_t>(worker::QueryKind::SemanticTokens);
+    session->quarantine.on_kind_crash(tokens_kind, "w-1");
+    session->quarantine.on_kind_crash(tokens_kind, "w-2");
+    ASSERT_TRUE(session->quarantine.active());
+    session->quarantine.on_edit(true);
+    ASSERT_TRUE(session->quarantine.recovery_kind(tokens_kind));
+
+    bool done = false;
+    auto body = [&]() -> kota::task<> {
+        WorkerPoolOptions opts;
+        opts.self_path = clice_binary();
+        opts.stateless_count = 0;
+        opts.stateful_count = 1;
+        CO_ASSERT_TRUE(stack.pool.start(opts));
+
+        auto result = co_await stack.dispatcher.query(worker::QueryKind::Hover,
+                                                      Ticket::take(session),
+                                                      protocol::Position{0, 4});
+        EXPECT_TRUE(result.has_value());
+        EXPECT_TRUE(session->quarantine.active());
+        EXPECT_TRUE(session->quarantine.recovery_kind(tokens_kind));
 
         co_await stack.ast.stop();
         co_await stack.graph.shutdown();
@@ -859,7 +967,7 @@ TEST_CASE(PoisonPreambleBudget) {
         CO_ASSERT_TRUE(stack.pool.start(opts));
 
         auto build = [&](const std::shared_ptr<Session>& session) {
-            return ForwarderFixture::ensure_pch(stack.forwarder,
+            return ASTFamilyFixture::ensure_pch(stack.ast,
                                                 session,
                                                 session->generation,
                                                 stack.ast.projections.epoch(session->path_id),
@@ -920,7 +1028,7 @@ TEST_CASE(EpochGuardsPCHWash) {
         auto epoch = stack.ast.projections.epoch(session->path_id);
         bool built = true;
         auto launch = [&]() -> kota::task<> {
-            built = co_await ForwarderFixture::ensure_pch(stack.forwarder,
+            built = co_await ASTFamilyFixture::ensure_pch(stack.ast,
                                                           session,
                                                           gen,
                                                           epoch,
@@ -944,7 +1052,7 @@ TEST_CASE(EpochGuardsPCHWash) {
 
         // A current request adopts the cached pair and only then washes
         // this session's ledger.
-        built = co_await ForwarderFixture::ensure_pch(stack.forwarder,
+        built = co_await ASTFamilyFixture::ensure_pch(stack.ast,
                                                       session,
                                                       session->generation,
                                                       stack.ast.projections.epoch(session->path_id),
@@ -992,7 +1100,7 @@ TEST_CASE(StaleDepsNoAdopt) {
     auto arguments = make_args(src);
 
     auto build = [&](const std::shared_ptr<Session>& session) {
-        return ForwarderFixture::ensure_pch(stack.forwarder,
+        return ASTFamilyFixture::ensure_pch(stack.ast,
                                             session,
                                             session->generation,
                                             stack.ast.projections.epoch(session->path_id),
@@ -1045,7 +1153,7 @@ TEST_CASE(StaleDepsNoAdopt) {
     EXPECT_TRUE(done);
 }
 
-};  // TEST_SUITE(ForwarderGuards)
+};  // TEST_SUITE(DispatcherGuards)
 
 }  // namespace
 

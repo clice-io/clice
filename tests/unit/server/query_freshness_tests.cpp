@@ -38,8 +38,11 @@ ASTProjectionTable projections;
 IndexStore index_store{loop, workspace, resolver};
 TURunFamily turun{graph, workspace, resolver, pcm, index_store, pool};
 IndexPump indexer{loop, workspace, turun, index_store, pool};
-IndexQuery index_query{workspace, store, indexer, projections};
-IndexQuery agent_query{workspace, store, indexer, projections, {.disk_only = true}};
+IndexQuery index_query{
+    workspace,
+    {.sessions = &store, .projections = &projections, .pump = &indexer}
+};
+IndexQuery agent_query{workspace, {.pump = &indexer}};
 
 Fid main_id;
 Fid header_id;
@@ -81,8 +84,8 @@ index::SymbolHash symbol_at(Fid path_id, std::uint32_t offset) {
 /// Files contributing reference rows for a symbol, by basename.
 std::vector<std::string> reference_files(index::SymbolHash hash) {
     std::vector<std::string> files;
-    for(auto& ref: agent_query.collect_references(hash, RelationKind::Reference)) {
-        files.push_back(llvm::sys::path::filename(ref.file).str());
+    for(auto& site: agent_query.sites(hash, RelationKind::Reference)) {
+        files.push_back(llvm::sys::path::filename(site.path).str());
     }
     return files;
 }
@@ -126,7 +129,7 @@ TEST_CASE(PendingGateSplitsRows) {
     // Baseline: the main TU contributes its reference row, and the
     // definition resolves into the header shard.
     ASSERT_TRUE(std::ranges::contains(reference_files(hash), "main.cpp"));
-    ASSERT_TRUE(index_query.find_definition_location(hash).has_value());
+    ASSERT_TRUE(index_query.first_site(hash, RelationKind::Definition).has_value());
 
     // Pending for a dependency change only: the previous rows keep serving.
     indexer.enqueue(main_id, ReindexReason::DepsOnly);
@@ -136,21 +139,21 @@ TEST_CASE(PendingGateSplitsRows) {
     agentic::ReadSymbolParams by_line;
     by_line.path = std::string(workspace.file_table.resolve(main_id));
     by_line.line = 3;
-    ASSERT_FALSE(agent_query.locate_symbols(by_line).empty());
+    ASSERT_FALSE(agent_query.locate(by_line).empty());
 
     // The file's own content changed: its contribution is skipped until the
     // reindex lands; other files' rows are unaffected.
     indexer.enqueue(main_id, ReindexReason::ContentChanged);
     ASSERT_FALSE(std::ranges::contains(reference_files(hash), "main.cpp"));
-    ASSERT_TRUE(index_query.find_definition_location(hash).has_value());
+    ASSERT_TRUE(index_query.first_site(hash, RelationKind::Definition).has_value());
 
     // Cursor-style resolution against the stale rows is unresolvable: the
     // line numbers describe text that no longer exists.
-    ASSERT_TRUE(agent_query.locate_symbols(by_line).empty());
+    ASSERT_TRUE(agent_query.locate(by_line).empty());
 
     // A content-changed definition file drops out of definition lookups.
     indexer.enqueue(header_id, ReindexReason::ContentChanged);
-    ASSERT_FALSE(index_query.find_definition_location(hash).has_value());
+    ASSERT_FALSE(index_query.first_site(hash, RelationKind::Definition).has_value());
 
     // With background indexing disabled nothing would ever catch up:
     // last-known rows keep serving instead of leaving a permanent hole.
