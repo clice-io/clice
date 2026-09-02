@@ -611,11 +611,14 @@ test("legacy header_context directory removed", async ({ session }) => {
     const legacy = workspace.path(path.join(".clice", "header_context"));
     fs.mkdirSync(legacy, { recursive: true });
     fs.writeFileSync(path.join(legacy, "0123456789abcdef.h"), "// stale prefix\n");
+    const kept = path.join(workspace.headerContextDir(), "fedcba9876543210.h");
+    fs.mkdirSync(workspace.headerContextDir(), { recursive: true });
+    fs.writeFileSync(kept, "// store prefix\n");
     workspace.write("main.cpp", "int main() { return 0; }\n");
     workspace.writeCDB(["main.cpp"]);
     await client.initialize(workspace);
     await client.openAndWait("main.cpp");
 
     expect(fs.existsSync(legacy)).toBe(false);
-    expect(fs.existsSync(workspace.headerContextDir())).toBe(true);
+    expect(workspace.headerContextFiles()).toEqual([kept]);
 });
