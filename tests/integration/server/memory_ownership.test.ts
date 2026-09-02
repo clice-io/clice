@@ -6,7 +6,7 @@
 /// cancelled builds leave no tmp blobs behind.
 
 import { MTIME_GRANULARITY, sleep, waitUntil, type CliceClient } from "@clice/tools/client";
-import type { StatsResult } from "@clice/tools/protocol";
+import { wireKeys, type StatsResult } from "@clice/tools/protocol";
 import { expect, test } from "../fixtures.ts";
 
 const EDIT_INTERVAL = 50;
@@ -140,17 +140,21 @@ test("cancel storm leaves no tmp", async ({ session }) => {
     expect(stats.sessions, `one open document: ${JSON.stringify(stats)}`).toBe(1);
     // The C++ and TS shapes of the reply are hand-written on both sides; a
     // gauge added to one and not the other shows up here.
-    expect(Object.keys(stats).sort()).toEqual([
-        "headerContexts",
-        "indexInmemoryShards",
-        "indexShardContentBytes",
-        "lastSaveShards",
-        "pchCacheEntries",
-        "pchLoadedStates",
-        "pchStateBytes",
-        "pendingTmpFiles",
-        "sessions",
-    ]);
+    expect(Object.keys(stats).sort()).toEqual(
+        [
+            ...wireKeys<StatsResult>()([
+                "headerContexts",
+                "indexInmemoryShards",
+                "indexShardContentBytes",
+                "lastSaveShards",
+                "pchCacheEntries",
+                "pchLoadedStates",
+                "pchStateBytes",
+                "pendingTmpFiles",
+                "sessions",
+            ]),
+        ].sort(),
+    );
     client.assertNoAnomaly();
 });
 

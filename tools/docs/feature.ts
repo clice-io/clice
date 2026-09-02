@@ -47,6 +47,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { REPO_ROOT } from "../compile_commands.ts";
 import { parseAnnotations } from "../snap/annotation.ts";
+import { FIXTURE_META_KEYS, scanFixtureHeader } from "../snap/corpus.ts";
+import { renderMarkdownTable, rewriteRegions, type RegionMarkers } from "./generated.ts";
 import { C_FAMILY } from "../snap/corpus.ts";
 
 // feature -> doc path (relative to repo root). Extend as more features
@@ -95,29 +97,13 @@ const ISSUE_TRACKERS: Record<string, string> = {
     llvm: "https://github.com/llvm/llvm-project/issues/",
 };
 
-// `snap` and `config` are consumed by the snapshot suites
-// (tools/snap/inspect.ts), not rendered into docs.
-const KNOWN_KEYS: readonly string[] = [
-    "status",
-    "issues",
-    "order",
-    "verify",
-    "snap",
-    "config",
-    "diagnostics",
-    "indexing",
-    "flags",
-];
 const VALID_STATUS: readonly string[] = ["supported", "partial", "unsupported"];
 
-// Markers must occupy their own unindented line, so marker text embedded in
-// generated item content (titles, descriptions, example code) can never
-// open or terminate a region.
-const BEGIN_RE = /^<!-- BEGIN GENERATED ITEMS: (.+?) -->$/;
-const END_MARKER = "<!-- END GENERATED ITEMS -->";
+const ITEM_MARKERS: RegionMarkers = {
+    begin: /^<!-- BEGIN GENERATED ITEMS: (.+?) -->$/,
+    end: "<!-- END GENERATED ITEMS -->",
+};
 const ISSUE_RE = /^([a-z]+)#(\d+)$/;
-// A metadata list entry: `- key: value`.
-const META_RE = /^-\s+(\w+):\s*(.*)$/;
 
 interface Fixture {
     path: string;
@@ -131,28 +117,6 @@ interface Fixture {
     /// Sibling sources of a multi-file unit fixture (unit-relative POSIX
     /// path, §-stripped content), rendered as extra labeled example blocks.
     siblings: { rel: string; content: string }[];
-}
-
-/// Split text into lines the way Python's str.splitlines() does: on any of
-/// \r\n, \r or \n, without a trailing empty element for a final line break.
-function splitLines(text: string): string[] {
-    if (text === "") {
-        return [];
-    }
-    const lines = text.split(/\r\n|\r|\n/);
-    if (lines[lines.length - 1] === "" && /[\r\n]$/.test(text)) {
-        lines.pop();
-    }
-    return lines;
-}
-
-/// Return the text of a `///` comment line, minus prefix and one space.
-function stripComment(line: string): string {
-    let text = line.trimStart().slice(3);
-    if (text.startsWith(" ")) {
-        text = text.slice(1);
-    }
-    return text;
 }
 
 function trimBlank(lines: string[]): string[] {
@@ -178,37 +142,13 @@ function parseIntStrict(value: string): number | null {
 
 /// Parse a fixture's doc header. Returns null for supplementary files.
 function parseFixture(filePath: string, featureDir: string, problems: string[]): Fixture | null {
-    const text = fs.readFileSync(filePath, "utf8");
-    let lines = splitLines(text);
-
-    // A fixture may open with a plain-`//` prologue (license/attribution
-    // comments) before the doc header. It is not part of the header or the
-    // example, so drop it: detection and example extraction both work on
-    // the remaining lines.
-    let prologue = 0;
-    while (prologue < lines.length) {
-        const line = (lines[prologue] ?? "").trim();
-        if (line !== "" && !(line.startsWith("//") && !line.startsWith("///"))) {
-            break;
-        }
-        prologue += 1;
-    }
-    lines = lines.slice(prologue);
-
-    /// Stripped `///` text at line i, or null if it is not a `///` line.
-    const comment = (i: number): string | null => {
-        const raw = lines[i];
-        if (!raw?.trimStart().startsWith("///")) {
-            return null;
-        }
-        return stripComment(raw);
-    };
-
-    const first = comment(0);
+    const header = scanFixtureHeader(fs.readFileSync(filePath, "utf8"));
+    const [first, second] = header.headings;
     if (!first?.startsWith("# ")) {
-        // Not an h1 line: supplementary fixture, not a doc item.
+        // Not an h1 heading: supplementary fixture, not a doc item.
         return null;
     }
+    const lines = header.lines;
 
     const relParts = path.relative(featureDir, filePath).split(path.sep);
     if (relParts.length > 2) {
@@ -222,20 +162,11 @@ function parseFixture(filePath: string, featureDir: string, problems: string[]):
     // h1 makes the h1 the section (matched verbatim against the doc page's
     // `<!-- BEGIN GENERATED ITEMS: ... -->` key); an h1 alone is the item
     // title with the fixture's subdirectory as the legacy section fallback.
-    let i = 1;
-    if (comment(i) === "") {
-        i += 1;
-    }
     let section = "";
     let title = "";
-    const second = comment(i);
     if (second?.startsWith("## ")) {
         section = first.slice(2).trim();
         title = second.slice(3).trim();
-        i += 1;
-        if (comment(i) === "") {
-            i += 1;
-        }
     } else {
         title = first.slice(2).trim();
         section = relParts.length >= 2 ? (relParts[0] ?? "") : "";
@@ -250,44 +181,23 @@ function parseFixture(filePath: string, featureDir: string, problems: string[]):
         );
     }
 
+    for (const line of header.malformed) {
+        problems.push(
+            `${filePath}: malformed metadata line '${line}' ` +
+                "(expected '- key: value'; separate the description with a bare ///)",
+        );
+    }
     const keys = new Map<string, string>();
-    for (;;) {
-        const line = comment(i);
-        if (line === null || line.trim() === "") {
-            break;
-        }
-        const stripped = line.trim();
-        const match = META_RE.exec(stripped);
-        if (!match) {
-            problems.push(
-                `${filePath}: malformed metadata line '${stripped}' ` +
-                    "(expected '- key: value'; separate the description with a bare ///)",
-            );
-            i += 1;
-            continue;
-        }
-        const key = match[1] ?? "";
-        if (!KNOWN_KEYS.includes(key)) {
+    for (const { key, value } of header.meta) {
+        if (!FIXTURE_META_KEYS.includes(key)) {
             problems.push(`${filePath}: unknown key '${key}'`);
         } else if (keys.has(key)) {
             problems.push(`${filePath}: duplicate ${key}`);
         }
-        keys.set(key, (match[2] ?? "").trim());
-        i += 1;
+        keys.set(key, value);
     }
-
-    // Everything from the trailing bare `///` up to the first non-comment
-    // line is the markdown description.
-    const desc: string[] = [];
-    for (;;) {
-        const line = comment(i);
-        if (line === null) {
-            break;
-        }
-        desc.push(line);
-        i += 1;
-    }
-    const bodyStart = i;
+    const desc = header.description;
+    const bodyStart = header.bodyStart;
 
     if (!keys.has("status")) {
         problems.push(`${filePath}: missing required key 'status'`);
@@ -520,60 +430,25 @@ function rewriteDoc(
     docPath: string,
     problems: string[],
 ): string {
-    const lines = docText.split("\n");
-    const out: string[] = [];
-    const docSections = new Set<string>();
-
-    let idx = 0;
-    while (idx < lines.length) {
-        const line = lines[idx] ?? "";
-        const match = BEGIN_RE.exec(line);
-        if (!match) {
-            out.push(line);
-            idx += 1;
-            continue;
-        }
-
-        const section = (match[1] ?? "").trim();
-        if (docSections.has(section)) {
-            problems.push(`${docPath}: duplicate region '${section}'`);
-        }
-        docSections.add(section);
-        let end = idx + 1;
-        while (end < lines.length && lines[end] !== END_MARKER) {
-            end += 1;
-        }
-        if (end >= lines.length) {
-            problems.push(`${docPath}: region '${section}' has no closing marker`);
-            for (let k = idx; k < lines.length; k++) {
-                out.push(lines[k] ?? "");
+    const { text, seen } = rewriteRegions(
+        docText,
+        docPath,
+        ITEM_MARKERS,
+        (section) => {
+            const matched = sections.get(section) ?? [];
+            if (matched.length === 0) {
+                problems.push(`${docPath}: region '${section}' matches no fixtures`);
             }
-            return out.join("\n");
-        }
-
-        const matched = sections.get(section) ?? [];
-        if (matched.length === 0) {
-            problems.push(`${docPath}: region '${section}' matches no fixtures`);
-        }
-
-        out.push(line);
-        const content = renderRegion(section, matched);
-        out.push("");
-        if (content) {
-            out.push(content);
-            out.push("");
-        }
-        out.push(lines[end] ?? "");
-        idx = end + 1;
-    }
-
+            return renderRegion(section, matched);
+        },
+        problems,
+    );
     for (const section of sections.keys()) {
-        if (!docSections.has(section)) {
+        if (!seen.has(section)) {
             problems.push(`${docPath}: section '${section}' has no matching marker region`);
         }
     }
-
-    return out.join("\n");
+    return text;
 }
 
 function processFeature(
@@ -649,23 +524,13 @@ function processOverview(
     }
 
     const current = fs.readFileSync(docPath, "utf8").replaceAll("\r\n", "\n");
-    const updated = rewriteOverview(current, renderTable(rows), docPath, problems);
+    const updated = rewriteOverview(
+        current,
+        renderMarkdownTable(rows).join("\n"),
+        docPath,
+        problems,
+    );
     return [docPath, current, updated];
-}
-
-/// A pipe table padded the way prettier formats markdown tables, so
-/// `pixi run format` leaves the generated region untouched.
-function renderTable(rows: string[][]): string {
-    const widths: number[] = [];
-    for (const row of rows) {
-        row.forEach((cell, i) => {
-            widths[i] = Math.max(widths[i] ?? 0, cell.length);
-        });
-    }
-    const line = (cells: string[]): string =>
-        `| ${cells.map((cell, i) => cell.padEnd(widths[i] ?? 0)).join(" | ")} |`;
-    const separator = widths.map((width) => "-".repeat(width));
-    return [line(rows[0] ?? []), line(separator), ...rows.slice(1).map(line)].join("\n");
 }
 
 function rewriteOverview(

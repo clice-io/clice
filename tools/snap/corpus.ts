@@ -48,7 +48,11 @@ export interface FixtureMeta {
     flags: string[];
 }
 
-const META_KEYS = [
+/// The keys a fixture's doc header may carry — the one vocabulary the snap
+/// suite and the docs generator both validate against. `issues` and
+/// `order` are rendered into the docs only; `snap` and `config` are read
+/// by the snapshot suites only.
+export const FIXTURE_META_KEYS: readonly string[] = [
     "status",
     "issues",
     "order",
@@ -60,6 +64,106 @@ const META_KEYS = [
     "flags",
 ];
 
+/// A fixture's leading `///` block, split into its parts; the readers
+/// (parseFixtureMeta here, the docs generator) validate what they use.
+export interface FixtureHeader {
+    /// The file's lines after any plain-`//` prologue (license or
+    /// attribution comments belong to neither the header nor the example).
+    lines: string[];
+    /// The `#` heading lines opening the block, comment prefix stripped.
+    headings: string[];
+    /// The `- key: value` list after the headings, in order; keys and
+    /// duplicates unchecked.
+    meta: { key: string; value: string }[];
+    /// Lines inside the list that are not entries: a misspelled entry must
+    /// error, not silently end the list on defaults.
+    malformed: string[];
+    /// The stripped `///` lines after the list's blank separator: the
+    /// markdown description.
+    description: string[];
+    /// Index into `lines` of the first line after the block.
+    bodyStart: number;
+}
+
+/// Split text into lines the way Python's str.splitlines() does: on any of
+/// \r\n, \r or \n, without a trailing empty element for a final line break.
+export function splitLines(text: string): string[] {
+    if (text === "") {
+        return [];
+    }
+    const lines = text.split(/\r\n|\r|\n/);
+    if (lines[lines.length - 1] === "" && /[\r\n]$/.test(text)) {
+        lines.pop();
+    }
+    return lines;
+}
+
+/// The text of a `///` comment line, minus the prefix and one space.
+function stripComment(line: string): string {
+    let text = line.trimStart().slice(3);
+    if (text.startsWith(" ")) {
+        text = text.slice(1);
+    }
+    return text;
+}
+
+const META_RE = /^-\s+(\w+):\s*(.*)$/;
+
+export function scanFixtureHeader(content: string): FixtureHeader {
+    const all = splitLines(content);
+    let prologue = 0;
+    while (prologue < all.length) {
+        const line = (all[prologue] ?? "").trim();
+        if (line !== "" && !(line.startsWith("//") && !line.startsWith("///"))) {
+            break;
+        }
+        prologue += 1;
+    }
+    const lines = all.slice(prologue);
+    const header: FixtureHeader = {
+        lines,
+        headings: [],
+        meta: [],
+        malformed: [],
+        description: [],
+        bodyStart: 0,
+    };
+
+    let i = 0;
+    const comment = (): string | null => {
+        const raw = lines[i];
+        return raw?.trimStart().startsWith("///") ? stripComment(raw) : null;
+    };
+    // The headings and the blank lines around them.
+    for (let line = comment(); line !== null; line = comment()) {
+        const text = line.trim();
+        if (text.startsWith("#")) {
+            header.headings.push(text);
+        } else if (text !== "") {
+            break;
+        }
+        i += 1;
+    }
+    // The metadata list, up to its blank separator. Any `- something:` here
+    // is an entry attempt (a misspelled key must error), anything else is
+    // malformed.
+    for (let line = comment(); line !== null && line.trim() !== ""; line = comment()) {
+        const match = META_RE.exec(line.trim());
+        if (match) {
+            header.meta.push({ key: match[1] ?? "", value: (match[2] ?? "").trim() });
+        } else {
+            header.malformed.push(line.trim());
+        }
+        i += 1;
+    }
+    for (let line = comment(); line !== null; line = comment()) {
+        header.description.push(line);
+        i += 1;
+    }
+    header.bodyStart = i;
+    return header;
+}
+
 export function parseFixtureMeta(content: string, filePath: string): FixtureMeta {
     const meta: FixtureMeta = {
         status: "supported",
@@ -70,57 +174,17 @@ export function parseFixtureMeta(content: string, filePath: string): FixtureMeta
         flags: [],
     };
 
-    // Scan only the metadata list of the leading `///` block: heading
-    // lines and blank separators before it, then `- key: value` lines
-    // until the next blank `///`. The markdown description after that may
-    // legitimately contain bulleted `word:` lines (docs/feature.ts renders
-    // it) — mirroring parseFixture in tools/docs/feature.ts, they are not
-    // metadata. A doc heading is not required: a supplementary fixture
-    // (no `# ` title, ignored by docs/feature.ts) may still open with a bare
-    // `///` meta block.
-    let inMeta = false;
-    const seen = new Set<string>();
-    // A plain-`//` prologue (license/attribution comments) may precede the
-    // `///` header — skip it, mirroring parseFixture in docs/feature.ts.
-    const lines = content.split("\n");
-    let start = 0;
-    while (start < lines.length) {
-        const line = (lines[start] ?? "").trim();
-        if (line !== "" && !(line.startsWith("//") && !line.startsWith("///"))) {
-            break;
-        }
-        start += 1;
+    const header = scanFixtureHeader(content);
+    for (const line of header.malformed) {
+        throw new Error(`${filePath}: malformed fixture meta line '${line}'`);
     }
-    for (let line of lines.slice(start)) {
-        line = line.trim();
-        if (!line.startsWith("///")) {
-            break;
-        }
-        line = line.slice(3).trim();
-        if (line.startsWith("#")) {
-            continue;
-        }
-        if (line === "") {
-            if (inMeta) {
-                break;
-            }
-            continue;
-        }
-        // Any `- something:` at the metadata position is treated as a key so
-        // that a misspelling (`- Snap:`, `- snap :`) errors instead of
-        // silently ending the block on defaults.
-        const match = /^- ([^:]+):(.*)$/.exec(line);
-        if (!match) {
-            break;
-        }
-        inMeta = true;
-        const key = (match[1] ?? "").trim();
-        const value = (match[2] ?? "").trim();
-        if (!META_KEYS.includes(key)) {
+    // A repeated key (merge leftovers, copy/paste) must not silently
+    // let the later value win — it could flip a snap mode unnoticed.
+    const seen = new Set<string>();
+    for (const { key, value } of header.meta) {
+        if (!FIXTURE_META_KEYS.includes(key)) {
             throw new Error(`${filePath}: unknown fixture meta key '${key}'`);
         }
-        // A repeated key (merge leftovers, copy/paste) must not silently
-        // let the later value win — it could flip a snap mode unnoticed.
         if (seen.has(key)) {
             throw new Error(`${filePath}: duplicate fixture meta key '${key}'`);
         }

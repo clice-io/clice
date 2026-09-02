@@ -8,6 +8,7 @@ import { expect, test } from "vitest";
 import {
     orphanSnapshots,
     parseFixtureMeta,
+    scanFixtureHeader,
     type SnapCorpus,
     type SnapFixture,
 } from "@clice/tools/snap/corpus";
@@ -145,4 +146,35 @@ test("snapshot ownership follows verify and snap modes", () => {
     } finally {
         fs.rmSync(tmp, { recursive: true, force: true });
     }
+});
+
+test("fixture header scanning", () => {
+    const content = [
+        "// license",
+        "",
+        "/// # Section",
+        "///",
+        "/// ## Title",
+        "///",
+        "/// - status: partial",
+        "/// - order : 3",
+        "///",
+        "/// Prose, with",
+        "///   - a bullet",
+        "int x;",
+        "",
+    ].join("\n");
+    const header = scanFixtureHeader(content);
+    expect(header.headings).toEqual(["# Section", "## Title"]);
+    expect(header.meta).toEqual([{ key: "status", value: "partial" }]);
+    expect(header.malformed).toEqual(["- order : 3"]);
+    expect(header.description).toEqual(["", "Prose, with", "  - a bullet"]);
+    expect(header.lines[header.bodyStart]).toBe("int x;");
+    // A malformed entry is an error for the snap suite too, not the end
+    // of the list on defaults.
+    expect(() => parseFixtureMeta(content, "f")).toThrow("malformed fixture meta line");
+    // No header at all.
+    const bare = scanFixtureHeader("int x;\n");
+    expect(bare.headings).toEqual([]);
+    expect(bare.bodyStart).toBe(0);
 });

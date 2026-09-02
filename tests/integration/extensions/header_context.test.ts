@@ -11,6 +11,7 @@
 import * as proto from "vscode-languageserver-protocol";
 import { waitUntil, withTimeout } from "@clice/tools/client";
 import { expect, test } from "../fixtures.ts";
+import { wireKeys, type SwitchContextResult } from "@clice/tools/protocol";
 
 /// clice/queryContext on a header should return source files that include it.
 test("query context returns host sources", async ({ session }) => {
@@ -69,6 +70,11 @@ test("switch context and current context", async ({ session }) => {
     const switchResult = await client.switchContext(utilsUri, mainUri);
     expect(switchResult).not.toBeNull();
     expect(switchResult.success).toBe(true);
+    // The C++ and TS shapes of the reply are hand-written on both sides; a
+    // field added to one and not the other shows up here.
+    expect(Object.keys(switchResult).sort()).toEqual(
+        [...wireKeys<SwitchContextResult>()(["stale", "success"])].sort(),
+    );
 
     // Verify currentContext now returns main.cpp.
     const current = await client.currentContext(utilsUri);

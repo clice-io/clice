@@ -6,6 +6,8 @@
   "exports": {
     "./bench/perf": "./bench/perf.ts",
     "./client": "./client/client.ts",
+    "./promise": "./promise.ts",
+    "./docs/generated": "./docs/generated.ts",
     "./workspace": "./client/workspace.ts",
     "./session": "./client/session.ts",
     "./snap/annotation": "./snap/annotation.ts",

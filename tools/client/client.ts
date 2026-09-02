@@ -47,6 +47,10 @@ export {
     logFiles,
     SANITIZER_MARKERS,
 } from "../process_gate.ts";
+import { withTimeout } from "../promise.ts";
+
+// The harness's timing helpers are reached through this module.
+export { withTimeout } from "../promise.ts";
 
 // Standard timing constants — use these instead of hardcoded sleep values.
 export const MTIME_GRANULARITY = 1_100; // Filesystem mtime precision + margin
@@ -109,24 +113,6 @@ export function asLocations(result: unknown): proto.Location[] {
 }
 
 const SANITIZER_MARKER_BUFFERS = SANITIZER_MARKERS.map((m) => Buffer.from(m));
-
-export function withTimeout<T>(promise: Promise<T>, ms: number, what: string): Promise<T> {
-    return new Promise<T>((resolve, reject) => {
-        const timer = setTimeout(() => {
-            reject(new Error(`timed out after ${ms}ms: ${what}`));
-        }, ms);
-        promise.then(
-            (v) => {
-                clearTimeout(timer);
-                resolve(v);
-            },
-            (e: unknown) => {
-                clearTimeout(timer);
-                reject(e instanceof Error ? e : new Error(String(e)));
-            },
-        );
-    });
-}
 
 let nextPortOffset = 0;
 
@@ -924,8 +910,7 @@ export class CliceClient {
     async inactiveLines(uri: string): Promise<number[]> {
         const result = await this.semanticTokensFull(uri);
         const provider = this.initResult?.capabilities.semanticTokensProvider as
-            | proto.SemanticTokensOptions
-            | undefined;
+            proto.SemanticTokensOptions | undefined;
         const bit = provider?.legend.tokenModifiers.indexOf("inactive") ?? -1;
         if (bit < 0) {
             throw new Error("server legend misses the inactive modifier");
