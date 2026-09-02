@@ -1,4 +1,4 @@
-# Build from Source
+# 从源码构建
 
 clice 依赖 C++23 特性，需要使用现代 C++ 工具链。同时需要链接 LLVM/Clang 来解析 AST。为了加快构建速度，默认配置会下载我们发布的 [clice-llvm](https://github.com/clice-io/clice-llvm) 预编译包。这要求你的本地环境与预编译环境保持较高的一致性（尤其是开启 Address Sanitizer 或 LTO 时）。
 
@@ -34,7 +34,7 @@ pixi run snap-test Debug
 > [!TIP]
 > 如果你想直接使用 `cmake`、`ninja`、`clang++` 等命令进行开发，请运行 `pixi shell` 进入已配置好环境变量的 shell。
 
-## Manual Build
+## 手动构建
 
 如果你打算手动构建，请先确保你的工具链与 `pixi.toml` 中定义的版本一致。
 
@@ -65,7 +65,7 @@ cmake --build build/RelWithDebInfo
 | CLICE_CI_ENVIRONMENT   | OFF    | 启用 `CLICE_CI_ENVIRONMENT` 宏；部分测试仅在 CI 中运行         |
 | CLICE_OFFLINE_BUILD    | OFF    | 禁用配置阶段的网络下载                                         |
 
-## About LLVM
+## 关于 LLVM
 
 clice 调用 Clang API 解析 C++ 代码，因此必须链接 LLVM/Clang。由于 clice 使用 Clang 的私有头文件（发行版通常不包含），不能直接使用系统 LLVM 包。
 

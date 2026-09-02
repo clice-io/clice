@@ -13,20 +13,20 @@ clice 提供一套基于 LLVM/Clang 构建的 C++ 开发工具。本节记录已
 
 <!-- BEGIN GENERATED OVERVIEW -->
 
-| 功能        | 状态                                | 页面                                      |
-| ----------- | ----------------------------------- | ----------------------------------------- |
-| 代码补全    | 30 项支持                           | [completion](./completion.md)             |
-| 悬停        | 34 项支持 · 21 项部分 · 11 项不支持 | [hover](./hover.md)                       |
-| 签名帮助    | 14 项支持                           | [signature-help](./signature-help.md)     |
-| 代码导航    | 44 项支持 · 14 项部分 · 34 项不支持 | [navigation](./navigation.md)             |
-| 文档链接    | 7 项支持 · 1 项部分 · 1 项不支持    | [document-links](./document-links.md)     |
-| 语义 Token  | 54 项支持 · 4 项部分 · 10 项不支持  | [semantic-tokens](./semantic-tokens.md)   |
-| Inlay Hints | 31 项支持 · 6 项部分 · 4 项不支持   | [inlay-hints](./inlay-hints.md)           |
-| 折叠范围    | 13 项支持 · 2 项部分 · 6 项不支持   | [folding-ranges](./folding-ranges.md)     |
-| 文档符号    | 18 项支持 · 2 项部分 · 7 项不支持   | [document-symbols](./document-symbols.md) |
-| 格式化      | 已实现                              | [formatting](./formatting.md)             |
-| 诊断        | 部分                                | [diagnostics](./diagnostics.md)           |
-| 代码操作    | 存根                                | [code-action](./code-action.md)           |
+| 功能       | 状态                                | 页面                                      |
+| ---------- | ----------------------------------- | ----------------------------------------- |
+| 代码补全   | 30 项支持                           | [completion](./completion.md)             |
+| 悬停       | 34 项支持 · 21 项部分 · 11 项不支持 | [hover](./hover.md)                       |
+| 签名帮助   | 14 项支持                           | [signature-help](./signature-help.md)     |
+| 代码导航   | 44 项支持 · 14 项部分 · 34 项不支持 | [navigation](./navigation.md)             |
+| 文档链接   | 7 项支持 · 1 项部分 · 1 项不支持    | [document-links](./document-links.md)     |
+| 语义 Token | 54 项支持 · 4 项部分 · 10 项不支持  | [semantic-tokens](./semantic-tokens.md)   |
+| 内联提示   | 31 项支持 · 6 项部分 · 4 项不支持   | [inlay-hints](./inlay-hints.md)           |
+| 折叠范围   | 13 项支持 · 2 项部分 · 6 项不支持   | [folding-ranges](./folding-ranges.md)     |
+| 文档符号   | 18 项支持 · 2 项部分 · 7 项不支持   | [document-symbols](./document-symbols.md) |
+| 格式化     | 已实现                              | [formatting](./formatting.md)             |
+| 诊断       | 部分                                | [diagnostics](./diagnostics.md)           |
+| 代码操作   | 存根                                | [code-action](./code-action.md)           |
 
 <!-- END GENERATED OVERVIEW -->
 

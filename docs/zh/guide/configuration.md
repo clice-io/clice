@@ -1,4 +1,4 @@
-# Configuration
+# 配置
 
 clice 从工作区根目录的 `clice.toml` 读取配置；若该文件不存在，则从 `.clice/config.toml` 读取。配置也可以通过 LSP `initializationOptions`（JSON 格式）传入；`initializationOptions` 中的值覆盖配置文件，合并后仍未设置的项由默认值填充。
 

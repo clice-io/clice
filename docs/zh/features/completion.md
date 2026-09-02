@@ -87,7 +87,7 @@
 
 通过文本上下文分析检测。在 AST 之前处理（preamble 层，无需编译）。
 
-### Import
+### 导入
 
 光标位于 `import` 或 `export import` 之后时触发。
 
@@ -144,7 +144,7 @@ export int add(int a, int b) {
   注：模块名中的点号仅是命名约定，并非语言层面的层级结构，但 dot 触发补全仍是有价值的 UX。
 
 - [ ] 过滤其他模块的非导出（内部）partition
-- [ ] Header unit import
+- [ ] 头文件单元导入
 
   ```cpp
   import <^>  // suggest importable headers (same candidates as #include)
@@ -157,7 +157,7 @@ export int add(int a, int b) {
   std::vector^  // on accept, also insert "import std;" at the top
   ```
 
-### Declaration
+### 声明
 
 模块声明上下文中的补全（`module` / `export module`）。
 

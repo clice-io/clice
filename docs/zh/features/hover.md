@@ -1273,13 +1273,13 @@ export module math:algebra;
 
 <!-- BEGIN GENERATED ITEMS: hover_correctness -->
 
-| 能力              | 状态 | 问题 |
-| ----------------- | ---- | ---- |
-| MSVC 继承模型     | 支持 |      |
-| Most-vexing-parse | 支持 |      |
-| 大无符号枚举常量  | 支持 |      |
-| 带默认参数的调用  | 支持 |      |
-| 宏遮蔽的符号      | 支持 |      |
+| 能力                                  | 状态 | 问题 |
+| ------------------------------------- | ---- | ---- |
+| MSVC 继承模型                         | 支持 |      |
+| 最令人烦恼的解析（most vexing parse） | 支持 |      |
+| 大无符号枚举常量                      | 支持 |      |
+| 带默认参数的调用                      | 支持 |      |
+| 宏遮蔽的符号                          | 支持 |      |
 
 ### MSVC 继承模型
 
@@ -1300,7 +1300,7 @@ int Widget::* member = &Widget::value;
 }
 ```
 
-### Most-vexing-parse
+### 最令人烦恼的解析（most vexing parse）
 
 对象初始化和函数声明悬停有区别
 

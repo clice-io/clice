@@ -1,6 +1,6 @@
 # 代码导航
 
-## Go to Definition
+## 跳转到定义
 
 <!-- BEGIN GENERATED ITEMS: go_to_definition -->
 
@@ -257,14 +257,14 @@ void use() {
 | 委托构造函数                          | 部分支持 |                                                             |
 | 继承构造函数                          | 部分支持 |                                                             |
 | 返回值隐式构造                        | 支持     |                                                             |
-| Lambda init-capture                   | 不支持   |                                                             |
+| Lambda 初始化捕获                     | 不支持   |                                                             |
 | 重载运算符                            | 支持     |                                                             |
 | C++20 重写运算符                      | 支持     |                                                             |
 | 用户定义字面量                        | 不支持   |                                                             |
 | 隐式转换运算符                        | 不支持   | [clangd#1931](https://github.com/clangd/clangd/issues/1931) |
 | 调用构造函数或转换运算符的转换        | 部分支持 |                                                             |
-| Range-based for                       | 不支持   |                                                             |
-| Structured bindings                   | 不支持   |                                                             |
+| 范围 for 循环                         | 不支持   |                                                             |
+| 结构化绑定                            | 不支持   |                                                             |
 | `co_await` / `co_yield` / `co_return` | 部分支持 |                                                             |
 
 ### `override` / `final`
@@ -476,7 +476,7 @@ Widget create() {
 }
 ```
 
-### Lambda init-capture
+### Lambda 初始化捕获
 
 导航到构造函数
 
@@ -605,7 +605,7 @@ void use(Meters m) {
 }
 ```
 
-### Range-based for
+### 范围 for 循环
 
 导航到 `begin()` / `end()`
 
@@ -628,7 +628,7 @@ void use(Range r) {
 }
 ```
 
-### Structured bindings
+### 结构化绑定
 
 导航到底层访问器或字段
 
@@ -698,7 +698,7 @@ Task example() {
 
 <!-- END GENERATED ITEMS -->
 
-## Go to Declaration
+## 跳转到声明
 
 从符号的使用处或定义处导航到其声明。C++ 中许多实体具有独立的声明和定义。
 
@@ -859,7 +859,7 @@ int use_render() {
 
 <!-- END GENERATED ITEMS -->
 
-## Go to Implementation
+## 跳转到实现
 
 <!-- BEGIN GENERATED ITEMS: go_to_implementation -->
 
@@ -968,7 +968,7 @@ void generic() {
 
 <!-- END GENERATED ITEMS -->
 
-## Go to Type Definition
+## 跳转到类型定义
 
 导航到符号的类型定义。适用于变量、参数、字段以及任何其他具有类型的命名实体。当类型是类型别名或类似指针的包装时，导航应解包到底层/指向的类型。
 
@@ -1090,7 +1090,7 @@ int use() {
 
 <!-- END GENERATED ITEMS -->
 
-## Find References
+## 查找引用
 
 <!-- BEGIN GENERATED ITEMS: find_references -->
 
@@ -1318,15 +1318,15 @@ int loop(int failed) {
 
 <!-- END GENERATED ITEMS -->
 
-## Call Hierarchy
+## 调用层次
 
 <!-- BEGIN GENERATED ITEMS: call_hierarchy -->
 
 | 能力                                    | 状态     | 问题                                                        |
 | --------------------------------------- | -------- | ----------------------------------------------------------- |
 | 对函数和方法执行 prepare call hierarchy | 支持     |                                                             |
-| Incoming calls                          | 支持     |                                                             |
-| Outgoing calls                          | 支持     |                                                             |
+| 入向调用                                | 支持     |                                                             |
+| 出向调用                                | 支持     |                                                             |
 | 条目的 detail 字段中显示函数签名        | 不支持   |                                                             |
 | 成员函数的限定名                        | 部分支持 |                                                             |
 | 跟踪虚函数派发                          | 不支持   |                                                             |
@@ -1350,7 +1350,7 @@ void launch(Service& s) {
 }
 ```
 
-### Incoming calls
+### 入向调用
 
 Incoming calls 列出函数的所有调用者，若某个调用者多次调用它，每个调用位置都会计入。
 
@@ -1368,7 +1368,7 @@ int beta() {
 }
 ```
 
-### Outgoing calls
+### 出向调用
 
 Outgoing calls 列出函数体调用的每个函数，每个被调用者对应一个条目。
 
@@ -1485,15 +1485,15 @@ Widget build() {
 
 <!-- END GENERATED ITEMS -->
 
-## Type Hierarchy
+## 类型层次
 
 <!-- BEGIN GENERATED ITEMS: type_hierarchy -->
 
 | 能力                                                  | 状态     | 问题                                                    |
 | ----------------------------------------------------- | -------- | ------------------------------------------------------- |
 | 在 class、struct、enum 和 union 上准备 type hierarchy | 支持     |                                                         |
-| Supertypes                                            | 支持     |                                                         |
-| Subtypes                                              | 支持     |                                                         |
+| 父类型                                                | 支持     |                                                         |
+| 子类型                                                | 支持     |                                                         |
 | 模板继承                                              | 支持     |                                                         |
 | type hierarchy 条目中的模板参数                       | 部分支持 | [clangd#31](https://github.com/clangd/clangd/issues/31) |
 
@@ -1514,7 +1514,7 @@ union Storage {
 };
 ```
 
-### Supertypes
+### 父类型
 
 Supertypes 列出类的每个直接基类，包括多重继承派生类型的每个基类。
 
@@ -1526,7 +1526,7 @@ struct Beta {};
 struct Gamma : Alpha, Beta {};
 ```
 
-### Subtypes
+### 子类型
 
 Subtypes 列出从基类派生的每个类，涵盖所有同级派生类型。
 
@@ -1570,7 +1570,7 @@ Derived<Foo> instance;
 
 <!-- END GENERATED ITEMS -->
 
-## Workspace Symbol
+## 工作区符号
 
 按名称在整个项目中搜索符号（`workspace/symbol`）。
 
@@ -1838,7 +1838,7 @@ export int value() {
 
 <!-- END GENERATED ITEMS -->
 
-## Document Highlight
+## 文档高亮
 
 高亮当前文件中光标所在符号的所有引用（`textDocument/documentHighlight`）。
 
@@ -1895,7 +1895,7 @@ void drain(int outer, int inner) {
 
 <!-- END GENERATED ITEMS -->
 
-## Switch Source/Header
+## 源文件/头文件切换
 
 <!-- BEGIN GENERATED ITEMS: switch_source_header -->
 

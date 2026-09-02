@@ -1,4 +1,4 @@
-# Inlay Hints
+# 内联提示
 
 <!-- The capability sections below are generated from the snapshot fixtures in
      tests/snap/inlay_hint/. Do not edit the regions between the GENERATED
@@ -20,7 +20,7 @@ clice 为代码中隐式省略的信息渲染内联标注：调用处的参数�
 | 转发解析               | 支持     | [clangd#2324](https://github.com/clangd/clangd/issues/2324)                                                              |
 | 来自定义的名称         | 支持     |                                                                                                                          |
 | 函数指针与调用运算符   | 支持     | [clangd#1734](https://github.com/clangd/clangd/issues/1734), [clangd#1742](https://github.com/clangd/clangd/issues/1742) |
-| Deducing `this`        | 支持     | [clangd#1777](https://github.com/clangd/clangd/issues/1777)                                                              |
+| 推导 `this`            | 支持     | [clangd#1777](https://github.com/clangd/clangd/issues/1777)                                                              |
 | 依赖调用               | 支持     |                                                                                                                          |
 | 未展开的参数包         | 支持     |                                                                                                                          |
 | 调用处的宏             | 支持     | [clangd#2620](https://github.com/clangd/clangd/issues/2620)                                                              |
@@ -270,7 +270,7 @@ void use() {
 }
 ```
 
-### Deducing `this`
+### 推导 `this`
 
 显式对象参数从不提示（C++23）
 
@@ -549,20 +549,20 @@ void use() {
 
 <!-- BEGIN GENERATED ITEMS: type_hints -->
 
-| 能力                | 状态     | 问题                                                                                                                     |
-| ------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `auto` 推导变量     | 支持     |                                                                                                                          |
-| 类型糖与长度限制    | 支持     | [clangd#1298](https://github.com/clangd/clangd/issues/1298), [clangd#1357](https://github.com/clangd/clangd/issues/1357) |
-| Structured bindings | 支持     |                                                                                                                          |
-| Lambda              | 支持     | [clangd#1163](https://github.com/clangd/clangd/issues/1163)                                                              |
-| 推导返回类型        | 支持     |                                                                                                                          |
-| `decltype` 拼写     | 支持     |                                                                                                                          |
-| `auto` 参数         | 支持     |                                                                                                                          |
-| 显式拼写的初始化器  | 部分支持 | [clangd#1749](https://github.com/clangd/clangd/issues/1749)                                                              |
-| 依赖 `auto`         | 部分支持 | [clangd#2275](https://github.com/clangd/clangd/issues/2275)                                                              |
-| 作用域抑制          | 支持     |                                                                                                                          |
-| Tuple 协议绑定      | 支持     |                                                                                                                          |
-| 实例化模板          | 部分支持 | [clangd#2275](https://github.com/clangd/clangd/issues/2275)                                                              |
+| 能力               | 状态     | 问题                                                                                                                     |
+| ------------------ | -------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `auto` 推导变量    | 支持     |                                                                                                                          |
+| 类型糖与长度限制   | 支持     | [clangd#1298](https://github.com/clangd/clangd/issues/1298), [clangd#1357](https://github.com/clangd/clangd/issues/1357) |
+| 结构化绑定         | 支持     |                                                                                                                          |
+| Lambda             | 支持     | [clangd#1163](https://github.com/clangd/clangd/issues/1163)                                                              |
+| 推导返回类型       | 支持     |                                                                                                                          |
+| `decltype` 拼写    | 支持     |                                                                                                                          |
+| `auto` 参数        | 支持     |                                                                                                                          |
+| 显式拼写的初始化器 | 部分支持 | [clangd#1749](https://github.com/clangd/clangd/issues/1749)                                                              |
+| 依赖 `auto`        | 部分支持 | [clangd#2275](https://github.com/clangd/clangd/issues/2275)                                                              |
+| 作用域抑制         | 支持     |                                                                                                                          |
+| Tuple 协议绑定     | 支持     |                                                                                                                          |
+| 实例化模板         | 部分支持 | [clangd#2275](https://github.com/clangd/clangd/issues/2275)                                                              |
 
 ### `auto` 推导变量
 
@@ -611,7 +611,7 @@ void use() {
 }
 ```
 
-### Structured bindings
+### 结构化绑定
 
 每个绑定提示其规范类型；聚合对象本身保持无提示
 

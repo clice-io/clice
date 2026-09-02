@@ -1,4 +1,4 @@
-# Extension
+# 编辑器扩展
 
 本节汇总各编辑器扩展（VSCode / Neovim / Zed）的开发与发布流程。
 

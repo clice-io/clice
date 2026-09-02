@@ -262,7 +262,7 @@ int first(Grid<int>& grid) {
 | 结构化绑定           | 支持     |                                                                                                                      |
 | 成员初始化列表       | 支持     | [clangd#122](https://github.com/clangd/clangd/issues/122)                                                            |
 | using 声明           | 支持     | [clangd#2619](https://github.com/clangd/clangd/issues/2619)                                                          |
-| Lambda init-capture  | 支持     | [clangd#868](https://github.com/clangd/clangd/issues/868)                                                            |
+| Lambda 初始化捕获    | 支持     | [clangd#868](https://github.com/clangd/clangd/issues/868)                                                            |
 | `sizeof...`          | 支持     | [clangd#213](https://github.com/clangd/clangd/issues/213)                                                            |
 | `using enum`         | 支持     | [clangd#1283](https://github.com/clangd/clangd/issues/1283)                                                          |
 | 推导指引             | 支持     |                                                                                                                      |
@@ -468,7 +468,7 @@ int used = helper();
 Gadget gadget;
 ```
 
-### Lambda init-capture
+### Lambda 初始化捕获
 
 捕获的名称高亮为变量
 
@@ -786,7 +786,7 @@ template struct E<C>;
 
 <!-- END GENERATED ITEMS -->
 
-## Modules
+## 模块
 
 <!-- BEGIN GENERATED ITEMS: modules -->
 
@@ -841,7 +841,7 @@ void f() {
 
 <!-- END GENERATED ITEMS -->
 
-## Token Modifiers
+## Token 修饰符
 
 <!-- BEGIN GENERATED ITEMS: token_modifiers -->
 
