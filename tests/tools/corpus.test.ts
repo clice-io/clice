@@ -177,4 +177,13 @@ test("fixture header scanning", () => {
     const bare = scanFixtureHeader("int x;\n");
     expect(bare.headings).toEqual([]);
     expect(bare.bodyStart).toBe(0);
+    // A leading `///` block that opens with prose is a doc comment on the
+    // code, not a header: nothing is malformed and the snap suite sees the
+    // defaults.
+    const doc = scanFixtureHeader("/// Documents f.\n/// - not: a key\nint f();\n");
+    expect(doc).toMatchObject({ headings: [], meta: [], malformed: [], bodyStart: 0 });
+    expect(parseFixtureMeta("/// Documents f.\nint f();\n", "f")).toEqual(DEFAULTS);
+    // Blank `///` lines before the opening heading are skipped.
+    expect(scanFixtureHeader("///\n/// # T\n///\n/// - snap: skip\n").headings).toEqual(["# T"]);
+    expect(parseFixtureMeta("///\n/// - snap: skip\n", "f").snap).toBe("skip");
 });

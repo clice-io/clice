@@ -1,6 +1,6 @@
 /// Generate feature-doc checklist sections from snapshot fixtures.
 ///
-/// Each fixture .cpp under tests/data/<feature>/ may begin with a doc header
+/// Each fixture .cpp under tests/snap/<feature>/ may begin with a doc header
 /// describing one checklist capability. This tool renders those headers into
 /// the GENERATED regions of docs/en/features/*.md, so the fixtures are the
 /// single source of truth and the doc checklist is derived from them.
@@ -17,27 +17,23 @@
 ///     ///
 ///     /// Optional markdown description after a bare `///` separator.
 ///
-/// A file is a doc item iff its first line (after stripping `/// `) starts
-/// with `# `. Anything else is a supplementary edge-case test, excluded
-/// from docs. A plain-`//` prologue (license/attribution comments) may
-/// precede the header; it belongs to neither the header nor the example.
-/// The heading hierarchy is plain markdown: with an `## item
-/// title` under the h1, the h1 names the doc section the item belongs to —
-/// matched verbatim against the doc page's generated-region key
-/// (`<!-- BEGIN GENERATED ITEMS: Fold Kinds -->`); an h1 alone is the item
-/// title, with the fixture's subdirectory as the legacy section fallback.
-/// A blank `///` separates the headings from a metadata list of
-/// `/// - key: value` lines; the known keys are `status` (required;
-/// `supported`, `partial` or `unsupported`), `issues` (optional), `order`
-/// (optional integer) and `snap` (snapshot suites, not rendered). A bare
-/// `///` then separates the metadata from an optional markdown
-/// description; everything after the last `///` line (trimmed of blank
-/// lines) is the example code.
+/// The header's shape (a plain-`//` prologue, the headings, the metadata
+/// list, the description) is read by scanFixtureHeader in
+/// tools/snap/corpus.ts, which the snap suite shares; the keys it may
+/// carry are FIXTURE_META_KEYS there. A file is a doc item iff the header
+/// opens with an `# ` heading; anything else is a supplementary edge-case
+/// test, excluded from docs. With an `## item title` under the h1, the h1
+/// names the doc section the item belongs to — matched verbatim against
+/// the doc page's generated-region key (`<!-- BEGIN GENERATED ITEMS: Fold
+/// Kinds -->`); an h1 alone is the item title, with the fixture's
+/// subdirectory as the legacy section fallback. This tool renders `status`
+/// (required; `supported`, `partial` or `unsupported`), `issues` and
+/// `order`; the other keys drive the snapshot suites. Everything after the
+/// last `///` line (trimmed of blank lines) is the example code.
 ///
 /// `partial` items render unchecked with a _(partial)_ marker but are still
 /// compiled and snapshotted, so the snapshot records the current partial
-/// behavior; only `unsupported` fixtures are skipped by the snapshot glob (via
-/// test/fixture.h, which reads the same header).
+/// behavior.
 ///
 /// Usage:
 ///     node tools/docs/feature.ts update   # rewrite generated regions
@@ -47,9 +43,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { REPO_ROOT } from "../compile_commands.ts";
 import { parseAnnotations } from "../snap/annotation.ts";
-import { FIXTURE_META_KEYS, scanFixtureHeader } from "../snap/corpus.ts";
+import { C_FAMILY, FIXTURE_META_KEYS, scanFixtureHeader } from "../snap/corpus.ts";
 import { renderMarkdownTable, rewriteRegions, type RegionMarkers } from "./generated.ts";
-import { C_FAMILY } from "../snap/corpus.ts";
 
 // feature -> doc path (relative to repo root). Extend as more features
 // adopt fixture-generated docs. Several corpora may feed one doc page
@@ -88,8 +83,10 @@ const OVERVIEW_ROWS: { name: string; page: string; keys?: string[]; label?: stri
 ];
 
 const OVERVIEW_DOC = "docs/en/features/overview.md";
-const OVERVIEW_BEGIN = "<!-- BEGIN GENERATED OVERVIEW -->";
-const OVERVIEW_END = "<!-- END GENERATED OVERVIEW -->";
+const OVERVIEW_MARKERS: RegionMarkers = {
+    begin: /^<!-- BEGIN GENERATED OVERVIEW -->$/,
+    end: "<!-- END GENERATED OVERVIEW -->",
+};
 
 const ISSUE_TRACKERS: Record<string, string> = {
     clangd: "https://github.com/clangd/clangd/issues/",
@@ -170,6 +167,12 @@ function parseFixture(filePath: string, featureDir: string, problems: string[]):
     } else {
         title = first.slice(2).trim();
         section = relParts.length >= 2 ? (relParts[0] ?? "") : "";
+    }
+    if (header.headings.length > 2) {
+        problems.push(
+            `${filePath}: unexpected heading '${header.headings[2] ?? ""}' ` +
+                "(a doc header has an '# section' and at most one '## title')",
+        );
     }
     if (!title) {
         problems.push(`${filePath}: empty title`);
@@ -417,13 +420,6 @@ function globCpp(dir: string): string[] {
         .sort();
 }
 
-function renderRegion(section: string, fixtures: Fixture[]): string {
-    return fixtures
-        .filter((fx) => fx.section === section)
-        .map(renderItem)
-        .join("\n\n");
-}
-
 function rewriteDoc(
     docText: string,
     sections: Map<string, Fixture[]>,
@@ -439,7 +435,7 @@ function rewriteDoc(
             if (matched.length === 0) {
                 problems.push(`${docPath}: region '${section}' matches no fixtures`);
             }
-            return renderRegion(section, matched);
+            return matched.map(renderItem).join("\n\n");
         },
         problems,
     );
@@ -492,7 +488,7 @@ function processFeature(
         }
     }
 
-    // Windows runners check out docs as CRLF (only tests/data/** is pinned
+    // Windows runners check out docs as CRLF (only the test data is pinned
     // to LF); normalize so the $-anchored marker regexes match.
     const current = fs.readFileSync(docPath, "utf8").replaceAll("\r\n", "\n");
     const updated = rewriteDoc(current, sections, docPath, problems);
@@ -524,29 +520,17 @@ function processOverview(
     }
 
     const current = fs.readFileSync(docPath, "utf8").replaceAll("\r\n", "\n");
-    const updated = rewriteOverview(
+    const { text: updated, seen } = rewriteRegions(
         current,
-        renderMarkdownTable(rows).join("\n"),
         docPath,
+        OVERVIEW_MARKERS,
+        () => renderMarkdownTable(rows).join("\n"),
         problems,
     );
-    return [docPath, current, updated];
-}
-
-function rewriteOverview(
-    docText: string,
-    table: string,
-    docPath: string,
-    problems: string[],
-): string {
-    const lines = docText.split("\n");
-    const begin = lines.indexOf(OVERVIEW_BEGIN);
-    const end = lines.indexOf(OVERVIEW_END);
-    if (begin < 0 || end < begin) {
+    if (seen.size === 0) {
         problems.push(`${docPath}: missing GENERATED OVERVIEW region`);
-        return docText;
     }
-    return [...lines.slice(0, begin + 1), "", table, "", ...lines.slice(end)].join("\n");
+    return [docPath, current, updated];
 }
 
 /// A compact unified-style diff of the differing lines, to report staleness.

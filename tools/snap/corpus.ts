@@ -87,7 +87,7 @@ export interface FixtureHeader {
 
 /// Split text into lines the way Python's str.splitlines() does: on any of
 /// \r\n, \r or \n, without a trailing empty element for a final line break.
-export function splitLines(text: string): string[] {
+function splitLines(text: string): string[] {
     if (text === "") {
         return [];
     }
@@ -134,6 +134,22 @@ export function scanFixtureHeader(content: string): FixtureHeader {
         const raw = lines[i];
         return raw?.trimStart().startsWith("///") ? stripComment(raw) : null;
     };
+    // A header opens with a heading or an entry (blank `///` lines before
+    // it are skipped). Any other leading `///` block is an ordinary doc
+    // comment on the code — the fixture has no header.
+    let opening = 0;
+    while (
+        (lines[opening] ?? "").trimStart().startsWith("///") &&
+        stripComment(lines[opening] ?? "").trim() === ""
+    ) {
+        opening += 1;
+    }
+    const first = (lines[opening] ?? "").trimStart().startsWith("///")
+        ? stripComment(lines[opening] ?? "").trim()
+        : "";
+    if (!first.startsWith("#") && !first.startsWith("- ")) {
+        return header;
+    }
     // The headings and the blank lines around them.
     for (let line = comment(); line !== null; line = comment()) {
         const text = line.trim();
