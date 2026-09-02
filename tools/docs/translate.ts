@@ -612,8 +612,8 @@ function parseSegmentsJson(raw: string, expected: number[]): Map<number, string>
     return out;
 }
 
-/// Code blocks nested in a translatable segment (snap example blocks live
-/// inside their checklist items) never round-trip through the model: each
+/// Code blocks nested in a translatable segment (a snap example under a
+/// capability's text) never round-trip through the model: each
 /// is masked to a placeholder and restored byte-for-byte afterwards.
 interface MaskedText {
     masked: string;

@@ -1,6 +1,6 @@
 # Semantic Tokens
 
-<!-- The checklist sections below are generated from the snapshot fixtures in
+<!-- The capability sections below are generated from the snapshot fixtures in
      tests/snap/semantic_tokens/. Do not edit the regions between the GENERATED
      markers by hand — edit the fixture spec headers and run
      `node tools/docs/feature.ts update`. -->
@@ -33,7 +33,7 @@ Kinds derived from the token stream itself, independent of the AST.
 
 ### Comments
 
-Line, block and doc comments, including multiline blocks
+line, block and doc comments, including multiline blocks
 
 ```cpp
 // A line comment.
@@ -51,7 +51,7 @@ second */ int after_block = 1;
 
 ### Literals
 
-Numbers, characters and strings, including raw strings
+numbers, characters and strings, including raw strings
 
 ```cpp
 int decimal = 42;
@@ -286,7 +286,7 @@ Names classified by the declaration they define or reference.
 
 ### Namespaces
 
-Definitions, references, nested namespaces and namespace aliases
+definitions, references, nested namespaces and namespace aliases
 
 ```cpp
 namespace demo {
@@ -304,7 +304,7 @@ int use_alias = alias::value;
 
 ### Types
 
-Class, struct, union, enum and type aliases, at definitions and references
+class, struct, union, enum and type aliases, at definitions and references
 
 ```cpp
 class Widget {};
@@ -326,7 +326,7 @@ Mode current = Mode::Fast;
 
 ### Functions and methods
 
-Declarations, definitions and call sites
+declarations, definitions and call sites
 
 ```cpp
 int twice(int value);
@@ -349,7 +349,7 @@ void drive(Machine machine) {
 
 ### Variables
 
-Globals, locals, parameters, fields and enum members
+globals, locals, parameters, fields and enum members
 
 ```cpp
 struct Holder {
@@ -572,7 +572,7 @@ void unresolved(T value) {
 
 ### Variable templates
 
-Declarations, definitions, partial and full specializations
+declarations, definitions, partial and full specializations
 
 ```cpp
 template <typename T, typename U>
@@ -643,7 +643,7 @@ Adaptor<Holder, int> adaptor;
 
 ### Lambda captures
 
-By-copy and by-reference captures reference the captured variable; `this` stays a keyword
+by-copy and by-reference captures reference the captured variable; `this` stays a keyword
 
 ```cpp
 struct S {
@@ -884,7 +884,7 @@ struct Sensor {};
 
 ### Static
 
-Class-level members and static locals
+class-level members and static locals
 
 ```cpp
 struct Counter {
@@ -972,7 +972,7 @@ int used = system_helper();
 
 ### Scope modifiers
 
-Function, class, file and global scope
+function, class, file and global scope
 
 ```cpp
 int global_scope;
@@ -1227,7 +1227,7 @@ void reset(T* value) {
 
 ### Defaulted and deleted members
 
-Special-member names keep their definition tokens
+special-member names keep their definition tokens
 
 ```cpp
 struct Session {

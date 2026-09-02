@@ -220,7 +220,7 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
 
 ### Members of a class
 
-Fields, methods, the destructor and operators complete with plain names
+fields, methods, the destructor and operators complete with plain names
 
 The destructor completes as `~Account` (never `~struct Account`),
 `operator=` keeps no space before `=`, and a conversion operator
@@ -520,7 +520,7 @@ int x = tru
 
 ### Macros
 
-Object-like macros complete as constants, function-like ones as functions with a parameter signature; argument snippets follow the function setting
+object-like macros complete as constants, function-like ones as functions with a parameter signature; argument snippets follow the function setting
 
 ```cpp
 #define RETRY_LIMIT 3
@@ -901,7 +901,7 @@ int x = printf
 
 ### Underscore filtering
 
-Underscore-prefixed internal symbols hide unless the typed prefix itself starts with one
+underscore-prefixed internal symbols hide unless the typed prefix itself starts with one
 
 ```cpp
 // The completion prefixes are undeclared identifiers. The

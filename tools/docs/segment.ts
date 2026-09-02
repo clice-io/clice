@@ -29,7 +29,7 @@ export interface Segment {
     translatable: boolean;
     /// Byte ranges that must be identical across the two trees: the whole
     /// segment when it is not translatable, otherwise the fenced code
-    /// blocks nested inside it (a snap example under its checklist item).
+    /// blocks nested inside it (a snap example under a capability's text).
     verbatim: Range[];
 }
 

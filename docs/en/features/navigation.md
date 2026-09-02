@@ -1718,7 +1718,7 @@ Search the whole project for a symbol by name (`workspace/symbol`).
 
 ### Basic workspace-wide symbol search
 
-Case-insensitive substring matching
+case-insensitive substring matching
 
 A query matches any symbol whose name contains it, ignoring case:
 functions, types, enumerators and macros all participate, and a query
@@ -1782,7 +1782,7 @@ void process(bool flag, int level) {}
 
 ### Fuzzy matching
 
-Word-boundary-aware scoring for camelCase and snake_case
+word-boundary-aware scoring for camelCase and snake_case
 
 Matching is a case-insensitive substring test: `LinLis` does not find
 `LinkedList`, and `pcfg` does not find `parse_config`. Word-boundary

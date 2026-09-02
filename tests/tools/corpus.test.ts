@@ -263,3 +263,46 @@ test("documented fixtures live numbered in section directories", () => {
         }
     }
 });
+
+test("corpus layout: sections, units and the depth limits", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "clice-corpus-"));
+    const write = (rel: string, content = "int x;\n") => {
+        fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
+        fs.writeFileSync(path.join(root, rel), content);
+    };
+    try {
+        write("f/edge.cpp");
+        write("f/sec/01_item.cpp");
+        write("f/sec/02_unit/main.cpp");
+        write("f/sec/02_unit/part.cppm");
+        write("f/root_unit/main.cpp");
+        write("f/inc/shared.h");
+        write("f/sec/local.h");
+        const [corpus] = snapCorpora(root);
+        expect(corpus).toBeDefined();
+        const fixtures = corpus!.fixtures.map((fx) => [fx.rel, fx.unit, fx.section]);
+        expect(fixtures).toEqual([
+            ["edge.cpp", "", ""],
+            ["root_unit/main.cpp", "root_unit", ""],
+            ["sec/01_item.cpp", "", "sec"],
+            ["sec/02_unit/main.cpp", "sec/02_unit", "sec"],
+        ]);
+        // Support material lives at any depth; unit files belong to their unit.
+        expect(corpus!.support).toEqual(["inc/shared.h", "sec/local.h"]);
+        expect(corpus!.fixtures[3]!.files.map((file) => file.rel)).toEqual([
+            "sec/02_unit/main.cpp",
+            "sec/02_unit/part.cppm",
+        ]);
+
+        write("f/sec/deeper/x.cpp");
+        expect(() => snapCorpora(root)).toThrow("fixture sources live at the corpus root");
+        fs.rmSync(path.join(root, "f/sec/deeper"), { recursive: true });
+        write("f/sec/deeper/unit/main.cpp");
+        expect(() => snapCorpora(root)).toThrow("a unit lives at the corpus root");
+        fs.rmSync(path.join(root, "f/sec/deeper"), { recursive: true });
+        write("f/root_unit/inner/main.cpp");
+        expect(() => snapCorpora(root)).toThrow("nested fixture units");
+    } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+    }
+});

@@ -70,7 +70,8 @@ gates: `npm run check` at the repo root (tsc strict + ESLint, zero tolerance).
    the directory is the doc page's generated-region key, the two-digit
    number orders the item within the section, and the header opens with
    `/// # Capability name — details` (the part before the dash is the
-   name; a `///` blank line then separates the metadata list from an
+   name; a `///` blank line then separates the metadata list — `status`
+   is required there: `supported`, `partial` or `unsupported` — from an
    optional markdown description). Edge-case fixtures without a doc
    header stay at the corpus root, un-numbered. Accept intentional
    changes with `UPDATE_SNAPSHOTS=1 npm run snap` and review the diff

@@ -2,7 +2,7 @@
 
 Clickable links from source directives to their resolved target files.
 
-<!-- The checklist sections below are generated from the snapshot fixtures in
+<!-- The capability sections below are generated from the snapshot fixtures in
      tests/snap/document_links/. Do not edit the regions between the GENERATED
      markers by hand — edit the fixture doc headers and run
      `node tools/docs/feature.ts update`. -->

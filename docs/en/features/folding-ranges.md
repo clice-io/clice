@@ -1,6 +1,6 @@
 # Folding Ranges
 
-<!-- The checklist sections below are generated from the snapshot fixtures in
+<!-- The capability sections below are generated from the snapshot fixtures in
      tests/snap/folding_range/. Do not edit the regions between the GENERATED
      markers by hand — edit the fixture spec headers and run
      `node tools/docs/feature.ts update`. -->
@@ -31,7 +31,7 @@
 
 ### Block folding
 
-Functions, classes, structs, unions, enums, namespaces, lambdas
+functions, classes, structs, unions, enums, namespaces, lambdas
 
 ```cpp
 namespace geometry {
@@ -249,7 +249,7 @@ int after = 1;
 
 ### Comment folding
 
-Multi-line `/* */` and consecutive `//` line comments
+multi-line `/* */` and consecutive `//` line comments
 
 ```cpp
 // This is a long

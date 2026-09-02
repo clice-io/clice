@@ -270,17 +270,20 @@ function renderIssue(ref: string): string {
 }
 
 /// A title of the form `Name — details` names the capability before the
-/// dash; the details open the item's description. A title without the
-/// dash is the name.
+/// dash; the details open the item's description as a sentence, so a
+/// plain lowercase first word gets its sentence capital — an identifier
+/// or a hyphenated tool name (`clang-format`, `iOS`) is kept as written.
+/// A title without the dash is the name.
 function splitTitle(title: string): { name: string; details: string } {
     const dash = title.indexOf(" — ");
     if (dash < 0) {
         return { name: title, details: "" };
     }
     const details = title.slice(dash + 3).trim();
+    const plainWord = /^[a-z]+(?=\s|$)/.test(details);
     return {
         name: title.slice(0, dash).trim(),
-        details: details.charAt(0).toUpperCase() + details.slice(1),
+        details: plainWord ? details.charAt(0).toUpperCase() + details.slice(1) : details,
     };
 }
 
@@ -355,11 +358,14 @@ function collectFixtures(feature: string, problems: string[]): Fixture[] {
         if (fx === null) {
             continue;
         }
-        const prev = titles.get(fx.title);
+        // The page shows the name before the dash: two items differing
+        // only in their details would render as one heading twice.
+        const name = splitTitle(fx.title).name;
+        const prev = titles.get(name);
         if (prev !== undefined) {
-            problems.push(`${filePath}: duplicate title '${fx.title}' (also in ${prev})`);
+            problems.push(`${filePath}: duplicate capability name '${name}' (also in ${prev})`);
         } else {
-            titles.set(fx.title, filePath);
+            titles.set(name, filePath);
         }
         fixtures.push(fx);
     }

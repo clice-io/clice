@@ -2,7 +2,7 @@
 
 Rich information cards for the symbol under the cursor.
 
-<!-- The checklist sections below are generated from the snapshot fixtures in
+<!-- The capability sections below are generated from the snapshot fixtures in
      tests/snap/hover/. Do not edit the regions between the GENERATED
      markers by hand — edit the fixture doc headers and run
      `node tools/docs/feature.ts update`. -->
@@ -184,7 +184,7 @@ int sum = hidden + outer::nested;
 
 ### Variable types
 
-Pointers, references, arrays
+pointers, references, arrays
 
 A variable's card pretty-prints its declared type, spelling the pointer,
 reference and array declarators the way they read in source.
@@ -242,7 +242,7 @@ void configure(int width, bool visible = true);
 
 ### Template parameters
 
-Type, template-template, non-type
+type, template-template, non-type
 
 Each template parameter kind reports its form: a type parameter, a
 template-template parameter, and a non-type parameter with its default.
@@ -304,7 +304,7 @@ template <typename T> void undeduced() {
 
 ### `decltype` deduction
 
-Value, reference and dependent forms
+value, reference and dependent forms
 
 Hovering a `decltype` or `decltype(auto)` placeholder shows the resolved
 type, including the reference the parenthesized-expression rule adds.
@@ -424,7 +424,7 @@ void demo() {
 
 ### Type formatting
 
-Clang-format applied to rendered types
+clang-format applied to rendered types
 
 Long or nested types are printed by the compiler's default type printer;
 they are not re-wrapped or aligned through clang-format.
@@ -495,7 +495,7 @@ Addable auto total = 1;
 
 ### Field layout
 
-Size, offset, alignment and padding show on field hover
+size, offset, alignment and padding show on field hover
 
 The corpus pins an x86-64 target, so the bit numbers are stable.
 
@@ -560,7 +560,7 @@ struct Shape {
 
 ### Constant evaluation
 
-Constexpr, enumerators, sizeof
+constexpr, enumerators, sizeof
 
 When an initializer is a constant expression, the card evaluates it and
 shows the resulting value.

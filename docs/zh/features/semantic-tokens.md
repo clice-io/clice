@@ -1,6 +1,6 @@
 # 语义 Token
 
-<!-- The checklist sections below are generated from the snapshot fixtures in
+<!-- The capability sections below are generated from the snapshot fixtures in
      tests/snap/semantic_tokens/. Do not edit the regions between the GENERATED
      markers by hand — edit the fixture spec headers and run
      `node tools/docs/feature.ts update`. -->

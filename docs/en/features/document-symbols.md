@@ -1,6 +1,6 @@
 # Document Symbols
 
-<!-- The checklist sections below are generated from the snapshot fixtures in
+<!-- The capability sections below are generated from the snapshot fixtures in
      tests/snap/document_symbol/. Do not edit the regions between the GENERATED
      markers by hand — edit the fixture spec headers and run
      `node tools/docs/feature.ts update`. -->
@@ -166,7 +166,7 @@ constexpr double π值 = 3.14159; double area();
 
 ### Core symbol kinds
 
-Namespaces, classes, structs, unions, enums and their members, functions, variables, fields, structured bindings and lambdas all appear in the outline with a mapped LSP symbol kind
+namespaces, classes, structs, unions, enums and their members, functions, variables, fields, structured bindings and lambdas all appear in the outline with a mapped LSP symbol kind
 
 ```cpp
 namespace kinds {
@@ -203,7 +203,7 @@ auto lambda = [](int x) {
 
 ### Template declarations
 
-Class, function and variable templates carry a `template ` detail prefix; concepts and abbreviated function templates (`concept auto` parameters) appear as well
+class, function and variable templates carry a `template ` detail prefix; concepts and abbreviated function templates (`concept auto` parameters) appear as well
 
 ```cpp
 namespace templates {
@@ -343,7 +343,7 @@ template int zero<int>;
 
 ### Macro definitions
 
-Object-like and function-like macro definitions in the outline, a parameter list as the function-like detail
+object-like and function-like macro definitions in the outline, a parameter list as the function-like detail
 
 ```cpp
 // The assertion holds the directives out of the preamble region, whose

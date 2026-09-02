@@ -46,7 +46,7 @@ table rows, and index.md's YAML frontmatter are translatable; everything
 else (code blocks, HTML comments including GENERATED markers) is verbatim
 and must be byte-identical across the two trees, as must any fenced code
 or HTML comment nested inside a translatable segment (a snap example
-under its checklist item). Segment shapes must match too: heading depth,
+under a generated capability's paragraph). Segment shapes must match too: heading depth,
 ordered vs. bulleted list, task-list state, table column count and
 alignment, and the mapping/sequence skeleton of index.md's frontmatter. No text is stored twice — the mapping holds
 hashes only. Old wording of a drifted segment comes from git history of
@@ -121,7 +121,7 @@ Design-level, user-visible trade-offs that are stable on a months timescale,
 written in behavior terms — they answer the reader's "why does it work this
 way". Bugs never go there: they live in the internal bug inventory and simply
 disappear when fixed; putting them in docs creates staleness debt. Feature
-coverage gaps are already expressed by the generated checklists. The flow is
+coverage gaps are already expressed by the generated status tables. The flow is
 one-way: an internal item graduates into a doc limitation only once it is
 decided to be design (or long-term deferral), and a doc limitation is removed
 only when the design changes. Never reference internal IDs, file paths, or

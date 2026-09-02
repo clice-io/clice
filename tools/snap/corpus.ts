@@ -373,11 +373,11 @@ function readManifest(feature: string, corpus: string): { flags: string[]; confi
     return { flags, configSection: config_section ?? feature };
 }
 
-/// Enumerate the corpora under tests/snap.
-export function snapCorpora(): SnapCorpus[] {
+/// Enumerate the corpora under `root` (tests/snap).
+export function snapCorpora(root = SNAP_DIR): SnapCorpus[] {
     const corpora: SnapCorpus[] = [];
-    for (const feature of fs.readdirSync(SNAP_DIR).sort()) {
-        const corpus = path.join(SNAP_DIR, feature);
+    for (const feature of fs.readdirSync(root).sort()) {
+        const corpus = path.join(root, feature);
         if (!fs.statSync(corpus).isDirectory()) {
             continue;
         }
@@ -522,11 +522,13 @@ export function materializeFixture(corpus: SnapCorpus, fixture: SnapFixture, roo
 
     const flags = [...resolveFlags(corpus.flags, root), ...resolveFlags(fixture.meta.flags, root)];
     const posixRoot = root.split(path.sep).join("/");
-    // Unit sources compile with the unit directory as cwd, mirroring
-    // unit_directory on the inspect path, so relative compiler operands
+    // Fixture sources compile from the fixture's own directory (the unit
+    // directory, else the section directory or the root), mirroring the
+    // input directory of the inspect path, so relative compiler operands
     // (-Iinclude, @args.rsp, ...) resolve identically on both paths.
     // Support sources are never inspected; their cwd is where they live.
-    const unitDir = fixture.unit === "" ? posixRoot : `${posixRoot}/${fixture.unit}`;
+    const own = fixture.unit === "" ? fixture.section : fixture.unit;
+    const unitDir = own === "" ? posixRoot : `${posixRoot}/${own}`;
     const unitRels = new Set(fixture.files.map((file) => file.rel));
     const compilable = [
         ...fixture.files.map((file) => file.rel),
