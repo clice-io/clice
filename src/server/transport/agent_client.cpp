@@ -197,7 +197,12 @@ AgentClient::AgentClient(MasterServer& server, kota::ipc::JsonPeer& peer) :
                 co_return FileDepsResult{.file = params.path};
             auto path_id = *pool_id;
             auto direction = params.direction.value_or("both");
+            // A negative depth is a client error and reads like the
+            // default, never as "unbounded" (that is 0).
             auto max_depth = params.depth.value_or(1);
+            if(max_depth < 0) {
+                max_depth = 1;
+            }
 
             FileDepsResult result;
             result.file = params.path;

@@ -583,16 +583,17 @@ CacheStore::PendingEntry CacheStore::begin_store_aux(llvm::StringRef ns, llvm::S
 CacheStore::PendingEntry CacheStore::begin_store_locked(llvm::StringRef ns,
                                                         llvm::StringRef key,
                                                         bool aux) {
+    llvm::StringRef entry = aux ? "begin_store_aux" : "begin_store";
     assert(!state->read_only && "write on a read-only store");
     if(state->read_only) {
-        LOG_ERROR("CacheStore: begin_store on a read-only store");
+        LOG_ERROR("CacheStore: {} on a read-only store", entry);
         return {};
     }
 
     auto* ns_state = state->find_namespace(ns);
     assert(ns_state && "begin_store on unregistered namespace");
     if(!ns_state) {
-        LOG_ERROR("CacheStore: begin_store on unregistered namespace {}", ns);
+        LOG_ERROR("CacheStore: {} on unregistered namespace {}", entry, ns);
         return {};
     }
     auto& extension = aux ? ns_state->config.aux_extension : ns_state->config.extension;

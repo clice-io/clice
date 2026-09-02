@@ -35,6 +35,10 @@ void DependencyGraph::update_module_decl(Fid path_id, llvm::StringRef module_nam
     // by list order, so an erase-and-append would silently reselect
     // among a duplicated name's providers without any cascade.
     if(!module_name.empty() && llvm::is_contained(lookup_module(module_name), path_id)) {
+        // The file may still be listed under a name another configuration
+        // scanned it as; the declaration the save met is the one it
+        // provides now.
+        module_by_path[path_id] = module_name.str();
         return;
     }
     // An emptied name stays behind as an empty provider list — lookup

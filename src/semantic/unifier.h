@@ -89,16 +89,6 @@ bool deduce_arguments(clang::ASTContext& context,
                       llvm::ArrayRef<clang::TemplateArgument> arguments,
                       llvm::SmallVectorImpl<clang::TemplateArgument>& deduced);
 
-/// Partial ordering via symmetric deduction: `left` is more specialized than
-/// `right` iff right's pattern matches left's and not vice versa.
-bool more_specialized(clang::ASTContext& context,
-                      clang::ClassTemplatePartialSpecializationDecl* left,
-                      clang::ClassTemplatePartialSpecializationDecl* right);
-
-bool more_specialized(clang::ASTContext& context,
-                      clang::VarTemplatePartialSpecializationDecl* left,
-                      clang::VarTemplatePartialSpecializationDecl* right);
-
 /// The verdict of select_partial: a winner, or why there is none. Real
 /// instantiation diagnoses an ambiguity (no partial dominates every other
 /// match); constraint satisfaction is not evaluated here (`requires false`

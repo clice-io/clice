@@ -34,9 +34,8 @@ struct PreambleCompletionContext {
 /// Pure text parsing — no compiler state needed.
 PreambleCompletionContext detect_completion_context(llvm::StringRef text, std::uint32_t offset);
 
-/// Return module names matching a prefix, suitable for `import` completion.
-/// @param modules  Module name map (path_id → module name).
-/// @param prefix   Partially-typed module name to match against.
+/// The names of the graph's provided modules that start with `prefix`,
+/// suitable for `import` completion.
 std::vector<std::string> complete_module_import(const DependencyGraph& graph,
                                                 llvm::StringRef prefix);
 

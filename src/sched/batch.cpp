@@ -103,11 +103,12 @@ kota::task<> shutdown(BatchStack& stack) {
 /// settled: a signal arriving while the final save/teardown ran must still
 /// report an interruption, not a normal completion with exit code 0.
 struct BatchLifetime {
+    BatchStack& stack;
     bool stop_requested = false;
     kota::cancellation_source stop;
     kota::task_group<> aux;
 
-    explicit BatchLifetime(BatchStack& stack) : aux(stack.loop) {
+    explicit BatchLifetime(BatchStack& stack) : stack(stack), aux(stack.loop) {
         aux.spawn(watch_signal(SIGINT, stop, stop_requested));
         aux.spawn(watch_signal(SIGTERM, stop, stop_requested));
         aux.spawn(checkpoint_task(stack.workspace));
@@ -119,7 +120,7 @@ struct BatchLifetime {
 
     /// Shuts the stack down and settles the watchers; whether the run was
     /// interrupted.
-    kota::task<bool> finish(BatchStack& stack) {
+    kota::task<bool> finish() {
         co_await shutdown(stack);
         aux.cancel();
         co_await aux.join();
@@ -212,7 +213,7 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
 
     BatchLifetime lifetime(stack);
     co_await kota::with_token(wait_until_indexed(stack.pump), lifetime.token());
-    if(co_await lifetime.finish(stack)) {
+    if(co_await lifetime.finish()) {
         result.interrupted = true;
         result.exit_code = 130;
         co_return;
@@ -405,7 +406,7 @@ kota::task<> run_lint(BatchStack& stack,
         stack.pump.schedule(/*immediate=*/true);
         co_await kota::with_token(wait_until_indexed(stack.pump), lifetime.token());
     }
-    if(co_await lifetime.finish(stack)) {
+    if(co_await lifetime.finish()) {
         result.interrupted = true;
         result.exit_code = 130;
         co_return;

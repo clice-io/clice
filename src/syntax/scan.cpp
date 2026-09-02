@@ -278,51 +278,8 @@ private:
     int conditional_depth = 0;
 };
 
-/// Create and configure a CompilerInstance for scanning.
-/// An engaged content remaps the main file to it, even when empty.
-std::unique_ptr<clang::CompilerInstance>
-    create_scan_instance(llvm::ArrayRef<const char*> arguments,
-                         llvm::StringRef directory,
-                         std::optional<llvm::StringRef> content,
-                         llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs) {
-    clang::DiagnosticOptions diag_opts;
-    auto diag_engine = clang::CompilerInstance::createDiagnostics(*vfs,
-                                                                  diag_opts,
-                                                                  new clang::IgnoringDiagConsumer(),
-                                                                  true);
-
-    auto invocation = create_compiler_invocation(arguments, directory, vfs, diag_engine);
-    if(!invocation) {
-        return nullptr;
-    }
-
-    if(content.has_value()) {
-        auto& inputs = invocation->getFrontendOpts().Inputs;
-        if(!inputs.empty()) {
-            auto main_file = inputs[0].getFile();
-            // Use an overlay VFS to inject the remapped content. This ensures
-            // both the preprocessor and the DependencyDirectivesGetter see it.
-            auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(vfs);
-            auto mem_fs = llvm::makeIntrusiveRefCnt<llvm::vfs::InMemoryFileSystem>();
-            mem_fs->addFile(main_file,
-                            0,
-                            llvm::MemoryBuffer::getMemBufferCopy(*content, main_file));
-            overlay->pushOverlay(std::move(mem_fs));
-            vfs = std::move(overlay);
-        }
-    }
-
-    auto instance = std::make_unique<clang::CompilerInstance>(std::move(invocation));
-    instance->setVirtualFileSystem(std::move(vfs));
-    instance->createDiagnostics(new clang::IgnoringDiagConsumer(), true);
-    instance->getDiagnostics().setSuppressAllDiagnostics(true);
-    instance->createFileManager();
-
-    return instance;
-}
-
 /// The setup every preprocessor-driven scan shares: the instance from the
-/// command, the directives getter — a remapped main file bypasses the
+/// command (diagnostics ignored), the directives getter — a remapped main file bypasses the
 /// path-keyed cache, or it would read a prior on-disk scan of the same
 /// path and poison it for later ones — the target, and the main file
 /// entered through a preprocess-only action. `body` runs on the entered
@@ -340,10 +297,37 @@ void scan_with_preprocessor(
         vfs = llvm::vfs::createPhysicalFileSystem();
     }
 
-    auto instance = create_scan_instance(arguments, directory, content, vfs);
-    if(!instance) {
+    clang::DiagnosticOptions diag_opts;
+    auto diag_engine = clang::CompilerInstance::createDiagnostics(*vfs,
+                                                                  diag_opts,
+                                                                  new clang::IgnoringDiagConsumer(),
+                                                                  true);
+    auto invocation = create_compiler_invocation(arguments, directory, vfs, diag_engine);
+    if(!invocation) {
         return;
     }
+
+    // An engaged content remaps the main file to it, even when empty: an
+    // overlay VFS, so both the preprocessor and the directives getter see it.
+    if(content.has_value()) {
+        auto& inputs = invocation->getFrontendOpts().Inputs;
+        if(!inputs.empty()) {
+            auto main_file = inputs[0].getFile();
+            auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(vfs);
+            auto mem_fs = llvm::makeIntrusiveRefCnt<llvm::vfs::InMemoryFileSystem>();
+            mem_fs->addFile(main_file,
+                            0,
+                            llvm::MemoryBuffer::getMemBufferCopy(*content, main_file));
+            overlay->pushOverlay(std::move(mem_fs));
+            vfs = std::move(overlay);
+        }
+    }
+
+    auto instance = std::make_unique<clang::CompilerInstance>(std::move(invocation));
+    instance->setVirtualFileSystem(std::move(vfs));
+    instance->createDiagnostics(new clang::IgnoringDiagConsumer(), true);
+    instance->getDiagnostics().setSuppressAllDiagnostics(true);
+    instance->createFileManager();
 
     auto getter = std::make_unique<ScanDirectivesGetter>(content ? nullptr : cache,
                                                          instance->getFileManager());

@@ -5,6 +5,8 @@
 #include "syntax/dependency_graph.h"
 #include "vfs/file_table.h"
 
+#include "llvm/ADT/STLExtras.h"
+
 namespace clice::testing {
 namespace {
 
@@ -84,6 +86,22 @@ TEST_CASE(ModuleOfFollowsDeclarations) {
     EXPECT_TRUE(graph.module_of(Fid{1}).empty());
     EXPECT_FALSE(graph.has_modules());
     EXPECT_TRUE(graph.lookup_module("bar").empty());
+}
+
+TEST_CASE(ModuleOfFollowsRedeclaredName) {
+    // A file scanned under two configurations can be listed under two
+    // names (a macro picks the declaration). Re-declaring one of them
+    // keeps both provider lists untouched — no reselection — but the
+    // file's own declaration is the one the save met.
+    clice::DependencyGraph graph;
+    graph.add_module("a", Fid{1});
+    graph.add_module("b", Fid{1});
+    EXPECT_EQ(graph.module_of(Fid{1}), "b");
+
+    graph.update_module_decl(Fid{1}, "a");
+    EXPECT_EQ(graph.module_of(Fid{1}), "a");
+    EXPECT_TRUE(llvm::is_contained(graph.lookup_module("a"), Fid{1}));
+    EXPECT_TRUE(llvm::is_contained(graph.lookup_module("b"), Fid{1}));
 }
 
 TEST_CASE(MultipleModules) {

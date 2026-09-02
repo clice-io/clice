@@ -189,6 +189,35 @@ interface Transport {
     writer: Writable;
 }
 
+/// The initialization options a client sends for `ws`: the caller's, with
+/// the cache pinned into the workspace (so `.clice/` cleanup prevents a
+/// stale PCH) and, unless switched off, the test defaults — one worker of
+/// each kind (halves the per-test spawn cost; tests needing more pass their
+/// own counts) and the stat-polling loops disabled (tests drive ticks
+/// deterministically through the clice/internal/poll hook).
+export function initializationOptionsFor(
+    ws: Workspace,
+    options: InitializeOptions,
+): Record<string, unknown> {
+    const initializationOptions = { ...(options.initializationOptions ?? {}) };
+    const project = {
+        ...((initializationOptions["project"] ?? {}) as Record<string, unknown>),
+    };
+    project["cache_dir"] = ws.path(".clice");
+    const tracker = {
+        ...((initializationOptions["tracker"] ?? {}) as Record<string, unknown>),
+    };
+    if (options.testDefaults ?? true) {
+        project["stateless_worker_count"] ??= 1;
+        project["stateful_worker_count"] ??= 1;
+        tracker["cdb_poll_seconds"] ??= 0;
+        tracker["workspace_poll_seconds"] ??= 0;
+    }
+    initializationOptions["project"] = project;
+    initializationOptions["tracker"] = tracker;
+    return initializationOptions;
+}
+
 export class CliceClient {
     child: ChildProcessWithoutNullStreams;
     protected connection: proto.ProtocolConnection;
@@ -406,29 +435,7 @@ export class CliceClient {
         options: InitializeOptions = {},
     ): Promise<this> {
         const ws = workspace instanceof Workspace ? workspace : new Workspace(workspace);
-        const initializationOptions = { ...(options.initializationOptions ?? {}) };
-        const project = {
-            ...((initializationOptions["project"] ?? {}) as Record<string, unknown>),
-        };
-        // Force cache_dir into the workspace so .clice/ cleanup prevents
-        // stale PCH.
-        project["cache_dir"] = ws.path(".clice");
-        const tracker = {
-            ...((initializationOptions["tracker"] ?? {}) as Record<string, unknown>),
-        };
-        if (options.testDefaults ?? true) {
-            // One worker of each kind is enough for tests and halves the
-            // per-test process-spawn cost. Tests needing more pass their own
-            // counts via initializationOptions.
-            project["stateless_worker_count"] ??= 1;
-            project["stateful_worker_count"] ??= 1;
-            // Disable the stat-polling loops: tests drive ticks deterministically
-            // through the clice/internal/poll hook instead.
-            tracker["cdb_poll_seconds"] ??= 0;
-            tracker["workspace_poll_seconds"] ??= 0;
-        }
-        initializationOptions["project"] = project;
-        initializationOptions["tracker"] = tracker;
+        const initializationOptions = initializationOptionsFor(ws, options);
 
         // Wire URIs stay percent-encoded (a '#' in the path must travel as
         // %23, not become a fragment); the decoded ws.uri() form is for
