@@ -38,8 +38,10 @@ export interface Segment {
     /// equal too.
     label: string | null;
     /// Inline literals a translation carries over unchanged — inline code,
-    /// link and image destinations, issue references, frontmatter paths —
-    /// as a sorted set: prose may reorder or repeat them, not alter them.
+    /// link and image destinations, issue references — as a sorted set:
+    /// prose may reorder or repeat them, not alter them. Frontmatter paths
+    /// are keyed by the YAML key holding them, as the block's structure is
+    /// fixed.
     literals: string[];
 }
 
@@ -174,15 +176,20 @@ function phrasingOf(node: Nodes, source: string, page: string): string | null {
     return source.slice(rangeOf(first, page).start, rangeOf(last, page).end);
 }
 
-function yamlStrings(value: unknown): string[] {
+/// Path-like scalars of a YAML block, each qualified by the key path
+/// holding it (`hero.actions[1].link: ./guide/quick-start`), so a value
+/// moving to another key counts as a change.
+function yamlLiterals(value: unknown, key: string): string[] {
     if (typeof value === "string") {
-        return [value];
+        return /^(\.{0,2}\/|https?:\/\/)/.test(value) ? [`${key}: ${value}`] : [];
     }
     if (Array.isArray(value)) {
-        return value.flatMap(yamlStrings);
+        return value.flatMap((item, i) => yamlLiterals(item, `${key}[${i}]`));
     }
     if (value !== null && typeof value === "object") {
-        return Object.values(value as Record<string, unknown>).flatMap(yamlStrings);
+        return Object.entries(value as Record<string, unknown>).flatMap(([name, item]) =>
+            yamlLiterals(item, key === "" ? name : `${key}.${name}`),
+        );
     }
     return [];
 }
@@ -217,10 +224,8 @@ function inlineLiterals(node: Nodes): string[] {
                 } catch {
                     return;
                 }
-                for (const value of yamlStrings(parsed)) {
-                    if (/^(\.{0,2}\/|https?:\/\/)/.test(value)) {
-                        out.add(value);
-                    }
+                for (const literal of yamlLiterals(parsed, "")) {
+                    out.add(literal);
                 }
                 return;
             }

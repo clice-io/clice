@@ -545,12 +545,16 @@ function record(roots: Roots, pages: string[]): number {
             failed = true;
             continue;
         }
-        if (analysis.verbatimDiffs.length > 0) {
-            for (const [left, right] of analysis.verbatimDiffs) {
-                console.error(
-                    `${page}: ${verbatimLabel(left, right)} ` +
-                        `must be byte-identical — fix before recording`,
-                );
+        const problems = [
+            ...analysis.verbatimDiffs.map(
+                ([left, right]) =>
+                    `${verbatimLabel(left, right)} must be byte-identical — fix before recording`,
+            ),
+            ...analysis.labelDiffs.map(labelProblem),
+        ];
+        if (problems.length > 0) {
+            for (const problem of problems) {
+                console.error(`${page}: ${problem}`);
             }
             failed = true;
             continue;
