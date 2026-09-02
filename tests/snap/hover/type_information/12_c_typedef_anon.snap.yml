@@ -1,0 +1,26 @@
+---
+created_at: 2026-08-23
+input_file: type_information/12_c_typedef_anon.cpp
+---
+01_typedef: { range: "16:2-16:7" }
+### type `Point`  
+
+---
+Type: `Point`  
+A 2-D point.  
+
+---
+```cpp
+typedef struct Point Point
+```
+
+02_var: { range: "18:6-18:12" }
+### variable `origin`  
+
+---
+Type: `Point`  
+
+---
+```cpp
+Point origin = {.y = 2, .x = 1}
+```

@@ -1,0 +1,5 @@
+---
+created_at: 2026-07-31
+input_file: token_modifiers/06_default_library.cpp
+---
+- { loc: "8:11", text: "system_helper", kind: function, modifiers: [defaultLibrary] }

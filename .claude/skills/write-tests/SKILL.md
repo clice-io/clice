@@ -62,17 +62,25 @@ gates: `npm run check` at the repo root (tsc strict + ESLint, zero tolerance).
    (`clice inspect`, no server) and server (a real server on a
    materialized throwaway workspace). Position-dependent fixtures carry
    `§(name)` annotations (see `@clice/tools/snap/annotation`). A fixture
-   is a single `.cpp` at the corpus root or a subdirectory entered
-   through its `main.cpp` — one multi-file unit whose sibling sources
-   (module interfaces, headers) belong to it; files carrying markers
-   participate, the rest are support. Accept intentional changes with
-   `UPDATE_SNAPSHOTS=1 npm run snap` and review the diff like code; a
-   shared-snapshot mismatch on the server side is a real divergence, not
-   something to update over.
+   is a single `.cpp` or a subdirectory entered through its `main.cpp` —
+   one multi-file unit whose sibling sources (module interfaces, headers)
+   belong to it; files carrying markers participate, the rest are
+   support. A fixture that documents a capability lives in a section
+   directory as `<section>/NN_name.cpp` (or `<section>/NN_unit/main.cpp`):
+   the directory is the doc page's generated-region key, the two-digit
+   number orders the item within the section, and the header opens with
+   `/// # Capability name — details` (the part before the dash is the
+   name; a `///` blank line then separates the metadata list from an
+   optional markdown description). Edge-case fixtures without a doc
+   header stay at the corpus root, un-numbered. Accept intentional
+   changes with `UPDATE_SNAPSHOTS=1 npm run snap` and review the diff
+   like code; a shared-snapshot mismatch on the server side is a real
+   divergence, not something to update over.
 
    Fixture meta (strict — unknown keys are errors, validated by
    `tools/snap/corpus.ts` and `tools/docs/feature.ts`), declared as
-   `- key: value` lines in the leading `///` header:
+   `- key: value` lines in the leading `///` header (`status` and
+   `issues` render into the docs, the rest drive the suites):
    - `verify: both` (default) runs inspect and server; `inspect`/`server`
      runs only that path, which then owns the plain `<name>.snap.yml`.
    - `snap:` relates the two paths of a `verify: both` fixture.

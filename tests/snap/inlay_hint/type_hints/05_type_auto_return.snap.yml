@@ -1,0 +1,9 @@
+---
+created_at: 2026-07-31
+input_file: type_hints/05_type_auto_return.cpp
+---
+- { pos: "4:13", kind: Type, label: "-> int" }
+- { pos: "8:18", kind: Type, label: "-> int &" }
+- { pos: "16:21", kind: Type, label: "-> int" }
+- { pos: "18:21", kind: Type, label: "-> int" }
+- { pos: "29:19", kind: Type, label: "-> int" }

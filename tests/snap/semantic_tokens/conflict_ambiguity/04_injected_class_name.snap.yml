@@ -1,0 +1,6 @@
+---
+created_at: 2026-07-31
+input_file: conflict_ambiguity/04_injected_class_name.cpp
+---
+- { loc: "11:15", text: "Widget", kind: struct }
+- { loc: "11:21", text: "(", kind: none }

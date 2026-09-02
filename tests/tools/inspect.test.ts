@@ -17,7 +17,10 @@ test("inspect single file without CDB", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "clice-inspect-"));
     try {
         const file = path.join(tmp, "single.cpp");
-        fs.copyFileSync(path.join(SNAP_DIR, "folding_range", "block_folding.cpp"), file);
+        fs.copyFileSync(
+            path.join(SNAP_DIR, "folding_range", "fold_kinds", "01_block_folding.cpp"),
+            file,
+        );
         const { files } = runInspect(cliceExecutable(), "folding_range", file);
         const entry = files["single.cpp"];
         expect(entry?.error ?? null).toBeNull();

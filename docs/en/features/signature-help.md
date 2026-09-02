@@ -30,121 +30,110 @@ Registered: `(`, `)`, `{`, `}`, `<`, `>`, `,`
 
 ## Overload Signatures
 
-<!-- BEGIN GENERATED ITEMS: Overload Signatures -->
+<!-- BEGIN GENERATED ITEMS: overload_signatures -->
 
-- [x] Function overloads — every overload of the callee, each with its parameter list and return type
+| Capability                               | Status    | Issues |
+| ---------------------------------------- | --------- | ------ |
+| Function overloads                       | Supported |        |
+| Active parameter tracking                | Supported |        |
+| Member function overloads                | Supported |        |
+| Default arguments in the label           | Supported |        |
+| C-style variadic function                | Supported |        |
+| Variadic template pack                   | Supported |        |
+| Active parameter past a shorter overload | Supported |        |
 
-  <details>
-  <summary>Example</summary>
+### Function overloads
 
-  ```cpp
-  void foo();
-  void foo(int x);
-  void foo(int x, int y);
+Every overload of the callee, each with its parameter list and return type
 
-  int main() {
-      foo();
-  }
-  ```
+```cpp
+void foo();
+void foo(int x);
+void foo(int x, int y);
 
-  </details>
+int main() {
+    foo();
+}
+```
 
-- [x] Active parameter tracking — the parameter under the cursor is bracketed; the point sits in the second argument
+### Active parameter tracking
 
-  <details>
-  <summary>Example</summary>
+The parameter under the cursor is bracketed; the point sits in the second argument
 
-  ```cpp
-  void bar(int first, double second, char third);
+```cpp
+void bar(int first, double second, char third);
 
-  int main() {
-      bar(1, 2.0, 'c');
-  }
-  ```
+int main() {
+    bar(1, 2.0, 'c');
+}
+```
 
-  </details>
+### Member function overloads
 
-- [x] Member function overloads — a non-const receiver lists both the const and non-const overloads; the trailing const qualifier is not rendered in the label
+A non-const receiver lists both the const and non-const overloads; the trailing const qualifier is not rendered in the label
 
-  <details>
-  <summary>Example</summary>
+```cpp
+struct Buffer {
+    int at(int index);
+    int at(int index) const;
+};
 
-  ```cpp
-  struct Buffer {
-      int at(int index);
-      int at(int index) const;
-  };
+int main() {
+    Buffer b;
+    b.at(0);
+}
+```
 
-  int main() {
-      Buffer b;
-      b.at(0);
-  }
-  ```
+### Default arguments in the label
 
-  </details>
+Parameters with defaults render their initializer in the signature
 
-- [x] Default arguments in the label — parameters with defaults render their initializer in the signature
+```cpp
+void configure(int width, int height = 100, bool visible = true);
 
-  <details>
-  <summary>Example</summary>
+int main() {
+    configure(1);
+}
+```
 
-  ```cpp
-  void configure(int width, int height = 100, bool visible = true);
+### C-style variadic function
 
-  int main() {
-      configure(1);
-  }
-  ```
+Named parameters are listed while the trailing ellipsis is elided from the label
 
-  </details>
+```cpp
+void record(int code, ...);
 
-- [x] C-style variadic function — named parameters are listed while the trailing ellipsis is elided from the label
+int main() {
+    record(0);
+}
+```
 
-  <details>
-  <summary>Example</summary>
+### Variadic template pack
 
-  ```cpp
-  void record(int code, ...);
+The parameter pack renders as the callee's uninstantiated signature
 
-  int main() {
-      record(0);
-  }
-  ```
+```cpp
+template <typename... Args>
+void emit(Args... args);
 
-  </details>
+int main() {
+    emit();
+}
+```
 
-- [x] Variadic template pack — the parameter pack renders as the callee's uninstantiated signature
+### Active parameter past a shorter overload
 
-  <details>
-  <summary>Example</summary>
+With the cursor in the second argument, only overloads that declare a second parameter remain
 
-  ```cpp
-  template <typename... Args>
-  void emit(Args... args);
+```cpp
+void draw();
+void draw(int x);
+void draw(int x, int y);
 
-  int main() {
-      emit();
-  }
-  ```
-
-  </details>
-
-- [x] Active parameter past a shorter overload — with the cursor in the second argument, only overloads that declare a second parameter remain
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  void draw();
-  void draw(int x);
-  void draw(int x, int y);
-
-  int main() {
-      draw(1, 2);
-  }
-  ```
-
-  </details>
+int main() {
+    draw(1, 2);
+}
+```
 
 <!-- END GENERATED ITEMS -->
 
@@ -183,125 +172,114 @@ Registered: `(`, `)`, `{`, `}`, `<`, `>`, `,`
 
 ## Special Call Contexts
 
-<!-- BEGIN GENERATED ITEMS: Special Call Contexts -->
+<!-- BEGIN GENERATED ITEMS: special_call_contexts -->
 
-- [x] Constructors and aggregates — constructor calls render without a return arrow; aggregate initialization lists the fields in braces ([clangd#726](https://github.com/clangd/clangd/issues/726), [clangd#2541](https://github.com/clangd/clangd/issues/2541))
+| Capability                  | Status    | Issues                                                                                                                 |
+| --------------------------- | --------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Constructors and aggregates | Supported | [clangd#726](https://github.com/clangd/clangd/issues/726), [clangd#2541](https://github.com/clangd/clangd/issues/2541) |
+| Function pointer calls      | Supported |                                                                                                                        |
+| Template argument lists     | Supported | [clangd#299](https://github.com/clangd/clangd/issues/299), [clangd#1387](https://github.com/clangd/clangd/issues/1387) |
+| Nested calls                | Supported |                                                                                                                        |
+| Functor call                | Supported |                                                                                                                        |
+| Lambda call                 | Supported |                                                                                                                        |
+| New expression              | Supported |                                                                                                                        |
 
-  <details>
-  <summary>Example</summary>
+### Constructors and aggregates
 
-  ```cpp
-  struct Point {
-      int x;
-      int y;
-  };
+Constructor calls render without a return arrow; aggregate initialization lists the fields in braces
 
-  struct Widget {
-      Widget(int a, double b);
-  };
+```cpp
+struct Point {
+    int x;
+    int y;
+};
 
-  int main() {
-      Point p{1, 2};
-      Widget w(3, 4.0);
-  }
-  ```
+struct Widget {
+    Widget(int a, double b);
+};
 
-  </details>
+int main() {
+    Point p{1, 2};
+    Widget w(3, 4.0);
+}
+```
 
-- [x] Function pointer calls — the prototype's parameter names show, not just the types
+### Function pointer calls
 
-  <details>
-  <summary>Example</summary>
+The prototype's parameter names show, not just the types
 
-  ```cpp
-  int main() {
-      void (*callback)(int code, double value) = nullptr;
-      callback(5, 1.5);
-  }
-  ```
+```cpp
+int main() {
+    void (*callback)(int code, double value) = nullptr;
+    callback(5, 1.5);
+}
+```
 
-  </details>
+### Template argument lists
 
-- [x] Template argument lists — template parameters show as the signature; a class template points at its kind, not a return type ([clangd#299](https://github.com/clangd/clangd/issues/299), [clangd#1387](https://github.com/clangd/clangd/issues/1387))
+Template parameters show as the signature; a class template points at its kind, not a return type
 
-  <details>
-  <summary>Example</summary>
+```cpp
+template <typename T, typename U>
+struct Pair {};
 
-  ```cpp
-  template <typename T, typename U>
-  struct Pair {};
+Pair<int,  double> p;
+```
 
-  Pair<int,  double> p;
-  ```
+### Nested calls
 
-  </details>
+The inner call's help shows at the inner marker and the outer call's help at the outer marker
 
-- [x] Nested calls — the inner call's help shows at the inner marker and the outer call's help at the outer marker
+```cpp
+int inner(int a);
+int outer(int b, int c);
 
-  <details>
-  <summary>Example</summary>
+int main() {
+    outer(inner(1), 2);
+}
+```
 
-  ```cpp
-  int inner(int a);
-  int outer(int b, int c);
+### Functor call
 
-  int main() {
-      outer(inner(1), 2);
-  }
-  ```
+Invoking an object routes signature help to its operator() overload
 
-  </details>
+```cpp
+struct Adder {
+    int operator()(int a, int b);
+};
 
-- [x] Functor call — invoking an object routes signature help to its operator() overload
+int main() {
+    Adder add;
+    add(1, 2);
+}
+```
 
-  <details>
-  <summary>Example</summary>
+### Lambda call
 
-  ```cpp
-  struct Adder {
-      int operator()(int a, int b);
-  };
+Calling a lambda variable offers the closure's operator() parameters
 
-  int main() {
-      Adder add;
-      add(1, 2);
-  }
-  ```
+```cpp
+int main() {
+    auto square = [](int n) {
+        return n * n;
+    };
+    square(3);
+}
+```
 
-  </details>
+### New expression
 
-- [x] Lambda call — calling a lambda variable offers the closure's operator() parameters
+A new-expression's constructor arguments drive signature help
 
-  <details>
-  <summary>Example</summary>
+```cpp
+struct Node {
+    Node(int value, Node* next);
+};
 
-  ```cpp
-  int main() {
-      auto square = [](int n) {
-          return n * n;
-      };
-      square(3);
-  }
-  ```
-
-  </details>
-
-- [x] New expression — a new-expression's constructor arguments drive signature help
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  struct Node {
-      Node(int value, Node* next);
-  };
-
-  int main() {
-      Node* n = new Node(0, nullptr);
-  }
-  ```
-
-  </details>
+int main() {
+    Node* n = new Node(0, nullptr);
+}
+```
 
 <!-- END GENERATED ITEMS -->
 

@@ -1,0 +1,31 @@
+---
+created_at: 2026-08-23
+input_file: expression_context/04_implicit_conversion.cpp
+---
+01_arithmetic: { range: "19:13-19:14" }
+### variable `n`  
+
+---
+Type: `int`  
+Value = `0`  
+Passed as x (converted to float)  
+
+---
+```cpp
+// In demo
+int n = 0
+```
+
+02_user_defined: { range: "20:15-20:16" }
+### variable `n`  
+
+---
+Type: `int`  
+Value = `0`  
+Passed as w (converted to Wrapper)  
+
+---
+```cpp
+// In demo
+int n = 0
+```

@@ -1,0 +1,41 @@
+---
+created_at: 2026-08-23
+input_file: type_information/01_variable_type.cpp
+---
+01_pointer: { range: "11:5-11:8" }
+### variable `ptr`  
+
+---
+Type: `int *`  
+Value = `&target`  
+
+---
+```cpp
+// In namespace variable_type
+int *ptr = &target
+```
+
+02_reference: { range: "13:5-13:8" }
+### variable `ref`  
+
+---
+Type: `int &`  
+
+---
+```cpp
+// In namespace variable_type
+int &ref = target
+```
+
+03_array: { range: "15:4-15:11" }
+### variable `numbers`  
+
+---
+Type: `int[4]`  
+Value = `{}`  
+
+---
+```cpp
+// In namespace variable_type
+int numbers[4] {}
+```

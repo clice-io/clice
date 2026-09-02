@@ -1,0 +1,8 @@
+---
+created_at: 2026-08-01
+input_file: fold_kinds/15_macro_folding.cpp
+---
+- { range: "9:0-20:6", kind: namespace, collapsed_text: "{...}" }
+- { range: "11:13-18:1", kind: class, collapsed_text: "{...}" }
+- { range: "12:0-15:7", kind: accessSpecifier }
+- { range: "15:0-18:1", kind: accessSpecifier }

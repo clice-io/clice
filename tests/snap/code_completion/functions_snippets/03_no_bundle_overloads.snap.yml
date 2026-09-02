@@ -1,0 +1,13 @@
+---
+created_at: 2026-08-02
+input_file: functions_snippets/03_no_bundle_overloads.cpp
+---
+default:
+  pos:
+  - { label: "foooo", kind: Function, detail: "(…) +3 overloads", edit: "11:8-11:12" }
+
+configured:
+  pos:
+  - { label: "foooo", kind: Function, detail: "(double d)", description: "double", edit: "11:8-11:12" }
+  - { label: "foooo", kind: Function, detail: "(int x)", description: "int", edit: "11:8-11:12" }
+  - { label: "foooo", kind: Function, detail: "(int x, int y)", description: "int", edit: "11:8-11:12" }

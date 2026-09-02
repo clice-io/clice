@@ -1,0 +1,9 @@
+---
+created_at: 2026-08-22
+input_file: symbols/06_macro_shadow.cpp
+---
+function:
+- { label: "BOUND", kind: Function, detail: "(lo, hi)", edit: "12:8-12:12" }
+
+object:
+- { label: "GUARD", kind: Constant, edit: "11:8-11:12" }

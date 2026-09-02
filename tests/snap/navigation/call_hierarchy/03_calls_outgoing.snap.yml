@@ -1,0 +1,17 @@
+---
+created_at: 2026-08-25
+input_file: call_hierarchy/03_calls_outgoing.cpp
+---
+caller:
+  definition:
+    - { file: "${WS}/call_hierarchy/03_calls_outgoing.cpp", range: "20:4-20:12" }
+  declaration:
+    - { file: "${WS}/call_hierarchy/03_calls_outgoing.cpp", range: "20:4-20:12" }
+  references:
+    - { file: "${WS}/call_hierarchy/03_calls_outgoing.cpp", range: "20:4-20:12" }
+  callHierarchy:
+    - { name: "dispatch", kind: Function, file: "${WS}/call_hierarchy/03_calls_outgoing.cpp", range: "20:4-20:12" }
+  outgoingCalls:
+    - { name: "one", kind: Function, file: "${WS}/call_hierarchy/03_calls_outgoing.cpp", range: "8:4-8:7", fromRanges: ["21:11-21:16"] }
+    - { name: "two", kind: Function, file: "${WS}/call_hierarchy/03_calls_outgoing.cpp", range: "12:4-12:7", fromRanges: ["21:19-21:24"] }
+    - { name: "three", kind: Function, file: "${WS}/call_hierarchy/03_calls_outgoing.cpp", range: "16:4-16:9", fromRanges: ["21:27-21:34"] }

@@ -3,11 +3,14 @@
 /// schema, the corpus.json manifest, and materialization of one fixture
 /// into a throwaway workspace for the server driver.
 ///
-/// A fixture is either a single `.cpp` at the corpus root or a
-/// subdirectory entered through its `main.cpp` — one multi-file unit whose
-/// sibling sources (module interfaces, headers, extra sources) belong to
-/// the fixture. Everything else in the corpus is support material shared
-/// by all fixtures (include roots, `.clang-format`, ...).
+/// A fixture is either a single `.cpp` or a subdirectory entered through
+/// its `main.cpp` — one multi-file unit whose sibling sources (module
+/// interfaces, headers, extra sources) belong to the fixture. Fixtures live
+/// at the corpus root or in a section directory: the directory names the
+/// doc page's generated region its items render into, and their numbered
+/// file names (`NN_name.cpp`, `NN_unit/main.cpp`) order them there.
+/// Everything else in the corpus is support material shared by all
+/// fixtures (include roots, `.clang-format`, ...).
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -49,13 +52,12 @@ export interface FixtureMeta {
 }
 
 /// The keys a fixture's doc header may carry — the one vocabulary the snap
-/// suite and the docs generator both validate against. `issues` and
-/// `order` are rendered into the docs only; `snap` and `config` are read
-/// by the snapshot suites only.
+/// suite and the docs generator both validate against. `issues` is
+/// rendered into the docs only; `snap` and `config` are read by the
+/// snapshot suites only.
 export const FIXTURE_META_KEYS: readonly string[] = [
     "status",
     "issues",
-    "order",
     "verify",
     "snap",
     "config",
@@ -296,6 +298,8 @@ export interface SnapFixture {
     rel: string;
     /// Unit directory rel; "" for a single-file fixture.
     unit: string;
+    /// The section directory the fixture lives in; "" at the corpus root.
+    section: string;
     meta: FixtureMeta;
     /// The fixture's C-family sources: just the entry for a single-file
     /// fixture, entry plus siblings for a unit.
@@ -305,6 +309,16 @@ export interface SnapFixture {
     /// False for `status: unsupported` and `snap: skip` fixtures, which
     /// run nowhere and keep no snapshot.
     active: boolean;
+}
+
+/// A fixture file's name relative to the fixture itself: unit-relative for
+/// a unit's files, the bare file name for a single-file fixture — what
+/// `clice inspect` keys its entries by and what snapshot sections are
+/// labeled with, unchanged by the section directory the fixture lives in.
+export function fixtureRelative(fixture: SnapFixture, file: FixtureFile): string {
+    return fixture.unit === ""
+        ? path.posix.basename(file.rel)
+        : file.rel.slice(fixture.unit.length + 1);
 }
 
 export interface SnapCorpus {
@@ -387,7 +401,17 @@ export function snapCorpora(): SnapCorpus[] {
             if (units.some((other) => other !== unit && other.startsWith(`${unit}/`))) {
                 throw new Error(`tests/snap/${feature}/${unit}: nested fixture units`);
             }
+            if (unit.split("/").length > 2) {
+                throw new Error(
+                    `tests/snap/${feature}/${unit}: a unit lives at the corpus root or in a ` +
+                        "section directory",
+                );
+            }
         }
+        const sectionOf = (rel: string): string => {
+            const parts = rel.split("/");
+            return parts.length === 2 ? (parts[0] ?? "") : "";
+        };
         const owningUnit = (rel: string): string | undefined =>
             units.find((unit) => rel.startsWith(`${unit}/`));
 
@@ -400,15 +424,15 @@ export function snapCorpora(): SnapCorpus[] {
                 unitFiles.get(unit)?.push(rel);
                 continue;
             }
-            if (rel.endsWith(".cpp") && !rel.includes("/")) {
-                fixtures.push(makeFixture(corpus, feature, rel, "", [rel], []));
-                continue;
-            }
             if (rel.endsWith(".cpp")) {
-                throw new Error(
-                    `tests/snap/${feature}/${rel}: fixture sources live at the corpus ` +
-                        "root or in a main.cpp unit",
-                );
+                if (rel.split("/").length > 2) {
+                    throw new Error(
+                        `tests/snap/${feature}/${rel}: fixture sources live at the corpus ` +
+                            "root, in a section directory, or in a main.cpp unit",
+                    );
+                }
+                fixtures.push(makeFixture(corpus, feature, rel, "", sectionOf(rel), [rel], []));
+                continue;
             }
             // Support sources reach the inspect path unstripped (pulled in
             // via include search from the real corpus), so a marker in one
@@ -426,7 +450,17 @@ export function snapCorpora(): SnapCorpus[] {
         for (const [unit, rels] of unitFiles) {
             const sources = rels.filter((rel) => C_FAMILY.test(rel));
             const extras = rels.filter((rel) => !C_FAMILY.test(rel));
-            fixtures.push(makeFixture(corpus, feature, `${unit}/main.cpp`, unit, sources, extras));
+            fixtures.push(
+                makeFixture(
+                    corpus,
+                    feature,
+                    `${unit}/main.cpp`,
+                    unit,
+                    sectionOf(unit),
+                    sources,
+                    extras,
+                ),
+            );
         }
         fixtures.sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0));
 
@@ -448,6 +482,7 @@ function makeFixture(
     feature: string,
     rel: string,
     unit: string,
+    section: string,
     sources: string[],
     extras: string[],
 ): SnapFixture {
@@ -461,7 +496,7 @@ function makeFixture(
     }
     const meta = parseFixtureMeta(entry.content, `${feature}/${rel}`);
     const active = meta.status !== "unsupported" && meta.snap !== "skip";
-    return { rel, unit, meta, files, extras, active };
+    return { rel, unit, section, meta, files, extras, active };
 }
 
 /// Write one fixture's view of the corpus into `root`: support files

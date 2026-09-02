@@ -1,0 +1,9 @@
+---
+created_at: 2026-07-31
+input_file: parameter_hints/03_param_setters_builtins.cpp
+---
+- { pos: "51:22", kind: Parameter, label: "timeout_millis:", padding_right: true }
+- { pos: "53:12", kind: Parameter, label: "sink:", padding_right: true }
+- { pos: "55:14", kind: Parameter, label: "first:", padding_right: true }
+- { pos: "55:22", kind: Parameter, label: "last:", padding_right: true }
+- { pos: "55:34", kind: Parameter, label: "result:", padding_right: true }

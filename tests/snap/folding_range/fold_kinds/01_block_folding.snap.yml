@@ -1,0 +1,13 @@
+---
+created_at: 2026-07-27
+input_file: fold_kinds/01_block_folding.cpp
+---
+- { range: "4:19-33:1", kind: namespace, collapsed_text: "{...}" }
+- { range: "6:17-10:1", kind: enum, collapsed_text: "{...}" }
+- { range: "12:13-15:1", kind: struct, collapsed_text: "{...}" }
+- { range: "17:12-20:1", kind: union, collapsed_text: "{...}" }
+- { range: "22:13-31:1", kind: class, collapsed_text: "{...}" }
+- { range: "25:15-30:5", kind: functionBody, collapsed_text: "{...}" }
+- { range: "26:36-28:9", kind: compoundStmt, collapsed_text: "{...}" }
+- { range: "36:0-42:1", kind: namespace, collapsed_text: "{...}" }
+- { range: "38:19-40:1", kind: struct, collapsed_text: "{...}" }

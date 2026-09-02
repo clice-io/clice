@@ -1,0 +1,6 @@
+---
+created_at: 2026-08-02
+input_file: symbols/10_using_declaration.cpp
+---
+pos:
+- { label: "helper_fn", kind: Function, detail: "(int x)", description: "int", edit: "15:12-15:16" }

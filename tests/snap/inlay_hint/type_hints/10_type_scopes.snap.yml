@@ -1,0 +1,6 @@
+---
+created_at: 2026-07-31
+input_file: type_hints/10_type_scopes.cpp
+---
+- { pos: "9:6", kind: Type, label: ": S1" }
+- { pos: "17:6", kind: Type, label: ": S2::Nested<int>" }

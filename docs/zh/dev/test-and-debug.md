@@ -74,7 +74,7 @@ cd tests
 CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/clice npm run snap
 ```
 
-fixture 可以是语料根目录下的单个 `.cpp`，也可以是以 `main.cpp` 为入口的子目录——一个多文件单元，其中的兄弟源文件（模块接口、头文件、附加源码）都属于这个 fixture。语料级编译参数写在语料目录的 `corpus.json` 清单里；单个 fixture 用 `- flags: [...]` 追加自己的参数。server 路径的每次运行都会把 fixture 物化到一次性工作区（源文件落盘时 `§` 标记已剥除），fixture 之间互不共享状态；后台索引默认关闭，需要的 fixture 用 `- indexing: true` 打开，并且看到与编译器相同的字节。刻意不能干净编译的 fixture 声明 `- diagnostics: expected`：未声明却出现诊断会使 fixture 失败，声明了却干净编译同样失败。
+fixture 可以是单个 `.cpp`，也可以是以 `main.cpp` 为入口的子目录——一个多文件单元，其中的兄弟源文件（模块接口、头文件、附加源码）都属于这个 fixture。用来记录某项能力的 fixture 放在语料的 section 子目录里，命名为 `<section>/NN_name.cpp`（或 `<section>/NN_unit/main.cpp`），并以 `/// # 能力名称 — 细节` 的文档头开头：目录名就是功能页生成区域的键，两位数序号决定它在该节内的顺序，文档头的内容渲染进页面（见 `tools/docs/feature.ts`）。没有文档头的边界用例 fixture 留在语料根目录。语料级编译参数写在语料目录的 `corpus.json` 清单里；单个 fixture 用 `- flags: [...]` 追加自己的参数。server 路径的每次运行都会把 fixture 物化到一次性工作区（源文件落盘时 `§` 标记已剥除），fixture 之间互不共享状态；后台索引默认关闭，需要的 fixture 用 `- indexing: true` 打开，并且看到与编译器相同的字节。刻意不能干净编译的 fixture 声明 `- diagnostics: expected`：未声明却出现诊断会使 fixture 失败，声明了却干净编译同样失败。
 
 默认情况下，fixture 是 `verify: both` 加 `snap: shared`：inspect 与 server 两路结果必须渲染成逐字节一致的同一份 `<name>.snap.yml`。两路确有合理差异的 fixture 在 `///` 文档头部声明 `- snap: separate`（并用 `// snap:` 注释说明原因），两路各自固定在 `<name>.inspect.snap.yml` / `<name>.server.snap.yml`。两路分歧属于明确错误的，声明 `- snap: skip`：该 fixture 不再运行，且在两路一致之前不保留任何快照。只存在于单条路径的 feature（include/import 补全由 server 应答；索引转储没有对应的 LSP 请求）声明 `- verify: server` 或 `- verify: inspect`，由该侧拥有普通的 `<name>.snap.yml`。
 

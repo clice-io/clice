@@ -1,0 +1,47 @@
+---
+created_at: 2026-08-25
+input_file: go_to_definition/03_def_declaration_only.cpp
+---
+const_use:
+  definition:
+    - { file: "${WS}/go_to_definition/03_def_declaration_only.cpp", range: "14:21-14:27" }
+  declaration:
+    - { file: "${WS}/go_to_definition/03_def_declaration_only.cpp", range: "14:21-14:27" }
+  references:
+    - { file: "${WS}/go_to_definition/03_def_declaration_only.cpp", range: "14:21-14:27" }
+    - { file: "${WS}/go_to_definition/03_def_declaration_only.cpp", range: "20:46-20:52" }
+
+fn_use:
+  definition:
+    - { file: "${WS}/go_to_definition/03_def_declaration_only.cpp", range: "11:4-11:9" }
+  declaration:
+    - { file: "${WS}/go_to_definition/03_def_declaration_only.cpp", range: "11:4-11:9" }
+  references:
+    - { file: "${WS}/go_to_definition/03_def_declaration_only.cpp", range: "11:4-11:9" }
+    - { file: "${WS}/go_to_definition/03_def_declaration_only.cpp", range: "20:11-20:16" }
+  callHierarchy:
+    - { name: "probe", kind: Function, file: "${WS}/go_to_definition/03_def_declaration_only.cpp", range: "11:4-11:9" }
+  incomingCalls:
+    - { name: "watch", kind: Function, file: "${WS}/go_to_definition/03_def_declaration_only.cpp", range: "18:4-18:9", fromRanges: ["20:11-20:23"] }
+
+pure_use:
+  definition:
+    - { file: "${WS}/go_to_definition/03_def_declaration_only.cpp", range: "15:17-15:24" }
+  declaration:
+    - { file: "${WS}/go_to_definition/03_def_declaration_only.cpp", range: "15:17-15:24" }
+  references:
+    - { file: "${WS}/go_to_definition/03_def_declaration_only.cpp", range: "15:17-15:24" }
+    - { file: "${WS}/go_to_definition/03_def_declaration_only.cpp", range: "19:11-19:18" }
+  callHierarchy:
+    - { name: "refresh", kind: Method, file: "${WS}/go_to_definition/03_def_declaration_only.cpp", range: "15:17-15:24" }
+  incomingCalls:
+    - { name: "watch", kind: Function, file: "${WS}/go_to_definition/03_def_declaration_only.cpp", range: "18:4-18:9", fromRanges: ["19:4-19:20"] }
+
+var_use:
+  definition:
+    - { file: "${WS}/go_to_definition/03_def_declaration_only.cpp", range: "9:11-9:20" }
+  declaration:
+    - { file: "${WS}/go_to_definition/03_def_declaration_only.cpp", range: "9:11-9:20" }
+  references:
+    - { file: "${WS}/go_to_definition/03_def_declaration_only.cpp", range: "9:11-9:20" }
+    - { file: "${WS}/go_to_definition/03_def_declaration_only.cpp", range: "20:26-20:35" }

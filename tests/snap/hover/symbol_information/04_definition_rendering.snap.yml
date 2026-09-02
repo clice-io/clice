@@ -1,0 +1,30 @@
+---
+created_at: 2026-08-23
+input_file: symbol_information/04_definition_rendering.cpp
+---
+function_def: { range: "8:4-8:11" }
+### function `backoff`  
+
+---
+→ `int`  
+Parameters:  
+- `int attempt = 1`
+
+---
+```cpp
+// In namespace retry
+int backoff(int attempt = 1)
+```
+
+var_ref: { range: "9:21-9:32" }
+### variable `max_retries`  
+
+---
+Type: `const int`  
+Value = `3`  
+
+---
+```cpp
+// In namespace retry
+constexpr int max_retries = 3
+```

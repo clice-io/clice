@@ -1,0 +1,24 @@
+---
+created_at: 2026-08-25
+input_file: go_to_type_definition/04_typedef_smart_pointer.cpp
+---
+ptr:
+  definition:
+    - { file: "${WS}/go_to_type_definition/04_typedef_smart_pointer.cpp", range: "18:20-18:23" }
+  declaration:
+    - { file: "${WS}/go_to_type_definition/04_typedef_smart_pointer.cpp", range: "18:20-18:23" }
+  typeDefinition:
+    - { file: "${WS}/go_to_type_definition/04_typedef_smart_pointer.cpp", range: "10:7-10:10" }
+  references:
+    - { file: "${WS}/go_to_type_definition/04_typedef_smart_pointer.cpp", range: "18:20-18:23" }
+
+type:
+  definition:
+    - { file: "${WS}/go_to_type_definition/04_typedef_smart_pointer.cpp", range: "16:7-16:13" }
+  declaration:
+    - { file: "${WS}/go_to_type_definition/04_typedef_smart_pointer.cpp", range: "16:7-16:13" }
+  references:
+    - { file: "${WS}/go_to_type_definition/04_typedef_smart_pointer.cpp", range: "16:7-16:13" }
+    - { file: "${WS}/go_to_type_definition/04_typedef_smart_pointer.cpp", range: "18:12-18:18" }
+  typeHierarchy:
+    - { name: "Widget", kind: Struct, file: "${WS}/go_to_type_definition/04_typedef_smart_pointer.cpp", range: "16:7-16:13" }

@@ -1,0 +1,28 @@
+---
+created_at: 2026-07-31
+input_file: modules/01_modules.cpp
+---
+- { loc: "0:0", text: "/// # Module declarations — the contextual `module` keyword, dotted module names and the private fragment", kind: comment }
+- { loc: "1:0", text: "///", kind: comment }
+- { loc: "2:0", text: "/// - status: supported", kind: comment }
+- { loc: "4:0", text: "module", kind: keyword }
+- { loc: "6:0", text: "export", kind: keyword }
+- { loc: "6:7", text: "module", kind: keyword }
+- { loc: "6:14", text: "demo", kind: module }
+- { loc: "6:19", text: "core", kind: module }
+- { loc: "8:0", text: "export", kind: keyword }
+- { loc: "8:7", text: "int", kind: primitive }
+- { loc: "8:11", text: "exported_value", kind: variable, modifiers: [definition] }
+- { loc: "8:28", text: "1", kind: number }
+- { loc: "10:0", text: "module", kind: keyword }
+- { loc: "10:8", text: "private", kind: keyword }
+- { loc: "12:0", text: "int", kind: primitive }
+- { loc: "12:4", text: "private_value", kind: variable, modifiers: [definition] }
+- { loc: "12:20", text: "2", kind: number }
+- { loc: "14:0", text: "#if", kind: directive }
+- { loc: "14:4", text: "0", kind: number }
+- { loc: "15:0", text: "module", kind: identifier, modifiers: [inactive] }
+- { loc: "15:7", text: ":", kind: identifier, modifiers: [inactive] }
+- { loc: "15:8", text: "private", kind: keyword, modifiers: [inactive] }
+- { loc: "15:15", text: ";", kind: identifier, modifiers: [inactive] }
+- { loc: "16:0", text: "#endif", kind: directive }

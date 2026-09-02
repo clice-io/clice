@@ -1,0 +1,19 @@
+---
+created_at: 2026-08-23
+input_file: hover_correctness/04_default_args_call.cpp
+---
+call_site: { range: "11:13-11:20" }
+### function `compute`  
+
+---
+→ `int`  
+Parameters:  
+- `int a`
+- `int b = 10`
+- `int c = 20`
+
+---
+```cpp
+// In namespace defaults
+int compute(int a, int b = 10, int c = 20)
+```

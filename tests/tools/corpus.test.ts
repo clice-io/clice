@@ -114,6 +114,7 @@ test("snapshot ownership follows verify and snap modes", () => {
         const fixture = (rel: string, meta: Partial<SnapFixture["meta"]>): SnapFixture => ({
             rel,
             unit: "",
+            section: "",
             meta: {
                 status: "supported",
                 verify: "both",

@@ -1,0 +1,24 @@
+---
+created_at: 2026-08-01
+input_file: symbol_kinds/01_kinds_basic.cpp
+---
+- { name: "kinds", kind: Namespace, range: "4:0-33:1", selection_range: "4:10-4:15" }
+-   { name: "Value", kind: Class, range: "6:0-9:1", selection_range: "6:6-6:11", detail: "union" }
+-     { name: "i", kind: Field, range: "7:4-7:9", selection_range: "7:8-7:9", detail: "int" }
+-     { name: "f", kind: Field, range: "8:4-8:11", selection_range: "8:10-8:11", detail: "float" }
+-   { name: "Flags", kind: Enum, range: "11:0-11:27", selection_range: "11:5-11:10", detail: "enum" }
+-     { name: "FlagA", kind: EnumMember, range: "11:13-11:18", selection_range: "11:13-11:18", detail: "Flags" }
+-     { name: "FlagB", kind: EnumMember, range: "11:20-11:25", selection_range: "11:20-11:25", detail: "Flags" }
+-   { name: "Mode", kind: Enum, range: "13:0-13:46", selection_range: "13:11-13:15", detail: "enum" }
+-     { name: "Fast", kind: EnumMember, range: "13:34-13:38", selection_range: "13:34-13:38", detail: "Mode" }
+-     { name: "Safe", kind: EnumMember, range: "13:40-13:44", selection_range: "13:40-13:44", detail: "Mode" }
+-   { name: "Pair", kind: Struct, range: "15:0-23:1", selection_range: "15:7-15:11", detail: "struct" }
+-     { name: "Meta", kind: Struct, range: "16:4-18:5", selection_range: "16:11-16:15", detail: "struct" }
+-       { name: "tag", kind: Field, range: "17:8-17:15", selection_range: "17:12-17:15", detail: "int" }
+-     { name: "first", kind: Field, range: "20:4-20:13", selection_range: "20:8-20:13", detail: "int" }
+-     { name: "second", kind: Field, range: "21:4-21:14", selection_range: "21:8-21:14", detail: "int" }
+-     { name: "instances", kind: Variable, range: "22:4-22:24", selection_range: "22:15-22:24", detail: "int" }
+-   { name: "make_pair", kind: Function, range: "25:0-25:16", selection_range: "25:5-25:14", detail: "Pair ()" }
+-   { name: "bound_first", kind: Variable, range: "27:6-27:17", selection_range: "27:6-27:17", detail: "int" }
+-   { name: "bound_second", kind: Variable, range: "27:19-27:31", selection_range: "27:19-27:31", detail: "int" }
+-   { name: "lambda", kind: Variable, range: "29:0-31:1", selection_range: "29:5-29:11", detail: "(lambda)" }

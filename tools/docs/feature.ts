@@ -1,39 +1,36 @@
-/// Generate feature-doc checklist sections from snapshot fixtures.
+/// Generate the feature pages' capability sections from snapshot fixtures.
 ///
-/// Each fixture .cpp under tests/snap/<feature>/ may begin with a doc header
-/// describing one checklist capability. This tool renders those headers into
+/// A fixture .cpp under tests/snap/<feature>/<section>/ may begin with a doc
+/// header describing one capability. This tool renders those headers into
 /// the GENERATED regions of docs/en/features/*.md, so the fixtures are the
-/// single source of truth and the doc checklist is derived from them.
+/// single source of truth and the pages are derived from them.
 ///
 /// Fixture doc header:
 ///
-///     /// # Fold Kinds
-///     ///
-///     /// ## Block folding — functions, classes, ...
+///     /// # Block folding — functions, classes, ...
 ///     ///
 ///     /// - status: supported
 ///     /// - issues: clangd#1455, vscode#70794
-///     /// - order: 1
 ///     ///
 ///     /// Optional markdown description after a bare `///` separator.
 ///
-/// The header's shape (a plain-`//` prologue, the headings, the metadata
+/// The header's shape (a plain-`//` prologue, the heading, the metadata
 /// list, the description) is read by scanFixtureHeader in
 /// tools/snap/corpus.ts, which the snap suite shares; the keys it may
 /// carry are FIXTURE_META_KEYS there. A file is a doc item iff the header
-/// opens with an h1 (`#`) heading; anything else is a supplementary
-/// edge-case test, excluded from docs. With an `## item title` under the
-/// h1, the h1 names the doc section the item belongs to — matched verbatim
-/// against the doc page's generated-region key (`<!-- BEGIN GENERATED
-/// ITEMS: Fold Kinds -->`); an h1 alone is the item title, with the
-/// fixture's subdirectory as the legacy section fallback. This tool renders
-/// `status` (required; `supported`, `partial` or `unsupported`), `issues`
-/// and `order`; the other keys drive the snapshot suites. Everything after
-/// the last `///` line (trimmed of blank lines) is the example code.
+/// opens with an h1 (`#`) heading naming the capability; anything else is
+/// a supplementary edge-case test, excluded from docs. Where the item
+/// renders comes from its path: the section directory it lives in is the
+/// doc page's generated-region key (`<!-- BEGIN GENERATED ITEMS:
+/// fold_kinds -->`), and the numbered file name (`NN_name.cpp`, or
+/// `NN_unit/main.cpp` for a multi-file unit) orders it within the
+/// section. This tool renders `status` (required; `supported`, `partial`
+/// or `unsupported`) and `issues`; the other keys drive the snapshot
+/// suites. Everything after the last `///` line (trimmed of blank lines)
+/// is the example code.
 ///
-/// `partial` items render unchecked with a _(partial)_ marker but are still
-/// compiled and snapshotted, so the snapshot records the current partial
-/// behavior.
+/// A section renders as a status table of its items followed by one `###`
+/// heading per item with its description and example code.
 ///
 /// Usage:
 ///     node tools/docs/feature.ts update   # rewrite generated regions
@@ -108,7 +105,6 @@ interface Fixture {
     title: string;
     status: string;
     issues: string[];
-    order: number | null;
     description: string;
     example: string;
     /// Sibling sources of a multi-file unit fixture (unit-relative POSIX
@@ -127,63 +123,36 @@ function trimBlank(lines: string[]): string[] {
     return result;
 }
 
-/// Parse a Python-style base-10 integer (optional sign, digit-group
-/// underscores), matching int() so `order` values round-trip identically.
-function parseIntStrict(value: string): number | null {
-    const t = value.trim();
-    if (!/^[+-]?\d+(?:_\d+)*$/.test(t)) {
-        return null;
-    }
-    return Number(t.replaceAll("_", ""));
-}
-
 /// Parse a fixture's doc header. Returns null for supplementary files.
 function parseFixture(filePath: string, featureDir: string, problems: string[]): Fixture | null {
     const header = scanFixtureHeader(fs.readFileSync(filePath, "utf8"));
-    const [first, second] = header.headings;
+    const [first, ...rest] = header.headings;
     if (first === undefined || headingLevel(first) !== 1) {
         // Not an h1 heading: supplementary fixture, not a doc item.
         return null;
     }
     const lines = header.lines;
 
+    // `<section>/NN_name.cpp` or `<section>/NN_unit/main.cpp`: the section
+    // directory keys the page region, the number orders the item.
     const relParts = path.relative(featureDir, filePath).split(path.sep);
-    if (relParts.length > 2) {
+    const isUnit = relParts[relParts.length - 1] === "main.cpp";
+    const depth = relParts.length - (isUnit ? 1 : 0);
+    const section = depth === 2 ? (relParts[0] ?? "") : "";
+    if (!section) {
         problems.push(
-            `${filePath}: doc-item fixture must be at most one subdirectory deep ` +
-                `(found '${relParts.join("/")}')`,
+            `${filePath}: doc-item fixture must live in a section directory ` +
+                "(<section>/NN_name.cpp or <section>/NN_unit/main.cpp)",
         );
     }
-
-    // The heading hierarchy is plain markdown: an `## item title` after the
-    // h1 makes the h1 the section (matched verbatim against the doc page's
-    // `<!-- BEGIN GENERATED ITEMS: ... -->` key); an h1 alone is the item
-    // title with the fixture's subdirectory as the legacy section fallback.
-    let section = "";
-    let title = "";
-    let used = 1;
-    if (second !== undefined && headingLevel(second) === 2) {
-        section = first.slice(1).trim();
-        title = second.slice(2).trim();
-        used = 2;
-    } else {
-        title = first.slice(1).trim();
-        section = relParts.length >= 2 ? (relParts[0] ?? "") : "";
-    }
-    for (const heading of header.headings.slice(used)) {
+    const title = first.slice(1).trim();
+    for (const heading of rest) {
         problems.push(
-            `${filePath}: unexpected heading '${heading}' ` +
-                "(a doc header has an '# section' and at most one '## title')",
+            `${filePath}: unexpected heading '${heading}' (a doc header has one '# title')`,
         );
     }
     if (!title) {
         problems.push(`${filePath}: empty title`);
-    }
-    if (!section) {
-        problems.push(
-            `${filePath}: doc-item fixture needs an '# section' heading above its ` +
-                "'## title' (or a section subdirectory)",
-        );
     }
 
     for (const line of header.malformed) {
@@ -231,17 +200,6 @@ function parseFixture(filePath: string, featureDir: string, problems: string[]):
         issues.push(ref);
     }
 
-    let order: number | null = null;
-    if (keys.has("order")) {
-        const raw = keys.get("order") ?? "";
-        const parsed = parseIntStrict(raw);
-        if (parsed === null) {
-            problems.push(`${filePath}: order must be an integer, got '${raw}'`);
-        } else {
-            order = parsed;
-        }
-    }
-
     // A plain `//` comment block opening with `// snap:` directly after the
     // header explains the fixture's snapshot mode to maintainers; it is not
     // part of the rendered example code. (A bare leading `//` comment stays:
@@ -267,10 +225,9 @@ function parseFixture(filePath: string, featureDir: string, problems: string[]):
         title,
         status,
         issues,
-        order,
         description: trimBlank(desc).join("\n"),
         example,
-        siblings: collectSiblings(filePath, relParts),
+        siblings: collectSiblings(filePath, isUnit),
     };
 }
 
@@ -278,8 +235,8 @@ function parseFixture(filePath: string, featureDir: string, problems: string[]):
 /// the entry's example code; empty for single-file fixtures. A leading
 /// `// snap:` comment block is harness commentary, dropped the same way
 /// the entry's example drops it.
-function collectSiblings(filePath: string, relParts: string[]): { rel: string; content: string }[] {
-    if (relParts.length !== 2 || relParts[1] !== "main.cpp") {
+function collectSiblings(filePath: string, isUnit: boolean): { rel: string; content: string }[] {
+    if (!isUnit) {
         return [];
     }
     const unitDir = path.dirname(filePath);
@@ -312,45 +269,58 @@ function renderIssue(ref: string): string {
     return `[${ref}](${ISSUE_TRACKERS[tracker] ?? ""}${number})`;
 }
 
-function indent(text: string, prefix = "  "): string[] {
-    return text.split("\n").map((line) => `${prefix}${line}`.trimEnd());
+/// A title of the form `Name — details` names the capability before the
+/// dash; the details open the item's description. A title without the
+/// dash is the name.
+function splitTitle(title: string): { name: string; details: string } {
+    const dash = title.indexOf(" — ");
+    if (dash < 0) {
+        return { name: title, details: "" };
+    }
+    const details = title.slice(dash + 3).trim();
+    return {
+        name: title.slice(0, dash).trim(),
+        details: details.charAt(0).toUpperCase() + details.slice(1),
+    };
+}
+
+const STATUS_LABEL: Record<string, string> = {
+    supported: "Supported",
+    partial: "Partial",
+    unsupported: "Unsupported",
+};
+
+/// A section's region: the status table of its items, then each item
+/// under its own heading with the description and the example code.
+function renderSection(fixtures: Fixture[]): string {
+    const rows: string[][] = [["Capability", "Status", "Issues"]];
+    for (const fx of fixtures) {
+        rows.push([
+            splitTitle(fx.title).name.replaceAll("|", "\\|"),
+            STATUS_LABEL[fx.status] ?? fx.status,
+            fx.issues.map(renderIssue).join(", "),
+        ]);
+    }
+    return [renderMarkdownTable(rows).join("\n"), ...fixtures.map(renderItem)].join("\n\n");
 }
 
 function renderItem(fx: Fixture): string {
-    const box = fx.status === "supported" ? "[x]" : "[ ]";
-    let line = `- ${box} ${fx.title}`;
-    // Underscore emphasis matches prettier's markdown style, so `pixi run
-    // format` leaves the generated regions untouched.
-    if (fx.status === "partial") {
-        line += " _(partial)_";
-    }
-    if (fx.issues.length > 0) {
-        line += ` (${fx.issues.map(renderIssue).join(", ")})`;
-    }
-
-    const out = [line];
-    if (fx.description) {
-        out.push("");
-        out.push(...indent(fx.description));
+    const { name, details } = splitTitle(fx.title);
+    const out = [`### ${name}`];
+    const paragraphs = [details, fx.description].filter((text) => text !== "");
+    if (paragraphs.length > 0) {
+        out.push("", paragraphs.join("\n\n"));
     }
     if (fx.example) {
-        // `<details>` rather than VitePress's `::: details` container so the
-        // example collapses on GitHub too.
-        out.push("");
-        out.push("  <details>");
-        out.push("  <summary>Example</summary>");
         out.push("");
         if (fx.siblings.length === 0) {
             out.push(...fencedBlock(fx.example));
         } else {
             out.push(...fencedBlock(fx.example, "main.cpp"));
             for (const sibling of fx.siblings) {
-                out.push("");
-                out.push(...fencedBlock(sibling.content, sibling.rel));
+                out.push("", ...fencedBlock(sibling.content, sibling.rel));
             }
         }
-        out.push("");
-        out.push("  </details>");
     }
     return out.join("\n");
 }
@@ -365,12 +335,9 @@ function fencedBlock(content: string, label?: string): string[] {
     const fence = "`".repeat(Math.max(3, longest + 1));
     const out: string[] = [];
     if (label !== undefined) {
-        out.push(`  \`${label}\`:`);
-        out.push("");
+        out.push(`\`${label}\`:`, "");
     }
-    out.push(`  ${fence}cpp`);
-    out.push(...indent(content));
-    out.push(`  ${fence}`);
+    out.push(`${fence}cpp`, ...content.split("\n").map((line) => line.trimEnd()), fence);
     return out;
 }
 
@@ -396,16 +363,6 @@ function collectFixtures(feature: string, problems: string[]): Fixture[] {
         }
         fixtures.push(fx);
     }
-    fixtures.sort((a, b) => {
-        const oa = a.order ?? 1 << 30;
-        const ob = b.order ?? 1 << 30;
-        if (oa !== ob) {
-            return oa - ob;
-        }
-        const na = path.basename(a.path);
-        const nb = path.basename(b.path);
-        return na < nb ? -1 : na > nb ? 1 : 0;
-    });
     return fixtures;
 }
 
@@ -437,7 +394,7 @@ function rewriteDoc(
             if (matched.length === 0) {
                 problems.push(`${docPath}: region '${section}' matches no fixtures`);
             }
-            return matched.map(renderItem).join("\n\n");
+            return renderSection(matched);
         },
         problems,
     );
