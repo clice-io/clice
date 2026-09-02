@@ -1,6 +1,6 @@
 # 悬停
 
-光标下符号的富信息卡片。
+为光标所在的符号显示内容丰富的信息卡片。
 
 <!-- The capability sections below are generated from the snapshot fixtures in
      tests/snap/hover/. Do not edit the regions between the GENERATED
@@ -18,12 +18,12 @@
 | 访问说明符         | 支持     |                                                             |
 | 定义渲染           | 支持     |                                                             |
 | 初始化器截断       | 部分支持 | [clangd#710](https://github.com/clangd/clangd/issues/710)   |
-| 虚修饰符           | 部分支持 | [clangd#2474](https://github.com/clangd/clangd/issues/2474) |
+| 虚函数修饰符       | 部分支持 | [clangd#2474](https://github.com/clangd/clangd/issues/2474) |
 | 匿名命名空间作用域 | 部分支持 | [clangd#436](https://github.com/clangd/clangd/issues/436)   |
 
 ### 限定名
 
-悬停卡片显示所属命名空间和类作用域
+悬停卡片显示所属命名空间和类作用域。
 
 ```cpp
 namespace app::detail {
@@ -43,7 +43,7 @@ int global = 1;
 
 ### 符号种类
 
-卡片说明符号是什么：struct、enum、function、field 等
+卡片说明符号的种类：struct、enum、function、field 等。
 
 ```cpp
 namespace kinds {
@@ -71,7 +71,7 @@ int length(Point p) {
 
 ### 访问说明符
 
-成员显示其 public / protected / private 访问级别
+成员会显示其 public / protected / private 访问级别。
 
 ```cpp
 class Account {
@@ -88,7 +88,7 @@ private:
 
 ### 定义渲染
 
-卡片包含符号的源码定义
+卡片包含符号在源代码中的定义。
 
 ```cpp
 namespace retry {
@@ -104,7 +104,7 @@ int backoff(int attempt = 1) {
 
 ### 初始化器截断
 
-大型初始化器截断显示，而不是完整显示
+过大的初始化器会截断显示，而不会完整显示。
 
 渲染出的定义省略了初始化器，但求值后的 `Value` 字段仍然列出全部 256 个元素。
 
@@ -114,11 +114,11 @@ int backoff(int attempt = 1) {
 int arr[] = {B(0)};
 ```
 
-### 虚修饰符
+### 虚函数修饰符
 
-方法悬停显示 `virtual` / `override` / `final`
+方法的悬停信息中会显示 `virtual` / `override` / `final`。
 
-源码中写出的修饰符会渲染出来（`virtual … = 0`、`override`、`final`），但重写方法如果省略了冗余的 `virtual` 关键字，就看不到虚函数的迹象——卡片缺少 issue 要求的 `virtual void draw() override` 形式。
+源代码中写出的修饰符会渲染出来（`virtual … = 0`、`override`、`final`），但重写方法如果省略了冗余的 `virtual` 关键字，就不会显示任何表明其为虚函数的信息——卡片缺少该 issue 所要求的 `virtual void draw() override` 形式。
 
 ```cpp
 struct Base {
@@ -136,9 +136,9 @@ struct Dot final : Circle {
 
 ### 匿名命名空间作用域
 
-作用域显示中显示 `(anonymous namespace)`
+作用域信息中会显示 `(anonymous namespace)`。
 
-卡片会渲染，但匿名段从作用域显示中丢掉了：顶层匿名成员完全不显示作用域行，`outer::(anonymous)` 只显示 `outer`。
+卡片会正常渲染，但作用域信息会省略匿名部分：顶层匿名命名空间中的成员完全不显示作用域行，`outer::(anonymous)` 则只显示 `outer`。
 
 ```cpp
 namespace {
@@ -160,27 +160,27 @@ int sum = hidden + outer::nested;
 
 <!-- BEGIN GENERATED ITEMS: type_information -->
 
-| 能力               | 状态     | 问题                                                        |
-| ------------------ | -------- | ----------------------------------------------------------- |
-| 变量类型           | 支持     |                                                             |
-| 类型别名           | 支持     |                                                             |
-| 函数签名           | 支持     |                                                             |
-| 模板参数           | 支持     |                                                             |
-| `auto` 推导        | 支持     |                                                             |
-| `decltype` 推导    | 支持     |                                                             |
-| CTAD               | 部分支持 | [clangd#435](https://github.com/clangd/clangd/issues/435)   |
-| 实例化实参         | 部分支持 | [clangd#230](https://github.com/clangd/clangd/issues/230)   |
-| Lambda `auto` 参数 | 不支持   | [clangd#493](https://github.com/clangd/clangd/issues/493)   |
-| 糖化 `auto`        | 支持     |                                                             |
-| 类型格式化         | 不支持   | [clangd#2156](https://github.com/clangd/clangd/issues/2156) |
-| 匿名结构体 typedef | 支持     | [clangd#2219](https://github.com/clangd/clangd/issues/2219) |
-| 概念约束           | 部分支持 |                                                             |
+| 能力                | 状态     | 问题                                                        |
+| ------------------- | -------- | ----------------------------------------------------------- |
+| 变量类型            | 支持     |                                                             |
+| 类型别名            | 支持     |                                                             |
+| 函数签名            | 支持     |                                                             |
+| 模板参数            | 支持     |                                                             |
+| `auto` 推导         | 支持     |                                                             |
+| `decltype` 推导     | 支持     |                                                             |
+| CTAD                | 部分支持 | [clangd#435](https://github.com/clangd/clangd/issues/435)   |
+| 实例化实参          | 部分支持 | [clangd#230](https://github.com/clangd/clangd/issues/230)   |
+| Lambda `auto` 参数  | 不支持   | [clangd#493](https://github.com/clangd/clangd/issues/493)   |
+| 保留语法糖的 `auto` | 支持     |                                                             |
+| 类型格式化          | 不支持   | [clangd#2156](https://github.com/clangd/clangd/issues/2156) |
+| 匿名结构体 typedef  | 支持     | [clangd#2219](https://github.com/clangd/clangd/issues/2219) |
+| Concept 约束        | 部分支持 |                                                             |
 
 ### 变量类型
 
 指针、引用、数组
 
-变量的卡片对声明类型进行美化打印，按照源码中的读法拼出指针、引用和数组声明符。
+变量卡片会以易读形式打印其声明类型，并按源码中的写法呈现指针、引用和数组声明符。
 
 ```cpp
 namespace variable_type {
@@ -200,7 +200,7 @@ int numbers[4]{};
 
 脱糖后的 `aka` 形式
 
-带糖的类型把底层类型显示为 `Alias (aka int)`。`show_aka` 选项可以关掉 `aka` 后缀。
+保留语法糖的类型会将其底层类型显示为 `Alias (aka int)`。`show_aka` 选项可以关闭 `aka` 后缀。
 
 ```cpp
 namespace aka_desugar {
@@ -217,9 +217,9 @@ Alias chained = 0;
 
 ### 函数签名
 
-返回类型、参数名、默认值
+返回类型、形参名、默认值
 
-函数卡片列出返回类型、每个参数及其名称，以及任何默认实参。
+函数卡片会列出返回类型、各形参及其名称，以及默认实参。
 
 ```cpp
 namespace function_signature {
@@ -231,11 +231,11 @@ void configure(int width, bool visible = true);
 }
 ```
 
-### 模板参数
+### 模板形参
 
 类型、模板模板、非类型
 
-每种模板参数都会报告其形式：类型参数、模板模板参数，以及带默认值的非类型参数。
+每种模板形参都会显示其形式：类型形参、模板模板形参，以及带默认值的非类型模板形参。
 
 ```cpp
 // Template type parameter.
@@ -258,7 +258,7 @@ template <int T = 5> void foo();
 
 占位符解析成的类型
 
-悬停 `auto` 占位符会显示替换进去的类型——内置类型、指针、lambda、模板实例化，以及未实例化模板中的 `/* not deduced */` 标记。
+悬停 `auto` 占位符会显示替换它的类型——内置类型、指针、Lambda、模板实例化，以及未实例化模板中的 `/* not deduced */` 标记。
 
 ```cpp
 namespace auto_deduction {
@@ -326,9 +326,9 @@ template <typename T> struct Dependent {
 
 ### CTAD
 
-类占位符推导出的模板参数
+从类占位符推导出的模板实参
 
-使用类模板实参推导时，变量卡片会显示推导出的 `Box<int>`，但悬停类名拼写仍然报告不带实参的主模板。
+使用类模板实参推导时，变量卡片会显示推导出的 `Box<int>`，但悬停类名本身时，仍只显示不带实参的主模板。
 
 ```cpp
 namespace ctad_arguments {
@@ -344,9 +344,9 @@ Box picked(42);
 
 ### 实例化实参
 
-模板参数在使用处绑定
+在使用处绑定的模板形参
 
-模板使用处会显示替换后的类型（`Wrapper<int>`、`identity<int>`、`int x`），但不会显示每个参数绑定到哪个实参的显式 `T = int` 映射。
+模板使用处会显示替换后的类型（`Wrapper<int>`、`identity<int>`、`int x`），但不会显示将每个形参与其所绑定实参对应起来的显式 `T = int` 映射。
 
 ```cpp
 namespace instantiation_args {
@@ -367,12 +367,11 @@ void demo() {
 }
 ```
 
-### Lambda `auto` 参数
+### Lambda `auto` 形参
 
-推导出的参数类型
+推导出的形参类型
 
-悬停泛型 lambda 的 `auto` 参数不会产生卡片；
-推导出的参数类型不会显示。
+悬停泛型 Lambda 的 `auto` 形参不会显示卡片；推导出的形参类型不会显示。
 
 ```cpp
 namespace lambda_auto_params {
@@ -382,13 +381,11 @@ auto printer = [](auto value) { return value; };
 }
 ```
 
-### 糖化 `auto`
+### 带语法糖的 `auto`
 
-推导过程中保留别名糖
+推导过程中保留别名语法糖
 
-clangd 将 `auto` 丢失别名糖的问题跟踪为 clangd#709；clice
-已保留别名拼写并附加其脱糖形式，因此
-从别名返回类型推导的 `auto` 显示为 `Outer // aka: int`。
+clangd 以 clangd#709 跟踪 `auto` 丢失别名语法糖的问题；clice 已经能保留别名拼写并附加其脱糖形式，因此从别名返回类型推导出的 `auto` 会显示为 `Outer // aka: int`。
 
 ```cpp
 namespace sugared_auto {
@@ -407,10 +404,9 @@ void demo() {
 
 ### 类型格式化
 
-对渲染的类型应用 clang-format
+对渲染后的类型应用 clang-format
 
-长或嵌套的类型由编译器的默认类型打印器打印；
-它们不会通过 clang-format 重新换行或对齐。
+长类型或嵌套类型由编译器的默认类型打印器打印；它们不会再经 clang-format 重新换行或对齐。
 
 ```cpp
 namespace clang_format_types {
@@ -427,9 +423,7 @@ Tuple<int, long, unsigned, char> wide;
 
 经典 C `typedef struct {…} Name`
 
-按 C11 编译：clangd 对匿名结构体的别名渲染出误导性的 `struct Point`；
-clice 将该结构体以其 typedef 命名，
-因此别名及其变量都得到干净的 `Point` 卡片。
+按 C11 编译时，clangd 会将匿名结构体的别名误导性地渲染为 `struct Point`；clice 使用其 typedef 名称来命名该结构体，因此别名本身及该类型的变量都会显示简洁的 `Point` 卡片。
 
 ```cpp
 /// A 2-D point.
@@ -442,10 +436,9 @@ Point origin = {.y = 2, .x = 1};
 
 ### 概念约束
 
-参数或 `auto` 占位符背后的约束
+形参或 `auto` 占位符背后的约束
 
-受约束参数和概念引用卡片带有约束，
-但悬停受约束的 `Addable auto` 变量的占位符时只显示推导类型——约束被丢弃了。
+受约束形参和概念引用的卡片会包含相应约束，但悬停受约束的 `Addable auto` 变量的占位符时只会显示推导出的类型——约束会被丢弃。
 
 ```cpp
 namespace concept_constraints {
@@ -477,9 +470,9 @@ Addable auto total = 1;
 
 ### 字段布局
 
-大小、偏移、对齐和填充在字段悬停时显示
+悬停字段时显示大小、偏移、对齐和填充
 
-语料库固定为 x86-64 目标，因此位数是稳定的。
+语料库固定使用 x86-64 目标，因此以位为单位的数值是稳定的。
 
 ```cpp
 struct Header {
@@ -497,8 +490,7 @@ struct Flags {
 
 悬停类型本身显示其大小、对齐和填充
 
-大小和对齐目前显示在类型卡片上；
-总填充还没有显示。
+目前，类型卡片会显示大小和对齐；总填充尚未显示。
 
 ```cpp
 namespace layout {
@@ -513,9 +505,9 @@ struct Widget {
 
 ### 虚函数表偏移
 
-虚方法显示其表槽 _(partial)_
+虚函数显示其虚函数表槽位
 
-目前方法卡片不渲染任何 vtable 信息。
+目前，方法卡片不会渲染任何虚函数表信息。
 
 ```cpp
 struct Shape {
@@ -538,13 +530,13 @@ struct Shape {
 | 隐式转换     | 支持     |                                                             |
 | 字符串字面量 | 部分支持 | [clangd#1016](https://github.com/clangd/clangd/issues/1016) |
 | 数值字面量   | 不支持   | [clangd#1669](https://github.com/clangd/clangd/issues/1669) |
-| Record 变量  | 部分支持 | [clangd#1622](https://github.com/clangd/clangd/issues/1622) |
+| 记录类型变量 | 部分支持 | [clangd#1622](https://github.com/clangd/clangd/issues/1622) |
 
 ### 常量求值
 
-constexpr、枚举器、sizeof
+constexpr、枚举项、sizeof
 
-当初始化器是常量表达式时，卡片会求值并显示结果值。
+当初始化器是常量表达式时，卡片会对其求值并显示结果值。
 
 ```cpp
 namespace constant_value {
@@ -567,7 +559,7 @@ int from_member = Sum<3, 4>::value;
 
 每个实参绑定到哪个形参
 
-在调用点悬停实参时，会显示其传入的形参，并标明其绑定的形参名。
+在调用点悬停某个实参时，会显示它传递给哪个形参，并给出所绑定形参的名称。
 
 ```cpp
 namespace callee_arguments {
@@ -587,7 +579,7 @@ void demo() {
 
 按值、按引用、按 const 引用
 
-实参卡片说明值如何到达被调用者：按值复制，或绑定到可变或 const 引用形参。
+实参卡片会说明值以何种方式传给被调用方：按值复制，或绑定到可变引用或 const 引用形参。
 
 ```cpp
 namespace pass_semantics {
@@ -633,7 +625,7 @@ void demo() {
 
 ### 字符串字面量
 
-悬停时报告长度 _(partial)_
+悬停时报告的长度
 
 字符串字面量卡片报告数组类型及其字节大小（`const char[6]`、`Size: 6 bytes`——长度加上 null 终止符），而不是显式的字符数。
 
@@ -649,7 +641,7 @@ const char *greeting = "hello";
 
 整数或浮点字面量的类型和值
 
-悬停数值字面量不会产生卡片，而字符和字符串字面量的类型和值会显示。
+悬停数值字面量时不会显示卡片；字符字面量和字符串字面量则会显示其类型和值。
 
 ```cpp
 namespace numeric_literal_type {
@@ -660,11 +652,11 @@ auto ratio = 3.14;
 }
 ```
 
-### Record 变量
+### 记录类型变量
 
-外层常量值混入（部分）
+外层的常量值泄漏进来
 
-悬停一个可常量求值调用的 record 类型实参时，当前会把该调用的值（`Value = 7`）报告到该变量上——这个值并不是该 record 自身的值。
+悬停可进行常量求值的调用中的记录类型实参时，当前会在该变量上报告调用的值（`Value = 7`）——该值并不属于记录本身。
 
 ```cpp
 namespace record_value_misleading {
@@ -694,11 +686,11 @@ void demo() {
 | Doxygen `///` 注释           | 支持     |                                                             |
 | 合成访问器文档               | 支持     |                                                             |
 | `@copydoc` 标签              | 部分支持 | [clangd#1320](https://github.com/clangd/clangd/issues/1320) |
-| 继承的重写方法文档           | 部分支持 | [clangd#2504](https://github.com/clangd/clangd/issues/2504) |
+| 重写方法继承的文档           | 部分支持 | [clangd#2504](https://github.com/clangd/clangd/issues/2504) |
 | 重载文档共享                 | 部分支持 | [clangd#2506](https://github.com/clangd/clangd/issues/2506) |
 | 继承构造函数文档             | 不支持   | [clangd#1936](https://github.com/clangd/clangd/issues/1936) |
 | 横幅注释                     | 部分支持 | [clangd#974](https://github.com/clangd/clangd/issues/974)   |
-| 声明与定义注释               | 支持     |                                                             |
+| 声明处与定义处的注释         | 支持     |                                                             |
 | 空白和换行                   | 部分支持 | [clangd#2057](https://github.com/clangd/clangd/issues/2057) |
 | 注释缩进                     | 部分支持 | [clangd#1040](https://github.com/clangd/clangd/issues/1040) |
 | 宏展开产生的 template 关键字 | 部分支持 | [clangd#1226](https://github.com/clangd/clangd/issues/1226) |
@@ -708,7 +700,7 @@ void demo() {
 
 从声明中提取，并在悬停时渲染
 
-适用于普通函数、主模板及其特化；引用会解析到最特化声明的注释。
+适用于普通函数、主模板及其特化；符号引用会解析为特化程度最高的声明所带的注释。
 
 ```cpp
 namespace docs {
@@ -730,10 +722,9 @@ void use() {
 
 ### 合成访问器文档
 
-简单 getter/setter 获得一行生成的描述
+为简单 getter/setter 生成一行描述
 
-自身没有注释的简单 getter 或 setter 会在其悬停卡片中生成一行合成的
-"Trivial accessor/setter for `field`." 文本。
+自身没有注释的简单 getter 或 setter，其悬停卡片中会生成一行“Trivial accessor/setter for `field`.”。
 
 ```cpp
 namespace accessors {
@@ -747,7 +738,7 @@ struct Widget {
 
 ### `@copydoc` 标签
 
-将另一个符号的文档复制到当前符号上（部分）
+将另一个符号的文档复制到当前符号上
 
 `@copydoc target` 标签应将 `target` 的文档复制到当前符号的悬停卡片中。clice 目前还不解析该标签——卡片显示的是字面文本 `@copydoc base_func()`。
 
@@ -763,9 +754,9 @@ void wrapper();
 
 ### 继承的重写方法文档
 
-没有注释的 override 应显示基类方法的文档（部分）
+没有注释的重写方法应显示基类方法的文档
 
-悬停一个自身没有注释的重写方法时，应显示它所重写方法的文档。clice 目前还不继承该文档——重写方法的卡片中没有任何描述。
+悬停在自身没有注释的重写方法上时，应显示其所重写方法的文档。clice 目前还不继承该文档——重写方法的卡片中没有任何描述。
 
 ```cpp
 namespace inherit_docs {
@@ -781,9 +772,9 @@ struct Circle : Base {
 
 ### 重载文档共享
 
-后续没有注释的重载应复用第一个重载的文档（部分）
+后续没有注释的重载应复用第一个重载的文档
 
-连续的重载通常只给第一个写文档；后续未写文档的重载应复用这份共享描述。clice 目前还不共享该文档——后续重载的卡片中没有任何描述。
+连续的重载通常只为第一个编写文档；后续未写文档的重载应复用这份共享描述。clice 目前还不共享该文档——后续重载的卡片中没有任何描述。
 
 ```cpp
 namespace overloads {
@@ -797,7 +788,7 @@ void open(const char* path, int flags);
 
 `using Base::Base;` 应显示基类构造函数的文档
 
-通过 `using Base::Base;` 引入的构造函数在悬停时应带有基类构造函数的文档。目前没有对应的悬停界面：using 声明中的名字解析到类，而不是继承的构造函数。
+通过 `using Base::Base;` 引入的构造函数在悬停时应带有基类构造函数的文档。但目前没有可供悬停的位置：using 声明中的名字解析到类，而不是继承的构造函数。
 
 ```cpp
 namespace inherited_ctor {
@@ -813,9 +804,9 @@ struct Derived : Base {
 
 ### 横幅注释
 
-与后文用空行分隔的段落横幅不应附着到下一个声明（部分）
+与下一个声明之间有空行的分节横幅不应附着到该声明
 
-`// ==== Section ====` 这样的横幅后跟空行时，不应被误当作其下声明的文档。clice 目前仍会附着它——横幅文本会出现在卡片中。
+`// ==== Section ====` 这样的横幅后跟空行时，不应被误当作其下声明的文档。clice 目前仍会将它附着到声明上——横幅文本会出现在卡片中。
 
 ```cpp
 namespace banners {
@@ -843,9 +834,9 @@ void process(int x) { (void)x; }
 
 ### 空白和换行
 
-注释中的 markdown 表格保留其换行（部分）
+注释中的 Markdown 表格保留其换行
 
-跨多行 `///` 编写的 markdown 表格应按保留换行的方式渲染为表格。clice 目前将多行压成一行，因此表格无法渲染。
+用多行 `///` 编写的 Markdown 表格应在保留换行的情况下渲染为表格。clice 目前将这些行压成一行，因此表格无法渲染。
 
 ```cpp
 namespace tables {
@@ -858,9 +849,9 @@ void table_fn();
 
 ### 注释缩进
 
-注释中缩进的文本行不应产生多余的额外缩进（部分）
+注释中的缩进行渲染时不应出现多余缩进
 
-文档注释正文包含缩进代码块时，应以正确的缩进渲染。clice 目前会去掉前导缩进，导致缩进代码块丢失偏移量，空行也会塌陷。
+正文中包含缩进块的文档注释应以正确的缩进渲染。clice 目前会去掉前导缩进，导致缩进代码块失去缩进，空行也会塌缩。
 
 ```cpp
 namespace indented {
@@ -874,9 +865,9 @@ void run();
 
 ### 宏展开产生的 template 关键字
 
-文档注释应在展开后保留
+文档字符串应在展开后保留
 
-当 `template` 关键字来自宏展开时，声明的文档注释仍应出现在 hover 中。clice 目前会丢弃它——卡片没有描述。
+当 `template` 关键字来自宏展开时，声明的文档注释仍应出现在悬停卡片中。clice 目前会丢失该注释——卡片中没有描述。
 
 ```cpp
 int anchor = 0;
@@ -887,11 +878,11 @@ int anchor = 0;
 TEMPLATE <typename T> void run(T value);
 ```
 
-### 注释抑制选项
+### 注释隐藏选项
 
-配置开关，用于隐藏错误归属的文档注释
+用于隐藏错误归属文档注释的配置开关
 
-被关联启发式误拾取的散落注释——例如与代码之间隔一空行的节横幅——总是出现在 hover 卡片上：clice 没有配置选项来抑制归属为猜测的文档注释。
+被关联启发式规则误拾取的无关注释——例如与代码之间隔有空行的分节横幅——总会出现在悬停卡片中：clice 没有配置选项，可隐藏那些仅凭推测与代码关联的文档注释。
 
 ```cpp
 namespace suppression {
@@ -914,13 +905,13 @@ int counter;
 | 命令行宏                | 支持     |                                                             |
 | 实参中的嵌套宏          | 部分支持 |                                                             |
 | 定义前使用              | 部分支持 | [clangd#2642](https://github.com/clangd/clangd/issues/2642) |
-| preamble 内的 `#define` | 不支持   |                                                             |
+| Preamble 内的 `#define` | 不支持   |                                                             |
 
 ### 各处的定义文本
 
 `#define`、使用处、`#ifdef` 和 `#undef` 都显示宏的定义
 
-宏的 hover 卡片在其名称出现的任何地方都带有 `#define` 文本：定义本身、使用处、`#ifdef` 守卫和 `#undef`。
+宏的悬停卡片在其名称出现的任何地方都带有 `#define` 文本：定义本身、使用处、`#ifdef` 守卫和 `#undef`。
 
 ```cpp
 int anchor = 0;
@@ -938,9 +929,9 @@ int guarded = 1;
 
 ### 完全展开预览
 
-函数式宏使用处显示其参数代入宏体后的结果
+函数式宏的使用处显示将实参代入宏体后的结果
 
-悬停函数式宏调用会显示 `#define` 文本，以及将调用实参代入后完全展开结果的预览。
+悬停函数式宏调用会显示 `#define` 文本，以及代入调用实参后完全展开的结果预览。
 
 ```cpp
 int x = 1, y = 2;
@@ -952,9 +943,9 @@ int z = MAX(x, y);
 
 ### 命令行宏
 
-`-D` 定义在 hover 中会带有合成的 `#define`
+悬停 `-D` 定义时会显示合成的 `#define`
 
-在命令行定义的宏（`-DFROM_CLI=7`）会在其 hover 卡片中显示合成的 `#define FROM_CLI 7`，然后显示其展开。
+通过命令行定义的宏（`-DFROM_CLI=7`）会在悬停卡片中显示合成的 `#define FROM_CLI 7`，然后显示其展开结果。
 
 ```cpp
 int cli = FROM_CLI;
@@ -962,9 +953,9 @@ int cli = FROM_CLI;
 
 ### 实参中的嵌套宏
 
-在另一宏调用的实参内命名的宏
+在另一宏调用的实参中出现的宏
 
-记录的展开从外层调用开始，因此悬停实参内命名的内层宏只会显示其定义，不会显示展开预览。
+记录的展开从外层调用开始，因此悬停实参中出现的内层宏时，只会显示其定义，不会显示展开预览。
 
 ```cpp
 int anchor = 0;
@@ -977,9 +968,9 @@ int nested = ECHO(INNER_VAL);
 
 ### 定义前使用
 
-悬停出现在其 `#define` 之前的宏名称
+悬停出现在其 `#define` 之前的宏名
 
-在其自身 `#define` 之上的 `#if` 中使用的宏名称仍应在 hover 中显示宏的定义。clice 目前在定义前使用处不返回 hover；`#define` 之后的使用正常。
+在宏自身的 `#define` 之前通过 `#if` 使用该宏名时，悬停仍应显示宏的定义。clice 目前不会在定义前的使用处提供悬停信息；`#define` 之后的使用则正常。
 
 ```cpp
 int anchor = 0;
@@ -993,11 +984,11 @@ int positive = 1;
 int use = COUNT;
 ```
 
-### preamble 内的 `#define`
+### Preamble 内的 `#define`
 
-悬停位于文件开头的指令
+悬停文件开头的指令
 
-文件 preamble 区域（第一个声明之前的前导指令串）中的 `#define` 不属于实时解析的预处理器记录，因此悬停其名称不会有任何结果。其他每个宏 fixture 都以声明开头，正是为了将其指令推到 preamble 边界之外。
+文件的 Preamble 区域（第一个声明之前连续出现的一组指令）中的 `#define` 不属于当前解析的预处理器记录，因此悬停其名称不会显示任何内容。其他所有宏测试样例都特意以声明开头，以便将其中的指令推到 Preamble 边界之后。
 
 ```cpp
 #define EARLY 1
@@ -1013,22 +1004,22 @@ int use = EARLY;
 
 | 能力                        | 状态     | 问题                                                        |
 | --------------------------- | -------- | ----------------------------------------------------------- |
-| 类型悬停上的成员            | 部分支持 | [clangd#959](https://github.com/clangd/clangd/issues/959)   |
-| typedef 底层结构体          | 部分支持 | [clangd#2020](https://github.com/clangd/clangd/issues/2020) |
+| 类型悬停时的成员            | 部分支持 | [clangd#959](https://github.com/clangd/clangd/issues/959)   |
+| typedef 的底层结构体        | 部分支持 | [clangd#2020](https://github.com/clangd/clangd/issues/2020) |
 | 关键字文档                  | 不支持   | [clangd#1862](https://github.com/clangd/clangd/issues/1862) |
 | 属性文档                    | 支持     | [clangd#1862](https://github.com/clangd/clangd/issues/1862) |
 | include 指令悬停            | 支持     |                                                             |
 | `this` 表达式               | 支持     |                                                             |
 | 预定义标识符                | 支持     |                                                             |
-| 无意义 token 不显示悬停     | 支持     |                                                             |
+| 无意义 Token 不显示悬停     | 支持     |                                                             |
 | GTK-Doc 和 kernel-doc       | 不支持   | [clangd#2662](https://github.com/clangd/clangd/issues/2662) |
 | Doxygen 中的 LaTeX 数学公式 | 不支持   | [clangd#2669](https://github.com/clangd/clangd/issues/2669) |
 
-### 类型悬停上的成员
+### 类型悬停时的成员
 
 悬停枚举或结构体类型时列出其成员
 
-卡片会显示类型名称（以及结构体的布局），但成员列表不会展开——主体渲染为 `{}`。
+卡片会显示类型名称（结构体还会显示其布局），但不会展开成员列表——类型体显示为 `{}`。
 
 ```cpp
 namespace members {
@@ -1047,11 +1038,11 @@ struct Point {
 }
 ```
 
-### typedef 底层结构体
+### typedef 的底层结构体
 
-悬停别名时展开被别名的定义
+悬停别名时展开别名所指的定义
 
-卡片将别名解析为其底层类型名称，但不会展开该结构体的定义或成员列表。
+卡片会将别名解析为其底层类型名，但不会展开该结构体的定义或成员列表。
 
 ```cpp
 namespace aliases {
@@ -1072,7 +1063,7 @@ typedef Widget Widget_t;
 
 悬停语言关键字时显示其描述
 
-悬停 `const` 或 `virtual` 等关键字不会产生卡片。
+悬停 `const` 或 `virtual` 等关键字时不会显示卡片。
 
 ```cpp
 namespace keywords {
@@ -1090,7 +1081,7 @@ struct Widget {
 
 悬停属性时显示其描述
 
-属性的文档会渲染在卡片中，适用于 GNU `__attribute__` 写法和 C++ `[[...]]` 属性。
+该属性自身的文档会显示在卡片中，GNU `__attribute__` 写法和 C++ `[[...]]` 属性均支持。
 
 ```cpp
 namespace attr_docs {
@@ -1104,7 +1095,7 @@ void foo(int * __attribute__((nonnull, noescape)) );
 
 悬停 `#include` 时显示解析后的头文件路径
 
-卡片将引号内的头文件解析为磁盘上的文件。
+卡片会将引号中的头文件解析为其在磁盘上的文件路径。
 
 ```cpp
 #include "own_header.h"
@@ -1114,7 +1105,7 @@ int use = own_header_value;
 
 ### `this` 表达式
 
-悬停 `this` 显示指向的类类型
+悬停 `this` 时显示其指向对象的类类型
 
 适用于普通类和类模板内部。
 
@@ -1139,9 +1130,9 @@ struct Box {
 
 ### 预定义标识符
 
-`__func__` hover 显示当前函数名
+悬停 `__func__` 时显示当前函数名
 
-在具体函数中值可解析；在模板内只能得到近似类型。
+在具体函数中可解析出其值；在模板内只能确定大致类型。
 
 ```cpp
 namespace predefined {
@@ -1158,12 +1149,12 @@ void generic() {
 }
 ```
 
-### 无意义 token 不显示悬停
+### 无意义 Token 不显示悬停
 
-内建关键字和空函数体不产生信息卡
+内置关键字和空代码体均不显示卡片
 
-悬停内建类型关键字或空函数体内部不会产生任何信息卡，因此编辑器显示空白而非噪音。
-（目前数值和 bool 字面量也没有信息卡，但这是已跟踪的差距——见数值字面量条目——不是承诺。）
+悬停内建类型关键字或空代码体内部时，不会产生任何信息卡，因此编辑器不会显示任何内容，而非显示干扰信息。
+（目前数值和 bool 字面量也没有信息卡，但这是已跟踪的缺失——见数值字面量条目——并非有意保证的行为。）
 
 ```cpp
 namespace negatives {
@@ -1179,7 +1170,7 @@ void noop() {}
 
 识别 GObject Introspection 注解
 
-GTK-Doc / kernel-doc 注释语法和 GObject Introspection 注解不会解析到悬停信息卡中。
+GTK-Doc / kernel-doc 注释语法和 GObject Introspection 注解不会作为悬停信息卡的内容进行解析。
 
 ```cpp
 /**
@@ -1269,7 +1260,7 @@ export module math:algebra;
 
 ## 悬停正确性
 
-在其他工具上出错的输入上保持稳健。
+面对曾导致其他工具出错的输入时仍保持稳健。
 
 <!-- BEGIN GENERATED ITEMS: hover_correctness -->
 
@@ -1283,9 +1274,9 @@ export module math:algebra;
 
 ### MSVC 继承模型
 
-`MSInheritanceAttr` 不会破坏类/结构体悬停
+`MSInheritanceAttr` 不会导致类或结构体的悬停信息异常
 
-clangd 将此项跟踪为 clangd#1643 和 clangd#2212；在 MSVC 目标下，隐式继承属性不会泄入类/结构体或方法信息卡。
+clangd 将此项跟踪为 clangd#1643 和 clangd#2212；使用 MSVC 目标时，隐式继承属性不会混入类、结构体或方法的信息卡。
 
 ```cpp
 namespace ms {
@@ -1302,9 +1293,9 @@ int Widget::* member = &Widget::value;
 
 ### 最令人烦恼的解析（most vexing parse）
 
-对象初始化和函数声明悬停有区别
+悬停信息能区分对象初始化和函数声明
 
-clangd 将此项跟踪为 clangd#2225；clice 将直接初始化读作变量，将引起歧义的形式读作函数声明。
+clangd 将此项跟踪为 clangd#2225；clice 将直接初始化识别为变量，将引起歧义的形式识别为函数声明。
 
 ```cpp
 namespace mvp {
@@ -1326,9 +1317,9 @@ void demo() {
 
 ### 大无符号枚举常量
 
-悬停 `0xFFFF...ULL` 枚举值不会崩溃
+悬停值为 `0xFFFF...ULL` 的枚举项时不会崩溃
 
-clangd 在此情景下崩溃（clangd#2381）；clice 无溢出地渲染完整无符号值。
+clangd 在此情景下崩溃（clangd#2381）；clice 能够完整呈现无符号值，且不会溢出。
 
 ```cpp
 namespace big_enum {
@@ -1342,9 +1333,9 @@ enum class Flags : unsigned long long {
 
 ### 带默认参数的调用
 
-悬停省略默认值的调用不会崩溃
+悬停未显式传入默认实参的调用时不会崩溃
 
-clangd 在此情景下崩溃（clangd#551）；clice 渲染带默认参数的被调用方签名。
+clangd 在此情景下崩溃（clangd#551）；clice 呈现包含默认参数的被调用方签名。
 
 ```cpp
 namespace defaults {
@@ -1358,7 +1349,7 @@ int result = compute(1);
 
 ### 宏遮蔽的符号
 
-与函数同名的函数式宏
+遮蔽同名函数的函数式宏
 
 clangd 将此项跟踪为 clangd#2490；在调用点，函数式宏处于活动状态，clice 的信息卡显示该宏及其展开。
 

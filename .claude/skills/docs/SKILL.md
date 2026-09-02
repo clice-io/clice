@@ -38,6 +38,7 @@ description: The clice documentation system — generated feature/config pages, 
 | `pixi run check-doc-translations`  | hard gate: zh isomorphic to en, all pairs attested |
 | `pixi run report-doc-translations` | translator worklist: drifted segments with texts   |
 | `pixi run record-doc-translations` | re-attest hash pairs after deliberate edits        |
+| `pixi run review-doc-translations` | model review of zh pages, segment by segment       |
 
 ## Translation contract (tools/docs/translate.ts)
 
@@ -81,6 +82,58 @@ byte-for-byte. A segment the model cannot render validly is left in
 English and the run exits non-zero naming the page — rerun `translate`
 on it after review. The key comes from the environment and is never
 stored. Drafts still go through review and `record`.
+
+## Chinese wording: what is translated and what stays English
+
+The zh tree reads as Chinese technical writing, not as glossed English.
+The reader is a C++ developer who searches the web in English, so the
+rule is: translate the prose, keep the names people search for.
+
+Translate:
+
+- Page, section and capability titles, table headers and cells, list
+  items, descriptions. Feature names have fixed Chinese names — use the
+  ones the overview page uses (代码补全, 悬停, 签名帮助, 代码导航,
+  文档链接, 语义 Token, 内联提示, 折叠范围, 文档符号, 格式化, 诊断,
+  代码操作; Lint stays Lint). LSP request names stay as code when
+  quoted (`textDocument/hover`), the feature is named in Chinese.
+- C++ concepts that have an established Chinese term: 结构化绑定, 范围
+  for 循环, 概念, 模板特化, 显式实例化, 折叠表达式, 参数包, 注入类名.
+  On the first use in a page, give the English in full-width
+  parentheses when the English is what one would search for: 结构化绑定
+  （structured bindings）, 最令人烦恼的解析（most vexing parse）.
+- Status words: 支持 / 部分支持 / 不支持.
+
+Keep English (never transliterate):
+
+- Product and tool names: VS Code, Neovim, Zed, CMake, Bazel, clang,
+  clang-format, clangd, GCC, MSVC, LLVM.
+- Acronyms: LSP, AST, PCH, PCM, CDB, TU, ADL, CTAD, DAG, ABI, URI, C++23.
+- Anything in code font: identifiers, keywords, file paths, config keys
+  and TOML sections, command lines, diagnostics text quoted from the
+  compiler. Option values are code too (`"off"`, `"on"`) and keep their
+  backticks.
+- Terms that are commonly used untranslated by Chinese C++ developers
+  and whose translations are less recognizable: Lambda, Token, Concept
+  when naming the language feature (概念 in prose is fine), `this`,
+  Preamble, Overload set. When in doubt, keep the English term and add
+  a short Chinese gloss rather than invent a translation.
+
+Style: full-width punctuation inside Chinese sentences, a space between
+CJK and Latin text (prettier enforces it), no machine-translation
+calques ("这个" for "the", passive-voice chains), sentences that say
+what the English says rather than word for word.
+
+Reviewing existing Chinese pages: `pixi run review-doc-translations
+[page...]` (default: every page) feeds each translatable segment with
+its current Chinese to a model and writes the corrected Chinese back,
+one chunk of segments per call, code blocks masked out — the model
+never sees a code block, and a reply that breaks a segment's shape keeps
+the current text. The default backend is the codex CLI run from an empty
+scratch directory (`--jobs=N` parallel calls, `--effort=LEVEL`);
+`--backend=deepseek` uses the API. Review the diff, then `format` and
+`record`. Prefer this over handing a model whole pages: the code blocks
+would only burn its context.
 
 ## Syncing docs at the end of a branch
 

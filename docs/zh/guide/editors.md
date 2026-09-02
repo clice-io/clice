@@ -11,11 +11,11 @@ clice 实现了 [Language Server Protocol](https://microsoft.github.io/language-
 
 ### Visual Studio Code
 
-从市场安装 [clice 扩展](https://marketplace.visualstudio.com/items?itemName=clice-io.clice)。市场构建按平台分发，并在扩展内附带 clice 服务端，因此安装后无需下载或访问网络；若要使用自己的构建，请设置 `clice.executable`。
+从应用市场安装 [clice 扩展](https://marketplace.visualstudio.com/items?itemName=clice-io.clice)。应用市场中的构建版本针对不同平台提供，并在扩展中内置 clice 服务端，因此安装后无需再下载或访问网络；若要改用自己的构建版本，请设置 `clice.executable`。
 
 ### Neovim
 
-clice 在 [`editors/nvim`](https://github.com/clice-io/clice/tree/main/editors/nvim) 中随附了 Neovim ≥ 0.11 的 LSP 配置。将 `doc/clice.lua` 复制到配置目录的 `lsp/` 下，然后启用：
+clice 在 [`editors/nvim`](https://github.com/clice-io/clice/tree/main/editors/nvim) 中随附了适用于 Neovim ≥ 0.11 的 LSP 配置。将 `doc/clice.lua` 复制到配置目录中的 `lsp/` 目录，然后启用：
 
 ```lua
 vim.lsp.enable('clice')
@@ -29,7 +29,7 @@ Zed 扩展位于 [`editors/zed`](https://github.com/clice-io/clice/tree/main/edi
 
 ### Helix
 
-添加到 `~/.config/helix/languages.toml`：
+在 `~/.config/helix/languages.toml` 中添加以下内容：
 
 ```toml
 [language-server.clice]
@@ -58,7 +58,7 @@ language-servers = ["clice"]
 
 ### Sublime Text
 
-安装 [LSP 包](https://packagecontrol.io/packages/LSP)，然后在其设置中添加：
+安装 [LSP 包](https://packagecontrol.io/packages/LSP)，然后在其设置中添加以下内容：
 
 ```json
 {
@@ -74,7 +74,7 @@ language-servers = ["clice"]
 
 ### Kate
 
-打开 `Settings → Configure Kate → LSP Client → User Server Settings`，然后添加：
+打开 `Settings → Configure Kate → LSP Client → User Server Settings`，然后添加以下内容：
 
 ```json
 {

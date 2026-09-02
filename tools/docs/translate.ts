@@ -33,6 +33,7 @@
 ///     node tools/docs/translate.ts report   # translator worklist with segment texts
 ///     node tools/docs/translate.ts record   # re-attest pages after deliberate edits
 ///     node tools/docs/translate.ts translate [page...]  # machine-draft zh pages
+///     node tools/docs/translate.ts review [page...]     # model review of existing zh pages
 ///
 /// `translate` calls the DeepSeek API (key from DEEPSEEK_API_KEY, never
 /// stored) to draft segment-isomorphic zh pages: fenced code inside a
@@ -44,9 +45,22 @@
 /// left in English and fails the run, so the page shows up again on the
 /// next attempt. Drafts still go through review + record.
 ///
+/// `review` re-reads every translatable segment of an existing zh page
+/// next to its en counterpart and asks a model for the corrected Chinese —
+/// meaning, the wording conventions of the docs skill, naturalness —
+/// segment by segment, so no code block ever enters the model's context.
+/// The default backend runs the codex CLI (GPT-5.6-sol) from an empty
+/// scratch directory, one call per chunk of segments, `--jobs=N` calls in
+/// parallel and `--effort=LEVEL` reasoning; `--backend=deepseek` uses the
+/// API instead. A reply that breaks a segment's shape keeps the current
+/// Chinese. The pages are rewritten in place; review the diff, then
+/// `record`.
+///
 /// `--en=DIR --zh=DIR --meta=DIR` override the tree roots (for testing).
 
+import { spawn } from "node:child_process";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import pLimit from "p-limit";
 import { REPO_ROOT } from "../compile_commands.ts";
@@ -954,6 +968,288 @@ async function machineTranslate(roots: Roots, pages: string[], rest: string[]): 
     return failed > 0 || incomplete.length > 0 ? 1 : 0;
 }
 
+const REVIEW_PROMPT = `你在审校 clice（一个 C++ 语言服务器）文档的中文译文。输入是一批分段，每段给出编号 i、
+markdown 形状 shape、英文原文 en 和当前中文 zh。请逐段判断中文是否准确、术语是否合规、是否自然，
+输出每一段的最终中文；已经合格的段原样返回。只输出一个 JSON 对象：
+{"segments":[{"i":编号,"text":"最终中文"}, ...]}，每个输入编号都必须出现，不要输出其它内容。
+
+硬性约束（违反会被拒绝）：
+- 形如 ⟦B1⟧ 的占位符代表代码块，必须原样保留、各出现恰好一次、不得增删。
+- 保持 markdown 形状：标题的 # 个数、列表的标记（- 或 1.）与任务框（- [ ] / - [x]）、表格行的
+  竖线数量与列数、引用的 >。段内不要引入空行。
+- 行内代码（反引号内）、链接目标、URL、issue 引用（clangd#1455）、文件路径、命令行、编译器
+  诊断原文一律原样保留。
+- 不增删信息：中文说英文说的事，不多不少。
+
+术语规则：
+- 翻译：页面/章节/能力标题、表头与表格文字、列表项、描述。功能名用固定译名：代码补全、悬停、
+  签名帮助、代码导航、文档链接、语义 Token、内联提示、折叠范围、文档符号、格式化、诊断、
+  代码操作；Lint 保留。状态词：支持 / 部分支持 / 不支持。
+- 有通行中文译名的 C++ 概念翻译（结构化绑定、范围 for 循环、模板特化、显式实例化、折叠表达式、
+  参数包、注入类名、概念）；一页中首次出现且英文更利于检索时，用全角括号附英文，
+  如 结构化绑定（structured bindings）、最令人烦恼的解析（most vexing parse）。
+- 保留英文：产品与工具名（VS Code、Neovim、Zed、CMake、Bazel、clang、clang-format、clangd、
+  GCC、MSVC、LLVM）；缩写（LSP、AST、PCH、PCM、CDB、TU、ADL、CTAD、DAG、ABI、URI、C++23）；
+  代码字体里的一切；中文 C++ 开发者习惯不译的词（Lambda、Token、Preamble、this、
+  作为语言特性名的 Concept）。拿不准时保留英文并加简短中文说明，不要自造译法。
+- 同一批里同一术语只用一种译法；同一能力在表格行和标题里必须完全一致。
+
+文风：中文句子用全角标点；中英文之间留一个空格；不要机器翻译腔（英文语序、"这个"当冠词、
+被动堆叠）；说清楚意思，不必逐词对应。`;
+
+interface ReviewItem {
+    i: number;
+    shape: string;
+    en: string;
+    zh: string;
+}
+
+type Backend = (payload: string, expected: number[]) => Promise<Map<number, string>>;
+
+/// Runs one codex invocation; the transcript on stdout is dropped, stderr
+/// travels with a failure. No stdin: codex would otherwise wait on it for
+/// extra input and never start.
+function runCodex(args: string[], cwd: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+        const child = spawn("codex", args, { cwd, stdio: ["ignore", "ignore", "pipe"] });
+        let stderr = "";
+        child.stderr.on("data", (chunk: Buffer) => {
+            stderr += chunk.toString();
+        });
+        child.on("error", reject);
+        child.on("close", (code) => {
+            if (code === 0) {
+                resolve();
+            } else {
+                reject(new Error(`codex exited with ${code}: ${stderr.slice(-400)}`));
+            }
+        });
+    });
+}
+
+/// One codex call per chunk, from an empty scratch directory so the model
+/// has nothing to read but the prompt; the reply arrives through `-o`.
+function codexBackend(effort: string): Backend {
+    return async (payload, expected) => {
+        const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "clice-docs-review-"));
+        const reply = path.join(scratch, "reply.md");
+        try {
+            let lastError: unknown = null;
+            for (let attempt = 0; attempt < 2; attempt += 1) {
+                await runCodex(
+                    [
+                        "exec",
+                        "-m",
+                        "gpt-5.6-sol",
+                        "-c",
+                        `model_reasoning_effort=${effort}`,
+                        "--dangerously-bypass-approvals-and-sandbox",
+                        "-o",
+                        reply,
+                        `${REVIEW_PROMPT}\n\n输入：\n${payload}`,
+                    ],
+                    scratch,
+                );
+                try {
+                    return parseSegmentsJson(fs.readFileSync(reply, "utf8"), expected);
+                } catch (error) {
+                    lastError = error;
+                    console.error(`  codex reply unusable, retrying: ${String(error)}`);
+                }
+            }
+            throw lastError instanceof Error ? lastError : new Error(String(lastError));
+        } finally {
+            fs.rmSync(scratch, { recursive: true, force: true });
+        }
+    };
+}
+
+function deepseekBackend(model: string): Backend {
+    return async (payload, expected) => {
+        const reply = await callApi(
+            model,
+            [
+                { role: "system", content: REVIEW_PROMPT },
+                { role: "user", content: payload },
+            ],
+            8192,
+        );
+        if (reply.truncated) {
+            throw new Error("reply truncated");
+        }
+        return parseSegmentsJson(reply.content, expected);
+    };
+}
+
+interface ReviewResult {
+    reviewed: number;
+    changed: number;
+    kept: number;
+}
+
+/// The page's translatable segments paired with their current Chinese,
+/// code masked on both sides; chunks are what a backend call reviews.
+function reviewChunks(
+    roots: Roots,
+    page: string,
+): {
+    items: ReviewItem[];
+    chunks: number[][];
+    enSegments: Segment[];
+    zhSource: string;
+    zhSegments: Segment[];
+    enTexts: string[];
+    masks: Map<number, string[]>;
+} | null {
+    const enSource = fs.readFileSync(path.join(roots.en, page), "utf8");
+    const zhFile = path.join(roots.zh, page);
+    if (!fs.existsSync(zhFile)) {
+        console.error(`${page}: no zh counterpart to review`);
+        return null;
+    }
+    const zhSource = fs.readFileSync(zhFile, "utf8");
+    const comparison = compareTrees(
+        analyzeSource(enSource, page),
+        analyzeSource(zhSource, `zh/${page}`),
+    );
+    if (comparison.structureProblem !== null) {
+        console.error(`${page}: not isomorphic, skipped — ${comparison.structureProblem}`);
+        return null;
+    }
+    const enSegments = splitSegments(enSource, page);
+    const zhSegments = splitSegments(zhSource, `zh/${page}`);
+    const enTexts = enSegments.map((segment) => enSource.slice(segment.start, segment.end));
+    const items: ReviewItem[] = [];
+    const masks = new Map<number, string[]>();
+    enSegments.forEach((segment, i) => {
+        if (!segment.translatable) {
+            return;
+        }
+        const zhSegment = at(zhSegments, i);
+        const en = maskCode(at(enTexts, i), segment);
+        const zh = maskCode(zhSource.slice(zhSegment.start, zhSegment.end), zhSegment);
+        masks.set(i, en.blocks);
+        items.push({ i, shape: segment.shape, en: en.masked, zh: zh.masked });
+    });
+    const sizes = items.map((item) => item.en.length + item.zh.length);
+    const chunks = chunkIndices(
+        sizes.map((n) => "x".repeat(n)),
+        items.map((_, k) => k),
+        6000,
+    );
+    return { items, chunks, enSegments, zhSource, zhSegments, enTexts, masks };
+}
+
+async function reviewPages(roots: Roots, pages: string[], rest: string[]): Promise<number> {
+    const flag = (name: string, fallback: string): string =>
+        rest.find((argument) => argument.startsWith(`--${name}=`))?.slice(name.length + 3) ??
+        fallback;
+    const backend =
+        flag("backend", "codex") === "deepseek"
+            ? deepseekBackend(flag("model", "deepseek-v4-pro"))
+            : codexBackend(flag("effort", "xhigh"));
+    const limit = pLimit(Number(flag("jobs", "4")));
+    const requested = [...new Set(rest.filter((argument) => !argument.startsWith("--")))];
+    const translatablePages = pages.filter((page) => !isUntranslated(page));
+    const unknown = requested.filter((page) => !translatablePages.includes(page));
+    if (unknown.length > 0) {
+        console.error(`not a translatable page under docs/en: ${unknown.join(", ")}`);
+        return 2;
+    }
+    const targets = requested.length > 0 ? requested : translatablePages;
+
+    let failed = 0;
+    const work = targets.map(async (page) => {
+        const plan = reviewChunks(roots, page);
+        if (plan === null) {
+            failed += 1;
+            return;
+        }
+        const { items, chunks, enSegments, zhSource, zhSegments, enTexts, masks } = plan;
+        const replies = await Promise.all(
+            chunks.map((chunk) =>
+                limit(async () => {
+                    const payload = JSON.stringify({ segments: chunk.map((k) => at(items, k)) });
+                    const expected = chunk.map((k) => at(items, k).i);
+                    return backend(payload, expected);
+                }),
+            ),
+        );
+        const reviewed = new Map<number, string>();
+        for (const reply of replies) {
+            for (const [i, text] of reply) {
+                reviewed.set(i, text);
+            }
+        }
+        const result: ReviewResult = { reviewed: items.length, changed: 0, kept: 0 };
+        const finalTexts = new Map<number, string>();
+        for (const item of items) {
+            const blocks = mustGet(masks, item.i);
+            const current = zhSource.slice(
+                at(zhSegments, item.i).start,
+                at(zhSegments, item.i).end,
+            );
+            const restored = restoreCode(mustGet(reviewed, item.i), blocks);
+            const problem =
+                "problem" in restored
+                    ? restored.problem
+                    : validateSegment(
+                          at(enSegments, item.i),
+                          at(enTexts, item.i),
+                          restored.text,
+                          blocks,
+                      );
+            if ("problem" in restored || problem !== null) {
+                console.error(`  ${page} segment ${item.i + 1} (${item.shape}): ${problem} — kept`);
+                result.kept += 1;
+                finalTexts.set(item.i, current);
+                continue;
+            }
+            if (restored.text !== current) {
+                result.changed += 1;
+            }
+            finalTexts.set(item.i, restored.text);
+        }
+        let out = "";
+        let cursor = 0;
+        zhSegments.forEach((segment, i) => {
+            out += zhSource.slice(cursor, segment.start);
+            out += finalTexts.has(i)
+                ? mustGet(finalTexts, i)
+                : zhSource.slice(segment.start, segment.end);
+            cursor = segment.end;
+        });
+        out += zhSource.slice(cursor);
+        const enSource = fs.readFileSync(path.join(roots.en, page), "utf8");
+        const comparison = compareTrees(
+            analyzeSource(enSource, page),
+            analyzeSource(out, `zh/${page}`),
+        );
+        if (comparison.structureProblem !== null) {
+            throw new Error(
+                `${page}: reviewed page is not isomorphic — ${comparison.structureProblem}`,
+            );
+        }
+        for (const [left, right] of comparison.verbatimDiffs) {
+            throw new Error(`${page}: ${verbatimLabel(left, right)} corrupted`);
+        }
+        fs.writeFileSync(path.join(roots.zh, page), out);
+        console.log(
+            `done ${page}: ${result.reviewed} segments, ${result.changed} changed, ${result.kept} kept on problems`,
+        );
+    });
+    for (const [i, outcome] of (await Promise.allSettled(work)).entries()) {
+        if (outcome.status === "rejected") {
+            const reason =
+                outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason);
+            console.error(`FAILED ${targets.at(i) ?? "?"}: ${reason}`);
+            failed += 1;
+        }
+    }
+    console.log(`finished: ${targets.length - failed} pages ok, ${failed} failed`);
+    return failed > 0 ? 1 : 0;
+}
+
 async function main(): Promise<number> {
     const [mode, ...rest] = process.argv.slice(2);
     const flag = (name: string, fallback: string): string => {
@@ -975,9 +1271,11 @@ async function main(): Promise<number> {
             return record(roots, pages);
         case "translate":
             return machineTranslate(roots, pages, rest);
+        case "review":
+            return reviewPages(roots, pages, rest);
         default:
             console.error(
-                "usage: node tools/docs/translate.ts check | report | record | translate",
+                "usage: node tools/docs/translate.ts check | report | record | translate | review",
             );
             return 2;
     }

@@ -14,7 +14,7 @@
 | 块折叠                                                      | 支持     |                                                                                                                          |
 | 嵌套复合语句折叠                                            | 支持     |                                                                                                                          |
 | 多行列表折叠                                                | 支持     |                                                                                                                          |
-| 访问修饰符区域折叠                                          | 支持     | [clangd#1455](https://github.com/clangd/clangd/issues/1455)                                                              |
+| 访问说明符区域折叠                                          | 支持     | [clangd#1455](https://github.com/clangd/clangd/issues/1455)                                                              |
 | 预处理条件折叠（`#if` / `#ifdef` / `#ifndef` ... `#endif`） | 部分支持 | [clangd#1661](https://github.com/clangd/clangd/issues/1661), [clangd#2059](https://github.com/clangd/clangd/issues/2059) |
 | 自定义区域折叠（`#pragma region` / `#pragma endregion`）    | 支持     | [clangd#1623](https://github.com/clangd/clangd/issues/1623)                                                              |
 | Pragma 分类                                                 | 支持     |                                                                                                                          |
@@ -24,14 +24,14 @@
 | `using` 声明块                                              | 不支持   |                                                                                                                          |
 | 模板参数列表折叠                                            | 不支持   |                                                                                                                          |
 | 模板特化和实例化                                            | 支持     |                                                                                                                          |
-| 缩写函数模板                                                | 支持     |                                                                                                                          |
-| 宏生成的折叠                                                | 支持     |                                                                                                                          |
+| 简写函数模板                                                | 支持     |                                                                                                                          |
+| 宏生成结构的折叠                                            | 支持     |                                                                                                                          |
 | 协程体                                                      | 支持     |                                                                                                                          |
 | 初始化列表构造                                              | 支持     |                                                                                                                          |
 
 ### 块折叠
 
-函数、类、结构体、联合体、枚举、命名空间、lambda
+函数、类、结构体、联合体、枚举、命名空间、Lambda
 
 ```cpp
 namespace geometry {
@@ -77,7 +77,7 @@ struct Placeholder {
 
 ### 嵌套复合语句折叠
 
-函数内 `if`/`for`/`while` 体
+函数内的 `if` / `for` / `while` 语句体
 
 ```cpp
 void process(int count) {
@@ -101,7 +101,7 @@ void process(int count) {
 
 ### 多行列表折叠
 
-函数参数、调用参数、初始化列表、lambda 捕获列表
+函数形参、调用实参、初始化列表、Lambda 捕获列表
 
 ```cpp
 void configure(
@@ -170,7 +170,7 @@ Rect brace_area{
 };
 ```
 
-### 访问修饰符区域折叠
+### 访问说明符区段折叠
 
 类内的 `public:` / `protected:` / `private:` 区域
 
@@ -187,8 +187,8 @@ private:           // ┐
 
 ### 预处理条件折叠（`#if` / `#ifdef` / `#ifndef` ... `#endif`）
 
-由 `#else` 分隔的分支区域现在可以折叠；没有 `#else` 的裸 `#if ... #endif`
-块尚不能折叠。clangd#2059 是 clangd#1661 的重复。
+由 `#else` 分隔的分支区域目前可以折叠；不含 `#else` 的单独 `#if ... #endif`
+块目前还不能折叠。clangd#2059 是 clangd#1661 的重复问题。
 
 ```cpp
 #ifdef ENABLE_LOGGING    // ┐
@@ -223,7 +223,7 @@ int timeout_ms = 5000;
 
 ### Pragma 分类
 
-仅第一个参数 token 决定 region/endregion
+仅由第一个参数 Token 决定 region/endregion
 
 ```cpp
 // The leading declaration ends the preamble so the pragmas below reach the
@@ -248,7 +248,7 @@ int after = 1;
 
 ### 注释折叠
 
-多行 `/* */` 和连续的 `//` 行注释
+多行 `/* */` 注释和连续的 `//` 行注释
 
 ```cpp
 // This is a long
@@ -261,7 +261,7 @@ int after = 1;
  */
 ```
 
-### Include 区域折叠
+### 包含指令区域折叠
 
 连续的 `#include` 指令
 
@@ -286,7 +286,7 @@ auto sql = R"(
 
 ### `using` 声明块
 
-连续的 using 声明/指令
+连续的 using 声明和 using 指令
 
 ```cpp
 using std::vector;  // ┐
@@ -308,9 +308,9 @@ template<
 class SortedMap { };
 ```
 
-### 模板特化和实例化
+### 模板特化与实例化
 
-手写的特化及其成员折叠；实例化声明复用模板的源码位置，不得再次折叠
+代码中写出的特化及其成员可以折叠；实例化声明复用模板模式的源码位置，不得再次折叠该模式
 
 ```cpp
 template <typename T>
@@ -340,9 +340,9 @@ Box<int> implicit_use;
 template struct Box<char>;
 ```
 
-### 缩写函数模板
+### 简写函数模板
 
-带有 `auto` 或受约束 `auto` 参数的函数体与其他函数一样折叠
+带有 `auto` 参数或受约束的 `auto` 参数的函数体与其他函数一样折叠
 
 ```cpp
 template <typename T>
@@ -358,9 +358,9 @@ void forward(auto value) {
 }
 ```
 
-### 宏生成的折叠
+### 宏生成结构的折叠
 
-通过宏拼写出来的花括号和访问修饰符在调用处折叠
+由宏展开得到的花括号和访问说明符会在宏调用处折叠
 
 ```cpp
 #define NS_BEGIN namespace ns {
@@ -384,7 +384,7 @@ NS_END
 
 ### 协程体
 
-原始代码块恰好折叠一次，协程转换包装不会产生重复折叠；协程 lambda 的函数体仍可折叠
+源码中写出的块只折叠一次，协程转换包装器不会添加重复折叠；协程 Lambda 仍保留函数体折叠
 
 ```cpp
 namespace std {
@@ -441,7 +441,7 @@ void host() {
 
 ### 初始化列表构造
 
-构造函数的大括号与嵌套初始化列表共用分隔符，只折叠一次；圆括号包裹的列表参数保留两处折叠
+构造函数的大括号与嵌套的初始化列表共用分隔符，只折叠一次；用圆括号括起的列表实参会保留两处折叠
 
 ```cpp
 namespace std {
@@ -481,16 +481,16 @@ Bag nested({
 | 能力                                 | 状态     | 问题                                                        |
 | ------------------------------------ | -------- | ----------------------------------------------------------- |
 | `collapsedText` 占位文本（LSP 3.17） | 支持     | [clangd#2667](https://github.com/clangd/clangd/issues/2667) |
-| 从声明行开始折叠函数/类体            | 不支持   | [clangd#2666](https://github.com/clangd/clangd/issues/2666) |
-| 非活跃预处理分支指示                 | 部分支持 |                                                             |
-| 单行结构保持不折叠                   | 支持     |                                                             |
+| 从声明行开始折叠函数体和类体         | 不支持   | [clangd#2666](https://github.com/clangd/clangd/issues/2666) |
+| 非活动预处理分支标识                 | 部分支持 |                                                             |
+| 单行结构保持展开                     | 支持     |                                                             |
 
 ### `collapsedText` 占位文本（LSP 3.17）
 
 折叠后显示摘要
 
-> **客户端支持**：VS Code **不支持** `collapsedText`（[vscode#70794](https://github.com/microsoft/vscode/issues/70794) — 仍为
-> open）；Neovim 的 nvim-lsp 原生支持。不支持此字段的客户端会静默忽略 —
+> **客户端支持**：VS Code **尚不支持** `collapsedText`
+> （[vscode#70794](https://github.com/microsoft/vscode/issues/70794)——该 issue 仍未关闭）；Neovim 的 nvim-lsp 原生支持该字段。不实现此字段的客户端会静默忽略它——
 > 折叠仍然有效，只是缺少占位文本。
 
 ```cpp
@@ -506,16 +506,16 @@ int process_data(const Config& cfg) {
 }
 ```
 
-### 从声明行开始折叠函数/类体
+### 从声明行开始折叠函数体/类体
 
-折叠后保留签名可见
+折叠后仍显示签名
 
-> **客户端支持**：这取决于客户端是否正确解释
+> **客户端支持**：这取决于客户端能否正确解释
 > `FoldingRange.startLine`。VS Code 将 `startLine` _之后_
 > 的行作为第一个隐藏行，因此将 `startLine` 设为声明行即可达到预期效果。
-> 但 VS Code 仍会将右花括号 `}` 单独留在下一行，而不是将其折叠到
+> 不过，VS Code 仍会让右花括号 `}` 单独占一行，而不会将其折叠到
 > 签名行（[vscode#3352](https://github.com/microsoft/vscode/issues/3352)
-> — 仍为 open）。其他客户端可能不同。
+> — 仍未关闭）。其他客户端的行为可能有所不同。
 
 ```cpp
 struct Config {
@@ -533,11 +533,11 @@ int process_data(const Config& cfg) {
 
 ### 非活跃预处理分支指示
 
-视觉区分或自动折叠非活跃的 `#if`/`#else` 分支
+直观区分或自动折叠非活跃的 `#if`/`#else` 分支
 
-服务器为条件和 `#else` 之间的区域发出折叠范围，因此第一个分支可以手动折叠；`#else` 之后的分支还没有范围。知道哪个分支是 _非活跃_ 的——以便灰显或自动折叠它——这里没有实现；该信息属于非活跃区域特性。
+服务器会为条件与 `#else` 之间的区域生成折叠范围，因此可以手动折叠第一个分支；`#else` 之后的分支目前还没有对应的范围。这里尚未实现识别哪个分支处于 _非活跃_ 状态以将其灰显或自动折叠；这项信息属于非活跃区域功能。
 
-> **备注**：这与 semantic tokens（非活跃代码灰显）重叠，并且部分是客户端 UX 范畴的问题。服务器可以用 `FoldingRangeKind.Region` 标记这些范围，客户端可以选择自动折叠它们。
+> **注意**：这与语义 Token（非活跃代码灰显）功能有所重叠，也有一部分属于客户端 UX 层面的考量。服务器可以使用 `FoldingRangeKind.Region` 标记这些范围，客户端可以选择自动折叠它们。
 
 ```cpp
 #ifdef _WIN32
@@ -549,7 +549,7 @@ int process_data(const Config& cfg) {
 
 ### 单行结构保持不折叠
 
-隐藏不了任何内容的折叠是噪音
+不隐藏任何内容的折叠只会徒增干扰
 
 ```cpp
 namespace tiny { }

@@ -5,7 +5,7 @@
      markers by hand — edit the fixture spec headers and run
      `node tools/docs/feature.ts update`. -->
 
-clice 为代码中隐式省略的信息渲染内联标注：调用处的参数名、推导出的类型，以及位置式聚合初始化背后的字段名。提示类别可以通过 `[inlay_hints]` 配置节单独开关；下面各节介绍默认开启的类别。
+clice 为代码中未显式给出的信息渲染内联标注：调用处的参数名、推导出的类型，以及按位置进行聚合初始化时对应的字段名。提示类别可以通过 `[inlay_hints]` 配置节单独开关；下面各节介绍默认开启的类别。
 
 ## 参数名提示
 
@@ -18,7 +18,7 @@ clice 为代码中隐式省略的信息渲染内联标注：调用处的参数�
 | Setter 与内建函数抑制  | 支持     |                                                                                                                          |
 | 可变引用标记           | 支持     | [clangd#1123](https://github.com/clangd/clangd/issues/1123)                                                              |
 | 转发解析               | 支持     | [clangd#2324](https://github.com/clangd/clangd/issues/2324)                                                              |
-| 来自定义的名称         | 支持     |                                                                                                                          |
+| 定义中的名称           | 支持     |                                                                                                                          |
 | 函数指针与调用运算符   | 支持     | [clangd#1734](https://github.com/clangd/clangd/issues/1734), [clangd#1742](https://github.com/clangd/clangd/issues/1742) |
 | 推导 `this`            | 支持     | [clangd#1777](https://github.com/clangd/clangd/issues/1777)                                                              |
 | 依赖调用               | 支持     |                                                                                                                          |
@@ -35,7 +35,7 @@ clice 为代码中隐式省略的信息渲染内联标注：调用处的参数�
 
 ### 参数名提示
 
-调用处和构造函数调用中的实参名
+函数调用点和构造函数调用中的实参名称
 
 ```cpp
 void draw(int width, int height);
@@ -60,7 +60,7 @@ void use() {
 
 ### 提示抑制
 
-实参已经拼出参数名，以及 `/*name=*/` 注释
+本身已写明参数名的实参，以及 `/*name=*/` 注释
 
 ```cpp
 void draw(int width, int height);
@@ -94,9 +94,9 @@ void qualified(Sizes s) {
 }
 ```
 
-### Setter 与内建函数抑制
+### Setter 与内建函数的提示抑制
 
-`setX(x)` 以及 `std::move`/`std::forward` 的实参保持裸写
+`setX(x)` 以及 `std::move`/`std::forward` 的实参不显示提示
 
 ```cpp
 namespace std {
@@ -173,7 +173,7 @@ void use() {
 
 ### 转发解析
 
-经包装器转发的参数包解析到目标函数的参数名
+经包装器转发的参数包会解析为目标函数的参数名
 
 ```cpp
 namespace std {
@@ -272,7 +272,7 @@ void use() {
 
 ### 推导 `this`
 
-显式对象参数从不提示（C++23）
+显式对象形参不会显示提示（C++23）
 
 ```cpp
 struct Widget {
@@ -287,9 +287,9 @@ void use() {
 
 ### 依赖调用
 
-即使被调用方只在模板内才可知，参数名仍会出现
+即使仅能在模板内部确定被调用方，仍会显示参数名
 
-候选者按实参数量匹配；只有唯一幸存的候选者会命名参数，因此仍可能命中多个重载的调用会保持裸写而不会猜测。
+候选项按实参数量匹配；只有筛选后剩下唯一候选项时才会显示参数名，因此，如果一次调用仍可能匹配多个重载，就不会猜测，而是不显示提示。
 
 ```cpp
 template <typename T>
@@ -318,7 +318,7 @@ struct Runner {
 
 ### 未展开的参数包
 
-写出的包展开会破坏 1:1 实参映射，并停止提示
+显式写出的参数包展开会破坏实参的一一对应关系，并停止显示提示
 
 ```cpp
 void plot(int x, int y, int z);
@@ -338,7 +338,7 @@ void use() {
 
 ### 调用处的宏
 
-拼写为宏的实参会提示；宏体内部生成的调用不提示
+以宏形式写出的实参会显示提示；在宏体内部生成的调用则不会
 
 ```cpp
 void report(double value);
@@ -364,7 +364,7 @@ void use() {
 
 ### 隐式构造函数调用
 
-代码从未写出的转换不会产生它们自己的提示
+代码中未显式写出的转换本身不会产生提示
 
 ```cpp
 struct Seconds {
@@ -386,7 +386,7 @@ Seconds use() {
 
 ### 伪对象表达式
 
-MS 属性访问保持安静；写出的下标保留访问器的名称
+MS 属性访问不显示提示；显式写出的下标访问会保留访问器的参数名
 
 ```cpp
 int printf(const char* Format, ...);
@@ -415,7 +415,7 @@ int use() {
 
 ### 显式实例化
 
-显式实例化定义不会增加重复提示，而其写出的模板实参正常提示
+显式实例化定义不会添加重复提示，而其中显式写出的模板实参会正常显示提示
 
 ```cpp
 template <typename T>
@@ -437,7 +437,7 @@ template struct Box<decltype(measure(7))>;
 
 ### 宽松名称匹配
 
-`aParam` 尚不能抑制拼写为 `param` 的实参
+`aParam` 尚不能让写作 `param` 的实参不显示提示
 
 ```cpp
 void draw(int aParam);
@@ -451,7 +451,7 @@ void use() {
 
 ### 继承构造函数
 
-`using Base::Base` 调用会丢失参数名
+`using Base::Base` 引入的构造函数调用会丢失参数名
 
 ```cpp
 struct Base {
@@ -488,7 +488,7 @@ void use() {
 
 ### 运算符与字面量
 
-运算符语法和用户定义字面量保持裸写；成员初始化器和默认成员初始化器会提示
+运算符语法和用户定义字面量不显示提示；成员初始化器和默认成员初始化器会显示提示
 
 ```cpp
 struct S {
@@ -549,24 +549,24 @@ void use() {
 
 <!-- BEGIN GENERATED ITEMS: type_hints -->
 
-| 能力               | 状态     | 问题                                                                                                                     |
-| ------------------ | -------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `auto` 推导变量    | 支持     |                                                                                                                          |
-| 类型糖与长度限制   | 支持     | [clangd#1298](https://github.com/clangd/clangd/issues/1298), [clangd#1357](https://github.com/clangd/clangd/issues/1357) |
-| 结构化绑定         | 支持     |                                                                                                                          |
-| Lambda             | 支持     | [clangd#1163](https://github.com/clangd/clangd/issues/1163)                                                              |
-| 推导返回类型       | 支持     |                                                                                                                          |
-| `decltype` 拼写    | 支持     |                                                                                                                          |
-| `auto` 参数        | 支持     |                                                                                                                          |
-| 显式拼写的初始化器 | 部分支持 | [clangd#1749](https://github.com/clangd/clangd/issues/1749)                                                              |
-| 依赖 `auto`        | 部分支持 | [clangd#2275](https://github.com/clangd/clangd/issues/2275)                                                              |
-| 作用域抑制         | 支持     |                                                                                                                          |
-| Tuple 协议绑定     | 支持     |                                                                                                                          |
-| 实例化模板         | 部分支持 | [clangd#2275](https://github.com/clangd/clangd/issues/2275)                                                              |
+| 能力                              | 状态     | 问题                                                                                                                     |
+| --------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------ |
+| 由 `auto` 推导的变量              | 支持     |                                                                                                                          |
+| 类型语法糖与长度限制              | 支持     | [clangd#1298](https://github.com/clangd/clangd/issues/1298), [clangd#1357](https://github.com/clangd/clangd/issues/1357) |
+| 结构化绑定（structured bindings） | 支持     |                                                                                                                          |
+| Lambda                            | 支持     | [clangd#1163](https://github.com/clangd/clangd/issues/1163)                                                              |
+| 推导返回类型                      | 支持     |                                                                                                                          |
+| `decltype` 写法                   | 支持     |                                                                                                                          |
+| `auto` 参数                       | 支持     |                                                                                                                          |
+| 显式写出的初始化器                | 部分支持 | [clangd#1749](https://github.com/clangd/clangd/issues/1749)                                                              |
+| 依赖型 `auto`                     | 部分支持 | [clangd#2275](https://github.com/clangd/clangd/issues/2275)                                                              |
+| 作用域省略                        | 支持     |                                                                                                                          |
+| 元组协议绑定                      | 支持     |                                                                                                                          |
+| 已实例化的模板                    | 部分支持 | [clangd#2275](https://github.com/clangd/clangd/issues/2275)                                                              |
 
-### `auto` 推导变量
+### 类型由 `auto` 推导的变量
 
-提示显示完整变量类型，包括限定符
+提示显示变量的完整类型，包括限定符。
 
 ```cpp
 int make();
@@ -578,9 +578,9 @@ void use() {
 }
 ```
 
-### 类型糖与长度限制
+### 类型语法糖与长度限制
 
-别名保留其拼写；超长类型回退到糖化名称
+别名保留原有写法；类型过长时，回退到带语法糖的名称。
 
 ```cpp
 using Integer = int;
@@ -613,7 +613,7 @@ void use() {
 
 ### 结构化绑定
 
-每个绑定提示其规范类型；聚合对象本身保持无提示
+每个绑定都会提示其规范类型；聚合体本身则不显示提示。
 
 ```cpp
 struct Pair {
@@ -633,7 +633,7 @@ void use() {
 
 ### Lambda
 
-变量、推导返回类型和 init-capture 均提示
+变量、推导出的返回类型和初始化捕获均会显示提示。
 
 ```cpp
 int compute();
@@ -648,9 +648,9 @@ void use() {
 }
 ```
 
-### 推导返回类型
+### 推导出的返回类型
 
-参数列表后的 `-> T`，声明也包含在内
+`-> T` 显示在参数列表之后，声明中也会显示。
 
 ```cpp
 auto answer() {
@@ -684,9 +684,9 @@ struct Convertible {
 };
 ```
 
-### `decltype` 拼写
+### `decltype` 写法
 
-底层类型显示在写出的 `decltype` 旁边
+底层类型显示在写出的 `decltype` 旁边。
 
 ```cpp
 int source();
@@ -715,7 +715,7 @@ auto constructed = decltype(0){};
 
 ### `auto` 参数
 
-恰好一个实例化的模板会显示推导出的类型
+模板恰好只有一个实例化结果时，会显示推导出的类型。
 
 ```cpp
 int twice(auto x) {
@@ -750,9 +750,9 @@ template void body<int>();
 template void body<float>();
 ```
 
-### 显式拼写的初始化器
+### 显式写出的初始化器
 
-强制转换和函数式转换仍会冗余提示
+强制转换和函数式转换仍会显示冗余提示。
 
 ```cpp
 int compute();
@@ -765,9 +765,9 @@ void use() {
 }
 ```
 
-### 依赖 `auto`
+### 依赖型 `auto`
 
-未实例化的模板体内部推导保持静默
+未实例化的模板体内的推导不会显示提示。
 
 ```cpp
 template <typename T>
@@ -779,9 +779,9 @@ void body(T input) {
 }
 ```
 
-### 作用域抑制
+### 作用域省略
 
-命名空间限定从提示中去掉；类作用域保留
+提示中会省略命名空间限定符，但保留类作用域。
 
 ```cpp
 namespace outer {
@@ -803,9 +803,9 @@ auto y = make_nested();
 }  // namespace outer
 ```
 
-### Tuple 协议绑定
+### 元组协议绑定
 
-提示打印规范类型，而不是 `tuple_element<I, T>::type`
+提示显示规范类型，而不是 `tuple_element<I, T>::type`。
 
 ```cpp
 struct IntPair {
@@ -847,9 +847,9 @@ IntPair make();
 auto [x, y] = make();
 ```
 
-### 实例化模板
+### 已实例化的模板
 
-实例化后的函数体不在模式处重复提示；当恰好存在一个实例化时，依赖 `auto` 可以显示推导类型
+实例化后的模板体不会在模板模式处重复显示提示；若恰好只有一个实例化结果，依赖型 `auto` 可显示推导出的类型。
 
 ```cpp
 void take(int first, int second);
@@ -879,23 +879,23 @@ template struct Twice<int>;
 
 <!-- END GENERATED ITEMS -->
 
-## Designator 提示
+## 指派符提示
 
 <!-- BEGIN GENERATED ITEMS: designator_hints -->
 
-| 能力                  | 状态   | 问题                                                        |
-| --------------------- | ------ | ----------------------------------------------------------- |
-| 字段和索引 designator | 支持   | [clangd#2303](https://github.com/clangd/clangd/issues/2303) |
-| 嵌套聚合              | 支持   |                                                             |
-| 匿名成员              | 支持   |                                                             |
-| designator 抑制       | 支持   |                                                             |
-| 仅聚合                | 支持   |                                                             |
-| 损坏的初始化器        | 支持   |                                                             |
-| 括号聚合初始化        | 不支持 | [clangd#2540](https://github.com/clangd/clangd/issues/2540) |
+| 能力                   | 状态   | 问题                                                        |
+| ---------------------- | ------ | ----------------------------------------------------------- |
+| 字段和索引指派符       | 支持   | [clangd#2303](https://github.com/clangd/clangd/issues/2303) |
+| 嵌套聚合体             | 支持   |                                                             |
+| 匿名成员               | 支持   |                                                             |
+| 指派符提示抑制         | 支持   |                                                             |
+| 仅限聚合体             | 支持   |                                                             |
+| 存在错误的初始化器     | 支持   |                                                             |
+| 圆括号形式的聚合初始化 | 不支持 | [clangd#2540](https://github.com/clangd/clangd/issues/2540) |
 
-### 字段和索引 designator
+### 字段和索引指派符
 
-位置式聚合初始化显示 `.field=` 和 `[index]=`
+按位置进行的聚合初始化会显示 `.field=` 和 `[index]=`。
 
 ```cpp
 struct Point {
@@ -918,9 +918,9 @@ struct Array {
 Array<int, 2> pair = {0, 1};
 ```
 
-### 嵌套聚合
+### 嵌套聚合体
 
-写出的花括号递归；省略的花括号扁平化为 `.outer.inner=`
+遇到显式写出的花括号时会递归处理；省略花括号时会展平为 `.outer.inner=`。
 
 ```cpp
 struct Inner {
@@ -938,7 +938,7 @@ Outer o{{1, 2}, 3};
 
 ### 匿名成员
 
-未命名的 union 和 struct 从 designator 路径中消失
+未命名联合体和结构体不会出现在指派符路径中。
 
 ```cpp
 struct State {
@@ -954,9 +954,9 @@ struct State {
 State s{42};
 ```
 
-### designator 抑制
+### 指派符提示抑制
 
-已写出的 designator 和 `/*name=*/` 注释保持其初始化值无提示
+已显式写出的指派符和 `/*name=*/` 注释会使对应的初始化项保持无提示状态
 
 ```cpp
 struct Point {
@@ -972,9 +972,9 @@ struct Point {
 Point p{/*a=*/1, .c = 2, /* .d = */ 3, 4};
 ```
 
-### 仅聚合
+### 仅限聚合类型
 
-构造函数调用、复制和惯用的零初始化不产生 designator
+构造函数调用、拷贝和惯用的零初始化都不会产生指派符提示
 
 ```cpp
 struct Constructible {
@@ -999,9 +999,9 @@ struct Wide {
 Wide zeroed{};
 ```
 
-### 损坏的初始化器
+### 无效的初始化器
 
-即便旁边初始化器编译失败，designator 仍保留
+即使旁边的初始化器编译失败，指派符提示仍会显示
 
 ```cpp
 // The first initializer deliberately fails to convert.
@@ -1044,7 +1044,7 @@ Point p(1, 2);
 
 ### 模板参数提示
 
-调用点处推导的和显式的模板实参
+调用点处推导出的和显式指定的模板实参
 
 ```cpp
 template <typename T, typename U>
@@ -1072,7 +1072,7 @@ Pair pair(1, 2.5);
 
 ### 隐式转换提示
 
-显示调用点发生的转换
+显示调用点执行的转换
 
 ```cpp
 void process(double val);
@@ -1087,7 +1087,7 @@ void use() {
 
 ## 块结尾提示
 
-默认关闭（`inlay_hints.block_end`）。对于至少跨两行的代码块，在其右花括号后 clice 显示该花括号所关闭内容的名称——函数、类型、命名空间和控制流语句：
+默认关闭（`inlay_hints.block_end`）。对于至少跨两行的代码块，clice 会在右花括号后显示其所结束结构的名称——包括函数、类型、命名空间和控制流语句：
 
 ```cpp
 void Widget::process(const Config& cfg) {
@@ -1103,13 +1103,13 @@ while (running) {
 } // while running
 ```
 
-条件摘要会为存在简短拼写的 `if`/`while`/`switch`/`for` 打印；`else if` 链提示为普通 `// if`。超过 60 字符的标签被丢弃。
+如果条件能以简短文本表示，就会为 `if`/`while`/`switch`/`for` 显示条件摘要；`else if` 链仅提示为 `// if`。超过 60 个字符的标签不会显示。
 
-一个相关的想法，显示匹配条件的 `#endif` 提示（[clangd#2487](https://github.com/clangd/clangd/issues/2487)），尚未实现。
+一个相关设想是用 `#endif` 提示显示与之匹配的条件（[clangd#2487](https://github.com/clangd/clangd/issues/2487)），但该功能尚未实现。
 
 ## 默认参数提示
 
-默认关闭（`inlay_hints.default_arguments`）。依赖默认参数的调用点会显示被省略的内容，如果超过类型名长度限制则缩写：
+默认关闭（`inlay_hints.default_arguments`）。依赖默认参数的调用点会显示省略的内容，超过类型名长度限制时会缩写：
 
 ```cpp
 void log(int level, bool flush = true, int repeat = 1);
@@ -1119,17 +1119,17 @@ log(2);
 
 ## 配置
 
-`clice.toml` 的 `[inlay_hints]` 段（或通过 `initializationOptions` 提供的同名键）控制所有类别：`enabled`、`parameters`、`deduced_types`、`designators`、`block_end`、`default_arguments` 和 `type_name_limit`。详见[配置指南](../guide/configuration.md#inlay-hints)。配置更改在服务器重启后生效——从不涉及重新编译。
+`clice.toml` 的 `[inlay_hints]` 章节（或通过 `initializationOptions` 提供的同名键）控制所有类别：`enabled`、`parameters`、`deduced_types`、`designators`、`block_end`、`default_arguments` 和 `type_name_limit`。详见[配置指南](../guide/configuration.md#inlay-hints)。配置更改会在服务器重启后生效，无需重新编译。
 
 ## 交互行为
 
 - 请求按范围限定：请求范围之外的提示会被丢弃。
-- 参数提示锚定在实参左侧；类型提示和 designator 提示锚定在其声明侧，使用 LSP padding 标志而不是嵌入空格。
-- 重复的相同提示（例如来自模板实例化的）会合并为一条。
+- 参数提示锚定在实参左侧；类型提示和指派符提示锚定在声明一侧，通过 LSP padding 标志控制间距，而不嵌入空格。
+- 内容完全相同的重复提示（例如模板实例化产生的提示）会合并为一条。
 
 ## 其他已知缺口
 
-- 通过 `InlayHintLabelPart` 提供可展开标签部件的缩写类型提示（[clangd#2269](https://github.com/clangd/clangd/issues/2269)）
+- 通过 `InlayHintLabelPart` 为缩写类型提示提供可展开的标签部分（[clangd#2269](https://github.com/clangd/clangd/issues/2269)）
 - 可点击的类型名——在提示的类型上跳转到定义（[clangd#1535](https://github.com/clangd/clangd/issues/1535)）
-- 作用域感知的类型缩短——在 `namespace foo` 内部显示 `Bar` 而不是 `foo::Bar`（[clangd#2270](https://github.com/clangd/clangd/issues/2270)）
+- 感知作用域的类型缩写——在 `namespace foo` 内显示 `Bar` 而不是 `foo::Bar`（[clangd#2270](https://github.com/clangd/clangd/issues/2270)）
 - 协程返回模板类型时丢失参数提示（[clangd#2437](https://github.com/clangd/clangd/issues/2437)）

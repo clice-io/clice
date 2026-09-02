@@ -5,11 +5,11 @@
      markers by hand — edit the fixture spec headers and run
      `node tools/docs/feature.ts update`. -->
 
-clice 用自有的 token 类型词汇表对文档中的每个 token 分类，这套词汇比标准 LSP token 类型更丰富，并且在所有 clice 响应中保持一致。偏好标准 LSP 类型的客户端可以通过配置进行映射。
+clice 使用自有的 Token 类型体系对文档中的每个 Token 进行分类；这套体系比标准 LSP Token 类型更丰富，并在 clice 的所有响应中保持一致。偏好标准 LSP 类型的客户端可以通过配置进行映射。
 
 ## 词法 Token
 
-类型来自 token 流本身，不依赖 AST。
+从 Token 流本身派生的类型，不依赖 AST。
 
 <!-- BEGIN GENERATED ITEMS: lexical_tokens -->
 
@@ -25,12 +25,12 @@ clice 用自有的 token 类型词汇表对文档中的每个 token 分类，这
 | 字面量前缀和后缀     | 不支持 |                                                             |
 | 转义序列             | 不支持 |                                                             |
 | 声明符与运算符的区分 | 不支持 | [clangd#1421](https://github.com/clangd/clangd/issues/1421) |
-| 原始 token 类型      | 支持   |                                                             |
-| 括号 token 类型      | 不支持 |                                                             |
+| 基本类型 Token       | 支持   |                                                             |
+| 括号 Token 类型      | 不支持 |                                                             |
 
 ### 注释
 
-行注释、块注释和文档注释，包括多行块
+行注释、块注释和文档注释，包括多行块注释
 
 ```cpp
 // A line comment.
@@ -66,7 +66,7 @@ line2
 
 ### 关键字
 
-包括替代运算符拼写以及上下文相关的 `final` / `override`
+包括运算符的替代拼写以及具有上下文含义的 `final` / `override`
 
 ```cpp
 bool logic(bool a, bool b) {
@@ -89,7 +89,7 @@ struct Last : Base {
 
 ### 预处理指令
 
-`#if` 链保留指令类型；未启用的分支保留词法类型；pragma 参数保持普通
+`#if` 链保留指令类型；未启用的分支保留词法类型；pragma 参数保持普通类型
 
 ```cpp
 int before_conditional = 0;
@@ -114,7 +114,7 @@ const char* stringized = STRINGIZE(abc);
 
 ### 非活跃区域
 
-未采用分支中的 token 保留词法类型并带有 `inactive` 修饰符；未分类的 token 变为普通的 `identifier` 载体，因此即使是单独一行 `}` 也会变暗
+未选中分支中的 Token 保留其词法类型，并带有 `inactive` 修饰符；未分类的 Token 则作为普通的 `identifier` 载体，因此即使单独一行只有 `}` 也会变暗
 
 ```cpp
 int before = 0;
@@ -148,7 +148,7 @@ void edge() {
 
 ### 头文件名
 
-带引号和尖括号的 `#include` 文件名，包括拆开的 `# include` 形式
+由引号或尖括号括起的 `#include` 文件名，包括拆分形式 `# include`
 
 ```cpp
 #include "inc/angled.h"
@@ -160,7 +160,7 @@ int after_includes = 0;
 
 ### 文件顶部的非活跃区域
 
-前导指令中未采用的分支以同样方式变暗
+前导指令中未选中的分支也会以相同方式变暗
 
 ```cpp
 #define KEEP 1
@@ -173,7 +173,7 @@ int after = KEEP;
 
 ### 字面量前缀和后缀
 
-编码前缀、类型后缀、数字分隔符和 UDL 后缀作为独立 token
+将编码前缀、类型后缀、数位分隔符和 UDL 后缀分别作为独立 Token
 
 ```cpp
 using size_type = decltype(sizeof(0));
@@ -193,7 +193,7 @@ auto udl = 4_kb;
 
 ### 转义序列
 
-在字符串和字符字面量内部以不同的方式高亮
+在字符串和字符字面量内单独高亮
 
 ```cpp
 const char* escaped = "hello\nworld";
@@ -202,7 +202,7 @@ char hex_escape = '\x41';
 
 ### 声明符与运算符的区分
 
-`*`、`&`、`&&` 作为声明符还是算术/逻辑运算符
+区分 `*`、`&`、`&&` 用作声明符和用作算术/逻辑运算符的情况
 
 ```cpp
 int value = 1;
@@ -212,9 +212,9 @@ int product = value * value;
 int masked = value & 1;
 ```
 
-### 原始 token 类型
+### 基本类型 Token
 
-为内置类型使用独立类型，而不是普通的 `keyword`
+为内置类型使用独立的 Token 类型，而非普通的 `keyword`
 
 ```cpp
 int number = 0;
@@ -225,9 +225,9 @@ __int128 extended_int = 0;
 _Float16 extended_float = 0;
 ```
 
-### 括号 token 类型
+### 括号 Token 类型
 
-将匹配的 `()`、`[]`、`{}`、`<>` 对作为不同种类
+将相互匹配的 `()`、`[]`、`{}`、`<>` 分别归为不同类型
 
 ```cpp
 template <typename T>
@@ -246,40 +246,40 @@ int first(Grid<int>& grid) {
 
 ## 声明与引用
 
-名称根据其所定义或引用的声明分类。
+根据名称所定义或引用的声明进行分类。
 
 <!-- BEGIN GENERATED ITEMS: declarations_references -->
 
-| 能力                 | 状态     | 问题                                                                                                                 |
-| -------------------- | -------- | -------------------------------------------------------------------------------------------------------------------- |
-| 命名空间             | 支持     |                                                                                                                      |
-| 类型                 | 支持     |                                                                                                                      |
-| 函数与方法           | 支持     |                                                                                                                      |
-| 变量                 | 支持     |                                                                                                                      |
-| 模板                 | 支持     |                                                                                                                      |
-| 概念                 | 支持     |                                                                                                                      |
-| 标签                 | 支持     |                                                                                                                      |
-| 结构化绑定           | 支持     |                                                                                                                      |
-| 成员初始化列表       | 支持     | [clangd#122](https://github.com/clangd/clangd/issues/122)                                                            |
-| using 声明           | 支持     | [clangd#2619](https://github.com/clangd/clangd/issues/2619)                                                          |
-| Lambda 初始化捕获    | 支持     | [clangd#868](https://github.com/clangd/clangd/issues/868)                                                            |
-| `sizeof...`          | 支持     | [clangd#213](https://github.com/clangd/clangd/issues/213)                                                            |
-| `using enum`         | 支持     | [clangd#1283](https://github.com/clangd/clangd/issues/1283)                                                          |
-| 推导指引             | 支持     |                                                                                                                      |
-| 显式实例化           | 支持     | [clangd#316](https://github.com/clangd/clangd/issues/316)                                                            |
-| 依赖名称             | 部分支持 | [clangd#154](https://github.com/clangd/clangd/issues/154), [clangd#297](https://github.com/clangd/clangd/issues/297) |
-| 变量模板             | 支持     |                                                                                                                      |
-| 类外成员定义         | 支持     |                                                                                                                      |
-| 别名模板             | 支持     |                                                                                                                      |
-| 模板模板参数         | 支持     |                                                                                                                      |
-| Lambda 捕获          | 支持     |                                                                                                                      |
-| 基于范围的 for       | 支持     |                                                                                                                      |
-| 枚举底层类型         | 支持     |                                                                                                                      |
-| 友元声明             | 支持     |                                                                                                                      |
-| 依赖 using 声明      | 部分支持 |                                                                                                                      |
-| 函数显式实例化指令   | 部分支持 | [llvm#191658](https://github.com/llvm/llvm-project/issues/191658)                                                    |
-| 变量显式实例化指令   | 部分支持 | [llvm#191658](https://github.com/llvm/llvm-project/issues/191658)                                                    |
-| 显式实例化成员函数体 | 支持     |                                                                                                                      |
+| 能力                              | 状态     | 问题                                                                                                                 |
+| --------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------- |
+| 命名空间                          | 支持     |                                                                                                                      |
+| 类型                              | 支持     |                                                                                                                      |
+| 函数与方法                        | 支持     |                                                                                                                      |
+| 变量                              | 支持     |                                                                                                                      |
+| 模板                              | 支持     |                                                                                                                      |
+| 概念                              | 支持     |                                                                                                                      |
+| 标签                              | 支持     |                                                                                                                      |
+| 结构化绑定（structured bindings） | 支持     |                                                                                                                      |
+| 成员初始化列表                    | 支持     | [clangd#122](https://github.com/clangd/clangd/issues/122)                                                            |
+| using 声明                        | 支持     | [clangd#2619](https://github.com/clangd/clangd/issues/2619)                                                          |
+| Lambda 初始化捕获                 | 支持     | [clangd#868](https://github.com/clangd/clangd/issues/868)                                                            |
+| `sizeof...`                       | 支持     | [clangd#213](https://github.com/clangd/clangd/issues/213)                                                            |
+| `using enum`                      | 支持     | [clangd#1283](https://github.com/clangd/clangd/issues/1283)                                                          |
+| 推导指引                          | 支持     |                                                                                                                      |
+| 显式实例化                        | 支持     | [clangd#316](https://github.com/clangd/clangd/issues/316)                                                            |
+| 依赖名                            | 部分支持 | [clangd#154](https://github.com/clangd/clangd/issues/154), [clangd#297](https://github.com/clangd/clangd/issues/297) |
+| 变量模板                          | 支持     |                                                                                                                      |
+| 类外成员定义                      | 支持     |                                                                                                                      |
+| 别名模板                          | 支持     |                                                                                                                      |
+| 模板模板参数                      | 支持     |                                                                                                                      |
+| Lambda 捕获                       | 支持     |                                                                                                                      |
+| 范围 for 循环                     | 支持     |                                                                                                                      |
+| 枚举底层类型                      | 支持     |                                                                                                                      |
+| 友元声明                          | 支持     |                                                                                                                      |
+| 依赖 using 声明                   | 部分支持 |                                                                                                                      |
+| 函数显式实例化指令                | 部分支持 | [llvm#191658](https://github.com/llvm/llvm-project/issues/191658)                                                    |
+| 变量显式实例化指令                | 部分支持 | [llvm#191658](https://github.com/llvm/llvm-project/issues/191658)                                                    |
+| 显式实例化的成员函数体            | 支持     |                                                                                                                      |
 
 ### 命名空间
 
@@ -301,7 +301,7 @@ int use_alias = alias::value;
 
 ### 类型
 
-类、结构体、联合体、枚举和类型别名，包括定义和引用处
+类、结构体、联合体、枚举和类型别名，包括定义处和引用处
 
 ```cpp
 class Widget {};
@@ -421,9 +421,9 @@ done:
 
 ### 结构化绑定
 
-绑定名称在定义和使用处
+定义处和使用处的绑定名称
 
-前导 `[` 特意不产生 token；仅高亮绑定名称本身。
+起始 `[` 刻意不带 Token；仅高亮绑定名称本身。
 
 ```cpp
 struct Pair {
@@ -438,7 +438,7 @@ void unpack() {
 
 ### 成员初始化列表
 
-初始化字段高亮为字段
+将被初始化的字段按字段高亮
 
 ```cpp
 struct Widget {
@@ -451,7 +451,7 @@ struct Widget {
 
 ### using 声明
 
-引入的名称保持其目标实体的种类
+引入的名称保留其目标的类别
 
 ```cpp
 namespace tools {
@@ -482,7 +482,7 @@ auto fn = [val = compute()] {
 
 ### `sizeof...`
 
-参数包保持其类型参数 token
+参数包保留其类型参数 Token
 
 ```cpp
 template <typename... Ts>
@@ -504,7 +504,7 @@ void paint() {
 
 ### 推导指引
 
-高亮指引名和被指引的模板
+高亮推导指引名称及其所指引的模板
 
 ```cpp
 template <typename T>
@@ -519,7 +519,7 @@ Vec(It, It) -> Vec<int>;
 
 ### 显式实例化
 
-实例化的模板名及其书写的模板实参高亮，extern 声明和定义同样处理
+在 extern 声明和定义中，均高亮实例化的模板名称及显式写出的模板实参
 
 ```cpp
 struct Widget {};
@@ -536,9 +536,9 @@ template struct Holder<Widget>;
 
 ### 依赖名称
 
-在存在已知主模板时通过主模板解析
+若主模板已知，则通过主模板解析
 
-已知模板 (`Box<T>`) 的依赖成员解析到主模板的声明并保持其类别。裸模板参数的成员没有候选声明，当前不获得 token；此类名称的启发式着色仍未实现。
+已知模板（`Box<T>`）的依赖成员会解析到主模板的声明，并保留其类别。裸模板参数的成员没有候选声明，目前不会获得 Token；此类名称的启发式着色仍待解决。
 
 ```cpp
 template <typename T>
@@ -603,7 +603,7 @@ void Gauge::reset() {}
 
 ### 别名模板
 
-别名标识符携带类型类别和 `templated` 修饰符
+别名名称带有类型类别和 `templated` 修饰符
 
 ```cpp
 template <typename T>
@@ -655,9 +655,9 @@ struct S {
 };
 ```
 
-### 基于范围的 for
+### 范围 for 循环
 
-循环变量在定义和使用处
+定义处和使用处的循环变量
 
 ```cpp
 struct List {
@@ -674,7 +674,7 @@ void iterate(List items) {
 
 ### 枚举底层类型
 
-枚举基引用保持其类型类别
+枚举基类型的引用保留其类型类别
 
 ```cpp
 using Byte = unsigned char;
@@ -686,7 +686,7 @@ Flags flags = Flags::A;
 
 ### 友元声明
 
-友元名称解析到其目标；内联友元定义
+被声明为友元的名称解析到其目标；内联友元构成定义
 
 ```cpp
 struct Widget;
@@ -703,7 +703,7 @@ struct Host {
 
 模板体中的 `using T::name`
 
-引入的名称及其使用当前不会产生 token；保留的 dependent-name 修饰符尚未输出。
+引入的名称及其使用当前不会产生 Token；预留的 dependent-name 修饰符尚未输出。
 
 ```cpp
 template <typename T>
@@ -731,7 +731,7 @@ extern template void convert<Widget>(Widget);
 template void convert<Widget>(Widget);
 ```
 
-### 变量显式实例化指令
+### 变量的显式实例化指令
 
 Clang 不会为该指令构建节点，因此其中的每个标识符都不会着色：名称、模板实参，甚至声明符的类型
 
@@ -746,9 +746,9 @@ extern template Widget zero<Widget>;
 template Widget zero<Widget>;
 ```
 
-### 显式实例化成员函数体
+### 显式实例化的成员函数体
 
-依赖名称按其实际解析结果着色：类别一致时保留所有实例化共有的修饰符，类别不一致时标为冲突
+依赖名按其实际解析结果着色：类别一致时保留所有实例化共有的修饰符，类别不一致时标为冲突
 
 ```cpp
 struct A {
@@ -798,7 +798,7 @@ template struct E<C>;
 
 ### 模块声明
 
-上下文关键字 `module`、带点的模块名和私有片段
+上下文关键字 `module`、以点分隔的模块名和私有片段
 
 ```cpp
 module;
@@ -845,18 +845,18 @@ void f() {
 
 <!-- BEGIN GENERATED ITEMS: token_modifiers -->
 
-| 能力                | 状态   | 问题                                                        |
-| ------------------- | ------ | ----------------------------------------------------------- |
-| 声明与定义          | 支持   |                                                             |
-| 静态                | 支持   |                                                             |
-| 只读                | 支持   |                                                             |
-| Virtual 与 abstract | 支持   |                                                             |
-| 已弃用              | 支持   |                                                             |
-| 默认库              | 支持   |                                                             |
-| 作用域修饰符        | 不支持 | [clangd#352](https://github.com/clangd/clangd/issues/352)   |
-| 可变引用与指针      | 不支持 | [clangd#839](https://github.com/clangd/clangd/issues/839)   |
-| 推导                | 不支持 |                                                             |
-| 用户定义运算符      | 不支持 | [clangd#1521](https://github.com/clangd/clangd/issues/1521) |
+| 能力           | 状态   | 问题                                                        |
+| -------------- | ------ | ----------------------------------------------------------- |
+| 声明与定义     | 支持   |                                                             |
+| 静态           | 支持   |                                                             |
+| 只读           | 支持   |                                                             |
+| 虚与抽象       | 支持   |                                                             |
+| 已弃用         | 支持   |                                                             |
+| 默认库         | 支持   |                                                             |
+| 作用域修饰符   | 不支持 | [clangd#352](https://github.com/clangd/clangd/issues/352)   |
+| 可变引用与指针 | 不支持 | [clangd#839](https://github.com/clangd/clangd/issues/839)   |
+| 推导           | 不支持 |                                                             |
+| 用户定义运算符 | 不支持 | [clangd#1521](https://github.com/clangd/clangd/issues/1521) |
 
 ### 声明与定义
 
@@ -896,7 +896,7 @@ void count() {
 
 const 和 constexpr 值、const 方法及枚举成员
 
-只读目前基于值：指向 const 的指针算作
+只读目前基于值判定：指向 const 的指针也算作
 只读，即使指针本身可以改变。
 
 ```cpp
@@ -917,7 +917,7 @@ void probe(const int& in, const int* pointee_const, int* const self_const) {
 }
 ```
 
-### Virtual 与 abstract
+### 虚与抽象
 
 虚方法、纯虚方法和抽象类
 
@@ -998,7 +998,7 @@ void run() {
 
 ### 推导
 
-标记推导类型，如 `auto` 和 `decltype`
+标记 `auto` 和 `decltype` 等推导类型
 
 ```cpp
 auto deduced_int = 1;
@@ -1027,20 +1027,20 @@ int add(int a, int b) {
 
 ## 冲突与歧义
 
-C++ 允许结构上不同的实体共享同一个名称。当一个书写名称同时指向不同种类的实体时，没有单一 token 类型是正确的；这类名称会获得专用的 **conflict** token 类型，客户端通常以中性颜色显示。
+C++ 允许结构不同的实体共享同一个名称。当源码中的一个名称同时指代不同类别的实体时，任何单一的 Token 类型都无法准确表示；这类名称会获得专用的 **conflict** Token 类型，客户端通常以中性颜色显示。
 
 <!-- BEGIN GENERATED ITEMS: conflict_ambiguity -->
 
 | 能力           | 状态 | 问题 |
 | -------------- | ---- | ---- |
-| 类型 vs 函数   | 支持 |      |
-| 类型 vs 变量   | 支持 |      |
-| 同类型重载集合 | 支持 |      |
+| 类型与函数     | 支持 |      |
+| 类型与变量     | 支持 |      |
+| 同类别重载集合 | 支持 |      |
 | 注入类名       | 支持 |      |
 
-### 类型 vs 函数
+### 类型与函数
 
-同时命名两者的名称显示为 `conflict`
+同时指代二者的名称显示为 `conflict`
 
 ```cpp
 namespace shop {
@@ -1051,9 +1051,9 @@ void Widget();
 using shop::Widget;
 ```
 
-### 类型 vs 变量
+### 类型与变量
 
-同时命名两者的名称显示为 `conflict`
+同时指代二者的名称显示为 `conflict`
 
 ```cpp
 namespace mixed {
@@ -1064,9 +1064,9 @@ int Thing;
 using mixed::Thing;
 ```
 
-### 同类型重载集合
+### 同类别重载集合
 
-仅命名函数的名称不构成冲突
+仅指代函数的名称不构成冲突
 
 ```cpp
 namespace ops {
@@ -1086,7 +1086,7 @@ void run() {
 
 类内部用作构造函数调用的类名
 
-书写名称显示为类；它隐含的构造函数引用不会额外着色 — `(` 保持无 token 状态。
+书写的名称显示为类；其隐含的构造函数引用不会额外着色——`(` 不会被标记为 Token。
 
 ```cpp
 struct Widget {
@@ -1102,25 +1102,25 @@ struct Widget {
 
 ## Token 正确性
 
-clice 刻意固定的行为，包括 clangd 曾经出错的问题。
+clice 有意固定这些表现形式，其中也包括 clangd 曾处理错误的情况。
 
 <!-- BEGIN GENERATED ITEMS: token_correctness -->
 
-| 能力                      | 状态 | 问题                                                                                                                                                                                |
-| ------------------------- | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 构造函数与析构函数        | 支持 | [clangd#1509](https://github.com/clangd/clangd/issues/1509), [clangd#2078](https://github.com/clangd/clangd/issues/2078), [clangd#872](https://github.com/clangd/clangd/issues/872) |
-| 匿名参数                  | 支持 |                                                                                                                                                                                     |
-| 运算符名称                | 支持 |                                                                                                                                                                                     |
-| 类模板的析构函数          | 支持 |                                                                                                                                                                                     |
-| 转换运算符                | 支持 |                                                                                                                                                                                     |
-| 模板参数上的伪析构函数    | 支持 |                                                                                                                                                                                     |
-| defaulted 和 deleted 成员 | 支持 |                                                                                                                                                                                     |
+| 能力                     | 状态 | 问题                                                                                                                                                                                |
+| ------------------------ | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 构造函数与析构函数       | 支持 | [clangd#1509](https://github.com/clangd/clangd/issues/1509), [clangd#2078](https://github.com/clangd/clangd/issues/2078), [clangd#872](https://github.com/clangd/clangd/issues/872) |
+| 匿名参数                 | 支持 |                                                                                                                                                                                     |
+| 运算符名称               | 支持 |                                                                                                                                                                                     |
+| 类模板的析构函数         | 支持 |                                                                                                                                                                                     |
+| 转换运算符               | 支持 |                                                                                                                                                                                     |
+| 模板参数上的伪析构函数   | 支持 |                                                                                                                                                                                     |
+| 显式预置和弃置的成员函数 | 支持 |                                                                                                                                                                                     |
 
 ### 构造函数与析构函数
 
-带 constructor/destructor 修饰符的 method token
+带有 constructor/destructor 修饰符的 method Token
 
-析构函数名称显示为两个 token：`~` 携带 method 类型以及声明/定义修饰符，其后的类名保持为对类的引用。
+析构函数名称呈现为两个 Token：`~` 带有 method 类别及 declaration/definition 修饰符，其后的类名仍是对该类的引用。
 
 ```cpp
 struct Session {
@@ -1139,9 +1139,9 @@ void destroy(Session* session) {
 
 ### 匿名参数
 
-未命名参数不产生 token
+未命名参数不产生 Token
 
-未命名参数类型之后的标点保持无 token 状态。
+未命名参数类型后的标点不产生 Token。
 
 ```cpp
 void take_one(int) {}
@@ -1150,9 +1150,9 @@ void take_two(int, char* c) {}
 
 ### 运算符名称
 
-`operator` 关键字和调用点的标点保持原样
+`operator` 关键字和调用处的标点不作额外着色
 
-运算符的书写名称是关键字加标点，所以不产生名称 token：`operator` 保持其关键字分类，调用点在运算符符号上不产生任何内容。
+运算符的书面名称由关键字和标点组成，因此不会生成名称 Token：`operator` 仍归类为关键字，而调用处不会在运算符符号上生成任何 Token。
 
 ```cpp
 struct Value {
@@ -1168,7 +1168,7 @@ void combine(Value a, Value b) {
 
 ### 类模板的析构函数
 
-模板下的 `~` 形式保持一致
+模板中的 `~` 形式保持不变
 
 ```cpp
 template <typename T>
@@ -1182,7 +1182,7 @@ Holder<T>::~Holder() {}
 
 ### 转换运算符
 
-书写为关键字，转换使用不额外着色
+转换运算符以关键字书写，发生转换的使用处不额外着色
 
 ```cpp
 struct Ratio {
@@ -1200,7 +1200,7 @@ double to_double(Ratio ratio) {
 
 ### 模板参数上的伪析构函数
 
-`~` 不着色；类型名保持其类型
+`~` 不着色；类型名保持原有类别
 
 ```cpp
 template <typename T>
@@ -1209,9 +1209,9 @@ void reset(T* value) {
 }
 ```
 
-### defaulted 和 deleted 成员
+### 显式预置和弃置的成员函数
 
-特殊成员名称保持其定义 token
+特殊成员函数名称仍被标为定义 Token
 
 ```cpp
 struct Session {
@@ -1247,15 +1247,15 @@ struct [[gnu::packed]] Packed {};
 
 ## 宏
 
-宏定义体内部的 token 保持其词法类型；从宏展开处对它们着色属于未来的展开预览特性。
+宏定义体内的 Token 保持其词法类别；根据宏展开结果对这些 Token 进行着色，则属于未来的展开预览功能。
 
 <!-- BEGIN GENERATED ITEMS: macros -->
 
-| 能力                            | 状态   | 问题                                                        |
-| ------------------------------- | ------ | ----------------------------------------------------------- |
-| 宏定义与展开                    | 支持   |                                                             |
-| 展开处与实参                    | 支持   |                                                             |
-| Object-like 与 function-like 宏 | 不支持 | [clangd#2649](https://github.com/clangd/clangd/issues/2649) |
+| 能力               | 状态   | 问题                                                        |
+| ------------------ | ------ | ----------------------------------------------------------- |
+| 宏定义与展开       | 支持   |                                                             |
+| 展开位置与实参     | 支持   |                                                             |
+| 类对象宏与类函数宏 | 不支持 | [clangd#2649](https://github.com/clangd/clangd/issues/2649) |
 
 ### 宏定义与展开
 
@@ -1265,9 +1265,9 @@ struct [[gnu::packed]] Packed {};
 [[maybe_unused]] static int squared = SQUARE(4);
 ```
 
-### 展开处与实参
+### 展开位置与实参
 
-展开名称是宏，书写的实参保持其语义，定义体保持词法
+展开位置的名称按宏高亮，写出的实参保留其语义高亮，定义体保持词法高亮
 
 ```cpp
 int value = 1;
@@ -1284,9 +1284,9 @@ void run() {
 }
 ```
 
-### Object-like 与 function-like 宏
+### 类对象宏与类函数宏
 
-区分两种形式的高亮
+对两种形式使用不同的高亮
 
 ```cpp
 #define MAX_SIZE 1024
@@ -1297,33 +1297,33 @@ int checked = CHECK(MAX_SIZE);
 
 <!-- END GENERATED ITEMS -->
 
-## 其他已知差距
+## 其他已知缺口
 
-尚未有 fixture 的精选问题：
+以下是尚无测试用例的精选问题：
 
 - `auto` 参数不应被高亮为模板类型参数
   ([clangd#1390](https://github.com/clangd/clangd/issues/1390))
-- 成员指针中的嵌套名说明符应获得 token
+- 成员指针中的嵌套名说明符应有对应的 Token
   ([clangd#2235](https://github.com/clangd/clangd/issues/2235))
 - `::new` 应保持 `new` 关键字高亮
   ([clangd#1627](https://github.com/clangd/clangd/issues/1627))
-- `co_yield` / `co_await` 在协程返回类型为模板时丢失高亮
+- 当协程返回类型为模板时，`co_yield` / `co_await` 会丢失高亮
   ([clangd#2437](https://github.com/clangd/clangd/issues/2437))
 - Token 修饰符应应用于重载运算符的操作数
   ([clangd#2547](https://github.com/clangd/clangd/issues/2547))
-- 依赖模板名（`obj.template get<int>()`）、通过 `using` 从依赖基类导入的成员，以及具有混合种类重载集的依赖名（[clangd#484](https://github.com/clangd/clangd/issues/484)、
+- 依赖模板名（`obj.template get<int>()`）、通过 `using` 从依赖基类导入的成员，以及重载集中包含不同类别实体的依赖名（[clangd#484](https://github.com/clangd/clangd/issues/484)、
   [clangd#686](https://github.com/clangd/clangd/issues/686)、
   [clangd#1057](https://github.com/clangd/clangd/issues/1057)）
 
 ## 非活跃代码区域
 
-未采用分支内的每个 token 都带有 `inactive` 修饰符，同时保留其词法种类，因此编辑器可以通过该修饰符的样式使区域变暗，而不丢失底层的语法颜色。死代码中没有分类的 token——裸标识符和普通标点——以未加样式的 `identifier` 类型输出，使整个区域都有 token 覆盖。clice 的 VS Code 扩展开箱即用地渲染变暗区域；其他编辑器直接对修饰符设置样式（例如 Neovim 中的 `@lsp.mod.inactive`）。
+未选中的预处理分支内，每个 Token 都带有 `inactive` 修饰符，同时保留其词法类别，因此编辑器可以通过设置该修饰符的样式使区域变暗，而不会丢失原有的语法颜色。死代码中未分类的 Token——裸标识符和普通标点——会以不带样式的 `identifier` 类型发出，从而使整个区域都有 Token 覆盖。clice 的 VS Code 扩展默认会以变暗样式渲染这些区域；其他编辑器则直接为该修饰符设置样式（例如 Neovim 中的 `@lsp.mod.inactive`）。
 
 - [x] 使非活跃预处理分支变暗（[clangd#132](https://github.com/clangd/clangd/issues/132)）
 - [x] 正确处理 `#elif` 链中的非活跃区域边界（[clangd#602](https://github.com/clangd/clangd/issues/602)）
 - [x] 在非活跃区域内保留语法高亮（[clangd#1664](https://github.com/clangd/clangd/issues/1664)）
-- [x] 保持非活跃区域与注释的区别（[clangd#1545](https://github.com/clangd/clangd/issues/1545)）
-- [ ] 不可达代码变暗（[clangd#1828](https://github.com/clangd/clangd/issues/1828)）
+- [x] 将非活跃区域与注释明确区分（[clangd#1545](https://github.com/clangd/clangd/issues/1545)）
+- [ ] 使不可达代码变暗（[clangd#1828](https://github.com/clangd/clangd/issues/1828)）
 
 ## 格式字符串高亮
 
@@ -1332,7 +1332,7 @@ int checked = CHECK(MAX_SIZE);
 
 ## 协议支持
 
-- [x] 全文档语义 token（`textDocument/semanticTokens/full`）
-- [x] UTF-16 增量编码 token 位置
-- [ ] 基于范围的语义 token（`textDocument/semanticTokens/range`）— 仅为可见视口计算 token，对大文件至关重要
-- [ ] 增量更新（`textDocument/semanticTokens/full/delta`）— 仅发送自上次响应以来的更改
+- [x] 整篇文档的语义 Token（`textDocument/semanticTokens/full`）
+- [x] 采用 UTF-16 增量编码的 Token 位置
+- [ ] 基于范围的语义 Token（`textDocument/semanticTokens/range`）——仅计算可见视口内的 Token，这对大文件至关重要
+- [ ] 增量更新（`textDocument/semanticTokens/full/delta`）——仅发送自上次响应以来的更改
