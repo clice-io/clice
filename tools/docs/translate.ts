@@ -202,13 +202,13 @@ function segmentLabel(left: SegmentInfo, right: SegmentInfo): string {
 
 function verbatimLabel(left: SegmentInfo, right: SegmentInfo): string {
     return left.translatable
-        ? `code block inside ${segmentLabel(left, right)}`
+        ? `verbatim block inside ${segmentLabel(left, right)}`
         : `verbatim ${segmentLabel(left, right)}`;
 }
 
 function verbatimReason(left: SegmentInfo): string {
     return left.translatable
-        ? "nested code block must be byte-identical"
+        ? "nested code or comment must be byte-identical"
         : "verbatim segment must be byte-identical";
 }
 
@@ -678,8 +678,17 @@ function validateSegment(
     // A lone row does not parse as a table: give it the delimiter line
     // the page will, so a row that would stop the page being a table
     // fails here instead of at the page level.
-    const width = /^tableRow:(\d+)$/.exec(en.shape)?.[1];
-    const probe = width === undefined ? zhText : `${zhText}\n|${" --- |".repeat(Number(width))}`;
+    const align = /^tableRow:\d+:([lrc-]*)$/.exec(en.shape)?.[1];
+    const delimiter = (column: string) =>
+        column === "l"
+            ? " :--- |"
+            : column === "r"
+              ? " ---: |"
+              : column === "c"
+                ? " :---: |"
+                : " --- |";
+    const probe =
+        align === undefined ? zhText : `${zhText}\n|${Array.from(align, delimiter).join("")}`;
     const parsed = splitSegments(probe, "reply");
     const reply = parsed.at(0);
     if (parsed.length !== 1 || reply?.shape !== en.shape) {
@@ -687,14 +696,7 @@ function validateSegment(
     }
     const code = reply.verbatim.map((range) => probe.slice(range.start, range.end));
     if (code.length !== blocks.length || code.some((text, i) => text !== blocks.at(i))) {
-        return "nested code block altered";
-    }
-    if (en.kind === "yaml") {
-        const keys = (text: string) =>
-            [...text.matchAll(/^\s*([\w-]+):/gm)].map((match) => match[1]).join(",");
-        if (keys(zhText) !== keys(enText)) {
-            return "yaml keys changed";
-        }
+        return "nested verbatim block altered";
     }
     return null;
 }

@@ -6,12 +6,13 @@
 /// translate mode feeds the translatable ones to a model.
 
 import { createHash } from "node:crypto";
-import type { Nodes, RootContent } from "mdast";
+import type { Nodes, RootContent, Table } from "mdast";
 import remarkFrontmatter from "remark-frontmatter";
 import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
 import { unified } from "unified";
 import type { Point } from "unist";
+import { parse as parseYaml } from "yaml";
 
 export interface Range {
     start: number;
@@ -62,17 +63,39 @@ function rangeOf(node: Nodes, page: string): Range {
     };
 }
 
+/// Column alignment of a table as one letter per column: `l`, `r`, `c`,
+/// or `-` for none. Only the delimiter line carries it, and that line has
+/// no row node, so rows get it from their table.
+export function tableAlign(table: Table): string {
+    return (table.align ?? []).map((align) => align?.[0] ?? "-").join("");
+}
+
+/// Mapping and sequence nesting of a YAML block, with key names and
+/// scalar types; a translation may only change scalar string values.
+function yamlSkeleton(value: unknown): string {
+    if (Array.isArray(value)) {
+        return `[${value.map(yamlSkeleton).join(",")}]`;
+    }
+    if (value !== null && typeof value === "object") {
+        const entries = Object.entries(value as Record<string, unknown>);
+        return `{${entries.map(([key, item]) => `${key}:${yamlSkeleton(item)}`).join(",")}}`;
+    }
+    return value === null ? "null" : typeof value;
+}
+
 /// Block structure, recursively through flow containers (blockquotes,
 /// lists, tables); everything below a paragraph, heading or table cell is
 /// phrasing, which a translation may reflow freely.
-function shapeOf(node: Nodes, ordered: boolean): string {
+function shapeOf(node: Nodes, ordered: boolean, align = ""): string {
     switch (node.type) {
         case "heading":
             return `heading:${node.depth}`;
         case "tableRow":
-            return `tableRow:${node.children.length}`;
-        case "table":
-            return `table(${node.children.map((row) => shapeOf(row, false)).join(",")})`;
+            return `tableRow:${node.children.length}:${align}`;
+        case "table": {
+            const inner = node.children.map((row) => shapeOf(row, false, tableAlign(node)));
+            return `table(${inner.join(",")})`;
+        }
         case "list": {
             const inner = node.children.map((child) => shapeOf(child, node.ordered === true));
             return `${node.ordered === true ? "list:ordered" : "list"}(${inner.join(",")})`;
@@ -85,23 +108,32 @@ function shapeOf(node: Nodes, ordered: boolean): string {
         }
         case "blockquote":
             return `blockquote(${node.children.map((child) => shapeOf(child, false)).join(",")})`;
+        case "yaml": {
+            try {
+                return `yaml${yamlSkeleton(parseYaml(node.value))}`;
+            } catch {
+                return "yaml:invalid";
+            }
+        }
         default:
             return node.type;
     }
 }
 
-/// Fenced or indented code blocks anywhere below `node` (inline code is
-/// prose and may be reflowed by a translation). The range starts at the
-/// beginning of the opening fence's line, so the list or blockquote
-/// prefix in front of the fence is compared too — it decides how much
-/// indentation is stripped from the block's lines.
-function nestedCode(node: Nodes, source: string, from: number, page: string): Range[] {
+/// Code blocks and HTML comments anywhere below `node` (inline code and
+/// other inline HTML are prose and may be reflowed by a translation). A
+/// code range starts at the beginning of the opening fence's line, so the
+/// list or blockquote prefix in front of the fence is compared too — it
+/// decides how much indentation is stripped from the block's lines.
+function nestedVerbatim(node: Nodes, source: string, from: number, page: string): Range[] {
     const out: Range[] = [];
     const visit = (current: Nodes) => {
         if (current.type === "code") {
             const range = rangeOf(current, page);
             const lineStart = source.lastIndexOf("\n", range.start - 1) + 1;
             out.push({ start: Math.max(lineStart, from), end: range.end });
+        } else if (current.type === "html" && current.value.startsWith("<!--")) {
+            out.push(rangeOf(current, page));
         } else if ("children" in current) {
             for (const child of current.children) {
                 visit(child);
@@ -119,7 +151,7 @@ function nestedCode(node: Nodes, source: string, from: number, page: string): Ra
 export function splitSegments(source: string, page: string): Segment[] {
     const tree = parser.parse(source);
     const segments: Segment[] = [];
-    const push = (node: RootContent, ordered: boolean, translatable: boolean) => {
+    const push = (node: RootContent, ordered: boolean, translatable: boolean, align = "") => {
         const range = rangeOf(node, page);
         // Take the indentation in front of a block along with it: for a
         // list item it decides how much is stripped from the lines below.
@@ -130,9 +162,9 @@ export function splitSegments(source: string, page: string): Segment[] {
         segments.push({
             ...range,
             kind: node.type,
-            shape: shapeOf(node, ordered),
+            shape: shapeOf(node, ordered, align),
             translatable,
-            verbatim: translatable ? nestedCode(node, source, range.start, page) : [range],
+            verbatim: translatable ? nestedVerbatim(node, source, range.start, page) : [range],
         });
     };
     for (const node of tree.children) {
@@ -145,9 +177,10 @@ export function splitSegments(source: string, page: string): Segment[] {
             case "table":
                 // The delimiter line between header and body has no row
                 // node; it lands in the gap between rows and is not
-                // compared, so the two sides may align columns differently.
+                // compared. Its alignment travels with each row's shape,
+                // so only dash count and padding may differ.
                 for (const row of node.children) {
-                    push(row, false, true);
+                    push(row, false, true, tableAlign(node));
                 }
                 break;
             case "heading":

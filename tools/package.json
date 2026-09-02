@@ -32,7 +32,8 @@
     "remark-parse": "^11.0.0",
     "unified": "^11.0.5",
     "vscode-languageserver-protocol": "^3.17.5",
-    "vscode-uri": "^3.1.0"
+    "vscode-uri": "^3.1.0",
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@types/node": "~25.0.3",
