@@ -144,7 +144,10 @@ export class Workspace {
         if (!fs.existsSync(this.cacheBase())) {
             return [];
         }
-        return fs.readdirSync(this.cacheBase()).filter((name) => /^v\d+$/.test(name));
+        return fs
+            .readdirSync(this.cacheBase(), { withFileTypes: true })
+            .filter((entry) => entry.isDirectory() && /^v\d+$/.test(entry.name))
+            .map((entry) => entry.name);
     }
 
     private globCache(sub: string, suffix: string): string[] {

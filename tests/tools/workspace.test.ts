@@ -36,6 +36,11 @@ test("cache root follows the store's version directory", () => {
         expect(ws.cacheRoot()).toBe(path.join(root, ".clice", "cache", "v9"));
         expect(ws.pchFiles()).toEqual([path.join(root, ".clice", "cache", "v9", "pch", "k.pch")]);
 
+        // Only directories are stores: a stray file spelled like a version
+        // neither becomes the root nor counts as a second one.
+        fs.writeFileSync(path.join(root, ".clice", "cache", "v8"), "");
+        expect(ws.cacheRoot()).toBe(path.join(root, ".clice", "cache", "v9"));
+
         // Two versions side by side would let a test read the wrong one.
         fs.mkdirSync(path.join(root, ".clice", "cache", "v10"));
         expect(() => ws.cacheRoot()).toThrow(/found \[v10, v9\]|found \[v9, v10\]/);
