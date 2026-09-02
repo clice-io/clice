@@ -42,8 +42,9 @@ export interface Segment {
     /// reorder or repeat them, not alter them. Link and image
     /// destinations are keyed by their position among the segment's links
     /// (`link[0]: ./x`), so each label keeps its own target — a
-    /// translation keeps the links in order — and frontmatter paths by
-    /// the YAML key holding them, as the block's structure is fixed.
+    /// translation keeps the links in order — and frontmatter control
+    /// values (layout, theme, icon, link, ...) by the YAML key holding
+    /// them, as the block's structure is fixed.
     literals: string[];
 }
 
@@ -178,26 +179,41 @@ function phrasingOf(node: Nodes, source: string, page: string): string | null {
     return source.slice(rangeOf(first, page).start, rangeOf(last, page).end);
 }
 
-/// Path-like scalars of a YAML block, each qualified by the key path
-/// holding it (`hero.actions[1].link: ./guide/quick-start`), so a value
-/// moving to another key counts as a change.
+/// Frontmatter keys whose string values are reader-facing copy — the
+/// VitePress hero and feature text, page titles and descriptions — and so
+/// translate. A string under any other key (layout, theme, icon, link,
+/// src, ...) is a control value the site reads; a key missing here fails
+/// closed, the check reports the translated value under its key.
+export const YAML_PROSE_KEYS = new Set([
+    "name",
+    "text",
+    "tagline",
+    "title",
+    "details",
+    "alt",
+    "linkText",
+    "description",
+]);
+
+/// Scalars of a YAML block other than copy, each qualified by the key
+/// path holding it (`hero.actions[1].link: ./guide/quick-start`), so a
+/// value moving to another key counts as a change.
 function yamlLiterals(value: unknown, key: string): string[] {
-    if (typeof value === "string") {
-        return /^(\.{0,2}\/|https?:\/\/)/.test(value) ? [`${key}: ${value}`] : [];
-    }
     if (Array.isArray(value)) {
         return value.flatMap((item, i) => yamlLiterals(item, `${key}[${i}]`));
     }
     if (value !== null && typeof value === "object") {
         return Object.entries(value as Record<string, unknown>).flatMap(([name, item]) =>
-            yamlLiterals(item, key === "" ? name : `${key}.${name}`),
+            typeof item === "string" && YAML_PROSE_KEYS.has(name)
+                ? []
+                : yamlLiterals(item, key === "" ? name : `${key}.${name}`),
         );
     }
-    return [];
+    return [`${key}: ${String(value)}`];
 }
 
 /// Inline code, link and image destinations, issue references such as
-/// clangd#1455 in text, and path-like scalars of YAML frontmatter,
+/// clangd#1455 in text, and the control values of YAML frontmatter,
 /// anywhere below `node` except inside code blocks and comments.
 function inlineLiterals(node: Nodes): string[] {
     const out = new Set<string>();

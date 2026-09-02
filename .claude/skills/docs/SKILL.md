@@ -54,9 +54,10 @@ A table row and a later heading that share their text in en (a
 capability's status row and its section) must share it in zh — `check`
 fails on a pair named two ways. The inline literals of a segment — code
 spans, link and image targets (in order), issue references, frontmatter
-paths — must be identical on both sides. No text is stored twice — the
-mapping holds hashes only. Old wording of a drifted segment comes from
-git history of the markdown page.
+values other than its copy (layout, theme, icon, link, src, ...) — must
+be identical on both sides. No text is stored twice — the mapping holds
+hashes only. Old wording of a drifted segment comes from git history of
+the markdown page.
 
 Workflow for any edit touching translated pages:
 
@@ -84,11 +85,11 @@ translate [page...]` produces isomorphic zh drafts via the DeepSeek API
 feeding the current zh text to the model as terminology reference).
 Fenced code inside segments is masked out of the round trip and restored
 byte-for-byte; inline code, link targets, issue references and
-frontmatter paths must come back unchanged. A segment the model cannot
-render validly — or a row/heading pair it names two ways — is left in
-English and the run exits non-zero naming the page — rerun `translate`
-on it after review. The key comes from the environment and is never
-stored. Drafts still go through review and `record`.
+frontmatter control values must come back unchanged. A segment the model
+cannot render validly — or a row/heading pair it names two ways — is
+left in English and the run exits non-zero naming the page — rerun
+`translate` on it after review. The key comes from the environment and
+is never stored. Drafts still go through review and `record`.
 
 ## Chinese wording: what is translated and what stays English
 

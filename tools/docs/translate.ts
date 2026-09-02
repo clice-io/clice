@@ -12,8 +12,8 @@
 /// that share their text in en (a capability's status row and its
 /// section) share it in zh as well, and the inline literals of a
 /// segment — code spans, link and image targets in order, issue
-/// references, frontmatter paths — are identical on both sides. The only
-/// stored link between the two sides is
+/// references, frontmatter values other than its copy — are identical on
+/// both sides. The only stored link between the two sides is
 /// docs/meta/translations/<page>.json — one hash pair per translatable
 /// segment, in document order:
 ///
@@ -43,14 +43,14 @@
 /// `translate` calls the DeepSeek API (key from DEEPSEEK_API_KEY, never
 /// stored) to draft segment-isomorphic zh pages: fenced code inside a
 /// segment is masked out and restored byte-for-byte, so code never
-/// round-trips through the model, and inline code, link targets and
-/// issue references must come back unchanged. No args = only pages
-/// missing a zh counterpart; explicit pages are overwritten, feeding the
-/// current zh text back as terminology reference. `--model=NAME`
-/// overrides the default deepseek-v4-pro. A segment the model cannot
-/// render validly is left in English and fails the run, so the page
-/// shows up again on the next attempt. Drafts still go through review +
-/// record.
+/// round-trips through the model, and inline code, link targets, issue
+/// references and frontmatter control values must come back unchanged.
+/// No args = only pages missing a zh counterpart; explicit pages are
+/// overwritten, feeding the current zh text back as terminology
+/// reference. `--model=NAME` overrides the default deepseek-v4-pro. A
+/// segment the model cannot render validly is left in English and fails
+/// the run, so the page shows up again on the next attempt. Drafts still
+/// go through review + record.
 ///
 /// `review` re-reads every translatable segment of an existing zh page
 /// next to its en counterpart and asks a model for the corrected Chinese —
@@ -77,6 +77,7 @@ import {
     analyzeSource,
     pairedLabels,
     splitSegments,
+    YAML_PROSE_KEYS,
     type Segment,
     type SegmentInfo,
 } from "./segment.ts";
@@ -648,7 +649,7 @@ const SYSTEM_PROMPT = `你是 clice 项目的文档翻译。clice 是一个基�
 - 段内不得引入空行（空行会把一段拆成两段）。
 - 表格行的首单元格若与后文某个标题在英文里完全相同（能力状态表与其小节），两处译文也必须完全相同；这样的行和标题会放在同一批里。
 - 输入里的 ⟦B数字⟧ 是被抽走的代码块占位符：在译文的对应位置原样保留，一个不能少、不能多、不能改。
-- YAML 段（--- 围栏包住的）：只翻译面向读者的文案值（text、title、tagline、details 等），键名、结构、路径、链接一律不动，围栏保留。
+- YAML 段（--- 围栏包住的）：只翻译面向读者的文案值，即键名为 ${[...YAML_PROSE_KEYS].join("、")} 的字符串；其余值（layout、theme、icon、link、src 等）连同键名、结构、围栏一律不动。
 - 输出严格 JSON：{"segments":[{"i":<int>,"text":"<译文>"}, ...]}，不要任何解释或代码围栏。`;
 
 interface ChatMessage {
@@ -1152,6 +1153,8 @@ markdown 形状 shape、英文原文 en 和当前中文 zh。请逐段判断中�
   竖线数量与列数、引用的 >。段内不要引入空行。
 - 行内代码（反引号内）、链接目标、URL、issue 引用（clangd#1455）、文件路径、命令行、编译器
   诊断原文一律原样保留。
+- YAML 段（--- 围栏包住的）只改键名为 ${[...YAML_PROSE_KEYS].join("、")} 的字符串值；其余值
+  （layout、theme、icon、link、src 等）连同键名、结构、围栏一律不动。
 - 不增删信息：中文说英文说的事，不多不少。
 
 术语规则：
