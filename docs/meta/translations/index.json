@@ -1,6 +1,4 @@
 {
   "version": 1,
-  "pairs": [
-    { "kind": "yaml", "en": "13076719d51b2762", "zh": "a708cd4c829eec1d" }
-  ]
+  "pairs": [{ "kind": "yaml", "en": "13076719d51b2762", "zh": "a708cd4c829eec1d" }]
 }

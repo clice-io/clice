@@ -122,16 +122,22 @@ function loadMapping(roots: Roots, page: string): Mapping | null {
 
 /// One pair per line so an edited segment shows up as exactly one changed
 /// line in the diff.
+/// The mapping in the layout prettier gives JSON, so `pixi run format`
+/// never rewrites what `record` wrote: one pair per line, except that an
+/// array short enough for one line (a page with a single segment) stays on
+/// that line, as prettier collapses it.
 function serializeMapping(pairs: Pair[]): string {
-    if (pairs.length === 0) {
-        return `{\n  "version": 1,\n  "pairs": []\n}\n`;
-    }
-    const lines = pairs.map(
+    const entries = pairs.map(
         (pair) =>
-            `    { "kind": ${JSON.stringify(pair.kind)}, ` +
+            `{ "kind": ${JSON.stringify(pair.kind)}, ` +
             `"en": ${JSON.stringify(pair.en)}, "zh": ${JSON.stringify(pair.zh)} }`,
     );
-    return `{\n  "version": 1,\n  "pairs": [\n${lines.join(",\n")}\n  ]\n}\n`;
+    const oneLine = `  "pairs": [${entries.join(", ")}]`;
+    const array =
+        oneLine.length <= 100
+            ? oneLine
+            : `  "pairs": [\n${entries.map((entry) => `    ${entry}`).join(",\n")}\n  ]`;
+    return `{\n  "version": 1,\n${array}\n}\n`;
 }
 
 function zip<A, B>(a: A[], b: B[]): [A, B][] {
