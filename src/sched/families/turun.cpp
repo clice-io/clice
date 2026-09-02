@@ -20,7 +20,7 @@ TURunFamily::TURunFamily(TaskGraph& graph,
     graph(graph), workspace(workspace), contexts(contexts), pcm(pcm), store(store), pool(pool) {}
 
 void TURunFamily::register_runner() {
-    graph.register_family(turun_family, [this](RoundContext& ctx, NodeId id) {
+    graph.register_family(Family::TURun, [this](RoundContext& ctx, NodeId id) {
         return round(ctx, Fid{static_cast<std::uint32_t>(id.key)});
     });
 }
@@ -106,8 +106,8 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
     // gates the cost. A failed PCM build is not terminal on either
     // shape — the parse consumes whatever artifacts landed and the
     // worker reports its own failure if they are not enough.
-    bool own_module = workspace.path_to_module.contains(path_id);
-    if(own_module || !workspace.path_to_module.empty() ||
+    bool own_module = !workspace.dep_graph.module_of(path_id).empty();
+    if(own_module || workspace.dep_graph.has_modules() ||
        !workspace.dep_graph.import_candidate_files().empty() ||
        llvm::any_of(params.arguments, [](const std::string& arg) {
            return llvm::StringRef(arg).starts_with("-include");
@@ -115,7 +115,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
         PCMFamily::ModuleDeps deps;
         if(own_module) {
             deps.resolved.push_back(path_id);
-            deps.declared.push_back({pcm_family, path_id.raw});
+            deps.declared.push_back({Family::PCM, path_id.raw});
         }
         // The scan must evaluate the same conditionals the worker's
         // parse will — the resolved command already carries the plan's
@@ -156,7 +156,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
                 break;
             }
             for(auto dep: deps.resolved) {
-                if(co_await ctx.depend({pcm_family, dep.raw}) == DependResult::Cancelled) {
+                if(co_await ctx.depend({Family::PCM, dep.raw}) == DependResult::Cancelled) {
                     landed[path_id] = {.verdict = Verdict::Preempted};
                     co_return RoundOutcome::Stale;
                 }

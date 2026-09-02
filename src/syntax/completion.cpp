@@ -1,5 +1,6 @@
 #include "syntax/completion.h"
 
+#include "syntax/dependency_graph.h"
 #include "syntax/include_resolver.h"
 #include "syntax/lexer.h"
 
@@ -65,16 +66,17 @@ PreambleCompletionContext detect_completion_context(llvm::StringRef text, std::u
     return {CompletionContext::Import, prefix.str()};
 }
 
-std::vector<std::string> complete_module_import(const llvm::DenseMap<Fid, std::string>& modules,
+std::vector<std::string> complete_module_import(const DependencyGraph& graph,
                                                 llvm::StringRef prefix) {
     std::vector<std::string> results;
     // FIXME: exclude the current file's own module name from results
     // (self-import is never valid). Needs the requesting path_id passed in.
-    // TODO: `modules` is only refreshed on file save; unsaved new module
-    // files won't appear in completions until written to disk.
-    for(auto& [path_id, module_name]: modules) {
-        if(llvm::StringRef(module_name).starts_with(prefix)) {
-            results.push_back(module_name);
+    // TODO: the graph's declarations are only refreshed on file save;
+    // unsaved new module files won't appear in completions until written
+    // to disk.
+    for(auto& entry: graph.modules()) {
+        if(!entry.getValue().empty() && entry.getKey().starts_with(prefix)) {
+            results.push_back(entry.getKey().str());
         }
     }
     return results;

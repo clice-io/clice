@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <cstdlib>
+#include <expected>
 #include <format>
 #include <optional>
 
@@ -88,6 +89,52 @@ static std::optional<std::string> write_preamble_envelope(llvm::StringRef blob,
     return std::nullopt;
 }
 
+/// Where an artifact build writes: the master's tmp path when it provided
+/// one (already allocated by its CacheStore — the master commits with
+/// fsync + atomic rename after we report success), else a temporary file
+/// of our own.
+static std::expected<std::string, std::string> artifact_output(llvm::StringRef label,
+                                                               llvm::StringRef output_path,
+                                                               llvm::StringRef prefix,
+                                                               llvm::StringRef extension) {
+    if(!output_path.empty()) {
+        return output_path.str();
+    }
+    auto tmp = fs::createTemporaryFile(prefix, extension);
+    if(!tmp) {
+        LOG_ERROR("Build{}: failed to create temp file", label);
+        return std::unexpected(std::format("Failed to create temporary {} file", label));
+    }
+    return *tmp;
+}
+
+/// The reply of a finished artifact build. Success hands the master the
+/// path to commit and the build's inputs; failure removes the half-written
+/// file and classifies the errors — `internal_error` marks a failure of
+/// the worker's own I/O, never the user's code, and must not be downgraded
+/// to an expected build failure.
+static worker::ArtifactBuildResult land_artifact(llvm::StringRef label,
+                                                 bool success,
+                                                 const std::string& tmp_path,
+                                                 std::int64_t build_at,
+                                                 const auto& deps,
+                                                 std::string errors,
+                                                 bool internal_error) {
+    worker::ArtifactBuildResult result;
+    if(success) {
+        result.success = true;
+        result.output_path = tmp_path;
+        result.build_at = build_at;
+        result.deps = deps;
+        return result;
+    }
+    fs::remove(tmp_path);
+    result.success = false;
+    result.has_user_errors = !internal_error && !errors.empty();
+    result.error = errors.empty() ? std::format("{} compilation failed", label) : std::move(errors);
+    return result;
+}
+
 static worker::ArtifactBuildResult handle_build_pch(const worker::BuildPCHParams& params,
                                                     const std::shared_ptr<std::atomic_bool>& stop) {
     ScopedTimer timer;
@@ -98,21 +145,11 @@ static worker::ArtifactBuildResult handle_build_pch(const worker::BuildPCHParams
     cp.add_remapped_file(params.file, params.content, params.preamble_bound);
     cp.stop = stop;
 
-    // When the master provides an output path it is already a tmp path
-    // allocated by its CacheStore: write directly, the master commits
-    // (fsync + atomic rename) after we report success.
-    std::string tmp_path;
-    if(!params.output_path.empty()) {
-        tmp_path = params.output_path;
-    } else {
-        auto tmp = fs::createTemporaryFile("clice-pch", "pch");
-        if(!tmp) {
-            LOG_ERROR("BuildPCH: failed to create temp file");
-            return {false, "Failed to create temporary PCH file"};
-        }
-        tmp_path = *tmp;
+    auto output = artifact_output("PCH", params.output_path, "clice-pch", "pch");
+    if(!output) {
+        return {false, output.error()};
     }
-    cp.output_file = tmp_path;
+    cp.output_file = *output;
 
     PCHInfo pch_info;
     ScopedTimer compile_timer;
@@ -144,9 +181,7 @@ static worker::ArtifactBuildResult handle_build_pch(const worker::BuildPCHParams
     // restart adoption validates a pair by "aux not older than primary"
     // (renames preserve mtimes), so the on-disk order must match the
     // logical one. The PCH is only served together with its blob, so a
-    // blob write failure fails the whole build. It is an internal I/O
-    // failure, never a user-code problem — must not be downgraded to an
-    // expected build failure.
+    // blob write failure fails the whole build.
     bool internal_error = false;
     ScopedTimer state_write_timer;
     if(success) {
@@ -163,27 +198,22 @@ static worker::ArtifactBuildResult handle_build_pch(const worker::BuildPCHParams
                  "kind=pch file={} output={} compile_ms={} preamble_index_ms={} flush_ms={} "
                  "state_write_ms={} total_ms={}",
                  params.file,
-                 tmp_path,
+                 *output,
                  compile_ms,
                  index_ms,
                  flush_ms,
                  state_write_ms,
                  timer.ms());
-        worker::ArtifactBuildResult result;
-        result.success = true;
-        result.output_path = tmp_path;
-        result.build_at = build_at;
-        result.deps = pch_info.deps;
-        return result;
     } else {
         LOG_WARN("BuildPCH failed: file={}, {}ms, errors=[{}]", params.file, timer.ms(), errors);
-        fs::remove(tmp_path);
-        worker::ArtifactBuildResult result;
-        result.success = false;
-        result.error = errors.empty() ? "PCH compilation failed" : errors;
-        result.has_user_errors = !internal_error && !errors.empty();
-        return result;
     }
+    return land_artifact("PCH",
+                         success,
+                         *output,
+                         build_at,
+                         pch_info.deps,
+                         std::move(errors),
+                         internal_error);
 }
 
 static worker::ArtifactBuildResult handle_build_pcm(const worker::BuildPCMParams& params,
@@ -198,19 +228,11 @@ static worker::ArtifactBuildResult handle_build_pcm(const worker::BuildPCMParams
     }
     cp.stop = stop;
 
-    // See handle_build_pch: a provided output path is the master's tmp path.
-    std::string tmp_path;
-    if(!params.output_path.empty()) {
-        tmp_path = params.output_path;
-    } else {
-        auto tmp = fs::createTemporaryFile("clice-pcm", "pcm");
-        if(!tmp) {
-            LOG_ERROR("BuildPCM: failed to create temp file");
-            return {false, "Failed to create temporary PCM file"};
-        }
-        tmp_path = *tmp;
+    auto output = artifact_output("PCM", params.output_path, "clice-pcm", "pcm");
+    if(!output) {
+        return {false, output.error()};
     }
-    cp.output_file = tmp_path;
+    cp.output_file = *output;
 
     PCMInfo pcm_info;
     ScopedTimer compile_timer;
@@ -238,24 +260,19 @@ static worker::ArtifactBuildResult handle_build_pcm(const worker::BuildPCMParams
                  compile_ms,
                  flush_ms,
                  timer.ms());
-        worker::ArtifactBuildResult result;
-        result.success = true;
-        result.output_path = tmp_path;
-        result.build_at = build_at;
-        result.deps = pcm_info.deps;
-        return result;
     } else {
         LOG_WARN("BuildPCM failed: module={}, {}ms, errors=[{}]",
                  params.module_name,
                  timer.ms(),
                  errors);
-        fs::remove(tmp_path);
-        worker::ArtifactBuildResult result;
-        result.success = false;
-        result.error = errors.empty() ? "PCM compilation failed" : errors;
-        result.has_user_errors = !errors.empty();
-        return result;
     }
+    return land_artifact("PCM",
+                         success,
+                         *output,
+                         build_at,
+                         pcm_info.deps,
+                         std::move(errors),
+                         /*internal_error=*/false);
 }
 
 /// Collect the tidy pass's findings with real per-file locations: unlike

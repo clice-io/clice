@@ -183,17 +183,28 @@ private:
         Empty,
     };
 
+    struct RouteOptions {
+        /// The projection raw-lexes the whole buffer (semantic tokens,
+        /// folds): it follows the investment policy once the buffer is
+        /// oversized, while row- and cursor-backed answers serve at any
+        /// size.
+        bool full_lex = false;
+        /// The feature has no refresh request, so an empty reply to a cold
+        /// document would be cached by the client for good — no signal
+        /// ever makes it re-pull. Await the didOpen boost once (bounded by
+        /// one index attempt) before answering Empty, and decide again
+        /// from whatever source that settles: the shard, the escalated
+        /// compile, or honestly empty under readonly "on".
+        bool await_cold_attempt = false;
+    };
+
     /// See Route. Sets up escalated sessions' compile kick so an index
-    /// answer never strands the AST investment the policy asked for.
-    /// `full_lex` marks projections that raw-lex the whole buffer
-    /// (semantic tokens, folds): those follow the investment policy once
-    /// the buffer is oversized, while row- and cursor-backed answers
-    /// serve at any size. A Route::Index decision stores the admitted
-    /// source into `source` (when given) — callers must serve from it
-    /// rather than re-derive, or the state could shift between the
-    /// decision and the read.
+    /// answer never strands the AST investment the policy asked for. A
+    /// Route::Index decision stores the admitted source into `source`
+    /// (when given) — callers must serve from it rather than re-derive,
+    /// or the state could shift between the decision and the read.
     kota::task<Route> pick_route(const Ticket& ticket,
-                                 bool full_lex,
+                                 RouteOptions options,
                                  ServingSource* source = nullptr);
 
     /// What a gate decided instead of the feature's own answer: null (no

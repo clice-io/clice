@@ -5,6 +5,8 @@
 #include "syntax/dependency_graph.h"
 #include "vfs/file_table.h"
 
+#include "llvm/ADT/STLExtras.h"
+
 namespace clice::testing {
 namespace {
 
@@ -61,6 +63,45 @@ TEST_CASE(RedeclareKeepsProviderOrder) {
     ASSERT_EQ(graph.lookup_module("foo").size(), 1u);
     EXPECT_EQ(graph.lookup_module("foo")[0].raw, 2u);
     ASSERT_EQ(graph.lookup_module("bar").size(), 1u);
+}
+
+TEST_CASE(ModuleOfFollowsDeclarations) {
+    clice::DependencyGraph graph;
+    EXPECT_FALSE(graph.has_modules());
+    EXPECT_TRUE(graph.module_of(Fid{1}).empty());
+
+    graph.add_module("foo", Fid{1});
+    EXPECT_TRUE(graph.has_modules());
+    EXPECT_EQ(graph.module_of(Fid{1}), "foo");
+
+    // A re-declaration moves the file: the old name loses it, the
+    // reverse view follows in the same write.
+    graph.update_module_decl(Fid{1}, "bar");
+    EXPECT_EQ(graph.module_of(Fid{1}), "bar");
+    EXPECT_TRUE(graph.lookup_module("foo").empty());
+
+    // Dropping the declaration leaves the name behind as an empty
+    // provider list, yet the file declares nothing and no module remains.
+    graph.update_module_decl(Fid{1}, {});
+    EXPECT_TRUE(graph.module_of(Fid{1}).empty());
+    EXPECT_FALSE(graph.has_modules());
+    EXPECT_TRUE(graph.lookup_module("bar").empty());
+}
+
+TEST_CASE(ModuleOfFollowsRedeclaredName) {
+    // A file scanned under two configurations can be listed under two
+    // names (a macro picks the declaration). Re-declaring one of them
+    // keeps both provider lists untouched — no reselection — but the
+    // file's own declaration is the one the save met.
+    clice::DependencyGraph graph;
+    graph.add_module("a", Fid{1});
+    graph.add_module("b", Fid{1});
+    EXPECT_EQ(graph.module_of(Fid{1}), "b");
+
+    graph.update_module_decl(Fid{1}, "a");
+    EXPECT_EQ(graph.module_of(Fid{1}), "a");
+    EXPECT_TRUE(llvm::is_contained(graph.lookup_module("a"), Fid{1}));
+    EXPECT_TRUE(llvm::is_contained(graph.lookup_module("b"), Fid{1}));
 }
 
 TEST_CASE(MultipleModules) {

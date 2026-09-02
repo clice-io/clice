@@ -606,18 +606,27 @@ test("cache wiped while running", async ({ session }) => {
 /// removed at startup, so its files cannot be navigated into through the
 /// metadata that still names them; the store's own namespace is untouched.
 test("legacy header_context directory removed", async ({ session }) => {
-    const { client, workspace } = session.tmp();
+    const workspace = session.tmpdir();
     workspace.pinCacheDir();
+    workspace.write("main.cpp", "int main() { return 0; }\n");
+    workspace.writeCDB(["main.cpp"]);
+    // A first session opens the store: only then is its namespace
+    // directory known, the version being the server's to choose.
+    const c1 = session.spawn(workspace);
+    await c1.initialize(workspace);
+    await c1.openAndWait("main.cpp");
+    await c1.shutdown();
+
     const legacy = workspace.path(path.join(".clice", "header_context"));
     fs.mkdirSync(legacy, { recursive: true });
     fs.writeFileSync(path.join(legacy, "0123456789abcdef.h"), "// stale prefix\n");
     const kept = path.join(workspace.headerContextDir(), "fedcba9876543210.h");
     fs.mkdirSync(workspace.headerContextDir(), { recursive: true });
     fs.writeFileSync(kept, "// store prefix\n");
-    workspace.write("main.cpp", "int main() { return 0; }\n");
-    workspace.writeCDB(["main.cpp"]);
-    await client.initialize(workspace);
-    await client.openAndWait("main.cpp");
+
+    const c2 = session.spawn(workspace);
+    await c2.initialize(workspace);
+    await c2.openAndWait("main.cpp");
 
     expect(fs.existsSync(legacy)).toBe(false);
     expect(workspace.headerContextFiles()).toEqual([kept]);

@@ -42,43 +42,53 @@ bool Features::ast_answerable(const Session& session) const {
 }
 
 kota::task<Features::Route> Features::pick_route(const Ticket& ticket,
-                                                 bool full_lex,
+                                                 RouteOptions options,
                                                  ServingSource* source) {
-    // This handler is resumed eagerly: drain the transport pipe before
-    // reading any buffer state, so a queued didChange or cancel lands
-    // first (the same discipline as completion's yield).
-    co_await kota::yield();
-    if(!ticket.fresh()) {
-        co_return Route::Superseded;
-    }
-    auto& session = *ticket.session;
-    if(ast_answerable(session)) {
-        co_return Route::Ast;
-    }
-    // An oversized buffer is not worth a synchronous main-thread lex; the
-    // full-lex projections follow the investment policy instead of the
-    // index slice. Row-backed answers serve at any size.
-    constexpr std::size_t full_lex_cap = 8 * 1024 * 1024;
-    bool capped = full_lex && session.text.size() > full_lex_cap;
-    if(!capped) {
-        // The session's own rows when current (the quarantine fallback —
-        // the worker cannot be asked, the rows are still true), else the
-        // disk shard admitted by freshness clause 4.
-        if(auto serving = query.serving_source(session.path_id)) {
-            // An index answer must not strand an escalated session's pending
-            // build: this request still pulls the compile it would otherwise
-            // have waited on, just without blocking.
-            if(session.serving == ServingMode::Escalated &&
-               !ast.projections.current(session.path_id)) {
-                ast.request_compile(ticket.session);
-            }
-            if(source) {
-                *source = serving;
-            }
-            co_return Route::Index;
+    for(bool waited = false;;) {
+        // This handler is resumed eagerly: drain the transport pipe before
+        // reading any buffer state, so a queued didChange or cancel lands
+        // first (the same discipline as completion's yield).
+        co_await kota::yield();
+        if(!ticket.fresh()) {
+            co_return Route::Superseded;
         }
+        auto& session = *ticket.session;
+        if(ast_answerable(session)) {
+            co_return Route::Ast;
+        }
+        // An oversized buffer is not worth a synchronous main-thread lex;
+        // the full-lex projections follow the investment policy instead of
+        // the index slice. Row-backed answers serve at any size.
+        constexpr std::size_t full_lex_cap = 8 * 1024 * 1024;
+        bool capped = options.full_lex && session.text.size() > full_lex_cap;
+        if(!capped) {
+            // The session's own rows when current (the quarantine fallback
+            // — the worker cannot be asked, the rows are still true), else
+            // the disk shard admitted by freshness clause 4.
+            if(auto serving = query.serving_source(session.path_id)) {
+                // An index answer must not strand an escalated session's
+                // pending build: this request still pulls the compile it
+                // would otherwise have waited on, just without blocking.
+                if(session.serving == ServingMode::Escalated &&
+                   !ast.projections.current(session.path_id)) {
+                    ast.request_compile(ticket.session);
+                }
+                if(source) {
+                    *source = serving;
+                }
+                co_return Route::Index;
+            }
+        }
+        if(session.serving == ServingMode::Escalated) {
+            co_return Route::Ast;
+        }
+        if(options.await_cold_attempt && !waited) {
+            waited = true;
+            co_await pump.await_attempt(session.path_id);
+            continue;
+        }
+        co_return Route::Empty;
     }
-    co_return session.serving == ServingMode::Escalated ? Route::Ast : Route::Empty;
 }
 
 Features::RawResult Features::stop_reply(Stop stop) {
@@ -89,7 +99,7 @@ Features::RawResult Features::stop_reply(Stop stop) {
 }
 
 kota::task<std::optional<Features::Stop>> Features::nav_gate(const Ticket& ticket) {
-    switch(co_await pick_route(ticket, /*full_lex=*/false)) {
+    switch(co_await pick_route(ticket, {})) {
         case Route::Superseded: co_return Stop{content_modified()};
         // The index sources resolve the cursor under clauses 1/4 — or
         // reject it, which the query layer answers as empty. Either way
@@ -313,46 +323,29 @@ kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
         }
     };
 
-    for(bool waited = false;;) {
-        switch(co_await pick_route(ticket, /*full_lex=*/false)) {
-            case Route::Superseded: co_return kota::outcome_error(content_modified());
-            case Route::Index: {
-                // Manifest edges cover the whole document (the background
-                // index has no preamble split); guard-skipped lines and
-                // __has_include/#embed have no edge and produce no link.
-                // Unlike the rows the other projections serve, the edges are
-                // disk truth: the quarantine fallback (own index current,
-                // buffer edited) must not project them onto a buffer the
-                // manifest never described — an edited directive would get
-                // the old target, confidently wrong.
-                std::vector<protocol::DocumentLink> links;
-                if(query.matching_shard(*session)) {
-                    auto raw = feature::index_document_links(session->text,
-                                                             index_lang_options(*session),
-                                                             query.include_edges(*session));
-                    convert(raw, links);
-                }
-                session->index_served = true;
-                co_return links;
+    switch(co_await pick_route(ticket, {.await_cold_attempt = true})) {
+        case Route::Superseded: co_return kota::outcome_error(content_modified());
+        case Route::Index: {
+            // Manifest edges cover the whole document (the background
+            // index has no preamble split); guard-skipped lines and
+            // __has_include/#embed have no edge and produce no link.
+            // Unlike the rows the other projections serve, the edges are
+            // disk truth: the quarantine fallback (own index current,
+            // buffer edited) must not project them onto a buffer the
+            // manifest never described — an edited directive would get
+            // the old target, confidently wrong.
+            std::vector<protocol::DocumentLink> links;
+            if(query.matching_shard(*session)) {
+                auto raw = feature::index_document_links(session->text,
+                                                         index_lang_options(*session),
+                                                         query.include_edges(*session));
+                convert(raw, links);
             }
-            case Route::Empty: {
-                // Like the outline, links have no refresh request; a cold
-                // document's empty reply would outlive the boost that is
-                // about to make them real. Await it once, then answer
-                // from the settled state.
-                if(!waited) {
-                    waited = true;
-                    co_await pump.await_attempt(session->path_id);
-                    if(ticket.fresh()) {
-                        continue;
-                    }
-                    co_return kota::outcome_error(content_modified());
-                }
-                co_return std::vector<protocol::DocumentLink>{};
-            }
-            case Route::Ast: break;
+            session->index_served = true;
+            co_return links;
         }
-        break;
+        case Route::Empty: co_return std::vector<protocol::DocumentLink>{};
+        case Route::Ast: break;
     }
 
     auto result = co_await dispatcher.document_links(ticket, std::move(token));
@@ -484,7 +477,7 @@ Features::RawResult Features::hover(std::shared_ptr<Session> session,
         return std::nullopt;
     };
 
-    switch(co_await pick_route(ticket, /*full_lex=*/false)) {
+    switch(co_await pick_route(ticket, {})) {
         case Route::Superseded: co_return kota::outcome_error(content_modified());
         case Route::Index: {
             if(auto card = index_card()) {
@@ -531,7 +524,7 @@ Features::RawResult Features::semantic_tokens(std::shared_ptr<Session> session,
                                               std::optional<kota::cancellation_token> token) {
     auto ticket = Ticket::take(session);
     ServingSource source;
-    switch(co_await pick_route(ticket, /*full_lex=*/true, &source)) {
+    switch(co_await pick_route(ticket, {.full_lex = true}, &source)) {
         case Route::Superseded: co_return kota::outcome_error(content_modified());
         case Route::Index: {
             auto rows = feature::extract_index_rows(*source.rows);
@@ -588,7 +581,7 @@ Features::RawResult Features::folding_range(std::shared_ptr<Session> session,
                                             std::optional<kota::cancellation_token> token) {
     auto ticket = Ticket::take(session);
     ServingSource source;
-    switch(co_await pick_route(ticket, /*full_lex=*/true, &source)) {
+    switch(co_await pick_route(ticket, {.full_lex = true}, &source)) {
         case Route::Superseded: co_return kota::outcome_error(content_modified());
         case Route::Index: {
             auto rows = feature::extract_index_rows(*source.rows);
@@ -623,44 +616,23 @@ Features::RawResult Features::folding_range(std::shared_ptr<Session> session,
 Features::RawResult Features::document_symbol(std::shared_ptr<Session> session,
                                               std::optional<kota::cancellation_token> token) {
     auto ticket = Ticket::take(session);
-    for(bool waited = false;;) {
-        ServingSource source;
-        switch(co_await pick_route(ticket, /*full_lex=*/false, &source)) {
-            case Route::Superseded: co_return kota::outcome_error(content_modified());
-            case Route::Index: {
-                auto rows = feature::extract_index_rows(*source.rows);
-                auto symbols =
-                    feature::index_document_symbols(rows.decls, [&](index::SymbolHash hash) {
-                        return query.symbol_info(hash);
-                    });
-                session->index_served = true;
-                co_return to_raw(
-                    feature::document_symbols_to_protocol(symbols,
-                                                          session->text,
-                                                          session->line_starts,
-                                                          feature::PositionEncoding::UTF16));
-            }
-            case Route::Empty: {
-                // The outline has no workspace refresh request: an
-                // empty reply to a cold document would be cached by
-                // the client for good — no signal ever makes it
-                // re-pull. Await the didOpen boost instead (bounded
-                // by one index attempt) and answer from whatever
-                // source that settles: the shard, the escalated
-                // compile, or honestly empty under readonly "on".
-                if(!waited) {
-                    waited = true;
-                    co_await pump.await_attempt(session->path_id);
-                    if(ticket.fresh()) {
-                        continue;
-                    }
-                    co_return kota::outcome_error(content_modified());
-                }
-                co_return serde_raw{"[]"};
-            }
-            case Route::Ast: break;
+    ServingSource source;
+    switch(co_await pick_route(ticket, {.await_cold_attempt = true}, &source)) {
+        case Route::Superseded: co_return kota::outcome_error(content_modified());
+        case Route::Index: {
+            auto rows = feature::extract_index_rows(*source.rows);
+            auto symbols = feature::index_document_symbols(rows.decls, [&](index::SymbolHash hash) {
+                return query.symbol_info(hash);
+            });
+            session->index_served = true;
+            co_return to_raw(
+                feature::document_symbols_to_protocol(symbols,
+                                                      session->text,
+                                                      session->line_starts,
+                                                      feature::PositionEncoding::UTF16));
         }
-        break;
+        case Route::Empty: co_return serde_raw{"[]"};
+        case Route::Ast: break;
     }
     co_return co_await dispatcher.query(worker::QueryKind::DocumentSymbol,
                                         ticket,
@@ -772,7 +744,7 @@ Features::RawResult Features::completion(std::shared_ptr<Session> session,
             co_return serde_raw{json ? std::move(*json) : "[]"};
         }
         if(pctx.kind == CompletionContext::Import) {
-            auto module_names = complete_module_import(workspace.path_to_module, pctx.prefix);
+            auto module_names = complete_module_import(workspace.dep_graph, pctx.prefix);
 
             std::vector<protocol::CompletionItem> items;
             items.reserve(module_names.size());

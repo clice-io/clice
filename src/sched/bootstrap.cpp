@@ -121,7 +121,6 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
              scan.total_edges,
              scan.elapsed_ms);
 
-    workspace.build_module_map();
     pump.claim_report(store.load(read_only_index).report);
 
     if(cfg.enable_indexing.value) {

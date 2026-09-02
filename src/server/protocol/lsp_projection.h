@@ -3,7 +3,9 @@
 #include <optional>
 #include <vector>
 
-#include "server/service/query.h"
+#include "index/types.h"
+#include "semantic/symbol.h"
+#include "server/protocol/position.h"
 
 #include "kota/codec/json/json.h"
 #include "kota/ipc/lsp/protocol.h"
@@ -30,15 +32,15 @@ std::vector<protocol::Location> locations(llvm::ArrayRef<Site> sites);
 /// table, with the kinds these surfaces display differently overridden.
 protocol::SymbolKind symbol_kind(SymbolKind kind);
 
-std::optional<protocol::SymbolInformation> symbol_information(const SymbolRef& symbol,
+std::optional<protocol::SymbolInformation> symbol_information(const index::SymbolRef& symbol,
                                                               const Site& site);
 
 /// Hierarchy items carry their symbol handle in `data` as a decimal
 /// string: a raw 64-bit integer would be parsed into a double by a
 /// JavaScript client and come back rounded.
-std::optional<protocol::CallHierarchyItem> call_hierarchy_item(const SymbolRef& symbol,
+std::optional<protocol::CallHierarchyItem> call_hierarchy_item(const index::SymbolRef& symbol,
                                                                const Site& site);
-std::optional<protocol::TypeHierarchyItem> type_hierarchy_item(const SymbolRef& symbol,
+std::optional<protocol::TypeHierarchyItem> type_hierarchy_item(const index::SymbolRef& symbol,
                                                                const Site& site);
 
 /// The symbol handle a prepared hierarchy item came back with, if intact.

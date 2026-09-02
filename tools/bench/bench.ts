@@ -347,11 +347,9 @@ function serverArgs(opts: Options): string[] {
         : ["--background-index", `--compile-commands-dir=${opts.cdbDir}`];
 }
 
-/// CliceClient.initialize defaults worker counts to 1 and zeroes the
-/// tracker polling loops for cheap deterministic tests; a benchmark must
-/// run the server's real defaults (stateful 2, stateless cores/2, tracker
-/// 3s/30s, from src/server/state/config.h) including the background
-/// activity those loops generate.
+/// Only what the comparison must pin; everything else runs at the
+/// server's real defaults (see startServer), including the background
+/// activity the tracker's polling loops generate.
 function initializationOptions(opts: Options): Record<string, unknown> {
     return {
         project: {
@@ -364,14 +362,6 @@ function initializationOptions(opts: Options): Record<string, unknown> {
             // <workspace>/.clice/logs); a clice.toml logging_dir would
             // otherwise send the worker perf lines elsewhere.
             logging_dir: path.join(opts.workspace, ".clice", "logs"),
-            stateful_worker_count: 2,
-            // availableParallelism respects cpusets and container CPU
-            // quotas; os.cpus() is the host's full list.
-            stateless_worker_count: Math.max(Math.floor(os.availableParallelism() / 2), 2),
-        },
-        tracker: {
-            cdb_poll_seconds: 3,
-            workspace_poll_seconds: 30,
         },
     };
 }
@@ -380,6 +370,7 @@ async function startServer(opts: Options): Promise<CliceClient> {
     const client = CliceClient.start(opts.binary, { args: serverArgs(opts) });
     await client.initialize(new Workspace(opts.workspace), {
         initializationOptions: initializationOptions(opts),
+        testDefaults: false,
     });
     return client;
 }

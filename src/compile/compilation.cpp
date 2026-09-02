@@ -3,6 +3,7 @@
 #include <algorithm>
 
 #include "command/command.h"
+#include "command/invocation.h"
 #include "compile/diagnostic.h"
 #include "compile/implement.h"
 #include "semantic/decls.h"
@@ -13,7 +14,6 @@
 #include "llvm/Support/Error.h"
 #include "llvm/Support/xxhash.h"
 #include "clang/Basic/Stack.h"
-#include "clang/Driver/CreateInvocationFromArgs.h"
 #include "clang/Frontend/MultiplexConsumer.h"
 #include "clang/Frontend/TextDiagnosticPrinter.h"
 #include "clang/Lex/PreprocessorOptions.h"
@@ -49,54 +49,14 @@ std::unique_ptr<clang::CompilerInvocation>
         LOG_ERROR_RET(nullptr, "Fail to create diagnostics engine");
     }
 
-    std::unique_ptr<clang::CompilerInvocation> invocation;
-
-    /// If the second argument is "-cc1", the arguments are already expanded
-    /// (e.g. from compilation database + toolchain query). Skip driver and "-cc1"
-    /// and create invocation directly from the cc1 args.
-    bool is_cc1 = params.arguments.size() >= 2 && llvm::StringRef(params.arguments[1]) == "-cc1";
-    if(is_cc1) {
-        invocation = std::make_unique<clang::CompilerInvocation>();
-        if(!clang::CompilerInvocation::CreateFromArgs(
-               *invocation,
-               llvm::ArrayRef(params.arguments).drop_front(2),
-               *diagnostic_engine,
-               params.arguments[0])) {
-            LOG_ERROR_RET(nullptr,
-                          " Fail to create invocation, arguments list is: {}",
-                          print_argv(params.arguments));
-        }
-    } else {
-        /// Create clang invocation.
-        clang::CreateInvocationOptions options = {
-            .Diags = diagnostic_engine,
-            .VFS = params.vfs,
-
-            /// Avoid replacing -include with -include-pch, also
-            /// see https://github.com/clangd/clangd/issues/856.
-            .ProbePrecompiled = false,
-        };
-
-        invocation = clang::createInvocation(params.arguments, options);
-        if(!invocation) {
-            LOG_ERROR_RET(nullptr,
-                          " Fail to create invocation, arguments list is: {}",
-                          print_argv(params.arguments));
-        }
-    }
-
-    /// The entry's compilation directory governs relative paths in the
-    /// compile (inputs, -include, header search), the same way clang's
-    /// -working-directory does. An explicit -working-directory wins, but
-    /// its own relative value resolves from the compile's directory, like
-    /// the real driver run from there.
-    if(!params.directory.empty()) {
-        auto& working_dir = invocation->getFileSystemOpts().WorkingDir;
-        if(working_dir.empty()) {
-            working_dir = params.directory;
-        } else if(!path::is_absolute(working_dir)) {
-            working_dir = path::join(params.directory, working_dir);
-        }
+    auto invocation = create_compiler_invocation(params.arguments,
+                                                 params.directory,
+                                                 params.vfs,
+                                                 diagnostic_engine);
+    if(!invocation) {
+        LOG_ERROR_RET(nullptr,
+                      " Fail to create invocation, arguments list is: {}",
+                      print_argv(params.arguments));
     }
 
     auto& pp_opts = invocation->getPreprocessorOpts();
@@ -128,7 +88,6 @@ std::unique_ptr<clang::CompilerInvocation>
     }
 
     auto& front_opts = invocation->getFrontendOpts();
-    front_opts.DisableFree = false;
     front_opts.ShowHelp = false;
     front_opts.ShowStats = false;
     front_opts.ShowVersion = false;

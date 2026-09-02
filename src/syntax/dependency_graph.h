@@ -67,6 +67,17 @@ public:
     /// Look up all fids that provide a given module (may have multiple candidates).
     llvm::ArrayRef<Fid> lookup_module(llvm::StringRef module_name) const;
 
+    /// The module a file provides as an interface unit; empty for every
+    /// other file. Borrowed from the graph: copy it before a suspension
+    /// that could re-declare the file.
+    llvm::StringRef module_of(Fid path_id) const;
+
+    /// Whether any file provides a module: the gate the module code
+    /// paths (import scans, PCM planning) pay only once modules exist.
+    bool has_modules() const {
+        return !module_by_path.empty();
+    }
+
     /// Set the direct include list for a (file, config) pair.
     void set_includes(Fid path_id,
                       std::uint32_t config_id,
@@ -138,6 +149,9 @@ public:
 private:
     /// Module name -> fids (multiple candidates possible, e.g. different targets).
     llvm::StringMap<llvm::SmallVector<Fid, 2>> module_to_path;
+
+    /// The inverse of module_to_path, maintained by the same two writers.
+    llvm::DenseMap<Fid, std::string> module_by_path;
 
     /// See set_import_candidate().
     llvm::DenseSet<Fid> import_candidates;

@@ -15,10 +15,6 @@
 
 namespace clice {
 
-/// The PCH family's id in the task graph. Node keys are family-interned
-/// content-addressed pch_keys (monotonic, never recycled).
-constexpr inline std::uint8_t pch_family = 2;
-
 /// Preamble artifacts (a PCH and its pch.idx envelope, committed as one
 /// pair) as a task-graph family: one node per content-addressed pch_key,
 /// no edges, one round = one revalidation or build. The facade is the
@@ -37,7 +33,7 @@ public:
 
     /// Register the production runner. Tests that drive the facade
     /// against a synthetic build register their own runner under
-    /// pch_family instead.
+    /// Family::PCH instead.
     void register_runner();
 
     /// One acquisition's request conditions: the artifact identity plus
@@ -123,7 +119,7 @@ private:
     std::uint64_t intern(llvm::StringRef pch_key);
 
     static NodeId node(std::uint64_t key_id) {
-        return {pch_family, key_id};
+        return {Family::PCH, key_id};
     }
 
     /// Per-key slot for the dispatch owner's stash; both fields are

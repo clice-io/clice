@@ -3227,7 +3227,6 @@ TEST_CASE(ModuleLintScanParity) {
     }));
     scan_dependency_graph(f.workspace.cdb, f.workspace.dep_graph);
     f.workspace.dep_graph.build_reverse_map();
-    f.workspace.build_module_map();
 
     auto store = CacheStore::open(tmp.path("root"), 1);
     ASSERT_TRUE(store.has_value());

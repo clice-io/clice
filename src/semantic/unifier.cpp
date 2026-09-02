@@ -782,8 +782,10 @@ bool deduce_arguments(clang::ASTContext& context,
 
 namespace {
 
+/// Partial ordering via symmetric deduction: `left` is more specialized than
+/// `right` iff right's pattern matches left's and not vice versa.
 template <typename Partial>
-bool more_specialized_impl(clang::ASTContext& context, Partial* left, Partial* right) {
+bool more_specialized(clang::ASTContext& context, Partial* left, Partial* right) {
     auto matches = [&](Partial* pattern, Partial* argument) {
         auto params = pattern->getTemplateParameters();
         Unifier unifier(context, params->getDepth(), params->size());
@@ -794,18 +796,41 @@ bool more_specialized_impl(clang::ASTContext& context, Partial* left, Partial* r
     return matches(right, left) && !matches(left, right);
 }
 
-}  // namespace
-
-bool more_specialized(clang::ASTContext& context,
-                      clang::ClassTemplatePartialSpecializationDecl* left,
-                      clang::ClassTemplatePartialSpecializationDecl* right) {
-    return more_specialized_impl(context, left, right);
+template <typename Partial>
+PartialChoice<Partial> select_partial_impl(clang::ASTContext& context,
+                                           llvm::ArrayRef<Partial*> viable) {
+    Partial* best = nullptr;
+    for(auto* partial: viable) {
+        if(!best || more_specialized(context, partial, best)) {
+            best = partial;
+        }
+    }
+    if(!best) {
+        return {};
+    }
+    for(auto* partial: viable) {
+        if(partial != best && !more_specialized(context, best, partial)) {
+            return {.verdict = PartialVerdict::Ambiguous};
+        }
+    }
+    if(best->getTemplateParameters()->hasAssociatedConstraints()) {
+        return {.verdict = PartialVerdict::Constrained};
+    }
+    return {.verdict = PartialVerdict::Selected, .winner = best};
 }
 
-bool more_specialized(clang::ASTContext& context,
-                      clang::VarTemplatePartialSpecializationDecl* left,
-                      clang::VarTemplatePartialSpecializationDecl* right) {
-    return more_specialized_impl(context, left, right);
+}  // namespace
+
+PartialChoice<clang::ClassTemplatePartialSpecializationDecl>
+    select_partial(clang::ASTContext& context,
+                   llvm::ArrayRef<clang::ClassTemplatePartialSpecializationDecl*> viable) {
+    return select_partial_impl(context, viable);
+}
+
+PartialChoice<clang::VarTemplatePartialSpecializationDecl>
+    select_partial(clang::ASTContext& context,
+                   llvm::ArrayRef<clang::VarTemplatePartialSpecializationDecl*> viable) {
+    return select_partial_impl(context, viable);
 }
 
 }  // namespace clice::types

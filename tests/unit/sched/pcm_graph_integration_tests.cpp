@@ -15,7 +15,7 @@ namespace {
 using DispatchFn = std::function<kota::task<RoundOutcome>(std::uint32_t path_id, bool foreground)>;
 using ResolveFn = std::function<llvm::SmallVector<std::uint32_t>(std::uint32_t path_id)>;
 
-constexpr std::uint8_t test_family = 1;
+constexpr Family test_family = Family{1};
 
 NodeId nid(std::uint32_t path_id) {
     return {test_family, path_id};

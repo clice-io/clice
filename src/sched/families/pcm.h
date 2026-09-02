@@ -14,10 +14,6 @@
 
 namespace clice {
 
-/// The PCM family's id in the task graph. Node keys are module-unit
-/// path_ids widened into NodeId::key.
-constexpr inline std::uint8_t pcm_family = 1;
-
 /// C++20 module artifacts (PCM) as a task-graph family: one node per
 /// module unit, edges to the modules it imports, one round = one PCM
 /// build (or cache revalidation). The facade is the only surface
@@ -35,7 +31,7 @@ public:
 
     /// Register the production runner. Tests that drive the facade
     /// against a synthetic topology register their own runner under
-    /// pcm_family instead.
+    /// Family::PCM instead.
     void register_runner();
 
     /// Re-validate on-disk PCM blobs and build the module dependencies of
@@ -95,12 +91,12 @@ public:
     /// the edge — no side bookkeeping of who failed against the name.
     /// The high bit keeps the key space disjoint from path_ids.
     static NodeId unresolved_node(llvm::StringRef name) {
-        return {pcm_family, (1ull << 63) | (llvm::xxh3_64bits(name) >> 1)};
+        return {Family::PCM, (1ull << 63) | (llvm::xxh3_64bits(name) >> 1)};
     }
 
     /// Whether a node is an unresolved-import sentinel.
     static bool is_unresolved(NodeId id) {
-        return id.family == pcm_family && (id.key >> 63) != 0;
+        return id.family == Family::PCM && (id.key >> 63) != 0;
     }
 
     /// A module name gained a provider it lacked: void the sentinel's
@@ -137,7 +133,7 @@ private:
     kota::task<RoundOutcome> run(RoundContext& ctx, Fid path_id);
 
     static NodeId node(Fid path_id) {
-        return {pcm_family, path_id.raw};
+        return {Family::PCM, path_id.raw};
     }
 
     TaskGraph& graph;

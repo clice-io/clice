@@ -130,6 +130,17 @@ private:
     /// the config's user-content args and replacing external resource dirs.
     ResolvedID synthesize(ConfigID id, llvm::ArrayRef<const char*> tokens);
 
+    /// What the probe caches say about a (config, input) key: a live
+    /// probe, a failure still cooling down, or the query to run. A
+    /// cooled-down failure is dropped on the way, so the query retries.
+    struct ProbeAdmission;
+    ProbeAdmission admit_probe(ConfigID id, InputKind input);
+
+    /// Lands a query's outcome: the tokens into the probe cache, a failure
+    /// into the negative cache with its time.
+    void land_probe(llvm::StringRef key,
+                    const std::expected<std::vector<std::string>, std::string>& result);
+
     CompilationDatabase& db;
 
     /// Probe layer: key → raw probe output tokens (interned).

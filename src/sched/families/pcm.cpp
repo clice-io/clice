@@ -25,7 +25,7 @@ PCMFamily::PCMFamily(TaskGraph& graph,
     graph(graph), workspace(workspace), contexts(contexts), pool(pool) {}
 
 void PCMFamily::register_runner() {
-    graph.register_family(pcm_family, [this](RoundContext& ctx, NodeId id) {
+    graph.register_family(Family::PCM, [this](RoundContext& ctx, NodeId id) {
         return run(ctx, Fid{static_cast<std::uint32_t>(id.key)});
     });
 }
@@ -87,7 +87,7 @@ llvm::SmallVector<NodeId> PCMFamily::provider_appeared(llvm::StringRef name) {
         // Dirtied module units drop their cached PCM state, exactly as
         // invalidate() does for content changes — a PCM built against
         // the unresolved name embeds the failure.
-        if(id.family == pcm_family && !is_unresolved(id)) {
+        if(id.family == Family::PCM && !is_unresolved(id)) {
             erased |= workspace.pcm_cache.erase(Fid{static_cast<std::uint32_t>(id.key)});
         }
     }
@@ -127,14 +127,12 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
         }
     }
 
-    auto mod_it = workspace.path_to_module.find(path_id);
-    if(mod_it == workspace.path_to_module.end())
+    // Copied before any suspension below: while a PCM build is awaited, a
+    // concurrent didSave can re-declare the file and drop the graph's
+    // string.
+    std::string module_name(workspace.dep_graph.module_of(path_id));
+    if(module_name.empty())
         co_return RoundOutcome::Failed;
-
-    // Copy out of the map before any suspension below: while a PCM build
-    // is awaited, a concurrent didSave can insert into (or erase from)
-    // path_to_module, rehashing the DenseMap and invalidating mod_it.
-    auto module_name = mod_it->second;
 
     auto file_path = std::string(workspace.file_table.resolve(path_id));
 
@@ -296,7 +294,7 @@ kota::task<bool> PCMFamily::prepare_deps(Fid path_id,
                                          bool foreground) {
     // A project without module units pays nothing. A CDB reload that
     // introduces modules mid-session takes effect on the next call.
-    if(workspace.path_to_module.empty()) {
+    if(!workspace.dep_graph.has_modules()) {
         co_return true;
     }
 
@@ -312,7 +310,7 @@ kota::task<bool> PCMFamily::prepare_deps(Fid path_id,
     // (an unsaved removed import would disconnect the cached PCM from
     // the very dependency whose save should invalidate it). Plain TUs'
     // consumer nodes never run rounds; the declaration is theirs alone.
-    if(!workspace.path_to_module.contains(path_id)) {
+    if(workspace.dep_graph.module_of(path_id).empty()) {
         declare_deps(path_id, deps.declared);
     }
     if(deps.resolved.empty()) {

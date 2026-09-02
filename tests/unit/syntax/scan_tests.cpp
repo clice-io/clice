@@ -227,6 +227,32 @@ TEST_CASE(PreciseWithContent) {
     EXPECT_FALSE(result.includes[0].not_found);
 }
 
+TEST_CASE(PreciseHonorsWorkingDirectory) {
+    // The scan interprets the command like the compile does: an explicit
+    // -working-directory wins over the entry's directory, and a relative
+    // one resolves from it — else a header the compile finds through a
+    // relative search path scans as missing and never enters the graph.
+    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
+    auto main_path = TestVFS::path("main.cpp");
+    vfs->add("main.cpp", R"(#include "x.h")");
+    vfs->add("other/rel/x.h");
+
+    auto absolute = "-working-directory=" + TestVFS::path("other");
+    auto args = std::vector<const char*>{"clang++",
+                                         "-std=c++20",
+                                         absolute.c_str(),
+                                         "-Irel",
+                                         main_path.c_str()};
+    auto result = scan_precise(args, TestVFS::root(), {}, nullptr, vfs);
+    ASSERT_EQ(result.includes.size(), 1u);
+    EXPECT_FALSE(result.includes[0].not_found);
+
+    args[2] = "-working-directory=other";
+    result = scan_precise(args, TestVFS::root(), {}, nullptr, vfs);
+    ASSERT_EQ(result.includes.size(), 1u);
+    EXPECT_FALSE(result.includes[0].not_found);
+}
+
 TEST_CASE(RemapBypassesSharedCache) {
     auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
     auto main_path = TestVFS::path("main.cpp");

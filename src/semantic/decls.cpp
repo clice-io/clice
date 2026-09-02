@@ -118,34 +118,18 @@ const clang::NamedDecl* undeclared_pattern(const Spec* spec) {
                                        deduced);
     };
 
-    Partial* best = nullptr;
     llvm::SmallVector<Partial*, 4> matched;
     for(auto* partial: partials) {
         if(matches(partial)) {
             matched.push_back(partial);
-            if(!best || types::more_specialized(context, partial, best)) {
-                best = partial;
-            }
         }
     }
 
-    if(!best) {
+    auto choice = types::select_partial(context, matched);
+    if(choice.verdict != types::PartialVerdict::Selected) {
         return primary->getTemplatedDecl();
     }
-
-    /// Real instantiation diagnoses ambiguity; degrade to the primary
-    /// rather than picking arbitrarily.
-    for(auto* partial: matched) {
-        if(partial != best && !types::more_specialized(context, best, partial)) {
-            return primary->getTemplatedDecl();
-        }
-    }
-
-    if(best->getTemplateParameters()->hasAssociatedConstraints()) {
-        return primary->getTemplatedDecl();
-    }
-
-    return best;
+    return choice.winner;
 }
 
 const clang::CXXRecordDecl* getDeclContextForTemplateInstationPattern(const clang::Decl* D) {

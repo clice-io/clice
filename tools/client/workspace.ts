@@ -8,10 +8,6 @@ import * as path from "node:path";
 import { URI } from "vscode-uri";
 import { buildCDBEntry, generateCDB } from "../compile_commands.ts";
 
-/// Versioned root of the unified cache store; bump together with
-/// cache_format_version in src/sched/workspace.h.
-const CACHE_ROOT = path.join(".clice", "cache", "v8");
-
 /// The harness-wide canonical URI spelling: percent-decoded. vscode-uri
 /// encodes the drive colon (file:///c%3A/...) while the server emits it
 /// literally (file:///c:/...); both decode to one form. Every URI used
@@ -125,12 +121,41 @@ export class Workspace {
         this.write("clice.toml", '[project]\ncache_dir = "${workspace}/.clice"\n');
     }
 
-    /// The versioned cache store root.
+    /// The versioned cache store root the server opened: the one
+    /// `v<N>` directory under `.clice/cache`, so a version bump on the
+    /// C++ side never leaves the helpers reading a stale tree. Throws
+    /// when there is none yet or more than one.
     cacheRoot(): string {
-        return this.path(CACHE_ROOT);
+        const versions = this.cacheVersions();
+        const [only] = versions;
+        if (versions.length !== 1 || only === undefined) {
+            throw new Error(
+                `expected one cache version directory under ${this.cacheBase()}, found [${versions.join(", ")}]`,
+            );
+        }
+        return path.join(this.cacheBase(), only);
+    }
+
+    private cacheBase(): string {
+        return this.path(path.join(".clice", "cache"));
+    }
+
+    private cacheVersions(): string[] {
+        if (!fs.existsSync(this.cacheBase())) {
+            return [];
+        }
+        return fs
+            .readdirSync(this.cacheBase(), { withFileTypes: true })
+            .filter((entry) => entry.isDirectory() && /^v\d+$/.test(entry.name))
+            .map((entry) => entry.name);
     }
 
     private globCache(sub: string, suffix: string): string[] {
+        // No store yet (a read-only session opens none) is an empty
+        // namespace, not an error.
+        if (this.cacheVersions().length === 0) {
+            return [];
+        }
         const dir = path.join(this.cacheRoot(), sub);
         if (!fs.existsSync(dir)) {
             return [];
@@ -170,6 +195,9 @@ export class Workspace {
     /// atomically, so anything under tmp/ is either an in-flight write of a
     /// live server or crash residue awaiting cleanup.
     tmpFiles(): string[] {
+        if (this.cacheVersions().length === 0) {
+            return [];
+        }
         const tmpDir = path.join(this.cacheRoot(), "tmp");
         if (!fs.existsSync(tmpDir)) {
             return [];

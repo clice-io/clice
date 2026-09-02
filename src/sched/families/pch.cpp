@@ -16,7 +16,7 @@ PCHFamily::PCHFamily(TaskGraph& graph,
     graph(graph), workspace(workspace), contexts(contexts), pool(pool) {}
 
 void PCHFamily::register_runner() {
-    graph.register_family(pch_family,
+    graph.register_family(Family::PCH,
                           [this](RoundContext& ctx, NodeId id) { return run(ctx, id.key); });
 }
 

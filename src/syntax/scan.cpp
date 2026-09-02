@@ -2,6 +2,7 @@
 
 #include <deque>
 
+#include "command/invocation.h"
 #include "syntax/lexer.h"
 
 #include "llvm/ADT/StringSet.h"
@@ -10,7 +11,6 @@
 #include "clang/Basic/FileEntry.h"
 #include "clang/Basic/FileManager.h"
 #include "clang/Basic/SourceManager.h"
-#include "clang/Driver/CreateInvocationFromArgs.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Frontend/FrontendActions.h"
 #include "clang/Lex/PPCallbacks.h"
@@ -278,51 +278,41 @@ private:
     int conditional_depth = 0;
 };
 
-/// Create and configure a CompilerInstance for scanning.
-/// An engaged content remaps the main file to it, even when empty.
-std::unique_ptr<clang::CompilerInstance>
-    create_scan_instance(llvm::ArrayRef<const char*> arguments,
-                         llvm::StringRef directory,
-                         std::optional<llvm::StringRef> content,
-                         llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs) {
+/// The setup every preprocessor-driven scan shares: the instance from the
+/// command (diagnostics ignored), the directives getter — a remapped main file bypasses the
+/// path-keyed cache, or it would read a prior on-disk scan of the same
+/// path and poison it for later ones — the target, and the main file
+/// entered through a preprocess-only action. `body` runs on the entered
+/// preprocessor; the module declaration it reached is read into `result`
+/// before the source file is ended.
+void scan_with_preprocessor(
+    llvm::ArrayRef<const char*> arguments,
+    llvm::StringRef directory,
+    std::optional<llvm::StringRef> content,
+    SharedScanCache* cache,
+    llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs,
+    ScanResult& result,
+    llvm::function_ref<void(clang::CompilerInstance&, clang::FrontendAction&)> body) {
+    if(!vfs) {
+        vfs = llvm::vfs::createPhysicalFileSystem();
+    }
+
     clang::DiagnosticOptions diag_opts;
     auto diag_engine = clang::CompilerInstance::createDiagnostics(*vfs,
                                                                   diag_opts,
                                                                   new clang::IgnoringDiagConsumer(),
                                                                   true);
-
-    std::unique_ptr<clang::CompilerInvocation> invocation;
-
-    bool is_cc1 = arguments.size() >= 2 && llvm::StringRef(arguments[1]) == "-cc1";
-    if(is_cc1) {
-        invocation = std::make_unique<clang::CompilerInvocation>();
-        if(!clang::CompilerInvocation::CreateFromArgs(*invocation,
-                                                      llvm::ArrayRef(arguments).drop_front(2),
-                                                      *diag_engine,
-                                                      arguments[0])) {
-            return nullptr;
-        }
-    } else {
-        clang::CreateInvocationOptions options = {
-            .Diags = diag_engine,
-            .VFS = vfs,
-            .ProbePrecompiled = false,
-        };
-        invocation = clang::createInvocation(arguments, options);
-        if(!invocation) {
-            return nullptr;
-        }
+    auto invocation = create_compiler_invocation(arguments, directory, vfs, diag_engine);
+    if(!invocation) {
+        return;
     }
 
-    invocation->getFrontendOpts().DisableFree = false;
-    invocation->getFileSystemOpts().WorkingDir = directory.str();
-
+    // An engaged content remaps the main file to it, even when empty: an
+    // overlay VFS, so both the preprocessor and the directives getter see it.
     if(content.has_value()) {
         auto& inputs = invocation->getFrontendOpts().Inputs;
         if(!inputs.empty()) {
             auto main_file = inputs[0].getFile();
-            // Use an overlay VFS to inject the remapped content. This ensures
-            // both the preprocessor and the DependencyDirectivesGetter see it.
             auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(vfs);
             auto mem_fs = llvm::makeIntrusiveRefCnt<llvm::vfs::InMemoryFileSystem>();
             mem_fs->addFile(main_file,
@@ -339,7 +329,28 @@ std::unique_ptr<clang::CompilerInstance>
     instance->getDiagnostics().setSuppressAllDiagnostics(true);
     instance->createFileManager();
 
-    return instance;
+    auto getter = std::make_unique<ScanDirectivesGetter>(content ? nullptr : cache,
+                                                         instance->getFileManager());
+    instance->setDependencyDirectivesGetter(std::move(getter));
+
+    if(!instance->createTarget()) {
+        return;
+    }
+
+    auto action = std::make_unique<clang::PreprocessOnlyAction>();
+    if(!action->BeginSourceFile(*instance, instance->getFrontendOpts().Inputs[0])) {
+        return;
+    }
+
+    body(*instance, *action);
+
+    auto& pp = instance->getPreprocessor();
+    if(pp.isInNamedModule()) {
+        result.module_name = pp.getNamedModuleName();
+        result.is_interface_unit = pp.isInNamedInterfaceUnit();
+    }
+
+    action->EndSourceFile();
 }
 
 }  // namespace
@@ -350,47 +361,19 @@ ScanResult scan_precise(llvm::ArrayRef<const char*> arguments,
                         SharedScanCache* cache,
                         llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs) {
     ScanResult result;
-
-    if(!vfs) {
-        vfs = llvm::vfs::createPhysicalFileSystem();
-    }
-
-    auto instance = create_scan_instance(arguments, directory, content, vfs);
-    if(!instance) {
-        return result;
-    }
-
-    // The cache is keyed by path alone; a remapped main file must not read
-    // a prior on-disk scan of the same path nor poison it for later ones.
-    auto getter = std::make_unique<ScanDirectivesGetter>(content ? nullptr : cache,
-                                                         instance->getFileManager());
-    instance->setDependencyDirectivesGetter(std::move(getter));
-
-    if(!instance->createTarget()) {
-        return result;
-    }
-
-    auto action = std::make_unique<clang::PreprocessOnlyAction>();
-
-    if(!action->BeginSourceFile(*instance, instance->getFrontendOpts().Inputs[0])) {
-        return result;
-    }
-
-    instance->getPreprocessor().addPPCallbacks(std::make_unique<PreciseScanPPCallbacks>(result));
-
-    if(auto error = action->Execute()) {
-        llvm::consumeError(std::move(error));
-    }
-
-    action->EndSourceFile();
-
-    // Get module name from preprocessor.
-    auto& pp = instance->getPreprocessor();
-    if(pp.isInNamedModule()) {
-        result.module_name = pp.getNamedModuleName();
-        result.is_interface_unit = pp.isInNamedInterfaceUnit();
-    }
-
+    scan_with_preprocessor(arguments,
+                           directory,
+                           content,
+                           cache,
+                           std::move(vfs),
+                           result,
+                           [&](clang::CompilerInstance& instance, clang::FrontendAction& action) {
+                               instance.getPreprocessor().addPPCallbacks(
+                                   std::make_unique<PreciseScanPPCallbacks>(result));
+                               if(auto error = action.Execute()) {
+                                   llvm::consumeError(std::move(error));
+                               }
+                           });
     return result;
 }
 
@@ -400,48 +383,23 @@ ScanResult scan_module_decl(llvm::ArrayRef<const char*> arguments,
                             SharedScanCache* cache,
                             llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs) {
     ScanResult result;
-
-    if(!vfs) {
-        vfs = llvm::vfs::createPhysicalFileSystem();
-    }
-
-    auto instance = create_scan_instance(arguments, directory, content, vfs);
-    if(!instance) {
-        return result;
-    }
-
-    // See scan_precise: a remapped main file bypasses the path-keyed cache.
-    auto getter = std::make_unique<ScanDirectivesGetter>(content ? nullptr : cache,
-                                                         instance->getFileManager());
-    instance->setDependencyDirectivesGetter(std::move(getter));
-
-    if(!instance->createTarget()) {
-        return result;
-    }
-
-    auto action = std::make_unique<clang::PreprocessOnlyAction>();
-
-    if(!action->BeginSourceFile(*instance, instance->getFrontendOpts().Inputs[0])) {
-        return result;
-    }
-
-    // Instead of action->Execute() which processes the entire file,
-    // manually lex tokens and stop as soon as the module declaration is found.
-    auto& pp = instance->getPreprocessor();
-    pp.EnterMainSourceFile();
-
-    clang::Token tok;
-    do {
-        pp.Lex(tok);
-        if(pp.isInNamedModule()) {
-            result.module_name = pp.getNamedModuleName();
-            result.is_interface_unit = pp.isInNamedInterfaceUnit();
-            break;
-        }
-    } while(tok.isNot(clang::tok::eof));
-
-    action->EndSourceFile();
-
+    scan_with_preprocessor(arguments,
+                           directory,
+                           content,
+                           cache,
+                           std::move(vfs),
+                           result,
+                           [](clang::CompilerInstance& instance, clang::FrontendAction&) {
+                               // Instead of Execute(), which processes the
+                               // entire file, lex and stop as soon as the
+                               // module declaration is found.
+                               auto& pp = instance.getPreprocessor();
+                               pp.EnterMainSourceFile();
+                               clang::Token tok;
+                               do {
+                                   pp.Lex(tok);
+                               } while(!pp.isInNamedModule() && tok.isNot(clang::tok::eof));
+                           });
     return result;
 }
 
