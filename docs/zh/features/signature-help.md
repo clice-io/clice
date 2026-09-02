@@ -30,121 +30,110 @@
 
 ## 重载签名
 
-<!-- BEGIN GENERATED ITEMS: Overload Signatures -->
+<!-- BEGIN GENERATED ITEMS: overload_signatures -->
 
-- [x] 函数重载 — 被调用者的每个重载，各带参数列表和返回类型
+| 能力                 | 状态 | 问题 |
+| -------------------- | ---- | ---- |
+| 函数重载             | 支持 |      |
+| 活跃参数追踪         | 支持 |      |
+| 成员函数重载         | 支持 |      |
+| 标签中的默认参数     | 支持 |      |
+| C 风格可变参数函数   | 支持 |      |
+| 可变参数模板包       | 支持 |      |
+| 活跃参数越过较短重载 | 支持 |      |
 
-  <details>
-  <summary>示例</summary>
+### 函数重载
 
-  ```cpp
-  void foo();
-  void foo(int x);
-  void foo(int x, int y);
+被调用者的每个重载，各带参数列表和返回类型
 
-  int main() {
-      foo();
-  }
-  ```
+```cpp
+void foo();
+void foo(int x);
+void foo(int x, int y);
 
-  </details>
+int main() {
+    foo();
+}
+```
 
-- [x] 活跃参数追踪 — 光标下的参数被括起；光标位于第二个参数
+### 活跃参数追踪
 
-  <details>
-  <summary>示例</summary>
+光标下的参数被括起；光标位于第二个参数
 
-  ```cpp
-  void bar(int first, double second, char third);
+```cpp
+void bar(int first, double second, char third);
 
-  int main() {
-      bar(1, 2.0, 'c');
-  }
-  ```
+int main() {
+    bar(1, 2.0, 'c');
+}
+```
 
-  </details>
+### 成员函数重载
 
-- [x] 成员函数重载 — 非 const 接收者列出 const 与非 const 重载；尾随 const 限定符不在标签中显示
+非 const 接收者列出 const 与非 const 重载；尾随 const 限定符不在标签中显示
 
-  <details>
-  <summary>示例</summary>
+```cpp
+struct Buffer {
+    int at(int index);
+    int at(int index) const;
+};
 
-  ```cpp
-  struct Buffer {
-      int at(int index);
-      int at(int index) const;
-  };
+int main() {
+    Buffer b;
+    b.at(0);
+}
+```
 
-  int main() {
-      Buffer b;
-      b.at(0);
-  }
-  ```
+### 标签中的默认参数
 
-  </details>
+带默认值的参数在签名中显示其初始化式
 
-- [x] 标签中的默认参数 — 带默认值的参数在签名中显示其初始化式
+```cpp
+void configure(int width, int height = 100, bool visible = true);
 
-  <details>
-  <summary>示例</summary>
+int main() {
+    configure(1);
+}
+```
 
-  ```cpp
-  void configure(int width, int height = 100, bool visible = true);
+### C 风格可变参数函数
 
-  int main() {
-      configure(1);
-  }
-  ```
+列出命名参数，标签中省略尾部的省略号
 
-  </details>
+```cpp
+void record(int code, ...);
 
-- [x] C 风格可变参数函数 — 列出命名参数，标签中省略尾部的省略号
+int main() {
+    record(0);
+}
+```
 
-  <details>
-  <summary>示例</summary>
+### 可变参数模板包
 
-  ```cpp
-  void record(int code, ...);
+参数包渲染为被调用方的未实例化签名
 
-  int main() {
-      record(0);
-  }
-  ```
+```cpp
+template <typename... Args>
+void emit(Args... args);
 
-  </details>
+int main() {
+    emit();
+}
+```
 
-- [x] 可变参数模板包 — 参数包渲染为被调用方的未实例化签名
+### 活跃参数越过较短重载
 
-  <details>
-  <summary>示例</summary>
+光标位于第二个参数时，仅保留声明了第二个参数的重载
 
-  ```cpp
-  template <typename... Args>
-  void emit(Args... args);
+```cpp
+void draw();
+void draw(int x);
+void draw(int x, int y);
 
-  int main() {
-      emit();
-  }
-  ```
-
-  </details>
-
-- [x] 活跃参数越过较短重载 — 光标位于第二个参数时，仅保留声明了第二个参数的重载
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  void draw();
-  void draw(int x);
-  void draw(int x, int y);
-
-  int main() {
-      draw(1, 2);
-  }
-  ```
-
-  </details>
+int main() {
+    draw(1, 2);
+}
+```
 
 <!-- END GENERATED ITEMS -->
 
@@ -183,125 +172,114 @@
 
 ## 特殊调用上下文
 
-<!-- BEGIN GENERATED ITEMS: Special Call Contexts -->
+<!-- BEGIN GENERATED ITEMS: special_call_contexts -->
 
-- [x] 构造函数和聚合体 — 构造函数调用不显示返回箭头；聚合初始化在花括号中列出字段（[clangd#726](https://github.com/clangd/clangd/issues/726)、[clangd#2541](https://github.com/clangd/clangd/issues/2541)）
+| 能力             | 状态 | 问题                                                                                                                   |
+| ---------------- | ---- | ---------------------------------------------------------------------------------------------------------------------- |
+| 构造函数和聚合体 | 支持 | [clangd#726](https://github.com/clangd/clangd/issues/726), [clangd#2541](https://github.com/clangd/clangd/issues/2541) |
+| 函数指针调用     | 支持 |                                                                                                                        |
+| 模板参数列表     | 支持 | [clangd#299](https://github.com/clangd/clangd/issues/299), [clangd#1387](https://github.com/clangd/clangd/issues/1387) |
+| 嵌套调用         | 支持 |                                                                                                                        |
+| 仿函数调用       | 支持 |                                                                                                                        |
+| Lambda 调用      | 支持 |                                                                                                                        |
+| new 表达式       | 支持 |                                                                                                                        |
 
-  <details>
-  <summary>示例</summary>
+### 构造函数和聚合体
 
-  ```cpp
-  struct Point {
-      int x;
-      int y;
-  };
+构造函数调用不显示返回箭头；聚合初始化在花括号中列出字段
 
-  struct Widget {
-      Widget(int a, double b);
-  };
+```cpp
+struct Point {
+    int x;
+    int y;
+};
 
-  int main() {
-      Point p{1, 2};
-      Widget w(3, 4.0);
-  }
-  ```
+struct Widget {
+    Widget(int a, double b);
+};
 
-  </details>
+int main() {
+    Point p{1, 2};
+    Widget w(3, 4.0);
+}
+```
 
-- [x] 函数指针调用 — 显示原型的参数名，而不仅仅是类型
+### 函数指针调用
 
-  <details>
-  <summary>示例</summary>
+显示原型的参数名，而不仅仅是类型
 
-  ```cpp
-  int main() {
-      void (*callback)(int code, double value) = nullptr;
-      callback(5, 1.5);
-  }
-  ```
+```cpp
+int main() {
+    void (*callback)(int code, double value) = nullptr;
+    callback(5, 1.5);
+}
+```
 
-  </details>
+### 模板参数列表
 
-- [x] 模板参数列表 — 模板参数显示为签名；类模板指向其种类，而非返回类型（[clangd#299](https://github.com/clangd/clangd/issues/299)、[clangd#1387](https://github.com/clangd/clangd/issues/1387)）
+模板参数显示为签名；类模板指向其种类，而非返回类型
 
-  <details>
-  <summary>示例</summary>
+```cpp
+template <typename T, typename U>
+struct Pair {};
 
-  ```cpp
-  template <typename T, typename U>
-  struct Pair {};
+Pair<int,  double> p;
+```
 
-  Pair<int,  double> p;
-  ```
+### 嵌套调用
 
-  </details>
+内层调用的帮助显示在内层标记处，外层调用的帮助显示在外层标记处
 
-- [x] 嵌套调用 — 内层调用的帮助显示在内层标记处，外层调用的帮助显示在外层标记处
+```cpp
+int inner(int a);
+int outer(int b, int c);
 
-  <details>
-  <summary>示例</summary>
+int main() {
+    outer(inner(1), 2);
+}
+```
 
-  ```cpp
-  int inner(int a);
-  int outer(int b, int c);
+### 仿函数调用
 
-  int main() {
-      outer(inner(1), 2);
-  }
-  ```
+调用对象时将签名帮助路由到其 operator() 重载
 
-  </details>
+```cpp
+struct Adder {
+    int operator()(int a, int b);
+};
 
-- [x] 仿函数调用 — 调用对象时将签名帮助路由到其 operator() 重载
+int main() {
+    Adder add;
+    add(1, 2);
+}
+```
 
-  <details>
-  <summary>示例</summary>
+### Lambda 调用
 
-  ```cpp
-  struct Adder {
-      int operator()(int a, int b);
-  };
+调用 lambda 变量时提供闭包的 operator() 参数
 
-  int main() {
-      Adder add;
-      add(1, 2);
-  }
-  ```
+```cpp
+int main() {
+    auto square = [](int n) {
+        return n * n;
+    };
+    square(3);
+}
+```
 
-  </details>
+### new 表达式
 
-- [x] Lambda 调用 — 调用 lambda 变量时提供闭包的 operator() 参数
+new 表达式的构造函数参数驱动签名帮助
 
-  <details>
-  <summary>示例</summary>
+```cpp
+struct Node {
+    Node(int value, Node* next);
+};
 
-  ```cpp
-  int main() {
-      auto square = [](int n) {
-          return n * n;
-      };
-      square(3);
-  }
-  ```
-
-  </details>
-
-- [x] new 表达式 — new 表达式的构造函数参数驱动签名帮助
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  struct Node {
-      Node(int value, Node* next);
-  };
-
-  int main() {
-      Node* n = new Node(0, nullptr);
-  }
-  ```
-
-  </details>
+int main() {
+    Node* n = new Node(0, nullptr);
+}
+```
 
 <!-- END GENERATED ITEMS -->
 

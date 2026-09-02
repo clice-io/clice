@@ -4,31 +4,30 @@
 
 由 `<`、`"`、`/` 字符触发。在 AST 之前处理（preamble 层，无需编译）。引号补全会搜索已配置的 include 目录，而不是包含者自身所在目录（除非该目录在 include 路径中）。
 
-<!-- BEGIN GENERATED ITEMS: Include Path Completion -->
+<!-- BEGIN GENERATED ITEMS: include_path_completion -->
 
-- [x] 引号 include 路径 — 来自已配置搜索路径的头文件和目录，目录以尾部斜杠标记
+| 能力                | 状态 | 问题 |
+| ------------------- | ---- | ---- |
+| 引号 include 路径   | 支持 |      |
+| 尖括号 include 路径 | 支持 |      |
 
-  在编译之前由服务器应答，因此该 fixture 只存在服务器路径。
+### 引号 include 路径
 
-  <details>
-  <summary>示例</summary>
+来自已配置搜索路径的头文件和目录，目录以尾部斜杠标记
 
-  ```cpp
-  #include "snap"
-  ```
+在编译之前由服务器应答，因此该 fixture 只存在服务器路径。
 
-  </details>
+```cpp
+#include "snap"
+```
 
-- [x] 尖括号 include 路径 — 同一搜索路径候选的尖括号形式
+### 尖括号 include 路径
 
-  <details>
-  <summary>示例</summary>
+同一搜索路径候选的尖括号形式
 
-  ```cpp
-  #include <snap>
-  ```
-
-  </details>
+```cpp
+#include <snap>
+```
 
 <!-- END GENERATED ITEMS -->
 
@@ -92,32 +91,33 @@
 
 光标位于 `import` 或 `export import` 之后时触发。
 
-<!-- BEGIN GENERATED ITEMS: Module Completion -->
+<!-- BEGIN GENERATED ITEMS: module_completion -->
 
-- [x] Import 语句 — 在 `import` 之后补全已知模块名，并插入结尾分号
+| 能力        | 状态 | 问题 |
+| ----------- | ---- | ---- |
+| Import 语句 | 支持 |      |
 
-  由服务端根据其模块映射回答，因此该 fixture 只有服务端路径；先打开同级模块接口，使模块已知。语句保持未终止——行内有 `;` 表示 import 已完成，不提供任何补全。
+### Import 语句
 
-  <details>
-  <summary>示例</summary>
+在 `import` 之后补全已知模块名，并插入结尾分号
 
-  `main.cpp`：
+由服务端根据其模块映射回答，因此该 fixture 只有服务端路径；先打开同级模块接口，使模块已知。语句保持未终止——行内有 `;` 表示 import 已完成，不提供任何补全。
 
-  ```cpp
-  import ma
-  ```
+`main.cpp`：
 
-  `mod_math.cppm`：
+```cpp
+import ma
+```
 
-  ```cpp
-  export module math;
+`mod_math.cppm`：
 
-  export int add(int a, int b) {
-      return a + b;
-  }
-  ```
+```cpp
+export module math;
 
-  </details>
+export int add(int a, int b) {
+    return a + b;
+}
+```
 
 <!-- END GENERATED ITEMS -->
 
@@ -200,126 +200,119 @@
 
 ### 成员访问
 
-<!-- BEGIN GENERATED ITEMS: Member Access -->
+<!-- BEGIN GENERATED ITEMS: member_access -->
 
-- [x] 类的成员 — 字段、方法、析构函数和运算符以普通名称补全
+| 能力               | 状态 | 问题 |
+| ------------------ | ---- | ---- |
+| 类的成员           | 支持 |      |
+| 实例化的类模板成员 | 支持 |      |
+| 指针成员访问       | 支持 |      |
+| 作用域限定的成员   | 支持 |      |
+| 继承的成员         | 支持 |      |
 
-  析构函数补全为 `~Account`（绝不会是 `~struct Account`），`operator=` 在 `=` 前不留空格，转换运算符拼出目标类型。
+### 类的成员
 
-  <details>
-  <summary>示例</summary>
+字段、方法、析构函数和运算符以普通名称补全
 
-  ```cpp
-  // The member access expression is left dangling at the point.
-  struct Wallet {
-      int cents;
-  };
+析构函数补全为 `~Account`（绝不会是 `~struct Account`），`operator=` 在 `=` 前不留空格，转换运算符拼出目标类型。
 
-  struct Account {
-      int balance;
-      int bazzzz(int a, int b);
-      operator Wallet();
-  };
+```cpp
+// The member access expression is left dangling at the point.
+struct Wallet {
+    int cents;
+};
 
-  void bar() {
-      Account acc;
-      acc.
-  }
-  ```
+struct Account {
+    int balance;
+    int bazzzz(int a, int b);
+    operator Wallet();
+};
 
-  </details>
+void bar() {
+    Account acc;
+    acc.
+}
+```
 
-- [x] 实例化的类模板成员 — 析构函数的 label 保留书写时的模板参数
+### 实例化的类模板成员
 
-  <details>
-  <summary>示例</summary>
+析构函数的 label 保留书写时的模板参数
 
-  ```cpp
-  // The member access expression is left dangling at the point.
-  template <typename T>
-  struct Box {
-      T value;
-  };
+```cpp
+// The member access expression is left dangling at the point.
+template <typename T>
+struct Box {
+    T value;
+};
 
-  void bar() {
-      Box<int> b;
-      b.
-  }
-  ```
+void bar() {
+    Box<int> b;
+    b.
+}
+```
 
-  </details>
+### 指针成员访问
 
-- [x] 指针成员访问 — 指针上的 `->` 补全所指向对象的成员
+指针上的 `->` 补全所指向对象的成员
 
-  <details>
-  <summary>示例</summary>
+```cpp
+// The member access expression is left dangling at the point.
+struct Node {
+    int value;
+    Node* next;
+    int compute(int a);
+};
 
-  ```cpp
-  // The member access expression is left dangling at the point.
-  struct Node {
-      int value;
-      Node* next;
-      int compute(int a);
-  };
+void bar() {
+    Node* p;
+    p->
+}
+```
 
-  void bar() {
-      Node* p;
-      p->
-  }
-  ```
+### 作用域限定的成员
 
-  </details>
+在 `::` 之后，静态数据、嵌套类型、方法和注入类名都会列出
 
-- [x] 作用域限定的成员 — 在 `::` 之后，静态数据、嵌套类型、方法和注入类名都会列出
+限定补全不会过滤到静态可达子集：实例字段和析构函数与静态成员及嵌套类型一同出现。
 
-  限定补全不会过滤到静态可达子集：实例字段和析构函数与静态成员及嵌套类型一同出现。
+```cpp
+// The qualified-id is left dangling at the point.
+struct Config {
+    static int shared_count;
+    static int make(int seed);
 
-  <details>
-  <summary>示例</summary>
+    struct Nested {
+        int a;
+    };
 
-  ```cpp
-  // The qualified-id is left dangling at the point.
-  struct Config {
-      static int shared_count;
-      static int make(int seed);
+    int instance_field;
+};
 
-      struct Nested {
-          int a;
-      };
+void bar() {
+    int v = Config::;
+}
+```
 
-      int instance_field;
-  };
+### 继承的成员
 
-  void bar() {
-      int v = Config::;
-  }
-  ```
+派生对象补全其自身成员及其基类的成员
 
-  </details>
+```cpp
+// The member access expression is left dangling at the point.
+struct Base {
+    int base_field;
+    int base_method();
+};
 
-- [x] 继承的成员 — 派生对象补全其自身成员及其基类的成员
+struct Derived : Base {
+    int derived_field;
+};
 
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  // The member access expression is left dangling at the point.
-  struct Base {
-      int base_field;
-      int base_method();
-  };
-
-  struct Derived : Base {
-      int derived_field;
-  };
-
-  void bar() {
-      Derived d;
-      d.
-  }
-  ```
-
-  </details>
+void bar() {
+    Derived d;
+    d.
+}
+```
 
 <!-- END GENERATED ITEMS -->
 
@@ -419,217 +412,200 @@
 
 ### 符号
 
-<!-- BEGIN GENERATED ITEMS: Symbols -->
+<!-- BEGIN GENERATED ITEMS: symbols -->
 
-- [x] 带模糊前缀匹配的非限定查找 — 强前缀匹配保留，弱子序列匹配和未限定的命名空间成员不会保留
+| 能力                       | 状态 | 问题 |
+| -------------------------- | ---- | ---- |
+| 带模糊前缀匹配的非限定查找 | 支持 |      |
+| 类模板去重                 | 支持 |      |
+| 构造函数 label 保持简洁    | 支持 |      |
+| 关键字模式                 | 支持 |      |
+| 宏                         | 支持 |      |
+| 宏遮蔽声明                 | 支持 |      |
+| 命名空间限定查找           | 支持 |      |
+| 枚举成员                   | 支持 |      |
+| 局部遮蔽全局               | 支持 |      |
+| 使用声明                   | 支持 |      |
 
-  <details>
-  <summary>示例</summary>
+### 带模糊前缀匹配的非限定查找
 
-  ```cpp
-  // The completion expression dangles as an unfinished statement.
-  namespace A {
+强前缀匹配保留，弱子序列匹配和未限定的命名空间成员不会保留
 
-  void fooooo();
+```cpp
+// The completion expression dangles as an unfinished statement.
+namespace A {
 
-  }
+void fooooo();
 
-  struct X {
-      void operator()() {}
-  };
+}
 
-  void bar() {
-      X functor;
-      auto folded = [](int x) {
-      };
-      fo;
-  }
-  ```
+struct X {
+    void operator()() {}
+};
 
-  </details>
+void bar() {
+    X functor;
+    auto folded = [](int x) {
+    };
+    fo;
+}
+```
 
-- [x] 类模板去重 — 同时是构造函数和推导指引的名称保持为单个类条目
+### 类模板去重
 
-  <details>
-  <summary>示例</summary>
+同时是构造函数和推导指引的名称保持为单个类条目
 
-  ```cpp
-  // The completion prefix dangles as an unfinished statement.
-  template <typename T>
-  struct Foo {
-      Foo() {}
+```cpp
+// The completion prefix dangles as an unfinished statement.
+template <typename T>
+struct Foo {
+    Foo() {}
 
-      Foo(T x) {}
+    Foo(T x) {}
 
-      Foo(T x, T y) {}
-  };
+    Foo(T x, T y) {}
+};
 
-  template <typename T>
-  Foo(T) -> Foo<T>;
+template <typename T>
+Foo(T) -> Foo<T>;
 
-  void bar() {
-      Fo
-  }
-  ```
+void bar() {
+    Fo
+}
+```
 
-  </details>
+### 构造函数 label 保持简洁
 
-- [x] 构造函数 label 保持简洁 — 类模板构造函数和推导指引补全为裸类名，绝不会是模板化写法
+类模板构造函数和推导指引补全为裸类名，绝不会是模板化写法
 
-  <details>
-  <summary>示例</summary>
+```cpp
+// The completion prefix dangles as an unfinished statement.
+template <typename T, typename U>
+struct Bazzz {
+    Bazzz() {}
 
-  ```cpp
-  // The completion prefix dangles as an unfinished statement.
-  template <typename T, typename U>
-  struct Bazzz {
-      Bazzz() {}
+    Bazzz(T x) {}
 
-      Bazzz(T x) {}
+    Bazzz(T x, U y) {}
+};
 
-      Bazzz(T x, U y) {}
-  };
+template <typename T>
+Bazzz(T) -> Bazzz<T, int>;
 
-  template <typename T>
-  Bazzz(T) -> Bazzz<T, int>;
+void bar() {
+    Ba
+}
+```
 
-  void bar() {
-      Ba
-  }
-  ```
+### 关键字模式
 
-  </details>
+关键字与其他候选项一样补全，插入纯文本
 
-- [x] 关键字模式 — 关键字与其他候选项一样补全，插入纯文本
+```cpp
+// The completion prefix cuts the initializer mid-expression.
+int x = tru
+```
 
-  <details>
-  <summary>示例</summary>
+### 宏
 
-  ```cpp
-  // The completion prefix cuts the initializer mid-expression.
-  int x = tru
-  ```
+object-like 宏作为常量补全，function-like 宏作为带参数签名的函数补全；参数 snippet 遵循函数设置
 
-  </details>
+```cpp
+#define RETRY_LIMIT 3
 
-- [x] 宏 — object-like 宏作为常量补全，function-like 宏作为带参数签名的函数补全；参数 snippet 遵循函数设置
+#define CLAMP(value, limit) ((value) < (limit) ? (value) : (limit))
 
-  <details>
-  <summary>示例</summary>
+int a = RETRY;
+int b = CLA;
+```
 
-  ```cpp
-  #define RETRY_LIMIT 3
+### 宏遮蔽声明
 
-  #define CLAMP(value, limit) ((value) < (limit) ? (value) : (limit))
+被重定义为宏的名称补全为宏，而不是被遮蔽的声明
 
-  int a = RETRY;
-  int b = CLA;
-  ```
+```cpp
+void GUARD(int);
+#define GUARD 1
 
-  </details>
+int BOUND(int lo, int hi);
+#define BOUND(lo, hi) ((lo) < (hi) ? (lo) : (hi))
 
-- [x] 宏遮蔽声明 — 被重定义为宏的名称补全为宏，而不是被遮蔽的声明
+int a = GUAR;
+int b = BOUN;
+```
 
-  <details>
-  <summary>示例</summary>
+### 命名空间限定查找
 
-  ```cpp
-  void GUARD(int);
-  #define GUARD 1
+`ns::` 列出该命名空间自身的成员
 
-  int BOUND(int lo, int hi);
-  #define BOUND(lo, hi) ((lo) < (hi) ? (lo) : (hi))
+```cpp
+// The qualified-id is left dangling at the point.
+namespace geometry {
 
-  int a = GUAR;
-  int b = BOUN;
-  ```
+int area_of(int r);
 
-  </details>
+struct Point {
+    int x;
+};
 
-- [x] 命名空间限定查找 — `ns::` 列出该命名空间自身的成员
+int origin;
 
-  <details>
-  <summary>示例</summary>
+}  // namespace geometry
 
-  ```cpp
-  // The qualified-id is left dangling at the point.
-  namespace geometry {
+void bar() {
+    int v = geometry::;
+}
+```
 
-  int area_of(int r);
+### 枚举成员
 
-  struct Point {
-      int x;
-  };
+scoped enum 通过 `Type::` 列出，unscoped enumerator 以裸名称补全
 
-  int origin;
+```cpp
+// Both completion prefixes dangle; the statements stay
+// semicolon-terminated so the second marker is not dragged into recovery.
+enum class Color { Red, Green, Blue };
 
-  }  // namespace geometry
+enum Fruit { Apple, Banana };
 
-  void bar() {
-      int v = geometry::;
-  }
-  ```
+void bar() {
+    Color c = Color::;
+    int f = App;
+}
+```
 
-  </details>
+### 局部遮蔽全局
 
-- [x] 枚举成员 — scoped enum 通过 `Type::` 列出，unscoped enumerator 以裸名称补全
+被遮蔽的全局不会作为重复条目出现
 
-  <details>
-  <summary>示例</summary>
+```cpp
+// The completion prefix dangles as an unfinished statement.
+int counter = 0;
 
-  ```cpp
-  // Both completion prefixes dangle; the statements stay
-  // semicolon-terminated so the second marker is not dragged into recovery.
-  enum class Color { Red, Green, Blue };
+void bar() {
+    int counter = 1;
+    int v = coun;
+}
+```
 
-  enum Fruit { Apple, Banana };
+### 使用声明
 
-  void bar() {
-      Color c = Color::;
-      int f = App;
-  }
-  ```
+通过 `using` 引入的名字可以非限定补全
 
-  </details>
+```cpp
+// The completion prefix dangles as an unfinished statement.
+namespace lib {
 
-- [x] 局部遮蔽全局 — 被遮蔽的全局不会作为重复条目出现
+int helper_fn(int x);
 
-  <details>
-  <summary>示例</summary>
+}
 
-  ```cpp
-  // The completion prefix dangles as an unfinished statement.
-  int counter = 0;
+using lib::helper_fn;
 
-  void bar() {
-      int counter = 1;
-      int v = coun;
-  }
-  ```
-
-  </details>
-
-- [x] 使用声明 — 通过 `using` 引入的名字可以非限定补全
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  // The completion prefix dangles as an unfinished statement.
-  namespace lib {
-
-  int helper_fn(int x);
-
-  }
-
-  using lib::helper_fn;
-
-  void bar() {
-      int v = help;
-  }
-  ```
-
-  </details>
+void bar() {
+    int v = help;
+}
+```
 
 <!-- END GENERATED ITEMS -->
 
@@ -665,123 +641,112 @@
 
 以下所有选项位于 `[code_completion]` 配置节。
 
-<!-- BEGIN GENERATED ITEMS: Functions & Snippets -->
+<!-- BEGIN GENERATED ITEMS: functions_snippets -->
 
-- [x] 签名与返回类型详情 — 参数列表和返回类型作为 label 详情附带显示
+| 能力                 | 状态 | 问题 |
+| -------------------- | ---- | ---- |
+| 签名与返回类型详情   | 支持 |      |
+| 重载合并             | 支持 |      |
+| 不合并重载           | 支持 |      |
+| 参数占位符 snippet   | 支持 |      |
+| snippet 遵循合并设置 | 支持 |      |
+| 带默认值的参数       | 支持 |      |
+| 可变参数签名         | 支持 |      |
 
-  <details>
-  <summary>示例</summary>
+### 签名与返回类型详情
 
-  ```cpp
-  // The completion prefix cuts the initializer mid-expression.
-  double foooo(int x, float y);
+参数列表和返回类型作为 label 详情附带显示
 
-  int x = fo
-  ```
+```cpp
+// The completion prefix cuts the initializer mid-expression.
+double foooo(int x, float y);
 
-  </details>
+int x = fo
+```
 
-- [x] 重载合并 — 重载集合折叠为一个条目并显示重载数量
+### 重载合并
 
-  <details>
-  <summary>示例</summary>
+重载集合折叠为一个条目并显示重载数量
 
-  ```cpp
-  // The completion prefix cuts the initializer mid-expression.
-  int foooo(int x);
-  int foooo(int x, int y);
-  double foooo(double d);
+```cpp
+// The completion prefix cuts the initializer mid-expression.
+int foooo(int x);
+int foooo(int x, int y);
+double foooo(double d);
 
-  int x = fooo
-  ```
+int x = fooo
+```
 
-  </details>
+### 不合并重载
 
-- [x] 不合并重载 — 关闭合并后，每个重载都是独立条目并带有自己的签名
+关闭合并后，每个重载都是独立条目并带有自己的签名
 
-  <details>
-  <summary>示例</summary>
+```cpp
+// The completion prefix cuts the initializer mid-expression.
+int foooo(int x);
+int foooo(int x, int y);
+double foooo(double d);
 
-  ```cpp
-  // The completion prefix cuts the initializer mid-expression.
-  int foooo(int x);
-  int foooo(int x, int y);
-  double foooo(double d);
+int x = fooo
+```
 
-  int x = fooo
-  ```
+### 参数占位符 snippet
 
-  </details>
+调用按参数插入 tab-stop 占位符；无参函数保持纯文本
 
-- [x] 参数占位符 snippet — 调用按参数插入 tab-stop 占位符；无参函数保持纯文本
+```cpp
+// The completion prefixes dangle as unfinished statements.
+int foooo(int x, float y);
+void nothing_to_fill();
 
-  <details>
-  <summary>示例</summary>
+struct Foo {
+    int bazzzz(int a, int b);
+};
 
-  ```cpp
-  // The completion prefixes dangle as unfinished statements.
-  int foooo(int x, float y);
-  void nothing_to_fill();
+void bar() {
+    Foo f;
+    fo;
+    no;
+    f.ba;
+}
+```
 
-  struct Foo {
-      int bazzzz(int a, int b);
-  };
+### snippet 遵循合并设置
 
-  void bar() {
-      Foo f;
-      fo;
-      no;
-      f.ba;
-  }
-  ```
+重载合并开启时，即使启用了参数 snippet 也不生效
 
-  </details>
+```cpp
+// The completion prefix cuts the initializer mid-expression.
+int foooo(int x);
+int foooo(int x, int y);
 
-- [x] snippet 遵循合并设置 — 重载合并开启时，即使启用了参数 snippet 也不生效
+int z = fo
+```
 
-  <details>
-  <summary>示例</summary>
+### 带默认值的参数
 
-  ```cpp
-  // The completion prefix cuts the initializer mid-expression.
-  int foooo(int x);
-  int foooo(int x, int y);
+有默认值的参数从签名详情中省略
 
-  int z = fo
-  ```
+签名详情只保留必需参数；尾部的
+`int retries = 3` 被省略。
 
-  </details>
+```cpp
+// The completion prefix cuts the initializer mid-expression.
+int configure(int timeout, int retries = 3);
 
-- [x] 带默认值的参数 — 有默认值的参数从签名详情中省略
+int x = confi
+```
 
-  签名详情只保留必需参数；尾部的
-  `int retries = 3` 被省略。
+### 可变参数签名
 
-  <details>
-  <summary>示例</summary>
+尾部的 `...` 显示在参数详情中
 
-  ```cpp
-  // The completion prefix cuts the initializer mid-expression.
-  int configure(int timeout, int retries = 3);
+```cpp
+// The completion prefix cuts the initializer mid-expression.
+int printf_like(const char* fmt, ...);
 
-  int x = confi
-  ```
-
-  </details>
-
-- [x] 可变参数签名 — 尾部的 `...` 显示在参数详情中
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  // The completion prefix cuts the initializer mid-expression.
-  int printf_like(const char* fmt, ...);
-
-  int x = printf
-  ```
-
-  </details>
+int x = printf
+```
 
 <!-- END GENERATED ITEMS -->
 
@@ -912,96 +877,89 @@
 
 ### 过滤与排序
 
-<!-- BEGIN GENERATED ITEMS: Filtering & Ranking -->
+<!-- BEGIN GENERATED ITEMS: filtering_ranking -->
 
-- [x] 下划线过滤 — 以下划线开头的内部符号默认隐藏，除非用户输入的前缀本身以下划线开头
+| 能力             | 状态 | 问题 |
+| ---------------- | ---- | ---- |
+| 下划线过滤       | 支持 |      |
+| 弃用标记         | 支持 |      |
+| 词边界模糊匹配   | 支持 |      |
+| 大小写不敏感前缀 | 支持 |      |
+| 前缀优先于子序列 | 支持 |      |
 
-  <details>
-  <summary>示例</summary>
+### 下划线过滤
 
-  ```cpp
-  // The completion prefixes are undeclared identifiers. The
-  // statements stay semicolon-terminated: an unterminated one puts the
-  // NEXT marker into a recovery context, which completion drops entirely.
-  int _private_thing;
-  int public_thing;
+以下划线开头的内部符号默认隐藏，除非用户输入的前缀本身以下划线开头
 
-  int x = pu;
-  int y = _p;
-  ```
+```cpp
+// The completion prefixes are undeclared identifiers. The
+// statements stay semicolon-terminated: an unterminated one puts the
+// NEXT marker into a recovery context, which completion drops entirely.
+int _private_thing;
+int public_thing;
 
-  </details>
+int x = pu;
+int y = _p;
+```
 
-- [x] 弃用标记 — [[deprecated]] 候选带有 Deprecated 标记，普通同名符号没有
+### 弃用标记
 
-  <details>
-  <summary>示例</summary>
+[[deprecated]] 候选带有 Deprecated 标记，普通同名符号没有
 
-  ```cpp
-  // The completion prefix cuts the initializer mid-expression.
-  [[deprecated]] int old_thing(int x);
-  int new_thing(int x);
+```cpp
+// The completion prefix cuts the initializer mid-expression.
+[[deprecated]] int old_thing(int x);
+int new_thing(int x);
 
-  int z = thing
-  ```
+int z = thing
+```
 
-  </details>
+### 词边界模糊匹配
 
-- [x] 词边界模糊匹配 — 前缀 `fb` 匹配 `foo_bar_baz` 的单词开头
+前缀 `fb` 匹配 `foo_bar_baz` 的单词开头
 
-  `frobnicate` 只是 `fb` 的弱散布子序列，被过滤掉；
-  `foo_bar_baz` 在 `foo`/`bar` 词边界上匹配，保留下来。
+`frobnicate` 只是 `fb` 的弱散布子序列，被过滤掉；
+`foo_bar_baz` 在 `foo`/`bar` 词边界上匹配，保留下来。
 
-  <details>
-  <summary>示例</summary>
+```cpp
+// The completion prefix dangles as an unfinished statement.
+int foo_bar_baz;
+int frobnicate;
 
-  ```cpp
-  // The completion prefix dangles as an unfinished statement.
-  int foo_bar_baz;
-  int frobnicate;
+void bar() {
+    int v = fb;
+}
+```
 
-  void bar() {
-      int v = fb;
-  }
-  ```
+### 大小写不敏感前缀
 
-  </details>
+小写前缀匹配混合大小写标识符
 
-- [x] 大小写不敏感前缀 — 小写前缀匹配混合大小写标识符
+```cpp
+// The completion prefix dangles as an unfinished statement.
+int MyLongName;
 
-  <details>
-  <summary>示例</summary>
+void bar() {
+    int v = mylong;
+}
+```
 
-  ```cpp
-  // The completion prefix dangles as an unfinished statement.
-  int MyLongName;
+### 前缀优先于子序列
 
-  void bar() {
-      int v = mylong;
-  }
-  ```
+精确前缀候选项排在散布子序列匹配之上
 
-  </details>
+对于前缀 `fo`，`format_output` 是真正的前缀，得分高于
+仅作为子序列匹配的 `fast_math_operation`。
 
-- [x] 前缀优先于子序列 — 精确前缀候选项排在散布子序列匹配之上
+```cpp
+// The completion prefix dangles as an unfinished statement.
+int format_output;
+int fast_math_operation;
 
-  对于前缀 `fo`，`format_output` 是真正的前缀，得分高于
-  仅作为子序列匹配的 `fast_math_operation`。
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  // The completion prefix dangles as an unfinished statement.
-  int format_output;
-  int fast_math_operation;
-
-  void bar() {
-      int v = fo;
-  }
-  ```
-
-  </details>
+void bar() {
+    int v = fo;
+}
+```
 
 <!-- END GENERATED ITEMS -->
 

@@ -2,279 +2,236 @@
 
 ## Go to Definition
 
-<!-- BEGIN GENERATED ITEMS: Go to Definition -->
+<!-- BEGIN GENERATED ITEMS: go_to_definition -->
 
-- [x] 跨翻译单元 go-to-definition
+| 能力                                      | 状态   | 问题                                                        |
+| ----------------------------------------- | ------ | ----------------------------------------------------------- |
+| 跨翻译单元 go-to-definition               | 支持   |                                                             |
+| 定义与声明在光标处交替切换                | 支持   |                                                             |
+| 仅有声明的符号导航到其声明                | 支持   |                                                             |
+| 在 `#include` 指令上使用 go-to-definition | 支持   |                                                             |
+| 局部变量和参数导航到其声明                | 支持   |                                                             |
+| 穿透宏包装导航到底层声明                  | 支持   |                                                             |
+| 由宏体或 token 粘贴产生的名字锚定在调用点 | 支持   |                                                             |
+| `#define` 体内的 token 不携带自身的导航   | 支持   |                                                             |
+| 错误恢复                                  | 不支持 |                                                             |
+| 未实例化模板中的依赖成员导航              | 支持   |                                                             |
+| 模板特化导航到主模板                      | 不支持 | [clangd#212](https://github.com/clangd/clangd/issues/212)   |
+| `auto` 关键字导航到推导出的类型           | 不支持 | [clangd#2055](https://github.com/clangd/clangd/issues/2055) |
 
-  一个翻译单元中的使用解析到同级源文件提供的定义——答案覆盖整个项目，而不只是当前文件。
+### 跨翻译单元 go-to-definition
 
-  <details>
-  <summary>示例</summary>
+一个翻译单元中的使用解析到同级源文件提供的定义——答案覆盖整个项目，而不只是当前文件。
 
-  `main.cpp`:
+`main.cpp`:
 
-  ```cpp
-  #include "shared.h"
+```cpp
+#include "shared.h"
 
-  int run(int value) {
-      return transform(value);
-  }
-  ```
+int run(int value) {
+    return transform(value);
+}
+```
 
-  `lib.cpp`:
+`lib.cpp`:
 
-  ```cpp
-  #include "shared.h"
+```cpp
+#include "shared.h"
 
-  int transform(int value) {
-      return value * 2;
-  }
-  ```
+int transform(int value) {
+    return value * 2;
+}
+```
 
-  `shared.h`:
+`shared.h`:
 
-  ```cpp
-  #pragma once
+```cpp
+#pragma once
 
-  int transform(int value);
-  ```
+int transform(int value);
+```
 
-  </details>
+### 定义与声明在光标处交替切换
 
-- [x] 定义与声明在光标处交替切换
+在用法上，go-to-definition 到达定义。在定义上调用时它会跳转到声明，在声明上调用时它跳转到定义——两个位置交替切换。内联定义且没有单独声明的符号，其定义仍作为答案。
 
-  在用法上，go-to-definition 到达定义。在定义上调用时它会跳转到声明，在声明上调用时它跳转到定义——两个位置交替切换。内联定义且没有单独声明的符号，其定义仍作为答案。
+```cpp
+int scale(int value);
 
-  <details>
-  <summary>示例</summary>
+int scale(int value) {
+    return value * 2;
+}
 
-  ```cpp
-  int scale(int value);
+int apply(int value) {
+    return scale(value);
+}
+```
 
-  int scale(int value) {
-      return value * 2;
-  }
+### 仅有声明的符号导航到其声明
 
-  int apply(int value) {
-      return scale(value);
-  }
-  ```
+只有声明的符号——纯虚函数、`extern` 变量、类内静态常量——解析到该声明，而不是返回空结果。
 
-  </details>
+```cpp
+extern int threshold;
 
-- [x] 仅有声明的符号导航到其声明
+int probe(int value);
 
-  只有声明的符号——纯虚函数、`extern` 变量、类内静态常量——解析到该声明，而不是返回空结果。
+struct Screen {
+    static const int margin = 4;
+    virtual void refresh() = 0;
+};
 
-  <details>
-  <summary>示例</summary>
+int watch(Screen& screen, int value) {
+    screen.refresh();
+    return probe(value) + threshold + Screen::margin;
+}
+```
 
-  ```cpp
-  extern int threshold;
+### 在 `#include` 指令上使用 go-to-definition
 
-  int probe(int value);
+在 `#include` 行上调用 go-to-definition 会打开被包含的文件。这适用于编译进 preamble（PCH）的前置包含，也适用于文件后面普通的包含。
 
-  struct Screen {
-      static const int margin = 4;
-      virtual void refresh() = 0;
-  };
+`main.cpp`:
 
-  int watch(Screen& screen, int value) {
-      screen.refresh();
-      return probe(value) + threshold + Screen::margin;
-  }
-  ```
+```cpp
+#include "panel.h"
 
-  </details>
+int build() {
+    return dimension();
+}
 
-- [x] 在 `#include` 指令上使用 go-to-definition
+#include "extra.h"
 
-  在 `#include` 行上调用 go-to-definition 会打开被包含的文件。这适用于编译进 preamble（PCH）的前置包含，也适用于文件后面普通的包含。
+int total() {
+    return build() + spacing();
+}
+```
 
-  <details>
-  <summary>示例</summary>
+`extra.h`:
 
-  `main.cpp`:
+```cpp
+inline int spacing() {
+    return 2;
+}
+```
 
-  ```cpp
-  #include "panel.h"
+`panel.h`:
 
-  int build() {
-      return dimension();
-  }
+```cpp
+#pragma once
 
-  #include "extra.h"
+int dimension();
+```
 
-  int total() {
-      return build() + spacing();
-  }
-  ```
+### 局部变量和参数导航到其声明
 
-  `extra.h`:
+对局部变量或参数使用 go-to-definition 会跳转到它在函数体内的声明。
 
-  ```cpp
-  inline int spacing() {
-      return 2;
-  }
-  ```
+```cpp
+int accumulate(int base) {
+    int total = base;
+    total = total + base;
+    return total;
+}
+```
 
-  `panel.h`:
+### 穿透宏包装导航到底层声明
 
-  ```cpp
-  #pragma once
+在宏参数中拼写的名字锚定在其拼写位置，因此定义和声明在那里与普通位置一样交替切换；后续的使用会穿透包装解析到它所声明的函数。
 
-  int dimension();
-  ```
+```cpp
+#define DECLARE_HOOK(name) int name(int value)
 
-  </details>
+DECLARE_HOOK(notify);
 
-- [x] 局部变量和参数导航到其声明
+DECLARE_HOOK(notify) {
+    return value + 1;
+}
 
-  对局部变量或参数使用 go-to-definition 会跳转到它在函数体内的声明。
+int trigger(int value) {
+    return notify(value);
+}
+```
 
-  <details>
-  <summary>示例</summary>
+### 由宏体或 token 粘贴产生的名字锚定在调用点
 
-  ```cpp
-  int accumulate(int base) {
-      int total = base;
-      total = total + base;
-      return total;
-  }
-  ```
+通过 token 粘贴组装的名字在源代码中没有自己的拼写，因此它锚定在创建它的宏调用处：该调用就是它的定义位置，而对名字的普通使用会跳回该调用点。
 
-  </details>
+```cpp
+#define MAKE_FLAG(name) bool flag_##name = false
 
-- [x] 穿透宏包装导航到底层声明
+MAKE_FLAG(verbose);
 
-  在宏参数中拼写的名字锚定在其拼写位置，因此定义和声明在那里与普通位置一样交替切换；后续的使用会穿透包装解析到它所声明的函数。
+bool read_flag() {
+    return flag_verbose;
+}
+```
 
-  <details>
-  <summary>示例</summary>
+### `#define` 体内的 token 不携带自身的导航
 
-  ```cpp
-  #define DECLARE_HOOK(name) int name(int value)
+写在宏体中的 token 在展开赋予其含义之前没有意义，因此在其上导航不会产生结果；而调用位置的 token 总是解析到正在展开的宏。
 
-  DECLARE_HOOK(notify);
+```cpp
+#define DEFINE_COUNTER int counter = 0
 
-  DECLARE_HOOK(notify) {
-      return value + 1;
-  }
+DEFINE_COUNTER;
+```
 
-  int trigger(int value) {
-      return notify(value);
-  }
-  ```
+### 错误恢复
 
-  </details>
+导航到类型未解析的变量
 
-- [x] 由宏体或 token 粘贴产生的名字锚定在调用点
+当变量的类型名无法解析时，对该变量后续使用的 go-to-definition 目前返回空结果，即使变量自身的声明仍被记录。
 
-  通过 token 粘贴组装的名字在源代码中没有自己的拼写，因此它锚定在创建它的宏调用处：该调用就是它的定义位置，而对名字的普通使用会跳回该调用点。
+```cpp
+Unresolved handle;  // 'Unresolved' does not name a type
 
-  <details>
-  <summary>示例</summary>
+void read() {
+    (void) handle;  // go-to-def on handle → the declaration above
+}
+```
 
-  ```cpp
-  #define MAKE_FLAG(name) bool flag_##name = false
+### 未实例化模板中的依赖成员导航
 
-  MAKE_FLAG(verbose);
+在从未实例化的模板内部，对依赖类型对象的成员访问解析到对应类模板上声明的成员。
 
-  bool read_flag() {
-      return flag_verbose;
-  }
-  ```
+```cpp
+template <typename T>
+struct Sink {
+    void push(T value);
+};
 
-  </details>
+template <typename T>
+void drain(Sink<T>& sink, T value) {
+    sink.push(value);
+}
+```
 
-- [x] `#define` 体内的 token 不携带自身的导航
+### 模板特化导航到主模板
 
-  写在宏体中的 token 在展开赋予其含义之前没有意义，因此在其上导航不会产生结果；而调用位置的 token 总是解析到正在展开的宏。
+对显式特化名称的 go-to-definition 解析到特化本身；从它跳转到所特化的主模板的功能尚未提供。
 
-  <details>
-  <summary>示例</summary>
+```cpp
+template <typename T>
+struct Formatter {}; // primary template
 
-  ```cpp
-  #define DEFINE_COUNTER int counter = 0
+template <>
+struct Formatter<int> {}; // go-to-def on Formatter → primary template
+```
 
-  DEFINE_COUNTER;
-  ```
+### `auto` 关键字导航到推导出的类型
 
-  </details>
+对 `auto` 关键字的 go-to-definition 应该到达它推导出的类型；目前返回空结果。
 
-- [ ] 错误恢复——导航到类型未解析的变量
+```cpp
+struct Widget {};
 
-  当变量的类型名无法解析时，对该变量后续使用的 go-to-definition 目前返回空结果，即使变量自身的声明仍被记录。
+Widget make_widget();
 
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  Unresolved handle;  // 'Unresolved' does not name a type
-
-  void read() {
-      (void) handle;  // go-to-def on handle → the declaration above
-  }
-  ```
-
-  </details>
-
-- [x] 未实例化模板中的依赖成员导航
-
-  在从未实例化的模板内部，对依赖类型对象的成员访问解析到对应类模板上声明的成员。
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  template <typename T>
-  struct Sink {
-      void push(T value);
-  };
-
-  template <typename T>
-  void drain(Sink<T>& sink, T value) {
-      sink.push(value);
-  }
-  ```
-
-  </details>
-
-- [ ] 模板特化导航到主模板（[clangd#212](https://github.com/clangd/clangd/issues/212)）
-
-  对显式特化名称的 go-to-definition 解析到特化本身；从它跳转到所特化的主模板的功能尚未提供。
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  template <typename T>
-  struct Formatter {}; // primary template
-
-  template <>
-  struct Formatter<int> {}; // go-to-def on Formatter → primary template
-  ```
-
-  </details>
-
-- [ ] `auto` 关键字导航到推导出的类型（[clangd#2055](https://github.com/clangd/clangd/issues/2055)）
-
-  对 `auto` 关键字的 go-to-definition 应该到达它推导出的类型；目前返回空结果。
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  struct Widget {};
-
-  Widget make_widget();
-
-  void use() {
-      auto widget = make_widget(); // go-to-def on auto → Widget
-  }
-  ```
-
-  </details>
+void use() {
+    auto widget = make_widget(); // go-to-def on auto → Widget
+}
+```
 
 <!-- END GENERATED ITEMS -->
 
@@ -284,501 +241,460 @@
 
 隐式导航要求有一个无歧义的源 token —— 那些已为 token 定义了明确 go-to-def 目标的模式（例如变量名始终指向其声明）不能改用于隐式调用导航。
 
-<!-- BEGIN GENERATED ITEMS: Implicit Code Navigation -->
+<!-- BEGIN GENERATED ITEMS: implicit_code_navigation -->
+
+| 能力                                  | 状态     | 问题                                                        |
+| ------------------------------------- | -------- | ----------------------------------------------------------- |
+| `override` / `final`                  | 不支持   |                                                             |
+| `break` / `continue`                  | 不支持   | [clangd#1921](https://github.com/clangd/clangd/issues/1921) |
+| 构造函数调用                          | 支持     |                                                             |
+| 拷贝/移动构造与赋值                   | 部分支持 |                                                             |
+| CTAD                                  | 支持     |                                                             |
+| 聚合初始化                            | 支持     |                                                             |
+| `delete` 表达式                       | 不支持   |                                                             |
+| `new` 表达式                          | 部分支持 |                                                             |
+| 成员初始化列表                        | 部分支持 |                                                             |
+| 委托构造函数                          | 部分支持 |                                                             |
+| 继承构造函数                          | 部分支持 |                                                             |
+| 返回值隐式构造                        | 支持     |                                                             |
+| Lambda init-capture                   | 不支持   |                                                             |
+| 重载运算符                            | 支持     |                                                             |
+| C++20 重写运算符                      | 支持     |                                                             |
+| 用户定义字面量                        | 不支持   |                                                             |
+| 隐式转换运算符                        | 不支持   | [clangd#1931](https://github.com/clangd/clangd/issues/1931) |
+| 调用构造函数或转换运算符的转换        | 部分支持 |                                                             |
+| Range-based for                       | 不支持   |                                                             |
+| Structured bindings                   | 不支持   |                                                             |
+| `co_await` / `co_yield` / `co_return` | 部分支持 |                                                             |
+
+### `override` / `final`
+
+导航到被重写的基类方法
+
+在 `override` 或 `final` 说明符上执行 go-to-definition 应到达它所重写的基类虚函数；目前返回空结果。
+
+```cpp
+struct Base {
+    virtual void draw();
+    virtual void paint();
+};
+
+struct Derived : Base {
+    void draw() override;  // go-to-def on override → Base::draw
+    void paint() final;    // go-to-def on final → Base::paint
+};
+```
+
+### `break` / `continue`
+
+导航到所在循环或 switch 头部
+
+在 `break` 或 `continue` 上执行 go-to-definition 应到达它控制的循环或 switch 头部；目前返回空结果。
+
+```cpp
+void loop() {
+    for (int i = 0; i < 10; i += 1) {
+        if (i == 5) break;  // go-to-def on break → the for loop
+        continue;           // go-to-def on continue → the for loop
+    }
+}
+```
 
-- [ ] `override` / `final` — 导航到被重写的基类方法
+### 构造函数调用
 
-  在 `override` 或 `final` 说明符上执行 go-to-definition 应到达它所重写的基类虚函数；目前返回空结果。
+从括号或花括号导航到选中的构造函数
+
+在构造函数调用的左括号或左花括号上执行 go-to-definition 会到达重载决议选中的构造函数，`T(args)` 和 `T{args}` 两种形式都适用。
 
-  <details>
-  <summary>示例</summary>
+```cpp
+struct Widget {
+    Widget(int w, int h);
+};
+
+void build() {
+    Widget a(800, 600);
+    Widget b{800, 600};
+}
+```
 
-  ```cpp
-  struct Base {
-      virtual void draw();
-      virtual void paint();
-  };
+### 拷贝/移动构造与赋值
 
-  struct Derived : Base {
-      void draw() override;  // go-to-def on override → Base::draw
-      void paint() final;    // go-to-def on final → Base::paint
-  };
-  ```
+导航到构造函数或赋值运算符
 
-  </details>
+在赋值的 `=` 上执行 go-to-definition 会到达赋值运算符。用于引入拷贝或移动初始化的 `=`（`T b = a;`）是初始化语法而不是运算符调用，目前尚未解析。
 
-- [ ] `break` / `continue` — 导航到所在循环或 switch 头部 ([clangd#1921](https://github.com/clangd/clangd/issues/1921))
+```cpp
+struct Widget {
+    Widget(int v);
+    Widget(const Widget& other);
+    Widget(Widget&& other);
+    Widget& operator=(const Widget& other);
+};
 
-  在 `break` 或 `continue` 上执行 go-to-definition 应到达它控制的循环或 switch 头部；目前返回空结果。
+void copies(Widget a) {
+    Widget b = a;
+    Widget c = static_cast<Widget&&>(a);
+    b = c;
+}
+```
 
-  <details>
-  <summary>示例</summary>
+### CTAD
 
-  ```cpp
-  void loop() {
-      for (int i = 0; i < 10; i += 1) {
-          if (i == 5) break;  // go-to-def on break → the for loop
-          continue;           // go-to-def on continue → the for loop
-      }
-  }
-  ```
+导航到选中的构造函数
 
-  </details>
+当类模板实参推导选出一个特化时，在构造函数调用上执行 go-to-definition 会到达被选中的构造函数，而不仅仅是类模板。
 
-- [x] 构造函数调用 — 从括号或花括号导航到选中的构造函数
+```cpp
+template <typename T>
+struct Box {
+    Box(T input) : value(input) {}
+    T value;
+};
 
-  在构造函数调用的左括号或左花括号上执行 go-to-definition 会到达重载决议选中的构造函数，`T(args)` 和 `T{args}` 两种形式都适用。
+template <typename T>
+Box(T) -> Box<T>;
 
-  <details>
-  <summary>示例</summary>
+void use() {
+    Box b(7);
+}
+```
 
-  ```cpp
-  struct Widget {
-      Widget(int w, int h);
-  };
+### 聚合初始化
 
-  void build() {
-      Widget a(800, 600);
-      Widget b{800, 600};
-  }
-  ```
+导航到结构体定义
 
-  </details>
+聚合体没有构造函数，因此在其初始化花括号上执行 go-to-definition 会到达该聚合体的定义。
 
-- [ ] 拷贝/移动构造与赋值 — 导航到构造函数或赋值运算符 _(部分)_
+```cpp
+struct Point {
+    int x;
+    int y;
+};
 
-  在赋值的 `=` 上执行 go-to-definition 会到达赋值运算符。用于引入拷贝或移动初始化的 `=`（`T b = a;`）是初始化语法而不是运算符调用，目前尚未解析。
+void use() {
+    auto p = Point{1, 2};
+}
+```
 
-  <details>
-  <summary>示例</summary>
+### `delete` 表达式
 
-  ```cpp
-  struct Widget {
-      Widget(int v);
-      Widget(const Widget& other);
-      Widget(Widget&& other);
-      Widget& operator=(const Widget& other);
-  };
+导航到析构函数
 
-  void copies(Widget a) {
-      Widget b = a;
-      Widget c = static_cast<Widget&&>(a);
-      b = c;
-  }
-  ```
+在 `delete` 上执行 go-to-definition 应到达它运行的析构函数；目前返回空结果。
 
-  </details>
+```cpp
+struct Widget {
+    ~Widget();
+};
 
-- [x] CTAD — 导航到选中的构造函数
+void dispose(Widget* widget) {
+    delete widget;  // go-to-def on delete → Widget::~Widget
+}
+```
 
-  当类模板实参推导选出一个特化时，在构造函数调用上执行 go-to-definition 会到达被选中的构造函数，而不仅仅是类模板。
+### `new` 表达式
 
-  <details>
-  <summary>示例</summary>
+导航到构造函数和重载的 `operator new`
 
-  ```cpp
-  template <typename T>
-  struct Box {
-      Box(T input) : value(input) {}
-      T value;
-  };
+在 `new` 上执行 go-to-definition 会到达类的重载 `operator new`。同一表达式调用的构造函数不在回复中。
 
-  template <typename T>
-  Box(T) -> Box<T>;
+```cpp
+struct Pool {
+    Pool();
+    static void* operator new(decltype(sizeof(0)) size);
+};
 
-  void use() {
-      Box b(7);
-  }
-  ```
+void make() {
+    Pool* p = new Pool();
+}
+```
 
-  </details>
+### 成员初始化列表
 
-- [x] 聚合初始化 — 导航到结构体定义
+导航到基类和成员构造函数
 
-  聚合体没有构造函数，因此在其初始化花括号上执行 go-to-definition 会到达该聚合体的定义。
+初始化列表运行的基类和成员构造函数通过每个初始化器的左括号到达。初始化器的名称本身解析为基类类型或成员，因此到构造函数的导航经过括号。
 
-  <details>
-  <summary>示例</summary>
+```cpp
+struct Base {
+    Base(int x);
+};
 
-  ```cpp
-  struct Point {
-      int x;
-      int y;
-  };
+struct Logger {
+    Logger(int level);
+};
 
-  void use() {
-      auto p = Point{1, 2};
-  }
-  ```
+struct App : Base {
+    Logger logger;
+    App() : Base(42), logger(1) {}
+};
+```
 
-  </details>
+### 委托构造函数
 
-- [ ] `delete` 表达式 — 导航到析构函数
+导航到目标构造函数
 
-  在 `delete` 上执行 go-to-definition 应到达它运行的析构函数；目前返回空结果。
+委托构造函数的目标通过委托调用的左括号到达。构造函数名本身解析为类类型，因此到目标构造函数的导航经过括号。
 
-  <details>
-  <summary>示例</summary>
+```cpp
+struct Widget {
+    Widget(int w, int h);
+    Widget() : Widget(0, 0) {}
+};
+```
 
-  ```cpp
-  struct Widget {
-      ~Widget();
-  };
+### 继承构造函数
 
-  void dispose(Widget* widget) {
-      delete widget;  // go-to-def on delete → Widget::~Widget
-  }
-  ```
+导航到通过 `using` 引入的基类构造函数
 
-  </details>
+在继承构造函数声明（`using Base::Base;`）上执行 go-to-definition 会到达一个基类构造函数。当基类声明了多个构造函数时，回复解析为其中之一，而不是列出整个集合。
 
-- [ ] `new` 表达式 — 导航到构造函数和重载的 `operator new` _(部分)_
+```cpp
+struct Base {
+    Base(int x);
+    Base(int x, int y);
+};
 
-  在 `new` 上执行 go-to-definition 会到达类的重载 `operator new`。同一表达式调用的构造函数不在回复中。
+struct Derived : Base {
+    using Base::Base;
+};
+```
 
-  <details>
-  <summary>示例</summary>
+### 返回值隐式构造
 
-  ```cpp
-  struct Pool {
-      Pool();
-      static void* operator new(decltype(sizeof(0)) size);
-  };
+导航到构造函数
 
-  void make() {
-      Pool* p = new Pool();
-  }
-  ```
+花括号形式的 `return {args}` 隐式构造函数的返回类型；在花括号上执行 go-to-definition 会到达选中的构造函数。
 
-  </details>
+```cpp
+struct Widget {
+    Widget(int w, int h);
+};
 
-- [ ] 成员初始化列表 — 导航到基类和成员构造函数 _(部分)_
+Widget create() {
+    return {800, 600};
+}
+```
 
-  初始化列表运行的基类和成员构造函数通过每个初始化器的左括号到达。初始化器的名称本身解析为基类类型或成员，因此到构造函数的导航经过括号。
+### Lambda init-capture
 
-  <details>
-  <summary>示例</summary>
+导航到构造函数
 
-  ```cpp
-  struct Base {
-      Base(int x);
-  };
+在 lambda init-capture 的 `=` 上执行 go-to-definition 应到达构造捕获值的构造函数；目前返回空结果。
 
-  struct Logger {
-      Logger(int level);
-  };
+```cpp
+struct Widget {
+    Widget(int v);
+    Widget(Widget&& other);
+};
 
-  struct App : Base {
-      Logger logger;
-      App() : Base(42), logger(1) {}
-  };
-  ```
+void use(Widget w) {
+    // go-to-def on = → Widget(Widget&&)
+    auto f = [x = static_cast<Widget&&>(w)] {};
+}
+```
 
-  </details>
+### 重载运算符
 
-- [ ] 委托构造函数 — 导航到目标构造函数 _(部分)_
+从运算符 token 导航到其定义
 
-  委托构造函数的目标通过委托调用的左括号到达。构造函数名本身解析为类类型，因此到目标构造函数的导航经过括号。
+在重载运算符 token 上执行 go-to-definition 会到达运算符的定义。
+二元、下标、调用和箭头运算符（`+`、`[]`、`()`、`->`）均可解析。
 
-  <details>
-  <summary>示例</summary>
+```cpp
+struct Iterator {
+    int value;
+};
 
-  ```cpp
-  struct Widget {
-      Widget(int w, int h);
-      Widget() : Widget(0, 0) {}
-  };
-  ```
+struct Vec {
+    Vec operator+(const Vec& other) const;
+    int operator[](int index) const;
+    int operator()(int a, int b) const;
+    Iterator* operator->();
+};
 
-  </details>
+void use(Vec a, Vec b) {
+    Vec c = a + b;
+    int e = a[0];
+    int f = a(1, 2);
+    a->value;
+}
+```
 
-- [ ] 继承构造函数 — 导航到通过 `using` 引入的基类构造函数 _(部分)_
+### C++20 重写运算符
 
-  在继承构造函数声明（`using Base::Base;`）上执行 go-to-definition 会到达一个基类构造函数。当基类声明了多个构造函数时，回复解析为其中之一，而不是列出整个集合。
+导航到重写实际使用的运算符
 
-  <details>
-  <summary>示例</summary>
+对于由 C++20 重写规则合成的比较，在书写的运算符上执行 go-to-definition 会到达实际实现它的运算符：`!=` 到达 `operator==`，`>` 到达 `operator<=>`。
 
-  ```cpp
-  struct Base {
-      Base(int x);
-      Base(int x, int y);
-  };
+```cpp
+namespace std {
+struct strong_ordering {
+    int n;
+    constexpr operator int() const { return n; }
+    static const strong_ordering equal, greater, less;
+};
+constexpr strong_ordering strong_ordering::equal = {0};
+constexpr strong_ordering strong_ordering::greater = {1};
+constexpr strong_ordering strong_ordering::less = {-1};
+}
 
-  struct Derived : Base {
-      using Base::Base;
-  };
-  ```
+struct S {
+    int value;
+    bool operator==(const S& other) const;
+    auto operator<=>(const S& other) const = default;
+};
 
-  </details>
+void use(S a, S b) {
+    bool ne = a != b;
+    bool gt = a > b;
+}
+```
 
-- [x] 返回值隐式构造 — 导航到构造函数
+### 用户定义字面量
 
-  花括号形式的 `return {args}` 隐式构造函数的返回类型；在花括号上执行 go-to-definition 会到达选中的构造函数。
+导航到字面量运算符
 
-  <details>
-  <summary>示例</summary>
+在用户定义字面量后缀上执行 go-to-definition 应该到达对应的 `operator""`；目前返回空结果。
 
-  ```cpp
-  struct Widget {
-      Widget(int w, int h);
-  };
+```cpp
+struct Duration {
+    unsigned long long ticks;
+};
 
-  Widget create() {
-      return {800, 600};
-  }
-  ```
+Duration operator""_ms(unsigned long long value);
 
-  </details>
+void use() {
+    Duration d = 500_ms;  // go-to-def on _ms → operator""_ms
+}
+```
 
-- [ ] Lambda init-capture — 导航到构造函数
+### 隐式转换运算符
 
-  在 lambda init-capture 的 `=` 上执行 go-to-definition 应到达构造捕获值的构造函数；目前返回空结果。
+从转换上下文导航到运算符
 
-  <details>
-  <summary>示例</summary>
+从执行用户定义转换的上下文（条件、`!`、显式 `bool(...)`）执行 go-to-definition 应该到达转换运算符；目前返回空结果。
 
-  ```cpp
-  struct Widget {
-      Widget(int v);
-      Widget(Widget&& other);
-  };
+```cpp
+struct Guard {
+    explicit operator bool() const;
+};
 
-  void use(Widget w) {
-      // go-to-def on = → Widget(Widget&&)
-      auto f = [x = static_cast<Widget&&>(w)] {};
-  }
-  ```
+void use(Guard g) {
+    if (g) {}      // go-to-def on ( → Guard::operator bool
+    bool ok = !g;  // go-to-def on ! → Guard::operator bool
+}
+```
 
-  </details>
+### 调用构造函数或转换运算符的转换
 
-- [x] 重载运算符 — 从运算符 token 导航到其定义
+构造其目标的 `static_cast` 会到达选中的构造函数。运行用户定义转换运算符的 `static_cast` 尚未到达该运算符。
 
-  在重载运算符 token 上执行 go-to-definition 会到达运算符的定义。
-  二元、下标、调用和箭头运算符（`+`、`[]`、`()`、`->`）均可解析。
+```cpp
+struct Meters {
+    explicit operator double() const;
+};
 
-  <details>
-  <summary>示例</summary>
+struct Foo {
+    explicit Foo(int value);
+};
 
-  ```cpp
-  struct Iterator {
-      int value;
-  };
+void use(Meters m) {
+    double d = static_cast<double>(m);
+    Foo f = static_cast<Foo>(42);
+}
+```
 
-  struct Vec {
-      Vec operator+(const Vec& other) const;
-      int operator[](int index) const;
-      int operator()(int a, int b) const;
-      Iterator* operator->();
-  };
+### Range-based for
 
-  void use(Vec a, Vec b) {
-      Vec c = a + b;
-      int e = a[0];
-      int f = a(1, 2);
-      a->value;
-  }
-  ```
+导航到 `begin()` / `end()`
 
-  </details>
+对 range-based for 的 `:` 执行 go-to-definition 应该到达为该范围选择的 `begin()` / `end()`；目前返回空结果。
 
-- [x] C++20 重写运算符 — 导航到重写实际使用的运算符
+```cpp
+struct Iterator {
+    int operator*() const;
+    Iterator& operator++();
+    bool operator!=(const Iterator& other) const;
+};
 
-  对于由 C++20 重写规则合成的比较，在书写的运算符上执行 go-to-definition 会到达实际实现它的运算符：`!=` 到达 `operator==`，`>` 到达 `operator<=>`。
+struct Range {
+    Iterator begin();
+    Iterator end();
+};
 
-  <details>
-  <summary>示例</summary>
+void use(Range r) {
+    for (int x : r) {}  // go-to-def on : → Range::begin / Range::end
+}
+```
 
-  ```cpp
-  namespace std {
-  struct strong_ordering {
-      int n;
-      constexpr operator int() const { return n; }
-      static const strong_ordering equal, greater, less;
-  };
-  constexpr strong_ordering strong_ordering::equal = {0};
-  constexpr strong_ordering strong_ordering::greater = {1};
-  constexpr strong_ordering strong_ordering::less = {-1};
-  }
+### Structured bindings
 
-  struct S {
-      int value;
-      bool operator==(const S& other) const;
-      auto operator<=>(const S& other) const = default;
-  };
+导航到底层访问器或字段
 
-  void use(S a, S b) {
-      bool ne = a != b;
-      bool gt = a > b;
-  }
-  ```
+对 structured binding 名称执行 go-to-definition 会解析到绑定本身，而不是它命名的底层字段或访问器。
 
-  </details>
+```cpp
+struct Pair {
+    int first;
+    int second;
+};
 
-- [ ] 用户定义字面量 — 导航到字面量运算符
+void use(Pair p) {
+    // go-to-def on a → Pair::first, on b → Pair::second
+    auto [a, b] = p;
+}
+```
 
-  在用户定义字面量后缀上执行 go-to-definition 应该到达对应的 `operator""`；目前返回空结果。
+### `co_await` / `co_yield` / `co_return`
 
-  <details>
-  <summary>示例</summary>
+导航到 awaiter 或 promise 方法
 
-  ```cpp
-  struct Duration {
-      unsigned long long ticks;
-  };
+对 `co_yield` 执行 go-to-definition 会到达 promise 的 `yield_value`。`co_await` 和 `co_return` 关键字尚未到达 awaiter 或 promise 的方法。
 
-  Duration operator""_ms(unsigned long long value);
+```cpp
+namespace std {
+template <typename Ret, typename...>
+struct coroutine_traits {
+    using promise_type = typename Ret::promise_type;
+};
+template <typename = void>
+struct coroutine_handle {
+    coroutine_handle() = default;
+    template <typename Promise>
+    coroutine_handle(coroutine_handle<Promise>) noexcept;
+    static coroutine_handle from_address(void*) noexcept;
+};
+struct suspend_never {
+    bool await_ready() const noexcept;
+    void await_suspend(coroutine_handle<>) const noexcept;
+    void await_resume() const noexcept;
+};
+}
 
-  void use() {
-      Duration d = 500_ms;  // go-to-def on _ms → operator""_ms
-  }
-  ```
+struct Awaiter {
+    bool await_ready() const noexcept;
+    void await_suspend(std::coroutine_handle<>) const noexcept;
+    int await_resume() const noexcept;
+};
 
-  </details>
+struct Task {
+    struct promise_type {
+        Task get_return_object();
+        std::suspend_never initial_suspend();
+        std::suspend_never final_suspend() noexcept;
+        Awaiter yield_value(int value);
+        void return_value(int value);
+        void unhandled_exception();
+    };
+};
 
-- [ ] 隐式转换运算符 — 从转换上下文导航到运算符（[clangd#1931](https://github.com/clangd/clangd/issues/1931)）
-
-  从执行用户定义转换的上下文（条件、`!`、显式 `bool(...)`）执行 go-to-definition 应该到达转换运算符；目前返回空结果。
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  struct Guard {
-      explicit operator bool() const;
-  };
-
-  void use(Guard g) {
-      if (g) {}      // go-to-def on ( → Guard::operator bool
-      bool ok = !g;  // go-to-def on ! → Guard::operator bool
-  }
-  ```
-
-  </details>
-
-- [ ] 调用构造函数或转换运算符的转换 _（部分实现）_
-
-  构造其目标的 `static_cast` 会到达选中的构造函数。运行用户定义转换运算符的 `static_cast` 尚未到达该运算符。
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  struct Meters {
-      explicit operator double() const;
-  };
-
-  struct Foo {
-      explicit Foo(int value);
-  };
-
-  void use(Meters m) {
-      double d = static_cast<double>(m);
-      Foo f = static_cast<Foo>(42);
-  }
-  ```
-
-  </details>
-
-- [ ] Range-based for — 导航到 `begin()` / `end()`
-
-  对 range-based for 的 `:` 执行 go-to-definition 应该到达为该范围选择的 `begin()` / `end()`；目前返回空结果。
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  struct Iterator {
-      int operator*() const;
-      Iterator& operator++();
-      bool operator!=(const Iterator& other) const;
-  };
-
-  struct Range {
-      Iterator begin();
-      Iterator end();
-  };
-
-  void use(Range r) {
-      for (int x : r) {}  // go-to-def on : → Range::begin / Range::end
-  }
-  ```
-
-  </details>
-
-- [ ] Structured bindings — 导航到底层访问器或字段
-
-  对 structured binding 名称执行 go-to-definition 会解析到绑定本身，而不是它命名的底层字段或访问器。
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  struct Pair {
-      int first;
-      int second;
-  };
-
-  void use(Pair p) {
-      // go-to-def on a → Pair::first, on b → Pair::second
-      auto [a, b] = p;
-  }
-  ```
-
-  </details>
-
-- [ ] `co_await` / `co_yield` / `co_return` — 导航到 awaiter 或 promise 方法 _（部分实现）_
-
-  对 `co_yield` 执行 go-to-definition 会到达 promise 的 `yield_value`。`co_await` 和 `co_return` 关键字尚未到达 awaiter 或 promise 的方法。
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  namespace std {
-  template <typename Ret, typename...>
-  struct coroutine_traits {
-      using promise_type = typename Ret::promise_type;
-  };
-  template <typename = void>
-  struct coroutine_handle {
-      coroutine_handle() = default;
-      template <typename Promise>
-      coroutine_handle(coroutine_handle<Promise>) noexcept;
-      static coroutine_handle from_address(void*) noexcept;
-  };
-  struct suspend_never {
-      bool await_ready() const noexcept;
-      void await_suspend(coroutine_handle<>) const noexcept;
-      void await_resume() const noexcept;
-  };
-  }
-
-  struct Awaiter {
-      bool await_ready() const noexcept;
-      void await_suspend(std::coroutine_handle<>) const noexcept;
-      int await_resume() const noexcept;
-  };
-
-  struct Task {
-      struct promise_type {
-          Task get_return_object();
-          std::suspend_never initial_suspend();
-          std::suspend_never final_suspend() noexcept;
-          Awaiter yield_value(int value);
-          void return_value(int value);
-          void unhandled_exception();
-      };
-  };
-
-  Task example() {
-      co_await Awaiter{};
-      co_yield 1;
-      co_return 2;
-  }
-  ```
-
-  </details>
+Task example() {
+    co_await Awaiter{};
+    co_yield 1;
+    co_return 2;
+}
+```
 
 <!-- END GENERATED ITEMS -->
 
@@ -788,293 +704,267 @@
 
 clice 返回声明位置加上定义位置 — 内联定义的符号没有独立的声明 — 并排除光标当前所在的位置，因此声明与定义位置像 go-to-definition 一样交替。
 
-<!-- BEGIN GENERATED ITEMS: Go to Declaration -->
+<!-- BEGIN GENERATED ITEMS: go_to_declaration -->
 
-- [x] 跨 TU go-to-declaration
+| 能力                       | 状态 | 问题 |
+| -------------------------- | ---- | ---- |
+| 跨 TU go-to-declaration    | 支持 |      |
+| 函数                       | 支持 |      |
+| 类和结构体的前向声明       | 支持 |      |
+| 静态数据成员               | 支持 |      |
+| `extern` 变量              | 支持 |      |
+| 多重声明                   | 支持 |      |
+| 声明与定义仅有表面签名差异 | 支持 |      |
 
-  对使用处执行 go-to-declaration 会解析到其他文件中的位置：原型位于共享头文件中，行外定义位于相邻源文件中，两者都会从另一文件的使用处一并提供。
+### 跨 TU go-to-declaration
 
-  <details>
-  <summary>示例</summary>
+对使用处执行 go-to-declaration 会解析到其他文件中的位置：原型位于共享头文件中，行外定义位于相邻源文件中，两者都会从另一文件的使用处一并提供。
 
-  `main.cpp`:
+`main.cpp`:
 
-  ```cpp
-  #include "shared.h"
+```cpp
+#include "shared.h"
 
-  int run(int value) {
-      return scale(value);
-  }
-  ```
+int run(int value) {
+    return scale(value);
+}
+```
 
-  `lib.cpp`:
+`lib.cpp`:
 
-  ```cpp
-  #include "shared.h"
+```cpp
+#include "shared.h"
 
-  int scale(int value) {
-      return value * 2;
-  }
-  ```
+int scale(int value) {
+    return value * 2;
+}
+```
 
-  `shared.h`:
+`shared.h`:
 
-  ```cpp
-  #pragma once
+```cpp
+#pragma once
 
-  int scale(int value);
-  ```
+int scale(int value);
+```
 
-  </details>
+### 函数
 
-- [x] 函数 — 从使用处或行外定义导航到原型
+从使用处或行外定义导航到原型
 
-  从调用处和行外定义执行 go-to-declaration 都能到达函数原型 — 这是原型交替出现的两个非光标位置。
+从调用处和行外定义执行 go-to-declaration 都能到达函数原型 — 这是原型交替出现的两个非光标位置。
 
-  <details>
-  <summary>示例</summary>
+```cpp
+struct Widget {
+    void draw();
+};
 
-  ```cpp
-  struct Widget {
-      void draw();
-  };
+void Widget::draw() {}
 
-  void Widget::draw() {}
+void render(Widget& widget) {
+    widget.draw();
+}
+```
 
-  void render(Widget& widget) {
-      widget.draw();
-  }
-  ```
+### 类和结构体的前向声明
 
-  </details>
+具有前向声明和后续定义的类，从使用处会同时提供两者 — 前向声明保留在声明集合中，而不是被定义替代。
 
-- [x] 类和结构体的前向声明
+```cpp
+struct Widget;
 
-  具有前向声明和后续定义的类，从使用处会同时提供两者 — 前向声明保留在声明集合中，而不是被定义替代。
+struct Widget {
+    int value;
+};
 
-  <details>
-  <summary>示例</summary>
+class Panel;
 
-  ```cpp
-  struct Widget;
+class Panel {
+    int width;
+};
 
-  struct Widget {
-      int value;
-  };
+int probe(Widget& widget, Panel& panel) {
+    return widget.value;
+}
+```
 
-  class Panel;
+### 静态数据成员
 
-  class Panel {
-      int width;
-  };
+到类内声明
 
-  int probe(Widget& widget, Panel& panel) {
-      return widget.value;
-  }
-  ```
+静态数据成员在类内声明并在类外定义；对使用处执行 go-to-declaration 会同时提供类内声明和定义。
 
-  </details>
+```cpp
+struct Config {
+    static int timeout;
+};
 
-- [x] 静态数据成员 — 到类内声明
+int Config::timeout = 30;
 
-  静态数据成员在类内声明并在类外定义；对使用处执行 go-to-declaration 会同时提供类内声明和定义。
+int read_config() {
+    return Config::timeout;
+}
+```
 
-  <details>
-  <summary>示例</summary>
+### `extern` 变量
 
-  ```cpp
-  struct Config {
-      static int timeout;
-  };
+到声明
 
-  int Config::timeout = 30;
+使用 `extern` 变量会同时提供 `extern` 声明和定义性声明，因此使用处始终可以到达头文件侧的声明。
 
-  int read_config() {
-      return Config::timeout;
-  }
-  ```
+```cpp
+extern int log_level;
 
-  </details>
+int log_level = 0;
 
-- [x] `extern` 变量 — 到声明
+int read_level() {
+    return log_level;
+}
+```
 
-  使用 `extern` 变量会同时提供 `extern` 声明和定义性声明，因此使用处始终可以到达头文件侧的声明。
+### 多重声明
 
-  <details>
-  <summary>示例</summary>
+每个声明位置
 
-  ```cpp
-  extern int log_level;
+当实体在多个位置声明时，对使用处执行 go-to-declaration 会列出所有声明位置，而不只是最近的那个。
 
-  int log_level = 0;
+```cpp
+int clamp(int value);
+int clamp(int value);
 
-  int read_level() {
-      return log_level;
-  }
-  ```
+int clamp(int value) {
+    return value < 0 ? 0 : value;
+}
 
-  </details>
+int hold(int value) {
+    return clamp(value);
+}
+```
 
-- [x] 多重声明 — 每个声明位置
+### 声明与定义仅有表面签名差异
 
-  当实体在多个位置声明时，对使用处执行 go-to-declaration 会列出所有声明位置，而不只是最近的那个。
+参数名和参数上的顶层 `const` 不属于函数类型的一部分：下面的声明和定义拼写不同，但 go-to-declaration 仍能将使用处连接到原型。
 
-  <details>
-  <summary>示例</summary>
+```cpp
+int render(int width, const int height);
 
-  ```cpp
-  int clamp(int value);
-  int clamp(int value);
+int render(int w, int h) {
+    return w * h;
+}
 
-  int clamp(int value) {
-      return value < 0 ? 0 : value;
-  }
-
-  int hold(int value) {
-      return clamp(value);
-  }
-  ```
-
-  </details>
-
-- [x] 声明与定义仅有表面签名差异
-
-  参数名和参数上的顶层 `const` 不属于函数类型的一部分：下面的声明和定义拼写不同，但 go-to-declaration 仍能将使用处连接到原型。
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  int render(int width, const int height);
-
-  int render(int w, int h) {
-      return w * h;
-  }
-
-  int use_render() {
-      return render(800, 600);
-  }
-  ```
-
-  </details>
+int use_render() {
+    return render(800, 600);
+}
+```
 
 <!-- END GENERATED ITEMS -->
 
 ## Go to Implementation
 
-<!-- BEGIN GENERATED ITEMS: Go to Implementation -->
+<!-- BEGIN GENERATED ITEMS: go_to_implementation -->
 
-- [x] 虚方法 — 链中每一层跳到其下一层重写
+| 能力             | 状态   | 问题                                                      |
+| ---------------- | ------ | --------------------------------------------------------- |
+| 虚方法           | 支持   |                                                           |
+| 虚方法           | 支持   |                                                           |
+| 非虚函数         | 不支持 | [clangd#854](https://github.com/clangd/clangd/issues/854) |
+| 基类             | 支持   |                                                           |
+| 模板鸭子类型导航 | 不支持 |                                                           |
 
-  在三级重写链中，对每个方法执行 go-to-implementation 都会到达下一层的重写：基类到中间类，中间类到叶子类。
+### 虚方法
 
-  <details>
-  <summary>示例</summary>
+链中每一层跳到其下一层重写
 
-  ```cpp
-  struct Base {
-      virtual void run() = 0;
-  };
+在三级重写链中，对每个方法执行 go-to-implementation 都会到达下一层的重写：基类到中间类，中间类到叶子类。
 
-  struct Middle : Base {
-      void run() override {}
-  };
+```cpp
+struct Base {
+    virtual void run() = 0;
+};
 
-  struct Leaf : Middle {
-      void run() override {}
-  };
-  ```
+struct Middle : Base {
+    void run() override {}
+};
 
-  </details>
+struct Leaf : Middle {
+    void run() override {}
+};
+```
 
-- [x] 虚方法 — 所有同层重写
+### 虚方法
 
-  对虚方法执行 go-to-implementation 会列出所有同级派生类中的重写。
+所有同层重写
 
-  <details>
-  <summary>示例</summary>
+对虚方法执行 go-to-implementation 会列出所有同级派生类中的重写。
 
-  ```cpp
-  struct Shape {
-      virtual int area() = 0;
-  };
+```cpp
+struct Shape {
+    virtual int area() = 0;
+};
 
-  struct Circle : Shape {
-      int area() override { return 1; }
-  };
+struct Circle : Shape {
+    int area() override { return 1; }
+};
 
-  struct Square : Shape {
-      int area() override { return 2; }
-  };
+struct Square : Shape {
+    int area() override { return 2; }
+};
 
-  struct Triangle : Shape {
-      int area() override { return 3; }
-  };
-  ```
+struct Triangle : Shape {
+    int area() override { return 3; }
+};
+```
 
-  </details>
+### 非虚函数
 
-- [ ] 非虚函数 — 声明到行外定义 ([clangd#854](https://github.com/clangd/clangd/issues/854))
+声明到行外定义
 
-  对非虚函数声明执行 go-to-implementation 应到达其行外定义，表现为 go-to-definition 的超集；目前返回空。
+对非虚函数声明执行 go-to-implementation 应到达其行外定义，表现为 go-to-definition 的超集；目前返回空。
 
-  <details>
-  <summary>示例</summary>
+```cpp
+struct Widget {
+    void draw();  // go-to-impl on draw → out-of-line definition below
+};
 
-  ```cpp
-  struct Widget {
-      void draw();  // go-to-impl on draw → out-of-line definition below
-  };
+void Widget::draw() {}
+```
 
-  void Widget::draw() {}
-  ```
+### 基类
 
-  </details>
+所有派生类
 
-- [x] 基类 — 所有派生类
+对基类名执行 go-to-implementation 会列出所有从它派生的类。
 
-  对基类名执行 go-to-implementation 会列出所有从它派生的类。
+```cpp
+struct Base {};
 
-  <details>
-  <summary>示例</summary>
+struct Circle : Base {};
 
-  ```cpp
-  struct Base {};
+struct Square : Base {};
+```
 
-  struct Circle : Base {};
+### 模板鸭子类型导航
 
-  struct Square : Base {};
-  ```
+从依赖成员调用出发，go-to-implementation 应列出每个已知实例化的具体方法；对泛型 lambda 的依赖调用同样适用。目前返回空。
 
-  </details>
+```cpp
+template <typename T>
+void process(T& obj) {
+    obj.foo();  // go-to-impl on foo → A::foo (from the process(a) instantiation)
+}
 
-- [ ] 模板鸭子类型导航
+struct A {
+    void foo() {}
+};
 
-  从依赖成员调用出发，go-to-implementation 应列出每个已知实例化的具体方法；对泛型 lambda 的依赖调用同样适用。目前返回空。
+void run(A a) {
+    process(a);
+}
 
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  template <typename T>
-  void process(T& obj) {
-      obj.foo();  // go-to-impl on foo → A::foo (from the process(a) instantiation)
-  }
-
-  struct A {
-      void foo() {}
-  };
-
-  void run(A a) {
-      process(a);
-  }
-
-  void generic() {
-      auto call = [](auto& x) { x.bar(); };  // go-to-impl on bar → the concrete bar
-  }
-  ```
-
-  </details>
+void generic() {
+    auto call = [](auto& x) { x.bar(); };  // go-to-impl on bar → the concrete bar
+}
+```
 
 <!-- END GENERATED ITEMS -->
 
@@ -1082,711 +972,601 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
 
 导航到符号的类型定义。适用于变量、参数、字段以及任何其他具有类型的命名实体。当类型是类型别名或类似指针的包装时，导航应解包到底层/指向的类型。
 
-<!-- BEGIN GENERATED ITEMS: Go to Type Definition -->
+<!-- BEGIN GENERATED ITEMS: go_to_type_definition -->
 
-- [x] 变量和参数
+| 能力               | 状态     | 问题                                                        |
+| ------------------ | -------- | ----------------------------------------------------------- |
+| 变量和参数         | 支持     |                                                             |
+| 类与结构体字段     | 支持     |                                                             |
+| `auto` 推导的变量  | 不支持   |                                                             |
+| 智能指针到指向类型 | 部分支持 | [clangd#1026](https://github.com/clangd/clangd/issues/1026) |
+| 类型别名           | 部分支持 |                                                             |
+| 结构化绑定变量     | 支持     |                                                             |
 
-  对局部变量或参数执行 go-to-type-definition 会到达其类型的定义。
+### 变量和参数
 
-  <details>
-  <summary>示例</summary>
+对局部变量或参数执行 go-to-type-definition 会到达其类型的定义。
 
-  ```cpp
-  struct Widget {};
+```cpp
+struct Widget {};
 
-  Widget make_widget();
+Widget make_widget();
 
-  int probe(Widget param) {
-      Widget local = make_widget();
-      return 0;
-  }
-  ```
+int probe(Widget param) {
+    Widget local = make_widget();
+    return 0;
+}
+```
 
-  </details>
+### 类与结构体字段
 
-- [x] 类与结构体字段
+对字段访问执行 go-to-type-definition 会到达其字段类型的定义。
 
-  对字段访问执行 go-to-type-definition 会到达其字段类型的定义。
+```cpp
+struct Logger {};
 
-  <details>
-  <summary>示例</summary>
+class Store {};
 
-  ```cpp
-  struct Logger {};
+struct App {
+    Logger logger;
+    Store store;
+};
 
-  class Store {};
+int use(App& app) {
+    app.logger;
+    app.store;
+    return 0;
+}
+```
 
-  struct App {
-      Logger logger;
-      Store store;
-  };
+### `auto` 推导的变量
 
-  int use(App& app) {
-      app.logger;
-      app.store;
-      return 0;
-  }
-  ```
+对 `auto` 推导出的变量执行 go-to-type-definition 应到达推导类型的定义；目前该变量不带类型关系，因此返回空。
 
-  </details>
+```cpp
+struct Widget {};
 
-- [ ] `auto` 推导的变量
+Widget make_widget();
 
-  对 `auto` 推导出的变量执行 go-to-type-definition 应到达推导类型的定义；目前该变量不带类型关系，因此返回空。
+void probe() {
+    auto widget = make_widget();  // go-to-type-def on widget → Widget
+}
+```
 
-  <details>
-  <summary>示例</summary>
+### 智能指针到指向类型
 
-  ```cpp
-  struct Widget {};
+对智能指针变量执行 go-to-type-definition 会到达包装类型本身；不会提供到指向类型的解包。
 
-  Widget make_widget();
+```cpp
+template <typename T>
+struct Ptr {
+    T* operator->();
+    T& operator*();
+    T* raw;
+};
 
-  void probe() {
-      auto widget = make_widget();  // go-to-type-def on widget → Widget
-  }
-  ```
+struct Widget {};
 
-  </details>
+int use(Ptr<Widget> ptr) {
+    return 0;
+}
+```
 
-- [ ] 智能指针到指向类型 _(部分)_ ([clangd#1026](https://github.com/clangd/clangd/issues/1026))
+### 类型别名
 
-  对智能指针变量执行 go-to-type-definition 会到达包装类型本身；不会提供到指向类型的解包。
+对别名类型变量执行 go-to-type-definition 会到达 `using` 或 `typedef` 声明；目前还不会将别名解包到底层类型的定义。
 
-  <details>
-  <summary>示例</summary>
+```cpp
+struct Impl {};
 
-  ```cpp
-  template <typename T>
-  struct Ptr {
-      T* operator->();
-      T& operator*();
-      T* raw;
-  };
+using Handle = Impl;
 
-  struct Widget {};
+typedef Impl LegacyHandle;
 
-  int use(Ptr<Widget> ptr) {
-      return 0;
-  }
-  ```
+int use(Handle handle, LegacyHandle legacy) {
+    return 0;
+}
+```
 
-  </details>
+### 结构化绑定变量
 
-- [ ] 类型别名 _(部分)_
+对结构化绑定执行 go-to-type-definition 会到达所绑定成员类型的定义。
 
-  对别名类型变量执行 go-to-type-definition 会到达 `using` 或 `typedef` 声明；目前还不会将别名解包到底层类型的定义。
+```cpp
+struct Widget {};
 
-  <details>
-  <summary>示例</summary>
+struct Pair {
+    Widget first;
+    int second;
+};
 
-  ```cpp
-  struct Impl {};
+Pair make_pair();
 
-  using Handle = Impl;
-
-  typedef Impl LegacyHandle;
-
-  int use(Handle handle, LegacyHandle legacy) {
-      return 0;
-  }
-  ```
-
-  </details>
-
-- [x] 结构化绑定变量
-
-  对结构化绑定执行 go-to-type-definition 会到达所绑定成员类型的定义。
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  struct Widget {};
-
-  struct Pair {
-      Widget first;
-      int second;
-  };
-
-  Pair make_pair();
-
-  int use() {
-      auto [widget, count] = make_pair();
-      return 0;
-  }
-  ```
-
-  </details>
+int use() {
+    auto [widget, count] = make_pair();
+    return 0;
+}
+```
 
 <!-- END GENERATED ITEMS -->
 
 ## Find References
 
-<!-- BEGIN GENERATED ITEMS: Find References -->
+<!-- BEGIN GENERATED ITEMS: find_references -->
 
-- [x] 跨翻译单元 find references
+| 能力                                           | 状态   | 问题                                                                                                                   |
+| ---------------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------- |
+| 跨翻译单元 find references                     | 支持   |                                                                                                                        |
+| 声明和定义位置出现在引用中                     | 支持   |                                                                                                                        |
+| range-based for 循环的隐式引用                 | 不支持 | [clangd#1081](https://github.com/clangd/clangd/issues/1081)                                                            |
+| 隐式构造函数与析构函数调用                     | 不支持 |                                                                                                                        |
+| 通过转发函数的引用                             | 不支持 | [clangd#716](https://github.com/clangd/clangd/issues/716), [clangd#1872](https://github.com/clangd/clangd/issues/1872) |
+| 依赖与模板上下文中的引用                       | 不支持 | [clangd#258](https://github.com/clangd/clangd/issues/258), [clangd#675](https://github.com/clangd/clangd/issues/675)   |
+| 引用的读/写分类                                | 不支持 | [clangd#2139](https://github.com/clangd/clangd/issues/2139)                                                            |
+| 每条引用附带所在函数名                         | 不支持 | [clangd#177](https://github.com/clangd/clangd/issues/177)                                                              |
+| 宏引用覆盖展开、`#ifdef`/`#ifndef` 和 `#undef` | 支持   |                                                                                                                        |
+| 写在其他宏定义体内的宏引用                     | 不支持 | [clangd#346](https://github.com/clangd/clangd/issues/346)                                                              |
+| Label 与 goto 引用                             | 支持   |                                                                                                                        |
 
-  find references 也会收集其他文件中的使用：一个函数在一个源文件中定义并在另一个源文件中被调用时，会同时报告两个调用点以及共享头文件中的声明，而不只是当前文件中的使用。
+### 跨翻译单元 find references
 
-  <details>
-  <summary>示例</summary>
+find references 也会收集其他文件中的使用：一个函数在一个源文件中定义并在另一个源文件中被调用时，会同时报告两个调用点以及共享头文件中的声明，而不只是当前文件中的使用。
 
-  `main.cpp`:
+`main.cpp`:
 
-  ```cpp
-  #include "shared.h"
+```cpp
+#include "shared.h"
 
-  int run(int value) {
-      return compute(value);
-  }
-  ```
+int run(int value) {
+    return compute(value);
+}
+```
 
-  `lib.cpp`:
+`lib.cpp`:
 
-  ```cpp
-  #include "shared.h"
+```cpp
+#include "shared.h"
 
-  int compute(int value) {
-      return value * 2;
-  }
+int compute(int value) {
+    return value * 2;
+}
 
-  int again(int value) {
-      return compute(value) + 1;
-  }
-  ```
+int again(int value) {
+    return compute(value) + 1;
+}
+```
 
-  `shared.h`:
+`shared.h`:
 
-  ```cpp
-  #pragma once
+```cpp
+#pragma once
 
-  int compute(int value);
-  ```
+int compute(int value);
+```
 
-  </details>
+### 声明和定义位置出现在引用中
 
-- [x] 声明和定义位置出现在引用中
+引用查询会返回声明和行外定义以及每个使用位置，因此从符号的任意一处都能到达它的全部出现位置。
 
-  引用查询会返回声明和行外定义以及每个使用位置，因此从符号的任意一处都能到达它的全部出现位置。
+```cpp
+int scale(int value);
 
-  <details>
-  <summary>示例</summary>
+int scale(int value) {
+    return value * 2;
+}
 
-  ```cpp
-  int scale(int value);
+int use() {
+    return scale(3);
+}
+```
 
-  int scale(int value) {
-      return value * 2;
-  }
+### range-based for 循环的隐式引用
 
-  int use() {
-      return scale(3);
-  }
-  ```
+对 `begin` 执行 find references 只报告其自身声明；隐式调用它的
+range-based for 循环不会出现在引用结果中。
 
-  </details>
+```cpp
+struct Iterator {
+    int operator*() const;
+    Iterator& operator++();
+    bool operator!=(const Iterator& other) const;
+};
 
-- [ ] range-based for 循环的隐式引用（[clangd#1081](https://github.com/clangd/clangd/issues/1081)）
+struct Range {
+    Iterator begin();  // find-refs here omits the range-for below
+    Iterator end();
+};
 
-  对 `begin` 执行 find references 只报告其自身声明；隐式调用它的
-  range-based for 循环不会出现在引用结果中。
+void use(Range r) {
+    for (int x : r) {
+    }
+}
+```
 
-  <details>
-  <summary>示例</summary>
+### 隐式构造函数与析构函数调用
 
-  ```cpp
-  struct Iterator {
-      int operator*() const;
-      Iterator& operator++();
-      bool operator!=(const Iterator& other) const;
-  };
+对构造函数执行 find references 只报告显式调用位置；隐式调用构造函数或析构函数的对象定义不会被包含。
 
-  struct Range {
-      Iterator begin();  // find-refs here omits the range-for below
-      Iterator end();
-  };
+```cpp
+struct Blob {
+    Blob();  // find-refs here omits the `Blob b;` definition below
+    ~Blob();
+};
 
-  void use(Range r) {
-      for (int x : r) {
-      }
-  }
-  ```
+void use() {
+    Blob b;
+}
+```
 
-  </details>
+### 通过转发函数的引用
 
-- [ ] 隐式构造函数与析构函数调用
+对构造函数执行 find references 不包含通过完美转发工厂间接到达它的调用位置。
 
-  对构造函数执行 find references 只报告显式调用位置；隐式调用构造函数或析构函数的对象定义不会被包含。
+```cpp
+template <typename T, typename... Args>
+T make(Args&&... args) {
+    return T(static_cast<Args&&>(args)...);
+}
 
-  <details>
-  <summary>示例</summary>
+struct Widget {
+    Widget(int w, int h);  // find-refs here omits the make<Widget> call
+};
 
-  ```cpp
-  struct Blob {
-      Blob();  // find-refs here omits the `Blob b;` definition below
-      ~Blob();
-  };
+Widget build() {
+    return make<Widget>(800, 600);
+}
+```
 
-  void use() {
-      Blob b;
-  }
-  ```
+### 依赖与模板上下文中的引用
 
-  </details>
+对成员执行 find references 不包含模板中的依赖调用位置，即使模板以该成员所在类实例化。
 
-- [ ] 通过转发函数的引用（[clangd#716](https://github.com/clangd/clangd/issues/716)、[clangd#1872](https://github.com/clangd/clangd/issues/1872)）
+```cpp
+struct A {
+    void foo();  // find-refs here omits the dependent obj.foo() below
+};
 
-  对构造函数执行 find references 不包含通过完美转发工厂间接到达它的调用位置。
+template <typename T>
+void process(T& obj) {
+    obj.foo();
+}
 
-  <details>
-  <summary>示例</summary>
+void run(A a) {
+    process(a);
+}
+```
 
-  ```cpp
-  template <typename T, typename... Args>
-  T make(Args&&... args) {
-      return T(static_cast<Args&&>(args)...);
-  }
+### 引用的读/写分类
 
-  struct Widget {
-      Widget(int w, int h);  // find-refs here omits the make<Widget> call
-  };
+引用回复只携带位置信息，读者无法区分写与读；未提供为每条结果标注访问类型的支持。
 
-  Widget build() {
-      return make<Widget>(800, 600);
-  }
-  ```
+```cpp
+int use() {
+    int x = 0;      // write
+    int y = x + 1;  // read
+    x = y;          // write
+    return x;
+}
+```
 
-  </details>
+### 每条引用附带所在函数名
 
-- [ ] 依赖与模板上下文中的引用（[clangd#258](https://github.com/clangd/clangd/issues/258)、[clangd#675](https://github.com/clangd/clangd/issues/675)）
+每条引用只报告为裸位置；未附加包含它的函数名，因此结果只有文件和行号，没有更多上下文。
 
-  对成员执行 find references 不包含模板中的依赖调用位置，即使模板以该成员所在类实例化。
+```cpp
+int shared_value = 0;
 
-  <details>
-  <summary>示例</summary>
+int reader() {
+    return shared_value;
+}
 
-  ```cpp
-  struct A {
-      void foo();  // find-refs here omits the dependent obj.foo() below
-  };
+int writer() {
+    shared_value = 1;
+    return shared_value;
+}
+```
 
-  template <typename T>
-  void process(T& obj) {
-      obj.foo();
-  }
+### 宏引用覆盖展开、`#ifdef`/`#ifndef` 和 `#undef`
 
-  void run(A a) {
-      process(a);
-  }
-  ```
+宏的引用涵盖其展开、测试它的 `#ifdef` / `#ifndef` 条件以及取消它的 `#undef`。每次 `#define` 同名符号都是独立的符号，因此 `#undef` 之后的重新定义只收集其自身的用例。
 
-  </details>
+```cpp
+#define FEATURE 1
 
-- [ ] 引用的读/写分类（[clangd#2139](https://github.com/clangd/clangd/issues/2139)）
+int on = FEATURE;
 
-  引用回复只携带位置信息，读者无法区分写与读；未提供为每条结果标注访问类型的支持。
+#ifdef FEATURE
+int guarded = 1;
+#endif
 
-  <details>
-  <summary>示例</summary>
+#ifndef FEATURE
+int missing = 0;
+#endif
 
-  ```cpp
-  int use() {
-      int x = 0;      // write
-      int y = x + 1;  // read
-      x = y;          // write
-      return x;
-  }
-  ```
+#undef FEATURE
 
-  </details>
+#define FEATURE 2
 
-- [ ] 每条引用附带所在函数名（[clangd#177](https://github.com/clangd/clangd/issues/177)）
+int again = FEATURE;
+```
 
-  每条引用只报告为裸位置；未附加包含它的函数名，因此结果只有文件和行号，没有更多上下文。
+### 写在其他宏定义体内的宏引用
 
-  <details>
-  <summary>示例</summary>
+对宏执行 find references 不包含写在其他宏定义体内的提及该宏的地方。
 
-  ```cpp
-  int shared_value = 0;
+```cpp
+#define WIDTH 100  // find-refs here omits the WIDTH tokens in AREA below
 
-  int reader() {
-      return shared_value;
-  }
+#define AREA (WIDTH * WIDTH)
 
-  int writer() {
-      shared_value = 1;
-      return shared_value;
-  }
-  ```
+int total = AREA;
+```
 
-  </details>
+### Label 与 goto 引用
 
-- [x] 宏引用覆盖展开、`#ifdef`/`#ifndef` 和 `#undef`
+对 label 执行 find references 会列出该 label 本身以及所有跳转到它的 `goto`。
 
-  宏的引用涵盖其展开、测试它的 `#ifdef` / `#ifndef` 条件以及取消它的 `#undef`。每次 `#define` 同名符号都是独立的符号，因此 `#undef` 之后的重新定义只收集其自身的用例。
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  #define FEATURE 1
-
-  int on = FEATURE;
-
-  #ifdef FEATURE
-  int guarded = 1;
-  #endif
-
-  #ifndef FEATURE
-  int missing = 0;
-  #endif
-
-  #undef FEATURE
-
-  #define FEATURE 2
-
-  int again = FEATURE;
-  ```
-
-  </details>
-
-- [ ] 写在其他宏定义体内的宏引用（[clangd#346](https://github.com/clangd/clangd/issues/346)）
-
-  对宏执行 find references 不包含写在其他宏定义体内的提及该宏的地方。
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  #define WIDTH 100  // find-refs here omits the WIDTH tokens in AREA below
-
-  #define AREA (WIDTH * WIDTH)
-
-  int total = AREA;
-  ```
-
-  </details>
-
-- [x] Label 与 goto 引用
-
-  对 label 执行 find references 会列出该 label 本身以及所有跳转到它的 `goto`。
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  int loop(int failed) {
-      retry:
-      if (failed) {
-          goto retry;
-      }
-      return 0;
-  }
-  ```
-
-  </details>
+```cpp
+int loop(int failed) {
+    retry:
+    if (failed) {
+        goto retry;
+    }
+    return 0;
+}
+```
 
 <!-- END GENERATED ITEMS -->
 
 ## Call Hierarchy
 
-<!-- BEGIN GENERATED ITEMS: Call Hierarchy -->
+<!-- BEGIN GENERATED ITEMS: call_hierarchy -->
 
-- [x] 对函数和方法执行 prepare call hierarchy
+| 能力                                    | 状态     | 问题                                                        |
+| --------------------------------------- | -------- | ----------------------------------------------------------- |
+| 对函数和方法执行 prepare call hierarchy | 支持     |                                                             |
+| Incoming calls                          | 支持     |                                                             |
+| Outgoing calls                          | 支持     |                                                             |
+| 条目的 detail 字段中显示函数签名        | 不支持   |                                                             |
+| 成员函数的限定名                        | 部分支持 |                                                             |
+| 跟踪虚函数派发                          | 不支持   |                                                             |
+| 非函数目标                              | 不支持   | [clangd#1308](https://github.com/clangd/clangd/issues/1308) |
+| lambda 内部的调用                       | 支持     |                                                             |
+| 通过转发函数的构造函数调用              | 不支持   | [clangd#2242](https://github.com/clangd/clangd/issues/2242) |
 
-  对自由函数和成员方法执行 prepare call hierarchy 均可正常工作，在光标所在的实体处建立条目。
+### 对函数和方法执行 prepare call hierarchy
 
-  <details>
-  <summary>示例</summary>
+对自由函数和成员方法执行 prepare call hierarchy 均可正常工作，在光标所在的实体处建立条目。
 
-  ```cpp
-  struct Service {
-      void start();
-  };
+```cpp
+struct Service {
+    void start();
+};
 
-  void Service::start() {}
+void Service::start() {}
 
-  void launch(Service& s) {
-      s.start();
-  }
-  ```
+void launch(Service& s) {
+    s.start();
+}
+```
 
-  </details>
+### Incoming calls
 
-- [x] Incoming calls
+Incoming calls 列出函数的所有调用者，若某个调用者多次调用它，每个调用位置都会计入。
 
-  Incoming calls 列出函数的所有调用者，若某个调用者多次调用它，每个调用位置都会计入。
+```cpp
+int helper(int v) {
+    return v;
+}
 
-  <details>
-  <summary>示例</summary>
+int alpha() {
+    return helper(1);
+}
 
-  ```cpp
-  int helper(int v) {
-      return v;
-  }
+int beta() {
+    return helper(2) + helper(3);
+}
+```
 
-  int alpha() {
-      return helper(1);
-  }
+### Outgoing calls
 
-  int beta() {
-      return helper(2) + helper(3);
-  }
-  ```
+Outgoing calls 列出函数体调用的每个函数，每个被调用者对应一个条目。
 
-  </details>
+```cpp
+int one() {
+    return 1;
+}
 
-- [x] Outgoing calls
+int two() {
+    return 2;
+}
 
-  Outgoing calls 列出函数体调用的每个函数，每个被调用者对应一个条目。
+int three() {
+    return 3;
+}
 
-  <details>
-  <summary>示例</summary>
+int dispatch() {
+    return one() + two() + three();
+}
+```
 
-  ```cpp
-  int one() {
-      return 1;
-  }
+### 条目的 detail 字段中显示函数签名
 
-  int two() {
-      return 2;
-  }
+Call hierarchy 条目只携带名称；函数签名未附加到 detail 字段，因此重载函数在层级中无法区分。
 
-  int three() {
-      return 3;
-  }
+```cpp
+int compute(int a, int b) {  // no signature attached to this item
+    return a + b;
+}
 
-  int dispatch() {
-      return one() + two() + three();
-  }
-  ```
+int caller() {
+    return compute(1, 2);
+}
+```
 
-  </details>
+### 成员函数的限定名
 
-- [ ] 条目的 detail 字段中显示函数签名
+成员函数的 call hierarchy 条目已经生成，但其 name 字段只携带裸方法名（`draw`），而非能将其与自由函数区分的限定名 `Circle::draw`。
 
-  Call hierarchy 条目只携带名称；函数签名未附加到 detail 字段，因此重载函数在层级中无法区分。
+```cpp
+struct Circle {
+    void draw();
+};
 
-  <details>
-  <summary>示例</summary>
+void Circle::draw() {}
+```
 
-  ```cpp
-  int compute(int a, int b) {  // no signature attached to this item
-      return a + b;
-  }
+### 跟踪虚函数派发
 
-  int caller() {
-      return compute(1, 2);
-  }
-  ```
+基类虚方法的 incoming calls 不包含通过派生类 override 进行的调用；对 override 的调用只归因于该 override，从不归因于其重写的基类方法。
 
-  </details>
+```cpp
+struct Base {
+    virtual void draw();
+};
 
-- [ ] 成员函数的限定名（部分支持）
+struct Derived : Base {
+    void draw() override;
+};
 
-  成员函数的 call hierarchy 条目已经生成，但其 name 字段只携带裸方法名（`draw`），而非能将其与自由函数区分的限定名 `Circle::draw`。
+void call_derived(Derived& d) {
+    d.draw();  // absent from the incoming calls of Base::draw
+}
+```
 
-  <details>
-  <summary>示例</summary>
+### 非函数目标
 
-  ```cpp
-  struct Circle {
-      void draw();
-  };
+变量和枚举常量
 
-  void Circle::draw() {}
-  ```
+在变量或枚举常量上准备 call hierarchy 不返回任何结果；该请求仅对函数和方法提供。
 
-  </details>
+```cpp
+int counter = 0;  // prepare call hierarchy here → nothing
 
-- [ ] 跟踪虚函数派发
+enum Mode {
+    Fast,  // prepare call hierarchy here → nothing
+    Slow,
+};
+```
 
-  基类虚方法的 incoming calls 不包含通过派生类 override 进行的调用；对 override 的调用只归因于该 override，从不归因于其重写的基类方法。
+### lambda 内部的调用
 
-  <details>
-  <summary>示例</summary>
+写在 lambda 体内的调用会出现在它所调用函数的 incoming calls 中，并归属到包含该 lambda 的函数。
 
-  ```cpp
-  struct Base {
-      virtual void draw();
-  };
+```cpp
+void foo() {}
 
-  struct Derived : Base {
-      void draw() override;
-  };
+void use() {
+    auto task = [] {
+        foo();
+    };
+    task();
+}
+```
 
-  void call_derived(Derived& d) {
-      d.draw();  // absent from the incoming calls of Base::draw
-  }
-  ```
+### 通过转发函数的构造函数调用
 
-  </details>
+构造函数的 incoming calls 不包含通过完美转发工厂函数到达它的调用点。
 
-- [ ] 非函数目标 — 变量和枚举常量 ([clangd#1308](https://github.com/clangd/clangd/issues/1308))
+```cpp
+template <typename T, typename... Args>
+T make(Args&&... args) {
+    return T(static_cast<Args&&>(args)...);
+}
 
-  在变量或枚举常量上准备 call hierarchy 不返回任何结果；该请求仅对函数和方法提供。
+struct Widget {
+    Widget(int w, int h);  // make<Widget> below is absent from incoming calls
+};
 
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  int counter = 0;  // prepare call hierarchy here → nothing
-
-  enum Mode {
-      Fast,  // prepare call hierarchy here → nothing
-      Slow,
-  };
-  ```
-
-  </details>
-
-- [x] lambda 内部的调用
-
-  写在 lambda 体内的调用会出现在它所调用函数的 incoming calls 中，并归属到包含该 lambda 的函数。
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  void foo() {}
-
-  void use() {
-      auto task = [] {
-          foo();
-      };
-      task();
-  }
-  ```
-
-  </details>
-
-- [ ] 通过转发函数的构造函数调用 ([clangd#2242](https://github.com/clangd/clangd/issues/2242))
-
-  构造函数的 incoming calls 不包含通过完美转发工厂函数到达它的调用点。
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  template <typename T, typename... Args>
-  T make(Args&&... args) {
-      return T(static_cast<Args&&>(args)...);
-  }
-
-  struct Widget {
-      Widget(int w, int h);  // make<Widget> below is absent from incoming calls
-  };
-
-  Widget build() {
-      return make<Widget>(800, 600);
-  }
-  ```
-
-  </details>
+Widget build() {
+    return make<Widget>(800, 600);
+}
+```
 
 <!-- END GENERATED ITEMS -->
 
 ## Type Hierarchy
 
-<!-- BEGIN GENERATED ITEMS: Type Hierarchy -->
+<!-- BEGIN GENERATED ITEMS: type_hierarchy -->
 
-- [x] 在 class、struct、enum 和 union 上准备 type hierarchy
+| 能力                                                  | 状态     | 问题                                                    |
+| ----------------------------------------------------- | -------- | ------------------------------------------------------- |
+| 在 class、struct、enum 和 union 上准备 type hierarchy | 支持     |                                                         |
+| Supertypes                                            | 支持     |                                                         |
+| Subtypes                                              | 支持     |                                                         |
+| 模板继承                                              | 支持     |                                                         |
+| type hierarchy 条目中的模板参数                       | 部分支持 | [clangd#31](https://github.com/clangd/clangd/issues/31) |
 
-  准备 type hierarchy 会在任意用户定义类型标签（class、struct、enum、union 皆可）上锚定一个条目。
+### 在 class、struct、enum 和 union 上准备 type hierarchy
 
-  <details>
-  <summary>示例</summary>
+准备 type hierarchy 会在任意用户定义类型标签（class、struct、enum、union 皆可）上锚定一个条目。
 
-  ```cpp
-  class Handle {};
+```cpp
+class Handle {};
 
-  struct Point {};
+struct Point {};
 
-  enum class Mode {};
+enum class Mode {};
 
-  union Storage {
-      int i;
-      float f;
-  };
-  ```
+union Storage {
+    int i;
+    float f;
+};
+```
 
-  </details>
+### Supertypes
 
-- [x] Supertypes
+Supertypes 列出类的每个直接基类，包括多重继承派生类型的每个基类。
 
-  Supertypes 列出类的每个直接基类，包括多重继承派生类型的每个基类。
+```cpp
+struct Alpha {};
 
-  <details>
-  <summary>示例</summary>
+struct Beta {};
 
-  ```cpp
-  struct Alpha {};
+struct Gamma : Alpha, Beta {};
+```
 
-  struct Beta {};
+### Subtypes
 
-  struct Gamma : Alpha, Beta {};
-  ```
+Subtypes 列出从基类派生的每个类，涵盖所有同级派生类型。
 
-  </details>
+```cpp
+struct Shape {};
 
-- [x] Subtypes
+struct Circle : Shape {};
 
-  Subtypes 列出从基类派生的每个类，涵盖所有同级派生类型。
+struct Square : Shape {};
 
-  <details>
-  <summary>示例</summary>
+struct Triangle : Shape {};
+```
 
-  ```cpp
-  struct Shape {};
+### 模板继承
 
-  struct Circle : Shape {};
+基类的 Subtypes 包括通过类模板派生自它的类，例如 CRTP 包装器。
 
-  struct Square : Shape {};
+```cpp
+struct Base {};
 
-  struct Triangle : Shape {};
-  ```
+template <typename T>
+struct CRTP : Base {};
 
-  </details>
+struct Widget : CRTP<Widget> {};
+```
 
-- [x] 模板继承
+### type hierarchy 条目中的模板参数
 
-  基类的 Subtypes 包括通过类模板派生自它的类，例如 CRTP 包装器。
+类模板特化产生的 subtype 会被列出，但其条目名称只带有裸模板名（`Derived`），没有用于区分 `Derived<Foo>` 的模板参数。
 
-  <details>
-  <summary>示例</summary>
+```cpp
+struct Foo {};
 
-  ```cpp
-  struct Base {};
+struct Base {};
 
-  template <typename T>
-  struct CRTP : Base {};
+template <typename T>
+struct Derived : Base {};
 
-  struct Widget : CRTP<Widget> {};
-  ```
-
-  </details>
-
-- [ ] type hierarchy 条目中的模板参数 _(部分)_ ([clangd#31](https://github.com/clangd/clangd/issues/31))
-
-  类模板特化产生的 subtype 会被列出，但其条目名称只带有裸模板名（`Derived`），没有用于区分 `Derived<Foo>` 的模板参数。
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  struct Foo {};
-
-  struct Base {};
-
-  template <typename T>
-  struct Derived : Base {};
-
-  Derived<Foo> instance;
-  ```
-
-  </details>
+Derived<Foo> instance;
+```
 
 <!-- END GENERATED ITEMS -->
 
@@ -1794,299 +1574,267 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
 
 按名称在整个项目中搜索符号（`workspace/symbol`）。
 
-<!-- BEGIN GENERATED ITEMS: Workspace Symbol -->
+<!-- BEGIN GENERATED ITEMS: workspace_symbol -->
 
-- [x] 基本的工作区符号搜索 — 不区分大小写的子串匹配
+| 能力                     | 状态     | 问题                                                        |
+| ------------------------ | -------- | ----------------------------------------------------------- |
+| 基本的工作区符号搜索     | 支持     |                                                             |
+| 搜索覆盖整个项目         | 支持     |                                                             |
+| 重载区分                 | 部分支持 | [clangd#1344](https://github.com/clangd/clangd/issues/1344) |
+| 模糊匹配                 | 不支持   | [clangd#914](https://github.com/clangd/clangd/issues/914)   |
+| 部分限定名搜索           | 不支持   | [clangd#550](https://github.com/clangd/clangd/issues/550)   |
+| 在枚举作用域下查找枚举值 | 不支持   | [clangd#931](https://github.com/clangd/clangd/issues/931)   |
+| 底层声明优先于类型别名   | 不支持   | [clangd#2253](https://github.com/clangd/clangd/issues/2253) |
+| 按修饰（链接器）名称搜索 | 不支持   |                                                             |
 
-  查询会匹配名称包含它的任何符号（忽略大小写）：函数、类型、枚举值和宏都参与；没有任何匹配的查询返回空列表而不是错误。
+### 基本的工作区符号搜索
 
-  <details>
-  <summary>示例</summary>
+不区分大小写的子串匹配
 
-  ```cpp
-  // query: widget
-  // query: parse_config
-  // query: MODE
-  // query: fast
-  // query: no_such_symbol
+查询会匹配名称包含它的任何符号（忽略大小写）：函数、类型、枚举值和宏都参与；没有任何匹配的查询返回空列表而不是错误。
 
-  struct Widget {
-      int width;
-  };
+```cpp
+// query: widget
+// query: parse_config
+// query: MODE
+// query: fast
+// query: no_such_symbol
 
-  enum class Mode { Fast, Safe };
+struct Widget {
+    int width;
+};
 
-  #define MODE_DEFAULT 1
+enum class Mode { Fast, Safe };
 
-  void parse_config() {}
-  ```
+#define MODE_DEFAULT 1
 
-  </details>
+void parse_config() {}
+```
 
-- [x] 搜索覆盖整个项目 — 来自非查询文件的命中
+### 搜索覆盖整个项目
 
-  查询会返回来自甚至未在编辑器中打开的项目文件的符号：这里的 `other.h` 保持关闭，因此它的命中由后台索引提供。
+来自非查询文件的命中
 
-  <details>
-  <summary>示例</summary>
+查询会返回来自甚至未在编辑器中打开的项目文件的符号：这里的 `other.h` 保持关闭，因此它的命中由后台索引提供。
 
-  `main.cpp`:
+`main.cpp`:
 
-  ```cpp
-  // query: helper_elsewhere
+```cpp
+// query: helper_elsewhere
 
-  int local_anchor = 0;
-  ```
+int local_anchor = 0;
+```
 
-  `other.h`:
+`other.h`:
 
-  ```cpp
-  void helper_elsewhere() {}
-  ```
+```cpp
+void helper_elsewhere() {}
+```
 
-  </details>
+### 重载区分
 
-- [ ] 重载区分 — 结果中显示参数类型 _(部分)_ ([clangd#1344](https://github.com/clangd/clangd/issues/1344))
+结果中显示参数类型
 
-  查询重载名称会找到每个重载，但每个条目只带有裸名称——除非打开两个位置，否则无法区分两个 `process` 结果。
+查询重载名称会找到每个重载，但每个条目只带有裸名称——除非打开两个位置，否则无法区分两个 `process` 结果。
 
-  <details>
-  <summary>示例</summary>
+```cpp
+// query: process
 
-  ```cpp
-  // query: process
+void process(int value) {}
 
-  void process(int value) {}
+void process(bool flag, int level) {}
+```
 
-  void process(bool flag, int level) {}
-  ```
+### 模糊匹配
 
-  </details>
+面向 camelCase 和 snake_case 的词边界感知评分
 
-- [ ] 模糊匹配 — 面向 camelCase 和 snake_case 的词边界感知评分 ([clangd#914](https://github.com/clangd/clangd/issues/914))
+目前匹配是不区分大小写的子串测试：`LinLis` 找不到 `LinkedList`，`pcfg` 也找不到 `parse_config`。词边界首字母应该匹配并为每种符号类型（包括宏）评分。
 
-  目前匹配是不区分大小写的子串测试：`LinLis` 找不到 `LinkedList`，`pcfg` 也找不到 `parse_config`。词边界首字母应该匹配并为每种符号类型（包括宏）评分。
+```cpp
+// query: LinLis
+// query: pcfg
 
-  <details>
-  <summary>示例</summary>
+struct LinkedList {};
 
-  ```cpp
-  // query: LinLis
-  // query: pcfg
+void parse_config();
+```
 
-  struct LinkedList {};
+### 部分限定名搜索
 
-  void parse_config();
-  ```
+符号目前只按裸名称匹配：即使 `deep::net::Socket` 存在，`net::Socket` 也找不到任何结果，其他带限定符前缀的形式也一样。
 
-  </details>
+```cpp
+// query: net::Socket
 
-- [ ] 部分限定名搜索 ([clangd#550](https://github.com/clangd/clangd/issues/550))
+namespace deep {
+namespace net {
 
-  符号目前只按裸名称匹配：即使 `deep::net::Socket` 存在，`net::Socket` 也找不到任何结果，其他带限定符前缀的形式也一样。
+struct Socket {};
 
-  <details>
-  <summary>示例</summary>
+}  // namespace net
+}  // namespace deep
+```
 
-  ```cpp
-  // query: net::Socket
+### 在枚举作用域下查找枚举值
 
-  namespace deep {
-  namespace net {
+`Color::Red` 应该能找到枚举值——无论 scoped 还是 unscoped 枚举——但带限定符的查询匹配不到任何结果；只有裸 `Red` 可以。
 
-  struct Socket {};
+```cpp
+// query: Color::Red
 
-  }  // namespace net
-  }  // namespace deep
-  ```
+enum Color { Red, Green };
+```
 
-  </details>
+### 底层声明优先于类型别名
 
-- [ ] 在枚举作用域下查找枚举值 ([clangd#931](https://github.com/clangd/clangd/issues/931))
+当 `ConnectionImpl` 及其别名 `Connection` 同时匹配查询时，
+底层声明应排在前面。当前结果没有排序。
 
-  `Color::Red` 应该能找到枚举值——无论 scoped 还是 unscoped 枚举——但带限定符的查询匹配不到任何结果；只有裸 `Red` 可以。
+```cpp
+// query: Connection
 
-  <details>
-  <summary>示例</summary>
+struct ConnectionImpl {};
 
-  ```cpp
-  // query: Color::Red
+using Connection = ConnectionImpl;
+```
 
-  enum Color { Red, Green };
-  ```
+### 按修饰（链接器）名称搜索
 
-  </details>
+粘贴如 `_Z7processi` 这样的链接器符号，应解析到它修饰的函数——在追踪链接错误和堆栈时很有用。
 
-- [ ] 底层声明优先于类型别名（[clangd#2253](https://github.com/clangd/clangd/issues/2253)）
+```cpp
+// query: _Z7processi
 
-  当 `ConnectionImpl` 及其别名 `Connection` 同时匹配查询时，
-  底层声明应排在前面。当前结果没有排序。
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  // query: Connection
-
-  struct ConnectionImpl {};
-
-  using Connection = ConnectionImpl;
-  ```
-
-  </details>
-
-- [ ] 按修饰（链接器）名称搜索
-
-  粘贴如 `_Z7processi` 这样的链接器符号，应解析到它修饰的函数——在追踪链接错误和堆栈时很有用。
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  // query: _Z7processi
-
-  void process(int value);
-  ```
-
-  </details>
+void process(int value);
+```
 
 <!-- END GENERATED ITEMS -->
 
 ## Module 导航
 
-<!-- BEGIN GENERATED ITEMS: Module Navigation -->
+<!-- BEGIN GENERATED ITEMS: module_navigation -->
 
-- [x] `import module_name` 导航到模块接口单元（[clangd#2310](https://github.com/clangd/clangd/issues/2310)）
+| 能力                                      | 状态     | 问题                                                        |
+| ----------------------------------------- | -------- | ----------------------------------------------------------- |
+| `import module_name` 导航到模块接口单元   | 支持     | [clangd#2310](https://github.com/clangd/clangd/issues/2310) |
+| `import :partition` 导航到 partition 单元 | 支持     |                                                             |
+| 在同一模块的接口单元与实现单元之间导航    | 部分支持 |                                                             |
+| 点分隔模块名                              | 部分支持 |                                                             |
 
-  在 `import` 声明中的名称上执行 go-to-definition 会打开导出它的模块接口单元；对导入符号的使用会到达该单元中的定义。
+### `import module_name` 导航到模块接口单元
 
-  <details>
-  <summary>示例</summary>
+在 `import` 声明中的名称上执行 go-to-definition 会打开导出它的模块接口单元；对导入符号的使用会到达该单元中的定义。
 
-  `main.cpp`:
+`main.cpp`:
 
-  ```cpp
-  import widget;
+```cpp
+import widget;
 
-  int build() {
-      return area(2, 3);
-  }
-  ```
+int build() {
+    return area(2, 3);
+}
+```
 
-  `widget.cppm`:
+`widget.cppm`:
 
-  ```cpp
-  export module widget;
+```cpp
+export module widget;
 
-  export int area(int width, int height) {
-      return width * height;
-  }
-  ```
+export int area(int width, int height) {
+    return width * height;
+}
+```
 
-  </details>
+### `import :partition` 导航到 partition 单元
 
-- [x] `import :partition` 导航到 partition 单元
+在 partition 导入中冒号后的 partition 名称上执行 go-to-definition 会打开声明它的 partition 单元。
 
-  在 partition 导入中冒号后的 partition 名称上执行 go-to-definition 会打开声明它的 partition 单元。
+`main.cpp`:
 
-  <details>
-  <summary>示例</summary>
+```cpp
+import pack;
 
-  `main.cpp`:
+int run() {
+    return count();
+}
+```
 
-  ```cpp
-  import pack;
+`pack.cppm`:
 
-  int run() {
-      return count();
-  }
-  ```
+```cpp
+export module pack;
 
-  `pack.cppm`:
+export import :items;
+```
 
-  ```cpp
-  export module pack;
+`pack_items.cppm`:
 
-  export import :items;
-  ```
+```cpp
+export module pack:items;
 
-  `pack_items.cppm`:
+export int count() {
+    return 3;
+}
+```
 
-  ```cpp
-  export module pack:items;
+### 在同一模块的接口单元与实现单元之间导航
 
-  export int count() {
-      return 3;
-  }
-  ```
+在实现单元（`module m;`）中的模块名称上执行 go-to-definition 会跳到声明该模块的接口单元；反向方向（从接口名称到实现）未提供。
 
-  </details>
+`main.cpp`:
 
-- [ ] 在同一模块的接口单元与实现单元之间导航（部分）
+```cpp
+import store;
 
-  在实现单元（`module m;`）中的模块名称上执行 go-to-definition 会跳到声明该模块的接口单元；反向方向（从接口名称到实现）未提供。
+int lookup(int key) {
+    return fetch(key);
+}
+```
 
-  <details>
-  <summary>示例</summary>
+`iface.cppm`:
 
-  `main.cpp`:
+```cpp
+export module store;
 
-  ```cpp
-  import store;
+export int fetch(int key);
+```
 
-  int lookup(int key) {
-      return fetch(key);
-  }
-  ```
+`impl.cpp`:
 
-  `iface.cppm`:
+```cpp
+module store;
 
-  ```cpp
-  export module store;
+int fetch(int key) {
+    return key * 2;
+}
+```
 
-  export int fetch(int key);
-  ```
+### 点分隔模块名
 
-  `impl.cpp`:
+导航每个段
 
-  ```cpp
-  module store;
+在点分隔模块名的首个段上执行 go-to-definition 会到达该模块的接口单元；点后的段目前还不能自行解析。
 
-  int fetch(int key) {
-      return key * 2;
-  }
-  ```
+`main.cpp`:
 
-  </details>
+```cpp
+import app.core;
 
-- [ ] 点分隔模块名 — 导航每个段（部分）
+int run() {
+    return value();
+}
+```
 
-  在点分隔模块名的首个段上执行 go-to-definition 会到达该模块的接口单元；点后的段目前还不能自行解析。
+`app_core.cppm`:
 
-  <details>
-  <summary>示例</summary>
+```cpp
+export module app.core;
 
-  `main.cpp`:
-
-  ```cpp
-  import app.core;
-
-  int run() {
-      return value();
-  }
-  ```
-
-  `app_core.cppm`:
-
-  ```cpp
-  export module app.core;
-
-  export int value() {
-      return 1;
-  }
-  ```
-
-  </details>
+export int value() {
+    return 1;
+}
+```
 
 <!-- END GENERATED ITEMS -->
 
@@ -2094,89 +1842,79 @@ clice 返回声明位置加上定义位置 — 内联定义的符号没有独立
 
 高亮当前文件中光标所在符号的所有引用（`textDocument/documentHighlight`）。
 
-<!-- BEGIN GENERATED ITEMS: Document Highlight -->
+<!-- BEGIN GENERATED ITEMS: document_highlight -->
 
-- [ ] 高亮当前文件中光标下符号的每个引用
+| 能力                               | 状态   | 问题                                                        |
+| ---------------------------------- | ------ | ----------------------------------------------------------- |
+| 高亮当前文件中光标下符号的每个引用 | 不支持 |                                                             |
+| 符号高亮的读/写分类                | 不支持 |                                                             |
+| 控制流 token 高亮                  | 不支持 | [clangd#1921](https://github.com/clangd/clangd/issues/1921) |
 
-  将光标放在 `total` 上应点亮它的声明和文件中的每个使用；该请求尚未实现。
+### 高亮当前文件中光标下符号的每个引用
 
-  <details>
-  <summary>示例</summary>
+将光标放在 `total` 上应点亮它的声明和文件中的每个使用；该请求尚未实现。
 
-  ```cpp
-  int total = 0;
+```cpp
+int total = 0;
 
-  void accumulate(int amount) {
-      total = total + amount;
-  }
-  ```
+void accumulate(int amount) {
+    total = total + amount;
+}
+```
 
-  </details>
+### 符号高亮的读/写分类
 
-- [ ] 符号高亮的读/写分类
+每个高亮应携带其访问类型，使编辑器能将写操作与读操作区分着色。
 
-  每个高亮应携带其访问类型，使编辑器能将写操作与读操作区分着色。
+```cpp
+void tally() {
+    int count = 0;      // write
+    int next = count;   // read
+    count = next;       // write
+}
+```
 
-  <details>
-  <summary>示例</summary>
+### 控制流 token 高亮
 
-  ```cpp
-  void tally() {
-      int count = 0;      // write
-      int next = count;   // read
-      count = next;       // write
-  }
-  ```
+高亮 `break` 或 `continue` 也应点亮它所属的循环或 `switch`——以及 `return` / `throw` 标记的函数退出点。
 
-  </details>
-
-- [ ] 控制流 token 高亮（[clangd#1921](https://github.com/clangd/clangd/issues/1921)）
-
-  高亮 `break` 或 `continue` 也应点亮它所属的循环或 `switch`——以及 `return` / `throw` 标记的函数退出点。
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  void drain(int outer, int inner) {
-      for (int i = 0; i < outer; i += 1) {
-          for (int j = 0; j < inner; j += 1) {
-              if (i == j) {
-                  break;      // highlighting break → also the inner for
-              }
-              if (j == 0) {
-                  continue;   // highlighting continue → also the inner for
-              }
-          }
-      }
-  }
-  ```
-
-  </details>
+```cpp
+void drain(int outer, int inner) {
+    for (int i = 0; i < outer; i += 1) {
+        for (int j = 0; j < inner; j += 1) {
+            if (i == j) {
+                break;      // highlighting break → also the inner for
+            }
+            if (j == 0) {
+                continue;   // highlighting continue → also the inner for
+            }
+        }
+    }
+}
+```
 
 <!-- END GENERATED ITEMS -->
 
 ## Switch Source/Header
 
-<!-- BEGIN GENERATED ITEMS: Switch Source/Header -->
+<!-- BEGIN GENERATED ITEMS: switch_source_header -->
 
-- [ ] 在源文件与其头文件之间切换
+| 能力                       | 状态   | 问题 |
+| -------------------------- | ------ | ---- |
+| 在源文件与其头文件之间切换 | 不支持 |      |
 
-  从 `widget.cpp` 一条命令应跳到 `widget.h` 并返回——clangd 客户端依赖的 `textDocument/switchSourceHeader` 请求尚未实现。
+### 在源文件与其头文件之间切换
 
-  <details>
-  <summary>示例</summary>
+从 `widget.cpp` 一条命令应跳到 `widget.h` 并返回——clangd 客户端依赖的 `textDocument/switchSourceHeader` 请求尚未实现。
 
-  ```cpp
-  // widget.h
-  class Widget {
-      void draw();
-  };
+```cpp
+// widget.h
+class Widget {
+    void draw();
+};
 
-  // widget.cpp — #include "widget.h"
-  void Widget::draw() {}
-  ```
-
-  </details>
+// widget.cpp — #include "widget.h"
+void Widget::draw() {}
+```
 
 <!-- END GENERATED ITEMS -->

@@ -11,257 +11,236 @@ clice 用自有的 token 类型词汇表对文档中的每个 token 分类，这
 
 类型来自 token 流本身，不依赖 AST。
 
-<!-- BEGIN GENERATED ITEMS: Lexical Tokens -->
+<!-- BEGIN GENERATED ITEMS: lexical_tokens -->
+
+| 能力                 | 状态   | 问题                                                        |
+| -------------------- | ------ | ----------------------------------------------------------- |
+| 注释                 | 支持   |                                                             |
+| 字面量               | 支持   |                                                             |
+| 关键字               | 支持   |                                                             |
+| 预处理指令           | 支持   |                                                             |
+| 非活跃区域           | 支持   |                                                             |
+| 头文件名             | 支持   |                                                             |
+| 文件顶部的非活跃区域 | 支持   |                                                             |
+| 字面量前缀和后缀     | 不支持 |                                                             |
+| 转义序列             | 不支持 |                                                             |
+| 声明符与运算符的区分 | 不支持 | [clangd#1421](https://github.com/clangd/clangd/issues/1421) |
+| 原始 token 类型      | 支持   |                                                             |
+| 括号 token 类型      | 不支持 |                                                             |
+
+### 注释
+
+行注释、块注释和文档注释，包括多行块
+
+```cpp
+// A line comment.
+/* a one-line block comment */
+/*
+ * a block comment
+ * spanning several lines
+ */
+/// a doc comment
+int after_comments = 0;
+
+/* first
+second */ int after_block = 1;
+```
+
+### 字面量
+
+数字、字符和字符串，包括原始字符串
+
+```cpp
+int decimal = 42;
+int hexadecimal = 0xFF;
+double floating = 3.14;
+char letter = 'x';
+const char* text = "hello";
+const char* raw = R"(no "escapes" in here)";
+int after_raw = 1;
+
+const char* multiline = R"(line1
+line2
+)"; int after_closing = 2;
+```
+
+### 关键字
+
+包括替代运算符拼写以及上下文相关的 `final` / `override`
+
+```cpp
+bool logic(bool a, bool b) {
+    return a and b or not a;
+}
+
+struct Base {
+    virtual void act();
+    virtual ~Base();
+};
+
+struct Leaf final : Base {
+    void act() override;
+};
+
+struct Last : Base {
+    void act() final;
+};
+```
+
+### 预处理指令
+
+`#if` 链保留指令类型；未启用的分支保留词法类型；pragma 参数保持普通
+
+```cpp
+int before_conditional = 0;
+
+#if 0
+int disabled_branch;
+#else
+int enabled_branch = 1;
+#endif
+
+#define FLAG
+#ifdef FLAG
+int flagged = 2;
+#endif
+
+#pragma pack(1)
+
+#
+#define STRINGIZE(x) #x
+const char* stringized = STRINGIZE(abc);
+```
+
+### 非活跃区域
+
+未采用分支中的 token 保留词法类型并带有 `inactive` 修饰符；未分类的 token 变为普通的 `identifier` 载体，因此即使是单独一行 `}` 也会变暗
 
-- [x] 注释 — 行注释、块注释和文档注释，包括多行块
+```cpp
+int before = 0;
 
-  <details>
-  <summary>示例</summary>
+#if 0
+int simple = 1;
+bare identifiers;
+call(arg);
+"string in dead code";
+// comment inside
+#ifdef NESTED
+int deeper = 2;
+#endif
+int tail = 3;
+#endif
 
-  ```cpp
-  // A line comment.
-  /* a one-line block comment */
-  /*
-   * a block comment
-   * spanning several lines
-   */
-  /// a doc comment
-  int after_comments = 0;
+#if defined(MISSING)
+first_branch;
+#elif 0
+elif_branch;
+#else
+int taken = 4;
+#endif
 
-  /* first
-  second */ int after_block = 1;
-  ```
-
-  </details>
-
-- [x] 字面量 — 数字、字符和字符串，包括原始字符串
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  int decimal = 42;
-  int hexadecimal = 0xFF;
-  double floating = 3.14;
-  char letter = 'x';
-  const char* text = "hello";
-  const char* raw = R"(no "escapes" in here)";
-  int after_raw = 1;
-
-  const char* multiline = R"(line1
-  line2
-  )"; int after_closing = 2;
-  ```
-
-  </details>
-
-- [x] 关键字 — 包括替代运算符拼写以及上下文相关的 `final` / `override`
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  bool logic(bool a, bool b) {
-      return a and b or not a;
-  }
-
-  struct Base {
-      virtual void act();
-      virtual ~Base();
-  };
-
-  struct Leaf final : Base {
-      void act() override;
-  };
-
-  struct Last : Base {
-      void act() final;
-  };
-  ```
-
-  </details>
-
-- [x] 预处理指令 — `#if` 链保留指令类型；未启用的分支保留词法类型；pragma 参数保持普通
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  int before_conditional = 0;
-
-  #if 0
-  int disabled_branch;
-  #else
-  int enabled_branch = 1;
-  #endif
-
-  #define FLAG
-  #ifdef FLAG
-  int flagged = 2;
-  #endif
-
-  #pragma pack(1)
-
-  #
-  #define STRINGIZE(x) #x
-  const char* stringized = STRINGIZE(abc);
-  ```
-
-  </details>
-
-- [x] 非活跃区域 — 未采用分支中的 token 保留词法类型并带有 `inactive` 修饰符；未分类的 token 变为普通的 `identifier` 载体，因此即使是单独一行 `}` 也会变暗
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  int before = 0;
-
-  #if 0
-  int simple = 1;
-  bare identifiers;
-  call(arg);
-  "string in dead code";
-  // comment inside
-  #ifdef NESTED
-  int deeper = 2;
-  #endif
-  int tail = 3;
-  #endif
-
-  #if defined(MISSING)
-  first_branch;
-  #elif 0
-  elif_branch;
-  #else
-  int taken = 4;
-  #endif
-
-  #if 0
-  void edge() {
-      inner(5);
-  }
-  #endif
-  ```
-
-  </details>
-
-- [x] 头文件名 — 带引号和尖括号的 `#include` 文件名，包括拆开的 `# include` 形式
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  #include "inc/angled.h"
-  #include <angled.h>
-  # include "inc/angled.h"
-
-  int after_includes = 0;
-  ```
-
-  </details>
-
-- [x] 文件顶部的非活跃区域 — 前导指令中未采用的分支以同样方式变暗
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  #define KEEP 1
-  #if 0
-  #define DEAD 2
-  #endif
-
-  int after = KEEP;
-  ```
-
-  </details>
-
-- [ ] 字面量前缀和后缀 — 编码前缀、类型后缀、数字分隔符和 UDL 后缀作为独立 token
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  using size_type = decltype(sizeof(0));
-  constexpr size_type operator""_kb(unsigned long long n) {
-      return n * 1024;
-  }
-
-  auto wide = L"wide string";
-  auto utf8 = u8"utf-8 string";
-  auto hex = 0xFF;
-  auto binary = 0b1010;
-  auto unsigned_suffix = 42u;
-  auto float_suffix = 3.14f;
-  auto separators = 1'000'000;
-  auto udl = 4_kb;
-  ```
-
-  </details>
-
-- [ ] 转义序列 — 在字符串和字符字面量内部以不同的方式高亮
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  const char* escaped = "hello\nworld";
-  char hex_escape = '\x41';
-  ```
-
-  </details>
-
-- [ ] 声明符与运算符的区分 — `*`、`&`、`&&` 作为声明符还是算术/逻辑运算符 ([clangd#1421](https://github.com/clangd/clangd/issues/1421))
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  int value = 1;
-  int* pointer = &value;
-  int& reference = value;
-  int product = value * value;
-  int masked = value & 1;
-  ```
-
-  </details>
-
-- [x] 原始 token 类型 — 为内置类型使用独立类型，而不是普通的 `keyword`
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  int number = 0;
-  float ratio = 0.5f;
-  void act();
-  unsigned long long wide_number = 0;
-  __int128 extended_int = 0;
-  _Float16 extended_float = 0;
-  ```
-
-  </details>
-
-- [ ] 括号 token 类型 — 将匹配的 `()`、`[]`、`{}`、`<>` 对作为不同种类
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  template <typename T>
-  struct Grid {
-      T cells[4];
-  };
-
-  Grid<int> grid{{1, 2, 3, 4}};
-
-  int first(Grid<int>& grid) {
-      return grid.cells[0];
-  }
-  ```
-
-  </details>
+#if 0
+void edge() {
+    inner(5);
+}
+#endif
+```
+
+### 头文件名
+
+带引号和尖括号的 `#include` 文件名，包括拆开的 `# include` 形式
+
+```cpp
+#include "inc/angled.h"
+#include <angled.h>
+# include "inc/angled.h"
+
+int after_includes = 0;
+```
+
+### 文件顶部的非活跃区域
+
+前导指令中未采用的分支以同样方式变暗
+
+```cpp
+#define KEEP 1
+#if 0
+#define DEAD 2
+#endif
+
+int after = KEEP;
+```
+
+### 字面量前缀和后缀
+
+编码前缀、类型后缀、数字分隔符和 UDL 后缀作为独立 token
+
+```cpp
+using size_type = decltype(sizeof(0));
+constexpr size_type operator""_kb(unsigned long long n) {
+    return n * 1024;
+}
+
+auto wide = L"wide string";
+auto utf8 = u8"utf-8 string";
+auto hex = 0xFF;
+auto binary = 0b1010;
+auto unsigned_suffix = 42u;
+auto float_suffix = 3.14f;
+auto separators = 1'000'000;
+auto udl = 4_kb;
+```
+
+### 转义序列
+
+在字符串和字符字面量内部以不同的方式高亮
+
+```cpp
+const char* escaped = "hello\nworld";
+char hex_escape = '\x41';
+```
+
+### 声明符与运算符的区分
+
+`*`、`&`、`&&` 作为声明符还是算术/逻辑运算符
+
+```cpp
+int value = 1;
+int* pointer = &value;
+int& reference = value;
+int product = value * value;
+int masked = value & 1;
+```
+
+### 原始 token 类型
+
+为内置类型使用独立类型，而不是普通的 `keyword`
+
+```cpp
+int number = 0;
+float ratio = 0.5f;
+void act();
+unsigned long long wide_number = 0;
+__int128 extended_int = 0;
+_Float16 extended_float = 0;
+```
+
+### 括号 token 类型
+
+将匹配的 `()`、`[]`、`{}`、`<>` 对作为不同种类
+
+```cpp
+template <typename T>
+struct Grid {
+    T cells[4];
+};
+
+Grid<int> grid{{1, 2, 3, 4}};
+
+int first(Grid<int>& grid) {
+    return grid.cells[0];
+}
+```
 
 <!-- END GENERATED ITEMS -->
 
@@ -269,853 +248,780 @@ clice 用自有的 token 类型词汇表对文档中的每个 token 分类，这
 
 名称根据其所定义或引用的声明分类。
 
-<!-- BEGIN GENERATED ITEMS: Declarations & References -->
+<!-- BEGIN GENERATED ITEMS: declarations_references -->
+
+| 能力                 | 状态     | 问题                                                                                                                 |
+| -------------------- | -------- | -------------------------------------------------------------------------------------------------------------------- |
+| 命名空间             | 支持     |                                                                                                                      |
+| 类型                 | 支持     |                                                                                                                      |
+| 函数与方法           | 支持     |                                                                                                                      |
+| 变量                 | 支持     |                                                                                                                      |
+| 模板                 | 支持     |                                                                                                                      |
+| 概念                 | 支持     |                                                                                                                      |
+| 标签                 | 支持     |                                                                                                                      |
+| 结构化绑定           | 支持     |                                                                                                                      |
+| 成员初始化列表       | 支持     | [clangd#122](https://github.com/clangd/clangd/issues/122)                                                            |
+| using 声明           | 支持     | [clangd#2619](https://github.com/clangd/clangd/issues/2619)                                                          |
+| Lambda init-capture  | 支持     | [clangd#868](https://github.com/clangd/clangd/issues/868)                                                            |
+| `sizeof...`          | 支持     | [clangd#213](https://github.com/clangd/clangd/issues/213)                                                            |
+| `using enum`         | 支持     | [clangd#1283](https://github.com/clangd/clangd/issues/1283)                                                          |
+| 推导指引             | 支持     |                                                                                                                      |
+| 显式实例化           | 支持     | [clangd#316](https://github.com/clangd/clangd/issues/316)                                                            |
+| 依赖名称             | 部分支持 | [clangd#154](https://github.com/clangd/clangd/issues/154), [clangd#297](https://github.com/clangd/clangd/issues/297) |
+| 变量模板             | 支持     |                                                                                                                      |
+| 类外成员定义         | 支持     |                                                                                                                      |
+| 别名模板             | 支持     |                                                                                                                      |
+| 模板模板参数         | 支持     |                                                                                                                      |
+| Lambda 捕获          | 支持     |                                                                                                                      |
+| 基于范围的 for       | 支持     |                                                                                                                      |
+| 枚举底层类型         | 支持     |                                                                                                                      |
+| 友元声明             | 支持     |                                                                                                                      |
+| 依赖 using 声明      | 部分支持 |                                                                                                                      |
+| 函数显式实例化指令   | 部分支持 | [llvm#191658](https://github.com/llvm/llvm-project/issues/191658)                                                    |
+| 变量显式实例化指令   | 部分支持 | [llvm#191658](https://github.com/llvm/llvm-project/issues/191658)                                                    |
+| 显式实例化成员函数体 | 支持     |                                                                                                                      |
+
+### 命名空间
+
+定义、引用、嵌套命名空间和命名空间别名
+
+```cpp
+namespace demo {
+namespace inner {
+int value = 1;
+}
+}
+
+namespace demo::inner::more {}
+
+namespace alias = demo::inner;
+
+int use_alias = alias::value;
+```
+
+### 类型
+
+类、结构体、联合体、枚举和类型别名，包括定义和引用处
+
+```cpp
+class Widget {};
+struct Point {};
+union Storage {
+    int i;
+    float f;
+};
+enum Flags { FlagA };
+enum class Mode { Fast };
+
+typedef Point PointAlias;
+using WidgetAlias = Widget;
+
+Widget* make_widget();
+PointAlias origin;
+Mode current = Mode::Fast;
+```
+
+### 函数与方法
+
+声明、定义和调用点
+
+```cpp
+int twice(int value);
+
+int twice(int value) {
+    return value * 2;
+}
+
+struct Machine {
+    void start();
+    static void reset();
+};
+
+void drive(Machine machine) {
+    machine.start();
+    Machine::reset();
+    int four = twice(2);
+}
+```
+
+### 变量
+
+全局变量、局部变量、参数、字段和枚举成员
+
+```cpp
+struct Holder {
+    int field;
+    static int shared;
+};
 
-- [x] 命名空间 — 定义、引用、嵌套命名空间和命名空间别名
+enum class State { Idle };
 
-  <details>
-  <summary>示例</summary>
+int global_value = 1;
 
-  ```cpp
-  namespace demo {
-  namespace inner {
-  int value = 1;
-  }
-  }
+void touch(int param) {
+    int local = param + global_value;
+    Holder h;
+    h.field = local;
+    Holder::shared = h.field;
+    State state = State::Idle;
+}
+```
 
-  namespace demo::inner::more {}
+### 模板
 
-  namespace alias = demo::inner;
+类型与非类型模板参数，模板名称带有 `templated` 修饰符
 
-  int use_alias = alias::value;
-  ```
+```cpp
+template <typename T, int N>
+struct Array {
+    T data[N];
+};
 
-  </details>
+template <typename T>
+T identity(T value);
 
-- [x] 类型 — 类、结构体、联合体、枚举和类型别名，包括定义和引用处
+template <typename T>
+T identity(T value) {
+    return value;
+}
 
-  <details>
-  <summary>示例</summary>
+Array<int, 4> arr;
+int result = identity(3);
+```
 
-  ```cpp
-  class Widget {};
-  struct Point {};
-  union Storage {
-      int i;
-      float f;
-  };
-  enum Flags { FlagA };
-  enum class Mode { Fast };
+### 概念
 
-  typedef Point PointAlias;
-  using WidgetAlias = Widget;
+定义及作为模板约束的使用
 
-  Widget* make_widget();
-  PointAlias origin;
-  Mode current = Mode::Fast;
-  ```
+```cpp
+template <typename T>
+concept Small = sizeof(T) <= 4;
 
-  </details>
+template <Small T>
+void use_small(T value);
 
-- [x] 函数与方法 — 声明、定义和调用点
+template <typename T>
+    requires Small<T>
+void require_small(T value);
+```
 
-  <details>
-  <summary>示例</summary>
+### 标签
 
-  ```cpp
-  int twice(int value);
+`goto` 目标和标签定义
 
-  int twice(int value) {
-      return value * 2;
-  }
+```cpp
+void retry(bool again) {
+    goto done;
+done:
+    if (again) {
+        goto done;
+    }
+}
+```
 
-  struct Machine {
-      void start();
-      static void reset();
-  };
+### 结构化绑定
 
-  void drive(Machine machine) {
-      machine.start();
-      Machine::reset();
-      int four = twice(2);
-  }
-  ```
+绑定名称在定义和使用处
 
-  </details>
+前导 `[` 特意不产生 token；仅高亮绑定名称本身。
 
-- [x] 变量 — 全局变量、局部变量、参数、字段和枚举成员
+```cpp
+struct Pair {
+    int first, second;
+};
 
-  <details>
-  <summary>示例</summary>
+void unpack() {
+    auto [a, b] = Pair{1, 2};
+    int sum = a + b;
+}
+```
 
-  ```cpp
-  struct Holder {
-      int field;
-      static int shared;
-  };
+### 成员初始化列表
 
-  enum class State { Idle };
+初始化字段高亮为字段
 
-  int global_value = 1;
+```cpp
+struct Widget {
+    int width;
+    int height;
 
-  void touch(int param) {
-      int local = param + global_value;
-      Holder h;
-      h.field = local;
-      Holder::shared = h.field;
-      State state = State::Idle;
-  }
-  ```
+    Widget(int w, int h) : width(w), height(h) {}
+};
+```
 
-  </details>
+### using 声明
 
-- [x] 模板 — 类型与非类型模板参数，模板名称带有 `templated` 修饰符
+引入的名称保持其目标实体的种类
 
-  <details>
-  <summary>示例</summary>
+```cpp
+namespace tools {
+inline int helper() {
+    return 1;
+}
+struct Gadget {};
+}
 
-  ```cpp
-  template <typename T, int N>
-  struct Array {
-      T data[N];
-  };
+using tools::helper;
+using tools::Gadget;
 
-  template <typename T>
-  T identity(T value);
+int used = helper();
+Gadget gadget;
+```
 
-  template <typename T>
-  T identity(T value) {
-      return value;
-  }
+### Lambda init-capture
 
-  Array<int, 4> arr;
-  int result = identity(3);
-  ```
+捕获的名称高亮为变量
 
-  </details>
+```cpp
+int compute();
 
-- [x] 概念 — 定义及作为模板约束的使用
+auto fn = [val = compute()] {
+    return val;
+};
+```
 
-  <details>
-  <summary>示例</summary>
+### `sizeof...`
 
-  ```cpp
-  template <typename T>
-  concept Small = sizeof(T) <= 4;
+参数包保持其类型参数 token
 
-  template <Small T>
-  void use_small(T value);
+```cpp
+template <typename... Ts>
+constexpr auto count = sizeof...(Ts);
+```
 
-  template <typename T>
-      requires Small<T>
-  void require_small(T value);
-  ```
+### `using enum`
 
-  </details>
+在 using 位置高亮枚举名
 
-- [x] 标签 — `goto` 目标和标签定义
+```cpp
+enum class Color { Red };
 
-  <details>
-  <summary>示例</summary>
+void paint() {
+    using enum Color;
+    auto c = Red;
+}
+```
 
-  ```cpp
-  void retry(bool again) {
-      goto done;
-  done:
-      if (again) {
-          goto done;
-      }
-  }
-  ```
+### 推导指引
 
-  </details>
+高亮指引名和被指引的模板
 
-- [x] 结构化绑定 — 绑定名称在定义和使用处
+```cpp
+template <typename T>
+struct Vec {
+    template <typename It>
+    Vec(It first, It last);
+};
 
-  前导 `[` 特意不产生 token；仅高亮绑定名称本身。
+template <typename It>
+Vec(It, It) -> Vec<int>;
+```
 
-  <details>
-  <summary>示例</summary>
+### 显式实例化
 
-  ```cpp
-  struct Pair {
-      int first, second;
-  };
+实例化的模板名及其书写的模板实参高亮，extern 声明和定义同样处理
 
-  void unpack() {
-      auto [a, b] = Pair{1, 2};
-      int sum = a + b;
-  }
-  ```
+```cpp
+struct Widget {};
 
-  </details>
+template <typename T>
+struct Holder {
+    T value;
+};
 
-- [x] 成员初始化列表 — 初始化字段高亮为字段 ([clangd#122](https://github.com/clangd/clangd/issues/122))
+extern template struct Holder<Widget>;
 
-  <details>
-  <summary>示例</summary>
+template struct Holder<Widget>;
+```
 
-  ```cpp
-  struct Widget {
-      int width;
-      int height;
+### 依赖名称
 
-      Widget(int w, int h) : width(w), height(h) {}
-  };
-  ```
+在存在已知主模板时通过主模板解析
 
-  </details>
+已知模板 (`Box<T>`) 的依赖成员解析到主模板的声明并保持其类别。裸模板参数的成员没有候选声明，当前不获得 token；此类名称的启发式着色仍未实现。
 
-- [x] using 声明 — 引入的名称保持其目标实体的种类 ([clangd#2619](https://github.com/clangd/clangd/issues/2619))
+```cpp
+template <typename T>
+struct Box {
+    using value_type = int;
+    static void reset();
+    int size() const;
+};
 
-  <details>
-  <summary>示例</summary>
+template <typename T>
+void resolved(Box<T> box) {
+    typename Box<T>::value_type item;
+    Box<T>::reset();
+    box.size();
+}
 
-  ```cpp
-  namespace tools {
-  inline int helper() {
-      return 1;
-  }
-  struct Gadget {};
-  }
+template <typename T>
+void unresolved(T value) {
+    typename T::value_type item;
+    T::reset();
+    value.size();
+}
+```
 
-  using tools::helper;
-  using tools::Gadget;
+### 变量模板
 
-  int used = helper();
-  Gadget gadget;
-  ```
+声明、定义、偏特化和全特化
 
-  </details>
+```cpp
+template <typename T, typename U>
+extern int pair_value;
 
-- [x] Lambda init-capture — 捕获的名称高亮为变量 ([clangd#868](https://github.com/clangd/clangd/issues/868))
+template <typename T, typename U>
+int pair_value = 2;
 
-  <details>
-  <summary>示例</summary>
+template <typename T>
+extern int pair_value<T, int>;
 
-  ```cpp
-  int compute();
+template <typename T>
+int pair_value<T, int> = 4;
 
-  auto fn = [val = compute()] {
-      return val;
-  };
-  ```
+template <>
+int pair_value<int, int> = 5;
+```
 
-  </details>
+### 类外成员定义
 
-- [x] `sizeof...` — 参数包保持其类型参数 token ([clangd#213](https://github.com/clangd/clangd/issues/213))
+限定名保持方法的类别和修饰符
 
-  <details>
-  <summary>示例</summary>
+```cpp
+struct Gauge {
+    int read() const;
+    static void reset();
+};
 
-  ```cpp
-  template <typename... Ts>
-  constexpr auto count = sizeof...(Ts);
-  ```
+int Gauge::read() const {
+    return 0;
+}
 
-  </details>
+void Gauge::reset() {}
+```
 
-- [x] `using enum` — 在 using 位置高亮枚举名 ([clangd#1283](https://github.com/clangd/clangd/issues/1283))
+### 别名模板
 
-  <details>
-  <summary>示例</summary>
+别名标识符携带类型类别和 `templated` 修饰符
 
-  ```cpp
-  enum class Color { Red };
+```cpp
+template <typename T>
+using Ptr = T*;
 
-  void paint() {
-      using enum Color;
-      auto c = Red;
-  }
-  ```
+template <typename T>
+struct Box {};
 
-  </details>
+template <typename T>
+using BoxPtr = Box<T>*;
 
-- [x] 推导指引 — 高亮指引名和被指引的模板
+Ptr<int> pointer = nullptr;
+```
 
-  <details>
-  <summary>示例</summary>
+### 模板模板参数
 
-  ```cpp
-  template <typename T>
-  struct Vec {
-      template <typename It>
-      Vec(It first, It last);
-  };
+作为类型声明和使用
 
-  template <typename It>
-  Vec(It, It) -> Vec<int>;
-  ```
+```cpp
+template <typename T>
+struct Holder {};
 
-  </details>
+template <template <typename> class Container, typename T>
+struct Adaptor {
+    Container<T> value;
+};
 
-- [x] 显式实例化 — 实例化的模板名及其书写的模板实参高亮，extern 声明和定义同样处理 ([clangd#316](https://github.com/clangd/clangd/issues/316))
+Adaptor<Holder, int> adaptor;
+```
 
-  <details>
-  <summary>示例</summary>
+### Lambda 捕获
 
-  ```cpp
-  struct Widget {};
+按拷贝和按引用捕获引用被捕获的变量；`this` 仍为关键字
 
-  template <typename T>
-  struct Holder {
-      T value;
-  };
+```cpp
+struct S {
+    int field;
 
-  extern template struct Holder<Widget>;
+    int compute() {
+        int local = 1;
+        auto by_copy = [local, this] {
+            return local + this->field;
+        };
+        auto by_reference = [&local] {
+            return local;
+        };
+        return by_copy() + by_reference();
+    }
+};
+```
 
-  template struct Holder<Widget>;
-  ```
+### 基于范围的 for
 
-  </details>
+循环变量在定义和使用处
 
-- [ ] 依赖名称 — 在存在已知主模板时通过主模板解析 _(部分实现)_ ([clangd#154](https://github.com/clangd/clangd/issues/154), [clangd#297](https://github.com/clangd/clangd/issues/297))
+```cpp
+struct List {
+    int* begin();
+    int* end();
+};
 
-  已知模板 (`Box<T>`) 的依赖成员解析到主模板的声明并保持其类别。裸模板参数的成员没有候选声明，当前不获得 token；此类名称的启发式着色仍未实现。
+void iterate(List items) {
+    for (auto& item : items) {
+        item = 0;
+    }
+}
+```
 
-  <details>
-  <summary>示例</summary>
+### 枚举底层类型
 
-  ```cpp
-  template <typename T>
-  struct Box {
-      using value_type = int;
-      static void reset();
-      int size() const;
-  };
+枚举基引用保持其类型类别
 
-  template <typename T>
-  void resolved(Box<T> box) {
-      typename Box<T>::value_type item;
-      Box<T>::reset();
-      box.size();
-  }
+```cpp
+using Byte = unsigned char;
 
-  template <typename T>
-  void unresolved(T value) {
-      typename T::value_type item;
-      T::reset();
-      value.size();
-  }
-  ```
+enum class Flags : Byte { A, B };
 
-  </details>
+Flags flags = Flags::A;
+```
 
-- [x] 变量模板 — 声明、定义、偏特化和全特化
+### 友元声明
 
-  <details>
-  <summary>示例</summary>
+友元名称解析到其目标；内联友元定义
 
-  ```cpp
-  template <typename T, typename U>
-  extern int pair_value;
+```cpp
+struct Widget;
+void ping();
 
-  template <typename T, typename U>
-  int pair_value = 2;
+struct Host {
+    friend struct Widget;
+    friend void ping();
+    friend void inline_friend() {}
+};
+```
 
-  template <typename T>
-  extern int pair_value<T, int>;
+### 依赖 using 声明
 
-  template <typename T>
-  int pair_value<T, int> = 4;
+模板体中的 `using T::name`
 
-  template <>
-  int pair_value<int, int> = 5;
-  ```
+引入的名称及其使用当前不会产生 token；保留的 dependent-name 修饰符尚未输出。
 
-  </details>
+```cpp
+template <typename T>
+struct Derived : T {
+    using T::value;
 
-- [x] 类外成员定义 — 限定名保持方法的类别和修饰符
+    int use() {
+        return value;
+    }
+};
+```
 
-  <details>
-  <summary>示例</summary>
+### 函数显式实例化指令
 
-  ```cpp
-  struct Gauge {
-      int read() const;
-      static void reset();
-  };
+Clang 不会为该指令构建节点，因此其中的每个标识符都不会着色：名称、模板实参和参数类型
 
-  int Gauge::read() const {
-      return 0;
-  }
+```cpp
+struct Widget {};
 
-  void Gauge::reset() {}
-  ```
+template <typename T>
+void convert(T value) {}
 
-  </details>
+extern template void convert<Widget>(Widget);
 
-- [x] 别名模板 — 别名标识符携带类型类别和 `templated` 修饰符
+template void convert<Widget>(Widget);
+```
 
-  <details>
-  <summary>示例</summary>
+### 变量显式实例化指令
 
-  ```cpp
-  template <typename T>
-  using Ptr = T*;
+Clang 不会为该指令构建节点，因此其中的每个标识符都不会着色：名称、模板实参，甚至声明符的类型
 
-  template <typename T>
-  struct Box {};
+```cpp
+struct Widget {};
 
-  template <typename T>
-  using BoxPtr = Box<T>*;
+template <typename T>
+T zero = T();
 
-  Ptr<int> pointer = nullptr;
-  ```
+extern template Widget zero<Widget>;
 
-  </details>
+template Widget zero<Widget>;
+```
 
-- [x] 模板模板参数 — 作为类型声明和使用
+### 显式实例化成员函数体
 
-  <details>
-  <summary>示例</summary>
+依赖名称按其实际解析结果着色：类别一致时保留所有实例化共有的修饰符，类别不一致时标为冲突
 
-  ```cpp
-  template <typename T>
-  struct Holder {};
+```cpp
+struct A {
+    static void hit();
+};
 
-  template <template <typename> class Container, typename T>
-  struct Adaptor {
-      Container<T> value;
-  };
+struct B {
+    static int hit;
+};
 
-  Adaptor<Holder, int> adaptor;
-  ```
+struct C {
+    void hit();
+};
 
-  </details>
+template <typename T>
+struct D {
+    void go() {
+        (void)T::hit;
+    }
+};
 
-- [x] Lambda 捕获 — 按拷贝和按引用捕获引用被捕获的变量；`this` 仍为关键字
+template struct D<A>;
+template struct D<B>;
 
-  <details>
-  <summary>示例</summary>
+template <typename T>
+struct E {
+    void probe(T t) {
+        t.hit();
+    }
+};
 
-  ```cpp
-  struct S {
-      int field;
-
-      int compute() {
-          int local = 1;
-          auto by_copy = [local, this] {
-              return local + this->field;
-          };
-          auto by_reference = [&local] {
-              return local;
-          };
-          return by_copy() + by_reference();
-      }
-  };
-  ```
-
-  </details>
-
-- [x] 基于范围的 for — 循环变量在定义和使用处
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  struct List {
-      int* begin();
-      int* end();
-  };
-
-  void iterate(List items) {
-      for (auto& item : items) {
-          item = 0;
-      }
-  }
-  ```
-
-  </details>
-
-- [x] 枚举底层类型 — 枚举基引用保持其类型类别
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  using Byte = unsigned char;
-
-  enum class Flags : Byte { A, B };
-
-  Flags flags = Flags::A;
-  ```
-
-  </details>
-
-- [x] 友元声明 — 友元名称解析到其目标；内联友元定义
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  struct Widget;
-  void ping();
-
-  struct Host {
-      friend struct Widget;
-      friend void ping();
-      friend void inline_friend() {}
-  };
-  ```
-
-  </details>
-
-- [ ] Dependent using declarations — `using T::name` in a template body*（部分）*
-
-  引入的名称及其使用当前不会产生 token；保留的 dependent-name 修饰符尚未输出。
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  template <typename T>
-  struct Derived : T {
-      using T::value;
-
-      int use() {
-          return value;
-      }
-  };
-  ```
-
-  </details>
-
-- [ ] Function explicit instantiation directives — clang builds no node for the directive, so every identifier on it goes unpainted: the name, the template arguments and the parameter types _（部分）_ ([llvm#191658](https://github.com/llvm/llvm-project/issues/191658))
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  struct Widget {};
-
-  template <typename T>
-  void convert(T value) {}
-
-  extern template void convert<Widget>(Widget);
-
-  template void convert<Widget>(Widget);
-  ```
-
-  </details>
-
-- [ ] Variable explicit instantiation directives — clang builds no node for the directive, so every identifier on it goes unpainted: the name, the template arguments, even the declarator's type _（部分）_ ([llvm#191658](https://github.com/llvm/llvm-project/issues/191658))
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  struct Widget {};
-
-  template <typename T>
-  T zero = T();
-
-  extern template Widget zero<Widget>;
-
-  template Widget zero<Widget>;
-  ```
-
-  </details>
-
-- [x] Explicit instantiation member bodies — a dependent name paints as its actual resolution: agreeing kinds keep the modifiers all instantiations share, disagreeing kinds paint a conflict
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  struct A {
-      static void hit();
-  };
-
-  struct B {
-      static int hit;
-  };
-
-  struct C {
-      void hit();
-  };
-
-  template <typename T>
-  struct D {
-      void go() {
-          (void)T::hit;
-      }
-  };
-
-  template struct D<A>;
-  template struct D<B>;
-
-  template <typename T>
-  struct E {
-      void probe(T t) {
-          t.hit();
-      }
-  };
-
-  template struct E<A>;
-  template struct E<C>;
-  ```
-
-  </details>
+template struct E<A>;
+template struct E<C>;
+```
 
 <!-- END GENERATED ITEMS -->
 
 ## Modules
 
-<!-- BEGIN GENERATED ITEMS: Modules -->
+<!-- BEGIN GENERATED ITEMS: modules -->
 
-- [x] Module declarations — the contextual `module` keyword, dotted module names and the private fragment
+| 能力                              | 状态 | 问题 |
+| --------------------------------- | ---- | ---- |
+| 模块声明                          | 支持 |      |
+| 模块分区                          | 支持 |      |
+| 用作标识符的 `module` 和 `import` | 支持 |      |
 
-  <details>
-  <summary>示例</summary>
+### 模块声明
 
-  ```cpp
-  module;
+上下文关键字 `module`、带点的模块名和私有片段
 
-  export module demo.core;
+```cpp
+module;
 
-  export int exported_value = 1;
+export module demo.core;
 
-  module :private;
+export int exported_value = 1;
 
-  int private_value = 2;
+module :private;
 
-  #if 0
-  module :private;
-  #endif
-  ```
+int private_value = 2;
 
-  </details>
+#if 0
+module :private;
+#endif
+```
 
-- [x] Module partitions — partition names in the module declaration
+### 模块分区
 
-  <details>
-  <summary>示例</summary>
+模块声明中的分区名称
 
-  ```cpp
-  export module demo.core:part;
+```cpp
+export module demo.core:part;
 
-  export int partition_value = 1;
-  ```
+export int partition_value = 1;
+```
 
-  </details>
+### 用作标识符的 `module` 和 `import`
 
-- [x] `module` and `import` as identifiers — contextual keywords keep their semantic kinds outside module declarations
+上下文关键字在模块声明之外保持其语义类别
 
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  void f() {
-      struct module {};
-      module m;
-      int import = 1;
-      int module = 2;
-  }
-  ```
-
-  </details>
+```cpp
+void f() {
+    struct module {};
+    module m;
+    int import = 1;
+    int module = 2;
+}
+```
 
 <!-- END GENERATED ITEMS -->
 
 ## Token Modifiers
 
-<!-- BEGIN GENERATED ITEMS: Token Modifiers -->
+<!-- BEGIN GENERATED ITEMS: token_modifiers -->
 
-- [x] Declaration vs definition — the modifier distinguishes the two
+| 能力                | 状态   | 问题                                                        |
+| ------------------- | ------ | ----------------------------------------------------------- |
+| 声明与定义          | 支持   |                                                             |
+| 静态                | 支持   |                                                             |
+| 只读                | 支持   |                                                             |
+| Virtual 与 abstract | 支持   |                                                             |
+| 已弃用              | 支持   |                                                             |
+| 默认库              | 支持   |                                                             |
+| 作用域修饰符        | 不支持 | [clangd#352](https://github.com/clangd/clangd/issues/352)   |
+| 可变引用与指针      | 不支持 | [clangd#839](https://github.com/clangd/clangd/issues/839)   |
+| 推导                | 不支持 |                                                             |
+| 用户定义运算符      | 不支持 | [clangd#1521](https://github.com/clangd/clangd/issues/1521) |
 
-  <details>
-  <summary>示例</summary>
+### 声明与定义
 
-  ```cpp
-  int measure(int value);
+该修饰符用于区分两者
 
-  int measure(int value) {
-      return value;
-  }
+```cpp
+int measure(int value);
 
-  struct Sensor;
+int measure(int value) {
+    return value;
+}
 
-  struct Sensor {};
-  ```
+struct Sensor;
 
-  </details>
+struct Sensor {};
+```
 
-- [x] Static — class-level members and static locals
+### 静态
 
-  <details>
-  <summary>示例</summary>
+类级成员和静态局部变量
 
-  ```cpp
-  struct Counter {
-      static int total;
-      static void bump();
-      int current;
-  };
+```cpp
+struct Counter {
+    static int total;
+    static void bump();
+    int current;
+};
 
-  void count() {
-      static int calls = 0;
-      Counter::bump();
-      Counter::total = calls;
-  }
-  ```
+void count() {
+    static int calls = 0;
+    Counter::bump();
+    Counter::total = calls;
+}
+```
 
-  </details>
+### 只读
 
-- [x] Readonly — const and constexpr values, const methods and enum members
+const 和 constexpr 值、const 方法及枚举成员
 
-  Readonly 目前基于值：指向 const 的指针算作
-  readonly，即使指针本身可以改变。
+只读目前基于值：指向 const 的指针算作
+只读，即使指针本身可以改变。
 
-  <details>
-  <summary>示例</summary>
+```cpp
+enum class Level { High };
 
-  ```cpp
-  enum class Level { High };
+const int limit = 10;
+constexpr int bound = 4;
 
-  const int limit = 10;
-  constexpr int bound = 4;
+struct Gauge {
+    int read() const;
+    void write(int value);
+};
 
-  struct Gauge {
-      int read() const;
-      void write(int value);
-  };
+void probe(const int& in, const int* pointee_const, int* const self_const) {
+    Gauge gauge;
+    gauge.read();
+    gauge.write(limit);
+}
+```
 
-  void probe(const int& in, const int* pointee_const, int* const self_const) {
-      Gauge gauge;
-      gauge.read();
-      gauge.write(limit);
-  }
-  ```
+### Virtual 与 abstract
 
-  </details>
+虚方法、纯虚方法和抽象类
 
-- [x] Virtual 与 abstract — 虚方法、纯虚方法和抽象类
+```cpp
+struct Shape {
+    virtual int area();
+    virtual int perimeter() = 0;
+    virtual ~Shape();
+};
 
-  <details>
-  <summary>示例</summary>
+struct Square : Shape {
+    int perimeter() override;
+};
 
-  ```cpp
-  struct Shape {
-      virtual int area();
-      virtual int perimeter() = 0;
-      virtual ~Shape();
-  };
+int measure(Shape& shape) {
+    return shape.area() + shape.perimeter();
+}
+```
 
-  struct Square : Shape {
-      int perimeter() override;
-  };
+### 已弃用
 
-  int measure(Shape& shape) {
-      return shape.area() + shape.perimeter();
-  }
-  ```
+`[[deprecated]]` 声明及其使用
 
-  </details>
+```cpp
+[[deprecated("use next_api")]] void old_api();
+void next_api();
 
-- [x] Deprecated — `[[deprecated]]` 声明及其使用
+void migrate() {
+    old_api();
+}
+```
 
-  <details>
-  <summary>示例</summary>
+### 默认库
 
-  ```cpp
-  [[deprecated("use next_api")]] void old_api();
-  void next_api();
+系统头文件中声明的符号
 
-  void migrate() {
-      old_api();
-  }
-  ```
+```cpp
+int before_includes = 0;
 
-  </details>
+#include <syslib.h>
 
-- [x] Default library — 系统头文件中声明的符号
+int used = system_helper();
+```
 
-  <details>
-  <summary>示例</summary>
+### 作用域修饰符
 
-  ```cpp
-  int before_includes = 0;
+函数、类、文件和全局作用域
 
-  #include <syslib.h>
+```cpp
+int global_scope;
+static int file_scope;
 
-  int used = system_helper();
-  ```
+struct Foo {
+    int class_scope;
 
-  </details>
+    void bar() {
+        int function_scope = 0;
+    }
+};
+```
 
-- [ ] 作用域修饰符 — 函数、类、文件和全局作用域 ([clangd#352](https://github.com/clangd/clangd/issues/352))
+### 可变引用与指针
 
-  <details>
-  <summary>示例</summary>
+通过非 const 引用或指针传递的参数
 
-  ```cpp
-  int global_scope;
-  static int file_scope;
+```cpp
+void modify(int& out);
+void modify_through(int* out);
+void inspect(const int& in);
 
-  struct Foo {
-      int class_scope;
+void run() {
+    int value = 0;
+    modify(value);
+    modify_through(&value);
+    inspect(value);
+}
+```
 
-      void bar() {
-          int function_scope = 0;
-      }
-  };
-  ```
+### 推导
 
-  </details>
+标记推导类型，如 `auto` 和 `decltype`
 
-- [ ] 可变引用与指针 — 通过非 const 引用或指针传递的参数 ([clangd#839](https://github.com/clangd/clangd/issues/839))
+```cpp
+auto deduced_int = 1;
+decltype(deduced_int) same_type = 2;
+```
 
-  <details>
-  <summary>示例</summary>
+### 用户定义运算符
 
-  ```cpp
-  void modify(int& out);
-  void modify_through(int* out);
-  void inspect(const int& in);
+区分重载运算符与内置运算符
 
-  void run() {
-      int value = 0;
-      modify(value);
-      modify_through(&value);
-      inspect(value);
-  }
-  ```
+```cpp
+struct Vec {
+    Vec operator+(const Vec& other) const;
+};
 
-  </details>
+Vec add(Vec a, Vec b) {
+    return a + b;
+}
 
-- [ ] Deduced — 标记推导类型，如 `auto` 和 `decltype`
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  auto deduced_int = 1;
-  decltype(deduced_int) same_type = 2;
-  ```
-
-  </details>
-
-- [ ] 用户定义运算符 — 区分重载运算符与内置运算符 ([clangd#1521](https://github.com/clangd/clangd/issues/1521))
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  struct Vec {
-      Vec operator+(const Vec& other) const;
-  };
-
-  Vec add(Vec a, Vec b) {
-      return a + b;
-  }
-
-  int add(int a, int b) {
-      return a + b;
-  }
-  ```
-
-  </details>
+int add(int a, int b) {
+    return a + b;
+}
+```
 
 <!-- END GENERATED ITEMS -->
 
@@ -1123,79 +1029,74 @@ clice 用自有的 token 类型词汇表对文档中的每个 token 分类，这
 
 C++ 允许结构上不同的实体共享同一个名称。当一个书写名称同时指向不同种类的实体时，没有单一 token 类型是正确的；这类名称会获得专用的 **conflict** token 类型，客户端通常以中性颜色显示。
 
-<!-- BEGIN GENERATED ITEMS: Conflict & Ambiguity -->
+<!-- BEGIN GENERATED ITEMS: conflict_ambiguity -->
 
-- [x] 类型 vs 函数 — 同时命名两者的名称显示为 `conflict`
+| 能力           | 状态 | 问题 |
+| -------------- | ---- | ---- |
+| 类型 vs 函数   | 支持 |      |
+| 类型 vs 变量   | 支持 |      |
+| 同类型重载集合 | 支持 |      |
+| 注入类名       | 支持 |      |
 
-  <details>
-  <summary>示例</summary>
+### 类型 vs 函数
 
-  ```cpp
-  namespace shop {
-  struct Widget {};
-  void Widget();
-  }
+同时命名两者的名称显示为 `conflict`
 
-  using shop::Widget;
-  ```
+```cpp
+namespace shop {
+struct Widget {};
+void Widget();
+}
 
-  </details>
+using shop::Widget;
+```
 
-- [x] 类型 vs 变量 — 同时命名两者的名称显示为 `conflict`
+### 类型 vs 变量
 
-  <details>
-  <summary>示例</summary>
+同时命名两者的名称显示为 `conflict`
 
-  ```cpp
-  namespace mixed {
-  struct Thing {};
-  int Thing;
-  }
+```cpp
+namespace mixed {
+struct Thing {};
+int Thing;
+}
 
-  using mixed::Thing;
-  ```
+using mixed::Thing;
+```
 
-  </details>
+### 同类型重载集合
 
-- [x] 同类型重载集合 — 仅命名函数的名称不构成冲突
+仅命名函数的名称不构成冲突
 
-  <details>
-  <summary>示例</summary>
+```cpp
+namespace ops {
+void apply();
+void apply(int level);
+}
 
-  ```cpp
-  namespace ops {
-  void apply();
-  void apply(int level);
-  }
+using ops::apply;
 
-  using ops::apply;
+void run() {
+    apply();
+    apply(1);
+}
+```
 
-  void run() {
-      apply();
-      apply(1);
-  }
-  ```
+### 注入类名
 
-  </details>
+类内部用作构造函数调用的类名
 
-- [x] 注入类名 — 类内部用作构造函数调用的类名
+书写名称显示为类；它隐含的构造函数引用不会额外着色 — `(` 保持无 token 状态。
 
-  书写名称显示为类；它隐含的构造函数引用不会额外着色 — `(` 保持无 token 状态。
+```cpp
+struct Widget {
+    Widget(int size);
 
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  struct Widget {
-      Widget(int size);
-
-      Widget create() {
-          return Widget(42);
-      }
-  };
-  ```
-
-  </details>
+    Widget create() {
+        return Widget(42);
+    }
+};
+```
 
 <!-- END GENERATED ITEMS -->
 
@@ -1203,154 +1104,144 @@ C++ 允许结构上不同的实体共享同一个名称。当一个书写名称�
 
 clice 刻意固定的行为，包括 clangd 曾经出错的问题。
 
-<!-- BEGIN GENERATED ITEMS: Token Correctness -->
+<!-- BEGIN GENERATED ITEMS: token_correctness -->
 
-- [x] 构造函数与析构函数 — 带 constructor/destructor 修饰符的 method token ([clangd#1509](https://github.com/clangd/clangd/issues/1509), [clangd#2078](https://github.com/clangd/clangd/issues/2078), [clangd#872](https://github.com/clangd/clangd/issues/872))
+| 能力                      | 状态 | 问题                                                                                                                                                                                |
+| ------------------------- | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 构造函数与析构函数        | 支持 | [clangd#1509](https://github.com/clangd/clangd/issues/1509), [clangd#2078](https://github.com/clangd/clangd/issues/2078), [clangd#872](https://github.com/clangd/clangd/issues/872) |
+| 匿名参数                  | 支持 |                                                                                                                                                                                     |
+| 运算符名称                | 支持 |                                                                                                                                                                                     |
+| 类模板的析构函数          | 支持 |                                                                                                                                                                                     |
+| 转换运算符                | 支持 |                                                                                                                                                                                     |
+| 模板参数上的伪析构函数    | 支持 |                                                                                                                                                                                     |
+| defaulted 和 deleted 成员 | 支持 |                                                                                                                                                                                     |
 
-  析构函数名称显示为两个 token：`~` 携带 method 类型以及声明/定义修饰符，其后的类名保持为对类的引用。
+### 构造函数与析构函数
 
-  <details>
-  <summary>示例</summary>
+带 constructor/destructor 修饰符的 method token
 
-  ```cpp
-  struct Session {
-      Session();
-      ~Session();
-  };
+析构函数名称显示为两个 token：`~` 携带 method 类型以及声明/定义修饰符，其后的类名保持为对类的引用。
 
-  Session::Session() {}
+```cpp
+struct Session {
+    Session();
+    ~Session();
+};
 
-  Session::~Session() {}
+Session::Session() {}
 
-  void destroy(Session* session) {
-      session->~Session();
-  }
-  ```
+Session::~Session() {}
 
-  </details>
+void destroy(Session* session) {
+    session->~Session();
+}
+```
 
-- [x] 匿名参数 — 未命名参数不产生 token
+### 匿名参数
 
-  未命名参数类型之后的标点保持无 token 状态。
+未命名参数不产生 token
 
-  <details>
-  <summary>示例</summary>
+未命名参数类型之后的标点保持无 token 状态。
 
-  ```cpp
-  void take_one(int) {}
-  void take_two(int, char* c) {}
-  ```
+```cpp
+void take_one(int) {}
+void take_two(int, char* c) {}
+```
 
-  </details>
+### 运算符名称
 
-- [x] 运算符名称 — `operator` 关键字和调用点的标点保持原样
+`operator` 关键字和调用点的标点保持原样
 
-  运算符的书写名称是关键字加标点，所以不产生名称 token：`operator` 保持其关键字分类，调用点在运算符符号上不产生任何内容。
+运算符的书写名称是关键字加标点，所以不产生名称 token：`operator` 保持其关键字分类，调用点在运算符符号上不产生任何内容。
 
-  <details>
-  <summary>示例</summary>
+```cpp
+struct Value {
+    Value& operator=(const Value& other);
+    Value operator+(const Value& other) const;
+};
 
-  ```cpp
-  struct Value {
-      Value& operator=(const Value& other);
-      Value operator+(const Value& other) const;
-  };
+void combine(Value a, Value b) {
+    a = b;
+    Value c = a + b;
+}
+```
 
-  void combine(Value a, Value b) {
-      a = b;
-      Value c = a + b;
-  }
-  ```
+### 类模板的析构函数
 
-  </details>
+模板下的 `~` 形式保持一致
 
-- [x] 类模板的析构函数 — 模板下的 `~` 形式保持一致
+```cpp
+template <typename T>
+struct Holder {
+    ~Holder();
+};
 
-  <details>
-  <summary>示例</summary>
+template <typename T>
+Holder<T>::~Holder() {}
+```
 
-  ```cpp
-  template <typename T>
-  struct Holder {
-      ~Holder();
-  };
+### 转换运算符
 
-  template <typename T>
-  Holder<T>::~Holder() {}
-  ```
+书写为关键字，转换使用不额外着色
 
-  </details>
+```cpp
+struct Ratio {
+    operator double() const;
+    explicit operator bool() const;
+};
 
-- [x] 转换运算符 — 书写为关键字，转换使用不额外着色
+double to_double(Ratio ratio) {
+    if (ratio) {
+        return ratio;
+    }
+    return double(ratio);
+}
+```
 
-  <details>
-  <summary>示例</summary>
+### 模板参数上的伪析构函数
 
-  ```cpp
-  struct Ratio {
-      operator double() const;
-      explicit operator bool() const;
-  };
+`~` 不着色；类型名保持其类型
 
-  double to_double(Ratio ratio) {
-      if (ratio) {
-          return ratio;
-      }
-      return double(ratio);
-  }
-  ```
+```cpp
+template <typename T>
+void reset(T* value) {
+    value->~T();
+}
+```
 
-  </details>
+### defaulted 和 deleted 成员
 
-- [x] 模板参数上的伪析构函数 — `~` 不着色；类型名保持其类型
+特殊成员名称保持其定义 token
 
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  template <typename T>
-  void reset(T* value) {
-      value->~T();
-  }
-  ```
-
-  </details>
-
-- [x] defaulted 和 deleted 成员 — 特殊成员名称保持其定义 token
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  struct Session {
-      Session() = default;
-      Session(const Session&) = delete;
-      ~Session() = default;
-  };
-  ```
-
-  </details>
+```cpp
+struct Session {
+    Session() = default;
+    Session(const Session&) = delete;
+    ~Session() = default;
+};
+```
 
 <!-- END GENERATED ITEMS -->
 
 ## 属性
 
-<!-- BEGIN GENERATED ITEMS: Attributes -->
+<!-- BEGIN GENERATED ITEMS: attributes -->
 
-- [ ] 属性名称 — 标准属性和厂商属性，以及它们内部的表达式 ([clangd#2209](https://github.com/clangd/clangd/issues/2209))
+| 能力     | 状态   | 问题                                                        |
+| -------- | ------ | ----------------------------------------------------------- |
+| 属性名称 | 不支持 | [clangd#2209](https://github.com/clangd/clangd/issues/2209) |
 
-  <details>
-  <summary>示例</summary>
+### 属性名称
 
-  ```cpp
-  [[nodiscard]] int compute();
-  [[deprecated("use v2")]] void old_func();
-  [[maybe_unused]] int counter = 0;
+标准属性和厂商属性，以及它们内部的表达式
 
-  struct [[gnu::packed]] Packed {};
-  ```
+```cpp
+[[nodiscard]] int compute();
+[[deprecated("use v2")]] void old_func();
+[[maybe_unused]] int counter = 0;
 
-  </details>
+struct [[gnu::packed]] Packed {};
+```
 
 <!-- END GENERATED ITEMS -->
 
@@ -1358,56 +1249,51 @@ clice 刻意固定的行为，包括 clangd 曾经出错的问题。
 
 宏定义体内部的 token 保持其词法类型；从宏展开处对它们着色属于未来的展开预览特性。
 
-<!-- BEGIN GENERATED ITEMS: Macros -->
+<!-- BEGIN GENERATED ITEMS: macros -->
 
-- [x] 宏定义与展开
+| 能力                            | 状态   | 问题                                                        |
+| ------------------------------- | ------ | ----------------------------------------------------------- |
+| 宏定义与展开                    | 支持   |                                                             |
+| 展开处与实参                    | 支持   |                                                             |
+| Object-like 与 function-like 宏 | 不支持 | [clangd#2649](https://github.com/clangd/clangd/issues/2649) |
 
-  <details>
-  <summary>示例</summary>
+### 宏定义与展开
 
-  ```cpp
-  #define SQUARE(x) ((x) * (x))
+```cpp
+#define SQUARE(x) ((x) * (x))
 
-  [[maybe_unused]] static int squared = SQUARE(4);
-  ```
+[[maybe_unused]] static int squared = SQUARE(4);
+```
 
-  </details>
+### 展开处与实参
 
-- [x] 展开处与实参 — 展开名称是宏，书写的实参保持其语义，定义体保持词法
+展开名称是宏，书写的实参保持其语义，定义体保持词法
 
-  <details>
-  <summary>示例</summary>
+```cpp
+int value = 1;
 
-  ```cpp
-  int value = 1;
+#define ID(x) x
+#define CALL helper()
 
-  #define ID(x) x
-  #define CALL helper()
+void helper();
 
-  void helper();
+int copied = ID(value);
 
-  int copied = ID(value);
+void run() {
+    CALL;
+}
+```
 
-  void run() {
-      CALL;
-  }
-  ```
+### Object-like 与 function-like 宏
 
-  </details>
+区分两种形式的高亮
 
-- [ ] Object-like 与 function-like 宏 — 区分两种形式的高亮（[clangd#2649](https://github.com/clangd/clangd/issues/2649)）
+```cpp
+#define MAX_SIZE 1024
+#define CHECK(x) ((x) ? 1 : 0)
 
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  #define MAX_SIZE 1024
-  #define CHECK(x) ((x) ? 1 : 0)
-
-  int checked = CHECK(MAX_SIZE);
-  ```
-
-  </details>
+int checked = CHECK(MAX_SIZE);
+```
 
 <!-- END GENERATED ITEMS -->
 
