@@ -434,6 +434,7 @@ void bar() {
 | Keyword patterns                              | Supported |        |
 | Macros                                        | Supported |        |
 | Macro shadowing a declaration                 | Supported |        |
+| Completion inside macro arguments             | Supported |        |
 | Namespace-qualified lookup                    | Supported |        |
 | Enum members                                  | Supported |        |
 | Local shadowing a global                      | Supported |        |
@@ -544,6 +545,24 @@ int BOUND(int lo, int hi);
 
 int a = GUAR;
 int b = BOUN;
+```
+
+### Completion inside macro arguments
+
+Member access written as a macro argument completes as it would outside the macro
+
+```cpp
+#define WRAP(...) __VA_ARGS__
+
+struct Config {
+    int retries;
+    int timeout;
+};
+
+void run() {
+    Config config;
+    WRAP(config.);
+}
 ```
 
 ### Namespace-qualified lookup
@@ -860,33 +879,6 @@ int x = printf
   };
   ```
 
-### Macros
-
-- [x] Macro name completion, including macros deserialized from the preamble
-- [x] Fuzzy matching for macros (same matcher as other symbols)
-- [x] Correct `CompletionItemKind`: `Function` for function-like, `Constant` for object-like ([clangd#2002](https://github.com/clangd/clangd/issues/2002))
-- [x] Parameter list as the label detail for function-like macros
-- [ ] Show macro definition/expansion as documentation ([clangd#1485](https://github.com/clangd/clangd/issues/1485))
-
-  ```cpp
-  #define MAX_BUF 4096
-  MAX^  // completion detail shows: #define MAX_BUF 4096
-  ```
-
-- [x] Parameter placeholders for function-like macros (respect snippet settings)
-
-  ```cpp
-  #define CHECK(cond, msg) ...
-  CHECK^  // insert: CHECK(${1:cond}, ${2:msg})
-  ```
-
-- [ ] Completion inside macro arguments with fallback to enclosing context
-
-  ```cpp
-  #define WRAP(...) __VA_ARGS__
-  WRAP(some_obj.^)  // should still offer some_obj's members
-  ```
-
 ### Filtering & Ranking
 
 <!-- BEGIN GENERATED ITEMS: filtering_ranking -->
@@ -1065,6 +1057,7 @@ Not yet implemented. Completion items do not include documentation.
 - [ ] Available regardless of where the definition lives (header, source, index)
 - [ ] Propagate template pattern documentation to instantiations
 - [ ] Standard library documentation integration
+- [ ] Macro definitions as documentation ([clangd#1485](https://github.com/clangd/clangd/issues/1485))
 
 ## Trigger Characters
 

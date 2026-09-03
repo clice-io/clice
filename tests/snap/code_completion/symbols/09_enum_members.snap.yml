@@ -1,6 +1,6 @@
 ---
 created_at: 2026-08-02
-input_file: symbols/08_enum_members.cpp
+input_file: symbols/09_enum_members.cpp
 ---
 scoped:
 - { label: "Blue", kind: EnumMember, description: "Color", edit: "12:21-12:21" }

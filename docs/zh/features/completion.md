@@ -422,6 +422,7 @@ void bar() {
 | 关键字模式                   | 支持 |      |
 | 宏                           | 支持 |      |
 | 宏遮蔽声明                   | 支持 |      |
+| 在宏实参内补全               | 支持 |      |
 | 命名空间限定查找             | 支持 |      |
 | 枚举成员                     | 支持 |      |
 | 局部名称遮蔽全局名称         | 支持 |      |
@@ -532,6 +533,24 @@ int BOUND(int lo, int hi);
 
 int a = GUAR;
 int b = BOUN;
+```
+
+### 在宏实参内补全
+
+写在宏实参中的成员访问，补全结果与写在宏外时一致
+
+```cpp
+#define WRAP(...) __VA_ARGS__
+
+struct Config {
+    int retries;
+    int timeout;
+};
+
+void run() {
+    Config config;
+    WRAP(config.);
+}
 ```
 
 ### 命名空间限定查找
@@ -848,33 +867,6 @@ int x = printf
   };
   ```
 
-### 宏
-
-- [x] 宏名补全，包括从 Preamble 反序列化得到的宏
-- [x] 宏的模糊匹配（与其他符号使用相同匹配器）
-- [x] 正确的 `CompletionItemKind`：函数式宏为 `Function`，对象式宏为 `Constant`（[clangd#2002](https://github.com/clangd/clangd/issues/2002)）
-- [x] 函数式宏的标签详情使用参数列表
-- [ ] 将宏定义/展开结果作为文档信息显示（[clangd#1485](https://github.com/clangd/clangd/issues/1485)）
-
-  ```cpp
-  #define MAX_BUF 4096
-  MAX^  // completion detail shows: #define MAX_BUF 4096
-  ```
-
-- [x] 函数式宏的参数占位符（遵循代码片段设置）
-
-  ```cpp
-  #define CHECK(cond, msg) ...
-  CHECK^  // insert: CHECK(${1:cond}, ${2:msg})
-  ```
-
-- [ ] 在宏实参内进行补全，并可回退到外层上下文
-
-  ```cpp
-  #define WRAP(...) __VA_ARGS__
-  WRAP(some_obj.^)  // should still offer some_obj's members
-  ```
-
 ### 过滤与排序
 
 <!-- BEGIN GENERATED ITEMS: filtering_ranking -->
@@ -1053,6 +1045,7 @@ void bar() {
 - [ ] 无论定义位于何处（头文件、源文件、索引）都可用
 - [ ] 将模板模式的文档传播到模板实例
 - [ ] 标准库文档集成
+- [ ] 将宏定义作为文档信息显示（[clangd#1485](https://github.com/clangd/clangd/issues/1485)）
 
 ## 触发字符
 

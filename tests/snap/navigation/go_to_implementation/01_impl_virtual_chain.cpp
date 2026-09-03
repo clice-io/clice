@@ -1,4 +1,4 @@
-/// # Virtual methods — each level of a chain to its own overriders
+/// # Override chain — each level of a chain to its own overriders
 ///
 /// - status: supported
 /// - verify: server

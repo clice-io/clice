@@ -940,13 +940,13 @@ int use_render() {
 
 | Capability                    | Status      | Issues                                                    |
 | ----------------------------- | ----------- | --------------------------------------------------------- |
-| Virtual methods               | Supported   |                                                           |
-| Virtual method                | Supported   |                                                           |
+| Override chain                | Supported   |                                                           |
+| Sibling overrides             | Supported   |                                                           |
 | Non-virtual function          | Unsupported | [clangd#854](https://github.com/clangd/clangd/issues/854) |
 | Base class                    | Supported   |                                                           |
 | Template duck-type navigation | Unsupported |                                                           |
 
-### Virtual methods
+### Override chain
 
 Each level of a chain to its own overriders
 
@@ -967,7 +967,7 @@ struct Leaf : Middle {
 };
 ```
 
-### Virtual method
+### Sibling overrides
 
 Every sibling override
 

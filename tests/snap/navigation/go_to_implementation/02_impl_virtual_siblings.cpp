@@ -1,4 +1,4 @@
-/// # Virtual method — every sibling override
+/// # Sibling overrides — every sibling override
 ///
 /// - status: supported
 /// - verify: server

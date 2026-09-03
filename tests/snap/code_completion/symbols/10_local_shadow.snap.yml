@@ -1,6 +1,6 @@
 ---
 created_at: 2026-08-02
-input_file: symbols/09_local_shadow.cpp
+input_file: symbols/10_local_shadow.cpp
 ---
 pos:
 - { label: "counter", kind: Variable, description: "int", edit: "10:12-10:16" }
