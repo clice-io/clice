@@ -41,18 +41,26 @@ jobs:
           # were built from, so pick the newest main commit whose green run
           # still has live package artifacts: path-filtered runs (e.g.
           # docs-only commits) build nothing, and packages expire after
-          # 30 days.
+          # 30 days. The artifacts API occasionally answers with an empty
+          # list for a while, so an empty result is retried before giving up.
+          PACKAGE=package-clice.x86_64-unknown-linux-gnu.tar.gz
           COMMIT=""
-          for RUN in $(gh run list --repo "$GITHUB_REPOSITORY" --workflow main \
+          for ATTEMPT in 1 2 3; do
+            RUNS=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow main \
               --branch main --event push --status success --limit 100 \
-              --json databaseId -q '.[].databaseId'); do
-            LIVE=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN/artifacts?name=package-clice.x86_64-unknown-linux-gnu.tar.gz" \
-              --jq '[.artifacts[] | select(.expired | not)] | length')
-            if [ "$LIVE" -gt 0 ]; then
-              COMMIT=$(gh run view "$RUN" --repo "$GITHUB_REPOSITORY" \
-                --json headSha -q .headSha)
-              break
-            fi
+              --json databaseId -q '.[].databaseId')
+            LIVE=$(gh api --paginate \
+              "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$PACKAGE&per_page=100" \
+              --jq '.artifacts[] | select(.expired | not)
+                    | "\(.workflow_run.id) \(.workflow_run.head_sha)"')
+            echo "attempt $ATTEMPT: $(grep -c . <<< "$RUNS") green main runs," \
+              "$(grep -c . <<< "$LIVE") live packages"
+            for RUN in $RUNS; do
+              COMMIT=$(awk -v run="$RUN" '$1 == run { print $2; exit }' <<< "$LIVE")
+              if [ -n "$COMMIT" ]; then break; fi
+            done
+            if [ -n "$COMMIT" ]; then break; fi
+            sleep 30
           done
           if [ -z "$COMMIT" ]; then
             echo "::error::no recent green main run has live package artifacts"
