@@ -1,0 +1,8 @@
+---
+created_at: 2026-07-31
+input_file: token_modifiers/01_decl_def_modifiers.cpp
+---
+- { loc: "4:4", text: "measure", kind: function, modifiers: [declaration] }
+- { loc: "6:4", text: "measure", kind: function, modifiers: [definition] }
+- { loc: "10:7", text: "Sensor", kind: struct, modifiers: [declaration] }
+- { loc: "12:7", text: "Sensor", kind: struct, modifiers: [definition] }

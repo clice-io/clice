@@ -2,186 +2,180 @@
 
 Clickable links from source directives to their resolved target files.
 
-<!-- The checklist sections below are generated from the snapshot fixtures in
+<!-- The capability sections below are generated from the snapshot fixtures in
      tests/snap/document_links/. Do not edit the regions between the GENERATED
      markers by hand — edit the fixture doc headers and run
      `node tools/docs/feature.ts update`. -->
 
 ## Include Directives
 
-<!-- BEGIN GENERATED ITEMS: Include Directives -->
+<!-- BEGIN GENERATED ITEMS: include_directives -->
 
-- [x] Quoted includes — `#include "..."` links to the resolved header file
+| Capability                               | Status    | Issues                                                      |
+| ---------------------------------------- | --------- | ----------------------------------------------------------- |
+| Quoted includes                          | Supported |                                                             |
+| Angle-bracket includes                   | Supported |                                                             |
+| Macro-expanded paths                     | Supported | [clangd#2375](https://github.com/clangd/clangd/issues/2375) |
+| `#include_next` and `__has_include_next` | Partial   |                                                             |
+| `__has_include`                          | Supported |                                                             |
 
-  Every include in the file is linked, not just the preamble run at
-  the top.
+### Quoted includes
 
-  <details>
-  <summary>Example</summary>
+`#include "..."` links to the resolved header file
 
-  ```cpp
-  #include "header_a.h"
-  #include "header_b.h"
-  int x = 1;
-  #include "header_c.h"
-  ```
+Every include in the file is linked, not just the preamble run at
+the top.
 
-  </details>
+```cpp
+#include "header_a.h"
+#include "header_b.h"
+int x = 1;
+#include "header_c.h"
+```
 
-- [x] Angle-bracket includes — `#include <...>` links to the header found on the search path
+### Angle-bracket includes
 
-  <details>
-  <summary>Example</summary>
+`#include <...>` links to the header found on the search path
 
-  ```cpp
-  #include <header_a.h>
-  ```
+```cpp
+#include <header_a.h>
+```
 
-  </details>
+### Macro-expanded paths
 
-- [x] Macro-expanded paths — `#include MACRO` links the directive argument to the expanded target ([clangd#2375](https://github.com/clangd/clangd/issues/2375))
+`#include MACRO` links the directive argument to the expanded target
 
-  <details>
-  <summary>Example</summary>
+```cpp
+#define HEADER "header_b.h"
+#include HEADER
+```
 
-  ```cpp
-  #define HEADER "header_b.h"
-  #include HEADER
-  ```
+### `#include_next` and `__has_include_next`
 
-  </details>
+Links continue down the search path
 
-- [ ] `#include_next` and `__has_include_next` — links continue down the search path _(partial)_
+`first/wrap.h` shadows `second/wrap.h` on the search path; its
+`#include_next` (guarded by `__has_include_next`) includes the second
+copy. Next-in-path resolution only exists when the header is compiled
+in an including TU's context — opened standalone it is compiled as its
+own TU, where clang deliberately treats `#include_next` as a plain
+include, so today both links land back on the first copy (as the
+snapshot pins).
 
-  `first/wrap.h` shadows `second/wrap.h` on the search path; its
-  `#include_next` (guarded by `__has_include_next`) includes the second
-  copy. Next-in-path resolution only exists when the header is compiled
-  in an including TU's context — opened standalone it is compiled as its
-  own TU, where clang deliberately treats `#include_next` as a plain
-  include, so today both links land back on the first copy (as the
-  snapshot pins).
+`main.cpp`:
 
-  <details>
-  <summary>Example</summary>
+```cpp
+#include <wrap.h>
 
-  `main.cpp`:
+int use_wrap = WRAP_FIRST + WRAP_SECOND;
+```
 
-  ```cpp
-  #include <wrap.h>
+`first/wrap.h`:
 
-  int use_wrap = WRAP_FIRST + WRAP_SECOND;
-  ```
+```cpp
+#pragma once
 
-  `first/wrap.h`:
+#define WRAP_FIRST 1
 
-  ```cpp
-  #pragma once
+#if __has_include_next(<wrap.h>)
+#include_next <wrap.h>
+#endif
+```
 
-  #define WRAP_FIRST 1
+`second/wrap.h`:
 
-  #if __has_include_next(<wrap.h>)
-  #include_next <wrap.h>
-  #endif
-  ```
+```cpp
+#pragma once
 
-  `second/wrap.h`:
+#define WRAP_SECOND 2
+```
 
-  ```cpp
-  #pragma once
+### `__has_include`
 
-  #define WRAP_SECOND 2
-  ```
+The checked path links to the file it probes
 
-  </details>
-
-- [x] `__has_include` — the checked path links to the file it probes
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  #if __has_include("header_c.h")
-  #include "header_c.h"
-  #endif
-  ```
-
-  </details>
+```cpp
+#if __has_include("header_c.h")
+#include "header_c.h"
+#endif
+```
 
 <!-- END GENERATED ITEMS -->
 
 ## Embed Directives
 
-<!-- BEGIN GENERATED ITEMS: Embed Directives -->
+<!-- BEGIN GENERATED ITEMS: embed_directives -->
 
-- [x] `#embed` — the resource path links to the embedded file
+| Capability    | Status    | Issues |
+| ------------- | --------- | ------ |
+| `#embed`      | Supported |        |
+| `__has_embed` | Supported |        |
 
-  <details>
-  <summary>Example</summary>
+### `#embed`
 
-  ```cpp
-  const char data[] = {
-  #embed "data.bin"
-  };
-  ```
+The resource path links to the embedded file
 
-  </details>
+```cpp
+const char data[] = {
+#embed "data.bin"
+};
+```
 
-- [x] `__has_embed` — the checked path links to the probed resource
+### `__has_embed`
 
-  <details>
-  <summary>Example</summary>
+The checked path links to the probed resource
 
-  ```cpp
-  #if __has_embed("data.bin")
-  const char first_byte[] = {
-  #embed "data.bin" limit(1)
-  };
-  #endif
-  ```
-
-  </details>
+```cpp
+#if __has_embed("data.bin")
+const char first_byte[] = {
+#embed "data.bin" limit(1)
+};
+#endif
+```
 
 <!-- END GENERATED ITEMS -->
 
 ## Presentation
 
-<!-- BEGIN GENERATED ITEMS: Presentation -->
+<!-- BEGIN GENERATED ITEMS: presentation -->
 
-- [x] Resolved-path tooltips — every link carries its target's absolute path as the hover tooltip
+| Capability             | Status    | Issues |
+| ---------------------- | --------- | ------ |
+| Resolved-path tooltips | Supported |        |
 
-  Editors render the tooltip next to the follow-link hint, e.g.
-  `/usr/include/c++/14/vector (ctrl + click)`. Snapshots pin only the
-  link targets; the suite instead validates the tooltip against the
-  target on the server reply of every fixture in this corpus.
+### Resolved-path tooltips
 
-  <details>
-  <summary>Example</summary>
+Every link carries its target's absolute path as the hover tooltip
 
-  ```cpp
-  #include "header_a.h"
-  ```
+Editors render the tooltip next to the follow-link hint, e.g.
+`/usr/include/c++/14/vector (ctrl + click)`. Snapshots pin only the
+link targets; the suite instead validates the tooltip against the
+target on the server reply of every fixture in this corpus.
 
-  </details>
+```cpp
+#include "header_a.h"
+```
 
 <!-- END GENERATED ITEMS -->
 
 ## Module Declarations
 
-<!-- BEGIN GENERATED ITEMS: Module Declarations -->
+<!-- BEGIN GENERATED ITEMS: module_declarations -->
 
-- [ ] Module targets — `import` and `module` declarations link to their interface files
+| Capability     | Status      | Issues |
+| -------------- | ----------- | ------ |
+| Module targets | Unsupported |        |
 
-  <details>
-  <summary>Example</summary>
+### Module targets
 
-  ```cpp
-  export module app;
+`import` and `module` declarations link to their interface files
 
-  import lib;
-  import :part;
-  export import lib.extra;
-  ```
+```cpp
+export module app;
 
-  </details>
+import lib;
+import :part;
+export import lib.extra;
+```
 
 <!-- END GENERATED ITEMS -->

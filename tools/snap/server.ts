@@ -14,11 +14,12 @@
 import type { CliceClient } from "../client/client.ts";
 import type { SessionFactory } from "../client/session.ts";
 import {
-    HEADER,
-    materializeFixture,
     type FixtureFile,
+    HEADER,
     type SnapCorpus,
     type SnapFixture,
+    fixtureRelative,
+    materializeFixture,
 } from "./corpus.ts";
 import { feature, participates } from "./registry.ts";
 import { abBlocks, fileSections } from "./render.ts";
@@ -118,7 +119,7 @@ export async function checkServerSnapFixture(
             if (!participates(shape, file.source, file.rel === fixture.rel)) {
                 continue;
             }
-            const label = fixture.unit === "" ? file.rel : file.rel.slice(fixture.unit.length + 1);
+            const label = fixtureRelative(fixture, file);
             const stripped = Buffer.from(file.source.content);
             sections.push([
                 label,

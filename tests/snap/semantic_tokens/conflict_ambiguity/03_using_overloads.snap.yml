@@ -1,0 +1,7 @@
+---
+created_at: 2026-07-31
+input_file: conflict_ambiguity/03_using_overloads.cpp
+---
+- { loc: "9:11", text: "apply", kind: function }
+- { loc: "12:4", text: "apply", kind: function }
+- { loc: "13:4", text: "apply", kind: function }

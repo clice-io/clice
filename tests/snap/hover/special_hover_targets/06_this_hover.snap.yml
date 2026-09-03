@@ -1,0 +1,19 @@
+---
+created_at: 2026-08-23
+input_file: special_hover_targets/06_this_hover.cpp
+---
+plain_this: { range: "10:15-10:19" }
+### `this`  
+
+---
+```cpp
+this_hover::Widget *
+```
+
+template_this: { range: "17:15-17:19" }
+### `this`  
+
+---
+```cpp
+const this_hover::Box<T> *
+```

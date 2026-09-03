@@ -1,0 +1,91 @@
+---
+created_at: 2026-08-23
+input_file: type_information/05_auto_deduction.cpp
+---
+01_simple: { range: "19:2-19:6" }
+### type `auto`  
+
+---
+```cpp
+int
+```
+
+02_const: { range: "20:8-20:12" }
+### type `auto`  
+
+---
+```cpp
+int
+```
+
+03_ref: { range: "21:2-21:6" }
+### type `auto`  
+
+---
+```cpp
+int
+```
+
+04_ptr: { range: "22:2-22:6" }
+### type `auto`  
+
+---
+```cpp
+int
+```
+
+05_from_pointer: { range: "23:2-23:6" }
+### type `auto`  
+
+---
+```cpp
+int *
+```
+
+06_lambda: { range: "24:2-24:6" }
+### type `auto`  
+
+---
+```cpp
+class(lambda)
+```
+
+07_instantiation: { range: "25:2-25:6" }
+### type `auto`  
+
+---
+```cpp
+Box<int>
+```
+
+08_structured: { range: "26:2-26:6" }
+### type `auto`  
+
+---
+```cpp
+Pair
+```
+
+09_trailing_return: { range: "29:0-29:4" }
+### type `auto`  
+
+---
+```cpp
+int
+```
+
+10_fn_return: { range: "31:0-31:4" }
+### type `auto`  
+
+---
+```cpp
+Bar
+```
+
+11_undeduced: { range: "34:2-34:6" }
+### type `auto`  
+
+---
+```cpp
+/* not deduced */
+```

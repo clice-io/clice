@@ -1,0 +1,11 @@
+---
+created_at: 2026-08-22
+input_file: symbol_kinds/06_kinds_macros.cpp
+---
+- { name: "MAX_BUFFER_SIZE", kind: Constant, range: "9:8-9:28", selection_range: "9:8-9:23" }
+- { name: "CHECK", kind: Constant, range: "10:8-10:45", selection_range: "10:8-10:13", detail: "(cond, msg)" }
+- { name: "TRACE", kind: Constant, range: "11:8-11:35", selection_range: "11:8-11:13", detail: "(...)" }
+- { name: "SPLIT_LIMIT", kind: Constant, range: "12:8-13:7", selection_range: "12:8-13:5" }
+- { name: "Config", kind: Struct, range: "15:0-18:1", selection_range: "15:7-15:13", detail: "struct" }
+-   { name: "CONFIG_VERSION", kind: Constant, range: "16:8-16:24", selection_range: "16:8-16:22" }
+-   { name: "version", kind: Field, range: "17:4-17:32", selection_range: "17:8-17:15", detail: "int" }

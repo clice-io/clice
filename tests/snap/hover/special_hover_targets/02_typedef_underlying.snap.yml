@@ -1,0 +1,27 @@
+---
+created_at: 2026-08-23
+input_file: special_hover_targets/02_typedef_underlying.cpp
+---
+alias_typedef: { range: "17:15-17:23" }
+### type `Widget_t`  
+
+---
+Type: `struct aliases::Widget`  
+
+---
+```cpp
+// In namespace aliases
+typedef Widget Widget_t
+```
+
+alias_using: { range: "15:6-15:12" }
+### type `Handle`  
+
+---
+Type: `struct aliases::Widget`  
+
+---
+```cpp
+// In namespace aliases
+using Handle = Widget
+```

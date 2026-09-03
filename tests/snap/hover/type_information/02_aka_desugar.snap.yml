@@ -1,0 +1,57 @@
+---
+created_at: 2026-08-23
+input_file: type_information/02_aka_desugar.cpp
+---
+default:
+  01_alias: { range: "13:7-13:13" }
+  ### variable `direct`  
+
+  ---
+  Type: `Handle (aka int)`  
+  Value = `0`  
+
+  ---
+  ```cpp
+  // In namespace aka_desugar
+  Handle direct = 0
+  ```
+
+  02_alias_chain: { range: "15:6-15:13" }
+  ### variable `chained`  
+
+  ---
+  Type: `Alias (aka int)`  
+  Value = `0`  
+
+  ---
+  ```cpp
+  // In namespace aka_desugar
+  Alias chained = 0
+  ```
+
+configured:
+  01_alias: { range: "13:7-13:13" }
+  ### variable `direct`  
+
+  ---
+  Type: `Handle`  
+  Value = `0`  
+
+  ---
+  ```cpp
+  // In namespace aka_desugar
+  Handle direct = 0
+  ```
+
+  02_alias_chain: { range: "15:6-15:13" }
+  ### variable `chained`  
+
+  ---
+  Type: `Alias`  
+  Value = `0`  
+
+  ---
+  ```cpp
+  // In namespace aka_desugar
+  Alias chained = 0
+  ```

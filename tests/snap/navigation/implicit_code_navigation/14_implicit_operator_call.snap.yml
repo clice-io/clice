@@ -1,0 +1,57 @@
+---
+created_at: 2026-08-25
+input_file: implicit_code_navigation/14_implicit_operator_call.cpp
+---
+arrow:
+  definition:
+    - { file: "${WS}/implicit_code_navigation/14_implicit_operator_call.cpp", range: "17:14-17:22" }
+  declaration:
+    - { file: "${WS}/implicit_code_navigation/14_implicit_operator_call.cpp", range: "17:14-17:22" }
+  references:
+    - { file: "${WS}/implicit_code_navigation/14_implicit_operator_call.cpp", range: "17:14-17:22" }
+    - { file: "${WS}/implicit_code_navigation/14_implicit_operator_call.cpp", range: "24:5-24:7" }
+  callHierarchy:
+    - { name: "operator->", kind: Operator, file: "${WS}/implicit_code_navigation/14_implicit_operator_call.cpp", range: "17:14-17:22" }
+  incomingCalls:
+    - { name: "use", kind: Function, file: "${WS}/implicit_code_navigation/14_implicit_operator_call.cpp", range: "20:5-20:8", fromRanges: ["24:4-24:7"] }
+
+call:
+  definition:
+    - { file: "${WS}/implicit_code_navigation/14_implicit_operator_call.cpp", range: "16:8-16:16" }
+  declaration:
+    - { file: "${WS}/implicit_code_navigation/14_implicit_operator_call.cpp", range: "16:8-16:16" }
+  references:
+    - { file: "${WS}/implicit_code_navigation/14_implicit_operator_call.cpp", range: "16:8-16:16" }
+    - { file: "${WS}/implicit_code_navigation/14_implicit_operator_call.cpp", range: "23:13-23:14" }
+    - { file: "${WS}/implicit_code_navigation/14_implicit_operator_call.cpp", range: "23:18-23:19" }
+  callHierarchy:
+    - { name: "operator()", kind: Operator, file: "${WS}/implicit_code_navigation/14_implicit_operator_call.cpp", range: "16:8-16:16" }
+  incomingCalls:
+    - { name: "use", kind: Function, file: "${WS}/implicit_code_navigation/14_implicit_operator_call.cpp", range: "20:5-20:8", fromRanges: ["23:12-23:19"] }
+
+plus:
+  definition:
+    - { file: "${WS}/implicit_code_navigation/14_implicit_operator_call.cpp", range: "14:8-14:16" }
+  declaration:
+    - { file: "${WS}/implicit_code_navigation/14_implicit_operator_call.cpp", range: "14:8-14:16" }
+  references:
+    - { file: "${WS}/implicit_code_navigation/14_implicit_operator_call.cpp", range: "14:8-14:16" }
+    - { file: "${WS}/implicit_code_navigation/14_implicit_operator_call.cpp", range: "21:14-21:15" }
+  callHierarchy:
+    - { name: "operator+", kind: Operator, file: "${WS}/implicit_code_navigation/14_implicit_operator_call.cpp", range: "14:8-14:16" }
+  incomingCalls:
+    - { name: "use", kind: Function, file: "${WS}/implicit_code_navigation/14_implicit_operator_call.cpp", range: "20:5-20:8", fromRanges: ["21:12-21:17"] }
+
+subscript:
+  definition:
+    - { file: "${WS}/implicit_code_navigation/14_implicit_operator_call.cpp", range: "15:8-15:16" }
+  declaration:
+    - { file: "${WS}/implicit_code_navigation/14_implicit_operator_call.cpp", range: "15:8-15:16" }
+  references:
+    - { file: "${WS}/implicit_code_navigation/14_implicit_operator_call.cpp", range: "15:8-15:16" }
+    - { file: "${WS}/implicit_code_navigation/14_implicit_operator_call.cpp", range: "22:13-22:14" }
+    - { file: "${WS}/implicit_code_navigation/14_implicit_operator_call.cpp", range: "22:15-22:16" }
+  callHierarchy:
+    - { name: "operator[]", kind: Operator, file: "${WS}/implicit_code_navigation/14_implicit_operator_call.cpp", range: "15:8-15:16" }
+  incomingCalls:
+    - { name: "use", kind: Function, file: "${WS}/implicit_code_navigation/14_implicit_operator_call.cpp", range: "20:5-20:8", fromRanges: ["22:12-22:16"] }

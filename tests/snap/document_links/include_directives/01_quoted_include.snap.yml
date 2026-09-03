@@ -1,0 +1,7 @@
+---
+created_at: 2026-08-23
+input_file: include_directives/01_quoted_include.cpp
+---
+- { range: "7:9-7:21", target: "${WS}/header_a.h" }
+- { range: "8:9-8:21", target: "${WS}/header_b.h" }
+- { range: "10:9-10:21", target: "${WS}/header_c.h" }

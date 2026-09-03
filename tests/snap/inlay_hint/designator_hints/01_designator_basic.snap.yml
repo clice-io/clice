@@ -1,0 +1,10 @@
+---
+created_at: 2026-07-31
+input_file: designator_hints/01_designator_basic.cpp
+---
+- { pos: "11:8", kind: Type, label: ".x=" }
+- { pos: "11:11", kind: Type, label: ".y=" }
+- { pos: "13:22", kind: Type, label: "[0]=" }
+- { pos: "13:25", kind: Type, label: "[1]=" }
+- { pos: "22:22", kind: Type, label: "[0]=" }
+- { pos: "22:25", kind: Type, label: "[1]=" }

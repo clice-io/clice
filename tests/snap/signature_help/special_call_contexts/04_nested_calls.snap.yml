@@ -1,0 +1,9 @@
+---
+created_at: 2026-08-02
+input_file: special_call_contexts/04_nested_calls.cpp
+---
+deep:
+- inner(⟦int a⟧) -> int
+
+shallow:
+- outer(int b, ⟦int c⟧) -> int

@@ -1,0 +1,9 @@
+---
+created_at: 2026-07-31
+input_file: parameter_hints/19_param_pack_constructors.cpp
+---
+- { pos: "23:10", kind: Parameter, label: "a:", padding_right: true }
+- { pos: "23:17", kind: Parameter, label: "b:", padding_right: true }
+- { pos: "24:10", kind: Parameter, label: "a:", padding_right: true }
+- { pos: "24:14", kind: Parameter, label: "b:", padding_right: true }
+- { pos: "25:14", kind: Parameter, label: "x:", padding_right: true }

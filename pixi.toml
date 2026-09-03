@@ -213,6 +213,10 @@ depends-on = ["install-tests"]
 cmd = "node tools/docs/translate.ts record"
 depends-on = ["install-tests"]
 
+[tasks.review-doc-translations]
+cmd = "node tools/docs/translate.ts review"
+depends-on = ["install-tests"]
+
 [feature.test.tasks.unit-test]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 cmd = './build/{{ type }}/bin/unit_tests --verbose'

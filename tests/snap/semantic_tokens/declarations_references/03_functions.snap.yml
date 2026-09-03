@@ -1,0 +1,11 @@
+---
+created_at: 2026-07-31
+input_file: declarations_references/03_functions.cpp
+---
+- { loc: "4:4", text: "twice", kind: function, modifiers: [declaration] }
+- { loc: "6:4", text: "twice", kind: function, modifiers: [definition] }
+- { loc: "11:9", text: "start", kind: method, modifiers: [declaration] }
+- { loc: "12:16", text: "reset", kind: method, modifiers: [declaration, static] }
+- { loc: "16:12", text: "start", kind: method }
+- { loc: "17:13", text: "reset", kind: method, modifiers: [static] }
+- { loc: "18:15", text: "twice", kind: function }

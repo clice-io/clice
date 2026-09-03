@@ -1,0 +1,14 @@
+---
+created_at: 2026-08-23
+input_file: macro_hover/03_cli_macros.cpp
+---
+01_cli_use: { range: "8:10-8:18" }
+### macro `FROM_CLI`  
+
+---
+```cpp
+#define FROM_CLI 7
+
+// Expands to
+7
+```

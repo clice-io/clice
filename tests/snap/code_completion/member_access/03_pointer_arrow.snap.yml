@@ -1,0 +1,11 @@
+---
+created_at: 2026-08-02
+input_file: member_access/03_pointer_arrow.cpp
+---
+pos:
+- { label: "Node", kind: Class, edit: "14:7-14:7" }
+- { label: "compute", kind: Method, detail: "(int a)", description: "int", edit: "14:7-14:7" }
+- { label: "next", kind: Field, description: "Node *", edit: "14:7-14:7" }
+- { label: "operator=", kind: Method, detail: "(…) +2 overloads", edit: "14:7-14:7" }
+- { label: "value", kind: Field, description: "int", edit: "14:7-14:7" }
+- { label: "~Node", kind: Method, detail: "()", description: "void", edit: "14:7-14:7" }

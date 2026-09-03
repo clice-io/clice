@@ -1,0 +1,8 @@
+---
+created_at: 2026-07-31
+input_file: macros/02_macro_expansion.cpp
+---
+- { loc: "7:13", text: "helper", kind: none }
+- { loc: "11:13", text: "ID", kind: macro }
+- { loc: "11:16", text: "value", kind: variable }
+- { loc: "14:4", text: "CALL", kind: macro }

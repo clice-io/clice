@@ -11,7 +11,13 @@ import { execFile, execFileSync } from "node:child_process";
 import * as crypto from "node:crypto";
 import * as path from "node:path";
 import { promisify } from "node:util";
-import { resolveFlags, type FixtureFile, type SnapCorpus, type SnapFixture } from "./corpus.ts";
+import {
+    type FixtureFile,
+    type SnapCorpus,
+    type SnapFixture,
+    fixtureRelative,
+    resolveFlags,
+} from "./corpus.ts";
 import { feature, participates } from "./registry.ts";
 import { abBlocks, fileSections, type InspectFileEntry, type InspectOutput } from "./render.ts";
 import { SnapshotContext } from "./snapshot.ts";
@@ -96,8 +102,7 @@ export async function checkInspectFixture(
         const output = await runInspectAsync(clice, corpus.feature, target, { flags, config });
         const entries: [FixtureFile, InspectFileEntry][] = [];
         for (const file of fixture.files) {
-            const key = fixture.unit === "" ? file.rel : file.rel.slice(fixture.unit.length + 1);
-            const entry = output.files[key];
+            const entry = output.files[fixtureRelative(fixture, file)];
             if (!entry) {
                 throw new Error(`clice inspect returned no entry for ${file.rel}`);
             }
@@ -151,7 +156,7 @@ export async function checkInspectFixture(
             if (!participates(shape, file.source, file.rel === fixture.rel)) {
                 continue;
             }
-            const label = fixture.unit === "" ? file.rel : file.rel.slice(fixture.unit.length + 1);
+            const label = fixtureRelative(fixture, file);
             const stripped = Buffer.from(file.source.content);
             sections.push([
                 label,

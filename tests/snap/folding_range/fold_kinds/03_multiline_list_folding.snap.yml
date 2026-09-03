@@ -1,0 +1,18 @@
+---
+created_at: 2026-07-27
+input_file: fold_kinds/03_multiline_list_folding.cpp
+---
+- { range: "4:14-8:1", kind: functionParams, collapsed_text: "(...)" }
+- { range: "12:12-40:1", kind: functionBody, collapsed_text: "{...}" }
+- { range: "13:19-17:5", kind: initializer, collapsed_text: "{...}" }
+- { range: "19:24-23:5", kind: functionCall, collapsed_text: "(...)" }
+- { range: "25:15-28:5", kind: lambdaCapture, collapsed_text: "[...]" }
+- { range: "28:6-30:5", kind: compoundStmt, collapsed_text: "{...}" }
+- { range: "32:19-35:5", kind: functionParams, collapsed_text: "(...)" }
+- { range: "35:6-37:5", kind: compoundStmt, collapsed_text: "{...}" }
+- { range: "42:14-46:1", kind: functionParams, collapsed_text: "(...)" }
+- { range: "46:2-48:1", kind: functionBody, collapsed_text: "{...}" }
+- { range: "50:12-53:1", kind: functionParams, collapsed_text: "(...)" }
+- { range: "55:12-57:1", kind: struct, collapsed_text: "{...}" }
+- { range: "59:9-62:1", kind: functionCall, collapsed_text: "(...)" }
+- { range: "64:15-67:1", kind: initializer, collapsed_text: "{...}" }

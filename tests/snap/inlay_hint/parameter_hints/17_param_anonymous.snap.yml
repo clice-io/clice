@@ -1,0 +1,5 @@
+---
+created_at: 2026-07-31
+input_file: parameter_hints/17_param_anonymous.cpp
+---
+- { pos: "13:13", kind: Parameter, label: "&:", padding_right: true }

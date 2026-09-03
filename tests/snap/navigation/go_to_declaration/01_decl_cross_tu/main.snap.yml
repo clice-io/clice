@@ -1,0 +1,18 @@
+---
+created_at: 2026-08-25
+input_file: go_to_declaration/01_decl_cross_tu/main.cpp
+---
+use:
+  definition:
+    - { file: "${WS}/go_to_declaration/01_decl_cross_tu/lib.cpp", range: "2:4-2:9" }
+  declaration:
+    - { file: "${WS}/go_to_declaration/01_decl_cross_tu/lib.cpp", range: "2:4-2:9" }
+    - { file: "${WS}/go_to_declaration/01_decl_cross_tu/shared.h", range: "2:4-2:9" }
+  references:
+    - { file: "${WS}/go_to_declaration/01_decl_cross_tu/lib.cpp", range: "2:4-2:9" }
+    - { file: "${WS}/go_to_declaration/01_decl_cross_tu/main.cpp", range: "12:11-12:16" }
+    - { file: "${WS}/go_to_declaration/01_decl_cross_tu/shared.h", range: "2:4-2:9" }
+  callHierarchy:
+    - { name: "scale", kind: Function, file: "${WS}/go_to_declaration/01_decl_cross_tu/lib.cpp", range: "2:4-2:9" }
+  incomingCalls:
+    - { name: "run", kind: Function, file: "${WS}/go_to_declaration/01_decl_cross_tu/main.cpp", range: "11:4-11:7", fromRanges: ["12:11-12:23"] }

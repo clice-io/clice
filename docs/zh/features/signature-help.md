@@ -7,21 +7,21 @@
 | 字符 | 上下文       | 行为         |
 | ---- | ------------ | ------------ |
 | `(`  | 函数调用     | 显示重载签名 |
-| `)`  | 右括号       | 更新上下文   |
+| `)`  | 右圆括号     | 更新上下文   |
 | `{`  | 花括号初始化 | 显示重载签名 |
 | `}`  | 右花括号     | 更新上下文   |
-| `<`  | 模板参数     | 显示重载签名 |
-| `>`  | 模板关闭     | 更新上下文   |
-| `,`  | 参数分隔符   | 更新活跃参数 |
+| `<`  | 模板实参     | 显示重载签名 |
+| `>`  | 模板闭合     | 更新上下文   |
+| `,`  | 实参分隔符   | 更新当前形参 |
 
-- [ ] 避免误触发 — 不在注释、字符串字面量或函数定义中触发（[clangd#51](https://github.com/clangd/clangd/issues/51)、[clangd#289](https://github.com/clangd/clangd/issues/289)）
+- [ ] 避免误触发——不要在注释、字符串字面量或函数定义中触发（[clangd#51](https://github.com/clangd/clangd/issues/51)、[clangd#289](https://github.com/clangd/clangd/issues/289)）
 
   ```cpp
   void foo(int x, int y) {  // should NOT trigger signature help
   //       ^^^^^^^^^^^^^ this is a definition, not a call
   ```
 
-- [ ] `new` 表达式的花括号应触发签名帮助（[clangd#1967](https://github.com/clangd/clangd/issues/1967)）
+- [ ] 使用花括号的 `new` 表达式应触发签名帮助（[clangd#1967](https://github.com/clangd/clangd/issues/1967)）
 
   ```cpp
   auto* w = new Widget{800, 600};
@@ -30,126 +30,115 @@
 
 ## 重载签名
 
-<!-- BEGIN GENERATED ITEMS: Overload Signatures -->
+<!-- BEGIN GENERATED ITEMS: overload_signatures -->
 
-- [x] 函数重载 — 被调用者的每个重载，各带参数列表和返回类型
+| 能力                           | 状态 | 问题 |
+| ------------------------------ | ---- | ---- |
+| 函数重载                       | 支持 |      |
+| 当前形参跟踪                   | 支持 |      |
+| 成员函数重载                   | 支持 |      |
+| 标签中的默认实参               | 支持 |      |
+| C 风格可变参数函数             | 支持 |      |
+| 可变参数模板参数包             | 支持 |      |
+| 当前形参超出较短重载的参数范围 | 支持 |      |
 
-  <details>
-  <summary>示例</summary>
+### 函数重载
 
-  ```cpp
-  void foo();
-  void foo(int x);
-  void foo(int x, int y);
+被调用函数的每个重载都带有参数列表和返回类型
 
-  int main() {
-      foo();
-  }
-  ```
+```cpp
+void foo();
+void foo(int x);
+void foo(int x, int y);
 
-  </details>
+int main() {
+    foo();
+}
+```
 
-- [x] 活跃参数追踪 — 光标下的参数被括起；光标位于第二个参数
+### 当前形参跟踪
 
-  <details>
-  <summary>示例</summary>
+光标所在的形参会用方括号括起；光标位于第二个实参中
 
-  ```cpp
-  void bar(int first, double second, char third);
+```cpp
+void bar(int first, double second, char third);
 
-  int main() {
-      bar(1, 2.0, 'c');
-  }
-  ```
+int main() {
+    bar(1, 2.0, 'c');
+}
+```
 
-  </details>
+### 成员函数重载
 
-- [x] 成员函数重载 — 非 const 接收者列出 const 与非 const 重载；尾随 const 限定符不在标签中显示
+非 const 接收对象会列出 const 与非 const 重载；标签中不显示末尾的 const 限定符
 
-  <details>
-  <summary>示例</summary>
+```cpp
+struct Buffer {
+    int at(int index);
+    int at(int index) const;
+};
 
-  ```cpp
-  struct Buffer {
-      int at(int index);
-      int at(int index) const;
-  };
+int main() {
+    Buffer b;
+    b.at(0);
+}
+```
 
-  int main() {
-      Buffer b;
-      b.at(0);
-  }
-  ```
+### 标签中的默认实参
 
-  </details>
+带默认值的形参会在签名中显示其初始化式
 
-- [x] 标签中的默认参数 — 带默认值的参数在签名中显示其初始化式
+```cpp
+void configure(int width, int height = 100, bool visible = true);
 
-  <details>
-  <summary>示例</summary>
+int main() {
+    configure(1);
+}
+```
 
-  ```cpp
-  void configure(int width, int height = 100, bool visible = true);
+### C 风格可变参数函数
 
-  int main() {
-      configure(1);
-  }
-  ```
+列出具名形参，标签中省略末尾的省略号
 
-  </details>
+```cpp
+void record(int code, ...);
 
-- [x] C 风格可变参数函数 — 列出命名参数，标签中省略尾部的省略号
+int main() {
+    record(0);
+}
+```
 
-  <details>
-  <summary>示例</summary>
+### 可变参数模板参数包
 
-  ```cpp
-  void record(int code, ...);
+参数包显示为被调用函数未实例化时的签名
 
-  int main() {
-      record(0);
-  }
-  ```
+```cpp
+template <typename... Args>
+void emit(Args... args);
 
-  </details>
+int main() {
+    emit();
+}
+```
 
-- [x] 可变参数模板包 — 参数包渲染为被调用方的未实例化签名
+### 当前形参超出较短重载的参数范围
 
-  <details>
-  <summary>示例</summary>
+光标位于第二个实参中时，仅保留声明了第二个形参的重载
 
-  ```cpp
-  template <typename... Args>
-  void emit(Args... args);
+```cpp
+void draw();
+void draw(int x);
+void draw(int x, int y);
 
-  int main() {
-      emit();
-  }
-  ```
-
-  </details>
-
-- [x] 活跃参数越过较短重载 — 光标位于第二个参数时，仅保留声明了第二个参数的重载
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  void draw();
-  void draw(int x);
-  void draw(int x, int y);
-
-  int main() {
-      draw(1, 2);
-  }
-  ```
-
-  </details>
+int main() {
+    draw(1, 2);
+}
+```
 
 <!-- END GENERATED ITEMS -->
 
-- [x] 模板实例化模式解析（显示模板模式，而非实例化）
-- [ ] 过滤 const/non-const 重载副本 — 当只有一个可行时不要同时显示两者（[clangd#50](https://github.com/clangd/clangd/issues/50)）
+- [x] 模板实例化模式解析（显示模板模式，而非实例化结果）
+- [ ] 过滤重复的 const/非 const 重载——只有一个可行时，不要两者都显示（[clangd#50](https://github.com/clangd/clangd/issues/50)）
 
   ```cpp
   struct Vec {
@@ -160,9 +149,9 @@
   v[0];  // only show non-const overload (v is non-const)
   ```
 
-- [ ] 优先显示用户提供的构造函数而非编译器生成的构造函数（[clangd#1259](https://github.com/clangd/clangd/issues/1259)）
+- [ ] 优先显示用户提供的构造函数，而非编译器生成的构造函数（[clangd#1259](https://github.com/clangd/clangd/issues/1259)）
 
-- [ ] 按参数数量过滤依赖重载候选（[clangd#2342](https://github.com/clangd/clangd/issues/2342)）
+- [ ] 按参数个数过滤依赖型重载候选项（[clangd#2342](https://github.com/clangd/clangd/issues/2342)）
 
   ```cpp
   template<typename T>
@@ -171,9 +160,9 @@
   }
   ```
 
-- [ ] 更好的依赖重载启发式解析（[clangd#1083](https://github.com/clangd/clangd/issues/1083)）
+- [ ] 改进依赖型重载的启发式解析（[clangd#1083](https://github.com/clangd/clangd/issues/1083)）
 
-- [ ] 从显示的签名中去除 C++23 显式对象参数（[clangd#2284](https://github.com/clangd/clangd/issues/2284)）
+- [ ] 从显示的签名中去除 C++23 显式对象形参（[clangd#2284](https://github.com/clangd/clangd/issues/2284)）
 
   ```cpp
   struct S { void f(this S& self, int x); };
@@ -183,125 +172,114 @@
 
 ## 特殊调用上下文
 
-<!-- BEGIN GENERATED ITEMS: Special Call Contexts -->
+<!-- BEGIN GENERATED ITEMS: special_call_contexts -->
 
-- [x] 构造函数和聚合体 — 构造函数调用不显示返回箭头；聚合初始化在花括号中列出字段（[clangd#726](https://github.com/clangd/clangd/issues/726)、[clangd#2541](https://github.com/clangd/clangd/issues/2541)）
+| 能力             | 状态 | 问题                                                                                                                   |
+| ---------------- | ---- | ---------------------------------------------------------------------------------------------------------------------- |
+| 构造函数和聚合体 | 支持 | [clangd#726](https://github.com/clangd/clangd/issues/726)、[clangd#2541](https://github.com/clangd/clangd/issues/2541) |
+| 函数指针调用     | 支持 |                                                                                                                        |
+| 模板实参列表     | 支持 | [clangd#299](https://github.com/clangd/clangd/issues/299)、[clangd#1387](https://github.com/clangd/clangd/issues/1387) |
+| 嵌套调用         | 支持 |                                                                                                                        |
+| 仿函数调用       | 支持 |                                                                                                                        |
+| Lambda 调用      | 支持 |                                                                                                                        |
+| new 表达式       | 支持 |                                                                                                                        |
 
-  <details>
-  <summary>示例</summary>
+### 构造函数和聚合体
 
-  ```cpp
-  struct Point {
-      int x;
-      int y;
-  };
+构造函数调用不显示返回箭头；聚合初始化在花括号中列出字段
 
-  struct Widget {
-      Widget(int a, double b);
-  };
+```cpp
+struct Point {
+    int x;
+    int y;
+};
 
-  int main() {
-      Point p{1, 2};
-      Widget w(3, 4.0);
-  }
-  ```
+struct Widget {
+    Widget(int a, double b);
+};
 
-  </details>
+int main() {
+    Point p{1, 2};
+    Widget w(3, 4.0);
+}
+```
 
-- [x] 函数指针调用 — 显示原型的参数名，而不仅仅是类型
+### 函数指针调用
 
-  <details>
-  <summary>示例</summary>
+显示原型的参数名，而不仅仅是类型
 
-  ```cpp
-  int main() {
-      void (*callback)(int code, double value) = nullptr;
-      callback(5, 1.5);
-  }
-  ```
+```cpp
+int main() {
+    void (*callback)(int code, double value) = nullptr;
+    callback(5, 1.5);
+}
+```
 
-  </details>
+### 模板实参列表
 
-- [x] 模板参数列表 — 模板参数显示为签名；类模板指向其种类，而非返回类型（[clangd#299](https://github.com/clangd/clangd/issues/299)、[clangd#1387](https://github.com/clangd/clangd/issues/1387)）
+模板参数显示为签名；类模板会标明其类别，而非返回类型
 
-  <details>
-  <summary>示例</summary>
+```cpp
+template <typename T, typename U>
+struct Pair {};
 
-  ```cpp
-  template <typename T, typename U>
-  struct Pair {};
+Pair<int,  double> p;
+```
 
-  Pair<int,  double> p;
-  ```
+### 嵌套调用
 
-  </details>
+内层调用的签名帮助显示在内层标记处，外层调用的签名帮助显示在外层标记处
 
-- [x] 嵌套调用 — 内层调用的帮助显示在内层标记处，外层调用的帮助显示在外层标记处
+```cpp
+int inner(int a);
+int outer(int b, int c);
 
-  <details>
-  <summary>示例</summary>
+int main() {
+    outer(inner(1), 2);
+}
+```
 
-  ```cpp
-  int inner(int a);
-  int outer(int b, int c);
+### 仿函数调用
 
-  int main() {
-      outer(inner(1), 2);
-  }
-  ```
+调用对象时，会针对其 operator() 重载显示签名帮助
 
-  </details>
+```cpp
+struct Adder {
+    int operator()(int a, int b);
+};
 
-- [x] 仿函数调用 — 调用对象时将签名帮助路由到其 operator() 重载
+int main() {
+    Adder add;
+    add(1, 2);
+}
+```
 
-  <details>
-  <summary>示例</summary>
+### Lambda 调用
 
-  ```cpp
-  struct Adder {
-      int operator()(int a, int b);
-  };
+调用 Lambda 变量时会显示闭包的 operator() 参数
 
-  int main() {
-      Adder add;
-      add(1, 2);
-  }
-  ```
+```cpp
+int main() {
+    auto square = [](int n) {
+        return n * n;
+    };
+    square(3);
+}
+```
 
-  </details>
+### new 表达式
 
-- [x] Lambda 调用 — 调用 lambda 变量时提供闭包的 operator() 参数
+new 表达式的构造函数参数用于提供签名帮助
 
-  <details>
-  <summary>示例</summary>
+```cpp
+struct Node {
+    Node(int value, Node* next);
+};
 
-  ```cpp
-  int main() {
-      auto square = [](int n) {
-          return n * n;
-      };
-      square(3);
-  }
-  ```
-
-  </details>
-
-- [x] new 表达式 — new 表达式的构造函数参数驱动签名帮助
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  struct Node {
-      Node(int value, Node* next);
-  };
-
-  int main() {
-      Node* n = new Node(0, nullptr);
-  }
-  ```
-
-  </details>
+int main() {
+    Node* n = new Node(0, nullptr);
+}
+```
 
 <!-- END GENERATED ITEMS -->
 
@@ -320,7 +298,7 @@
   m[^  // show operator[](const string& key)
   ```
 
-- [ ] Lambda 调用 — 显示 lambda 名称而非 `operator()`（[clangd#86](https://github.com/clangd/clangd/issues/86)）
+- [ ] Lambda 调用 — 显示 Lambda 名称而非 `operator()`（[clangd#86](https://github.com/clangd/clangd/issues/86)）
 
   ```cpp
   auto validate = [](int x, int max) -> bool { ... };
@@ -384,7 +362,7 @@
 
 ## 文档
 
-- [ ] 活跃参数的文档（来自 `@param` 注释）
+- [ ] 当前参数的文档（来自 `@param` 文档注释）
 
   ```cpp
   /// @param path The file system path.
@@ -393,6 +371,6 @@
   open("file", ^  // show documentation for mode parameter
   ```
 
-- [ ] 尊重 `documentationFormat` 能力（[clangd#945](https://github.com/clangd/clangd/issues/945)）
-- [ ] 继承构造函数传播文档（[clangd#1936](https://github.com/clangd/clangd/issues/1936)）
-- [ ] 重载集数量指示
+- [ ] 遵循 `documentationFormat` 能力（[clangd#945](https://github.com/clangd/clangd/issues/945)）
+- [ ] 通过继承构造函数传播文档（[clangd#1936](https://github.com/clangd/clangd/issues/1936)）
+- [ ] 重载集数量指示器

@@ -17,8 +17,9 @@ description: The clice documentation system — generated feature/config pages, 
   person or a model). Each zh page must stay **segment-isomorphic** to its
   en counterpart: same sequence of markdown blocks, translated text in the
   translatable blocks, code blocks and HTML comments byte-identical.
-  `check`, `report` and `record` never write these files; only an
-  explicit `translate <page>` overwrites the named zh page.
+  `check`, `report` and `record` never write these files;
+  `translate <page>` overwrites the named zh page, and `review` rewrites
+  the zh pages it is given — every zh page when given none.
 - `docs/meta/translations/` — one JSON per page pair: an ordered list of
   `{kind, en-hash, zh-hash}` pairs, each attesting "these two segments were
   last reviewed as translations of each other". Maintained exclusively by
@@ -38,6 +39,7 @@ description: The clice documentation system — generated feature/config pages, 
 | `pixi run check-doc-translations`  | hard gate: zh isomorphic to en, all pairs attested |
 | `pixi run report-doc-translations` | translator worklist: drifted segments with texts   |
 | `pixi run record-doc-translations` | re-attest hash pairs after deliberate edits        |
+| `pixi run review-doc-translations` | model review of zh pages, segment by segment       |
 
 ## Translation contract (tools/docs/translate.ts)
 
@@ -46,9 +48,15 @@ table rows, and index.md's YAML frontmatter are translatable; everything
 else (code blocks, HTML comments including GENERATED markers) is verbatim
 and must be byte-identical across the two trees, as must any fenced code
 or HTML comment nested inside a translatable segment (a snap example
-under its checklist item). Segment shapes must match too: heading depth,
+under a generated capability's paragraph). Segment shapes must match too: heading depth,
 ordered vs. bulleted list, task-list state, table column count and
-alignment, and the mapping/sequence skeleton of index.md's frontmatter. No text is stored twice — the mapping holds
+alignment, and the mapping/sequence skeleton of index.md's frontmatter.
+A table row and a later heading that share their text in en (a
+capability's status row and its section) must share it in zh — `check`
+fails on a pair named two ways. The inline literals of a segment — code
+spans, link and image targets (in order), issue references, frontmatter
+values other than its copy (layout, theme, icon, link, src, ...) — must
+be identical on both sides. No text is stored twice — the mapping holds
 hashes only. Old wording of a drifted segment comes from git history of
 the markdown page.
 
@@ -77,10 +85,68 @@ translate [page...]` produces isomorphic zh drafts via the DeepSeek API
 (no args = only pages missing a zh counterpart; explicit pages overwrite,
 feeding the current zh text to the model as terminology reference).
 Fenced code inside segments is masked out of the round trip and restored
-byte-for-byte. A segment the model cannot render validly is left in
-English and the run exits non-zero naming the page — rerun `translate`
-on it after review. The key comes from the environment and is never
-stored. Drafts still go through review and `record`.
+byte-for-byte; inline code, link targets, issue references and
+frontmatter control values must come back unchanged. A segment the model
+cannot render validly — or a row/heading pair it names two ways — is
+left in English and the run exits non-zero naming the page — rerun
+`translate` on it after review. The key comes from the environment and
+is never stored. Drafts still go through review and `record`.
+
+## Chinese wording: what is translated and what stays English
+
+The zh tree reads as Chinese technical writing, not as glossed English.
+The reader is a C++ developer who searches the web in English, so the
+rule is: translate the prose, keep the names people search for.
+
+Translate:
+
+- Page, section and capability titles, table headers and cells, list
+  items, descriptions. Feature names have fixed Chinese names — use the
+  ones the overview page uses (代码补全, 悬停, 签名帮助, 代码导航,
+  文档链接, 语义 Token, 内联提示, 折叠范围, 文档符号, 格式化, 诊断,
+  代码操作; Lint stays Lint). LSP request names stay as code when
+  quoted (`textDocument/hover`), the feature is named in Chinese.
+- C++ concepts that have an established Chinese term: 结构化绑定, 范围
+  for 循环, 概念, 模板特化, 显式实例化, 折叠表达式, 参数包, 注入类名.
+  On the first use in a page, give the English in full-width
+  parentheses when the English is what one would search for: 结构化绑定
+  （structured bindings）, 最令人烦恼的解析（most vexing parse）.
+- Status words: 支持 / 部分支持 / 不支持.
+
+Keep English (never transliterate):
+
+- Product and tool names: VS Code, Neovim, Zed, CMake, Bazel, clang,
+  clang-format, clangd, GCC, MSVC, LLVM.
+- Acronyms: LSP, AST, PCH, PCM, CDB, TU, ADL, CTAD, DAG, ABI, URI, C++23.
+- Anything in code font: identifiers, keywords, file paths, config keys
+  and TOML sections, command lines, diagnostics text quoted from the
+  compiler. Code font follows the English exactly: a span the English
+  sets in backticks stays in backticks, and the Chinese adds none of its
+  own — `check` compares the inline literals of every segment pair.
+- Terms that are commonly used untranslated by Chinese C++ developers
+  and whose translations are less recognizable: Lambda, Token, Concept
+  when naming the language feature (概念 in prose is fine), `this`,
+  Preamble, Overload set. When in doubt, keep the English term and add
+  a short Chinese gloss rather than invent a translation.
+
+Style: full-width punctuation inside Chinese sentences, a space between
+CJK and Latin text (prettier enforces it), no machine-translation
+calques ("这个" for "the", passive-voice chains), sentences that say
+what the English says rather than word for word.
+
+Reviewing existing Chinese pages: `pixi run review-doc-translations
+[page...]` (default: every page) feeds each translatable segment with
+its current Chinese to a model and writes the corrected Chinese back,
+one chunk of segments per call (a paired row and heading always in the
+same chunk), code blocks masked out — the model never sees a code block,
+and a reply that breaks a segment's shape, alters an inline literal, or
+names a row and its heading differently keeps the current text. The
+default backend is the codex CLI with every tool switched off, so the
+contributor-written text it reads can reach neither the host filesystem
+nor the network (`--jobs=N` parallel calls, `--effort=LEVEL`);
+`--backend=deepseek` uses the API. Review the diff, then `format` and
+`record`. Prefer this over handing a model whole pages: the code blocks
+would only burn its context.
 
 ## Syncing docs at the end of a branch
 
@@ -121,7 +187,7 @@ Design-level, user-visible trade-offs that are stable on a months timescale,
 written in behavior terms — they answer the reader's "why does it work this
 way". Bugs never go there: they live in the internal bug inventory and simply
 disappear when fixed; putting them in docs creates staleness debt. Feature
-coverage gaps are already expressed by the generated checklists. The flow is
+coverage gaps are already expressed by the generated status tables. The flow is
 one-way: an internal item graduates into a doc limitation only once it is
 decided to be design (or long-term deferral), and a doc limitation is removed
 only when the design changes. Never reference internal IDs, file paths, or

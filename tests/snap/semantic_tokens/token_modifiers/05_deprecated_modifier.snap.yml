@@ -1,0 +1,6 @@
+---
+created_at: 2026-07-31
+input_file: token_modifiers/05_deprecated_modifier.cpp
+---
+- { loc: "4:36", text: "old_api", kind: function, modifiers: [declaration, deprecated] }
+- { loc: "8:4", text: "old_api", kind: function, modifiers: [deprecated] }

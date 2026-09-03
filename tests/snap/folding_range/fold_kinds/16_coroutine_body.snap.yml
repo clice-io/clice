@@ -1,0 +1,14 @@
+---
+created_at: 2026-08-01
+input_file: fold_kinds/16_coroutine_body.cpp
+---
+- { range: "4:14-27:1", kind: namespace, collapsed_text: "{...}" }
+- { range: "7:24-9:1", kind: struct, collapsed_text: "{...}" }
+- { range: "12:24-19:1", kind: struct, collapsed_text: "{...}" }
+- { range: "21:21-25:1", kind: struct, collapsed_text: "{...}" }
+- { range: "29:12-37:1", kind: struct, collapsed_text: "{...}" }
+- { range: "30:24-36:5", kind: struct, collapsed_text: "{...}" }
+- { range: "39:12-45:1", kind: functionBody, collapsed_text: "{...}" }
+- { range: "41:20-43:5", kind: compoundStmt, collapsed_text: "{...}" }
+- { range: "47:12-53:1", kind: functionBody, collapsed_text: "{...}" }
+- { range: "48:31-52:5", kind: compoundStmt, collapsed_text: "{...}" }

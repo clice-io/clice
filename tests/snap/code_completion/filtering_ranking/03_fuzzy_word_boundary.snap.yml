@@ -1,0 +1,6 @@
+---
+created_at: 2026-08-02
+input_file: filtering_ranking/03_fuzzy_word_boundary.cpp
+---
+pos:
+- { label: "foo_bar_baz", kind: Variable, description: "int", edit: "13:12-13:14" }

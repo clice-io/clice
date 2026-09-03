@@ -1,0 +1,14 @@
+---
+created_at: 2026-07-31
+input_file: parameter_hints/07_param_function_objects.cpp
+---
+- { pos: "13:7", kind: Parameter, label: "status:", padding_right: true }
+- { pos: "13:10", kind: Parameter, label: "detail:", padding_right: true }
+- { pos: "14:18", kind: Parameter, label: "status:", padding_right: true }
+- { pos: "14:21", kind: Parameter, label: "detail:", padding_right: true }
+- { pos: "15:12", kind: Parameter, label: "status:", padding_right: true }
+- { pos: "15:15", kind: Parameter, label: "message:", padding_right: true }
+- { pos: "16:12", kind: Type, label: ": (lambda)" }
+- { pos: "16:35", kind: Type, label: "-> bool" }
+- { pos: "17:8", kind: Parameter, label: "lhs:", padding_right: true }
+- { pos: "17:11", kind: Parameter, label: "rhs:", padding_right: true }

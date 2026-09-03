@@ -1,0 +1,12 @@
+---
+created_at: 2026-07-31
+input_file: type_hints/06_type_decltype.cpp
+---
+- { pos: "6:18", kind: Type, label: ": int" }
+- { pos: "10:24", kind: Type, label: ": int &" }
+- { pos: "14:17", kind: Type, label: ": int" }
+- { pos: "16:11", kind: Type, label: ": int" }
+- { pos: "18:30", kind: Type, label: ": int" }
+- { pos: "23:30", kind: Type, label: ": int" }
+- { pos: "25:16", kind: Type, label: ": int" }
+- { pos: "25:30", kind: Type, label: ": int" }

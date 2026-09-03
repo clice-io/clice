@@ -4,32 +4,31 @@
 
 Triggered by `<`, `"`, `/` characters. Handled before AST (preamble-level, no compilation needed). Quoted completion searches the configured include directories, not the includer's own directory (unless it is on the include path).
 
-<!-- BEGIN GENERATED ITEMS: Include Path Completion -->
+<!-- BEGIN GENERATED ITEMS: include_path_completion -->
 
-- [x] Quoted include paths — headers and directories from the configured search path, directories marked by a trailing slash
+| Capability           | Status    | Issues |
+| -------------------- | --------- | ------ |
+| Quoted include paths | Supported |        |
+| Angled include paths | Supported |        |
 
-  Answered by the server before any compilation, so only the server path
-  exists for this fixture.
+### Quoted include paths
 
-  <details>
-  <summary>Example</summary>
+Headers and directories from the configured search path, directories marked by a trailing slash
 
-  ```cpp
-  #include "snap"
-  ```
+Answered by the server before any compilation, so only the server path
+exists for this fixture.
 
-  </details>
+```cpp
+#include "snap"
+```
 
-- [x] Angled include paths — the same search-path candidates in the angled form
+### Angled include paths
 
-  <details>
-  <summary>Example</summary>
+The same search-path candidates in the angled form
 
-  ```cpp
-  #include <snap>
-  ```
-
-  </details>
+```cpp
+#include <snap>
+```
 
 <!-- END GENERATED ITEMS -->
 
@@ -93,35 +92,36 @@ Detected via text context analysis. Handled before AST (preamble-level, no compi
 
 Triggered when cursor is after `import` or `export import`.
 
-<!-- BEGIN GENERATED ITEMS: Module Completion -->
+<!-- BEGIN GENERATED ITEMS: module_completion -->
 
-- [x] Import statements — known module names complete after `import`, with the closing semicolon inserted
+| Capability        | Status    | Issues |
+| ----------------- | --------- | ------ |
+| Import statements | Supported |        |
 
-  Answered by the server from its module map, so only the server path
-  exists for this fixture; the sibling module interface is opened first
-  so the module is known. The statement stays unterminated — a `;` on
-  the line means the import is already complete and nothing is offered.
+### Import statements
 
-  <details>
-  <summary>Example</summary>
+Known module names complete after `import`, with the closing semicolon inserted
 
-  `main.cpp`:
+Answered by the server from its module map, so only the server path
+exists for this fixture; the sibling module interface is opened first
+so the module is known. The statement stays unterminated — a `;` on
+the line means the import is already complete and nothing is offered.
 
-  ```cpp
-  import ma
-  ```
+`main.cpp`:
 
-  `mod_math.cppm`:
+```cpp
+import ma
+```
 
-  ```cpp
-  export module math;
+`mod_math.cppm`:
 
-  export int add(int a, int b) {
-      return a + b;
-  }
-  ```
+```cpp
+export module math;
 
-  </details>
+export int add(int a, int b) {
+    return a + b;
+}
+```
 
 <!-- END GENERATED ITEMS -->
 
@@ -208,130 +208,123 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
 
 ### Member Access
 
-<!-- BEGIN GENERATED ITEMS: Member Access -->
+<!-- BEGIN GENERATED ITEMS: member_access -->
 
-- [x] Members of a class — fields, methods, the destructor and operators complete with plain names
+| Capability                                | Status    | Issues |
+| ----------------------------------------- | --------- | ------ |
+| Members of a class                        | Supported |        |
+| Members of an instantiated class template | Supported |        |
+| Pointer member access                     | Supported |        |
+| Scope-qualified members                   | Supported |        |
+| Inherited members                         | Supported |        |
 
-  The destructor completes as `~Account` (never `~struct Account`),
-  `operator=` keeps no space before `=`, and a conversion operator
-  spells its target type.
+### Members of a class
 
-  <details>
-  <summary>Example</summary>
+fields, methods, the destructor and operators complete with plain names
 
-  ```cpp
-  // The member access expression is left dangling at the point.
-  struct Wallet {
-      int cents;
-  };
+The destructor completes as `~Account` (never `~struct Account`),
+`operator=` keeps no space before `=`, and a conversion operator
+spells its target type.
 
-  struct Account {
-      int balance;
-      int bazzzz(int a, int b);
-      operator Wallet();
-  };
+```cpp
+// The member access expression is left dangling at the point.
+struct Wallet {
+    int cents;
+};
 
-  void bar() {
-      Account acc;
-      acc.
-  }
-  ```
+struct Account {
+    int balance;
+    int bazzzz(int a, int b);
+    operator Wallet();
+};
 
-  </details>
+void bar() {
+    Account acc;
+    acc.
+}
+```
 
-- [x] Members of an instantiated class template — the destructor label keeps the written template arguments
+### Members of an instantiated class template
 
-  <details>
-  <summary>Example</summary>
+The destructor label keeps the written template arguments
 
-  ```cpp
-  // The member access expression is left dangling at the point.
-  template <typename T>
-  struct Box {
-      T value;
-  };
+```cpp
+// The member access expression is left dangling at the point.
+template <typename T>
+struct Box {
+    T value;
+};
 
-  void bar() {
-      Box<int> b;
-      b.
-  }
-  ```
+void bar() {
+    Box<int> b;
+    b.
+}
+```
 
-  </details>
+### Pointer member access
 
-- [x] Pointer member access — `->` on a pointer completes the pointee's members
+`->` on a pointer completes the pointee's members
 
-  <details>
-  <summary>Example</summary>
+```cpp
+// The member access expression is left dangling at the point.
+struct Node {
+    int value;
+    Node* next;
+    int compute(int a);
+};
 
-  ```cpp
-  // The member access expression is left dangling at the point.
-  struct Node {
-      int value;
-      Node* next;
-      int compute(int a);
-  };
+void bar() {
+    Node* p;
+    p->
+}
+```
 
-  void bar() {
-      Node* p;
-      p->
-  }
-  ```
+### Scope-qualified members
 
-  </details>
+After `::` static data, nested types, methods and the injected class name all list
 
-- [x] Scope-qualified members — after `::` static data, nested types, methods and the injected class name all list
+Qualified completion is not filtered to the statically-reachable subset:
+instance fields and the destructor show up alongside the static members
+and nested types.
 
-  Qualified completion is not filtered to the statically-reachable subset:
-  instance fields and the destructor show up alongside the static members
-  and nested types.
+```cpp
+// The qualified-id is left dangling at the point.
+struct Config {
+    static int shared_count;
+    static int make(int seed);
 
-  <details>
-  <summary>Example</summary>
+    struct Nested {
+        int a;
+    };
 
-  ```cpp
-  // The qualified-id is left dangling at the point.
-  struct Config {
-      static int shared_count;
-      static int make(int seed);
+    int instance_field;
+};
 
-      struct Nested {
-          int a;
-      };
+void bar() {
+    int v = Config::;
+}
+```
 
-      int instance_field;
-  };
+### Inherited members
 
-  void bar() {
-      int v = Config::;
-  }
-  ```
+A derived object completes its own members and those of its base
 
-  </details>
+```cpp
+// The member access expression is left dangling at the point.
+struct Base {
+    int base_field;
+    int base_method();
+};
 
-- [x] Inherited members — a derived object completes its own members and those of its base
+struct Derived : Base {
+    int derived_field;
+};
 
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  // The member access expression is left dangling at the point.
-  struct Base {
-      int base_field;
-      int base_method();
-  };
-
-  struct Derived : Base {
-      int derived_field;
-  };
-
-  void bar() {
-      Derived d;
-      d.
-  }
-  ```
-
-  </details>
+void bar() {
+    Derived d;
+    d.
+}
+```
 
 <!-- END GENERATED ITEMS -->
 
@@ -431,217 +424,219 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
 
 ### Symbols
 
-<!-- BEGIN GENERATED ITEMS: Symbols -->
+<!-- BEGIN GENERATED ITEMS: symbols -->
 
-- [x] Unqualified lookup with fuzzy prefix matching — strong prefix matches survive, weak subsequence matches and unqualified namespace members do not
+| Capability                                    | Status    | Issues |
+| --------------------------------------------- | --------- | ------ |
+| Unqualified lookup with fuzzy prefix matching | Supported |        |
+| Class template deduplication                  | Supported |        |
+| Constructor labels stay plain                 | Supported |        |
+| Keyword patterns                              | Supported |        |
+| Macros                                        | Supported |        |
+| Macro shadowing a declaration                 | Supported |        |
+| Completion inside macro arguments             | Supported |        |
+| Namespace-qualified lookup                    | Supported |        |
+| Enum members                                  | Supported |        |
+| Local shadowing a global                      | Supported |        |
+| Using-declaration                             | Supported |        |
 
-  <details>
-  <summary>Example</summary>
+### Unqualified lookup with fuzzy prefix matching
 
-  ```cpp
-  // The completion expression dangles as an unfinished statement.
-  namespace A {
+Strong prefix matches survive, weak subsequence matches and unqualified namespace members do not
 
-  void fooooo();
+```cpp
+// The completion expression dangles as an unfinished statement.
+namespace A {
 
-  }
+void fooooo();
 
-  struct X {
-      void operator()() {}
-  };
+}
 
-  void bar() {
-      X functor;
-      auto folded = [](int x) {
-      };
-      fo;
-  }
-  ```
+struct X {
+    void operator()() {}
+};
 
-  </details>
+void bar() {
+    X functor;
+    auto folded = [](int x) {
+    };
+    fo;
+}
+```
 
-- [x] Class template deduplication — a name that is also constructors and a deduction guide stays a single class entry
+### Class template deduplication
 
-  <details>
-  <summary>Example</summary>
+A name that is also constructors and a deduction guide stays a single class entry
 
-  ```cpp
-  // The completion prefix dangles as an unfinished statement.
-  template <typename T>
-  struct Foo {
-      Foo() {}
+```cpp
+// The completion prefix dangles as an unfinished statement.
+template <typename T>
+struct Foo {
+    Foo() {}
 
-      Foo(T x) {}
+    Foo(T x) {}
 
-      Foo(T x, T y) {}
-  };
+    Foo(T x, T y) {}
+};
 
-  template <typename T>
-  Foo(T) -> Foo<T>;
+template <typename T>
+Foo(T) -> Foo<T>;
 
-  void bar() {
-      Fo
-  }
-  ```
+void bar() {
+    Fo
+}
+```
 
-  </details>
+### Constructor labels stay plain
 
-- [x] Constructor labels stay plain — class template constructors and deduction guides complete as the bare class name, never a templated spelling
+Class template constructors and deduction guides complete as the bare class name, never a templated spelling
 
-  <details>
-  <summary>Example</summary>
+```cpp
+// The completion prefix dangles as an unfinished statement.
+template <typename T, typename U>
+struct Bazzz {
+    Bazzz() {}
 
-  ```cpp
-  // The completion prefix dangles as an unfinished statement.
-  template <typename T, typename U>
-  struct Bazzz {
-      Bazzz() {}
+    Bazzz(T x) {}
 
-      Bazzz(T x) {}
+    Bazzz(T x, U y) {}
+};
 
-      Bazzz(T x, U y) {}
-  };
+template <typename T>
+Bazzz(T) -> Bazzz<T, int>;
 
-  template <typename T>
-  Bazzz(T) -> Bazzz<T, int>;
+void bar() {
+    Ba
+}
+```
 
-  void bar() {
-      Ba
-  }
-  ```
+### Keyword patterns
 
-  </details>
+Keywords complete like any candidate, with plain insert text
 
-- [x] Keyword patterns — keywords complete like any candidate, with plain insert text
+```cpp
+// The completion prefix cuts the initializer mid-expression.
+int x = tru
+```
 
-  <details>
-  <summary>Example</summary>
+### Macros
 
-  ```cpp
-  // The completion prefix cuts the initializer mid-expression.
-  int x = tru
-  ```
+object-like macros complete as constants, function-like ones as functions with a parameter signature; argument snippets follow the function setting
 
-  </details>
+```cpp
+#define RETRY_LIMIT 3
 
-- [x] Macros — object-like macros complete as constants, function-like ones as functions with a parameter signature; argument snippets follow the function setting
+#define CLAMP(value, limit) ((value) < (limit) ? (value) : (limit))
 
-  <details>
-  <summary>Example</summary>
+int a = RETRY;
+int b = CLA;
+```
 
-  ```cpp
-  #define RETRY_LIMIT 3
+### Macro shadowing a declaration
 
-  #define CLAMP(value, limit) ((value) < (limit) ? (value) : (limit))
+A name redefined as a macro completes as the macro, not the shadowed declaration
 
-  int a = RETRY;
-  int b = CLA;
-  ```
+```cpp
+void GUARD(int);
+#define GUARD 1
 
-  </details>
+int BOUND(int lo, int hi);
+#define BOUND(lo, hi) ((lo) < (hi) ? (lo) : (hi))
 
-- [x] Macro shadowing a declaration — a name redefined as a macro completes as the macro, not the shadowed declaration
+int a = GUAR;
+int b = BOUN;
+```
 
-  <details>
-  <summary>Example</summary>
+### Completion inside macro arguments
 
-  ```cpp
-  void GUARD(int);
-  #define GUARD 1
+Member access written as a macro argument completes as it would outside the macro
 
-  int BOUND(int lo, int hi);
-  #define BOUND(lo, hi) ((lo) < (hi) ? (lo) : (hi))
+```cpp
+#define WRAP(...) __VA_ARGS__
 
-  int a = GUAR;
-  int b = BOUN;
-  ```
+struct Config {
+    int retries;
+    int timeout;
+};
 
-  </details>
+void run() {
+    Config config;
+    WRAP(config.);
+}
+```
 
-- [x] Namespace-qualified lookup — `ns::` lists the namespace's own members
+### Namespace-qualified lookup
 
-  <details>
-  <summary>Example</summary>
+`ns::` lists the namespace's own members
 
-  ```cpp
-  // The qualified-id is left dangling at the point.
-  namespace geometry {
+```cpp
+// The qualified-id is left dangling at the point.
+namespace geometry {
 
-  int area_of(int r);
+int area_of(int r);
 
-  struct Point {
-      int x;
-  };
+struct Point {
+    int x;
+};
 
-  int origin;
+int origin;
 
-  }  // namespace geometry
+}  // namespace geometry
 
-  void bar() {
-      int v = geometry::;
-  }
-  ```
+void bar() {
+    int v = geometry::;
+}
+```
 
-  </details>
+### Enum members
 
-- [x] Enum members — a scoped enum lists through `Type::`, an unscoped enumerator completes by bare name
+A scoped enum lists through `Type::`, an unscoped enumerator completes by bare name
 
-  <details>
-  <summary>Example</summary>
+```cpp
+// Both completion prefixes dangle; the statements stay
+// semicolon-terminated so the second marker is not dragged into recovery.
+enum class Color { Red, Green, Blue };
 
-  ```cpp
-  // Both completion prefixes dangle; the statements stay
-  // semicolon-terminated so the second marker is not dragged into recovery.
-  enum class Color { Red, Green, Blue };
+enum Fruit { Apple, Banana };
 
-  enum Fruit { Apple, Banana };
+void bar() {
+    Color c = Color::;
+    int f = App;
+}
+```
 
-  void bar() {
-      Color c = Color::;
-      int f = App;
-  }
-  ```
+### Local shadowing a global
 
-  </details>
+The shadowed global does not appear as a duplicate entry
 
-- [x] Local shadowing a global — the shadowed global does not appear as a duplicate entry
+```cpp
+// The completion prefix dangles as an unfinished statement.
+int counter = 0;
 
-  <details>
-  <summary>Example</summary>
+void bar() {
+    int counter = 1;
+    int v = coun;
+}
+```
 
-  ```cpp
-  // The completion prefix dangles as an unfinished statement.
-  int counter = 0;
+### Using-declaration
 
-  void bar() {
-      int counter = 1;
-      int v = coun;
-  }
-  ```
+A name pulled in with `using` completes unqualified
 
-  </details>
+```cpp
+// The completion prefix dangles as an unfinished statement.
+namespace lib {
 
-- [x] Using-declaration — a name pulled in with `using` completes unqualified
+int helper_fn(int x);
 
-  <details>
-  <summary>Example</summary>
+}
 
-  ```cpp
-  // The completion prefix dangles as an unfinished statement.
-  namespace lib {
+using lib::helper_fn;
 
-  int helper_fn(int x);
-
-  }
-
-  using lib::helper_fn;
-
-  void bar() {
-      int v = help;
-  }
-  ```
-
-  </details>
+void bar() {
+    int v = help;
+}
+```
 
 <!-- END GENERATED ITEMS -->
 
@@ -677,123 +672,112 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
 
 All options below live in the `[code_completion]` configuration section.
 
-<!-- BEGIN GENERATED ITEMS: Functions & Snippets -->
+<!-- BEGIN GENERATED ITEMS: functions_snippets -->
 
-- [x] Signature and return type details — the parameter list and return type ride along as label details
+| Capability                        | Status    | Issues |
+| --------------------------------- | --------- | ------ |
+| Signature and return type details | Supported |        |
+| Overload bundling                 | Supported |        |
+| Unbundled overloads               | Supported |        |
+| Parameter placeholder snippets    | Supported |        |
+| Snippets defer to bundling        | Supported |        |
+| Default-argument parameters       | Supported |        |
+| Variadic signature                | Supported |        |
 
-  <details>
-  <summary>Example</summary>
+### Signature and return type details
 
-  ```cpp
-  // The completion prefix cuts the initializer mid-expression.
-  double foooo(int x, float y);
+The parameter list and return type ride along as label details
 
-  int x = fo
-  ```
+```cpp
+// The completion prefix cuts the initializer mid-expression.
+double foooo(int x, float y);
 
-  </details>
+int x = fo
+```
 
-- [x] Overload bundling — an overload set collapses into one entry with an overload count
+### Overload bundling
 
-  <details>
-  <summary>Example</summary>
+An overload set collapses into one entry with an overload count
 
-  ```cpp
-  // The completion prefix cuts the initializer mid-expression.
-  int foooo(int x);
-  int foooo(int x, int y);
-  double foooo(double d);
+```cpp
+// The completion prefix cuts the initializer mid-expression.
+int foooo(int x);
+int foooo(int x, int y);
+double foooo(double d);
 
-  int x = fooo
-  ```
+int x = fooo
+```
 
-  </details>
+### Unbundled overloads
 
-- [x] Unbundled overloads — with bundling off, every overload is its own entry with its own signature
+With bundling off, every overload is its own entry with its own signature
 
-  <details>
-  <summary>Example</summary>
+```cpp
+// The completion prefix cuts the initializer mid-expression.
+int foooo(int x);
+int foooo(int x, int y);
+double foooo(double d);
 
-  ```cpp
-  // The completion prefix cuts the initializer mid-expression.
-  int foooo(int x);
-  int foooo(int x, int y);
-  double foooo(double d);
+int x = fooo
+```
 
-  int x = fooo
-  ```
+### Parameter placeholder snippets
 
-  </details>
+Calls insert tab-stop placeholders per argument; a no-argument function stays plain text
 
-- [x] Parameter placeholder snippets — calls insert tab-stop placeholders per argument; a no-argument function stays plain text
+```cpp
+// The completion prefixes dangle as unfinished statements.
+int foooo(int x, float y);
+void nothing_to_fill();
 
-  <details>
-  <summary>Example</summary>
+struct Foo {
+    int bazzzz(int a, int b);
+};
 
-  ```cpp
-  // The completion prefixes dangle as unfinished statements.
-  int foooo(int x, float y);
-  void nothing_to_fill();
+void bar() {
+    Foo f;
+    fo;
+    no;
+    f.ba;
+}
+```
 
-  struct Foo {
-      int bazzzz(int a, int b);
-  };
+### Snippets defer to bundling
 
-  void bar() {
-      Foo f;
-      fo;
-      no;
-      f.ba;
-  }
-  ```
+While overloads are bundled, argument snippets stay off even when enabled
 
-  </details>
+```cpp
+// The completion prefix cuts the initializer mid-expression.
+int foooo(int x);
+int foooo(int x, int y);
 
-- [x] Snippets defer to bundling — while overloads are bundled, argument snippets stay off even when enabled
+int z = fo
+```
 
-  <details>
-  <summary>Example</summary>
+### Default-argument parameters
 
-  ```cpp
-  // The completion prefix cuts the initializer mid-expression.
-  int foooo(int x);
-  int foooo(int x, int y);
+A parameter with a default value drops out of the signature detail
 
-  int z = fo
-  ```
+The signature detail keeps only the required parameters; the trailing
+`int retries = 3` is elided.
 
-  </details>
+```cpp
+// The completion prefix cuts the initializer mid-expression.
+int configure(int timeout, int retries = 3);
 
-- [x] Default-argument parameters — a parameter with a default value drops out of the signature detail
+int x = confi
+```
 
-  The signature detail keeps only the required parameters; the trailing
-  `int retries = 3` is elided.
+### Variadic signature
 
-  <details>
-  <summary>Example</summary>
+A trailing `...` shows in the parameter detail
 
-  ```cpp
-  // The completion prefix cuts the initializer mid-expression.
-  int configure(int timeout, int retries = 3);
+```cpp
+// The completion prefix cuts the initializer mid-expression.
+int printf_like(const char* fmt, ...);
 
-  int x = confi
-  ```
-
-  </details>
-
-- [x] Variadic signature — a trailing `...` shows in the parameter detail
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  // The completion prefix cuts the initializer mid-expression.
-  int printf_like(const char* fmt, ...);
-
-  int x = printf
-  ```
-
-  </details>
+int x = printf
+```
 
 <!-- END GENERATED ITEMS -->
 
@@ -895,125 +879,91 @@ All options below live in the `[code_completion]` configuration section.
   };
   ```
 
-### Macros
-
-- [x] Macro name completion, including macros deserialized from the preamble
-- [x] Fuzzy matching for macros (same matcher as other symbols)
-- [x] Correct `CompletionItemKind`: `Function` for function-like, `Constant` for object-like ([clangd#2002](https://github.com/clangd/clangd/issues/2002))
-- [x] Parameter list as the label detail for function-like macros
-- [ ] Show macro definition/expansion as documentation ([clangd#1485](https://github.com/clangd/clangd/issues/1485))
-
-  ```cpp
-  #define MAX_BUF 4096
-  MAX^  // completion detail shows: #define MAX_BUF 4096
-  ```
-
-- [x] Parameter placeholders for function-like macros (respect snippet settings)
-
-  ```cpp
-  #define CHECK(cond, msg) ...
-  CHECK^  // insert: CHECK(${1:cond}, ${2:msg})
-  ```
-
-- [ ] Completion inside macro arguments with fallback to enclosing context
-
-  ```cpp
-  #define WRAP(...) __VA_ARGS__
-  WRAP(some_obj.^)  // should still offer some_obj's members
-  ```
-
 ### Filtering & Ranking
 
-<!-- BEGIN GENERATED ITEMS: Filtering & Ranking -->
+<!-- BEGIN GENERATED ITEMS: filtering_ranking -->
 
-- [x] Underscore filtering — underscore-prefixed internal symbols hide unless the typed prefix itself starts with one
+| Capability                  | Status    | Issues |
+| --------------------------- | --------- | ------ |
+| Underscore filtering        | Supported |        |
+| Deprecated tagging          | Supported |        |
+| Word-boundary fuzzy match   | Supported |        |
+| Case-insensitive prefix     | Supported |        |
+| Prefix outranks subsequence | Supported |        |
 
-  <details>
-  <summary>Example</summary>
+### Underscore filtering
 
-  ```cpp
-  // The completion prefixes are undeclared identifiers. The
-  // statements stay semicolon-terminated: an unterminated one puts the
-  // NEXT marker into a recovery context, which completion drops entirely.
-  int _private_thing;
-  int public_thing;
+underscore-prefixed internal symbols hide unless the typed prefix itself starts with one
 
-  int x = pu;
-  int y = _p;
-  ```
+```cpp
+// The completion prefixes are undeclared identifiers. The
+// statements stay semicolon-terminated: an unterminated one puts the
+// NEXT marker into a recovery context, which completion drops entirely.
+int _private_thing;
+int public_thing;
 
-  </details>
+int x = pu;
+int y = _p;
+```
 
-- [x] Deprecated tagging — a [[deprecated]] candidate carries the Deprecated tag, its plain sibling does not
+### Deprecated tagging
 
-  <details>
-  <summary>Example</summary>
+A [[deprecated]] candidate carries the Deprecated tag, its plain sibling does not
 
-  ```cpp
-  // The completion prefix cuts the initializer mid-expression.
-  [[deprecated]] int old_thing(int x);
-  int new_thing(int x);
+```cpp
+// The completion prefix cuts the initializer mid-expression.
+[[deprecated]] int old_thing(int x);
+int new_thing(int x);
 
-  int z = thing
-  ```
+int z = thing
+```
 
-  </details>
+### Word-boundary fuzzy match
 
-- [x] Word-boundary fuzzy match — prefix `fb` matches the word starts of `foo_bar_baz`
+Prefix `fb` matches the word starts of `foo_bar_baz`
 
-  `frobnicate` is only a weak scattered subsequence of `fb` and is dropped;
-  `foo_bar_baz` matches on the `foo`/`bar` word boundaries and survives.
+`frobnicate` is only a weak scattered subsequence of `fb` and is dropped;
+`foo_bar_baz` matches on the `foo`/`bar` word boundaries and survives.
 
-  <details>
-  <summary>Example</summary>
+```cpp
+// The completion prefix dangles as an unfinished statement.
+int foo_bar_baz;
+int frobnicate;
 
-  ```cpp
-  // The completion prefix dangles as an unfinished statement.
-  int foo_bar_baz;
-  int frobnicate;
+void bar() {
+    int v = fb;
+}
+```
 
-  void bar() {
-      int v = fb;
-  }
-  ```
+### Case-insensitive prefix
 
-  </details>
+A lowercase prefix matches a mixed-case identifier
 
-- [x] Case-insensitive prefix — a lowercase prefix matches a mixed-case identifier
+```cpp
+// The completion prefix dangles as an unfinished statement.
+int MyLongName;
 
-  <details>
-  <summary>Example</summary>
+void bar() {
+    int v = mylong;
+}
+```
 
-  ```cpp
-  // The completion prefix dangles as an unfinished statement.
-  int MyLongName;
+### Prefix outranks subsequence
 
-  void bar() {
-      int v = mylong;
-  }
-  ```
+An exact-prefix candidate sorts above a scattered subsequence match
 
-  </details>
+For prefix `fo`, `format_output` is a true prefix and outscores
+`fast_math_operation`, which only matches as a subsequence.
 
-- [x] Prefix outranks subsequence — an exact-prefix candidate sorts above a scattered subsequence match
+```cpp
+// The completion prefix dangles as an unfinished statement.
+int format_output;
+int fast_math_operation;
 
-  For prefix `fo`, `format_output` is a true prefix and outscores
-  `fast_math_operation`, which only matches as a subsequence.
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  // The completion prefix dangles as an unfinished statement.
-  int format_output;
-  int fast_math_operation;
-
-  void bar() {
-      int v = fo;
-  }
-  ```
-
-  </details>
+void bar() {
+    int v = fo;
+}
+```
 
 <!-- END GENERATED ITEMS -->
 
@@ -1107,6 +1057,7 @@ Not yet implemented. Completion items do not include documentation.
 - [ ] Available regardless of where the definition lives (header, source, index)
 - [ ] Propagate template pattern documentation to instantiations
 - [ ] Standard library documentation integration
+- [ ] Macro definitions as documentation ([clangd#1485](https://github.com/clangd/clangd/issues/1485))
 
 ## Trigger Characters
 

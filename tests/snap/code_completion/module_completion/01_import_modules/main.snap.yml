@@ -1,0 +1,6 @@
+---
+created_at: 2026-08-02
+input_file: module_completion/01_import_modules/main.cpp
+---
+pos:
+- { label: "math", kind: Module, insert: "math;" }

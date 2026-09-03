@@ -1,0 +1,6 @@
+---
+created_at: 2026-08-02
+input_file: functions_snippets/07_variadic_signature.cpp
+---
+pos:
+- { label: "printf_like", kind: Function, detail: "(const char *fmt, ...)", description: "int", edit: "8:8-8:14" }

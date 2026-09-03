@@ -1,0 +1,10 @@
+---
+created_at: 2026-07-31
+input_file: lexical_tokens/03_keywords.cpp
+---
+- { loc: "5:13", text: "and", kind: keyword }
+- { loc: "5:19", text: "or", kind: keyword }
+- { loc: "5:22", text: "not", kind: keyword }
+- { loc: "13:12", text: "final", kind: keyword }
+- { loc: "14:15", text: "override", kind: keyword }
+- { loc: "18:15", text: "final", kind: keyword }

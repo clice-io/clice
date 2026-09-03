@@ -1,0 +1,27 @@
+---
+created_at: 2026-08-23
+input_file: hover_correctness/02_object_vs_function.cpp
+---
+object_init: { range: "17:10-17:16" }
+### variable `active`  
+
+---
+Type: `Timer`  
+
+---
+```cpp
+// In demo
+Timer active(seconds)
+```
+
+vexing_decl: { range: "18:10-18:15" }
+### function `empty`  
+
+---
+→ `Timer`  
+
+---
+```cpp
+// In namespace mvp
+Timer empty()
+```

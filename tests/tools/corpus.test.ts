@@ -5,13 +5,16 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { expect, test } from "vitest";
+import { parseAnnotations } from "@clice/tools/snap/annotation";
 import {
+    type SnapCorpus,
+    type SnapFixture,
+    fixtureRelative,
     headingLevel,
     orphanSnapshots,
     parseFixtureMeta,
     scanFixtureHeader,
-    type SnapCorpus,
-    type SnapFixture,
+    snapCorpora,
 } from "@clice/tools/snap/corpus";
 
 const DEFAULTS = {
@@ -114,6 +117,7 @@ test("snapshot ownership follows verify and snap modes", () => {
         const fixture = (rel: string, meta: Partial<SnapFixture["meta"]>): SnapFixture => ({
             rel,
             unit: "",
+            section: "",
             meta: {
                 status: "supported",
                 verify: "both",
@@ -214,4 +218,91 @@ test("fixture header scanning", () => {
     // Blank `///` lines before the opening heading are skipped.
     expect(scanFixtureHeader("///\n/// # T\n///\n/// - snap: skip\n").headings).toEqual(["# T"]);
     expect(parseFixtureMeta("///\n/// - snap: skip\n", "f").snap).toBe("skip");
+});
+
+test("fixture files are named relative to the fixture", () => {
+    const single: SnapFixture = {
+        rel: "fold_kinds/01_block.cpp",
+        unit: "",
+        section: "fold_kinds",
+        meta: { ...DEFAULTS, flags: [] } as SnapFixture["meta"],
+        files: [],
+        extras: [],
+        active: true,
+    };
+    const file = (rel: string) => ({ rel, content: "", source: parseAnnotations("") });
+    expect(fixtureRelative(single, file("fold_kinds/01_block.cpp"))).toBe("01_block.cpp");
+    const unit: SnapFixture = {
+        ...single,
+        rel: "modules/03_iface/main.cpp",
+        unit: "modules/03_iface",
+    };
+    expect(fixtureRelative(unit, file("modules/03_iface/main.cpp"))).toBe("main.cpp");
+    expect(fixtureRelative(unit, file("modules/03_iface/widget.cppm"))).toBe("widget.cppm");
+});
+
+test("documented fixtures live numbered in section directories", () => {
+    // The corpus layout is what places an item on its feature page: a
+    // fixture with a doc header outside a section directory, or without
+    // the ordering prefix, would render nowhere or in an unstable order.
+    for (const corpus of snapCorpora()) {
+        for (const fixture of corpus.fixtures) {
+            const entry = fixture.files.find((file) => file.rel === fixture.rel);
+            const header = scanFixtureHeader(entry?.content ?? "");
+            const documented =
+                header.headings[0] !== undefined && headingLevel(header.headings[0]) === 1;
+            if (!documented) {
+                continue;
+            }
+            const name =
+                fixture.unit === ""
+                    ? fixture.rel.split("/").at(-1)
+                    : fixture.unit.split("/").at(-1);
+            expect(fixture.section, `${corpus.feature}/${fixture.rel}`).not.toBe("");
+            expect(name, `${corpus.feature}/${fixture.rel}`).toMatch(/^\d\d_/);
+        }
+    }
+});
+
+test("corpus layout: sections, units and the depth limits", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "clice-corpus-"));
+    const write = (rel: string, content = "int x;\n") => {
+        fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
+        fs.writeFileSync(path.join(root, rel), content);
+    };
+    try {
+        write("f/edge.cpp");
+        write("f/sec/01_item.cpp");
+        write("f/sec/02_unit/main.cpp");
+        write("f/sec/02_unit/part.cppm");
+        write("f/root_unit/main.cpp");
+        write("f/inc/shared.h");
+        write("f/sec/local.h");
+        const [corpus] = snapCorpora(root);
+        expect(corpus).toBeDefined();
+        const fixtures = corpus!.fixtures.map((fx) => [fx.rel, fx.unit, fx.section]);
+        expect(fixtures).toEqual([
+            ["edge.cpp", "", ""],
+            ["root_unit/main.cpp", "root_unit", ""],
+            ["sec/01_item.cpp", "", "sec"],
+            ["sec/02_unit/main.cpp", "sec/02_unit", "sec"],
+        ]);
+        // Support material lives at any depth; unit files belong to their unit.
+        expect(corpus!.support).toEqual(["inc/shared.h", "sec/local.h"]);
+        expect(corpus!.fixtures[3]!.files.map((file) => file.rel)).toEqual([
+            "sec/02_unit/main.cpp",
+            "sec/02_unit/part.cppm",
+        ]);
+
+        write("f/sec/deeper/x.cpp");
+        expect(() => snapCorpora(root)).toThrow("fixture sources live at the corpus root");
+        fs.rmSync(path.join(root, "f/sec/deeper"), { recursive: true });
+        write("f/sec/deeper/unit/main.cpp");
+        expect(() => snapCorpora(root)).toThrow("a unit lives at the corpus root");
+        fs.rmSync(path.join(root, "f/sec/deeper"), { recursive: true });
+        write("f/root_unit/inner/main.cpp");
+        expect(() => snapCorpora(root)).toThrow("nested fixture units");
+    } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+    }
 });

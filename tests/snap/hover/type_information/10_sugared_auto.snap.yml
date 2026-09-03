@@ -1,0 +1,11 @@
+---
+created_at: 2026-08-23
+input_file: type_information/10_sugared_auto.cpp
+---
+01_auto: { range: "16:2-16:6" }
+### type `auto`  
+
+---
+```cpp
+Outer // aka: int
+```

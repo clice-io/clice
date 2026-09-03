@@ -1,0 +1,28 @@
+---
+created_at: 2026-08-23
+input_file: symbol_information/07_anon_namespace_scope.cpp
+---
+anon_var: { range: "10:4-10:10" }
+### variable `hidden`  
+
+---
+Type: `int`  
+Value = `1`  
+
+---
+```cpp
+int hidden = 1
+```
+
+nested_anon_var: { range: "15:4-15:10" }
+### variable `nested`  
+
+---
+Type: `int`  
+Value = `2`  
+
+---
+```cpp
+// In namespace outer
+int nested = 2
+```

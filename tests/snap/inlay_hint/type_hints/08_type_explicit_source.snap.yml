@@ -1,0 +1,6 @@
+---
+created_at: 2026-07-31
+input_file: type_hints/08_type_explicit_source.cpp
+---
+- { pos: "10:16", kind: Type, label: ": long" }
+- { pos: "11:15", kind: Type, label: ": int" }

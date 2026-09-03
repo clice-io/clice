@@ -1,0 +1,19 @@
+---
+created_at: 2026-08-22
+input_file: symbols/05_macros.cpp
+---
+default:
+  function:
+  - { label: "CLAMP", kind: Function, detail: "(value, limit)", edit: "11:8-11:11" }
+  - { label: "class", kind: Keyword, edit: "11:8-11:11" }
+
+  object:
+  - { label: "RETRY_LIMIT", kind: Constant, edit: "10:8-10:13" }
+
+configured:
+  function:
+  - { label: "CLAMP", kind: Function, detail: "(value, limit)", edit: "11:8-11:11", insert: "CLAMP(${1:value}, ${2:limit})", snippet: true }
+  - { label: "class", kind: Keyword, edit: "11:8-11:11" }
+
+  object:
+  - { label: "RETRY_LIMIT", kind: Constant, edit: "10:8-10:13" }

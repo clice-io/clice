@@ -1,0 +1,6 @@
+---
+created_at: 2026-07-27
+input_file: fold_kinds/05_preprocessor_conditional.cpp
+---
+- { range: "14:7-16:5", kind: conditionDirective }
+- { range: "22:9-24:5", kind: conditionDirective }

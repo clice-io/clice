@@ -8,9 +8,14 @@
 /// table rows, index.md's YAML frontmatter) carry the translated text and
 /// every other segment (code blocks, HTML comments including GENERATED
 /// region markers, ...) is byte-identical — as is any fenced code block
-/// nested inside a translatable segment. The only stored link between
-/// the two sides is docs/meta/translations/<page>.json — one hash pair
-/// per translatable segment, in document order:
+/// nested inside a translatable segment. A table row and a later heading
+/// that share their text in en (a capability's status row and its
+/// section) share it in zh as well, and the inline literals of a
+/// segment — code spans, link and image targets in order, issue
+/// references, frontmatter values other than its copy — are identical on
+/// both sides. The only stored link between the two sides is
+/// docs/meta/translations/<page>.json — one hash pair per translatable
+/// segment, in document order:
 ///
 ///     { "version": 1,
 ///       "pairs": [
@@ -33,24 +38,49 @@
 ///     node tools/docs/translate.ts report   # translator worklist with segment texts
 ///     node tools/docs/translate.ts record   # re-attest pages after deliberate edits
 ///     node tools/docs/translate.ts translate [page...]  # machine-draft zh pages
+///     node tools/docs/translate.ts review [page...]     # model review of existing zh pages
 ///
 /// `translate` calls the DeepSeek API (key from DEEPSEEK_API_KEY, never
 /// stored) to draft segment-isomorphic zh pages: fenced code inside a
 /// segment is masked out and restored byte-for-byte, so code never
-/// round-trips through the model. No args = only pages missing a zh
-/// counterpart; explicit pages are overwritten, feeding the current zh
-/// text back as terminology reference. `--model=NAME` overrides the
-/// default deepseek-v4-pro. A segment the model cannot render validly is
-/// left in English and fails the run, so the page shows up again on the
-/// next attempt. Drafts still go through review + record.
+/// round-trips through the model, and inline code, link targets, issue
+/// references and frontmatter control values must come back unchanged.
+/// No args = only pages missing a zh counterpart; explicit pages are
+/// overwritten, feeding the current zh text back as terminology
+/// reference. `--model=NAME` overrides the default deepseek-v4-pro. A
+/// segment the model cannot render validly is left in English and fails
+/// the run, so the page shows up again on the next attempt. Drafts still
+/// go through review + record.
+///
+/// `review` re-reads every translatable segment of an existing zh page
+/// next to its en counterpart and asks a model for the corrected Chinese —
+/// meaning, the wording conventions of the docs skill, naturalness —
+/// segment by segment, so no code block ever enters the model's context.
+/// The default backend runs the codex CLI (GPT-5.6-sol) with every tool
+/// switched off, one call per chunk of segments (a paired row and
+/// heading always in the same chunk),
+/// `--jobs=N` calls in parallel and `--effort=LEVEL` reasoning;
+/// `--backend=deepseek` uses the API instead. A reply that breaks a
+/// segment's shape, alters an inline literal, or names a row and its
+/// heading differently keeps the current Chinese. The pages are
+/// rewritten in place; review the diff, then `record`.
 ///
 /// `--en=DIR --zh=DIR --meta=DIR` override the tree roots (for testing).
 
+import { spawn } from "node:child_process";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import pLimit from "p-limit";
 import { REPO_ROOT } from "../compile_commands.ts";
-import { analyzeSource, splitSegments, type Segment, type SegmentInfo } from "./segment.ts";
+import {
+    analyzeSource,
+    pairedLabels,
+    splitSegments,
+    YAML_PROSE_KEYS,
+    type Segment,
+    type SegmentInfo,
+} from "./segment.ts";
 
 const UNTRANSLATED_PREFIXES: string[] = [];
 
@@ -108,16 +138,22 @@ function loadMapping(roots: Roots, page: string): Mapping | null {
 
 /// One pair per line so an edited segment shows up as exactly one changed
 /// line in the diff.
+/// The mapping in the layout prettier gives JSON, so `pixi run format`
+/// never rewrites what `record` wrote: one pair per line, except that an
+/// array short enough for one line (a page with a single segment) stays on
+/// that line, as prettier collapses it.
 function serializeMapping(pairs: Pair[]): string {
-    if (pairs.length === 0) {
-        return `{\n  "version": 1,\n  "pairs": []\n}\n`;
-    }
-    const lines = pairs.map(
+    const entries = pairs.map(
         (pair) =>
-            `    { "kind": ${JSON.stringify(pair.kind)}, ` +
+            `{ "kind": ${JSON.stringify(pair.kind)}, ` +
             `"en": ${JSON.stringify(pair.en)}, "zh": ${JSON.stringify(pair.zh)} }`,
     );
-    return `{\n  "version": 1,\n  "pairs": [\n${lines.join(",\n")}\n  ]\n}\n`;
+    const oneLine = `  "pairs": [${entries.join(", ")}]`;
+    const array =
+        oneLine.length <= 100
+            ? oneLine
+            : `  "pairs": [\n${entries.map((entry) => `    ${entry}`).join(",\n")}\n  ]`;
+    return `{\n  "version": 1,\n${array}\n}\n`;
 }
 
 function zip<A, B>(a: A[], b: B[]): [A, B][] {
@@ -133,12 +169,58 @@ function zip<A, B>(a: A[], b: B[]): [A, B][] {
     return out;
 }
 
+interface LabelDiff {
+    /// The one name en gives both segments.
+    name: string;
+    row: SegmentInfo;
+    heading: SegmentInfo;
+}
+
+interface LiteralDiff {
+    left: SegmentInfo;
+    right: SegmentInfo;
+    /// What zh changed against en, as literalChanges words it.
+    changes: string;
+}
+
 interface TreeComparison {
     /// Human-readable description of a block-layout divergence, or null
     /// when the two sides are isomorphic.
     structureProblem: string | null;
     /// Segment pairs whose verbatim bytes differ (structure was isomorphic).
     verbatimDiffs: [SegmentInfo, SegmentInfo][];
+    /// zh row/heading pairs named alike in en but not in zh (structure was
+    /// isomorphic).
+    labelDiffs: LabelDiff[];
+    /// Segment pairs whose inline literals differ (structure was
+    /// isomorphic).
+    literalDiffs: LiteralDiff[];
+}
+
+function labelProblem(diff: LabelDiff): string {
+    return (
+        `table row (zh line ${diff.row.line}) and heading (zh line ${diff.heading.line}) ` +
+        `are both "${diff.name}" in en but "${diff.row.label ?? ""}" and ` +
+        `"${diff.heading.label ?? ""}" in zh — give them one name`
+    );
+}
+
+/// The literals zh dropped from and added to en's set, or null when the
+/// sets agree.
+function literalChanges(en: string[], zh: string[]): string | null {
+    const dropped = en.filter((literal) => !zh.includes(literal));
+    const added = zh.filter((literal) => !en.includes(literal));
+    if (dropped.length === 0 && added.length === 0) {
+        return null;
+    }
+    return [
+        ...dropped.map((literal) => `dropped ${literal}`),
+        ...added.map((literal) => `added ${literal}`),
+    ].join(", ");
+}
+
+function literalProblem(diff: LiteralDiff): string {
+    return `${segmentLabel(diff.left, diff.right)}: inline literals differ — ${diff.changes}`;
 }
 
 function describe(info: SegmentInfo | undefined): string {
@@ -164,12 +246,32 @@ function compareTrees(en: SegmentInfo[], zh: SegmentInfo[]): TreeComparison {
                     `en ${describe(left)}, zh ${describe(right)} — ` +
                     `en has ${en.length} segments, zh has ${zh.length}`,
                 verbatimDiffs: [],
+                labelDiffs: [],
+                literalDiffs: [],
             };
+        }
+    }
+    const labelDiffs: LabelDiff[] = [];
+    for (const [r, h] of pairedLabels(en)) {
+        const row = at(zh, r);
+        const heading = at(zh, h);
+        if (row.label !== heading.label) {
+            labelDiffs.push({ name: at(en, r).label ?? "", row, heading });
+        }
+    }
+    const pairs = zip(en, zh);
+    const literalDiffs: LiteralDiff[] = [];
+    for (const [left, right] of pairs) {
+        const changes = literalChanges(left.literals, right.literals);
+        if (changes !== null) {
+            literalDiffs.push({ left, right, changes });
         }
     }
     return {
         structureProblem: null,
-        verbatimDiffs: zip(en, zh).filter(([left, right]) => !sameVerbatim(left, right)),
+        verbatimDiffs: pairs.filter(([left, right]) => !sameVerbatim(left, right)),
+        labelDiffs,
+        literalDiffs,
     };
 }
 
@@ -186,7 +288,16 @@ function analyzePage(roots: Roots, page: string): PageAnalysis {
     const mapping = loadMapping(roots, page);
     const zhFile = path.join(roots.zh, page);
     if (!fs.existsSync(zhFile)) {
-        return { page, en, zh: null, mapping, structureProblem: null, verbatimDiffs: [] };
+        return {
+            page,
+            en,
+            zh: null,
+            mapping,
+            structureProblem: null,
+            verbatimDiffs: [],
+            labelDiffs: [],
+            literalDiffs: [],
+        };
     }
     const zh = analyzeSource(fs.readFileSync(zhFile, "utf8"), `zh/${page}`);
     return { page, en, zh, mapping, ...compareTrees(en, zh) };
@@ -283,6 +394,12 @@ function check(roots: Roots, pages: string[]): number {
                 `${page}: ${verbatimLabel(left, right)} must be byte-identical between en and zh`,
             );
         }
+        for (const diff of analysis.labelDiffs) {
+            problems.push(`${page}: ${labelProblem(diff)}`);
+        }
+        for (const diff of analysis.literalDiffs) {
+            problems.push(`${page}: ${literalProblem(diff)}`);
+        }
         const pairsNow = zip(translatable(analysis.en), translatable(analysis.zh));
         if (analysis.mapping === null) {
             problems.push(`${page}: not recorded — translate, review, then run record`);
@@ -370,15 +487,28 @@ function report(roots: Roots, pages: string[]): number {
             continue;
         }
         let pageDrifts = 0;
-        const drifted = (left: SegmentInfo, right: SegmentInfo, reason: string) => {
+        const flag = (print: () => void) => {
             if (pageDrifts === 0) {
                 console.log(`${page}:`);
             }
-            reportDrift(left, right, reason);
+            print();
             pageDrifts += 1;
+        };
+        const drifted = (left: SegmentInfo, right: SegmentInfo, reason: string) => {
+            flag(() => {
+                reportDrift(left, right, reason);
+            });
         };
         for (const [left, right] of analysis.verbatimDiffs) {
             drifted(left, right, verbatimReason(left));
+        }
+        for (const diff of analysis.labelDiffs) {
+            flag(() => {
+                console.log(`  ${labelProblem(diff)}`);
+            });
+        }
+        for (const diff of analysis.literalDiffs) {
+            drifted(diff.left, diff.right, `inline literals differ — ${diff.changes}`);
         }
         const pairsNow = zip(translatable(analysis.en), translatable(analysis.zh));
         if (analysis.mapping?.version !== 1) {
@@ -464,12 +594,17 @@ function record(roots: Roots, pages: string[]): number {
             failed = true;
             continue;
         }
-        if (analysis.verbatimDiffs.length > 0) {
-            for (const [left, right] of analysis.verbatimDiffs) {
-                console.error(
-                    `${page}: ${verbatimLabel(left, right)} ` +
-                        `must be byte-identical — fix before recording`,
-                );
+        const problems = [
+            ...analysis.verbatimDiffs.map(
+                ([left, right]) =>
+                    `${verbatimLabel(left, right)} must be byte-identical — fix before recording`,
+            ),
+            ...analysis.labelDiffs.map(labelProblem),
+            ...analysis.literalDiffs.map(literalProblem),
+        ];
+        if (problems.length > 0) {
+            for (const problem of problems) {
+                console.error(`${page}: ${problem}`);
             }
             failed = true;
             continue;
@@ -512,8 +647,9 @@ const SYSTEM_PROMPT = `你是 clice 项目的文档翻译。clice 是一个基�
 - 逐段翻译：输入 segments 数组，输出同样长度的数组，i 一一对应，绝不合并、拆分、增删段。
 - 每段保持 markdown 骨架：标题保持相同数量的 #；列表项保持"- "或数字"1. "前缀和嵌套缩进结构；表格行保持竖线数量与单元格结构；引用块每行保持"> "前缀；行内代码、粗体、链接语法原样，链接 URL 绝不改。
 - 段内不得引入空行（空行会把一段拆成两段）。
+- 表格行的首单元格若与后文某个标题在英文里完全相同（能力状态表与其小节），两处译文也必须完全相同；这样的行和标题会放在同一批里。
 - 输入里的 ⟦B数字⟧ 是被抽走的代码块占位符：在译文的对应位置原样保留，一个不能少、不能多、不能改。
-- YAML 段（--- 围栏包住的）：只翻译面向读者的文案值（text、title、tagline、details 等），键名、结构、路径、链接一律不动，围栏保留。
+- YAML 段（--- 围栏包住的）：只翻译面向读者的文案值，即键名为 ${[...YAML_PROSE_KEYS].join("、")} 的字符串；其余值（layout、theme、icon、link、src 等）连同键名、结构、围栏一律不动。
 - 输出严格 JSON：{"segments":[{"i":<int>,"text":"<译文>"}, ...]}，不要任何解释或代码围栏。`;
 
 interface ChatMessage {
@@ -612,8 +748,8 @@ function parseSegmentsJson(raw: string, expected: number[]): Map<number, string>
     return out;
 }
 
-/// Code blocks nested in a translatable segment (snap example blocks live
-/// inside their checklist items) never round-trip through the model: each
+/// Code blocks nested in a translatable segment (a snap example under a
+/// capability's text) never round-trip through the model: each
 /// is masked to a placeholder and restored byte-for-byte afterwards.
 interface MaskedText {
     masked: string;
@@ -661,8 +797,35 @@ function restoreCode(masked: string, blocks: string[]): { text: string } | { pro
     return { text };
 }
 
+/// A translated segment re-parsed on its own. A lone row does not parse
+/// as a table row: put it under the header and delimiter line the page
+/// gives it (dropped from the result again), so a row that would stop
+/// the page being a table fails here instead of at the page level.
+function parseStandalone(en: Segment, text: string): { probe: string; segments: Segment[] } {
+    const align = /^tableRow:\d+:([lrc-]*)$/.exec(en.shape)?.[1];
+    if (align === undefined) {
+        return { probe: text, segments: splitSegments(text, "reply") };
+    }
+    const delimiter = (column: string) =>
+        column === "l"
+            ? " :--- |"
+            : column === "r"
+              ? " ---: |"
+              : column === "c"
+                ? " :---: |"
+                : " --- |";
+    const header = `|${" |".repeat(align.length)}\n|${Array.from(align, delimiter).join("")}\n`;
+    const probe = header + text;
+    return { probe, segments: splitSegments(probe, "reply").slice(1) };
+}
+
+function labelOf(en: Segment, text: string): string | null {
+    return parseStandalone(en, text).segments.at(0)?.label ?? null;
+}
+
 /// Re-parse the translated segment standalone and reject anything that
-/// broke the shape the isomorphism contract depends on.
+/// broke the shape the isomorphism contract depends on or touched a
+/// literal the prose must carry over.
 function validateSegment(
     en: Segment,
     enText: string,
@@ -675,45 +838,50 @@ function validateSegment(
     if (/\n\s*\n/.test(zhText) && !/\n\s*\n/.test(enText)) {
         return "introduced blank line";
     }
-    // A lone row does not parse as a table: give it the delimiter line
-    // the page will, so a row that would stop the page being a table
-    // fails here instead of at the page level.
-    const align = /^tableRow:\d+:([lrc-]*)$/.exec(en.shape)?.[1];
-    const delimiter = (column: string) =>
-        column === "l"
-            ? " :--- |"
-            : column === "r"
-              ? " ---: |"
-              : column === "c"
-                ? " :---: |"
-                : " --- |";
-    const probe =
-        align === undefined ? zhText : `${zhText}\n|${Array.from(align, delimiter).join("")}`;
-    const parsed = splitSegments(probe, "reply");
-    const reply = parsed.at(0);
-    if (parsed.length !== 1 || reply?.shape !== en.shape) {
+    const { probe, segments } = parseStandalone(en, zhText);
+    const reply = segments.at(0);
+    if (segments.length !== 1 || reply?.shape !== en.shape) {
         return `not a single ${en.shape}`;
     }
     const code = reply.verbatim.map((range) => probe.slice(range.start, range.end));
     if (code.length !== blocks.length || code.some((text, i) => text !== blocks.at(i))) {
         return "nested verbatim block altered";
     }
+    const changes = literalChanges(en.literals, reply.literals);
+    if (changes !== null) {
+        return `inline literals changed: ${changes}`;
+    }
     return null;
 }
 
-function chunkIndices(texts: string[], indices: number[], budget: number): number[][] {
+/// Packs segments into chunks of at most `budget` characters in document
+/// order. A paired row and heading travel as one unit at the row's
+/// position, so a request always sees both names together.
+function chunkSegments(
+    indices: number[],
+    pairs: [number, number][],
+    size: (i: number) => number,
+    budget: number,
+): number[][] {
+    const partner = new Map(pairs);
+    const pulled = new Set(pairs.map(([, heading]) => heading));
     const chunks: number[][] = [];
     let current: number[] = [];
-    let size = 0;
+    let used = 0;
     for (const i of indices) {
-        const length = texts.at(i)?.length ?? 0;
-        if (current.length > 0 && size + length > budget) {
+        if (pulled.has(i)) {
+            continue;
+        }
+        const heading = partner.get(i);
+        const unit = heading === undefined ? [i] : [i, heading];
+        const length = unit.reduce((sum, j) => sum + size(j), 0);
+        if (current.length > 0 && used + length > budget) {
             chunks.push(current);
             current = [];
-            size = 0;
+            used = 0;
         }
-        current.push(i);
-        size += length;
+        current.push(...unit);
+        used += length;
     }
     if (current.length > 0) {
         chunks.push(current);
@@ -832,8 +1000,9 @@ async function translatePage(roots: Roots, model: string, page: string): Promise
         maskedTexts[i] = masked;
         masks.set(i, blocks);
     }
+    const pairs = pairedLabels(segments);
     const translations = new Map<number, string>();
-    for (const chunk of chunkIndices(maskedTexts, todo, 4500)) {
+    for (const chunk of chunkSegments(todo, pairs, (i) => at(maskedTexts, i).length, 4500)) {
         for (const [i, text] of await translateChunk(model, context, maskedTexts, chunk)) {
             translations.set(i, text);
         }
@@ -872,6 +1041,22 @@ async function translatePage(roots: Roots, model: string, page: string): Promise
         }
         translations.set(i, zhText);
     }
+    for (const [row, heading] of pairs) {
+        const rowLabel = labelOf(at(segments, row), mustGet(translations, row));
+        if (rowLabel === labelOf(at(segments, heading), mustGet(translations, heading))) {
+            continue;
+        }
+        console.error(
+            `  ${page} segments ${row + 1} and ${heading + 1}: table row and heading ` +
+                `share one name in en but not in the translation — keeping English`,
+        );
+        for (const i of [row, heading]) {
+            if (mustGet(translations, i) !== at(texts, i)) {
+                translations.set(i, at(texts, i));
+                fallbacks += 1;
+            }
+        }
+    }
 
     let out = "";
     let cursor = 0;
@@ -890,6 +1075,9 @@ async function translatePage(roots: Roots, model: string, page: string): Promise
     }
     for (const [left, right] of comparison.verbatimDiffs) {
         throw new Error(`${page}: ${verbatimLabel(left, right)} corrupted`);
+    }
+    for (const diff of comparison.labelDiffs) {
+        throw new Error(`${page}: ${labelProblem(diff)}`);
     }
 
     fs.mkdirSync(path.dirname(zhFile), { recursive: true });
@@ -954,6 +1142,328 @@ async function machineTranslate(roots: Roots, pages: string[], rest: string[]): 
     return failed > 0 || incomplete.length > 0 ? 1 : 0;
 }
 
+const REVIEW_PROMPT = `你在审校 clice（一个 C++ 语言服务器）文档的中文译文。输入是一批分段，每段给出编号 i、
+markdown 形状 shape、英文原文 en 和当前中文 zh。请逐段判断中文是否准确、术语是否合规、是否自然，
+输出每一段的最终中文；已经合格的段原样返回。只输出一个 JSON 对象：
+{"segments":[{"i":编号,"text":"最终中文"}, ...]}，每个输入编号都必须出现，不要输出其它内容。
+
+硬性约束（违反会被拒绝）：
+- 形如 ⟦B1⟧ 的占位符代表代码块，必须原样保留、各出现恰好一次、不得增删。
+- 保持 markdown 形状：标题的 # 个数、列表的标记（- 或 1.）与任务框（- [ ] / - [x]）、表格行的
+  竖线数量与列数、引用的 >。段内不要引入空行。
+- 行内代码（反引号内）、链接目标、URL、issue 引用（clangd#1455）、文件路径、命令行、编译器
+  诊断原文一律原样保留。
+- YAML 段（--- 围栏包住的）只改键名为 ${[...YAML_PROSE_KEYS].join("、")} 的字符串值；其余值
+  （layout、theme、icon、link、src 等）连同键名、结构、围栏一律不动。
+- 不增删信息：中文说英文说的事，不多不少。
+
+术语规则：
+- 翻译：页面/章节/能力标题、表头与表格文字、列表项、描述。功能名用固定译名：代码补全、悬停、
+  签名帮助、代码导航、文档链接、语义 Token、内联提示、折叠范围、文档符号、格式化、诊断、
+  代码操作；Lint 保留。状态词：支持 / 部分支持 / 不支持。
+- 有通行中文译名的 C++ 概念翻译（结构化绑定、范围 for 循环、模板特化、显式实例化、折叠表达式、
+  参数包、注入类名、概念）；一页中首次出现且英文更利于检索时，用全角括号附英文，
+  如 结构化绑定（structured bindings）、最令人烦恼的解析（most vexing parse）。
+- 保留英文：产品与工具名（VS Code、Neovim、Zed、CMake、Bazel、clang、clang-format、clangd、
+  GCC、MSVC、LLVM）；缩写（LSP、AST、PCH、PCM、CDB、TU、ADL、CTAD、DAG、ABI、URI、C++23）；
+  代码字体里的一切；中文 C++ 开发者习惯不译的词（Lambda、Token、Preamble、this、
+  作为语言特性名的 Concept）。拿不准时保留英文并加简短中文说明，不要自造译法。
+- 同一批里同一术语只用一种译法；同一能力的表格行与标题总在同一批里，两处中文必须完全一致。
+
+文风：中文句子用全角标点；中英文之间留一个空格；不要机器翻译腔（英文语序、"这个"当冠词、
+被动堆叠）；说清楚意思，不必逐词对应。`;
+
+interface ReviewItem {
+    i: number;
+    shape: string;
+    en: string;
+    zh: string;
+}
+
+type Backend = (payload: string, expected: number[]) => Promise<Map<number, string>>;
+
+/// Runs one codex invocation; the transcript on stdout is dropped, stderr
+/// travels with a failure. No stdin: codex would otherwise wait on it for
+/// extra input and never start.
+function runCodex(args: string[], cwd: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+        const child = spawn("codex", args, { cwd, stdio: ["ignore", "ignore", "pipe"] });
+        let stderr = "";
+        child.stderr.on("data", (chunk: Buffer) => {
+            stderr += chunk.toString();
+        });
+        child.on("error", reject);
+        child.on("close", (code) => {
+            if (code === 0) {
+                resolve();
+            } else {
+                reject(new Error(`codex exited with ${code}: ${stderr.slice(-400)}`));
+            }
+        });
+    });
+}
+
+/// The segments are contributor-written text, so the model gets no tool
+/// at all: the codex sandbox only stops writes, a shell tool could still
+/// read any host file or the environment and hand it to the model. With
+/// the shell, exec, subagent, app, image and web-search surfaces off and
+/// no MCP servers, the reply the CLI writes through `-o` is the only
+/// channel back; the read-only sandbox and the empty scratch directory
+/// stay as a second wall.
+const CODEX_NO_TOOLS = [
+    "--disable",
+    "shell_tool",
+    "--disable",
+    "unified_exec",
+    "--disable",
+    "multi_agent",
+    "--disable",
+    "apps",
+    "-c",
+    "tools.view_image=false",
+    "-c",
+    'web_search="disabled"',
+    "-c",
+    "mcp_servers={}",
+    "--sandbox",
+    "read-only",
+];
+
+/// One codex call per chunk.
+function codexBackend(effort: string): Backend {
+    return async (payload, expected) => {
+        const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "clice-docs-review-"));
+        const reply = path.join(scratch, "reply.md");
+        try {
+            let lastError: unknown = null;
+            for (let attempt = 0; attempt < 2; attempt += 1) {
+                await runCodex(
+                    [
+                        "exec",
+                        "-m",
+                        "gpt-5.6-sol",
+                        "-c",
+                        `model_reasoning_effort=${effort}`,
+                        ...CODEX_NO_TOOLS,
+                        "-o",
+                        reply,
+                        `${REVIEW_PROMPT}\n\n输入：\n${payload}`,
+                    ],
+                    scratch,
+                );
+                try {
+                    return parseSegmentsJson(fs.readFileSync(reply, "utf8"), expected);
+                } catch (error) {
+                    lastError = error;
+                    console.error(`  codex reply unusable, retrying: ${String(error)}`);
+                }
+            }
+            throw lastError instanceof Error ? lastError : new Error(String(lastError));
+        } finally {
+            fs.rmSync(scratch, { recursive: true, force: true });
+        }
+    };
+}
+
+function deepseekBackend(model: string): Backend {
+    return async (payload, expected) => {
+        const reply = await callApi(
+            model,
+            [
+                { role: "system", content: REVIEW_PROMPT },
+                { role: "user", content: payload },
+            ],
+            8192,
+        );
+        if (reply.truncated) {
+            throw new Error("reply truncated");
+        }
+        return parseSegmentsJson(reply.content, expected);
+    };
+}
+
+/// The page's translatable segments paired with their current Chinese,
+/// code masked on both sides; chunks are what a backend call reviews.
+function reviewChunks(
+    roots: Roots,
+    page: string,
+): {
+    items: Map<number, ReviewItem>;
+    chunks: number[][];
+    enSegments: Segment[];
+    zhSource: string;
+    zhSegments: Segment[];
+    enTexts: string[];
+    masks: Map<number, string[]>;
+} | null {
+    const enSource = fs.readFileSync(path.join(roots.en, page), "utf8");
+    const zhFile = path.join(roots.zh, page);
+    if (!fs.existsSync(zhFile)) {
+        console.error(`${page}: no zh counterpart to review`);
+        return null;
+    }
+    const zhSource = fs.readFileSync(zhFile, "utf8");
+    const comparison = compareTrees(
+        analyzeSource(enSource, page),
+        analyzeSource(zhSource, `zh/${page}`),
+    );
+    if (comparison.structureProblem !== null) {
+        console.error(`${page}: not isomorphic, skipped — ${comparison.structureProblem}`);
+        return null;
+    }
+    const enSegments = splitSegments(enSource, page);
+    const zhSegments = splitSegments(zhSource, `zh/${page}`);
+    const enTexts = enSegments.map((segment) => enSource.slice(segment.start, segment.end));
+    const items = new Map<number, ReviewItem>();
+    const masks = new Map<number, string[]>();
+    enSegments.forEach((segment, i) => {
+        if (!segment.translatable) {
+            return;
+        }
+        const zhSegment = at(zhSegments, i);
+        const en = maskCode(at(enTexts, i), segment);
+        const zh = maskCode(zhSource.slice(zhSegment.start, zhSegment.end), zhSegment);
+        masks.set(i, en.blocks);
+        items.set(i, { i, shape: segment.shape, en: en.masked, zh: zh.masked });
+    });
+    const chunks = chunkSegments(
+        [...items.keys()],
+        pairedLabels(enSegments),
+        (i) => mustGet(items, i).en.length + mustGet(items, i).zh.length,
+        6000,
+    );
+    return { items, chunks, enSegments, zhSource, zhSegments, enTexts, masks };
+}
+
+async function reviewPages(roots: Roots, pages: string[], rest: string[]): Promise<number> {
+    const flag = (name: string, fallback: string): string =>
+        rest.find((argument) => argument.startsWith(`--${name}=`))?.slice(name.length + 3) ??
+        fallback;
+    const backend =
+        flag("backend", "codex") === "deepseek"
+            ? deepseekBackend(flag("model", "deepseek-v4-pro"))
+            : codexBackend(flag("effort", "xhigh"));
+    const limit = pLimit(Number(flag("jobs", "4")));
+    const requested = [...new Set(rest.filter((argument) => !argument.startsWith("--")))];
+    const translatablePages = pages.filter((page) => !isUntranslated(page));
+    const unknown = requested.filter((page) => !translatablePages.includes(page));
+    if (unknown.length > 0) {
+        console.error(`not a translatable page under docs/en: ${unknown.join(", ")}`);
+        return 2;
+    }
+    const targets = requested.length > 0 ? requested : translatablePages;
+
+    let failed = 0;
+    const work = targets.map(async (page) => {
+        const plan = reviewChunks(roots, page);
+        if (plan === null) {
+            failed += 1;
+            return;
+        }
+        const { items, chunks, enSegments, zhSource, zhSegments, enTexts, masks } = plan;
+        const replies = await Promise.all(
+            chunks.map((chunk) =>
+                limit(async () => {
+                    const payload = JSON.stringify({
+                        segments: chunk.map((i) => mustGet(items, i)),
+                    });
+                    return backend(payload, chunk);
+                }),
+            ),
+        );
+        const reviewed = new Map<number, string>();
+        for (const reply of replies) {
+            for (const [i, text] of reply) {
+                reviewed.set(i, text);
+            }
+        }
+        const currentText = (i: number) =>
+            zhSource.slice(at(zhSegments, i).start, at(zhSegments, i).end);
+        const finalTexts = new Map<number, string>();
+        let kept = 0;
+        for (const item of items.values()) {
+            const blocks = mustGet(masks, item.i);
+            const restored = restoreCode(mustGet(reviewed, item.i), blocks);
+            const problem =
+                "problem" in restored
+                    ? restored.problem
+                    : validateSegment(
+                          at(enSegments, item.i),
+                          at(enTexts, item.i),
+                          restored.text,
+                          blocks,
+                      );
+            if ("problem" in restored || problem !== null) {
+                console.error(`  ${page} segment ${item.i + 1} (${item.shape}): ${problem} — kept`);
+                kept += 1;
+                finalTexts.set(item.i, currentText(item.i));
+                continue;
+            }
+            finalTexts.set(item.i, restored.text);
+        }
+        for (const [row, heading] of pairedLabels(enSegments)) {
+            const rowLabel = labelOf(at(enSegments, row), mustGet(finalTexts, row));
+            if (rowLabel === labelOf(at(enSegments, heading), mustGet(finalTexts, heading))) {
+                continue;
+            }
+            console.error(
+                `  ${page} segments ${row + 1} and ${heading + 1}: table row and heading ` +
+                    `share one name in en but came back different — kept`,
+            );
+            for (const i of [row, heading]) {
+                if (mustGet(finalTexts, i) !== currentText(i)) {
+                    finalTexts.set(i, currentText(i));
+                    kept += 1;
+                }
+            }
+        }
+        const changed = [...finalTexts].filter(([i, text]) => text !== currentText(i)).length;
+        let out = "";
+        let cursor = 0;
+        zhSegments.forEach((segment, i) => {
+            out += zhSource.slice(cursor, segment.start);
+            out += finalTexts.has(i)
+                ? mustGet(finalTexts, i)
+                : zhSource.slice(segment.start, segment.end);
+            cursor = segment.end;
+        });
+        out += zhSource.slice(cursor);
+        const enSource = fs.readFileSync(path.join(roots.en, page), "utf8");
+        const comparison = compareTrees(
+            analyzeSource(enSource, page),
+            analyzeSource(out, `zh/${page}`),
+        );
+        if (comparison.structureProblem !== null) {
+            throw new Error(
+                `${page}: reviewed page is not isomorphic — ${comparison.structureProblem}`,
+            );
+        }
+        for (const [left, right] of comparison.verbatimDiffs) {
+            throw new Error(`${page}: ${verbatimLabel(left, right)} corrupted`);
+        }
+        for (const diff of comparison.labelDiffs) {
+            throw new Error(`${page}: ${labelProblem(diff)}`);
+        }
+        for (const diff of comparison.literalDiffs) {
+            throw new Error(`${page}: ${literalProblem(diff)}`);
+        }
+        fs.writeFileSync(path.join(roots.zh, page), out);
+        console.log(
+            `done ${page}: ${items.size} segments, ${changed} changed, ${kept} kept on problems`,
+        );
+    });
+    for (const [i, outcome] of (await Promise.allSettled(work)).entries()) {
+        if (outcome.status === "rejected") {
+            const reason =
+                outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason);
+            console.error(`FAILED ${targets.at(i) ?? "?"}: ${reason}`);
+            failed += 1;
+        }
+    }
+    console.log(`finished: ${targets.length - failed} pages ok, ${failed} failed`);
+    return failed > 0 ? 1 : 0;
+}
+
 async function main(): Promise<number> {
     const [mode, ...rest] = process.argv.slice(2);
     const flag = (name: string, fallback: string): string => {
@@ -975,9 +1485,11 @@ async function main(): Promise<number> {
             return record(roots, pages);
         case "translate":
             return machineTranslate(roots, pages, rest);
+        case "review":
+            return reviewPages(roots, pages, rest);
         default:
             console.error(
-                "usage: node tools/docs/translate.ts check | report | record | translate",
+                "usage: node tools/docs/translate.ts check | report | record | translate | review",
             );
             return 2;
     }

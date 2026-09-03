@@ -1,184 +1,179 @@
 # 文档链接
 
-从源文件指令到其解析目标文件的可点击链接。
+从源代码指令到解析所得目标文件的可点击链接。
 
-<!-- The checklist sections below are generated from the snapshot fixtures in
+<!-- The capability sections below are generated from the snapshot fixtures in
      tests/snap/document_links/. Do not edit the regions between the GENERATED
      markers by hand — edit the fixture doc headers and run
      `node tools/docs/feature.ts update`. -->
 
-## Include 指令
+## 包含指令
 
-<!-- BEGIN GENERATED ITEMS: Include Directives -->
+<!-- BEGIN GENERATED ITEMS: include_directives -->
 
-- [x] 引号 include — `#include "..."` 链接到解析后的头文件
+| 能力                                    | 状态     | 问题                                                        |
+| --------------------------------------- | -------- | ----------------------------------------------------------- |
+| 引号形式的包含指令                      | 支持     |                                                             |
+| 尖括号形式的包含指令                    | 支持     |                                                             |
+| 宏展开路径                              | 支持     | [clangd#2375](https://github.com/clangd/clangd/issues/2375) |
+| `#include_next` 和 `__has_include_next` | 部分支持 |                                                             |
+| `__has_include`                         | 支持     |                                                             |
 
-  文件中的每个 include 都会链接，而不只是顶部 preamble 运行到的那些。
+### 引号形式的包含指令
 
-  <details>
-  <summary>示例</summary>
+`#include "..."` 链接到解析出的头文件
 
-  ```cpp
-  #include "header_a.h"
-  #include "header_b.h"
-  int x = 1;
-  #include "header_c.h"
-  ```
+文件中的每条包含指令都会建立链接，而不仅限于顶部 Preamble 处理过的包含指令。
 
-  </details>
+```cpp
+#include "header_a.h"
+#include "header_b.h"
+int x = 1;
+#include "header_c.h"
+```
 
-- [x] 尖括号 include — `#include <...>` 链接到搜索路径上找到的头文件
+### 尖括号形式的包含指令
 
-  <details>
-  <summary>示例</summary>
+`#include <...>` 链接到在搜索路径上找到的头文件
 
-  ```cpp
-  #include <header_a.h>
-  ```
+```cpp
+#include <header_a.h>
+```
 
-  </details>
+### 宏展开路径
 
-- [x] 宏展开路径 — `#include MACRO` 将指令参数链接到展开后的目标（[clangd#2375](https://github.com/clangd/clangd/issues/2375)）
+`#include MACRO` 将指令参数链接到宏展开后的目标
 
-  <details>
-  <summary>示例</summary>
+```cpp
+#define HEADER "header_b.h"
+#include HEADER
+```
 
-  ```cpp
-  #define HEADER "header_b.h"
-  #include HEADER
-  ```
+### `#include_next` 和 `__has_include_next`
 
-  </details>
+链接会继续沿搜索路径向下查找
 
-- [ ] `#include_next` 和 `__has_include_next` — 链接继续沿搜索路径向下 _（部分）_
+在搜索路径上，`first/wrap.h` 会遮蔽 `second/wrap.h`；其中的
+`#include_next`（由 `__has_include_next` 保护）会包含第二份副本。
+只有在包含该头文件的 TU 上下文中编译它时，才能解析到搜索路径中的下一项；
+单独打开时，它会作为独立 TU 编译，此时 clang 会有意将 `#include_next`
+当作普通包含指令处理，因此目前两个链接都会回到第一份副本（这也是
+快照所固定的行为）。
 
-  在搜索路径上，`first/wrap.h` 会遮蔽 `second/wrap.h`；其中的
-  `#include_next`（由 `__has_include_next` 保护）会包含第二份副本。
-  仅当该头文件在包含它的 TU 上下文中编译时，才存在搜索路径中的下一个解析；
-  单独打开时，它会被编译为自身的 TU，此时 clang 故意将 `#include_next`
-  当作普通 include 处理，因此目前两个链接都会落回第一份副本（这也是
-  snapshot 固定的行为）。
+`main.cpp`：
 
-  <details>
-  <summary>示例</summary>
+```cpp
+#include <wrap.h>
 
-  `main.cpp`:
+int use_wrap = WRAP_FIRST + WRAP_SECOND;
+```
 
-  ```cpp
-  #include <wrap.h>
+`first/wrap.h`：
 
-  int use_wrap = WRAP_FIRST + WRAP_SECOND;
-  ```
+```cpp
+#pragma once
 
-  `first/wrap.h`:
+#define WRAP_FIRST 1
 
-  ```cpp
-  #pragma once
+#if __has_include_next(<wrap.h>)
+#include_next <wrap.h>
+#endif
+```
 
-  #define WRAP_FIRST 1
+`second/wrap.h`：
 
-  #if __has_include_next(<wrap.h>)
-  #include_next <wrap.h>
-  #endif
-  ```
+```cpp
+#pragma once
 
-  `second/wrap.h`:
+#define WRAP_SECOND 2
+```
 
-  ```cpp
-  #pragma once
+### `__has_include`
 
-  #define WRAP_SECOND 2
-  ```
+被检查的路径会链接到其所探测的文件
 
-  </details>
-
-- [x] `__has_include` — 检查的路径链接到它探测的文件
-
-  <details>
-  <summary>示例</summary>
-
-  ```cpp
-  #if __has_include("header_c.h")
-  #include "header_c.h"
-  #endif
-  ```
-
-  </details>
+```cpp
+#if __has_include("header_c.h")
+#include "header_c.h"
+#endif
+```
 
 <!-- END GENERATED ITEMS -->
 
-## Embed 指令
+## 嵌入指令
 
-<!-- BEGIN GENERATED ITEMS: Embed Directives -->
+<!-- BEGIN GENERATED ITEMS: embed_directives -->
 
-- [x] `#embed` — 资源路径链接到嵌入的文件
+| 能力          | 状态 | 问题 |
+| ------------- | ---- | ---- |
+| `#embed`      | 支持 |      |
+| `__has_embed` | 支持 |      |
 
-  <details>
-  <summary>示例</summary>
+### `#embed`
 
-  ```cpp
-  const char data[] = {
-  #embed "data.bin"
-  };
-  ```
+资源路径会链接到嵌入的文件
 
-  </details>
+```cpp
+const char data[] = {
+#embed "data.bin"
+};
+```
 
-- [x] `__has_embed` — 检查的路径链接到探测的资源
+### `__has_embed`
 
-  <details>
-  <summary>示例</summary>
+被检查的路径会链接到所探测的资源
 
-  ```cpp
-  #if __has_embed("data.bin")
-  const char first_byte[] = {
-  #embed "data.bin" limit(1)
-  };
-  #endif
-  ```
-
-  </details>
+```cpp
+#if __has_embed("data.bin")
+const char first_byte[] = {
+#embed "data.bin" limit(1)
+};
+#endif
+```
 
 <!-- END GENERATED ITEMS -->
 
 ## 呈现
 
-<!-- BEGIN GENERATED ITEMS: Presentation -->
+<!-- BEGIN GENERATED ITEMS: presentation -->
 
-- [x] 解析路径 tooltip — 每个链接都将其目标的绝对路径作为 hover tooltip 携带
+| 能力               | 状态 | 问题 |
+| ------------------ | ---- | ---- |
+| 已解析路径工具提示 | 支持 |      |
 
-  编辑器会在跟随链接提示旁边渲染该 tooltip，例如
-  `/usr/include/c++/14/vector (ctrl + click)`。Snapshot 只固定链接目标；
-  测试套件改为在本语料库中每个 fixture 的服务器回复上，针对目标验证 tooltip。
+### 已解析路径工具提示
 
-  <details>
-  <summary>示例</summary>
+每个链接都以悬停工具提示的形式提供其目标的绝对路径
 
-  ```cpp
-  #include "header_a.h"
-  ```
+编辑器会在链接跳转提示旁显示该工具提示，例如
+`/usr/include/c++/14/vector (ctrl + click)`。快照仅固定链接目标；
+测试套件则针对本测试集中的每个测试样例，在服务器响应中验证工具提示
+与目标相符。
 
-  </details>
+```cpp
+#include "header_a.h"
+```
 
 <!-- END GENERATED ITEMS -->
 
-## Module 声明
+## 模块声明
 
-<!-- BEGIN GENERATED ITEMS: Module Declarations -->
+<!-- BEGIN GENERATED ITEMS: module_declarations -->
 
-- [ ] Module 目标 — `import` 和 `module` 声明链接到它们的接口文件
+| 能力     | 状态   | 问题 |
+| -------- | ------ | ---- |
+| 模块目标 | 不支持 |      |
 
-  <details>
-  <summary>示例</summary>
+### 模块目标
 
-  ```cpp
-  export module app;
+`import` 和 `module` 声明会链接到相应的接口文件
 
-  import lib;
-  import :part;
-  export import lib.extra;
-  ```
+```cpp
+export module app;
 
-  </details>
+import lib;
+import :part;
+export import lib.extra;
+```
 
 <!-- END GENERATED ITEMS -->

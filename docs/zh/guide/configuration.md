@@ -1,10 +1,10 @@
-# Configuration
+# 配置
 
 clice 从工作区根目录的 `clice.toml` 读取配置；若该文件不存在，则从 `.clice/config.toml` 读取。配置也可以通过 LSP `initializationOptions`（JSON 格式）传入；`initializationOptions` 中的值覆盖配置文件，合并后仍未设置的项由默认值填充。
 
 配置只在服务器启动时读取一次。修改配置（无论哪个文件）都需要重启服务器，没有热重载。
 
-完整配置的 JSON schema 发布在 [`clice-config.schema.json`](/clice-config.schema.json)；使用 schema 验证 TOML 或 JSON 的编辑器可以指向它。
+完整配置的 JSON Schema 发布于 [`clice-config.schema.json`](/clice-config.schema.json)；支持根据 Schema 验证 TOML 或 JSON 的编辑器可以使用它。
 
 ## 变量替换
 
@@ -14,7 +14,7 @@ clice 从工作区根目录的 `clice.toml` 读取配置；若该文件不存在
 | -------------- | ---------------------- |
 | `${workspace}` | 客户端提供的工作区目录 |
 
-## Project
+## 项目
 
 <!-- BEGIN GENERATED CONFIG: project -->
 
@@ -24,7 +24,7 @@ clice 从工作区根目录的 `clice.toml` 读取配置；若该文件不存在
 | -------- | ------ |
 | `string` | `""`   |
 
-统一磁盘缓存的目录（PCH、PCM 和索引产物）。空值默认为 `${workspace}/.clice`，它通过生成的 .gitignore 和 CACHEDIR.TAG 标记将自己排除在版本控制和备份之外（`.clice/config.toml` 对 Git 保持可见；支持 CACHEDIR.TAG 的备份工具会跳过整个目录）；显式配置的目录不会被标记。解析后的路径会在启动时打印。
+统一磁盘缓存的目录（PCH、PCM 和索引产物）。空值默认为 `${workspace}/.clice`，该目录通过生成的 .gitignore 和 CACHEDIR.TAG 标记将自身排除在版本控制和备份之外（`.clice/config.toml` 对 Git 保持可见；遵循 CACHEDIR.TAG 的备份工具会跳过整个目录）；显式配置的目录不会添加这些标记。最终确定的路径会在启动时打印。
 
 ### `project.logging_dir`
 
@@ -32,7 +32,7 @@ clice 从工作区根目录的 `clice.toml` 读取配置；若该文件不存在
 | -------- | ------ |
 | `string` | `""`   |
 
-日志文件目录；空值派生为 `${cache_dir}/logs`。每个服务器会话在各自带有时间戳的子目录中记录日志。
+日志文件目录；空值时使用 `${cache_dir}/logs`。每次服务器会话都将日志写入各自带时间戳的子目录。
 
 ### `project.compile_commands_paths`
 
@@ -40,7 +40,7 @@ clice 从工作区根目录的 `clice.toml` 读取配置；若该文件不存在
 | ----------------- | ------ |
 | `array of string` | `[]`   |
 
-搜索 compile_commands.json 的路径——可以是文件路径，也可以是目录（在其中查找）。当这些路径都未命中——或列表为空——则搜索工作区根目录，然后依次搜索其每个直接子目录。
+搜索 compile_commands.json 的路径——可以是文件路径，也可以是要在其中查找的目录。如果所有指定位置均未找到该文件——或列表为空——则先搜索工作区根目录，再搜索其每个直接子目录。
 
 ### `project.enable_indexing`
 
@@ -56,7 +56,7 @@ clice 从工作区根目录的 `clice.toml` 读取配置；若该文件不存在
 | -------- | ------- |
 | `string` | `"off"` |
 
-打开文件的只读服务：`"off"` 为每个打开文件构建完整 AST——构建由第一个需要它的请求触发，期间由索引应答；`"on"` 从不构建 PCH——读取仅由索引提供（冷文件会插队索引队列），而 completion 和 signature help 仍按需编译，没有 preamble；`"auto"` 让每个文件从 `"on"` 开始，在第一次编辑意图（编辑、completion、signature help、上下文切换）时切换为 `"off"`，且对于索引无法服务的文件回退为 `"off"`。功能路由始终从当前最佳可用来源回答。
+为打开的文件提供只读服务："off" 以为每个打开的文件构建完整 AST 为目标——构建由第一个需要它的请求触发，期间由索引应答；"on" 从不构建 PCH——读取操作仅由索引提供结果（冷文件会被插到索引队列前端），而代码补全和签名帮助仍会在没有 Preamble 的情况下按需编译；"auto" 使每个文件最初都处于 "on"，在首次出现编辑意图（编辑、代码补全、签名帮助、上下文切换）时切换到 "off"，如果索引无法为某个文件提供服务，则该文件回退到 "off"。功能路由始终选择当前可用的最佳来源进行应答。
 
 ### `project.idle_timeout_ms`
 
@@ -80,7 +80,7 @@ clice 从工作区根目录的 `clice.toml` 读取配置；若该文件不存在
 | -------- | ------ |
 | `uint32` | `2`    |
 
-有状态工作进程的数量——它们在内存中持有 AST 并提供查询服务（hover、semantic tokens 等）；`0` 无效，回退到默认值。
+有状态工作进程的数量——它们在内存中保存 AST 并处理查询（悬停、语义 Token 等）；`0` 无效，回退到默认值。
 
 ### `project.stateless_worker_count`
 
@@ -88,7 +88,7 @@ clice 从工作区根目录的 `clice.toml` 读取配置；若该文件不存在
 | -------- | ------ |
 | `uint32` | —      |
 
-无状态工作进程的初始数量——它们处理临时任务（PCH/PCM 构建、completion、signature help）；默认为机器并行度的一半，至少为 2。`0` 无效，回退到该默认值。
+无状态工作进程的初始数量——它们处理临时任务（PCH/PCM 构建、代码补全、签名帮助）；默认为机器并行度的一半，但至少为 2。`0` 无效，回退到该默认值。
 
 ### `project.min_stateless_worker_count`
 
@@ -96,7 +96,7 @@ clice 从工作区根目录的 `clice.toml` 读取配置；若该文件不存在
 | -------- | ------ |
 | `uint32` | `1`    |
 
-无状态工作进程动态缩容的下限；`0` 无效，回退到默认值。
+无状态工作进程动态伸缩的下限；`0` 无效，回退到默认值。
 
 ### `project.max_stateless_worker_count`
 
@@ -104,13 +104,13 @@ clice 从工作区根目录的 `clice.toml` 读取配置；若该文件不存在
 | -------- | ------ |
 | `uint32` | —      |
 
-无状态工作进程动态扩容的上限；`0` 表示机器并行度，这也是默认值。
+无状态工作进程动态伸缩的上限；`0` 表示机器的并行度，这也是默认值。
 
 <!-- END GENERATED CONFIG -->
 
-## Tracker
+## 跟踪器
 
-文件跟踪器轮询编辑器之外发生的变化（如 `git checkout`、重新生成的 `compile_commands.json`、代码生成器写出的头文件），使服务器无需重启即可感知。将间隔设为 `0` 可禁用对应的轮询循环。
+文件跟踪器会轮询编辑器之外发生的变更（如 `git checkout`、重新生成的 `compile_commands.json`、代码生成器写出的头文件），使服务器无需重启即可检测到这些变更。将间隔设为 `0` 可禁用对应的轮询循环。
 
 <!-- BEGIN GENERATED CONFIG: tracker -->
 
@@ -120,7 +120,7 @@ clice 从工作区根目录的 `clice.toml` 读取配置；若该文件不存在
 | -------- | ------ |
 | `uint32` | `3`    |
 
-编译数据库轮询间隔，单位秒；0 禁用轮询。
+编译数据库轮询间隔，单位为秒；设为 0 将禁用轮询。
 
 ### `tracker.workspace_poll_seconds`
 
@@ -128,13 +128,13 @@ clice 从工作区根目录的 `clice.toml` 读取配置；若该文件不存在
 | -------- | ------ |
 | `uint32` | `30`   |
 
-工作区文件扫描间隔，单位秒；0 禁用轮询。
+工作区文件扫描间隔，单位为秒；设为 0 将禁用轮询。
 
 <!-- END GENERATED CONFIG -->
 
-## Hover
+## 悬停
 
-`[hover]` 节控制 hover 卡片的渲染方式。
+`[hover]` 节控制悬停卡片的渲染方式。
 
 <!-- BEGIN GENERATED CONFIG: hover -->
 
@@ -144,7 +144,7 @@ clice 从工作区根目录的 `clice.toml` 读取配置；若该文件不存在
 | ------ | ------ |
 | `bool` | `true` |
 
-将 hover 卡片渲染为 markdown；`false` 时输出纯文本，供无法显示它的客户端使用。
+将悬停卡片渲染为 Markdown；`false` 时输出纯文本，供无法显示 Markdown 的客户端使用。
 
 ### `hover.show_aka`
 
@@ -156,9 +156,9 @@ clice 从工作区根目录的 `clice.toml` 读取配置；若该文件不存在
 
 <!-- END GENERATED CONFIG -->
 
-## Inlay Hints
+## 内联提示
 
-`[inlay_hints]` 段控制服务器生成哪些 inlay hint 类别。客户端刷新时会以更新后的值请求提示；不需要重新编译。
+`[inlay_hints]` 节控制服务器生成哪些内联提示类别。客户端刷新后会使用更新后的值请求提示；此过程不涉及重新编译。
 
 <!-- BEGIN GENERATED CONFIG: inlay_hints -->
 
@@ -168,7 +168,7 @@ clice 从工作区根目录的 `clice.toml` 读取配置；若该文件不存在
 | ------ | ------ |
 | `bool` | `true` |
 
-总开关：`false` 禁用所有 inlay hints。
+总开关：`false` 会禁用所有内联提示。
 
 ### `inlay_hints.parameters`
 
@@ -176,7 +176,7 @@ clice 从工作区根目录的 `clice.toml` 读取配置；若该文件不存在
 | ------ | ------ |
 | `bool` | `true` |
 
-调用点的参数名提示，例如 `draw(width: 800, height: 600)`，包括为按可变引用传递的参数添加 `&` 标记。
+调用点的参数名提示，例如 `draw(width: 800, height: 600)`；以可变引用传递的实参还会带有 `&` 标记。
 
 ### `inlay_hints.deduced_types`
 
@@ -184,7 +184,7 @@ clice 从工作区根目录的 `clice.toml` 读取配置；若该文件不存在
 | ------ | ------ |
 | `bool` | `true` |
 
-为 `auto` 变量、结构化绑定和推导返回类型显示推导类型提示。
+为 `auto` 变量、结构化绑定（structured bindings）和推导出的返回类型显示推导类型提示。
 
 ### `inlay_hints.designators`
 
@@ -200,7 +200,7 @@ clice 从工作区根目录的 `clice.toml` 读取配置；若该文件不存在
 | ------ | ------- |
 | `bool` | `false` |
 
-长块（函数、类型、命名空间、控制流）的右花括号后显示 `// name` 提示。
+在较长代码块（函数、类型、命名空间或控制流结构）的右花括号后显示 `// name` 提示。
 
 ### `inlay_hints.default_arguments`
 
@@ -216,11 +216,11 @@ clice 从工作区根目录的 `clice.toml` 读取配置；若该文件不存在
 | -------- | ------ |
 | `uint32` | `32`   |
 
-渲染提示文本的字节预算：过长的推导类型回退到糖化拼写或丢弃，过长的默认实参缩写。`0` 表示无限制。
+渲染提示文本的字节预算：过长的推导类型会回退为带语法糖的拼写形式或直接省略，过长的默认实参会缩写。`0` 表示不设上限。
 
 <!-- END GENERATED CONFIG -->
 
-## Code Completion
+## 代码补全
 
 `[code_completion]` 段控制补全项的组装。
 
@@ -232,7 +232,7 @@ clice 从工作区根目录的 `clice.toml` 读取配置；若该文件不存在
 | ------ | ------- |
 | `bool` | `false` |
 
-将关键字作为 snippet 补全（尚未实现）。
+以代码片段形式补全关键字（尚未实现）。
 
 ### `code_completion.enable_function_arguments_snippet`
 
@@ -240,7 +240,7 @@ clice 从工作区根目录的 `clice.toml` 读取配置；若该文件不存在
 | ------ | ------- |
 | `bool` | `false` |
 
-补全调用时插入函数实参作为 snippet。对函数而言，这适用于单独列出的重载，因此要求 `bundle_overloads = false`；类函数宏没有重载集，总是使用 snippet。
+补全函数调用时，以代码片段形式插入函数实参。对于函数，此设置适用于逐一列出的重载，因此需要 `bundle_overloads = false`；函数式宏没有重载集，始终使用代码片段。
 
 ### `code_completion.enable_template_arguments_snippet`
 
@@ -248,7 +248,7 @@ clice 从工作区根目录的 `clice.toml` 读取配置；若该文件不存在
 | ------ | ------- |
 | `bool` | `false` |
 
-补全时插入模板实参作为 snippet（尚未实现）。
+补全时以代码片段形式插入模板实参（尚未实现）。
 
 ### `code_completion.insert_paren_in_function_call`
 
@@ -276,7 +276,7 @@ clice 从工作区根目录的 `clice.toml` 读取配置；若该文件不存在
 
 <!-- END GENERATED CONFIG -->
 
-## Rules
+## 规则
 
 `[[rules]]` 是规则对象数组。规则按声明顺序匹配——后面的规则覆盖前面的。
 
@@ -288,7 +288,7 @@ clice 从工作区根目录的 `clice.toml` 读取配置；若该文件不存在
 | ----------------- | ------ |
 | `array of string` | `[]`   |
 
-用于选择此规则适用文件的 glob 模式：`*` 匹配路径段内的任意字符（单独一个 `*` 模式匹配任意路径），`?` 匹配单个字符，`**` 匹配任意数量的路径段，`{a,b}` 表示选择项，`[0-9]` 表示字符范围，`[!...]` 表示否定范围。
+用于选择此规则所适用文件的 glob 模式：`*` 匹配一个路径段内的任意字符（仅包含 `*` 的模式匹配任意路径），`?` 匹配单个字符，`**` 匹配任意数量的路径段，`{a,b}` 表示备选项，`[0-9]` 表示字符范围，`[!...]` 表示取反的字符范围。
 
 ### `[rules].append`
 
@@ -296,7 +296,7 @@ clice 从工作区根目录的 `clice.toml` 读取配置；若该文件不存在
 | ----------------- | ------ |
 | `array of string` | `[]`   |
 
-为匹配文件追加的编译标志，例如 `["-std=c++20", "-DNDEBUG"]`。
+为匹配的文件追加编译标志，例如 `["-std=c++20", "-DNDEBUG"]`。
 
 ### `[rules].remove`
 
@@ -304,7 +304,7 @@ clice 从工作区根目录的 `clice.toml` 读取配置；若该文件不存在
 | ----------------- | ------ |
 | `array of string` | `[]`   |
 
-为匹配文件移除的编译标志，例如 `["-Wall"]`。
+为匹配的文件移除编译标志，例如 `["-Wall"]`。
 
 <!-- END GENERATED CONFIG -->
 

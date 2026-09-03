@@ -2,305 +2,262 @@
 
 ## Go to Definition
 
-<!-- BEGIN GENERATED ITEMS: Go to Definition -->
+<!-- BEGIN GENERATED ITEMS: go_to_definition -->
 
-- [x] Cross-TU go-to-definition
+| Capability                                                             | Status      | Issues                                                      |
+| ---------------------------------------------------------------------- | ----------- | ----------------------------------------------------------- |
+| Cross-TU go-to-definition                                              | Supported   |                                                             |
+| Definition and declaration alternate at the cursor site                | Supported   |                                                             |
+| Declaration-only symbols navigate to their declaration                 | Supported   |                                                             |
+| Go-to-definition on `#include` directives                              | Supported   |                                                             |
+| Local variables and parameters navigate to their declaration           | Supported   |                                                             |
+| Navigate through macro wrappers to the underlying declaration          | Supported   |                                                             |
+| Names conjured by a macro body or token paste anchor at the invocation | Supported   |                                                             |
+| Tokens inside a `#define` body carry no navigation of their own        | Supported   |                                                             |
+| Error recovery                                                         | Unsupported |                                                             |
+| Dependent member navigation in uninstantiated templates                | Supported   |                                                             |
+| Template specialization navigates to the primary template              | Unsupported | [clangd#212](https://github.com/clangd/clangd/issues/212)   |
+| `auto` keyword navigates to the deduced type                           | Unsupported | [clangd#2055](https://github.com/clangd/clangd/issues/2055) |
 
-  A use in one translation unit resolves to the definition supplied by
-  a sibling source — the answer spans the project, not the current
-  file alone.
+### Cross-TU go-to-definition
 
-  <details>
-  <summary>Example</summary>
+A use in one translation unit resolves to the definition supplied by
+a sibling source — the answer spans the project, not the current
+file alone.
 
-  `main.cpp`:
+`main.cpp`:
 
-  ```cpp
-  #include "shared.h"
+```cpp
+#include "shared.h"
 
-  int run(int value) {
-      return transform(value);
-  }
-  ```
+int run(int value) {
+    return transform(value);
+}
+```
 
-  `lib.cpp`:
+`lib.cpp`:
 
-  ```cpp
-  #include "shared.h"
+```cpp
+#include "shared.h"
 
-  int transform(int value) {
-      return value * 2;
-  }
-  ```
+int transform(int value) {
+    return value * 2;
+}
+```
 
-  `shared.h`:
+`shared.h`:
 
-  ```cpp
-  #pragma once
+```cpp
+#pragma once
 
-  int transform(int value);
-  ```
+int transform(int value);
+```
 
-  </details>
+### Definition and declaration alternate at the cursor site
 
-- [x] Definition and declaration alternate at the cursor site
+On a use, go-to-definition reaches the definition. Invoked on the
+definition it steps to the declaration, and on the declaration it
+steps to the definition — the two sites alternate. A symbol defined
+inline, with no separate declaration, keeps its definition as the
+answer.
 
-  On a use, go-to-definition reaches the definition. Invoked on the
-  definition it steps to the declaration, and on the declaration it
-  steps to the definition — the two sites alternate. A symbol defined
-  inline, with no separate declaration, keeps its definition as the
-  answer.
+```cpp
+int scale(int value);
 
-  <details>
-  <summary>Example</summary>
+int scale(int value) {
+    return value * 2;
+}
 
-  ```cpp
-  int scale(int value);
+int apply(int value) {
+    return scale(value);
+}
+```
 
-  int scale(int value) {
-      return value * 2;
-  }
+### Declaration-only symbols navigate to their declaration
 
-  int apply(int value) {
-      return scale(value);
-  }
-  ```
+Symbols that carry only a declaration — pure virtuals, `extern`
+variables, in-class static constants — resolve to that declaration
+instead of returning nothing.
 
-  </details>
+```cpp
+extern int threshold;
 
-- [x] Declaration-only symbols navigate to their declaration
+int probe(int value);
 
-  Symbols that carry only a declaration — pure virtuals, `extern`
-  variables, in-class static constants — resolve to that declaration
-  instead of returning nothing.
+struct Screen {
+    static const int margin = 4;
+    virtual void refresh() = 0;
+};
 
-  <details>
-  <summary>Example</summary>
+int watch(Screen& screen, int value) {
+    screen.refresh();
+    return probe(value) + threshold + Screen::margin;
+}
+```
 
-  ```cpp
-  extern int threshold;
+### Go-to-definition on `#include` directives
 
-  int probe(int value);
+Invoked on an `#include` line, go-to-definition opens the included
+file. This works for the leading includes compiled into the preamble
+(the PCH) as well as ordinary ones later in the file.
 
-  struct Screen {
-      static const int margin = 4;
-      virtual void refresh() = 0;
-  };
+`main.cpp`:
 
-  int watch(Screen& screen, int value) {
-      screen.refresh();
-      return probe(value) + threshold + Screen::margin;
-  }
-  ```
+```cpp
+#include "panel.h"
 
-  </details>
+int build() {
+    return dimension();
+}
 
-- [x] Go-to-definition on `#include` directives
+#include "extra.h"
 
-  Invoked on an `#include` line, go-to-definition opens the included
-  file. This works for the leading includes compiled into the preamble
-  (the PCH) as well as ordinary ones later in the file.
+int total() {
+    return build() + spacing();
+}
+```
 
-  <details>
-  <summary>Example</summary>
+`extra.h`:
 
-  `main.cpp`:
+```cpp
+inline int spacing() {
+    return 2;
+}
+```
 
-  ```cpp
-  #include "panel.h"
+`panel.h`:
 
-  int build() {
-      return dimension();
-  }
+```cpp
+#pragma once
 
-  #include "extra.h"
+int dimension();
+```
 
-  int total() {
-      return build() + spacing();
-  }
-  ```
+### Local variables and parameters navigate to their declaration
 
-  `extra.h`:
+Go-to-definition on a local variable or parameter jumps to its
+declaration inside the function body.
 
-  ```cpp
-  inline int spacing() {
-      return 2;
-  }
-  ```
+```cpp
+int accumulate(int base) {
+    int total = base;
+    total = total + base;
+    return total;
+}
+```
 
-  `panel.h`:
+### Navigate through macro wrappers to the underlying declaration
 
-  ```cpp
-  #pragma once
+A name spelled in a macro argument anchors at its spelling, so
+definition and declaration alternate there exactly as at a plain
+site, and a later use resolves through the wrapper to the function it
+declares.
 
-  int dimension();
-  ```
+```cpp
+#define DECLARE_HOOK(name) int name(int value)
 
-  </details>
+DECLARE_HOOK(notify);
 
-- [x] Local variables and parameters navigate to their declaration
+DECLARE_HOOK(notify) {
+    return value + 1;
+}
 
-  Go-to-definition on a local variable or parameter jumps to its
-  declaration inside the function body.
+int trigger(int value) {
+    return notify(value);
+}
+```
 
-  <details>
-  <summary>Example</summary>
+### Names conjured by a macro body or token paste anchor at the invocation
 
-  ```cpp
-  int accumulate(int base) {
-      int total = base;
-      total = total + base;
-      return total;
-  }
-  ```
+A name assembled by token paste has no spelling of its own in the
+source, so it anchors at the macro invocation that creates it: the
+invocation is its definition site, and a plain use of the name jumps
+back to that invocation.
 
-  </details>
+```cpp
+#define MAKE_FLAG(name) bool flag_##name = false
 
-- [x] Navigate through macro wrappers to the underlying declaration
+MAKE_FLAG(verbose);
 
-  A name spelled in a macro argument anchors at its spelling, so
-  definition and declaration alternate there exactly as at a plain
-  site, and a later use resolves through the wrapper to the function it
-  declares.
+bool read_flag() {
+    return flag_verbose;
+}
+```
 
-  <details>
-  <summary>Example</summary>
+### Tokens inside a `#define` body carry no navigation of their own
 
-  ```cpp
-  #define DECLARE_HOOK(name) int name(int value)
+A token written inside a macro body has no meaning until an expansion
+assigns one, so navigation on it yields nothing, while the invocation
+token always resolves to the macro being expanded.
 
-  DECLARE_HOOK(notify);
+```cpp
+#define DEFINE_COUNTER int counter = 0
 
-  DECLARE_HOOK(notify) {
-      return value + 1;
-  }
+DEFINE_COUNTER;
+```
 
-  int trigger(int value) {
-      return notify(value);
-  }
-  ```
+### Error recovery
 
-  </details>
+Navigate to a variable whose type is unresolved
 
-- [x] Names conjured by a macro body or token paste anchor at the invocation
+When a variable's type name fails to resolve, go-to-definition on a
+later use of the variable currently returns nothing, even though the
+variable's own declaration is still recorded.
 
-  A name assembled by token paste has no spelling of its own in the
-  source, so it anchors at the macro invocation that creates it: the
-  invocation is its definition site, and a plain use of the name jumps
-  back to that invocation.
+```cpp
+Unresolved handle;  // 'Unresolved' does not name a type
 
-  <details>
-  <summary>Example</summary>
+void read() {
+    (void) handle;  // go-to-def on handle → the declaration above
+}
+```
 
-  ```cpp
-  #define MAKE_FLAG(name) bool flag_##name = false
+### Dependent member navigation in uninstantiated templates
 
-  MAKE_FLAG(verbose);
+Inside a template that is never instantiated, a member accessed on an
+object of a dependent type resolves to the member declared on the
+corresponding class template.
 
-  bool read_flag() {
-      return flag_verbose;
-  }
-  ```
+```cpp
+template <typename T>
+struct Sink {
+    void push(T value);
+};
 
-  </details>
+template <typename T>
+void drain(Sink<T>& sink, T value) {
+    sink.push(value);
+}
+```
 
-- [x] Tokens inside a `#define` body carry no navigation of their own
+### Template specialization navigates to the primary template
 
-  A token written inside a macro body has no meaning until an expansion
-  assigns one, so navigation on it yields nothing, while the invocation
-  token always resolves to the macro being expanded.
+Go-to-definition on the name of an explicit specialization resolves to
+the specialization itself; stepping from it to the primary template it
+specializes is not offered.
 
-  <details>
-  <summary>Example</summary>
+```cpp
+template <typename T>
+struct Formatter {}; // primary template
 
-  ```cpp
-  #define DEFINE_COUNTER int counter = 0
+template <>
+struct Formatter<int> {}; // go-to-def on Formatter → primary template
+```
 
-  DEFINE_COUNTER;
-  ```
+### `auto` keyword navigates to the deduced type
 
-  </details>
+Go-to-definition on the `auto` keyword should reach the type it was
+deduced to; today it returns nothing.
 
-- [ ] Error recovery — navigate to a variable whose type is unresolved
+```cpp
+struct Widget {};
 
-  When a variable's type name fails to resolve, go-to-definition on a
-  later use of the variable currently returns nothing, even though the
-  variable's own declaration is still recorded.
+Widget make_widget();
 
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  Unresolved handle;  // 'Unresolved' does not name a type
-
-  void read() {
-      (void) handle;  // go-to-def on handle → the declaration above
-  }
-  ```
-
-  </details>
-
-- [x] Dependent member navigation in uninstantiated templates
-
-  Inside a template that is never instantiated, a member accessed on an
-  object of a dependent type resolves to the member declared on the
-  corresponding class template.
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  template <typename T>
-  struct Sink {
-      void push(T value);
-  };
-
-  template <typename T>
-  void drain(Sink<T>& sink, T value) {
-      sink.push(value);
-  }
-  ```
-
-  </details>
-
-- [ ] Template specialization navigates to the primary template ([clangd#212](https://github.com/clangd/clangd/issues/212))
-
-  Go-to-definition on the name of an explicit specialization resolves to
-  the specialization itself; stepping from it to the primary template it
-  specializes is not offered.
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  template <typename T>
-  struct Formatter {}; // primary template
-
-  template <>
-  struct Formatter<int> {}; // go-to-def on Formatter → primary template
-  ```
-
-  </details>
-
-- [ ] `auto` keyword navigates to the deduced type ([clangd#2055](https://github.com/clangd/clangd/issues/2055))
-
-  Go-to-definition on the `auto` keyword should reach the type it was
-  deduced to; today it returns nothing.
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  struct Widget {};
-
-  Widget make_widget();
-
-  void use() {
-      auto widget = make_widget(); // go-to-def on auto → Widget
-  }
-  ```
-
-  </details>
+void use() {
+    auto widget = make_widget(); // go-to-def on auto → Widget
+}
+```
 
 <!-- END GENERATED ITEMS -->
 
@@ -310,536 +267,495 @@ Navigate to definitions of implicitly invoked code. In C++ many constructs gener
 
 Implicit navigation requires an unambiguous source token — patterns where the token already has a well-defined go-to-def target (e.g., a variable name always goes to its declaration) cannot be repurposed for implicit call navigation.
 
-<!-- BEGIN GENERATED ITEMS: Implicit Code Navigation -->
+<!-- BEGIN GENERATED ITEMS: implicit_code_navigation -->
+
+| Capability                                          | Status      | Issues                                                      |
+| --------------------------------------------------- | ----------- | ----------------------------------------------------------- |
+| `override` / `final`                                | Unsupported |                                                             |
+| `break` / `continue`                                | Unsupported | [clangd#1921](https://github.com/clangd/clangd/issues/1921) |
+| Constructor calls                                   | Supported   |                                                             |
+| Copy/move construction and assignment               | Partial     |                                                             |
+| CTAD                                                | Supported   |                                                             |
+| Aggregate initialization                            | Supported   |                                                             |
+| `delete` expression                                 | Unsupported |                                                             |
+| `new` expression                                    | Partial     |                                                             |
+| Member initializer list                             | Partial     |                                                             |
+| Delegating constructors                             | Partial     |                                                             |
+| Inherited constructors                              | Partial     |                                                             |
+| Return value implicit construction                  | Supported   |                                                             |
+| Lambda init-capture                                 | Unsupported |                                                             |
+| Overloaded operators                                | Supported   |                                                             |
+| C++20 rewritten operators                           | Supported   |                                                             |
+| User-defined literals                               | Unsupported |                                                             |
+| Implicit conversion operators                       | Unsupported | [clangd#1931](https://github.com/clangd/clangd/issues/1931) |
+| Casts invoking a constructor or conversion operator | Partial     |                                                             |
+| Range-based for                                     | Unsupported |                                                             |
+| Structured bindings                                 | Unsupported |                                                             |
+| `co_await` / `co_yield` / `co_return`               | Partial     |                                                             |
+
+### `override` / `final`
+
+Navigate to the overridden base method
+
+Go-to-definition on the `override` or `final` specifier should reach the
+base class virtual method it overrides; today it returns nothing.
+
+```cpp
+struct Base {
+    virtual void draw();
+    virtual void paint();
+};
+
+struct Derived : Base {
+    void draw() override;  // go-to-def on override → Base::draw
+    void paint() final;    // go-to-def on final → Base::paint
+};
+```
+
+### `break` / `continue`
+
+Navigate to the enclosing loop or switch head
+
+Go-to-definition on `break` or `continue` should reach the head of the
+loop or switch it controls; today it returns nothing.
+
+```cpp
+void loop() {
+    for (int i = 0; i < 10; i += 1) {
+        if (i == 5) break;  // go-to-def on break → the for loop
+        continue;           // go-to-def on continue → the for loop
+    }
+}
+```
+
+### Constructor calls
+
+From parentheses or braces to the selected constructor
+
+Go-to-definition on the opening parenthesis or brace of a constructor
+call reaches the constructor overload resolution selected, for both the
+`T(args)` and `T{args}` forms.
+
+```cpp
+struct Widget {
+    Widget(int w, int h);
+};
+
+void build() {
+    Widget a(800, 600);
+    Widget b{800, 600};
+}
+```
+
+### Copy/move construction and assignment
+
+To the constructor or assignment operator
+
+Go-to-definition on the `=` of an assignment reaches the assignment
+operator. The `=` that introduces a copy- or move-initialization
+(`T b = a;`) is initialization syntax rather than an operator call and is
+not yet resolved.
+
+```cpp
+struct Widget {
+    Widget(int v);
+    Widget(const Widget& other);
+    Widget(Widget&& other);
+    Widget& operator=(const Widget& other);
+};
+
+void copies(Widget a) {
+    Widget b = a;
+    Widget c = static_cast<Widget&&>(a);
+    b = c;
+}
+```
 
-- [ ] `override` / `final` — navigate to the overridden base method
+### CTAD
 
-  Go-to-definition on the `override` or `final` specifier should reach the
-  base class virtual method it overrides; today it returns nothing.
+Navigate to the selected constructor
 
-  <details>
-  <summary>Example</summary>
+When class template argument deduction picks a specialization, go-to-
+definition on the constructor call reaches the constructor that was
+selected, not merely the class template.
 
-  ```cpp
-  struct Base {
-      virtual void draw();
-      virtual void paint();
-  };
+```cpp
+template <typename T>
+struct Box {
+    Box(T input) : value(input) {}
+    T value;
+};
 
-  struct Derived : Base {
-      void draw() override;  // go-to-def on override → Base::draw
-      void paint() final;    // go-to-def on final → Base::paint
-  };
-  ```
+template <typename T>
+Box(T) -> Box<T>;
 
-  </details>
+void use() {
+    Box b(7);
+}
+```
 
-- [ ] `break` / `continue` — navigate to the enclosing loop or switch head ([clangd#1921](https://github.com/clangd/clangd/issues/1921))
+### Aggregate initialization
 
-  Go-to-definition on `break` or `continue` should reach the head of the
-  loop or switch it controls; today it returns nothing.
+Navigate to the struct definition
 
-  <details>
-  <summary>Example</summary>
+An aggregate has no constructor, so go-to-definition on its initializer
+brace reaches the aggregate's definition.
 
-  ```cpp
-  void loop() {
-      for (int i = 0; i < 10; i += 1) {
-          if (i == 5) break;  // go-to-def on break → the for loop
-          continue;           // go-to-def on continue → the for loop
-      }
-  }
-  ```
+```cpp
+struct Point {
+    int x;
+    int y;
+};
 
-  </details>
+void use() {
+    auto p = Point{1, 2};
+}
+```
 
-- [x] Constructor calls — from parentheses or braces to the selected constructor
+### `delete` expression
 
-  Go-to-definition on the opening parenthesis or brace of a constructor
-  call reaches the constructor overload resolution selected, for both the
-  `T(args)` and `T{args}` forms.
+Navigate to the destructor
 
-  <details>
-  <summary>Example</summary>
+Go-to-definition on `delete` should reach the destructor it runs; today
+it returns nothing.
 
-  ```cpp
-  struct Widget {
-      Widget(int w, int h);
-  };
+```cpp
+struct Widget {
+    ~Widget();
+};
 
-  void build() {
-      Widget a(800, 600);
-      Widget b{800, 600};
-  }
-  ```
+void dispose(Widget* widget) {
+    delete widget;  // go-to-def on delete → Widget::~Widget
+}
+```
 
-  </details>
+### `new` expression
 
-- [ ] Copy/move construction and assignment — to the constructor or assignment operator _(partial)_
+Navigate to the constructor and overloaded `operator new`
 
-  Go-to-definition on the `=` of an assignment reaches the assignment
-  operator. The `=` that introduces a copy- or move-initialization
-  (`T b = a;`) is initialization syntax rather than an operator call and is
-  not yet resolved.
+Go-to-definition on `new` reaches the class's overloaded `operator new`.
+The constructor invoked by the same expression is not part of the reply.
 
-  <details>
-  <summary>Example</summary>
+```cpp
+struct Pool {
+    Pool();
+    static void* operator new(decltype(sizeof(0)) size);
+};
 
-  ```cpp
-  struct Widget {
-      Widget(int v);
-      Widget(const Widget& other);
-      Widget(Widget&& other);
-      Widget& operator=(const Widget& other);
-  };
+void make() {
+    Pool* p = new Pool();
+}
+```
 
-  void copies(Widget a) {
-      Widget b = a;
-      Widget c = static_cast<Widget&&>(a);
-      b = c;
-  }
-  ```
+### Member initializer list
 
-  </details>
+Navigate to base and member constructors
 
-- [x] CTAD — navigate to the selected constructor
+The base and member constructors run by an initializer list are reached
+from the opening parenthesis of each initializer. The initializer name
+itself resolves to the base type or the member, so navigation to the
+constructor goes through the parenthesis.
 
-  When class template argument deduction picks a specialization, go-to-
-  definition on the constructor call reaches the constructor that was
-  selected, not merely the class template.
+```cpp
+struct Base {
+    Base(int x);
+};
 
-  <details>
-  <summary>Example</summary>
+struct Logger {
+    Logger(int level);
+};
 
-  ```cpp
-  template <typename T>
-  struct Box {
-      Box(T input) : value(input) {}
-      T value;
-  };
+struct App : Base {
+    Logger logger;
+    App() : Base(42), logger(1) {}
+};
+```
 
-  template <typename T>
-  Box(T) -> Box<T>;
+### Delegating constructors
 
-  void use() {
-      Box b(7);
-  }
-  ```
+Navigate to the target constructor
 
-  </details>
+A delegating constructor's target is reached from the opening parenthesis
+of the delegated call. The constructor name itself resolves to the class
+type, so navigation to the target constructor goes through the
+parenthesis.
 
-- [x] Aggregate initialization — navigate to the struct definition
+```cpp
+struct Widget {
+    Widget(int w, int h);
+    Widget() : Widget(0, 0) {}
+};
+```
 
-  An aggregate has no constructor, so go-to-definition on its initializer
-  brace reaches the aggregate's definition.
+### Inherited constructors
 
-  <details>
-  <summary>Example</summary>
+Navigate to the base constructors brought in by `using`
 
-  ```cpp
-  struct Point {
-      int x;
-      int y;
-  };
+Go-to-definition on an inherited-constructor declaration
+(`using Base::Base;`) reaches a base constructor. When the base declares
+several constructors the reply resolves to one of them rather than
+listing the whole set.
 
-  void use() {
-      auto p = Point{1, 2};
-  }
-  ```
+```cpp
+struct Base {
+    Base(int x);
+    Base(int x, int y);
+};
+
+struct Derived : Base {
+    using Base::Base;
+};
+```
 
-  </details>
+### Return value implicit construction
 
-- [ ] `delete` expression — navigate to the destructor
+Navigate to the constructor
 
-  Go-to-definition on `delete` should reach the destructor it runs; today
-  it returns nothing.
+A braced `return {args}` implicitly constructs the function's return
+type; go-to-definition on the brace reaches the selected constructor.
 
-  <details>
-  <summary>Example</summary>
+```cpp
+struct Widget {
+    Widget(int w, int h);
+};
 
-  ```cpp
-  struct Widget {
-      ~Widget();
-  };
+Widget create() {
+    return {800, 600};
+}
+```
 
-  void dispose(Widget* widget) {
-      delete widget;  // go-to-def on delete → Widget::~Widget
-  }
-  ```
+### Lambda init-capture
 
-  </details>
+Navigate to the constructor
 
-- [ ] `new` expression — navigate to the constructor and overloaded `operator new` _(partial)_
+Go-to-definition on the `=` of a lambda init-capture should reach the
+constructor that builds the captured value; today it returns nothing.
 
-  Go-to-definition on `new` reaches the class's overloaded `operator new`.
-  The constructor invoked by the same expression is not part of the reply.
+```cpp
+struct Widget {
+    Widget(int v);
+    Widget(Widget&& other);
+};
 
-  <details>
-  <summary>Example</summary>
+void use(Widget w) {
+    // go-to-def on = → Widget(Widget&&)
+    auto f = [x = static_cast<Widget&&>(w)] {};
+}
+```
 
-  ```cpp
-  struct Pool {
-      Pool();
-      static void* operator new(decltype(sizeof(0)) size);
-  };
+### Overloaded operators
 
-  void make() {
-      Pool* p = new Pool();
-  }
-  ```
+From the operator token to its definition
 
-  </details>
+Go-to-definition on an overloaded operator token reaches the operator's
+definition. The binary, subscript, call and arrow operators (`+`, `[]`,
+`()`, `->`) are all resolved.
 
-- [ ] Member initializer list — navigate to base and member constructors _(partial)_
+```cpp
+struct Iterator {
+    int value;
+};
 
-  The base and member constructors run by an initializer list are reached
-  from the opening parenthesis of each initializer. The initializer name
-  itself resolves to the base type or the member, so navigation to the
-  constructor goes through the parenthesis.
+struct Vec {
+    Vec operator+(const Vec& other) const;
+    int operator[](int index) const;
+    int operator()(int a, int b) const;
+    Iterator* operator->();
+};
 
-  <details>
-  <summary>Example</summary>
+void use(Vec a, Vec b) {
+    Vec c = a + b;
+    int e = a[0];
+    int f = a(1, 2);
+    a->value;
+}
+```
 
-  ```cpp
-  struct Base {
-      Base(int x);
-  };
+### C++20 rewritten operators
 
-  struct Logger {
-      Logger(int level);
-  };
+Navigate to the operator the rewrite uses
 
-  struct App : Base {
-      Logger logger;
-      App() : Base(42), logger(1) {}
-  };
-  ```
+For a comparison synthesized by the C++20 rewrite rules, go-to-definition
+on the written operator reaches the operator that actually implements it:
+`!=` reaches `operator==`, and `>` reaches `operator<=>`.
 
-  </details>
+```cpp
+namespace std {
+struct strong_ordering {
+    int n;
+    constexpr operator int() const { return n; }
+    static const strong_ordering equal, greater, less;
+};
+constexpr strong_ordering strong_ordering::equal = {0};
+constexpr strong_ordering strong_ordering::greater = {1};
+constexpr strong_ordering strong_ordering::less = {-1};
+}
 
-- [ ] Delegating constructors — navigate to the target constructor _(partial)_
+struct S {
+    int value;
+    bool operator==(const S& other) const;
+    auto operator<=>(const S& other) const = default;
+};
 
-  A delegating constructor's target is reached from the opening parenthesis
-  of the delegated call. The constructor name itself resolves to the class
-  type, so navigation to the target constructor goes through the
-  parenthesis.
+void use(S a, S b) {
+    bool ne = a != b;
+    bool gt = a > b;
+}
+```
 
-  <details>
-  <summary>Example</summary>
+### User-defined literals
 
-  ```cpp
-  struct Widget {
-      Widget(int w, int h);
-      Widget() : Widget(0, 0) {}
-  };
-  ```
+Navigate to the literal operator
 
-  </details>
+Go-to-definition on a user-defined-literal suffix should reach its
+`operator""`; today it returns nothing.
 
-- [ ] Inherited constructors — navigate to the base constructors brought in by `using` _(partial)_
+```cpp
+struct Duration {
+    unsigned long long ticks;
+};
 
-  Go-to-definition on an inherited-constructor declaration
-  (`using Base::Base;`) reaches a base constructor. When the base declares
-  several constructors the reply resolves to one of them rather than
-  listing the whole set.
+Duration operator""_ms(unsigned long long value);
 
-  <details>
-  <summary>Example</summary>
+void use() {
+    Duration d = 500_ms;  // go-to-def on _ms → operator""_ms
+}
+```
 
-  ```cpp
-  struct Base {
-      Base(int x);
-      Base(int x, int y);
-  };
+### Implicit conversion operators
 
-  struct Derived : Base {
-      using Base::Base;
-  };
-  ```
-
-  </details>
-
-- [x] Return value implicit construction — navigate to the constructor
-
-  A braced `return {args}` implicitly constructs the function's return
-  type; go-to-definition on the brace reaches the selected constructor.
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  struct Widget {
-      Widget(int w, int h);
-  };
-
-  Widget create() {
-      return {800, 600};
-  }
-  ```
-
-  </details>
-
-- [ ] Lambda init-capture — navigate to the constructor
-
-  Go-to-definition on the `=` of a lambda init-capture should reach the
-  constructor that builds the captured value; today it returns nothing.
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  struct Widget {
-      Widget(int v);
-      Widget(Widget&& other);
-  };
-
-  void use(Widget w) {
-      // go-to-def on = → Widget(Widget&&)
-      auto f = [x = static_cast<Widget&&>(w)] {};
-  }
-  ```
-
-  </details>
-
-- [x] Overloaded operators — from the operator token to its definition
-
-  Go-to-definition on an overloaded operator token reaches the operator's
-  definition. The binary, subscript, call and arrow operators (`+`, `[]`,
-  `()`, `->`) are all resolved.
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  struct Iterator {
-      int value;
-  };
-
-  struct Vec {
-      Vec operator+(const Vec& other) const;
-      int operator[](int index) const;
-      int operator()(int a, int b) const;
-      Iterator* operator->();
-  };
-
-  void use(Vec a, Vec b) {
-      Vec c = a + b;
-      int e = a[0];
-      int f = a(1, 2);
-      a->value;
-  }
-  ```
-
-  </details>
-
-- [x] C++20 rewritten operators — navigate to the operator the rewrite uses
-
-  For a comparison synthesized by the C++20 rewrite rules, go-to-definition
-  on the written operator reaches the operator that actually implements it:
-  `!=` reaches `operator==`, and `>` reaches `operator<=>`.
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  namespace std {
-  struct strong_ordering {
-      int n;
-      constexpr operator int() const { return n; }
-      static const strong_ordering equal, greater, less;
-  };
-  constexpr strong_ordering strong_ordering::equal = {0};
-  constexpr strong_ordering strong_ordering::greater = {1};
-  constexpr strong_ordering strong_ordering::less = {-1};
-  }
-
-  struct S {
-      int value;
-      bool operator==(const S& other) const;
-      auto operator<=>(const S& other) const = default;
-  };
-
-  void use(S a, S b) {
-      bool ne = a != b;
-      bool gt = a > b;
-  }
-  ```
-
-  </details>
-
-- [ ] User-defined literals — navigate to the literal operator
-
-  Go-to-definition on a user-defined-literal suffix should reach its
-  `operator""`; today it returns nothing.
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  struct Duration {
-      unsigned long long ticks;
-  };
-
-  Duration operator""_ms(unsigned long long value);
-
-  void use() {
-      Duration d = 500_ms;  // go-to-def on _ms → operator""_ms
-  }
-  ```
-
-  </details>
-
-- [ ] Implicit conversion operators — from a conversion context to the operator ([clangd#1931](https://github.com/clangd/clangd/issues/1931))
-
-  Go-to-definition from a context that runs a user-defined conversion (a
-  condition, `!`, an explicit `bool(...)`) should reach the conversion
-  operator; today it returns nothing.
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  struct Guard {
-      explicit operator bool() const;
-  };
-
-  void use(Guard g) {
-      if (g) {}      // go-to-def on ( → Guard::operator bool
-      bool ok = !g;  // go-to-def on ! → Guard::operator bool
-  }
-  ```
-
-  </details>
-
-- [ ] Casts invoking a constructor or conversion operator _(partial)_
-
-  A `static_cast` that constructs its target reaches the selected
-  constructor. A `static_cast` that runs a user-defined conversion operator
-  does not yet reach the operator.
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  struct Meters {
-      explicit operator double() const;
-  };
-
-  struct Foo {
-      explicit Foo(int value);
-  };
-
-  void use(Meters m) {
-      double d = static_cast<double>(m);
-      Foo f = static_cast<Foo>(42);
-  }
-  ```
-
-  </details>
-
-- [ ] Range-based for — navigate to `begin()` / `end()`
-
-  Go-to-definition on the `:` of a range-based for should reach the
-  `begin()` / `end()` chosen for the range; today it returns nothing.
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  struct Iterator {
-      int operator*() const;
-      Iterator& operator++();
-      bool operator!=(const Iterator& other) const;
-  };
-
-  struct Range {
-      Iterator begin();
-      Iterator end();
-  };
-
-  void use(Range r) {
-      for (int x : r) {}  // go-to-def on : → Range::begin / Range::end
-  }
-  ```
-
-  </details>
-
-- [ ] Structured bindings — navigate to the underlying accessors or fields
-
-  Go-to-definition on a structured binding name resolves to the binding
-  itself rather than the underlying field or accessor it names.
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  struct Pair {
-      int first;
-      int second;
-  };
-
-  void use(Pair p) {
-      // go-to-def on a → Pair::first, on b → Pair::second
-      auto [a, b] = p;
-  }
-  ```
-
-  </details>
-
-- [ ] `co_await` / `co_yield` / `co_return` — navigate to the awaiter or promise method _(partial)_
-
-  Go-to-definition on `co_yield` reaches the promise's `yield_value`. The
-  `co_await` and `co_return` keywords do not yet reach the awaiter's or
-  promise's methods.
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  namespace std {
-  template <typename Ret, typename...>
-  struct coroutine_traits {
-      using promise_type = typename Ret::promise_type;
-  };
-  template <typename = void>
-  struct coroutine_handle {
-      coroutine_handle() = default;
-      template <typename Promise>
-      coroutine_handle(coroutine_handle<Promise>) noexcept;
-      static coroutine_handle from_address(void*) noexcept;
-  };
-  struct suspend_never {
-      bool await_ready() const noexcept;
-      void await_suspend(coroutine_handle<>) const noexcept;
-      void await_resume() const noexcept;
-  };
-  }
-
-  struct Awaiter {
-      bool await_ready() const noexcept;
-      void await_suspend(std::coroutine_handle<>) const noexcept;
-      int await_resume() const noexcept;
-  };
-
-  struct Task {
-      struct promise_type {
-          Task get_return_object();
-          std::suspend_never initial_suspend();
-          std::suspend_never final_suspend() noexcept;
-          Awaiter yield_value(int value);
-          void return_value(int value);
-          void unhandled_exception();
-      };
-  };
-
-  Task example() {
-      co_await Awaiter{};
-      co_yield 1;
-      co_return 2;
-  }
-  ```
-
-  </details>
+From a conversion context to the operator
+
+Go-to-definition from a context that runs a user-defined conversion (a
+condition, `!`, an explicit `bool(...)`) should reach the conversion
+operator; today it returns nothing.
+
+```cpp
+struct Guard {
+    explicit operator bool() const;
+};
+
+void use(Guard g) {
+    if (g) {}      // go-to-def on ( → Guard::operator bool
+    bool ok = !g;  // go-to-def on ! → Guard::operator bool
+}
+```
+
+### Casts invoking a constructor or conversion operator
+
+A `static_cast` that constructs its target reaches the selected
+constructor. A `static_cast` that runs a user-defined conversion operator
+does not yet reach the operator.
+
+```cpp
+struct Meters {
+    explicit operator double() const;
+};
+
+struct Foo {
+    explicit Foo(int value);
+};
+
+void use(Meters m) {
+    double d = static_cast<double>(m);
+    Foo f = static_cast<Foo>(42);
+}
+```
+
+### Range-based for
+
+Navigate to `begin()` / `end()`
+
+Go-to-definition on the `:` of a range-based for should reach the
+`begin()` / `end()` chosen for the range; today it returns nothing.
+
+```cpp
+struct Iterator {
+    int operator*() const;
+    Iterator& operator++();
+    bool operator!=(const Iterator& other) const;
+};
+
+struct Range {
+    Iterator begin();
+    Iterator end();
+};
+
+void use(Range r) {
+    for (int x : r) {}  // go-to-def on : → Range::begin / Range::end
+}
+```
+
+### Structured bindings
+
+Navigate to the underlying accessors or fields
+
+Go-to-definition on a structured binding name resolves to the binding
+itself rather than the underlying field or accessor it names.
+
+```cpp
+struct Pair {
+    int first;
+    int second;
+};
+
+void use(Pair p) {
+    // go-to-def on a → Pair::first, on b → Pair::second
+    auto [a, b] = p;
+}
+```
+
+### `co_await` / `co_yield` / `co_return`
+
+Navigate to the awaiter or promise method
+
+Go-to-definition on `co_yield` reaches the promise's `yield_value`. The
+`co_await` and `co_return` keywords do not yet reach the awaiter's or
+promise's methods.
+
+```cpp
+namespace std {
+template <typename Ret, typename...>
+struct coroutine_traits {
+    using promise_type = typename Ret::promise_type;
+};
+template <typename = void>
+struct coroutine_handle {
+    coroutine_handle() = default;
+    template <typename Promise>
+    coroutine_handle(coroutine_handle<Promise>) noexcept;
+    static coroutine_handle from_address(void*) noexcept;
+};
+struct suspend_never {
+    bool await_ready() const noexcept;
+    void await_suspend(coroutine_handle<>) const noexcept;
+    void await_resume() const noexcept;
+};
+}
+
+struct Awaiter {
+    bool await_ready() const noexcept;
+    void await_suspend(std::coroutine_handle<>) const noexcept;
+    int await_resume() const noexcept;
+};
+
+struct Task {
+    struct promise_type {
+        Task get_return_object();
+        std::suspend_never initial_suspend();
+        std::suspend_never final_suspend() noexcept;
+        Awaiter yield_value(int value);
+        void return_value(int value);
+        void unhandled_exception();
+    };
+};
+
+Task example() {
+    co_await Awaiter{};
+    co_yield 1;
+    co_return 2;
+}
+```
 
 <!-- END GENERATED ITEMS -->
 
@@ -849,314 +765,288 @@ Navigate from a symbol usage or definition to its declaration. In C++, many enti
 
 clice returns the declaration locations plus the definition — symbols defined inline have no separate declaration — minus the site the cursor already stands on, so declaration and definition sites alternate just like go-to-definition.
 
-<!-- BEGIN GENERATED ITEMS: Go to Declaration -->
+<!-- BEGIN GENERATED ITEMS: go_to_declaration -->
 
-- [x] Cross-TU go-to-declaration
+| Capability                                                        | Status    | Issues |
+| ----------------------------------------------------------------- | --------- | ------ |
+| Cross-TU go-to-declaration                                        | Supported |        |
+| Functions                                                         | Supported |        |
+| Forward declarations of classes and structs                       | Supported |        |
+| Static data member                                                | Supported |        |
+| `extern` variable                                                 | Supported |        |
+| Multiple declarations                                             | Supported |        |
+| Declaration and definition with cosmetically different signatures | Supported |        |
 
-  Go-to-declaration on a use resolves sites in other files: the
-  prototype lives in a shared header and the out-of-line definition in a
-  sibling source, and both are offered from a use in another file.
+### Cross-TU go-to-declaration
 
-  <details>
-  <summary>Example</summary>
+Go-to-declaration on a use resolves sites in other files: the
+prototype lives in a shared header and the out-of-line definition in a
+sibling source, and both are offered from a use in another file.
 
-  `main.cpp`:
+`main.cpp`:
 
-  ```cpp
-  #include "shared.h"
+```cpp
+#include "shared.h"
 
-  int run(int value) {
-      return scale(value);
-  }
-  ```
+int run(int value) {
+    return scale(value);
+}
+```
 
-  `lib.cpp`:
+`lib.cpp`:
 
-  ```cpp
-  #include "shared.h"
+```cpp
+#include "shared.h"
 
-  int scale(int value) {
-      return value * 2;
-  }
-  ```
+int scale(int value) {
+    return value * 2;
+}
+```
 
-  `shared.h`:
+`shared.h`:
 
-  ```cpp
-  #pragma once
+```cpp
+#pragma once
 
-  int scale(int value);
-  ```
+int scale(int value);
+```
 
-  </details>
+### Functions
 
-- [x] Functions — from a use or out-of-line definition to the prototype
+From a use or out-of-line definition to the prototype
 
-  Go-to-declaration reaches a function's prototype both from a call site
-  and from the out-of-line definition — the two non-cursor sites the
-  prototype alternates with.
+Go-to-declaration reaches a function's prototype both from a call site
+and from the out-of-line definition — the two non-cursor sites the
+prototype alternates with.
 
-  <details>
-  <summary>Example</summary>
+```cpp
+struct Widget {
+    void draw();
+};
 
-  ```cpp
-  struct Widget {
-      void draw();
-  };
+void Widget::draw() {}
 
-  void Widget::draw() {}
+void render(Widget& widget) {
+    widget.draw();
+}
+```
 
-  void render(Widget& widget) {
-      widget.draw();
-  }
-  ```
+### Forward declarations of classes and structs
 
-  </details>
+A class with a forward declaration and a later definition offers both
+from a use — the forward declaration stays part of the declaration set
+rather than being dropped in favour of the definition.
 
-- [x] Forward declarations of classes and structs
+```cpp
+struct Widget;
 
-  A class with a forward declaration and a later definition offers both
-  from a use — the forward declaration stays part of the declaration set
-  rather than being dropped in favour of the definition.
+struct Widget {
+    int value;
+};
 
-  <details>
-  <summary>Example</summary>
+class Panel;
 
-  ```cpp
-  struct Widget;
+class Panel {
+    int width;
+};
 
-  struct Widget {
-      int value;
-  };
+int probe(Widget& widget, Panel& panel) {
+    return widget.value;
+}
+```
 
-  class Panel;
+### Static data member
 
-  class Panel {
-      int width;
-  };
+To the in-class declaration
 
-  int probe(Widget& widget, Panel& panel) {
-      return widget.value;
-  }
-  ```
+A static data member is declared inside the class and defined out of
+line; go-to-declaration on a use offers the in-class declaration
+alongside the definition.
 
-  </details>
+```cpp
+struct Config {
+    static int timeout;
+};
 
-- [x] Static data member — to the in-class declaration
+int Config::timeout = 30;
 
-  A static data member is declared inside the class and defined out of
-  line; go-to-declaration on a use offers the in-class declaration
-  alongside the definition.
+int read_config() {
+    return Config::timeout;
+}
+```
 
-  <details>
-  <summary>Example</summary>
+### `extern` variable
 
-  ```cpp
-  struct Config {
-      static int timeout;
-  };
+To the declaration
 
-  int Config::timeout = 30;
+A use of an `extern` variable offers the `extern` declaration and
+the defining declaration together, so the header-side declaration is
+always reachable from a use.
 
-  int read_config() {
-      return Config::timeout;
-  }
-  ```
+```cpp
+extern int log_level;
 
-  </details>
+int log_level = 0;
 
-- [x] `extern` variable — to the declaration
+int read_level() {
+    return log_level;
+}
+```
 
-  A use of an `extern` variable offers the `extern` declaration and
-  the defining declaration together, so the header-side declaration is
-  always reachable from a use.
+### Multiple declarations
 
-  <details>
-  <summary>Example</summary>
+Every declaration site
 
-  ```cpp
-  extern int log_level;
+When an entity is declared in several places, go-to-declaration on a
+use lists every declaration site, not only the nearest one.
 
-  int log_level = 0;
+```cpp
+int clamp(int value);
+int clamp(int value);
 
-  int read_level() {
-      return log_level;
-  }
-  ```
+int clamp(int value) {
+    return value < 0 ? 0 : value;
+}
 
-  </details>
+int hold(int value) {
+    return clamp(value);
+}
+```
 
-- [x] Multiple declarations — every declaration site
+### Declaration and definition with cosmetically different signatures
 
-  When an entity is declared in several places, go-to-declaration on a
-  use lists every declaration site, not only the nearest one.
+Parameter names, and a top-level `const` on a parameter, are not part
+of a function's type: the declaration and the definition below spell the
+same function differently, yet go-to-declaration still connects a use to
+the prototype.
 
-  <details>
-  <summary>Example</summary>
+```cpp
+int render(int width, const int height);
 
-  ```cpp
-  int clamp(int value);
-  int clamp(int value);
+int render(int w, int h) {
+    return w * h;
+}
 
-  int clamp(int value) {
-      return value < 0 ? 0 : value;
-  }
-
-  int hold(int value) {
-      return clamp(value);
-  }
-  ```
-
-  </details>
-
-- [x] Declaration and definition with cosmetically different signatures
-
-  Parameter names, and a top-level `const` on a parameter, are not part
-  of a function's type: the declaration and the definition below spell the
-  same function differently, yet go-to-declaration still connects a use to
-  the prototype.
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  int render(int width, const int height);
-
-  int render(int w, int h) {
-      return w * h;
-  }
-
-  int use_render() {
-      return render(800, 600);
-  }
-  ```
-
-  </details>
+int use_render() {
+    return render(800, 600);
+}
+```
 
 <!-- END GENERATED ITEMS -->
 
 ## Go to Implementation
 
-<!-- BEGIN GENERATED ITEMS: Go to Implementation -->
+<!-- BEGIN GENERATED ITEMS: go_to_implementation -->
 
-- [x] Virtual methods — each level of a chain to its own overriders
+| Capability                    | Status      | Issues                                                    |
+| ----------------------------- | ----------- | --------------------------------------------------------- |
+| Override chain                | Supported   |                                                           |
+| Sibling overrides             | Supported   |                                                           |
+| Non-virtual function          | Unsupported | [clangd#854](https://github.com/clangd/clangd/issues/854) |
+| Base class                    | Supported   |                                                           |
+| Template duck-type navigation | Unsupported |                                                           |
 
-  Along a three-level override chain, go-to-implementation from each method
-  reaches the override one level down — base to middle, middle to leaf.
+### Override chain
 
-  <details>
-  <summary>Example</summary>
+Each level of a chain to its own overriders
 
-  ```cpp
-  struct Base {
-      virtual void run() = 0;
-  };
+Along a three-level override chain, go-to-implementation from each method
+reaches the override one level down — base to middle, middle to leaf.
 
-  struct Middle : Base {
-      void run() override {}
-  };
+```cpp
+struct Base {
+    virtual void run() = 0;
+};
 
-  struct Leaf : Middle {
-      void run() override {}
-  };
-  ```
+struct Middle : Base {
+    void run() override {}
+};
 
-  </details>
+struct Leaf : Middle {
+    void run() override {}
+};
+```
 
-- [x] Virtual method — every sibling override
+### Sibling overrides
 
-  Go-to-implementation on a virtual method lists every override across
-  the sibling derived classes.
+Every sibling override
 
-  <details>
-  <summary>Example</summary>
+Go-to-implementation on a virtual method lists every override across
+the sibling derived classes.
 
-  ```cpp
-  struct Shape {
-      virtual int area() = 0;
-  };
+```cpp
+struct Shape {
+    virtual int area() = 0;
+};
 
-  struct Circle : Shape {
-      int area() override { return 1; }
-  };
+struct Circle : Shape {
+    int area() override { return 1; }
+};
 
-  struct Square : Shape {
-      int area() override { return 2; }
-  };
+struct Square : Shape {
+    int area() override { return 2; }
+};
 
-  struct Triangle : Shape {
-      int area() override { return 3; }
-  };
-  ```
+struct Triangle : Shape {
+    int area() override { return 3; }
+};
+```
 
-  </details>
+### Non-virtual function
 
-- [ ] Non-virtual function — declaration to out-of-line definition ([clangd#854](https://github.com/clangd/clangd/issues/854))
+Declaration to out-of-line definition
 
-  Go-to-implementation on a non-virtual function declaration should reach
-  its out-of-line definition, behaving as a superset of go-to-definition;
-  today it returns nothing.
+Go-to-implementation on a non-virtual function declaration should reach
+its out-of-line definition, behaving as a superset of go-to-definition;
+today it returns nothing.
 
-  <details>
-  <summary>Example</summary>
+```cpp
+struct Widget {
+    void draw();  // go-to-impl on draw → out-of-line definition below
+};
 
-  ```cpp
-  struct Widget {
-      void draw();  // go-to-impl on draw → out-of-line definition below
-  };
+void Widget::draw() {}
+```
 
-  void Widget::draw() {}
-  ```
+### Base class
 
-  </details>
+Every derived class
 
-- [x] Base class — every derived class
+Go-to-implementation on a base class name lists the classes that derive
+from it.
 
-  Go-to-implementation on a base class name lists the classes that derive
-  from it.
+```cpp
+struct Base {};
 
-  <details>
-  <summary>Example</summary>
+struct Circle : Base {};
 
-  ```cpp
-  struct Base {};
+struct Square : Base {};
+```
 
-  struct Circle : Base {};
+### Template duck-type navigation
 
-  struct Square : Base {};
-  ```
+From a dependent member call, go-to-implementation should list the
+concrete methods of every known instantiation; the same applies to a
+generic lambda's dependent calls. Today it returns nothing.
 
-  </details>
+```cpp
+template <typename T>
+void process(T& obj) {
+    obj.foo();  // go-to-impl on foo → A::foo (from the process(a) instantiation)
+}
 
-- [ ] Template duck-type navigation
+struct A {
+    void foo() {}
+};
 
-  From a dependent member call, go-to-implementation should list the
-  concrete methods of every known instantiation; the same applies to a
-  generic lambda's dependent calls. Today it returns nothing.
+void run(A a) {
+    process(a);
+}
 
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  template <typename T>
-  void process(T& obj) {
-      obj.foo();  // go-to-impl on foo → A::foo (from the process(a) instantiation)
-  }
-
-  struct A {
-      void foo() {}
-  };
-
-  void run(A a) {
-      process(a);
-  }
-
-  void generic() {
-      auto call = [](auto& x) { x.bar(); };  // go-to-impl on bar → the concrete bar
-  }
-  ```
-
-  </details>
+void generic() {
+    auto call = [](auto& x) { x.bar(); };  // go-to-impl on bar → the concrete bar
+}
+```
 
 <!-- END GENERATED ITEMS -->
 
@@ -1164,758 +1054,648 @@ clice returns the declaration locations plus the definition — symbols defined 
 
 Navigate to the type definition of a symbol. Applicable to variables, parameters, fields, and any other named entity that has a type. When the type is a type alias or a pointer-like wrapper, navigation should unwrap to the underlying/pointee type.
 
-<!-- BEGIN GENERATED ITEMS: Go to Type Definition -->
+<!-- BEGIN GENERATED ITEMS: go_to_type_definition -->
 
-- [x] Variables and parameters
+| Capability                        | Status      | Issues                                                      |
+| --------------------------------- | ----------- | ----------------------------------------------------------- |
+| Variables and parameters          | Supported   |                                                             |
+| Class and struct fields           | Supported   |                                                             |
+| `auto`-deduced variables          | Unsupported |                                                             |
+| Smart pointer to the pointee type | Partial     | [clangd#1026](https://github.com/clangd/clangd/issues/1026) |
+| Type aliases                      | Partial     |                                                             |
+| Structured binding variables      | Supported   |                                                             |
 
-  Go-to-type-definition on a local variable or a parameter reaches the
-  definition of its type.
+### Variables and parameters
 
-  <details>
-  <summary>Example</summary>
+Go-to-type-definition on a local variable or a parameter reaches the
+definition of its type.
 
-  ```cpp
-  struct Widget {};
+```cpp
+struct Widget {};
 
-  Widget make_widget();
+Widget make_widget();
 
-  int probe(Widget param) {
-      Widget local = make_widget();
-      return 0;
-  }
-  ```
+int probe(Widget param) {
+    Widget local = make_widget();
+    return 0;
+}
+```
 
-  </details>
+### Class and struct fields
 
-- [x] Class and struct fields
+Go-to-type-definition on a field access reaches the definition of the
+field's type.
 
-  Go-to-type-definition on a field access reaches the definition of the
-  field's type.
+```cpp
+struct Logger {};
 
-  <details>
-  <summary>Example</summary>
+class Store {};
 
-  ```cpp
-  struct Logger {};
+struct App {
+    Logger logger;
+    Store store;
+};
 
-  class Store {};
+int use(App& app) {
+    app.logger;
+    app.store;
+    return 0;
+}
+```
 
-  struct App {
-      Logger logger;
-      Store store;
-  };
+### `auto`-deduced variables
 
-  int use(App& app) {
-      app.logger;
-      app.store;
-      return 0;
-  }
-  ```
+Go-to-type-definition on an `auto`-deduced variable should reach the
+deduced type's definition; today the variable carries no type relation,
+so it returns nothing.
 
-  </details>
+```cpp
+struct Widget {};
 
-- [ ] `auto`-deduced variables
+Widget make_widget();
 
-  Go-to-type-definition on an `auto`-deduced variable should reach the
-  deduced type's definition; today the variable carries no type relation,
-  so it returns nothing.
+void probe() {
+    auto widget = make_widget();  // go-to-type-def on widget → Widget
+}
+```
 
-  <details>
-  <summary>Example</summary>
+### Smart pointer to the pointee type
 
-  ```cpp
-  struct Widget {};
+Go-to-type-definition on a smart-pointer variable reaches the wrapper
+type itself; unwrapping to the pointee type is not offered.
 
-  Widget make_widget();
+```cpp
+template <typename T>
+struct Ptr {
+    T* operator->();
+    T& operator*();
+    T* raw;
+};
 
-  void probe() {
-      auto widget = make_widget();  // go-to-type-def on widget → Widget
-  }
-  ```
+struct Widget {};
 
-  </details>
+int use(Ptr<Widget> ptr) {
+    return 0;
+}
+```
 
-- [ ] Smart pointer to the pointee type _(partial)_ ([clangd#1026](https://github.com/clangd/clangd/issues/1026))
+### Type aliases
 
-  Go-to-type-definition on a smart-pointer variable reaches the wrapper
-  type itself; unwrapping to the pointee type is not offered.
+Go-to-type-definition on a variable of an aliased type reaches the
+`using` or `typedef` declaration; it does not yet unwrap the alias to
+the underlying type's definition.
 
-  <details>
-  <summary>Example</summary>
+```cpp
+struct Impl {};
 
-  ```cpp
-  template <typename T>
-  struct Ptr {
-      T* operator->();
-      T& operator*();
-      T* raw;
-  };
+using Handle = Impl;
 
-  struct Widget {};
+typedef Impl LegacyHandle;
 
-  int use(Ptr<Widget> ptr) {
-      return 0;
-  }
-  ```
+int use(Handle handle, LegacyHandle legacy) {
+    return 0;
+}
+```
 
-  </details>
+### Structured binding variables
 
-- [ ] Type aliases _(partial)_
+Go-to-type-definition on a structured binding reaches the definition of
+the bound member's type.
 
-  Go-to-type-definition on a variable of an aliased type reaches the
-  `using` or `typedef` declaration; it does not yet unwrap the alias to
-  the underlying type's definition.
+```cpp
+struct Widget {};
 
-  <details>
-  <summary>Example</summary>
+struct Pair {
+    Widget first;
+    int second;
+};
 
-  ```cpp
-  struct Impl {};
+Pair make_pair();
 
-  using Handle = Impl;
-
-  typedef Impl LegacyHandle;
-
-  int use(Handle handle, LegacyHandle legacy) {
-      return 0;
-  }
-  ```
-
-  </details>
-
-- [x] Structured binding variables
-
-  Go-to-type-definition on a structured binding reaches the definition of
-  the bound member's type.
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  struct Widget {};
-
-  struct Pair {
-      Widget first;
-      int second;
-  };
-
-  Pair make_pair();
-
-  int use() {
-      auto [widget, count] = make_pair();
-      return 0;
-  }
-  ```
-
-  </details>
+int use() {
+    auto [widget, count] = make_pair();
+    return 0;
+}
+```
 
 <!-- END GENERATED ITEMS -->
 
 ## Find References
 
-<!-- BEGIN GENERATED ITEMS: Find References -->
+<!-- BEGIN GENERATED ITEMS: find_references -->
+
+| Capability                                                          | Status      | Issues                                                                                                                 |
+| ------------------------------------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Cross-TU find references                                            | Supported   |                                                                                                                        |
+| Declaration and definition sites appear among references            | Supported   |                                                                                                                        |
+| Implicit references from range-based for loops                      | Unsupported | [clangd#1081](https://github.com/clangd/clangd/issues/1081)                                                            |
+| Implicit constructor and destructor calls                           | Unsupported |                                                                                                                        |
+| References through forwarding functions                             | Unsupported | [clangd#716](https://github.com/clangd/clangd/issues/716), [clangd#1872](https://github.com/clangd/clangd/issues/1872) |
+| References in dependent and template contexts                       | Unsupported | [clangd#258](https://github.com/clangd/clangd/issues/258), [clangd#675](https://github.com/clangd/clangd/issues/675)   |
+| Read/write classification of references                             | Unsupported | [clangd#2139](https://github.com/clangd/clangd/issues/2139)                                                            |
+| Enclosing function shown with each reference                        | Unsupported | [clangd#177](https://github.com/clangd/clangd/issues/177)                                                              |
+| Macro references across expansions, `#ifdef`/`#ifndef` and `#undef` | Supported   |                                                                                                                        |
+| Macro references spelled inside other macro definitions             | Unsupported | [clangd#346](https://github.com/clangd/clangd/issues/346)                                                              |
+| Label and goto references                                           | Supported   |                                                                                                                        |
+
+### Cross-TU find references
+
+Find references gathers uses from other files too: a function
+defined in one source and called from a sibling reports both call
+sites together with the declaration in the shared header, not only the
+uses in the current file.
+
+`main.cpp`:
+
+```cpp
+#include "shared.h"
+
+int run(int value) {
+    return compute(value);
+}
+```
+
+`lib.cpp`:
+
+```cpp
+#include "shared.h"
+
+int compute(int value) {
+    return value * 2;
+}
+
+int again(int value) {
+    return compute(value) + 1;
+}
+```
+
+`shared.h`:
+
+```cpp
+#pragma once
+
+int compute(int value);
+```
+
+### Declaration and definition sites appear among references
+
+A reference query returns the declaration and the out-of-line
+definition together with every use, so the whole surface of a symbol
+is reachable from any one of its sites.
+
+```cpp
+int scale(int value);
+
+int scale(int value) {
+    return value * 2;
+}
+
+int use() {
+    return scale(3);
+}
+```
+
+### Implicit references from range-based for loops
+
+Find references on `begin` reports only its own declaration; the
+range-based for loop that implicitly calls it is not included among the
+references.
+
+```cpp
+struct Iterator {
+    int operator*() const;
+    Iterator& operator++();
+    bool operator!=(const Iterator& other) const;
+};
+
+struct Range {
+    Iterator begin();  // find-refs here omits the range-for below
+    Iterator end();
+};
+
+void use(Range r) {
+    for (int x : r) {
+    }
+}
+```
+
+### Implicit constructor and destructor calls
+
+Find references on a constructor reports only its explicit sites; an
+object definition that implicitly invokes the constructor or its
+destructor is not included.
+
+```cpp
+struct Blob {
+    Blob();  // find-refs here omits the `Blob b;` definition below
+    ~Blob();
+};
+
+void use() {
+    Blob b;
+}
+```
 
-- [x] Cross-TU find references
+### References through forwarding functions
 
-  Find references gathers uses from other files too: a function
-  defined in one source and called from a sibling reports both call
-  sites together with the declaration in the shared header, not only the
-  uses in the current file.
+Find references on a constructor does not include call sites that reach
+it indirectly through a perfect-forwarding factory.
 
-  <details>
-  <summary>Example</summary>
+```cpp
+template <typename T, typename... Args>
+T make(Args&&... args) {
+    return T(static_cast<Args&&>(args)...);
+}
 
-  `main.cpp`:
+struct Widget {
+    Widget(int w, int h);  // find-refs here omits the make<Widget> call
+};
 
-  ```cpp
-  #include "shared.h"
+Widget build() {
+    return make<Widget>(800, 600);
+}
+```
 
-  int run(int value) {
-      return compute(value);
-  }
-  ```
+### References in dependent and template contexts
 
-  `lib.cpp`:
+Find references on a member does not include dependent call sites in a
+template, even when the template is instantiated with the member's
+class.
 
-  ```cpp
-  #include "shared.h"
+```cpp
+struct A {
+    void foo();  // find-refs here omits the dependent obj.foo() below
+};
 
-  int compute(int value) {
-      return value * 2;
-  }
+template <typename T>
+void process(T& obj) {
+    obj.foo();
+}
 
-  int again(int value) {
-      return compute(value) + 1;
-  }
-  ```
+void run(A a) {
+    process(a);
+}
+```
 
-  `shared.h`:
+### Read/write classification of references
 
-  ```cpp
-  #pragma once
+The reference reply carries only locations, so a reader cannot tell a
+write from a read; annotating each result with its access kind is not
+offered.
 
-  int compute(int value);
-  ```
+```cpp
+int use() {
+    int x = 0;      // write
+    int y = x + 1;  // read
+    x = y;          // write
+    return x;
+}
+```
 
-  </details>
+### Enclosing function shown with each reference
 
-- [x] Declaration and definition sites appear among references
+Each reference is reported as a bare location; the name of the function
+that encloses it is not attached, so results carry no context beyond
+the file and line.
 
-  A reference query returns the declaration and the out-of-line
-  definition together with every use, so the whole surface of a symbol
-  is reachable from any one of its sites.
+```cpp
+int shared_value = 0;
 
-  <details>
-  <summary>Example</summary>
+int reader() {
+    return shared_value;
+}
 
-  ```cpp
-  int scale(int value);
+int writer() {
+    shared_value = 1;
+    return shared_value;
+}
+```
 
-  int scale(int value) {
-      return value * 2;
-  }
+### Macro references across expansions, `#ifdef`/`#ifndef` and `#undef`
 
-  int use() {
-      return scale(3);
-  }
-  ```
+A macro's references span its expansions, the `#ifdef` / `#ifndef`
+conditionals that test it and the `#undef` that cancels it. Each
+`#define` of a name is its own symbol, so a redefinition after `#undef`
+collects only its own uses.
 
-  </details>
+```cpp
+#define FEATURE 1
 
-- [ ] Implicit references from range-based for loops ([clangd#1081](https://github.com/clangd/clangd/issues/1081))
+int on = FEATURE;
 
-  Find references on `begin` reports only its own declaration; the
-  range-based for loop that implicitly calls it is not included among the
-  references.
+#ifdef FEATURE
+int guarded = 1;
+#endif
 
-  <details>
-  <summary>Example</summary>
+#ifndef FEATURE
+int missing = 0;
+#endif
 
-  ```cpp
-  struct Iterator {
-      int operator*() const;
-      Iterator& operator++();
-      bool operator!=(const Iterator& other) const;
-  };
+#undef FEATURE
 
-  struct Range {
-      Iterator begin();  // find-refs here omits the range-for below
-      Iterator end();
-  };
+#define FEATURE 2
 
-  void use(Range r) {
-      for (int x : r) {
-      }
-  }
-  ```
+int again = FEATURE;
+```
 
-  </details>
+### Macro references spelled inside other macro definitions
 
-- [ ] Implicit constructor and destructor calls
+Find references on a macro does not include the mentions of it written
+inside the bodies of other macro definitions.
 
-  Find references on a constructor reports only its explicit sites; an
-  object definition that implicitly invokes the constructor or its
-  destructor is not included.
+```cpp
+#define WIDTH 100  // find-refs here omits the WIDTH tokens in AREA below
 
-  <details>
-  <summary>Example</summary>
+#define AREA (WIDTH * WIDTH)
 
-  ```cpp
-  struct Blob {
-      Blob();  // find-refs here omits the `Blob b;` definition below
-      ~Blob();
-  };
+int total = AREA;
+```
 
-  void use() {
-      Blob b;
-  }
-  ```
+### Label and goto references
 
-  </details>
+Find references on a label lists the label itself together with every
+`goto` that jumps to it.
 
-- [ ] References through forwarding functions ([clangd#716](https://github.com/clangd/clangd/issues/716), [clangd#1872](https://github.com/clangd/clangd/issues/1872))
-
-  Find references on a constructor does not include call sites that reach
-  it indirectly through a perfect-forwarding factory.
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  template <typename T, typename... Args>
-  T make(Args&&... args) {
-      return T(static_cast<Args&&>(args)...);
-  }
-
-  struct Widget {
-      Widget(int w, int h);  // find-refs here omits the make<Widget> call
-  };
-
-  Widget build() {
-      return make<Widget>(800, 600);
-  }
-  ```
-
-  </details>
-
-- [ ] References in dependent and template contexts ([clangd#258](https://github.com/clangd/clangd/issues/258), [clangd#675](https://github.com/clangd/clangd/issues/675))
-
-  Find references on a member does not include dependent call sites in a
-  template, even when the template is instantiated with the member's
-  class.
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  struct A {
-      void foo();  // find-refs here omits the dependent obj.foo() below
-  };
-
-  template <typename T>
-  void process(T& obj) {
-      obj.foo();
-  }
-
-  void run(A a) {
-      process(a);
-  }
-  ```
-
-  </details>
-
-- [ ] Read/write classification of references ([clangd#2139](https://github.com/clangd/clangd/issues/2139))
-
-  The reference reply carries only locations, so a reader cannot tell a
-  write from a read; annotating each result with its access kind is not
-  offered.
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  int use() {
-      int x = 0;      // write
-      int y = x + 1;  // read
-      x = y;          // write
-      return x;
-  }
-  ```
-
-  </details>
-
-- [ ] Enclosing function shown with each reference ([clangd#177](https://github.com/clangd/clangd/issues/177))
-
-  Each reference is reported as a bare location; the name of the function
-  that encloses it is not attached, so results carry no context beyond
-  the file and line.
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  int shared_value = 0;
-
-  int reader() {
-      return shared_value;
-  }
-
-  int writer() {
-      shared_value = 1;
-      return shared_value;
-  }
-  ```
-
-  </details>
-
-- [x] Macro references across expansions, `#ifdef`/`#ifndef` and `#undef`
-
-  A macro's references span its expansions, the `#ifdef` / `#ifndef`
-  conditionals that test it and the `#undef` that cancels it. Each
-  `#define` of a name is its own symbol, so a redefinition after `#undef`
-  collects only its own uses.
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  #define FEATURE 1
-
-  int on = FEATURE;
-
-  #ifdef FEATURE
-  int guarded = 1;
-  #endif
-
-  #ifndef FEATURE
-  int missing = 0;
-  #endif
-
-  #undef FEATURE
-
-  #define FEATURE 2
-
-  int again = FEATURE;
-  ```
-
-  </details>
-
-- [ ] Macro references spelled inside other macro definitions ([clangd#346](https://github.com/clangd/clangd/issues/346))
-
-  Find references on a macro does not include the mentions of it written
-  inside the bodies of other macro definitions.
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  #define WIDTH 100  // find-refs here omits the WIDTH tokens in AREA below
-
-  #define AREA (WIDTH * WIDTH)
-
-  int total = AREA;
-  ```
-
-  </details>
-
-- [x] Label and goto references
-
-  Find references on a label lists the label itself together with every
-  `goto` that jumps to it.
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  int loop(int failed) {
-      retry:
-      if (failed) {
-          goto retry;
-      }
-      return 0;
-  }
-  ```
-
-  </details>
+```cpp
+int loop(int failed) {
+    retry:
+    if (failed) {
+        goto retry;
+    }
+    return 0;
+}
+```
 
 <!-- END GENERATED ITEMS -->
 
 ## Call Hierarchy
 
-<!-- BEGIN GENERATED ITEMS: Call Hierarchy -->
+<!-- BEGIN GENERATED ITEMS: call_hierarchy -->
 
-- [x] Prepare call hierarchy on functions and methods
+| Capability                                      | Status      | Issues                                                      |
+| ----------------------------------------------- | ----------- | ----------------------------------------------------------- |
+| Prepare call hierarchy on functions and methods | Supported   |                                                             |
+| Incoming calls                                  | Supported   |                                                             |
+| Outgoing calls                                  | Supported   |                                                             |
+| Function signature in the item detail           | Unsupported |                                                             |
+| Qualified name for member functions             | Partial     |                                                             |
+| Follow virtual dispatch                         | Unsupported |                                                             |
+| Non-function targets                            | Unsupported | [clangd#1308](https://github.com/clangd/clangd/issues/1308) |
+| Calls inside lambdas                            | Supported   |                                                             |
+| Constructor calls through forwarding functions  | Unsupported | [clangd#2242](https://github.com/clangd/clangd/issues/2242) |
 
-  Preparing a call hierarchy works on a free function and on a member
-  method alike, anchoring an item at the entity under the cursor.
+### Prepare call hierarchy on functions and methods
 
-  <details>
-  <summary>Example</summary>
+Preparing a call hierarchy works on a free function and on a member
+method alike, anchoring an item at the entity under the cursor.
 
-  ```cpp
-  struct Service {
-      void start();
-  };
+```cpp
+struct Service {
+    void start();
+};
 
-  void Service::start() {}
+void Service::start() {}
 
-  void launch(Service& s) {
-      s.start();
-  }
-  ```
+void launch(Service& s) {
+    s.start();
+}
+```
 
-  </details>
+### Incoming calls
 
-- [x] Incoming calls
+Incoming calls list every caller of a function, and a caller that
+invokes it more than once contributes each call site.
 
-  Incoming calls list every caller of a function, and a caller that
-  invokes it more than once contributes each call site.
+```cpp
+int helper(int v) {
+    return v;
+}
 
-  <details>
-  <summary>Example</summary>
+int alpha() {
+    return helper(1);
+}
 
-  ```cpp
-  int helper(int v) {
-      return v;
-  }
+int beta() {
+    return helper(2) + helper(3);
+}
+```
 
-  int alpha() {
-      return helper(1);
-  }
+### Outgoing calls
 
-  int beta() {
-      return helper(2) + helper(3);
-  }
-  ```
+Outgoing calls list every function a body invokes, one entry per
+callee.
 
-  </details>
+```cpp
+int one() {
+    return 1;
+}
 
-- [x] Outgoing calls
+int two() {
+    return 2;
+}
 
-  Outgoing calls list every function a body invokes, one entry per
-  callee.
+int three() {
+    return 3;
+}
 
-  <details>
-  <summary>Example</summary>
+int dispatch() {
+    return one() + two() + three();
+}
+```
 
-  ```cpp
-  int one() {
-      return 1;
-  }
+### Function signature in the item detail
 
-  int two() {
-      return 2;
-  }
+A call hierarchy item carries only its name; the function signature is
+not attached in a detail field, so overloads are indistinguishable in
+the hierarchy.
 
-  int three() {
-      return 3;
-  }
+```cpp
+int compute(int a, int b) {  // no signature attached to this item
+    return a + b;
+}
 
-  int dispatch() {
-      return one() + two() + three();
-  }
-  ```
+int caller() {
+    return compute(1, 2);
+}
+```
 
-  </details>
+### Qualified name for member functions
 
-- [ ] Function signature in the item detail
+A member function's call hierarchy item is produced, but its name field
+carries only the bare method name (`draw`), not the qualified
+`Circle::draw` that would tell it apart from a free function.
 
-  A call hierarchy item carries only its name; the function signature is
-  not attached in a detail field, so overloads are indistinguishable in
-  the hierarchy.
+```cpp
+struct Circle {
+    void draw();
+};
 
-  <details>
-  <summary>Example</summary>
+void Circle::draw() {}
+```
 
-  ```cpp
-  int compute(int a, int b) {  // no signature attached to this item
-      return a + b;
-  }
+### Follow virtual dispatch
 
-  int caller() {
-      return compute(1, 2);
-  }
-  ```
+Incoming calls of a base virtual method do not include calls made
+through derived overrides; a call to an override is attributed only to
+that override, never to the base it overrides.
 
-  </details>
+```cpp
+struct Base {
+    virtual void draw();
+};
 
-- [ ] Qualified name for member functions _(partial)_
+struct Derived : Base {
+    void draw() override;
+};
 
-  A member function's call hierarchy item is produced, but its name field
-  carries only the bare method name (`draw`), not the qualified
-  `Circle::draw` that would tell it apart from a free function.
+void call_derived(Derived& d) {
+    d.draw();  // absent from the incoming calls of Base::draw
+}
+```
 
-  <details>
-  <summary>Example</summary>
+### Non-function targets
 
-  ```cpp
-  struct Circle {
-      void draw();
-  };
+Variables and enum constants
 
-  void Circle::draw() {}
-  ```
+Preparing a call hierarchy on a variable or an enum constant returns
+nothing; the request is offered only for functions and methods.
 
-  </details>
+```cpp
+int counter = 0;  // prepare call hierarchy here → nothing
 
-- [ ] Follow virtual dispatch
+enum Mode {
+    Fast,  // prepare call hierarchy here → nothing
+    Slow,
+};
+```
 
-  Incoming calls of a base virtual method do not include calls made
-  through derived overrides; a call to an override is attributed only to
-  that override, never to the base it overrides.
+### Calls inside lambdas
 
-  <details>
-  <summary>Example</summary>
+A call written in a lambda body appears in the incoming calls of the
+function it invokes, attributed to the function that encloses the
+lambda.
 
-  ```cpp
-  struct Base {
-      virtual void draw();
-  };
+```cpp
+void foo() {}
 
-  struct Derived : Base {
-      void draw() override;
-  };
+void use() {
+    auto task = [] {
+        foo();
+    };
+    task();
+}
+```
 
-  void call_derived(Derived& d) {
-      d.draw();  // absent from the incoming calls of Base::draw
-  }
-  ```
+### Constructor calls through forwarding functions
 
-  </details>
+Incoming calls of a constructor do not include the call sites that
+reach it through a perfect-forwarding factory.
 
-- [ ] Non-function targets — variables and enum constants ([clangd#1308](https://github.com/clangd/clangd/issues/1308))
+```cpp
+template <typename T, typename... Args>
+T make(Args&&... args) {
+    return T(static_cast<Args&&>(args)...);
+}
 
-  Preparing a call hierarchy on a variable or an enum constant returns
-  nothing; the request is offered only for functions and methods.
+struct Widget {
+    Widget(int w, int h);  // make<Widget> below is absent from incoming calls
+};
 
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  int counter = 0;  // prepare call hierarchy here → nothing
-
-  enum Mode {
-      Fast,  // prepare call hierarchy here → nothing
-      Slow,
-  };
-  ```
-
-  </details>
-
-- [x] Calls inside lambdas
-
-  A call written in a lambda body appears in the incoming calls of the
-  function it invokes, attributed to the function that encloses the
-  lambda.
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  void foo() {}
-
-  void use() {
-      auto task = [] {
-          foo();
-      };
-      task();
-  }
-  ```
-
-  </details>
-
-- [ ] Constructor calls through forwarding functions ([clangd#2242](https://github.com/clangd/clangd/issues/2242))
-
-  Incoming calls of a constructor do not include the call sites that
-  reach it through a perfect-forwarding factory.
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  template <typename T, typename... Args>
-  T make(Args&&... args) {
-      return T(static_cast<Args&&>(args)...);
-  }
-
-  struct Widget {
-      Widget(int w, int h);  // make<Widget> below is absent from incoming calls
-  };
-
-  Widget build() {
-      return make<Widget>(800, 600);
-  }
-  ```
-
-  </details>
+Widget build() {
+    return make<Widget>(800, 600);
+}
+```
 
 <!-- END GENERATED ITEMS -->
 
 ## Type Hierarchy
 
-<!-- BEGIN GENERATED ITEMS: Type Hierarchy -->
+<!-- BEGIN GENERATED ITEMS: type_hierarchy -->
 
-- [x] Prepare type hierarchy on class, struct, enum and union
+| Capability                                              | Status    | Issues                                                  |
+| ------------------------------------------------------- | --------- | ------------------------------------------------------- |
+| Prepare type hierarchy on class, struct, enum and union | Supported |                                                         |
+| Supertypes                                              | Supported |                                                         |
+| Subtypes                                                | Supported |                                                         |
+| Template inheritance                                    | Supported |                                                         |
+| Template arguments in type hierarchy items              | Partial   | [clangd#31](https://github.com/clangd/clangd/issues/31) |
 
-  Preparing a type hierarchy anchors an item on any user-defined type
-  tag — class, struct, enum and union alike.
+### Prepare type hierarchy on class, struct, enum and union
 
-  <details>
-  <summary>Example</summary>
+Preparing a type hierarchy anchors an item on any user-defined type
+tag — class, struct, enum and union alike.
 
-  ```cpp
-  class Handle {};
+```cpp
+class Handle {};
 
-  struct Point {};
+struct Point {};
 
-  enum class Mode {};
+enum class Mode {};
 
-  union Storage {
-      int i;
-      float f;
-  };
-  ```
+union Storage {
+    int i;
+    float f;
+};
+```
 
-  </details>
+### Supertypes
 
-- [x] Supertypes
+Supertypes list every direct base of a class, including each base of a
+multiple-inheritance derived type.
 
-  Supertypes list every direct base of a class, including each base of a
-  multiple-inheritance derived type.
+```cpp
+struct Alpha {};
 
-  <details>
-  <summary>Example</summary>
+struct Beta {};
 
-  ```cpp
-  struct Alpha {};
+struct Gamma : Alpha, Beta {};
+```
 
-  struct Beta {};
+### Subtypes
 
-  struct Gamma : Alpha, Beta {};
-  ```
+Subtypes list every class that derives from a base, across sibling
+derived types.
 
-  </details>
+```cpp
+struct Shape {};
 
-- [x] Subtypes
+struct Circle : Shape {};
 
-  Subtypes list every class that derives from a base, across sibling
-  derived types.
+struct Square : Shape {};
 
-  <details>
-  <summary>Example</summary>
+struct Triangle : Shape {};
+```
 
-  ```cpp
-  struct Shape {};
+### Template inheritance
 
-  struct Circle : Shape {};
+Subtypes of a base include classes that derive from it through a class
+template, such as a CRTP wrapper.
 
-  struct Square : Shape {};
+```cpp
+struct Base {};
 
-  struct Triangle : Shape {};
-  ```
+template <typename T>
+struct CRTP : Base {};
 
-  </details>
+struct Widget : CRTP<Widget> {};
+```
 
-- [x] Template inheritance
+### Template arguments in type hierarchy items
 
-  Subtypes of a base include classes that derive from it through a class
-  template, such as a CRTP wrapper.
+A subtype produced by a class template specialization is listed, but
+its item name carries only the bare template name (`Derived`), without
+the template arguments that would distinguish `Derived<Foo>`.
 
-  <details>
-  <summary>Example</summary>
+```cpp
+struct Foo {};
 
-  ```cpp
-  struct Base {};
+struct Base {};
 
-  template <typename T>
-  struct CRTP : Base {};
+template <typename T>
+struct Derived : Base {};
 
-  struct Widget : CRTP<Widget> {};
-  ```
-
-  </details>
-
-- [ ] Template arguments in type hierarchy items _(partial)_ ([clangd#31](https://github.com/clangd/clangd/issues/31))
-
-  A subtype produced by a class template specialization is listed, but
-  its item name carries only the bare template name (`Derived`), without
-  the template arguments that would distinguish `Derived<Foo>`.
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  struct Foo {};
-
-  struct Base {};
-
-  template <typename T>
-  struct Derived : Base {};
-
-  Derived<Foo> instance;
-  ```
-
-  </details>
+Derived<Foo> instance;
+```
 
 <!-- END GENERATED ITEMS -->
 
@@ -1923,323 +1703,291 @@ Navigate to the type definition of a symbol. Applicable to variables, parameters
 
 Search the whole project for a symbol by name (`workspace/symbol`).
 
-<!-- BEGIN GENERATED ITEMS: Workspace Symbol -->
+<!-- BEGIN GENERATED ITEMS: workspace_symbol -->
 
-- [x] Basic workspace-wide symbol search — case-insensitive substring matching
+| Capability                                        | Status      | Issues                                                      |
+| ------------------------------------------------- | ----------- | ----------------------------------------------------------- |
+| Basic workspace-wide symbol search                | Supported   |                                                             |
+| Search spans the whole project                    | Supported   |                                                             |
+| Overload disambiguation                           | Partial     | [clangd#1344](https://github.com/clangd/clangd/issues/1344) |
+| Fuzzy matching                                    | Unsupported | [clangd#914](https://github.com/clangd/clangd/issues/914)   |
+| Partially qualified name search                   | Unsupported | [clangd#550](https://github.com/clangd/clangd/issues/550)   |
+| Enumerator lookup under the enum's scope          | Unsupported | [clangd#931](https://github.com/clangd/clangd/issues/931)   |
+| Underlying declarations ranked above type aliases | Unsupported | [clangd#2253](https://github.com/clangd/clangd/issues/2253) |
+| Search by mangled (linker) name                   | Unsupported |                                                             |
 
-  A query matches any symbol whose name contains it, ignoring case:
-  functions, types, enumerators and macros all participate, and a query
-  with no match returns an empty list rather than an error.
+### Basic workspace-wide symbol search
 
-  <details>
-  <summary>Example</summary>
+case-insensitive substring matching
 
-  ```cpp
-  // query: widget
-  // query: parse_config
-  // query: MODE
-  // query: fast
-  // query: no_such_symbol
+A query matches any symbol whose name contains it, ignoring case:
+functions, types, enumerators and macros all participate, and a query
+with no match returns an empty list rather than an error.
 
-  struct Widget {
-      int width;
-  };
+```cpp
+// query: widget
+// query: parse_config
+// query: MODE
+// query: fast
+// query: no_such_symbol
 
-  enum class Mode { Fast, Safe };
+struct Widget {
+    int width;
+};
 
-  #define MODE_DEFAULT 1
+enum class Mode { Fast, Safe };
 
-  void parse_config() {}
-  ```
+#define MODE_DEFAULT 1
 
-  </details>
+void parse_config() {}
+```
 
-- [x] Search spans the whole project — hits from files other than the queried one
+### Search spans the whole project
 
-  The query returns symbols from project files that are not even open
-  in the editor: `other.h` stays closed here, so its hit is served by
-  the background index.
+Hits from files other than the queried one
 
-  <details>
-  <summary>Example</summary>
+The query returns symbols from project files that are not even open
+in the editor: `other.h` stays closed here, so its hit is served by
+the background index.
 
-  `main.cpp`:
+`main.cpp`:
 
-  ```cpp
-  // query: helper_elsewhere
+```cpp
+// query: helper_elsewhere
 
-  int local_anchor = 0;
-  ```
+int local_anchor = 0;
+```
 
-  `other.h`:
+`other.h`:
 
-  ```cpp
-  void helper_elsewhere() {}
-  ```
+```cpp
+void helper_elsewhere() {}
+```
 
-  </details>
+### Overload disambiguation
 
-- [ ] Overload disambiguation — parameter types shown in results _(partial)_ ([clangd#1344](https://github.com/clangd/clangd/issues/1344))
+Parameter types shown in results
 
-  Querying an overloaded name finds every overload, but each entry
-  carries only the bare name — nothing tells the two `process` results
-  apart short of opening both locations.
+Querying an overloaded name finds every overload, but each entry
+carries only the bare name — nothing tells the two `process` results
+apart short of opening both locations.
 
-  <details>
-  <summary>Example</summary>
+```cpp
+// query: process
 
-  ```cpp
-  // query: process
+void process(int value) {}
 
-  void process(int value) {}
+void process(bool flag, int level) {}
+```
 
-  void process(bool flag, int level) {}
-  ```
+### Fuzzy matching
 
-  </details>
+word-boundary-aware scoring for camelCase and snake_case
 
-- [ ] Fuzzy matching — word-boundary-aware scoring for camelCase and snake_case ([clangd#914](https://github.com/clangd/clangd/issues/914))
+Matching is a case-insensitive substring test: `LinLis` does not find
+`LinkedList`, and `pcfg` does not find `parse_config`. Word-boundary
+initials should match and score for every symbol kind, macros
+included.
 
-  Matching is a case-insensitive substring test: `LinLis` does not find
-  `LinkedList`, and `pcfg` does not find `parse_config`. Word-boundary
-  initials should match and score for every symbol kind, macros
-  included.
+```cpp
+// query: LinLis
+// query: pcfg
 
-  <details>
-  <summary>Example</summary>
+struct LinkedList {};
 
-  ```cpp
-  // query: LinLis
-  // query: pcfg
+void parse_config();
+```
 
-  struct LinkedList {};
+### Partially qualified name search
 
-  void parse_config();
-  ```
+Symbols match by bare name only: `net::Socket` finds nothing even
+though `deep::net::Socket` exists, and neither does any other
+qualifier-prefixed form.
 
-  </details>
+```cpp
+// query: net::Socket
 
-- [ ] Partially qualified name search ([clangd#550](https://github.com/clangd/clangd/issues/550))
+namespace deep {
+namespace net {
 
-  Symbols match by bare name only: `net::Socket` finds nothing even
-  though `deep::net::Socket` exists, and neither does any other
-  qualifier-prefixed form.
+struct Socket {};
 
-  <details>
-  <summary>Example</summary>
+}  // namespace net
+}  // namespace deep
+```
 
-  ```cpp
-  // query: net::Socket
+### Enumerator lookup under the enum's scope
 
-  namespace deep {
-  namespace net {
+`Color::Red` should find the enumerator — for scoped and unscoped
+enums alike — but qualified queries match nothing; only the bare
+`Red` does.
 
-  struct Socket {};
+```cpp
+// query: Color::Red
 
-  }  // namespace net
-  }  // namespace deep
-  ```
+enum Color { Red, Green };
+```
 
-  </details>
+### Underlying declarations ranked above type aliases
 
-- [ ] Enumerator lookup under the enum's scope ([clangd#931](https://github.com/clangd/clangd/issues/931))
+When both `ConnectionImpl` and its alias `Connection` match a query,
+the underlying declaration should rank first. Results carry no
+ranking today.
 
-  `Color::Red` should find the enumerator — for scoped and unscoped
-  enums alike — but qualified queries match nothing; only the bare
-  `Red` does.
+```cpp
+// query: Connection
 
-  <details>
-  <summary>Example</summary>
+struct ConnectionImpl {};
 
-  ```cpp
-  // query: Color::Red
+using Connection = ConnectionImpl;
+```
 
-  enum Color { Red, Green };
-  ```
+### Search by mangled (linker) name
 
-  </details>
+Pasting a linker symbol such as `_Z7processi` should resolve to the
+function it mangles — useful when chasing linker errors and stack
+traces.
 
-- [ ] Underlying declarations ranked above type aliases ([clangd#2253](https://github.com/clangd/clangd/issues/2253))
+```cpp
+// query: _Z7processi
 
-  When both `ConnectionImpl` and its alias `Connection` match a query,
-  the underlying declaration should rank first. Results carry no
-  ranking today.
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  // query: Connection
-
-  struct ConnectionImpl {};
-
-  using Connection = ConnectionImpl;
-  ```
-
-  </details>
-
-- [ ] Search by mangled (linker) name
-
-  Pasting a linker symbol such as `_Z7processi` should resolve to the
-  function it mangles — useful when chasing linker errors and stack
-  traces.
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  // query: _Z7processi
-
-  void process(int value);
-  ```
-
-  </details>
+void process(int value);
+```
 
 <!-- END GENERATED ITEMS -->
 
 ## Module Navigation
 
-<!-- BEGIN GENERATED ITEMS: Module Navigation -->
+<!-- BEGIN GENERATED ITEMS: module_navigation -->
 
-- [x] `import module_name` navigates to the module interface unit ([clangd#2310](https://github.com/clangd/clangd/issues/2310))
+| Capability                                                        | Status    | Issues                                                      |
+| ----------------------------------------------------------------- | --------- | ----------------------------------------------------------- |
+| `import module_name` navigates to the module interface unit       | Supported | [clangd#2310](https://github.com/clangd/clangd/issues/2310) |
+| `import :partition` navigates to the partition unit               | Supported |                                                             |
+| Navigate between interface and implementation units of one module | Partial   |                                                             |
+| Dot-separated module name                                         | Partial   |                                                             |
 
-  Go-to-definition on the name in an `import` declaration opens the
-  module interface unit that exports it, and uses of an imported symbol
-  reach its definition in that unit.
+### `import module_name` navigates to the module interface unit
 
-  <details>
-  <summary>Example</summary>
+Go-to-definition on the name in an `import` declaration opens the
+module interface unit that exports it, and uses of an imported symbol
+reach its definition in that unit.
 
-  `main.cpp`:
+`main.cpp`:
 
-  ```cpp
-  import widget;
+```cpp
+import widget;
 
-  int build() {
-      return area(2, 3);
-  }
-  ```
+int build() {
+    return area(2, 3);
+}
+```
 
-  `widget.cppm`:
+`widget.cppm`:
 
-  ```cpp
-  export module widget;
+```cpp
+export module widget;
 
-  export int area(int width, int height) {
-      return width * height;
-  }
-  ```
+export int area(int width, int height) {
+    return width * height;
+}
+```
 
-  </details>
+### `import :partition` navigates to the partition unit
 
-- [x] `import :partition` navigates to the partition unit
+Go-to-definition on the partition name after the colon in a partition
+import opens the partition unit that declares it.
 
-  Go-to-definition on the partition name after the colon in a partition
-  import opens the partition unit that declares it.
+`main.cpp`:
 
-  <details>
-  <summary>Example</summary>
+```cpp
+import pack;
 
-  `main.cpp`:
+int run() {
+    return count();
+}
+```
 
-  ```cpp
-  import pack;
+`pack.cppm`:
 
-  int run() {
-      return count();
-  }
-  ```
+```cpp
+export module pack;
 
-  `pack.cppm`:
+export import :items;
+```
 
-  ```cpp
-  export module pack;
+`pack_items.cppm`:
 
-  export import :items;
-  ```
+```cpp
+export module pack:items;
 
-  `pack_items.cppm`:
+export int count() {
+    return 3;
+}
+```
 
-  ```cpp
-  export module pack:items;
+### Navigate between interface and implementation units of one module
 
-  export int count() {
-      return 3;
-  }
-  ```
+Go-to-definition on the module name in an implementation unit
+(`module m;`) jumps to the interface unit that declares the module;
+the reverse direction, from the interface name to the implementation,
+is not offered.
 
-  </details>
+`main.cpp`:
 
-- [ ] Navigate between interface and implementation units of one module _(partial)_
+```cpp
+import store;
 
-  Go-to-definition on the module name in an implementation unit
-  (`module m;`) jumps to the interface unit that declares the module;
-  the reverse direction, from the interface name to the implementation,
-  is not offered.
+int lookup(int key) {
+    return fetch(key);
+}
+```
 
-  <details>
-  <summary>Example</summary>
+`iface.cppm`:
 
-  `main.cpp`:
+```cpp
+export module store;
 
-  ```cpp
-  import store;
+export int fetch(int key);
+```
 
-  int lookup(int key) {
-      return fetch(key);
-  }
-  ```
+`impl.cpp`:
 
-  `iface.cppm`:
+```cpp
+module store;
 
-  ```cpp
-  export module store;
+int fetch(int key) {
+    return key * 2;
+}
+```
 
-  export int fetch(int key);
-  ```
+### Dot-separated module name
 
-  `impl.cpp`:
+Navigate each segment
 
-  ```cpp
-  module store;
+Go-to-definition on the leading segment of a dot-separated module name
+reaches the module's interface unit; the segments after a dot do not
+resolve on their own yet.
 
-  int fetch(int key) {
-      return key * 2;
-  }
-  ```
+`main.cpp`:
 
-  </details>
+```cpp
+import app.core;
 
-- [ ] Dot-separated module name — navigate each segment _(partial)_
+int run() {
+    return value();
+}
+```
 
-  Go-to-definition on the leading segment of a dot-separated module name
-  reaches the module's interface unit; the segments after a dot do not
-  resolve on their own yet.
+`app_core.cppm`:
 
-  <details>
-  <summary>Example</summary>
+```cpp
+export module app.core;
 
-  `main.cpp`:
-
-  ```cpp
-  import app.core;
-
-  int run() {
-      return value();
-  }
-  ```
-
-  `app_core.cppm`:
-
-  ```cpp
-  export module app.core;
-
-  export int value() {
-      return 1;
-  }
-  ```
-
-  </details>
+export int value() {
+    return 1;
+}
+```
 
 <!-- END GENERATED ITEMS -->
 
@@ -2247,95 +1995,85 @@ Search the whole project for a symbol by name (`workspace/symbol`).
 
 Highlight all references to the symbol under cursor within the current file (`textDocument/documentHighlight`).
 
-<!-- BEGIN GENERATED ITEMS: Document Highlight -->
+<!-- BEGIN GENERATED ITEMS: document_highlight -->
 
-- [ ] Highlight every reference to the symbol under the cursor in the current file
+| Capability                                                                   | Status      | Issues                                                      |
+| ---------------------------------------------------------------------------- | ----------- | ----------------------------------------------------------- |
+| Highlight every reference to the symbol under the cursor in the current file | Unsupported |                                                             |
+| Read/write classification for symbol highlights                              | Unsupported |                                                             |
+| Control flow token highlighting                                              | Unsupported | [clangd#1921](https://github.com/clangd/clangd/issues/1921) |
 
-  Placing the cursor on `total` should light up its declaration and
-  every use in the file; the request is not implemented.
+### Highlight every reference to the symbol under the cursor in the current file
 
-  <details>
-  <summary>Example</summary>
+Placing the cursor on `total` should light up its declaration and
+every use in the file; the request is not implemented.
 
-  ```cpp
-  int total = 0;
+```cpp
+int total = 0;
 
-  void accumulate(int amount) {
-      total = total + amount;
-  }
-  ```
+void accumulate(int amount) {
+    total = total + amount;
+}
+```
 
-  </details>
+### Read/write classification for symbol highlights
 
-- [ ] Read/write classification for symbol highlights
+Each highlight should carry its access kind, so editors can tint
+writes differently from reads.
 
-  Each highlight should carry its access kind, so editors can tint
-  writes differently from reads.
+```cpp
+void tally() {
+    int count = 0;      // write
+    int next = count;   // read
+    count = next;       // write
+}
+```
 
-  <details>
-  <summary>Example</summary>
+### Control flow token highlighting
 
-  ```cpp
-  void tally() {
-      int count = 0;      // write
-      int next = count;   // read
-      count = next;       // write
-  }
-  ```
+Highlighting `break` or `continue` should also light up the loop or
+`switch` it belongs to — and `return` / `throw` the function exits
+they mark.
 
-  </details>
-
-- [ ] Control flow token highlighting ([clangd#1921](https://github.com/clangd/clangd/issues/1921))
-
-  Highlighting `break` or `continue` should also light up the loop or
-  `switch` it belongs to — and `return` / `throw` the function exits
-  they mark.
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  void drain(int outer, int inner) {
-      for (int i = 0; i < outer; i += 1) {
-          for (int j = 0; j < inner; j += 1) {
-              if (i == j) {
-                  break;      // highlighting break → also the inner for
-              }
-              if (j == 0) {
-                  continue;   // highlighting continue → also the inner for
-              }
-          }
-      }
-  }
-  ```
-
-  </details>
+```cpp
+void drain(int outer, int inner) {
+    for (int i = 0; i < outer; i += 1) {
+        for (int j = 0; j < inner; j += 1) {
+            if (i == j) {
+                break;      // highlighting break → also the inner for
+            }
+            if (j == 0) {
+                continue;   // highlighting continue → also the inner for
+            }
+        }
+    }
+}
+```
 
 <!-- END GENERATED ITEMS -->
 
 ## Switch Source/Header
 
-<!-- BEGIN GENERATED ITEMS: Switch Source/Header -->
+<!-- BEGIN GENERATED ITEMS: switch_source_header -->
 
-- [ ] Switch between a source file and its header
+| Capability                                  | Status      | Issues |
+| ------------------------------------------- | ----------- | ------ |
+| Switch between a source file and its header | Unsupported |        |
 
-  From `widget.cpp` a single command should jump to `widget.h` and
-  back — the `textDocument/switchSourceHeader` request clangd clients
-  rely on is not implemented.
+### Switch between a source file and its header
 
-  <details>
-  <summary>Example</summary>
+From `widget.cpp` a single command should jump to `widget.h` and
+back — the `textDocument/switchSourceHeader` request clangd clients
+rely on is not implemented.
 
-  ```cpp
-  // widget.h
-  class Widget {
-      void draw();
-  };
+```cpp
+// widget.h
+class Widget {
+    void draw();
+};
 
-  // widget.cpp — #include "widget.h"
-  void Widget::draw() {}
-  ```
-
-  </details>
+// widget.cpp — #include "widget.h"
+void Widget::draw() {}
+```
 
 <!-- END GENERATED ITEMS -->

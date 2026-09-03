@@ -1,0 +1,33 @@
+---
+created_at: 2026-08-23
+input_file: type_information/03_function_signature.cpp
+---
+01_params: { range: "9:4-9:7" }
+### function `add`  
+
+---
+→ `int`  
+Parameters:  
+- `int lhs`
+- `int rhs`
+
+---
+```cpp
+// In namespace function_signature
+int add(int lhs, int rhs)
+```
+
+02_defaults: { range: "11:5-11:14" }
+### function `configure`  
+
+---
+→ `void`  
+Parameters:  
+- `int width`
+- `bool visible = true`
+
+---
+```cpp
+// In namespace function_signature
+void configure(int width, bool visible = true)
+```
