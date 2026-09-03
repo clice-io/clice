@@ -32,19 +32,20 @@ export interface Segment {
     /// blocks nested inside it (a snap example under a capability's text).
     verbatim: Range[];
     /// The name a heading or a table body row carries — the heading text,
-    /// the first cell — as markdown source; null elsewhere. A row and a
-    /// later heading with the same label in en name one thing (a
-    /// capability's status row and its section), so zh must keep them
-    /// equal too.
+    /// the first cell — as markdown source with `\|` unescaped; null
+    /// elsewhere. A row and a later heading with the same label in en
+    /// name one thing (a capability's status row and its section), so zh
+    /// must keep them equal too.
     label: string | null;
     /// Inline literals a translation carries over unchanged, as a sorted
     /// set. Inline code and issue references stand alone: prose may
     /// reorder or repeat them, not alter them. Link and image
     /// destinations are keyed by their position among the segment's links
-    /// (`link[0]: ./x`), so each label keeps its own target — a
-    /// translation keeps the links in order — and frontmatter control
-    /// values (layout, theme, icon, link, ...) by the YAML key holding
-    /// them, as the block's structure is fixed.
+    /// (`link[0]: ./x`): a translation keeps the links in order, so each
+    /// destination stays at its slot — which label sits on a slot is
+    /// prose, beyond what the contract can read. Frontmatter control
+    /// values (layout, theme, icon, link, ...) are keyed by the YAML key
+    /// holding them, as the block's structure is fixed.
     literals: string[];
 }
 
@@ -167,7 +168,9 @@ function nestedVerbatim(node: Nodes, source: string, from: number, page: string)
 
 /// Source text of a node's phrasing content — a heading without its
 /// markers, a table cell without its padding — or null when it is empty.
-function phrasingOf(node: Nodes, source: string, page: string): string | null {
+/// A pipe reads the same escaped or bare, so `\|` is unescaped: a cell
+/// must escape it, a heading need not.
+function labelOf(node: Nodes, source: string, page: string): string | null {
     if (!("children" in node)) {
         return null;
     }
@@ -176,7 +179,8 @@ function phrasingOf(node: Nodes, source: string, page: string): string | null {
     if (first === undefined || last === undefined) {
         return null;
     }
-    return source.slice(rangeOf(first, page).start, rangeOf(last, page).end);
+    const text = source.slice(rangeOf(first, page).start, rangeOf(last, page).end);
+    return text.replaceAll("\\|", "|");
 }
 
 /// Frontmatter keys whose string values are reader-facing copy — the
@@ -331,12 +335,12 @@ export function splitSegments(source: string, page: string): Segment[] {
                 node.children.forEach((row, r) => {
                     const first = row.children.at(0);
                     const label =
-                        r === 0 || first === undefined ? null : phrasingOf(first, source, page);
+                        r === 0 || first === undefined ? null : labelOf(first, source, page);
                     push(row, false, true, tableAlign(node), label);
                 });
                 break;
             case "heading":
-                push(node, false, true, "", phrasingOf(node, source, page));
+                push(node, false, true, "", labelOf(node, source, page));
                 break;
             case "paragraph":
             case "blockquote":
