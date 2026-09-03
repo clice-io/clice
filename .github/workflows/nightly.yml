@@ -39,24 +39,38 @@ jobs:
         run: |
           # The tag must point at the exact commit the promoted binaries
           # were built from, so pick the newest main commit whose green run
-          # still has live package artifacts: path-filtered runs (e.g.
-          # docs-only commits) build nothing, and packages expire after
-          # 30 days. The artifacts API occasionally answers with an empty
-          # list for a while, so an empty or failed query is retried before
-          # giving up.
-          PACKAGE=package-clice.x86_64-unknown-linux-gnu.tar.gz
+          # still has a live package artifact for every platform (the same
+          # set publish-clice.yml refuses to promote without): path-filtered
+          # runs (e.g. docs-only commits) build nothing, and packages expire
+          # after 30 days. The artifacts API occasionally answers with an
+          # empty list for a while, so an empty or failed query is retried
+          # before giving up.
+          PACKAGES="package-clice.x86_64-unknown-linux-gnu.tar.gz
+                    package-clice.aarch64-unknown-linux-gnu.tar.gz
+                    package-clice.aarch64-apple-darwin.tar.gz
+                    package-clice.x86_64-apple-darwin.tar.gz
+                    package-clice.x86_64-pc-windows-msvc.zip
+                    package-clice.aarch64-pc-windows-msvc.zip"
+          COUNT=$(wc -w <<< "$PACKAGES")
           COMMIT=""
           for ATTEMPT in 1 2 3; do
             if [ "$ATTEMPT" -gt 1 ]; then sleep 30; fi
             RUNS=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow main \
               --branch main --event push --status success --limit 100 \
               --json databaseId -q '.[].databaseId') || RUNS=""
-            LIVE=$(gh api --paginate \
-              "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$PACKAGE&per_page=100" \
-              --jq '.artifacts[] | select(.expired | not)
-                    | "\(.workflow_run.id) \(.workflow_run.head_sha)"') || LIVE=""
+            LIVE=""
+            for PACKAGE in $PACKAGES; do
+              ONE=$(gh api --paginate \
+                "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$PACKAGE&per_page=100" \
+                --jq '.artifacts[] | select(.expired | not)
+                      | "\(.workflow_run.id) \(.workflow_run.head_sha)"') || ONE=""
+              LIVE="$LIVE$(sort -u <<< "$ONE")"$'\n'
+            done
+            # A run qualifies only when every package is live for it.
+            LIVE=$(grep . <<< "$LIVE" | sort | uniq -c \
+              | awk -v n="$COUNT" '$1 == n { print $2, $3 }')
             echo "attempt $ATTEMPT: $(grep -c . <<< "$RUNS") green main runs," \
-              "$(grep -c . <<< "$LIVE") live packages"
+              "$(grep -c . <<< "$LIVE") fully packaged runs"
             for RUN in $RUNS; do
               COMMIT=$(awk -v run="$RUN" '$1 == run { print $2; exit }' <<< "$LIVE")
               if [ -n "$COMMIT" ]; then break; fi
