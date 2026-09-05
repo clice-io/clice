@@ -49,7 +49,8 @@ and must be byte-identical across the two trees, as must any fenced code
 or HTML comment nested inside a translatable segment (a snap example
 under a generated capability's paragraph). Segment shapes must match too: heading depth,
 ordered vs. bulleted list, task-list state, table column count and
-alignment, and the mapping/sequence skeleton of index.md's frontmatter.
+alignment, a paragraph that is entirely bold (a capability's name), and
+the mapping/sequence skeleton of index.md's frontmatter.
 A table row and a later heading that share their text in en (a
 capability's status row and its section) must share it in zh — `check`
 fails on a pair named two ways. The inline literals of a segment — code

@@ -400,7 +400,7 @@ export function validateFixtureHeader(
         problems.push(problem(filePath, titleLine, "R1: expected '/// # Name'"));
     }
     const name = header.name;
-    if (name.includes(" — ")) {
+    if (/\s[-–—]\s/.test(name)) {
         problems.push(problem(filePath, titleLine, "R1: the title must contain only the name"));
     }
     if (name.split(/\s+/).filter(Boolean).length > 5) {
@@ -541,6 +541,16 @@ export function validateFixtureHeader(
                 );
             }
         }
+    }
+    const separate = header.meta.find(({ key, value }) => key === "snap" && value === "separate");
+    if (separate !== undefined && header.notes.join(" ").trim() === "") {
+        problems.push(
+            problem(
+                filePath,
+                separate.line,
+                "R5: snap: separate needs a // snap: note explaining the divergence",
+            ),
+        );
     }
     return problems;
 }

@@ -103,11 +103,17 @@ function yamlSkeleton(value: unknown): string {
 
 /// Block structure, recursively through flow containers (blockquotes,
 /// lists, tables); everything below a paragraph, heading or table cell is
-/// phrasing, which a translation may reflow freely.
+/// phrasing, which a translation may reflow freely — except that a
+/// paragraph which is nothing but bold text (a capability card's name,
+/// which the site reads as the card title) must stay one.
 function shapeOf(node: Nodes, ordered: boolean, align = ""): string {
     switch (node.type) {
         case "heading":
             return `heading:${node.depth}`;
+        case "paragraph":
+            return node.children.length === 1 && node.children[0]?.type === "strong"
+                ? "paragraph:strong"
+                : "paragraph";
         case "tableRow":
             return `tableRow:${node.children.length}:${align}`;
         case "table": {

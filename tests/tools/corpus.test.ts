@@ -301,6 +301,26 @@ test("fixture header validation", () => {
         expect.arrayContaining([expect.stringContaining("R4:")]),
     );
 
+    expect(
+        validateFixtureHeader(
+            valid.replace("# Qualified name", "# Qualified name - with details"),
+            "fixture.cpp",
+            "hover",
+        ),
+    ).toEqual(["fixture.cpp:1: R1: the title must contain only the name"]);
+
+    const separate = valid.replace("- verify: server", "- verify: both\n/// - snap: separate");
+    expect(validateFixtureHeader(separate, "fixture.cpp", "hover")).toEqual([]);
+    expect(
+        validateFixtureHeader(
+            separate.replace("// snap: The server path supplies the required index.\n", ""),
+            "fixture.cpp",
+            "hover",
+        ),
+    ).toEqual([
+        "fixture.cpp:6: R5: snap: separate needs a // snap: note explaining the divergence",
+    ]);
+
     expect(validateFixtureHeader("int x;\n", "root.cpp", "")).toEqual([]);
     expect(validateFixtureHeader("/// Documents f.\nint f();\n", "root.cpp", "")).toEqual([]);
     expect(

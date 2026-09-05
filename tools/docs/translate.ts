@@ -819,7 +819,7 @@ markdown 形状 shape、英文原文 en 和当前中文 zh。请逐段判断中�
 硬性约束（违反会被拒绝）：
 - 形如 ⟦B1⟧ 的占位符代表代码块，必须原样保留、各出现恰好一次、不得增删。
 - 保持 markdown 形状：标题的 # 个数、列表的标记（- 或 1.）与任务框（- [ ] / - [x]）、表格行的
-  竖线数量与列数、引用的 >。段内不要引入空行。
+  竖线数量与列数、引用的 >、整段加粗的段（能力名称）外层的 **。段内不要引入空行。
 - 行内代码（反引号内）、链接目标、URL、issue 引用（clangd#1455）、文件路径、命令行、编译器
   诊断原文一律原样保留。
 - YAML 段（--- 围栏包住的）只改键名为 ${[...YAML_PROSE_KEYS].join("、")} 的字符串值；其余值
@@ -999,9 +999,10 @@ function reviewChunks(
     return { items, chunks, enSegments, zhSource, zhSegments, enTexts, masks };
 }
 
-/// Segments whose final text is the English copy, except the pairs the
-/// mapping attests with one hash on both sides: those were reviewed as
-/// verbatim on purpose, and `record` is how a new one gets attested.
+/// Segments whose final text is the English copy — byte-identical or
+/// merely rewrapped — except the pairs the mapping attests with one hash
+/// on both sides: those were reviewed as verbatim on purpose, and
+/// `record` is how a new one gets attested.
 function englishCopies(
     roots: Roots,
     page: string,
@@ -1013,8 +1014,12 @@ function englishCopies(
             .filter((pair) => pair.en === pair.zh)
             .map((pair) => pair.en),
     );
+    const reflowed = (text: string) => text.replace(/\s+/g, " ").trim();
     return [...finalTexts]
-        .filter(([i, text]) => text === at(enTexts, i) && !attested.has(hashSegment(text)))
+        .filter(
+            ([i, text]) =>
+                reflowed(text) === reflowed(at(enTexts, i)) && !attested.has(hashSegment(text)),
+        )
         .map(([i]) => i);
 }
 
