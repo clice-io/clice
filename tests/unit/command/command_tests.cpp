@@ -1,4 +1,5 @@
 #include "test/cdb_helper.h"
+#include "test/platform.h"
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "command/argument_parser.h"
@@ -852,6 +853,102 @@ TEST_CASE(ResourceDir) {
         }
     }
     EXPECT_EQ(count, 1);
+};
+
+TEST_CASE(FixtureLayouts) {
+    /// The checked-in layouts under tests/data/cdb go through load() like a
+    /// real project's database; each pins the one property it exists for.
+    /// Macros are asserted by name: the driver render spells -D with a
+    /// separate value.
+    auto layouts = path::join(data_dir(), "cdb");
+    auto load_layout = [&](CompilationDatabase& database,
+                           llvm::StringRef layout,
+                           llvm::StringRef cdb = "compile_commands.json") {
+        return database.load(path::join(layouts, layout, cdb)).value_or(0);
+    };
+    auto source = [&](llvm::StringRef layout, llvm::StringRef file = "main.cpp") {
+        return path::join(layouts, layout, file);
+    };
+
+    {
+        FileTable files;
+        CompilationDatabase database{files};
+        ASSERT_EQ(load_layout(database, "single_root"), 1U);
+        EXPECT_CONTAINS(print_argv(render_entry(database, source("single_root"))), "SINGLE");
+    }
+
+    {
+        /// A database inside a build directory: `directory` anchors to that
+        /// directory and the entry's relative file climbs out of it.
+        FileTable files;
+        CompilationDatabase database{files};
+        ASSERT_EQ(load_layout(database, "subdir_cdb", "cmake/compile_commands.json"), 1U);
+        auto candidates = database.candidate_entries(source("subdir_cdb"));
+        ASSERT_EQ(candidates.size(), 1U);
+        EXPECT_EQ(llvm::StringRef(database.config(candidates.front().config).directory),
+                  path::join(layouts, "subdir_cdb", "cmake"));
+        EXPECT_CONTAINS(print_argv(render_entry(database, source("subdir_cdb"))), "OUT");
+    }
+
+    {
+        /// One file, two configurations, the Ninja Multi-Config shape.
+        FileTable files;
+        CompilationDatabase database{files};
+        ASSERT_EQ(load_layout(database, "multi_entry"), 2U);
+        auto candidates = database.candidate_entries(source("multi_entry"));
+        ASSERT_EQ(candidates.size(), 2U);
+        std::string joined;
+        for(auto& entry: candidates) {
+            joined += print_argv(database.render_full(entry.config));
+            joined += ' ';
+        }
+        EXPECT_CONTAINS(joined, "CONFIG_A");
+        EXPECT_CONTAINS(joined, "CONFIG_B");
+    }
+
+    {
+        FileTable files;
+        CompilationDatabase database{files};
+        ASSERT_EQ(load_layout(database, "command_string"), 1U);
+        auto argv = print_argv(render_entry(database, source("command_string")));
+        EXPECT_CONTAINS(argv, "CMD");
+        EXPECT_NOT_CONTAINS(argv, " -c ");
+        EXPECT_NOT_CONTAINS(argv, " -o ");
+    }
+
+    {
+        FileTable files;
+        CompilationDatabase database{files};
+        ASSERT_EQ(load_layout(database, "relative_directory"), 1U);
+        auto file = source("relative_directory", "src/main.cpp");
+        auto candidates = database.candidate_entries(file);
+        ASSERT_EQ(candidates.size(), 1U);
+        EXPECT_EQ(llvm::StringRef(database.config(candidates.front().config).directory),
+                  path::join(layouts, "relative_directory", "src"));
+        EXPECT_CONTAINS(print_argv(render_entry(database, file)), "RELATIVE");
+    }
+
+    {
+        FileTable files;
+        CompilationDatabase database{files};
+        ASSERT_EQ(load_layout(database, "launcher_prefix"), 1U);
+        auto candidates = database.candidate_entries(source("launcher_prefix"));
+        ASSERT_EQ(candidates.size(), 1U);
+        EXPECT_EQ(candidates.front().wrapper.size(), 1U);
+        auto argv = render_entry(database, source("launcher_prefix"));
+        ASSERT_FALSE(argv.empty());
+        EXPECT_EQ(argv.front(), "clang++"sv);
+        EXPECT_CONTAINS(print_argv(argv), "WRAPPED");
+    }
+
+    {
+        FileTable files;
+        CompilationDatabase database{files};
+        ASSERT_EQ(load_layout(database, "response_file"), 1U);
+        auto argv = print_argv(render_entry(database, source("response_file")));
+        EXPECT_CONTAINS(argv, "FROM_RSP");
+        EXPECT_NOT_CONTAINS(argv, "@flags.rsp");
+    }
 };
 
 };  // TEST_SUITE(Command)

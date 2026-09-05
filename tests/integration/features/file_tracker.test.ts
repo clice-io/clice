@@ -30,8 +30,12 @@ int feature_off() { return 0; }
 #endif
 `;
 
-async function eventsOf(client: CliceClient, loop: "cdb" | "workspace"): Promise<number> {
-    return (await client.poll(loop)).events;
+async function eventsOf(
+    client: CliceClient,
+    loop: "cdb" | "workspace",
+    options: { force?: boolean } = {},
+): Promise<number> {
+    return (await client.poll(loop, options)).events;
 }
 
 test("cdb flag change recompiles", async ({ session }) => {
@@ -49,6 +53,23 @@ test("cdb flag change recompiles", async ({ session }) => {
 
     await client.waitForRecompile(mainUri);
     client.assertNoErrors(mainUri, "open file must pick up the new flags");
+});
+
+test("cdb stamped tick settles", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("main.cpp", GATED_MAIN);
+    workspace.writeCDB(["main.cpp"]);
+    await client.initialize(workspace);
+
+    const stamped = { force: false };
+    expect(await eventsOf(client, "cdb", stamped), "unchanged stamp must be quiet").toBe(0);
+
+    workspace.writeCDB(["main.cpp"], { extraArgs: ["-DFEATURE"] });
+    expect(
+        await eventsOf(client, "cdb", stamped),
+        "a fresh stamp only arms the settling debounce",
+    ).toBe(0);
+    expect(await eventsOf(client, "cdb", stamped), "the settled stamp reloads").toBe(1);
 });
 
 test("cdb new entry indexed", async ({ session }) => {

@@ -1,3 +1,6 @@
+#pragma once
+
+#include <cstdlib>
 #include <string>
 
 #include "llvm/ADT/SmallString.h"
@@ -24,6 +27,16 @@ constexpr inline bool CIEnvironment = true;
 #else
 constexpr inline bool CIEnvironment = false;
 #endif
+
+/// The checked-in fixture tree, tests/data of the checkout that built this
+/// binary. CLICE_TEST_DATA_DIR in the environment overrides it, the way
+/// CLICE_EXECUTABLE points the TypeScript suites at another build.
+inline std::string data_dir() {
+    if(const char* env = std::getenv("CLICE_TEST_DATA_DIR")) {
+        return env;
+    }
+    return CLICE_TESTS_DATA_DIR;
+}
 
 class TestVFS : public llvm::vfs::InMemoryFileSystem {
 public:

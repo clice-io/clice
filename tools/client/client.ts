@@ -1026,9 +1026,13 @@ export class CliceClient {
     }
 
     /// clice/internal/poll (test hook): run one tracker tick and apply its
-    /// effects synchronously.
-    poll(loop: "cdb" | "workspace"): Promise<PollResult> {
-        return this.sendRequest(PollRequest, { loop });
+    /// effects synchronously. `force: false` takes the CDB loop through its
+    /// real stamp gate and settling debounce (see PollParams).
+    poll(loop: "cdb" | "workspace", options: { force?: boolean } = {}): Promise<PollResult> {
+        return this.sendRequest(PollRequest, {
+            loop,
+            ...(options.force === undefined ? {} : { force: options.force }),
+        });
     }
 
     /// clice/internal/stats (test hook): ownership gauges for
