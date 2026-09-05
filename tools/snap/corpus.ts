@@ -342,11 +342,14 @@ export function validateFixtureHeader(
         // `///` block separated from the code by a blank line; a doc comment
         // immediately attached to the first declaration is example code.
         let leadingDoc = 0;
-        while ((header.lines[leadingDoc] ?? "").trim() === "") {
+        while (leadingDoc < header.lines.length && header.lines[leadingDoc]!.trim() === "") {
             leadingDoc += 1;
         }
         let afterLeadingDoc = leadingDoc;
-        while ((header.lines[afterLeadingDoc] ?? "").trimStart().startsWith("///")) {
+        while (
+            afterLeadingDoc < header.lines.length &&
+            header.lines[afterLeadingDoc]!.trimStart().startsWith("///")
+        ) {
             afterLeadingDoc += 1;
         }
         if (afterLeadingDoc > leadingDoc && (header.lines[afterLeadingDoc] ?? "").trim() === "") {

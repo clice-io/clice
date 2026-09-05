@@ -465,7 +465,7 @@ tests/snap/hover/documentation/01_doxygen_comments.cpp
 
 为简单的 getter/setter 生成单行描述
 
-如果简单的 getter 或 setter 没有自己的注释，悬停卡片中会自动生成一行描述：“`field` 的简单访问器／设置器。”
+如果简单的 getter 或 setter 没有自己的注释，悬停卡片中会自动生成一行 "Trivial accessor/setter for `field`." 描述。
 
 ```snap
 tests/snap/hover/documentation/02_accessor_docs.cpp

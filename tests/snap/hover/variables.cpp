@@ -21,7 +21,7 @@ void bump_requests() {
 }
 
 namespace metrics {
-static long long bytes = -8192;
+static long long bytes = -36637162602497;
 }
 void bump_bytes() {
     metrics::§(04_ns_global_var)bytes++;

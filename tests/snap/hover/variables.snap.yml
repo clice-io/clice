@@ -45,12 +45,12 @@ static int requests = 4
 
 ---
 Type: `long long`  
-Value = `-8192 (0xffffe000)`  
+Value = `-36637162602497 (0xffffdeadbeefffff)`  
 
 ---
 ```cpp
 // In namespace metrics
-static long long bytes = -8192
+static long long bytes = -36637162602497
 ```
 
 05_anon_ns_var: { range: "35:22-35:32" }
