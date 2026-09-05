@@ -113,6 +113,39 @@ TEST_CASE(CDBTickDeleteRecreate) {
     ASSERT_EQ(events[0].cdb.changed, llvm::SmallVector<Fid>{main_id});
 }
 
+TEST_CASE(CDBTickRelocates) {
+    /// The discovered database is deleted and one appears elsewhere among
+    /// the searched locations: the old entries leave with it and the new
+    /// ones load through the usual settle path.
+    TempDir tmp;
+    tmp.touch("main.cpp", R"(int main() {})");
+    tmp.touch("other.cpp", R"(int other() {})");
+
+    Workspace workspace;
+    SessionStore store;
+    write_cdb(tmp,
+              workspace.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"), {}}
+    }));
+    FileTracker tracker(workspace, store, tmp.root.str().str());
+
+    fs::remove_all(tmp.path("compile_commands.json"));
+    ASSERT_TRUE(tracker.tick_cdb(/*force=*/true).empty());
+
+    tmp.touch("build/compile_commands.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("other.cpp"), {}}
+    }));
+    auto events = tracker.tick_cdb(/*force=*/true);
+    auto main_id = workspace.file_table.intern(tmp.path("main.cpp"));
+    auto other_id = workspace.file_table.intern(tmp.path("other.cpp"));
+    ASSERT_EQ(events.size(), 2u);
+    ASSERT_EQ(events[0].cdb.removed, llvm::SmallVector<Fid>{main_id});
+    ASSERT_EQ(events[1].cdb.added, llvm::SmallVector<Fid>{other_id});
+    EXPECT_TRUE(workspace.cdb.candidate_entries(main_id).empty());
+}
+
 TEST_CASE(WorkspaceTickStateMachine) {
     TempDir tmp;
     tmp.touch("header.h", R"(int x = 1;)");

@@ -1,0 +1,7 @@
+[
+  {
+    "directory": "..",
+    "file": "x.cpp",
+    "arguments": ["clang++", "-std=c++20", "-DLIB", "x.cpp"]
+  }
+]

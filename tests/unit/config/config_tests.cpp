@@ -1,6 +1,7 @@
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "config/config.h"
+#include "sched/build_view.h"
 #include "support/filesystem.h"
 
 #include "kota/codec/dyn/decode.h"
@@ -58,6 +59,20 @@ static bool default_mentions(const kota::codec::dyn::Value& value,
         }
     }
     return false;
+}
+
+/// The edits the rules of `config` contribute for `path`, the way the build
+/// view accumulates them.
+void match_rules(const Config& config,
+                 llvm::StringRef path,
+                 std::vector<std::string>& append,
+                 std::vector<std::string>& remove) {
+    FileTable files;
+    CompilationDatabase cdb{files};
+    BuildView view{const_cast<Config&>(config), cdb, files};
+    auto edits = view.edits(path);
+    append = std::move(edits.append);
+    remove = std::move(edits.remove);
 }
 
 TEST_SUITE(Config) {
@@ -145,7 +160,7 @@ TEST_CASE(MatchRulesBasic) {
     config.finalize("");
 
     std::vector<std::string> append, remove;
-    config.match_rules("/src/foo.cpp", append, remove);
+    match_rules(config, "/src/foo.cpp", append, remove);
     EXPECT_EQ(append.size(), 1u);
     EXPECT_EQ(append[0], "-std=c++20");
     EXPECT_EQ(remove.size(), 1u);
@@ -161,7 +176,7 @@ TEST_CASE(MatchRulesNoMatch) {
     config.finalize("");
 
     std::vector<std::string> append, remove;
-    config.match_rules("/src/foo.h", append, remove);
+    match_rules(config, "/src/foo.h", append, remove);
     EXPECT_TRUE(append.empty());
     EXPECT_TRUE(remove.empty());
 }
@@ -179,7 +194,7 @@ TEST_CASE(MatchRulesMultiple) {
     config.finalize("");
 
     std::vector<std::string> append, remove;
-    config.match_rules("/src/test_foo.cpp", append, remove);
+    match_rules(config, "/src/test_foo.cpp", append, remove);
     EXPECT_EQ(append.size(), 2u);
     EXPECT_EQ(append[0], "-DCPP");
     EXPECT_EQ(append[1], "-DTEST");
@@ -297,14 +312,118 @@ TEST_CASE(LoadMissingFile) {
 }
 
 TEST_CASE(WorkspaceVarSubst) {
+    TempDir tmp;
+    auto at = [&](llvm::StringRef relative) {
+        std::string p = tmp.path(relative);
+        path::canonicalize(p);
+        return p;
+    };
     Config config;
     config.project.cache_dir = "${workspace}/cache";
     config.project.logging_dir = "${workspace}/logs";
-    config.project.compile_commands_paths = {"${workspace}/build"};
-    config.finalize("/my/ws");
-    EXPECT_EQ(std::string_view(config.project.cache_dir), "/my/ws/cache");
-    EXPECT_EQ(std::string_view(config.project.logging_dir), "/my/ws/logs");
-    EXPECT_EQ(config.project.compile_commands_paths[0], "/my/ws/build");
+    config.compile_commands = {"${workspace}/build"};
+    config.finalize(tmp.root.str());
+    EXPECT_EQ(std::string_view(config.project.cache_dir), at("cache"));
+    EXPECT_EQ(std::string_view(config.project.logging_dir), at("logs"));
+    ASSERT_EQ(config.compiled_rules.size(), 1u);
+    EXPECT_EQ(config.compiled_rules[0].compile_commands[0], at("build"));
+}
+
+TEST_CASE(ParseRuleSources) {
+    auto result = kota::codec::toml::from_string<Config>(R"(
+compile_commands = ["build"]
+default_configuration = "debug"
+
+[[rules]]
+configuration = "debug"
+compile_commands = ["build/debug", "/abs/compile_commands.json"]
+default_command = "clang++ -std=c++20 -Iinclude"
+
+[[rules]]
+patterns = ["third_party/**"]
+default_command = ["clang", "-std=c17"]
+index = false
+)");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->compile_commands.size(), 1u);
+    EXPECT_EQ(std::string_view(result->default_configuration), "debug");
+    ASSERT_EQ(result->rules.size(), 2u);
+    EXPECT_EQ(std::string_view(result->rules[0].configuration), "debug");
+    EXPECT_EQ(result->rules[0].compile_commands.size(), 2u);
+    EXPECT_EQ(std::get<std::string>(result->rules[0].default_command),
+              "clang++ -std=c++20 -Iinclude");
+    EXPECT_TRUE(result->rules[0].index);
+    EXPECT_EQ(std::get<std::vector<std::string>>(result->rules[1].default_command).size(), 2u);
+    EXPECT_FALSE(result->rules[1].index);
+}
+
+TEST_CASE(AnchoredRules) {
+    /// Relative databases and patterns anchor at the configuration file's
+    /// directory, `..` included; `**`-led and absolute patterns match
+    /// absolute paths; the top-level databases become the trailing rule.
+    TempDir tmp;
+    auto at = [&](llvm::StringRef relative) {
+        std::string p = tmp.path(relative);
+        path::canonicalize(p);
+        return p;
+    };
+    std::string root = tmp.root.str().str();
+    path::canonicalize(root);
+
+    Config config;
+    config.config_dir = tmp.path("sub");
+    config.compile_commands = {"build", at("elsewhere/compile_commands.json")};
+    config.rules.push_back(ConfigRule{
+        .patterns = {"src/**"},
+        .configuration = "debug",
+        .compile_commands = {"out/debug"},
+        .default_command = std::string("clang++ -std=c++20"),
+    });
+    config.rules.push_back(ConfigRule{
+        .patterns = {"**/*.hxx", "${workspace}/gen/**", "../shared/*.cpp"},
+        .append = {"-x", "c++-header"},
+    });
+    config.finalize(root);
+
+    ASSERT_EQ(config.compiled_rules.size(), 3u);
+    EXPECT_EQ(config.compiled_rules[0].compile_commands[0], at("sub/out/debug"));
+    EXPECT_EQ(config.compiled_rules[0].directory, at("sub"));
+    EXPECT_EQ(config.compiled_rules[0].patterns[0].root, at("sub/src"));
+    EXPECT_TRUE(config.compiled_rules[0].declares_sources());
+    EXPECT_FALSE(config.compiled_rules[1].declares_sources());
+    ASSERT_EQ(config.compiled_rules[1].patterns.size(), 3u);
+    EXPECT_EQ(config.compiled_rules[1].patterns[0].root, root);
+    EXPECT_EQ(config.compiled_rules[1].patterns[1].root, at("gen"));
+    EXPECT_EQ(config.compiled_rules[1].patterns[2].root, at("shared"));
+    EXPECT_TRUE(config.compiled_rules[2].patterns.empty());
+    EXPECT_EQ(config.compiled_rules[2].compile_commands[0], at("sub/build"));
+    EXPECT_EQ(config.compiled_rules[2].compile_commands[1], at("elsewhere/compile_commands.json"));
+    EXPECT_TRUE(config.declares_sources());
+
+    auto tags = config.configurations();
+    ASSERT_EQ(tags.size(), 1u);
+    EXPECT_EQ(tags[0], "debug");
+
+    /// A relative pattern sees only files under its anchor.
+    EXPECT_EQ(config.matching_rules(at("sub/src/a.cpp"), "debug").size(), 2u);
+    EXPECT_EQ(config.matching_rules(at("sub/src/a.cpp"), "release").size(), 1u);
+    EXPECT_EQ(config.matching_rules(at("src/a.cpp"), "debug").size(), 1u);
+    /// `**` and `${workspace}` patterns match the absolute path; `..`
+    /// climbs out of the anchor, `*` stays within one segment.
+    auto hxx = config.matching_rules(at("other/tree/x.hxx"), "debug");
+    ASSERT_EQ(hxx.size(), 2u);
+    EXPECT_EQ(hxx[0]->append.size(), 2u);
+    EXPECT_EQ(config.matching_rules(at("gen/x.cpp"), "debug").size(), 2u);
+    EXPECT_EQ(config.matching_rules(at("shared/x.cpp"), "debug").size(), 2u);
+    EXPECT_EQ(config.matching_rules(at("shared/deep/x.cpp"), "debug").size(), 1u);
+}
+
+TEST_CASE(SourcesOffByDefault) {
+    Config config;
+    config.rules.push_back(ConfigRule{.patterns = {"**/*"}, .append = {"-DX"}});
+    config.finalize("/ws");
+    EXPECT_FALSE(config.declares_sources());
+    EXPECT_TRUE(config.configurations().empty());
 }
 
 TEST_CASE(InvalidGlobPattern) {
@@ -323,7 +442,7 @@ TEST_CASE(InvalidGlobPattern) {
     EXPECT_EQ(config.compiled_rules.size(), 1u);
 
     std::vector<std::string> append, remove;
-    config.match_rules("/src/foo.cpp", append, remove);
+    match_rules(config, "/src/foo.cpp", append, remove);
     EXPECT_EQ(append.size(), 1u);
     EXPECT_EQ(append[0], "-DCPP");
 }
@@ -366,19 +485,28 @@ TEST_CASE(WorkspaceSubstRepeated) {
     EXPECT_EQ(std::string_view(config.project.cache_dir), "/root/a//root/b");
 }
 
-TEST_CASE(CompilePathsList) {
-    // compile_commands_paths should substitute ${workspace} on every entry.
-    Config config;
-    config.project.compile_commands_paths = {
-        "${workspace}/build",
-        "/abs/path/compile_commands.json",
-        "${workspace}/out",
+TEST_CASE(CompileCommandsList) {
+    // Every top-level database path substitutes ${workspace} and anchors
+    // at the configuration directory; absolute ones pass through.
+    TempDir tmp;
+    auto at = [&](llvm::StringRef relative) {
+        std::string p = tmp.path(relative);
+        path::canonicalize(p);
+        return p;
     };
-    config.finalize("/ws");
-    EXPECT_EQ(config.project.compile_commands_paths.size(), 3u);
-    EXPECT_EQ(config.project.compile_commands_paths[0], "/ws/build");
-    EXPECT_EQ(config.project.compile_commands_paths[1], "/abs/path/compile_commands.json");
-    EXPECT_EQ(config.project.compile_commands_paths[2], "/ws/out");
+    Config config;
+    config.compile_commands = {
+        "${workspace}/build",
+        at("abs/path/compile_commands.json"),
+        "out",
+    };
+    config.finalize(tmp.root.str());
+    ASSERT_EQ(config.compiled_rules.size(), 1u);
+    auto& databases = config.compiled_rules[0].compile_commands;
+    ASSERT_EQ(databases.size(), 3u);
+    EXPECT_EQ(databases[0], at("build"));
+    EXPECT_EQ(databases[1], at("abs/path/compile_commands.json"));
+    EXPECT_EQ(databases[2], at("out"));
 }
 
 TEST_CASE(TomlErrorLocated) {
@@ -486,7 +614,7 @@ TEST_CASE(RuleOrderLaterRemoveWins) {
     config.finalize("");
 
     std::vector<std::string> append, remove;
-    config.match_rules("/src/a.cpp", append, remove);
+    match_rules(config, "/src/a.cpp", append, remove);
 
     // -DFOO should have been stripped from append; -DBAR remains.
     EXPECT_EQ(append.size(), 1u);
@@ -511,7 +639,7 @@ TEST_CASE(RuleOrderLaterAppendWins) {
     config.finalize("");
 
     std::vector<std::string> append, remove;
-    config.match_rules("/src/a.cpp", append, remove);
+    match_rules(config, "/src/a.cpp", append, remove);
     EXPECT_EQ(append.size(), 2u);
     EXPECT_EQ(append[0], "-O2");
     EXPECT_EQ(append[1], "-O3");
@@ -616,9 +744,9 @@ append = ["-DTOML_ONLY"]
 
     // Original TOML rule no longer applies.
     std::vector<std::string> append, remove;
-    config.match_rules("/src/x.cpp", append, remove);
+    match_rules(config, "/src/x.cpp", append, remove);
     EXPECT_TRUE(append.empty());
-    config.match_rules("/src/x.cc", append, remove);
+    match_rules(config, "/src/x.cc", append, remove);
     EXPECT_EQ(append.size(), 1u);
     EXPECT_EQ(append[0], "-DFROM_JSON");
 }

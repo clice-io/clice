@@ -175,7 +175,7 @@ struct DirtySet {
     void add_clear_reindex(Fid path_id) {
         erase_id(reindex_content_changed, path_id);
         erase_id(reindex_deps_only, path_id);
-        // A removal retains the last-known index, so it also cancels an
+        // A disk removal retains the last-known index, so it also cancels an
         // earlier entry-change drop — a surviving drop would mask the shard
         // and let the next save retire it. The reverse order needs no
         // handling: every drop emission is paired with a reindex adder,
@@ -183,6 +183,20 @@ struct DirtySet {
         erase_id(drop_index, path_id);
         if(llvm::find(clear_reindex, path_id) == clear_reindex.end()) {
             clear_reindex.push_back(path_id);
+        }
+    }
+
+    /// A TU the build stopped compiling — its database still loads but no
+    /// longer lists it: the rows leave the index and nothing is owed, unlike
+    /// a file that vanished from disk, whose last-known rows keep serving.
+    void add_retire(Fid path_id) {
+        erase_id(reindex_content_changed, path_id);
+        erase_id(reindex_deps_only, path_id);
+        if(llvm::find(clear_reindex, path_id) == clear_reindex.end()) {
+            clear_reindex.push_back(path_id);
+        }
+        if(llvm::find(drop_index, path_id) == drop_index.end()) {
+            drop_index.push_back(path_id);
         }
     }
 

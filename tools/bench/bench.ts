@@ -355,12 +355,15 @@ function serverArgs(opts: Options): string[] {
 /// activity the tracker's polling loops generate.
 function initializationOptions(opts: Options): Record<string, unknown> {
     return {
+        // Pin clice to the CDB selected for the comparison: a workspace
+        // clice.toml may declare databases elsewhere, while the clangd run
+        // always receives opts.cdbDir — the A/B must open the file under
+        // the same compilation command. Rules go too: one binding files to
+        // another database would outrank the pinned one, and clangd applies
+        // no flag edits either.
+        compile_commands: [opts.cdbDir],
+        rules: [],
         project: {
-            // Pin clice to the CDB selected for the comparison: a workspace
-            // clice.toml may configure compile_commands_paths elsewhere,
-            // while the clangd run always receives opts.cdbDir — the A/B
-            // must open the file under the same compilation command.
-            compile_commands_paths: [opts.cdbDir],
             // Pin logs to where result() reads them (logFiles searches
             // <workspace>/.clice/logs); a clice.toml logging_dir would
             // otherwise send the worker perf lines elsewhere.

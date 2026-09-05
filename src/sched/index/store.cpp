@@ -45,9 +45,14 @@ struct CDBSnapshotEntry {
     std::vector<std::string> hashes;
 
     /// Entry hash of the file's default selection (the candidate-order
-    /// winner). The hash multiset alone cannot see an offline flip of the
-    /// winner — candidates unchanged, selection changed.
+    /// winner, or the default command claiming a file without entries).
+    /// The hash multiset alone cannot see an offline flip of the winner —
+    /// candidates unchanged, selection changed.
     std::string selected;
+
+    /// The databases that listed the file, so a later session can tell a
+    /// removal from a database that failed to load.
+    std::vector<std::string> sources;
 
     std::string rules;
     std::string host;
@@ -57,58 +62,66 @@ struct CDBSnapshot {
     std::vector<CDBSnapshotEntry> entries;
 };
 
-/// clice.toml append/remove rules change the effective indexing command
-/// without touching the CDB entry, so the snapshot must cover them too —
-/// an offline rule edit is as stale-making as an offline command edit.
-std::string rules_hash(const Config& config, llvm::StringRef file) {
-    std::vector<std::string> append, remove;
-    config.match_rules(file, append, remove);
-    if(append.empty() && remove.empty()) {
-        return {};
-    }
-    std::string joined;
-    for(auto& arg: append) {
-        joined += 'a';
-        joined += arg;
-        joined += '\0';
-    }
-    for(auto& arg: remove) {
-        joined += 'r';
-        joined += arg;
-        joined += '\0';
-    }
-    return std::format("{:016x}", llvm::xxh3_64bits(joined));
-}
-
+/// clice.toml rules change the effective indexing command without touching
+/// the CDB entry, so the snapshot must cover their edits too — an offline
+/// rule edit is as stale-making as an offline command edit. A file without
+/// candidates that a rule's default command claims records that command's
+/// identity as its selection, so an offline edit of the command text is
+/// caught the same way.
 CDBSnapshot build_cdb_snapshot(Workspace& workspace,
                                const llvm::DenseMap<Fid, Fid>& header_hosts,
                                llvm::ArrayRef<Fid> standalone_debt) {
     CDBSnapshot snapshot;
     for(auto& [path_id, hashes]: workspace.cdb.command_hash_snapshot()) {
+        auto candidates = workspace.view.candidates(path_id);
+        if(candidates.empty()) {
+            // Entries only inactive configurations declare: not compiled
+            // by this view, so not part of its identity.
+            continue;
+        }
         auto file = workspace.file_table.resolve(path_id).str();
-        auto rules = rules_hash(workspace.config, file);
+        auto rules = workspace.view.edit_hash(llvm::StringRef(file));
+        std::vector<std::string> sources;
+        for(auto& candidate: candidates) {
+            auto source = workspace.cdb.source_path(candidate.source).str();
+            if(!llvm::is_contained(sources, source)) {
+                sources.push_back(std::move(source));
+            }
+        }
         snapshot.entries.push_back({
             .file = std::move(file),
             .hashes = {hashes.begin(), hashes.end()},
-            .selected = workspace.cdb.selected_hash(path_id).value_or(std::string()),
+            .selected = workspace.cdb.entry_hash_hex(candidates.front().config),
+            .sources = std::move(sources),
             .rules = std::move(rules),
         });
     }
     // Standalone-indexed TUs have no CDB entry, yet their effective command
-    // depends on their own matched rules and their borrowed host's command
-    // — both must be snapshot to detect offline changes.
+    // depends on the default command claiming them or the host they borrow
+    // from, and on the rules matching them and that host — all of it must
+    // be snapshot to detect offline changes.
     auto add_standalone = [&](Fid tu) {
         auto file = workspace.file_table.resolve(tu);
-        if(workspace.cdb.has_entry(file)) {
+        if(workspace.view.has_candidates(tu)) {
             return;
         }
-        auto host_it = header_hosts.find(tu);
+        std::string selected;
+        if(auto commands = workspace.view.commands(tu); !commands.empty()) {
+            selected = workspace.cdb.entry_hash_hex(commands.front().config);
+        }
+        std::string host;
+        llvm::SmallVector<llvm::StringRef, 2> edit_paths;
+        if(auto host_it = header_hosts.find(tu); host_it != header_hosts.end()) {
+            host = workspace.file_table.resolve(host_it->second).str();
+            edit_paths.push_back(host);
+        }
+        edit_paths.push_back(file);
+        auto rules = workspace.view.edit_hash(edit_paths);
         snapshot.entries.push_back({
             .file = file.str(),
-            .rules = rules_hash(workspace.config, file),
-            .host = host_it != header_hosts.end()
-                        ? workspace.file_table.resolve(host_it->second).str()
-                        : std::string(),
+            .selected = std::move(selected),
+            .rules = std::move(rules),
+            .host = std::move(host),
         });
     };
     for(auto tu: llvm::make_first_range(workspace.project_index.manifests)) {
@@ -1370,7 +1383,7 @@ IndexStore::LoadResult IndexStore::load(bool read_only) {
     if(!read_only && db.corrupted()) {
         LOG_WARN("Index database is corrupt; discarding it and rebuilding from scratch");
         for(auto tu: llvm::make_first_range(project.manifests)) {
-            if(!workspace.cdb.has_entry(workspace.file_table.resolve(tu))) {
+            if(!workspace.view.has_candidates(tu)) {
                 report.add_reindex(tu);
             }
         }
@@ -1404,8 +1417,8 @@ llvm::SmallVector<Fid> IndexStore::standalone_of(llvm::ArrayRef<Fid> candidates)
     llvm::SmallVector<Fid> debt;
     llvm::DenseSet<Fid> seen;
     for(auto id: candidates) {
-        if(workspace.project_index.manifests.contains(id) ||
-           workspace.cdb.has_entry(workspace.file_table.resolve(id)) || !seen.insert(id).second) {
+        if(workspace.project_index.manifests.contains(id) || workspace.view.has_candidates(id) ||
+           !seen.insert(id).second) {
             continue;
         }
         debt.push_back(id);
@@ -1478,14 +1491,22 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
             continue;
         }
         auto& old = *it->second;
-        // The header's own CDB entry vanished: keep the index — last-known
-        // content still serves navigation, mirroring the live treatment.
+        auto server_id = workspace.file_table.intern(entry.file);
         if(!old.hashes.empty()) {
+            // Its entries vanished. A default command that still claims it
+            // is a command change; otherwise the retirement pass below
+            // decides whether the rows leave.
+            if(!entry.selected.empty()) {
+                LOG_INFO("Compile command changed since the last session; reindexing {}",
+                         entry.file);
+                drop_index_into(server_id, report);
+                report.add_reindex(server_id);
+            }
             continue;
         }
-        auto server_id = workspace.file_table.intern(entry.file);
-        if(old.rules != entry.rules) {
-            LOG_INFO("Config rules changed since the last session; reindexing {}", entry.file);
+        if(old.rules != entry.rules || old.selected != entry.selected) {
+            LOG_INFO("Compile command or rules changed since the last session; reindexing {}",
+                     entry.file);
             drop_index_into(server_id, report);
             report.add_reindex(server_id);
             continue;
@@ -1494,7 +1515,7 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
             continue;
         }
         auto host_id = workspace.file_table.intern(old.host);
-        if(!workspace.cdb.has_entry(old.host) || llvm::is_contained(changed_ids, host_id)) {
+        if(!workspace.view.compiles(host_id) || llvm::is_contained(changed_ids, host_id)) {
             LOG_INFO("Host compile command changed since the last session; reindexing {}",
                      entry.file);
             drop_index_into(server_id, report);
@@ -1520,13 +1541,37 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
         pinned_fresh.insert(server_id);
     }
 
+    // A file no database lists any more: when every database that listed
+    // it loaded fine this session, the build stopped compiling it and its
+    // rows leave, as the live reload's removed branch does; a database
+    // that failed to load keeps its last-known entries serving.
+    for(auto& old: persisted.entries) {
+        if(old.hashes.empty() || old.sources.empty()) {
+            continue;
+        }
+        auto server_id = workspace.file_table.intern(old.file);
+        if(workspace.view.compiles(server_id)) {
+            continue;
+        }
+        bool healthy = llvm::all_of(old.sources, [&](const std::string& source) {
+            auto id = workspace.cdb.find_source(source);
+            return id && workspace.cdb.loaded(*id);
+        });
+        if(!healthy) {
+            continue;
+        }
+        LOG_INFO("No compilation database lists {} any more; dropping its index", old.file);
+        drop_index_into(server_id, report);
+    }
+
     // A persisted standalone entry whose file has no manifest is recorded
     // debt: its index was dropped for a command or rule change and no
     // rebuild has landed since — with no manifest pin and no CDB entry,
     // nothing else would ever retry it. Re-enqueue while the file exists;
     // a vanished file's debt dies with its entry at the next save.
     for(auto& old: persisted.entries) {
-        if(!old.hashes.empty() || workspace.cdb.has_entry(old.file)) {
+        if(!old.hashes.empty() ||
+           workspace.view.has_candidates(workspace.file_table.intern(old.file))) {
             continue;
         }
         auto server_id = workspace.file_table.intern(old.file);

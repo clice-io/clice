@@ -16,6 +16,7 @@
 #include "index/project_index.h"
 #include "index/shard.h"
 #include "index/tu_index.h"
+#include "sched/build_view.h"
 #include "sched/crash_budget.h"
 #include "semantic/symbol.h"
 #include "support/cache_store.h"
@@ -35,7 +36,7 @@ class ContextResolver;
 
 /// On-disk cache layout version (CacheStore root `cache/v{N}`).
 /// Bump to discard all cached artifacts after incompatible format changes.
-constexpr inline std::uint32_t cache_format_version = 8;
+constexpr inline std::uint32_t cache_format_version = 9;
 
 /// One dependency of a compilation artifact.
 ///
@@ -209,6 +210,10 @@ struct Workspace {
 
     CompilationDatabase cdb{file_table};
 
+    /// Which entries and hand-written commands apply to a file under the
+    /// active configuration; the only reader of the rules.
+    BuildView view{config, cdb, file_table};
+
     /// Unified on-disk blob store for PCH/PCM/index artifacts.  Opened by
     /// load_workspace() when cache_dir is configured; absent means caching
     /// is disabled.  Owns blob lifecycle (atomic writes, LRU, crash
@@ -359,11 +364,11 @@ struct Workspace {
                        Fid exclude_path_id = {}) const;
 };
 
-/// Find the workspace's compile_commands.json: the configured paths first
-/// (a directory means <dir>/compile_commands.json), then the workspace root,
-/// then its direct subdirectories. Returns the empty string when none
-/// exists yet — the file tracker keeps looking on its CDB poll.
-std::string discover_compile_commands(const Config& config, llvm::StringRef workspace_root);
+/// Find a compile_commands.json when no rule declares one: the workspace
+/// root, then its direct subdirectories in name order. Returns the empty
+/// string when none exists yet — the file tracker keeps looking on its CDB
+/// poll.
+std::string discover_compile_commands(llvm::StringRef workspace_root);
 
 /// Capture a staleness snapshot from a build's reported inputs, interning
 /// the consumed versions into the shared table.

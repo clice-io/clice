@@ -35,6 +35,8 @@ const MARKERS: RegionMarkers = {
 interface FieldSchema {
     type?: string;
     items?: FieldSchema;
+    /// Untagged variant alternatives (a field accepting several shapes).
+    anyOf?: FieldSchema[];
     minimum?: number;
     maximum?: number;
     description?: string;
@@ -67,6 +69,9 @@ function resolveRef(root: StructSchema, schema: FieldSchema): StructSchema {
 /// (`uint32`/`uint64` from the integer bounds, since JSON schema has no
 /// width of its own).
 function renderType(field: FieldSchema): string {
+    if (field.anyOf !== undefined) {
+        return field.anyOf.map(renderType).join(" or ");
+    }
     switch (field.type) {
         case "boolean":
             return "`bool`";
@@ -131,6 +136,24 @@ function renderField(name: string, field: FieldSchema): string[] {
     return out;
 }
 
+/// Whether a top-level property is a section (a struct or an array of
+/// structs) rather than a plain top-level option.
+function isSection(field: FieldSchema): boolean {
+    return field.$ref !== undefined || (field.type === "array" && field.items?.$ref !== undefined);
+}
+
+/// The `root` region's body: the top-level options that live above every
+/// section in clice.toml, in declaration order.
+function renderRoot(root: StructSchema): string {
+    const parts: string[] = [];
+    for (const [name, field] of Object.entries(root.properties ?? {})) {
+        if (!isSection(field)) {
+            parts.push(renderField(name, field).join("\n"));
+        }
+    }
+    return parts.join("\n\n");
+}
+
 /// A section region's body: every option of the section's struct, in
 /// declaration order.
 function renderSection(root: StructSchema, section: string): string {
@@ -151,12 +174,13 @@ function rewriteDoc(docText: string, root: StructSchema, problems: string[]): st
         docText,
         DOC_PATH,
         MARKERS,
-        (section) => renderSection(root, section),
+        (section) => (section === "root" ? renderRoot(root) : renderSection(root, section)),
         problems,
     );
-    for (const section of Object.keys(root.properties ?? {})) {
-        if (!seen.has(section)) {
-            problems.push(`${DOC_PATH}: config section '${section}' has no marker region`);
+    for (const [name, field] of Object.entries(root.properties ?? {})) {
+        const region = isSection(field) ? name : "root";
+        if (!seen.has(region)) {
+            problems.push(`${DOC_PATH}: config option '${name}' has no marker region '${region}'`);
         }
     }
     return text;

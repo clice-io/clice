@@ -1,0 +1,12 @@
+[
+  {
+    "directory": "..",
+    "file": "src/a.cpp",
+    "arguments": ["clang++", "-std=c++20", "-DROOT", "src/a.cpp"]
+  },
+  {
+    "directory": "..",
+    "file": "lib/x.cpp",
+    "arguments": ["clang++", "-std=c++20", "-DROOT", "lib/x.cpp"]
+  }
+]

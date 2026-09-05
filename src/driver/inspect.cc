@@ -12,6 +12,7 @@
 #include "feature/feature.h"
 #include "index/shard.h"
 #include "index/tu_index.h"
+#include "sched/build_view.h"
 #include "support/filesystem.h"
 #include "syntax/annotation.h"
 #include "syntax/scan.h"
@@ -420,16 +421,35 @@ bool is_header_type(clang::driver::types::ID type) {
     return type == types::TY_CHeader || type == types::TY_CXXHeader;
 }
 
+/// A compilation database of the inspected tree with the view that reads
+/// it. inspect carries no clice.toml, so the view holds no rules: it is
+/// the same resolution the server performs, minus the edits.
+struct Project {
+    Config config;
+    CompilationDatabase database;
+    BuildView view;
+
+    Project(FileTable& files, llvm::StringRef directory) :
+        database(files), view(config, database, files) {
+        config.finalize(directory);
+        view.reset_active();
+    }
+};
+
 /// The compile command for `file`. Explicit --flag arguments (the snap-test
 /// channel — the harness owns the flags, no compile_commands.json exists)
 /// apply uniformly to every input file; otherwise the file's entry in
-/// `database`, a language-compatible donor entry for headers, or default
+/// `project`, a language-compatible donor entry for headers, or default
 /// flags. On failure records the error on `entry` and returns nullopt.
 std::optional<FileCommand> file_command(FileEntry& entry,
                                         const std::string& file,
                                         llvm::ArrayRef<std::string> flags,
                                         llvm::StringRef flags_directory,
-                                        CompilationDatabase* database) {
+                                        Project* project) {
+    CompilationDatabase* database = project ? &project->database : nullptr;
+    auto has_entry = [&](llvm::StringRef path) {
+        return project && project->view.has_candidates(database->files().intern(path));
+    };
     namespace types = clang::driver::types;
     auto type = file_type(file);
     bool is_header = is_header_type(type);
@@ -479,7 +499,7 @@ std::optional<FileCommand> file_command(FileEntry& entry,
     // ambiguous .h prefers C++ but accepts C in a pure-C project), longest
     // common path prefix breaks ties.
     llvm::StringRef donor;
-    if(is_header && database != nullptr && !database->has_entry(file)) {
+    if(is_header && database != nullptr && !has_entry(file)) {
         std::pair<int, std::size_t> best{-1, 0};
         for(auto& candidate: database->entries()) {
             llvm::StringRef donor_path = database->files().resolve(candidate.file);
@@ -501,24 +521,29 @@ std::optional<FileCommand> file_command(FileEntry& entry,
         }
     }
 
-    if(database != nullptr && database->has_entry(file)) {
-        auto& cdb_entry = database->candidate_entries(file).front();
-        CommandRef ref{cdb_entry.file,
-                       cdb_entry.config,
-                       database->input_kind(cdb_entry.config, file),
-                       CommandSource::CDBExact};
+    if(has_entry(file)) {
+        auto file_id = database->files().intern(file);
+        auto candidate = project->view.candidates(file_id).front();
+        auto ref = project->view.resolve(file_id,
+                                         candidate.config,
+                                         CommandSource::CDBExact,
+                                         llvm::StringRef(file),
+                                         file);
         command.arguments = to_strings(database->render(ref));
-        command.directory = database->config(cdb_entry.config).directory;
+        command.directory = database->config(ref.config).directory;
     } else if(!donor.empty()) {
-        auto& cdb_entry = database->candidate_entries(donor).front();
+        auto donor_id = database->files().intern(donor);
+        auto candidate = project->view.candidates(donor_id).front();
         // The donor's language applies to the header itself — it compiles
         // as a fragment of that TU's world, not by its own extension.
-        CommandRef ref{database->files().intern(file),
-                       cdb_entry.config,
-                       database->input_kind(cdb_entry.config, donor),
-                       CommandSource::IncludeGraph};
+        llvm::StringRef edit_paths[] = {donor, file};
+        auto ref = project->view.resolve(database->files().intern(file),
+                                         candidate.config,
+                                         CommandSource::IncludeGraph,
+                                         edit_paths,
+                                         donor);
         command.arguments = to_strings(database->render(ref));
-        command.directory = database->config(cdb_entry.config).directory;
+        command.directory = database->config(ref.config).directory;
     } else {
         // No CDB entry for this file: query the toolchain with default
         // flags. Uncached, but this path only runs for files outside any
@@ -810,14 +835,14 @@ int run_inspect(const InspectOptions& opts) {
     // toolchain query in file_command. All databases share one file
     // table: nested projects live in a single fid space.
     FileTable file_table;
-    std::map<std::string, CompilationDatabase> databases;
-    auto database_for = [&](llvm::StringRef file) -> CompilationDatabase* {
+    std::map<std::string, Project> databases;
+    auto database_for = [&](llvm::StringRef file) -> Project* {
         auto cdb = find_cdb(path::parent_path(file));
         if(!cdb) {
             return nullptr;
         }
-        auto [it, inserted] = databases.try_emplace(*cdb, file_table);
-        if(inserted && !it->second.load(*cdb)) {
+        auto [it, inserted] = databases.try_emplace(*cdb, file_table, path::parent_path(*cdb));
+        if(inserted && !it->second.database.load(*cdb)) {
             // Keep the empty entry so the failure is logged once; its files
             // take the default-flags fallback.
             LOG_WARN("failed to load {}", *cdb);

@@ -10,6 +10,8 @@ clice 从工作区根目录的 `clice.toml` 读取配置；若该文件不存在
 
 完整配置的 JSON Schema 发布于 [`clice-config.schema.json`](/clice-config.schema.json)；支持根据 Schema 验证 TOML 或 JSON 的编辑器可以使用它。
 
+文件中的相对路径和模式相对于配置文件自身所在的目录解析；通过 `initializationOptions` 传入的值则相对于工作区根目录解析。
+
 ## 变量替换
 
 字符串值中支持以下变量：
@@ -17,6 +19,34 @@ clice 从工作区根目录的 `clice.toml` 读取配置；若该文件不存在
 | 变量           | 说明                   |
 | -------------- | ---------------------- |
 | `${workspace}` | 客户端提供的工作区目录 |
+
+## 工作区
+
+顶层选项，写在任何配置节之前。
+
+<!-- BEGIN GENERATED CONFIG: root -->
+
+<div class="config-option">
+
+| 选项               | 类型              | 默认值 |
+| ------------------ | ----------------- | ------ |
+| `compile_commands` | `array of string` | `[]`   |
+
+整个工作区使用的编译数据库，按优先级排列：可以是一个 compile_commands.json，也可以是包含它的目录，路径相对于本配置文件。等价于一条写在最后、不带匹配模式的规则；参见 `[rules].compile_commands`。当这里和所有规则都没有声明来源时，会在工作区根目录及其一级子目录中搜索。
+
+</div>
+
+<div class="config-option">
+
+| 选项                    | 类型     | 默认值 |
+| ----------------------- | -------- | ------ |
+| `default_configuration` | `string` | `""`   |
+
+启动时生效的构建配置，取规则上声明的标签之一。一旦有任何规则带上标签，此项就是必需的。
+
+</div>
+
+<!-- END GENERATED CONFIG -->
 
 ## `[project]`
 
@@ -39,16 +69,6 @@ clice 从工作区根目录的 `clice.toml` 读取配置；若该文件不存在
 | `logging_dir` | `string` | `""`   |
 
 日志文件目录；空值时使用 `${cache_dir}/logs`。每次服务器会话都将日志写入各自带时间戳的子目录。
-
-</div>
-
-<div class="config-option">
-
-| 选项                     | 类型              | 默认值 |
-| ------------------------ | ----------------- | ------ |
-| `compile_commands_paths` | `array of string` | `[]`   |
-
-搜索 compile_commands.json 的路径——可以是文件路径，也可以是要在其中查找的目录。如果所有指定位置均未找到该文件——或列表为空——则先搜索工作区根目录，再搜索其每个直接子目录。
 
 </div>
 
@@ -338,7 +358,7 @@ clice 从工作区根目录的 `clice.toml` 读取配置；若该文件不存在
 
 ## `[[rules]]`
 
-`[[rules]]` 是规则对象数组。规则按声明顺序匹配——后面的规则覆盖前面的。
+规则通过模式指定文件，并说明这些文件从哪里获取编译命令，以及如何修改这些命令。规则按声明顺序匹配——后声明的规则覆盖先声明的规则。带 `configuration` 标签的规则只在相应配置生效期间适用；不同的标签构成配置菜单。
 
 <!-- BEGIN GENERATED CONFIG: rules -->
 
@@ -348,7 +368,37 @@ clice 从工作区根目录的 `clice.toml` 读取配置；若该文件不存在
 | ---------- | ----------------- | ------ |
 | `patterns` | `array of string` | `[]`   |
 
-用于选择此规则所适用文件的 glob 模式：`*` 匹配一个路径段内的任意字符（仅包含 `*` 的模式匹配任意路径），`?` 匹配单个字符，`**` 匹配任意数量的路径段，`{a,b}` 表示备选项，`[0-9]` 表示字符范围，`[!...]` 表示取反的字符范围。
+用于选择此规则所适用文件的 glob 模式。相对模式以本配置文件所在目录为基准（允许 `..` 路径段）；绝对模式或以 `**` 开头的模式匹配文件的绝对路径。`*` 匹配一个路径段内的任意字符（仅包含 `*` 的模式匹配任意路径），`?` 匹配单个字符，`**` 匹配任意数量的路径段，`{a,b}` 表示备选项，`[0-9]` 表示字符范围，`[!...]` 表示取反的字符范围。省略时表示所有文件。
+
+</div>
+
+<div class="config-option">
+
+| 选项            | 类型     | 默认值 |
+| --------------- | -------- | ------ |
+| `configuration` | `string` | `""`   |
+
+构建配置标签。带标签的规则只在相应配置生效期间适用；不带标签的规则始终适用。不同的标签构成配置菜单，`default_configuration` 指定启动时生效的配置。
+
+</div>
+
+<div class="config-option">
+
+| 选项               | 类型              | 默认值 |
+| ------------------ | ----------------- | ------ |
+| `compile_commands` | `array of string` | `[]`   |
+
+编译数据库，按优先级排列：可以是 compile_commands.json，也可以是包含它的目录，路径相对于本配置文件。它们都会被加载，且无论模式如何，每个条目都适用于其对应的文件；模式和顺序决定同一文件出现在多个数据库中时默认使用哪个条目。
+
+</div>
+
+<div class="config-option">
+
+| 选项              | 类型                          | 默认值 |
+| ----------------- | ----------------------------- | ------ |
+| `default_command` | `string` 或 `array of string` | `""`   |
+
+匹配到但没有数据库条目的文件所用的编译命令，其中不含源文件本身：可以是一个按 shell 命令行方式分词的字符串，也可以是 argv 数组。它以本配置文件所在目录为工作目录运行，磁盘上匹配到的源文件会加入后台索引。省略则不提供命令。
 
 </div>
 
@@ -372,19 +422,47 @@ clice 从工作区根目录的 `clice.toml` 读取配置；若该文件不存在
 
 </div>
 
+<div class="config-option">
+
+| 选项    | 类型   | 默认值 |
+| ------- | ------ | ------ |
+| `index` | `bool` | `true` |
+
+匹配到的翻译单元是否加入后台索引。`false` 会将它们排除在外；它们被打开时仍会编译，也仍会作为其所包含头文件的宿主。只要有一条匹配的规则写了 `false`，就以它为准。
+
+</div>
+
 <!-- END GENERATED CONFIG -->
 
 ## 示例
 
 ```toml
-[project]
-compile_commands_paths = ["${workspace}/build", "${workspace}/cmake-build-debug"]
+compile_commands = ["build"]
 
 [[rules]]
-patterns = ["**/*"]
 append = ["-std=c++23"]
 
 [[rules]]
-patterns = ["**/test/**"]
+patterns = ["test/**"]
 append = ["-DTEST_MODE"]
+```
+
+两个作为可切换配置的构建目录，以及一个没有编译数据库的项目：
+
+```toml
+default_configuration = "debug"
+
+[[rules]]
+configuration = "debug"
+compile_commands = ["build/debug"]
+
+[[rules]]
+configuration = "release"
+compile_commands = ["build/release"]
+```
+
+```toml
+[[rules]]
+patterns = ["src/**", "include/**"]
+default_command = "arm-none-eabi-gcc -std=c23 -mcpu=cortex-m4 -Iinclude"
 ```

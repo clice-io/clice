@@ -146,14 +146,13 @@ struct CommandLang {
 };
 
 static std::optional<CommandLang> command_lang(Workspace& workspace, llvm::StringRef path) {
-    auto candidates = workspace.cdb.candidate_entries(path);
-    if(candidates.empty()) {
+    auto file = workspace.file_table.intern(path);
+    auto commands = workspace.view.commands(file);
+    if(commands.empty()) {
         return std::nullopt;
     }
-    std::vector<std::string> append, remove;
-    workspace.config.match_rules(path, append, remove);
-    auto applied =
-        workspace.cdb.apply_rules(candidates.front().config, {.remove = remove, .append = append});
+    auto& command = commands.front();
+    auto applied = workspace.view.resolve(file, command.config, command.source, path, path).config;
 
     CommandLang result;
     auto language = workspace.cdb.forced_language(applied);

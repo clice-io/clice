@@ -39,6 +39,11 @@ void IndexPump::boost(Fid server_path_id) {
 }
 
 void IndexPump::enqueue(Fid server_path_id, ReindexReason reason) {
+    // The one admission point of the background index: a rule's
+    // `index = false` keeps its files out here, whichever path asked.
+    if(!workspace.view.indexed(workspace.file_table.resolve(server_path_id))) {
+        return;
+    }
     // New debt voids the running round's freshness memos: a claim taken
     // after this recording must re-judge against the disk, or its skip
     // would settle the fresh ticket on a verdict memoized before the

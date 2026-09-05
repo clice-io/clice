@@ -2,6 +2,9 @@
 
 #include <string>
 
+#include "command/command.h"
+
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace clice {
@@ -14,10 +17,12 @@ struct Workspace;
 /// What bootstrap_workspace found and did, for the caller's own follow-ups
 /// (guidance messages, store-lifetime services).
 struct BootstrapReport {
-    /// Path of the compile_commands.json that was loaded; empty when none
-    /// was found — the persisted index is still loaded then, so a database
-    /// generated later starts from the previous session's state.
-    std::string cdb_path;
+    /// Whether any compile command source is in place: a database loaded,
+    /// or a rule's default command. False means every file compiles with
+    /// the builtin fallback until a database appears — the persisted
+    /// index is still loaded then, so a database generated later starts
+    /// from the previous session's state.
+    bool has_commands = false;
 
     /// This call opened the cache store: the caller owns store-lifetime
     /// services (the server spawns its checkpoint task on this).
@@ -42,5 +47,10 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
                                     IndexPump& pump,
                                     llvm::StringRef root,
                                     bool read_only_index = false);
+
+/// The active view's members with their effective commands: the input of
+/// a dependency scan. Shared by the startup scan and the CDB reload
+/// rescan so the two can never disagree on what a unit compiles as.
+llvm::SmallVector<CommandRef> scan_units(Workspace& workspace);
 
 }  // namespace clice

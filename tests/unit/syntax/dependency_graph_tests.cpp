@@ -284,20 +284,28 @@ export module m;
         {tmp.root, tmp.path("src/m.cppm"), {}}
     });
     write_cdb(tmp, cdb, json);
-    scan_dependency_graph(cdb,
-                          graph,
-                          [](llvm::StringRef,
-                             std::vector<std::string>& append,
-                             std::vector<std::string>&) { append.push_back("-DENABLE_M"); });
+    /// The unit carries its effective command: the edit that unguards the
+    /// declaration is applied before the scan sees the file.
+    llvm::SmallVector<CommandRef> units;
+    for(auto& entry: cdb.entries()) {
+        std::vector<std::string> append{"-DENABLE_M"};
+        auto applied = cdb.apply_rules(entry.config, {.append = append});
+        units.push_back({entry.file,
+                         applied,
+                         cdb.input_kind(applied, cdb.files().resolve(entry.file)),
+                         CommandSource::CDBExact});
+    }
+    scan_dependency_graph(cdb, graph, units);
 
     EXPECT_EQ(graph.module_count(), 1u);
     EXPECT_EQ(graph.lookup_module("m").size(), 1u);
 }
 
 TEST_CASE(GuardedModulePerCandidate) {
-    /// Two candidates whose defines select different module names: each
-    /// scan unit must preprocess under its own group's command, not
-    /// whichever candidate sorts first.
+    /// Two candidates whose defines select different module names: every
+    /// entry is a scan unit preprocessed under its own command, so both
+    /// names resolve; a scan handed only the second unit sees only its
+    /// name.
     TempDir tmp;
     tmp.touch("src/m.cppm", R"(#ifdef V2
 export module m2;
@@ -319,8 +327,22 @@ export module m1;
     EXPECT_EQ(graph.lookup_module("m1").size(), 1u);
     EXPECT_EQ(graph.lookup_module("m2").size(), 1u);
 
+    auto file = file_table.intern(tmp.path("src/m.cppm"));
+    auto candidates = cdb.candidate_entries(file);
+    ASSERT_EQ(candidates.size(), 2u);
+    llvm::SmallVector<CommandRef> v2_units = {
+        {file,
+         candidates[1].config,
+         cdb.input_kind(candidates[1].config, tmp.path("src/m.cppm")),
+         CommandSource::CDBExact}
+    };
+    DependencyGraph graph_v2;
+    scan_dependency_graph(cdb, graph_v2, v2_units);
+    EXPECT_TRUE(graph_v2.lookup_module("m1").empty());
+    EXPECT_EQ(graph_v2.lookup_module("m2").size(), 1u);
+
     // A warm run must reproduce both: the module-decl memo keys by
-    // (content, rendered command), so each group resolves its own name.
+    // (content, rendered command), so each command resolves its own name.
     DependencyGraph graph2;
     scan_dependency_graph(cdb, graph2);
     EXPECT_EQ(graph2.lookup_module("m1").size(), 1u);

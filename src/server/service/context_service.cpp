@@ -77,31 +77,37 @@ ext::QueryContextResult ContextService::query_contexts(llvm::StringRef path,
 
     auto hosts = ws.dep_graph.find_host_sources(path_id);
     for(auto host_id: ws.rank_hosts(path_id, hosts)) {
-        auto host_path = ws.file_table.resolve(host_id);
-        if(!ws.cdb.has_entry(host_path))
+        auto commands = ws.view.commands(host_id);
+        if(commands.empty())
             continue;
+        auto host_path = ws.file_table.resolve(host_id);
         auto host_uri_opt = lsp::URI::from_file_path(std::string(host_path));
         if(!host_uri_opt)
             continue;
 
         // A multi-configuration host contributes one context per
         // CDB entry: each configuration compiles the header under
-        // different preprocessor state.
-        std::vector<std::string> host_append, host_remove;
-        ws.config.match_rules(host_path, host_append, host_remove);
-        auto candidates = ws.cdb.candidate_entries(host_path);
+        // different preprocessor state. Hashes are those of the command
+        // the header actually compiles with — the host's, edited by the
+        // rules matching either file.
+        llvm::StringRef edit_paths[] = {host_path, path};
         auto occurrences = ws.count_occurrences(host_id, path_id);
 
-        for(auto& entry: candidates) {
-            auto applied =
-                ws.cdb.apply_rules(entry.config, {.remove = host_remove, .append = host_append});
+        for(auto& entry: commands) {
+            auto applied = ws.view
+                               .resolve(path_id,
+                                        entry.config,
+                                        CommandSource::IncludeGraph,
+                                        edit_paths,
+                                        host_path)
+                               .config;
             auto hash = ws.cdb.entry_hash_hex(applied);
             if(dedup_hosts && !seen_configs.insert(hash).second)
                 continue;
 
             ext::ContextItem item;
             item.label = llvm::sys::path::filename(host_path).str();
-            if(candidates.size() > 1) {
+            if(commands.size() > 1) {
                 auto desc = flags_label(ws, applied);
                 if(!desc.empty()) {
                     item.label = std::format("{} [{}]", item.label, desc);
@@ -131,14 +137,12 @@ ext::QueryContextResult ContextService::query_contexts(llvm::StringRef path,
     // switchContext would then reject. Offered even when hosts
     // exist, so a host override can be switched back to the file's
     // own command.
-    if(ws.cdb.has_entry(path)) {
-        std::vector<std::string> rule_append, rule_remove;
-        ws.config.match_rules(path, rule_append, rule_remove);
-        auto entries = ws.cdb.candidate_entries(path);
+    if(auto entries = ws.view.candidates(path_id); !entries.empty()) {
         auto uri_opt = lsp::URI::from_file_path(std::string(path));
         for(std::size_t i = 0; uri_opt && i < entries.size(); ++i) {
-            auto applied = ws.cdb.apply_rules(entries[i].config,
-                                              {.remove = rule_remove, .append = rule_append});
+            auto applied =
+                ws.view.resolve(path_id, entries[i].config, CommandSource::CDBExact, path, path)
+                    .config;
             auto hash = ws.cdb.entry_hash_hex(applied);
             if(!seen_configs.insert(hash).second)
                 continue;
@@ -191,20 +195,17 @@ ext::CurrentContextResult ContextService::current_context(llvm::StringRef path,
         item.uri = params.uri;
         item.command_hash = choice->command_hash;
         item.label = std::format("config {}", choice->command_hash.substr(0, 8));
-        if(ws.cdb.has_entry(path)) {
-            std::vector<std::string> rule_append, rule_remove;
-            ws.config.match_rules(path, rule_append, rule_remove);
-            for(auto& entry: ws.cdb.candidate_entries(path)) {
-                auto applied = ws.cdb.apply_rules(entry.config,
-                                                  {.remove = rule_remove, .append = rule_append});
-                if(ws.cdb.entry_hash_hex(applied) == choice->command_hash) {
-                    auto desc = flags_label(ws, applied);
-                    if(!desc.empty()) {
-                        item.label = std::move(desc);
-                    }
-                    item.description = ws.cdb.config(applied).directory;
-                    break;
+        for(auto& entry: ws.view.candidates(session->path_id)) {
+            auto applied =
+                ws.view.resolve(session->path_id, entry.config, CommandSource::CDBExact, path, path)
+                    .config;
+            if(ws.cdb.entry_hash_hex(applied) == choice->command_hash) {
+                auto desc = flags_label(ws, applied);
+                if(!desc.empty()) {
+                    item.label = std::move(desc);
                 }
+                item.description = ws.cdb.config(applied).directory;
+                break;
             }
         }
         result.context = std::move(item);
@@ -234,16 +235,17 @@ kota::task<ext::SwitchContextResult>
         co_return result;
     }
 
-    // Validate that `hash` names a real CDB entry of `entry_path` and
-    // resolve the matched candidate's base entry hash — the identity that
-    // stays unique when rules collapse two applied hashes onto one value.
-    auto find_command = [&](llvm::StringRef entry_path,
+    // Validate that `hash` names a real candidate of `entry_file` under the
+    // edits of `paths` (the host and this file for a host pin) and resolve
+    // the matched candidate's base entry hash — the identity that stays
+    // unique when rules collapse two applied hashes onto one value.
+    auto find_command = [&](Fid entry_file,
+                            llvm::ArrayRef<llvm::StringRef> paths,
                             llvm::StringRef hash) -> std::optional<std::string> {
-        std::vector<std::string> rule_append, rule_remove;
-        ws.config.match_rules(entry_path, rule_append, rule_remove);
-        for(auto& entry: ws.cdb.candidate_entries(entry_path)) {
+        auto entry_path = ws.file_table.resolve(entry_file);
+        for(auto& entry: ws.view.commands(entry_file)) {
             auto applied =
-                ws.cdb.apply_rules(entry.config, {.remove = rule_remove, .append = rule_append});
+                ws.view.resolve(entry_file, entry.config, entry.source, paths, entry_path).config;
             if(ws.cdb.entry_hash_hex(applied) == hash) {
                 return ws.cdb.entry_hash_hex(entry.config);
             }
@@ -254,17 +256,17 @@ kota::task<ext::SwitchContextResult>
     SavedContext saved;
     if(context_path_id == path_id && params.command_hash.has_value()) {
         // Pin one of the file's own CDB entries.
-        auto base = find_command(path, *params.command_hash);
+        auto base = find_command(path_id, path, *params.command_hash);
         if(!base) {
             co_return result;
         }
         saved.command_hash = *params.command_hash;
         saved.base_hash = std::move(*base);
     } else {
-        // Pin a host source for a header: it must have a real CDB
-        // entry, actually (transitively) include this header, and —
+        // Pin a host source for a header: it must have a compile
+        // command, actually (transitively) include this header, and —
         // for multi-configuration hosts — own the pinned entry.
-        if(!ws.cdb.has_entry(context_path)) {
+        if(!ws.view.compiles(context_path_id)) {
             co_return result;
         }
         if(ws.dep_graph.find_include_chain(context_path_id, path_id).empty()) {
@@ -272,7 +274,8 @@ kota::task<ext::SwitchContextResult>
         }
         std::optional<std::string> base;
         if(params.command_hash.has_value()) {
-            base = find_command(context_path, *params.command_hash);
+            llvm::StringRef edit_paths[] = {context_path, path};
+            base = find_command(context_path_id, edit_paths, *params.command_hash);
             if(!base) {
                 co_return result;
             }
@@ -346,11 +349,14 @@ bool ContextService::drop_orphaned_choices(SessionStore& sessions) {
             // The pinned host command itself can vanish (a CDB reload
             // changed the entry's flags): same validation didOpen applies.
             if(!orphaned && !saved.command_hash.empty()) {
-                orphaned = !resolver.pin_alive(workspace.file_table.resolve(host_id), saved);
+                llvm::StringRef edit_paths[] = {workspace.file_table.resolve(host_id),
+                                                workspace.file_table.resolve(session_id)};
+                orphaned = !resolver.pin_alive(host_id, edit_paths, saved);
             }
         } else if(!saved.command_hash.empty()) {
             // Own-entry pin: the pinned command must still exist in the CDB.
-            orphaned = !resolver.pin_alive(workspace.file_table.resolve(session_id), saved);
+            orphaned =
+                !resolver.pin_alive(session_id, workspace.file_table.resolve(session_id), saved);
         }
         if(orphaned) {
             LOG_INFO("Dropping orphaned context choice for {}: its basis no longer exists",

@@ -73,7 +73,7 @@ std::vector<protocol::Diagnostic> format_diagnostics(const CompileOutput& output
 
     // Guidance (and only when it can explain something): an exact CDB match
     // never gets the note, and neither does a guessed command that worked.
-    if(output.source != CommandSource::CDBExact &&
+    if(output.source != CommandSource::CDBExact && output.source != CommandSource::Default &&
        std::ranges::any_of(diagnostics, is_file_not_found)) {
         diagnostics.insert(diagnostics.begin(), make_inferred_command_diagnostic(output.source));
     }

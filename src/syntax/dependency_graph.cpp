@@ -321,7 +321,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                        DependencyGraph& graph,
                        ScanReport& report,
                        kota::event_loop& loop,
-                       const RuleMatcher& rule_matcher) {
+                       llvm::ArrayRef<CommandRef> units) {
     auto& file_table = cdb.files();
     auto start_time = std::chrono::steady_clock::now();
 
@@ -329,38 +329,28 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
 
     auto config_start = std::chrono::steady_clock::now();
 
-    // One scan group per unique (rules-applied config, input language) —
-    // the SearchConfig granularity: different -I sets resolve differently,
-    // and the same flags compiled as C and C++ pull different implicit
-    // include sets. Groups are rebuilt on warm runs too: the preprocess
-    // fallback renders each unit's own group command, and the dense group
-    // ids assigned here line up with a warm cache's recorded ids because
-    // entry order is deterministic (apply_rules memoizes, so this pass is
-    // cheap next to the skipped probe and search-config work).
+    // One scan group per unique (effective config, input language) — the
+    // SearchConfig granularity: different -I sets resolve differently, and
+    // the same flags compiled as C and C++ pull different implicit include
+    // sets. Groups are rebuilt on warm runs too: the preprocess fallback
+    // renders each unit's own group command, and the dense group ids
+    // assigned here line up with a warm cache's recorded ids because the
+    // unit order is deterministic.
     llvm::SmallVector<CommandRef> group_refs;
     std::vector<WaveEntry> wave0;
+    llvm::DenseMap<Fid, std::uint32_t> unit_groups;
 
     {
         llvm::DenseMap<std::pair<std::uint32_t, const char*>, std::uint32_t> group_ids;
-        for(auto& entry: cdb.entries()) {
-            auto file_path = file_table.resolve(entry.file);
-
-            // Apply per-file rules so that [[rules]]-modified -I/-isystem/-std
-            // flags are reflected in the search config used by the scan.
-            std::vector<std::string> rule_append, rule_remove;
-            if(rule_matcher)
-                rule_matcher(file_path, rule_append, rule_remove);
-
-            auto applied =
-                cdb.apply_rules(entry.config, {.remove = rule_remove, .append = rule_append});
-            auto input = cdb.input_kind(applied, file_path);
+        for(auto& unit: units) {
             auto [it, inserted] =
-                group_ids.try_emplace({static_cast<std::uint32_t>(applied), input.value},
+                group_ids.try_emplace({static_cast<std::uint32_t>(unit.config), unit.input.value},
                                       static_cast<std::uint32_t>(group_refs.size()));
             if(inserted) {
-                group_refs.push_back({entry.file, applied, input, CommandSource::CDBExact});
+                group_refs.push_back(unit);
             }
-            wave0.push_back({entry.file, it->second, /*found_dir_idx=*/0});
+            unit_groups.try_emplace(unit.file, it->second);
+            wave0.push_back({unit.file, it->second, /*found_dir_idx=*/0});
         }
     }
 
@@ -676,31 +666,24 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
             // module name. This only applies to source files (wave 0) since
             // headers cannot contain module declarations.
             if(scan_result.scan_result.need_preprocess && wave_num == 0) {
-                auto file_path = llvm::StringRef(scan_result.path);
-                auto candidates = cdb.candidate_entries(file_path);
-                if(!candidates.empty()) {
-                    auto& entry = candidates.front();
-                    // Preprocess under the scan unit's own group command —
-                    // only its flags (e.g. a define unguarding the
-                    // declaration) can resolve this unit; a multi-entry
-                    // file has one group per candidate. A cached unit whose
-                    // group id outlived the CDB it was recorded against
-                    // re-derives from the first candidate instead.
-                    ConfigID applied;
-                    InputKind input;
-                    if(scan_result.config_id < group_refs.size()) {
-                        auto& group = group_refs[scan_result.config_id];
-                        applied = group.config;
-                        input = group.input;
-                    } else {
-                        std::vector<std::string> rule_append, rule_remove;
-                        if(rule_matcher)
-                            rule_matcher(file_path, rule_append, rule_remove);
-                        applied = cdb.apply_rules(entry.config,
-                                                  {.remove = rule_remove, .append = rule_append});
-                        input = cdb.input_kind(applied, file_path);
-                    }
-                    CommandRef ref{entry.file, applied, input, CommandSource::CDBExact};
+                // Preprocess under the scan unit's own group command — only
+                // its flags (e.g. a define unguarding the declaration) can
+                // resolve this unit; a multi-entry file has one group per
+                // candidate. A cached unit whose group id outlived the
+                // database it was recorded against re-derives from the
+                // file's first unit instead.
+                const CommandRef* group = nullptr;
+                if(scan_result.config_id < group_refs.size()) {
+                    group = &group_refs[scan_result.config_id];
+                } else if(auto unit_group = unit_groups.find(scan_result.path_id);
+                          unit_group != unit_groups.end()) {
+                    group = &group_refs[unit_group->second];
+                }
+                if(group) {
+                    CommandRef ref{scan_result.path_id,
+                                   group->config,
+                                   group->input,
+                                   CommandSource::CDBExact};
                     auto rendered = cdb.render(ref);
                     auto config_hash = hash_rendered_command(rendered);
                     auto cached = file_table.module_decls.find({scan_result.obs.hash, config_hash});
@@ -919,16 +902,27 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
 
 ScanReport scan_dependency_graph(CompilationDatabase& cdb,
                                  DependencyGraph& graph,
-                                 const RuleMatcher& rule_matcher) {
+                                 llvm::ArrayRef<CommandRef> units) {
     ScanReport report;
-    if(cdb.entries().empty()) {
+    if(units.empty()) {
         return report;
     }
 
     kota::event_loop loop;
-    loop.schedule(scan_impl(cdb, graph, report, loop, rule_matcher));
+    loop.schedule(scan_impl(cdb, graph, report, loop, units));
     loop.run();
     return report;
+}
+
+ScanReport scan_dependency_graph(CompilationDatabase& cdb, DependencyGraph& graph) {
+    llvm::SmallVector<CommandRef> units;
+    for(auto& entry: cdb.entries()) {
+        units.push_back({entry.file,
+                         entry.config,
+                         cdb.input_kind(entry.config, cdb.files().resolve(entry.file)),
+                         CommandSource::CDBExact});
+    }
+    return scan_dependency_graph(cdb, graph, units);
 }
 
 }  // namespace clice

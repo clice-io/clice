@@ -259,12 +259,14 @@ public:
     }
 
     /// Whether a pinned command choice still has a live basis among
-    /// `entry_path`'s CDB entries: its applied hash matches a candidate
-    /// under current rules, or its recorded base entry hash still names
-    /// one (a rule edit moves every applied hash; the base survives it).
-    /// The validity test shared by didOpen validation and the server's
-    /// orphan pass.
-    bool pin_alive(llvm::StringRef entry_path, const SavedContext& saved) const;
+    /// `entry_file`'s candidates: its applied hash matches a candidate
+    /// under the current edits of `paths` (the host and the header for a
+    /// host pin), or its recorded base entry hash still names one (a rule
+    /// edit moves every applied hash; the base survives it). The validity
+    /// test shared by didOpen validation and the server's orphan pass.
+    bool pin_alive(Fid entry_file,
+                   llvm::ArrayRef<llvm::StringRef> paths,
+                   const SavedContext& saved) const;
 
 private:
     std::optional<HeaderContext> resolve_header_context(Fid header_path_id,

@@ -73,8 +73,37 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
     }
 
     workspace.cdb.set_workspace_root(root);
-    report.cdb_path = discover_compile_commands(workspace.config, root);
-    if(report.cdb_path.empty()) {
+    workspace.view.reset_active();
+
+    // Declared sources are the whole intent: every one registers (existing
+    // or not — the tracker watches for it) and loads. Without any, the
+    // classic discovery finds one database under the root.
+    ScopedTimer cdb_timer;
+    std::size_t count = 0;
+    llvm::SmallVector<std::string> paths;
+    for(auto declared: workspace.view.declared_sources()) {
+        paths.push_back(declared.str());
+    }
+    if(!workspace.config.declares_sources()) {
+        auto found = discover_compile_commands(root);
+        if(!found.empty()) {
+            paths.push_back(found);
+        }
+    }
+    for(auto& path: paths) {
+        auto id = workspace.cdb.add_source(path);
+        if(auto loaded = workspace.cdb.load_source(id)) {
+            LOG_INFO("Loaded CDB from {} with {} entries", workspace.cdb.source_path(id), *loaded);
+            count += *loaded;
+        } else {
+            LOG_WARN("Compilation database {} is not readable yet", workspace.cdb.source_path(id));
+        }
+    }
+    LOG_PERF("startup", "phase=cdb_load entries={} elapsed_ms={}", count, cdb_timer.ms());
+
+    auto members = workspace.view.members();
+    report.has_commands = !members.empty() || workspace.config.declares_sources();
+    if(members.empty()) {
         // Persisted index shards are CDB-independent; load them so a
         // database generated later (picked up by the CDB poll) starts from
         // the previous session's index.
@@ -82,18 +111,7 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
         return report;
     }
 
-    ScopedTimer cdb_timer;
-    auto count = workspace.cdb.load(report.cdb_path).value_or(0);
-    LOG_INFO("Loaded CDB from {} with {} entries", report.cdb_path, count);
-    LOG_PERF("startup", "phase=cdb_load entries={} elapsed_ms={}", count, cdb_timer.ms());
-
-    auto scan = scan_dependency_graph(workspace.cdb,
-                                      workspace.dep_graph,
-                                      [&workspace](llvm::StringRef path,
-                                                   std::vector<std::string>& append,
-                                                   std::vector<std::string>& remove) {
-                                          workspace.config.match_rules(path, append, remove);
-                                      });
+    auto scan = scan_dependency_graph(workspace.cdb, workspace.dep_graph, scan_units(workspace));
     workspace.dep_graph.build_reverse_map();
 
     auto unresolved = scan.includes_found - scan.includes_resolved;
@@ -124,16 +142,30 @@ BootstrapReport bootstrap_workspace(Workspace& workspace,
     pump.claim_report(store.load(read_only_index).report);
 
     if(cfg.enable_indexing.value) {
-        for(auto& entry: workspace.cdb.entries()) {
+        for(auto member: members) {
             // Bulk sweep of unknown staleness: the hash gate decides per
             // file. DepsOnly — a cold start with a warm index cache must
             // keep serving the loaded shards, not blank every query until
             // the sweep drains.
-            pump.enqueue(entry.file, ReindexReason::DepsOnly);
+            pump.enqueue(member, ReindexReason::DepsOnly);
         }
         pump.schedule();
     }
     return report;
+}
+
+llvm::SmallVector<CommandRef> scan_units(Workspace& workspace) {
+    // Every command of every member: a header reachable through only one
+    // of a file's entries still finds that host.
+    llvm::SmallVector<CommandRef> units;
+    for(auto member: workspace.view.members()) {
+        auto path = workspace.file_table.resolve(member);
+        for(auto& command: workspace.view.commands(member)) {
+            units.push_back(
+                workspace.view.resolve(member, command.config, command.source, path, path));
+        }
+    }
+    return units;
 }
 
 }  // namespace clice

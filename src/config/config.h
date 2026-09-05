@@ -4,6 +4,7 @@
 #include <expected>
 #include <optional>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "feature/feature.h"
@@ -11,6 +12,7 @@
 #include "kota/codec/macro.h"
 #include "kota/meta/annotation.h"
 #include "kota/support/glob_pattern.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace clice {
@@ -21,17 +23,57 @@ namespace clice {
 std::uint32_t default_stateless_worker_count();
 std::uint32_t default_max_stateless_worker_count();
 
-/// A file-pattern rule that appends/removes compilation flags.
-/// Corresponds to `[[rules]]` in clice.toml.
+/// A compile command written by hand: one string tokenized like a shell
+/// command line, or an argv array.
+using CommandSpelling = std::variant<std::string, std::vector<std::string>>;
+
+/// A file-pattern rule: where matching files take their compile commands
+/// from and how those commands are edited. Corresponds to `[[rules]]` in
+/// clice.toml.
 struct ConfigRule {
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
                          "Glob patterns selecting the files this rule applies "
-                         "to: `*` matches within a path segment (a pattern of "
-                         "just `*` matches any path), `?` a single character, "
-                         "`**` any number of segments, `{a,b}` alternatives, "
-                         "`[0-9]` a character range, `[!...]` a negated range.")
+                         "to. A relative pattern is anchored at this "
+                         "configuration file's directory (`..` segments "
+                         "allowed); an absolute pattern or one starting with "
+                         "`**` matches the file's absolute path. "
+                         "`*` matches within a path segment (a pattern of just "
+                         "`*` matches any path), `?` a single character, `**` "
+                         "any number of segments, `{a,b}` alternatives, `[0-9]` "
+                         "a character range, `[!...]` a negated range. Omitted "
+                         "means every file.")
     <std::vector<std::string>> patterns;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Build configuration tag. A tagged rule applies only "
+                         "while that configuration is active; an untagged rule "
+                         "always applies. The distinct tags form the "
+                         "configuration menu, and `default_configuration` "
+                         "names the one active at startup.")
+    <std::string> configuration;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Compilation databases, in priority order: a "
+                         "compile_commands.json or a directory containing one, "
+                         "relative to this configuration file. All of them "
+                         "load, and every entry applies to its own file "
+                         "whatever the patterns say; the patterns and the "
+                         "order decide which entry a file present in several "
+                         "databases gets by default.")
+    <std::vector<std::string>> compile_commands;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "The compile command for matching files without a "
+                         "database entry, without the source file: a string "
+                         "tokenized like a shell command line, or an argv "
+                         "array. It runs from this configuration file's "
+                         "directory, and the matching source files on disk "
+                         "join the background index. Omitted means none.")
+    <CommandSpelling> default_command;
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
@@ -44,6 +86,14 @@ struct ConfigRule {
                          "Compilation flags removed for matching files, e.g. "
                          "`[\"-Wall\"]`.")
     <std::vector<std::string>> remove;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Whether matching translation units join the "
+                         "background index. `false` keeps them out; they still "
+                         "compile when opened and still host the headers they "
+                         "include. Any matching rule saying `false` wins.")
+    <bool> index = true;
 };
 
 /// Corresponds to the `[project]` section in clice.toml. Field
@@ -75,14 +125,6 @@ struct ProjectConfig {
                          "Each server session logs into its own timestamped "
                          "subdirectory.")
     <std::string> logging_dir;
-
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "Paths searched for compile_commands.json — file paths, "
-                         "or directories to look inside. When these all miss — or "
-                         "the list is empty — the workspace root and then each of "
-                         "its immediate subdirectories are searched.")
-    <std::vector<std::string>> compile_commands_paths;
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
@@ -167,10 +209,38 @@ struct TrackerConfig {
     <std::uint32_t> workspace_poll_seconds = 30;
 };
 
+/// A rule after finalize(): patterns compiled, paths anchored.
 struct CompiledRule {
-    std::vector<kota::GlobPattern> patterns;
+    struct Pattern {
+        /// Matches the canonical absolute path: a relative pattern was
+        /// anchored at the configuration file's directory when compiled.
+        kota::GlobPattern glob;
+
+        /// The literal directory the pattern starts in (the workspace root
+        /// for `**`-led patterns): where the files it claims are enumerated.
+        std::string root;
+    };
+
+    std::vector<Pattern> patterns;
+    std::string configuration;
+    /// Absolute paths of the declared databases, in priority order.
+    std::vector<std::string> compile_commands;
+    /// As written; empty string means none. Tokenized where it is consumed,
+    /// with `directory` as its working directory.
+    CommandSpelling default_command;
+    std::string directory;
     std::vector<std::string> append;
     std::vector<std::string> remove;
+    bool index = true;
+
+    bool has_default_command() const;
+
+    /// Whether the rule declares a command source (databases or a default
+    /// command) rather than only editing commands.
+    bool declares_sources() const;
+
+    /// Whether the rule applies to `path` (canonical absolute).
+    bool matches(llvm::StringRef path) const;
 };
 
 /// A problem found while loading a configuration file, carrying enough
@@ -205,6 +275,24 @@ struct ConfigIssue {
 /// values from the merged result.
 struct Config {
     KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Compilation databases for the whole workspace, in "
+                         "priority order: a compile_commands.json or a directory "
+                         "containing one, relative to this configuration file. "
+                         "Equivalent to a trailing rule without patterns; see "
+                         "`[rules].compile_commands`. When neither this nor any "
+                         "rule declares a source, the workspace root and its "
+                         "immediate subdirectories are searched for one.")
+    <std::vector<std::string>> compile_commands;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "The build configuration active at startup, one of the "
+                         "tags declared on rules. Required once any rule carries "
+                         "a tag.")
+    <std::string> default_configuration;
+
+    KOTATSU_ANNOTATE(defaulted = true,
                      description = "The [project] section: project-wide server options.")
     <ProjectConfig> project;
 
@@ -233,16 +321,36 @@ struct Config {
     KOTATSU_ANNOTATE(skip = true)
     <std::vector<CompiledRule>> compiled_rules;
 
+    /// Directory of the configuration file the values came from; the
+    /// anchor of every relative path and pattern in it. Empty until
+    /// finalize(), which defaults it to the workspace root.
+    KOTATSU_ANNOTATE(skip = true)
+    <std::string> config_dir;
+
+    /// The workspace root finalize() ran for: the `${workspace}` value and
+    /// the enumeration root of `**`-led patterns.
+    KOTATSU_ANNOTATE(skip = true)
+    <std::string> workspace_root;
+
     /// Compute the values derived from the final merged config: default
     /// cache/logging directories, ${workspace} substitution, path
-    /// canonicalization, and rule glob compilation. Run once per load,
-    /// after every source has been overlaid.
+    /// canonicalization and anchoring, and rule compilation — the
+    /// top-level `compile_commands` become the last compiled rule. Run
+    /// once per load, after every source has been overlaid.
     void finalize(llvm::StringRef workspace_root);
 
-    /// Collect append/remove flags from all rules whose patterns match `path`.
-    void match_rules(llvm::StringRef path,
-                     std::vector<std::string>& append,
-                     std::vector<std::string>& remove) const;
+    /// The compiled rules applying to `path` (absolute), in declaration
+    /// order, restricted to untagged rules and rules tagged
+    /// `configuration`.
+    llvm::SmallVector<const CompiledRule*> matching_rules(llvm::StringRef path,
+                                                          llvm::StringRef configuration) const;
+
+    /// Whether any rule declares a command source: databases or a default
+    /// command. Declared sources turn automatic database discovery off.
+    bool declares_sources() const;
+
+    /// The distinct configuration tags, in first-appearance order.
+    llvm::SmallVector<llvm::StringRef> configurations() const;
 
     /// Try to load configuration from a TOML file. Parse/validation problems
     /// are appended to `issues` when provided: decode failures as Error (the

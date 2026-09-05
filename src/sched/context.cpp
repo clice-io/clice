@@ -43,40 +43,36 @@ static void log_command_decision(llvm::StringRef path,
              llvm::xxh3_64bits(llvm::StringRef(joined)));
 }
 
-/// Pick the host CDB entry matching the session's pinned command hash
-/// (multi-configuration hosts), defaulting to the first candidate.
-///
-/// Published hashes are computed against host-path rules, while the caller
-/// will apply header-path rules — so the pin is validated in the host-rules
-/// context and the winning base config returned for the caller to re-derive.
-static ConfigID pick_host_config(Workspace& workspace,
-                                 llvm::StringRef host_path,
-                                 llvm::ArrayRef<CompilationEntry> candidates,
-                                 llvm::StringRef pinned_hash,
-                                 llvm::StringRef pinned_base) {
+/// Pick the candidate matching a pinned command (multi-configuration files
+/// and hosts), defaulting to the view's first candidate. `paths` are the
+/// files whose edits the published hash was computed with.
+static Candidate pick_pinned_config(Workspace& workspace,
+                                    Fid file,
+                                    llvm::ArrayRef<Candidate> candidates,
+                                    llvm::ArrayRef<llvm::StringRef> paths,
+                                    llvm::StringRef language_path,
+                                    llvm::StringRef pinned_hash,
+                                    llvm::StringRef pinned_base) {
     // The base identity resolved at pin time is exact; the applied hash
     // remains as the fallback for pins saved before the base was recorded
     // (and cannot distinguish candidates the rules collapse together).
     if(!pinned_base.empty()) {
         for(auto& entry: candidates) {
             if(workspace.cdb.entry_hash_hex(entry.config) == pinned_base) {
-                return entry.config;
+                return entry;
             }
         }
     }
     if(!pinned_hash.empty()) {
-        std::vector<std::string> host_append, host_remove;
-        workspace.config.match_rules(host_path, host_append, host_remove);
         for(auto& entry: candidates) {
-            auto applied =
-                workspace.cdb.apply_rules(entry.config,
-                                          {.remove = host_remove, .append = host_append});
-            if(workspace.cdb.entry_hash_hex(applied) == pinned_hash) {
-                return entry.config;
+            auto ref =
+                workspace.view.resolve(file, entry.config, entry.source, paths, language_path);
+            if(workspace.cdb.entry_hash_hex(ref.config) == pinned_hash) {
+                return entry;
             }
         }
     }
-    return candidates.front().config;
+    return candidates.front();
 }
 
 HeaderMode ContextResolver::header_mode(llvm::StringRef path, Fid path_id) const {
@@ -277,21 +273,19 @@ bool ContextResolver::fill_header_context_args(llvm::StringRef path,
             return false;
         }
         auto host_path = workspace.file_table.resolve(it->second);
-        auto candidates = workspace.cdb.candidate_entries(host_path);
-        if(candidates.empty()) {
+        auto commands = workspace.view.commands(it->second);
+        if(commands.empty()) {
             return false;
         }
-        std::vector<std::string> rule_append, rule_remove;
-        workspace.config.match_rules(path, rule_append, rule_remove);
-        auto applied = workspace.cdb.apply_rules(candidates.front().config,
-                                                 {.remove = rule_remove, .append = rule_append});
         // The artifact is a fragment of the host TU: it compiles as the
-        // host's language, with the artifact path injected as the input.
-        CommandRef ref{path_id,
-                       applied,
-                       workspace.cdb.input_kind(applied, host_path),
-                       CommandSource::IncludeGraph};
-        directory = workspace.cdb.config(applied).directory;
+        // host's language, under the host's effective command, with the
+        // artifact path injected as the input.
+        auto ref = workspace.view.resolve(path_id,
+                                          commands.front().config,
+                                          CommandSource::IncludeGraph,
+                                          host_path,
+                                          host_path);
+        directory = workspace.cdb.config(ref.config).directory;
         arguments = to_strings(workspace.cdb.render(ref));
         if(host_path_id) {
             *host_path_id = it->second;
@@ -355,35 +349,35 @@ bool ContextResolver::fill_header_context_args(llvm::StringRef path,
     }
 
     auto host_path = workspace.file_table.resolve(ctx_ptr->host_path_id);
-    auto candidates = workspace.cdb.candidate_entries(host_path);
-    if(candidates.empty()) {
-        LOG_WARN("fill_header_context_args: host {} has no CDB entry", host_path);
+    auto commands = workspace.view.commands(ctx_ptr->host_path_id);
+    if(commands.empty()) {
+        LOG_WARN("fill_header_context_args: host {} has no compile command", host_path);
         return false;
     }
 
-    // Apply rules matching the HEADER path (what the user is editing) on top of
-    // the host's command — rules are expected to apply uniformly to every file.
-    std::vector<std::string> rule_append, rule_remove;
-    workspace.config.match_rules(path, rule_append, rule_remove);
-    auto base = pick_host_config(workspace,
-                                 host_path,
-                                 candidates,
-                                 ctx_ptr->host_command_hash,
-                                 ctx_ptr->host_base_hash);
-    auto applied = workspace.cdb.apply_rules(base, {.remove = rule_remove, .append = rule_append});
+    // The header inherits the host's world: the rules matching the host
+    // and the rules matching the header both edit the borrowed command,
+    // each once, in declaration order.
+    llvm::StringRef edit_paths[] = {host_path, path};
+    auto base = pick_pinned_config(workspace,
+                                   path_id,
+                                   commands,
+                                   edit_paths,
+                                   host_path,
+                                   ctx_ptr->host_command_hash,
+                                   ctx_ptr->host_base_hash)
+                    .config;
 
     // The header compiles as the host's language, with the header injected
     // as the input; the synthesized preamble lands after the host's own
     // user-content flags (its -include runs first).
-    CommandRef ref{path_id,
-                   applied,
-                   workspace.cdb.input_kind(applied, host_path),
-                   CommandSource::IncludeGraph};
+    auto ref =
+        workspace.view.resolve(path_id, base, CommandSource::IncludeGraph, edit_paths, host_path);
     RenderOptions opts;
     if(!ctx_ptr->preamble_path.empty()) {
         opts.preamble = ctx_ptr->preamble_path.c_str();
     }
-    directory = workspace.cdb.config(applied).directory;
+    directory = workspace.cdb.config(ref.config).directory;
     arguments = to_strings(workspace.cdb.render(ref, opts));
     if(host_path_id) {
         *host_path_id = ctx_ptr->host_path_id;
@@ -413,53 +407,33 @@ CommandSource ContextResolver::resolve_command(llvm::StringRef path,
     // Fill from the CDB layer with config rules applied (append/remove flags
     // based on file patterns). Also used for tier 4 with the synthesized
     // default config for files without an entry.
-    auto fill_from_cdb = [&](CommandSource source) {
-        std::vector<std::string> rule_append, rule_remove;
-        workspace.config.match_rules(path, rule_append, rule_remove);
-        CommandOptions options{.remove = rule_remove,
-                               .append = rule_append,
-                               .extra_prepend = extra_prepend,
-                               .extra_append = extra_append};
-
-        auto candidates = workspace.cdb.candidate_entries(path_id);
-        ConfigID base;
-        if(candidates.empty()) {
-            base = workspace.cdb.fallback_config(path);
-        } else {
-            base = candidates.front().config;
-            // Multi-config projects: honor the user's chosen CDB entry,
-            // matched by entry hash so the choice survives CDB reordering.
-            const SavedContext* choice = active_choice(use, path_id);
-            if(choice && !choice->host_path_id.valid() && !choice->command_hash.empty()) {
-                bool base_matched = false;
-                if(!choice->base_hash.empty()) {
-                    for(auto& candidate: candidates) {
-                        if(workspace.cdb.entry_hash_hex(candidate.config) == choice->base_hash) {
-                            base = candidate.config;
-                            base_matched = true;
-                            break;
-                        }
-                    }
-                }
-                if(!base_matched) {
-                    for(auto& candidate: candidates) {
-                        auto applied = workspace.cdb.apply_rules(candidate.config, options);
-                        if(workspace.cdb.entry_hash_hex(applied) == choice->command_hash) {
-                            base = candidate.config;
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-
-        auto applied = workspace.cdb.apply_rules(base, options);
-        CommandRef ref{path_id, applied, workspace.cdb.input_kind(applied, path), source};
-        directory = workspace.cdb.config(applied).directory;
+    auto fill = [&](ConfigID base, CommandSource source) {
+        auto ref =
+            workspace.view.resolve(path_id, base, source, path, path, extra_prepend, extra_append);
+        directory = workspace.cdb.config(ref.config).directory;
         arguments = to_strings(workspace.cdb.render(ref));
         if(out_ref) {
             *out_ref = ref;
         }
+    };
+
+    auto fill_from_cdb = [&](llvm::ArrayRef<Candidate> candidates) {
+        // Multi-config projects: honor the user's chosen entry, matched by
+        // entry hash so the choice survives reordering.
+        llvm::StringRef pinned_hash, pinned_base;
+        const SavedContext* choice = active_choice(use, path_id);
+        if(choice && !choice->host_path_id.valid()) {
+            pinned_hash = choice->command_hash;
+            pinned_base = choice->base_hash;
+        }
+        auto picked = pick_pinned_config(workspace,
+                                         path_id,
+                                         candidates,
+                                         path,
+                                         path,
+                                         pinned_hash,
+                                         pinned_base);
+        fill(picked.config, picked.source);
     };
 
     const SavedContext* choice = active_choice(use, path_id);
@@ -483,8 +457,9 @@ CommandSource ContextResolver::resolve_command(llvm::StringRef path,
 
     // 2. Real CDB entry for the file itself.
     tried.push_back("cdb");
-    if(!workspace.cdb.candidate_entries(path_id).empty()) {
-        fill_from_cdb(CommandSource::CDBExact);
+    auto commands = workspace.view.commands(path_id);
+    if(!commands.empty() && commands.front().source == CommandSource::CDBExact) {
+        fill_from_cdb(commands);
         log_command_decision(path, tried, CommandSource::CDBExact, arguments);
         return CommandSource::CDBExact;
     }
@@ -504,12 +479,14 @@ CommandSource ContextResolver::resolve_command(llvm::StringRef path,
         }
     }
 
-    // 4. Nothing matched — use the synthesized default command, so the file
-    //    still compiles and produces diagnostics instead of failing silently.
+    // 4. Nothing matched — a rule's default command, else the builtin
+    //    fallback, so the file still compiles and produces diagnostics
+    //    instead of failing silently.
     tried.push_back("fallback");
-    fill_from_cdb(CommandSource::Fallback);
-    log_command_decision(path, tried, CommandSource::Fallback, arguments);
-    return CommandSource::Fallback;
+    auto source = commands.empty() ? CommandSource::Fallback : CommandSource::Default;
+    fill(commands.empty() ? workspace.view.builtin(path) : commands.front().config, source);
+    log_command_decision(path, tried, source, arguments);
+    return source;
 }
 
 void ContextResolver::append_suffix_include(Fid path_id, std::string& text) {
@@ -551,8 +528,7 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(Fid header_
     bool has_host_choice = choice && choice->host_path_id.valid();
     if(has_host_choice) {
         auto preferred = choice->host_path_id;
-        auto preferred_path = workspace.file_table.resolve(preferred);
-        if(workspace.cdb.has_entry(preferred_path)) {
+        if(workspace.view.compiles(preferred)) {
             auto c = workspace.dep_graph.find_include_chain(preferred, header_path_id);
             if(!c.empty()) {
                 host_path_id = preferred;
@@ -566,8 +542,7 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(Fid header_
     // a host with a synthesized command would just be a fallback in disguise.
     if(chain.empty()) {
         for(auto candidate: workspace.rank_hosts(header_path_id, hosts)) {
-            auto candidate_path = workspace.file_table.resolve(candidate);
-            if(!workspace.cdb.has_entry(candidate_path))
+            if(!workspace.view.compiles(candidate))
                 continue;
             auto c = workspace.dep_graph.find_include_chain(candidate, header_path_id);
             if(c.empty())
@@ -611,19 +586,21 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(Fid header_
     // search configuration, so same-named headers in different directories
     // cannot be confused.
     auto host_path = workspace.file_table.resolve(host_path_id);
-    auto candidates = workspace.cdb.candidate_entries(host_path);
-    if(candidates.empty()) {
+    auto commands = workspace.view.commands(host_path_id);
+    if(commands.empty()) {
         return std::nullopt;
     }
-    std::vector<std::string> rule_append, rule_remove;
-    workspace.config.match_rules(host_path, rule_append, rule_remove);
-    auto base =
-        pick_host_config(workspace, host_path, candidates, host_command_hash, host_base_hash);
-    auto applied = workspace.cdb.apply_rules(base, {.remove = rule_remove, .append = rule_append});
-    CommandRef host_ref{host_path_id,
-                        applied,
-                        workspace.cdb.input_kind(applied, host_path),
-                        CommandSource::CDBExact};
+    auto target_path = workspace.file_table.resolve(chain.back());
+    llvm::StringRef edit_paths[] = {host_path, target_path};
+    auto picked = pick_pinned_config(workspace,
+                                     host_path_id,
+                                     commands,
+                                     edit_paths,
+                                     host_path,
+                                     host_command_hash,
+                                     host_base_hash);
+    auto host_ref =
+        workspace.view.resolve(host_path_id, picked.config, picked.source, edit_paths, host_path);
 
     auto search_config = workspace.cdb.search_config(host_ref);
     DirListingCache dir_cache;
@@ -723,7 +700,6 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(Fid header_
     // Snapshot the header itself for other occurrences along the chain:
     // its real path is remapped to the open buffer at compile time, so
     // includes of it inside the prefix/suffix must point at a copy.
-    auto target_path = workspace.file_table.resolve(chain.back());
     std::string self_snapshot_path;
     std::optional<ObservedFile> target_observed;
     if((target_observed = read_file_observed(target_path.data()))) {
@@ -797,17 +773,18 @@ std::optional<HeaderContext> ContextResolver::resolve_header_context(Fid header_
                          std::move(deps)};
 }
 
-bool ContextResolver::pin_alive(llvm::StringRef entry_path, const SavedContext& saved) const {
-    std::vector<std::string> rule_append, rule_remove;
-    workspace.config.match_rules(entry_path, rule_append, rule_remove);
-    for(auto& entry: workspace.cdb.candidate_entries(entry_path)) {
+bool ContextResolver::pin_alive(Fid entry_file,
+                                llvm::ArrayRef<llvm::StringRef> paths,
+                                const SavedContext& saved) const {
+    auto entry_path = workspace.file_table.resolve(entry_file);
+    for(auto& entry: workspace.view.commands(entry_file)) {
         if(!saved.base_hash.empty() &&
            workspace.cdb.entry_hash_hex(entry.config) == saved.base_hash) {
             return true;
         }
-        auto applied =
-            workspace.cdb.apply_rules(entry.config, {.remove = rule_remove, .append = rule_append});
-        if(workspace.cdb.entry_hash_hex(applied) == saved.command_hash) {
+        auto ref =
+            workspace.view.resolve(entry_file, entry.config, entry.source, paths, entry_path);
+        if(workspace.cdb.entry_hash_hex(ref.config) == saved.command_hash) {
             return true;
         }
     }
@@ -828,11 +805,13 @@ void ContextResolver::validate_saved_context(Fid path_id) {
         bool valid = false;
         if(saved.host_path_id.valid()) {
             auto host_path = ws.file_table.resolve(saved.host_path_id);
-            valid = ws.cdb.has_entry(host_path) &&
-                    !ws.dep_graph.find_include_chain(saved.host_path_id, path_id).empty() &&
-                    (saved.command_hash.empty() || pin_alive(host_path, saved));
+            llvm::StringRef edit_paths[] = {host_path, path};
+            valid =
+                ws.view.compiles(saved.host_path_id) &&
+                !ws.dep_graph.find_include_chain(saved.host_path_id, path_id).empty() &&
+                (saved.command_hash.empty() || pin_alive(saved.host_path_id, edit_paths, saved));
         } else if(!saved.command_hash.empty()) {
-            valid = ws.cdb.has_entry(path) && pin_alive(path, saved);
+            valid = ws.view.compiles(path_id) && pin_alive(path_id, path, saved);
         }
         if(!valid) {
             LOG_INFO("didOpen: dropping stale saved context for {}", path);

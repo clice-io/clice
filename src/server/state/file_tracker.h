@@ -31,16 +31,17 @@ namespace clice {
 /// unit-testable against plain data structures.
 class FileTracker {
 public:
-    /// Discovers the compile_commands.json itself (it may not exist yet)
-    /// and records the stamp the currently loaded CDB corresponds to.
+    /// Records the stamp every registered database source corresponds to.
     /// Construct after the workspace is loaded.
     FileTracker(Workspace& workspace, const SessionStore& store, std::string workspace_root);
 
-    /// One CDB poll tick. Stats the known compile_commands.json — or keeps
-    /// discovering one when none was found yet, which is how a database
-    /// generated after startup is picked up. Once a (size, mtime) change
-    /// has stayed stable for two consecutive ticks, reloads the CDB and
-    /// emits one CDBChanged event carrying the reload's diff.
+    /// One CDB poll tick. Stats every registered source — declared ones
+    /// that do not exist yet included, which is how a database generated
+    /// after startup is picked up — and, when no rule declares a source
+    /// and none was discovered yet, keeps discovering one. Once a source's
+    /// (size, mtime) change has stayed stable for two consecutive ticks,
+    /// reloads it and emits one CDBChanged event carrying the reload's
+    /// diff.
     ///
     /// `force` reloads unconditionally: it skips both the (size, mtime)
     /// stamp gate — which could hide a same-size rewrite landing within
@@ -70,7 +71,7 @@ public:
     kota::task<llvm::SmallVector<FileEvent>> tick_workspace();
 
 private:
-    /// (existence, size, mtime) identity of the CDB file.
+    /// (existence, size, mtime) identity of a database file.
     struct CDBStamp {
         bool exists = false;
         std::uint64_t size = 0;
@@ -79,7 +80,23 @@ private:
         friend bool operator==(const CDBStamp&, const CDBStamp&) = default;
     };
 
-    CDBStamp stat_cdb() const;
+    static CDBStamp stat_cdb(llvm::StringRef path);
+
+    /// One registered source's watch state.
+    struct TrackedSource {
+        SourceID id;
+        /// The stamp the loaded entries correspond to.
+        CDBStamp applied;
+        /// Debounce: the stamp observed on the previous tick, not yet settled.
+        CDBStamp pending;
+        bool has_pending = false;
+    };
+
+    /// Register `id` for watching, baselined at its current stamp.
+    void track(SourceID id);
+
+    /// Tick one source; the reload's events, if any.
+    void tick_source(TrackedSource& tracked, bool force, llvm::SmallVectorImpl<FileEvent>& events);
 
     /// Last-known on-disk state of a tracked file. The filesystem
     /// identity is part of the stamp: a rename-over with a forged equal
@@ -97,13 +114,7 @@ private:
     const SessionStore& store;
     std::string workspace_root;
 
-    /// compile_commands.json path; empty until one is discovered.
-    std::string cdb_path;
-    /// The stamp the currently loaded CDB entries correspond to.
-    CDBStamp applied;
-    /// Debounce: the stamp observed on the previous tick, not yet settled.
-    CDBStamp pending;
-    bool has_pending = false;
+    llvm::SmallVector<TrackedSource> sources;
 
     /// Workspace sweep baseline.
     llvm::DenseMap<Fid, FileState> baseline;

@@ -19,20 +19,18 @@ FileTracker::FileTracker(Workspace& workspace,
                          const SessionStore& store,
                          std::string workspace_root) :
     workspace(workspace), store(store), workspace_root(std::move(workspace_root)) {
-    cdb_path = discover_compile_commands(workspace.config, this->workspace_root);
     // A change landing between the workspace load and this stat is caught
     // anyway: the stamp only gates reloads, and the reload's diff is
     // computed from content, so it never reports spurious changes.
-    applied = stat_cdb();
+    for(std::size_t i = 0; i < workspace.cdb.source_count(); i += 1) {
+        track(SourceID(i));
+    }
 }
 
-FileTracker::CDBStamp FileTracker::stat_cdb() const {
+FileTracker::CDBStamp FileTracker::stat_cdb(llvm::StringRef path) {
     CDBStamp stamp;
-    if(cdb_path.empty()) {
-        return stamp;
-    }
     llvm::sys::fs::file_status status;
-    if(llvm::sys::fs::status(cdb_path, status)) {
+    if(path.empty() || llvm::sys::fs::status(path, status)) {
         return stamp;
     }
     stamp.exists = true;
@@ -41,72 +39,99 @@ FileTracker::CDBStamp FileTracker::stat_cdb() const {
     return stamp;
 }
 
-llvm::SmallVector<FileEvent> FileTracker::tick_cdb(bool force) {
-    if(cdb_path.empty()) {
-        cdb_path = discover_compile_commands(workspace.config, workspace_root);
-        if(cdb_path.empty()) {
-            return {};
-        }
-        // `applied` stays at its missing state: the fresh file is a change
-        // against the never-loaded database and goes through the normal
-        // settle-and-reload path below.
-        LOG_INFO("Found compilation database: {}", cdb_path);
+/// Diff ids and event ids share the single file table.
+static void push_delta(const CDBDiff& diff, llvm::SmallVectorImpl<FileEvent>& events) {
+    if(diff.empty()) {
+        return;
     }
+    FileEvent::CDBDelta delta;
+    delta.added.assign(diff.added.begin(), diff.added.end());
+    delta.removed.assign(diff.removed.begin(), diff.removed.end());
+    delta.changed.assign(diff.changed.begin(), diff.changed.end());
+    events.push_back(FileEvent::cdb_changed(std::move(delta)));
+}
 
-    auto current = stat_cdb();
+void FileTracker::track(SourceID id) {
+    sources.push_back({.id = id, .applied = stat_cdb(workspace.cdb.source_path(id))});
+}
+
+void FileTracker::tick_source(TrackedSource& tracked,
+                              bool force,
+                              llvm::SmallVectorImpl<FileEvent>& events) {
+    auto path = workspace.cdb.source_path(tracked.id);
+    auto current = stat_cdb(path);
     if(!force) {
-        if(current == applied) {
-            has_pending = false;
-            return {};
+        if(current == tracked.applied) {
+            tracked.has_pending = false;
+            return;
         }
         // Generators rewrite the file in place; only act once the stamp
         // has been stable for two consecutive ticks (half-write guard).
-        if(!has_pending || !(pending == current)) {
-            pending = current;
-            has_pending = true;
-            return {};
+        if(!tracked.has_pending || !(tracked.pending == current)) {
+            tracked.pending = current;
+            tracked.has_pending = true;
+            return;
         }
     }
     // A forced tick reloads unconditionally — the stamp gate would make a
     // same-size rewrite within mtime granularity invisible to the test
     // hook, and a spurious reload just yields an empty diff.
-    has_pending = false;
+    tracked.has_pending = false;
 
     if(!current.exists) {
         // Deleted — usually mid-regeneration. Keep serving the loaded
-        // entries; the rewrite lands as the next observed change. Forget
-        // the path too: if the database reappears somewhere else among the
-        // configured locations, discovery must run again.
-        applied = current;
-        cdb_path.clear();
-        return {};
+        // entries; the rewrite lands as the next observed change.
+        tracked.applied = current;
+        return;
     }
 
-    auto diff = workspace.cdb.reload_and_diff(cdb_path);
+    auto diff = workspace.cdb.reload_and_diff(tracked.id);
     if(!diff) {
         // Stats fine but unreadable right now (e.g. still locked by the
         // generator). Leave `applied` alone: the stamp stays different, so
         // the reload is retried on a later tick instead of being lost.
-        return {};
+        return;
     }
-    applied = current;
+    tracked.applied = current;
     LOG_INFO("Reloaded CDB from {}: {} added, {} removed, {} changed",
-             cdb_path,
+             path,
              diff->added.size(),
              diff->removed.size(),
              diff->changed.size());
-    if(diff->empty()) {
-        return {};
+    push_delta(*diff, events);
+}
+
+llvm::SmallVector<FileEvent> FileTracker::tick_cdb(bool force) {
+    llvm::SmallVector<FileEvent> events;
+    // Nothing declared: keep looking while nothing is found, so a database
+    // generated after startup is picked up, and again once the found one
+    // is gone, so one regenerated elsewhere among the searched locations
+    // takes over. Declared sources are registered (existing or not) and
+    // only watched.
+    if(!workspace.config.declares_sources() &&
+       (sources.empty() || !sources.front().applied.exists)) {
+        auto found = discover_compile_commands(workspace_root);
+        if(!found.empty()) {
+            auto id = workspace.cdb.add_source(found);
+            if(sources.empty()) {
+                LOG_INFO("Found compilation database: {}", found);
+                // Baselined as missing: the fresh file is a change against
+                // the never-loaded source and goes through the normal
+                // settle-and-reload path.
+                sources.push_back({.id = id});
+            } else if(id != sources.front().id) {
+                LOG_INFO("Compilation database moved to {}", found);
+                // The vanished database's entries leave with it; the new
+                // one loads through the settle path like a fresh find.
+                push_delta(workspace.cdb.unload_source(sources.front().id), events);
+                sources.front() = {.id = id};
+            }
+        }
     }
 
-    // Diff ids and event ids share the single file table.
-    FileEvent::CDBDelta delta;
-    delta.added.assign(diff->added.begin(), diff->added.end());
-    delta.removed.assign(diff->removed.begin(), diff->removed.end());
-    delta.changed.assign(diff->changed.begin(), diff->changed.end());
-
-    llvm::SmallVector<FileEvent> events;
-    events.push_back(FileEvent::cdb_changed(std::move(delta)));
+    for(auto& tracked: sources) {
+        tick_source(tracked, force, events);
+    }
     return events;
 }
 
