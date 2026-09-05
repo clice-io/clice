@@ -74,7 +74,7 @@ cd tests
 CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/clice npm run snap
 ```
 
-fixture 可以是单个 `.cpp`，也可以是以 `main.cpp` 为入口的子目录——一个多文件单元，其中同级的源文件（模块接口、头文件和其他源文件）都属于该 fixture。用于说明某项能力的 fixture 位于语料库的章节目录中，命名为 `<section>/NN_name.cpp`（或 `<section>/NN_unit/main.cpp`），并以 `/// # Capability name — details` 文档头开头，后接元数据列表，其中 `status`（`supported`、`partial` 或 `unsupported`）为必填项：章节目录名用作功能页面生成区域的键，两位数字决定条目在该区域中的顺序，文档头内容则用于生成页面（见 `tools/docs/feature.ts`）。用于边界情况且没有文档头的 fixture 放在语料库根目录。整个语料库共用的编译标志写在该语料库的 `corpus.json` 清单中；单个 fixture 可用 `- flags: [...]` 追加自己的编译标志。server 路径每次运行时都会把 fixture 放入一次性工作区（源文件落盘时已剥除 `§` 标注），因此 fixture 之间绝不共享状态；后台索引默认关闭，可由各 fixture 使用 `- indexing: true` 开启，读取的字节与编译器完全相同。有意让编译产生诊断的 fixture 需声明 `- diagnostics: expected`；非预期诊断会使 fixture 失败，声明了该项却未产生任何诊断也同样会失败。
+fixture 可以是单个 `.cpp`，也可以是以 `main.cpp` 为入口的子目录——一个多文件单元，其中同级的源文件（模块接口、头文件和其他源文件）都属于该 fixture。用于说明某项能力的 fixture 位于语料库的章节目录中，命名为 `<section>/NN_name.cpp`（或 `<section>/NN_unit/main.cpp`），并以 `/// # Capability name` 文档头开头——标题只写名称，至多五个词——后接元数据列表，其中 `status`（`supported`、`partial` 或 `unsupported`）为必填项，再接一段一句话摘要，作为能力卡片的摘要：章节目录名用作功能页面生成区域的键，两位数字决定条目在该区域中的顺序，文档头内容则用于生成页面（见 `tools/docs/feature.ts`）。用于边界情况且没有文档头的 fixture 放在语料库根目录。整个语料库共用的编译标志写在该语料库的 `corpus.json` 清单中；单个 fixture 可用 `- flags: [...]` 追加自己的编译标志。server 路径每次运行时都会把 fixture 放入一次性工作区（源文件落盘时已剥除 `§` 标注），因此 fixture 之间绝不共享状态；后台索引默认关闭，可由各 fixture 使用 `- indexing: true` 开启，读取的字节与编译器完全相同。有意让编译产生诊断的 fixture 需声明 `- diagnostics: expected`；非预期诊断会使 fixture 失败，声明了该项却未产生任何诊断也同样会失败。
 
 默认情况下，fixture 使用 `verify: both` 和 `snap: shared`：inspect 与 server 两条路径的结果必须逐字节完全一致，并统一记录在一份 `<name>.snap.yml` 中。两条路径确有合理差异的 fixture 会在其 `///` 文档头中声明 `- snap: separate`（并用 `// snap:` 注释说明原因），两条路径的结果分别记录在 `<name>.inspect.snap.yml` 和 `<name>.server.snap.yml` 中。若已知两条路径的分歧是错误的，则声明 `- snap: skip`：该 fixture 不会在任一路径上运行，并且在两条路径达成一致之前不保留任何快照。仅存在于一条路径上的功能（include 和 import 代码补全由 server 响应；索引转储没有对应的 LSP 请求形式）会声明 `- verify: server` 或 `- verify: inspect`，对应路径的结果记录在普通的 `<name>.snap.yml` 中。
 
@@ -99,7 +99,7 @@ $ pixi run -e editor editor-test  # nvim + vscode, both fixtures
 pixi 环境之外的前置条件：
 
 - `nvim`（stable）可在 `PATH` 中找到，供 `nvim-e2e` 使用。
-- 系统提供的 `cmake`/`ninja`/`clang`，供 `editor-prepare` 配置基于 CMake 的模块测试夹具（集成测试也基于这一假设）。
+- 系统提供的 `cmake`/`ninja`/`clang`，供 `editor-prepare` 配置基于 CMake 的模块 fixture（集成测试也基于这一假设）。
 - 显示环境（或 `xvfb-run`），以及 Electron 通常依赖的系统库，供 `vscode-e2e` 使用。
 
 ## 调试

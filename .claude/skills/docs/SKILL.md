@@ -99,8 +99,10 @@ one chunk of segments per call (a paired row and heading always in the
 same chunk), code blocks masked out — the model never sees a code block,
 and a reply that breaks a segment's shape, alters an inline literal, or
 names a row and its heading differently keeps the current text — and
-fails the page when that text is still the English copy, so rerun
-`review` on it until green. The backend is the codex CLI (GPT-6 astra) with every tool switched off, so
+fails the page when any segment ends up as the English copy, kept or
+echoed back by the model, unless the mapping already attests that pair
+as verbatim (a heading that is a product name): rerun `review` on it
+until green, or `record` a segment that is verbatim on purpose. The backend is the codex CLI (GPT-6 astra) with every tool switched off, so
 the contributor-written text it reads can reach neither the host
 filesystem nor the network (`--jobs=N` parallel calls, `--effort=LEVEL`,
 `--fast` for the fast service tier). Review the diff, then `format` and

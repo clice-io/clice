@@ -43,8 +43,9 @@ Translate:
   what one would search for: 结构化绑定（structured bindings）,
   最令人烦恼的解析（most vexing parse）.
 - Common nouns: translation unit → 翻译单元, compilation database → 编译数据库,
-  header → 头文件, index → 索引, crash → 崩溃, build → 构建, worker → worker
-  (kept), language server → 语言服务器.
+  header → 头文件, index → 索引, snapshot → 快照 (test snapshots and
+  dependency snapshots alike), overload set → 重载集, crash → 崩溃,
+  build → 构建, worker → worker (kept), language server → 语言服务器.
 
 Keep English (never transliterate):
 
@@ -53,8 +54,8 @@ Keep English (never transliterate):
 - Acronyms: LSP, AST, PCH, PCM, CDB, TU, ADL, CTAD, DAG, ABI, URI, C++23.
 - Terms Chinese C++ developers use untranslated: Lambda, Token, Concept
   (as the language feature; 概念 in prose is fine), `this`, Preamble,
-  Overload set, fixture, snapshot. When in doubt, keep the English term and
-  add a short Chinese gloss rather than invent a translation.
+  fixture. When in doubt, keep the English term and add a short Chinese
+  gloss rather than invent a translation.
 
 ## Style
 

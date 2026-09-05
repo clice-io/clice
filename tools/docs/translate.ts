@@ -50,10 +50,12 @@
 /// in the same chunk), `--jobs=N` calls in parallel, `--effort=LEVEL`
 /// reasoning and `--fast` for the fast service tier. A reply that breaks
 /// a segment's shape, alters an inline literal, or names a row and its
-/// heading differently keeps the current Chinese; when that text is still
-/// the English copy the page counts as failed, so a draft never exits
-/// green with untranslated segments. The pages are rewritten in place;
-/// review the diff, then `record`.
+/// heading differently keeps the current Chinese. A segment that ends up
+/// as the English copy — kept, or accepted as the model's echo — counts
+/// the page as failed unless the mapping already attests that pair as
+/// verbatim (a heading that is a product name, a row made of code spans),
+/// so a draft never exits green with untranslated segments. The pages
+/// are rewritten in place; review the diff, then `record`.
 ///
 /// `--en=DIR --zh=DIR --meta=DIR` override the tree roots (for testing).
 
@@ -65,6 +67,7 @@ import pLimit from "p-limit";
 import { REPO_ROOT } from "../compile_commands.ts";
 import {
     analyzeSource,
+    hashSegment,
     pairedLabels,
     splitSegments,
     YAML_PROSE_KEYS,
@@ -830,9 +833,12 @@ markdown 形状 shape、英文原文 en 和当前中文 zh。请逐段判断中�
 - 有通行中文译名的 C++ 概念翻译（结构化绑定、范围 for 循环、模板特化、显式实例化、折叠表达式、
   参数包、注入类名、概念）；一页中首次出现且英文更利于检索时，用全角括号附英文，
   如 结构化绑定（structured bindings）、最令人烦恼的解析（most vexing parse）。
+- 常用名词用固定译名：翻译单元（translation unit）、编译数据库（compilation database）、
+  头文件、索引、快照（snapshot，测试快照与依赖快照都是）、重载集（overload set）、崩溃、
+  构建、语言服务器；worker 保留。
 - 保留英文：产品与工具名（VS Code、Neovim、Zed、CMake、Bazel、clang、clang-format、clangd、
   GCC、MSVC、LLVM）；缩写（LSP、AST、PCH、PCM、CDB、TU、ADL、CTAD、DAG、ABI、URI、C++23）；
-  代码字体里的一切；中文 C++ 开发者习惯不译的词（Lambda、Token、Preamble、this、
+  代码字体里的一切；中文 C++ 开发者习惯不译的词（Lambda、Token、Preamble、this、fixture、
   作为语言特性名的 Concept）。拿不准时保留英文并加简短中文说明，不要自造译法。
 - 同一批里同一术语只用一种译法；同一能力的表格行与标题总在同一批里，两处中文必须完全一致。
 
@@ -993,6 +999,25 @@ function reviewChunks(
     return { items, chunks, enSegments, zhSource, zhSegments, enTexts, masks };
 }
 
+/// Segments whose final text is the English copy, except the pairs the
+/// mapping attests with one hash on both sides: those were reviewed as
+/// verbatim on purpose, and `record` is how a new one gets attested.
+function englishCopies(
+    roots: Roots,
+    page: string,
+    finalTexts: Map<number, string>,
+    enTexts: string[],
+): number[] {
+    const attested = new Set(
+        (loadMapping(roots, page)?.pairs ?? [])
+            .filter((pair) => pair.en === pair.zh)
+            .map((pair) => pair.en),
+    );
+    return [...finalTexts]
+        .filter(([i, text]) => text === at(enTexts, i) && !attested.has(hashSegment(text)))
+        .map(([i]) => i);
+}
+
 async function reviewPages(roots: Roots, pages: string[], rest: string[]): Promise<number> {
     const flag = (name: string, fallback: string): string =>
         rest.find((argument) => argument.startsWith(`--${name}=`))?.slice(name.length + 3) ??
@@ -1036,13 +1061,9 @@ async function reviewPages(roots: Roots, pages: string[], rest: string[]): Promi
             zhSource.slice(at(zhSegments, i).start, at(zhSegments, i).end);
         const finalTexts = new Map<number, string>();
         let kept = 0;
-        let untranslated = 0;
         const keep = (i: number) => {
             finalTexts.set(i, currentText(i));
             kept += 1;
-            if (currentText(i) === at(enTexts, i)) {
-                untranslated += 1;
-            }
         };
         for (const item of items.values()) {
             const blocks = mustGet(masks, item.i);
@@ -1112,11 +1133,17 @@ async function reviewPages(roots: Roots, pages: string[], rest: string[]): Promi
         console.log(
             `done ${page}: ${items.size} segments, ${changed} changed, ${kept} kept on problems`,
         );
-        // A kept segment whose current text is still the English copy is a
-        // draft that would pass `record` untranslated; the page is written
-        // so the segments that did translate survive a rerun.
-        if (untranslated > 0) {
-            console.error(`FAILED ${page}: ${untranslated} kept segments are still English`);
+        // An English copy — kept on a problem or echoed back by the model —
+        // is a draft that `record` would bless untranslated; the page is
+        // written anyway so the segments that did translate survive a rerun.
+        const untranslated = englishCopies(roots, page, finalTexts, enTexts);
+        for (const i of untranslated) {
+            console.error(
+                `  ${page} segment ${i + 1} (${mustGet(items, i).shape}): still the English copy`,
+            );
+        }
+        if (untranslated.length > 0) {
+            console.error(`FAILED ${page}: ${untranslated.length} segments are still English`);
             failed += 1;
         }
     });
