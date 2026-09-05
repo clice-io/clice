@@ -9,9 +9,8 @@
 ///     <!-- BEGIN GENERATED CONFIG: project -->
 ///     <!-- END GENERATED CONFIG -->
 ///
-/// A region renders its section's options as one list of signature line
-/// plus description; the handwritten `##` heading above it names the
-/// section. Section intros, the file-location/precedence preamble, variable
+/// A region renders its section's options as one table, a row per option;
+/// the handwritten `##` heading above it names the section. Section intros, the file-location/precedence preamble, variable
 /// substitution and the example stay handwritten. CI runs `check`; a
 /// separate binary-backed step keeps the committed schema itself fresh.
 ///
@@ -22,7 +21,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { REPO_ROOT } from "../compile_commands.ts";
-import { rewriteRegions, type RegionMarkers } from "./generated.ts";
+import { renderMarkdownTable, rewriteRegions, type RegionMarkers } from "./generated.ts";
 
 const SCHEMA_PATH = "docs/public/clice-config.schema.json";
 const DOC_PATH = "docs/en/guide/configuration.md";
@@ -102,33 +101,20 @@ function renderType(field: FieldSchema): string {
     }
 }
 
-/// The Default clause of an option's signature line. A field without a
-/// `default` annotation derives its value from the running machine — the
-/// description states how — so the clause is omitted rather than showing
-/// any one host's number.
+/// The Default cell. A field without a `default` annotation derives its
+/// value from the running machine — the description states how — so the
+/// cell shows a dash rather than any one host's number.
 function renderDefault(field: FieldSchema): string {
     if (!("default" in field)) {
-        return "";
+        return "—";
     }
-    return ` · default \`${JSON.stringify(field.default)}\``;
+    return `\`${JSON.stringify(field.default)}\``;
 }
 
-/// One option as a list item: a signature line naming the option with
-/// its type and default, then the description paragraph from the
-/// annotation. The section heading above the region names the table the
-/// option lives in, so the item shows the bare key.
-function renderField(name: string, field: FieldSchema): string[] {
-    const out: string[] = [];
-    out.push(`- **\`${name}\`** · ${renderType(field)}${renderDefault(field)}`);
-    if (field.description !== undefined) {
-        out.push("", `  ${field.description}`);
-    }
-    return out;
-}
-
-/// A section region's body: every option of the section's struct, in
-/// declaration order, as one list inside a `config-options` block so the
-/// site can lay the items out as an option table.
+/// A section region's body: one table with a row per option of the
+/// section's struct, in declaration order. The handwritten heading above
+/// the region names the table the options live in, so the Option cell
+/// shows the bare key.
 function renderSection(root: StructSchema, section: string): string {
     const top = root.properties?.[section];
     if (!top) {
@@ -137,10 +123,18 @@ function renderSection(root: StructSchema, section: string): string {
     const isArray = top.type === "array";
     const struct = resolveRef(root, isArray ? (top.items ?? {}) : top);
     const properties = struct.properties ?? {};
-    const items = Object.entries(properties).map(([name, field]) =>
-        renderField(name, field).join("\n"),
+    const rows: string[][] = [["Option", "Type", "Default", "Description"]];
+    for (const [name, field] of Object.entries(properties)) {
+        rows.push([
+            `\`${name}\``,
+            renderType(field),
+            renderDefault(field),
+            (field.description ?? "").replaceAll("|", "\\|"),
+        ]);
+    }
+    return ['<div class="config-table">', "", ...renderMarkdownTable(rows), "", "</div>"].join(
+        "\n",
     );
-    return ['<div class="config-options">', "", items.join("\n\n"), "", "</div>"].join("\n");
 }
 
 function rewriteDoc(docText: string, root: StructSchema, problems: string[]): string {
