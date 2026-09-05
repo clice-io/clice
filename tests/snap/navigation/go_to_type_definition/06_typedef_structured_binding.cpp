@@ -4,7 +4,7 @@
 /// - verify: server
 ///
 /// Go-to-type-definition on a structured binding reaches the definition of
-/// the bound member's type.
+/// the bound member's type
 
 struct §(type)Widget {};
 

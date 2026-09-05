@@ -5,7 +5,7 @@
 ///
 /// Highlighting `break` or `continue` should also light up the loop or
 /// `switch` it belongs to — and `return` / `throw` the function exits
-/// they mark.
+/// they mark
 
 void drain(int outer, int inner) {
     for (int i = 0; i < outer; i += 1) {

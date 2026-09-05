@@ -1,10 +1,10 @@
-/// # Local variables and parameters navigate to their declaration
+/// # Local symbol navigation
 ///
 /// - status: supported
 /// - verify: server
 ///
 /// Go-to-definition on a local variable or parameter jumps to its
-/// declaration inside the function body.
+/// declaration inside the function body
 
 int accumulate(int base) {
     int total = base;

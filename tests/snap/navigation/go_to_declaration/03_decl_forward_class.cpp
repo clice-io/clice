@@ -1,11 +1,11 @@
-/// # Forward declarations of classes and structs
+/// # Forward-declared record types
 ///
 /// - status: supported
 /// - verify: server
 ///
 /// A class with a forward declaration and a later definition offers both
 /// from a use — the forward declaration stays part of the declaration set
-/// rather than being dropped in favour of the definition.
+/// rather than being dropped in favour of the definition
 
 struct §(fwd)Widget;
 

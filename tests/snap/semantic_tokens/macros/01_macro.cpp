@@ -3,6 +3,7 @@
 /// - status: supported
 /// - snap: skip
 ///
+/// Macro definitions and expansions receive semantic tokens
 
 // snap: skip because the server compiles the `#define` inside the
 // snap: preamble PCH, where SQUARE stays a plain `macro` token; the inspect-path

@@ -1,11 +1,12 @@
-/// # Casts invoking a constructor or conversion operator
+/// # Cast conversion navigation
 ///
 /// - status: partial
 /// - verify: server
 ///
-/// A `static_cast` that constructs its target reaches the selected
-/// constructor. A `static_cast` that runs a user-defined conversion operator
-/// does not yet reach the operator.
+/// Constructing casts navigate to the selected constructor
+///
+/// A `static_cast` that runs a user-defined conversion operator does not yet
+/// reach that operator.
 
 struct Meters {
     explicit operator double() const;

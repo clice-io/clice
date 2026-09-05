@@ -267,6 +267,13 @@ test("fixture header validation", () => {
     expect(problems.every((item) => /^fixture\.cpp:\d+: R\d:/.test(item))).toBe(true);
 
     expect(validateFixtureHeader("int x;\n", "root.cpp", "")).toEqual([]);
+    expect(validateFixtureHeader("/// Documents f.\nint f();\n", "root.cpp", "")).toEqual([]);
+    expect(
+        validateFixtureHeader("int f();\n\n/// Documents g.\nint g();\n", "root.cpp", ""),
+    ).toEqual([]);
+    expect(
+        validateFixtureHeader("/// Attribution prologue.\n\nint f();\n", "root.cpp", ""),
+    ).toEqual(expect.arrayContaining([expect.stringContaining("R7:")]));
     expect(
         validateFixtureHeader("/// - verify: server\nint x;\n", "nested.cpp", "section"),
     ).toEqual(expect.arrayContaining([expect.stringContaining("R7:")]));

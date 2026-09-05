@@ -4,7 +4,7 @@
 ///
 /// Find references on a constructor reports only its explicit sites; an
 /// object definition that implicitly invokes the constructor or its
-/// destructor is not included.
+/// destructor is not included
 
 struct Blob {
     Blob();  // find-refs here omits the `Blob b;` definition below

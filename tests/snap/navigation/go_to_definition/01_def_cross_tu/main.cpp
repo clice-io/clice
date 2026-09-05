@@ -5,7 +5,7 @@
 ///
 /// A use in one translation unit resolves to the definition supplied by
 /// a sibling source — the answer spans the project, not the current
-/// file alone.
+/// file alone
 
 #include "shared.h"
 

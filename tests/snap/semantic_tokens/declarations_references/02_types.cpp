@@ -2,7 +2,7 @@
 ///
 /// - status: supported
 ///
-/// class, struct, union, enum and type aliases, at definitions and references
+/// Class, struct, union, enum and type aliases, at definitions and references
 
 class §Widget {};
 struct §Point {};

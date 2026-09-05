@@ -1,4 +1,4 @@
-/// # Members of an instantiated class template
+/// # Instantiated class template members
 ///
 /// - status: supported
 /// - diagnostics: expected

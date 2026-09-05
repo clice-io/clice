@@ -1,4 +1,4 @@
-/// # Unqualified lookup with fuzzy prefix matching
+/// # Fuzzy unqualified lookup
 ///
 /// - status: supported
 /// - diagnostics: expected

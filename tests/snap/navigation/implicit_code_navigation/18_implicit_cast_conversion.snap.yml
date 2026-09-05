@@ -6,15 +6,15 @@ cast_conv: none
 
 cast_ctor:
   definition:
-    - { file: "${WS}/implicit_code_navigation/18_implicit_cast_conversion.cpp", range: "14:13-14:16" }
+    - { file: "${WS}/implicit_code_navigation/18_implicit_cast_conversion.cpp", range: "15:13-15:16" }
   declaration:
-    - { file: "${WS}/implicit_code_navigation/18_implicit_cast_conversion.cpp", range: "14:13-14:16" }
+    - { file: "${WS}/implicit_code_navigation/18_implicit_cast_conversion.cpp", range: "15:13-15:16" }
   typeDefinition:
-    - { file: "${WS}/implicit_code_navigation/18_implicit_cast_conversion.cpp", range: "13:7-13:10" }
+    - { file: "${WS}/implicit_code_navigation/18_implicit_cast_conversion.cpp", range: "14:7-14:10" }
   references:
-    - { file: "${WS}/implicit_code_navigation/18_implicit_cast_conversion.cpp", range: "14:13-14:16" }
-    - { file: "${WS}/implicit_code_navigation/18_implicit_cast_conversion.cpp", range: "19:12-19:23" }
+    - { file: "${WS}/implicit_code_navigation/18_implicit_cast_conversion.cpp", range: "15:13-15:16" }
+    - { file: "${WS}/implicit_code_navigation/18_implicit_cast_conversion.cpp", range: "20:12-20:23" }
   callHierarchy:
-    - { name: "Foo", kind: Method, file: "${WS}/implicit_code_navigation/18_implicit_cast_conversion.cpp", range: "14:13-14:16" }
+    - { name: "Foo", kind: Method, file: "${WS}/implicit_code_navigation/18_implicit_cast_conversion.cpp", range: "15:13-15:16" }
   incomingCalls:
-    - { name: "use", kind: Function, file: "${WS}/implicit_code_navigation/18_implicit_cast_conversion.cpp", range: "17:5-17:8", fromRanges: ["19:12-19:32"] }
+    - { name: "use", kind: Function, file: "${WS}/implicit_code_navigation/18_implicit_cast_conversion.cpp", range: "18:5-18:8", fromRanges: ["20:12-20:32"] }

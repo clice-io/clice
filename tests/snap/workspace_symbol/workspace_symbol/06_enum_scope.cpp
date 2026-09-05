@@ -1,11 +1,11 @@
-/// # Enumerator lookup under the enum's scope
+/// # Scoped enumerator lookup
 ///
 /// - status: unsupported
 /// - issues: clangd#931
 ///
 /// `Color::Red` should find the enumerator — for scoped and unscoped
 /// enums alike — but qualified queries match nothing; only the bare
-/// `Red` does.
+/// `Red` does
 
 // query: Color::Red
 

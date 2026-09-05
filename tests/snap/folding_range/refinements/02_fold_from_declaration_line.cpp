@@ -1,4 +1,4 @@
-/// # Fold from the declaration line for function/class bodies
+/// # Declaration-line folding
 ///
 /// - status: unsupported
 /// - issues: clangd#2666

@@ -1,10 +1,10 @@
-/// # `auto` keyword navigates to the deduced type
+/// # Deduced `auto` type navigation
 ///
 /// - status: unsupported
 /// - issues: clangd#2055
 ///
 /// Go-to-definition on the `auto` keyword should reach the type it was
-/// deduced to; today it returns nothing.
+/// deduced to; today it returns nothing
 
 struct Widget {};
 

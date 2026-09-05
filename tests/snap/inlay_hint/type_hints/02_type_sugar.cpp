@@ -1,4 +1,4 @@
-/// # Type sugar and the length limit
+/// # Type sugar length limits
 ///
 /// - status: supported
 /// - issues: clangd#1298, clangd#1357

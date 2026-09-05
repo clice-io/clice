@@ -4,7 +4,7 @@
 /// - verify: server
 ///
 /// Outgoing calls list every function a body invokes, one entry per
-/// callee.
+/// callee
 
 int one() {
     return 1;

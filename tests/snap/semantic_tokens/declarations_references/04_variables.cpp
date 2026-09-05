@@ -2,7 +2,7 @@
 ///
 /// - status: supported
 ///
-/// globals, locals, parameters, fields and enum members
+/// Globals, locals, parameters, fields and enum members
 
 struct Holder {
     int §field;

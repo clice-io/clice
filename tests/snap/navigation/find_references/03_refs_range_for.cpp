@@ -1,11 +1,11 @@
-/// # Implicit references from range-based for loops
+/// # Range-for references
 ///
 /// - status: unsupported
 /// - issues: clangd#1081
 ///
 /// Find references on `begin` reports only its own declaration; the
 /// range-based for loop that implicitly calls it is not included among the
-/// references.
+/// references
 
 struct Iterator {
     int operator*() const;

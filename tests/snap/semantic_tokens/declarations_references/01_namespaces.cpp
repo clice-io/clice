@@ -2,7 +2,7 @@
 ///
 /// - status: supported
 ///
-/// definitions, references, nested namespaces and namespace aliases
+/// Definitions, references, nested namespaces and namespace aliases
 
 namespace §demo {
 namespace §inner {

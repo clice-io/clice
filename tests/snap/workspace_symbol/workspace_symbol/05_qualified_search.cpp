@@ -5,7 +5,7 @@
 ///
 /// Symbols match by bare name only: `net::Socket` finds nothing even
 /// though `deep::net::Socket` exists, and neither does any other
-/// qualifier-prefixed form.
+/// qualifier-prefixed form
 
 // query: net::Socket
 

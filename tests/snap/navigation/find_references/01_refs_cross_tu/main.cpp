@@ -6,7 +6,7 @@
 /// Find references gathers uses from other files too: a function
 /// defined in one source and called from a sibling reports both call
 /// sites together with the declaration in the shared header, not only the
-/// uses in the current file.
+/// uses in the current file
 
 #include "shared.h"
 

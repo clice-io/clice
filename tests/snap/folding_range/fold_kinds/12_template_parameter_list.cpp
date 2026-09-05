@@ -2,6 +2,7 @@
 ///
 /// - status: unsupported
 ///
+/// Multiline template parameter lists form folding ranges
 
 template<typename T>
 struct Less;

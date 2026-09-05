@@ -1,11 +1,11 @@
-/// # Underlying declarations ranked above type aliases
+/// # Alias ranking
 ///
 /// - status: unsupported
 /// - issues: clangd#2253
 ///
-/// When both `ConnectionImpl` and its alias `Connection` match a query,
-/// the underlying declaration should rank first. Results carry no
-/// ranking today.
+/// Underlying declarations should rank above matching aliases
+///
+/// Results carry no ranking today.
 
 // query: Connection
 

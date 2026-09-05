@@ -2,7 +2,7 @@
 ///
 /// - status: unsupported
 ///
-/// multi-line `/* */` and consecutive `//` line comments
+/// Multi-line `/* */` and consecutive `//` line comments
 
 // This is a long
 // multi-line comment

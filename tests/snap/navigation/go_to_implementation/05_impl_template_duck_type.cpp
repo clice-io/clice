@@ -2,9 +2,10 @@
 ///
 /// - status: unsupported
 ///
-/// From a dependent member call, go-to-implementation should list the
-/// concrete methods of every known instantiation; the same applies to a
-/// generic lambda's dependent calls. Today it returns nothing.
+/// Dependent calls should resolve to methods of known instantiations
+///
+/// This applies to function templates and generic lambdas, but neither
+/// currently returns an implementation target.
 
 template <typename T>
 void process(T& obj) {

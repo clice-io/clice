@@ -3,9 +3,8 @@
 /// - status: supported
 ///
 /// Size, offset, alignment and padding show on field hover
-///
-/// The corpus uses a fixed x86-64 target, so the reported bit positions are stable.
 
+// snap: The fixed x86-64 target keeps reported bit positions stable.
 struct Frame {
     char ki§(plain_field)nd;
     long seque§(padded_field)nce;

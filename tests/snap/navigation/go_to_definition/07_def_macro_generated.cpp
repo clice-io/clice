@@ -1,4 +1,4 @@
-/// # Names conjured by a macro body or token paste anchor at the invocation
+/// # Macro-generated names
 ///
 /// - status: supported
 /// - verify: server
@@ -6,7 +6,7 @@
 /// A name assembled by token paste has no spelling of its own in the
 /// source, so it anchors at the macro invocation that creates it: the
 /// invocation is its definition site, and a plain use of the name jumps
-/// back to that invocation.
+/// back to that invocation
 
 #define MAKE_FLAG(name) bool flag_##name = false
 

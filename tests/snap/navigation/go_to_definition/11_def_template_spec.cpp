@@ -1,11 +1,11 @@
-/// # Template specialization navigates to the primary template
+/// # Template specialization navigation
 ///
 /// - status: unsupported
 /// - issues: clangd#212
 ///
 /// Go-to-definition on the name of an explicit specialization resolves to
 /// the specialization itself; stepping from it to the primary template it
-/// specializes is not offered.
+/// specializes is not offered
 
 template <typename T>
 struct Formatter {}; // primary template

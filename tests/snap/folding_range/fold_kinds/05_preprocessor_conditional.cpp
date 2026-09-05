@@ -1,12 +1,12 @@
-/// # Preprocessor conditional folding (`#if` / `#ifdef` / `#ifndef` ... `#endif`)
+/// # Preprocessor conditional folding
 ///
 /// - status: partial
 /// - issues: clangd#1661, clangd#2059
 /// - flags: ["-std=c++23"]
 ///
-/// Branch regions delimited by `#else` fold today; a bare `#if ... #endif`
-/// block without an `#else` does not fold yet. clangd#2059 is a duplicate
-/// of clangd#1661.
+/// Conditional branches separated by `#else` form folding ranges
+///
+/// A bare `#if ... #endif` block without an `#else` does not fold yet.
 
 #ifdef ENABLE_LOGGING    // ┐
 void log_message();      // │ no fold yet: bare conditional without #else

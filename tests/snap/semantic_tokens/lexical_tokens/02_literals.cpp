@@ -2,7 +2,7 @@
 ///
 /// - status: supported
 ///
-/// numbers, characters and strings, including raw strings
+/// Numbers, characters and strings, including raw strings
 
 int decimal = 42;
 int hexadecimal = 0xFF;

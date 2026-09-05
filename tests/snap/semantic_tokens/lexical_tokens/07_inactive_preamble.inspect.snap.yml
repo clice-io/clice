@@ -2,7 +2,7 @@
 created_at: 2026-08-28
 input_file: lexical_tokens/07_inactive_preamble.cpp
 ---
-- { loc: "0:0", text: "/// # Inactive regions at the top of a file", kind: comment }
+- { loc: "0:0", text: "/// # Inactive preamble regions", kind: comment }
 - { loc: "1:0", text: "///", kind: comment }
 - { loc: "2:0", text: "/// - status: supported", kind: comment }
 - { loc: "3:0", text: "/// - snap: separate", kind: comment }

@@ -2,7 +2,7 @@
 created_at: 2026-08-23
 input_file: layout_information/01_field_layout.cpp
 ---
-bitfield: { range: "14:17-14:24" }
+bitfield: { range: "13:17-13:24" }
 ### field `enabled`  
 
 ---
@@ -16,7 +16,7 @@ Size: 1 bit, alignment 4 bytes
 public: unsigned int enabled : 1
 ```
 
-bitfield_padding: { range: "15:17-15:21" }
+bitfield_padding: { range: "14:17-14:21" }
 ### field `last`  
 
 ---
@@ -30,7 +30,7 @@ Size: 1 bit (+30 bits padding), alignment 4 bytes
 public: unsigned int last : 1
 ```
 
-padded_field: { range: "10:9-10:17" }
+padded_field: { range: "9:9-9:17" }
 ### field `sequence`  
 
 ---
@@ -44,7 +44,7 @@ Size: 8 bytes, alignment 8 bytes
 public: long sequence
 ```
 
-plain_field: { range: "9:9-9:13" }
+plain_field: { range: "8:9-8:13" }
 ### field `kind`  
 
 ---

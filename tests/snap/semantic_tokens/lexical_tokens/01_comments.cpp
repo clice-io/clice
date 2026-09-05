@@ -2,7 +2,7 @@
 ///
 /// - status: supported
 ///
-/// line, block and doc comments, including multiline blocks
+/// Line, block and doc comments, including multiline blocks
 
 // A line comment.
 /* a one-line block comment */

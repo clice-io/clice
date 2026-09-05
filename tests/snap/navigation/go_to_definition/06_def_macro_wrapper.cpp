@@ -1,4 +1,4 @@
-/// # Navigate through macro wrappers to the underlying declaration
+/// # Macro wrapper navigation
 ///
 /// - status: supported
 /// - verify: server
@@ -6,7 +6,7 @@
 /// A name spelled in a macro argument anchors at its spelling, so
 /// definition and declaration alternate there exactly as at a plain
 /// site, and a later use resolves through the wrapper to the function it
-/// declares.
+/// declares
 
 #define DECLARE_HOOK(name) int name(int value)
 

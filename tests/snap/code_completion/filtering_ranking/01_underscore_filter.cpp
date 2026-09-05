@@ -3,7 +3,7 @@
 /// - status: supported
 /// - diagnostics: expected
 ///
-/// underscore-prefixed internal symbols hide unless the typed prefix itself starts with one
+/// Underscore-prefixed internal symbols hide unless the typed prefix itself starts with one
 
 // The completion prefixes are undeclared identifiers. The
 // statements stay semicolon-terminated: an unterminated one puts the

@@ -3,7 +3,7 @@
 /// - status: supported
 /// - diagnostics: expected
 ///
-/// fields, methods, the destructor and operators complete with plain names
+/// Fields, methods, the destructor and operators complete with plain names
 ///
 /// The destructor completes as `~Account` (never `~struct Account`),
 /// `operator=` keeps no space before `=`, and a conversion operator

@@ -4,7 +4,7 @@
 /// - issues: clangd#2242
 ///
 /// Incoming calls of a constructor do not include the call sites that
-/// reach it through a perfect-forwarding factory.
+/// reach it through a perfect-forwarding factory
 
 template <typename T, typename... Args>
 T make(Args&&... args) {

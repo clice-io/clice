@@ -1,4 +1,4 @@
-/// # Inactive regions at the top of a file
+/// # Inactive preamble regions
 ///
 /// - status: supported
 /// - snap: separate

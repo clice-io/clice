@@ -3,7 +3,7 @@
 /// - status: supported
 /// - issues: clangd#1744
 ///
-/// object-like and function-like macro definitions in the outline, a parameter list as the function-like detail
+/// Object-like and function-like macro definitions in the outline, a parameter list as the function-like detail
 
 // The assertion holds the directives out of the preamble region, whose
 // live record the server path does not yet see.

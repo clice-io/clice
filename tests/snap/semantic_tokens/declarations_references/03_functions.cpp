@@ -2,7 +2,7 @@
 ///
 /// - status: supported
 ///
-/// declarations, definitions and call sites
+/// Declarations, definitions and call sites
 
 int §twice(int value);
 

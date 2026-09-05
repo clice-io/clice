@@ -2,7 +2,7 @@
 ///
 /// - status: supported
 ///
-/// functions, classes, structs, unions, enums, namespaces, lambdas
+/// Functions, classes, structs, unions, enums, namespaces, lambdas
 
 namespace geometry {
 

@@ -5,7 +5,7 @@
 ///
 /// The reference reply carries only locations, so a reader cannot tell a
 /// write from a read; annotating each result with its access kind is not
-/// offered.
+/// offered
 
 int use() {
     int x = 0;      // write

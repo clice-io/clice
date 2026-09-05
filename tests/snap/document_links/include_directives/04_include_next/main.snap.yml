@@ -7,4 +7,4 @@ input_file: include_directives/04_include_next/main.cpp
 - { range: "7:14-7:22", target: "${WS}/include_directives/04_include_next/first/wrap.h" }
 
 --- main.cpp
-- { range: "15:9-15:17", target: "${WS}/include_directives/04_include_next/first/wrap.h" }
+- { range: "14:9-14:17", target: "${WS}/include_directives/04_include_next/first/wrap.h" }

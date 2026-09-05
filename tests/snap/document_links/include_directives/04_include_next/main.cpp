@@ -10,8 +10,7 @@
 /// copy. Next-in-path resolution only exists when the header is compiled
 /// in an including TU's context — opened standalone it is compiled as its
 /// own TU, where clang deliberately treats `#include_next` as a plain
-/// include, so today both links land back on the first copy (as the
-/// snapshot pins).
+/// include, so today both links land back on the first copy.
 
 #include <wrap.h>
 

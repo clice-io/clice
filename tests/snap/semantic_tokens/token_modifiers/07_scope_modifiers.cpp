@@ -3,7 +3,7 @@
 /// - status: unsupported
 /// - issues: clangd#352
 ///
-/// function, class, file and global scope
+/// Function, class, file and global scope
 
 int global_scope;
 static int file_scope;

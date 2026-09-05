@@ -4,7 +4,7 @@
 /// - issues: clangd#716, clangd#1872
 ///
 /// Find references on a constructor does not include call sites that reach
-/// it indirectly through a perfect-forwarding factory.
+/// it indirectly through a perfect-forwarding factory
 
 template <typename T, typename... Args>
 T make(Args&&... args) {

@@ -2,7 +2,7 @@
 ///
 /// - status: supported
 ///
-/// pointers, references, arrays
+/// Pointers, references, arrays
 ///
 /// A variable's card pretty-prints its declared type, spelling the pointer,
 /// reference and array declarators the way they read in source.

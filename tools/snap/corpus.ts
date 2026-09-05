@@ -315,8 +315,19 @@ export function validateFixtureHeader(
                 problem(filePath, 1, "R7: an undocumented fixture must live at the corpus root"),
             );
         }
-        const leadingDoc = header.lines.findIndex((line) => line.trimStart().startsWith("///"));
-        if (leadingDoc >= 0) {
+        // R7 applies to a fixture prologue, not to ordinary declaration
+        // documentation later in the example. A prologue is a leading
+        // `///` block separated from the code by a blank line; a doc comment
+        // immediately attached to the first declaration is example code.
+        let leadingDoc = 0;
+        while ((header.lines[leadingDoc] ?? "").trim() === "") {
+            leadingDoc += 1;
+        }
+        let afterLeadingDoc = leadingDoc;
+        while ((header.lines[afterLeadingDoc] ?? "").trimStart().startsWith("///")) {
+            afterLeadingDoc += 1;
+        }
+        if (afterLeadingDoc > leadingDoc && (header.lines[afterLeadingDoc] ?? "").trim() === "") {
             problems.push(
                 problem(filePath, leadingDoc + 1, "R7: edge-case prologues must use //, not ///"),
             );

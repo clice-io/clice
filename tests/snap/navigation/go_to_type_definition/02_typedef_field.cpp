@@ -4,7 +4,7 @@
 /// - verify: server
 ///
 /// Go-to-type-definition on a field access reaches the definition of the
-/// field's type.
+/// field's type
 
 struct §(type)Logger {};
 

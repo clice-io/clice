@@ -2,7 +2,7 @@
 ///
 /// - status: supported
 ///
-/// special-member names keep their definition tokens
+/// Special-member names keep their definition tokens
 
 struct Session {
     §Session() = default;

@@ -2,7 +2,7 @@
 ///
 /// - status: supported
 ///
-/// declarations, definitions, partial and full specializations
+/// Declarations, definitions, partial and full specializations
 
 template <typename T, typename U>
 extern int §pair_value;

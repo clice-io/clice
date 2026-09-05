@@ -2,6 +2,7 @@
 ///
 /// - status: unsupported
 ///
+/// Multiline raw string literals form folding ranges
 
 auto sql = R"(
     SELECT *

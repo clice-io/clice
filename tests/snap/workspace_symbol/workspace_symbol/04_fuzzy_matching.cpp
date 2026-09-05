@@ -3,7 +3,7 @@
 /// - status: unsupported
 /// - issues: clangd#914
 ///
-/// word-boundary-aware scoring for camelCase and snake_case
+/// Word-boundary-aware scoring for camelCase and snake_case
 ///
 /// Matching is a case-insensitive substring test: `LinLis` does not find
 /// `LinkedList`, and `pcfg` does not find `parse_config`. Word-boundary
