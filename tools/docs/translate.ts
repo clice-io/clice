@@ -911,6 +911,7 @@ function codexBackend(effort: string, fast: boolean): Backend {
                 await runCodex(
                     [
                         "exec",
+                        "--skip-git-repo-check",
                         "-m",
                         "gpt-6-astra",
                         "-c",

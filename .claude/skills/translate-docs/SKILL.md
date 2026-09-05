@@ -9,8 +9,8 @@ The zh tree reads as Chinese technical writing, not as glossed English. The
 reader is a C++ developer who searches the web in English, so the rule is:
 translate the prose, keep the names people search for, and never touch
 anything a tool or a compiler reads. The mechanics (segment isomorphism,
-`report`/`record`/`check`, the review and translate modes) are in the docs
-skill; this skill is only about the words.
+`report`/`record`/`check`, the review mode) are in the docs skill; this
+skill is only about the words.
 
 ## By position on the page
 
@@ -71,6 +71,5 @@ Keep English (never transliterate):
 
 ## Where the rules live in code
 
-`tools/docs/translate.ts` embeds these rules in `SYSTEM_PROMPT` (translate
-mode) and `REVIEW_PROMPT` (review mode). Change the prompts and this skill
-together.
+`tools/docs/translate.ts` embeds these rules in `REVIEW_PROMPT`. Change the
+prompt and this skill together.
