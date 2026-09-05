@@ -4,6 +4,7 @@
 #include <string>
 
 #include "llvm/ADT/SmallString.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/VirtualFileSystem.h"
@@ -30,12 +31,19 @@ constexpr inline bool CIEnvironment = false;
 
 /// The checked-in fixture tree, tests/data of the checkout that built this
 /// binary. CLICE_TEST_DATA_DIR in the environment overrides it, the way
-/// CLICE_EXECUTABLE points the TypeScript suites at another build.
+/// CLICE_EXECUTABLE points the TypeScript suites at another build. Absolute
+/// and dot-free with native separators, the spelling the database loader
+/// produces for paths anchored under it.
 inline std::string data_dir() {
+    llvm::SmallString<256> dir;
     if(const char* env = std::getenv("CLICE_TEST_DATA_DIR")) {
-        return env;
+        dir = env;
+    } else {
+        dir = CLICE_TESTS_DATA_DIR;
     }
-    return CLICE_TESTS_DATA_DIR;
+    llvm::sys::fs::make_absolute(dir);
+    llvm::sys::path::remove_dots(dir, /*remove_dot_dot=*/true);
+    return std::string(dir);
 }
 
 class TestVFS : public llvm::vfs::InMemoryFileSystem {
