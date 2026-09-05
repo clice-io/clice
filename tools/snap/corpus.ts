@@ -66,24 +66,34 @@ export const FIXTURE_META_KEYS: readonly string[] = [
     "flags",
 ];
 
-/// A fixture's leading `///` block, split into its parts; the readers
-/// (parseFixtureMeta here, the docs generator) validate what they use.
+/// A fixture's leading `///` block, split into its parts. Documented
+/// fixtures use one `#` heading, a fixed-order metadata list, and prose
+/// whose first paragraph is the summary. Supplementary fixtures may use a
+/// metadata-only block while the corpus is being read; the feature-doc
+/// validator rejects that legacy spelling under R7.
 export interface FixtureHeader {
-    /// The file's lines after any plain-`//` prologue (license or
-    /// attribution comments belong to neither the header nor the example).
+    /// Every line in the file. Indices in this structure are whole-file
+    /// indices because snapshot positions use whole-file line numbers.
     lines: string[];
+    /// Index of the first `///` header line, or 0 when there is no header.
+    headerStart: number;
     /// The markdown heading lines opening the block, comment prefix
     /// stripped.
     headings: string[];
+    /// The capability name from the opening `#` heading.
+    name: string;
     /// The `- key: value` list after the headings, in order; keys and
     /// duplicates unchecked.
     meta: { key: string; value: string }[];
     /// Lines inside the list that are not entries: a misspelled entry must
     /// error, not silently end the list on defaults.
     malformed: string[];
-    /// The stripped `///` lines from the blank separator after the list
-    /// (or after the headings, without a list): the markdown description.
+    /// The first prose paragraph, rendered as the capability summary.
+    summary: string;
+    /// The stripped `///` lines after the summary paragraph.
     description: string[];
+    /// The text of a directly-following `// snap:` block, prefix stripped.
+    notes: string[];
     /// Index into `lines` of the first line after the block.
     bodyStart: number;
 }
@@ -133,19 +143,22 @@ export function scanFixtureHeader(content: string): FixtureHeader {
         }
         prologue += 1;
     }
-    const lines = all.slice(prologue);
     const header: FixtureHeader = {
-        lines,
+        lines: all,
+        headerStart: 0,
         headings: [],
+        name: "",
         meta: [],
         malformed: [],
+        summary: "",
         description: [],
+        notes: [],
         bodyStart: 0,
     };
 
-    let i = 0;
+    let i = prologue;
     const comment = (): string | null => {
-        const raw = lines[i];
+        const raw = all[i];
         return raw?.trimStart().startsWith("///") ? stripComment(raw) : null;
     };
     // A header opens with a heading or an entry (blank `///` lines before
@@ -153,17 +166,18 @@ export function scanFixtureHeader(content: string): FixtureHeader {
     // comment on the code — the fixture has no header.
     let opening = 0;
     while (
-        (lines[opening] ?? "").trimStart().startsWith("///") &&
-        stripComment(lines[opening] ?? "").trim() === ""
+        (all[prologue + opening] ?? "").trimStart().startsWith("///") &&
+        stripComment(all[prologue + opening] ?? "").trim() === ""
     ) {
         opening += 1;
     }
-    const first = (lines[opening] ?? "").trimStart().startsWith("///")
-        ? stripComment(lines[opening] ?? "").trim()
+    const first = (all[prologue + opening] ?? "").trimStart().startsWith("///")
+        ? stripComment(all[prologue + opening] ?? "").trim()
         : "";
     if (headingLevel(first) === 0 && !ENTRY_RE.test(first)) {
         return header;
     }
+    header.headerStart = prologue;
     // The headings and the blank lines around them.
     let headingsEnd = 0;
     for (let line = comment(); line !== null; line = comment()) {
@@ -175,6 +189,10 @@ export function scanFixtureHeader(content: string): FixtureHeader {
             break;
         }
         i += 1;
+    }
+    const firstHeading = header.headings[0];
+    if (firstHeading !== undefined && headingLevel(firstHeading) === 1) {
+        header.name = firstHeading.slice(1).trim();
     }
     // No list: when the line after the headings' blank separator is not an
     // entry attempt, the description starts at that separator. (Without a
@@ -195,12 +213,261 @@ export function scanFixtureHeader(content: string): FixtureHeader {
         }
         i += 1;
     }
+    const prose: string[] = [];
     for (let line = comment(); line !== null; line = comment()) {
-        header.description.push(line);
+        prose.push(line);
         i += 1;
     }
     header.bodyStart = i;
+
+    const trimmed = [...prose];
+    while (trimmed.length > 0 && (trimmed[0] ?? "").trim() === "") {
+        trimmed.shift();
+    }
+    while (trimmed.length > 0 && (trimmed[trimmed.length - 1] ?? "").trim() === "") {
+        trimmed.pop();
+    }
+    const summaryEnd = trimmed.findIndex((line) => line.trim() === "");
+    const split = summaryEnd < 0 ? trimmed.length : summaryEnd;
+    header.summary = trimmed.slice(0, split).join("\n");
+    header.description = trimmed.slice(split);
+
+    let notes = header.bodyStart;
+    if ((all[notes] ?? "").trim() === "") {
+        notes += 1;
+    }
+    while ((all[notes] ?? "").trimStart().startsWith("// snap:")) {
+        header.notes.push((all[notes] ?? "").trimStart().slice("// snap:".length).trimStart());
+        notes += 1;
+    }
     return header;
+}
+
+function problem(filePath: string, line: number, message: string): string {
+    return `${filePath}:${line}: ${message}`;
+}
+
+function headerCommentLines(header: FixtureHeader): { line: number; text: string }[] {
+    const result: { line: number; text: string }[] = [];
+    for (let i = header.headerStart; i < header.lines.length; i++) {
+        const raw = header.lines[i] ?? "";
+        if (!raw.trimStart().startsWith("///")) {
+            break;
+        }
+        result.push({ line: i + 1, text: stripComment(raw) });
+    }
+    return result;
+}
+
+const TITLE_RE = /^# (\S(?:.*\S)?)$/;
+const TERMINAL_PUNCTUATION_RE = /[.!?;:,]$/;
+const SUMMARY_SENTENCE_RE = /[.!?](?:["')\]]+)?(?:\s|$)/;
+const MAINTAINER_PROSE_RE =
+    /\b(?:fixture|snapshots?|inspect path|server path|verify:|snap:|harness|pins?|pinned|UPDATE_SNAPSHOTS)\b/i;
+
+/// Validate the documented-fixture contract. `section` is empty for a
+/// corpus-root fixture and names the generated-region directory otherwise.
+/// Every diagnostic is ready to print and carries a one-based file line.
+export function validateFixtureHeader(
+    content: string,
+    filePath: string,
+    section: string,
+): string[] {
+    const header = scanFixtureHeader(content);
+    const problems: string[] = [];
+    const comments = headerCommentLines(header);
+    const title = comments.find(({ text }) => headingLevel(text.trim()) === 1);
+    const documented = title !== undefined;
+
+    if (!documented) {
+        if (section !== "") {
+            problems.push(
+                problem(filePath, 1, "R7: an undocumented fixture must live at the corpus root"),
+            );
+        }
+        const leadingDoc = header.lines.findIndex((line) => line.trimStart().startsWith("///"));
+        if (leadingDoc >= 0) {
+            problems.push(
+                problem(filePath, leadingDoc + 1, "R7: edge-case prologues must use //, not ///"),
+            );
+        }
+        return problems;
+    }
+
+    if (header.headerStart !== 0) {
+        problems.push(problem(filePath, 1, "R6: the document header must begin on the first line"));
+    }
+
+    const titleLine = title.line;
+    const match = TITLE_RE.exec(title.text);
+    if (!match) {
+        problems.push(problem(filePath, titleLine, "R1: expected '/// # Name'"));
+    }
+    const name = match?.[1] ?? header.name;
+    if (name.includes(" — ")) {
+        problems.push(problem(filePath, titleLine, "R1: the title must contain only the name"));
+    }
+    if (name.split(/\s+/).filter(Boolean).length > 5) {
+        problems.push(problem(filePath, titleLine, "R1: the name must contain at most five words"));
+    }
+    if (TERMINAL_PUNCTUATION_RE.test(name)) {
+        problems.push(problem(filePath, titleLine, "R1: the name must not end in punctuation"));
+    }
+    for (const heading of comments.filter(({ text }) => headingLevel(text.trim()) > 0).slice(1)) {
+        problems.push(problem(filePath, heading.line, "R1: a document header has one heading"));
+    }
+
+    const titleIndex = comments.findIndex(({ line }) => line === titleLine);
+    const titleSeparator = comments[titleIndex + 1];
+    if (titleSeparator?.text.trim() !== "") {
+        problems.push(
+            problem(
+                filePath,
+                titleSeparator?.line ?? titleLine + 1,
+                "R2: metadata must follow a blank /// line",
+            ),
+        );
+    }
+    const entries: { key: string; line: number }[] = [];
+    let cursor = titleIndex + 2;
+    while (cursor < comments.length && (comments[cursor]?.text.trim() ?? "") !== "") {
+        const entry = comments[cursor];
+        const parsed = META_RE.exec(entry?.text.trim() ?? "");
+        if (!parsed) {
+            problems.push(
+                problem(
+                    filePath,
+                    entry?.line ?? titleLine,
+                    "R2: malformed metadata (expected '- key: value')",
+                ),
+            );
+        } else {
+            entries.push({ key: parsed[1] ?? "", line: entry?.line ?? titleLine });
+        }
+        cursor += 1;
+    }
+    const seen = new Set<string>();
+    let previous = -1;
+    for (const entry of entries) {
+        const order = FIXTURE_META_KEYS.indexOf(entry.key);
+        if (order < 0) {
+            problems.push(problem(filePath, entry.line, `R2: unknown metadata key '${entry.key}'`));
+        } else if (seen.has(entry.key)) {
+            problems.push(
+                problem(filePath, entry.line, `R2: duplicate metadata key '${entry.key}'`),
+            );
+        } else if (order <= previous) {
+            problems.push(problem(filePath, entry.line, "R2: metadata keys are out of order"));
+        }
+        seen.add(entry.key);
+        previous = Math.max(previous, order);
+    }
+    if (entries[0]?.key !== "status") {
+        problems.push(
+            problem(
+                filePath,
+                entries[0]?.line ?? titleLine + 2,
+                "R2: status must be the first metadata entry",
+            ),
+        );
+    }
+    if ((comments[cursor]?.text.trim() ?? "") !== "") {
+        problems.push(
+            problem(
+                filePath,
+                comments[cursor]?.line ?? titleLine,
+                "R3: metadata must be followed by prose",
+            ),
+        );
+    }
+
+    const prose = comments.slice(cursor + 1);
+    while (prose.length > 0 && (prose[prose.length - 1]?.text.trim() ?? "") === "") {
+        prose.pop();
+    }
+    const summaryLines = prose.slice(
+        0,
+        prose.findIndex(({ text }) => text.trim() === "") < 0
+            ? prose.length
+            : prose.findIndex(({ text }) => text.trim() === ""),
+    );
+    const summary = summaryLines.map(({ text }) => text.trim()).join(" ");
+    const summaryLine = summaryLines[0]?.line ?? comments[cursor]?.line ?? titleLine;
+    if (summary === "") {
+        problems.push(
+            problem(filePath, summaryLine, "R3: the first prose paragraph must be a summary"),
+        );
+    } else {
+        if (/^[a-z]/.test(summary)) {
+            problems.push(
+                problem(filePath, summaryLine, "R3: the summary must begin with a capital letter"),
+            );
+        }
+        if (TERMINAL_PUNCTUATION_RE.test(summary)) {
+            problems.push(
+                problem(filePath, summaryLine, "R3: the summary must not end in punctuation"),
+            );
+        }
+        const withoutEnd = summary.replace(/[.!?](?:["')\]]+)?$/, "");
+        if (SUMMARY_SENTENCE_RE.test(withoutEnd)) {
+            problems.push(problem(filePath, summaryLine, "R3: the summary must be one sentence"));
+        }
+    }
+    for (const proseLine of prose) {
+        if (MAINTAINER_PROSE_RE.test(proseLine.text)) {
+            problems.push(
+                problem(
+                    filePath,
+                    proseLine.line,
+                    "R4: reader-facing prose contains maintainer terminology",
+                ),
+            );
+        }
+    }
+
+    const snapLines = header.lines
+        .map((line, index) => ({ index, line: index + 1, text: line.trimStart() }))
+        .filter(({ text }) => text.startsWith("// snap:"));
+    if (snapLines.length > 0) {
+        const expected = header.bodyStart + 1;
+        if (
+            (header.lines[header.bodyStart] ?? "").trim() !== "" ||
+            snapLines[0]?.index !== expected
+        ) {
+            problems.push(
+                problem(
+                    filePath,
+                    snapLines[0]?.line ?? header.bodyStart + 1,
+                    "R5: // snap: must follow the header after one blank line",
+                ),
+            );
+        }
+        let note = snapLines[0]?.index ?? 0;
+        while ((header.lines[note] ?? "").trimStart().startsWith("//")) {
+            if (!(header.lines[note] ?? "").trimStart().startsWith("// snap:")) {
+                problems.push(
+                    problem(
+                        filePath,
+                        note + 1,
+                        "R5: every snapshot-note line must begin with // snap:",
+                    ),
+                );
+            }
+            note += 1;
+        }
+        for (const snap of snapLines.slice(1)) {
+            if (snap.index >= note) {
+                problems.push(
+                    problem(
+                        filePath,
+                        snap.line,
+                        "R5: // snap: blocks may appear only after the header",
+                    ),
+                );
+            }
+        }
+    }
+    return problems;
 }
 
 export function parseFixtureMeta(content: string, filePath: string): FixtureMeta {

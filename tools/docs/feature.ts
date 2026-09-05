@@ -7,15 +7,18 @@
 ///
 /// Fixture doc header:
 ///
-///     /// # Block folding — functions, classes, ...
+///     /// # Block folding
 ///     ///
 ///     /// - status: supported
 ///     /// - issues: clangd#1455, vscode#70794
 ///     ///
-///     /// Optional markdown description after a bare `///` separator.
+///     /// Functions, classes, and other blocks produce folding ranges
 ///
-/// The header's shape (a plain-`//` prologue, the heading, the metadata
-/// list, the description) is read by scanFixtureHeader in
+///     // snap: Optional notes about snapshot mechanics go here.
+///
+/// The header's shape (the heading, fixed-order metadata list, summary,
+/// further description, and optional snapshot notes) is read by
+/// scanFixtureHeader in
 /// tools/snap/corpus.ts, which the snap suite shares; the keys it may
 /// carry are FIXTURE_META_KEYS there. A file is a doc item iff the header
 /// opens with an h1 (`#`) heading naming the capability; anything else is
@@ -40,7 +43,13 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { REPO_ROOT } from "../compile_commands.ts";
 import { parseAnnotations } from "../snap/annotation.ts";
-import { FIXTURE_META_KEYS, headingLevel, scanFixtureHeader } from "../snap/corpus.ts";
+import {
+    FIXTURE_META_KEYS,
+    headingLevel,
+    scanFixtureHeader,
+    snapCorpora,
+    validateFixtureHeader,
+} from "../snap/corpus.ts";
 import { renderMarkdownTable, rewriteRegions, type RegionMarkers } from "./generated.ts";
 
 // feature -> doc path (relative to repo root). Extend as more features
@@ -102,9 +111,10 @@ const ISSUE_RE = /^([a-z]+)#(\d+)$/;
 interface Fixture {
     path: string;
     section: string;
-    title: string;
+    name: string;
     status: string;
     issues: string[];
+    summary: string;
     description: string;
     example: string;
 }
@@ -122,7 +132,16 @@ function trimBlank(lines: string[]): string[] {
 
 /// Parse a fixture's doc header. Returns null for supplementary files.
 function parseFixture(filePath: string, featureDir: string, problems: string[]): Fixture | null {
-    const header = scanFixtureHeader(fs.readFileSync(filePath, "utf8"));
+    const content = fs.readFileSync(filePath, "utf8");
+    const relParts = path.relative(featureDir, filePath).split(path.sep);
+    const isUnit = relParts[relParts.length - 1] === "main.cpp";
+    const fixtureEntry = isUnit ? relParts.length <= 3 : relParts.length <= 2;
+    if (!fixtureEntry) {
+        return null;
+    }
+    const depth = relParts.length - (isUnit ? 1 : 0);
+    const section = depth === 2 ? (relParts[0] ?? "") : "";
+    const header = scanFixtureHeader(content);
     const [first, ...rest] = header.headings;
     if (first === undefined || headingLevel(first) !== 1) {
         // Not an h1 heading: supplementary fixture, not a doc item.
@@ -132,24 +151,20 @@ function parseFixture(filePath: string, featureDir: string, problems: string[]):
 
     // `<section>/NN_name.cpp` or `<section>/NN_unit/main.cpp`: the section
     // directory keys the page region, the number orders the item.
-    const relParts = path.relative(featureDir, filePath).split(path.sep);
-    const isUnit = relParts[relParts.length - 1] === "main.cpp";
-    const depth = relParts.length - (isUnit ? 1 : 0);
-    const section = depth === 2 ? (relParts[0] ?? "") : "";
     if (!section) {
         problems.push(
             `${filePath}: doc-item fixture must live in a section directory ` +
                 "(<section>/NN_name.cpp or <section>/NN_unit/main.cpp)",
         );
     }
-    const title = first.slice(1).trim();
+    const name = header.name;
     for (const heading of rest) {
         problems.push(
             `${filePath}: unexpected heading '${heading}' (a doc header has one '# title')`,
         );
     }
-    if (!title) {
-        problems.push(`${filePath}: empty title`);
+    if (!name) {
+        problems.push(`${filePath}: empty name`);
     }
 
     for (const line of header.malformed) {
@@ -167,7 +182,6 @@ function parseFixture(filePath: string, featureDir: string, problems: string[]):
         }
         keys.set(key, value);
     }
-    const desc = header.description;
     const bodyStart = header.bodyStart;
 
     if (!keys.has("status")) {
@@ -206,7 +220,7 @@ function parseFixture(filePath: string, featureDir: string, problems: string[]):
         exampleStart += 1;
     }
     if ((lines[exampleStart] ?? "").trim().startsWith("// snap:")) {
-        while ((lines[exampleStart] ?? "").trim().startsWith("//")) {
+        while ((lines[exampleStart] ?? "").trim().startsWith("// snap:")) {
             exampleStart += 1;
         }
     }
@@ -219,35 +233,18 @@ function parseFixture(filePath: string, featureDir: string, problems: string[]):
     return {
         path: filePath,
         section,
-        title,
+        name,
         status,
         issues,
-        description: trimBlank(desc).join("\n"),
+        summary: header.summary,
+        description: trimBlank(header.description).join("\n"),
         example,
-    };
-}
-
-/// A title of the form `Name — details` names the capability before the
-/// dash; the details open the item's description as a sentence, so a
-/// plain lowercase first word gets its sentence capital — an identifier
-/// or a hyphenated tool name (`clang-format`, `iOS`) is kept as written.
-/// A title without the dash is the name.
-function splitTitle(title: string): { name: string; details: string } {
-    const dash = title.indexOf(" — ");
-    if (dash < 0) {
-        return { name: title, details: "" };
-    }
-    const details = title.slice(dash + 3).trim();
-    const plainWord = /^[a-z]+(?=\s|$)/.test(details);
-    return {
-        name: title.slice(0, dash).trim(),
-        details: plainWord ? details.charAt(0).toUpperCase() + details.slice(1) : details,
     };
 }
 
 /// A section's region: one capability card per item. The card's markers
 /// carry the status and issue references (verbatim for translation), the
-/// paragraphs between them are the name, details and description, and
+/// paragraphs between them are the name, summary and description, and
 /// the `snap` fence names the fixture; the site reads the fixture and its
 /// snapshot from the synced test corpus and renders the example itself.
 function renderSection(fixtures: Fixture[]): string {
@@ -255,10 +252,9 @@ function renderSection(fixtures: Fixture[]): string {
 }
 
 function renderItem(fx: Fixture): string {
-    const { name, details } = splitTitle(fx.title);
     const marker = [fx.status, ...fx.issues].join(" ");
-    const out = [`<!-- BEGIN CAPABILITY: ${marker} -->`, "", `**${name}**`];
-    const paragraphs = [details, fx.description].filter((text) => text !== "");
+    const out = [`<!-- BEGIN CAPABILITY: ${marker} -->`, "", `**${fx.name}**`];
+    const paragraphs = [fx.summary, fx.description].filter((text) => text !== "");
     if (paragraphs.length > 0) {
         out.push("", paragraphs.join("\n\n"));
     }
@@ -324,21 +320,19 @@ function processFeature(
 ): [string, string, string] {
     const docPath = path.join(REPO_ROOT, docRel);
 
-    // The page shows the name before the dash: two items differing only
-    // in their details would render as one heading twice, whichever of
-    // the corpora feeding this page they come from. A section spanning
-    // two corpora would interleave their independently-sorted item order.
+    // Duplicate names would render as indistinguishable cards. A section
+    // spanning two corpora would interleave their independently-sorted
+    // item order.
     const corpusOf = (fx: Fixture): string =>
         path.relative(REPO_ROOT, fx.path).split(path.sep)[2] ?? "";
     const nameOwner = new Map<string, string>();
     const sectionOwner = new Map<string, string>();
     for (const fx of fixtures) {
-        const name = splitTitle(fx.title).name;
-        const prev = nameOwner.get(name);
+        const prev = nameOwner.get(fx.name);
         if (prev !== undefined) {
-            problems.push(`${fx.path}: duplicate capability name '${name}' (also in ${prev})`);
+            problems.push(`${fx.path}: duplicate capability name '${fx.name}' (also in ${prev})`);
         } else {
-            nameOwner.set(name, fx.path);
+            nameOwner.set(fx.name, fx.path);
         }
         const corpus = corpusOf(fx);
         const section = sectionOwner.get(fx.section);
@@ -457,6 +451,20 @@ function main(argv: string[]): number {
     }
 
     const problems: string[] = [];
+    for (const corpus of snapCorpora()) {
+        for (const fixture of corpus.fixtures) {
+            const entry = fixture.files.find((file) => file.rel === fixture.rel);
+            if (entry !== undefined) {
+                problems.push(
+                    ...validateFixtureHeader(
+                        entry.content,
+                        path.join(corpus.corpus, entry.rel),
+                        fixture.section,
+                    ),
+                );
+            }
+        }
+    }
     const fixturesByFeature = new Map<string, Fixture[]>(
         Object.keys(FEATURES).map((feature) => [feature, collectFixtures(feature, problems)]),
     );

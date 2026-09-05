@@ -15,6 +15,7 @@ import {
     parseFixtureMeta,
     scanFixtureHeader,
     snapCorpora,
+    validateFixtureHeader,
 } from "@clice/tools/snap/corpus";
 
 const DEFAULTS = {
@@ -155,29 +156,32 @@ test("snapshot ownership follows verify and snap modes", () => {
 
 test("fixture header scanning", () => {
     const content = [
-        "// license",
-        "",
-        "/// # Section",
-        "///",
-        "/// ## Title",
+        "/// # Qualified name",
         "///",
         "/// - status: partial",
-        "/// - order : 3",
+        "/// - verify: server",
         "///",
-        "/// Prose, with",
+        "/// The card summarizes the capability",
+        "///",
+        "/// Further prose, with",
         "///   - a bullet",
+        "",
+        "// snap: The server path supplies the required index.",
         "int x;",
         "",
     ].join("\n");
     const header = scanFixtureHeader(content);
-    expect(header.headings).toEqual(["# Section", "## Title"]);
-    expect(header.meta).toEqual([{ key: "status", value: "partial" }]);
-    expect(header.malformed).toEqual(["- order : 3"]);
-    expect(header.description).toEqual(["", "Prose, with", "  - a bullet"]);
-    expect(header.lines[header.bodyStart]).toBe("int x;");
-    // A malformed entry is an error for the snap suite too, not the end
-    // of the list on defaults.
-    expect(() => parseFixtureMeta(content, "f")).toThrow("malformed fixture meta line");
+    expect(header.headings).toEqual(["# Qualified name"]);
+    expect(header.name).toBe("Qualified name");
+    expect(header.meta).toEqual([
+        { key: "status", value: "partial" },
+        { key: "verify", value: "server" },
+    ]);
+    expect(header.summary).toBe("The card summarizes the capability");
+    expect(header.description).toEqual(["", "Further prose, with", "  - a bullet"]);
+    expect(header.notes).toEqual(["The server path supplies the required index."]);
+    expect(header.lines[header.bodyStart]).toBe("");
+    expect(header.lines[header.bodyStart + 2]).toBe("int x;");
     // No header at all.
     const bare = scanFixtureHeader("int x;\n");
     expect(bare.headings).toEqual([]);
@@ -211,13 +215,58 @@ test("fixture header scanning", () => {
     // malformed entry.
     const prose = scanFixtureHeader("/// # T\n///\n/// Documents T.\n/// - a: bullet\nint x;\n");
     expect(prose).toMatchObject({ headings: ["# T"], meta: [], malformed: [] });
-    expect(prose.description).toEqual(["", "Documents T.", "- a: bullet"]);
+    expect(prose.summary).toBe("Documents T.\n- a: bullet");
+    expect(prose.description).toEqual([]);
     expect(prose.lines[prose.bodyStart]).toBe("int x;");
     expect(parseFixtureMeta("/// # T\n///\n/// Documents T.\n", "f")).toEqual(DEFAULTS);
     expect(scanFixtureHeader("/// # T\n/// Documents T.\n").malformed).toEqual(["Documents T."]);
     // Blank `///` lines before the opening heading are skipped.
     expect(scanFixtureHeader("///\n/// # T\n///\n/// - snap: skip\n").headings).toEqual(["# T"]);
     expect(parseFixtureMeta("///\n/// - snap: skip\n", "f").snap).toBe("skip");
+});
+
+test("fixture header validation", () => {
+    const valid = [
+        "/// # Qualified name",
+        "///",
+        "/// - status: supported",
+        "/// - issues: clangd#710",
+        "/// - verify: server",
+        "///",
+        "/// The hover card includes its enclosing scope",
+        "///",
+        "/// Further reader-facing detail.",
+        "",
+        "// snap: The server path supplies the required index.",
+        "int x;",
+        "",
+    ].join("\n");
+    expect(validateFixtureHeader(valid, "fixture.cpp", "hover")).toEqual([]);
+
+    const invalid = [
+        "// attribution",
+        "",
+        "/// # An excessively long fixture title — with details.",
+        "///",
+        "/// - verify: both",
+        "/// - status: supported",
+        "///",
+        "/// this fixture pins a snapshot. It says two sentences",
+        "",
+        "int x;",
+        "// snap: misplaced",
+        "",
+    ].join("\n");
+    const problems = validateFixtureHeader(invalid, "fixture.cpp", "hover");
+    for (const rule of ["R1", "R2", "R3", "R4", "R5", "R6"]) {
+        expect(problems.some((item) => item.includes(`${rule}:`))).toBe(true);
+    }
+    expect(problems.every((item) => /^fixture\.cpp:\d+: R\d:/.test(item))).toBe(true);
+
+    expect(validateFixtureHeader("int x;\n", "root.cpp", "")).toEqual([]);
+    expect(
+        validateFixtureHeader("/// - verify: server\nint x;\n", "nested.cpp", "section"),
+    ).toEqual(expect.arrayContaining([expect.stringContaining("R7:")]));
 });
 
 test("fixture files are named relative to the fixture", () => {
