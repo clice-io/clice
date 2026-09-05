@@ -1,3 +1,7 @@
+---
+outline: 2
+---
+
 # Configuration
 
 clice reads configuration from `clice.toml` in the workspace root, or from `.clice/config.toml` if the former does not exist. Configuration can also be passed via LSP `initializationOptions` (JSON format); values from `initializationOptions` override the config file, and defaults fill in whatever remains unset after the merge.
@@ -18,93 +22,53 @@ The following variable is supported in string values:
 
 <!-- BEGIN GENERATED CONFIG: project -->
 
-### `project.cache_dir`
+<div class="config-options">
 
-| Type     | Default |
-| -------- | ------- |
-| `string` | `""`    |
+- **`cache_dir`** · `string` · default `""`
 
-Directory for the unified on-disk cache (PCH, PCM and index artifacts). Empty defaults to `${workspace}/.clice`, which keeps itself out of version control and backups via generated .gitignore and CACHEDIR.TAG markers (a `.clice/config.toml` stays visible to Git; backup tools honoring CACHEDIR.TAG skip the whole directory); an explicitly configured directory is never marked. The resolved path is printed at startup.
+  Directory for the unified on-disk cache (PCH, PCM and index artifacts). Empty defaults to `${workspace}/.clice`, which keeps itself out of version control and backups via generated .gitignore and CACHEDIR.TAG markers (a `.clice/config.toml` stays visible to Git; backup tools honoring CACHEDIR.TAG skip the whole directory); an explicitly configured directory is never marked. The resolved path is printed at startup.
 
-### `project.logging_dir`
+- **`logging_dir`** · `string` · default `""`
 
-| Type     | Default |
-| -------- | ------- |
-| `string` | `""`    |
+  Directory for log files; empty derives `${cache_dir}/logs`. Each server session logs into its own timestamped subdirectory.
 
-Directory for log files; empty derives `${cache_dir}/logs`. Each server session logs into its own timestamped subdirectory.
+- **`compile_commands_paths`** · `array of string` · default `[]`
 
-### `project.compile_commands_paths`
+  Paths searched for compile_commands.json — file paths, or directories to look inside. When these all miss — or the list is empty — the workspace root and then each of its immediate subdirectories are searched.
 
-| Type              | Default |
-| ----------------- | ------- |
-| `array of string` | `[]`    |
+- **`enable_indexing`** · `bool` · default `true`
 
-Paths searched for compile_commands.json — file paths, or directories to look inside. When these all miss — or the list is empty — the workspace root and then each of its immediate subdirectories are searched.
+  Build the background index that serves cross-TU features (find references, workspace symbols, ...).
 
-### `project.enable_indexing`
+- **`readonly`** · `string` · default `"off"`
 
-| Type   | Default |
-| ------ | ------- |
-| `bool` | `true`  |
+  Read-only serving for open files: "off" targets a full AST for every open file — builds are pulled by the first request that needs them, with the index answering in the meantime; "on" never builds a PCH — reads serve from the index alone (a cold file jumps the indexing queue), while completion and signature help still compile on demand without a preamble; "auto" starts every file as "on", switches it to "off" at the first edit intent (edit, completion, signature help, context switch), and falls back to "off" for a file the index cannot serve. Feature routing always answers from the best source currently available.
 
-Build the background index that serves cross-TU features (find references, workspace symbols, ...).
+- **`idle_timeout_ms`** · `uint32` · default `3000`
 
-### `project.readonly`
+  Idle delay in milliseconds before background indexing starts.
 
-| Type     | Default |
-| -------- | ------- |
-| `string` | `"off"` |
+- **`test_hooks`** · `bool` · default `false`
 
-Read-only serving for open files: "off" targets a full AST for every open file — builds are pulled by the first request that needs them, with the index answering in the meantime; "on" never builds a PCH — reads serve from the index alone (a cold file jumps the indexing queue), while completion and signature help still compile on demand without a preamble; "auto" starts every file as "on", switches it to "off" at the first edit intent (edit, completion, signature help, context switch), and falls back to "off" for a file the index cannot serve. Feature routing always answers from the best source currently available.
+  Enable the clice/internal test hooks used by the test harness.
 
-### `project.idle_timeout_ms`
+- **`stateful_worker_count`** · `uint32` · default `2`
 
-| Type     | Default |
-| -------- | ------- |
-| `uint32` | `3000`  |
+  Number of stateful workers — they hold ASTs in memory and serve queries (hover, semantic tokens, ...); `0` is invalid and falls back to the default.
 
-Idle delay in milliseconds before background indexing starts.
+- **`stateless_worker_count`** · `uint32`
 
-### `project.test_hooks`
+  Initial number of stateless workers — they handle ephemeral tasks (PCH/PCM builds, completion, signature help); defaults to half the machine's parallelism, at least 2. `0` is invalid and falls back to that default.
 
-| Type   | Default |
-| ------ | ------- |
-| `bool` | `false` |
+- **`min_stateless_worker_count`** · `uint32` · default `1`
 
-Enable the clice/internal test hooks used by the test harness.
+  Lower bound for dynamic stateless-worker scaling; `0` is invalid and falls back to the default.
 
-### `project.stateful_worker_count`
+- **`max_stateless_worker_count`** · `uint32`
 
-| Type     | Default |
-| -------- | ------- |
-| `uint32` | `2`     |
+  Upper bound for dynamic stateless-worker scaling; `0` means the machine's parallelism, which is also the default.
 
-Number of stateful workers — they hold ASTs in memory and serve queries (hover, semantic tokens, ...); `0` is invalid and falls back to the default.
-
-### `project.stateless_worker_count`
-
-| Type     | Default |
-| -------- | ------- |
-| `uint32` | —       |
-
-Initial number of stateless workers — they handle ephemeral tasks (PCH/PCM builds, completion, signature help); defaults to half the machine's parallelism, at least 2. `0` is invalid and falls back to that default.
-
-### `project.min_stateless_worker_count`
-
-| Type     | Default |
-| -------- | ------- |
-| `uint32` | `1`     |
-
-Lower bound for dynamic stateless-worker scaling; `0` is invalid and falls back to the default.
-
-### `project.max_stateless_worker_count`
-
-| Type     | Default |
-| -------- | ------- |
-| `uint32` | —       |
-
-Upper bound for dynamic stateless-worker scaling; `0` means the machine's parallelism, which is also the default.
+</div>
 
 <!-- END GENERATED CONFIG -->
 
@@ -114,21 +78,17 @@ The file tracker polls for changes that happen outside the editor (a `git checko
 
 <!-- BEGIN GENERATED CONFIG: tracker -->
 
-### `tracker.cdb_poll_seconds`
+<div class="config-options">
 
-| Type     | Default |
-| -------- | ------- |
-| `uint32` | `3`     |
+- **`cdb_poll_seconds`** · `uint32` · default `3`
 
-Compilation database poll interval in seconds; 0 disables polling.
+  Compilation database poll interval in seconds; 0 disables polling.
 
-### `tracker.workspace_poll_seconds`
+- **`workspace_poll_seconds`** · `uint32` · default `30`
 
-| Type     | Default |
-| -------- | ------- |
-| `uint32` | `30`    |
+  Workspace file sweep interval in seconds; 0 disables polling.
 
-Workspace file sweep interval in seconds; 0 disables polling.
+</div>
 
 <!-- END GENERATED CONFIG -->
 
@@ -138,21 +98,17 @@ The `[hover]` section controls how hover cards render.
 
 <!-- BEGIN GENERATED CONFIG: hover -->
 
-### `hover.parse_comment_as_markdown`
+<div class="config-options">
 
-| Type   | Default |
-| ------ | ------- |
-| `bool` | `true`  |
+- **`parse_comment_as_markdown`** · `bool` · default `true`
 
-Render the hover card as markdown; `false` produces plain text for clients that cannot display it.
+  Render the hover card as markdown; `false` produces plain text for clients that cannot display it.
 
-### `hover.show_aka`
+- **`show_aka`** · `bool` · default `true`
 
-| Type   | Default |
-| ------ | ------- |
-| `bool` | `true`  |
+  Show the desugared form of a type, e.g. `vector<int>::size_type (aka unsigned long)`.
 
-Show the desugared form of a type, e.g. `vector<int>::size_type (aka unsigned long)`.
+</div>
 
 <!-- END GENERATED CONFIG -->
 
@@ -162,61 +118,37 @@ The `[inlay_hints]` section controls which inlay hint categories the server prod
 
 <!-- BEGIN GENERATED CONFIG: inlay_hints -->
 
-### `inlay_hints.enabled`
+<div class="config-options">
 
-| Type   | Default |
-| ------ | ------- |
-| `bool` | `true`  |
+- **`enabled`** · `bool` · default `true`
 
-Master switch: `false` disables all inlay hints.
+  Master switch: `false` disables all inlay hints.
 
-### `inlay_hints.parameters`
+- **`parameters`** · `bool` · default `true`
 
-| Type   | Default |
-| ------ | ------- |
-| `bool` | `true`  |
+  Parameter name hints at call sites, e.g. `draw(width: 800, height: 600)`, including `&` markers for arguments passed by mutable reference.
 
-Parameter name hints at call sites, e.g. `draw(width: 800, height: 600)`, including `&` markers for arguments passed by mutable reference.
+- **`deduced_types`** · `bool` · default `true`
 
-### `inlay_hints.deduced_types`
+  Deduced type hints for `auto` variables, structured bindings and deduced return types.
 
-| Type   | Default |
-| ------ | ------- |
-| `bool` | `true`  |
+- **`designators`** · `bool` · default `true`
 
-Deduced type hints for `auto` variables, structured bindings and deduced return types.
+  Field designator hints in aggregate initialization, e.g. `.x=` and `.y=` in `Point{1, 2}`.
 
-### `inlay_hints.designators`
+- **`block_end`** · `bool` · default `false`
 
-| Type   | Default |
-| ------ | ------- |
-| `bool` | `true`  |
+  `// name` hints after the closing brace of long blocks (functions, types, namespaces, control flow).
 
-Field designator hints in aggregate initialization, e.g. `.x=` and `.y=` in `Point{1, 2}`.
+- **`default_arguments`** · `bool` · default `false`
 
-### `inlay_hints.block_end`
+  Show the default arguments a call omitted, abbreviated when long.
 
-| Type   | Default |
-| ------ | ------- |
-| `bool` | `false` |
+- **`type_name_limit`** · `uint32` · default `32`
 
-`// name` hints after the closing brace of long blocks (functions, types, namespaces, control flow).
+  Byte budget for rendered hint text: over-long deduced types fall back to a sugared spelling or are dropped, over-long default arguments are abbreviated. `0` means no limit.
 
-### `inlay_hints.default_arguments`
-
-| Type   | Default |
-| ------ | ------- |
-| `bool` | `false` |
-
-Show the default arguments a call omitted, abbreviated when long.
-
-### `inlay_hints.type_name_limit`
-
-| Type     | Default |
-| -------- | ------- |
-| `uint32` | `32`    |
-
-Byte budget for rendered hint text: over-long deduced types fall back to a sugared spelling or are dropped, over-long default arguments are abbreviated. `0` means no limit.
+</div>
 
 <!-- END GENERATED CONFIG -->
 
@@ -226,53 +158,33 @@ The `[code_completion]` section controls completion item assembly.
 
 <!-- BEGIN GENERATED CONFIG: code_completion -->
 
-### `code_completion.enable_keyword_snippet`
+<div class="config-options">
 
-| Type   | Default |
-| ------ | ------- |
-| `bool` | `false` |
+- **`enable_keyword_snippet`** · `bool` · default `false`
 
-Complete keywords as snippets (not yet implemented).
+  Complete keywords as snippets (not yet implemented).
 
-### `code_completion.enable_function_arguments_snippet`
+- **`enable_function_arguments_snippet`** · `bool` · default `false`
 
-| Type   | Default |
-| ------ | ------- |
-| `bool` | `false` |
+  Insert function arguments as a snippet when completing a call. For functions this applies to individually listed overloads, so it requires `bundle_overloads = false`; function-like macros have no overload sets and always take the snippet.
 
-Insert function arguments as a snippet when completing a call. For functions this applies to individually listed overloads, so it requires `bundle_overloads = false`; function-like macros have no overload sets and always take the snippet.
+- **`enable_template_arguments_snippet`** · `bool` · default `false`
 
-### `code_completion.enable_template_arguments_snippet`
+  Insert template arguments as a snippet on completion (not yet implemented).
 
-| Type   | Default |
-| ------ | ------- |
-| `bool` | `false` |
+- **`insert_paren_in_function_call`** · `bool` · default `false`
 
-Insert template arguments as a snippet on completion (not yet implemented).
+  Insert parentheses when completing a function call (not yet implemented).
 
-### `code_completion.insert_paren_in_function_call`
+- **`bundle_overloads`** · `bool` · default `true`
 
-| Type   | Default |
-| ------ | ------- |
-| `bool` | `false` |
+  Collapse an overload set into a single completion item.
 
-Insert parentheses when completing a function call (not yet implemented).
+- **`limit`** · `uint32` · default `0`
 
-### `code_completion.bundle_overloads`
+  Maximum number of completion items (not yet implemented).
 
-| Type   | Default |
-| ------ | ------- |
-| `bool` | `true`  |
-
-Collapse an overload set into a single completion item.
-
-### `code_completion.limit`
-
-| Type     | Default |
-| -------- | ------- |
-| `uint32` | `0`     |
-
-Maximum number of completion items (not yet implemented).
+</div>
 
 <!-- END GENERATED CONFIG -->
 
@@ -282,29 +194,21 @@ Maximum number of completion items (not yet implemented).
 
 <!-- BEGIN GENERATED CONFIG: rules -->
 
-### `[rules].patterns`
+<div class="config-options">
 
-| Type              | Default |
-| ----------------- | ------- |
-| `array of string` | `[]`    |
+- **`patterns`** · `array of string` · default `[]`
 
-Glob patterns selecting the files this rule applies to: `*` matches within a path segment (a pattern of just `*` matches any path), `?` a single character, `**` any number of segments, `{a,b}` alternatives, `[0-9]` a character range, `[!...]` a negated range.
+  Glob patterns selecting the files this rule applies to: `*` matches within a path segment (a pattern of just `*` matches any path), `?` a single character, `**` any number of segments, `{a,b}` alternatives, `[0-9]` a character range, `[!...]` a negated range.
 
-### `[rules].append`
+- **`append`** · `array of string` · default `[]`
 
-| Type              | Default |
-| ----------------- | ------- |
-| `array of string` | `[]`    |
+  Compilation flags appended for matching files, e.g. `["-std=c++20", "-DNDEBUG"]`.
 
-Compilation flags appended for matching files, e.g. `["-std=c++20", "-DNDEBUG"]`.
+- **`remove`** · `array of string` · default `[]`
 
-### `[rules].remove`
+  Compilation flags removed for matching files, e.g. `["-Wall"]`.
 
-| Type              | Default |
-| ----------------- | ------- |
-| `array of string` | `[]`    |
-
-Compilation flags removed for matching files, e.g. `["-Wall"]`.
+</div>
 
 <!-- END GENERATED CONFIG -->
 
