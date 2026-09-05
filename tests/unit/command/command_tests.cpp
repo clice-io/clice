@@ -19,6 +19,13 @@ using namespace std::literals;
 #define EXPECT_NOT_CONTAINS(haystack, needle)                                                      \
     EXPECT_FALSE(llvm::StringRef(haystack).contains(needle))
 
+/// `config.directory` is stored in canonical spelling; expectations built
+/// from native paths must be too.
+std::string canonical_dir(std::string path) {
+    path::canonicalize(path);
+    return path;
+}
+
 TEST_SUITE(Command) {
 
 /// The synthesized fallback render for a file without an entry, resource
@@ -647,7 +654,7 @@ TEST_CASE(RelativeDirectoryAnchored) {
     auto candidates = database.candidate_entries(file);
     ASSERT_EQ(candidates.size(), 1U);
     EXPECT_EQ(llvm::StringRef(database.config(candidates.front().config).directory),
-              path::join(tmp.root, "build"));
+              canonical_dir(path::join(tmp.root, "build")));
 };
 
 TEST_CASE(RelativeLoadPathAnchored) {
@@ -671,7 +678,7 @@ TEST_CASE(RelativeLoadPathAnchored) {
     auto candidates = database.candidate_entries(path::join(tmp.root, "build", "main.cpp"));
     ASSERT_EQ(candidates.size(), 1U);
     EXPECT_EQ(llvm::StringRef(database.config(candidates.front().config).directory),
-              path::join(tmp.root, "build"));
+              canonical_dir(path::join(tmp.root, "build")));
 };
 
 TEST_CASE(LoadErrorRecovery) {
@@ -886,7 +893,7 @@ TEST_CASE(FixtureLayouts) {
         auto candidates = database.candidate_entries(source("subdir_cdb"));
         ASSERT_EQ(candidates.size(), 1U);
         EXPECT_EQ(llvm::StringRef(database.config(candidates.front().config).directory),
-                  path::join(layouts, "subdir_cdb", "cmake"));
+                  canonical_dir(path::join(layouts, "subdir_cdb", "cmake")));
         EXPECT_CONTAINS(print_argv(render_entry(database, source("subdir_cdb"))), "OUT");
     }
 
@@ -924,7 +931,7 @@ TEST_CASE(FixtureLayouts) {
         auto candidates = database.candidate_entries(file);
         ASSERT_EQ(candidates.size(), 1U);
         EXPECT_EQ(llvm::StringRef(database.config(candidates.front().config).directory),
-                  path::join(layouts, "relative_directory", "src"));
+                  canonical_dir(path::join(layouts, "relative_directory", "src")));
         EXPECT_CONTAINS(print_argv(render_entry(database, file)), "RELATIVE");
     }
 
