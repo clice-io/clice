@@ -1,9 +1,9 @@
 {
   "version": 1,
   "pairs": [
-    { "kind": "heading", "en": "5ae27312aa794278", "zh": "5bea74b4975a40ed" },
+    { "kind": "heading", "en": "432209f65ff8c9a4", "zh": "a37b99a2eccc10f8" },
     { "kind": "paragraph", "en": "00a982881567067c", "zh": "afad92d3080ca9da" },
-    { "kind": "heading", "en": "86aab654d33c2c0b", "zh": "57a5fbd63b65315a" },
+    { "kind": "heading", "en": "9eb55e137a031f4b", "zh": "a4526d8b86a8d211" },
     { "kind": "paragraph", "en": "9b63deaf622af3c6", "zh": "c0406fe29532e12e" },
     { "kind": "tableRow", "en": "418657ea354a63f9", "zh": "e50fcea5ca4aed51" },
     { "kind": "tableRow", "en": "978e0e45df56cd04", "zh": "5de82e5d1f98c4c6" },
@@ -18,11 +18,6 @@
     { "kind": "tableRow", "en": "6d06a129f865ad6b", "zh": "55fbba2f95eaf42b" },
     { "kind": "tableRow", "en": "dca2c34b68d57c7c", "zh": "adfdb89a5b7abc47" },
     { "kind": "tableRow", "en": "3bce768fb8d47d31", "zh": "a6df69455933a472" },
-    { "kind": "heading", "en": "5c9d0bc6d9debc31", "zh": "5c9d0bc6d9debc31" },
-    { "kind": "paragraph", "en": "4e30c1fd469dc3db", "zh": "316166a43bc231c3" },
-    { "kind": "tableRow", "en": "62e4de0997adaa8d", "zh": "b0a9d749413f5b61" },
-    { "kind": "tableRow", "en": "4bb222af864ee52f", "zh": "33fe7bf9ea26bf5d" },
-    { "kind": "paragraph", "en": "bea4db4c58cc63d8", "zh": "cd40c066bff2fa50" },
     { "kind": "heading", "en": "830b09ab4f7e5144", "zh": "22050c6bcdcc6671" },
     { "kind": "paragraph", "en": "b0c847ca25d4872a", "zh": "90d02631c7fd8889" },
     { "kind": "listItem", "en": "fddd8c67ffad5586", "zh": "5f259a918a2ccd48" },

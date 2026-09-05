@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "pairs": [
+    { "kind": "heading", "en": "9a116d723eb0a913", "zh": "68e425e174f931cf" },
+    { "kind": "paragraph", "en": "3cf5a7b59450548a", "zh": "c4287312b4528982" },
+    { "kind": "tableRow", "en": "16da6ad4fc13aa9e", "zh": "6b574f3f4d1e2e09" },
+    { "kind": "tableRow", "en": "87688b7c9e962efb", "zh": "9924624970628eb2" },
+    { "kind": "tableRow", "en": "f37c07877494e5b4", "zh": "64a9e14eb3def834" },
+    { "kind": "tableRow", "en": "cd99fbdf12297948", "zh": "49dd78cf190ef77f" },
+    { "kind": "tableRow", "en": "3ba4179ab3530731", "zh": "442efcf907c4843b" },
+    { "kind": "tableRow", "en": "03031de584747d59", "zh": "367302913a714653" },
+    { "kind": "tableRow", "en": "0fadff32c7d880f8", "zh": "1df15afe49fec514" },
+    { "kind": "tableRow", "en": "cc9754b4d2f5161c", "zh": "5bd8ff30ec89451d" },
+    { "kind": "paragraph", "en": "430768be73770ac2", "zh": "92cb450966a1838e" }
+  ]
+}
