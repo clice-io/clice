@@ -1,7 +1,8 @@
 /// Tests for the agentic protocol handlers.
 
 import { findFreePort, SETTLE_TIME, sleep, waitUntil, type CliceClient } from "@clice/tools/client";
-import type { Workspace } from "@clice/tools/workspace";
+import { canonicalUri, type Workspace } from "@clice/tools/workspace";
+import { URI } from "vscode-uri";
 import { cliceExecutable, expect, test, type SessionFactory } from "../fixtures.ts";
 import { AgenticRpcClient, jsonSafe, posix, runAgentic } from "./rpc.ts";
 
@@ -79,7 +80,7 @@ test("compile command", async ({ session }) => {
         arguments: string[];
     };
     expect(data.file).toBe(mainCpp);
-    expect(data.directory).toBe(posix(workspace.root));
+    expect(canonicalUri(URI.file(data.directory).toString())).toBe(workspace.uri());
     expect(data.arguments.length).toBeGreaterThan(0);
 });
 
