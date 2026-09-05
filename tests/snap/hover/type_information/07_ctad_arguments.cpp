@@ -3,7 +3,7 @@
 /// - status: partial
 /// - issues: clangd#435
 ///
-/// Deduced template arguments of a class placeholder
+/// Class placeholder hover shows its deduced template arguments
 ///
 /// With class template argument deduction the variable's card shows the
 /// deduced `Box<int>`, but hovering the class-name spelling still reports

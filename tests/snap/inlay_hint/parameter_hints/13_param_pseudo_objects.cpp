@@ -2,7 +2,8 @@
 ///
 /// - status: supported
 ///
-/// MS property accesses stay quiet; written subscripts keep the accessor's names
+/// MS property accesses stay quiet; written subscripts keep the accessor's
+/// names
 
 int printf(const char* Format, ...);
 

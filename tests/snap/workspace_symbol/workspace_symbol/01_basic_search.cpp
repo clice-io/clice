@@ -3,7 +3,7 @@
 /// - status: supported
 /// - verify: server
 ///
-/// Case-insensitive substring matching
+/// Workspace symbol search matches names by case-insensitive substring
 ///
 /// A query matches any symbol whose name contains it, ignoring case:
 /// functions, types, enumerators and macros all participate, and a query

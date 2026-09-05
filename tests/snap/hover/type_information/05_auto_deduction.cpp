@@ -2,7 +2,7 @@
 ///
 /// - status: supported
 ///
-/// The type the placeholder resolves to
+/// Placeholder hover shows the type it resolves to
 ///
 /// Hovering an `auto` placeholder shows the type substituted for it —
 /// builtins, pointers, lambdas, template instantiations, and the

@@ -2,7 +2,8 @@
 ///
 /// - status: supported
 ///
-/// Function parameters, call arguments, initializer lists, lambda captures
+/// Multiline parameter, argument, initializer and capture lists form folding
+/// ranges
 
 void configure(
     int width,       // ┐

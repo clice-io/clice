@@ -2,7 +2,7 @@
 ///
 /// - status: supported
 ///
-/// Declared and used as types
+/// Template-template parameters receive type tokens at declaration and use
 
 template <typename T>
 struct Holder {};

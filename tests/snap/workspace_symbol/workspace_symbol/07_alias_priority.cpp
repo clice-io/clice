@@ -3,7 +3,7 @@
 /// - status: unsupported
 /// - issues: clangd#2253
 ///
-/// Underlying declarations should rank above matching aliases
+/// Matching aliases and underlying declarations have no ranking yet
 ///
 /// Results carry no ranking today.
 

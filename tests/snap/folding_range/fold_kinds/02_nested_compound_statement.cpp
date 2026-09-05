@@ -2,7 +2,7 @@
 ///
 /// - status: supported
 ///
-/// `if`/`for`/`while` bodies inside functions
+/// Nested control-flow bodies form folding ranges
 
 void process(int count) {
     if (count > 0) {

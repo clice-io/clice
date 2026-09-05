@@ -3,7 +3,7 @@
 /// - status: unsupported
 /// - issues: clangd#2662
 ///
-/// Recognize GObject Introspection annotations
+/// GObject Introspection annotations do not appear in hover cards yet
 ///
 /// GTK-Doc / kernel-doc comment syntax and GObject Introspection
 /// annotations are not parsed into the hover card.

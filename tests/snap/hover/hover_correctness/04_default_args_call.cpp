@@ -4,8 +4,7 @@
 ///
 /// Hovering a call that omits defaults does not crash
 ///
-/// clangd crashes on this (clangd#551); clice renders the callee signature
-/// with its default arguments.
+/// The call card renders the callee signature with its default arguments.
 
 namespace defaults {
 

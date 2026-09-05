@@ -2,7 +2,8 @@
 ///
 /// - status: supported
 ///
-/// A non-const receiver lists both the const and non-const overloads; the trailing const qualifier is not rendered in the label
+/// A non-const receiver lists both the const and non-const overloads; the
+/// trailing const qualifier is not rendered in the label
 
 struct Buffer {
     int at(int index);

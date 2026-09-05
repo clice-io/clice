@@ -2,7 +2,7 @@
 ///
 /// - status: supported
 ///
-/// Return type, parameter names, defaults
+/// Function hover reports return types, parameter names and defaults
 ///
 /// A function's card lists its return type, each parameter with its name,
 /// and any default argument.

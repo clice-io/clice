@@ -2,7 +2,9 @@
 ///
 /// - status: supported
 ///
-/// Anonymous namespaces, unnamed structs and unions group their members under a placeholder name; inline namespace members stay under the inline namespace node
+/// Anonymous namespaces, unnamed structs and unions group their members under a
+/// placeholder name; inline namespace members stay under the inline namespace
+/// node
 
 namespace {
 

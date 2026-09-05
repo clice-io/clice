@@ -3,7 +3,7 @@
 /// - status: partial
 /// - verify: server
 ///
-/// Navigate each segment
+/// Only the leading segment of a dotted module name navigates to its interface
 ///
 /// Go-to-definition on the leading segment of a dot-separated module name
 /// reaches the module's interface unit; the segments after a dot do not

@@ -3,7 +3,8 @@
 /// - status: supported
 /// - diagnostics: expected
 ///
-/// Strong prefix matches survive, weak subsequence matches and unqualified namespace members do not
+/// Strong prefix matches survive, weak subsequence matches and unqualified
+/// namespace members do not
 
 // The completion expression dangles as an unfinished statement.
 namespace A {

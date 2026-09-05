@@ -2,9 +2,9 @@
 created_at: 2026-08-01
 input_file: symbol_kinds/05_kinds_explicit_instantiations.cpp
 ---
-- { name: "Box", kind: Struct, range: "8:0-10:1", selection_range: "8:7-8:10", detail: "template struct" }
--   { name: "value", kind: Field, range: "9:4-9:11", selection_range: "9:6-9:11", detail: "T" }
-- { name: "Box<int>", kind: Struct, range: "12:0-12:24", selection_range: "12:16-12:19", detail: "struct" }
-- { name: "Box<char>", kind: Struct, range: "13:0-13:32", selection_range: "13:23-13:26", detail: "struct" }
-- { name: "convert", kind: Function, range: "16:0-16:24", selection_range: "16:5-16:12", detail: "template void (T)" }
-- { name: "zero", kind: Variable, range: "21:0-21:12", selection_range: "21:2-21:6", detail: "template T" }
+- { name: "Box", kind: Struct, range: "9:0-11:1", selection_range: "9:7-9:10", detail: "template struct" }
+-   { name: "value", kind: Field, range: "10:4-10:11", selection_range: "10:6-10:11", detail: "T" }
+- { name: "Box<int>", kind: Struct, range: "13:0-13:24", selection_range: "13:16-13:19", detail: "struct" }
+- { name: "Box<char>", kind: Struct, range: "14:0-14:32", selection_range: "14:23-14:26", detail: "struct" }
+- { name: "convert", kind: Function, range: "17:0-17:24", selection_range: "17:5-17:12", detail: "template void (T)" }
+- { name: "zero", kind: Variable, range: "22:0-22:12", selection_range: "22:2-22:6", detail: "template T" }

@@ -2,7 +2,8 @@
 ///
 /// - status: supported
 ///
-/// Type and non-type template parameters, with the `templated` modifier on template names
+/// Template parameters receive type or variable kinds, and template names carry
+/// `templated`
 
 template <typename §T, int §N>
 struct §Array {

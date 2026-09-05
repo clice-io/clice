@@ -3,7 +3,7 @@
 /// - status: partial
 /// - issues: clangd#154, clangd#297
 ///
-/// Resolved through the primary template where one is known
+/// Dependent names resolve through known primary templates
 ///
 /// Dependent members of a known template (`Box<T>`) resolve to the primary
 /// template's declarations and keep their kinds. Members of a bare template

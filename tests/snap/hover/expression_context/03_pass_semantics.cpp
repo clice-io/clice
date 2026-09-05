@@ -2,7 +2,7 @@
 ///
 /// - status: supported
 ///
-/// By value, by reference, by const reference
+/// Argument hover distinguishes value and reference passing
 ///
 /// The argument card states how the value reaches the callee: copied by
 /// value, or bound to a mutable or const reference parameter.

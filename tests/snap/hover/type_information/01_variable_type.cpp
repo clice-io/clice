@@ -2,7 +2,7 @@
 ///
 /// - status: supported
 ///
-/// Pointers, references, arrays
+/// Variable hover preserves pointer, reference and array declarators
 ///
 /// A variable's card pretty-prints its declared type, spelling the pointer,
 /// reference and array declarators the way they read in source.

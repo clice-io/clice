@@ -2,7 +2,8 @@
 ///
 /// - status: supported
 ///
-/// Written specializations and their members fold; instantiated declarations reuse the pattern's source locations and must not fold it again
+/// Written specializations and their members fold; instantiated declarations
+/// reuse the pattern's source locations and do not fold it again
 
 template <typename T>
 struct Box {

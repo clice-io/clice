@@ -2,7 +2,7 @@
 ///
 /// - status: unsupported
 ///
-/// Matching `()`, `[]`, `{}`, `<>` pairs as distinct kinds
+/// Matching brackets do not receive pair-specific token kinds yet
 
 template <typename T>
 struct Grid {

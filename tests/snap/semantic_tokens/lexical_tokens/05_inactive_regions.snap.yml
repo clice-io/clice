@@ -6,54 +6,56 @@ input_file: lexical_tokens/05_inactive_regions.cpp
 - { loc: "1:0", text: "///", kind: comment }
 - { loc: "2:0", text: "/// - status: supported", kind: comment }
 - { loc: "3:0", text: "///", kind: comment }
-- { loc: "4:0", text: "/// Tokens in untaken branches keep their lexical kinds and carry the `inactive` modifier; unclassified tokens become plain `identifier` carriers, so even a lone `}` line dims", kind: comment }
-- { loc: "6:0", text: "int", kind: primitive }
-- { loc: "6:4", text: "before", kind: variable, modifiers: [definition] }
-- { loc: "6:13", text: "0", kind: number }
-- { loc: "8:0", text: "#if", kind: directive }
-- { loc: "8:4", text: "0", kind: number }
-- { loc: "9:0", text: "int", kind: primitive, modifiers: [inactive] }
-- { loc: "9:4", text: "simple", kind: identifier, modifiers: [inactive] }
-- { loc: "9:11", text: "=", kind: identifier, modifiers: [inactive] }
-- { loc: "9:13", text: "1", kind: number, modifiers: [inactive] }
-- { loc: "9:14", text: ";", kind: identifier, modifiers: [inactive] }
-- { loc: "10:0", text: "bare", kind: identifier, modifiers: [inactive] }
-- { loc: "10:5", text: "identifiers;", kind: identifier, modifiers: [inactive] }
-- { loc: "11:0", text: "call(arg);", kind: identifier, modifiers: [inactive] }
-- { loc: "12:0", text: "\"string in dead code\"", kind: string, modifiers: [inactive] }
-- { loc: "12:21", text: ";", kind: identifier, modifiers: [inactive] }
-- { loc: "13:0", text: "// comment inside", kind: comment, modifiers: [inactive] }
-- { loc: "14:0", text: "#ifdef", kind: directive, modifiers: [inactive] }
-- { loc: "14:7", text: "NESTED", kind: identifier, modifiers: [inactive] }
-- { loc: "15:0", text: "int", kind: primitive, modifiers: [inactive] }
-- { loc: "15:4", text: "deeper", kind: identifier, modifiers: [inactive] }
-- { loc: "15:11", text: "=", kind: identifier, modifiers: [inactive] }
-- { loc: "15:13", text: "2", kind: number, modifiers: [inactive] }
-- { loc: "15:14", text: ";", kind: identifier, modifiers: [inactive] }
-- { loc: "16:0", text: "#endif", kind: directive, modifiers: [inactive] }
+- { loc: "4:0", text: "/// Tokens in untaken branches keep their lexical kinds and carry the `inactive`", kind: comment }
+- { loc: "5:0", text: "/// modifier; unclassified tokens become plain `identifier` carriers, so even a", kind: comment }
+- { loc: "6:0", text: "/// lone `}` line dims", kind: comment }
+- { loc: "8:0", text: "int", kind: primitive }
+- { loc: "8:4", text: "before", kind: variable, modifiers: [definition] }
+- { loc: "8:13", text: "0", kind: number }
+- { loc: "10:0", text: "#if", kind: directive }
+- { loc: "10:4", text: "0", kind: number }
+- { loc: "11:0", text: "int", kind: primitive, modifiers: [inactive] }
+- { loc: "11:4", text: "simple", kind: identifier, modifiers: [inactive] }
+- { loc: "11:11", text: "=", kind: identifier, modifiers: [inactive] }
+- { loc: "11:13", text: "1", kind: number, modifiers: [inactive] }
+- { loc: "11:14", text: ";", kind: identifier, modifiers: [inactive] }
+- { loc: "12:0", text: "bare", kind: identifier, modifiers: [inactive] }
+- { loc: "12:5", text: "identifiers;", kind: identifier, modifiers: [inactive] }
+- { loc: "13:0", text: "call(arg);", kind: identifier, modifiers: [inactive] }
+- { loc: "14:0", text: "\"string in dead code\"", kind: string, modifiers: [inactive] }
+- { loc: "14:21", text: ";", kind: identifier, modifiers: [inactive] }
+- { loc: "15:0", text: "// comment inside", kind: comment, modifiers: [inactive] }
+- { loc: "16:0", text: "#ifdef", kind: directive, modifiers: [inactive] }
+- { loc: "16:7", text: "NESTED", kind: identifier, modifiers: [inactive] }
 - { loc: "17:0", text: "int", kind: primitive, modifiers: [inactive] }
-- { loc: "17:4", text: "tail", kind: identifier, modifiers: [inactive] }
-- { loc: "17:9", text: "=", kind: identifier, modifiers: [inactive] }
-- { loc: "17:11", text: "3", kind: number, modifiers: [inactive] }
-- { loc: "17:12", text: ";", kind: identifier, modifiers: [inactive] }
-- { loc: "18:0", text: "#endif", kind: directive }
-- { loc: "20:0", text: "#if", kind: directive }
-- { loc: "21:0", text: "first_branch;", kind: identifier, modifiers: [inactive] }
-- { loc: "22:0", text: "#elif", kind: directive }
-- { loc: "22:6", text: "0", kind: number }
-- { loc: "23:0", text: "elif_branch;", kind: identifier, modifiers: [inactive] }
-- { loc: "24:0", text: "#else", kind: directive }
-- { loc: "25:0", text: "int", kind: primitive }
-- { loc: "25:4", text: "taken", kind: variable, modifiers: [definition] }
-- { loc: "25:12", text: "4", kind: number }
-- { loc: "26:0", text: "#endif", kind: directive }
-- { loc: "28:0", text: "#if", kind: directive }
-- { loc: "28:4", text: "0", kind: number }
-- { loc: "29:0", text: "void", kind: primitive, modifiers: [inactive] }
-- { loc: "29:5", text: "edge()", kind: identifier, modifiers: [inactive] }
-- { loc: "29:12", text: "{", kind: identifier, modifiers: [inactive] }
-- { loc: "30:4", text: "inner(", kind: identifier, modifiers: [inactive] }
-- { loc: "30:10", text: "5", kind: number, modifiers: [inactive] }
-- { loc: "30:11", text: ");", kind: identifier, modifiers: [inactive] }
-- { loc: "31:0", text: "}", kind: identifier, modifiers: [inactive] }
-- { loc: "32:0", text: "#endif", kind: directive }
+- { loc: "17:4", text: "deeper", kind: identifier, modifiers: [inactive] }
+- { loc: "17:11", text: "=", kind: identifier, modifiers: [inactive] }
+- { loc: "17:13", text: "2", kind: number, modifiers: [inactive] }
+- { loc: "17:14", text: ";", kind: identifier, modifiers: [inactive] }
+- { loc: "18:0", text: "#endif", kind: directive, modifiers: [inactive] }
+- { loc: "19:0", text: "int", kind: primitive, modifiers: [inactive] }
+- { loc: "19:4", text: "tail", kind: identifier, modifiers: [inactive] }
+- { loc: "19:9", text: "=", kind: identifier, modifiers: [inactive] }
+- { loc: "19:11", text: "3", kind: number, modifiers: [inactive] }
+- { loc: "19:12", text: ";", kind: identifier, modifiers: [inactive] }
+- { loc: "20:0", text: "#endif", kind: directive }
+- { loc: "22:0", text: "#if", kind: directive }
+- { loc: "23:0", text: "first_branch;", kind: identifier, modifiers: [inactive] }
+- { loc: "24:0", text: "#elif", kind: directive }
+- { loc: "24:6", text: "0", kind: number }
+- { loc: "25:0", text: "elif_branch;", kind: identifier, modifiers: [inactive] }
+- { loc: "26:0", text: "#else", kind: directive }
+- { loc: "27:0", text: "int", kind: primitive }
+- { loc: "27:4", text: "taken", kind: variable, modifiers: [definition] }
+- { loc: "27:12", text: "4", kind: number }
+- { loc: "28:0", text: "#endif", kind: directive }
+- { loc: "30:0", text: "#if", kind: directive }
+- { loc: "30:4", text: "0", kind: number }
+- { loc: "31:0", text: "void", kind: primitive, modifiers: [inactive] }
+- { loc: "31:5", text: "edge()", kind: identifier, modifiers: [inactive] }
+- { loc: "31:12", text: "{", kind: identifier, modifiers: [inactive] }
+- { loc: "32:4", text: "inner(", kind: identifier, modifiers: [inactive] }
+- { loc: "32:10", text: "5", kind: number, modifiers: [inactive] }
+- { loc: "32:11", text: ");", kind: identifier, modifiers: [inactive] }
+- { loc: "33:0", text: "}", kind: identifier, modifiers: [inactive] }
+- { loc: "34:0", text: "#endif", kind: directive }

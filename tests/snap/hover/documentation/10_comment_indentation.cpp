@@ -3,11 +3,10 @@
 /// - status: partial
 /// - issues: clangd#1040
 ///
-/// Indented lines in a comment render without spurious extra indentation
+/// Indented documentation blocks lose their leading indentation on hover
 ///
-/// A doc comment whose body contains an indented block should render with
-/// correct indentation. clice currently strips the leading indentation, so
-/// an indented code block loses its offset and the blank line collapses.
+/// A doc comment whose body contains an indented block loses the block's
+/// offset, and its blank line collapses.
 
 namespace indented {
 /// Summary line.

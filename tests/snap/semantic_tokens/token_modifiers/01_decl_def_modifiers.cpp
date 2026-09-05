@@ -2,7 +2,7 @@
 ///
 /// - status: supported
 ///
-/// The modifier distinguishes the two
+/// Declaration and definition modifiers distinguish the two sites
 
 int §measure(int value);
 

@@ -3,7 +3,8 @@
 /// - status: supported
 /// - issues: clangd#616
 ///
-/// Variables and types declared inside function bodies nest under their function
+/// Variables and types declared inside function bodies nest under their
+/// function
 
 int compute() {
     int local_sum = 0;

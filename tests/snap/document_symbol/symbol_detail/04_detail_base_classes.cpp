@@ -2,7 +2,7 @@
 ///
 /// - status: unsupported
 ///
-/// Show `: Shape` on derived class declarations
+/// Derived class details do not include their base classes yet
 
 struct Shape {};
 

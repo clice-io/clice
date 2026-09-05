@@ -3,7 +3,7 @@
 /// - status: supported
 /// - config: {"show_aka": false}
 ///
-/// The desugared `aka` form
+/// Hover can show the desugared `aka` form
 ///
 /// A sugared type shows its underlying type as `Alias (aka int)`. The
 /// `show_aka` option turns the `aka` suffix off.

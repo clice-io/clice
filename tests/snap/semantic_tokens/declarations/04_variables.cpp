@@ -2,7 +2,7 @@
 ///
 /// - status: supported
 ///
-/// Globals, locals, parameters, fields and enum members
+/// Variable declarations and references keep their respective variable kinds
 
 struct Holder {
     int §field;

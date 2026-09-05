@@ -2,7 +2,7 @@
 ///
 /// - status: supported
 ///
-/// Class-level members and static locals
+/// Static members and locals carry the static modifier
 
 struct Counter {
     static int §total;

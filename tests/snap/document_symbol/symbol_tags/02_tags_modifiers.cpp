@@ -3,7 +3,8 @@
 /// - status: unsupported
 /// - issues: clangd#2123
 ///
-/// Public / private / protected, static, virtual and abstract markers on outline entries
+/// Outline entries do not expose access, static, virtual or abstract modifiers
+/// yet
 
 class Base {
 public:

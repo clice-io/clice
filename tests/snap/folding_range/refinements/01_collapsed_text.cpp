@@ -3,7 +3,7 @@
 /// - status: supported
 /// - issues: clangd#2667
 ///
-/// Show a summary when folded
+/// Folded ranges can show a summary
 ///
 /// > **Client support**: VS Code does **not** support `collapsedText` yet
 /// > ([vscode#70794](https://github.com/microsoft/vscode/issues/70794) — still

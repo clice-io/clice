@@ -3,7 +3,7 @@
 /// - status: unsupported
 /// - issues: clangd#1669
 ///
-/// Type and value of an integer or float literal
+/// Numeric literals have no type or value hover yet
 ///
 /// Hovering a numeric literal yields no card, unlike character and string
 /// literals, whose type and value are shown.

@@ -2,7 +2,7 @@
 ///
 /// - status: supported
 ///
-/// Every overload of the callee, each with its parameter list and return type
+/// Signature help lists every overload with its parameter list and return type
 
 void foo();
 void foo(int x);

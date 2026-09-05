@@ -15,7 +15,7 @@ clice renders inline annotations for the information the code leaves implicit: p
 
 **Parameter name hints**
 
-Argument names at call sites and constructor calls
+Call sites show parameter names for functions and constructors
 
 ```snap
 tests/snap/inlay_hint/parameter_hints/01_param_names.cpp
@@ -27,7 +27,7 @@ tests/snap/inlay_hint/parameter_hints/01_param_names.cpp
 
 **Hint suppression**
 
-Arguments that already spell the parameter name, and `/*name=*/` comments
+Named arguments and `/*name=*/` comments suppress parameter hints
 
 ```snap
 tests/snap/inlay_hint/parameter_hints/02_param_suppression.cpp
@@ -75,7 +75,8 @@ tests/snap/inlay_hint/parameter_hints/05_param_forwarding.cpp
 
 **Names from definitions**
 
-Unnamed declaration parameters take the definition's names; leading underscores strip
+Unnamed declaration parameters take the definition's names; leading
+underscores strip
 
 ```snap
 tests/snap/inlay_hint/parameter_hints/06_param_definition_names.cpp
@@ -163,7 +164,8 @@ tests/snap/inlay_hint/parameter_hints/12_param_implicit_conversions.cpp
 
 **Pseudo-object expressions**
 
-MS property accesses stay quiet; written subscripts keep the accessor's names
+MS property accesses stay quiet; written subscripts keep the accessor's
+names
 
 ```snap
 tests/snap/inlay_hint/parameter_hints/13_param_pseudo_objects.cpp
@@ -175,7 +177,8 @@ tests/snap/inlay_hint/parameter_hints/13_param_pseudo_objects.cpp
 
 **Explicit instantiation**
 
-An explicit instantiation definition adds no duplicate hints, while its written template arguments hint normally
+An explicit instantiation definition adds no duplicate hints, while its
+written template arguments hint normally
 
 ```snap
 tests/snap/inlay_hint/parameter_hints/14_param_explicit_instantiation.cpp
@@ -211,7 +214,8 @@ tests/snap/inlay_hint/parameter_hints/16_param_inherited_constructors.cpp
 
 **Anonymous parameters**
 
-Nothing to name, though a mutable reference still flags `&`
+Unnamed parameters produce no name hint, though mutable references still
+show `&`
 
 ```snap
 tests/snap/inlay_hint/parameter_hints/17_param_anonymous.cpp
@@ -223,7 +227,8 @@ tests/snap/inlay_hint/parameter_hints/17_param_anonymous.cpp
 
 **Operators and literals**
 
-Operator syntax and user-defined literals stay bare; member and default member initializers hint
+Operator syntax and user-defined literals stay bare; member and default
+member initializers hint
 
 ```snap
 tests/snap/inlay_hint/parameter_hints/18_param_operators.cpp
@@ -301,7 +306,7 @@ tests/snap/inlay_hint/type_hints/04_type_lambdas.cpp
 
 **Deduced return types**
 
-`-> T` after the parameter list, declarations included
+Deduced return types appear as `-> T` after the parameter list
 
 ```snap
 tests/snap/inlay_hint/type_hints/05_type_auto_return.cpp
@@ -385,7 +390,8 @@ tests/snap/inlay_hint/type_hints/11_type_bindings_tuple.cpp
 
 **Instantiated templates**
 
-Instantiated bodies repeat no hints at the pattern; dependent `auto` could reveal the deduced type while exactly one instantiation exists
+Instantiated bodies repeat no hints at the pattern; dependent `auto` could
+reveal the deduced type while exactly one instantiation exists
 
 ```snap
 tests/snap/inlay_hint/type_hints/12_type_conflicting_instantiations.cpp
@@ -493,7 +499,7 @@ tests/snap/inlay_hint/designator_hints/07_designator_parenthesized.cpp
 
 **Template parameter hints**
 
-Deduced and explicit template arguments at call sites
+Template argument hints are not emitted at call sites yet
 
 ```snap
 tests/snap/inlay_hint/other_hint_kinds/01_template_parameter_hints.cpp
@@ -505,7 +511,7 @@ tests/snap/inlay_hint/other_hint_kinds/01_template_parameter_hints.cpp
 
 **CTAD arguments**
 
-Deduced class template arguments after the template name
+CTAD does not display deduced class template arguments yet
 
 ```snap
 tests/snap/inlay_hint/other_hint_kinds/02_ctad_arguments.cpp
@@ -517,7 +523,7 @@ tests/snap/inlay_hint/other_hint_kinds/02_ctad_arguments.cpp
 
 **Implicit conversion hints**
 
-Surface the conversions a call site performs
+Implicit conversions at call sites have no hints yet
 
 ```snap
 tests/snap/inlay_hint/other_hint_kinds/03_conversion_hints.cpp

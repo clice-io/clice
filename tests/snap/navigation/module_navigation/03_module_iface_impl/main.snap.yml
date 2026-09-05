@@ -11,7 +11,7 @@ iface_name:
   references:
     - { file: "${WS}/module_navigation/03_module_iface_impl/iface.cppm", range: "0:14-0:19" }
     - { file: "${WS}/module_navigation/03_module_iface_impl/impl.cpp", range: "0:7-0:12" }
-    - { file: "${WS}/module_navigation/03_module_iface_impl/main.cpp", range: "10:7-10:12" }
+    - { file: "${WS}/module_navigation/03_module_iface_impl/main.cpp", range: "9:7-9:12" }
 
 --- impl.cpp
 impl_name:
@@ -22,4 +22,4 @@ impl_name:
   references:
     - { file: "${WS}/module_navigation/03_module_iface_impl/iface.cppm", range: "0:14-0:19" }
     - { file: "${WS}/module_navigation/03_module_iface_impl/impl.cpp", range: "0:7-0:12" }
-    - { file: "${WS}/module_navigation/03_module_iface_impl/main.cpp", range: "10:7-10:12" }
+    - { file: "${WS}/module_navigation/03_module_iface_impl/main.cpp", range: "9:7-9:12" }

@@ -2,7 +2,7 @@
 ///
 /// - status: unsupported
 ///
-/// Consecutive using declarations/directives
+/// Consecutive using declarations and directives do not form folding ranges yet
 
 using std::vector;  // ┐
 using std::string;  // │ foldable

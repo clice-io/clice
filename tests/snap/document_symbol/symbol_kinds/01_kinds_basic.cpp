@@ -2,7 +2,9 @@
 ///
 /// - status: supported
 ///
-/// Namespaces, classes, structs, unions, enums and their members, functions, variables, fields, structured bindings and lambdas all appear in the outline with a mapped LSP symbol kind
+/// Namespaces, classes, structs, unions, enums and their members, functions,
+/// variables, fields, structured bindings and lambdas all appear in the outline
+/// with a mapped LSP symbol kind
 
 namespace kinds {
 

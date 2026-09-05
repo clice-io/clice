@@ -2,7 +2,7 @@
 ///
 /// - status: unsupported
 ///
-/// `export module`, `module` and `import` declarations in the outline
+/// Module declarations do not appear in the outline yet
 
 export module app.core;
 

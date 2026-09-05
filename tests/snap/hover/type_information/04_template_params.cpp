@@ -2,7 +2,7 @@
 ///
 /// - status: supported
 ///
-/// Type, template-template, non-type
+/// Template hover distinguishes type, template-template and non-type parameters
 ///
 /// Each template parameter kind reports its form: a type parameter, a
 /// template-template parameter, and a non-type parameter with its default.

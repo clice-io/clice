@@ -2,7 +2,7 @@
 ///
 /// - status: supported
 ///
-/// Class, struct, union, enum and type aliases, at definitions and references
+/// Type definitions and references keep their respective type kinds
 
 class §Widget {};
 struct §Point {};

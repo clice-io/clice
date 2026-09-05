@@ -15,7 +15,8 @@ Provides the file outline and breadcrumb navigation via `textDocument/documentSy
 
 **Nested symbol tree**
 
-Symbols nest by their written scope; out-of-line definitions appear at their lexical position with qualified names
+Symbols nest by their written scope; out-of-line definitions appear at their
+lexical position with qualified names
 
 ```snap
 tests/snap/document_symbol/symbol_hierarchy/01_hierarchy_nesting.cpp
@@ -27,7 +28,9 @@ tests/snap/document_symbol/symbol_hierarchy/01_hierarchy_nesting.cpp
 
 **Symbol ranges and selection ranges**
 
-The range spans the whole declaration; the selection range covers the full written name, including multi-token names like `~Widget`, `operator==` and `operator bool`
+The range spans the whole declaration; the selection range covers the full
+written name, including multi-token names like `~Widget`, `operator==` and
+`operator bool`
 
 ```snap
 tests/snap/document_symbol/symbol_hierarchy/02_hierarchy_selection_ranges.cpp
@@ -39,7 +42,7 @@ tests/snap/document_symbol/symbol_hierarchy/02_hierarchy_selection_ranges.cpp
 
 **Access specifier grouping**
 
-`public:` / `private:` / `protected:` as grouping nodes for breadcrumb navigation
+Access specifiers do not form grouping nodes in the outline yet
 
 ```snap
 tests/snap/document_symbol/symbol_hierarchy/03_hierarchy_access_specifiers.cpp
@@ -51,7 +54,9 @@ tests/snap/document_symbol/symbol_hierarchy/03_hierarchy_access_specifiers.cpp
 
 **Anonymous and inline scopes**
 
-Anonymous namespaces, unnamed structs and unions group their members under a placeholder name; inline namespace members stay under the inline namespace node
+Anonymous namespaces, unnamed structs and unions group their members under a
+placeholder name; inline namespace members stay under the inline namespace
+node
 
 ```snap
 tests/snap/document_symbol/symbol_hierarchy/04_hierarchy_anonymous.cpp
@@ -81,7 +86,9 @@ tests/snap/document_symbol/symbol_hierarchy/05_hierarchy_utf16.cpp
 
 **Core symbol kinds**
 
-Namespaces, classes, structs, unions, enums and their members, functions, variables, fields, structured bindings and lambdas all appear in the outline with a mapped LSP symbol kind
+Namespaces, classes, structs, unions, enums and their members, functions,
+variables, fields, structured bindings and lambdas all appear in the outline
+with a mapped LSP symbol kind
 
 ```snap
 tests/snap/document_symbol/symbol_kinds/01_kinds_basic.cpp
@@ -93,7 +100,9 @@ tests/snap/document_symbol/symbol_kinds/01_kinds_basic.cpp
 
 **Template declarations**
 
-Class, function and variable templates carry a `template ` detail prefix; concepts and abbreviated function templates (`concept auto` parameters) appear as well
+Class, function and variable templates carry a `template ` detail prefix;
+concepts and abbreviated function templates (`concept auto` parameters)
+appear as well
 
 ```snap
 tests/snap/document_symbol/symbol_kinds/02_kinds_templates.cpp
@@ -105,7 +114,9 @@ tests/snap/document_symbol/symbol_kinds/02_kinds_templates.cpp
 
 **Template specializations and deduction guides**
 
-Explicit and partial specializations of class and variable templates appear with their template arguments in the name; members nest under their specialization; deduction guides render their deduced signature
+Explicit and partial specializations of class and variable templates appear
+with their template arguments in the name; members nest under their
+specialization; deduction guides render their deduced signature
 
 ```snap
 tests/snap/document_symbol/symbol_kinds/03_kinds_specializations.cpp
@@ -117,7 +128,8 @@ tests/snap/document_symbol/symbol_kinds/03_kinds_specializations.cpp
 
 **Type aliases**
 
-`typedef`, `using` aliases and alias templates appear in the outline with a `type alias` detail
+`typedef`, `using` aliases and alias templates appear in the outline with a
+`type alias` detail
 
 ```snap
 tests/snap/document_symbol/symbol_kinds/04_kinds_type_aliases.cpp
@@ -129,7 +141,8 @@ tests/snap/document_symbol/symbol_kinds/04_kinds_type_aliases.cpp
 
 **Explicit instantiation directives**
 
-The class forms appear as childless symbols; clang mislocates the function and variable forms at the pattern, so they are missing from the outline
+Class explicit instantiations appear as childless symbols, while function
+and variable forms are missing from the outline
 
 ```snap
 tests/snap/document_symbol/symbol_kinds/05_kinds_explicit_instantiations.cpp
@@ -141,7 +154,8 @@ tests/snap/document_symbol/symbol_kinds/05_kinds_explicit_instantiations.cpp
 
 **Macro definitions**
 
-Object-like and function-like macro definitions in the outline, a parameter list as the function-like detail
+Object-like and function-like macros appear in the outline, with parameters
+detailed for function-like forms
 
 ```snap
 tests/snap/document_symbol/symbol_kinds/06_kinds_macros.cpp
@@ -171,7 +185,8 @@ tests/snap/document_symbol/symbol_kinds/07_macro_preamble.cpp
 
 **Function signatures**
 
-Parameter and return types in the `detail` field disambiguate overloads; constructors drop the `void` return type
+Parameter and return types in the `detail` field disambiguate overloads;
+constructors drop the `void` return type
 
 ```snap
 tests/snap/document_symbol/symbol_detail/01_detail_signatures.cpp
@@ -183,7 +198,7 @@ tests/snap/document_symbol/symbol_detail/01_detail_signatures.cpp
 
 **Variable and field types**
 
-The declared type in the `detail` field; lambdas render as `(lambda)`
+Variable details show the declared type, while lambdas render as `(lambda)`
 
 ```snap
 tests/snap/document_symbol/symbol_detail/02_detail_variable_types.cpp
@@ -195,7 +210,8 @@ tests/snap/document_symbol/symbol_detail/02_detail_variable_types.cpp
 
 **Default argument stripping**
 
-The signature is derived from the function type, so default parameter values never leak into the outline
+The signature is derived from the function type, so default parameter values
+never leak into the outline
 
 ```snap
 tests/snap/document_symbol/symbol_detail/03_detail_default_arguments.cpp
@@ -207,7 +223,7 @@ tests/snap/document_symbol/symbol_detail/03_detail_default_arguments.cpp
 
 **Base classes in detail**
 
-Show `: Shape` on derived class declarations
+Derived class details do not include their base classes yet
 
 ```snap
 tests/snap/document_symbol/symbol_detail/04_detail_base_classes.cpp
@@ -219,7 +235,8 @@ tests/snap/document_symbol/symbol_detail/04_detail_base_classes.cpp
 
 **Multiline signature ranges**
 
-The symbol range starts at the beginning of the declaration and spans the full signature, so editor sticky scroll anchors correctly
+The symbol range starts at the beginning of the declaration and spans the
+full signature, so editor sticky scroll anchors correctly
 
 ```snap
 tests/snap/document_symbol/symbol_detail/05_detail_multiline_signatures.cpp
@@ -231,7 +248,8 @@ tests/snap/document_symbol/symbol_detail/05_detail_multiline_signatures.cpp
 
 **Scoped types**
 
-A written class scope appears in the detail exactly once, for nested classes, template-ids, aliases and dependent names alike
+A written class scope appears in the detail exactly once, for nested
+classes, template-ids, aliases and dependent names alike
 
 ```snap
 tests/snap/document_symbol/symbol_detail/06_detail_scoped_types.cpp
@@ -249,7 +267,7 @@ tests/snap/document_symbol/symbol_detail/06_detail_scoped_types.cpp
 
 **Include directives**
 
-`#include` entries in the outline
+`#include` directives do not appear in the outline yet
 
 ```snap
 tests/snap/document_symbol/missing_symbols/01_missing_includes.cpp
@@ -261,7 +279,8 @@ tests/snap/document_symbol/missing_symbols/01_missing_includes.cpp
 
 **Local symbols**
 
-Variables and types declared inside function bodies nest under their function
+Variables and types declared inside function bodies nest under their
+function
 
 ```snap
 tests/snap/document_symbol/missing_symbols/02_local_symbols.cpp
@@ -273,7 +292,7 @@ tests/snap/document_symbol/missing_symbols/02_local_symbols.cpp
 
 **Module declarations**
 
-`export module`, `module` and `import` declarations in the outline
+Module declarations do not appear in the outline yet
 
 ```snap
 tests/snap/document_symbol/missing_symbols/03_missing_modules.cpp
@@ -285,7 +304,7 @@ tests/snap/document_symbol/missing_symbols/03_missing_modules.cpp
 
 **`#pragma mark` navigation markers**
 
-Editor section markers as outline entries
+Editor section markers do not appear in the outline yet
 
 ```snap
 tests/snap/document_symbol/missing_symbols/04_missing_pragma_mark.cpp
@@ -315,7 +334,7 @@ tests/snap/document_symbol/missing_symbols/05_friend_definitions.cpp
 
 **Deprecated tag**
 
-Mark `[[deprecated]]` symbols with the LSP `deprecated` symbol tag
+Deprecated symbols do not carry the LSP `deprecated` symbol tag yet
 
 ```snap
 tests/snap/document_symbol/symbol_tags/01_tags_deprecated.cpp
@@ -327,7 +346,8 @@ tests/snap/document_symbol/symbol_tags/01_tags_deprecated.cpp
 
 **Access and storage indicators**
 
-Public / private / protected, static, virtual and abstract markers on outline entries
+Outline entries do not expose access, static, virtual or abstract modifiers
+yet
 
 ```snap
 tests/snap/document_symbol/symbol_tags/02_tags_modifiers.cpp
@@ -345,7 +365,8 @@ tests/snap/document_symbol/symbol_tags/02_tags_modifiers.cpp
 
 **Symbols from macro expansions**
 
-A symbol produced by a macro invocation is located at the invocation, not at the macro definition
+A symbol produced by a macro invocation is located at the invocation, not at
+the macro definition
 
 ```snap
 tests/snap/document_symbol/location_correctness/01_macro_symbols.cpp
@@ -357,7 +378,8 @@ tests/snap/document_symbol/location_correctness/01_macro_symbols.cpp
 
 **Names spelled in macro arguments**
 
-The selection range points at the name written in the macro argument; names spelled in the macro body fall back to the invocation site
+The selection range points at the name written in the macro argument; names
+spelled in the macro body fall back to the invocation site
 
 ```snap
 tests/snap/document_symbol/location_correctness/02_macro_argument_names.cpp

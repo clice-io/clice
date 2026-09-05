@@ -3,7 +3,7 @@
 /// - status: supported
 /// - issues: clangd#1877
 ///
-/// Arguments that already spell the parameter name, and `/*name=*/` comments
+/// Named arguments and `/*name=*/` comments suppress parameter hints
 
 void draw(int width, int height);
 

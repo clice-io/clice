@@ -2,11 +2,10 @@
 ///
 /// - status: supported
 ///
-/// Alias sugar preserved through deduction
+/// Alias spelling survives `auto` deduction
 ///
-/// clangd tracks lost alias sugar through `auto` as clangd#709; clice
-/// already keeps the alias spelling and appends its desugared form, so
-/// `auto` deduced from an aliased return type reads as `Outer // aka: int`.
+/// Hover keeps the alias spelling and appends its desugared form, so `auto`
+/// deduced from an aliased return type reads as `Outer // aka: int`.
 
 namespace sugared_auto {
 

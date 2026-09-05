@@ -2,7 +2,8 @@
 ///
 /// - status: supported
 ///
-/// Including alternative operator spellings and the contextual `final` / `override`
+/// Alternative operator spellings and contextual specifiers retain keyword
+/// tokens
 
 bool logic(bool a, bool b) {
     return a §and b §or §not a;

@@ -2,7 +2,7 @@
 ///
 /// - status: unsupported
 ///
-/// Mark `[[deprecated]]` symbols with the LSP `deprecated` symbol tag
+/// Deprecated symbols do not carry the LSP `deprecated` symbol tag yet
 
 [[deprecated("use open_v2")]] void open_v1();
 

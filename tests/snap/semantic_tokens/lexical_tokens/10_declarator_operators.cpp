@@ -3,7 +3,7 @@
 /// - status: unsupported
 /// - issues: clangd#1421
 ///
-/// `*`, `&`, `&&` as declarators vs arithmetic/logical operators
+/// Declarator and expression operators do not receive distinct token kinds yet
 
 int value = 1;
 int* pointer = &value;

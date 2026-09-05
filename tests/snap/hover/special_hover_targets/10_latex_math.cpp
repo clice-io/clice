@@ -3,7 +3,7 @@
 /// - status: unsupported
 /// - issues: clangd#2669
 ///
-/// Inline Doxygen formulas appear verbatim
+/// Inline Doxygen formulas are not rendered as math
 ///
 /// The formula text is not rendered as math.
 

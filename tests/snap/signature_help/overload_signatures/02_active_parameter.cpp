@@ -2,7 +2,8 @@
 ///
 /// - status: supported
 ///
-/// The parameter under the cursor is bracketed; the point sits in the second argument
+/// The parameter under the cursor is bracketed; the point sits in the second
+/// argument
 
 void bar(int first, double second, char third);
 

@@ -2,7 +2,8 @@
 ///
 /// - status: supported
 ///
-/// Operator syntax and user-defined literals stay bare; member and default member initializers hint
+/// Operator syntax and user-defined literals stay bare; member and default
+/// member initializers hint
 
 struct S {
     S(int param);

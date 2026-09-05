@@ -2,7 +2,7 @@
 ///
 /// - status: supported
 ///
-/// Declarations, definitions and call sites
+/// Function declarations, definitions and calls receive function tokens
 
 int §twice(int value);
 

@@ -2,7 +2,8 @@
 ///
 /// - status: supported
 ///
-/// Bodies of functions with `auto` or constrained `auto` parameters fold like any other function
+/// Bodies of functions with `auto` or constrained `auto` parameters fold like
+/// any other function
 
 template <typename T>
 concept Small = sizeof(T) <= 8;

@@ -2,7 +2,7 @@
 ///
 /// - status: supported
 ///
-/// `goto` targets and label definitions
+/// Labels and their `goto` references receive label tokens
 
 void retry(bool again) {
     goto §done;

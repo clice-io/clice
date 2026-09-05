@@ -2,7 +2,7 @@
 ///
 /// - status: unsupported
 ///
-/// Hovering `import` shows the module's info
+/// Hovering `import` does not describe the imported module yet
 ///
 /// Hovering an `import` declaration does not yet describe the imported
 /// module.

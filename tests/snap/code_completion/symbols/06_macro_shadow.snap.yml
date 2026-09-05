@@ -3,7 +3,7 @@ created_at: 2026-08-22
 input_file: symbols/06_macro_shadow.cpp
 ---
 function:
-- { label: "BOUND", kind: Function, detail: "(lo, hi)", edit: "14:8-14:12" }
+- { label: "BOUND", kind: Function, detail: "(lo, hi)", edit: "15:8-15:12" }
 
 object:
-- { label: "GUARD", kind: Constant, edit: "13:8-13:12" }
+- { label: "GUARD", kind: Constant, edit: "14:8-14:12" }

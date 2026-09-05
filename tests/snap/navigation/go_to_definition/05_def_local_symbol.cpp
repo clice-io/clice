@@ -3,8 +3,8 @@
 /// - status: supported
 /// - verify: server
 ///
-/// Go-to-definition on a local variable or parameter jumps to its
-/// declaration inside the function body
+/// Go-to-definition on a local variable or parameter jumps to its declaration
+/// inside the function body
 
 int accumulate(int base) {
     int total = base;

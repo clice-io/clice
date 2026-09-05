@@ -3,12 +3,10 @@
 /// - status: unsupported
 /// - issues: clangd#2148
 ///
-/// A config switch to hide misattributed doc comments
+/// Misattributed documentation cannot be suppressed by configuration yet
 ///
-/// A stray comment picked up by the association heuristic — a section
-/// banner separated from the code by a blank line, for example — always
-/// reaches the hover card: clice has no config option to suppress doc
-/// comments whose attachment is a guess.
+/// A stray comment such as a section banner separated from the code by a blank
+/// line always reaches the hover card, and no option suppresses it.
 
 namespace suppression {
 // TODO: tidy this file up.

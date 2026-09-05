@@ -4,7 +4,7 @@ input_file: macro_hover/05_expansion_before_definition.cpp
 ---
 01_before_def: NO HOVER
 
-02_after_def: { range: "19:10-19:15" }
+02_after_def: { range: "18:10-18:15" }
 ### macro `COUNT`  
 
 ---

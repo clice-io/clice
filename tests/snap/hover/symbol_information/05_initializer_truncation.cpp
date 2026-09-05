@@ -1,6 +1,7 @@
 /// # Initializer truncation
 ///
 /// - status: partial
+/// - issues: clangd#710
 ///
 /// Huge initializers render truncated, not in full
 ///

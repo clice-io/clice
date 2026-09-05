@@ -3,10 +3,9 @@
 /// - status: unsupported
 /// - issues: clangd#2156
 ///
-/// Clang-format applied to rendered types
+/// Long and nested rendered types are not rewrapped or aligned
 ///
-/// Long or nested types are printed by the compiler's default type printer;
-/// they are not re-wrapped or aligned through clang-format.
+/// Long or nested types are not rewrapped or aligned.
 
 namespace clang_format_types {
 

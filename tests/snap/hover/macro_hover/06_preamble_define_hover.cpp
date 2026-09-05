@@ -2,7 +2,7 @@
 ///
 /// - status: unsupported
 ///
-/// Hover on a leading directive
+/// A leading macro definition has no hover card
 ///
 /// A `#define` in the leading run of directives before the first declaration
 /// has no hover card, while definitions after a declaration do.

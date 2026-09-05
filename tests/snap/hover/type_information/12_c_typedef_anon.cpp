@@ -4,11 +4,10 @@
 /// - issues: clangd#2219
 /// - flags: ["-x", "c", "-std=c11"]
 ///
-/// The classic C `typedef struct {…} Name`
+/// C typedef hover names an anonymous struct after its alias
 ///
-/// Compiled as C11: clangd renders a misleading `struct Point` for the
-/// alias of an anonymous struct; clice names the struct after its typedef,
-/// so both the alias and a variable of it report a clean `Point` card.
+/// Both the alias and a variable of it report a clean `Point` card rather
+/// than presenting the anonymous type as a separately named struct.
 
 // snap: the out-of-order designated initializer cannot compile as C++,
 // snap: so silently dropping the fixture's C flags fails the run.

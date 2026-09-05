@@ -2,9 +2,9 @@
 created_at: 2026-07-31
 input_file: references/06_lambda_captures.cpp
 ---
-- { loc: "11:24", text: "local", kind: variable }
-- { loc: "11:31", text: "this", kind: keyword }
-- { loc: "12:19", text: "local", kind: variable }
-- { loc: "12:33", text: "field", kind: field }
-- { loc: "14:30", text: "local", kind: variable }
-- { loc: "15:19", text: "local", kind: variable }
+- { loc: "12:24", text: "local", kind: variable }
+- { loc: "12:31", text: "this", kind: keyword }
+- { loc: "13:19", text: "local", kind: variable }
+- { loc: "13:33", text: "field", kind: field }
+- { loc: "15:30", text: "local", kind: variable }
+- { loc: "16:19", text: "local", kind: variable }

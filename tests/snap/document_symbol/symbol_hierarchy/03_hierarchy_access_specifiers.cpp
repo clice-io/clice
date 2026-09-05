@@ -3,7 +3,7 @@
 /// - status: unsupported
 /// - issues: clangd#499
 ///
-/// `public:` / `private:` / `protected:` as grouping nodes for breadcrumb navigation
+/// Access specifiers do not form grouping nodes in the outline yet
 
 class Widget {
 public:

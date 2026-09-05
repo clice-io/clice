@@ -59,7 +59,7 @@ tests/snap/hover/symbol_information/04_definition_rendering.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: partial clangd#710 -->
 
 **Initializer truncation**
 
@@ -117,7 +117,7 @@ tests/snap/hover/symbol_information/07_anon_namespace_scope.cpp
 
 **Variable types**
 
-Pointers, references, arrays
+Variable hover preserves pointer, reference and array declarators
 
 A variable's card pretty-prints its declared type, spelling the pointer,
 reference and array declarators the way they read in source.
@@ -132,7 +132,7 @@ tests/snap/hover/type_information/01_variable_type.cpp
 
 **Type aliases**
 
-The desugared `aka` form
+Hover can show the desugared `aka` form
 
 A sugared type shows its underlying type as `Alias (aka int)`. The
 `show_aka` option turns the `aka` suffix off.
@@ -147,7 +147,7 @@ tests/snap/hover/type_information/02_aka_desugar.cpp
 
 **Function signatures**
 
-Return type, parameter names, defaults
+Function hover reports return types, parameter names and defaults
 
 A function's card lists its return type, each parameter with its name,
 and any default argument.
@@ -162,7 +162,7 @@ tests/snap/hover/type_information/03_function_signature.cpp
 
 **Template parameters**
 
-Type, template-template, non-type
+Template hover distinguishes type, template-template and non-type parameters
 
 Each template parameter kind reports its form: a type parameter, a
 template-template parameter, and a non-type parameter with its default.
@@ -177,7 +177,7 @@ tests/snap/hover/type_information/04_template_params.cpp
 
 **`auto` deduction**
 
-The type the placeholder resolves to
+Placeholder hover shows the type it resolves to
 
 Hovering an `auto` placeholder shows the type substituted for it —
 builtins, pointers, lambdas, template instantiations, and the
@@ -193,7 +193,7 @@ tests/snap/hover/type_information/05_auto_deduction.cpp
 
 **`decltype` deduction**
 
-Value, reference and dependent forms
+Decltype hover distinguishes value, reference and dependent forms
 
 Hovering a `decltype` or `decltype(auto)` placeholder shows the resolved
 type, including the reference the parenthesized-expression rule adds.
@@ -208,7 +208,7 @@ tests/snap/hover/type_information/06_decltype_deduction.cpp
 
 **CTAD**
 
-Deduced template arguments of a class placeholder
+Class placeholder hover shows its deduced template arguments
 
 With class template argument deduction the variable's card shows the
 deduced `Box<int>`, but hovering the class-name spelling still reports
@@ -224,7 +224,7 @@ tests/snap/hover/type_information/07_ctad_arguments.cpp
 
 **Instantiation arguments**
 
-Template parameters bound at a use site
+Template use hover does not show parameter-to-argument bindings yet
 
 A use of a template shows the substituted types (`Wrapper<int>`,
 `identity<int>`, `int x`), but not an explicit `T = int` mapping of each
@@ -240,7 +240,7 @@ tests/snap/hover/type_information/08_instantiation_args.cpp
 
 **Lambda `auto` parameters**
 
-Deduced parameter type
+Generic lambda parameters do not show their deduced type yet
 
 Hovering the `auto` parameter of a generic lambda yields no card; the
 deduced parameter type is not shown.
@@ -255,11 +255,10 @@ tests/snap/hover/type_information/09_lambda_auto_params.cpp
 
 **Sugared `auto`**
 
-Alias sugar preserved through deduction
+Alias spelling survives `auto` deduction
 
-clangd tracks lost alias sugar through `auto` as clangd#709; clice
-already keeps the alias spelling and appends its desugared form, so
-`auto` deduced from an aliased return type reads as `Outer // aka: int`.
+Hover keeps the alias spelling and appends its desugared form, so `auto`
+deduced from an aliased return type reads as `Outer // aka: int`.
 
 ```snap
 tests/snap/hover/type_information/10_sugared_auto.cpp
@@ -271,10 +270,9 @@ tests/snap/hover/type_information/10_sugared_auto.cpp
 
 **Type formatting**
 
-Clang-format applied to rendered types
+Long and nested rendered types are not rewrapped or aligned
 
-Long or nested types are printed by the compiler's default type printer;
-they are not re-wrapped or aligned through clang-format.
+Long or nested types are not rewrapped or aligned.
 
 ```snap
 tests/snap/hover/type_information/11_clang_format_types.cpp
@@ -286,11 +284,10 @@ tests/snap/hover/type_information/11_clang_format_types.cpp
 
 **Anonymous struct typedef**
 
-The classic C `typedef struct {…} Name`
+C typedef hover names an anonymous struct after its alias
 
-Compiled as C11: clangd renders a misleading `struct Point` for the
-alias of an anonymous struct; clice names the struct after its typedef,
-so both the alias and a variable of it report a clean `Point` card.
+Both the alias and a variable of it report a clean `Point` card rather
+than presenting the anonymous type as a separately named struct.
 
 ```snap
 tests/snap/hover/type_information/12_c_typedef_anon.cpp
@@ -302,7 +299,7 @@ tests/snap/hover/type_information/12_c_typedef_anon.cpp
 
 **Concept constraints**
 
-The constraint behind a parameter or `auto` placeholder
+Constrained placeholders lose their constraint on hover
 
 The constrained-parameter and concept-reference cards carry the
 constraint, but hovering the placeholder of a constrained `Addable auto`
@@ -371,7 +368,7 @@ tests/snap/hover/layout_information/03_vtable_offset.cpp
 
 **Constant evaluation**
 
-Constexpr, enumerators, sizeof
+Constant-expression hover reports evaluated values
 
 When an initializer is a constant expression, the card evaluates it and
 shows the resulting value.
@@ -386,7 +383,7 @@ tests/snap/hover/expression_context/01_constant_value.cpp
 
 **Call arguments**
 
-Which parameter each argument binds to
+Argument hover identifies its bound parameter
 
 Hovering an argument at a call site shows the parameter it is passed to,
 naming the parameter it binds.
@@ -401,7 +398,7 @@ tests/snap/hover/expression_context/02_callee_arguments.cpp
 
 **Pass semantics**
 
-By value, by reference, by const reference
+Argument hover distinguishes value and reference passing
 
 The argument card states how the value reaches the callee: copied by
 value, or bound to a mutable or const reference parameter.
@@ -416,7 +413,7 @@ tests/snap/hover/expression_context/03_pass_semantics.cpp
 
 **Implicit conversions**
 
-Argument converted to the parameter type
+Argument hover reports the target type of an implicit conversion
 
 When an argument reaches a parameter through an implicit conversion, the
 card notes the target type, for both built-in and user-defined
@@ -432,7 +429,7 @@ tests/snap/hover/expression_context/04_implicit_conversion.cpp
 
 **String literals**
 
-The length reported on hover
+String-literal hover reports its size in bytes
 
 A string-literal card reports the array type and its size in bytes
 (`const char[6]`, `Size: 6 bytes` — the length plus the null
@@ -448,7 +445,7 @@ tests/snap/hover/expression_context/05_string_length.cpp
 
 **Numeric literals**
 
-Type and value of an integer or float literal
+Numeric literals have no type or value hover yet
 
 Hovering a numeric literal yields no card, unlike character and string
 literals, whose type and value are shown.
@@ -463,7 +460,7 @@ tests/snap/hover/expression_context/06_numeric_literal_type.cpp
 
 **Record variables**
 
-Enclosing constant value leaks in
+Record hover can show a misleading enclosing constant value
 
 Hovering a record-typed argument of a constant-evaluable call currently
 reports that call's value (`Value = 7`) on the variable — a value that
@@ -485,7 +482,7 @@ tests/snap/hover/expression_context/07_record_value_misleading.cpp
 
 **Doxygen `///` comments**
 
-Extracted from the declaration and rendered on hover
+Declaration documentation appears on hover
 
 Applies to plain functions, primary templates and their specializations;
 a reference resolves to the most specialized declaration's comment.
@@ -515,11 +512,10 @@ tests/snap/hover/documentation/02_accessor_docs.cpp
 
 **`@copydoc` tags**
 
-Copy another symbol's documentation onto this one
+Copied documentation is not resolved onto the receiving symbol yet
 
-A `@copydoc target` tag should copy `target`'s documentation into this
-symbol's hover card. clice does not resolve the tag yet — the card shows
-the literal `@copydoc base_func()` text.
+A `@copydoc target` tag remains literal instead of copying `target`'s
+documentation into this symbol's hover card.
 
 ```snap
 tests/snap/hover/documentation/03_copydoc.cpp
@@ -531,11 +527,11 @@ tests/snap/hover/documentation/03_copydoc.cpp
 
 **Inherited override docs**
 
-An override with no comment shows the base method's documentation
+An override with no comment does not inherit the base method's documentation
+yet
 
-Hovering an overriding method that carries no comment of its own should
-surface the documentation from the method it overrides. clice does not
-inherit it yet — the override's card carries no description.
+An overriding method with no comment of its own has no description on its
+hover card.
 
 ```snap
 tests/snap/hover/documentation/04_inherit_overridden_docs.cpp
@@ -547,11 +543,10 @@ tests/snap/hover/documentation/04_inherit_overridden_docs.cpp
 
 **Overload doc sharing**
 
-A later overload with no comment reuses the first overload's documentation
+A later overload does not reuse the first overload's documentation yet
 
 Consecutive overloads often document only the first; a later undocumented
-overload should reuse that shared description. clice does not share it
-yet — the later overload's card carries no description.
+overload has no description on its hover card.
 
 ```snap
 tests/snap/hover/documentation/05_overload_doc_sharing.cpp
@@ -563,12 +558,11 @@ tests/snap/hover/documentation/05_overload_doc_sharing.cpp
 
 **Inherited constructor docs**
 
-`using Base::Base;` surfaces the base constructor's documentation
+Inherited constructors have no documentation hover yet
 
-A constructor pulled in with `using Base::Base;` should carry the base
-constructor's documentation on hover. There is no hover surface for it:
-the name in the using-declaration resolves to the class, not the
-inherited constructor.
+The name in a `using Base::Base;` declaration resolves to the class rather
+than an inherited constructor, so the base constructor's documentation has
+no hover surface.
 
 ```snap
 tests/snap/hover/documentation/06_inherited_ctor_docs.cpp
@@ -580,11 +574,11 @@ tests/snap/hover/documentation/06_inherited_ctor_docs.cpp
 
 **Banner comments**
 
-A section banner separated by a blank line must not attach to the next declaration
+A separated section banner still attaches to the following declaration
 
-A `// ==== Section ====` banner followed by a blank line should not be
-misattributed as documentation for the declaration below it. clice
-currently attaches it anyway — the banner text appears in the card.
+A `// ==== Section ====` banner followed by a blank line is misattributed
+as documentation for the declaration below it, so the banner text appears
+in the card.
 
 ```snap
 tests/snap/hover/documentation/07_comment_association.cpp
@@ -598,9 +592,8 @@ tests/snap/hover/documentation/07_comment_association.cpp
 
 The declaration's doc wins over a definition-site comment
 
-clangd tracks this as clangd#829; clice already prefers the
-declaration's `///` documentation over the definition's plain `//` note,
-showing it at both the declaration and the definition site.
+The declaration's `///` documentation appears at both the declaration and
+definition sites instead of the definition's plain `//` note.
 
 ```snap
 tests/snap/hover/documentation/08_decl_vs_def_docs.cpp
@@ -612,11 +605,10 @@ tests/snap/hover/documentation/08_decl_vs_def_docs.cpp
 
 **Whitespace and newlines**
 
-A markdown table in a comment keeps its line breaks
+Markdown tables in comments lose their line breaks on hover
 
-A markdown table written across several `///` lines should render as a
-table with its line breaks preserved. clice currently flattens the lines
-onto one line, so the table does not render.
+A markdown table written across several `///` lines is flattened onto one
+line, so the table does not render.
 
 ```snap
 tests/snap/hover/documentation/09_whitespace_preserve.cpp
@@ -628,11 +620,10 @@ tests/snap/hover/documentation/09_whitespace_preserve.cpp
 
 **Comment indentation**
 
-Indented lines in a comment render without spurious extra indentation
+Indented documentation blocks lose their leading indentation on hover
 
-A doc comment whose body contains an indented block should render with
-correct indentation. clice currently strips the leading indentation, so
-an indented code block loses its offset and the blank line collapses.
+A doc comment whose body contains an indented block loses the block's
+offset, and its blank line collapses.
 
 ```snap
 tests/snap/hover/documentation/10_comment_indentation.cpp
@@ -644,11 +635,11 @@ tests/snap/hover/documentation/10_comment_indentation.cpp
 
 **Template keyword from a macro**
 
-The docstring should survive the expansion
+Documentation on a macro-produced template is missing from hover
 
 When the `template` keyword is produced by a macro expansion, the
-declaration's doc comment should still appear on hover. clice currently
-drops it — the card carries no description.
+declaration's doc comment does not appear on hover, and the card carries
+no description.
 
 ```snap
 tests/snap/hover/documentation/11_macro_template_doc.cpp
@@ -660,12 +651,10 @@ tests/snap/hover/documentation/11_macro_template_doc.cpp
 
 **Comment suppression option**
 
-A config switch to hide misattributed doc comments
+Misattributed documentation cannot be suppressed by configuration yet
 
-A stray comment picked up by the association heuristic — a section
-banner separated from the code by a blank line, for example — always
-reaches the hover card: clice has no config option to suppress doc
-comments whose attachment is a guess.
+A stray comment such as a section banner separated from the code by a blank
+line always reaches the hover card, and no option suppresses it.
 
 ```snap
 tests/snap/hover/documentation/12_comment_suppression.cpp
@@ -728,7 +717,7 @@ tests/snap/hover/macro_hover/03_cli_macros.cpp
 
 **Nested macro in arguments**
 
-A macro named inside another invocation's arguments
+A nested macro argument shows its definition without an expansion preview
 
 The expansion preview starts at the outer invocation, so hovering an
 inner macro named inside the arguments shows only its definition, not an
@@ -744,11 +733,10 @@ tests/snap/hover/macro_hover/04_nested_arg_expansion.cpp
 
 **Use before definition**
 
-Hovering a macro name that appears before its `#define`
+A macro use before its definition has no hover yet
 
-A macro name used in an `#if` above its own `#define` should still hover
-with the macro's definition. clice currently returns no hover at the
-pre-definition use; a use after the `#define` works normally.
+A macro name used in an `#if` above its own `#define` has no hover, while a
+use after the definition works normally.
 
 ```snap
 tests/snap/hover/macro_hover/05_expansion_before_definition.cpp
@@ -760,7 +748,7 @@ tests/snap/hover/macro_hover/05_expansion_before_definition.cpp
 
 **`#define` inside the preamble**
 
-Hover on a leading directive
+A leading macro definition has no hover card
 
 A `#define` in the leading run of directives before the first declaration
 has no hover card, while definitions after a declaration do.
@@ -811,7 +799,7 @@ tests/snap/hover/special_hover_targets/02_typedef_underlying.cpp
 
 **Keyword documentation**
 
-Hovering a language keyword shows its description
+Language keywords do not have documentation hover yet
 
 Hovering a keyword such as `const` or `virtual` produces no card.
 
@@ -821,7 +809,7 @@ tests/snap/hover/special_hover_targets/03_keyword_docs.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: supported -->
+<!-- BEGIN CAPABILITY: supported clangd#1862 -->
 
 **Attribute documentation**
 
@@ -900,7 +888,7 @@ tests/snap/hover/special_hover_targets/08_no_hover_negatives.cpp
 
 **GTK-Doc and kernel-doc**
 
-Recognize GObject Introspection annotations
+GObject Introspection annotations do not appear in hover cards yet
 
 GTK-Doc / kernel-doc comment syntax and GObject Introspection
 annotations are not parsed into the hover card.
@@ -915,7 +903,7 @@ tests/snap/hover/special_hover_targets/09_gtk_doc.cpp
 
 **LaTeX math in Doxygen**
 
-Inline Doxygen formulas appear verbatim
+Inline Doxygen formulas are not rendered as math
 
 The formula text is not rendered as math.
 
@@ -935,7 +923,8 @@ tests/snap/hover/special_hover_targets/10_latex_math.cpp
 
 **Markdown rendering**
 
-Cards render as markdown, or plain text via `parse_comment_as_markdown = false`
+Cards render as markdown, or plain text via `parse_comment_as_markdown =
+false`
 
 ```snap
 tests/snap/hover/presentation/01_presentation.cpp
@@ -953,7 +942,7 @@ tests/snap/hover/presentation/01_presentation.cpp
 
 **Import statement hover**
 
-Hovering `import` shows the module's info
+Hovering `import` does not describe the imported module yet
 
 Hovering an `import` declaration does not yet describe the imported
 module.
@@ -968,7 +957,7 @@ tests/snap/hover/module_related/01_import_hover.cpp
 
 **Module name hover**
 
-Hovering a module name lists its owning files
+Hovering a module name does not list its owning files yet
 
 Hovering a module name does not yet list the files or partitions that
 declare it.
@@ -991,11 +980,10 @@ Robustness on inputs that have broken other tooling.
 
 **MSVC inheritance model**
 
-`MSInheritanceAttr` does not corrupt record hover
+MSVC inheritance model attributes do not alter record hover
 
-clangd tracks this as clangd#1643 and clangd#2212; under an MSVC target
-the implicit inheritance attribute does not leak into the record or
-method card.
+Under an MSVC target, the implicit inheritance attribute does not leak
+into the record or method card.
 
 ```snap
 tests/snap/hover/hover_correctness/01_ms_inheritance.cpp
@@ -1007,10 +995,10 @@ tests/snap/hover/hover_correctness/01_ms_inheritance.cpp
 
 **Most-vexing-parse**
 
-Object init and function declaration hover distinctly
+Direct initialization and a function declaration have distinct hover cards
 
-clangd tracks this as clangd#2225; clice reads the direct-init as a
-variable and the vexing form as a function declaration.
+The direct initialization appears as a variable, while the most-vexing
+form appears as a function declaration.
 
 ```snap
 tests/snap/hover/hover_correctness/02_object_vs_function.cpp
@@ -1024,8 +1012,7 @@ tests/snap/hover/hover_correctness/02_object_vs_function.cpp
 
 Hovering a `0xFFFF...ULL` enumerator does not crash
 
-clangd crashes on this (clangd#2381); clice renders the full unsigned
-value without overflow.
+The card renders the full unsigned value without overflowing or failing.
 
 ```snap
 tests/snap/hover/hover_correctness/03_large_enum_value.cpp
@@ -1039,8 +1026,7 @@ tests/snap/hover/hover_correctness/03_large_enum_value.cpp
 
 Hovering a call that omits defaults does not crash
 
-clangd crashes on this (clangd#551); clice renders the callee signature
-with its default arguments.
+The call card renders the callee signature with its default arguments.
 
 ```snap
 tests/snap/hover/hover_correctness/04_default_args_call.cpp
@@ -1052,10 +1038,10 @@ tests/snap/hover/hover_correctness/04_default_args_call.cpp
 
 **Macro-shadowed symbol**
 
-A function-like macro over a same-named function
+A function-like macro shadows a same-named function at the call site
 
-clangd tracks this as clangd#2490; at the call site the function-like
-macro is active, and clice's card shows that macro and its expansion.
+The card shows the active macro and its expansion instead of the shadowed
+function.
 
 ```snap
 tests/snap/hover/hover_correctness/05_macro_shadowed_symbol.cpp

@@ -4,6 +4,6 @@
 /// - verify: server
 /// - diagnostics: expected
 ///
-/// The same search-path candidates in the angled form
+/// Angled includes offer the same search-path candidates
 
 #include <snap§(pos)>

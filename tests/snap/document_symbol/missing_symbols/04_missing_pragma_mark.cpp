@@ -2,7 +2,7 @@
 ///
 /// - status: unsupported
 ///
-/// Editor section markers as outline entries
+/// Editor section markers do not appear in the outline yet
 
 #pragma mark - Lifecycle
 

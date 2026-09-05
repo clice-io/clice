@@ -2,7 +2,7 @@
 ///
 /// - status: supported
 ///
-/// Which parameter each argument binds to
+/// Argument hover identifies its bound parameter
 ///
 /// Hovering an argument at a call site shows the parameter it is passed to,
 /// naming the parameter it binds.

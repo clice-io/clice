@@ -2,7 +2,7 @@
 ///
 /// - status: supported
 ///
-/// Constexpr, enumerators, sizeof
+/// Constant-expression hover reports evaluated values
 ///
 /// When an initializer is a constant expression, the card evaluates it and
 /// shows the resulting value.

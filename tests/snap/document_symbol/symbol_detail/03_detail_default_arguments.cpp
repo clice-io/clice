@@ -3,7 +3,8 @@
 /// - status: supported
 /// - issues: clangd#221
 ///
-/// The signature is derived from the function type, so default parameter values never leak into the outline
+/// The signature is derived from the function type, so default parameter values
+/// never leak into the outline
 
 namespace detail {
 

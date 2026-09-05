@@ -2,7 +2,8 @@
 ///
 /// - status: supported
 ///
-/// `#if` chains keep directive kinds; disabled branches keep lexical kinds; pragma arguments stay plain
+/// `#if` chains keep directive kinds; disabled branches keep lexical kinds;
+/// pragma arguments stay plain
 
 int before_conditional = 0;
 

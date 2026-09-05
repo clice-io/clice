@@ -2,7 +2,7 @@
 ///
 /// - status: supported
 ///
-/// The declared type in the `detail` field; lambdas render as `(lambda)`
+/// Variable details show the declared type, while lambdas render as `(lambda)`
 
 namespace detail {
 

@@ -6,7 +6,7 @@ input_file: lexical_tokens/01_comments.cpp
 - { loc: "1:0", text: "///", kind: comment }
 - { loc: "2:0", text: "/// - status: supported", kind: comment }
 - { loc: "3:0", text: "///", kind: comment }
-- { loc: "4:0", text: "/// Line, block and doc comments, including multiline blocks", kind: comment }
+- { loc: "4:0", text: "/// Line, block and documentation comments receive comment tokens", kind: comment }
 - { loc: "6:0", text: "// A line comment.", kind: comment }
 - { loc: "7:0", text: "/* a one-line block comment */", kind: comment }
 - { loc: "8:0", text: "/*", kind: comment }

@@ -3,7 +3,8 @@
 /// - status: supported
 /// - diagnostics: expected
 ///
-/// A name that is also constructors and a deduction guide stays a single class entry
+/// A name that is also constructors and a deduction guide stays a single class
+/// entry
 
 // The completion prefix dangles as an unfinished statement.
 template <typename T>

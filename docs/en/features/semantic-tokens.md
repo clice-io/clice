@@ -20,7 +20,7 @@ Kinds derived from the token stream itself, independent of the AST.
 
 **Comments**
 
-Line, block and doc comments, including multiline blocks
+Line, block and documentation comments receive comment tokens
 
 ```snap
 tests/snap/semantic_tokens/lexical_tokens/01_comments.cpp
@@ -32,7 +32,7 @@ tests/snap/semantic_tokens/lexical_tokens/01_comments.cpp
 
 **Literals**
 
-Numbers, characters and strings, including raw strings
+Numbers, characters and strings receive literal tokens
 
 ```snap
 tests/snap/semantic_tokens/lexical_tokens/02_literals.cpp
@@ -44,7 +44,8 @@ tests/snap/semantic_tokens/lexical_tokens/02_literals.cpp
 
 **Keywords**
 
-Including alternative operator spellings and the contextual `final` / `override`
+Alternative operator spellings and contextual specifiers retain keyword
+tokens
 
 ```snap
 tests/snap/semantic_tokens/lexical_tokens/03_keywords.cpp
@@ -56,7 +57,8 @@ tests/snap/semantic_tokens/lexical_tokens/03_keywords.cpp
 
 **Preprocessor directives**
 
-`#if` chains keep directive kinds; disabled branches keep lexical kinds; pragma arguments stay plain
+`#if` chains keep directive kinds; disabled branches keep lexical kinds;
+pragma arguments stay plain
 
 ```snap
 tests/snap/semantic_tokens/lexical_tokens/04_directives.cpp
@@ -68,7 +70,9 @@ tests/snap/semantic_tokens/lexical_tokens/04_directives.cpp
 
 **Inactive regions**
 
-Tokens in untaken branches keep their lexical kinds and carry the `inactive` modifier; unclassified tokens become plain `identifier` carriers, so even a lone `}` line dims
+Tokens in untaken branches keep their lexical kinds and carry the `inactive`
+modifier; unclassified tokens become plain `identifier` carriers, so even a
+lone `}` line dims
 
 ```snap
 tests/snap/semantic_tokens/lexical_tokens/05_inactive_regions.cpp
@@ -80,7 +84,7 @@ tests/snap/semantic_tokens/lexical_tokens/05_inactive_regions.cpp
 
 **Header names**
 
-Quoted and angled `#include` filenames, including the split `# include` form
+Quoted and angled include filenames receive string tokens
 
 ```snap
 tests/snap/semantic_tokens/lexical_tokens/06_include_names.cpp
@@ -104,7 +108,8 @@ tests/snap/semantic_tokens/lexical_tokens/07_inactive_preamble.cpp
 
 **Literal prefixes and suffixes**
 
-Encoding prefixes, type suffixes, digit separators and UDL suffixes as distinct tokens
+Literal prefixes, suffixes and separators do not receive distinct tokens
+yet
 
 ```snap
 tests/snap/semantic_tokens/lexical_tokens/08_literal_affixes.cpp
@@ -116,7 +121,7 @@ tests/snap/semantic_tokens/lexical_tokens/08_literal_affixes.cpp
 
 **Escape sequences**
 
-Highlighted distinctly inside string and character literals
+Escape sequences are not highlighted distinctly inside literals yet
 
 ```snap
 tests/snap/semantic_tokens/lexical_tokens/09_escape_sequences.cpp
@@ -128,7 +133,7 @@ tests/snap/semantic_tokens/lexical_tokens/09_escape_sequences.cpp
 
 **Declarator vs operator disambiguation**
 
-`*`, `&`, `&&` as declarators vs arithmetic/logical operators
+Declarator and expression operators do not receive distinct token kinds yet
 
 ```snap
 tests/snap/semantic_tokens/lexical_tokens/10_declarator_operators.cpp
@@ -140,7 +145,7 @@ tests/snap/semantic_tokens/lexical_tokens/10_declarator_operators.cpp
 
 **Primitive token type**
 
-A distinct kind for built-in types instead of plain `keyword`
+Built-in types use a distinct token kind instead of plain `keyword`
 
 ```snap
 tests/snap/semantic_tokens/lexical_tokens/11_primitive_types.cpp
@@ -152,7 +157,7 @@ tests/snap/semantic_tokens/lexical_tokens/11_primitive_types.cpp
 
 **Bracket token types**
 
-Matching `()`, `[]`, `{}`, `<>` pairs as distinct kinds
+Matching brackets do not receive pair-specific token kinds yet
 
 ```snap
 tests/snap/semantic_tokens/lexical_tokens/12_bracket_pairs.cpp
@@ -172,7 +177,8 @@ Names classified by the declaration they define or reference.
 
 **Namespaces**
 
-Definitions, references, nested namespaces and namespace aliases
+Namespace definitions, references, nesting and aliases receive namespace
+tokens
 
 ```snap
 tests/snap/semantic_tokens/declarations/01_namespaces.cpp
@@ -184,7 +190,7 @@ tests/snap/semantic_tokens/declarations/01_namespaces.cpp
 
 **Types**
 
-Class, struct, union, enum and type aliases, at definitions and references
+Type definitions and references keep their respective type kinds
 
 ```snap
 tests/snap/semantic_tokens/declarations/02_types.cpp
@@ -196,7 +202,7 @@ tests/snap/semantic_tokens/declarations/02_types.cpp
 
 **Functions and methods**
 
-Declarations, definitions and call sites
+Function declarations, definitions and calls receive function tokens
 
 ```snap
 tests/snap/semantic_tokens/declarations/03_functions.cpp
@@ -208,7 +214,7 @@ tests/snap/semantic_tokens/declarations/03_functions.cpp
 
 **Variables**
 
-Globals, locals, parameters, fields and enum members
+Variable declarations and references keep their respective variable kinds
 
 ```snap
 tests/snap/semantic_tokens/declarations/04_variables.cpp
@@ -220,7 +226,8 @@ tests/snap/semantic_tokens/declarations/04_variables.cpp
 
 **Templates**
 
-Type and non-type template parameters, with the `templated` modifier on template names
+Template parameters receive type or variable kinds, and template names carry
+`templated`
 
 ```snap
 tests/snap/semantic_tokens/declarations/05_templates.cpp
@@ -232,7 +239,7 @@ tests/snap/semantic_tokens/declarations/05_templates.cpp
 
 **Concepts**
 
-Definitions and uses as template constraints
+Concept definitions and constraint uses receive concept tokens
 
 ```snap
 tests/snap/semantic_tokens/declarations/06_concepts.cpp
@@ -244,7 +251,7 @@ tests/snap/semantic_tokens/declarations/06_concepts.cpp
 
 **Labels**
 
-`goto` targets and label definitions
+Labels and their `goto` references receive label tokens
 
 ```snap
 tests/snap/semantic_tokens/declarations/07_labels.cpp
@@ -256,7 +263,7 @@ tests/snap/semantic_tokens/declarations/07_labels.cpp
 
 **Structured bindings**
 
-Binding names at definition and use
+Structured binding names receive variable tokens at definition and use
 
 The opening `[` deliberately carries no token; only the binding names
 themselves are highlighted.
@@ -271,7 +278,7 @@ tests/snap/semantic_tokens/declarations/08_structured_bindings.cpp
 
 **Lambda init-captures**
 
-The captured name highlighted as a variable
+Lambda init-captures receive variable tokens
 
 ```snap
 tests/snap/semantic_tokens/declarations/09_lambda_init_capture.cpp
@@ -283,7 +290,7 @@ tests/snap/semantic_tokens/declarations/09_lambda_init_capture.cpp
 
 **Deduction guides**
 
-The guide name and the guided template highlighted
+Deduction guides and their guided templates receive type tokens
 
 ```snap
 tests/snap/semantic_tokens/declarations/10_deduction_guides.cpp
@@ -295,7 +302,7 @@ tests/snap/semantic_tokens/declarations/10_deduction_guides.cpp
 
 **Explicit instantiation**
 
-The instantiated template name and its written template arguments highlighted, on the extern declaration and the definition alike
+Explicit class instantiations highlight template names and written arguments
 
 ```snap
 tests/snap/semantic_tokens/declarations/11_explicit_instantiation_class.cpp
@@ -307,7 +314,8 @@ tests/snap/semantic_tokens/declarations/11_explicit_instantiation_class.cpp
 
 **Variable templates**
 
-Declarations, definitions, partial and full specializations
+Variable template declarations, definitions and specializations receive
+variable tokens
 
 ```snap
 tests/snap/semantic_tokens/declarations/12_variable_templates.cpp
@@ -343,7 +351,7 @@ tests/snap/semantic_tokens/declarations/14_alias_templates.cpp
 
 **Template template parameters**
 
-Declared and used as types
+Template-template parameters receive type tokens at declaration and use
 
 ```snap
 tests/snap/semantic_tokens/declarations/15_template_template_params.cpp
@@ -367,7 +375,7 @@ tests/snap/semantic_tokens/declarations/16_friend_declarations.cpp
 
 **Function explicit instantiation directives**
 
-Clang builds no node for the directive, so every identifier on it goes unpainted: the name, the template arguments and the parameter types
+Identifiers in a function explicit-instantiation directive remain unpainted
 
 ```snap
 tests/snap/semantic_tokens/declarations/17_explicit_instantiation_function.cpp
@@ -379,7 +387,7 @@ tests/snap/semantic_tokens/declarations/17_explicit_instantiation_function.cpp
 
 **Variable explicit instantiation directives**
 
-Clang builds no node for the directive, so every identifier on it goes unpainted: the name, the template arguments, even the declarator's type
+Identifiers in a variable explicit-instantiation directive remain unpainted
 
 ```snap
 tests/snap/semantic_tokens/declarations/18_explicit_instantiation_variable.cpp
@@ -391,7 +399,8 @@ tests/snap/semantic_tokens/declarations/18_explicit_instantiation_variable.cpp
 
 **Explicit instantiation member bodies**
 
-A dependent name paints as its actual resolution: agreeing kinds keep the modifiers all instantiations share, disagreeing kinds paint a conflict
+A dependent name paints as its actual resolution: agreeing kinds keep the
+modifiers all instantiations share, disagreeing kinds paint a conflict
 
 ```snap
 tests/snap/semantic_tokens/declarations/19_explicit_instantiation_member_bodies.cpp
@@ -412,7 +421,7 @@ including names reached through language-specific lookup rules.
 
 **Member initializer lists**
 
-Initialized fields highlighted as fields
+Member initializer lists highlight initialized names as fields
 
 ```snap
 tests/snap/semantic_tokens/references/01_member_init_list.cpp
@@ -448,7 +457,7 @@ tests/snap/semantic_tokens/references/03_sizeof_pack.cpp
 
 **`using enum`**
 
-The enum name highlighted at the using site
+Using declarations highlight enum names at the using site
 
 ```snap
 tests/snap/semantic_tokens/references/04_using_enum.cpp
@@ -460,7 +469,7 @@ tests/snap/semantic_tokens/references/04_using_enum.cpp
 
 **Dependent names**
 
-Resolved through the primary template where one is known
+Dependent names resolve through known primary templates
 
 Dependent members of a known template (`Box<T>`) resolve to the primary
 template's declarations and keep their kinds. Members of a bare template
@@ -477,7 +486,8 @@ tests/snap/semantic_tokens/references/05_dependent_names.cpp
 
 **Lambda captures**
 
-By-copy and by-reference captures reference the captured variable; `this` stays a keyword
+By-copy and by-reference captures reference the captured variable; `this`
+stays a keyword
 
 ```snap
 tests/snap/semantic_tokens/references/06_lambda_captures.cpp
@@ -489,7 +499,7 @@ tests/snap/semantic_tokens/references/06_lambda_captures.cpp
 
 **Range-based for**
 
-The loop variable at definition and use
+Range-for variables keep variable tokens at definitions and uses
 
 ```snap
 tests/snap/semantic_tokens/references/07_range_for.cpp
@@ -513,7 +523,7 @@ tests/snap/semantic_tokens/references/08_enum_base.cpp
 
 **Dependent using declarations**
 
-`using T::name` in a template body
+Dependent using declarations remain unpainted
 
 The introduced name and its uses currently get no token; the reserved
 dependent-name modifier is not emitted yet.
@@ -534,7 +544,8 @@ tests/snap/semantic_tokens/references/09_dependent_using.cpp
 
 **Module declarations**
 
-The contextual `module` keyword, dotted module names and the private fragment
+Module declarations tokenize contextual keywords, dotted names and private
+fragments
 
 ```snap
 tests/snap/semantic_tokens/modules/01_modules.cpp
@@ -546,7 +557,7 @@ tests/snap/semantic_tokens/modules/01_modules.cpp
 
 **Module partitions**
 
-Partition names in the module declaration
+Module declarations tokenize partition names
 
 ```snap
 tests/snap/semantic_tokens/modules/02_module_partition.cpp
@@ -576,7 +587,7 @@ tests/snap/semantic_tokens/modules/03_module_keyword_identifier.cpp
 
 **Declaration vs definition**
 
-The modifier distinguishes the two
+Declaration and definition modifiers distinguish the two sites
 
 ```snap
 tests/snap/semantic_tokens/token_modifiers/01_decl_def_modifiers.cpp
@@ -588,7 +599,7 @@ tests/snap/semantic_tokens/token_modifiers/01_decl_def_modifiers.cpp
 
 **Static**
 
-Class-level members and static locals
+Static members and locals carry the static modifier
 
 ```snap
 tests/snap/semantic_tokens/token_modifiers/02_static_modifier.cpp
@@ -600,7 +611,7 @@ tests/snap/semantic_tokens/token_modifiers/02_static_modifier.cpp
 
 **Readonly**
 
-Const and constexpr values, const methods and enum members
+Const values and methods, plus enum members, carry the readonly modifier
 
 Readonly is currently value-based: a pointer to const counts as
 readonly even though the pointer itself can change.
@@ -615,7 +626,7 @@ tests/snap/semantic_tokens/token_modifiers/03_readonly_modifier.cpp
 
 **Virtual and abstract**
 
-Virtual methods, pure virtual methods and abstract classes
+Virtual methods and abstract classes carry virtual or abstract modifiers
 
 ```snap
 tests/snap/semantic_tokens/token_modifiers/04_virtual_abstract.cpp
@@ -627,7 +638,7 @@ tests/snap/semantic_tokens/token_modifiers/04_virtual_abstract.cpp
 
 **Deprecated**
 
-`[[deprecated]]` declarations and their uses
+Deprecated declarations and uses carry the deprecated modifier
 
 ```snap
 tests/snap/semantic_tokens/token_modifiers/05_deprecated_modifier.cpp
@@ -639,7 +650,7 @@ tests/snap/semantic_tokens/token_modifiers/05_deprecated_modifier.cpp
 
 **Default library**
 
-Symbols declared in system headers
+Symbols from system headers carry the default-library modifier
 
 ```snap
 tests/snap/semantic_tokens/token_modifiers/06_default_library.cpp
@@ -651,7 +662,7 @@ tests/snap/semantic_tokens/token_modifiers/06_default_library.cpp
 
 **Scope modifiers**
 
-Function, class, file and global scope
+Symbols do not carry function, class, file or global scope modifiers yet
 
 ```snap
 tests/snap/semantic_tokens/token_modifiers/07_scope_modifiers.cpp
@@ -663,7 +674,7 @@ tests/snap/semantic_tokens/token_modifiers/07_scope_modifiers.cpp
 
 **Mutable reference and pointer**
 
-Arguments passed by non-const reference or pointer
+Mutable reference and pointer arguments do not carry a modifier yet
 
 ```snap
 tests/snap/semantic_tokens/token_modifiers/08_mutable_reference.cpp
@@ -675,7 +686,7 @@ tests/snap/semantic_tokens/token_modifiers/08_mutable_reference.cpp
 
 **Deduced**
 
-Mark deduced types such as `auto` and `decltype`
+Deduced types do not carry a dedicated modifier yet
 
 ```snap
 tests/snap/semantic_tokens/token_modifiers/09_deduced_modifier.cpp
@@ -687,7 +698,7 @@ tests/snap/semantic_tokens/token_modifiers/09_deduced_modifier.cpp
 
 **User-defined operators**
 
-Distinguish overloaded operators from built-in ones
+Overloaded operators do not differ from built-in operators yet
 
 ```snap
 tests/snap/semantic_tokens/token_modifiers/10_user_defined_operator.cpp
@@ -746,7 +757,7 @@ tests/snap/semantic_tokens/conflict_ambiguity/03_using_overloads.cpp
 
 **Injected class name**
 
-The class name used as a constructor call inside the class
+An injected class name keeps its class token when used as a constructor
 
 The written name renders as the class; the constructor reference it
 implies paints nothing extra — the `(` stays token-free.
@@ -769,7 +780,7 @@ Shapes clice pins deliberately, including issues clangd got wrong.
 
 **Constructors and destructors**
 
-Method tokens with the constructor/destructor modifier
+Constructors and destructors use method tokens with dedicated modifiers
 
 A destructor name renders as two tokens: the `~` carries the method
 kind and the declaration/definition modifiers, the class name after it
@@ -869,7 +880,7 @@ tests/snap/semantic_tokens/token_correctness/07_defaulted_deleted.cpp
 
 **Attribute names**
 
-Standard and vendor attributes, and expressions inside them
+Attribute names and their expressions do not receive semantic tokens yet
 
 ```snap
 tests/snap/semantic_tokens/attributes/01_attributes.cpp
@@ -902,7 +913,8 @@ tests/snap/semantic_tokens/macros/01_macro.cpp
 
 **Expansion sites and arguments**
 
-Expansion names are macros, written arguments keep their semantics, definition bodies stay lexical
+Expansion names are macros, written arguments keep their semantics,
+definition bodies stay lexical
 
 ```snap
 tests/snap/semantic_tokens/macros/02_macro_expansion.cpp
@@ -914,7 +926,7 @@ tests/snap/semantic_tokens/macros/02_macro_expansion.cpp
 
 **Object-like vs function-like macros**
 
-Distinct highlighting for the two forms
+Object-like and function-like macros do not receive distinct token kinds yet
 
 ```snap
 tests/snap/semantic_tokens/macros/03_macro_kinds.cpp

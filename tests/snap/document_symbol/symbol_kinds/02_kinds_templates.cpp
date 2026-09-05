@@ -2,7 +2,9 @@
 ///
 /// - status: supported
 ///
-/// Class, function and variable templates carry a `template ` detail prefix; concepts and abbreviated function templates (`concept auto` parameters) appear as well
+/// Class, function and variable templates carry a `template ` detail prefix;
+/// concepts and abbreviated function templates (`concept auto` parameters)
+/// appear as well
 
 namespace templates {
 

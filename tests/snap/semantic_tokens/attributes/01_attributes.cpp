@@ -3,7 +3,7 @@
 /// - status: unsupported
 /// - issues: clangd#2209
 ///
-/// Standard and vendor attributes, and expressions inside them
+/// Attribute names and their expressions do not receive semantic tokens yet
 
 [[nodiscard]] int compute();
 [[deprecated("use v2")]] void old_func();

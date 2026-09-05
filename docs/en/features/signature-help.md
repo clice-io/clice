@@ -36,7 +36,7 @@ Registered: `(`, `)`, `{`, `}`, `<`, `>`, `,`
 
 **Function overloads**
 
-Every overload of the callee, each with its parameter list and return type
+Signature help lists every overload with its parameter list and return type
 
 ```snap
 tests/snap/signature_help/overload_signatures/01_overloads.cpp
@@ -48,7 +48,8 @@ tests/snap/signature_help/overload_signatures/01_overloads.cpp
 
 **Active parameter tracking**
 
-The parameter under the cursor is bracketed; the point sits in the second argument
+The parameter under the cursor is bracketed; the point sits in the second
+argument
 
 ```snap
 tests/snap/signature_help/overload_signatures/02_active_parameter.cpp
@@ -60,7 +61,8 @@ tests/snap/signature_help/overload_signatures/02_active_parameter.cpp
 
 **Member function overloads**
 
-A non-const receiver lists both the const and non-const overloads; the trailing const qualifier is not rendered in the label
+A non-const receiver lists both the const and non-const overloads; the
+trailing const qualifier is not rendered in the label
 
 ```snap
 tests/snap/signature_help/overload_signatures/03_member_overloads.cpp
@@ -84,7 +86,8 @@ tests/snap/signature_help/overload_signatures/04_default_arguments.cpp
 
 **C-style variadic function**
 
-Named parameters are listed while the trailing ellipsis is elided from the label
+Named parameters are listed while the trailing ellipsis is elided from the
+label
 
 ```snap
 tests/snap/signature_help/overload_signatures/05_variadic_cstyle.cpp
@@ -108,7 +111,8 @@ tests/snap/signature_help/overload_signatures/06_variadic_template.cpp
 
 **Active parameter beyond overload**
 
-With the cursor in the second argument, only overloads that declare a second parameter remain
+With the cursor in the second argument, only overloads that declare a second
+parameter remain
 
 ```snap
 tests/snap/signature_help/overload_signatures/07_active_beyond_last.cpp
@@ -159,7 +163,8 @@ tests/snap/signature_help/overload_signatures/07_active_beyond_last.cpp
 
 **Constructors and aggregates**
 
-Constructor calls render without a return arrow; aggregate initialization lists the fields in braces
+Constructor calls render without a return arrow; aggregate initialization
+lists the fields in braces
 
 ```snap
 tests/snap/signature_help/special_call_contexts/01_constructor_aggregate.cpp
@@ -183,7 +188,8 @@ tests/snap/signature_help/special_call_contexts/02_function_pointer.cpp
 
 **Template argument lists**
 
-Template parameters show as the signature; a class template points at its kind, not a return type
+Template parameters show as the signature; a class template points at its
+kind, not a return type
 
 ```snap
 tests/snap/signature_help/special_call_contexts/03_template_arguments.cpp
@@ -195,7 +201,8 @@ tests/snap/signature_help/special_call_contexts/03_template_arguments.cpp
 
 **Nested calls**
 
-The inner call's help shows at the inner marker and the outer call's help at the outer marker
+The inner call's help shows at the inner marker and the outer call's help at
+the outer marker
 
 ```snap
 tests/snap/signature_help/special_call_contexts/04_nested_calls.cpp

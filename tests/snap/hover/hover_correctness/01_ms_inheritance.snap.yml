@@ -2,7 +2,7 @@
 created_at: 2026-08-23
 input_file: hover_correctness/01_ms_inheritance.cpp
 ---
-method_hover: { range: "15:9-15:15" }
+method_hover: { range: "14:9-14:15" }
 ### method `update`  
 
 ---
@@ -14,7 +14,7 @@ method_hover: { range: "15:9-15:15" }
 public: void update()
 ```
 
-struct_hover: { range: "13:7-13:13" }
+struct_hover: { range: "12:7-12:13" }
 ### struct `Widget`  
 
 ---

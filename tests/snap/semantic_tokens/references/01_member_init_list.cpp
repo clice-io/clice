@@ -3,7 +3,7 @@
 /// - status: supported
 /// - issues: clangd#122
 ///
-/// Initialized fields highlighted as fields
+/// Member initializer lists highlight initialized names as fields
 
 struct Widget {
     int width;

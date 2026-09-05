@@ -2,7 +2,7 @@
 ///
 /// - status: partial
 ///
-/// A macro named inside another invocation's arguments
+/// A nested macro argument shows its definition without an expansion preview
 ///
 /// The expansion preview starts at the outer invocation, so hovering an
 /// inner macro named inside the arguments shows only its definition, not an

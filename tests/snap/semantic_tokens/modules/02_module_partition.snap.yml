@@ -6,7 +6,7 @@ input_file: modules/02_module_partition.cpp
 - { loc: "1:0", text: "///", kind: comment }
 - { loc: "2:0", text: "/// - status: supported", kind: comment }
 - { loc: "3:0", text: "///", kind: comment }
-- { loc: "4:0", text: "/// Partition names in the module declaration", kind: comment }
+- { loc: "4:0", text: "/// Module declarations tokenize partition names", kind: comment }
 - { loc: "6:0", text: "export", kind: keyword }
 - { loc: "6:7", text: "module", kind: keyword }
 - { loc: "6:14", text: "demo", kind: module }

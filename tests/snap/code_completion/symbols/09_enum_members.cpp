@@ -3,7 +3,8 @@
 /// - status: supported
 /// - diagnostics: expected
 ///
-/// A scoped enum lists through `Type::`, an unscoped enumerator completes by bare name
+/// A scoped enum lists through `Type::`, an unscoped enumerator completes by
+/// bare name
 
 // Both completion prefixes dangle; the statements stay
 // semicolon-terminated so the second marker is not dragged into recovery.

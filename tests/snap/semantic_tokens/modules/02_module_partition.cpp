@@ -2,7 +2,7 @@
 ///
 /// - status: supported
 ///
-/// Partition names in the module declaration
+/// Module declarations tokenize partition names
 
 export module demo.core:part;
 

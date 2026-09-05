@@ -2,12 +2,12 @@
 created_at: 2026-08-01
 input_file: symbol_kinds/02_kinds_templates.cpp
 ---
-- { name: "templates", kind: Namespace, range: "6:0-31:1", selection_range: "6:10-6:19" }
--   { name: "Box", kind: Struct, range: "9:0-13:1", selection_range: "9:7-9:10", detail: "template struct" }
--     { name: "value", kind: Field, range: "10:4-10:11", selection_range: "10:6-10:11", detail: "T" }
--     { name: "reset", kind: Method, range: "12:4-12:16", selection_range: "12:9-12:14", detail: "void ()" }
--   { name: "Box<T>::reset", kind: Method, range: "15:0-16:23", selection_range: "16:13-16:18", detail: "void ()" }
--   { name: "zero", kind: Function, range: "19:0-21:1", selection_range: "19:2-19:6", detail: "template T ()" }
--   { name: "pi", kind: Variable, range: "24:0-24:27", selection_range: "24:12-24:14", detail: "template const T" }
--   { name: "Small", kind: TypeParameter, range: "26:0-27:30", selection_range: "27:8-27:13", detail: "concept" }
--   { name: "takes_concept", kind: Function, range: "29:0-29:32", selection_range: "29:5-29:18", detail: "template void (Small auto)" }
+- { name: "templates", kind: Namespace, range: "8:0-33:1", selection_range: "8:10-8:19" }
+-   { name: "Box", kind: Struct, range: "11:0-15:1", selection_range: "11:7-11:10", detail: "template struct" }
+-     { name: "value", kind: Field, range: "12:4-12:11", selection_range: "12:6-12:11", detail: "T" }
+-     { name: "reset", kind: Method, range: "14:4-14:16", selection_range: "14:9-14:14", detail: "void ()" }
+-   { name: "Box<T>::reset", kind: Method, range: "17:0-18:23", selection_range: "18:13-18:18", detail: "void ()" }
+-   { name: "zero", kind: Function, range: "21:0-23:1", selection_range: "21:2-21:6", detail: "template T ()" }
+-   { name: "pi", kind: Variable, range: "26:0-26:27", selection_range: "26:12-26:14", detail: "template const T" }
+-   { name: "Small", kind: TypeParameter, range: "28:0-29:30", selection_range: "29:8-29:13", detail: "concept" }
+-   { name: "takes_concept", kind: Function, range: "31:0-31:32", selection_range: "31:5-31:18", detail: "template void (Small auto)" }

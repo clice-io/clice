@@ -3,7 +3,7 @@
 /// - status: partial
 /// - snap: skip
 ///
-/// Visually distinguish or auto-fold inactive `#if`/`#else` branches
+/// Inactive branches are not visually distinguished or folded automatically yet
 ///
 /// The server emits a fold range for the region between the condition and
 /// `#else`, so the first branch can be folded manually; the post-`#else`

@@ -2,7 +2,7 @@
 ///
 /// - status: supported
 ///
-/// Extracted from the declaration and rendered on hover
+/// Declaration documentation appears on hover
 ///
 /// Applies to plain functions, primary templates and their specializations;
 /// a reference resolves to the most specialized declaration's comment.

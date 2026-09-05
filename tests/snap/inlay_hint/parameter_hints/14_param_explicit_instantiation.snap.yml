@@ -2,6 +2,6 @@
 created_at: 2026-07-31
 input_file: parameter_hints/14_param_explicit_instantiation.cpp
 ---
-- { pos: "13:10", kind: Parameter, label: "value:", padding_right: true }
-- { pos: "21:37", kind: Parameter, label: "amount:", padding_right: true }
-- { pos: "21:40", kind: Type, label: ": int" }
+- { pos: "14:10", kind: Parameter, label: "value:", padding_right: true }
+- { pos: "22:37", kind: Parameter, label: "amount:", padding_right: true }
+- { pos: "22:40", kind: Type, label: ": int" }

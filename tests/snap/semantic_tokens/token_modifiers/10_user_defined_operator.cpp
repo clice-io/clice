@@ -3,7 +3,7 @@
 /// - status: unsupported
 /// - issues: clangd#1521
 ///
-/// Distinguish overloaded operators from built-in ones
+/// Overloaded operators do not differ from built-in operators yet
 
 struct Vec {
     Vec operator+(const Vec& other) const;

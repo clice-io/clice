@@ -3,7 +3,7 @@
 /// - status: supported
 /// - issues: clangd#868
 ///
-/// The captured name highlighted as a variable
+/// Lambda init-captures receive variable tokens
 
 int compute();
 

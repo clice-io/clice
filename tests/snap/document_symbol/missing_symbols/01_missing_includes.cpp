@@ -3,7 +3,7 @@
 /// - status: unsupported
 /// - issues: clangd#2226
 ///
-/// `#include` entries in the outline
+/// `#include` directives do not appear in the outline yet
 
 #include "config.h"
 

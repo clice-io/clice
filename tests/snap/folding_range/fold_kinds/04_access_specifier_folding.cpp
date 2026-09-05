@@ -3,7 +3,7 @@
 /// - status: supported
 /// - issues: clangd#1455
 ///
-/// `public:` / `protected:` / `private:` regions within a class
+/// Access-specifier regions within a class form folding ranges
 
 class Widget {
 public:            // ┐

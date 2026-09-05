@@ -3,7 +3,7 @@
 /// - status: supported
 /// - issues: clangd#1283
 ///
-/// The enum name highlighted at the using site
+/// Using declarations highlight enum names at the using site
 
 enum class Color { Red };
 

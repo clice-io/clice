@@ -3,7 +3,7 @@
 /// - status: partial
 /// - issues: llvm#191658
 ///
-/// Clang builds no node for the directive, so every identifier on it goes unpainted: the name, the template arguments, even the declarator's type
+/// Identifiers in a variable explicit-instantiation directive remain unpainted
 
 struct Widget {};
 

@@ -2,7 +2,8 @@
 ///
 /// - status: supported
 ///
-/// Named parameters are listed while the trailing ellipsis is elided from the label
+/// Named parameters are listed while the trailing ellipsis is elided from the
+/// label
 
 void record(int code, ...);
 

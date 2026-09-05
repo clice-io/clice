@@ -3,7 +3,8 @@
 /// - status: partial
 /// - issues: llvm#191658
 ///
-/// The class forms appear as childless symbols; clang mislocates the function and variable forms at the pattern, so they are missing from the outline
+/// Class explicit instantiations appear as childless symbols, while function
+/// and variable forms are missing from the outline
 
 template <typename T>
 struct Box {

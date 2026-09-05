@@ -1,6 +1,7 @@
 /// # Attribute documentation
 ///
 /// - status: supported
+/// - issues: clangd#1862
 ///
 /// Hovering an attribute shows its description
 ///

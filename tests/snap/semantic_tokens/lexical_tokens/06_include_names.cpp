@@ -3,7 +3,7 @@
 /// - status: supported
 /// - flags: ["-I${corpus}"]
 ///
-/// Quoted and angled `#include` filenames, including the split `# include` form
+/// Quoted and angled include filenames receive string tokens
 
 #include "inc/angled.h"
 #include <angled.h>

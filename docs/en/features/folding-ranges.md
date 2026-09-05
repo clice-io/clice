@@ -13,7 +13,7 @@
 
 **Block folding**
 
-Functions, classes, structs, unions, enums, namespaces, lambdas
+Functions, types, namespaces and lambdas form folding ranges
 
 ```snap
 tests/snap/folding_range/fold_kinds/01_block_folding.cpp
@@ -25,7 +25,7 @@ tests/snap/folding_range/fold_kinds/01_block_folding.cpp
 
 **Nested compound-statement folding**
 
-`if`/`for`/`while` bodies inside functions
+Nested control-flow bodies form folding ranges
 
 ```snap
 tests/snap/folding_range/fold_kinds/02_nested_compound_statement.cpp
@@ -37,7 +37,8 @@ tests/snap/folding_range/fold_kinds/02_nested_compound_statement.cpp
 
 **Multi-line list folding**
 
-Function parameters, call arguments, initializer lists, lambda captures
+Multiline parameter, argument, initializer and capture lists form folding
+ranges
 
 ```snap
 tests/snap/folding_range/fold_kinds/03_multiline_list_folding.cpp
@@ -49,7 +50,7 @@ tests/snap/folding_range/fold_kinds/03_multiline_list_folding.cpp
 
 **Access-specifier section folding**
 
-`public:` / `protected:` / `private:` regions within a class
+Access-specifier regions within a class form folding ranges
 
 ```snap
 tests/snap/folding_range/fold_kinds/04_access_specifier_folding.cpp
@@ -99,7 +100,7 @@ tests/snap/folding_range/fold_kinds/07_pragma_classification.cpp
 
 **Comment folding**
 
-Multi-line `/* */` and consecutive `//` line comments
+Multiline block comments and consecutive line comments do not fold yet
 
 ```snap
 tests/snap/folding_range/fold_kinds/08_comment_folding.cpp
@@ -111,7 +112,7 @@ tests/snap/folding_range/fold_kinds/08_comment_folding.cpp
 
 **Include region folding**
 
-Consecutive `#include` directives
+Consecutive include directives do not form folding ranges yet
 
 ```snap
 tests/snap/folding_range/fold_kinds/09_include_region.cpp
@@ -123,7 +124,7 @@ tests/snap/folding_range/fold_kinds/09_include_region.cpp
 
 **Raw string literal folding**
 
-Multiline raw string literals form folding ranges
+Multiline raw string literals do not form folding ranges yet
 
 ```snap
 tests/snap/folding_range/fold_kinds/10_raw_string_literal.cpp
@@ -135,7 +136,7 @@ tests/snap/folding_range/fold_kinds/10_raw_string_literal.cpp
 
 **`using` declaration blocks**
 
-Consecutive using declarations/directives
+Consecutive using declarations and directives do not form folding ranges yet
 
 ```snap
 tests/snap/folding_range/fold_kinds/11_using_declaration_block.cpp
@@ -147,7 +148,7 @@ tests/snap/folding_range/fold_kinds/11_using_declaration_block.cpp
 
 **Template parameter list folding**
 
-Multiline template parameter lists form folding ranges
+Multiline template parameter lists do not form folding ranges yet
 
 ```snap
 tests/snap/folding_range/fold_kinds/12_template_parameter_list.cpp
@@ -159,7 +160,8 @@ tests/snap/folding_range/fold_kinds/12_template_parameter_list.cpp
 
 **Template specializations and instantiations**
 
-Written specializations and their members fold; instantiated declarations reuse the pattern's source locations and must not fold it again
+Written specializations and their members fold; instantiated declarations
+reuse the pattern's source locations and do not fold it again
 
 ```snap
 tests/snap/folding_range/fold_kinds/13_template_instantiations.cpp
@@ -171,7 +173,8 @@ tests/snap/folding_range/fold_kinds/13_template_instantiations.cpp
 
 **Abbreviated function templates**
 
-Bodies of functions with `auto` or constrained `auto` parameters fold like any other function
+Bodies of functions with `auto` or constrained `auto` parameters fold like
+any other function
 
 ```snap
 tests/snap/folding_range/fold_kinds/14_abbreviated_function_template.cpp
@@ -183,7 +186,8 @@ tests/snap/folding_range/fold_kinds/14_abbreviated_function_template.cpp
 
 **Macro-generated folding**
 
-Braces and access specifiers spelled through macros fold at the invocation site
+Braces and access specifiers spelled through macros fold at the invocation
+site
 
 ```snap
 tests/snap/folding_range/fold_kinds/15_macro_folding.cpp
@@ -195,7 +199,8 @@ tests/snap/folding_range/fold_kinds/15_macro_folding.cpp
 
 **Coroutine bodies**
 
-The written block folds exactly once and the coroutine transformation wrapper adds no duplicate fold; a coroutine lambda keeps its body fold
+The written block folds exactly once and the coroutine transformation
+wrapper adds no duplicate fold; a coroutine lambda keeps its body fold
 
 ```snap
 tests/snap/folding_range/fold_kinds/16_coroutine_body.cpp
@@ -207,7 +212,8 @@ tests/snap/folding_range/fold_kinds/16_coroutine_body.cpp
 
 **Initializer-list constructions**
 
-The constructor's braces and the nested initializer list share delimiters and fold once; a parenthesized list argument keeps both folds
+The constructor's braces and the nested initializer list share delimiters
+and fold once; a parenthesized list argument keeps both folds
 
 ```snap
 tests/snap/folding_range/fold_kinds/17_initializer_list_construction.cpp
@@ -225,7 +231,7 @@ tests/snap/folding_range/fold_kinds/17_initializer_list_construction.cpp
 
 **`collapsedText` placeholder (LSP 3.17)**
 
-Show a summary when folded
+Folded ranges can show a summary
 
 > **Client support**: VS Code does **not** support `collapsedText` yet
 > ([vscode#70794](https://github.com/microsoft/vscode/issues/70794) — still
@@ -243,15 +249,16 @@ tests/snap/folding_range/refinements/01_collapsed_text.cpp
 
 **Declaration-line folding**
 
-Keep the signature visible when folded
+Folding cannot yet keep a declaration signature visible
 
 > **Client support**: this depends on the client interpreting
 > `FoldingRange.startLine` correctly. VS Code uses the line _after_
 > `startLine` as the first hidden line, so setting `startLine` to the
 > declaration line achieves the desired effect. However, VS Code still
 > leaves the closing `}` on a separate line rather than collapsing it onto
-> the signature line ([vscode#3352](https://github.com/microsoft/vscode/issues/3352)
-> — still open). Other clients may differ.
+> the signature line
+> ([vscode#3352](https://github.com/microsoft/vscode/issues/3352) — still
+> open). Other clients may differ.
 
 ```snap
 tests/snap/folding_range/refinements/02_fold_from_declaration_line.cpp
@@ -263,7 +270,7 @@ tests/snap/folding_range/refinements/02_fold_from_declaration_line.cpp
 
 **Inactive preprocessor branch indication**
 
-Visually distinguish or auto-fold inactive `#if`/`#else` branches
+Inactive branches are not visually distinguished or folded automatically yet
 
 The server emits a fold range for the region between the condition and
 `#else`, so the first branch can be folded manually; the post-`#else`

@@ -2,7 +2,7 @@
 ///
 /// - status: unsupported
 ///
-/// Highlighted distinctly inside string and character literals
+/// Escape sequences are not highlighted distinctly inside literals yet
 
 const char* escaped = "hello\nworld";
 char hex_escape = '\x41';

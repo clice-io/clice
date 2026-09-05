@@ -2,7 +2,7 @@
 ///
 /// - status: supported
 ///
-/// The loop variable at definition and use
+/// Range-for variables keep variable tokens at definitions and uses
 
 struct List {
     int* begin();

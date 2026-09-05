@@ -4,7 +4,7 @@
 /// - verify: server
 /// - indexing: true
 ///
-/// Hits from files other than the queried one
+/// Workspace symbol search returns hits from unopened project files
 ///
 /// The query returns symbols from project files that are not even open
 /// in the editor: `other.h` stays closed here, so its hit is served by

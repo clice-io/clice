@@ -2,7 +2,9 @@
 ///
 /// - status: supported
 ///
-/// Explicit and partial specializations of class and variable templates appear with their template arguments in the name; members nest under their specialization; deduction guides render their deduced signature
+/// Explicit and partial specializations of class and variable templates appear
+/// with their template arguments in the name; members nest under their
+/// specialization; deduction guides render their deduced signature
 
 namespace spec {
 
@@ -48,7 +50,7 @@ Deduced(T*) -> Deduced<T>;
 Box<int> instantiated;
 
 // An explicit class instantiation gets a childless node; the instantiated
-// members and the function instantiation (whose location clang records at
+// members and the function instantiation (whose source location points at
 // the primary) produce no symbols.
 template struct Box<char>;
 template long zero<long>();

@@ -3,11 +3,10 @@
 /// - status: unsupported
 /// - issues: clangd#854
 ///
-/// Declaration to out-of-line definition
+/// Non-virtual declarations do not navigate to out-of-line definitions yet
 ///
-/// Go-to-implementation on a non-virtual function declaration should reach
-/// its out-of-line definition, behaving as a superset of go-to-definition;
-/// today it returns nothing.
+/// Go-to-implementation on a non-virtual function declaration does not reach
+/// its out-of-line definition and returns nothing.
 
 struct Widget {
     void draw();  // go-to-impl on draw → out-of-line definition below

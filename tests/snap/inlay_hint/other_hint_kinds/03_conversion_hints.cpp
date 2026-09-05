@@ -3,7 +3,7 @@
 /// - status: unsupported
 /// - issues: clangd#2254
 ///
-/// Surface the conversions a call site performs
+/// Implicit conversions at call sites have no hints yet
 
 void process(double val);
 

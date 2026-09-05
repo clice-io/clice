@@ -6,7 +6,7 @@ input_file: lexical_tokens/02_literals.cpp
 - { loc: "1:0", text: "///", kind: comment }
 - { loc: "2:0", text: "/// - status: supported", kind: comment }
 - { loc: "3:0", text: "///", kind: comment }
-- { loc: "4:0", text: "/// Numbers, characters and strings, including raw strings", kind: comment }
+- { loc: "4:0", text: "/// Numbers, characters and strings receive literal tokens", kind: comment }
 - { loc: "6:0", text: "int", kind: primitive }
 - { loc: "6:4", text: "decimal", kind: variable, modifiers: [definition] }
 - { loc: "6:14", text: "42", kind: number }

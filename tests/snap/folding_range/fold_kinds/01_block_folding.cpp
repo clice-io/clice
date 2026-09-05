@@ -2,7 +2,7 @@
 ///
 /// - status: supported
 ///
-/// Functions, classes, structs, unions, enums, namespaces, lambdas
+/// Functions, types, namespaces and lambdas form folding ranges
 
 namespace geometry {
 

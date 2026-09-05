@@ -2,7 +2,7 @@
 ///
 /// - status: supported
 ///
-/// Value, reference and dependent forms
+/// Decltype hover distinguishes value, reference and dependent forms
 ///
 /// Hovering a `decltype` or `decltype(auto)` placeholder shows the resolved
 /// type, including the reference the parenthesized-expression rule adds.

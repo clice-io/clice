@@ -2,7 +2,8 @@
 ///
 /// - status: supported
 ///
-/// Symbols nest by their written scope; out-of-line definitions appear at their lexical position with qualified names
+/// Symbols nest by their written scope; out-of-line definitions appear at their
+/// lexical position with qualified names
 
 namespace demo {
 

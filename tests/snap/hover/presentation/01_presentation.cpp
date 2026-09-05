@@ -3,7 +3,8 @@
 /// - status: supported
 /// - config: {"parse_comment_as_markdown": false}
 ///
-/// Cards render as markdown, or plain text via `parse_comment_as_markdown = false`
+/// Cards render as markdown, or plain text via `parse_comment_as_markdown =
+/// false`
 
 // snap: the A/B halves pin the same cards in markdown (default) and
 // snap: plaintext (configured): headings, rulers, code fences and backtick

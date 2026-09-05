@@ -2,7 +2,8 @@
 ///
 /// - status: supported
 ///
-/// Nothing to name, though a mutable reference still flags `&`
+/// Unnamed parameters produce no name hint, though mutable references still
+/// show `&`
 
 void value_sink(int);
 void ref_sink(int&);

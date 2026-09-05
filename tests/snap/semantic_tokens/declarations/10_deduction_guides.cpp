@@ -2,7 +2,7 @@
 ///
 /// - status: supported
 ///
-/// The guide name and the guided template highlighted
+/// Deduction guides and their guided templates receive type tokens
 
 template <typename T>
 struct Vec {

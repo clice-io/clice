@@ -2,7 +2,7 @@
 ///
 /// - status: supported
 ///
-/// The class name used as a constructor call inside the class
+/// An injected class name keeps its class token when used as a constructor
 ///
 /// The written name renders as the class; the constructor reference it
 /// implies paints nothing extra — the `(` stays token-free.

@@ -10,7 +10,8 @@ Triggered by `<`, `"`, `/` characters. Handled before AST (preamble-level, no co
 
 **Quoted include paths**
 
-Headers and directories from the configured search path, directories marked by a trailing slash
+Completion lists headers and directories from the configured search path and
+marks directories with a trailing slash
 
 ```snap
 tests/snap/code_completion/include_path_completion/01_include_quoted.cpp
@@ -22,7 +23,7 @@ tests/snap/code_completion/include_path_completion/01_include_quoted.cpp
 
 **Angled include paths**
 
-The same search-path candidates in the angled form
+Angled includes offer the same search-path candidates
 
 ```snap
 tests/snap/code_completion/include_path_completion/02_include_angled.cpp
@@ -96,7 +97,8 @@ Triggered when cursor is after `import` or `export import`.
 
 **Import statements**
 
-Known module names complete after `import`, with the closing semicolon inserted
+Known module names complete after `import`, with the closing semicolon
+inserted
 
 A statement that already contains its closing semicolon is complete and
 offers no module names.
@@ -236,7 +238,8 @@ tests/snap/code_completion/member_access/03_pointer_arrow.cpp
 
 **Scope-qualified members**
 
-After `::` static data, nested types, methods and the injected class name all list
+After `::` static data, nested types, methods and the injected class name
+all list
 
 Qualified completion is not filtered to the statically-reachable subset:
 instance fields and the destructor show up alongside the static members
@@ -364,7 +367,8 @@ tests/snap/code_completion/member_access/05_inherited_members.cpp
 
 **Fuzzy unqualified lookup**
 
-Strong prefix matches survive, weak subsequence matches and unqualified namespace members do not
+Strong prefix matches survive, weak subsequence matches and unqualified
+namespace members do not
 
 ```snap
 tests/snap/code_completion/symbols/01_unqualified_lookup.cpp
@@ -376,7 +380,8 @@ tests/snap/code_completion/symbols/01_unqualified_lookup.cpp
 
 **Class template deduplication**
 
-A name that is also constructors and a deduction guide stays a single class entry
+A name that is also constructors and a deduction guide stays a single class
+entry
 
 ```snap
 tests/snap/code_completion/symbols/02_template_dedup.cpp
@@ -388,7 +393,8 @@ tests/snap/code_completion/symbols/02_template_dedup.cpp
 
 **Constructor labels stay plain**
 
-Class template constructors and deduction guides complete as the bare class name, never a templated spelling
+Class template constructors and deduction guides complete as the bare class
+name, never a templated spelling
 
 ```snap
 tests/snap/code_completion/symbols/03_constructor_labels.cpp
@@ -412,7 +418,8 @@ tests/snap/code_completion/symbols/04_pattern_keyword.cpp
 
 **Macros**
 
-Object-like macros complete as constants, function-like ones as functions with a parameter signature; argument snippets follow the function setting
+Object-like macros complete as constants, function-like ones as functions
+with a parameter signature; argument snippets follow the function setting
 
 ```snap
 tests/snap/code_completion/symbols/05_macros.cpp
@@ -424,7 +431,8 @@ tests/snap/code_completion/symbols/05_macros.cpp
 
 **Macro shadowing a declaration**
 
-A name redefined as a macro completes as the macro, not the shadowed declaration
+A name redefined as a macro completes as the macro, not the shadowed
+declaration
 
 ```snap
 tests/snap/code_completion/symbols/06_macro_shadow.cpp
@@ -436,7 +444,8 @@ tests/snap/code_completion/symbols/06_macro_shadow.cpp
 
 **Completion inside macro arguments**
 
-Member access written as a macro argument completes as it would outside the macro
+Member access written as a macro argument completes as it would outside the
+macro
 
 ```snap
 tests/snap/code_completion/symbols/07_macro_argument.cpp
@@ -460,7 +469,8 @@ tests/snap/code_completion/symbols/08_namespace_qualified.cpp
 
 **Enum members**
 
-A scoped enum lists through `Type::`, an unscoped enumerator completes by bare name
+A scoped enum lists through `Type::`, an unscoped enumerator completes by
+bare name
 
 ```snap
 tests/snap/code_completion/symbols/09_enum_members.cpp
@@ -568,7 +578,8 @@ tests/snap/code_completion/functions_snippets/03_no_bundle_overloads.cpp
 
 **Parameter placeholder snippets**
 
-Calls insert tab-stop placeholders per argument; a no-argument function stays plain text
+Calls insert tab-stop placeholders per argument; a no-argument function
+stays plain text
 
 ```snap
 tests/snap/code_completion/functions_snippets/04_snippet_arguments.cpp
@@ -723,7 +734,8 @@ tests/snap/code_completion/functions_snippets/07_variadic_signature.cpp
 
 **Underscore filtering**
 
-Underscore-prefixed internal symbols hide unless the typed prefix itself starts with one
+Underscore-prefixed internal symbols hide unless the typed prefix itself
+starts with one
 
 ```snap
 tests/snap/code_completion/filtering_ranking/01_underscore_filter.cpp
@@ -735,7 +747,8 @@ tests/snap/code_completion/filtering_ranking/01_underscore_filter.cpp
 
 **Deprecated tagging**
 
-A [[deprecated]] candidate carries the Deprecated tag, its plain sibling does not
+A [[deprecated]] candidate carries the Deprecated tag, its plain sibling
+does not
 
 ```snap
 tests/snap/code_completion/filtering_ranking/02_deprecated_tag.cpp

@@ -3,8 +3,8 @@
 /// - status: supported
 /// - verify: server
 ///
-/// Preparing a type hierarchy anchors an item on any user-defined type
-/// tag — class, struct, enum and union alike
+/// Preparing a type hierarchy anchors an item on any user-defined type tag —
+/// class, struct, enum and union alike
 
 class §(cls)Handle {};
 

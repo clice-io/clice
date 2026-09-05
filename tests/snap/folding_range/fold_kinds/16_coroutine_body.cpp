@@ -2,7 +2,8 @@
 ///
 /// - status: supported
 ///
-/// The written block folds exactly once and the coroutine transformation wrapper adds no duplicate fold; a coroutine lambda keeps its body fold
+/// The written block folds exactly once and the coroutine transformation
+/// wrapper adds no duplicate fold; a coroutine lambda keeps its body fold
 
 namespace std {
 

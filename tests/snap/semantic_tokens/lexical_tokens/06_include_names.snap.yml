@@ -7,7 +7,7 @@ input_file: lexical_tokens/06_include_names.cpp
 - { loc: "2:0", text: "/// - status: supported", kind: comment }
 - { loc: "3:0", text: "/// - flags: [\"-I${corpus}\"]", kind: comment }
 - { loc: "4:0", text: "///", kind: comment }
-- { loc: "5:0", text: "/// Quoted and angled `#include` filenames, including the split `# include` form", kind: comment }
+- { loc: "5:0", text: "/// Quoted and angled include filenames receive string tokens", kind: comment }
 - { loc: "7:0", text: "#include", kind: directive }
 - { loc: "7:9", text: "\"inc/angled.h\"", kind: header }
 - { loc: "8:0", text: "#include", kind: directive }

@@ -2,7 +2,7 @@
 ///
 /// - status: supported
 ///
-/// Argument names at call sites and constructor calls
+/// Call sites show parameter names for functions and constructors
 
 void draw(int width, int height);
 

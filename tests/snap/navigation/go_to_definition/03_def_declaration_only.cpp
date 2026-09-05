@@ -3,9 +3,9 @@
 /// - status: supported
 /// - verify: server
 ///
-/// Symbols that carry only a declaration — pure virtuals, `extern`
-/// variables, in-class static constants — resolve to that declaration
-/// instead of returning nothing
+/// Symbols that carry only a declaration — pure virtuals, `extern` variables,
+/// in-class static constants — resolve to that declaration instead of returning
+/// nothing
 
 extern int threshold;
 

@@ -2,7 +2,7 @@
 ///
 /// - status: supported
 ///
-/// Symbols declared in system headers
+/// Symbols from system headers carry the default-library modifier
 
 int before_includes = 0;
 

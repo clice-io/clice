@@ -2,7 +2,7 @@
 ///
 /// - status: unsupported
 ///
-/// Consecutive `#include` directives
+/// Consecutive include directives do not form folding ranges yet
 
 #include <vector>       // ┐
 #include <string>       // │ foldable region

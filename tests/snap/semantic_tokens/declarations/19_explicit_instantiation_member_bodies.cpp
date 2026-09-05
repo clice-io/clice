@@ -2,7 +2,8 @@
 ///
 /// - status: supported
 ///
-/// A dependent name paints as its actual resolution: agreeing kinds keep the modifiers all instantiations share, disagreeing kinds paint a conflict
+/// A dependent name paints as its actual resolution: agreeing kinds keep the
+/// modifiers all instantiations share, disagreeing kinds paint a conflict
 
 struct A {
     static void hit();

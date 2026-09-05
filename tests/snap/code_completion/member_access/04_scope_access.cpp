@@ -3,7 +3,8 @@
 /// - status: supported
 /// - diagnostics: expected
 ///
-/// After `::` static data, nested types, methods and the injected class name all list
+/// After `::` static data, nested types, methods and the injected class name
+/// all list
 ///
 /// Qualified completion is not filtered to the statically-reachable subset:
 /// instance fields and the destructor show up alongside the static members

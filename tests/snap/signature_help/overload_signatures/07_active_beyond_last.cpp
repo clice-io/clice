@@ -2,7 +2,8 @@
 ///
 /// - status: supported
 ///
-/// With the cursor in the second argument, only overloads that declare a second parameter remain
+/// With the cursor in the second argument, only overloads that declare a second
+/// parameter remain
 
 void draw();
 void draw(int x);

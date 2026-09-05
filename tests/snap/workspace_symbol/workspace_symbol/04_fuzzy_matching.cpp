@@ -3,12 +3,11 @@
 /// - status: unsupported
 /// - issues: clangd#914
 ///
-/// Word-boundary-aware scoring for camelCase and snake_case
+/// Workspace symbol search does not support word-boundary fuzzy matching yet
 ///
 /// Matching is a case-insensitive substring test: `LinLis` does not find
 /// `LinkedList`, and `pcfg` does not find `parse_config`. Word-boundary
-/// initials should match and score for every symbol kind, macros
-/// included.
+/// initials do not match for any symbol kind, including macros.
 
 // query: LinLis
 // query: pcfg

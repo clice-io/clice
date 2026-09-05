@@ -3,7 +3,7 @@
 /// - status: partial
 /// - issues: clangd#230
 ///
-/// Template parameters bound at a use site
+/// Template use hover does not show parameter-to-argument bindings yet
 ///
 /// A use of a template shows the substituted types (`Wrapper<int>`,
 /// `identity<int>`, `int x`), but not an explicit `T = int` mapping of each

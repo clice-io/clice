@@ -3,7 +3,7 @@
 /// - status: supported
 /// - issues: clangd#1509, clangd#2078, clangd#872
 ///
-/// Method tokens with the constructor/destructor modifier
+/// Constructors and destructors use method tokens with dedicated modifiers
 ///
 /// A destructor name renders as two tokens: the `~` carries the method
 /// kind and the declaration/definition modifiers, the class name after it

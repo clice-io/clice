@@ -2,8 +2,7 @@
 ///
 /// - status: unsupported
 ///
-/// Each highlight should carry its access kind, so editors can tint
-/// writes differently from reads
+/// Document highlights do not report read and write access kinds yet
 
 void tally() {
     int count = 0;      // write

@@ -2,10 +2,10 @@
 ///
 /// - status: supported
 ///
-/// A function-like macro over a same-named function
+/// A function-like macro shadows a same-named function at the call site
 ///
-/// clangd tracks this as clangd#2490; at the call site the function-like
-/// macro is active, and clice's card shows that macro and its expansion.
+/// The card shows the active macro and its expansion instead of the shadowed
+/// function.
 
 namespace shadow {
 

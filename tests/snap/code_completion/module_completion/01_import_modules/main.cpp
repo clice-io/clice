@@ -4,7 +4,8 @@
 /// - verify: server
 /// - diagnostics: expected
 ///
-/// Known module names complete after `import`, with the closing semicolon inserted
+/// Known module names complete after `import`, with the closing semicolon
+/// inserted
 ///
 /// A statement that already contains its closing semicolon is complete and
 /// offers no module names.

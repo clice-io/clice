@@ -3,7 +3,8 @@
 /// - status: supported
 /// - diagnostics: expected
 ///
-/// A name redefined as a macro completes as the macro, not the shadowed declaration
+/// A name redefined as a macro completes as the macro, not the shadowed
+/// declaration
 
 void GUARD(int);
 #define GUARD 1

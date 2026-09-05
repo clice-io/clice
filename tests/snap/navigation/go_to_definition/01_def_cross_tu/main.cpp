@@ -3,9 +3,8 @@
 /// - status: supported
 /// - verify: server
 ///
-/// A use in one translation unit resolves to the definition supplied by
-/// a sibling source — the answer spans the project, not the current
-/// file alone
+/// A use in one translation unit resolves to the definition supplied by a
+/// sibling source — the answer spans the project, not the current file alone
 
 #include "shared.h"
 

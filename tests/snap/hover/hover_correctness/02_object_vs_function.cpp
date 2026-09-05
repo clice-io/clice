@@ -2,10 +2,10 @@
 ///
 /// - status: supported
 ///
-/// Object init and function declaration hover distinctly
+/// Direct initialization and a function declaration have distinct hover cards
 ///
-/// clangd tracks this as clangd#2225; clice reads the direct-init as a
-/// variable and the vexing form as a function declaration.
+/// The direct initialization appears as a variable, while the most-vexing
+/// form appears as a function declaration.
 
 namespace mvp {
 
