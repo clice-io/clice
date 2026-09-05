@@ -4,31 +4,31 @@ input_file: go_to_declaration/05_decl_extern_variable.cpp
 ---
 decl:
   definition:
-    - { file: "${WS}/go_to_declaration/05_decl_extern_variable.cpp", range: "11:4-11:13" }
+    - { file: "${WS}/go_to_declaration/05_decl_extern_variable.cpp", range: "13:4-13:13" }
   declaration:
-    - { file: "${WS}/go_to_declaration/05_decl_extern_variable.cpp", range: "11:4-11:13" }
+    - { file: "${WS}/go_to_declaration/05_decl_extern_variable.cpp", range: "13:4-13:13" }
   references:
-    - { file: "${WS}/go_to_declaration/05_decl_extern_variable.cpp", range: "9:11-9:20" }
-    - { file: "${WS}/go_to_declaration/05_decl_extern_variable.cpp", range: "11:4-11:13" }
-    - { file: "${WS}/go_to_declaration/05_decl_extern_variable.cpp", range: "14:11-14:20" }
+    - { file: "${WS}/go_to_declaration/05_decl_extern_variable.cpp", range: "11:11-11:20" }
+    - { file: "${WS}/go_to_declaration/05_decl_extern_variable.cpp", range: "13:4-13:13" }
+    - { file: "${WS}/go_to_declaration/05_decl_extern_variable.cpp", range: "16:11-16:20" }
 
 def:
   definition:
-    - { file: "${WS}/go_to_declaration/05_decl_extern_variable.cpp", range: "9:11-9:20" }
+    - { file: "${WS}/go_to_declaration/05_decl_extern_variable.cpp", range: "11:11-11:20" }
   declaration:
-    - { file: "${WS}/go_to_declaration/05_decl_extern_variable.cpp", range: "9:11-9:20" }
+    - { file: "${WS}/go_to_declaration/05_decl_extern_variable.cpp", range: "11:11-11:20" }
   references:
-    - { file: "${WS}/go_to_declaration/05_decl_extern_variable.cpp", range: "9:11-9:20" }
-    - { file: "${WS}/go_to_declaration/05_decl_extern_variable.cpp", range: "11:4-11:13" }
-    - { file: "${WS}/go_to_declaration/05_decl_extern_variable.cpp", range: "14:11-14:20" }
+    - { file: "${WS}/go_to_declaration/05_decl_extern_variable.cpp", range: "11:11-11:20" }
+    - { file: "${WS}/go_to_declaration/05_decl_extern_variable.cpp", range: "13:4-13:13" }
+    - { file: "${WS}/go_to_declaration/05_decl_extern_variable.cpp", range: "16:11-16:20" }
 
 use:
   definition:
-    - { file: "${WS}/go_to_declaration/05_decl_extern_variable.cpp", range: "11:4-11:13" }
+    - { file: "${WS}/go_to_declaration/05_decl_extern_variable.cpp", range: "13:4-13:13" }
   declaration:
-    - { file: "${WS}/go_to_declaration/05_decl_extern_variable.cpp", range: "9:11-9:20" }
-    - { file: "${WS}/go_to_declaration/05_decl_extern_variable.cpp", range: "11:4-11:13" }
+    - { file: "${WS}/go_to_declaration/05_decl_extern_variable.cpp", range: "11:11-11:20" }
+    - { file: "${WS}/go_to_declaration/05_decl_extern_variable.cpp", range: "13:4-13:13" }
   references:
-    - { file: "${WS}/go_to_declaration/05_decl_extern_variable.cpp", range: "9:11-9:20" }
-    - { file: "${WS}/go_to_declaration/05_decl_extern_variable.cpp", range: "11:4-11:13" }
-    - { file: "${WS}/go_to_declaration/05_decl_extern_variable.cpp", range: "14:11-14:20" }
+    - { file: "${WS}/go_to_declaration/05_decl_extern_variable.cpp", range: "11:11-11:20" }
+    - { file: "${WS}/go_to_declaration/05_decl_extern_variable.cpp", range: "13:4-13:13" }
+    - { file: "${WS}/go_to_declaration/05_decl_extern_variable.cpp", range: "16:11-16:20" }

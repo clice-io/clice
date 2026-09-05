@@ -3,8 +3,8 @@
 /// - status: supported
 /// - verify: server
 ///
-/// Subtypes list every class that derives from a base, across sibling
-/// derived types.
+/// Subtypes list every class that derives from a base, across sibling derived
+/// types
 
 struct §(base)Shape {};
 

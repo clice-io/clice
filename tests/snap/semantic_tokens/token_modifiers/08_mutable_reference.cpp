@@ -1,7 +1,9 @@
-/// # Mutable reference and pointer — arguments passed by non-const reference or pointer
+/// # Mutable reference and pointer
 ///
 /// - status: unsupported
 /// - issues: clangd#839
+///
+/// Mutable reference and pointer arguments do not carry a modifier yet
 
 void modify(int& out);
 void modify_through(int* out);

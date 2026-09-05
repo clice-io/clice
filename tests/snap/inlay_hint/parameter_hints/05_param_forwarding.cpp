@@ -1,7 +1,9 @@
-/// # Forwarding resolution — packs forwarded through wrappers resolve to the target's parameter names
+/// # Forwarding resolution
 ///
 /// - status: supported
 /// - issues: clangd#2324
+///
+/// Packs forwarded through wrappers resolve to the target's parameter names
 
 namespace std {
 

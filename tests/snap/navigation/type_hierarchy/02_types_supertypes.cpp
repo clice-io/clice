@@ -4,7 +4,7 @@
 /// - verify: server
 ///
 /// Supertypes list every direct base of a class, including each base of a
-/// multiple-inheritance derived type.
+/// multiple-inheritance derived type
 
 struct Alpha {};
 

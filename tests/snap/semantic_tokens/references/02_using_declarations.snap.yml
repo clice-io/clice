@@ -1,0 +1,8 @@
+---
+created_at: 2026-07-31
+input_file: references/02_using_declarations.cpp
+---
+- { loc: "14:13", text: "helper", kind: function }
+- { loc: "15:13", text: "Gadget", kind: struct }
+- { loc: "17:11", text: "helper", kind: function }
+- { loc: "18:0", text: "Gadget", kind: struct }

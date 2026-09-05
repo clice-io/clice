@@ -2,201 +2,190 @@
 created_at: 2026-07-28
 input_file: tag_decls.cpp
 ---
-01_struct: { range: "9:7-9:14" }
-### struct `MyClass`  
+01_struct: { range: "4:7-4:17" }
+### struct `Coordinate`  
 
 ---
 ```cpp
-// In namespace struct_decl::ns1
-struct MyClass {}
+// In namespace structure_use::model
+struct Coordinate {}
 ```
 
-02_class: { range: "19:7-19:14" }
-### class `MyClass`  
+02_class: { range: "11:7-11:17" }
+### class `Controller`  
 
 ---
 ```cpp
-// In namespace class_decl::ns1
-class MyClass {}
+// In namespace class_use::model
+class Controller {}
 ```
 
-03_union: { range: "29:7-29:14" }
-### union `MyUnion`  
+03_union: { range: "21:7-21:14" }
+### union `Storage`  
 
 ---
 ```cpp
-// In namespace union_decl::ns1
-union MyUnion {}
+// In namespace union_use::model
+union Storage {}
 ```
 
-04_forward_class: { range: "37:0-37:3" }
-### class `Foo`  
-
----
-Forward class declaration  
+04_forward_class: { range: "27:0-27:7" }
+### class `Session`  
 
 ---
 ```cpp
-// In namespace forward_decl
-class Foo {}
+// In namespace forward_use
+class Session {}
 ```
 
-05_enum: { range: "46:2-46:7" }
-### enum `Hello`  
-
----
-Enum declaration  
+05_enum: { range: "32:0-32:9" }
+### enum `Direction`  
 
 ---
 ```cpp
-// In namespace enum_def
-enum Hello {}
+// In namespace enum_use
+enum Direction {}
 ```
 
-06_enumerator: { range: "56:16-56:19" }
-### enumerator `ONE`  
+06_enumerator: { range: "37:19-37:23" }
+### enumerator `High`  
 
 ---
-Type: `enum enumerator::Hello`  
-Value = `0`  
+Type: `enum enumerator_use::Priority`  
+Value = `2`  
 
 ---
 ```cpp
-// In Hello
-ONE
+// In Priority
+High
 ```
 
-07_using_enum: { range: "67:16-67:19" }
-### enumerator `ONE`  
+07_using_enum: { range: "43:15-43:20" }
+### enumerator `Write`  
 
 ---
-Type: `enum using_enum::Hello`  
-Value = `0`  
+Type: `enum imported_enumerator::Mode`  
+Value = `1`  
 
 ---
 ```cpp
-// In Hello
-ONE
+// In Mode
+Write
 ```
 
-08_anon_enumerator: { range: "77:14-77:17" }
-### enumerator `ONE`  
+08_anon_enumerator: { range: "48:12-48:20" }
+### enumerator `Complete`  
 
 ---
-Type: `enum anon_enum::(unnamed enum)`  
-Value = `0`  
+Type: `enum anonymous_enumerator::(unnamed enum)`  
+Value = `8`  
 
 ---
 ```cpp
-// In namespace anon_enum
-ONE
+// In namespace anonymous_enumerator
+Complete = 8
 ```
 
-09_typedef: { range: "85:2-85:5" }
-### type `Foo`  
+09_typedef: { range: "53:0-53:10" }
+### type `Identifier`  
 
 ---
-Type: `int`  
-Typedef  
+Type: `long`  
 
 ---
 ```cpp
-// In namespace typedef_decl
-typedef int Foo
+// In namespace alias_use
+typedef long Identifier
 ```
 
-10_typedef_embedded: { range: "93:2-93:5" }
-### type `Foo`  
+10_typedef_embedded: { range: "60:0-60:6" }
+### type `Packet`  
 
 ---
-Type: `struct typedef_embedded::Bar`  
-Typedef with embedded definition  
+Type: `struct embedded_alias_use::Payload`  
 
 ---
 ```cpp
-// In namespace typedef_embedded
-typedef struct Bar Foo
+// In namespace embedded_alias_use
+typedef struct Payload Packet
 ```
 
-11_namespace: { range: "102:13-102:15" }
-### namespace `ns`  
+11_namespace: { range: "70:4-70:12" }
+### namespace `protocol`  
 
 ---
 ```cpp
-// In namespace ns_decl
-namespace ns {}
+// In namespace namespace_use
+namespace protocol {}
 ```
 
-12_anon_struct_field: { range: "111:4-111:9" }
-### field `hello`  
+12_anon_struct_field: { range: "79:12-79:17" }
+### field `total`  
 
 ---
-Type: `int`  
+Type: `long`  
 
 ---
 ```cpp
 // In (anonymous struct)
-public: int hello
+public: long total
 ```
 
-13_anon_union_field: { range: "122:31-122:34" }
-### field `def`  
+13_anon_union_field: { range: "91:16-91:21" }
+### field `count`  
 
 ---
-Type: `int`  
+Type: `long`  
 
 ---
 ```cpp
-// In outer::(anonymous union)
-public: int def
+// In Result::(anonymous union)
+public: long count
 ```
 
-14_templated_function: { range: "131:20-131:23" }
-### function `foo`  
+14_templated_function: { range: "99:13-99:26" }
+### function `default_value`  
 
 ---
-→ `int`  
-Templated function  
+→ `long`  
 
 ---
 ```cpp
-// In namespace templated_fn
-template <> int foo<int>()
+// In namespace function_template_use
+template <> long default_value<long>()
 ```
 
-15_template_method: { range: "140:23-140:29" }
-### method `method`  
+15_template_method: { range: "106:29-106:33" }
+### method `size`  
 
 ---
-→ `int`  
+→ `long`  
 
 ---
 ```cpp
-// In cls<int>
-public: int method()
+// In Container<int>
+public: long size()
 ```
 
-16_nested_template_var: { range: "146:19-146:22" }
-### variable `foo`  
+16_nested_template_var: { range: "111:32-111:37" }
+### variable `value`  
 
 ---
-Type: `cls<cls<cls<int>>>`  
+Type: `Wrapper<Wrapper<Wrapper<long>>>`  
 
 ---
 ```cpp
-// In namespace nested_templates_var
-cls<cls<cls<int>>> foo
+// In namespace nested_instance_value
+Wrapper<Wrapper<Wrapper<long>>> value
 ```
 
-17_nested_template_class: { range: "152:0-152:3" }
-### struct `cls<nested_templates_class::cls<nested_templates_class::cls<int>>>`  
-
----
-type of nested templates.  
+17_nested_template_class: { range: "116:0-116:7" }
+### struct `Wrapper<nested_instance_type::Wrapper<nested_instance_type::Wrapper<long>>>`  
 
 ---
 ```cpp
-// In namespace nested_templates_class
+// In namespace nested_instance_type
 template <>
-struct cls<nested_templates_class::cls<nested_templates_class::cls<int>>> {}
+struct Wrapper<
+    nested_instance_type::Wrapper<nested_instance_type::Wrapper<long>>> {}
 ```

@@ -2,30 +2,30 @@
 created_at: 2026-07-28
 input_file: expressions.cpp
 ---
-01_char_literal: { range: "4:9-4:12" }
+01_char_literal: { range: "0:17-0:20" }
 ### `expression`  
 
 ---
 Type: `char`  
-Value = `65 (0x41)`
+Value = `58 (0x3a)`
 
-02_string_literal: { range: "7:9-7:24" }
+02_string_literal: { range: "1:16-1:25" }
 ### `string-literal`  
 
 ---
-Type: `const char[14]`  
-Size: 14 bytes
+Type: `const char[8]`  
+Size: 8 bytes
 
-03_sizeof_expr: { range: "11:8-11:14" }
+03_sizeof_expr: { range: "4:10-4:16" }
 ### `expression`  
 
 ---
 Type: `__size_t (aka unsigned long)`  
-Value = `1`
+Value = `8`
 
-04_alignof_expr: { range: "16:8-16:15" }
+04_alignof_expr: { range: "5:10-5:17" }
 ### `expression`  
 
 ---
 Type: `__size_t (aka unsigned long)`  
-Value = `1`
+Value = `8`

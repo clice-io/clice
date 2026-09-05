@@ -1,11 +1,12 @@
-/// # Overload doc sharing — a later overload with no comment reuses the first overload's documentation
+/// # Overload doc sharing
 ///
 /// - status: partial
 /// - issues: clangd#2506
 ///
+/// A later overload does not reuse the first overload's documentation yet
+///
 /// Consecutive overloads often document only the first; a later undocumented
-/// overload should reuse that shared description. clice does not share it
-/// yet — the later overload's card carries no description.
+/// overload has no description on its hover card.
 
 namespace overloads {
 /// Opens a file.

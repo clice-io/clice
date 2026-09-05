@@ -1,12 +1,14 @@
-/// # Macros in the preamble region — definitions in the leading directive run outline on the inspect path, while the server's preamble record does not surface them yet
+/// # Macros in the preamble region
 ///
 /// - status: partial
 /// - snap: skip
+///
+/// Macros in the leading directive run are not outlined in editor requests yet
 
 // snap: skip because the server compiles the leading directive run into
-// the preamble PCH, whose macro record the live parse does not yet see —
-// these definitions outline on the inspect path only. Un-skip once the
-// preamble channel serves them.
+// snap: the preamble PCH, whose macro record the live parse does not yet see —
+// snap: these definitions outline on the inspect path only. Un-skip once the
+// snap: preamble channel serves them.
 
 #define PREAMBLE_LIMIT 8
 #define PREAMBLE_CHECK(cond) (!!(cond))

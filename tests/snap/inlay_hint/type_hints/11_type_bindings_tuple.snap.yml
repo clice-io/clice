@@ -2,5 +2,5 @@
 created_at: 2026-07-31
 input_file: type_hints/11_type_bindings_tuple.cpp
 ---
-- { pos: "40:7", kind: Type, label: ": int" }
-- { pos: "40:10", kind: Type, label: ": int" }
+- { pos: "42:7", kind: Type, label: ": int" }
+- { pos: "42:10", kind: Type, label: ": int" }

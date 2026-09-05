@@ -1,24 +1,28 @@
-// Test cases ported from clangd's HoverTests.cpp (llvmorg-21.1.8), part of the LLVM project,
-// licensed under Apache License v2.0 with LLVM Exceptions.
-
-namespace std { template<typename T> T&& move(T&& t); }
-
-// Trivial getter.
-namespace getter {
-struct X { int Y; float §(01_getter)y() { return Y; } };
+namespace std {
+template <typename T> T&& move(T&& value);
 }
 
-// Trivial setter.
-namespace setter {
-struct X { int Y; void §(02_setter)setY(float v) { Y = v; } };
-}
+namespace accessors {
+struct Gauge {
+    int level;
+    double §(01_getter)getLevel() { return level; }
+};
 
-// Trivial setter returning *this.
-namespace setter_builder {
-struct X { int Y; X& §(03_setter_builder)setY(float v) { Y = v; return *this; } };
-}
+struct Dial {
+    int angle;
+    void §(02_setter)setAngle(double value) { angle = value; }
+};
 
-// Trivial setter using std::move.
-namespace setter_move {
-struct X { int Y; void §(04_setter_move)setY(float v) { Y = std::move(v); } };
+struct Builder {
+    int width;
+    Builder& §(03_setter_builder)setWidth(double value) {
+        width = value;
+        return *this;
+    }
+};
+
+struct Mover {
+    int offset;
+    void §(04_setter_move)setOffset(double value) { offset = std::move(value); }
+};
 }

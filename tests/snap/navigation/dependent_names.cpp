@@ -1,4 +1,4 @@
-/// - verify: server
+// - verify: server
 
 template <typename T>
 int inspect_dependent(T& value) {

@@ -1,6 +1,8 @@
-/// # Same-kind overload sets — a name naming only functions is no conflict
+/// # Same-kind overload sets
 ///
 /// - status: supported
+///
+/// A name naming only functions is no conflict
 
 namespace ops {
 void apply();

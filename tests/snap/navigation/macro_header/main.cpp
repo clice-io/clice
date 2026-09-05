@@ -1,9 +1,9 @@
-/// - verify: server
-///
-/// A macro defined in a header generates symbols at invocations in the
-/// source: argument-spelled names anchor at their spelling and
-/// body-spelled names at the invocation, in both cases inside this file —
-/// the definition living elsewhere no longer discards the rows.
+// - verify: server
+//
+// A macro defined in a header generates symbols at invocations in the
+// source: argument-spelled names anchor at their spelling and
+// body-spelled names at the invocation, in both cases inside this file —
+// the definition living elsewhere no longer discards the rows.
 
 #include "hooks.h"
 

@@ -1,7 +1,9 @@
-/// # Variadic signature — a trailing `...` shows in the parameter detail
+/// # Variadic signature
 ///
 /// - status: supported
 /// - diagnostics: expected
+///
+/// A trailing `...` shows in the parameter detail
 
 // The completion prefix cuts the initializer mid-expression.
 int printf_like(const char* fmt, ...);

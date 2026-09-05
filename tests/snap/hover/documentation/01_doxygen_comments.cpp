@@ -1,25 +1,24 @@
-// Test cases ported from clangd's HoverTests.cpp (llvmorg-21.1.8), part of the LLVM project,
-// licensed under Apache License v2.0 with LLVM Exceptions.
-
-/// # Doxygen `///` comments — extracted from the declaration and rendered on hover
+/// # Doxygen `///` comments
 ///
 /// - status: supported
+///
+/// Declaration documentation appears on hover
 ///
 /// Applies to plain functions, primary templates and their specializations;
 /// a reference resolves to the most specialized declaration's comment.
 
-namespace docs {
-/// Adds two integers.
-int §(01_function)add(int a, int b);
+namespace reference_docs {
+/// Joins two counters.
+long §(01_function)join(long left, long right);
 
-/// A box holding a value.
-template <typename T> struct §(02_primary_def)Box {};
+/// Stores an ordinary value.
+template <typename T> struct §(02_primary_def)Store {};
 
-/// A box of pointers.
-template <typename T> struct §(03_spec_def)Box<T*> {};
+/// Stores an indirect value.
+template <typename T> struct §(03_spec_def)Store<T*> {};
 
-void use() {
-    Box§(04_primary_ref)<int> b;
-    Box§(05_spec_ref)<int*> p;
+void inspect() {
+    Sto§(04_primary_ref)re<long> ordinary;
+    Sto§(05_spec_ref)re<long*> indirect;
 }
 }

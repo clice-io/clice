@@ -1,11 +1,11 @@
-/// # Enclosing function shown with each reference
+/// # Reference enclosing context
 ///
 /// - status: unsupported
 /// - issues: clangd#177
 ///
-/// Each reference is reported as a bare location; the name of the function
-/// that encloses it is not attached, so results carry no context beyond
-/// the file and line.
+/// Each reference is reported as a bare location; the name of the function that
+/// encloses it is not attached, so results carry no context beyond the file and
+/// line
 
 int shared_value = 0;
 

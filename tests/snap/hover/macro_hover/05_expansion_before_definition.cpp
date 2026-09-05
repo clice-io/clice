@@ -1,11 +1,12 @@
-/// # Use before definition — hovering a macro name that appears before its `#define`
+/// # Use before definition
 ///
 /// - status: partial
 /// - issues: clangd#2642
 ///
-/// A macro name used in an `#if` above its own `#define` should still hover
-/// with the macro's definition. clice currently returns no hover at the
-/// pre-definition use; a use after the `#define` works normally.
+/// A macro use before its definition has no hover yet
+///
+/// A macro name used in an `#if` above its own `#define` has no hover, while a
+/// use after the definition works normally.
 
 int anchor = 0;
 

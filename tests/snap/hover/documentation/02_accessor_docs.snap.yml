@@ -2,31 +2,31 @@
 created_at: 2026-08-23
 input_file: documentation/02_accessor_docs.cpp
 ---
-01_getter: { range: "13:8-13:16" }
-### method `getWidth`  
+01_getter: { range: "12:9-12:19" }
+### method `getReading`  
 
 ---
-→ `int`  
-Trivial accessor for `width`.  
+→ `long`  
+Trivial accessor for `reading`.  
 
 ---
 ```cpp
-// In Widget
-public: int getWidth()
+// In Meter
+public: long getReading()
 ```
 
-02_setter: { range: "14:9-14:17" }
-### method `setWidth`  
+02_setter: { range: "13:9-13:19" }
+### method `setReading`  
 
 ---
 → `void`  
 Parameters:  
-- `int w`
+- `long next`
 
-Trivial setter for `width`.  
+Trivial setter for `reading`.  
 
 ---
 ```cpp
-// In Widget
-public: void setWidth(int w)
+// In Meter
+public: void setReading(long next)
 ```

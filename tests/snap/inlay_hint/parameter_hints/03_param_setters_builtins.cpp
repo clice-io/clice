@@ -1,6 +1,8 @@
-/// # Setter and builtin suppression — `setX(x)` and `std::move`/`std::forward` arguments stay bare
+/// # Setter and builtin suppression
 ///
 /// - status: supported
+///
+/// `setX(x)` and `std::move`/`std::forward` arguments stay bare
 
 namespace std {
 

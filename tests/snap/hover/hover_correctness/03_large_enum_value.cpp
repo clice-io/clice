@@ -1,9 +1,10 @@
-/// # Large unsigned enum constant — hovering a `0xFFFF...ULL` enumerator does not crash
+/// # Large unsigned enum constant
 ///
 /// - status: supported
 ///
-/// clangd crashes on this (clangd#2381); clice renders the full unsigned
-/// value without overflow.
+/// Hovering a `0xFFFF...ULL` enumerator does not crash
+///
+/// The card renders the full unsigned value without overflowing or failing.
 
 namespace big_enum {
 

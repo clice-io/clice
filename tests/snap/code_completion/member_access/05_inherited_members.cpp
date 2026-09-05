@@ -1,7 +1,9 @@
-/// # Inherited members — a derived object completes its own members and those of its base
+/// # Inherited members
 ///
 /// - status: supported
 /// - diagnostics: expected
+///
+/// A derived object completes its own members and those of its base
 
 // The member access expression is left dangling at the point.
 struct Base {

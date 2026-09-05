@@ -3,9 +3,7 @@
 /// - status: unsupported
 /// - issues: clangd#1921
 ///
-/// Highlighting `break` or `continue` should also light up the loop or
-/// `switch` it belongs to — and `return` / `throw` the function exits
-/// they mark.
+/// Control-flow keywords have no related document highlights yet
 
 void drain(int outer, int inner) {
     for (int i = 0; i < outer; i += 1) {

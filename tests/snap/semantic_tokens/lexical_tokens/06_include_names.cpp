@@ -1,7 +1,9 @@
-/// # Header names — quoted and angled `#include` filenames, including the split `# include` form
+/// # Header names
 ///
 /// - status: supported
 /// - flags: ["-I${corpus}"]
+///
+/// Quoted and angled include filenames receive string tokens
 
 #include "inc/angled.h"
 #include <angled.h>

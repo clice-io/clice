@@ -1,6 +1,8 @@
-/// # `decltype` spellings — the underlying type shows next to the written `decltype`
+/// # `decltype` spellings
 ///
 /// - status: supported
+///
+/// The underlying type shows next to the written `decltype`
 
 int source();
 

@@ -1,7 +1,9 @@
-/// # Dependent `auto` — deduction inside an uninstantiated template body stays silent
+/// # Dependent `auto`
 ///
 /// - status: partial
 /// - issues: clangd#2275
+///
+/// Deduction inside an uninstantiated template body stays silent
 
 template <typename T>
 void body(T input) {

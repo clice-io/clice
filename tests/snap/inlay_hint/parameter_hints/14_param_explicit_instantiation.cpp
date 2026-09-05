@@ -1,7 +1,10 @@
-/// # Explicit instantiation — an explicit instantiation definition adds no duplicate hints, while its written template arguments hint normally
+/// # Explicit instantiation
 ///
 /// - status: supported
 /// - issues: clangd#1034
+///
+/// An explicit instantiation definition adds no duplicate hints, while its
+/// written template arguments hint normally
 
 template <typename T>
 void apply(T value) {}

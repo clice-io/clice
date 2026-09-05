@@ -3,9 +3,9 @@
 /// - status: partial
 /// - verify: server
 ///
-/// Go-to-type-definition on a variable of an aliased type reaches the
-/// `using` or `typedef` declaration; it does not yet unwrap the alias to
-/// the underlying type's definition.
+/// Go-to-type-definition on a variable of an aliased type reaches the `using`
+/// or `typedef` declaration; it does not yet unwrap the alias to the underlying
+/// type's definition
 
 struct §(underlying)Impl {};
 

@@ -1,14 +1,13 @@
-// Test cases ported from clangd's HoverTests.cpp (llvmorg-21.1.8), part of the LLVM project,
-// licensed under Apache License v2.0 with LLVM Exceptions.
-
-/// # Initializer truncation — huge initializers render truncated, not in full
+/// # Initializer truncation
 ///
 /// - status: partial
 /// - issues: clangd#710
 ///
+/// Huge initializers render truncated, not in full
+///
 /// The rendered definition omits the initializer, but the evaluated
 /// `Value` field still spells out all 256 elements.
 
-#define A(x) x, x, x, x
-#define B(x) A(A(A(A(x))))
-int a§(big_initializer)rr[] = {B(0)};
+#define DUPLICATE_FOUR(x) x, x, x, x
+#define DUPLICATE_256(x) DUPLICATE_FOUR(DUPLICATE_FOUR(DUPLICATE_FOUR(DUPLICATE_FOUR(x))))
+int val§(big_initializer)ues[] = {DUPLICATE_256(3)};

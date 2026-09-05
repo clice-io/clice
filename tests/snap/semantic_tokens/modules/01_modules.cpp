@@ -1,6 +1,9 @@
-/// # Module declarations — the contextual `module` keyword, dotted module names and the private fragment
+/// # Module declarations
 ///
 /// - status: supported
+///
+/// Module declarations tokenize contextual keywords, dotted names and private
+/// fragments
 
 module;
 

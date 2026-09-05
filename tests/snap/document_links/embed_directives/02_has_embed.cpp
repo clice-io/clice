@@ -1,6 +1,8 @@
-/// # `__has_embed` — the checked path links to the probed resource
+/// # `__has_embed`
 ///
 /// - status: supported
+///
+/// The checked path links to the probed resource
 
 #if __has_embed("data.bin")
 const char first_byte[] = {

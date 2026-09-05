@@ -1,6 +1,0 @@
----
-created_at: 2026-07-31
-input_file: declarations_references/23_enum_base.cpp
----
-- { loc: "6:19", text: "Byte", kind: type }
-- { loc: "8:21", text: "A", kind: enumMember, modifiers: [readonly] }

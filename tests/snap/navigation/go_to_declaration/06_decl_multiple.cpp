@@ -1,7 +1,9 @@
-/// # Multiple declarations — every declaration site
+/// # Multiple declarations
 ///
 /// - status: supported
 /// - verify: server
+///
+/// A use navigates to every declaration site
 ///
 /// When an entity is declared in several places, go-to-declaration on a
 /// use lists every declaration site, not only the nearest one.

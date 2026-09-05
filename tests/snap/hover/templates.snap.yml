@@ -2,386 +2,387 @@
 created_at: 2026-07-28
 input_file: templates.cpp
 ---
-01_var_of_template_type: { range: "6:21-6:24" }
-### variable `foo`  
+01_var_of_template_type: { range: "4:25-4:31" }
+### variable `bundle`  
 
 ---
-Type: `Foo<int, char, bool>`  
-
----
-```cpp
-// In namespace var_tmpl_type
-Foo<int, char, bool> foo = Foo<int, char, bool>(5)
-```
-
-02_implicit_instantiation: { range: "12:0-12:6" }
-### class `vector<int>`  
+Type: `Bundle<long, char, bool>`  
 
 ---
 ```cpp
-// In namespace implicit_instantiation
-template <> class vector<int> {}
+// In namespace object_instance
+Bundle<long, char, bool> bundle{7}
 ```
 
-03_class_template: { range: "23:0-23:3" }
-### class `Foo`  
+02_implicit_instantiation: { range: "9:0-9:8" }
+### class `Sequence<long>`  
 
 ---
 ```cpp
-// In namespace class_template
-template <template <typename, bool...> class C, typename = char, int = 0,
-          bool Q = false, class... Ts>
-class Foo final {}
+// In namespace implicit_instance
+template <> class Sequence<long> {}
 ```
 
-04_function_template: { range: "36:2-36:5" }
-### function `foo`  
+03_class_template: { range: "18:0-18:8" }
+### class `Registry`  
+
+---
+```cpp
+// In namespace class_template_declaration
+template <template <typename, bool...> class Strategy, typename Value = char,
+          long Size = 4, bool Enabled = true, typename... Rest>
+class Registry final {}
+```
+
+04_function_template: { range: "27:4-27:17" }
+### function `register_type`  
 
 ---
 → `void`  
 
 ---
 ```cpp
-// In namespace function_template
-template <> void foo<function_template::Foo, char, 0, false, <>>()
+// In namespace function_template_call
+template <>
+void register_type<function_template_call::Policy, char, 4L, true, <>>()
 ```
 
-05_function_decl: { range: "46:2-46:5" }
-### function `foo`  
+05_function_decl: { range: "35:4-35:12" }
+### function `evaluate`  
 
 ---
-→ `Foo<bool, true, false>`  
+→ `Policy<long, true, false>`  
 Parameters:  
-- `int`
-- `bool T = false`
+- `long`
+- `bool enabled = true`
 
 ---
 ```cpp
-// In namespace function_decl
-Foo<bool, true, false> foo(int, bool T = false)
+// In namespace function_declaration_call
+Policy<long, true, false> evaluate(long, bool enabled = true)
 ```
 
-06_partial_specialization: { range: "53:28-53:29" }
-### class `X<T *>`  
+06_partial_specialization: { range: "41:28-41:37" }
+### class `Container<T *>`  
 
 ---
 ```cpp
-// In namespace partial_spec
-template <typename T> class X<T *> {}
+// In namespace partial_specialization_declaration
+template <typename T> class Container<T *> {}
 ```
 
-07_partial_spec_constructor: { range: "59:35-59:36" }
-### method `X`  
+07_partial_spec_constructor: { range: "47:4-47:13" }
+### method `Container`  
 
 ---
 ```cpp
-// In X<T *>
-public: X()
+// In Container<T *>
+public: Container()
 ```
 
-08_destructor: { range: "63:10-63:11" }
-### method `~X`  
+08_destructor: { range: "53:4-53:5" }
+### method `~Resource`  
 
 ---
 ```cpp
-// In X
-private: ~X()
+// In Resource
+public: ~Resource()
 ```
 
-09_conversion_operator: { range: "67:10-67:18" }
-### method `operator int`  
+09_conversion_operator: { range: "57:4-57:12" }
+### method `operator long`  
 
 ---
 ```cpp
-// In X
-private: operator int()
+// In Conversion
+public: operator long()
 ```
 
-10_conversion_target: { range: "71:19-71:20" }
-### class `X`  
+10_conversion_target: { range: "61:13-61:27" }
+### class `SelfConversion`  
 
 ---
 ```cpp
-// In namespace conversion_target
-class X {}
+// In namespace special_members
+class SelfConversion {}
 ```
 
-11_primary_template_doc: { range: "82:2-82:5" }
-### class `Foo<int *>`  
+11_primary_template_doc: { range: "70:0-70:7" }
+### class `Channel<long *>`  
 
 ---
-comment from specialization  
+Pointer channel.  
 
 ---
 ```cpp
-// In namespace primary_fallback
-template <> class Foo<int *>
+// In namespace selected_specialization_docs
+template <> class Channel<long *>
 ```
 
-12_variable_template: { range: "90:26-90:29" }
-### variable `arr`  
+12_variable_template: { range: "75:32-75:37" }
+### variable `items`  
 
 ---
-Type: `m_int[Size] (aka int[Size])`  
+Type: `count_type[Size] (aka long[Size])`  
 
 ---
 ```cpp
-// In namespace var_template
-template <int Size> m_int arr[Size]
+// In namespace variable_template_declaration
+template <long Size> count_type items[Size]
 ```
 
-13_variable_template_spec: { range: "99:18-99:21" }
-### variable `arr<4>`  
+13_variable_template_spec: { range: "81:23-81:28" }
+### variable `items<6>`  
 
 ---
-Type: `m_int[4] (aka int[4])`  
+Type: `count_type[6] (aka long[6])`  
 
 ---
 ```cpp
-// In namespace var_template_spec
-m_int arr[4]
+// In namespace variable_template_specialization
+count_type items[6]
 ```
 
-14_canonical_type: { range: "110:23-110:24" }
-### variable `a`  
+14_canonical_type: { range: "88:21-88:26" }
+### variable `value`  
 
 ---
-Type: `TestHover<int>::Type (aka int)`  
+Type: `Identity<long>::type (aka long)`  
 
 ---
 ```cpp
-// In code
-TestHover<int>::Type a
+// In namespace canonical_member_type
+Identity<long>::type value
 ```
 
-15_function_template_type: { range: "117:5-117:8" }
-### function `foo`  
+15_function_template_type: { range: "92:27-92:34" }
+### function `consume`  
 
 ---
 → `void`  
 Parameters:  
-- `T arg`
+- `T value`
 
 ---
 ```cpp
-// In namespace canonical_tmpl_type
-template <typename T> void foo(T arg)
+// In namespace canonical_function_parameter
+template <typename T> void consume(T value)
 ```
 
-16_alias_template: { range: "123:6-123:11" }
-### type `alias`  
+16_alias_template: { range: "96:28-96:36" }
+### type `identity`  
 
 ---
 Type: `T`  
 
 ---
 ```cpp
-// In namespace alias_template
-template <typename T> using alias = T
+// In namespace alias_template_declaration
+template <typename T> using identity = T
 ```
 
-17_alias_template_chain: { range: "132:6-132:8" }
-### type `AA`  
+17_alias_template_chain: { range: "101:28-101:42" }
+### type `const_identity`  
 
 ---
-Type: `A<T> (aka T)`  
+Type: `const identity<T> (aka const T)`  
 
 ---
 ```cpp
-// In namespace alias_chain
-template <typename T> using AA = A<T>
+// In namespace alias_template_chain
+template <typename T> using const_identity = const identity<T>
 ```
 
-18_constant_array: { range: "139:6-139:9" }
-### variable `arr`  
+18_constant_array: { range: "106:13-106:18" }
+### variable `fixed`  
 
 ---
-Type: `m_int[10] (aka int[10])`  
+Type: `element_type[12] (aka long[12])`  
 
 ---
 ```cpp
-// In namespace constant_array
-m_int arr[10]
+// In namespace array_types
+element_type fixed[12]
 ```
 
-19_incomplete_array: { range: "146:13-146:16" }
-### variable `arr`  
+19_incomplete_array: { range: "107:20-107:24" }
+### variable `open`  
 
 ---
-Type: `m_int[] (aka int[])`  
+Type: `element_type[] (aka long[])`  
 
 ---
 ```cpp
-// In namespace incomplete_array
-extern m_int arr[]
+// In namespace array_types
+extern element_type open[]
 ```
 
-20_dependent_size_array: { range: "155:8-155:11" }
-### field `arr`  
+20_dependent_size_array: { range: "110:17-110:21" }
+### field `data`  
 
 ---
-Type: `m_int[Size] (aka int[Size])`  
+Type: `element_type[Size] (aka long[Size])`  
 
 ---
 ```cpp
-// In Test<Size>
-public: m_int arr[Size]
+// In Buffer<Size>
+public: element_type data[Size]
 ```
 
-21_dependent_type: { range: "167:20-167:24" }
-### type `type`  
+21_dependent_type: { range: "120:24-120:34" }
+### type `value_type`  
 
 ---
 Type: `T`  
 
 ---
 ```cpp
-// In Base<T>
-public: using type = T
+// In Source<T>
+public: using value_type = T
 ```
 
-22_dependent_value: { range: "168:36-168:41" }
-### variable `value`  
+22_dependent_value: { range: "121:44-121:49" }
+### variable `count`  
 
 ---
-Type: `const int`  
-Value = `1`  
-
----
-```cpp
-// In Base<T>
-public: static constexpr int value = 1
-```
-
-23_using_typename: { range: "169:26-169:30" }
-### type `type`  
-
----
-Type: `T`  
-
----
-```cpp
-// In Base<T>
-public: using type = T
-```
-
-24_using_value: { range: "170:17-170:22" }
-### variable `value`  
-
----
-Type: `const int`  
-Value = `1`  
-
----
-```cpp
-// In Base<T>
-public: static constexpr int value = 1
-```
-
-25_template_template_arg: { range: "178:6-178:7" }
-### `X`  
-
----
-```cpp
-// In namespace template_template_arg
-template <typename> struct X {}
-```
-
-26_ctad: { range: "184:0-184:3" }
-### struct `Box`  
-
----
-```cpp
-// In namespace ctad
-template <typename T> struct Box {}
-```
-
-27_unresolved_member: { range: "193:43-193:44" }
-### method `f`  
-
----
-→ `void`  
-Parameters:  
-- `int`
-
----
-```cpp
-// In A
-public: void f(int)
-```
-
-28_sizeof_pack: { range: "198:52-198:54" }
-### type `Ts`  
-
----
-Type: `class`  
-
----
-```cpp
-// In namespace sizeof_pack
-public: class... Ts
-```
-
-29_injected_class_name: { range: "204:2-204:6" }
-### struct `Node`  
-
----
-```cpp
-// In namespace injected_class_name
-template <class T> struct Node {}
-```
-
-30_dependent_method: { range: "215:19-215:25" }
-### method `method`  
-
----
-→ `void`  
-
----
-```cpp
-// In Base<T>
-public: void method()
-```
-
-31_dependent_field: { range: "216:25-216:30" }
-### field `field`  
-
----
-Type: `int`  
-
----
-```cpp
-// In Base<T>
-public: int field
-```
-
-32_fixed_base: { range: "224:45-224:49" }
-### type `type`  
-
----
-Type: `int`  
-
----
-```cpp
-// In Fixed
-public: using type = int
-```
-
-33_partial_order: { range: "232:47-232:52" }
-### variable `value`  
-
----
-Type: `const int`  
+Type: `const long`  
 Value = `2`  
 
 ---
 ```cpp
-// In X<A *, A *>
-public: static constexpr int value = 2
+// In Source<T>
+public: static constexpr long count = 2
 ```
 
-34_arrow_chain: { range: "239:41-239:47" }
-### method `method`  
+23_using_typename: { range: "122:30-122:40" }
+### type `value_type`  
+
+---
+Type: `T`  
+
+---
+```cpp
+// In Source<T>
+public: using value_type = T
+```
+
+24_using_value: { range: "123:21-123:26" }
+### variable `count`  
+
+---
+Type: `const long`  
+Value = `2`  
+
+---
+```cpp
+// In Source<T>
+public: static constexpr long count = 2
+```
+
+25_template_template_arg: { range: "130:6-130:15" }
+### `Allocator`  
+
+---
+```cpp
+// In namespace template_argument
+template <typename T> struct Allocator {}
+```
+
+26_ctad: { range: "137:0-137:7" }
+### struct `Wrapper`  
+
+---
+```cpp
+// In namespace deduction_placeholder
+template <typename T> struct Wrapper {}
+```
+
+27_unresolved_member: { range: "146:11-146:16" }
+### method `write`  
+
+---
+→ `void`  
+Parameters:  
+- `long`
+
+---
+```cpp
+// In Writer
+public: void write(long)
+```
+
+28_sizeof_pack: { range: "151:62-151:67" }
+### type `Types`  
+
+---
+Type: `typename`  
+
+---
+```cpp
+// In namespace pack_size
+public: typename... Types
+```
+
+29_injected_class_name: { range: "156:4-156:8" }
+### struct `Link`  
+
+---
+```cpp
+// In namespace injected_name
+template <typename T> struct Link {}
+```
+
+30_dependent_method: { range: "167:14-167:19" }
+### method `reset`  
+
+---
+→ `void`  
+
+---
+```cpp
+// In Base<T>
+public: void reset()
+```
+
+31_dependent_field: { range: "170:21-170:26" }
+### field `value`  
+
+---
+Type: `long`  
+
+---
+```cpp
+// In Base<T>
+public: long value
+```
+
+32_fixed_base: { range: "180:41-180:51" }
+### type `index_type`  
+
+---
+Type: `long`  
+
+---
+```cpp
+// In Common
+public: using index_type = long
+```
+
+33_partial_order: { range: "194:25-194:30" }
+### variable `value`  
+
+---
+Type: `const long`  
+Value = `2`  
+
+---
+```cpp
+// In Rank<Type *, Type *>
+public: static constexpr long value = 2
+```
+
+34_arrow_chain: { range: "206:13-206:18" }
+### method `visit`  
 
 ---
 → `void`  
@@ -389,39 +390,39 @@ public: static constexpr int value = 2
 ---
 ```cpp
 // In Node<T>
-public: void method()
+public: void visit()
 ```
 
-35_unresolved_using_use: { range: "247:2-247:6" }
-### `type`  
+35_unresolved_using_use: { range: "216:4-216:13" }
+### `item_type`  
 
 ---
 ```cpp
-// In D2<T>
-public: using typename B2<T>::type
+// In Destination<T>
+public: using typename Source<T>::item_type
 ```
 
-36_variable_template_doc: { range: "259:23-259:27" }
-### variable `slot<int *>`  
+36_variable_template_doc: { range: "225:29-225:34" }
+### variable `cache<long *>`  
 
 ---
-Type: `int`  
-comment from specialization  
+Type: `long`  
+Pointer cache slot.  
 
 ---
 ```cpp
-// In namespace var_primary_fallback
-int slot
+// In namespace selected_variable_docs
+long cache
 ```
 
-37_dependent_member_alias: { range: "267:8-267:15" }
-### type `element`  
+37_dependent_member_alias: { range: "230:10-230:19" }
+### type `reference`  
 
 ---
 Type: `const T &`  
 
 ---
 ```cpp
-// In Wrap<T>
-public: using element = const T &
+// In View<T>
+public: using reference = const T &
 ```

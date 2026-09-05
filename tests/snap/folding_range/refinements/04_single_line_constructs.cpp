@@ -1,6 +1,8 @@
-/// # Single-line constructs stay unfolded — a fold that hides nothing is noise
+/// # Single-line constructs stay unfolded
 ///
 /// - status: supported
+///
+/// A fold that hides nothing is noise
 
 namespace tiny { }
 

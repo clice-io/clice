@@ -1,7 +1,9 @@
-/// # Macros at call sites — arguments spelled as macros hint; calls generated inside macro bodies do not
+/// # Macros at call sites
 ///
 /// - status: supported
 /// - issues: clangd#2620
+///
+/// Arguments spelled as macros hint; calls generated inside macro bodies do not
 
 void report(double value);
 void plot(double x, double y);

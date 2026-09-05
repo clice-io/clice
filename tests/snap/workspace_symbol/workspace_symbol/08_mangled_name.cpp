@@ -2,9 +2,7 @@
 ///
 /// - status: unsupported
 ///
-/// Pasting a linker symbol such as `_Z7processi` should resolve to the
-/// function it mangles — useful when chasing linker errors and stack
-/// traces.
+/// Mangled linker names do not resolve to their source functions yet
 
 // query: _Z7processi
 

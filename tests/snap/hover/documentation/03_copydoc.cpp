@@ -1,11 +1,12 @@
-/// # `@copydoc` tags — copy another symbol's documentation onto this one
+/// # `@copydoc` tags
 ///
 /// - status: partial
 /// - issues: clangd#1320
 ///
-/// A `@copydoc target` tag should copy `target`'s documentation into this
-/// symbol's hover card. clice does not resolve the tag yet — the card shows
-/// the literal `@copydoc base_func()` text.
+/// Copied documentation is not resolved onto the receiving symbol yet
+///
+/// A `@copydoc target` tag remains literal instead of copying `target`'s
+/// documentation into this symbol's hover card.
 
 namespace copydoc {
 /// Detailed documentation.

@@ -1,8 +1,10 @@
-/// # Nested macro in arguments — a macro named inside another invocation's arguments
+/// # Nested macro in arguments
 ///
 /// - status: partial
 ///
-/// The recorded expansion starts at the outer invocation, so hovering an
+/// A nested macro argument shows its definition without an expansion preview
+///
+/// The expansion preview starts at the outer invocation, so hovering an
 /// inner macro named inside the arguments shows only its definition, not an
 /// expansion preview.
 

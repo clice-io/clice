@@ -1,7 +1,9 @@
-/// # Angled include paths — the same search-path candidates in the angled form
+/// # Angled include paths
 ///
 /// - status: supported
 /// - verify: server
 /// - diagnostics: expected
+///
+/// Angled includes offer the same search-path candidates
 
 #include <snap§(pos)>

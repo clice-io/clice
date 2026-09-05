@@ -1,6 +1,8 @@
-/// # Aggregates only — constructor calls, copies and idiomatic zero-init produce no designators
+/// # Aggregates only
 ///
 /// - status: supported
+///
+/// Constructor calls, copies and idiomatic zero-init produce no designators
 
 struct Constructible {
     Constructible(int amount);

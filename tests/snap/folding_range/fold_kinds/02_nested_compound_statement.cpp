@@ -1,6 +1,8 @@
-/// # Nested compound-statement folding — `if`/`for`/`while` bodies inside functions
+/// # Nested compound-statement folding
 ///
 /// - status: supported
+///
+/// Nested control-flow bodies form folding ranges
 
 void process(int count) {
     if (count > 0) {

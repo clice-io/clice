@@ -1,6 +1,8 @@
-/// # Symbol kind — the card names what the symbol is: struct, enum, function, field, …
+/// # Symbol kind
 ///
 /// - status: supported
+///
+/// The card names what the symbol is: struct, enum, function, field, …
 
 namespace ki§(namespace)nds {
 

@@ -1,4 +1,4 @@
-/// - verify: server
+// - verify: server
 
 int §(global_def)value = 1;
 

@@ -1,12 +1,13 @@
-/// # Inherited constructor docs — `using Base::Base;` surfaces the base constructor's documentation
+/// # Inherited constructor docs
 ///
 /// - status: unsupported
 /// - issues: clangd#1936
 ///
-/// A constructor pulled in with `using Base::Base;` should carry the base
-/// constructor's documentation on hover. There is no hover surface for it:
-/// the name in the using-declaration resolves to the class, not the
-/// inherited constructor.
+/// Inherited constructors have no documentation hover yet
+///
+/// The name in a `using Base::Base;` declaration resolves to the class rather
+/// than an inherited constructor, so the base constructor's documentation has
+/// no hover surface.
 
 namespace inherited_ctor {
 struct Base {

@@ -1,7 +1,9 @@
-/// # Field and index designators — positional aggregate initialization shows `.field=` and `[index]=`
+/// # Field and index designators
 ///
 /// - status: supported
 /// - issues: clangd#2303
+///
+/// Positional aggregate initialization shows `.field=` and `[index]=`
 
 struct Point {
     int x;

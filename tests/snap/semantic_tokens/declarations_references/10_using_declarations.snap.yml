@@ -1,8 +1,0 @@
----
-created_at: 2026-07-31
-input_file: declarations_references/10_using_declarations.cpp
----
-- { loc: "12:13", text: "helper", kind: function }
-- { loc: "13:13", text: "Gadget", kind: struct }
-- { loc: "15:11", text: "helper", kind: function }
-- { loc: "16:0", text: "Gadget", kind: struct }

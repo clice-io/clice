@@ -1,4 +1,4 @@
-/// - verify: server
+// - verify: server
 
 struct §(base_def)Base {
     int §(method_def)measure() const {

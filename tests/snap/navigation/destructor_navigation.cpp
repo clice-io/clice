@@ -1,4 +1,4 @@
-/// - verify: server
+// - verify: server
 
 struct Resource {
     §(dtor_decl)~Resource();

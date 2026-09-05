@@ -1,6 +1,8 @@
-/// # Scope suppression — namespace qualifiers drop from hints; class scopes stay
+/// # Scope suppression
 ///
 /// - status: supported
+///
+/// Namespace qualifiers drop from hints; class scopes stay
 
 namespace outer {
 namespace inner {

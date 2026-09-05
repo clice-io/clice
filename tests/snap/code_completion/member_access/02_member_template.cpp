@@ -1,7 +1,9 @@
-/// # Members of an instantiated class template — the destructor label keeps the written template arguments
+/// # Instantiated class template members
 ///
 /// - status: supported
 /// - diagnostics: expected
+///
+/// The destructor label keeps the written template arguments
 
 // The member access expression is left dangling at the point.
 template <typename T>

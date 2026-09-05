@@ -2,88 +2,88 @@
 created_at: 2026-07-28
 input_file: misc.cpp
 ---
-01_forward_struct_value: { range: "20:16-20:22" }
-### struct `FwdFoo`  
+01_forward_struct_value: { range: "15:27-15:37" }
+### struct `Incomplete`  
 
 ---
-Value = `&fwd_bar`  
-
----
-```cpp
-struct FwdFoo
-```
-
-02_typedef_chain: { range: "14:8-14:11" }
-### type `foo`  
-
----
-Type: `int`  
+Value = `&storage`  
 
 ---
 ```cpp
-// In foo
-using foo = type<true, int, double>
+struct Incomplete
 ```
 
-03_big_initializer: { range: "24:4-24:7" }
-### variable `arr`  
+02_typedef_chain: { range: "10:6-10:13" }
+### type `integer`  
+
+---
+Type: `long`  
+
+---
+```cpp
+// In namespace alias_selection
+using integer = selected<true, long, double>
+```
+
+03_big_initializer: { range: "19:4-19:8" }
+### variable `huge`  
 
 ---
 Type: `int[256]`  
-Value = `{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ...}`  
+Value = `{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, ...}`  
 
 ---
 ```cpp
-int arr[]
+int huge[]
 ```
 
-04_goto_label: { range: "29:14-29:18" }
-### label `done`  
+04_goto_label: { range: "24:13-24:19" }
+### label `finish`  
 
 ---
 ```cpp
-// In f
-done:
+// In adjust
+finish:
 ```
 
-05_label_def: { range: "31:0-31:4" }
-### label `done`  
+05_label_def: { range: "27:0-27:6" }
+### label `finish`  
 
 ---
 ```cpp
-// In f
-done:
+// In adjust
+finish:
 ```
 
-06_operator_new: { range: "42:10-42:13" }
+06_operator_new: { range: "37:22-37:25" }
 ### `operator new`  
 
 ---
 → `void *`  
 Parameters:  
-- `unsigned long n`
+- `unsigned long count`
 
 ---
 ```cpp
-// In Pool
-public: static void *operator new(unsigned long n)
+// In ArenaObject
+public: static void *operator new(unsigned long count)
 ```
 
-07_operator_delete: { range: "43:18-43:24" }
+07_operator_delete: { range: "39:4-39:10" }
 ### `operator delete`  
 
 ---
 → `void`  
 Parameters:  
-- `void * p`
+- `void * memory`
 
 ---
 ```cpp
-// In Pool
-public: static void operator delete(void *p) noexcept
+// In ArenaObject
+public: static void operator delete(void *memory) noexcept
 ```
 
-08_global_new: { range: "52:12-52:15" }
+08_global_new: { range: "48:19-48:22" }
 ### `operator new`  
 
 ---
@@ -96,43 +96,43 @@ Parameters:
 void *operator new(__size_t)
 ```
 
-09_ctor_paren: { range: "53:5-53:10" }
-### method `Pool`  
+09_ctor_paren: { range: "49:7-49:13" }
+### method `Record`  
 
 ---
 Parameters:  
-- `int`
+- `long`
 
 ---
 ```cpp
-// In Pool
-public: Pool(int)
+// In Record
+public: Record(long)
 ```
 
-10_op_call: { range: "62:20-62:21" }
+10_op_call: { range: "58:11-58:16" }
 ### `operator()`  
 
 ---
 → `int`  
 Parameters:  
-- `int`
+- `int row`
 
 ---
 ```cpp
-// In F
-public: int operator()(int)
+// In Table
+public: int operator()(int row)
 ```
 
-11_op_subscript: { range: "62:27-62:28" }
+11_op_subscript: { range: "58:22-58:27" }
 ### `operator[]`  
 
 ---
 → `int`  
 Parameters:  
-- `int`
+- `int row`
 
 ---
 ```cpp
-// In F
-public: int operator[](int)
+// In Table
+public: int operator[](int row)
 ```

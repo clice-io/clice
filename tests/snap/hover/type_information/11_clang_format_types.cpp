@@ -1,10 +1,11 @@
-/// # Type formatting — clang-format applied to rendered types
+/// # Type formatting
 ///
 /// - status: unsupported
 /// - issues: clangd#2156
 ///
-/// Long or nested types are printed by the compiler's default type printer;
-/// they are not re-wrapped or aligned through clang-format.
+/// Long and nested rendered types are not rewrapped or aligned
+///
+/// Long or nested types are not rewrapped or aligned.
 
 namespace clang_format_types {
 

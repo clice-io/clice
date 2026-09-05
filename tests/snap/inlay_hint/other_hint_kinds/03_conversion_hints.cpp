@@ -1,7 +1,9 @@
-/// # Implicit conversion hints — surface the conversions a call site performs
+/// # Implicit conversion hints
 ///
 /// - status: unsupported
 /// - issues: clangd#2254
+///
+/// Implicit conversions at call sites have no hints yet
 
 void process(double val);
 

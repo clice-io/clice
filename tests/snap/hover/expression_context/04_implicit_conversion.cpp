@@ -1,6 +1,8 @@
-/// # Implicit conversions — argument converted to the parameter type
+/// # Implicit conversions
 ///
 /// - status: supported
+///
+/// Argument hover reports the target type of an implicit conversion
 ///
 /// When an argument reaches a parameter through an implicit conversion, the
 /// card notes the target type, for both built-in and user-defined

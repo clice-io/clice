@@ -1,7 +1,9 @@
-/// # Function pointers and call operators — indirect calls still name their parameters
+/// # Function pointers and call operators
 ///
 /// - status: supported
 /// - issues: clangd#1734, clangd#1742
+///
+/// Indirect calls still name their parameters
 
 struct Callback {
     void operator()(int status, int detail) const;

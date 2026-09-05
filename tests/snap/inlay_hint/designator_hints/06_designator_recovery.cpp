@@ -1,7 +1,9 @@
-/// # Broken initializers — designators survive next to initializers that fail to compile
+/// # Broken initializers
 ///
 /// - status: supported
 /// - diagnostics: expected
+///
+/// Designators survive next to initializers that fail to compile
 
 // The first initializer deliberately fails to convert.
 struct Empty {};

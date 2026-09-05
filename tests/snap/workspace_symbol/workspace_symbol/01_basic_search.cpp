@@ -1,7 +1,9 @@
-/// # Basic workspace-wide symbol search — case-insensitive substring matching
+/// # Basic workspace-wide symbol search
 ///
 /// - status: supported
 /// - verify: server
+///
+/// Workspace symbol search matches names by case-insensitive substring
 ///
 /// A query matches any symbol whose name contains it, ignoring case:
 /// functions, types, enumerators and macros all participate, and a query

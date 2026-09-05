@@ -1,6 +1,8 @@
-/// # Declaration vs definition — the modifier distinguishes the two
+/// # Declaration vs definition
 ///
 /// - status: supported
+///
+/// Declaration and definition modifiers distinguish the two sites
 
 int §measure(int value);
 

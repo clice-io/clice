@@ -1,6 +1,8 @@
-/// # New expression — a new-expression's constructor arguments drive signature help
+/// # New expression
 ///
 /// - status: supported
+///
+/// A new-expression's constructor arguments drive signature help
 
 struct Node {
     Node(int value, Node* next);

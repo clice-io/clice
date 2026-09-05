@@ -1,6 +1,8 @@
-/// # Block folding — functions, classes, structs, unions, enums, namespaces, lambdas
+/// # Block folding
 ///
 /// - status: supported
+///
+/// Functions, types, namespaces and lambdas form folding ranges
 
 namespace geometry {
 

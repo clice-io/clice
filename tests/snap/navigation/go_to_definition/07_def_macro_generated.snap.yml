@@ -4,18 +4,18 @@ input_file: go_to_definition/07_def_macro_generated.cpp
 ---
 flag_site:
   definition:
-    - { file: "${WS}/go_to_definition/07_def_macro_generated.cpp", range: "10:8-10:17" }
+    - { file: "${WS}/go_to_definition/07_def_macro_generated.cpp", range: "9:8-9:17" }
   declaration:
-    - { file: "${WS}/go_to_definition/07_def_macro_generated.cpp", range: "10:8-10:17" }
+    - { file: "${WS}/go_to_definition/07_def_macro_generated.cpp", range: "9:8-9:17" }
   references:
-    - { file: "${WS}/go_to_definition/07_def_macro_generated.cpp", range: "10:8-10:17" }
-    - { file: "${WS}/go_to_definition/07_def_macro_generated.cpp", range: "12:0-12:9" }
+    - { file: "${WS}/go_to_definition/07_def_macro_generated.cpp", range: "9:8-9:17" }
+    - { file: "${WS}/go_to_definition/07_def_macro_generated.cpp", range: "11:0-11:9" }
 
 flag_use:
   definition:
-    - { file: "${WS}/go_to_definition/07_def_macro_generated.cpp", range: "12:0-12:9" }
+    - { file: "${WS}/go_to_definition/07_def_macro_generated.cpp", range: "11:0-11:9" }
   declaration:
-    - { file: "${WS}/go_to_definition/07_def_macro_generated.cpp", range: "12:0-12:9" }
+    - { file: "${WS}/go_to_definition/07_def_macro_generated.cpp", range: "11:0-11:9" }
   references:
-    - { file: "${WS}/go_to_definition/07_def_macro_generated.cpp", range: "12:0-12:9" }
-    - { file: "${WS}/go_to_definition/07_def_macro_generated.cpp", range: "15:11-15:23" }
+    - { file: "${WS}/go_to_definition/07_def_macro_generated.cpp", range: "11:0-11:9" }
+    - { file: "${WS}/go_to_definition/07_def_macro_generated.cpp", range: "14:11-14:23" }

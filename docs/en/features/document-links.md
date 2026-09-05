@@ -11,94 +11,75 @@ Clickable links from source directives to their resolved target files.
 
 <!-- BEGIN GENERATED ITEMS: include_directives -->
 
-| Capability                               | Status    | Issues                                                      |
-| ---------------------------------------- | --------- | ----------------------------------------------------------- |
-| Quoted includes                          | Supported |                                                             |
-| Angle-bracket includes                   | Supported |                                                             |
-| Macro-expanded paths                     | Supported | [clangd#2375](https://github.com/clangd/clangd/issues/2375) |
-| `#include_next` and `__has_include_next` | Partial   |                                                             |
-| `__has_include`                          | Supported |                                                             |
+<!-- BEGIN CAPABILITY: supported -->
 
-### Quoted includes
+**Quoted includes**
 
 `#include "..."` links to the resolved header file
 
 Every include in the file is linked, not just the preamble run at
 the top.
 
-```cpp
-#include "header_a.h"
-#include "header_b.h"
-int x = 1;
-#include "header_c.h"
+```snap
+tests/snap/document_links/include_directives/01_quoted_include.cpp
 ```
 
-### Angle-bracket includes
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Angle-bracket includes**
 
 `#include <...>` links to the header found on the search path
 
-```cpp
-#include <header_a.h>
+```snap
+tests/snap/document_links/include_directives/02_angle_include.cpp
 ```
 
-### Macro-expanded paths
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#2375 -->
+
+**Macro-expanded paths**
 
 `#include MACRO` links the directive argument to the expanded target
 
-```cpp
-#define HEADER "header_b.h"
-#include HEADER
+```snap
+tests/snap/document_links/include_directives/03_macro_include.cpp
 ```
 
-### `#include_next` and `__has_include_next`
+<!-- END CAPABILITY -->
 
-Links continue down the search path
+<!-- BEGIN CAPABILITY: partial -->
+
+**`#include_next` and `__has_include_next`**
+
+Standalone `#include_next` links back to the first matching header
 
 `first/wrap.h` shadows `second/wrap.h` on the search path; its
 `#include_next` (guarded by `__has_include_next`) includes the second
 copy. Next-in-path resolution only exists when the header is compiled
 in an including TU's context — opened standalone it is compiled as its
-own TU, where clang deliberately treats `#include_next` as a plain
-include, so today both links land back on the first copy (as the
-snapshot pins).
+own TU, where `#include_next` behaves as a plain include and both links
+land back on the first copy.
 
-`main.cpp`:
-
-```cpp
-#include <wrap.h>
-
-int use_wrap = WRAP_FIRST + WRAP_SECOND;
+```snap
+tests/snap/document_links/include_directives/04_include_next/main.cpp
 ```
 
-`first/wrap.h`:
+<!-- END CAPABILITY -->
 
-```cpp
-#pragma once
+<!-- BEGIN CAPABILITY: supported -->
 
-#define WRAP_FIRST 1
-
-#if __has_include_next(<wrap.h>)
-#include_next <wrap.h>
-#endif
-```
-
-`second/wrap.h`:
-
-```cpp
-#pragma once
-
-#define WRAP_SECOND 2
-```
-
-### `__has_include`
+**`__has_include`**
 
 The checked path links to the file it probes
 
-```cpp
-#if __has_include("header_c.h")
-#include "header_c.h"
-#endif
+```snap
+tests/snap/document_links/include_directives/05_has_include.cpp
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -106,32 +87,29 @@ The checked path links to the file it probes
 
 <!-- BEGIN GENERATED ITEMS: embed_directives -->
 
-| Capability    | Status    | Issues |
-| ------------- | --------- | ------ |
-| `#embed`      | Supported |        |
-| `__has_embed` | Supported |        |
+<!-- BEGIN CAPABILITY: supported -->
 
-### `#embed`
+**`#embed`**
 
 The resource path links to the embedded file
 
-```cpp
-const char data[] = {
-#embed "data.bin"
-};
+```snap
+tests/snap/document_links/embed_directives/01_embed.cpp
 ```
 
-### `__has_embed`
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**`__has_embed`**
 
 The checked path links to the probed resource
 
-```cpp
-#if __has_embed("data.bin")
-const char first_byte[] = {
-#embed "data.bin" limit(1)
-};
-#endif
+```snap
+tests/snap/document_links/embed_directives/02_has_embed.cpp
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -139,22 +117,20 @@ const char first_byte[] = {
 
 <!-- BEGIN GENERATED ITEMS: presentation -->
 
-| Capability             | Status    | Issues |
-| ---------------------- | --------- | ------ |
-| Resolved-path tooltips | Supported |        |
+<!-- BEGIN CAPABILITY: supported -->
 
-### Resolved-path tooltips
+**Resolved-path tooltips**
 
 Every link carries its target's absolute path as the hover tooltip
 
 Editors render the tooltip next to the follow-link hint, e.g.
-`/usr/include/c++/14/vector (ctrl + click)`. Snapshots pin only the
-link targets; the suite instead validates the tooltip against the
-target on the server reply of every fixture in this corpus.
+`/usr/include/c++/14/vector (ctrl + click)`.
 
-```cpp
-#include "header_a.h"
+```snap
+tests/snap/document_links/presentation/01_tooltip.cpp
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -162,20 +138,16 @@ target on the server reply of every fixture in this corpus.
 
 <!-- BEGIN GENERATED ITEMS: module_declarations -->
 
-| Capability     | Status      | Issues |
-| -------------- | ----------- | ------ |
-| Module targets | Unsupported |        |
+<!-- BEGIN CAPABILITY: unsupported -->
 
-### Module targets
+**Module targets**
 
-`import` and `module` declarations link to their interface files
+`import` and `module` declarations do not link to interface files yet
 
-```cpp
-export module app;
-
-import lib;
-import :part;
-export import lib.extra;
+```snap
+tests/snap/document_links/module_declarations/01_modules.cpp
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->

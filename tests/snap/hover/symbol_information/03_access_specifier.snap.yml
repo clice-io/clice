@@ -2,7 +2,7 @@
 created_at: 2026-08-23
 input_file: symbol_information/03_access_specifier.cpp
 ---
-private_field: { range: "12:8-12:11" }
+private_field: { range: "14:8-14:11" }
 ### field `pin`  
 
 ---
@@ -16,7 +16,7 @@ Size: 4 bytes, alignment 4 bytes
 private: int pin
 ```
 
-protected_field: { range: "9:8-9:13" }
+protected_field: { range: "11:8-11:13" }
 ### field `limit`  
 
 ---
@@ -30,7 +30,7 @@ Size: 4 bytes, alignment 4 bytes
 protected: int limit
 ```
 
-public_field: { range: "6:8-6:15" }
+public_field: { range: "8:8-8:15" }
 ### field `balance`  
 
 ---

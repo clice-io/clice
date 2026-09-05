@@ -1,7 +1,10 @@
-/// # Default argument stripping — the signature is derived from the function type, so default parameter values never leak into the outline
+/// # Default argument stripping
 ///
 /// - status: supported
 /// - issues: clangd#221
+///
+/// The signature is derived from the function type, so default parameter values
+/// never leak into the outline
 
 namespace detail {
 

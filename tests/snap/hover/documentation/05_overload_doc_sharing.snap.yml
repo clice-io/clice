@@ -2,7 +2,7 @@
 created_at: 2026-08-23
 input_file: documentation/05_overload_doc_sharing.cpp
 ---
-01_first: { range: "11:5-11:9" }
+01_first: { range: "12:5-12:9" }
 ### function `open`  
 
 ---
@@ -18,7 +18,7 @@ Opens a file.
 void open(const char *path)
 ```
 
-02_second: { range: "12:5-12:9" }
+02_second: { range: "13:5-13:9" }
 ### function `open`  
 
 ---

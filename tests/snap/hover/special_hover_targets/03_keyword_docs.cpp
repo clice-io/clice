@@ -1,7 +1,9 @@
-/// # Keyword documentation — hovering a language keyword shows its description
+/// # Keyword documentation
 ///
 /// - status: unsupported
 /// - issues: clangd#1862
+///
+/// Language keywords do not have documentation hover yet
 ///
 /// Hovering a keyword such as `const` or `virtual` produces no card.
 

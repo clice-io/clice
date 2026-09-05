@@ -1,6 +1,8 @@
-/// # `module` and `import` as identifiers — contextual keywords keep their semantic kinds outside module declarations
+/// # `module` and `import` as identifiers
 ///
 /// - status: supported
+///
+/// Contextual keywords keep their semantic kinds outside module declarations
 
 void f() {
     struct §module {};

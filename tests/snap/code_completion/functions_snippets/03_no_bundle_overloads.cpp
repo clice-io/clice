@@ -1,8 +1,10 @@
-/// # Unbundled overloads — with bundling off, every overload is its own entry with its own signature
+/// # Unbundled overloads
 ///
 /// - status: supported
 /// - config: {"bundle_overloads": false}
 /// - diagnostics: expected
+///
+/// With bundling off, every overload is its own entry with its own signature
 
 // The completion prefix cuts the initializer mid-expression.
 int foooo(int x);

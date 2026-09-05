@@ -1,4 +1,4 @@
-/// - verify: server
+// - verify: server
 
 struct Outer {
     struct §(inner_def)Inner {

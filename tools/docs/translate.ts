@@ -37,33 +37,23 @@
 ///     node tools/docs/translate.ts check    # hard gate: isomorphism + attested pairs
 ///     node tools/docs/translate.ts report   # translator worklist with segment texts
 ///     node tools/docs/translate.ts record   # re-attest pages after deliberate edits
-///     node tools/docs/translate.ts translate [page...]  # machine-draft zh pages
-///     node tools/docs/translate.ts review [page...]     # model review of existing zh pages
-///
-/// `translate` calls the DeepSeek API (key from DEEPSEEK_API_KEY, never
-/// stored) to draft segment-isomorphic zh pages: fenced code inside a
-/// segment is masked out and restored byte-for-byte, so code never
-/// round-trips through the model, and inline code, link targets, issue
-/// references and frontmatter control values must come back unchanged.
-/// No args = only pages missing a zh counterpart; explicit pages are
-/// overwritten, feeding the current zh text back as terminology
-/// reference. `--model=NAME` overrides the default deepseek-v4-pro. A
-/// segment the model cannot render validly is left in English and fails
-/// the run, so the page shows up again on the next attempt. Drafts still
-/// go through review + record.
+///     node tools/docs/translate.ts review [page...]     # model review of zh pages
 ///
 /// `review` re-reads every translatable segment of an existing zh page
 /// next to its en counterpart and asks a model for the corrected Chinese —
-/// meaning, the wording conventions of the docs skill, naturalness —
-/// segment by segment, so no code block ever enters the model's context.
-/// The default backend runs the codex CLI (GPT-5.6-sol) with every tool
-/// switched off, one call per chunk of segments (a paired row and
-/// heading always in the same chunk),
-/// `--jobs=N` calls in parallel and `--effort=LEVEL` reasoning;
-/// `--backend=deepseek` uses the API instead. A reply that breaks a
-/// segment's shape, alters an inline literal, or names a row and its
-/// heading differently keeps the current Chinese. The pages are
-/// rewritten in place; review the diff, then `record`.
+/// meaning, the wording conventions of the translate-docs skill,
+/// naturalness — segment by segment, so no code block ever enters the
+/// model's context. It is also how a new or restructured page gets
+/// translated: copy the en page over the zh one and review it. The
+/// backend runs the codex CLI (GPT-6 astra) with every tool switched
+/// off, one call per chunk of segments (a paired row and heading always
+/// in the same chunk), `--jobs=N` calls in parallel, `--effort=LEVEL`
+/// reasoning and `--fast` for the fast service tier. A reply that breaks
+/// a segment's shape, alters an inline literal, or names a row and its
+/// heading differently keeps the current Chinese; when that text is still
+/// the English copy the page counts as failed, so a draft never exits
+/// green with untranslated segments. The pages are rewritten in place;
+/// review the diff, then `record`.
 ///
 /// `--en=DIR --zh=DIR --meta=DIR` override the tree roots (for testing).
 
@@ -634,94 +624,6 @@ function record(roots: Roots, pages: string[]): number {
     return failed ? 1 : 0;
 }
 
-const SYSTEM_PROMPT = `你是 clice 项目的文档翻译。clice 是一个基于 LLVM/Clang 的 C++ language server。你的任务是把英文技术文档段落翻译成简体中文。
-
-写作要求：
-- 写成中国系统程序员自然写出的技术文档：直接、准确、克制，参考译文的语气优先沿用。
-- 禁止翻译腔：不要堆叠"进行""对于""通过……的方式"；长定语从句拆成短句；不要滥用"我们"。
-- 禁用词：深入、强大、无缝、赋能、极大地、显著地、值得注意的是、总而言之、综上所述。
-- 术语保留英文原样：preamble、PCH、PCM、AST、TU、worker、master、LSP、hover、completion、token、fixture、snapshot、shard、Clang、LLVM、clangd、以及一切行内代码、类名、函数名、文件路径、命令、URL。
-- 惯用译法：translation unit→翻译单元、compilation database→编译数据库、header→头文件、index→索引、crash→崩溃、build→构建、language server 不翻。旧译文里已有的术语选择优先沿用。
-
-格式硬规则（违反即作废）：
-- 逐段翻译：输入 segments 数组，输出同样长度的数组，i 一一对应，绝不合并、拆分、增删段。
-- 每段保持 markdown 骨架：标题保持相同数量的 #；列表项保持"- "或数字"1. "前缀和嵌套缩进结构；表格行保持竖线数量与单元格结构；引用块每行保持"> "前缀；行内代码、粗体、链接语法原样，链接 URL 绝不改。
-- 段内不得引入空行（空行会把一段拆成两段）。
-- 表格行的首单元格若与后文某个标题在英文里完全相同（能力状态表与其小节），两处译文也必须完全相同；这样的行和标题会放在同一批里。
-- 输入里的 ⟦B数字⟧ 是被抽走的代码块占位符：在译文的对应位置原样保留，一个不能少、不能多、不能改。
-- YAML 段（--- 围栏包住的）：只翻译面向读者的文案值，即键名为 ${[...YAML_PROSE_KEYS].join("、")} 的字符串；其余值（layout、theme、icon、link、src 等）连同键名、结构、围栏一律不动。
-- 输出严格 JSON：{"segments":[{"i":<int>,"text":"<译文>"}, ...]}，不要任何解释或代码围栏。`;
-
-interface ChatMessage {
-    role: "system" | "user";
-    content: string;
-}
-
-interface ApiReply {
-    content: string;
-    truncated: boolean;
-}
-
-interface ChatCompletion {
-    choices: { message: { content: string }; finish_reason: string }[];
-}
-
-function apiKey(): string {
-    const key = process.env["DEEPSEEK_API_KEY"];
-    if (key === undefined || key === "") {
-        console.error("DEEPSEEK_API_KEY not set");
-        process.exit(2);
-    }
-    return key;
-}
-
-async function callApi(
-    model: string,
-    messages: ChatMessage[],
-    maxTokens: number,
-): Promise<ApiReply> {
-    for (let attempt = 0; attempt < 4; attempt += 1) {
-        try {
-            const response = await fetch("https://api.deepseek.com/chat/completions", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${apiKey()}`,
-                },
-                body: JSON.stringify({
-                    model,
-                    messages,
-                    temperature: 1.3,
-                    max_tokens: maxTokens,
-                    response_format: { type: "json_object" },
-                }),
-            });
-            if (!response.ok) {
-                throw new Error(
-                    `HTTP ${response.status}: ${(await response.text()).slice(0, 200)}`,
-                );
-            }
-            const data = (await response.json()) as ChatCompletion;
-            const choice = data.choices.at(0);
-            if (choice === undefined) {
-                throw new Error("empty choices in response");
-            }
-            return {
-                content: choice.message.content,
-                truncated: choice.finish_reason === "length",
-            };
-        } catch (error) {
-            if (attempt === 3) {
-                throw error;
-            }
-            const wait = 2000 * (attempt + 1) ** 2;
-            console.error(`  api retry in ${wait}ms: ${String(error)}`);
-            await new Promise((resolve) => setTimeout(resolve, wait));
-        }
-    }
-    throw new Error("unreachable");
-}
-
 function parseSegmentsJson(raw: string, expected: number[]): Map<number, string> {
     const cleaned = raw
         .trim()
@@ -889,257 +791,21 @@ function chunkSegments(
     return chunks;
 }
 
-function contextBlock(enSource: string, reference: string | null): string {
-    const clip = (text: string, limit: number) =>
-        text.length > limit ? text.slice(0, limit) + "\n…（截断）" : text;
-    return (
-        `【英文原页，只读上下文】\n${clip(enSource, 24000)}\n\n` +
-        `【旧中文版本，术语与语气参考，内容可能过时、结构不要照抄】\n` +
-        (reference === null ? "（无）" : clip(reference, 24000))
-    );
-}
-
 function mustGet<K, V>(map: Map<K, V>, key: K): V {
     const value = map.get(key);
     if (value === undefined) {
-        throw new Error(`missing entry ${String(key)}`);
+        throw new Error(`missing ${String(key)}`);
     }
     return value;
 }
 
+/// Indexing that cannot be out of range by construction.
 function at<T>(items: T[], i: number): T {
-    const value = items.at(i);
-    if (value === undefined) {
+    const item = items[i];
+    if (item === undefined) {
         throw new Error(`index ${i} out of range`);
     }
-    return value;
-}
-
-async function translateChunk(
-    model: string,
-    context: string,
-    texts: string[],
-    indices: number[],
-): Promise<Map<number, string>> {
-    const payload = { segments: indices.map((i) => ({ i, text: at(texts, i) })) };
-    const reply = await callApi(
-        model,
-        [
-            { role: "system", content: SYSTEM_PROMPT },
-            { role: "user", content: `${context}\n\n【待翻译段】\n${JSON.stringify(payload)}` },
-        ],
-        8000,
-    );
-    try {
-        if (reply.truncated) {
-            throw new Error("output truncated");
-        }
-        return parseSegmentsJson(reply.content, indices);
-    } catch (error) {
-        // Output overflow truncates the JSON; halve the chunk and retry.
-        if (indices.length === 1) {
-            throw error;
-        }
-        console.error(
-            `  chunk of ${indices.length} segments failed (${String(error)}) — splitting`,
-        );
-        const half = Math.ceil(indices.length / 2);
-        const left = await translateChunk(model, context, texts, indices.slice(0, half));
-        const right = await translateChunk(model, context, texts, indices.slice(half));
-        return new Map([...left, ...right]);
-    }
-}
-
-async function retrySegment(
-    model: string,
-    context: string,
-    enText: string,
-    i: number,
-    problem: string,
-): Promise<string> {
-    const payload = { segments: [{ i, text: enText }] };
-    const reply = await callApi(
-        model,
-        [
-            { role: "system", content: SYSTEM_PROMPT },
-            {
-                role: "user",
-                content:
-                    `${context}\n\n【待翻译段】\n${JSON.stringify(payload)}\n\n` +
-                    `上一次译文违反了格式硬规则（${problem}），重新翻译这一段并严格保持骨架。`,
-            },
-        ],
-        4000,
-    );
-    return mustGet(parseSegmentsJson(reply.content, [i]), i);
-}
-
-interface PageResult {
-    segments: number;
-    fallbacks: number;
-}
-
-async function translatePage(roots: Roots, model: string, page: string): Promise<PageResult> {
-    const source = fs.readFileSync(path.join(roots.en, page), "utf8");
-    const segments = splitSegments(source, page);
-    const texts = segments.map((segment) => source.slice(segment.start, segment.end));
-    const zhFile = path.join(roots.zh, page);
-    const reference = fs.existsSync(zhFile) ? fs.readFileSync(zhFile, "utf8") : null;
-    const context = contextBlock(source, reference);
-
-    const todo: number[] = [];
-    segments.forEach((segment, i) => {
-        if (segment.translatable) {
-            todo.push(i);
-        }
-    });
-    const maskedTexts = texts.slice();
-    const masks = new Map<number, string[]>();
-    for (const i of todo) {
-        const { masked, blocks } = maskCode(at(texts, i), at(segments, i));
-        maskedTexts[i] = masked;
-        masks.set(i, blocks);
-    }
-    const pairs = pairedLabels(segments);
-    const translations = new Map<number, string>();
-    for (const chunk of chunkSegments(todo, pairs, (i) => at(maskedTexts, i).length, 4500)) {
-        for (const [i, text] of await translateChunk(model, context, maskedTexts, chunk)) {
-            translations.set(i, text);
-        }
-    }
-
-    let fallbacks = 0;
-    for (const i of todo) {
-        const enText = at(texts, i);
-        const segment = at(segments, i);
-        const blocks = mustGet(masks, i);
-        let restored = restoreCode(mustGet(translations, i), blocks);
-        let problem =
-            "problem" in restored
-                ? restored.problem
-                : validateSegment(segment, enText, restored.text, blocks);
-        for (let round = 0; problem !== null && round < 2; round += 1) {
-            console.error(`  ${page} segment ${i + 1} (${segment.shape}): ${problem} — retrying`);
-            try {
-                const reply = await retrySegment(model, context, at(maskedTexts, i), i, problem);
-                restored = restoreCode(reply, blocks);
-                problem =
-                    "problem" in restored
-                        ? restored.problem
-                        : validateSegment(segment, enText, restored.text, blocks);
-            } catch (error) {
-                problem = String(error);
-            }
-        }
-        let zhText = "text" in restored ? restored.text : enText;
-        if (problem !== null) {
-            console.error(
-                `  ${page} segment ${i + 1}: still broken (${problem}) — keeping English`,
-            );
-            zhText = enText;
-            fallbacks += 1;
-        }
-        translations.set(i, zhText);
-    }
-    for (const [row, heading] of pairs) {
-        const rowLabel = labelOf(at(segments, row), mustGet(translations, row));
-        if (rowLabel === labelOf(at(segments, heading), mustGet(translations, heading))) {
-            continue;
-        }
-        console.error(
-            `  ${page} segments ${row + 1} and ${heading + 1}: table row and heading ` +
-                `share one name in en but not in the translation — keeping English`,
-        );
-        for (const i of [row, heading]) {
-            if (mustGet(translations, i) !== at(texts, i)) {
-                translations.set(i, at(texts, i));
-                fallbacks += 1;
-            }
-        }
-    }
-
-    let out = "";
-    let cursor = 0;
-    segments.forEach((segment, i) => {
-        out += source.slice(cursor, segment.start);
-        out += segment.translatable ? mustGet(translations, i) : at(texts, i);
-        cursor = segment.end;
-    });
-    out += source.slice(cursor);
-
-    const comparison = compareTrees(analyzeSource(source, page), analyzeSource(out, `zh/${page}`));
-    if (comparison.structureProblem !== null) {
-        throw new Error(
-            `${page}: assembled page is not isomorphic — ${comparison.structureProblem}`,
-        );
-    }
-    for (const [left, right] of comparison.verbatimDiffs) {
-        throw new Error(`${page}: ${verbatimLabel(left, right)} corrupted`);
-    }
-    for (const diff of comparison.labelDiffs) {
-        throw new Error(`${page}: ${labelProblem(diff)}`);
-    }
-
-    fs.mkdirSync(path.dirname(zhFile), { recursive: true });
-    fs.writeFileSync(zhFile, out);
-    return { segments: todo.length, fallbacks };
-}
-
-async function machineTranslate(roots: Roots, pages: string[], rest: string[]): Promise<number> {
-    const model =
-        rest.find((argument) => argument.startsWith("--model="))?.slice(8) ?? "deepseek-v4-pro";
-    const requested = [...new Set(rest.filter((argument) => !argument.startsWith("--")))];
-    const translatablePages = pages.filter((page) => !isUntranslated(page));
-    const unknown = requested.filter((page) => !translatablePages.includes(page));
-    if (unknown.length > 0) {
-        console.error(`not a translatable page under docs/en: ${unknown.join(", ")}`);
-        return 2;
-    }
-    const targets =
-        requested.length > 0
-            ? requested
-            : translatablePages.filter((page) => !fs.existsSync(path.join(roots.zh, page)));
-    if (targets.length === 0) {
-        console.log("nothing to translate: every page has a zh counterpart");
-        return 0;
-    }
-    console.log(`translating ${targets.length} pages with ${model}`);
-    const limit = pLimit(3);
-    const incomplete: string[] = [];
-    const results = await Promise.allSettled(
-        targets.map((page) =>
-            limit(async () => {
-                const started = Date.now();
-                const info = await translatePage(roots, model, page);
-                const seconds = Math.round((Date.now() - started) / 1000);
-                console.log(
-                    `done ${page}: ${info.segments} segments, ` +
-                        `${info.fallbacks} fallbacks, ${seconds}s`,
-                );
-                if (info.fallbacks > 0) {
-                    incomplete.push(page);
-                }
-            }),
-        ),
-    );
-    let failed = 0;
-    for (const [i, result] of results.entries()) {
-        if (result.status === "rejected") {
-            const reason =
-                result.reason instanceof Error ? result.reason.message : String(result.reason);
-            console.error(`FAILED ${targets.at(i) ?? "?"}: ${reason}`);
-            failed += 1;
-        }
-    }
-    if (incomplete.length > 0) {
-        console.error(
-            `segments left in English on ${incomplete.length} pages — review, then rerun ` +
-                `translate on: ${incomplete.sort().join(" ")}`,
-        );
-    }
-    const ok = targets.length - failed - incomplete.length;
-    console.log(`finished: ${ok} ok, ${incomplete.length} incomplete, ${failed} failed`);
-    return failed > 0 || incomplete.length > 0 ? 1 : 0;
+    return item;
 }
 
 const REVIEW_PROMPT = `你在审校 clice（一个 C++ 语言服务器）文档的中文译文。输入是一批分段，每段给出编号 i、
@@ -1169,6 +835,13 @@ markdown 形状 shape、英文原文 en 和当前中文 zh。请逐段判断中�
   代码字体里的一切；中文 C++ 开发者习惯不译的词（Lambda、Token、Preamble、this、
   作为语言特性名的 Concept）。拿不准时保留英文并加简短中文说明，不要自造译法。
 - 同一批里同一术语只用一种译法；同一能力的表格行与标题总在同一批里，两处中文必须完全一致。
+
+位置规则（与 .claude/skills/translate-docs 一致）：
+- 标题：散文标题翻译；本身是标识符的标题原样保留（[project]、[[rules]]、textDocument/hover、clice lint）；混合标题只翻散文部分，行内代码原样。
+- 能力卡片的名称、一句话摘要、描述都翻译，以代码开头的名称也翻（\`auto\` deduction → \`auto\` 推导）；摘要句末与英文一样不加句号。
+- 代码块里的注释也是代码的一部分，绝不翻译。
+- 任务列表项翻正文，保留 [ ] / [x]。
+- 状态词只用固定词表：支持 / 部分支持 / 不支持 / 已实现 / 存根 / 计划中。
 
 文风：中文句子用全角标点；中英文之间留一个空格；不要机器翻译腔（英文语序、"这个"当冠词、
 被动堆叠）；说清楚意思，不必逐词对应。`;
@@ -1230,7 +903,7 @@ const CODEX_NO_TOOLS = [
 ];
 
 /// One codex call per chunk.
-function codexBackend(effort: string): Backend {
+function codexBackend(effort: string, fast: boolean): Backend {
     return async (payload, expected) => {
         const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "clice-docs-review-"));
         const reply = path.join(scratch, "reply.md");
@@ -1240,10 +913,12 @@ function codexBackend(effort: string): Backend {
                 await runCodex(
                     [
                         "exec",
+                        "--skip-git-repo-check",
                         "-m",
-                        "gpt-5.6-sol",
+                        "gpt-6-astra",
                         "-c",
                         `model_reasoning_effort=${effort}`,
+                        ...(fast ? ["-c", "service_tier=fast"] : []),
                         ...CODEX_NO_TOOLS,
                         "-o",
                         reply,
@@ -1262,23 +937,6 @@ function codexBackend(effort: string): Backend {
         } finally {
             fs.rmSync(scratch, { recursive: true, force: true });
         }
-    };
-}
-
-function deepseekBackend(model: string): Backend {
-    return async (payload, expected) => {
-        const reply = await callApi(
-            model,
-            [
-                { role: "system", content: REVIEW_PROMPT },
-                { role: "user", content: payload },
-            ],
-            8192,
-        );
-        if (reply.truncated) {
-            throw new Error("reply truncated");
-        }
-        return parseSegmentsJson(reply.content, expected);
     };
 }
 
@@ -1339,10 +997,7 @@ async function reviewPages(roots: Roots, pages: string[], rest: string[]): Promi
     const flag = (name: string, fallback: string): string =>
         rest.find((argument) => argument.startsWith(`--${name}=`))?.slice(name.length + 3) ??
         fallback;
-    const backend =
-        flag("backend", "codex") === "deepseek"
-            ? deepseekBackend(flag("model", "deepseek-v4-pro"))
-            : codexBackend(flag("effort", "xhigh"));
+    const backend = codexBackend(flag("effort", "xhigh"), rest.includes("--fast"));
     const limit = pLimit(Number(flag("jobs", "4")));
     const requested = [...new Set(rest.filter((argument) => !argument.startsWith("--")))];
     const translatablePages = pages.filter((page) => !isUntranslated(page));
@@ -1381,6 +1036,14 @@ async function reviewPages(roots: Roots, pages: string[], rest: string[]): Promi
             zhSource.slice(at(zhSegments, i).start, at(zhSegments, i).end);
         const finalTexts = new Map<number, string>();
         let kept = 0;
+        let untranslated = 0;
+        const keep = (i: number) => {
+            finalTexts.set(i, currentText(i));
+            kept += 1;
+            if (currentText(i) === at(enTexts, i)) {
+                untranslated += 1;
+            }
+        };
         for (const item of items.values()) {
             const blocks = mustGet(masks, item.i);
             const restored = restoreCode(mustGet(reviewed, item.i), blocks);
@@ -1395,8 +1058,7 @@ async function reviewPages(roots: Roots, pages: string[], rest: string[]): Promi
                       );
             if ("problem" in restored || problem !== null) {
                 console.error(`  ${page} segment ${item.i + 1} (${item.shape}): ${problem} — kept`);
-                kept += 1;
-                finalTexts.set(item.i, currentText(item.i));
+                keep(item.i);
                 continue;
             }
             finalTexts.set(item.i, restored.text);
@@ -1412,8 +1074,7 @@ async function reviewPages(roots: Roots, pages: string[], rest: string[]): Promi
             );
             for (const i of [row, heading]) {
                 if (mustGet(finalTexts, i) !== currentText(i)) {
-                    finalTexts.set(i, currentText(i));
-                    kept += 1;
+                    keep(i);
                 }
             }
         }
@@ -1451,6 +1112,13 @@ async function reviewPages(roots: Roots, pages: string[], rest: string[]): Promi
         console.log(
             `done ${page}: ${items.size} segments, ${changed} changed, ${kept} kept on problems`,
         );
+        // A kept segment whose current text is still the English copy is a
+        // draft that would pass `record` untranslated; the page is written
+        // so the segments that did translate survive a rerun.
+        if (untranslated > 0) {
+            console.error(`FAILED ${page}: ${untranslated} kept segments are still English`);
+            failed += 1;
+        }
     });
     for (const [i, outcome] of (await Promise.allSettled(work)).entries()) {
         if (outcome.status === "rejected") {
@@ -1483,14 +1151,10 @@ async function main(): Promise<number> {
             return report(roots, pages);
         case "record":
             return record(roots, pages);
-        case "translate":
-            return machineTranslate(roots, pages, rest);
         case "review":
             return reviewPages(roots, pages, rest);
         default:
-            console.error(
-                "usage: node tools/docs/translate.ts check | report | record | translate | review",
-            );
+            console.error("usage: node tools/docs/translate.ts check | report | record | review");
             return 2;
     }
 }

@@ -2,54 +2,54 @@
 created_at: 2026-08-23
 input_file: expression_context/01_constant_value.cpp
 ---
-01_constexpr_call: { range: "13:4-13:13" }
+01_constexpr_call: { range: "13:5-13:14" }
 ### variable `from_call`  
 
 ---
-Type: `int`  
-Value = `25 (0x19)`  
+Type: `long`  
+Value = `27 (0x1b)`  
 
 ---
 ```cpp
-// In namespace constant_value
-int from_call = square(5)
+// In namespace evaluated_context
+long from_call = cube(3)
 ```
 
-02_sizeof: { range: "15:4-15:15" }
-### variable `from_sizeof`  
+02_sizeof: { range: "15:5-15:14" }
+### variable `from_size`  
 
 ---
-Type: `int`  
-Value = `4`  
+Type: `long`  
+Value = `8`  
 
 ---
 ```cpp
-// In namespace constant_value
-int from_sizeof = sizeof(int)
+// In namespace evaluated_context
+long from_size = sizeof(double)
 ```
 
-03_enumerator: { range: "18:15-18:20" }
-### enumerator `Green`  
+03_enumerator: { range: "18:24-18:30" }
+### enumerator `Online`  
 
 ---
-Type: `enum constant_value::Color`  
-Value = `5`  
+Type: `enum evaluated_context::State`  
+Value = `6`  
 
 ---
 ```cpp
-// In Color
-Green = 5
+// In State
+Online = 6
 ```
 
-04_static_member: { range: "21:4-21:15" }
+04_static_member: { range: "23:5-23:16" }
 ### variable `from_member`  
 
 ---
-Type: `int`  
-Value = `7`  
+Type: `long`  
+Value = `20 (0x14)`  
 
 ---
 ```cpp
-// In namespace constant_value
-int from_member = Sum<3, 4>::value
+// In namespace evaluated_context
+long from_member = Product<4, 5>::value
 ```

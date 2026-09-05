@@ -16,781 +16,523 @@ Kinds derived from the token stream itself, independent of the AST.
 
 <!-- BEGIN GENERATED ITEMS: lexical_tokens -->
 
-| Capability                            | Status      | Issues                                                      |
-| ------------------------------------- | ----------- | ----------------------------------------------------------- |
-| Comments                              | Supported   |                                                             |
-| Literals                              | Supported   |                                                             |
-| Keywords                              | Supported   |                                                             |
-| Preprocessor directives               | Supported   |                                                             |
-| Inactive regions                      | Supported   |                                                             |
-| Header names                          | Supported   |                                                             |
-| Inactive regions at the top of a file | Supported   |                                                             |
-| Literal prefixes and suffixes         | Unsupported |                                                             |
-| Escape sequences                      | Unsupported |                                                             |
-| Declarator vs operator disambiguation | Unsupported | [clangd#1421](https://github.com/clangd/clangd/issues/1421) |
-| Primitive token type                  | Supported   |                                                             |
-| Bracket token types                   | Unsupported |                                                             |
+<!-- BEGIN CAPABILITY: supported -->
 
-### Comments
+**Comments**
 
-line, block and doc comments, including multiline blocks
+Line, block and documentation comments receive comment tokens
 
-```cpp
-// A line comment.
-/* a one-line block comment */
-/*
- * a block comment
- * spanning several lines
- */
-/// a doc comment
-int after_comments = 0;
-
-/* first
-second */ int after_block = 1;
+```snap
+tests/snap/semantic_tokens/lexical_tokens/01_comments.cpp
 ```
 
-### Literals
+<!-- END CAPABILITY -->
 
-numbers, characters and strings, including raw strings
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-int decimal = 42;
-int hexadecimal = 0xFF;
-double floating = 3.14;
-char letter = 'x';
-const char* text = "hello";
-const char* raw = R"(no "escapes" in here)";
-int after_raw = 1;
+**Literals**
 
-const char* multiline = R"(line1
-line2
-)"; int after_closing = 2;
+Numbers, characters and strings receive literal tokens
+
+```snap
+tests/snap/semantic_tokens/lexical_tokens/02_literals.cpp
 ```
 
-### Keywords
+<!-- END CAPABILITY -->
 
-Including alternative operator spellings and the contextual `final` / `override`
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-bool logic(bool a, bool b) {
-    return a and b or not a;
-}
+**Keywords**
 
-struct Base {
-    virtual void act();
-    virtual ~Base();
-};
+Alternative operator spellings and contextual specifiers retain keyword
+tokens
 
-struct Leaf final : Base {
-    void act() override;
-};
-
-struct Last : Base {
-    void act() final;
-};
+```snap
+tests/snap/semantic_tokens/lexical_tokens/03_keywords.cpp
 ```
 
-### Preprocessor directives
+<!-- END CAPABILITY -->
 
-`#if` chains keep directive kinds; disabled branches keep lexical kinds; pragma arguments stay plain
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-int before_conditional = 0;
+**Preprocessor directives**
 
-#if 0
-int disabled_branch;
-#else
-int enabled_branch = 1;
-#endif
+`#if` chains keep directive kinds; disabled branches keep lexical kinds;
+pragma arguments stay plain
 
-#define FLAG
-#ifdef FLAG
-int flagged = 2;
-#endif
-
-#pragma pack(1)
-
-#
-#define STRINGIZE(x) #x
-const char* stringized = STRINGIZE(abc);
+```snap
+tests/snap/semantic_tokens/lexical_tokens/04_directives.cpp
 ```
 
-### Inactive regions
+<!-- END CAPABILITY -->
 
-Tokens in untaken branches keep their lexical kinds and carry the `inactive` modifier; unclassified tokens become plain `identifier` carriers, so even a lone `}` line dims
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-int before = 0;
+**Inactive regions**
 
-#if 0
-int simple = 1;
-bare identifiers;
-call(arg);
-"string in dead code";
-// comment inside
-#ifdef NESTED
-int deeper = 2;
-#endif
-int tail = 3;
-#endif
+Tokens in untaken branches keep their lexical kinds and carry the `inactive`
+modifier; unclassified tokens become plain `identifier` carriers, so even a
+lone `}` line dims
 
-#if defined(MISSING)
-first_branch;
-#elif 0
-elif_branch;
-#else
-int taken = 4;
-#endif
-
-#if 0
-void edge() {
-    inner(5);
-}
-#endif
+```snap
+tests/snap/semantic_tokens/lexical_tokens/05_inactive_regions.cpp
 ```
 
-### Header names
+<!-- END CAPABILITY -->
 
-Quoted and angled `#include` filenames, including the split `# include` form
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-#include "inc/angled.h"
-#include <angled.h>
-# include "inc/angled.h"
+**Header names**
 
-int after_includes = 0;
+Quoted and angled include filenames receive string tokens
+
+```snap
+tests/snap/semantic_tokens/lexical_tokens/06_include_names.cpp
 ```
 
-### Inactive regions at the top of a file
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Inactive preamble regions**
 
 Untaken branches among the leading directives dim the same way
 
-```cpp
-#define KEEP 1
-#if 0
-#define DEAD 2
-#endif
-
-int after = KEEP;
+```snap
+tests/snap/semantic_tokens/lexical_tokens/07_inactive_preamble.cpp
 ```
 
-### Literal prefixes and suffixes
+<!-- END CAPABILITY -->
 
-Encoding prefixes, type suffixes, digit separators and UDL suffixes as distinct tokens
+<!-- BEGIN CAPABILITY: unsupported -->
 
-```cpp
-using size_type = decltype(sizeof(0));
-constexpr size_type operator""_kb(unsigned long long n) {
-    return n * 1024;
-}
+**Literal prefixes and suffixes**
 
-auto wide = L"wide string";
-auto utf8 = u8"utf-8 string";
-auto hex = 0xFF;
-auto binary = 0b1010;
-auto unsigned_suffix = 42u;
-auto float_suffix = 3.14f;
-auto separators = 1'000'000;
-auto udl = 4_kb;
+Literal prefixes, suffixes and separators do not receive distinct tokens
+yet
+
+```snap
+tests/snap/semantic_tokens/lexical_tokens/08_literal_affixes.cpp
 ```
 
-### Escape sequences
+<!-- END CAPABILITY -->
 
-Highlighted distinctly inside string and character literals
+<!-- BEGIN CAPABILITY: unsupported -->
 
-```cpp
-const char* escaped = "hello\nworld";
-char hex_escape = '\x41';
+**Escape sequences**
+
+Escape sequences are not highlighted distinctly inside literals yet
+
+```snap
+tests/snap/semantic_tokens/lexical_tokens/09_escape_sequences.cpp
 ```
 
-### Declarator vs operator disambiguation
+<!-- END CAPABILITY -->
 
-`*`, `&`, `&&` as declarators vs arithmetic/logical operators
+<!-- BEGIN CAPABILITY: unsupported clangd#1421 -->
 
-```cpp
-int value = 1;
-int* pointer = &value;
-int& reference = value;
-int product = value * value;
-int masked = value & 1;
+**Declarator vs operator disambiguation**
+
+Declarator and expression operators do not receive distinct token kinds yet
+
+```snap
+tests/snap/semantic_tokens/lexical_tokens/10_declarator_operators.cpp
 ```
 
-### Primitive token type
+<!-- END CAPABILITY -->
 
-A distinct kind for built-in types instead of plain `keyword`
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-int number = 0;
-float ratio = 0.5f;
-void act();
-unsigned long long wide_number = 0;
-__int128 extended_int = 0;
-_Float16 extended_float = 0;
+**Primitive token type**
+
+Built-in types use a distinct token kind instead of plain `keyword`
+
+```snap
+tests/snap/semantic_tokens/lexical_tokens/11_primitive_types.cpp
 ```
 
-### Bracket token types
+<!-- END CAPABILITY -->
 
-Matching `()`, `[]`, `{}`, `<>` pairs as distinct kinds
+<!-- BEGIN CAPABILITY: unsupported -->
 
-```cpp
-template <typename T>
-struct Grid {
-    T cells[4];
-};
+**Bracket token types**
 
-Grid<int> grid{{1, 2, 3, 4}};
+Matching brackets do not receive pair-specific token kinds yet
 
-int first(Grid<int>& grid) {
-    return grid.cells[0];
-}
+```snap
+tests/snap/semantic_tokens/lexical_tokens/12_bracket_pairs.cpp
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
-## Declarations & References
+## Declarations
 
 Names classified by the declaration they define or reference.
 
-<!-- BEGIN GENERATED ITEMS: declarations_references -->
+<!-- BEGIN GENERATED ITEMS: declarations -->
 
-| Capability                                 | Status    | Issues                                                                                                               |
-| ------------------------------------------ | --------- | -------------------------------------------------------------------------------------------------------------------- |
-| Namespaces                                 | Supported |                                                                                                                      |
-| Types                                      | Supported |                                                                                                                      |
-| Functions and methods                      | Supported |                                                                                                                      |
-| Variables                                  | Supported |                                                                                                                      |
-| Templates                                  | Supported |                                                                                                                      |
-| Concepts                                   | Supported |                                                                                                                      |
-| Labels                                     | Supported |                                                                                                                      |
-| Structured bindings                        | Supported |                                                                                                                      |
-| Member initializer lists                   | Supported | [clangd#122](https://github.com/clangd/clangd/issues/122)                                                            |
-| Using declarations                         | Supported | [clangd#2619](https://github.com/clangd/clangd/issues/2619)                                                          |
-| Lambda init-captures                       | Supported | [clangd#868](https://github.com/clangd/clangd/issues/868)                                                            |
-| `sizeof...`                                | Supported | [clangd#213](https://github.com/clangd/clangd/issues/213)                                                            |
-| `using enum`                               | Supported | [clangd#1283](https://github.com/clangd/clangd/issues/1283)                                                          |
-| Deduction guides                           | Supported |                                                                                                                      |
-| Explicit instantiation                     | Supported | [clangd#316](https://github.com/clangd/clangd/issues/316)                                                            |
-| Dependent names                            | Partial   | [clangd#154](https://github.com/clangd/clangd/issues/154), [clangd#297](https://github.com/clangd/clangd/issues/297) |
-| Variable templates                         | Supported |                                                                                                                      |
-| Out-of-line member definitions             | Supported |                                                                                                                      |
-| Alias templates                            | Supported |                                                                                                                      |
-| Template template parameters               | Supported |                                                                                                                      |
-| Lambda captures                            | Supported |                                                                                                                      |
-| Range-based for                            | Supported |                                                                                                                      |
-| Enum underlying types                      | Supported |                                                                                                                      |
-| Friend declarations                        | Supported |                                                                                                                      |
-| Dependent using declarations               | Partial   |                                                                                                                      |
-| Function explicit instantiation directives | Partial   | [llvm#191658](https://github.com/llvm/llvm-project/issues/191658)                                                    |
-| Variable explicit instantiation directives | Partial   | [llvm#191658](https://github.com/llvm/llvm-project/issues/191658)                                                    |
-| Explicit instantiation member bodies       | Supported |                                                                                                                      |
+<!-- BEGIN CAPABILITY: supported -->
 
-### Namespaces
+**Namespaces**
 
-definitions, references, nested namespaces and namespace aliases
+Namespace definitions, references, nesting and aliases receive namespace
+tokens
 
-```cpp
-namespace demo {
-namespace inner {
-int value = 1;
-}
-}
-
-namespace demo::inner::more {}
-
-namespace alias = demo::inner;
-
-int use_alias = alias::value;
+```snap
+tests/snap/semantic_tokens/declarations/01_namespaces.cpp
 ```
 
-### Types
+<!-- END CAPABILITY -->
 
-class, struct, union, enum and type aliases, at definitions and references
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-class Widget {};
-struct Point {};
-union Storage {
-    int i;
-    float f;
-};
-enum Flags { FlagA };
-enum class Mode { Fast };
+**Types**
 
-typedef Point PointAlias;
-using WidgetAlias = Widget;
+Type definitions and references keep their respective type kinds
 
-Widget* make_widget();
-PointAlias origin;
-Mode current = Mode::Fast;
+```snap
+tests/snap/semantic_tokens/declarations/02_types.cpp
 ```
 
-### Functions and methods
+<!-- END CAPABILITY -->
 
-declarations, definitions and call sites
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-int twice(int value);
+**Functions and methods**
 
-int twice(int value) {
-    return value * 2;
-}
+Function declarations, definitions and calls receive function tokens
 
-struct Machine {
-    void start();
-    static void reset();
-};
-
-void drive(Machine machine) {
-    machine.start();
-    Machine::reset();
-    int four = twice(2);
-}
+```snap
+tests/snap/semantic_tokens/declarations/03_functions.cpp
 ```
 
-### Variables
+<!-- END CAPABILITY -->
 
-globals, locals, parameters, fields and enum members
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-struct Holder {
-    int field;
-    static int shared;
-};
+**Variables**
 
-enum class State { Idle };
+Variable declarations and references keep their respective variable kinds
 
-int global_value = 1;
-
-void touch(int param) {
-    int local = param + global_value;
-    Holder h;
-    h.field = local;
-    Holder::shared = h.field;
-    State state = State::Idle;
-}
+```snap
+tests/snap/semantic_tokens/declarations/04_variables.cpp
 ```
 
-### Templates
+<!-- END CAPABILITY -->
 
-Type and non-type template parameters, with the `templated` modifier on template names
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-template <typename T, int N>
-struct Array {
-    T data[N];
-};
+**Templates**
 
-template <typename T>
-T identity(T value);
+Template parameters receive type or variable kinds, and template names carry
+`templated`
 
-template <typename T>
-T identity(T value) {
-    return value;
-}
-
-Array<int, 4> arr;
-int result = identity(3);
+```snap
+tests/snap/semantic_tokens/declarations/05_templates.cpp
 ```
 
-### Concepts
+<!-- END CAPABILITY -->
 
-Definitions and uses as template constraints
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-template <typename T>
-concept Small = sizeof(T) <= 4;
+**Concepts**
 
-template <Small T>
-void use_small(T value);
+Concept definitions and constraint uses receive concept tokens
 
-template <typename T>
-    requires Small<T>
-void require_small(T value);
+```snap
+tests/snap/semantic_tokens/declarations/06_concepts.cpp
 ```
 
-### Labels
+<!-- END CAPABILITY -->
 
-`goto` targets and label definitions
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-void retry(bool again) {
-    goto done;
-done:
-    if (again) {
-        goto done;
-    }
-}
+**Labels**
+
+Labels and their `goto` references receive label tokens
+
+```snap
+tests/snap/semantic_tokens/declarations/07_labels.cpp
 ```
 
-### Structured bindings
+<!-- END CAPABILITY -->
 
-Binding names at definition and use
+<!-- BEGIN CAPABILITY: supported -->
+
+**Structured bindings**
+
+Structured binding names receive variable tokens at definition and use
 
 The opening `[` deliberately carries no token; only the binding names
 themselves are highlighted.
 
-```cpp
-struct Pair {
-    int first, second;
-};
-
-void unpack() {
-    auto [a, b] = Pair{1, 2};
-    int sum = a + b;
-}
+```snap
+tests/snap/semantic_tokens/declarations/08_structured_bindings.cpp
 ```
 
-### Member initializer lists
+<!-- END CAPABILITY -->
 
-Initialized fields highlighted as fields
+<!-- BEGIN CAPABILITY: supported clangd#868 -->
 
-```cpp
-struct Widget {
-    int width;
-    int height;
+**Lambda init-captures**
 
-    Widget(int w, int h) : width(w), height(h) {}
-};
+Lambda init-captures receive variable tokens
+
+```snap
+tests/snap/semantic_tokens/declarations/09_lambda_init_capture.cpp
 ```
 
-### Using declarations
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Deduction guides**
+
+Deduction guides and their guided templates receive type tokens
+
+```snap
+tests/snap/semantic_tokens/declarations/10_deduction_guides.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#316 -->
+
+**Explicit instantiation**
+
+Explicit class instantiations highlight template names and written arguments
+
+```snap
+tests/snap/semantic_tokens/declarations/11_explicit_instantiation_class.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Variable templates**
+
+Variable template declarations, definitions and specializations receive
+variable tokens
+
+```snap
+tests/snap/semantic_tokens/declarations/12_variable_templates.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Out-of-line member definitions**
+
+Qualified names keep method kinds and modifiers
+
+```snap
+tests/snap/semantic_tokens/declarations/13_out_of_line_methods.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Alias templates**
+
+The alias name carries the type kind and the `templated` modifier
+
+```snap
+tests/snap/semantic_tokens/declarations/14_alias_templates.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Template template parameters**
+
+Template-template parameters receive type tokens at declaration and use
+
+```snap
+tests/snap/semantic_tokens/declarations/15_template_template_params.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Friend declarations**
+
+Befriended names resolve to their targets; inline friends define
+
+```snap
+tests/snap/semantic_tokens/declarations/16_friend_declarations.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: partial llvm#191658 -->
+
+**Function explicit instantiation directives**
+
+Identifiers in a function explicit-instantiation directive remain unpainted
+
+```snap
+tests/snap/semantic_tokens/declarations/17_explicit_instantiation_function.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: partial llvm#191658 -->
+
+**Variable explicit instantiation directives**
+
+Identifiers in a variable explicit-instantiation directive remain unpainted
+
+```snap
+tests/snap/semantic_tokens/declarations/18_explicit_instantiation_variable.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Explicit instantiation member bodies**
+
+A dependent name paints as its actual resolution: agreeing kinds keep the
+modifiers all instantiations share, disagreeing kinds paint a conflict
+
+```snap
+tests/snap/semantic_tokens/declarations/19_explicit_instantiation_member_bodies.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## References
+
+Reference sites retain the semantic kind of the declaration they resolve to,
+including names reached through language-specific lookup rules.
+
+<!-- BEGIN GENERATED ITEMS: references -->
+
+<!-- BEGIN CAPABILITY: supported clangd#122 -->
+
+**Member initializer lists**
+
+Member initializer lists highlight initialized names as fields
+
+```snap
+tests/snap/semantic_tokens/references/01_member_init_list.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#2619 -->
+
+**Using declarations**
 
 The introduced name keeps its target's kind
 
-```cpp
-namespace tools {
-inline int helper() {
-    return 1;
-}
-struct Gadget {};
-}
-
-using tools::helper;
-using tools::Gadget;
-
-int used = helper();
-Gadget gadget;
+```snap
+tests/snap/semantic_tokens/references/02_using_declarations.cpp
 ```
 
-### Lambda init-captures
+<!-- END CAPABILITY -->
 
-The captured name highlighted as a variable
+<!-- BEGIN CAPABILITY: supported clangd#213 -->
 
-```cpp
-int compute();
-
-auto fn = [val = compute()] {
-    return val;
-};
-```
-
-### `sizeof...`
+**`sizeof...`**
 
 The pack parameter keeps its type-parameter token
 
-```cpp
-template <typename... Ts>
-constexpr auto count = sizeof...(Ts);
+```snap
+tests/snap/semantic_tokens/references/03_sizeof_pack.cpp
 ```
 
-### `using enum`
+<!-- END CAPABILITY -->
 
-The enum name highlighted at the using site
+<!-- BEGIN CAPABILITY: supported clangd#1283 -->
 
-```cpp
-enum class Color { Red };
+**`using enum`**
 
-void paint() {
-    using enum Color;
-    auto c = Red;
-}
+Using declarations highlight enum names at the using site
+
+```snap
+tests/snap/semantic_tokens/references/04_using_enum.cpp
 ```
 
-### Deduction guides
+<!-- END CAPABILITY -->
 
-The guide name and the guided template highlighted
+<!-- BEGIN CAPABILITY: partial clangd#154 clangd#297 -->
 
-```cpp
-template <typename T>
-struct Vec {
-    template <typename It>
-    Vec(It first, It last);
-};
+**Dependent names**
 
-template <typename It>
-Vec(It, It) -> Vec<int>;
-```
-
-### Explicit instantiation
-
-The instantiated template name and its written template arguments highlighted, on the extern declaration and the definition alike
-
-```cpp
-struct Widget {};
-
-template <typename T>
-struct Holder {
-    T value;
-};
-
-extern template struct Holder<Widget>;
-
-template struct Holder<Widget>;
-```
-
-### Dependent names
-
-Resolved through the primary template where one is known
+Dependent names resolve through known primary templates
 
 Dependent members of a known template (`Box<T>`) resolve to the primary
 template's declarations and keep their kinds. Members of a bare template
 parameter have no candidate declaration and currently get no token;
 heuristic coloring for such names remains open.
 
-```cpp
-template <typename T>
-struct Box {
-    using value_type = int;
-    static void reset();
-    int size() const;
-};
-
-template <typename T>
-void resolved(Box<T> box) {
-    typename Box<T>::value_type item;
-    Box<T>::reset();
-    box.size();
-}
-
-template <typename T>
-void unresolved(T value) {
-    typename T::value_type item;
-    T::reset();
-    value.size();
-}
+```snap
+tests/snap/semantic_tokens/references/05_dependent_names.cpp
 ```
 
-### Variable templates
+<!-- END CAPABILITY -->
 
-declarations, definitions, partial and full specializations
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-template <typename T, typename U>
-extern int pair_value;
+**Lambda captures**
 
-template <typename T, typename U>
-int pair_value = 2;
+By-copy and by-reference captures reference the captured variable; `this`
+stays a keyword
 
-template <typename T>
-extern int pair_value<T, int>;
-
-template <typename T>
-int pair_value<T, int> = 4;
-
-template <>
-int pair_value<int, int> = 5;
+```snap
+tests/snap/semantic_tokens/references/06_lambda_captures.cpp
 ```
 
-### Out-of-line member definitions
+<!-- END CAPABILITY -->
 
-Qualified names keep method kinds and modifiers
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-struct Gauge {
-    int read() const;
-    static void reset();
-};
+**Range-based for**
 
-int Gauge::read() const {
-    return 0;
-}
+Range-for variables keep variable tokens at definitions and uses
 
-void Gauge::reset() {}
+```snap
+tests/snap/semantic_tokens/references/07_range_for.cpp
 ```
 
-### Alias templates
+<!-- END CAPABILITY -->
 
-The alias name carries the type kind and the `templated` modifier
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-template <typename T>
-using Ptr = T*;
-
-template <typename T>
-struct Box {};
-
-template <typename T>
-using BoxPtr = Box<T>*;
-
-Ptr<int> pointer = nullptr;
-```
-
-### Template template parameters
-
-Declared and used as types
-
-```cpp
-template <typename T>
-struct Holder {};
-
-template <template <typename> class Container, typename T>
-struct Adaptor {
-    Container<T> value;
-};
-
-Adaptor<Holder, int> adaptor;
-```
-
-### Lambda captures
-
-by-copy and by-reference captures reference the captured variable; `this` stays a keyword
-
-```cpp
-struct S {
-    int field;
-
-    int compute() {
-        int local = 1;
-        auto by_copy = [local, this] {
-            return local + this->field;
-        };
-        auto by_reference = [&local] {
-            return local;
-        };
-        return by_copy() + by_reference();
-    }
-};
-```
-
-### Range-based for
-
-The loop variable at definition and use
-
-```cpp
-struct List {
-    int* begin();
-    int* end();
-};
-
-void iterate(List items) {
-    for (auto& item : items) {
-        item = 0;
-    }
-}
-```
-
-### Enum underlying types
+**Enum underlying types**
 
 The enum-base reference keeps its type kind
 
-```cpp
-using Byte = unsigned char;
-
-enum class Flags : Byte { A, B };
-
-Flags flags = Flags::A;
+```snap
+tests/snap/semantic_tokens/references/08_enum_base.cpp
 ```
 
-### Friend declarations
+<!-- END CAPABILITY -->
 
-Befriended names resolve to their targets; inline friends define
+<!-- BEGIN CAPABILITY: partial -->
 
-```cpp
-struct Widget;
-void ping();
+**Dependent using declarations**
 
-struct Host {
-    friend struct Widget;
-    friend void ping();
-    friend void inline_friend() {}
-};
-```
-
-### Dependent using declarations
-
-`using T::name` in a template body
+Dependent using declarations remain unpainted
 
 The introduced name and its uses currently get no token; the reserved
 dependent-name modifier is not emitted yet.
 
-```cpp
-template <typename T>
-struct Derived : T {
-    using T::value;
-
-    int use() {
-        return value;
-    }
-};
+```snap
+tests/snap/semantic_tokens/references/09_dependent_using.cpp
 ```
 
-### Function explicit instantiation directives
-
-Clang builds no node for the directive, so every identifier on it goes unpainted: the name, the template arguments and the parameter types
-
-```cpp
-struct Widget {};
-
-template <typename T>
-void convert(T value) {}
-
-extern template void convert<Widget>(Widget);
-
-template void convert<Widget>(Widget);
-```
-
-### Variable explicit instantiation directives
-
-Clang builds no node for the directive, so every identifier on it goes unpainted: the name, the template arguments, even the declarator's type
-
-```cpp
-struct Widget {};
-
-template <typename T>
-T zero = T();
-
-extern template Widget zero<Widget>;
-
-template Widget zero<Widget>;
-```
-
-### Explicit instantiation member bodies
-
-A dependent name paints as its actual resolution: agreeing kinds keep the modifiers all instantiations share, disagreeing kinds paint a conflict
-
-```cpp
-struct A {
-    static void hit();
-};
-
-struct B {
-    static int hit;
-};
-
-struct C {
-    void hit();
-};
-
-template <typename T>
-struct D {
-    void go() {
-        (void)T::hit;
-    }
-};
-
-template struct D<A>;
-template struct D<B>;
-
-template <typename T>
-struct E {
-    void probe(T t) {
-        t.hit();
-    }
-};
-
-template struct E<A>;
-template struct E<C>;
-```
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -798,54 +540,42 @@ template struct E<C>;
 
 <!-- BEGIN GENERATED ITEMS: modules -->
 
-| Capability                           | Status    | Issues |
-| ------------------------------------ | --------- | ------ |
-| Module declarations                  | Supported |        |
-| Module partitions                    | Supported |        |
-| `module` and `import` as identifiers | Supported |        |
+<!-- BEGIN CAPABILITY: supported -->
 
-### Module declarations
+**Module declarations**
 
-The contextual `module` keyword, dotted module names and the private fragment
+Module declarations tokenize contextual keywords, dotted names and private
+fragments
 
-```cpp
-module;
-
-export module demo.core;
-
-export int exported_value = 1;
-
-module :private;
-
-int private_value = 2;
-
-#if 0
-module :private;
-#endif
+```snap
+tests/snap/semantic_tokens/modules/01_modules.cpp
 ```
 
-### Module partitions
+<!-- END CAPABILITY -->
 
-Partition names in the module declaration
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-export module demo.core:part;
+**Module partitions**
 
-export int partition_value = 1;
+Module declarations tokenize partition names
+
+```snap
+tests/snap/semantic_tokens/modules/02_module_partition.cpp
 ```
 
-### `module` and `import` as identifiers
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**`module` and `import` as identifiers**
 
 Contextual keywords keep their semantic kinds outside module declarations
 
-```cpp
-void f() {
-    struct module {};
-    module m;
-    int import = 1;
-    int module = 2;
-}
+```snap
+tests/snap/semantic_tokens/modules/03_module_keyword_identifier.cpp
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -853,183 +583,128 @@ void f() {
 
 <!-- BEGIN GENERATED ITEMS: token_modifiers -->
 
-| Capability                    | Status      | Issues                                                      |
-| ----------------------------- | ----------- | ----------------------------------------------------------- |
-| Declaration vs definition     | Supported   |                                                             |
-| Static                        | Supported   |                                                             |
-| Readonly                      | Supported   |                                                             |
-| Virtual and abstract          | Supported   |                                                             |
-| Deprecated                    | Supported   |                                                             |
-| Default library               | Supported   |                                                             |
-| Scope modifiers               | Unsupported | [clangd#352](https://github.com/clangd/clangd/issues/352)   |
-| Mutable reference and pointer | Unsupported | [clangd#839](https://github.com/clangd/clangd/issues/839)   |
-| Deduced                       | Unsupported |                                                             |
-| User-defined operators        | Unsupported | [clangd#1521](https://github.com/clangd/clangd/issues/1521) |
+<!-- BEGIN CAPABILITY: supported -->
 
-### Declaration vs definition
+**Declaration vs definition**
 
-The modifier distinguishes the two
+Declaration and definition modifiers distinguish the two sites
 
-```cpp
-int measure(int value);
-
-int measure(int value) {
-    return value;
-}
-
-struct Sensor;
-
-struct Sensor {};
+```snap
+tests/snap/semantic_tokens/token_modifiers/01_decl_def_modifiers.cpp
 ```
 
-### Static
+<!-- END CAPABILITY -->
 
-class-level members and static locals
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-struct Counter {
-    static int total;
-    static void bump();
-    int current;
-};
+**Static**
 
-void count() {
-    static int calls = 0;
-    Counter::bump();
-    Counter::total = calls;
-}
+Static members and locals carry the static modifier
+
+```snap
+tests/snap/semantic_tokens/token_modifiers/02_static_modifier.cpp
 ```
 
-### Readonly
+<!-- END CAPABILITY -->
 
-Const and constexpr values, const methods and enum members
+<!-- BEGIN CAPABILITY: supported -->
+
+**Readonly**
+
+Const values and methods, plus enum members, carry the readonly modifier
 
 Readonly is currently value-based: a pointer to const counts as
 readonly even though the pointer itself can change.
 
-```cpp
-enum class Level { High };
-
-const int limit = 10;
-constexpr int bound = 4;
-
-struct Gauge {
-    int read() const;
-    void write(int value);
-};
-
-void probe(const int& in, const int* pointee_const, int* const self_const) {
-    Gauge gauge;
-    gauge.read();
-    gauge.write(limit);
-}
+```snap
+tests/snap/semantic_tokens/token_modifiers/03_readonly_modifier.cpp
 ```
 
-### Virtual and abstract
+<!-- END CAPABILITY -->
 
-Virtual methods, pure virtual methods and abstract classes
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-struct Shape {
-    virtual int area();
-    virtual int perimeter() = 0;
-    virtual ~Shape();
-};
+**Virtual and abstract**
 
-struct Square : Shape {
-    int perimeter() override;
-};
+Virtual methods and abstract classes carry virtual or abstract modifiers
 
-int measure(Shape& shape) {
-    return shape.area() + shape.perimeter();
-}
+```snap
+tests/snap/semantic_tokens/token_modifiers/04_virtual_abstract.cpp
 ```
 
-### Deprecated
+<!-- END CAPABILITY -->
 
-`[[deprecated]]` declarations and their uses
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-[[deprecated("use next_api")]] void old_api();
-void next_api();
+**Deprecated**
 
-void migrate() {
-    old_api();
-}
+Deprecated declarations and uses carry the deprecated modifier
+
+```snap
+tests/snap/semantic_tokens/token_modifiers/05_deprecated_modifier.cpp
 ```
 
-### Default library
+<!-- END CAPABILITY -->
 
-Symbols declared in system headers
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-int before_includes = 0;
+**Default library**
 
-#include <syslib.h>
+Symbols from system headers carry the default-library modifier
 
-int used = system_helper();
+```snap
+tests/snap/semantic_tokens/token_modifiers/06_default_library.cpp
 ```
 
-### Scope modifiers
+<!-- END CAPABILITY -->
 
-function, class, file and global scope
+<!-- BEGIN CAPABILITY: unsupported clangd#352 -->
 
-```cpp
-int global_scope;
-static int file_scope;
+**Scope modifiers**
 
-struct Foo {
-    int class_scope;
+Symbols do not carry function, class, file or global scope modifiers yet
 
-    void bar() {
-        int function_scope = 0;
-    }
-};
+```snap
+tests/snap/semantic_tokens/token_modifiers/07_scope_modifiers.cpp
 ```
 
-### Mutable reference and pointer
+<!-- END CAPABILITY -->
 
-Arguments passed by non-const reference or pointer
+<!-- BEGIN CAPABILITY: unsupported clangd#839 -->
 
-```cpp
-void modify(int& out);
-void modify_through(int* out);
-void inspect(const int& in);
+**Mutable reference and pointer**
 
-void run() {
-    int value = 0;
-    modify(value);
-    modify_through(&value);
-    inspect(value);
-}
+Mutable reference and pointer arguments do not carry a modifier yet
+
+```snap
+tests/snap/semantic_tokens/token_modifiers/08_mutable_reference.cpp
 ```
 
-### Deduced
+<!-- END CAPABILITY -->
 
-Mark deduced types such as `auto` and `decltype`
+<!-- BEGIN CAPABILITY: unsupported -->
 
-```cpp
-auto deduced_int = 1;
-decltype(deduced_int) same_type = 2;
+**Deduced**
+
+Deduced types do not carry a dedicated modifier yet
+
+```snap
+tests/snap/semantic_tokens/token_modifiers/09_deduced_modifier.cpp
 ```
 
-### User-defined operators
+<!-- END CAPABILITY -->
 
-Distinguish overloaded operators from built-in ones
+<!-- BEGIN CAPABILITY: unsupported clangd#1521 -->
 
-```cpp
-struct Vec {
-    Vec operator+(const Vec& other) const;
-};
+**User-defined operators**
 
-Vec add(Vec a, Vec b) {
-    return a + b;
-}
+Overloaded operators do not differ from built-in operators yet
 
-int add(int a, int b) {
-    return a + b;
-}
+```snap
+tests/snap/semantic_tokens/token_modifiers/10_user_defined_operator.cpp
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -1042,73 +717,56 @@ which clients typically display in a neutral color.
 
 <!-- BEGIN GENERATED ITEMS: conflict_ambiguity -->
 
-| Capability              | Status    | Issues |
-| ----------------------- | --------- | ------ |
-| Type vs function        | Supported |        |
-| Type vs variable        | Supported |        |
-| Same-kind overload sets | Supported |        |
-| Injected class name     | Supported |        |
+<!-- BEGIN CAPABILITY: supported -->
 
-### Type vs function
+**Type vs function**
 
 A name naming both renders as `conflict`
 
-```cpp
-namespace shop {
-struct Widget {};
-void Widget();
-}
-
-using shop::Widget;
+```snap
+tests/snap/semantic_tokens/conflict_ambiguity/01_conflict_using.cpp
 ```
 
-### Type vs variable
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Type vs variable**
 
 A name naming both renders as `conflict`
 
-```cpp
-namespace mixed {
-struct Thing {};
-int Thing;
-}
-
-using mixed::Thing;
+```snap
+tests/snap/semantic_tokens/conflict_ambiguity/02_conflict_type_variable.cpp
 ```
 
-### Same-kind overload sets
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Same-kind overload sets**
 
 A name naming only functions is no conflict
 
-```cpp
-namespace ops {
-void apply();
-void apply(int level);
-}
-
-using ops::apply;
-
-void run() {
-    apply();
-    apply(1);
-}
+```snap
+tests/snap/semantic_tokens/conflict_ambiguity/03_using_overloads.cpp
 ```
 
-### Injected class name
+<!-- END CAPABILITY -->
 
-The class name used as a constructor call inside the class
+<!-- BEGIN CAPABILITY: supported -->
+
+**Injected class name**
+
+An injected class name keeps its class token when used as a constructor
 
 The written name renders as the class; the constructor reference it
 implies paints nothing extra — the `(` stays token-free.
 
-```cpp
-struct Widget {
-    Widget(int size);
-
-    Widget create() {
-        return Widget(42);
-    }
-};
+```snap
+tests/snap/semantic_tokens/conflict_ambiguity/04_injected_class_name.cpp
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -1118,51 +776,39 @@ Shapes clice pins deliberately, including issues clangd got wrong.
 
 <!-- BEGIN GENERATED ITEMS: token_correctness -->
 
-| Capability                                | Status    | Issues                                                                                                                                                                              |
-| ----------------------------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Constructors and destructors              | Supported | [clangd#1509](https://github.com/clangd/clangd/issues/1509), [clangd#2078](https://github.com/clangd/clangd/issues/2078), [clangd#872](https://github.com/clangd/clangd/issues/872) |
-| Anonymous parameters                      | Supported |                                                                                                                                                                                     |
-| Operator names                            | Supported |                                                                                                                                                                                     |
-| Destructors of class templates            | Supported |                                                                                                                                                                                     |
-| Conversion operators                      | Supported |                                                                                                                                                                                     |
-| Pseudo-destructor on a template parameter | Supported |                                                                                                                                                                                     |
-| Defaulted and deleted members             | Supported |                                                                                                                                                                                     |
+<!-- BEGIN CAPABILITY: supported clangd#1509 clangd#2078 clangd#872 -->
 
-### Constructors and destructors
+**Constructors and destructors**
 
-Method tokens with the constructor/destructor modifier
+Constructors and destructors use method tokens with dedicated modifiers
 
 A destructor name renders as two tokens: the `~` carries the method
 kind and the declaration/definition modifiers, the class name after it
 stays a reference to the class.
 
-```cpp
-struct Session {
-    Session();
-    ~Session();
-};
-
-Session::Session() {}
-
-Session::~Session() {}
-
-void destroy(Session* session) {
-    session->~Session();
-}
+```snap
+tests/snap/semantic_tokens/token_correctness/01_constructors_destructors.cpp
 ```
 
-### Anonymous parameters
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Anonymous parameters**
 
 Unnamed parameters produce no tokens
 
 The punctuation after an unnamed parameter's type stays token-free.
 
-```cpp
-void take_one(int) {}
-void take_two(int, char* c) {}
+```snap
+tests/snap/semantic_tokens/token_correctness/02_anonymous_parameters.cpp
 ```
 
-### Operator names
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Operator names**
 
 The `operator` keyword and call-site punctuation stay plain
 
@@ -1170,72 +816,59 @@ An operator's written name is keyword plus punctuation, so no name
 token is painted: `operator` keeps its keyword classification and
 call sites emit nothing on the operator symbol.
 
-```cpp
-struct Value {
-    Value& operator=(const Value& other);
-    Value operator+(const Value& other) const;
-};
-
-void combine(Value a, Value b) {
-    a = b;
-    Value c = a + b;
-}
+```snap
+tests/snap/semantic_tokens/token_correctness/03_operator_names.cpp
 ```
 
-### Destructors of class templates
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Destructors of class templates**
 
 The `~` shape holds under templates
 
-```cpp
-template <typename T>
-struct Holder {
-    ~Holder();
-};
-
-template <typename T>
-Holder<T>::~Holder() {}
+```snap
+tests/snap/semantic_tokens/token_correctness/04_template_destructor.cpp
 ```
 
-### Conversion operators
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Conversion operators**
 
 Written as keywords, converting uses paint nothing extra
 
-```cpp
-struct Ratio {
-    operator double() const;
-    explicit operator bool() const;
-};
-
-double to_double(Ratio ratio) {
-    if (ratio) {
-        return ratio;
-    }
-    return double(ratio);
-}
+```snap
+tests/snap/semantic_tokens/token_correctness/05_conversion_operators.cpp
 ```
 
-### Pseudo-destructor on a template parameter
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Pseudo-destructor on a template parameter**
 
 The `~` paints nothing; the type name keeps its kind
 
-```cpp
-template <typename T>
-void reset(T* value) {
-    value->~T();
-}
+```snap
+tests/snap/semantic_tokens/token_correctness/06_pseudo_destructor.cpp
 ```
 
-### Defaulted and deleted members
+<!-- END CAPABILITY -->
 
-special-member names keep their definition tokens
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-struct Session {
-    Session() = default;
-    Session(const Session&) = delete;
-    ~Session() = default;
-};
+**Defaulted and deleted members**
+
+Special-member names keep their definition tokens
+
+```snap
+tests/snap/semantic_tokens/token_correctness/07_defaulted_deleted.cpp
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -1243,21 +876,17 @@ struct Session {
 
 <!-- BEGIN GENERATED ITEMS: attributes -->
 
-| Capability      | Status      | Issues                                                      |
-| --------------- | ----------- | ----------------------------------------------------------- |
-| Attribute names | Unsupported | [clangd#2209](https://github.com/clangd/clangd/issues/2209) |
+<!-- BEGIN CAPABILITY: unsupported clangd#2209 -->
 
-### Attribute names
+**Attribute names**
 
-Standard and vendor attributes, and expressions inside them
+Attribute names and their expressions do not receive semantic tokens yet
 
-```cpp
-[[nodiscard]] int compute();
-[[deprecated("use v2")]] void old_func();
-[[maybe_unused]] int counter = 0;
-
-struct [[gnu::packed]] Packed {};
+```snap
+tests/snap/semantic_tokens/attributes/01_attributes.cpp
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -1268,49 +897,42 @@ them from their expansions belongs to a future expansion-preview feature.
 
 <!-- BEGIN GENERATED ITEMS: macros -->
 
-| Capability                          | Status      | Issues                                                      |
-| ----------------------------------- | ----------- | ----------------------------------------------------------- |
-| Macro definition and expansion      | Supported   |                                                             |
-| Expansion sites and arguments       | Supported   |                                                             |
-| Object-like vs function-like macros | Unsupported | [clangd#2649](https://github.com/clangd/clangd/issues/2649) |
+<!-- BEGIN CAPABILITY: supported -->
 
-### Macro definition and expansion
+**Macro definition and expansion**
 
-```cpp
-#define SQUARE(x) ((x) * (x))
+Macro definitions and expansions receive semantic tokens
 
-[[maybe_unused]] static int squared = SQUARE(4);
+```snap
+tests/snap/semantic_tokens/macros/01_macro.cpp
 ```
 
-### Expansion sites and arguments
+<!-- END CAPABILITY -->
 
-Expansion names are macros, written arguments keep their semantics, definition bodies stay lexical
+<!-- BEGIN CAPABILITY: supported -->
 
-```cpp
-int value = 1;
+**Expansion sites and arguments**
 
-#define ID(x) x
-#define CALL helper()
+Expansion names are macros, written arguments keep their semantics,
+definition bodies stay lexical
 
-void helper();
-
-int copied = ID(value);
-
-void run() {
-    CALL;
-}
+```snap
+tests/snap/semantic_tokens/macros/02_macro_expansion.cpp
 ```
 
-### Object-like vs function-like macros
+<!-- END CAPABILITY -->
 
-Distinct highlighting for the two forms
+<!-- BEGIN CAPABILITY: unsupported clangd#2649 -->
 
-```cpp
-#define MAX_SIZE 1024
-#define CHECK(x) ((x) ? 1 : 0)
+**Object-like vs function-like macros**
 
-int checked = CHECK(MAX_SIZE);
+Object-like and function-like macros do not receive distinct token kinds yet
+
+```snap
+tests/snap/semantic_tokens/macros/03_macro_kinds.cpp
 ```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -1318,21 +940,21 @@ int checked = CHECK(MAX_SIZE);
 
 Curated issues without a fixture yet:
 
-- `auto` parameters must not be highlighted as template type parameters
-  ([clangd#1390](https://github.com/clangd/clangd/issues/1390))
-- Nested name specifier in a pointer-to-member should get a token
-  ([clangd#2235](https://github.com/clangd/clangd/issues/2235))
-- `::new` should keep the `new` keyword highlighted
-  ([clangd#1627](https://github.com/clangd/clangd/issues/1627))
-- `co_yield` / `co_await` lose highlighting when the coroutine return type is
-  a template ([clangd#2437](https://github.com/clangd/clangd/issues/2437))
-- Token modifiers should apply to operands of overloaded operators
-  ([clangd#2547](https://github.com/clangd/clangd/issues/2547))
-- Dependent template names (`obj.template get<int>()`), members imported from
-  a dependent base via `using`, and dependent names with mixed-kind overload
-  sets ([clangd#484](https://github.com/clangd/clangd/issues/484),
-  [clangd#686](https://github.com/clangd/clangd/issues/686),
-  [clangd#1057](https://github.com/clangd/clangd/issues/1057))
+- [ ] `auto` parameters must not be highlighted as template type parameters
+      ([clangd#1390](https://github.com/clangd/clangd/issues/1390))
+- [ ] Nested name specifier in a pointer-to-member should get a token
+      ([clangd#2235](https://github.com/clangd/clangd/issues/2235))
+- [ ] `::new` should keep the `new` keyword highlighted
+      ([clangd#1627](https://github.com/clangd/clangd/issues/1627))
+- [ ] `co_yield` / `co_await` lose highlighting when the coroutine return type is
+      a template ([clangd#2437](https://github.com/clangd/clangd/issues/2437))
+- [ ] Token modifiers should apply to operands of overloaded operators
+      ([clangd#2547](https://github.com/clangd/clangd/issues/2547))
+- [ ] Dependent template names (`obj.template get<int>()`), members imported from
+      a dependent base via `using`, and dependent names with mixed-kind overload
+      sets ([clangd#484](https://github.com/clangd/clangd/issues/484),
+      [clangd#686](https://github.com/clangd/clangd/issues/686),
+      [clangd#1057](https://github.com/clangd/clangd/issues/1057))
 
 ## Inactive Code Regions
 

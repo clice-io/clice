@@ -1,6 +1,8 @@
-/// # Literals — numbers, characters and strings, including raw strings
+/// # Literals
 ///
 /// - status: supported
+///
+/// Numbers, characters and strings receive literal tokens
 
 int decimal = 42;
 int hexadecimal = 0xFF;

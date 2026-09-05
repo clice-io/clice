@@ -1,11 +1,13 @@
-/// # Banner comments — a section banner separated by a blank line must not attach to the next declaration
+/// # Banner comments
 ///
 /// - status: partial
 /// - issues: clangd#974
 ///
-/// A `// ==== Section ====` banner followed by a blank line should not be
-/// misattributed as documentation for the declaration below it. clice
-/// currently attaches it anyway — the banner text appears in the card.
+/// A separated section banner still attaches to the following declaration
+///
+/// A `// ==== Section ====` banner followed by a blank line is misattributed
+/// as documentation for the declaration below it, so the banner text appears
+/// in the card.
 
 namespace banners {
 // ==== Section Banner ====

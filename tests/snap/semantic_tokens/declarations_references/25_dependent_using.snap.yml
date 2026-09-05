@@ -1,6 +1,0 @@
----
-created_at: 2026-07-31
-input_file: declarations_references/25_dependent_using.cpp
----
-- { loc: "9:13", text: "value", kind: none }
-- { loc: "12:15", text: "value", kind: none }

@@ -9,7 +9,9 @@
 ///     <!-- BEGIN GENERATED CONFIG: project -->
 ///     <!-- END GENERATED CONFIG -->
 ///
-/// Section intros, the file-location/precedence preamble, variable
+/// A region renders its section's options as a one-row table plus
+/// description each; the handwritten `##` heading above it names the
+/// section. Section intros, the file-location/precedence preamble, variable
 /// substitution and the example stay handwritten. CI runs `check`; a
 /// separate binary-backed step keeps the committed schema itself fresh.
 ///
@@ -110,28 +112,27 @@ function renderDefault(field: FieldSchema): string {
     return `\`${JSON.stringify(field.default)}\``;
 }
 
-/// One option: a `### section.name` heading, the type/default table, and
-/// the description paragraph from the annotation.
-function renderField(heading: string, field: FieldSchema): string[] {
-    const out: string[] = [];
-    out.push(`### \`${heading}\``);
-    out.push("");
+/// One option: a one-row table naming it with its type and default, then
+/// the description paragraph from the annotation. The handwritten heading
+/// above the region names the table the options live in, so the Option
+/// cell shows the bare key.
+function renderField(name: string, field: FieldSchema): string[] {
+    const out = ['<div class="config-option">', ""];
     out.push(
         ...renderMarkdownTable([
-            ["Type", "Default"],
-            [renderType(field), renderDefault(field)],
+            ["Option", "Type", "Default"],
+            [`\`${name}\``, renderType(field), renderDefault(field)],
         ]),
     );
     if (field.description !== undefined) {
-        out.push("");
-        out.push(field.description);
+        out.push("", field.description);
     }
+    out.push("", "</div>");
     return out;
 }
 
 /// A section region's body: every option of the section's struct, in
-/// declaration order. `rules` is the one array-of-table section; its
-/// entries render as `[rules].field`.
+/// declaration order.
 function renderSection(root: StructSchema, section: string): string {
     const top = root.properties?.[section];
     if (!top) {
@@ -140,12 +141,9 @@ function renderSection(root: StructSchema, section: string): string {
     const isArray = top.type === "array";
     const struct = resolveRef(root, isArray ? (top.items ?? {}) : top);
     const properties = struct.properties ?? {};
-    const parts: string[] = [];
-    for (const [name, field] of Object.entries(properties)) {
-        const heading = isArray ? `[${section}].${name}` : `${section}.${name}`;
-        parts.push(renderField(heading, field).join("\n"));
-    }
-    return parts.join("\n\n");
+    return Object.entries(properties)
+        .map(([name, field]) => renderField(name, field).join("\n"))
+        .join("\n\n");
 }
 
 function rewriteDoc(docText: string, root: StructSchema, problems: string[]): string {

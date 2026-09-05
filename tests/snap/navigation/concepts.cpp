@@ -1,4 +1,4 @@
-/// - verify: server
+// - verify: server
 
 template <typename T>
 concept §(concept_def)Addable = requires(T value) {

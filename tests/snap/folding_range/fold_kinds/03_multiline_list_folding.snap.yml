@@ -2,17 +2,17 @@
 created_at: 2026-07-27
 input_file: fold_kinds/03_multiline_list_folding.cpp
 ---
-- { range: "4:14-8:1", kind: functionParams, collapsed_text: "(...)" }
-- { range: "12:12-40:1", kind: functionBody, collapsed_text: "{...}" }
-- { range: "13:19-17:5", kind: initializer, collapsed_text: "{...}" }
-- { range: "19:24-23:5", kind: functionCall, collapsed_text: "(...)" }
-- { range: "25:15-28:5", kind: lambdaCapture, collapsed_text: "[...]" }
-- { range: "28:6-30:5", kind: compoundStmt, collapsed_text: "{...}" }
-- { range: "32:19-35:5", kind: functionParams, collapsed_text: "(...)" }
-- { range: "35:6-37:5", kind: compoundStmt, collapsed_text: "{...}" }
-- { range: "42:14-46:1", kind: functionParams, collapsed_text: "(...)" }
-- { range: "46:2-48:1", kind: functionBody, collapsed_text: "{...}" }
-- { range: "50:12-53:1", kind: functionParams, collapsed_text: "(...)" }
-- { range: "55:12-57:1", kind: struct, collapsed_text: "{...}" }
-- { range: "59:9-62:1", kind: functionCall, collapsed_text: "(...)" }
-- { range: "64:15-67:1", kind: initializer, collapsed_text: "{...}" }
+- { range: "7:14-11:1", kind: functionParams, collapsed_text: "(...)" }
+- { range: "15:12-43:1", kind: functionBody, collapsed_text: "{...}" }
+- { range: "16:19-20:5", kind: initializer, collapsed_text: "{...}" }
+- { range: "22:24-26:5", kind: functionCall, collapsed_text: "(...)" }
+- { range: "28:15-31:5", kind: lambdaCapture, collapsed_text: "[...]" }
+- { range: "31:6-33:5", kind: compoundStmt, collapsed_text: "{...}" }
+- { range: "35:19-38:5", kind: functionParams, collapsed_text: "(...)" }
+- { range: "38:6-40:5", kind: compoundStmt, collapsed_text: "{...}" }
+- { range: "45:14-49:1", kind: functionParams, collapsed_text: "(...)" }
+- { range: "49:2-51:1", kind: functionBody, collapsed_text: "{...}" }
+- { range: "53:12-56:1", kind: functionParams, collapsed_text: "(...)" }
+- { range: "58:12-60:1", kind: struct, collapsed_text: "{...}" }
+- { range: "62:9-65:1", kind: functionCall, collapsed_text: "(...)" }
+- { range: "67:15-70:1", kind: initializer, collapsed_text: "{...}" }
